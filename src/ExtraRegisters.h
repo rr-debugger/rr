@@ -70,6 +70,11 @@ public:
    */
   size_t read_register(uint8_t* buf, GdbRegister regno, bool* defined) const;
 
+  /**
+   * Get a user_fpregs_struct for a particular Arch from these ExtraRegisters.
+   */
+  std::vector<uint8_t> get_user_fpregs_struct(SupportedArch arch) const;
+
 private:
   friend class Task;
 

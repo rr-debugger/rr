@@ -10,6 +10,9 @@
 #include "log.h"
 #include "util.h"
 
+using namespace rr;
+using namespace std;
+
 // This is the byte offset at which the ST0-7 register data begins
 // with an xsave (or fxsave) block.
 static const int st_regs_offset = 32;
@@ -132,4 +135,52 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
 
   memcpy(buf, data.data() + reg_data.offset, reg_data.size);
   return reg_data.size;
+}
+
+static X86Arch::user_fpregs_struct convert_fxsave_to_x86_fpregs(
+    const X86Arch::user_fpxregs_struct& buf) {
+  X86Arch::user_fpregs_struct result;
+
+  for (int i = 0; i < 8; ++i) {
+    memcpy(reinterpret_cast<uint8_t*>(result.st_space) + i * 10,
+           &buf.st_space[i * 4], 10);
+  }
+
+  result.cwd = buf.cwd | 0xffff0000;
+  result.swd = buf.swd | 0xffff0000;
+  // XXX Computing the correct twd is a pain. It probably doesn't matter to us
+  // in practice.
+  result.twd = 0;
+  result.fip = buf.fip;
+  result.fcs = buf.fcs;
+  result.foo = buf.foo;
+  result.fos = buf.fos;
+
+  return result;
+}
+
+template <typename T> static vector<uint8_t> to_vector(const T& v) {
+  vector<uint8_t> result;
+  result.resize(sizeof(T));
+  memcpy(result.data(), &v, sizeof(T));
+  return result;
+}
+
+vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(SupportedArch arch)
+    const {
+  assert(format_ == XSAVE);
+
+  switch (arch) {
+    case x86:
+      assert(data.size() >= sizeof(X86Arch::user_fpxregs_struct));
+      return to_vector(convert_fxsave_to_x86_fpregs(
+          *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(data.data())));
+    case x86_64:
+      assert(data.size() >= sizeof(X64Arch::user_fpregs_struct));
+      return to_vector(
+          *reinterpret_cast<const X64Arch::user_fpregs_struct*>(data.data()));
+    default:
+      assert(0 && "Unknown arch");
+      return vector<uint8_t>();
+  }
 }
