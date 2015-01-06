@@ -1214,6 +1214,38 @@ static void prepare_ptrace_cont(Task* tracee, int sig) {
   tracee->emulated_stop_type = NOT_STOPPED;
 }
 
+static uint64_t widen_buffer_unsigned(const void* buf, size_t size) {
+  switch (size) {
+    case 1:
+      return *reinterpret_cast<const uint8_t*>(buf);
+    case 2:
+      return *reinterpret_cast<const uint16_t*>(buf);
+    case 4:
+      return *reinterpret_cast<const uint32_t*>(buf);
+    case 8:
+      return *reinterpret_cast<const uint64_t*>(buf);
+    default:
+      assert(0 && "Unsupported size");
+      return 0;
+  }
+}
+
+static int64_t widen_buffer_signed(const void* buf, size_t size) {
+  switch (size) {
+    case 1:
+      return *reinterpret_cast<const int8_t*>(buf);
+    case 2:
+      return *reinterpret_cast<const int16_t*>(buf);
+    case 4:
+      return *reinterpret_cast<const int32_t*>(buf);
+    case 8:
+      return *reinterpret_cast<const int64_t*>(buf);
+    default:
+      assert(0 && "Unsupported size");
+      return 0;
+  }
+}
+
 template <typename Arch>
 static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   syscall_state.syscall_entry_registers =
@@ -1291,11 +1323,57 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
         // The actual syscall returns the data via the 'data' out-parameter.
         // The behavior of returning the data as the system call result is
         // provided by the glibc wrapper.
-        auto data =
+        auto datap =
             syscall_state.reg_parameter<typename Arch::unsigned_word>(4);
         remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
         auto v = tracee->read_mem(addr);
-        t->write_mem(data, v);
+        t->write_mem(datap, v);
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_PEEKUSER: {
+      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual syscall returns the data via the 'data' out-parameter.
+        // The behavior of returning the data as the system call result is
+        // provided by the glibc wrapper.
+        size_t addr = t->regs().arg3();
+        typename Arch::unsigned_word data;
+        if ((addr & (sizeof(data) - 1)) ||
+            addr >= sizeof(typename Arch::user)) {
+          syscall_state.emulate_result(-EIO);
+          break;
+        }
+
+        auto datap =
+            syscall_state.reg_parameter<typename Arch::unsigned_word>(4);
+        if (addr < sizeof(typename Arch::user_regs_struct)) {
+          uint8_t buf[Registers::MAX_SIZE];
+          bool defined;
+          size_t size =
+              tracee->regs().read_register_by_user_offset(buf, addr, &defined);
+          if (defined) {
+            // For unclear reasons, all 32-bit user_regs_struct members are
+            // signed while all 64-bit user_regs_struct members are unsigned.
+            if (Arch::arch() == x86) {
+              data = widen_buffer_signed(buf, size);
+            } else {
+              data = widen_buffer_unsigned(buf, size);
+            }
+          } else {
+            data = 0;
+          }
+        } else if (addr >= offsetof(typename Arch::user, u_debugreg[0]) &&
+                   addr < offsetof(typename Arch::user, u_debugreg[8])) {
+          size_t regno = (addr - offsetof(typename Arch::user, u_debugreg[0])) /
+                         sizeof(data);
+          data = tracee->get_debug_reg(regno);
+        } else {
+          data = 0;
+        }
+
+        t->write_mem(datap, data);
         syscall_state.emulate_result(0);
       }
       break;

@@ -56,6 +56,14 @@ int main(int argc, char* argv[]) {
   test_assert(static_data ==
               ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
 
+  test_assert(regs->eflags == ptrace(PTRACE_PEEKUSER, child,
+                                     (void*)offsetof(struct user, regs.eflags),
+                                     NULL));
+  test_assert(0 == ptrace(PTRACE_PEEKUSER, child,
+                          (void*)offsetof(struct user, u_debugreg[0]), NULL));
+  test_assert(0 == ptrace(PTRACE_PEEKUSER, child,
+                          (void*)offsetof(struct user, u_debugreg[7]), NULL));
+
   test_assert(0 == ptrace(PTRACE_DETACH, child, NULL, NULL));
 
   test_assert(1 == write(pipe_fds[1], "x", 1));
