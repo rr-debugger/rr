@@ -8,6 +8,7 @@ int main(int argc, char* argv[]) {
   pid_t child;
   int status;
   struct user_regs_struct* regs;
+  struct user_fpregs_struct* fpregs;
   int pipe_fds[2];
   struct timespec ts = { 0, 50000000 };
 
@@ -36,6 +37,11 @@ int main(int argc, char* argv[]) {
 #error unknown architecture
 #endif
   VERIFY_GUARD(regs);
+
+  ALLOCATE_GUARD(fpregs, 0xBB);
+  test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, fpregs));
+  test_assert(NULL == memchr(fpregs, 0xBB, sizeof(*fpregs)));
+  VERIFY_GUARD(fpregs);
 
   test_assert(static_data ==
               ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));

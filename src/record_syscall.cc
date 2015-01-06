@@ -1250,6 +1250,19 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
         auto data =
             syscall_state.reg_parameter<typename Arch::user_regs_struct>(4);
         auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
+        ASSERT(t, regs.size() == data.referent_size());
+        t->write_bytes_helper(data, regs.size(), regs.data());
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETFPREGS: {
+      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto data =
+            syscall_state.reg_parameter<typename Arch::user_fpregs_struct>(4);
+        auto regs = tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
+        ASSERT(t, regs.size() == data.referent_size());
         t->write_bytes_helper(data, regs.size(), regs.data());
         syscall_state.emulate_result(0);
       }
