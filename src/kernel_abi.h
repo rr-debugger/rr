@@ -1112,6 +1112,25 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
                       user_fpxregs_struct);
 #endif
 
+  struct user {
+    struct user_regs_struct regs;
+    int u_fpvalid;
+    struct user_fpregs_struct i387;
+    uint32_t u_tsize;
+    uint32_t u_dsize;
+    uint32_t u_ssize;
+    uint32_t start_code;
+    uint32_t start_stack;
+    int32_t signal;
+    int reserved;
+    struct user_regs_struct* u_ar0;
+    struct user_fpregs_struct* u_fpstate;
+    uint32_t magic;
+    char u_comm[32];
+    int u_debugreg[8];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user, user);
+
   struct stat {
     dev_t st_dev;
     unsigned_short __pad1;
@@ -1232,6 +1251,31 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_fpregs_struct,
                       user_fpregs_struct);
+
+  struct user {
+    struct user_regs_struct regs;
+    int u_fpvalid;
+    struct user_fpregs_struct i387;
+    uint64_t u_tsize;
+    uint64_t u_dsize;
+    uint64_t u_ssize;
+    uint64_t start_code;
+    uint64_t start_stack;
+    int64_t signal;
+    int reserved;
+    union {
+      struct user_regs_struct* u_ar0;
+      uint64_t __u_ar0_word;
+    };
+    union {
+      struct user_fpregs_struct* u_fpstate;
+      uint64_t __u_fpstate_word;
+    };
+    uint64_t magic;
+    char u_comm[32];
+    uint64_t u_debugreg[8];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user, user);
 
   struct stat {
     dev_t st_dev;
