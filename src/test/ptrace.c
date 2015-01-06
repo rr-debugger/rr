@@ -9,6 +9,9 @@ int main(int argc, char* argv[]) {
   int status;
   struct user_regs_struct* regs;
   struct user_fpregs_struct* fpregs;
+#ifdef __i386__
+  struct user_fpxregs_struct* fpxregs;
+#endif
   int pipe_fds[2];
   struct timespec ts = { 0, 50000000 };
 
@@ -42,6 +45,13 @@ int main(int argc, char* argv[]) {
   test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, fpregs));
   test_assert(NULL == memchr(fpregs, 0xBB, sizeof(*fpregs)));
   VERIFY_GUARD(fpregs);
+
+#ifdef __i386__
+  ALLOCATE_GUARD(fpxregs, 0xCC);
+  test_assert(0 == ptrace(PTRACE_GETFPXREGS, child, NULL, fpxregs));
+  test_assert(NULL == memchr(fpxregs, 0xCC, sizeof(*fpxregs)));
+  VERIFY_GUARD(fpxregs);
+#endif
 
   test_assert(static_data ==
               ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));

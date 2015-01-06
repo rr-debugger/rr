@@ -1268,6 +1268,22 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       }
       break;
     }
+    case PTRACE_GETFPXREGS: {
+      if (Arch::arch() != x86) {
+        // GETFPXREGS is x86-32 only
+        syscall_state.expect_errno = EIO;
+        break;
+      }
+      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto data =
+            syscall_state.reg_parameter<X86Arch::user_fpxregs_struct>(4);
+        auto regs = tracee->extra_regs().get_user_fpxregs_struct();
+        t->write_mem(data, regs);
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
     case PTRACE_PEEKTEXT:
     case PTRACE_PEEKDATA: {
       Task* tracee = verify_ptrace_target(t, syscall_state, pid);
