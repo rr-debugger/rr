@@ -169,7 +169,6 @@ template <typename T> static vector<uint8_t> to_vector(const T& v) {
 vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(SupportedArch arch)
     const {
   assert(format_ == XSAVE);
-
   switch (arch) {
     case x86:
       assert(data.size() >= sizeof(X86Arch::user_fpxregs_struct));
@@ -183,4 +182,10 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(SupportedArch arch)
       assert(0 && "Unknown arch");
       return vector<uint8_t>();
   }
+}
+
+X86Arch::user_fpxregs_struct ExtraRegisters::get_user_fpxregs_struct() const {
+  assert(format_ == XSAVE);
+  assert(data.size() >= sizeof(X86Arch::user_fpxregs_struct));
+  return *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(data.data());
 }

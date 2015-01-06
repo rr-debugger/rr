@@ -75,6 +75,11 @@ public:
    */
   std::vector<uint8_t> get_user_fpregs_struct(SupportedArch arch) const;
 
+  /**
+   * Get a user_fpxregs_struct for from these ExtraRegisters.
+   */
+  rr::X86Arch::user_fpxregs_struct get_user_fpxregs_struct() const;
+
 private:
   friend class Task;
 
