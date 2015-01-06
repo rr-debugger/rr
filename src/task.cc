@@ -1306,6 +1306,16 @@ bool Task::set_debug_regs(const DebugRegs& regs) {
                               (void*)dr7.packed());
 }
 
+uintptr_t Task::get_debug_reg(size_t regno) {
+  errno = 0;
+  auto result =
+      fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(regno), nullptr);
+  if (errno == ESRCH) {
+    return 0;
+  }
+  return result;
+}
+
 void Task::set_thread_area(remote_ptr<void> tls) {
   thread_area = read_mem(tls.cast<struct user_desc>());
   thread_area_valid = true;

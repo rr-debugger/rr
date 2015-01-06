@@ -801,6 +801,11 @@ public:
   bool set_debug_regs(const DebugRegs& regs);
 
   /**
+   * Reads the value of the given debug register.
+   */
+  uintptr_t get_debug_reg(size_t regno);
+
+  /**
    * Update the futex robust list head pointer to |list| (which
    * is of size |len|).
    */
