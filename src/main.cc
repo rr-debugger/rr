@@ -154,7 +154,7 @@ bool parse_global_option(std::vector<std::string>& args) {
     { 'T', "dump-at", HAS_PARAMETER },
     { 'D', "dump-on", HAS_PARAMETER },
     { 'F', "force-things", NO_PARAMETER },
-    { 'A', "force-microarch", HAS_PARAMETER },
+    { 'A', "microarch", HAS_PARAMETER },
     { 'M', "mark-stdio", NO_PARAMETER },
     { 'S', "suppress-environment-warnings", NO_PARAMETER },
     { 'E', "fatal-errors", NO_PARAMETER },
