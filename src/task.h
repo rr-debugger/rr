@@ -38,7 +38,8 @@ struct syscallbuf_record;
  */
 class TaskGroup : public HasTaskSet {
 public:
-  TaskGroup(pid_t tgid, pid_t real_tgid);
+  TaskGroup(TaskGroup* parent, pid_t tgid, pid_t real_tgid);
+  ~TaskGroup();
 
   typedef std::shared_ptr<TaskGroup> shr_ptr;
 
@@ -50,9 +51,16 @@ public:
 
   int exit_code;
 
+  TaskGroup* parent() { return parent_; }
+
 private:
   TaskGroup(const TaskGroup&) = delete;
   TaskGroup operator=(const TaskGroup&) = delete;
+
+  /** Parent TaskGroup, or nullptr if it's not a tracee (rr or init). */
+  TaskGroup* parent_;
+
+  std::set<TaskGroup*> children;
 };
 
 enum CloneFlags {

@@ -189,10 +189,22 @@ void TaskGroup::destabilize() {
   }
 }
 
-TaskGroup::TaskGroup(pid_t tgid, pid_t real_tgid)
-    : tgid(tgid), real_tgid(real_tgid), exit_code(-1) {
+TaskGroup::TaskGroup(TaskGroup* parent, pid_t tgid, pid_t real_tgid)
+    : tgid(tgid), real_tgid(real_tgid), exit_code(-1), parent_(parent) {
   LOG(debug) << "creating new task group " << tgid
              << " (real tgid:" << real_tgid << ")";
+  if (parent) {
+    parent->children.insert(this);
+  }
+}
+
+TaskGroup::~TaskGroup() {
+  for (TaskGroup* tg : children) {
+    tg->parent_ = nullptr;
+  }
+  if (parent_) {
+    parent_->children.erase(this);
+  }
 }
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
@@ -1777,8 +1789,8 @@ int Task::stop_sig_from_status(int status) const {
   return WSTOPSIG(status);
 }
 
-static TaskGroup::shr_ptr create_tg(Task* t) {
-  TaskGroup::shr_ptr tg(new TaskGroup(t->rec_tid, t->tid));
+static TaskGroup::shr_ptr create_tg(Task* t, TaskGroup* parent) {
+  TaskGroup::shr_ptr tg(new TaskGroup(parent, t->rec_tid, t->tid));
   tg->insert_task(t);
   return tg;
 }
@@ -1800,7 +1812,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->tg = tg;
     tg->insert_task(t);
   } else {
-    auto g = create_tg(t);
+    auto g = create_tg(t, tg.get());
     t->tg.swap(g);
   }
   if (CLONE_SHARE_VM & flags) {
@@ -2550,7 +2562,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                 sizeof(t->blocked_sigs))) {
     FATAL() << "Failed to read blocked signals";
   }
-  auto g = create_tg(t);
+  auto g = create_tg(t, nullptr);
   t->tg.swap(g);
   auto as = session.create_vm(t, trace.initial_exe());
   t->as.swap(as);
