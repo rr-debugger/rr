@@ -266,6 +266,7 @@ set(BASIC_TESTS
   prw
   pthread_condvar_locking
   ptrace
+  ptrace_attach_null_status
   ptrace_attach_running
   ptrace_attach_sleeping
   ptrace_attach_stopped

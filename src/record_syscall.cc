@@ -2627,20 +2627,24 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         t->set_regs(r);
         if (syscallno == Arch::waitid) {
           remote_ptr<typename Arch::siginfo_t> sip = r.arg3();
-          typename Arch::siginfo_t si;
-          memset(&si, 0, sizeof(si));
-          si.si_signo = SIGCHLD;
-          si.si_code = CLD_TRAPPED;
-          si._sifields._sigchld.si_pid_ = syscall_state.ptraced_tracee->tgid();
-          si._sifields._sigchld.si_uid_ =
-              syscall_state.ptraced_tracee->getuid();
-          si._sifields._sigchld.si_status_ =
-              syscall_state.ptraced_tracee->emulated_ptrace_stop_code;
-          t->write_mem(sip, si);
+          if (!sip.is_null()) {
+            typename Arch::siginfo_t si;
+            memset(&si, 0, sizeof(si));
+            si.si_signo = SIGCHLD;
+            si.si_code = CLD_TRAPPED;
+            si._sifields._sigchld.si_pid_ = syscall_state.ptraced_tracee->tgid();
+            si._sifields._sigchld.si_uid_ =
+                syscall_state.ptraced_tracee->getuid();
+            si._sifields._sigchld.si_status_ =
+                syscall_state.ptraced_tracee->emulated_ptrace_stop_code;
+            t->write_mem(sip, si);
+          }
         } else {
           remote_ptr<int> statusp = r.arg2();
-          t->write_mem(statusp,
-                       syscall_state.ptraced_tracee->emulated_ptrace_stop_code);
+          if (!statusp.is_null()) {
+            t->write_mem(statusp,
+                         syscall_state.ptraced_tracee->emulated_ptrace_stop_code);
+          }
         }
         if (syscallno == Arch::waitid && (r.arg4() & WNOWAIT)) {
           // Leave the child in a waitable state
