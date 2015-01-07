@@ -887,6 +887,8 @@ static string find_syscall_buffer_library() {
     env.push_back(env_pair);
   }
 
+  env.push_back("LIBGL_ALWAYS_INDIRECT=1");
+
   shr_ptr session(new RecordSession(argv, env, cwd, flags));
   return session;
 }
