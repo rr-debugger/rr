@@ -269,6 +269,7 @@ set(BASIC_TESTS
   ptrace_attach_running
   ptrace_attach_sleeping
   ptrace_attach_stopped
+  ptracer_death
   quotactl
   rdtsc
   readdir

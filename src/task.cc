@@ -253,6 +253,7 @@ Task::~Task() {
     // XXX emulate PTRACE_O_EXITKILL
     ASSERT(this, t->emulated_ptracer == this);
     t->emulated_ptracer = nullptr;
+    t->emulated_stop_type = NOT_STOPPED;
   }
 
   assert(this == session().find_task(rec_tid));
