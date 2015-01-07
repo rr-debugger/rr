@@ -197,7 +197,7 @@ void rep_maybe_replay_stdio_write(Task* t) {
   RR_ARCH_FUNCTION(rep_maybe_replay_stdio_write_arch, t->arch(), t)
 }
 
-template <typename Arch> static void init_scratch_memory(Task* t) {
+static void init_scratch_memory(Task* t) {
   /* Initialize the scratchpad as the recorder did, but make it
    * PROT_NONE. The idea is just to reserve the address space so
    * the replayed process address map looks like the recorded
@@ -361,7 +361,74 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   t->set_return_value_from_trace();
   t->validate_regs();
 
-  init_scratch_memory<Arch>(new_task);
+  init_scratch_memory(new_task);
+
+  new_task->vm()->after_clone();
+
+  step->action = TSTEP_RETIRE;
+}
+
+static void process_fork(Task* t, const TraceFrame& trace_frame,
+                         SyscallEntryOrExit state, ReplayTraceStep* step) {
+  if (is_failed_syscall(t, trace_frame)) {
+    /* creation failed, emulate it */
+    step->syscall.emu = EMULATE;
+    step->action = syscall_action(state);
+    return;
+  }
+  if (state == SYSCALL_ENTRY) {
+    step->action = TSTEP_ENTER_SYSCALL;
+    return;
+  }
+
+  Registers rec_regs = trace_frame.regs();
+
+  // TODO: can debugger signals interrupt us here?
+
+  // The syscall may be interrupted. Keep trying it until we get the
+  // ptrace event we're expecting.
+  __ptrace_cont(t);
+  while (!t->clone_syscall_is_complete()) {
+    if (t->regs().syscall_result_signed() == -EAGAIN) {
+      // clone() calls sometimes fail with -EAGAIN due to load issues or
+      // whatever. We need to retry the system call until it succeeds. Reset
+      // state to try the syscall again.
+      Registers r = t->regs();
+      r.set_syscallno(rec_regs.original_syscallno());
+      r.set_ip(rec_regs.ip() - syscall_instruction_length(t->arch()));
+      t->set_regs(r);
+      // reenter syscall
+      __ptrace_cont(t);
+      // continue to exit
+      __ptrace_cont(t);
+    } else {
+      __ptrace_cont(t);
+    }
+  }
+
+  // Now continue again to get the syscall exit event.
+  __ptrace_cont(t);
+  ASSERT(t, !t->ptrace_event())
+      << "Unexpected ptrace event while waiting for syscall exit; got "
+      << ptrace_event_name(t->ptrace_event());
+
+  long rec_tid = rec_regs.syscall_result_signed();
+  pid_t new_tid = t->get_ptrace_eventmsg_pid();
+
+  Task* new_task =
+      t->session().clone(t, 0, nullptr, nullptr, nullptr, new_tid, rec_tid);
+
+  // It's hard to imagine a scenario in which it would
+  // be useful to inherit breakpoints (along with their
+  // refcounts) across a non-VM-sharing clone, but for
+  // now we never want to do this.
+  new_task->vm()->destroy_all_breakpoints();
+  new_task->vm()->destroy_all_watchpoints();
+
+  t->set_return_value_from_trace();
+  t->validate_regs();
+
+  init_scratch_memory(new_task);
 
   new_task->vm()->after_clone();
 
@@ -415,7 +482,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
     t->set_data_from_trace();
   }
 
-  init_scratch_memory<Arch>(t);
+  init_scratch_memory(t);
 
   t->set_return_value_from_trace();
   t->validate_regs();
@@ -1018,6 +1085,9 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   switch (syscall) {
     case Arch::clone:
       return process_clone<Arch>(t, trace_frame, state, step);
+
+    case Arch::fork:
+      return process_fork(t, trace_frame, state, step);
 
     case Arch::execve:
       return process_execve<Arch>(t, trace_frame, state, step);

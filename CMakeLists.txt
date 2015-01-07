@@ -257,6 +257,7 @@ set(BASIC_TESTS
   msync
   munmap_discontinuous
   no_mask_timeslice
+  old_fork
   orphan_process
   pause
   perf_event

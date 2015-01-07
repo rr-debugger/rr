@@ -2079,6 +2079,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
     case Arch::ptrace: { return prepare_ptrace<Arch>(t, syscall_state); }
 
+    case Arch::fork:
     case Arch::mmap:
     case Arch::mmap2:
     case Arch::open:
@@ -2485,19 +2486,16 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   // handle.
   switch (syscallno) {
     case Arch::clone: {
-      long new_tid = t->regs().syscall_result_signed();
-      Task* new_task = t->session().find_task(new_tid);
       uintptr_t flags = syscall_state.syscall_entry_registers->arg1();
+      Registers r = t->regs();
+      r.set_arg1(flags);
+      t->set_regs(r);
 
-      if (flags & CLONE_UNTRACED) {
-        Registers r = t->regs();
-        r.set_arg1(flags);
-        t->set_regs(r);
-      }
-
+      long new_tid = t->regs().syscall_result_signed();
       if (new_tid < 0)
         break;
 
+      Task* new_task = t->session().find_task(new_tid);
       new_task->push_event(SyscallEvent(syscallno, t->arch()));
 
       /* record child id here */
@@ -2530,6 +2528,24 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
 
       init_scratch_memory<Arch>(new_task);
       // The new tracee just "finished" a clone that was
+      // started by its parent.  It has no pending events,
+      // so it can be context-switched out.
+      new_task->switchable = ALLOW_SWITCH;
+
+      break;
+    }
+
+    case Arch::fork: {
+      long new_tid = t->regs().syscall_result_signed();
+      if (new_tid < 0)
+        break;
+
+      Task* new_task = t->session().find_task(new_tid);
+      t->record_session().trace_writer().write_task_event(
+          TraceTaskEvent(new_tid, t->tid));
+
+      init_scratch_memory<Arch>(new_task);
+      // The new tracee just "finished" a fork that was
       // started by its parent.  It has no pending events,
       // so it can be context-switched out.
       new_task->switchable = ALLOW_SWITCH;
@@ -2632,7 +2648,8 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
             memset(&si, 0, sizeof(si));
             si.si_signo = SIGCHLD;
             si.si_code = CLD_TRAPPED;
-            si._sifields._sigchld.si_pid_ = syscall_state.ptraced_tracee->tgid();
+            si._sifields._sigchld.si_pid_ =
+                syscall_state.ptraced_tracee->tgid();
             si._sifields._sigchld.si_uid_ =
                 syscall_state.ptraced_tracee->getuid();
             si._sifields._sigchld.si_status_ =
@@ -2642,8 +2659,9 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         } else {
           remote_ptr<int> statusp = r.arg2();
           if (!statusp.is_null()) {
-            t->write_mem(statusp,
-                         syscall_state.ptraced_tracee->emulated_ptrace_stop_code);
+            t->write_mem(
+                statusp,
+                syscall_state.ptraced_tracee->emulated_ptrace_stop_code);
           }
         }
         if (syscallno == Arch::waitid && (r.arg4() & WNOWAIT)) {
