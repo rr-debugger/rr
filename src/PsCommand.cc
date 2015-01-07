@@ -32,14 +32,12 @@ static void print_exec_cmd_line(const TraceTaskEvent& event, FILE* out) {
 
 static void update_tid_to_pid_map(std::map<pid_t, pid_t>& tid_to_pid,
                                   const TraceTaskEvent& e) {
-  if (e.type() == TraceTaskEvent::CLONE) {
-    if (e.clone_flags() & CLONE_VM) {
-      // thread clone. Record thread's pid.
-      tid_to_pid[e.tid()] = tid_to_pid[e.parent_tid()];
-    } else {
-      // Some kind of fork. This task is its own pid.
-      tid_to_pid[e.tid()] = e.tid();
-    }
+  if (e.is_fork()) {
+    // Some kind of fork. This task is its own pid.
+    tid_to_pid[e.tid()] = e.tid();
+  } else if (e.type() == TraceTaskEvent::CLONE) {
+    // thread clone. Record thread's pid.
+    tid_to_pid[e.tid()] = tid_to_pid[e.parent_tid()];
   }
 }
 
@@ -68,7 +66,7 @@ static int ps(const string& trace_dir, FILE* out) {
     auto& e = events[i];
     update_tid_to_pid_map(tid_to_pid, e);
 
-    if (e.type() == TraceTaskEvent::CLONE && !(e.clone_flags() & CLONE_VM)) {
+    if (e.is_fork()) {
       fprintf(out, "%d\t%d\t", e.tid(), tid_to_pid[e.parent_tid()]);
 
       // Look ahead for an EXEC in one of this process' threads.

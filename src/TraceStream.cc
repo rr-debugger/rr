@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 19
+#define TRACE_VERSION 20
 
 static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
 
@@ -201,6 +201,9 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
     case TraceTaskEvent::CLONE:
       tasks << event.parent_tid() << event.clone_flags();
       break;
+    case TraceTaskEvent::FORK:
+      tasks << event.parent_tid();
+      break;
     case TraceTaskEvent::EXEC:
       tasks << event.file_name() << event.cmd_line();
       break;
@@ -218,6 +221,9 @@ TraceTaskEvent TraceReader::read_task_event() {
   switch (r.type()) {
     case TraceTaskEvent::CLONE:
       tasks >> r.parent_tid_ >> r.clone_flags_;
+      break;
+    case TraceTaskEvent::FORK:
+      tasks >> r.parent_tid_;
       break;
     case TraceTaskEvent::EXEC:
       tasks >> r.file_name_ >> r.cmd_line_;

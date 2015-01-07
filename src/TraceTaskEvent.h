@@ -18,6 +18,8 @@ class TraceWriter;
 
 class TraceTaskEvent {
 public:
+  TraceTaskEvent(pid_t tid, pid_t parent_tid)
+      : type_(FORK), tid_(tid), parent_tid_(parent_tid) {}
   TraceTaskEvent(pid_t tid, pid_t parent_tid, uint32_t clone_flags)
       : type_(CLONE),
         tid_(tid),
@@ -31,7 +33,8 @@ public:
 
   enum Type {
     NONE,
-    CLONE,
+    CLONE, // created by clone(2) syscall
+    FORK,  // created by fork(2) syscall
     EXEC,
     EXIT
   };
@@ -39,7 +42,7 @@ public:
   Type type() const { return type_; }
   pid_t tid() const { return tid_; }
   pid_t parent_tid() const {
-    assert(type() == CLONE);
+    assert(type() == CLONE || type() == FORK);
     return parent_tid_;
   }
   uintptr_t clone_flags() const {
@@ -53,6 +56,10 @@ public:
   const std::vector<std::string>& cmd_line() const {
     assert(type() == EXEC);
     return cmd_line_;
+  }
+
+  bool is_fork() const {
+    return type() == FORK || (type() == CLONE && !(clone_flags() & CLONE_VM));
   }
 
 private:
