@@ -392,11 +392,33 @@ bool Task::is_waiting_for_ptrace(Task* t) {
     case WAIT_TYPE_ANY:
       return true;
     case WAIT_TYPE_SAME_PGID:
-      return getpgid(t->tg->tgid) == getpgid(tg->tgid);
+      return getpgid(t->tgid()) == getpgid(tgid());
     case WAIT_TYPE_PGID:
-      return getpgid(t->tg->tgid) == in_wait_pid;
+      return getpgid(t->tgid()) == in_wait_pid;
     case WAIT_TYPE_PID:
       return t->tg->tgid == in_wait_pid;
+    default:
+      ASSERT(this, false);
+      return false;
+  }
+}
+
+bool Task::is_waiting_for(Task* t) {
+  // t must be a child of this task.
+  if (t->tg->parent() != tg.get()) {
+    return false;
+  }
+  switch (in_wait_type) {
+    case WAIT_TYPE_NONE:
+      return false;
+    case WAIT_TYPE_ANY:
+      return true;
+    case WAIT_TYPE_SAME_PGID:
+      return getpgid(t->tgid()) == getpgid(tgid());
+    case WAIT_TYPE_PGID:
+      return getpgid(t->tgid()) == in_wait_pid;
+    case WAIT_TYPE_PID:
+      return t->tgid() == in_wait_pid;
     default:
       ASSERT(this, false);
       return false;
