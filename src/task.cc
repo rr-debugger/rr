@@ -375,7 +375,8 @@ void Task::set_emulated_ptracer(Task* tracer) {
     emulated_ptracer->emulated_ptrace_tracees.insert(this);
   } else {
     ASSERT(this, emulated_ptracer);
-    ASSERT(this, emulated_stop_type == NOT_STOPPED || emulated_stop_type == GROUP_STOP);
+    ASSERT(this, emulated_stop_type == NOT_STOPPED ||
+                     emulated_stop_type == GROUP_STOP);
     emulated_ptracer->emulated_ptrace_tracees.erase(this);
     emulated_ptracer = nullptr;
   }
@@ -396,7 +397,9 @@ bool Task::is_waiting_for_ptrace(Task* t) {
     case WAIT_TYPE_PGID:
       return getpgid(t->tgid()) == in_wait_pid;
     case WAIT_TYPE_PID:
-      return t->tg->tgid == in_wait_pid;
+      // When waiting for a ptracee, a specific pid is interpreted as the
+      // exact tid.
+      return t->tid == in_wait_pid;
     default:
       ASSERT(this, false);
       return false;
@@ -496,10 +499,12 @@ void Task::send_synthetic_SIGCHLD_if_necessary() {
     // signal is sent to the correct thread by tid.
     ret = syscall(SYS_rt_tgsigqueueinfo, wake_task->tgid(), wake_task->tid,
                   SIGCHLD, &si);
+    LOG(debug) << "Sending synthetic SIGCHLD to tid " << wake_task->tid;
   } else {
     // Send the signal to the process as a whole and let the kernel
     // decide which thread gets it.
     ret = syscall(SYS_rt_sigqueueinfo, tgid(), SIGCHLD, &si);
+    LOG(debug) << "Sending synthetic SIGCHLD to pid " << tgid();
   }
   ASSERT(this, ret == 0);
 }
@@ -730,8 +735,7 @@ bool Task::is_syscall_restart() {
     LOG(debug) << "  (SYS_restart_syscall)";
   }
   if (ev().Syscall().number != syscallno) {
-    LOG(debug) << "  interrupted %s" << ev()
-               << " != " << syscall_name(syscallno);
+    LOG(debug) << "  interrupted " << ev() << " != " << syscall_name(syscallno);
     goto done;
   }
 

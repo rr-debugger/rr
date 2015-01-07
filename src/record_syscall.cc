@@ -1189,13 +1189,32 @@ static bool exec_file_supported(const string& file_name) {
 static bool maybe_emulate_wait(Task* t, TaskSyscallState& syscall_state) {
   for (Task* child : t->emulated_ptrace_tracees) {
     if (t->is_waiting_for_ptrace(child) && child->emulated_ptrace_stop_code) {
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       syscall_state.ptraced_tracee = child;
       return true;
     }
   }
   return false;
+}
+
+static void maybe_pause_instead_of_waiting(Task* t) {
+  if (t->in_wait_type != WAIT_TYPE_PID) {
+    return;
+  }
+  Task* child = t->session().find_task(t->in_wait_pid);
+  if (!child || !t->is_waiting_for_ptrace(child) || t->is_waiting_for(child)) {
+    return;
+  }
+  // OK, t is waiting for a ptrace child by tid, but since t is not really
+  // ptracing child, entering a real wait syscall will not actually wait for
+  // the child, so the kernel may error out with ECHILD (non-ptracers can't
+  // wait on specific threads of another process, or for non-child processes).
+  // To avoid this problem, we'll replace the wait syscall with a pause()
+  // syscall.
+  // It would be nice if we didn't have to do this, but I can't see a better
+  // way.
+  Registers r = t->regs();
+  r.set_original_syscallno(syscall_number_for_pause(t->arch()));
+  t->set_regs(r);
 }
 
 static Task* verify_ptrace_target(Task* tracer, TaskSyscallState& syscall_state,
@@ -1830,6 +1849,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
      */
     case Arch::waitpid:
     case Arch::wait4: {
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
       syscall_state.reg_parameter<int>(2, IN_OUT);
       if (syscallno == Arch::wait4) {
         syscall_state.reg_parameter<typename Arch::rusage>(4);
@@ -1853,10 +1874,13 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         t->set_regs(r);
         return PREVENT_SWITCH;
       }
+      maybe_pause_instead_of_waiting(t);
       return ALLOW_SWITCH;
     }
 
     case Arch::waitid: {
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
       syscall_state.reg_parameter<typename Arch::siginfo_t>(3, IN_OUT);
       t->in_wait_pid = (id_t)t->regs().arg2();
       switch ((idtype_t)t->regs().arg1()) {
@@ -1880,6 +1904,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         t->set_regs(r);
         return PREVENT_SWITCH;
       }
+      maybe_pause_instead_of_waiting(t);
       return ALLOW_SWITCH;
     }
 
@@ -2100,7 +2125,7 @@ static void rec_prepare_restart_syscall_arch(Task* t,
                                              TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
   switch (syscallno) {
-    case Arch::nanosleep: {
+    case Arch::nanosleep:
       /* Hopefully uniquely among syscalls, nanosleep()
        * requires writing to its remaining-time outparam
        * *only if* the syscall fails with -EINTR.  When a
@@ -2113,6 +2138,15 @@ static void rec_prepare_restart_syscall_arch(Task* t,
        * outparam at the -ERESTART_RESTART interruption
        * regardless. */
       syscall_state.process_syscall_results();
+      break;
+    case Arch::wait4:
+    case Arch::waitid:
+    case Arch::waitpid: {
+      Registers r = t->regs();
+      r.set_original_syscallno(
+          syscall_state.syscall_entry_registers->original_syscallno());
+      t->set_regs(r);
+      t->in_wait_type = WAIT_TYPE_NONE;
       break;
     }
   }
@@ -2574,13 +2608,21 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
 
     case Arch::waitpid:
     case Arch::wait4:
-    case Arch::waitid:
+    case Arch::waitid: {
       t->in_wait_type = WAIT_TYPE_NONE;
+      // Restore possibly-modified registers
+      Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
+      r.set_arg2(syscall_state.syscall_entry_registers->arg2());
+      r.set_arg3(syscall_state.syscall_entry_registers->arg3());
+      r.set_arg4(syscall_state.syscall_entry_registers->arg4());
+      r.set_original_syscallno(
+          syscall_state.syscall_entry_registers->original_syscallno());
+      t->set_regs(r);
+
       if (syscall_state.ptraced_tracee) {
         // Finish emulation of ptrace result
         Registers r = t->regs();
-        r.set_arg3(syscall_state.syscall_entry_registers->arg3());
-        r.set_arg4(syscall_state.syscall_entry_registers->arg4());
         r.set_syscall_result(syscall_state.ptraced_tracee->tid);
         t->set_regs(r);
         if (syscallno == Arch::waitid) {
@@ -2607,6 +2649,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         }
       }
       break;
+    }
 
     case Arch::prctl: {
       // Restore arg1 in case we modified it to disable the syscall

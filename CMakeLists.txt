@@ -270,6 +270,8 @@ set(BASIC_TESTS
   ptrace_attach_sleeping
   ptrace_attach_stopped
   ptracer_death
+  ptracer_death_multithread
+  ptracer_death_multithread_peer
   quotactl
   rdtsc
   readdir
