@@ -512,11 +512,13 @@ void AddressSpace::brk(remote_ptr<void> addr) {
   LOG(debug) << "brk(" << addr << ")";
 
   assert(heap.start <= addr);
-  if (addr == heap.end) {
+
+  remote_ptr<void> vm_addr = ceil_page_size(addr);
+  if (vm_addr == heap.end) {
     return;
   }
 
-  update_heap(heap.start, addr);
+  update_heap(heap.start, vm_addr);
   map(heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
       MappableResource::heap());
 }

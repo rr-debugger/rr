@@ -205,6 +205,7 @@ set(BASIC_TESTS
   big_buffers
   block
   blocked_sigsegv
+  brk
   chew_cpu
   chown
   clock
