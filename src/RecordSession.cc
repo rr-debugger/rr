@@ -186,15 +186,15 @@ void RecordSession::handle_ptrace_event(Task* t, ForceSyscall* force_cont) {
     }
 
     case PTRACE_EVENT_EXIT: {
-      FATAL() << "PTRACE_EVENT_EXIT should already have been handled";
+      ASSERT(t, false) << "PTRACE_EVENT_EXIT should already have been handled";
       break;
     }
 
     case PTRACE_EVENT_VFORK:
     case PTRACE_EVENT_VFORK_DONE:
     default:
-      FATAL() << "Unhandled ptrace event " << ptrace_event_name(event) << "("
-              << event << ")";
+      ASSERT(t, false) << "Unhandled ptrace event " << ptrace_event_name(event)
+                       << "(" << event << ")";
       break;
   }
 }
