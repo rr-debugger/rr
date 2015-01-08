@@ -1084,6 +1084,10 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
     case IOCTL_MASK_SIZE(VIDIOC_S_CTRL) :
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
+
+    case IOCTL_MASK_SIZE(TIOCGPTN) :
+      syscall_state.reg_parameter(3, size);
+      return PREVENT_SWITCH;
   }
 
   /* These ioctls are mostly regular but require additional recording. */

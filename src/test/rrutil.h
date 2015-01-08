@@ -23,6 +23,7 @@
 #include <linux/wireless.h>
 #include <poll.h>
 #include <pthread.h>
+#include <pty.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdarg.h>

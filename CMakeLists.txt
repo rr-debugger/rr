@@ -322,6 +322,7 @@ set(BASIC_TESTS
   times
   tiocgwinsz
   truncate
+  tty_ioctls
   uname
   unjoined_thread
   utimes
