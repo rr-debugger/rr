@@ -144,8 +144,7 @@ void RecordSession::handle_ptrace_event(Task* t, ForceSyscall* force_cont) {
       *force_cont = FORCE_SYSCALL;
       break;
 
-    case PTRACE_EVENT_CLONE:
-    case PTRACE_EVENT_FORK: {
+    case PTRACE_EVENT_CLONE: {
       pid_t new_tid = t->get_ptrace_eventmsg_pid();
       remote_ptr<void> stack;
       remote_ptr<int>* ptid_not_needed = nullptr;
@@ -159,6 +158,15 @@ void RecordSession::handle_ptrace_event(Task* t, ForceSyscall* force_cont) {
               ? t->regs().arg1()
               : 0;
       clone(t, clone_flags_to_task_flags(flags_arg), stack, tls, ctid, new_tid);
+      // Skip past the ptrace event.
+      t->cont_syscall();
+      assert(t->pending_sig() == 0);
+      break;
+    }
+
+    case PTRACE_EVENT_FORK: {
+      pid_t new_tid = t->get_ptrace_eventmsg_pid();
+      clone(t, 0, nullptr, nullptr, nullptr, new_tid);
       // Skip past the ptrace event.
       t->cont_syscall();
       assert(t->pending_sig() == 0);
@@ -190,6 +198,7 @@ void RecordSession::handle_ptrace_event(Task* t, ForceSyscall* force_cont) {
       break;
     }
 
+    // We map vfork() to fork() so we don't expect to see these:
     case PTRACE_EVENT_VFORK:
     case PTRACE_EVENT_VFORK_DONE:
     default:

@@ -1,10 +1,6 @@
 source `dirname $0`/util.sh
 
-fails "vfork() is not supported yet."
-
-save_exe breakpoint$bitness
-saved_simple="simple$bitness-$nonce"
-
-record $TESTNAME "$saved_simple"
-replay $TESTNAME
+save_exe simple$bitness
+record $TESTNAME simple$bitness-$nonce
+replay
 check vforker-EXIT-SUCCESS

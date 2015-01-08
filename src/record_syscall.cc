@@ -2079,6 +2079,13 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
     case Arch::ptrace: { return prepare_ptrace<Arch>(t, syscall_state); }
 
+    case Arch::vfork: {
+      Registers r = t->regs();
+      r.set_original_syscallno(Arch::fork);
+      t->set_regs(r);
+      return PREVENT_SWITCH;
+    }
+
     case Arch::fork:
     case Arch::mmap:
     case Arch::mmap2:
@@ -2365,6 +2372,23 @@ static void process_mmap(Task* t, int syscallno, size_t length, int prot,
                MappableResource(FileId(result.st), result.file_name));
 }
 
+template <typename Arch> static void process_fork(Task* t) {
+  long new_tid = t->regs().syscall_result_signed();
+  if (new_tid < 0) {
+    return;
+  }
+
+  Task* new_task = t->session().find_task(new_tid);
+  t->record_session().trace_writer().write_task_event(
+      TraceTaskEvent(new_tid, t->tid));
+
+  init_scratch_memory<Arch>(new_task);
+  // The new tracee just "finished" a fork that was
+  // started by its parent.  It has no pending events,
+  // so it can be context-switched out.
+  new_task->switchable = ALLOW_SWITCH;
+}
+
 template <typename Arch>
 static void before_syscall_exit(Task* t, int syscallno) {
   t->maybe_update_vm(syscallno, SYSCALL_EXIT);
@@ -2535,23 +2559,17 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
 
-    case Arch::fork: {
-      long new_tid = t->regs().syscall_result_signed();
-      if (new_tid < 0)
-        break;
-
-      Task* new_task = t->session().find_task(new_tid);
-      t->record_session().trace_writer().write_task_event(
-          TraceTaskEvent(new_tid, t->tid));
-
-      init_scratch_memory<Arch>(new_task);
-      // The new tracee just "finished" a fork that was
-      // started by its parent.  It has no pending events,
-      // so it can be context-switched out.
-      new_task->switchable = ALLOW_SWITCH;
-
+    case Arch::vfork: {
+      Registers r = t->regs();
+      r.set_original_syscallno(Arch::vfork);
+      t->set_regs(r);
+      process_fork<Arch>(t);
       break;
     }
+
+    case Arch::fork:
+      process_fork<Arch>(t);
+      break;
 
     case Arch::execve:
       process_execve<Arch>(t, syscall_state);

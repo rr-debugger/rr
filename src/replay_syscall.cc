@@ -144,7 +144,9 @@ static void __ptrace_cont(Task* t) {
   /* check if we are synchronized with the trace -- should never fail */
   int rec_syscall = t->current_trace_frame().regs().original_syscallno();
   int current_syscall = t->regs().original_syscallno();
-  ASSERT(t, current_syscall == rec_syscall)
+  ASSERT(t, current_syscall == rec_syscall ||
+                (rec_syscall == syscall_number_for_vfork(t->arch()) &&
+                 current_syscall == syscall_number_for_fork(t->arch())))
       << "Should be at " << t->syscall_name(rec_syscall) << ", but instead at "
       << t->syscall_name(current_syscall);
 }
@@ -411,6 +413,11 @@ static void process_fork(Task* t, const TraceFrame& trace_frame,
   ASSERT(t, !t->ptrace_event())
       << "Unexpected ptrace event while waiting for syscall exit; got "
       << ptrace_event_name(t->ptrace_event());
+
+  // Restore original_syscallno if vfork set it to fork
+  Registers r = t->regs();
+  r.set_original_syscallno(rec_regs.original_syscallno());
+  t->set_regs(r);
 
   long rec_tid = rec_regs.syscall_result_signed();
   pid_t new_tid = t->get_ptrace_eventmsg_pid();
@@ -1085,6 +1092,15 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   switch (syscall) {
     case Arch::clone:
       return process_clone<Arch>(t, trace_frame, state, step);
+
+    case Arch::vfork: {
+      if (state == SYSCALL_EXIT) {
+        Registers r = t->regs();
+        r.set_original_syscallno(Arch::fork);
+        t->set_regs(r);
+      }
+      return process_fork(t, trace_frame, state, step);
+    }
 
     case Arch::fork:
       return process_fork(t, trace_frame, state, step);

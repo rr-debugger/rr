@@ -1010,7 +1010,7 @@ sigaltstack = EmulatedSyscall(x86=186, x64=131, arg2="typename Arch::stack_t")
 sendfile = IrregularEmulatedSyscall(x86=187, x64=40)
 getpmsg = InvalidSyscall(x86=188, x64=181)
 putpmsg = InvalidSyscall(x86=189, x64=182)
-vfork = UnsupportedSyscall(x86=190, x64=58)
+vfork = IrregularEmulatedSyscall(x86=190, x64=58)
 
 #  int getrlimit(int resource, struct rlimit *rlim)
 #
