@@ -1014,15 +1014,18 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
     }
 
     case SIOCGIFCONF: {
-      auto ifconfp = syscall_state.reg_parameter<typename Arch::ifconf>(3);
-      auto ifconf = t->read_mem(ifconfp);
+      auto ifconfp =
+          syscall_state.reg_parameter<typename Arch::ifconf>(3, IN_OUT);
       syscall_state.mem_ptr_parameter(
-          REMOTE_PTR_FIELD(ifconfp, ifc_ifcu.ifcu_buf), ifconf.ifc_len);
+          REMOTE_PTR_FIELD(ifconfp, ifc_ifcu.ifcu_buf),
+          ParamSize::from_initialized_mem(t,
+                                          REMOTE_PTR_FIELD(ifconfp, ifc_len)));
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
     }
 
     case SIOCGIFADDR:
+    case SIOCGIFHWADDR:
     case SIOCGIFFLAGS:
     case SIOCGIFINDEX:
     case SIOCGIFMTU:
@@ -1058,7 +1061,10 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
     /* If the kernel isn't going to write any data back to
      * us, we hope and pray that the result of the ioctl
      * (observable to the tracee) is deterministic.
-     * We're also assuming it doesn't block. */
+     * We're also assuming it doesn't block.
+     * XXX this is far too risky! Many ioctls use irregular ioctl codes
+     * that do not have the _IOC_READ bit set but actually do write to
+     * user-space! */
     LOG(debug) << "  (deterministic ioctl, nothing to do)";
     return PREVENT_SWITCH;
   }

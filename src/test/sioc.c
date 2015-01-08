@@ -11,6 +11,15 @@ const char* sockaddr_name(const struct sockaddr* addr) {
   return inet_ntop(AF_INET, (void*)&sin->sin_addr, str, sizeof(str));
 }
 
+const char* sockaddr_hw_name(const struct sockaddr* addr) {
+  static char str[PATH_MAX];
+  const unsigned char* data = (const unsigned char*)addr->sa_data;
+  test_assert(AF_LOCAL == addr->sa_family);
+  sprintf(str, "%02x:%02x:%02x:%02x:%02x:%02x", data[0], data[1], data[2],
+          data[3], data[4], data[5]);
+  return str;
+}
+
 /**
  * Fetch and print the ifconfig for this machine.  Fill in
  * |req.ifr_name| with the first non-loopback interface name found.
@@ -81,6 +90,12 @@ int main(int argc, char* argv[]) {
   ret = ioctl(sockfd, SIOCGIFADDR, &req);
   atomic_printf("SIOCGIFADDR(ret:%d): %s addr is", ret, req.ifr_name);
   atomic_printf(" %s\n", sockaddr_name(&req.ifr_addr));
+  test_assert(0 == ret);
+
+  memset(&req.ifr_addr, 0x5a, sizeof(req.ifr_addr));
+  ret = ioctl(sockfd, SIOCGIFHWADDR, &req);
+  atomic_printf("SIOCGIFHWADDR(ret:%d): %s addr is", ret, req.ifr_name);
+  atomic_printf(" %s\n", sockaddr_hw_name(&req.ifr_addr));
   test_assert(0 == ret);
 
   memset(&req.ifr_flags, 0x5a, sizeof(req.ifr_flags));
