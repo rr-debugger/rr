@@ -821,12 +821,11 @@ static void process_init_buffers(Task* t, SyscallEntryOrExit state,
   /* We don't want the desched event fd during replay, because
    * we already know where they were.  (The perf_event fd is
    * emulated anyway.) */
-  remote_ptr<void> child_map_addr =
-      t->init_buffers(rec_child_map_addr, DONT_SHARE_DESCHED_EVENT_FD);
+  t->init_buffers(rec_child_map_addr, DONT_SHARE_DESCHED_EVENT_FD);
 
-  ASSERT(t, child_map_addr == rec_child_map_addr)
+  ASSERT(t, t->syscallbuf_child.cast<void>() == rec_child_map_addr)
       << "Should have mapped syscallbuf at " << rec_child_map_addr
-      << ", but it's at " << child_map_addr;
+      << ", but it's at " << t->syscallbuf_child;
   t->validate_regs();
 }
 

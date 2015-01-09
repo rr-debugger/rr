@@ -444,8 +444,8 @@ public:
    *
    * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
    */
-  remote_ptr<void> init_buffers(remote_ptr<void> map_hint,
-                                ShareDeschedEventFd share_desched_fd);
+  void init_buffers(remote_ptr<void> map_hint,
+                    ShareDeschedEventFd share_desched_fd);
 
   /**
    * Destroy in the tracee task the buffer(s) specified by the
@@ -1227,7 +1227,7 @@ public:
   struct syscallbuf_hdr* syscallbuf_hdr;
   size_t num_syscallbuf_bytes;
   /* Points at the tracee's mapping of the buffer. */
-  remote_ptr<void> syscallbuf_child;
+  remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
 
   PropertyTable& properties() { return properties_; }
 
@@ -1244,8 +1244,8 @@ private:
 
   /** Helper function for init_buffers. */
   template <typename Arch>
-  remote_ptr<void> init_buffers_arch(remote_ptr<void> map_hint,
-                                     ShareDeschedEventFd share_desched_fd);
+  void init_buffers_arch(remote_ptr<void> map_hint,
+                         ShareDeschedEventFd share_desched_fd);
 
   /**
    * Return a new Task cloned from |p|.  |flags| are a set of
@@ -1331,9 +1331,10 @@ private:
    * |map_hint| is the address where the syscallbuf is expected
    * to be mapped --- and this is asserted --- or nullptr if
    * there are no expectations.
+   * Initializes syscallbuf_child.
    */
-  remote_ptr<void> init_syscall_buffer(AutoRemoteSyscalls& remote,
-                                       remote_ptr<void> map_hint);
+  void init_syscall_buffer(AutoRemoteSyscalls& remote,
+                           remote_ptr<void> map_hint);
 
   /**
    * True if this has blocked delivery of the desched signal.

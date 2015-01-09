@@ -2500,7 +2500,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   before_syscall_exit<Arch>(t, syscallno);
 
   if (const struct syscallbuf_record* rec = t->desched_rec()) {
-    t->record_local(t->syscallbuf_child +
+    t->record_local(t->syscallbuf_child.cast<void>() +
                         (rec->extra_data - (uint8_t*)t->syscallbuf_hdr),
                     rec->size - sizeof(*rec), (uint8_t*)rec->extra_data);
     return;

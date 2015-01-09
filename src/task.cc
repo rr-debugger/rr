@@ -598,8 +598,8 @@ RecordSession& Task::record_session() const { return *session().as_record(); }
 ReplaySession& Task::replay_session() const { return *session().as_replay(); }
 
 template <typename Arch>
-remote_ptr<void> Task::init_buffers_arch(remote_ptr<void> map_hint,
-                                         ShareDeschedEventFd share_desched_fd) {
+void Task::init_buffers_arch(remote_ptr<void> map_hint,
+                             ShareDeschedEventFd share_desched_fd) {
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
@@ -610,10 +610,9 @@ remote_ptr<void> Task::init_buffers_arch(remote_ptr<void> map_hint,
       remote.regs().arg1();
   auto args = read_mem(child_args);
 
-  remote_ptr<void> child_map_addr = nullptr;
   if (as->syscallbuf_enabled()) {
-    child_map_addr = init_syscall_buffer(remote, map_hint);
-    args.syscallbuf_ptr = child_map_addr;
+    init_syscall_buffer(remote, map_hint);
+    args.syscallbuf_ptr = syscallbuf_child;
     if (share_desched_fd == SHARE_DESCHED_EVENT_FD) {
       desched_fd_child = args.desched_counter_fd;
       desched_fd = remote.retrieve_fd(desched_fd_child);
@@ -631,14 +630,12 @@ remote_ptr<void> Task::init_buffers_arch(remote_ptr<void> map_hint,
   // already written to the inout |args| param, but we stash it
   // away in the return value slot so that we can easily check
   // that we map the segment at the same addr during replay.
-  remote.regs().set_syscall_result(child_map_addr);
+  remote.regs().set_syscall_result(syscallbuf_child);
   syscallbuf_hdr->locked = is_desched_sig_blocked();
-
-  return child_map_addr;
 }
 
-remote_ptr<void> Task::init_buffers(remote_ptr<void> map_hint,
-                                    ShareDeschedEventFd share_desched_fd) {
+void Task::init_buffers(remote_ptr<void> map_hint,
+                        ShareDeschedEventFd share_desched_fd) {
   RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint, share_desched_fd);
 }
 
@@ -1982,9 +1979,9 @@ void Task::copy_state(Task* from) {
       // segment between rr and the tracee.  So we
       // have to unmap it, create a copy, and then
       // re-map the copy in rr and the tracee.
-      remote_ptr<void> map_hint = from->syscallbuf_child;
+      auto map_hint = from->syscallbuf_child;
 
-      syscallbuf_child = init_syscall_buffer(remote, map_hint);
+      init_syscall_buffer(remote, map_hint);
       ASSERT(this, from->syscallbuf_child == syscallbuf_child);
       // Ensure the copied syscallbuf has the same contents
       // as the old one, for consistency checking.
@@ -2112,8 +2109,8 @@ void Task::open_mem_fd_if_needed() {
   }
 }
 
-remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
-                                           remote_ptr<void> map_hint) {
+void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
+                               remote_ptr<void> map_hint) {
   // Create the segment we'll share with the tracee.
   char shmem_name[PATH_MAX];
   format_syscallbuf_shmem_path(tid, shmem_name);
@@ -2155,7 +2152,7 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 
   ASSERT(this, !syscallbuf_child)
       << "Should not already have syscallbuf initialized!";
-  syscallbuf_child = child_map_addr;
+  syscallbuf_child = child_map_addr.cast<struct syscallbuf_hdr>();
   syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
   // No entries to begin with.
   memset(syscallbuf_hdr, 0, sizeof(*syscallbuf_hdr));
@@ -2165,8 +2162,6 @@ remote_ptr<void> Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 
   shmem_fd.close();
   remote.syscall(syscall_number_for_close(arch()), child_shmem_fd);
-
-  return child_map_addr;
 }
 
 bool Task::is_desched_sig_blocked() {
