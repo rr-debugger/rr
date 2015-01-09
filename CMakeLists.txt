@@ -326,6 +326,7 @@ set(BASIC_TESTS
   uname
   unjoined_thread
   utimes
+  vfork_flush
   video_capture
   wait
   write_race
