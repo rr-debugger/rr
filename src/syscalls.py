@@ -1677,6 +1677,11 @@ process_vm_readv = UnsupportedSyscall(x86=347, x64=310)
 process_vm_writev = UnsupportedSyscall(x86=348, x64=311)
 kcmp = UnsupportedSyscall(x86=349, x64=312)
 finit_module = UnsupportedSyscall(x86=350, x64=313)
+sched_setattr = UnsupportedSyscall(x86=351, x64=314)
+sched_getattr = UnsupportedSyscall(x86=352, x64=315)
+renameat2 = UnsupportedSyscall(x86=353, x64=316)
+seccomp = UnsupportedSyscall(x86=354, x64=317)
+getrandom = IrregularEmulatedSyscall(x86=355, x64=318)
 
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219)

@@ -223,6 +223,7 @@ set(BASIC_TESTS
   fork_stress
   fxregs
   getgroups
+  getrandom
   setitimer
   getsid
   gettimeofday

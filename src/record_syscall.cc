@@ -1613,6 +1613,12 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       }
       return PREVENT_SWITCH;
 
+    case Arch::getrandom:
+      syscall_state.reg_parameter(
+          1, ParamSize::from_syscall_result<typename Arch::size_t>(
+            (size_t)t->regs().arg2()));
+      return (GRND_NONBLOCK & t->regs().arg3()) ? PREVENT_SWITCH : ALLOW_SWITCH;
+
     case Arch::ipc:
       switch (t->regs().arg1_signed()) {
         case MSGCTL: {

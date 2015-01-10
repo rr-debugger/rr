@@ -35,6 +35,13 @@
 #define ERESTARTNOHAND 514
 #define ERESTART_RESTARTBLOCK 516
 
+// These definitions haven't made it out to current libc-dev packages
+// yet.
+#ifndef GRND_NONBLOCK
+# define GRND_NONBLOCK	0x0001
+# define GRND_RANDOM	0x0002
+#endif
+
 /* We need to complement sigsets in order to update the Task blocked
  * set, but POSIX doesn't appear to define a convenient helper.  So we
  * define our own linux-compatible sig_set_t and use bit operators to
