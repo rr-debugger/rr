@@ -92,6 +92,7 @@ add_executable(rr
   src/EmuFs.cc
   src/Event.cc
   src/ExtraRegisters.cc
+  src/FdTable.cc
   src/Flags.cc
   src/GdbConnection.cc
   src/GdbServer.cc
@@ -212,6 +213,7 @@ set(BASIC_TESTS
   clone
   constructor
   desched_blocking_poll
+  dup
   epoll_create
   epoll_create1
   exec_self

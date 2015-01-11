@@ -1543,6 +1543,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::fcntl64:
       switch ((int)t->regs().arg2_signed()) {
         case Arch::DUPFD:
+        case Arch::DUPFD_CLOEXEC:
         case Arch::GETFD:
         case Arch::GETFL:
         case Arch::SETFL:
@@ -2425,6 +2426,9 @@ static string extra_expected_errno_info(Task* t,
         case Arch::quotactl:
           ss << "; unknown quotactl(" << HEX(t->regs().arg1() >> SUBCMDSHIFT)
              << ")";
+          break;
+        case Arch::fcntl:
+          ss << "; unknown fcntl(" << HEX((int)t->regs().arg2_signed()) << ")";
           break;
       }
       break;

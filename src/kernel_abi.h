@@ -125,6 +125,8 @@ struct FcntlConstants {
     SETLKW64 = 14,
     SETOWN_EX = 15,
     GETOWN_EX = 16,
+    // Linux-specific operations
+    DUPFD_CLOEXEC = 0x400 + 6,
   };
 };
 

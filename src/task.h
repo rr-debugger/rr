@@ -11,6 +11,7 @@
 #include "AddressSpace.h"
 #include "Event.h"
 #include "ExtraRegisters.h"
+#include "FdTable.h"
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "PerfCounters.h"
@@ -79,10 +80,12 @@ enum CloneFlags {
   CLONE_SHARE_TASK_GROUP = 1 << 1,
   /** Child will share its parent's address space. */
   CLONE_SHARE_VM = 1 << 2,
+  /** Child will share its parent's file descriptor table. */
+  CLONE_SHARE_FILES = 1 << 3,
   /** Kernel will clear and notify tid futex on task exit. */
-  CLONE_CLEARTID = 1 << 3,
+  CLONE_CLEARTID = 1 << 4,
   // Set the thread area to what's specified by the |tls| arg.
-  CLONE_SET_TLS = 1 << 4,
+  CLONE_SET_TLS = 1 << 5,
 };
 
 /**
@@ -974,6 +977,8 @@ public:
    */
   AddressSpace::shr_ptr vm() { return as; }
 
+  FdTable::shr_ptr fd_table() { return fds; }
+
   enum AllowInterrupt {
     ALLOW_INTERRUPT,
     // Pass this when the caller has already triggered a ptrace stop
@@ -1393,7 +1398,9 @@ private:
                      pid_t rec_tid = -1);
 
   // The address space of this task.
-  std::shared_ptr<AddressSpace> as;
+  AddressSpace::shr_ptr as;
+  // The file descriptor table of this task.
+  FdTable::shr_ptr fds;
   // The set of signals that are currently blocked.
   sig_set_t blocked_sigs;
   // The exe-file argument passed to the most recent execve call

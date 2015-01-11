@@ -822,6 +822,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       size_t num_bytes = regs.arg2();
       return vm()->unmap(addr, num_bytes);
     }
+
     case Arch::set_robust_list:
       set_robust_list(regs.arg1(), (size_t)regs.arg2());
       return;
@@ -839,6 +840,15 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::sigprocmask:
     case Arch::rt_sigprocmask:
       update_sigmask(regs);
+      return;
+
+    case Arch::dup:
+    case Arch::dup2:
+    case Arch::dup3:
+      fd_table()->dup(regs.arg1(), regs.syscall_result());
+      return;
+    case Arch::close:
+      fd_table()->close(regs.arg1());
       return;
   }
 }
@@ -1852,6 +1862,11 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   } else {
     t->as = sess.clone(as);
   }
+  if (CLONE_SHARE_FILES & flags) {
+    t->fds = fds;
+  } else {
+    t->fds = FdTable::shr_ptr(new FdTable(*fds));
+  }
   if (!stack.is_null()) {
     const Mapping& m =
         t->as->mapping_of(stack - page_size(), page_size()).first;
@@ -1885,7 +1900,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   if (!(CLONE_SHARE_VM & flags) && !syscallbuf_child.is_null() &&
       &session() == &t->session()) {
     AutoRemoteSyscalls remote(t);
-    // Unshare the syscallbuf header so when we lock it below, we don't
+    // Unshare the syscallbuf memory so when we lock it below, we don't
     // also lock it in the task we cloned from!
     int prot = PROT_READ | PROT_WRITE;
     int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
@@ -2622,6 +2637,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
   t->tg.swap(g);
   auto as = session.create_vm(t, trace.initial_exe());
   t->as.swap(as);
+  t->fds = FdTable::shr_ptr(new FdTable());
 
   // Sync with the child process.
   intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |

@@ -1585,7 +1585,7 @@ eventfd2 = EmulatedSyscall(x86=328, x64=290)
 # file descriptor.
 epoll_create1 = EmulatedSyscall(x86=329, x64=291)
 
-dup3 = UnsupportedSyscall(x86=330, x64=292)
+dup3 = EmulatedSyscall(x86=330, x64=292)
 
 #  int pipe2(int pipefd[2], int flags)
 #
