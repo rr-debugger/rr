@@ -131,7 +131,7 @@ exit = IrregularMayExecSyscall(x86=1, x64=60)
 
 # Obsolete, glibc calls clone() instead.
 # But Google Breakpad uses it!
-fork = IrregularEmulatedSyscall(x86=2, x64=57)
+fork = EmulatedSyscall(x86=2, x64=57)
 
 #  ssize_t read(int fd, void *buf, size_t count);
 #
@@ -161,7 +161,7 @@ write = IrregularEmulatedSyscall(x86=4, x64=1)
 # (read(2), write(2), lseek(2), fcntl(2), etc.).  The file descriptor
 # returned by a successful call will be the lowest-numbered file
 # descriptor not currently open for the process.
-open = IrregularEmulatedSyscall(x86=5, x64=2)
+open = EmulatedSyscall(x86=5, x64=2)
 
 #  int close(int fd)
 #
@@ -650,7 +650,7 @@ fsync = EmulatedSyscall(x86=118, x64=74)
 # When the Linux kernel creates the stack frame for a signal handler,
 # a call to sigreturn() is inserted into the stack frame so that upon
 # return from the signal handler, sigreturn() will be called.
-sigreturn = IrregularEmulatedSyscall(x86=119)
+sigreturn = EmulatedSyscall(x86=119)
 
 #  int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t
 #*ptid, struct user_desc *tls, pid_t *ctid));
@@ -932,7 +932,7 @@ getresgid = EmulatedSyscall(x86=171, x64=120, arg1="typename Arch::legacy_gid_t"
 #
 prctl = IrregularMayExecSyscall(x86=172, x64=157)
 
-rt_sigreturn = IrregularEmulatedSyscall(x86=173, x64=15)
+rt_sigreturn = EmulatedSyscall(x86=173, x64=15)
 rt_sigaction = EmulatedSyscall(x86=174, x64=13, arg3="typename Arch::kernel_sigaction")
 rt_sigprocmask = EmulatedSyscall(x86=175, x64=14, arg3="typename Arch::sigset_t")
 

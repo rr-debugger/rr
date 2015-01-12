@@ -2102,14 +2102,10 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
     }
 
-    case Arch::fork:
     case Arch::mmap:
     case Arch::mmap2:
-    case Arch::open:
     case Arch::rrcall_init_buffers:
     case Arch::rrcall_init_preload:
-    case Arch::rt_sigreturn:
-    case Arch::sigreturn:
       return PREVENT_SWITCH;
 
     default:
