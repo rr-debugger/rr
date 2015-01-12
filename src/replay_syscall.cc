@@ -49,8 +49,7 @@ using namespace rr;
 enum SyscallDefType {
   rep_UNDEFINED = 0, /* NB: this symbol must have the value 0 */
   rep_EMU,
-  rep_EXEC,
-  rep_IRREGULAR
+  rep_EXEC
 };
 struct syscall_def {
   /* See syscalls.py for documentation on these values. */

@@ -137,7 +137,7 @@ def write_syscall_defs_table(f):
                 f.write("  { %s::%s, { rep_%s } },\n"
                         % (specializer, name, obj.semantics))
             elif isinstance(obj, (syscalls.IrregularSyscall, syscalls.RestartSyscall)):
-                f.write("  { %s::%s, { rep_IRREGULAR } },\n" % (specializer, name))
+                f.write("  { %s::%s, { rep_EMU } },\n" % (specializer, name))
             elif isinstance(obj, syscalls.UnsupportedSyscall):
                 pass
         f.write("};\n")
