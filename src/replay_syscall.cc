@@ -925,6 +925,8 @@ void rep_after_enter_syscall(Task* t, int syscallno) {
  */
 template <typename Arch>
 static void before_syscall_exit(Task* t, int syscallno) {
+  t->maybe_update_vm(syscallno, SYSCALL_EXIT);
+
   switch (syscallno) {
     case Arch::set_robust_list:
       t->set_robust_list(t->regs().arg1(), t->regs().arg2());
@@ -1059,7 +1061,9 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   const struct syscall_def* def = &table[syscall];
   step->syscall.number = syscall;
 
-  t->maybe_update_vm(syscall, state);
+  if (SYSCALL_EXIT == state) {
+    before_syscall_exit<Arch>(t, syscall);
+  }
 
   if (def->type == rep_UNDEFINED) {
     ASSERT(t, trace_regs.syscall_result_signed() == -ENOSYS)
@@ -1076,9 +1080,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     // /actually/ irregular, they just want to update some
     // state on syscall exit.  Convert them to use
     // before_syscall_exit().
-    if (TSTEP_EXIT_SYSCALL == step->action) {
-      before_syscall_exit<Arch>(t, syscall);
-    }
     return;
   }
 
