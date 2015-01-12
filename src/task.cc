@@ -838,6 +838,40 @@ void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
   RR_ARCH_FUNCTION(maybe_update_vm_arch, arch(), syscallno, state)
 }
 
+template <typename Arch>
+void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
+  maybe_update_vm(syscallno, SYSCALL_EXIT);
+
+  switch (syscallno) {
+    case Arch::set_robust_list:
+      set_robust_list(regs.arg1(), (size_t)regs.arg2());
+      return;
+
+    case Arch::set_thread_area:
+      set_thread_area(regs.arg1());
+      return;
+
+    case Arch::set_tid_address:
+      set_tid_addr(regs.arg1());
+      return;
+
+    case Arch::sigaction:
+    case Arch::rt_sigaction:
+      // TODO: SYS_signal
+      update_sigaction(regs);
+      return;
+
+    case Arch::sigprocmask:
+    case Arch::rt_sigprocmask:
+      update_sigmask(regs);
+      return;
+  }
+}
+
+void Task::on_syscall_exit(int syscallno, const Registers& regs) {
+  RR_ARCH_FUNCTION(on_syscall_exit_arch, arch(), syscallno, regs)
+}
+
 void Task::move_ip_before_breakpoint() {
   // TODO: assert that this is at a breakpoint trap.
   Registers r = regs();

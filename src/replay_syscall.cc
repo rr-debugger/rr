@@ -919,48 +919,6 @@ void rep_after_enter_syscall(Task* t, int syscallno) {
   RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, syscallno)
 }
 
-/**
- * Call this hook just before exiting a syscall.  Often Task
- * attributes need to be updated based on the finishing syscall.
- */
-template <typename Arch>
-static void before_syscall_exit(Task* t, int syscallno) {
-  t->maybe_update_vm(syscallno, SYSCALL_EXIT);
-
-  switch (syscallno) {
-    case Arch::set_robust_list:
-      t->set_robust_list(t->regs().arg1(), t->regs().arg2());
-      return;
-
-    case Arch::set_thread_area:
-      t->set_thread_area(t->regs().arg1());
-      return;
-
-    case Arch::set_tid_address:
-      t->set_tid_addr(t->regs().arg1());
-      return;
-
-    case Arch::sigaction:
-    case Arch::rt_sigaction:
-      // Use registers saved in the current trace frame since the
-      // syscall result hasn't been updated to the
-      // post-syscall-exit state yet.
-      t->update_sigaction(t->current_trace_frame().regs());
-      return;
-
-    case Arch::sigprocmask:
-    case Arch::rt_sigprocmask:
-      // Use registers saved in the current trace frame since the
-      // syscall result hasn't been updated to the
-      // post-syscall-exit state yet.
-      t->update_sigmask(t->current_trace_frame().regs());
-      return;
-
-    default:
-      return;
-  }
-}
-
 template <typename Arch>
 static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   /* FIXME: don't shadow syscall() */
@@ -1062,7 +1020,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   step->syscall.number = syscall;
 
   if (SYSCALL_EXIT == state) {
-    before_syscall_exit<Arch>(t, syscall);
+    t->on_syscall_exit(syscall, t->current_trace_frame().regs());
   }
 
   if (def->type == rep_UNDEFINED) {

@@ -2406,36 +2406,6 @@ template <typename Arch> static void process_fork(Task* t) {
 }
 
 template <typename Arch>
-static void before_syscall_exit(Task* t, int syscallno) {
-  t->maybe_update_vm(syscallno, SYSCALL_EXIT);
-
-  switch (syscallno) {
-    case Arch::set_robust_list:
-      t->set_robust_list(t->regs().arg1(), (size_t)t->regs().arg2());
-      return;
-
-    case Arch::set_thread_area:
-      t->set_thread_area(t->regs().arg1());
-      return;
-
-    case Arch::set_tid_address:
-      t->set_tid_addr(t->regs().arg1());
-      return;
-
-    case Arch::sigaction:
-    case Arch::rt_sigaction:
-      // TODO: SYS_signal
-      t->update_sigaction(t->regs());
-      return;
-
-    case Arch::sigprocmask:
-    case Arch::rt_sigprocmask:
-      t->update_sigmask(t->regs());
-      return;
-  }
-}
-
-template <typename Arch>
 static string extra_expected_errno_info(Task* t,
                                         TaskSyscallState& syscall_state) {
   stringstream ss;
@@ -2481,7 +2451,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();
 
-  before_syscall_exit<Arch>(t, syscallno);
+  t->on_syscall_exit(syscallno, t->regs());
 
   if (const struct syscallbuf_record* rec = t->desched_rec()) {
     t->record_local(t->syscallbuf_child.cast<void>() +

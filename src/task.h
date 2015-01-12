@@ -572,6 +572,14 @@ public:
   void maybe_update_vm(int syscallno, SyscallEntryOrExit state);
 
   /**
+   * Call this hook just before exiting a syscall.  Often Task
+   * attributes need to be updated based on the finishing syscall.
+   * Use 'regs' instead of this->regs() because some registers may not be
+   * set properly in the task yet.
+   */
+  void on_syscall_exit(int syscallno, const Registers& regs);
+
+  /**
    * Assuming ip() is just past a breakpoint instruction, adjust
    * ip() backwards to point at that breakpoint insn.
    */
@@ -1238,6 +1246,9 @@ private:
   /** Helper function for maybe_update_vm. */
   template <typename Arch>
   void maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state);
+
+  template <typename Arch>
+  void on_syscall_exit_arch(int syscallno, const Registers& regs);
 
   /** Helper function for update_sigaction. */
   template <typename Arch> void update_sigaction_arch(const Registers& regs);
