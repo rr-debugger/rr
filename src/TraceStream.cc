@@ -140,61 +140,6 @@ TraceFrame TraceReader::read_frame() {
   return frame;
 }
 
-template <typename T>
-static CompressedWriter& operator<<(CompressedWriter& out, const T& value) {
-  out.write(&value, sizeof(value));
-  return out;
-}
-
-template <typename T>
-static CompressedReader& operator>>(CompressedReader& in, T& value) {
-  in.read(&value, sizeof(value));
-  return in;
-}
-
-static CompressedWriter& operator<<(CompressedWriter& out,
-                                    const string& value) {
-  out.write(value.c_str(), value.size() + 1);
-  return out;
-}
-
-static CompressedReader& operator>>(CompressedReader& in, string& value) {
-  value.empty();
-  while (true) {
-    char ch;
-    in.read(&ch, 1);
-    if (ch == 0) {
-      break;
-    }
-    value.append(1, ch);
-  }
-  return in;
-}
-
-template <typename T>
-static CompressedWriter& operator<<(CompressedWriter& out,
-                                    const std::vector<T>& value) {
-  out << value.size();
-  for (auto& i : value) {
-    out << i;
-  }
-  return out;
-}
-
-template <typename T>
-static CompressedReader& operator>>(CompressedReader& in,
-                                    std::vector<T>& value) {
-  size_t len;
-  in >> len;
-  value.resize(0);
-  for (size_t i = 0; i < len; ++i) {
-    T v;
-    in >> v;
-    value.push_back(v);
-  }
-  return in;
-}
-
 void TraceWriter::write_task_event(const TraceTaskEvent& event) {
   tasks << event.type() << event.tid();
   switch (event.type()) {
