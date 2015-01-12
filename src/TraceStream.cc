@@ -27,6 +27,29 @@ using namespace std;
 //
 #define TRACE_VERSION 20
 
+struct SubstreamData {
+  const char* name;
+  size_t block_size;
+  int threads;
+};
+
+static const SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
+  { "events", 1024 * 1024, 1 },
+  { "data_header", 1024 * 1024, 1 },
+  { "data", 8 * 1024 * 1024, 3 },
+  { "mmaps", 64 * 1024, 1 },
+  { "tasks", 64 * 1024, 1 }
+};
+
+static const SubstreamData& substream(TraceStream::Substream s) {
+  return substreams[s];
+}
+
+static TraceStream::Substream operator++(TraceStream::Substream& s) {
+  s = (TraceStream::Substream)(s + 1);
+  return s;
+}
+
 static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
 
 static string trace_save_dir() {
@@ -63,17 +86,30 @@ static void ensure_default_rr_trace_dir() {
   }
 }
 
+string TraceStream::path(Substream s) {
+  return trace_dir + "/" + substream(s).name;
+}
+
 bool TraceWriter::good() const {
-  return events.good() && data.good() && data_header.good() && mmaps.good() &&
-         tasks.good();
+  for (auto& w : writers) {
+    if (!w->good()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool TraceReader::good() const {
-  return events.good() && data.good() && data_header.good() && mmaps.good() &&
-         tasks.good();
+  for (auto& r : readers) {
+    if (!r->good()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void TraceWriter::write_frame(const TraceFrame& frame) {
+  auto& events = writer(EVENTS);
   events.write(&frame.basic_info, sizeof(frame.basic_info));
   if (!events.good()) {
     FATAL() << "Tried to save " << sizeof(frame.basic_info)
@@ -113,6 +149,7 @@ void TraceWriter::write_frame(const TraceFrame& frame) {
 TraceFrame TraceReader::read_frame() {
   // Read the common event info first, to see if we also have
   // exec info to read.
+  auto& events = reader(EVENTS);
   TraceFrame frame;
   events.read(&frame.basic_info, sizeof(frame.basic_info));
   if (frame.event().has_exec_info) {
@@ -123,7 +160,7 @@ TraceFrame TraceReader::read_frame() {
     events.read(&extra_reg_format, sizeof(extra_reg_format));
     events.read((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
     if (extra_reg_bytes > 0) {
-      std::vector<uint8_t> data;
+      vector<uint8_t> data;
       data.resize(extra_reg_bytes);
       events.read((char*)data.data(), extra_reg_bytes);
       frame.recorded_extra_regs.set_arch(frame.event().arch());
@@ -141,6 +178,7 @@ TraceFrame TraceReader::read_frame() {
 }
 
 void TraceWriter::write_task_event(const TraceTaskEvent& event) {
+  auto& tasks = writer(TASKS);
   tasks << event.type() << event.tid();
   switch (event.type()) {
     case TraceTaskEvent::CLONE:
@@ -161,6 +199,7 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
 }
 
 TraceTaskEvent TraceReader::read_task_event() {
+  auto& tasks = reader(TASKS);
   TraceTaskEvent r;
   tasks >> r.type_ >> r.tid_;
   switch (r.type()) {
@@ -203,6 +242,7 @@ string TraceWriter::try_hardlink_file(const string& file_name) {
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     const TraceMappedRegion& map, int prot, int flags) {
+  auto& mmaps = writer(MMAPS);
   TraceReader::MappedDataSource source;
   string backing_file_name;
   if (map.stat().st_ino == 0) {
@@ -247,6 +287,7 @@ static void verify_backing_file(const TraceMappedRegion& map,
 }
 
 TraceMappedRegion TraceReader::read_mapped_region(MappedData* data) {
+  auto& mmaps = reader(MMAPS);
   TraceMappedRegion map;
   string backing_file_name;
   mmaps >> data->source >> map.filename >> map.stat_ >> map.start_ >>
@@ -283,11 +324,15 @@ static istream& operator>>(istream& in, vector<string>& vs) {
 }
 
 void TraceWriter::write_raw(const void* d, size_t len, remote_ptr<void> addr) {
+  auto& data = writer(RAW_DATA);
+  auto& data_header = writer(RAW_DATA_HEADER);
   data_header << global_time << addr.as_int() << len;
   data.write(d, len);
 }
 
 TraceReader::RawData TraceReader::read_raw_data() {
+  auto& data = reader(RAW_DATA);
+  auto& data_header = reader(RAW_DATA_HEADER);
   TraceFrame::Time time;
   RawData d;
   size_t num_bytes;
@@ -299,6 +344,7 @@ TraceReader::RawData TraceReader::read_raw_data() {
 }
 
 bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame, RawData& d) {
+  auto& data_header = reader(RAW_DATA_HEADER);
   while (!data_header.at_end()) {
     TraceFrame::Time time;
     data_header.save_state();
@@ -316,11 +362,9 @@ bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame, RawData& d) {
 }
 
 void TraceWriter::close() {
-  events.close();
-  data.close();
-  data_header.close();
-  mmaps.close();
-  tasks.close();
+  for (auto& w : writers) {
+    w->close();
+  }
 }
 
 static string make_trace_dir(const string& exe_path) {
@@ -345,22 +389,21 @@ static string make_trace_dir(const string& exe_path) {
   return dir;
 }
 
-TraceWriter::TraceWriter(const std::vector<std::string>& argv,
-                         const std::vector<std::string>& envp,
+TraceWriter::TraceWriter(const vector<string>& argv, const vector<string>& envp,
                          const string& cwd, int bind_to_cpu)
     : TraceStream(make_trace_dir(argv[0]),
                   // Somewhat arbitrarily start the
                   // global time from 1.
-                  1),
-      events(events_path(), 1024 * 1024, 1),
-      data(data_path(), 8 * 1024 * 1024, 3),
-      data_header(data_header_path(), 1024 * 1024, 1),
-      mmaps(mmaps_path(), 64 * 1024, 1),
-      tasks(tasks_path(), 64 * 1024, 1) {
+                  1) {
   this->argv = argv;
   this->envp = envp;
   this->cwd = cwd;
   this->bind_to_cpu = bind_to_cpu;
+
+  for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
+    writers[s] = unique_ptr<CompressedWriter>(new CompressedWriter(
+        path(s), substream(s).block_size, substream(s).threads));
+  }
 
   string ver_path = version_path();
   fstream version(ver_path.c_str(), fstream::out);
@@ -396,6 +439,7 @@ TraceWriter::TraceWriter(const std::vector<std::string>& argv,
 }
 
 TraceFrame TraceReader::peek_frame() {
+  auto& events = reader(EVENTS);
   events.save_state();
   auto saved_time = global_time;
   TraceFrame frame;
@@ -409,6 +453,7 @@ TraceFrame TraceReader::peek_frame() {
 
 TraceFrame TraceReader::peek_to(pid_t pid, EventType type,
                                 SyscallEntryOrExit state) {
+  auto& events = reader(EVENTS);
   TraceFrame frame;
   events.save_state();
   auto saved_time = global_time;
@@ -427,11 +472,9 @@ TraceFrame TraceReader::peek_to(pid_t pid, EventType type,
 }
 
 void TraceReader::rewind() {
-  events.rewind();
-  data.rewind();
-  data_header.rewind();
-  mmaps.rewind();
-  tasks.rewind();
+  for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
+    reader(s).rewind();
+  }
   global_time = 0;
   assert(good());
 }
@@ -442,12 +485,11 @@ TraceReader::TraceReader(const string& dir)
                   // that when we tick it when reading
                   // the first trace, it matches the
                   // initial global time at recording, 1.
-                  0),
-      events(events_path()),
-      data(data_path()),
-      data_header(data_header_path()),
-      mmaps(mmaps_path()),
-      tasks(tasks_path()) {
+                  0) {
+  for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
+    readers[s] = unique_ptr<CompressedReader>(new CompressedReader(path(s)));
+  }
+
   string path = version_path();
   fstream vfile(path.c_str(), fstream::in);
   if (!vfile.good()) {
@@ -490,14 +532,36 @@ TraceReader::TraceReader(const string& dir)
   in >> bind_to_cpu;
 }
 
+/**
+ * Create a copy of this stream that has exactly the same
+ * state as 'other', but for which mutations of this
+ * clone won't affect the state of 'other' (and vice versa).
+ */
+TraceReader::TraceReader(const TraceReader& other)
+    : TraceStream(other.dir(), other.time()) {
+  for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
+    readers[s] =
+        unique_ptr<CompressedReader>(new CompressedReader(other.reader(s)));
+  }
+
+  argv = other.argv;
+  envp = other.envp;
+  cwd = other.cwd;
+  bind_to_cpu = other.bind_to_cpu;
+}
+
 uint64_t TraceReader::uncompressed_bytes() const {
-  return events.uncompressed_bytes() + data.uncompressed_bytes() +
-         data_header.uncompressed_bytes() + mmaps.uncompressed_bytes() +
-         tasks.uncompressed_bytes();
+  uint64_t total = 0;
+  for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
+    total += reader(s).uncompressed_bytes();
+  }
+  return total;
 }
 
 uint64_t TraceReader::compressed_bytes() const {
-  return events.compressed_bytes() + data.compressed_bytes() +
-         data_header.compressed_bytes() + mmaps.compressed_bytes() +
-         tasks.uncompressed_bytes();
+  uint64_t total = 0;
+  for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
+    total += reader(s).compressed_bytes();
+  }
+  return total;
 }

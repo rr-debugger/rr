@@ -30,6 +30,25 @@ protected:
   typedef std::string string;
 
 public:
+  /**
+   * Update |substreams| and TRACE_VERSION when you update this list.
+   */
+  enum Substream {
+    SUBSTREAM_FIRST,
+    // Substream that stores events (trace frames).
+    EVENTS = SUBSTREAM_FIRST,
+    // Substreams that store raw data saved from tracees (|RAW_DATA|), and
+    // metadata about the stored data (|RAW_DATA_HEADER|).
+    RAW_DATA_HEADER,
+    RAW_DATA,
+    // Substream that stores metadata about files mmap'd during
+    // recording.
+    MMAPS,
+    // Substream that stores task creation and exec events
+    TASKS,
+    SUBSTREAM_COUNT
+  };
+
   /** Return the directory storing this trace's files. */
   const string& dir() const { return trace_dir; }
 
@@ -49,11 +68,11 @@ protected:
   TraceStream(const string& trace_dir, TraceFrame::Time initial_time)
       : trace_dir(trace_dir), global_time(initial_time) {}
 
-  string events_path() const { return trace_dir + "/events"; }
-  string data_path() const { return trace_dir + "/data"; }
-  string data_header_path() const { return trace_dir + "/data_header"; }
-  string mmaps_path() const { return trace_dir + "/mmaps"; }
-  string tasks_path() const { return trace_dir + "/tasks"; }
+  /**
+   * Return the path of the file for the given substream.
+   */
+  string path(Substream s);
+
   /**
    * Return the path of the "args_env" file, into which the
    * initial tracee argv and envp are recorded.
@@ -146,17 +165,10 @@ public:
 private:
   std::string try_hardlink_file(const std::string& file_name);
 
-  // File that stores events (trace frames).
-  CompressedWriter events;
-  // Files that store raw data saved from tracees (|data|), and
-  // metadata about the stored data (|data_header|).
-  CompressedWriter data;
-  CompressedWriter data_header;
-  // File that stores metadata about files mmap'd during
-  // recording.
-  CompressedWriter mmaps;
-  // File that stores task creation and exec events
-  CompressedWriter tasks;
+  CompressedWriter& writer(Substream s) { return *writers[s]; }
+  const CompressedWriter& writer(Substream s) const { return *writers[s]; }
+
+  std::unique_ptr<CompressedWriter> writers[SUBSTREAM_COUNT];
   uint32_t mmap_count;
 };
 
@@ -228,7 +240,7 @@ public:
   /**
    * Return true if we're at the end of the trace file.
    */
-  bool at_end() const { return events.at_end(); }
+  bool at_end() const { return reader(EVENTS).at_end(); }
 
   /**
    * Return the next trace frame, without mutating any stream
@@ -263,31 +275,13 @@ public:
    * state as 'other', but for which mutations of this
    * clone won't affect the state of 'other' (and vice versa).
    */
-  TraceReader(const TraceReader& other)
-      : TraceStream(other.dir(), other.time()),
-        events(other.events),
-        data(other.data),
-        data_header(other.data_header),
-        mmaps(other.mmaps),
-        tasks(other.tasks) {
-    argv = other.argv;
-    envp = other.envp;
-    cwd = other.cwd;
-    bind_to_cpu = other.bind_to_cpu;
-  }
+  TraceReader(const TraceReader& other);
 
 private:
-  // File that stores events (trace frames).
-  CompressedReader events;
-  // Files that store raw data saved from tracees (|data|), and
-  // metadata about the stored data (|data_header|).
-  CompressedReader data;
-  CompressedReader data_header;
-  // File that stores metadata about files mmap'd during
-  // recording.
-  CompressedReader mmaps;
-  // File that stores task creation and exec events
-  CompressedReader tasks;
+  CompressedReader& reader(Substream s) { return *readers[s]; }
+  const CompressedReader& reader(Substream s) const { return *readers[s]; }
+
+  std::unique_ptr<CompressedReader> readers[SUBSTREAM_COUNT];
 };
 
 #endif /* RR_TRACE_H_ */
