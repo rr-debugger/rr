@@ -50,7 +50,6 @@ enum SyscallDefType {
   rep_UNDEFINED = 0, /* NB: this symbol must have the value 0 */
   rep_EMU,
   rep_EXEC,
-  rep_EXEC_RET_EMU,
   rep_IRREGULAR
 };
 struct syscall_def {
@@ -1031,18 +1030,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     return;
   }
 
-  if (rep_IRREGULAR != def->type) {
-    step->action = syscall_action(state);
-    step->syscall.emu = rep_EMU == def->type ? EMULATE : EXEC;
-    // TODO: there are several syscalls below that aren't
-    // /actually/ irregular, they just want to update some
-    // state on syscall exit.  Convert them to use
-    // before_syscall_exit().
-    return;
-  }
-
-  assert(rep_IRREGULAR == def->type);
-
   /* Manual implementations of irregular syscalls that need to do more during
    * replay than just modify register and memory state.
    */
@@ -1172,8 +1159,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       return;
 
     default:
-      step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
+      step->syscall.emu = rep_EXEC == def->type ? EXEC : EMULATE;
       return;
   }
 }

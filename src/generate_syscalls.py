@@ -25,7 +25,6 @@ def write_syscall_enum(f, arch):
 def write_is_always_emulated_syscall(f):
     semantics_to_retval = { syscalls.ReplaySemantics.EMU: 'true',
                             syscalls.ReplaySemantics.EXEC: 'false',
-                            syscalls.ReplaySemantics.EXEC_RET_EMU: 'false',
                             syscalls.ReplaySemantics.MAY_EXEC: 'false' }
 
     f.write("template <typename Arch> static bool is_always_emulated_syscall_arch(int syscall);\n");

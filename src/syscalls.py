@@ -17,10 +17,9 @@ class ReplaySemantics(object):
 
     EMU = "EMU"                 # Syscall is fully emulated.
     EXEC = "EXEC"               # Syscall is fully executed.
-    EXEC_RET_EMU = "EXEC_RET_EMU" # Syscall is executed, but retval is emulated.
-    MAY_EXEC = "MAY_EXEC"         # Syscall may be fully executed
+    MAY_EXEC = "MAY_EXEC"       # Syscall may be fully executed
 
-    ALL_SEMANTICS = ["EMU", "EXEC", "EXEC_RET_EMU", "MAY_EXEC"]
+    ALL_SEMANTICS = ["EMU", "EXEC", "MAY_EXEC"]
 
     def __init__(self, semantics):
         assert semantics in self.ALL_SEMANTICS
@@ -68,8 +67,7 @@ class RegularSyscall(BaseSyscall, ReplaySemantics):
     """
     def __init__(self, semantics=None, **kwargs):
         assert semantics in [ReplaySemantics.EMU,
-                             ReplaySemantics.EXEC,
-                             ReplaySemantics.EXEC_RET_EMU]
+                             ReplaySemantics.EXEC]
         ReplaySemantics.__init__(self, semantics)
         BaseSyscall.__init__(self, **kwargs)
         for a in range(1,6):
@@ -96,16 +94,6 @@ class ExecutedSyscall(RegularSyscall):
     """
     def __init__(self, **kwargs):
         RegularSyscall.__init__(self, semantics=ReplaySemantics.EXEC, **kwargs)
-
-class ExecRetEmuSyscall(RegularSyscall):
-    """A wrapper for regular syscalls.
-
-    This class should be used in preference to manually passing the semantics
-    keyword argument.  Its constructor ensures the correct value is passed for
-    the semantics argument.
-    """
-    def __init__(self, **kwargs):
-        RegularSyscall.__init__(self, semantics=ReplaySemantics.EXEC_RET_EMU, **kwargs)
 
 class IrregularSyscall(BaseSyscall, ReplaySemantics):
     """A base class for irregular syscalls.  Not to be manually instantiated."""
@@ -1321,7 +1309,7 @@ remap_file_pages = UnsupportedSyscall(x86=257, x64=216)
 #
 # When set_child_tid is set, the very first thing the new process
 # does is writing its PID at this address.
-set_tid_address = ExecRetEmuSyscall(x86=258, x64=218, arg1="typename Arch::pid_t")
+set_tid_address = ExecutedSyscall(x86=258, x64=218, arg1="typename Arch::pid_t")
 
 timer_create = UnsupportedSyscall(x86=259, x64=222)
 timer_settime = UnsupportedSyscall(x86=260, x64=223)
