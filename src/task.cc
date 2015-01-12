@@ -782,20 +782,14 @@ bool Task::may_be_blocked() const {
 }
 
 template <typename Arch>
-void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
-  // We have to use the regs() during replay because they
-  // have the return value set in syscall_result().  We may not have
-  // advanced regs() to that point yet.
-  const Registers& r =
-      session().is_recording() ? regs() : current_trace_frame().regs();
-
-  if (SYSCALL_EXIT != state ||
-      (r.syscall_failed() && !is_mprotect_syscall(syscallno, arch()))) {
+void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
+  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, arch())) {
     return;
   }
+
   switch (syscallno) {
     case Arch::brk: {
-      remote_ptr<void> addr = r.arg1();
+      remote_ptr<void> addr = regs.arg1();
       if (!addr) {
         // A brk() update of nullptr is observed with
         // libc, which apparently is its means of
@@ -811,56 +805,37 @@ void Task::maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state) {
       return;
     }
     case Arch::mprotect: {
-      remote_ptr<void> addr = r.arg1();
-      size_t num_bytes = r.arg2();
-      int prot = r.arg3_signed();
+      remote_ptr<void> addr = regs.arg1();
+      size_t num_bytes = regs.arg2();
+      int prot = regs.arg3_signed();
       return vm()->protect(addr, num_bytes, prot);
     }
     case Arch::mremap: {
-      if (r.syscall_failed() && -ENOMEM != r.syscall_result_signed()) {
-        return;
-      }
-      remote_ptr<void> old_addr = r.arg1();
-      size_t old_num_bytes = r.arg2();
-      remote_ptr<void> new_addr = r.syscall_result();
-      size_t new_num_bytes = r.arg3();
+      remote_ptr<void> old_addr = regs.arg1();
+      size_t old_num_bytes = regs.arg2();
+      remote_ptr<void> new_addr = regs.syscall_result();
+      size_t new_num_bytes = regs.arg3();
       return vm()->remap(old_addr, old_num_bytes, new_addr, new_num_bytes);
     }
     case Arch::munmap: {
-      remote_ptr<void> addr = r.arg1();
-      size_t num_bytes = r.arg2();
+      remote_ptr<void> addr = regs.arg1();
+      size_t num_bytes = regs.arg2();
       return vm()->unmap(addr, num_bytes);
     }
-  }
-}
-
-void Task::maybe_update_vm(int syscallno, SyscallEntryOrExit state) {
-  RR_ARCH_FUNCTION(maybe_update_vm_arch, arch(), syscallno, state)
-}
-
-template <typename Arch>
-void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
-  maybe_update_vm(syscallno, SYSCALL_EXIT);
-
-  switch (syscallno) {
     case Arch::set_robust_list:
       set_robust_list(regs.arg1(), (size_t)regs.arg2());
       return;
-
     case Arch::set_thread_area:
       set_thread_area(regs.arg1());
       return;
-
     case Arch::set_tid_address:
       set_tid_addr(regs.arg1());
       return;
-
     case Arch::sigaction:
     case Arch::rt_sigaction:
       // TODO: SYS_signal
       update_sigaction(regs);
       return;
-
     case Arch::sigprocmask:
     case Arch::rt_sigprocmask:
       update_sigmask(regs);

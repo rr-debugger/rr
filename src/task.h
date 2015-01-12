@@ -564,14 +564,6 @@ public:
   bool may_be_blocked() const;
 
   /**
-   * If |syscallno| at |state| changes our VM mapping, then
-   * update the cache for that change.  The exception is mmap()
-   * calls: they're complicated enough to be handled separately.
-   * Client code should call |t->vm()->map(...)| directly.
-   */
-  void maybe_update_vm(int syscallno, SyscallEntryOrExit state);
-
-  /**
    * Call this hook just before exiting a syscall.  Often Task
    * attributes need to be updated based on the finishing syscall.
    * Use 'regs' instead of this->regs() because some registers may not be
@@ -1242,10 +1234,6 @@ public:
 private:
   Task(Session& session, pid_t tid, pid_t rec_tid, int priority,
        SupportedArch a);
-
-  /** Helper function for maybe_update_vm. */
-  template <typename Arch>
-  void maybe_update_vm_arch(int syscallno, SyscallEntryOrExit state);
 
   template <typename Arch>
   void on_syscall_exit_arch(int syscallno, const Registers& regs);
