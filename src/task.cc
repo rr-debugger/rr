@@ -1918,7 +1918,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                                  flags, -1, 0);
     ASSERT(t, p == syscallbuf_child.cast<void>());
     t->vm()->map(p, num_syscallbuf_bytes, prot, flags, 0,
-        MappableResource::anonymous());
+                 MappableResource::anonymous());
 
     // Mark the clone's syscallbuf as locked. This will prevent the
     // clone using syscallbuf until the clone reinitializes the
