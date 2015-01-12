@@ -337,12 +337,18 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 }
 
 int ReplayCommand::run(std::vector<std::string>& args) {
-  ReplayFlags flags;
-  while (parse_replay_arg(args, flags)) {
-  }
-
+  bool found_dir = false;
   string trace_dir;
-  if (!parse_optional_trace_dir(args, &trace_dir)) {
+  ReplayFlags flags;
+
+  while (!args.empty()) {
+    if (parse_replay_arg(args, flags)) {
+      continue;
+    }
+    if (!found_dir && parse_optional_trace_dir(args, &trace_dir)) {
+      found_dir = true;
+      continue;
+    }
     print_help(stderr);
     return 1;
   }
