@@ -935,6 +935,7 @@ void Task::post_exec(const Registers* replay_regs) {
   // the clone.
   set_robust_list(nullptr, 0);
   syscallbuf_child = nullptr;
+  syscallbuf_fds_disabled_child = nullptr;
 
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
@@ -1859,6 +1860,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   }
   if (CLONE_SHARE_VM & flags) {
     t->as = as;
+    t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
   } else {
     t->as = sess.clone(as);
   }
@@ -2038,6 +2040,7 @@ void Task::copy_state(Task* from) {
       memcpy(syscallbuf_hdr, from->syscallbuf_hdr, num_syscallbuf_bytes);
     }
   }
+  syscallbuf_fds_disabled_child = from->syscallbuf_fds_disabled_child;
   // The scratch buffer (for now) is merely a private mapping in
   // the remote task.  The CoW copy made by fork()'ing the
   // address space has the semantics we want.  It's not used in
@@ -2484,6 +2487,24 @@ bool Task::clone_syscall_is_complete() {
       << "Unexpected task status " << HEX(status())
       << " (syscall result:" << regs().syscall_result_signed() << ")";
   return false;
+}
+
+template <typename Arch>
+static remote_ptr<char> get_syscallbuf_fds_disabled_arch(Task* t) {
+  auto params = t->read_mem(
+      remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
+  remote_ptr<volatile char> syscallbuf_fds_disabled =
+      params.syscallbuf_fds_disabled;
+  return syscallbuf_fds_disabled.cast<char>();
+}
+
+static remote_ptr<char> get_syscallbuf_fds_disabled(Task* t) {
+  RR_ARCH_FUNCTION(get_syscallbuf_fds_disabled_arch, t->arch(), t);
+}
+
+void Task::at_preload_init() {
+  vm()->at_preload_init(this);
+  syscallbuf_fds_disabled_child = get_syscallbuf_fds_disabled(this);
 }
 
 template <typename Arch>

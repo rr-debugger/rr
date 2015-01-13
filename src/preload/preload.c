@@ -112,6 +112,15 @@ static int buffer_enabled;
 static int process_inited;
 
 /**
+ * If syscallbuf_fds_disabled[fd] is nonzero, then operations on that fd
+ * must be performed through traced syscalls, not the syscallbuf.
+ * The rr supervisor modifies this array directly to dynamically turn
+ * syscallbuf on and off for particular fds. fds outside the array range must
+ * never use the syscallbuf.
+ */
+static volatile char syscallbuf_fds_disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
+
+/**
  * Because this library is always loaded via LD_PRELOAD, we can use the
  * initial-exec TLS model (see http://www.akkadia.org/drepper/tls.pdf) which
  * lets the compiler generate better code which, crucially, does not call
@@ -581,6 +590,8 @@ static void __attribute__((constructor)) init_process(void) {
   pthread_atfork(NULL, NULL, post_fork_child);
 
   params.syscallbuf_enabled = buffer_enabled;
+  params.syscallbuf_fds_disabled =
+      buffer_enabled ? syscallbuf_fds_disabled : NULL;
   params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
 #if defined(__i386__)
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);

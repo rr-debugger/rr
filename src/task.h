@@ -1065,6 +1065,11 @@ public:
   bool clone_syscall_is_complete();
 
   /**
+   * Called when SYS_rrcall_init_preload has happened.
+   */
+  void at_preload_init();
+
+  /**
    * Open /proc/[tid]/mem fd for our AddressSpace, closing the old one
    * first.
    * This never fails. If necessary we force the tracee to open the file
@@ -1233,6 +1238,7 @@ public:
   size_t num_syscallbuf_bytes;
   /* Points at the tracee's mapping of the buffer. */
   remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
+  remote_ptr<char> syscallbuf_fds_disabled_child;
 
   PropertyTable& properties() { return properties_; }
 

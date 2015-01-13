@@ -1153,7 +1153,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       t->set_return_value_from_trace();
       t->validate_regs();
       t->finish_emulated_syscall();
-      t->vm()->at_preload_init(t);
+      t->at_preload_init();
       step->action = TSTEP_RETIRE;
       return;
 

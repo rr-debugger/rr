@@ -2691,7 +2691,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
 
     case SYS_rrcall_init_preload: {
-      t->vm()->at_preload_init(t);
+      t->at_preload_init();
 
       Registers r = t->regs();
       r.set_syscall_result(0);

@@ -35,6 +35,11 @@
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
+/* Size of table mapping fd numbers to syscallbuf-disabled flag.
+ * Most Linux kernels limit fds to 1024 so it probably doesn't make sense
+ * to raise this value... */
+#define SYSCALLBUF_FDS_DISABLED_SIZE 1024
+
 #define RR_PAGE_ADDR 0x70000000
 #define RR_PAGE_IN_UNTRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 4)
 #define RR_PAGE_IN_TRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 16)
@@ -97,9 +102,11 @@ struct rrcall_init_preload_params {
    * We let the syscallbuf code decide in order to more simply
    * replay the same decision that was recorded. */
   int syscallbuf_enabled;
-  PTR(void) syscall_hook_trampoline;
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
+  PTR(void) syscall_hook_trampoline;
+  /* Array of size SYSCALLBUF_FDS_DISABLED_SIZE */
+  PTR(volatile char) syscallbuf_fds_disabled;
 };
 
 /**
