@@ -33,6 +33,7 @@
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "seccomp-bpf.h"
+#include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
 #include "util.h"
 
@@ -2568,6 +2569,11 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
   return child;
 }
 
+static void setup_fd_table(FdTable& fds) {
+  fds.add_monitor(STDOUT_FILENO, new StdioMonitor());
+  fds.add_monitor(STDERR_FILENO, new StdioMonitor());
+}
+
 /*static*/ Task* Task::spawn(Session& session, const TraceStream& trace,
                              pid_t rec_tid) {
   assert(session.tasks().size() == 0);
@@ -2668,6 +2674,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
   auto as = session.create_vm(t, trace.initial_exe());
   t->as.swap(as);
   t->fds = FdTable::create(t);
+  setup_fd_table(*t->fds);
 
   // Sync with the child process.
   intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
