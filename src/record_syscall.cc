@@ -1760,30 +1760,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::writev: {
       int fd = (int)t->regs().arg1_signed();
       maybe_mark_stdio_write(t, fd);
-      // Tracee writes to rr's stdout/stderr are echoed during replay.
-      // We want to ensure that these writes are replayed in the same
-      // order as they were performed during recording. If we treat
-      // those writes as interruptible, we can get into a difficult
-      // situation: we start the system call, it gets interrupted,
-      // we switch to another thread that starts its own write, and
-      // at that point we don't know which order the kernel will
-      // actually perform the writes in.
-      // We work around this problem by making writes to rr's
-      // stdout/stderr non-interruptible. This theoretically
-      // introduces the possibility of deadlock between rr's
-      // tracee and some external program reading rr's output
-      // via a pipe ... but that seems unlikely to bite in practice.
-      return is_stdio_fd<Arch>(t, fd) ? PREVENT_SWITCH : ALLOW_SWITCH;
-      // Note that the determination of whether fd maps to rr's
-      // stdout/stderr is exact, using kcmp, whereas our decision
-      // to echo is currently based on the simple heuristic of
-      // whether fd is STDOUT_FILENO/STDERR_FILENO (which can be
-      // wrong due to those fds being dup'ed, redirected, etc).
-      // We could use kcmp for the echo decision too, except
-      // when writes are buffered by syscallbuf it gets rather
-      // complex. A better solution is probably for the replayer
-      // to track metadata for each tracee fd, tracking whether the
-      // fd points to rr's stdout/stderr.
+      return t->fd_table()->will_write(t, fd);
     }
 
     /* ssize_t readv(int fd, const struct iovec *iov, int iovcnt); */

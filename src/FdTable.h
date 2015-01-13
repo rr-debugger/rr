@@ -21,6 +21,9 @@ public:
     assert(!is_monitoring(fd));
     fds[fd] = FileMonitor::shr_ptr(monitor);
   }
+  Switchable will_write(Task* t, int fd);
+  void did_write(Task* t, int fd,
+                 const std::vector<FileMonitor::Range>& ranges);
 
   void dup(int from, int to);
   void close(int fd);

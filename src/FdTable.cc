@@ -9,6 +9,22 @@
 
 using namespace std;
 
+Switchable FdTable::will_write(Task* t, int fd) {
+  auto it = fds.find(fd);
+  if (it != fds.end()) {
+    return it->second->will_write(t);
+  }
+  return ALLOW_SWITCH;
+}
+
+void FdTable::did_write(Task* t, int fd,
+                        const std::vector<FileMonitor::Range>& ranges) {
+  auto it = fds.find(fd);
+  if (it != fds.end()) {
+    it->second->did_write(t, ranges);
+  }
+}
+
 void FdTable::dup(int from, int to) {
   if (fds.count(from)) {
     fds[to] = fds[from];

@@ -122,11 +122,6 @@ enum DestroyBufferFlags {
   DESTROY_SYSCALLBUF = 1 << 1,
 };
 
-enum Switchable {
-  PREVENT_SWITCH,
-  ALLOW_SWITCH
-};
-
 /** Different kinds of waits a task can do.
  */
 enum WaitType {

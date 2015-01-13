@@ -39,6 +39,11 @@ enum Completion {
   INCOMPLETE
 };
 
+enum Switchable {
+  PREVENT_SWITCH,
+  ALLOW_SWITCH
+};
+
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
  * that file, starting with a line containing |label|.  |start_addr|

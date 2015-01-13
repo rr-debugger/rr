@@ -913,7 +913,12 @@ static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
 
     case Arch::write:
       maybe_verify_tracee_saved_data(t, t->current_trace_frame().regs());
+    // fall through
+    case Arch::writev: {
+      int fd = (int)t->regs().arg1_signed();
+      t->fd_table()->will_write(t, fd);
       return;
+    }
 
     default:
       return;

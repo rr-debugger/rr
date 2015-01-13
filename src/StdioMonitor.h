@@ -13,6 +13,15 @@
 class StdioMonitor : public FileMonitor {
 public:
   StdioMonitor() {}
+
+  /**
+   * Make writes to stdout/stderr blocking, to avoid nondeterminism in the
+   * order in which the kernel actually performs such writes.
+   * This theoretically introduces the possibility of deadlock between rr's
+   * tracee and some external program reading rr's output
+   * via a pipe ... but that seems unlikely to bite in practice.
+   */
+  virtual Switchable will_write(Task* t) { return PREVENT_SWITCH; }
 };
 
 #endif /* RR_STDIO_MONITOR_H_ */

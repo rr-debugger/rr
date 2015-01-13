@@ -852,6 +852,35 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::close:
       fd_table()->close(regs.arg1());
       return;
+
+    case Arch::write: {
+      int fd = (int)regs.arg1_signed();
+      vector<FileMonitor::Range> ranges;
+      ssize_t amount = regs.syscall_result_signed();
+      if (amount > 0) {
+        ranges.push_back(FileMonitor::Range(regs.arg2(), amount));
+      }
+      fd_table()->did_write(this, fd, ranges);
+      return;
+    }
+
+    case Arch::writev: {
+      int fd = (int)regs.arg1_signed();
+      vector<FileMonitor::Range> ranges;
+      auto iovecs =
+          read_mem(remote_ptr<typename Arch::iovec>(regs.arg2()), regs.arg3());
+      ssize_t written = regs.syscall_result_signed();
+      ASSERT(this, written >= 0);
+      for (auto& v : iovecs) {
+        ssize_t amount = min<ssize_t>(written, v.iov_len);
+        if (amount > 0) {
+          ranges.push_back(FileMonitor::Range(v.iov_base, amount));
+          written -= amount;
+        }
+      }
+      fd_table()->did_write(this, fd, ranges);
+      return;
+    }
   }
 }
 
