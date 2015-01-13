@@ -1182,8 +1182,6 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi) {
 
       if (is_futex_syscall(call, t->arch())) {
         restore_futex_words(t, rec_rec);
-      } else if (is_write_syscall(call, t->arch())) {
-        rep_maybe_replay_stdio_write(t);
       }
 
       if (!rec_rec->desched) {
