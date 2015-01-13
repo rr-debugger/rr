@@ -381,6 +381,7 @@ set(TESTS_WITH_PROGRAM
   restart_abnormal_exit
   segfault
   step_thread
+  syscallbuf_fd_disabling
   target_fork
   target_process
   term_nonmain

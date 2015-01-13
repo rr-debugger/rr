@@ -1,0 +1,8 @@
+source `dirname $0`/util.sh
+GLOBAL_OPTIONS="$GLOBAL_OPTIONS -M"
+record $TESTNAME
+if [[ "record.out" != $(grep -l '^\[.*\]Line 2$' record.out) ]]; then
+  failed "Missing line annotation"
+  exit
+fi
+compare_test EXIT-SUCCESS
