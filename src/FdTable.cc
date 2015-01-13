@@ -4,6 +4,7 @@
 
 #include <unordered_set>
 
+#include "Session.h"
 #include "task.h"
 
 using namespace std;
@@ -75,4 +76,30 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
 
   t->write_mem(t->syscallbuf_fds_disabled_child, disabled,
                SYSCALLBUF_FDS_DISABLED_SIZE);
+}
+
+static bool is_fd_open(Task* t, int fd) {
+  char path[PATH_MAX];
+  sprintf(path, "/proc/%d/fd/%d", t->tid, fd);
+  struct stat st;
+  return 0 == lstat(path, &st);
+}
+
+void FdTable::update_for_cloexec(Task* t, TraceTaskEvent& event) {
+  vector<int> fds_to_close;
+
+  if (t->session().is_recording()) {
+    for (auto& it : fds) {
+      if (!is_fd_open(t, it.first)) {
+        fds_to_close.push_back(it.first);
+      }
+    }
+    event.set_fds_to_close(fds_to_close);
+  } else {
+    fds_to_close = event.fds_to_close();
+  }
+
+  for (auto fd : fds_to_close) {
+    close(fd);
+  }
 }

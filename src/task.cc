@@ -948,7 +948,10 @@ void Task::post_exec(const Registers* replay_regs) {
   prname = prname_from_exe_image(as->exe_image());
 }
 
-void Task::post_exec_syscall() { as->post_exec_syscall(this); }
+void Task::post_exec_syscall(TraceTaskEvent& event) {
+  as->post_exec_syscall(this);
+  fds->update_for_cloexec(this, event);
+}
 
 void Task::record_current_event() { record_event(ev()); }
 

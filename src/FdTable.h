@@ -9,6 +9,8 @@
 #include "AddressSpace.h"
 #include "FileMonitor.h"
 
+class TraceTaskEvent;
+
 class FdTable : public HasTaskSet {
 public:
   typedef std::shared_ptr<FdTable> shr_ptr;
@@ -34,6 +36,15 @@ public:
    * Called during initialization of the preload library.
    */
   void init_syscallbuf_fds_disabled(Task* t);
+
+  /**
+   * Called after task |t| for this FdTable has execed. Update for any fds
+   * that were closed via CLOEXEC.
+   * Rather than tracking CLOEXEC flags (which would be complicated), we just
+   * scan /proc/<pid>/fd during recording and note any monitored fds that have
+   * been closed, and record these in the TraceTaskEvent.
+   */
+  void update_for_cloexec(Task* t, TraceTaskEvent& event);
 
 private:
   FdTable() {}

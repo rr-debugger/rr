@@ -57,9 +57,18 @@ public:
     assert(type() == EXEC);
     return cmd_line_;
   }
+  const std::vector<int>& fds_to_close() const {
+    assert(type() == EXEC);
+    return fds_to_close_;
+  }
 
   bool is_fork() const {
     return type() == FORK || (type() == CLONE && !(clone_flags() & CLONE_VM));
+  }
+
+  void set_fds_to_close(const std::vector<int> fds) {
+    assert(type() == EXEC);
+    fds_to_close_ = fds;
   }
 
 private:
@@ -72,6 +81,7 @@ private:
   uintptr_t clone_flags_;             // CLONE only
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only
+  std::vector<int> fds_to_close_;     // EXEC only
 };
 
 #endif /* RR_TRACE_TASK_EVENT_H_ */

@@ -2269,10 +2269,10 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
     return;
   }
 
+  t->post_exec_syscall(*syscall_state.exec_saved_event);
+
   t->record_session().trace_writer().write_task_event(
       *syscall_state.exec_saved_event);
-
-  t->post_exec_syscall();
 
   remote_ptr<typename Arch::unsigned_word> stack_ptr = t->regs().sp();
 
