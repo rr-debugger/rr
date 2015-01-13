@@ -1119,37 +1119,6 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
   return PREVENT_SWITCH;
 }
 
-static const int RR_KCMP_FILE = 0;
-
-template <typename Arch> static bool is_stdio_fd(Task* t, int fd) {
-  int pid = getpid();
-
-  int r = syscall(Arch::kcmp, pid, t->rec_tid, RR_KCMP_FILE, STDOUT_FILENO, fd);
-  if (r < 0 && errno == ENOSYS) {
-    return fd == STDOUT_FILENO || fd == STDERR_FILENO;
-  }
-  if (r == 0) {
-    return true;
-  }
-  if (r < 0 && errno == EBADF) {
-    // Tracees may try to write to invalid fds.
-    return false;
-  }
-  ASSERT(t, r >= 0) << "kcmp failed";
-
-  r = syscall(Arch::kcmp, pid, t->rec_tid, RR_KCMP_FILE, STDERR_FILENO, fd);
-  if (r == 0) {
-    return true;
-  }
-  if (r < 0 && errno == EBADF) {
-    // Tracees may try to write to invalid fds.
-    return false;
-  }
-  ASSERT(t, r >= 0) << "kcmp failed";
-
-  return false;
-}
-
 static bool exec_file_supported(const string& file_name) {
 #if defined(__i386__)
   /* All this function does is reject 64-bit ELF binaries. Everything
