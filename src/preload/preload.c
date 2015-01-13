@@ -817,6 +817,19 @@ static void* prep_syscall(void) {
   return buffer_last() + sizeof(struct syscallbuf_record);
 }
 
+/**
+ * Like prep_syscall, but preps a syscall to operate on a particular fd. If
+ * syscallbuf is disabled for this fd, returns NULL (in which case
+ * start_commit_syscall will abort cleanly and a traced syscall will be used).
+ */
+static void* prep_syscall_for_fd(int fd) {
+  if (fd < 0 || fd >= SYSCALLBUF_FDS_DISABLED_SIZE ||
+      syscallbuf_fds_disabled[fd]) {
+    return NULL;
+  }
+  return prep_syscall();
+}
+
 static void arm_desched_event(void) {
   /* Don't trace the ioctl; doing so would trigger a flushing
    * ptrace trap, which is exactly what this code is trying to
@@ -1025,7 +1038,7 @@ static long sys_close(const struct syscall_info* call) {
   const int syscallno = SYS_close;
   int fd = call->args[0];
 
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   long ret;
 
   if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
@@ -1059,7 +1072,7 @@ static int sys_fcntl64_no_outparams(const struct syscall_info* call) {
 
   /* None of the no-outparam fcntl's are known to be
    * may-block. */
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   long ret;
 
   assert(syscallno == call->no);
@@ -1078,7 +1091,7 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call) {
   struct f_owner_ex* owner = (struct f_owner_ex*)call->args[2];
 
   /* The OWN_EX fcntl's aren't may-block. */
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   struct f_owner_ex* owner2 = NULL;
   long ret;
 
@@ -1107,7 +1120,7 @@ static int sys_fcntl64_xlk64(const struct syscall_info* call) {
   int cmd = call->args[1];
   struct flock64* lock = (struct flock64*)call->args[2];
 
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   struct flock64* lock2 = NULL;
   long ret;
 
@@ -1302,7 +1315,7 @@ static long sys__llseek(const struct syscall_info* call) {
   loff_t* result = (loff_t*)call->args[3];
   unsigned int whence = call->args[4];
 
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   loff_t* result2 = NULL;
   long ret;
 
@@ -1333,7 +1346,7 @@ static long sys_lseek(const struct syscall_info* call) {
   off_t off = call->args[1];
   int whence = call->args[2];
 
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   off_t ret = 0;
 
   assert(syscallno == call->no);
@@ -1445,7 +1458,7 @@ static long sys_read(const struct syscall_info* call) {
   void* buf = (void*)call->args[1];
   size_t count = call->args[2];
 
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   void* buf2 = NULL;
   long ret;
 
@@ -1507,7 +1520,7 @@ static long sys_recv(const struct syscall_info* call) {
   size_t len = args[2];
   unsigned int flags = args[3];
 
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(sockfd);
   void* buf2 = NULL;
   long ret;
 
@@ -1606,7 +1619,7 @@ static long sys_write(const struct syscall_info* call) {
   const void* buf = (const void*)call->args[1];
   size_t count = call->args[2];
 
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   long ret;
 
   assert(syscallno == call->no);
@@ -1631,7 +1644,7 @@ static long sys_writev(const struct syscall_info* call) {
   const struct iovec* iov = (const struct iovec*)call->args[1];
   unsigned long iovcnt = call->args[2];
 
-  void* ptr = prep_syscall();
+  void* ptr = prep_syscall_for_fd(fd);
   long ret;
 
   assert(syscallno == call->no);
