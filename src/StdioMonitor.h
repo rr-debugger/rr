@@ -6,9 +6,9 @@
 #include "FileMonitor.h"
 
 /**
- * A FileMonitor to track stdout/stderr fds.
- * Currently does nothing other than prevent syscallbuf from buffering output
- * to those fds.
+ * A FileMonitor to track writes to rr's stdout/stderr fds.
+ * StdioMonitor prevents syscallbuf from buffering output to those fds. It
+ * adds the optional stdio markers. During replay, it echoes stdio writes.
  */
 class StdioMonitor : public FileMonitor {
 public:
@@ -32,6 +32,11 @@ public:
    * stdio with trace event numbers.
    */
   virtual Switchable will_write(Task* t);
+
+  /**
+   * During replay, echo writes to stdout/stderr.
+   */
+  virtual void did_write(Task* t, const std::vector<Range>& ranges);
 
 private:
   int original_fd;

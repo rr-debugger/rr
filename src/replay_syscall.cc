@@ -149,52 +149,6 @@ static void __ptrace_cont(Task* t) {
       << t->syscall_name(current_syscall);
 }
 
-template <typename Arch>
-static void rep_maybe_replay_stdio_write_arch(Task* t) {
-  if (!t->replay_session().redirect_stdio()) {
-    return;
-  }
-
-  auto& regs = t->regs();
-  switch (regs.original_syscallno()) {
-    case Arch::write: {
-      int fd = regs.arg1_signed();
-      if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
-        auto bytes =
-            t->read_mem(remote_ptr<uint8_t>(regs.arg2()), (size_t)regs.arg3());
-        if (bytes.size() != (size_t)write(fd, bytes.data(), bytes.size())) {
-          FATAL() << "Couldn't write stdio";
-        }
-      }
-      break;
-    }
-
-    case Arch::writev: {
-      int fd = regs.arg1_signed();
-      if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
-        auto iovecs = t->read_mem(remote_ptr<typename Arch::iovec>(regs.arg2()),
-                                  (int)regs.arg3_signed());
-        for (size_t i = 0; i < iovecs.size(); ++i) {
-          remote_ptr<void> ptr = iovecs[i].iov_base;
-          auto bytes = t->read_mem(ptr.cast<uint8_t>(), iovecs[i].iov_len);
-          if (bytes.size() != (size_t)write(fd, bytes.data(), bytes.size())) {
-            FATAL() << "Couldn't write stdio";
-          }
-        }
-      }
-      break;
-    }
-
-    default:
-      assert(0 && "bad call to rep_maybe_replay_stdio_write_arch");
-      break;
-  }
-}
-
-void rep_maybe_replay_stdio_write(Task* t) {
-  RR_ARCH_FUNCTION(rep_maybe_replay_stdio_write_arch, t->arch(), t)
-}
-
 static void init_scratch_memory(Task* t) {
   /* Initialize the scratchpad as the recorder did, but make it
    * PROT_NONE. The idea is just to reserve the address space so
@@ -1139,10 +1093,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       step->syscall.emu = EMULATE;
       step->action = syscall_action(state);
       if (state == SYSCALL_EXIT) {
-        /* XXX technically this will print the output before
-         * we reach the interrupt.  That could maybe cause
-         * issues in the future. */
-        rep_maybe_replay_stdio_write_arch<Arch>(t);
         /* write*() can be desched'd, but don't use scratch,
          * so we might have saved 0 bytes of scratch after a
          * desched. */
