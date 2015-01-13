@@ -1502,7 +1502,6 @@ ReplaySession::ReplayResult ReplaySession::replay_step(
   }
 
   if (TSTEP_ENTER_SYSCALL == current_step.action) {
-    rep_after_enter_syscall(t, current_step.syscall.number);
     cpuid_bug_detector.notify_reached_syscall_during_replay(t);
   }
   if (can_validate() && SYSCALL_EXIT == trace_frame.event().state &&
@@ -1522,9 +1521,15 @@ ReplaySession::ReplayResult ReplaySession::replay_step(
     result.break_status.reason = BREAK_SINGLESTEP;
   }
 
+  // Advance to next trace frame before doing rep_after_enter_syscall,
+  // so that FdTable notifications run with the same trace timestamp during
+  // replay as during recording
+  advance_to_next_trace_frame(stop_at_time);
+  if (TSTEP_ENTER_SYSCALL == current_step.action) {
+    rep_after_enter_syscall(t, current_step.syscall.number);
+  }
   // Record that this step completed successfully.
   current_step.action = TSTEP_NONE;
-  advance_to_next_trace_frame(stop_at_time);
 
   return result;
 }

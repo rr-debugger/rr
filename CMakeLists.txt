@@ -114,6 +114,7 @@ add_executable(rr
   src/replay_syscall.cc
   src/Scheduler.cc
   src/Session.cc
+  src/StdioMonitor.cc
   src/task.cc
   src/TraceFrame.cc
   src/TraceStream.cc

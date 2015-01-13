@@ -160,7 +160,6 @@ static void rep_maybe_replay_stdio_write_arch(Task* t) {
     case Arch::write: {
       int fd = regs.arg1_signed();
       if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
-        maybe_mark_stdio_write(t, fd);
         auto bytes =
             t->read_mem(remote_ptr<uint8_t>(regs.arg2()), (size_t)regs.arg3());
         if (bytes.size() != (size_t)write(fd, bytes.data(), bytes.size())) {
@@ -173,7 +172,6 @@ static void rep_maybe_replay_stdio_write_arch(Task* t) {
     case Arch::writev: {
       int fd = regs.arg1_signed();
       if (fd == STDOUT_FILENO || fd == STDERR_FILENO) {
-        maybe_mark_stdio_write(t, fd);
         auto iovecs = t->read_mem(remote_ptr<typename Arch::iovec>(regs.arg2()),
                                   (int)regs.arg3_signed());
         for (size_t i = 0; i < iovecs.size(); ++i) {

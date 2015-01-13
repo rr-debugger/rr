@@ -1759,7 +1759,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::write:
     case Arch::writev: {
       int fd = (int)t->regs().arg1_signed();
-      maybe_mark_stdio_write(t, fd);
       return t->fd_table()->will_write(t, fd);
     }
 

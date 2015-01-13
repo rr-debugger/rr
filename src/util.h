@@ -102,13 +102,6 @@ void validate_process_memory(Task* t, int global_time);
 bool probably_not_interactive(int fd = STDERR_FILENO);
 
 /**
- * If |child_fd| is a stdio fd and stdio-marking is enabled, prepend
- * the stdio write with "[rr.<global-time>]".  This allows users to
- * more easily correlate stdio with trace event numbers.
- */
-void maybe_mark_stdio_write(Task* t, int child_fd);
-
-/**
  * Convert the flags passed to the clone() syscall, |flags_arg|, into
  * the format understood by Task::clone().
  */

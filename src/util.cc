@@ -51,21 +51,6 @@ bool probably_not_interactive(int fd) {
   return !isatty(fd);
 }
 
-void maybe_mark_stdio_write(Task* t, int fd) {
-  char buf[256];
-  ssize_t len;
-
-  if (!Flags::get().mark_stdio ||
-      !(STDOUT_FILENO == fd || STDERR_FILENO == fd)) {
-    return;
-  }
-  snprintf(buf, sizeof(buf) - 1, "[rr %d %d]", t->tgid(), t->trace_time());
-  len = strlen(buf);
-  if (write(fd, buf, len) != len) {
-    FATAL() << "Couldn't write to " << fd;
-  }
-}
-
 int clone_flags_to_task_flags(int flags_arg) {
   int flags = CLONE_SHARE_NOTHING;
   // See task.h for description of the flags.

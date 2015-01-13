@@ -2599,8 +2599,8 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
 }
 
 static void setup_fd_table(FdTable& fds) {
-  fds.add_monitor(STDOUT_FILENO, new StdioMonitor());
-  fds.add_monitor(STDERR_FILENO, new StdioMonitor());
+  fds.add_monitor(STDOUT_FILENO, new StdioMonitor(STDOUT_FILENO));
+  fds.add_monitor(STDERR_FILENO, new StdioMonitor(STDERR_FILENO));
 }
 
 /*static*/ Task* Task::spawn(Session& session, const TraceStream& trace,
