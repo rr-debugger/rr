@@ -1864,6 +1864,8 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   if (CLONE_SHARE_VM & flags) {
     t->as = as;
     t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
+    // FdTable is either shared or copied, so we don't need to update
+    // syscallbuf_fds_disabled here.
   } else {
     t->as = sess.clone(as);
   }
@@ -2508,6 +2510,7 @@ static remote_ptr<char> get_syscallbuf_fds_disabled(Task* t) {
 void Task::at_preload_init() {
   vm()->at_preload_init(this);
   syscallbuf_fds_disabled_child = get_syscallbuf_fds_disabled(this);
+  fd_table()->init_syscallbuf_fds_disabled(this);
 }
 
 template <typename Arch>

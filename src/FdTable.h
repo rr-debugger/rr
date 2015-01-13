@@ -27,9 +27,19 @@ public:
     return fds;
   }
 
+  bool is_monitoring(int fd) { return fds.count(fd) > 0; }
+
+  /**
+   * Regenerate syscallbuf_fds_disabled in task |t|.
+   * Called during initialization of the preload library.
+   */
+  void init_syscallbuf_fds_disabled(Task* t);
+
 private:
   FdTable() {}
   FdTable(const FdTable& other) : fds(other.fds) {}
+
+  void update_syscallbuf_fds_disabled(int fd);
 
   std::unordered_map<int, FileMonitor::shr_ptr> fds;
 };
