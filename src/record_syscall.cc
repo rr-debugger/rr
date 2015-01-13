@@ -1150,37 +1150,6 @@ template <typename Arch> static bool is_stdio_fd(Task* t, int fd) {
   return false;
 }
 
-/**
- * |t| was descheduled while in a buffered syscall.  We don't
- * use scratch memory for the call, because the syscallbuf itself
- * is serving that purpose. More importantly, we *can't* set up
- * scratch for |t|, because it's already in the syscall. Instead, we will
- * record the syscallbuf memory in rec_process_syscall_arch.
- *
- * Returns ALLOW_SWITCH if the syscall should be interruptible, PREVENT_SWITCH
- * otherwise.
- */
-template <typename Arch>
-static Switchable prepare_deschedule(Task* t, TaskSyscallState& syscall_state,
-                                     int syscallno) {
-  const struct syscallbuf_record* rec = t->desched_rec();
-
-  assert(rec);
-  ASSERT(t, syscallno == rec->syscallno) << "Syscallbuf records syscall "
-                                         << t->syscall_name(rec->syscallno)
-                                         << ", but expecting "
-                                         << t->syscall_name(syscallno);
-
-  switch (syscallno) {
-    case Arch::write:
-    case Arch::writev:
-      return is_stdio_fd<Arch>(t, (int)t->regs().arg1_signed()) ? PREVENT_SWITCH
-                                                                : ALLOW_SWITCH;
-    default:
-      return ALLOW_SWITCH;
-  }
-}
-
 static bool exec_file_supported(const string& file_name) {
 #if defined(__i386__)
   /* All this function does is reject 64-bit ELF binaries. Everything
@@ -1443,7 +1412,13 @@ static Switchable rec_prepare_syscall_arch(Task* t,
   int syscallno = t->ev().Syscall().number;
 
   if (t->desched_rec()) {
-    return prepare_deschedule<Arch>(t, syscall_state, syscallno);
+    /* |t| was descheduled while in a buffered syscall.  We don't
+     * use scratch memory for the call, because the syscallbuf itself
+     * is serving that purpose. More importantly, we *can't* set up
+     * scratch for |t|, because it's already in the syscall. Instead, we will
+     * record the syscallbuf memory in rec_process_syscall_arch.
+     */
+    return ALLOW_SWITCH;
   }
 
   if (syscallno < 0) {
