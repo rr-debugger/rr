@@ -284,6 +284,7 @@ Task::~Task() {
   session().on_destroy(this);
   tg->erase_task(this);
   as->erase_task(this);
+  fds->erase_task(this);
 
   destroy_local_buffers();
 
@@ -910,6 +911,7 @@ void Task::post_exec(const Registers* replay_regs) {
   session().post_exec();
 
   as->erase_task(this);
+  fds->erase_task(this);
 
   if (replay_regs) {
     registers = *replay_regs;
@@ -941,7 +943,8 @@ void Task::post_exec(const Registers* replay_regs) {
   sighandlers->reset_user_handlers(arch());
 
   as = session().create_vm(this, execve_file);
-  // XXX should we re-create our TaskGroup here too?
+  // It's barely-documented, but Linux unshares the fd table on exec
+  fds = fds->clone(this);
   prname = prname_from_exe_image(as->exe_image());
 }
 
@@ -1867,7 +1870,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   if (CLONE_SHARE_FILES & flags) {
     t->fds = fds;
   } else {
-    t->fds = FdTable::shr_ptr(new FdTable(*fds));
+    t->fds = fds->clone(t);
   }
   if (!stack.is_null()) {
     const Mapping& m =
@@ -2658,7 +2661,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
   t->tg.swap(g);
   auto as = session.create_vm(t, trace.initial_exe());
   t->as.swap(as);
-  t->fds = FdTable::shr_ptr(new FdTable());
+  t->fds = FdTable::create(t);
 
   // Sync with the child process.
   intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
