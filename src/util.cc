@@ -102,8 +102,9 @@ void dump_binary_data(const char* filename, const char* label,
   fclose(out);
 }
 
-void format_dump_filename(Task* t, int global_time, const char* tag,
-                          char* filename, size_t filename_size) {
+void format_dump_filename(Task* t, TraceFrame::Time global_time,
+                          const char* tag, char* filename,
+                          size_t filename_size) {
   snprintf(filename, filename_size - 1, "%s/%d_%d_%s", t->trace_dir().c_str(),
            t->rec_tid, global_time, tag);
 }

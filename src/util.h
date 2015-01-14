@@ -64,8 +64,9 @@ void dump_binary_data(const char* filename, const char* label,
  * "trace_0/12345_111_foo".  The returned name is not guaranteed to be
  * unique, caveat emptor.
  */
-void format_dump_filename(Task* t, int global_time, const char* tag,
-                          char* filename, size_t filename_size);
+void format_dump_filename(Task* t, TraceFrame::Time global_time,
+                          const char* tag, char* filename,
+                          size_t filename_size);
 
 /**
  * Return true if the user requested memory be dumped for |t| at |f|.
