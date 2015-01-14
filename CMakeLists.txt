@@ -313,6 +313,9 @@ set(BASIC_TESTS
   sock_names_opts
   splice
   statfs
+  stdout_child
+  stdout_dup
+  stdout_redirect
   strict_priorities
   switch_read
   syscallbuf_timeslice
