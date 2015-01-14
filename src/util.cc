@@ -127,7 +127,8 @@ bool should_dump_memory(Task* t, const TraceFrame& f) {
          flags->dump_at == int(f.time());
 }
 
-void dump_process_memory(Task* t, int global_time, const char* tag) {
+void dump_process_memory(Task* t, TraceFrame::Time global_time,
+                         const char* tag) {
   char filename[PATH_MAX];
   FILE* dump_file;
 
@@ -155,8 +156,8 @@ void dump_process_memory(Task* t, int global_time, const char* tag) {
   fclose(dump_file);
 }
 
-static void notify_checksum_error(Task* t, int global_time, unsigned checksum,
-                                  unsigned rec_checksum,
+static void notify_checksum_error(Task* t, TraceFrame::Time global_time,
+                                  unsigned checksum, unsigned rec_checksum,
                                   const string& raw_map_line) {
   char cur_dump[PATH_MAX];
   char rec_dump[PATH_MAX];
@@ -205,7 +206,7 @@ enum ChecksumMode {
 struct checksum_iterator_data {
   ChecksumMode mode;
   FILE* checksums_file;
-  int global_time;
+  TraceFrame::Time global_time;
 };
 
 static bool checksum_segment_filter(const Mapping& m,
@@ -235,7 +236,8 @@ static bool checksum_segment_filter(const Mapping& m,
  * address space, or validate an existing computed checksum.  Behavior
  * is selected by |mode|.
  */
-static void iterate_checksums(Task* t, ChecksumMode mode, int global_time) {
+static void iterate_checksums(Task* t, ChecksumMode mode,
+                              TraceFrame::Time global_time) {
   struct checksum_iterator_data c;
   memset(&c, 0, sizeof(c));
   char filename[PATH_MAX];
@@ -361,11 +363,11 @@ bool should_checksum(Task* t, const TraceFrame& f) {
   return checksum <= int(f.time());
 }
 
-void checksum_process_memory(Task* t, int global_time) {
+void checksum_process_memory(Task* t, TraceFrame::Time global_time) {
   iterate_checksums(t, STORE_CHECKSUMS, global_time);
 }
 
-void validate_process_memory(Task* t, int global_time) {
+void validate_process_memory(Task* t, TraceFrame::Time global_time) {
   iterate_checksums(t, VALIDATE_CHECKSUMS, global_time);
 }
 

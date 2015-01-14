@@ -59,7 +59,7 @@ void dump_binary_data(const char* filename, const char* label,
  * Format a suitable filename within the trace directory for dumping
  * information about |t| at the current global time, to a file that
  * contains |tag|.  The constructed filename is returned through
- * |filename|.  For example, a filename for a task with tid 12345 at
+ * |filename|.  For example, a filengit logame for a task with tid 12345 at
  * time 111, for a file tagged "foo", would be something like
  * "trace_0/12345_111_foo".  The returned name is not guaranteed to be
  * unique, caveat emptor.
@@ -76,7 +76,8 @@ bool should_dump_memory(Task* t, const TraceFrame& f);
  * Dump all of the memory in |t|'s address to the file
  * "[trace_dir]/[t->tid]_[global_time]_[tag]".
  */
-void dump_process_memory(Task* t, int global_time, const char* tag);
+void dump_process_memory(Task* t, TraceFrame::Time global_time,
+                         const char* tag);
 
 /**
  * Return true if the user has requested |t|'s memory be
@@ -88,12 +89,12 @@ bool should_checksum(Task* t, const TraceFrame& f);
  * special log, where it can be read by |validate_process_memory()|
  * during replay.
  */
-void checksum_process_memory(Task* t, int global_time);
+void checksum_process_memory(Task* t, TraceFrame::Time global_time);
 /**
  * Validate the checksum of |t|'s address space that was written
  * during recording.
  */
-void validate_process_memory(Task* t, int global_time);
+void validate_process_memory(Task* t, TraceFrame::Time global_time);
 
 /**
  * Return nonzero if the rr session is probably not interactive (that
