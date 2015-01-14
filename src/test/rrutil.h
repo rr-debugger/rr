@@ -84,15 +84,6 @@ typedef unsigned char uint8_t;
     }                                                                          \
   } while (0)
 
-#if (defined(__linux__) && (defined(__i386__) || defined(__x86_64__)) &&       \
-     defined(_BITS_PTHREADTYPES_H))
-#define PTHREAD_SPINLOCK_INITIALIZER (1)
-#else
-#error "Sorry, pthread_spinlock_t initializer unknown for this arch."
-#endif
-
-static pthread_spinlock_t printf_lock = PTHREAD_SPINLOCK_INITIALIZER;
-
 /**
  * Print the printf-like arguments to stdout as atomic-ly as we can
  * manage.  Async-signal-safe.  Does not flush stdio buffers (doing so
@@ -104,28 +95,11 @@ __attribute__((format(printf, 1,
   va_list args;
   char buf[1024];
   int len;
-  ssize_t ret;
 
   va_start(args, fmt);
   len = vsnprintf(buf, sizeof(buf) - 1, fmt, args);
   va_end(args);
-  {
-    /* NBB: this spin lock isn't strictly signal-safe.
-     * However, we're trading one class of fairly frequent
-     * spurious failures with stdio for what (should!) be
-     * a less frequent class of failures with this
-     * non-reentrant spinlock.
-     *
-     * If your test mysteriously hangs with 100% CPU
-     * usage, this is a potential suspect.
-     *
-     * TODO: it's possible to fix this bug, but not
-     * trivial.  Play it by ear. */
-    pthread_spin_lock(&printf_lock);
-    ret = write(STDOUT_FILENO, buf, len);
-    pthread_spin_unlock(&printf_lock);
-  }
-  return ret;
+  return write(STDOUT_FILENO, buf, len);
 }
 
 /**
