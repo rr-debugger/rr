@@ -51,12 +51,13 @@ function delay_kill { sig=$1; delay_secs=$2; proc=$3
 
     kill -s $sig $pid
     if [[ $? != 0 ]]; then
-        leave_data=y
-        echo FAILED: signal $sig not delivered to "'$proc'" >&2
-        exit 1
+        # Sometimes we fail to deliver a signal to a process because
+        # it finished first (due to scheduling races). That's a benign
+        # failure.
+        echo signal $sig not delivered to "'$proc'", letting test succeed anyway
+    else
+        echo Successfully delivered signal $sig to "'$proc'"
     fi
-
-    echo Successfully delivered signal $sig to "'$proc'"
 }
 
 function fatal { #...
@@ -193,6 +194,8 @@ function record { exe=$1;
 #  record_async_signal <signal> <delay-secs> <test>
 #
 # Record $test, delivering $signal to it after $delay-secs.
+# If for some reason delay_kill doesn't run in time, the signal
+# will not be delivered but the test will not be aborted.
 function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
     delay_kill $sig $delay_secs $exe-$nonce &
     record $exe $exeargs
