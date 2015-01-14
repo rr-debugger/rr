@@ -100,6 +100,7 @@ add_executable(rr
   src/kernel_abi.cc
   src/kernel_metadata.cc
   src/log.cc
+  src/MagicSaveDataMonitor.cc
   src/main.cc
   src/Monkeypatcher.cc
   src/PerfCounters.cc

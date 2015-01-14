@@ -74,7 +74,6 @@
 #include <unistd.h>
 
 /* NB: don't include any other local headers here. */
-#include "rr/rr.h"
 
 #ifdef memcpy
 #undef memcpy
@@ -1624,12 +1623,7 @@ static long sys_write(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  /* We always have to trap for writes to the magic save-data
-   * fd, because the rr tracer processes them specially.
-   *
-   * TODO: buffer them normally here. */
-  if (RR_MAGIC_SAVE_DATA_FD == fd ||
-      !start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
   }
 

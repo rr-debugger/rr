@@ -20,14 +20,17 @@
 #include <limits>
 #include <set>
 
+#include <rr/rr.h>
+
 #include "preload/preload_interface.h"
 
+#include "AutoRemoteSyscalls.h"
 #include "CPUIDBugDetector.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
 #include "log.h"
-#include "AutoRemoteSyscalls.h"
+#include "MagicSaveDataMonitor.h"
 #include "RecordSession.h"
 #include "record_signal.h"
 #include "ReplaySession.h"
@@ -1769,16 +1772,23 @@ bool Task::try_wait() {
  * that rr bugs don't adversely affect the underlying system.
  */
 static void set_up_process() {
-  int orig_pers;
-
   /* TODO tracees can probably undo some of the setup below
    * ... */
+
+  int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
+  if (0 > fd) {
+    FATAL() << "error opening /dev/null";
+  }
+  if (RR_MAGIC_SAVE_DATA_FD != dup2(fd, RR_MAGIC_SAVE_DATA_FD)) {
+    FATAL() << "error duping to RR_MAGIC_SAVE_DATA_FD";
+  }
 
   /* Disable address space layout randomization, for obvious
    * reasons, and ensure that the layout is otherwise well-known
    * ("COMPAT").  For not-understood reasons, "COMPAT" layouts
    * have been observed in certain recording situations but not
    * in replay, which causes divergence. */
+  int orig_pers;
   if (0 > (orig_pers = personality(0xffffffff))) {
     FATAL() << "error getting personaity";
   }
@@ -2601,6 +2611,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
 static void setup_fd_table(FdTable& fds) {
   fds.add_monitor(STDOUT_FILENO, new StdioMonitor(STDOUT_FILENO));
   fds.add_monitor(STDERR_FILENO, new StdioMonitor(STDERR_FILENO));
+  fds.add_monitor(RR_MAGIC_SAVE_DATA_FD, new MagicSaveDataMonitor());
 }
 
 /*static*/ Task* Task::spawn(Session& session, const TraceStream& trace,

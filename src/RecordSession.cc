@@ -808,7 +808,6 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
         }
 
         t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
-        rec_before_record_syscall_entry(t, t->ev().Syscall().number);
       }
       ASSERT(t, EV_SYSCALL == t->ev().type());
       check_perf_counters_working(t, step_result);

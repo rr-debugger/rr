@@ -675,28 +675,6 @@ void TaskSyscallState::process_syscall_results() {
 }
 
 template <typename Arch>
-static void rec_before_record_syscall_entry_arch(Task* t, int syscallno) {
-  if (Arch::write != syscallno) {
-    return;
-  }
-  int fd = t->regs().arg1_signed();
-  if (RR_MAGIC_SAVE_DATA_FD != fd) {
-    return;
-  }
-  remote_ptr<void> buf = t->regs().arg2();
-  size_t len = t->regs().arg3();
-
-  ASSERT(t, buf) << "Can't save a null buffer";
-
-  t->record_remote(buf, len);
-}
-
-void rec_before_record_syscall_entry(Task* t, int syscallno) {
-  RR_ARCH_FUNCTION(rec_before_record_syscall_entry_arch, t->arch(), t,
-                   syscallno)
-}
-
-template <typename Arch>
 static void prepare_recvmsg(Task* t, TaskSyscallState& syscall_state,
                             remote_ptr<typename Arch::msghdr> msgp,
                             const ParamSize& io_size) {

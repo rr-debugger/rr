@@ -24,8 +24,6 @@
 #include <sstream>
 #include <string>
 
-#include <rr/rr.h>
-
 #include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
@@ -786,76 +784,6 @@ static void process_init_buffers(Task* t, SyscallEntryOrExit state,
   t->validate_regs();
 }
 
-static void dump_path_data(Task* t, int global_time, const char* tag,
-                           char* filename, size_t filename_size,
-                           const void* buf, size_t buf_len,
-                           remote_ptr<void> addr) {
-  format_dump_filename(t, global_time, tag, filename, filename_size);
-  dump_binary_data(filename, tag, (const uint32_t*)buf, buf_len / 4, addr);
-}
-
-static void notify_save_data_error(Task* t, remote_ptr<void> addr,
-                                   const void* rec_buf, size_t rec_buf_len,
-                                   const void* rep_buf, size_t rep_buf_len) {
-  char rec_dump[PATH_MAX];
-  char rep_dump[PATH_MAX];
-  int global_time = t->current_trace_frame().time();
-
-  dump_path_data(t, global_time, "rec_save_data", rec_dump, sizeof(rec_dump),
-                 rec_buf, rec_buf_len, addr);
-  dump_path_data(t, global_time, "rep_save_data", rep_dump, sizeof(rep_dump),
-                 rep_buf, rep_buf_len, addr);
-
-  ASSERT(t,
-         (rec_buf_len == rep_buf_len && !memcmp(rec_buf, rep_buf, rec_buf_len)))
-      << "Divergence in contents of 'tracee-save buffer'.  Recording executed\n"
-         "\n"
-         "  write(" << RR_MAGIC_SAVE_DATA_FD << ", " << addr << ", "
-      << rec_buf_len << ")\n"
-                        "\n"
-                        "and replay executed\n"
-                        "\n"
-                        "  write(" << RR_MAGIC_SAVE_DATA_FD << ", " << addr
-      << ", " << rep_buf_len
-      << ")\n"
-         "\n"
-         "The contents of the tracee-save buffers have been dumped to disk.\n"
-         "Compare them by using the following command\n"
-         "\n"
-         "$ diff -u " << rec_dump << " " << rep_dump
-      << " >save-data-diverge.diff\n";
-}
-
-/**
- * If the tracee saved data in this syscall to the magic save-data fd,
- * read and check the replay buffer against the one saved during
- * recording.
- */
-static void maybe_verify_tracee_saved_data(Task* t, const Registers& rec_regs) {
-  int fd = rec_regs.arg1_signed();
-  remote_ptr<void> rep_addr = rec_regs.arg2();
-  size_t rep_len = rec_regs.arg3();
-
-  if (RR_MAGIC_SAVE_DATA_FD != fd) {
-    return;
-  }
-
-  auto rec = t->trace_reader().read_raw_data();
-
-  // If the data address changed, something disastrous happened
-  // and the buffers aren't comparable.  Just bail.
-  ASSERT(t, rec.addr == rep_addr) << "Recorded write(" << rec.addr
-                                  << ") being replayed as write(" << rep_addr
-                                  << ")";
-
-  uint8_t rep_buf[rep_len];
-  t->read_bytes_helper(rep_addr, sizeof(rep_buf), rep_buf);
-  if (rec.data.size() != rep_len || memcmp(rec.data.data(), rep_buf, rep_len)) {
-    notify_save_data_error(t, rec.addr, rec.data.data(), rec.data.size(),
-                           rep_buf, rep_len);
-  }
-}
-
 template <typename Arch>
 static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
   switch (syscallno) {
@@ -864,8 +792,6 @@ static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
       return;
 
     case Arch::write:
-      maybe_verify_tracee_saved_data(t, t->current_trace_frame().regs());
-    // fall through
     case Arch::writev: {
       int fd = (int)t->regs().arg1_signed();
       t->fd_table()->will_write(t, fd);
