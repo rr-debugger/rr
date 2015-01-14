@@ -2269,9 +2269,8 @@ bool Task::is_desched_sig_blocked() {
   return is_sig_blocked(SYSCALLBUF_DESCHED_SIGNAL);
 }
 
-/** Send |sig| to task |tid| within group |tgid|. */
-static int sys_tgkill(pid_t tgid, pid_t tid, int sig) {
-  return syscall(SYS_tgkill, tgid, tid, SIGKILL);
+void Task::tgkill(int sig) {
+  syscall(SYS_tgkill, real_tgid(), tid, sig);
 }
 
 void Task::kill() {
@@ -2279,7 +2278,7 @@ void Task::kill() {
   if (!stable_exit) {
     // If we haven't already done a stable exit via syscall,
     // kill the task and note that the entire task group is unstable.
-    sys_tgkill(real_tgid(), tid, SIGKILL);
+    tgkill(SIGKILL);
     tg->destabilize();
   }
 }

@@ -1211,6 +1211,9 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       tracee->set_emulated_ptracer(t);
       syscall_state.emulate_result(0);
       if (tracee->emulated_stop_type == NOT_STOPPED) {
+        // Send SIGSTOP to this specific thread. Otherwise the kernel might
+        // deliver SIGSTOP to some other thread of the process, and we won't
+        // generate any ptrace event if that thread isn't being ptraced.
         kill(tracee->tid, SIGSTOP);
       } else {
         ASSERT(tracee, tracee->emulated_stop_type == GROUP_STOP);

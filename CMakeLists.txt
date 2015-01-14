@@ -277,6 +277,7 @@ set(BASIC_TESTS
   ptrace_attach_running
   ptrace_attach_sleeping
   ptrace_attach_stopped
+  ptrace_attach_thread_running
   ptracer_death
   ptracer_death_multithread
   ptracer_death_multithread_peer
