@@ -314,6 +314,7 @@ set(BASIC_TESTS
   splice
   statfs
   stdout_child
+  stdout_cloexec
   stdout_dup
   stdout_redirect
   strict_priorities
