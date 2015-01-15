@@ -1214,7 +1214,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
         // Send SIGSTOP to this specific thread. Otherwise the kernel might
         // deliver SIGSTOP to some other thread of the process, and we won't
         // generate any ptrace event if that thread isn't being ptraced.
-        kill(tracee->tid, SIGSTOP);
+        tracee->tgkill(SIGSTOP);
       } else {
         ASSERT(tracee, tracee->emulated_stop_type == GROUP_STOP);
         // tracee is already stopped because of a group-stop signal.
