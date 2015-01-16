@@ -1465,12 +1465,25 @@ const vector<uint8_t>& Task::signal_action(int sig) const {
 }
 
 void Task::stash_sig() {
-  assert(pending_sig());
+  int sig = pending_sig();
+  assert(sig);
+  // multiple non-RT signals coalesce
+  if (sig < SIGRTMIN) {
+    for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
+      if (it->si.si_signo == sig) {
+        LOG(debug) << "discarding stashed signal " << sig
+                   << " since we already have one pending";
+        return;
+      }
+    }
+  }
+
   ASSERT(this, !has_stashed_sig()) << "Tried to stash "
-                                   << signal_name(pending_sig()) << " when "
+                                   << signal_name(sig) << " when "
                                    << signal_name(
                                           stashed_signals.back().si.si_signo)
                                    << " was already stashed.";
+
   const siginfo_t& si = get_siginfo();
   stashed_signals.push_back(StashedSignal(si, wait_status));
 }

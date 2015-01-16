@@ -633,13 +633,9 @@ static void handle_siginfo(Task* t, siginfo_t* si) {
   record_signal(t, si);
 }
 
-void handle_signal(Task* t, siginfo_t* si) {
-  assert(t->pending_sig());
+void handle_signal(Task* t) {
+  assert(t->has_stashed_sig());
 
-  siginfo_t local_si;
-  if (!si) {
-    local_si = t->get_siginfo();
-    si = &local_si;
-  }
-  handle_siginfo(t, si);
+  siginfo_t si = t->pop_stash_sig();
+  handle_siginfo(t, &si);
 }

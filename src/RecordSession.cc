@@ -754,31 +754,28 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
     return;
   }
 
-  siginfo_t* si = nullptr;
-  siginfo_t stash;
-  if (t->has_stashed_sig()) {
-    stash = t->pop_stash_sig();
-    si = &stash;
-    LOG(debug) << "pulled " << signal_name(t->pending_sig()) << " out of stash";
+  if (t->pending_sig()) {
+    if (!can_deliver_signals) {
+      // If the initial tracee isn't prepared to handle
+      // signals yet, then us ignoring the ptrace
+      // notification here will have the side effect of
+      // declining to deliver the signal.
+      //
+      // This doesn't really occur in practice, only in
+      // tests that force a degenerately low time slice.
+      LOG(warn) << "Dropping " << signal_name(t->pending_sig())
+                << " because it can't be delivered yet";
+      // No events to be recorded, so no syscallbuf updates
+      // needed.
+      return;
+    }
+    t->stash_sig();
   }
 
-  if (t->pending_sig() && can_deliver_signals) {
+  if (t->has_stashed_sig() && can_deliver_signals) {
     // This will either push a new signal event, new
     // desched + syscall-interruption events, or no-op.
-    handle_signal(t, si);
-  } else if (t->pending_sig()) {
-    // If the initial tracee isn't prepared to handle
-    // signals yet, then us ignoring the ptrace
-    // notification here will have the side effect of
-    // declining to deliver the signal.
-    //
-    // This doesn't really occur in practice, only in
-    // tests that force a degenerately low time slice.
-    LOG(warn) << "Dropping " << signal_name(t->pending_sig())
-              << " because it can't be delivered yet";
-    // No events to be recorded, so no syscallbuf updates
-    // needed.
-    return;
+    handle_signal(t);
   }
 
   switch (t->ev().type()) {

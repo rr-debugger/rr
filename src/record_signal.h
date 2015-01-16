@@ -10,10 +10,8 @@ class Task;
 const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
 
 /**
- * Handle the pending signal for |t|.  To force delivery/handling of a
- * particular signal, pass a pointer to the siginfo in |si|.
- * Otherwise this function determines the pending signal info.
+ * Handle the next stashed signal for |t|.
  */
-void handle_signal(Task* t, siginfo_t* si);
+void handle_signal(Task* t);
 
 #endif /* RR_HANDLE_SIGNAL_H__ */
