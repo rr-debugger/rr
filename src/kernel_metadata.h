@@ -42,6 +42,11 @@ const char* signal_name(int sig);
 bool is_always_emulated_syscall(int syscall, SupportedArch arch);
 
 /**
+ * Return true if this is some kind of sigreturn syscall.
+ */
+bool is_sigreturn(int syscall, SupportedArch arch);
+
+/**
  * Return the symbolic error name (e.g. "EINVAL") for errno.
  */
 const char* errno_name(int err);

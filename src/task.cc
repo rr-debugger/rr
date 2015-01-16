@@ -992,8 +992,7 @@ static bool record_extra_regs(const Event& ev) {
   switch (ev.type()) {
     case EV_SYSCALL:
       // sigreturn/rt_sigreturn restores register state
-      return (is_rt_sigreturn_syscall(ev.Syscall().number, ev.arch()) ||
-              is_sigreturn_syscall(ev.Syscall().number, ev.arch())) &&
+      return is_sigreturn(ev.Syscall().number, ev.arch()) &&
              ev.Syscall().state == EXITING_SYSCALL;
     case EV_SIGNAL_HANDLER:
       // entering a signal handler seems to clear FP/SSE regs,
@@ -2269,9 +2268,7 @@ bool Task::is_desched_sig_blocked() {
   return is_sig_blocked(SYSCALLBUF_DESCHED_SIGNAL);
 }
 
-void Task::tgkill(int sig) {
-  syscall(SYS_tgkill, real_tgid(), tid, sig);
-}
+void Task::tgkill(int sig) { syscall(SYS_tgkill, real_tgid(), tid, sig); }
 
 void Task::kill() {
   LOG(debug) << "sending SIGKILL to " << tid << " ...";

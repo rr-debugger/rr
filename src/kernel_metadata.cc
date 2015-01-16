@@ -133,6 +133,11 @@ bool is_always_emulated_syscall(int syscall, SupportedArch arch) {
   RR_ARCH_FUNCTION(is_always_emulated_syscall_arch, arch, syscall);
 }
 
+bool is_sigreturn(int syscallno, SupportedArch arch) {
+  return is_sigreturn_syscall(syscallno, arch) ||
+         is_rt_sigreturn_syscall(syscallno, arch);
+}
+
 const char* errno_name(int err) {
   switch (err) {
     case 0:

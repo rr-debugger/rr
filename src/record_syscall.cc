@@ -2032,8 +2032,7 @@ Switchable rec_prepare_syscall(Task* t) {
 
   Switchable s = rec_prepare_syscall_internal(t, syscall_state);
   int syscallno = t->ev().Syscall().number;
-  if (is_sigreturn_syscall(syscallno, t->arch()) ||
-      is_rt_sigreturn_syscall(syscallno, t->arch())) {
+  if (is_sigreturn(syscallno, t->arch())) {
     // There isn't going to be an exit event for this syscall, so remove
     // syscall_state now.
     syscall_state_property.remove(*t);

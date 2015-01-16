@@ -487,8 +487,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid) {
       // preparing the tracee for a restart-syscall.  So we
       // take this opportunity to possibly pop an
       // interrupted-syscall event.
-      if (is_sigreturn_syscall(syscallno, t->arch()) ||
-          is_rt_sigreturn_syscall(syscallno, t->arch())) {
+      if (is_sigreturn(syscallno, t->arch())) {
         ASSERT(t, t->regs().original_syscallno() == -1);
         t->record_current_event();
         t->pop_syscall();
