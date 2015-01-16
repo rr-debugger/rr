@@ -261,6 +261,7 @@ set(BASIC_TESTS
   mremap
   msg
   msync
+  multiple_pending_signals
   munmap_discontinuous
   no_mask_timeslice
   old_fork

@@ -13,6 +13,7 @@ int main(int argc, char* argv[]) {
   struct sigaction old_sa;
 
   sa.sa_sigaction = handler1;
+  sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_SIGINFO;
   sigaction(SIGUSR1, &sa, NULL);
 

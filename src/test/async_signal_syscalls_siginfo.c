@@ -45,6 +45,7 @@ int main(int argc, char** argv) {
   atomic_printf("Running 2^%d iterations\n", num_its);
 
   sa.sa_flags = SA_SIGINFO;
+  sigemptyset(&sa.sa_mask);
   sa.sa_sigaction = handle_usr1;
   sigaction(SIGUSR1, &sa, NULL);
 

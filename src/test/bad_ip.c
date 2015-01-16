@@ -12,8 +12,8 @@ static void sighandler(int sig, siginfo_t* si, void* utp) {
 int main(void) {
   struct sigaction act;
 
-  memset(&act, 0, sizeof(act));
   act.sa_sigaction = sighandler;
+  sigemptyset(&act.sa_mask);
   act.sa_flags = SA_SIGINFO;
   sigaction(SIGSEGV, &act, NULL);
 

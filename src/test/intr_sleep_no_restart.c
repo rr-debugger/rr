@@ -45,13 +45,13 @@ static void* reader_thread(void* dontcare) {
 
   reader_tid = sys_gettid();
 
-  memset(&act, 0, sizeof(act));
   act.sa_handler = sighandler;
+  sigemptyset(&act.sa_mask);
   act.sa_flags = flags;
   sigaction(SIGUSR1, &act, NULL);
 
-  memset(&act, 0, sizeof(act));
   act.sa_handler = sighandler2;
+  sigemptyset(&act.sa_mask);
   act.sa_flags = flags;
   sigaction(SIGUSR2, &act, NULL);
 

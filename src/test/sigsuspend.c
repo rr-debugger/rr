@@ -30,15 +30,16 @@ static void handle_signal(int sig, siginfo_t* si, void* ctx) {
 }
 
 int main(int argc, char* argv[]) {
-  struct sigaction sa = { { 0 } };
+  struct sigaction sa;
   pthread_t t;
   sigset_t mask;
   int ret;
   struct timespec ts;
-  siginfo_t si = { 0 };
+  siginfo_t si;
 
   sa.sa_sigaction = handle_signal;
-  sa.sa_flags |= SA_SIGINFO;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_SIGINFO;
   sigaction(SIGUSR1, &sa, NULL);
   sigaction(SIGUSR2, &sa, NULL);
 
