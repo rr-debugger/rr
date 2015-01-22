@@ -137,6 +137,14 @@ if [[ "$?" != "0" ]]; then
     fatal FAILED: rr not found in PATH "($PATH)"
 fi
 
+if [[ ! -d $SRCDIR ]]; then
+    fatal FAILED: SRCDIR "($SRCDIR)" not found. objdir and srcdir must share the same parent.
+fi
+
+if [[ ! -d $TESTDIR ]]; then
+    fatal FAILED: TESTDIR "($TESTDIR)" not found.
+fi
+
 # NB: must set up the trap handler *before* mktemp
 trap onexit EXIT
 workdir=`mktemp -dt rr-test-$TESTNAME-XXXXXXXXX`
