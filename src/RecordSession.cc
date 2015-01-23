@@ -946,18 +946,18 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
 
-  NeedTaskContinue need_task_continue = NEED_TASK_CONTINUE;
-  ForceSyscall force_cont = DEFAULT_CONT;
-
-  handle_ptrace_event(t, &force_cont);
-
   if (t->unstable) {
-    // Do not record non-ptrace events for tasks in
+    // Do not record non-ptrace-exit events for tasks in
     // an unstable exit. We can't replay them.
     LOG(debug) << "Task in unstable exit; "
                   "refusing to record non-ptrace events";
     return result;
   }
+
+  NeedTaskContinue need_task_continue = NEED_TASK_CONTINUE;
+  ForceSyscall force_cont = DEFAULT_CONT;
+
+  handle_ptrace_event(t, &force_cont);
 
   switch (t->ev().type()) {
     case EV_DESCHED:
@@ -983,7 +983,6 @@ RecordSession::RecordResult RecordSession::record_step() {
     resume_execution(t, need_task_continue, force_cont);
   }
 
-  // runnable_state_changed can detect errors that
   runnable_state_changed(t, &result);
 
   return result;
