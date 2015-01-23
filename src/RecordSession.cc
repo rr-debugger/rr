@@ -125,17 +125,15 @@ static void handle_seccomp_event(Task* t) {
 }
 
 void RecordSession::handle_ptrace_event(Task* t, ForceSyscall* force_cont) {
-  /* handle events */
   int event = t->ptrace_event();
-  if (event != PTRACE_EVENT_NONE) {
-    LOG(debug) << "  " << t->tid << ": handle_ptrace_event " << event
-               << ": event " << t->ev();
+  if (event == PTRACE_EVENT_NONE) {
+    return;
   }
-  switch (event) {
-    case PTRACE_EVENT_NONE:
-    case PTRACE_EVENT_STOP:
-      break;
 
+  LOG(debug) << "  " << t->tid << ": handle_ptrace_event " << event
+             << ": event " << t->ev();
+
+  switch (event) {
     case PTRACE_EVENT_SECCOMP_OBSOLETE:
     case PTRACE_EVENT_SECCOMP:
       handle_seccomp_event(t);
@@ -739,14 +737,7 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
  * a new event that needs to be processed.  Prepare that new event.
  */
 void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result) {
-  // Have to disable context-switching until we know it's safe
-  // to allow switching the context.
-  t->switchable = PREVENT_SWITCH;
-
   if (t->ptrace_event()) {
-    if (t->ptrace_event() == PTRACE_EVENT_STOP) {
-      t->switchable = ALLOW_SWITCH;
-    }
     // A ptrace event arrived. The steps below are irrelevant
     // and potentially wrong because no ev() was pushed.
     // We prevent switching after most ptrace events to simplify possible
@@ -951,6 +942,16 @@ RecordSession::RecordResult RecordSession::record_step() {
     // an unstable exit. We can't replay them.
     LOG(debug) << "Task in unstable exit; "
                   "refusing to record non-ptrace events";
+    return result;
+  }
+
+  // Have to disable context-switching until we know it's safe
+  // to allow switching the context.
+  t->switchable = PREVENT_SWITCH;
+
+  if (t->ptrace_event() == PTRACE_EVENT_STOP) {
+    // We must allow switching away from this stopped task.
+    t->switchable = ALLOW_SWITCH;
     return result;
   }
 
