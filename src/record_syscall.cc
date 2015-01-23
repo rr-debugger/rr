@@ -2322,6 +2322,7 @@ template <typename Arch> static void process_fork(Task* t) {
   // The new tracee just "finished" a fork that was
   // started by its parent.  It has no pending events,
   // so it can be context-switched out.
+  new_task->has_run_to_a_stop = false;
   new_task->switchable = ALLOW_SWITCH;
 }
 
@@ -2441,6 +2442,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       // The new tracee just "finished" a clone that was
       // started by its parent.  It has no pending events,
       // so it can be context-switched out.
+      new_task->has_run_to_a_stop = false;
       new_task->switchable = ALLOW_SWITCH;
 
       break;

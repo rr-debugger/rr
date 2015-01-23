@@ -216,6 +216,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
     : switchable(),
       pseudo_blocked(false),
       succ_event_counter(),
+      has_run_to_a_stop(false),
       unstable(false),
       stable_exit(false),
       priority(_priority),
@@ -270,6 +271,7 @@ Task::~Task() {
     ASSERT(this, t->emulated_ptracer == this);
     t->emulated_ptracer = nullptr;
     t->emulated_stop_type = NOT_STOPPED;
+    t->has_run_to_a_stop = false;
   }
 
   assert(this == session().find_task(rec_tid));
@@ -1448,6 +1450,7 @@ void Task::signal_delivered(int sig) {
         LOG(debug) << "setting " << tid << " to NOT_STOPPED due to signal "
                    << sig;
         t->emulated_stop_type = NOT_STOPPED;
+        t->has_run_to_a_stop = false;
       }
       break;
   }
@@ -1745,6 +1748,7 @@ void Task::did_waitpid(int status) {
   }
 
   is_stopped = true;
+  has_run_to_a_stop = true;
   wait_status = status;
   if (ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
@@ -1983,6 +1987,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->write_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked), uint8_t(1));
   }
 
+  t->has_run_to_a_stop = false;
   return t;
 }
 
@@ -2759,6 +2764,7 @@ static void setup_fd_table(FdTable& fds) {
   }
   t->wait_status = 0;
   t->open_mem_fd();
+  t->has_run_to_a_stop = false;
   return t;
 }
 

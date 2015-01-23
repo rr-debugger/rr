@@ -11,7 +11,9 @@ const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
 
 /**
  * Handle the next stashed signal for |t|.
+ * Returns true if we handled the signal, false if we didn't handle the
+ * signal due to an emulated ptrace-stop.
  */
-void handle_signal(Task* t);
+bool handle_signal(Task* t);
 
 #endif /* RR_HANDLE_SIGNAL_H__ */

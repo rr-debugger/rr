@@ -13,6 +13,11 @@ enum ForceSyscall {
   FORCE_SYSCALL = 1
 };
 
+enum NeedTaskContinue {
+  DONT_NEED_TASK_CONTINUE = 0,
+  NEED_TASK_CONTINUE
+};
+
 /** Encapsulates additional session state related to recording. */
 class RecordSession : public Session {
 public:
@@ -79,7 +84,8 @@ private:
 
   void check_perf_counters_working(Task* t, RecordResult* step_result);
   void handle_ptrace_event(Task* t, ForceSyscall* force_cont);
-  void runnable_state_changed(Task* t, RecordResult* step_result);
+  void runnable_state_changed(Task* t, RecordResult* step_result,
+                              NeedTaskContinue* need_task_continue);
 
   TraceWriter trace_out;
   Scheduler scheduler_;
