@@ -671,7 +671,7 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
 
         t->ev().transform(EV_SIGNAL_HANDLER);
         t->signal_delivered(sig);
-        t->ev().Signal().delivered = 1;
+        t->ev().Signal().delivered = true;
       } else {
         LOG(debug) << "  " << t->tid << ": no user handler for "
                    << signal_name(sig);
@@ -703,27 +703,23 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
           t->ev().Signal().delivered ? ALLOW_SWITCH : PREVENT_SWITCH;
       return false;
     }
+
     case EV_SIGNAL_DELIVERY:
-      if (!t->ev().Signal().delivered) {
-        task_continue(t, DEFAULT_CONT, sig);
-        if (possibly_destabilizing_signal(t, sig,
-                                          t->ev().Signal().deterministic)) {
-          LOG(warn) << "Delivered core-dumping signal; may misrecord "
-                       "CLONE_CHILD_CLEARTID memory race";
-          t->destabilize_task_group();
-        }
-        t->signal_delivered(sig);
-        t->ev().Signal().delivered = 1;
+      ASSERT(t, !t->ev().Signal().delivered);
+      task_continue(t, DEFAULT_CONT, sig);
+      t->signal_delivered(sig);
+      if (possibly_destabilizing_signal(t, sig,
+                                        t->ev().Signal().deterministic)) {
+        LOG(warn) << "Delivered core-dumping signal; may misrecord "
+                     "CLONE_CHILD_CLEARTID memory race";
+        t->destabilize_task_group();
+        t->pop_signal_delivery();
         t->switchable = ALLOW_SWITCH;
         return false;
       }
-
-      // The tracee's waitpid status has changed, so we're finished
-      // delivering the signal.
-      assert(by_waitpid);
+      t->wait();
       t->pop_signal_delivery();
-      // The event we just |task_continue()|d to above is
-      // ready to be prepared.
+      t->switchable = PREVENT_SWITCH;
       return true;
 
     default:
@@ -952,6 +948,9 @@ RecordSession::RecordResult RecordSession::record_step() {
   if (t->ptrace_event() == PTRACE_EVENT_STOP) {
     // We must allow switching away from this stopped task.
     t->switchable = ALLOW_SWITCH;
+    // Next time this task gets scheduled, don't see this PTRACE_EVENT_STOP
+    // again!
+    t->wait_status = 0;
     return result;
   }
 

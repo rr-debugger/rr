@@ -1478,8 +1478,8 @@ void Task::stash_sig() {
     }
   }
 
-  ASSERT(this, !has_stashed_sig()) << "Tried to stash "
-                                   << signal_name(sig) << " when "
+  ASSERT(this, !has_stashed_sig()) << "Tried to stash " << signal_name(sig)
+                                   << " when "
                                    << signal_name(
                                           stashed_signals.back().si.si_signo)
                                    << " was already stashed.";
