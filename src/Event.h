@@ -164,17 +164,13 @@ struct SignalEvent : public BaseEvent {
   SignalEvent(int signo, SignalDeterministic deterministic, SupportedArch arch)
       : BaseEvent(HAS_EXEC_INFO, arch),
         number(signo),
-        deterministic(deterministic),
-        delivered(false) {}
+        deterministic(deterministic) {}
   // Signal number.
   int number;
   // True if this signal will be deterministically raised as the
   // side effect of retiring an instruction during replay, for
   // example |load $r 0x0| deterministically raises SIGSEGV.
   SignalDeterministic deterministic;
-  // True when this signal has been delivered by a ptrace()
-  // request.
-  bool delivered;
 };
 
 /**

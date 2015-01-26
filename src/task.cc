@@ -781,9 +781,8 @@ void Task::log_pending_events() const {
 }
 
 bool Task::may_be_blocked() const {
-  return (EV_SYSCALL == ev().type() &&
-          PROCESSING_SYSCALL == ev().Syscall().state) ||
-         (EV_SIGNAL_DELIVERY == ev().type() && ev().Signal().delivered);
+  return EV_SYSCALL == ev().type() &&
+         PROCESSING_SYSCALL == ev().Syscall().state;
 }
 
 template <typename Arch>

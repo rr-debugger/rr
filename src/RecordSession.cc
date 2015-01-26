@@ -671,10 +671,19 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
 
         t->ev().transform(EV_SIGNAL_HANDLER);
         t->signal_delivered(sig);
-        t->ev().Signal().delivered = true;
+        t->switchable = ALLOW_SWITCH;
       } else {
         LOG(debug) << "  " << t->tid << ": no user handler for "
                    << signal_name(sig);
+        // If we didn't set up the sighandler frame, we need
+        // to ensure that this tracee is scheduled next so
+        // that we can deliver the signal normally.  We have
+        // to do that because setting up the sighandler frame
+        // is synchronous, but delivery otherwise is async.
+        // But right after this, we may have to process some
+        // syscallbuf state, so we can't let the tracee race
+        // with us.
+        t->switchable = PREVENT_SWITCH;
       }
 
       // We record this data regardless to simplify replay.
@@ -690,22 +699,10 @@ static bool signal_state_changed(Task* t, bool by_waitpid) {
       // sigsuspend_blocked_sigs to indicate that future signals are not
       // being delivered by sigsuspend.
       t->sigsuspend_blocked_sigs = nullptr;
-
-      // If we didn't set up the sighandler frame, we need
-      // to ensure that this tracee is scheduled next so
-      // that we can deliver the signal normally.  We have
-      // to do that because setting up the sighandler frame
-      // is synchronous, but delivery otherwise is async.
-      // But right after this, we may have to process some
-      // syscallbuf state, so we can't let the tracee race
-      // with us.
-      t->switchable =
-          t->ev().Signal().delivered ? ALLOW_SWITCH : PREVENT_SWITCH;
       return false;
     }
 
     case EV_SIGNAL_DELIVERY:
-      ASSERT(t, !t->ev().Signal().delivered);
       task_continue(t, DEFAULT_CONT, sig);
       t->signal_delivered(sig);
       if (possibly_destabilizing_signal(t, sig,
