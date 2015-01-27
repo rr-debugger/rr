@@ -213,8 +213,7 @@ TaskGroup::~TaskGroup() {
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
            SupportedArch a)
-    : switchable(),
-      pseudo_blocked(false),
+    : pseudo_blocked(false),
       succ_event_counter(),
       has_run_to_a_stop(false),
       unstable(false),
@@ -535,10 +534,8 @@ void Task::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
 
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
-  fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s%s)<%p>\n", prname.c_str(),
-          tid, rec_tid, wait_status,
-          (!session().is_recording() || switchable) ? "" : " UNSWITCHABLE",
-          unstable ? " UNSTABLE" : "", this);
+  fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s)<%p>\n", prname.c_str(),
+          tid, rec_tid, wait_status, unstable ? " UNSTABLE" : "", this);
   if (session().is_recording()) {
     // TODO pending events are currently only meaningful
     // during recording.  We should change that

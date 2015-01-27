@@ -311,7 +311,7 @@ static void disarm_desched(Task* t) {
  * changed.  (For now, changes except the original desched'd syscall
  * being restarted.)
  */
-static void desched_state_changed(Task* t) {
+void RecordSession::desched_state_changed(Task* t) {
   switch (t->ev().Desched().state) {
     case IN_SYSCALL:
       LOG(debug) << "desched: IN_SYSCALL";
@@ -343,7 +343,7 @@ static void desched_state_changed(Task* t) {
       // We were just descheduled for potentially a long
       // time, and may have just had a signal become
       // pending.  Ensure we get another chance to run.
-      t->switchable = PREVENT_SWITCH;
+      last_task_switchable = PREVENT_SWITCH;
       return;
     }
     default:
@@ -428,8 +428,8 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
   to->set_arg6(from.arg6());
 }
 
-static void syscall_state_changed(Task* t, bool by_waitpid,
-                                  NeedTaskContinue* need_task_continue) {
+void RecordSession::syscall_state_changed(
+    Task* t, bool by_waitpid, NeedTaskContinue* need_task_continue) {
   switch (t->ev().Syscall().state) {
     case ENTERING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
@@ -446,7 +446,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid,
         t->ev().Syscall().regs = t->regs();
       }
 
-      t->switchable = rec_prepare_syscall(t);
+      last_task_switchable = rec_prepare_syscall(t);
 
       // Resume the syscall execution in the kernel context.
       t->cont_syscall_nonblocking();
@@ -466,7 +466,6 @@ static void syscall_state_changed(Task* t, bool by_waitpid,
                                    << " pending while in syscall???";
 
       t->ev().Syscall().state = EXITING_SYSCALL;
-      t->switchable = PREVENT_SWITCH;
       *need_task_continue = DONT_NEED_TASK_CONTINUE;
       return;
 
@@ -500,9 +499,7 @@ static void syscall_state_changed(Task* t, bool by_waitpid,
           desched_state_changed(t);
         }
 
-        // XXX probably not necessary to make the
-        // tracee unswitchable
-        t->switchable = PREVENT_SWITCH;
+        // XXX probably not necessary to leave the tracee unswitchable
         return;
       }
 
@@ -563,8 +560,6 @@ static void syscall_state_changed(Task* t, bool by_waitpid,
         t->ev().transform(EV_SYSCALL_INTERRUPTION);
         t->ev().Syscall().is_restart = true;
       }
-
-      t->switchable = PREVENT_SWITCH;
       return;
     }
 
@@ -621,8 +616,8 @@ void RecordSession::check_perf_counters_working(Task* t,
  * Return true if execution was incidentally resumed to a new event,
  * false otherwise.
  */
-static void signal_state_changed(Task* t, bool by_waitpid,
-                                 NeedTaskContinue* need_task_continue) {
+void RecordSession::signal_state_changed(Task* t, bool by_waitpid,
+                                         NeedTaskContinue* need_task_continue) {
   int sig = t->ev().Signal().number;
 
   switch (t->ev().type()) {
@@ -677,7 +672,7 @@ static void signal_state_changed(Task* t, bool by_waitpid,
 
         t->ev().transform(EV_SIGNAL_HANDLER);
         t->signal_delivered(sig);
-        t->switchable = ALLOW_SWITCH;
+        last_task_switchable = ALLOW_SWITCH;
       } else {
         LOG(debug) << "  " << t->tid << ": no user handler for "
                    << signal_name(sig);
@@ -689,7 +684,7 @@ static void signal_state_changed(Task* t, bool by_waitpid,
         // But right after this, we may have to process some
         // syscallbuf state, so we can't let the tracee race
         // with us.
-        t->switchable = PREVENT_SWITCH;
+        last_task_switchable = PREVENT_SWITCH;
       }
 
       // We record this data regardless to simplify replay.
@@ -717,12 +712,11 @@ static void signal_state_changed(Task* t, bool by_waitpid,
                      "CLONE_CHILD_CLEARTID memory race";
         t->destabilize_task_group();
         t->pop_signal_delivery();
-        t->switchable = ALLOW_SWITCH;
+        last_task_switchable = ALLOW_SWITCH;
         break;
       }
       t->wait();
       t->pop_signal_delivery();
-      t->switchable = PREVENT_SWITCH;
       break;
 
     default:
@@ -768,7 +762,7 @@ void RecordSession::runnable_state_changed(
     // desched + syscall-interruption events, or no-op --- or return false.
     if (!handle_signal(t)) {
       // Emulated ptrace-stop. Don't run the task again yet.
-      t->switchable = ALLOW_SWITCH;
+      last_task_switchable = ALLOW_SWITCH;
       t->has_run_to_a_stop = false;
       *need_task_continue = DONT_NEED_TASK_CONTINUE;
       return;
@@ -786,12 +780,12 @@ void RecordSession::runnable_state_changed(
     case EV_SEGV_RDTSC:
       t->record_current_event();
       t->pop_event(t->ev().type());
-      t->switchable = ALLOW_SWITCH;
+      last_task_switchable = ALLOW_SWITCH;
       break;
     case EV_SCHED:
       t->record_current_event();
       t->pop_event(t->ev().type());
-      t->switchable = ALLOW_SWITCH;
+      last_task_switchable = ALLOW_SWITCH;
       t->has_run_to_a_stop = false;
       *need_task_continue = DONT_NEED_TASK_CONTINUE;
       break;
@@ -911,6 +905,7 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       scheduler_(*this),
       last_recorded_task(nullptr),
       ignore_sig(0),
+      last_task_switchable(PREVENT_SWITCH),
       use_syscall_buffer_(!(flags & DISABLE_SYSCALL_BUF)),
       can_deliver_signals(false) {
   last_recorded_task = Task::spawn(*this, trace_out);
@@ -930,7 +925,8 @@ RecordSession::RecordResult RecordSession::record_step() {
   result.status = STEP_CONTINUE;
 
   bool by_waitpid;
-  Task* t = scheduler().get_next_thread(last_recorded_task, &by_waitpid);
+  Task* t = scheduler().get_next_thread(last_recorded_task,
+                                        last_task_switchable, &by_waitpid);
   if (!t) {
     // The scheduler was waiting for some task to become active, but was
     // interrupted by a signal. Yield to our caller now to give the caller
@@ -939,6 +935,10 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
   last_recorded_task = t;
+
+  // Have to disable context-switching until we know it's safe
+  // to allow switching the context.
+  last_task_switchable = PREVENT_SWITCH;
 
   LOG(debug) << "line " << t->trace_time() << ": Active task is " << t->tid
              << ". Events:";
@@ -958,18 +958,15 @@ RecordSession::RecordResult RecordSession::record_step() {
     // an unstable exit. We can't replay them.
     LOG(debug) << "Task in unstable exit; "
                   "refusing to record non-ptrace events";
+    last_task_switchable = ALLOW_SWITCH;
     return result;
   }
 
-  // Have to disable context-switching until we know it's safe
-  // to allow switching the context.
-  t->switchable = PREVENT_SWITCH;
-
   if (t->ptrace_event() == PTRACE_EVENT_STOP) {
-    // We must allow switching away from this stopped task.
-    t->switchable = ALLOW_SWITCH;
+    last_task_switchable = ALLOW_SWITCH;
     // Next time this task gets scheduled, don't see this PTRACE_EVENT_STOP
-    // again!
+    // again! Or any other related event, for that matter.
+    t->has_run_to_a_stop = false;
     t->wait_status = 0;
     return result;
   }

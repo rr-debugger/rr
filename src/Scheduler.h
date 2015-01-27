@@ -8,6 +8,7 @@
 
 #include "Ticks.h"
 #include "TraceFrame.h"
+#include "util.h"
 
 class RecordSession;
 class Task;
@@ -117,7 +118,7 @@ public:
    *
    * Return nullptr if an interrupt occurred while waiting on a tracee.
    */
-  Task* get_next_thread(Task* t, bool* by_waitpid);
+  Task* get_next_thread(Task* t, Switchable switchable, bool* by_waitpid);
 
   /**
    * Set the priority of |t| to |value| and update related

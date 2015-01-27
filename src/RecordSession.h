@@ -86,6 +86,11 @@ private:
   void handle_ptrace_event(Task* t, ForceSyscall* force_cont);
   void runnable_state_changed(Task* t, RecordResult* step_result,
                               NeedTaskContinue* need_task_continue);
+  void signal_state_changed(Task* t, bool by_waitpid,
+                            NeedTaskContinue* need_task_continue);
+  void syscall_state_changed(Task* t, bool by_waitpid,
+                             NeedTaskContinue* need_task_continue);
+  void desched_state_changed(Task* t);
 
   TraceWriter trace_out;
   Scheduler scheduler_;
@@ -93,9 +98,10 @@ private:
   TaskGroup::shr_ptr initial_task_group;
 
   int ignore_sig;
+  Switchable last_task_switchable;
   bool use_syscall_buffer_;
 
-  /* Nonzero when it's safe to deliver signals, namely, when the initial
+  /* True when it's safe to deliver signals, namely, when the initial
    * tracee has exec()'d the tracee image.  Before then, the address
    * space layout will not be the same during replay as recording, so
    * replay won't be able to find the right execution point to deliver

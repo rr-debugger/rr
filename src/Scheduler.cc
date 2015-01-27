@@ -148,7 +148,8 @@ static double now_sec(void) {
 }
 #endif
 
-Task* Scheduler::get_next_thread(Task* t, bool* by_waitpid) {
+Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
+                                 bool* by_waitpid) {
   LOG(debug) << "Scheduling next task";
 
   *by_waitpid = false;
@@ -158,7 +159,7 @@ Task* Scheduler::get_next_thread(Task* t, bool* by_waitpid) {
   }
   assert(!t || t == current);
 
-  if (current && !current->switchable) {
+  if (t && switchable == PREVENT_SWITCH) {
     LOG(debug) << "  (" << current->tid << " is un-switchable at "
                << current->ev() << ")";
     if (current->may_be_blocked()) {
@@ -170,7 +171,7 @@ Task* Scheduler::get_next_thread(Task* t, bool* by_waitpid) {
 #ifdef MONITOR_UNSWITCHABLE_WAITS
       double start = now_sec(), wait_duration;
 #endif
-      t->wait();
+      current->wait();
 #ifdef MONITOR_UNSWITCHABLE_WAITS
       wait_duration = now_sec() - start;
       if (wait_duration >= 0.010) {

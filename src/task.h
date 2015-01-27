@@ -1091,10 +1091,6 @@ public:
 
   /* State only used during recording. */
 
-  /* Whether switching away from this task is allowed in its
-   * current state.  Some operations must be completed
-   * atomically and aren't switchable. */
-  Switchable switchable;
   /* True when this is switchable for semantic purposes, but
    * definitely isn't blocked on ony resource.  In that case,
    * it's safe for the scheduler to do a blocking waitpid on

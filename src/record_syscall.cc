@@ -2323,7 +2323,6 @@ template <typename Arch> static void process_fork(Task* t) {
   // started by its parent.  It has no pending events,
   // so it can be context-switched out.
   new_task->has_run_to_a_stop = false;
-  new_task->switchable = ALLOW_SWITCH;
 }
 
 template <typename Arch>
@@ -2443,7 +2442,6 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       // started by its parent.  It has no pending events,
       // so it can be context-switched out.
       new_task->has_run_to_a_stop = false;
-      new_task->switchable = ALLOW_SWITCH;
 
       break;
     }
