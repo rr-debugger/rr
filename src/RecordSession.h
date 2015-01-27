@@ -8,16 +8,6 @@
 #include "task.h"
 #include "TraceFrame.h"
 
-enum ForceSyscall {
-  DEFAULT_CONT = 0,
-  FORCE_SYSCALL = 1
-};
-
-enum NeedTaskContinue {
-  DONT_NEED_TASK_CONTINUE = 0,
-  NEED_TASK_CONTINUE
-};
-
 /** Encapsulates additional session state related to recording. */
 class RecordSession : public Session {
 public:
@@ -82,15 +72,24 @@ private:
 
   virtual void on_create(Task* t);
 
+  enum ContinueType {
+    DONT_CONTINUE = 0,
+    CONTINUE,
+    CONTINUE_SYSCALL
+  };
+  struct StepState {
+    ContinueType continue_type;
+    StepState(ContinueType continue_type) : continue_type(continue_type) {}
+  };
+
   void check_perf_counters_working(Task* t, RecordResult* step_result);
-  void handle_ptrace_event(Task* t, ForceSyscall* force_cont);
+  void handle_ptrace_event(Task* t, StepState* step_state);
   void runnable_state_changed(Task* t, RecordResult* step_result,
-                              NeedTaskContinue* need_task_continue);
-  void signal_state_changed(Task* t, bool by_waitpid,
-                            NeedTaskContinue* need_task_continue);
-  void syscall_state_changed(Task* t, bool by_waitpid,
-                             NeedTaskContinue* need_task_continue);
+                              StepState* step_state);
+  void signal_state_changed(Task* t, bool by_waitpid, StepState* step_state);
+  void syscall_state_changed(Task* t, bool by_waitpid, StepState* step_state);
   void desched_state_changed(Task* t);
+  void task_continue(Task* t, ContinueType continue_type, int sig);
 
   TraceWriter trace_out;
   Scheduler scheduler_;

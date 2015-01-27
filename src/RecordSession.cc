@@ -126,7 +126,7 @@ static void handle_seccomp_event(Task* t) {
   }
 }
 
-void RecordSession::handle_ptrace_event(Task* t, ForceSyscall* force_cont) {
+void RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
   int event = t->ptrace_event();
   if (event == PTRACE_EVENT_NONE) {
     return;
@@ -141,7 +141,7 @@ void RecordSession::handle_ptrace_event(Task* t, ForceSyscall* force_cont) {
       handle_seccomp_event(t);
       // The next resume_execution needs to be a PTRACE_SYSCALL to observe
       // the enter-syscall event (or, for negative syscall numbers, exit).
-      *force_cont = FORCE_SYSCALL;
+      step_state->continue_type = CONTINUE_SYSCALL;
       break;
 
     case PTRACE_EVENT_CLONE: {
@@ -213,7 +213,8 @@ static void debug_exec_state(const char* msg, Task* t) {
              << " pevent=" << t->ptrace_event();
 }
 
-static void task_continue(Task* t, ForceSyscall force_cont, int sig) {
+void RecordSession::task_continue(Task* t, ContinueType continue_type,
+                                  int sig) {
   bool may_restart = t->at_may_restart_syscall();
 
   if (sig) {
@@ -223,7 +224,8 @@ static void task_continue(Task* t, ForceSyscall force_cont, int sig) {
     LOG(debug) << "  PTRACE_SYSCALL to possibly-restarted " << t->ev();
   }
 
-  if (!t->seccomp_bpf_enabled || FORCE_SYSCALL == force_cont || may_restart) {
+  if (!t->seccomp_bpf_enabled || CONTINUE_SYSCALL == continue_type ||
+      may_restart) {
     /* We won't receive PTRACE_EVENT_SECCOMP events until
      * the seccomp filter is installed by the
      * syscall_buffer lib in the child, therefore we must
@@ -243,22 +245,6 @@ static void task_continue(Task* t, ForceSyscall force_cont, int sig) {
      * the syscall (using cont_syscall_block()) and then
      * using the same logic as before. */
     t->cont_nonblocking(sig, t->record_session().scheduler().max_ticks());
-  }
-}
-
-/**
- * Resume execution of |t| to the next notable event, such as a
- * syscall.
- */
-static void resume_execution(Task* t, NeedTaskContinue need_task_continue,
-                             ForceSyscall force_cont = DEFAULT_CONT) {
-  if (need_task_continue) {
-    ASSERT(t, !t->may_be_blocked());
-
-    debug_exec_state("EXEC_START", t);
-
-    task_continue(t, force_cont, /*no sig*/ 0);
-    t->wait();
   }
 }
 
@@ -426,8 +412,8 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
   to->set_arg6(from.arg6());
 }
 
-void RecordSession::syscall_state_changed(
-    Task* t, bool by_waitpid, NeedTaskContinue* need_task_continue) {
+void RecordSession::syscall_state_changed(Task* t, bool by_waitpid,
+                                          StepState* step_state) {
   switch (t->ev().Syscall().state) {
     case ENTERING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
@@ -451,7 +437,7 @@ void RecordSession::syscall_state_changed(
       debug_exec_state("after cont", t);
 
       t->ev().Syscall().state = PROCESSING_SYSCALL;
-      *need_task_continue = DONT_NEED_TASK_CONTINUE;
+      step_state->continue_type = DONT_CONTINUE;
       return;
     }
     case PROCESSING_SYSCALL:
@@ -464,7 +450,7 @@ void RecordSession::syscall_state_changed(
                                    << " pending while in syscall???";
 
       t->ev().Syscall().state = EXITING_SYSCALL;
-      *need_task_continue = DONT_NEED_TASK_CONTINUE;
+      step_state->continue_type = DONT_CONTINUE;
       return;
 
     case EXITING_SYSCALL: {
@@ -615,7 +601,7 @@ void RecordSession::check_perf_counters_working(Task* t,
  * false otherwise.
  */
 void RecordSession::signal_state_changed(Task* t, bool by_waitpid,
-                                         NeedTaskContinue* need_task_continue) {
+                                         StepState* step_state) {
   int sig = t->ev().Signal().number;
 
   switch (t->ev().type()) {
@@ -701,9 +687,9 @@ void RecordSession::signal_state_changed(Task* t, bool by_waitpid,
     } break;
 
     case EV_SIGNAL_DELIVERY:
-      task_continue(t, DEFAULT_CONT, sig);
+      task_continue(t, CONTINUE, sig);
       t->signal_delivered(sig);
-      *need_task_continue = DONT_NEED_TASK_CONTINUE;
+      step_state->continue_type = DONT_CONTINUE;
       if (possibly_destabilizing_signal(t, sig,
                                         t->ev().Signal().deterministic)) {
         LOG(warn) << "Delivered core-dumping signal; may misrecord "
@@ -727,8 +713,8 @@ void RecordSession::signal_state_changed(Task* t, bool by_waitpid,
  * The execution of |t| has just been resumed, and it most likely has
  * a new event that needs to be processed.  Prepare that new event.
  */
-void RecordSession::runnable_state_changed(
-    Task* t, RecordResult* step_result, NeedTaskContinue* need_task_continue) {
+void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
+                                           StepState* step_state) {
   if (t->ptrace_event()) {
     // A ptrace event arrived. The steps below are irrelevant
     // and potentially wrong because no ev() was pushed.
@@ -762,7 +748,7 @@ void RecordSession::runnable_state_changed(
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;
       t->has_run_to_a_stop = false;
-      *need_task_continue = DONT_NEED_TASK_CONTINUE;
+      step_state->continue_type = DONT_CONTINUE;
       return;
     }
   } else if (!t->has_run_to_a_stop) {
@@ -785,10 +771,10 @@ void RecordSession::runnable_state_changed(
       t->pop_event(t->ev().type());
       last_task_switchable = ALLOW_SWITCH;
       t->has_run_to_a_stop = false;
-      *need_task_continue = DONT_NEED_TASK_CONTINUE;
+      step_state->continue_type = DONT_CONTINUE;
       break;
     case EV_SIGNAL: {
-      signal_state_changed(t, false, need_task_continue);
+      signal_state_changed(t, false, step_state);
       break;
     }
 
@@ -969,33 +955,37 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
 
-  NeedTaskContinue need_task_continue = NEED_TASK_CONTINUE;
-  ForceSyscall force_cont = DEFAULT_CONT;
+  StepState step_state(CONTINUE);
 
-  runnable_state_changed(t, &result, &need_task_continue);
+  runnable_state_changed(t, &result, &step_state);
   if (result.status != STEP_CONTINUE ||
-      need_task_continue == DONT_NEED_TASK_CONTINUE) {
+      step_state.continue_type == DONT_CONTINUE) {
     return result;
   }
 
-  handle_ptrace_event(t, &force_cont);
+  handle_ptrace_event(t, &step_state);
 
   switch (t->ev().type()) {
     case EV_DESCHED:
       desched_state_changed(t);
       break;
     case EV_SYSCALL:
-      syscall_state_changed(t, by_waitpid, &need_task_continue);
+      syscall_state_changed(t, by_waitpid, &step_state);
       break;
     case EV_SIGNAL_DELIVERY:
-      signal_state_changed(t, by_waitpid, &need_task_continue);
+      signal_state_changed(t, by_waitpid, &step_state);
       break;
     default:
       break;
   }
 
-  if (!t->has_stashed_sig()) {
-    resume_execution(t, need_task_continue, force_cont);
+  if (!t->has_stashed_sig() && step_state.continue_type != DONT_CONTINUE) {
+    ASSERT(t, !t->may_be_blocked());
+
+    debug_exec_state("EXEC_START", t);
+
+    task_continue(t, step_state.continue_type, /*no sig*/ 0);
+    t->wait();
   }
 
   return result;
