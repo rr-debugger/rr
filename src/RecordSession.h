@@ -78,8 +78,17 @@ private:
     CONTINUE_SYSCALL
   };
   struct StepState {
+    // Continue with this continuation type
     ContinueType continue_type;
-    StepState(ContinueType continue_type) : continue_type(continue_type) {}
+    // If continuing, inject this signal
+    int continue_sig;
+    // When expecting_unstable_exit is true, after continuing, don't wait since
+    // the task will be in an unstable exit.
+    bool expect_unstable_exit;
+    StepState(ContinueType continue_type)
+        : continue_type(continue_type),
+          continue_sig(0),
+          expect_unstable_exit(false) {}
   };
 
   void check_perf_counters_working(Task* t, RecordResult* step_result);
@@ -89,7 +98,7 @@ private:
   void signal_state_changed(Task* t, bool by_waitpid, StepState* step_state);
   void syscall_state_changed(Task* t, bool by_waitpid, StepState* step_state);
   void desched_state_changed(Task* t);
-  void task_continue(Task* t, ContinueType continue_type, int sig);
+  void task_continue(Task* t, const StepState& step_state);
 
   TraceWriter trace_out;
   Scheduler scheduler_;

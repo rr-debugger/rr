@@ -213,25 +213,27 @@ static void debug_exec_state(const char* msg, Task* t) {
              << " pevent=" << t->ptrace_event();
 }
 
-void RecordSession::task_continue(Task* t, ContinueType continue_type,
-                                  int sig) {
+void RecordSession::task_continue(Task* t, const StepState& step_state) {
+  ASSERT(t, step_state.continue_type != DONT_CONTINUE);
+
   bool may_restart = t->at_may_restart_syscall();
 
-  if (sig) {
-    LOG(debug) << "  delivering " << signal_name(sig) << " to " << t->tid;
+  if (step_state.continue_sig) {
+    LOG(debug) << "  delivering " << signal_name(step_state.continue_sig)
+               << " to " << t->tid;
   }
   if (may_restart && t->seccomp_bpf_enabled) {
     LOG(debug) << "  PTRACE_SYSCALL to possibly-restarted " << t->ev();
   }
 
-  if (!t->seccomp_bpf_enabled || CONTINUE_SYSCALL == continue_type ||
+  if (!t->seccomp_bpf_enabled || CONTINUE_SYSCALL == step_state.continue_type ||
       may_restart) {
     /* We won't receive PTRACE_EVENT_SECCOMP events until
      * the seccomp filter is installed by the
      * syscall_buffer lib in the child, therefore we must
      * record in the traditional way (with PTRACE_SYSCALL)
      * until it is installed. */
-    t->cont_syscall_nonblocking(sig,
+    t->cont_syscall_nonblocking(step_state.continue_sig,
                                 t->record_session().scheduler().max_ticks());
   } else {
     /* When the seccomp filter is on, instead of capturing
@@ -244,7 +246,8 @@ void RecordSession::task_continue(Task* t, ContinueType continue_type,
      * process to continue to the actual entry point of
      * the syscall (using cont_syscall_block()) and then
      * using the same logic as before. */
-    t->cont_nonblocking(sig, t->record_session().scheduler().max_ticks());
+    t->cont_nonblocking(step_state.continue_sig,
+                        t->record_session().scheduler().max_ticks());
   }
 }
 
@@ -687,19 +690,18 @@ void RecordSession::signal_state_changed(Task* t, bool by_waitpid,
     } break;
 
     case EV_SIGNAL_DELIVERY:
-      task_continue(t, CONTINUE, sig);
+      step_state->continue_sig = sig;
       t->signal_delivered(sig);
-      step_state->continue_type = DONT_CONTINUE;
       if (possibly_destabilizing_signal(t, sig,
                                         t->ev().Signal().deterministic)) {
         LOG(warn) << "Delivered core-dumping signal; may misrecord "
                      "CLONE_CHILD_CLEARTID memory race";
         t->destabilize_task_group();
         t->pop_signal_delivery();
+        step_state->expect_unstable_exit = true;
         last_task_switchable = ALLOW_SWITCH;
         break;
       }
-      t->wait();
       t->pop_signal_delivery();
       break;
 
@@ -984,8 +986,10 @@ RecordSession::RecordResult RecordSession::record_step() {
 
     debug_exec_state("EXEC_START", t);
 
-    task_continue(t, step_state.continue_type, /*no sig*/ 0);
-    t->wait();
+    task_continue(t, step_state);
+    if (!step_state.expect_unstable_exit) {
+      t->wait();
+    }
   }
 
   return result;
