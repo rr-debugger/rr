@@ -112,6 +112,8 @@ static bool handle_ptrace_exit_event(Task* t) {
 }
 
 static void handle_seccomp_event(Task* t) {
+  t->seccomp_bpf_enabled = true;
+
   if (t->regs().original_syscallno() < 0) {
     // negative syscall numbers after a SECCOMP event
     // are treated as "skip this syscall". There will be one syscall event
@@ -257,10 +259,6 @@ static void resume_execution(Task* t, NeedTaskContinue need_task_continue,
 
     task_continue(t, force_cont, /*no sig*/ 0);
     t->wait();
-  }
-
-  if (t->is_ptrace_seccomp_event()) {
-    t->seccomp_bpf_enabled = true;
   }
 }
 
