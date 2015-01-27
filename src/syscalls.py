@@ -563,7 +563,7 @@ getpriority = EmulatedSyscall(x86=96, x64=140)
 # The scheduling priority of the process, process group, or user, as
 # indicated by which and who is obtained with the getpriority() call
 # and set with the setpriority() call.
-setpriority = EmulatedSyscall(x86=97, x64=141)
+setpriority = IrregularEmulatedSyscall(x86=97, x64=141)
 
 profil = InvalidSyscall(x86=98)
 

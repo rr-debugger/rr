@@ -1826,6 +1826,29 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return ALLOW_SWITCH;
     }
 
+    case Arch::setpriority:
+      // The syscall might fail due to insufficient
+      // permissions (e.g. while trying to decrease the nice value
+      // while not root).
+      // We'll choose to honor the new value anyway since we'd like
+      // to be able to test configurations where a child thread
+      // has a lower nice value than its parent, which requires
+      // lowering the child's nice value.
+      if ((int)t->regs().arg1_signed() == PRIO_PROCESS) {
+        Task* target =
+            (int)t->regs().arg2_signed()
+                ? t->session().find_task((int)t->regs().arg2_signed())
+                : t;
+        if (target) {
+          LOG(debug) << "Setting nice value for tid " << t->tid << " to "
+                     << t->regs().arg3();
+          target->record_session().scheduler().update_task_priority(
+              target, (int)t->regs().arg3_signed());
+        }
+      }
+      // Allow switching so we can switch to a lower priority task immediately
+      return ALLOW_SWITCH;
+
     case Arch::pause:
       return ALLOW_SWITCH;
 
@@ -2560,29 +2583,6 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
       t->set_regs(r);
-      break;
-    }
-
-    case Arch::setpriority: {
-      // The syscall might have failed due to insufficient
-      // permissions (e.g. while trying to decrease the nice value
-      // while not root).
-      // We'll choose to honor the new value anyway since we'd like
-      // to be able to test configurations where a child thread
-      // has a lower nice value than its parent, which requires
-      // lowering the child's nice value.
-      if ((int)t->regs().arg1_signed() == PRIO_PROCESS) {
-        Task* target =
-            (int)t->regs().arg2_signed()
-                ? t->session().find_task((int)t->regs().arg2_signed())
-                : t;
-        if (target) {
-          LOG(debug) << "Setting nice value for tid " << t->tid << " to "
-                     << t->regs().arg3();
-          target->record_session().scheduler().update_task_priority(
-              target, (int)t->regs().arg3_signed());
-        }
-      }
       break;
     }
 
