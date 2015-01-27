@@ -96,11 +96,11 @@ static bool is_ip_rdtsc(Task* t) {
  * Return true if |t| was stopped because of a SIGSEGV resulting
  * from a rdtsc and |t| was updated appropriately, false otherwise.
  */
-static bool try_handle_rdtsc(Task* t) {
-  int sig = t->pending_sig();
+static bool try_handle_rdtsc(Task* t, siginfo_t* si) {
+  int sig = si->si_signo;
   assert(sig != SIGTRAP);
 
-  if (sig <= 0 || sig != SIGSEGV || !is_ip_rdtsc(t)) {
+  if (sig != SIGSEGV || !is_ip_rdtsc(t)) {
     return false;
   }
 
@@ -606,7 +606,7 @@ static void handle_siginfo(Task* t, siginfo_t* si) {
    * and fudge t appropriately. */
   switch (si->si_signo) {
     case SIGSEGV:
-      if (try_handle_rdtsc(t)) {
+      if (try_handle_rdtsc(t, si)) {
         return;
       }
       break;

@@ -1484,12 +1484,12 @@ void Task::stash_sig() {
                                    << " was already stashed.";
 
   const siginfo_t& si = get_siginfo();
-  stashed_signals.push_back(StashedSignal(si, wait_status));
+  stashed_signals.push_back(StashedSignal(si));
+  wait_status = 0;
 }
 
 siginfo_t Task::pop_stash_sig() {
   assert(has_stashed_sig());
-  wait_status = stashed_signals.front().wait_status;
   siginfo_t si = stashed_signals.front().si;
   stashed_signals.pop_front();
   return si;
@@ -1716,7 +1716,7 @@ void Task::wait(AllowInterrupt allow_interrupt) {
     si.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
     si.si_fd = hpc.ticks_fd();
     si.si_code = POLL_IN;
-    stashed_signals.push_back(StashedSignal(si, status));
+    stashed_signals.push_back(StashedSignal(si));
     // Starve the runaway task of CPU time.  It just got
     // the equivalent of hundreds of time slices.
     succ_event_counter = numeric_limits<int>::max() / 2;

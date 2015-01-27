@@ -1450,13 +1450,10 @@ private:
   // of user sighandlers (see below). */
   std::shared_ptr<Sighandlers> sighandlers;
   // Stashed signal-delivery state, ready to be delivered at
-  // next opportunity.  |stashed_si| is only meaningful when
-  // |stashed_wait_status| is nonzero.
+  // next opportunity.
   struct StashedSignal {
-    StashedSignal(const siginfo_t& si, int wait_status)
-        : si(si), wait_status(wait_status) {}
+    StashedSignal(const siginfo_t& si) : si(si) {}
     siginfo_t si;
-    int wait_status;
   };
   std::deque<StashedSignal> stashed_signals;
   // The task group this belongs to.
