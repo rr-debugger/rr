@@ -711,6 +711,7 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
  * a new event that needs to be processed.  Prepare that new event.
  */
 void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
+                                           bool can_consume_wait_status,
                                            StepState* step_state) {
   if (t->ptrace_event()) {
     // A ptrace event arrived. The steps below are irrelevant
@@ -720,7 +721,7 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
     return;
   }
 
-  if (t->pending_sig() && t->has_run_to_a_stop) {
+  if (t->pending_sig() && can_consume_wait_status) {
     if (!can_deliver_signals) {
       // If the initial tracee isn't prepared to handle
       // signals yet, then us ignoring the ptrace
@@ -748,7 +749,7 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
       step_state->continue_type = DONT_CONTINUE;
       return;
     }
-  } else if (!t->has_run_to_a_stop) {
+  } else if (!can_consume_wait_status) {
     // We haven't entered any new state. The current state will be the exit
     // of the syscall that created this task, which we don't want to record.
     return;
@@ -951,7 +952,7 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   StepState step_state(CONTINUE);
 
-  runnable_state_changed(t, &result, &step_state);
+  runnable_state_changed(t, &result, by_waitpid, &step_state);
   if (result.status != STEP_CONTINUE ||
       step_state.continue_type == DONT_CONTINUE) {
     return result;
