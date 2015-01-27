@@ -442,7 +442,6 @@ bool Task::emulate_ptrace_stop(int code, EmulatedStopType stop_type) {
     return false;
   }
   force_emulate_ptrace_stop(code, stop_type);
-  switchable = ALLOW_SWITCH;
   return true;
 }
 
