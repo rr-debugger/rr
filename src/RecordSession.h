@@ -78,7 +78,7 @@ private:
     CONTINUE_SYSCALL
   };
   struct StepState {
-    // Continue with this continuation type
+    // Continue with this continuation type.
     ContinueType continue_type;
     // If continuing, inject this signal
     int continue_sig;

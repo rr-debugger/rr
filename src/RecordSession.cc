@@ -659,6 +659,10 @@ void RecordSession::signal_state_changed(Task* t, bool by_waitpid,
 
         t->ev().transform(EV_SIGNAL_HANDLER);
         t->signal_delivered(sig);
+        // We already continued! Don't continue now, and allow switching.
+        step_state->continue_type = DONT_CONTINUE;
+        // Don't try to consume the SIGTRAP we just generated.
+        t->has_run_to_a_stop = false;
         last_task_switchable = ALLOW_SWITCH;
       } else {
         LOG(debug) << "  " << t->tid << ": no user handler for "
@@ -766,7 +770,6 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
     case EV_SEGV_RDTSC:
       t->record_current_event();
       t->pop_event(t->ev().type());
-      last_task_switchable = ALLOW_SWITCH;
       break;
     case EV_SCHED:
       t->record_current_event();
