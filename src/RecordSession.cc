@@ -139,7 +139,7 @@ void RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
     case PTRACE_EVENT_SECCOMP_OBSOLETE:
     case PTRACE_EVENT_SECCOMP:
       handle_seccomp_event(t);
-      // The next resume_execution needs to be a PTRACE_SYSCALL to observe
+      // The next continue needs to be a PTRACE_SYSCALL to observe
       // the enter-syscall event (or, for negative syscall numbers, exit).
       step_state->continue_type = CONTINUE_SYSCALL;
       break;
@@ -435,12 +435,11 @@ void RecordSession::syscall_state_changed(Task* t, bool by_waitpid,
 
       last_task_switchable = rec_prepare_syscall(t);
 
-      // Resume the syscall execution in the kernel context.
-      t->cont_syscall_nonblocking();
       debug_exec_state("after cont", t);
-
       t->ev().Syscall().state = PROCESSING_SYSCALL;
-      step_state->continue_type = DONT_CONTINUE;
+
+      // Resume the syscall execution in the kernel context.
+      step_state->continue_type = CONTINUE_SYSCALL;
       return;
     }
     case PROCESSING_SYSCALL:
@@ -981,12 +980,16 @@ RecordSession::RecordResult RecordSession::record_step() {
       break;
   }
 
-  if (!t->has_stashed_sig() && step_state.continue_type != DONT_CONTINUE) {
-    ASSERT(t, !t->may_be_blocked());
+  // Don't continue if we have a signal to deliver and we're not trying to
+  // progress through a syscall; instead, do nothing here and then try to
+  // inject the signal in the next iteration.
+  if (step_state.continue_type != DONT_CONTINUE &&
+      (!t->has_stashed_sig() || step_state.continue_type == CONTINUE_SYSCALL)) {
     // Ensure that we aren't allowing switches away from a running task.
     // Only tasks blocked in a syscall can be switched away from, otherwise
     // we have races.
-    ASSERT(t, last_task_switchable == PREVENT_SWITCH || t->unstable);
+    ASSERT(t, last_task_switchable == PREVENT_SWITCH || t->unstable ||
+        t->may_be_blocked());
 
     debug_exec_state("EXEC_START", t);
 
