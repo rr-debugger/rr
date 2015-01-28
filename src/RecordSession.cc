@@ -704,6 +704,30 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
   }
 }
 
+bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
+  if (!t->pending_sig()) {
+    return false;
+  }
+  if (can_deliver_signals) {
+    t->stash_sig();
+  } else {
+    // If the initial tracee isn't prepared to handle
+    // signals yet, then us ignoring the ptrace
+    // notification here will have the side effect of
+    // declining to deliver the signal.
+    //
+    // This doesn't really occur in practice, only in
+    // tests that force a degenerately low time slice.
+    LOG(warn) << "Dropping " << signal_name(t->pending_sig())
+              << " because it can't be delivered yet";
+    // No events to be recorded, so no syscallbuf updates
+    // needed.
+  }
+  // Don't continue yet. We want a chance to handle this signal right away.
+  step_state->continue_type = DONT_CONTINUE;
+  return true;
+}
+
 /**
  * The execution of |t| has just been resumed, and it most likely has
  * a new event that needs to be processed.  Prepare that new event.
@@ -711,24 +735,6 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
 void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
                                            bool can_consume_wait_status,
                                            StepState* step_state) {
-  if (t->pending_sig() && can_consume_wait_status) {
-    if (!can_deliver_signals) {
-      // If the initial tracee isn't prepared to handle
-      // signals yet, then us ignoring the ptrace
-      // notification here will have the side effect of
-      // declining to deliver the signal.
-      //
-      // This doesn't really occur in practice, only in
-      // tests that force a degenerately low time slice.
-      LOG(warn) << "Dropping " << signal_name(t->pending_sig())
-                << " because it can't be delivered yet";
-      // No events to be recorded, so no syscallbuf updates
-      // needed.
-      return;
-    }
-    t->stash_sig();
-  }
-
   if (t->has_stashed_sig() && can_deliver_signals) {
     // This will either push a new signal event, new
     // desched + syscall-interruption events, or no-op --- or return false.
@@ -931,7 +937,8 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   StepState step_state(CONTINUE);
 
-  if (!(did_wait && handle_ptrace_event(t, &step_state))) {
+  if (!(did_wait && handle_ptrace_event(t, &step_state)) &&
+      !(did_wait && handle_signal_event(t, &step_state))) {
     runnable_state_changed(t, &result, did_wait, &step_state);
     if (result.status != STEP_CONTINUE ||
         step_state.continue_type == DONT_CONTINUE) {
