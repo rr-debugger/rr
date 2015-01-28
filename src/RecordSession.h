@@ -48,6 +48,9 @@ public:
    * STEP_CONTINUE.
    * Typically you'd call this in a loop until it returns something other than
    * STEP_CONTINUE.
+   * Note that when this returns, some tasks may be running (not in a ptrace-
+   * stop). In particular, up to one task may be executing user code and any
+   * number of tasks may be blocked in syscalls.
    */
   RecordResult record_step();
 
@@ -82,13 +85,8 @@ private:
     ContinueType continue_type;
     // If continuing, inject this signal
     int continue_sig;
-    // When expecting_unstable_exit is true, after continuing, don't wait since
-    // the task will be in an unstable exit.
-    bool expect_unstable_exit;
     StepState(ContinueType continue_type)
-        : continue_type(continue_type),
-          continue_sig(0),
-          expect_unstable_exit(false) {}
+        : continue_type(continue_type), continue_sig(0) {}
   };
 
   void check_perf_counters_working(Task* t, RecordResult* step_result);

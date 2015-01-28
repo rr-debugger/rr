@@ -702,7 +702,6 @@ void RecordSession::signal_state_changed(Task* t, bool by_waitpid,
                      "CLONE_CHILD_CLEARTID memory race";
         t->destabilize_task_group();
         t->pop_signal_delivery();
-        step_state->expect_unstable_exit = true;
         last_task_switchable = ALLOW_SWITCH;
         break;
       }
@@ -934,8 +933,6 @@ RecordSession::RecordResult RecordSession::record_step() {
 #ifdef DEBUGTAG
   t->log_pending_events();
 #endif
-  ASSERT(t, !by_waitpid || t->may_be_blocked() || t->ptrace_event())
-      << "unexpectedly runnable (" << HEX(t->status()) << ") by waitpid";
   if (handle_ptrace_exit_event(t)) {
     // t is dead and has been deleted.
     last_recorded_task = nullptr;
@@ -986,13 +983,14 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   if (!t->has_stashed_sig() && step_state.continue_type != DONT_CONTINUE) {
     ASSERT(t, !t->may_be_blocked());
+    // Ensure that we aren't allowing switches away from a running task.
+    // Only tasks blocked in a syscall can be switched away from, otherwise
+    // we have races.
+    ASSERT(t, last_task_switchable == PREVENT_SWITCH || t->unstable);
 
     debug_exec_state("EXEC_START", t);
 
     task_continue(t, step_state);
-    if (!step_state.expect_unstable_exit) {
-      t->wait();
-    }
   }
 
   return result;

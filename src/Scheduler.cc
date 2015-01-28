@@ -162,12 +162,10 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
   if (t && switchable == PREVENT_SWITCH) {
     LOG(debug) << "  (" << current->tid << " is un-switchable at "
                << current->ev() << ")";
-    if (current->may_be_blocked()) {
-      LOG(debug) << "  and not runnable; waiting for state change";
-/* |current| is un-switchable, but not runnable in
- * this state.  Wait for it to change state
- * before "scheduling it", so avoid
- * busy-waiting with our client. */
+    if (current->is_running()) {
+      LOG(debug) << "  and running; waiting for state change";
+/* |current| is un-switchable, but already running. Wait for it to change state
+ * before "scheduling it", so avoid busy-waiting with our client. */
 #ifdef MONITOR_UNSWITCHABLE_WAITS
       double start = now_sec(), wait_duration;
 #endif

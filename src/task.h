@@ -894,6 +894,11 @@ public:
   siginfo_t pop_stash_sig();
 
   /**
+   * Return true when the task is running, false if it's stopped.
+   */
+  bool is_running() const { return !is_stopped; }
+
+  /**
    * Return the status of this as of the last successful
    * wait()/try_wait() call.
    */

@@ -188,7 +188,7 @@ void TaskGroup::destabilize() {
   LOG(debug) << "destabilizing task group " << tgid;
   for (auto it = task_set().begin(); it != task_set().end(); ++it) {
     Task* t = *it;
-    t->unstable = 1;
+    t->unstable = true;
     LOG(debug) << "  destabilized task " << t->tid;
   }
 }
