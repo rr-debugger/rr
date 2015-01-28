@@ -2319,10 +2319,6 @@ template <typename Arch> static void process_fork(Task* t) {
       TraceTaskEvent(new_tid, t->tid));
 
   init_scratch_memory<Arch>(new_task);
-  // The new tracee just "finished" a fork that was
-  // started by its parent.  It has no pending events,
-  // so it can be context-switched out.
-  new_task->has_run_to_a_stop = false;
 }
 
 template <typename Arch>
@@ -2438,11 +2434,6 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
           TraceTaskEvent(new_tid, t->tid, flags));
 
       init_scratch_memory<Arch>(new_task);
-      // The new tracee just "finished" a clone that was
-      // started by its parent.  It has no pending events,
-      // so it can be context-switched out.
-      new_task->has_run_to_a_stop = false;
-
       break;
     }
 

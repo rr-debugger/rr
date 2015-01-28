@@ -1106,11 +1106,6 @@ public:
    * it's processed in succession.  The scheduler maintains this
    * state and uses it to make scheduling decisions. */
   uint32_t succ_event_counter;
-  /* True when the task has run to a stop and has a status that should be
-   * processed. False if it's just been created and has not had any activity
-   * yet, or if it has been woken up from a stopped state but hasn't actually
-   * run yet. */
-  bool has_run_to_a_stop;
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
    * with a waitpid() call. */
