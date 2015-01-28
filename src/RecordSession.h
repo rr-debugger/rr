@@ -90,7 +90,7 @@ private:
   };
 
   void check_perf_counters_working(Task* t, RecordResult* step_result);
-  void handle_ptrace_event(Task* t, StepState* step_state);
+  bool handle_ptrace_event(Task* t, StepState* step_state);
   void runnable_state_changed(Task* t, RecordResult* step_result,
                               bool can_consume_wait_status,
                               StepState* step_state);

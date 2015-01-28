@@ -111,25 +111,10 @@ static bool handle_ptrace_exit_event(Task* t) {
   return true;
 }
 
-static void handle_seccomp_event(Task* t) {
-  t->seccomp_bpf_enabled = true;
-
-  if (t->regs().original_syscallno() < 0) {
-    // negative syscall numbers after a SECCOMP event
-    // are treated as "skip this syscall". There will be one syscall event
-    // recorded instead of two. So, record an enter-syscall event now
-    // and treat the other event as the exit.
-    t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
-    ASSERT(t, EV_SYSCALL == t->ev().type());
-    t->ev().Syscall().state = ENTERING_SYSCALL;
-    t->record_current_event();
-  }
-}
-
-void RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
+bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
   int event = t->ptrace_event();
   if (event == PTRACE_EVENT_NONE) {
-    return;
+    return false;
   }
 
   LOG(debug) << "  " << t->tid << ": handle_ptrace_event " << event
@@ -138,10 +123,25 @@ void RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
   switch (event) {
     case PTRACE_EVENT_SECCOMP_OBSOLETE:
     case PTRACE_EVENT_SECCOMP:
-      handle_seccomp_event(t);
-      // The next continue needs to be a PTRACE_SYSCALL to observe
-      // the enter-syscall event (or, for negative syscall numbers, exit).
-      step_state->continue_type = CONTINUE_SYSCALL;
+      t->seccomp_bpf_enabled = true;
+      if (t->regs().original_syscallno() < 0) {
+        // negative syscall numbers after a SECCOMP event
+        // are treated as "skip this syscall". There will be one syscall event
+        // reported instead of two. So, record an enter-syscall event now
+        // and treat the other event as the exit.
+        t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
+        ASSERT(t, EV_SYSCALL == t->ev().type());
+        t->ev().Syscall().state = ENTERING_SYSCALL;
+        t->record_current_event();
+        // Don't continue yet. At the next iteration of record_step, we'll
+        // enter syscall_state_changed and that will trigger a continue to
+        // the syscall exit.
+        step_state->continue_type = DONT_CONTINUE;
+      } else {
+        // The next continue needs to be a PTRACE_SYSCALL to observe
+        // the enter-syscall event.
+        step_state->continue_type = CONTINUE_SYSCALL;
+      }
       break;
 
     case PTRACE_EVENT_CLONE: {
@@ -151,7 +151,7 @@ void RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       remote_ptr<void> tls;
       remote_ptr<int> ctid;
       extract_clone_parameters(t, &stack, ptid_not_needed, &tls, &ctid);
-      // fork and can never share these resources, only
+      // fork can never share these resources, only
       // copy, so the flags here aren't meaningful for it.
       unsigned long flags_arg =
           is_clone_syscall(t->regs().original_syscallno(), t->arch())
@@ -159,8 +159,7 @@ void RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
               : 0;
       clone(t, clone_flags_to_task_flags(flags_arg), stack, tls, ctid, new_tid);
       // Skip past the ptrace event.
-      t->cont_syscall();
-      assert(t->pending_sig() == 0);
+      step_state->continue_type = CONTINUE_SYSCALL;
       break;
     }
 
@@ -168,8 +167,7 @@ void RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       pid_t new_tid = t->get_ptrace_eventmsg_pid();
       clone(t, 0, nullptr, nullptr, nullptr, new_tid);
       // Skip past the ptrace event.
-      t->cont_syscall();
-      assert(t->pending_sig() == 0);
+      step_state->continue_type = CONTINUE_SYSCALL;
       break;
     }
 
@@ -188,24 +186,22 @@ void RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       t->pop_syscall();
 
       // Skip past the ptrace event.
-      t->cont_syscall();
-      assert(t->pending_sig() == 0);
-      break;
-    }
-
-    case PTRACE_EVENT_EXIT: {
-      ASSERT(t, false) << "PTRACE_EVENT_EXIT should already have been handled";
+      step_state->continue_type = CONTINUE_SYSCALL;
       break;
     }
 
     // We map vfork() to fork() so we don't expect to see these:
     case PTRACE_EVENT_VFORK:
     case PTRACE_EVENT_VFORK_DONE:
+    // This is handled separately:
+    case PTRACE_EVENT_EXIT:
     default:
       ASSERT(t, false) << "Unhandled ptrace event " << ptrace_event_name(event)
                        << "(" << event << ")";
       break;
   }
+
+  return true;
 }
 
 static void debug_exec_state(const char* msg, Task* t) {
@@ -932,7 +928,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     // Do not record non-ptrace-exit events for tasks in
     // an unstable exit. We can't replay them.
     LOG(debug) << "Task in unstable exit; "
-                  "refusing to record non-ptrace-exit events";
+                  "refusing to record non-ptrace events";
     last_task_switchable = ALLOW_SWITCH;
     return result;
   }
@@ -953,20 +949,20 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
 
-  handle_ptrace_event(t, &step_state);
-
-  switch (t->ev().type()) {
-    case EV_DESCHED:
-      desched_state_changed(t);
-      break;
-    case EV_SYSCALL:
-      syscall_state_changed(t, &step_state);
-      break;
-    case EV_SIGNAL_DELIVERY:
-      signal_state_changed(t, &step_state);
-      break;
-    default:
-      break;
+  if (!handle_ptrace_event(t, &step_state)) {
+    switch (t->ev().type()) {
+      case EV_DESCHED:
+        desched_state_changed(t);
+        break;
+      case EV_SYSCALL:
+        syscall_state_changed(t, &step_state);
+        break;
+      case EV_SIGNAL_DELIVERY:
+        signal_state_changed(t, &step_state);
+        break;
+      default:
+        break;
+    }
   }
 
   // Don't continue if we have a signal to deliver and we're not trying to
