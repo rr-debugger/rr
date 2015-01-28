@@ -395,8 +395,10 @@ public:
    * Force the wait status of this to |status|, as if
    * |wait()/try_wait()| had returned it. Call this whenever a waitpid
    * returned activity for this past.
+   * If override_siginfo is non-null and status indicates a pending signal,
+   * use *override_siginfo as the siginfo instead of reading it from the kernel.
    */
-  void did_waitpid(int status);
+  void did_waitpid(int status, siginfo_t* override_siginfo = nullptr);
 
   /**
    * Wait for |futex| in this address space to have the value

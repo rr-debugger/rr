@@ -422,6 +422,32 @@ signal_action default_action(int sig) {
   }
 }
 
+SignalDeterministic is_deterministic_signal(const siginfo_t* si) {
+  switch (si->si_signo) {
+    /* These signals may be delivered deterministically;
+     * we'll check for sure below. */
+    case SIGILL:
+    case SIGTRAP:
+    case SIGBUS:
+    case SIGFPE:
+    case SIGSEGV:
+      /* As bits/siginfo.h documents,
+       *
+       *   Values for `si_code'.  Positive values are
+       *   reserved for kernel-generated signals.
+       *
+       * So if the signal is maybe-synchronous, and the
+       * kernel delivered it, then it must have been
+       * delivered deterministically. */
+      return si->si_code > 0 ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
+    default:
+      /* All other signals can never be delivered
+       * deterministically (to the approximation required by
+       * rr). */
+      return NONDETERMINISTIC_SIG;
+  }
+}
+
 bool possibly_destabilizing_signal(Task* t, int sig,
                                    SignalDeterministic deterministic) {
   signal_action action = default_action(sig);

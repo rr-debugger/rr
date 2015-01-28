@@ -139,6 +139,8 @@ signal_action default_action(int sig);
 bool possibly_destabilizing_signal(Task* t, int sig,
                                    SignalDeterministic deterministic);
 
+SignalDeterministic is_deterministic_signal(const siginfo_t* si);
+
 /**
  * Return nonzero if a mapping of |filename| with metadata |stat|,
  * using |flags| and |prot|, should almost certainly be copied to

@@ -30,8 +30,6 @@
 using namespace rr;
 using namespace std;
 
-static bool handle_siginfo(Task* t, siginfo_t* si);
-
 static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
 
 static const int STOPSIG_SYSCALL = 0x80 | SIGTRAP;
@@ -332,32 +330,6 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
              << t->syscall_name(call) << "'";
 }
 
-static SignalDeterministic is_deterministic_signal(const siginfo_t* si) {
-  switch (si->si_signo) {
-    /* These signals may be delivered deterministically;
-     * we'll check for sure below. */
-    case SIGILL:
-    case SIGTRAP:
-    case SIGBUS:
-    case SIGFPE:
-    case SIGSEGV:
-      /* As bits/siginfo.h documents,
-       *
-       *   Values for `si_code'.  Positive values are
-       *   reserved for kernel-generated signals.
-       *
-       * So if the signal is maybe-synchronous, and the
-       * kernel delivered it, then it must have been
-       * delivered deterministically. */
-      return si->si_code > 0 ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
-    default:
-      /* All other signals can never be delivered
-       * deterministically (to the approximation required by
-       * rr). */
-      return NONDETERMINISTIC_SIG;
-  }
-}
-
 static void record_signal(Task* t, const siginfo_t* si) {
   // goto_a_happy_place's stepping can lead to the kernel forgetting
   // the siginfo for the signal we're going to deliver. Restore that
@@ -365,13 +337,6 @@ static void record_signal(Task* t, const siginfo_t* si) {
   t->set_siginfo(*si);
 
   int sig = si->si_signo;
-  if (sig == t->record_session().get_ignore_sig()) {
-    LOG(info) << "Declining to deliver " << signal_name(sig)
-              << " by user request";
-    t->push_event(Event::noop(t->arch()));
-    return;
-  }
-
   t->push_event(SignalEvent(sig, is_deterministic_signal(si), t->arch()));
 }
 
@@ -552,7 +517,7 @@ static Completion go_to_a_happy_place(Task* t, siginfo_t* si, bool* handled) {
         *si = tmp_si;
         LOG(debug) << "  upgraded delivery of HPC_TIME_SLICE_SIGNAL to "
                    << signal_name(si->si_signo);
-        *handled = handle_siginfo(t, si);
+        *handled = handle_signal(t, si);
         return INCOMPLETE;
       }
       // In another desperate effort to avoid dying, discard
@@ -585,7 +550,7 @@ happy_place:
 
 // Returns true if we handled everything ok, false if we emulated a ptrace
 // stop and did not handle the signal.
-static bool handle_siginfo(Task* t, siginfo_t* si) {
+bool handle_signal(Task* t, siginfo_t* si) {
   LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
              << " (pevent: " << t->ptrace_event() << ", event: " << t->ev();
 
@@ -636,11 +601,4 @@ static bool handle_siginfo(Task* t, siginfo_t* si) {
 
   record_signal(t, si);
   return true;
-}
-
-bool handle_signal(Task* t) {
-  assert(t->has_stashed_sig());
-
-  siginfo_t si = t->pop_stash_sig();
-  return handle_siginfo(t, &si);
 }

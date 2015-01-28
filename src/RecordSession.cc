@@ -657,6 +657,9 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
       } else {
         LOG(debug) << "  " << t->tid << ": no user handler for "
                    << signal_name(sig);
+        // Don't do another task continue. We want to deliver the signal
+        // as the next thing that the task does.
+        step_state->continue_type = DONT_CONTINUE;
         // If we didn't set up the sighandler frame, we need
         // to ensure that this tracee is scheduled next so
         // that we can deliver the signal normally.  We have
@@ -705,12 +708,11 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
 }
 
 bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
-  if (!t->pending_sig()) {
+  int sig = t->pending_sig();
+  if (!sig) {
     return false;
   }
-  if (can_deliver_signals) {
-    t->stash_sig();
-  } else {
+  if (!can_deliver_signals) {
     // If the initial tracee isn't prepared to handle
     // signals yet, then us ignoring the ptrace
     // notification here will have the side effect of
@@ -722,9 +724,21 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
               << " because it can't be delivered yet";
     // No events to be recorded, so no syscallbuf updates
     // needed.
+    return true;
   }
-  // Don't continue yet. We want a chance to handle this signal right away.
-  step_state->continue_type = DONT_CONTINUE;
+  if (is_deterministic_signal(&t->get_siginfo()) ||
+      sig == SYSCALLBUF_DESCHED_SIGNAL ||
+      sig == PerfCounters::TIME_SLICE_SIGNAL) {
+    // Don't stash these signals; deliver them immediately.
+    // We don't want them to be reordered around other signals.
+    siginfo_t siginfo = t->get_siginfo();
+    if (!handle_signal(t, &siginfo)) {
+      // Emulated ptrace-stop. Don't run the task again yet.
+      last_task_switchable = ALLOW_SWITCH;
+    }
+    return false;
+  }
+  t->stash_sig();
   return true;
 }
 
@@ -735,18 +749,7 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
 void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
                                            bool can_consume_wait_status,
                                            StepState* step_state) {
-  if (t->has_stashed_sig() && can_deliver_signals) {
-    // This will either push a new signal event, new
-    // desched + syscall-interruption events, or no-op --- or return false.
-    if (!handle_signal(t)) {
-      // Emulated ptrace-stop. Don't run the task again yet.
-      last_task_switchable = ALLOW_SWITCH;
-      step_state->continue_type = DONT_CONTINUE;
-      return;
-    }
-  } else if (!can_consume_wait_status) {
-    // We haven't entered any new state. The current state will be the exit
-    // of the syscall that created this task, which we don't want to record.
+  if (!can_consume_wait_status) {
     return;
   }
 
@@ -764,10 +767,6 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
       last_task_switchable = ALLOW_SWITCH;
       step_state->continue_type = DONT_CONTINUE;
       break;
-    case EV_SIGNAL: {
-      signal_state_changed(t, step_state);
-      break;
-    }
 
     case EV_SENTINEL:
     case EV_SIGNAL_HANDLER:
@@ -793,6 +792,27 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
   }
 
   maybe_reset_syscallbuf(t);
+}
+
+bool RecordSession::inject_signal(Task* t, StepState* step_state) {
+  if (!t->has_stashed_sig() || !can_deliver_signals ||
+      step_state->continue_type == DONT_CONTINUE) {
+    return false;
+  }
+  // This will either push a new signal event, new
+  // desched + syscall-interruption events, or no-op --- or return false.
+  siginfo_t si = t->pop_stash_sig();
+  if (si.si_signo == get_ignore_sig()) {
+    LOG(info) << "Declining to deliver " << signal_name(si.si_signo)
+              << " by user request";
+    return false;
+  }
+  step_state->continue_type = DONT_CONTINUE;
+  if (!handle_signal(t, &si)) {
+    // Emulated ptrace-stop. Don't run the task again yet.
+    last_task_switchable = ALLOW_SWITCH;
+  }
+  return true;
 }
 
 static string find_syscall_buffer_library() {
@@ -952,6 +972,7 @@ RecordSession::RecordResult RecordSession::record_step() {
       case EV_SYSCALL:
         syscall_state_changed(t, &step_state);
         break;
+      case EV_SIGNAL:
       case EV_SIGNAL_DELIVERY:
         signal_state_changed(t, &step_state);
         break;
@@ -960,11 +981,10 @@ RecordSession::RecordResult RecordSession::record_step() {
     }
   }
 
-  // Don't continue if we have a signal to deliver and we're not trying to
-  // progress through a syscall; instead, do nothing here and then try to
-  // inject the signal in the next iteration.
-  if (step_state.continue_type != DONT_CONTINUE &&
-      (!t->has_stashed_sig() || step_state.continue_type == CONTINUE_SYSCALL)) {
+  // We try to inject a signal if there's one pending; otherwise we continue
+  // task execution.
+  if (!inject_signal(t, &step_state) &&
+      step_state.continue_type != DONT_CONTINUE) {
     // Ensure that we aren't allowing switches away from a running task.
     // Only tasks blocked in a syscall can be switched away from, otherwise
     // we have races.

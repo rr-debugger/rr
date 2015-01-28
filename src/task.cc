@@ -1706,24 +1706,26 @@ void Task::wait(AllowInterrupt allow_interrupt) {
       PTRACE_EVENT_STOP == ptrace_event_from_status(status) &&
       is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(status))) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
+    // Starve the runaway task of CPU time.  It just got
+    // the equivalent of hundreds of time slices.
+    succ_event_counter = numeric_limits<int>::max() / 2;
     status = (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
     siginfo_t si;
     memset(&si, 0, sizeof(si));
     si.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
     si.si_fd = hpc.ticks_fd();
     si.si_code = POLL_IN;
-    stashed_signals.push_back(StashedSignal(si));
-    // Starve the runaway task of CPU time.  It just got
-    // the equivalent of hundreds of time slices.
-    succ_event_counter = numeric_limits<int>::max() / 2;
-  } else if (sent_wait_interrupt) {
-    LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << HEX(status);
+    did_waitpid(status, &si);
+    return;
   }
 
+  if (sent_wait_interrupt) {
+    LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << HEX(status);
+  }
   did_waitpid(status);
 }
 
-void Task::did_waitpid(int status) {
+void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   LOG(debug) << "  (refreshing register cache)";
   // Skip reading registers immediately after a PTRACE_EVENT_EXEC, since
   // we may not know the correct architecture.
@@ -1735,9 +1737,14 @@ void Task::did_waitpid(int status) {
       status = ptrace_exit_wait_status;
     }
   }
-  if (pending_sig_from_status(status) &&
-      !ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
-    status = ptrace_exit_wait_status;
+  if (pending_sig_from_status(status)) {
+    if (override_siginfo) {
+      pending_siginfo = *override_siginfo;
+    } else {
+      if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
+        status = ptrace_exit_wait_status;
+      }
+    }
   }
 
   is_stopped = true;
