@@ -171,7 +171,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       break;
     }
 
-    case PTRACE_EVENT_EXEC: {
+    case PTRACE_EVENT_EXEC:
       /* The initial tracee, if it's still around, is now
        * for sure not running in the initial rr address
        * space, so we can unblock signals. */
@@ -188,7 +188,11 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       // Skip past the ptrace event.
       step_state->continue_type = CONTINUE_SYSCALL;
       break;
-    }
+
+    case PTRACE_EVENT_STOP:
+      last_task_switchable = ALLOW_SWITCH;
+      step_state->continue_type = DONT_CONTINUE;
+      break;
 
     // We map vfork() to fork() so we don't expect to see these:
     case PTRACE_EVENT_VFORK:
@@ -707,14 +711,6 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
 void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
                                            bool can_consume_wait_status,
                                            StepState* step_state) {
-  if (t->ptrace_event()) {
-    // A ptrace event arrived. The steps below are irrelevant
-    // and potentially wrong because no ev() was pushed.
-    // We prevent switching after most ptrace events to simplify possible
-    // interactions.
-    return;
-  }
-
   if (t->pending_sig() && can_consume_wait_status) {
     if (!can_deliver_signals) {
       // If the initial tracee isn't prepared to handle
@@ -897,9 +893,9 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   result.status = STEP_CONTINUE;
 
-  bool by_waitpid;
+  bool did_wait;
   Task* t = scheduler().get_next_thread(last_recorded_task,
-                                        last_task_switchable, &by_waitpid);
+                                        last_task_switchable, &did_wait);
   if (!t) {
     // The scheduler was waiting for some task to become active, but was
     // interrupted by a signal. Yield to our caller now to give the caller
@@ -933,23 +929,15 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
 
-  if (t->ptrace_event() == PTRACE_EVENT_STOP) {
-    last_task_switchable = ALLOW_SWITCH;
-    // Next time this task gets scheduled, don't see this PTRACE_EVENT_STOP
-    // again! Or any other related event, for that matter.
-    t->wait_status = 0;
-    return result;
-  }
-
   StepState step_state(CONTINUE);
 
-  runnable_state_changed(t, &result, by_waitpid, &step_state);
-  if (result.status != STEP_CONTINUE ||
-      step_state.continue_type == DONT_CONTINUE) {
-    return result;
-  }
+  if (!(did_wait && handle_ptrace_event(t, &step_state))) {
+    runnable_state_changed(t, &result, did_wait, &step_state);
+    if (result.status != STEP_CONTINUE ||
+        step_state.continue_type == DONT_CONTINUE) {
+      return result;
+    }
 
-  if (!handle_ptrace_event(t, &step_state)) {
     switch (t->ev().type()) {
       case EV_DESCHED:
         desched_state_changed(t);
