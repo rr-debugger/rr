@@ -932,7 +932,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     // Do not record non-ptrace-exit events for tasks in
     // an unstable exit. We can't replay them.
     LOG(debug) << "Task in unstable exit; "
-                  "refusing to record non-ptrace events";
+                  "refusing to record non-ptrace-exit events";
     last_task_switchable = ALLOW_SWITCH;
     return result;
   }
