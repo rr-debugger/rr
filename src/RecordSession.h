@@ -93,8 +93,8 @@ private:
   void handle_ptrace_event(Task* t, StepState* step_state);
   void runnable_state_changed(Task* t, RecordResult* step_result,
                               StepState* step_state);
-  void signal_state_changed(Task* t, bool by_waitpid, StepState* step_state);
-  void syscall_state_changed(Task* t, bool by_waitpid, StepState* step_state);
+  void signal_state_changed(Task* t, StepState* step_state);
+  void syscall_state_changed(Task* t, StepState* step_state);
   void desched_state_changed(Task* t);
   void task_continue(Task* t, const StepState& step_state);
 

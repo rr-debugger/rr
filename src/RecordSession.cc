@@ -415,8 +415,7 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
   to->set_arg6(from.arg6());
 }
 
-void RecordSession::syscall_state_changed(Task* t, bool by_waitpid,
-                                          StepState* step_state) {
+void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
   switch (t->ev().Syscall().state) {
     case ENTERING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
@@ -445,7 +444,6 @@ void RecordSession::syscall_state_changed(Task* t, bool by_waitpid,
     case PROCESSING_SYSCALL:
       debug_exec_state("EXEC_IN_SYSCALL", t);
 
-      assert(by_waitpid);
       // Linux kicks tasks out of syscalls before delivering
       // signals.
       ASSERT(t, !t->pending_sig()) << "Signal " << signal_name(t->pending_sig())
@@ -596,20 +594,15 @@ void RecordSession::check_perf_counters_working(Task* t,
 
 /**
  * |t| is being delivered a signal, and its state changed.
- * |by_waitpid| is true if the status change was observed by a
- * waitpid() call.
  *
  * Return true if execution was incidentally resumed to a new event,
  * false otherwise.
  */
-void RecordSession::signal_state_changed(Task* t, bool by_waitpid,
-                                         StepState* step_state) {
+void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
   int sig = t->ev().Signal().number;
 
   switch (t->ev().type()) {
     case EV_SIGNAL: {
-      assert(!by_waitpid);
-
       // This event is used by the replayer to advance to
       // the point of signal delivery.
       t->record_current_event();
@@ -777,7 +770,7 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
       step_state->continue_type = DONT_CONTINUE;
       break;
     case EV_SIGNAL: {
-      signal_state_changed(t, false, step_state);
+      signal_state_changed(t, step_state);
       break;
     }
 
@@ -971,10 +964,10 @@ RecordSession::RecordResult RecordSession::record_step() {
       desched_state_changed(t);
       break;
     case EV_SYSCALL:
-      syscall_state_changed(t, by_waitpid, &step_state);
+      syscall_state_changed(t, &step_state);
       break;
     case EV_SIGNAL_DELIVERY:
-      signal_state_changed(t, by_waitpid, &step_state);
+      signal_state_changed(t, &step_state);
       break;
     default:
       break;
@@ -989,7 +982,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     // Only tasks blocked in a syscall can be switched away from, otherwise
     // we have races.
     ASSERT(t, last_task_switchable == PREVENT_SWITCH || t->unstable ||
-        t->may_be_blocked());
+                  t->may_be_blocked());
 
     debug_exec_state("EXEC_START", t);
 
