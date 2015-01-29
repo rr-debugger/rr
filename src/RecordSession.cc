@@ -732,9 +732,16 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
     // Don't stash these signals; deliver them immediately.
     // We don't want them to be reordered around other signals.
     siginfo_t siginfo = t->get_siginfo();
-    if (!handle_signal(t, &siginfo)) {
+    switch (handle_signal(t, &siginfo)) {
+    case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;
+      break;
+    case DEFER_SIGNAL:
+      ASSERT(t, false) << "Can't defer deterministic or internal signals";
+      break;
+    case SIGNAL_HANDLED:
+      break;
     }
     return false;
   }

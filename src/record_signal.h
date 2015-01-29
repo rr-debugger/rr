@@ -9,13 +9,20 @@ class Task;
 
 const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
 
+enum SignalHandled {
+  SIGNAL_HANDLED,
+  SIGNAL_PTRACE_STOP,
+  DEFER_SIGNAL
+};
 /**
  * Handle the given signal for |t|.
- * Returns true if we handled the signal, false if we didn't handle the
- * signal due to an emulated ptrace-stop.
+ * Returns SIGNAL_HANDLED if we handled the signal, SIGNAL_PTRACE_STOP if we
+ * didn't handle the signal due to an emulated ptrace-stop, and SIGNAL_DEFER
+ * if we can't handle the signal right now and should try calling
+ * handle_signal again later in task execution.
  * Handling the signal means we either pushed a new signal event, new
  * desched + syscall-interruption events, or no-op.
  */
-bool handle_signal(Task* t, siginfo_t* si);
+SignalHandled handle_signal(Task* t, siginfo_t* si);
 
 #endif /* RR_HANDLE_SIGNAL_H__ */
