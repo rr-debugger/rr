@@ -2031,6 +2031,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::mmap2:
     case Arch::rrcall_init_buffers:
     case Arch::rrcall_init_preload:
+    case Arch::rrcall_notify_syscall_hook_exit:
       return PREVENT_SWITCH;
 
     default:
@@ -2583,6 +2584,18 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
 
     case SYS_rrcall_init_preload: {
       t->at_preload_init();
+
+      Registers r = t->regs();
+      r.set_syscall_result(0);
+      t->set_regs(r);
+      break;
+    }
+
+    case SYS_rrcall_notify_syscall_hook_exit: {
+      t->syscallbuf_hdr->notify_on_syscall_hook_exit = false;
+      t->record_local(
+          REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
+          &t->syscallbuf_hdr->notify_on_syscall_hook_exit);
 
       Registers r = t->regs();
       r.set_syscall_result(0);

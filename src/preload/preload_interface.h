@@ -56,12 +56,17 @@
  * The preload library calls SYS_rrcall_init_preload during its
  * initialization.
  */
-#define SYS_rrcall_init_preload 443
+#define SYS_rrcall_init_preload 442
 /**
  * The preload library calls SYS_rrcall_init_buffers in each thread that
  * gets created (including the initial main thread).
  */
-#define SYS_rrcall_init_buffers 442
+#define SYS_rrcall_init_buffers 443
+/**
+ * The preload library calls SYS_rrcall_notify_syscall_hook_exit when
+ * unlocking the syscallbuf and notify_after_syscall_hook_exit has been set.
+ */
+#define SYS_rrcall_notify_syscall_hook_exit 444
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.
@@ -170,8 +175,13 @@ struct syscallbuf_hdr {
   uint32_t num_rec_bytes;
   /* True if the current syscall should not be committed to the
    * buffer, for whatever reason; likely interrupted by
-   * desched. */
+   * desched. Set by rr. */
   uint8_t abort_commit;
+  /* True if, next time we exit the syscall buffer hook, libpreload should
+   * execute SYS_rrcall_notify_syscall_hook_exit to give rr the opportunity to
+   * deliver a signal.
+   */
+  uint8_t notify_on_syscall_hook_exit;
   /* This tracks whether the buffer is currently in use for a
    * system call. This is helpful when a signal handler runs
    * during a wrapped system call; we don't want it to use the
@@ -181,7 +191,6 @@ struct syscallbuf_hdr {
    * When it's zero, the desched signal can safely be
    * discarded. */
   uint8_t desched_signal_may_be_relevant;
-  uint8_t _padding;
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));

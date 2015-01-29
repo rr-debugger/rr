@@ -1652,10 +1652,7 @@ static long sys_writev(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-/* Explicitly declare this as hidden so we can call it from
- * _syscall_hook_trampoline without doing all sorts of special PIC handling.
- */
-RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
+static long syscall_hook_internal(const struct syscall_info* call) {
   switch (call->no) {
 #define CASE(syscallname)                                                      \
   case SYS_##syscallname:                                                      \
@@ -1707,6 +1704,19 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     default:
       return traced_raw_syscall(call);
   }
+}
+
+/* Explicitly declare this as hidden so we can call it from
+ * _syscall_hook_trampoline without doing all sorts of special PIC handling.
+ */
+RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
+  long result = syscall_hook_internal(call);
+  if (buffer_hdr() && buffer_hdr()->notify_on_syscall_hook_exit) {
+    // This syscall will clear notify_on_syscall_hook_exit. Clearing it
+    // ourselves is tricky to get right without races.
+    traced_syscall0(SYS_rrcall_notify_syscall_hook_exit);
+  }
+  return result;
 }
 
 /**
