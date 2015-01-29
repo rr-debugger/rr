@@ -548,8 +548,6 @@ happy_place:
   return COMPLETE;
 }
 
-// Returns true if we handled everything ok, false if we emulated a ptrace
-// stop and did not handle the signal.
 bool handle_signal(Task* t, siginfo_t* si) {
   LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
              << " (pevent: " << t->ptrace_event() << ", event: " << t->ev();

@@ -799,8 +799,6 @@ bool RecordSession::inject_signal(Task* t, StepState* step_state) {
       step_state->continue_type == DONT_CONTINUE) {
     return false;
   }
-  // This will either push a new signal event, new
-  // desched + syscall-interruption events, or no-op --- or return false.
   siginfo_t si = t->pop_stash_sig();
   if (si.si_signo == get_ignore_sig()) {
     LOG(info) << "Declining to deliver " << signal_name(si.si_signo)
