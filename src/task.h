@@ -893,6 +893,7 @@ public:
    */
   void stash_sig();
   bool has_stashed_sig() const { return !stashed_signals.empty(); }
+  siginfo_t peek_stash_sig();
   siginfo_t pop_stash_sig();
 
   /**

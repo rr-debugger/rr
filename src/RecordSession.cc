@@ -733,15 +733,15 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
     // We don't want them to be reordered around other signals.
     siginfo_t siginfo = t->get_siginfo();
     switch (handle_signal(t, &siginfo)) {
-    case SIGNAL_PTRACE_STOP:
-      // Emulated ptrace-stop. Don't run the task again yet.
-      last_task_switchable = ALLOW_SWITCH;
-      break;
-    case DEFER_SIGNAL:
-      ASSERT(t, false) << "Can't defer deterministic or internal signals";
-      break;
-    case SIGNAL_HANDLED:
-      break;
+      case SIGNAL_PTRACE_STOP:
+        // Emulated ptrace-stop. Don't run the task again yet.
+        last_task_switchable = ALLOW_SWITCH;
+        break;
+      case DEFER_SIGNAL:
+        ASSERT(t, false) << "Can't defer deterministic or internal signals";
+        break;
+      case SIGNAL_HANDLED:
+        break;
     }
     return false;
   }
@@ -806,17 +806,27 @@ bool RecordSession::inject_signal(Task* t, StepState* step_state) {
       step_state->continue_type == DONT_CONTINUE) {
     return false;
   }
-  siginfo_t si = t->pop_stash_sig();
+  siginfo_t si = t->peek_stash_sig();
   if (si.si_signo == get_ignore_sig()) {
     LOG(info) << "Declining to deliver " << signal_name(si.si_signo)
               << " by user request";
+    t->pop_stash_sig();
     return false;
   }
   step_state->continue_type = DONT_CONTINUE;
-  if (!handle_signal(t, &si)) {
-    // Emulated ptrace-stop. Don't run the task again yet.
-    last_task_switchable = ALLOW_SWITCH;
+  switch (handle_signal(t, &si)) {
+    case SIGNAL_PTRACE_STOP:
+      // Emulated ptrace-stop. Don't run the task again yet.
+      last_task_switchable = ALLOW_SWITCH;
+      break;
+    case DEFER_SIGNAL:
+      // Leave signal on the stack and continue task execution. We'll try again
+      // later.
+      return false;
+    case SIGNAL_HANDLED:
+      break;
   }
+  t->pop_stash_sig();
   return true;
 }
 

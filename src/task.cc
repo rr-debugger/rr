@@ -1491,6 +1491,11 @@ siginfo_t Task::pop_stash_sig() {
   return si;
 }
 
+siginfo_t Task::peek_stash_sig() {
+  assert(has_stashed_sig());
+  return stashed_signals.front().si;
+}
+
 const string& Task::trace_dir() const {
   const TraceStream* trace = trace_stream();
   ASSERT(this, trace) << "Trace directory not available";
