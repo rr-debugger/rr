@@ -1714,6 +1714,33 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
   if (buffer_hdr() && buffer_hdr()->notify_on_syscall_hook_exit) {
     // This syscall will clear notify_on_syscall_hook_exit. Clearing it
     // ourselves is tricky to get right without races.
+    //
+    // During recording, this flag is set when the recorder needs to delay
+    // delivery of a signal until we've stopped using the syscallbuf.
+    // During replay, this flag is set when the next event is entering a
+    // SYS_rrcall_notify_syscall_hook_exit.
+    //
+    // The correctness argument is as follows:
+    // Correctness requires that a) replay's setting of the flag happens before
+    // we read the flag in the call to syscall_hook that triggered the
+    // SYS_rrcall_notify_syscall_hook_exit and b) replay's setting of the flag
+    // must happen after we read the flag in the previous execution of
+    // syscall_hook.
+    // Condition a) holds as long as no events are recorded between the
+    // checking of the flag above and the execution of this syscall. This
+    // should be the case; no synchronous signals or syscalls are
+    // triggerable, all async signals other than SYSCALLBUF_DESCHED_SIGNAL
+    // are delayed, and SYSCALLBUF_DESCHED_SIGNAL shouldn't fire since we've
+    // disarmed the desched fd at this point. SYSCALLBUF_FLUSH events may be
+    // emitted when we process the SYS_rrcall_notify_syscall_hook_exit event,
+    // but replay of those events ends at the last flushed syscall, before
+    // we exit syscall_hook_internal.
+    // Condition b) failing would mean no new events were generated between
+    // testing the flag in the previous syscall_hook and the execution of this
+    // SYS_rrcall_notify_syscall_hook_exit. However, every invocation of
+    // syscall_hook_internal generates either a traced syscall or a syscallbuf
+    // record that would be flushed by SYSCALLBUF_FLUSH, so that can't
+    // happen.
     traced_syscall0(SYS_rrcall_notify_syscall_hook_exit);
   }
   return result;

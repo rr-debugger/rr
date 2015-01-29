@@ -1240,6 +1240,7 @@ Completion ReplaySession::flush_syscallbuf(Task* t, RunCommand stepi) {
     LOG(debug) << "  " << current_step.flush.num_rec_bytes_remaining
                << " bytes remain to flush";
   }
+
   return COMPLETE;
 }
 

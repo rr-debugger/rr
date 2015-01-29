@@ -134,12 +134,6 @@ static bool try_handle_rdtsc(Task* t, siginfo_t* si) {
   return true;
 }
 
-static void arm_desched_event(Task* t) {
-  if (ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
-    FATAL() << "Failed to arm desched event";
-  }
-}
-
 static void disarm_desched_event(Task* t) {
   if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
     FATAL() << "Failed to disarm desched event";
@@ -340,220 +334,43 @@ static void record_signal(Task* t, const siginfo_t* si) {
   t->push_event(SignalEvent(sig, is_deterministic_signal(si), t->arch()));
 }
 
-static bool is_trace_trap(const siginfo_t* si) {
-  return SIGTRAP == si->si_signo && TRAP_TRACE == si->si_code;
-}
-
-/**
- * Return nonzero if |si| seems to indicate that single-stepping in
- * the syscallbuf lib reached a syscall entry.
- *
- * What we *really* want to do is check to see if the delivered signal
- * was |STOPSIG_SYSCALL|, like when we continue with PTRACE_SYSCALL.
- * But for some reason that's not delivered with PTRACE_SINGLESTEP.
- * What /does/ seem to be delivered is SIGTRAP/code=BRKPT, as opposed
- * to SIGTRAP/code=TRACE for stepping normal instructions.
- */
-static bool seems_to_be_syscallbuf_syscall_trap(const siginfo_t* si) {
-  return (STOPSIG_SYSCALL == si->si_signo ||
-          (SIGTRAP == si->si_signo && TRAP_BRKPT == si->si_code));
-}
-
-/**
- * Take |t| to a place where it's OK to deliver a signal.  |si| must
- * be the current state of |t|.  Return COMPLETE if stepping completed
- * successfully, or INCOMPLETE if it was interrupted by another signal.
- */
-static Completion go_to_a_happy_place(Task* t, siginfo_t* si,
-                                      SignalHandled* handled) {
-  /* If we deliver the signal at the tracee's current execution
-   * point, it will result in a syscall-buffer-flush event being
-   * recorded if there are any buffered syscalls.  The
-   * signal-delivery event will follow.  So the definition of a
-   * "happy place" to deliver a signal is one in which the
-   * syscall buffer flush (i.e., executing all the buffered
-   * syscalls) will be guaranteed to happen before the signal
-   * delivery during replay.
-   *
-   * Naively delivering the signal (and thereby flushing the
-   * buffer) can cause the syscallbuf code to be reentered while
-   * it's in the middle of processing a syscall, and that would
-   * cause all sorts of things to go haywire, both during
-   * recording and replay.  That's why the
-   * |syscallbuf_hdr.locked| field exists: it establishes a
-   * critical section of syscallbuf code that cannot be
-   * reentered.  So those critical sections are not happy
-   * places.
-   *
-   * By definition, anywhere outside those critical sections is
-   * a happy place.  That includes the interval while the
-   * syscallbuf isn't enabled.
-   *
-   * The only exception is descheduled syscalls.  They're an
-   * exception because rr is already forced to bend over
-   * backwards to abort their commits to the syscallbuf and
-   * otherwise handle the desched signal interrupting the
-   * syscall.  Note, the syscallbuf will stay locked while any
-   * code invoked by the signal runs, so there are no reentrancy
-   * problems.
-   *
-   * The code below determines if the tracee is in a happy place
-   * per above, and if not, steps it until it finds one. */
-  struct syscallbuf_hdr initial_hdr;
+static bool is_safe_to_deliver_signal(Task* t) {
   struct syscallbuf_hdr* hdr = t->syscallbuf_hdr;
-  bool desched_event_maybe_armed = true;
-
-  *handled = SIGNAL_HANDLED;
-
-  LOG(debug) << "Stepping tracee to happy place to deliver signal ...";
 
   if (!hdr) {
     /* Can't be in critical section because the lock
      * doesn't exist yet! */
-    LOG(debug) << "  tracee hasn't allocated syscallbuf yet";
-    goto happy_place;
+    return true;
   }
 
-  ASSERT(t, !(t->is_in_syscallbuf() &&
-              is_deterministic_signal(si) == DETERMINISTIC_SIG))
-      << "TODO: " << signal_name(si->si_signo) << " (code:" << si->si_code
-      << ") raised by syscallbuf code";
-  /* TODO: when we add support for deterministic signals, we
-   * should sigprocmask-off all tracee signals while we're
-   * stepping.  If we tried that with the current impl, the
-   * syscallbuf code segfaulting would lead to an infinite
-   * single-stepping loop here.. */
-
-  initial_hdr = *hdr;
-  while (true) {
-    if (!t->is_in_syscallbuf()) {
-      /* The tracee is outside the syscallbuf code,
-       * so in most cases can't possibly affect
-       * syscallbuf critical sections.  The
-       * exception is signal handlers "re-entering"
-       * desched'd syscalls, which are OK per
-       * above.. */
-      LOG(debug) << "  tracee outside syscallbuf lib";
-      goto happy_place;
-    }
-    if (t->is_entering_traced_syscall()) {
-      // Unlike the untraced syscall entry, if we
-      // step a tracee into a *traced* syscall,
-      // we'll see a SIGTRAP for the tracee.  That
-      // causes several problems for rr, most
-      // relevant of them to this code being that
-      // the syscall entry looks like a synchronous
-      // SIGTRAP generated from the syscallbuf lib,
-      // which we don't know how to handle.
-      LOG(debug) << "  tracee entering traced syscallbuf syscall";
-      goto happy_place;
-    }
-    if (t->is_in_traced_syscall()) {
-      LOG(debug) << "  tracee at traced syscallbuf syscall";
-      goto happy_place;
-    }
-    if (t->is_in_untraced_syscall() && t->desched_rec()) {
-      LOG(debug) << "  tracee interrupted by desched of "
-                 << t->syscall_name(t->desched_rec()->syscallno);
-      goto happy_place;
-    }
-    if (initial_hdr.locked && !hdr->locked) {
-      /* Tracee just stepped out of a critical
-       * section and into a happy place.. */
-      LOG(debug) << "  tracee just unlocked syscallbuf";
-      goto happy_place;
-    }
-
-    bool should_arm_desched_event = t->is_in_untraced_syscall();
-    if (desched_event_maybe_armed != should_arm_desched_event) {
-      if (should_arm_desched_event) {
-        arm_desched_event(t);
-      } else {
-        disarm_desched_event(t);
-      }
-      desched_event_maybe_armed = should_arm_desched_event;
-    }
-
-    /* Move the tracee closer to a happy place.  NB: an
-     * invariant of the syscallbuf is that all untraced
-     * syscalls must be made from within a transaction
-     * (critical section), so there's no chance here of
-     * "skipping over" a syscall we should have
-     * recorded. */
-    LOG(debug) << "  stepi out of syscallbuf from " << t->ip();
-    t->cont_singlestep();
-    assert(t->stopped());
-
-    siginfo_t tmp_si = t->get_siginfo();
-    bool is_syscall = seems_to_be_syscallbuf_syscall_trap(&tmp_si);
-
-    if (!is_syscall && !is_trace_trap(&tmp_si)) {
-      if (PerfCounters::TIME_SLICE_SIGNAL == tmp_si.si_signo) {
-        LOG(debug) << "  discarding HPC_TIME_SLICE_SIGNAL";
-        continue;
-      }
-      if (SYSCALLBUF_DESCHED_SIGNAL == tmp_si.si_signo) {
-        if (!t->is_in_untraced_syscall()) {
-          // The performance counter is disarmed but
-          // maybe this signal could already be pending.
-          // We can ignore this signal.
-          LOG(debug) << "  discarding SYSCALLBUF_DESCHED_SIGNAL";
-          continue;
-        }
-        // TODO what if we get a signal just before
-        // entering an untraced syscall, we step into
-        // that syscall, and then it blocks? We'll
-        // reach this point, but what should we do?
-        // We can probably treat this as a happy_place
-        // and just deliver our original signal, but
-        // we'll need logic similar to handle_desched_event.
-      }
-      // In a desperate effort to avoid dying, discard
-      // an ignored signal. This will preserve tracee
-      // behavior. It means such signals won't be observed
-      // in a debugger, but that will hardly ever be
-      // important.
-      if (PerfCounters::TIME_SLICE_SIGNAL == si->si_signo ||
-          t->is_sig_ignored(si->si_signo)) {
-        *si = tmp_si;
-        LOG(debug) << "  upgraded delivery of HPC_TIME_SLICE_SIGNAL to "
-                   << signal_name(si->si_signo);
-        *handled = handle_signal(t, si);
-        return INCOMPLETE;
-      }
-      // In another desperate effort to avoid dying, discard
-      // the new signal if it's ignored.
-      if (t->is_sig_ignored(tmp_si.si_signo)) {
-        LOG(debug) << "  discarding ignored signal " << tmp_si.si_signo;
-        continue;
-      }
-
-      ASSERT(t, false) << "TODO: support multiple pending signals; received "
-                       << signal_name(tmp_si.si_signo)
-                       << " (code: " << tmp_si.si_code << ") at $ip:" << t->ip()
-                       << " while trying to deliver "
-                       << signal_name(si->si_signo) << " (code: " << si->si_code
-                       << ")";
-    }
-    if (!is_syscall) {
-      continue;
-    }
-
-    LOG(debug) << "  running wrapped syscall";
-    /* Finish the syscall. */
-    t->cont_singlestep();
+  if (!t->is_in_syscallbuf()) {
+    /* The tracee is outside the syscallbuf code,
+     * so in most cases can't possibly affect
+     * syscallbuf critical sections.  The
+     * exception is signal handlers "re-entering"
+     * desched'd syscalls, which are OK. */
+    return true;
   }
 
-happy_place:
-  /* TODO: restore previous tracee signal mask. */
-  return COMPLETE;
+  if (t->is_in_traced_syscall()) {
+    LOG(debug) << "  tracee at traced syscallbuf syscall";
+    return true;
+  }
+
+  if (t->is_in_untraced_syscall() && t->desched_rec()) {
+    LOG(debug) << "  tracee interrupted by desched of "
+               << t->syscall_name(t->desched_rec()->syscallno);
+    return true;
+  }
+
+  // Our emulation of SYS_rrcall_notify_syscall_hook_exit clears this flag.
+  hdr->notify_on_syscall_hook_exit = true;
+  return false;
 }
 
 SignalHandled handle_signal(Task* t, siginfo_t* si) {
   LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
              << " (pevent: " << t->ptrace_event() << ", event: " << t->ev();
-
-  t->set_siginfo_for_synthetic_SIGCHLD(si);
 
   /* We have to check for a desched event first, because for
    * those we *do not* want to (and cannot, most of the time)
@@ -564,12 +381,11 @@ SignalHandled handle_signal(Task* t, siginfo_t* si) {
     return SIGNAL_HANDLED;
   }
 
-  SignalHandled handled;
-  if (go_to_a_happy_place(t, si, &handled) == INCOMPLETE) {
-    /* While stepping, another signal arrived that we
-     * "upgraded" to. */
-    return handled;
+  if (!is_safe_to_deliver_signal(t)) {
+    return DEFER_SIGNAL;
   }
+
+  t->set_siginfo_for_synthetic_SIGCHLD(si);
 
   /* See if this signal occurred because of an rr implementation detail,
    * and fudge t appropriately. */

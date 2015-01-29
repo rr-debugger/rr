@@ -1043,6 +1043,15 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       step->action = TSTEP_RETIRE;
       return;
 
+    case SYS_rrcall_notify_syscall_hook_exit:
+      step->action = syscall_action(state);
+      step->syscall.emu = EMULATE;
+      if (SYSCALL_ENTRY == state) {
+        ASSERT(t, t->syscallbuf_hdr);
+        t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
+      }
+      return;
+
     default:
       step->action = syscall_action(state);
       step->syscall.emu = rep_EXEC == def->type ? EXEC : EMULATE;

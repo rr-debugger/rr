@@ -291,6 +291,9 @@ static void disarm_desched(Task* t) {
       t->stash_sig();
     }
   } while (!t->is_disarm_desched_event_syscall());
+
+  // Exit the syscall.
+  t->cont_syscall();
 }
 
 /**
@@ -727,8 +730,7 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
     return true;
   }
   if (is_deterministic_signal(&t->get_siginfo()) ||
-      sig == SYSCALLBUF_DESCHED_SIGNAL ||
-      sig == PerfCounters::TIME_SLICE_SIGNAL) {
+      sig == SYSCALLBUF_DESCHED_SIGNAL) {
     // Don't stash these signals; deliver them immediately.
     // We don't want them to be reordered around other signals.
     siginfo_t siginfo = t->get_siginfo();
@@ -756,15 +758,17 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
 void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
                                            bool can_consume_wait_status,
                                            StepState* step_state) {
-  if (!can_consume_wait_status) {
-    return;
-  }
-
   switch (t->ev().type()) {
     case EV_NOOP:
+      if (!can_consume_wait_status) {
+        return;
+      }
       t->pop_noop();
       break;
     case EV_SEGV_RDTSC:
+      if (!can_consume_wait_status) {
+        return;
+      }
       t->record_current_event();
       t->pop_event(t->ev().type());
       break;
@@ -778,6 +782,9 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
     case EV_SENTINEL:
     case EV_SIGNAL_HANDLER:
     case EV_SYSCALL_INTERRUPTION:
+      if (!can_consume_wait_status) {
+        return;
+      }
       // We just entered a syscall.
       if (!maybe_restart_syscall(t)) {
         if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
@@ -803,7 +810,7 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
 
 bool RecordSession::inject_signal(Task* t, StepState* step_state) {
   if (!t->has_stashed_sig() || !can_deliver_signals ||
-      step_state->continue_type == DONT_CONTINUE) {
+      step_state->continue_type != CONTINUE) {
     return false;
   }
   siginfo_t si = t->peek_stash_sig();
@@ -813,7 +820,6 @@ bool RecordSession::inject_signal(Task* t, StepState* step_state) {
     t->pop_stash_sig();
     return false;
   }
-  step_state->continue_type = DONT_CONTINUE;
   switch (handle_signal(t, &si)) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
@@ -826,6 +832,7 @@ bool RecordSession::inject_signal(Task* t, StepState* step_state) {
     case SIGNAL_HANDLED:
       break;
   }
+  step_state->continue_type = DONT_CONTINUE;
   t->pop_stash_sig();
   return true;
 }
