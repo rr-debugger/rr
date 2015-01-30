@@ -1219,8 +1219,7 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi) {
 Completion ReplaySession::flush_syscallbuf(Task* t, RunCommand stepi) {
   prepare_syscallbuf_records(t);
 
-  const syscallbuf_hdr* flush_hdr =
-      t->replay_session().syscallbuf_flush_buffer_hdr();
+  const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
 
   while (current_step.flush.num_rec_bytes_remaining > 0) {
     if (flush_one_syscall(t, stepi) == INCOMPLETE) {
