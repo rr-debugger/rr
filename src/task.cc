@@ -1473,12 +1473,6 @@ void Task::stash_sig() {
     }
   }
 
-  ASSERT(this, !has_stashed_sig()) << "Tried to stash " << signal_name(sig)
-                                   << " when "
-                                   << signal_name(
-                                          stashed_signals.back().si.si_signo)
-                                   << " was already stashed.";
-
   const siginfo_t& si = get_siginfo();
   stashed_signals.push_back(StashedSignal(si));
   wait_status = 0;
