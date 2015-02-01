@@ -134,8 +134,14 @@ static bool try_handle_rdtsc(Task* t, siginfo_t* si) {
   return true;
 }
 
-static void disarm_desched_event(Task* t) {
+void disarm_desched_event(Task* t) {
   if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
+    FATAL() << "Failed to disarm desched event";
+  }
+}
+
+void arm_desched_event(Task* t) {
+  if (ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
     FATAL() << "Failed to disarm desched event";
   }
 }
@@ -277,38 +283,47 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
     return;
   }
 
-  /* This prevents the syscallbuf record counter from being
-   * reset until we've finished guiding the tracee through this
-   * interrupted call.  We use the record counter for
-   * assertions. */
-  t->delay_syscallbuf_reset = true;
+  if (t->desched_rec()) {
+    // We're already processing a desched. We probably reexecuted the
+    // system call (e.g. because a signal was processed) and the syscall
+    // blocked again. Carry on with the current desched.
+  } else {
+    /* This prevents the syscallbuf record counter from being
+     * reset until we've finished guiding the tracee through this
+     * interrupted call.  We use the record counter for
+     * assertions. */
+    t->delay_syscallbuf_reset = true;
 
-  /* The tracee is (re-)entering the buffered syscall.  Stash
-   * away this breadcrumb so that we can figure out what syscall
-   * the tracee was in, and how much "scratch" space it carved
-   * off the syscallbuf, if needed. */
-  const struct syscallbuf_record* desched_rec = next_record(t->syscallbuf_hdr);
-  t->push_event(DeschedEvent(desched_rec, t->arch()));
-  int call = t->desched_rec()->syscallno;
-  /* Replay needs to be prepared to see the ioctl() that arms
-   * the desched counter when it's trying to step to the entry
-   * of |call|.  We'll record the syscall entry when the main
-   * recorder code sees the tracee's syscall event. */
-  t->record_current_event();
+    /* The tracee is (re-)entering the buffered syscall.  Stash
+     * away this breadcrumb so that we can figure out what syscall
+     * the tracee was in, and how much "scratch" space it carved
+     * off the syscallbuf, if needed. */
+    const struct syscallbuf_record* desched_rec =
+        next_record(t->syscallbuf_hdr);
+    t->push_event(DeschedEvent(desched_rec, t->arch()));
+    int call = t->desched_rec()->syscallno;
+    /* Replay needs to be prepared to see the ioctl() that arms
+     * the desched counter when it's trying to step to the entry
+     * of |call|.  We'll record the syscall entry when the main
+     * recorder code sees the tracee's syscall event. */
+    t->record_current_event();
 
-  /* Because we set the |delay_syscallbuf_reset| flag and the
-   * record counter will stay intact for a bit, we need to also
-   * prevent later events from flushing the syscallbuf until
-   * we've unblocked the reset. */
-  t->delay_syscallbuf_flush = true;
+    /* Because we set the |delay_syscallbuf_reset| flag and the
+     * record counter will stay intact for a bit, we need to also
+     * prevent later events from flushing the syscallbuf until
+     * we've unblocked the reset. */
+    t->delay_syscallbuf_flush = true;
 
-  /* The descheduled syscall was interrupted by a signal, like
-   * all other may-restart syscalls, with the exception that
-   * this one has already been restarted (which we'll detect
-   * back in the main loop). */
-  t->push_event(Event(interrupted, SyscallEvent(call, t->arch())));
+    /* The descheduled syscall was interrupted by a signal, like
+     * all other may-restart syscalls, with the exception that
+     * this one has already been restarted (which we'll detect
+     * back in the main loop). */
+    t->push_event(Event(interrupted, SyscallEvent(call, t->arch())));
+    SyscallEvent& ev = t->ev().Syscall();
+    ev.desched_rec = desched_rec;
+  }
+
   SyscallEvent& ev = t->ev().Syscall();
-  ev.desched_rec = desched_rec;
   ev.regs = t->regs();
   /* For some syscalls (at least poll) but not all (at least not read),
    * repeated cont_syscall()s above of the same interrupted syscall
@@ -316,6 +331,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
    * otherwise we'll get a divergence during replay, which will not
    * encounter this problem.
    */
+  int call = t->desched_rec()->syscallno;
   ev.regs.set_original_syscallno(call);
   t->set_regs(ev.regs);
   ev.state = EXITING_SYSCALL;
@@ -324,14 +340,8 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
              << t->syscall_name(call) << "'";
 }
 
-static void record_signal(Task* t, const siginfo_t* si) {
-  // goto_a_happy_place's stepping can lead to the kernel forgetting
-  // the siginfo for the signal we're going to deliver. Restore that
-  // siginfo now.
-  t->set_siginfo(*si);
-
-  int sig = si->si_signo;
-  t->push_event(SignalEvent(sig, is_deterministic_signal(si), t->arch()));
+static void record_signal(Task* t, const siginfo_t& si) {
+  t->push_event(SignalEvent(si, is_deterministic_signal(si), t->arch()));
 }
 
 static bool is_safe_to_deliver_signal(Task* t) {
@@ -414,6 +424,6 @@ SignalHandled handle_signal(Task* t, siginfo_t* si) {
     return SIGNAL_PTRACE_STOP;
   }
 
-  record_signal(t, si);
+  record_signal(t, *si);
   return SIGNAL_HANDLED;
 }

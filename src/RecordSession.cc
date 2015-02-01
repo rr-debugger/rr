@@ -252,12 +252,13 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
 }
 
 /**
- * Step |t| forward until the desched event is disarmed.  If a signal
- * becomes pending in the interim, the |waitpid()| status is returned,
- * and |si| is filled in.  This allows the caller to deliver the
- * signal after this returns and the desched event is disabled.
+ * Step |t| forward until the tracee syscall that disarms the desched
+ * event. If a signal becomes pending in the interim, we stash it.
+ * This allows the caller to deliver the signal after this returns.
+ * (In reality the desched event will already have been disarmed before we
+ * enter this function.)
  */
-static void disarm_desched(Task* t) {
+static void advance_to_disarm_desched_syscall(Task* t) {
   int old_sig = 0;
 
   LOG(debug) << "desched: DISARMING_DESCHED_EVENT";
@@ -274,14 +275,14 @@ static void disarm_desched(Task* t) {
      * copy-out the buffered out data to the user's
      * buffer.  This happens in the interval where we're
      * reaching the disarm-desched ioctl, so that code is
-     * susceptible to receiving SIG_TIMESLICE.  If it
-     * does, we'll try to stepi the tracee to a safe point
-     * ... through a practically unbounded memcpy(), which
-     * can be very expensive. */
+     * susceptible to receiving SIG_TIMESLICE. */
     int sig = t->pending_sig();
     if (PerfCounters::TIME_SLICE_SIGNAL == sig) {
       continue;
     }
+    // We should not receive SYSCALLBUF_DESCHED_SIGNAL since it should already
+    // have been disarmed.
+    ASSERT(t, SYSCALLBUF_DESCHED_SIGNAL != sig);
     if (sig && sig == old_sig) {
       LOG(debug) << "  coalescing pending " << signal_name(sig);
       continue;
@@ -316,7 +317,7 @@ void RecordSession::desched_state_changed(Task* t) {
       t->ev().Desched().state = DISARMING_DESCHED_EVENT;
     /* fall through */
     case DISARMING_DESCHED_EVENT: {
-      disarm_desched(t);
+      advance_to_disarm_desched_syscall(t);
 
       t->ev().Desched().state = DISARMED_DESCHED_EVENT;
       t->record_current_event();
@@ -397,7 +398,7 @@ static void maybe_discard_syscall_interruption(Task* t, int ret) {
   syscallno = t->ev().Syscall().number;
   if (0 > ret) {
     syscall_not_restarted(t);
-  } else if (0 < ret) {
+  } else {
     ASSERT(t, syscallno == ret) << "Interrupted call was "
                                 << t->syscall_name(syscallno)
                                 << " and sigreturn claims to be restarting "
@@ -442,6 +443,16 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
 
       // Resume the syscall execution in the kernel context.
       step_state->continue_type = CONTINUE_SYSCALL;
+
+      if (t->desched_rec() && t->is_in_untraced_syscall() &&
+          t->ev().Syscall().is_restart && t->has_stashed_sig()) {
+        // We have a signal to deliver but we're about to restart an untraced
+        // syscall that may block and the desched event has been disarmed.
+        // Rearm the desched event so if the syscall blocks, it will be
+        // interrupted and we'll have a chance to deliver our signal.
+        arm_desched_event(t);
+      }
+
       return;
     }
     case PROCESSING_SYSCALL:
@@ -460,6 +471,11 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
       debug_exec_state("EXEC_SYSCALL_DONE", t);
 
       assert(t->pending_sig() == 0);
+
+      if (t->desched_rec()) {
+        // If we enabled the desched event above, disable it.
+        disarm_desched_event(t);
+      }
 
       int syscallno = t->ev().Syscall().number;
       int retval = t->regs().syscall_result();
@@ -595,6 +611,78 @@ void RecordSession::check_perf_counters_working(Task* t,
   }
 }
 
+static void inject_signal(Task* t) {
+  int sig = t->ev().Signal().siginfo.si_signo;
+
+  /* Signal injection is tricky. Per the ptrace(2) man page, injecting
+   * a signal while the task is not in a signal-stop is not guaranteed to work
+   * (and indeed, we see that the kernel sometimes ignores such signals).
+   * But some signals must be delayed until after the signal-stop that notified
+   * us of them.
+   * So, first we check if we're in a signal-stop that we can use to inject
+   * a signal. Some (all?) SIGTRAP stops are *not* usable for signal injection.
+   */
+  if (t->pending_sig() && t->pending_sig() != SIGTRAP) {
+    LOG(debug) << "    in signal-stop for " << signal_name(t->pending_sig());
+  } else {
+    /* We're not in a usable signal-stop. Force a signal-stop by sending
+     * a new signal with tgkill (as the ptrace(2) man page recommends).
+     */
+    LOG(debug) << "    maybe not in signal-stop; tgkill(" << signal_name(sig)
+               << ")";
+    t->tgkill(sig);
+
+    /* Now singlestep the task until we're in a signal-stop for the signal
+     * we've just sent. We must absorb and forget that signal here since we
+     * don't want it delivered to the task for real.
+     */
+    while (true) {
+      auto old_ip = t->ip();
+      t->cont_singlestep();
+      ASSERT(t, old_ip == t->ip());
+      ASSERT(t, t->pending_sig());
+      if (t->pending_sig() == sig) {
+        LOG(debug) << "    stopped with signal " << signal_name(sig);
+        break;
+      }
+      /* It's possible for other signals to arrive while we're trying to
+       * get to the signal-stop for the signal we just sent. Stash them for
+       * later delivery.
+       */
+      if (t->pending_sig() == SYSCALLBUF_DESCHED_SIGNAL) {
+        LOG(debug) << "    stopped with signal " << signal_name(sig)
+                   << "; ignoring it and carrying on";
+      } else {
+        LOG(debug) << "    stopped with signal " << signal_name(sig)
+                   << "; stashing it and carrying on";
+        t->stash_sig();
+      }
+    }
+    /* We're now in a signal-stop (and for the right signal too, though that
+     * doesn't really matter).
+     */
+  }
+
+  /* Now that we're in a signal-stop, we can inject our signal and advance
+   * to the signal handler with one single-step.
+   */
+  LOG(debug) << "    injecting signal number " << t->ev().Signal().siginfo;
+  t->set_siginfo(t->ev().Signal().siginfo);
+  t->cont_singlestep(sig);
+  ASSERT(t, t->pending_sig() == SIGTRAP);
+  ASSERT(t, t->get_signal_user_handler(sig) == t->ip());
+
+  // It's been observed that when tasks enter
+  // sighandlers, the singlestep operation above
+  // doesn't retire any instructions; and
+  // indeed, if an instruction could be retired,
+  // this code wouldn't work.  This also
+  // cross-checks the sighandler information we
+  // maintain in |t->sighandlers|.
+  assert(!PerfCounters::extra_perf_counters_enabled() ||
+         0 == t->hpc.read_extra().instructions_retired);
+}
+
 /**
  * |t| is being delivered a signal, and its state changed.
  *
@@ -602,7 +690,7 @@ void RecordSession::check_perf_counters_working(Task* t,
  * false otherwise.
  */
 void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
-  int sig = t->ev().Signal().number;
+  int sig = t->ev().Signal().siginfo.si_signo;
 
   switch (t->ev().type()) {
     case EV_SIGNAL: {
@@ -617,20 +705,7 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
         LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
 
-        t->cont_singlestep(sig);
-        ASSERT(t, t->stop_sig() == SIGTRAP) << "Expected single-step trap,"
-                                               " got siginfo "
-                                            << t->get_siginfo();
-
-        // It's been observed that when tasks enter
-        // sighandlers, the singlestep operation above
-        // doesn't retire any instructions; and
-        // indeed, if an instruction could be retired,
-        // this code wouldn't work.  This also
-        // cross-checks the sighandler information we
-        // maintain in |t->sighandlers|.
-        assert(!PerfCounters::extra_perf_counters_enabled() ||
-               0 == t->hpc.read_extra().instructions_retired);
+        inject_signal(t);
 
         // It's somewhat difficult engineering-wise to
         // compute the sigframe size at compile time,
@@ -729,7 +804,7 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
     // needed.
     return true;
   }
-  if (is_deterministic_signal(&t->get_siginfo()) ||
+  if (is_deterministic_signal(t->get_siginfo()) ||
       sig == SYSCALLBUF_DESCHED_SIGNAL) {
     // Don't stash these signals; deliver them immediately.
     // We don't want them to be reordered around other signals.
@@ -802,7 +877,7 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
   maybe_reset_syscallbuf(t);
 }
 
-bool RecordSession::inject_signal(Task* t, StepState* step_state) {
+bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
   if (!t->has_stashed_sig() || !can_deliver_signals ||
       step_state->continue_type != CONTINUE) {
     return false;
@@ -999,7 +1074,7 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   // We try to inject a signal if there's one pending; otherwise we continue
   // task execution.
-  if (!inject_signal(t, &step_state) &&
+  if (!prepare_to_inject_signal(t, &step_state) &&
       step_state.continue_type != DONT_CONTINUE) {
     // Ensure that we aren't allowing switches away from a running task.
     // Only tasks blocked in a syscall can be switched away from, otherwise

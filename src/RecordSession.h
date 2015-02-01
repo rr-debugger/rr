@@ -98,7 +98,7 @@ private:
   void signal_state_changed(Task* t, StepState* step_state);
   void syscall_state_changed(Task* t, StepState* step_state);
   void desched_state_changed(Task* t);
-  bool inject_signal(Task* t, StepState* step_state);
+  bool prepare_to_inject_signal(Task* t, StepState* step_state);
   void task_continue(Task* t, const StepState& step_state);
 
   TraceWriter trace_out;

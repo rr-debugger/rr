@@ -184,7 +184,7 @@ EncodedEvent Event::encode() const {
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER: {
       set_encoded_event_data(
-          &e, Signal().number |
+          &e, Signal().siginfo.si_signo |
                   (Signal().deterministic == DETERMINISTIC_SIG ? DET_SIGNAL_BIT
                                                                : 0));
       return e;
@@ -276,7 +276,7 @@ string Event::str() const {
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
-      ss << ": " << signal_name(Signal().number) << "("
+      ss << ": " << signal_name(Signal().siginfo.si_signo) << "("
          << (const char*)(Signal().deterministic == DETERMINISTIC_SIG ? "det"
                                                                       : "async")
          << ")";

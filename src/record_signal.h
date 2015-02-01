@@ -9,6 +9,9 @@ class Task;
 
 const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
 
+void disarm_desched_event(Task* t);
+void arm_desched_event(Task* t);
+
 enum SignalHandled {
   SIGNAL_HANDLED,
   SIGNAL_PTRACE_STOP,

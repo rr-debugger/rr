@@ -855,6 +855,11 @@ public:
    * invoked when |sig| is received.
    */
   bool signal_has_user_handler(int sig) const;
+  /**
+   * If signal_has_user_handler(sig) is true, return the address of the
+   * user handler, otherwise return null.
+   */
+  remote_ptr<uint8_t> get_signal_user_handler(int sig) const;
 
   /**
    * Return |sig|'s current sigaction. Returned as raw bytes since the

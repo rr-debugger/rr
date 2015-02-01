@@ -157,16 +157,22 @@ enum SignalDeterministic {
 };
 struct SignalEvent : public BaseEvent {
   /**
-   * Signal |sigo| is the signum, and |deterministic| is true
+   * Signal |signo| is the signum, and |deterministic| is true
    * for deterministically-delivered signals (see
    * record_signal.cc).
    */
-  SignalEvent(int signo, SignalDeterministic deterministic, SupportedArch arch)
+  SignalEvent(const siginfo_t& siginfo, SignalDeterministic deterministic,
+              SupportedArch arch)
       : BaseEvent(HAS_EXEC_INFO, arch),
-        number(signo),
+        siginfo(siginfo),
         deterministic(deterministic) {}
-  // Signal number.
-  int number;
+  SignalEvent(int signo, SignalDeterministic deterministic, SupportedArch arch)
+      : BaseEvent(HAS_EXEC_INFO, arch), deterministic(deterministic) {
+    memset(&siginfo, 0, sizeof(siginfo));
+    siginfo.si_signo = signo;
+  }
+  // Signal info
+  siginfo_t siginfo;
   // True if this signal will be deterministically raised as the
   // side effect of retiring an instruction during replay, for
   // example |load $r 0x0| deterministically raises SIGSEGV.

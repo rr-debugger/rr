@@ -7,9 +7,10 @@ int main(int argc, char** argv) {
   char buf[10];
   int i;
 
-  fd = open("/dev/zero", O_RDONLY);
   for (i = 0; i < 1 << 12; ++i) {
+    fd = open("/dev/zero", O_RDONLY);
     read(fd, buf, sizeof(buf));
+    close(fd);
     if (!(i & ((1 << 8) - 1))) {
       atomic_printf(".");
     }

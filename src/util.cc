@@ -422,8 +422,8 @@ signal_action default_action(int sig) {
   }
 }
 
-SignalDeterministic is_deterministic_signal(const siginfo_t* si) {
-  switch (si->si_signo) {
+SignalDeterministic is_deterministic_signal(const siginfo_t& si) {
+  switch (si.si_signo) {
     /* These signals may be delivered deterministically;
      * we'll check for sure below. */
     case SIGILL:
@@ -439,7 +439,7 @@ SignalDeterministic is_deterministic_signal(const siginfo_t* si) {
        * So if the signal is maybe-synchronous, and the
        * kernel delivered it, then it must have been
        * delivered deterministically. */
-      return si->si_code > 0 ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
+      return si.si_code > 0 ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
     default:
       /* All other signals can never be delivered
        * deterministically (to the approximation required by

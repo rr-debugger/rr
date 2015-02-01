@@ -97,6 +97,10 @@ struct Sighandler {
     static_assert(1 == (uintptr_t)SIG_IGN, "");
     return k_sa_handler.as_int() & ~(uintptr_t)SIG_IGN;
   }
+  remote_ptr<uint8_t> get_user_handler() const {
+    return is_user_handler() ? k_sa_handler.cast<uint8_t>()
+                             : remote_ptr<uint8_t>();
+  }
 
   remote_ptr<void> k_sa_handler;
   // Saved kernel_sigaction; used to restore handler
@@ -366,7 +370,7 @@ void Task::destabilize_task_group() {
     printf(
         "[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
         trace_time() + signal_delivery_event_offset, rec_tid, tgid(),
-        signal_name(ev().Signal().number));
+        signal_name(ev().Signal().siginfo.si_signo));
   }
 
   tg->destabilize();
@@ -1455,6 +1459,10 @@ bool Task::signal_has_user_handler(int sig) const {
   return sighandlers->get(sig).is_user_handler();
 }
 
+remote_ptr<uint8_t> Task::get_signal_user_handler(int sig) const {
+  return sighandlers->get(sig).get_user_handler();
+}
+
 const vector<uint8_t>& Task::signal_action(int sig) const {
   return sighandlers->get(sig).sa;
 }
@@ -1462,6 +1470,8 @@ const vector<uint8_t>& Task::signal_action(int sig) const {
 void Task::stash_sig() {
   int sig = pending_sig();
   assert(sig);
+  // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
+  assert(sig != SYSCALLBUF_DESCHED_SIGNAL);
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {

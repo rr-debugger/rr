@@ -201,6 +201,7 @@ set(BASIC_TESTS
   alarm
   alarm2
   async_segv_ignored
+  async_signal_syscalls2
   at_threadexit
   bad_ip
   bad_syscall
@@ -262,6 +263,7 @@ set(BASIC_TESTS
   msg
   msync
   multiple_pending_signals
+  multiple_pending_signals_sequential
   munmap_discontinuous
   no_mask_timeslice
   old_fork
@@ -322,6 +324,7 @@ set(BASIC_TESTS
   strict_priorities
   switch_read
   syscallbuf_timeslice
+  syscallbuf_timeslice2
   sysconf
   sysctl
   sysemu_singlestep

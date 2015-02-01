@@ -1,0 +1,11 @@
+source `dirname $0`/util.sh
+
+# It's relatively easy to reproduce a CPUID divergence caused by lack
+# of CPU binding.
+GLOBAL_OPTIONS="$GLOBAL_OPTIONS_BIND_CPU"
+
+RECORD_ARGS="-c250"
+
+record syscallbuf_timeslice2$bitness
+replay
+check 'EXIT-SUCCESS'

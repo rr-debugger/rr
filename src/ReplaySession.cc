@@ -1331,7 +1331,8 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
   }
 
   if (t->child_sig != 0) {
-    assert(EV_SIGNAL == ev.type() && t->child_sig == ev.Signal().number);
+    assert(EV_SIGNAL == ev.type() &&
+           t->child_sig == ev.Signal().siginfo.si_signo);
     t->child_sig = 0;
   }
 
@@ -1419,7 +1420,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_SIGNAL:
-      current_step.signo = ev.Signal().number;
+      current_step.signo = ev.Signal().siginfo.si_signo;
       current_step.action = ev.Signal().deterministic == DETERMINISTIC_SIG
                                 ? TSTEP_DETERMINISTIC_SIGNAL
                                 : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
