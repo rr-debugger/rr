@@ -6,8 +6,8 @@ static sig_atomic_t caught_usr1;
 
 static void handle_usr1(int sig) {
   test_assert(SIGUSR1 == sig);
-  caught_usr1 = 1;
   atomic_puts("caught usr1");
+  caught_usr1 = 1;
 }
 
 int main(int argc, char** argv) {
@@ -38,6 +38,9 @@ int main(int argc, char** argv) {
     gettimeofday(&tv, NULL);
     clock_gettime(CLOCK_MONOTONIC, &ts);
     gettimeofday(&tv, NULL);
+    if (caught_usr1) {
+      break;
+    }
   }
 
   atomic_puts("EXIT-SUCCESS");

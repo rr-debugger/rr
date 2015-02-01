@@ -3,9 +3,9 @@ source `dirname $0`/util.sh
 # See async_signal_syscalls.run for an explanation.
 skip_if_no_syscall_buf
 
-# SIGUSR1, wait 0.5s; 17 iterations is arbitrarily chosen to take ~3s
-# on a fast machine
-record_async_signal 10 0.5 async_signal_syscalls$bitness 17
+# SIGUSR1, wait 0.5s; do 2^30 iterations to give us effectively unlimited time
+# (the test exits when SIGUSR1 has been handled)
+record_async_signal 10 0.5 async_signal_syscalls$bitness 30
 # Because of issue #184, replay takes longer than practical.  So for
 # now we'll skip it and hope other tests exercise the relevant code
 # well enough.
