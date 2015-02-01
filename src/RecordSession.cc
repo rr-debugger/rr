@@ -760,15 +760,9 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
                                            StepState* step_state) {
   switch (t->ev().type()) {
     case EV_NOOP:
-      if (!can_consume_wait_status) {
-        return;
-      }
       t->pop_noop();
       break;
     case EV_SEGV_RDTSC:
-      if (!can_consume_wait_status) {
-        return;
-      }
       t->record_current_event();
       t->pop_event(t->ev().type());
       break;
