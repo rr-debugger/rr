@@ -1797,7 +1797,7 @@ bool Task::try_wait() {
  * preventing direct access to sources of nondeterminism, and ensuring
  * that rr bugs don't adversely affect the underlying system.
  */
-static void set_up_process() {
+static void set_up_process(Session& session) {
   /* TODO tracees can probably undo some of the setup below
    * ... */
 
@@ -1807,6 +1807,12 @@ static void set_up_process() {
   }
   if (RR_MAGIC_SAVE_DATA_FD != dup2(fd, RR_MAGIC_SAVE_DATA_FD)) {
     FATAL() << "error duping to RR_MAGIC_SAVE_DATA_FD";
+  }
+
+  if (session.is_replaying()) {
+    // This task and all its descendants should silently reap any terminating
+    // children.
+    signal(SIGCHLD, SIG_IGN);
   }
 
   /* Disable address space layout randomization, for obvious
@@ -2167,6 +2173,10 @@ void Task::detach_and_reap() {
       // child no longer exists for some reason. It's
       // already reaped or maybe it's no longer our child.
       // We may leak a zombie process.
+      // Note that during replay we'll often get this because cloned
+      // replay tasks are usually not our children --- but that's OK because
+      // our replay tasks all ignore SIGCHLD, causing the kernel to auto-reap
+      // their children.
       LOG(debug) << " ... ECHILD";
       break;
     }
@@ -2673,7 +2683,7 @@ static void setup_fd_table(FdTable& fds) {
     // recording. The main effect of this is to resolve relative
     // paths in the following execvpe correctly during replay.
     chdir(trace.initial_cwd().c_str());
-    set_up_process();
+    set_up_process(session);
     // The preceding code must run before sending SIGSTOP here,
     // since after SIGSTOP replay emulates almost all syscalls, but
     // we need the above syscalls to run "for real".
