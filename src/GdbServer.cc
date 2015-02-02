@@ -529,6 +529,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
+      req.type = DREQ_NONE;
       dbg->notify_exit_code(0);
       break;
     }
@@ -597,6 +598,9 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
       dbg->reply_read_siginfo(si_bytes);
 
       req = divert(*session, t->rec_tid);
+      if (req.type == DREQ_NONE) {
+        continue;
+      }
       // Carry on to process the request that was rejected by
       // the diversion session
     }
