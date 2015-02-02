@@ -2027,6 +2027,11 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::mincore:
+      syscall_state.reg_parameter(3, (t->regs().arg2() + page_size() - 1) /
+                                         page_size());
+      return PREVENT_SWITCH;
+
     case Arch::mmap:
     case Arch::mmap2:
     case Arch::rrcall_init_buffers:

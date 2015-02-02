@@ -249,6 +249,7 @@ set(BASIC_TESTS
   legacy-ugid
   madvise
   map_fixed
+  mincore
   mmap_discontinuous
   mmap_private
   mmap_ro
