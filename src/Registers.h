@@ -273,6 +273,8 @@ public:
     }
   }
 
+  bool clear_singlestep_flag();
+
   void print_register_file(FILE* f) const;
   void print_register_file_compact(FILE* f) const;
   void print_register_file_for_trace(FILE* f) const;

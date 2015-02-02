@@ -1763,6 +1763,9 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     registers.set_r11(registers.r11() & ~X86_TF_FLAG);
     set_regs(registers);
   }
+  if (registers.clear_singlestep_flag()) {
+    set_regs(registers);
+  }
 }
 
 bool Task::try_wait() {

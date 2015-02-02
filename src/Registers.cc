@@ -587,6 +587,26 @@ vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {
   return result;
 }
 
+bool Registers::clear_singlestep_flag() {
+  switch (arch()) {
+    case x86:
+      if (u.x86regs.eflags & X86_TF_FLAG) {
+        u.x86regs.eflags &= ~X86_TF_FLAG;
+        return true;
+      }
+      return false;
+    case x86_64:
+      if (u.x64regs.eflags & X86_TF_FLAG) {
+        u.x64regs.eflags &= ~X86_TF_FLAG;
+        return true;
+      }
+      return false;
+    default:
+      assert(0 && "Unknown arch");
+      return false;
+  }
+}
+
 ostream& operator<<(ostream& stream, const Registers& r) {
   stream << "{ args:(" << HEX(r.arg1()) << "," << HEX(r.arg2()) << ","
          << HEX(r.arg3()) << "," << HEX(r.arg4()) << "," << HEX(r.arg5()) << ","
