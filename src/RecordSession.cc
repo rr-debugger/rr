@@ -762,7 +762,8 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
       // sigsuspend_blocked_sigs to indicate that future signals are not
       // being delivered by sigsuspend.
       t->sigsuspend_blocked_sigs = nullptr;
-    } break;
+      break;
+    }
 
     case EV_SIGNAL_DELIVERY:
       step_state->continue_sig = sig;
