@@ -1697,12 +1697,25 @@ getsockopt = IrregularEmulatedSyscall(x64=55)
 accept4 = IrregularEmulatedSyscall(x64=288)
 
 # These syscalls are subsumed under ipc on x86.
+shmget = UnsupportedSyscall(x64=29)
+shmat = UnsupportedSyscall(x64=30)
+shmctl = UnsupportedSyscall(x64=31)
+semget = UnsupportedSyscall(x64=64)
+semop = UnsupportedSyscall(x64=65)
+semctl = UnsupportedSyscall(x64=66)
+shmdt = UnsupportedSyscall(x64=67)
 msgget = EmulatedSyscall(x64=68)
 msgsnd = IrregularEmulatedSyscall(x64=69)
 msgrcv = IrregularEmulatedSyscall(x64=70)
 msgctl = IrregularEmulatedSyscall(x64=71)
+semtimedop = UnsupportedSyscall(x64=220)
 
+# These syscalls simply don't exist on x86.
 arch_prctl = ExecutedSyscall(x64=158)
+tuxcall = InvalidSyscall(x64=184)
+security = InvalidSyscall(x64=185)
+epoll_ctl_old = UnsupportedSyscall(x64=214)
+epoll_wait_old = UnsupportedSyscall(x64=215)
 
 def _syscalls():
     for name, obj in globals().iteritems():
