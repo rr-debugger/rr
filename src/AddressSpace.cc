@@ -1029,13 +1029,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
 }
 
 AddressSpace::AddressSpace(const AddressSpace& o)
-    // Whether the new VM wants our breakpoints our not,
-    // it's going to inherit them.  This is pretty much
-    // never what anyone wants, so a call to
-    // |remove_all_breakpoints()| is expected soon after
-    // the creation of this.
-    : breakpoints(o.breakpoints),
-      exe(o.exe),
+    : exe(o.exe),
       heap(o.heap),
       is_clone(true),
       mem(o.mem),
@@ -1046,9 +1040,40 @@ AddressSpace::AddressSpace(const AddressSpace& o)
       untraced_syscall_ip_(o.untraced_syscall_ip_),
       syscallbuf_lib_start_(o.syscallbuf_lib_start_),
       syscallbuf_lib_end_(o.syscallbuf_lib_end_) {
-  for (auto it = breakpoints.begin(); it != breakpoints.end(); ++it) {
-    it->second = it->second->clone();
+  for (auto& it : o.breakpoints) {
+    breakpoints.insert(make_pair(it.first, it.second->clone()));
   }
+  for (auto& it : o.watchpoints) {
+    watchpoints.insert(make_pair(it.first, it.second->clone()));
+  }
+  // cloned tasks will automatically get cloned debug registers and
+  // cloned address-space memory, so we don't need to do any more work here.
+}
+
+void AddressSpace::copy_user_breakpoints_from(const AddressSpace& o) {
+  vector<remote_ptr<uint8_t> > addrs_to_remove;
+  for (auto& it : breakpoints) {
+    for (int i = 0; i < it.second->user_count; ++i) {
+      addrs_to_remove.push_back(it.first);
+    }
+  }
+  for (auto a : addrs_to_remove) {
+    remove_breakpoint(a, TRAP_BKPT_USER);
+  }
+
+  for (auto& it : o.breakpoints) {
+    for (int i = 0; i < it.second->user_count; ++i) {
+      set_breakpoint(it.first, TRAP_BKPT_USER);
+    }
+  }
+}
+
+void AddressSpace::copy_watchpoints_from(const AddressSpace& o) {
+  watchpoints.clear();
+  for (auto& it : o.watchpoints) {
+    watchpoints.insert(make_pair(it.first, it.second->clone()));
+  }
+  allocate_watchpoints();
 }
 
 bool AddressSpace::allocate_watchpoints() {

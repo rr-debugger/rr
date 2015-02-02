@@ -122,11 +122,6 @@ ReplaySession::~ReplaySession() {
 
 void ReplaySession::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
   for (auto vm : sas) {
-    // Creating a checkpoint of a session with active breakpoints
-    // or watchpoints is not supported.
-    assert(!vm->has_breakpoints());
-    assert(!vm->has_watchpoints());
-
     Task* some_task = *vm->task_set().begin();
     pid_t tgid = some_task->tgid();
     Task* group_leader = find_task(tgid);

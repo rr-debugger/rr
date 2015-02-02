@@ -371,6 +371,7 @@ set(TESTS_WITH_PROGRAM
   breakpoint
   breakpoint_overlap
   call_function
+  conditional_breakpoint_calls
   condvar_stress
   crash
   exit_group

@@ -558,6 +558,17 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
 
   LOG(debug) << "... ending debugging diversion";
   assert(diversion_refcount == 0);
+
+  // Replace original task's breakpoints with the breakpoints set in the
+  // diversion. gdb thinks they're the same, so keeping breakpoints in sync
+  // is the right thing to do.
+  t = diversion_session->find_task(task);
+  Task* orig = replay.find_task(task);
+  if (t && orig) {
+    orig->vm()->copy_user_breakpoints_from(*t->vm());
+    orig->vm()->copy_watchpoints_from(*t->vm());
+  }
+
   diversion_session->kill_all_tasks();
   diversion_session = nullptr;
   return req;
