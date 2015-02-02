@@ -1369,7 +1369,7 @@ utimes = EmulatedSyscall(x86=271, x64=235)
 fadvise64_64 = EmulatedSyscall(x86=272)
 
 vserver = InvalidSyscall(x86=273, x64=236)
-mbind = UnsupportedSyscall(x86=274, x64=237)
+mbind = EmulatedSyscall(x86=274, x64=237)
 get_mempolicy = UnsupportedSyscall(x86=275, x64=239)
 set_mempolicy = UnsupportedSyscall(x86=276, x64=238)
 mq_open = UnsupportedSyscall(x86=277, x64=240)

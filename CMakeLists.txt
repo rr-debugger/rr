@@ -267,6 +267,7 @@ set(BASIC_TESTS
   multiple_pending_signals_sequential
   munmap_discontinuous
   no_mask_timeslice
+  numa
   old_fork
   orphan_process
   pause

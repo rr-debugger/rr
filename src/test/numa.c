@@ -1,0 +1,33 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
+
+#include "rrutil.h"
+
+#define MPOL_DEFAULT 0
+#define MPOL_PREFERRED 1
+#define MPOL_BIND 2
+#define MPOL_INTERLEAVE 3
+
+#define MPOL_MF_STRICT 0x1
+#define MPOL_MF_MOVE 0x2
+#define MPOL_MF_MOVE_ALL 0x4
+
+#define MPOL_F_STATIC_NODES (1 << 15)
+#define MPOL_F_RELATIVE_NODES (1 << 14)
+
+static long mbind(void* start, unsigned long len, int mode,
+                  const unsigned long* nmask, unsigned long maxnode,
+                  unsigned flags) {
+  return syscall(SYS_mbind, start, len, mode, nmask, maxnode, flags);
+}
+
+int main(int argc, char** argv) {
+  void* p = mmap(NULL, 16 * PAGE_SIZE, PROT_READ | PROT_WRITE,
+                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+  test_assert(p);
+  test_assert(0 ==
+              mbind(p, 16 * PAGE_SIZE, MPOL_PREFERRED, NULL, 0, MPOL_MF_MOVE));
+
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
+}
