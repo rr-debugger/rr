@@ -4,4 +4,4 @@ EVENTS=1000
 record $TESTNAME $EVENTS
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
-debug $TESTNAME goto_event "-g $EVENTS"
+debug goto_event "-g $EVENTS"

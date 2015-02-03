@@ -4,4 +4,4 @@ record $TESTNAME
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug $TESTNAME immediate_restart "-f $TARGET_PID"
+debug immediate_restart "-f $TARGET_PID"

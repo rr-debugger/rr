@@ -83,10 +83,6 @@ def expect(prog, what):
     except Exception, e:
         failed('expecting "%s"'% (what), e)
 
-def get_exe():
-    '''Return the image to be debugged'''
-    return sys.argv[1]
-
 def get_exe_arch():
     send_gdb('show architecture\n')
     expect_gdb('The target architecture is set automatically \\(currently ([0-9a-z:-]+)\\)')
@@ -96,7 +92,7 @@ def get_exe_arch():
 def get_rr_cmd():
     '''Return the command that should be used to invoke rr, as the tuple
   (executable, array-of-args)'''
-    rrargs = sys.argv[2:]
+    rrargs = sys.argv[1:]
     return (rrargs[0], rrargs[1:])
 
 def send(prog, what):

@@ -215,12 +215,12 @@ function replay { replayflags=$1
         rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
 }
 
-#  debug <exe> <expect-script-name> [replay-args]
+#  debug <expect-script-name> [replay-args]
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
-function debug { exe=$1; expectscript=$2; replayargs=$3
+function debug { expectscript=$1; replayargs=$2
     _RR_TRACE_DIR="$workdir" \
-        python $TESTDIR/$expectscript.py $exe-$nonce \
+        python $TESTDIR/$expectscript.py \
         rr $GLOBAL_OPTIONS replay -x $TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
         passed
@@ -289,7 +289,7 @@ function compare_test { token=$1; replayflags=$2;
 # computing test pass/fail.
 function debug_test {
     record $TESTNAME
-    debug $TESTNAME $TESTNAME_NO_BITNESS
+    debug $TESTNAME_NO_BITNESS
 }
 
 # Return the number of events in the most recent local recording.
@@ -336,7 +336,7 @@ function checkpoint_test { exe=$1; min=$2; max=$3;
     stride=$(rand_range $min $max)
     for i in $(seq 1 $stride $num_events); do
         echo Checkpointing at event $i ...
-        debug $exe restart_finish "-g $i"
+        debug restart_finish "-g $i"
         if [[ "$leave_data" == "y" ]]; then
             break
         fi

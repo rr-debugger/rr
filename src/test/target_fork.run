@@ -5,4 +5,4 @@ record $TESTNAME $EVENTS
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug $TESTNAME bad_good_break "-f $TARGET_PID -g $EVENTS"
+debug bad_good_break "-f $TARGET_PID -g $EVENTS"

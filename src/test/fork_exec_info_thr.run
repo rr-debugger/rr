@@ -7,4 +7,4 @@ record target_process$bitness "$saved_barrier"
 TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
 
 echo Targeting recorded pid $TARGET_PID ...
-debug target_process$bitness get_thread_list "-p $TARGET_PID -g 1"
+debug get_thread_list "-p $TARGET_PID -g 1"
