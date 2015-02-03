@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+
+just_record $TESTDIR/simple_script.sh
+replay
+check EXIT-SUCCESS

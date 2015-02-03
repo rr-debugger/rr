@@ -903,20 +903,6 @@ static string prname_from_exe_image(const string& e) {
   return basename.substr(0, 15);
 }
 
-void Task::pre_exec() {
-  execve_file = read_c_str(regs().arg1());
-  if (execve_file[0] != '/') {
-    char buf[PATH_MAX];
-    snprintf(buf, sizeof(buf), "/proc/%d/cwd/%s", real_tgid(),
-             execve_file.c_str());
-    execve_file = buf;
-  }
-  char abspath[PATH_MAX];
-  if (realpath(execve_file.c_str(), abspath)) {
-    execve_file = abspath;
-  }
-}
-
 static SupportedArch determine_arch(Task* t, const string& file_name) {
   ASSERT(t, file_name.size() > 0);
   switch (read_elf_class(file_name)) {
@@ -935,6 +921,16 @@ static SupportedArch determine_arch(Task* t, const string& file_name) {
   }
 }
 
+static string exe_path(Task* t) {
+  char proc_exe[PATH_MAX];
+  snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
+  char exe[PATH_MAX];
+  ssize_t ret = readlink(proc_exe, exe, sizeof(exe) - 1);
+  ASSERT(t, ret >= 0);
+  exe[ret] = 0;
+  return exe;
+}
+
 void Task::post_exec(const Registers* replay_regs) {
   /* We just saw a successful exec(), so from now on we know
    * that the address space layout for the replay tasks will
@@ -945,10 +941,11 @@ void Task::post_exec(const Registers* replay_regs) {
   as->erase_task(this);
   fds->erase_task(this);
 
+  string exe_file = exe_path(this);
   if (replay_regs) {
     registers = *replay_regs;
   } else {
-    registers.set_arch(determine_arch(this, execve_file));
+    registers.set_arch(determine_arch(this, exe_file));
     extra_registers.set_arch(registers.arch());
     // Read registers now that the architecture is known.
     struct user_regs_struct ptrace_regs;
@@ -974,7 +971,7 @@ void Task::post_exec(const Registers* replay_regs) {
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
 
-  as = session().create_vm(this, execve_file);
+  as = session().create_vm(this, exe_file);
   // It's barely-documented, but Linux unshares the fd table on exec
   fds = fds->clone(this);
   prname = prname_from_exe_image(as->exe_image());

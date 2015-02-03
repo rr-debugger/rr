@@ -455,6 +455,8 @@ set(TESTS_WITHOUT_PROGRAM
   sanity
   signal_stop
   signal_checkpoint
+  simple_script
+  simple_script_debug
   step1
   step_rdtsc
   step_signal

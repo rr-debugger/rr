@@ -1097,21 +1097,6 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
   return PREVENT_SWITCH;
 }
 
-static bool exec_file_supported(const string& file_name) {
-#if defined(__i386__)
-  /* All this function does is reject 64-bit ELF binaries. Everything
-     else we (optimistically) indicate support for. Missing or corrupt
-     files will cause execve to fail normally. When we support 64-bit,
-     this entire function can be removed. */
-  return read_elf_class(file_name) != ELFCLASS64;
-#elif defined(__x86_64__)
-  // We support 32-bit and 64-bit binaries.
-  return true;
-#else
-#error unknown architecture
-#endif
-}
-
 static bool maybe_emulate_wait(Task* t, TaskSyscallState& syscall_state) {
   for (Task* child : t->emulated_ptrace_tracees) {
     if (t->is_waiting_for_ptrace(child) && child->emulated_ptrace_stop_code) {
@@ -1435,20 +1420,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
             unique_ptr<Registers>(new Registers(t->regs()));
       }
 
-      t->pre_exec();
-
-      Registers r = t->regs();
-      string raw_filename = t->read_c_str(r.arg1());
-      uintptr_t end = r.arg1() + raw_filename.length();
-      if (!exec_file_supported(t->exec_file())) {
-        // Force exec to fail with ENOENT by advancing arg1 to
-        // the null byte
-        r.set_arg1(end);
-        t->set_regs(r);
-      }
-
       vector<string> cmd_line;
-      remote_ptr<typename Arch::unsigned_word> argv = r.arg2();
+      remote_ptr<typename Arch::unsigned_word> argv = t->regs().arg2();
       while (true) {
         auto p = t->read_mem(argv);
         if (!p) {
@@ -1457,7 +1430,9 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         cmd_line.push_back(t->read_c_str(p));
         argv++;
       }
+
       // Save the event. We can't record it here because the exec might fail.
+      string raw_filename = t->read_c_str(t->regs().arg1());
       syscall_state.exec_saved_event = unique_ptr<TraceTaskEvent>(
           new TraceTaskEvent(t->tid, raw_filename, cmd_line));
 

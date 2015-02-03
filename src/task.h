@@ -366,12 +366,6 @@ public:
   void set_tick_count(Ticks count);
 
   /**
-   * Return the exe path passed to the most recent (successful)
-   * execve call.
-   */
-  const std::string& exec_file() const { return execve_file; }
-
-  /**
    * Return true if this exited because of a SYS_exit/exit_group
    * call.
    */
@@ -582,12 +576,6 @@ public:
    * /proc/tid/comm would say that the task's name is.
    */
   const std::string& name() const { return prname; }
-
-  /**
-   * Call this method when this task has entered an |execve()|
-   * call, but before the exec has actually taken place.
-   */
-  void pre_exec();
 
   /**
    * Call this method when this task has just performed an |execve()|
@@ -1420,9 +1408,6 @@ private:
   FdTable::shr_ptr fds;
   // The set of signals that are currently blocked.
   sig_set_t blocked_sigs;
-  // The exe-file argument passed to the most recent execve call
-  // made by this task.
-  std::string execve_file;
   // The current stack of events being processed.  (We use a
   // deque instead of a stack because we need to iterate the
   // events.)

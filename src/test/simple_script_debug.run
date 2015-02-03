@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+
+just_record $TESTDIR/simple_script.sh
+debug simple_script_debug "--onprocess simple_script.sh"
