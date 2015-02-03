@@ -199,8 +199,6 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
     args.push_back("-x");
     args.push_back(gdb_command_file_path);
   }
-  args.push_back("-l");
-  args.push_back("-1");
   if (macros) {
     string gdb_command_file = create_gdb_command_file(macros);
     args.push_back("-x");
