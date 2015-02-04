@@ -7,6 +7,15 @@
 static int semid;
 static char* shmem;
 
+#ifdef _SEM_SEMUN_UNDEFINED
+union semun {
+  int val;
+  struct semid_ds* buf;
+  unsigned short int* array;
+  struct seminfo* __buf;
+};
+#endif
+
 static int run_child(void) {
   int child2;
   int status;
@@ -14,6 +23,10 @@ static int run_child(void) {
   struct timespec ts = { 0, 20000000 };
   struct timespec ts_short = { 0, 10000000 };
   struct timespec ts_long = { 10000, 0 };
+  union semun un_arg;
+  struct semid_ds* ds;
+  struct seminfo* si;
+  unsigned short* array;
 
   ops[0].sem_num = 0;
   ops[0].sem_op = 1;
@@ -23,6 +36,51 @@ static int run_child(void) {
   ops[1].sem_flg = SEM_UNDO;
   test_assert(0 == semop(semid, ops, 2));
   *shmem = 0;
+
+  ALLOCATE_GUARD(ds, 'd');
+  un_arg.buf = ds;
+  test_assert(0 == semctl(semid, 0, IPC_STAT, un_arg));
+  VERIFY_GUARD(ds);
+  test_assert(ds->sem_perm.mode == 0666);
+  test_assert(ds->sem_nsems == COUNT);
+
+  ds->sem_perm.mode = 0660;
+  test_assert(0 == semctl(semid, 0, IPC_SET, un_arg));
+
+  ALLOCATE_GUARD(si, 'i');
+  un_arg.__buf = si;
+  test_assert(1 <= semctl(semid, 0, IPC_INFO, un_arg));
+  VERIFY_GUARD(si);
+  test_assert(si->semvmx > 0);
+  test_assert(si->semusz < 100000);
+
+  test_assert(1 <= semctl(semid, 0, SEM_INFO, un_arg));
+  VERIFY_GUARD(si);
+  test_assert(si->semusz > 0);
+  test_assert(si->semusz < 100000);
+
+  array = allocate_guard(COUNT * sizeof(*array), 'a');
+  un_arg.array = array;
+  test_assert(0 == semctl(semid, 0, GETALL, un_arg));
+  verify_guard(COUNT * sizeof(*array), array);
+  test_assert(array[0] == 1);
+  test_assert(array[1] == 1);
+  test_assert(array[2] == 0);
+  test_assert(array[3] == 0);
+
+  array[2] = 2;
+  test_assert(0 == semctl(semid, 0, SETALL, un_arg));
+
+  test_assert(0 == semctl(semid, 1, GETNCNT, NULL));
+
+  test_assert(getpid() == semctl(semid, 1, GETPID, NULL));
+
+  test_assert(2 == semctl(semid, 2, GETVAL, NULL));
+
+  test_assert(0 == semctl(semid, 0, GETZCNT, NULL));
+
+  un_arg.val = 0;
+  test_assert(0 == semctl(semid, 2, SETVAL, un_arg));
 
   if ((child2 = fork()) == 0) {
     ops[0].sem_op = -1;

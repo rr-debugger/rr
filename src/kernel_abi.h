@@ -16,6 +16,7 @@
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/net.h>
+#include <linux/sem.h>
 #include <linux/shm.h>
 #include <linux/sockios.h>
 #include <linux/sysctl.h>
@@ -461,7 +462,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   RR_VERIFY_TYPE(ipc64_perm);
 
   struct msqid64_ds {
-    struct ipc64_perm msg_perm;
+    ipc64_perm msg_perm;
     // These msg*time fields are really __kernel_time_t plus
     // appropiate padding.  We don't touch the fields, though.
     //
@@ -494,7 +495,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   RR_VERIFY_TYPE(msginfo);
 
   struct shmid64_ds {
-    struct ipc64_perm shm_perm;
+    ipc64_perm shm_perm;
     size_t shm_segsz;
     uint64_t shm_atime_only_little_endian;
     uint64_t shm_dtime_only_little_endian;
@@ -529,6 +530,32 @@ struct BaseArch : public wordsize, public FcntlConstants {
     __kernel_ulong_t swap_successes;
   };
   RR_VERIFY_TYPE(shm_info);
+
+  struct semid64_ds {
+    ipc64_perm sem_perm;
+    __kernel_time_t sem_otime;
+    __kernel_ulong_t __unused1;
+    __kernel_time_t sem_ctime;
+    __kernel_ulong_t __unused2;
+    __kernel_ulong_t sem_nsems;
+    __kernel_ulong_t __unused3;
+    __kernel_ulong_t __unused4;
+  };
+  RR_VERIFY_TYPE(semid64_ds);
+
+  struct seminfo {
+    int semmap;
+    int semmni;
+    int semmns;
+    int semmnu;
+    int semmsl;
+    int semopm;
+    int semume;
+    int semusz;
+    int semvmx;
+    int semaem;
+  };
+  RR_VERIFY_TYPE(seminfo);
 
   // The clone(2) syscall has four (!) different calling conventions,
   // depending on what architecture it's being compiled for.  We describe

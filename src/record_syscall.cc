@@ -63,11 +63,29 @@
 using namespace std;
 using namespace rr;
 
+union _semun {
+  int val;
+  struct semid64_ds* buf;
+  unsigned short int* array;
+  struct seminfo* __buf;
+};
+
 /* We can't include <sys/shm.h> to get shmctl because it clashes with
  * linux/shm.h.
  */
-static int _shmctl(int shmid, int cmd, struct shmid64_ds* buf) {
+static int _shmctl(int shmid, int cmd, shmid64_ds* buf) {
+#ifdef SYS_shmctl
   return syscall(SYS_shmctl, shmid, cmd, buf);
+#else
+  return syscall(SYS_ipc, SHMCTL, shmid, cmd, 0, buf);
+#endif
+}
+static int _semctl(int semid, int semnum, int cmd, _semun un_arg) {
+#ifdef SYS_semctl
+  return syscall(SYS_semctl, semid, semnum, cmd, un_arg);
+#else
+  return syscall(SYS_ipc, SEMCTL, semid, semnum, cmd, un_arg);
+#endif
 }
 
 /**
@@ -957,9 +975,15 @@ static Switchable prepare_shmctl(Task* t, TaskSyscallState& syscall_state,
   return PREVENT_SWITCH;
 }
 
+enum SemctlDereference {
+  DEREFERENCE,
+  USE_DIRECTLY
+};
+
 template <typename Arch>
 static Switchable prepare_semctl(Task* t, TaskSyscallState& syscall_state,
-                                 int cmd, int ptr_reg) {
+                                 int semid, int cmd, int ptr_reg,
+                                 SemctlDereference deref) {
   switch (cmd) {
     case IPC_SET:
     case IPC_RMID:
@@ -967,7 +991,47 @@ static Switchable prepare_semctl(Task* t, TaskSyscallState& syscall_state,
     case GETPID:
     case GETVAL:
     case GETZCNT:
+    case SETALL:
+    case SETVAL:
       break;
+
+    case IPC_STAT:
+    case SEM_STAT:
+      if (deref == DEREFERENCE) {
+        syscall_state.mem_ptr_parameter<typename Arch::semid64_ds>(
+            syscall_state.reg_parameter<typename Arch::unsigned_long>(ptr_reg));
+      } else {
+        syscall_state.reg_parameter<typename Arch::semid64_ds>(ptr_reg);
+      }
+      break;
+
+    case IPC_INFO:
+    case SEM_INFO:
+      if (deref == DEREFERENCE) {
+        syscall_state.mem_ptr_parameter<typename Arch::seminfo>(
+            syscall_state.reg_parameter<typename Arch::unsigned_long>(ptr_reg));
+      } else {
+        syscall_state.reg_parameter<typename Arch::seminfo>(ptr_reg);
+      }
+      break;
+
+    case GETALL: {
+      semid64_ds ds;
+      _semun un_arg;
+      un_arg.buf = &ds;
+      int ret = _semctl(semid, 0, IPC_STAT, un_arg);
+      ASSERT(t, ret == 0);
+
+      ParamSize size = sizeof(unsigned short) * ds.sem_nsems;
+      if (deref == DEREFERENCE) {
+        syscall_state.mem_ptr_parameter(
+            syscall_state.reg_parameter<typename Arch::unsigned_long>(ptr_reg),
+            size);
+      } else {
+        syscall_state.reg_parameter(ptr_reg, size);
+      }
+      break;
+    }
 
     default:
       syscall_state.expect_errno = EINVAL;
@@ -1149,9 +1213,9 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
         // Note that we're exposed to potential race conditions here because
         // VIDIOC_DQBUF (blocking or not) assumes the driver has filled
         // the mmapped data region at some point since the buffer was queued
-        // with VIDIOC_QBUF, and we don't/can't know exactly when that happened.
-        // Replay could fail if this thread or another thread reads the contents
-        // of mmapped contents queued with the driver.
+        // with VIDIOC_QBUF, and we don't/can't know exactly when that
+        // happened. Replay could fail if this thread or another thread reads
+        // the contents of mmapped contents queued with the driver.
         return ALLOW_SWITCH;
       }
     }
@@ -1524,8 +1588,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           break;
 
         case Arch::GETLK64:
-          // flock and flock64 better be different on 32-bit architectures, but
-          // on 64-bit architectures, it's OK if they're the same.
+          // flock and flock64 better be different on 32-bit architectures,
+          // but on 64-bit architectures, it's OK if they're the same.
           static_assert(
               sizeof(typename Arch::flock) < sizeof(typename Arch::flock64) ||
                   Arch::elfclass == ELFCLASS64,
@@ -1627,7 +1691,9 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
         case SEMCTL: {
           int cmd = (int)t->regs().arg4_signed() & ~IPC_64;
-          return prepare_semctl<Arch>(t, syscall_state, cmd, 5);
+          return prepare_semctl<Arch>(t, syscall_state,
+                                      (int)t->regs().arg2_signed(), cmd, 5,
+                                      DEREFERENCE);
         }
 
         default:
@@ -1826,7 +1892,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     }
 
     /* pid_t waitpid(pid_t pid, int *status, int options); */
-    /* pid_t wait4(pid_t pid, int *status, int options, struct rusage *rusage);
+    /* pid_t wait4(pid_t pid, int *status, int options, struct rusage
+     * *rusage);
      */
     case Arch::waitpid:
     case Arch::wait4: {
@@ -2101,8 +2168,9 @@ static Switchable rec_prepare_syscall_arch(Task* t,
                                   (int)t->regs().arg2_signed(), 3);
 
     case Arch::semctl:
-      return prepare_semctl<Arch>(t, syscall_state,
-                                  (int)t->regs().arg3_signed(), 4);
+      return prepare_semctl<Arch>(
+          t, syscall_state, (int)t->regs().arg1_signed(),
+          (int)t->regs().arg3_signed(), 4, USE_DIRECTLY);
 
     case Arch::mmap:
     case Arch::mmap2:
@@ -2257,13 +2325,6 @@ template <typename Arch>
 static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
-    if (r.arg1() != syscall_state.syscall_entry_registers->arg1()) {
-      LOG(warn)
-          << "Blocked attempt to execve 64-bit image (not yet supported by rr)";
-      // Restore arg1, which we clobbered.
-      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
-      t->set_regs(r);
-    }
     return;
   }
 
@@ -2397,8 +2458,8 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
 
   struct shmid64_ds ds;
   int ret = _shmctl(shmid, IPC_STAT, &ds);
-  ASSERT(t, !ret)
-      << "shmid should be readable by rr since rr has the same UID as tracees";
+  ASSERT(t, !ret) << "shmid should be readable by rr since rr has the same "
+                     "UID as tracees";
   size_t size = ds.shm_segsz;
   ASSERT(t, ceil_page_size(size) == size);
 
