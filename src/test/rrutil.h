@@ -46,6 +46,7 @@
 #include <sys/resource.h>
 #include <sys/select.h>
 #include <sys/sendfile.h>
+#include <sys/shm.h>
 #include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <sys/stat.h>

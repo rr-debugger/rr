@@ -142,7 +142,9 @@ void EmuFs::gc(const Session& session) {
 }
 
 EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
-  FileId id(mf.stat(), PSEUDODEVICE_SHARED_MMAP_FILE);
+  FileId id(mf.stat(), mf.type() == TraceMappedRegion::MMAP
+                           ? PSEUDODEVICE_SHARED_MMAP_FILE
+                           : PSEUDODEVICE_SYSV_SHM);
   auto it = files.find(id);
   if (it != files.end()) {
     it->second->update(mf.stat());

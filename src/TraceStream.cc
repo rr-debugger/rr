@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 21
+#define TRACE_VERSION 22
 
 struct SubstreamData {
   const char* name;
@@ -245,7 +245,9 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   auto& mmaps = writer(MMAPS);
   TraceReader::MappedDataSource source;
   string backing_file_name;
-  if (map.stat().st_ino == 0) {
+  if (map.type() == TraceMappedRegion::SYSV_SHM) {
+    source = TraceReader::SOURCE_TRACE;
+  } else if (map.stat().st_ino == 0) {
     source = TraceReader::SOURCE_ZERO;
   } else {
     if (should_copy_mmap_region(map.file_name(), &map.stat(), prot, flags)) {
@@ -260,8 +262,8 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
       backing_file_name = try_hardlink_file(map.file_name());
     }
   }
-  mmaps << source << map.file_name() << map.stat() << map.start() << map.end()
-        << map.offset_pages() << backing_file_name;
+  mmaps << source << map.type() << map.file_name() << map.stat() << map.start()
+        << map.end() << map.offset_pages() << backing_file_name;
   ++mmap_count;
   return source == TraceReader::SOURCE_TRACE ? RECORD_IN_TRACE
                                              : DONT_RECORD_IN_TRACE;
@@ -290,8 +292,8 @@ TraceMappedRegion TraceReader::read_mapped_region(MappedData* data) {
   auto& mmaps = reader(MMAPS);
   TraceMappedRegion map;
   string backing_file_name;
-  mmaps >> data->source >> map.filename >> map.stat_ >> map.start_ >>
-      map.end_ >> map.file_offset_pages >> backing_file_name;
+  mmaps >> data->source >> map.type_ >> map.filename >> map.stat_ >>
+      map.start_ >> map.end_ >> map.file_offset_pages >> backing_file_name;
   if (data->source == SOURCE_FILE) {
     if (backing_file_name[0] != '/') {
       backing_file_name = dir() + "/" + backing_file_name;

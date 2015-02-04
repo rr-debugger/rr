@@ -22,15 +22,21 @@ class TraceReader;
  */
 class TraceMappedRegion {
 public:
-  TraceMappedRegion(const std::string& filename, const struct stat& stat,
-                    remote_ptr<void> start, remote_ptr<void> end,
-                    uint64_t file_offset_pages = 0)
+  enum Type {
+    MMAP,
+    SYSV_SHM
+  };
+  TraceMappedRegion(Type type, const std::string& filename,
+                    const struct stat& stat, remote_ptr<void> start,
+                    remote_ptr<void> end, uint64_t file_offset_pages = 0)
       : filename(filename),
         stat_(stat),
         start_(start),
         end_(end),
-        file_offset_pages(file_offset_pages) {}
+        file_offset_pages(file_offset_pages),
+        type_(type) {}
 
+  Type type() const { return type_; }
   const std::string& file_name() const { return filename; }
   const struct stat& stat() const { return stat_; }
   remote_ptr<void> start() const { return start_; }
@@ -60,6 +66,8 @@ private:
   remote_ptr<void> end_;
 
   uint64_t file_offset_pages;
+
+  Type type_;
 };
 
 #endif /* RR_TRACE_MAPPED_REGION_H_ */

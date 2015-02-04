@@ -804,8 +804,10 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       }
       return vm()->brk(addr);
     }
+    case Arch::mmap:
     case Arch::mmap2: {
-      LOG(debug) << "(mmap2 will receive / has received direct processing)";
+      LOG(debug)
+          << "(mmap/mmap2 will receive / has received direct processing)";
       return;
     }
     case Arch::mprotect: {
@@ -825,6 +827,25 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       remote_ptr<void> addr = regs.arg1();
       size_t num_bytes = regs.arg2();
       return vm()->unmap(addr, num_bytes);
+    }
+    case Arch::shmdt: {
+      remote_ptr<void> addr = regs.arg1();
+      auto mapping = vm()->mapping_of(addr);
+      ASSERT(this, mapping.first.start == addr);
+      return vm()->unmap(addr, mapping.first.end - addr);
+    }
+    case Arch::ipc: {
+      switch ((int)regs.arg1_signed()) {
+        case SHMDT: {
+          remote_ptr<void> addr = regs.arg5();
+          auto mapping = vm()->mapping_of(addr);
+          ASSERT(this, mapping.first.start == addr);
+          return vm()->unmap(addr, mapping.first.end - addr);
+        }
+        default:
+          break;
+      }
+      break;
     }
 
     case Arch::set_robust_list:
@@ -1947,8 +1968,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->fds = fds->clone(t);
   }
   if (!stack.is_null()) {
-    const Mapping& m =
-        t->as->mapping_of(stack - page_size(), page_size()).first;
+    const Mapping& m = t->as->mapping_of(stack - page_size()).first;
     LOG(debug) << "mapping stack for " << new_tid << " at " << m;
     t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
                MappableResource::stack(new_tid));
@@ -2445,7 +2465,7 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
       (addr.as_int() + buf_size + page_size - 1) & ~(page_size - 1);
   int all_prot, all_flags;
   for (uintptr_t p = page_start; p < page_end; p += page_size) {
-    const Mapping& m = as->mapping_of(p, page_size).first;
+    const Mapping& m = as->mapping_of(p).first;
     if (p > page_start) {
       if (all_prot != m.prot || all_flags != m.flags) {
         return false;

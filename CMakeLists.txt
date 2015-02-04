@@ -301,6 +301,7 @@ set(BASIC_TESTS
   sendfile
   set_ptracer
   setsid
+  shm
   sigaction_old
   sigaltstack
   sigchld_interrupt_signal
@@ -453,6 +454,7 @@ set(TESTS_WITHOUT_PROGRAM
   restart_unstable
   restart_diversion
   sanity
+  shm_checkpoint
   signal_stop
   signal_checkpoint
   simple_script

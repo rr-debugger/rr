@@ -61,4 +61,6 @@ const char* sicode_name(int code, int sig);
  */
 std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo);
 
+int shm_flags_to_mmap_prot(int flags);
+
 #endif

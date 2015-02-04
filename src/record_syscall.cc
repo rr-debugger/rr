@@ -63,6 +63,13 @@
 using namespace std;
 using namespace rr;
 
+/* We can't include <sys/shm.h> to get shmctl because it clashes with
+ * linux/shm.h.
+ */
+static int _shmctl(int shmid, int cmd, struct shmid64_ds* buf) {
+  return syscall(SYS_shmctl, shmid, cmd, buf);
+}
+
 /**
  * Modes used to register syscall memory parameter with TaskSyscallState.
  */
@@ -908,6 +915,31 @@ static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
     case MSG_INFO:
       syscall_state.reg_parameter<typename Arch::msginfo>(buf_ptr_reg);
       break;
+
+    case IPC_SET:
+    case IPC_RMID:
+      break;
+
+    default:
+      syscall_state.expect_errno = EINVAL;
+      break;
+  }
+  return PREVENT_SWITCH;
+}
+
+template <typename Arch>
+static Switchable prepare_shmctl(Task* t, TaskSyscallState& syscall_state,
+                                 int cmd, int buf_ptr_reg) {
+  switch (cmd) {
+    case IPC_SET:
+    case IPC_RMID:
+    case SHM_LOCK:
+    case SHM_UNLOCK:
+      break;
+
+    default:
+      syscall_state.expect_errno = EINVAL;
+      break;
   }
   return PREVENT_SWITCH;
 }
@@ -1521,14 +1553,16 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return (GRND_NONBLOCK & t->regs().arg3()) ? PREVENT_SWITCH : ALLOW_SWITCH;
 
     case Arch::ipc:
-      switch (t->regs().arg1_signed()) {
+      switch ((int)t->regs().arg1_signed()) {
+        case MSGGET:
+        case SHMDT:
+        case SHMGET:
+          break;
+
         case MSGCTL: {
           int cmd = (int)t->regs().arg3_signed() & ~IPC_64;
           return prepare_msgctl<Arch>(t, syscall_state, cmd, 5);
         }
-
-        case MSGGET:
-          break;
 
         case MSGSND:
           return ALLOW_SWITCH;
@@ -1542,6 +1576,18 @@ static Switchable rec_prepare_syscall_arch(Task* t,
                                           sizeof(typename Arch::signed_long) +
                                               msgsize);
           return ALLOW_SWITCH;
+        }
+
+        case SHMAT: {
+          // Insane legacy feature: ipc SHMAT returns its pointer via an
+          // in-memory out parameter.
+          syscall_state.reg_parameter<typename Arch::unsigned_long>(4);
+          return PREVENT_SWITCH;
+        }
+
+        case SHMCTL: {
+          int cmd = (int)t->regs().arg3_signed() & ~IPC_64;
+          return prepare_shmctl<Arch>(t, syscall_state, cmd, 5);
         }
 
         default:
@@ -1993,7 +2039,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
     }
 
-    case Arch::ptrace: { return prepare_ptrace<Arch>(t, syscall_state); }
+    case Arch::ptrace:
+      return prepare_ptrace<Arch>(t, syscall_state);
 
     case Arch::vfork: {
       Registers r = t->regs();
@@ -2007,11 +2054,17 @@ static Switchable rec_prepare_syscall_arch(Task* t,
                                          page_size());
       return PREVENT_SWITCH;
 
+    case Arch::shmctl:
+      return prepare_shmctl<Arch>(t, syscall_state,
+                                  (int)t->regs().arg2_signed(), 3);
+
     case Arch::mmap:
     case Arch::mmap2:
     case Arch::rrcall_init_buffers:
     case Arch::rrcall_init_preload:
     case Arch::rrcall_notify_syscall_hook_exit:
+    case Arch::shmat:
+    case Arch::shmdt:
       return PREVENT_SWITCH;
 
     default:
@@ -2116,8 +2169,8 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
   sprintf(filename, "scratch for thread %d", t->tid);
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
-  TraceMappedRegion file(string(filename), stat, t->scratch_ptr,
-                         t->scratch_ptr + scratch_size);
+  TraceMappedRegion file(TraceMappedRegion::MMAP, filename, stat,
+                         t->scratch_ptr, t->scratch_ptr + scratch_size);
   auto record_in_trace =
       t->trace_writer().write_mapped_region(file, prot, flags);
   ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
@@ -2263,8 +2316,8 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   // we wouldn't have to care about looking up a name
   // for the resource.
   auto result = t->fstat(fd);
-  TraceMappedRegion file(result.file_name, result.st, addr, addr + size,
-                         offset_pages);
+  TraceMappedRegion file(TraceMappedRegion::MMAP, result.file_name, result.st,
+                         addr, addr + size, offset_pages);
   if (t->trace_writer().write_mapped_region(file, prot, flags) ==
       TraceWriter::RECORD_IN_TRACE) {
     if (result.st.st_size > 0) {
@@ -2287,6 +2340,45 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
 
   t->vm()->map(addr, size, prot, flags, offset,
                MappableResource(FileId(result.st), result.file_name));
+}
+
+static void process_shmat(Task* t, int shmid, int shm_flags,
+                          remote_ptr<void> addr) {
+  if (t->regs().syscall_failed()) {
+    // We purely emulate failed shmats.
+    return;
+  }
+
+  struct shmid64_ds ds;
+  int ret = _shmctl(shmid, IPC_STAT, &ds);
+  ASSERT(t, !ret)
+      << "shmid should be readable by rr since rr has the same UID as tracees";
+  size_t size = ds.shm_segsz;
+  ASSERT(t, ceil_page_size(size) == size);
+
+  int prot = shm_flags_to_mmap_prot(shm_flags);
+  int flags = MAP_SHARED;
+
+  char fake_file_name[PATH_MAX];
+  snprintf(fake_file_name, sizeof(fake_file_name), "/SYSV%08x (deleted)",
+           ds.shm_perm.key);
+  struct stat fake_stat;
+  memset(&fake_stat, 0, sizeof(fake_stat));
+  fake_stat.st_ino = shmid;
+
+  TraceMappedRegion file(TraceMappedRegion::SYSV_SHM, fake_file_name, fake_stat,
+                         addr, addr + size, 0);
+  if (t->trace_writer().write_mapped_region(file, prot, flags) ==
+      TraceWriter::RECORD_IN_TRACE) {
+    t->record_remote(addr, size);
+  }
+
+  LOG(debug) << "Optimistically hoping that SysV segment is not used outside "
+                "of tracees";
+
+  t->vm()->map(addr, size, prot, flags, 0,
+               MappableResource(FileId(0, shmid, PSEUDODEVICE_SYSV_SHM),
+                                fake_file_name));
 }
 
 template <typename Arch> static void process_fork(Task* t) {
@@ -2456,6 +2548,25 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       process_mmap(t, (size_t)t->regs().arg2(), (int)t->regs().arg3_signed(),
                    (int)t->regs().arg4_signed(), (int)t->regs().arg5_signed(),
                    (off_t)t->regs().arg6_signed());
+      break;
+
+    case Arch::shmat:
+      process_shmat(t, (int)t->regs().arg1_signed(),
+                    (int)t->regs().arg3_signed(), t->regs().syscall_result());
+      break;
+
+    case Arch::ipc:
+      switch ((int)t->regs().arg1_signed()) {
+        case SHMAT: {
+          auto out_ptr = t->read_mem(
+              remote_ptr<typename Arch::unsigned_long>(t->regs().arg4()));
+          process_shmat(t, (int)t->regs().arg2_signed(),
+                        (int)t->regs().arg3_signed(), out_ptr);
+          break;
+        }
+        default:
+          break;
+      }
       break;
 
     case Arch::nanosleep: {

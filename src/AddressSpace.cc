@@ -49,6 +49,8 @@ const char* FileId::special_name() const {
       return "(syscallbuf)";
     case PSEUDODEVICE_VDSO:
       return "(vdso)";
+    case PSEUDODEVICE_SYSV_SHM:
+      return "";
   }
   FATAL() << "Not reached";
   return nullptr;
@@ -74,8 +76,11 @@ ostream& operator<<(ostream& o, const Mapping& m) {
 
 /*static*/ MappableResource MappableResource::shared_mmap_file(
     const TraceMappedRegion& file) {
-  return MappableResource(FileId(file.stat(), PSEUDODEVICE_SHARED_MMAP_FILE),
-                          file.file_name().c_str());
+  return MappableResource(
+      FileId(file.stat(), file.type() == TraceMappedRegion::MMAP
+                              ? PSEUDODEVICE_SHARED_MMAP_FILE
+                              : PSEUDODEVICE_SYSV_SHM),
+      file.file_name().c_str());
 }
 
 /*static*/ MappableResource MappableResource::syscallbuf(pid_t tid, int fd,
@@ -600,13 +605,10 @@ void AddressSpace::at_preload_init(Task* t) {
 }
 
 typedef AddressSpace::MemoryMap::value_type MappingResourcePair;
-MappingResourcePair AddressSpace::mapping_of(remote_ptr<void> addr,
-                                             size_t num_bytes) const {
-  auto it = mem.find(Mapping(addr, num_bytes));
+MappingResourcePair AddressSpace::mapping_of(remote_ptr<void> addr) const {
+  auto it = mem.find(Mapping(addr, 1));
   assert(it != mem.end());
-  // TODO callers assume [addr, addr + num_bytes] doesn't cross
-  // resource boundaries
-  assert(it->first.has_subset(Mapping(addr, num_bytes)));
+  assert(it->first.has_subset(Mapping(addr, 1)));
   return *it;
 }
 
@@ -666,7 +668,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   LOG(debug) << "mremap(" << old_addr << ", " << old_num_bytes << ", "
              << new_addr << ", " << new_num_bytes << ")";
 
-  auto mr = mapping_of(old_addr, old_num_bytes);
+  auto mr = mapping_of(old_addr);
   const Mapping& m = mr.first;
   const MappableResource& r = mr.second;
 
@@ -804,6 +806,10 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
     LOG(debug) << "    (" << mleft.offset << " + " << mleft.num_bytes()
                << " != " << mright.offset
                << ": offsets into real device aren't adjacent)";
+    return false;
+  }
+  if (rleft.id.psuedodevice() == PSEUDODEVICE_SYSV_SHM) {
+    LOG(debug) << "    (SysV shm not coalescable)";
     return false;
   }
   LOG(debug) << "    adjacent!";
@@ -954,7 +960,9 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
   assert(info.flags == (info.flags & Mapping::checkable_flags_mask));
   Mapping km(info.start_addr, info.end_addr, info.prot, info.flags,
              info.file_offset);
-  MappableResource kr(FileId(info.dev_major, info.dev_minor, info.inode),
+  PseudoDevice psdev = info.name.substr(0, 5) == "/SYSV" ? PSEUDODEVICE_SYSV_SHM
+                                                         : PSEUDODEVICE_NONE;
+  MappableResource kr(FileId(info.dev_major, info.dev_minor, info.inode, psdev),
                       info.name);
 
   if (vas->INITING_KERNEL == vas->phase) {
@@ -990,7 +998,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
 
 Mapping AddressSpace::vdso() const {
   assert(!vdso_start_addr.is_null());
-  return mapping_of(vdso_start_addr, 1).first;
+  return mapping_of(vdso_start_addr).first;
 }
 
 void AddressSpace::verify(Task* t) const {

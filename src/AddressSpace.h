@@ -50,6 +50,7 @@ enum PseudoDevice {
   PSEUDODEVICE_STACK,
   PSEUDODEVICE_SYSCALLBUF,
   PSEUDODEVICE_VDSO,
+  PSEUDODEVICE_SYSV_SHM
 };
 
 /**
@@ -97,14 +98,16 @@ public:
     if (psdev == PSEUDODEVICE_ANONYMOUS) {
       return true;
     }
-    if (dev_major() != o.dev_major()) {
-      return false;
-    }
-    // Allow device minor numbers to vary if the major device is
-    // 0. This was observed to be happening on
-    // "3.13.0-24-generic #46-Ubuntu SMP" in KVM with btrfs.
-    if (dev_major() != 0 && dev_minor() != o.dev_minor()) {
-      return false;
+    if (psdev != PSEUDODEVICE_SYSV_SHM) {
+      if (dev_major() != o.dev_major()) {
+        return false;
+      }
+      // Allow device minor numbers to vary if the major device is
+      // 0. This was observed to be happening on
+      // "3.13.0-24-generic #46-Ubuntu SMP" in KVM with btrfs.
+      if (dev_major() != 0 && dev_minor() != o.dev_minor()) {
+        return false;
+      }
     }
     return inode == o.inode;
   }
@@ -112,7 +115,9 @@ public:
    * Return true if this file is/was backed by an external
    * device, as opposed to a transient RAM mapping.
    */
-  bool is_real_device() const { return device > NO_DEVICE; }
+  bool is_real_device() const {
+    return device > NO_DEVICE || psdev == PSEUDODEVICE_SYSV_SHM;
+  }
   const char* special_name() const;
 
   bool operator<(const FileId& o) const {
@@ -271,7 +276,8 @@ struct MappableResource {
   bool operator!=(const MappableResource& o) const { return !(*this == o); }
   bool is_scratch() const { return PSEUDODEVICE_SCRATCH == id.psuedodevice(); }
   bool is_shared_mmap_file() const {
-    return PSEUDODEVICE_SHARED_MMAP_FILE == id.psuedodevice();
+    return PSEUDODEVICE_SHARED_MMAP_FILE == id.psuedodevice() ||
+           PSEUDODEVICE_SYSV_SHM == id.psuedodevice();
   }
   bool is_stack() const { return PSEUDODEVICE_STACK == id.psuedodevice(); }
 
@@ -280,8 +286,11 @@ struct MappableResource {
    * parsed from /proc/maps if this were mapped.
    */
   MappableResource to_kernel() const {
+    PseudoDevice psdev = id.psuedodevice() == PSEUDODEVICE_SYSV_SHM
+                             ? PSEUDODEVICE_SYSV_SHM
+                             : PSEUDODEVICE_NONE;
     return MappableResource(
-        FileId(id.dev_major(), id.dev_minor(), id.disp_inode()),
+        FileId(id.dev_major(), id.dev_minor(), id.disp_inode(), psdev),
         fsname.c_str());
   }
 
@@ -471,11 +480,10 @@ public:
            off64_t offset_bytes, const MappableResource& res);
 
   /**
-   * Return the mapping and mapped resource that underly [addr,
-   * addr + num_bytes).  There must be exactly one such mapping.
+   * Return the mapping and mapped resource for the byte at address 'addr'.
+   * There must be such a mapping.
    */
-  MemoryMap::value_type mapping_of(remote_ptr<void> addr,
-                                   size_t num_bytes) const;
+  MemoryMap::value_type mapping_of(remote_ptr<void> addr) const;
 
   /**
    * Return the memory map.

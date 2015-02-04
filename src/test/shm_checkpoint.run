@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+record shm$bitness
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+debug shm_checkpoint "-f $TARGET_PID"
