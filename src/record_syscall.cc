@@ -2235,8 +2235,8 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   init_scratch_memory<Arch>(t);
 }
 
-static void process_mmap(Task* t, int syscallno, size_t length, int prot,
-                         int flags, int fd, off_t offset_pages) {
+static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
+                         off_t offset_pages) {
   size_t size = ceil_page_size(length);
   off64_t offset = offset_pages * 4096;
 
@@ -2439,24 +2439,22 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         case Arch::StructArguments: {
           auto args = t->read_mem(
               remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
-          process_mmap(t, syscallno, args.len, args.prot, args.flags, args.fd,
+          process_mmap(t, args.len, args.prot, args.flags, args.fd,
                        args.offset / 4096);
           break;
         }
         case Arch::RegisterArguments:
-          process_mmap(t, syscallno, (size_t)t->regs().arg2(),
-                       (int)t->regs().arg3_signed(),
-                       (int)t->regs().arg4_signed(),
-                       (int)t->regs().arg5_signed(),
-                       ((off_t)t->regs().arg6_signed()) / 4096);
+          process_mmap(
+              t, (size_t)t->regs().arg2(), (int)t->regs().arg3_signed(),
+              (int)t->regs().arg4_signed(), (int)t->regs().arg5_signed(),
+              ((off_t)t->regs().arg6_signed()) / 4096);
           break;
       }
       break;
 
     case Arch::mmap2:
-      process_mmap(t, syscallno, (size_t)t->regs().arg2(),
-                   (int)t->regs().arg3_signed(), (int)t->regs().arg4_signed(),
-                   (int)t->regs().arg5_signed(),
+      process_mmap(t, (size_t)t->regs().arg2(), (int)t->regs().arg3_signed(),
+                   (int)t->regs().arg4_signed(), (int)t->regs().arg5_signed(),
                    (off_t)t->regs().arg6_signed());
       break;
 
