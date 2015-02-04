@@ -833,6 +833,25 @@ static bool try_merge_adjacent(Mapping* left_m, const MappableResource& left_r,
   return false;
 }
 
+static PseudoDevice pseudodevice_for_name(const string& name) {
+  if ("[heap]" == name) {
+    return PSEUDODEVICE_HEAP;
+  }
+  if ("[stack" == name.substr(0, 6)) {
+    return PSEUDODEVICE_STACK;
+  }
+  if ("[vdso]" == name) {
+    return PSEUDODEVICE_VDSO;
+  }
+  if ("" == name || "/dev/zero (deleted)" == name) {
+    return PSEUDODEVICE_ANONYMOUS;
+  }
+  if ("/SYSV" == name.substr(0, 5)) {
+    return PSEUDODEVICE_SYSV_SHM;
+  }
+  return PSEUDODEVICE_NONE;
+}
+
 /**
  * Iterate over /proc/maps segments for a task and verify that the
  * task's cached mapping matches the kernel's (given a lenient fuzz
@@ -960,10 +979,10 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
   assert(info.flags == (info.flags & Mapping::checkable_flags_mask));
   Mapping km(info.start_addr, info.end_addr, info.prot, info.flags,
              info.file_offset);
-  PseudoDevice psdev = info.name.substr(0, 5) == "/SYSV" ? PSEUDODEVICE_SYSV_SHM
-                                                         : PSEUDODEVICE_NONE;
-  MappableResource kr(FileId(info.dev_major, info.dev_minor, info.inode, psdev),
-                      info.name);
+  PseudoDevice psdev = pseudodevice_for_name(info.name);
+  MappableResource kr = MappableResource(
+      FileId(info.dev_major, info.dev_minor, info.inode, psdev), info.name)
+                            .to_kernel();
 
   if (vas->INITING_KERNEL == vas->phase) {
     assert(kr == vas->r
@@ -1218,7 +1237,8 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
                << " (end of text segment)";
   }
 
-  bool is_dynamic_heap = "[heap]" == info.name;
+  PseudoDevice psdev = pseudodevice_for_name(info.name);
+
   // This segment is adjacent to our previous guess at the start of
   // the dynamic heap, but it's still not an explicit heap segment.
   // Or, in corner cases, the segment is the final mapping of the data
@@ -1233,24 +1253,18 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
                << " (end of mapped-data segment)";
   }
 
-  FileId id;
-  if (is_dynamic_heap) {
-    id = FileId(PSEUDODEVICE_HEAP);
+  if (psdev == PSEUDODEVICE_HEAP) {
     if (!as->heap.start) {
       // No guess for the heap start. Assume it's just the [heap] segment.
       as->update_heap(info.start_addr, info.end_addr);
     } else {
       as->update_heap(as->heap.start, info.end_addr);
     }
-  } else if ("[stack]" == info.name) {
-    id = FileId(PSEUDODEVICE_STACK);
-  } else if ("[vdso]" == info.name) {
+  } else if (psdev == PSEUDODEVICE_VDSO) {
     assert(!as->vdso_start_addr);
     as->vdso_start_addr = info.start_addr;
-    id = FileId(PSEUDODEVICE_VDSO);
-  } else {
-    id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode);
   }
+  FileId id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode, psdev);
 
   as->map(info.start_addr, info.end_addr - info.start_addr, info.prot,
           info.flags, info.file_offset, MappableResource(id, info.name));

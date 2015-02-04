@@ -286,9 +286,21 @@ struct MappableResource {
    * parsed from /proc/maps if this were mapped.
    */
   MappableResource to_kernel() const {
-    PseudoDevice psdev = id.psuedodevice() == PSEUDODEVICE_SYSV_SHM
-                             ? PSEUDODEVICE_SYSV_SHM
-                             : PSEUDODEVICE_NONE;
+    PseudoDevice psdev;
+    switch (id.psuedodevice()) {
+      case PSEUDODEVICE_STACK:
+      case PSEUDODEVICE_SCRATCH:
+      case PSEUDODEVICE_ANONYMOUS:
+        psdev = PSEUDODEVICE_ANONYMOUS;
+        break;
+      case PSEUDODEVICE_SYSV_SHM:
+        psdev = PSEUDODEVICE_SYSV_SHM;
+        break;
+      default:
+        psdev = PSEUDODEVICE_NONE;
+        break;
+    }
+
     return MappableResource(
         FileId(id.dev_major(), id.dev_minor(), id.disp_inode(), psdev),
         fsname.c_str());

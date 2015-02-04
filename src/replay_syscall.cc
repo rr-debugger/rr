@@ -577,13 +577,12 @@ static void finish_private_mmap(AutoRemoteSyscalls& remote,
   create_sigbus_region(remote, prot, mapped_addr + data_pages,
                        mapped_pages - data_pages);
 
+  /* Mark the resource as ANONYMOUS since it's backed by an anonymous
+   * mapping at the kernel level.
+   */
   t->vm()->map(mapped_addr, num_bytes, prot, flags, page_size() * offset_pages,
-               // Intentionally drop the stat() information
-               // saved to trace so as to match /proc/maps's
-               // device/inode info for this anonymous mapping.
-               // Preserve the mapping name though, so
-               // AddressSpace::dump() shows something useful.
-               MappableResource(FileId(), file->file_name().c_str()));
+               MappableResource(FileId(file->stat(), PSEUDODEVICE_ANONYMOUS),
+                                file->file_name().c_str()));
 }
 
 static void finish_direct_mmap(
