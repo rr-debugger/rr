@@ -15,6 +15,30 @@ static int run_child(void) {
   char* p2;
   pid_t child2;
   int status;
+  struct shmid_ds* ds;
+  struct shminfo* info;
+  struct shm_info* info2;
+
+  ALLOCATE_GUARD(ds, 'd');
+  test_assert(0 == shmctl(shmid, IPC_STAT, ds));
+  VERIFY_GUARD(ds);
+  test_assert(ds->shm_segsz == SIZE);
+  test_assert(ds->shm_cpid == getppid());
+  test_assert(ds->shm_nattch == 0);
+
+  ds->shm_perm.mode = 0660;
+  test_assert(0 == shmctl(shmid, IPC_SET, ds));
+
+  ALLOCATE_GUARD(info, 'i');
+  test_assert(0 <= shmctl(shmid, IPC_INFO, (struct shmid_ds*)info));
+  VERIFY_GUARD(info);
+  test_assert(info->shmmin == 1);
+
+  ALLOCATE_GUARD(info2, 'j');
+  test_assert(0 <= shmctl(shmid, SHM_INFO, (struct shmid_ds*)info2));
+  VERIFY_GUARD(info2);
+  test_assert(info2->used_ids > 0);
+  test_assert(info2->used_ids < 1000000);
 
   p = shmat(shmid, NULL, 0);
   test_assert(p != (char*)-1);

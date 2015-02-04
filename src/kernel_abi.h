@@ -3,6 +3,10 @@
 #ifndef RR_KERNEL_ABI_H
 #define RR_KERNEL_ABI_H
 
+// Include remote_ptr.h first since it (indirectly) requires a definition of
+// ERANGE, which other headers below #undef :-(
+#include "remote_ptr.h"
+
 // Get all the kernel definitions so we can verify our alternative versions.
 #include <arpa/inet.h>
 #include <asm/ldt.h>
@@ -12,6 +16,7 @@
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/net.h>
+#include <linux/shm.h>
 #include <linux/sockios.h>
 #include <linux/sysctl.h>
 #include <linux/videodev2.h>
@@ -38,8 +43,6 @@
 #include <assert.h>
 
 #include <vector>
-
-#include "remote_ptr.h"
 
 class Task;
 
@@ -489,6 +492,43 @@ struct BaseArch : public wordsize, public FcntlConstants {
     unsigned_short msgseg;
   };
   RR_VERIFY_TYPE(msginfo);
+
+  struct shmid64_ds {
+    struct ipc64_perm shm_perm;
+    size_t shm_segsz;
+    uint64_t shm_atime_only_little_endian;
+    uint64_t shm_dtime_only_little_endian;
+    uint64_t shm_ctime_only_little_endian;
+    __kernel_pid_t shm_cpid;
+    __kernel_pid_t shm_lpid;
+    __kernel_ulong_t shm_nattch;
+    __kernel_ulong_t unused4;
+    __kernel_ulong_t unused5;
+  };
+  RR_VERIFY_TYPE(shmid64_ds);
+
+  struct shminfo64 {
+    __kernel_ulong_t shmmax;
+    __kernel_ulong_t shmmin;
+    __kernel_ulong_t shmmni;
+    __kernel_ulong_t shmseg;
+    __kernel_ulong_t shmall;
+    __kernel_ulong_t unused1;
+    __kernel_ulong_t unused2;
+    __kernel_ulong_t unused3;
+    __kernel_ulong_t unused4;
+  };
+  RR_VERIFY_TYPE(shminfo64);
+
+  struct shm_info {
+    int used_ids;
+    __kernel_ulong_t shm_tot;
+    __kernel_ulong_t shm_rss;
+    __kernel_ulong_t shm_swp;
+    __kernel_ulong_t swap_attempts;
+    __kernel_ulong_t swap_successes;
+  };
+  RR_VERIFY_TYPE(shm_info);
 
   // The clone(2) syscall has four (!) different calling conventions,
   // depending on what architecture it's being compiled for.  We describe

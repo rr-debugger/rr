@@ -937,6 +937,19 @@ static Switchable prepare_shmctl(Task* t, TaskSyscallState& syscall_state,
     case SHM_UNLOCK:
       break;
 
+    case IPC_STAT:
+    case SHM_STAT:
+      syscall_state.reg_parameter<typename Arch::shmid64_ds>(buf_ptr_reg);
+      break;
+
+    case IPC_INFO:
+      syscall_state.reg_parameter<typename Arch::shminfo64>(buf_ptr_reg);
+      break;
+
+    case SHM_INFO:
+      syscall_state.reg_parameter<typename Arch::shm_info>(buf_ptr_reg);
+      break;
+
     default:
       syscall_state.expect_errno = EINVAL;
       break;
