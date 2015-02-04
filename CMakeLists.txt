@@ -298,6 +298,7 @@ set(BASIC_TESTS
   sched_yield
   sched_yield_to_lower_priority
   scm_rights
+  sem
   sendfile
   set_ptracer
   setsid

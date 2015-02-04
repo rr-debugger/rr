@@ -45,6 +45,7 @@
 #include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/select.h>
+#include <sys/sem.h>
 #include <sys/sendfile.h>
 #include <sys/shm.h>
 #include <sys/signalfd.h>

@@ -325,5 +325,5 @@ std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo) {
 
 int shm_flags_to_mmap_prot(int flags) {
   return PROT_READ | ((flags & SHM_RDONLY) ? 0 : PROT_WRITE) |
-      ((flags & SHM_EXEC) ? PROT_EXEC : 0);
+         ((flags & SHM_EXEC) ? PROT_EXEC : 0);
 }

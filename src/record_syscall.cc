@@ -905,15 +905,15 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
 
 template <typename Arch>
 static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
-                                 int cmd, int buf_ptr_reg) {
+                                 int cmd, int ptr_reg) {
   switch (cmd) {
     case IPC_STAT:
     case MSG_STAT:
-      syscall_state.reg_parameter<typename Arch::msqid64_ds>(buf_ptr_reg);
+      syscall_state.reg_parameter<typename Arch::msqid64_ds>(ptr_reg);
       break;
     case IPC_INFO:
     case MSG_INFO:
-      syscall_state.reg_parameter<typename Arch::msginfo>(buf_ptr_reg);
+      syscall_state.reg_parameter<typename Arch::msginfo>(ptr_reg);
       break;
 
     case IPC_SET:
@@ -929,7 +929,7 @@ static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
 
 template <typename Arch>
 static Switchable prepare_shmctl(Task* t, TaskSyscallState& syscall_state,
-                                 int cmd, int buf_ptr_reg) {
+                                 int cmd, int ptr_reg) {
   switch (cmd) {
     case IPC_SET:
     case IPC_RMID:
@@ -939,15 +939,34 @@ static Switchable prepare_shmctl(Task* t, TaskSyscallState& syscall_state,
 
     case IPC_STAT:
     case SHM_STAT:
-      syscall_state.reg_parameter<typename Arch::shmid64_ds>(buf_ptr_reg);
+      syscall_state.reg_parameter<typename Arch::shmid64_ds>(ptr_reg);
       break;
 
     case IPC_INFO:
-      syscall_state.reg_parameter<typename Arch::shminfo64>(buf_ptr_reg);
+      syscall_state.reg_parameter<typename Arch::shminfo64>(ptr_reg);
       break;
 
     case SHM_INFO:
-      syscall_state.reg_parameter<typename Arch::shm_info>(buf_ptr_reg);
+      syscall_state.reg_parameter<typename Arch::shm_info>(ptr_reg);
+      break;
+
+    default:
+      syscall_state.expect_errno = EINVAL;
+      break;
+  }
+  return PREVENT_SWITCH;
+}
+
+template <typename Arch>
+static Switchable prepare_semctl(Task* t, TaskSyscallState& syscall_state,
+                                 int cmd, int ptr_reg) {
+  switch (cmd) {
+    case IPC_SET:
+    case IPC_RMID:
+    case GETNCNT:
+    case GETPID:
+    case GETVAL:
+    case GETZCNT:
       break;
 
     default:
@@ -1570,6 +1589,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case MSGGET:
         case SHMDT:
         case SHMGET:
+        case SEMGET:
           break;
 
         case MSGCTL: {
@@ -1578,6 +1598,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         }
 
         case MSGSND:
+        case SEMOP:
+        case SEMTIMEDOP:
           return ALLOW_SWITCH;
 
         case MSGRCV: {
@@ -1603,6 +1625,11 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           return prepare_shmctl<Arch>(t, syscall_state, cmd, 5);
         }
 
+        case SEMCTL: {
+          int cmd = (int)t->regs().arg4_signed() & ~IPC_64;
+          return prepare_semctl<Arch>(t, syscall_state, cmd, 5);
+        }
+
         default:
           syscall_state.expect_errno = EINVAL;
           break;
@@ -1621,6 +1648,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     }
 
     case Arch::msgsnd:
+    case Arch::semop:
+    case Arch::semtimedop:
       return ALLOW_SWITCH;
 
     case Arch::socketcall:
@@ -2070,6 +2099,10 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::shmctl:
       return prepare_shmctl<Arch>(t, syscall_state,
                                   (int)t->regs().arg2_signed(), 3);
+
+    case Arch::semctl:
+      return prepare_semctl<Arch>(t, syscall_state,
+                                  (int)t->regs().arg3_signed(), 4);
 
     case Arch::mmap:
     case Arch::mmap2:
