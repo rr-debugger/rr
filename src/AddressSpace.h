@@ -534,7 +534,7 @@ public:
    * Destroy all breakpoints in this VM, regardless of their
    * reference counts.
    */
-  void destroy_all_breakpoints();
+  void remove_all_breakpoints();
 
   /**
    * Manage watchpoints.  Analogous to breakpoint-managing
@@ -544,7 +544,7 @@ public:
   void remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
   bool set_watchpoint(remote_ptr<void> addr, size_t num_bytes, WatchType type);
-  void destroy_all_watchpoints();
+  void remove_all_watchpoints();
 
   /**
    * Replace all our user breakpoints with the user breakpoints of 'o'.

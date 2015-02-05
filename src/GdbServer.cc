@@ -887,7 +887,7 @@ void GdbServer::emergency_debug(Task* t) {
   // overshot an internal breakpoint.  If it did, cover that
   // breakpoint up.
   if (t->vm()) {
-    t->vm()->destroy_all_breakpoints();
+    t->vm()->remove_all_breakpoints();
   }
 
   // Don't launch a debugger on fatal errors; the user is most

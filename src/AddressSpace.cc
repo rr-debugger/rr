@@ -712,7 +712,7 @@ bool AddressSpace::set_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
   return true;
 }
 
-void AddressSpace::destroy_all_breakpoints() {
+void AddressSpace::remove_all_breakpoints() {
   while (!breakpoints.empty()) {
     destroy_breakpoint(breakpoints.begin());
   }
@@ -742,7 +742,7 @@ bool AddressSpace::set_watchpoint(remote_ptr<void> addr, size_t num_bytes,
   return allocate_watchpoints();
 }
 
-void AddressSpace::destroy_all_watchpoints() {
+void AddressSpace::remove_all_watchpoints() {
   watchpoints.clear();
   allocate_watchpoints();
 }

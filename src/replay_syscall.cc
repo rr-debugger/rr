@@ -300,8 +300,8 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
     // be useful to inherit breakpoints (along with their
     // refcounts) across a non-VM-sharing clone, but for
     // now we never want to do this.
-    new_task->vm()->destroy_all_breakpoints();
-    new_task->vm()->destroy_all_watchpoints();
+    new_task->vm()->remove_all_breakpoints();
+    new_task->vm()->remove_all_watchpoints();
   }
 
   Registers r = t->regs();
@@ -378,8 +378,8 @@ static void process_fork(Task* t, const TraceFrame& trace_frame,
   // be useful to inherit breakpoints (along with their
   // refcounts) across a non-VM-sharing clone, but for
   // now we never want to do this.
-  new_task->vm()->destroy_all_breakpoints();
-  new_task->vm()->destroy_all_watchpoints();
+  new_task->vm()->remove_all_breakpoints();
+  new_task->vm()->remove_all_watchpoints();
 
   t->set_return_value_from_trace();
   t->validate_regs();
