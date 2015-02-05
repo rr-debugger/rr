@@ -144,7 +144,7 @@ public:
 
 protected:
   Session();
-  ~Session();
+  virtual ~Session();
 
   Session(const Session& other) {
     next_task_serial_ = other.next_task_serial_;
