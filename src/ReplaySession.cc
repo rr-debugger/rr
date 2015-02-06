@@ -1249,13 +1249,6 @@ Completion ReplaySession::patch_next_syscall(Task* t, RunCommand stepi) {
   return COMPLETE;
 }
 
-/** Return true when replaying/debugging should cease after |t| exits. */
-bool ReplaySession::is_last_interesting_task(Task* t) {
-  return (0 == debugged_tgid() && tasks().size() == 1) ||
-         (t->tgid() == debugged_tgid() &&
-          t->task_group()->task_set().size() == 1);
-}
-
 /**
  * Return true if replaying |ev| by running |step| should result in
  * the target task having the same ticks value as it did during
@@ -1341,9 +1334,9 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       t->unstable = true;
     /* fall through */
     case EV_EXIT: {
-      if (is_last_interesting_task(t)) {
-        LOG(debug) << "last interesting task in " << debugged_tgid() << " is "
-                   << t->rec_tid << " (" << t->tid << ")";
+      if (tasks().size() == 1) {
+        LOG(debug) << "last interesting task is " << t->rec_tid << " ("
+                   << t->tid << ")";
         set_last_task(t);
         return;
       }
@@ -1502,7 +1495,7 @@ ReplaySession::ReplayResult ReplaySession::replay_step(
     cpuid_bug_detector.notify_reached_syscall_during_replay(t);
   }
   if (can_validate() && SYSCALL_EXIT == trace_frame.event().state &&
-      Flags::get().check_cached_mmaps) {
+      ::Flags::get().check_cached_mmaps) {
     t->vm()->verify(t);
   }
 

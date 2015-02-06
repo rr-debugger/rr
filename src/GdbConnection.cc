@@ -1073,7 +1073,7 @@ GdbRequest GdbConnection::get_request() {
     return req;
   }
 
-  while (1) {
+  while (true) {
     /* There's either new request data, or we have nothing
      * to do.  Either way, block until we read a complete
      * packet from gdb. */

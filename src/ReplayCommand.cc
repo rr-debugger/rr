@@ -202,15 +202,16 @@ static void set_sig_blockedness(int sig, int blockedness) {
   }
 }
 
-static void setup_session_from_flags(ReplaySession& session,
-                                     const ReplayFlags& flags) {
-  session.set_redirect_stdio(flags.redirect);
+static ReplaySession::Flags session_flags(ReplayFlags flags) {
+  ReplaySession::Flags result;
+  result.redirect_stdio = flags.redirect;
+  return result;
 }
 
 static void serve_replay_no_debugger(const string& trace_dir,
                                      const ReplayFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
-  setup_session_from_flags(*replay_session, flags);
+  replay_session->set_flags(session_flags(flags));
 
   while (true) {
     auto result = replay_session->replay_step(ReplaySession::RUN_CONTINUE);
@@ -266,10 +267,9 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       serve_replay_no_debugger(trace_dir, flags);
     } else {
       auto session = ReplaySession::create(trace_dir);
-      setup_session_from_flags(*session, flags);
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
-      GdbServer::serve(session, target, conn_flags);
+      GdbServer::serve(session, target, conn_flags, session_flags(flags));
     }
     return 0;
   }
@@ -296,11 +296,10 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     // block it.
     set_sig_blockedness(SIGINT, SIG_BLOCK);
     auto session = ReplaySession::create(trace_dir);
-    setup_session_from_flags(*session, flags);
     GdbServer::ConnectionFlags conn_flags;
     conn_flags.dbg_port = flags.dbg_port;
     conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
-    GdbServer::serve(session, target, conn_flags);
+    GdbServer::serve(session, target, conn_flags, session_flags(flags));
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if

@@ -10,6 +10,7 @@
 #include "DiversionSession.h"
 #include "GdbConnection.h"
 #include "ReplaySession.h"
+#include "ReplayTimeline.h"
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 
@@ -44,8 +45,9 @@ public:
    * of the pipe to exec() gdb.
    */
   static void serve(std::shared_ptr<ReplaySession> session,
-                    const Target& target, const ConnectionFlags& flags) {
-    GdbServer(session, target).serve_replay(flags);
+                    const Target& target, const ConnectionFlags& flags,
+                    const ReplaySession::Flags& session_flags) {
+    GdbServer(session, session_flags, target).serve_replay(flags);
   }
 
   /**
@@ -66,12 +68,14 @@ public:
   static void emergency_debug(Task* t);
 
 private:
-  GdbServer(std::shared_ptr<ReplaySession> session, const Target& target)
-      : target(target), debugger_active(false), session(session) {}
+  GdbServer(std::shared_ptr<ReplaySession> session,
+            const ReplaySession::Flags& flags, const Target& target)
+      : target(target),
+        debugger_active(false),
+        timeline(std::move(session), flags) {}
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
       : dbg(std::move(dbg)), debugger_active(true) {}
 
-  void maybe_singlestep_for_event(Task* t, GdbRequest* req);
   /**
    * If |req| is a magic-write command, interpret it and return true.
    * Otherwise, do nothing and return false.
@@ -146,14 +150,17 @@ private:
   // False while we're waiting for the session to reach some requested state
   // before talking to gdb.
   bool debugger_active;
+  // When debugger_active is true, the TaskGroupUid of the task being debugged.
+  TaskGroupUid debuggee_tguid;
 
-  // |session| is used to drive replay.
-  ReplaySession::shr_ptr session;
-  // If we're being controlled by a debugger, then |last_debugger_start| is
-  // the saved session we forked 'session' from.
-  ReplaySession::shr_ptr debugger_restart_checkpoint;
-  // Checkpoints, indexed by checkpoint ID
-  std::map<int, ReplaySession::shr_ptr> checkpoints;
+  ReplayTimeline timeline;
+
+  // |debugger_restart_mark| is the point where we will restart from with
+  // a no-op debugger "run" command.
+  ReplayTimeline::Mark debugger_restart_mark;
+
+  // gdb checkpoints, indexed by ID
+  std::map<int, ReplayTimeline::Mark> checkpoints;
 };
 
 #endif /* RR_GDB_SERVER_H_ */

@@ -17,6 +17,9 @@
 
 #include "kernel_metadata.h"
 #include "log.h"
+#include "ReplaySession.h"
+#include "ScopedFd.h"
+#include "task.h"
 #include "util.h"
 
 using namespace rr;
@@ -135,8 +138,9 @@ static WatchType watchpoint_type(GdbRequestType req) {
   }
 }
 
-void GdbServer::maybe_singlestep_for_event(Task* t, GdbRequest* req) {
-  if (trace_instructions_up_to_event(session->current_trace_frame().time())) {
+static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
+  if (trace_instructions_up_to_event(
+          t->replay_session().current_trace_frame().time())) {
     fputs("Stepping: ", stderr);
     t->regs().print_register_file_compact(stderr);
     fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
@@ -144,24 +148,6 @@ void GdbServer::maybe_singlestep_for_event(Task* t, GdbRequest* req) {
     req->target = get_threadid(t);
     req->suppress_debugger_stop = true;
   }
-}
-
-ReplaySession::shr_ptr GdbServer::get_checkpoint(int checkpoint_id) {
-  auto it = checkpoints.find(checkpoint_id);
-  if (it == checkpoints.end()) {
-    return nullptr;
-  }
-  return it->second;
-}
-
-void GdbServer::delete_checkpoint(int checkpoint_id) {
-  auto it = checkpoints.find(checkpoint_id);
-  if (it == checkpoints.end()) {
-    return;
-  }
-
-  it->second->kill_all_tasks();
-  checkpoints.erase(it);
 }
 
 bool GdbServer::maybe_process_magic_command(Task* t, const GdbRequest& req) {
@@ -173,14 +159,17 @@ bool GdbServer::maybe_process_magic_command(Task* t, const GdbRequest& req) {
   uintptr_t param = cmd & DBG_COMMAND_PARAMETER_MASK;
   switch (cmd & DBG_COMMAND_MSG_MASK) {
     case DBG_COMMAND_MSG_CREATE_CHECKPOINT: {
-      ReplaySession::shr_ptr checkpoint = session->clone();
-      delete_checkpoint(param);
-      checkpoints[param] = checkpoint;
+      checkpoints[param] = timeline.add_explicit_checkpoint();
       break;
     }
-    case DBG_COMMAND_MSG_DELETE_CHECKPOINT:
-      delete_checkpoint(param);
+    case DBG_COMMAND_MSG_DELETE_CHECKPOINT: {
+      auto it = checkpoints.find(param);
+      if (it != checkpoints.end()) {
+        timeline.remove_explicit_checkpoint(it->second);
+        checkpoints.erase(it);
+      }
       break;
+    }
     default:
       return false;
   }
@@ -581,7 +570,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
  * execution.
  */
 GdbRequest GdbServer::process_debugger_requests(Task* t) {
-  while (1) {
+  while (true) {
     GdbRequest req = dbg->get_request();
     req.suppress_debugger_stop = false;
 
@@ -598,7 +587,7 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
       memset(si_bytes.data(), 0, si_bytes.size());
       dbg->reply_read_siginfo(si_bytes);
 
-      req = divert(*session, t->rec_tid);
+      req = divert(t->replay_session(), t->rec_tid);
       if (req.type == DREQ_NONE) {
         continue;
       }
@@ -619,16 +608,16 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
       return req;
     }
 
-    dispatch_debugger_request(*session, t, req);
+    dispatch_debugger_request(t->session(), t, req);
   }
 }
 
 GdbRequest GdbServer::replay_one_step() {
-  Task* t = session->current_task();
   ReplaySession::RunCommand command;
   GdbRequest req;
 
-  if (debugger_active) {
+  Task* t = timeline.current_session().current_task();
+  if (debugger_active && t && t->task_group()->tguid() == debuggee_tguid) {
     req = process_debugger_requests(t);
     if (DREQ_RESTART == req.type) {
       return req;
@@ -641,7 +630,7 @@ GdbRequest GdbServer::replay_one_step() {
     command = Session::RUN_CONTINUE;
   }
 
-  auto result = session->replay_step(command, target.event);
+  auto result = timeline.current_session().replay_step(command, target.event);
 
   GdbRequest no_restart;
   no_restart.type = DREQ_NONE;
@@ -731,10 +720,10 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   }
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
-  if (!session->can_validate()) {
+  if (!timeline.current_session().can_validate()) {
     return;
   }
-  Task* t = session->current_task();
+  Task* t = timeline.current_session().current_task();
   if (!t) {
     return;
   }
@@ -748,7 +737,7 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   // So we make the decision to create the debugger based on the
   // frame we're *about to* replay, without modifying the
   // TraceIfstream.
-  TraceFrame next_frame = session->current_trace_frame();
+  TraceFrame next_frame = timeline.current_session().current_trace_frame();
   TraceFrame::Time event_now = next_frame.time();
   // NB: we'll happily attach to whichever task within the
   // group happens to be scheduled here.  We don't take
@@ -768,18 +757,13 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
             target.pid, event_now);
   }
 
-  // Call set_debugged_tgid now so it will be cloned into the
-  // checkpoint below if one is created.
-  t->replay_session().set_debugged_tgid(t->tgid());
-
   // Have the "checkpoint" be the original replay
   // session, and then switch over to using the cloned
   // session.  The cloned tasks will look like children
   // of the clonees, so this scheme prevents |pstree|
   // output from getting /too/ far out of whack.
-  debugger_restart_checkpoint = session;
-  session = session->clone();
-  t = session->find_task(t->rec_tid);
+  debugger_restart_mark = timeline.add_explicit_checkpoint();
+  t = timeline.current_session().find_task(t->rec_tid);
 
   // Store the current tgid and event as the "execution target"
   // for the next replay session, if we end up restarting.  This
@@ -806,7 +790,15 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
     }
   }
 
+  debuggee_tguid = t->task_group()->tguid();
   debugger_active = true;
+}
+
+static void remove_all_breakpoints(ReplaySession& session) {
+  for (auto& vm : session.vms()) {
+    vm->remove_all_breakpoints();
+    vm->remove_all_watchpoints();
+  }
 }
 
 void GdbServer::maybe_restart_session(const GdbRequest& req) {
@@ -815,21 +807,26 @@ void GdbServer::maybe_restart_session(const GdbRequest& req) {
   }
   assert(dbg);
 
-  ReplaySession::shr_ptr checkpoint_to_restore;
+  ReplayTimeline::Mark mark_to_restore;
   if (req.restart.type == RESTART_FROM_CHECKPOINT) {
-    checkpoint_to_restore = get_checkpoint(req.restart.param);
-    if (!checkpoint_to_restore) {
+    auto it = checkpoints.find(req.restart.param);
+    if (it == checkpoints.end()) {
       LOG(info) << "Checkpoint " << req.restart.param << " not found.";
       dbg->notify_restart_failed();
       return;
     }
+    mark_to_restore = it->second;
   } else if (req.restart.type == RESTART_FROM_PREVIOUS) {
-    checkpoint_to_restore = debugger_restart_checkpoint;
+    mark_to_restore = debugger_restart_mark;
   }
-  if (checkpoint_to_restore) {
-    debugger_restart_checkpoint = checkpoint_to_restore;
-    session = checkpoint_to_restore->clone();
-    debugger_active = true;
+  remove_all_breakpoints(timeline.current_session());
+  if (mark_to_restore) {
+    if (debugger_restart_mark) {
+      timeline.remove_explicit_checkpoint(debugger_restart_mark);
+    }
+    debugger_restart_mark = mark_to_restore;
+    timeline.seek_to_mark(mark_to_restore);
+    timeline.add_explicit_checkpoint();
     return;
   }
 
@@ -839,18 +836,19 @@ void GdbServer::maybe_restart_session(const GdbRequest& req) {
   // Note that we don't reset the target pid; we intentionally keep targeting
   // the same process no matter what is running when we hit the event.
   target.event = req.restart.param;
-  if (session->trace_reader().time() > target.event) {
-    // We weren't able to reuse a saved session, so
-    // just discard it and create a fresh one that's back
-    // at beginning-of-trace.
-    session = ReplaySession::create(session->trace_reader().dir());
-  }
+  timeline.seek_to_before_event(target.event);
 }
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
   while (true) {
-    while (!session->last_task()) {
+    while (!timeline.current_session().last_task()) {
       maybe_connect_debugger(flags);
+
+      if (debugger_active &&
+          !timeline.current_session().find_task_group(debuggee_tguid)) {
+        // Our debugee must have exited.
+        break;
+      }
 
       GdbRequest restart_request = replay_one_step();
       maybe_restart_session(restart_request);
@@ -864,7 +862,8 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 
     // TODO return real exit code, if it's useful.
     dbg->notify_exit_code(0);
-    GdbRequest req = process_debugger_requests(session->last_task());
+    GdbRequest req =
+        process_debugger_requests(timeline.current_session().last_task());
     if (DREQ_RESTART == req.type) {
       maybe_restart_session(req);
       continue;

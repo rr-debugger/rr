@@ -21,7 +21,8 @@ private:
   struct InternalMark;
 
 public:
-  ReplayTimeline(std::shared_ptr<ReplaySession> session);
+  ReplayTimeline(std::shared_ptr<ReplaySession> session,
+                 const ReplaySession::Flags& session_flags);
   ReplayTimeline() {}
   ~ReplayTimeline();
 
@@ -189,6 +190,8 @@ private:
   static size_t run_to_mark_or_tick(
       ReplaySession& session,
       const std::vector<std::weak_ptr<InternalMark> >& marks);
+
+  ReplaySession::Flags session_flags;
 
   ReplaySession::shr_ptr current;
 

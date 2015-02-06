@@ -222,22 +222,6 @@ public:
   }
 
   /**
-   * Set |tgid| as the one that's being debugged in this
-   * session.
-   *
-   * Little hack: technically replayer doesn't know about the
-   * fact that GdbConnection hides all but one tgid from the gdb
-   * client.  But to recognize the last_task below (another
-   * little hack), we need to known when an exiting thread from
-   * the target task group is the last.
-   */
-  void set_debugged_tgid(pid_t tgid) {
-    assert(0 == tgid_debugged);
-    tgid_debugged = tgid;
-  }
-  pid_t debugged_tgid() const { return tgid_debugged; }
-
-  /**
    * If we've finished replaying (all tracees terminated), return the last
    * Task that ran. Sometimes debuggers need this. Returns null if replay
    * hasn't finished yet.
@@ -285,31 +269,33 @@ public:
    */
   static bool is_ignored_signal(int sig);
 
-  bool redirect_stdio() { return redirect_stdio_; }
+  struct Flags {
+    Flags() : redirect_stdio(false) {}
+    Flags(const Flags& other) = default;
+    bool redirect_stdio;
+  };
+  bool redirect_stdio() { return flags.redirect_stdio; }
 
-  void set_redirect_stdio(bool redirect) { redirect_stdio_ = redirect; }
+  void set_flags(const Flags& flags) { this->flags = flags; }
 
 private:
   ReplaySession(const std::string& dir)
       : emu_fs(EmuFs::create()),
         last_debugged_task(nullptr),
-        tgid_debugged(0),
         trace_in(dir),
         trace_frame(),
-        current_step(),
-        redirect_stdio_(false) {
+        current_step() {
     advance_to_next_trace_frame(0);
   }
 
   ReplaySession(const ReplaySession& other)
       : emu_fs(other.emu_fs->clone()),
         last_debugged_task(nullptr),
-        tgid_debugged(other.tgid_debugged),
         trace_in(other.trace_in),
         trace_frame(other.trace_frame),
         current_step(other.current_step),
         cpuid_bug_detector(other.cpuid_bug_detector),
-        redirect_stdio_(other.redirect_stdio_) {
+        flags(other.flags) {
     assert(!other.last_debugged_task);
   }
 
@@ -366,16 +352,14 @@ private:
   Completion flush_one_syscall(Task* t, RunCommand stepi);
   Completion flush_syscallbuf(Task* t, RunCommand stepi);
   Completion patch_next_syscall(Task* t, RunCommand stepi);
-  bool is_last_interesting_task(Task* t);
 
   std::shared_ptr<EmuFs> emu_fs;
   Task* last_debugged_task;
-  pid_t tgid_debugged;
   TraceReader trace_in;
   TraceFrame trace_frame;
   ReplayTraceStep current_step;
   CPUIDBugDetector cpuid_bug_detector;
-  bool redirect_stdio_;
+  Flags flags;
   /**
    * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
    * must be replayed sequentially, so we can use one buffer for all
