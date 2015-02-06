@@ -429,7 +429,9 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
  *
  * The received request is returned through |req|.
  */
-Task* GdbServer::diverter_process_debugger_requests(Task* t, GdbRequest* req) {
+Task* GdbServer::diverter_process_debugger_requests(
+    Task* t, DiversionSession& diversion_session, uint32_t& diversion_refcount,
+    GdbRequest* req) {
   while (true) {
     *req = dbg->get_request();
 
@@ -492,7 +494,7 @@ Task* GdbServer::diverter_process_debugger_requests(Task* t, GdbRequest* req) {
         break;
     }
 
-    dispatch_debugger_request(*diversion_session, t, *req);
+    dispatch_debugger_request(diversion_session, t, *req);
   }
 }
 
@@ -510,14 +512,14 @@ Task* GdbServer::diverter_process_debugger_requests(Task* t, GdbRequest* req) {
 GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
   GdbRequest req;
   LOG(debug) << "Starting debugging diversion for " << &replay;
-  assert(!diversion_session && diversion_refcount == 0);
 
-  diversion_session = replay.clone_diversion();
-  diversion_refcount = 1;
+  DiversionSession::shr_ptr diversion_session = replay.clone_diversion();
+  uint32_t diversion_refcount = 1;
 
   Task* t = diversion_session->find_task(task);
   while (true) {
-    if (!(t = diverter_process_debugger_requests(t, &req))) {
+    if (!(t = diverter_process_debugger_requests(t, *diversion_session,
+                                                 diversion_refcount, &req))) {
       break;
     }
 
@@ -571,7 +573,6 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
   }
 
   diversion_session->kill_all_tasks();
-  diversion_session = nullptr;
   return req;
 }
 

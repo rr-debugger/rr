@@ -67,12 +67,9 @@ public:
 
 private:
   GdbServer(std::shared_ptr<ReplaySession> session, const Target& target)
-      : target(target),
-        debugger_active(false),
-        session(session),
-        diversion_refcount(0) {}
+      : target(target), debugger_active(false), session(session) {}
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
-      : dbg(std::move(dbg)), debugger_active(true), diversion_refcount(0) {}
+      : dbg(std::move(dbg)), debugger_active(true) {}
 
   void maybe_singlestep_for_event(Task* t, GdbRequest* req);
   /**
@@ -110,14 +107,16 @@ private:
   void serve_replay(const ConnectionFlags& flags);
 
   /**
-   * Process debugger requests made through |dbg| in
-   * |diversion_session| until action needs to
-   * be taken by the caller (a resume-execution request is received).
+   * Process debugger requests made in |diversion_session| until action needs
+   * to be taken by the caller (a resume-execution request is received).
    * The returned Task* is the target of the resume-execution request.
    *
    * The received request is returned through |req|.
    */
-  Task* diverter_process_debugger_requests(Task* t, GdbRequest* req);
+  Task* diverter_process_debugger_requests(Task* t,
+                                           DiversionSession& diversion_session,
+                                           uint32_t& diversion_refcount,
+                                           GdbRequest* req);
   /**
    * Create a new diversion session using |replay| session as the
    * template.  The |replay| session isn't mutated.
@@ -155,12 +154,6 @@ private:
   ReplaySession::shr_ptr debugger_restart_checkpoint;
   // Checkpoints, indexed by checkpoint ID
   std::map<int, ReplaySession::shr_ptr> checkpoints;
-
-  // The diversion session.
-  DiversionSession::shr_ptr diversion_session;
-  // Number of client references to diversion_session.
-  // When there are 0 refs it is considered to be dying.
-  int diversion_refcount;
 };
 
 #endif /* RR_GDB_SERVER_H_ */
