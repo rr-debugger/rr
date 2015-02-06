@@ -113,6 +113,7 @@ add_executable(rr
   src/ReplayCommand.cc
   src/ReplaySession.cc
   src/replay_syscall.cc
+  src/ReplayTimeline.cc
   src/Scheduler.cc
   src/Session.cc
   src/StdioMonitor.cc

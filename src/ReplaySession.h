@@ -3,6 +3,8 @@
 #ifndef RR_REPLAY_SESSION_H_
 #define RR_REPLAY_SESSION_H_
 
+#include <memory>
+
 #include "CPUIDBugDetector.h"
 #include "DiversionSession.h"
 #include "EmuFs.h"
@@ -264,6 +266,8 @@ public:
    * Ensure we stop at event stop_at_time. If this is not specified,
    * optimizations may cause a replay_step to pass straight through
    * stop_at_time.
+   * Outside of replay_step, no internal breakpoints will be set for any
+   * task in this session.
    */
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
                            TraceFrame::Time stop_at_time = 0);
