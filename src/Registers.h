@@ -293,6 +293,11 @@ public:
                                      const Registers& reg2,
                                      MismatchBehavior mismatch_behavior);
 
+  bool matches(const Registers& other) {
+    return compare_register_files(nullptr, nullptr, *this, nullptr, other,
+                                  EXPECT_MISMATCHES);
+  }
+
   /**
    * Return the total number of registers for this target.
    */
