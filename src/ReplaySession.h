@@ -151,7 +151,12 @@ struct ReplayTraceStep {
  */
 class ReplayStepKey {
 public:
-  ReplayStepKey(ReplayTraceStepType action) : action(action) {}
+  /**
+   * Construct the "none" key; this value is before or equal to every other
+   * key value.
+   */
+  ReplayStepKey() : action(TSTEP_NONE) {}
+  explicit ReplayStepKey(ReplayTraceStepType action) : action(action) {}
 
   bool operator==(const ReplayStepKey& other) const {
     return action == other.action;
@@ -194,6 +199,7 @@ public:
   void gc_emufs();
 
   TraceReader& trace_reader() { return trace_in; }
+  const TraceReader& trace_reader() const { return trace_in; }
 
   /**
    * The trace record that we are working on --- the next event
@@ -209,7 +215,9 @@ public:
   /**
    * The current ReplayStepKey.
    */
-  const ReplayStepKey& current_step_key() { return ReplayStepKey(current_step.action); }
+  ReplayStepKey current_step_key() const {
+    return ReplayStepKey(current_step.action);
+  }
 
   /**
    * Set |tgid| as the one that's being debugged in this

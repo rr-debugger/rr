@@ -138,7 +138,9 @@ public:
     remote_ptr<void> watch_address;
   };
   enum RunCommand {
+    // Continue until we hit a breakpoint or a new replay event
     RUN_CONTINUE,
+    // Execute a single instruction (unless at a breakpoint or a replay event)
     RUN_SINGLESTEP
   };
 
