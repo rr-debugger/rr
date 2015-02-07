@@ -373,7 +373,7 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_SET_SW_BREAK: {
       ASSERT(target, (req.mem.len == sizeof(AddressSpace::breakpoint_insn)))
           << "Debugger setting bad breakpoint insn";
-      bool ok = target->vm()->set_breakpoint(req.mem.addr, TRAP_BKPT_USER);
+      bool ok = target->vm()->add_breakpoint(req.mem.addr, TRAP_BKPT_USER);
       dbg->reply_watchpoint_request(ok);
       return;
     }
@@ -393,7 +393,7 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_SET_RD_WATCH:
     case DREQ_SET_WR_WATCH:
     case DREQ_SET_RDWR_WATCH: {
-      bool ok = target->vm()->set_watchpoint(req.mem.addr, req.mem.len,
+      bool ok = target->vm()->add_watchpoint(req.mem.addr, req.mem.len,
                                              watchpoint_type(req.type));
       dbg->reply_watchpoint_request(ok);
       return;

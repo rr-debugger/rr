@@ -528,7 +528,7 @@ public:
   void remove_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
 
   /** Ensure a breakpoint of |type| is set at |addr|. */
-  bool set_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
+  bool add_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
 
   /**
    * Destroy all breakpoints in this VM, regardless of their
@@ -543,7 +543,7 @@ public:
    */
   void remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
-  bool set_watchpoint(remote_ptr<void> addr, size_t num_bytes, WatchType type);
+  bool add_watchpoint(remote_ptr<void> addr, size_t num_bytes, WatchType type);
   void remove_all_watchpoints();
 
   /**

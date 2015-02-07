@@ -806,7 +806,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
        * no slower than single-stepping our way to
        * the target execution point. */
       LOG(debug) << "    breaking on target $ip";
-      t->vm()->set_breakpoint(ip, TRAP_BKPT_INTERNAL);
+      t->vm()->add_breakpoint(ip, TRAP_BKPT_INTERNAL);
       did_set_internal_breakpoint = true;
       continue_or_step(t, stepi);
     } else {

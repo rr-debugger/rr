@@ -690,7 +690,7 @@ void AddressSpace::remove_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
   destroy_breakpoint(it);
 }
 
-bool AddressSpace::set_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
+bool AddressSpace::add_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end()) {
     auto bp = Breakpoint::create();
@@ -728,7 +728,7 @@ void AddressSpace::remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
   allocate_watchpoints();
 }
 
-bool AddressSpace::set_watchpoint(remote_ptr<void> addr, size_t num_bytes,
+bool AddressSpace::add_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                                   WatchType type) {
   MemoryRange key(addr, num_bytes);
   auto it = watchpoints.find(key);
@@ -1095,7 +1095,7 @@ void AddressSpace::copy_user_breakpoints_from(const AddressSpace& o) {
 
   for (auto& it : o.breakpoints) {
     for (int i = 0; i < it.second->user_count; ++i) {
-      set_breakpoint(it.first, TRAP_BKPT_USER);
+      add_breakpoint(it.first, TRAP_BKPT_USER);
     }
   }
 }

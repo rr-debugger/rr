@@ -342,7 +342,7 @@ void Task::finish_emulated_syscall() {
   // idempotent insn after the syscall trap (restore register
   // from stack), so we don't have to pay this expense.
   if (!known_idempotent_insn_after_syscall) {
-    vm()->set_breakpoint(ip, TRAP_BKPT_INTERNAL);
+    vm()->add_breakpoint(ip, TRAP_BKPT_INTERNAL);
   }
   cont_sysemu_singlestep();
 

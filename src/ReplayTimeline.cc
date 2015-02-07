@@ -249,7 +249,7 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
         // this IP.
         current->replay_step(Session::RUN_SINGLESTEP);
       } else {
-        t->vm()->set_breakpoint(mark.ptr->regs.ip(), TRAP_BKPT_USER);
+        t->vm()->add_breakpoint(mark.ptr->regs.ip(), TRAP_BKPT_USER);
         current->replay_step(Session::RUN_CONTINUE);
         t->vm()->remove_breakpoint(mark.ptr->regs.ip(), TRAP_BKPT_USER);
       }
