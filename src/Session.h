@@ -68,7 +68,8 @@ public:
    * mapping is changed, only the |clone()|d copy is updated,
    * not its origin (i.e. copy-on-write semantics).
    */
-  std::shared_ptr<AddressSpace> clone(Task* t, std::shared_ptr<AddressSpace> vm);
+  std::shared_ptr<AddressSpace> clone(Task* t,
+                                      std::shared_ptr<AddressSpace> vm);
 
   /** See Task::clone(). */
   Task* clone(Task* p, int flags, remote_ptr<void> stack, remote_ptr<void> tls,

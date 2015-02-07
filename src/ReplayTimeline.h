@@ -5,6 +5,7 @@
 
 #include <map>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include "Registers.h"
@@ -84,6 +85,16 @@ public:
    * Return true if we're currently at the given mark.
    */
   bool at_mark(const Mark& mark) { return current_mark() == mark.ptr; }
+
+  // Add/remove breakpoints and watchpoints. Use these APIs instead
+  // of operating on the task directly, so that ReplayTimeline can track
+  // breakpoints and automatically move them across sessions as necessary.
+  bool add_breakpoint(Task* t, remote_ptr<uint8_t> addr);
+  void remove_breakpoint(Task* t, remote_ptr<uint8_t> addr);
+  bool add_watchpoint(Task* t, remote_ptr<void> addr, size_t num_bytes,
+                      WatchType type);
+  void remove_watchpoint(Task* t, remote_ptr<void> addr, size_t num_bytes,
+                         WatchType type);
 
   // State-changing APIs. These may alter state associated with
   // current_session(). No breakpoints/watchpoints may be set when these
@@ -217,6 +228,10 @@ private:
    * because a MarkKey may have multiple corresponding Marks.
    */
   std::map<MarkKey, uint32_t> marks_with_checkpoints;
+
+  std::multiset<std::pair<AddressSpaceUid, remote_ptr<uint8_t> > > breakpoints;
+  std::multiset<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t,
+                           WatchType> > watchpoints;
 };
 
 #endif // RR_REPLAY_TIMELINE_H_

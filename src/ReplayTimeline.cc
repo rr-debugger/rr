@@ -256,3 +256,31 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
     }
   }
 }
+
+bool ReplayTimeline::add_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
+  if (!t->vm()->add_breakpoint(addr, TRAP_BKPT_USER)) {
+    return false;
+  }
+  breakpoints.insert(make_pair(t->vm()->uid(), addr));
+  return true;
+}
+
+void ReplayTimeline::remove_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
+  t->vm()->remove_breakpoint(addr, TRAP_BKPT_USER);
+  breakpoints.erase(make_pair(t->vm()->uid(), addr));
+}
+
+bool ReplayTimeline::add_watchpoint(Task* t, remote_ptr<void> addr,
+                                    size_t num_bytes, WatchType type) {
+  if (!t->vm()->add_watchpoint(addr, num_bytes, type)) {
+    return false;
+  }
+  watchpoints.insert(make_tuple(t->vm()->uid(), addr, num_bytes, type));
+  return true;
+}
+
+void ReplayTimeline::remove_watchpoint(Task* t, remote_ptr<void> addr,
+                                       size_t num_bytes, WatchType type) {
+  t->vm()->remove_watchpoint(addr, num_bytes, type);
+  watchpoints.erase(make_tuple(t->vm()->uid(), addr, num_bytes, type));
+}
