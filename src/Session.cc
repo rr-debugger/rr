@@ -24,7 +24,14 @@ Session::Session() : next_task_serial_(1), tracees_consistent(false) {
 Session::~Session() {
   kill_all_tasks();
   LOG(debug) << "Session " << this << " destroyed";
+
+  for (auto tg : task_group_map) {
+    tg.second->forget_session();
+  }
 }
+
+void Session::on_create(TaskGroup* tg) { task_group_map[tg->tguid()] = tg; }
+void Session::on_destroy(TaskGroup* tg) { task_group_map.erase(tg->tguid()); }
 
 void Session::post_exec() {
   if (tracees_consistent) {
@@ -62,6 +69,14 @@ Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
 Task* Session::find_task(pid_t rec_tid) const {
   auto it = tasks().find(rec_tid);
   return tasks().end() != it ? it->second : nullptr;
+}
+
+TaskGroup* Session::find_task_group(TaskGroupUid& tguid) const {
+  auto it = task_group_map.find(tguid);
+  if (task_group_map.end() == it) {
+    return nullptr;
+  }
+  return it->second;
 }
 
 void Session::kill_all_tasks() {

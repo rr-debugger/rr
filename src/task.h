@@ -26,7 +26,6 @@ class RecordSession;
 class ReplaySession;
 struct Sighandlers;
 class Task;
-struct TaskGroup;
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
@@ -38,6 +37,15 @@ public:
   TaskGroupUid(const TaskGroupUid& other) = default;
   bool operator==(const TaskGroupUid& other) const {
     return tgid_ == other.tgid_ && serial == other.serial;
+  }
+  bool operator<(const TaskGroupUid& other) const {
+    if (tgid < other.tgid_) {
+      return true;
+    }
+    if (tgid > other.tgid_) {
+      return false;
+    }
+    return serial < other.serial;
   }
   pid_t tgid() const { return tgid_; }
 
@@ -54,7 +62,8 @@ private:
  */
 class TaskGroup : public HasTaskSet {
 public:
-  TaskGroup(TaskGroup* parent, pid_t tgid, pid_t real_tgid, uint32_t serial);
+  TaskGroup(Session* session, TaskGroup* parent, pid_t tgid, pid_t real_tgid,
+            uint32_t serial);
   ~TaskGroup();
 
   typedef std::shared_ptr<TaskGroup> shr_ptr;
@@ -67,6 +76,8 @@ public:
 
   int exit_code;
 
+  void forget_session() { session = nullptr; }
+
   TaskGroup* parent() { return parent_; }
 
   TaskGroupUid tguid() const { return TaskGroupUid(tgid, serial); }
@@ -75,6 +86,7 @@ private:
   TaskGroup(const TaskGroup&) = delete;
   TaskGroup operator=(const TaskGroup&) = delete;
 
+  Session* session;
   /** Parent TaskGroup, or nullptr if it's not a tracee (rr or init). */
   TaskGroup* parent_;
 

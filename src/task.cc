@@ -197,11 +197,12 @@ void TaskGroup::destabilize() {
   }
 }
 
-TaskGroup::TaskGroup(TaskGroup* parent, pid_t tgid, pid_t real_tgid,
-                     uint32_t serial)
+TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
+                     pid_t real_tgid, uint32_t serial)
     : tgid(tgid),
       real_tgid(real_tgid),
       exit_code(-1),
+      session(session),
       parent_(parent),
       serial(serial) {
   LOG(debug) << "creating new task group " << tgid
@@ -209,9 +210,13 @@ TaskGroup::TaskGroup(TaskGroup* parent, pid_t tgid, pid_t real_tgid,
   if (parent) {
     parent->children.insert(this);
   }
+  session->on_create(this);
 }
 
 TaskGroup::~TaskGroup() {
+  if (session) {
+    session->on_destroy(this);
+  }
   for (TaskGroup* tg : children) {
     tg->parent_ = nullptr;
   }
@@ -1939,8 +1944,8 @@ int Task::stop_sig_from_status(int status) const {
 }
 
 static TaskGroup::shr_ptr create_tg(Task* t, TaskGroup* parent) {
-  TaskGroup::shr_ptr tg(
-      new TaskGroup(parent, t->rec_tid, t->tid, t->tuid().serial()));
+  TaskGroup::shr_ptr tg(new TaskGroup(&t->session(), parent, t->rec_tid, t->tid,
+                                      t->tuid().serial()));
   tg->insert_task(t);
   return tg;
 }

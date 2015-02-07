@@ -16,7 +16,8 @@ class DiversionSession;
 class RecordSession;
 class ReplaySession;
 class Task;
-struct TaskGroup;
+class TaskGroup;
+class TaskGroupUid;
 
 /**
  * Sessions track the global state of a set of tracees corresponding
@@ -34,6 +35,7 @@ class Session {
 public:
   typedef std::set<AddressSpace*> AddressSpaceSet;
   typedef std::map<pid_t, Task*> TaskMap;
+  typedef std::map<TaskGroupUid, TaskGroup*> TaskGroupMap;
 
   /**
    * Call |post_exec()| immediately after a tracee has successfully
@@ -77,6 +79,12 @@ public:
   Task* find_task(pid_t rec_tid) const;
 
   /**
+   * Return the task group whose unique ID is |tguid|, or nullptr if no such
+   * task group exists.
+   */
+  TaskGroup* find_task_group(TaskGroupUid& tguid) const;
+
+  /**
    * |tasks().size()| will be zero and all the OS tasks will be
    * gone when this returns, or this won't return.
    */
@@ -88,6 +96,8 @@ public:
    */
   void on_destroy(AddressSpace* vm);
   virtual void on_destroy(Task* t);
+  void on_create(TaskGroup* tg);
+  void on_destroy(TaskGroup* tg);
 
   /** Return the set of Tasks being tracekd in this session. */
   const TaskMap& tasks() const { return task_map; }
@@ -136,7 +146,10 @@ protected:
   Session();
   ~Session();
 
-  Session(const Session& other) { next_task_serial_ = other.next_task_serial_; }
+  Session(const Session& other) {
+    next_task_serial_ = other.next_task_serial_;
+    tracees_consistent = other.tracees_consistent;
+  }
   Session& operator=(const Session&) = delete;
 
   virtual void on_create(Task* t);
@@ -145,6 +158,7 @@ protected:
 
   AddressSpaceSet sas;
   TaskMap task_map;
+  TaskGroupMap task_group_map;
   uint32_t next_task_serial_;
 
   /**
