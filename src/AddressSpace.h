@@ -465,6 +465,11 @@ public:
   bool execed() const { return !is_clone; }
 
   /**
+   * Return tid of the first task for this address space.
+   */
+  pid_t leader_tid() { return leader_tid_; }
+
+  /**
    * Return the path this address space was exec()'d with.
    */
   const std::string& exe_image() const { return exe; }
@@ -717,6 +722,8 @@ private:
   /* Path of the executable image this address space was
    * exec()'d with. */
   std::string exe;
+  /* Pid of first task for this address space */
+  pid_t leader_tid_;
   /* Track the special process-global heap in order to support
    * adjustments by brk(). */
   Mapping heap;

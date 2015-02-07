@@ -1031,7 +1031,11 @@ void AddressSpace::verify(Task* t) const {
 }
 
 AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
-    : exe(exe), is_clone(false), session(&session), child_mem_fd(-1) {
+    : exe(exe),
+      leader_tid_(t->rec_tid),
+      is_clone(false),
+      session(&session),
+      child_mem_fd(-1) {
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
   if (session.can_validate()) {
@@ -1057,6 +1061,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
 
 AddressSpace::AddressSpace(const AddressSpace& o)
     : exe(o.exe),
+      leader_tid_(o.leader_tid_),
       heap(o.heap),
       is_clone(true),
       mem(o.mem),
