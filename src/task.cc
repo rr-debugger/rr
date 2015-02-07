@@ -1005,7 +1005,7 @@ void Task::post_exec(const Registers* replay_regs,
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
 
-  as = session().create_vm(this, exe_file);
+  as = session().create_vm(this, exe_file, as->uid().exec_count() + 1);
   // It's barely-documented, but Linux unshares the fd table on exec
   fds = fds->clone(this);
   prname = prname_from_exe_image(as->exe_image());

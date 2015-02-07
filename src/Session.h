@@ -62,7 +62,8 @@ public:
    * Create and return a new address space that's constructed
    * from |t|'s actual OS address space.
    */
-  std::shared_ptr<AddressSpace> create_vm(Task* t, const std::string& exe);
+  std::shared_ptr<AddressSpace> create_vm(Task* t, const std::string& exe,
+                                          uint32_t exec_count = 0);
   /**
    * Return a copy of |vm| with the same mappings.  If any
    * mapping is changed, only the |clone()|d copy is updated,
@@ -88,7 +89,13 @@ public:
    * Return the task group whose unique ID is |tguid|, or nullptr if no such
    * task group exists.
    */
-  TaskGroup* find_task_group(TaskGroupUid& tguid) const;
+  TaskGroup* find_task_group(const TaskGroupUid& tguid) const;
+
+  /**
+   * Return the AddressSpace whose unique ID is |vmuid|, or nullptr if no such
+   * address space exists.
+   */
+  AddressSpace* find_address_space(const AddressSpaceUid& vmuid) const;
 
   /**
    * |tasks().size()| will be zero and all the OS tasks will be

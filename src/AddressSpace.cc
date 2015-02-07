@@ -369,7 +369,7 @@ static void print_process_mmap(Task* t) {
   iterate_memory_map(t, print_process_mmap_iterator, nullptr);
 }
 
-AddressSpace::~AddressSpace() { session->on_destroy(this); }
+AddressSpace::~AddressSpace() { session_->on_destroy(this); }
 
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
@@ -1030,16 +1030,17 @@ void AddressSpace::verify(Task* t) const {
   vas.assert_segments_match(t);
 }
 
-AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
+AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
     : exe(exe),
       leader_tid_(t->rec_tid),
       leader_serial(t->tuid().serial()),
+      exec_count(exec_count),
       is_clone(false),
-      session(&session),
+      session_(&t->session()),
       child_mem_fd(-1) {
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
-  if (session.can_validate()) {
+  if (session_->can_validate()) {
     iterate_memory_map(t, populate_address_space, this);
     assert(!vdso_start_addr.is_null());
   } else {
@@ -1060,13 +1061,15 @@ AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
   }
 }
 
-AddressSpace::AddressSpace(Task* t, const AddressSpace& o)
+AddressSpace::AddressSpace(Task* t, const AddressSpace& o, uint32_t exec_count)
     : exe(o.exe),
       leader_tid_(t->rec_tid),
+      leader_serial(t->tuid().serial()),
+      exec_count(exec_count),
       heap(o.heap),
       is_clone(true),
       mem(o.mem),
-      session(nullptr),
+      session_(nullptr),
       vdso_start_addr(o.vdso_start_addr),
       monkeypatch_state(o.monkeypatch_state),
       traced_syscall_ip_(o.traced_syscall_ip_),

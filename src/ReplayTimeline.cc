@@ -3,6 +3,8 @@
 //#define DEBUGTAG "ReplayTimeline"
 #include "ReplayTimeline.h"
 
+#include "log.h"
+
 using namespace rr;
 using namespace std;
 
@@ -50,7 +52,9 @@ bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
 
 ReplayTimeline::ReplayTimeline(std::shared_ptr<ReplaySession> session,
                                const ReplaySession::Flags& session_flags)
-    : session_flags(session_flags), current(std::move(session)) {
+    : session_flags(session_flags),
+      current(std::move(session)),
+      breakpoints_applied(false) {
   current->set_flags(session_flags);
 }
 
@@ -139,9 +143,9 @@ size_t ReplayTimeline::run_to_mark_or_tick(
 }
 
 ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
-  assert_no_breakpoints_set();
   Mark m = mark();
   if (!m.ptr->checkpoint) {
+    unapply_breakpoints_and_watchpoints();
     m.ptr->checkpoint = current->clone();
     auto key = m.ptr->key;
     if (marks_with_checkpoints.find(key) == marks_with_checkpoints.end()) {
@@ -179,6 +183,7 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
     } else {
       // nowhere earlier to go, so restart from beginning.
       current = ReplaySession::create(current->trace_reader().dir());
+      breakpoints_applied = false;
       current->set_flags(session_flags);
     }
   } else {
@@ -198,19 +203,12 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
         }
       }
       assert(current);
+      breakpoints_applied = false;
     }
   }
 }
 
-void ReplayTimeline::assert_no_breakpoints_set() {
-  for (auto& vm : current->vms()) {
-    assert(!vm->has_breakpoints());
-    assert(!vm->has_watchpoints());
-  }
-}
-
 void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
-  assert_no_breakpoints_set();
   if (current_mark_key() == mark.ptr->key) {
     Mark cm = this->mark();
     if (cm <= mark) {
@@ -224,6 +222,7 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
       shared_ptr<InternalMark> m(m_weak);
       if (m->checkpoint) {
         current = m->checkpoint->clone();
+        breakpoints_applied = false;
         return;
       }
       if (m == mark.ptr) {
@@ -236,9 +235,9 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
 }
 
 void ReplayTimeline::seek_to_mark(const Mark& mark) {
-  assert_no_breakpoints_set();
   seek_up_to_mark(mark);
   while (current_mark() != mark.ptr) {
+    unapply_breakpoints_and_watchpoints();
     if (current->trace_reader().time() < mark.ptr->key.trace_time) {
       current->replay_step(Session::RUN_CONTINUE, mark.ptr->key.trace_time);
     } else {
@@ -255,9 +254,13 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
       }
     }
   }
+  // XXX handle cases where breakpoints can't yet be applied
 }
 
 bool ReplayTimeline::add_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
+  // Apply breakpoints now; we need to actually try adding this breakpoint
+  // to see if it works.
+  apply_breakpoints_and_watchpoints();
   if (!t->vm()->add_breakpoint(addr, TRAP_BKPT_USER)) {
     return false;
   }
@@ -266,12 +269,19 @@ bool ReplayTimeline::add_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
 }
 
 void ReplayTimeline::remove_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
-  t->vm()->remove_breakpoint(addr, TRAP_BKPT_USER);
-  breakpoints.erase(make_pair(t->vm()->uid(), addr));
+  if (breakpoints_applied) {
+    t->vm()->remove_breakpoint(addr, TRAP_BKPT_USER);
+  }
+  auto it = breakpoints.find(make_pair(t->vm()->uid(), addr));
+  ASSERT(t, it != breakpoints.end());
+  breakpoints.erase(it);
 }
 
 bool ReplayTimeline::add_watchpoint(Task* t, remote_ptr<void> addr,
                                     size_t num_bytes, WatchType type) {
+  // Apply breakpoints now; we need to actually try adding this breakpoint
+  // to see if it works.
+  apply_breakpoints_and_watchpoints();
   if (!t->vm()->add_watchpoint(addr, num_bytes, type)) {
     return false;
   }
@@ -281,6 +291,60 @@ bool ReplayTimeline::add_watchpoint(Task* t, remote_ptr<void> addr,
 
 void ReplayTimeline::remove_watchpoint(Task* t, remote_ptr<void> addr,
                                        size_t num_bytes, WatchType type) {
-  t->vm()->remove_watchpoint(addr, num_bytes, type);
-  watchpoints.erase(make_tuple(t->vm()->uid(), addr, num_bytes, type));
+  if (breakpoints_applied) {
+    t->vm()->remove_watchpoint(addr, num_bytes, type);
+  }
+  auto it = watchpoints.find(make_tuple(t->vm()->uid(), addr, num_bytes, type));
+  ASSERT(t, it != watchpoints.end());
+  watchpoints.erase(it);
+}
+
+void ReplayTimeline::remove_breakpoints_and_watchpoints() {
+  unapply_breakpoints_and_watchpoints();
+  breakpoints.clear();
+  watchpoints.clear();
+}
+
+void ReplayTimeline::apply_breakpoints_and_watchpoints() {
+  if (breakpoints_applied) {
+    return;
+  }
+  breakpoints_applied = true;
+  for (auto& bp : breakpoints) {
+    AddressSpace* vm = current->find_address_space(bp.first);
+    // XXX handle cases where we can't apply a breakpoint right now. Later
+    // during replay the address space might be created (or new mappings might
+    // be created) and we should reapply breakpoints then.
+    if (vm) {
+      vm->add_breakpoint(bp.second, TRAP_BKPT_USER);
+    }
+  }
+  for (auto& wp : watchpoints) {
+    AddressSpace* vm = current->find_address_space(get<0>(wp));
+    // XXX handle cases where we can't apply a watchpoint right now. Later
+    // during replay the address space might be created (or new mappings might
+    // be created) and we should reapply watchpoints then.
+    // XXX we could make this more efficient by providing a method to set
+    // several watchpoints at once on a given AddressSpace.
+    if (vm) {
+      vm->add_watchpoint(get<1>(wp), get<2>(wp), get<3>(wp));
+    }
+  }
+}
+
+void ReplayTimeline::unapply_breakpoints_and_watchpoints() {
+  if (!breakpoints_applied) {
+    return;
+  }
+  breakpoints_applied = false;
+  for (auto& vm : current->vms()) {
+    vm->remove_all_breakpoints();
+    vm->remove_all_watchpoints();
+  }
+}
+
+ReplaySession::ReplayResult ReplayTimeline::replay_step(
+    Session::RunCommand command, TraceFrame::Time stop_at_time) {
+  apply_breakpoints_and_watchpoints();
+  return current->replay_step(command, stop_at_time);
 }

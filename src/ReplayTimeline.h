@@ -24,7 +24,7 @@ private:
 public:
   ReplayTimeline(std::shared_ptr<ReplaySession> session,
                  const ReplaySession::Flags& session_flags);
-  ReplayTimeline() {}
+  ReplayTimeline() : breakpoints_applied(false) {}
   ~ReplayTimeline();
 
   /**
@@ -95,17 +95,16 @@ public:
                       WatchType type);
   void remove_watchpoint(Task* t, remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
+  void remove_breakpoints_and_watchpoints();
 
   // State-changing APIs. These may alter state associated with
-  // current_session(). No breakpoints/watchpoints may be set when these
-  // are called.
+  // current_session().
 
   /**
    * Reset the current session to the last available session before event
    * 'time'. Useful if you want to run up to that event.
    */
   void seek_to_before_event(TraceFrame::Time time) {
-    assert_no_breakpoints_set();
     return seek_to_before_key(MarkKey(time, 0, ReplayStepKey()));
   }
 
@@ -121,6 +120,13 @@ public:
    * and executing forwards if necessary.
    */
   void seek_to_mark(const Mark& mark);
+
+  /**
+   * Replay 'current' forwards.
+   */
+  ReplaySession::ReplayResult replay_step(Session::RunCommand command =
+                                              Session::RUN_CONTINUE,
+                                          TraceFrame::Time stop_at_time = 0);
 
 private:
   /**
@@ -180,6 +186,23 @@ private:
   };
   friend struct InternalMark;
 
+  /**
+   * We track the set of breakpoints/watchpoints requested by the client.
+   * When we switch to a new ReplaySession, these need to be reapplied before
+   * replaying that session, but we do this lazily.
+   * apply_breakpoints_and_watchpoints() forces the breakpoints/watchpoints
+   * to be applied to the current session.
+   * Our checkpoints never have breakpoints applied.
+   */
+  void apply_breakpoints_and_watchpoints();
+  /**
+   * unapply_breakpoints_and_watchpoints() forces the breakpoints/watchpoints
+   * to not be applied to the current session. Use this when we need to
+   * clone the current session or replay the current session without
+   * triggering breakpoints.
+   */
+  void unapply_breakpoints_and_watchpoints();
+
   static MarkKey session_mark_key(const ReplaySession& session) {
     Task* t = session.current_task();
     return MarkKey(session.trace_reader().time(), t ? t->tick_count() : 0,
@@ -190,7 +213,6 @@ private:
   std::shared_ptr<InternalMark> current_mark();
   void remove_mark_with_checkpoint(const MarkKey& key);
   void seek_to_before_key(const MarkKey& key);
-  void assert_no_breakpoints_set();
 
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);
@@ -232,6 +254,7 @@ private:
   std::multiset<std::pair<AddressSpaceUid, remote_ptr<uint8_t> > > breakpoints;
   std::multiset<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t,
                            WatchType> > watchpoints;
+  bool breakpoints_applied;
 };
 
 #endif // RR_REPLAY_TIMELINE_H_

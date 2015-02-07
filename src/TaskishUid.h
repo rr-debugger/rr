@@ -41,8 +41,32 @@ private:
   uint32_t serial_;
 };
 
-typedef TaskishUid<AddressSpace> AddressSpaceUid;
 typedef TaskishUid<Task> TaskUid;
 typedef TaskishUid<TaskGroup> TaskGroupUid;
+
+class AddressSpaceUid : public TaskishUid<AddressSpace> {
+public:
+  AddressSpaceUid() : exec_count_(0) {}
+  AddressSpaceUid(pid_t tid, uint32_t serial, uint32_t exec_count)
+      : TaskishUid<AddressSpace>(tid, serial), exec_count_(exec_count) {}
+  AddressSpaceUid(const AddressSpaceUid& other) = default;
+  bool operator==(const AddressSpaceUid& other) const {
+    return TaskishUid<AddressSpace>::operator==(other) &&
+           exec_count_ == other.exec_count_;
+  }
+  bool operator<(const AddressSpaceUid& other) const {
+    if (TaskishUid<AddressSpace>::operator<(other)) {
+      return true;
+    }
+    if (other.TaskishUid<AddressSpace>::operator<(*this)) {
+      return false;
+    }
+    return exec_count_ < other.exec_count_;
+  }
+  uint32_t exec_count() const { return exec_count_; }
+
+private:
+  uint32_t exec_count_;
+};
 
 #endif // RR_TASKISH_UID_H_

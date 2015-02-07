@@ -468,12 +468,16 @@ public:
   /**
    * Return tid of the first task for this address space.
    */
-  pid_t leader_tid() { return leader_tid_; }
+  pid_t leader_tid() const { return leader_tid_; }
 
   /**
    * Return AddressSpaceUid for this address space.
    */
-  AddressSpaceUid uid() { return AddressSpaceUid(leader_tid_, leader_serial); }
+  AddressSpaceUid uid() const {
+    return AddressSpaceUid(leader_tid_, leader_serial, exec_count);
+  }
+
+  Session* session() const { return session_; }
 
   /**
    * Return the path this address space was exec()'d with.
@@ -663,8 +667,8 @@ public:
   remote_ptr<uint8_t> find_syscall_instruction(Task* t);
 
 private:
-  AddressSpace(Task* t, const std::string& exe, Session& session);
-  AddressSpace(Task* t, const AddressSpace& o);
+  AddressSpace(Task* t, const std::string& exe, uint32_t exec_count);
+  AddressSpace(Task* t, const AddressSpace& o, uint32_t exec_count);
 
   void map_rr_page(Task* t);
 
@@ -732,6 +736,7 @@ private:
   pid_t leader_tid_;
   /* Serial number of first task for this address space */
   uint32_t leader_serial;
+  uint32_t exec_count;
   /* Track the special process-global heap in order to support
    * adjustments by brk(). */
   Mapping heap;
@@ -741,7 +746,7 @@ private:
   MemoryMap mem;
   // The session that created this.  We save a ref to it so that
   // we can notify it when we die.
-  Session* session;
+  Session* session_;
   /* First mapped byte of the vdso. */
   remote_ptr<void> vdso_start_addr;
   // The monkeypatcher that's handling this address space.

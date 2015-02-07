@@ -44,16 +44,20 @@ void Session::post_exec() {
   }
 }
 
-AddressSpace::shr_ptr Session::create_vm(Task* t, const std::string& exe) {
-  AddressSpace::shr_ptr as(new AddressSpace(t, exe, *this));
+AddressSpace::shr_ptr Session::create_vm(Task* t, const std::string& exe,
+                                         uint32_t exec_count) {
+  AddressSpace::shr_ptr as(new AddressSpace(t, exe, exec_count));
   as->insert_task(t);
   vm_map[as->uid()] = as.get();
   return as;
 }
 
 AddressSpace::shr_ptr Session::clone(Task* t, AddressSpace::shr_ptr vm) {
-  AddressSpace::shr_ptr as(new AddressSpace(t, *vm));
-  as->session = this;
+  // If vm already belongs to our session this is a fork, otherwise it's
+  // a session-clone
+  AddressSpace::shr_ptr as(new AddressSpace(
+      t, *vm, this == vm->session() ? 0 : vm->uid().exec_count()));
+  as->session_ = this;
   vm_map[as->uid()] = as.get();
   return as;
 }
@@ -79,9 +83,17 @@ Task* Session::find_task(pid_t rec_tid) const {
   return tasks().end() != it ? it->second : nullptr;
 }
 
-TaskGroup* Session::find_task_group(TaskGroupUid& tguid) const {
+TaskGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
   auto it = task_group_map.find(tguid);
   if (task_group_map.end() == it) {
+    return nullptr;
+  }
+  return it->second;
+}
+
+AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
+  auto it = vm_map.find(vmuid);
+  if (vm_map.end() == it) {
     return nullptr;
   }
   return it->second;

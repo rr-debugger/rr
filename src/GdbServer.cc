@@ -373,28 +373,43 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_SET_SW_BREAK: {
       ASSERT(target, (req.mem.len == sizeof(AddressSpace::breakpoint_insn)))
           << "Debugger setting bad breakpoint insn";
-      bool ok = target->vm()->add_breakpoint(req.mem.addr, TRAP_BKPT_USER);
+      bool ok =
+          &session == &timeline.current_session()
+              ? timeline.add_breakpoint(target, req.mem.addr)
+              : target->vm()->add_breakpoint(req.mem.addr, TRAP_BKPT_USER);
       dbg->reply_watchpoint_request(ok);
       return;
     }
     case DREQ_REMOVE_SW_BREAK:
-      target->vm()->remove_breakpoint(req.mem.addr, TRAP_BKPT_USER);
+      if (&session == &timeline.current_session()) {
+        timeline.remove_breakpoint(target, req.mem.addr);
+      } else {
+        target->vm()->remove_breakpoint(req.mem.addr, TRAP_BKPT_USER);
+      }
       dbg->reply_watchpoint_request(true);
       return;
     case DREQ_REMOVE_HW_BREAK:
     case DREQ_REMOVE_RD_WATCH:
     case DREQ_REMOVE_WR_WATCH:
     case DREQ_REMOVE_RDWR_WATCH:
-      target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
-                                      watchpoint_type(req.type));
+      if (&session == &timeline.current_session()) {
+        timeline.remove_watchpoint(target, req.mem.addr, req.mem.len,
+                                   watchpoint_type(req.type));
+      } else {
+        target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
+                                        watchpoint_type(req.type));
+      }
       dbg->reply_watchpoint_request(true);
       return;
     case DREQ_SET_HW_BREAK:
     case DREQ_SET_RD_WATCH:
     case DREQ_SET_WR_WATCH:
     case DREQ_SET_RDWR_WATCH: {
-      bool ok = target->vm()->add_watchpoint(req.mem.addr, req.mem.len,
-                                             watchpoint_type(req.type));
+      bool ok = &session == &timeline.current_session()
+                    ? timeline.add_watchpoint(target, req.mem.addr, req.mem.len,
+                                              watchpoint_type(req.type))
+                    : target->vm()->add_watchpoint(req.mem.addr, req.mem.len,
+                                                   watchpoint_type(req.type));
       dbg->reply_watchpoint_request(ok);
       return;
     }
@@ -630,7 +645,7 @@ GdbRequest GdbServer::replay_one_step() {
     command = Session::RUN_CONTINUE;
   }
 
-  auto result = timeline.current_session().replay_step(command, target.event);
+  auto result = timeline.replay_step(command, target.event);
 
   GdbRequest no_restart;
   no_restart.type = DREQ_NONE;
@@ -794,13 +809,6 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   debugger_active = true;
 }
 
-static void remove_all_breakpoints(ReplaySession& session) {
-  for (auto& vm : session.vms()) {
-    vm->remove_all_breakpoints();
-    vm->remove_all_watchpoints();
-  }
-}
-
 void GdbServer::maybe_restart_session(const GdbRequest& req) {
   if (req.type != DREQ_RESTART) {
     return;
@@ -819,13 +827,13 @@ void GdbServer::maybe_restart_session(const GdbRequest& req) {
   } else if (req.restart.type == RESTART_FROM_PREVIOUS) {
     mark_to_restore = debugger_restart_mark;
   }
-  remove_all_breakpoints(timeline.current_session());
+  timeline.remove_breakpoints_and_watchpoints();
   if (mark_to_restore) {
+    timeline.seek_to_mark(mark_to_restore);
     if (debugger_restart_mark) {
       timeline.remove_explicit_checkpoint(debugger_restart_mark);
     }
     debugger_restart_mark = mark_to_restore;
-    timeline.seek_to_mark(mark_to_restore);
     timeline.add_explicit_checkpoint();
     return;
   }
