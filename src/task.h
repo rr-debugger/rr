@@ -31,6 +31,21 @@ struct TaskGroup;
 struct syscallbuf_hdr;
 struct syscallbuf_record;
 
+class TaskGroupUid {
+public:
+  TaskGroupUid() : tgid_(0), serial(0) {}
+  TaskGroupUid(pid_t tid, uint32_t serial) : tgid_(tid), serial(serial) {}
+  TaskGroupUid(const TaskGroupUid& other) = default;
+  bool operator==(const TaskGroupUid& other) const {
+    return tgid_ == other.tgid_ && serial == other.serial;
+  }
+  pid_t tgid() const { return tgid_; }
+
+private:
+  pid_t tgid_;
+  uint32_t serial;
+};
+
 /**
  * Tracks a group of tasks with an associated ID, set from the
  * original "thread group leader", the child of |fork()| which became
@@ -39,7 +54,7 @@ struct syscallbuf_record;
  */
 class TaskGroup : public HasTaskSet {
 public:
-  TaskGroup(TaskGroup* parent, pid_t tgid, pid_t real_tgid);
+  TaskGroup(TaskGroup* parent, pid_t tgid, pid_t real_tgid, uint32_t serial);
   ~TaskGroup();
 
   typedef std::shared_ptr<TaskGroup> shr_ptr;
@@ -54,6 +69,8 @@ public:
 
   TaskGroup* parent() { return parent_; }
 
+  TaskGroupUid tguid() const { return TaskGroupUid(tgid, serial); }
+
 private:
   TaskGroup(const TaskGroup&) = delete;
   TaskGroup operator=(const TaskGroup&) = delete;
@@ -62,6 +79,8 @@ private:
   TaskGroup* parent_;
 
   std::set<TaskGroup*> children;
+
+  uint32_t serial;
 };
 
 enum CloneFlags {
@@ -151,15 +170,18 @@ enum EmulatedStopType {
  */
 class TaskUid {
 public:
-  TaskUid(pid_t tid, uint32_t serial) : tid(tid), serial(serial) {}
+  TaskUid() : tid_(0), serial_(0) {}
+  TaskUid(pid_t tid, uint32_t serial) : tid_(tid), serial_(serial) {}
   TaskUid(const TaskUid& other) = default;
   bool operator==(const TaskUid& other) const {
-    return tid == other.tid && serial == other.serial;
+    return tid_ == other.tid_ && serial_ == other.serial_;
   }
+  pid_t tid() const { return tid_; }
+  uint32_t serial() const { return serial_; }
 
 private:
-  pid_t tid;
-  uint32_t serial;
+  pid_t tid_;
+  uint32_t serial_;
 };
 
 /**
