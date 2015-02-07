@@ -68,6 +68,8 @@ public:
               remote_ptr<int> cleartid_addr, pid_t new_tid,
               pid_t new_rec_tid = -1);
 
+  uint32_t next_task_serial() { return next_task_serial_++; }
+
   /**
    * Return the task created with |rec_tid|, or nullptr if no such
    * task exists.
@@ -134,7 +136,7 @@ protected:
   Session();
   ~Session();
 
-  Session(const Session&) = delete;
+  Session(const Session& other) { next_task_serial_ = other.next_task_serial_; }
   Session& operator=(const Session&) = delete;
 
   virtual void on_create(Task* t);
@@ -143,6 +145,7 @@ protected:
 
   AddressSpaceSet sas;
   TaskMap task_map;
+  uint32_t next_task_serial_;
 
   /**
    * True if we've done an exec so tracees are now in a state that will be

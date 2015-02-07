@@ -17,7 +17,7 @@
 using namespace rr;
 using namespace std;
 
-Session::Session() : tracees_consistent(false) {
+Session::Session() : next_task_serial_(1), tracees_consistent(false) {
   LOG(debug) << "Session " << this << " created";
 }
 

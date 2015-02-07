@@ -215,8 +215,8 @@ TaskGroup::~TaskGroup() {
   }
 }
 
-Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
-           SupportedArch a)
+Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
+           int _priority, SupportedArch a)
     : pseudo_blocked(false),
       succ_event_counter(),
       unstable(false),
@@ -242,7 +242,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, int _priority,
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
       syscallbuf_hdr(),
       num_syscallbuf_bytes(),
-      syscallbuf_child(),
+      serial(serial),
       blocked_sigs(),
       prname("???"),
       ticks(0),
@@ -1943,7 +1943,9 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                   remote_ptr<int> cleartid_addr, pid_t new_tid,
                   pid_t new_rec_tid, Session* other_session) {
   auto& sess = other_session ? *other_session : session();
-  Task* t = new Task(sess, new_tid, new_rec_tid, priority, arch());
+  Task* t = new Task(sess, new_tid, new_rec_tid,
+                     other_session ? serial : session().next_task_serial(),
+                     priority, arch());
 
   t->blocked_sigs = blocked_sigs;
   if (CLONE_SHARE_SIGHANDLERS & flags) {
@@ -2749,7 +2751,8 @@ static void setup_fd_table(FdTable& fds) {
   sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
   sigaction(SIGALRM, &sa, nullptr);
 
-  Task* t = new Task(session, tid, rec_tid, 0, NativeArch::arch());
+  Task* t = new Task(session, tid, rec_tid, session.next_task_serial(), 0,
+                     NativeArch::arch());
   // The very first task we fork inherits the signal
   // dispositions of the current OS process (which should all be
   // default at this point, but ...).  From there on, new tasks

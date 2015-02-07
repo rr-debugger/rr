@@ -146,6 +146,23 @@ enum EmulatedStopType {
 };
 
 /**
+ * An ID for a task that's unique within a Session (but consistent across
+ * multiple ReplaySessions for the same trace).
+ */
+class TaskUid {
+public:
+  TaskUid(pid_t tid, uint32_t serial) : tid(tid), serial(serial) {}
+  TaskUid(const TaskUid& other) = default;
+  bool operator==(const TaskUid& other) const {
+    return tid == other.tid && serial == other.serial;
+  }
+
+private:
+  pid_t tid;
+  uint32_t serial;
+};
+
+/**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
  * tasks may share the same address space and file descriptors, in
@@ -934,6 +951,8 @@ public:
   /** Return id of real OS task group. */
   pid_t real_tgid() const { return tg->real_tgid; }
 
+  TaskUid tuid() const { return TaskUid(rec_tid, serial); }
+
   /** Return the dir of the trace we're using. */
   const std::string& trace_dir() const;
 
@@ -1243,8 +1262,8 @@ public:
   PropertyTable& properties() { return properties_; }
 
 private:
-  Task(Session& session, pid_t tid, pid_t rec_tid, int priority,
-       SupportedArch a);
+  Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
+       int priority, SupportedArch a);
 
   template <typename Arch>
   void on_syscall_exit_arch(int syscallno, const Registers& regs);
@@ -1403,6 +1422,7 @@ private:
   static Task* spawn(Session& session, const TraceStream& trace,
                      pid_t rec_tid = -1);
 
+  uint32_t serial;
   // The address space of this task.
   AddressSpace::shr_ptr as;
   // The file descriptor table of this task.
