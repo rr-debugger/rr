@@ -664,7 +664,7 @@ public:
 
 private:
   AddressSpace(Task* t, const std::string& exe, Session& session);
-  AddressSpace(const AddressSpace& o);
+  AddressSpace(Task* t, const AddressSpace& o);
 
   void map_rr_page(Task* t);
 

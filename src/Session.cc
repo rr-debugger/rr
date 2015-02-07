@@ -47,15 +47,23 @@ void Session::post_exec() {
 AddressSpace::shr_ptr Session::create_vm(Task* t, const std::string& exe) {
   AddressSpace::shr_ptr as(new AddressSpace(t, exe, *this));
   as->insert_task(t);
-  sas.insert(as.get());
+  vm_map[as->uid()] = as.get();
   return as;
 }
 
-AddressSpace::shr_ptr Session::clone(AddressSpace::shr_ptr vm) {
-  AddressSpace::shr_ptr as(new AddressSpace(*vm));
+AddressSpace::shr_ptr Session::clone(Task* t, AddressSpace::shr_ptr vm) {
+  AddressSpace::shr_ptr as(new AddressSpace(t, *vm));
   as->session = this;
-  sas.insert(as.get());
+  vm_map[as->uid()] = as.get();
   return as;
+}
+
+vector<AddressSpace*> Session::vms() const {
+  vector<AddressSpace*> result;
+  for (auto& vm : vm_map) {
+    result.push_back(vm.second);
+  }
+  return result;
 }
 
 Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
@@ -90,8 +98,7 @@ void Session::kill_all_tasks() {
 
 void Session::on_destroy(AddressSpace* vm) {
   assert(vm->task_set().size() == 0);
-  assert(sas.end() != sas.find(vm));
-  sas.erase(vm);
+  vm_map.erase(vm->uid());
 }
 
 void Session::on_destroy(Task* t) { task_map.erase(t->rec_tid); }

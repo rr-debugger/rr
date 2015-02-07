@@ -8,6 +8,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "TaskishUid.h"
 #include "TraceStream.h"
@@ -33,7 +34,11 @@ class Session {
   friend class ReplaySession;
 
 public:
-  typedef std::set<AddressSpace*> AddressSpaceSet;
+  // AddressSpaces and TaskGroups are indexed by their first task's TaskUid
+  // (effectively), so that if the first task dies and its tid is recycled,
+  // we don't get confused. TaskMap is indexed by tid since there can never be
+  // two Tasks with the same tid at the same time.
+  typedef std::map<AddressSpaceUid, AddressSpace*> AddressSpaceMap;
   typedef std::map<pid_t, Task*> TaskMap;
   typedef std::map<TaskGroupUid, TaskGroup*> TaskGroupMap;
 
@@ -63,7 +68,7 @@ public:
    * mapping is changed, only the |clone()|d copy is updated,
    * not its origin (i.e. copy-on-write semantics).
    */
-  std::shared_ptr<AddressSpace> clone(std::shared_ptr<AddressSpace> vm);
+  std::shared_ptr<AddressSpace> clone(Task* t, std::shared_ptr<AddressSpace> vm);
 
   /** See Task::clone(). */
   Task* clone(Task* p, int flags, remote_ptr<void> stack, remote_ptr<void> tls,
@@ -105,7 +110,7 @@ public:
   /**
    * Return the set of AddressSpaces being tracked in this session.
    */
-  const AddressSpaceSet& vms() const { return sas; }
+  std::vector<AddressSpace*> vms() const;
 
   virtual RecordSession* as_record() { return nullptr; }
   virtual ReplaySession* as_replay() { return nullptr; }
@@ -158,7 +163,7 @@ protected:
 
   BreakStatus diagnose_debugger_trap(Task* t, int stop_sig);
 
-  AddressSpaceSet sas;
+  AddressSpaceMap vm_map;
   TaskMap task_map;
   TaskGroupMap task_group_map;
   uint32_t next_task_serial_;

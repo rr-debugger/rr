@@ -1978,7 +1978,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     // FdTable is either shared or copied, so we don't need to update
     // syscallbuf_fds_disabled here.
   } else {
-    t->as = sess.clone(as);
+    t->as = sess.clone(t, as);
   }
   if (CLONE_SHARE_FILES & flags) {
     t->fds = fds;

@@ -1060,9 +1060,9 @@ AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
   }
 }
 
-AddressSpace::AddressSpace(const AddressSpace& o)
+AddressSpace::AddressSpace(Task* t, const AddressSpace& o)
     : exe(o.exe),
-      leader_tid_(o.leader_tid_),
+      leader_tid_(t->rec_tid),
       heap(o.heap),
       is_clone(true),
       mem(o.mem),
