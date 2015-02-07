@@ -584,7 +584,8 @@ public:
    * During replay replay_regs is non-null and contains the register values
    * recorded immediately after the exec.
    */
-  void post_exec(const Registers* replay_regs = nullptr);
+  void post_exec(const Registers* replay_regs = nullptr,
+                 const ExtraRegisters* replay_extra_regs = nullptr);
 
   /**
    * Call this method when this task has exited a successful execve() syscall.

@@ -952,7 +952,8 @@ static string exe_path(Task* t) {
   return exe;
 }
 
-void Task::post_exec(const Registers* replay_regs) {
+void Task::post_exec(const Registers* replay_regs,
+                     const ExtraRegisters* replay_extra_regs) {
   /* We just saw a successful exec(), so from now on we know
    * that the address space layout for the replay tasks will
    * (should!) be the same as for the recorded tasks.  So we can
@@ -965,6 +966,8 @@ void Task::post_exec(const Registers* replay_regs) {
   string exe_file = exe_path(this);
   if (replay_regs) {
     registers = *replay_regs;
+    extra_registers = *replay_extra_regs;
+    ASSERT(this, !extra_registers.empty());
   } else {
     registers.set_arch(determine_arch(this, exe_file));
     extra_registers.set_arch(registers.arch());
@@ -1009,8 +1012,10 @@ static bool record_extra_regs(const Event& ev) {
   switch (ev.type()) {
     case EV_SYSCALL:
       // sigreturn/rt_sigreturn restores register state
-      return is_sigreturn(ev.Syscall().number, ev.arch()) &&
-             ev.Syscall().state == EXITING_SYSCALL;
+      return (is_sigreturn(ev.Syscall().number, ev.arch()) &&
+              ev.Syscall().state == EXITING_SYSCALL) ||
+             (is_execve_syscall(ev.Syscall().number, ev.arch()) &&
+              ev.Syscall().state == ENTERING_SYSCALL);
     case EV_SIGNAL_HANDLER:
       // entering a signal handler seems to clear FP/SSE regs,
       // so record these effects.

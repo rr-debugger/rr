@@ -310,7 +310,8 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   }
 
   if (t->ptrace_event() == PTRACE_EVENT_EXEC) {
-    t->post_exec(&t->current_trace_frame().regs());
+    t->post_exec(&t->current_trace_frame().regs(),
+                 &t->current_trace_frame().extra_regs());
   }
 
   if (SIGTRAP == t->child_sig) {
