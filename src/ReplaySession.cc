@@ -235,7 +235,7 @@ void ReplaySession::advance_to_next_trace_frame(TraceFrame::Time stop_at_time) {
     TraceFrame next_frame = trace_in.peek_frame();
     while (EV_SCHED == next_frame.event().type &&
            next_frame.tid() == trace_frame.tid() &&
-           stop_at_time != next_frame.time() &&
+           stop_at_time != trace_frame.time() &&
            !trace_instructions_up_to_event(next_frame.time())) {
       trace_frame = trace_in.read_frame();
       next_frame = trace_in.peek_frame();
