@@ -9,6 +9,7 @@
 #include <set>
 #include <string>
 
+#include "TaskishUid.h"
 #include "TraceStream.h"
 
 class AddressSpace;
@@ -17,7 +18,6 @@ class RecordSession;
 class ReplaySession;
 class Task;
 class TaskGroup;
-class TaskGroupUid;
 
 /**
  * Sessions track the global state of a set of tracees corresponding

@@ -1033,6 +1033,7 @@ void AddressSpace::verify(Task* t) const {
 AddressSpace::AddressSpace(Task* t, const string& exe, Session& session)
     : exe(exe),
       leader_tid_(t->rec_tid),
+      leader_serial(t->tuid().serial()),
       is_clone(false),
       session(&session),
       child_mem_fd(-1) {

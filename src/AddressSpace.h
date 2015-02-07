@@ -14,6 +14,7 @@
 
 #include "kernel_abi.h"
 #include "Monkeypatcher.h"
+#include "TaskishUid.h"
 #include "TraceStream.h"
 #include "util.h"
 
@@ -470,6 +471,11 @@ public:
   pid_t leader_tid() { return leader_tid_; }
 
   /**
+   * Return AddressSpaceUid for this address space.
+   */
+  AddressSpaceUid uid() { return AddressSpaceUid(leader_tid_, leader_serial); }
+
+  /**
    * Return the path this address space was exec()'d with.
    */
   const std::string& exe_image() const { return exe; }
@@ -724,6 +730,8 @@ private:
   std::string exe;
   /* Pid of first task for this address space */
   pid_t leader_tid_;
+  /* Serial number of first task for this address space */
+  uint32_t leader_serial;
   /* Track the special process-global heap in order to support
    * adjustments by brk(). */
   Mapping heap;

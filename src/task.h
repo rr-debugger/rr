@@ -17,6 +17,7 @@
 #include "PerfCounters.h"
 #include "PropertyTable.h"
 #include "Registers.h"
+#include "TaskishUid.h"
 #include "TraceStream.h"
 #include "util.h"
 
@@ -29,30 +30,6 @@ class Task;
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
-
-class TaskGroupUid {
-public:
-  TaskGroupUid() : tgid_(0), serial(0) {}
-  TaskGroupUid(pid_t tid, uint32_t serial) : tgid_(tid), serial(serial) {}
-  TaskGroupUid(const TaskGroupUid& other) = default;
-  bool operator==(const TaskGroupUid& other) const {
-    return tgid_ == other.tgid_ && serial == other.serial;
-  }
-  bool operator<(const TaskGroupUid& other) const {
-    if (tgid < other.tgid_) {
-      return true;
-    }
-    if (tgid > other.tgid_) {
-      return false;
-    }
-    return serial < other.serial;
-  }
-  pid_t tgid() const { return tgid_; }
-
-private:
-  pid_t tgid_;
-  uint32_t serial;
-};
 
 /**
  * Tracks a group of tasks with an associated ID, set from the
@@ -174,26 +151,6 @@ enum EmulatedStopType {
   NOT_STOPPED,
   GROUP_STOP,          // stopped by a signal. This applies to non-ptracees too.
   SIGNAL_DELIVERY_STOP // Stopped before delivering a signal. ptracees only.
-};
-
-/**
- * An ID for a task that's unique within a Session (but consistent across
- * multiple ReplaySessions for the same trace).
- */
-class TaskUid {
-public:
-  TaskUid() : tid_(0), serial_(0) {}
-  TaskUid(pid_t tid, uint32_t serial) : tid_(tid), serial_(serial) {}
-  TaskUid(const TaskUid& other) = default;
-  bool operator==(const TaskUid& other) const {
-    return tid_ == other.tid_ && serial_ == other.serial_;
-  }
-  pid_t tid() const { return tid_; }
-  uint32_t serial() const { return serial_; }
-
-private:
-  pid_t tid_;
-  uint32_t serial_;
 };
 
 /**
