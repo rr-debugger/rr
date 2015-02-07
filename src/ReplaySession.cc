@@ -1516,6 +1516,7 @@ ReplaySession::ReplayResult ReplaySession::replay_step(
   if (command == RUN_SINGLESTEP && EV_SEGV_RDTSC == ev.type()) {
     // We completed this RDTSC event, and that counts as a completed singlestep.
     result.break_status.reason = BREAK_SINGLESTEP;
+    result.break_status.task = t;
   }
 
   // Advance to next trace frame before doing rep_after_enter_syscall,
