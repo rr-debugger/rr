@@ -12,6 +12,11 @@
 #include "ReplaySession.h"
 #include "TraceFrame.h"
 
+enum RunDirection {
+  RUN_FORWARD,
+  RUN_BACKWARD
+};
+
 /**
  * This class manages a set of ReplaySessions corresponding to different points
  * in the same recording. It provides an API for explicitly managing
@@ -96,6 +101,7 @@ public:
   void remove_watchpoint(Task* t, remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
   void remove_breakpoints_and_watchpoints();
+  bool has_breakpoint_at_address(Task* t, remote_ptr<uint8_t> addr);
 
   // State-changing APIs. These may alter state associated with
   // current_session().
@@ -126,6 +132,7 @@ public:
    */
   ReplaySession::ReplayResult replay_step(Session::RunCommand command =
                                               Session::RUN_CONTINUE,
+                                          RunDirection direction = RUN_FORWARD,
                                           TraceFrame::Time stop_at_time = 0);
 
 private:
@@ -213,6 +220,11 @@ private:
   std::shared_ptr<InternalMark> current_mark();
   void remove_mark_with_checkpoint(const MarkKey& key);
   void seek_to_before_key(const MarkKey& key);
+  ReplaySession::ReplayResult replay_step_to_mark(const Mark& mark);
+  ReplaySession::ReplayResult singlestep_with_breakpoints_disabled();
+
+  ReplaySession::ReplayResult continue_backward();
+  ReplaySession::ReplayResult singlestep_backward(bool enable_breakpoints = true);
 
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);
@@ -227,6 +239,8 @@ private:
   ReplaySession::Flags session_flags;
 
   ReplaySession::shr_ptr current;
+  // current is known to be at or after this mark
+  Mark current_at_or_after_mark;
 
   /**
    * All known marks.

@@ -645,7 +645,7 @@ GdbRequest GdbServer::replay_one_step() {
     command = Session::RUN_CONTINUE;
   }
 
-  auto result = timeline.replay_step(command, target.event);
+  auto result = timeline.replay_step(command, RUN_FORWARD, target.event);
 
   GdbRequest no_restart;
   no_restart.type = DREQ_NONE;
