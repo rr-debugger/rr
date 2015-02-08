@@ -108,9 +108,9 @@ public:
       assert(0 && "unknown architecture");                                     \
   }
 
-  uintptr_t ip() const { return RR_GET_REG(eip, rip); }
-  void set_ip(remote_ptr<void> addr) { RR_SET_REG(eip, rip, addr.as_int()); }
-  uintptr_t sp() const { return RR_GET_REG(esp, rsp); }
+  remote_ptr<uint8_t> ip() const { return RR_GET_REG(eip, rip); }
+  void set_ip(remote_ptr<uint8_t> addr) { RR_SET_REG(eip, rip, addr.as_int()); }
+  remote_ptr<void> sp() const { return RR_GET_REG(esp, rsp); }
   void set_sp(remote_ptr<void> addr) { RR_SET_REG(esp, rsp, addr.as_int()); }
 
   // Access the registers holding system-call numbers, results, and

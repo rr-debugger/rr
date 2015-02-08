@@ -1412,7 +1412,7 @@ std::vector<uint8_t> syscall_instruction(SupportedArch arch);
  * Return the length of all invoke-syscall instructions. Currently,
  * they must all have the same length!
  */
-size_t syscall_instruction_length(SupportedArch arch);
+ssize_t syscall_instruction_length(SupportedArch arch);
 
 #if defined(__i386__)
 typedef X86Arch NativeArch;

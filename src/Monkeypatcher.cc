@@ -35,7 +35,7 @@ template <typename Arch> static void setup_preload_library_path(Task* t) {
           ? SYSCALLBUF_LIB_FILENAME_32
           : SYSCALLBUF_LIB_FILENAME_PADDED;
 
-  remote_ptr<typename Arch::unsigned_word> p = t->regs().sp();
+  auto p = t->regs().sp().cast<typename Arch::unsigned_word>();
   auto argc = t->read_mem(p);
   p += 1 + argc + 1; // skip argc, argc parameters, and trailing NULL
   while (true) {

@@ -912,7 +912,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     step->action = TSTEP_RETIRE;
     LOG(debug) << "  " << t->syscall_name(syscall) << " interrupted by "
                << trace_regs.syscall_result() << " at "
-               << (void*)trace_regs.ip() << ", may restart";
+               << HEX(trace_regs.ip().as_int()) << ", may restart";
     return;
   }
 

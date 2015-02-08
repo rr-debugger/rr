@@ -2338,7 +2338,7 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   t->record_session().trace_writer().write_task_event(
       *syscall_state.exec_saved_event);
 
-  remote_ptr<typename Arch::unsigned_word> stack_ptr = t->regs().sp();
+  auto stack_ptr = t->regs().sp().cast<typename Arch::unsigned_word>();
 
   /* start_stack points to argc - iterate over argv pointers */
 

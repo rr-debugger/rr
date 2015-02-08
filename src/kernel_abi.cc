@@ -41,7 +41,7 @@ vector<uint8_t> syscall_instruction(SupportedArch arch) {
   }
 }
 
-size_t syscall_instruction_length(SupportedArch arch) {
+ssize_t syscall_instruction_length(SupportedArch arch) {
   switch (arch) {
     case x86:
     case x86_64:

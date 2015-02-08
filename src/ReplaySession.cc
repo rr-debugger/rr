@@ -588,7 +588,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
       *ticks_left_at_ignored_early_match = ticks_left;
     }
     LOG(debug) << "  not same execution point: " << ticks_left
-               << " ticks left (@" << HEX(rec_regs.ip()) << ")";
+               << " ticks left (@" << HEX(rec_regs.ip().as_int()) << ")";
 #ifdef DEBUGTAG
     Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
                                       LOG_MISMATCHES);
@@ -597,7 +597,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
   }
   if (ticks_left < -ticks_slack) {
     LOG(debug) << "  not same execution point: " << ticks_left
-               << " ticks left (@" << HEX(rec_regs.ip()) << ")";
+               << " ticks left (@" << HEX(rec_regs.ip().as_int()) << ")";
 #ifdef DEBUGTAG
     Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
                                       LOG_MISMATCHES);
@@ -607,7 +607,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
   if (!Registers::compare_register_files(t, "rep", t->regs(), "rec", rec_regs,
                                          behavior)) {
     LOG(debug) << "  not same execution point: regs differ (@"
-               << HEX(rec_regs.ip()) << ")";
+               << HEX(rec_regs.ip().as_int()) << ")";
     return false;
   }
   LOG(debug) << "  same execution point";

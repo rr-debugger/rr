@@ -37,7 +37,7 @@ void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
 }
 
 AutoRestoreMem::~AutoRestoreMem() {
-  assert(saved_sp.as_int() == remote.regs().sp() + len);
+  assert(saved_sp == remote.regs().sp() + len);
 
   remote.task()->write_bytes_helper(addr, len, data.data());
 
