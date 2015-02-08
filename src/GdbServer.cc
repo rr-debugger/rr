@@ -527,6 +527,13 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
       break;
     }
 
+    if (req.run_direction == RUN_BACKWARD) {
+      // We don't support reverse execution in a diversion. Just issue
+      // an immediate stop.
+      dbg->notify_stop(get_threadid(t), SIGTRAP, 0);
+      continue;
+    }
+
     ReplaySession::RunCommand command =
         (DREQ_STEP == req.type && get_threadid(t) == req.target)
             ? Session::RUN_SINGLESTEP
@@ -627,37 +634,40 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
   }
 }
 
-GdbRequest GdbServer::replay_one_step() {
-  ReplaySession::RunCommand command;
-  GdbRequest req;
-
+ReplaySession::ReplayStatus GdbServer::replay_one_step() {
+  ReplaySession::ReplayResult result;
+  bool suppress_debugger_stop = false;
   Task* t = timeline.current_session().current_task();
+
   if (debugger_active && t && t->task_group()->tguid() == debuggee_tguid) {
-    req = process_debugger_requests(t);
+    GdbRequest req = process_debugger_requests(t);
     if (DREQ_RESTART == req.type) {
-      return req;
+      maybe_restart_session(req);
+      return ReplaySession::REPLAY_CONTINUE;
     }
+    suppress_debugger_stop = req.suppress_debugger_stop;
     assert(req.is_resume_request());
-    command = (DREQ_STEP == req.type && get_threadid(t) == req.target)
-                  ? Session::RUN_SINGLESTEP
-                  : Session::RUN_CONTINUE;
+    ReplaySession::RunCommand command =
+        (DREQ_STEP == req.type && get_threadid(t) == req.target)
+            ? Session::RUN_SINGLESTEP
+            : Session::RUN_CONTINUE;
+    result = timeline.replay_step(
+        command, req.run_direction,
+        req.run_direction == RUN_FORWARD ? target.event : 0);
   } else {
-    command = Session::RUN_CONTINUE;
+    result =
+        timeline.replay_step(Session::RUN_CONTINUE, RUN_FORWARD, target.event);
   }
 
-  auto result = timeline.replay_step(command, RUN_FORWARD, target.event);
-
-  GdbRequest no_restart;
-  no_restart.type = DREQ_NONE;
   if (result.status == ReplaySession::REPLAY_EXITED) {
-    return no_restart;
+    return result.status;
   }
   assert(result.status == ReplaySession::REPLAY_CONTINUE);
   if (result.break_status.reason == Session::BREAK_NONE) {
-    return no_restart;
+    return result.status;
   }
 
-  if (debugger_active && !req.suppress_debugger_stop) {
+  if (debugger_active && !suppress_debugger_stop) {
     int sig = SIGTRAP;
     remote_ptr<void> watch_addr = nullptr;
     switch (result.break_status.reason) {
@@ -675,7 +685,7 @@ GdbRequest GdbServer::replay_one_step() {
     dbg->notify_stop(get_threadid(result.break_status.task), sig,
                      watch_addr.as_int());
   }
-  return no_restart;
+  return result.status;
 }
 
 /**
@@ -810,9 +820,7 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
 }
 
 void GdbServer::maybe_restart_session(const GdbRequest& req) {
-  if (req.type != DREQ_RESTART) {
-    return;
-  }
+  assert(req.type == DREQ_RESTART);
   assert(dbg);
 
   ReplayTimeline::Mark mark_to_restore;
@@ -849,7 +857,7 @@ void GdbServer::maybe_restart_session(const GdbRequest& req) {
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
   while (true) {
-    while (!timeline.current_session().last_task()) {
+    while (true) {
       maybe_connect_debugger(flags);
 
       if (debugger_active &&
@@ -858,8 +866,9 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
         break;
       }
 
-      GdbRequest restart_request = replay_one_step();
-      maybe_restart_session(restart_request);
+      if (replay_one_step() == ReplaySession::REPLAY_EXITED) {
+        break;
+      }
     }
     LOG(info) << ("Replayer successfully finished.");
 

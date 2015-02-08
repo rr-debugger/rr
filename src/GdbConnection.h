@@ -13,6 +13,7 @@
 #include "GdbRegister.h"
 #include "Registers.h"
 #include "ReplaySession.h"
+#include "ReplayTimeline.h"
 
 /**
  * Descriptor for task within a task group.  Note: on linux, we can
@@ -99,7 +100,7 @@ enum GdbRequestType {
   DREQ_GET_REG,
   DREQ_SET_REG,
 
-  /* No parameters. */
+  /* Use params.run_direction. */
   DREQ_CONTINUE,
   DREQ_INTERRUPT,
   DREQ_STEP,
@@ -154,6 +155,8 @@ struct GdbRequest {
       int param;
       GdbRestartType type;
     } restart;
+
+    RunDirection run_direction;
   };
 
   /**
@@ -443,6 +446,11 @@ private:
    * false if we already handled the packet internally.
    */
   bool process_vpacket(char* payload);
+  /**
+   * Return true if we need to do something in a debugger request,
+   * false if we already handled the packet internally.
+   */
+  bool process_bpacket(char* payload);
   /**
    * Return true if we need to do something in a debugger request,
    * false if we already handled the packet internally.

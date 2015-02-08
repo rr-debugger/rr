@@ -640,7 +640,7 @@ bool GdbConnection::query(char* payload) {
     snprintf(supported, sizeof(supported) - 1,
              "PacketSize=%zd;QStartNoAckMode+;qXfer:auxv:read+"
              ";qXfer:siginfo:read+;qXfer:siginfo:write+"
-             ";multiprocess+",
+             ";multiprocess+;ReverseContinue+;ReverseStep+",
              sizeof(outbuf));
     write_packet(supported);
     return false;
@@ -709,6 +709,23 @@ void GdbConnection::consume_request() {
   write_flush();
 }
 
+bool GdbConnection::process_bpacket(char* payload) {
+  if (strcmp(payload, "c") == 0) {
+    req.type = DREQ_CONTINUE;
+    req.run_direction = RUN_BACKWARD;
+    req.target = resume_thread;
+    return true;
+  } else if (strcmp(payload, "s") == 0) {
+    req.type = DREQ_STEP;
+    req.run_direction = RUN_BACKWARD;
+    req.target = resume_thread;
+    return true;
+  } else {
+    UNHANDLED_REQ() << "Unhandled gdb bpacket: b" << payload;
+    return false;
+  }
+}
+
 bool GdbConnection::process_vpacket(char* payload) {
   const char* name;
   char* args;
@@ -731,6 +748,7 @@ bool GdbConnection::process_vpacket(char* payload) {
       /* fall through */
       case 'c':
         req.type = DREQ_CONTINUE;
+        req.run_direction = RUN_FORWARD;
         req.target = resume_thread;
         return true;
       case 'S':
@@ -742,6 +760,7 @@ bool GdbConnection::process_vpacket(char* payload) {
       /* fall through */
       case 's':
         req.type = DREQ_STEP;
+        req.run_direction = RUN_FORWARD;
         if (args) {
           req.target = parse_threadid(args, &args);
           // If we get a step request for a
@@ -854,6 +873,9 @@ bool GdbConnection::process_packet() {
       LOG(debug) << "gdb requests interrupt";
       req.type = DREQ_INTERRUPT;
       ret = true;
+      break;
+    case 'b':
+      ret = process_bpacket(payload);
       break;
     case 'D':
       LOG(debug) << "gdb is detaching from us";
