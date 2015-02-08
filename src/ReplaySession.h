@@ -242,7 +242,6 @@ public:
   };
   struct ReplayResult {
     ReplayStatus status;
-    // When status == STEP_CONTINUE
     BreakStatus break_status;
   };
   /**
@@ -252,9 +251,15 @@ public:
    * stop_at_time.
    * Outside of replay_step, no internal breakpoints will be set for any
    * task in this session.
+   * Stop when the current event reaches stop_at_time (i.e. this event has
+   * is the next event to be replayed).
+   * If ticks_target is nonzero, stop before the current task's ticks
+   * reaches ticks_target (but not too far before, unless we hit a breakpoint
+   * or stop_at_time). Only useful for RUN_CONTINUE.
    */
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
-                           TraceFrame::Time stop_at_time = 0);
+                           TraceFrame::Time stop_at_time = 0,
+                           Ticks ticks_target = 0);
 
   virtual ReplaySession* as_replay() { return this; }
 
@@ -322,9 +327,10 @@ private:
   Completion emulate_signal_delivery(Task* oldtask, int sig,
                                      TraceFrame::Time stop_at_time);
   Completion try_one_trace_step(Task* t, RunCommand stepi,
-                                TraceFrame::Time stop_at_time);
-  Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
-                                   RunCommand stepi);
+                                TraceFrame::Time stop_at_time,
+                                Ticks ticks_target);
+  Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu, RunCommand stepi,
+                                   Ticks ticks_target = 0);
   Completion enter_syscall(Task* t, RunCommand stepi);
   Completion exit_syscall(Task* t, RunCommand stepi);
   Ticks get_ticks_slack(Task* t);
@@ -343,14 +349,16 @@ private:
                         ExecStateType exec_state, RunCommand stepi);
   Completion advance_to(Task* t, const Registers& regs, int sig,
                         RunCommand stepi, Ticks ticks);
+  Completion advance_to_ticks_target(Task* t, RunCommand stepi,
+                                     Ticks ticks_target);
   Completion emulate_deterministic_signal(Task* t, int sig, RunCommand stepi);
   Completion emulate_async_signal(Task* t, int sig, RunCommand stepi,
                                   Ticks ticks);
   Completion skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
-                                RunCommand stepi);
+                                RunCommand stepi, Ticks ticks_target = 0);
   void prepare_syscallbuf_records(Task* t);
-  Completion flush_one_syscall(Task* t, RunCommand stepi);
-  Completion flush_syscallbuf(Task* t, RunCommand stepi);
+  Completion flush_one_syscall(Task* t, RunCommand stepi, Ticks ticks_target);
+  Completion flush_syscallbuf(Task* t, RunCommand stepi, Ticks ticks_target);
   Completion patch_next_syscall(Task* t, RunCommand stepi);
 
   std::shared_ptr<EmuFs> emu_fs;

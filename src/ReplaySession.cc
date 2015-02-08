@@ -266,7 +266,16 @@ bool ReplaySession::is_ignored_signal(int sig) {
  * interrupted by an unknown trap.
  */
 Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
-                                                RunCommand stepi) {
+                                                RunCommand stepi,
+                                                Ticks ticks_target) {
+  Ticks ticks_period = 0;
+  if (ticks_target > 0) {
+    ticks_period = ticks_target - SKID_SIZE - t->tick_count();
+    if (ticks_period <= 0) {
+      return INCOMPLETE;
+    }
+  }
+
   bool is_syscall_entry = SYSCALL_ENTRY == trace_frame.event().state;
   if (is_syscall_entry) {
     t->stepped_into_syscall = false;
@@ -302,11 +311,11 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   } else {
     resume_how = RESUME_SYSCALL;
   }
-  t->resume_execution(resume_how, RESUME_WAIT);
+  t->resume_execution(resume_how, RESUME_WAIT, ticks_period);
 
   t->child_sig = t->pending_sig();
   if (is_ignored_signal(t->child_sig)) {
-    return cont_syscall_boundary(t, emu, stepi);
+    return cont_syscall_boundary(t, emu, stepi, ticks_target);
   }
 
   if (t->ptrace_event() == PTRACE_EVENT_EXEC) {
@@ -315,6 +324,11 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   }
 
   if (SIGTRAP == t->child_sig) {
+    return INCOMPLETE;
+  } else if (t->child_sig == PerfCounters::TIME_SLICE_SIGNAL) {
+    ASSERT(t, ticks_target > 0)
+        << "Should only get TIME_SLICE_SIGNAL with a ticks_target";
+    t->child_sig = 0;
     return INCOMPLETE;
   } else if (t->child_sig) {
     ASSERT(t, false) << "Replay got unrecorded signal " << t->child_sig;
@@ -972,10 +986,11 @@ Completion ReplaySession::emulate_async_signal(Task* t, int sig,
  * successfully skipped over.
  */
 Completion ReplaySession::skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
-                                             RunCommand stepi) {
+                                             RunCommand stepi,
+                                             Ticks ticks_target) {
   /* Skip ahead to the syscall entry. */
   if (DESCHED_ENTER == ds->state &&
-      cont_syscall_boundary(t, EMULATE, stepi) == INCOMPLETE) {
+      cont_syscall_boundary(t, EMULATE, stepi, ticks_target) == INCOMPLETE) {
     return INCOMPLETE;
   }
   ds->state = DESCHED_EXIT;
@@ -1091,7 +1106,8 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
  * INCOMPLETE if an unhandled interrupt occurred, and COMPLETE if the syscall
  * was flushed (in which case |flush->state == DONE|).
  */
-Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi) {
+Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi,
+                                            Ticks ticks_target) {
   const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
   const struct syscallbuf_record* rec_rec =
       (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
@@ -1128,28 +1144,28 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi) {
         current_step.flush.desched.type = DESCHED_ARM;
         current_step.flush.desched.state = DESCHED_ENTER;
       }
-      return flush_one_syscall(t, stepi);
+      return flush_one_syscall(t, stepi, ticks_target);
 
     case FLUSH_ARM:
       /* Skip past the ioctl that armed the desched
        * notification. */
       LOG(debug) << "  skipping over arm-desched ioctl";
-      if (skip_desched_ioctl(t, &current_step.flush.desched, stepi) ==
-          INCOMPLETE) {
+      if (skip_desched_ioctl(t, &current_step.flush.desched, stepi,
+                             ticks_target) == INCOMPLETE) {
         return INCOMPLETE;
       }
       current_step.flush.state = FLUSH_ENTER;
-      return flush_one_syscall(t, stepi);
+      return flush_one_syscall(t, stepi, ticks_target);
 
     case FLUSH_ENTER:
       LOG(debug) << "  advancing to buffered syscall entry";
-      if (cont_syscall_boundary(t, emu, stepi) == INCOMPLETE) {
+      if (cont_syscall_boundary(t, emu, stepi, ticks_target) == INCOMPLETE) {
         return INCOMPLETE;
       }
       assert_at_buffered_syscall(t, call);
       assert_same_rec(t, rec_rec, child_rec);
       current_step.flush.state = FLUSH_EXIT;
-      return flush_one_syscall(t, stepi);
+      return flush_one_syscall(t, stepi, ticks_target);
 
     case FLUSH_EXIT: {
       LOG(debug) << "  advancing to buffered syscall exit";
@@ -1187,14 +1203,14 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi) {
       current_step.flush.state = FLUSH_DISARM;
       current_step.flush.desched.type = DESCHED_DISARM;
       current_step.flush.desched.state = DESCHED_ENTER;
-      return flush_one_syscall(t, stepi);
+      return flush_one_syscall(t, stepi, ticks_target);
     }
     case FLUSH_DISARM:
       /* And skip past the ioctl that disarmed the desched
        * notification. */
       LOG(debug) << "  skipping over disarm-desched ioctl";
-      if (skip_desched_ioctl(t, &current_step.flush.desched, stepi) ==
-          INCOMPLETE) {
+      if (skip_desched_ioctl(t, &current_step.flush.desched, stepi,
+                             ticks_target) == INCOMPLETE) {
         return INCOMPLETE;
       }
       current_step.flush.state = FLUSH_DONE;
@@ -1212,13 +1228,14 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi) {
  * that flushed the buffer).  Return COMPLETE if successful or INCOMPLETE if an
  * unhandled interrupt occurred.
  */
-Completion ReplaySession::flush_syscallbuf(Task* t, RunCommand stepi) {
+Completion ReplaySession::flush_syscallbuf(Task* t, RunCommand stepi,
+                                           Ticks ticks_target) {
   prepare_syscallbuf_records(t);
 
   const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
 
   while (current_step.flush.num_rec_bytes_remaining > 0) {
-    if (flush_one_syscall(t, stepi) == INCOMPLETE) {
+    if (flush_one_syscall(t, stepi, ticks_target) == INCOMPLETE) {
       return INCOMPLETE;
     }
 
@@ -1266,13 +1283,37 @@ static bool has_deterministic_ticks(const Event& ev,
   return TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action;
 }
 
+Completion ReplaySession::advance_to_ticks_target(Task* t, RunCommand stepi,
+                                                  Ticks ticks_target) {
+  while (true) {
+    Ticks ticks_left = ticks_target - t->tick_count();
+    if (ticks_left <= SKID_SIZE) {
+      return INCOMPLETE;
+    }
+    continue_or_step(t, stepi, ticks_left - SKID_SIZE);
+    if (SIGTRAP == t->child_sig) {
+      return INCOMPLETE;
+    }
+  }
+}
+
 /**
  * Try to execute |step|, adjusting for |req| if needed.  Return COMPLETE if
  * |step| was made, or INCOMPLETE if there was a trap or |step| needs
  * more work.
  */
 Completion ReplaySession::try_one_trace_step(Task* t, RunCommand stepi,
-                                             TraceFrame::Time stop_at_time) {
+                                             TraceFrame::Time stop_at_time,
+                                             Ticks ticks_target) {
+  if (ticks_target > 0 && current_step.action != TSTEP_FLUSH_SYSCALLBUF &&
+      t->current_trace_frame().ticks() > ticks_target) {
+    // Instead of doing this step, just advance to the ticks_target, since
+    // that happens before this event completes.
+    // Unfortunately we can't do this for TSTEP_FLUSH_SYSCALLBUF; that needs
+    // to be handled below.
+    return advance_to_ticks_target(t, stepi, ticks_target);
+  }
+
   switch (current_step.action) {
     case TSTEP_RETIRE:
       return COMPLETE;
@@ -1288,7 +1329,7 @@ Completion ReplaySession::try_one_trace_step(Task* t, RunCommand stepi,
     case TSTEP_DELIVER_SIGNAL:
       return emulate_signal_delivery(t, current_step.signo, stop_at_time);
     case TSTEP_FLUSH_SYSCALLBUF:
-      return flush_syscallbuf(t, stepi);
+      return flush_syscallbuf(t, stepi, ticks_target);
     case TSTEP_PATCH_SYSCALL:
       return patch_next_syscall(t, stepi);
     case TSTEP_DESCHED:
@@ -1427,7 +1468,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
 }
 
 ReplaySession::ReplayResult ReplaySession::replay_step(
-    RunCommand command, TraceFrame::Time stop_at_time) {
+    RunCommand command, TraceFrame::Time stop_at_time, Ticks ticks_target) {
   ReplayResult result;
 
   Task* t = current_task();
@@ -1459,7 +1500,8 @@ ReplaySession::ReplayResult ReplaySession::replay_step(
 
   /* Advance towards fulfilling |current_step|. */
   ReplayTraceStepType current_action = current_step.action;
-  if (try_one_trace_step(t, command, stop_at_time) == INCOMPLETE) {
+  if (try_one_trace_step(t, command, stop_at_time, ticks_target) ==
+      INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
@@ -1471,7 +1513,8 @@ ReplaySession::ReplayResult ReplaySession::replay_step(
       return result;
     }
 
-    // We got INCOMPLETE because there was some kind of debugger trap.
+    // We got INCOMPLETE because there was some kind of debugger trap or
+    // we got close to ticks_target.
     if (current_step.action != current_action &&
         current_step.action == TSTEP_DELIVER_SIGNAL) {
       result.break_status.reason = BREAK_SIGNAL;

@@ -139,7 +139,9 @@ public:
     // We hit a watchpoint.
     BREAK_WATCHPOINT,
     // We hit a signal.
-    BREAK_SIGNAL
+    BREAK_SIGNAL,
+    // We got close to our ticks target.
+    BREAK_TICKS_TARGET
   };
   struct BreakStatus {
     BreakReason reason;

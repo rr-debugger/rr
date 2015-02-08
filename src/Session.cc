@@ -152,7 +152,9 @@ Session::BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
       psiginfo(&si, "  siginfo for signal-stop:\n    ");
 #endif
       break_status.reason = BREAK_BREAKPOINT;
-    } else {
+    } else if (stop_sig == PerfCounters::TIME_SLICE_SIGNAL) {
+      break_status.reason = BREAK_TICKS_TARGET;
+    } else if (stop_sig > 0) {
       break_status.reason = BREAK_SIGNAL;
       break_status.signal = stop_sig;
     }
