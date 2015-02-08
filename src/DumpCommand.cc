@@ -182,8 +182,8 @@ static void dump(const string& trace_dir, const DumpFlags& flags,
   TraceReader trace(trace_dir);
 
   if (flags.raw_dump) {
-    fprintf(out, "global_time tid reason "
-                 "hw_interrupts page_faults adapted_ticks instructions "
+    fprintf(out, "global_time tid reason ticks "
+                 "hw_interrupts page_faults instructions "
                  "eax ebx ecx edx esi edi ebp orig_eax esp eip eflags\n");
   }
 
