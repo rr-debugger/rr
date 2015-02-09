@@ -866,7 +866,12 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   LOG(debug) << "processing " << t->syscall_name(syscall) << " ("
              << state_name(state) << ")";
 
-  if (SYSCALL_EXIT == state && trace_regs.syscall_may_restart()) {
+  // sigreturns are never restartable, and the value of the
+  // syscall-result register after a sigreturn is not actually the
+  // syscall result --- and may be anything, including one of the values
+  // below.
+  if (SYSCALL_EXIT == state && trace_regs.syscall_may_restart() &&
+      !is_sigreturn(syscall, t->arch())) {
     bool interrupted_restart = (EV_SYSCALL_INTERRUPTION == t->ev().type());
     // The tracee was interrupted while attempting to
     // restart a syscall.  We have to look at the previous
