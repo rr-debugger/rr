@@ -154,7 +154,9 @@ public:
     Task* task;
     // When break_reason is BREAK_SIGNAL, the signal.
     int signal;
-    // When break_reason is BREAK_WATCHPOINT, the triggering watch address.
+    // A triggering watch address, or null if no watchpoint was triggered.
+    // This is normally only set on BREAK_WATCHPOINT but could also be set
+    // with BREAK_SINGLESTEP.
     remote_ptr<void> watch_address;
   };
   enum RunCommand {

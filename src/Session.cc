@@ -128,6 +128,7 @@ void Session::on_create(Task* t) { task_map[t->rec_tid] = t; }
 Session::BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
   BreakStatus break_status;
   break_status.task = t;
+  break_status.watch_address = nullptr;
 
   TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
   TrapType retired_bp = t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
@@ -177,7 +178,10 @@ Session::BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
     LOG(debug) << "  finished debugger stepi";
     /* Successful stepi.  Nothing else to do. */
     break_status.reason = BREAK_SINGLESTEP;
-  } else if (DS_WATCHPOINT_ANY & t->debug_status()) {
+  } else {
+    break_status.reason = BREAK_NONE;
+  }
+  if (DS_WATCHPOINT_ANY & t->debug_status()) {
     LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
                << "): hit debugger watchpoint.";
     // XXX it's possible for multiple watchpoints
@@ -191,7 +195,9 @@ Session::BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
                           : DS_WATCHPOINT2 & t->debug_status()
                                 ? 2
                                 : DS_WATCHPOINT3 & t->debug_status() ? 3 : -1;
-    break_status.reason = BREAK_WATCHPOINT;
+    if (break_status.reason == BREAK_NONE) {
+      break_status.reason = BREAK_WATCHPOINT;
+    }
     break_status.watch_address = t->watchpoint_addr(dr);
   }
 
