@@ -610,10 +610,7 @@ public:
    * the specified type.
    */
   void push_event(const Event& ev) { pending_events.push_back(ev); }
-  void pop_event(EventType expected_type) {
-    assert(pending_events.back().type() == expected_type);
-    pending_events.pop_back();
-  }
+  void pop_event(EventType expected_type);
   void pop_noop() { pop_event(EV_NOOP); }
   void pop_desched() { pop_event(EV_DESCHED); }
   void pop_signal_delivery() { pop_event(EV_SIGNAL_DELIVERY); }

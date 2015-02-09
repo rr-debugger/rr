@@ -1018,6 +1018,11 @@ void Task::post_exec_syscall(TraceTaskEvent& event) {
 
 void Task::record_current_event() { record_event(ev()); }
 
+void Task::pop_event(EventType expected_type) {
+  ASSERT(this, pending_events.back().type() == expected_type);
+  pending_events.pop_back();
+}
+
 static bool record_extra_regs(const Event& ev) {
   switch (ev.type()) {
     case EV_SYSCALL:
