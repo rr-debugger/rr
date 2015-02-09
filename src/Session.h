@@ -85,6 +85,8 @@ public:
    */
   Task* find_task(pid_t rec_tid) const;
 
+  Task* find_task(const TaskUid& tuid) const;
+
   /**
    * Return the task group whose unique ID is |tguid|, or nullptr if no such
    * task group exists.

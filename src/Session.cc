@@ -86,6 +86,11 @@ Task* Session::find_task(pid_t rec_tid) const {
   return tasks().end() != it ? it->second : nullptr;
 }
 
+Task* Session::find_task(const TaskUid& tuid) const {
+  Task* t = find_task(tuid.tid());
+  return t && t->tuid() == tuid ? t : nullptr;
+}
+
 TaskGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
   auto it = task_group_map.find(tguid);
   if (task_group_map.end() == it) {
