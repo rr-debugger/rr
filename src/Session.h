@@ -128,6 +128,9 @@ public:
   bool is_replaying() { return as_replay() != nullptr; }
   bool is_diversion() { return as_diversion() != nullptr; }
 
+  bool visible_execution() const { return visible_execution_; }
+  void set_visible_execution(bool visible) { visible_execution_ = visible; }
+
   // The following types are used by step() APIs in Session subclasses.
 
   enum BreakReason {
@@ -166,6 +169,7 @@ protected:
   Session(const Session& other) {
     next_task_serial_ = other.next_task_serial_;
     tracees_consistent = other.tracees_consistent;
+    visible_execution_ = other.visible_execution_;
   }
   Session& operator=(const Session&) = delete;
 
@@ -183,6 +187,11 @@ protected:
    * consistent across record and replay.
    */
   bool tracees_consistent;
+
+  /**
+   * True while the execution of this session is visible to users.
+   */
+  bool visible_execution_;
 };
 
 #endif // RR_SESSION_H_

@@ -9,7 +9,7 @@
 #include "task.h"
 
 Switchable StdioMonitor::will_write(Task* t) {
-  if (Flags::get().mark_stdio) {
+  if (Flags::get().mark_stdio && t->session().visible_execution()) {
     char buf[256];
     snprintf(buf, sizeof(buf) - 1, "[rr %d %d]", t->tgid(), t->trace_time());
     ssize_t len = strlen(buf);
@@ -22,7 +22,8 @@ Switchable StdioMonitor::will_write(Task* t) {
 }
 
 void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges) {
-  if (t->session().is_replaying() && t->replay_session().redirect_stdio()) {
+  if (t->session().is_replaying() && t->replay_session().redirect_stdio() &&
+      t->session().visible_execution()) {
     for (auto& r : ranges) {
       auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
       if (bytes.size() !=

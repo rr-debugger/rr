@@ -17,7 +17,10 @@
 using namespace rr;
 using namespace std;
 
-Session::Session() : next_task_serial_(1), tracees_consistent(false) {
+Session::Session()
+    : next_task_serial_(1),
+      tracees_consistent(false),
+      visible_execution_(true) {
   LOG(debug) << "Session " << this << " created";
 }
 
@@ -152,9 +155,9 @@ Session::BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
       psiginfo(&si, "  siginfo for signal-stop:\n    ");
 #endif
       break_status.reason = BREAK_BREAKPOINT;
-    } else if (stop_sig == PerfCounters::TIME_SLICE_SIGNAL) {
+    } else if (stop_sig == PerfCounters::TIME_SLICE_SIGNAL || stop_sig == 0) {
       break_status.reason = BREAK_TICKS_TARGET;
-    } else if (stop_sig > 0) {
+    } else {
       break_status.reason = BREAK_SIGNAL;
       break_status.signal = stop_sig;
     }

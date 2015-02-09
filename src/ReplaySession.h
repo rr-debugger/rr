@@ -294,7 +294,8 @@ private:
   }
 
   ReplaySession(const ReplaySession& other)
-      : emu_fs(other.emu_fs->clone()),
+      : Session(other),
+        emu_fs(other.emu_fs->clone()),
         last_debugged_task(nullptr),
         trace_in(other.trace_in),
         trace_frame(other.trace_frame),

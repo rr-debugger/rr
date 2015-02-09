@@ -172,7 +172,6 @@ ReplaySession::shr_ptr ReplaySession::clone() {
 
   shr_ptr session(new ReplaySession(*this));
   LOG(debug) << "  deepfork session is " << session.get();
-  session->tracees_consistent = tracees_consistent;
   memcpy(session->syscallbuf_flush_buffer_array, syscallbuf_flush_buffer_array,
          sizeof(syscallbuf_flush_buffer_array));
 
