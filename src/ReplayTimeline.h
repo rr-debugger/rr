@@ -129,6 +129,10 @@ public:
 
   /**
    * Replay 'current' forwards.
+   * If there is a breakpoint at the current task's current ip(), then
+   * when running forward we will immediately break at the breakpoint. When
+   * running backward we will ignore the initial "hit" of the breakpoint ---
+   * this is the behavior gdb expects.
    */
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
                            RunDirection direction = RUN_FORWARD,

@@ -179,6 +179,8 @@ public:
     return action < other.action;
   }
 
+  bool in_execution() { return action != TSTEP_NONE; }
+
 private:
   ReplayTraceStepType action;
 };

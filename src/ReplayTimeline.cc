@@ -250,7 +250,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
   } else {
     Task* t = current->current_task();
     remote_ptr<uint8_t> mark_addr = mark.ptr->regs.ip();
-    if (t->regs().ip() == mark_addr) {
+    if (t->regs().ip() == mark_addr &&
+        current->current_step_key().in_execution()) {
       // At required IP, but not in the correct state. Singlestep over
       // this IP.
       result = current->replay_step(RUN_SINGLESTEP);
@@ -429,6 +430,8 @@ ReplayResult ReplayTimeline::reverse_continue() {
         break;
       }
       assert(result.status == REPLAY_CONTINUE);
+      // If there is a breakpoint at the current ip() where we start a
+      // reverse-continue, gdb expects us to skip it.
       if (result.break_status.reason == BREAK_BREAKPOINT) {
         assert(result.break_status.watch_address.is_null());
         dest = mark();
