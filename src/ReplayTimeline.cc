@@ -393,7 +393,7 @@ ReplaySession::ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled
   return result;
 }
 
-ReplaySession::ReplayResult ReplayTimeline::continue_backward() {
+ReplaySession::ReplayResult ReplayTimeline::reverse_continue() {
   ReplaySession::ReplayResult result;
   Mark end = mark();
   while (true) {
@@ -443,7 +443,7 @@ ReplaySession::ReplayResult ReplayTimeline::continue_backward() {
     if (dest) {
       seek_to_mark(dest);
       if (last_stop_is_watch_or_signal) {
-        singlestep_backward(false);
+        reverse_singlestep(false);
       }
       final_result.break_status.task = current->find_task(final_tuid);
       return final_result;
@@ -454,7 +454,7 @@ ReplaySession::ReplayResult ReplayTimeline::continue_backward() {
   }
 }
 
-ReplaySession::ReplayResult ReplayTimeline::singlestep_backward(bool enable_breakpoints) {
+ReplaySession::ReplayResult ReplayTimeline::reverse_singlestep(bool enable_breakpoints) {
   ReplaySession::ReplayResult result;
 
   // If there's a breakpoint at the current location, singlestepping
@@ -565,10 +565,10 @@ ReplaySession::ReplayResult ReplayTimeline::replay_step(
 
   switch (command) {
     case Session::RUN_CONTINUE:
-      return continue_backward();
+      return reverse_continue();
       break;
     case Session::RUN_SINGLESTEP:
-      return singlestep_backward();
+      return reverse_singlestep();
       break;
     default:
       assert(0 && "Unknown RunCommand");

@@ -223,8 +223,8 @@ private:
   ReplaySession::ReplayResult replay_step_to_mark(const Mark& mark);
   ReplaySession::ReplayResult singlestep_with_breakpoints_disabled();
 
-  ReplaySession::ReplayResult continue_backward();
-  ReplaySession::ReplayResult singlestep_backward(bool enable_breakpoints = true);
+  ReplaySession::ReplayResult reverse_continue();
+  ReplaySession::ReplayResult reverse_singlestep(bool enable_breakpoints = true);
 
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);
