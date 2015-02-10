@@ -1549,7 +1549,8 @@ ReplayResult ReplaySession::replay_step(RunCommand command,
 
   debug_memory(t);
 
-  if (command == RUN_SINGLESTEP && EV_SEGV_RDTSC == ev.type()) {
+  if (command == RUN_SINGLESTEP &&
+      (EV_SEGV_RDTSC == ev.type() || EV_SIGNAL_HANDLER == ev.type())) {
     // We completed this RDTSC event, and that counts as a completed singlestep.
     result.break_status.reason = BREAK_SINGLESTEP;
     result.break_status.task = t;
