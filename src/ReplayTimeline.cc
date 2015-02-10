@@ -448,7 +448,7 @@ ReplayResult ReplayTimeline::reverse_continue() {
     if (dest) {
       seek_to_mark(dest);
       if (last_stop_is_watch_or_signal) {
-        reverse_singlestep(false);
+        reverse_singlestep();
       }
       final_result.break_status.task = current->find_task(final_tuid);
       return final_result;
@@ -459,21 +459,8 @@ ReplayResult ReplayTimeline::reverse_continue() {
   }
 }
 
-ReplayResult ReplayTimeline::reverse_singlestep(bool enable_breakpoints) {
+ReplayResult ReplayTimeline::reverse_singlestep() {
   ReplayResult result;
-
-  // If there's a breakpoint at the current location, singlestepping
-  // backwards should just break without moving anywhere (just as if we
-  // tried to singlestep forwards).
-  if (enable_breakpoints &&
-      has_breakpoint_at_address(current->current_task(),
-                                current->current_task()->ip())) {
-    result.status = REPLAY_CONTINUE;
-    result.break_status.reason = BREAK_BREAKPOINT;
-    result.break_status.task = current->current_task();
-    result.break_status.watch_address = nullptr;
-    return result;
-  }
 
   Mark origin = mark();
   TaskUid tuid = current->current_task()->tuid();

@@ -133,6 +133,10 @@ public:
    * when running forward we will immediately break at the breakpoint. When
    * running backward we will ignore the initial "hit" of the breakpoint ---
    * this is the behavior gdb expects.
+   * Likewise, if there is a breakpoint at the current task's current ip(),
+   * then running forward will immediately break at the breakpoint, but
+   * running backward will ignore the initial "hit" of the breakpoint; this is
+   * what gdb expects.
    */
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
                            RunDirection direction = RUN_FORWARD,
@@ -227,7 +231,7 @@ private:
   ReplayResult singlestep_with_breakpoints_disabled();
 
   ReplayResult reverse_continue();
-  ReplayResult reverse_singlestep(bool enable_breakpoints = true);
+  ReplayResult reverse_singlestep();
 
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);

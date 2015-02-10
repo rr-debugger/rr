@@ -17,7 +17,6 @@ static void A(void) {
 }
 
 int main(void) {
-
   atomic_puts("calling A");
   A();
   atomic_puts("finished A");
