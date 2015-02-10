@@ -20,8 +20,8 @@ static void my_raise(int sig) {
   /* Don't call raise() directly, since that can go through our syscall hooks
      which mess up gdb's reverse-finish slightly. */
   int tid = getpid();
-  __asm__ __volatile__("int $0x80\n\t"
-                       :: "a"(SYS_tgkill), "b"(tid), "c"(tid), "d"(sig));
+  __asm__ __volatile__("int $0x80\n\t" ::"a"(SYS_tgkill), "b"(tid), "c"(tid),
+                       "d"(sig));
 #else
   raise(sig);
 #endif
