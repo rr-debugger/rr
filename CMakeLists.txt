@@ -455,6 +455,7 @@ set(TESTS_WITHOUT_PROGRAM
   remove_watchpoint
   restart_unstable
   restart_diversion
+  reverse_finish
   reverse_watchpoint
   sanity
   shm_checkpoint

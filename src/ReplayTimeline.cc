@@ -103,6 +103,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
     // to track whether 'current' is known to be after all marks on the list.
     // Run forward from the current point in a temporary session and see
     // which Marks (if any) we hit.
+    unapply_breakpoints_and_watchpoints();
     ReplaySession::shr_ptr tmp_session = current->clone();
     size_t mark_index = run_to_mark_or_tick(*tmp_session, mark_vector);
     // mark_index is the current index of the next mark after 'current'. So
