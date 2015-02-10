@@ -310,7 +310,7 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   } else {
     resume_how = RESUME_SYSCALL;
   }
-  t->resume_execution(resume_how, RESUME_WAIT, ticks_period);
+  t->resume_execution(resume_how, RESUME_WAIT, 0, ticks_period);
 
   t->child_sig = t->pending_sig();
   if (is_ignored_signal(t->child_sig)) {
