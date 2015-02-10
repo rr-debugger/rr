@@ -534,10 +534,10 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
       continue;
     }
 
-    ReplaySession::RunCommand command =
+    RunCommand command =
         (DREQ_STEP == req.type && get_threadid(t) == req.target)
-            ? Session::RUN_SINGLESTEP
-            : Session::RUN_CONTINUE;
+            ? RUN_SINGLESTEP
+            : RUN_CONTINUE;
     auto result = diversion_session->diversion_step(t, command);
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
@@ -548,17 +548,17 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
     }
 
     assert(result.status == DiversionSession::DIVERSION_CONTINUE);
-    if (result.break_status.reason == Session::BREAK_NONE) {
+    if (result.break_status.reason == BREAK_NONE) {
       continue;
     }
 
     int sig = SIGTRAP;
     remote_ptr<void> watch_addr = nullptr;
     switch (result.break_status.reason) {
-      case Session::BREAK_SIGNAL:
+      case BREAK_SIGNAL:
         sig = result.break_status.signal;
         break;
-      case Session::BREAK_WATCHPOINT:
+      case BREAK_WATCHPOINT:
         watch_addr = result.break_status.watch_address;
         break;
       default:
@@ -634,8 +634,8 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
   }
 }
 
-ReplaySession::ReplayStatus GdbServer::replay_one_step() {
-  ReplaySession::ReplayResult result;
+ReplayStatus GdbServer::replay_one_step() {
+  ReplayResult result;
   bool suppress_debugger_stop = false;
   Task* t = timeline.current_session().current_task();
 
@@ -643,27 +643,26 @@ ReplaySession::ReplayStatus GdbServer::replay_one_step() {
     GdbRequest req = process_debugger_requests(t);
     if (DREQ_RESTART == req.type) {
       maybe_restart_session(req);
-      return ReplaySession::REPLAY_CONTINUE;
+      return REPLAY_CONTINUE;
     }
     suppress_debugger_stop = req.suppress_debugger_stop;
     assert(req.is_resume_request());
-    ReplaySession::RunCommand command =
+    RunCommand command =
         (DREQ_STEP == req.type && get_threadid(t) == req.target)
-            ? Session::RUN_SINGLESTEP
-            : Session::RUN_CONTINUE;
+            ? RUN_SINGLESTEP
+            : RUN_CONTINUE;
     result = timeline.replay_step(
         command, req.run_direction,
         req.run_direction == RUN_FORWARD ? target.event : 0);
   } else {
-    result =
-        timeline.replay_step(Session::RUN_CONTINUE, RUN_FORWARD, target.event);
+    result = timeline.replay_step(RUN_CONTINUE, RUN_FORWARD, target.event);
   }
 
-  if (result.status == ReplaySession::REPLAY_EXITED) {
+  if (result.status == REPLAY_EXITED) {
     return result.status;
   }
-  assert(result.status == ReplaySession::REPLAY_CONTINUE);
-  if (result.break_status.reason == Session::BREAK_NONE) {
+  assert(result.status == REPLAY_CONTINUE);
+  if (result.break_status.reason == BREAK_NONE) {
     return result.status;
   }
 
@@ -671,10 +670,10 @@ ReplaySession::ReplayStatus GdbServer::replay_one_step() {
     int sig = SIGTRAP;
     remote_ptr<void> watch_addr = nullptr;
     switch (result.break_status.reason) {
-      case Session::BREAK_SIGNAL:
+      case BREAK_SIGNAL:
         sig = result.break_status.signal;
         break;
-      case Session::BREAK_WATCHPOINT:
+      case BREAK_WATCHPOINT:
         watch_addr = result.break_status.watch_address;
         break;
       default:
@@ -866,7 +865,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
         break;
       }
 
-      if (replay_one_step() == ReplaySession::REPLAY_EXITED) {
+      if (replay_one_step() == REPLAY_EXITED) {
         break;
       }
     }

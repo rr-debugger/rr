@@ -214,14 +214,14 @@ static void serve_replay_no_debugger(const string& trace_dir,
   replay_session->set_flags(session_flags(flags));
 
   while (true) {
-    auto result = replay_session->replay_step(ReplaySession::RUN_CONTINUE);
+    auto result = replay_session->replay_step(RUN_CONTINUE);
 
-    if (result.status == ReplaySession::REPLAY_EXITED) {
+    if (result.status == REPLAY_EXITED) {
       break;
     }
-    assert(result.status == ReplaySession::REPLAY_CONTINUE);
-    assert(result.break_status.reason == Session::BREAK_NONE ||
-           result.break_status.reason == Session::BREAK_SIGNAL);
+    assert(result.status == REPLAY_CONTINUE);
+    assert(result.break_status.reason == BREAK_NONE ||
+           result.break_status.reason == BREAK_SIGNAL);
   }
 
   LOG(info) << ("Replayer successfully finished.");

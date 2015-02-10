@@ -145,6 +145,18 @@ struct ReplayTraceStep {
   };
 };
 
+enum ReplayStatus {
+  // Some execution was replayed. replay_step() can be called again.
+  REPLAY_CONTINUE,
+  // All tracees are dead. replay_step() should not be called again.
+  REPLAY_EXITED
+};
+
+struct ReplayResult {
+  ReplayStatus status;
+  BreakStatus break_status;
+};
+
 /**
  * An indicator of how much progress the ReplaySession has made within a given
  * (TraceFrame::Time, Ticks) pair. These can only be used for comparisons, to
@@ -234,16 +246,6 @@ public:
    */
   static shr_ptr create(const std::string& dir);
 
-  enum ReplayStatus {
-    // Some execution was replayed. replay_step() can be called again.
-    REPLAY_CONTINUE,
-    // All tracees are dead. replay_step() should not be called again.
-    REPLAY_EXITED
-  };
-  struct ReplayResult {
-    ReplayStatus status;
-    BreakStatus break_status;
-  };
   /**
    * Take a single replay step.
    * Ensure we stop at event stop_at_time. If this is not specified,

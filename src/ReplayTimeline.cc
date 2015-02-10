@@ -122,13 +122,13 @@ size_t ReplayTimeline::run_to_mark_or_tick(
   // simplest thing and just single-step until the MarkKey has increased.
   MarkKey key = session_mark_key(session);
   while (true) {
-    auto result = session.replay_step(Session::RUN_SINGLESTEP);
+    auto result = session.replay_step(RUN_SINGLESTEP);
     if (session_mark_key(session) != key) {
       return marks.size();
     }
 
     switch (result.status) {
-      case ReplaySession::REPLAY_CONTINUE: {
+      case REPLAY_CONTINUE: {
         Task* t = session.current_task();
         for (size_t i = 0; i < marks.size(); ++i) {
           shared_ptr<InternalMark> m(marks[i]);
@@ -138,7 +138,7 @@ size_t ReplayTimeline::run_to_mark_or_tick(
         }
         break;
       }
-      case ReplaySession::REPLAY_EXITED:
+      case REPLAY_EXITED:
         // We didn't hit any marks...
         return marks.size();
     }
@@ -242,36 +242,34 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
   return seek_to_before_key(mark.ptr->key);
 }
 
-ReplaySession::ReplayResult ReplayTimeline::replay_step_to_mark(
-    const Mark& mark) {
-  ReplaySession::ReplayResult result;
+ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
+  ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->key.trace_time) {
-    result =
-        current->replay_step(Session::RUN_CONTINUE, mark.ptr->key.trace_time);
+    result = current->replay_step(RUN_CONTINUE, mark.ptr->key.trace_time);
   } else {
     Task* t = current->current_task();
     remote_ptr<uint8_t> mark_addr = mark.ptr->regs.ip();
     if (t->regs().ip() == mark_addr) {
       // At required IP, but not in the correct state. Singlestep over
       // this IP.
-      result = current->replay_step(Session::RUN_SINGLESTEP);
+      result = current->replay_step(RUN_SINGLESTEP);
       // Hide internal singlestep
-      if (result.break_status.reason == Session::BREAK_SINGLESTEP) {
-        result.break_status.reason = Session::BREAK_NONE;
+      if (result.break_status.reason == BREAK_SINGLESTEP) {
+        result.break_status.reason = BREAK_NONE;
       }
     } else {
       // Get a shared reference to t->vm() in case t dies during replay_step
       shared_ptr<AddressSpace> vm = t->vm();
       vm->add_breakpoint(mark_addr, TRAP_BKPT_USER);
-      result = current->replay_step(Session::RUN_CONTINUE);
+      result = current->replay_step(RUN_CONTINUE);
       vm->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
       // If our breakpoint is the only breakpoint there, and we hit it,
       // pretend we didn't so the caller doesn't get confused with its own
       // breakpoints.
       pair<AddressSpaceUid, remote_ptr<uint8_t> > p(vm->uid(), mark_addr);
-      if (result.break_status.reason == Session::BREAK_BREAKPOINT &&
+      if (result.break_status.reason == BREAK_BREAKPOINT &&
           t->regs().ip() == mark_addr && breakpoints.count(p) == 0) {
-        result.break_status.reason = Session::BREAK_NONE;
+        result.break_status.reason = BREAK_NONE;
       }
     }
   }
@@ -308,7 +306,8 @@ void ReplayTimeline::remove_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
   breakpoints.erase(it);
 }
 
-bool ReplayTimeline::has_breakpoint_at_address(Task* t, remote_ptr<uint8_t> addr) {
+bool ReplayTimeline::has_breakpoint_at_address(Task* t,
+                                               remote_ptr<uint8_t> addr) {
   return breakpoints.find(make_pair(t->vm()->uid(), addr)) != breakpoints.end();
 }
 
@@ -378,12 +377,12 @@ void ReplayTimeline::unapply_breakpoints_and_watchpoints() {
   }
 }
 
-ReplaySession::ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
+ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
   apply_breakpoints_and_watchpoints();
   for (auto& vm : current->vms()) {
     vm->remove_all_breakpoints();
   }
-  auto result = current->replay_step(Session::RUN_SINGLESTEP);
+  auto result = current->replay_step(RUN_SINGLESTEP);
   for (auto& bp : breakpoints) {
     AddressSpace* vm = current->find_address_space(bp.first);
     if (vm) {
@@ -393,22 +392,22 @@ ReplaySession::ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled
   return result;
 }
 
-ReplaySession::ReplayResult ReplayTimeline::reverse_continue() {
-  ReplaySession::ReplayResult result;
+ReplayResult ReplayTimeline::reverse_continue() {
+  ReplayResult result;
   Mark end = mark();
   while (true) {
     seek_to_before_key(end.ptr->key);
     if (current_mark_key() == end.ptr->key) {
       // Can't go backwards. Call this an exit.
-      result.status = ReplaySession::REPLAY_EXITED;
-      result.break_status.reason = Session::BREAK_NONE;
+      result.status = REPLAY_EXITED;
+      result.break_status.reason = BREAK_NONE;
       return result;
     }
     Mark start = mark();
     bool at_breakpoint = false;
     bool last_stop_is_watch_or_signal = false;
     Mark dest;
-    ReplaySession::ReplayResult final_result;
+    ReplayResult final_result;
     TaskUid final_tuid;
     while (true) {
       apply_breakpoints_and_watchpoints();
@@ -418,21 +417,23 @@ ReplaySession::ReplayResult ReplayTimeline::reverse_continue() {
         result = replay_step_to_mark(end);
       }
       if (!result.break_status.watch_address.is_null() ||
-          result.break_status.reason == Session::BREAK_SIGNAL) {
+          result.break_status.reason == BREAK_SIGNAL) {
         dest = mark();
         final_result = result;
-        final_tuid = result.break_status.task ? result.break_status.task->tuid() : TaskUid();
+        final_tuid = result.break_status.task ? result.break_status.task->tuid()
+                                              : TaskUid();
         last_stop_is_watch_or_signal = true;
       }
       if (at_mark(end)) {
         break;
       }
-      assert(result.status == ReplaySession::REPLAY_CONTINUE);
-      if (result.break_status.reason == Session::BREAK_BREAKPOINT) {
+      assert(result.status == REPLAY_CONTINUE);
+      if (result.break_status.reason == BREAK_BREAKPOINT) {
         assert(result.break_status.watch_address.is_null());
         dest = mark();
         final_result = result;
-        final_tuid = result.break_status.task ? result.break_status.task->tuid() : TaskUid();
+        final_tuid = result.break_status.task ? result.break_status.task->tuid()
+                                              : TaskUid();
         last_stop_is_watch_or_signal = false;
         at_breakpoint = true;
       } else {
@@ -454,16 +455,17 @@ ReplaySession::ReplayResult ReplayTimeline::reverse_continue() {
   }
 }
 
-ReplaySession::ReplayResult ReplayTimeline::reverse_singlestep(bool enable_breakpoints) {
-  ReplaySession::ReplayResult result;
+ReplayResult ReplayTimeline::reverse_singlestep(bool enable_breakpoints) {
+  ReplayResult result;
 
   // If there's a breakpoint at the current location, singlestepping
   // backwards should just break without moving anywhere (just as if we
   // tried to singlestep forwards).
-  if (enable_breakpoints && has_breakpoint_at_address(current->current_task(),
-      current->current_task()->ip())) {
-    result.status = ReplaySession::REPLAY_CONTINUE;
-    result.break_status.reason = Session::BREAK_BREAKPOINT;
+  if (enable_breakpoints &&
+      has_breakpoint_at_address(current->current_task(),
+                                current->current_task()->ip())) {
+    result.status = REPLAY_CONTINUE;
+    result.break_status.reason = BREAK_BREAKPOINT;
     result.break_status.task = current->current_task();
     result.break_status.watch_address = nullptr;
     return result;
@@ -485,8 +487,8 @@ ReplaySession::ReplayResult ReplayTimeline::reverse_singlestep(bool enable_break
         seek_to_before_key(current_key);
         if (current_mark_key() == current_key) {
           // Can't go further back. Treat this as an exit.
-          result.status = ReplaySession::REPLAY_EXITED;
-          result.break_status.reason = Session::BREAK_NONE;
+          result.status = REPLAY_EXITED;
+          result.break_status.reason = BREAK_NONE;
           return result;
         }
         current_key = current_mark_key();
@@ -498,33 +500,32 @@ ReplaySession::ReplayResult ReplayTimeline::reverse_singlestep(bool enable_break
         unapply_breakpoints_and_watchpoints();
         Task* t = current->current_task();
         if (t->tuid() == tuid) {
-          result =
-              current->replay_step(Session::RUN_CONTINUE, 0, current_count - 1);
-          if (result.break_status.reason == Session::BREAK_TICKS_TARGET) {
+          result = current->replay_step(RUN_CONTINUE, 0, current_count - 1);
+          if (result.break_status.reason == BREAK_TICKS_TARGET) {
             break;
           }
         } else {
-          current->replay_step(Session::RUN_CONTINUE);
+          current->replay_step(RUN_CONTINUE);
         }
       } while (current_mark() != end.ptr);
       end = start;
-    } while (result.break_status.reason != Session::BREAK_TICKS_TARGET);
+    } while (result.break_status.reason != BREAK_TICKS_TARGET);
     assert(current->current_task()->tuid() == tuid);
 
     Mark destination_candidate;
     Mark step_start = mark();
     assert(destination_candidate != origin);
-    ReplaySession::ReplayResult destination_candidate_result;
+    ReplayResult destination_candidate_result;
 
     while (true) {
       Mark now;
       unapply_breakpoints_and_watchpoints();
       if (current->current_task()->tuid() == tuid) {
-        result = current->replay_step(Session::RUN_SINGLESTEP);
+        result = current->replay_step(RUN_SINGLESTEP);
         now = mark();
-        if (result.break_status.reason == Session::BREAK_SINGLESTEP ||
-            result.break_status.reason == Session::BREAK_SIGNAL ||
-            result.break_status.reason == Session::BREAK_WATCHPOINT) {
+        if (result.break_status.reason == BREAK_SINGLESTEP ||
+            result.break_status.reason == BREAK_SIGNAL ||
+            result.break_status.reason == BREAK_WATCHPOINT) {
           if (now > origin) {
             // This last step is not usable.
             break;
@@ -534,7 +535,7 @@ ReplaySession::ReplayResult ReplayTimeline::reverse_singlestep(bool enable_break
           step_start = now;
         }
       } else {
-        result = current->replay_step(Session::RUN_CONTINUE);
+        result = current->replay_step(RUN_CONTINUE);
         now = mark();
       }
       if (now >= origin) {
@@ -544,15 +545,16 @@ ReplaySession::ReplayResult ReplayTimeline::reverse_singlestep(bool enable_break
 
     if (destination_candidate) {
       seek_to_mark(destination_candidate);
-      destination_candidate_result.break_status.task = current->find_task(tuid.tid());
+      destination_candidate_result.break_status.task =
+          current->find_task(tuid.tid());
       return destination_candidate_result;
     }
   }
 }
 
-ReplaySession::ReplayResult ReplayTimeline::replay_step(
-    Session::RunCommand command, RunDirection direction,
-    TraceFrame::Time stop_at_time) {
+ReplayResult ReplayTimeline::replay_step(RunCommand command,
+                                         RunDirection direction,
+                                         TraceFrame::Time stop_at_time) {
   if (direction == RUN_FORWARD) {
     apply_breakpoints_and_watchpoints();
     current->set_visible_execution(true);
@@ -564,14 +566,14 @@ ReplaySession::ReplayResult ReplayTimeline::replay_step(
   assert(stop_at_time == 0 && "stop_at_time unsupported for reverse execution");
 
   switch (command) {
-    case Session::RUN_CONTINUE:
+    case RUN_CONTINUE:
       return reverse_continue();
       break;
-    case Session::RUN_SINGLESTEP:
+    case RUN_SINGLESTEP:
       return reverse_singlestep();
       break;
     default:
       assert(0 && "Unknown RunCommand");
-      return ReplaySession::ReplayResult();
+      return ReplayResult();
   }
 }

@@ -125,7 +125,7 @@ void Session::on_destroy(Task* t) { task_map.erase(t->rec_tid); }
 
 void Session::on_create(Task* t) { task_map[t->rec_tid] = t; }
 
-Session::BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
+BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
   BreakStatus break_status;
   break_status.task = t;
   break_status.watch_address = nullptr;

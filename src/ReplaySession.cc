@@ -1466,8 +1466,9 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
   }
 }
 
-ReplaySession::ReplayResult ReplaySession::replay_step(
-    RunCommand command, TraceFrame::Time stop_at_time, Ticks ticks_target) {
+ReplayResult ReplaySession::replay_step(RunCommand command,
+                                        TraceFrame::Time stop_at_time,
+                                        Ticks ticks_target) {
   ReplayResult result;
 
   Task* t = current_task();

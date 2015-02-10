@@ -20,6 +20,39 @@ class ReplaySession;
 class Task;
 class TaskGroup;
 
+// The following types are used by step() APIs in Session subclasses.
+
+enum BreakReason {
+  BREAK_NONE,
+  // A requested RUN_SINGLESTEP completed.
+  BREAK_SINGLESTEP,
+  // We hit a breakpoint.
+  BREAK_BREAKPOINT,
+  // We hit a watchpoint.
+  BREAK_WATCHPOINT,
+  // We hit a signal.
+  BREAK_SIGNAL,
+  // We got close to our ticks target.
+  BREAK_TICKS_TARGET
+};
+struct BreakStatus {
+  BreakReason reason;
+  // When break_reason is not BREAK_NONE, the triggering Task.
+  Task* task;
+  // When break_reason is BREAK_SIGNAL, the signal.
+  int signal;
+  // A triggering watch address, or null if no watchpoint was triggered.
+  // This is normally only set on BREAK_WATCHPOINT but could also be set
+  // with BREAK_SINGLESTEP.
+  remote_ptr<void> watch_address;
+};
+enum RunCommand {
+  // Continue until we hit a breakpoint or a new replay event
+  RUN_CONTINUE,
+  // Execute a single instruction (unless at a breakpoint or a replay event)
+  RUN_SINGLESTEP
+};
+
 /**
  * Sessions track the global state of a set of tracees corresponding
  * to an rr recorder or replayer.  During recording, the tracked
@@ -132,39 +165,6 @@ public:
 
   bool visible_execution() const { return visible_execution_; }
   void set_visible_execution(bool visible) { visible_execution_ = visible; }
-
-  // The following types are used by step() APIs in Session subclasses.
-
-  enum BreakReason {
-    BREAK_NONE,
-    // A requested RUN_SINGLESTEP completed.
-    BREAK_SINGLESTEP,
-    // We hit a breakpoint.
-    BREAK_BREAKPOINT,
-    // We hit a watchpoint.
-    BREAK_WATCHPOINT,
-    // We hit a signal.
-    BREAK_SIGNAL,
-    // We got close to our ticks target.
-    BREAK_TICKS_TARGET
-  };
-  struct BreakStatus {
-    BreakReason reason;
-    // When break_reason is not BREAK_NONE, the triggering Task.
-    Task* task;
-    // When break_reason is BREAK_SIGNAL, the signal.
-    int signal;
-    // A triggering watch address, or null if no watchpoint was triggered.
-    // This is normally only set on BREAK_WATCHPOINT but could also be set
-    // with BREAK_SINGLESTEP.
-    remote_ptr<void> watch_address;
-  };
-  enum RunCommand {
-    // Continue until we hit a breakpoint or a new replay event
-    RUN_CONTINUE,
-    // Execute a single instruction (unless at a breakpoint or a replay event)
-    RUN_SINGLESTEP
-  };
 
 protected:
   Session();

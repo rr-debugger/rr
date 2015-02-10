@@ -107,7 +107,7 @@ private:
   void maybe_connect_debugger(const ConnectionFlags& flags);
   void maybe_restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
-  ReplaySession::ReplayStatus replay_one_step();
+  ReplayStatus replay_one_step();
   void serve_replay(const ConnectionFlags& flags);
 
   /**

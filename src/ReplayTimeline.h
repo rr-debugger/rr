@@ -130,10 +130,9 @@ public:
   /**
    * Replay 'current' forwards.
    */
-  ReplaySession::ReplayResult replay_step(Session::RunCommand command =
-                                              Session::RUN_CONTINUE,
-                                          RunDirection direction = RUN_FORWARD,
-                                          TraceFrame::Time stop_at_time = 0);
+  ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
+                           RunDirection direction = RUN_FORWARD,
+                           TraceFrame::Time stop_at_time = 0);
 
 private:
   /**
@@ -220,11 +219,11 @@ private:
   std::shared_ptr<InternalMark> current_mark();
   void remove_mark_with_checkpoint(const MarkKey& key);
   void seek_to_before_key(const MarkKey& key);
-  ReplaySession::ReplayResult replay_step_to_mark(const Mark& mark);
-  ReplaySession::ReplayResult singlestep_with_breakpoints_disabled();
+  ReplayResult replay_step_to_mark(const Mark& mark);
+  ReplayResult singlestep_with_breakpoints_disabled();
 
-  ReplaySession::ReplayResult reverse_continue();
-  ReplaySession::ReplayResult reverse_singlestep(bool enable_breakpoints = true);
+  ReplayResult reverse_continue();
+  ReplayResult reverse_singlestep(bool enable_breakpoints = true);
 
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);
