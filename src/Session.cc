@@ -108,9 +108,12 @@ AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
 }
 
 void Session::kill_all_tasks() {
+  for (auto& v : task_map) {
+    v.second->prepare_kill();
+  }
+
   while (!task_map.empty()) {
     Task* t = task_map.rbegin()->second;
-    LOG(debug) << "Killing " << t->tid << "(" << t << ")";
     t->kill();
     delete t;
   }

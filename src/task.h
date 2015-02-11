@@ -1359,6 +1359,15 @@ private:
   bool is_desched_sig_blocked();
 
   /**
+   * Prepare to forcibly kill this task by detaching it first. To ensure
+   * the task doesn't continue executing, we first set its ip() to an invalid
+   * value. We need to do this for all tasks in the Session before kill()
+   * is guaranteed to work properly. SIGKILL on ptrace-attached tasks seems
+   * to not work very well, and after sending SIGKILL we can't seem to
+   * reliably detach.
+   */
+  void prepare_kill();
+  /**
    * Destroy the OS task backing this by sending it SIGKILL and
    * ensuring it was delivered.  After |kill()|, the only
    * meaningful thing that can be done with this task is to

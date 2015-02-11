@@ -2345,9 +2345,19 @@ bool Task::is_desched_sig_blocked() {
 
 void Task::tgkill(int sig) { syscall(SYS_tgkill, real_tgid(), tid, sig); }
 
-void Task::kill() {
-  LOG(debug) << "sending SIGKILL to " << tid << " ...";
+void Task::prepare_kill() {
   if (!stable_exit) {
+    LOG(debug) << "safely detaching from " << tid << " ...";
+    Registers r = regs();
+    r.set_ip(intptr_t(-1));
+    set_regs(r);
+    fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+  }
+}
+
+void Task::kill() {
+  if (!stable_exit) {
+    LOG(debug) << "sending SIGKILL to " << tid << " ...";
     // If we haven't already done a stable exit via syscall,
     // kill the task and note that the entire task group is unstable.
     tgkill(SIGKILL);
