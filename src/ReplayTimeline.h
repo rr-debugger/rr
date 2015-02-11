@@ -3,6 +3,7 @@
 #ifndef RR_REPLAY_TIMELINE_H_
 #define RR_REPLAY_TIMELINE_H_
 
+#include <iostream>
 #include <map>
 #include <memory>
 #include <tuple>
@@ -52,6 +53,7 @@ public:
 
   private:
     friend class ReplayTimeline;
+    friend std::ostream& operator<<(std::ostream& s, const Mark& o);
 
     Mark(std::weak_ptr<InternalMark> weak) : ptr(weak) {}
 
@@ -175,6 +177,7 @@ private:
     }
     bool operator!=(const MarkKey& other) const { return !(*this == other); }
   };
+  friend std::ostream& operator<<(std::ostream& s, const MarkKey& o);
 
   /**
    * MarkKey + Registers are assumed to identify a unique program state.
@@ -199,6 +202,7 @@ private:
     uint32_t checkpoint_refcount;
   };
   friend struct InternalMark;
+  friend std::ostream& operator<<(std::ostream& s, const InternalMark& o);
 
   /**
    * We track the set of breakpoints/watchpoints requested by the client.
@@ -277,5 +281,7 @@ private:
                            WatchType> > watchpoints;
   bool breakpoints_applied;
 };
+
+std::ostream& operator<<(std::ostream& s, const ReplayTimeline::Mark& o);
 
 #endif // RR_REPLAY_TIMELINE_H_

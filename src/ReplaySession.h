@@ -179,7 +179,8 @@ public:
     return action < other.action;
   }
 
-  bool in_execution() { return action != TSTEP_NONE; }
+  bool in_execution() const { return action != TSTEP_NONE; }
+  int as_int() const { return (int)action; }
 
 private:
   ReplayTraceStepType action;

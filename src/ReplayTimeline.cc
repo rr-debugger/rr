@@ -1,6 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 //#define DEBUGTAG "ReplayTimeline"
+
 #include "ReplayTimeline.h"
 
 #include "log.h"
@@ -24,6 +25,22 @@ ReplayTimeline::InternalMark::~InternalMark() {
       owner->remove_mark_with_checkpoint(key);
     }
   }
+}
+
+ostream& operator<<(ostream& s, const ReplayTimeline::MarkKey& o) {
+  return s << "time:" << o.trace_time << ",ticks:" << o.ticks
+           << ",st:" << o.step_key.as_int();
+}
+
+ostream& operator<<(ostream& s, const ReplayTimeline::InternalMark& o) {
+  return s << "{" << o.key << ",regs_ip:" << HEX(o.regs.ip().as_int()) << "}";
+}
+
+ostream& operator<<(ostream& s, const ReplayTimeline::Mark& o) {
+  if (!o.ptr) {
+    return s << "{null}";
+  }
+  return s << *o.ptr.get();
 }
 
 bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
@@ -397,15 +414,19 @@ ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
 ReplayResult ReplayTimeline::reverse_continue() {
   ReplayResult result;
   Mark end = mark();
+  LOG(debug) << "ReplayTimeline::reverse_continue from " << end;
+
   while (true) {
     seek_to_before_key(end.ptr->key);
     if (current_mark_key() == end.ptr->key) {
+      LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
       // Can't go backwards. Call this an exit.
       result.status = REPLAY_EXITED;
       result.break_status.reason = BREAK_NONE;
       return result;
     }
     Mark start = mark();
+    LOG(debug) << "Seeked backward from " << end << " to " << start;
     bool at_breakpoint = false;
     bool last_stop_is_watch_or_signal = false;
     Mark dest;
@@ -421,6 +442,7 @@ ReplayResult ReplayTimeline::reverse_continue() {
       if (!result.break_status.watch_address.is_null() ||
           result.break_status.reason == BREAK_SIGNAL) {
         dest = mark();
+        LOG(debug) << "Found watch/signal break at " << dest;
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
@@ -435,6 +457,7 @@ ReplayResult ReplayTimeline::reverse_continue() {
       if (result.break_status.reason == BREAK_BREAKPOINT) {
         assert(result.break_status.watch_address.is_null());
         dest = mark();
+        LOG(debug) << "Found breakpoint break at " << dest;
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
@@ -446,8 +469,10 @@ ReplayResult ReplayTimeline::reverse_continue() {
     }
 
     if (dest) {
+      LOG(debug) << "Seeking to final destination " << dest;
       seek_to_mark(dest);
       if (last_stop_is_watch_or_signal) {
+        LOG(debug) << "Performing final reverse-singlestep to pass over watch/signal";
         reverse_singlestep();
       }
       final_result.break_status.task = current->find_task(final_tuid);
@@ -463,6 +488,7 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
   ReplayResult result;
 
   Mark origin = mark();
+  LOG(debug) << "ReplayTimeline::reverse_singlestep from " << origin;
   TaskUid tuid = current->current_task()->tuid();
   Ticks current_count = current->current_task()->tick_count();
 
@@ -478,14 +504,17 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
         seek_to_before_key(current_key);
         if (current_mark_key() == current_key) {
           // Can't go further back. Treat this as an exit.
+          LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
           result.status = REPLAY_EXITED;
           result.break_status.reason = BREAK_NONE;
           return result;
         }
+        LOG(debug) << "Seeked backward from " << current_key << " to " << current_mark_key();
         current_key = current_mark_key();
       }
 
       Mark start = mark();
+      LOG(debug) << "Running forward from " << start;
       // Now run forward until we're reasonably close to the correct tick value.
       do {
         unapply_breakpoints_and_watchpoints();
@@ -493,6 +522,7 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
         if (t->tuid() == tuid) {
           result = current->replay_step(RUN_CONTINUE, 0, current_count - 1);
           if (result.break_status.reason == BREAK_TICKS_TARGET) {
+            LOG(debug) << "   reached ticks target";
             break;
           }
         } else {
@@ -514,20 +544,24 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
       if (current->current_task()->tuid() == tuid) {
         result = current->replay_step(RUN_SINGLESTEP);
         now = mark();
+        LOG(debug) << "Singlestepped towards target, now at " << now;
         if (result.break_status.reason == BREAK_SINGLESTEP ||
             result.break_status.reason == BREAK_SIGNAL ||
             result.break_status.reason == BREAK_WATCHPOINT) {
           if (now > origin) {
             // This last step is not usable.
+            LOG(debug) << "   not usable, stopping now";
             break;
           }
           destination_candidate = step_start;
+          LOG(debug) << "New destination candidate is " << destination_candidate;
           destination_candidate_result = result;
           step_start = now;
         }
       } else {
         result = current->replay_step(RUN_CONTINUE);
         now = mark();
+        LOG(debug) << "Wrong task, ran towards target, now at " << now;
       }
       if (now >= origin) {
         break;
@@ -536,6 +570,7 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
 
     if (destination_candidate) {
       seek_to_mark(destination_candidate);
+      LOG(debug) << "Seeked to destination " << destination_candidate;
       destination_candidate_result.break_status.task =
           current->find_task(tuid.tid());
       return destination_candidate_result;
