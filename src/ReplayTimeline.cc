@@ -476,7 +476,8 @@ ReplayResult ReplayTimeline::reverse_continue() {
       LOG(debug) << "Seeking to final destination " << dest;
       seek_to_mark(dest);
       if (last_stop_is_watch_or_signal) {
-        LOG(debug) << "Performing final reverse-singlestep to pass over watch/signal";
+        LOG(debug)
+            << "Performing final reverse-singlestep to pass over watch/signal";
         reverse_singlestep();
       }
       final_result.break_status.task = current->find_task(final_tuid);
@@ -513,7 +514,8 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
           result.break_status.reason = BREAK_NONE;
           return result;
         }
-        LOG(debug) << "Seeked backward from " << current_key << " to " << current_mark_key();
+        LOG(debug) << "Seeked backward from " << current_key << " to "
+                   << current_mark_key();
         current_key = current_mark_key();
       }
 
@@ -558,7 +560,8 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
             break;
           }
           destination_candidate = step_start;
-          LOG(debug) << "New destination candidate is " << destination_candidate;
+          LOG(debug) << "New destination candidate is "
+                     << destination_candidate;
           destination_candidate_result = result;
           step_start = now;
         }
