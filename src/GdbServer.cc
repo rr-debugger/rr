@@ -619,7 +619,6 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
 
     if (req.is_resume_request()) {
       maybe_singlestep_for_event(t, &req);
-      LOG(debug) << "  is resume request";
       return req;
     }
 
