@@ -86,10 +86,14 @@ ReplayTimeline::~ReplayTimeline() {
 
 shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
   Task* t = current->current_task();
-  for (weak_ptr<InternalMark>& m_weak : marks[current_mark_key()]) {
-    shared_ptr<InternalMark> m(m_weak);
-    if (!t || m->regs.matches(t->regs())) {
-      return m;
+  auto it = marks.find(current_mark_key());
+  // Avoid creating an entry in 'marks' if it doesn't already exist
+  if (it != marks.end()) {
+    for (weak_ptr<InternalMark>& m_weak : it->second) {
+      shared_ptr<InternalMark> m(m_weak);
+      if (!t || m->regs.matches(t->regs())) {
+        return m;
+      }
     }
   }
   return shared_ptr<InternalMark>();
