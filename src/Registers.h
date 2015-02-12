@@ -293,7 +293,7 @@ public:
                                      const Registers& reg2,
                                      MismatchBehavior mismatch_behavior);
 
-  bool matches(const Registers& other) {
+  bool matches(const Registers& other) const {
     return compare_register_files(nullptr, nullptr, *this, nullptr, other,
                                   EXPECT_MISMATCHES);
   }

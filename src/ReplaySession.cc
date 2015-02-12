@@ -1481,6 +1481,9 @@ ReplayResult ReplaySession::replay_step(RunCommand command,
 
   result.status = REPLAY_CONTINUE;
   result.break_status.reason = BREAK_NONE;
+  result.break_status.task = t;
+  result.break_status.signal = 0;
+  result.break_status.watch_address = nullptr;
 
   /* If we restored from a checkpoint, the steps might have been
    * computed already in which case step.action will not be TSTEP_NONE.
@@ -1518,7 +1521,6 @@ ReplayResult ReplaySession::replay_step(RunCommand command,
     if (current_step.action != current_action &&
         current_step.action == TSTEP_DELIVER_SIGNAL) {
       result.break_status.reason = BREAK_SIGNAL;
-      result.break_status.task = t;
       result.break_status.signal = current_step.signo;
     } else {
       result.break_status = diagnose_debugger_trap(t, t->child_sig);

@@ -71,13 +71,19 @@ ReplayTimeline::~ReplayTimeline() {
   }
 }
 
+static bool equal_regs(const Registers& r1, const Registers& r2) {
+  // Compare ip()s first since they will usually fail to match, especially
+  // when we're comparing InternalMarks with the same MarkKey
+  return r1.ip() == r2.ip() && r1.matches(r2);
+}
+
 shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
   Task* t = current->current_task();
   auto it = marks.find(current_mark_key());
   // Avoid creating an entry in 'marks' if it doesn't already exist
   if (it != marks.end()) {
     for (shared_ptr<InternalMark>& m : it->second) {
-      if (!t || m->regs.matches(t->regs())) {
+      if (equal_regs(m->regs, t->regs())) {
         return m;
       }
     }
@@ -128,7 +134,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       Task* t = tmp_session->current_task();
       for (auto it = mark_vector.begin(); it != mark_vector.end(); ++it) {
         shared_ptr<InternalMark>& existing_mark = *it;
-        if (existing_mark->regs.matches(t->regs())) {
+        if (equal_regs(existing_mark->regs, t->regs())) {
           mark_index = it;
           break;
         }
@@ -249,6 +255,14 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
   return seek_to_before_key(mark.ptr->key);
 }
 
+static void clear_break_status_reason(BreakStatus& break_status,
+                                      BreakReason reason) {
+  if (break_status.reason == reason) {
+    break_status.reason =
+        break_status.watch_address.is_null() ? BREAK_NONE : BREAK_WATCHPOINT;
+  }
+}
+
 ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
   ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->key.trace_time) {
@@ -262,9 +276,7 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
       // this IP.
       result = current->replay_step(RUN_SINGLESTEP);
       // Hide internal singlestep
-      if (result.break_status.reason == BREAK_SINGLESTEP) {
-        result.break_status.reason = BREAK_NONE;
-      }
+      clear_break_status_reason(result.break_status, BREAK_SINGLESTEP);
     } else {
       // Get a shared reference to t->vm() in case t dies during replay_step
       shared_ptr<AddressSpace> vm = t->vm();
@@ -275,9 +287,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
       // pretend we didn't so the caller doesn't get confused with its own
       // breakpoints.
       pair<AddressSpaceUid, remote_ptr<uint8_t> > p(vm->uid(), mark_addr);
-      if (result.break_status.reason == BREAK_BREAKPOINT &&
-          t->regs().ip() == mark_addr && breakpoints.count(p) == 0) {
-        result.break_status.reason = BREAK_NONE;
+      if (t->regs().ip() == mark_addr && breakpoints.count(p) == 0) {
+        clear_break_status_reason(result.break_status, BREAK_BREAKPOINT);
       }
     }
   }
@@ -430,6 +441,7 @@ ReplayResult ReplayTimeline::reverse_continue() {
       }
       if (!result.break_status.watch_address.is_null() ||
           result.break_status.reason == BREAK_SIGNAL) {
+        assert(result.break_status.reason != BREAK_NONE);
         dest = mark();
         LOG(debug) << "Found watch/signal break at " << dest;
         final_result = result;
@@ -466,6 +478,7 @@ ReplayResult ReplayTimeline::reverse_continue() {
         reverse_singlestep();
       }
       final_result.break_status.task = current->find_task(final_tuid);
+      assert(final_result.break_status.reason != BREAK_NONE);
       return final_result;
     }
 
@@ -526,7 +539,6 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
 
     Mark destination_candidate;
     Mark step_start = mark();
-    assert(destination_candidate != origin);
     ReplayResult destination_candidate_result;
 
     while (true) {
@@ -563,8 +575,9 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
     if (destination_candidate) {
       seek_to_mark(destination_candidate);
       LOG(debug) << "Seeked to destination " << destination_candidate;
-      destination_candidate_result.break_status.task =
-          current->find_task(tuid.tid());
+      destination_candidate_result.break_status.task = current->find_task(tuid);
+      assert(destination_candidate_result.break_status.task);
+      assert(destination_candidate_result.break_status.reason != BREAK_NONE);
       return destination_candidate_result;
     }
   }

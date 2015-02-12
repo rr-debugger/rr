@@ -132,6 +132,7 @@ void Session::on_create(Task* t) { task_map[t->rec_tid] = t; }
 BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
   BreakStatus break_status;
   break_status.task = t;
+  break_status.signal = 0;
   break_status.watch_address = nullptr;
 
   TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
