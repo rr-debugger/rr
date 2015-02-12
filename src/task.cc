@@ -2348,6 +2348,12 @@ void Task::tgkill(int sig) { syscall(SYS_tgkill, real_tgid(), tid, sig); }
 void Task::prepare_kill() {
   if (!stable_exit) {
     LOG(debug) << "safely detaching from " << tid << " ...";
+    // Detaching from the process lets it continue. We don't want a replaying
+    // process to perform syscalls or do anything else observable before we
+    // get around to SIGKILLing it. So we move its ip() to an invalid
+    // address. If it does continue, it will probably get a fatal signal.
+    // We don't install real signal handlers in replayed processes so there's
+    // no way it could handle the signal and continue.
     Registers r = regs();
     r.set_ip(intptr_t(-1));
     set_regs(r);
