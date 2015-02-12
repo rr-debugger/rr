@@ -10,20 +10,8 @@ using namespace rr;
 using namespace std;
 
 ReplayTimeline::InternalMark::~InternalMark() {
-  if (owner) {
-    auto& mark_vector = owner->marks[key];
-    for (auto it = mark_vector.begin(); it != mark_vector.end(); ++it) {
-      if (it->expired()) {
-        mark_vector.erase(it);
-        break;
-      }
-    }
-    if (mark_vector.empty()) {
-      owner->marks.erase(key);
-    }
-    if (checkpoint) {
-      owner->remove_mark_with_checkpoint(key);
-    }
+  if (owner && checkpoint) {
+    owner->remove_mark_with_checkpoint(key);
   }
 }
 
@@ -54,8 +42,7 @@ bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
   if (!m1.ptr->owner) {
     return false;
   }
-  for (weak_ptr<InternalMark>& m_weak : m1.ptr->owner->marks[m1.ptr->key]) {
-    shared_ptr<InternalMark> m(m_weak);
+  for (shared_ptr<InternalMark>& m : m1.ptr->owner->marks[m1.ptr->key]) {
     if (m == m2.ptr) {
       return false;
     }
@@ -78,8 +65,8 @@ ReplayTimeline::ReplayTimeline(std::shared_ptr<ReplaySession> session,
 
 ReplayTimeline::~ReplayTimeline() {
   for (auto it : marks) {
-    for (weak_ptr<InternalMark>& itv : it.second) {
-      itv.lock().get()->owner = nullptr;
+    for (shared_ptr<InternalMark>& itv : it.second) {
+      itv->owner = nullptr;
     }
   }
 }
@@ -89,8 +76,7 @@ shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
   auto it = marks.find(current_mark_key());
   // Avoid creating an entry in 'marks' if it doesn't already exist
   if (it != marks.end()) {
-    for (weak_ptr<InternalMark>& m_weak : it->second) {
-      shared_ptr<InternalMark> m(m_weak);
+    for (shared_ptr<InternalMark>& m : it->second) {
       if (!t || m->regs.matches(t->regs())) {
         return m;
       }
@@ -114,8 +100,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
   auto& mark_vector = marks[key];
   if (mark_vector.empty()) {
     mark_vector.push_back(m);
-  } else if (mark_vector[mark_vector.size() - 1].lock() ==
-             current_at_or_after_mark.ptr) {
+  } else if (mark_vector[mark_vector.size() - 1] == current_at_or_after_mark) {
     mark_vector.push_back(m);
   } else {
     // Now the hard part: figuring out where to put it in the list of existing
@@ -132,12 +117,12 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
     mark_vector.insert(mark_vector.begin() + mark_index, m);
   }
   swap(m, result.ptr);
-  current_at_or_after_mark = result;
+  current_at_or_after_mark = result.ptr;
   return result;
 }
 
 size_t ReplayTimeline::run_to_mark_or_tick(
-    ReplaySession& session, const vector<weak_ptr<InternalMark> >& marks) {
+    ReplaySession& session, const vector<shared_ptr<InternalMark> >& marks) {
   // We could set breakpoints at the marks and then continue with an
   // interrupt set to fire when our tick-count increases. But that requires
   // new replay functionality (probably a new RunCommand), so for now, do the
@@ -211,7 +196,7 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
       // nowhere earlier to go, so restart from beginning.
       current = ReplaySession::create(current->trace_reader().dir());
       breakpoints_applied = false;
-      current_at_or_after_mark = Mark();
+      current_at_or_after_mark = nullptr;
       current->set_flags(session_flags);
     }
   } else {
@@ -232,7 +217,7 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
       }
       assert(current);
       breakpoints_applied = false;
-      current_at_or_after_mark = Mark();
+      current_at_or_after_mark = nullptr;
     }
   }
 }
@@ -247,12 +232,11 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
 
     // Check if any of the marks with the same key as 'mark', but before 'mark',
     // are usable.
-    for (weak_ptr<InternalMark>& m_weak : marks[mark.ptr->key]) {
-      shared_ptr<InternalMark> m(m_weak);
+    for (shared_ptr<InternalMark>& m : marks[mark.ptr->key]) {
       if (m->checkpoint) {
         current = m->checkpoint->clone();
         breakpoints_applied = false;
-        current_at_or_after_mark = Mark();
+        current_at_or_after_mark = nullptr;
         return;
       }
       if (m == mark.ptr) {
@@ -305,7 +289,7 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
     unapply_breakpoints_and_watchpoints();
     replay_step_to_mark(mark);
   }
-  current_at_or_after_mark = mark;
+  current_at_or_after_mark = mark.ptr;
   // XXX handle cases where breakpoints can't yet be applied
 }
 

@@ -55,7 +55,7 @@ public:
     friend class ReplayTimeline;
     friend std::ostream& operator<<(std::ostream& s, const Mark& o);
 
-    Mark(std::weak_ptr<InternalMark> weak) : ptr(weak) {}
+    Mark(std::shared_ptr<InternalMark>& weak) { swap(ptr, weak); }
 
     std::shared_ptr<InternalMark> ptr;
   };
@@ -245,29 +245,29 @@ private:
   // if we didn't hit one.
   static size_t run_to_mark_or_tick(
       ReplaySession& session,
-      const std::vector<std::weak_ptr<InternalMark> >& marks);
+      const std::vector<std::shared_ptr<InternalMark> >& marks);
 
   ReplaySession::Flags session_flags;
 
   ReplaySession::shr_ptr current;
   // current is known to be at or after this mark
-  Mark current_at_or_after_mark;
+  std::shared_ptr<InternalMark> current_at_or_after_mark;
 
   /**
    * All known marks.
    *
    * An InternalMark appears in a ReplayTimeline 'marks' map if and only if
-   * that ReplayTimeline is the InternalMark's 'owner'. InternalMark's
-   * destructor removes it from its owner's 'marks' map. ReplayTimeline's
+   * that ReplayTimeline is the InternalMark's 'owner'. ReplayTimeline's
    * destructor clears the 'owner' of all marks in the map.
    *
    * For each MarkKey, the InternalMarks are stored in execution order.
    *
-   * We assume there will only be a small number of InternalMarks per MarkKey.
+   * We assume there will be a limited number of InternalMarks per MarkKey.
    * This should be true because Task::tick_count() should increment
-   * frequently during execution.
+   * frequently during execution. In some cases we see hundreds of elements
+   * but that's not too bad.
    */
-  std::map<MarkKey, std::vector<std::weak_ptr<InternalMark> > > marks;
+  std::map<MarkKey, std::vector<std::shared_ptr<InternalMark> > > marks;
 
   /**
    * All mark keys with at least one checkpoint. The value is the number of
