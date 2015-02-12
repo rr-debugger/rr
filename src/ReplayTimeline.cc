@@ -105,53 +105,54 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
   } else {
     // Now the hard part: figuring out where to put it in the list of existing
     // marks.
-    // XXX if we hit this path at all often, an easy optimization would be
-    // to track whether 'current' is known to be after all marks on the list.
-    // Run forward from the current point in a temporary session and see
-    // which Marks (if any) we hit.
     unapply_breakpoints_and_watchpoints();
     ReplaySession::shr_ptr tmp_session = current->clone();
-    size_t mark_index = run_to_mark_or_tick(*tmp_session, mark_vector);
+    vector<shared_ptr<InternalMark> >::iterator mark_index = mark_vector.end();
+
+    // We could set breakpoints at the marks and then continue with an
+    // interrupt set to fire when our tick-count increases. But that requires
+    // new replay functionality (probably a new RunCommand), so for now, do the
+    // simplest thing and just single-step until the MarkKey has increased.
+    vector<shared_ptr<InternalMark> > new_marks;
+    new_marks.push_back(m);
+    while (true) {
+      auto result = tmp_session->replay_step(RUN_SINGLESTEP);
+      if (session_mark_key(*tmp_session) != key ||
+          result.status != REPLAY_CONTINUE) {
+        break;
+      }
+      if (result.break_status.reason != BREAK_SINGLESTEP) {
+        continue;
+      }
+
+      Task* t = tmp_session->current_task();
+      for (auto it = mark_vector.begin(); it != mark_vector.end(); ++it) {
+        shared_ptr<InternalMark>& existing_mark = *it;
+        if (existing_mark->regs.matches(t->regs())) {
+          mark_index = it;
+          break;
+        }
+      }
+      if (mark_index != mark_vector.end()) {
+        break;
+      }
+
+      // Some callers singlestep through N instructions, all with the same
+      // MarkKey, requesting a Mark after each step. If there's a Mark at the
+      // end of the N instructions, this could mean N(N+1)/2 singlestep
+      // operations total. To avoid that, add all the intermediate states to
+      // the mark map now, so the first mark() call will perform N singlesteps
+      // and the rest will perform none.
+      new_marks.push_back(make_shared<InternalMark>(this, t, key));
+    }
+
     // mark_index is the current index of the next mark after 'current'. So
-    // insert our new mark at mark_index.
-    mark_vector.insert(mark_vector.begin() + mark_index, m);
+    // insert our new marks at mark_index.
+    mark_vector.insert(mark_index, new_marks.begin(), new_marks.end());
   }
   swap(m, result.ptr);
   current_at_or_after_mark = result.ptr;
   return result;
-}
-
-size_t ReplayTimeline::run_to_mark_or_tick(
-    ReplaySession& session, const vector<shared_ptr<InternalMark> >& marks) {
-  // We could set breakpoints at the marks and then continue with an
-  // interrupt set to fire when our tick-count increases. But that requires
-  // new replay functionality (probably a new RunCommand), so for now, do the
-  // simplest thing and just single-step until the MarkKey has increased.
-  MarkKey key = session_mark_key(session);
-  while (true) {
-    auto result = session.replay_step(RUN_SINGLESTEP);
-    if (session_mark_key(session) != key) {
-      return marks.size();
-    }
-
-    switch (result.status) {
-      case REPLAY_CONTINUE: {
-        Task* t = session.current_task();
-        for (size_t i = 0; i < marks.size(); ++i) {
-          shared_ptr<InternalMark> m(marks[i]);
-          if (!t || m->regs.matches(t->regs())) {
-            return i;
-          }
-        }
-        break;
-      }
-      case REPLAY_EXITED:
-        // We didn't hit any marks...
-        return marks.size();
-    }
-  }
-
-  return marks.size();
 }
 
 ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {

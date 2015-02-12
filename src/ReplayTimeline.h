@@ -240,13 +240,6 @@ private:
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);
 
-  // Run the session forward until we reach one of the given mark, or the
-  // MarkKey increases. Returns the index of the mark we hit or marks.size()
-  // if we didn't hit one.
-  static size_t run_to_mark_or_tick(
-      ReplaySession& session,
-      const std::vector<std::shared_ptr<InternalMark> >& marks);
-
   ReplaySession::Flags session_flags;
 
   ReplaySession::shr_ptr current;
