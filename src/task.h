@@ -1273,8 +1273,8 @@ private:
    * to the task during recording.
    */
   Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
-              remote_ptr<int> cleartid_addr, pid_t new_tid,
-              pid_t new_rec_tid = -1, Session* other_session = nullptr);
+              remote_ptr<int> cleartid_addr, pid_t new_tid, pid_t new_rec_tid,
+              uint32_t new_serial, Session* other_session = nullptr);
 
   /**
    * Make this task look like an identical copy of |from| in
@@ -1410,7 +1410,8 @@ private:
    */
   static Task* os_clone(Task* parent, Session* session,
                         AutoRemoteSyscalls& remote, pid_t rec_child_tid,
-                        unsigned base_flags, remote_ptr<void> stack = nullptr,
+                        uint32_t new_serial, unsigned base_flags,
+                        remote_ptr<void> stack = nullptr,
                         remote_ptr<int> ptid = nullptr,
                         remote_ptr<void> tls = nullptr,
                         remote_ptr<int> ctid = nullptr);

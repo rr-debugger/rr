@@ -76,7 +76,8 @@ vector<AddressSpace*> Session::vms() const {
 Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
                      remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                      pid_t new_tid, pid_t new_rec_tid) {
-  Task* c = p->clone(flags, stack, tls, cleartid_addr, new_tid, new_rec_tid);
+  Task* c = p->clone(flags, stack, tls, cleartid_addr, new_tid, new_rec_tid,
+                     next_task_serial());
   on_create(c);
   return c;
 }

@@ -1956,11 +1956,10 @@ static TaskGroup::shr_ptr create_tg(Task* t, TaskGroup* parent) {
 
 Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                   remote_ptr<int> cleartid_addr, pid_t new_tid,
-                  pid_t new_rec_tid, Session* other_session) {
+                  pid_t new_rec_tid, uint32_t new_serial,
+                  Session* other_session) {
   auto& sess = other_session ? *other_session : session();
-  Task* t = new Task(sess, new_tid, new_rec_tid,
-                     other_session ? serial : session().next_task_serial(),
-                     priority, arch());
+  Task* t = new Task(sess, new_tid, new_rec_tid, new_serial, priority, arch());
 
   t->blocked_sigs = blocked_sigs;
   if (CLONE_SHARE_SIGHANDLERS & flags) {
@@ -2047,7 +2046,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
 Task* Task::os_fork_into(Session* session) {
   AutoRemoteSyscalls remote(this);
-  Task* child = os_clone(this, session, remote, rec_tid,
+  Task* child = os_clone(this, session, remote, rec_tid, serial,
                          // Most likely, we'll be setting up a
                          // CLEARTID futex.  That's not done
                          // here, but rather later in
@@ -2067,7 +2066,7 @@ Task* Task::os_fork_into(Session* session) {
 }
 
 Task* Task::os_clone_into(Task* task_leader, AutoRemoteSyscalls& remote) {
-  return os_clone(task_leader, &task_leader->session(), remote, rec_tid,
+  return os_clone(task_leader, &task_leader->session(), remote, rec_tid, serial,
                   // We don't actually /need/ to specify the
                   // SIGHAND/SYSVMEM flags because those things
                   // are emulated in the tracee.  But we use the
@@ -2669,9 +2668,9 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
 
 /*static*/ Task* Task::os_clone(Task* parent, Session* session,
                                 AutoRemoteSyscalls& remote, pid_t rec_child_tid,
-                                unsigned base_flags, remote_ptr<void> stack,
-                                remote_ptr<int> ptid, remote_ptr<void> tls,
-                                remote_ptr<int> ctid) {
+                                uint32_t new_serial, unsigned base_flags,
+                                remote_ptr<void> stack, remote_ptr<int> ptid,
+                                remote_ptr<void> tls, remote_ptr<int> ctid) {
   perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {
     // clone syscalls can fail with EAGAIN due to temporary load issues.
@@ -2690,8 +2689,9 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
     FATAL() << "Failed to clone(" << parent->tid << ") -> " << new_tid << ": "
             << strerror(-new_tid);
   }
-  Task* child = parent->clone(clone_flags_to_task_flags(base_flags), stack, tls,
-                              ctid, new_tid, rec_child_tid, session);
+  Task* child =
+      parent->clone(clone_flags_to_task_flags(base_flags), stack, tls, ctid,
+                    new_tid, rec_child_tid, new_serial, session);
   return child;
 }
 
