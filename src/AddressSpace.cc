@@ -644,6 +644,7 @@ bool AddressSpace::update_watchpoint_value(const MemoryRange& range,
   bool changed = valid != watchpoint.valid ||
                  memcmp(value_bytes.data(), watchpoint.value_bytes.data(),
                         value_bytes.size()) != 0;
+  watchpoint.valid = valid;
   watchpoint.value_bytes = value_bytes;
   return changed;
 }
@@ -657,6 +658,26 @@ void AddressSpace::update_watchpoint_values(remote_ptr<void> start,
       it.second.changed = true;
     }
   }
+}
+
+void AddressSpace::notify_watchpoint_fired() {
+  for (auto& it : watchpoints) {
+    if (update_watchpoint_value(it.first, it.second)) {
+      it.second.changed = true;
+    }
+  }
+}
+
+bool AddressSpace::consume_watchpoint_change(remote_ptr<void>* addr) {
+  bool changed = false;
+  for (auto& it : watchpoints) {
+    if (it.second.changed) {
+      changed = true;
+      *addr = it.first.addr;
+      it.second.changed = false;
+    }
+  }
+  return changed;
 }
 
 void AddressSpace::remove_all_watchpoints() {

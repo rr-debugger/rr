@@ -563,6 +563,17 @@ public:
   void remove_all_watchpoints();
 
   /**
+   * Notify that at least one watchpoint was hit --- recheck them all.
+   */
+  void notify_watchpoint_fired();
+  /**
+   * If no watchpoints have observed a value change, return false. Otherwise
+   * return true and return the address of a changed watchpoint in 'addr',
+   * and mark all watchpoints as unchanged.
+   */
+  bool consume_watchpoint_change(remote_ptr<void>* addr);
+
+  /**
    * Replace all our user breakpoints with the user breakpoints of 'o'.
    * Asserts that there are no internal breakpoints currently set.
    */
