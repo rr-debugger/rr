@@ -504,9 +504,9 @@ static remote_ptr<void> finish_anonymous_mmap(
   remote_ptr<void> rec_addr = rec_regs.syscall_result();
 
   auto result = remote.mmap_syscall(rec_addr, length, prot,
-                             // Tell the kernel to take |rec_addr|
-                             // seriously.
-                             flags | MAP_FIXED, fd, offset_pages);
+                                    // Tell the kernel to take |rec_addr|
+                                    // seriously.
+                                    flags | MAP_FIXED, fd, offset_pages);
   if (note_task_map) {
     remote.task()->vm()->map(rec_addr, length, prot, flags,
                              page_size() * offset_pages,
@@ -772,7 +772,7 @@ static void process_shmat(Task* t, const TraceFrame& trace_frame,
 
 static void process_shmdt(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, remote_ptr<void> addr,
-                          size_t length, ReplayTraceStep* step) {
+                          ReplayTraceStep* step) {
   if (SYSCALL_ENTRY == state) {
     step->action = TSTEP_ENTER_SYSCALL;
     step->syscall.emu = EMULATE;
@@ -788,8 +788,10 @@ static void process_shmdt(Task* t, const TraceFrame& trace_frame,
 
   {
     AutoRemoteSyscalls remote(t);
-    int result =
-        remote.syscall(syscall_number_for_munmap(t->arch()), addr, length);
+    auto mapping = t->vm()->mapping_of(addr);
+    ASSERT(t, mapping.first.start == addr);
+    int result = remote.syscall(syscall_number_for_munmap(t->arch()), addr,
+                                mapping.first.end - addr);
     ASSERT(t, result == 0);
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }
@@ -847,12 +849,6 @@ static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
 
 void rep_after_enter_syscall(Task* t, int syscallno) {
   RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, syscallno)
-}
-
-static size_t get_shmdt_length(Task* t, remote_ptr<void> addr) {
-  auto mapping = t->vm()->mapping_of(addr);
-  ASSERT(t, mapping.first.start == addr);
-  return mapping.first.end - addr;
 }
 
 template <typename Arch>
@@ -960,16 +956,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   const struct syscall_def* def = &table[syscall];
   step->syscall.number = syscall;
 
-  size_t shmdt_length = 0;
-  if (SYSCALL_EXIT == state) {
-    // Acquire shmdt_length now before we remove the mapping info we need.
-    if (syscall == Arch::shmdt) {
-      shmdt_length = get_shmdt_length(t, trace_regs.arg1());
-    } else if (syscall == Arch::ipc && (int)trace_regs.arg1_signed() == SHMDT) {
-      shmdt_length = get_shmdt_length(t, trace_regs.arg5());
-    }
-  }
-
   if (def->type == rep_UNDEFINED) {
     ASSERT(t, trace_regs.syscall_result_signed() == -ENOSYS)
         << "Valid but unhandled syscallno " << syscall;
@@ -1045,8 +1031,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
                            trace_regs.arg3(), step);
 
     case Arch::shmdt:
-      return process_shmdt(t, trace_frame, state, trace_regs.arg1(),
-                           shmdt_length, step);
+      return process_shmdt(t, trace_frame, state, trace_regs.arg1(), step);
 
     case Arch::ipc:
       switch ((int)trace_regs.arg1_signed()) {
@@ -1054,8 +1039,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
           return process_shmat(t, trace_frame, state, trace_regs.arg2(),
                                trace_regs.arg3(), step);
         case SHMDT:
-          return process_shmdt(t, trace_frame, state, trace_regs.arg5(),
-                               shmdt_length, step);
+          return process_shmdt(t, trace_frame, state, trace_regs.arg5(), step);
         default:
           break;
       }
