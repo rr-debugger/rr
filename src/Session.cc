@@ -138,6 +138,8 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
   TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
   TrapType retired_bp = t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
 
+  uintptr_t debug_status = t->consume_debug_status();
+
   // NBB: very little effort has been made to handle
   // corner cases where multiple
   // breakpoints/watchpoints/singlesteps are fired
@@ -179,27 +181,27 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
     // right before it.
     t->move_ip_before_breakpoint();
     break_status.reason = BREAK_BREAKPOINT;
-  } else if (DS_SINGLESTEP & t->debug_status()) {
+  } else if (DS_SINGLESTEP & debug_status) {
     LOG(debug) << "  finished debugger stepi";
     /* Successful stepi.  Nothing else to do. */
     break_status.reason = BREAK_SINGLESTEP;
   } else {
     break_status.reason = BREAK_NONE;
   }
-  if (DS_WATCHPOINT_ANY & t->debug_status()) {
+  if (DS_WATCHPOINT_ANY & debug_status) {
     LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
                << "): hit debugger watchpoint.";
     // XXX it's possible for multiple watchpoints
     // to be triggered simultaneously.  No attempt
     // to prioritize them is made here; we just
     // choose the first one that fired.
-    size_t dr = DS_WATCHPOINT0 & t->debug_status()
+    size_t dr = DS_WATCHPOINT0 & debug_status
                     ? 0
-                    : DS_WATCHPOINT1 & t->debug_status()
+                    : DS_WATCHPOINT1 & debug_status
                           ? 1
-                          : DS_WATCHPOINT2 & t->debug_status()
+                          : DS_WATCHPOINT2 & debug_status
                                 ? 2
-                                : DS_WATCHPOINT3 & t->debug_status() ? 3 : -1;
+                                : DS_WATCHPOINT3 & debug_status ? 3 : -1;
     if (break_status.reason == BREAK_NONE) {
       break_status.reason = BREAK_WATCHPOINT;
     }

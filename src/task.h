@@ -713,7 +713,7 @@ public:
    * Return the debug status, which is a bitfield comprising
    * |DebugStatus| bits (see above).
    */
-  uintptr_t debug_status();
+  uintptr_t consume_debug_status();
 
   /**
    * Return the address of the watchpoint programmed at slot
