@@ -488,6 +488,19 @@ ReplayResult ReplayTimeline::reverse_continue() {
   }
 }
 
+class AutoCheckpoint {
+public:
+  AutoCheckpoint(ReplayTimeline& timeline) : timeline(timeline) {
+    m = timeline.add_explicit_checkpoint();
+  }
+  ~AutoCheckpoint() { timeline.remove_explicit_checkpoint(m); }
+  const ReplayTimeline::Mark& mark() { return m; }
+
+private:
+  ReplayTimeline& timeline;
+  ReplayTimeline::Mark m;
+};
+
 ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
                                                 const TaskUid& tuid) {
   ReplayResult result;
@@ -523,8 +536,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         unapply_breakpoints_and_watchpoints();
         Task* t = current->current_task();
         if (t->tuid() == tuid) {
-          result = current->replay_step(RUN_CONTINUE, 0,
-              origin.ptr->key.ticks - 1);
+          result =
+              current->replay_step(RUN_CONTINUE, 0, origin.ptr->key.ticks - 1);
           if (result.break_status.reason == BREAK_TICKS_TARGET) {
             LOG(debug) << "   reached ticks target";
             break;
@@ -538,7 +551,10 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     assert(current->current_task()->tuid() == tuid);
 
     Mark destination_candidate;
-    Mark step_start = mark();
+    // Take a checkpoint now, before we start stepping, so the
+    // final seek_to_mark is fast
+    AutoCheckpoint stepping_started(*this);
+    Mark step_start = stepping_started.mark();
     ReplayResult destination_candidate_result;
 
     while (true) {
