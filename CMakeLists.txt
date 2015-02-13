@@ -266,6 +266,7 @@ set(BASIC_TESTS
   msync
   multiple_pending_signals
   multiple_pending_signals_sequential
+  munmap_segv
   munmap_discontinuous
   no_mask_timeslice
   numa
