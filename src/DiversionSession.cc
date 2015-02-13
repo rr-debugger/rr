@@ -140,5 +140,6 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
 
   result.break_status.reason = BREAK_NONE;
   process_syscall(t, t->regs().original_syscallno());
+  check_for_watchpoint_changes(t, result.break_status);
   return result;
 }

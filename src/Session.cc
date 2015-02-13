@@ -191,22 +191,16 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
   if (DS_WATCHPOINT_ANY & debug_status) {
     LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
                << "): hit debugger watchpoint.";
-    // XXX it's possible for multiple watchpoints
-    // to be triggered simultaneously.  No attempt
-    // to prioritize them is made here; we just
-    // choose the first one that fired.
-    size_t dr = DS_WATCHPOINT0 & debug_status
-                    ? 0
-                    : DS_WATCHPOINT1 & debug_status
-                          ? 1
-                          : DS_WATCHPOINT2 & debug_status
-                                ? 2
-                                : DS_WATCHPOINT3 & debug_status ? 3 : -1;
-    if (break_status.reason == BREAK_NONE) {
-      break_status.reason = BREAK_WATCHPOINT;
-    }
-    break_status.watch_address = t->watchpoint_addr(dr);
+    t->vm()->notify_watchpoint_fired(debug_status);
   }
+  check_for_watchpoint_changes(t, break_status);
 
   return break_status;
+}
+
+void Session::check_for_watchpoint_changes(Task* t, BreakStatus& break_status) {
+  if (t->vm()->consume_watchpoint_change(&break_status.watch_address) &&
+      break_status.reason == BREAK_NONE) {
+    break_status.reason = BREAK_WATCHPOINT;
+  }
 }

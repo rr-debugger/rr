@@ -656,13 +656,22 @@ void AddressSpace::update_watchpoint_values(remote_ptr<void> start,
     if (it.first.intersects(r) &&
         update_watchpoint_value(it.first, it.second)) {
       it.second.changed = true;
+      // We do nothing to track kernel reads of read-write watchpoints...
     }
   }
 }
 
-void AddressSpace::notify_watchpoint_fired() {
+static int DR_WATCHPOINT(int n) { return 1 << n; }
+
+static bool watchpoint_triggered(uintptr_t debug_status, int8_t reg) {
+  return reg >= 0 && (debug_status & DR_WATCHPOINT(reg));
+}
+
+void AddressSpace::notify_watchpoint_fired(uintptr_t debug_status) {
   for (auto& it : watchpoints) {
-    if (update_watchpoint_value(it.first, it.second)) {
+    if (update_watchpoint_value(it.first, it.second) ||
+        watchpoint_triggered(debug_status, it.second.in_register_exec) ||
+        watchpoint_triggered(debug_status, it.second.in_register_readwrite)) {
       it.second.changed = true;
     }
   }
@@ -1054,25 +1063,48 @@ void AddressSpace::copy_watchpoints_from(const AddressSpace& o) {
 
 bool AddressSpace::allocate_watchpoints() {
   Task::DebugRegs regs;
-  for (auto kv : watchpoints) {
+  for (auto& kv : watchpoints) {
+    kv.second.in_register_exec = -1;
+    kv.second.in_register_readwrite = -1;
+    kv.second.in_register_write = -1;
     const MemoryRange& r = kv.first;
     int watching = kv.second.watched_bits();
     if (EXEC_BIT & watching) {
+      kv.second.in_register_exec = regs.size();
       regs.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_EXEC));
     }
     if (!(READ_BIT & watching) && (WRITE_BIT & watching)) {
+      kv.second.in_register_write = regs.size();
       regs.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_WRITE));
     }
     if (READ_BIT & watching) {
+      kv.second.in_register_readwrite = regs.size();
       regs.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_READWRITE));
     }
   }
-  for (auto t : task_set()) {
-    if (!t->set_debug_regs(regs)) {
-      return false;
+
+  if (regs.size() <= 0x7f) {
+    bool ok = true;
+    for (auto t : task_set()) {
+      if (!t->set_debug_regs(regs)) {
+        ok = false;
+      }
+    }
+    if (ok) {
+      return true;
     }
   }
-  return true;
+
+  regs.clear();
+  for (auto t2 : task_set()) {
+    t2->set_debug_regs(regs);
+  }
+  for (auto kv : watchpoints) {
+    kv.second.in_register_exec = -1;
+    kv.second.in_register_readwrite = -1;
+    kv.second.in_register_write = -1;
+  }
+  return false;
 }
 
 void AddressSpace::coalesce_around(MemoryMap::iterator it) {

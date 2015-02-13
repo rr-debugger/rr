@@ -1529,6 +1529,7 @@ ReplayResult ReplaySession::replay_step(RunCommand command,
         current_step.action == TSTEP_DELIVER_SIGNAL) {
       result.break_status.reason = BREAK_SIGNAL;
       result.break_status.signal = current_step.signo;
+      check_for_watchpoint_changes(t, result.break_status);
     } else {
       result.break_status = diagnose_debugger_trap(t, t->child_sig);
       ASSERT(t, result.break_status.reason != BREAK_SIGNAL)
@@ -1564,6 +1565,8 @@ ReplayResult ReplaySession::replay_step(RunCommand command,
     result.break_status.reason = BREAK_SINGLESTEP;
     result.break_status.task = t;
   }
+
+  check_for_watchpoint_changes(t, result.break_status);
 
   // Advance to next trace frame before doing rep_after_enter_syscall,
   // so that FdTable notifications run with the same trace timestamp during

@@ -180,6 +180,7 @@ protected:
   virtual void on_create(Task* t);
 
   BreakStatus diagnose_debugger_trap(Task* t, int stop_sig);
+  void check_for_watchpoint_changes(Task* t, BreakStatus& break_status);
 
   AddressSpaceMap vm_map;
   TaskMap task_map;

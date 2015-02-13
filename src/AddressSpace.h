@@ -369,10 +369,6 @@ enum WatchType {
 };
 
 enum DebugStatus {
-  DS_WATCHPOINT0 = 1 << 0,
-  DS_WATCHPOINT1 = 1 << 1,
-  DS_WATCHPOINT2 = 1 << 2,
-  DS_WATCHPOINT3 = 1 << 3,
   DS_WATCHPOINT_ANY = 0xf,
   DS_SINGLESTEP = 1 << 14,
 };
@@ -565,7 +561,7 @@ public:
   /**
    * Notify that at least one watchpoint was hit --- recheck them all.
    */
-  void notify_watchpoint_fired();
+  void notify_watchpoint_fired(uintptr_t debug_status);
   /**
    * If no watchpoints have observed a value change, return false. Otherwise
    * return true and return the address of a changed watchpoint in 'addr',
@@ -828,6 +824,9 @@ private:
         : exec_count(0),
           read_count(0),
           write_count(0),
+          in_register_exec(-1),
+          in_register_readwrite(-1),
+          in_register_write(-1),
           value_bytes(num_bytes),
           valid(false),
           changed(false) {}
@@ -870,6 +869,7 @@ private:
     // been cleared.  We track refcounts of each watchable access
     // separately.
     int exec_count, read_count, write_count;
+    int8_t in_register_exec, in_register_readwrite, in_register_write;
     std::vector<uint8_t> value_bytes;
     bool valid;
     bool changed;
