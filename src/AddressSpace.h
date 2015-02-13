@@ -362,11 +362,6 @@ enum TrapType {
   TRAP_BKPT_USER,
 };
 
-// XXX one is tempted to merge Breakpoint and Watchpoint into a single
-// entity, but the semantics are just different enough that separate
-// objects are easier for now.
-class Watchpoint;
-
 enum WatchType {
   // NB: these random-looking enumeration values are chosen to
   // match the numbers programmed into x86 debug registers.
@@ -429,7 +424,6 @@ public:
   BreakpointMap;
   typedef std::map<Mapping, MappableResource, MappingComparator> MemoryMap;
   typedef std::shared_ptr<AddressSpace> shr_ptr;
-  typedef std::map<MemoryRange, std::shared_ptr<Watchpoint> > WatchpointMap;
 
   ~AddressSpace();
 
@@ -727,6 +721,67 @@ private:
 
   template <typename Arch> void at_preload_init_arch(Task* t);
 
+  enum {
+    EXEC_BIT = 1 << 0,
+    READ_BIT = 1 << 1,
+    WRITE_BIT = 1 << 2
+  };
+
+  /** Return the access bits above needed to watch |type|. */
+  static int access_bits_of(WatchType type);
+
+  // XXX one is tempted to merge Breakpoint and Watchpoint into a single
+  // entity, but the semantics are just different enough that separate
+  // objects are easier for now.
+  /**
+   * Track the watched accesses of a contiguous range of memory
+   * addresses.
+   */
+  class Watchpoint {
+  public:
+    Watchpoint() : exec_count(0), read_count(0), write_count(0) {}
+    Watchpoint(const Watchpoint&) = default;
+    ~Watchpoint() { assert_valid(); }
+
+    void watch(int which) {
+      assert_valid();
+      exec_count += (EXEC_BIT & which) != 0;
+      read_count += (READ_BIT & which) != 0;
+      write_count += (WRITE_BIT & which) != 0;
+    }
+    int unwatch(int which) {
+      assert_valid();
+      if (EXEC_BIT & which) {
+        assert(exec_count > 0);
+        --exec_count;
+      }
+      if (READ_BIT & which) {
+        assert(read_count > 0);
+        --read_count;
+      }
+      if (WRITE_BIT & which) {
+        assert(write_count > 0);
+        --write_count;
+      }
+      return exec_count + read_count + write_count;
+    }
+
+    int watched_bits() const {
+      return (exec_count > 0 ? EXEC_BIT : 0) | (read_count > 0 ? READ_BIT : 0) |
+             (write_count > 0 ? WRITE_BIT : 0);
+    }
+
+  private:
+    void assert_valid() const {
+      assert(exec_count >= 0 && read_count >= 0 && write_count >= 0);
+    }
+
+    // Watchpoints stay alive until all watched access typed have
+    // been cleared.  We track refcounts of each watchable access
+    // separately.
+    int exec_count, read_count, write_count;
+  };
+
   // All breakpoints set in this VM.
   BreakpointMap breakpoints;
   /* Path of the executable image this address space was
@@ -754,7 +809,7 @@ private:
   // The watchpoints set for tasks in this VM.  Watchpoints are
   // programmed per Task, but we track them per address space on
   // behalf of debuggers that assume that model.
-  WatchpointMap watchpoints;
+  std::map<MemoryRange, Watchpoint> watchpoints;
   // Tracee memory is read and written through this fd, which is
   // opened for the tracee's magic /proc/[tid]/mem device.  The
   // advantage of this over ptrace is that we can access it even

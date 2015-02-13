@@ -154,83 +154,6 @@ private:
   }
 };
 
-enum {
-  EXEC_BIT = 1 << 0,
-  READ_BIT = 1 << 1,
-  WRITE_BIT = 1 << 2
-};
-
-/** Return the access bits above needed to watch |type|. */
-static int access_bits_of(WatchType type) {
-  switch (type) {
-    case WATCH_EXEC:
-      return EXEC_BIT;
-    case WATCH_WRITE:
-      return WRITE_BIT;
-    case WATCH_READWRITE:
-      return READ_BIT | WRITE_BIT;
-    default:
-      FATAL() << "Unknown watchpoint type " << type;
-      return 0; // not reached
-  }
-}
-
-/**
- * Track the watched accesses of a contiguous range of memory
- * addresses.
- */
-class Watchpoint {
-public:
-  typedef shared_ptr<Watchpoint> shr_ptr;
-
-  ~Watchpoint() { assert_valid(); }
-
-  shr_ptr clone() { return shr_ptr(new Watchpoint(*this)); }
-
-  void watch(int which) {
-    assert_valid();
-    exec_count += (EXEC_BIT & which) != 0;
-    read_count += (READ_BIT & which) != 0;
-    write_count += (WRITE_BIT & which) != 0;
-  }
-  int unwatch(int which) {
-    assert_valid();
-    if (EXEC_BIT & which) {
-      assert(exec_count > 0);
-      --exec_count;
-    }
-    if (READ_BIT & which) {
-      assert(read_count > 0);
-      --read_count;
-    }
-    if (WRITE_BIT & which) {
-      assert(write_count > 0);
-      --write_count;
-    }
-    return exec_count + read_count + write_count;
-  }
-
-  int watched_bits() const {
-    return (exec_count > 0 ? EXEC_BIT : 0) | (read_count > 0 ? READ_BIT : 0) |
-           (write_count > 0 ? WRITE_BIT : 0);
-  }
-
-  static shr_ptr create() { return shr_ptr(new Watchpoint()); }
-
-private:
-  Watchpoint() : exec_count(), read_count(), write_count() {}
-  Watchpoint(const Watchpoint&) = default;
-
-  void assert_valid() const {
-    assert(exec_count >= 0 && read_count >= 0 && write_count >= 0);
-  }
-
-  // Watchpoints stay alive until all watched access typed have
-  // been cleared.  We track refcounts of each watchable access
-  // separately.
-  int exec_count, read_count, write_count;
-};
-
 /**
  * Advance *str to skip leading blank characters.
  */
@@ -718,11 +641,25 @@ void AddressSpace::remove_all_breakpoints() {
   }
 }
 
+int AddressSpace::access_bits_of(WatchType type) {
+  switch (type) {
+    case WATCH_EXEC:
+      return EXEC_BIT;
+    case WATCH_WRITE:
+      return WRITE_BIT;
+    case WATCH_READWRITE:
+      return READ_BIT | WRITE_BIT;
+    default:
+      FATAL() << "Unknown watchpoint type " << type;
+      return 0; // not reached
+  }
+}
+
 void AddressSpace::remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                                      WatchType type) {
   auto it = watchpoints.find(MemoryRange(addr, num_bytes));
   if (it != watchpoints.end() &&
-      0 == it->second->unwatch(access_bits_of(type))) {
+      0 == it->second.unwatch(access_bits_of(type))) {
     watchpoints.erase(it);
   }
   allocate_watchpoints();
@@ -733,12 +670,11 @@ bool AddressSpace::add_watchpoint(remote_ptr<void> addr, size_t num_bytes,
   MemoryRange key(addr, num_bytes);
   auto it = watchpoints.find(key);
   if (it == watchpoints.end()) {
-    auto it_and_is_new =
-        watchpoints.insert(make_pair(key, Watchpoint::create()));
+    auto it_and_is_new = watchpoints.insert(make_pair(key, Watchpoint()));
     assert(it_and_is_new.second);
     it = it_and_is_new.first;
   }
-  it->second->watch(access_bits_of(type));
+  it->second.watch(access_bits_of(type));
   return allocate_watchpoints();
 }
 
@@ -1080,7 +1016,7 @@ AddressSpace::AddressSpace(Task* t, const AddressSpace& o, uint32_t exec_count)
     breakpoints.insert(make_pair(it.first, it.second->clone()));
   }
   for (auto& it : o.watchpoints) {
-    watchpoints.insert(make_pair(it.first, it.second->clone()));
+    watchpoints.insert(make_pair(it.first, it.second));
   }
   // cloned tasks will automatically get cloned debug registers and
   // cloned address-space memory, so we don't need to do any more work here.
@@ -1107,7 +1043,7 @@ void AddressSpace::copy_user_breakpoints_from(const AddressSpace& o) {
 void AddressSpace::copy_watchpoints_from(const AddressSpace& o) {
   watchpoints.clear();
   for (auto& it : o.watchpoints) {
-    watchpoints.insert(make_pair(it.first, it.second->clone()));
+    watchpoints.insert(make_pair(it.first, it.second));
   }
   allocate_watchpoints();
 }
@@ -1116,7 +1052,7 @@ bool AddressSpace::allocate_watchpoints() {
   Task::DebugRegs regs;
   for (auto kv : watchpoints) {
     const MemoryRange& r = kv.first;
-    int watching = kv.second->watched_bits();
+    int watching = kv.second.watched_bits();
     if (EXEC_BIT & watching) {
       regs.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_EXEC));
     }
