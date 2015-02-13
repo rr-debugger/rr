@@ -2557,7 +2557,8 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   }
 
   if (!as->mem_fd().is_open()) {
-    write_bytes_ptrace(addr, buf_size, buf);
+    ssize_t nwritten = write_bytes_ptrace(addr, buf_size, buf);
+    vm()->notify_written(addr, nwritten);
     return;
   }
 
@@ -2570,11 +2571,13 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   }
   if (errno == EPERM && try_replace_pages(addr, buf_size, buf)) {
     // Maybe a PaX kernel and we're trying to write to an executable page.
+    vm()->notify_written(addr, buf_size);
     return;
   }
   ASSERT(this, nwritten == buf_size) << "Should have written " << buf_size
                                      << " bytes to " << addr
                                      << ", but only wrote " << nwritten;
+  vm()->notify_written(addr, nwritten);
 }
 
 const TraceStream* Task::trace_stream() const {

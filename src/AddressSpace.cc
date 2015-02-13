@@ -666,6 +666,7 @@ void AddressSpace::remove_all_watchpoints() {
 
 void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
+  num_bytes = ceil_page_size(num_bytes);
 
   auto unmapper = [this](const Mapping& m, const MappableResource& r,
                          const Mapping& rem) {
@@ -689,6 +690,7 @@ void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
     }
   };
   for_each_in_range(addr, num_bytes, unmapper);
+  update_watchpoint_values(addr, addr + num_bytes);
 }
 
 /**
@@ -1149,6 +1151,8 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
   auto ins = mem.insert(MemoryMap::value_type(m, r));
   assert(ins.second); // key didn't already exist
   coalesce_around(ins.first);
+
+  update_watchpoint_values(m.start, m.end);
 }
 
 /*static*/ void AddressSpace::populate_address_space(
