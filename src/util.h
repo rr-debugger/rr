@@ -116,6 +116,13 @@ int clone_flags_to_task_flags(int flags_arg);
 size_t ceil_page_size(size_t sz);
 remote_ptr<void> ceil_page_size(remote_ptr<void> addr);
 
+/**
+ * Return the argument rounded down to the nearest multiple of the
+ * system |page_size()|.
+ */
+size_t floor_page_size(size_t sz);
+remote_ptr<void> floor_page_size(remote_ptr<void> addr);
+
 /** Return the system page size. */
 size_t page_size();
 

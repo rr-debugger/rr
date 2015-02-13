@@ -70,8 +70,17 @@ size_t ceil_page_size(size_t sz) {
   return (sz + page_size() - 1) & page_mask;
 }
 
+size_t floor_page_size(size_t sz) {
+  size_t page_mask = ~(page_size() - 1);
+  return sz & page_mask;
+}
+
 remote_ptr<void> ceil_page_size(remote_ptr<void> addr) {
   return remote_ptr<void>(ceil_page_size(addr.as_int()));
+}
+
+remote_ptr<void> floor_page_size(remote_ptr<void> addr) {
+  return remote_ptr<void>(floor_page_size(addr.as_int()));
 }
 
 /**
