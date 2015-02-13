@@ -349,8 +349,6 @@ struct MappableResource {
   static ino_t nr_anonymous_maps;
 };
 
-struct Breakpoint;
-
 enum TrapType {
   TRAP_NONE = 0,
   // Trap for debugger 'stepi' request.
@@ -420,8 +418,6 @@ class AddressSpace : public HasTaskSet {
   friend struct VerifyAddressSpace;
 
 public:
-  typedef std::map<remote_ptr<uint8_t>, std::shared_ptr<Breakpoint> >
-  BreakpointMap;
   typedef std::map<Mapping, MappableResource, MappingComparator> MemoryMap;
   typedef std::shared_ptr<AddressSpace> shr_ptr;
 
@@ -661,6 +657,9 @@ public:
   remote_ptr<uint8_t> find_syscall_instruction(Task* t);
 
 private:
+  class Breakpoint;
+  typedef std::map<remote_ptr<uint8_t>, Breakpoint> BreakpointMap;
+
   AddressSpace(Task* t, const std::string& exe, uint32_t exec_count);
   AddressSpace(Task* t, const AddressSpace& o, uint32_t exec_count);
 
@@ -729,6 +728,61 @@ private:
 
   /** Return the access bits above needed to watch |type|. */
   static int access_bits_of(WatchType type);
+
+  /**
+   * Represents a refcount set on a particular address.  Because there
+   * can be multiple refcounts of multiple types set on a single
+   * address, Breakpoint stores explicit USER and INTERNAL breakpoint
+   * refcounts.  Clients adding/removing breakpoints at this addr must
+   * call ref()/unref() as appropropiate.
+   */
+  struct Breakpoint {
+    Breakpoint() : internal_count(0), user_count(0) {}
+    Breakpoint(const Breakpoint& o) = default;
+    // AddressSpace::destroy_all_breakpoints() can cause this
+    // destructor to be invoked while we have nonzero total
+    // refcount, so the most we can assert is that the refcounts
+    // are valid.
+    ~Breakpoint() { assert(internal_count >= 0 && user_count >= 0); }
+
+    void ref(TrapType which) {
+      assert(internal_count >= 0 && user_count >= 0);
+      ++*counter(which);
+    }
+    int unref(TrapType which) {
+      assert(internal_count > 0 || user_count > 0);
+      --*counter(which);
+      assert(internal_count >= 0 && user_count >= 0);
+      return internal_count + user_count;
+    }
+
+    TrapType type() const {
+      // NB: USER breakpoints need to be processed before
+      // INTERNAL ones.  We want to give the debugger a
+      // chance to dispatch commands before we attend to the
+      // internal rr business.  So if there's a USER "ref"
+      // on the breakpoint, treat it as a USER breakpoint.
+      return user_count > 0 ? TRAP_BKPT_USER : TRAP_BKPT_INTERNAL;
+    }
+
+    // "Refcounts" of breakpoints set at |addr|.  The breakpoint
+    // object must be unique since we have to save the overwritten
+    // data, and we can't enforce the order in which breakpoints
+    // are set/removed.
+    int internal_count, user_count;
+    uint8_t overwritten_data;
+    static_assert(sizeof(overwritten_data) ==
+                      sizeof(AddressSpace::breakpoint_insn),
+                  "Must have the same size.");
+
+  private:
+    int* counter(TrapType which) {
+      assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
+      int* p = TRAP_BKPT_USER == which ? &user_count : &internal_count;
+      assert(*p >= 0);
+      return p;
+    }
+  };
 
   // XXX one is tempted to merge Breakpoint and Watchpoint into a single
   // entity, but the semantics are just different enough that separate
