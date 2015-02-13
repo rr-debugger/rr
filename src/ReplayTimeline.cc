@@ -470,12 +470,13 @@ ReplayResult ReplayTimeline::reverse_continue() {
     }
 
     if (dest) {
-      LOG(debug) << "Seeking to final destination " << dest;
-      seek_to_mark(dest);
       if (last_stop_is_watch_or_signal) {
         LOG(debug)
             << "Performing final reverse-singlestep to pass over watch/signal";
-        reverse_singlestep();
+        reverse_singlestep(dest, final_tuid);
+      } else {
+        LOG(debug) << "Seeking to final destination " << dest;
+        seek_to_mark(dest);
       }
       final_result.break_status.task = current->find_task(final_tuid);
       assert(final_result.break_status.reason != BREAK_NONE);
@@ -487,13 +488,11 @@ ReplayResult ReplayTimeline::reverse_continue() {
   }
 }
 
-ReplayResult ReplayTimeline::reverse_singlestep() {
+ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
+                                                const TaskUid& tuid) {
   ReplayResult result;
 
-  Mark origin = mark();
   LOG(debug) << "ReplayTimeline::reverse_singlestep from " << origin;
-  TaskUid tuid = current->current_task()->tuid();
-  Ticks current_count = current->current_task()->tick_count();
 
   while (true) {
     Mark end = origin;
@@ -524,7 +523,8 @@ ReplayResult ReplayTimeline::reverse_singlestep() {
         unapply_breakpoints_and_watchpoints();
         Task* t = current->current_task();
         if (t->tuid() == tuid) {
-          result = current->replay_step(RUN_CONTINUE, 0, current_count - 1);
+          result = current->replay_step(RUN_CONTINUE, 0,
+              origin.ptr->key.ticks - 1);
           if (result.break_status.reason == BREAK_TICKS_TARGET) {
             LOG(debug) << "   reached ticks target";
             break;
@@ -599,10 +599,8 @@ ReplayResult ReplayTimeline::replay_step(RunCommand command,
   switch (command) {
     case RUN_CONTINUE:
       return reverse_continue();
-      break;
     case RUN_SINGLESTEP:
-      return reverse_singlestep();
-      break;
+      return reverse_singlestep(mark(), current->current_task()->tuid());
     default:
       assert(0 && "Unknown RunCommand");
       return ReplayResult();

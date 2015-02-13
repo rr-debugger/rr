@@ -235,7 +235,8 @@ private:
   ReplayResult singlestep_with_breakpoints_disabled();
 
   ReplayResult reverse_continue();
-  ReplayResult reverse_singlestep();
+  ReplayResult reverse_singlestep(const Mark& origin,
+      const TaskUid& tuid);
 
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);
