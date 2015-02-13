@@ -503,15 +503,16 @@ static remote_ptr<void> finish_anonymous_mmap(
      of what the recorded tracee passed as the |addr| hint. */
   remote_ptr<void> rec_addr = rec_regs.syscall_result();
 
+  auto result = remote.mmap_syscall(rec_addr, length, prot,
+                             // Tell the kernel to take |rec_addr|
+                             // seriously.
+                             flags | MAP_FIXED, fd, offset_pages);
   if (note_task_map) {
     remote.task()->vm()->map(rec_addr, length, prot, flags,
                              page_size() * offset_pages,
                              MappableResource::anonymous());
   }
-  return remote.mmap_syscall(rec_addr, length, prot,
-                             // Tell the kernel to take |rec_addr|
-                             // seriously.
-                             flags | MAP_FIXED, fd, offset_pages);
+  return result;
 }
 
 /* Ensure that accesses to the memory region given by start/length

@@ -383,6 +383,8 @@ enum DebugStatus {
 struct MemoryRange {
   MemoryRange(remote_ptr<void> addr, size_t num_bytes)
       : addr(addr), num_bytes(num_bytes) {}
+  MemoryRange(remote_ptr<void> addr, remote_ptr<void> end)
+      : addr(addr), num_bytes(end - addr) {}
   MemoryRange(const MemoryRange&) = default;
   MemoryRange& operator=(const MemoryRange&) = default;
 
@@ -392,6 +394,14 @@ struct MemoryRange {
   bool operator<(const MemoryRange& o) const {
     return addr != o.addr ? addr < o.addr : num_bytes < o.num_bytes;
   }
+
+  bool intersects(const MemoryRange& other) const {
+    remote_ptr<void> s = std::max(addr, other.addr);
+    remote_ptr<void> e = std::min(end(), other.end());
+    return s < e;
+  }
+
+  remote_ptr<void> end() const { return addr + num_bytes; }
 
   remote_ptr<void> addr;
   size_t num_bytes;
@@ -520,16 +530,14 @@ public:
   void remap(remote_ptr<void> old_addr, size_t old_num_bytes,
              remote_ptr<void> new_addr, size_t new_num_bytes);
 
+  /** Ensure a breakpoint of |type| is set at |addr|. */
+  bool add_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
   /**
    * Remove a |type| reference to the breakpoint at |addr|.  If
    * the removed reference was the last, the breakpoint is
    * destroyed.
    */
   void remove_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
-
-  /** Ensure a breakpoint of |type| is set at |addr|. */
-  bool add_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
-
   /**
    * Destroy all breakpoints in this VM, regardless of their
    * reference counts.
@@ -541,9 +549,9 @@ public:
    * methods above, except that watchpoints can be set for an
    * address range.
    */
+  bool add_watchpoint(remote_ptr<void> addr, size_t num_bytes, WatchType type);
   void remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
-  bool add_watchpoint(remote_ptr<void> addr, size_t num_bytes, WatchType type);
   void remove_all_watchpoints();
 
   /**
@@ -659,11 +667,16 @@ public:
 private:
   class Breakpoint;
   typedef std::map<remote_ptr<uint8_t>, Breakpoint> BreakpointMap;
+  class Watchpoint;
 
   AddressSpace(Task* t, const std::string& exe, uint32_t exec_count);
   AddressSpace(Task* t, const AddressSpace& o, uint32_t exec_count);
 
   void map_rr_page(Task* t);
+
+  bool update_watchpoint_value(const MemoryRange& range,
+                               Watchpoint& watchpoint);
+  void update_watchpoint_values(remote_ptr<void> start, remote_ptr<void> end);
 
   /**
    * Construct a minimal set of watchpoints to be enabled based
@@ -775,7 +788,6 @@ private:
                       sizeof(AddressSpace::breakpoint_insn),
                   "Must have the same size.");
 
-  private:
     int* counter(TrapType which) {
       assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
       int* p = TRAP_BKPT_USER == which ? &user_count : &internal_count;
@@ -793,7 +805,13 @@ private:
    */
   class Watchpoint {
   public:
-    Watchpoint() : exec_count(0), read_count(0), write_count(0) {}
+    Watchpoint(size_t num_bytes)
+        : exec_count(0),
+          read_count(0),
+          write_count(0),
+          value_bytes(num_bytes),
+          valid(false),
+          changed(false) {}
     Watchpoint(const Watchpoint&) = default;
     ~Watchpoint() { assert_valid(); }
 
@@ -825,7 +843,6 @@ private:
              (write_count > 0 ? WRITE_BIT : 0);
     }
 
-  private:
     void assert_valid() const {
       assert(exec_count >= 0 && read_count >= 0 && write_count >= 0);
     }
@@ -834,6 +851,9 @@ private:
     // been cleared.  We track refcounts of each watchable access
     // separately.
     int exec_count, read_count, write_count;
+    std::vector<uint8_t> value_bytes;
+    bool valid;
+    bool changed;
   };
 
   // All breakpoints set in this VM.

@@ -566,6 +566,7 @@ bool AddressSpace::add_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
     t->write_mem(addr, breakpoint_insn);
 
     auto it_and_is_new = breakpoints.insert(make_pair(addr, Breakpoint()));
+    assert(it_and_is_new.second);
     it_and_is_new.first->second.overwritten_data = overwritten_data;
     it = it_and_is_new.first;
   }
@@ -608,12 +609,54 @@ bool AddressSpace::add_watchpoint(remote_ptr<void> addr, size_t num_bytes,
   MemoryRange key(addr, num_bytes);
   auto it = watchpoints.find(key);
   if (it == watchpoints.end()) {
-    auto it_and_is_new = watchpoints.insert(make_pair(key, Watchpoint()));
+    auto it_and_is_new =
+        watchpoints.insert(make_pair(key, Watchpoint(num_bytes)));
     assert(it_and_is_new.second);
     it = it_and_is_new.first;
+    update_watchpoint_value(it->first, it->second);
   }
   it->second.watch(access_bits_of(type));
   return allocate_watchpoints();
+}
+
+bool AddressSpace::update_watchpoint_value(const MemoryRange& range,
+                                           Watchpoint& watchpoint) {
+  Task* t = *task_set().begin();
+  size_t valid_bytes = 0;
+  vector<uint8_t> value_bytes = watchpoint.value_bytes;
+  for (size_t i = 0; i < value_bytes.size(); ++i) {
+    value_bytes[i] = 0xFF;
+  }
+  auto update = [this, t, &range, &valid_bytes, &value_bytes](
+      const Mapping& m, const MappableResource& r, const Mapping& rem) {
+    remote_ptr<void> intersect_start = max(range.addr, m.start);
+    remote_ptr<void> intersect_end = min(range.end(), m.end);
+    size_t index = intersect_start - range.addr;
+    size_t num_bytes = intersect_end - intersect_start;
+    if (t->read_bytes_fallible(intersect_start, num_bytes,
+                               value_bytes.data() + index)) {
+      valid_bytes += num_bytes;
+    }
+  };
+  for_each_in_range(range.addr, range.num_bytes, update);
+
+  bool valid = valid_bytes == value_bytes.size();
+  bool changed = valid != watchpoint.valid ||
+                 memcmp(value_bytes.data(), watchpoint.value_bytes.data(),
+                        value_bytes.size()) != 0;
+  watchpoint.value_bytes = value_bytes;
+  return changed;
+}
+
+void AddressSpace::update_watchpoint_values(remote_ptr<void> start,
+                                            remote_ptr<void> end) {
+  MemoryRange r(start, end);
+  for (auto& it : watchpoints) {
+    if (it.first.intersects(r) &&
+        update_watchpoint_value(it.first, it.second)) {
+      it.second.changed = true;
+    }
+  }
 }
 
 void AddressSpace::remove_all_watchpoints() {
@@ -1056,9 +1099,9 @@ void AddressSpace::for_each_in_range(
     function<void(const Mapping& m, const MappableResource& r,
                   const Mapping& rem)> f,
     int how) {
-  num_bytes = ceil_page_size(num_bytes);
-  remote_ptr<void> last_unmapped_end = addr;
-  remote_ptr<void> region_end = addr + num_bytes;
+  remote_ptr<void> region_start = floor_page_size(addr);
+  remote_ptr<void> last_unmapped_end = region_start;
+  remote_ptr<void> region_end = ceil_page_size(addr + num_bytes);
   while (last_unmapped_end < region_end) {
     // Invariant: |rem| is always exactly the region of
     // memory remaining to be examined for pages to be
@@ -1079,7 +1122,7 @@ void AddressSpace::for_each_in_range(
       return;
     }
     if (ITERATE_CONTIGUOUS == how &&
-        !(m.start < addr || rem.start == m.start)) {
+        !(m.start < region_start || rem.start == m.start)) {
       LOG(debug) << "  discontiguous mapping at " << m.start << ", done.";
       return;
     }
