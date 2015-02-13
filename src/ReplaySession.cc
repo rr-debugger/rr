@@ -364,6 +364,8 @@ Completion ReplaySession::exit_syscall(Task* t, RunCommand stepi) {
     }
   }
 
+  t->on_syscall_exit(current_step.syscall.number, current_trace_frame().regs());
+
   t->apply_all_data_records_from_trace();
   t->set_return_value_from_trace();
 
@@ -378,6 +380,7 @@ Completion ReplaySession::exit_syscall(Task* t, RunCommand stepi) {
   if (emu == EMULATE) {
     t->finish_emulated_syscall();
   }
+
   return COMPLETE;
 }
 
@@ -1460,6 +1463,10 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       break;
     case EV_SYSCALL:
       rep_process_syscall(t, &current_step);
+      if (trace_frame.event().state == SYSCALL_EXIT &&
+          current_step.action == TSTEP_RETIRE) {
+        t->on_syscall_exit(current_step.syscall.number, trace_frame.regs());
+      }
       break;
     default:
       FATAL() << "Unexpected event " << ev;

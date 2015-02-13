@@ -968,7 +968,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     } else if (syscall == Arch::ipc && (int)trace_regs.arg1_signed() == SHMDT) {
       shmdt_length = get_shmdt_length(t, trace_regs.arg5());
     }
-    t->on_syscall_exit(syscall, trace_regs);
   }
 
   if (def->type == rep_UNDEFINED) {
