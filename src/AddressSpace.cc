@@ -677,6 +677,11 @@ void AddressSpace::notify_watchpoint_fired(uintptr_t debug_status) {
   }
 }
 
+void AddressSpace::notify_written(remote_ptr<void> addr, size_t num_bytes) {
+  update_watchpoint_values(addr, addr + num_bytes);
+  session()->accumulate_bytes_written(num_bytes);
+}
+
 bool AddressSpace::consume_watchpoint_change(remote_ptr<void>* addr) {
   bool changed = false;
   for (auto& it : watchpoints) {

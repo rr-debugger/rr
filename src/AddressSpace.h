@@ -530,9 +530,7 @@ public:
    * Notify that data was written to this address space by rr or
    * by the kernel.
    */
-  void notify_written(remote_ptr<void> addr, size_t num_bytes) {
-    update_watchpoint_values(addr, addr + num_bytes);
-  }
+  void notify_written(remote_ptr<void> addr, size_t num_bytes);
 
   /** Ensure a breakpoint of |type| is set at |addr|. */
   bool add_breakpoint(remote_ptr<uint8_t> addr, TrapType type);

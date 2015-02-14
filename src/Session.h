@@ -166,11 +166,28 @@ public:
   bool visible_execution() const { return visible_execution_; }
   void set_visible_execution(bool visible) { visible_execution_ = visible; }
 
+  struct Statistics {
+    Statistics()
+        : bytes_written(0), ticks_processed(0), syscalls_performed(0) {}
+    uint64_t bytes_written;
+    Ticks ticks_processed;
+    uint32_t syscalls_performed;
+  };
+  void accumulate_bytes_written(uint64_t bytes_written) {
+    statistics_.bytes_written += bytes_written;
+  }
+  void accumulate_syscall_performed() { statistics_.syscalls_performed += 1; }
+  void accumulate_ticks_processed(Ticks ticks) {
+    statistics_.ticks_processed += ticks;
+  }
+  Statistics statistics() { return statistics_; }
+
 protected:
   Session();
   virtual ~Session();
 
   Session(const Session& other) {
+    statistics_ = other.statistics_;
     next_task_serial_ = other.next_task_serial_;
     tracees_consistent = other.tracees_consistent;
     visible_execution_ = other.visible_execution_;
@@ -185,6 +202,9 @@ protected:
   AddressSpaceMap vm_map;
   TaskMap task_map;
   TaskGroupMap task_group_map;
+
+  Statistics statistics_;
+
   uint32_t next_task_serial_;
 
   /**

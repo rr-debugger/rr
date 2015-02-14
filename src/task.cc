@@ -797,6 +797,8 @@ bool Task::may_be_blocked() const {
 
 template <typename Arch>
 void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
+  session().accumulate_syscall_performed();
+
   if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, arch())) {
     return;
   }
@@ -1801,7 +1803,9 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   if (ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
   }
-  ticks += hpc.read_ticks();
+  Ticks more_ticks = hpc.read_ticks();
+  ticks += more_ticks;
+  session().accumulate_ticks_processed(more_ticks);
 
   if (registers.arch() == x86_64 &&
       (syscall_stop() || is_in_untraced_syscall())) {

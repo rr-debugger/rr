@@ -1198,6 +1198,8 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi,
         restore_futex_words(t, rec_rec);
       }
 
+      accumulate_syscall_performed();
+
       if (!rec_rec->desched) {
         current_step.flush.state = FLUSH_DONE;
         return COMPLETE;
