@@ -26,6 +26,12 @@ enum RunDirection {
 class ReplayTimeline {
 private:
   struct InternalMark;
+  /**
+   * An estimate of how much progress a session has made. This should roughly
+   * correlate to the time required to replay from the start of a session
+   * to the current point, in microseconds.
+   */
+  typedef int64_t Progress;
 
 public:
   ReplayTimeline(std::shared_ptr<ReplaySession> session,
@@ -239,6 +245,8 @@ private:
 
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);
+
+  Progress estimate_progress();
 
   ReplaySession::Flags session_flags;
 

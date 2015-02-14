@@ -622,3 +622,20 @@ ReplayResult ReplayTimeline::replay_step(RunCommand command,
       return ReplayResult();
   }
 }
+
+ReplayTimeline::Progress ReplayTimeline::estimate_progress() {
+  Session::Statistics stats = current->statistics();
+  // The following parameters were estimated by running Firefox startup
+  // and shutdown in an opt build on a Lenovo W530 laptop, replaying with
+  // DUMP_STATS_PERIOD set to 100 (twice, and using only values from the
+  // second run, to ensure caches are warm), and then minimizing least-squares
+  // error.
+  static const double microseconds_per_tick = 0.0020503143;
+  static const double microseconds_per_syscall = 39.6793587609;
+  static const double microseconds_per_byte_written = 0.001833611;
+  static const double microseconds_constant = 997.8257239043;
+  return Progress(microseconds_per_tick * stats.ticks_processed +
+                  microseconds_per_syscall * stats.syscalls_performed +
+                  microseconds_per_byte_written * stats.bytes_written +
+                  microseconds_constant);
+}
