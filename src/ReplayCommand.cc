@@ -19,6 +19,8 @@
 
 using namespace std;
 
+static int DUMP_STATS_PERIOD = 0;
+
 class ReplayCommand : public Command {
 public:
   virtual int run(std::vector<std::string>& args);
@@ -208,13 +210,36 @@ static ReplaySession::Flags session_flags(ReplayFlags flags) {
   return result;
 }
 
+static uint64_t to_microseconds(const struct timeval& tv) {
+  return (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec;
+}
+
 static void serve_replay_no_debugger(const string& trace_dir,
                                      const ReplayFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
   replay_session->set_flags(session_flags(flags));
+  uint32_t step_count = 0;
+  struct timeval last_dump_time;
+  Session::Statistics last_stats;
+  gettimeofday(&last_dump_time, NULL);
 
   while (true) {
     auto result = replay_session->replay_step(RUN_CONTINUE);
+    ++step_count;
+    if (DUMP_STATS_PERIOD > 0 && step_count % DUMP_STATS_PERIOD == 0) {
+      struct timeval now;
+      gettimeofday(&now, NULL);
+      Session::Statistics stats = replay_session->statistics();
+      printf(
+          "[ReplayStatistics] ticks %lld syscalls %lld bytes_written %lld "
+          "microseconds %lld\n",
+          (long long)(stats.ticks_processed - last_stats.ticks_processed),
+          (long long)(stats.syscalls_performed - last_stats.syscalls_performed),
+          (long long)(stats.bytes_written - last_stats.bytes_written),
+          (long long)(to_microseconds(now) - to_microseconds(last_dump_time)));
+      last_dump_time = now;
+      last_stats = stats;
+    }
 
     if (result.status == REPLAY_EXITED) {
       break;
