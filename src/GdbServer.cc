@@ -687,49 +687,6 @@ ReplayStatus GdbServer::replay_one_step() {
 }
 
 /**
- * Return true if |t| appears to have entered but not exited an atomic
- * syscall (one that can't be interrupted).
- */
-static bool is_atomic_syscall(Task* t) {
-  return (t->is_probably_replaying_syscall() &&
-          (is_execve_syscall(t->regs().original_syscallno(), t->arch()) ||
-           (-ENOSYS == t->regs().syscall_result_signed() &&
-            !is_always_emulated_syscall(t->regs().original_syscallno(),
-                                        t->arch()))));
-}
-
-/**
- * Return true if it's possible/meaningful to make a checkpoint at the
- * |frame| that |t| will replay.
- */
-static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
-  Event ev(frame.event());
-  if (is_atomic_syscall(t)) {
-    return false;
-  }
-  if (ev.has_ticks_slop()) {
-    return false;
-  }
-  switch (ev.type()) {
-    case EV_EXIT:
-    case EV_UNSTABLE_EXIT:
-    // At exits, we can't clone the exiting tasks, so
-    // don't event bother trying to checkpoint.
-    case EV_SYSCALLBUF_RESET:
-    // RESETs are usually inserted in between syscall
-    // entry/exit.  Help the |is_atomic_syscall()|
-    // heuristics by not attempting to checkpoint at
-    // RESETs.  Users would never want to do that anyway.
-    case EV_TRACE_TERMINATION:
-      // There's nothing to checkpoint at the end of an
-      // early-terminated trace.
-      return false;
-    default:
-      return true;
-  }
-}
-
-/**
  * If the trace has reached the event at which the user wanted a debugger
  * started, then create one and store it in `dbg` if we don't already
  * have one there, and return true. Otherwise return false.
@@ -768,7 +725,7 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   // leader".
   if (event_now < target.event || (target.pid && t->tgid() != target.pid) ||
       (target.pid && target.require_exec && !t->vm()->execed()) ||
-      !can_checkpoint_at(t, next_frame)) {
+      !timeline.current_session().can_clone()) {
     return;
   }
 

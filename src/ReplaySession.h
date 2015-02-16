@@ -205,6 +205,12 @@ public:
   shr_ptr clone();
 
   /**
+   * Return true if we're in a state where it's OK to clone. For example,
+   * we can't clone in some syscalls.
+   */
+  bool can_clone();
+
+  /**
    * Like |clone()|, but return a session in "diversion" mode,
    * which allows free execution.
    */
