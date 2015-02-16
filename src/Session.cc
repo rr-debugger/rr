@@ -300,6 +300,9 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
 
 void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
   assert_fully_initialized();
+  assert(!dest.clone_completion);
+
+  auto completion = unique_ptr<CloneCompletion>(new CloneCompletion());
 
   for (auto vm : vm_map) {
     Task* some_task = *vm.second->task_set().begin();
@@ -312,13 +315,16 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
       group_leader->finish_emulated_syscall();
     }
 
-    Task* clone_leader = group_leader->os_fork_into(&dest);
-    dest.on_create(clone_leader);
-    LOG(debug) << "  forked new group leader " << clone_leader->tid;
+    completion->task_groups.push_back(CloneCompletion::TaskGroup());
+    auto& group = completion->task_groups.back();
+
+    group.clone_leader = group_leader->os_fork_into(&dest);
+    dest.on_create(group.clone_leader);
+    LOG(debug) << "  forked new group leader " << group.clone_leader->tid;
 
     {
-      AutoRemoteSyscalls remote(clone_leader);
-      for (auto& kv : clone_leader->vm()->memmap()) {
+      AutoRemoteSyscalls remote(group.clone_leader);
+      for (auto& kv : group.clone_leader->vm()->memmap()) {
         const Mapping& m = kv.first;
         const MappableResource& r = kv.second;
         if (!r.is_shared_mmap_file()) {
@@ -336,16 +342,14 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
         if (t->is_probably_replaying_syscall()) {
           t->finish_emulated_syscall();
         }
-        Task::CapturedState t_state = t->capture_state();
-        Task* t_clone = Task::os_clone_into(t_state, clone_leader, remote);
-        dest.on_create(t_clone);
-        t_clone->copy_state(t_state);
+
+        group.member_states.push_back(t->capture_state());
       }
     }
 
-    Task::CapturedState group_leader_state = group_leader->capture_state();
-    LOG(debug) << "  restoring group-leader state ...";
-    clone_leader->copy_state(group_leader_state);
+    group.clone_leader_state = group_leader->capture_state();
   }
+  dest.clone_completion = move(completion);
+
   assert(dest.vms().size() > 0);
 }
