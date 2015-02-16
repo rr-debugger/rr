@@ -2159,7 +2159,8 @@ void Task::copy_state(Task* from) {
       ASSERT(this, from->syscallbuf_child == syscallbuf_child);
       // Ensure the copied syscallbuf has the same contents
       // as the old one, for consistency checking.
-      memcpy(syscallbuf_hdr, from->syscallbuf_hdr, num_syscallbuf_bytes);
+      memcpy(syscallbuf_hdr, from->syscallbuf_hdr,
+          sizeof(from->syscallbuf_hdr) + from->syscallbuf_hdr->num_rec_bytes);
     }
   }
   syscallbuf_fds_disabled_child = from->syscallbuf_fds_disabled_child;
