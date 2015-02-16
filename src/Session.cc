@@ -9,6 +9,8 @@
 
 #include <algorithm>
 
+#include "AutoRemoteSyscalls.h"
+#include "EmuFs.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "task.h"
@@ -16,6 +18,15 @@
 
 using namespace rr;
 using namespace std;
+
+struct Session::CloneCompletion {
+  struct TaskGroup {
+    Task* clone_leader;
+    Task::CapturedState clone_leader_state;
+    vector<Task::CapturedState> member_states;
+  };
+  vector<TaskGroup> task_groups;
+};
 
 Session::Session()
     : next_task_serial_(1),
@@ -33,10 +44,18 @@ Session::~Session() {
   }
 }
 
+Session::Session(const Session& other) {
+  statistics_ = other.statistics_;
+  next_task_serial_ = other.next_task_serial_;
+  tracees_consistent = other.tracees_consistent;
+  visible_execution_ = other.visible_execution_;
+}
+
 void Session::on_create(TaskGroup* tg) { task_group_map[tg->tguid()] = tg; }
 void Session::on_destroy(TaskGroup* tg) { task_group_map.erase(tg->tguid()); }
 
 void Session::post_exec() {
+  assert_fully_initialized();
   if (tracees_consistent) {
     return;
   }
@@ -49,6 +68,7 @@ void Session::post_exec() {
 
 AddressSpace::shr_ptr Session::create_vm(Task* t, const std::string& exe,
                                          uint32_t exec_count) {
+  assert_fully_initialized();
   AddressSpace::shr_ptr as(new AddressSpace(t, exe, exec_count));
   as->insert_task(t);
   vm_map[as->uid()] = as.get();
@@ -56,6 +76,7 @@ AddressSpace::shr_ptr Session::create_vm(Task* t, const std::string& exe,
 }
 
 AddressSpace::shr_ptr Session::clone(Task* t, AddressSpace::shr_ptr vm) {
+  assert_fully_initialized();
   // If vm already belongs to our session this is a fork, otherwise it's
   // a session-clone
   AddressSpace::shr_ptr as(new AddressSpace(
@@ -76,6 +97,7 @@ vector<AddressSpace*> Session::vms() const {
 Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
                      remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                      pid_t new_tid, pid_t new_rec_tid) {
+  assert_fully_initialized();
   Task* c = p->clone(flags, stack, tls, cleartid_addr, new_tid, new_rec_tid,
                      next_task_serial());
   on_create(c);
@@ -83,6 +105,7 @@ Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
 }
 
 Task* Session::find_task(pid_t rec_tid) const {
+  assert_fully_initialized();
   auto it = tasks().find(rec_tid);
   return tasks().end() != it ? it->second : nullptr;
 }
@@ -93,6 +116,7 @@ Task* Session::find_task(const TaskUid& tuid) const {
 }
 
 TaskGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
+  assert_fully_initialized();
   auto it = task_group_map.find(tguid);
   if (task_group_map.end() == it) {
     return nullptr;
@@ -101,6 +125,7 @@ TaskGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
 }
 
 AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
+  assert_fully_initialized();
   auto it = vm_map.find(vmuid);
   if (vm_map.end() == it) {
     return nullptr;
@@ -122,14 +147,19 @@ void Session::kill_all_tasks() {
 
 void Session::on_destroy(AddressSpace* vm) {
   assert(vm->task_set().size() == 0);
+  assert(vm_map.count(vm->uid()) == 1);
   vm_map.erase(vm->uid());
 }
 
-void Session::on_destroy(Task* t) { task_map.erase(t->rec_tid); }
+void Session::on_destroy(Task* t) {
+  assert(task_map.count(t->rec_tid) == 1);
+  task_map.erase(t->rec_tid);
+}
 
 void Session::on_create(Task* t) { task_map[t->rec_tid] = t; }
 
 BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
+  assert_fully_initialized();
   BreakStatus break_status;
   break_status.task = t;
   break_status.signal = 0;
@@ -199,8 +229,123 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
 }
 
 void Session::check_for_watchpoint_changes(Task* t, BreakStatus& break_status) {
+  assert_fully_initialized();
   if (t->vm()->consume_watchpoint_change(&break_status.watch_address) &&
       break_status.reason == BREAK_NONE) {
     break_status.reason = BREAK_WATCHPOINT;
   }
+}
+
+void Session::assert_fully_initialized() const {
+  assert(!clone_completion && "Session not fully initialized");
+}
+
+void Session::finish_initializing() {
+  if (!clone_completion) {
+    return;
+  }
+
+  for (auto& tgleader : clone_completion->task_groups) {
+    AutoRemoteSyscalls remote(tgleader.clone_leader);
+    for (auto& tgmember : tgleader.member_states) {
+      Task* t_clone =
+          Task::os_clone_into(tgmember, tgleader.clone_leader, remote);
+      on_create(t_clone);
+      t_clone->copy_state(tgmember);
+    }
+    tgleader.clone_leader->copy_state(tgleader.clone_leader_state);
+  }
+
+  clone_completion = nullptr;
+}
+
+static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
+                              const Mapping& m, const MappableResource& r) {
+  LOG(debug) << "    remapping shared region at " << m.start << "-" << m.end;
+  remote.syscall(syscall_number_for_munmap(remote.arch()), m.start,
+                 m.num_bytes());
+  // NB: we don't have to unmap then re-map |t->vm()|'s idea of
+  // the emulated file mapping.  Though we'll be remapping the
+  // *real* OS mapping in |t| to a different file, that new
+  // mapping still refers to the same *emulated* file, with the
+  // same emulated metadata.
+
+  auto emufile = dest_emu_fs.at(r.id);
+  // TODO: this duplicates some code in replay_syscall.cc, but
+  // it's somewhat nontrivial to factor that code out.
+  int remote_fd;
+  {
+    string path = emufile->proc_path();
+    AutoRestoreMem child_path(remote, path.c_str());
+    int oflags =
+        (MAP_SHARED & m.flags) && (PROT_WRITE & m.prot) ? O_RDWR : O_RDONLY;
+    remote_fd = remote.syscall(syscall_number_for_open(remote.arch()),
+                               child_path.get().as_int(), oflags);
+    if (0 > remote_fd) {
+      FATAL() << "Couldn't open " << path << " in tracee";
+    }
+  }
+  // XXX this condition is x86/x64-specific, I imagine.
+  remote_ptr<void> addr = remote.mmap_syscall(m.start, m.num_bytes(), m.prot,
+                                              // The remapped segment *must* be
+                                              // remapped at the same address,
+                                              // or else many things will go
+                                              // haywire.
+                                              m.flags | MAP_FIXED, remote_fd,
+                                              m.offset / page_size());
+  ASSERT(remote.task(), addr == m.start);
+
+  remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);
+}
+
+void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
+  assert_fully_initialized();
+
+  for (auto vm : vm_map) {
+    Task* some_task = *vm.second->task_set().begin();
+    pid_t tgid = some_task->tgid();
+    Task* group_leader = find_task(tgid);
+    LOG(debug) << "  forking tg " << tgid
+               << " (real: " << group_leader->real_tgid() << ")";
+
+    if (group_leader->is_probably_replaying_syscall()) {
+      group_leader->finish_emulated_syscall();
+    }
+
+    Task* clone_leader = group_leader->os_fork_into(&dest);
+    dest.on_create(clone_leader);
+    LOG(debug) << "  forked new group leader " << clone_leader->tid;
+
+    {
+      AutoRemoteSyscalls remote(clone_leader);
+      for (auto& kv : clone_leader->vm()->memmap()) {
+        const Mapping& m = kv.first;
+        const MappableResource& r = kv.second;
+        if (!r.is_shared_mmap_file()) {
+          continue;
+        }
+        remap_shared_mmap(remote, dest_emu_fs, m, r);
+      }
+
+      for (auto t : group_leader->task_group()->task_set()) {
+        if (group_leader == t) {
+          continue;
+        }
+        LOG(debug) << "    cloning " << t->rec_tid;
+
+        if (t->is_probably_replaying_syscall()) {
+          t->finish_emulated_syscall();
+        }
+        Task::CapturedState t_state = t->capture_state();
+        Task* t_clone = Task::os_clone_into(t_state, clone_leader, remote);
+        dest.on_create(t_clone);
+        t_clone->copy_state(t_state);
+      }
+    }
+
+    Task::CapturedState group_leader_state = group_leader->capture_state();
+    LOG(debug) << "  restoring group-leader state ...";
+    clone_leader->copy_state(group_leader_state);
+  }
+  assert(dest.vms().size() > 0);
 }

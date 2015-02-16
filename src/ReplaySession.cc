@@ -70,108 +70,21 @@ static void debug_memory(Task* t) {
   }
 }
 
-static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
-                              const Mapping& m, const MappableResource& r) {
-  LOG(debug) << "    remapping shared region at " << m.start << "-" << m.end;
-  remote.syscall(syscall_number_for_munmap(remote.arch()), m.start,
-                 m.num_bytes());
-  // NB: we don't have to unmap then re-map |t->vm()|'s idea of
-  // the emulated file mapping.  Though we'll be remapping the
-  // *real* OS mapping in |t| to a different file, that new
-  // mapping still refers to the same *emulated* file, with the
-  // same emulated metadata.
-
-  auto emufile = dest_emu_fs.at(r.id);
-  // TODO: this duplicates some code in replay_syscall.cc, but
-  // it's somewhat nontrivial to factor that code out.
-  int remote_fd;
-  {
-    string path = emufile->proc_path();
-    AutoRestoreMem child_path(remote, path.c_str());
-    int oflags =
-        (MAP_SHARED & m.flags) && (PROT_WRITE & m.prot) ? O_RDWR : O_RDONLY;
-    remote_fd = remote.syscall(syscall_number_for_open(remote.arch()),
-                               child_path.get().as_int(), oflags);
-    if (0 > remote_fd) {
-      FATAL() << "Couldn't open " << path << " in tracee";
-    }
-  }
-  // XXX this condition is x86/x64-specific, I imagine.
-  remote_ptr<void> addr = remote.mmap_syscall(m.start, m.num_bytes(), m.prot,
-                                              // The remapped segment *must* be
-                                              // remapped at the same address,
-                                              // or else many things will go
-                                              // haywire.
-                                              m.flags | MAP_FIXED, remote_fd,
-                                              m.offset / page_size());
-  ASSERT(remote.task(), addr == m.start);
-
-  remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);
-}
-
 ReplaySession::~ReplaySession() {
   // We won't permanently leak any OS resources by not ensuring
   // we've cleaned up here, but sessions can be created and
   // destroyed many times, and we don't want to temporarily hog
   // resources.
   kill_all_tasks();
-  assert(tasks().size() == 0 && vms().size() == 0);
+  assert(task_map.empty() && vm_map.empty());
   gc_emufs();
   assert(emufs().size() == 0);
 }
 
-void ReplaySession::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
-  for (auto vm : vm_map) {
-    Task* some_task = *vm.second->task_set().begin();
-    pid_t tgid = some_task->tgid();
-    Task* group_leader = find_task(tgid);
-    LOG(debug) << "  forking tg " << tgid
-               << " (real: " << group_leader->real_tgid() << ")";
-
-    if (group_leader->is_probably_replaying_syscall()) {
-      group_leader->finish_emulated_syscall();
-    }
-
-    Task* clone_leader = group_leader->os_fork_into(&dest);
-    dest.on_create(clone_leader);
-    LOG(debug) << "  forked new group leader " << clone_leader->tid;
-
-    {
-      AutoRemoteSyscalls remote(clone_leader);
-      for (auto& kv : clone_leader->vm()->memmap()) {
-        const Mapping& m = kv.first;
-        const MappableResource& r = kv.second;
-        if (!r.is_shared_mmap_file()) {
-          continue;
-        }
-        remap_shared_mmap(remote, dest_emu_fs, m, r);
-      }
-
-      for (auto t : group_leader->task_group()->task_set()) {
-        if (group_leader == t) {
-          continue;
-        }
-        LOG(debug) << "    cloning " << t->rec_tid;
-
-        if (t->is_probably_replaying_syscall()) {
-          t->finish_emulated_syscall();
-        }
-        Task::CapturedState t_state = t->capture_state();
-        Task* t_clone = Task::os_clone_into(t_state, clone_leader, remote);
-        dest.on_create(t_clone);
-        t_clone->copy_state(t_state);
-      }
-    }
-
-    Task::CapturedState group_leader_state = group_leader->capture_state();
-    LOG(debug) << "  restoring group-leader state ...";
-    clone_leader->copy_state(group_leader_state);
-  }
-  assert(dest.vms().size() > 0);
-}
-
 ReplaySession::shr_ptr ReplaySession::clone() {
   LOG(debug) << "Deepforking ReplaySession " << this << " ...";
+
+  finish_initializing();
 
   shr_ptr session(new ReplaySession(*this));
   LOG(debug) << "  deepfork session is " << session.get();
@@ -227,11 +140,15 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
 }
 
 bool ReplaySession::can_clone() {
+  finish_initializing();
+
   Task* t = current_task();
   return t && can_validate() && can_checkpoint_at(t, current_trace_frame());
 }
 
 DiversionSession::shr_ptr ReplaySession::clone_diversion() {
+  finish_initializing();
+
   LOG(debug) << "Deepforking ReplaySession " << this
              << " to DiversionSession...";
 
@@ -239,6 +156,7 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
   LOG(debug) << "  deepfork session is " << session.get();
 
   copy_state_to(*session, session->emufs());
+  session->finish_initializing();
 
   return session;
 }
@@ -1528,6 +1446,8 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
 ReplayResult ReplaySession::replay_step(RunCommand command,
                                         TraceFrame::Time stop_at_time,
                                         Ticks ticks_target) {
+  finish_initializing();
+
   ReplayResult result;
 
   Task* t = current_task();

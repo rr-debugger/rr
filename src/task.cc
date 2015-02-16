@@ -285,7 +285,6 @@ Task::~Task() {
     t->emulated_stop_type = NOT_STOPPED;
   }
 
-  assert(this == session().find_task(rec_tid));
   // We expect tasks to usually exit by a call to exit() or
   // exit_group(), so it's not helpful to warn about that.
   if (EV_SENTINEL != ev().type() &&

@@ -15,6 +15,7 @@
 
 class AddressSpace;
 class DiversionSession;
+class EmuFs;
 class RecordSession;
 class ReplaySession;
 class Task;
@@ -148,7 +149,10 @@ public:
   void on_destroy(TaskGroup* tg);
 
   /** Return the set of Tasks being tracekd in this session. */
-  const TaskMap& tasks() const { return task_map; }
+  const TaskMap& tasks() const {
+    assert_fully_initialized();
+    return task_map;
+  }
 
   /**
    * Return the set of AddressSpaces being tracked in this session.
@@ -186,12 +190,7 @@ protected:
   Session();
   virtual ~Session();
 
-  Session(const Session& other) {
-    statistics_ = other.statistics_;
-    next_task_serial_ = other.next_task_serial_;
-    tracees_consistent = other.tracees_consistent;
-    visible_execution_ = other.visible_execution_;
-  }
+  Session(const Session& other);
   Session& operator=(const Session&) = delete;
 
   virtual void on_create(Task* t);
@@ -199,9 +198,21 @@ protected:
   BreakStatus diagnose_debugger_trap(Task* t, int stop_sig);
   void check_for_watchpoint_changes(Task* t, BreakStatus& break_status);
 
+  void copy_state_to(Session& dest, EmuFs& dest_emu_fs);
+
+  struct CloneCompletion;
+  // Call this before doing anything that requires access to the full set
+  // of tasks (i.e., almost anything!).
+  void finish_initializing();
+  void assert_fully_initialized() const;
+
   AddressSpaceMap vm_map;
   TaskMap task_map;
   TaskGroupMap task_group_map;
+
+  // If non-null, data required to finish initializing the tasks of this
+  // session.
+  std::unique_ptr<CloneCompletion> clone_completion;
 
   Statistics statistics_;
 

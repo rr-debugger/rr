@@ -228,7 +228,7 @@ private:
    */
   void unapply_breakpoints_and_watchpoints();
 
-  static MarkKey session_mark_key(const ReplaySession& session) {
+  static MarkKey session_mark_key(ReplaySession& session) {
     Task* t = session.current_task();
     return MarkKey(session.trace_reader().time(), t ? t->tick_count() : 0,
                    session.current_step_key());

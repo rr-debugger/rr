@@ -233,7 +233,10 @@ public:
   /**
    * The Task for the current trace record.
    */
-  Task* current_task() const { return find_task(trace_frame.tid()); }
+  Task* current_task() {
+    finish_initializing();
+    return find_task(trace_frame.tid());
+  }
 
   /**
    * The current ReplayStepKey.
@@ -327,8 +330,6 @@ private:
     assert(!last_debugged_task);
     last_debugged_task = t;
   }
-
-  void copy_state_to(Session& dest, EmuFs& dest_emu_fs);
 
   const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
     return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;

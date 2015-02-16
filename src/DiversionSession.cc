@@ -104,6 +104,8 @@ static void process_syscall(Task* t, int syscallno) {
  */
 DiversionSession::DiversionResult DiversionSession::diversion_step(
     Task* t, RunCommand command) {
+  assert_fully_initialized();
+
   DiversionResult result;
 
   // An exit might have occurred while processing a previous syscall.
