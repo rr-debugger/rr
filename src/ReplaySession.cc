@@ -158,11 +158,14 @@ void ReplaySession::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
         }
         Task* t_clone = t->os_clone_into(clone_leader, remote);
         dest.on_create(t_clone);
-        t_clone->copy_state(t);
+        Task::CapturedState t_state = t->capture_state();
+        t_clone->copy_state(t_state);
       }
     }
+
+    Task::CapturedState group_leader_state = group_leader->capture_state();
     LOG(debug) << "  restoring group-leader state ...";
-    clone_leader->copy_state(group_leader);
+    clone_leader->copy_state(group_leader_state);
   }
   assert(dest.vms().size() > 0);
 }
@@ -1078,7 +1081,9 @@ void ReplaySession::prepare_syscallbuf_records(Task* t) {
   // Read the recorded syscall buffer back into the buffer
   // region.
   auto buf = t->trace_reader().read_raw_data();
-  current_step.flush.num_rec_bytes_remaining = buf.data.size();
+  assert(buf.data.size() >= sizeof(struct syscallbuf_hdr));
+  current_step.flush.num_rec_bytes_remaining = sizeof(struct syscallbuf_hdr) +
+      ((struct syscallbuf_hdr*)buf.data.data())->num_rec_bytes;
 
   assert(current_step.flush.num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);
   memcpy(syscallbuf_flush_buffer_array, buf.data.data(),
@@ -1088,9 +1093,6 @@ void ReplaySession::prepare_syscallbuf_records(Task* t) {
   // header bytes, but the stored trace data does.
   current_step.flush.num_rec_bytes_remaining -= sizeof(struct syscallbuf_hdr);
   assert(buf.addr == t->syscallbuf_child.cast<void>());
-  const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
-  assert(flush_hdr->num_rec_bytes ==
-         current_step.flush.num_rec_bytes_remaining);
 
   current_step.flush.syscall_record_offset = 0;
 

@@ -231,6 +231,16 @@ public:
    */
   const struct syscallbuf_record* desched_rec() const;
 
+  size_t syscallbuf_data_size() const {
+    if (syscallbuf_hdr->locked) {
+      // There may be an incomplete syscall record after num_rec_bytes that
+      // we need to record. We don't know how big that record is,
+      // so just record the entire buffer. This should not be common.
+      return num_syscallbuf_bytes;
+    }
+    return syscallbuf_hdr->num_rec_bytes + sizeof(*syscallbuf_hdr);
+  }
+
   /**
    * Mark the members of this task's group as "unstable",
    * meaning that even though a task may look runnable, it
@@ -827,7 +837,6 @@ public:
 
   /** Update the clear-tid futex to |tid_addr|. */
   void set_tid_addr(remote_ptr<int> tid_addr);
-  remote_ptr<int> tid_addr() const { return tid_futex; }
 
   /**
    * Call this after |sig| is delivered to this task.  Emulate
@@ -1244,6 +1253,31 @@ public:
 
   PropertyTable& properties() { return properties_; }
 
+  struct CapturedState {
+    pid_t rec_tid;
+    uint32_t serial;
+    Registers regs;
+    ExtraRegisters extra_regs;
+    std::string prname;
+    remote_ptr<void> robust_futex_list;
+    size_t robust_futex_list_len;
+    struct user_desc thread_area;
+    bool thread_area_valid;
+    size_t num_syscallbuf_bytes;
+    int desched_fd_child;
+    remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
+    std::vector<uint8_t> syscallbuf_hdr;
+    remote_ptr<char> syscallbuf_fds_disabled_child;
+    remote_ptr<void> scratch_ptr;
+    ssize_t scratch_size;
+    int wait_status;
+    sig_set_t blocked_sigs;
+    std::deque<Event> pending_events;
+    Ticks ticks;
+    remote_ptr<int> tid_futex;
+    remote_ptr<void> top_of_stack;
+  };
+
 private:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        int priority, SupportedArch a);
@@ -1272,16 +1306,23 @@ private:
               uint32_t new_serial, Session* other_session = nullptr);
 
   /**
-   * Make this task look like an identical copy of |from| in
+   * Grab state from this task into a structure that we can use to
+   * initialize a new task via os_clone_into/os_fork_into and copy_state.
+   */
+  CapturedState capture_state();
+
+  /**
+   * Make this task look like an identical copy of the task whose state
+   * was captured by capture_task_state(), in
    * every way relevant to replay.  This task should have been
-   * created by calling |from->os_clone()| or |from->os_fork()|,
+   * created by calling os_clone_into() or os_fork_into(),
    * and if it wasn't results are undefined.
    *
    * Some task state must be copied into this by injecting and
    * running syscalls in this task.  Other state is metadata
    * that can simply be copied over in local memory.
    */
-  void copy_state(Task* from);
+  void copy_state(const CapturedState& state);
 
   /**
    * Destroy tracer-side state of this (as opposed to remote,

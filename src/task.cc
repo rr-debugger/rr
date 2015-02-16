@@ -656,8 +656,7 @@ void Task::init_buffers(remote_ptr<void> map_hint,
 
 void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
-  remote.syscall(syscall_number_for_munmap(arch()), scratch_ptr,
-                 scratch_size);
+  remote.syscall(syscall_number_for_munmap(arch()), scratch_ptr, scratch_size);
   vm()->unmap(scratch_ptr, scratch_size);
   if (!syscallbuf_child.is_null()) {
     remote.syscall(syscall_number_for_munmap(arch()), syscallbuf_child,
@@ -2090,10 +2089,12 @@ Task* Task::os_clone_into(Task* task_leader, AutoRemoteSyscalls& remote) {
 }
 
 template <typename Arch>
-static void copy_tls_arch(Task* from, AutoRemoteSyscalls& remote) {
+static void copy_tls_arch(const Task::CapturedState& state,
+                          AutoRemoteSyscalls& remote) {
   if (Arch::clone_tls_type == Arch::UserDescPointer) {
-    if (const struct user_desc* tls = from->tls()) {
-      AutoRestoreMem remote_tls(remote, (const uint8_t*)tls, sizeof(*tls));
+    if (state.thread_area_valid) {
+      AutoRestoreMem remote_tls(remote, (const uint8_t*)&state.thread_area,
+                                sizeof(struct user_desc));
       LOG(debug) << "    setting tls " << remote_tls.get();
       long err =
           remote.syscall(syscall_number_for_set_thread_area(remote.arch()),
@@ -2104,18 +2105,51 @@ static void copy_tls_arch(Task* from, AutoRemoteSyscalls& remote) {
   }
 }
 
-static void copy_tls(Task* from, AutoRemoteSyscalls& remote) {
-  RR_ARCH_FUNCTION(copy_tls_arch, remote.arch(), from, remote);
+static void copy_tls(const Task::CapturedState& state,
+                     AutoRemoteSyscalls& remote) {
+  RR_ARCH_FUNCTION(copy_tls_arch, remote.arch(), state, remote);
 }
 
-void Task::copy_state(Task* from) {
+Task::CapturedState Task::capture_state() {
+  CapturedState state;
+  state.rec_tid = rec_tid;
+  state.serial = serial;
+  state.regs = regs();
+  state.extra_regs = extra_regs();
+  state.prname = prname;
+  state.robust_futex_list = robust_futex_list;
+  state.robust_futex_list_len = robust_futex_list_len;
+  state.thread_area = thread_area;
+  state.thread_area_valid = thread_area_valid;
+  state.num_syscallbuf_bytes = num_syscallbuf_bytes;
+  state.desched_fd_child = desched_fd_child;
+  state.syscallbuf_child = syscallbuf_child;
+  if (syscallbuf_hdr) {
+    state.syscallbuf_hdr.resize(syscallbuf_data_size());
+    memcpy(state.syscallbuf_hdr.data(), syscallbuf_hdr,
+           state.syscallbuf_hdr.size());
+  }
+  state.syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
+  state.scratch_ptr = scratch_ptr;
+  state.scratch_size = scratch_size;
+  state.wait_status = wait_status;
+  state.blocked_sigs = blocked_sigs;
+  state.pending_events = pending_events;
+  state.ticks = ticks;
+  state.tid_futex = tid_futex;
+  state.top_of_stack = top_of_stack;
+  return state;
+}
+
+void Task::copy_state(const CapturedState& state) {
   long err;
-  set_regs(from->regs());
+  set_regs(state.regs);
+  set_extra_regs(state.extra_regs);
   {
     AutoRemoteSyscalls remote(this);
     {
       char prname[16];
-      strncpy(prname, from->name().c_str(), sizeof(prname));
+      strncpy(prname, state.prname.c_str(), sizeof(prname));
       AutoRestoreMem remote_prname(remote, (const uint8_t*)prname,
                                    sizeof(prname));
       LOG(debug) << "    setting name to " << prname;
@@ -2125,8 +2159,8 @@ void Task::copy_state(Task* from) {
       update_prname(remote_prname.get());
     }
 
-    if (!from->robust_list().is_null()) {
-      set_robust_list(from->robust_list(), from->robust_list_len());
+    if (!state.robust_futex_list.is_null()) {
+      set_robust_list(state.robust_futex_list, state.robust_futex_list_len);
       LOG(debug) << "    setting robust-list " << this->robust_list()
                  << " (size " << this->robust_list_len() << ")";
       err = remote.syscall(syscall_number_for_set_robust_list(arch()),
@@ -2134,54 +2168,52 @@ void Task::copy_state(Task* from) {
       ASSERT(this, 0 == err);
     }
 
-    copy_tls(from, remote);
+    copy_tls(state, remote);
 
-    auto ctid = from->tid_addr();
+    auto ctid = state.tid_futex;
     if (!ctid.is_null()) {
       err = remote.syscall(syscall_number_for_set_tid_address(arch()), ctid);
       ASSERT(this, tid == err);
     }
+    tid_futex = ctid;
 
     ASSERT(this, !syscallbuf_child)
         << "Syscallbuf should not already be initialized in clone";
-    if (!from->syscallbuf_child.is_null()) {
+    if (!state.syscallbuf_child.is_null()) {
       // All these fields are preserved by the fork.
-      num_syscallbuf_bytes = from->num_syscallbuf_bytes;
-      desched_fd_child = from->desched_fd_child;
+      num_syscallbuf_bytes = state.num_syscallbuf_bytes;
+      desched_fd_child = state.desched_fd_child;
 
       // The syscallbuf is mapped as a shared
       // segment between rr and the tracee.  So we
       // have to unmap it, create a copy, and then
       // re-map the copy in rr and the tracee.
-      auto map_hint = from->syscallbuf_child;
-
-      init_syscall_buffer(remote, map_hint);
-      ASSERT(this, from->syscallbuf_child == syscallbuf_child);
+      init_syscall_buffer(remote, state.syscallbuf_child);
+      ASSERT(this, state.syscallbuf_child == syscallbuf_child);
       // Ensure the copied syscallbuf has the same contents
       // as the old one, for consistency checking.
-      memcpy(syscallbuf_hdr, from->syscallbuf_hdr,
-          sizeof(from->syscallbuf_hdr) + from->syscallbuf_hdr->num_rec_bytes);
+      memcpy(syscallbuf_hdr, state.syscallbuf_hdr.data(),
+             state.syscallbuf_hdr.size());
     }
   }
-  syscallbuf_fds_disabled_child = from->syscallbuf_fds_disabled_child;
+  syscallbuf_fds_disabled_child = state.syscallbuf_fds_disabled_child;
   // The scratch buffer (for now) is merely a private mapping in
   // the remote task.  The CoW copy made by fork()'ing the
   // address space has the semantics we want.  It's not used in
   // replay anyway.
-  scratch_ptr = from->scratch_ptr;
-  scratch_size = from->scratch_size;
+  scratch_ptr = state.scratch_ptr;
+  scratch_size = state.scratch_size;
 
   // Whatever |from|'s last wait status was is what ours would
   // have been.
-  wait_status = from->wait_status;
+  wait_status = state.wait_status;
 
   // These are only metadata that have been inferred from the
   // series of syscalls made by the trace so far.
-  blocked_sigs = from->blocked_sigs;
-  pending_events = from->pending_events;
+  blocked_sigs = state.blocked_sigs;
+  pending_events = state.pending_events;
 
-  ticks = from->tick_count();
-  tid_futex = from->tid_futex;
+  ticks = state.ticks;
 }
 
 void Task::destroy_local_buffers() {
@@ -2391,8 +2423,7 @@ void Task::maybe_flush_syscallbuf() {
   push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));
   record_local(syscallbuf_child,
                // Record the header for consistency checking.
-               syscallbuf_hdr->num_rec_bytes + sizeof(*syscallbuf_hdr),
-               syscallbuf_hdr);
+               syscallbuf_data_size(), syscallbuf_hdr);
   record_current_event();
   pop_event(EV_SYSCALLBUF_FLUSH);
 
