@@ -4,6 +4,8 @@
 
 #include "ReplayTimeline.h"
 
+#include <math.h>
+
 #include "log.h"
 
 using namespace rr;
@@ -438,6 +440,13 @@ ReplayResult ReplayTimeline::reverse_continue() {
         result = singlestep_with_breakpoints_disabled();
       } else {
         result = replay_step_to_mark(end);
+        // This will remove all reverse-exec checkpoints ahead of the
+        // current time, and add new ones if necessary. This should be
+        // helpful if we have to reverse-continue far back in time, where
+        // the interval between 'start' and 'end' could be lengthy; we'll
+        // populate the interval with new checkpoints, speeding up
+        // the following seek and possibly future operations.
+        update_reverse_exec_checkpoints();
       }
       if (!result.break_status.watch_address.is_null() ||
           result.break_status.reason == BREAK_SIGNAL) {
@@ -602,25 +611,30 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
 ReplayResult ReplayTimeline::replay_step(RunCommand command,
                                          RunDirection direction,
                                          TraceFrame::Time stop_at_time) {
+  ReplayResult result;
   if (direction == RUN_FORWARD) {
     apply_breakpoints_and_watchpoints();
     current->set_visible_execution(true);
-    auto result = current->replay_step(command, stop_at_time);
+    result = current->replay_step(command, stop_at_time);
     current->set_visible_execution(false);
-    return result;
-  }
+  } else {
+    assert(stop_at_time == 0 &&
+           "stop_at_time unsupported for reverse execution");
 
-  assert(stop_at_time == 0 && "stop_at_time unsupported for reverse execution");
-
-  switch (command) {
-    case RUN_CONTINUE:
-      return reverse_continue();
-    case RUN_SINGLESTEP:
-      return reverse_singlestep(mark(), current->current_task()->tuid());
-    default:
-      assert(0 && "Unknown RunCommand");
-      return ReplayResult();
+    switch (command) {
+      case RUN_CONTINUE:
+        result = reverse_continue();
+        break;
+      case RUN_SINGLESTEP:
+        result = reverse_singlestep(mark(), current->current_task()->tuid());
+        break;
+      default:
+        assert(0 && "Unknown RunCommand");
+        return ReplayResult();
+    }
   }
+  update_reverse_exec_checkpoints();
+  return result;
 }
 
 ReplayTimeline::Progress ReplayTimeline::estimate_progress() {
@@ -638,4 +652,102 @@ ReplayTimeline::Progress ReplayTimeline::estimate_progress() {
                   microseconds_per_syscall * stats.syscalls_performed +
                   microseconds_per_byte_written * stats.bytes_written +
                   microseconds_constant);
+}
+
+/**
+ * Try to space out our checkpoints by this much.
+ * This is currently aiming for about 0.5s of replay time,
+ * so a reverse step or continue whose destination is within 0.5s
+ * should take at most a second.
+ * Also, based on a guesstimate that taking checkpoints of Firefox requires
+ * about 50ms, this would make checkpointing overhead about 10% of replay time,
+ * which sounds reasonable.
+ */
+static ReplayTimeline::Progress inter_checkpoint_interval = 500000;
+/**
+ * Make each interval this much bigger than the previous.
+ */
+static float checkpoint_interval_exponent = 2;
+
+/**
+ * We define a series of intervals, each one ending at the current
+ * replay position. Interval N has length inter_checkpoint_interval to the
+ * power of checkpoint_interval_exponent.
+ * We allow at most N checkpoints in interval N.
+ * To discard excess checkpoints, first pick the smallest interval N with
+ * too many checkpoints, and discard the latest checkpoint in interval N
+ * that is not in interval N-1. Repeat until there are no excess checkpoints.
+ * All checkpoints after the current replay point are always discarded.
+ * The script checkpoint-visualizer.html simulates this algorithm and
+ * visualizes its results.
+ * The implementation here is quite naive, but that's OK because we will
+ * never have a large number of checkpoints.
+ */
+void ReplayTimeline::update_reverse_exec_checkpoints() {
+  Progress now = estimate_progress();
+  // Remove all checkpoints >= now.
+  while (true) {
+    auto it = reverse_exec_checkpoints.rbegin();
+    if (it == reverse_exec_checkpoints.rend() || it->second < now) {
+      break;
+    }
+    remove_explicit_checkpoint(it->first);
+    reverse_exec_checkpoints.erase(it->first);
+  }
+
+  auto it = reverse_exec_checkpoints.rbegin();
+  if (it != reverse_exec_checkpoints.rend() &&
+      it->second >= now - inter_checkpoint_interval) {
+    // Latest checkpoint is close enough; we don't need to do anything.
+    return;
+  }
+
+  if (!current->can_clone()) {
+    // We can't create a checkpoint right now.
+    return;
+  }
+
+  // We will add a checkpoint here. Discard excess older checkpoints.
+  // We always discard checkpoints before adding the new one to reduce the
+  // maximum checkpoint count by one.
+  discard_excess_checkpoints(now);
+
+  reverse_exec_checkpoints[add_explicit_checkpoint()] = now;
+}
+
+void ReplayTimeline::discard_excess_checkpoints(Progress now) {
+  // No checkpoints are allowed in the first interval, since we're about to
+  // add one there.
+  int checkpoints_allowed = 0;
+  int checkpoints_in_range = 0;
+  auto it = reverse_exec_checkpoints.rbegin();
+  vector<Mark> checkpoints_to_delete;
+  for (Progress len = inter_checkpoint_interval;;
+       len = (Progress)ceil(checkpoint_interval_exponent * len)) {
+    Progress start = now - len;
+    // Count checkpoints >= start, starting at 'it', and leave the first
+    // checkpoint entry < start in 'tmp_it'.
+    auto tmp_it = it;
+    while (tmp_it != reverse_exec_checkpoints.rend() &&
+           tmp_it->second >= start) {
+      ++checkpoints_in_range;
+      ++tmp_it;
+    }
+    // Delete excess checkpoints starting with 'it'.
+    while (checkpoints_in_range > checkpoints_allowed) {
+      checkpoints_to_delete.push_back(it->first);
+      --checkpoints_in_range;
+      ++it;
+    }
+    ++checkpoints_allowed;
+    it = tmp_it;
+    if (it == reverse_exec_checkpoints.rend()) {
+      break;
+    }
+  }
+
+  for (auto& m : checkpoints_to_delete) {
+    remove_explicit_checkpoint(m);
+    reverse_exec_checkpoints.erase(m);
+  }
 }

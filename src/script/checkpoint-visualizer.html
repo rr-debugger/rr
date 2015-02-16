@@ -1,0 +1,106 @@
+<!DOCTYPE HTML>
+<html>
+<body>
+<canvas width="1000" height="50" id="c" style="border:1px solid black"></canvas>
+<table style="margin:1em; border:1px solid black; width:90%">
+  <thead style="font-weight:bold"><tr><td>Checkpoint<td>Time<td>Time to next</thead>
+  <tbody id="t"></tbody>
+</table>
+<script>
+/* This script simulates the algorithm of ReplayTimeline::update_reverse_exec_checkpoints
+   and visualizes the results.
+   In this script, the ideal inter-checkpoint interval is normalized to 1.
+*/
+var checkpoint_interval_exponent = 2;
+
+var checkpoints = [];
+
+function countCheckpointsAtOrAfter(start) {
+  var count = 0;
+  for (var i = 0; i < checkpoints.length; ++i) {
+    if (checkpoints[i] >= start) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+function removeLastCheckpointInRange(x1, x2) {
+  var lastIndex = -1;
+  for (var i = 0; i < checkpoints.length; ++i) {
+    if (checkpoints[i] >= x1 && checkpoints[i] < x2) {
+      lastIndex = i;
+    }
+  }
+  if (lastIndex >= 0) {
+    checkpoints.splice(lastIndex, 1);
+  }
+}
+
+function discard_excess_checkpoints(now) {
+  var checkpoints_allowed = 0;
+  var checkpoints_in_range = 0;
+  var it = checkpoints.length - 1;
+  var checkpoints_to_delete = [];
+
+  for (var len = 1; ; len = checkpoint_interval_exponent*len) {
+    var start = now - len;
+    var tmp_it = it;
+    while (tmp_it >= 0 && checkpoints[tmp_it] >= start) {
+      ++checkpoints_in_range;
+      --tmp_it;
+    }
+    while (checkpoints_in_range > checkpoints_allowed) {
+      checkpoints_to_delete.push(it);
+      --checkpoints_in_range;
+      --it;
+    }
+    ++checkpoints_allowed;
+    it = tmp_it;
+    if (it < 0) {
+      break;
+    }
+  }
+
+  for (var i = 0; i < checkpoints_to_delete.length; ++i) {
+    checkpoints.splice(checkpoints_to_delete[i], 1);
+  }
+}
+
+function renderCheckpoints() {
+  var ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "lime";
+  for (var i = 0; i < checkpoints.length; ++i) {
+    var x = Math.floor(checkpoints[i]);
+    ctx.fillRect(x, 0, 1, c.height);
+  }
+}
+
+var next = 0;
+// Choose a random stopping point in the second half
+// of the canvas.
+var stopAt = (1 + Math.random())*c.width/2;
+
+function step() {
+  if (next >= stopAt) {
+    var s = [];
+    for (var i = 0; i < checkpoints.length; ++i) {
+      s.push("<tr><td>" + i + "<td>" + checkpoints[i] + "<td>" +
+        ((i < checkpoints.length - 1) ? checkpoints[i + 1] - checkpoints[i] : 0));
+    }
+    t.innerHTML = s.join('\n');
+    return;
+  }
+  discard_excess_checkpoints(next);
+  checkpoints.push(next);
+  renderCheckpoints();
+  // Add some jitter to reflect the fact that during replay
+  // we'll usually stop a bit later than the inter-checkpoint
+  // threshold.
+  next += 1 + Math.random()*0.1;
+  setTimeout(step, 0);
+}
+
+step();
+</script>

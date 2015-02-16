@@ -26,18 +26,19 @@ enum RunDirection {
 class ReplayTimeline {
 private:
   struct InternalMark;
-  /**
-   * An estimate of how much progress a session has made. This should roughly
-   * correlate to the time required to replay from the start of a session
-   * to the current point, in microseconds.
-   */
-  typedef int64_t Progress;
 
 public:
   ReplayTimeline(std::shared_ptr<ReplaySession> session,
                  const ReplaySession::Flags& session_flags);
   ReplayTimeline() : breakpoints_applied(false) {}
   ~ReplayTimeline();
+
+  /**
+   * An estimate of how much progress a session has made. This should roughly
+   * correlate to the time required to replay from the start of a session
+   * to the current point, in microseconds.
+   */
+  typedef int64_t Progress;
 
   /**
    * A Mark references a precise point in time during the replay.
@@ -247,6 +248,13 @@ private:
   static bool less_than(const Mark& m1, const Mark& m2);
 
   Progress estimate_progress();
+  /**
+   * Called whenever the current session moves to a new execution point.
+   * Make add a new checkpoint or remove one or more checkpoints from
+   * reverse_exec_checkpoints.
+   */
+  void update_reverse_exec_checkpoints();
+  void discard_excess_checkpoints(Progress now);
 
   ReplaySession::Flags session_flags;
 
@@ -281,6 +289,11 @@ private:
   std::multiset<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t,
                            WatchType> > watchpoints;
   bool breakpoints_applied;
+
+  /**
+   * Checkpoints used to accelerate reverse execution.
+   */
+  std::map<Mark, Progress> reverse_exec_checkpoints;
 };
 
 std::ostream& operator<<(std::ostream& s, const ReplayTimeline::Mark& o);
