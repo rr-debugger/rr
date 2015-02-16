@@ -125,11 +125,6 @@ enum ShareDeschedEventFd {
   DONT_SHARE_DESCHED_EVENT_FD = 0
 };
 
-enum DestroyBufferFlags {
-  DESTROY_SCRATCH = 1 << 0,
-  DESTROY_SYSCALLBUF = 1 << 1,
-};
-
 /** Different kinds of waits a task can do.
  */
 enum WaitType {
@@ -450,12 +445,12 @@ public:
                     ShareDeschedEventFd share_desched_fd);
 
   /**
-   * Destroy in the tracee task the buffer(s) specified by the
-   * DestroyBufferFlags mask |which|.  This task must already be
-   * at a state in which remote syscalls can be executed; if
-   * it's not, results are undefined.
+   * Destroy in the tracee task the scratch buffer and syscallbuf (if
+   * syscallbuf_child is non-null).
+   * This task must already be at a state in which remote syscalls can be
+   * executed; if it's not, results are undefined.
    */
-  void destroy_buffers(int which);
+  void destroy_buffers();
 
   /** Return the current $ip of this. */
   remote_ptr<uint8_t> ip() { return regs().ip(); }

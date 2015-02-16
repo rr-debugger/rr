@@ -651,7 +651,7 @@ void destroy_buffers(Task* t) {
       << "Tracee should have entered through int $0x80.";
 
   // Do the actual buffer and fd cleanup.
-  t->destroy_buffers(DESTROY_SCRATCH | DESTROY_SYSCALLBUF);
+  t->destroy_buffers();
 
   // Restart the SYS_exit call.
   t->set_regs(exit_regs);

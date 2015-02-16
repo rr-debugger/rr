@@ -654,14 +654,12 @@ void Task::init_buffers(remote_ptr<void> map_hint,
   RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint, share_desched_fd);
 }
 
-void Task::destroy_buffers(int which) {
+void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
-  if (DESTROY_SCRATCH & which) {
-    remote.syscall(syscall_number_for_munmap(arch()), scratch_ptr,
-                   scratch_size);
-    vm()->unmap(scratch_ptr, scratch_size);
-  }
-  if ((DESTROY_SYSCALLBUF & which) && !syscallbuf_child.is_null()) {
+  remote.syscall(syscall_number_for_munmap(arch()), scratch_ptr,
+                 scratch_size);
+  vm()->unmap(scratch_ptr, scratch_size);
+  if (!syscallbuf_child.is_null()) {
     remote.syscall(syscall_number_for_munmap(arch()), syscallbuf_child,
                    num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
