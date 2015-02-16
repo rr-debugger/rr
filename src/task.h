@@ -866,15 +866,6 @@ public:
   const std::vector<uint8_t>& signal_action(int sig) const;
 
   /**
-   * Return the |stack| argument passed to |clone()|, i.e. the
-   * top of this thread's stack if it's a thread.
-   *
-   * This IS NOT the stack pointer.  Call |sp()| if you want
-   * that.
-   */
-  remote_ptr<void> stack() const { return top_of_stack; }
-
-  /**
    * Stashed-signal API: if a signal becomes pending at an
    * awkward time, but could be handled "soon", call
    * |stash_sig()| to stash the current pending-signal state.
@@ -1427,7 +1418,8 @@ private:
    * create the new child.
    */
   Task* os_fork_into(Session* session);
-  Task* os_clone_into(Task* task_leader, AutoRemoteSyscalls& remote);
+  static Task* os_clone_into(const CapturedState& state, Task* task_leader,
+                             AutoRemoteSyscalls& remote);
 
   /**
    * Return the TraceStream that we're using, if in recording or replay.

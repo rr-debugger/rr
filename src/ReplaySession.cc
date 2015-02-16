@@ -156,9 +156,9 @@ void ReplaySession::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
         if (t->is_probably_replaying_syscall()) {
           t->finish_emulated_syscall();
         }
-        Task* t_clone = t->os_clone_into(clone_leader, remote);
-        dest.on_create(t_clone);
         Task::CapturedState t_state = t->capture_state();
+        Task* t_clone = Task::os_clone_into(t_state, clone_leader, remote);
+        dest.on_create(t_clone);
         t_clone->copy_state(t_state);
       }
     }

@@ -2069,8 +2069,10 @@ Task* Task::os_fork_into(Session* session) {
   return child;
 }
 
-Task* Task::os_clone_into(Task* task_leader, AutoRemoteSyscalls& remote) {
-  return os_clone(task_leader, &task_leader->session(), remote, rec_tid, serial,
+Task* Task::os_clone_into(const CapturedState& state, Task* task_leader,
+                          AutoRemoteSyscalls& remote) {
+  return os_clone(task_leader, &task_leader->session(), remote, state.rec_tid,
+                  state.serial,
                   // We don't actually /need/ to specify the
                   // SIGHAND/SYSVMEM flags because those things
                   // are emulated in the tracee.  But we use the
@@ -2085,7 +2087,7 @@ Task* Task::os_clone_into(Task* task_leader, AutoRemoteSyscalls& remote) {
                   // of the CTID flags.
                   (CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
                    CLONE_THREAD | CLONE_SYSVSEM),
-                  stack());
+                  state.top_of_stack);
 }
 
 template <typename Arch>
