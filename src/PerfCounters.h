@@ -48,6 +48,12 @@ public:
   void reset(Ticks ticks_period);
 
   /**
+   * Close the perfcounter fds. They will be automatically reopened if/when
+   * reset is called again.
+   */
+  void stop();
+
+  /**
    * Read the current value of the ticks counter.
    */
   Ticks read_ticks();
@@ -73,8 +79,6 @@ public:
   Extra read_extra();
 
 private:
-  void stop();
-
   pid_t tid;
   ScopedFd fd_ticks;
   ScopedFd fd_page_faults;
