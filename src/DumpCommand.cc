@@ -91,10 +91,11 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   auto buf = trace.read_raw_data();
   size_t bytes_remaining = buf.data.size() - sizeof(struct syscallbuf_hdr);
   auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());
-  if (flush_hdr->num_rec_bytes != bytes_remaining) {
+  if (flush_hdr->num_rec_bytes > bytes_remaining) {
     fprintf(stderr, "Malformed trace file (bad recorded-bytes count)\n");
     abort();
   }
+  bytes_remaining = flush_hdr->num_rec_bytes;
 
   auto record_ptr = reinterpret_cast<const uint8_t*>(flush_hdr + 1);
   auto end_ptr = record_ptr + bytes_remaining;
