@@ -238,19 +238,22 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
       // close enough, stay where we are
       return;
     }
+  }
 
-    // Check if any of the marks with the same key as 'mark', but before 'mark',
-    // are usable.
-    for (shared_ptr<InternalMark>& m : marks[mark.ptr->key]) {
-      if (m->checkpoint) {
-        current = m->checkpoint->clone();
-        breakpoints_applied = false;
-        current_at_or_after_mark = nullptr;
-        return;
-      }
-      if (m == mark.ptr) {
-        break;
-      }
+  // Check if any of the marks with the same key as 'mark', but not after
+  // 'mark', are usable.
+  auto& mark_vector = marks[mark.ptr->key];
+  bool at_or_before_mark = false;
+  for (ssize_t i = mark_vector.size() - 1; i >= 0; --i) {
+    auto& m = mark_vector[i];
+    if (m == mark.ptr) {
+      at_or_before_mark = true;
+    }
+    if (at_or_before_mark && m->checkpoint) {
+      current = m->checkpoint->clone();
+      breakpoints_applied = false;
+      current_at_or_after_mark = m;
+      return;
     }
   }
 
