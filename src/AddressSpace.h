@@ -84,6 +84,7 @@ public:
    * is false, return 0 (NO_INODE).
    */
   ino_t disp_inode() const;
+  ino_t internal_inode() const { return inode; }
   PseudoDevice psuedodevice() const { return psdev; }
 
   /**
@@ -333,6 +334,10 @@ struct MappableResource {
         FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_SCRATCH), "[scratch]");
   }
   static MappableResource shared_mmap_file(const TraceMappedRegion& file);
+  static MappableResource shared_mmap_anonymous(uint32_t unique_id) {
+    return MappableResource(
+        FileId(FileId::NO_DEVICE, unique_id, PSEUDODEVICE_SHARED_MMAP_FILE));
+  }
   static MappableResource stack(pid_t tid) {
     return MappableResource(FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_STACK),
                             "[stack]");

@@ -1000,7 +1000,8 @@ void ReplaySession::prepare_syscallbuf_records(Task* t) {
   // region.
   auto buf = t->trace_reader().read_raw_data();
   assert(buf.data.size() >= sizeof(struct syscallbuf_hdr));
-  current_step.flush.num_rec_bytes_remaining = sizeof(struct syscallbuf_hdr) +
+  current_step.flush.num_rec_bytes_remaining =
+      sizeof(struct syscallbuf_hdr) +
       ((struct syscallbuf_hdr*)buf.data.data())->num_rec_bytes;
 
   assert(current_step.flush.num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);

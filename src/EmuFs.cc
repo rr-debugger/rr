@@ -53,7 +53,7 @@ void EmuFile::update(const struct stat& st) {
   est = st;
 }
 
-/*static*/ EmuFile::shr_ptr EmuFile::create(const char* orig_path,
+/*static*/ EmuFile::shr_ptr EmuFile::create(const string& orig_path,
                                             const struct stat& est) {
   // Sanitize the mapped file path so that we can use it in a
   // leaf name.
@@ -63,14 +63,14 @@ void EmuFile::update(const struct stat& st) {
   stringstream name;
   name << "rr-emufs-" << getpid() << "-dev-" << est.st_dev << "-inode-"
        << est.st_ino << "-" << path_tag;
-  shr_ptr f(new EmuFile(create_shmem_segment(name.str().c_str(), est.st_size),
-                        est, orig_path));
+  shr_ptr f(new EmuFile(create_shmem_segment(name.str(), est.st_size), est,
+                        orig_path));
   LOG(debug) << "created emulated file for " << orig_path << " as "
              << name.str();
   return f;
 }
 
-EmuFile::EmuFile(ScopedFd&& fd, const struct stat& est, const char* orig_path)
+EmuFile::EmuFile(ScopedFd&& fd, const struct stat& est, const string& orig_path)
     : est(est), orig_path(orig_path), file(std::move(fd)), is_marked(false) {}
 
 EmuFile::shr_ptr EmuFs::at(const FileId& id) const { return files.at(id); }
@@ -150,7 +150,20 @@ EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
     it->second->update(mf.stat());
     return it->second;
   }
-  auto vf = EmuFile::create(mf.file_name().c_str(), mf.stat());
+  auto vf = EmuFile::create(mf.file_name(), mf.stat());
+  files[id] = vf;
+  return vf;
+}
+
+EmuFile::shr_ptr EmuFs::create_anonymous(const FileId& id, size_t size) {
+  assert(files.find(id) == files.end());
+  struct stat fake_stat;
+  memset(&fake_stat, 0, sizeof(fake_stat));
+  fake_stat.st_ino = id.internal_inode();
+  fake_stat.st_size = size;
+  stringstream name;
+  name << "anonymous-" << id.internal_inode();
+  auto vf = EmuFile::create(name.str(), fake_stat);
   files[id] = vf;
   return vf;
 }

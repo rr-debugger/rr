@@ -163,7 +163,7 @@ bool should_copy_mmap_region(const std::string& filename,
  * Return an fd referring to a new shmem segment with descriptive
  * |name| of size |num_bytes|.
  */
-ScopedFd create_shmem_segment(const char* name, size_t num_bytes);
+ScopedFd create_shmem_segment(const std::string& name, size_t num_bytes);
 
 /**
  * Ensure that the shmem segment referred to by |fd| has exactly the

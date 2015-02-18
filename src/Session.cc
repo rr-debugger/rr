@@ -277,22 +277,23 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   {
     string path = emufile->proc_path();
     AutoRestoreMem child_path(remote, path.c_str());
-    int oflags =
-        (MAP_SHARED & m.flags) && (PROT_WRITE & m.prot) ? O_RDWR : O_RDONLY;
+    // Always open the emufs file O_RDWR, even if the current mapping prot
+    // is read-only. We might mprotect it to read-write later.
     remote_fd = remote.syscall(syscall_number_for_open(remote.arch()),
-                               child_path.get().as_int(), oflags);
+                               child_path.get().as_int(), O_RDWR);
     if (0 > remote_fd) {
       FATAL() << "Couldn't open " << path << " in tracee";
     }
   }
   // XXX this condition is x86/x64-specific, I imagine.
-  remote_ptr<void> addr = remote.mmap_syscall(m.start, m.num_bytes(), m.prot,
-                                              // The remapped segment *must* be
-                                              // remapped at the same address,
-                                              // or else many things will go
-                                              // haywire.
-                                              m.flags | MAP_FIXED, remote_fd,
-                                              m.offset / page_size());
+  remote_ptr<void> addr =
+      remote.mmap_syscall(m.start, m.num_bytes(), m.prot,
+                          // The remapped segment *must* be
+                          // remapped at the same address,
+                          // or else many things will go
+                          // haywire.
+                          (m.flags & ~MAP_ANONYMOUS) | MAP_FIXED, remote_fd,
+                          m.offset / page_size());
   ASSERT(remote.task(), addr == m.start);
 
   remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);

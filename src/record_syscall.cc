@@ -2410,7 +2410,6 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
     // backed by any file-like object, and are
     // initialized to zero, so there's no
     // nondeterminism to record.
-    // assert(!(flags & MAP_UNINITIALIZED));
     t->vm()->map(addr, size, prot, flags, 0, MappableResource::anonymous());
     return;
   }

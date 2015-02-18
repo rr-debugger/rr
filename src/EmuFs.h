@@ -96,16 +96,18 @@ public:
    */
   void update(const struct stat& st);
 
+  const struct stat& stat() { return est; }
+
   /**
    * Create a new emulated file for |orig_path| that will
    * emulate the recorded attributes |est|.  |tag| is used to
    * uniquely identify this file among multiple EmuFs's that
    * might exist concurrently in this tracer process.
    */
-  static shr_ptr create(const char* orig_path, const struct stat& est);
+  static shr_ptr create(const std::string& orig_path, const struct stat& est);
 
 private:
-  EmuFile(ScopedFd&& fd, const struct stat& est, const char* orig_path);
+  EmuFile(ScopedFd&& fd, const struct stat& est, const std::string& orig_path);
 
   struct stat est;
   std::string orig_path;
@@ -137,10 +139,15 @@ public:
   shr_ptr clone();
 
   /**
-   * Return a real file path that refers to an emulated file
-   * representing the recorded file underlying |mf|.
+   * Return an emulated file representing the recorded file underlying |mf|.
    */
   EmuFile::shr_ptr get_or_create(const TraceMappedRegion& mf);
+
+  /**
+   * Create an emulated file representing the shared anonymous mapping
+   * referenced by |id|.
+   */
+  EmuFile::shr_ptr create_anonymous(const FileId& id, size_t size);
 
   /**
    * Dump information about this emufs to the "error" log.
