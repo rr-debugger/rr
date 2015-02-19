@@ -2,6 +2,8 @@
 
 //#define DEBUGTAG "GdbConnection"
 
+//#define REVERSE_EXECUTION
+
 /**
  * Much of this implementation is based on the documentation at
  *
@@ -640,7 +642,10 @@ bool GdbConnection::query(char* payload) {
     snprintf(supported, sizeof(supported) - 1,
              "PacketSize=%zd;QStartNoAckMode+;qXfer:auxv:read+"
              ";qXfer:siginfo:read+;qXfer:siginfo:write+"
-             ";multiprocess+;ReverseContinue+;ReverseStep+",
+#ifdef REVERSE_EXECUTION
+             ";ReverseContinue+;ReverseStep+"
+#endif
+             ";multiprocess+",
              sizeof(outbuf));
     write_packet(supported);
     return false;

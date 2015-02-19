@@ -458,11 +458,11 @@ set(TESTS_WITHOUT_PROGRAM
   remove_watchpoint
   restart_unstable
   restart_diversion
-  reverse_finish
-  reverse_step_breakpoint
-  reverse_step_signal
-  reverse_watchpoint
-  reverse_watchpoint_syscall
+#  reverse_finish
+#  reverse_step_breakpoint
+#  reverse_step_signal
+#  reverse_watchpoint
+#  reverse_watchpoint_syscall
   sanity
   shm_checkpoint
   signal_stop
