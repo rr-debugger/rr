@@ -270,6 +270,7 @@ public:
    * If ticks_target is nonzero, stop before the current task's ticks
    * reaches ticks_target (but not too far before, unless we hit a breakpoint
    * or stop_at_time). Only useful for RUN_CONTINUE.
+   * Always stops on a switch to a new task.
    */
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
                            TraceFrame::Time stop_at_time = 0,
@@ -348,6 +349,7 @@ private:
   Completion exit_syscall(Task* t, RunCommand stepi);
   Ticks get_ticks_slack(Task* t);
   void check_ticks_consistency(Task* t, const Event& ev);
+  void check_pending_sig(Task* t);
   void continue_or_step(Task* t, RunCommand stepi, int64_t tick_period = 0);
   enum ExecStateType {
     UNKNOWN,

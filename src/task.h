@@ -722,6 +722,11 @@ public:
    * Return the debug status, which is a bitfield comprising
    * |DebugStatus| bits (see above).
    */
+  uintptr_t debug_status();
+  /**
+   * Return the debug status, which is a bitfield comprising
+   * |DebugStatus| bits (see above), and clear the kernel state.
+   */
   uintptr_t consume_debug_status();
 
   /**

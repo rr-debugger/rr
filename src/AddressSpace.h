@@ -560,6 +560,18 @@ public:
   void remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
   void remove_all_watchpoints();
+  std::vector<WatchConfig> all_watchpoints() {
+    return all_watchpoints_internal(false);
+  }
+
+  /**
+   * Save all watchpoint state onto a stack.
+   */
+  void save_watchpoints();
+  /**
+   * Pop all watchpoint state from the saved-state stack.
+   */
+  bool restore_watchpoints();
 
   /**
    * Notify that at least one watchpoint was hit --- recheck them all.
@@ -695,6 +707,8 @@ private:
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);
   void update_watchpoint_values(remote_ptr<void> start, remote_ptr<void> end);
+
+  std::vector<WatchConfig> all_watchpoints_internal(bool will_set_task_state);
 
   /**
    * Construct a minimal set of watchpoints to be enabled based
@@ -906,6 +920,7 @@ private:
   // programmed per Task, but we track them per address space on
   // behalf of debuggers that assume that model.
   std::map<MemoryRange, Watchpoint> watchpoints;
+  std::vector<std::map<MemoryRange, Watchpoint> > saved_watchpoints;
   // Tracee memory is read and written through this fd, which is
   // opened for the tracee's magic /proc/[tid]/mem device.  The
   // advantage of this over ptrace is that we can access it even

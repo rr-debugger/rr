@@ -25,6 +25,7 @@ enum MismatchBehavior {
 };
 
 const uintptr_t X86_TF_FLAG = 0x100;
+const uintptr_t X86_DF_FLAG = 0x400;
 
 /**
  * A Registers object contains values for all general-purpose registers.
@@ -205,23 +206,6 @@ public:
     RR_SET_REG(ebp, r9, value.as_int());
   }
 
-  /**
-   * Set the output registers of the |rdtsc| instruction.
-   */
-  void set_rdtsc_output(uint64_t value) {
-    RR_SET_REG(eax, rax, value & 0xffffffff);
-    RR_SET_REG(edx, rdx, value >> 32);
-  }
-
-  uintptr_t r11() const {
-    assert(arch() == x86_64);
-    return u.x64regs.r11;
-  }
-  void set_r11(uintptr_t value) {
-    assert(arch() == x86_64);
-    u.x64regs.r11 = value;
-  }
-
   uintptr_t arg(int index) const {
     switch (index) {
       case 1:
@@ -273,7 +257,39 @@ public:
     }
   }
 
+  // Some X86-specific stuff follows. Use of these accessors should be guarded
+  // by an architecture test.
+  /**
+   * Set the output registers of the |rdtsc| instruction.
+   */
+  void set_rdtsc_output(uint64_t value) {
+    RR_SET_REG(eax, rax, value & 0xffffffff);
+    RR_SET_REG(edx, rdx, value >> 32);
+  }
+
+  uintptr_t r11() const {
+    assert(arch() == x86_64);
+    return u.x64regs.r11;
+  }
+  void set_r11(uintptr_t value) {
+    assert(arch() == x86_64);
+    u.x64regs.r11 = value;
+  }
+
+  bool df_flag() const { return RR_GET_REG(eflags, eflags) & X86_DF_FLAG; }
+
+  uintptr_t di() const { return RR_GET_REG(edi, rdi); }
+  void set_di(uintptr_t value) { RR_SET_REG(edi, rdi, value); }
+
+  uintptr_t si() const { return RR_GET_REG(esi, rsi); }
+  void set_si(uintptr_t value) { RR_SET_REG(esi, rsi, value); }
+
+  uintptr_t cx() const { return RR_GET_REG(ecx, rcx); }
+  void set_cx(uintptr_t value) { RR_SET_REG(ecx, rcx, value); }
+
   bool clear_singlestep_flag();
+
+  // End of X86-specific stuff
 
   void print_register_file(FILE* f) const;
   void print_register_file_compact(FILE* f) const;

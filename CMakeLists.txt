@@ -92,6 +92,7 @@ add_executable(rr
   src/EmuFs.cc
   src/Event.cc
   src/ExtraRegisters.cc
+  src/fast_forward.cc
   src/FdTable.cc
   src/Flags.cc
   src/GdbConnection.cc
@@ -400,6 +401,7 @@ set(TESTS_WITH_PROGRAM
   restart_abnormal_exit
   segfault
   step_thread
+  string_instructions_replay
   syscallbuf_fd_disabling
   target_fork
   target_process

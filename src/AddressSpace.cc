@@ -619,6 +619,17 @@ bool AddressSpace::add_watchpoint(remote_ptr<void> addr, size_t num_bytes,
   return allocate_watchpoints();
 }
 
+void AddressSpace::save_watchpoints() {
+  saved_watchpoints.push_back(watchpoints);
+}
+
+bool AddressSpace::restore_watchpoints() {
+  assert(!saved_watchpoints.empty());
+  watchpoints = saved_watchpoints[saved_watchpoints.size() - 1];
+  saved_watchpoints.pop_back();
+  return allocate_watchpoints();
+}
+
 bool AddressSpace::update_watchpoint_value(const MemoryRange& range,
                                            Watchpoint& watchpoint) {
   Task* t = *task_set().begin();
@@ -1066,8 +1077,9 @@ void AddressSpace::copy_watchpoints_from(const AddressSpace& o) {
   allocate_watchpoints();
 }
 
-bool AddressSpace::allocate_watchpoints() {
-  Task::DebugRegs regs;
+vector<WatchConfig> AddressSpace::all_watchpoints_internal(
+    bool will_set_task_state) {
+  vector<WatchConfig> result;
   for (auto& kv : watchpoints) {
     kv.second.in_register_exec = -1;
     kv.second.in_register_readwrite = -1;
@@ -1075,18 +1087,29 @@ bool AddressSpace::allocate_watchpoints() {
     const MemoryRange& r = kv.first;
     int watching = kv.second.watched_bits();
     if (EXEC_BIT & watching) {
-      kv.second.in_register_exec = regs.size();
-      regs.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_EXEC));
+      if (will_set_task_state) {
+        kv.second.in_register_exec = result.size();
+      }
+      result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_EXEC));
     }
     if (!(READ_BIT & watching) && (WRITE_BIT & watching)) {
-      kv.second.in_register_write = regs.size();
-      regs.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_WRITE));
+      if (will_set_task_state) {
+        kv.second.in_register_write = result.size();
+      }
+      result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_WRITE));
     }
     if (READ_BIT & watching) {
-      kv.second.in_register_readwrite = regs.size();
-      regs.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_READWRITE));
+      if (will_set_task_state) {
+        kv.second.in_register_readwrite = result.size();
+      }
+      result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_READWRITE));
     }
   }
+  return result;
+}
+
+bool AddressSpace::allocate_watchpoints() {
+  Task::DebugRegs regs = all_watchpoints_internal(true);
 
   if (regs.size() <= 0x7f) {
     bool ok = true;

@@ -1251,6 +1251,10 @@ static ssize_t dr_user_word_offset(size_t i) {
   return offsetof(struct user, u_debugreg[0]) + sizeof(void*) * i;
 }
 
+uintptr_t Task::debug_status() {
+  return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(6), nullptr);
+}
+
 uintptr_t Task::consume_debug_status() {
   uintptr_t status =
       fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(6), nullptr);

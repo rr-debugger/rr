@@ -12,6 +12,7 @@
 #include <algorithm>
 
 #include "AutoRemoteSyscalls.h"
+#include "fast_forward.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "replay_syscall.h"
@@ -353,6 +354,19 @@ Completion ReplaySession::exit_syscall(Task* t, RunCommand stepi) {
   return COMPLETE;
 }
 
+void ReplaySession::check_pending_sig(Task* t) {
+  t->child_sig = t->pending_sig();
+  bool child_sig_gt_zero = 0 < t->child_sig;
+  if (child_sig_gt_zero) {
+    return;
+  }
+  ASSERT(t, child_sig_gt_zero)
+      << "Replaying `" << Event(trace_frame.event())
+      << "': expecting tracee signal or trap, but instead at `"
+      << t->syscall_name(t->regs().original_syscallno())
+      << "' (ticks: " << t->tick_count() << ")";
+}
+
 /**
  * Advance |t| to the next signal or trap.  If |stepi| is |SINGLESTEP|,
  * then execution resumes by single-stepping.  Otherwise it continues
@@ -360,8 +374,6 @@ Completion ReplaySession::exit_syscall(Task* t, RunCommand stepi) {
  */
 void ReplaySession::continue_or_step(Task* t, RunCommand stepi,
                                      int64_t tick_period) {
-  int child_sig_gt_zero;
-
   ResumeRequest resume_how;
   if (stepi == RUN_SINGLESTEP) {
     resume_how = RESUME_SINGLESTEP;
@@ -375,17 +387,7 @@ void ReplaySession::continue_or_step(Task* t, RunCommand stepi,
     resume_how = RESUME_SYSCALL;
   }
   t->resume_execution(resume_how, RESUME_WAIT, 0, tick_period);
-
-  t->child_sig = t->pending_sig();
-  child_sig_gt_zero = (0 < t->child_sig);
-  if (child_sig_gt_zero) {
-    return;
-  }
-  ASSERT(t, child_sig_gt_zero)
-      << "Replaying `" << Event(trace_frame.event())
-      << "': expecting tracee signal or trap, but instead at `"
-      << t->syscall_name(t->regs().original_syscallno())
-      << "' (ticks: " << t->tick_count() << ")";
+  check_pending_sig(t);
 }
 
 /**
@@ -798,9 +800,15 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       /* Case (3) above: we can't put a breakpoint
        * on the $ip, because resuming execution
        * would just trap and we'd be back where we
-       * started.  Single-step past it. */
-      LOG(debug) << "    (single-stepping over target $ip)";
-      continue_or_step(t, RUN_SINGLESTEP);
+       * started.  Single-step or fast-forward past it. */
+      LOG(debug) << "    (fast-forwarding over target $ip)";
+      if (stepi == RUN_SINGLESTEP) {
+        continue_or_step(t, stepi);
+      } else {
+        const Registers* states[2] = { &regs, NULL };
+        fast_forward_through_instruction(t, states);
+        check_pending_sig(t);
+      }
     }
 
     if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
