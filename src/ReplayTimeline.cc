@@ -575,7 +575,6 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       if (current->current_task()->tuid() == tuid) {
         result = current->replay_step(RUN_SINGLESTEP);
         now = mark();
-        LOG(debug) << "Singlestepped towards target, now at " << now;
         if (result.break_status.reason == BREAK_SINGLESTEP ||
             result.break_status.reason == BREAK_SIGNAL ||
             result.break_status.reason == BREAK_WATCHPOINT) {
@@ -585,15 +584,12 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
             break;
           }
           destination_candidate = step_start;
-          LOG(debug) << "New destination candidate is "
-                     << destination_candidate;
           destination_candidate_result = result;
           step_start = now;
         }
       } else {
         result = current->replay_step(RUN_CONTINUE);
         now = mark();
-        LOG(debug) << "Wrong task, ran towards target, now at " << now;
       }
       if (now >= origin) {
         break;
@@ -601,8 +597,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     }
 
     if (destination_candidate) {
+      LOG(debug) << "Found destination " << destination_candidate;
       seek_to_mark(destination_candidate);
-      LOG(debug) << "Seeked to destination " << destination_candidate;
       destination_candidate_result.break_status.task = current->find_task(tuid);
       assert(destination_candidate_result.break_status.task);
       assert(destination_candidate_result.break_status.reason != BREAK_NONE);
