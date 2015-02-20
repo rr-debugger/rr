@@ -10,7 +10,7 @@ void assert_prerequisites(bool use_syscall_buffer = false);
 
 void check_performance_settings();
 
-int print_usage();
+void print_usage(FILE*);
 
 bool parse_global_option(std::vector<std::string>& args);
 

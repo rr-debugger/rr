@@ -88,9 +88,9 @@ void check_performance_settings() {
   }
 }
 
-int print_usage(void) {
-  fputs("Usage:\n", stderr);
-  Command::print_help_all(stderr);
+void print_usage(FILE* out) {
+  fputs("Usage:\n", out);
+  Command::print_help_all(out);
   fputs(
       "\n"
       "Common options:\n"
@@ -137,8 +137,7 @@ int print_usage(void) {
       "                             critical to the user\n"
       "  -W, --wait-secs=<NUM_SECS> wait NUM_SECS seconds just after startup,\n"
       "                             before initiating recording or replaying\n",
-      stderr);
-  return 1;
+      out);
 }
 
 static void init_random() {
@@ -225,7 +224,8 @@ int main(int argc, char* argv[]) {
   }
 
   if (args.size() == 0) {
-    return print_usage();
+    print_usage(stderr);
+    return 1;
   }
 
   auto command = Command::command_for_name(args[0]);
@@ -233,7 +233,8 @@ int main(int argc, char* argv[]) {
     args.erase(args.begin());
   } else {
     if (!Command::verify_not_option(args)) {
-      return print_usage();
+      print_usage(stderr);
+      return 1;
     }
     command = RecordCommand::get();
   }

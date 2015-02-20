@@ -68,7 +68,7 @@ void Command::print_help(FILE* out) {
   if (help) {
     fputs(help, out);
   } else {
-    print_usage();
+    print_usage(out);
   }
 }
 
