@@ -20,8 +20,13 @@ static void find_home_device(void) {
   test_assert(f);
   while (fgets(mount_line, sizeof(mount_line), f)) {
     int maj, min;
-    sscanf(mount_line, "%*d %*d %d:%d %*s %*s %*s %*s - %*s %1000s %*s", &maj,
-           &min, home_device);
+    int ret;
+    ret = sscanf(mount_line, "%*d %*d %d:%d %*s %*s %*s %*s - %*s %1000s %*s",
+            &maj, &min, home_device);
+    // optional field (7) missing?
+    if (ret != 3)
+      sscanf(mount_line, "%*d %*d %d:%d %*s %*s %*s - %*s %1000s %*s", &maj,
+        &min, home_device);
     if (maj == major(home_stat.st_dev) && min == minor(home_stat.st_dev)) {
       atomic_printf("%s (%d:%d) is on device special file %s\n", home, maj, min,
                     home_device);
