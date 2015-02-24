@@ -2526,10 +2526,25 @@ static string extra_expected_errno_info(Task* t,
              << ")";
           break;
         case Arch::fcntl:
+        case Arch::fcntl64:
           ss << "; unknown fcntl(" << HEX((int)t->regs().arg2_signed()) << ")";
           break;
         case Arch::prctl:
           ss << "; unknown prctl(" << HEX((int)t->regs().arg1_signed()) << ")";
+          break;
+        case Arch::socketcall:
+          ss << "; unknown socketcall(" << HEX((int)t->regs().arg1_signed())
+             << ")";
+          break;
+        case Arch::ipc:
+          ss << "; unknown ipc(" << HEX((int)t->regs().arg1_signed()) << ")";
+          break;
+        case Arch::futex:
+          ss << "; unknown futex("
+             << HEX((int)t->regs().arg2_signed() & FUTEX_CMD_MASK) << ")";
+          break;
+        case Arch::waitid:
+          ss << "; unknown waitid(" << HEX((idtype_t)t->regs().arg1()) << ")";
           break;
       }
       break;
