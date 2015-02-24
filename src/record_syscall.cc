@@ -2528,6 +2528,9 @@ static string extra_expected_errno_info(Task* t,
         case Arch::fcntl:
           ss << "; unknown fcntl(" << HEX((int)t->regs().arg2_signed()) << ")";
           break;
+        case Arch::prctl:
+          ss << "; unknown prctl(" << HEX((int)t->regs().arg1_signed()) << ")";
+          break;
       }
       break;
     case EIO:
