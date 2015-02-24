@@ -134,9 +134,11 @@ unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
     assert(nwritten == sizeof(params));
   } else {
-    fprintf(stderr, "Attach to the rr debug server with this command:\n"
+    fprintf(stderr, "Launch gdb with\n"
+                    "  gdb %s\n"
+                    "and attach to the rr debug server with:\n"
                     "  target remote :%d\n",
-            port);
+            exe_image.c_str(), port);
   }
   LOG(debug) << "limiting debugger traffic to tgid " << tgid;
   dbg->await_debugger(listen_fd);

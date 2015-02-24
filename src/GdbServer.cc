@@ -893,7 +893,7 @@ void GdbServer::emergency_debug(Task* t) {
   // control another session. Instead, launch a new GdbServer and wait for
   // the user to connect from another window.
   unique_ptr<GdbConnection> dbg = GdbConnection::await_client_connection(
-      t->tid, GdbConnection::PROBE_PORT, t->tgid(), string());
+      t->tid, GdbConnection::PROBE_PORT, t->tgid(), t->vm()->exe_image());
 
   GdbServer(dbg).process_debugger_requests(t);
 }
