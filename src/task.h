@@ -59,6 +59,10 @@ public:
 
   TaskGroupUid tguid() const { return TaskGroupUid(tgid, serial); }
 
+  // We don't allow tasks to make themselves undumpable. If they try,
+  // record that here and lie about it if necessary.
+  bool dumpable;
+
 private:
   TaskGroup(const TaskGroup&) = delete;
   TaskGroup operator=(const TaskGroup&) = delete;

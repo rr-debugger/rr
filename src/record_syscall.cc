@@ -2009,6 +2009,23 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           syscall_state.reg_parameter<int>(2);
           break;
 
+        case PR_SET_DUMPABLE:
+          if (t->regs().arg2() == 0) {
+            // Don't let tasks make themslves undumpable
+            Registers r = t->regs();
+            r.set_arg1(intptr_t(-1));
+            t->set_regs(r);
+            syscall_state.emulate_result(0);
+            t->task_group()->dumpable = false;
+          } else if (t->regs().arg2() == 1) {
+            t->task_group()->dumpable = true;
+          }
+          break;
+
+        case PR_GET_DUMPABLE:
+          syscall_state.emulate_result(t->task_group()->dumpable);
+          break;
+
         case PR_GET_NAME:
           syscall_state.reg_parameter(2, 16);
           break;
