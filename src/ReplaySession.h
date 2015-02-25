@@ -259,9 +259,12 @@ public:
   static shr_ptr create(const std::string& dir);
 
   struct StepConstraints {
-    StepConstraints() : stop_at_time(0), ticks_target(0) {}
+    explicit StepConstraints(RunCommand command)
+        : command(command), stop_at_time(0), ticks_target(0) {}
+    RunCommand command;
     TraceFrame::Time stop_at_time;
     Ticks ticks_target;
+    bool is_singlestep() const { return command == RUN_SINGLESTEP; }
   };
   /**
    * Take a single replay step.
@@ -277,9 +280,10 @@ public:
    * or stop_at_time). Only useful for RUN_CONTINUE.
    * Always stops on a switch to a new task.
    */
-  ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
-                           const StepConstraints& step_constraints =
-                               StepConstraints());
+  ReplayResult replay_step(const StepConstraints& constraints);
+  ReplayResult replay_step(RunCommand command) {
+    return replay_step(StepConstraints(command));
+  }
 
   virtual ReplaySession* as_replay() { return this; }
 
@@ -344,13 +348,13 @@ private:
   void setup_replay_one_trace_frame(Task* t);
   void advance_to_next_trace_frame(TraceFrame::Time stop_at_time);
   Completion emulate_signal_delivery(Task* oldtask, int sig,
-                                     TraceFrame::Time stop_at_time);
-  Completion try_one_trace_step(Task* t, RunCommand stepi,
+                                     const StepConstraints& constraints);
+  Completion try_one_trace_step(Task* t,
                                 const StepConstraints& step_constraints);
-  Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu, RunCommand stepi,
-                                   Ticks ticks_target = 0);
-  Completion enter_syscall(Task* t, RunCommand stepi);
-  Completion exit_syscall(Task* t, RunCommand stepi);
+  Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
+                                   const StepConstraints& constraints);
+  Completion enter_syscall(Task* t, const StepConstraints& constraints);
+  Completion exit_syscall(Task* t, const StepConstraints& constraints);
   Ticks get_ticks_slack(Task* t);
   void check_ticks_consistency(Task* t, const Event& ev);
   void check_pending_sig(Task* t);
@@ -368,17 +372,19 @@ private:
                         ExecStateType exec_state, RunCommand stepi);
   Completion advance_to(Task* t, const Registers& regs, int sig,
                         RunCommand stepi, Ticks ticks);
-  Completion advance_to_ticks_target(Task* t, RunCommand stepi,
-                                     Ticks ticks_target);
-  Completion emulate_deterministic_signal(Task* t, int sig, RunCommand stepi);
-  Completion emulate_async_signal(Task* t, int sig, RunCommand stepi,
+  Completion advance_to_ticks_target(Task* t,
+                                     const StepConstraints& constraints);
+  Completion emulate_deterministic_signal(Task* t, int sig,
+                                          const StepConstraints& constraints);
+  Completion emulate_async_signal(Task* t, int sig,
+                                  const StepConstraints& constraints,
                                   Ticks ticks);
   Completion skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
-                                RunCommand stepi, Ticks ticks_target = 0);
+                                const StepConstraints& constraints);
   void prepare_syscallbuf_records(Task* t);
-  Completion flush_one_syscall(Task* t, RunCommand stepi, Ticks ticks_target);
-  Completion flush_syscallbuf(Task* t, RunCommand stepi, Ticks ticks_target);
-  Completion patch_next_syscall(Task* t, RunCommand stepi);
+  Completion flush_one_syscall(Task* t, const StepConstraints& constraints);
+  Completion flush_syscallbuf(Task* t, const StepConstraints& constraints);
+  Completion patch_next_syscall(Task* t, const StepConstraints& constraints);
 
   std::shared_ptr<EmuFs> emu_fs;
   Task* last_debugged_task;

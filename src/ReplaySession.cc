@@ -234,12 +234,11 @@ bool ReplaySession::is_ignored_signal(int sig) {
  * boundary is reached, or INCOMPLETE if advancing to the boundary was
  * interrupted by an unknown trap.
  */
-Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
-                                                RunCommand stepi,
-                                                Ticks ticks_target) {
+Completion ReplaySession::cont_syscall_boundary(
+    Task* t, ExecOrEmulate emu, const StepConstraints& constraints) {
   Ticks ticks_period = 0;
-  if (ticks_target > 0) {
-    ticks_period = ticks_target - SKID_SIZE - t->tick_count();
+  if (constraints.ticks_target > 0) {
+    ticks_period = constraints.ticks_target - SKID_SIZE - t->tick_count();
     if (ticks_period <= 0) {
       return INCOMPLETE;
     }
@@ -251,11 +250,11 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   }
 
   ResumeRequest resume_how;
-  if (emu == EMULATE && stepi == RUN_SINGLESTEP) {
+  if (emu == EMULATE && constraints.command == RUN_SINGLESTEP) {
     resume_how = RESUME_SYSEMU_SINGLESTEP;
   } else if (emu == EMULATE) {
     resume_how = RESUME_SYSEMU;
-  } else if (stepi == RUN_SINGLESTEP) {
+  } else if (constraints.command == RUN_SINGLESTEP) {
     resume_how = RESUME_SINGLESTEP;
     // Annoyingly, PTRACE_SINGLESTEP doesn't raise
     // PTRACE_O_SYSGOOD traps.  (Unlike
@@ -284,7 +283,7 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
 
   t->child_sig = t->pending_sig();
   if (is_ignored_signal(t->child_sig)) {
-    return cont_syscall_boundary(t, emu, stepi, ticks_target);
+    return cont_syscall_boundary(t, emu, constraints);
   }
 
   if (t->ptrace_event() == PTRACE_EVENT_EXEC) {
@@ -295,7 +294,7 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
   if (SIGTRAP == t->child_sig) {
     return INCOMPLETE;
   } else if (t->child_sig == PerfCounters::TIME_SLICE_SIGNAL) {
-    ASSERT(t, ticks_target > 0)
+    ASSERT(t, constraints.ticks_target > 0)
         << "Should only get TIME_SLICE_SIGNAL with a ticks_target";
     t->child_sig = 0;
     return INCOMPLETE;
@@ -313,8 +312,10 @@ Completion ReplaySession::cont_syscall_boundary(Task* t, ExecOrEmulate emu,
  * |step|.  Return COMPLETE if successful, or INCOMPLETE if an unhandled trap
  * occurred.
  */
-Completion ReplaySession::enter_syscall(Task* t, RunCommand stepi) {
-  if (cont_syscall_boundary(t, current_step.syscall.emu, stepi) == INCOMPLETE) {
+Completion ReplaySession::enter_syscall(Task* t,
+                                        const StepConstraints& constraints) {
+  if (cont_syscall_boundary(t, current_step.syscall.emu, constraints) ==
+      INCOMPLETE) {
     return INCOMPLETE;
   }
   t->validate_regs();
@@ -325,11 +326,12 @@ Completion ReplaySession::enter_syscall(Task* t, RunCommand stepi) {
  * Advance past the reti (or virtual reti) according to |step|.
  * Return COMPLETE if successful, or INCOMPLETE if an unhandled trap occurred.
  */
-Completion ReplaySession::exit_syscall(Task* t, RunCommand stepi) {
+Completion ReplaySession::exit_syscall(Task* t,
+                                       const StepConstraints& constraints) {
   ExecOrEmulate emu = current_step.syscall.emu;
 
   if (emu == EXEC) {
-    if (cont_syscall_boundary(t, emu, stepi) == INCOMPLETE) {
+    if (cont_syscall_boundary(t, emu, constraints) == INCOMPLETE) {
       return INCOMPLETE;
     }
   }
@@ -841,11 +843,11 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
  * emulation was interrupted, COMPLETE if completed.
  */
 Completion ReplaySession::emulate_signal_delivery(
-    Task* oldtask, int sig, TraceFrame::Time stop_at_time) {
+    Task* oldtask, int sig, const StepConstraints& constraints) {
   // We are now at the exact point in the child where the signal
   // was recorded, emulate it using the next trace frame (records
   // the state at sighandler entry).
-  advance_to_next_trace_frame(stop_at_time);
+  advance_to_next_trace_frame(constraints.stop_at_time);
   Task* t = current_task();
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
@@ -911,16 +913,17 @@ void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
  * update registers to what was recorded.  Return COMPLETE if successful or
  * INCOMPLETE  if an unhandled interrupt occurred.
  */
-Completion ReplaySession::emulate_deterministic_signal(Task* t, int sig,
-                                                       RunCommand stepi) {
+Completion ReplaySession::emulate_deterministic_signal(
+    Task* t, int sig, const StepConstraints& constraints) {
   Event ev(trace_frame.event());
 
-  continue_or_step(t, stepi);
+  continue_or_step(t, constraints.command);
   if (is_ignored_signal(t->child_sig)) {
     t->child_sig = 0;
-    return emulate_deterministic_signal(t, sig, stepi);
+    return emulate_deterministic_signal(t, sig, constraints);
   } else if (SIGTRAP == t->child_sig &&
-             is_debugger_trap(t, sig, DETERMINISTIC_SIG, UNKNOWN, stepi)) {
+             is_debugger_trap(t, sig, DETERMINISTIC_SIG, UNKNOWN,
+                              constraints.command)) {
     return INCOMPLETE;
   }
   ASSERT(t, t->child_sig == sig) << "Replay got unrecorded signal "
@@ -945,9 +948,10 @@ Completion ReplaySession::emulate_deterministic_signal(Task* t, int sig,
  * nonzero.  Return COMPLETE if successful or INCOMPLETE if an unhandled
  * interrupt occurred.
  */
-Completion ReplaySession::emulate_async_signal(Task* t, int sig,
-                                               RunCommand stepi, Ticks ticks) {
-  if (advance_to(t, trace_frame.regs(), 0, stepi, ticks) == INCOMPLETE) {
+Completion ReplaySession::emulate_async_signal(
+    Task* t, int sig, const StepConstraints& constraints, Ticks ticks) {
+  if (advance_to(t, trace_frame.regs(), 0, constraints.command, ticks) ==
+      INCOMPLETE) {
     return INCOMPLETE;
   }
   if (sig) {
@@ -964,12 +968,11 @@ Completion ReplaySession::emulate_async_signal(Task* t, int sig,
  * if an unhandled interrupt occurred, COMPLETE if the ioctl() was
  * successfully skipped over.
  */
-Completion ReplaySession::skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
-                                             RunCommand stepi,
-                                             Ticks ticks_target) {
+Completion ReplaySession::skip_desched_ioctl(
+    Task* t, ReplayDeschedState* ds, const StepConstraints& constraints) {
   /* Skip ahead to the syscall entry. */
   if (DESCHED_ENTER == ds->state &&
-      cont_syscall_boundary(t, EMULATE, stepi, ticks_target) == INCOMPLETE) {
+      cont_syscall_boundary(t, EMULATE, constraints) == INCOMPLETE) {
     return INCOMPLETE;
   }
   ds->state = DESCHED_EXIT;
@@ -1085,8 +1088,8 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
  * INCOMPLETE if an unhandled interrupt occurred, and COMPLETE if the syscall
  * was flushed (in which case |flush->state == DONE|).
  */
-Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi,
-                                            Ticks ticks_target) {
+Completion ReplaySession::flush_one_syscall(
+    Task* t, const StepConstraints& constraints) {
   const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
   const struct syscallbuf_record* rec_rec =
       (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
@@ -1123,28 +1126,28 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi,
         current_step.flush.desched.type = DESCHED_ARM;
         current_step.flush.desched.state = DESCHED_ENTER;
       }
-      return flush_one_syscall(t, stepi, ticks_target);
+      return flush_one_syscall(t, constraints);
 
     case FLUSH_ARM:
       /* Skip past the ioctl that armed the desched
        * notification. */
       LOG(debug) << "  skipping over arm-desched ioctl";
-      if (skip_desched_ioctl(t, &current_step.flush.desched, stepi,
-                             ticks_target) == INCOMPLETE) {
+      if (skip_desched_ioctl(t, &current_step.flush.desched, constraints) ==
+          INCOMPLETE) {
         return INCOMPLETE;
       }
       current_step.flush.state = FLUSH_ENTER;
-      return flush_one_syscall(t, stepi, ticks_target);
+      return flush_one_syscall(t, constraints);
 
     case FLUSH_ENTER:
       LOG(debug) << "  advancing to buffered syscall entry";
-      if (cont_syscall_boundary(t, emu, stepi, ticks_target) == INCOMPLETE) {
+      if (cont_syscall_boundary(t, emu, constraints) == INCOMPLETE) {
         return INCOMPLETE;
       }
       assert_at_buffered_syscall(t, call);
       assert_same_rec(t, rec_rec, child_rec);
       current_step.flush.state = FLUSH_EXIT;
-      return flush_one_syscall(t, stepi, ticks_target);
+      return flush_one_syscall(t, constraints);
 
     case FLUSH_EXIT: {
       LOG(debug) << "  advancing to buffered syscall exit";
@@ -1159,7 +1162,7 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi,
       // Restore return value.
       // TODO: try to share more code with cont_syscall_boundary()
       if (emu == EXEC) {
-        if (cont_syscall_boundary(t, emu, stepi) == INCOMPLETE) {
+        if (cont_syscall_boundary(t, emu, constraints) == INCOMPLETE) {
           return INCOMPLETE;
         }
         assert_at_buffered_syscall(t, call);
@@ -1184,14 +1187,14 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi,
       current_step.flush.state = FLUSH_DISARM;
       current_step.flush.desched.type = DESCHED_DISARM;
       current_step.flush.desched.state = DESCHED_ENTER;
-      return flush_one_syscall(t, stepi, ticks_target);
+      return flush_one_syscall(t, constraints);
     }
     case FLUSH_DISARM:
       /* And skip past the ioctl that disarmed the desched
        * notification. */
       LOG(debug) << "  skipping over disarm-desched ioctl";
-      if (skip_desched_ioctl(t, &current_step.flush.desched, stepi,
-                             ticks_target) == INCOMPLETE) {
+      if (skip_desched_ioctl(t, &current_step.flush.desched, constraints) ==
+          INCOMPLETE) {
         return INCOMPLETE;
       }
       current_step.flush.state = FLUSH_DONE;
@@ -1209,14 +1212,14 @@ Completion ReplaySession::flush_one_syscall(Task* t, RunCommand stepi,
  * that flushed the buffer).  Return COMPLETE if successful or INCOMPLETE if an
  * unhandled interrupt occurred.
  */
-Completion ReplaySession::flush_syscallbuf(Task* t, RunCommand stepi,
-                                           Ticks ticks_target) {
+Completion ReplaySession::flush_syscallbuf(Task* t,
+                                           const StepConstraints& constraints) {
   prepare_syscallbuf_records(t);
 
   const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
 
   while (current_step.flush.num_rec_bytes_remaining > 0) {
-    if (flush_one_syscall(t, stepi, ticks_target) == INCOMPLETE) {
+    if (flush_one_syscall(t, constraints) == INCOMPLETE) {
       return INCOMPLETE;
     }
 
@@ -1238,8 +1241,9 @@ Completion ReplaySession::flush_syscallbuf(Task* t, RunCommand stepi,
   return COMPLETE;
 }
 
-Completion ReplaySession::patch_next_syscall(Task* t, RunCommand stepi) {
-  if (cont_syscall_boundary(t, EMULATE, stepi) == INCOMPLETE) {
+Completion ReplaySession::patch_next_syscall(
+    Task* t, const StepConstraints& constraints) {
+  if (cont_syscall_boundary(t, EMULATE, constraints) == INCOMPLETE) {
     return INCOMPLETE;
   }
   bool did_patch = t->vm()->monkeypatcher().try_patch_syscall(t);
@@ -1264,14 +1268,14 @@ static bool has_deterministic_ticks(const Event& ev,
   return TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action;
 }
 
-Completion ReplaySession::advance_to_ticks_target(Task* t, RunCommand stepi,
-                                                  Ticks ticks_target) {
+Completion ReplaySession::advance_to_ticks_target(
+    Task* t, const StepConstraints& constraints) {
   while (true) {
-    Ticks ticks_left = ticks_target - t->tick_count();
+    Ticks ticks_left = constraints.ticks_target - t->tick_count();
     if (ticks_left <= SKID_SIZE) {
       return INCOMPLETE;
     }
-    continue_or_step(t, stepi, ticks_left - SKID_SIZE);
+    continue_or_step(t, constraints.command, ticks_left - SKID_SIZE);
     if (SIGTRAP == t->child_sig) {
       return INCOMPLETE;
     }
@@ -1284,38 +1288,37 @@ Completion ReplaySession::advance_to_ticks_target(Task* t, RunCommand stepi,
  * more work.
  */
 Completion ReplaySession::try_one_trace_step(
-    Task* t, RunCommand stepi, const StepConstraints& step_constraints) {
-  if (step_constraints.ticks_target > 0 &&
+    Task* t, const StepConstraints& constraints) {
+  if (constraints.ticks_target > 0 &&
       current_step.action != TSTEP_FLUSH_SYSCALLBUF &&
-      t->current_trace_frame().ticks() > step_constraints.ticks_target) {
+      t->current_trace_frame().ticks() > constraints.ticks_target) {
     // Instead of doing this step, just advance to the ticks_target, since
     // that happens before this event completes.
     // Unfortunately we can't do this for TSTEP_FLUSH_SYSCALLBUF; that needs
     // to be handled below.
-    return advance_to_ticks_target(t, stepi, step_constraints.ticks_target);
+    return advance_to_ticks_target(t, constraints);
   }
 
   switch (current_step.action) {
     case TSTEP_RETIRE:
       return COMPLETE;
     case TSTEP_ENTER_SYSCALL:
-      return enter_syscall(t, stepi);
+      return enter_syscall(t, constraints);
     case TSTEP_EXIT_SYSCALL:
-      return exit_syscall(t, stepi);
+      return exit_syscall(t, constraints);
     case TSTEP_DETERMINISTIC_SIGNAL:
-      return emulate_deterministic_signal(t, current_step.signo, stepi);
+      return emulate_deterministic_signal(t, current_step.signo, constraints);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      return emulate_async_signal(t, current_step.target.signo, stepi,
+      return emulate_async_signal(t, current_step.target.signo, constraints,
                                   current_step.target.ticks);
     case TSTEP_DELIVER_SIGNAL:
-      return emulate_signal_delivery(t, current_step.signo,
-                                     step_constraints.stop_at_time);
+      return emulate_signal_delivery(t, current_step.signo, constraints);
     case TSTEP_FLUSH_SYSCALLBUF:
-      return flush_syscallbuf(t, stepi, step_constraints.ticks_target);
+      return flush_syscallbuf(t, constraints);
     case TSTEP_PATCH_SYSCALL:
-      return patch_next_syscall(t, stepi);
+      return patch_next_syscall(t, constraints);
     case TSTEP_DESCHED:
-      return skip_desched_ioctl(t, &current_step.desched, stepi);
+      return skip_desched_ioctl(t, &current_step.desched, constraints);
     default:
       FATAL() << "Unhandled step type " << current_step.action;
       return COMPLETE;
@@ -1453,8 +1456,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
   }
 }
 
-ReplayResult ReplaySession::replay_step(
-    RunCommand command, const StepConstraints& step_constraints) {
+ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   finish_initializing();
 
   ReplayResult result;
@@ -1483,7 +1485,7 @@ ReplayResult ReplaySession::replay_step(
       if (last_task()) {
         result.status = REPLAY_EXITED;
       } else {
-        advance_to_next_trace_frame(step_constraints.stop_at_time);
+        advance_to_next_trace_frame(constraints.stop_at_time);
       }
       return result;
     }
@@ -1491,7 +1493,7 @@ ReplayResult ReplaySession::replay_step(
 
   /* Advance towards fulfilling |current_step|. */
   ReplayTraceStepType current_action = current_step.action;
-  if (try_one_trace_step(t, command, step_constraints) == INCOMPLETE) {
+  if (try_one_trace_step(t, constraints) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
@@ -1516,7 +1518,7 @@ ReplayResult ReplaySession::replay_step(
           << "Expected either SIGTRAP at $ip " << t->ip()
           << " or USER breakpoint just after it";
       ASSERT(t, result.break_status.reason != BREAK_SINGLESTEP ||
-                    command == RUN_SINGLESTEP);
+                    constraints.command == RUN_SINGLESTEP);
     }
 
     /* Don't restart with SIGTRAP anywhere. */
@@ -1539,7 +1541,7 @@ ReplayResult ReplaySession::replay_step(
 
   debug_memory(t);
 
-  if (command == RUN_SINGLESTEP &&
+  if (constraints.is_singlestep() &&
       (EV_SEGV_RDTSC == ev.type() || EV_SIGNAL_HANDLER == ev.type())) {
     // We completed this RDTSC event, and that counts as a completed singlestep.
     result.break_status.reason = BREAK_SINGLESTEP;
@@ -1551,7 +1553,7 @@ ReplayResult ReplaySession::replay_step(
   // Advance to next trace frame before doing rep_after_enter_syscall,
   // so that FdTable notifications run with the same trace timestamp during
   // replay as during recording
-  advance_to_next_trace_frame(step_constraints.stop_at_time);
+  advance_to_next_trace_frame(constraints.stop_at_time);
   if (TSTEP_ENTER_SYSCALL == current_step.action) {
     rep_after_enter_syscall(t, current_step.syscall.number);
   }
