@@ -358,7 +358,8 @@ private:
   Ticks get_ticks_slack(Task* t);
   void check_ticks_consistency(Task* t, const Event& ev);
   void check_pending_sig(Task* t);
-  void continue_or_step(Task* t, RunCommand stepi, int64_t tick_period = 0);
+  void continue_or_step(Task* t, const StepConstraints& constraints,
+                        int64_t tick_period = 0);
   enum ExecStateType {
     UNKNOWN,
     NOT_AT_TARGET,
@@ -366,12 +367,14 @@ private:
   };
   TrapType compute_trap_type(Task* t, int target_sig,
                              SignalDeterministic deterministic,
-                             ExecStateType exec_state, RunCommand stepi);
+                             ExecStateType exec_state,
+                             const StepConstraints& constraints);
   bool is_debugger_trap(Task* t, int target_sig,
                         SignalDeterministic deterministic,
-                        ExecStateType exec_state, RunCommand stepi);
+                        ExecStateType exec_state,
+                        const StepConstraints& constraints);
   Completion advance_to(Task* t, const Registers& regs, int sig,
-                        RunCommand stepi, Ticks ticks);
+                        const StepConstraints& constraints, Ticks ticks);
   Completion advance_to_ticks_target(Task* t,
                                      const StepConstraints& constraints);
   Completion emulate_deterministic_signal(Task* t, int sig,

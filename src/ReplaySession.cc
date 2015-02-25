@@ -374,10 +374,11 @@ void ReplaySession::check_pending_sig(Task* t) {
  * then execution resumes by single-stepping.  Otherwise it continues
  * normally.  The delivered signal is recorded in |t->child_sig|.
  */
-void ReplaySession::continue_or_step(Task* t, RunCommand stepi,
+void ReplaySession::continue_or_step(Task* t,
+                                     const StepConstraints& constraints,
                                      int64_t tick_period) {
   ResumeRequest resume_how;
-  if (stepi == RUN_SINGLESTEP) {
+  if (constraints.command == RUN_SINGLESTEP) {
     resume_how = RESUME_SINGLESTEP;
   } else {
     /* We continue with RESUME_SYSCALL for error checking:
@@ -426,7 +427,7 @@ enum ExecStateType {
 TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
                                           SignalDeterministic deterministic,
                                           ExecStateType exec_state,
-                                          RunCommand stepi) {
+                                          const StepConstraints& constraints) {
   TrapType trap_type;
 
   assert(SIGTRAP == t->child_sig);
@@ -444,8 +445,9 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
             * so the trap was only clearly for the debugger if
             * the debugger was requesting single-stepping. */
        ||
-       (stepi == RUN_SINGLESTEP && NOT_AT_TARGET == exec_state))) {
-    return stepi == RUN_SINGLESTEP ? TRAP_STEPI : TRAP_BKPT_USER;
+       (constraints.command == RUN_SINGLESTEP &&
+        NOT_AT_TARGET == exec_state))) {
+    return constraints.command == RUN_SINGLESTEP ? TRAP_STEPI : TRAP_BKPT_USER;
   }
 
   /* We're trying to replay a deterministic SIGTRAP, or we're
@@ -473,7 +475,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
      * and this wasn't a breakpoint, we must have been
      * single stepping.  So definitely for the
      * debugger. */
-    assert(stepi == RUN_SINGLESTEP);
+    assert(constraints.command == RUN_SINGLESTEP);
     return TRAP_STEPI;
   }
 
@@ -492,7 +494,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
    * if it was also requesting single-stepping.  The debugger
    * won't care about the rr-internal trap if it wasn't
    * requesting single-stepping. */
-  return stepi == RUN_SINGLESTEP ? TRAP_STEPI : TRAP_NONE;
+  return constraints.command == RUN_SINGLESTEP ? TRAP_STEPI : TRAP_NONE;
 }
 
 /**
@@ -502,9 +504,9 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
 bool ReplaySession::is_debugger_trap(Task* t, int target_sig,
                                      SignalDeterministic deterministic,
                                      ExecStateType exec_state,
-                                     RunCommand stepi) {
+                                     const StepConstraints& constraints) {
   TrapType type =
-      compute_trap_type(t, target_sig, deterministic, exec_state, stepi);
+      compute_trap_type(t, target_sig, deterministic, exec_state, constraints);
   assert(TRAP_BKPT_INTERNAL != type);
   return TRAP_NONE != type;
 }
@@ -621,7 +623,8 @@ Ticks ReplaySession::get_ticks_slack(Task* t) {
  * step.
  */
 Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
-                                     RunCommand stepi, Ticks ticks) {
+                                     const StepConstraints& constraints,
+                                     Ticks ticks) {
   pid_t tid = t->tid;
   remote_ptr<uint8_t> ip = regs.ip();
   Ticks ticks_left;
@@ -657,7 +660,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
     LOG(debug) << "  programming interrupt for " << (ticks_left - SKID_SIZE)
                << " ticks";
 
-    continue_or_step(t, stepi, ticks_left - SKID_SIZE);
+    continue_or_step(t, constraints, ticks_left - SKID_SIZE);
     if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
         is_ignored_signal(t->child_sig)) {
       t->child_sig = 0;
@@ -713,7 +716,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
     if (SIGTRAP == t->child_sig) {
       TrapType trap_type =
           compute_trap_type(t, sig, NONDETERMINISTIC_SIG,
-                            at_target ? AT_TARGET : NOT_AT_TARGET, stepi);
+                            at_target ? AT_TARGET : NOT_AT_TARGET, constraints);
       switch (trap_type) {
         case TRAP_BKPT_USER:
         case TRAP_STEPI:
@@ -753,7 +756,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
            * awkward to assert that here, so we
            * don't yet.  TODO. */
           LOG(debug) << "    (SIGTRAP; stepi'd target $ip)";
-          assert(stepi == RUN_CONTINUE);
+          assert(constraints.command == RUN_CONTINUE);
           t->child_sig = 0;
           break;
       }
@@ -797,15 +800,15 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       LOG(debug) << "    breaking on target $ip";
       t->vm()->add_breakpoint(ip, TRAP_BKPT_INTERNAL);
       did_set_internal_breakpoint = true;
-      continue_or_step(t, stepi);
+      continue_or_step(t, constraints);
     } else {
       /* Case (3) above: we can't put a breakpoint
        * on the $ip, because resuming execution
        * would just trap and we'd be back where we
        * started.  Single-step or fast-forward past it. */
       LOG(debug) << "    (fast-forwarding over target $ip)";
-      if (stepi == RUN_SINGLESTEP) {
-        continue_or_step(t, stepi);
+      if (constraints.command == RUN_SINGLESTEP) {
+        continue_or_step(t, constraints);
       } else {
         const Registers* states[2] = { &regs, NULL };
         fast_forward_through_instruction(t, states);
@@ -917,13 +920,13 @@ Completion ReplaySession::emulate_deterministic_signal(
     Task* t, int sig, const StepConstraints& constraints) {
   Event ev(trace_frame.event());
 
-  continue_or_step(t, constraints.command);
+  continue_or_step(t, constraints);
   if (is_ignored_signal(t->child_sig)) {
     t->child_sig = 0;
     return emulate_deterministic_signal(t, sig, constraints);
   } else if (SIGTRAP == t->child_sig &&
              is_debugger_trap(t, sig, DETERMINISTIC_SIG, UNKNOWN,
-                              constraints.command)) {
+                              constraints)) {
     return INCOMPLETE;
   }
   ASSERT(t, t->child_sig == sig) << "Replay got unrecorded signal "
@@ -950,8 +953,7 @@ Completion ReplaySession::emulate_deterministic_signal(
  */
 Completion ReplaySession::emulate_async_signal(
     Task* t, int sig, const StepConstraints& constraints, Ticks ticks) {
-  if (advance_to(t, trace_frame.regs(), 0, constraints.command, ticks) ==
-      INCOMPLETE) {
+  if (advance_to(t, trace_frame.regs(), 0, constraints, ticks) == INCOMPLETE) {
     return INCOMPLETE;
   }
   if (sig) {
@@ -1275,7 +1277,7 @@ Completion ReplaySession::advance_to_ticks_target(
     if (ticks_left <= SKID_SIZE) {
       return INCOMPLETE;
     }
-    continue_or_step(t, constraints.command, ticks_left - SKID_SIZE);
+    continue_or_step(t, constraints, ticks_left - SKID_SIZE);
     if (SIGTRAP == t->child_sig) {
       return INCOMPLETE;
     }
