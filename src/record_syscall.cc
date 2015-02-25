@@ -2011,7 +2011,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
         case PR_SET_DUMPABLE:
           if (t->regs().arg2() == 0) {
-            // Don't let tasks make themslves undumpable
+            // Don't let processes make themslves undumpable. If a process
+            // becomes undumpable, calling perf_event_open on it fails.
             Registers r = t->regs();
             r.set_arg1(intptr_t(-1));
             t->set_regs(r);
