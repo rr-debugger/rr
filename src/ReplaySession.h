@@ -260,11 +260,26 @@ public:
 
   struct StepConstraints {
     explicit StepConstraints(RunCommand command)
-        : command(command), stop_at_time(0), ticks_target(0) {}
+        : command(command),
+          stop_at_time(0),
+          ticks_target(0),
+          stop_before_states(&nothing) {}
     RunCommand command;
     TraceFrame::Time stop_at_time;
     Ticks ticks_target;
-    bool is_singlestep() const { return command == RUN_SINGLESTEP; }
+    // When the RunCommand is RUN_SINGLESTEP_FAST_FORWARD, stop if the next
+    // singlestep would enter one of the register states in this (null-
+    // terminated) list. RUN_SINGLESTEP_FAST_FORWARD will always singlestep
+    // at least once regardless.
+    const Registers** stop_before_states;
+
+    bool is_singlestep() const {
+      return command == RUN_SINGLESTEP ||
+             command == RUN_SINGLESTEP_FAST_FORWARD;
+    }
+
+  private:
+    static const Registers* nothing;
   };
   /**
    * Take a single replay step.

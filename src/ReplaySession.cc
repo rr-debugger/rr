@@ -59,6 +59,8 @@ using namespace std;
  */
 static const int SKID_SIZE = 70;
 
+const Registers* ReplaySession::StepConstraints::nothing = nullptr;
+
 static void debug_memory(Task* t) {
   if (should_dump_memory(t, t->current_trace_frame())) {
     dump_process_memory(t, t->current_trace_frame().time(), "rep");
@@ -250,11 +252,11 @@ Completion ReplaySession::cont_syscall_boundary(
   }
 
   ResumeRequest resume_how;
-  if (emu == EMULATE && constraints.command == RUN_SINGLESTEP) {
+  if (emu == EMULATE && constraints.is_singlestep()) {
     resume_how = RESUME_SYSEMU_SINGLESTEP;
   } else if (emu == EMULATE) {
     resume_how = RESUME_SYSEMU;
-  } else if (constraints.command == RUN_SINGLESTEP) {
+  } else if (constraints.is_singlestep()) {
     resume_how = RESUME_SINGLESTEP;
     // Annoyingly, PTRACE_SINGLESTEP doesn't raise
     // PTRACE_O_SYSGOOD traps.  (Unlike
@@ -279,7 +281,16 @@ Completion ReplaySession::cont_syscall_boundary(
   } else {
     resume_how = RESUME_SYSCALL;
   }
-  t->resume_execution(resume_how, RESUME_WAIT, 0, ticks_period);
+  if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD &&
+      (resume_how == RESUME_SYSEMU_SINGLESTEP ||
+       resume_how == RESUME_SINGLESTEP)) {
+    // ignore ticks_period. We can't add more than one tick during a
+    // fast_forward so it doesn't matter.
+    fast_forward_through_instruction(t, resume_how,
+                                     constraints.stop_before_states);
+  } else {
+    t->resume_execution(resume_how, RESUME_WAIT, 0, ticks_period);
+  }
 
   t->child_sig = t->pending_sig();
   if (is_ignored_signal(t->child_sig)) {
@@ -377,9 +388,11 @@ void ReplaySession::check_pending_sig(Task* t) {
 void ReplaySession::continue_or_step(Task* t,
                                      const StepConstraints& constraints,
                                      int64_t tick_period) {
-  ResumeRequest resume_how;
   if (constraints.command == RUN_SINGLESTEP) {
-    resume_how = RESUME_SINGLESTEP;
+    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, 0, tick_period);
+  } else if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD) {
+    fast_forward_through_instruction(t, RESUME_SINGLESTEP,
+                                     constraints.stop_before_states);
   } else {
     /* We continue with RESUME_SYSCALL for error checking:
      * since the next event is supposed to be a signal,
@@ -387,9 +400,8 @@ void ReplaySession::continue_or_step(Task* t,
      * shouldn't be any straight-line execution overhead
      * for SYSCALL vs. CONT, so the difference in cost
      * should be neglible. */
-    resume_how = RESUME_SYSCALL;
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, 0, tick_period);
   }
-  t->resume_execution(resume_how, RESUME_WAIT, 0, tick_period);
   check_pending_sig(t);
 }
 
@@ -445,9 +457,8 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
             * so the trap was only clearly for the debugger if
             * the debugger was requesting single-stepping. */
        ||
-       (constraints.command == RUN_SINGLESTEP &&
-        NOT_AT_TARGET == exec_state))) {
-    return constraints.command == RUN_SINGLESTEP ? TRAP_STEPI : TRAP_BKPT_USER;
+       (constraints.is_singlestep() && NOT_AT_TARGET == exec_state))) {
+    return constraints.is_singlestep() ? TRAP_STEPI : TRAP_BKPT_USER;
   }
 
   /* We're trying to replay a deterministic SIGTRAP, or we're
@@ -475,7 +486,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
      * and this wasn't a breakpoint, we must have been
      * single stepping.  So definitely for the
      * debugger. */
-    assert(constraints.command == RUN_SINGLESTEP);
+    assert(constraints.is_singlestep());
     return TRAP_STEPI;
   }
 
@@ -494,7 +505,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
    * if it was also requesting single-stepping.  The debugger
    * won't care about the rr-internal trap if it wasn't
    * requesting single-stepping. */
-  return constraints.command == RUN_SINGLESTEP ? TRAP_STEPI : TRAP_NONE;
+  return constraints.is_singlestep() ? TRAP_STEPI : TRAP_NONE;
 }
 
 /**
@@ -810,8 +821,15 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       if (constraints.command == RUN_SINGLESTEP) {
         continue_or_step(t, constraints);
       } else {
-        const Registers* states[2] = { &regs, NULL };
-        fast_forward_through_instruction(t, states);
+        vector<const Registers*> states;
+        for (size_t i = 0; constraints.stop_before_states[i]; ++i) {
+          states.push_back(constraints.stop_before_states[i]);
+        }
+        // This state may not be relevant if we don't have the correct tick
+        // count yet. But it doesn't hurt to push it on anyway.
+        states.push_back(&regs);
+        states.push_back(nullptr);
+        fast_forward_through_instruction(t, RESUME_SINGLESTEP, states.data());
         check_pending_sig(t);
       }
     }
@@ -1520,7 +1538,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
           << "Expected either SIGTRAP at $ip " << t->ip()
           << " or USER breakpoint just after it";
       ASSERT(t, result.break_status.reason != BREAK_SINGLESTEP ||
-                    constraints.command == RUN_SINGLESTEP);
+                    constraints.is_singlestep());
     }
 
     /* Don't restart with SIGTRAP anywhere. */

@@ -51,7 +51,11 @@ enum RunCommand {
   // Continue until we hit a breakpoint or a new replay event
   RUN_CONTINUE,
   // Execute a single instruction (unless at a breakpoint or a replay event)
-  RUN_SINGLESTEP
+  RUN_SINGLESTEP,
+  // Like RUN_SINGLESTEP, but a single-instruction loop is allowed (but not
+  // required) to execute multiple times if we don't reach a different
+  // instruction. Usable with ReplaySession::replay_step only.
+  RUN_SINGLESTEP_FAST_FORWARD
 };
 
 /**

@@ -104,6 +104,7 @@ static void process_syscall(Task* t, int syscallno) {
  */
 DiversionSession::DiversionResult DiversionSession::diversion_step(
     Task* t, RunCommand command) {
+  assert(command != RUN_SINGLESTEP_FAST_FORWARD);
   assert_fully_initialized();
 
   DiversionResult result;

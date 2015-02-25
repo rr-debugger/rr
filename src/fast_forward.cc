@@ -5,7 +5,6 @@
 #include "fast_forward.h"
 
 #include "log.h"
-#include "task.h"
 
 using namespace rr;
 using namespace std;
@@ -143,10 +142,13 @@ static void bound_iterations_for_watchpoint(Task* t, remote_ptr<void> reg,
   *iterations = min(*iterations, steps);
 }
 
-void fast_forward_through_instruction(Task* t, const Registers** states) {
+void fast_forward_through_instruction(Task* t, ResumeRequest how,
+                                      const Registers** states) {
+  assert(how == RESUME_SINGLESTEP || how == RESUME_SYSEMU_SINGLESTEP);
+
   remote_ptr<uint8_t> ip = t->ip();
 
-  t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT);
+  t->resume_execution(how, RESUME_WAIT);
   ASSERT(t, t->pending_sig() == SIGTRAP);
 
   if (t->ip() != ip) {
@@ -174,6 +176,9 @@ void fast_forward_through_instruction(Task* t, const Registers** states) {
   if (!decode_x86_string_instruction(instruction_buf, &decoded)) {
     return;
   }
+
+  // At this point we can be sure the instruction didn't trigger a syscall,
+  // so we no longer care about the value of |how|.
 
   Registers extra_state_to_avoid;
   vector<const Registers*> states_copy;
