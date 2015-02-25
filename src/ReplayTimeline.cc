@@ -751,11 +751,19 @@ ReplayResult ReplayTimeline::replay_step(RunCommand command,
   ReplayResult result;
   if (direction == RUN_FORWARD) {
     apply_breakpoints_and_watchpoints();
+    ProtoMark before = proto_mark();
     current->set_visible_execution(true);
     ReplaySession::StepConstraints constraints(command);
     constraints.stop_at_time = stop_at_time;
     result = current->replay_step(constraints);
     current->set_visible_execution(false);
+    if (command == RUN_CONTINUE) {
+      // Since it's easy for us to fix the coalescing quirk for forward
+      // execution, we may as well do so. It's nice to have forward execution
+      // behave consistently with reverse execution.
+      fix_watchpoint_coalescing_quirk(result, before);
+      clear_break_status_reason(result.break_status, BREAK_SINGLESTEP);
+    }
   } else {
     assert(stop_at_time == 0 &&
            "stop_at_time unsupported for reverse execution");

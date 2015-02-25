@@ -6,6 +6,9 @@
 #define DIFF 2 * 1024 * 1024
 #define CMP_LEN 3 * 1024 * 1024
 
+static char* p;
+static char* q;
+
 static void string_store(char* dest, int a, uintptr_t size) {
 #if defined(__i386__) || defined(__x86_64__)
   __asm__("rep stosb\n\t" ::"a"(a), "c"(size), "D"(dest));
@@ -34,9 +37,10 @@ static int string_compare(char* s1, char* s2, uintptr_t size) {
 }
 
 int main(int argc, char* argv[]) {
-  char* p = malloc(SIZE);
-  char* q = malloc(SIZE);
   int i;
+
+  p = malloc(SIZE);
+  q = malloc(SIZE);
 
   for (i = 0; i < 1000; ++i) {
     string_store(p, i, SIZE);

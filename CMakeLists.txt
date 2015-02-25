@@ -475,6 +475,7 @@ set(TESTS_WITHOUT_PROGRAM
   step1
   step_rdtsc
   step_signal
+  string_instructions_replay_quirk
   subprocess_exit_ends_session
   syscallbuf_timeslice_250
   trace_version
