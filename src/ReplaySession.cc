@@ -1283,16 +1283,16 @@ Completion ReplaySession::advance_to_ticks_target(Task* t, RunCommand stepi,
  * |step| was made, or INCOMPLETE if there was a trap or |step| needs
  * more work.
  */
-Completion ReplaySession::try_one_trace_step(Task* t, RunCommand stepi,
-                                             TraceFrame::Time stop_at_time,
-                                             Ticks ticks_target) {
-  if (ticks_target > 0 && current_step.action != TSTEP_FLUSH_SYSCALLBUF &&
-      t->current_trace_frame().ticks() > ticks_target) {
+Completion ReplaySession::try_one_trace_step(
+    Task* t, RunCommand stepi, const StepConstraints& step_constraints) {
+  if (step_constraints.ticks_target > 0 &&
+      current_step.action != TSTEP_FLUSH_SYSCALLBUF &&
+      t->current_trace_frame().ticks() > step_constraints.ticks_target) {
     // Instead of doing this step, just advance to the ticks_target, since
     // that happens before this event completes.
     // Unfortunately we can't do this for TSTEP_FLUSH_SYSCALLBUF; that needs
     // to be handled below.
-    return advance_to_ticks_target(t, stepi, ticks_target);
+    return advance_to_ticks_target(t, stepi, step_constraints.ticks_target);
   }
 
   switch (current_step.action) {
@@ -1308,9 +1308,10 @@ Completion ReplaySession::try_one_trace_step(Task* t, RunCommand stepi,
       return emulate_async_signal(t, current_step.target.signo, stepi,
                                   current_step.target.ticks);
     case TSTEP_DELIVER_SIGNAL:
-      return emulate_signal_delivery(t, current_step.signo, stop_at_time);
+      return emulate_signal_delivery(t, current_step.signo,
+                                     step_constraints.stop_at_time);
     case TSTEP_FLUSH_SYSCALLBUF:
-      return flush_syscallbuf(t, stepi, ticks_target);
+      return flush_syscallbuf(t, stepi, step_constraints.ticks_target);
     case TSTEP_PATCH_SYSCALL:
       return patch_next_syscall(t, stepi);
     case TSTEP_DESCHED:
@@ -1452,9 +1453,8 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
   }
 }
 
-ReplayResult ReplaySession::replay_step(RunCommand command,
-                                        TraceFrame::Time stop_at_time,
-                                        Ticks ticks_target) {
+ReplayResult ReplaySession::replay_step(
+    RunCommand command, const StepConstraints& step_constraints) {
   finish_initializing();
 
   ReplayResult result;
@@ -1483,7 +1483,7 @@ ReplayResult ReplaySession::replay_step(RunCommand command,
       if (last_task()) {
         result.status = REPLAY_EXITED;
       } else {
-        advance_to_next_trace_frame(stop_at_time);
+        advance_to_next_trace_frame(step_constraints.stop_at_time);
       }
       return result;
     }
@@ -1491,8 +1491,7 @@ ReplayResult ReplaySession::replay_step(RunCommand command,
 
   /* Advance towards fulfilling |current_step|. */
   ReplayTraceStepType current_action = current_step.action;
-  if (try_one_trace_step(t, command, stop_at_time, ticks_target) ==
-      INCOMPLETE) {
+  if (try_one_trace_step(t, command, step_constraints) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
@@ -1552,7 +1551,7 @@ ReplayResult ReplaySession::replay_step(RunCommand command,
   // Advance to next trace frame before doing rep_after_enter_syscall,
   // so that FdTable notifications run with the same trace timestamp during
   // replay as during recording
-  advance_to_next_trace_frame(stop_at_time);
+  advance_to_next_trace_frame(step_constraints.stop_at_time);
   if (TSTEP_ENTER_SYSCALL == current_step.action) {
     rep_after_enter_syscall(t, current_step.syscall.number);
   }

@@ -271,7 +271,9 @@ static void clear_break_status_reason(BreakStatus& break_status,
 ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
   ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->key.trace_time) {
-    result = current->replay_step(RUN_CONTINUE, mark.ptr->key.trace_time);
+    ReplaySession::StepConstraints constraints;
+    constraints.stop_at_time = mark.ptr->key.trace_time;
+    result = current->replay_step(RUN_CONTINUE, constraints);
   } else {
     Task* t = current->current_task();
     remote_ptr<uint8_t> mark_addr = mark.ptr->regs.ip();
@@ -548,8 +550,9 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         unapply_breakpoints_and_watchpoints();
         Task* t = current->current_task();
         if (t->tuid() == tuid) {
-          result =
-              current->replay_step(RUN_CONTINUE, 0, origin.ptr->key.ticks - 1);
+          ReplaySession::StepConstraints constraints;
+          constraints.ticks_target = origin.ptr->key.ticks - 1;
+          result = current->replay_step(RUN_CONTINUE, constraints);
           if (result.break_status.reason == BREAK_TICKS_TARGET) {
             LOG(debug) << "   reached ticks target";
             break;
@@ -614,7 +617,9 @@ ReplayResult ReplayTimeline::replay_step(RunCommand command,
   if (direction == RUN_FORWARD) {
     apply_breakpoints_and_watchpoints();
     current->set_visible_execution(true);
-    result = current->replay_step(command, stop_at_time);
+    ReplaySession::StepConstraints constraints;
+    constraints.stop_at_time = stop_at_time;
+    result = current->replay_step(command, constraints);
     current->set_visible_execution(false);
   } else {
     assert(stop_at_time == 0 &&

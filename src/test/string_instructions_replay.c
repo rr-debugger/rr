@@ -17,7 +17,7 @@ static void string_store(char* dest, int a, uintptr_t size) {
 static int string_compare(char* s1, char* s2, uintptr_t size) {
 #if defined(__i386__) || defined(__x86_64__)
   char* result;
-  __asm__("repe cmpsb\n\t" :"=D"(result) :"c"(size), "S"(s1), "D"(s2));
+  __asm__("repe cmpsb\n\t" : "=D"(result) : "c"(size), "S"(s1), "D"(s2));
   uintptr_t i = result - s2;
   if (i == size) {
     return s1[size - 1] == s2[size - 1] ? size : size - 1;
@@ -41,7 +41,7 @@ int main(int argc, char* argv[]) {
   for (i = 0; i < 1000; ++i) {
     string_store(p, i, SIZE);
     string_store(q, i, SIZE);
-    q[DIFF] = i^0xff;
+    q[DIFF] = i ^ 0xff;
     test_assert(string_compare(p, q, SIZE) == DIFF);
   }
 

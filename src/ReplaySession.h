@@ -258,6 +258,11 @@ public:
    */
   static shr_ptr create(const std::string& dir);
 
+  struct StepConstraints {
+    StepConstraints() : stop_at_time(0), ticks_target(0) {}
+    TraceFrame::Time stop_at_time;
+    Ticks ticks_target;
+  };
   /**
    * Take a single replay step.
    * Ensure we stop at event stop_at_time. If this is not specified,
@@ -273,8 +278,8 @@ public:
    * Always stops on a switch to a new task.
    */
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
-                           TraceFrame::Time stop_at_time = 0,
-                           Ticks ticks_target = 0);
+                           const StepConstraints& step_constraints =
+                               StepConstraints());
 
   virtual ReplaySession* as_replay() { return this; }
 
@@ -341,8 +346,7 @@ private:
   Completion emulate_signal_delivery(Task* oldtask, int sig,
                                      TraceFrame::Time stop_at_time);
   Completion try_one_trace_step(Task* t, RunCommand stepi,
-                                TraceFrame::Time stop_at_time,
-                                Ticks ticks_target);
+                                const StepConstraints& step_constraints);
   Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu, RunCommand stepi,
                                    Ticks ticks_target = 0);
   Completion enter_syscall(Task* t, RunCommand stepi);
