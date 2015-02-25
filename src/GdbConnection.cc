@@ -2,7 +2,7 @@
 
 //#define DEBUGTAG "GdbConnection"
 
-//#define REVERSE_EXECUTION
+#define REVERSE_EXECUTION
 
 /**
  * Much of this implementation is based on the documentation at
