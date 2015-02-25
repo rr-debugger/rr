@@ -135,6 +135,12 @@ private:
   GdbRequest divert(ReplaySession& replay, pid_t task);
 
   /**
+   * If break_status indicates a stop that we should report to gdb,
+   * report it.
+   */
+  void maybe_notify_stop(const BreakStatus& break_status);
+
+  /**
    * Return the checkpoint stored as |checkpoint_id| or nullptr if there
    * isn't one.
    */

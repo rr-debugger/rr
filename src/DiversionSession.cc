@@ -135,13 +135,12 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
 
   result.status = DIVERSION_CONTINUE;
   if (t->pending_sig()) {
-    result.break_status = diagnose_debugger_trap(t, t->pending_sig());
-    ASSERT(t, result.break_status.reason != BREAK_SINGLESTEP ||
+    result.break_status = diagnose_debugger_trap(t);
+    ASSERT(t, !result.break_status.singlestep_complete ||
                   command == RUN_SINGLESTEP);
     return result;
   }
 
-  result.break_status.reason = BREAK_NONE;
   process_syscall(t, t->regs().original_syscallno());
   check_for_watchpoint_changes(t, result.break_status);
   return result;

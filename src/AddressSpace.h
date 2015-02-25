@@ -561,7 +561,7 @@ public:
                          WatchType type);
   void remove_all_watchpoints();
   std::vector<WatchConfig> all_watchpoints() {
-    return all_watchpoints_internal(false);
+    return get_watch_configs(NOT_SETTING_TASK_STATE, ALL_WATCHPOINTS);
   }
 
   /**
@@ -578,11 +578,9 @@ public:
    */
   void notify_watchpoint_fired(uintptr_t debug_status);
   /**
-   * If no watchpoints have observed a value change, return false. Otherwise
-   * return true and return the address of a changed watchpoint in 'addr',
-   * and mark all watchpoints as unchanged.
+   * Return all changed watchpoints in |watches| and clear their changed flags.
    */
-  bool consume_watchpoint_change(remote_ptr<void>* addr);
+  std::vector<WatchConfig> consume_watchpoint_changes();
 
   /**
    * Replace all our user breakpoints with the user breakpoints of 'o'.
@@ -708,7 +706,16 @@ private:
                                Watchpoint& watchpoint);
   void update_watchpoint_values(remote_ptr<void> start, remote_ptr<void> end);
 
-  std::vector<WatchConfig> all_watchpoints_internal(bool will_set_task_state);
+  enum WillSetTaskState {
+    SETTING_TASK_STATE,
+    NOT_SETTING_TASK_STATE
+  };
+  enum WatchFilter {
+    ALL_WATCHPOINTS,
+    CHANGED_WATCHPOINTS
+  };
+  std::vector<WatchConfig> get_watch_configs(
+      WillSetTaskState will_set_task_state, WatchFilter filter);
 
   /**
    * Construct a minimal set of watchpoints to be enabled based

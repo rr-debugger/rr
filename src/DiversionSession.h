@@ -41,7 +41,6 @@ public:
   };
   struct DiversionResult {
     DiversionStatus status;
-    // When status == STEP_CONTINUE
     BreakStatus break_status;
   };
   /**

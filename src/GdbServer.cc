@@ -529,6 +529,26 @@ Task* GdbServer::diverter_process_debugger_requests(
   }
 }
 
+void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
+  int sig = -1;
+  remote_ptr<void> watch_addr;
+  if (!break_status.watchpoints_hit.empty()) {
+    sig = SIGTRAP;
+    watch_addr = break_status.watchpoints_hit[0].addr;
+  }
+  if (break_status.breakpoint_hit || break_status.singlestep_complete) {
+    sig = SIGTRAP;
+  }
+  if (break_status.signal) {
+    sig = break_status.signal;
+  }
+  if (sig >= 0) {
+    /* Notify the debugger and process any new requests
+     * that might have triggered before resuming. */
+    dbg->notify_stop(get_threadid(break_status.task), sig, watch_addr.as_int());
+  }
+}
+
 /**
  * Create a new diversion session using |replay| session as the
  * template.  The |replay| session isn't mutated.
@@ -575,26 +595,8 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
     }
 
     assert(result.status == DiversionSession::DIVERSION_CONTINUE);
-    if (result.break_status.reason == BREAK_NONE) {
-      continue;
-    }
 
-    int sig = SIGTRAP;
-    remote_ptr<void> watch_addr = nullptr;
-    switch (result.break_status.reason) {
-      case BREAK_SIGNAL:
-        sig = result.break_status.signal;
-        break;
-      case BREAK_WATCHPOINT:
-        watch_addr = result.break_status.watch_address;
-        break;
-      default:
-        break;
-    }
-    /* Notify the debugger and process any new requests
-     * that might have triggered before resuming. */
-    dbg->notify_stop(get_threadid(result.break_status.task), sig,
-                     watch_addr.as_int());
+    maybe_notify_stop(result.break_status);
   }
 
   LOG(debug) << "... ending debugging diversion";
@@ -688,27 +690,9 @@ ReplayStatus GdbServer::replay_one_step() {
     return result.status;
   }
   assert(result.status == REPLAY_CONTINUE);
-  if (result.break_status.reason == BREAK_NONE) {
-    return result.status;
-  }
 
   if (debugger_active && !suppress_debugger_stop) {
-    int sig = SIGTRAP;
-    remote_ptr<void> watch_addr = nullptr;
-    switch (result.break_status.reason) {
-      case BREAK_SIGNAL:
-        sig = result.break_status.signal;
-        break;
-      case BREAK_WATCHPOINT:
-        watch_addr = result.break_status.watch_address;
-        break;
-      default:
-        break;
-    }
-    /* Notify the debugger and process any new requests
-     * that might have triggered before resuming. */
-    dbg->notify_stop(get_threadid(result.break_status.task), sig,
-                     watch_addr.as_int());
+    maybe_notify_stop(result.break_status);
   }
   return result.status;
 }

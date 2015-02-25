@@ -1282,6 +1282,16 @@ static bool has_deterministic_ticks(const Event& ev,
   return TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT != step.action;
 }
 
+void ReplaySession::check_approaching_ticks_target(
+    Task* t, const StepConstraints& constraints, BreakStatus& break_status) {
+  if (constraints.ticks_target > 0) {
+    Ticks ticks_left = constraints.ticks_target - t->tick_count();
+    if (ticks_left <= SKID_SIZE) {
+      break_status.approaching_ticks_target = true;
+    }
+  }
+}
+
 Completion ReplaySession::advance_to_ticks_target(
     Task* t, const StepConstraints& constraints) {
   while (true) {
@@ -1484,10 +1494,6 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   }
 
   result.status = REPLAY_CONTINUE;
-  result.break_status.reason = BREAK_NONE;
-  result.break_status.task = t;
-  result.break_status.signal = 0;
-  result.break_status.watch_address = nullptr;
 
   /* If we restored from a checkpoint, the steps might have been
    * computed already in which case step.action will not be TSTEP_NONE.
@@ -1504,6 +1510,9 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       return result;
     }
   }
+
+  // Now we know |t| hasn't died, so save it in break_status.
+  result.break_status.task = t;
 
   /* Advance towards fulfilling |current_step|. */
   ReplayTraceStepType current_action = current_step.action;
@@ -1523,20 +1532,23 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     // we got close to ticks_target.
     if (current_step.action != current_action &&
         current_step.action == TSTEP_DELIVER_SIGNAL) {
-      result.break_status.reason = BREAK_SIGNAL;
       result.break_status.signal = current_step.signo;
+      if (constraints.is_singlestep()) {
+        result.break_status.singlestep_complete = true;
+      }
       check_for_watchpoint_changes(t, result.break_status);
     } else {
-      result.break_status = diagnose_debugger_trap(t, t->child_sig);
-      ASSERT(t, result.break_status.reason != BREAK_SIGNAL)
+      result.break_status = diagnose_debugger_trap(t);
+      ASSERT(t, !result.break_status.signal)
           << "Expected either SIGTRAP at $ip " << t->ip()
           << " or USER breakpoint just after it";
-      ASSERT(t, result.break_status.reason != BREAK_SINGLESTEP ||
+      ASSERT(t, !result.break_status.singlestep_complete ||
                     constraints.is_singlestep());
     }
 
     /* Don't restart with SIGTRAP anywhere. */
     t->child_sig = 0;
+    check_approaching_ticks_target(t, constraints, result.break_status);
     return result;
   }
 
@@ -1558,11 +1570,11 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   if (constraints.is_singlestep() &&
       (EV_SEGV_RDTSC == ev.type() || EV_SIGNAL_HANDLER == ev.type())) {
     // We completed this RDTSC event, and that counts as a completed singlestep.
-    result.break_status.reason = BREAK_SINGLESTEP;
-    result.break_status.task = t;
+    result.break_status.singlestep_complete = true;
   }
 
   check_for_watchpoint_changes(t, result.break_status);
+  check_approaching_ticks_target(t, constraints, result.break_status);
 
   // Advance to next trace frame before doing rep_after_enter_syscall,
   // so that FdTable notifications run with the same trace timestamp during

@@ -245,8 +245,9 @@ static void serve_replay_no_debugger(const string& trace_dir,
       break;
     }
     assert(result.status == REPLAY_CONTINUE);
-    assert(result.break_status.reason == BREAK_NONE ||
-           result.break_status.reason == BREAK_SIGNAL);
+    assert(result.break_status.watchpoints_hit.empty());
+    assert(!result.break_status.breakpoint_hit);
+    assert(!result.break_status.singlestep_complete);
   }
 
   LOG(info) << ("Replayer successfully finished.");

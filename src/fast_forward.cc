@@ -319,7 +319,8 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
         watch_offset = decoded.operand_size * (iterations - 1);
         if (watch_offset > BYTES_COALESCED) {
           // We fired the watchpoint too early, perhaps because reads through SI
-          // triggered it. Let's just bail out now; better for the caller to retry
+          // triggered it. Let's just bail out now; better for the caller to
+          // retry
           // fast_forward_through_instruction than for us to try singlestepping
           // all the rest of the way.
           LOG(debug) << "x86-string fast-forward: " << iterations

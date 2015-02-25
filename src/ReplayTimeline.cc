@@ -149,7 +149,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
           result.status != REPLAY_CONTINUE) {
         break;
       }
-      if (result.break_status.reason != BREAK_SINGLESTEP) {
+      if (!result.break_status.singlestep_complete) {
         continue;
       }
 
@@ -282,14 +282,6 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
   return seek_to_before_key(mark.ptr->key);
 }
 
-static void clear_break_status_reason(BreakStatus& break_status,
-                                      BreakReason reason) {
-  if (break_status.reason == reason) {
-    break_status.reason =
-        break_status.watch_address.is_null() ? BREAK_NONE : BREAK_WATCHPOINT;
-  }
-}
-
 ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
   ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->key.trace_time) {
@@ -306,11 +298,10 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
       ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
       constraints.stop_before_states.push_back(&mark.ptr->regs);
       result = current->replay_step(constraints);
-      // Hide internal singlestep
-      clear_break_status_reason(result.break_status, BREAK_SINGLESTEP);
+      // Hide internal singlestep but preserve other break statuses
+      result.break_status.singlestep_complete = false;
     } else {
       ProtoMark before = proto_mark();
-      pair<AddressSpaceUid, remote_ptr<uint8_t> > p(t->vm()->uid(), mark_addr);
       {
         // Get a shared reference to t->vm() in case t dies during replay_step
         shared_ptr<AddressSpace> vm = t->vm();
@@ -318,11 +309,12 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
         result = current->replay_step(RUN_CONTINUE);
         vm->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
       }
-      // If our breakpoint is the only breakpoint there, and we hit it,
-      // pretend we didn't so the caller doesn't get confused with its own
-      // breakpoints.
-      if (t->regs().ip() == mark_addr && breakpoints.count(p) == 0) {
-        clear_break_status_reason(result.break_status, BREAK_BREAKPOINT);
+      // If we hit our breakpoint and there is no client breakpoint there,
+      // pretend we didn't hit it.
+      if (result.break_status.breakpoint_hit &&
+          breakpoints.count(make_pair(result.break_status.task->vm()->uid(),
+                                      result.break_status.task->ip())) == 0) {
+        result.break_status.breakpoint_hit = false;
       }
       fix_watchpoint_coalescing_quirk(result, before);
     }
@@ -389,8 +381,8 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
 void ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
                                                      const ProtoMark& before) {
   if (result.status == REPLAY_EXITED ||
-      result.break_status.watch_address.is_null()) {
-    // no watchpoint fired. Nothing to fix.
+      result.break_status.watchpoints_hit.empty()) {
+    // no watchpoint hit. Nothing to fix.
     return;
   }
   if (!maybe_at_or_after_x86_string_instruction(result.break_status.task)) {
@@ -408,17 +400,17 @@ void ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
   // Keep going until the watchpoint fires. It will either fire early, or at
   // the same time as some other break.
   apply_breakpoints_and_watchpoints();
-  bool reached_ticks_target = false;
+  bool approaching_ticks_target = false;
   while (true) {
     Task* t = current->current_task();
     if (t->tuid() == after_tuid) {
-      if (reached_ticks_target) {
+      if (approaching_ticks_target) {
         // We don't need to set any stop_before_states here.
         // RUN_SINGLESTEP_FAST_FORWARD always avoids the coalescing quirk, so
         // if a watchpoint is triggered by the string instruction at
         // string_instruction_ip, it will have the correct timing.
         result = current->replay_step(RUN_SINGLESTEP_FAST_FORWARD);
-        if (!result.break_status.watch_address.is_null()) {
+        if (!result.break_status.watchpoints_hit.empty()) {
           LOG(debug) << "Fixed x86-string coalescing quirk; now at "
                      << current_mark_key() << " (new cx "
                      << result.break_status.task->regs().cx() << ")";
@@ -428,9 +420,7 @@ void ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
         ReplaySession::StepConstraints constraints(RUN_CONTINUE);
         constraints.ticks_target = after_ticks - 1;
         result = current->replay_step(constraints);
-        if (result.break_status.reason == BREAK_TICKS_TARGET) {
-          reached_ticks_target = true;
-        }
+        approaching_ticks_target = result.break_status.approaching_ticks_target;
       }
       ASSERT(t, t->tick_count() <= after_ticks) << "We went too far!";
     } else {
@@ -556,7 +546,7 @@ ReplayResult ReplayTimeline::reverse_continue() {
       LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
       // Can't go backwards. Call this an exit.
       result.status = REPLAY_EXITED;
-      result.break_status.reason = BREAK_NONE;
+      result.break_status = BreakStatus();
       return result;
     }
     Mark start = mark();
@@ -580,12 +570,10 @@ ReplayResult ReplayTimeline::reverse_continue() {
         // the following seek and possibly future operations.
         update_reverse_exec_checkpoints();
       }
-      if (!result.break_status.watch_address.is_null() ||
-          result.break_status.reason == BREAK_SIGNAL) {
-        assert(result.break_status.reason != BREAK_NONE);
+      if (!result.break_status.watchpoints_hit.empty() ||
+          result.break_status.signal) {
         dest = mark();
         LOG(debug) << "Found watch/signal break at " << dest;
-        clear_break_status_reason(result.break_status, BREAK_SINGLESTEP);
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
@@ -597,8 +585,7 @@ ReplayResult ReplayTimeline::reverse_continue() {
       assert(result.status == REPLAY_CONTINUE);
       // If there is a breakpoint at the current ip() where we start a
       // reverse-continue, gdb expects us to skip it.
-      if (result.break_status.reason == BREAK_BREAKPOINT) {
-        assert(result.break_status.watch_address.is_null());
+      if (result.break_status.breakpoint_hit) {
         dest = mark();
         LOG(debug) << "Found breakpoint break at " << dest;
         final_result = result;
@@ -620,8 +607,12 @@ ReplayResult ReplayTimeline::reverse_continue() {
         LOG(debug) << "Seeking to final destination " << dest;
         seek_to_mark(dest);
       }
+      // fix break_status.task since the actual Task* may have changed
+      // since we saved final_result
       final_result.break_status.task = current->find_task(final_tuid);
-      assert(final_result.break_status.reason != BREAK_NONE);
+      // Hide any singlestepping we did, since a continue operation should
+      // never return a singlestep status
+      final_result.break_status.singlestep_complete = false;
       return final_result;
     }
 
@@ -663,7 +654,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
           // Can't go further back. Treat this as an exit.
           LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
           result.status = REPLAY_EXITED;
-          result.break_status.reason = BREAK_NONE;
+          result.break_status = BreakStatus();
           return result;
         }
         LOG(debug) << "Seeked backward from " << current_key << " to "
@@ -681,15 +672,15 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
           ReplaySession::StepConstraints constraints(RUN_CONTINUE);
           constraints.ticks_target = end.ptr->key.ticks - 1;
           result = current->replay_step(constraints);
-          if (result.break_status.reason == BREAK_TICKS_TARGET) {
-            LOG(debug) << "   reached ticks target";
+          if (result.break_status.approaching_ticks_target) {
+            LOG(debug) << "   approached ticks target";
             break;
           }
         } else {
           current->replay_step(RUN_CONTINUE);
         }
       } while (current_mark() != end.ptr);
-      if (result.break_status.reason == BREAK_TICKS_TARGET) {
+      if (result.break_status.approaching_ticks_target) {
         break;
       }
       end = start;
@@ -711,9 +702,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         constraints.stop_before_states.push_back(&end.ptr->regs);
         result = current->replay_step(constraints);
         now = mark();
-        if (result.break_status.reason == BREAK_SINGLESTEP ||
-            result.break_status.reason == BREAK_SIGNAL ||
-            result.break_status.reason == BREAK_WATCHPOINT) {
+        if (result.break_status.singlestep_complete) {
           if (now > end) {
             // This last step is not usable.
             LOG(debug) << "   not usable, stopping now";
@@ -737,7 +726,6 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       seek_to_mark(destination_candidate);
       destination_candidate_result.break_status.task = current->find_task(tuid);
       assert(destination_candidate_result.break_status.task);
-      assert(destination_candidate_result.break_status.reason != BREAK_NONE);
       return destination_candidate_result;
     }
   }
@@ -762,7 +750,8 @@ ReplayResult ReplayTimeline::replay_step(RunCommand command,
       // execution, we may as well do so. It's nice to have forward execution
       // behave consistently with reverse execution.
       fix_watchpoint_coalescing_quirk(result, before);
-      clear_break_status_reason(result.break_status, BREAK_SINGLESTEP);
+      // Hide any singlestepping we did
+      result.break_status.singlestep_complete = false;
     }
   } else {
     assert(stop_at_time == 0 &&

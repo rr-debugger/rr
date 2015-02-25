@@ -693,18 +693,6 @@ void AddressSpace::notify_written(remote_ptr<void> addr, size_t num_bytes) {
   session()->accumulate_bytes_written(num_bytes);
 }
 
-bool AddressSpace::consume_watchpoint_change(remote_ptr<void>* addr) {
-  bool changed = false;
-  for (auto& it : watchpoints) {
-    if (it.second.changed) {
-      changed = true;
-      *addr = it.first.addr;
-      it.second.changed = false;
-    }
-  }
-  return changed;
-}
-
 void AddressSpace::remove_all_watchpoints() {
   watchpoints.clear();
   allocate_watchpoints();
@@ -1077,29 +1065,34 @@ void AddressSpace::copy_watchpoints_from(const AddressSpace& o) {
   allocate_watchpoints();
 }
 
-vector<WatchConfig> AddressSpace::all_watchpoints_internal(
-    bool will_set_task_state) {
+vector<WatchConfig> AddressSpace::get_watch_configs(
+    WillSetTaskState will_set_task_state, WatchFilter filter) {
   vector<WatchConfig> result;
   for (auto& kv : watchpoints) {
-    kv.second.in_register_exec = -1;
-    kv.second.in_register_readwrite = -1;
-    kv.second.in_register_write = -1;
+    if (filter == CHANGED_WATCHPOINTS && !kv.second.changed) {
+      continue;
+    }
+    if (will_set_task_state == SETTING_TASK_STATE) {
+      kv.second.in_register_exec = -1;
+      kv.second.in_register_readwrite = -1;
+      kv.second.in_register_write = -1;
+    }
     const MemoryRange& r = kv.first;
     int watching = kv.second.watched_bits();
     if (EXEC_BIT & watching) {
-      if (will_set_task_state) {
+      if (will_set_task_state == SETTING_TASK_STATE) {
         kv.second.in_register_exec = result.size();
       }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_EXEC));
     }
     if (!(READ_BIT & watching) && (WRITE_BIT & watching)) {
-      if (will_set_task_state) {
+      if (will_set_task_state == SETTING_TASK_STATE) {
         kv.second.in_register_write = result.size();
       }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_WRITE));
     }
     if (READ_BIT & watching) {
-      if (will_set_task_state) {
+      if (will_set_task_state == SETTING_TASK_STATE) {
         kv.second.in_register_readwrite = result.size();
       }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_READWRITE));
@@ -1108,8 +1101,16 @@ vector<WatchConfig> AddressSpace::all_watchpoints_internal(
   return result;
 }
 
+std::vector<WatchConfig> AddressSpace::consume_watchpoint_changes() {
+  auto result = get_watch_configs(NOT_SETTING_TASK_STATE, CHANGED_WATCHPOINTS);
+  for (auto& kv : watchpoints) {
+    kv.second.changed = false;
+  }
+  return result;
+}
+
 bool AddressSpace::allocate_watchpoints() {
-  Task::DebugRegs regs = all_watchpoints_internal(true);
+  Task::DebugRegs regs = get_watch_configs(SETTING_TASK_STATE, ALL_WATCHPOINTS);
 
   if (regs.size() <= 0x7f) {
     bool ok = true;

@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "AddressSpace.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
 
@@ -23,29 +24,33 @@ class TaskGroup;
 
 // The following types are used by step() APIs in Session subclasses.
 
-enum BreakReason {
-  BREAK_NONE,
-  // A requested RUN_SINGLESTEP completed.
-  BREAK_SINGLESTEP,
-  // We hit a breakpoint.
-  BREAK_BREAKPOINT,
-  // We hit a watchpoint.
-  BREAK_WATCHPOINT,
-  // We hit a signal.
-  BREAK_SIGNAL,
-  // We got close to our ticks target.
-  BREAK_TICKS_TARGET
-};
+/**
+ * In general, multiple break reasons can apply simultaneously.
+ */
 struct BreakStatus {
-  BreakReason reason;
-  // When break_reason is not BREAK_NONE, the triggering Task.
+  BreakStatus()
+      : task(nullptr),
+        signal(0),
+        breakpoint_hit(false),
+        singlestep_complete(false),
+        approaching_ticks_target(false) {}
+
+  // The triggering Task. This may be different from session->current_task()
+  // when replay switches to a new task when ReplaySession::replay_step() ends.
   Task* task;
-  // When break_reason is BREAK_SIGNAL, the signal.
+  // List of watchpoints hit; any watchpoint hit causes a stop after the
+  // instruction that triggered the watchpoint has completed.
+  std::vector<WatchConfig> watchpoints_hit;
+  // When nonzero, we stopped because a signal was delivered to |task|.
   int signal;
-  // A triggering watch address, or null if no watchpoint was triggered.
-  // This is normally only set on BREAK_WATCHPOINT but could also be set
-  // with BREAK_SINGLESTEP.
-  remote_ptr<void> watch_address;
+  // True when we stopped because we hit a breakpoint at |task|'s current
+  // ip().
+  bool breakpoint_hit;
+  // True when we stopped because a singlestep completed in |task|.
+  bool singlestep_complete;
+  // True when we stopped because we got too close to the specified ticks
+  // target.
+  bool approaching_ticks_target;
 };
 enum RunCommand {
   // Continue until we hit a breakpoint or a new replay event
@@ -199,7 +204,7 @@ protected:
 
   virtual void on_create(Task* t);
 
-  BreakStatus diagnose_debugger_trap(Task* t, int stop_sig);
+  BreakStatus diagnose_debugger_trap(Task* t);
   void check_for_watchpoint_changes(Task* t, BreakStatus& break_status);
 
   void copy_state_to(Session& dest, EmuFs& dest_emu_fs);

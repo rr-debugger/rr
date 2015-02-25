@@ -397,6 +397,9 @@ private:
   Completion flush_one_syscall(Task* t, const StepConstraints& constraints);
   Completion flush_syscallbuf(Task* t, const StepConstraints& constraints);
   Completion patch_next_syscall(Task* t, const StepConstraints& constraints);
+  void check_approaching_ticks_target(Task* t,
+                                      const StepConstraints& constraints,
+                                      BreakStatus& break_status);
 
   std::shared_ptr<EmuFs> emu_fs;
   Task* last_debugged_task;

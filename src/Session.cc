@@ -158,12 +158,10 @@ void Session::on_destroy(Task* t) {
 
 void Session::on_create(Task* t) { task_map[t->rec_tid] = t; }
 
-BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
+BreakStatus Session::diagnose_debugger_trap(Task* t) {
   assert_fully_initialized();
   BreakStatus break_status;
   break_status.task = t;
-  break_status.signal = 0;
-  break_status.watch_address = nullptr;
 
   TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
   TrapType retired_bp = t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
@@ -175,6 +173,7 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
   // breakpoints/watchpoints/singlesteps are fired
   // simultaneously.  These cases will be addressed as
   // they arise in practice.
+  int stop_sig = t->pending_sig();
   if (SIGTRAP != stop_sig) {
     if (TRAP_BKPT_USER == pending_bp) {
       // A signal was raised /just/ before a trap
@@ -197,11 +196,8 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
       siginfo_t si = t->get_siginfo();
       psiginfo(&si, "  siginfo for signal-stop:\n    ");
 #endif
-      break_status.reason = BREAK_BREAKPOINT;
-    } else if (stop_sig == PerfCounters::TIME_SLICE_SIGNAL || stop_sig == 0) {
-      break_status.reason = BREAK_TICKS_TARGET;
-    } else {
-      break_status.reason = BREAK_SIGNAL;
+      break_status.breakpoint_hit = true;
+    } else if (stop_sig && stop_sig != PerfCounters::TIME_SLICE_SIGNAL) {
       break_status.signal = stop_sig;
     }
   } else if (TRAP_BKPT_USER == retired_bp) {
@@ -210,13 +206,10 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
     // breakpoint instruction.  Move $ip back
     // right before it.
     t->move_ip_before_breakpoint();
-    break_status.reason = BREAK_BREAKPOINT;
+    break_status.breakpoint_hit = true;
   } else if (DS_SINGLESTEP & debug_status) {
     LOG(debug) << "  finished debugger stepi";
-    /* Successful stepi.  Nothing else to do. */
-    break_status.reason = BREAK_SINGLESTEP;
-  } else {
-    break_status.reason = BREAK_NONE;
+    break_status.singlestep_complete = true;
   }
   if (DS_WATCHPOINT_ANY & debug_status) {
     LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
@@ -230,10 +223,7 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, int stop_sig) {
 
 void Session::check_for_watchpoint_changes(Task* t, BreakStatus& break_status) {
   assert_fully_initialized();
-  if (t->vm()->consume_watchpoint_change(&break_status.watch_address) &&
-      break_status.reason == BREAK_NONE) {
-    break_status.reason = BREAK_WATCHPOINT;
-  }
+  break_status.watchpoints_hit = t->vm()->consume_watchpoint_changes();
 }
 
 void Session::assert_fully_initialized() const {
