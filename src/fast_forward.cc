@@ -28,6 +28,7 @@ struct DecodedInstruction {
   int operand_size;
   int length;
   bool modifies_flags;
+  bool uses_si;
 };
 
 static bool decode_x86_string_instruction(const InstructionBuf& code,
@@ -37,6 +38,7 @@ static bool decode_x86_string_instruction(const InstructionBuf& code,
   bool found_REXW_prefix = false;
 
   decoded->modifies_flags = false;
+  decoded->uses_si = false;
 
   int i;
   bool done = false;
@@ -57,6 +59,9 @@ static bool decode_x86_string_instruction(const InstructionBuf& code,
         break;
       case 0xA4: // MOVSB
       case 0xA5: // MOVSW
+        decoded->uses_si = true;
+        done = true;
+        break;
       case 0xAA: // STOSB
       case 0xAB: // STOSW
       case 0xAC: // LODSB
@@ -65,6 +70,10 @@ static bool decode_x86_string_instruction(const InstructionBuf& code,
         break;
       case 0xA6: // CMPSB
       case 0xA7: // CMPSW
+        decoded->modifies_flags = true;
+        decoded->uses_si = true;
+        done = true;
+        break;
       case 0xAE: // SCASB
       case 0xAF: // SCASW
         decoded->modifies_flags = true;
@@ -230,12 +239,16 @@ void fast_forward_through_instruction(Task* t, const Registers** states) {
     // A code watchpoint would already be hit if we're going to hit it.
     // Check for data watchpoints that we might hit when reading/writing
     // memory.
-    // Make conservative assumptions about the watchpoint type and assume
-    // every string instruction uses SI and DI. Applying unnecessary bounds
-    // here will only result in a few more singlesteps.
+    // Make conservative assumptions about the watchpoint type. Applying
+    // unnecessary watchpoints here will only result in a few more singlesteps.
+    // We do have to ignore SI if the instruction doesn't use it; otherwise
+    // a watchpoint which happens to match SI will appear to be hit on every
+    // iteration of the string instruction, which would be devastating.
     for (auto& watch : t->vm()->all_watchpoints()) {
-      bound_iterations_for_watchpoint(t, t->regs().si(), decoded, watch,
-                                      &iterations);
+      if (decoded.uses_si) {
+        bound_iterations_for_watchpoint(t, t->regs().si(), decoded, watch,
+                                        &iterations);
+      }
       bound_iterations_for_watchpoint(t, t->regs().di(), decoded, watch,
                                       &iterations);
     }
