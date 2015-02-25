@@ -728,6 +728,7 @@ public:
    * |DebugStatus| bits (see above), and clear the kernel state.
    */
   uintptr_t consume_debug_status();
+  void replace_debug_status(uintptr_t status);
 
   /**
    * Return the address of the watchpoint programmed at slot

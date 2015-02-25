@@ -30,6 +30,10 @@ struct DecodedInstruction {
   bool uses_si;
 };
 
+/**
+ * This can be conservative: for weird prefix combinations that make valid
+ * string instructions, but aren't ever used in practice, we can return false.
+ */
 static bool decode_x86_string_instruction(const InstructionBuf& code,
                                           DecodedInstruction* decoded) {
   bool found_operand_prefix = false;
@@ -142,14 +146,21 @@ static void bound_iterations_for_watchpoint(Task* t, remote_ptr<void> reg,
   *iterations = min(*iterations, steps);
 }
 
+static bool is_x86ish(Task* t) {
+  return t->arch() == x86 || t->arch() == x86_64;
+}
+
 void fast_forward_through_instruction(Task* t, ResumeRequest how,
-                                      const Registers** states) {
+                                      const vector<const Registers*>& states) {
   assert(how == RESUME_SINGLESTEP || how == RESUME_SYSEMU_SINGLESTEP);
 
   remote_ptr<uint8_t> ip = t->ip();
 
   t->resume_execution(how, RESUME_WAIT);
-  ASSERT(t, t->pending_sig() == SIGTRAP);
+  if (t->pending_sig() != SIGTRAP) {
+    // we might have stepped into a system call...
+    return;
+  }
 
   if (t->ip() != ip) {
     return;
@@ -162,12 +173,12 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
     // watchpoint fired
     return;
   }
-  for (size_t i = 0; states[i]; ++i) {
-    if (states[i]->matches(t->regs())) {
+  for (auto& state : states) {
+    if (state->matches(t->regs())) {
       return;
     }
   }
-  if (t->arch() != x86 && t->arch() != x86_64) {
+  if (!is_x86ish(t)) {
     return;
   }
 
@@ -182,6 +193,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
 
   Registers extra_state_to_avoid;
   vector<const Registers*> states_copy;
+  auto using_states = &states;
 
   while (true) {
     // This string instruction should execute until CX reaches 0 and
@@ -212,8 +224,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
     uintptr_t iterations = cur_cx - 1;
 
     // Bound |iterations| to ensure we stop before reaching any |states|.
-    for (size_t i = 0; states[i]; ++i) {
-      auto state = states[i];
+    for (auto& state : *using_states) {
       if (state->ip() == ip) {
         uintptr_t dest_cx = state->cx();
         if (dest_cx == 0) {
@@ -263,7 +274,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
     }
 
     LOG(debug) << "x86-string fast-forward: " << iterations
-               << " iterations required";
+               << " iterations required (ip==" << t->ip() << ")";
 
     Registers r = t->regs();
 
@@ -288,7 +299,14 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
 
       t->resume_execution(RESUME_CONT, RESUME_WAIT);
       ASSERT(t, t->pending_sig() == SIGTRAP);
+      // Grab debug_status before restoring watchpoints, since the latter
+      // clears the debug status
       auto debug_status = t->consume_debug_status();
+      t->vm()->remove_breakpoint(ip + decoded.length, TRAP_BKPT_INTERNAL);
+      t->vm()->restore_watchpoints();
+
+      iterations -= cur_cx - t->regs().cx();
+
       if (!(debug_status & DS_WATCHPOINT_ANY)) {
         // watchpoint didn't fire. We must have exited the loop early and
         // hit the breakpoint. IP will be after the breakpoint instruction.
@@ -297,12 +315,18 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
         Registers tmp = t->regs();
         tmp.set_ip(ip + decoded.length);
         t->set_regs(tmp);
+      } else {
+        watch_offset = decoded.operand_size * (iterations - 1);
+        if (watch_offset > BYTES_COALESCED) {
+          // We fired the watchpoint too early, perhaps because reads through SI
+          // triggered it. Let's just bail out now; better for the caller to retry
+          // fast_forward_through_instruction than for us to try singlestepping
+          // all the rest of the way.
+          LOG(debug) << "x86-string fast-forward: " << iterations
+                     << " iterations to go, but watchpoint hit early; aborted";
+          return;
+        }
       }
-
-      t->vm()->remove_breakpoint(ip + decoded.length, TRAP_BKPT_INTERNAL);
-      t->vm()->restore_watchpoints();
-
-      iterations -= cur_cx - t->regs().cx();
     }
 
     LOG(debug) << "x86-string fast-forward: " << iterations
@@ -328,17 +352,110 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
       // Then we try rerunning the loop again, adding this state as one to
       // avoid stepping into. We shouldn't need to do this more than once!
       ASSERT(t, states_copy.empty());
-      for (size_t i = 0; states[i]; ++i) {
-        states_copy.push_back(states[i]);
-      }
       extra_state_to_avoid = t->regs();
+      states_copy = states;
       states_copy.push_back(&extra_state_to_avoid);
-      states_copy.push_back(nullptr);
-      states = states_copy.data();
+      using_states = &states_copy;
       t->set_regs(r);
     } else {
-      LOG(debug) << "x86-string fast-forward done";
+      LOG(debug) << "x86-string fast-forward done; ip()==" << t->ip();
+      // Fake singlestep status for trap diagnosis
+      t->replace_debug_status(DS_SINGLESTEP);
       break;
     }
   }
+}
+
+static bool is_ignorable_prefix(Task* t, uint8_t byte) {
+  if (byte >= 0x40 && byte <= 0x4f) {
+    // REX prefix
+    return t->arch() == x86_64;
+  }
+  switch (byte) {
+    case 0x26: // ES override
+    case 0x2E: // CS override
+    case 0x36: // SS override
+    case 0x3E: // DS override
+    case 0x64: // FS override
+    case 0x65: // GS override
+    case 0x66: // operand-size override
+    case 0x67: // address-size override
+    case 0xF0: // LOCK
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool is_rep_prefix(uint8_t byte) { return byte == 0xF2 || byte == 0xF3; }
+
+static bool is_string_instruction(uint8_t byte) {
+  switch (byte) {
+    case 0xA4: // MOVSB
+    case 0xA5: // MOVSW
+    case 0xA6: // CMPSB
+    case 0xA7: // CMPSW
+    case 0xAA: // STOSB
+    case 0xAB: // STOSW
+    case 0xAC: // LODSB
+    case 0xAD: // LODSW
+    case 0xAE: // SCASB
+    case 0xAF: // SCASW
+      return true;
+    default:
+      return false;
+  }
+}
+
+static int fallible_read_byte(Task* t, remote_ptr<uint8_t> ip) {
+  uint8_t byte;
+  if (t->read_bytes_fallible(ip, 1, &byte) == 0) {
+    return -1;
+  }
+  return byte;
+}
+
+static bool is_string_instruction_at(Task* t, remote_ptr<uint8_t> ip) {
+  bool found_rep = false;
+  while (true) {
+    int byte = fallible_read_byte(t, ip);
+    if (byte < 0) {
+      return false;
+    } else if (is_rep_prefix(byte)) {
+      found_rep = true;
+    } else if (is_string_instruction(byte)) {
+      return found_rep;
+    } else if (!is_ignorable_prefix(t, byte)) {
+      return false;
+    }
+    ++ip;
+  }
+}
+
+static bool is_string_instruction_before(Task* t, remote_ptr<uint8_t> ip) {
+  --ip;
+  int byte = fallible_read_byte(t, ip);
+  if (byte < 0 || !is_string_instruction(byte)) {
+    return false;
+  }
+  while (true) {
+    --ip;
+    int byte = fallible_read_byte(t, ip);
+    if (byte < 0) {
+      return false;
+    } else if (is_rep_prefix(byte)) {
+      return true;
+    } else if (!is_ignorable_prefix(t, byte)) {
+      return false;
+    }
+  }
+}
+
+bool maybe_at_or_after_x86_string_instruction(Task* t) {
+  if (!is_x86ish(t)) {
+    return false;
+  }
+
+  return is_string_instruction_at(t, t->ip()) ||
+         is_string_instruction_before(t, t->ip());
 }

@@ -3,6 +3,8 @@
 #ifndef RR_FAST_FORWARD_H_
 #define RR_FAST_FORWARD_H_
 
+#include <vector>
+
 #include "task.h"
 
 class Registers;
@@ -26,7 +28,15 @@ class Registers;
  *
  * This will not add more than one tick to t->tick_count().
  */
-void fast_forward_through_instruction(Task* t, ResumeRequest how,
-                                      const Registers** states);
+void fast_forward_through_instruction(
+    Task* t, ResumeRequest how, const std::vector<const Registers*>& states);
+
+/**
+ * Return true if the instruction at t->ip(), or the instruction immediately
+ * before t->ip(), could be a REP-prefixed string instruction. It's OK to
+ * return true if it's not really a string instruction (though for performance
+ * reasons, this should be rare).
+ */
+bool maybe_at_or_after_x86_string_instruction(Task* t);
 
 #endif // RR_FAST_FORWARD_H_

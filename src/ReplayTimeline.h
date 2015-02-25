@@ -187,6 +187,16 @@ private:
   friend std::ostream& operator<<(std::ostream& s, const MarkKey& o);
 
   /**
+   * All the information we'll need to construct a mark lazily.
+   */
+  struct ProtoMark {
+    ProtoMark(const MarkKey& key, const Registers& regs)
+        : key(key), regs(regs) {}
+    MarkKey key;
+    Registers regs;
+  };
+
+  /**
    * MarkKey + Registers are assumed to identify a unique program state.
    * We can't order these states directly based on this data, so we have to
    * record the ordering in the ReplayTimeline.
@@ -210,6 +220,7 @@ private:
   };
   friend struct InternalMark;
   friend std::ostream& operator<<(std::ostream& s, const InternalMark& o);
+  friend std::ostream& operator<<(std::ostream& s, const ProtoMark& o);
 
   /**
    * We track the set of breakpoints/watchpoints requested by the client.
@@ -234,12 +245,18 @@ private:
                    session.current_step_key());
   }
   MarkKey current_mark_key() const { return session_mark_key(*current); }
+
+  ProtoMark proto_mark() const;
+  void seek_to_proto_mark(const ProtoMark& pmark);
+
   // Returns a shared pointer to the mark if there is one for the current state.
   std::shared_ptr<InternalMark> current_mark();
   void remove_mark_with_checkpoint(const MarkKey& key);
   void seek_to_before_key(const MarkKey& key);
   ReplayResult replay_step_to_mark(const Mark& mark);
   ReplayResult singlestep_with_breakpoints_disabled();
+  void fix_watchpoint_coalescing_quirk(ReplayResult& result,
+                                       const ProtoMark& before);
 
   ReplayResult reverse_continue();
   ReplayResult reverse_singlestep(const Mark& origin, const TaskUid& tuid);

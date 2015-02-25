@@ -56,6 +56,15 @@ public:
     ptr += arith_size();
     return p;
   }
+  remote_ptr<T>& operator--() {
+    ptr -= arith_size();
+    return *this;
+  }
+  remote_ptr<T> operator--(int) {
+    uintptr_t p = ptr;
+    ptr -= arith_size();
+    return p;
+  }
 
   template <typename U> remote_ptr<U> cast() const {
     return remote_ptr<U>(ptr);

@@ -1262,6 +1262,10 @@ uintptr_t Task::consume_debug_status() {
   return status;
 }
 
+void Task::replace_debug_status(uintptr_t status) {
+  fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(6), (void*)status);
+}
+
 remote_ptr<void> Task::watchpoint_addr(size_t i) {
   assert(i < NUM_X86_WATCHPOINTS);
   return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(i), nullptr);

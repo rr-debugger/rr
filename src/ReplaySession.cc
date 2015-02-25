@@ -59,8 +59,6 @@ using namespace std;
  */
 static const int SKID_SIZE = 70;
 
-const Registers* ReplaySession::StepConstraints::nothing = nullptr;
-
 static void debug_memory(Task* t) {
   if (should_dump_memory(t, t->current_trace_frame())) {
     dump_process_memory(t, t->current_trace_frame().time(), "rep");
@@ -821,15 +819,11 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       if (constraints.command == RUN_SINGLESTEP) {
         continue_or_step(t, constraints);
       } else {
-        vector<const Registers*> states;
-        for (size_t i = 0; constraints.stop_before_states[i]; ++i) {
-          states.push_back(constraints.stop_before_states[i]);
-        }
+        vector<const Registers*> states = constraints.stop_before_states;
         // This state may not be relevant if we don't have the correct tick
         // count yet. But it doesn't hurt to push it on anyway.
         states.push_back(&regs);
-        states.push_back(nullptr);
-        fast_forward_through_instruction(t, RESUME_SINGLESTEP, states.data());
+        fast_forward_through_instruction(t, RESUME_SINGLESTEP, states);
         check_pending_sig(t);
       }
     }

@@ -6,6 +6,7 @@
 
 #include <math.h>
 
+#include "fast_forward.h"
 #include "log.h"
 
 using namespace rr;
@@ -31,6 +32,10 @@ ostream& operator<<(ostream& s, const ReplayTimeline::Mark& o) {
     return s << "{null}";
   }
   return s << *o.ptr.get();
+}
+
+ostream& operator<<(ostream& s, const ReplayTimeline::ProtoMark& o) {
+  return s << "{" << o.key << ",regs_ip:" << HEX(o.regs.ip().as_int()) << "}";
 }
 
 bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
@@ -79,6 +84,10 @@ static bool equal_regs(const Registers& r1, const Registers& r2) {
   return r1.ip() == r2.ip() && r1.matches(r2);
 }
 
+ReplayTimeline::ProtoMark ReplayTimeline::proto_mark() const {
+  return ProtoMark(current_mark_key(), current->current_task()->regs());
+}
+
 shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
   Task* t = current->current_task();
   auto it = marks.find(current_mark_key());
@@ -120,11 +129,22 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
     // We could set breakpoints at the marks and then continue with an
     // interrupt set to fire when our tick-count increases. But that requires
     // new replay functionality (probably a new RunCommand), so for now, do the
-    // simplest thing and just single-step until the MarkKey has increased.
+    // simplest thing and just single-step until we find where to put the new
+    // mark(s).
     vector<shared_ptr<InternalMark> > new_marks;
     new_marks.push_back(m);
+
+    LOG(debug) << "mark() replaying to find mark location";
+
+    // Allow coalescing of multiple repetitions of a single x86 string
+    // instruction (as long as we don't reach one of our mark_vector states).
+    ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
+    for (auto& mv : mark_vector) {
+      constraints.stop_before_states.push_back(&mv->regs);
+    }
+
     while (true) {
-      auto result = tmp_session->replay_step(RUN_SINGLESTEP);
+      auto result = tmp_session->replay_step(constraints);
       if (session_mark_key(*tmp_session) != key ||
           result.status != REPLAY_CONTINUE) {
         break;
@@ -153,6 +173,8 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       // and the rest will perform none.
       new_marks.push_back(make_shared<InternalMark>(this, t, key));
     }
+
+    LOG(debug) << "Mark location found";
 
     // mark_index is the current index of the next mark after 'current'. So
     // insert our new marks at mark_index.
@@ -281,25 +303,61 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
         current->current_step_key().in_execution()) {
       // At required IP, but not in the correct state. Singlestep over
       // this IP.
-      result = current->replay_step(RUN_SINGLESTEP);
+      ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
+      constraints.stop_before_states.push_back(&mark.ptr->regs);
+      result = current->replay_step(constraints);
       // Hide internal singlestep
       clear_break_status_reason(result.break_status, BREAK_SINGLESTEP);
     } else {
-      // Get a shared reference to t->vm() in case t dies during replay_step
-      shared_ptr<AddressSpace> vm = t->vm();
-      vm->add_breakpoint(mark_addr, TRAP_BKPT_USER);
-      result = current->replay_step(RUN_CONTINUE);
-      vm->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
+      ProtoMark before = proto_mark();
+      pair<AddressSpaceUid, remote_ptr<uint8_t> > p(t->vm()->uid(), mark_addr);
+      {
+        // Get a shared reference to t->vm() in case t dies during replay_step
+        shared_ptr<AddressSpace> vm = t->vm();
+        vm->add_breakpoint(mark_addr, TRAP_BKPT_USER);
+        result = current->replay_step(RUN_CONTINUE);
+        vm->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
+      }
       // If our breakpoint is the only breakpoint there, and we hit it,
       // pretend we didn't so the caller doesn't get confused with its own
       // breakpoints.
-      pair<AddressSpaceUid, remote_ptr<uint8_t> > p(vm->uid(), mark_addr);
       if (t->regs().ip() == mark_addr && breakpoints.count(p) == 0) {
         clear_break_status_reason(result.break_status, BREAK_BREAKPOINT);
       }
+      fix_watchpoint_coalescing_quirk(result, before);
     }
   }
   return result;
+}
+
+void ReplayTimeline::seek_to_proto_mark(const ProtoMark& pmark) {
+  seek_to_before_key(pmark.key);
+  unapply_breakpoints_and_watchpoints();
+  while (current_mark_key() != pmark.key ||
+         !equal_regs(current->current_task()->regs(), pmark.regs)) {
+    if (current->trace_reader().time() < pmark.key.trace_time) {
+      ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+      constraints.stop_at_time = pmark.key.trace_time;
+      current->replay_step(constraints);
+    } else {
+      Task* t = current->current_task();
+      remote_ptr<uint8_t> mark_addr = pmark.regs.ip();
+      if (t->regs().ip() == mark_addr &&
+          current->current_step_key().in_execution()) {
+        // At required IP, but not in the correct state. Singlestep over
+        // this IP.
+        ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
+        constraints.stop_before_states.push_back(&pmark.regs);
+        current->replay_step(constraints);
+      } else {
+        // Get a shared reference to t->vm() in case t dies during replay_step
+        shared_ptr<AddressSpace> vm = t->vm();
+        vm->add_breakpoint(mark_addr, TRAP_BKPT_USER);
+        current->replay_step(RUN_CONTINUE);
+        vm->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
+      }
+    }
+  }
 }
 
 void ReplayTimeline::seek_to_mark(const Mark& mark) {
@@ -310,6 +368,75 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
   }
   current_at_or_after_mark = mark.ptr;
   // XXX handle cases where breakpoints can't yet be applied
+}
+
+/**
+ * Intel CPUs (and maybe others) coalesce iterations of REP-prefixed string
+ * instructions so that a watchpoint on a byte at location L can fire after
+ * the iteration that writes byte L+63 (or possibly more?).
+ * This causes problems for rr since this coalescing doesn't happen when we
+ * single-step.
+ * This function is called after doing a ReplaySession::replay_step with
+ * command == RUN_CONTINUE. RUN_SINGLESTEP and RUN_SINGLESTEP_FAST_FORWARD
+ * disable this coalescing (the latter, because it's aware of watchpoings
+ * and single-steps when it gets too close to them).
+ * |before| is the state before we did the replay_step.
+ * If a watchpoint fired, and it looks like it could have fired during a
+ * string instruction, we'll backup to |before| and replay forward, stopping
+ * before the breakpoint could fire and single-stepping to make sure the
+ * coalescing quirk doesn't happen.
+ */
+void ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
+                                                     const ProtoMark& before) {
+  if (result.status == REPLAY_EXITED ||
+      result.break_status.watch_address.is_null()) {
+    // no watchpoint fired. Nothing to fix.
+    return;
+  }
+  if (!maybe_at_or_after_x86_string_instruction(result.break_status.task)) {
+    return;
+  }
+
+  TaskUid after_tuid = result.break_status.task->tuid();
+  Ticks after_ticks = result.break_status.task->tick_count();
+  LOG(debug) << "Fixing x86-string coalescing quirk from " << before << " to "
+             << proto_mark() << " (final cx "
+             << result.break_status.task->regs().cx() << ")";
+
+  seek_to_proto_mark(before);
+
+  // Keep going until the watchpoint fires. It will either fire early, or at
+  // the same time as some other break.
+  apply_breakpoints_and_watchpoints();
+  bool reached_ticks_target = false;
+  while (true) {
+    Task* t = current->current_task();
+    if (t->tuid() == after_tuid) {
+      if (reached_ticks_target) {
+        // We don't need to set any stop_before_states here.
+        // RUN_SINGLESTEP_FAST_FORWARD always avoids the coalescing quirk, so
+        // if a watchpoint is triggered by the string instruction at
+        // string_instruction_ip, it will have the correct timing.
+        result = current->replay_step(RUN_SINGLESTEP_FAST_FORWARD);
+        if (!result.break_status.watch_address.is_null()) {
+          LOG(debug) << "Fixed x86-string coalescing quirk; now at "
+                     << current_mark_key() << " (new cx "
+                     << result.break_status.task->regs().cx() << ")";
+          break;
+        }
+      } else {
+        ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+        constraints.ticks_target = after_ticks - 1;
+        result = current->replay_step(constraints);
+        if (result.break_status.reason == BREAK_TICKS_TARGET) {
+          reached_ticks_target = true;
+        }
+      }
+      ASSERT(t, t->tick_count() <= after_ticks) << "We went too far!";
+    } else {
+      current->replay_step(RUN_CONTINUE);
+    }
+  }
 }
 
 bool ReplayTimeline::add_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
@@ -458,6 +585,7 @@ ReplayResult ReplayTimeline::reverse_continue() {
         assert(result.break_status.reason != BREAK_NONE);
         dest = mark();
         LOG(debug) << "Found watch/signal break at " << dest;
+        clear_break_status_reason(result.break_status, BREAK_SINGLESTEP);
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
@@ -523,7 +651,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
 
   while (true) {
     Mark end = origin;
-    do {
+    while (true) {
       MarkKey current_key = end.ptr->key;
       while (true) {
         if (end.ptr->key.trace_time != current_key.trace_time ||
@@ -551,7 +679,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         Task* t = current->current_task();
         if (t->tuid() == tuid) {
           ReplaySession::StepConstraints constraints(RUN_CONTINUE);
-          constraints.ticks_target = origin.ptr->key.ticks - 1;
+          constraints.ticks_target = end.ptr->key.ticks - 1;
           result = current->replay_step(constraints);
           if (result.break_status.reason == BREAK_TICKS_TARGET) {
             LOG(debug) << "   reached ticks target";
@@ -561,8 +689,11 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
           current->replay_step(RUN_CONTINUE);
         }
       } while (current_mark() != end.ptr);
+      if (result.break_status.reason == BREAK_TICKS_TARGET) {
+        break;
+      }
       end = start;
-    } while (result.break_status.reason != BREAK_TICKS_TARGET);
+    }
     assert(current->current_task()->tuid() == tuid);
 
     Mark destination_candidate;
@@ -576,12 +707,14 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       Mark now;
       unapply_breakpoints_and_watchpoints();
       if (current->current_task()->tuid() == tuid) {
-        result = current->replay_step(RUN_SINGLESTEP);
+        ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
+        constraints.stop_before_states.push_back(&end.ptr->regs);
+        result = current->replay_step(constraints);
         now = mark();
         if (result.break_status.reason == BREAK_SINGLESTEP ||
             result.break_status.reason == BREAK_SIGNAL ||
             result.break_status.reason == BREAK_WATCHPOINT) {
-          if (now > origin) {
+          if (now > end) {
             // This last step is not usable.
             LOG(debug) << "   not usable, stopping now";
             break;
@@ -594,7 +727,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         result = current->replay_step(RUN_CONTINUE);
         now = mark();
       }
-      if (now >= origin) {
+      if (now >= end) {
         break;
       }
     }
@@ -613,6 +746,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
 ReplayResult ReplayTimeline::replay_step(RunCommand command,
                                          RunDirection direction,
                                          TraceFrame::Time stop_at_time) {
+  assert(command != RUN_SINGLESTEP_FAST_FORWARD);
+
   ReplayResult result;
   if (direction == RUN_FORWARD) {
     apply_breakpoints_and_watchpoints();
