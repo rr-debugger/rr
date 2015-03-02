@@ -121,6 +121,7 @@ static const char gdb_rr_macros[] =
     "define hookpost-run\n"
     "  set $suppress_run_hook = 0\n"
     "end\n"
+    "maint set target-async 0\n"
     "handle SIGURG stop\n";
 
 /**
