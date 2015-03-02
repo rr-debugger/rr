@@ -207,9 +207,14 @@ public:
     DONT_PROBE = 0,
     PROBE_PORT
   };
+  struct Features {
+    Features() : reverse_execution(true) {}
+    bool reverse_execution;
+  };
   static std::unique_ptr<GdbConnection> await_client_connection(
       unsigned short desired_port, ProbePort probe, pid_t tgid,
-      const std::string& exe_image, ScopedFd* client_params_fd = nullptr);
+      const std::string& exe_image, const Features& features,
+      ScopedFd* client_params_fd = nullptr);
 
   /**
    * Exec gdb using the params that were written to
@@ -383,7 +388,7 @@ public:
   ReplaySession::shr_ptr get_checkpoint(int checkpoint_id);
 
 private:
-  GdbConnection(pid_t tgid);
+  GdbConnection(pid_t tgid, const Features& features);
 
   /**
    * Wait for a debugger client to connect to |dbg|'s socket.  Blocks
@@ -480,6 +485,7 @@ private:
   ssize_t packetend;     /* index of '#' character */
   uint8_t outbuf[32768]; /* buffered output for gdb */
   ssize_t outlen;
+  Features features;
 };
 
 #endif /* RR_GDB_CONNECTION_H_ */

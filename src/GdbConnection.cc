@@ -58,8 +58,8 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
   }
 }
 
-GdbConnection::GdbConnection(pid_t tgid)
-    : tgid(tgid), no_ack(false), inlen(0), outlen(0) {
+GdbConnection::GdbConnection(pid_t tgid, const Features& features)
+    : tgid(tgid), no_ack(false), inlen(0), outlen(0), features(features) {
   memset(&req, 0, sizeof(req));
 }
 
@@ -121,8 +121,9 @@ struct DebuggerParams {
 
 unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     unsigned short desired_port, ProbePort probe, pid_t tgid,
-    const string& exe_image, ScopedFd* client_params_fd) {
-  auto dbg = unique_ptr<GdbConnection>(new GdbConnection(tgid));
+    const string& exe_image, const Features& features,
+    ScopedFd* client_params_fd) {
+  auto dbg = unique_ptr<GdbConnection>(new GdbConnection(tgid, features));
   unsigned short port = desired_port;
   ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
   if (client_params_fd) {
@@ -641,14 +642,16 @@ bool GdbConnection::query(char* payload) {
     /* TODO process these */
     LOG(debug) << "gdb supports " << args;
 
+    const char* reverse_exec = "";
+#ifdef REVERSE_EXECUTION
+    if (features.reverse_execution) {
+      reverse_exec = ";ReverseContinue+;ReverseStep+";
+    }
+#endif
     snprintf(supported, sizeof(supported) - 1,
              "PacketSize=%zd;QStartNoAckMode+;qXfer:auxv:read+"
-             ";qXfer:siginfo:read+;qXfer:siginfo:write+"
-#ifdef REVERSE_EXECUTION
-             ";ReverseContinue+;ReverseStep+"
-#endif
-             ";multiprocess+",
-             sizeof(outbuf));
+             ";qXfer:siginfo:read+;qXfer:siginfo:write+;multiprocess+%s",
+             sizeof(outbuf), reverse_exec);
     write_packet(supported);
     return false;
   }

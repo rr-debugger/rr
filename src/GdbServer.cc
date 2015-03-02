@@ -777,7 +777,7 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
     auto probe = flags.dbg_port > 0 ? GdbConnection::DONT_PROBE
                                     : GdbConnection::PROBE_PORT;
     dbg = GdbConnection::await_client_connection(
-        port, probe, t->tgid(), t->vm()->exe_image(),
+        port, probe, t->tgid(), t->vm()->exe_image(), GdbConnection::Features(),
         flags.debugger_params_write_pipe);
     if (flags.debugger_params_write_pipe) {
       flags.debugger_params_write_pipe->close();
@@ -879,8 +879,14 @@ void GdbServer::emergency_debug(Task* t) {
   // likely already in a debugger, and wouldn't be able to
   // control another session. Instead, launch a new GdbServer and wait for
   // the user to connect from another window.
+  GdbConnection::Features features;
+  // Don't advertise reverse_execution to gdb becase a) it won't work and
+  // b) some gdb versions will fail if the user doesn't turn off async
+  // mode (and we don't want to require users to do that)
+  features.reverse_execution = false;
   unique_ptr<GdbConnection> dbg = GdbConnection::await_client_connection(
-      t->tid, GdbConnection::PROBE_PORT, t->tgid(), t->vm()->exe_image());
+      t->tid, GdbConnection::PROBE_PORT, t->tgid(), t->vm()->exe_image(),
+      features);
 
   GdbServer(dbg).process_debugger_requests(t);
 }
