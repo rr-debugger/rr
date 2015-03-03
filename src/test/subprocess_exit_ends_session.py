@@ -20,7 +20,7 @@ def observe_child_crash_and_exit():
 send_gdb('c\n')
 observe_child_crash_and_exit()
 
-restart_replay_at_end()
+restart_replay()
 observe_child_crash_and_exit()
 
 ok()

@@ -7,7 +7,7 @@ def observe_normal_parent_exit():
 send_gdb('c\n')
 observe_normal_parent_exit()
 
-restart_replay_at_end()
+restart_replay()
 observe_normal_parent_exit()
 
 ok()
