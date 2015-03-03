@@ -239,9 +239,8 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       vector<GdbThreadId> tids;
       // When replay ends, there is still the last_task() around.
       if (!session.as_replay() || !session.as_replay()->last_task()) {
-        for (auto& kv : t->session().tasks()) {
-          Task* t = kv.second;
-          tids.push_back(get_threadid(t));
+        for (auto& kv : session.tasks()) {
+          tids.push_back(get_threadid(kv.second));
         }
       }
       dbg->reply_get_thread_list(tids);
@@ -663,7 +662,8 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
       return req;
     }
 
-    dispatch_debugger_request(t->session(), t, req);
+    dispatch_debugger_request(t ? t->session() : timeline.current_session(), t,
+                              req);
   }
 }
 
