@@ -1019,7 +1019,7 @@ bool GdbConnection::process_packet() {
       assert('\0' == *payload);
 
       LOG(debug) << "gdb requests " << ('Z' == request ? "set" : "remove")
-                 << "breakpoint (addr=" << req.mem.addr
+                 << "breakpoint (addr=" << HEX(req.mem.addr)
                  << ", len=" << req.mem.len << ")";
 
       ret = true;
