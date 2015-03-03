@@ -410,6 +410,19 @@ TrapType AddressSpace::get_breakpoint_type_at_addr(remote_ptr<uint8_t> addr) {
   return it == breakpoints.end() ? TRAP_NONE : it->second.type();
 }
 
+void AddressSpace::replace_breakpoints_with_original_values(
+    uint8_t* dest, size_t length, remote_ptr<uint8_t> addr) {
+  for (auto& it : breakpoints) {
+    remote_ptr<uint8_t> start = max(addr, it.first);
+    remote_ptr<uint8_t> end =
+        min(addr + length, it.first + it.second.data_length());
+    if (start < end) {
+      memcpy(dest + (start - addr),
+             it.second.original_data() + (start - it.first), end - start);
+    }
+  }
+}
+
 void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
                        int flags, off64_t offset_bytes,
                        const MappableResource& res) {

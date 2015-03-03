@@ -500,6 +500,14 @@ public:
   TrapType get_breakpoint_type_at_addr(remote_ptr<uint8_t> addr);
 
   /**
+   * The buffer |dest| of length |length| represents the contents of tracee
+   * memory at |addr|. Replace the bytes in |dest| that have been overwritten
+   * by breakpoints with the original data that was replaced by the breakpoints.
+   */
+  void replace_breakpoints_with_original_values(uint8_t* dest, size_t length,
+                                                remote_ptr<uint8_t> addr);
+
+  /**
    * Map |num_bytes| into this address space at |addr|, with
    * |prot| protection and |flags|.  The pages are (possibly
    * initially) backed starting at |offset| of |res|.
@@ -816,6 +824,9 @@ private:
       // on the breakpoint, treat it as a USER breakpoint.
       return user_count > 0 ? TRAP_BKPT_USER : TRAP_BKPT_INTERNAL;
     }
+
+    size_t data_length() { return 1; }
+    uint8_t* original_data() { return &overwritten_data; }
 
     // "Refcounts" of breakpoints set at |addr|.  The breakpoint
     // object must be unique since we have to save the overwritten
