@@ -823,6 +823,24 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
     }
     return false;
   }
+  if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
+    auto& si = t->get_siginfo();
+    /* This implementation will of course fall over if rr tries to
+     * record itself.
+     *
+     * NB: we can't check that the ticks is >= the programmed
+     * target, because this signal may have become pending before
+     * we reset the HPC counters.  There be a way to handle that
+     * more elegantly, but bridge will be crossed in due time.
+     *
+     * We check this here because later, when this signal is delivered,
+     * t->hpc.ticks_fd() may have changed.
+     */
+    ASSERT(t, (PerfCounters::TIME_SLICE_SIGNAL == si.si_signo &&
+               si.si_fd == t->hpc.ticks_fd() && POLL_IN == si.si_code))
+        << "Tracee is using SIGSTKFLT??? (code=" << si.si_code
+        << ", fd=" << si.si_fd << ")";
+  }
   t->stash_sig();
   return true;
 }

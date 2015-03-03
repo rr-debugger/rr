@@ -34,23 +34,6 @@ static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
 
 static const int STOPSIG_SYSCALL = 0x80 | SIGTRAP;
 
-/**
- * Doesn't return if |si| wasn't triggered by a time-slice interrupt.
- */
-static void assert_is_time_slice_interrupt(Task* t, const siginfo_t* si) {
-  /* This implementation will of course fall over if rr tries to
-   * record itself.
-   *
-   * NB: we can't check that the ticks is >= the programmed
-   * target, because this signal may have become pending before
-   * we reset the HPC counters.  There be a way to handle that
-   * more elegantly, but bridge will be crossed in due time. */
-  ASSERT(t, (PerfCounters::TIME_SLICE_SIGNAL == si->si_signo &&
-             si->si_fd == t->hpc.ticks_fd() && POLL_IN == si->si_code))
-      << "Tracee is using SIGSTKFLT??? (code=" << si->si_code
-      << ", fd=" << si->si_fd << ")";
-}
-
 template <typename Arch> static size_t sigaction_sigset_size_arch() {
   return Arch::sigaction_sigset_size;
 }
@@ -407,8 +390,6 @@ SignalHandled handle_signal(Task* t, siginfo_t* si) {
       break;
 
     case PerfCounters::TIME_SLICE_SIGNAL:
-      assert_is_time_slice_interrupt(t, si);
-
       t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
       return SIGNAL_HANDLED;
   }
