@@ -284,7 +284,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
     // We have to account for a CPU quirk: Intel CPUs may coalesce iterations
     // to write up to 64 bytes at a time (observed for "rep stosb" on Ivy
     // Bridge). Assume 128 bytes to be safe.
-    static const int BYTES_COALESCED = 128;
+    static const unsigned BYTES_COALESCED = 128;
     uintptr_t watch_offset = decoded.operand_size * (iterations - 1);
     if (watch_offset > BYTES_COALESCED) {
       watch_offset -= BYTES_COALESCED;
