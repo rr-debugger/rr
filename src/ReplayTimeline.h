@@ -223,7 +223,10 @@ private:
    */
   struct InternalMark {
     InternalMark(ReplayTimeline* owner, Task* t, const MarkKey& key)
-        : owner(owner), key(key), checkpoint_refcount(0) {
+        : owner(owner),
+          key(key),
+          checkpoint_refcount(0),
+          singlestep_to_next_mark(false) {
       if (t) {
         regs = t->regs();
       }
@@ -237,6 +240,9 @@ private:
     Registers regs;
     ReplaySession::shr_ptr checkpoint;
     uint32_t checkpoint_refcount;
+    // The next InternalMark in the mark vector is the result of singlestepping
+    // from this mark.
+    bool singlestep_to_next_mark;
   };
   friend struct InternalMark;
   friend std::ostream& operator<<(std::ostream& s, const InternalMark& o);

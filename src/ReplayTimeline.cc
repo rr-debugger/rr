@@ -157,6 +157,9 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       for (auto it = mark_vector.begin(); it != mark_vector.end(); ++it) {
         shared_ptr<InternalMark>& existing_mark = *it;
         if (equal_regs(existing_mark->regs, t->regs())) {
+          if (!result.did_fast_forward) {
+            new_marks.back()->singlestep_to_next_mark = true;
+          }
           mark_index = it;
           break;
         }
@@ -171,6 +174,9 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       // operations total. To avoid that, add all the intermediate states to
       // the mark map now, so the first mark() call will perform N singlesteps
       // and the rest will perform none.
+      if (!result.did_fast_forward) {
+        new_marks.back()->singlestep_to_next_mark = true;
+      }
       new_marks.push_back(make_shared<InternalMark>(this, t, key));
     }
 
@@ -671,7 +677,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
           constraints.ticks_target = end.ptr->key.ticks - 1;
           result = current->replay_step(constraints);
           if (result.break_status.approaching_ticks_target) {
-            LOG(debug) << "   approached ticks target";
+            LOG(debug) << "   approached ticks target at "
+                       << current_mark_key();
             break;
           }
         } else {
