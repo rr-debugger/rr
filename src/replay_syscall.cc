@@ -126,6 +126,18 @@ static void goto_next_syscall_emu(Task* t) {
   t->child_sig = 0;
 }
 
+static string maybe_dump_written_string(Task* t) {
+  if (!is_write_syscall(t->regs().original_syscallno(), t->arch())) {
+    return "";
+  }
+  size_t len = min<size_t>(1000, t->regs().arg3());
+  vector<char> buf;
+  buf.resize(len + 1);
+  buf.resize(t->read_bytes_fallible(t->regs().arg2(), len, buf.data()) + 1);
+  buf[buf.size() - 1] = 0;
+  return " \"" + string(buf.data()) + "\"";
+}
+
 /**
  * Proceeds until the next system call, which is being executed.
  */
@@ -145,7 +157,7 @@ static void __ptrace_cont(Task* t) {
                 (rec_syscall == syscall_number_for_vfork(t->arch()) &&
                  current_syscall == syscall_number_for_fork(t->arch())))
       << "Should be at " << t->syscall_name(rec_syscall) << ", but instead at "
-      << t->syscall_name(current_syscall);
+      << t->syscall_name(current_syscall) << maybe_dump_written_string(t);
 }
 
 static void init_scratch_memory(Task* t) {
