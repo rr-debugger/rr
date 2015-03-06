@@ -2404,7 +2404,14 @@ void Task::prepare_kill() {
     Registers r = regs();
     r.set_ip(intptr_t(-1));
     set_regs(r);
-    fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+    long result;
+    do {
+      // We have observed this failing with an ESRCH when the thread clearly
+      // still exists and is ptraced. Retrying the PTRACE_DETACH seems to
+      // work around it.
+      result = fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+      ASSERT(this, result >= 0 || errno == ESRCH);
+    } while (result < 0);
   }
 }
 
