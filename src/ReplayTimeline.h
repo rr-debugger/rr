@@ -151,6 +151,26 @@ public:
                            RunDirection direction = RUN_FORWARD,
                            TraceFrame::Time stop_at_time = 0);
 
+  /**
+   * Different strategies for placing automatic checkpoints.
+   */
+  enum CheckpointStrategy {
+    /**
+     * Use this when we want to bound the overhead of checkpointing to be
+     * insignificant relative to the cost of forward execution.
+     */
+    LOW_OVERHEAD,
+    /**
+     * Use this when we expect reverse execution to happen soon, to a
+     * destination not far behind the current execution point. In this case
+     * it's worth increasing checkpoint density.
+     * We pass this when we have opportunities to make checkpoints during
+     * reverse_continue or reverse_singlestep, since it's common for short
+     * reverse-executions to follow other reverse-execution.
+     */
+    EXPECT_SHORT_REVERSE_EXECUTION
+  };
+
 private:
   /**
    * TraceFrame::Time + Ticks + ReplayStepKey does not uniquely identify
@@ -265,13 +285,25 @@ private:
   static bool less_than(const Mark& m1, const Mark& m2);
 
   Progress estimate_progress();
+
   /**
-   * Called whenever the current session moves to a new execution point.
-   * Make add a new checkpoint or remove one or more checkpoints from
-   * reverse_exec_checkpoints.
+   * Called when the current session has moved forward to a new execution
+   * point and we might want to make a checkpoint to support reverse-execution.
+   * If this adds a checkpoint, it will call
+   * discard_past_reverse_exec_checkpoints
+   * first.
    */
-  void update_reverse_exec_checkpoints();
-  void discard_excess_checkpoints(Progress now);
+  void maybe_add_reverse_exec_checkpoint(CheckpointStrategy strategy);
+  /**
+   * Discard some reverse-exec checkpoints in the past, if necessary. We do
+   * this to stop the number of checkpoints growing out of control.
+   */
+  void discard_past_reverse_exec_checkpoints(CheckpointStrategy strategy);
+  /**
+   * Discard all reverse-exec checkpoints that are in the future (they're
+   * useless).
+   */
+  void discard_future_reverse_exec_checkpoints();
 
   ReplaySession::Flags session_flags;
 
