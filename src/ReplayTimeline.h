@@ -160,8 +160,8 @@ public:
   /**
    * Try to identify an existing Mark which is known to be one singlestep
    * before 'from', and for which we know singlestepping to 'from' would
-   * not trigger any currently-set breakpoints or watchpoints. If we can't,
-   * return a null Mark.
+   * not trigger no break statuses other than "singlestep_complete".
+   * If we can't, return a null Mark.
    */
   Mark lazy_reverse_singlestep(const Mark& from) { return Mark(); }
 
@@ -366,6 +366,15 @@ private:
    * Checkpoints used to accelerate reverse execution.
    */
   std::map<Mark, Progress> reverse_exec_checkpoints;
+
+  /**
+   * When these are non-null, then when singlestepping from
+   * no_break_interval_start to no_break_interval_end, the only break statuses
+   * reported would be singlestep_complete (i.e. no watchpoints/breakpoints/
+   * signals fire).
+   */
+  Mark no_break_interval_start;
+  Mark no_break_interval_end;
 };
 
 std::ostream& operator<<(std::ostream& s, const ReplayTimeline::Mark& o);

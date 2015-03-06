@@ -472,6 +472,7 @@ bool ReplayTimeline::add_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
     return false;
   }
   breakpoints.insert(make_pair(t->vm()->uid(), addr));
+  no_break_interval_start = no_break_interval_end = Mark();
   return true;
 }
 
@@ -498,6 +499,7 @@ bool ReplayTimeline::add_watchpoint(Task* t, remote_ptr<void> addr,
     return false;
   }
   watchpoints.insert(make_tuple(t->vm()->uid(), addr, num_bytes, type));
+  no_break_interval_start = no_break_interval_end = Mark();
   return true;
 }
 
@@ -718,13 +720,19 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     Mark step_start = mark();
     ReplayResult destination_candidate_result;
 
+    no_break_interval_start = Mark();
     while (true) {
       Mark now;
-      unapply_breakpoints_and_watchpoints();
       if (current->current_task()->tuid() == tuid) {
+        apply_breakpoints_and_watchpoints();
         ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
         constraints.stop_before_states.push_back(&end.ptr->regs);
         result = current->replay_step(constraints);
+        if (result.break_status.breakpoint_hit) {
+          no_break_interval_start = Mark();
+          unapply_breakpoints_and_watchpoints();
+          result = current->replay_step(constraints);
+        }
         now = mark();
         if (result.break_status.singlestep_complete) {
           if (now > end) {
@@ -735,9 +743,16 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
           destination_candidate = step_start;
           destination_candidate_result = result;
           step_start = now;
+          if (!no_break_interval_start ||
+              !result.break_status.watchpoints_hit.empty() ||
+              result.break_status.signal) {
+            no_break_interval_start = now;
+          }
         }
       } else {
+        unapply_breakpoints_and_watchpoints();
         result = current->replay_step(RUN_CONTINUE);
+        no_break_interval_start = Mark();
         now = mark();
       }
       if (now >= end) {
@@ -745,6 +760,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       }
       maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
     }
+    no_break_interval_end = no_break_interval_start ? end : Mark();
 
     if (destination_candidate) {
       LOG(debug) << "Found destination " << destination_candidate;
