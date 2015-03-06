@@ -1148,14 +1148,6 @@ string Task::read_c_str(remote_ptr<void> child_addr) {
   }
 }
 
-size_t Task::get_reg(uint8_t* buf, GdbRegister regname, bool* defined) {
-  size_t num_bytes = regs().read_register(buf, regname, defined);
-  if (!*defined) {
-    num_bytes = extra_regs().read_register(buf, regname, defined);
-  }
-  return num_bytes;
-}
-
 const Registers& Task::regs() const {
   ASSERT(this, is_stopped);
   return registers;

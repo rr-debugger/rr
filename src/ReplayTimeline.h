@@ -152,6 +152,14 @@ public:
                            TraceFrame::Time stop_at_time = 0);
 
   /**
+   * Try to identify an existing Mark which is known to be one singlestep
+   * before 'from', and for which we know singlestepping to 'from' would
+   * not trigger any currently-set breakpoints or watchpoints. If we can't,
+   * return a null Mark.
+   */
+  Mark lazy_reverse_singlestep(const Mark& from) { return Mark(); }
+
+  /**
    * Different strategies for placing automatic checkpoints.
    */
   enum CheckpointStrategy {

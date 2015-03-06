@@ -128,13 +128,37 @@ static const char gdb_rr_macros[] =
     "handle SIGURG stop\n";
 
 /**
+ * Attempt to find the value of |regname| (a DebuggerRegister
+ * name), and if so (i) write it to |buf|; (ii)
+ * set |*defined = true|; (iii) return the size of written
+ * data.  If |*defined == false|, the value of |buf| is
+ * meaningless.
+ *
+ * This helper can fetch the values of both general-purpose
+ * and "extra" registers.
+ *
+ * NB: |buf| must be large enough to hold the largest register
+ * value that can be named by |regname|.
+ */
+static size_t get_reg(const Registers& regs, const ExtraRegisters& extra_regs,
+                      uint8_t* buf, GdbRegister regname, bool* defined) {
+  size_t num_bytes = regs.read_register(buf, regname, defined);
+  if (!*defined) {
+    num_bytes = extra_regs.read_register(buf, regname, defined);
+  }
+  return num_bytes;
+}
+
+/**
  * Return the register |which|, which may not have a defined value.
  */
-static GdbRegisterValue get_reg(Task* t, GdbRegister which) {
+static GdbRegisterValue get_reg(const Registers& regs,
+                                const ExtraRegisters& extra_regs,
+                                GdbRegister which) {
   GdbRegisterValue reg;
   memset(&reg, 0, sizeof(reg));
   reg.name = which;
-  reg.size = t->get_reg(&reg.value[0], which, &reg.defined);
+  reg.size = get_reg(regs, extra_regs, &reg.value[0], which, &reg.defined);
   return reg;
 }
 
@@ -220,6 +244,16 @@ bool GdbServer::maybe_process_magic_read(Task* t, const GdbRequest& req) {
     return true;
   }
   return false;
+}
+
+void GdbServer::dispatch_regs_request(const Registers& regs,
+                                      const ExtraRegisters& extra_regs) {
+  size_t n_regs = regs.total_registers();
+  GdbRegisterFile file(n_regs);
+  for (size_t i = 0; i < n_regs; ++i) {
+    file.regs[i] = get_reg(regs, extra_regs, GdbRegister(i));
+  }
+  dbg->reply_get_regs(file);
 }
 
 void GdbServer::dispatch_debugger_request(Session& session, Task* t,
@@ -363,17 +397,13 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       return;
     }
     case DREQ_GET_REG: {
-      GdbRegisterValue reg = get_reg(target, req.reg.name);
+      GdbRegisterValue reg =
+          get_reg(target->regs(), target->extra_regs(), req.reg.name);
       dbg->reply_get_reg(reg);
       return;
     }
     case DREQ_GET_REGS: {
-      size_t n_regs = target->regs().total_registers();
-      GdbRegisterFile file(n_regs);
-      for (size_t i = 0; i < n_regs; ++i) {
-        file.regs[i] = get_reg(target, GdbRegister(i));
-      }
-      dbg->reply_get_regs(file);
+      dispatch_regs_request(target->regs(), target->extra_regs());
       return;
     }
     case DREQ_SET_REG: {
@@ -631,6 +661,9 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
   while (true) {
     GdbRequest req = dbg->get_request();
     req.suppress_debugger_stop = false;
+    TaskUid tuid = t ? t->tuid() : TaskUid();
+    try_lazy_reverse_singlesteps(t, req);
+    t = tuid ? timeline.current_session().find_task(tuid) : nullptr;
 
     if (req.type == DREQ_READ_SIGINFO) {
       // TODO: we send back a dummy siginfo_t to gdb
@@ -670,13 +703,52 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
   }
 }
 
+void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
+  ReplayTimeline::Mark now;
+  bool need_seek = false;
+
+  while (req.type == DREQ_STEP && req.run_direction == RUN_BACKWARD &&
+         get_threadid(t) == req.target && !req.suppress_debugger_stop &&
+         debugger_active) {
+    if (!now) {
+      now = timeline.mark();
+    }
+    ReplayTimeline::Mark previous = timeline.lazy_reverse_singlestep(now);
+    if (!previous) {
+      break;
+    }
+
+    now = previous;
+    need_seek = true;
+    BreakStatus break_status;
+    break_status.task = t;
+    break_status.singlestep_complete = true;
+    maybe_notify_stop(break_status);
+
+    while (true) {
+      req = dbg->get_request();
+      req.suppress_debugger_stop = false;
+      if (req.type != DREQ_GET_REGS) {
+        break;
+      }
+      dispatch_regs_request(now.regs(), now.extra_regs());
+    }
+  }
+
+  if (need_seek) {
+    timeline.seek_to_mark(now);
+  }
+}
+
 ReplayStatus GdbServer::replay_one_step() {
   ReplayResult result;
   bool suppress_debugger_stop = false;
   Task* t = timeline.current_session().current_task();
 
   if (debugger_active && t && t->task_group()->tguid() == debuggee_tguid) {
+    TaskUid tuid = t->tuid();
     GdbRequest req = process_debugger_requests(t);
+    t = timeline.current_session().find_task(tuid);
     if (DREQ_RESTART == req.type) {
       maybe_restart_session(req);
       return REPLAY_CONTINUE;

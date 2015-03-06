@@ -677,23 +677,6 @@ public:
 
   void record_remote_str(remote_ptr<void> str);
 
-  /**
-   * Attempt to find the value of |regname| (a DebuggerRegister
-   * name) in this task, and if so (i) write it to |buf|; (ii)
-   * set |*defined = true|; (iii) return the size of written
-   * data.  If |*defined == false|, the value of |buf| is
-   * meaningless.
-   *
-   * This helper can fetch the values of both general-purpose
-   * and "extra" registers.
-   *
-   * NB: |buf| must be large enough to hold the largest register
-   * value that can be named by |regname|.
-   *
-   * TODO: nicer API.
-   */
-  size_t get_reg(uint8_t* buf, GdbRegister regname, bool* defined);
-
   /** Return the current regs of this. */
   const Registers& regs() const;
 

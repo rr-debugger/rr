@@ -86,6 +86,8 @@ private:
    * Otherwise, do nothing and return false.
    */
   bool maybe_process_magic_read(Task* t, const GdbRequest& req);
+  void dispatch_regs_request(const Registers& regs,
+                             const ExtraRegisters& extra_regs);
   /**
    * Process the single debugger request |req|, made by |dbg| targeting
    * |t|, inside the session |session|.
@@ -108,6 +110,18 @@ private:
   void maybe_restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
   ReplayStatus replay_one_step();
+  /**
+   * If 'req' is a reverse-singlestep, try to obtain the resulting state
+   * directly from ReplayTimeline's mark database. If that succeeds,
+   * report the singlestep break status to gdb and process any get-registers
+   * requests. Repeat until we get a request that isn't reverse-singlestep
+   * or get-registers, returning that request in 'req'.
+   * During reverse-next commands, gdb tends to issue a series of
+   * reverse-singlestep/get-registers pairs, and this makes those much
+   * more efficient by avoiding having to actually reverse-singlestep the
+   * session.
+   */
+  void try_lazy_reverse_singlesteps(Task* t, GdbRequest& req);
   void serve_replay(const ConnectionFlags& flags);
 
   /**

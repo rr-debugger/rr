@@ -35,6 +35,7 @@ public:
   }
   pid_t tid() const { return tid_; }
   uint32_t serial() const { return serial_; }
+  operator bool() const { return tid_ != 0; }
 
 private:
   pid_t tid_;
