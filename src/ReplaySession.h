@@ -201,6 +201,12 @@ public:
    *
    * This operation is also called "checkpointing" the replay
    * session.
+   *
+   * The returned clone is only partially initialized. This uses less
+   * system resources than a fully-initialized session, so if you're going
+   * to keep a session around inactive, keep the clone and not the original
+   * session. Partially initialized sessions automatically finish
+   * initializing when necessary.
    */
   shr_ptr clone();
 
