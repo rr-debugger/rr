@@ -58,6 +58,12 @@ public:
     bool operator!=(const Mark& other) const { return !(*this == other); }
     operator bool() const { return ptr != nullptr; }
 
+    /**
+     * Return the values of the general-purpose registers at this mark.
+     */
+    const Registers& regs() const { return ptr->regs; }
+    const ExtraRegisters& extra_regs() const { return ptr->extra_regs; }
+
   private:
     friend class ReplayTimeline;
     friend std::ostream& operator<<(std::ostream& s, const Mark& o);
@@ -237,6 +243,7 @@ private:
           singlestep_to_next_mark(false) {
       if (t) {
         regs = t->regs();
+        extra_regs = t->extra_regs();
       }
     }
     ~InternalMark();
@@ -246,6 +253,7 @@ private:
     ReplayTimeline* owner;
     MarkKey key;
     Registers regs;
+    ExtraRegisters extra_regs;
     ReplaySession::shr_ptr checkpoint;
     uint32_t checkpoint_refcount;
     // The next InternalMark in the mark vector is the result of singlestepping
