@@ -163,7 +163,7 @@ public:
    * not trigger no break statuses other than "singlestep_complete".
    * If we can't, return a null Mark.
    */
-  Mark lazy_reverse_singlestep(const Mark& from) { return Mark(); }
+  Mark lazy_reverse_singlestep(const Mark& from);
 
   /**
    * Different strategies for placing automatic checkpoints.

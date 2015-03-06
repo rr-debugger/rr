@@ -723,6 +723,7 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
     BreakStatus break_status;
     break_status.task = t;
     break_status.singlestep_complete = true;
+    LOG(debug) << "  using lazy reverse-singlestep";
     maybe_notify_stop(break_status);
 
     while (true) {
@@ -731,6 +732,7 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
       if (req.type != DREQ_GET_REGS) {
         break;
       }
+      LOG(debug) << "  using lazy reverse-singlestep registers";
       dispatch_regs_request(now.regs(), now.extra_regs());
     }
   }

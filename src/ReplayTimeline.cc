@@ -212,6 +212,17 @@ ReplayTimeline::Mark ReplayTimeline::find_singlestep_before(const Mark& mark) {
   return m;
 }
 
+ReplayTimeline::Mark ReplayTimeline::lazy_reverse_singlestep(const Mark& from) {
+  if (!no_break_interval_start || !no_break_interval_end) {
+    return Mark();
+  }
+  Mark m = find_singlestep_before(from);
+  if (m && m >= no_break_interval_start && from <= no_break_interval_end) {
+    return m;
+  }
+  return Mark();
+}
+
 ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
   Mark m = mark();
   if (!m.ptr->checkpoint) {
