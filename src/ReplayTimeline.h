@@ -342,6 +342,8 @@ private:
    */
   void discard_future_reverse_exec_checkpoints();
 
+  Mark set_short_checkpoint();
+
   ReplaySession::Flags session_flags;
 
   ReplaySession::shr_ptr current;
@@ -388,6 +390,12 @@ private:
    */
   Mark no_watchpoints_hit_interval_start;
   Mark no_watchpoints_hit_interval_end;
+
+  /**
+   * A single checkpoint that's very close to the current point, used to
+   * accelerate a sequence of reverse singlestep operations.
+   */
+  Mark reverse_exec_short_checkpoint;
 };
 
 std::ostream& operator<<(std::ostream& s, const ReplayTimeline::Mark& o);

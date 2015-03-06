@@ -74,6 +74,7 @@ ReplayTimeline::~ReplayTimeline() {
   for (auto it : marks) {
     for (shared_ptr<InternalMark>& itv : it.second) {
       itv->owner = nullptr;
+      itv->checkpoint = nullptr;
     }
   }
 }
@@ -749,7 +750,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     assert(current->current_task()->tuid() == tuid);
 
     Mark destination_candidate;
-    Mark step_start = mark();
+    Mark step_start = set_short_checkpoint();
     ReplayResult destination_candidate_result;
 
     no_watchpoints_hit_interval_start = Mark();
@@ -998,4 +999,19 @@ void ReplayTimeline::discard_past_reverse_exec_checkpoints(
     remove_explicit_checkpoint(m);
     reverse_exec_checkpoints.erase(m);
   }
+}
+
+ReplayTimeline::Mark ReplayTimeline::set_short_checkpoint() {
+  if (!can_add_checkpoint()) {
+    return mark();
+  }
+
+  // Add checkpoint before removing one in case m ==
+  // reverse_exec_short_checkpoint
+  Mark m = add_explicit_checkpoint();
+  if (reverse_exec_short_checkpoint) {
+    remove_explicit_checkpoint(reverse_exec_short_checkpoint);
+  }
+  swap(m, reverse_exec_short_checkpoint);
+  return reverse_exec_short_checkpoint;
 }
