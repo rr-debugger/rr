@@ -299,6 +299,7 @@ private:
   ReplayResult singlestep_with_breakpoints_disabled();
   void fix_watchpoint_coalescing_quirk(ReplayResult& result,
                                        const ProtoMark& before);
+  Mark find_singlestep_before(const Mark& mark);
 
   ReplayResult reverse_continue();
   ReplayResult reverse_singlestep(const Mark& origin, const TaskUid& tuid);

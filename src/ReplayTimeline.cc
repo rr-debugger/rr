@@ -191,6 +191,27 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
   return result;
 }
 
+ReplayTimeline::Mark ReplayTimeline::find_singlestep_before(const Mark& mark) {
+  auto& mark_vector = marks[mark.ptr->key];
+  ssize_t i;
+  for (i = mark_vector.size() - 1; i >= 0; --i) {
+    if (mark_vector[i] == mark.ptr) {
+      break;
+    }
+  }
+  assert(i >= 0 && "Mark not in vector???");
+
+  Mark m;
+  if (i == 0) {
+    return m;
+  }
+  if (!mark_vector[i - 1]->singlestep_to_next_mark) {
+    return m;
+  }
+  m.ptr = mark_vector[i - 1];
+  return m;
+}
+
 ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
   Mark m = mark();
   if (!m.ptr->checkpoint) {
