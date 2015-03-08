@@ -27,8 +27,11 @@ class Registers;
  * Spurious returns after any singlestep are also allowed.
  *
  * This will not add more than one tick to t->tick_count().
+ *
+ * Returns true if we did a fast-forward, false if we just did one regular
+ * singlestep.
  */
-void fast_forward_through_instruction(
+bool fast_forward_through_instruction(
     Task* t, ResumeRequest how, const std::vector<const Registers*>& states);
 
 /**

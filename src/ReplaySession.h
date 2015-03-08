@@ -153,8 +153,14 @@ enum ReplayStatus {
 };
 
 struct ReplayResult {
+  ReplayResult(ReplayStatus status = REPLAY_CONTINUE)
+      : status(status), did_fast_forward(false) {}
   ReplayStatus status;
   BreakStatus break_status;
+  // True if we did a fast-forward operation, in which case
+  // break_status.singlestep_complete might indicate the completion of more
+  // than one instruction.
+  bool did_fast_forward;
 };
 
 /**
@@ -414,6 +420,7 @@ private:
   ReplayTraceStep current_step;
   CPUIDBugDetector cpuid_bug_detector;
   Flags flags;
+  bool did_fast_forward;
   /**
    * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
    * must be replayed sequentially, so we can use one buffer for all

@@ -150,7 +150,7 @@ static bool is_x86ish(Task* t) {
   return t->arch() == x86 || t->arch() == x86_64;
 }
 
-void fast_forward_through_instruction(Task* t, ResumeRequest how,
+bool fast_forward_through_instruction(Task* t, ResumeRequest how,
                                       const vector<const Registers*>& states) {
   assert(how == RESUME_SINGLESTEP || how == RESUME_SYSEMU_SINGLESTEP);
 
@@ -159,33 +159,33 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
   t->resume_execution(how, RESUME_WAIT);
   if (t->pending_sig() != SIGTRAP) {
     // we might have stepped into a system call...
-    return;
+    return false;
   }
 
   if (t->ip() != ip) {
-    return;
+    return false;
   }
   if (t->vm()->get_breakpoint_type_at_addr(ip) != TRAP_NONE) {
     // breakpoint must have fired
-    return;
+    return false;
   }
   if (t->debug_status() & DS_WATCHPOINT_ANY) {
     // watchpoint fired
-    return;
+    return false;
   }
   for (auto& state : states) {
     if (state->matches(t->regs())) {
-      return;
+      return false;
     }
   }
   if (!is_x86ish(t)) {
-    return;
+    return false;
   }
 
   InstructionBuf instruction_buf = read_instruction(t, ip);
   DecodedInstruction decoded;
   if (!decode_x86_string_instruction(instruction_buf, &decoded)) {
-    return;
+    return false;
   }
 
   // At this point we can be sure the instruction didn't trigger a syscall,
@@ -195,6 +195,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
   vector<const Registers*> states_copy;
   auto using_states = &states;
 
+  bool did_execute = false;
   while (true) {
     // This string instruction should execute until CX reaches 0 and
     // we move to the next instruction, or we hit one of the states in
@@ -214,7 +215,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
     uintptr_t cur_cx = t->regs().cx();
     if (cur_cx == 0) {
       // This instruction will be skipped entirely.
-      return;
+      return did_execute;
     }
 
     // Don't execute the last iteration of the string instruction. That
@@ -270,7 +271,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
     }
 
     if (iterations == 0) {
-      return;
+      return did_execute;
     }
 
     LOG(debug) << "x86-string fast-forward: " << iterations
@@ -298,6 +299,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
       ASSERT(t, ok) << "Failed to add breakpoint";
 
       t->resume_execution(RESUME_CONT, RESUME_WAIT);
+      did_execute = true;
       ASSERT(t, t->pending_sig() == SIGTRAP);
       // Grab debug_status before restoring watchpoints, since the latter
       // clears the debug status
@@ -325,7 +327,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
           // all the rest of the way.
           LOG(debug) << "x86-string fast-forward: " << iterations
                      << " iterations to go, but watchpoint hit early; aborted";
-          return;
+          return did_execute;
         }
       }
     }
@@ -336,6 +338,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
     // Singlestep through the remaining iterations.
     while (iterations > 0 && t->ip() == ip) {
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT);
+      did_execute = true;
       ASSERT(t, t->pending_sig() == SIGTRAP);
       auto debug_status = t->consume_debug_status();
       // No watchpoints should have fired. If we exited the loop, we should
@@ -362,7 +365,7 @@ void fast_forward_through_instruction(Task* t, ResumeRequest how,
       LOG(debug) << "x86-string fast-forward done; ip()==" << t->ip();
       // Fake singlestep status for trap diagnosis
       t->replace_debug_status(DS_SINGLESTEP);
-      break;
+      return did_execute;
     }
   }
 }

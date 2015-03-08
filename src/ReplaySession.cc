@@ -284,8 +284,8 @@ Completion ReplaySession::cont_syscall_boundary(
        resume_how == RESUME_SINGLESTEP)) {
     // ignore ticks_period. We can't add more than one tick during a
     // fast_forward so it doesn't matter.
-    fast_forward_through_instruction(t, resume_how,
-                                     constraints.stop_before_states);
+    did_fast_forward |= fast_forward_through_instruction(
+        t, resume_how, constraints.stop_before_states);
   } else {
     t->resume_execution(resume_how, RESUME_WAIT, 0, ticks_period);
   }
@@ -389,8 +389,8 @@ void ReplaySession::continue_or_step(Task* t,
   if (constraints.command == RUN_SINGLESTEP) {
     t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, 0, tick_period);
   } else if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD) {
-    fast_forward_through_instruction(t, RESUME_SINGLESTEP,
-                                     constraints.stop_before_states);
+    did_fast_forward |= fast_forward_through_instruction(
+        t, RESUME_SINGLESTEP, constraints.stop_before_states);
   } else {
     /* We continue with RESUME_SYSCALL for error checking:
      * since the next event is supposed to be a signal,
@@ -823,7 +823,8 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
         // This state may not be relevant if we don't have the correct tick
         // count yet. But it doesn't hurt to push it on anyway.
         states.push_back(&regs);
-        fast_forward_through_instruction(t, RESUME_SINGLESTEP, states);
+        did_fast_forward |=
+            fast_forward_through_instruction(t, RESUME_SINGLESTEP, states);
         check_pending_sig(t);
       }
     }
@@ -1483,7 +1484,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
 ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   finish_initializing();
 
-  ReplayResult result;
+  ReplayResult result(REPLAY_CONTINUE);
 
   Task* t = current_task();
 
@@ -1492,8 +1493,6 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     result.status = REPLAY_EXITED;
     return result;
   }
-
-  result.status = REPLAY_CONTINUE;
 
   /* If we restored from a checkpoint, the steps might have been
    * computed already in which case step.action will not be TSTEP_NONE.
@@ -1510,6 +1509,8 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       return result;
     }
   }
+
+  did_fast_forward = false;
 
   // Now we know |t| hasn't died, so save it in break_status.
   result.break_status.task = t;
@@ -1549,8 +1550,10 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     /* Don't restart with SIGTRAP anywhere. */
     t->child_sig = 0;
     check_approaching_ticks_target(t, constraints, result.break_status);
+    result.did_fast_forward = did_fast_forward;
     return result;
   }
+  result.did_fast_forward = did_fast_forward;
 
   if (TSTEP_ENTER_SYSCALL == current_step.action) {
     cpuid_bug_detector.notify_reached_syscall_during_replay(t);
