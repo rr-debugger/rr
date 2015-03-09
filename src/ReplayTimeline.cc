@@ -157,8 +157,8 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       for (auto it = mark_vector.begin(); it != mark_vector.end(); ++it) {
         shared_ptr<InternalMark>& existing_mark = *it;
         if (equal_regs(existing_mark->regs, t->regs())) {
-          if (!result.did_fast_forward) {
-            new_marks.back()->singlestep_to_next_mark = true;
+          if (!result.did_fast_forward && !result.break_status.signal) {
+            new_marks.back()->singlestep_to_next_mark_no_signal = true;
           }
           mark_index = it;
           break;
@@ -174,8 +174,8 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       // operations total. To avoid that, add all the intermediate states to
       // the mark map now, so the first mark() call will perform N singlesteps
       // and the rest will perform none.
-      if (!result.did_fast_forward) {
-        new_marks.back()->singlestep_to_next_mark = true;
+      if (!result.did_fast_forward && !result.break_status.signal) {
+        new_marks.back()->singlestep_to_next_mark_no_signal = true;
       }
       new_marks.push_back(make_shared<InternalMark>(this, t, key));
     }
@@ -194,7 +194,8 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
 void ReplayTimeline::mark_after_singlestep(const Mark& from,
                                            const ReplayResult& result) {
   Mark m = mark();
-  if (!result.did_fast_forward && m.ptr->key == from.ptr->key) {
+  if (!result.did_fast_forward && m.ptr->key == from.ptr->key &&
+      !result.break_status.signal) {
     auto& mark_vector = marks[m.ptr->key];
     for (size_t i = 0; i < mark_vector.size(); ++i) {
       if (mark_vector[i] == from.ptr) {
@@ -202,7 +203,7 @@ void ReplayTimeline::mark_after_singlestep(const Mark& from,
         break;
       }
     }
-    from.ptr->singlestep_to_next_mark = true;
+    from.ptr->singlestep_to_next_mark_no_signal = true;
   }
 }
 
@@ -220,19 +221,22 @@ ReplayTimeline::Mark ReplayTimeline::find_singlestep_before(const Mark& mark) {
   if (i == 0) {
     return m;
   }
-  if (!mark_vector[i - 1]->singlestep_to_next_mark) {
+  if (!mark_vector[i - 1]->singlestep_to_next_mark_no_signal) {
     return m;
   }
   m.ptr = mark_vector[i - 1];
   return m;
 }
 
-ReplayTimeline::Mark ReplayTimeline::lazy_reverse_singlestep(const Mark& from) {
-  if (!no_break_interval_start || !no_break_interval_end) {
+ReplayTimeline::Mark ReplayTimeline::lazy_reverse_singlestep(const Mark& from,
+                                                             Task* t) {
+  if (!no_watchpoints_hit_interval_start || !no_watchpoints_hit_interval_end) {
     return Mark();
   }
   Mark m = find_singlestep_before(from);
-  if (m && m >= no_break_interval_start && from <= no_break_interval_end) {
+  if (m && m >= no_watchpoints_hit_interval_start &&
+      m < no_watchpoints_hit_interval_end &&
+      !has_breakpoint_at_address(t, from.ptr->regs.ip())) {
     return m;
   }
   return Mark();
@@ -500,7 +504,6 @@ bool ReplayTimeline::add_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
     return false;
   }
   breakpoints.insert(make_pair(t->vm()->uid(), addr));
-  no_break_interval_start = no_break_interval_end = Mark();
   return true;
 }
 
@@ -527,7 +530,8 @@ bool ReplayTimeline::add_watchpoint(Task* t, remote_ptr<void> addr,
     return false;
   }
   watchpoints.insert(make_tuple(t->vm()->uid(), addr, num_bytes, type));
-  no_break_interval_start = no_break_interval_end = Mark();
+  no_watchpoints_hit_interval_start = no_watchpoints_hit_interval_start =
+      Mark();
   return true;
 }
 
@@ -748,7 +752,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     Mark step_start = mark();
     ReplayResult destination_candidate_result;
 
-    no_break_interval_start = Mark();
+    no_watchpoints_hit_interval_start = Mark();
     while (true) {
       Mark now;
       if (current->current_task()->tuid() == tuid) {
@@ -758,7 +762,6 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         constraints.stop_before_states.push_back(&end.ptr->regs);
         result = current->replay_step(constraints);
         if (result.break_status.breakpoint_hit) {
-          no_break_interval_start = Mark();
           unapply_breakpoints_and_watchpoints();
           result = current->replay_step(constraints);
         }
@@ -773,16 +776,15 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
           destination_candidate = step_start;
           destination_candidate_result = result;
           step_start = now;
-          if (!no_break_interval_start ||
-              !result.break_status.watchpoints_hit.empty() ||
-              result.break_status.signal) {
-            no_break_interval_start = now;
+          if (!no_watchpoints_hit_interval_start ||
+              !result.break_status.watchpoints_hit.empty()) {
+            no_watchpoints_hit_interval_start = now;
           }
         }
       } else {
         unapply_breakpoints_and_watchpoints();
         result = current->replay_step(RUN_CONTINUE);
-        no_break_interval_start = Mark();
+        no_watchpoints_hit_interval_start = Mark();
         now = mark();
       }
       if (now >= end) {
@@ -790,7 +792,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       }
       maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
     }
-    no_break_interval_end = no_break_interval_start ? end : Mark();
+    no_watchpoints_hit_interval_end =
+        no_watchpoints_hit_interval_start ? end : Mark();
 
     if (destination_candidate) {
       LOG(debug) << "Found destination " << destination_candidate;

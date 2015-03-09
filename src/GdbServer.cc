@@ -715,7 +715,7 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
     if (!now) {
       now = timeline.mark();
     }
-    ReplayTimeline::Mark previous = timeline.lazy_reverse_singlestep(now);
+    ReplayTimeline::Mark previous = timeline.lazy_reverse_singlestep(now, t);
     if (!previous) {
       break;
     }

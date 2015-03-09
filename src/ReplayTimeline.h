@@ -174,8 +174,10 @@ public:
    * before 'from', and for which we know singlestepping to 'from' would
    * not trigger no break statuses other than "singlestep_complete".
    * If we can't, return a null Mark.
+   * Will only return a Mark for the same executing task as 'from', which
+   * must be 't'.
    */
-  Mark lazy_reverse_singlestep(const Mark& from);
+  Mark lazy_reverse_singlestep(const Mark& from, Task* t);
 
   /**
    * Different strategies for placing automatic checkpoints.
@@ -252,7 +254,7 @@ private:
         : owner(owner),
           key(key),
           checkpoint_refcount(0),
-          singlestep_to_next_mark(false) {
+          singlestep_to_next_mark_no_signal(false) {
       if (t) {
         regs = t->regs();
         extra_regs = t->extra_regs();
@@ -269,8 +271,8 @@ private:
     ReplaySession::shr_ptr checkpoint;
     uint32_t checkpoint_refcount;
     // The next InternalMark in the mark vector is the result of singlestepping
-    // from this mark.
-    bool singlestep_to_next_mark;
+    // from this mark *and* no signal is reported in the break_status.
+    bool singlestep_to_next_mark_no_signal;
   };
   friend struct InternalMark;
   friend std::ostream& operator<<(std::ostream& s, const InternalMark& o);
@@ -381,12 +383,11 @@ private:
 
   /**
    * When these are non-null, then when singlestepping from
-   * no_break_interval_start to no_break_interval_end, the only break statuses
-   * reported would be singlestep_complete (i.e. no watchpoints/breakpoints/
-   * signals fire).
+   * no_break_interval_start to no_break_interval_end, none of the currently
+   * set watchpoints fire.
    */
-  Mark no_break_interval_start;
-  Mark no_break_interval_end;
+  Mark no_watchpoints_hit_interval_start;
+  Mark no_watchpoints_hit_interval_end;
 };
 
 std::ostream& operator<<(std::ostream& s, const ReplayTimeline::Mark& o);
