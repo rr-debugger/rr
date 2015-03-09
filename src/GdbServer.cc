@@ -214,7 +214,9 @@ bool GdbServer::maybe_process_magic_command(Task* t, const GdbRequest& req) {
   uintptr_t param = cmd & DBG_COMMAND_PARAMETER_MASK;
   switch (cmd & DBG_COMMAND_MSG_MASK) {
     case DBG_COMMAND_MSG_CREATE_CHECKPOINT: {
-      checkpoints[param] = timeline.add_explicit_checkpoint();
+      if (timeline.can_add_checkpoint()) {
+        checkpoints[param] = timeline.add_explicit_checkpoint();
+      }
       break;
     }
     case DBG_COMMAND_MSG_DELETE_CHECKPOINT: {
@@ -818,7 +820,7 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   // leader".
   if (event_now < target.event || (target.pid && t->tgid() != target.pid) ||
       (target.pid && target.require_exec && !t->vm()->execed()) ||
-      !timeline.current_session().can_clone()) {
+      !timeline.can_add_checkpoint()) {
     return;
   }
 
@@ -890,7 +892,9 @@ void GdbServer::maybe_restart_session(const GdbRequest& req) {
       timeline.remove_explicit_checkpoint(debugger_restart_mark);
     }
     debugger_restart_mark = mark_to_restore;
-    timeline.add_explicit_checkpoint();
+    if (timeline.can_add_checkpoint()) {
+      timeline.add_explicit_checkpoint();
+    }
     return;
   }
 

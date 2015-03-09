@@ -91,8 +91,20 @@ public:
   Mark mark();
 
   /**
+   * Indicates that the current replay position is the result of
+   * singlestepping from 'from'.
+   */
+  void mark_after_singlestep(const Mark& from, const ReplayResult& result);
+
+  /**
+   * Returns true if it's safe to add a checkpoint here.
+   */
+  bool can_add_checkpoint() { return current->can_clone(); }
+
+  /**
    * Ensure that the current session is explicitly checkpointed.
    * Explicit checkpoints are reference counted.
+   * Only call this if can_add_checkpoint would return true.
    */
   Mark add_explicit_checkpoint();
 

@@ -191,6 +191,21 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
   return result;
 }
 
+void ReplayTimeline::mark_after_singlestep(const Mark& from,
+                                           const ReplayResult& result) {
+  Mark m = mark();
+  if (!result.did_fast_forward && m.ptr->key == from.ptr->key) {
+    auto& mark_vector = marks[m.ptr->key];
+    for (size_t i = 0; i < mark_vector.size(); ++i) {
+      if (mark_vector[i] == from.ptr) {
+        assert(i + 1 < mark_vector.size() && mark_vector[i + 1] == m.ptr);
+        break;
+      }
+    }
+    from.ptr->singlestep_to_next_mark = true;
+  }
+}
+
 ReplayTimeline::Mark ReplayTimeline::find_singlestep_before(const Mark& mark) {
   auto& mark_vector = marks[mark.ptr->key];
   ssize_t i;
@@ -224,6 +239,8 @@ ReplayTimeline::Mark ReplayTimeline::lazy_reverse_singlestep(const Mark& from) {
 }
 
 ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
+  assert(current->can_clone());
+
   Mark m = mark();
   if (!m.ptr->checkpoint) {
     unapply_breakpoints_and_watchpoints();
@@ -736,6 +753,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       Mark now;
       if (current->current_task()->tuid() == tuid) {
         apply_breakpoints_and_watchpoints();
+        Mark before_step = mark();
         ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
         constraints.stop_before_states.push_back(&end.ptr->regs);
         result = current->replay_step(constraints);
@@ -746,6 +764,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         }
         now = mark();
         if (result.break_status.singlestep_complete) {
+          mark_after_singlestep(before_step, result);
           if (now > end) {
             // This last step is not usable.
             LOG(debug) << "   not usable, stopping now";
