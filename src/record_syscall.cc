@@ -1743,6 +1743,13 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       }
       return ALLOW_SWITCH;
 
+    case Arch::pselect6:
+      syscall_state.reg_parameter<typename Arch::fd_set>(2, IN_OUT);
+      syscall_state.reg_parameter<typename Arch::fd_set>(3, IN_OUT);
+      syscall_state.reg_parameter<typename Arch::fd_set>(4, IN_OUT);
+      syscall_state.reg_parameter<typename Arch::timespec>(5, IN_OUT);
+      return ALLOW_SWITCH;
+
     case Arch::recvfrom: {
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<typename Arch::size_t>(

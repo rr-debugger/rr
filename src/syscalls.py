@@ -1468,7 +1468,7 @@ fchmodat = UnsupportedSyscall(x86=306, x64=268)
 # page....
 faccessat = EmulatedSyscall(x86=307, x64=269)
 
-pselect6 = UnsupportedSyscall(x86=308, x64=270)
+pselect6 = IrregularEmulatedSyscall(x86=308, x64=270)
 
 ppoll = IrregularEmulatedSyscall(x86=309, x64=271)
 

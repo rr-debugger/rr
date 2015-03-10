@@ -242,6 +242,7 @@ set(BASIC_TESTS
   int3
   intr_futex_wait_restart
   intr_poll
+  intr_pselect
   intr_read_no_restart
   intr_read_restart
   intr_sleep
