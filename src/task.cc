@@ -2422,7 +2422,12 @@ void Task::maybe_flush_syscallbuf() {
     // Already flushing.
     return;
   }
-  if (!syscallbuf_hdr || 0 == syscallbuf_hdr->num_rec_bytes ||
+  // This can be called while the task is not stopped, when we prematurely
+  // terminate the trace. In that case, we should avoid reading header data
+  // that the task could be concurrently modifying. We could still race on
+  // the actual syscallbuf data, but there's nothing we can do about that and
+  // it could only affect replay of the very last syscall before termination.
+  if (!syscallbuf_hdr || (is_stopped && 0 == syscallbuf_hdr->num_rec_bytes) ||
       delay_syscallbuf_flush) {
     // No syscallbuf or no records.  No flushing to do.
     return;
@@ -2432,14 +2437,17 @@ void Task::maybe_flush_syscallbuf() {
   push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));
   record_local(syscallbuf_child,
                // Record the header for consistency checking.
-               syscallbuf_data_size(), syscallbuf_hdr);
+               is_stopped ? syscallbuf_data_size() : num_syscallbuf_bytes,
+               syscallbuf_hdr);
   record_current_event();
   pop_event(EV_SYSCALLBUF_FLUSH);
 
-  // Reset header.
-  assert(!syscallbuf_hdr->abort_commit);
-  if (!delay_syscallbuf_reset) {
-    syscallbuf_hdr->num_rec_bytes = 0;
+  if (is_stopped) {
+    // Reset header.
+    assert(!syscallbuf_hdr->abort_commit);
+    if (!delay_syscallbuf_reset) {
+      syscallbuf_hdr->num_rec_bytes = 0;
+    }
   }
   flushed_syscallbuf = true;
 }

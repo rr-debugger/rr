@@ -684,7 +684,11 @@ public:
   const ExtraRegisters& extra_regs();
 
   /** Return the current arch of this. This can change due to exec(). */
-  SupportedArch arch() const { return regs().arch(); }
+  SupportedArch arch() const {
+    // Use 'registers' directly instead of calling regs(), since this can
+    // be called while the task is not stopped.
+    return registers.arch();
+  }
 
   enum {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
