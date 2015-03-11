@@ -16,6 +16,9 @@
 
 using namespace std;
 
+// Show version and quit.
+static bool show_version = false;
+
 void assert_prerequisites(bool use_syscall_buffer) {
   struct utsname uname_buf;
   memset(&uname_buf, 0, sizeof(uname_buf));
@@ -88,7 +91,12 @@ void check_performance_settings() {
   }
 }
 
+void print_version(FILE* out) {
+  fprintf(out, "rr version %s\n", RR_VERSION);
+}
+
 void print_usage(FILE* out) {
+  print_version(out);
   fputs("Usage:\n", out);
   Command::print_help_all(out);
   fputs(
@@ -129,6 +137,7 @@ void print_usage(FILE* out) {
       "                             where EVENT-NO is the global trace time "
       "at\n"
       "                             which the write occures.\n"
+      "  -N, --version              print the version number and exit\n"
       "  -S, --suppress-environment-warnings\n"
       "                             suppress warnings about issues in the\n"
       "                             environment that rr has no control over\n"
@@ -157,7 +166,8 @@ bool parse_global_option(std::vector<std::string>& args) {
     { 'M', "mark-stdio", NO_PARAMETER },
     { 'S', "suppress-environment-warnings", NO_PARAMETER },
     { 'E', "fatal-errors", NO_PARAMETER },
-    { 'V', "verbose", NO_PARAMETER }
+    { 'V', "verbose", NO_PARAMETER },
+    { 'N', "version", NO_PARAMETER }
   };
 
   ParsedOption opt;
@@ -206,6 +216,9 @@ bool parse_global_option(std::vector<std::string>& args) {
     case 'V':
       flags.verbose = true;
       break;
+    case 'N':
+      show_version = true;
+      break;
     default:
       assert(0 && "Invalid flag");
   }
@@ -221,6 +234,11 @@ int main(int argc, char* argv[]) {
   }
 
   while (parse_global_option(args)) {
+  }
+
+  if (show_version) {
+    print_version(stdout);
+    return 0;
   }
 
   if (args.size() == 0) {
