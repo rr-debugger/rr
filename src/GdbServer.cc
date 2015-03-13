@@ -663,7 +663,7 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
   while (true) {
     GdbRequest req = dbg->get_request();
     req.suppress_debugger_stop = false;
-    if (t->session().is_replaying()) {
+    if (!t || t->session().is_replaying()) {
       TaskUid tuid = t ? t->tuid() : TaskUid();
       try_lazy_reverse_singlesteps(t, req);
       t = tuid ? timeline.current_session().find_task(tuid) : nullptr;
