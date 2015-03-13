@@ -22,6 +22,18 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Werror -Wstrict-prot
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++0x -pthread -O0 -g3 -Wall -Werror")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
+# Check that a 32-bit cross-compile works. This is needed regardless
+# of whether the entire build is being built 32-bit.
+if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+  # try_compile won't accept LINK_FLAGS, so do this manually.
+  file(WRITE "${CMAKE_BINARY_DIR}/test32.c" "int main() { return 0; }")
+  execute_process(COMMAND ${CMAKE_CXX_COMPILER} -o ${CMAKE_BINARY_DIR}/test32 ${CMAKE_BINARY_DIR}/test32.c -m32
+			RESULT_VARIABLE COMPILER_32BIT_RESULT)
+  if(NOT (COMPILER_32BIT_RESULT EQUAL 0))
+    message(FATAL_ERROR "Your toolchain doesn't support 32-bit cross-compilation.")
+  endif()
+endif()
+
 option(force32bit, "Force a 32-bit build, rather than a 64-bit one")
 if(force32bit)
   set(rr_64BIT false)
@@ -38,6 +50,57 @@ endif()
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${rr_MBITNESS_OPTION}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${rr_MBITNESS_OPTION}")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${rr_MBITNESS_OPTION}")
+
+find_package(PkgConfig REQUIRED)
+
+# If we're cross-compiling a 32-bit build on a 64-bit host we need
+# to ensure we're looking for the right libraries.
+# This has been tested on Ubuntu and Fedora.
+set(LIBDIR32_CANDIDATES
+  /usr/lib/i386-linux-gnu/pkgconfig/
+  /usr/lib/pkgconfig/
+)
+if((NOT rr_64BIT) AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+  foreach(libdir ${LIBDIR32_CANDIDATES})
+    if(IS_DIRECTORY ${libdir})
+      set(ENV{PKG_CONFIG_LIBDIR} ${libdir})
+      break()
+     endif()
+   endforeach(libdir)
+   if (NOT DEFINED ENV{PKG_CONFIG_LIBDIR})
+     message(FATAL_ERROR "Couldn't find a suitable 32-bit pkgconfig lib dir. You probably need to install a 32-bit pkgconfig package (pkgconfig.i686 for Fedora or pkg-config:i386 for Ubuntu")
+   endif()
+endif()
+
+# Check for required libraries
+set(REQUIRED_LIBS
+  zlib
+)
+foreach(required_lib ${REQUIRED_LIBS})
+  string(TOUPPER ${required_lib} PKG)
+  pkg_check_modules(${PKG} REQUIRED ${required_lib})
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${${PKG}_CFLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${${PKG}_CFLAGS}")
+endforeach(required_lib)
+
+# Check for Python >=2.7 but not Python 3.
+find_package(PythonInterp 2.7 REQUIRED)
+if(PYTHON_VERSION_MAJOR GREATER 2)
+  message(FATAL_ERROR "Python 3 is not supported, please use Python 2.7.")
+endif()
+
+# Check for required Python modules
+set(REQUIRED_PYTHON_MODULES
+  pexpect
+)
+foreach(py_module ${REQUIRED_PYTHON_MODULES})
+  execute_process(COMMAND "${PYTHON_EXECUTABLE}" "-c"
+			"import ${py_module}"
+			RESULT_VARIABLE module_status)
+  if(module_status)
+    message(FATAL_ERROR "Couldn't find required Python module ${py_module}.")
+  endif()
+endforeach(py_module)
 
 set_source_files_properties(src/preload/preload.c PROPERTIES COMPILE_FLAGS -O2)
 
@@ -127,7 +190,7 @@ add_executable(rr
 target_link_libraries(rr
   -ldl
   -lrt
-  -lz
+  ${ZLIB_LDFLAGS}
 )
 
 target_link_libraries(rrpreload
