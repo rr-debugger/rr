@@ -1917,9 +1917,7 @@ static void set_up_seccomp_filter(Session& session) {
     // dummy filter makes ptrace-event behavior consistent whether or not
     // we enable syscall buffering, and more importantly, consistent whether
     // or not the tracee installs its own seccomp filter.
-    struct sock_filter filter[] = {
-      TRACE_PROCESS,
-    };
+    struct sock_filter filter[] = { TRACE_PROCESS, };
     prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
     prog.filter = filter;
   }

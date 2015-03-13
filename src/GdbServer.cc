@@ -663,9 +663,11 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
   while (true) {
     GdbRequest req = dbg->get_request();
     req.suppress_debugger_stop = false;
-    TaskUid tuid = t ? t->tuid() : TaskUid();
-    try_lazy_reverse_singlesteps(t, req);
-    t = tuid ? timeline.current_session().find_task(tuid) : nullptr;
+    if (t->session().is_replaying()) {
+      TaskUid tuid = t ? t->tuid() : TaskUid();
+      try_lazy_reverse_singlesteps(t, req);
+      t = tuid ? timeline.current_session().find_task(tuid) : nullptr;
+    }
 
     if (req.type == DREQ_READ_SIGINFO) {
       // TODO: we send back a dummy siginfo_t to gdb
