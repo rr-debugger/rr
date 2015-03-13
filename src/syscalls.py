@@ -1668,7 +1668,7 @@ finit_module = UnsupportedSyscall(x86=350, x64=313)
 sched_setattr = UnsupportedSyscall(x86=351, x64=314)
 sched_getattr = UnsupportedSyscall(x86=352, x64=315)
 renameat2 = UnsupportedSyscall(x86=353, x64=316)
-seccomp = UnsupportedSyscall(x86=354, x64=317)
+seccomp = IrregularEmulatedSyscall(x86=354, x64=317)
 getrandom = IrregularEmulatedSyscall(x86=355, x64=318)
 
 # restart_syscall is a little special.

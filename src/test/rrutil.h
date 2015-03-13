@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <linux/ethtool.h>
+#include <linux/filter.h>
 #include <linux/futex.h>
 #include <linux/if.h>
 #include <linux/limits.h>
@@ -67,6 +68,14 @@
 #include <unistd.h>
 #include <utime.h>
 #include <x86intrin.h>
+
+#if defined(__i386__)
+#include "SyscallEnumsForTestsX86.generated"
+#elif defined(__x86_64__)
+#include "SyscallEnumsForTestsX64.generated"
+#else
+#error Unknown architecture
+#endif
 
 #include <rr/rr.h>
 

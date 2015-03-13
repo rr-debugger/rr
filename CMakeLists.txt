@@ -62,6 +62,8 @@ set(GENERATED_FILES
   SyscallDefsTable.generated
   SyscallEnumsX64.generated
   SyscallEnumsX86.generated
+  SyscallEnumsForTestsX64.generated
+  SyscallEnumsForTestsX86.generated
   SyscallHelperFunctions.generated
   SyscallnameArch.generated
   SyscallRecordCase.generated
@@ -78,8 +80,9 @@ foreach(generated_file ${GENERATED_FILES})
 		       "${CMAKE_CURRENT_SOURCE_DIR}/src/assembly_templates.py")
 endforeach(generated_file)
 
+add_custom_target(Generated DEPENDS ${GENERATED_FILES})
+
 add_executable(rr
-  ${GENERATED_FILES}
   src/test/cpuid_loop.S
   src/AddressSpace.cc
   src/AutoRemoteSyscalls.cc
@@ -123,6 +126,7 @@ add_executable(rr
   src/TraceStream.cc
   src/util.cc
 )
+add_dependencies(rr Generated)
 
 target_link_libraries(rr
   -ldl
@@ -302,6 +306,7 @@ set(BASIC_TESTS
   sched_yield
   sched_yield_to_lower_priority
   scm_rights
+  seccomp
   sem
   sendfile
   set_ptracer
@@ -487,6 +492,7 @@ set(TESTS_WITHOUT_PROGRAM
 
 foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   add_executable(${test} src/test/${test}.c)
+  add_dependencies(${test} Generated)
   target_link_libraries(${test} -lrt)
 endforeach(test)
 
@@ -559,6 +565,7 @@ if(rr_64BIT)
 
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
     add_executable(${test}_32 32/${test}.c)
+    add_dependencies(${test}_32 Generated)
     set_target_properties(${test}_32 PROPERTIES LINK_FLAGS -m32)
     target_link_libraries(${test}_32 -lrt)
   endforeach(test)

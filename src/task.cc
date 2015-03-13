@@ -1895,28 +1895,43 @@ static void set_up_process(Session& session) {
  * things go wrong because we have no ptracer and the seccomp filter demands
  * one.
  */
-static void set_up_seccomp_filter() {
-  uintptr_t in_untraced_syscall_ip =
-      AddressSpace::rr_page_ip_in_untraced_syscall().as_int();
-  assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
-
-  struct sock_filter filter[] = {
-    /* Allow all system calls from our protected_call
-     * callsite */
-    ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_syscall_ip)),
-    /* All the rest are handled in rr */
-    TRACE_PROCESS,
-  };
+static void set_up_seccomp_filter(Session& session) {
   struct sock_fprog prog;
-  prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
-  prog.filter = filter;
+
+  if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
+    uintptr_t in_untraced_syscall_ip =
+        AddressSpace::rr_page_ip_in_untraced_syscall().as_int();
+    assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
+
+    struct sock_filter filter[] = {
+      /* Allow all system calls from our protected_call
+       * callsite */
+      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_syscall_ip)),
+      /* All the rest are handled in rr */
+      TRACE_PROCESS,
+    };
+    prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
+    prog.filter = filter;
+  } else {
+    // Use a dummy filter that always generates ptrace traps. Supplying this
+    // dummy filter makes ptrace-event behavior consistent whether or not
+    // we enable syscall buffering, and more importantly, consistent whether
+    // or not the tracee installs its own seccomp filter.
+    struct sock_filter filter[] = {
+      TRACE_PROCESS,
+    };
+    prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
+    prog.filter = filter;
+  }
 
   /* Note: the filter is installed only for record. This call
    * will be emulated in the replay */
   if (0 >
       prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t) & prog, 0, 0)) {
-    FATAL() << "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
-               "kernel is too old. Use `record -n` to disable the filter.";
+    if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
+      FATAL() << "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
+                 "kernel is too old. Use `record -n` to disable the filter.";
+    }
   }
   /* anything that happens from this point on gets filtered! */
 }
@@ -2771,18 +2786,6 @@ static void setup_fd_table(FdTable& fds) {
     set_cpu_affinity(trace.bound_to_cpu());
   }
 
-  bool will_set_up_seccomp_filter;
-  if (session.is_recording()) {
-    will_set_up_seccomp_filter = session.as_record()->use_syscall_buffer();
-  } else {
-    // If the first syscall in the trace is prctl, we should take the
-    // seccomp path to stay consistent with recording.
-    will_set_up_seccomp_filter = session.as_replay()
-                                     ->current_trace_frame()
-                                     .regs()
-                                     .original_syscallno() == NativeArch::prctl;
-  }
-
   pid_t tid;
   do {
     tid = fork();
@@ -2804,9 +2807,7 @@ static void setup_fd_table(FdTable& fds) {
     ::kill(getpid(), SIGSTOP);
 
     // This code must run after rr has taken ptrace control.
-    if (will_set_up_seccomp_filter) {
-      set_up_seccomp_filter();
-    }
+    set_up_seccomp_filter(session);
 
     // We do a small amount of dummy work here to retire
     // some branches in order to ensure that the ticks value is
@@ -2867,7 +2868,7 @@ static void setup_fd_table(FdTable& fds) {
                      PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
                      PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL;
 
-  if (session.is_recording() && will_set_up_seccomp_filter) {
+  if (session.is_recording()) {
     options |= PTRACE_O_TRACESECCOMP;
   }
 

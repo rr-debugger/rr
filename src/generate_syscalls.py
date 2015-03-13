@@ -22,6 +22,20 @@ def write_syscall_enum(f, arch):
     f.write("};\n")
     f.write("\n")
 
+def write_syscall_enum_for_tests(f, arch):
+    f.write("enum Syscalls {\n")
+    undefined_syscall = -1
+    for name, obj in sorted(syscalls.all(), key=lambda x: getattr(x[1], arch)):
+        syscall_number = getattr(obj, arch)
+        if syscall_number is not None:
+            enum_number = syscall_number
+        else:
+            enum_number = undefined_syscall
+            undefined_syscall -= 1
+        f.write("  RR_%s = %d,\n" % (name, enum_number))
+    f.write("};\n")
+    f.write("\n")
+
 def write_is_always_emulated_syscall(f):
     semantics_to_retval = { syscalls.ReplaySemantics.EMU: 'true',
                             syscalls.ReplaySemantics.EXEC: 'false',
@@ -158,6 +172,8 @@ generators_for = {
     'SyscallDefsTable': write_syscall_defs_table,
     'SyscallEnumsX86': lambda f: write_syscall_enum(f, 'x86'),
     'SyscallEnumsX64': lambda f: write_syscall_enum(f, 'x64'),
+    'SyscallEnumsForTestsX86': lambda f: write_syscall_enum_for_tests(f, 'x86'),
+    'SyscallEnumsForTestsX64': lambda f: write_syscall_enum_for_tests(f, 'x64'),
     'SyscallnameArch': write_syscallname_arch,
     'SyscallRecordCase': write_syscall_record_cases,
     'SyscallHelperFunctions': write_syscall_helper_functions,

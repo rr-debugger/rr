@@ -17,6 +17,7 @@
 #include <linux/msg.h>
 #include <linux/net.h>
 #include <linux/prctl.h>
+#include <linux/seccomp.h>
 #include <linux/sem.h>
 #include <linux/shm.h>
 #include <linux/sockios.h>
@@ -2010,6 +2011,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case PR_GET_ENDIAN:
         case PR_GET_FPEMU:
         case PR_GET_FPEXC:
+        case PR_GET_NO_NEW_PRIVS:
         case PR_GET_PDEATHSIG:
         case PR_GET_TSC:
         case PR_GET_UNALIGN:
@@ -2042,11 +2044,25 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           t->update_prname(t->regs().arg2());
           break;
 
+        case PR_SET_NO_NEW_PRIVS:
+          if ((unsigned long)t->regs().arg2() != 1) {
+            syscall_state.expect_errno = EINVAL;
+          }
+          break;
+
         case PR_SET_SECCOMP:
-          // Allow all PR_SET_SECCOMP calls. We must allow the PR_SET_SECCOMP
+          // Allow all known seccomp calls. We must allow the seccomp call
           // that rr triggers when spawning the initial tracee. Allowing other
-          // SECCOMP calls should be safe; additional filters or restrictions
-          // will be enforced by the kernel.
+          // calls should be safe; additional filters or restrictions will be
+          // enforced by the kernel.
+          switch ((unsigned long)t->regs().arg2()) {
+            case SECCOMP_MODE_STRICT:
+            case SECCOMP_MODE_FILTER:
+              break;
+            default:
+              syscall_state.expect_errno = EINVAL;
+              break;
+          }
           break;
 
         case PR_SET_PTRACER: {
@@ -2196,6 +2212,19 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return prepare_semctl<Arch>(
           t, syscall_state, (int)t->regs().arg1_signed(),
           (int)t->regs().arg3_signed(), 4, USE_DIRECTLY);
+
+    case Arch::seccomp:
+      // Allow all known seccomp calls. Allowing these calls should be safe;
+      // additional filters or restrictions will be enforced by the kernel.
+      switch ((unsigned int)t->regs().arg1()) {
+        case SECCOMP_SET_MODE_STRICT:
+        case SECCOMP_SET_MODE_FILTER:
+          break;
+        default:
+          syscall_state.expect_errno = EINVAL;
+          break;
+      }
+      return PREVENT_SWITCH;
 
     case Arch::mmap:
     case Arch::mmap2:
@@ -2570,6 +2599,10 @@ static string extra_expected_errno_info(Task* t,
           break;
         case Arch::waitid:
           ss << "; unknown waitid(" << HEX((idtype_t)t->regs().arg1()) << ")";
+          break;
+        case Arch::seccomp:
+          ss << "; unknown seccomp(" << HEX((unsigned int)t->regs().arg1())
+             << ")";
           break;
       }
       break;
