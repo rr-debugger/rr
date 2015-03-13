@@ -103,6 +103,12 @@ public:
   ~AutoRemoteSyscalls();
 
   /**
+   * If t's stack pointer doesn't look valid, temporarily adjust it to
+   * the top of *some* stack area.
+   */
+  void maybe_fix_stack_pointer();
+
+  /**
    * "Initial" registers saved from the target task.
    *
    * NB: a non-const reference is returned because some power
@@ -206,6 +212,7 @@ private:
   Task* t;
   Registers initial_regs;
   remote_ptr<uint8_t> initial_ip;
+  remote_ptr<void> initial_sp;
   int pending_syscallno;
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;

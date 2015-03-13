@@ -5,6 +5,7 @@
 #include "AutoRemoteSyscalls.h"
 
 #include "log.h"
+#include "Session.h"
 #include "task.h"
 #include "util.h"
 
@@ -49,14 +50,45 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t)
     : t(t),
       initial_regs(t->regs()),
       initial_ip(t->ip()),
+      initial_sp(t->regs().sp()),
       pending_syscallno(-1) {
   initial_regs.set_ip(t->vm()->traced_syscall_ip());
+  maybe_fix_stack_pointer();
+}
+
+void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
+  if (!t->session().can_validate()) {
+    return;
+  }
+
+  remote_ptr<void> last_stack_byte = t->regs().sp() - 1;
+  if (t->vm()->has_mapping(last_stack_byte)) {
+    auto m = t->vm()->mapping_of(last_stack_byte);
+    if (m.second.is_stack() && m.first.start + 1024 <= t->regs().sp()) {
+      // 'sp' is in a stack region and there's plenty of space there. No need
+      // to fix anything.
+      return;
+    }
+  }
+
+  Mapping found_stack;
+  auto find_stack = [&found_stack](const Mapping& m,
+                                   const MappableResource& r) {
+    if (r.is_stack()) {
+      found_stack = m;
+    }
+  };
+  t->vm()->for_all_mappings(find_stack);
+  ASSERT(t, !found_stack.start.is_null()) << "No stack area found";
+
+  initial_regs.set_sp(found_stack.end);
 }
 
 AutoRemoteSyscalls::~AutoRemoteSyscalls() { restore_state_to(t); }
 
 void AutoRemoteSyscalls::restore_state_to(Task* t) {
   initial_regs.set_ip(initial_ip);
+  initial_regs.set_sp(initial_sp);
   // Restore stomped registers.
   t->set_regs(initial_regs);
 }

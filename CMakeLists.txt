@@ -220,6 +220,7 @@ set(BASIC_TESTS
   chown
   clock
   clone
+  clone_bad_stack
   constructor
   desched_blocking_poll
   dup

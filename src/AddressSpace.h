@@ -522,6 +522,11 @@ public:
   MemoryMap::value_type mapping_of(remote_ptr<void> addr) const;
 
   /**
+   * Return true if there is some mapping for the byte at 'addr'.
+   */
+  bool has_mapping(remote_ptr<void> addr) const;
+
+  /**
    * Return the memory map.
    */
   const MemoryMap& memmap() const { return mem; }

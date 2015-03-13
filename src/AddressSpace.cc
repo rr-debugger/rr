@@ -480,10 +480,21 @@ void AddressSpace::at_preload_init(Task* t) {
 
 typedef AddressSpace::MemoryMap::value_type MappingResourcePair;
 MappingResourcePair AddressSpace::mapping_of(remote_ptr<void> addr) const {
-  auto it = mem.find(Mapping(addr, 1));
+  Mapping m(floor_page_size(addr), page_size());
+  auto it = mem.find(m);
   assert(it != mem.end());
-  assert(it->first.has_subset(Mapping(addr, 1)));
+  assert(it->first.has_subset(m));
   return *it;
+}
+
+bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
+  if (addr + page_size() < addr) {
+    // Assume the last byte in the address space is never mapped; avoid overflow
+    return false;
+  }
+  Mapping m(floor_page_size(addr), page_size());
+  auto it = mem.find(m);
+  return it != mem.end() && it->first.has_subset(m);
 }
 
 /**

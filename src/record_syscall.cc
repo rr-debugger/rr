@@ -2670,6 +2670,19 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
                                &tls_in_parent, &child_tid_in_parent);
       extract_clone_parameters(new_task, stack_not_needed, &parent_tid_in_child,
                                &tls_in_child, &child_tid_in_child);
+      // If these flags aren't set, the corresponding clone parameters may be
+      // invalid pointers, so make sure they're ignored.
+      if (!(flags & CLONE_PARENT_SETTID)) {
+        parent_tid_in_parent = nullptr;
+        parent_tid_in_child = nullptr;
+      }
+      if (!(flags & CLONE_CHILD_SETTID)) {
+        child_tid_in_child = nullptr;
+      }
+      if (!(flags & CLONE_SETTLS)) {
+        tls_in_parent = nullptr;
+        tls_in_child = nullptr;
+      }
       t->record_remote_even_if_null(parent_tid_in_parent);
 
       if (Arch::clone_tls_type == Arch::UserDescPointer) {
