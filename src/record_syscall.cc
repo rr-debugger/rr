@@ -54,6 +54,7 @@
 #include "Flags.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
+#include "kernel_supplement.h"
 #include "log.h"
 #include "RecordSession.h"
 #include "Scheduler.h"
