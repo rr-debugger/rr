@@ -184,4 +184,11 @@ inline static void free_guard(size_t size, void* p) {
 #define VERIFY_GUARD(p) verify_guard(sizeof(*p), p)
 #define FREE_GUARD(p) free_guard(sizeof(*p), p)
 
+#ifndef SECCOMP_SET_MODE_STRICT
+#define SECCOMP_SET_MODE_STRICT 0
+#endif
+#ifndef SECCOMP_SET_MODE_FILTER
+#define SECCOMP_SET_MODE_FILTER 1
+#endif
+
 #endif /* RRUTIL_H */
