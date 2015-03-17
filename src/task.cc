@@ -1241,30 +1241,25 @@ void Task::validate_regs(uint32_t flags) {
 template <typename Arch>
 static ReturnAddressList return_addresses_x86ish(Task* t) {
   ReturnAddressList result;
-  uint8_t code[3];
-  remote_ptr<void> bp = t->regs().bp();
-  auto ip = t->ip();
+  // Immediately after a function call the return address is on the stack at
+  // SP. After BP is pushed, but before it's initialized for the new stack
+  // frame, the return address is on the stack at SP+wordsize. Just
+  // capture those words now. We could inspect the code for known prologs/
+  // epilogs but that misses cases such as calling into optimized code
+  // or PLT stubs (which start with 'jmp'). Since it doesn't matter if we
+  // capture addresses that aren't real return addresses, just capture those
+  // words unconditionally.
+  typename Arch::size_t frame[2];
   int next_address = 0;
-  if (t->read_bytes_fallible(ip, sizeof(code), code) == sizeof(code)) {
-    t->vm()->replace_breakpoints_with_original_values(code, sizeof(code), ip);
-    // In prologue or epilogue code, we might have a return address that BP
-    // isn't pointing to. Make sure we capture that return address.
-    if (code[0] == 0x55 /*push bp*/ || code[0] == 0xC3 /*ret*/) {
-      typename Arch::size_t ret_addr;
-      if (t->read_bytes_fallible(t->regs().sp(), sizeof(ret_addr), &ret_addr) ==
-          sizeof(ret_addr)) {
-        result.addresses[0] = ret_addr;
-        next_address = 1;
-      }
-    } else if ((code[0] == 0x89 && code[1] == 0xE5 /*mov esp,ebp*/) ||
-               (code[0] == 0x48 && code[1] == 0x89 &&
-                code[2] == 0xE5 /*mov rsp,rbp*/)) {
-      bp = t->regs().sp();
-    }
+  if (t->read_bytes_fallible(t->regs().sp(), sizeof(frame), frame) ==
+      sizeof(frame)) {
+    result.addresses[0] = frame[0];
+    result.addresses[1] = frame[1];
+    next_address = 2;
   }
 
+  remote_ptr<void> bp = t->regs().bp();
   for (int i = next_address; i < ReturnAddressList::COUNT; ++i) {
-    typename Arch::size_t frame[2];
     if (t->read_bytes_fallible(bp, sizeof(frame), frame) != sizeof(frame)) {
       return result;
     }
