@@ -287,6 +287,8 @@ public:
   uintptr_t cx() const { return RR_GET_REG(ecx, rcx); }
   void set_cx(uintptr_t value) { RR_SET_REG(ecx, rcx, value); }
 
+  uintptr_t bp() const { return RR_GET_REG(ebp, rbp); }
+
   bool clear_singlestep_flag();
 
   // End of X86-specific stuff

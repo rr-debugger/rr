@@ -1238,6 +1238,53 @@ void Task::validate_regs(uint32_t flags) {
                                     rec_regs, BAIL_ON_MISMATCH);
 }
 
+template <typename Arch>
+static ReturnAddressList return_addresses_x86ish(Task* t) {
+  ReturnAddressList result;
+  uint8_t code[3];
+  remote_ptr<void> bp = t->regs().bp();
+  auto ip = t->ip();
+  int next_address = 0;
+  if (t->read_bytes_fallible(ip, sizeof(code), code) == sizeof(code)) {
+    t->vm()->replace_breakpoints_with_original_values(code, sizeof(code), ip);
+    // In prologue or epilogue code, we might have a return address that BP
+    // isn't pointing to. Make sure we capture that return address.
+    if (code[0] == 0x55 /*push bp*/ || code[0] == 0xC3 /*ret*/) {
+      typename Arch::size_t ret_addr;
+      if (t->read_bytes_fallible(t->regs().sp(), sizeof(ret_addr), &ret_addr) ==
+          sizeof(ret_addr)) {
+        result.addresses[0] = ret_addr;
+        next_address = 1;
+      }
+    } else if ((code[0] == 0x89 && code[1] == 0xE5 /*mov esp,ebp*/) ||
+               (code[0] == 0x48 && code[1] == 0x89 &&
+                code[2] == 0xE5 /*mov rsp,rbp*/)) {
+      bp = t->regs().sp();
+    }
+  }
+
+  for (int i = next_address; i < ReturnAddressList::COUNT; ++i) {
+    typename Arch::size_t frame[2];
+    if (t->read_bytes_fallible(bp, sizeof(frame), frame) != sizeof(frame)) {
+      return result;
+    }
+    result.addresses[i] = frame[1];
+    bp = frame[0];
+  }
+  return result;
+}
+
+ReturnAddressList Task::return_addresses() {
+  switch (arch()) {
+    case x86:
+    case x86_64:
+      RR_ARCH_FUNCTION(return_addresses_x86ish, arch(), this);
+    default:
+      ASSERT(this, "Unknown architecture");
+      return ReturnAddressList();
+  }
+}
+
 static ssize_t dr_user_word_offset(size_t i) {
   assert(i < NUM_X86_DEBUG_REGS);
   return offsetof(struct user, u_debugreg[0]) + sizeof(void*) * i;

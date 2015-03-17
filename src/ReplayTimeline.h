@@ -238,10 +238,14 @@ private:
    * All the information we'll need to construct a mark lazily.
    */
   struct ProtoMark {
-    ProtoMark(const MarkKey& key, const Registers& regs)
-        : key(key), regs(regs) {}
+    ProtoMark(const MarkKey& key, Task* t)
+        : key(key), regs(t->regs()), return_addresses(t->return_addresses()) {}
+
+    bool equal_states(Task* t) const;
+
     MarkKey key;
     Registers regs;
+    ReturnAddressList return_addresses;
   };
 
   /**
@@ -257,6 +261,7 @@ private:
           singlestep_to_next_mark_no_signal(false) {
       if (t) {
         regs = t->regs();
+        return_addresses = t->return_addresses();
         extra_regs = t->extra_regs();
       }
     }
@@ -264,10 +269,13 @@ private:
 
     bool operator<(const std::shared_ptr<InternalMark> other);
 
+    bool equal_states(Task* t) const;
+
     ReplayTimeline* owner;
     MarkKey key;
     Registers regs;
     ExtraRegisters extra_regs;
+    ReturnAddressList return_addresses;
     ReplaySession::shr_ptr checkpoint;
     uint32_t checkpoint_refcount;
     // The next InternalMark in the mark vector is the result of singlestepping

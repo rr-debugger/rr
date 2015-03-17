@@ -454,6 +454,7 @@ set(TESTS_WITH_PROGRAM
   exit_status
   explicit_checkpoints
   fork_syscalls
+  function_calls
   getcwd
   goto_event
   hello

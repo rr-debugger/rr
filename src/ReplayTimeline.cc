@@ -85,8 +85,18 @@ static bool equal_regs(const Registers& r1, const Registers& r2) {
   return r1.ip() == r2.ip() && r1.matches(r2);
 }
 
+bool ReplayTimeline::InternalMark::equal_states(Task* t) const {
+  return equal_regs(regs, t->regs()) &&
+         return_addresses == t->return_addresses();
+}
+
+bool ReplayTimeline::ProtoMark::equal_states(Task* t) const {
+  return equal_regs(regs, t->regs()) &&
+         return_addresses == t->return_addresses();
+}
+
 ReplayTimeline::ProtoMark ReplayTimeline::proto_mark() const {
-  return ProtoMark(current_mark_key(), current->current_task()->regs());
+  return ProtoMark(current_mark_key(), current->current_task());
 }
 
 shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
@@ -95,7 +105,7 @@ shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
   // Avoid creating an entry in 'marks' if it doesn't already exist
   if (it != marks.end()) {
     for (shared_ptr<InternalMark>& m : it->second) {
-      if (equal_regs(m->regs, t->regs())) {
+      if (m->equal_states(t)) {
         return m;
       }
     }
@@ -157,7 +167,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       Task* t = tmp_session->current_task();
       for (auto it = mark_vector.begin(); it != mark_vector.end(); ++it) {
         shared_ptr<InternalMark>& existing_mark = *it;
-        if (equal_regs(existing_mark->regs, t->regs())) {
+        if (existing_mark->equal_states(t)) {
           if (!result.did_fast_forward && !result.break_status.signal) {
             new_marks.back()->singlestep_to_next_mark_no_signal = true;
           }
@@ -394,7 +404,7 @@ void ReplayTimeline::seek_to_proto_mark(const ProtoMark& pmark) {
   seek_to_before_key(pmark.key);
   unapply_breakpoints_and_watchpoints();
   while (current_mark_key() != pmark.key ||
-         !equal_regs(current->current_task()->regs(), pmark.regs)) {
+         !pmark.equal_states(current->current_task())) {
     if (current->trace_reader().time() < pmark.key.trace_time) {
       ReplaySession::StepConstraints constraints(RUN_CONTINUE);
       constraints.stop_at_time = pmark.key.trace_time;

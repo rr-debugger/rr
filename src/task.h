@@ -32,6 +32,32 @@ struct syscallbuf_hdr;
 struct syscallbuf_record;
 
 /**
+ * A list of return addresses extracted from the stack. The tuple
+ * (perfcounter ticks, regs, return addresses) may be needed to disambiguate
+ * states that aren't unique in (perfcounter ticks, regs).
+ * When return addresses can't be extracted, some suffix of the list may be
+ * all zeroes.
+ */
+struct ReturnAddressList {
+  enum {
+    COUNT = 8
+  };
+  remote_ptr<void> addresses[COUNT];
+
+  bool operator==(const ReturnAddressList& other) const {
+    for (int i = 0; i < COUNT; ++i) {
+      if (addresses[i] != other.addresses[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+  bool operator!=(const ReturnAddressList& other) const {
+    return !(*this == other);
+  }
+};
+
+/**
  * Tracks a group of tasks with an associated ID, set from the
  * original "thread group leader", the child of |fork()| which became
  * the ancestor of all other threads in the group.  Each constituent
@@ -704,6 +730,14 @@ public:
    *  current trace record.
    */
   void validate_regs(uint32_t flags = 0);
+
+  /**
+   * Capture return addresses from this task's stack. The returned
+   * address list may not be actual return addresses (in optimized code,
+   * will probably not be), but they will be a function of the task's current
+   * state, so may be useful for distinguishing this state from other states.
+   */
+  ReturnAddressList return_addresses();
 
   /**
    * Return the debug status, which is a bitfield comprising
