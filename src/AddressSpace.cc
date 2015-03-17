@@ -657,25 +657,27 @@ bool AddressSpace::restore_watchpoints() {
 bool AddressSpace::update_watchpoint_value(const MemoryRange& range,
                                            Watchpoint& watchpoint) {
   Task* t = *task_set().begin();
-  size_t valid_bytes = 0;
+  bool valid = true;
   vector<uint8_t> value_bytes = watchpoint.value_bytes;
   for (size_t i = 0; i < value_bytes.size(); ++i) {
     value_bytes[i] = 0xFF;
   }
-  auto update = [this, t, &range, &valid_bytes, &value_bytes](
-      const Mapping& m, const MappableResource& r, const Mapping& rem) {
-    remote_ptr<void> intersect_start = max(range.addr, m.start);
-    remote_ptr<void> intersect_end = min(range.end(), m.end);
-    size_t index = intersect_start - range.addr;
-    size_t num_bytes = intersect_end - intersect_start;
-    if (t->read_bytes_fallible(intersect_start, num_bytes,
-                               value_bytes.data() + index)) {
-      valid_bytes += num_bytes;
+  remote_ptr<void> addr = range.addr;
+  size_t num_bytes = range.num_bytes;
+  while (num_bytes > 0) {
+    ssize_t bytes_read = t->read_bytes_fallible(
+        addr, num_bytes, value_bytes.data() + (addr - range.addr));
+    if (bytes_read <= 0) {
+      valid = false;
+      // advance to next page and try to read more. We want to know
+      // when the valid part of a partially invalid watchpoint changes.
+      bytes_read =
+          min<size_t>(num_bytes, (floor_page_size(addr) + page_size()) - addr);
     }
-  };
-  for_each_in_range(range.addr, range.num_bytes, update);
+    addr += bytes_read;
+    num_bytes -= bytes_read;
+  }
 
-  bool valid = valid_bytes == value_bytes.size();
   bool changed = valid != watchpoint.valid ||
                  memcmp(value_bytes.data(), watchpoint.value_bytes.data(),
                         value_bytes.size()) != 0;

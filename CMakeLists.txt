@@ -471,6 +471,7 @@ set(TESTS_WITH_PROGRAM
   read_big_struct
   restart_abnormal_exit
   segfault
+  stack_growth
   step_thread
   string_instructions
   string_instructions_replay
