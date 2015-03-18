@@ -77,7 +77,7 @@ enum HasExecInfo {
 union EncodedEvent {
   struct {
     EventType type : 5;
-    SyscallEntryOrExit state : 1;
+    bool is_syscall_entry : 1;
     HasExecInfo has_exec_info : 1;
     SupportedArch arch_ : 1;
     int data : 24;

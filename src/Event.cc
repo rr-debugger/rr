@@ -68,8 +68,7 @@ Event::Event(EncodedEvent e) {
 
     case EV_SYSCALL:
       new (&Syscall()) SyscallEvent(e.data, e.arch());
-      Syscall().state =
-          SYSCALL_ENTRY == e.state ? ENTERING_SYSCALL : EXITING_SYSCALL;
+      Syscall().state = e.is_syscall_entry ? ENTERING_SYSCALL : EXITING_SYSCALL;
       return;
 
     default:
@@ -153,7 +152,7 @@ EncodedEvent Event::encode() const {
   // Arbitrarily designate events for which this isn't
   // meaningful as being at "entry".  The events for which this
   // is meaningful set it below.
-  e.state = SYSCALL_ENTRY;
+  e.is_syscall_entry = true;
 
   switch (event_type) {
     case EV_SEGV_RDTSC:
@@ -197,8 +196,7 @@ EncodedEvent Event::encode() const {
       set_encoded_event_data(
           &e, Syscall().is_restart ? syscall_number_for_restart_syscall(e.arch_)
                                    : Syscall().number);
-      e.state =
-          Syscall().state == ENTERING_SYSCALL ? SYSCALL_ENTRY : SYSCALL_EXIT;
+      e.is_syscall_entry = Syscall().state == ENTERING_SYSCALL;
       return e;
     }
 
