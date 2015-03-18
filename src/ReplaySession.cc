@@ -1168,7 +1168,7 @@ Completion ReplaySession::flush_one_syscall(
     case FLUSH_EXIT: {
       LOG(debug) << "  advancing to buffered syscall exit";
 
-      EmuFs::AutoGc gc(*this, t->arch(), call, SYSCALL_EXIT);
+      EmuFs::AutoGc gc(*this, t->arch(), call, EXITING_SYSCALL);
 
       assert_at_buffered_syscall(t, call);
 

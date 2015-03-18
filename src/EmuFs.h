@@ -165,7 +165,7 @@ public:
    */
   struct AutoGc {
     AutoGc(ReplaySession& session, SupportedArch arch, int syscallno,
-           SyscallEntryOrExit state);
+           SyscallState state);
     ~AutoGc();
 
   private:
