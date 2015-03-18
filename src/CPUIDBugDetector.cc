@@ -46,7 +46,7 @@ void CPUIDBugDetector::notify_reached_syscall_during_replay(Task* t) {
   if (t->session().can_validate()) {
     return;
   }
-  Event ev(t->current_trace_frame().event());
+  const Event& ev = t->current_trace_frame().event();
   if (!is_geteuid32_syscall(ev.Syscall().number, t->arch()) &&
       !is_geteuid_syscall(ev.Syscall().number, t->arch())) {
     return;

@@ -182,7 +182,7 @@ static void notify_checksum_error(Task* t, TraceFrame::Time global_time,
                        sizeof(cur_dump));
   format_dump_filename(t, global_time, "rec", rec_dump, sizeof(rec_dump));
 
-  Event ev(t->current_trace_frame().event());
+  const Event& ev = t->current_trace_frame().event();
   ASSERT(t, checksum == rec_checksum)
       << "Divergence in contents of memory segment after '" << ev << "':\n"
                                                                      "\n"
@@ -347,8 +347,8 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 
 bool should_checksum(Task* t, const TraceFrame& f) {
   int checksum = Flags::get().checksum;
-  bool is_syscall_exit =
-      EV_SYSCALL == f.event().type && SYSCALL_EXIT == f.event().state;
+  bool is_syscall_exit = EV_SYSCALL == f.event().type() &&
+                         EXITING_SYSCALL == f.event().Syscall().state;
 
 #if defined(FIRST_INTERESTING_EVENT)
   if (is_syscall_exit && FIRST_INTERESTING_EVENT <= global_time &&

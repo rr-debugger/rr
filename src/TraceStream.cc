@@ -118,8 +118,8 @@ struct BasicInfo {
 void TraceWriter::write_frame(const TraceFrame& frame) {
   auto& events = writer(EVENTS);
 
-  BasicInfo basic_info = { frame.time(),  frame.tid(),
-                           frame.event(), frame.ticks() };
+  BasicInfo basic_info = { frame.time(),           frame.tid(),
+                           frame.event().encode(), frame.ticks() };
   events << basic_info;
   if (!events.good()) {
     FATAL() << "Tried to save " << sizeof(basic_info)
@@ -127,7 +127,7 @@ void TraceWriter::write_frame(const TraceFrame& frame) {
   }
   // TODO: only store exec info for non-async-sig events when
   // debugging assertions are enabled.
-  if (frame.event().has_exec_info == HAS_EXEC_INFO) {
+  if (frame.event().has_exec_info() == HAS_EXEC_INFO) {
     events << frame.regs() << frame.extra_perf_values();
     if (!events.good()) {
       FATAL() << "Tried to save registers to the trace, but failed";
@@ -160,9 +160,9 @@ TraceFrame TraceReader::read_frame() {
   auto& events = reader(EVENTS);
   BasicInfo basic_info;
   events >> basic_info;
-  TraceFrame frame(basic_info.global_time, basic_info.tid_, basic_info.ev,
-                   basic_info.ticks_);
-  if (frame.event().has_exec_info) {
+  TraceFrame frame(basic_info.global_time, basic_info.tid_,
+                   Event(basic_info.ev), basic_info.ticks_);
+  if (frame.event().has_exec_info() == HAS_EXEC_INFO) {
     events >> frame.recorded_regs >> frame.extra_perf;
 
     int extra_reg_bytes;
@@ -462,16 +462,16 @@ TraceFrame TraceReader::peek_frame() {
   return frame;
 }
 
-TraceFrame TraceReader::peek_to(pid_t pid, EventType type,
-                                SyscallEntryOrExit state) {
+TraceFrame TraceReader::peek_to(pid_t pid, EventType type, SyscallState state) {
   auto& events = reader(EVENTS);
   TraceFrame frame;
   events.save_state();
   auto saved_time = global_time;
   while (good() && !at_end()) {
     frame = read_frame();
-    if (frame.tid() == pid && frame.event().type == type &&
-        frame.event().state == state) {
+    if (frame.tid() == pid && frame.event().type() == type &&
+        (!frame.event().is_syscall_event() ||
+         frame.event().Syscall().state == state)) {
       events.restore_state();
       global_time = saved_time;
       return frame;

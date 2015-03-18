@@ -1043,7 +1043,7 @@ void Task::record_event(const Event& ev) {
   maybe_flush_syscallbuf();
 
   TraceFrame frame(trace_writer().time(), tid, ev, tick_count());
-  if (ev.has_exec_info() == HAS_EXEC_INFO) {
+  if (ev.record_exec_info() == HAS_EXEC_INFO) {
     PerfCounters::Extra extra_perf_values;
     if (PerfCounters::extra_perf_counters_enabled()) {
       extra_perf_values = hpc.read_extra();

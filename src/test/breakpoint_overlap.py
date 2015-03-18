@@ -11,7 +11,7 @@ regex_info = {
     'i386:x86-64': ArchInfo('getgid', 'rip'),
 }
 
-syscall_re = re.compile("`SYSCALL: %s' \\(state:1\\)" % regex_info[arch].syscall)
+syscall_re = re.compile("`SYSCALL: %s' \\(state:EXITING_SYSCALL\\)" % regex_info[arch].syscall)
 sched_re = re.compile("`SCHED'")
 eip_re = re.compile("%s:(0x[a-f0-9]+)" % regex_info[arch].ip_name)
 

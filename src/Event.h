@@ -301,7 +301,9 @@ struct Event {
    * "Meaningful" means that the same state will be seen when
    * reaching this event during replay.
    */
-  HasExecInfo has_exec_info() const;
+  HasExecInfo record_exec_info() const;
+
+  HasExecInfo has_exec_info() const { return base.has_exec_info; }
 
   bool has_ticks_slop() const;
 
@@ -367,5 +369,7 @@ inline static std::ostream& operator<<(std::ostream& o,
  * Return the symbolic name of |state|, or "???state" if unknown.
  */
 const char* state_name(SyscallEntryOrExit state);
+
+const char* state_name(SyscallState state);
 
 #endif // EVENT_H_

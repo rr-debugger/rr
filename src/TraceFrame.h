@@ -29,12 +29,6 @@ public:
   typedef uint32_t Time;
 
   TraceFrame(Time global_time, pid_t tid, const Event& event, Ticks tick_count)
-      : global_time(global_time),
-        tid_(tid),
-        ev(event),
-        ticks_(tick_count) {}
-  TraceFrame(Time global_time, pid_t tid, const EncodedEvent& event,
-             Ticks tick_count)
       : global_time(global_time), tid_(tid), ev(event), ticks_(tick_count) {}
   TraceFrame() : global_time(0), tid_(0), ticks_(0) {}
 
@@ -44,7 +38,7 @@ public:
 
   Time time() const { return global_time; }
   pid_t tid() const { return tid_; }
-  EncodedEvent event() const { return ev.encode(); }
+  const Event& event() const { return ev; }
   Ticks ticks() const { return ticks_; }
 
   const Registers& regs() const { return recorded_regs; }

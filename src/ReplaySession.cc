@@ -114,10 +114,10 @@ static bool is_atomic_syscall(Task* t) {
  * |frame| that |t| will replay.
  */
 static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
-  Event ev(frame.event());
   if (is_atomic_syscall(t)) {
     return false;
   }
+  const Event& ev = frame.event();
   if (ev.has_ticks_slop()) {
     return false;
   }
@@ -200,9 +200,9 @@ void ReplaySession::advance_to_next_trace_frame(TraceFrame::Time stop_at_time) {
   // Subsequent reschedule-events of the same thread can be
   // combined to a single event.  This meliorization is a
   // tremendous win.
-  if (USE_TIMESLICE_COALESCING && trace_frame.event().type == EV_SCHED) {
+  if (USE_TIMESLICE_COALESCING && trace_frame.event().type() == EV_SCHED) {
     TraceFrame next_frame = trace_in.peek_frame();
-    while (EV_SCHED == next_frame.event().type &&
+    while (EV_SCHED == next_frame.event().type() &&
            next_frame.tid() == trace_frame.tid() &&
            stop_at_time != trace_frame.time() &&
            !trace_instructions_up_to_event(next_frame.time())) {
@@ -244,7 +244,8 @@ Completion ReplaySession::cont_syscall_boundary(
     }
   }
 
-  bool is_syscall_entry = SYSCALL_ENTRY == trace_frame.event().state;
+  bool is_syscall_entry =
+      ENTERING_SYSCALL == trace_frame.event().Syscall().state;
   if (is_syscall_entry) {
     t->stepped_into_syscall = false;
   }
@@ -372,7 +373,7 @@ void ReplaySession::check_pending_sig(Task* t) {
     return;
   }
   ASSERT(t, child_sig_gt_zero)
-      << "Replaying `" << Event(trace_frame.event())
+      << "Replaying `" << trace_frame.event()
       << "': expecting tracee signal or trap, but instead at `"
       << t->syscall_name(t->regs().original_syscallno())
       << "' (ticks: " << t->tick_count() << ")";
@@ -872,19 +873,19 @@ Completion ReplaySession::emulate_signal_delivery(
   }
   ASSERT(oldtask, t == oldtask) << "emulate_signal_delivery changed task";
 
-  ASSERT(t, trace_frame.event().type == EV_SIGNAL_DELIVERY ||
-                trace_frame.event().type == EV_SIGNAL_HANDLER)
+  ASSERT(t, trace_frame.event().type() == EV_SIGNAL_DELIVERY ||
+                trace_frame.event().type() == EV_SIGNAL_HANDLER)
       << "Unexpected signal disposition";
   // Entering a signal handler seems to clear FP/SSE registers for some
   // reason. So we saved those cleared values, and now we restore that
   // state so they're cleared during replay.
-  if (trace_frame.event().type == EV_SIGNAL_HANDLER) {
+  if (trace_frame.event().type() == EV_SIGNAL_HANDLER) {
     t->set_extra_regs(trace_frame.extra_regs());
   }
 
   /* Restore the signal-hander frame data, if there was one. */
   SignalDeterministic deterministic =
-      Event(trace_frame.event()).Signal().deterministic;
+      trace_frame.event().Signal().deterministic;
   bool restored_sighandler_frame = 0 < t->set_data_from_trace();
   if (restored_sighandler_frame) {
     t->push_event(SignalEvent(sig, deterministic, t->arch()));
@@ -909,7 +910,7 @@ Completion ReplaySession::emulate_signal_delivery(
 }
 
 void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
-  if (!can_validate() || trace_frame.event().has_exec_info == NO_EXEC_INFO) {
+  if (!can_validate() || trace_frame.event().has_exec_info() == NO_EXEC_INFO) {
     return;
   }
 
@@ -931,7 +932,7 @@ void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
  */
 Completion ReplaySession::emulate_deterministic_signal(
     Task* t, int sig, const StepConstraints& constraints) {
-  Event ev(trace_frame.event());
+  const Event& ev = trace_frame.event();
 
   continue_or_step(t, constraints);
   if (is_ignored_signal(t->child_sig)) {
@@ -1359,11 +1360,11 @@ Completion ReplaySession::try_one_trace_step(
  * modified.
  */
 void ReplaySession::setup_replay_one_trace_frame(Task* t) {
-  Event ev(trace_frame.event());
+  const Event& ev = trace_frame.event();
 
   LOG(debug) << "[line " << trace_frame.time() << "] " << t->rec_tid
              << ": replaying " << Event(ev) << "; state "
-             << state_name(trace_frame.event().state);
+             << state_name(ev.Syscall().state);
   if (t->syscallbuf_hdr) {
     LOG(debug) << "    (syscllbufsz:" << t->syscallbuf_hdr->num_rec_bytes
                << ", abrtcmt:" << bool(t->syscallbuf_hdr->abort_commit)
@@ -1471,7 +1472,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       break;
     case EV_SYSCALL:
       rep_process_syscall(t, &current_step);
-      if (trace_frame.event().state == SYSCALL_EXIT &&
+      if (trace_frame.event().Syscall().state == EXITING_SYSCALL &&
           current_step.action == TSTEP_RETIRE) {
         t->on_syscall_exit(current_step.syscall.number, trace_frame.regs());
       }
@@ -1488,7 +1489,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
   Task* t = current_task();
 
-  if (EV_TRACE_TERMINATION == trace_frame.event().type) {
+  if (EV_TRACE_TERMINATION == trace_frame.event().type()) {
     set_last_task(t);
     result.status = REPLAY_EXITED;
     return result;
@@ -1518,7 +1519,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   /* Advance towards fulfilling |current_step|. */
   ReplayTraceStepType current_action = current_step.action;
   if (try_one_trace_step(t, constraints) == INCOMPLETE) {
-    if (EV_TRACE_TERMINATION == trace_frame.event().type) {
+    if (EV_TRACE_TERMINATION == trace_frame.event().type()) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
       // early-termination marker.  Otherwise we
@@ -1558,12 +1559,13 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   if (TSTEP_ENTER_SYSCALL == current_step.action) {
     cpuid_bug_detector.notify_reached_syscall_during_replay(t);
   }
-  if (can_validate() && SYSCALL_EXIT == trace_frame.event().state &&
+
+  const Event& ev = trace_frame.event();
+  if (can_validate() && EXITING_SYSCALL == ev.Syscall().state &&
       ::Flags::get().check_cached_mmaps) {
     t->vm()->verify(t);
   }
 
-  Event ev(trace_frame.event());
   if (has_deterministic_ticks(ev, current_step)) {
     check_ticks_consistency(t, ev);
   }

@@ -10,7 +10,7 @@
 void TraceFrame::set_exec_info(const Registers& regs,
                                const PerfCounters::Extra* extra_perf_values,
                                const ExtraRegisters* extra_regs) {
-  assert(event().has_exec_info == HAS_EXEC_INFO);
+  assert(event().record_exec_info() == HAS_EXEC_INFO);
   recorded_regs = regs;
   if (extra_perf_values) {
     extra_perf = *extra_perf_values;
@@ -23,10 +23,13 @@ void TraceFrame::set_exec_info(const Registers& regs,
 void TraceFrame::dump(FILE* out) const {
   out = out ? out : stdout;
 
-  fprintf(out,
-          "{\n  global_time:%u, event:`%s' (state:%d), tid:%d, ticks:%" PRId64,
-          time(), Event(event()).str().c_str(), event().state, tid(), ticks());
-  if (!event().has_exec_info) {
+  fprintf(out, "{\n  global_time:%u, event:`%s' ", time(),
+          event().str().c_str());
+  if (event().is_syscall_event()) {
+    fprintf(out, "(state:%s) ", state_name(event().Syscall().state));
+  }
+  fprintf(out, "tid:%d, ticks:%" PRId64, tid(), ticks());
+  if (event().has_exec_info() != HAS_EXEC_INFO) {
     fprintf(out, "\n");
     return;
   }
@@ -45,8 +48,9 @@ void TraceFrame::dump(FILE* out) const {
 void TraceFrame::dump_raw(FILE* out) const {
   out = out ? out : stdout;
 
-  fprintf(out, " %d %d %d %" PRId64, time(), tid(), event().encoded, ticks());
-  if (!event().has_exec_info) {
+  fprintf(out, " %d %d %d %" PRId64, time(), tid(), event().encode().encoded,
+          ticks());
+  if (event().has_exec_info() != HAS_EXEC_INFO) {
     fprintf(out, "\n");
     return;
   }

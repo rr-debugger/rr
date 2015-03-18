@@ -208,7 +208,7 @@ EncodedEvent Event::encode() const {
   }
 }
 
-HasExecInfo Event::has_exec_info() const {
+HasExecInfo Event::record_exec_info() const {
   switch (event_type) {
     case EV_DESCHED: {
       // By the time the tracee is in the buffered syscall,
@@ -351,6 +351,21 @@ const char* state_name(SyscallEntryOrExit state) {
     return #_id
     CASE(SYSCALL_ENTRY);
     CASE(SYSCALL_EXIT);
+#undef CASE
+    default:
+      return "???state";
+  }
+}
+
+const char* state_name(SyscallState state) {
+  switch (state) {
+#define CASE(_id)                                                              \
+  case _id:                                                                    \
+    return #_id
+    CASE(NO_SYSCALL);
+    CASE(ENTERING_SYSCALL);
+    CASE(PROCESSING_SYSCALL);
+    CASE(EXITING_SYSCALL);
 #undef CASE
     default:
       return "???state";

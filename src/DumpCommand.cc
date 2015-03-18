@@ -85,7 +85,7 @@ static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
 
 static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
                                  const TraceFrame& frame) {
-  if (frame.event().type != EV_SYSCALLBUF_FLUSH) {
+  if (frame.event().type() != EV_SYSCALLBUF_FLUSH) {
     return;
   }
   auto buf = trace.read_raw_data();

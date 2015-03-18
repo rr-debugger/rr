@@ -253,7 +253,7 @@ public:
    * matches the requested parameters. Returns the frame if one
    * was found, and issues a fatal error if not.
    */
-  TraceFrame peek_to(pid_t pid, EventType type, SyscallEntryOrExit state);
+  TraceFrame peek_to(pid_t pid, EventType type, SyscallState state);
 
   /**
    * Restore the state of this to what it was just after

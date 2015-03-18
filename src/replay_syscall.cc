@@ -217,9 +217,9 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
  */
 static bool is_failed_syscall(Task* t, const TraceFrame& frame) {
   TraceFrame next_frame;
-  if (SYSCALL_ENTRY == frame.event().state) {
-    next_frame =
-        t->trace_reader().peek_to(t->rec_tid, frame.event().type, SYSCALL_EXIT);
+  if (ENTERING_SYSCALL == frame.event().Syscall().state) {
+    next_frame = t->trace_reader().peek_to(t->rec_tid, frame.event().type(),
+                                           EXITING_SYSCALL);
     return next_frame.regs().syscall_failed();
   }
   return frame.regs().syscall_failed();
@@ -878,9 +878,20 @@ void rep_after_enter_syscall(Task* t, int syscallno) {
 template <typename Arch>
 static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   /* FIXME: don't shadow syscall() */
-  int syscall = t->current_trace_frame().event().data;
+  int syscall = t->current_trace_frame().event().Syscall().number;
   const TraceFrame& trace_frame = t->replay_session().current_trace_frame();
-  SyscallEntryOrExit state = trace_frame.event().state;
+  SyscallEntryOrExit state;
+  switch (trace_frame.event().Syscall().state) {
+    case ENTERING_SYSCALL:
+      state = SYSCALL_ENTRY;
+      break;
+    case EXITING_SYSCALL:
+      state = SYSCALL_EXIT;
+      break;
+    default:
+      ASSERT(t, "Not entering or exiting?");
+      return;
+  }
   const Registers& trace_regs = trace_frame.regs();
   EmuFs::AutoGc maybe_gc(t->replay_session(), t->arch(), syscall, state);
 
