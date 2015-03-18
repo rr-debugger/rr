@@ -28,28 +28,24 @@ class TraceFrame {
 public:
   typedef uint32_t Time;
 
-  TraceFrame(Time global_time, pid_t tid, const Event& event,
-             Ticks tick_count) {
-    basic_info.global_time = global_time;
-    basic_info.tid = tid;
-    basic_info.ev = event.encode();
-    basic_info.ticks = tick_count;
-  }
-  TraceFrame() {
-    basic_info.global_time = 0;
-    basic_info.tid = 0;
-    basic_info.ev.encoded = 0;
-    basic_info.ticks = 0;
-  }
+  TraceFrame(Time global_time, pid_t tid, const Event& event, Ticks tick_count)
+      : global_time(global_time),
+        tid_(tid),
+        ev(event.encode()),
+        ticks_(tick_count) {}
+  TraceFrame(Time global_time, pid_t tid, const EncodedEvent& event,
+             Ticks tick_count)
+      : global_time(global_time), tid_(tid), ev(event), ticks_(tick_count) {}
+  TraceFrame() : global_time(0), tid_(0), ticks_(0) { ev.encoded = 0; }
 
   void set_exec_info(const Registers& regs,
                      const PerfCounters::Extra* extra_perf_values,
                      const ExtraRegisters* extra_regs);
 
-  Time time() const { return basic_info.global_time; }
-  pid_t tid() const { return basic_info.tid; }
-  EncodedEvent event() const { return basic_info.ev; }
-  Ticks ticks() const { return basic_info.ticks; }
+  Time time() const { return global_time; }
+  pid_t tid() const { return tid_; }
+  EncodedEvent event() const { return ev; }
+  Ticks ticks() const { return ticks_; }
 
   const Registers& regs() const { return exec_info.recorded_regs; }
   const ExtraRegisters& extra_regs() const { return recorded_extra_regs; }
@@ -72,12 +68,10 @@ private:
   friend class TraceReader;
   friend class TraceWriter;
 
-  struct {
-    Time global_time;
-    pid_t tid;
-    EncodedEvent ev;
-    Ticks ticks;
-  } basic_info;
+  Time global_time;
+  pid_t tid_;
+  EncodedEvent ev;
+  Ticks ticks_;
 
   struct {
     PerfCounters::Extra extra_perf_values;

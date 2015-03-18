@@ -1117,10 +1117,10 @@ void RecordSession::terminate_recording() {
   LOG(info) << "Processing termination request ...";
   LOG(info) << "  recording final TRACE_TERMINATION event ...";
 
-  TraceFrame frame(
-      trace_out.time(), last_recorded_task ? last_recorded_task->tid : 0,
-      Event(EV_TRACE_TERMINATION, NO_EXEC_INFO, RR_NATIVE_ARCH),
-      last_recorded_task ? last_recorded_task->tick_count() : 0);
+  TraceFrame frame(trace_out.time(),
+                   last_recorded_task ? last_recorded_task->tid : 0,
+                   Event(EV_TRACE_TERMINATION, NO_EXEC_INFO, RR_NATIVE_ARCH),
+                   last_recorded_task ? last_recorded_task->tick_count() : 0);
   trace_out.write_frame(frame);
   trace_out.close();
 }

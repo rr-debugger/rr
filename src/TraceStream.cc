@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 23
+#define TRACE_VERSION 24
 
 struct SubstreamData {
   const char* name;
@@ -108,17 +108,27 @@ bool TraceReader::good() const {
   return true;
 }
 
+struct BasicInfo {
+  TraceFrame::Time global_time;
+  pid_t tid_;
+  EncodedEvent ev;
+  Ticks ticks_;
+};
+
 void TraceWriter::write_frame(const TraceFrame& frame) {
   auto& events = writer(EVENTS);
-  events.write(&frame.basic_info, sizeof(frame.basic_info));
+
+  BasicInfo basic_info = { frame.time(),  frame.tid(),
+                           frame.event(), frame.ticks() };
+  events << basic_info;
   if (!events.good()) {
-    FATAL() << "Tried to save " << sizeof(frame.basic_info)
+    FATAL() << "Tried to save " << sizeof(basic_info)
             << " bytes to the trace, but failed";
   }
   // TODO: only store exec info for non-async-sig events when
   // debugging assertions are enabled.
   if (frame.event().has_exec_info == HAS_EXEC_INFO) {
-    events.write(&frame.exec_info, sizeof(frame.exec_info));
+    events << frame.exec_info;
     if (!events.good()) {
       FATAL() << "Tried to save " << sizeof(frame.exec_info)
               << " bytes to the trace, but failed";
@@ -126,8 +136,7 @@ void TraceWriter::write_frame(const TraceFrame& frame) {
 
     int extra_reg_bytes = frame.extra_regs().data_size();
     char extra_reg_format = (char)frame.extra_regs().format();
-    events.write(&extra_reg_format, sizeof(extra_reg_format));
-    events.write((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
+    events << extra_reg_format << extra_reg_bytes;
     if (!events.good()) {
       FATAL() << "Tried to save "
               << sizeof(extra_reg_bytes) + sizeof(extra_reg_format)
@@ -150,8 +159,10 @@ TraceFrame TraceReader::read_frame() {
   // Read the common event info first, to see if we also have
   // exec info to read.
   auto& events = reader(EVENTS);
-  TraceFrame frame;
-  events.read(&frame.basic_info, sizeof(frame.basic_info));
+  BasicInfo basic_info;
+  events >> basic_info;
+  TraceFrame frame(basic_info.global_time, basic_info.tid_, basic_info.ev,
+                   basic_info.ticks_);
   if (frame.event().has_exec_info) {
     events.read(&frame.exec_info, sizeof(frame.exec_info));
 
