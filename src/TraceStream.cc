@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 24
+#define TRACE_VERSION 25
 
 struct SubstreamData {
   const char* name;
@@ -128,10 +128,9 @@ void TraceWriter::write_frame(const TraceFrame& frame) {
   // TODO: only store exec info for non-async-sig events when
   // debugging assertions are enabled.
   if (frame.event().has_exec_info == HAS_EXEC_INFO) {
-    events << frame.exec_info;
+    events << frame.regs() << frame.extra_perf_values();
     if (!events.good()) {
-      FATAL() << "Tried to save " << sizeof(frame.exec_info)
-              << " bytes to the trace, but failed";
+      FATAL() << "Tried to save registers to the trace, but failed";
     }
 
     int extra_reg_bytes = frame.extra_regs().data_size();
@@ -164,12 +163,11 @@ TraceFrame TraceReader::read_frame() {
   TraceFrame frame(basic_info.global_time, basic_info.tid_, basic_info.ev,
                    basic_info.ticks_);
   if (frame.event().has_exec_info) {
-    events.read(&frame.exec_info, sizeof(frame.exec_info));
+    events >> frame.recorded_regs >> frame.extra_perf;
 
     int extra_reg_bytes;
     char extra_reg_format;
-    events.read(&extra_reg_format, sizeof(extra_reg_format));
-    events.read((char*)&extra_reg_bytes, sizeof(extra_reg_bytes));
+    events >> extra_reg_format >> extra_reg_bytes;
     if (extra_reg_bytes > 0) {
       vector<uint8_t> data;
       data.resize(extra_reg_bytes);

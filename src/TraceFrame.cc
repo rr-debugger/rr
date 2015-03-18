@@ -11,9 +11,9 @@ void TraceFrame::set_exec_info(const Registers& regs,
                                const PerfCounters::Extra* extra_perf_values,
                                const ExtraRegisters* extra_regs) {
   assert(event().has_exec_info == HAS_EXEC_INFO);
-  exec_info.recorded_regs = regs;
+  recorded_regs = regs;
   if (extra_perf_values) {
-    exec_info.extra_perf_values = *extra_perf_values;
+    extra_perf = *extra_perf_values;
   }
   if (extra_regs) {
     recorded_extra_regs = *extra_regs;
@@ -34,9 +34,8 @@ void TraceFrame::dump(FILE* out) const {
   if (PerfCounters::extra_perf_counters_enabled()) {
     fprintf(out,
             "\n  hw_ints:%" PRId64 " faults:%" PRId64 " insns:%" PRId64 "\n",
-            exec_info.extra_perf_values.hw_interrupts,
-            exec_info.extra_perf_values.page_faults,
-            exec_info.extra_perf_values.instructions_retired);
+            extra_perf.hw_interrupts, extra_perf.page_faults,
+            extra_perf.instructions_retired);
   } else {
     fprintf(out, "\n  ticks:%" PRId64 "\n", ticks());
   }
@@ -52,10 +51,8 @@ void TraceFrame::dump_raw(FILE* out) const {
     return;
   }
 
-  fprintf(out, " %" PRId64 " %" PRId64 " %" PRId64,
-          exec_info.extra_perf_values.hw_interrupts,
-          exec_info.extra_perf_values.page_faults,
-          exec_info.extra_perf_values.instructions_retired);
+  fprintf(out, " %" PRId64 " %" PRId64 " %" PRId64, extra_perf.hw_interrupts,
+          extra_perf.page_faults, extra_perf.instructions_retired);
   regs().print_register_file_for_trace_raw(out);
   fprintf(out, "\n");
 }
