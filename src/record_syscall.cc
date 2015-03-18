@@ -1512,6 +1512,12 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return ALLOW_SWITCH;
     }
 
+    case Arch::capget: {
+      syscall_state.reg_parameter<typename Arch::__user_cap_header_struct>(1, IN_OUT);
+      syscall_state.reg_parameter<typename Arch::__user_cap_data_struct>(2, OUT);
+      return ALLOW_SWITCH;
+    }
+
     case Arch::clone: {
       syscall_state.syscall_entry_registers =
           unique_ptr<Registers>(new Registers(t->regs()));

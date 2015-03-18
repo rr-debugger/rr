@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>
 #include <linux/futex.h>
