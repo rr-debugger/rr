@@ -31,12 +31,12 @@ public:
   TraceFrame(Time global_time, pid_t tid, const Event& event, Ticks tick_count)
       : global_time(global_time),
         tid_(tid),
-        ev(event.encode()),
+        ev(event),
         ticks_(tick_count) {}
   TraceFrame(Time global_time, pid_t tid, const EncodedEvent& event,
              Ticks tick_count)
       : global_time(global_time), tid_(tid), ev(event), ticks_(tick_count) {}
-  TraceFrame() : global_time(0), tid_(0), ticks_(0) { ev.encoded = 0; }
+  TraceFrame() : global_time(0), tid_(0), ticks_(0) {}
 
   void set_exec_info(const Registers& regs,
                      const PerfCounters::Extra* extra_perf_values,
@@ -44,7 +44,7 @@ public:
 
   Time time() const { return global_time; }
   pid_t tid() const { return tid_; }
-  EncodedEvent event() const { return ev; }
+  EncodedEvent event() const { return ev.encode(); }
   Ticks ticks() const { return ticks_; }
 
   const Registers& regs() const { return recorded_regs; }
@@ -71,7 +71,7 @@ private:
 
   Time global_time;
   pid_t tid_;
-  EncodedEvent ev;
+  Event ev;
   Ticks ticks_;
 
   PerfCounters::Extra extra_perf;
