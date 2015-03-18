@@ -998,7 +998,7 @@ chown = EmulatedSyscall(x86=182, x64=92)
 # and via the argument buf, if present.
 getcwd = IrregularEmulatedSyscall(x86=183, x64=79)
 
-capget = UnsupportedSyscall(x86=184, x64=125)
+capget = IrregularEmulatedSyscall(x86=184, x64=125)
 capset = UnsupportedSyscall(x86=185, x64=126)
 
 #  int sigaltstack(const stack_t *ss, stack_t *oss)

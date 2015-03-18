@@ -285,6 +285,7 @@ set(BASIC_TESTS
   block
   blocked_sigsegv
   brk
+  capget
   chew_cpu
   chown
   clock

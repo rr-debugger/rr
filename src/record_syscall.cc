@@ -1615,6 +1615,33 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return ALLOW_SWITCH;
     }
 
+    case Arch::capget: {
+      auto hdr = t->read_mem(
+          syscall_state.reg_parameter<typename Arch::__user_cap_header_struct>(
+              1, IN_OUT));
+      int struct_count;
+      switch (hdr.version) {
+        case _LINUX_CAPABILITY_VERSION_1:
+          struct_count = _LINUX_CAPABILITY_U32S_1;
+          break;
+        case _LINUX_CAPABILITY_VERSION_2:
+          struct_count = _LINUX_CAPABILITY_U32S_2;
+          break;
+        case _LINUX_CAPABILITY_VERSION_3:
+          struct_count = _LINUX_CAPABILITY_U32S_3;
+          break;
+        default:
+          struct_count = 0;
+          break;
+      }
+      if (struct_count > 0) {
+        syscall_state.reg_parameter(
+            2, sizeof(typename Arch::__user_cap_data_struct) * struct_count,
+            OUT);
+      }
+      return PREVENT_SWITCH;
+    }
+
     case Arch::clone: {
       syscall_state.syscall_entry_registers =
           unique_ptr<Registers>(new Registers(t->regs()));
