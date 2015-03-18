@@ -432,6 +432,15 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
   num_bytes = ceil_page_size(num_bytes);
 
   Mapping m(addr, num_bytes, prot, flags, offset_bytes);
+
+  bool insert_guard_page = false;
+  if (has_mapping(m.end) && mapping_of(m.end).second.is_stack()) {
+    // When inserting a mapping immediately before a grow-down VMA,
+    // the kernel unmaps an extra page to form a guard page. We need to
+    // emulate that.
+    insert_guard_page = true;
+  }
+
   if (mem.end() != mem.find(m)) {
     // The mmap() man page doesn't specifically describe
     // what should happen if an existing map is
@@ -439,7 +448,7 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
     // In testing, the behavior seems to be as if the
     // overlapping region is unmapped and then remapped
     // per the arguments to the second call.
-    unmap(addr, num_bytes);
+    unmap(addr, num_bytes + (insert_guard_page ? page_size() : 0));
   }
 
   map_and_coalesce(m, res);
@@ -739,7 +748,11 @@ void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
     // region, remap the underflow region.
     if (m.start < rem.start) {
       Mapping underflow(m.start, rem.start, m.prot, m.flags, m.offset);
-      mem[underflow] = r;
+      MappableResource new_r = r;
+      // When splitting a stack mapping, the bottom part of the split is no
+      // longer treated as stack by the kernel.
+      new_r.remove_stackness();
+      mem[underflow] = new_r;
     }
     // If the last segment we unmap overflows the unmap
     // region, remap the overflow region.
@@ -883,6 +896,10 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
     // stack in general is somewhat difficult, because the stack grows
     // without rr being notified.  So we just add a special early-exit
     // case for the assert for now.
+    // We do fix up our current mapping to match the kernel as closely
+    // as possible. Then, if the grow-down VMA is split somehow, we know
+    // about the split parts.
+    t->vm()->fix_stack_segment_start(m, km.start);
     return;
   }
   if (!same_mapping) {
@@ -893,6 +910,12 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
 
     ASSERT(t, same_mapping) << "\nCached mapping " << m << " should be " << km;
   }
+}
+
+void AddressSpace::fix_stack_segment_start(const Mapping& mapping,
+                                           remote_ptr<void> new_start) {
+  auto it = mem.find(mapping);
+  it->first.update_start(new_start);
 }
 
 /**

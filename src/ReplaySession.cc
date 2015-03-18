@@ -245,6 +245,7 @@ Completion ReplaySession::cont_syscall_boundary(
   }
 
   bool is_syscall_entry =
+      !trace_frame.event().is_syscall_event() ||
       ENTERING_SYSCALL == trace_frame.event().Syscall().state;
   if (is_syscall_entry) {
     t->stepped_into_syscall = false;
@@ -925,6 +926,28 @@ void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
   t->set_tick_count(trace_ticks);
 }
 
+static bool treat_signal_event_as_deterministic(Task* t,
+                                                const SignalEvent& ev) {
+  if (ev.siginfo.si_signo != SIGSEGV) {
+    return true;
+  }
+
+  remote_ptr<void> fault_addr = uintptr_t(ev.siginfo.si_addr);
+  uint8_t byte;
+  if (!t->vm()->has_mapping(fault_addr) &&
+      t->read_bytes_fallible(fault_addr, 1, &byte) == 1) {
+    // We don't know about any mapping for 'fault_addr', yet there is
+    // memory there. This should only happen if there's a MAP_GROWDOWN
+    // virtual memory area which grew down. Note that all kinds of mmap/
+    // munmap activity may have happened since the stack grew down, so we
+    // can't assert anything about mappings in the vicinity.
+    // Since an actual SIGSEGV might not happen, let's just replay this
+    // as if it was an async signal, to *force* it to happen.
+    return false;
+  }
+  return true;
+}
+
 /**
  * Advance to the delivery of the deterministic signal |sig| and
  * update registers to what was recorded.  Return COMPLETE if successful or
@@ -1462,9 +1485,11 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       break;
     case EV_SIGNAL:
       current_step.signo = ev.Signal().siginfo.si_signo;
-      current_step.action = ev.Signal().deterministic == DETERMINISTIC_SIG
-                                ? TSTEP_DETERMINISTIC_SIGNAL
-                                : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
+      current_step.action =
+          ev.Signal().deterministic == DETERMINISTIC_SIG &&
+                  treat_signal_event_as_deterministic(t, ev.Signal())
+              ? TSTEP_DETERMINISTIC_SIGNAL
+              : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
       if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == current_step.action) {
         current_step.target.signo = current_step.signo;
         current_step.target.ticks = trace_frame.ticks();
@@ -1561,7 +1586,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   }
 
   const Event& ev = trace_frame.event();
-  if (can_validate() && EXITING_SYSCALL == ev.Syscall().state &&
+  if (can_validate() && ev.is_syscall_event() &&
       ::Flags::get().check_cached_mmaps) {
     t->vm()->verify(t);
   }

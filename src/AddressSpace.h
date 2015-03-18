@@ -238,6 +238,14 @@ struct Mapping {
     return str;
   }
 
+  /**
+   * Super-dangerous! Only call this if it's guaranteed not to change
+   * the ordering of Mappings.
+   */
+  void update_start(remote_ptr<void> new_start) const {
+    *const_cast<remote_ptr<void>*>(&start) = new_start;
+  }
+
   const remote_ptr<void> start;
   const remote_ptr<void> end;
   const int prot;
@@ -282,6 +290,14 @@ struct MappableResource {
            PSEUDODEVICE_SYSV_SHM == id.psuedodevice();
   }
   bool is_stack() const { return PSEUDODEVICE_STACK == id.psuedodevice(); }
+
+  void remove_stackness() {
+    if (is_stack()) {
+      id = FileId(id.dev_major(), id.dev_minor(), id.internal_inode(),
+                  PSEUDODEVICE_ANONYMOUS);
+      fsname = "";
+    }
+  }
 
   /**
    * Return a representation of this resource that would be
@@ -543,6 +559,13 @@ public:
    */
   void remap(remote_ptr<void> old_addr, size_t old_num_bytes,
              remote_ptr<void> new_addr, size_t new_num_bytes);
+
+  /**
+   * Notify that the stack segment 'mapping' has grown down to a new start
+   * address.
+   */
+  void fix_stack_segment_start(const Mapping& mapping,
+                               remote_ptr<void> new_start);
 
   /**
    * Notify that data was written to this address space by rr or

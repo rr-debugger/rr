@@ -444,6 +444,10 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
       // Resume the syscall execution in the kernel context.
       step_state->continue_type = CONTINUE_SYSCALL;
 
+      if (t->session().can_validate() && Flags::get().check_cached_mmaps) {
+        t->vm()->verify(t);
+      }
+
       if (t->desched_rec() && t->is_in_untraced_syscall() &&
           t->ev().Syscall().is_restart && t->has_stashed_sig()) {
         // We have a signal to deliver but we're about to restart an untraced
