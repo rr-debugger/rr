@@ -28,11 +28,11 @@ class TraceFrame {
 public:
   typedef uint32_t Time;
 
-  TraceFrame(Time global_time, pid_t tid, EncodedEvent event,
+  TraceFrame(Time global_time, pid_t tid, const Event& event,
              Ticks tick_count) {
     basic_info.global_time = global_time;
     basic_info.tid = tid;
-    basic_info.ev = event;
+    basic_info.ev = event.encode();
     basic_info.ticks = tick_count;
   }
   TraceFrame() {
