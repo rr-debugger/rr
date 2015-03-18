@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 25
+#define TRACE_VERSION 26
 
 struct SubstreamData {
   const char* name;
@@ -150,6 +150,9 @@ void TraceWriter::write_frame(const TraceFrame& frame) {
       }
     }
   }
+  if (frame.event().is_signal_event()) {
+    events << frame.event().Signal().signal_data();
+  }
 
   tick_time();
 }
@@ -179,6 +182,11 @@ TraceFrame TraceReader::read_frame() {
       assert(extra_reg_format == ExtraRegisters::NONE);
       frame.recorded_extra_regs = ExtraRegisters(frame.event().arch());
     }
+  }
+  if (frame.event().is_signal_event()) {
+    uint64_t signal_data;
+    events >> signal_data;
+    frame.ev.Signal().set_signal_data(signal_data);
   }
 
   tick_time();

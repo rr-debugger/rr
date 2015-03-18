@@ -166,6 +166,36 @@ struct SignalEvent : public BaseEvent {
     memset(&siginfo, 0, sizeof(siginfo));
     siginfo.si_signo = signo;
   }
+
+  /**
+   * For SIGILL, SIGFPE, SIGSEGV, SIGBUS and SIGTRAP this is si_addr.
+   * For other signals this is zero.
+   */
+  uint64_t signal_data() const {
+    switch (siginfo.si_signo) {
+      case SIGILL:
+      case SIGFPE:
+      case SIGSEGV:
+      case SIGBUS:
+      case SIGTRAP:
+        return (uint64_t)siginfo.si_addr;
+      default:
+        return 0;
+    }
+  }
+
+  void set_signal_data(uint64_t data) {
+    switch (siginfo.si_signo) {
+      case SIGILL:
+      case SIGFPE:
+      case SIGSEGV:
+      case SIGBUS:
+      case SIGTRAP:
+        siginfo.si_addr = (void*)data;
+        break;
+    }
+  }
+
   // Signal info
   siginfo_t siginfo;
   // True if this signal will be deterministically raised as the
