@@ -84,6 +84,27 @@ template <typename Arch> struct syscall_defs {
 
 #endif // CHECK_SYSCALL_NUMBERS
 
+enum SyscallEntryOrExit {
+  SYSCALL_ENTRY,
+  SYSCALL_EXIT
+};
+
+/**
+ * Return the symbolic name of |state|, or "???state" if unknown.
+ */
+static const char* state_name(SyscallEntryOrExit state) {
+  switch (state) {
+#define CASE(_id)                                                              \
+  case _id:                                                                    \
+    return #_id
+    CASE(SYSCALL_ENTRY);
+    CASE(SYSCALL_EXIT);
+#undef CASE
+    default:
+      return "???state";
+  }
+}
+
 /**
  * Proceeds until the next system call, which is not executed.
  */

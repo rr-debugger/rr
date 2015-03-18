@@ -60,11 +60,6 @@ enum EventType {
   EV_LAST
 };
 
-enum SyscallEntryOrExit {
-  SYSCALL_ENTRY,
-  SYSCALL_EXIT
-};
-
 enum HasExecInfo {
   NO_EXEC_INFO,
   HAS_EXEC_INFO
@@ -364,11 +359,6 @@ inline static std::ostream& operator<<(std::ostream& o,
                                        const EncodedEvent& ev) {
   return o << Event(ev);
 }
-
-/**
- * Return the symbolic name of |state|, or "???state" if unknown.
- */
-const char* state_name(SyscallEntryOrExit state);
 
 const char* state_name(SyscallState state);
 

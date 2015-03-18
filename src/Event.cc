@@ -342,19 +342,6 @@ std::string Event::type_name() const {
   }
 }
 
-const char* state_name(SyscallEntryOrExit state) {
-  switch (state) {
-#define CASE(_id)                                                              \
-  case _id:                                                                    \
-    return #_id
-    CASE(SYSCALL_ENTRY);
-    CASE(SYSCALL_EXIT);
-#undef CASE
-    default:
-      return "???state";
-  }
-}
-
 const char* state_name(SyscallState state) {
   switch (state) {
 #define CASE(_id)                                                              \
