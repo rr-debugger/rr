@@ -220,7 +220,7 @@ function replay { replayflags=$1
 # Load the "expect" script to drive replay of the recording of |exe|.
 function debug { expectscript=$1; replayargs=$2
     _RR_TRACE_DIR="$workdir" \
-        python $TESTDIR/$expectscript.py \
+        python2 $TESTDIR/$expectscript.py \
         rr $GLOBAL_OPTIONS replay -x $TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
         passed
