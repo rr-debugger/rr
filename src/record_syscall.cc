@@ -2514,8 +2514,7 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
   int ret = _shmctl(shmid, IPC_STAT, &ds);
   ASSERT(t, !ret) << "shmid should be readable by rr since rr has the same "
                      "UID as tracees";
-  size_t size = ds.shm_segsz;
-  ASSERT(t, ceil_page_size(size) == size);
+  size_t size = ceil_page_size(ds.shm_segsz);
 
   int prot = shm_flags_to_mmap_prot(shm_flags);
   int flags = MAP_SHARED;

@@ -2,7 +2,9 @@
 
 #include "rrutil.h"
 
-#define SIZE (16 * PAGE_SIZE)
+/* Make SIZE not a multiple of the page size, to ensure we handle that case.
+   But make sure it's even, since we divide it by two. */
+#define SIZE ((16 * PAGE_SIZE) - 10)
 
 static int shmid;
 
