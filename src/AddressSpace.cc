@@ -293,7 +293,9 @@ static void write_rr_page(Task* t, ScopedFd& fd) {
                                           // rr_page_ip_in_untraced_syscall:
                                           0xc3, // ret
                                           0x90, 0x90, 0x90, 0x90, 0x90,
-                                          0x90, 0x90, 0x90, 0x90, // padding
+                                          0x90, 0x90, 0x90, 0x90, 0x90,
+                                          0x90, 0x90, 0x90, 0x90, 0x90,
+                                          0x90, 0x90, // padding
                                           // rr_page_traced_syscall_ip:
                                           0xcd, 0x80, // int 0x80
                                           // rr_page_ip_in_traced_syscall:
@@ -310,8 +312,10 @@ static void write_rr_page(Task* t, ScopedFd& fd) {
         // rr_page_ip_in_untraced_syscall:
         0x49, 0x81, 0xe3, 0xff,
         0xfe, 0xff, 0xff, // and $0xfffffffffffffeff,%r11
+        0x48, 0xc7, 0xc1, 0xff,
+        0xff, 0xff, 0xff, // mov $-1,%rcx
         0xc3,             // ret
-        0x90, 0x90,       // padding
+        0x90, 0x90, 0x90, // padding
         // rr_page_traced_syscall_ip:
         0x0f, 0x05, // syscall
         // rr_page_ip_in_traced_syscall:
