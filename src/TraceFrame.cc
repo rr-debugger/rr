@@ -30,7 +30,6 @@ void TraceFrame::dump(FILE* out) const {
   }
   fprintf(out, "tid:%d, ticks:%" PRId64 "\n", tid(), ticks());
   if (event().has_exec_info() != HAS_EXEC_INFO) {
-    fprintf(out, "\n");
     return;
   }
 
