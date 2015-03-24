@@ -449,8 +449,8 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
 
   TraceTaskEvent tte;
   while (true) {
-    ASSERT(t, t->trace_reader().good()) <<
-        "Unable to find EXEC event; trace is corrupt (did you kill -9 rr?)";
+    ASSERT(t, t->trace_reader().good())
+        << "Unable to find EXEC event; trace is corrupt (did you kill -9 rr?)";
     tte = t->trace_reader().read_task_event();
     if (tte.type() == TraceTaskEvent::EXEC) {
       break;

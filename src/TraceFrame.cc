@@ -35,8 +35,7 @@ void TraceFrame::dump(FILE* out) const {
   }
 
   if (PerfCounters::extra_perf_counters_enabled()) {
-    fprintf(out,
-            "  hw_ints:%" PRId64 " faults:%" PRId64 " insns:%" PRId64 "\n",
+    fprintf(out, "  hw_ints:%" PRId64 " faults:%" PRId64 " insns:%" PRId64 "\n",
             extra_perf.hw_interrupts, extra_perf.page_faults,
             extra_perf.instructions_retired);
   }

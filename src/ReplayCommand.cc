@@ -51,6 +51,9 @@ ReplayCommand ReplayCommand::singleton(
     "  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
     "                             don't automatically launch the debugger\n"
     "                             client too.\n"
+    "  -t, --trace=<EVENT>        singlestep instructions and dump register\n"
+    "                             states when replaying towards <EVENT> or\n"
+    "                             later\n"
     "  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n");
 
 struct ReplayFlags {
@@ -58,6 +61,8 @@ struct ReplayFlags {
   // event at which reached this event AND target_process has
   // been "created".
   TraceFrame::Time goto_event;
+
+  TraceFrame::Time singlestep_to_event;
 
   pid_t target_process;
 
@@ -90,6 +95,7 @@ struct ReplayFlags {
 
   ReplayFlags()
       : goto_event(0),
+        singlestep_to_event(0),
         target_process(0),
         process_created_how(CREATED_NONE),
         dont_launch_debugger(false),
@@ -106,6 +112,7 @@ static bool parse_replay_arg(std::vector<std::string>& args,
   static const OptionSpec options[] = { { 'a', "autopilot", NO_PARAMETER },
                                         { 's', "dbgport", HAS_PARAMETER },
                                         { 'g', "goto", HAS_PARAMETER },
+                                        { 't', "trace", HAS_PARAMETER },
                                         { 'q', "no-redirect-output",
                                           NO_PARAMETER },
                                         { 'f', "onfork", HAS_PARAMETER },
@@ -154,6 +161,12 @@ static bool parse_replay_arg(std::vector<std::string>& args,
       }
       flags.dbg_port = opt.int_value;
       flags.dont_launch_debugger = true;
+      break;
+    case 't':
+      if (!opt.verify_valid_int(1, INT32_MAX)) {
+        return false;
+      }
+      flags.singlestep_to_event = opt.int_value;
       break;
     case 'x':
       flags.gdb_command_file_path = opt.value;
@@ -224,7 +237,16 @@ static void serve_replay_no_debugger(const string& trace_dir,
   gettimeofday(&last_dump_time, NULL);
 
   while (true) {
-    auto result = replay_session->replay_step(RUN_CONTINUE);
+    RunCommand cmd = RUN_CONTINUE;
+    if (flags.singlestep_to_event > 0 &&
+        replay_session->trace_reader().time() >= flags.singlestep_to_event) {
+      cmd = RUN_SINGLESTEP;
+      fputs("Stepping from:", stderr);
+      Task* t = replay_session->current_task();
+      t->regs().print_register_file_compact(stderr);
+      fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
+    }
+    auto result = replay_session->replay_step(cmd);
     ++step_count;
     if (DUMP_STATS_PERIOD > 0 && step_count % DUMP_STATS_PERIOD == 0) {
       struct timeval now;
@@ -247,7 +269,7 @@ static void serve_replay_no_debugger(const string& trace_dir,
     assert(result.status == REPLAY_CONTINUE);
     assert(result.break_status.watchpoints_hit.empty());
     assert(!result.break_status.breakpoint_hit);
-    assert(!result.break_status.singlestep_complete);
+    assert(cmd == RUN_SINGLESTEP || !result.break_status.singlestep_complete);
   }
 
   LOG(info) << ("Replayer successfully finished.");

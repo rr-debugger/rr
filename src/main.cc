@@ -91,9 +91,7 @@ void check_performance_settings() {
   }
 }
 
-void print_version(FILE* out) {
-  fprintf(out, "rr version %s\n", RR_VERSION);
-}
+void print_version(FILE* out) { fprintf(out, "rr version %s\n", RR_VERSION); }
 
 void print_usage(FILE* out) {
   print_version(out);

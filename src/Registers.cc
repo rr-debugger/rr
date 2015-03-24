@@ -264,7 +264,6 @@ void Registers::print_register_file_for_trace_arch(
         assert(0 && "bad register size");
     }
   }
-  fprintf(f, "\n");
 }
 
 void Registers::print_register_file_compact(FILE* f) const {
