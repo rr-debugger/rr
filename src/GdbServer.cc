@@ -663,10 +663,10 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
   while (true) {
     GdbRequest req = dbg->get_request();
     req.suppress_debugger_stop = false;
-    if (!t || t->session().is_replaying()) {
-      TaskUid tuid = t ? t->tuid() : TaskUid();
+    if (timeline.is_running() && t) {
+      TaskUid tuid = t->tuid();
       try_lazy_reverse_singlesteps(t, req);
-      t = tuid ? timeline.current_session().find_task(tuid) : nullptr;
+      t = timeline.current_session().find_task(tuid);
     }
 
     if (req.type == DREQ_READ_SIGINFO) {

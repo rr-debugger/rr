@@ -33,6 +33,8 @@ public:
   ReplayTimeline() : breakpoints_applied(false) {}
   ~ReplayTimeline();
 
+  bool is_running() const { return current != nullptr; }
+
   /**
    * An estimate of how much progress a session has made. This should roughly
    * correlate to the time required to replay from the start of a session
