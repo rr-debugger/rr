@@ -1857,7 +1857,7 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     // write_rr_page) does this itself.
     registers.set_r11(registers.r11() & ~X86_TF_FLAG);
     // x86-64 'syscall' instruction copies return address to RCX on syscall
-    // entry. rr-related kernel activity normally set RCX to -1 at some point
+    // entry. rr-related kernel activity normally sets RCX to -1 at some point
     // during syscall execution, but apparently in some (unknown) situations
     // probably involving untraced syscalls, that doesn't happen. To avoid
     // potential issues, forcibly replace RCX with -1 always.

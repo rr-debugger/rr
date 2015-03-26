@@ -305,6 +305,8 @@ static void write_rr_page(Task* t, ScopedFd& fd) {
       break;
     }
     case x86_64:
+      // See Task::did_waitpid for an explanation of why we have to
+      // modify R11 and RCX here.
       static const uint8_t x86_64_data[] = {
         0x90, 0x90, // padding
         // rr_page_untraced_syscall_ip:
