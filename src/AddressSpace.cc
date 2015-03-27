@@ -287,19 +287,18 @@ remote_ptr<uint8_t> AddressSpace::find_syscall_instruction(Task* t) {
 static void write_rr_page(Task* t, ScopedFd& fd) {
   switch (t->arch()) {
     case x86: {
-      static const uint8_t x86_data[] = { 0x90, 0x90, // padding
-                                          // rr_page_untraced_syscall_ip:
-                                          0xcd, 0x80, // int 0x80
-                                          // rr_page_ip_in_untraced_syscall:
-                                          0xc3, // ret
-                                          0x90, 0x90, 0x90, 0x90, 0x90,
-                                          0x90, 0x90, 0x90, 0x90, 0x90,
-                                          0x90, 0x90, 0x90, 0x90, 0x90,
-                                          0x90, 0x90, // padding
-                                          // rr_page_traced_syscall_ip:
-                                          0xcd, 0x80, // int 0x80
-                                          // rr_page_ip_in_traced_syscall:
-                                          0xc3 // ret
+      static const uint8_t x86_data[] = {
+        0x90, 0x90, // padding
+        // rr_page_untraced_syscall_ip:
+        0xcd, 0x80, // int 0x80
+        // rr_page_ip_in_untraced_syscall:
+        0xc3, // ret
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, // padding
+        // rr_page_traced_syscall_ip:
+        0xcd, 0x80, // int 0x80
+        // rr_page_ip_in_traced_syscall:
+        0xc3 // ret
       };
       ASSERT(t, sizeof(x86_data) == write(fd, x86_data, sizeof(x86_data)));
       break;

@@ -952,11 +952,6 @@ public:
    */
   int pending_sig() const { return pending_sig_from_status(wait_status); }
 
-  /**
-   * Return true if we stopped due to a syscall event.
-   */
-  bool syscall_stop() const { return stop_sig() == (SIGTRAP | 0x80); }
-
   /** Return the task group this belongs to. */
   TaskGroup::shr_ptr task_group() { return tg; }
 

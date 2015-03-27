@@ -1815,6 +1815,12 @@ void Task::wait(AllowInterrupt allow_interrupt) {
   did_waitpid(status);
 }
 
+static bool is_in_non_sigreturn_exit_syscall(Task* t) {
+  return t->stop_sig() == (SIGTRAP | 0x80) &&
+         (!t->ev().is_syscall_event() ||
+          !is_sigreturn(t->ev().Syscall().number, t->arch()));
+}
+
 void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   LOG(debug) << "  (refreshing register cache)";
   // Skip reading registers immediately after a PTRACE_EVENT_EXEC, since
@@ -1847,7 +1853,7 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   session().accumulate_ticks_processed(more_ticks);
 
   if (registers.arch() == x86_64 &&
-      (syscall_stop() || is_in_untraced_syscall())) {
+      (is_in_non_sigreturn_exit_syscall(this) || is_in_untraced_syscall())) {
     // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
     // If we single-stepped into the syscall instruction, the TF flag will be
     // set in R11. We don't want the value in R11 to depend on whether we
@@ -1855,6 +1861,8 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     // divergence, so we clear it here before anything is recorded or checked.
     // For untraced syscalls, the untraced-syscall entry point code (see
     // write_rr_page) does this itself.
+    // This doesn't matter when exiting a sigreturn syscall, since it
+    // restores the original flags.
     registers.set_r11(registers.r11() & ~X86_TF_FLAG);
     // x86-64 'syscall' instruction copies return address to RCX on syscall
     // entry. rr-related kernel activity normally sets RCX to -1 at some point
@@ -1863,6 +1871,9 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     // potential issues, forcibly replace RCX with -1 always.
     // For untraced syscalls, the untraced-syscall entry point code (see
     // write_rr_page) does this itself.
+    // This doesn't matter (and we should not do this) when exiting a
+    // sigreturn syscall, since it will restore the original RCX and we don't
+    // want to clobber that.
     registers.set_cx((intptr_t) - 1);
     set_regs(registers);
   }
