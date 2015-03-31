@@ -4,6 +4,8 @@
 #define RR_UTIL_H_
 
 #include <array>
+#include <map>
+#include <set>
 #include <string>
 
 #include "Event.h"
@@ -229,5 +231,11 @@ const int NOT_ELF = 0x10000;
 int read_elf_class(const std::string& filename);
 
 bool trace_instructions_up_to_event(TraceFrame::Time event);
+
+/* Helpful for broken debuggers */
+
+void dump_task_set(const std::set<Task*>& tasks);
+
+void dump_task_map(const std::map<pid_t, Task*>& tasks);
 
 #endif /* RR_UTIL_H_ */

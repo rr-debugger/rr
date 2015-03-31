@@ -752,3 +752,19 @@ bool trace_instructions_up_to_event(TraceFrame::Time event) {
   return event > instruction_trace_at_event_start &&
          event <= instruction_trace_at_event_last;
 }
+
+void dump_task_set(const set<Task*>& tasks) {
+  printf("[");
+  for (auto& t : tasks) {
+    printf("%p (pid=%d, rec=%d),", t, t->tid, t->rec_tid);
+  }
+  printf("]\n");
+}
+
+void dump_task_map(const map<pid_t, Task*>& tasks) {
+  printf("[");
+  for (auto& t : tasks) {
+    printf("%p (pid=%d, rec=%d),", t.second, t.second->tid, t.second->rec_tid);
+  }
+  printf("]\n");
+}

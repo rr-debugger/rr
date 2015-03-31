@@ -326,11 +326,11 @@ Task::~Task() {
 
   if (tg->task_set().empty() && !session().is_recording()) {
     // Reap the zombie.
-    int ret = waitpid(tg->tgid, NULL, __WALL);
+    int ret = waitpid(tg->real_tgid, NULL, __WALL);
     if (ret == -1) {
       ASSERT(this, errno == ECHILD || errno == ESRCH);
     } else {
-      ASSERT(this, ret == tg->tgid);
+      ASSERT(this, ret == tg->real_tgid);
     }
   }
 
