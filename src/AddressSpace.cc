@@ -1068,10 +1068,11 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
   }
 }
 
-AddressSpace::AddressSpace(Task* t, const AddressSpace& o, uint32_t exec_count)
+AddressSpace::AddressSpace(Task* t, const AddressSpace& o, pid_t leader_tid,
+                           uint32_t leader_serial, uint32_t exec_count)
     : exe(o.exe),
-      leader_tid_(t->rec_tid),
-      leader_serial(t->tuid().serial()),
+      leader_tid_(leader_tid),
+      leader_serial(leader_serial),
       exec_count(exec_count),
       heap(o.heap),
       is_clone(true),

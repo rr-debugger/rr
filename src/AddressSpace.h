@@ -734,7 +734,8 @@ private:
   class Watchpoint;
 
   AddressSpace(Task* t, const std::string& exe, uint32_t exec_count);
-  AddressSpace(Task* t, const AddressSpace& o, uint32_t exec_count);
+  AddressSpace(Task* t, const AddressSpace& o, pid_t leader_tid,
+               uint32_t leader_serial, uint32_t exec_count);
 
   void map_rr_page(Task* t);
 

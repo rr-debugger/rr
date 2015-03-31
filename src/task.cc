@@ -203,7 +203,7 @@ TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
       real_tgid(real_tgid),
       exit_code(-1),
       dumpable(true),
-      session(session),
+      session_(session),
       parent_(parent),
       serial(serial) {
   LOG(debug) << "creating new task group " << tgid
@@ -215,8 +215,8 @@ TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
 }
 
 TaskGroup::~TaskGroup() {
-  if (session) {
-    session->on_destroy(this);
+  if (session_) {
+    session_->on_destroy(this);
   }
   for (TaskGroup* tg : children) {
     tg->parent_ = nullptr;
@@ -2071,13 +2071,6 @@ int Task::stop_sig_from_status(int status) const {
   return WSTOPSIG(status);
 }
 
-static TaskGroup::shr_ptr create_tg(Task* t, TaskGroup* parent) {
-  TaskGroup::shr_ptr tg(new TaskGroup(&t->session(), parent, t->rec_tid, t->tid,
-                                      t->tuid().serial()));
-  tg->insert_task(t);
-  return tg;
-}
-
 Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                   remote_ptr<int> cleartid_addr, pid_t new_tid,
                   pid_t new_rec_tid, uint32_t new_serial,
@@ -2094,11 +2087,10 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   }
   if (CLONE_SHARE_TASK_GROUP & flags) {
     t->tg = tg;
-    tg->insert_task(t);
   } else {
-    auto g = create_tg(t, tg.get());
-    t->tg.swap(g);
+    t->tg = sess.clone(t, tg);
   }
+  t->tg->insert_task(t);
   if (CLONE_SHARE_VM & flags) {
     t->as = as;
     t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
@@ -2865,8 +2857,8 @@ static void setup_fd_table(FdTable& fds) {
                 sizeof(t->blocked_sigs))) {
     FATAL() << "Failed to read blocked signals";
   }
-  auto g = create_tg(t, nullptr);
-  t->tg.swap(g);
+  auto tg = session.create_tg(t);
+  t->tg.swap(tg);
   auto as = session.create_vm(t, trace.initial_exe());
   t->as.swap(as);
   t->fds = FdTable::create(t);

@@ -79,7 +79,8 @@ public:
 
   int exit_code;
 
-  void forget_session() { session = nullptr; }
+  Session* session() const { return session_; }
+  void forget_session() { session_ = nullptr; }
 
   TaskGroup* parent() { return parent_; }
 
@@ -93,7 +94,7 @@ private:
   TaskGroup(const TaskGroup&) = delete;
   TaskGroup operator=(const TaskGroup&) = delete;
 
-  Session* session;
+  Session* session_;
   /** Parent TaskGroup, or nullptr if it's not a tracee (rr or init). */
   TaskGroup* parent_;
 

@@ -115,6 +115,12 @@ public:
   std::shared_ptr<AddressSpace> clone(Task* t,
                                       std::shared_ptr<AddressSpace> vm);
 
+  std::shared_ptr<TaskGroup> create_tg(Task* t);
+  /**
+   * Return a copy of |tg| with the same mappings.
+   */
+  std::shared_ptr<TaskGroup> clone(Task* t, std::shared_ptr<TaskGroup> tg);
+
   /** See Task::clone(). */
   Task* clone(Task* p, int flags, remote_ptr<void> stack, remote_ptr<void> tls,
               remote_ptr<int> cleartid_addr, pid_t new_tid,

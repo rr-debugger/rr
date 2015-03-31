@@ -79,11 +79,38 @@ AddressSpace::shr_ptr Session::clone(Task* t, AddressSpace::shr_ptr vm) {
   assert_fully_initialized();
   // If vm already belongs to our session this is a fork, otherwise it's
   // a session-clone
-  AddressSpace::shr_ptr as(new AddressSpace(
-      t, *vm, this == vm->session() ? 0 : vm->uid().exec_count()));
+  AddressSpace::shr_ptr as;
+  if (this == vm->session()) {
+    as = AddressSpace::shr_ptr(
+        new AddressSpace(t, *vm, t->rec_tid, t->tuid().serial(), 0));
+  } else {
+    as = AddressSpace::shr_ptr(new AddressSpace(
+        t, *vm, vm->uid().tid(), vm->uid().serial(), vm->uid().exec_count()));
+  }
   as->session_ = this;
   vm_map[as->uid()] = as.get();
   return as;
+}
+
+TaskGroup::shr_ptr Session::create_tg(Task* t) {
+  TaskGroup::shr_ptr tg(
+      new TaskGroup(this, nullptr, t->rec_tid, t->tid, t->tuid().serial()));
+  tg->insert_task(t);
+  return tg;
+}
+
+TaskGroup::shr_ptr Session::clone(Task* t, TaskGroup::shr_ptr tg) {
+  assert_fully_initialized();
+  // If tg already belongs to our session this is a fork to create a new
+  // taskgroup, otherwise it's a session-clone of an existing taskgroup
+  if (this == tg->session()) {
+    return TaskGroup::shr_ptr(
+        new TaskGroup(this, tg.get(), t->rec_tid, t->tid, t->tuid().serial()));
+  }
+  TaskGroup* parent =
+      tg->parent() ? find_task_group(tg->parent()->tguid()) : nullptr;
+  return TaskGroup::shr_ptr(
+      new TaskGroup(this, parent, tg->tgid, t->tid, tg->tguid().serial()));
 }
 
 vector<AddressSpace*> Session::vms() const {
@@ -139,7 +166,8 @@ void Session::kill_all_tasks() {
     if (!t->stable_exit) {
       /*
        * Prepare to forcibly kill this task by detaching it first. To ensure
-       * the task doesn't continue executing, we first set its ip() to an invalid
+       * the task doesn't continue executing, we first set its ip() to an
+       * invalid
        * value. We need to do this for all tasks in the Session before kill()
        * is guaranteed to work properly. SIGKILL on ptrace-attached tasks seems
        * to not work very well, and after sending SIGKILL we can't seem to
@@ -337,10 +365,10 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
   auto completion = unique_ptr<CloneCompletion>(new CloneCompletion());
 
   for (auto vm : vm_map) {
-    Task* some_task = *vm.second->task_set().begin();
-    pid_t tgid = some_task->tgid();
-    Task* group_leader = find_task(tgid);
-    LOG(debug) << "  forking tg " << tgid
+    // Pick an arbitrary task to be group leader. The actual group leader
+    // might have died already.
+    Task* group_leader = *vm.second->task_set().begin();
+    LOG(debug) << "  forking tg " << group_leader->tgid()
                << " (real: " << group_leader->real_tgid() << ")";
 
     if (group_leader->is_probably_replaying_syscall()) {

@@ -466,6 +466,7 @@ set(TESTS_WITH_PROGRAM
   interrupt
   intr_ptrace_decline
   link
+  main_thread_exit
   mmap_shared_prot
   mmap_write
   mutex_pi_stress
