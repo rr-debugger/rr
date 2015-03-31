@@ -1432,13 +1432,9 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
        * Other terminating signals have not been observed to
        * hang, so that's what's used here.. */
       syscall(SYS_tkill, t->tid, SIGABRT);
-      // TODO dissociate address space from file table
-      bool file_table_dying = (1 == t->vm()->task_set().size());
       delete t;
       /* Early-return because |t| is gone now. */
-      if (file_table_dying) {
-        gc_emufs();
-      }
+      gc_emufs();
       return;
     }
     case EV_DESCHED:
