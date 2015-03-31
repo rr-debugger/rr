@@ -1431,7 +1431,13 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
        * shutdown hangs when joining the exited tracee.
        * Other terminating signals have not been observed to
        * hang, so that's what's used here.. */
-      syscall(SYS_tkill, t->tid, SIGABRT);
+      while (!t->seen_ptrace_exit_event && !t->unstable) {
+        t->tgkill(SIGABRT);
+        t->resume_execution(RESUME_CONT, RESUME_WAIT, SIGABRT, 0);
+        if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+          break;
+        }
+      }
       delete t;
       /* Early-return because |t| is gone now. */
       gc_emufs();

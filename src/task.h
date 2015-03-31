@@ -1133,7 +1133,8 @@ public:
   uint32_t succ_event_counter;
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
-   * with a waitpid() call. */
+   * with a waitpid() call. Only applies to tasks which are dying, usually
+   * due to a signal sent to the entire task group. */
   bool unstable;
   /* exit(), or exit_group() with one task, has been called, so
    * the exit can be treated as stable. */
@@ -1348,15 +1349,6 @@ private:
   void destroy_local_buffers();
 
   /**
-   * Detach this from rr and try hard to ensure any operations
-   * related to it have completed by the time this function
-   * returns.
-   *
-   * Warning: called by destructor.
-   */
-  void detach_and_reap();
-
-  /**
    * Make the ptrace |request| with |addr| and |data|, return
    * the ptrace return value.
    */
@@ -1410,23 +1402,6 @@ private:
    * True if this has blocked delivery of the desched signal.
    */
   bool is_desched_sig_blocked();
-
-  /**
-   * Prepare to forcibly kill this task by detaching it first. To ensure
-   * the task doesn't continue executing, we first set its ip() to an invalid
-   * value. We need to do this for all tasks in the Session before kill()
-   * is guaranteed to work properly. SIGKILL on ptrace-attached tasks seems
-   * to not work very well, and after sending SIGKILL we can't seem to
-   * reliably detach.
-   */
-  void prepare_kill();
-  /**
-   * Destroy the OS task backing this by sending it SIGKILL and
-   * ensuring it was delivered.  After |kill()|, the only
-   * meaningful thing that can be done with this task is to
-   * delete it.
-   */
-  void kill();
 
   /**
    * Make the OS-level calls to create a new fork or clone that

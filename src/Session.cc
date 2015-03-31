@@ -135,12 +135,53 @@ AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
 
 void Session::kill_all_tasks() {
   for (auto& v : task_map) {
-    v.second->prepare_kill();
+    Task* t = v.second;
+    if (!t->stable_exit) {
+      /*
+       * Prepare to forcibly kill this task by detaching it first. To ensure
+       * the task doesn't continue executing, we first set its ip() to an invalid
+       * value. We need to do this for all tasks in the Session before kill()
+       * is guaranteed to work properly. SIGKILL on ptrace-attached tasks seems
+       * to not work very well, and after sending SIGKILL we can't seem to
+       * reliably detach.
+       */
+      LOG(debug) << "safely detaching from " << t->tid << " ...";
+      // Detaching from the process lets it continue. We don't want a replaying
+      // process to perform syscalls or do anything else observable before we
+      // get around to SIGKILLing it. So we move its ip() to an invalid
+      // address. If it does continue, it will probably get a fatal signal.
+      // We don't install real signal handlers in replayed processes so there's
+      // no way it could handle the signal and continue.
+      Registers r = t->regs();
+      r.set_ip(intptr_t(-1));
+      t->set_regs(r);
+      long result;
+      do {
+        // We have observed this failing with an ESRCH when the thread clearly
+        // still exists and is ptraced. Retrying the PTRACE_DETACH seems to
+        // work around it.
+        result = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+        ASSERT(t, result >= 0 || errno == ESRCH);
+      } while (result < 0);
+    }
   }
 
   while (!task_map.empty()) {
     Task* t = task_map.rbegin()->second;
-    t->kill();
+    if (!t->stable_exit && !t->unstable) {
+      /**
+       * Destroy the OS task backing this by sending it SIGKILL and
+       * ensuring it was delivered.  After |kill()|, the only
+       * meaningful thing that can be done with this task is to
+       * delete it.
+       */
+      LOG(debug) << "sending SIGKILL to " << t->tid << " ...";
+      // If we haven't already done a stable exit via syscall,
+      // kill the task and note that the entire task group is unstable.
+      t->tgkill(SIGKILL);
+      t->task_group()->destabilize();
+    }
+
     delete t;
   }
 }

@@ -305,8 +305,52 @@ Task::~Task() {
 
   destroy_local_buffers();
 
-  // We need the mem_fd in detach_and_reap().
-  detach_and_reap();
+  // child_mem_fd needs to be valid since we won't be able to open
+  // it for futex_wait below after we've detached.
+  ASSERT(this, as->mem_fd().is_open());
+
+  fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+
+  if (unstable) {
+    // In addition to problems described in the long
+    // comment at the prototype of this function, unstable
+    // exits may result in the kernel *not* clearing the
+    // futex, for example for fatal signals.  So we would
+    // deadlock waiting on the futex.
+    LOG(warn) << tid << " is unstable; not blocking on its termination";
+    // This will probably leak a zombie process for rr's lifetime.
+    return;
+  }
+
+  ASSERT(this, seen_ptrace_exit_event);
+
+  if (tg->task_set().empty() && !session().is_recording()) {
+    // Reap the zombie.
+    int ret = waitpid(tg->tgid, NULL, __WALL);
+    if (ret == -1) {
+      ASSERT(this, errno == ECHILD || errno == ESRCH);
+    } else {
+      ASSERT(this, ret == tg->tgid);
+    }
+  }
+
+  if (!tid_futex.is_null() && as->task_set().size() > 0) {
+    // clone()'d tasks can have a pid_t* |ctid| argument
+    // that's written with the new task's pid.  That
+    // pointer can also be used as a futex: when the task
+    // dies, the original ctid value is cleared and a
+    // FUTEX_WAKE is done on the address. So
+    // pthread_join() is basically a standard futex wait
+    // loop.
+    LOG(debug) << "  waiting for tid futex " << tid_futex
+               << " to be cleared ...";
+    futex_wait(tid_futex, 0);
+  } else if (!tid_futex.is_null()) {
+    // There are no other live tasks in this address
+    // space, which means the address space just died
+    // along with our exit.  So we can't read the futex.
+    LOG(debug) << "  (can't futex_wait last task in vm)";
+  }
 
   LOG(debug) << "  dead";
 }
@@ -2302,71 +2346,6 @@ void Task::destroy_local_buffers() {
   munmap(syscallbuf_hdr, num_syscallbuf_bytes);
 }
 
-void Task::detach_and_reap() {
-  // child_mem_fd needs to be valid since we won't be able to open
-  // it for futex_wait below after we've detached.
-  ASSERT(this, as->mem_fd().is_open());
-
-  if (unstable) {
-    fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-    // In addition to problems described in the long
-    // comment at the prototype of this function, unstable
-    // exits may result in the kernel *not* clearing the
-    // futex, for example for fatal signals.  So we would
-    // deadlock waiting on the futex.
-    LOG(warn) << tid << " is unstable; not blocking on its termination";
-    // This will probably leak a zombie process for rr's lifetime.
-    return;
-  }
-
-  LOG(debug) << "Joining with exiting " << tid << " ...";
-  while (true) {
-    // Sometimes PTRACE_DETACH does not work until we've read
-    // the PTRACE_EXIT_EVENT. Use brute force; keep trying to
-    // detach over and over again.
-    fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-    int err = waitpid(tid, &wait_status, __WALL);
-    if (-1 == err && ECHILD == errno) {
-      // child no longer exists for some reason. It's
-      // already reaped or maybe it's no longer our child.
-      // We may leak a zombie process.
-      // Note that during replay we'll often get this because cloned
-      // replay tasks are usually not our children --- but that's OK because
-      // our replay tasks all ignore SIGCHLD, causing the kernel to auto-reap
-      // their children.
-      LOG(debug) << " ... ECHILD";
-      break;
-    }
-    // Other errors such as EINTR should not happen here.
-    ASSERT(this, err == tid);
-    if (err == tid && (exited() || signaled())) {
-      LOG(debug) << " ... exited with status " << HEX(wait_status);
-      break;
-    }
-    assert(PTRACE_EVENT_EXIT == ptrace_event());
-    LOG(debug) << " ... PTRACE_EVENT_EXIT";
-    // and retry
-  }
-
-  if (!tid_futex.is_null() && as->task_set().size() > 0) {
-    // clone()'d tasks can have a pid_t* |ctid| argument
-    // that's written with the new task's pid.  That
-    // pointer can also be used as a futex: when the task
-    // dies, the original ctid value is cleared and a
-    // FUTEX_WAKE is done on the address. So
-    // pthread_join() is basically a standard futex wait
-    // loop.
-    LOG(debug) << "  waiting for tid futex " << tid_futex
-               << " to be cleared ...";
-    futex_wait(tid_futex, 0);
-  } else if (!tid_futex.is_null()) {
-    // There are no other live tasks in this address
-    // space, which means the address space just died
-    // along with our exit.  So we can't read the futex.
-    LOG(debug) << "  (can't futex_wait last task in vm)";
-  }
-}
-
 long Task::fallible_ptrace(int request, remote_ptr<void> addr, void* data) {
   return ptrace(__ptrace_request(request), tid, addr, data);
 }
@@ -2462,39 +2441,6 @@ bool Task::is_desched_sig_blocked() {
 }
 
 void Task::tgkill(int sig) { syscall(SYS_tgkill, real_tgid(), tid, sig); }
-
-void Task::prepare_kill() {
-  if (!stable_exit) {
-    LOG(debug) << "safely detaching from " << tid << " ...";
-    // Detaching from the process lets it continue. We don't want a replaying
-    // process to perform syscalls or do anything else observable before we
-    // get around to SIGKILLing it. So we move its ip() to an invalid
-    // address. If it does continue, it will probably get a fatal signal.
-    // We don't install real signal handlers in replayed processes so there's
-    // no way it could handle the signal and continue.
-    Registers r = regs();
-    r.set_ip(intptr_t(-1));
-    set_regs(r);
-    long result;
-    do {
-      // We have observed this failing with an ESRCH when the thread clearly
-      // still exists and is ptraced. Retrying the PTRACE_DETACH seems to
-      // work around it.
-      result = fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-      ASSERT(this, result >= 0 || errno == ESRCH);
-    } while (result < 0);
-  }
-}
-
-void Task::kill() {
-  if (!stable_exit) {
-    LOG(debug) << "sending SIGKILL to " << tid << " ...";
-    // If we haven't already done a stable exit via syscall,
-    // kill the task and note that the entire task group is unstable.
-    tgkill(SIGKILL);
-    tg->destabilize();
-  }
-}
 
 void Task::maybe_flush_syscallbuf() {
   if (EV_SYSCALLBUF_FLUSH == ev().type()) {
