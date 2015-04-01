@@ -8,6 +8,7 @@ int main(int argc, char* argv[]) {
   unsigned long slack = sizeof(unsigned long) == 4
                             ? 1024 * 1024 * 1024
                             : (unsigned long)(1024LL * 1024 * 1024 * 8);
+  int sig = 99;
 
   test_assert(0 == prctl(PR_SET_NAME, setname));
   test_assert(0 == prctl(PR_GET_NAME, getname));
@@ -30,6 +31,13 @@ int main(int argc, char* argv[]) {
   test_assert(0 ==
               prctl(PR_MCE_KILL, PR_MCE_KILL_SET, PR_MCE_KILL_EARLY, 0, 0));
   test_assert(PR_MCE_KILL_EARLY == prctl(PR_MCE_KILL_GET, 0, 0, 0, 0));
+
+  test_assert(-1 == prctl(PR_GET_ENDIAN) && errno == EINVAL);
+  test_assert(-1 == prctl(PR_GET_FPEMU) && errno == EINVAL);
+  test_assert(-1 == prctl(PR_GET_FPEXC) && errno == EINVAL);
+
+  test_assert(0 == prctl(PR_GET_PDEATHSIG, (unsigned long)&sig));
+  test_assert(sig == 0);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

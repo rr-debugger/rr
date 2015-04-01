@@ -1980,6 +1980,13 @@ static void set_up_process(Session& session) {
     // This task and all its descendants should silently reap any terminating
     // children.
     signal(SIGCHLD, SIG_IGN);
+    // If the rr process dies, prevent runaway tracee processes
+    // from dragging down the underlying system.
+    //
+    // TODO: this isn't inherited across fork().
+    if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
+      FATAL() << "Couldn't set parent-death signal";
+    }
   }
 
   /* Disable address space layout randomization, for obvious
@@ -1999,13 +2006,6 @@ static void set_up_process(Session& session) {
    * deterministically. */
   if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
     FATAL() << "error setting up prctl";
-  }
-  // If the rr process dies, prevent runaway tracee processes
-  // from dragging down the underlying system.
-  //
-  // TODO: this isn't inherited across fork().
-  if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
-    FATAL() << "Couldn't set parent-death signal";
   }
 
   if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
