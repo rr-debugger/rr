@@ -930,6 +930,9 @@ void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
 
 static bool treat_signal_event_as_deterministic(Task* t,
                                                 const SignalEvent& ev) {
+  if (ev.deterministic == NONDETERMINISTIC_SIG) {
+    return false;
+  }
   if (ev.siginfo.si_signo != SIGSEGV) {
     return true;
   }
@@ -1506,14 +1509,12 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_SIGNAL:
-      current_step.signo = ev.Signal().siginfo.si_signo;
-      current_step.action =
-          ev.Signal().deterministic == DETERMINISTIC_SIG &&
-                  treat_signal_event_as_deterministic(t, ev.Signal())
-              ? TSTEP_DETERMINISTIC_SIGNAL
-              : TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
-      if (TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT == current_step.action) {
-        current_step.target.signo = current_step.signo;
+      if (treat_signal_event_as_deterministic(t, ev.Signal())) {
+        current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
+        current_step.signo = ev.Signal().siginfo.si_signo;
+      } else {
+        current_step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
+        current_step.target.signo = ev.Signal().siginfo.si_signo;
         current_step.target.ticks = trace_frame.ticks();
       }
       break;
