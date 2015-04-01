@@ -5,8 +5,9 @@
 int main(int argc, char* argv[]) {
   char setname[16] = "prctl-test";
   char getname[16];
-  unsigned long slack = sizeof(unsigned long) == 4 ? 1024*1024*1024 :
-    (unsigned long)(1024LL*1024*1024*8);
+  unsigned long slack = sizeof(unsigned long) == 4
+                            ? 1024 * 1024 * 1024
+                            : (unsigned long)(1024LL * 1024 * 1024 * 8);
 
   test_assert(0 == prctl(PR_SET_NAME, setname));
   test_assert(0 == prctl(PR_GET_NAME, getname));
@@ -25,6 +26,10 @@ int main(int argc, char* argv[]) {
   test_assert(0 == prctl(PR_SET_TIMERSLACK, slack));
   /* prctl coerces its result to int */
   test_assert((int)slack == prctl(PR_GET_TIMERSLACK));
+
+  test_assert(0 ==
+              prctl(PR_MCE_KILL, PR_MCE_KILL_SET, PR_MCE_KILL_EARLY, 0, 0));
+  test_assert(PR_MCE_KILL_EARLY == prctl(PR_MCE_KILL_GET, 0, 0, 0, 0));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

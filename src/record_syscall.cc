@@ -2021,6 +2021,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case PR_GET_NO_NEW_PRIVS:
         case PR_GET_TIMERSLACK:
         case PR_SET_TIMERSLACK:
+        case PR_MCE_KILL_GET:
+        case PR_MCE_KILL:
           break;
 
         case PR_SET_DUMPABLE:
