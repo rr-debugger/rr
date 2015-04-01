@@ -175,6 +175,11 @@ static GdbThreadId get_threadid(Task* t) {
   return thread;
 }
 
+static bool matches_threadid(Task* t, const GdbThreadId& target) {
+  return (!target.pid || target.pid == t->tgid()) &&
+      (!target.tid || target.tid == t->rec_tid);
+}
+
 static WatchType watchpoint_type(GdbRequestType req) {
   switch (req) {
     case DREQ_SET_HW_BREAK:
@@ -533,8 +538,12 @@ Task* GdbServer::diverter_process_debugger_requests(
         continue;
       }
       case DREQ_SET_QUERY_THREAD: {
-        Task* next_task = t->session().find_task(req->target.tid);
-        t = next_task ? next_task : t;
+        if (req->target.tid) {
+          Task* next = t->session().find_task(req->target.tid);
+          if (next) {
+            t = next;
+          }
+        }
         break;
       }
       case DREQ_WRITE_SIGINFO:
@@ -627,7 +636,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
     }
 
     RunCommand command =
-        (DREQ_STEP == req.type && get_threadid(t) == req.target)
+        (DREQ_STEP == req.type && matches_threadid(t, req.target))
             ? RUN_SINGLESTEP
             : RUN_CONTINUE;
     auto result = diversion_session->diversion_step(t, command);
@@ -718,7 +727,7 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
   bool need_seek = false;
 
   while (req.type == DREQ_STEP && req.run_direction == RUN_BACKWARD &&
-         get_threadid(t) == req.target && !req.suppress_debugger_stop &&
+         matches_threadid(t, req.target) && !req.suppress_debugger_stop &&
          debugger_active) {
     if (!now) {
       now = timeline.mark();
@@ -768,7 +777,7 @@ ReplayStatus GdbServer::replay_one_step() {
     suppress_debugger_stop = req.suppress_debugger_stop;
     assert(req.is_resume_request());
     RunCommand command =
-        (DREQ_STEP == req.type && get_threadid(t) == req.target)
+        (DREQ_STEP == req.type && matches_threadid(t, req.target))
             ? RUN_SINGLESTEP
             : RUN_CONTINUE;
     result = timeline.replay_step(
