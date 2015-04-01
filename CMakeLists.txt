@@ -319,7 +319,7 @@ set(BASIC_TESTS
   intr_sleep_no_restart
   invalid_fcntl
   io
-  legacy-ugid
+  legacy_ugid
   madvise
   map_fixed
   mincore
