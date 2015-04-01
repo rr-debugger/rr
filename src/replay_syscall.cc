@@ -1047,13 +1047,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::execve:
       return process_execve<Arch>(t, trace_frame, state, step);
 
-    case Arch::exit:
-    case Arch::exit_group:
-      step->syscall.emu = EXEC;
-      assert(state == SYSCALL_ENTRY);
-      step->action = TSTEP_ENTER_SYSCALL;
-      return;
-
     case Arch::futex:
       return process_futex(t, trace_frame, state, step);
 

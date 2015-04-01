@@ -896,7 +896,10 @@ Completion ReplaySession::emulate_signal_delivery(
   } else if (possibly_destabilizing_signal(t, sig, deterministic)) {
     t->push_event(SignalEvent(sig, deterministic, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
-    t->destabilize_task_group();
+    t->notify_fatal_signal();
+    // Note that the fatal signal is not actually injected into the task!
+    // This is very important; we must never actually inject fatal signals
+    // into a task. All replay task death must go through exit_task.
     t->pop_signal_delivery();
   }
   /* If this signal had a user handler, and we just set up the
@@ -1375,6 +1378,47 @@ Completion ReplaySession::try_one_trace_step(
 }
 
 /**
+ * Task death during replay always goes through here (except for
+ * Session::kill_all_tasks when we forcibly kill all tasks in the session at
+ * once). |exit| and |exit_group| syscalls are both emulated so the real
+ * task doesn't die until we reach the EXIT/UNSTABLE_EXIT events in the trace.
+ * This ensures the real tasks are alive and available as long as our Task
+ * object exists, which simplifies code like Session cloning.
+ *
+ * Killing tasks with fatal signals doesn't work because a fatal signal will
+ * try to kill all the tasks in the task group. Instead we inject an |exit|
+ * syscall, which is apparently the only way to kill one specific thread.
+ */
+static void exit_task(Task* t) {
+  if (t->is_probably_replaying_syscall()) {
+    // Super-simplified version of Task::finish_emulated_syscall. We're not
+    // going to continue with this task so we don't care about idempotent
+    // instructions.
+    // Apparently an emulated |exit| syscall actually triggers a real exit,
+    // so this could deliver us a PTRACE_EVENT_EXIT.
+    t->cont_sysemu_singlestep();
+  }
+
+  if (t->ptrace_event() != PTRACE_EVENT_EXIT) {
+    Registers r = t->regs();
+    r.set_ip(t->vm()->traced_syscall_ip());
+    r.set_syscallno(syscall_number_for_exit(t->arch()));
+    t->set_regs(r);
+    // Enter the syscall.
+    t->cont_syscall();
+    ASSERT(t, t->pending_sig() == 0);
+
+    do {
+      // Singlestep to collect the PTRACE_EVENT_EXIT event.
+      t->cont_singlestep();
+    } while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
+  }
+
+  ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
+  delete t;
+}
+
+/**
  * Set up rep_trace_step state in t's Session to start replaying towards
  * the event given by the session's current_trace_frame --- but only if
  * it's not already set up.
@@ -1406,8 +1450,6 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
 
   switch (ev.type()) {
     case EV_UNSTABLE_EXIT:
-      t->unstable = true;
-    /* fall through */
     case EV_EXIT: {
       if (tasks().size() == 1) {
         LOG(debug) << "last interesting task is " << t->rec_tid << " ("
@@ -1416,30 +1458,9 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
         return;
       }
 
-      /* If the task was killed by a terminating signal,
-       * then it may have ended abruptly in a syscall or at
-       * some other random execution point.  That's bad for
-       * replay, because we detach from the task after we
-       * replay its "exit".  Since we emulate signal
-       * delivery, the task may happily carry on with
-       * (non-emulated!) execution after we detach.  That
-       * execution might include things like |rm -rf ~|.
-       *
-       * To ensure that the task really dies, we send it a
-       * terminating signal here.  One would like to use
-       * SIGKILL, but for not-understood reasons that causes
-       * shutdown hangs when joining the exited tracee.
-       * Other terminating signals have not been observed to
-       * hang, so that's what's used here.. */
-      while (!t->seen_ptrace_exit_event && !t->unstable) {
-        t->tgkill(SIGABRT);
-        t->resume_execution(RESUME_CONT, RESUME_WAIT, SIGABRT, 0);
-        if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
-          break;
-        }
-      }
-      delete t;
-      /* Early-return because |t| is gone now. */
+      ASSERT(t, !t->seen_ptrace_exit_event);
+      exit_task(t);
+      /* |t| is dead now. */
       gc_emufs();
       return;
     }

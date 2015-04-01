@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+
+record $TESTNAME
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+
+echo Targeting recorded pid $TARGET_PID ...
+debug checkpoint_dying_threads "-f $TARGET_PID"

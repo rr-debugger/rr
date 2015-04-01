@@ -127,7 +127,7 @@ class IrregularMayExecSyscall(IrregularSyscall):
 #
 # The exit() function causes normal process termination and the value
 # of status & 0377 is returned to the parent (see wait(2)).
-exit = IrregularMayExecSyscall(x86=1, x64=60)
+exit = IrregularEmulatedSyscall(x86=1, x64=60)
 
 # Obsolete, glibc calls clone() instead.
 # But Google Breakpad uses it!
@@ -1263,7 +1263,7 @@ fadvise64 = EmulatedSyscall(x86=250, x64=221)
 # This system call is equivalent to exit(2) except that it terminates
 # not only the calling thread, but all threads in the calling
 # process's thread group.
-exit_group = IrregularMayExecSyscall(x86=252, x64=231)
+exit_group = IrregularEmulatedSyscall(x86=252, x64=231)
 
 lookup_dcookie = UnsupportedSyscall(x86=253, x64=212)
 

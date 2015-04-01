@@ -408,7 +408,7 @@ const struct syscallbuf_record* Task::desched_rec() const {
               : (EV_DESCHED == ev().type()) ? ev().Desched().rec : nullptr);
 }
 
-void Task::destabilize_task_group() {
+void Task::notify_fatal_signal() {
   // Only print this helper warning if there's (probably) a
   // human around to see it.  This is done to avoid polluting
   // output from tests.
@@ -426,6 +426,10 @@ void Task::destabilize_task_group() {
         trace_time() + signal_delivery_event_offset, rec_tid, tgid(),
         signal_name(ev().Signal().siginfo.si_signo));
   }
+}
+
+void Task::destabilize_task_group() {
+  notify_fatal_signal();
 
   tg->destabilize();
 }
