@@ -959,6 +959,8 @@ public:
    */
   int pending_sig() const { return pending_sig_from_status(wait_status); }
 
+  void clear_wait_status() { wait_status = 0; }
+
   /** Return the task group this belongs to. */
   TaskGroup::shr_ptr task_group() { return tg; }
 

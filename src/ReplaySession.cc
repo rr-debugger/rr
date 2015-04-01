@@ -1327,6 +1327,8 @@ Completion ReplaySession::advance_to_ticks_target(
   while (true) {
     Ticks ticks_left = constraints.ticks_target - t->tick_count();
     if (ticks_left <= SKID_SIZE) {
+      // Behave as if we actually executed something. Callers assume we did.
+      t->clear_wait_status();
       return INCOMPLETE;
     }
     continue_or_step(t, constraints, ticks_left - SKID_SIZE);
