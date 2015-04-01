@@ -767,7 +767,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
            * awkward to assert that here, so we
            * don't yet.  TODO. */
           LOG(debug) << "    (SIGTRAP; stepi'd target $ip)";
-          assert(constraints.command == RUN_CONTINUE);
           t->child_sig = 0;
           break;
       }
@@ -1555,8 +1554,8 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       } else {
         advance_to_next_trace_frame(constraints.stop_at_time);
       }
-      return result;
     }
+    return result;
   }
 
   did_fast_forward = false;

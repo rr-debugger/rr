@@ -368,6 +368,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
     result = current->replay_step(constraints);
   } else {
     Task* t = current->current_task();
+    ASSERT(t, current->trace_reader().time() == mark.ptr->key.trace_time);
+
     remote_ptr<uint8_t> mark_addr = mark.ptr->regs.ip();
     if (t->regs().ip() == mark_addr &&
         current->current_step_key().in_execution()) {

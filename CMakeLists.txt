@@ -539,6 +539,7 @@ set(TESTS_WITHOUT_PROGRAM
   remove_watchpoint
   restart_unstable
   restart_diversion
+  reverse_alarm
   reverse_finish
   reverse_step_breakpoint
   reverse_step_signal
