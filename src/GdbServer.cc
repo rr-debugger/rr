@@ -177,7 +177,7 @@ static GdbThreadId get_threadid(Task* t) {
 
 static bool matches_threadid(Task* t, const GdbThreadId& target) {
   return (!target.pid || target.pid == t->tgid()) &&
-      (!target.tid || target.tid == t->rec_tid);
+         (!target.tid || target.tid == t->rec_tid);
 }
 
 static WatchType watchpoint_type(GdbRequestType req) {

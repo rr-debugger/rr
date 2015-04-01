@@ -319,6 +319,8 @@ private:
   std::shared_ptr<InternalMark> current_mark();
   void remove_mark_with_checkpoint(const MarkKey& key);
   void seek_to_before_key(const MarkKey& key);
+  // Take a single replay step towards |mark|. Stop before or at |mark|, and
+  // stop if any breakpoint/watchpoint/signal is hit.
   ReplayResult replay_step_to_mark(const Mark& mark);
   ReplayResult singlestep_with_breakpoints_disabled();
   void fix_watchpoint_coalescing_quirk(ReplayResult& result,

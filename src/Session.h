@@ -51,6 +51,11 @@ struct BreakStatus {
   // True when we stopped because we got too close to the specified ticks
   // target.
   bool approaching_ticks_target;
+
+  bool any_break() {
+    return !watchpoints_hit.empty() || signal || breakpoint_hit ||
+           singlestep_complete || approaching_ticks_target;
+  }
 };
 enum RunCommand {
   // Continue until we hit a breakpoint or a new replay event

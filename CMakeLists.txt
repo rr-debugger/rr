@@ -447,6 +447,7 @@ set(TESTS_WITH_PROGRAM
   async_signal_syscalls_siginfo
   async_usr1
   block_intr_sigchld
+  blocked_bad_ip
   breakpoint
   breakpoint_overlap
   call_function

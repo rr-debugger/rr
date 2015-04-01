@@ -361,44 +361,80 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
 }
 
 ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
+  ProtoMark before = proto_mark();
   ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->key.trace_time) {
+    // Easy case: each RUN_CONTINUE can only advance by at most one
+    // trace event, so do one.
     ReplaySession::StepConstraints constraints(RUN_CONTINUE);
     constraints.stop_at_time = mark.ptr->key.trace_time;
     result = current->replay_step(constraints);
-  } else {
-    Task* t = current->current_task();
-    ASSERT(t, current->trace_reader().time() == mark.ptr->key.trace_time);
-
-    remote_ptr<uint8_t> mark_addr = mark.ptr->regs.ip();
-    if (t->regs().ip() == mark_addr &&
-        current->current_step_key().in_execution()) {
-      // At required IP, but not in the correct state. Singlestep over
-      // this IP.
-      ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
-      constraints.stop_before_states.push_back(&mark.ptr->regs);
-      result = current->replay_step(constraints);
-      // Hide internal singlestep but preserve other break statuses
-      result.break_status.singlestep_complete = false;
-    } else {
-      ProtoMark before = proto_mark();
-      {
-        // Get a shared reference to t->vm() in case t dies during replay_step
-        shared_ptr<AddressSpace> vm = t->vm();
-        vm->add_breakpoint(mark_addr, TRAP_BKPT_USER);
-        result = current->replay_step(RUN_CONTINUE);
-        vm->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
-      }
-      // If we hit our breakpoint and there is no client breakpoint there,
-      // pretend we didn't hit it.
-      if (result.break_status.breakpoint_hit &&
-          breakpoints.count(make_pair(result.break_status.task->vm()->uid(),
-                                      result.break_status.task->ip())) == 0) {
-        result.break_status.breakpoint_hit = false;
-      }
-      fix_watchpoint_coalescing_quirk(result, before);
-    }
+    fix_watchpoint_coalescing_quirk(result, before);
+    return result;
   }
+
+  Task* t = current->current_task();
+  ASSERT(t, current->trace_reader().time() == mark.ptr->key.trace_time);
+  // t must remain valid through here since t can only die when we complete
+  // an event, and we're not going to complete another event before
+  // reaching the mark ... apart from where we call
+  // fix_watchpoint_coalescing_quirk.
+
+  if (t->tick_count() < mark.ptr->key.ticks) {
+    // Try to make progress by just continuing with a ticks constraint
+    // set to stop us before the mark. This is efficient in the worst case,
+    // when we must execute lots of instructions to reach the mark.
+    ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+    constraints.ticks_target = mark.ptr->key.ticks - 1;
+    result = current->replay_step(constraints);
+    bool approaching_ticks_target =
+        result.break_status.approaching_ticks_target;
+    result.break_status.approaching_ticks_target = false;
+    // We can't be at the mark yet.
+    ASSERT(t, t->tick_count() < mark.ptr->key.ticks);
+    // If there's a break indicated, we should return that to the
+    // caller without doing any more work
+    if (!approaching_ticks_target || result.break_status.any_break()) {
+      fix_watchpoint_coalescing_quirk(result, before);
+      return result;
+    }
+    // We may not have made any progress so we'll need to try another strategy
+  }
+
+  remote_ptr<uint8_t> mark_addr = mark.ptr->regs.ip();
+
+  // Try adding a breakpoint at the required IP and running to it.
+  // We can't do this if we're currently at the IP, since we'd make no progress.
+  // Setting the breakpoint may fail; the mark address may be in invalid
+  // memory, e.g. because it's at the delivery of a SIGSEGV for a bad IP.
+  if (t->regs().ip() != mark_addr &&
+      t->vm()->add_breakpoint(mark_addr, TRAP_BKPT_USER)) {
+    result = current->replay_step(RUN_CONTINUE);
+    t->vm()->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
+    // If we hit our breakpoint and there is no client breakpoint there,
+    // pretend we didn't hit it.
+    if (result.break_status.breakpoint_hit &&
+        breakpoints.count(make_pair(result.break_status.task->vm()->uid(),
+                                    result.break_status.task->ip())) == 0) {
+      result.break_status.breakpoint_hit = false;
+    }
+    fix_watchpoint_coalescing_quirk(result, before);
+    return result;
+  }
+
+  // At required IP, but not in the correct state. Singlestep over this IP.
+  // We need the FAST_FORWARD option in case the mark state occurs after
+  // many iterations of a string instruction at this address.
+  ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
+  // We don't want to fast-forward past the mark state, so give the mark
+  // state as a state we should stop before. FAST_FORWARD always does at
+  // least one singlestep so one call to replay_step_to_mark will fast-forward
+  // to the state before the mark and return, then the next call to
+  // replay_step_to_mark will singlestep into the mark state.
+  constraints.stop_before_states.push_back(&mark.ptr->regs);
+  result = current->replay_step(constraints);
+  // Hide internal singlestep but preserve other break statuses
+  result.break_status.singlestep_complete = false;
   return result;
 }
 
@@ -450,7 +486,7 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
  * single-step.
  * This function is called after doing a ReplaySession::replay_step with
  * command == RUN_CONTINUE. RUN_SINGLESTEP and RUN_SINGLESTEP_FAST_FORWARD
- * disable this coalescing (the latter, because it's aware of watchpoings
+ * disable this coalescing (the latter, because it's aware of watchpoints
  * and single-steps when it gets too close to them).
  * |before| is the state before we did the replay_step.
  * If a watchpoint fired, and it looks like it could have fired during a
