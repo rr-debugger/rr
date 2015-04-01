@@ -688,6 +688,8 @@ if(NOT N EQUAL 0)
 endif()
 
 add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} --verbose ${JFLAG})
+# Run only syscallbuf-enabled and native-bitness tests
+add_custom_target(fastcheck COMMAND ${CMAKE_CTEST_COMMAND} ---verbose --exclude-regex '[-]' ${JFLAG})
 
 ##--------------------------------------------------
 ## Package configuration
