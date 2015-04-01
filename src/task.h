@@ -1477,6 +1477,9 @@ private:
   // True when we know via waitpid() that the task is stopped and we haven't
   // resumed it.
   bool is_stopped;
+  // True when there was a breakpoint set at the location where we resumed
+  // execution
+  bool breakpoint_set_where_execution_resumed;
   // When |extra_registers_known|, we have saved our extra registers.
   ExtraRegisters extra_registers;
   bool extra_registers_known;

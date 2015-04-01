@@ -1371,6 +1371,8 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   // Accumulate any unknown stuff in tick_count().
   hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
+  breakpoint_set_where_execution_resumed =
+      vm()->get_breakpoint_type_at_addr(ip()) != TRAP_NONE;
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   is_stopped = false;
   extra_registers_known = false;
@@ -1871,6 +1873,7 @@ static bool is_in_non_sigreturn_exit_syscall(Task* t) {
 
 void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   LOG(debug) << "  (refreshing register cache)";
+  intptr_t original_syscallno = registers.original_syscallno();
   // Skip reading registers immediately after a PTRACE_EVENT_EXEC, since
   // we may not know the correct architecture.
   if (ptrace_event() != PTRACE_EVENT_EXEC) {
@@ -1900,6 +1903,18 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   ticks += more_ticks;
   session().accumulate_ticks_processed(more_ticks);
 
+  bool need_to_set_regs = registers.clear_singlestep_flag();
+  if (breakpoint_set_where_execution_resumed && pending_sig() == SIGTRAP &&
+      !ptrace_event()) {
+    ASSERT(this, more_ticks == 0);
+    // When we resume execution and immediately hit a breakpoint, the original
+    // syscall number can be reset to -1. Undo that, so that the register
+    // state matches the state we'd be in if we hadn't resumed. ReplayTimeline
+    // depends on resume-at-a-breakpoint being a noop.
+    registers.set_original_syscallno(original_syscallno);
+    need_to_set_regs = true;
+  }
+
   if (registers.arch() == x86_64 &&
       (is_in_non_sigreturn_exit_syscall(this) || is_in_untraced_syscall())) {
     // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
@@ -1923,9 +1938,9 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     // sigreturn syscall, since it will restore the original RCX and we don't
     // want to clobber that.
     registers.set_cx((intptr_t) - 1);
-    set_regs(registers);
+    need_to_set_regs = true;
   }
-  if (registers.clear_singlestep_flag()) {
+  if (need_to_set_regs) {
     set_regs(registers);
   }
 }
