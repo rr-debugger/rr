@@ -2012,11 +2012,15 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case PR_GET_ENDIAN:
         case PR_GET_FPEMU:
         case PR_GET_FPEXC:
-        case PR_GET_NO_NEW_PRIVS:
         case PR_GET_PDEATHSIG:
         case PR_GET_TSC:
         case PR_GET_UNALIGN:
           syscall_state.reg_parameter<int>(2);
+          break;
+
+        case PR_GET_NO_NEW_PRIVS:
+        case PR_GET_TIMERSLACK:
+        case PR_SET_TIMERSLACK:
           break;
 
         case PR_SET_DUMPABLE:
