@@ -348,6 +348,7 @@ set(BASIC_TESTS
   perf_event
   poll_sig_race
   prctl
+  prctl_deathsig
   prctl_name
   prw
   pthread_condvar_locking
