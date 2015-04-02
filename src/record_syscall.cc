@@ -2013,7 +2013,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case PR_GET_FPEMU:
         case PR_GET_FPEXC:
         case PR_GET_PDEATHSIG:
-        case PR_GET_TSC:
         case PR_GET_UNALIGN:
           syscall_state.reg_parameter<int>(2);
           break;
@@ -2042,6 +2041,17 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case PR_GET_DUMPABLE:
           syscall_state.emulate_result(t->task_group()->dumpable);
           break;
+
+        case PR_GET_TSC: {
+          // Prevent the actual GET_TSC call. We force-return PR_TSC_ENABLE.
+          Registers r = t->regs();
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          syscall_state.emulate_result(0);
+          t->write_mem(syscall_state.reg_parameter<int>(2, IN_OUT_NO_SCRATCH),
+                       PR_TSC_ENABLE);
+          break;
+        }
 
         case PR_GET_NAME:
           syscall_state.reg_parameter(2, 16);

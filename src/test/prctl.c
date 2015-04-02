@@ -9,6 +9,7 @@ int main(int argc, char* argv[]) {
                             ? 1024 * 1024 * 1024
                             : (unsigned long)(1024LL * 1024 * 1024 * 8);
   int sig = 99;
+  int tsc = 99;
 
   test_assert(0 == prctl(PR_SET_NAME, setname));
   test_assert(0 == prctl(PR_GET_NAME, getname));
@@ -38,6 +39,9 @@ int main(int argc, char* argv[]) {
 
   test_assert(0 == prctl(PR_GET_PDEATHSIG, (unsigned long)&sig));
   test_assert(sig == 0);
+
+  test_assert(0 == prctl(PR_GET_TSC, (unsigned long)&tsc));
+  test_assert(tsc == PR_TSC_ENABLE);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
