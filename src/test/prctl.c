@@ -36,6 +36,7 @@ int main(int argc, char* argv[]) {
   test_assert(-1 == prctl(PR_GET_ENDIAN) && errno == EINVAL);
   test_assert(-1 == prctl(PR_GET_FPEMU) && errno == EINVAL);
   test_assert(-1 == prctl(PR_GET_FPEXC) && errno == EINVAL);
+  test_assert(-1 == prctl(PR_GET_UNALIGN) && errno == EINVAL);
 
   test_assert(0 == prctl(PR_GET_PDEATHSIG, (unsigned long)&sig));
   test_assert(sig == 0);
