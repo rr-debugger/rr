@@ -138,7 +138,7 @@ foreach(generated_file ${GENERATED_FILES})
   set_source_files_properties(${generated_file}
                               PROPERTIES GENERATED true HEADER_FILE_ONLY true)
   add_custom_command(OUTPUT ${generated_file}
-                     COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
+                     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
 		               "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
 		     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
 		       "${CMAKE_CURRENT_SOURCE_DIR}/src/syscalls.py"
