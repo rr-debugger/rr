@@ -23,6 +23,7 @@
 #include <linux/sockios.h>
 #include <linux/videodev2.h>
 #include <linux/wireless.h>
+#include <linux/msdos_fs.h>
 #include <poll.h>
 #include <sched.h>
 #include <sys/epoll.h>
@@ -61,7 +62,6 @@
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"
-
 using namespace std;
 using namespace rr;
 
@@ -1196,6 +1196,7 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
     case IOCTL_MASK_SIZE(VIDIOC_QBUF) :
     case IOCTL_MASK_SIZE(VIDIOC_G_CTRL) :
     case IOCTL_MASK_SIZE(VIDIOC_S_CTRL) :
+    case IOCTL_MASK_SIZE(VFAT_IOCTL_READDIR_BOTH) :
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
 
