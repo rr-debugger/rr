@@ -371,10 +371,6 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
     LOG(debug) << "  forking tg " << group_leader->tgid()
                << " (real: " << group_leader->real_tgid() << ")";
 
-    if (group_leader->is_probably_replaying_syscall()) {
-      group_leader->finish_emulated_syscall();
-    }
-
     completion->task_groups.push_back(CloneCompletion::TaskGroup());
     auto& group = completion->task_groups.back();
 
@@ -398,10 +394,6 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
           continue;
         }
         LOG(debug) << "    cloning " << t->rec_tid;
-
-        if (t->is_probably_replaying_syscall()) {
-          t->finish_emulated_syscall();
-        }
 
         group.member_states.push_back(t->capture_state());
       }

@@ -245,12 +245,6 @@ public:
    * |cont_sysemu()| or |cont_sysemu_singlestep()|, but that's
    * not checked.  If so, step over the system call instruction
    * to "exit" the emulated syscall.
-   *
-   * This operation is (assumed to be) idempotent:
-   * |finish_emulated_syscall()| can be called any number of
-   * times without changing state other than
-   * emulated-syscall-exited-ness.  Checkpointing relies on this
-   * assumption.
    */
   void finish_emulated_syscall();
 

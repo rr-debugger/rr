@@ -745,9 +745,8 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
     step->syscall.emu = EMULATE;
     return;
   }
-  /* Successful mmap calls are much more interesting to process.
-   * First we advance to the emulated syscall exit. */
-  t->finish_emulated_syscall();
+
+  /* Successful mmap calls are much more interesting to process. */
   {
     // Next we hand off actual execution of the mapping to the
     // appropriate helper.
@@ -796,7 +795,6 @@ static void process_shmat(Task* t, const TraceFrame& trace_frame,
     step->syscall.emu = EMULATE;
     return;
   }
-  t->finish_emulated_syscall();
 
   {
     AutoRemoteSyscalls remote(t);
@@ -831,7 +829,6 @@ static void process_shmdt(Task* t, const TraceFrame& trace_frame,
     step->syscall.emu = EMULATE;
     return;
   }
-  t->finish_emulated_syscall();
 
   {
     AutoRemoteSyscalls remote(t);
@@ -860,7 +857,6 @@ static void process_init_buffers(Task* t, SyscallEntryOrExit state,
   step->action = TSTEP_RETIRE;
 
   /* Proceed to syscall exit so we can run our own syscalls. */
-  t->finish_emulated_syscall();
   remote_ptr<void> rec_child_map_addr =
       t->current_trace_frame().regs().syscall_result();
 
@@ -879,18 +875,15 @@ template <typename Arch>
 static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
   switch (syscallno) {
     case Arch::exit:
-      destroy_buffers(t);
-      return;
+      t->destroy_buffers();
+      break;
 
     case Arch::write:
     case Arch::writev: {
       int fd = (int)t->regs().arg1_signed();
       t->fd_table()->will_write(t, fd);
-      return;
+      break;
     }
-
-    default:
-      return;
   }
 }
 
@@ -1102,16 +1095,19 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::prctl: {
       step->action = syscall_action(state);
+      step->syscall.emu = EMULATE;
       if (TSTEP_EXIT_SYSCALL == step->action) {
         switch ((int)trace_regs.arg1_signed()) {
           case PR_SET_NAME: {
             remote_ptr<void> arg2 = trace_regs.arg2();
             t->update_prname(arg2);
-            step->syscall.emu = EXEC;
+            AutoRemoteSyscalls remote(t);
+            remote.syscall(syscall_number_for_prctl(t->arch()),
+                PR_SET_NAME, arg2);
             return;
           }
           case PR_SET_SECCOMP:
-            // If this is rr installing its own seccomp filter, just emulate
+            // If this is rr installing its own seccomp filter, don't do
             // that since during replay we want to see ptrace events for the
             // syscalls that filter suppresses ptrace events for.
             if (t->session().can_validate()) {
@@ -1119,13 +1115,14 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
               // execute this, because the filter may have effects like
               // causing syscalls to fail without triggering any ptrace
               // events.
-              step->syscall.emu = EXEC;
+              AutoRemoteSyscalls remote(t);
+              remote.syscall(syscall_number_for_prctl(t->arch()),
+                  PR_SET_SECCOMP, trace_regs.arg2(), trace_regs.arg3());
               return;
             }
             break;
         }
       }
-      step->syscall.emu = EMULATE;
       return;
     }
 
@@ -1144,7 +1141,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         step->action = TSTEP_ENTER_SYSCALL;
         return;
       }
-      t->finish_emulated_syscall();
       t->set_regs(trace_regs);
       t->set_extra_regs(trace_frame.extra_regs());
       step->action = TSTEP_RETIRE;
@@ -1174,7 +1170,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       /* Proceed to syscall exit so we can run our own syscalls. */
       t->set_return_value_from_trace();
       t->validate_regs();
-      t->finish_emulated_syscall();
       t->at_preload_init();
       step->action = TSTEP_RETIRE;
       return;

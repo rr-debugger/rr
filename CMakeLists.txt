@@ -453,6 +453,7 @@ set(TESTS_WITH_PROGRAM
   breakpoint_overlap
   call_function
   checkpoint_dying_threads
+  clone_interruption
   conditional_breakpoint_calls
   condvar_stress
   crash

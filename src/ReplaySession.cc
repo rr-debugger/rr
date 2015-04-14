@@ -330,6 +330,10 @@ Completion ReplaySession::enter_syscall(Task* t,
     return INCOMPLETE;
   }
   t->validate_regs();
+  if (current_step.syscall.emu == EMULATE) {
+    // boot it out of the syscall now.
+    t->finish_emulated_syscall();
+  }
   return COMPLETE;
 }
 
@@ -359,10 +363,6 @@ Completion ReplaySession::exit_syscall(Task* t,
     flags |= Task::IGNORE_ESI;
   }
   t->validate_regs(flags);
-
-  if (emu == EMULATE) {
-    t->finish_emulated_syscall();
-  }
 
   return COMPLETE;
 }
@@ -1029,6 +1029,7 @@ Completion ReplaySession::skip_desched_ioctl(
                                        t->regs().original_syscallno()) << "("
                                 << t->regs().arg1() << ", " << t->regs().arg2()
                                 << ") instead";
+  t->finish_emulated_syscall();
   /* Emulate a return value of "0".  It's OK for us to hard-code
    * that value here, because the syscallbuf lib aborts if a
    * desched ioctl returns non-zero (it doesn't know how to
@@ -1036,7 +1037,6 @@ Completion ReplaySession::skip_desched_ioctl(
   Registers r = t->regs();
   r.set_syscall_result(0);
   t->set_regs(r);
-  t->finish_emulated_syscall();
   return COMPLETE;
 }
 
@@ -1211,12 +1211,12 @@ Completion ReplaySession::flush_one_syscall(
         }
         assert_at_buffered_syscall(t, call);
       }
-      Registers r = t->regs();
-      r.set_syscall_result(rec_rec->ret);
-      t->set_regs(r);
       if (emu == EMULATE) {
         t->finish_emulated_syscall();
       }
+      Registers r = t->regs();
+      r.set_syscall_result(rec_rec->ret);
+      t->set_regs(r);
 
       if (is_futex_syscall(call, t->arch())) {
         restore_futex_words(t, rec_rec);

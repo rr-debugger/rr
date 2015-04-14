@@ -25,10 +25,10 @@ DiversionSession::~DiversionSession() {
 }
 
 static void finish_emulated_syscall_with_ret(Task* t, long ret) {
+  t->finish_emulated_syscall();
   Registers r = t->regs();
   r.set_syscall_result(ret);
   t->set_regs(r);
-  t->finish_emulated_syscall();
 }
 
 /**
