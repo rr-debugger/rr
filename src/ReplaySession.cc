@@ -1398,25 +1398,23 @@ static void exit_task(Task* t) {
     // Super-simplified version of Task::finish_emulated_syscall. We're not
     // going to continue with this task so we don't care about idempotent
     // instructions.
-    // Apparently an emulated |exit| syscall actually triggers a real exit,
-    // so this could deliver us a PTRACE_EVENT_EXIT.
     t->cont_sysemu_singlestep();
   }
 
-  if (t->ptrace_event() != PTRACE_EVENT_EXIT) {
-    Registers r = t->regs();
-    r.set_ip(t->vm()->traced_syscall_ip());
-    r.set_syscallno(syscall_number_for_exit(t->arch()));
-    t->set_regs(r);
-    // Enter the syscall.
-    t->cont_syscall();
-    ASSERT(t, t->pending_sig() == 0);
+  ASSERT(t, t->ptrace_event() != PTRACE_EVENT_EXIT);
 
-    do {
-      // Singlestep to collect the PTRACE_EVENT_EXIT event.
-      t->cont_singlestep();
-    } while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
-  }
+  Registers r = t->regs();
+  r.set_ip(t->vm()->traced_syscall_ip());
+  r.set_syscallno(syscall_number_for_exit(t->arch()));
+  t->set_regs(r);
+  // Enter the syscall.
+  t->cont_syscall();
+  ASSERT(t, t->pending_sig() == 0);
+
+  do {
+    // Singlestep to collect the PTRACE_EVENT_EXIT event.
+    t->cont_singlestep();
+  } while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
 
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
   delete t;
