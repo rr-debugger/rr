@@ -604,60 +604,6 @@ void resize_shmem_segment(ScopedFd& fd, size_t num_bytes) {
   }
 }
 
-// TODO de-dup
-static void advance_syscall(Task* t) {
-  do {
-    t->cont_syscall();
-  } while (t->is_ptrace_seccomp_event() ||
-           ReplaySession::is_ignored_signal(t->pending_sig()));
-  assert(t->ptrace_event() == 0);
-}
-
-void destroy_buffers(Task* t) {
-  // NB: we have to pay all this complexity here because glibc
-  // makes its SYS_exit call through an inline int $0x80 insn,
-  // instead of going through the vdso.  There may be a deep
-  // reason for why it does that, but if it starts going through
-  // the vdso in the future, this code can be eliminated in
-  // favor of a *much* simpler vsyscall SYS_exit hook in the
-  // preload lib.
-  Registers exit_regs = t->regs();
-  ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(), t->arch()))
-      << "Tracee should have been at exit, but instead at "
-      << t->syscall_name(exit_regs.original_syscallno());
-
-  // The tracee is at the entry to SYS_exit, but hasn't started
-  // the call yet.  We can't directly start injecting syscalls
-  // because the tracee is still in the kernel.  And obviously,
-  // if we finish the SYS_exit syscall, the tracee isn't around
-  // anymore.
-  //
-  // So hijack this SYS_exit call and rewrite it into a harmless
-  // one that we can exit successfully, SYS_gettid here (though
-  // that choice is arbitrary).
-  exit_regs.set_original_syscallno(syscall_number_for_gettid(t->arch()));
-  t->set_regs(exit_regs);
-  // This exits the hijacked SYS_gettid.  Now the tracee is
-  // ready to do our bidding.
-  advance_syscall(t);
-
-  // Restore these regs to what they would have been just before
-  // the tracee trapped at SYS_exit.  When we've finished
-  // cleanup, we'll restart the SYS_exit call.
-  exit_regs.set_original_syscallno(-1);
-  exit_regs.set_syscallno(syscall_number_for_exit(t->arch()));
-  exit_regs.set_ip(exit_regs.ip() - syscall_instruction_length(t->arch()));
-  ASSERT(t, is_at_syscall_instruction(t, exit_regs.ip()))
-      << "Tracee should have entered through int $0x80.";
-
-  // Do the actual buffer and fd cleanup.
-  t->destroy_buffers();
-
-  // Restart the SYS_exit call.
-  t->set_regs(exit_regs);
-  advance_syscall(t);
-}
-
 void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
            unsigned int* d) {
   asm volatile("cpuid"

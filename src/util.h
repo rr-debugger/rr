@@ -173,15 +173,6 @@ ScopedFd create_shmem_segment(const std::string& name, size_t num_bytes);
  */
 void resize_shmem_segment(ScopedFd& fd, size_t num_bytes);
 
-/**
- * At thread exit time, undo the work that init_buffers() did.
- *
- * Call this when the tracee has already entered SYS_exit. The
- * tracee will be returned at a state in which it has entered (or
- * re-entered) SYS_exit.
- */
-void destroy_buffers(Task* t);
-
 enum cpuid_requests {
   CPUID_GETVENDORSTRING,
   CPUID_GETFEATURES,
