@@ -2330,6 +2330,9 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       }
       return PREVENT_SWITCH;
 
+    case Arch::unshare:
+      return PREVENT_SWITCH;
+
     case Arch::mmap:
     case Arch::mmap2:
     case Arch::rrcall_init_buffers:

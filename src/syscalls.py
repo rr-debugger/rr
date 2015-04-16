@@ -412,7 +412,7 @@ oldolduname = UnsupportedSyscall(x86=59)
 # used), and returns the previous value of the mask.
 umask = EmulatedSyscall(x86=60, x64=95)
 
-chroot = UnsupportedSyscall(x86=61, x64=161)
+chroot = EmulatedSyscall(x86=61, x64=161)
 ustat = UnsupportedSyscall(x86=62, x64=136)
 
 #  int dup2(int oldfd, int newfd)
@@ -1472,7 +1472,7 @@ pselect6 = IrregularEmulatedSyscall(x86=308, x64=270)
 
 ppoll = IrregularEmulatedSyscall(x86=309, x64=271)
 
-unshare = UnsupportedSyscall(x86=310, x64=272)
+unshare = IrregularEmulatedSyscall(x86=310, x64=272)
 
 #  long set_robust_list(struct robust_list_head *head, size_t len)
 #

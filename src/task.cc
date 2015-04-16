@@ -924,6 +924,13 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       fd_table()->did_close(regs.arg1());
       return;
 
+    case Arch::unshare:
+      if (regs.arg1() & CLONE_FILES) {
+        fds->erase_task(this);
+        fds = fds->clone(this);
+      }
+      return;
+
     case Arch::write: {
       int fd = (int)regs.arg1_signed();
       vector<FileMonitor::Range> ranges;

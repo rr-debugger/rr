@@ -420,6 +420,7 @@ set(BASIC_TESTS
   tty_ioctls
   uname
   unjoined_thread
+  unshare
   utimes
   vfork_flush
   video_capture
