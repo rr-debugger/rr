@@ -6,6 +6,7 @@
 
 #include "rr/rr.h"
 
+#include "kernel_metadata.h"
 #include "log.h"
 #include "Session.h"
 #include "task.h"
@@ -230,12 +231,13 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
   *cwd_fd = remote.syscall(syscall_number_for_open(Arch::arch()), remote_dot,
                            O_PATH | O_DIRECTORY);
   if (0 > *cwd_fd) {
-    FATAL() << "Failed to open() cwd in tracee; err=" << *cwd_fd;
+    FATAL() << "Failed to open() cwd in tracee; err=" << errno_name(-*cwd_fd);
   }
   int child_syscall_result =
       remote.syscall(Arch::fchdir, RR_RESERVED_ROOT_DIR_FD);
   if (0 > child_syscall_result) {
-    FATAL() << "Failed to fchdir() in tracee; err=" << child_syscall_result;
+    FATAL() << "Failed to fchdir() in tracee; err="
+            << errno_name(-child_syscall_result);
   }
 
   auto remote_addr = allocate<typename Arch::sockaddr_un>(&buf_end, remote_buf);
@@ -264,11 +266,12 @@ static void child_restore_cwd(AutoRemoteSyscalls& remote, int cwd_fd) {
   int child_syscall_result = remote.syscall(Arch::fchdir, cwd_fd);
   if (0 > child_syscall_result) {
     FATAL() << "Failed to fchdir() to old cwd in tracee; err="
-            << child_syscall_result;
+            << errno_name(-child_syscall_result);
   }
   child_syscall_result = remote.syscall(Arch::close, cwd_fd);
   if (0 > child_syscall_result) {
-    FATAL() << "Failed to close() cwd in tracee; err=" << child_syscall_result;
+    FATAL() << "Failed to close() cwd in tracee; err="
+            << errno_name(-child_syscall_result);
   }
 }
 
@@ -390,7 +393,8 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   // Complete child's connect() syscall
   int child_syscall_result = wait_syscall();
   if (child_syscall_result) {
-    FATAL() << "Failed to connect() in tracee; err=" << child_syscall_result;
+    FATAL() << "Failed to connect() in tracee; err="
+            << errno_name(-child_syscall_result);
   }
   child_restore_cwd<Arch>(*this, cwd_fd);
 
@@ -400,14 +404,16 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   child_sendmsg(*this, remote_buf, sc_args, sc_args_end, child_sock, fd);
   child_syscall_result = wait_syscall();
   if (0 >= child_syscall_result) {
-    FATAL() << "Failed to sendmsg() in tracee; err=" << child_syscall_result;
+    FATAL() << "Failed to sendmsg() in tracee; err="
+            << errno_name(-child_syscall_result);
   }
   // Child may be waiting on our recvmsg().
   int our_fd = recvmsg_socket(sock);
 
   child_syscall_result = syscall(Arch::close, child_sock);
   if (0 > child_syscall_result) {
-    FATAL() << "Failed to close() in tracee; err=" << child_syscall_result;
+    FATAL() << "Failed to close() in tracee; err="
+            << errno_name(-child_syscall_result);
   }
   if (0 > close(sock)) {
     FATAL() << "Failed to close parent socket";
