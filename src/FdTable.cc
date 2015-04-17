@@ -4,6 +4,8 @@
 
 #include <unordered_set>
 
+#include "rr/rr.h"
+
 #include "Session.h"
 #include "task.h"
 
@@ -25,7 +27,7 @@ void FdTable::did_write(Task* t, int fd,
   }
 }
 
-void FdTable::dup(int from, int to) {
+void FdTable::did_dup(int from, int to) {
   if (fds.count(from)) {
     fds[to] = fds[from];
   } else {
@@ -34,7 +36,7 @@ void FdTable::dup(int from, int to) {
   update_syscallbuf_fds_disabled(to);
 }
 
-void FdTable::close(int fd) {
+void FdTable::did_close(int fd) {
   fds.erase(fd);
   update_syscallbuf_fds_disabled(fd);
 }
@@ -63,8 +65,9 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
 
     if (!t->syscallbuf_fds_disabled_child.is_null() &&
         fd < SYSCALLBUF_FDS_DISABLED_SIZE) {
-      bool is_monitored = is_fd_monitored_in_any_task(vm, fd);
-      t->write_mem(t->syscallbuf_fds_disabled_child + fd, (char)is_monitored);
+      bool disable = is_fd_monitored_in_any_task(vm, fd) ||
+          RR_RESERVED_ROOT_DIR_FD == fd;
+      t->write_mem(t->syscallbuf_fds_disabled_child + fd, (char)disable);
     }
   }
 }
@@ -76,6 +79,8 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
 
   char disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
   memset(disabled, 0, sizeof(disabled));
+  assert(RR_RESERVED_ROOT_DIR_FD < SYSCALLBUF_FDS_DISABLED_SIZE);
+  disabled[RR_RESERVED_ROOT_DIR_FD] = 1;
 
   // It's possible that some tasks in this address space have a different
   // FdTable. We need to disable syscallbuf for an fd if any tasks for this
@@ -116,6 +121,6 @@ void FdTable::update_for_cloexec(Task* t, TraceTaskEvent& event) {
   }
 
   for (auto fd : fds_to_close) {
-    close(fd);
+    did_close(fd);
   }
 }

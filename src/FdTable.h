@@ -25,8 +25,8 @@ public:
   void did_write(Task* t, int fd,
                  const std::vector<FileMonitor::Range>& ranges);
 
-  void dup(int from, int to);
-  void close(int fd);
+  void did_dup(int from, int to);
+  void did_close(int fd);
 
   shr_ptr clone(Task* t) {
     shr_ptr fds(new FdTable(*this));

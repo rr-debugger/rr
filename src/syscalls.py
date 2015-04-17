@@ -170,7 +170,7 @@ open = EmulatedSyscall(x86=5, x64=2)
 # on the file it was associated with, and owned by the process, are
 # removed (regardless of the file descriptor that was used to obtain
 # the lock).
-close = EmulatedSyscall(x86=6, x64=3)
+close = IrregularEmulatedSyscall(x86=6, x64=3)
 
 #  pid_t waitpid(pid_t pid, int *status, int options);
 #
@@ -419,7 +419,7 @@ ustat = UnsupportedSyscall(x86=62, x64=136)
 #
 # dup2() makes newfd be the copy of oldfd, closing newfd first if
 #  necessary, but note the following..
-dup2 = EmulatedSyscall(x86=63, x64=33)
+dup2 = IrregularEmulatedSyscall(x86=63, x64=33)
 
 #  pid_t getppid(void);
 #
@@ -1585,7 +1585,7 @@ eventfd2 = EmulatedSyscall(x86=328, x64=290)
 # file descriptor.
 epoll_create1 = EmulatedSyscall(x86=329, x64=291)
 
-dup3 = EmulatedSyscall(x86=330, x64=292)
+dup3 = IrregularEmulatedSyscall(x86=330, x64=292)
 
 #  int pipe2(int pipefd[2], int flags)
 #

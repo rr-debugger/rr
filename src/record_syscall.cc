@@ -2064,6 +2064,31 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return ALLOW_SWITCH;
     }
 
+    case Arch::close:
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
+      if ((int)t->regs().arg1() == RR_RESERVED_ROOT_DIR_FD) {
+        // Don't let processes close this fd. Abort with EBADF by setting
+        // oldfd to -1, as if the fd is already closed.
+        Registers r = t->regs();
+        r.set_arg1(intptr_t(-1));
+        t->set_regs(r);
+      }
+      return PREVENT_SWITCH;
+
+    case Arch::dup2:
+    case Arch::dup3:
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
+      if ((int)t->regs().arg2() == RR_RESERVED_ROOT_DIR_FD) {
+        // Don't let processes dup over this fd. Abort with EBADF by setting
+        // oldfd to -1.
+        Registers r = t->regs();
+        r.set_arg1(intptr_t(-1));
+        t->set_regs(r);
+      }
+      return PREVENT_SWITCH;
+
     /* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned
      * long arg4, unsigned long arg5); */
     case Arch::prctl:
@@ -2932,6 +2957,9 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
 
+    case Arch::dup2:
+    case Arch::dup3:
+    case Arch::close:
     case Arch::prctl: {
       // Restore arg1 in case we modified it to disable the syscall
       Registers r = t->regs();

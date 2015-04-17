@@ -928,10 +928,10 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::dup:
     case Arch::dup2:
     case Arch::dup3:
-      fd_table()->dup(regs.arg1(), regs.syscall_result());
+      fd_table()->did_dup(regs.arg1(), regs.syscall_result());
       return;
     case Arch::close:
-      fd_table()->close(regs.arg1());
+      fd_table()->did_close(regs.arg1());
       return;
 
     case Arch::write: {
@@ -1975,6 +1975,14 @@ static void set_up_process(Session& session) {
   }
   if (RR_MAGIC_SAVE_DATA_FD != dup2(fd, RR_MAGIC_SAVE_DATA_FD)) {
     FATAL() << "error duping to RR_MAGIC_SAVE_DATA_FD";
+  }
+
+  fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
+  if (0 > fd) {
+    FATAL() << "error opening root directory";
+  }
+  if (RR_RESERVED_ROOT_DIR_FD != dup2(fd, RR_RESERVED_ROOT_DIR_FD)) {
+    FATAL() << "error duping to RR_RESERVED_ROOT_DIR_FD";
   }
 
   if (session.is_replaying()) {
