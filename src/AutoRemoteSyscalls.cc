@@ -197,13 +197,11 @@ static int child_create_socket(AutoRemoteSyscalls& remote,
                                remote_ptr<socketcall_args<Arch> > sc_args) {
   int child_sock;
   if (sc_args.is_null()) {
-    child_sock = remote.syscall(syscall_number_for_socket(Arch::arch()),
-                                AF_UNIX, SOCK_STREAM, 0);
+    child_sock = remote.syscall(Arch::socket, AF_UNIX, SOCK_STREAM, 0);
   } else {
     write_socketcall_args<Arch>(remote.task(), sc_args, AF_UNIX, SOCK_STREAM,
                                 0);
-    child_sock = remote.syscall(syscall_number_for_socketcall(Arch::arch()),
-                                SYS_SOCKET, sc_args);
+    child_sock = remote.syscall(Arch::socketcall, SYS_SOCKET, sc_args);
   }
   if (child_sock < 0) {
     FATAL() << "Failed to create child socket";
@@ -230,13 +228,13 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
     callregs.set_arg1(child_sock);
     callregs.set_arg2(remote_addr);
     callregs.set_arg3(sizeof(addr));
-    remote_syscall = syscall_number_for_connect(Arch::arch());
+    remote_syscall = Arch::connect;
   } else {
     write_socketcall_args<Arch>(remote.task(), sc_args, child_sock,
                                 remote_addr.as_int(), sizeof(addr));
     callregs.set_arg1(SYS_CONNECT);
     callregs.set_arg2(sc_args);
-    remote_syscall = syscall_number_for_socketcall(Arch::arch());
+    remote_syscall = Arch::socketcall;
   }
   remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, remote_syscall,
                         callregs);
@@ -287,13 +285,13 @@ static void child_sendmsg(AutoRemoteSyscalls& remote,
     callregs.set_arg1(child_sock);
     callregs.set_arg2(remote_msg);
     callregs.set_arg3(0);
-    remote_syscall = syscall_number_for_sendmsg(Arch::arch());
+    remote_syscall = Arch::sendmsg;
   } else {
     write_socketcall_args<Arch>(remote.task(), sc_args, child_sock,
                                 remote_msg.as_int(), 0);
     callregs.set_arg1(SYS_SENDMSG);
     callregs.set_arg2(sc_args);
-    remote_syscall = syscall_number_for_socketcall(Arch::arch());
+    remote_syscall = Arch::socketcall;
   }
   remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, remote_syscall,
                         callregs);
@@ -372,7 +370,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   // Child may be waiting on our recvmsg().
   int our_fd = recvmsg_socket(sock);
 
-  child_syscall_result = syscall(syscall_number_for_close(arch()), child_sock);
+  child_syscall_result = syscall(Arch::close, child_sock);
   if (0 > child_syscall_result) {
     FATAL() << "Failed to close() in tracee; err=" << child_syscall_result;
   }
