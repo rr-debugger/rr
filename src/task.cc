@@ -53,16 +53,6 @@ using namespace rr;
 using namespace std;
 
 /**
- * Format into |path| the path name at which syscallbuf shmem for
- * tracee |tid| will be allocated (briefly, until unlinked).
- */
-template <size_t N>
-void format_syscallbuf_shmem_path(pid_t tid, char (&path)[N]) {
-  static int nonce;
-  snprintf(path, N - 1, SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d", tid, nonce++);
-}
-
-/**
  * Stores the table of signal dispositions and metadata for an
  * arbitrary set of tasks.  Each of those tasks must own one one of
  * the |refcount|s while they still refer to this.
@@ -2405,26 +2395,36 @@ void Task::open_mem_fd_if_needed() {
 
 void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
                                remote_ptr<void> map_hint) {
+  static int nonce = 0;
   // Create the segment we'll share with the tracee.
-  char shmem_name[PATH_MAX];
-  format_syscallbuf_shmem_path(tid, shmem_name);
-  ScopedFd shmem_fd = create_shmem_segment(shmem_name, SYSCALLBUF_BUFFER_SIZE);
-  // Map the shmem fd in the child.
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1,
+           SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d", tid, nonce++);
+
+  // Let the child create the shmem block and then send the fd back to us.
+  // This lets us avoid having to make the file world-writeable so that
+  // the child can read it when it's in a different user namespace (which
+  // would be a security hole, letting other users abuse rr users).
   int child_shmem_fd;
   {
-    char proc_path[PATH_MAX];
-    snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", getpid(),
-             shmem_fd.get());
-    AutoRestoreMem child_path(remote, proc_path);
+    AutoRestoreMem child_path(remote, path);
     // skip leading '/' since we want the path to be relative to the root fd
-    child_shmem_fd = remote.syscall(syscall_number_for_openat(arch()),
-                                    RR_RESERVED_ROOT_DIR_FD,
-                                    child_path.get() + 1, O_RDWR, 0600);
+    child_shmem_fd = remote.syscall(
+        syscall_number_for_openat(arch()), RR_RESERVED_ROOT_DIR_FD,
+        child_path.get() + 1, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
     if (0 > child_shmem_fd) {
       errno = -child_shmem_fd;
-      FATAL() << "Failed to open(" << proc_path << ") in tracee";
+      FATAL() << "Failed to open(" << path << ") in tracee";
     }
   }
+
+  /* Remove the fs name so that we don't have to worry about
+   * cleaning up this segment in error conditions. */
+  unlink(path);
+
+  ScopedFd shmem_fd = remote.retrieve_fd(child_shmem_fd);
+  resize_shmem_segment(shmem_fd, SYSCALLBUF_BUFFER_SIZE);
+  LOG(debug) << "created shmem segment " << path;
 
   // Map the segment in ours and the tracee's address spaces.
   void* map_addr;
@@ -2454,7 +2454,7 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   memset(syscallbuf_hdr, 0, sizeof(*syscallbuf_hdr));
 
   vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags, 0,
-            MappableResource::syscallbuf(rec_tid, shmem_fd, shmem_name));
+            MappableResource::syscallbuf(rec_tid, shmem_fd, path));
 
   shmem_fd.close();
   remote.syscall(syscall_number_for_close(arch()), child_shmem_fd);
