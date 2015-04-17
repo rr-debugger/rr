@@ -250,6 +250,19 @@ static ReplayTraceStepType syscall_action(SyscallEntryOrExit state) {
   return state == SYSCALL_ENTRY ? TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
 }
 
+static TraceTaskEvent read_task_trace_event(Task* t, TraceTaskEvent::Type type) {
+  TraceTaskEvent tte;
+  while (true) {
+    ASSERT(t, t->trace_reader().good())
+        << "Unable to find TraceTaskEvent; trace is corrupt (did you kill -9 rr?)";
+    tte = t->trace_reader().read_task_event();
+    if (tte.type() == type) {
+      break;
+    }
+  }
+  return tte;
+}
+
 template <typename Arch>
 static void process_clone(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, ReplayTraceStep* step,
@@ -380,15 +393,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   ASSERT(t, !t->ptrace_event()) << "Expected no ptrace event, but got "
                                 << ptrace_event_name(t->ptrace_event());
 
-  TraceTaskEvent tte;
-  while (true) {
-    ASSERT(t, t->trace_reader().good())
-        << "Unable to find EXEC event; trace is corrupt (did you kill -9 rr?)";
-    tte = t->trace_reader().read_task_event();
-    if (tte.type() == TraceTaskEvent::EXEC) {
-      break;
-    }
-  }
+  TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::EXEC);
   t->post_exec_syscall(tte);
 
   bool check = t->regs().arg1();
