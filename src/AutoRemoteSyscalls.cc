@@ -185,6 +185,8 @@ static int create_bind_and_listen_socket(const char* path) {
   strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
   addr.sun_path[sizeof(addr.sun_path) - 1] = 0;
   if (::bind(listen_sock, (struct sockaddr*)&addr, sizeof(addr))) {
+    printf("FAILED %d\n", getpid());
+    sleep(1000);
     FATAL() << "Failed to bind listen socket";
   }
 
