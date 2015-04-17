@@ -23,6 +23,11 @@ Switchable rec_prepare_syscall(Task* t);
 void rec_prepare_restart_syscall(Task* t);
 
 /**
+ * Inside a fork/clone syscall, notify that the new task created is new_task.
+ */
+void rec_set_syscall_new_task(Task* t, Task* new_task);
+
+/**
  * Restore any argument registers fudged for |t|'s current syscall and
  * store any nondeterministic outparam data.
  */

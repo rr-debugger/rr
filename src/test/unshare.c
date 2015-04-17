@@ -47,7 +47,7 @@ static int run_test(void) {
     test_assert(0 == unshare(CLONE_NEWNS));
     test_assert(0 == unshare(CLONE_NEWIPC));
     test_assert(0 == unshare(CLONE_NEWNET));
-    /* test_assert(0 == unshare(CLONE_NEWPID)); */
+    test_assert(0 == unshare(CLONE_NEWPID));
 
     test_assert(0 == chroot(tmp_name));
 

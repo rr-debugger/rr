@@ -414,6 +414,10 @@ struct TaskSyscallState {
 
   Task* ptraced_tracee;
 
+  /** Task created by clone()/fork(). Set when we get a PTRACE_EVENT_CLONE/FORK.
+   */
+  Task* new_task;
+
   /** Saved syscall-entry registers, used by a couple of code paths that
    *  modify the registers temporarily.
    */
@@ -451,6 +455,7 @@ struct TaskSyscallState {
   TaskSyscallState()
       : t(nullptr),
         ptraced_tracee(nullptr),
+        new_task(nullptr),
         expect_errno(0),
         should_emulate_result(false),
         preparation_done(false),
@@ -458,6 +463,15 @@ struct TaskSyscallState {
 };
 
 static const Property<TaskSyscallState, Task> syscall_state_property;
+
+void rec_set_syscall_new_task(Task* t, Task* new_task) {
+  auto syscall_state = syscall_state_property.get(*t);
+  ASSERT(t, syscall_state) << "new task created outside of syscall?";
+  ASSERT(t, is_clone_syscall(t->regs().original_syscallno(), t->arch()) ||
+                is_fork_syscall(t->regs().original_syscallno(), t->arch()));
+  ASSERT(t, !syscall_state->new_task);
+  syscall_state->new_task = new_task;
+}
 
 template <typename Arch>
 static void set_remote_ptr_arch(Task* t, remote_ptr<void> addr,
@@ -1307,6 +1321,21 @@ static int64_t widen_buffer_signed(const void* buf, size_t size) {
   }
 }
 
+static uint64_t path_inode_number(const char* path) {
+  struct stat st;
+  int ret = stat(path, &st);
+  assert(ret == 0);
+  return st.st_ino;
+}
+
+static bool is_same_namespace(const char* name, pid_t tid1, pid_t tid2) {
+  char path1[PATH_MAX];
+  char path2[PATH_MAX];
+  sprintf(path1, "/proc/%d/ns/%s", tid1, name);
+  sprintf(path2, "/proc/%d/ns/%s", tid2, name);
+  return path_inode_number(path1) == path_inode_number(path2);
+}
+
 template <typename Arch>
 static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   syscall_state.syscall_entry_registers =
@@ -1315,6 +1344,13 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   bool emulate = true;
   switch ((int)t->regs().arg1_signed()) {
     case PTRACE_ATTACH: {
+      // To simplify things, require that a ptracer be in the same pid
+      // namespace as rr itself. I.e., tracee tasks sandboxed in a pid
+      // namespace can't use ptrace. This is normally a requirement of
+      // sandboxes anyway.
+      // This could be supported, but would require some work to translate
+      // rr's pids to/from the ptracer's pid namespace.
+      ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
       Task* tracee = t->session().find_task(pid);
       if (!tracee) {
         syscall_state.emulate_result(-ESRCH);
@@ -2647,15 +2683,82 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
                                 fake_file_name));
 }
 
-template <typename Arch> static void process_fork(Task* t) {
-  long new_tid = t->regs().syscall_result_signed();
-  if (new_tid < 0) {
+template <typename Arch>
+static void process_fork(Task* t, TaskSyscallState& syscall_state) {
+  if (t->regs().syscall_result_signed() < 0) {
+    // fork failed.
     return;
   }
 
-  Task* new_task = t->session().find_task(new_tid);
+  // Note that the tid returned in the syscall result may be in a pid
+  // namespace that's different from ours, so we should avoid using it
+  // directly. Instead the new task will have been stashed in syscall_state.
+  Task* new_task = syscall_state.new_task;
+  ASSERT(t, new_task) << "new_task not found";
   t->record_session().trace_writer().write_task_event(
-      TraceTaskEvent(new_tid, t->tid));
+      TraceTaskEvent(new_task->tid, t->tid));
+
+  init_scratch_memory<Arch>(new_task);
+}
+
+template <typename Arch>
+static void process_clone(Task* t, TaskSyscallState& syscall_state) {
+  uintptr_t flags = syscall_state.syscall_entry_registers->arg1();
+  Registers r = t->regs();
+  r.set_arg1(flags);
+  t->set_regs(r);
+
+  if (t->regs().syscall_result_signed() < 0) {
+    // clone failed.
+    return;
+  }
+
+  // Note that the tid returned in the syscall result may be in a pid
+  // namespace that's different from ours, so we should avoid using it
+  // directly. Instead the new task will have been stashed in syscall_state.
+  Task* new_task = syscall_state.new_task;
+  ASSERT(t, new_task) << "new_task not found";
+  new_task->push_event(SyscallEvent(t->ev().Syscall().number, t->arch()));
+
+  /* record child id here */
+  remote_ptr<void>* stack_not_needed = nullptr;
+  remote_ptr<typename Arch::pid_t> parent_tid_in_parent, parent_tid_in_child;
+  remote_ptr<void> tls_in_parent, tls_in_child;
+  remote_ptr<typename Arch::pid_t> child_tid_in_parent, child_tid_in_child;
+  extract_clone_parameters(t, stack_not_needed, &parent_tid_in_parent,
+                           &tls_in_parent, &child_tid_in_parent);
+  extract_clone_parameters(new_task, stack_not_needed, &parent_tid_in_child,
+                           &tls_in_child, &child_tid_in_child);
+  // If these flags aren't set, the corresponding clone parameters may be
+  // invalid pointers, so make sure they're ignored.
+  if (!(flags & CLONE_PARENT_SETTID)) {
+    parent_tid_in_parent = nullptr;
+    parent_tid_in_child = nullptr;
+  }
+  if (!(flags & CLONE_CHILD_SETTID)) {
+    child_tid_in_child = nullptr;
+  }
+  if (!(flags & CLONE_SETTLS)) {
+    tls_in_parent = nullptr;
+    tls_in_child = nullptr;
+  }
+  t->record_remote_even_if_null(parent_tid_in_parent);
+
+  if (Arch::clone_tls_type == Arch::UserDescPointer) {
+    t->record_remote_even_if_null(
+        tls_in_parent.cast<typename Arch::user_desc>());
+    new_task->record_remote_even_if_null(
+        tls_in_child.cast<typename Arch::user_desc>());
+  } else {
+    assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
+  }
+  new_task->record_remote_even_if_null(parent_tid_in_child);
+  new_task->record_remote_even_if_null(child_tid_in_child);
+
+  new_task->pop_syscall();
+
+  t->record_session().trace_writer().write_task_event(
+      TraceTaskEvent(new_task->tid, t->tid, flags));
 
   init_scratch_memory<Arch>(new_task);
 }
@@ -2754,60 +2857,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   // handle.
   switch (syscallno) {
     case Arch::clone: {
-      uintptr_t flags = syscall_state.syscall_entry_registers->arg1();
-      Registers r = t->regs();
-      r.set_arg1(flags);
-      t->set_regs(r);
-
-      long new_tid = t->regs().syscall_result_signed();
-      if (new_tid < 0)
-        break;
-
-      Task* new_task = t->session().find_task(new_tid);
-      new_task->push_event(SyscallEvent(syscallno, t->arch()));
-
-      /* record child id here */
-      remote_ptr<void>* stack_not_needed = nullptr;
-      remote_ptr<typename Arch::pid_t> parent_tid_in_parent,
-          parent_tid_in_child;
-      remote_ptr<void> tls_in_parent, tls_in_child;
-      remote_ptr<typename Arch::pid_t> child_tid_in_parent, child_tid_in_child;
-      extract_clone_parameters(t, stack_not_needed, &parent_tid_in_parent,
-                               &tls_in_parent, &child_tid_in_parent);
-      extract_clone_parameters(new_task, stack_not_needed, &parent_tid_in_child,
-                               &tls_in_child, &child_tid_in_child);
-      // If these flags aren't set, the corresponding clone parameters may be
-      // invalid pointers, so make sure they're ignored.
-      if (!(flags & CLONE_PARENT_SETTID)) {
-        parent_tid_in_parent = nullptr;
-        parent_tid_in_child = nullptr;
-      }
-      if (!(flags & CLONE_CHILD_SETTID)) {
-        child_tid_in_child = nullptr;
-      }
-      if (!(flags & CLONE_SETTLS)) {
-        tls_in_parent = nullptr;
-        tls_in_child = nullptr;
-      }
-      t->record_remote_even_if_null(parent_tid_in_parent);
-
-      if (Arch::clone_tls_type == Arch::UserDescPointer) {
-        t->record_remote_even_if_null(
-            tls_in_parent.cast<typename Arch::user_desc>());
-        new_task->record_remote_even_if_null(
-            tls_in_child.cast<typename Arch::user_desc>());
-      } else {
-        assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
-      }
-      new_task->record_remote_even_if_null(parent_tid_in_child);
-      new_task->record_remote_even_if_null(child_tid_in_child);
-
-      new_task->pop_syscall();
-
-      t->record_session().trace_writer().write_task_event(
-          TraceTaskEvent(new_tid, t->tid, flags));
-
-      init_scratch_memory<Arch>(new_task);
+      process_clone<Arch>(t, syscall_state);
       break;
     }
 
@@ -2815,12 +2865,12 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       Registers r = t->regs();
       r.set_original_syscallno(Arch::vfork);
       t->set_regs(r);
-      process_fork<Arch>(t);
+      process_fork<Arch>(t, syscall_state);
       break;
     }
 
     case Arch::fork:
-      process_fork<Arch>(t);
+      process_fork<Arch>(t, syscall_state);
       break;
 
     case Arch::execve:

@@ -88,7 +88,7 @@ def write_syscall_record_cases(f):
             f.write("  case Arch::%s:\n" % name)
             for arg in range(1,6):
                 write_recorder_for_arg(obj, arg)
-            f.write("    return syscall_state.done_preparing(PREVENT_SWITCH);\n")
+            f.write("    return PREVENT_SWITCH;\n")
 
 has_syscall = string.Template("""inline bool
 has_${syscall}_syscall(SupportedArch arch) {

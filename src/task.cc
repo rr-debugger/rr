@@ -2797,13 +2797,9 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
       parent->cont_syscall();
     }
   }
+  pid_t new_tid = parent->get_ptrace_eventmsg_pid();
 
   parent->cont_syscall();
-  long new_tid = parent->regs().syscall_result_signed();
-  if (0 > new_tid) {
-    FATAL() << "Failed to clone(" << parent->tid << ") -> " << new_tid << ": "
-            << strerror(-new_tid);
-  }
   Task* child =
       parent->clone(clone_flags_to_task_flags(base_flags), stack, tls, ctid,
                     new_tid, rec_child_tid, new_serial, session);

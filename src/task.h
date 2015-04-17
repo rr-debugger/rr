@@ -1090,7 +1090,8 @@ public:
   /**
    * Call this when performing a clone syscall in this task. Returns
    * true if the call completed, false if it was interrupted and
-   * needs to be resumed.
+   * needs to be resumed. When the call returns true, the task is
+   * stopped at a PTRACE_EVENT_CLONE or PTRACE_EVENT_FORK.
    */
   bool clone_syscall_is_complete();
 

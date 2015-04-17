@@ -250,11 +250,13 @@ static ReplayTraceStepType syscall_action(SyscallEntryOrExit state) {
   return state == SYSCALL_ENTRY ? TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
 }
 
-static TraceTaskEvent read_task_trace_event(Task* t, TraceTaskEvent::Type type) {
+static TraceTaskEvent read_task_trace_event(Task* t,
+                                            TraceTaskEvent::Type type) {
   TraceTaskEvent tte;
   while (true) {
-    ASSERT(t, t->trace_reader().good())
-        << "Unable to find TraceTaskEvent; trace is corrupt (did you kill -9 rr?)";
+    ASSERT(t, t->trace_reader().good()) << "Unable to find TraceTaskEvent; "
+                                           "trace is corrupt (did you kill -9 "
+                                           "rr?)";
     tte = t->trace_reader().read_task_event();
     if (tte.type() == type) {
       break;
@@ -323,7 +325,14 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   r.set_arg1(rec_regs.arg1());
   t->set_regs(r);
 
-  long rec_tid = rec_regs.syscall_result_signed();
+  // Dig the recorded tid out out of the trace. The tid value returned in
+  // the recorded registers could be in a different pid namespace from rr's,
+  // so we can't use it directly.
+  TraceTaskEvent tte = read_task_trace_event(
+      t, Arch::clone == t->regs().original_syscallno() ? TraceTaskEvent::CLONE
+                                                       : TraceTaskEvent::FORK);
+  ASSERT(t, tte.parent_tid() == t->rec_tid);
+  long rec_tid = tte.tid();
   pid_t new_tid = t->get_ptrace_eventmsg_pid();
 
   remote_ptr<void> stack;
@@ -962,7 +971,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   switch (syscall) {
     case Arch::clone:
       return process_clone<Arch>(t, trace_frame, state, step,
-          trace_frame.regs().arg1());
+                                 trace_frame.regs().arg1());
 
     case Arch::vfork:
       if (state == SYSCALL_EXIT) {
