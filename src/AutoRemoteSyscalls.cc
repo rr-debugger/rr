@@ -372,8 +372,13 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   // Child may be waiting on our recvmsg().
   int our_fd = recvmsg_socket(sock);
 
-  syscall(syscall_number_for_close(Arch::arch()), child_sock);
-  close(sock);
+  child_syscall_result = syscall(syscall_number_for_close(arch()), child_sock);
+  if (0 > child_syscall_result) {
+    FATAL() << "Failed to close() in tracee; err=" << child_syscall_result;
+  }
+  if (0 > close(sock)) {
+    FATAL() << "Failed to close parent socket";
+  }
 
   return ScopedFd(our_fd);
 }
