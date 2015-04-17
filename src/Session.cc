@@ -9,6 +9,8 @@
 
 #include <algorithm>
 
+#include "rr/rr.h"
+
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
 #include "kernel_metadata.h"
@@ -338,8 +340,10 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
     AutoRestoreMem child_path(remote, path.c_str());
     // Always open the emufs file O_RDWR, even if the current mapping prot
     // is read-only. We might mprotect it to read-write later.
-    remote_fd = remote.syscall(syscall_number_for_open(remote.arch()),
-                               child_path.get().as_int(), O_RDWR);
+    // skip leading '/' since we want the path to be relative to the root fd
+    remote_fd =
+        remote.syscall(syscall_number_for_openat(remote.arch()),
+                       RR_RESERVED_ROOT_DIR_FD, child_path.get() + 1, O_RDWR);
     if (0 > remote_fd) {
       FATAL() << "Couldn't open " << path << " in tracee";
     }

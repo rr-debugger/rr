@@ -10,6 +10,8 @@
 
 #include <limits>
 
+#include "rr/rr.h"
+
 #include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
@@ -346,8 +348,10 @@ void AddressSpace::map_rr_page(Task* t) {
 
     AutoRestoreMem child_path(remote, reinterpret_cast<uint8_t*>(path),
                               sizeof(path));
-    int child_fd = remote.syscall(syscall_number_for_open(arch),
-                                  child_path.get(), O_RDONLY);
+    // skip leading '/' since we want the path to be relative to the root fd
+    int child_fd =
+        remote.syscall(syscall_number_for_openat(arch), RR_RESERVED_ROOT_DIR_FD,
+                       child_path.get() + 1, O_RDONLY);
     ASSERT(t, child_fd >= 0);
 
     auto result = remote.mmap_syscall(rr_page_start(), rr_page_size(), prot,

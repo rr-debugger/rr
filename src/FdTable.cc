@@ -65,8 +65,8 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
 
     if (!t->syscallbuf_fds_disabled_child.is_null() &&
         fd < SYSCALLBUF_FDS_DISABLED_SIZE) {
-      bool disable = is_fd_monitored_in_any_task(vm, fd) ||
-          RR_RESERVED_ROOT_DIR_FD == fd;
+      bool disable =
+          is_fd_monitored_in_any_task(vm, fd) || RR_RESERVED_ROOT_DIR_FD == fd;
       t->write_mem(t->syscallbuf_fds_disabled_child + fd, (char)disable);
     }
   }

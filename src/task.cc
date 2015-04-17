@@ -2383,8 +2383,10 @@ void Task::open_mem_fd() {
   long remote_fd;
   {
     AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
-    remote_fd = remote.syscall(syscall_number_for_open(arch()),
-                               remote_path.get().as_int(), O_RDWR);
+    // skip leading '/' since we want the path to be relative to the root fd
+    remote_fd =
+        remote.syscall(syscall_number_for_openat(arch()),
+                       RR_RESERVED_ROOT_DIR_FD, remote_path.get() + 1, O_RDWR);
     assert(remote_fd >= 0);
   }
 
@@ -2414,8 +2416,10 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
     snprintf(proc_path, sizeof(proc_path), "/proc/%d/fd/%d", getpid(),
              shmem_fd.get());
     AutoRestoreMem child_path(remote, proc_path);
-    child_shmem_fd = remote.syscall(syscall_number_for_open(arch()),
-                                    child_path.get().as_int(), O_RDWR, 0600);
+    // skip leading '/' since we want the path to be relative to the root fd
+    child_shmem_fd = remote.syscall(syscall_number_for_openat(arch()),
+                                    RR_RESERVED_ROOT_DIR_FD,
+                                    child_path.get() + 1, O_RDWR, 0600);
     if (0 > child_shmem_fd) {
       errno = -child_shmem_fd;
       FATAL() << "Failed to open(" << proc_path << ") in tracee";
@@ -2630,8 +2634,10 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
   SupportedArch a = arch();
   AutoRestoreMem child_path(remote, reinterpret_cast<uint8_t*>(path),
                             sizeof(path));
+  // skip leading '/' since we want the path to be relative to the root fd
   int child_fd =
-      remote.syscall(syscall_number_for_open(a), child_path.get(), O_RDWR);
+      remote.syscall(syscall_number_for_openat(a), RR_RESERVED_ROOT_DIR_FD,
+                     child_path.get() + 1, O_RDWR);
   ASSERT(this, child_fd >= 0);
 
   // Just map the new file right over the top of existing pages

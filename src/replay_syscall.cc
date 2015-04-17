@@ -1102,8 +1102,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
             remote_ptr<void> arg2 = trace_regs.arg2();
             t->update_prname(arg2);
             AutoRemoteSyscalls remote(t);
-            remote.syscall(syscall_number_for_prctl(t->arch()),
-                PR_SET_NAME, arg2);
+            remote.syscall(syscall_number_for_prctl(t->arch()), PR_SET_NAME,
+                           arg2);
             return;
           }
           case PR_SET_SECCOMP:
@@ -1117,7 +1117,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
               // events.
               AutoRemoteSyscalls remote(t);
               remote.syscall(syscall_number_for_prctl(t->arch()),
-                  PR_SET_SECCOMP, trace_regs.arg2(), trace_regs.arg3());
+                             PR_SET_SECCOMP, trace_regs.arg2(),
+                             trace_regs.arg3());
               return;
             }
             break;

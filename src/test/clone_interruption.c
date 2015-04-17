@@ -3,8 +3,8 @@
 #include "rrutil.h"
 
 static void futex(int* uaddr, int op, int val) {
-  /* Avoid using the rr-page syscall entrypoints, so we don't trigger any
-     special treatment that might hide bugs. */
+/* Avoid using the rr-page syscall entrypoints, so we don't trigger any
+   special treatment that might hide bugs. */
 #ifdef __x86_64__
   __asm__("mov $0,%%r10\n\t"
           "syscall\n\t" ::"a"(SYS_futex),
