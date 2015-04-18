@@ -23,10 +23,11 @@ static long mbind(void* start, unsigned long len, int mode,
 int main(int argc, char** argv) {
   void* p = mmap(NULL, 16 * PAGE_SIZE, PROT_READ | PROT_WRITE,
                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  int ret;
 
   test_assert(p);
-  test_assert(0 ==
-              mbind(p, 16 * PAGE_SIZE, MPOL_PREFERRED, NULL, 0, MPOL_MF_MOVE));
+  ret = mbind(p, 16 * PAGE_SIZE, MPOL_PREFERRED, NULL, 0, MPOL_MF_MOVE);
+  test_assert(ret == 0 || (ret == -1 && errno == ENOSYS));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
