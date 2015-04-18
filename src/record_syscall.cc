@@ -76,6 +76,9 @@ union _semun {
  * linux/shm.h.
  */
 static int _shmctl(int shmid, int cmd, shmid64_ds* buf) {
+  if (sizeof(void*) == 4) {
+    cmd |= IPC_64;
+  }
 #ifdef SYS_shmctl
   return syscall(SYS_shmctl, shmid, cmd, buf);
 #else
@@ -83,10 +86,13 @@ static int _shmctl(int shmid, int cmd, shmid64_ds* buf) {
 #endif
 }
 static int _semctl(int semid, int semnum, int cmd, _semun un_arg) {
+  if (sizeof(void*) == 4) {
+    cmd |= IPC_64;
+  }
 #ifdef SYS_semctl
   return syscall(SYS_semctl, semid, semnum, cmd, un_arg);
 #else
-  return syscall(SYS_ipc, SEMCTL, semid, semnum, cmd, un_arg);
+  return syscall(SYS_ipc, SEMCTL, semid, semnum, cmd, &un_arg);
 #endif
 }
 
