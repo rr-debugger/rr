@@ -2406,7 +2406,7 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1,
-           SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d", tid, nonce++);
+           "/tmp/" SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d", tid, nonce++);
 
   // Let the child create the shmem block and then send the fd back to us.
   // This lets us avoid having to make the file world-writeable so that
