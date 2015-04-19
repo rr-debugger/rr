@@ -15,6 +15,14 @@ static void run_child(void) {
   int status;
 
   if (!child) {
+    /* Test creating a nested child */
+    pid_t nested_child = fork();
+    if (!nested_child) {
+      exit(77);
+    }
+    test_assert(nested_child == wait(&status));
+    test_assert(WIFEXITED(status) && 77 == WEXITSTATUS(status));
+
     /* Test creating a thread */
     pthread_t thread;
     pthread_create(&thread, NULL, start_thread, NULL);

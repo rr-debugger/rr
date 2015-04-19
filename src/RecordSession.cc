@@ -145,7 +145,6 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       break;
 
     case PTRACE_EVENT_CLONE: {
-      pid_t new_tid = t->get_ptrace_eventmsg_pid();
       remote_ptr<void> stack;
       remote_ptr<int>* ptid_not_needed = nullptr;
       remote_ptr<void> tls;
@@ -157,6 +156,17 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
           is_clone_syscall(t->regs().original_syscallno(), t->arch())
               ? t->regs().arg1()
               : 0;
+
+      // Ideally we'd just use t->get_ptrace_eventmsg_pid() here, but
+      // kernels failed to translate that value from other pid namespaces to
+      // our pid namespace until June 2014:
+      // https://github.com/torvalds/linux/commit/4e52365f279564cef0ddd41db5237f0471381093
+      pid_t new_tid;
+      if (flags_arg & CLONE_THREAD) {
+        new_tid = t->find_newborn_thread();
+      } else {
+        new_tid = t->find_newborn_child_process();
+      }
       Task* new_task = clone(t, clone_flags_to_task_flags(flags_arg), stack,
                              tls, ctid, new_tid);
       rec_set_syscall_new_task(t, new_task);
@@ -166,7 +176,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
     }
 
     case PTRACE_EVENT_FORK: {
-      pid_t new_tid = t->get_ptrace_eventmsg_pid();
+      pid_t new_tid = t->find_newborn_child_process();
       Task* new_task = clone(t, 0, nullptr, nullptr, nullptr, new_tid);
       rec_set_syscall_new_task(t, new_task);
       // Skip past the ptrace event.

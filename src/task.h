@@ -1096,6 +1096,18 @@ public:
   bool clone_syscall_is_complete();
 
   /**
+   * Return the pid of the newborn thread created by this task.
+   * Called when this task has a PTRACE_CLONE_EVENT with CLONE_THREAD.
+   */
+  pid_t find_newborn_thread();
+  /**
+   * Return the pid of the newborn process created by this task.
+   * Called when this task has a PTRACE_CLONE_EVENT without CLONE_THREAD,
+   * or PTRACE_FORK_EVENT.
+   */
+  pid_t find_newborn_child_process();
+
+  /**
    * Called when SYS_rrcall_init_preload has happened.
    */
   void at_preload_init();
