@@ -2107,7 +2107,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   if (CLONE_SHARE_SIGHANDLERS & flags) {
     t->sighandlers = sighandlers;
   } else {
-    auto sh = Sighandlers::create();
+    auto sh = sighandlers->clone();
     t->sighandlers.swap(sh);
   }
   if (CLONE_SHARE_TASK_GROUP & flags) {

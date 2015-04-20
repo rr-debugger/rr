@@ -382,6 +382,7 @@ set(BASIC_TESTS
   sigaction_old
   sigaltstack
   sigchld_interrupt_signal
+  sighandler_fork
   sigill
   signalfd
   sigprocmask
