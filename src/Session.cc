@@ -282,7 +282,13 @@ BreakStatus Session::diagnose_debugger_trap(Task* t) {
     LOG(debug) << "  finished debugger stepi";
     break_status.singlestep_complete = true;
   }
-  if (DS_WATCHPOINT_ANY & debug_status) {
+  // In VMWare Player 6.0.4 build-2249910, 32-bit Ubuntu x86 guest,
+  // single-stepping does not trigger watchpoints :-(. We work around
+  // that here by calling notify_watchpoint_fired if there's a singlestep
+  // but no watchpoints reported; write-watchpoints will detect that their
+  // value has changed and trigger. Read/exec watchpoints can't be detected
+  // this way so they're still broken :-(.
+  if ((DS_WATCHPOINT_ANY | DS_SINGLESTEP) & debug_status) {
     LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
                << "): hit debugger watchpoint.";
     t->vm()->notify_watchpoint_fired(debug_status);

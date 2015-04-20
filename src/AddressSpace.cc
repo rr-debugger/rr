@@ -722,14 +722,17 @@ static bool watchpoint_triggered(uintptr_t debug_status, int8_t reg) {
   return reg >= 0 && (debug_status & DR_WATCHPOINT(reg));
 }
 
-void AddressSpace::notify_watchpoint_fired(uintptr_t debug_status) {
+bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status) {
+  bool triggered = false;
   for (auto& it : watchpoints) {
     if (update_watchpoint_value(it.first, it.second) ||
         watchpoint_triggered(debug_status, it.second.in_register_exec) ||
         watchpoint_triggered(debug_status, it.second.in_register_readwrite)) {
       it.second.changed = true;
+      triggered = true;
     }
   }
+  return triggered;
 }
 
 void AddressSpace::notify_written(remote_ptr<void> addr, size_t num_bytes) {

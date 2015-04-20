@@ -39,10 +39,12 @@ static int string_compare(char* s1, char* s2, uintptr_t size) {
 int main(int argc, char* argv[]) {
   int i;
 
-  p = malloc(SIZE);
-  q = malloc(SIZE);
+  p = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  test_assert(p != MAP_FAILED);
+  q = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  test_assert(q != MAP_FAILED);
 
-  for (i = 0; i < 1000; ++i) {
+  for (i = 1; i < 1000; ++i) {
     string_store(p, i, SIZE);
     string_store(q, i, SIZE);
     q[DIFF] = i ^ 0xff;

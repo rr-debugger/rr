@@ -169,7 +169,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
     // breakpoint must have fired
     return false;
   }
-  if (t->debug_status() & DS_WATCHPOINT_ANY) {
+  if (t->vm()->notify_watchpoint_fired(t->debug_status())) {
     // watchpoint fired
     return false;
   }
@@ -303,13 +303,14 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       ASSERT(t, t->pending_sig() == SIGTRAP);
       // Grab debug_status before restoring watchpoints, since the latter
       // clears the debug status
-      auto debug_status = t->consume_debug_status();
+      bool triggered_watchpoint =
+        t->vm()->notify_watchpoint_fired(t->consume_debug_status());
       t->vm()->remove_breakpoint(ip + decoded.length, TRAP_BKPT_INTERNAL);
       t->vm()->restore_watchpoints();
 
       iterations -= cur_cx - t->regs().cx();
 
-      if (!(debug_status & DS_WATCHPOINT_ANY)) {
+      if (!triggered_watchpoint) {
         // watchpoint didn't fire. We must have exited the loop early and
         // hit the breakpoint. IP will be after the breakpoint instruction.
         ASSERT(t, t->ip() == ip + decoded.length + 1 && decoded.modifies_flags);

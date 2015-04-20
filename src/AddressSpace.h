@@ -611,8 +611,15 @@ public:
 
   /**
    * Notify that at least one watchpoint was hit --- recheck them all.
+   * Returns true if any watchpoint actually triggered. Note that
+   * debug_status can indicate a hit watchpoint that doesn't actually
+   * trigger, because the value of a write-watchpoint did not change.
+   * Likewise, debug_status can indicate a watchpoint wasn't hit that
+   * actually was (because in some configurations, e.g. VMWare
+   * hypervisor with 32-bit x86 guest, debug_status watchpoint bits
+   * are known to not be set on singlestep).
    */
-  void notify_watchpoint_fired(uintptr_t debug_status);
+  bool notify_watchpoint_fired(uintptr_t debug_status);
   /**
    * Return all changed watchpoints in |watches| and clear their changed flags.
    */
