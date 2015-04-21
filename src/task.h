@@ -439,6 +439,13 @@ public:
   void did_waitpid(int status, siginfo_t* override_siginfo = nullptr);
 
   /**
+   * If we're at the entry to (or exit from) a syscall, we may need to
+   * fix up registers that are set nondeterministically so they're
+   * deterministic.
+   */
+  void fixup_syscall_regs();
+
+  /**
    * Wait for |futex| in this address space to have the value
    * |val|.
    *

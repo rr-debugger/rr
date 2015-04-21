@@ -289,6 +289,10 @@ public:
 
   uintptr_t bp() const { return RR_GET_REG(ebp, rbp); }
 
+  void set_eflags(uintptr_t value) {
+    assert(arch() == x86);
+    u.x86regs.eflags = value;
+  }
   bool clear_singlestep_flag();
 
   // End of X86-specific stuff

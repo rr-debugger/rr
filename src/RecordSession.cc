@@ -129,6 +129,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
         // are treated as "skip this syscall". There will be one syscall event
         // reported instead of two. So, record an enter-syscall event now
         // and treat the other event as the exit.
+        t->fixup_syscall_regs();
         t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
         ASSERT(t, EV_SYSCALL == t->ev().type());
         t->ev().Syscall().state = ENTERING_SYSCALL;

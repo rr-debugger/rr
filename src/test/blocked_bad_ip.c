@@ -9,11 +9,13 @@ static void fault_handler(int sig, siginfo_t* si, void* context) {
 static void* start_thread(void* p) {
   sigset_t s;
 
+  syscall(SYS_write, STDOUT_FILENO, "EXIT-", 5);
+
   sigemptyset(&s);
   sigaddset(&s, SIGSEGV);
   sigprocmask(SIG_BLOCK, &s, NULL);
 
-  atomic_puts("EXIT-SUCCESS");
+  syscall(SYS_write, STDOUT_FILENO, "SUCCESS\n", 8, 9, 10, 11);
 
   __asm__ __volatile__("jmp 0x42");
 

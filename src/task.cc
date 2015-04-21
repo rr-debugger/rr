@@ -1870,6 +1870,46 @@ static bool is_in_non_sigreturn_exit_syscall(Task* t) {
           !is_sigreturn(t->ev().Syscall().number, t->arch()));
 }
 
+static void fixup_syscall_registers(Registers& registers) {
+  if (registers.arch() == x86_64) {
+    // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
+    // If we single-stepped into the syscall instruction, the TF flag will be
+    // set in R11. We don't want the value in R11 to depend on whether we
+    // were single-stepping during record or replay, possibly causing
+    // divergence, so we clear it here before anything is recorded or checked.
+    // For untraced syscalls, the untraced-syscall entry point code (see
+    // write_rr_page) does this itself.
+    // This doesn't matter when exiting a sigreturn syscall, since it
+    // restores the original flags.
+    registers.set_r11(registers.r11() & ~X86_TF_FLAG);
+    // x86-64 'syscall' instruction copies return address to RCX on syscall
+    // entry. rr-related kernel activity normally sets RCX to -1 at some point
+    // during syscall execution, but apparently in some (unknown) situations
+    // probably involving untraced syscalls, that doesn't happen. To avoid
+    // potential issues, forcibly replace RCX with -1 always.
+    // For untraced syscalls, the untraced-syscall entry point code (see
+    // write_rr_page) does this itself.
+    // This doesn't matter (and we should not do this) when exiting a
+    // sigreturn syscall, since it will restore the original RCX and we don't
+    // want to clobber that.
+    registers.set_cx((intptr_t) - 1);
+  } else if (registers.arch() == x86) {
+    // The x86 SYSENTER handling in Linux modifies EBP and EFLAGS on entry.
+    // EBP is the potential sixth syscall parameter, stored on the user stack.
+    // The EFLAGS changes are described here:
+    // http://linux-kernel.2935.n7.nabble.com/ia32-sysenter-target-does-not-preserve-EFLAGS-td1074164.html
+    // In a VMWare guest, the modifications to EFLAGS appear to be
+    // nondeterministic. Cover that up by setting EFLAGS to reasonable values
+    // now.
+    registers.set_eflags(0x246);
+  }
+}
+
+void Task::fixup_syscall_regs() {
+  fixup_syscall_registers(registers);
+  set_regs(registers);
+}
+
 void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   LOG(debug) << "  (refreshing register cache)";
   intptr_t original_syscallno = registers.original_syscallno();
@@ -1914,29 +1954,8 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     need_to_set_regs = true;
   }
 
-  if (registers.arch() == x86_64 &&
-      (is_in_non_sigreturn_exit_syscall(this) || is_in_untraced_syscall())) {
-    // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
-    // If we single-stepped into the syscall instruction, the TF flag will be
-    // set in R11. We don't want the value in R11 to depend on whether we
-    // were single-stepping during record or replay, possibly causing
-    // divergence, so we clear it here before anything is recorded or checked.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
-    // This doesn't matter when exiting a sigreturn syscall, since it
-    // restores the original flags.
-    registers.set_r11(registers.r11() & ~X86_TF_FLAG);
-    // x86-64 'syscall' instruction copies return address to RCX on syscall
-    // entry. rr-related kernel activity normally sets RCX to -1 at some point
-    // during syscall execution, but apparently in some (unknown) situations
-    // probably involving untraced syscalls, that doesn't happen. To avoid
-    // potential issues, forcibly replace RCX with -1 always.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
-    // This doesn't matter (and we should not do this) when exiting a
-    // sigreturn syscall, since it will restore the original RCX and we don't
-    // want to clobber that.
-    registers.set_cx((intptr_t) - 1);
+  if (is_in_non_sigreturn_exit_syscall(this) || is_in_untraced_syscall()) {
+    fixup_syscall_registers(registers);
     need_to_set_regs = true;
   }
   if (need_to_set_regs) {
