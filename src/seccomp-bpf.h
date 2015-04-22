@@ -38,9 +38,17 @@
 #include <linux/seccomp.h>
 #endif
 #ifndef SECCOMP_MODE_FILTER
-#define SECCOMP_MODE_FILTER 2         /* uses user-supplied filter. */
-#define SECCOMP_RET_ALLOW 0x7fff0000U /* allow */
-#define SECCOMP_RET_TRACE 0x7ff00000U /* trace */
+#define SECCOMP_MODE_FILTER 2 /* uses user-supplied filter. */
+
+#define SECCOMP_RET_KILL 0x00000000U
+#define SECCOMP_RET_TRAP 0x00030000U
+#define SECCOMP_RET_ERRNO 0x00050000U
+#define SECCOMP_RET_TRACE 0x7ff00000U
+#define SECCOMP_RET_ALLOW 0x7fff0000U
+
+#define SECCOMP_RET_ACTION 0x7fff0000U
+#define SECCOMP_RET_DATA 0x0000ffffU
+
 struct seccomp_data {
   int nr;
   __u32 arch;
@@ -57,6 +65,7 @@ struct seccomp_data {
 
 #define ALLOW_PROCESS BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW)
 
-#define TRACE_PROCESS BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE)
+#define TRACE_PROCESS                                                          \
+  BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE | SECCOMP_RET_DATA)
 
 #endif /* RR_SECCOMP_BPF_H_ */

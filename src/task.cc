@@ -635,6 +635,16 @@ pid_t Task::get_ptrace_eventmsg_pid() {
   return (pid_t)msg;
 }
 
+uint16_t Task::get_ptrace_eventmsg_seccomp_data() {
+  unsigned long data = 0;
+  // in theory we could hit an assertion failure if the tracee suffers
+  // a SIGKILL before we get here. But the SIGKILL would have to be
+  // precisely timed between the generation of a PTRACE_EVENT_FORK/CLONE/
+  // SYS_clone event, and us fetching the event message here.
+  xptrace(PTRACE_GETEVENTMSG, nullptr, &data);
+  return data;
+}
+
 const siginfo_t& Task::get_siginfo() {
   assert(pending_sig());
   return pending_siginfo;
@@ -1404,6 +1414,10 @@ void Task::apply_all_data_records_from_trace() {
 void Task::set_return_value_from_trace() {
   Registers r = regs();
   r.set_syscall_result(current_trace_frame().regs().syscall_result());
+  // In some cases (e.g. syscalls forced to return an error by tracee
+  // seccomp filters) we need to emulate a change to the original_syscallno
+  // (to -1 in that case).
+  r.set_original_syscallno(current_trace_frame().regs().original_syscallno());
   set_regs(r);
 }
 
@@ -2078,10 +2092,8 @@ static void set_up_seccomp_filter(Session& session) {
    * will be emulated in the replay */
   if (0 >
       prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t) & prog, 0, 0)) {
-    if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
-      FATAL() << "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
-                 "kernel is too old. Use `record -n` to disable the filter.";
-    }
+    FATAL() << "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
+               "kernel is too old.";
   }
   /* anything that happens from this point on gets filtered! */
 }
@@ -2922,14 +2934,10 @@ static void setup_fd_table(FdTable& fds) {
   setup_fd_table(*t->fds);
 
   // Sync with the child process.
-  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-                     PTRACE_O_TRACEVFORK | PTRACE_O_TRACECLONE |
-                     PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
-                     PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL;
-
-  if (session.is_recording()) {
-    options |= PTRACE_O_TRACESECCOMP;
-  }
+  intptr_t options =
+      PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK |
+      PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
+      PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL | PTRACE_O_TRACESECCOMP;
 
   long ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
   if (ret < 0 && errno == EINVAL) {

@@ -1053,34 +1053,10 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
                            arg2);
             return;
           }
-          case PR_SET_SECCOMP:
-            // If this is rr installing its own seccomp filter, don't do
-            // that since during replay we want to see ptrace events for the
-            // syscalls that filter suppresses ptrace events for.
-            if (t->session().can_validate()) {
-              // This is the tracee installing its own filter. We need to
-              // execute this, because the filter may have effects like
-              // causing syscalls to fail without triggering any ptrace
-              // events.
-              AutoRemoteSyscalls remote(t);
-              remote.syscall(syscall_number_for_prctl(t->arch()),
-                             PR_SET_SECCOMP, trace_regs.arg2(),
-                             trace_regs.arg3());
-              return;
-            }
-            break;
         }
       }
       return;
     }
-
-    case Arch::seccomp:
-      // See PR_SET_SECCOMP above. rr doesn't use the seccomp syscall itself,
-      // so this must be the tracee installing its own filter, which we must
-      // execute.
-      step->action = syscall_action(state);
-      step->syscall.emu = EXEC;
-      return;
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:

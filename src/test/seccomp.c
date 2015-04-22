@@ -23,10 +23,10 @@ static int install_filter(int syscall_nr, int f_errno) {
   int ret;
 
   ret = syscall(RR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog);
-  if (ret == 0) {
-    return 1;
+  if (ret == -1 && errno == ENOSYS) {
+    ret = prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog);
   }
-  test_assert(ret == -1 && errno == ENOSYS);
+  test_assert(ret == 0);
   return 0;
 }
 
@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
   test_assert(0 == prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0));
   test_assert(1 == prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0));
   if (install_filter(SYS_pipe, ESRCH)) {
-    test_assert(-1 == pipe(pipe_fds));
+    test_assert(-1 == syscall(SYS_pipe, pipe_fds));
     test_assert(ESRCH == errno);
   }
 

@@ -2198,13 +2198,17 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
         case PR_SET_SECCOMP:
           // Allow all known seccomp calls. We must allow the seccomp call
-          // that rr triggers when spawning the initial tracee. Allowing other
-          // calls should be safe; additional filters or restrictions will be
-          // enforced by the kernel.
+          // that rr triggers when spawning the initial tracee.
           switch ((unsigned long)t->regs().arg2()) {
             case SECCOMP_MODE_STRICT:
-            case SECCOMP_MODE_FILTER:
               break;
+            case SECCOMP_MODE_FILTER: {
+              // Prevent the actual prctl call. We'll fix this up afterwards.
+              Registers r = t->regs();
+              r.set_arg1(intptr_t(-1));
+              t->set_regs(r);
+              break;
+            }
             default:
               syscall_state.expect_errno = EINVAL;
               break;
@@ -2360,12 +2364,18 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           (int)t->regs().arg3_signed(), 4, USE_DIRECTLY);
 
     case Arch::seccomp:
-      // Allow all known seccomp calls. Allowing these calls should be safe;
-      // additional filters or restrictions will be enforced by the kernel.
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
       switch ((unsigned int)t->regs().arg1()) {
         case SECCOMP_SET_MODE_STRICT:
-        case SECCOMP_SET_MODE_FILTER:
           break;
+        case SECCOMP_SET_MODE_FILTER: {
+          // Prevent the actual seccomp call. We'll fix this up afterwards.
+          Registers r = t->regs();
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          break;
+        }
         default:
           syscall_state.expect_errno = EINVAL;
           break;
@@ -3018,12 +3028,33 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
 
     case Arch::dup2:
     case Arch::dup3:
-    case Arch::close:
+    case Arch::close: {
+      // Restore arg1 in case we modified it to disable the syscall
+      Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
+      t->set_regs(r);
+      break;
+    }
+
     case Arch::prctl: {
       // Restore arg1 in case we modified it to disable the syscall
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
       t->set_regs(r);
+      if (t->regs().arg1() == PR_SET_SECCOMP) {
+        install_patched_seccomp_filter(t);
+      }
+      break;
+    }
+
+    case Arch::seccomp: {
+      // Restore arg1 in case we modified it to disable the syscall
+      Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
+      t->set_regs(r);
+      if (t->regs().arg1() == SECCOMP_SET_MODE_FILTER) {
+        install_patched_seccomp_filter(t);
+      }
       break;
     }
 

@@ -229,4 +229,11 @@ void dump_task_set(const std::set<Task*>& tasks);
 
 void dump_task_map(const std::map<pid_t, Task*>& tasks);
 
+/**
+ * Assuming |t| is set up for a prctl or seccomp syscall that
+ * installs a seccomp-bpf filter, patch the filter to signal the tracer instead
+ * of silently delivering an errno, and install it.
+ */
+void install_patched_seccomp_filter(Task* t);
+
 #endif /* RR_UTIL_H_ */

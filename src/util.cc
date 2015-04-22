@@ -7,11 +7,16 @@
 
 #include "util.h"
 
+#include <algorithm>
+
 #include <assert.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <linux/filter.h>
 #include <linux/magic.h>
+#include <linux/prctl.h>
+#include <linux/seccomp.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/vfs.h>
@@ -19,6 +24,7 @@
 
 #include "preload/preload_interface.h"
 
+#include "AutoRemoteSyscalls.h"
 #include "Flags.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
@@ -713,4 +719,58 @@ void dump_task_map(const map<pid_t, Task*>& tasks) {
     printf("%p (pid=%d, rec=%d),", t.second, t.second->tid, t.second->rec_tid);
   }
   printf("]\n");
+}
+
+template <typename Arch>
+static void install_patched_seccomp_filter_arch(Task* t) {
+  // Take advantage of the fact that the filter program is arg3() in both
+  // prctl and seccomp syscalls.
+  auto prog =
+      t->read_mem(remote_ptr<typename Arch::sock_fprog>(t->regs().arg3()));
+  auto code = t->read_mem(prog.filter.rptr(), prog.len);
+  for (auto& u : code) {
+    if (BPF_CLASS(u.code) == BPF_RET) {
+      // XXX If we need to support RET with A/X registers, we should
+      // extend the filter patch to dynamically cap the errno (if any) to
+      // max_errno and switch to SECCOMP_RET_TRACE.
+      ASSERT(t, BPF_RVAL(u.code) == BPF_K)
+          << "seccomp-bpf program uses BPF_RET with A/X register, not "
+             "supported";
+      if ((u.k & SECCOMP_RET_ACTION) == SECCOMP_RET_ERRNO) {
+        static int max_errno = 4095;
+        // The kernel caps the max errno to 4095, so we may as well do that
+        // here. This means filter data values > 4095 cannot be generated
+        // by this filter, which lets us disambiguate seccomp errno filter
+        // returns from our filter returns.
+        int filter_errno = min<int>(max_errno, u.k & SECCOMP_RET_DATA);
+        // Instead of forcing an errno return directly, trigger a ptrace
+        // trap so we can detect and handle it.
+        u.k = filter_errno | SECCOMP_RET_TRACE;
+      }
+    }
+  }
+
+  long ret;
+  {
+    AutoRemoteSyscalls remote(t);
+    AutoRestoreMem mem(remote, nullptr,
+                       sizeof(prog) +
+                           code.size() * sizeof(typename Arch::sock_filter));
+    auto code_ptr = mem.get().cast<typename Arch::sock_filter>();
+    t->write_mem(code_ptr, code.data(), code.size());
+    prog.filter = code_ptr;
+    auto prog_ptr = remote_ptr<void>(code_ptr + code.size())
+                        .cast<typename Arch::sock_fprog>();
+    t->write_mem(prog_ptr, prog);
+
+    ret = remote.syscall(t->regs().original_syscallno(), t->regs().arg1(),
+                         t->regs().arg2(), prog_ptr);
+  }
+  Registers r = t->regs();
+  r.set_syscall_result(ret);
+  t->set_regs(r);
+}
+
+void install_patched_seccomp_filter(Task* t) {
+  RR_ARCH_FUNCTION(install_patched_seccomp_filter_arch, t->arch(), t);
 }

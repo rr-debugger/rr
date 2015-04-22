@@ -13,6 +13,7 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <linux/ethtool.h>
+#include <linux/filter.h>
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/net.h>
@@ -1102,6 +1103,20 @@ struct BaseArch : public wordsize, public FcntlConstants {
     uint32_t reserved;
   };
   RR_VERIFY_TYPE(v4l2_buffer);
+
+  struct sock_filter {
+    uint16_t code;
+    uint8_t jt;
+    uint8_t jf;
+    uint32_t k;
+  };
+  RR_VERIFY_TYPE(sock_filter);
+
+  struct sock_fprog {
+    uint16_t len;
+    ptr<sock_filter> filter;
+  };
+  RR_VERIFY_TYPE(sock_fprog);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
