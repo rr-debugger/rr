@@ -2425,8 +2425,8 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
-  snprintf(path, sizeof(path) - 1,
-           "/tmp/" SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d", tid, nonce++);
+  snprintf(path, sizeof(path) - 1, "/tmp/" SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d",
+           tid, nonce++);
 
   // Let the child create the shmem block and then send the fd back to us.
   // This lets us avoid having to make the file world-writeable so that
@@ -3019,7 +3019,7 @@ static bool is_ppid_of(pid_t ppid, pid_t pid) {
 pid_t Task::find_newborn_child_process() {
   ASSERT(this, session().is_recording());
   ASSERT(this, ptrace_event() == PTRACE_EVENT_CLONE ||
-               ptrace_event() == PTRACE_EVENT_FORK);
+                   ptrace_event() == PTRACE_EVENT_FORK);
 
   pid_t hint = get_ptrace_eventmsg_pid();
   // This should always succeed, but may fail in old kernels due to

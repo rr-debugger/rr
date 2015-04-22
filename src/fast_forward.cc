@@ -304,7 +304,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       // Grab debug_status before restoring watchpoints, since the latter
       // clears the debug status
       bool triggered_watchpoint =
-        t->vm()->notify_watchpoint_fired(t->consume_debug_status());
+          t->vm()->notify_watchpoint_fired(t->consume_debug_status());
       t->vm()->remove_breakpoint(ip + decoded.length, TRAP_BKPT_INTERNAL);
       t->vm()->restore_watchpoints();
 
