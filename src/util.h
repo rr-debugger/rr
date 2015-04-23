@@ -25,6 +25,28 @@ constexpr size_t array_length(std::array<T, N>& array) {
   return N;
 }
 
+template <typename T> T return_dummy_value() {
+  T v;
+  memset(&v, 1, sizeof(T));
+  return v;
+}
+template <typename T> bool check_type_has_no_holes() {
+  T v;
+  memset(&v, 2, sizeof(T));
+  v = return_dummy_value<T>();
+  return memchr(&v, 2, sizeof(T)) == NULL;
+}
+/**
+ * Returns true when type T has no holes. Preferably should not be defined
+ * at all otherwise.
+ * This is not 100% reliable since the check_type_has_no_holes may be
+ * compiled to copy holes. However, it has detected at least two bugs.
+ */
+template <typename T> bool type_has_no_holes() {
+  static bool check = check_type_has_no_holes<T>();
+  return check;
+}
+
 #define SHMEM_FS "/dev/shm"
 #define SHMEM_FS2 "/run/shm"
 

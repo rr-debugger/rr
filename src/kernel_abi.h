@@ -199,6 +199,11 @@ struct WordSize64Defs : public KernelConstants {
   typedef Elf64_Sym ElfSym;
 };
 
+/**
+ * Structs defined in BaseArch and its derivatives should not contain any
+ * holes. Holes can cause divergence if such structs are copied from rr to
+ * the tracee.
+ */
 template <SupportedArch arch_, typename wordsize>
 struct BaseArch : public wordsize, public FcntlConstants {
   static SupportedArch arch() { return arch_; }
@@ -308,6 +313,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   struct msghdr {
     ptr<void> msg_name;
     socklen_t msg_namelen;
+    char _padding[sizeof(ptr<void>) - sizeof(socklen_t)];
 
     ptr<iovec> msg_iov;
     size_t msg_iovlen;
@@ -434,6 +440,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     tcflag_t c_lflag;
     cc_t c_line;
     cc_t c_cc[32];
+    char _padding[3];
     speed_t c_ispeed;
     speed_t c_ospeed;
   };
@@ -454,9 +461,9 @@ struct BaseArch : public wordsize, public FcntlConstants {
     __kernel_uid32_t cuid;
     __kernel_gid32_t cgid;
     __kernel_mode_t mode;
-    unsigned char __pad1[4 - sizeof(__kernel_mode_t)];
     unsigned_short seq;
     unsigned_short __pad2;
+    char __pad3[sizeof(__kernel_ulong_t) - 2*sizeof(unsigned_short)];
     __kernel_ulong_t unused1;
     __kernel_ulong_t unused2;
   };
@@ -524,6 +531,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
 
   struct shm_info {
     int used_ids;
+    char __pad[sizeof(__kernel_ulong_t) - sizeof(int)];
     __kernel_ulong_t shm_tot;
     __kernel_ulong_t shm_rss;
     __kernel_ulong_t shm_swp;
@@ -666,6 +674,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
 
   struct ifconf {
     signed_int ifc_len;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     union {
       ptr<char> ifcu_buf;
       ptr<ifreq> ifcu_req;
@@ -758,6 +767,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   struct flock {
     signed_short l_type;
     signed_short l_whence;
+    char __pad[sizeof(off_t) - 2*sizeof(short)];
     off_t l_start;
     off_t l_len;
     pid_t l_pid;
@@ -767,6 +777,8 @@ struct BaseArch : public wordsize, public FcntlConstants {
   struct flock64 {
     signed_short l_type;
     signed_short l_whence;
+    // No padding on 32-bit, 4 bytes of padding on 64-bit
+    char __pad[sizeof(uint32_t) - 2*sizeof(short)];
     uint64_t l_start;
     uint64_t l_len;
     pid_t l_pid;
@@ -784,6 +796,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   // them here makes their definitions more concise.
   struct accept_args {
     signed_int sockfd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<sockaddr> addr;
     ptr<socklen_t> addrlen;
   };
@@ -794,6 +807,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
 
   struct getsockname_args {
     signed_int sockfd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<sockaddr> addr;
     ptr<socklen_t> addrlen;
   };
@@ -802,12 +816,14 @@ struct BaseArch : public wordsize, public FcntlConstants {
     signed_int sockfd;
     signed_int level;
     signed_int optname;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<void> optval;
     ptr<socklen_t> optlen;
   };
 
   struct recv_args {
     signed_int sockfd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<void> buf;
     size_t len;
     signed_int flags;
@@ -824,12 +840,14 @@ struct BaseArch : public wordsize, public FcntlConstants {
 
   struct recvmsg_args {
     signed_int fd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<msghdr> msg;
     signed_int flags;
   };
 
   struct recvmmsg_args {
     signed_int sockfd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<mmsghdr> msgvec;
     unsigned_int vlen;
     unsigned_int flags;
@@ -838,12 +856,14 @@ struct BaseArch : public wordsize, public FcntlConstants {
 
   struct sendmsg_args {
     signed_int fd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<msghdr> msg;
     signed_int flags;
   };
 
   struct sendmmsg_args {
     signed_int sockfd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<mmsghdr> msgvec;
     unsigned_int vlen;
     unsigned_int flags;
@@ -853,6 +873,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     signed_int domain;
     signed_int type;
     signed_int protocol;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<signed_int> sv; // int sv[2]
   };
 
@@ -871,6 +892,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     signed_int prot;
     signed_int flags;
     signed_int fd;
+    char __pad[sizeof(off_t) - sizeof(int)];
     off_t offset;
   };
 
@@ -894,6 +916,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
 
   struct select_args {
     signed_int n_fds;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<fd_set> read_fds;
     ptr<fd_set> write_fds;
     ptr<fd_set> except_fds;
@@ -912,6 +935,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   struct __sysctl_args {
     ptr<signed_int> name;
     signed_int nlen;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
     ptr<void> oldval;
     ptr<size_t> oldlenp;
     ptr<void> newval;
@@ -1009,14 +1033,15 @@ struct BaseArch : public wordsize, public FcntlConstants {
   RR_VERIFY_TYPE(itimerval);
 
   struct itimerspec {
-    struct timespec it_interval;
-    struct timespec it_value;
+    timespec it_interval;
+    timespec it_value;
   };
   RR_VERIFY_TYPE(itimerspec);
 
   typedef struct sigaltstack {
     ptr<void> ss_sp;
     int ss_flags;
+    char __pad[sizeof(size_t) - sizeof(int)];
     size_t ss_size;
   } stack_t;
   RR_VERIFY_TYPE(stack_t);
@@ -1032,6 +1057,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     __kernel_ulong_t freeswap;
     uint16_t procs;
     uint16_t pad;
+    char __pad[sizeof(__kernel_ulong_t) - 2*sizeof(uint16_t)];
     __kernel_ulong_t totalhigh;
     __kernel_ulong_t freehigh;
     uint32_t mem_unit;
@@ -1088,6 +1114,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     uint32_t bytesused;
     uint32_t flags;
     uint32_t field;
+    char __pad[sizeof(__kernel_ulong_t) - sizeof(uint32_t)];
     struct timeval timestamp;
     struct v4l2_timecode timecode;
     uint32_t sequence;
@@ -1114,6 +1141,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
 
   struct sock_fprog {
     uint16_t len;
+    char _padding[sizeof(ptr<void>) - sizeof(uint16_t)];
     ptr<sock_filter> filter;
   };
   RR_VERIFY_TYPE(sock_fprog);
@@ -1197,9 +1225,9 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
 #endif
 
   struct user {
-    struct user_regs_struct regs;
+    user_regs_struct regs;
     int u_fpvalid;
-    struct user_fpregs_struct i387;
+    user_fpregs_struct i387;
     uint32_t u_tsize;
     uint32_t u_dsize;
     uint32_t u_ssize;
@@ -1207,8 +1235,8 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     uint32_t start_stack;
     int32_t signal;
     int reserved;
-    struct user_regs_struct* u_ar0;
-    struct user_fpregs_struct* u_fpstate;
+    ptr<user_regs_struct> u_ar0;
+    ptr<user_fpregs_struct> u_fpstate;
     uint32_t magic;
     char u_comm[32];
     int u_debugreg[8];
@@ -1228,9 +1256,9 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     off_t st_size;
     blksize_t st_blksize;
     blkcnt_t st_blocks;
-    struct timespec st_atim;
-    struct timespec st_mtim;
-    struct timespec st_ctim;
+    timespec st_atim;
+    timespec st_mtim;
+    timespec st_ctim;
     unsigned_long __unused4;
     unsigned_long __unused5;
   };
@@ -1249,9 +1277,9 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     off64_t st_size;
     blksize_t st_blksize;
     blkcnt64_t st_blocks;
-    struct timespec st_atim;
-    struct timespec st_mtim;
-    struct timespec st_ctim;
+    timespec st_atim;
+    timespec st_mtim;
+    timespec st_ctim;
     ino64_t st_ino;
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat64, struct stat64);

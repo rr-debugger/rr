@@ -123,6 +123,10 @@ TEMPLATE_ARCH
 struct rrcall_init_buffers_params {
   /* The fd we're using to track desched events. */
   int desched_counter_fd;
+  /* padding for 64-bit archs. Structs written to tracee memory must not have
+   * holes!
+   */
+  int padding;
 
   /* "Out" params. */
   /* Returned pointer to and size of the shared syscallbuf

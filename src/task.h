@@ -1042,8 +1042,7 @@ public:
   uid_t getuid() { return ::getuid(); }
 
   /**
-   * Write |N| bytes from |buf| to |child_addr|, or don't
-   * return.
+   * Write |N| bytes from |buf| to |child_addr|, or don't return.
    */
   template <size_t N>
   void write_bytes(remote_ptr<void> child_addr, const uint8_t (&buf)[N]) {
@@ -1052,11 +1051,9 @@ public:
 
   /**
    * Write |val| to |child_addr|.
-   *
-   * NB: doesn't use the ptrace API, so safe to use even when
-   * the tracee isn't at a trace-stop.
    */
   template <typename T> void write_mem(remote_ptr<T> child_addr, const T& val) {
+    assert(type_has_no_holes<T>());
     write_bytes_helper(child_addr, sizeof(val), static_cast<const void*>(&val));
   }
   /**
@@ -1069,6 +1066,7 @@ public:
 
   template <typename T>
   void write_mem(remote_ptr<T> child_addr, const T* val, int count) {
+    assert(type_has_no_holes<T>());
     write_bytes_helper(child_addr, sizeof(*val) * count,
                        static_cast<const void*>(val));
   }
