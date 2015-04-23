@@ -374,6 +374,7 @@ set(BASIC_TESTS
   sched_yield_to_lower_priority
   scm_rights
   seccomp
+  seccomp_null
   sem
   sendfile
   set_ptracer

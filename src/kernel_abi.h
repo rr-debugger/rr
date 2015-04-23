@@ -463,7 +463,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     __kernel_mode_t mode;
     unsigned_short seq;
     unsigned_short __pad2;
-    char __pad3[sizeof(__kernel_ulong_t) - 2*sizeof(unsigned_short)];
+    char __pad3[sizeof(__kernel_ulong_t) - 2 * sizeof(unsigned_short)];
     __kernel_ulong_t unused1;
     __kernel_ulong_t unused2;
   };
@@ -767,7 +767,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   struct flock {
     signed_short l_type;
     signed_short l_whence;
-    char __pad[sizeof(off_t) - 2*sizeof(short)];
+    char __pad[sizeof(off_t) - 2 * sizeof(short)];
     off_t l_start;
     off_t l_len;
     pid_t l_pid;
@@ -778,7 +778,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     signed_short l_type;
     signed_short l_whence;
     // No padding on 32-bit, 4 bytes of padding on 64-bit
-    char __pad[sizeof(uint32_t) - 2*sizeof(short)];
+    char __pad[sizeof(uint32_t) - 2 * sizeof(short)];
     uint64_t l_start;
     uint64_t l_len;
     pid_t l_pid;
@@ -1057,7 +1057,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
     __kernel_ulong_t freeswap;
     uint16_t procs;
     uint16_t pad;
-    char __pad[sizeof(__kernel_ulong_t) - 2*sizeof(uint16_t)];
+    char __pad[sizeof(__kernel_ulong_t) - 2 * sizeof(uint16_t)];
     __kernel_ulong_t totalhigh;
     __kernel_ulong_t freehigh;
     uint32_t mem_unit;

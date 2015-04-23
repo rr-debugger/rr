@@ -772,10 +772,13 @@ public:
 
   /**
    * Read |val| from |child_addr|.
+   * If the data can't all be read, then if |ok| is non-null
+   * sets *ok to false, otherwise asserts.
    */
-  template <typename T> T read_mem(remote_ptr<T> child_addr) {
+  template <typename T>
+  T read_mem(remote_ptr<T> child_addr, bool* ok = nullptr) {
     T val;
-    read_bytes_helper(child_addr, sizeof(val), &val);
+    read_bytes_helper(child_addr, sizeof(val), &val, ok);
     return val;
   }
 
@@ -783,10 +786,11 @@ public:
    * Read |count| values from |child_addr|.
    */
   template <typename T>
-  std::vector<T> read_mem(remote_ptr<T> child_addr, size_t count) {
+  std::vector<T> read_mem(remote_ptr<T> child_addr, size_t count,
+                          bool* ok = nullptr) {
     std::vector<T> v;
     v.resize(count);
-    read_bytes_helper(child_addr, sizeof(T) * count, v.data());
+    read_bytes_helper(child_addr, sizeof(T) * count, v.data(), ok);
     return v;
   }
 
@@ -1080,7 +1084,12 @@ public:
    */
   ssize_t read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
                               void* buf);
-  void read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf);
+  /**
+   * If the data can't all be read, then if |ok| is non-null, sets *ok to
+   * false, otherwise asserts.
+   */
+  void read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
+                         bool* ok = nullptr);
   void write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                           const void* buf);
 

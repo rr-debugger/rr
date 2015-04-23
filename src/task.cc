@@ -2626,12 +2626,17 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
   return nread;
 }
 
-void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
-                             void* buf) {
+void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
+                             bool* ok) {
   ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
-  ASSERT(this, nread == buf_size) << "Should have read " << buf_size
-                                  << " bytes from " << addr
-                                  << ", but only read " << nread;
+  if (nread != buf_size) {
+    if (ok) {
+      *ok = false;
+    } else {
+      ASSERT(this, false) << "Should have read " << buf_size << " bytes from "
+                          << addr << ", but only read " << nread;
+    }
+  }
 }
 
 bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,

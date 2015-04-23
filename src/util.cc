@@ -721,13 +721,28 @@ void dump_task_map(const map<pid_t, Task*>& tasks) {
   printf("]\n");
 }
 
+static void set_syscall_result(Task* t, long ret) {
+  Registers r = t->regs();
+  r.set_syscall_result(ret);
+  t->set_regs(r);
+}
+
 template <typename Arch>
 static void install_patched_seccomp_filter_arch(Task* t) {
   // Take advantage of the fact that the filter program is arg3() in both
   // prctl and seccomp syscalls.
+  bool ok = true;
   auto prog =
-      t->read_mem(remote_ptr<typename Arch::sock_fprog>(t->regs().arg3()));
-  auto code = t->read_mem(prog.filter.rptr(), prog.len);
+      t->read_mem(remote_ptr<typename Arch::sock_fprog>(t->regs().arg3()), &ok);
+  if (!ok) {
+    set_syscall_result(t, -EFAULT);
+    return;
+  }
+  auto code = t->read_mem(prog.filter.rptr(), prog.len, &ok);
+  if (!ok) {
+    set_syscall_result(t, -EFAULT);
+    return;
+  }
   for (auto& u : code) {
     if (BPF_CLASS(u.code) == BPF_RET) {
       // XXX If we need to support RET with A/X registers, we should
@@ -766,9 +781,7 @@ static void install_patched_seccomp_filter_arch(Task* t) {
     ret = remote.syscall(t->regs().original_syscallno(), t->regs().arg1(),
                          t->regs().arg2(), prog_ptr);
   }
-  Registers r = t->regs();
-  r.set_syscall_result(ret);
-  t->set_regs(r);
+  set_syscall_result(t, ret);
 }
 
 void install_patched_seccomp_filter(Task* t) {
