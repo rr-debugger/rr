@@ -481,6 +481,7 @@ set(TESTS_WITH_PROGRAM
   priority
   read_big_struct
   restart_abnormal_exit
+  reverse_continue_breakpoint
   segfault
   stack_growth
   step_thread

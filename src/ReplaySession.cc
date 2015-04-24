@@ -240,6 +240,8 @@ Completion ReplaySession::cont_syscall_boundary(
   if (constraints.ticks_target > 0) {
     ticks_period = constraints.ticks_target - SKID_SIZE - t->tick_count();
     if (ticks_period <= 0) {
+      // Behave as if we actually executed something. Callers assume we did.
+      t->clear_wait_status();
       return INCOMPLETE;
     }
   }
