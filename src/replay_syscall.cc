@@ -280,12 +280,11 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
     return;
   }
 
-  Registers rec_regs = trace_frame.regs();
-
   if (flags & CLONE_UNTRACED) {
-    // See related comment in rec_process_event.c.
-    rec_regs.set_arg1(flags & ~CLONE_UNTRACED);
-    t->set_regs(rec_regs);
+    ASSERT(t, trace_frame.regs().original_syscallno() == Arch::clone);
+    Registers r = t->regs();
+    r.set_arg1(flags & ~CLONE_UNTRACED);
+    t->set_regs(r);
   }
 
   // TODO: can debugger signals interrupt us here?
@@ -299,8 +298,8 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
       // whatever. We need to retry the system call until it succeeds. Reset
       // state to try the syscall again.
       Registers r = t->regs();
-      r.set_syscallno(rec_regs.original_syscallno());
-      r.set_ip(rec_regs.ip() - syscall_instruction_length(t->arch()));
+      r.set_syscallno(trace_frame.regs().original_syscallno());
+      r.set_ip(trace_frame.regs().ip() - syscall_instruction_length(t->arch()));
       t->set_regs(r);
       // reenter syscall
       __ptrace_cont(t);
@@ -319,10 +318,10 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
 
   Registers r = t->regs();
   // Restore original_syscallno if vfork set it to fork
-  r.set_original_syscallno(rec_regs.original_syscallno());
+  r.set_original_syscallno(trace_frame.regs().original_syscallno());
   // Restore the saved flags, to hide the fact that we may have
   // masked out CLONE_UNTRACED.
-  r.set_arg1(rec_regs.arg1());
+  r.set_arg1(trace_frame.regs().arg1());
   t->set_regs(r);
 
   // Dig the recorded tid out out of the trace. The tid value returned in

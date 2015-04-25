@@ -2164,10 +2164,13 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   if (!stack.is_null()) {
     remote_ptr<void> last_stack_byte = stack - 1;
     if (t->as->has_mapping(last_stack_byte)) {
-      const Mapping& m = t->as->mapping_of(last_stack_byte).first;
-      LOG(debug) << "mapping stack for " << new_tid << " at " << m;
-      t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
-                 MappableResource::stack(new_tid));
+      auto mapping = t->as->mapping_of(last_stack_byte);
+      if (mapping.second.id.psuedodevice() != PSEUDODEVICE_HEAP) {
+        const Mapping& m = mapping.first;
+        LOG(debug) << "mapping stack for " << new_tid << " at " << m;
+        t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
+                   MappableResource::stack(new_tid));
+      }
     }
   }
   t->top_of_stack = stack;
