@@ -67,7 +67,7 @@ def clean_up():
         try:
             gdb_rr.close(force=1)
             gdb_rr = None
-        except ExceptionPexpect, e:
+        except Exception, e:
             if iterations < 5:
                 print "close() failed with '%s', retrying..."%e
                 ++iterations
