@@ -70,9 +70,9 @@ def clean_up():
         except Exception, e:
             if iterations < 5:
                 print "close() failed with '%s', retrying..."%e
-                ++iterations
+                iterations = iterations + 1
             else:
-                raise e
+                gdb_rr = None
 
 def expect(prog, what):
     try:
