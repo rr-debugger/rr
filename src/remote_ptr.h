@@ -15,7 +15,7 @@ template <typename T> size_t pointer_arithmetic_size() { return sizeof(T); }
 template <> inline size_t pointer_arithmetic_size<void>() { return 1; }
 
 /**
- * A pointer in some tracee address space.
+ * A pointer to data in some tracee address space.
  * This lets us distinguish between real, usable pointers in rr's address space
  * and pointers that only make sense in a tracee address space.
  */

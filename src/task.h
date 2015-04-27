@@ -17,6 +17,7 @@
 #include "PerfCounters.h"
 #include "PropertyTable.h"
 #include "Registers.h"
+#include "remote_code_ptr.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -503,7 +504,7 @@ public:
   void destroy_buffers();
 
   /** Return the current $ip of this. */
-  remote_ptr<uint8_t> ip() { return regs().ip(); }
+  remote_code_ptr ip() { return regs().ip(); }
 
   /**
    * Return true if this is at an arm-desched-event syscall.
@@ -535,7 +536,7 @@ public:
    * below.
    */
   bool is_in_syscallbuf() {
-    remote_ptr<void> p = ip();
+    remote_ptr<void> p = ip().to_data_ptr<void>();
     return (as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end()) ||
            (as->rr_page_start() <= p && p < as->rr_page_end());
   }
@@ -548,7 +549,7 @@ public:
    */
   bool is_in_traced_syscall() {
     return ip() ==
-           as->traced_syscall_ip() + rr::syscall_instruction_length(arch());
+        as->traced_syscall_ip().increment_by_syscall_insn_length(arch());
   }
 
   /**
@@ -560,7 +561,7 @@ public:
    */
   bool is_in_untraced_syscall() {
     return ip() ==
-           as->untraced_syscall_ip() + rr::syscall_instruction_length(arch());
+        as->untraced_syscall_ip().increment_by_syscall_insn_length(arch());
   }
 
   /**
@@ -902,7 +903,7 @@ public:
    * If signal_has_user_handler(sig) is true, return the address of the
    * user handler, otherwise return null.
    */
-  remote_ptr<uint8_t> get_signal_user_handler(int sig) const;
+  remote_code_ptr get_signal_user_handler(int sig) const;
 
   /**
    * Return |sig|'s current sigaction. Returned as raw bytes since the

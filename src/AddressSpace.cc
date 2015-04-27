@@ -273,7 +273,7 @@ static uint32_t find_offset_of_syscall_instruction_in(SupportedArch arch,
 
 uint32_t AddressSpace::offset_to_syscall_in_vdso[SupportedArch_MAX + 1];
 
-remote_ptr<uint8_t> AddressSpace::find_syscall_instruction(Task* t) {
+remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
   SupportedArch arch = t->arch();
   if (!offset_to_syscall_in_vdso[arch]) {
     auto vdso_data =
@@ -283,7 +283,7 @@ remote_ptr<uint8_t> AddressSpace::find_syscall_instruction(Task* t) {
     ASSERT(t, offset_to_syscall_in_vdso[arch])
         << "No syscall instruction found in VDSO";
   }
-  return vdso().start.cast<uint8_t>() + offset_to_syscall_in_vdso[arch];
+  return remote_code_ptr((vdso().start.cast<uint8_t>() + offset_to_syscall_in_vdso[arch]).as_int());
 }
 
 static void write_rr_page(Task* t, ScopedFd& fd) {
@@ -409,12 +409,12 @@ void AddressSpace::dump() const {
 }
 
 TrapType AddressSpace::get_breakpoint_type_for_retired_insn(
-    remote_ptr<uint8_t> ip) {
-  remote_ptr<uint8_t> addr = ip - sizeof(breakpoint_insn);
+    remote_code_ptr ip) {
+  remote_code_ptr addr = ip.decrement_by_bkpt_insn_length(SupportedArch::x86);
   return get_breakpoint_type_at_addr(addr);
 }
 
-TrapType AddressSpace::get_breakpoint_type_at_addr(remote_ptr<uint8_t> addr) {
+TrapType AddressSpace::get_breakpoint_type_at_addr(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
   return it == breakpoints.end() ? TRAP_NONE : it->second.type();
 }
@@ -422,12 +422,13 @@ TrapType AddressSpace::get_breakpoint_type_at_addr(remote_ptr<uint8_t> addr) {
 void AddressSpace::replace_breakpoints_with_original_values(
     uint8_t* dest, size_t length, remote_ptr<uint8_t> addr) {
   for (auto& it : breakpoints) {
-    remote_ptr<uint8_t> start = max(addr, it.first);
+    remote_ptr<uint8_t> bkpt_location = it.first.to_data_ptr<uint8_t>();
+    remote_ptr<uint8_t> start = max(addr, bkpt_location);
     remote_ptr<uint8_t> end =
-        min(addr + length, it.first + it.second.data_length());
+        min(addr + length, bkpt_location + it.second.data_length());
     if (start < end) {
       memcpy(dest + (start - addr),
-             it.second.original_data() + (start - it.first), end - start);
+             it.second.original_data() + (start - bkpt_location), end - start);
     }
   }
 }
@@ -585,7 +586,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
                    r);
 }
 
-void AddressSpace::remove_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
+void AddressSpace::remove_breakpoint(remote_code_ptr addr, TrapType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end() || it->second.unref(type) > 0) {
     return;
@@ -593,7 +594,7 @@ void AddressSpace::remove_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
   destroy_breakpoint(it);
 }
 
-bool AddressSpace::add_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
+bool AddressSpace::add_breakpoint(remote_code_ptr addr, TrapType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end()) {
     uint8_t overwritten_data;
@@ -601,11 +602,12 @@ bool AddressSpace::add_breakpoint(remote_ptr<uint8_t> addr, TrapType type) {
     // read/write_mem() helpers.
     Task* t = *task_set().begin();
     if (sizeof(overwritten_data) !=
-        t->read_bytes_fallible(addr, sizeof(overwritten_data),
+        t->read_bytes_fallible(addr.to_data_ptr<uint8_t>(),
+                               sizeof(overwritten_data),
                                &overwritten_data)) {
       return false;
     }
-    t->write_mem(addr, breakpoint_insn);
+    t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn);
 
     auto it_and_is_new = breakpoints.insert(make_pair(addr, Breakpoint()));
     assert(it_and_is_new.second);
@@ -1079,7 +1081,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
     offset_to_syscall_in_vdso[NativeArch::arch()] = offset;
     // Setup traced_syscall_ip_ now because we need to do AutoRemoteSyscalls
     // (for open_mem_fd) before the first exec.
-    traced_syscall_ip_ = rr_vdso.cast<uint8_t>() + offset;
+    traced_syscall_ip_ = remote_code_ptr(rr_vdso.as_int() + offset);
   }
 }
 
@@ -1110,7 +1112,7 @@ AddressSpace::AddressSpace(Task* t, const AddressSpace& o, pid_t leader_tid,
 }
 
 void AddressSpace::copy_user_breakpoints_from(const AddressSpace& o) {
-  vector<remote_ptr<uint8_t> > addrs_to_remove;
+  vector<remote_code_ptr> addrs_to_remove;
   for (auto& it : breakpoints) {
     for (int i = 0; i < it.second.user_count; ++i) {
       addrs_to_remove.push_back(it.first);
@@ -1315,7 +1317,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
 
 void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
   Task* t = *task_set().begin();
-  t->write_mem(it->first, it->second.overwritten_data);
+  t->write_mem(it->first.to_data_ptr<uint8_t>(), it->second.overwritten_data);
   breakpoints.erase(it);
 }
 

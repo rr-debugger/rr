@@ -14,8 +14,8 @@ static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
 
 namespace rr {
 
-bool is_at_syscall_instruction(Task* t, remote_ptr<uint8_t> ptr) {
-  vector<uint8_t> code = t->read_mem(ptr, 2);
+bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr) {
+  vector<uint8_t> code = t->read_mem(ptr.to_data_ptr<uint8_t>(), 2);
   switch (t->arch()) {
     case x86:
       return memcmp(code.data(), int80_insn, sizeof(int80_insn)) == 0 ||

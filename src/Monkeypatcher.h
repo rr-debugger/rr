@@ -9,6 +9,7 @@
 #include "preload/preload_interface.h"
 
 #include "remote_ptr.h"
+#include "remote_code_ptr.h"
 
 class Task;
 
@@ -71,7 +72,7 @@ private:
    * The addresses of the instructions following syscalls that we've tried
    * (or are currently trying) to patch.
    */
-  std::unordered_set<uintptr_t> tried_to_patch_syscall_addresses;
+  std::unordered_set<remote_code_ptr> tried_to_patch_syscall_addresses;
 };
 
 #endif /* RR_MONKEYPATCHER_H_ */

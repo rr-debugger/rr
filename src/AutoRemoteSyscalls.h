@@ -211,7 +211,7 @@ private:
 
   Task* t;
   Registers initial_regs;
-  remote_ptr<uint8_t> initial_ip;
+  remote_code_ptr initial_ip;
   remote_ptr<void> initial_sp;
   int pending_syscallno;
 
