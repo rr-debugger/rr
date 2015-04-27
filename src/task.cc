@@ -88,9 +88,9 @@ struct Sighandler {
     static_assert(1 == (uintptr_t)SIG_IGN, "");
     return k_sa_handler.as_int() & ~(uintptr_t)SIG_IGN;
   }
-  remote_ptr<uint8_t> get_user_handler() const {
-    return is_user_handler() ? k_sa_handler.cast<uint8_t>()
-                             : remote_ptr<uint8_t>();
+  remote_code_ptr get_user_handler() const {
+    return is_user_handler() ? remote_code_ptr(k_sa_handler.as_int())
+                             : remote_code_ptr();
   }
 
   remote_ptr<void> k_sa_handler;
@@ -357,7 +357,7 @@ bool Task::at_may_restart_syscall() const {
 void Task::finish_emulated_syscall() {
   // XXX verify that this can't be interrupted by a breakpoint trap
   Registers r = regs();
-  remote_ptr<uint8_t> ip = r.ip();
+  remote_code_ptr ip = r.ip();
   bool known_idempotent_insn_after_syscall =
       (is_in_traced_syscall() || is_in_untraced_syscall());
 
@@ -980,7 +980,7 @@ void Task::on_syscall_exit(int syscallno, const Registers& regs) {
 void Task::move_ip_before_breakpoint() {
   // TODO: assert that this is at a breakpoint trap.
   Registers r = regs();
-  r.set_ip(r.ip() - sizeof(AddressSpace::breakpoint_insn));
+  r.set_ip(r.ip().decrement_by_bkpt_insn_length(arch()));
   set_regs(r);
 }
 
@@ -1603,7 +1603,7 @@ bool Task::signal_has_user_handler(int sig) const {
   return sighandlers->get(sig).is_user_handler();
 }
 
-remote_ptr<uint8_t> Task::get_signal_user_handler(int sig) const {
+remote_code_ptr Task::get_signal_user_handler(int sig) const {
   return sighandlers->get(sig).get_user_handler();
 }
 
@@ -2066,7 +2066,7 @@ static void set_up_seccomp_filter(Session& session) {
 
   if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
     uintptr_t in_untraced_syscall_ip =
-        AddressSpace::rr_page_ip_in_untraced_syscall().as_int();
+        AddressSpace::rr_page_ip_in_untraced_syscall().register_value();
     assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
 
     struct sock_filter filter[] = {

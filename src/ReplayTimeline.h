@@ -123,14 +123,14 @@ public:
   // Add/remove breakpoints and watchpoints. Use these APIs instead
   // of operating on the task directly, so that ReplayTimeline can track
   // breakpoints and automatically move them across sessions as necessary.
-  bool add_breakpoint(Task* t, remote_ptr<uint8_t> addr);
-  void remove_breakpoint(Task* t, remote_ptr<uint8_t> addr);
+  bool add_breakpoint(Task* t, remote_code_ptr addr);
+  void remove_breakpoint(Task* t, remote_code_ptr addr);
   bool add_watchpoint(Task* t, remote_ptr<void> addr, size_t num_bytes,
                       WatchType type);
   void remove_watchpoint(Task* t, remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
   void remove_breakpoints_and_watchpoints();
-  bool has_breakpoint_at_address(Task* t, remote_ptr<uint8_t> addr);
+  bool has_breakpoint_at_address(Task* t, remote_code_ptr addr);
 
   // State-changing APIs. These may alter state associated with
   // current_session().
@@ -385,7 +385,7 @@ private:
    */
   std::map<MarkKey, uint32_t> marks_with_checkpoints;
 
-  std::multiset<std::pair<AddressSpaceUid, remote_ptr<uint8_t> > > breakpoints;
+  std::multiset<std::pair<AddressSpaceUid, remote_code_ptr> > breakpoints;
   std::multiset<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t,
                            WatchType> > watchpoints;
   bool breakpoints_applied;

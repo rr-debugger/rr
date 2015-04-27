@@ -46,6 +46,7 @@
 
 #include <vector>
 
+class remote_code_ptr;
 class Task;
 
 enum SupportedArch {
@@ -1443,7 +1444,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 /**
  * Return true if |ptr| in task |t| points to an invoke-syscall instruction.
  */
-bool is_at_syscall_instruction(Task* t, remote_ptr<uint8_t> ptr);
+bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr);
 
 /**
  * Return the code bytes of an invoke-syscall instruction. The vector must

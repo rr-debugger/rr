@@ -24,7 +24,7 @@ ostream& operator<<(ostream& s, const ReplayTimeline::MarkKey& o) {
 }
 
 ostream& operator<<(ostream& s, const ReplayTimeline::InternalMark& o) {
-  return s << "{" << o.key << ",regs_ip:" << HEX(o.regs.ip().as_int()) << "}";
+  return s << "{" << o.key << ",regs_ip:" << o.regs.ip() << "}";
 }
 
 ostream& operator<<(ostream& s, const ReplayTimeline::Mark& o) {
@@ -35,7 +35,7 @@ ostream& operator<<(ostream& s, const ReplayTimeline::Mark& o) {
 }
 
 ostream& operator<<(ostream& s, const ReplayTimeline::ProtoMark& o) {
-  return s << "{" << o.key << ",regs_ip:" << HEX(o.regs.ip().as_int()) << "}";
+  return s << "{" << o.key << ",regs_ip:" << o.regs.ip() << "}";
 }
 
 bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
@@ -401,7 +401,7 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
     // We may not have made any progress so we'll need to try another strategy
   }
 
-  remote_ptr<uint8_t> mark_addr = mark.ptr->regs.ip();
+  remote_code_ptr mark_addr = mark.ptr->regs.ip();
 
   // Try adding a breakpoint at the required IP and running to it.
   // We can't do this if we're currently at the IP, since we'd make no progress.
@@ -449,7 +449,7 @@ void ReplayTimeline::seek_to_proto_mark(const ProtoMark& pmark) {
       current->replay_step(constraints);
     } else {
       Task* t = current->current_task();
-      remote_ptr<uint8_t> mark_addr = pmark.regs.ip();
+      remote_code_ptr mark_addr = pmark.regs.ip();
       if (t->regs().ip() == mark_addr &&
           current->current_step_key().in_execution()) {
         // At required IP, but not in the correct state. Singlestep over
@@ -545,7 +545,7 @@ void ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
   }
 }
 
-bool ReplayTimeline::add_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
+bool ReplayTimeline::add_breakpoint(Task* t, remote_code_ptr addr) {
   // Apply breakpoints now; we need to actually try adding this breakpoint
   // to see if it works.
   apply_breakpoints_and_watchpoints();
@@ -556,7 +556,7 @@ bool ReplayTimeline::add_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
   return true;
 }
 
-void ReplayTimeline::remove_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
+void ReplayTimeline::remove_breakpoint(Task* t, remote_code_ptr addr) {
   if (breakpoints_applied) {
     t->vm()->remove_breakpoint(addr, TRAP_BKPT_USER);
   }
@@ -566,7 +566,7 @@ void ReplayTimeline::remove_breakpoint(Task* t, remote_ptr<uint8_t> addr) {
 }
 
 bool ReplayTimeline::has_breakpoint_at_address(Task* t,
-                                               remote_ptr<uint8_t> addr) {
+                                               remote_code_ptr addr) {
   return breakpoints.find(make_pair(t->vm()->uid(), addr)) != breakpoints.end();
 }
 

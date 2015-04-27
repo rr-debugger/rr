@@ -96,7 +96,7 @@ static bool patch_syscall_with_hook_x86ish(Task* t,
   uint8_t patch[X86CallMonkeypatch::size];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
-  remote_ptr<uint8_t> patch_start = t->regs().ip();
+  remote_ptr<uint8_t> patch_start = t->regs().ip().to_data_ptr<uint8_t>();
   remote_ptr<uint8_t> patch_end = patch_start + sizeof(patch);
   intptr_t offset = hook.hook_address - patch_end.as_int();
   int32_t offset32 = (int32_t)offset;
@@ -151,7 +151,7 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
     // Never try to patch the traced-syscall in our preload library!
     return false;
   }
-  if (tried_to_patch_syscall_addresses.count(t->ip().as_int())) {
+  if (tried_to_patch_syscall_addresses.count(t->ip())) {
     return false;
   }
   // We could examine the current syscall number and if it's not one that
@@ -164,11 +164,11 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
   // Also, implementing that would require keeping a buffered-syscalls
   // list in sync with the preload code, which is unnecessary complexity.
 
-  tried_to_patch_syscall_addresses.insert(t->ip().as_int());
+  tried_to_patch_syscall_addresses.insert(t->ip());
 
   syscall_patch_hook dummy;
   auto next_instruction =
-      t->read_mem(t->ip(), sizeof(dummy.next_instruction_bytes));
+      t->read_mem(t->ip().to_data_ptr<uint8_t>(), sizeof(dummy.next_instruction_bytes));
   for (auto& hook : syscall_hooks) {
     if (memcmp(next_instruction.data(), hook.next_instruction_bytes,
                hook.next_instruction_length) == 0) {

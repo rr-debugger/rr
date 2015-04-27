@@ -15,6 +15,7 @@
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "remote_ptr.h"
+#include "remote_code_ptr.h"
 
 class Task;
 
@@ -109,8 +110,8 @@ public:
       assert(0 && "unknown architecture");                                     \
   }
 
-  remote_ptr<uint8_t> ip() const { return RR_GET_REG(eip, rip); }
-  void set_ip(remote_ptr<uint8_t> addr) { RR_SET_REG(eip, rip, addr.as_int()); }
+  remote_code_ptr ip() const { return RR_GET_REG(eip, rip); }
+  void set_ip(remote_code_ptr addr) { RR_SET_REG(eip, rip, addr.register_value()); }
   remote_ptr<void> sp() const { return RR_GET_REG(esp, rsp); }
   void set_sp(remote_ptr<void> addr) { RR_SET_REG(esp, rsp, addr.as_int()); }
 

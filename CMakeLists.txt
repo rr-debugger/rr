@@ -179,6 +179,7 @@ add_executable(rr
   src/record_signal.cc
   src/record_syscall.cc
   src/Registers.cc
+  src/remote_code_ptr.cc
   src/ReplayCommand.cc
   src/ReplaySession.cc
   src/replay_syscall.cc

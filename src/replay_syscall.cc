@@ -913,7 +913,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     step->action = TSTEP_RETIRE;
     LOG(debug) << "  " << t->syscall_name(syscall) << " interrupted by "
                << trace_regs.syscall_result() << " at "
-               << HEX(trace_regs.ip().as_int()) << ", may restart";
+               << trace_regs.ip() << ", may restart";
     return;
   }
 
@@ -923,7 +923,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     syscall = t->ev().Syscall().number;
     if (SYSCALL_ENTRY == state) {
-      remote_ptr<uint8_t> intr_ip = t->ev().Syscall().regs.ip();
+      remote_code_ptr intr_ip = t->ev().Syscall().regs.ip();
       auto cur_ip = t->ip();
 
       LOG(debug) << "'restarting' " << t->syscall_name(syscall)

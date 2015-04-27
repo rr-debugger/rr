@@ -529,7 +529,7 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
                             Ticks ticks_slack, bool ignored_early_match,
                             Ticks ticks_left_at_ignored_early_match) {
   if (remaining_ticks < -ticks_slack) {
-    remote_ptr<uint8_t> target_ip = target_regs.ip();
+    remote_code_ptr target_ip = target_regs.ip();
 
     LOG(error) << "Replay diverged.  Dumping register comparison.";
     /* Cover up the internal breakpoint that we may have
@@ -537,8 +537,7 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
      * have been had it not hit the breakpoint (if it did
      * hit the breakpoint).*/
     t->vm()->remove_breakpoint(target_ip, TRAP_BKPT_INTERNAL);
-    if (remote_ptr<uint8_t>(t->regs().ip()) ==
-        target_ip + sizeof(AddressSpace::breakpoint_insn)) {
+    if (t->regs().ip() == target_ip.increment_by_bkpt_insn_length(t->arch())) {
       t->move_ip_before_breakpoint();
     }
     Registers::compare_register_files(t, "rep overshoot", t->regs(), "rec",
@@ -592,7 +591,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
       *ticks_left_at_ignored_early_match = ticks_left;
     }
     LOG(debug) << "  not same execution point: " << ticks_left
-               << " ticks left (@" << HEX(rec_regs.ip().as_int()) << ")";
+               << " ticks left (@" << rec_regs.ip() << ")";
 #ifdef DEBUGTAG
     Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
                                       LOG_MISMATCHES);
@@ -601,7 +600,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
   }
   if (ticks_left < -ticks_slack) {
     LOG(debug) << "  not same execution point: " << ticks_left
-               << " ticks left (@" << HEX(rec_regs.ip().as_int()) << ")";
+               << " ticks left (@" << rec_regs.ip() << ")";
 #ifdef DEBUGTAG
     Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
                                       LOG_MISMATCHES);
@@ -611,7 +610,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
   if (!Registers::compare_register_files(t, "rep", t->regs(), "rec", rec_regs,
                                          behavior)) {
     LOG(debug) << "  not same execution point: regs differ (@"
-               << HEX(rec_regs.ip().as_int()) << ")";
+               << rec_regs.ip() << ")";
     return false;
   }
   LOG(debug) << "  same execution point";
@@ -639,7 +638,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
                                      const StepConstraints& constraints,
                                      Ticks ticks) {
   pid_t tid = t->tid;
-  remote_ptr<uint8_t> ip = regs.ip();
+  remote_code_ptr ip = regs.ip();
   Ticks ticks_left;
   Ticks ticks_slack = get_ticks_slack(t);
   bool did_set_internal_breakpoint = false;

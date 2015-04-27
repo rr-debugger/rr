@@ -14,6 +14,7 @@
 
 #include "kernel_abi.h"
 #include "Monkeypatcher.h"
+#include "remote_code_ptr.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -507,13 +508,13 @@ public:
    * of breakpoint set at |ip() - sizeof(breakpoint_insn)|, if
    * one exists.  Otherwise return TRAP_NONE.
    */
-  TrapType get_breakpoint_type_for_retired_insn(remote_ptr<uint8_t> ip);
+  TrapType get_breakpoint_type_for_retired_insn(remote_code_ptr ip);
 
   /**
    * Return the type of breakpoint that's been registered for
    * |addr|.
    */
-  TrapType get_breakpoint_type_at_addr(remote_ptr<uint8_t> addr);
+  TrapType get_breakpoint_type_at_addr(remote_code_ptr addr);
 
   /**
    * The buffer |dest| of length |length| represents the contents of tracee
@@ -574,13 +575,13 @@ public:
   void notify_written(remote_ptr<void> addr, size_t num_bytes);
 
   /** Ensure a breakpoint of |type| is set at |addr|. */
-  bool add_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
+  bool add_breakpoint(remote_code_ptr addr, TrapType type);
   /**
    * Remove a |type| reference to the breakpoint at |addr|.  If
    * the removed reference was the last, the breakpoint is
    * destroyed.
    */
-  void remove_breakpoint(remote_ptr<uint8_t> addr, TrapType type);
+  void remove_breakpoint(remote_code_ptr addr, TrapType type);
   /**
    * Destroy all breakpoints in this VM, regardless of their
    * reference counts.
@@ -666,11 +667,11 @@ public:
 
   /* The address of the syscall instruction from which traced syscalls made by
    * the syscallbuf will originate. */
-  remote_ptr<uint8_t> traced_syscall_ip() const { return traced_syscall_ip_; }
+  remote_code_ptr traced_syscall_ip() const { return traced_syscall_ip_; }
   /* The address of the syscall instruction from which untraced syscalls will
    * originate, used to determine whether a syscall is being
    * made by the syscallbuf wrappers or not. */
-  remote_ptr<uint8_t> untraced_syscall_ip() const {
+  remote_code_ptr untraced_syscall_ip() const {
     return untraced_syscall_ip_;
   }
   /* Start and end of the mapping of the syscallbuf code
@@ -700,29 +701,29 @@ public:
    * ip() when we're in an untraced system call; same for all supported
    * architectures (hence static).
    */
-  static remote_ptr<uint8_t> rr_page_ip_in_untraced_syscall() {
+  static remote_code_ptr rr_page_ip_in_untraced_syscall() {
     return RR_PAGE_IN_UNTRACED_SYSCALL_ADDR;
   }
   /**
    * This doesn't need to be the same for all architectures, but may as well
    * make it so.
    */
-  static remote_ptr<uint8_t> rr_page_ip_in_traced_syscall() {
+  static remote_code_ptr rr_page_ip_in_traced_syscall() {
     return RR_PAGE_IN_TRACED_SYSCALL_ADDR;
   }
   /**
    * ip() of the untraced traced system call instruction.
    */
-  remote_ptr<uint8_t> rr_page_untraced_syscall_ip(SupportedArch arch) {
-    return rr_page_ip_in_untraced_syscall() -
-           rr::syscall_instruction_length(arch);
+  remote_code_ptr rr_page_untraced_syscall_ip(SupportedArch arch) {
+    return rr_page_ip_in_untraced_syscall().
+           decrement_by_syscall_insn_length(arch);
   }
   /**
    * ip() of the traced traced system call instruction.
    */
-  remote_ptr<uint8_t> rr_page_traced_syscall_ip(SupportedArch arch) {
-    return rr_page_ip_in_traced_syscall() -
-           rr::syscall_instruction_length(arch);
+  remote_code_ptr rr_page_traced_syscall_ip(SupportedArch arch) {
+    return rr_page_ip_in_traced_syscall().
+           decrement_by_syscall_insn_length(arch);
   }
 
   /**
@@ -731,11 +732,11 @@ public:
    * a syscall instruction into executable tracee memory (which might not be
    * possible with some kernels, e.g. PaX).
    */
-  remote_ptr<uint8_t> find_syscall_instruction(Task* t);
+  remote_code_ptr find_syscall_instruction(Task* t);
 
 private:
   class Breakpoint;
-  typedef std::map<remote_ptr<uint8_t>, Breakpoint> BreakpointMap;
+  typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
   class Watchpoint;
 
   AddressSpace(Task* t, const std::string& exe, uint32_t exec_count);
@@ -985,8 +986,8 @@ private:
   // Users of child_mem_fd should fall back to ptrace-based memory
   // access when child_mem_fd is not open.
   ScopedFd child_mem_fd;
-  remote_ptr<uint8_t> traced_syscall_ip_;
-  remote_ptr<uint8_t> untraced_syscall_ip_;
+  remote_code_ptr traced_syscall_ip_;
+  remote_code_ptr untraced_syscall_ip_;
   remote_ptr<void> syscallbuf_lib_start_;
   remote_ptr<void> syscallbuf_lib_end_;
 
