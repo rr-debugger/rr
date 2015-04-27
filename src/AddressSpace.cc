@@ -1135,28 +1135,107 @@ void AddressSpace::copy_watchpoints_from(const AddressSpace& o) {
   allocate_watchpoints();
 }
 
+static bool try_split_unaligned_range(MemoryRange& range, size_t bytes,
+                                      vector<MemoryRange>& result) {
+  if ((range.addr.as_int() & (bytes - 1)) || range.num_bytes < bytes) {
+    return false;
+  }
+  result.push_back(MemoryRange(range.addr, bytes));
+  range.addr += bytes;
+  range.num_bytes -= bytes;
+  return true;
+}
+
+static vector<MemoryRange> split_range(const MemoryRange& range) {
+  vector<MemoryRange> result;
+  MemoryRange r = range;
+  while (r.num_bytes > 0) {
+    if ((sizeof(void*) < 8 || !try_split_unaligned_range(r, 8, result)) &&
+        !try_split_unaligned_range(r, 4, result) &&
+        !try_split_unaligned_range(r, 2, result)) {
+      bool ret = try_split_unaligned_range(r, 1, result);
+      assert(ret);
+    }
+  }
+  return result;
+}
+
+static void configure_watch_registers(vector<WatchConfig>& regs,
+                                      const MemoryRange& range, WatchType type,
+                                      vector<int8_t>* assigned_regs) {
+  auto split_ranges = split_range(range);
+
+  if (type == WATCH_WRITE && range.num_bytes > 1) {
+    // We can suppress spurious write-watchpoint triggerings by checking
+    // whether memory values have changed. So we can sometimes conserve
+    // debug registers by upgrading an unaligned range to an aligned range
+    // of a larger size.
+    uintptr_t align;
+    if (range.num_bytes <= 2) {
+      align = 2;
+    } else if (range.num_bytes <= 4 || sizeof(void*) <= 4) {
+      align = 4;
+    } else {
+      align = 8;
+    }
+    remote_ptr<void> aligned_start(range.addr.as_int() & ~(align - 1));
+    remote_ptr<void> aligned_end((range.end().as_int() + (align - 1)) &
+                                 ~(align - 1));
+    auto split = split_range(MemoryRange(aligned_start, aligned_end));
+    // If the aligned range doesn't reduce register usage, use the original
+    // split to avoid spurious triggerings
+    if (split.size() < split_ranges.size()) {
+      split_ranges = split;
+    }
+  }
+
+  for (auto& r : split_ranges) {
+    if (assigned_regs) {
+      assigned_regs->push_back(regs.size());
+    }
+    regs.push_back(WatchConfig(r.addr, r.num_bytes, type));
+  }
+}
+
 vector<WatchConfig> AddressSpace::get_watch_configs(
-    WillSetTaskState will_set_task_state, WatchFilter filter) {
+    WillSetTaskState will_set_task_state) {
   vector<WatchConfig> result;
   for (auto& kv : watchpoints) {
-    if (filter == CHANGED_WATCHPOINTS && !kv.second.changed) {
-      continue;
-    }
+    vector<int8_t>* assigned_regs = nullptr;
     if (will_set_task_state == SETTING_TASK_STATE) {
       kv.second.debug_regs_for_exec_read.clear();
+      assigned_regs = &kv.second.debug_regs_for_exec_read;
     }
     const MemoryRange& r = kv.first;
     int watching = kv.second.watched_bits();
     if (EXEC_BIT & watching) {
-      if (will_set_task_state == SETTING_TASK_STATE) {
-        kv.second.debug_regs_for_exec_read.push_back(result.size());
+      configure_watch_registers(result, r, WATCH_EXEC, assigned_regs);
+    }
+    if (READ_BIT & watching) {
+      configure_watch_registers(result, r, WATCH_READWRITE, assigned_regs);
+    } else if (WRITE_BIT & watching) {
+      configure_watch_registers(result, r, WATCH_WRITE, nullptr);
+    }
+  }
+  return result;
+}
+
+vector<WatchConfig> AddressSpace::get_watchpoints_internal(
+    WatchpointFilter filter) {
+  vector<WatchConfig> result;
+  for (auto& kv : watchpoints) {
+    if (filter == CHANGED_WATCHPOINTS) {
+      if (!kv.second.changed) {
+        continue;
       }
+      kv.second.changed = false;
+    }
+    const MemoryRange& r = kv.first;
+    int watching = kv.second.watched_bits();
+    if (EXEC_BIT & watching) {
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_EXEC));
     }
     if (READ_BIT & watching) {
-      if (will_set_task_state == SETTING_TASK_STATE) {
-        kv.second.debug_regs_for_exec_read.push_back(result.size());
-      }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_READWRITE));
     } else if (WRITE_BIT & watching) {
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_WRITE));
@@ -1165,16 +1244,16 @@ vector<WatchConfig> AddressSpace::get_watch_configs(
   return result;
 }
 
-std::vector<WatchConfig> AddressSpace::consume_watchpoint_changes() {
-  auto result = get_watch_configs(NOT_SETTING_TASK_STATE, CHANGED_WATCHPOINTS);
-  for (auto& kv : watchpoints) {
-    kv.second.changed = false;
-  }
-  return result;
+vector<WatchConfig> AddressSpace::consume_watchpoint_changes() {
+  return get_watchpoints_internal(CHANGED_WATCHPOINTS);
+}
+
+vector<WatchConfig> AddressSpace::all_watchpoints() {
+  return get_watchpoints_internal(ALL_WATCHPOINTS);
 }
 
 bool AddressSpace::allocate_watchpoints() {
-  Task::DebugRegs regs = get_watch_configs(SETTING_TASK_STATE, ALL_WATCHPOINTS);
+  Task::DebugRegs regs = get_watch_configs(SETTING_TASK_STATE);
 
   if (regs.size() <= 0x7f) {
     bool ok = true;

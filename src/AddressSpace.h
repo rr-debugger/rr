@@ -596,9 +596,7 @@ public:
   void remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
   void remove_all_watchpoints();
-  std::vector<WatchConfig> all_watchpoints() {
-    return get_watch_configs(NOT_SETTING_TASK_STATE, ALL_WATCHPOINTS);
-  }
+  std::vector<WatchConfig> all_watchpoints();
 
   /**
    * Save all watchpoint state onto a stack.
@@ -749,17 +747,18 @@ private:
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);
   void update_watchpoint_values(remote_ptr<void> start, remote_ptr<void> end);
+  enum WatchpointFilter {
+    ALL_WATCHPOINTS,
+    CHANGED_WATCHPOINTS
+  };
+  std::vector<WatchConfig> get_watchpoints_internal(WatchpointFilter filter);
 
   enum WillSetTaskState {
     SETTING_TASK_STATE,
     NOT_SETTING_TASK_STATE
   };
-  enum WatchFilter {
-    ALL_WATCHPOINTS,
-    CHANGED_WATCHPOINTS
-  };
   std::vector<WatchConfig> get_watch_configs(
-      WillSetTaskState will_set_task_state, WatchFilter filter);
+      WillSetTaskState will_set_task_state);
 
   /**
    * Construct a minimal set of watchpoints to be enabled based

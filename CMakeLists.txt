@@ -500,6 +500,7 @@ set(TESTS_WITH_PROGRAM
   vfork
   watchpoint
   watchpoint_syscall
+  watchpoint_unaligned
 )
 
 # A "test without program" is a foo.run driver script only, which does
