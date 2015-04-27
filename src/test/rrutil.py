@@ -55,7 +55,7 @@ def ok():
     clean_up()
 
 # Internal helpers
-TIMEOUT_SEC = 20
+TIMEOUT_SEC = 100
 # gdb and rr are part of the same process tree, so they share
 # stdin/stdout.
 gdb_rr = None
