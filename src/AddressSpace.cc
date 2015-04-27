@@ -718,16 +718,23 @@ void AddressSpace::update_watchpoint_values(remote_ptr<void> start,
 
 static int DR_WATCHPOINT(int n) { return 1 << n; }
 
-static bool watchpoint_triggered(uintptr_t debug_status, int8_t reg) {
-  return reg >= 0 && (debug_status & DR_WATCHPOINT(reg));
+static bool watchpoint_triggered(uintptr_t debug_status,
+                                 const vector<int8_t>& regs) {
+  for (auto reg : regs) {
+    if (debug_status & DR_WATCHPOINT(reg)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status) {
   bool triggered = false;
   for (auto& it : watchpoints) {
-    if (update_watchpoint_value(it.first, it.second) ||
-        watchpoint_triggered(debug_status, it.second.in_register_exec) ||
-        watchpoint_triggered(debug_status, it.second.in_register_readwrite)) {
+    if (((it.second.watched_bits() & WRITE_BIT) &&
+         update_watchpoint_value(it.first, it.second)) ||
+        ((it.second.watched_bits() & (READ_BIT | EXEC_BIT)) &&
+         watchpoint_triggered(debug_status, it.second.debug_regs_for_exec_read))) {
       it.second.changed = true;
       triggered = true;
     }
@@ -1135,27 +1142,22 @@ vector<WatchConfig> AddressSpace::get_watch_configs(
       continue;
     }
     if (will_set_task_state == SETTING_TASK_STATE) {
-      kv.second.in_register_exec = -1;
-      kv.second.in_register_readwrite = -1;
-      kv.second.in_register_write = -1;
+      kv.second.debug_regs_for_exec_read.clear();
     }
     const MemoryRange& r = kv.first;
     int watching = kv.second.watched_bits();
     if (EXEC_BIT & watching) {
       if (will_set_task_state == SETTING_TASK_STATE) {
-        kv.second.in_register_exec = result.size();
+        kv.second.debug_regs_for_exec_read.push_back(result.size());
       }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_EXEC));
     }
     if (!(READ_BIT & watching) && (WRITE_BIT & watching)) {
-      if (will_set_task_state == SETTING_TASK_STATE) {
-        kv.second.in_register_write = result.size();
-      }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_WRITE));
     }
     if (READ_BIT & watching) {
       if (will_set_task_state == SETTING_TASK_STATE) {
-        kv.second.in_register_readwrite = result.size();
+        kv.second.debug_regs_for_exec_read.push_back(result.size());
       }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_READWRITE));
     }
@@ -1191,9 +1193,7 @@ bool AddressSpace::allocate_watchpoints() {
     t2->set_debug_regs(regs);
   }
   for (auto kv : watchpoints) {
-    kv.second.in_register_exec = -1;
-    kv.second.in_register_readwrite = -1;
-    kv.second.in_register_write = -1;
+    kv.second.debug_regs_for_exec_read.clear();
   }
   return false;
 }

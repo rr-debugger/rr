@@ -895,9 +895,6 @@ private:
         : exec_count(0),
           read_count(0),
           write_count(0),
-          in_register_exec(-1),
-          in_register_readwrite(-1),
-          in_register_write(-1),
           value_bytes(num_bytes),
           valid(false),
           changed(false) {}
@@ -940,7 +937,11 @@ private:
     // been cleared.  We track refcounts of each watchable access
     // separately.
     int exec_count, read_count, write_count;
-    int8_t in_register_exec, in_register_readwrite, in_register_write;
+    // Debug registers allocated for read/exec access checking.
+    // Write watchpoints are always triggered by checking for actual memory
+    // value changes. Read/exec watchpoints can't be triggered that way, so
+    // we look for these registers being triggered instead.
+    std::vector<int8_t> debug_regs_for_exec_read;
     std::vector<uint8_t> value_bytes;
     bool valid;
     bool changed;
