@@ -15,6 +15,7 @@ int main(int argc, char* argv[]) {
   pfd.events = POLLIN;
   for (i = 0; i < NUM_ITERATIONS; ++i) {
     char c;
+    int ret;
 
     atomic_printf("iteration %d\n", i);
 
@@ -24,7 +25,15 @@ int main(int argc, char* argv[]) {
       return 0;
     }
 
-    test_assert(1 == poll(&pfd, 1, -1));
+    /* wait for 1 second, which should be long enough for
+       the chlid to do its write. In extreme cases the
+       child might run to completion before this poll()
+       call is entered, in which case we will time out safely. */
+    ret = poll(&pfd, 1, 1000);
+    if (ret == 0) {
+      continue;
+    }
+    test_assert(1 == ret);
     test_assert(POLLIN & pfd.revents);
     test_assert(1 == read(pfd.fd, &c, 1));
   }
