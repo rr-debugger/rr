@@ -734,7 +734,8 @@ bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status) {
     if (((it.second.watched_bits() & WRITE_BIT) &&
          update_watchpoint_value(it.first, it.second)) ||
         ((it.second.watched_bits() & (READ_BIT | EXEC_BIT)) &&
-         watchpoint_triggered(debug_status, it.second.debug_regs_for_exec_read))) {
+         watchpoint_triggered(debug_status,
+                              it.second.debug_regs_for_exec_read))) {
       it.second.changed = true;
       triggered = true;
     }
@@ -1152,14 +1153,13 @@ vector<WatchConfig> AddressSpace::get_watch_configs(
       }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_EXEC));
     }
-    if (!(READ_BIT & watching) && (WRITE_BIT & watching)) {
-      result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_WRITE));
-    }
     if (READ_BIT & watching) {
       if (will_set_task_state == SETTING_TASK_STATE) {
         kv.second.debug_regs_for_exec_read.push_back(result.size());
       }
       result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_READWRITE));
+    } else if (WRITE_BIT & watching) {
+      result.push_back(WatchConfig(r.addr, r.num_bytes, WATCH_WRITE));
     }
   }
   return result;
