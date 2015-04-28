@@ -2469,7 +2469,7 @@ void rec_prepare_restart_syscall(Task* t) {
   syscall_state_property.remove(*t);
 }
 
-template <typename Arch> static void init_scratch_memory(Task* t) {
+template <typename Arch> static void init_scratch_memory(Task* t, bool use_fixed_addr = false) {
   const int scratch_size = 512 * page_size();
   size_t sz = scratch_size;
   // The PROT_EXEC looks scary, and it is, but it's to prevent
@@ -2482,8 +2482,13 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
     /* initialize the scratchpad for blocking system calls */
     AutoRemoteSyscalls remote(t);
 
+    if (!use_fixed_addr) {
     t->scratch_ptr =
         remote.mmap_syscall(remote_ptr<void>(), sz, prot, flags, -1, 0);
+    }else{
+    t->scratch_ptr =
+        remote.mmap_syscall(remote_ptr<void>(0x68000000), sz, prot, flags | MAP_FIXED, -1, 0);
+    }
     t->scratch_size = scratch_size;
   }
   // record this mmap for the replay
@@ -2605,7 +2610,7 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   // XXX where does the magic number come from?
   t->record_remote(rand_addr, 16);
 
-  init_scratch_memory<Arch>(t);
+  init_scratch_memory<Arch>(t, true);
 }
 
 static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
