@@ -2469,7 +2469,18 @@ void rec_prepare_restart_syscall(Task* t) {
   syscall_state_property.remove(*t);
 }
 
-template <typename Arch> static void init_scratch_memory(Task* t) {
+enum ScratchAddrType {
+  FIXED_ADDRESS,
+  DYNAMIC_ADDRESS
+};
+/* Pointer used when running RR in WINE. Memory below this address is
+   unmapped by WINE immediately after exec, so start the scratch buffer
+   here. */
+static const uintptr_t FIXED_SCRATCH_PTR = 0x68000000;
+
+template <typename Arch>
+static void init_scratch_memory(Task* t,
+                                ScratchAddrType addr_type = DYNAMIC_ADDRESS) {
   const int scratch_size = 512 * page_size();
   size_t sz = scratch_size;
   // The PROT_EXEC looks scary, and it is, but it's to prevent
@@ -2482,8 +2493,13 @@ template <typename Arch> static void init_scratch_memory(Task* t) {
     /* initialize the scratchpad for blocking system calls */
     AutoRemoteSyscalls remote(t);
 
-    t->scratch_ptr =
-        remote.mmap_syscall(remote_ptr<void>(), sz, prot, flags, -1, 0);
+    if (addr_type == DYNAMIC_ADDRESS) {
+      t->scratch_ptr =
+          remote.mmap_syscall(remote_ptr<void>(), sz, prot, flags, -1, 0);
+    } else {
+      t->scratch_ptr = remote.mmap_syscall(remote_ptr<void>(FIXED_SCRATCH_PTR),
+                                           sz, prot, flags | MAP_FIXED, -1, 0);
+    }
     t->scratch_size = scratch_size;
   }
   // record this mmap for the replay
@@ -2605,7 +2621,7 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   // XXX where does the magic number come from?
   t->record_remote(rand_addr, 16);
 
-  init_scratch_memory<Arch>(t);
+  init_scratch_memory<Arch>(t, FIXED_ADDRESS);
 }
 
 static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
