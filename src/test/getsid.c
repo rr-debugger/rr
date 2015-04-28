@@ -10,10 +10,9 @@ int main(int argc, char* argv[]) {
   sid2 = getsid(sid1);
   atomic_printf("getsid(0) session ID: %d\n", sid1);
   atomic_printf("getsid(getsid(0)) session ID: %d\n", sid2);
+  check_syscall(sid1, sid2);
 
-  if (sid1 == sid2) {
-    atomic_puts("EXIT-SUCCESS");
-  }
+  atomic_puts("EXIT-SUCCESS");
 
   return 0;
 }
