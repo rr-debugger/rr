@@ -49,17 +49,20 @@ static int run_test(void) {
   }
 
   ret = unshare(CLONE_NEWUSER);
-  if (ret != EINVAL) {
-    test_assert(ret == 0);
+  if (ret != -1 || errno != EINVAL) {
+    test_assert(0 == ret);
 
     test_assert(0 == unshare(CLONE_NEWNS));
     test_assert(0 == unshare(CLONE_NEWIPC));
     test_assert(0 == unshare(CLONE_NEWNET));
-    test_assert(0 == unshare(CLONE_NEWPID));
+    ret = unshare(CLONE_NEWPID);
+    if (ret != -1 || errno != EINVAL) {
+      test_assert(0 == ret);
 
-    test_assert(0 == chroot(tmp_name));
+      test_assert(0 == chroot(tmp_name));
 
-    run_child();
+      run_child();
+    }
   }
 
   return 77;
