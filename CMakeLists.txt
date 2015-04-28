@@ -590,24 +590,24 @@ target_link_libraries(cpuid -lrt)
 
 foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
   add_test(${test}
-    bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${PROJECT_BINARY_DIR} ${test})
+    bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
   set_tests_properties(${test}
     PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
   add_test(${test}-no-syscallbuf
-    bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${PROJECT_BINARY_DIR} ${test})
+    bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
   set_tests_properties(${test}-no-syscallbuf
     PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 endforeach(test)
 
 foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
   add_test(${test}
-    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR} ${test})
+    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
   set_tests_properties(${test}
     PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
   add_test(${test}-no-syscallbuf
-    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${PROJECT_BINARY_DIR} ${test})
+    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
   set_tests_properties(${test}-no-syscallbuf
     PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 endforeach(test)
@@ -666,24 +666,24 @@ if(rr_64BIT)
 
   foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
     add_test(${test}-32
-      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${PROJECT_BINARY_DIR} ${test}_32)
+      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
     set_tests_properties(${test}-32
       PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
     add_test(${test}-32-no-syscallbuf
-      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${PROJECT_BINARY_DIR} ${test}_32)
+      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
     set_tests_properties(${test}-32-no-syscallbuf
       PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
   endforeach(test)
 
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
     add_test(${test}-32
-      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${PROJECT_BINARY_DIR} ${test}_32)
+      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
     set_tests_properties(${test}-32
       PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
 
     add_test(${test}-32-no-syscallbuf
-      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${PROJECT_BINARY_DIR} ${test}_32)
+      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
     set_tests_properties(${test}-32-no-syscallbuf
       PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
   endforeach(test)
