@@ -99,13 +99,17 @@ GLOBAL_OPTIONS="$DEFAULT_FLAGS"
 GLOBAL_OPTIONS_BIND_CPU="$DEFAULT_FLAGS"
 
 LIB_ARG=$1
-OBJDIR=$2
+SRCDIR=$2
+if [[ ! -d "$SRCDIR" ]]; then
+    fatal "FAILED: srcdir missing"
+fi
+OBJDIR=$3
 if [[ "$OBJDIR" == "" ]]; then
     # Default to assuming that the user's working directory is the
     # test/ directory within the rr clone.
     OBJDIR=`realpath ../../../obj`
 fi
-TESTNAME=$3
+TESTNAME=$4
 if [[ "$TESTNAME" == "" ]]; then
     [[ $0 =~ ([A-Za-z0-9_]+)\.run$ ]] || fatal "FAILED: bad test script name"
     TESTNAME=${BASH_REMATCH[1]}
@@ -126,7 +130,6 @@ leave_data=n
 nonce=
 
 # Set up the environment and working directory.
-SRCDIR="${OBJDIR}/../rr"
 TESTDIR="${SRCDIR}/src/test"
 
 export PATH="${OBJDIR}/bin:${PATH}"
