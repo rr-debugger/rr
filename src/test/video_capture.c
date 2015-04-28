@@ -25,6 +25,10 @@ static int open_device(void) {
     atomic_printf("%s not found; aborting test\n", device_name);
     no_v4l2();
   }
+  if (fd < 0 && errno == EACCES) {
+    atomic_printf("%s not accessible; aborting test\n", device_name);
+    no_v4l2();
+  }
   test_assert(fd >= 0);
 
   ret = ioctl(fd, VIDIOC_QUERYCAP, &cap);
