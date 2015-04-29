@@ -37,9 +37,13 @@ RecordCommand RecordCommand::singleton(
     "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
     "                             Default is to bind to CPU 0.  This option\n"
     "                             can cause replay divergence: use with\n"
-    "                             caution.\n");
+    "                             caution.\n"
+    "  -v, --env=NAME=VALUE       value to add to the environment of the\n"
+    "                             tracee. There can be any number of these.\n");
 
 struct RecordFlags {
+  vector<string> extra_env;
+
   /* Max counter value before the scheduler interrupts a tracee. */
   Ticks max_ticks;
 
@@ -78,7 +82,8 @@ static bool parse_record_arg(std::vector<std::string>& args,
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'e', "num-events", HAS_PARAMETER },
     { 'n', "no-syscall-buffer", NO_PARAMETER },
-    { 'u', "cpu-unbound", NO_PARAMETER }
+    { 'u', "cpu-unbound", NO_PARAMETER },
+    { 'v', "env", HAS_PARAMETER }
   };
   ParsedOption opt;
   auto args_copy = args;
@@ -114,6 +119,9 @@ static bool parse_record_arg(std::vector<std::string>& args,
       break;
     case 'u':
       flags.cpu_unbound = true;
+      break;
+    case 'v':
+      flags.extra_env.push_back(opt.value);
       break;
     default:
       assert(0 && "Unknown option");
@@ -180,7 +188,8 @@ static int record(const vector<string>& args, const RecordFlags& flags) {
   auto session = RecordSession::create(
       args,
       (flags.cpu_unbound ? RecordSession::CPU_UNBOUND : 0) |
-          (flags.use_syscall_buffer ? 0 : RecordSession::DISABLE_SYSCALL_BUF));
+          (flags.use_syscall_buffer ? 0 : RecordSession::DISABLE_SYSCALL_BUF),
+       flags.extra_env);
   setup_session_from_flags(*session, flags);
 
   RecordSession::RecordResult step_result;

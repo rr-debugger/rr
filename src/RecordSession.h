@@ -3,6 +3,9 @@
 #ifndef RR_RECORD_SESSION_H_
 #define RR_RECORD_SESSION_H_
 
+#include <string>
+#include <vector>
+
 #include "Scheduler.h"
 #include "Session.h"
 #include "task.h"
@@ -21,7 +24,9 @@ public:
     CPU_UNBOUND = 0x02
   };
   static shr_ptr create(const std::vector<std::string>& argv,
-                        uint32_t flags = 0);
+                        uint32_t flags = 0,
+                        const std::vector<std::string>& extra_env =
+                            std::vector<std::string>());
 
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
   void set_ignore_sig(int ignore_sig) { this->ignore_sig = ignore_sig; }

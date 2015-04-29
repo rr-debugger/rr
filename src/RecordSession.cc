@@ -988,7 +988,8 @@ static string find_syscall_buffer_library() {
 }
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
-    const vector<string>& argv, uint32_t flags) {
+    const vector<string>& argv, uint32_t flags,
+    const vector<string>& extra_env) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -1004,6 +1005,7 @@ static string find_syscall_buffer_library() {
   for (; *envp; ++envp) {
     env.push_back(*envp);
   }
+  env.insert(env.end(), extra_env.begin(), extra_env.end());
 
   char cwd[PATH_MAX] = "";
   getcwd(cwd, sizeof(cwd));
