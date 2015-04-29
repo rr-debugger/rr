@@ -199,6 +199,30 @@ static int find_pid_for_command(const string& trace_dir,
   return -1;
 }
 
+static bool pid_exists(const string& trace_dir, pid_t pid) {
+  TraceReader trace(trace_dir);
+
+  while (trace.good()) {
+    auto e = trace.read_task_event();
+    if (e.tid() == pid) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool pid_execs(const string& trace_dir, pid_t pid) {
+  TraceReader trace(trace_dir);
+
+  while (trace.good()) {
+    auto e = trace.read_task_event();
+    if (e.tid() == pid && e.type() == TraceTaskEvent::EXEC) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // The parent process waits until the server, |waiting_for_child|, creates a
 // debug socket. Then the parent exec()s the debugger over itself. While it's
 // waiting for the child, this is the child's pid.
@@ -406,6 +430,20 @@ int ReplayCommand::run(std::vector<std::string>& args) {
     if (flags.target_process <= 0) {
       fprintf(stderr, "No process '%s' found. Try 'rr ps'.\n",
               flags.target_command.c_str());
+      return 2;
+    }
+  }
+  if (flags.process_created_how != ReplayFlags::CREATED_NONE) {
+    if (!pid_exists(trace_dir, flags.target_process)) {
+      fprintf(stderr, "No process %d found in trace. Try 'rr ps'.\n",
+              flags.target_process);
+      return 2;
+    }
+    if (flags.process_created_how == ReplayFlags::CREATED_EXEC &&
+        !pid_execs(trace_dir, flags.target_process)) {
+      fprintf(stderr, "Process %d never exec()ed. Try 'rr ps', or use "
+                      "'-f'.\n",
+              flags.target_process);
       return 2;
     }
   }
