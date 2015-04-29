@@ -84,18 +84,6 @@ typedef unsigned char uint8_t;
 
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 
-#define test_assert(cond) assert("FAILED if not: " && (cond))
-
-#define check_syscall(expected, expr)                                          \
-  do {                                                                         \
-    int __result = (expr);                                                     \
-    if ((expected) != __result) {                                              \
-      atomic_printf("syscall failed: got %d, expected %d, errno %d", __result, \
-                    (expected), errno);                                        \
-      test_assert(0);                                                          \
-    }                                                                          \
-  } while (0)
-
 /**
  * Print the printf-like arguments to stdout as atomic-ly as we can
  * manage.  Async-signal-safe.  Does not flush stdio buffers (doing so
@@ -126,6 +114,15 @@ inline static int atomic_puts(const char* str) {
 #define fprintf(...) USE_dont_write_stderr
 #define printf(...) USE_atomic_printf_INSTEAD
 #define puts(...) USE_atomic_puts_INSTEAD
+
+inline static int check_cond(int cond) {
+  if (!cond) {
+    atomic_printf("FAILED: errno=%d (%s)\n", errno, strerror(errno));
+  }
+  return cond;
+}
+
+#define test_assert(cond) assert("FAILED: !" && check_cond(cond))
 
 /**
  * Return the calling task's id.

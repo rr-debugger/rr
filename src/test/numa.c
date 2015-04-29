@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   int ret;
 
-  test_assert(p);
+  test_assert(p != MAP_FAILED);
   ret = mbind(p, 16 * PAGE_SIZE, MPOL_PREFERRED, NULL, 0, MPOL_MF_MOVE);
   test_assert(ret == 0 || (ret == -1 && errno == ENOSYS));
 

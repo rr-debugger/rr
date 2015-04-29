@@ -17,7 +17,7 @@ static void find_home_device(void) {
   }
 
   f = fopen("/proc/self/mountinfo", "rt");
-  test_assert(f);
+  test_assert(f != NULL);
   while (fgets(mount_line, sizeof(mount_line), f)) {
     int maj, min;
     int ret;

@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) {
 
   fd = open(TEST_FILENAME, O_RDONLY);
   bytes = (char*)mmap(NULL, 4096, PROT_READ | PROT_EXEC, MAP_PRIVATE, fd, 0);
-  test_assert(bytes);
+  test_assert(bytes != MAP_FAILED);
   test_assert(!strcmp(bytes, TOKEN));
   munmap(bytes, 4096);
   close(fd);
