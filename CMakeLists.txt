@@ -221,7 +221,8 @@ if(rr_64BIT)
     set_source_files_properties(32/${file}
                                 PROPERTIES GENERATED true HEADER_FILE_ONLY true)
     add_custom_command(OUTPUT 32/${file}
-                       COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
+                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
 	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}")
   endforeach(file)
@@ -230,7 +231,8 @@ if(rr_64BIT)
     set_source_files_properties(32/${file}
                                 PROPERTIES GENERATED true COMPILE_FLAGS "-m32 -O2")
     add_custom_command(OUTPUT 32/${file}
-                       COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
+                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
 	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                                32/preload_interface.h 32/traced_syscall_shared.S)
@@ -581,11 +583,12 @@ endforeach(test)
 add_library(test_lib
   src/test/test_lib.c
 )
-
+add_dependencies(test_lib Generated)
 target_link_libraries(constructor -lrt test_lib)
 
 # cpuid test needs to link with cpuid_loop.S
 add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
+add_dependencies(cpuid Generated)
 target_link_libraries(cpuid -lrt)
 
 foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
@@ -631,7 +634,8 @@ if(rr_64BIT)
     set_source_files_properties(32/${test}.c
                                 PROPERTIES GENERATED true COMPILE_FLAGS -m32)
     add_custom_command(OUTPUT 32/${test}.c
-                       COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
+                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
+                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
                                   "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
 	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c" 32/rrutil.h)
   endforeach(test)
@@ -640,7 +644,8 @@ if(rr_64BIT)
     set_source_files_properties(32/${file}
                                 PROPERTIES GENERATED true COMPILE_FLAGS -m32)
     add_custom_command(OUTPUT 32/${file}
-                       COMMAND cp "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
+                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
+                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
                                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
 	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}")
   endforeach(file)
@@ -655,12 +660,14 @@ if(rr_64BIT)
   add_library(test_lib_32
     32/test_lib.c
   )
+  add_dependencies(test_lib_32 Generated)
   set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS -m32)
 
   target_link_libraries(constructor_32 -lrt test_lib_32)
 
   # cpuid test needs to link with cpuid_loop.S
   add_executable(cpuid_32 32/cpuid.c 32/cpuid_loop.S)
+  add_dependencies(cpuid_32 Generated)
   set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
   target_link_libraries(cpuid_32 -lrt)
 
