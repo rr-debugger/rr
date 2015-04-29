@@ -118,20 +118,28 @@ bool Command::parse_option(std::vector<std::string>& args,
         default:
           assert(0 && "Unknown parameter type");
       }
-    } else if (args[0][1] == '-' &&
-               strcmp(args[0].c_str() + 2, option_specs[i].long_name) == 0) {
-      out->short_name = option_specs[i].short_name;
-      switch (option_specs[i].param) {
-        case NO_PARAMETER:
-          return consume_args(args, 1);
-        case HAS_PARAMETER:
-          if (args.size() >= 2) {
-            assign_param(out, args[1].c_str());
-            return consume_args(args, 2);
-          }
-          return false;
-        default:
-          assert(0 && "Unknown parameter type");
+    } else if (args[0][1] == '-') {
+      size_t equals = args[0].find('=');
+      if (strncmp(args[0].c_str() + 2, option_specs[i].long_name,
+                  (equals == string::npos ? args[0].length() : equals) - 2) ==
+          0) {
+        out->short_name = option_specs[i].short_name;
+        switch (option_specs[i].param) {
+          case NO_PARAMETER:
+            return consume_args(args, 1);
+          case HAS_PARAMETER:
+            if (equals == string::npos) {
+              if (args.size() >= 2) {
+                assign_param(out, args[1].c_str());
+                return consume_args(args, 2);
+              }
+              return false;
+            }
+            assign_param(out, args[0].c_str() + equals + 1);
+            return consume_args(args, 1);
+          default:
+            assert(0 && "Unknown parameter type");
+        }
       }
     }
   }

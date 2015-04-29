@@ -189,7 +189,7 @@ static int record(const vector<string>& args, const RecordFlags& flags) {
       args,
       (flags.cpu_unbound ? RecordSession::CPU_UNBOUND : 0) |
           (flags.use_syscall_buffer ? 0 : RecordSession::DISABLE_SYSCALL_BUF),
-       flags.extra_env);
+      flags.extra_env);
   setup_session_from_flags(*session, flags);
 
   RecordSession::RecordResult step_result;
