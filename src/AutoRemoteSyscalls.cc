@@ -174,18 +174,16 @@ static remote_ptr<T> allocate(remote_ptr<void>* buf_end,
 }
 
 static int create_bind_and_listen_socket(const char* path) {
+  struct sockaddr_un addr;
   int listen_sock = socket(AF_UNIX, SOCK_STREAM, 0);
   if (listen_sock < 0) {
     FATAL() << "Failed to create listen socket";
   }
 
-  struct sockaddr_un addr;
   addr.sun_family = AF_UNIX;
   strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
   addr.sun_path[sizeof(addr.sun_path) - 1] = 0;
   if (::bind(listen_sock, (struct sockaddr*)&addr, sizeof(addr))) {
-    printf("FAILED %d\n", getpid());
-    sleep(1000);
     FATAL() << "Failed to bind listen socket";
   }
 
@@ -378,8 +376,8 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     sc_args = allocate<socketcall_args<Arch> >(&sc_args_end, remote_buf);
   }
 
-  char path[] = "/tmp/rr-tracee-fd-transfer-XXXXXXXXXX";
-  sprintf(path, "/tmp/rr-tracee-fd-transfer-%d", t->tid);
+  char path[PATH_MAX];
+  sprintf(path, "/tmp/rr-tracee-fd-transfer-%d-%ld", t->tid, random());
 
   int listen_sock = create_bind_and_listen_socket(path);
   int child_sock = child_create_socket(*this, sc_args);

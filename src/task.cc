@@ -2893,7 +2893,7 @@ static void setup_fd_table(FdTable& fds) {
     // non-zero.  The tracer can then check the ticks value
     // at the first ptrace-trap to see if it seems to be
     // working.
-    int start = rand() % 5;
+    int start = random() % 5;
     int num_its = start + 5;
     int sum = 0;
     for (int i = start; i < num_its; ++i) {
