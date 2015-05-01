@@ -1,11 +1,11 @@
 import re
 from rrutil import *
 
-send_gdb('b print_dot if checker()\n')
+send_gdb('b print_dot if checker()')
 expect_gdb('Breakpoint 1')
-send_gdb('watch dot_counter if checker()\n')
+send_gdb('watch dot_counter if checker()')
 expect_gdb('Hardware watchpoint 2')
-send_gdb('c\n')
+send_gdb('c')
 expect_rr('EXIT-SUCCESS')
 
 ok()

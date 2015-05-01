@@ -38,11 +38,11 @@ if eip is None:
 send_gdb('b *%s\n'%eip)
 expect_gdb('Breakpoint 1')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 1')
 expect_gdb('(gdb)')
 
-send_gdb('p/x *(char*)$pc\n')
+send_gdb('p/x *(char*)$pc')
 expect_gdb('0x([a-f0-9]+)')
 
 if last_match().group(1) is 'cc':

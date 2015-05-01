@@ -3,11 +3,11 @@ import sys
 import re
 from rrutil import *
 
-send_gdb('checkpoint\n')
+send_gdb('checkpoint')
 expect_gdb('= 1')
 
-send_gdb('n\n')
-send_gdb('restart 1\n')
+send_gdb('n')
+send_gdb('restart 1')
 
 expect_rr('EXIT-SUCCESS')
 

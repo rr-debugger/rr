@@ -1,19 +1,19 @@
 from rrutil import *
 
-send_gdb('break string_store\n')
+send_gdb('break string_store')
 expect_gdb('Breakpoint 1')
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 1')
 
-send_gdb('disable\n')
-send_gdb('watch -l p[0]\n')
+send_gdb('disable')
+send_gdb('watch -l p[0]')
 expect_gdb('watchpoint')
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Old value = 0')
 expect_gdb('New value = 1')
-send_gdb('p p[0]\n')
+send_gdb('p p[0]')
 expect_gdb('= 1')
-send_gdb('p p[1]\n')
+send_gdb('p p[1]')
 expect_gdb('= 0')
 
 ok()

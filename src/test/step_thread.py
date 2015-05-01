@@ -1,18 +1,18 @@
 import re
 from rrutil import *
 
-send_gdb('b hit_barrier\n')
+send_gdb('b hit_barrier')
 expect_gdb('Breakpoint 1')
 
-send_gdb('b ready\n')
+send_gdb('b ready')
 expect_gdb('Breakpoint 2')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 2, ready')
 
 bps = set(('A', 'B', 'C'))
 for bp in bps:
-    send_gdb('b '+ bp +'\n')
+    send_gdb('b '+ bp +'')
     expect_gdb('Breakpoint \d')
 
 expect_gdb(r'\(gdb\)')
@@ -24,7 +24,7 @@ events = [ re.compile(r'Breakpoint 1, hit_barrier'),
            re.compile(r'Remote connection closed'),
            re.compile(r'\(gdb\)') ]
 while 1:
-    send_gdb('s\n')
+    send_gdb('s')
     i = expect_list(events)
     if 0 == i:
         break
@@ -52,7 +52,7 @@ stopped_locations = {
 
 location_regex = '|'.join(stopped_locations[arch])
 
-send_gdb('info threads\n')
+send_gdb('info threads')
 expect_gdb(r'3\s+Thread.+?(?:%s)' % location_regex)
 expect_gdb(r'2\s+Thread.+?(?:%s)' % location_regex)
 expect_gdb(r'1\s+Thread.+hit_barrier')

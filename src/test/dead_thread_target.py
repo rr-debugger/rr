@@ -1,22 +1,22 @@
 from rrutil import *
 import re
 
-send_gdb('b hit_barrier\n')
+send_gdb('b hit_barrier')
 expect_gdb('Breakpoint 1')
 
-send_gdb('b joined_threads\n')
+send_gdb('b joined_threads')
 expect_gdb('Breakpoint 2')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 1, hit_barrier')
 
-send_gdb('info thr\n')
+send_gdb('info thr')
 expect_gdb('2    Thread')
 
-send_gdb('thr 2\n')
+send_gdb('thr 2')
 expect_gdb('Switching to thread 2')
 
-send_gdb('c\n')
+send_gdb('c')
 # TODO: with the gdb in fedora 19, if a thread dies while it's the
 # resume target, then rr notifies gdb, but gdb doesn't ask for a new
 # thread list.  This seems like a gdb bug, because we don't have any

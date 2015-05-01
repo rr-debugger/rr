@@ -1,12 +1,12 @@
 from rrutil import *
 
-send_gdb('b breakpoint\n')
+send_gdb('b breakpoint')
 expect_gdb('Breakpoint 1')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 1, breakpoint')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('exited normally')
 
 ok()

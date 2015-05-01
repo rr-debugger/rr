@@ -1,23 +1,23 @@
 from rrutil import *
 
-send_gdb('b breakpoint\n')
+send_gdb('b breakpoint')
 expect_gdb('Breakpoint 1')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 1, breakpoint')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 1, breakpoint')
 # Now we should be in the clone() thread. checkpoint here.
-send_gdb('checkpoint\n');
+send_gdb('checkpoint');
 expect_gdb('= 1')
-send_gdb('restart 1\n');
+send_gdb('restart 1');
 expect_gdb('Breakpoint 1, breakpoint')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 1, breakpoint')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('EXIT-SUCCESS')
 
 ok()

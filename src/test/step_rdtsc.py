@@ -1,19 +1,19 @@
 import re
 from rrutil import *
 
-send_gdb('b rdtsc\n')
+send_gdb('b rdtsc')
 expect_gdb('Breakpoint 1')
 
-send_gdb('c\n')
+send_gdb('c')
 expect_gdb('Breakpoint 1, rdtsc')
 
-send_gdb('disass\n')
+send_gdb('disass')
 expect_gdb(re.compile(r'=> ([0-9a-fx]+) <\+[0-9]+>:\trdtsc'))
 
 addr = last_match().group(1)
 
-send_gdb('stepi\n')
-send_gdb('disass\n')
+send_gdb('stepi')
+send_gdb('disass')
 expect_gdb(re.compile(r'=> ([0-9a-fx]+) '))
 
 addr2 = last_match().group(1)
