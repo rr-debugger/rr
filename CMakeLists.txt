@@ -562,6 +562,7 @@ set(TESTS_WITHOUT_PROGRAM
   signal_checkpoint
   simple_script
   simple_script_debug
+  simple_winch
   step1
   step_rdtsc
   step_signal

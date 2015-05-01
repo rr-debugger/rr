@@ -1416,7 +1416,8 @@ static void exit_task(Task* t) {
   do {
     // Singlestep to collect the PTRACE_EVENT_EXIT event.
     t->cont_singlestep();
-  } while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
+  } while (t->is_ptrace_seccomp_event() ||
+           ReplaySession::is_ignored_signal(t->pending_sig()));
 
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
   delete t;

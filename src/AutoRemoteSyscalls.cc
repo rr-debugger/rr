@@ -8,6 +8,7 @@
 
 #include "kernel_metadata.h"
 #include "log.h"
+#include "ReplaySession.h"
 #include "Session.h"
 #include "task.h"
 #include "util.h"
@@ -100,7 +101,10 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
 static void advance_syscall(Task* t) {
   do {
     t->cont_syscall();
-  } while (t->is_ptrace_seccomp_event() || SIGCHLD == t->pending_sig());
+  } while (t->is_ptrace_seccomp_event() ||
+           ReplaySession::is_ignored_signal(t->pending_sig()));
+  // XXX During recording, a SIGCHLD or SIGWINCH delivered here should not just
+  // be ignored; the tracee might be expecting it!
   ASSERT(t, t->ptrace_event() == 0);
 }
 
