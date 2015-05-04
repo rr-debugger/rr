@@ -354,6 +354,7 @@ set(BASIC_TESTS
   prctl
   prctl_deathsig
   prctl_name
+  protect_rr_fds
   prw
   pthread_condvar_locking
   ptrace

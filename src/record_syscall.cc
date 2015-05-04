@@ -1674,18 +1674,30 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
     case Arch::fcntl:
     case Arch::fcntl64:
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
       switch ((int)t->regs().arg2_signed()) {
         case Arch::DUPFD:
         case Arch::DUPFD_CLOEXEC:
         case Arch::GETFD:
         case Arch::GETFL:
         case Arch::SETFL:
-        case Arch::SETFD:
         case Arch::SETLK:
         case Arch::SETLK64:
         case Arch::SETOWN:
         case Arch::SETOWN_EX:
         case Arch::SETSIG:
+          break;
+
+        case Arch::SETFD:
+          if ((int)t->regs().arg1() == RR_RESERVED_ROOT_DIR_FD) {
+            // Don't let tracee set FD_CLOEXEC on this fd. Disable the syscall,
+            // but emulate a successful return.
+            Registers r = t->regs();
+            r.set_arg1(-1);
+            t->set_regs(r);
+            syscall_state.emulate_result(0);
+          }
           break;
 
         case Arch::GETLK:
@@ -3042,9 +3054,10 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
 
+    case Arch::close:
     case Arch::dup2:
     case Arch::dup3:
-    case Arch::close: {
+    case Arch::fcntl: {
       // Restore arg1 in case we modified it to disable the syscall
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
