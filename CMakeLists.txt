@@ -420,6 +420,7 @@ set(BASIC_TESTS
   tcgets
   tgkill
   thread_stress
+  timer
   timerfd
   times
   tiocgwinsz

@@ -102,6 +102,7 @@ struct KernelConstants {
   typedef uint32_t socklen_t;
   typedef uint64_t dev_t;
   typedef uint32_t mode_t;
+  typedef int32_t __kernel_timer_t;
 };
 
 // These duplicate the matching F_* constants for commands for fcntl, with two

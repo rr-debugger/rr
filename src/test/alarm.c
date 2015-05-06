@@ -4,7 +4,7 @@
 
 static void breakpoint(void) {}
 
-int caught_sig = 0;
+static volatile int caught_sig = 0;
 
 void catcher(int signum, siginfo_t* siginfo_ptr, void* ucontext_ptr) {
   caught_sig = signum;

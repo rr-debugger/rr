@@ -1311,11 +1311,11 @@ remap_file_pages = UnsupportedSyscall(x86=257, x64=216)
 # does is writing its PID at this address.
 set_tid_address = ExecutedSyscall(x86=258, x64=218, arg1="typename Arch::pid_t")
 
-timer_create = UnsupportedSyscall(x86=259, x64=222)
-timer_settime = UnsupportedSyscall(x86=260, x64=223)
-timer_gettime = UnsupportedSyscall(x86=261, x64=224)
-timer_getoverrun = UnsupportedSyscall(x86=262, x64=225)
-timer_delete = UnsupportedSyscall(x86=263, x64=226)
+timer_create = EmulatedSyscall(x86=259, x64=222, arg3="typename Arch::__kernel_timer_t")
+timer_settime = EmulatedSyscall(x86=260, x64=223, arg4="typename Arch::itimerspec")
+timer_gettime = EmulatedSyscall(x86=261, x64=224, arg2="typename Arch::itimerspec")
+timer_getoverrun = EmulatedSyscall(x86=262, x64=225)
+timer_delete = EmulatedSyscall(x86=263, x64=226)
 clock_settime = UnsupportedSyscall(x86=264, x64=227)
 
 #  int clock_gettime(clockid_t clk_id, struct timespec *tp);
