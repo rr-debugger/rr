@@ -643,6 +643,8 @@ public:
   /** Return the vdso mapping of this. */
   Mapping vdso() const;
 
+  AddressSpace::MemoryMap::value_type vdso_pair() const;
+
   /**
    * Verify that this cached address space matches what the
    * kernel thinks it should be.
