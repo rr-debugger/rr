@@ -383,6 +383,7 @@ set(BASIC_TESTS
   sem
   sendfile
   set_ptracer
+  setgid
   setsid
   shm
   sigaction_old
