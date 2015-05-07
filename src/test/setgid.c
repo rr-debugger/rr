@@ -1,0 +1,13 @@
+/* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
+
+#include "rrutil.h"
+
+int main(int argc, char* argv[]) {
+  gid_t gid = getgid();
+  int err = setgid(gid);
+  atomic_printf("setgid returned :%d\n", err);
+  test_assert(0 == err);
+
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
+}

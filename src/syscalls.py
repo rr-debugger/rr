@@ -367,7 +367,22 @@ prof = InvalidSyscall(x86=44)
 # setrlimit(2)).
 brk = ExecutedSyscall(x86=45, x64=12)
 
-setgid = UnsupportedSyscall(x86=46, x64=106)
+#  int setgid(gid_t gid)
+#
+# setgid() sets the effective group ID of the calling process.
+# If the caller is the superuser, the real GID and saved set-group-ID 
+# are also set.
+#
+# Under Linux, setgid() is implemented like the POSIX version with the
+# _POSIX_SAVED_IDS feature.  This allows a set-group-ID program that 
+# is not set-user-ID-root to drop all of its group privileges, do some
+# un-privileged work, and then reengage the original effective group
+# ID in a secure manner.
+#
+# setgid will return 0 on success, or if the process already runs
+# under the given git
+setgid = EmulatedSyscall(x86=46, x64=106)
+
 getgid = EmulatedSyscall(x86=47, x64=104)
 signal = UnsupportedSyscall(x86=48)
 geteuid = EmulatedSyscall(x86=49, x64=107)
@@ -1112,7 +1127,7 @@ getresgid32 = EmulatedSyscall(x86=211, arg1="typename Arch::gid_t", arg2="typena
 
 chown32 = EmulatedSyscall(x86=212)
 setuid32 = UnsupportedSyscall(x86=213)
-setgid32 = UnsupportedSyscall(x86=214)
+setgid32 = EmulatedSyscall(x86=214)
 setfsuid32 = UnsupportedSyscall(x86=215)
 setfsgid32 = UnsupportedSyscall(x86=216)
 pivot_root = UnsupportedSyscall(x86=217, x64=155)
