@@ -3057,7 +3057,8 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     case Arch::close:
     case Arch::dup2:
     case Arch::dup3:
-    case Arch::fcntl: {
+    case Arch::fcntl:
+    case Arch::fcntl64: {
       // Restore arg1 in case we modified it to disable the syscall
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
