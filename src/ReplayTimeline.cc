@@ -360,16 +360,47 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
   return seek_to_before_key(mark.ptr->key);
 }
 
-ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
+ReplaySession::StepConstraints
+ReplayTimeline::ReplayStepToMarkStrategy::setup_step_constraints() {
+  ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+  if (singlesteps_to_perform > 0) {
+    constraints.command = RUN_SINGLESTEP_FAST_FORWARD;
+    --singlesteps_to_perform;
+  }
+  return constraints;
+}
+
+void ReplayTimeline::update_strategy_and_fix_watchpoint_quirk(
+    ReplayStepToMarkStrategy& strategy,
+    const ReplaySession::StepConstraints& constraints, ReplayResult& result,
+    const ProtoMark& before) {
+  if (constraints.command == RUN_CONTINUE &&
+      fix_watchpoint_coalescing_quirk(result, before)) {
+    // It's quite common for x86 string instructions to trigger the same
+    // watchpoint several times in consecutive instructions, e.g. if we're
+    // doing a "rep movsb" over an 8-byte watchpoint. 8 invocations of
+    // fix_watchpoint_coalescing_quirk could require 8 replays from some
+    // previous checkpoint. To avoid that, after
+    // fix_watchpoint_coalescing_quirk has fired once, singlestep the
+    // next 7 times.
+    strategy.singlesteps_to_perform = 7;
+  }
+}
+
+ReplayResult ReplayTimeline::replay_step_to_mark(
+    const Mark& mark, ReplayStepToMarkStrategy& strategy) {
   ProtoMark before = proto_mark();
   ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->key.trace_time) {
     // Easy case: each RUN_CONTINUE can only advance by at most one
-    // trace event, so do one.
-    ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+    // trace event, so do one. But do a singlestep if our strategy suggests
+    // we should.
+    ReplaySession::StepConstraints constraints =
+        strategy.setup_step_constraints();
     constraints.stop_at_time = mark.ptr->key.trace_time;
     result = current->replay_step(constraints);
-    fix_watchpoint_coalescing_quirk(result, before);
+    update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
+                                             before);
     return result;
   }
 
@@ -384,7 +415,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
     // Try to make progress by just continuing with a ticks constraint
     // set to stop us before the mark. This is efficient in the worst case,
     // when we must execute lots of instructions to reach the mark.
-    ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+    ReplaySession::StepConstraints constraints =
+        strategy.setup_step_constraints();
     constraints.ticks_target = mark.ptr->key.ticks - 1;
     result = current->replay_step(constraints);
     bool approaching_ticks_target =
@@ -395,7 +427,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
     // If there's a break indicated, we should return that to the
     // caller without doing any more work
     if (!approaching_ticks_target || result.break_status.any_break()) {
-      fix_watchpoint_coalescing_quirk(result, before);
+      update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
+                                               before);
       return result;
     }
     // We may not have made any progress so we'll need to try another strategy
@@ -409,7 +442,9 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
   // memory, e.g. because it's at the delivery of a SIGSEGV for a bad IP.
   if (t->regs().ip() != mark_addr &&
       t->vm()->add_breakpoint(mark_addr, TRAP_BKPT_USER)) {
-    result = current->replay_step(RUN_CONTINUE);
+    ReplaySession::StepConstraints constraints =
+        strategy.setup_step_constraints();
+    result = current->replay_step(constraints);
     t->vm()->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
     // If we hit our breakpoint and there is no client breakpoint there,
     // pretend we didn't hit it.
@@ -418,7 +453,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(const Mark& mark) {
                                     result.break_status.task->ip())) == 0) {
       result.break_status.breakpoint_hit = false;
     }
-    fix_watchpoint_coalescing_quirk(result, before);
+    update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
+                                             before);
     return result;
   }
 
@@ -472,7 +508,8 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
   seek_up_to_mark(mark);
   while (current_mark() != mark.ptr) {
     unapply_breakpoints_and_watchpoints();
-    replay_step_to_mark(mark);
+    ReplayStepToMarkStrategy strategy;
+    replay_step_to_mark(mark, strategy);
   }
   current_at_or_after_mark = mark.ptr;
   // XXX handle cases where breakpoints can't yet be applied
@@ -493,16 +530,17 @@ void ReplayTimeline::seek_to_mark(const Mark& mark) {
  * string instruction, we'll backup to |before| and replay forward, stopping
  * before the breakpoint could fire and single-stepping to make sure the
  * coalescing quirk doesn't happen.
+ * Returns true if we might have fixed something.
  */
-void ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
+bool ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
                                                      const ProtoMark& before) {
   if (result.status == REPLAY_EXITED ||
       result.break_status.watchpoints_hit.empty()) {
     // no watchpoint hit. Nothing to fix.
-    return;
+    return false;
   }
   if (!maybe_at_or_after_x86_string_instruction(result.break_status.task)) {
-    return;
+    return false;
   }
 
   TaskUid after_tuid = result.break_status.task->tuid();
@@ -543,6 +581,7 @@ void ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
       current->replay_step(RUN_CONTINUE);
     }
   }
+  return true;
 }
 
 bool ReplayTimeline::add_breakpoint(Task* t, remote_code_ptr addr) {
@@ -565,8 +604,7 @@ void ReplayTimeline::remove_breakpoint(Task* t, remote_code_ptr addr) {
   breakpoints.erase(it);
 }
 
-bool ReplayTimeline::has_breakpoint_at_address(Task* t,
-                                               remote_code_ptr addr) {
+bool ReplayTimeline::has_breakpoint_at_address(Task* t, remote_code_ptr addr) {
   return breakpoints.find(make_pair(t->vm()->uid(), addr)) != breakpoints.end();
 }
 
@@ -676,12 +714,13 @@ ReplayResult ReplayTimeline::reverse_continue() {
     Mark dest;
     ReplayResult final_result;
     TaskUid final_tuid;
+    ReplayStepToMarkStrategy strategy;
     while (true) {
       apply_breakpoints_and_watchpoints();
       if (at_breakpoint) {
         result = singlestep_with_breakpoints_disabled();
       } else {
-        result = replay_step_to_mark(end);
+        result = replay_step_to_mark(end, strategy);
         // This will remove all reverse-exec checkpoints ahead of the
         // current time, and add new ones if necessary. This should be
         // helpful if we have to reverse-continue far back in time, where

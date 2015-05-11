@@ -319,11 +319,24 @@ private:
   std::shared_ptr<InternalMark> current_mark();
   void remove_mark_with_checkpoint(const MarkKey& key);
   void seek_to_before_key(const MarkKey& key);
+  struct ReplayStepToMarkStrategy {
+    ReplayStepToMarkStrategy() : singlesteps_to_perform(0) {}
+    ReplaySession::StepConstraints setup_step_constraints();
+    uint32_t singlesteps_to_perform;
+  };
+  void update_strategy_and_fix_watchpoint_quirk(
+      ReplayStepToMarkStrategy& strategy,
+      const ReplaySession::StepConstraints& constraints, ReplayResult& result,
+      const ProtoMark& before);
   // Take a single replay step towards |mark|. Stop before or at |mark|, and
   // stop if any breakpoint/watchpoint/signal is hit.
-  ReplayResult replay_step_to_mark(const Mark& mark);
+  // Maintain current strategy state in |strategy|. Passing the same
+  // |strategy| object to consecutive replay_step_to_mark invocations helps
+  // optimize performance.
+  ReplayResult replay_step_to_mark(const Mark& mark,
+                                   ReplayStepToMarkStrategy& strategy);
   ReplayResult singlestep_with_breakpoints_disabled();
-  void fix_watchpoint_coalescing_quirk(ReplayResult& result,
+  bool fix_watchpoint_coalescing_quirk(ReplayResult& result,
                                        const ProtoMark& before);
   Mark find_singlestep_before(const Mark& mark);
 
