@@ -111,7 +111,9 @@ public:
   }
 
   remote_code_ptr ip() const { return RR_GET_REG(eip, rip); }
-  void set_ip(remote_code_ptr addr) { RR_SET_REG(eip, rip, addr.register_value()); }
+  void set_ip(remote_code_ptr addr) {
+    RR_SET_REG(eip, rip, addr.register_value());
+  }
   remote_ptr<void> sp() const { return RR_GET_REG(esp, rsp); }
   void set_sp(remote_ptr<void> addr) { RR_SET_REG(esp, rsp, addr.as_int()); }
 

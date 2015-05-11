@@ -549,7 +549,7 @@ public:
    */
   bool is_in_traced_syscall() {
     return ip() ==
-        as->traced_syscall_ip().increment_by_syscall_insn_length(arch());
+           as->traced_syscall_ip().increment_by_syscall_insn_length(arch());
   }
 
   /**
@@ -561,7 +561,7 @@ public:
    */
   bool is_in_untraced_syscall() {
     return ip() ==
-        as->untraced_syscall_ip().increment_by_syscall_insn_length(arch());
+           as->untraced_syscall_ip().increment_by_syscall_insn_length(arch());
   }
 
   /**

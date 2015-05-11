@@ -30,9 +30,7 @@ public:
   remote_code_ptr operator-(intptr_t delta) const {
     return remote_code_ptr(ptr - delta);
   }
-  intptr_t operator-(remote_code_ptr other) const {
-    return ptr - other.ptr;
-  }
+  intptr_t operator-(remote_code_ptr other) const { return ptr - other.ptr; }
 
   // XXXkhuey this is somewhat arbitrary
   bool operator<(const remote_code_ptr& other) const { return ptr < other.ptr; }
@@ -50,8 +48,7 @@ public:
     return remote_code_ptr(ptr + 1);
   }
 
-  template <typename T>
-  remote_ptr<T> to_data_ptr() const {
+  template <typename T> remote_ptr<T> to_data_ptr() const {
     return remote_ptr<T>(to_data_ptr_value());
   }
 
@@ -62,9 +59,7 @@ public:
 private:
   // Return the integer value for this pointer viewed as a data pointer.
   // A no-op on Intel architectures, will mask off the thumb bit on ARM.
-  uintptr_t to_data_ptr_value() const {
-    return ptr;
-  }
+  uintptr_t to_data_ptr_value() const { return ptr; }
 
   uintptr_t ptr;
 };
@@ -73,8 +68,7 @@ std::ostream& operator<<(std::ostream& stream, remote_code_ptr p);
 
 namespace std {
 
-template <>
-struct hash<remote_code_ptr> {
+template <> struct hash<remote_code_ptr> {
   size_t operator()(const remote_code_ptr& ptr) const {
     return hash<uintptr_t>()(ptr.register_value());
   }

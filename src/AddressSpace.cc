@@ -283,7 +283,8 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
     ASSERT(t, offset_to_syscall_in_vdso[arch])
         << "No syscall instruction found in VDSO";
   }
-  return remote_code_ptr((vdso().start.cast<uint8_t>() + offset_to_syscall_in_vdso[arch]).as_int());
+  return remote_code_ptr((vdso().start.cast<uint8_t>() +
+                          offset_to_syscall_in_vdso[arch]).as_int());
 }
 
 static void write_rr_page(Task* t, ScopedFd& fd) {
@@ -603,8 +604,7 @@ bool AddressSpace::add_breakpoint(remote_code_ptr addr, TrapType type) {
     Task* t = *task_set().begin();
     if (sizeof(overwritten_data) !=
         t->read_bytes_fallible(addr.to_data_ptr<uint8_t>(),
-                               sizeof(overwritten_data),
-                               &overwritten_data)) {
+                               sizeof(overwritten_data), &overwritten_data)) {
       return false;
     }
     t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn);

@@ -18,9 +18,8 @@ struct InstructionBuf {
 static InstructionBuf read_instruction(Task* t, remote_code_ptr ip) {
   InstructionBuf result;
   result.arch = t->arch();
-  result.code_buf_len =
-      (int)t->read_bytes_fallible(ip.to_data_ptr<uint8_t>(),
-                                  sizeof(result.code_buf), result.code_buf);
+  result.code_buf_len = (int)t->read_bytes_fallible(
+      ip.to_data_ptr<uint8_t>(), sizeof(result.code_buf), result.code_buf);
   return result;
 }
 
@@ -316,8 +315,9 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       if (!triggered_watchpoint) {
         // watchpoint didn't fire. We must have exited the loop early and
         // hit the breakpoint. IP will be after the breakpoint instruction.
-        ASSERT(t, t->ip() == limit_ip.increment_by_bkpt_insn_length(t->arch())
-                  && decoded.modifies_flags);
+        ASSERT(t,
+               t->ip() == limit_ip.increment_by_bkpt_insn_length(t->arch()) &&
+                   decoded.modifies_flags);
         // Undo the execution of the breakpoint instruction.
         Registers tmp = t->regs();
         tmp.set_ip(limit_ip);

@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
   test_assert(old->it_interval.tv_sec == its.it_interval.tv_sec);
   test_assert(old->it_interval.tv_nsec == its.it_interval.tv_nsec);
   test_assert(old->it_value.tv_sec <= its.it_interval.tv_sec);
-  test_assert(old->it_value.tv_sec >= its.it_interval.tv_sec/2);
+  test_assert(old->it_value.tv_sec >= its.it_interval.tv_sec / 2);
   test_assert(old->it_value.tv_nsec < 1000000000);
 
   ALLOCATE_GUARD(old2, 'c');
@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
   test_assert(old2->it_interval.tv_sec == its2.it_interval.tv_sec);
   test_assert(old2->it_interval.tv_nsec == its2.it_interval.tv_nsec);
   test_assert(old2->it_value.tv_sec <= its2.it_interval.tv_sec);
-  test_assert(old2->it_value.tv_sec >= its2.it_interval.tv_sec/2);
+  test_assert(old2->it_value.tv_sec >= its2.it_interval.tv_sec / 2);
   test_assert(old2->it_value.tv_nsec < 1000000000);
 
   test_assert(0 == timer_delete(*id));

@@ -671,9 +671,7 @@ public:
   /* The address of the syscall instruction from which untraced syscalls will
    * originate, used to determine whether a syscall is being
    * made by the syscallbuf wrappers or not. */
-  remote_code_ptr untraced_syscall_ip() const {
-    return untraced_syscall_ip_;
-  }
+  remote_code_ptr untraced_syscall_ip() const { return untraced_syscall_ip_; }
   /* Start and end of the mapping of the syscallbuf code
    * section, used to determine whether a tracee's $ip is in the
    * lib. */
@@ -715,15 +713,15 @@ public:
    * ip() of the untraced traced system call instruction.
    */
   remote_code_ptr rr_page_untraced_syscall_ip(SupportedArch arch) {
-    return rr_page_ip_in_untraced_syscall().
-           decrement_by_syscall_insn_length(arch);
+    return rr_page_ip_in_untraced_syscall().decrement_by_syscall_insn_length(
+        arch);
   }
   /**
    * ip() of the traced traced system call instruction.
    */
   remote_code_ptr rr_page_traced_syscall_ip(SupportedArch arch) {
-    return rr_page_ip_in_traced_syscall().
-           decrement_by_syscall_insn_length(arch);
+    return rr_page_ip_in_traced_syscall().decrement_by_syscall_insn_length(
+        arch);
   }
 
   /**

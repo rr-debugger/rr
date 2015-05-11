@@ -167,8 +167,8 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
   tried_to_patch_syscall_addresses.insert(t->ip());
 
   syscall_patch_hook dummy;
-  auto next_instruction =
-      t->read_mem(t->ip().to_data_ptr<uint8_t>(), sizeof(dummy.next_instruction_bytes));
+  auto next_instruction = t->read_mem(t->ip().to_data_ptr<uint8_t>(),
+                                      sizeof(dummy.next_instruction_bytes));
   for (auto& hook : syscall_hooks) {
     if (memcmp(next_instruction.data(), hook.next_instruction_bytes,
                hook.next_instruction_length) == 0) {

@@ -912,8 +912,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     }
     step->action = TSTEP_RETIRE;
     LOG(debug) << "  " << t->syscall_name(syscall) << " interrupted by "
-               << trace_regs.syscall_result() << " at "
-               << trace_regs.ip() << ", may restart";
+               << trace_regs.syscall_result() << " at " << trace_regs.ip()
+               << ", may restart";
     return;
   }
 
