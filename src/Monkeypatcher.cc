@@ -154,13 +154,17 @@ static void operator<<(ostream& stream, const vector<uint8_t>& bytes) {
 }
 
 bool Monkeypatcher::try_patch_syscall(Task* t) {
-  if (!t->vm()->syscallbuf_enabled()) {
+  if (syscall_hooks.empty()) {
+    // Syscall hooks not set up yet. Don't spew warnings, and don't
+    // fill tried_to_patch_syscall_addresses with addresses that we might be
+    // able to patch later.
     return false;
   }
   if (t->is_in_traced_syscall()) {
     // Never try to patch the traced-syscall in our preload library!
     return false;
   }
+
   Registers r = t->regs();
   if (tried_to_patch_syscall_addresses.count(r.ip())) {
     return false;
