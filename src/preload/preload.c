@@ -1652,6 +1652,20 @@ static long sys_writev(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_gettid(const struct syscall_info* call) {
+  const int syscallno = SYS_gettid;
+  void* ptr = prep_syscall();
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall0(syscallno);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long syscall_hook_internal(const struct syscall_info* call) {
   switch (call->no) {
 #define CASE(syscallname)                                                      \
@@ -1667,6 +1681,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(fcntl);
 #endif
     CASE(futex);
+    CASE(gettid);
     CASE(gettimeofday);
 #if defined(SYS__llseek)
     CASE(_llseek);
