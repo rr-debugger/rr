@@ -4,22 +4,20 @@
 
 static int num_signals_caught;
 
-static pid_t gettid(void) { return syscall(SYS_gettid); }
-
 static int tgkill(int tgid, int tid, int sig) {
   return syscall(SYS_tgkill, tgid, tid, sig);
 }
 
 static void sighandler(int sig) {
-  atomic_printf("Task %d got signal %d\n", gettid(), sig);
+  atomic_printf("Task %d got signal %d\n", sys_gettid(), sig);
   ++num_signals_caught;
 }
 
 int main(int argc, char* argv[]) {
   signal(SIGUSR1, sighandler);
   signal(SIGUSR2, sighandler);
-  tgkill(getpid(), gettid(), SIGUSR1);
-  tgkill(getpid(), gettid(), SIGUSR2);
+  tgkill(getpid(), sys_gettid(), SIGUSR1);
+  tgkill(getpid(), sys_gettid(), SIGUSR2);
 
   test_assert(2 == num_signals_caught);
 

@@ -16,7 +16,7 @@ static int ready_pipe[2];
 static int thread_wait_pipe[2];
 
 static void write_tid(void) {
-  pid_t tid = syscall(SYS_gettid);
+  pid_t tid = sys_gettid();
   test_assert(sizeof(tid) == write(tid_pipe[1], &tid, sizeof(tid)));
 }
 
