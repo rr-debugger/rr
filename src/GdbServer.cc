@@ -990,3 +990,5 @@ void GdbServer::emergency_debug(Task* t) {
 
   GdbServer(dbg).process_debugger_requests(t);
 }
+
+string GdbServer::init_script() { return gdb_rr_macros; }

@@ -67,6 +67,11 @@ public:
    */
   static void emergency_debug(Task* t);
 
+  /**
+   * A string containing the default gdbinit script that we load into gdb.
+   */
+  static std::string init_script();
+
 private:
   GdbServer(std::shared_ptr<ReplaySession> session,
             const ReplaySession::Flags& flags, const Target& target)
