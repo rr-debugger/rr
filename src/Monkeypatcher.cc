@@ -5,6 +5,7 @@
 #include "Monkeypatcher.h"
 
 #include "kernel_abi.h"
+#include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
 #include "task.h"
@@ -143,6 +144,15 @@ static void advance_syscall(Task* t) {
   assert(t->ptrace_event() == 0);
 }
 
+static void operator<<(ostream& stream, const vector<uint8_t>& bytes) {
+  for (uint32_t i = 0; i < bytes.size(); ++i) {
+    if (i > 0) {
+      stream << ' ';
+    }
+    stream << HEX(bytes[i]);
+  }
+}
+
 bool Monkeypatcher::try_patch_syscall(Task* t) {
   if (!t->vm()->syscallbuf_enabled()) {
     return false;
@@ -151,7 +161,8 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
     // Never try to patch the traced-syscall in our preload library!
     return false;
   }
-  if (tried_to_patch_syscall_addresses.count(t->ip())) {
+  Registers r = t->regs();
+  if (tried_to_patch_syscall_addresses.count(r.ip())) {
     return false;
   }
   // We could examine the current syscall number and if it's not one that
@@ -164,18 +175,16 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
   // Also, implementing that would require keeping a buffered-syscalls
   // list in sync with the preload code, which is unnecessary complexity.
 
-  tried_to_patch_syscall_addresses.insert(t->ip());
+  tried_to_patch_syscall_addresses.insert(r.ip());
 
   syscall_patch_hook dummy;
-  auto next_instruction = t->read_mem(t->ip().to_data_ptr<uint8_t>(),
+  auto next_instruction = t->read_mem(r.ip().to_data_ptr<uint8_t>(),
                                       sizeof(dummy.next_instruction_bytes));
+  intptr_t syscallno = r.original_syscallno();
   for (auto& hook : syscall_hooks) {
     if (memcmp(next_instruction.data(), hook.next_instruction_bytes,
                hook.next_instruction_length) == 0) {
       // Get out of executing the current syscall before we patch it.
-
-      Registers r = t->regs();
-      intptr_t syscallno = r.original_syscallno();
       r.set_original_syscallno(syscall_number_for_gettid(t->arch()));
       t->set_regs(r);
       // This exits the hijacked SYS_gettid.  Now the tracee is
@@ -191,10 +200,15 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
 
       patch_syscall_with_hook(t, hook);
 
+      LOG(debug) << "Patched syscall at " << r.ip() << " syscall "
+                 << syscall_name(syscallno, t->arch()) << " tid " << t->tid;
       // Return to caller, which resume normal execution.
       return true;
     }
   }
+  LOG(debug) << "Failed to patch syscall at " << r.ip() << " syscall "
+             << syscall_name(syscallno, t->arch()) << " tid " << t->tid
+             << " bytes " << next_instruction;
   return false;
 }
 
