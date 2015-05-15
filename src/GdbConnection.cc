@@ -995,7 +995,7 @@ bool GdbConnection::process_packet() {
       read_binary_data((const uint8_t*)payload, req.mem.len,
                        (uint8_t*)req.mem.data);
 
-      LOG(debug) << "gdb setting memory (addr=" << req.mem.addr
+      LOG(debug) << "gdb setting memory (addr=" << HEX(req.mem.addr)
                  << ", len=" << req.mem.len << ")";
 
       ret = true;

@@ -403,7 +403,8 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
         dbg->reply_set_mem(false);
         return;
       }
-      LOG(debug) << "Writing " << req.mem.len << " bytes to " << req.mem.addr;
+      LOG(debug) << "Writing " << req.mem.len << " bytes to "
+                 << HEX(req.mem.addr);
       // TODO fallible
       target->write_bytes_helper(req.mem.addr, req.mem.len, req.mem.data);
       dbg->reply_set_mem(true);
