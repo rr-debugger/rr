@@ -538,6 +538,7 @@ Task* GdbServer::diverter_process_debugger_requests(
         dbg->reply_read_siginfo(si_bytes);
         continue;
       }
+
       case DREQ_SET_QUERY_THREAD: {
         if (req->target.tid) {
           Task* next = t->session().find_task(req->target.tid);
@@ -547,6 +548,7 @@ Task* GdbServer::diverter_process_debugger_requests(
         }
         break;
       }
+
       case DREQ_WRITE_SIGINFO:
         LOG(debug) << "Removing reference to diversion session ...";
         assert(diversion_refcount > 0);
@@ -556,25 +558,6 @@ Task* GdbServer::diverter_process_debugger_requests(
         }
         dbg->reply_write_siginfo();
         continue;
-
-      case DREQ_REMOVE_SW_BREAK:
-      case DREQ_REMOVE_HW_BREAK:
-      case DREQ_REMOVE_RD_WATCH:
-      case DREQ_REMOVE_WR_WATCH:
-      case DREQ_REMOVE_RDWR_WATCH:
-      case DREQ_SET_SW_BREAK:
-      case DREQ_SET_HW_BREAK:
-      case DREQ_SET_RD_WATCH:
-      case DREQ_SET_WR_WATCH:
-      case DREQ_SET_RDWR_WATCH: {
-        // Setting breakpoints in a dying diversion is assumed
-        // to be a user action intended for the replay
-        // session, so return to it now.
-        if (diversion_refcount == 0) {
-          return nullptr;
-        }
-        break;
-      }
 
       default:
         break;
