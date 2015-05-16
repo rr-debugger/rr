@@ -201,6 +201,16 @@ public:
     EXPECT_SHORT_REVERSE_EXECUTION
   };
 
+  /**
+   * We track the set of breakpoints/watchpoints requested by the client.
+   * When we switch to a new ReplaySession, these need to be reapplied before
+   * replaying that session, but we do this lazily.
+   * apply_breakpoints_and_watchpoints() forces the breakpoints/watchpoints
+   * to be applied to the current session.
+   * Our checkpoints never have breakpoints applied.
+   */
+  void apply_breakpoints_and_watchpoints();
+
 private:
   /**
    * TraceFrame::Time + Ticks + ReplayStepKey does not uniquely identify
@@ -288,15 +298,6 @@ private:
   friend std::ostream& operator<<(std::ostream& s, const InternalMark& o);
   friend std::ostream& operator<<(std::ostream& s, const ProtoMark& o);
 
-  /**
-   * We track the set of breakpoints/watchpoints requested by the client.
-   * When we switch to a new ReplaySession, these need to be reapplied before
-   * replaying that session, but we do this lazily.
-   * apply_breakpoints_and_watchpoints() forces the breakpoints/watchpoints
-   * to be applied to the current session.
-   * Our checkpoints never have breakpoints applied.
-   */
-  void apply_breakpoints_and_watchpoints();
   /**
    * unapply_breakpoints_and_watchpoints() forces the breakpoints/watchpoints
    * to not be applied to the current session. Use this when we need to

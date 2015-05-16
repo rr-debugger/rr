@@ -451,17 +451,36 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_SET_SW_BREAK: {
       ASSERT(target, (req.mem.len == sizeof(AddressSpace::breakpoint_insn)))
           << "Debugger setting bad breakpoint insn";
-      bool ok =
-          &session == &timeline.current_session()
-              ? timeline.add_breakpoint(target, req.mem.addr)
-              : target->vm()->add_breakpoint(req.mem.addr, TRAP_BKPT_USER);
+      // Mirror all breakpoint/watchpoint sets/unsets to the target process
+      // if it's not part of the timeline (i.e. it's a diversion).
+      Task* replay_task = timeline.current_session().find_task(t->tuid());
+      bool ok = timeline.add_breakpoint(replay_task, req.mem.addr);
+      if (ok && &session != &timeline.current_session()) {
+        bool diversion_ok =
+            target->vm()->add_breakpoint(req.mem.addr, TRAP_BKPT_USER);
+        ASSERT(target, diversion_ok);
+      }
+      dbg->reply_watchpoint_request(ok);
+      return;
+    }
+    case DREQ_SET_HW_BREAK:
+    case DREQ_SET_RD_WATCH:
+    case DREQ_SET_WR_WATCH:
+    case DREQ_SET_RDWR_WATCH: {
+      Task* replay_task = timeline.current_session().find_task(t->tuid());
+      bool ok = timeline.add_watchpoint(replay_task, req.mem.addr, req.mem.len,
+                                        watchpoint_type(req.type));
+      if (ok && &session != &timeline.current_session()) {
+        bool diversion_ok = target->vm()->add_watchpoint(
+            req.mem.addr, req.mem.len, watchpoint_type(req.type));
+        ASSERT(target, diversion_ok);
+      }
       dbg->reply_watchpoint_request(ok);
       return;
     }
     case DREQ_REMOVE_SW_BREAK:
-      if (&session == &timeline.current_session()) {
-        timeline.remove_breakpoint(target, req.mem.addr);
-      } else {
+      timeline.remove_breakpoint(target, req.mem.addr);
+      if (&session != &timeline.current_session()) {
         target->vm()->remove_breakpoint(req.mem.addr, TRAP_BKPT_USER);
       }
       dbg->reply_watchpoint_request(true);
@@ -470,27 +489,14 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_REMOVE_RD_WATCH:
     case DREQ_REMOVE_WR_WATCH:
     case DREQ_REMOVE_RDWR_WATCH:
-      if (&session == &timeline.current_session()) {
-        timeline.remove_watchpoint(target, req.mem.addr, req.mem.len,
-                                   watchpoint_type(req.type));
-      } else {
+      timeline.remove_watchpoint(target, req.mem.addr, req.mem.len,
+                                 watchpoint_type(req.type));
+      if (&session != &timeline.current_session()) {
         target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
                                         watchpoint_type(req.type));
       }
       dbg->reply_watchpoint_request(true);
       return;
-    case DREQ_SET_HW_BREAK:
-    case DREQ_SET_RD_WATCH:
-    case DREQ_SET_WR_WATCH:
-    case DREQ_SET_RDWR_WATCH: {
-      bool ok = &session == &timeline.current_session()
-                    ? timeline.add_watchpoint(target, req.mem.addr, req.mem.len,
-                                              watchpoint_type(req.type))
-                    : target->vm()->add_watchpoint(req.mem.addr, req.mem.len,
-                                                   watchpoint_type(req.type));
-      dbg->reply_watchpoint_request(ok);
-      return;
-    }
     case DREQ_READ_SIGINFO:
       LOG(warn) << "READ_SIGINFO request outside of diversion session";
       dbg->reply_read_siginfo(vector<uint8_t>());
@@ -602,6 +608,12 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
   GdbRequest req;
   LOG(debug) << "Starting debugging diversion for " << &replay;
 
+  if (timeline.is_running()) {
+    // Ensure breakpoints and watchpoints are applied before we fork the
+    // diversion, to ensure the diversion is consistent with the timeline
+    // breakpoint/watchpoint state.
+    timeline.apply_breakpoints_and_watchpoints();
+  }
   DiversionSession::shr_ptr diversion_session = replay.clone_diversion();
   uint32_t diversion_refcount = 1;
 
