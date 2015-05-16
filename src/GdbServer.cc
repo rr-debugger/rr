@@ -478,18 +478,21 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       dbg->reply_watchpoint_request(ok);
       return;
     }
-    case DREQ_REMOVE_SW_BREAK:
-      timeline.remove_breakpoint(target, req.mem.addr);
+    case DREQ_REMOVE_SW_BREAK: {
+      Task* replay_task = timeline.current_session().find_task(t->tuid());
+      timeline.remove_breakpoint(replay_task, req.mem.addr);
       if (&session != &timeline.current_session()) {
         target->vm()->remove_breakpoint(req.mem.addr, TRAP_BKPT_USER);
       }
       dbg->reply_watchpoint_request(true);
       return;
+    }
     case DREQ_REMOVE_HW_BREAK:
     case DREQ_REMOVE_RD_WATCH:
     case DREQ_REMOVE_WR_WATCH:
-    case DREQ_REMOVE_RDWR_WATCH:
-      timeline.remove_watchpoint(target, req.mem.addr, req.mem.len,
+    case DREQ_REMOVE_RDWR_WATCH: {
+      Task* replay_task = timeline.current_session().find_task(t->tuid());
+      timeline.remove_watchpoint(replay_task, req.mem.addr, req.mem.len,
                                  watchpoint_type(req.type));
       if (&session != &timeline.current_session()) {
         target->vm()->remove_watchpoint(req.mem.addr, req.mem.len,
@@ -497,6 +500,7 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       }
       dbg->reply_watchpoint_request(true);
       return;
+    }
     case DREQ_READ_SIGINFO:
       LOG(warn) << "READ_SIGINFO request outside of diversion session";
       dbg->reply_read_siginfo(vector<uint8_t>());
@@ -651,16 +655,6 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
 
   LOG(debug) << "... ending debugging diversion";
   assert(diversion_refcount == 0);
-
-  // Replace original task's breakpoints with the breakpoints set in the
-  // diversion. gdb thinks they're the same, so keeping breakpoints in sync
-  // is the right thing to do.
-  t = diversion_session->find_task(task);
-  Task* orig = replay.find_task(task);
-  if (t && orig) {
-    orig->vm()->copy_user_breakpoints_from(*t->vm());
-    orig->vm()->copy_watchpoints_from(*t->vm());
-  }
 
   diversion_session->kill_all_tasks();
   return req;
