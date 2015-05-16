@@ -240,15 +240,14 @@ TraceTaskEvent TraceReader::read_task_event() {
 }
 
 string TraceWriter::try_hardlink_file(const string& file_name) {
-  char link_name[] = "mmap_XXXXXXXXX_hardlink";
-  sprintf(link_name, "mmap_%d_hardlink", mmap_count);
+  char count_str[20];
+  sprintf(count_str, "%d", mmap_count);
 
   size_t last_slash = file_name.rfind('/');
   string basename = (last_slash != file_name.npos)
                         ? file_name.substr(last_slash + 1)
                         : file_name;
-
-  string link_path = dir() + "/" + link_name + "_" + basename;
+  string link_path = dir() + "/mmap_" + count_str + "_hardlink_" + basename;
   int ret = link(file_name.c_str(), link_path.c_str());
   if (ret < 0) {
     // maybe tried to link across filesystems?
