@@ -413,7 +413,8 @@ TraceWriter::TraceWriter(const vector<string>& argv, const vector<string>& envp,
     : TraceStream(make_trace_dir(argv[0]),
                   // Somewhat arbitrarily start the
                   // global time from 1.
-                  1) {
+                  1),
+      mmap_count(0) {
   this->argv = argv;
   this->envp = envp;
   this->cwd = cwd;
