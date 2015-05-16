@@ -1111,32 +1111,6 @@ AddressSpace::AddressSpace(Task* t, const AddressSpace& o, pid_t leader_tid,
   // cloned address-space memory, so we don't need to do any more work here.
 }
 
-void AddressSpace::copy_user_breakpoints_from(const AddressSpace& o) {
-  vector<remote_code_ptr> addrs_to_remove;
-  for (auto& it : breakpoints) {
-    for (int i = 0; i < it.second.user_count; ++i) {
-      addrs_to_remove.push_back(it.first);
-    }
-  }
-  for (auto a : addrs_to_remove) {
-    remove_breakpoint(a, TRAP_BKPT_USER);
-  }
-
-  for (auto& it : o.breakpoints) {
-    for (int i = 0; i < it.second.user_count; ++i) {
-      add_breakpoint(it.first, TRAP_BKPT_USER);
-    }
-  }
-}
-
-void AddressSpace::copy_watchpoints_from(const AddressSpace& o) {
-  watchpoints.clear();
-  for (auto& it : o.watchpoints) {
-    watchpoints.insert(make_pair(it.first, it.second));
-  }
-  allocate_watchpoints();
-}
-
 static bool try_split_unaligned_range(MemoryRange& range, size_t bytes,
                                       vector<MemoryRange>& result) {
   if ((range.addr.as_int() & (bytes - 1)) || range.num_bytes < bytes) {

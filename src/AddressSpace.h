@@ -625,16 +625,6 @@ public:
   std::vector<WatchConfig> consume_watchpoint_changes();
 
   /**
-   * Replace all our user breakpoints with the user breakpoints of 'o'.
-   * Asserts that there are no internal breakpoints currently set.
-   */
-  void copy_user_breakpoints_from(const AddressSpace& o);
-  /**
-   * Replace all our watchpoints with the watchpoints of 'o'.
-   */
-  void copy_watchpoints_from(const AddressSpace& o);
-
-  /**
    * Make [addr, addr + num_bytes) inaccesible within this
    * address space.
    */
