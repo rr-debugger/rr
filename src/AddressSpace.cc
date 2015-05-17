@@ -441,11 +441,14 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
 
   num_bytes = ceil_page_size(num_bytes);
+  if (!num_bytes) {
+    return;
+  }
 
   Mapping m(addr, num_bytes, prot, flags, offset_bytes);
 
   bool insert_guard_page = false;
-  if (has_mapping(m.end) && mapping_of(m.end).second.is_stack()) {
+  if (has_mapping(m.end) && (mapping_of(m.end).first.flags & MAP_GROWSDOWN)) {
     // When inserting a mapping immediately before a grow-down VMA,
     // the kernel unmaps an extra page to form a guard page. We need to
     // emulate that.
@@ -462,6 +465,11 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
     unmap(addr, num_bytes + (insert_guard_page ? page_size() : 0));
   }
 
+  if (flags & MAP_GROWSDOWN) {
+    // The first page is made into a guard page by the kernel
+    m = Mapping(addr + page_size(), num_bytes - page_size(), prot, flags,
+                offset_bytes + page_size());
+  }
   map_and_coalesce(m, res);
 
   if ((prot & PROT_EXEC) &&
@@ -536,20 +544,35 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
       const Mapping& m, const MappableResource& r, const Mapping& rem) {
     LOG(debug) << "  protecting (" << rem << ") ...";
 
+    // PROT_GROWSDOWN means that if this is a grows-down segment
+    // (which for us means "stack") then the change should be
+    // extended to the start of the segment.
+    // We don't try to handle the analogous PROT_GROWSUP, because we
+    // don't understand the idea of a grows-up segment.
+    remote_ptr<void> new_start;
+    if ((m.start < rem.start) && (prot & PROT_GROWSDOWN) &&
+        (m.flags & MAP_GROWSDOWN)) {
+      new_start = m.start;
+      LOG(debug) << "  PROT_GROWSDOWN: expanded region down to " << new_start;
+    } else {
+      new_start = rem.start;
+    }
+
     mem.erase(m);
     LOG(debug) << "  erased (" << m << ")";
 
     // If the first segment we protect underflows the
     // region, remap the underflow region with previous
     // prot.
-    if (m.start < rem.start) {
+    if (m.start < new_start) {
       Mapping underflow(m.start, rem.start, m.prot, m.flags, m.offset);
       mem[underflow] = r;
     }
     // Remap the overlapping region with the new prot.
     remote_ptr<void> new_end = min(rem.end, m.end);
-    Mapping overlap(rem.start, new_end, prot, m.flags,
-                    adjust_offset(r, m, rem.start - m.start));
+    Mapping overlap(new_start, new_end,
+                    prot & (PROT_READ | PROT_WRITE | PROT_EXEC), m.flags,
+                    adjust_offset(r, m, new_start - m.start));
     mem[overlap] = r;
     last_overlap = overlap;
 
@@ -794,14 +817,16 @@ void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
  * underlying (real) device.
  */
 static bool is_adjacent_mapping(const MappingResourcePair& left,
-                                const MappingResourcePair& right) {
+                                const MappingResourcePair& right,
+                                int32_t flags_to_check = 0xFFFFFFFF) {
   const Mapping& mleft = left.first;
   const Mapping& mright = right.first;
   if (mleft.end != mright.start) {
     LOG(debug) << "    (not adjacent in memory)";
     return false;
   }
-  if (mleft.flags != mright.flags || mleft.prot != mright.prot) {
+  if (((mleft.flags ^ mright.flags) & flags_to_check) ||
+      mleft.prot != mright.prot) {
     LOG(debug) << "    (flags or prot differ)";
     return false;
   }
@@ -839,7 +864,8 @@ static bool try_merge_adjacent(Mapping* left_m, const MappableResource& left_r,
                                const Mapping& right_m,
                                const MappableResource& right_r) {
   if (is_adjacent_mapping(MappingResourcePair(*left_m, left_r),
-                          MappingResourcePair(right_m, right_r))) {
+                          MappingResourcePair(right_m, right_r),
+                          Mapping::checkable_flags_mask)) {
     *left_m = Mapping(left_m->start, right_m.end, right_m.prot, right_m.flags,
                       left_m->offset);
     return true;
@@ -1366,8 +1392,6 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
                << " (end of text segment)";
   }
 
-  PseudoDevice psdev = pseudodevice_for_name(info.name);
-
   // This segment is adjacent to our previous guess at the start of
   // the dynamic heap, but it's still not an explicit heap segment.
   // Or, in corner cases, the segment is the final mapping of the data
@@ -1382,6 +1406,7 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
                << " (end of mapped-data segment)";
   }
 
+  PseudoDevice psdev = pseudodevice_for_name(info.name);
   if (psdev == PSEUDODEVICE_HEAP) {
     if (!as->heap.start) {
       // No guess for the heap start. Assume it's just the [heap] segment.
@@ -1395,6 +1420,10 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
   }
   FileId id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode, psdev);
 
+  int flags = info.flags;
+  if (psdev == PSEUDODEVICE_STACK) {
+    flags |= MAP_GROWSDOWN;
+  }
   as->map(info.start_addr, info.end_addr - info.start_addr, info.prot,
-          info.flags, info.file_offset, MappableResource(id, info.name));
+          flags, info.file_offset, MappableResource(id, info.name));
 }

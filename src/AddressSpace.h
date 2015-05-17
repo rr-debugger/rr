@@ -150,8 +150,9 @@ struct Mapping {
    * task.cc.
    */
   static const int map_flags_mask =
-      (MAP_ANONYMOUS | MAP_NORESERVE | MAP_PRIVATE | MAP_SHARED | MAP_STACK);
-  static const int checkable_flags_mask = (MAP_PRIVATE | MAP_SHARED);
+      MAP_ANONYMOUS | MAP_NORESERVE | MAP_PRIVATE | MAP_SHARED | MAP_STACK |
+      MAP_GROWSDOWN;
+  static const int checkable_flags_mask = MAP_PRIVATE | MAP_SHARED;
 
   Mapping() : prot(0), flags(0), offset(0) {}
   Mapping(remote_ptr<void> addr, size_t num_bytes, int prot = 0, int flags = 0,

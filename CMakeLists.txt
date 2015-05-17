@@ -337,6 +337,7 @@ set(BASIC_TESTS
   mmap_short_file
   mmap_tmpfs
   mprotect
+  mprotect_growsdown
   mprotect_heterogenous
   mprotect_stack
   mremap
