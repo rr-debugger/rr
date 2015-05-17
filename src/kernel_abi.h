@@ -12,6 +12,7 @@
 #include <asm/ldt.h>
 #include <elf.h>
 #include <fcntl.h>
+#include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>
 #include <linux/ipc.h>
@@ -250,6 +251,8 @@ struct BaseArch : public wordsize, public FcntlConstants {
   typedef __kernel_long_t __kernel_suseconds_t;
   typedef signed_int __kernel_pid_t;
   typedef int64_t __kernel_loff_t;
+
+  typedef unsigned_int __u32;
 
   template <typename T> struct ptr {
     typedef T Referent;
@@ -602,6 +605,19 @@ struct BaseArch : public wordsize, public FcntlConstants {
     unsigned_int lm : 1;
   };
   RR_VERIFY_TYPE(user_desc);
+
+  struct __user_cap_header_struct {
+    __u32 version;
+    int pid;
+  };
+  RR_VERIFY_TYPE(__user_cap_header_struct);
+
+  struct __user_cap_data_struct {
+    __u32 effective;
+    __u32 permitted;
+    __u32 inheritable;
+  };
+  RR_VERIFY_TYPE(__user_cap_data_struct);
 
   // This structure uses fixed-size fields, but the padding rules
   // for 32-bit vs. 64-bit architectures dictate that it be
