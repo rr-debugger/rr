@@ -536,20 +536,34 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
       const Mapping& m, const MappableResource& r, const Mapping& rem) {
     LOG(debug) << "  protecting (" << rem << ") ...";
 
+    // PROT_GROWSDOWN means that if this is a grows-down segment
+    // (which for us means "stack") then the change should be
+    // extended to the start of the segment.
+    // We don't try to handle the analogous PROT_GROWSUP, because we
+    // don't understand the idea of a grows-up segment.
+    remote_ptr<void> new_start;
+    if ((m.start < rem.start) && (prot & PROT_GROWSDOWN) && r.is_stack()) {
+      new_start = m.start;
+      LOG(debug) << "  PROT_GROWSDOWN: expanded region down to " << new_start;
+    } else {
+      new_start = rem.start;
+    }
+
     mem.erase(m);
     LOG(debug) << "  erased (" << m << ")";
 
     // If the first segment we protect underflows the
     // region, remap the underflow region with previous
     // prot.
-    if (m.start < rem.start) {
+    if (m.start < new_start) {
       Mapping underflow(m.start, rem.start, m.prot, m.flags, m.offset);
       mem[underflow] = r;
     }
     // Remap the overlapping region with the new prot.
     remote_ptr<void> new_end = min(rem.end, m.end);
-    Mapping overlap(rem.start, new_end, prot, m.flags,
-                    adjust_offset(r, m, rem.start - m.start));
+    Mapping overlap(new_start, new_end,
+                    prot & (PROT_READ|PROT_WRITE|PROT_EXEC), m.flags,
+                    adjust_offset(r, m, new_start - m.start));
     mem[overlap] = r;
     last_overlap = overlap;
 
