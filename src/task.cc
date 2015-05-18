@@ -893,6 +893,12 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       ASSERT(this, mapping.first.start == addr);
       return vm()->unmap(addr, mapping.first.end - addr);
     }
+    case Arch::madvise: {
+      remote_ptr<void> addr = regs.arg1();
+      size_t num_bytes = regs.arg2();
+      int advice = regs.arg3();
+      return vm()->advise(addr, num_bytes, advice);
+    }
     case Arch::ipc: {
       switch ((int)regs.arg1_signed()) {
         case SHMDT: {
@@ -2196,30 +2202,34 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
   t->as->insert_task(t);
 
-  if (!(CLONE_SHARE_VM & flags) && !syscallbuf_child.is_null() &&
-      &session() == &t->session()) {
-    AutoRemoteSyscalls remote(t);
-    // Unshare the syscallbuf memory so when we lock it below, we don't
-    // also lock it in the task we cloned from!
-    int prot = PROT_READ | PROT_WRITE;
-    int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
-    auto p = remote.mmap_syscall(syscallbuf_child, num_syscallbuf_bytes, prot,
-                                 flags, -1, 0);
-    ASSERT(t, p == syscallbuf_child.cast<void>());
-    t->vm()->map(p, num_syscallbuf_bytes, prot, flags, 0,
-                 MappableResource::anonymous());
+  if (!(CLONE_SHARE_VM & flags) && &session() == &t->session()) {
+    as->did_fork_into(t);
 
-    // Mark the clone's syscallbuf as locked. This will prevent the
-    // clone using syscallbuf until the clone reinitializes the
-    // the buffer via its pthread_atfork handler. Otherwise the clone may
-    // log syscalls to its copy of the syscallbuf and we won't know about
-    // them since we don't have it mapped.
-    // In some cases (e.g. vfork(), or raw SYS_fork syscall) the
-    // pthread_atfork handler will never run. Syscallbuf will be permanently
-    // disabled but that's OK, those cases are rare (and in the case of vfork,
-    // tracees should immediately exit or exec anyway).
-    t->write_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked), uint8_t(1));
+    if (!syscallbuf_child.is_null()) {
+      AutoRemoteSyscalls remote(t);
+      // Unshare the syscallbuf memory so when we lock it below, we don't
+      // also lock it in the task we cloned from!
+      int prot = PROT_READ | PROT_WRITE;
+      int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
+      auto p = remote.mmap_syscall(syscallbuf_child, num_syscallbuf_bytes, prot,
+                                   flags, -1, 0);
+      ASSERT(t, p == syscallbuf_child.cast<void>());
+      t->vm()->map(p, num_syscallbuf_bytes, prot, flags, 0,
+                   MappableResource::anonymous());
+
+      // Mark the clone's syscallbuf as locked. This will prevent the
+      // clone using syscallbuf until the clone reinitializes the
+      // the buffer via its pthread_atfork handler. Otherwise the clone may
+      // log syscalls to its copy of the syscallbuf and we won't know about
+      // them since we don't have it mapped.
+      // In some cases (e.g. vfork(), or raw SYS_fork syscall) the
+      // pthread_atfork handler will never run. Syscallbuf will be permanently
+      // disabled but that's OK, those cases are rare (and in the case of vfork,
+      // tracees should immediately exit or exec anyway).
+      t->write_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked), uint8_t(1));
+    }
   }
+
   return t;
 }
 

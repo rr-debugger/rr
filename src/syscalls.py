@@ -1140,11 +1140,10 @@ mincore = IrregularEmulatedSyscall(x86=218, x64=27)
 # and with size length bytes.  It allows an application to tell the
 # kernel how it expects to use some mapped or shared memory areas, so
 # that the kernel can choose appropriate read-ahead and caching
-# techniques.  This call does not influence the semantics of the
-# application (except in the case of MADV_DONTNEED), but may
-# influence its performance.  The kernel is free to ignore the
-# advice.
-madvise = ExecutedSyscall(x86=219, x64=28)
+# techniques.
+# The man page says "This call does not influence the semantics of the
+# application (except in the case of MADV_DONTNEED)", but that is a lie.
+madvise = IrregularEmulatedSyscall(x86=219, x64=28)
 
 getdents64 = IrregularEmulatedSyscall(x86=220, x64=217)
 

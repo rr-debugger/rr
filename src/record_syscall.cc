@@ -2421,7 +2421,28 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       }
       return PREVENT_SWITCH;
 
-    case Arch::unshare:
+    case Arch::madvise:
+      switch ((int)t->regs().arg3()) {
+        case MADV_NORMAL:
+        case MADV_RANDOM:
+        case MADV_SEQUENTIAL:
+        case MADV_WILLNEED:
+        case MADV_DONTNEED:
+        case MADV_REMOVE:
+        case MADV_DONTFORK:
+        case MADV_DOFORK:
+        case MADV_SOFT_OFFLINE:
+        case MADV_HWPOISON:
+        case MADV_MERGEABLE:
+        case MADV_UNMERGEABLE:
+        case MADV_HUGEPAGE:
+        case MADV_NOHUGEPAGE:
+        case MADV_DONTDUMP:
+        case MADV_DODUMP:
+          break;
+        default:
+          syscall_state.expect_errno = EINVAL;
+      }
       return PREVENT_SWITCH;
 
     case Arch::mmap:
@@ -2431,6 +2452,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::rrcall_notify_syscall_hook_exit:
     case Arch::shmat:
     case Arch::shmdt:
+    case Arch::unshare:
       return PREVENT_SWITCH;
 
     default:
@@ -2884,6 +2906,9 @@ static string extra_expected_errno_info(Task* t,
           ss << "; unknown seccomp(" << HEX((unsigned int)t->regs().arg1())
              << ")";
           break;
+        case Arch::madvise:
+          ss << "; unknown madvise(" << (int)t->regs().arg3() << ")";
+          break;
       }
       break;
     case EIO:
@@ -3114,6 +3139,17 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       }
       break;
     }
+
+    case Arch::madvise:
+      switch ((int)t->regs().arg3()) {
+        case MADV_DONTNEED:
+        case MADV_REMOVE:
+          t->record_remote(t->regs().arg1(), t->regs().arg2());
+          break;
+        default:
+          break;
+      }
+      break;
 
     case SYS_rrcall_init_buffers:
       t->init_buffers(nullptr, SHARE_DESCHED_EVENT_FD);

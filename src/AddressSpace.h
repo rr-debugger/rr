@@ -149,9 +149,9 @@ struct Mapping {
    * metadata are the same.  See |is_adjacent_mapping()| in
    * task.cc.
    */
-  static const int map_flags_mask =
-      MAP_ANONYMOUS | MAP_NORESERVE | MAP_PRIVATE | MAP_SHARED | MAP_STACK |
-      MAP_GROWSDOWN;
+  static const int map_flags_mask = MAP_ANONYMOUS | MAP_NORESERVE |
+                                    MAP_PRIVATE | MAP_SHARED | MAP_STACK |
+                                    MAP_GROWSDOWN;
   static const int checkable_flags_mask = MAP_PRIVATE | MAP_SHARED;
 
   Mapping() : prot(0), flags(0), offset(0) {}
@@ -631,6 +631,11 @@ public:
    */
   void unmap(remote_ptr<void> addr, ssize_t num_bytes);
 
+  /**
+   * Notification of madvise call.
+   */
+  void advise(remote_ptr<void> addr, ssize_t num_bytes, int advice);
+
   /** Return the vdso mapping of this. */
   Mapping vdso() const;
 
@@ -723,14 +728,21 @@ public:
    */
   remote_code_ptr find_syscall_instruction(Task* t);
 
+  /**
+   * Task |t| just forked from this address space. Apply dont_fork settings.
+   */
+  void did_fork_into(Task* t);
+
 private:
   class Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
   class Watchpoint;
 
   AddressSpace(Task* t, const std::string& exe, uint32_t exec_count);
-  AddressSpace(Task* t, const AddressSpace& o, pid_t leader_tid,
+  AddressSpace(Session* session, const AddressSpace& o, pid_t leader_tid,
                uint32_t leader_serial, uint32_t exec_count);
+
+  void unmap_internal(remote_ptr<void> addr, ssize_t num_bytes);
 
   void map_rr_page(Task* t);
 
@@ -953,6 +965,8 @@ private:
   bool is_clone;
   /* All segments mapped into this address space. */
   MemoryMap mem;
+  /* madvise DONTFORK regions */
+  std::set<MemoryRange> dont_fork;
   // The session that created this.  We save a ref to it so that
   // we can notify it when we die.
   Session* session_;

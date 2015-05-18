@@ -390,15 +390,13 @@ void AddressSpace::brk(remote_ptr<void> addr) {
   assert(heap.start <= addr);
 
   remote_ptr<void> vm_addr = ceil_page_size(addr);
-  if (vm_addr == heap.end) {
-    return;
+  if (heap.end < vm_addr) {
+    map(heap.end, vm_addr - heap.end, heap.prot, heap.flags, heap.offset,
+        MappableResource::heap());
+  } else {
+    unmap(vm_addr, heap.end - vm_addr);
   }
-
-  // brk can reduce the heap size, so we need to unmap the heap here
-  unmap(heap.start, heap.num_bytes());
   update_heap(heap.start, vm_addr);
-  map(heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
-      MappableResource::heap());
 }
 
 void AddressSpace::dump() const {
@@ -436,16 +434,46 @@ void AddressSpace::replace_breakpoints_with_original_values(
   }
 }
 
+static void remove_range(set<MemoryRange>& ranges, const MemoryRange& range) {
+  auto start = ranges.lower_bound(range);
+  auto end = start;
+  auto prev_end = start;
+  while (end != ranges.end() && end->addr < range.end()) {
+    prev_end = end;
+    ++end;
+  }
+  if (start == end) {
+    return;
+  }
+  MemoryRange start_range = *start;
+  MemoryRange end_range = *prev_end;
+  ranges.erase(start, end);
+  if (start_range.addr < range.addr) {
+    ranges.insert(MemoryRange(start_range.addr, range.addr));
+  }
+  if (range.end() < end_range.end()) {
+    ranges.insert(MemoryRange(range.end(), end_range.end()));
+  }
+}
+
+static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
+  // Remove overlapping ranges
+  remove_range(ranges, range);
+  ranges.insert(range);
+  // We could coalesce adjacent ranges, but there's probably no need.
+}
+
 void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
                        int flags, off64_t offset_bytes,
                        const MappableResource& res) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
-
   num_bytes = ceil_page_size(num_bytes);
   if (!num_bytes) {
     return;
   }
+
+  remove_range(dont_fork, MemoryRange(addr, num_bytes));
 
   Mapping m(addr, num_bytes, prot, flags, offset_bytes);
 
@@ -464,7 +492,7 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
     // In testing, the behavior seems to be as if the
     // overlapping region is unmapped and then remapped
     // per the arguments to the second call.
-    unmap(addr, num_bytes + (insert_guard_page ? page_size() : 0));
+    unmap_internal(addr, num_bytes + (insert_guard_page ? page_size() : 0));
   }
 
   if (flags & MAP_GROWSDOWN) {
@@ -602,9 +630,21 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   const Mapping& m = mr.first;
   const MappableResource& r = mr.second;
 
-  unmap(old_addr, old_num_bytes);
+  old_num_bytes = ceil_page_size(old_num_bytes);
+  unmap_internal(old_addr, old_num_bytes);
   if (0 == new_num_bytes) {
     return;
+  }
+
+  auto it = dont_fork.lower_bound(MemoryRange(old_addr, old_num_bytes));
+  if (it != dont_fork.end() && it->addr < old_addr + old_num_bytes) {
+    // mremap fails if some but not all pages are marked DONTFORK
+    assert(*it == MemoryRange(old_addr, old_num_bytes));
+    remove_range(dont_fork, MemoryRange(old_addr, old_num_bytes));
+    add_range(dont_fork, MemoryRange(new_addr, new_num_bytes));
+  } else {
+    remove_range(dont_fork, MemoryRange(old_addr, old_num_bytes));
+    remove_range(dont_fork, MemoryRange(new_addr, new_num_bytes));
   }
 
   map_and_coalesce(Mapping(new_addr, new_num_bytes, m.prot, m.flags,
@@ -783,6 +823,17 @@ void AddressSpace::remove_all_watchpoints() {
 void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
   num_bytes = ceil_page_size(num_bytes);
+  if (!num_bytes) {
+    return;
+  }
+
+  remove_range(dont_fork, MemoryRange(addr, num_bytes));
+
+  return unmap_internal(addr, num_bytes);
+}
+
+void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
+  LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
 
   auto unmapper = [this](const Mapping& m, const MappableResource& r,
                          const Mapping& rem) {
@@ -811,6 +862,37 @@ void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
   };
   for_each_in_range(addr, num_bytes, unmapper);
   update_watchpoint_values(addr, addr + num_bytes);
+}
+
+void AddressSpace::advise(remote_ptr<void> addr, ssize_t num_bytes,
+                          int advice) {
+  LOG(debug) << "madvise(" << addr << ", " << num_bytes << ", " << advice
+             << ")";
+  num_bytes = ceil_page_size(num_bytes);
+
+  switch (advice) {
+    case MADV_DONTFORK:
+      add_range(dont_fork, MemoryRange(addr, num_bytes));
+      break;
+    case MADV_DOFORK:
+      remove_range(dont_fork, MemoryRange(addr, num_bytes));
+      break;
+    default:
+      break;
+  }
+}
+
+void AddressSpace::did_fork_into(Task* t) {
+  for (auto& range : dont_fork) {
+    // During recording we execute MADV_DONTFORK so the forked child will
+    // have had its dontfork areas unmapped by the kernel already
+    if (!t->session().is_recording()) {
+      AutoRemoteSyscalls remote(t);
+      remote.syscall(syscall_number_for_munmap(remote.arch()), range.addr,
+                     range.num_bytes);
+    }
+    t->vm()->unmap(range.addr, range.num_bytes);
+  }
 }
 
 /**
@@ -1113,8 +1195,9 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
   }
 }
 
-AddressSpace::AddressSpace(Task* t, const AddressSpace& o, pid_t leader_tid,
-                           uint32_t leader_serial, uint32_t exec_count)
+AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
+                           pid_t leader_tid, uint32_t leader_serial,
+                           uint32_t exec_count)
     : exe(o.exe),
       leader_tid_(leader_tid),
       leader_serial(leader_serial),
@@ -1122,7 +1205,7 @@ AddressSpace::AddressSpace(Task* t, const AddressSpace& o, pid_t leader_tid,
       heap(o.heap),
       is_clone(true),
       mem(o.mem),
-      session_(nullptr),
+      session_(session),
       vdso_start_addr(o.vdso_start_addr),
       monkeypatch_state(o.monkeypatch_state),
       traced_syscall_ip_(o.traced_syscall_ip_),
@@ -1426,6 +1509,6 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
   if (psdev == PSEUDODEVICE_STACK) {
     flags |= MAP_GROWSDOWN;
   }
-  as->map(info.start_addr, info.end_addr - info.start_addr, info.prot,
-          flags, info.file_offset, MappableResource(id, info.name));
+  as->map(info.start_addr, info.end_addr - info.start_addr, info.prot, flags,
+          info.file_offset, MappableResource(id, info.name));
 }

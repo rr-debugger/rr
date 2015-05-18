@@ -3,6 +3,8 @@
 #ifndef RR_KERNEL_SUPPLEMENT_H_
 #define RR_KERNEL_SUPPLEMENT_H_
 
+#include <linux/mman.h>
+#include <linux/seccomp.h>
 #include <sys/ptrace.h>
 
 /* Definitions that should be part of system headers (and maybe are on some but
@@ -55,5 +57,9 @@
  * manipulate sigsets. */
 typedef uint64_t sig_set_t;
 static_assert(_NSIG / 8 == sizeof(sig_set_t), "Update sig_set_t for _NSIG.");
+
+#ifndef MADV_SOFT_OFFLINE
+#define MADV_SOFT_OFFLINE 101
+#endif
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */

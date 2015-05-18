@@ -84,12 +84,12 @@ AddressSpace::shr_ptr Session::clone(Task* t, AddressSpace::shr_ptr vm) {
   AddressSpace::shr_ptr as;
   if (this == vm->session()) {
     as = AddressSpace::shr_ptr(
-        new AddressSpace(t, *vm, t->rec_tid, t->tuid().serial(), 0));
+        new AddressSpace(this, *vm, t->rec_tid, t->tuid().serial(), 0));
   } else {
-    as = AddressSpace::shr_ptr(new AddressSpace(
-        t, *vm, vm->uid().tid(), vm->uid().serial(), vm->uid().exec_count()));
+    as = AddressSpace::shr_ptr(new AddressSpace(this, *vm, vm->uid().tid(),
+                                                vm->uid().serial(),
+                                                vm->uid().exec_count()));
   }
-  as->session_ = this;
   vm_map[as->uid()] = as.get();
   return as;
 }

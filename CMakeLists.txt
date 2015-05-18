@@ -483,6 +483,7 @@ set(TESTS_WITH_PROGRAM
   interrupt
   intr_ptrace_decline
   link
+  madvise_dontfork
   main_thread_exit
   mmap_shared_prot
   mmap_write

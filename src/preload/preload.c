@@ -1366,8 +1366,16 @@ static long sys_madvise(const struct syscall_info* call) {
   size_t length = call->args[1];
   int advice = call->args[2];
 
-  void* ptr = prep_syscall();
+  void* ptr;
   long ret;
+
+  switch (advice) {
+    case MADV_DONTFORK:
+    case MADV_DOFORK:
+      return traced_raw_syscall(call);
+  }
+
+  ptr = prep_syscall();
 
   assert(syscallno == call->no);
 

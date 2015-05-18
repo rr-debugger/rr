@@ -3,25 +3,24 @@
 #include "rrutil.h"
 
 int main(int argc, char* argv[]) {
-  size_t num_bytes = sysconf(_SC_PAGESIZE);
   int* page;
   int i;
 
-  page = mmap(NULL, num_bytes, PROT_READ | PROT_WRITE,
+  page = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
               MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-  test_assert(page != (void*)-1);
+  test_assert(page != MAP_FAILED);
 
-  for (i = 0; i < num_bytes / sizeof(*page); ++i) {
+  for (i = 0; i < PAGE_SIZE / sizeof(*page); ++i) {
     test_assert(0 == page[i]);
     page[i] = i;
   }
-  for (i = 0; i < num_bytes / sizeof(*page); ++i) {
+  for (i = 0; i < PAGE_SIZE / sizeof(*page); ++i) {
     test_assert(page[i] == i);
   }
 
-  madvise(page, num_bytes, MADV_DONTNEED);
+  test_assert(0 == madvise(page, PAGE_SIZE, MADV_DONTNEED));
 
-  for (i = 0; i < num_bytes / sizeof(*page); ++i) {
+  for (i = 0; i < PAGE_SIZE / sizeof(*page); ++i) {
     test_assert(0 == page[i]);
   }
 
