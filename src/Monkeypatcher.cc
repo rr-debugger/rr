@@ -336,7 +336,8 @@ template <>
 void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<X86Arch> >(t->regs().arg1()));
-  if (!params.syscallbuf_enabled) {
+  auto vdso = t->vm()->vdso_pair();
+  if (vdso.second.id.psuedodevice() != PSEUDODEVICE_VDSO || !params.syscallbuf_enabled) {
     return;
   }
 

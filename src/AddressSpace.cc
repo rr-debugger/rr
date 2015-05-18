@@ -1068,9 +1068,15 @@ void AddressSpace::fix_stack_segment_start(const Mapping& mapping,
 }
 
 Mapping AddressSpace::vdso() const {
-  assert(!vdso_start_addr.is_null());
-  return mapping_of(vdso_start_addr).first;
+  return vdso_pair().first;
 }
+
+MappingResourcePair AddressSpace::vdso_pair() const{
+  assert(!vdso_start_addr.is_null());
+  auto mapping = mapping_of(vdso_start_addr);
+  return mapping;
+}
+
 
 void AddressSpace::verify(Task* t) const {
   assert(task_set().end() != task_set().find(t));
