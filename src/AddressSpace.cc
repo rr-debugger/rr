@@ -1069,7 +1069,13 @@ void AddressSpace::fix_stack_segment_start(const Mapping& mapping,
 
 Mapping AddressSpace::vdso() const {
   assert(!vdso_start_addr.is_null());
-  return mapping_of(vdso_start_addr).first;
+  auto mapping = mapping_of(vdso_start_addr);
+  
+  //Check that vdso was not mapped over. If it is, return a default value 
+  if (mapping.second.id.psuedodevice() != PSEUDODEVICE_VDSO) {
+    return Mapping();
+  }
+  return mapping.first;
 }
 
 void AddressSpace::verify(Task* t) const {

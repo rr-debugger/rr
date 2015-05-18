@@ -336,7 +336,9 @@ template <>
 void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<X86Arch> >(t->regs().arg1()));
-  if (!params.syscallbuf_enabled) {
+  auto vdso = t->vm()->vdso();
+  if ((vdso.prot == 0 && vdso.flags == 0 && vdso.offset == 0) || 
+      !params.syscallbuf_enabled) {
     return;
   }
 
