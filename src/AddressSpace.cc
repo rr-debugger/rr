@@ -394,6 +394,8 @@ void AddressSpace::brk(remote_ptr<void> addr) {
     return;
   }
 
+  // brk can reduce the heap size, so we need to unmap the heap here
+  unmap(heap.start, heap.num_bytes());
   update_heap(heap.start, vm_addr);
   map(heap.start, heap.num_bytes(), heap.prot, heap.flags, heap.offset,
       MappableResource::heap());
