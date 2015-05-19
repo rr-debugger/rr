@@ -307,8 +307,8 @@ Completion ReplaySession::cont_syscall_boundary(
   if (SIGTRAP == t->child_sig) {
     return INCOMPLETE;
   } else if (t->child_sig == PerfCounters::TIME_SLICE_SIGNAL) {
-    ASSERT(t, constraints.ticks_target > 0)
-        << "Should only get TIME_SLICE_SIGNAL with a ticks_target";
+    // This would normally be triggered by constraints.ticks_target but it's
+    // possible to get stray signals here.
     t->child_sig = 0;
     return INCOMPLETE;
   } else if (t->child_sig) {
