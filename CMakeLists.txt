@@ -329,6 +329,7 @@ set(BASIC_TESTS
   madvise
   map_fixed
   mincore
+  mknod
   mmap_discontinuous
   mmap_private
   mmap_ro
