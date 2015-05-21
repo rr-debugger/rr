@@ -1528,12 +1528,8 @@ static long sys_readlink(const struct syscall_info* call) {
 }
 
 #if defined(SYS_socketcall)
-static long sys_recv(const struct syscall_info* call) {
-#if defined(SYS_socketcall)
+static long sys_socketcall_recv(const struct syscall_info* call) {
   const int syscallno = SYS_socketcall;
-#else
-  const int syscallno = SYS_recvfrom;
-#endif
   long* args = (long*)call->args[1];
   int sockfd = args[0];
   void* buf = (void*)args[1];
@@ -1550,8 +1546,7 @@ static long sys_recv(const struct syscall_info* call) {
     buf2 = ptr;
     ptr += len;
   }
-#if defined(SYS_socketcall)
-  if (!start_commit_buffered_syscall(SYS_socketcall, ptr, MAY_BLOCK)) {
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
   }
 
@@ -1560,28 +1555,67 @@ static long sys_recv(const struct syscall_info* call) {
   if (buf2 && ret > 0) {
     local_memcpy(buf, buf2, ret);
   }
-  return commit_raw_syscall(SYS_socketcall, ptr, ret);
-#else
-  if (!start_commit_buffered_syscall(SYS_recvfrom, ptr, MAY_BLOCK)) {
-    return traced_raw_syscall(call);
-  }
-
-  ret = untraced_syscall6(SYS_recvfrom, sockfd, buf2, len, flags, 0, 0);
-
-  if (buf2 && ret > 0) {
-    local_memcpy(buf, buf2, ret);
-  }
-  return commit_raw_syscall(SYS_recvfrom, ptr, ret);
-#endif
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 
 static long sys_socketcall(const struct syscall_info* call) {
   switch (call->args[0]) {
     case SYS_RECV:
-      return sys_recv(call);
+      return sys_socketcall_recv(call);
     default:
       return traced_raw_syscall(call);
   }
+}
+#endif
+
+#ifdef SYS_recvfrom
+static long sys_recvfrom(const struct syscall_info* call) {
+  const int syscallno = SYS_recvfrom;
+  int sockfd = call->args[0];
+  void* buf = (void*)call->args[1];
+  size_t len = call->args[2];
+  int flags = call->args[3];
+  struct sockaddr* src_addr = (struct sockaddr*)call->args[4];
+  socklen_t* addrlen = (socklen_t*)call->args[5];
+
+  void* ptr = prep_syscall_for_fd(sockfd);
+  void* buf2 = NULL;
+  struct sockaddr* src_addr2 = NULL;
+  socklen_t* addrlen2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (src_addr) {
+    src_addr2 = ptr;
+    ptr += sizeof(*src_addr);
+  }
+  if (addrlen) {
+    addrlen2 = ptr;
+    *addrlen2 = *addrlen;
+    ptr += sizeof(*addrlen);
+  }
+  if (buf && len > 0) {
+    buf2 = ptr;
+    ptr += len;
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall6(syscallno, sockfd, buf2, len, flags, src_addr2,
+                          addrlen2);
+
+  if (src_addr2 && ret >= 0) {
+    local_memcpy(src_addr, src_addr2, sizeof(*src_addr));
+  }
+  if (addrlen2 && ret >= 0) {
+    *addrlen = *addrlen2;
+  }
+  if (buf2 && ret > 0) {
+    local_memcpy(buf, buf2, ret);
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
 }
 #endif
 
@@ -1740,6 +1774,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(poll);
     CASE(read);
     CASE(readlink);
+#if defined(SYS_recvfrom)
+    CASE(recvfrom);
+#endif
 #if defined(SYS_socketcall)
     CASE(socketcall);
 #endif
