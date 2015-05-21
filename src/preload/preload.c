@@ -607,6 +607,7 @@ static void __attribute__((constructor)) init_process(void) {
 #elif defined(__x86_64__)
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_3c_24(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_5a_5e_c3(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
@@ -617,6 +618,9 @@ static void __attribute__((constructor)) init_process(void) {
      * mov (%rsp),%rdi (in glibc-2.18-16.fc20.x86_64) */
     { 4, { 0x48, 0x8b, 0x3c, 0x24 },
       (uintptr_t)_syscall_hook_trampoline_48_8b_3c_24 },
+    /* __lll_unlock_wake has 'syscall' followed by
+     * pop %rdx; pop %rsi; ret */
+    { 3, { 0x5a, 0x5e, 0xc3 }, (uintptr_t)_syscall_hook_trampoline_5a_5e_c3 },
     /* Our VDSO vsyscall patches have 'syscall' followed by "nop; nop; nop" */
     { 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };

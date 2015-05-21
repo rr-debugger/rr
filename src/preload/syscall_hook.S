@@ -202,6 +202,25 @@ _syscall_hook_trampoline_48_8b_3c_24:
 
 
 
+        .global _syscall_hook_trampoline_5a_5e_c3
+        .hidden _syscall_hook_trampoline_5a_5e_c3
+        .type _syscall_hook_trampoline_5a_5e_c3, @function
+_syscall_hook_trampoline_5a_5e_c3:
+        .cfi_startproc
+
+        callq _syscall_hook_trampoline
+        /* The original instructions after the syscall are pop %rdx;
+           pop %rsi; retq. */
+        pop %rdx /* Return address, ignored */
+        pop %rdx
+        pop %rsi
+        ret
+
+        .cfi_endproc
+        .size _syscall_hook_trampoline_5a_5e_c3, .-_syscall_hook_trampoline_5a_5e_c3
+
+
+
         .global _syscall_hook_trampoline_90_90_90
         .hidden _syscall_hook_trampoline_90_90_90
         .type _syscall_hook_trampoline_90_90_90, @function
