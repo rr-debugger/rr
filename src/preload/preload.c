@@ -607,6 +607,7 @@ static void __attribute__((constructor)) init_process(void) {
   params.syscall_patch_hooks = syscall_patch_hooks;
 #elif defined(__x86_64__)
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_00_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_3c_24(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_5a_5e_c3(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
@@ -615,6 +616,10 @@ static void __attribute__((constructor)) init_process(void) {
      * cmp $-4095,%rax (in glibc-2.18-16.fc20.x86_64) */
     { 6, { 0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_48_3d_01_f0_ff_ff },
+    /* Many glibc syscall wrappers (e.g. __libc_recv) have 'syscall' followed by
+     * cmp $-4096,%rax (in glibc-2.18-16.fc20.x86_64) */
+    { 6, { 0x48, 0x3d, 0x00, 0xf0, 0xff, 0xff },
+      (uintptr_t)_syscall_hook_trampoline_48_3d_00_f0_ff_ff },
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
      * mov (%rsp),%rdi (in glibc-2.18-16.fc20.x86_64) */
     { 4, { 0x48, 0x8b, 0x3c, 0x24 },

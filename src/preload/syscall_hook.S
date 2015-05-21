@@ -188,6 +188,21 @@ _syscall_hook_trampoline_48_3d_01_f0_ff_ff:
 
 
 
+        .global _syscall_hook_trampoline_48_3d_00_f0_ff_ff
+        .hidden _syscall_hook_trampoline_48_3d_00_f0_ff_ff
+        .type _syscall_hook_trampoline_48_3d_00_f0_ff_ff, @function
+_syscall_hook_trampoline_48_3d_00_f0_ff_ff:
+        .cfi_startproc
+
+        callq _syscall_hook_trampoline
+        cmpq $0xfffffffffffff000,%rax
+        ret
+
+        .cfi_endproc
+        .size _syscall_hook_trampoline_48_3d_00_f0_ff_ff, .-_syscall_hook_trampoline_48_3d_00_f0_ff_ff
+
+
+
         .global _syscall_hook_trampoline_48_8b_3c_24
         .hidden _syscall_hook_trampoline_48_8b_3c_24
         .type _syscall_hook_trampoline_48_8b_3c_24, @function
