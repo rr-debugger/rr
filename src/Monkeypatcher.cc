@@ -205,7 +205,8 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
       patch_syscall_with_hook(t, hook);
 
       LOG(debug) << "Patched syscall at " << r.ip() << " syscall "
-                 << syscall_name(syscallno, t->arch()) << " tid " << t->tid;
+                 << syscall_name(syscallno, t->arch()) << " tid " << t->tid
+                 << " bytes " << next_instruction;
       // Return to caller, which resume normal execution.
       return true;
     }
