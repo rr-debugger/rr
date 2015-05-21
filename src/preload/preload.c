@@ -64,6 +64,7 @@
 #include <sys/epoll.h>
 #include <sys/file.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -1674,6 +1675,31 @@ static long sys_gettid(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_getrusage(const struct syscall_info* call) {
+  const int syscallno = SYS_getrusage;
+  int who = (int)call->args[0];
+  struct rusage* buf = (struct rusage*)call->args[1];
+  void* ptr = prep_syscall();
+  long ret;
+  struct rusage* buf2 = NULL;
+
+  assert(syscallno == call->no);
+
+  if (buf) {
+    buf2 = ptr;
+    ptr += sizeof(struct rusage);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall2(syscallno, who, buf2);
+  if (buf2 && ret >= 0) {
+    local_memcpy(buf, buf2, sizeof(*buf));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long syscall_hook_internal(const struct syscall_info* call) {
   switch (call->no) {
 #define CASE(syscallname)                                                      \
@@ -1689,6 +1715,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(fcntl);
 #endif
     CASE(futex);
+    CASE(getrusage);
     CASE(gettid);
     CASE(gettimeofday);
 #if defined(SYS__llseek)
