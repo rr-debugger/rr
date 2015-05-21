@@ -221,7 +221,7 @@ chdir = EmulatedSyscall(x86=12, x64=80)
 # also stored in the memory pointed to by t.
 time = EmulatedSyscall(x86=13, x64=201, arg1="typename Arch::time_t")
 
-mknod = UnsupportedSyscall(x86=14, x64=133)
+mknod = EmulatedSyscall(x86=14, x64=133)
 
 #  int chmod(const char *path, mode_t mode)
 #
