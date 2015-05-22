@@ -2312,7 +2312,14 @@ Task::CapturedState Task::capture_state() {
   state.desched_fd_child = desched_fd_child;
   state.syscallbuf_child = syscallbuf_child;
   if (syscallbuf_hdr) {
-    state.syscallbuf_hdr.resize(syscallbuf_data_size());
+    size_t data_size = syscallbuf_data_size();
+    if (syscallbuf_hdr->locked) {
+      // There may be an incomplete syscall record after num_rec_bytes that
+      // we need to capture here. We don't know how big that record is,
+      // so just record the entire buffer. This should not be common.
+      data_size = num_syscallbuf_bytes;
+    }
+    state.syscallbuf_hdr.resize(data_size);
     memcpy(state.syscallbuf_hdr.data(), syscallbuf_hdr,
            state.syscallbuf_hdr.size());
   }

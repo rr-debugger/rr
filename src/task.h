@@ -258,12 +258,6 @@ public:
   const struct syscallbuf_record* desched_rec() const;
 
   size_t syscallbuf_data_size() const {
-    if (syscallbuf_hdr->locked) {
-      // There may be an incomplete syscall record after num_rec_bytes that
-      // we need to record. We don't know how big that record is,
-      // so just record the entire buffer. This should not be common.
-      return num_syscallbuf_bytes;
-    }
     return syscallbuf_hdr->num_rec_bytes + sizeof(*syscallbuf_hdr);
   }
 
