@@ -101,9 +101,9 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   auto end_ptr = record_ptr + bytes_remaining;
   while (record_ptr < end_ptr) {
     auto record = reinterpret_cast<const struct syscallbuf_record*>(record_ptr);
-    fprintf(out, "  { syscall:'%s', ret:0x%lx }\n",
+    fprintf(out, "  { syscall:'%s', ret:0x%lx, size:0x%lx }\n",
             syscall_name(record->syscallno, frame.event().arch()).c_str(),
-            (long)record->ret);
+            (long)record->ret, (long)record->size);
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
       abort();
@@ -148,6 +148,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         frame.dump_raw(out);
       } else {
         frame.dump(out);
+        fprintf(out, "\n");
       }
       if (flags.dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);
