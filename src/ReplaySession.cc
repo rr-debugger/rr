@@ -1093,9 +1093,12 @@ static void assert_at_buffered_syscall(Task* t, int syscallno) {
  */
 static void assert_same_rec(Task* t, const struct syscallbuf_record* rec_rec,
                             struct syscallbuf_record* rep_rec) {
+  // It's OK for the recorded size to be less than the size set during replay,
+  // since the syscallbuf code is allowed to reduce the size based on the result
+  // of the syscall.
   ASSERT(t, (rec_rec->syscallno == rep_rec->syscallno &&
              rec_rec->desched == rep_rec->desched &&
-             rec_rec->size == rep_rec->size))
+             rec_rec->size <= rep_rec->size))
       << "Recorded rec { no=" << rec_rec->syscallno
       << ", desched:" << rec_rec->desched << ", size: " << rec_rec->size
       << " } "

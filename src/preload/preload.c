@@ -950,6 +950,9 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   struct syscallbuf_record* rec = record_start;
   struct syscallbuf_hdr* hdr = buffer_hdr();
 
+  assert(record_end >= record_start);
+  rec->size = record_end - record_start;
+
   assert(buffer_hdr()->locked);
 
   /* NB: the ordering of this statement with the
@@ -1472,6 +1475,23 @@ static long sys_poll(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+/**
+ * |ret_size| is the result of a syscall indicating how much data was returned
+ * in scratch buffer |buf2|; this function copies that data to |buf| and returns
+ * a pointer to the end of it. If there is no scratch buffer (|buf2| is NULL)
+ * just returns |ptr|.
+ */
+static void* copy_output_buffer(int ret_size, void* ptr, void* buf, void* buf2) {
+  if (!buf2) {
+    return ptr;
+  }
+  if (ret_size <= 0) {
+    return buf2;
+  }
+  local_memcpy(buf, buf2, ret_size);
+  return buf2 + ret_size;
+}
+
 static long sys_read(const struct syscall_info* call) {
   const int syscallno = SYS_read;
   int fd = call->args[0];
@@ -1493,10 +1513,7 @@ static long sys_read(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall3(syscallno, fd, buf2, count);
-
-  if (buf2 && ret > 0) {
-    local_memcpy(buf, buf2, ret);
-  }
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -1521,9 +1538,7 @@ static long sys_readlink(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall3(syscallno, path, buf2, bufsiz);
-  if (buf2 && ret > 0) {
-    local_memcpy(buf, buf2, ret);
-  }
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -1551,10 +1566,7 @@ static long sys_socketcall_recv(const struct syscall_info* call) {
   }
 
   ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
-
-  if (buf2 && ret > 0) {
-    local_memcpy(buf, buf2, ret);
-  }
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -1612,9 +1624,7 @@ static long sys_recvfrom(const struct syscall_info* call) {
   if (addrlen2 && ret >= 0) {
     *addrlen = *addrlen2;
   }
-  if (buf2 && ret > 0) {
-    local_memcpy(buf, buf2, ret);
-  }
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 #endif
