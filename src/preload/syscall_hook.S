@@ -1,3 +1,7 @@
+        /* This must match the numbers in X86SyscallStubMonkeypatch and
+           X64SyscallStubMonkeypatch */
+        .set _syscall_stack_adjust,256
+
 #if defined(__i386__)
 /**
  * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
@@ -12,6 +16,7 @@
         .global _syscall_hook_trampoline
         .hidden _syscall_hook_trampoline
         .type _syscall_hook_trampoline, @function
+
 _syscall_hook_trampoline:
         .cfi_startproc
 
@@ -191,10 +196,10 @@ _syscall_hook_trampoline_48_8b_3c_24:
 
         callq _syscall_hook_trampoline
         /* The original instruction after the syscall is movq (%rsp),%rdi.
-           Because we pushed a return address before reaching this point,
-           to get the equivalent behavior we need to load the next word on the
-           stack. */
-        movq 8(%rsp),%rdi
+           Because we pushed a return address and shifted RSP down
+           before reaching this point, to get the equivalent behavior we
+           need to use this offset. */
+        movq (8 + _syscall_stack_adjust)(%rsp),%rdi
         ret
 
         .cfi_endproc
@@ -209,9 +214,12 @@ _syscall_hook_trampoline_5a_5e_c3:
         .cfi_startproc
 
         callq _syscall_hook_trampoline
-        /* The original instructions after the syscall are pop %rdx;
-           pop %rsi; retq. */
+        /* The original instructions after the syscall are
+           pop %rdx; pop %rsi; retq. */
         pop %rdx /* Return address, ignored */
+        /* We're not returning to the dynamically generated stub, so
+           we need to fix the stack pointer ourselves. */
+        add $_syscall_stack_adjust,%rsp
         pop %rdx
         pop %rsi
         ret
@@ -231,7 +239,12 @@ _syscall_hook_trampoline_90_90_90:
 
         .cfi_endproc
         .size _syscall_hook_trampoline_90_90_90, .-_syscall_hook_trampoline_90_90_90
-
 #endif /* __x86_64__ */
+
+        .global _code_buffer
+        .hidden _code_buffer
+_code_buffer:
+        /* This size must match SYSCALL_HOOK_CODE_BUFFER_SIZE */
+        .space 0x10000,0xFF
 
         .section .note.GNU-stack,"",@progbits

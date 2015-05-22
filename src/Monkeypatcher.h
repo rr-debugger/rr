@@ -30,10 +30,12 @@ class Task;
  */
 class Monkeypatcher {
 public:
-  Monkeypatcher() {}
+  Monkeypatcher() : code_buffer_allocated(0) {}
   Monkeypatcher(const Monkeypatcher& o)
       : syscall_hooks(o.syscall_hooks),
-        tried_to_patch_syscall_addresses(o.tried_to_patch_syscall_addresses) {}
+        tried_to_patch_syscall_addresses(o.tried_to_patch_syscall_addresses),
+        code_buffer(o.code_buffer),
+        code_buffer_allocated(o.code_buffer_allocated) {}
 
   /**
    * Apply any necessary patching immediately after exec.
@@ -59,7 +61,14 @@ public:
 
   void init_dynamic_syscall_patching(
       Task* t, int syscall_patch_hook_count,
-      remote_ptr<syscall_patch_hook> syscall_patch_hooks);
+      remote_ptr<syscall_patch_hook> syscall_patch_hooks,
+      remote_ptr<void> patch_code_buffer);
+
+  /**
+   * Try to allocate |bytes| from the code buffer. Returns null on failure or
+   * if there's no buffer.
+   */
+  remote_ptr<uint8_t> allocate_code_buffer(Task* t, size_t bytes);
 
 private:
   /**
@@ -73,6 +82,11 @@ private:
    * (or are currently trying) to patch.
    */
   std::unordered_set<remote_code_ptr> tried_to_patch_syscall_addresses;
+  /**
+   * Writable executable memory where we can generate stubs.
+   */
+  remote_ptr<void> code_buffer;
+  size_t code_buffer_allocated;
 };
 
 #endif /* RR_MONKEYPATCHER_H_ */

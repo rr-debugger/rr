@@ -81,58 +81,113 @@ template <typename Arch> static void setup_preload_library_path(Task* t) {
 
 void Monkeypatcher::init_dynamic_syscall_patching(
     Task* t, int syscall_patch_hook_count,
-    remote_ptr<struct syscall_patch_hook> syscall_patch_hooks) {
+    remote_ptr<struct syscall_patch_hook> syscall_patch_hooks,
+    remote_ptr<void> patch_code_buffer) {
   if (syscall_patch_hook_count) {
     syscall_hooks = t->read_mem(syscall_patch_hooks, syscall_patch_hook_count);
   }
+  code_buffer = patch_code_buffer;
 }
 
 template <typename Arch>
-static bool patch_syscall_with_hook_arch(Task* t,
+static bool patch_syscall_with_hook_arch(Monkeypatcher& patcher, Task* t,
                                          const syscall_patch_hook& hook);
 
-static bool patch_syscall_with_hook_x86ish(Task* t,
+remote_ptr<uint8_t> Monkeypatcher::allocate_code_buffer(Task* t, size_t bytes) {
+  if (!code_buffer) {
+    return nullptr;
+  }
+  if (code_buffer_allocated + bytes > SYSCALL_HOOK_CODE_BUFFER_SIZE) {
+    return nullptr;
+  }
+  auto result = code_buffer.cast<uint8_t>() + code_buffer_allocated;
+  code_buffer_allocated += bytes;
+  return result;
+}
+
+/**
+ * Some functions make system calls while storing local variables in memory
+ * below the stack pointer. We need to decrement the stack pointer by
+ * some "safety zone" amount to get clear of those variables before we make
+ * a call instruction. So, we allocate a stub per patched callsite, and jump
+ * from the callsite to the stub. The stub decrements the stack pointer,
+ * calls the appropriate syscall hook function, reincrements the stack pointer,
+ * and jumps back to immediately after the patched callsite.
+ */
+template <typename JumpPatch, typename StubPatch, uint32_t trampoline_call_end>
+static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
-  // We can use the same patch code on x86 and x86-64.
-  uint8_t patch[X86CallMonkeypatch::size];
-  // We're patching in a relative jump, so we need to compute the offset from
-  // the end of the jump to our actual destination.
-  remote_ptr<uint8_t> patch_start = t->regs().ip().to_data_ptr<uint8_t>();
-  remote_ptr<uint8_t> patch_end = patch_start + sizeof(patch);
-  intptr_t offset = hook.hook_address - patch_end.as_int();
-  int32_t offset32 = (int32_t)offset;
-  if (offset32 != offset) {
-    LOG(debug) << "syscall can't be patched due to jump out of range from "
-               << HEX(patch_end.as_int()) << " to " << HEX(hook.hook_address);
+  uint8_t stub_patch[StubPatch::size];
+  auto stub_patch_start = patcher.allocate_code_buffer(t, sizeof(stub_patch));
+  if (!stub_patch_start) {
+    LOG(debug) << "syscall can't be patched due to stub allocation failure";
     return false;
   }
-  X86CallMonkeypatch::substitute(patch, offset32);
-  t->write_bytes(patch_start, patch);
+  auto stub_patch_after_trampoline_call = stub_patch_start + trampoline_call_end;
+  auto stub_patch_end = stub_patch_start + sizeof(stub_patch);
+
+  uint8_t jump_patch[JumpPatch::size];
+  // We're patching in a relative jump, so we need to compute the offset from
+  // the end of the jump to our actual destination.
+  auto jump_patch_start = t->regs().ip().to_data_ptr<uint8_t>();
+  auto jump_patch_end = jump_patch_start + sizeof(jump_patch);
+
+  intptr_t jump_offset = stub_patch_start - jump_patch_end;
+  int32_t jump_offset32 = (int32_t)jump_offset;
+  if (jump_offset32 != jump_offset) {
+    LOG(debug) << "syscall can't be patched due to jump out of range from "
+               << jump_patch_end << " to " << stub_patch_start;
+    return false;
+  }
+  intptr_t return_jump_offset = jump_patch_end - stub_patch_end;
+  int32_t return_jump_offset32 = (int32_t)return_jump_offset;
+  if (return_jump_offset32 != return_jump_offset) {
+    LOG(debug) << "syscall can't be patched due to jump out of range from "
+               << stub_patch_end << " to " << jump_patch_end;
+    return false;
+  }
+  intptr_t trampoline_call_offset =
+      hook.hook_address - stub_patch_after_trampoline_call.as_int();
+  int32_t trampoline_call_offset32 = (int32_t)trampoline_call_offset;
+  ASSERT(t, trampoline_call_offset32 == trampoline_call_offset)
+      << "How did the stub area get far away from the hooks?";
+
+  JumpPatch::substitute(jump_patch, jump_offset32);
+  t->write_bytes(jump_patch_start, jump_patch);
 
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
-  assert(syscall_instruction_length(x86) == syscall_instruction_length(x86_64));
-  uint8_t nops[syscall_instruction_length(x86) + hook.next_instruction_length -
-               sizeof(patch)];
+  assert(syscall_instruction_length(x86_64) == syscall_instruction_length(x86));
+  uint8_t nops[syscall_instruction_length(x86_64) +
+               hook.next_instruction_length - sizeof(jump_patch)];
   memset(nops, NOP, sizeof(nops));
-  t->write_mem(patch_start + sizeof(patch), nops, sizeof(nops));
+  t->write_mem(jump_patch_start + sizeof(jump_patch), nops, sizeof(nops));
+
+  // Now write out the stub
+  StubPatch::substitute(stub_patch, trampoline_call_offset32,
+                        return_jump_offset32);
+  t->write_bytes(stub_patch_start, stub_patch);
+
   return true;
 }
 
 template <>
-bool patch_syscall_with_hook_arch<X86Arch>(Task* t,
+bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
-  return patch_syscall_with_hook_x86ish(t, hook);
+  return patch_syscall_with_hook_x86ish<X86VsyscallMonkeypatch,
+      X86SyscallStubMonkeypatch, 12>(patcher, t, hook);
 }
 
 template <>
-bool patch_syscall_with_hook_arch<X64Arch>(Task* t,
+bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
-  return patch_syscall_with_hook_x86ish(t, hook);
+  return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
+      X64SyscallStubMonkeypatch, 13>(patcher, t, hook);
 }
 
-static bool patch_syscall_with_hook(Task* t, const syscall_patch_hook& hook) {
-  RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), t, hook);
+static bool patch_syscall_with_hook(Monkeypatcher& patcher, Task* t,
+                                    const syscall_patch_hook& hook) {
+  RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), patcher, t, hook);
 }
 
 // TODO de-dup
@@ -202,7 +257,7 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
       r.set_ip(r.ip() - syscall_instruction_length(t->arch()));
       t->set_regs(r);
 
-      patch_syscall_with_hook(t, hook);
+      patch_syscall_with_hook(*this, t, hook);
 
       LOG(debug) << "Patched syscall at " << r.ip() << " syscall "
                  << syscall_name(syscallno, t->arch()) << " tid " << t->tid
@@ -370,7 +425,8 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
              << HEX(syscall_hook_trampoline.as_int());
 
   patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
-                                        params.syscall_patch_hooks);
+                                        params.syscall_patch_hooks,
+                                        params.syscall_hook_code_buffer);
 }
 
 // x86-64 doesn't have a convenient vsyscall-esque function in the VDSO;
@@ -445,7 +501,8 @@ void patch_at_preload_init_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
   }
 
   patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
-                                        params.syscall_patch_hooks);
+                                        params.syscall_patch_hooks,
+                                        params.syscall_hook_code_buffer);
 }
 
 void Monkeypatcher::patch_after_exec(Task* t) {
