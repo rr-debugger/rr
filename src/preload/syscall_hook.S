@@ -2,6 +2,15 @@
            X64SyscallStubMonkeypatch */
         .set _syscall_stack_adjust,256
 
+        .global _stub_buffer
+        .hidden _stub_buffer
+        .global _stub_buffer_end
+        .hidden _stub_buffer_end
+
+        .global _syscall_hook_trampoline
+        .hidden _syscall_hook_trampoline
+        .type _syscall_hook_trampoline, @function
+
 #if defined(__i386__)
 /**
  * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
@@ -13,9 +22,6 @@
  * us.
  */
         .text
-        .global _syscall_hook_trampoline
-        .hidden _syscall_hook_trampoline
-        .type _syscall_hook_trampoline, @function
 
 _syscall_hook_trampoline:
         .cfi_startproc
@@ -102,12 +108,42 @@ _syscall_hook_trampoline_3d_01_f0_ff_ff:
 
 
 
+_stub_buffer:
+        .rept 1000
+        /* Must match X86SyscallStubMonkeypatch. We reproduce it here so we
+           can build the correct CFI unwinding info, so gdb gives good stack
+           traces from inside the syscall hook code. */
+        .cfi_startproc
+        /* Save fake return address and old sp to the stack, for gdb to use
+           during stack unwinding. Addresses will be filled in by rr. */
+        movl   $0x12345678,-_syscall_stack_adjust(%esp)
+        /* Backtrace here will be invalid! */
+        mov    %esp,(-_syscall_stack_adjust+4)(%esp)
+        /* Backtrace here will be invalid! */
+        lea    -_syscall_stack_adjust(%esp),%esp
+        .cfi_rel_offset %esp,4
+        /* We won't be able to get complete stack traces inside the above
+           sequence, but that's not important. What's important is that at this
+           point:
+           * (%esp) contains a "return address" for this stub that points
+             back to the patch site.
+           * (%esp+4) contains the value of %esp that will hold at the
+             patch site, and we've emitted CFI data to indicate that.
+           This makes gdb treat the patch site as the caller of this stub,
+           even though no call actually happened. */
+        call  _stub_buffer /* FAKE, filled in by rr */
+        /* A backtrace here will be valid since for unwinding purposes we're
+           basically in the same state as before the call. */
+        lea    _syscall_stack_adjust(%esp),%esp
+        /* Backtrace here will be invalid! */
+        jmp   _stub_buffer /* FAKE, filled in by rr */
+        .cfi_endproc
+        .endr
+_stub_buffer_end:
+
 #elif defined(__x86_64__)
         .text
 
-        .global _syscall_hook_trampoline
-        .hidden _syscall_hook_trampoline
-        .type _syscall_hook_trampoline, @function
         .p2align 4
 _syscall_hook_trampoline:
         .cfi_startproc
@@ -254,12 +290,43 @@ _syscall_hook_trampoline_90_90_90:
 
         .cfi_endproc
         .size _syscall_hook_trampoline_90_90_90, .-_syscall_hook_trampoline_90_90_90
-#endif /* __x86_64__ */
 
-        .global _code_buffer
-        .hidden _code_buffer
-_code_buffer:
-        /* This size must match SYSCALL_HOOK_CODE_BUFFER_SIZE */
-        .space 0x10000,0xFF
+
+_stub_buffer:
+        .rept 1000
+        /* Must match X64SyscallStubMonkeypatch. We reproduce it here so we
+           can build the correct CFI unwinding info, so gdb gives good stack
+           traces from inside the syscall hook code. */
+        .cfi_startproc
+        /* Save fake return address and old sp to the stack, for gdb to use
+           during stack unwinding. Addresses will be filled in by rr. */
+        movl   $0x12345678,-_syscall_stack_adjust(%rsp)
+        /* Backtrace here will be invalid! */
+        movl   $0x12345678,(-_syscall_stack_adjust+4)(%rsp)
+        /* Backtrace here will be invalid! */
+        mov    %rsp,(-_syscall_stack_adjust+8)(%rsp)
+        /* Backtrace here will be invalid! */
+        lea    -_syscall_stack_adjust(%rsp),%rsp
+        .cfi_rel_offset %rsp,8
+        /* We won't be able to get complete stack traces inside the above
+           sequence, but that's not important. What's important is that at this
+           point:
+           * (%rsp) contains a "return address" for this stub that points
+             back to the patch site.
+           * (%rsp+8) contains the value of %rsp that will hold at the
+             patch site, and we've emitted CFI data to indicate that.
+           This makes gdb treat the patch site as the caller of this stub,
+           even though no call actually happened. */
+        call  _stub_buffer /* FAKE, filled in by rr */
+        /* A backtrace here will be valid since for unwinding purposes we're
+           basically in the same state as before the call. */
+        lea    _syscall_stack_adjust(%rsp),%rsp
+        /* Backtrace here will be invalid! */
+        jmp   _stub_buffer /* FAKE, filled in by rr */
+        .cfi_endproc
+        .endr
+_stub_buffer_end:
+
+#endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits

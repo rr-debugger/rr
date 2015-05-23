@@ -96,9 +96,6 @@ struct syscall_patch_hook {
   uint64_t hook_address;
 };
 
-/* This must match the size of _code_buffer in ssycall_hook.S */
-#define SYSCALL_HOOK_CODE_BUFFER_SIZE 0x10000
-
 /**
  * Packs up the parameters passed to |SYS_rrcall_init_preload|.
  * We use this struct because it's a little cleaner.
@@ -113,7 +110,8 @@ struct rrcall_init_preload_params {
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
   PTR(void) syscall_hook_trampoline;
-  PTR(void) syscall_hook_code_buffer;
+  PTR(void) syscall_hook_stub_buffer;
+  PTR(void) syscall_hook_stub_buffer_end;
   /* Array of size SYSCALLBUF_FDS_DISABLED_SIZE */
   PTR(volatile char) syscallbuf_fds_disabled;
 };

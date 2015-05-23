@@ -83,9 +83,12 @@ templates = {
         Field('syscall_hook_trampoline', 4),
     ),
     'X86SyscallStubMonkeypatch': AssemblyTemplate(
-        # 256 here must match _syscall_stack_adjust in syscall_hook.S.
+        # This code must match the stubs in syscall_hook.S.
         # We must adjust the stack pointer without modifying flags,
         # at least on the return path.
+        RawBytes(0xc7, 0x84, 0x24, 0x00, 0xff, 0xff, 0xff), # movq $fake_return_addr,-256(%esp)
+        Field('fake_return_addr', 4),
+        RawBytes(0x89, 0xa4, 0x24, 0x04, 0xff, 0xff, 0xff), # mov %esp,-252(%esp)
         RawBytes(0x8d, 0xa4, 0x24, 0x00, 0xff, 0xff, 0xff), # lea -256(%esp),%esp
         RawBytes(0xe8),         # call $trampoline_relative_addr
         Field('trampoline_relative_addr', 4),
@@ -110,9 +113,14 @@ templates = {
         RawBytes(0xc3),         # ret
     ),
     'X64SyscallStubMonkeypatch': AssemblyTemplate(
-        # 256 here must match _syscall_stack_adjust in syscall_hook.S.
+        # This code must match the stubs in syscall_hook.S.
         # We must adjust the stack pointer without modifying flags,
         # at least on the return path.
+        RawBytes(0xc7, 0x84, 0x24, 0x00, 0xff, 0xff, 0xff), # movl $return_addr_lo,-256(%rsp)
+        Field('return_addr_lo', 4),
+        RawBytes(0xc7, 0x84, 0x24, 0x04, 0xff, 0xff, 0xff), # movl $return_addr_hi,-252(%rsp)
+        Field('return_addr_hi', 4),
+        RawBytes(0x48, 0x89, 0xa4, 0x24, 0x08, 0xff, 0xff, 0xff), # mov %rsp,-248(%rsp)
         RawBytes(0x48, 0x8d, 0xa4, 0x24, 0x00, 0xff, 0xff, 0xff), # lea -256(%rsp),%rsp
         RawBytes(0xe8),         # call $trampoline_relative_addr
         Field('trampoline_relative_addr', 4),

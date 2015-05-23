@@ -30,12 +30,13 @@ class Task;
  */
 class Monkeypatcher {
 public:
-  Monkeypatcher() : code_buffer_allocated(0) {}
+  Monkeypatcher() : stub_buffer_allocated(0) {}
   Monkeypatcher(const Monkeypatcher& o)
       : syscall_hooks(o.syscall_hooks),
         tried_to_patch_syscall_addresses(o.tried_to_patch_syscall_addresses),
-        code_buffer(o.code_buffer),
-        code_buffer_allocated(o.code_buffer_allocated) {}
+        stub_buffer(o.stub_buffer),
+        stub_buffer_end(o.stub_buffer_end),
+        stub_buffer_allocated(o.stub_buffer_allocated) {}
 
   /**
    * Apply any necessary patching immediately after exec.
@@ -62,13 +63,13 @@ public:
   void init_dynamic_syscall_patching(
       Task* t, int syscall_patch_hook_count,
       remote_ptr<syscall_patch_hook> syscall_patch_hooks,
-      remote_ptr<void> patch_code_buffer);
+      remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end);
 
   /**
-   * Try to allocate |bytes| from the code buffer. Returns null on failure or
-   * if there's no buffer.
+   * Try to allocate a stub from the sycall patching stub buffer. Returns null
+   * if there's no buffer or we've run out of free stubs.
    */
-  remote_ptr<uint8_t> allocate_code_buffer(Task* t, size_t bytes);
+  remote_ptr<uint8_t> allocate_stub(Task* t, size_t bytes);
 
 private:
   /**
@@ -85,8 +86,9 @@ private:
   /**
    * Writable executable memory where we can generate stubs.
    */
-  remote_ptr<void> code_buffer;
-  size_t code_buffer_allocated;
+  remote_ptr<void> stub_buffer;
+  remote_ptr<void> stub_buffer_end;
+  size_t stub_buffer_allocated;
 };
 
 #endif /* RR_MONKEYPATCHER_H_ */

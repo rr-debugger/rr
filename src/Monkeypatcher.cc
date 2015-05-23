@@ -82,27 +82,47 @@ template <typename Arch> static void setup_preload_library_path(Task* t) {
 void Monkeypatcher::init_dynamic_syscall_patching(
     Task* t, int syscall_patch_hook_count,
     remote_ptr<struct syscall_patch_hook> syscall_patch_hooks,
-    remote_ptr<void> patch_code_buffer) {
+    remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end) {
   if (syscall_patch_hook_count) {
     syscall_hooks = t->read_mem(syscall_patch_hooks, syscall_patch_hook_count);
   }
-  code_buffer = patch_code_buffer;
+  this->stub_buffer = stub_buffer;
+  this->stub_buffer_end = stub_buffer_end;
 }
 
 template <typename Arch>
 static bool patch_syscall_with_hook_arch(Monkeypatcher& patcher, Task* t,
                                          const syscall_patch_hook& hook);
 
-remote_ptr<uint8_t> Monkeypatcher::allocate_code_buffer(Task* t, size_t bytes) {
-  if (!code_buffer) {
+remote_ptr<uint8_t> Monkeypatcher::allocate_stub(Task* t, size_t bytes) {
+  if (!stub_buffer) {
     return nullptr;
   }
-  if (code_buffer_allocated + bytes > SYSCALL_HOOK_CODE_BUFFER_SIZE) {
+  ASSERT(t, (stub_buffer_end - stub_buffer)%bytes == 0) << "Stub size mismatch";
+  if (stub_buffer + stub_buffer_allocated + bytes > stub_buffer_end) {
     return nullptr;
   }
-  auto result = code_buffer.cast<uint8_t>() + code_buffer_allocated;
-  code_buffer_allocated += bytes;
+  auto result = stub_buffer.cast<uint8_t>() + stub_buffer_allocated;
+  stub_buffer_allocated += bytes;
   return result;
+}
+
+template <typename StubPatch> static void substitute(uint8_t* buffer, uint64_t return_addr,
+    uint32_t trampoline_relative_addr, uint32_t return_relative_addr);
+
+template <> void substitute<X86SyscallStubMonkeypatch>(uint8_t* buffer,
+    uint64_t return_addr,
+    uint32_t trampoline_relative_addr, uint32_t return_relative_addr) {
+  X86SyscallStubMonkeypatch::substitute(buffer, (uint32_t)return_addr,
+      trampoline_relative_addr, return_relative_addr);
+}
+
+template <> void substitute<X64SyscallStubMonkeypatch>(uint8_t* buffer,
+    uint64_t return_addr,
+    uint32_t trampoline_relative_addr, uint32_t return_relative_addr) {
+  X64SyscallStubMonkeypatch::substitute(buffer, (uint32_t)return_addr,
+      (uint32_t)(return_addr >> 32),
+      trampoline_relative_addr, return_relative_addr);
 }
 
 /**
@@ -118,7 +138,7 @@ template <typename JumpPatch, typename StubPatch, uint32_t trampoline_call_end>
 static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   uint8_t stub_patch[StubPatch::size];
-  auto stub_patch_start = patcher.allocate_code_buffer(t, sizeof(stub_patch));
+  auto stub_patch_start = patcher.allocate_stub(t, sizeof(stub_patch));
   if (!stub_patch_start) {
     LOG(debug) << "syscall can't be patched due to stub allocation failure";
     return false;
@@ -164,8 +184,8 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
   t->write_mem(jump_patch_start + sizeof(jump_patch), nops, sizeof(nops));
 
   // Now write out the stub
-  StubPatch::substitute(stub_patch, trampoline_call_offset32,
-                        return_jump_offset32);
+  substitute<StubPatch>(stub_patch, jump_patch_end.as_int(),
+                        trampoline_call_offset32, return_jump_offset32);
   t->write_bytes(stub_patch_start, stub_patch);
 
   return true;
@@ -175,14 +195,14 @@ template <>
 bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X86VsyscallMonkeypatch,
-      X86SyscallStubMonkeypatch, 12>(patcher, t, hook);
+      X86SyscallStubMonkeypatch, 30>(patcher, t, hook);
 }
 
 template <>
 bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
-      X64SyscallStubMonkeypatch, 13>(patcher, t, hook);
+      X64SyscallStubMonkeypatch, 43>(patcher, t, hook);
 }
 
 static bool patch_syscall_with_hook(Monkeypatcher& patcher, Task* t,
@@ -426,7 +446,8 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
 
   patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
                                         params.syscall_patch_hooks,
-                                        params.syscall_hook_code_buffer);
+                                        params.syscall_hook_stub_buffer,
+                                        params.syscall_hook_stub_buffer_end);
 }
 
 // x86-64 doesn't have a convenient vsyscall-esque function in the VDSO;
@@ -502,7 +523,8 @@ void patch_at_preload_init_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
 
   patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
                                         params.syscall_patch_hooks,
-                                        params.syscall_hook_code_buffer);
+                                        params.syscall_hook_stub_buffer,
+                                        params.syscall_hook_stub_buffer_end);
 }
 
 void Monkeypatcher::patch_after_exec(Task* t) {
