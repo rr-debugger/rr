@@ -39,6 +39,7 @@ void TraceFrame::dump(FILE* out) const {
             extra_perf.instructions_retired);
   }
   regs().print_register_file_for_trace(out);
+  fprintf(out, "\n");
 }
 
 void TraceFrame::dump_raw(FILE* out) const {

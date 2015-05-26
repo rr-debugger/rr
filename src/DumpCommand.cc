@@ -148,7 +148,6 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         frame.dump_raw(out);
       } else {
         frame.dump(out);
-        fprintf(out, "\n");
       }
       if (flags.dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);
