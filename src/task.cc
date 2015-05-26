@@ -237,6 +237,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       // This will be initialized when the syscall buffer is.
       desched_fd_child(-1),
       seccomp_bpf_enabled(false),
+      prctl_seccomp_status(0),
       child_sig(),
       stepped_into_syscall(false),
       hpc(_tid),
@@ -2142,6 +2143,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   Task* t = new Task(sess, new_tid, new_rec_tid, new_serial, priority, arch());
 
   t->blocked_sigs = blocked_sigs;
+  t->prctl_seccomp_status = prctl_seccomp_status;
   if (CLONE_SHARE_SIGHANDLERS & flags) {
     t->sighandlers = sighandlers;
   } else {

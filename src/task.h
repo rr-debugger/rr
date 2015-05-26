@@ -1269,6 +1269,8 @@ public:
    * any untraced ones; that's the magic "rrcall" the tracee
    * uses to initialize its syscallbuf. */
   bool seccomp_bpf_enabled;
+  // Value to return from PR_GET_SECCOMP
+  uint8_t prctl_seccomp_status;
 
   /* State used only during replay. */
 

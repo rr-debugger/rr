@@ -38,6 +38,7 @@ int main(int argc, char* argv[]) {
   if (install_filter(SYS_pipe, ESRCH)) {
     test_assert(-1 == syscall(SYS_pipe, pipe_fds));
     test_assert(ESRCH == errno);
+    test_assert(2 == prctl(PR_GET_SECCOMP));
   }
 
   atomic_puts("EXIT-SUCCESS");

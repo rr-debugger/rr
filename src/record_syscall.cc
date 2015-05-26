@@ -2210,6 +2210,10 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           syscall_state.emulate_result(t->task_group()->dumpable);
           break;
 
+        case PR_GET_SECCOMP:
+          syscall_state.emulate_result(t->prctl_seccomp_status);
+          break;
+
         case PR_GET_TSC: {
           // Prevent the actual GET_TSC call. We force-return PR_TSC_ENABLE.
           Registers r = t->regs();
@@ -3125,6 +3129,11 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       t->set_regs(r);
       if (t->regs().arg1() == PR_SET_SECCOMP) {
         install_patched_seccomp_filter(t);
+        // install_patched_seccomp_filter can set registers to indicate
+        // failure.
+        if (t->session().can_validate() && !t->regs().syscall_failed()) {
+          t->prctl_seccomp_status = 2;
+        }
       }
       break;
     }
@@ -3136,6 +3145,13 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       t->set_regs(r);
       if (t->regs().arg1() == SECCOMP_SET_MODE_FILTER) {
         install_patched_seccomp_filter(t);
+        // install_patched_seccomp_filter can set registers to indicate
+        // failure.
+        ASSERT(t, t->session().can_validate())
+            << "no seccomp calls during spawn";
+        if (!t->regs().syscall_failed()) {
+          t->prctl_seccomp_status = 2;
+        }
       }
       break;
     }

@@ -44,6 +44,8 @@ int main(int argc, char* argv[]) {
   test_assert(0 == prctl(PR_GET_TSC, (unsigned long)&tsc));
   test_assert(tsc == PR_TSC_ENABLE);
 
+  test_assert(0 == prctl(PR_GET_SECCOMP));
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

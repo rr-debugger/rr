@@ -7,8 +7,9 @@ int main(int argc, char* argv[]) {
   if (ret == -1 && errno == ENOSYS) {
     ret = prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, NULL);
   }
-
   test_assert(ret == -1 && errno == EFAULT);
+
+  test_assert(0 == prctl(PR_GET_SECCOMP));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
