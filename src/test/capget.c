@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-extern int capget(cap_user_header_t header, const cap_user_data_t data);
+extern int capget(cap_user_header_t header, cap_user_data_t data);
 
 int main(int argc, char* argv[]) {
   struct __user_cap_header_struct* hdr;

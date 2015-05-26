@@ -2,6 +2,8 @@
 
 #include "rrutil.h"
 
+extern int capset(cap_user_header_t header, const cap_user_data_t data);
+
 static char tmp_name[] = "/tmp/rr-unshare-tmp-XXXXXX";
 
 static void* start_thread(void* p) {
@@ -15,6 +17,9 @@ static void run_child(void) {
   int status;
 
   if (!child) {
+    struct __user_cap_header_struct hdr = { _LINUX_CAPABILITY_VERSION_1, 0 };
+    struct __user_cap_data_struct data = { 0x1, 0x1, 0x1 };
+
     /* Test creating a nested child */
     pid_t nested_child = fork();
     if (!nested_child) {
@@ -27,6 +32,10 @@ static void run_child(void) {
     pthread_t thread;
     pthread_create(&thread, NULL, start_thread, NULL);
     pthread_join(thread, NULL);
+
+    /* Test using capset. capset is privileged, but we are privileged
+       in our user namespace. */
+    test_assert(0 == capset(&hdr, &data));
 
     /* stdout should still be writable due to the unshare() */
     test_assert(13 == write(STDOUT_FILENO, "EXIT-SUCCESS\n", 13));
