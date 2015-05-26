@@ -16,22 +16,22 @@ static void handle_sigrt(int sig) {
 }
 
 static void my_raise(int sig) {
-  /* Don't call raise() directly, since that can go through our syscall hooks
-     which mess up gdb's reverse-finish slightly. */
+/* Don't call raise() directly, since that can go through our syscall hooks
+   which mess up gdb's reverse-finish slightly. */
 #ifdef __i386__
   int tid = getpid();
   /* Use a special instruction after the syscall to make sure we don't patch
      it */
   __asm__ __volatile__("int $0x80\n\t"
-                       "xchg %%edx,%%edx\n\t" ::"a"(SYS_tgkill), "b"(tid), "c"(tid),
-                       "d"(sig));
+                       "xchg %%edx,%%edx\n\t" ::"a"(SYS_tgkill),
+                       "b"(tid), "c"(tid), "d"(sig));
 #elif defined(__x86_64__)
   int tid = getpid();
   /* Use a special instruction after the syscall to make sure we don't patch
      it */
   __asm__ __volatile__("syscall\n\t"
-                       "xchg %%rdx,%%rdx\n\t" ::"a"(SYS_tgkill), "D"(tid), "S"(tid),
-                       "d"(sig));
+                       "xchg %%rdx,%%rdx\n\t" ::"a"(SYS_tgkill),
+                       "D"(tid), "S"(tid), "d"(sig));
 #else
   raise(sig);
 #endif

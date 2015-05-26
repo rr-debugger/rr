@@ -1482,7 +1482,8 @@ static long sys_poll(const struct syscall_info* call) {
  * a pointer to the end of it. If there is no scratch buffer (|buf2| is NULL)
  * just returns |ptr|.
  */
-static void* copy_output_buffer(int ret_size, void* ptr, void* buf, void* buf2) {
+static void* copy_output_buffer(int ret_size, void* ptr, void* buf,
+                                void* buf2) {
   if (!buf2) {
     return ptr;
   }
