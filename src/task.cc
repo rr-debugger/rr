@@ -67,6 +67,7 @@ struct Sighandler {
     sa.resize(sizeof(ksa));
     memcpy(sa.data(), &ksa, sizeof(ksa));
     resethand = (ksa.sa_flags & SA_RESETHAND) != 0;
+    takes_siginfo = (ksa.sa_flags & SA_SIGINFO) != 0;
   }
 
   template <typename Arch> void reset_arch() {
@@ -97,6 +98,7 @@ struct Sighandler {
   // Saved kernel_sigaction; used to restore handler
   vector<uint8_t> sa;
   bool resethand;
+  bool takes_siginfo;
 };
 
 static void reset_handler(Sighandler* handler, SupportedArch arch) {
@@ -1627,6 +1629,10 @@ const vector<uint8_t>& Task::signal_action(int sig) const {
   return sighandlers->get(sig).sa;
 }
 
+bool Task::signal_handler_takes_siginfo(int sig) const {
+  return sighandlers->get(sig).takes_siginfo;
+}
+
 void Task::stash_sig() {
   int sig = pending_sig();
   assert(sig);
@@ -1646,6 +1652,25 @@ void Task::stash_sig() {
   const siginfo_t& si = get_siginfo();
   stashed_signals.push_back(StashedSignal(si));
   wait_status = 0;
+}
+
+void Task::stash_synthetic_sig(const siginfo_t& si) {
+  int sig = si.si_signo;
+  assert(sig);
+  // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
+  assert(sig != SYSCALLBUF_DESCHED_SIGNAL);
+  // multiple non-RT signals coalesce
+  if (sig < SIGRTMIN) {
+    for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
+      if (it->si.si_signo == sig) {
+        LOG(debug) << "discarding stashed signal " << sig
+                   << " since we already have one pending";
+        return;
+      }
+    }
+  }
+
+  stashed_signals.push_back(StashedSignal(si));
 }
 
 siginfo_t Task::pop_stash_sig() {

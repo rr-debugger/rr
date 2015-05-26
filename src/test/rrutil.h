@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <linux/audit.h>
 #include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>
@@ -67,6 +68,7 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <time.h>
+#include <ucontext.h>
 #include <unistd.h>
 #include <utime.h>
 #include <x86intrin.h>

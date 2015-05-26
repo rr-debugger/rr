@@ -16,6 +16,11 @@
 class Task;
 class TraceFrame;
 
+enum {
+  MAX_ERRNO = 4095,
+  EMULATE_RET_TRAP
+};
+
 template <typename T, size_t N> constexpr size_t array_length(T (&array)[N]) {
   return N;
 }

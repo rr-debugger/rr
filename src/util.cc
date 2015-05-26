@@ -752,15 +752,18 @@ static void install_patched_seccomp_filter_arch(Task* t) {
           << "seccomp-bpf program uses BPF_RET with A/X register, not "
              "supported";
       if ((u.k & SECCOMP_RET_ACTION) == SECCOMP_RET_ERRNO) {
-        static int max_errno = 4095;
         // The kernel caps the max errno to 4095, so we may as well do that
         // here. This means filter data values > 4095 cannot be generated
         // by this filter, which lets us disambiguate seccomp errno filter
         // returns from our filter returns.
-        int filter_errno = min<int>(max_errno, u.k & SECCOMP_RET_DATA);
+        int filter_errno = min<int>(MAX_ERRNO, u.k & SECCOMP_RET_DATA);
         // Instead of forcing an errno return directly, trigger a ptrace
         // trap so we can detect and handle it.
         u.k = filter_errno | SECCOMP_RET_TRACE;
+      } else if ((u.k & SECCOMP_RET_ACTION) == SECCOMP_RET_TRAP) {
+        ASSERT(t, (u.k & SECCOMP_RET_DATA) == 0)
+            << "nonzero SECCOMP_RET_DATA not supported for SECCOMP_RET_TRAP";
+        u.k = EMULATE_RET_TRAP | SECCOMP_RET_TRACE;
       }
     }
   }

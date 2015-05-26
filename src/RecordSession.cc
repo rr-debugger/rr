@@ -121,9 +121,10 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
 
   switch (event) {
     case PTRACE_EVENT_SECCOMP_OBSOLETE:
-    case PTRACE_EVENT_SECCOMP:
+    case PTRACE_EVENT_SECCOMP: {
       t->seccomp_bpf_enabled = true;
-      if (t->get_ptrace_eventmsg_seccomp_data() == SECCOMP_RET_DATA) {
+      uint16_t seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
+      if (seccomp_data == SECCOMP_RET_DATA) {
         if (t->regs().original_syscallno() < 0) {
           // negative syscall numbers after a SECCOMP event
           // are treated as "skip this syscall". There will be one syscall event
@@ -144,6 +145,54 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
           // the enter-syscall event.
           step_state->continue_type = CONTINUE_SYSCALL;
         }
+      } else if (seccomp_data == EMULATE_RET_TRAP) {
+        // A seccomp filter generated SECCOMP_RET_TRAP (with 0
+        // SECCOMP_RET_DATA). Emulate that now.
+        t->fixup_syscall_regs();
+
+        if (!t->is_in_untraced_syscall()) {
+          t->push_event(
+              SyscallEvent(t->regs().original_syscallno(), t->arch()));
+          ASSERT(t, EV_SYSCALL == t->ev().type());
+          t->ev().Syscall().state = ENTERING_SYSCALL;
+          t->record_current_event();
+        }
+
+        Registers r = t->regs();
+
+        siginfo_t si;
+        memset(&si, 0, sizeof(si));
+        si.si_signo = SIGSYS;
+        si.si_errno = 0;
+        si.si_code = 1; /* SYS_SECCOMP */
+        // Documentation says that si_call_addr is the address of the syscall
+        // instruction, but in tests it's immediately after the syscall
+        // instruction.
+        si.si_call_addr = (void*)r.ip().register_value();
+        switch (r.arch()) {
+          case x86:
+            si.si_arch = AUDIT_ARCH_I386;
+            break;
+          case x86_64:
+            si.si_arch = AUDIT_ARCH_X86_64;
+            break;
+          default:
+            assert(0 && "Unknown architecture");
+            break;
+        }
+        si.si_syscall = r.original_syscallno();
+        t->stash_synthetic_sig(si);
+
+        // Tests show that the current registers are preserved (on x86, eax/rax
+        // retains the syscall number).
+        r.set_syscallno(r.original_syscallno());
+        // Cause kernel processing to skip the syscall
+        r.set_original_syscallno(-1);
+        t->set_regs(r);
+        // Don't continue yet. At the next iteration of record_step, if we
+        // recorded the syscall-entry we'll enter syscall_state_changed and
+        // that will trigger a continue to the syscall exit.
+        step_state->continue_type = DONT_CONTINUE;
       } else {
         // user seccomp filter that would have returned SECOMP_RET_ERRNO.
         // Emulate that.
@@ -160,7 +209,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
         Registers r = t->regs();
         // Cause kernel processing to skip the syscall
         r.set_original_syscallno(-1);
-        r.set_syscall_result(-t->get_ptrace_eventmsg_seccomp_data());
+        r.set_syscall_result(-seccomp_data);
         t->set_regs(r);
         // Don't continue yet. At the next iteration of record_step, if we
         // recorded the syscall-entry we'll enter syscall_state_changed and
@@ -168,6 +217,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
         step_state->continue_type = DONT_CONTINUE;
       }
       break;
+    }
 
     case PTRACE_EVENT_CLONE: {
       remote_ptr<void> stack;
@@ -653,6 +703,91 @@ void RecordSession::check_perf_counters_working(Task* t,
   }
 }
 
+template <typename Arch>
+static void setup_sigframe_siginfo_arch(Task* t, const siginfo_t& siginfo) {
+  remote_ptr<typename Arch::siginfo_t> dest;
+  switch (Arch::arch()) {
+    case x86: {
+      auto p = t->regs().sp().cast<typename Arch::unsigned_word>() + 2;
+      dest = t->read_mem(p);
+      break;
+    }
+    case x86_64:
+      dest = t->regs().si();
+      break;
+    default:
+      assert(0 && "Unknown architecture");
+      break;
+  }
+  typename Arch::siginfo_t si = t->read_mem(dest);
+  // Copying this structure field-by-field instead of just memcpy'ing
+  // siginfo into si serves two purposes: performs 64->32 conversion if
+  // necessary, and ensures garbage in any holes in signfo isn't copied to the
+  // tracee.
+  si.si_signo = siginfo.si_signo;
+  si.si_errno = siginfo.si_errno;
+  si.si_code = siginfo.si_code;
+  switch (siginfo.si_code) {
+    case SI_USER:
+    case SI_TKILL:
+      si._sifields._kill.si_pid_ = siginfo.si_pid;
+      si._sifields._kill.si_uid_ = siginfo.si_uid;
+      break;
+    case SI_QUEUE:
+    case SI_MESGQ:
+      si._sifields._rt.si_pid_ = siginfo.si_pid;
+      si._sifields._rt.si_uid_ = siginfo.si_uid;
+      // si_ptr/si_int are a union and we don't know which part is valid.
+      // The only case where it matters is when we're mapping 64->32, in which
+      // case we can just assign the ptr first (which is bigger) and then the
+      // int (to be endian-independent).
+      si._sifields._rt.si_sigval_.sival_ptr =
+          remote_ptr<void>((uintptr_t)siginfo.si_ptr);
+      si._sifields._rt.si_sigval_.sival_int = siginfo.si_int;
+      break;
+    case SI_TIMER:
+      si._sifields._timer.si_overrun_ = siginfo.si_overrun;
+      si._sifields._timer.si_tid_ = siginfo.si_timerid;
+      si._sifields._timer.si_sigval_.sival_ptr =
+          remote_ptr<void>((uintptr_t)siginfo.si_ptr);
+      si._sifields._timer.si_sigval_.sival_int = siginfo.si_int;
+      break;
+  }
+  switch (siginfo.si_signo) {
+    case SIGCHLD:
+      si._sifields._sigchld.si_pid_ = siginfo.si_pid;
+      si._sifields._sigchld.si_uid_ = siginfo.si_uid;
+      si._sifields._sigchld.si_status_ = siginfo.si_status;
+      si._sifields._sigchld.si_utime_ = siginfo.si_utime;
+      si._sifields._sigchld.si_stime_ = siginfo.si_stime;
+      break;
+    case SIGILL:
+    case SIGBUS:
+    case SIGFPE:
+    case SIGSEGV:
+    case SIGTRAP:
+      si._sifields._sigfault.si_addr_ =
+          remote_ptr<void>((uintptr_t)siginfo.si_addr);
+      si._sifields._sigfault.si_addr_lsb_ = siginfo.si_addr_lsb;
+      break;
+    case SIGIO:
+      si._sifields._sigpoll.si_band_ = siginfo.si_band;
+      si._sifields._sigpoll.si_fd_ = siginfo.si_fd;
+      break;
+    case SIGSYS:
+      si._sifields._sigsys._call_addr =
+          remote_ptr<void>((uintptr_t)siginfo.si_call_addr);
+      si._sifields._sigsys._syscall = siginfo.si_syscall;
+      si._sifields._sigsys._arch = siginfo.si_arch;
+      break;
+  }
+  t->write_mem(dest, si);
+}
+
+static void setup_sigframe_siginfo(Task* t, const siginfo_t& siginfo) {
+  RR_ARCH_FUNCTION(setup_sigframe_siginfo_arch, t->arch(), t, siginfo);
+}
+
 static void inject_signal(Task* t) {
   int sig = t->ev().Signal().siginfo.si_signo;
 
@@ -713,6 +848,15 @@ static void inject_signal(Task* t) {
   t->cont_singlestep(sig);
   ASSERT(t, t->pending_sig() == SIGTRAP);
   ASSERT(t, t->get_signal_user_handler(sig) == t->ip());
+
+  if (t->signal_handler_takes_siginfo(sig)) {
+    // The kernel copied siginfo into userspace so it can pass a pointer to
+    // the signal handler. Replace the contents of that siginfo with
+    // the exact data we want to deliver. (We called Task::set_siginfo
+    // above to set that data, but the kernel sanitizes the passed-in data
+    // which wipes out certain fields; e.g. we can't set SI_KERNEL in si_code.)
+    setup_sigframe_siginfo(t, t->ev().Signal().siginfo);
+  }
 
   // It's been observed that when tasks enter
   // sighandlers, the singlestep operation above

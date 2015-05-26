@@ -904,6 +904,11 @@ public:
    * user handler, otherwise return null.
    */
   remote_code_ptr get_signal_user_handler(int sig) const;
+  /**
+   * Return true if the signal handler for |sig| takes a siginfo_t*
+   * parameter.
+   */
+  bool signal_handler_takes_siginfo(int sig) const;
 
   /**
    * Return |sig|'s current sigaction. Returned as raw bytes since the
@@ -932,6 +937,7 @@ public:
    * stash anything.
    */
   void stash_sig();
+  void stash_synthetic_sig(const siginfo_t& si);
   bool has_stashed_sig() const { return !stashed_signals.empty(); }
   siginfo_t peek_stash_sig();
   siginfo_t pop_stash_sig();
