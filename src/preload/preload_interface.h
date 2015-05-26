@@ -3,6 +3,7 @@
 #ifndef RR_PRELOAD_INTERFACE_H_
 #define RR_PRELOAD_INTERFACE_H_
 
+#include <signal.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -25,9 +26,11 @@
 #define SYSCALLBUF_LIB_FILENAME_PADDED SYSCALLBUF_LIB_FILENAME_BASE ".so:::"
 #define SYSCALLBUF_LIB_FILENAME_32 SYSCALLBUF_LIB_FILENAME_BASE "_32.so"
 
-/* This is pretty arbitrary; SIGSYS is unused by linux, and hopefully
- * normal applications don't use it either. */
-#define SYSCALLBUF_DESCHED_SIGNAL SIGSYS
+/* This is pretty arbitrary. On Linux SIGPWR is sent to PID 1 (init) on
+ * power failure, and it's unlikely rr will be recording that.
+ * Note that SIGUNUSED means SIGSYS which actually *is* used (by seccomp),
+ * so we can't use it. */
+#define SYSCALLBUF_DESCHED_SIGNAL SIGPWR
 
 /* This size counts the header along with record data. */
 #define SYSCALLBUF_BUFFER_SIZE (1 << 20)

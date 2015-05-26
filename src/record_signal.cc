@@ -138,7 +138,7 @@ void arm_desched_event(Task* t) {
 static void handle_desched_event(Task* t, const siginfo_t* si) {
   ASSERT(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo &&
              si->si_code == POLL_IN && si->si_fd == t->desched_fd_child))
-      << "Tracee is using SIGSYS??? (code=" << si->si_code
+      << "Tracee is using SYSCALLBUF_DESCHED_SIGNAL??? (code=" << si->si_code
       << ", fd=" << si->si_fd << ")";
 
   /* If the tracee isn't in the critical section where a desched

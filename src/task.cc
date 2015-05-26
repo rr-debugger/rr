@@ -1713,7 +1713,7 @@ void Task::update_sigmask(const Registers& regs) {
 
   ASSERT(this, (!syscallbuf_hdr || !syscallbuf_hdr->locked ||
                 is_desched_sig_blocked()))
-      << "syscallbuf is locked but SIGSYS isn't blocked";
+      << "syscallbuf is locked but SYSCALLBUF_DESCHED_SIGNAL isn't blocked";
 
   auto set = read_mem(setp);
 
@@ -1732,10 +1732,10 @@ void Task::update_sigmask(const Registers& regs) {
       FATAL() << "Unknown sigmask manipulator " << how;
   }
 
-  // In the syscallbuf, we rely on SIGSYS being raised when
+  // In the syscallbuf, we rely on SYSCALLBUF_DESCHED_SIGNAL being raised when
   // tracees are descheduled in blocked syscalls.  But
-  // unfortunately, if tracees block SIGSYS, then we don't get
-  // notification of the pending signal and deadlock.  If we did
+  // unfortunately, if tracees block SYSCALLBUF_DESCHED_SIGNAL, then we don't
+  // get notification of the pending signal and deadlock.  If we did
   // get those notifications, this code would be unnecessary.
   //
   // So we lock the syscallbuf while the desched signal is
