@@ -272,24 +272,32 @@ static void* traced_syscall_instruction =
     (void*)(RR_PAGE_IN_TRACED_SYSCALL_ADDR - SYSCALL_INSTRUCTION_LENGTH);
 static void* untraced_syscall_instruction =
     (void*)(RR_PAGE_IN_UNTRACED_SYSCALL_ADDR - SYSCALL_INSTRUCTION_LENGTH);
+static void* privileged_traced_syscall_instruction =
+    (void*)(RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR -
+            SYSCALL_INSTRUCTION_LENGTH);
+static void* privileged_untraced_syscall_instruction =
+    (void*)(RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR -
+            SYSCALL_INSTRUCTION_LENGTH);
 
-static int traced_syscall(int syscallno, long a0, long a1, long a2, long a3,
-                          long a4, long a5) {
+static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
+                                     long a3, long a4, long a5) {
   long ret = _traced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                                 traced_syscall_instruction, 0, 0);
+                                 privileged_traced_syscall_instruction, 0, 0);
   return update_errno_ret(ret);
 }
-#define traced_syscall6(no, a0, a1, a2, a3, a4, a5)                            \
-  traced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,              \
-                 (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
-#define traced_syscall5(no, a0, a1, a2, a3, a4)                                \
-  traced_syscall6(no, a0, a1, a2, a3, a4, 0)
-#define traced_syscall4(no, a0, a1, a2, a3)                                    \
-  traced_syscall5(no, a0, a1, a2, a3, 0)
-#define traced_syscall3(no, a0, a1, a2) traced_syscall4(no, a0, a1, a2, 0)
-#define traced_syscall2(no, a0, a1) traced_syscall3(no, a0, a1, 0)
-#define traced_syscall1(no, a0) traced_syscall2(no, a0, 0)
-#define traced_syscall0(no) traced_syscall1(no, 0)
+#define privileged_traced_syscall6(no, a0, a1, a2, a3, a4, a5)                 \
+  privileged_traced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,   \
+                            (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
+#define privileged_traced_syscall5(no, a0, a1, a2, a3, a4)                     \
+  privileged_traced_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define privileged_traced_syscall4(no, a0, a1, a2, a3)                         \
+  privileged_traced_syscall5(no, a0, a1, a2, a3, 0)
+#define privileged_traced_syscall3(no, a0, a1, a2)                             \
+  privileged_traced_syscall4(no, a0, a1, a2, 0)
+#define privileged_traced_syscall2(no, a0, a1)                                 \
+  privileged_traced_syscall3(no, a0, a1, 0)
+#define privileged_traced_syscall1(no, a0) privileged_traced_syscall2(no, a0, 0)
+#define privileged_traced_syscall0(no) privileged_traced_syscall1(no, 0)
 
 /**
  * Make a raw traced syscall using the params in |call|.  "Raw" traced
@@ -310,7 +318,7 @@ static long traced_raw_syscall(const struct syscall_info* call) {
 #define RR_FCNTL_SYSCALL SYS_fcntl
 #endif
 
-static int traced_fcntl(int fd, int cmd, ...) {
+static int privileged_traced_fcntl(int fd, int cmd, ...) {
   va_list ap;
   void* arg;
 
@@ -318,31 +326,39 @@ static int traced_fcntl(int fd, int cmd, ...) {
   arg = va_arg(ap, void*);
   va_end(ap);
 
-  return traced_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
+  return privileged_traced_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
 }
 
-static pid_t traced_getpid(void) { return traced_syscall0(SYS_getpid); }
-
-static pid_t traced_gettid(void) { return traced_syscall0(SYS_gettid); }
-
-static int traced_perf_event_open(struct perf_event_attr* attr, pid_t pid,
-                                  int cpu, int group_fd, unsigned long flags) {
-  return traced_syscall5(SYS_perf_event_open, attr, pid, cpu, group_fd, flags);
+static pid_t privileged_traced_getpid(void) {
+  return privileged_traced_syscall0(SYS_getpid);
 }
 
-static int traced_raise(int sig) {
-  return traced_syscall2(SYS_kill, traced_getpid(), sig);
+static pid_t privileged_traced_gettid(void) {
+  return privileged_traced_syscall0(SYS_gettid);
 }
 
-static int traced_sigprocmask(int how, const sigset_t* set, sigset_t* oldset) {
+static int privileged_traced_perf_event_open(struct perf_event_attr* attr,
+                                             pid_t pid, int cpu, int group_fd,
+                                             unsigned long flags) {
+  return privileged_traced_syscall5(SYS_perf_event_open, attr, pid, cpu,
+                                    group_fd, flags);
+}
+
+static int privileged_traced_raise(int sig) {
+  return privileged_traced_syscall2(SYS_kill, privileged_traced_getpid(), sig);
+}
+
+static int privileged_traced_sigprocmask(int how, const sigset_t* set,
+                                         sigset_t* oldset) {
   /* Warning: expecting this to only change the mask of the
    * current task is a linux-ism; POSIX leaves the behavior
    * undefined. */
-  return traced_syscall4(SYS_rt_sigprocmask, how, set, oldset, _NSIG / 8);
+  return privileged_traced_syscall4(SYS_rt_sigprocmask, how, set, oldset,
+                                    _NSIG / 8);
 }
 
-static ssize_t traced_write(int fd, const void* buf, size_t count) {
-  return traced_syscall3(SYS_write, fd, buf, count);
+static ssize_t privileged_traced_write(int fd, const void* buf, size_t count) {
+  return privileged_traced_syscall3(SYS_write, fd, buf, count);
 }
 
 /* We can't use the rr logging helpers because they rely on libc
@@ -359,7 +375,7 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
   len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
   va_end(args);
 
-  traced_write(STDERR_FILENO, buf, len);
+  privileged_traced_write(STDERR_FILENO, buf, len);
 }
 
 #ifndef NDEBUG
@@ -367,7 +383,7 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
   do {                                                                         \
     if (!(cond)) {                                                             \
       logmsg("%s:%d: Assertion `" #cond "' failed.\n", __FILE__, __LINE__);    \
-      traced_raise(SIGABRT);                                                   \
+      privileged_traced_raise(SIGABRT);                                        \
     }                                                                          \
   } while (0)
 #else
@@ -377,8 +393,9 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
 #define fatal(msg, ...)                                                        \
   do {                                                                         \
     logmsg("[FATAL] (%s:%d: errno: %s: tid: %d) " msg "\n", __FILE__,          \
-           __LINE__, strerror(errno), traced_gettid(), ##__VA_ARGS__);         \
-    traced_syscall1(SYS_exit_group, EX_OSERR);                                 \
+           __LINE__, strerror(errno), privileged_traced_gettid(),              \
+           ##__VA_ARGS__);                                                     \
+    privileged_traced_syscall1(SYS_exit_group, EX_OSERR);                      \
   } while (0)
 
 #ifdef DEBUGTAG
@@ -395,14 +412,14 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
 static void enter_signal_critical_section(sigset_t* saved_mask) {
   sigset_t mask;
   sigfillset(&mask);
-  traced_sigprocmask(SIG_BLOCK, &mask, saved_mask);
+  privileged_traced_sigprocmask(SIG_BLOCK, &mask, saved_mask);
 }
 
 /**
  * Restore |saved_mask|, after exiting critical section.
  */
 static void exit_signal_critical_section(const sigset_t* saved_mask) {
-  traced_sigprocmask(SIG_SETMASK, saved_mask, NULL);
+  privileged_traced_sigprocmask(SIG_SETMASK, saved_mask, NULL);
 }
 
 /* Helpers for invoking untraced syscalls, which do *not* generate
@@ -443,30 +460,25 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
 #define untraced_syscall1(no, a0) untraced_syscall2(no, a0, 0)
 #define untraced_syscall0(no) untraced_syscall1(no, 0)
 
-/**
- * Make the *un*traced socketcall |call| with the given args.
- *
- * NB: like untraced_syscall(), this helper *DOES NOT* touch the raw
- * return value from the kernel.  Callers must update errno
- * themselves if necessary.
- */
-#if defined(SYS_socketcall)
-static long untraced_socketcall(int call, long a0, long a1, long a2, long a3,
-                                long a4) {
-  unsigned long args[] = { a0, a1, a2, a3, a4 };
-  return untraced_syscall2(SYS_socketcall, call, args);
+static long privileged_untraced_syscall(int syscallno, long a0, long a1,
+                                        long a2, long a3, long a4, long a5) {
+  return _untraced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
+                               privileged_untraced_syscall_instruction, 0, 0);
 }
-#define untraced_socketcall5(no, a0, a1, a2, a3, a4)                           \
-  untraced_socketcall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,         \
-                      (uintptr_t)a3, (uintptr_t)a4)
-#define untraced_socketcall4(no, a0, a1, a2, a3)                               \
-  untraced_socketcall5(no, a0, a1, a2, a3, 0)
-#define untraced_socketcall3(no, a0, a1, a2)                                   \
-  untraced_socketcall4(no, a0, a1, a2, 0)
-#define untraced_socketcall2(no, a0, a1) untraced_socketcall3(no, a0, a1, 0)
-#define untraced_socketcall1(no, a0) untraced_socketcall2(no, a0, 0)
-#define untraced_socketcall0(no) untraced_socketcall1(no, 0)
-#endif
+#define privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, a5)               \
+  privileged_untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, \
+                              (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
+#define privileged_untraced_syscall5(no, a0, a1, a2, a3, a4)                   \
+  privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define privileged_untraced_syscall4(no, a0, a1, a2, a3)                       \
+  privileged_untraced_syscall5(no, a0, a1, a2, a3, 0)
+#define privileged_untraced_syscall3(no, a0, a1, a2)                           \
+  privileged_untraced_syscall4(no, a0, a1, a2, 0)
+#define privileged_untraced_syscall2(no, a0, a1)                               \
+  privileged_untraced_syscall3(no, a0, a1, 0)
+#define privileged_untraced_syscall1(no, a0)                                   \
+  privileged_untraced_syscall2(no, a0, 0)
+#define uprivileged_ntraced_syscall0(no) privileged_untraced_syscall1(no, 0)
 
 #if RR_SYSCALL_FILTERING
 extern RR_HIDDEN void _syscall_hook_trampoline(void);
@@ -492,7 +504,7 @@ static void _syscall_hook_trampoline(void) {}
 static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
   sigset_t mask;
   enter_signal_critical_section(&mask);
-  traced_syscall1(SYS_rrcall_init_buffers, args);
+  privileged_traced_syscall1(SYS_rrcall_init_buffers, args);
   exit_signal_critical_section(&mask);
 }
 
@@ -512,19 +524,20 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   attr.disabled = 1;
   attr.sample_period = nr_descheds;
 
-  fd = traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/, -1, 0);
+  fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/, -1,
+                                         0);
   if (0 > fd) {
     fatal("Failed to perf_event_open(cs, period=%zu)", nr_descheds);
   }
-  if (traced_fcntl(fd, F_SETFL, O_ASYNC)) {
+  if (privileged_traced_fcntl(fd, F_SETFL, O_ASYNC)) {
     fatal("Failed to fcntl(O_ASYNC) the desched counter");
   }
   own.type = F_OWNER_TID;
   own.pid = tid;
-  if (traced_fcntl(fd, F_SETOWN_EX, &own)) {
+  if (privileged_traced_fcntl(fd, F_SETOWN_EX, &own)) {
     fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
   }
-  if (traced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
+  if (privileged_traced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
     fatal("Failed to fcntl(SETSIG, %d) the desched counter",
           SYSCALLBUF_DESCHED_SIGNAL);
   }
@@ -537,7 +550,8 @@ static void set_up_buffer(void) {
 
   /* NB: we want this setup emulated during replay. */
   if (buffer_enabled) {
-    desched_counter_fd = open_desched_event_counter(1, traced_gettid());
+    desched_counter_fd =
+        open_desched_event_counter(1, privileged_traced_gettid());
   } else {
     desched_counter_fd = -1;
   }
@@ -655,7 +669,7 @@ static void __attribute__((constructor)) init_process(void) {
   params.syscall_hook_stub_buffer_end = (void*)_stub_buffer_end;
 
   enter_signal_critical_section(&mask);
-  traced_syscall1(SYS_rrcall_init_preload, &params);
+  privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
   exit_signal_critical_section(&mask);
 
   process_inited = 1;
@@ -862,16 +876,16 @@ static void arm_desched_event(void) {
    * avoid! :) Although we don't allocate extra space for these
    * ioctl's, we do record that we called them; the replayer
    * knows how to skip over them. */
-  if (untraced_syscall3(SYS_ioctl, desched_counter_fd, PERF_EVENT_IOC_ENABLE,
-                        0)) {
+  if (privileged_untraced_syscall3(SYS_ioctl, desched_counter_fd,
+                                   PERF_EVENT_IOC_ENABLE, 0)) {
     fatal("Failed to ENABLE counter %d", desched_counter_fd);
   }
 }
 
 static void disarm_desched_event(void) {
   /* See above. */
-  if (untraced_syscall3(SYS_ioctl, desched_counter_fd, PERF_EVENT_IOC_DISABLE,
-                        0)) {
+  if (privileged_untraced_syscall3(SYS_ioctl, desched_counter_fd,
+                                   PERF_EVENT_IOC_DISABLE, 0)) {
     fatal("Failed to DISABLE counter %d", desched_counter_fd);
   }
 }
@@ -1565,6 +1579,7 @@ static long sys_socketcall_recv(const struct syscall_info* call) {
   void* buf = (void*)args[1];
   size_t len = args[2];
   unsigned int flags = args[3];
+  unsigned long new_args[4];
 
   void* ptr = prep_syscall_for_fd(sockfd);
   void* buf2 = NULL;
@@ -1580,7 +1595,11 @@ static long sys_socketcall_recv(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
 
-  ret = untraced_socketcall4(SYS_RECV, sockfd, buf2, len, flags);
+  new_args[0] = sockfd;
+  new_args[1] = (unsigned long)buf2;
+  new_args[2] = len;
+  new_args[3] = flags;
+  ret = untraced_syscall2(SYS_socketcall, SYS_RECV, new_args);
   ptr = copy_output_buffer(ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
@@ -1869,10 +1888,10 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     //
     // Another crazy thing is going on here: it's possible that a signal
     // intended to be delivered
-    result = _traced_raw_syscall(SYS_rrcall_notify_syscall_hook_exit,
-                                 call->args[0], call->args[1], call->args[2],
-                                 call->args[3], call->args[4], call->args[5],
-                                 traced_syscall_instruction, result, call->no);
+    result = _traced_raw_syscall(
+        SYS_rrcall_notify_syscall_hook_exit, call->args[0], call->args[1],
+        call->args[2], call->args[3], call->args[4], call->args[5],
+        privileged_traced_syscall_instruction, result, call->no);
   }
   return result;
 }

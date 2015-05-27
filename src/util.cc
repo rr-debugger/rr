@@ -30,6 +30,7 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
+#include "seccomp-bpf.h"
 #include "task.h"
 #include "TraceStream.h"
 
@@ -743,6 +744,8 @@ static void install_patched_seccomp_filter_arch(Task* t) {
     set_syscall_result(t, -EFAULT);
     return;
   }
+  // Convert ERRNO/TRAP returns to TRACE returns so that rr can handle them.
+  // See handle_ptrace_event in RecordSession.
   for (auto& u : code) {
     if (BPF_CLASS(u.code) == BPF_RET) {
       // XXX If we need to support RET with A/X registers, we should
@@ -768,6 +771,22 @@ static void install_patched_seccomp_filter_arch(Task* t) {
     }
   }
 
+  uintptr_t privileged_in_untraced_syscall_ip =
+      AddressSpace::rr_page_ip_in_privileged_untraced_syscall()
+          .register_value();
+  uintptr_t privileged_in_traced_syscall_ip =
+      AddressSpace::rr_page_ip_in_privileged_traced_syscall().register_value();
+  assert(privileged_in_untraced_syscall_ip ==
+         uint32_t(privileged_in_untraced_syscall_ip));
+  assert(privileged_in_traced_syscall_ip ==
+         uint32_t(privileged_in_traced_syscall_ip));
+
+  static const typename Arch::sock_filter prefix[] = {
+    ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_untraced_syscall_ip)),
+    ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_traced_syscall_ip))
+  };
+  code.insert(code.begin(), prefix, prefix + array_length(prefix));
+
   long ret;
   {
     AutoRemoteSyscalls remote(t);
@@ -776,6 +795,7 @@ static void install_patched_seccomp_filter_arch(Task* t) {
                            code.size() * sizeof(typename Arch::sock_filter));
     auto code_ptr = mem.get().cast<typename Arch::sock_filter>();
     t->write_mem(code_ptr, code.data(), code.size());
+    prog.len = code.size();
     prog.filter = code_ptr;
     auto prog_ptr = remote_ptr<void>(code_ptr + code.size())
                         .cast<typename Arch::sock_fprog>();

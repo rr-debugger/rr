@@ -56,6 +56,10 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t)
       initial_ip(t->ip()),
       initial_sp(t->regs().sp()),
       pending_syscallno(-1) {
+  // We could use privilged_traced_syscall_ip() here, but we don't actually
+  // need privileges because tracee seccomp filters are modified to only
+  // produce PTRACE_SECCOMP_EVENTs that we ignore. And before the rr page is
+  // loaded, the privileged_traced_syscall_ip is not available.
   initial_regs.set_ip(t->vm()->traced_syscall_ip());
   maybe_fix_stack_pointer();
 }

@@ -2108,12 +2108,18 @@ static void set_up_seccomp_filter(Session& session) {
   if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
     uintptr_t in_untraced_syscall_ip =
         AddressSpace::rr_page_ip_in_untraced_syscall().register_value();
+    uintptr_t privileged_in_untraced_syscall_ip =
+        AddressSpace::rr_page_ip_in_privileged_untraced_syscall()
+            .register_value();
     assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
+    assert(privileged_in_untraced_syscall_ip ==
+           uint32_t(privileged_in_untraced_syscall_ip));
 
     struct sock_filter filter[] = {
-      /* Allow all system calls from our protected_call
-       * callsite */
+      /* Allow all system calls from our untraced_syscall callsite */
       ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_syscall_ip)),
+      /* Allow all system calls from our privilged_untraced_syscall callsite */
+      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_untraced_syscall_ip)),
       /* All the rest are handled in rr */
       TRACE_PROCESS,
     };

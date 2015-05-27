@@ -290,7 +290,7 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
 static void write_rr_page(Task* t, ScopedFd& fd) {
   switch (t->arch()) {
     case x86: {
-      static const uint8_t x86_data[] = {
+      static const uint8_t x86_data[32] = {
         0x90, 0x90, // padding
         // rr_page_untraced_syscall_ip:
         0xcd, 0x80, // int 0x80
@@ -301,7 +301,8 @@ static void write_rr_page(Task* t, ScopedFd& fd) {
         // rr_page_traced_syscall_ip:
         0xcd, 0x80, // int 0x80
         // rr_page_ip_in_traced_syscall:
-        0xc3 // ret
+        0xc3, // ret
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
       };
       ASSERT(t, sizeof(x86_data) == write(fd, x86_data, sizeof(x86_data)));
       break;
@@ -309,7 +310,7 @@ static void write_rr_page(Task* t, ScopedFd& fd) {
     case x86_64:
       // See Task::did_waitpid for an explanation of why we have to
       // modify R11 and RCX here.
-      static const uint8_t x86_64_data[] = {
+      static const uint8_t x86_64_data[32] = {
         0x90, 0x90, // padding
         // rr_page_untraced_syscall_ip:
         0x0f, 0x05, // syscall
@@ -323,7 +324,9 @@ static void write_rr_page(Task* t, ScopedFd& fd) {
         // rr_page_traced_syscall_ip:
         0x0f, 0x05, // syscall
         // rr_page_ip_in_traced_syscall:
-        0xc3 // ret
+        0xc3, // ret
+        0x90, 0x90, 0x90, 0x90,
+        0x90, 0x90, 0x90
       };
       ASSERT(t, sizeof(x86_64_data) ==
                     write(fd, x86_64_data, sizeof(x86_64_data)));
@@ -338,6 +341,9 @@ void AddressSpace::map_rr_page(Task* t) {
   char path[] = "/tmp/rr-page-XXXXXX";
   ScopedFd fd(mkstemp(path));
   ASSERT(t, fd.is_open());
+  // Write two copies of the page so we get both unpriviledged and privileged
+  // entry points. Privileged entry points are in the second copy.
+  write_rr_page(t, fd);
   write_rr_page(t, fd);
 
   int prot = PROT_EXEC | PROT_READ;
@@ -371,11 +377,18 @@ void AddressSpace::map_rr_page(Task* t) {
 
   untraced_syscall_ip_ = rr_page_untraced_syscall_ip(t->arch());
   traced_syscall_ip_ = rr_page_traced_syscall_ip(t->arch());
+  privileged_untraced_syscall_ip_ =
+      rr_page_privileged_untraced_syscall_ip(t->arch());
+  privileged_traced_syscall_ip_ =
+      rr_page_privileged_traced_syscall_ip(t->arch());
 }
 
 void AddressSpace::post_exec_syscall(Task* t) {
   // First locate a syscall instruction we can use for remote syscalls.
   traced_syscall_ip_ = find_syscall_instruction(t);
+  privileged_traced_syscall_ip_ = nullptr;
+  untraced_syscall_ip_ = nullptr;
+  privileged_untraced_syscall_ip_ = nullptr;
   // Now remote syscalls work, we can open_mem_fd.
   t->open_mem_fd();
   // Now we can set up the "rr page" at its fixed address. This gives
@@ -1210,6 +1223,8 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       monkeypatch_state(o.monkeypatch_state),
       traced_syscall_ip_(o.traced_syscall_ip_),
       untraced_syscall_ip_(o.untraced_syscall_ip_),
+      privileged_traced_syscall_ip_(o.privileged_traced_syscall_ip_),
+      privileged_untraced_syscall_ip_(o.privileged_untraced_syscall_ip_),
       syscallbuf_lib_start_(o.syscallbuf_lib_start_),
       syscallbuf_lib_end_(o.syscallbuf_lib_end_) {
   for (auto& it : o.breakpoints) {

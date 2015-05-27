@@ -2246,10 +2246,14 @@ static Switchable rec_prepare_syscall_arch(Task* t,
             case SECCOMP_MODE_STRICT:
               break;
             case SECCOMP_MODE_FILTER: {
-              // Prevent the actual prctl call. We'll fix this up afterwards.
-              Registers r = t->regs();
-              r.set_arg1(intptr_t(-1));
-              t->set_regs(r);
+              // If we're bootstrapping then this must be rr's own syscall
+              // filter, so just install it normally now.
+              if (t->session().can_validate()) {
+                // Prevent the actual prctl call. We'll fix this up afterwards.
+                Registers r = t->regs();
+                r.set_arg1(intptr_t(-1));
+                t->set_regs(r);
+              }
               break;
             }
             default:
@@ -3127,11 +3131,11 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
       t->set_regs(r);
-      if (t->regs().arg1() == PR_SET_SECCOMP) {
+      if (t->regs().arg1() == PR_SET_SECCOMP && t->session().can_validate()) {
         install_patched_seccomp_filter(t);
         // install_patched_seccomp_filter can set registers to indicate
         // failure.
-        if (t->session().can_validate() && !t->regs().syscall_failed()) {
+        if (!t->regs().syscall_failed()) {
           t->prctl_seccomp_status = 2;
         }
       }

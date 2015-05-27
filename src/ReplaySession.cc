@@ -1408,7 +1408,7 @@ static void exit_task(Task* t) {
   ASSERT(t, t->ptrace_event() != PTRACE_EVENT_EXIT);
 
   Registers r = t->regs();
-  r.set_ip(t->vm()->traced_syscall_ip());
+  r.set_ip(t->vm()->privileged_traced_syscall_ip());
   r.set_syscallno(syscall_number_for_exit(t->arch()));
   t->set_regs(r);
   // Enter the syscall.

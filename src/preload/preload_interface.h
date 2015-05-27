@@ -46,6 +46,8 @@
 #define RR_PAGE_ADDR 0x70000000
 #define RR_PAGE_IN_UNTRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 4)
 #define RR_PAGE_IN_TRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 24)
+#define RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 36)
+#define RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 56)
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.

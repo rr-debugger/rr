@@ -528,7 +528,10 @@ public:
    * code. Callers may assume |is_in_syscallbuf()| is implied
    * by this.
    */
-  bool is_entering_traced_syscall() { return ip() == as->traced_syscall_ip(); }
+  bool is_entering_traced_syscall() {
+    return ip() == as->traced_syscall_ip() ||
+           ip() == as->privileged_traced_syscall_ip();
+  }
 
   /**
    * Return true if this is within the syscallbuf library.  This
@@ -548,8 +551,10 @@ public:
    * ip() is immediately after the syscall instruction.
    */
   bool is_in_traced_syscall() {
-    return ip() ==
-           as->traced_syscall_ip().increment_by_syscall_insn_length(arch());
+    return ip() == as->traced_syscall_ip().increment_by_syscall_insn_length(
+                       arch()) ||
+           ip() == as->privileged_traced_syscall_ip()
+                       .increment_by_syscall_insn_length(arch());
   }
 
   /**
@@ -560,8 +565,10 @@ public:
    * instruction.
    */
   bool is_in_untraced_syscall() {
-    return ip() ==
-           as->untraced_syscall_ip().increment_by_syscall_insn_length(arch());
+    return ip() == as->untraced_syscall_ip().increment_by_syscall_insn_length(
+                       arch()) ||
+           ip() == as->privileged_untraced_syscall_ip()
+                       .increment_by_syscall_insn_length(arch());
   }
 
   /**

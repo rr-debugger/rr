@@ -668,6 +668,17 @@ public:
    * originate, used to determine whether a syscall is being
    * made by the syscallbuf wrappers or not. */
   remote_code_ptr untraced_syscall_ip() const { return untraced_syscall_ip_; }
+  /* The address of the syscall instruction from which privileged traced
+   * syscalls made by the syscallbuf will originate. */
+  remote_code_ptr privileged_traced_syscall_ip() const {
+    return privileged_traced_syscall_ip_;
+  }
+  /* The address of the syscall instruction from which privileged untraced
+   * syscalls will originate, used to determine whether a syscall is being
+   * made by the syscallbuf wrappers or not. */
+  remote_code_ptr privileged_untraced_syscall_ip() const {
+    return privileged_untraced_syscall_ip_;
+  }
   /* Start and end of the mapping of the syscallbuf code
    * section, used to determine whether a tracee's $ip is in the
    * lib. */
@@ -706,6 +717,20 @@ public:
     return RR_PAGE_IN_TRACED_SYSCALL_ADDR;
   }
   /**
+   * ip() when we're in an untraced system call; same for all supported
+   * architectures (hence static).
+   */
+  static remote_code_ptr rr_page_ip_in_privileged_untraced_syscall() {
+    return RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR;
+  }
+  /**
+   * This doesn't need to be the same for all architectures, but may as well
+   * make it so.
+   */
+  static remote_code_ptr rr_page_ip_in_privileged_traced_syscall() {
+    return RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR;
+  }
+  /**
    * ip() of the untraced traced system call instruction.
    */
   remote_code_ptr rr_page_untraced_syscall_ip(SupportedArch arch) {
@@ -718,6 +743,20 @@ public:
   remote_code_ptr rr_page_traced_syscall_ip(SupportedArch arch) {
     return rr_page_ip_in_traced_syscall().decrement_by_syscall_insn_length(
         arch);
+  }
+  /**
+   * ip() of the privileged untraced traced system call instruction.
+   */
+  remote_code_ptr rr_page_privileged_untraced_syscall_ip(SupportedArch arch) {
+    return rr_page_ip_in_privileged_untraced_syscall()
+        .decrement_by_syscall_insn_length(arch);
+  }
+  /**
+   * ip() of the privileged traced traced system call instruction.
+   */
+  remote_code_ptr rr_page_privileged_traced_syscall_ip(SupportedArch arch) {
+    return rr_page_ip_in_privileged_traced_syscall()
+        .decrement_by_syscall_insn_length(arch);
   }
 
   /**
@@ -991,6 +1030,8 @@ private:
   ScopedFd child_mem_fd;
   remote_code_ptr traced_syscall_ip_;
   remote_code_ptr untraced_syscall_ip_;
+  remote_code_ptr privileged_traced_syscall_ip_;
+  remote_code_ptr privileged_untraced_syscall_ip_;
   remote_ptr<void> syscallbuf_lib_start_;
   remote_ptr<void> syscallbuf_lib_end_;
 

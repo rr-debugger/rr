@@ -124,15 +124,15 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
     case PTRACE_EVENT_SECCOMP: {
       t->seccomp_bpf_enabled = true;
       uint16_t seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
+      int syscallno = t->regs().original_syscallno();
       if (seccomp_data == SECCOMP_RET_DATA) {
-        if (t->regs().original_syscallno() < 0) {
+        if (syscallno < 0) {
           // negative syscall numbers after a SECCOMP event
           // are treated as "skip this syscall". There will be one syscall event
           // reported instead of two. So, record an enter-syscall event now
           // and treat the other event as the exit.
           t->fixup_syscall_regs();
-          t->push_event(
-              SyscallEvent(t->regs().original_syscallno(), t->arch()));
+          t->push_event(SyscallEvent(syscallno, t->arch()));
           ASSERT(t, EV_SYSCALL == t->ev().type());
           t->ev().Syscall().state = ENTERING_SYSCALL;
           t->record_current_event();
@@ -151,8 +151,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
         t->fixup_syscall_regs();
 
         if (!t->is_in_untraced_syscall()) {
-          t->push_event(
-              SyscallEvent(t->regs().original_syscallno(), t->arch()));
+          t->push_event(SyscallEvent(syscallno, t->arch()));
           ASSERT(t, EV_SYSCALL == t->ev().type());
           t->ev().Syscall().state = ENTERING_SYSCALL;
           t->record_current_event();
@@ -180,12 +179,12 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
             assert(0 && "Unknown architecture");
             break;
         }
-        si.si_syscall = r.original_syscallno();
+        si.si_syscall = syscallno;
         t->stash_synthetic_sig(si);
 
         // Tests show that the current registers are preserved (on x86, eax/rax
         // retains the syscall number).
-        r.set_syscallno(r.original_syscallno());
+        r.set_syscallno(syscallno);
         // Cause kernel processing to skip the syscall
         r.set_original_syscallno(-1);
         t->set_regs(r);
@@ -199,8 +198,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
         t->fixup_syscall_regs();
 
         if (!t->is_in_untraced_syscall()) {
-          t->push_event(
-              SyscallEvent(t->regs().original_syscallno(), t->arch()));
+          t->push_event(SyscallEvent(syscallno, t->arch()));
           ASSERT(t, EV_SYSCALL == t->ev().type());
           t->ev().Syscall().state = ENTERING_SYSCALL;
           t->record_current_event();
