@@ -30,8 +30,15 @@ RAW_SYSCALL_FUNCTION:     /* syscallno = 4(%esp) */
         movl 40(%esp), %edi /* %edi = a4 */
         movl 44(%esp), %ebp /* %ebp = a5 */
 
-        call *48(%esp)
+        pushl 56(%esp)
+        .cfi_adjust_cfa_offset 4
+        pushl 56(%esp)
+        .cfi_adjust_cfa_offset 4
 
+        call *56(%esp)
+
+        addl $8,%esp
+        .cfi_adjust_cfa_offset -8
         popl %ebp
         .cfi_adjust_cfa_offset -4
         .cfi_restore %ebp
@@ -54,6 +61,7 @@ RAW_SYSCALL_FUNCTION:     /* syscallno = 4(%esp) */
         .hidden RAW_SYSCALL_FUNCTION
         .type RAW_SYSCALL_FUNCTION, @function
 RAW_SYSCALL_FUNCTION:
+        .cfi_startproc
 	/* Incoming args are in %rdi, %rsi, %rdx, %rcx, %r8, %r9, and 8(%rsp).
 	   Syscall arguments are %rdi, %rsi, %rdx, %r10, %r8, %r9. */
 	movq %rdi, %rax         /* syscall number */
@@ -64,9 +72,17 @@ RAW_SYSCALL_FUNCTION:
 	movq %r9, %r8           /* fifth syscall arg */
 	movq 8(%rsp), %r9       /* sixth syscall arg */
 
-	callq *16(%rsp)
+        pushq 32(%rsp)
+        .cfi_adjust_cfa_offset 8
+        pushq 32(%rsp)
+        .cfi_adjust_cfa_offset 8
 
+	callq *32(%rsp)
+
+        addq $16,%rsp
+        .cfi_adjust_cfa_offset -16
         ret
+        .cfi_endproc
 	.size RAW_SYSCALL_FUNCTION, . - RAW_SYSCALL_FUNCTION
 
 #else

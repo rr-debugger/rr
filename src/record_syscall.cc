@@ -3186,8 +3186,15 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
           REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
           &t->syscallbuf_hdr->notify_on_syscall_hook_exit);
 
+      struct rrcall_params {
+        typename Arch::unsigned_word result;
+        typename Arch::unsigned_word original_syscallno;
+      };
       Registers r = t->regs();
-      r.set_syscall_result(0);
+      auto params_ptr = r.sp() + sizeof(typename Arch::unsigned_word);
+      auto params = t->read_mem(params_ptr.cast<rrcall_params>());
+      r.set_syscall_result((uintptr_t)params.result);
+      r.set_original_syscallno((intptr_t)params.original_syscallno);
       t->set_regs(r);
       break;
     }

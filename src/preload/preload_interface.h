@@ -68,6 +68,8 @@
 /**
  * The preload library calls SYS_rrcall_notify_syscall_hook_exit when
  * unlocking the syscallbuf and notify_after_syscall_hook_exit has been set.
+ * The word at 4/8(sp) is returned in the syscall result and the word at
+ * 8/16(sp) is stored in original_syscallno.
  */
 #define SYS_rrcall_notify_syscall_hook_exit 444
 

@@ -5,16 +5,22 @@
 static int count_SIGSYS = 0;
 
 static void handler(int sig, siginfo_t* si, void* p) {
+  ucontext_t* ctx = p;
+#ifdef __i386__
+  int syscallno = ctx->uc_mcontext.gregs[REG_EAX];
+  test_assert(si->si_arch == AUDIT_ARCH_I386);
+#elif defined(__x86_64__)
+  int syscallno = ctx->uc_mcontext.gregs[REG_RAX];
+  test_assert(si->si_arch == AUDIT_ARCH_X86_64);
+#endif
+  test_assert(syscallno == SYS_geteuid || syscallno == SYS_open);
+
   test_assert(sig == SIGSYS);
   test_assert(si->si_signo == SIGSYS);
   test_assert(si->si_errno == 0);
-  test_assert(si->si_code == 1 /* SYS_SECCOMP */ );
+  test_assert(si->si_code == 1 /* SYS_SECCOMP */);
   test_assert(si->si_call_addr > 0);
-#ifdef __i386__
-  test_assert(si->si_arch == AUDIT_ARCH_I386);
-#elif defined(__x86_64__)
-  test_assert(si->si_arch == AUDIT_ARCH_X86_64);
-#endif
+  test_assert(si->si_syscall == syscallno);
   ++count_SIGSYS;
 }
 
