@@ -250,12 +250,18 @@ public:
   void finish_emulated_syscall();
 
   /**
-   * Shortcut to the single |pending_event->desched.rec| when
-   * there's one desched event on the stack, and nullptr otherwise.
+   * Shortcut to the most recent |pending_event->desched.rec| when
+   * there's a desched event on the stack, and nullptr otherwise.
    * Exists just so that clients don't need to dig around in the
    * event stack to find this record.
    */
   const struct syscallbuf_record* desched_rec() const;
+
+  /**
+   * Returns true when the task is in a signal handler in an interrupted
+   * system call being handled by syscall buffering.
+   */
+  bool running_inside_desched() const;
 
   size_t syscallbuf_data_size() const {
     return syscallbuf_hdr->num_rec_bytes + sizeof(*syscallbuf_hdr);

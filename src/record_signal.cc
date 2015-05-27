@@ -147,8 +147,15 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
    *
    * It's OK if the tracee is in the critical section for a
    * may-block syscall B, but this signal was delivered by an
-   * event programmed by a previous may-block syscall A. */
-  if (!t->syscallbuf_hdr->desched_signal_may_be_relevant) {
+   * event programmed by a previous may-block syscall A.
+   *
+   * If we're running in a signal handler inside an interrupted syscallbuf
+   * system call, never do anything here. Syscall buffering is disabled and
+   * the desched_signal_may_be_relevant was set by the outermost syscallbuf
+   * invocation.
+   */
+  if (!t->syscallbuf_hdr->desched_signal_may_be_relevant ||
+      t->running_inside_desched()) {
     LOG(debug) << "  (not entering may-block syscall; resuming)";
     /* We have to disarm the event just in case the tracee
      * has cleared the relevancy flag, but not yet

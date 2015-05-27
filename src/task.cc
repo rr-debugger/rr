@@ -401,6 +401,15 @@ const struct syscallbuf_record* Task::desched_rec() const {
               : (EV_DESCHED == ev().type()) ? ev().Desched().rec : nullptr);
 }
 
+bool Task::running_inside_desched() const {
+  for (auto& e : pending_events) {
+    if (e.type() == EV_DESCHED) {
+      return e.Desched().rec != desched_rec();
+    }
+  }
+  return false;
+}
+
 void Task::notify_fatal_signal() {
   // Only print this helper warning if there's (probably) a
   // human around to see it.  This is done to avoid polluting
