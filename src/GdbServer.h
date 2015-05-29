@@ -39,16 +39,18 @@ public:
   };
 
   /**
-   * Create a gdbserver serving the replay of 'trace_dir'.
-   * If debugger_params_write_pipe is non-null, write gdb launch parameters
-   * to the pipe; another process should call launch_gdb with the other end
-   * of the pipe to exec() gdb.
+   * Create a gdbserver serving the replay of 'session'.
    */
-  static void serve(std::shared_ptr<ReplaySession> session,
-                    const Target& target, const ConnectionFlags& flags,
-                    const ReplaySession::Flags& session_flags) {
-    GdbServer(session, session_flags, target).serve_replay(flags);
-  }
+  GdbServer(std::shared_ptr<ReplaySession> session,
+            const ReplaySession::Flags& flags, const Target& target)
+      : target(target),
+        debugger_active(false),
+        timeline(std::move(session), flags) {}
+
+  /**
+   * Actually run the server. Returns only when the debugger disconnects.
+   */
+  void serve_replay(const ConnectionFlags& flags);
 
   /**
    * exec()'s gdb using parameters read from params_pipe_fd (and sent through
@@ -73,11 +75,6 @@ public:
   static std::string init_script();
 
 private:
-  GdbServer(std::shared_ptr<ReplaySession> session,
-            const ReplaySession::Flags& flags, const Target& target)
-      : target(target),
-        debugger_active(false),
-        timeline(std::move(session), flags) {}
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
       : dbg(std::move(dbg)), debugger_active(true) {}
 
@@ -127,7 +124,6 @@ private:
    * session.
    */
   void try_lazy_reverse_singlesteps(Task* t, GdbRequest& req);
-  void serve_replay(const ConnectionFlags& flags);
 
   /**
    * Process debugger requests made in |diversion_session| until action needs

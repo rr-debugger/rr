@@ -341,7 +341,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       auto session = ReplaySession::create(trace_dir);
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
-      GdbServer::serve(session, target, conn_flags, session_flags(flags));
+      GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
     }
     return 0;
   }
@@ -371,7 +371,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     GdbServer::ConnectionFlags conn_flags;
     conn_flags.dbg_port = flags.dbg_port;
     conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
-    GdbServer::serve(session, target, conn_flags, session_flags(flags));
+    GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if
