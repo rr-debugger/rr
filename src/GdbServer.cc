@@ -825,13 +825,17 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   // group happens to be scheduled here.  We don't take
   // "attach to process" to mean "attach to thread-group
   // leader".
-  if (event_now < target.event || (target.pid && t->tgid() != target.pid) ||
-      (target.pid && target.require_exec && !t->vm()->execed()) ||
-      !timeline.can_add_checkpoint()) {
+  if (!timeline.can_add_checkpoint()) {
+    return;
+  }
+  bool force_stop = stop_replaying_to_target;
+  if (!force_stop &&
+      (event_now < target.event || (target.pid && t->tgid() != target.pid) ||
+       (target.pid && target.require_exec && !t->vm()->execed()))) {
     return;
   }
 
-  if (target.event > 0 || target.pid) {
+  if (!force_stop && (target.event > 0 || target.pid)) {
     fprintf(stderr, "\a\n"
                     "--------------------------------------------------\n"
                     " ---> Reached target process %d at event %u.\n"
