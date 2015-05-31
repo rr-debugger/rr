@@ -167,10 +167,16 @@ static string create_gdb_command_file(const char* macros) {
 void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
                                const string& gdb_command_file_path) {
   DebuggerParams params;
-  ssize_t nread = read(params_pipe_fd, &params, sizeof(params));
-  if (nread == 0) {
-    // pipe was closed. Probably rr failed/died.
-    return;
+  ssize_t nread;
+  while (true) {
+    nread = read(params_pipe_fd, &params, sizeof(params));
+    if (nread == 0) {
+      // pipe was closed. Probably rr failed/died.
+      return;
+    }
+    if (nread != -1 || errno != EINTR) {
+      break;
+    }
   }
   assert(nread == sizeof(params));
 

@@ -2061,6 +2061,14 @@ static void set_up_process(Session& session) {
     // This task and all its descendants should silently reap any terminating
     // children.
     signal(SIGCHLD, SIG_IGN);
+
+    sigset_t sset;
+    sigemptyset(&sset);
+    sigaddset(&sset, SIGINT);
+    if (sigprocmask(SIG_BLOCK, &sset, nullptr)) {
+      FATAL() << "Didn't change sigmask.";
+    }
+
     // If the rr process dies, prevent runaway tracee processes
     // from dragging down the underlying system.
     //

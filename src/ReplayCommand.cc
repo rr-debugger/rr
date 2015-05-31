@@ -229,18 +229,6 @@ static bool pid_execs(const string& trace_dir, pid_t pid) {
 // This needs to be global because it's used by a signal handler.
 static pid_t waiting_for_child;
 
-/**
- * Set the blocked-ness of |sig| to |blockedness|.
- */
-static void set_sig_blockedness(int sig, int blockedness) {
-  sigset_t sset;
-  sigemptyset(&sset);
-  sigaddset(&sset, sig);
-  if (sigprocmask(blockedness, &sset, nullptr)) {
-    FATAL() << "Didn't change sigmask.";
-  }
-}
-
 static ReplaySession::Flags session_flags(ReplayFlags flags) {
   ReplaySession::Flags result;
   result.redirect_stdio = flags.redirect;
@@ -299,19 +287,30 @@ static void serve_replay_no_debugger(const string& trace_dir,
   LOG(info) << ("Replayer successfully finished.");
 }
 
-static void handle_signal(int sig) {
-  switch (sig) {
-    case SIGINT:
-      // Translate the SIGINT into SIGTERM for the debugger
-      // server, because it's blocking SIGINT.  We don't use
-      // SIGINT for anything, so all it's meant to do is
-      // kill us, and SIGTERM works just as well for that.
-      if (waiting_for_child > 0) {
-        kill(waiting_for_child, SIGTERM);
-      }
-      break;
-    default:
-      FATAL() << "Unhandled signal " << signal_name(sig);
+/* Handling ctrl-C during replay:
+ * We want the entire group of processes to remain a single process group
+ * since that allows shell job control to work best.
+ * We want ctrl-C to not reach tracees, because that would disturb replay.
+ * That's taken care of by Task::set_up_process.
+ * We allow terminal SIGINT to go directly to the parent and the child (rr).
+ * rr's SIGINT handler |handle_SIGINT_in_child| just interrupts the replay
+ * if we're in the process of replaying to a target event, otherwise it
+ * does nothing.
+ * Before the parent execs gdb, its SIGINT handler does nothing. After exec,
+ * the signal handler is reset to default so gdb behaves as normal (which is
+ * why we use a signal handler instead of SIG_IGN).
+ */
+static void handle_SIGINT_in_parent(int sig) {
+  assert(sig == SIGINT);
+  // Just ignore it.
+}
+
+static GdbServer* server_ptr = nullptr;
+
+static void handle_SIGINT_in_child(int sig) {
+  assert(sig == SIGINT);
+  if (server_ptr) {
+    server_ptr->interrupt_replay_to_target();
   }
 }
 
@@ -346,13 +345,6 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     return 0;
   }
 
-  struct sigaction sa;
-  memset(&sa, 0, sizeof(sa));
-  sa.sa_handler = handle_signal;
-  if (sigaction(SIGINT, &sa, nullptr)) {
-    FATAL() << "Couldn't set sigaction for SIGINT.";
-  }
-
   int debugger_params_pipe[2];
   if (pipe2(debugger_params_pipe, O_CLOEXEC)) {
     FATAL() << "Couldn't open debugger params pipe.";
@@ -361,23 +353,36 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     // Ensure only the parent has the read end of the pipe open. Then if
     // the parent dies, our writes to the pipe will error out.
     close(debugger_params_pipe[0]);
+
     ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
-    // The parent process (gdb) must be able to receive
-    // SIGINT's to interrupt non-stopped tracees.  But the
-    // debugger server isn't set up to handle SIGINT.  So
-    // block it.
-    set_sig_blockedness(SIGINT, SIG_BLOCK);
     auto session = ReplaySession::create(trace_dir);
     GdbServer::ConnectionFlags conn_flags;
     conn_flags.dbg_port = flags.dbg_port;
     conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
-    GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
+    GdbServer server(session, session_flags(flags), target);
+
+    server_ptr = &server;
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handle_SIGINT_in_child;
+    if (sigaction(SIGINT, &sa, nullptr)) {
+      FATAL() << "Couldn't set sigaction for SIGINT.";
+    }
+
+    server.serve_replay(conn_flags);
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if
   // the child dies, our reads from the pipe will return EOF.
   close(debugger_params_pipe[1]);
   LOG(debug) << getpid() << ": forked debugger server " << waiting_for_child;
+
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = handle_SIGINT_in_parent;
+  if (sigaction(SIGINT, &sa, nullptr)) {
+    FATAL() << "Couldn't set sigaction for SIGINT.";
+  }
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
