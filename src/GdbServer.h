@@ -79,13 +79,12 @@ public:
    * this will cause the replay-to-target phase to be interrupted and
    * debugging started wherever the replay happens to be.
    */
-  void interrupt_replay_to_target() {
-    stop_replaying_to_target = true;
-  }
+  void interrupt_replay_to_target() { stop_replaying_to_target = true; }
 
 private:
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
-      : dbg(std::move(dbg)), debugger_active(true),
+      : dbg(std::move(dbg)),
+        debugger_active(true),
         stop_replaying_to_target(false) {}
 
   /**
