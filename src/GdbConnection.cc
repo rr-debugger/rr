@@ -225,28 +225,27 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
 
 /**
  * Poll for data to or from gdb, waiting |timeoutMs|.  0 means "don't
- * wait", and -1 means "wait forever".  Return zero if no data is
- * ready by the end of the timeout, and nonzero if data is ready.
+ * wait", and -1 means "wait forever".  Return true if data is ready.
  */
-static int poll_socket(const ScopedFd& sock_fd, short events, int timeoutMs) {
+static bool poll_socket(const ScopedFd& sock_fd, short events, int timeoutMs) {
   struct pollfd pfd;
   memset(&pfd, 0, sizeof(pfd));
   pfd.fd = sock_fd;
   pfd.events = events;
 
   int ret = poll(&pfd, 1, timeoutMs);
-  if (ret < 0) {
+  if (ret < 0 && errno != EINTR) {
     FATAL() << "Polling gdb socket failed";
   }
-  return ret;
+  return ret > 0;
 }
 
-static int poll_incoming(const ScopedFd& sock_fd, int timeoutMs) {
+static bool poll_incoming(const ScopedFd& sock_fd, int timeoutMs) {
   return poll_socket(sock_fd, POLLIN /* TODO: |POLLERR */, timeoutMs);
 }
 
-static int poll_outgoing(const ScopedFd& sock_fd, int timeoutMs) {
-  return poll_socket(sock_fd, POLLOUT /* TODO: |POLLERR */, timeoutMs);
+static void poll_outgoing(const ScopedFd& sock_fd, int timeoutMs) {
+  poll_socket(sock_fd, POLLOUT /* TODO: |POLLERR */, timeoutMs);
 }
 
 /**
