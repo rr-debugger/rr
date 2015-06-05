@@ -156,6 +156,8 @@ public:
    */
   void seek_to_mark(const Mark& mark);
 
+  static bool never_interrupt() { return false; }
+
   /**
    * Replay 'current' forwards.
    * If there is a breakpoint at the current task's current ip(), then
@@ -169,12 +171,14 @@ public:
    */
   ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
                            RunDirection direction = RUN_FORWARD,
-                           TraceFrame::Time stop_at_time = 0);
+                           TraceFrame::Time stop_at_time = 0,
+                           std::function<bool()> interrupt_check =
+                               never_interrupt);
 
   /**
    * Try to identify an existing Mark which is known to be one singlestep
    * before 'from', and for which we know singlestepping to 'from' would
-   * not trigger no break statuses other than "singlestep_complete".
+   * trigger no break statuses other than "singlestep_complete".
    * If we can't, return a null Mark.
    * Will only return a Mark for the same executing task as 'from', which
    * must be 't'.
@@ -341,7 +345,7 @@ private:
                                        const ProtoMark& before);
   Mark find_singlestep_before(const Mark& mark);
 
-  ReplayResult reverse_continue();
+  ReplayResult reverse_continue(std::function<bool()> interrupt_check);
   ReplayResult reverse_singlestep(const Mark& origin, const TaskUid& tuid);
 
   // Reasonably fast since it just relies on checking the mark map.

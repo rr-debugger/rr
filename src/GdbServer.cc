@@ -772,7 +772,8 @@ ReplayStatus GdbServer::replay_one_step() {
             : RUN_CONTINUE;
     result = timeline.replay_step(
         command, req.run_direction,
-        req.run_direction == RUN_FORWARD ? target.event : 0);
+        req.run_direction == RUN_FORWARD ? target.event : 0,
+        [&]() { return dbg->sniff_packet(); });
   } else {
     result = timeline.replay_step(RUN_CONTINUE, RUN_FORWARD, target.event);
   }

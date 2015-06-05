@@ -387,6 +387,12 @@ public:
    */
   ReplaySession::shr_ptr get_checkpoint(int checkpoint_id);
 
+  /**
+   * Return true if there's a new packet to be read/process (whether
+   * incomplete or not), and false if there isn't one.
+   */
+  bool sniff_packet();
+
 private:
   GdbConnection(pid_t tgid, const Features& features);
 
@@ -417,11 +423,6 @@ private:
    * seen, false if not.
    */
   bool skip_to_packet_start();
-  /**
-   * Return true if there's a new packet to be read/process (whether
-   * incomplete or not), and false if there isn't one.
-   */
-  bool sniff_packet();
   /**
    * Block until the sequence of bytes
    *

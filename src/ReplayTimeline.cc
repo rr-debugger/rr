@@ -691,7 +691,8 @@ ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
   return result;
 }
 
-ReplayResult ReplayTimeline::reverse_continue() {
+ReplayResult ReplayTimeline::reverse_continue(
+    std::function<bool()> interrupt_check) {
   ReplayResult result;
   Mark end = mark();
   LOG(debug) << "ReplayTimeline::reverse_continue from " << end;
@@ -754,6 +755,14 @@ ReplayResult ReplayTimeline::reverse_continue() {
         at_breakpoint = true;
       } else {
         at_breakpoint = false;
+      }
+
+      if (interrupt_check()) {
+        LOG(debug) << "Interrupted at " << end;
+        seek_to_mark(end);
+        final_result = ReplayResult();
+        final_result.break_status.task = current->current_task();
+        return final_result;
       }
     }
 
@@ -893,9 +902,9 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
   }
 }
 
-ReplayResult ReplayTimeline::replay_step(RunCommand command,
-                                         RunDirection direction,
-                                         TraceFrame::Time stop_at_time) {
+ReplayResult ReplayTimeline::replay_step(
+    RunCommand command, RunDirection direction, TraceFrame::Time stop_at_time,
+    std::function<bool()> interrupt_check) {
   assert(command != RUN_SINGLESTEP_FAST_FORWARD);
 
   ReplayResult result;
@@ -922,7 +931,7 @@ ReplayResult ReplayTimeline::replay_step(RunCommand command,
 
     switch (command) {
       case RUN_CONTINUE:
-        result = reverse_continue();
+        result = reverse_continue(interrupt_check);
         break;
       case RUN_SINGLESTEP:
         result = reverse_singlestep(mark(), current->current_task()->tuid());
