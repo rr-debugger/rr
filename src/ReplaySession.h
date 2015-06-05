@@ -101,6 +101,9 @@ enum ReplayTraceStepType {
    * tracks the replay state. */
   TSTEP_DESCHED,
 
+  /* Exit the task */
+  TSTEP_EXIT_TASK,
+
   /* Frame has been replayed, done. */
   TSTEP_RETIRE,
 };
@@ -376,6 +379,7 @@ private:
                                    const StepConstraints& constraints);
   Completion enter_syscall(Task* t, const StepConstraints& constraints);
   Completion exit_syscall(Task* t, const StepConstraints& constraints);
+  Completion exit_task(Task* t, const StepConstraints& constraints);
   Ticks get_ticks_slack(Task* t);
   void check_ticks_consistency(Task* t, const Event& ev);
   void check_pending_sig(Task* t);

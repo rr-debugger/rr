@@ -1378,6 +1378,8 @@ Completion ReplaySession::try_one_trace_step(
       return patch_next_syscall(t, constraints);
     case TSTEP_DESCHED:
       return skip_desched_ioctl(t, &current_step.desched, constraints);
+    case TSTEP_EXIT_TASK:
+      return exit_task(t, constraints);
     default:
       FATAL() << "Unhandled step type " << current_step.action;
       return COMPLETE;
@@ -1396,7 +1398,7 @@ Completion ReplaySession::try_one_trace_step(
  * try to kill all the tasks in the task group. Instead we inject an |exit|
  * syscall, which is apparently the only way to kill one specific thread.
  */
-static void exit_task(Task* t) {
+static void end_task(Task* t) {
   if (t->is_probably_replaying_syscall()) {
     // Super-simplified version of Task::finish_emulated_syscall. We're not
     // going to continue with this task so we don't care about idempotent
@@ -1422,6 +1424,21 @@ static void exit_task(Task* t) {
 
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
   delete t;
+}
+
+Completion ReplaySession::exit_task(Task* t, const StepConstraints& constraints) {
+  if (tasks().size() == 1) {
+    LOG(debug) << "last interesting task is " << t->rec_tid << " ("
+               << t->tid << ")";
+    set_last_task(t);
+    return COMPLETE;
+  }
+
+  ASSERT(t, !t->seen_ptrace_exit_event);
+  end_task(t);
+  /* |t| is dead now. */
+  gc_emufs();
+  return COMPLETE;
 }
 
 /**
@@ -1456,20 +1473,9 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
 
   switch (ev.type()) {
     case EV_UNSTABLE_EXIT:
-    case EV_EXIT: {
-      if (tasks().size() == 1) {
-        LOG(debug) << "last interesting task is " << t->rec_tid << " ("
-                   << t->tid << ")";
-        set_last_task(t);
-        return;
-      }
-
-      ASSERT(t, !t->seen_ptrace_exit_event);
-      exit_task(t);
-      /* |t| is dead now. */
-      gc_emufs();
-      return;
-    }
+    case EV_EXIT:
+      current_step.action = TSTEP_EXIT_TASK;
+      break;
     case EV_DESCHED:
       current_step.action = TSTEP_DESCHED;
       current_step.desched.type = ARMING_DESCHED_EVENT == ev.Desched().state
@@ -1607,30 +1613,35 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   }
   result.did_fast_forward = did_fast_forward;
 
-  if (TSTEP_ENTER_SYSCALL == current_step.action) {
+  if (TSTEP_EXIT_TASK == current_step.action) {
+    t = result.break_status.task = nullptr;
+    assert(!result.break_status.any_break());
+  } else if (TSTEP_ENTER_SYSCALL == current_step.action) {
     cpuid_bug_detector.notify_reached_syscall_during_replay(t);
   }
 
-  const Event& ev = trace_frame.event();
-  if (can_validate() && ev.is_syscall_event() &&
-      ::Flags::get().check_cached_mmaps) {
-    t->vm()->verify(t);
+  if (t) {
+    const Event& ev = trace_frame.event();
+    if (can_validate() && ev.is_syscall_event() &&
+        ::Flags::get().check_cached_mmaps) {
+      t->vm()->verify(t);
+    }
+
+    if (has_deterministic_ticks(ev, current_step)) {
+      check_ticks_consistency(t, ev);
+    }
+
+    debug_memory(t);
+
+    if (constraints.is_singlestep() &&
+        (EV_SEGV_RDTSC == ev.type() || EV_SIGNAL_HANDLER == ev.type())) {
+      // We completed this RDTSC event, and that counts as a completed singlestep.
+      result.break_status.singlestep_complete = true;
+    }
+
+    check_for_watchpoint_changes(t, result.break_status);
+    check_approaching_ticks_target(t, constraints, result.break_status);
   }
-
-  if (has_deterministic_ticks(ev, current_step)) {
-    check_ticks_consistency(t, ev);
-  }
-
-  debug_memory(t);
-
-  if (constraints.is_singlestep() &&
-      (EV_SEGV_RDTSC == ev.type() || EV_SIGNAL_HANDLER == ev.type())) {
-    // We completed this RDTSC event, and that counts as a completed singlestep.
-    result.break_status.singlestep_complete = true;
-  }
-
-  check_for_watchpoint_changes(t, result.break_status);
-  check_approaching_ticks_target(t, constraints, result.break_status);
 
   // Advance to next trace frame before doing rep_after_enter_syscall,
   // so that FdTable notifications run with the same trace timestamp during
