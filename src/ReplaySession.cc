@@ -190,8 +190,7 @@ void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
 }
 
 void ReplaySession::advance_to_next_trace_frame(TraceFrame::Time stop_at_time) {
-  if (last_task()) {
-    // Already finished replay; no need to advance (and in fact, we can't).
+  if (trace_in.at_end()) {
     return;
   }
 
@@ -1544,6 +1543,9 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
   if (EV_TRACE_TERMINATION == trace_frame.event().type()) {
     set_last_task(t);
+  }
+
+  if (last_task()) {
     result.status = REPLAY_EXITED;
     return result;
   }
@@ -1555,11 +1557,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     setup_replay_one_trace_frame(t);
     if (current_step.action == TSTEP_NONE) {
       // Already at the destination event.
-      if (last_task()) {
-        result.status = REPLAY_EXITED;
-      } else {
-        advance_to_next_trace_frame(constraints.stop_at_time);
-      }
+      advance_to_next_trace_frame(constraints.stop_at_time);
     }
     return result;
   }
