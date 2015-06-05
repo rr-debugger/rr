@@ -33,7 +33,8 @@ struct BreakStatus {
         signal(0),
         breakpoint_hit(false),
         singlestep_complete(false),
-        approaching_ticks_target(false) {}
+        approaching_ticks_target(false),
+        task_exit(false) {}
 
   // The triggering Task. This may be different from session->current_task()
   // when replay switches to a new task when ReplaySession::replay_step() ends.
@@ -51,6 +52,8 @@ struct BreakStatus {
   // True when we stopped because we got too close to the specified ticks
   // target.
   bool approaching_ticks_target;
+  // True when we stopped because |task| is about to exit.
+  bool task_exit;
 
   bool any_break() {
     return !watchpoints_hit.empty() || signal || breakpoint_hit ||

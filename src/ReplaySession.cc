@@ -1565,6 +1565,10 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       // Already at the destination event.
       advance_to_next_trace_frame(constraints.stop_at_time);
     }
+    if (current_step.action == TSTEP_EXIT_TASK) {
+      result.break_status.task = t;
+      result.break_status.task_exit = true;
+    }
     return result;
   }
 
