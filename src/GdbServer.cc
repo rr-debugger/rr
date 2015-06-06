@@ -590,6 +590,13 @@ void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
   if (break_status.signal) {
     sig = break_status.signal;
   }
+  if (break_status.task_exit && dbg->features().reverse_execution &&
+      break_status.task->task_group()->task_set().size() == 1) {
+    // The exit of the last task in a task group generates a fake SIGKILL,
+    // when reverse-execution is enabled, because users often want to run
+    // backwards from the end of the task.
+    sig = SIGKILL;
+  }
   if (sig >= 0) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */

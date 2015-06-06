@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record simple$bitness
+debug final_sigkill

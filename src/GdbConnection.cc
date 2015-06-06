@@ -59,7 +59,10 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 
 GdbConnection::GdbConnection(pid_t tgid, const Features& features)
-    : tgid(tgid), no_ack(false), inlen(0), outlen(0), features(features) {
+    : tgid(tgid), no_ack(false), inlen(0), outlen(0), features_(features) {
+#ifndef REVERSE_EXECUTION
+  features_.reverse_execution = false;
+#endif
   memset(&req, 0, sizeof(req));
 }
 
@@ -648,11 +651,9 @@ bool GdbConnection::query(char* payload) {
     LOG(debug) << "gdb supports " << args;
 
     const char* reverse_exec = "";
-#ifdef REVERSE_EXECUTION
-    if (features.reverse_execution) {
+    if (features().reverse_execution) {
       reverse_exec = ";ReverseContinue+;ReverseStep+";
     }
-#endif
     snprintf(supported, sizeof(supported) - 1,
              "PacketSize=%zd;QStartNoAckMode+;qXfer:auxv:read+"
              ";qXfer:siginfo:read+;qXfer:siginfo:write+;multiprocess+%s",

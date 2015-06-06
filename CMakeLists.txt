@@ -551,6 +551,7 @@ set(TESTS_WITHOUT_PROGRAM
   env_newline
   execp
   explicit_checkpoint_clone
+  final_sigkill
   fork_exec_info_thr
   get_thread_list
   hardlink_mmapped_files

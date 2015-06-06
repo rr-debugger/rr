@@ -393,6 +393,8 @@ public:
    */
   bool sniff_packet();
 
+  const Features& features() { return features_; }
+
 private:
   GdbConnection(pid_t tgid, const Features& features);
 
@@ -486,7 +488,7 @@ private:
   ssize_t packetend;     /* index of '#' character */
   uint8_t outbuf[32768]; /* buffered output for gdb */
   ssize_t outlen;
-  Features features;
+  Features features_;
 };
 
 #endif /* RR_GDB_CONNECTION_H_ */

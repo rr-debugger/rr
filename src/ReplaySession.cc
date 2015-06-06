@@ -1426,10 +1426,11 @@ static void end_task(Task* t) {
   delete t;
 }
 
-Completion ReplaySession::exit_task(Task* t, const StepConstraints& constraints) {
+Completion ReplaySession::exit_task(Task* t,
+                                    const StepConstraints& constraints) {
   if (tasks().size() == 1) {
-    LOG(debug) << "last interesting task is " << t->rec_tid << " ("
-               << t->tid << ")";
+    LOG(debug) << "last interesting task is " << t->rec_tid << " (" << t->tid
+               << ")";
     set_last_task(t);
     return COMPLETE;
   }
