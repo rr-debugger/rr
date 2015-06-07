@@ -610,7 +610,10 @@ static void __attribute__((constructor)) init_process(void) {
     return;
   }
 
-  real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
+  /* Load GLIBC 2.1 version of pthread_create. Otherwise we may get the 2.0
+     version, which cannot handle the pthread_attr values passed by callers
+     expecting to call the glibc 2.1 version. */
+  real_pthread_create = dlvsym(RTLD_NEXT, "pthread_create", "GLIBC2.1");
 
   buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 
