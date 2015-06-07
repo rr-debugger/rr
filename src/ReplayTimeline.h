@@ -9,6 +9,7 @@
 #include <tuple>
 #include <vector>
 
+#include "BreakpointCondition.h"
 #include "Registers.h"
 #include "ReplaySession.h"
 #include "TraceFrame.h"
@@ -120,14 +121,27 @@ public:
   // Add/remove breakpoints and watchpoints. Use these APIs instead
   // of operating on the task directly, so that ReplayTimeline can track
   // breakpoints and automatically move them across sessions as necessary.
-  bool add_breakpoint(Task* t, remote_code_ptr addr);
+  // Only one breakpoint for a given address space/addr combination can be set;
+  // setting another for the same address space/addr will replace the first.
+  // Likewise only one watchpoint for a given task/addr/num_bytes/type can be
+  // set. gdb expects that setting two breakpoints on the same address and then
+  // removing one removes both.
+  bool add_breakpoint(Task* t, remote_code_ptr addr,
+                      std::unique_ptr<BreakpointCondition> condition = nullptr);
+  // You can't remove a breakpoint with a specific condition, so don't
+  // place multiple breakpoints with conditions on the same location.
   void remove_breakpoint(Task* t, remote_code_ptr addr);
   bool add_watchpoint(Task* t, remote_ptr<void> addr, size_t num_bytes,
-                      WatchType type);
+                      WatchType type,
+                      std::unique_ptr<BreakpointCondition> condition = nullptr);
+  // You can't remove a watchpoint with a specific condition, so don't
+  // place multiple breakpoints with conditions on the same location.
   void remove_watchpoint(Task* t, remote_ptr<void> addr, size_t num_bytes,
                          WatchType type);
   void remove_breakpoints_and_watchpoints();
   bool has_breakpoint_at_address(Task* t, remote_code_ptr addr);
+  bool has_watchpoint_at_address(Task* t, remote_ptr<void> addr,
+                                 size_t num_bytes, WatchType type);
 
   /**
    * Ensure that reverse execution never proceeds into an event before
@@ -380,6 +394,12 @@ private:
 
   Mark set_short_checkpoint();
 
+  /**
+   * If result.break_status hit watchpoints or breakpoints, evaluate their
+   * conditions and clear the break_status flags if the conditions don't hold.
+   */
+  void evaluate_conditions(ReplayResult& result);
+
   ReplaySession::Flags session_flags;
 
   ReplaySession::shr_ptr current;
@@ -409,9 +429,10 @@ private:
    */
   std::map<MarkKey, uint32_t> marks_with_checkpoints;
 
-  std::multiset<std::pair<AddressSpaceUid, remote_code_ptr> > breakpoints;
-  std::multiset<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t,
-                           WatchType> > watchpoints;
+  std::set<std::tuple<AddressSpaceUid, remote_code_ptr,
+                      std::unique_ptr<BreakpointCondition> > > breakpoints;
+  std::set<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t, WatchType,
+                      std::unique_ptr<BreakpointCondition> > > watchpoints;
   bool breakpoints_applied;
 
   TraceFrame::Time reverse_execution_barrier_event;

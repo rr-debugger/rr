@@ -450,8 +450,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
     // If we hit our breakpoint and there is no client breakpoint there,
     // pretend we didn't hit it.
     if (result.break_status.breakpoint_hit &&
-        breakpoints.count(make_pair(result.break_status.task->vm()->uid(),
-                                    result.break_status.task->ip())) == 0) {
+        !has_breakpoint_at_address(result.break_status.task,
+                                   result.break_status.task->ip())) {
       result.break_status.breakpoint_hit = false;
     }
     update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
@@ -585,14 +585,19 @@ bool ReplayTimeline::fix_watchpoint_coalescing_quirk(ReplayResult& result,
   return true;
 }
 
-bool ReplayTimeline::add_breakpoint(Task* t, remote_code_ptr addr) {
+bool ReplayTimeline::add_breakpoint(
+    Task* t, remote_code_ptr addr,
+    std::unique_ptr<BreakpointCondition> condition) {
+  if (has_breakpoint_at_address(t, addr)) {
+    remove_breakpoint(t, addr);
+  }
   // Apply breakpoints now; we need to actually try adding this breakpoint
   // to see if it works.
   apply_breakpoints_and_watchpoints();
   if (!t->vm()->add_breakpoint(addr, TRAP_BKPT_USER)) {
     return false;
   }
-  breakpoints.insert(make_pair(t->vm()->uid(), addr));
+  breakpoints.insert(make_tuple(t->vm()->uid(), addr, move(condition)));
   return true;
 }
 
@@ -600,24 +605,31 @@ void ReplayTimeline::remove_breakpoint(Task* t, remote_code_ptr addr) {
   if (breakpoints_applied) {
     t->vm()->remove_breakpoint(addr, TRAP_BKPT_USER);
   }
-  auto it = breakpoints.find(make_pair(t->vm()->uid(), addr));
-  ASSERT(t, it != breakpoints.end());
+  ASSERT(t, has_breakpoint_at_address(t, addr));
+  auto it = breakpoints.lower_bound(make_tuple(t->vm()->uid(), addr, nullptr));
   breakpoints.erase(it);
 }
 
 bool ReplayTimeline::has_breakpoint_at_address(Task* t, remote_code_ptr addr) {
-  return breakpoints.find(make_pair(t->vm()->uid(), addr)) != breakpoints.end();
+  auto it = breakpoints.lower_bound(make_tuple(t->vm()->uid(), addr, nullptr));
+  return it != breakpoints.end() && get<0>(*it) == t->vm()->uid() &&
+         get<1>(*it) == addr;
 }
 
 bool ReplayTimeline::add_watchpoint(Task* t, remote_ptr<void> addr,
-                                    size_t num_bytes, WatchType type) {
+                                    size_t num_bytes, WatchType type,
+                                    unique_ptr<BreakpointCondition> condition) {
+  if (has_watchpoint_at_address(t, addr, num_bytes, type)) {
+    remove_watchpoint(t, addr, num_bytes, type);
+  }
   // Apply breakpoints now; we need to actually try adding this breakpoint
   // to see if it works.
   apply_breakpoints_and_watchpoints();
   if (!t->vm()->add_watchpoint(addr, num_bytes, type)) {
     return false;
   }
-  watchpoints.insert(make_tuple(t->vm()->uid(), addr, num_bytes, type));
+  watchpoints.insert(
+      make_tuple(t->vm()->uid(), addr, num_bytes, type, move(condition)));
   no_watchpoints_hit_interval_start = no_watchpoints_hit_interval_start =
       Mark();
   return true;
@@ -628,9 +640,19 @@ void ReplayTimeline::remove_watchpoint(Task* t, remote_ptr<void> addr,
   if (breakpoints_applied) {
     t->vm()->remove_watchpoint(addr, num_bytes, type);
   }
-  auto it = watchpoints.find(make_tuple(t->vm()->uid(), addr, num_bytes, type));
-  ASSERT(t, it != watchpoints.end());
+  ASSERT(t, has_watchpoint_at_address(t, addr, num_bytes, type));
+  auto it = watchpoints.lower_bound(
+      make_tuple(t->vm()->uid(), addr, num_bytes, type, nullptr));
   watchpoints.erase(it);
+}
+
+bool ReplayTimeline::has_watchpoint_at_address(Task* t, remote_ptr<void> addr,
+                                               size_t num_bytes,
+                                               WatchType type) {
+  auto it = watchpoints.lower_bound(
+      make_tuple(t->vm()->uid(), addr, num_bytes, type, nullptr));
+  return it != watchpoints.end() && get<0>(*it) == t->vm()->uid() &&
+         get<1>(*it) == addr && get<2>(*it) == num_bytes && get<3>(*it) == type;
 }
 
 void ReplayTimeline::remove_breakpoints_and_watchpoints() {
@@ -645,12 +667,12 @@ void ReplayTimeline::apply_breakpoints_and_watchpoints() {
   }
   breakpoints_applied = true;
   for (auto& bp : breakpoints) {
-    AddressSpace* vm = current->find_address_space(bp.first);
+    AddressSpace* vm = current->find_address_space(get<0>(bp));
     // XXX handle cases where we can't apply a breakpoint right now. Later
     // during replay the address space might be created (or new mappings might
     // be created) and we should reapply breakpoints then.
     if (vm) {
-      vm->add_breakpoint(bp.second, TRAP_BKPT_USER);
+      vm->add_breakpoint(get<1>(bp), TRAP_BKPT_USER);
     }
   }
   for (auto& wp : watchpoints) {
@@ -684,9 +706,9 @@ ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
   }
   auto result = current->replay_step(RUN_SINGLESTEP);
   for (auto& bp : breakpoints) {
-    AddressSpace* vm = current->find_address_space(bp.first);
+    AddressSpace* vm = current->find_address_space(get<0>(bp));
     if (vm) {
-      vm->add_breakpoint(bp.second, TRAP_BKPT_USER);
+      vm->add_breakpoint(get<1>(bp), TRAP_BKPT_USER);
     }
   }
   return result;
@@ -739,7 +761,10 @@ ReplayResult ReplayTimeline::reverse_continue(
         // populate the interval with new checkpoints, speeding up
         // the following seek and possibly future operations.
       }
+      at_breakpoint = result.break_status.breakpoint_hit;
+      evaluate_conditions(result);
       maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
+
       if (!result.break_status.watchpoints_hit.empty() ||
           result.break_status.signal) {
         dest = mark();
@@ -771,9 +796,6 @@ ReplayResult ReplayTimeline::reverse_continue(
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
         last_stop_is_watch_or_signal = false;
-        at_breakpoint = true;
-      } else {
-        at_breakpoint = false;
       }
 
       if (interrupt_check()) {
@@ -939,7 +961,55 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       seek_to_mark(destination_candidate);
       destination_candidate_result.break_status.task = current->find_task(tuid);
       assert(destination_candidate_result.break_status.task);
+      evaluate_conditions(destination_candidate_result);
       return destination_candidate_result;
+    }
+  }
+}
+
+void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
+  Task* t = result.break_status.task;
+  if (!t) {
+    return;
+  }
+  auto auid = t->vm()->uid();
+
+  if (result.break_status.breakpoint_hit) {
+    auto addr = t->ip();
+    auto it = breakpoints.lower_bound(make_tuple(auid, addr, nullptr));
+    bool hit = false;
+    while (it != breakpoints.end() && get<0>(*it) == auid &&
+           get<1>(*it) == addr) {
+      const unique_ptr<BreakpointCondition>& cond = get<2>(*it);
+      if (!cond || cond->evaluate(t)) {
+        hit = true;
+        break;
+      }
+      ++it;
+    }
+    if (!hit) {
+      result.break_status.breakpoint_hit = false;
+    }
+  }
+
+  for (auto i = result.break_status.watchpoints_hit.begin();
+       i != result.break_status.watchpoints_hit.end(); ++i) {
+    auto& w = *i;
+    auto it = watchpoints.lower_bound(
+        make_tuple(auid, w.addr, w.num_bytes, w.type, nullptr));
+    bool hit = false;
+    while (it != watchpoints.end() && get<0>(*it) == auid &&
+           get<1>(*it) == w.addr && get<2>(*it) == w.num_bytes &&
+           get<3>(*it) == w.type) {
+      const unique_ptr<BreakpointCondition>& cond = get<4>(*it);
+      if (!cond || cond->evaluate(t)) {
+        hit = true;
+        break;
+      }
+      ++it;
+    }
+    if (!hit) {
+      i = result.break_status.watchpoints_hit.erase(i);
     }
   }
 }
@@ -967,6 +1037,18 @@ ReplayResult ReplayTimeline::replay_step(
       result.break_status.singlestep_complete = false;
     }
     maybe_add_reverse_exec_checkpoint(LOW_OVERHEAD);
+
+    bool did_hit_breakpoint = result.break_status.breakpoint_hit;
+    evaluate_conditions(result);
+    if (did_hit_breakpoint && !result.break_status.any_break()) {
+      // Singlestep past the breakpoint
+      current->set_visible_execution(true);
+      result = singlestep_with_breakpoints_disabled();
+      if (command == RUN_CONTINUE) {
+        result.break_status.singlestep_complete = false;
+      }
+      current->set_visible_execution(false);
+    }
   } else {
     assert(stop_at_time == 0 &&
            "stop_at_time unsupported for reverse execution");
