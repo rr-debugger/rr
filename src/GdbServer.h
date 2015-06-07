@@ -181,7 +181,7 @@ private:
   // False while we're waiting for the session to reach some requested state
   // before talking to gdb.
   bool debugger_active;
-  // true when
+  // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
   // When debugger_active is true, the TaskGroupUid of the task being debugged.
   TaskGroupUid debuggee_tguid;
