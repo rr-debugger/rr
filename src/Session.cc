@@ -165,14 +165,23 @@ AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
 void Session::kill_all_tasks() {
   for (auto& v : task_map) {
     Task* t = v.second;
+
+    if (!t->is_stopped) {
+      // During recording we might be aborting the recording, in which case
+      // one or more tasks might not be stopped. We haven't got any really
+      // good options here so we'll just skip detaching and try killing
+      // it with SIGKILL below. rr will usually exit immediatley after this
+      // so the likelihood that we'll leak a zombie task isn't too bad.
+      continue;
+    }
+
     if (!t->stable_exit) {
       /*
        * Prepare to forcibly kill this task by detaching it first. To ensure
        * the task doesn't continue executing, we first set its ip() to an
-       * invalid
-       * value. We need to do this for all tasks in the Session before kill()
-       * is guaranteed to work properly. SIGKILL on ptrace-attached tasks seems
-       * to not work very well, and after sending SIGKILL we can't seem to
+       * invalid value. We need to do this for all tasks in the Session before
+       * kill() is guaranteed to work properly. SIGKILL on ptrace-attached tasks
+       * seems to not work very well, and after sending SIGKILL we can't seem to
        * reliably detach.
        */
       LOG(debug) << "safely detaching from " << t->tid << " ...";

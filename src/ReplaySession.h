@@ -238,6 +238,9 @@ public:
    */
   Task* current_task() {
     finish_initializing();
+    if (last_debugged_task) {
+      return last_debugged_task;
+    }
     return find_task(trace_frame.tid());
   }
 
@@ -349,7 +352,6 @@ private:
    * to allow processing debugger requests for it later.
    */
   void set_last_task(Task* t) {
-    assert(!last_debugged_task);
     last_debugged_task = t;
   }
 

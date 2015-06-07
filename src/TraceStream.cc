@@ -25,7 +25,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 26
+#define TRACE_VERSION 27
 
 struct SubstreamData {
   const char* name;

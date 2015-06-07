@@ -133,12 +133,6 @@ static bool parse_record_arg(std::vector<std::string>& args,
 
 static bool term_request;
 
-static void terminate_recording(RecordSession& session, int status = 0) {
-  session.terminate_recording();
-  LOG(info) << "  exiting, goodbye.";
-  exit(status);
-}
-
 /**
  * A terminating signal was received.  Set the |term_request| bit to
  * terminate the trace at the next convenient point.
@@ -166,13 +160,6 @@ static void install_termsig_handlers(void) {
   }
 }
 
-/** If |term_request| is set, then terminate_recording(). */
-static void maybe_process_term_request(RecordSession& session) {
-  if (term_request) {
-    terminate_recording(session);
-  }
-}
-
 static void setup_session_from_flags(RecordSession& session,
                                      const RecordFlags& flags) {
   session.scheduler().set_max_ticks(flags.max_ticks);
@@ -193,37 +180,45 @@ static int record(const vector<string>& args, const RecordFlags& flags) {
   setup_session_from_flags(*session, flags);
 
   RecordSession::RecordResult step_result;
-  while ((step_result = session->record_step()).status ==
-         RecordSession::STEP_CONTINUE) {
-    maybe_process_term_request(*session);
-  }
+  do {
+    step_result = session->record_step();
+  } while (step_result.status == RecordSession::STEP_CONTINUE && !term_request);
 
-  if (step_result.status == RecordSession::STEP_EXEC_FAILED) {
-    fprintf(stderr,
-            "\n"
-            "rr: error:\n"
-            "  Unexpected `write()' call from first tracee process.\n"
-            "  Most likely, the executable image `%s' is 64-bit, doesn't "
-            "exist, or\n"
-            "  isn't in your $PATH.  Terminating recording.\n"
-            "\n",
-            session->trace_writer().initial_exe().c_str());
-    terminate_recording(*session);
-  }
+  session->terminate_recording();
 
-  if (step_result.status == RecordSession::STEP_PERF_COUNTERS_UNAVAILABLE) {
-    fprintf(stderr, "\n"
-                    "rr: internal recorder error:\n"
-                    "  Performance counter doesn't seem to be working.  Are "
-                    "you perhaps\n"
-                    "  running rr in a VM but didn't enable perf-counter "
-                    "virtualization?\n");
-    terminate_recording(*session, EX_UNAVAILABLE);
-  }
+  switch (step_result.status) {
+    case RecordSession::STEP_CONTINUE:
+      // SIGINT or something like that interrupted us.
+      return 0x80 | SIGINT;
 
-  assert(step_result.status == RecordSession::STEP_EXITED);
-  LOG(info) << "Done recording -- cleaning up";
-  return step_result.exit_code;
+    case RecordSession::STEP_EXITED:
+      return step_result.exit_code;
+
+    case RecordSession::STEP_EXEC_FAILED:
+      fprintf(stderr,
+              "\n"
+              "rr: error:\n"
+              "  Unexpected `write()' call from first tracee process.\n"
+              "  Most likely, the executable image `%s' is 64-bit, doesn't "
+              "exist, or\n"
+              "  isn't in your $PATH.  Terminating recording.\n"
+              "\n",
+              session->trace_writer().initial_exe().c_str());
+      return EX_NOINPUT;
+
+    case RecordSession::STEP_PERF_COUNTERS_UNAVAILABLE:
+      fprintf(stderr, "\n"
+                      "rr: internal recorder error:\n"
+                      "  Performance counter doesn't seem to be working.  Are "
+                      "you perhaps\n"
+                      "  running rr in a VM but didn't enable perf-counter "
+                      "virtualization?\n");
+      return EX_UNAVAILABLE;
+
+    default:
+      assert(0 && "Unknown exit status");
+      return -1;
+  }
 }
 
 int RecordCommand::run(std::vector<std::string>& args) {

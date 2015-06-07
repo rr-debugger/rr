@@ -1580,8 +1580,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       // An irregular trace step had to read the
       // next trace frame, and that frame was an
       // early-termination marker.  Otherwise we
-      // would have seen the marker at
-      // |schedule_task()|.
+      // would have seen the marker above.
       set_last_task(t);
       result.status = REPLAY_EXITED;
       return result;
