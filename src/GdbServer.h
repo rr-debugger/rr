@@ -81,6 +81,13 @@ public:
    */
   void interrupt_replay_to_target() { stop_replaying_to_target = true; }
 
+  /**
+   * Return the register |which|, which may not have a defined value.
+   */
+  static GdbRegisterValue get_reg(const Registers& regs,
+                                  const ExtraRegisters& extra_regs,
+                                  GdbRegister which);
+
 private:
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
       : dbg(std::move(dbg)), stop_replaying_to_target(false) {}

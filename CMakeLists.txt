@@ -164,6 +164,7 @@ add_executable(rr
   src/FdTable.cc
   src/Flags.cc
   src/GdbConnection.cc
+  src/GdbExpression.cc
   src/GdbInitCommand.cc
   src/GdbServer.cc
   src/HelpCommand.cc

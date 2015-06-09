@@ -44,7 +44,13 @@ inline std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
 struct GdbRegisterValue {
   enum { MAX_SIZE = Registers::MAX_SIZE };
   GdbRegister name;
-  uint8_t value[MAX_SIZE];
+  union {
+    uint8_t value[MAX_SIZE];
+    uint8_t value1;
+    uint16_t value2;
+    uint32_t value4;
+    uint64_t value8;
+  };
   size_t size;
   bool defined;
 };

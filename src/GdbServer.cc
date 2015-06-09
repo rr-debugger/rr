@@ -158,13 +158,13 @@ static size_t get_reg(const Registers& regs, const ExtraRegisters& extra_regs,
 /**
  * Return the register |which|, which may not have a defined value.
  */
-static GdbRegisterValue get_reg(const Registers& regs,
-                                const ExtraRegisters& extra_regs,
-                                GdbRegister which) {
+GdbRegisterValue GdbServer::get_reg(const Registers& regs,
+                                    const ExtraRegisters& extra_regs,
+                                    GdbRegister which) {
   GdbRegisterValue reg;
   memset(&reg, 0, sizeof(reg));
   reg.name = which;
-  reg.size = get_reg(regs, extra_regs, &reg.value[0], which, &reg.defined);
+  reg.size = ::get_reg(regs, extra_regs, &reg.value[0], which, &reg.defined);
   return reg;
 }
 
