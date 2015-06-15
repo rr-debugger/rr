@@ -110,6 +110,7 @@ private:
    */
   void dispatch_debugger_request(Session& session, Task* t,
                                  const GdbRequest& req);
+  bool at_target();
   /**
    * If debugger_active is false, and the trace has reached the event at
    * which the user wanted a debugger started, then create one and store it

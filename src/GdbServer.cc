@@ -796,6 +796,40 @@ ReplayStatus GdbServer::replay_one_step() {
   return result.status;
 }
 
+bool GdbServer::at_target() {
+  // Don't launch the debugger for the initial rr fork child.
+  // No one ever wants that to happen.
+  if (!timeline.current_session().can_validate()) {
+    return false;
+  }
+  Task* t = timeline.current_session().current_task();
+  if (!t) {
+    return false;
+  }
+  if (!timeline.can_add_checkpoint()) {
+    return false;
+  }
+  if (stop_replaying_to_target) {
+    return true;
+  }
+  // When we decide to create the debugger, we may end up
+  // creating a checkpoint.  In that case, we want the
+  // checkpoint to retain the state it had *before* we started
+  // replaying the next frame.  Otherwise, the TraceIfstream
+  // will be one frame ahead of its tracee tree.
+  //
+  // So we make the decision to create the debugger based on the
+  // frame we're *about to* replay, without modifying the
+  // TraceIfstream.
+  // NB: we'll happily attach to whichever task within the
+  // group happens to be scheduled here.  We don't take
+  // "attach to process" to mean "attach to thread-group
+  // leader".
+  return timeline.current_session().current_trace_frame().time() > target.event &&
+      (!target.pid || t->tgid() == target.pid) &&
+      (!target.require_exec || t->vm()->execed());
+}
+
 /**
  * If the trace has reached the event at which the user wanted a debugger
  * started, then create one and store it in `dbg` if we don't already
@@ -808,42 +842,13 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   if (debugger_active) {
     return;
   }
-  // Don't launch the debugger for the initial rr fork child.
-  // No one ever wants that to happen.
-  if (!timeline.current_session().can_validate()) {
-    return;
-  }
-  Task* t = timeline.current_session().current_task();
-  if (!t) {
+  if (!at_target()) {
     return;
   }
 
-  // When we decide to create the debugger, we may end up
-  // creating a checkpoint.  In that case, we want the
-  // checkpoint to retain the state it had *before* we started
-  // replaying the next frame.  Otherwise, the TraceIfstream
-  // will be one frame ahead of its tracee tree.
-  //
-  // So we make the decision to create the debugger based on the
-  // frame we're *about to* replay, without modifying the
-  // TraceIfstream.
   TraceFrame next_frame = timeline.current_session().current_trace_frame();
   TraceFrame::Time event_now = next_frame.time();
-  // NB: we'll happily attach to whichever task within the
-  // group happens to be scheduled here.  We don't take
-  // "attach to process" to mean "attach to thread-group
-  // leader".
-  if (!timeline.can_add_checkpoint()) {
-    return;
-  }
-  bool force_stop = stop_replaying_to_target;
-  if (!force_stop &&
-      (event_now < target.event || (target.pid && t->tgid() != target.pid) ||
-       (target.pid && target.require_exec && !t->vm()->execed()))) {
-    return;
-  }
-
-  if (!force_stop && (target.event > 0 || target.pid)) {
+  if (!stop_replaying_to_target && (target.event > 0 || target.pid)) {
     fprintf(stderr, "\a\n"
                     "--------------------------------------------------\n"
                     " ---> Reached target process %d at event %u.\n"
@@ -851,6 +856,7 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
             target.pid, event_now);
   }
 
+  Task* t = timeline.current_session().current_task();
   // Have the "checkpoint" be the original replay
   // session, and then switch over to using the cloned
   // session.  The cloned tasks will look like children
