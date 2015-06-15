@@ -771,11 +771,14 @@ bool GdbServer::detach_or_restart(const GdbRequest& req, ContinueOrStop* s) {
   return false;
 }
 
-GdbServer::ContinueOrStop GdbServer::handle_exited_state() {
+GdbServer::ContinueOrStop GdbServer::handle_exited_state(Task* t) {
   // TODO return real exit code, if it's useful.
   dbg->notify_exit_code(0);
-  GdbRequest req = process_debugger_requests(
-      timeline.current_session().last_task(), REPORT_THREADS_DEAD);
+  if (!t) {
+    FATAL() << "Replay exited before we detected the death of the last "
+               "debuggee thread";
+  }
+  GdbRequest req = process_debugger_requests(t, REPORT_THREADS_DEAD);
   ContinueOrStop s;
   if (detach_or_restart(req, &s)) {
     return s;
@@ -785,16 +788,12 @@ GdbServer::ContinueOrStop GdbServer::handle_exited_state() {
 }
 
 GdbServer::ContinueOrStop GdbServer::debug_one_step() {
-  if (!timeline.current_session().find_task_group(debuggee_tguid)) {
-    return handle_exited_state();
-  }
-
   ReplayResult result;
   Task* t = timeline.current_session().current_task();
   if (!t || t->task_group()->tguid() != debuggee_tguid) {
     result = timeline.replay_step(RUN_CONTINUE, RUN_FORWARD, target.event);
     if (result.status == REPLAY_EXITED) {
-      return handle_exited_state();
+      return handle_exited_state(nullptr);
     }
     return CONTINUE_DEBUGGING;
   }
@@ -820,7 +819,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
         req.run_direction == RUN_FORWARD ? target.event : 0,
         [&]() { return dbg->sniff_packet(); });
     if (result.status == REPLAY_EXITED) {
-      return handle_exited_state();
+      return handle_exited_state(nullptr);
     }
     if (!req.suppress_debugger_stop) {
       maybe_notify_stop(result.break_status);
@@ -834,7 +833,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
       t = timeline.current_session().find_task(tuid);
       // If it's a forward execution request, fake the exited state.
       if (req.is_resume_request() && req.run_direction == RUN_FORWARD) {
-        return handle_exited_state();
+        return handle_exited_state(t);
       }
       // Otherwise (e.g. detach, restart or reverse-exec) process the request
       // as normal.

@@ -238,9 +238,6 @@ public:
    */
   Task* current_task() {
     finish_initializing();
-    if (last_debugged_task) {
-      return last_debugged_task;
-    }
     return find_task(trace_frame.tid());
   }
 
@@ -250,13 +247,6 @@ public:
   ReplayStepKey current_step_key() const {
     return ReplayStepKey(current_step.action);
   }
-
-  /**
-   * If we've finished replaying (all tracees terminated), return the last
-   * Task that ran. Sometimes debuggers need this. Returns null if replay
-   * hasn't finished yet.
-   */
-  Task* last_task() { return last_debugged_task; }
 
   /**
    * Create a replay session that will use the trace directory specified
@@ -324,34 +314,18 @@ public:
 
 private:
   ReplaySession(const std::string& dir)
-      : emu_fs(EmuFs::create()),
-        last_debugged_task(nullptr),
-        trace_in(dir),
-        trace_frame(),
-        current_step() {
+      : emu_fs(EmuFs::create()), trace_in(dir), trace_frame(), current_step() {
     advance_to_next_trace_frame(0);
   }
 
   ReplaySession(const ReplaySession& other)
       : Session(other),
         emu_fs(other.emu_fs->clone()),
-        last_debugged_task(nullptr),
         trace_in(other.trace_in),
         trace_frame(other.trace_frame),
         current_step(other.current_step),
         cpuid_bug_detector(other.cpuid_bug_detector),
-        flags(other.flags) {
-    assert(!other.last_debugged_task);
-  }
-
-  /**
-   * Set |t| as the last (debugged) task in this session.
-   *
-   * When we notify the debugger of process exit, it wants to be
-   * able to poke around at that last task.  So we store it here
-   * to allow processing debugger requests for it later.
-   */
-  void set_last_task(Task* t) { last_debugged_task = t; }
+        flags(other.flags) {}
 
   const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
     return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;

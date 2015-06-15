@@ -115,7 +115,7 @@ private:
                                        ReportState state = REPORT_NORMAL);
   enum ContinueOrStop { CONTINUE_DEBUGGING, STOP_DEBUGGING };
   bool detach_or_restart(const GdbRequest& req, ContinueOrStop* s);
-  ContinueOrStop handle_exited_state();
+  ContinueOrStop handle_exited_state(Task* t);
   ContinueOrStop debug_one_step();
   /**
    * If 'req' is a reverse-singlestep, try to obtain the resulting state

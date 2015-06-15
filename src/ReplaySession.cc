@@ -1423,13 +1423,6 @@ static void end_task(Task* t) {
 
 Completion ReplaySession::exit_task(Task* t,
                                     const StepConstraints& constraints) {
-  if (tasks().size() == 1) {
-    LOG(debug) << "last interesting task is " << t->rec_tid << " (" << t->tid
-               << ")";
-    set_last_task(t);
-    return COMPLETE;
-  }
-
   ASSERT(t, !t->seen_ptrace_exit_event);
   end_task(t);
   /* |t| is dead now. */
@@ -1544,10 +1537,6 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   Task* t = current_task();
 
   if (EV_TRACE_TERMINATION == trace_frame.event().type()) {
-    set_last_task(t);
-  }
-
-  if (last_task()) {
     result.status = REPLAY_EXITED;
     return result;
   }
@@ -1581,7 +1570,6 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       // next trace frame, and that frame was an
       // early-termination marker.  Otherwise we
       // would have seen the marker above.
-      set_last_task(t);
       result.status = REPLAY_EXITED;
       return result;
     }
