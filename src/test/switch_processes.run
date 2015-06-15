@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+
+save_exe write_race$bitness
+saved_exe="write_race$bitness-$nonce"
+record target_process$bitness $saved_exe
+
+debug switch_processes "-g 1000"

@@ -831,20 +831,11 @@ bool GdbServer::at_target() {
 }
 
 /**
- * If the trace has reached the event at which the user wanted a debugger
- * started, then create one and store it in `dbg` if we don't already
- * have one there, and return true. Otherwise return false.
- *
- * This must be called before scheduling the task for the next event
- * (and thereby mutating the TraceIfstream for that event).
+ * The trace has reached the event at which the user wanted to start debugging.
+ * Set up the appropriate state.
  */
-void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
-  if (debugger_active) {
-    return;
-  }
-  if (!at_target()) {
-    return;
-  }
+void GdbServer::activate_debugger() {
+  assert(!debugger_active);
 
   TraceFrame next_frame = timeline.current_session().current_trace_frame();
   TraceFrame::Time event_now = next_frame.time();
@@ -873,24 +864,6 @@ void GdbServer::maybe_connect_debugger(const ConnectionFlags& flags) {
   target.require_exec = false;
   target.event = event_now;
 
-  if (!dbg) {
-    unsigned short port = flags.dbg_port > 0 ? flags.dbg_port : getpid();
-    // Don't probe if the user specified a port.  Explicitly
-    // selecting a port is usually done by scripts, which would
-    // presumably break if a different port were to be selected by
-    // rr (otherwise why would they specify a port in the first
-    // place).  So fail with a clearer error message.
-    auto probe = flags.dbg_port > 0 ? GdbConnection::DONT_PROBE
-                                    : GdbConnection::PROBE_PORT;
-    dbg = GdbConnection::await_client_connection(
-        port, probe, t->tgid(), t->vm()->exe_image(), GdbConnection::Features(),
-        flags.debugger_params_write_pipe);
-    if (flags.debugger_params_write_pipe) {
-      flags.debugger_params_write_pipe->close();
-    }
-  }
-
-  debuggee_tguid = t->task_group()->tguid();
   debugger_active = true;
 }
 
@@ -933,9 +906,39 @@ void GdbServer::maybe_restart_session(const GdbRequest& req) {
 }
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
+  do {
+    ReplayResult result =
+        timeline.replay_step(RUN_CONTINUE, RUN_FORWARD, target.event);
+    if (result.status == REPLAY_EXITED) {
+      LOG(info) << "Debugger was not launched before end of trace";
+      return;
+    }
+  } while (!at_target());
+
+  unsigned short port = flags.dbg_port > 0 ? flags.dbg_port : getpid();
+  // Don't probe if the user specified a port.  Explicitly
+  // selecting a port is usually done by scripts, which would
+  // presumably break if a different port were to be selected by
+  // rr (otherwise why would they specify a port in the first
+  // place).  So fail with a clearer error message.
+  auto probe = flags.dbg_port > 0 ? GdbConnection::DONT_PROBE
+                                  : GdbConnection::PROBE_PORT;
+  Task* t = timeline.current_session().current_task();
+  dbg = GdbConnection::await_client_connection(
+      port, probe, t->tgid(), t->vm()->exe_image(), GdbConnection::Features(),
+      flags.debugger_params_write_pipe);
+  if (flags.debugger_params_write_pipe) {
+    flags.debugger_params_write_pipe->close();
+  }
+  debuggee_tguid = t->task_group()->tguid();
+
+  activate_debugger();
+
   while (true) {
     while (true) {
-      maybe_connect_debugger(flags);
+      if (!debugger_active && at_target()) {
+        activate_debugger();
+      }
 
       if (debugger_active &&
           !timeline.current_session().find_task_group(debuggee_tguid)) {

@@ -579,6 +579,7 @@ set(TESTS_WITHOUT_PROGRAM
   step_signal
   string_instructions_replay_quirk
   subprocess_exit_ends_session
+  switch_processes
   syscallbuf_timeslice_250
   trace_version
   term_trace_cpu

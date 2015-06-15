@@ -17,7 +17,7 @@
 class GdbServer {
 public:
   struct Target {
-    Target() : pid(0), require_exec(true), event(0) {}
+    Target() : pid(0), require_exec(false), event(0) {}
     // Target process to debug, or 0 to just debug the first process
     pid_t pid;
     // If true, wait for the target process to exec() before attaching debugger
@@ -111,15 +111,7 @@ private:
   void dispatch_debugger_request(Session& session, Task* t,
                                  const GdbRequest& req);
   bool at_target();
-  /**
-   * If debugger_active is false, and the trace has reached the event at
-   * which the user wanted a debugger started, then create one and store it
-   * in `dbg` if we don't already have one there, and set debugger_active.
-   *
-   * This must be called before scheduling the task for the next event
-   * (and thereby mutating the TraceIfstream for that event).
-   */
-  void maybe_connect_debugger(const ConnectionFlags& flags);
+  void activate_debugger();
   void maybe_restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
   ReplayStatus replay_one_step();
@@ -178,14 +170,18 @@ private:
   void delete_checkpoint(int checkpoint_id);
 
   Target target;
+  // dbg is initially null. Once the debugger connection is established, it
+  // never changes.
   std::unique_ptr<GdbConnection> dbg;
+  // When dbg is non-null, the TaskGroupUid of the task being debugged. Never
+  // changes once the connection is established --- we don't currently
+  // support switching gdb between debuggee processes.
+  TaskGroupUid debuggee_tguid;
   // False while we're waiting for the session to reach some requested state
-  // before talking to gdb.
+  // before interacting with gdb.
   bool debugger_active;
   // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
-  // When debugger_active is true, the TaskGroupUid of the task being debugged.
-  TaskGroupUid debuggee_tguid;
 
   ReplayTimeline timeline;
 
