@@ -897,6 +897,7 @@ void GdbServer::maybe_restart_session(const GdbRequest& req) {
   }
 
   debugger_active = false;
+  stop_replaying_to_target = false;
 
   assert(req.restart.type == RESTART_FROM_EVENT);
   // Note that we don't reset the target pid; we intentionally keep targeting
