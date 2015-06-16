@@ -754,7 +754,27 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
   }
 }
 
-ReplayStatus GdbServer::replay_one_step(bool* detached) {
+GdbServer::ContinueOrStop GdbServer::handle_exited_state() {
+  // TODO return real exit code, if it's useful.
+  dbg->notify_exit_code(0);
+  GdbRequest req =
+      process_debugger_requests(timeline.current_session().last_task());
+  if (DREQ_RESTART == req.type) {
+    restart_session(req);
+    return CONTINUE_DEBUGGING;
+  }
+  if (DREQ_DETACH == req.type) {
+    return STOP_DEBUGGING;
+  }
+  FATAL() << "Received continue request after end-of-trace.";
+  return STOP_DEBUGGING;
+}
+
+GdbServer::ContinueOrStop GdbServer::debug_one_step() {
+  if (!timeline.current_session().find_task_group(debuggee_tguid)) {
+    return handle_exited_state();
+  }
+
   ReplayResult result;
   bool suppress_debugger_stop = false;
   Task* t = timeline.current_session().current_task();
@@ -762,14 +782,14 @@ ReplayStatus GdbServer::replay_one_step(bool* detached) {
   if (t && t->task_group()->tguid() == debuggee_tguid) {
     TaskUid tuid = t->tuid();
     GdbRequest req = process_debugger_requests(t);
-    if (DREQ_DETACH == req.type) {
-      *detached = true;
-      return REPLAY_EXITED;
-    }
     t = timeline.current_session().find_task(tuid);
+
+    if (DREQ_DETACH == req.type) {
+      return STOP_DEBUGGING;
+    }
     if (DREQ_RESTART == req.type) {
       restart_session(req);
-      return REPLAY_CONTINUE;
+      return CONTINUE_DEBUGGING;
     }
     suppress_debugger_stop = req.suppress_debugger_stop;
     assert(req.is_resume_request());
@@ -786,14 +806,14 @@ ReplayStatus GdbServer::replay_one_step(bool* detached) {
   }
 
   if (result.status == REPLAY_EXITED) {
-    return result.status;
+    return handle_exited_state();
   }
   assert(result.status == REPLAY_CONTINUE);
 
   if (!suppress_debugger_stop) {
     maybe_notify_stop(result.break_status);
   }
-  return result.status;
+  return CONTINUE_DEBUGGING;
 }
 
 bool GdbServer::at_target() {
@@ -948,29 +968,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 
   activate_debugger();
 
-  while (true) {
-    bool detached = false;
-    if (!timeline.current_session().find_task_group(debuggee_tguid) ||
-        replay_one_step(&detached) == REPLAY_EXITED) {
-      if (detached) {
-        break;
-      }
-
-      LOG(info) << ("Replayer successfully finished.");
-
-      // TODO return real exit code, if it's useful.
-      dbg->notify_exit_code(0);
-      GdbRequest req =
-          process_debugger_requests(timeline.current_session().last_task());
-      if (DREQ_RESTART == req.type) {
-        restart_session(req);
-        continue;
-      }
-      if (DREQ_DETACH == req.type) {
-        break;
-      }
-      FATAL() << "Received continue request after end-of-trace.";
-    }
+  while (debug_one_step() == CONTINUE_DEBUGGING) {
   }
 
   LOG(debug) << "debugger server exiting ...";

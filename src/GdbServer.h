@@ -111,7 +111,9 @@ private:
   void activate_debugger();
   void restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
-  ReplayStatus replay_one_step(bool* detached);
+  enum ContinueOrStop { CONTINUE_DEBUGGING, STOP_DEBUGGING };
+  ContinueOrStop handle_exited_state();
+  ContinueOrStop debug_one_step();
   /**
    * If 'req' is a reverse-singlestep, try to obtain the resulting state
    * directly from ReplayTimeline's mark database. If that succeeds,
