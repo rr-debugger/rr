@@ -45,6 +45,7 @@ public:
             const ReplaySession::Flags& flags, const Target& target)
       : target(target),
         debugger_active(false),
+        stop_replaying_to_target(false),
         timeline(std::move(session), flags) {}
 
   /**
