@@ -44,7 +44,6 @@ public:
   GdbServer(std::shared_ptr<ReplaySession> session,
             const ReplaySession::Flags& flags, const Target& target)
       : target(target),
-        debugger_active(false),
         stop_replaying_to_target(false),
         timeline(std::move(session), flags) {}
 
@@ -85,7 +84,6 @@ public:
 private:
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
       : dbg(std::move(dbg)),
-        debugger_active(true),
         stop_replaying_to_target(false) {}
 
   /**
@@ -177,9 +175,6 @@ private:
   // changes once the connection is established --- we don't currently
   // support switching gdb between debuggee processes.
   TaskGroupUid debuggee_tguid;
-  // False while we're waiting for the session to reach some requested state
-  // before interacting with gdb.
-  bool debugger_active;
   // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
 

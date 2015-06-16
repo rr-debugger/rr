@@ -724,8 +724,7 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
   bool need_seek = false;
 
   while (req.type == DREQ_STEP && req.run_direction == RUN_BACKWARD &&
-         matches_threadid(t, req.target) && !req.suppress_debugger_stop &&
-         debugger_active) {
+         matches_threadid(t, req.target) && !req.suppress_debugger_stop) {
     if (!now) {
       now = timeline.mark();
     }
@@ -763,7 +762,7 @@ ReplayStatus GdbServer::replay_one_step() {
   bool suppress_debugger_stop = false;
   Task* t = timeline.current_session().current_task();
 
-  if (debugger_active && t && t->task_group()->tguid() == debuggee_tguid) {
+  if (t && t->task_group()->tguid() == debuggee_tguid) {
     TaskUid tuid = t->tuid();
     GdbRequest req = process_debugger_requests(t);
     t = timeline.current_session().find_task(tuid);
@@ -790,7 +789,7 @@ ReplayStatus GdbServer::replay_one_step() {
   }
   assert(result.status == REPLAY_CONTINUE);
 
-  if (debugger_active && !suppress_debugger_stop) {
+  if (!suppress_debugger_stop) {
     maybe_notify_stop(result.break_status);
   }
   return result.status;
@@ -835,8 +834,6 @@ bool GdbServer::at_target() {
  * Set up the appropriate state.
  */
 void GdbServer::activate_debugger() {
-  assert(!debugger_active);
-
   TraceFrame next_frame = timeline.current_session().current_trace_frame();
   TraceFrame::Time event_now = next_frame.time();
   if (!stop_replaying_to_target && (target.event > 0 || target.pid)) {
@@ -863,8 +860,6 @@ void GdbServer::activate_debugger() {
   target.pid = t->tgid();
   target.require_exec = false;
   target.event = event_now;
-
-  debugger_active = true;
 }
 
 void GdbServer::restart_session(const GdbRequest& req) {
@@ -897,7 +892,6 @@ void GdbServer::restart_session(const GdbRequest& req) {
     return;
   }
 
-  debugger_active = false;
   stop_replaying_to_target = false;
 
   assert(req.restart.type == RESTART_FROM_EVENT);
@@ -954,8 +948,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 
   while (true) {
     while (true) {
-      if (debugger_active &&
-          !timeline.current_session().find_task_group(debuggee_tguid)) {
+      if (!timeline.current_session().find_task_group(debuggee_tguid)) {
         // Our debugee must have exited.
         break;
       }
