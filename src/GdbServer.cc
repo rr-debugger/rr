@@ -947,32 +947,20 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   activate_debugger();
 
   while (true) {
-    while (true) {
-      if (!timeline.current_session().find_task_group(debuggee_tguid)) {
-        // Our debugee must have exited.
-        break;
+    if (!timeline.current_session().find_task_group(debuggee_tguid) ||
+        replay_one_step() == REPLAY_EXITED) {
+      LOG(info) << ("Replayer successfully finished.");
+
+      // TODO return real exit code, if it's useful.
+      dbg->notify_exit_code(0);
+      GdbRequest req =
+          process_debugger_requests(timeline.current_session().last_task());
+      if (DREQ_RESTART == req.type) {
+        restart_session(req);
+        continue;
       }
-
-      if (replay_one_step() == REPLAY_EXITED) {
-        break;
-      }
+      FATAL() << "Received continue request after end-of-trace.";
     }
-    LOG(info) << ("Replayer successfully finished.");
-
-    if (!dbg) {
-      LOG(info) << "Debugger was not launched before end of trace";
-      break;
-    }
-
-    // TODO return real exit code, if it's useful.
-    dbg->notify_exit_code(0);
-    GdbRequest req =
-        process_debugger_requests(timeline.current_session().last_task());
-    if (DREQ_RESTART == req.type) {
-      restart_session(req);
-      continue;
-    }
-    FATAL() << "Received continue request after end-of-trace.";
   }
 
   LOG(debug) << "debugger server exiting ...";
