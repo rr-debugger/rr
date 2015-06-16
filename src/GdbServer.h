@@ -112,7 +112,7 @@ private:
                                  const GdbRequest& req);
   bool at_target();
   void activate_debugger();
-  void maybe_restart_session(const GdbRequest& req);
+  void restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
   ReplayStatus replay_one_step();
   /**

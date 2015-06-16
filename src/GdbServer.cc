@@ -768,7 +768,7 @@ ReplayStatus GdbServer::replay_one_step() {
     GdbRequest req = process_debugger_requests(t);
     t = timeline.current_session().find_task(tuid);
     if (DREQ_RESTART == req.type) {
-      maybe_restart_session(req);
+      restart_session(req);
       return REPLAY_CONTINUE;
     }
     suppress_debugger_stop = req.suppress_debugger_stop;
@@ -867,7 +867,7 @@ void GdbServer::activate_debugger() {
   debugger_active = true;
 }
 
-void GdbServer::maybe_restart_session(const GdbRequest& req) {
+void GdbServer::restart_session(const GdbRequest& req) {
   assert(req.type == DREQ_RESTART);
   assert(dbg);
 
@@ -963,7 +963,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     GdbRequest req =
         process_debugger_requests(timeline.current_session().last_task());
     if (DREQ_RESTART == req.type) {
-      maybe_restart_session(req);
+      restart_session(req);
       continue;
     }
     FATAL() << "Received continue request after end-of-trace.";
