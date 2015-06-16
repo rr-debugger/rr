@@ -83,8 +83,7 @@ public:
 
 private:
   GdbServer(std::unique_ptr<GdbConnection>& dbg)
-      : dbg(std::move(dbg)),
-        stop_replaying_to_target(false) {}
+      : dbg(std::move(dbg)), stop_replaying_to_target(false) {}
 
   /**
    * If |req| is a magic-write command, interpret it and return true.
@@ -112,7 +111,7 @@ private:
   void activate_debugger();
   void restart_session(const GdbRequest& req);
   GdbRequest process_debugger_requests(Task* t);
-  ReplayStatus replay_one_step();
+  ReplayStatus replay_one_step(bool* detached);
   /**
    * If 'req' is a reverse-singlestep, try to obtain the resulting state
    * directly from ReplayTimeline's mark database. If that succeeds,

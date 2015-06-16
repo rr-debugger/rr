@@ -301,15 +301,6 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       // instructions.
       dbg->notify_stop(get_threadid(t), 0);
       return;
-    case DREQ_DETACH:
-      LOG(info) << ("(debugger detached from us, rr exiting)");
-      dbg->reply_detach();
-      // Don't orphan tracees: their VMs are inconsistent
-      // because we've been using emulated tracing, so they
-      // can't resume normal execution.  And we wouldn't
-      // want them continuing to execute even if they could.
-      exit(0);
-    // not reached
     default:
       /* fall through to next switch stmt */
       break;
@@ -536,6 +527,7 @@ Task* GdbServer::diverter_process_debugger_requests(
 
     switch (req->type) {
       case DREQ_RESTART:
+      case DREQ_DETACH:
         return nullptr;
 
       case DREQ_READ_SIGINFO: {
@@ -713,6 +705,11 @@ GdbRequest GdbServer::process_debugger_requests(Task* t) {
       LOG(debug) << "  request to restart at event " << req.restart.param;
       return req;
     }
+    if (req.type == DREQ_DETACH) {
+      LOG(debug) << "  debugger detached";
+      dbg->reply_detach();
+      return req;
+    }
 
     dispatch_debugger_request(t ? t->session() : timeline.current_session(), t,
                               req);
@@ -757,7 +754,7 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
   }
 }
 
-ReplayStatus GdbServer::replay_one_step() {
+ReplayStatus GdbServer::replay_one_step(bool* detached) {
   ReplayResult result;
   bool suppress_debugger_stop = false;
   Task* t = timeline.current_session().current_task();
@@ -765,6 +762,10 @@ ReplayStatus GdbServer::replay_one_step() {
   if (t && t->task_group()->tguid() == debuggee_tguid) {
     TaskUid tuid = t->tuid();
     GdbRequest req = process_debugger_requests(t);
+    if (DREQ_DETACH == req.type) {
+      *detached = true;
+      return REPLAY_EXITED;
+    }
     t = timeline.current_session().find_task(tuid);
     if (DREQ_RESTART == req.type) {
       restart_session(req);
@@ -824,9 +825,10 @@ bool GdbServer::at_target() {
   // group happens to be scheduled here.  We don't take
   // "attach to process" to mean "attach to thread-group
   // leader".
-  return timeline.current_session().current_trace_frame().time() > target.event &&
-      (!target.pid || t->tgid() == target.pid) &&
-      (!target.require_exec || t->vm()->execed());
+  return timeline.current_session().current_trace_frame().time() >
+             target.event &&
+         (!target.pid || t->tgid() == target.pid) &&
+         (!target.require_exec || t->vm()->execed());
 }
 
 /**
@@ -947,8 +949,13 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   activate_debugger();
 
   while (true) {
+    bool detached = false;
     if (!timeline.current_session().find_task_group(debuggee_tguid) ||
-        replay_one_step() == REPLAY_EXITED) {
+        replay_one_step(&detached) == REPLAY_EXITED) {
+      if (detached) {
+        break;
+      }
+
       LOG(info) << ("Replayer successfully finished.");
 
       // TODO return real exit code, if it's useful.
@@ -958,6 +965,9 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
       if (DREQ_RESTART == req.type) {
         restart_session(req);
         continue;
+      }
+      if (DREQ_DETACH == req.type) {
+        break;
       }
       FATAL() << "Received continue request after end-of-trace.";
     }

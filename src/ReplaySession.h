@@ -351,9 +351,7 @@ private:
    * able to poke around at that last task.  So we store it here
    * to allow processing debugger requests for it later.
    */
-  void set_last_task(Task* t) {
-    last_debugged_task = t;
-  }
+  void set_last_task(Task* t) { last_debugged_task = t; }
 
   const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
     return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
