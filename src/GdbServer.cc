@@ -871,6 +871,8 @@ void GdbServer::restart_session(const GdbRequest& req) {
   assert(req.type == DREQ_RESTART);
   assert(dbg);
 
+  timeline.remove_breakpoints_and_watchpoints();
+
   ReplayTimeline::Mark mark_to_restore;
   if (req.restart.type == RESTART_FROM_CHECKPOINT) {
     auto it = checkpoints.find(req.restart.param);
@@ -883,7 +885,6 @@ void GdbServer::restart_session(const GdbRequest& req) {
   } else if (req.restart.type == RESTART_FROM_PREVIOUS) {
     mark_to_restore = debugger_restart_mark;
   }
-  timeline.remove_breakpoints_and_watchpoints();
   if (mark_to_restore) {
     timeline.seek_to_mark(mark_to_restore);
     if (debugger_restart_mark) {
@@ -904,6 +905,22 @@ void GdbServer::restart_session(const GdbRequest& req) {
   // the same process no matter what is running when we hit the event.
   target.event = req.restart.param;
   timeline.seek_to_before_event(target.event);
+  do {
+    ReplayResult result =
+        timeline.replay_step(RUN_CONTINUE, RUN_FORWARD, target.event);
+    if (result.status == REPLAY_EXITED) {
+      LOG(info) << "Event was not reached before end of trace";
+      timeline.seek_to_before_event(target.event);
+      break;
+    }
+    if (result.break_status.task_exit &&
+        result.break_status.task->task_group()->tgid == target.pid &&
+        result.break_status.task->task_group()->task_set().size() == 1) {
+      // Debuggee task is about to exit. Stop here.
+      break;
+    }
+  } while (!at_target());
+  activate_debugger();
 }
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
@@ -937,10 +954,6 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 
   while (true) {
     while (true) {
-      if (!debugger_active && at_target()) {
-        activate_debugger();
-      }
-
       if (debugger_active &&
           !timeline.current_session().find_task_group(debuggee_tguid)) {
         // Our debugee must have exited.
