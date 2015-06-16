@@ -97,6 +97,7 @@ private:
   bool maybe_process_magic_read(Task* t, const GdbRequest& req);
   void dispatch_regs_request(const Registers& regs,
                              const ExtraRegisters& extra_regs);
+  enum ReportState { REPORT_NORMAL, REPORT_THREADS_DEAD };
   /**
    * Process the single debugger request |req|, made by |dbg| targeting
    * |t|, inside the session |session|.
@@ -106,12 +107,14 @@ private:
    * generic processing.
    */
   void dispatch_debugger_request(Session& session, Task* t,
-                                 const GdbRequest& req);
+                                 const GdbRequest& req, ReportState state);
   bool at_target();
   void activate_debugger();
   void restart_session(const GdbRequest& req);
-  GdbRequest process_debugger_requests(Task* t);
+  GdbRequest process_debugger_requests(Task* t,
+                                       ReportState state = REPORT_NORMAL);
   enum ContinueOrStop { CONTINUE_DEBUGGING, STOP_DEBUGGING };
+  bool detach_or_restart(const GdbRequest& req, ContinueOrStop* s);
   ContinueOrStop handle_exited_state();
   ContinueOrStop debug_one_step();
   /**
