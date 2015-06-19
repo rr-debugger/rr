@@ -7,7 +7,7 @@ int main(int argc, char* argv[]) {
   clock_t t;
 
   ALLOCATE_GUARD(buf, -1);
-  test_assert((t = times(buf)) != (clock_t) - 1);
+  test_assert((t = times(buf)) != (clock_t)-1);
   test_assert(buf->tms_cutime == 0);
   test_assert(buf->tms_utime >= 0);
   VERIFY_GUARD(buf);

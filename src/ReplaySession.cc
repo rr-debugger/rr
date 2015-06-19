@@ -432,11 +432,7 @@ static bool is_breakpoint_trap(Task* t) {
  * result in bad results.  Don't call this function from there; it's
  * not necessary.
  */
-enum ExecStateType {
-  UNKNOWN,
-  NOT_AT_TARGET,
-  AT_TARGET
-};
+enum ExecStateType { UNKNOWN, NOT_AT_TARGET, AT_TARGET };
 TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
                                           SignalDeterministic deterministic,
                                           ExecStateType exec_state,
@@ -1024,11 +1020,10 @@ Completion ReplaySession::skip_desched_ioctl(
   bool is_desched_syscall =
       (DESCHED_ARM == ds->type ? t->is_arm_desched_event_syscall()
                                : t->is_disarm_desched_event_syscall());
-  ASSERT(t, is_desched_syscall) << "Failed to reach desched ioctl; at "
-                                << t->syscall_name(
-                                       t->regs().original_syscallno()) << "("
-                                << t->regs().arg1() << ", " << t->regs().arg2()
-                                << ") instead";
+  ASSERT(t, is_desched_syscall)
+      << "Failed to reach desched ioctl; at "
+      << t->syscall_name(t->regs().original_syscallno()) << "("
+      << t->regs().arg1() << ", " << t->regs().arg2() << ") instead";
   t->finish_emulated_syscall();
   /* Emulate a return value of "0".  It's OK for us to hard-code
    * that value here, because the syscallbuf lib aborts if a
@@ -1640,7 +1635,8 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
     if (constraints.is_singlestep() &&
         (EV_SEGV_RDTSC == ev.type() || EV_SIGNAL_HANDLER == ev.type())) {
-      // We completed this RDTSC event, and that counts as a completed singlestep.
+      // We completed this RDTSC event, and that counts as a completed
+      // singlestep.
       result.break_status.singlestep_complete = true;
     }
 

@@ -19,14 +19,10 @@ public:
   /**
    * Create a recording session for the initial command line |argv|.
    */
-  enum {
-    DISABLE_SYSCALL_BUF = 0x01,
-    CPU_UNBOUND = 0x02
-  };
-  static shr_ptr create(const std::vector<std::string>& argv,
-                        uint32_t flags = 0,
-                        const std::vector<std::string>& extra_env =
-                            std::vector<std::string>());
+  enum { DISABLE_SYSCALL_BUF = 0x01, CPU_UNBOUND = 0x02 };
+  static shr_ptr create(
+      const std::vector<std::string>& argv, uint32_t flags = 0,
+      const std::vector<std::string>& extra_env = std::vector<std::string>());
 
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
   void set_ignore_sig(int ignore_sig) { this->ignore_sig = ignore_sig; }
@@ -80,11 +76,7 @@ private:
 
   virtual void on_create(Task* t);
 
-  enum ContinueType {
-    DONT_CONTINUE = 0,
-    CONTINUE,
-    CONTINUE_SYSCALL
-  };
+  enum ContinueType { DONT_CONTINUE = 0, CONTINUE, CONTINUE_SYSCALL };
   struct StepState {
     // Continue with this continuation type.
     ContinueType continue_type;

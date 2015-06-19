@@ -2,10 +2,7 @@
 
 #include "rrutil.h"
 
-enum {
-  PING,
-  PONG
-} last;
+enum { PING, PONG } last;
 
 pthread_once_t init_once = PTHREAD_ONCE_INIT;
 static void init_ping(void) { last = PONG; }

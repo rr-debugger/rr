@@ -1000,7 +1000,7 @@ static ReplayTimeline::Progress low_overhead_inter_checkpoint_interval = 500000;
  * low_overhead_inter_checkpoint_interval.
  */
 static ReplayTimeline::Progress
-expecting_reverse_exec_inter_checkpoint_interval = 100000;
+    expecting_reverse_exec_inter_checkpoint_interval = 100000;
 
 /**
  * Make each interval this much bigger than the previous.

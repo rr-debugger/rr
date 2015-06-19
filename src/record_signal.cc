@@ -67,8 +67,9 @@ static void restore_sigsegv_state(Task* t) {
 static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
 static bool is_ip_rdtsc(Task* t) {
   uint8_t insn[sizeof(rdtsc_insn)];
-  if (sizeof(insn) != t->read_bytes_fallible(t->ip().to_data_ptr<uint8_t>(),
-                                             sizeof(insn), insn)) {
+  if (sizeof(insn) !=
+      t->read_bytes_fallible(t->ip().to_data_ptr<uint8_t>(), sizeof(insn),
+                             insn)) {
     return false;
   }
   return !memcmp(insn, rdtsc_insn, sizeof(insn));

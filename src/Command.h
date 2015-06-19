@@ -16,10 +16,7 @@
 
 class TraceReader;
 
-enum OptionParameters {
-  NO_PARAMETER,
-  HAS_PARAMETER
-};
+enum OptionParameters { NO_PARAMETER, HAS_PARAMETER };
 struct OptionSpec {
   char short_name;
   const char* long_name;

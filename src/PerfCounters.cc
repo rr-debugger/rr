@@ -56,21 +56,17 @@ struct PmuConfig {
 };
 
 // XXX please only edit this if you really know what you're doing.
-static const PmuConfig
-pmu_configs[] = { { IntelBroadwell, "Intel Broadwell", 0x5101c4,
-                    0x5100c0,       0x5301cb,          true },
-                  { IntelHaswell, "Intel Haswell", 0x5101c4,
-                    0x5100c0,     0x5301cb,        true },
-                  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4,
-                    0x5100c0,       0x5301cb,           true },
-                  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4,
-                    0x5100c0,         0x5301cb,             true },
-                  { IntelNehalem, "Intel Nehalem", 0x5101c4,
-                    0x5100c0,     0x50011d,        true },
-                  { IntelWestmere, "Intel Westmere", 0x5101c4,
-                    0x5100c0,      0x50011d,         true },
-                  { IntelPenryn, "Intel Penryn", 0, 0, 0, false },
-                  { IntelMerom, "Intel Merom", 0, 0, 0, false }, };
+static const PmuConfig pmu_configs[] = {
+  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0x5100c0, 0x5301cb, true },
+  { IntelHaswell, "Intel Haswell", 0x5101c4, 0x5100c0, 0x5301cb, true },
+  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, true },
+  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0x5100c0, 0x5301cb,
+    true },
+  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0x5100c0, 0x50011d, true },
+  { IntelWestmere, "Intel Westmere", 0x5101c4, 0x5100c0, 0x50011d, true },
+  { IntelPenryn, "Intel Penryn", 0, 0, 0, false },
+  { IntelMerom, "Intel Merom", 0, 0, 0, false },
+};
 
 static string lowercase(const string& s) {
   string c = s;

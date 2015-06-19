@@ -1400,7 +1400,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   breakpoint_set_where_execution_resumed =
       vm()->get_breakpoint_type_at_addr(ip()) != TRAP_NONE;
-  ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
+  ptrace_if_alive(how, nullptr, (void*)(uintptr_t) sig);
   is_stopped = false;
   extra_registers_known = false;
   if (RESUME_WAIT == wait_how) {
@@ -1947,7 +1947,7 @@ static void fixup_syscall_registers(Registers& registers) {
     // This doesn't matter (and we should not do this) when exiting a
     // sigreturn syscall, since it will restore the original RCX and we don't
     // want to clobber that.
-    registers.set_cx((intptr_t) - 1);
+    registers.set_cx((intptr_t)-1);
   } else if (registers.arch() == x86) {
     // The x86 SYSENTER handling in Linux modifies EBP and EFLAGS on entry.
     // EBP is the potential sixth syscall parameter, stored on the user stack.
@@ -2138,15 +2138,16 @@ static void set_up_seccomp_filter(Session& session) {
     // dummy filter makes ptrace-event behavior consistent whether or not
     // we enable syscall buffering, and more importantly, consistent whether
     // or not the tracee installs its own seccomp filter.
-    struct sock_filter filter[] = { TRACE_PROCESS, };
+    struct sock_filter filter[] = {
+      TRACE_PROCESS,
+    };
     prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
     prog.filter = filter;
   }
 
   /* Note: the filter is installed only for record. This call
    * will be emulated in the replay */
-  if (0 >
-      prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t) & prog, 0, 0)) {
+  if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {
     FATAL() << "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
                "kernel is too old.";
   }

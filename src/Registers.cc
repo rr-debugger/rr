@@ -97,8 +97,8 @@ template <> struct RegisterInfo<rr::X64Arch> {
 #define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)                       \
   RegisterInit(DREG_##gdb_suffix,                                              \
                RegisterValue(#name, offsetof(arch::user_regs_struct, name),    \
-                             sizeof(((arch::user_regs_struct*)0)               \
-                                        ->name) extra_ctor_args))
+                             sizeof(((arch::user_regs_struct*)0)->name)        \
+                             extra_ctor_args))
 #define RV_X86(gdb_suffix, name)                                               \
   RV_ARCH(gdb_suffix, name, rr::X86Arch, /* empty */)
 #define RV_X64(gdb_suffix, name)                                               \
@@ -156,26 +156,35 @@ RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
   RV_X86_WITH_MASK(ORIG_EAX, orig_eax, 0),
 };
 
-RegisterInfo<rr::X64Arch>::Table RegisterInfo<
-    rr::X64Arch>::registers = { RV_X64(RAX, rax), RV_X64(RCX, rcx),
-                                RV_X64(RDX, rdx), RV_X64(RBX, rbx),
-                                RV_X64_WITH_MASK(RSP, rsp, 0), RV_X64(RBP, rbp),
-                                RV_X64(RSI, rsi), RV_X64(RDI, rdi),
-                                RV_X64(R8, r8), RV_X64(R9, r9),
-                                RV_X64(R10, r10), RV_X64(R11, r11),
-                                RV_X64(R12, r12), RV_X64(R13, r13),
-                                RV_X64(R14, r14), RV_X64(R15, r15),
-                                RV_X64(RIP, rip),
-                                RV_X64_WITH_MASK(64_EFLAGS, eflags,
-                                                 deterministic_eflags_mask),
-                                RV_X64_WITH_MASK(64_CS, cs, 0),
-                                RV_X64_WITH_MASK(64_SS, ss, 0),
-                                RV_X64_WITH_MASK(64_DS, ds, 0),
-                                RV_X64_WITH_MASK(64_ES, es, 0),
-                                RV_X64(64_FS, fs), RV_X64(64_GS, gs),
-                                // The comparison for this is handled specially
-                                // elsewhere.
-                                RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0), };
+RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
+  RV_X64(RAX, rax),
+  RV_X64(RCX, rcx),
+  RV_X64(RDX, rdx),
+  RV_X64(RBX, rbx),
+  RV_X64_WITH_MASK(RSP, rsp, 0),
+  RV_X64(RBP, rbp),
+  RV_X64(RSI, rsi),
+  RV_X64(RDI, rdi),
+  RV_X64(R8, r8),
+  RV_X64(R9, r9),
+  RV_X64(R10, r10),
+  RV_X64(R11, r11),
+  RV_X64(R12, r12),
+  RV_X64(R13, r13),
+  RV_X64(R14, r14),
+  RV_X64(R15, r15),
+  RV_X64(RIP, rip),
+  RV_X64_WITH_MASK(64_EFLAGS, eflags, deterministic_eflags_mask),
+  RV_X64_WITH_MASK(64_CS, cs, 0),
+  RV_X64_WITH_MASK(64_SS, ss, 0),
+  RV_X64_WITH_MASK(64_DS, ds, 0),
+  RV_X64_WITH_MASK(64_ES, es, 0),
+  RV_X64(64_FS, fs),
+  RV_X64(64_GS, gs),
+  // The comparison for this is handled specially
+  // elsewhere.
+  RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0),
+};
 
 #undef RV_X64
 #undef RV_X86
@@ -409,9 +418,9 @@ template <>
   bool match = compare_register_files_internal(name1, reg1, name2, reg2,
                                                mismatch_behavior);
 
-  ASSERT(t, !bail_error || match) << "Fatal register mismatch (ticks/rec:"
-                                  << t->tick_count() << "/"
-                                  << t->current_trace_frame().ticks() << ")";
+  ASSERT(t, !bail_error || match)
+      << "Fatal register mismatch (ticks/rec:" << t->tick_count() << "/"
+      << t->current_trace_frame().ticks() << ")";
 
   if (match && mismatch_behavior == LOG_MISMATCHES) {
     LOG(info) << "(register files are the same for " << name1 << " and "
@@ -541,7 +550,7 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
   assert(arch() == x86 && NativeArch::arch() == x86_64);
   convert_x86<to_x86_narrow, to_x86_same>(
       u.x86regs, *reinterpret_cast<X64Arch::user_regs_struct*>(
-                      const_cast<struct user_regs_struct*>(&ptrace_regs)));
+                     const_cast<struct user_regs_struct*>(&ptrace_regs)));
 }
 
 /**

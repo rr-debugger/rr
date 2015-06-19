@@ -54,7 +54,7 @@ static void* thread(void* idp) {
 
   atomic_printf("  (%d wrote %d)\n", id, num_written);
 
-  pthread_exit((void*)(intptr_t)num_written);
+  pthread_exit((void*)(intptr_t) num_written);
 }
 
 int main(int argc, char* argv[]) {
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
 
   for (i = 0; i < NUM_THREADS; ++i) {
     test_assert(0 ==
-                pthread_create(&threads[i], NULL, thread, (void*)(intptr_t)i));
+                pthread_create(&threads[i], NULL, thread, (void*)(intptr_t) i));
   }
 
   for (i = 0; i < NUM_TRIALS; ++i) {

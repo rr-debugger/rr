@@ -62,9 +62,10 @@ static void install_filter(void) {
        system calls */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
   };
-  struct sock_fprog prog = { .len = (unsigned short)(sizeof(filter) /
-                                                     sizeof(filter[0])),
-                             .filter = filter, };
+  struct sock_fprog prog = {
+    .len = (unsigned short)(sizeof(filter) / sizeof(filter[0])),
+    .filter = filter,
+  };
   int ret;
 
   ret = syscall(RR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog);

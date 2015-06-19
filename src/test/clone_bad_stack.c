@@ -5,8 +5,8 @@
 int main(int argc, char* argv[]) {
   int status = -1;
 
-  if (syscall(SYS_clone, SIGCHLD, (intptr_t) - 1, (intptr_t) - 1,
-              (intptr_t) - 1, (intptr_t) - 1) == 0) {
+  if (syscall(SYS_clone, SIGCHLD, (intptr_t)-1, (intptr_t)-1, (intptr_t)-1,
+              (intptr_t)-1) == 0) {
     _exit(0);
   }
 

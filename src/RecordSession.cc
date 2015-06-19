@@ -485,10 +485,9 @@ static void maybe_discard_syscall_interruption(Task* t, int ret) {
   if (0 > ret) {
     syscall_not_restarted(t);
   } else {
-    ASSERT(t, syscallno == ret) << "Interrupted call was "
-                                << t->syscall_name(syscallno)
-                                << " and sigreturn claims to be restarting "
-                                << t->syscall_name(ret);
+    ASSERT(t, syscallno == ret)
+        << "Interrupted call was " << t->syscall_name(syscallno)
+        << " and sigreturn claims to be restarting " << t->syscall_name(ret);
   }
 }
 

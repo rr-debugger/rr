@@ -89,12 +89,8 @@ public:
    *
    *   50ms * (500000rcb / 10ms) / 10event = 250000 rcb / event
    */
-  enum {
-    DEFAULT_MAX_TICKS = 250000
-  };
-  enum {
-    DEFAULT_MAX_EVENTS = 10
-  };
+  enum { DEFAULT_MAX_TICKS = 250000 };
+  enum { DEFAULT_MAX_EVENTS = 10 };
 
   Scheduler(RecordSession& session)
       : session(session),

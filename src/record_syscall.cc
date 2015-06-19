@@ -377,10 +377,7 @@ struct TaskSyscallState {
    * otherwise returns 'sw'.
    */
   Switchable done_preparing(Switchable sw);
-  enum WriteBack {
-    WRITE_BACK,
-    NO_WRITE_BACK
-  };
+  enum WriteBack { WRITE_BACK, NO_WRITE_BACK };
   /**
    * Called when a syscall exits to copy results from scratch memory to their
    * original destinations, update registers, etc.
@@ -997,10 +994,7 @@ static Switchable prepare_shmctl(Task* t, TaskSyscallState& syscall_state,
   return PREVENT_SWITCH;
 }
 
-enum SemctlDereference {
-  DEREFERENCE,
-  USE_DIRECTLY
-};
+enum SemctlDereference { DEREFERENCE, USE_DIRECTLY };
 
 template <typename Arch>
 static Switchable prepare_semctl(Task* t, TaskSyscallState& syscall_state,
@@ -1204,30 +1198,30 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
    * Since the size may vary across architectures we mask it out here to check
    * only the type + number. */
   switch (IOCTL_MASK_SIZE(request)) {
-    case IOCTL_MASK_SIZE(VIDIOC_QUERYCAP) :
-    case IOCTL_MASK_SIZE(VIDIOC_ENUM_FMT) :
-    case IOCTL_MASK_SIZE(VIDIOC_G_FMT) :
-    case IOCTL_MASK_SIZE(VIDIOC_S_FMT) :
-    case IOCTL_MASK_SIZE(VIDIOC_TRY_FMT) :
-    case IOCTL_MASK_SIZE(VIDIOC_G_PARM) :
-    case IOCTL_MASK_SIZE(VIDIOC_S_PARM) :
-    case IOCTL_MASK_SIZE(VIDIOC_REQBUFS) :
-    case IOCTL_MASK_SIZE(VIDIOC_QUERYBUF) :
-    case IOCTL_MASK_SIZE(VIDIOC_QBUF) :
-    case IOCTL_MASK_SIZE(VIDIOC_G_CTRL) :
-    case IOCTL_MASK_SIZE(VIDIOC_S_CTRL) :
-    case IOCTL_MASK_SIZE(VFAT_IOCTL_READDIR_BOTH) :
+    case IOCTL_MASK_SIZE(VIDIOC_QUERYCAP):
+    case IOCTL_MASK_SIZE(VIDIOC_ENUM_FMT):
+    case IOCTL_MASK_SIZE(VIDIOC_G_FMT):
+    case IOCTL_MASK_SIZE(VIDIOC_S_FMT):
+    case IOCTL_MASK_SIZE(VIDIOC_TRY_FMT):
+    case IOCTL_MASK_SIZE(VIDIOC_G_PARM):
+    case IOCTL_MASK_SIZE(VIDIOC_S_PARM):
+    case IOCTL_MASK_SIZE(VIDIOC_REQBUFS):
+    case IOCTL_MASK_SIZE(VIDIOC_QUERYBUF):
+    case IOCTL_MASK_SIZE(VIDIOC_QBUF):
+    case IOCTL_MASK_SIZE(VIDIOC_G_CTRL):
+    case IOCTL_MASK_SIZE(VIDIOC_S_CTRL):
+    case IOCTL_MASK_SIZE(VFAT_IOCTL_READDIR_BOTH):
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
 
-    case IOCTL_MASK_SIZE(TIOCGPTN) :
+    case IOCTL_MASK_SIZE(TIOCGPTN):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
   }
 
   /* These ioctls are mostly regular but require additional recording. */
   switch (IOCTL_MASK_SIZE(request)) {
-    case IOCTL_MASK_SIZE(VIDIOC_DQBUF) : {
+    case IOCTL_MASK_SIZE(VIDIOC_DQBUF): {
       if (size == sizeof(typename Arch::v4l2_buffer)) {
         syscall_state.reg_parameter(3, size, IN_OUT);
         syscall_state.after_syscall_action(record_v4l2_buffer_contents<Arch>);
@@ -1508,7 +1502,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   }
   if (emulate) {
     Registers r = t->regs();
-    r.set_arg1((intptr_t) - 1);
+    r.set_arg1((intptr_t)-1);
     t->set_regs(r);
   }
   return PREVENT_SWITCH;
@@ -2538,10 +2532,7 @@ void rec_prepare_restart_syscall(Task* t) {
   syscall_state_property.remove(*t);
 }
 
-enum ScratchAddrType {
-  FIXED_ADDRESS,
-  DYNAMIC_ADDRESS
-};
+enum ScratchAddrType { FIXED_ADDRESS, DYNAMIC_ADDRESS };
 /* Pointer used when running RR in WINE. Memory below this address is
    unmapped by WINE immediately after exec, so start the scratch buffer
    here. */

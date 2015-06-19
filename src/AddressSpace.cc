@@ -848,8 +848,8 @@ void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
 void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
 
-  auto unmapper = [this](const Mapping& m, const MappableResource& r,
-                         const Mapping& rem) {
+  auto unmapper =
+      [this](const Mapping& m, const MappableResource& r, const Mapping& rem) {
     LOG(debug) << "  unmapping (" << rem << ") ...";
 
     mem.erase(m);
@@ -1018,12 +1018,7 @@ struct VerifyAddressSpace {
   /* Iterator over mappings in |as|. */
   const_iterator it;
   /* Which mapping-checking phase we're in.  See below. */
-  enum {
-    NO_PHASE,
-    MERGING_CACHED,
-    INITING_KERNEL,
-    MERGING_KERNEL
-  } phase;
+  enum { NO_PHASE, MERGING_CACHED, INITING_KERNEL, MERGING_KERNEL } phase;
 };
 
 void VerifyAddressSpace::assert_segments_match(Task* t) {
@@ -1127,20 +1122,21 @@ void AddressSpace::fix_stack_segment_start(const Mapping& mapping,
   Mapping km(info.start_addr, info.end_addr, info.prot, info.flags,
              info.file_offset);
   PseudoDevice psdev = pseudodevice_for_name(info.name);
-  MappableResource kr = MappableResource(
-      FileId(info.dev_major, info.dev_minor, info.inode, psdev), info.name)
-                            .to_kernel();
+  MappableResource kr = MappableResource(FileId(info.dev_major, info.dev_minor,
+                                                info.inode, psdev),
+                                         info.name).to_kernel();
 
   if (vas->INITING_KERNEL == vas->phase) {
-    assert(kr == vas->r
-                 // XXX not-so-pretty hack.  If the mapped file
-                 // lives in our replayer's emulated fs, then it
-                 // will have a real system device/inode
-                 // descriptor.  We /could/ initialize the
-                 // MappableResource with that descriptor, but
-                 // we rely on quick access to the recorded
-                 // (i.e. emulated in replay) device/inode for
-                 // gc.  So this suffices for now.
+    assert(kr ==
+               vas->r
+               // XXX not-so-pretty hack.  If the mapped file
+               // lives in our replayer's emulated fs, then it
+               // will have a real system device/inode
+               // descriptor.  We /could/ initialize the
+               // MappableResource with that descriptor, but
+               // we rely on quick access to the recorded
+               // (i.e. emulated in replay) device/inode for
+               // gc.  So this suffices for now.
            ||
            string::npos != kr.fsname.find(SHMEM_FS "/rr-emufs") ||
            string::npos != kr.fsname.find(SHMEM_FS2 "/rr-emufs"));

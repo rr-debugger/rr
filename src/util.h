@@ -16,10 +16,7 @@
 class Task;
 class TraceFrame;
 
-enum {
-  MAX_ERRNO = 4095,
-  EMULATE_RET_TRAP
-};
+enum { MAX_ERRNO = 4095, EMULATE_RET_TRAP };
 
 template <typename T, size_t N> constexpr size_t array_length(T (&array)[N]) {
   return N;
@@ -63,15 +60,9 @@ template <typename T> bool type_has_no_holes() {
 
 #define PREFIX_FOR_EMPTY_MMAPED_REGIONS "/tmp/rr-emptyfile-"
 
-enum Completion {
-  COMPLETE,
-  INCOMPLETE
-};
+enum Completion { COMPLETE, INCOMPLETE };
 
-enum Switchable {
-  PREVENT_SWITCH,
-  ALLOW_SWITCH
-};
+enum Switchable { PREVENT_SWITCH, ALLOW_SWITCH };
 
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
@@ -156,13 +147,7 @@ remote_ptr<void> floor_page_size(remote_ptr<void> addr);
 size_t page_size();
 
 /** Return the default action of |sig|. */
-enum signal_action {
-  DUMP_CORE,
-  TERMINATE,
-  CONTINUE,
-  STOP,
-  IGNORE
-};
+enum signal_action { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
 signal_action default_action(int sig);
 
 /**

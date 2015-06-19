@@ -115,10 +115,7 @@ public:
    */
   void write_frame(const TraceFrame& frame);
 
-  enum RecordInTrace {
-    DONT_RECORD_IN_TRACE,
-    RECORD_IN_TRACE
-  };
+  enum RecordInTrace { DONT_RECORD_IN_TRACE, RECORD_IN_TRACE };
   /**
    * Write TraceMappedRegion record to the trace.
    * If this returns RECORD_IN_TRACE, then the data for the map should be
@@ -192,11 +189,7 @@ public:
    */
   TraceFrame read_frame();
 
-  enum MappedDataSource {
-    SOURCE_TRACE,
-    SOURCE_FILE,
-    SOURCE_ZERO
-  };
+  enum MappedDataSource { SOURCE_TRACE, SOURCE_FILE, SOURCE_ZERO };
   /**
    * Where to obtain data for the mapped region.
    */

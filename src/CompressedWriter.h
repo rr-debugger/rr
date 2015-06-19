@@ -64,10 +64,7 @@ public:
   }
 
 protected:
-  enum WaitFlag {
-    WAIT,
-    NOWAIT
-  };
+  enum WaitFlag { WAIT, NOWAIT };
   void update_reservation(WaitFlag wait_flag);
 
   static void* compression_thread_callback(void* p);

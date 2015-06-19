@@ -60,10 +60,7 @@ enum EventType {
   EV_LAST
 };
 
-enum HasExecInfo {
-  NO_EXEC_INFO,
-  HAS_EXEC_INFO
-};
+enum HasExecInfo { NO_EXEC_INFO, HAS_EXEC_INFO };
 
 /**
  * An encoding of the relevant bits of |struct event| that can be
@@ -146,10 +143,7 @@ struct DeschedEvent : public BaseEvent {
  * Signal events track signals through the delivery phase, and if the
  * signal finds a sighandler, on to the end of the handling face.
  */
-enum SignalDeterministic {
-  NONDETERMINISTIC_SIG = 0,
-  DETERMINISTIC_SIG = 1
-};
+enum SignalDeterministic { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
 struct SignalEvent : public BaseEvent {
   /**
    * Signal |signo| is the signum, and |deterministic| is true

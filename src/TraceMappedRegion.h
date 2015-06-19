@@ -22,10 +22,7 @@ class TraceReader;
  */
 class TraceMappedRegion {
 public:
-  enum Type {
-    MMAP,
-    SYSV_SHM
-  };
+  enum Type { MMAP, SYSV_SHM };
   TraceMappedRegion(Type type, const std::string& filename,
                     const struct stat& stat, remote_ptr<void> start,
                     remote_ptr<void> end, uint64_t file_offset_pages = 0)

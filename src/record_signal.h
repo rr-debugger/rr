@@ -12,11 +12,7 @@ const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
 void disarm_desched_event(Task* t);
 void arm_desched_event(Task* t);
 
-enum SignalHandled {
-  SIGNAL_HANDLED,
-  SIGNAL_PTRACE_STOP,
-  DEFER_SIGNAL
-};
+enum SignalHandled { SIGNAL_HANDLED, SIGNAL_PTRACE_STOP, DEFER_SIGNAL };
 /**
  * Handle the given signal for |t|.
  * Returns SIGNAL_HANDLED if we handled the signal, SIGNAL_PTRACE_STOP if we

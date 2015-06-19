@@ -34,7 +34,7 @@ static void child(int num_syscalls) {
   pthread_t t;
 
   test_assert(0 == pthread_create(&t, NULL, child_thread,
-                                  (void*)(uintptr_t)num_syscalls));
+                                  (void*)(uintptr_t) num_syscalls));
   pthread_join(t, NULL);
 
   exit(0);

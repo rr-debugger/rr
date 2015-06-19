@@ -15,14 +15,8 @@ struct syscallbuf_hdr;
 /**
  * The state of a (dis)arm-desched-event ioctl that's being processed.
  */
-enum ReplayDeschedType {
-  DESCHED_ARM,
-  DESCHED_DISARM
-};
-enum ReplayDeschedEnterExit {
-  DESCHED_ENTER,
-  DESCHED_EXIT
-};
+enum ReplayDeschedType { DESCHED_ARM, DESCHED_DISARM };
+enum ReplayDeschedEnterExit { DESCHED_ENTER, DESCHED_EXIT };
 struct ReplayDeschedState {
   /* Is this an arm or disarm request? */
   ReplayDeschedType type;
@@ -108,15 +102,9 @@ enum ReplayTraceStepType {
   TSTEP_RETIRE,
 };
 
-enum ExecOrEmulate {
-  EXEC = 0,
-  EMULATE = 1
-};
+enum ExecOrEmulate { EXEC = 0, EMULATE = 1 };
 
-enum ExecOrEmulateReturn {
-  EXEC_RETURN = 0,
-  EMULATE_RETURN = 1
-};
+enum ExecOrEmulateReturn { EXEC_RETURN = 0, EMULATE_RETURN = 1 };
 
 /**
  * rep_trace_step is saved in Session and cloned with its Session, so it needs
@@ -385,11 +373,7 @@ private:
   void check_pending_sig(Task* t);
   void continue_or_step(Task* t, const StepConstraints& constraints,
                         int64_t tick_period = 0);
-  enum ExecStateType {
-    UNKNOWN,
-    NOT_AT_TARGET,
-    AT_TARGET
-  };
+  enum ExecStateType { UNKNOWN, NOT_AT_TARGET, AT_TARGET };
   TrapType compute_trap_type(Task* t, int target_sig,
                              SignalDeterministic deterministic,
                              ExecStateType exec_state,

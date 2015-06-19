@@ -75,11 +75,7 @@ struct ReplayFlags {
   // created at exec() (after the fork).
   //
   // We force choosers to specify which they mean.
-  enum {
-    CREATED_NONE,
-    CREATED_EXEC,
-    CREATED_FORK
-  } process_created_how;
+  enum { CREATED_NONE, CREATED_EXEC, CREATED_FORK } process_created_how;
 
   // Only open a debug socket, don't launch the debugger too.
   bool dont_launch_debugger;

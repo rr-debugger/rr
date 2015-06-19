@@ -788,16 +788,10 @@ private:
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);
   void update_watchpoint_values(remote_ptr<void> start, remote_ptr<void> end);
-  enum WatchpointFilter {
-    ALL_WATCHPOINTS,
-    CHANGED_WATCHPOINTS
-  };
+  enum WatchpointFilter { ALL_WATCHPOINTS, CHANGED_WATCHPOINTS };
   std::vector<WatchConfig> get_watchpoints_internal(WatchpointFilter filter);
 
-  enum WillSetTaskState {
-    SETTING_TASK_STATE,
-    NOT_SETTING_TASK_STATE
-  };
+  enum WillSetTaskState { SETTING_TASK_STATE, NOT_SETTING_TASK_STATE };
   std::vector<WatchConfig> get_watch_configs(
       WillSetTaskState will_set_task_state);
 
@@ -832,10 +826,7 @@ private:
    * contiguous mapping after |addr| within the region is seen.
    * Default is to iterate all mappings in the region.
    */
-  enum {
-    ITERATE_DEFAULT,
-    ITERATE_CONTIGUOUS
-  };
+  enum { ITERATE_DEFAULT, ITERATE_CONTIGUOUS };
   void for_each_in_range(
       remote_ptr<void> addr, ssize_t num_bytes,
       std::function<void(const Mapping& m, const MappableResource& r,
@@ -856,11 +847,7 @@ private:
 
   template <typename Arch> void at_preload_init_arch(Task* t);
 
-  enum {
-    EXEC_BIT = 1 << 0,
-    READ_BIT = 1 << 1,
-    WRITE_BIT = 1 << 2
-  };
+  enum { EXEC_BIT = 1 << 0, READ_BIT = 1 << 1, WRITE_BIT = 1 << 2 };
 
   /** Return the access bits above needed to watch |type|. */
   static int access_bits_of(WatchType type);

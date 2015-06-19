@@ -42,9 +42,7 @@ inline std::ostream& operator<<(std::ostream& o, const GdbThreadId& t) {
  * many bytes of |value| are valid, if any.
  */
 struct GdbRegisterValue {
-  enum {
-    MAX_SIZE = Registers::MAX_SIZE
-  };
+  enum { MAX_SIZE = Registers::MAX_SIZE };
   GdbRegister name;
   uint8_t value[MAX_SIZE];
   size_t size;
@@ -58,7 +56,7 @@ struct GdbRegisterValue {
 struct GdbRegisterFile {
   std::vector<GdbRegisterValue> regs;
 
-  GdbRegisterFile(size_t n_regs) : regs(n_regs) {};
+  GdbRegisterFile(size_t n_regs) : regs(n_regs){};
 
   size_t total_registers() const { return regs.size(); }
 };
@@ -203,10 +201,7 @@ public:
    * This function is infallible: either it will return a valid
    * debugging context, or it won't return.
    */
-  enum ProbePort {
-    DONT_PROBE = 0,
-    PROBE_PORT
-  };
+  enum ProbePort { DONT_PROBE = 0, PROBE_PORT };
   struct Features {
     Features() : reverse_execution(true) {}
     bool reverse_execution;

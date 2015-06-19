@@ -13,10 +13,7 @@
 #include "ReplaySession.h"
 #include "TraceFrame.h"
 
-enum RunDirection {
-  RUN_FORWARD,
-  RUN_BACKWARD
-};
+enum RunDirection { RUN_FORWARD, RUN_BACKWARD };
 
 /**
  * This class manages a set of ReplaySessions corresponding to different points
@@ -169,11 +166,10 @@ public:
    * running backward will ignore the initial "hit" of the breakpoint; this is
    * what gdb expects.
    */
-  ReplayResult replay_step(RunCommand command = RUN_CONTINUE,
-                           RunDirection direction = RUN_FORWARD,
-                           TraceFrame::Time stop_at_time = 0,
-                           std::function<bool()> interrupt_check =
-                               never_interrupt);
+  ReplayResult replay_step(
+      RunCommand command = RUN_CONTINUE, RunDirection direction = RUN_FORWARD,
+      TraceFrame::Time stop_at_time = 0,
+      std::function<bool()> interrupt_check = never_interrupt);
 
   /**
    * Try to identify an existing Mark which is known to be one singlestep

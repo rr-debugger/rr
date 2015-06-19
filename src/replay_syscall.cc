@@ -84,10 +84,7 @@ template <typename Arch> struct syscall_defs {
 
 #endif // CHECK_SYSCALL_NUMBERS
 
-enum SyscallEntryOrExit {
-  SYSCALL_ENTRY,
-  SYSCALL_EXIT
-};
+enum SyscallEntryOrExit { SYSCALL_ENTRY, SYSCALL_EXIT };
 
 /**
  * Return the symbolic name of |state|, or "???state" if unknown.
@@ -202,10 +199,9 @@ static void init_scratch_memory(Task* t) {
     AutoRemoteSyscalls remote(t);
     map_addr = remote.mmap_syscall(t->scratch_ptr, sz, prot, flags, -1, 0);
   }
-  ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped "
-                                        << mapped_region.start()
-                                        << " during recording, but " << map_addr
-                                        << " in replay";
+  ASSERT(t, t->scratch_ptr == map_addr)
+      << "scratch mapped " << mapped_region.start() << " during recording, but "
+      << map_addr << " in replay";
 
   t->vm()->map(map_addr, sz, prot, flags, 0,
                MappableResource::scratch(t->rec_tid));
@@ -470,10 +466,7 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
  * need to be manually updated, pass |DONT_NOTE_TASK_MAP| and update
  * it manually.
  */
-enum NoteTaskMap {
-  DONT_NOTE_TASK_MAP = 0,
-  NOTE_TASK_MAP
-};
+enum NoteTaskMap { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
 
 static void finish_direct_mmap(
     AutoRemoteSyscalls& remote, const TraceFrame& trace_frame,

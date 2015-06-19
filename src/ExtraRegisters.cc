@@ -166,8 +166,8 @@ template <typename T> static vector<uint8_t> to_vector(const T& v) {
   return result;
 }
 
-vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(SupportedArch arch)
-    const {
+vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
+    SupportedArch arch) const {
   assert(format_ == XSAVE);
   switch (arch) {
     case x86:

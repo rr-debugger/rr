@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
 
   for (i = 0; i < NUM_THREADS; ++i) {
     test_assert(0 ==
-                pthread_create(&threads[i], NULL, thread, (void*)(intptr_t)i));
+                pthread_create(&threads[i], NULL, thread, (void*)(intptr_t) i));
   }
   for (i = 0; i < NUM_THREADS; ++i) {
     test_assert(0 == pthread_join(threads[i], NULL));

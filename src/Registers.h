@@ -48,9 +48,7 @@ const uintptr_t X86_DF_FLAG = 0x400;
  */
 class Registers {
 public:
-  enum {
-    MAX_SIZE = 16
-  };
+  enum { MAX_SIZE = 16 };
 
   Registers(SupportedArch a = SupportedArch(-1)) : arch_(a) {
     memset(&u, 0, sizeof(u));

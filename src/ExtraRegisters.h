@@ -46,10 +46,7 @@ public:
    * has more than 512 bytes then it's an XSAVE(64) area, otherwise it's just
    * the FXSAVE(64) area.
    */
-  enum Format {
-    NONE,
-    XSAVE
-  };
+  enum Format { NONE, XSAVE };
 
   // Set values from raw data
   void set_to_raw_data(Format format, std::vector<uint8_t>& consume_data) {

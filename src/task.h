@@ -40,9 +40,7 @@ struct syscallbuf_record;
  * all zeroes.
  */
 struct ReturnAddressList {
-  enum {
-    COUNT = 8
-  };
+  enum { COUNT = 8 };
   remote_ptr<void> addresses[COUNT];
 
   bool operator==(const ReturnAddressList& other) const {
@@ -551,10 +549,12 @@ public:
    * ip() is immediately after the syscall instruction.
    */
   bool is_in_traced_syscall() {
-    return ip() == as->traced_syscall_ip().increment_by_syscall_insn_length(
-                       arch()) ||
-           ip() == as->privileged_traced_syscall_ip()
-                       .increment_by_syscall_insn_length(arch());
+    return ip() ==
+               as->traced_syscall_ip().increment_by_syscall_insn_length(
+                   arch()) ||
+           ip() ==
+               as->privileged_traced_syscall_ip()
+                   .increment_by_syscall_insn_length(arch());
   }
 
   /**
@@ -565,10 +565,12 @@ public:
    * instruction.
    */
   bool is_in_untraced_syscall() {
-    return ip() == as->untraced_syscall_ip().increment_by_syscall_insn_length(
-                       arch()) ||
-           ip() == as->privileged_untraced_syscall_ip()
-                       .increment_by_syscall_insn_length(arch());
+    return ip() ==
+               as->untraced_syscall_ip().increment_by_syscall_insn_length(
+                   arch()) ||
+           ip() ==
+               as->privileged_untraced_syscall_ip()
+                   .increment_by_syscall_insn_length(arch());
   }
 
   /**

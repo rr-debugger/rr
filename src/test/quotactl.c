@@ -46,8 +46,8 @@ int main(int argc, char* argv[]) {
   int ret;
 
   find_home_device();
-  ret = quotactl(QCMD(Q_GETQUOTA, USRQUOTA), home_device, getuid(),
-                 (caddr_t) & dq);
+  ret =
+      quotactl(QCMD(Q_GETQUOTA, USRQUOTA), home_device, getuid(), (caddr_t)&dq);
   if (ret < 0 && errno == ENOSYS) {
     atomic_puts("Quotas not supported in this kernel; aborting test");
   } else if (ret < 0 && errno == ESRCH) {

@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
   breakpoint();
 
   fix_addr =
-      (char*)(((uintptr_t) & v - 256 * 1024) & ~(uintptr_t)(PAGE_SIZE - 1));
+      (char*)(((uintptr_t)&v - 256 * 1024) & ~(uintptr_t)(PAGE_SIZE - 1));
   p = mmap(fix_addr, PAGE_SIZE, PROT_READ | PROT_WRITE,
            MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   test_assert(p == fix_addr);

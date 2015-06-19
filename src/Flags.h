@@ -15,27 +15,18 @@
  * Command line arguments for rr
  */
 struct Flags {
-  enum {
-    CHECKSUM_NONE = -3,
-    CHECKSUM_SYSCALL = -2,
-    CHECKSUM_ALL = -1
-  };
+  enum { CHECKSUM_NONE = -3, CHECKSUM_SYSCALL = -2, CHECKSUM_ALL = -1 };
   /* When to generate or check memory checksums. One of CHECKSUM_NONE,
    * CHECKSUM_SYSCALL or CHECKSUM_ALL, or a positive integer representing the
    * event time at which to start checksumming.
    */
   int checksum;
 
-  enum {
-    DUMP_ON_ALL = 10000,
-    DUMP_ON_NONE = -DUMP_ON_ALL
-  };
+  enum { DUMP_ON_ALL = 10000, DUMP_ON_NONE = -DUMP_ON_ALL };
   /* event(s) to create memory dumps for */
   TraceFrame::Time dump_on; // event
 
-  enum {
-    DUMP_AT_NONE = -1
-  };
+  enum { DUMP_AT_NONE = -1 };
   /* time at which to create memory dump */
   int dump_at; // global time
 

@@ -50,11 +50,7 @@
 class remote_code_ptr;
 class Task;
 
-enum SupportedArch {
-  x86,
-  x86_64,
-  SupportedArch_MAX = x86_64
-};
+enum SupportedArch { x86, x86_64, SupportedArch_MAX = x86_64 };
 
 namespace rr {
 
@@ -978,9 +974,7 @@ struct BaseArch : public wordsize, public FcntlConstants {
   // The 'size' parameter to pass to rt_sigaction. Only this value works,
   // even though sizeof(sigset_t) > 8 (it's actually 128 with kernel 3.16,
   // as above).
-  enum {
-    sigaction_sigset_size = 8
-  };
+  enum { sigaction_sigset_size = 8 };
 
   struct tms {
     clock_t tms_utime;

@@ -88,8 +88,9 @@ void CompressedWriter::write(const void* data, size_t size) {
     size -= amount;
   }
 
-  if (!error && producer_reserved_write_pos - producer_reserved_pos >=
-                    buffer.size() / 2) {
+  if (!error &&
+      producer_reserved_write_pos - producer_reserved_pos >=
+          buffer.size() / 2) {
     update_reservation(NOWAIT);
   }
 }

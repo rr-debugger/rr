@@ -628,7 +628,8 @@ static void __attribute__((constructor)) init_process(void) {
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* pthread_cond_broadcast has 'int 80' followed by
      * cmp $-4095,%eax (in glibc-2.18-16.fc20.i686) */
-    { 5, { 0x3d, 0x01, 0xf0, 0xff, 0xff },
+    { 5,
+      { 0x3d, 0x01, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_3d_01_f0_ff_ff }
   };
   params.syscall_patch_hook_count =
@@ -643,15 +644,18 @@ static void __attribute__((constructor)) init_process(void) {
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
      * cmp $-4095,%rax (in glibc-2.18-16.fc20.x86_64) */
-    { 6, { 0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff },
+    { 6,
+      { 0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_48_3d_01_f0_ff_ff },
     /* Many glibc syscall wrappers (e.g. __libc_recv) have 'syscall' followed by
      * cmp $-4096,%rax (in glibc-2.18-16.fc20.x86_64) */
-    { 6, { 0x48, 0x3d, 0x00, 0xf0, 0xff, 0xff },
+    { 6,
+      { 0x48, 0x3d, 0x00, 0xf0, 0xff, 0xff },
       (uintptr_t)_syscall_hook_trampoline_48_3d_00_f0_ff_ff },
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
      * mov (%rsp),%rdi (in glibc-2.18-16.fc20.x86_64) */
-    { 4, { 0x48, 0x8b, 0x3c, 0x24 },
+    { 4,
+      { 0x48, 0x8b, 0x3c, 0x24 },
       (uintptr_t)_syscall_hook_trampoline_48_8b_3c_24 },
     /* __lll_unlock_wake has 'syscall' followed by
      * pop %rdx; pop %rsi; ret */
@@ -900,10 +904,7 @@ static void disarm_desched_event(void) {
  */
 /* (Negative numbers so as to not be valid syscall numbers, in case
  * the |int| arguments below are passed in the wrong order.) */
-enum {
-  MAY_BLOCK = -1,
-  WONT_BLOCK = -2
-};
+enum { MAY_BLOCK = -1, WONT_BLOCK = -2 };
 static int start_commit_buffered_syscall(int syscallno, void* record_end,
                                          int blockness) {
   void* record_start;

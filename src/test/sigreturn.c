@@ -102,9 +102,9 @@ static void init(void) {
 static const int xmm_good[XMM_SIZE / sizeof(int)] XMM_ALIGNMENT = {
   GOOD, GOOD + 1, GOOD + 2, GOOD + 3
 };
-static const int xmm_bad[XMM_SIZE / sizeof(int)] XMM_ALIGNMENT = {
-  BAD, BAD + 1, BAD + 2, BAD + 3
-};
+static const int xmm_bad[XMM_SIZE / sizeof(int)] XMM_ALIGNMENT = { BAD, BAD + 1,
+                                                                   BAD + 2,
+                                                                   BAD + 3 };
 
 #define ST_SIZE 10
 

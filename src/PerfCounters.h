@@ -65,9 +65,7 @@ public:
 
   /* This choice is fairly arbitrary; linux doesn't use SIGSTKFLT so we
    * hope that tracees don't either. */
-  enum {
-    TIME_SLICE_SIGNAL = SIGSTKFLT
-  };
+  enum { TIME_SLICE_SIGNAL = SIGSTKFLT };
 
   struct Extra {
     Extra() : page_faults(0), hw_interrupts(0), instructions_retired(0) {}

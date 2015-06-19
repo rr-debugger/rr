@@ -174,10 +174,7 @@ public:
    * return value is undefined.  Call |wait_remote_syscall()| to
    * finish the syscall and get the return value.
    */
-  enum SyscallWaiting {
-    WAIT = 1,
-    DONT_WAIT = 0
-  };
+  enum SyscallWaiting { WAIT = 1, DONT_WAIT = 0 };
   long syscall_helper(SyscallWaiting wait, int syscallno, Registers& callregs);
 
 private:
