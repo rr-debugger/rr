@@ -2766,6 +2766,45 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
   return true;
 }
 
+/**
+ * This function exists to work around
+ * https://bugzilla.kernel.org/show_bug.cgi?id=99101.
+ * On some kernels pwrite() to /proc/.../mem fails when writing to a region
+ * that's PROT_NONE.
+ */
+static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
+                             remote_ptr<void> addr) {
+  vector<Mapping> mappings_to_fix;
+  auto check_prot =
+      [&mappings_to_fix](const Mapping& m, const MappableResource& r) {
+    if (!(m.prot & (PROT_READ | PROT_WRITE))) {
+      mappings_to_fix.push_back(m);
+    }
+  };
+  t->vm()->for_all_mappings_in_range(
+      check_prot,
+      MemoryRange(floor_page_size(addr), ceil_page_size(addr + buf_size)));
+
+  if (mappings_to_fix.empty()) {
+    return pwrite64(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
+  }
+
+  AutoRemoteSyscalls remote(t);
+  int mprotect_syscallno = syscall_number_for_mprotect(t->arch());
+  for (auto& m : mappings_to_fix) {
+    int ret = remote.syscall(mprotect_syscallno, m.start, m.num_bytes(),
+                             m.prot | PROT_WRITE);
+    ASSERT(t, ret == 0);
+  }
+  ssize_t nwritten = pwrite64(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
+  for (auto& m : mappings_to_fix) {
+    int ret =
+        remote.syscall(mprotect_syscallno, m.start, m.num_bytes(), m.prot);
+    ASSERT(t, ret == 0);
+  }
+  return nwritten;
+}
+
 void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                               const void* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
@@ -2780,7 +2819,7 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   }
 
   errno = 0;
-  ssize_t nwritten = pwrite64(as->mem_fd(), buf, buf_size, addr.as_int());
+  ssize_t nwritten = safe_pwrite64(this, buf, buf_size, addr.as_int());
   // See comment in read_bytes_helper().
   if (0 == nwritten && 0 == errno) {
     open_mem_fd();

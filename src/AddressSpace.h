@@ -647,6 +647,9 @@ public:
 
   void for_all_mappings(
       std::function<void(const Mapping& m, const MappableResource& r)> f);
+  void for_all_mappings_in_range(
+      std::function<void(const Mapping& m, const MappableResource& r)> f,
+      const MemoryRange& range);
 
   bool has_breakpoints() { return !breakpoints.empty(); }
   bool has_watchpoints() { return !watchpoints.empty(); }
