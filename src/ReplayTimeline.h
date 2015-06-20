@@ -129,6 +129,15 @@ public:
   void remove_breakpoints_and_watchpoints();
   bool has_breakpoint_at_address(Task* t, remote_code_ptr addr);
 
+  /**
+   * Ensure that reverse execution never proceeds into an event before
+   * |event|. Reverse execution will stop with a |task_exit| break status when
+   * at the beginning of this event.
+   */
+  void set_reverse_execution_barrier_event(TraceFrame::Time event) {
+    reverse_execution_barrier_event = event;
+  }
+
   // State-changing APIs. These may alter state associated with
   // current_session().
 
@@ -340,6 +349,7 @@ private:
   bool fix_watchpoint_coalescing_quirk(ReplayResult& result,
                                        const ProtoMark& before);
   Mark find_singlestep_before(const Mark& mark);
+  bool is_start_of_reverse_execution_barrier_event();
 
   ReplayResult reverse_continue(std::function<bool()> interrupt_check);
   ReplayResult reverse_singlestep(const Mark& origin, const TaskUid& tuid);
@@ -403,6 +413,8 @@ private:
   std::multiset<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t,
                            WatchType> > watchpoints;
   bool breakpoints_applied;
+
+  TraceFrame::Time reverse_execution_barrier_event;
 
   /**
    * Checkpoints used to accelerate reverse execution.

@@ -65,7 +65,8 @@ ReplayTimeline::ReplayTimeline(std::shared_ptr<ReplaySession> session,
                                const ReplaySession::Flags& session_flags)
     : session_flags(session_flags),
       current(std::move(session)),
-      breakpoints_applied(false) {
+      breakpoints_applied(false),
+      reverse_execution_barrier_event(0) {
   current->set_visible_execution(false);
   current->set_flags(session_flags);
 }
@@ -691,6 +692,15 @@ ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
   return result;
 }
 
+bool ReplayTimeline::is_start_of_reverse_execution_barrier_event() {
+  if (current->trace_reader().time() != reverse_execution_barrier_event ||
+      current->current_step_key().in_execution()) {
+    return false;
+  }
+  LOG(debug) << "Found reverse execution barrier at " << mark();
+  return true;
+}
+
 ReplayResult ReplayTimeline::reverse_continue(
     std::function<bool()> interrupt_check) {
   ReplayResult result;
@@ -739,10 +749,19 @@ ReplayResult ReplayTimeline::reverse_continue(
                                               : TaskUid();
         last_stop_is_watch_or_signal = true;
       }
+      assert(result.status == REPLAY_CONTINUE);
+
+      if (is_start_of_reverse_execution_barrier_event()) {
+        dest = mark();
+        final_result = result;
+        final_result.break_status.task = current->current_task();
+        final_result.break_status.task_exit = true;
+        final_tuid = final_result.break_status.task->tuid();
+      }
+
       if (at_mark(end)) {
         break;
       }
-      assert(result.status == REPLAY_CONTINUE);
       // If there is a breakpoint at the current ip() where we start a
       // reverse-continue, gdb expects us to skip it.
       if (result.break_status.breakpoint_hit) {
@@ -799,6 +818,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     Mark end = origin;
     while (true) {
       MarkKey current_key = end.ptr->key;
+
       while (true) {
         if (end.ptr->key.trace_time != current_key.trace_time ||
             end.ptr->key.ticks != current_key.ticks) {
@@ -821,8 +841,13 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       Mark start = mark();
       LOG(debug) << "Running forward from " << start;
       // Now run forward until we're reasonably close to the correct tick value.
-      do {
+      while (true) {
         unapply_breakpoints_and_watchpoints();
+
+        if (current_mark() == end.ptr) {
+          break;
+        }
+
         Task* t = current->current_task();
         if (t->tuid() == tuid) {
           ReplaySession::StepConstraints constraints(RUN_CONTINUE);
@@ -836,9 +861,14 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         } else {
           current->replay_step(RUN_CONTINUE);
         }
+        if (is_start_of_reverse_execution_barrier_event()) {
+          break;
+        }
         maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
-      } while (current_mark() != end.ptr);
-      if (result.break_status.approaching_ticks_target) {
+      }
+
+      if (result.break_status.approaching_ticks_target ||
+          is_start_of_reverse_execution_barrier_event()) {
         break;
       }
       end = start;
@@ -848,6 +878,11 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     Mark destination_candidate;
     Mark step_start = set_short_checkpoint();
     ReplayResult destination_candidate_result;
+
+    if (is_start_of_reverse_execution_barrier_event()) {
+      destination_candidate = mark();
+      destination_candidate_result.break_status.task_exit = true;
+    }
 
     no_watchpoints_hit_interval_start = Mark();
     while (true) {
@@ -884,6 +919,13 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         no_watchpoints_hit_interval_start = Mark();
         now = mark();
       }
+
+      if (is_start_of_reverse_execution_barrier_event()) {
+        destination_candidate = mark();
+        destination_candidate_result = result;
+        destination_candidate_result.break_status.task_exit = true;
+      }
+
       if (now >= end) {
         break;
       }
