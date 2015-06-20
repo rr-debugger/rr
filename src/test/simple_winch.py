@@ -12,6 +12,6 @@ send_gdb('run\n')
 expect_gdb('Breakpoint 1')
 send_gdb('!kill -WINCH 0\n')
 send_gdb('reverse-cont\n')
-expect_gdb('exited normally')
+expect_gdb('SIGTRAP')
 
 ok()

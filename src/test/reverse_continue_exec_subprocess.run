@@ -1,0 +1,11 @@
+source `dirname $0`/util.sh
+
+save_exe simple$bitness
+saved_simple="simple$bitness-$nonce"
+save_exe target_process$bitness
+
+record "target_process$bitness" "$saved_simple"
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+
+echo Targeting recorded pid $TARGET_PID ...
+debug reverse_continue_exec_subprocess "-p $TARGET_PID"

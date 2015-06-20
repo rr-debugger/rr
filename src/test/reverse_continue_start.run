@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record simple$bitness
+debug reverse_continue_start

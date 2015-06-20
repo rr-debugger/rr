@@ -821,6 +821,17 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state(nullptr);
     }
+    if (req.run_direction == RUN_BACKWARD && result.break_status.task_exit) {
+      // If we reached the start of the debuggee task group, report that as
+      // a breakpoint hit or singlestep complete. We need to report a stop to
+      // gdb.
+      result.break_status.task_exit = false;
+      if (DREQ_STEP == req.type) {
+        result.break_status.singlestep_complete = true;
+      } else {
+        result.break_status.breakpoint_hit = true;
+      }
+    }
     if (!req.suppress_debugger_stop) {
       maybe_notify_stop(result.break_status);
     }
@@ -991,6 +1002,10 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     flags.debugger_params_write_pipe->close();
   }
   debuggee_tguid = t->task_group()->tguid();
+
+  if (t->vm()->first_run_event()) {
+    timeline.set_reverse_execution_barrier_event(t->vm()->first_run_event());
+  }
 
   activate_debugger();
 

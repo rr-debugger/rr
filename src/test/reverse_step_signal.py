@@ -24,6 +24,6 @@ send_gdb('reverse-stepi')
 expect_gdb('received signal')
 
 send_gdb('reverse-continue')
-expect_gdb('exited normally')
+expect_gdb('SIGTRAP')
 
 ok()

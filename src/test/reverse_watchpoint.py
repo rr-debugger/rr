@@ -29,6 +29,6 @@ expect_gdb('Old value = 42')
 expect_gdb('New value = 0')
 
 send_gdb('reverse-cont')
-expect_gdb('exited normally')
+expect_gdb('SIGTRAP')
 
 ok()
