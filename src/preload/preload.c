@@ -605,24 +605,9 @@ static void post_fork_child(void) {
 static void __attribute__((constructor)) init_process(void) {
   sigset_t mask;
   struct rrcall_init_preload_params params;
+  extern RR_HIDDEN void _stub_buffer(void);
+  extern RR_HIDDEN void _stub_buffer_end(void);
 
-  if (process_inited) {
-    return;
-  }
-
-  /* Load GLIBC 2.1 version of pthread_create. Otherwise we may get the 2.0
-     version, which cannot handle the pthread_attr values passed by callers
-     expecting to call the glibc 2.1 version. */
-  real_pthread_create = dlvsym(RTLD_NEXT, "pthread_create", "GLIBC2.1");
-
-  buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
-
-  pthread_atfork(NULL, NULL, post_fork_child);
-
-  params.syscallbuf_enabled = buffer_enabled;
-  params.syscallbuf_fds_disabled =
-      buffer_enabled ? syscallbuf_fds_disabled : NULL;
-  params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
 #if defined(__i386__)
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
@@ -635,9 +620,11 @@ static void __attribute__((constructor)) init_process(void) {
     /* Our vdso syscall patch has 'int 80' followed by onp; nop; nop */
     { 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };
-  params.syscall_patch_hook_count =
-      sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
-  params.syscall_patch_hooks = syscall_patch_hooks;
+
+  /* Load GLIBC 2.1 version of pthread_create. Otherwise we may get the 2.0
+     version, which cannot handle the pthread_attr values passed by callers
+     expecting to call the glibc 2.1 version. */
+  real_pthread_create = dlvsym(RTLD_NEXT, "pthread_create", "GLIBC_2.1");
 #elif defined(__x86_64__)
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_00_f0_ff_ff(void);
@@ -666,17 +653,28 @@ static void __attribute__((constructor)) init_process(void) {
     /* Our VDSO vsyscall patches have 'syscall' followed by "nop; nop; nop" */
     { 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };
+
+  real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
+#else
+#error Unknown architecture
+#endif
+  if (process_inited) {
+    return;
+  }
+
+  buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
+
+  pthread_atfork(NULL, NULL, post_fork_child);
+
+  params.syscallbuf_enabled = buffer_enabled;
+  params.syscallbuf_fds_disabled =
+      buffer_enabled ? syscallbuf_fds_disabled : NULL;
+  params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
+  params.syscall_hook_stub_buffer = (void*)_stub_buffer;
+  params.syscall_hook_stub_buffer_end = (void*)_stub_buffer_end;
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
-#else
-  params.syscall_patch_hook_count = 0;
-  params.syscall_patch_hooks = NULL;
-#endif
-  extern RR_HIDDEN void _stub_buffer(void);
-  extern RR_HIDDEN void _stub_buffer_end(void);
-  params.syscall_hook_stub_buffer = (void*)_stub_buffer;
-  params.syscall_hook_stub_buffer_end = (void*)_stub_buffer_end;
 
   enter_signal_critical_section(&mask);
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
