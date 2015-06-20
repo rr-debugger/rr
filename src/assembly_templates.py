@@ -59,11 +59,11 @@ class AssemblyTemplate(object):
         return bytes
 
 templates = {
-    'X86VsyscallImplementation': AssemblyTemplate(
+    'X86SysenterVsyscallImplementation': AssemblyTemplate(
         RawBytes(0x51),         # push %ecx
         RawBytes(0x52),         # push %edx
         RawBytes(0x55),         # push %ebp
-        RawBytes(0x89, 0xe5),   # mov %esp, %ebp
+        RawBytes(0x89, 0xe5),   # mov %esp,%ebp
         RawBytes(0x0f, 0x34),   # sysenter
         RawBytes(0x90),         # nop
         RawBytes(0x90),         # nop
@@ -78,9 +78,28 @@ templates = {
         RawBytes(0x59),         # pop %ecx
         RawBytes(0xc3),         # ret
     ),
-    'X86VsyscallMonkeypatch': AssemblyTemplate(
+    'X86SysenterVsyscallMonkeypatch': AssemblyTemplate(
         RawBytes(0xe9),         # jmp $syscall_hook_trampoline
         Field('syscall_hook_trampoline', 4),
+    ),
+    'X86VsyscallMonkeypatch': AssemblyTemplate(
+        RawBytes(0x53),         # push %ebx
+        RawBytes(0xb8),         # mov $syscall_number,%eax
+        Field('syscall_number', 4),
+        # __vdso functions use the C calling convention, so
+        # we have to set up the syscall parameters here.
+        # No x86-32 __vdso functions take more than two parameters.
+        RawBytes(0x8b, 0x5c, 0x24, 0x08), # mov 0x8(%esp),%ebx
+        RawBytes(0x8b, 0x4c, 0x24, 0x0c), # mov 0xc(%esp),%ecx
+        RawBytes(0xcd, 0x80),   # int $0x80
+        # pad with NOPs to make room to dynamically patch the syscall
+        # with a call to the preload library, once syscall buffering
+        # has been initialized.
+        RawBytes(0x90),         # nop
+        RawBytes(0x90),         # nop
+        RawBytes(0x90),         # nop
+        RawBytes(0x5b),         # pop %ebx
+        RawBytes(0xc3),         # ret
     ),
     'X86SyscallStubMonkeypatch': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
@@ -96,12 +115,13 @@ templates = {
         RawBytes(0xe9),         # jmp $return_relative_addr
         Field('return_relative_addr', 4),
     ),
+
     'X64JumpMonkeypatch': AssemblyTemplate(
         RawBytes(0xe9),         # jmp $relative_addr
         Field('relative_addr', 4),
     ),
     'X64VsyscallMonkeypatch': AssemblyTemplate(
-        RawBytes(0xb8),         # mov $syscall_number, %eax
+        RawBytes(0xb8),         # mov $syscall_number,%eax
         Field('syscall_number', 4),
         RawBytes(0x0f, 0x05),   # syscall
         # pad with NOPs to make room to dynamically patch the syscall

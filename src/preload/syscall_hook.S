@@ -108,6 +108,19 @@ _syscall_hook_trampoline_3d_01_f0_ff_ff:
 
 
 
+        .global _syscall_hook_trampoline_90_90_90
+        .hidden _syscall_hook_trampoline_90_90_90
+        .type _syscall_hook_trampoline_90_90_90, @function
+_syscall_hook_trampoline_90_90_90:
+        .cfi_startproc
+
+        jmp _syscall_hook_trampoline
+
+        .cfi_endproc
+        .size _syscall_hook_trampoline_90_90_90, .-_syscall_hook_trampoline_90_90_90
+
+
+
 _stub_buffer:
         .rept 1000
         /* Must match X86SyscallStubMonkeypatch. We reproduce it here so we

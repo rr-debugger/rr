@@ -203,8 +203,9 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
 template <>
 bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
-  return patch_syscall_with_hook_x86ish<
-      X86VsyscallMonkeypatch, X86SyscallStubMonkeypatch, 30>(patcher, t, hook);
+  return patch_syscall_with_hook_x86ish<X86SysenterVsyscallMonkeypatch,
+                                        X86SyscallStubMonkeypatch, 30>(patcher,
+                                                                       t, hook);
 }
 
 template <>
@@ -355,9 +356,9 @@ template <typename Arch> static VdsoSymbols<Arch> read_vdso_symbols(Task* t) {
  * implementation.
  */
 static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
-  uint8_t impl[X86VsyscallImplementation::size];
+  uint8_t impl[X86SysenterVsyscallImplementation::size];
   t->read_bytes(addr, impl);
-  return X86VsyscallImplementation::match(impl);
+  return X86SysenterVsyscallImplementation::match(impl);
 }
 
 /**
@@ -407,10 +408,55 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
 template <typename Arch>
 static void patch_at_preload_init_arch(Task* t, Monkeypatcher& patcher);
 
+// VDSOs are filled with overhead critical functions related to getting the
+// time and current CPU.  We need to ensure that these syscalls get redirected
+// into actual trap-into-the-kernel syscalls so rr can intercept them.
+
+struct named_syscall {
+  const char* name;
+  int syscall_number;
+};
+
 template <typename Arch> static void patch_after_exec_arch(Task* t);
 
+// Monkeypatch x86-32 vdso syscalls immediately after exec. The vdso syscalls
+// will cause replay to fail if called by the dynamic loader or some library's
+// static constructors, so we can't wait for our preload library to be
+// initialized. Fortunately we're just replacing the vdso code with real
+// syscalls so there is no dependency on the preload library at all.
 template <> void patch_after_exec_arch<X86Arch>(Task* t) {
   setup_preload_library_path<X86Arch>(t);
+
+  auto vdso_start = t->vm()->vdso().start;
+
+  auto syms = read_vdso_symbols<X86Arch>(t);
+
+  static const named_syscall syscalls_to_monkeypatch[] = {
+#define S(n)                                                                   \
+  { "__vdso_" #n, X86Arch::n }
+    S(clock_gettime), S(gettimeofday), S(time),
+#undef S
+  };
+
+  for (auto& sym : syms.symbols) {
+    const char* symname = &syms.strtab[sym.st_name];
+    for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
+      if (strcmp(symname, syscalls_to_monkeypatch[j].name) == 0) {
+        static const uintptr_t vdso_max_size = 0xffffLL;
+        uintptr_t sym_address = uintptr_t(sym.st_value);
+        assert((sym_address & ~vdso_max_size) == 0);
+        uintptr_t absolute_address = vdso_start.as_int() + sym_address;
+
+        uint8_t patch[X86VsyscallMonkeypatch::size];
+        uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
+        X86VsyscallMonkeypatch::substitute(patch, syscall_number);
+
+        t->write_bytes(absolute_address, patch);
+        LOG(debug) << "monkeypatched " << symname << " to syscall "
+                   << syscalls_to_monkeypatch[j].syscall_number;
+      }
+    }
+  }
 }
 
 // Monkeypatch x86 vsyscall hook only after the preload library
@@ -442,10 +488,10 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
   // we don't need to prepare remote syscalls here.
   remote_ptr<void> syscall_hook_trampoline = params.syscall_hook_trampoline;
 
-  uint8_t patch[X86VsyscallMonkeypatch::size];
+  uint8_t patch[X86SysenterVsyscallMonkeypatch::size];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
-  X86VsyscallMonkeypatch::substitute(
+  X86SysenterVsyscallMonkeypatch::substitute(
       patch, syscall_hook_trampoline.as_int() -
                  (kernel_vsyscall + sizeof(patch)).as_int());
 
@@ -458,29 +504,6 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
       params.syscall_hook_stub_buffer, params.syscall_hook_stub_buffer_end);
 }
 
-// x86-64 doesn't have a convenient vsyscall-esque function in the VDSO;
-// syscalls happen directly with the |syscall| instruction and manual
-// syscall restarting if necessary.  Its VDSO is filled with overhead
-// critical functions related to getting the time and current CPU.  We
-// need to ensure that these syscalls get redirected into actual
-// trap-into-the-kernel syscalls so rr can intercept them.
-
-struct named_syscall {
-  const char* name;
-  int syscall_number;
-};
-
-#define S(n)                                                                   \
-  { #n, X64Arch::n }
-static const named_syscall syscalls_to_monkeypatch[] = {
-  S(clock_gettime), S(gettimeofday), S(time),
-  // getcpu isn't supported by rr, so any changes to this monkeypatching
-  // scheme for efficiency's sake will have to ensure that getcpu gets
-  // converted to an actual syscall so rr will complain appropriately.
-  S(getcpu),
-};
-#undef S
-
 // Monkeypatch x86-64 vdso syscalls immediately after exec. The vdso syscalls
 // will cause replay to fail if called by the dynamic loader or some library's
 // static constructors, so we can't wait for our preload library to be
@@ -492,6 +515,17 @@ template <> void patch_after_exec_arch<X64Arch>(Task* t) {
   auto vdso_start = t->vm()->vdso().start;
 
   auto syms = read_vdso_symbols<X64Arch>(t);
+
+  static const named_syscall syscalls_to_monkeypatch[] = {
+#define S(n)                                                                   \
+  { "__vdso_" #n, X64Arch::n }
+    S(clock_gettime), S(gettimeofday), S(time),
+    // getcpu isn't supported by rr, so any changes to this monkeypatching
+    // scheme for efficiency's sake will have to ensure that getcpu gets
+    // converted to an actual syscall so rr will complain appropriately.
+    S(getcpu),
+#undef S
+  };
 
   for (auto& sym : syms.symbols) {
     const char* symname = &syms.strtab[sym.st_name];
