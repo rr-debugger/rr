@@ -302,6 +302,7 @@ set(BASIC_TESTS
   fault_in_code_page
   fcntl_owner_ex
   flock
+  flock2
   fork_child_crash
   fork_stress
   fxregs

@@ -779,7 +779,7 @@ getdents = IrregularEmulatedSyscall(x86=141, x64=78)
 # blocking.
 _newselect = IrregularEmulatedSyscall(x86=142)
 
-flock = UnsupportedSyscall(x86=143, x64=73)
+flock = EmulatedSyscall(x86=143, x64=73)
 
 #  int msync(void *addr, size_t length, int flags);
 #

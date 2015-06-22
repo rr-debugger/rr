@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
+#include <sys/file.h>
 #include <sys/xattr.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
