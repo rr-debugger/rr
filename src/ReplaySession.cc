@@ -1336,6 +1336,12 @@ Completion ReplaySession::advance_to_ticks_target(
   }
 }
 
+static bool is_in_exec_syscall(Task* t) {
+  const Event& ev = t->session().as_replay()->current_trace_frame().event();
+  return ev.is_syscall_event() &&
+         ev.Syscall().number == syscall_number_for_execve(t->arch());
+}
+
 /**
  * Try to execute |step|, adjusting for |req| if needed.  Return COMPLETE if
  * |step| was made, or INCOMPLETE if there was a trap or |step| needs
@@ -1640,6 +1646,12 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   }
   // Record that this step completed successfully.
   current_step.action = TSTEP_NONE;
+
+  Task* next_task = current_task();
+  if (next_task && !next_task->vm()->first_run_event() && can_validate() &&
+      !is_in_exec_syscall(next_task)) {
+    next_task->vm()->set_first_run_event(trace_frame.time());
+  }
 
   return result;
 }

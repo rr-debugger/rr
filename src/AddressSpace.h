@@ -775,6 +775,9 @@ public:
    */
   void did_fork_into(Task* t);
 
+  void set_first_run_event(TraceFrame::Time event) { first_run_event_ = event; }
+  TraceFrame::Time first_run_event() { return first_run_event_; }
+
 private:
   class Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
@@ -1024,6 +1027,12 @@ private:
   remote_code_ptr privileged_untraced_syscall_ip_;
   remote_ptr<void> syscallbuf_lib_start_;
   remote_ptr<void> syscallbuf_lib_end_;
+
+  /**
+   * The time of the first event that ran code for a task in this address space.
+   * 0 if no such event has occurred.
+   */
+  TraceFrame::Time first_run_event_;
 
   /**
    * For each architecture, the offset of a syscall instruction with that

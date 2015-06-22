@@ -1180,7 +1180,8 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
       exec_count(exec_count),
       is_clone(false),
       session_(&t->session()),
-      child_mem_fd(-1) {
+      child_mem_fd(-1),
+      first_run_event_(0) {
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
   if (session_->can_validate()) {
@@ -1222,12 +1223,17 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       privileged_traced_syscall_ip_(o.privileged_traced_syscall_ip_),
       privileged_untraced_syscall_ip_(o.privileged_untraced_syscall_ip_),
       syscallbuf_lib_start_(o.syscallbuf_lib_start_),
-      syscallbuf_lib_end_(o.syscallbuf_lib_end_) {
+      syscallbuf_lib_end_(o.syscallbuf_lib_end_),
+      first_run_event_(0) {
   for (auto& it : o.breakpoints) {
     breakpoints.insert(make_pair(it.first, it.second));
   }
   for (auto& it : o.watchpoints) {
     watchpoints.insert(make_pair(it.first, it.second));
+  }
+  if (session != o.session()) {
+    // Cloning into a new session means we're checkpointing.
+    first_run_event_ = o.first_run_event_;
   }
   // cloned tasks will automatically get cloned debug registers and
   // cloned address-space memory, so we don't need to do any more work here.

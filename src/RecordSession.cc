@@ -312,6 +312,10 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
     LOG(debug) << "  PTRACE_SYSCALL to possibly-restarted " << t->ev();
   }
 
+  if (!t->vm()->first_run_event()) {
+    t->vm()->set_first_run_event(trace_writer().time());
+  }
+
   if (!t->seccomp_bpf_enabled || CONTINUE_SYSCALL == step_state.continue_type ||
       may_restart) {
     /* We won't receive PTRACE_EVENT_SECCOMP events until
