@@ -62,10 +62,8 @@ void Session::post_exec() {
     return;
   }
   tracees_consistent = true;
-  // Reset ticks for all Tasks (there should only be one).
-  for (auto task = tasks().begin(); task != tasks().end(); ++task) {
-    task->second->flush_inconsistent_state();
-  }
+  assert(tasks().size() == 1);
+  tasks().begin()->second->flush_inconsistent_state();
 }
 
 AddressSpace::shr_ptr Session::create_vm(Task* t, const std::string& exe,
