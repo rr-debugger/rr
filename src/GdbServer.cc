@@ -799,7 +799,6 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
   }
 
   TaskUid tuid = t->tuid();
-
   GdbRequest req = process_debugger_requests(t);
   // Refetch t since it can be recreated during process_debugger_requests
   t = timeline.current_session().find_task(tuid);
@@ -818,8 +817,9 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
         command, req.run_direction,
         req.run_direction == RUN_FORWARD ? target.event : 0,
         [&]() { return dbg->sniff_packet(); });
+    t = timeline.current_session().find_task(tuid);
     if (result.status == REPLAY_EXITED) {
-      return handle_exited_state(nullptr);
+      return handle_exited_state(t);
     }
     if (req.run_direction == RUN_BACKWARD && result.break_status.task_exit) {
       // If we reached the start of the debuggee task group, report that as

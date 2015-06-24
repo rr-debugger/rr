@@ -3,6 +3,7 @@
 #include "rrutil.h"
 
 int main(int argc, char* argv[]) {
+  atomic_puts("EXIT-SUCCESS");
   kill(getppid(), SIGINT);
   return 0;
 }
