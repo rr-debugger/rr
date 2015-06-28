@@ -27,8 +27,8 @@ rrpid=$(parent_pid_of $(pidof $EXE-$nonce))
 # reaches the spin() loop, e.g. with syscallbuf disabled it might be delivered
 # before rr has finished handling the syscalls of atomic_puts. But scheduling
 # variations should ensure that sometimes we reach spin() first.
-echo "  done.  Delivering SIGINT to $rrpid ..."
-kill -INT $rrpid
+echo "  done.  Delivering SIGTERM to $rrpid ..."
+kill -TERM $rrpid
 
 echo "  done."
 

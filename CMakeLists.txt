@@ -385,6 +385,7 @@ set(BASIC_TESTS
   scm_rights
   seccomp
   seccomp_null
+  self_sigint
   sem
   sendfile
   set_ptracer

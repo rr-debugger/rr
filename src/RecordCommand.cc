@@ -140,7 +140,7 @@ static bool term_request;
  * If there's already a term request pending, then assume rr is wedged
  * and abort().
  */
-static void handle_termsig(int sig) {
+static void handle_SIGTERM(int sig) {
   if (term_request) {
     FATAL() << "Received termsig while an earlier one was pending.  We're "
                "probably wedged.";
@@ -150,14 +150,14 @@ static void handle_termsig(int sig) {
   term_request = true;
 }
 
-static void install_termsig_handlers(void) {
-  int termsigs[] = { SIGINT, SIGTERM };
-  for (size_t i = 0; i < array_length(termsigs); ++i) {
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_handler = handle_termsig;
-    sigaction(termsigs[i], &sa, nullptr);
-  }
+static void install_signal_handlers(void) {
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = handle_SIGTERM;
+  sigaction(SIGTERM, &sa, nullptr);
+
+  sa.sa_handler = SIG_IGN;
+  sigaction(SIGINT, &sa, nullptr);
 }
 
 static void setup_session_from_flags(RecordSession& session,
@@ -170,14 +170,16 @@ static void setup_session_from_flags(RecordSession& session,
 static int record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
-  install_termsig_handlers();
-
   auto session = RecordSession::create(
       args,
       (flags.cpu_unbound ? RecordSession::CPU_UNBOUND : 0) |
           (flags.use_syscall_buffer ? 0 : RecordSession::DISABLE_SYSCALL_BUF),
       flags.extra_env);
   setup_session_from_flags(*session, flags);
+
+  // Install signal handlers after creating the session, to ensure they're not
+  // inherited by the tracee.
+  install_signal_handlers();
 
   RecordSession::RecordResult step_result;
   do {

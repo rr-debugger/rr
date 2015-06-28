@@ -960,9 +960,7 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
         LOG(warn) << "Delivered core-dumping signal; may misrecord "
                      "CLONE_CHILD_CLEARTID memory race";
         t->destabilize_task_group();
-        t->pop_signal_delivery();
         last_task_switchable = ALLOW_SWITCH;
-        break;
       }
       t->pop_signal_delivery();
       break;
