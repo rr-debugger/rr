@@ -529,6 +529,7 @@ Task* GdbServer::diverter_process_debugger_requests(
     switch (req->type) {
       case DREQ_RESTART:
       case DREQ_DETACH:
+        diversion_refcount = 0;
         return nullptr;
 
       case DREQ_READ_SIGINFO: {

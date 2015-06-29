@@ -573,6 +573,7 @@ set(TESTS_WITHOUT_PROGRAM
   reverse_step_signal
   reverse_watchpoint
   reverse_watchpoint_syscall
+  run_in_function
   sanity
   shm_checkpoint
   signal_stop

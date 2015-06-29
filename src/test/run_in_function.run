@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record crash_in_function$bitness
+debug run_in_function
