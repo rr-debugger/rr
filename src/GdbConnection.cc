@@ -772,25 +772,31 @@ bool GdbConnection::process_vpacket(char* payload) {
       if (args) {
         if (*args == ':') {
           is_default = false;
+          *args = '\0';
           target = parse_threadid(args + 1, &args);
         }
         args = strchr(args, ';');
         if (args) {
+          *args = '\0';
           ++args;
         }
       }
 
       GdbActionType action;
+      int signal_to_deliver = 0;
+      char* endptr = NULL;
       switch (cmd[0]) {
         case 'C':
-          LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
-        /* fall through */
+          action = ACTION_CONTINUE;
+          signal_to_deliver = strtol(cmd + 1, &endptr, 16);
+          break;
         case 'c':
           action = ACTION_CONTINUE;
           break;
         case 'S':
-          LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
-        /* fall through */
+          action = ACTION_STEP;
+          signal_to_deliver = strtol(cmd + 1, &cmd, 16);
+          break;
         case 's':
           action = ACTION_STEP;
           break;
@@ -799,15 +805,21 @@ bool GdbConnection::process_vpacket(char* payload) {
                           << ")";
           return false;
       }
+      if (endptr && *endptr) {
+        UNHANDLED_REQ() << "Unhandled vCont command parameters " << cmd;
+        return false;
+      }
       if (is_default) {
         if (has_default_action) {
-          UNHANDLED_REQ() << "Unhandled vCont command with multiple default actions";
+          UNHANDLED_REQ()
+              << "Unhandled vCont command with multiple default actions";
           return false;
         }
         has_default_action = true;
-        default_action = GdbContAction(action, GdbThreadId::ALL);
+        default_action =
+            GdbContAction(action, GdbThreadId::ALL, signal_to_deliver);
       } else {
-        actions.push_back(GdbContAction(action, target));
+        actions.push_back(GdbContAction(action, target, signal_to_deliver));
       }
     }
 

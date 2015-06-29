@@ -602,13 +602,15 @@ void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
 }
 
 static RunCommand compute_run_command_from_actions(Task* t,
-                                                   const GdbRequest& req) {
+                                                   const GdbRequest& req,
+                                                   int* signal_to_deliver) {
   for (int i = 0; i < req.cont.action_count; ++i) {
     auto& action = req.cont.actions[i];
     if (matches_threadid(t, action.target)) {
       // We can only run task |t|; neither diversion nor replay sessions
       // support running multiple threads. So even if gdb tells us to continue
       // multiple threads, we don't do that.
+      *signal_to_deliver = action.signal_to_deliver;
       return action.type == ACTION_STEP ? RUN_SINGLESTEP : RUN_CONTINUE;
     }
   }
@@ -616,6 +618,7 @@ static RunCommand compute_run_command_from_actions(Task* t,
   // |t|. It sometimes does this even though its target thread is entering a
   // blocking syscall and |t| must run before gdb's target thread can make
   // progress. So, allow |t| to run anyway.
+  *signal_to_deliver = 0;
   return RUN_CONTINUE;
 }
 
@@ -657,13 +660,15 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
       continue;
     }
 
-    RunCommand command = compute_run_command_from_actions(t, req);
-    auto result = diversion_session->diversion_step(t, command);
+    int signal_to_deliver;
+    RunCommand command =
+        compute_run_command_from_actions(t, req, &signal_to_deliver);
+    auto result =
+        diversion_session->diversion_step(t, command, signal_to_deliver);
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
       diversion_refcount = 0;
       req.type = DREQ_NONE;
-      dbg->notify_exit_code(0);
       break;
     }
 
@@ -743,6 +748,7 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
   while (req.type == DREQ_CONT && req.cont.run_direction == RUN_BACKWARD &&
          req.cont.action_count == 1 &&
          req.cont.actions[0].type == ACTION_STEP &&
+         req.cont.actions[0].signal_to_deliver == 0 &&
          matches_threadid(t, req.cont.actions[0].target) &&
          !req.suppress_debugger_stop) {
     if (!now) {
@@ -828,7 +834,10 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
     }
     assert(req.is_resume_request());
 
-    RunCommand command = compute_run_command_from_actions(t, req);
+    int signal_to_deliver;
+    RunCommand command =
+        compute_run_command_from_actions(t, req, &signal_to_deliver);
+    // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
 
     result = timeline.replay_step(
         command, req.cont.run_direction,

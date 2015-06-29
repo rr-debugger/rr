@@ -473,6 +473,7 @@ set(TESTS_WITH_PROGRAM
   conditional_breakpoint_calls
   condvar_stress
   crash
+  crash_in_function
   exit_group
   exit_status
   explicit_checkpoints

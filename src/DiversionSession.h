@@ -46,7 +46,8 @@ public:
   /**
    * Try make progress in this diversion session. Run task t if possible.
    */
-  DiversionResult diversion_step(Task* t, RunCommand command = RUN_CONTINUE);
+  DiversionResult diversion_step(Task* t, RunCommand command = RUN_CONTINUE,
+                                 int signal_to_deliver = 0);
 
   virtual DiversionSession* as_diversion() { return this; }
 
