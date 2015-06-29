@@ -98,10 +98,10 @@ enum GdbRequestType {
   DREQ_GET_REG,
   DREQ_SET_REG,
 
-  /* Use params.run_direction. */
-  DREQ_CONTINUE,
+  /* Use params.cont. */
+  DREQ_CONT,
+
   DREQ_INTERRUPT,
-  DREQ_STEP,
 
   /* gdb host detaching from stub.  No parameters. */
   DREQ_DETACH,
@@ -130,11 +130,23 @@ enum GdbRestartType {
   RESTART_FROM_CHECKPOINT,
 };
 
+enum GdbActionType { ACTION_CONTINUE, ACTION_STEP };
+
+struct GdbContAction {
+  GdbContAction() {}
+  GdbContAction(GdbActionType type, const GdbThreadId& target)
+      : type(type), target(target) {}
+  GdbActionType type;
+  GdbThreadId target;
+};
+
 /**
  * These requests are made by the debugger host and honored in proxy
  * by rr, the target.
  */
 struct GdbRequest {
+  GdbRequest() {}
+
   GdbRequestType type;
   GdbThreadId target;
   bool suppress_debugger_stop;
@@ -154,16 +166,18 @@ struct GdbRequest {
       GdbRestartType type;
     } restart;
 
-    RunDirection run_direction;
+    struct {
+      RunDirection run_direction;
+      int action_count;
+      GdbContAction actions[2];
+    } cont;
   };
 
   /**
    * Return nonzero if this requires that program execution be resumed
    * in some way.
    */
-  bool is_resume_request() const {
-    return type == DREQ_CONTINUE || type == DREQ_STEP;
-  }
+  bool is_resume_request() const { return type == DREQ_CONT; }
 };
 
 /**

@@ -176,8 +176,8 @@ static GdbThreadId get_threadid(Task* t) {
 }
 
 static bool matches_threadid(Task* t, const GdbThreadId& target) {
-  return (!target.pid || target.pid == t->tgid()) &&
-         (!target.tid || target.tid == t->rec_tid);
+  return (target.pid <= 0 || target.pid == t->tgid()) &&
+         (target.tid <= 0 || target.tid == t->rec_tid);
 }
 
 static WatchType watchpoint_type(GdbRequestType req) {
@@ -210,9 +210,10 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
     fputs("Stepping: ", stderr);
     t->regs().print_register_file_compact(stderr);
     fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
-    req->type = DREQ_STEP;
-    req->target = get_threadid(t);
+    req->type = DREQ_CONT;
     req->suppress_debugger_stop = true;
+    req->cont.action_count = 1;
+    req->cont.actions[0] = GdbContAction(ACTION_STEP, get_threadid(t));
   }
 }
 
@@ -600,6 +601,24 @@ void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
   }
 }
 
+static RunCommand compute_run_command_from_actions(Task* t,
+                                                   const GdbRequest& req) {
+  for (int i = 0; i < req.cont.action_count; ++i) {
+    auto& action = req.cont.actions[i];
+    if (matches_threadid(t, action.target)) {
+      // We can only run task |t|; neither diversion nor replay sessions
+      // support running multiple threads. So even if gdb tells us to continue
+      // multiple threads, we don't do that.
+      return action.type == ACTION_STEP ? RUN_SINGLESTEP : RUN_CONTINUE;
+    }
+  }
+  // gdb told us to run (or step) some thread that's not |t|, without resuming
+  // |t|. It sometimes does this even though its target thread is entering a
+  // blocking syscall and |t| must run before gdb's target thread can make
+  // progress. So, allow |t| to run anyway.
+  return RUN_CONTINUE;
+}
+
 /**
  * Create a new diversion session using |replay| session as the
  * template.  The |replay| session isn't mutated.
@@ -631,17 +650,14 @@ GdbRequest GdbServer::divert(ReplaySession& replay, pid_t task) {
       break;
     }
 
-    if (req.run_direction == RUN_BACKWARD) {
+    if (req.cont.run_direction == RUN_BACKWARD) {
       // We don't support reverse execution in a diversion. Just issue
       // an immediate stop.
       dbg->notify_stop(get_threadid(t), SIGTRAP, 0);
       continue;
     }
 
-    RunCommand command =
-        (DREQ_STEP == req.type && matches_threadid(t, req.target))
-            ? RUN_SINGLESTEP
-            : RUN_CONTINUE;
+    RunCommand command = compute_run_command_from_actions(t, req);
     auto result = diversion_session->diversion_step(t, command);
 
     if (result.status == DiversionSession::DIVERSION_EXITED) {
@@ -724,8 +740,11 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
   ReplayTimeline::Mark now;
   bool need_seek = false;
 
-  while (req.type == DREQ_STEP && req.run_direction == RUN_BACKWARD &&
-         matches_threadid(t, req.target) && !req.suppress_debugger_stop) {
+  while (req.type == DREQ_CONT && req.cont.run_direction == RUN_BACKWARD &&
+         req.cont.action_count == 1 &&
+         req.cont.actions[0].type == ACTION_STEP &&
+         matches_threadid(t, req.cont.actions[0].target) &&
+         !req.suppress_debugger_stop) {
     if (!now) {
       now = timeline.mark();
     }
@@ -809,24 +828,23 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
     }
     assert(req.is_resume_request());
 
-    RunCommand command =
-        (DREQ_STEP == req.type && matches_threadid(t, req.target))
-            ? RUN_SINGLESTEP
-            : RUN_CONTINUE;
+    RunCommand command = compute_run_command_from_actions(t, req);
+
     result = timeline.replay_step(
-        command, req.run_direction,
-        req.run_direction == RUN_FORWARD ? target.event : 0,
+        command, req.cont.run_direction,
+        req.cont.run_direction == RUN_FORWARD ? target.event : 0,
         [&]() { return dbg->sniff_packet(); });
     t = timeline.current_session().find_task(tuid);
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state(t);
     }
-    if (req.run_direction == RUN_BACKWARD && result.break_status.task_exit) {
+    if (req.cont.run_direction == RUN_BACKWARD &&
+        result.break_status.task_exit) {
       // If we reached the start of the debuggee task group, report that as
       // a breakpoint hit or singlestep complete. We need to report a stop to
       // gdb.
       result.break_status.task_exit = false;
-      if (DREQ_STEP == req.type) {
+      if (command == RUN_SINGLESTEP) {
         result.break_status.singlestep_complete = true;
       } else {
         result.break_status.breakpoint_hit = true;
@@ -835,7 +853,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
     if (!req.suppress_debugger_stop) {
       maybe_notify_stop(result.break_status);
     }
-    if (req.run_direction == RUN_FORWARD &&
+    if (req.cont.run_direction == RUN_FORWARD &&
         is_last_thread_exit(result.break_status) &&
         result.break_status.task->task_group()->tguid() == debuggee_tguid) {
       // Treat the state where the last thread is about to exit like
@@ -843,7 +861,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
       req = process_debugger_requests(t);
       t = timeline.current_session().find_task(tuid);
       // If it's a forward execution request, fake the exited state.
-      if (req.is_resume_request() && req.run_direction == RUN_FORWARD) {
+      if (req.is_resume_request() && req.cont.run_direction == RUN_FORWARD) {
         return handle_exited_state(t);
       }
       // Otherwise (e.g. detach, restart or reverse-exec) process the request

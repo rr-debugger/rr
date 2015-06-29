@@ -50,8 +50,7 @@ const GdbThreadId GdbThreadId::ALL = { -1, -1 };
 static bool request_needs_immediate_response(const GdbRequest* req) {
   switch (req->type) {
     case DREQ_NONE:
-    case DREQ_CONTINUE:
-    case DREQ_STEP:
+    case DREQ_CONT:
       return false;
     default:
       return true;
@@ -727,14 +726,16 @@ void GdbConnection::consume_request() {
 
 bool GdbConnection::process_bpacket(char* payload) {
   if (strcmp(payload, "c") == 0) {
-    req.type = DREQ_CONTINUE;
-    req.run_direction = RUN_BACKWARD;
-    req.target = resume_thread;
+    req.type = DREQ_CONT;
+    req.cont.run_direction = RUN_BACKWARD;
+    req.cont.action_count = 1;
+    req.cont.actions[0] = GdbContAction(ACTION_CONTINUE, resume_thread);
     return true;
   } else if (strcmp(payload, "s") == 0) {
-    req.type = DREQ_STEP;
-    req.run_direction = RUN_BACKWARD;
-    req.target = resume_thread;
+    req.type = DREQ_CONT;
+    req.cont.run_direction = RUN_BACKWARD;
+    req.cont.action_count = 1;
+    req.cont.actions[0] = GdbContAction(ACTION_STEP, resume_thread);
     return true;
   } else {
     UNHANDLED_REQ() << "Unhandled gdb bpacket: b" << payload;
@@ -763,9 +764,10 @@ bool GdbConnection::process_vpacket(char* payload) {
         LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
       /* fall through */
       case 'c':
-        req.type = DREQ_CONTINUE;
-        req.run_direction = RUN_FORWARD;
-        req.target = resume_thread;
+        req.type = DREQ_CONT;
+        req.cont.run_direction = RUN_FORWARD;
+        req.cont.action_count = 1;
+        req.cont.actions[0] = GdbContAction(ACTION_CONTINUE, resume_thread);
         return true;
       case 'S':
         LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
@@ -775,10 +777,12 @@ bool GdbConnection::process_vpacket(char* payload) {
         }
       /* fall through */
       case 's':
-        req.type = DREQ_STEP;
-        req.run_direction = RUN_FORWARD;
+        req.type = DREQ_CONT;
+        req.cont.run_direction = RUN_FORWARD;
+        req.cont.action_count = 1;
+        req.cont.actions[0].type = ACTION_STEP;
         if (args) {
-          req.target = parse_threadid(args, &args);
+          req.cont.actions[0].target = parse_threadid(args, &args);
           // If we get a step request for a
           // thread, we just assume that
           // requests for all other threads are
@@ -786,7 +790,7 @@ bool GdbConnection::process_vpacket(char* payload) {
           // support anyway.
           assert('\0' == *args || args == strstr(args, ";c"));
         } else {
-          req.target = resume_thread;
+          req.cont.actions[0].target = resume_thread;
         }
         return true;
       default:
