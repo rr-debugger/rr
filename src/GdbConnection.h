@@ -165,6 +165,7 @@ struct GdbRequest {
 
     struct {
       int param;
+      char param_str[32];
       GdbRestartType type;
     } restart;
 

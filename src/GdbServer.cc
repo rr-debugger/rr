@@ -960,7 +960,12 @@ void GdbServer::restart_session(const GdbRequest& req) {
   if (req.restart.type == RESTART_FROM_CHECKPOINT) {
     auto it = checkpoints.find(req.restart.param);
     if (it == checkpoints.end()) {
-      LOG(info) << "Checkpoint " << req.restart.param << " not found.";
+      cout << "Checkpoint " << req.restart.param_str << " not found.\n";
+      cout << "Valid checkpoints:";
+      for (auto& c : checkpoints) {
+        cout << " " << c.first;
+      }
+      cout << "\n";
       dbg->notify_restart_failed();
       return;
     }

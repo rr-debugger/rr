@@ -1,5 +1,4 @@
 from rrutil import *
-import re
 
 send_gdb('b main')
 expect_gdb('Breakpoint 1')
