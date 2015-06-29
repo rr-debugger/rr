@@ -882,7 +882,7 @@ bool GdbConnection::process_packet() {
     inbuf[packetend] = '\0';
   }
 
-  LOG(debug) << "raw request " << request << "(" << payload << ")";
+  LOG(debug) << "raw request " << request << payload;
 
   switch (request) {
     case INTERRUPT_CHAR:
