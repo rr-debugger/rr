@@ -798,7 +798,7 @@ bool GdbConnection::process_vpacket(char* payload) {
 
   if (!strcmp("Cont?", name)) {
     LOG(debug) << "gdb queries which continue commands we support";
-    write_packet("vCont;c;C;s;S;t;");
+    write_packet("vCont;c;C;s;S;");
     return false;
   }
 
