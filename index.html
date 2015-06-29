@@ -257,7 +257,13 @@ Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70,
   <h2>getting started</h2>
   <section>
     <div>
-      <h3>fedora</h3>
+      <h3>Build from source</h3>
+      <a href="https://github.com/mozilla/rr/wiki/Building-And-Installing">Follow
+            these instructions.</a></h3>
+    </div>
+
+    <div>
+      <h3>Or in Fedora:</h3>
       <pre>
 cd /tmp
 wget https://mozilla.github.io/rr/releases/rr-3.2.0-Linux-$(uname -m).rpm
@@ -266,18 +272,12 @@ sudo rpm -i rr-3.2.0-Linux-$(uname -m).rpm
     </div>
 
     <div>
-      <h3>ubuntu</h3>
+      <h3>Or in Ubuntu:</h3>
       <pre>
 cd /tmp
 wget https://mozilla.github.io/rr/releases/rr-3.2.0-Linux-$(uname -m).deb
 sudo dpkg -i rr-3.2.0-Linux-$(uname -m).deb
       </pre>
-    </div>
-
-    <div>
-      <h3>or build from source</h3>
-      <a href="https://github.com/mozilla/rr/wiki/Building-And-Installing">Follow
-            these instructions.</a></h3>
     </div>
 
     <div>
@@ -433,7 +433,7 @@ sudo dpkg -i rr-3.2.0-Linux-$(uname -m).deb
   </section>
 
   <footer>
-    <p><a href="http://www.mozilla.org/en-US/research/">
+    <p><a href="https://www.mozilla.org/en-US/research/">
         <img alt="mozilla"
              src="https://mozorg.cdn.mozilla.net/media/img/sandstone/footer-mozilla.png"></img></a>
              &copy; 2014
