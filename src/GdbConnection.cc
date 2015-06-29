@@ -754,50 +754,75 @@ bool GdbConnection::process_vpacket(char* payload) {
   name = payload;
 
   if (!strcmp("Cont", name)) {
-    char cmd = *args++;
-    if ('\0' != args[1]) {
-      *args++ = '\0';
-    }
+    vector<GdbContAction> actions;
+    bool has_default_action = false;
+    GdbContAction default_action;
 
-    switch (cmd) {
-      case 'C':
-        LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
-      /* fall through */
-      case 'c':
-        req.type = DREQ_CONT;
-        req.cont.run_direction = RUN_FORWARD;
-        req.cont.action_count = 1;
-        req.cont.actions[0] = GdbContAction(ACTION_CONTINUE, resume_thread);
-        return true;
-      case 'S':
-        LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
-        args = strchr(args, ':');
+    while (args) {
+      char* cmd = args;
+      while (*args != ':' && *args != ';') {
+        if (!*args) {
+          args = nullptr;
+          break;
+        }
+        ++args;
+      }
+      bool is_default = true;
+      GdbThreadId target;
+      if (args) {
+        if (*args == ':') {
+          is_default = false;
+          target = parse_threadid(args + 1, &args);
+        }
+        args = strchr(args, ';');
         if (args) {
           ++args;
         }
-      /* fall through */
-      case 's':
-        req.type = DREQ_CONT;
-        req.cont.run_direction = RUN_FORWARD;
-        req.cont.action_count = 1;
-        req.cont.actions[0].type = ACTION_STEP;
-        if (args) {
-          req.cont.actions[0].target = parse_threadid(args, &args);
-          // If we get a step request for a
-          // thread, we just assume that
-          // requests for all other threads are
-          // 'c' (if any).  That's all we can
-          // support anyway.
-          assert('\0' == *args || args == strstr(args, ";c"));
-        } else {
-          req.cont.actions[0].target = resume_thread;
+      }
+
+      GdbActionType action;
+      switch (cmd[0]) {
+        case 'C':
+          LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
+        /* fall through */
+        case 'c':
+          action = ACTION_CONTINUE;
+          break;
+        case 'S':
+          LOG(warn) << "Ignoring request to deliver signal (" << args << ")";
+        /* fall through */
+        case 's':
+          action = ACTION_STEP;
+          break;
+        default:
+          UNHANDLED_REQ() << "Unhandled vCont command " << cmd << "(" << args
+                          << ")";
+          return false;
+      }
+      if (is_default) {
+        if (has_default_action) {
+          UNHANDLED_REQ() << "Unhandled vCont command with multiple default actions";
+          return false;
         }
-        return true;
-      default:
-        UNHANDLED_REQ() << "Unhandled vCont command " << cmd << "(" << args
-                        << ")";
-        return false;
+        has_default_action = true;
+        default_action = GdbContAction(action, GdbThreadId::ALL);
+      } else {
+        actions.push_back(GdbContAction(action, target));
+      }
     }
+
+    if (has_default_action) {
+      actions.push_back(default_action);
+    }
+    if (actions.size() > array_length(req.cont.actions)) {
+      UNHANDLED_REQ() << "Unhandled vCont command with too many actions";
+      return false;
+    }
+    req.type = DREQ_CONT;
+    req.cont.run_direction = RUN_FORWARD;
+    req.cont.action_count = actions.size();
+    copy(actions.begin(), actions.end(), req.cont.actions);
+    return true;
   }
 
   if (!strcmp("Cont?", name)) {
