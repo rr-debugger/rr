@@ -840,7 +840,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
         result.break_status.task->task_group()->tguid() == debuggee_tguid) {
       // Treat the state where the last thread is about to exit like
       // termination.
-      GdbRequest req = process_debugger_requests(t);
+      req = process_debugger_requests(t);
       t = timeline.current_session().find_task(tuid);
       // If it's a forward execution request, fake the exited state.
       if (req.is_resume_request() && req.run_direction == RUN_FORWARD) {
