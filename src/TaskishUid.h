@@ -24,6 +24,9 @@ public:
   bool operator==(const TaskishUid<T>& other) const {
     return tid_ == other.tid_ && serial_ == other.serial_;
   }
+  bool operator!=(const TaskishUid<T>& other) const {
+    return !(*this == other);
+  }
   bool operator<(const TaskishUid<T>& other) const {
     if (tid_ < other.tid_) {
       return true;
@@ -35,7 +38,6 @@ public:
   }
   pid_t tid() const { return tid_; }
   uint32_t serial() const { return serial_; }
-  operator bool() const { return tid_ != 0; }
 
 private:
   pid_t tid_;
