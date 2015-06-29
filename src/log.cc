@@ -6,6 +6,13 @@
 #include "RecordSession.h"
 
 static void emergency_debug(Task* t) {
+  // Enable SIGINT in case it was disabled. Users want to be able to ctrl-C
+  // out of this.
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = SIG_DFL;
+  sigaction(SIGINT, &sa, nullptr);
+
   RecordSession* record_session = t->session().as_record();
   if (record_session) {
     record_session->trace_writer().close();
