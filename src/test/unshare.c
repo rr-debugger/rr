@@ -58,7 +58,7 @@ static int run_test(void) {
   }
 
   ret = unshare(CLONE_NEWUSER);
-  if (ret == -1 && errno == EINVAL) {
+  if (ret == -1 && (errno == EINVAL || errno == EPERM)) {
     atomic_puts("EXIT-SUCCESS");
     return 77;
   }
