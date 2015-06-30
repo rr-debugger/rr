@@ -467,11 +467,13 @@ set(TESTS_WITH_PROGRAM
   block_intr_sigchld
   blocked_bad_ip
   breakpoint
+  breakpoint_conditions
   breakpoint_overlap
   call_function
   checkpoint_dying_threads
   clone_interruption
   conditional_breakpoint_calls
+  conditional_breakpoint_offload
   condvar_stress
   crash
   crash_in_function

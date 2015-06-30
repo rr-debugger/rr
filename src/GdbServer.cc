@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include "BreakpointCondition.h"
+#include "GdbExpression.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
@@ -269,6 +271,37 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
   dbg->reply_get_regs(file);
 }
 
+class GdbBreakpointCondition : public BreakpointCondition {
+public:
+  GdbBreakpointCondition(const vector<vector<uint8_t> >& bytecodes) {
+    for (auto& b : bytecodes) {
+      expressions.push_back(GdbExpression(b.data(), b.size()));
+    }
+  }
+  virtual bool evaluate(Task* t) const {
+    for (auto& e : expressions) {
+      GdbExpression::Value v;
+      // Break if evaluation fails or the result is nonzero
+      if (!e.evaluate(t, &v) || v.i != 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+private:
+  vector<GdbExpression> expressions;
+};
+
+static unique_ptr<BreakpointCondition> breakpoint_condition(
+    const GdbRequest& request) {
+  if (request.watch().conditions.empty()) {
+    return nullptr;
+  }
+  return unique_ptr<BreakpointCondition>(
+      new GdbBreakpointCondition(request.watch().conditions));
+}
+
 void GdbServer::dispatch_debugger_request(Session& session, Task* t,
                                           const GdbRequest& req,
                                           ReportState state) {
@@ -446,7 +479,8 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       // Mirror all breakpoint/watchpoint sets/unsets to the target process
       // if it's not part of the timeline (i.e. it's a diversion).
       Task* replay_task = timeline.current_session().find_task(t->tuid());
-      bool ok = timeline.add_breakpoint(replay_task, req.watch().addr);
+      bool ok = timeline.add_breakpoint(replay_task, req.watch().addr,
+                                        breakpoint_condition(req));
       if (ok && &session != &timeline.current_session()) {
         bool diversion_ok =
             target->vm()->add_breakpoint(req.watch().addr, TRAP_BKPT_USER);
@@ -460,9 +494,9 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_SET_WR_WATCH:
     case DREQ_SET_RDWR_WATCH: {
       Task* replay_task = timeline.current_session().find_task(t->tuid());
-      bool ok =
-          timeline.add_watchpoint(replay_task, req.watch().addr,
-                                  req.watch().kind, watchpoint_type(req.type));
+      bool ok = timeline.add_watchpoint(
+          replay_task, req.watch().addr, req.watch().kind,
+          watchpoint_type(req.type), breakpoint_condition(req));
       if (ok && &session != &timeline.current_session()) {
         bool diversion_ok = target->vm()->add_watchpoint(
             req.watch().addr, req.watch().kind, watchpoint_type(req.type));

@@ -645,20 +645,22 @@ bool GdbConnection::query(char* payload) {
     return false;
   }
   if (!strcmp(name, "Supported")) {
-    char supported[1024];
-
     /* TODO process these */
     LOG(debug) << "gdb supports " << args;
 
-    const char* reverse_exec = "";
+    stringstream supported;
+    supported << "PacketSize=" << sizeof(outbuf);
+    supported << ";QStartNoAckMode+"
+                 ";qXfer:auxv:read+"
+                 ";qXfer:siginfo:read+"
+                 ";qXfer:siginfo:write+"
+                 ";multiprocess+"
+                 ";ConditionalBreakpoints+";
     if (features().reverse_execution) {
-      reverse_exec = ";ReverseContinue+;ReverseStep+";
+      supported << ";ReverseContinue+"
+                   ";ReverseStep+";
     }
-    snprintf(supported, sizeof(supported) - 1,
-             "PacketSize=%zd;QStartNoAckMode+;qXfer:auxv:read+"
-             ";qXfer:siginfo:read+;qXfer:siginfo:write+;multiprocess+%s",
-             sizeof(outbuf), reverse_exec);
-    write_packet(supported);
+    write_packet(supported.str().c_str());
     return false;
   }
   if (!strcmp(name, "Symbol")) {
