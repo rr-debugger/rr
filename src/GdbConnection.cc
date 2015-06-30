@@ -1031,7 +1031,6 @@ bool GdbConnection::process_packet() {
       ++payload;
       req.mem().len = strtoul(payload, &payload, 16);
       ++payload;
-      // This is freed by reply_set_mem().
       req.mem().data.resize(req.mem().len);
       // TODO: verify that the length of |payload| is as
       // expected in the presence of escaped data.  Right
@@ -1058,8 +1057,28 @@ bool GdbConnection::process_packet() {
       req = GdbRequest(GdbRequestType(
           type + (request == 'Z' ? DREQ_SET_SW_BREAK : DREQ_REMOVE_SW_BREAK)));
       req.watch().addr = strtoul(payload, &payload, 16);
-      assert(',' == *payload++);
+      assert(',' == *payload);
+      payload++;
       req.watch().kind = strtoul(payload, &payload, 16);
+      if (';' == *payload) {
+        ++payload;
+        while ('X' == *payload) {
+          ++payload;
+          int len = strtol(payload, &payload, 16);
+          assert(',' == *payload);
+          payload++;
+          vector<uint8_t> bytes;
+          for (int i = 0; i < len; ++i) {
+            assert(payload[0] && payload[1]);
+            char tmp = payload[2];
+            payload[2] = '\0';
+            bytes.push_back(strtol(payload, &payload, 16));
+            assert('\0' == *payload);
+            payload[0] = tmp;
+          }
+          req.watch().conditions.push_back(move(bytes));
+        }
+      }
       assert('\0' == *payload);
 
       LOG(debug) << "gdb requests " << ('Z' == request ? "set" : "remove")
