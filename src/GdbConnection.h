@@ -180,9 +180,8 @@ struct GdbRequest {
   struct Mem {
     uintptr_t addr;
     size_t len;
-    // For SET_MEM requests, the stream of |len|
-    // number of raw bytes that are to be written.
-    const uint8_t* data;
+    // For SET_MEM requests, the raw bytes that are to be written.
+    std::vector<uint8_t> data;
   } mem_;
   GdbRegisterValue reg_;
   struct Restart {

@@ -1039,12 +1039,12 @@ bool GdbConnection::process_packet() {
       req.mem().len = strtoul(payload, &payload, 16);
       ++payload;
       // This is freed by reply_set_mem().
-      req.mem().data = (uint8_t*)malloc(req.mem().len);
+      req.mem().data.resize(req.mem().len);
       // TODO: verify that the length of |payload| is as
       // expected in the presence of escaped data.  Right
       // now this call is potential-buffer-overrun-city.
       read_binary_data((const uint8_t*)payload, req.mem().len,
-                       (uint8_t*)req.mem().data);
+                       req.mem().data.data());
 
       LOG(debug) << "gdb setting memory (addr=" << HEX(req.mem().addr)
                  << ", len=" << req.mem().len << ")";
@@ -1402,7 +1402,6 @@ void GdbConnection::reply_set_mem(bool ok) {
   assert(DREQ_SET_MEM == req.type);
 
   write_packet(ok ? "OK" : "E01");
-  free((uint8_t*)req.mem().data);
 
   consume_request();
 }

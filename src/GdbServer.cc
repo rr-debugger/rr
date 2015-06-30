@@ -222,7 +222,7 @@ bool GdbServer::maybe_process_magic_command(Task* t, const GdbRequest& req) {
     return false;
   }
   uint32_t cmd;
-  memcpy(&cmd, req.mem().data, sizeof(cmd));
+  memcpy(&cmd, req.mem().data.data(), sizeof(cmd));
   uintptr_t param = cmd & DBG_COMMAND_PARAMETER_MASK;
   switch (cmd & DBG_COMMAND_MSG_MASK) {
     case DBG_COMMAND_MSG_CREATE_CHECKPOINT: {
@@ -398,7 +398,8 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       LOG(debug) << "Writing " << req.mem().len << " bytes to "
                  << HEX(req.mem().addr);
       // TODO fallible
-      target->write_bytes_helper(req.mem().addr, req.mem().len, req.mem().data);
+      target->write_bytes_helper(req.mem().addr, req.mem().len,
+                                 req.mem().data.data());
       dbg->reply_set_mem(true);
       return;
     }
