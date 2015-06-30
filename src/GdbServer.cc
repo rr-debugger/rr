@@ -212,8 +212,7 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
     fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
     *req = GdbRequest(DREQ_CONT);
     req->suppress_debugger_stop = true;
-    req->cont().action_count = 1;
-    req->cont().actions[0] = GdbContAction(ACTION_STEP, get_threadid(t));
+    req->cont().actions.push_back(GdbContAction(ACTION_STEP, get_threadid(t)));
   }
 }
 
@@ -607,8 +606,7 @@ void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
 static RunCommand compute_run_command_from_actions(Task* t,
                                                    const GdbRequest& req,
                                                    int* signal_to_deliver) {
-  for (int i = 0; i < req.cont().action_count; ++i) {
-    auto& action = req.cont().actions[i];
+  for (auto& action : req.cont().actions) {
     if (matches_threadid(t, action.target)) {
       // We can only run task |t|; neither diversion nor replay sessions
       // support running multiple threads. So even if gdb tells us to continue
@@ -749,7 +747,7 @@ void GdbServer::try_lazy_reverse_singlesteps(Task* t, GdbRequest& req) {
   bool need_seek = false;
 
   while (req.type == DREQ_CONT && req.cont().run_direction == RUN_BACKWARD &&
-         req.cont().action_count == 1 &&
+         req.cont().actions.size() == 1 &&
          req.cont().actions[0].type == ACTION_STEP &&
          req.cont().actions[0].signal_to_deliver == 0 &&
          matches_threadid(t, req.cont().actions[0].target) &&

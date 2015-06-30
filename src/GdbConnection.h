@@ -180,7 +180,7 @@ struct GdbRequest {
   struct Mem {
     uintptr_t addr;
     size_t len;
-    // For SET_MEM requests, the raw bytes that are to be written.
+    // For SET_MEM requests, the |len| raw bytes that are to be written.
     std::vector<uint8_t> data;
   } mem_;
   GdbRegisterValue reg_;
@@ -191,8 +191,7 @@ struct GdbRequest {
   } restart_;
   struct Cont {
     RunDirection run_direction;
-    int action_count;
-    GdbContAction actions[2];
+    std::vector<GdbContAction> actions;
   } cont_;
 
   Mem& mem() {

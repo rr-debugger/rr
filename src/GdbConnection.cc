@@ -729,14 +729,12 @@ bool GdbConnection::process_bpacket(char* payload) {
   if (strcmp(payload, "c") == 0) {
     req = GdbRequest(DREQ_CONT);
     req.cont().run_direction = RUN_BACKWARD;
-    req.cont().action_count = 1;
-    req.cont().actions[0] = GdbContAction(ACTION_CONTINUE, resume_thread);
+    req.cont().actions.push_back(GdbContAction(ACTION_CONTINUE, resume_thread));
     return true;
   } else if (strcmp(payload, "s") == 0) {
     req = GdbRequest(DREQ_CONT);
     req.cont().run_direction = RUN_BACKWARD;
-    req.cont().action_count = 1;
-    req.cont().actions[0] = GdbContAction(ACTION_STEP, resume_thread);
+    req.cont().actions.push_back(GdbContAction(ACTION_STEP, resume_thread));
     return true;
   } else {
     UNHANDLED_REQ() << "Unhandled gdb bpacket: b" << payload;
@@ -827,14 +825,9 @@ bool GdbConnection::process_vpacket(char* payload) {
     if (has_default_action) {
       actions.push_back(default_action);
     }
-    if (actions.size() > array_length(req.cont().actions)) {
-      UNHANDLED_REQ() << "Unhandled vCont command with too many actions";
-      return false;
-    }
     req = GdbRequest(DREQ_CONT);
     req.cont().run_direction = RUN_FORWARD;
-    req.cont().action_count = actions.size();
-    copy(actions.begin(), actions.end(), req.cont().actions);
+    req.cont().actions = move(actions);
     return true;
   }
 
