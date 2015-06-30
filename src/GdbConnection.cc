@@ -883,9 +883,7 @@ bool GdbConnection::process_vpacket(char* payload) {
       if (event_str[0] == 'c') {
         int param = strtol(event_str.c_str() + 1, &endp, 0);
         req.restart().type = RESTART_FROM_CHECKPOINT;
-        strncpy(req.restart().param_str, event_str.c_str() + 1,
-                sizeof(req.restart().param_str));
-        req.restart().param_str[sizeof(req.restart().param_str) - 1] = 0;
+        req.restart().param_str = event_str.substr(1);
         req.restart().param = param;
         LOG(debug) << "next replayer restarting from checkpoint "
                    << req.restart().param;

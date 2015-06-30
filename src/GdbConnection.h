@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <ostream>
+#include <string>
 #include <vector>
 
 #include "GdbRegister.h"
@@ -186,7 +187,7 @@ struct GdbRequest {
   GdbRegisterValue reg_;
   struct Restart {
     int param;
-    char param_str[32];
+    std::string param_str;
     GdbRestartType type;
   } restart_;
   struct Cont {
