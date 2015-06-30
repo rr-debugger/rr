@@ -78,6 +78,8 @@ enum GdbRequestType {
   DREQ_GET_REGS,
   DREQ_GET_STOP_REASON,
   DREQ_GET_THREAD_LIST,
+  DREQ_INTERRUPT,
+  DREQ_DETACH,
 
   /* These use params.target. */
   DREQ_GET_AUXV,
@@ -85,6 +87,12 @@ enum GdbRequestType {
   DREQ_GET_THREAD_EXTRA_INFO,
   DREQ_SET_CONTINUE_THREAD,
   DREQ_SET_QUERY_THREAD,
+  // gdb wants to write back siginfo_t to a tracee.  More
+  // importantly, this packet arrives before an experiment
+  // session for a |call foo()| is about to be torn down.
+  //
+  // TODO: actual interface NYI.
+  DREQ_WRITE_SIGINFO,
 
   /* These use params.mem. */
   DREQ_GET_MEM,
@@ -101,35 +109,28 @@ enum GdbRequestType {
   DREQ_SET_RDWR_WATCH,
   DREQ_WATCH_FIRST = DREQ_REMOVE_SW_BREAK,
   DREQ_WATCH_LAST = DREQ_SET_RDWR_WATCH,
-
-  /* Use params.reg. */
-  DREQ_GET_REG,
-  DREQ_SET_REG,
-
-  /* Use params.cont. */
-  DREQ_CONT,
-
-  DREQ_INTERRUPT,
-
-  /* gdb host detaching from stub.  No parameters. */
-  DREQ_DETACH,
-
-  /* Uses params.restart. */
-  DREQ_RESTART,
-
   // gdb wants to read the current siginfo_t for a stopped
   // tracee.  More importantly, this packet arrives at the very
   // beginning of a |call foo()| experiment.
   //
   // Uses .mem for offset/len.
   DREQ_READ_SIGINFO,
+  DREQ_MEM_FIRST = DREQ_GET_MEM,
+  DREQ_MEM_LAST = DREQ_READ_SIGINFO,
 
-  // gdb wants to write back siginfo_t to a tracee.  More
-  // importantly, this packet arrives before an experiment
-  // session for a |call foo()| is about to be torn down.
-  //
-  // TODO: actual interface NYI.
-  DREQ_WRITE_SIGINFO,
+  /* Use params.reg. */
+  DREQ_GET_REG,
+  DREQ_SET_REG,
+  DREQ_REG_FIRST = DREQ_GET_REG,
+  DREQ_REG_LAST = DREQ_SET_REG,
+
+  /* Use params.cont. */
+  DREQ_CONT,
+
+  /* gdb host detaching from stub.  No parameters. */
+
+  /* Uses params.restart. */
+  DREQ_RESTART,
 };
 
 enum GdbRestartType {
@@ -155,14 +156,19 @@ struct GdbContAction {
  * by rr, the target.
  */
 struct GdbRequest {
-  GdbRequest(GdbRequestType type = DREQ_NONE) : type(type) {}
+  GdbRequest(GdbRequestType type = DREQ_NONE)
+      : type(type), suppress_debugger_stop(false) {}
   GdbRequest(const GdbRequest& other)
-    : type(other.type), target(other.target),
-      suppress_debugger_stop(other.suppress_debugger_stop) {
-    memcpy(&u, &other.u, sizeof(u));
-  }
+      : type(other.type),
+        target(other.target),
+        suppress_debugger_stop(other.suppress_debugger_stop),
+        mem_(other.mem_),
+        reg_(other.reg_),
+        restart_(other.restart_),
+        cont_(other.cont_) {}
   GdbRequest& operator=(const GdbRequest& other) {
-    memcpy(this, &other, sizeof(*this));
+    this->~GdbRequest();
+    new (this) GdbRequest(other);
     return *this;
   }
 
@@ -176,34 +182,51 @@ struct GdbRequest {
     // For SET_MEM requests, the stream of |len|
     // number of raw bytes that are to be written.
     const uint8_t* data;
-  };
+  } mem_;
+  GdbRegisterValue reg_;
   struct Restart {
     int param;
     char param_str[32];
     GdbRestartType type;
-  };
+  } restart_;
   struct Cont {
     RunDirection run_direction;
     int action_count;
     GdbContAction actions[2];
-  };
+  } cont_;
 
-  union All {
-    All() {}
-    Mem mem;
-    GdbRegisterValue reg;
-    Restart restart;
-    Cont cont;
-  } u;
-
-  Mem& mem() { return u.mem; }
-  const Mem& mem() const { return u.mem; }
-  GdbRegisterValue& reg() { return u.reg; }
-  const GdbRegisterValue& reg() const { return u.reg; }
-  Restart& restart() { return u.restart; }
-  const Restart& restart() const { return u.restart; }
-  Cont& cont() { return u.cont; }
-  const Cont& cont() const { return u.cont; }
+  Mem& mem() {
+    assert(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
+    return mem_;
+  }
+  const Mem& mem() const {
+    assert(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
+    return mem_;
+  }
+  GdbRegisterValue& reg() {
+    assert(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
+    return reg_;
+  }
+  const GdbRegisterValue& reg() const {
+    assert(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
+    return reg_;
+  }
+  Restart& restart() {
+    assert(type == DREQ_RESTART);
+    return restart_;
+  }
+  const Restart& restart() const {
+    assert(type == DREQ_RESTART);
+    return restart_;
+  }
+  Cont& cont() {
+    assert(type == DREQ_CONT);
+    return cont_;
+  }
+  const Cont& cont() const {
+    assert(type == DREQ_CONT);
+    return cont_;
+  }
 
   /**
    * Return nonzero if this requires that program execution be resumed

@@ -367,8 +367,8 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       }
       vector<uint8_t> mem;
       mem.resize(req.mem().len);
-      ssize_t nread =
-          target->read_bytes_fallible(req.mem().addr, req.mem().len, mem.data());
+      ssize_t nread = target->read_bytes_fallible(req.mem().addr, req.mem().len,
+                                                  mem.data());
       mem.resize(max(ssize_t(0), nread));
       target->vm()->replace_breakpoints_with_original_values(
           mem.data(), mem.size(), req.mem().addr);
@@ -460,8 +460,9 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_SET_WR_WATCH:
     case DREQ_SET_RDWR_WATCH: {
       Task* replay_task = timeline.current_session().find_task(t->tuid());
-      bool ok = timeline.add_watchpoint(replay_task, req.mem().addr, req.mem().len,
-                                        watchpoint_type(req.type));
+      bool ok =
+          timeline.add_watchpoint(replay_task, req.mem().addr, req.mem().len,
+                                  watchpoint_type(req.type));
       if (ok && &session != &timeline.current_session()) {
         bool diversion_ok = target->vm()->add_watchpoint(
             req.mem().addr, req.mem().len, watchpoint_type(req.type));

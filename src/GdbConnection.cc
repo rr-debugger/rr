@@ -892,7 +892,8 @@ bool GdbConnection::process_vpacket(char* payload) {
       } else {
         req.restart().type = RESTART_FROM_EVENT;
         req.restart().param = strtol(event_str.c_str(), &endp, 0);
-        LOG(debug) << "next replayer advancing to event " << req.restart().param;
+        LOG(debug) << "next replayer advancing to event "
+                   << req.restart().param;
       }
       if (!endp || *endp != '\0') {
         LOG(debug) << "Couldn't parse event string `" << event_str << "'";
