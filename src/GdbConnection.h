@@ -21,6 +21,8 @@
  * namespaces).
  */
 struct GdbThreadId {
+  GdbThreadId(pid_t pid = -1, pid_t tid = -1) : pid(pid), tid(tid) {}
+
   pid_t pid;
   pid_t tid;
 
@@ -153,34 +155,55 @@ struct GdbContAction {
  * by rr, the target.
  */
 struct GdbRequest {
-  GdbRequest() {}
+  GdbRequest(GdbRequestType type = DREQ_NONE) : type(type) {}
+  GdbRequest(const GdbRequest& other)
+    : type(other.type), target(other.target),
+      suppress_debugger_stop(other.suppress_debugger_stop) {
+    memcpy(&u, &other.u, sizeof(u));
+  }
+  GdbRequest& operator=(const GdbRequest& other) {
+    memcpy(this, &other, sizeof(*this));
+    return *this;
+  }
 
-  GdbRequestType type;
+  const GdbRequestType type;
   GdbThreadId target;
   bool suppress_debugger_stop;
-  union {
-    struct {
-      uintptr_t addr;
-      size_t len;
-      // For SET_MEM requests, the stream of |len|
-      // number of raw bytes that are to be written.
-      const uint8_t* data;
-    } mem;
 
-    GdbRegisterValue reg;
-
-    struct {
-      int param;
-      char param_str[32];
-      GdbRestartType type;
-    } restart;
-
-    struct {
-      RunDirection run_direction;
-      int action_count;
-      GdbContAction actions[2];
-    } cont;
+  struct Mem {
+    uintptr_t addr;
+    size_t len;
+    // For SET_MEM requests, the stream of |len|
+    // number of raw bytes that are to be written.
+    const uint8_t* data;
   };
+  struct Restart {
+    int param;
+    char param_str[32];
+    GdbRestartType type;
+  };
+  struct Cont {
+    RunDirection run_direction;
+    int action_count;
+    GdbContAction actions[2];
+  };
+
+  union All {
+    All() {}
+    Mem mem;
+    GdbRegisterValue reg;
+    Restart restart;
+    Cont cont;
+  } u;
+
+  Mem& mem() { return u.mem; }
+  const Mem& mem() const { return u.mem; }
+  GdbRegisterValue& reg() { return u.reg; }
+  const GdbRegisterValue& reg() const { return u.reg; }
+  Restart& restart() { return u.restart; }
+  const Restart& restart() const { return u.restart; }
+  Cont& cont() { return u.cont; }
+  const Cont& cont() const { return u.cont; }
 
   /**
    * Return nonzero if this requires that program execution be resumed
