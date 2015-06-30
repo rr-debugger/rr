@@ -441,15 +441,15 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
       return;
     }
     case DREQ_SET_SW_BREAK: {
-      ASSERT(target, (req.mem().len == sizeof(AddressSpace::breakpoint_insn)))
+      ASSERT(target, req.watch().kind == sizeof(AddressSpace::breakpoint_insn))
           << "Debugger setting bad breakpoint insn";
       // Mirror all breakpoint/watchpoint sets/unsets to the target process
       // if it's not part of the timeline (i.e. it's a diversion).
       Task* replay_task = timeline.current_session().find_task(t->tuid());
-      bool ok = timeline.add_breakpoint(replay_task, req.mem().addr);
+      bool ok = timeline.add_breakpoint(replay_task, req.watch().addr);
       if (ok && &session != &timeline.current_session()) {
         bool diversion_ok =
-            target->vm()->add_breakpoint(req.mem().addr, TRAP_BKPT_USER);
+            target->vm()->add_breakpoint(req.watch().addr, TRAP_BKPT_USER);
         ASSERT(target, diversion_ok);
       }
       dbg->reply_watchpoint_request(ok);
@@ -461,11 +461,11 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_SET_RDWR_WATCH: {
       Task* replay_task = timeline.current_session().find_task(t->tuid());
       bool ok =
-          timeline.add_watchpoint(replay_task, req.mem().addr, req.mem().len,
-                                  watchpoint_type(req.type));
+          timeline.add_watchpoint(replay_task, req.watch().addr,
+                                  req.watch().kind, watchpoint_type(req.type));
       if (ok && &session != &timeline.current_session()) {
         bool diversion_ok = target->vm()->add_watchpoint(
-            req.mem().addr, req.mem().len, watchpoint_type(req.type));
+            req.watch().addr, req.watch().kind, watchpoint_type(req.type));
         ASSERT(target, diversion_ok);
       }
       dbg->reply_watchpoint_request(ok);
@@ -473,9 +473,9 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     }
     case DREQ_REMOVE_SW_BREAK: {
       Task* replay_task = timeline.current_session().find_task(t->tuid());
-      timeline.remove_breakpoint(replay_task, req.mem().addr);
+      timeline.remove_breakpoint(replay_task, req.watch().addr);
       if (&session != &timeline.current_session()) {
-        target->vm()->remove_breakpoint(req.mem().addr, TRAP_BKPT_USER);
+        target->vm()->remove_breakpoint(req.watch().addr, TRAP_BKPT_USER);
       }
       dbg->reply_watchpoint_request(true);
       return;
@@ -485,10 +485,10 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
     case DREQ_REMOVE_WR_WATCH:
     case DREQ_REMOVE_RDWR_WATCH: {
       Task* replay_task = timeline.current_session().find_task(t->tuid());
-      timeline.remove_watchpoint(replay_task, req.mem().addr, req.mem().len,
-                                 watchpoint_type(req.type));
+      timeline.remove_watchpoint(replay_task, req.watch().addr,
+                                 req.watch().kind, watchpoint_type(req.type));
       if (&session != &timeline.current_session()) {
-        target->vm()->remove_watchpoint(req.mem().addr, req.mem().len,
+        target->vm()->remove_watchpoint(req.watch().addr, req.watch().kind,
                                         watchpoint_type(req.type));
       }
       dbg->reply_watchpoint_request(true);

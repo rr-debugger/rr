@@ -1057,14 +1057,14 @@ bool GdbConnection::process_packet() {
       }
       req = GdbRequest(GdbRequestType(
           type + (request == 'Z' ? DREQ_SET_SW_BREAK : DREQ_REMOVE_SW_BREAK)));
-      req.mem().addr = strtoul(payload, &payload, 16);
+      req.watch().addr = strtoul(payload, &payload, 16);
       assert(',' == *payload++);
-      req.mem().len = strtoul(payload, &payload, 16);
+      req.watch().kind = strtoul(payload, &payload, 16);
       assert('\0' == *payload);
 
       LOG(debug) << "gdb requests " << ('Z' == request ? "set" : "remove")
-                 << "breakpoint (addr=" << HEX(req.mem().addr)
-                 << ", len=" << req.mem().len << ")";
+                 << "breakpoint (addr=" << HEX(req.watch().addr)
+                 << ", len=" << req.watch().kind << ")";
 
       ret = true;
       break;

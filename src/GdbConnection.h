@@ -98,6 +98,15 @@ enum GdbRequestType {
   /* These use params.mem. */
   DREQ_GET_MEM,
   DREQ_SET_MEM,
+  // gdb wants to read the current siginfo_t for a stopped
+  // tracee.  More importantly, this packet arrives at the very
+  // beginning of a |call foo()| experiment.
+  //
+  // Uses .mem for offset/len.
+  DREQ_READ_SIGINFO,
+  DREQ_MEM_FIRST = DREQ_GET_MEM,
+  DREQ_MEM_LAST = DREQ_READ_SIGINFO,
+
   DREQ_REMOVE_SW_BREAK,
   DREQ_REMOVE_HW_BREAK,
   DREQ_REMOVE_WR_WATCH,
@@ -110,14 +119,6 @@ enum GdbRequestType {
   DREQ_SET_RDWR_WATCH,
   DREQ_WATCH_FIRST = DREQ_REMOVE_SW_BREAK,
   DREQ_WATCH_LAST = DREQ_SET_RDWR_WATCH,
-  // gdb wants to read the current siginfo_t for a stopped
-  // tracee.  More importantly, this packet arrives at the very
-  // beginning of a |call foo()| experiment.
-  //
-  // Uses .mem for offset/len.
-  DREQ_READ_SIGINFO,
-  DREQ_MEM_FIRST = DREQ_GET_MEM,
-  DREQ_MEM_LAST = DREQ_READ_SIGINFO,
 
   /* Use params.reg. */
   DREQ_GET_REG,
@@ -164,6 +165,7 @@ struct GdbRequest {
         target(other.target),
         suppress_debugger_stop(other.suppress_debugger_stop),
         mem_(other.mem_),
+        watch_(other.watch_),
         reg_(other.reg_),
         restart_(other.restart_),
         cont_(other.cont_) {}
@@ -183,6 +185,10 @@ struct GdbRequest {
     // For SET_MEM requests, the |len| raw bytes that are to be written.
     std::vector<uint8_t> data;
   } mem_;
+  struct Watch {
+    uintptr_t addr;
+    int kind;
+  } watch_;
   GdbRegisterValue reg_;
   struct Restart {
     int param;
@@ -201,6 +207,14 @@ struct GdbRequest {
   const Mem& mem() const {
     assert(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
     return mem_;
+  }
+  Watch& watch() {
+    assert(type >= DREQ_WATCH_FIRST && type <= DREQ_WATCH_LAST);
+    return watch_;
+  }
+  const Watch& watch() const {
+    assert(type >= DREQ_WATCH_FIRST && type <= DREQ_WATCH_LAST);
+    return watch_;
   }
   GdbRegisterValue& reg() {
     assert(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
