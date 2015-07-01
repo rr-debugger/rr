@@ -314,6 +314,18 @@ static int count_variants(int bits) {
   return result;
 }
 
+template <typename T>
+static T fetch(const uint8_t* data, size_t size, size_t pc) {
+  if (pc + sizeof(T) > size) {
+    return T(-1);
+  }
+  T v = 0;
+  for (size_t i = 0; i < sizeof(T); ++i) {
+    v = (v << 8) | data[pc + i];
+  }
+  return v;
+}
+
 GdbExpression::GdbExpression(const uint8_t* data, size_t size) {
   vector<bool> instruction_starts;
   instruction_starts.resize(size);
@@ -347,6 +359,12 @@ GdbExpression::GdbExpression(const uint8_t* data, size_t size) {
         unvisited.push_back(pc + 2);
         break;
       case OP_if_goto:
+        unvisited.push_back(fetch<uint16_t>(data, size, pc + 1));
+        unvisited.push_back(pc + 3);
+        break;
+      case OP_goto:
+        unvisited.push_back(fetch<uint16_t>(data, size, pc + 1));
+        break;
       case OP_const16:
       case OP_reg:
         unvisited.push_back(pc + 3);
