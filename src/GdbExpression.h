@@ -21,12 +21,8 @@ public:
 
   struct Value {
     Value(int64_t i = 0) : i(i) {}
-    bool operator==(const Value& v) {
-      return i == v.i;
-    }
-    bool operator!=(const Value& v) {
-      return !(*this == v);
-    }
+    bool operator==(const Value& v) { return i == v.i; }
+    bool operator!=(const Value& v) { return !(*this == v); }
     int64_t i;
   };
   /**

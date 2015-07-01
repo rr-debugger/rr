@@ -18,7 +18,7 @@ int v2 = 2;
 int v3 = 3;
 int vm1 = -1;
 int vm2 = -2;
-uint64_t u64max = (uint64_t)(int64_t)-1;
+uint64_t u64max = (uint64_t)(int64_t) - 1;
 int* p = (int*)&u64max;
 
 int main(int argc, char* argv[]) {
