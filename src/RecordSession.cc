@@ -14,6 +14,12 @@
 #include "seccomp-bpf.h"
 #include "task.h"
 
+// Undef si_addr_lsb since it's an alias for a field name that doesn't exist,
+// and we need to use the actual field name.
+#ifdef si_addr_lsb
+#undef si_addr_lsb
+#endif
+
 using namespace rr;
 using namespace std;
 
@@ -167,19 +173,19 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
         // Documentation says that si_call_addr is the address of the syscall
         // instruction, but in tests it's immediately after the syscall
         // instruction.
-        si.si_call_addr = (void*)r.ip().register_value();
+        si._sifields._sigsys._call_addr = (void*)r.ip().register_value();
         switch (r.arch()) {
           case x86:
-            si.si_arch = AUDIT_ARCH_I386;
+            si._sifields._sigsys._arch = AUDIT_ARCH_I386;
             break;
           case x86_64:
-            si.si_arch = AUDIT_ARCH_X86_64;
+            si._sifields._sigsys._arch = AUDIT_ARCH_X86_64;
             break;
           default:
             assert(0 && "Unknown architecture");
             break;
         }
-        si.si_syscall = syscallno;
+        si._sifields._sigsys._syscall = syscallno;
         t->stash_synthetic_sig(si);
 
         // Tests show that the current registers are preserved (on x86, eax/rax
@@ -769,7 +775,8 @@ static void setup_sigframe_siginfo_arch(Task* t, const siginfo_t& siginfo) {
     case SIGTRAP:
       si._sifields._sigfault.si_addr_ =
           remote_ptr<void>((uintptr_t)siginfo.si_addr);
-      si._sifields._sigfault.si_addr_lsb_ = siginfo.si_addr_lsb;
+      si._sifields._sigfault.si_addr_lsb_ =
+          siginfo._sifields._sigfault.si_addr_lsb;
       break;
     case SIGIO:
       si._sifields._sigpoll.si_band_ = siginfo.si_band;
@@ -777,9 +784,9 @@ static void setup_sigframe_siginfo_arch(Task* t, const siginfo_t& siginfo) {
       break;
     case SIGSYS:
       si._sifields._sigsys._call_addr =
-          remote_ptr<void>((uintptr_t)siginfo.si_call_addr);
-      si._sifields._sigsys._syscall = siginfo.si_syscall;
-      si._sifields._sigsys._arch = siginfo.si_arch;
+          remote_ptr<void>((uintptr_t)siginfo._sifields._sigsys._call_addr);
+      si._sifields._sigsys._syscall = siginfo._sifields._sigsys._syscall;
+      si._sifields._sigsys._arch = siginfo._sifields._sigsys._arch;
       break;
   }
   t->write_mem(dest, si);
