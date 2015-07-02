@@ -500,6 +500,7 @@ set(TESTS_WITH_PROGRAM
   read_big_struct
   restart_abnormal_exit
   reverse_continue_breakpoint
+  reverse_continue_process_signal
   segfault
   stack_growth
   step_thread

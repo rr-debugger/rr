@@ -123,7 +123,7 @@ private:
   enum ContinueOrStop { CONTINUE_DEBUGGING, STOP_DEBUGGING };
   bool detach_or_restart(const GdbRequest& req, ContinueOrStop* s);
   ContinueOrStop handle_exited_state(Task* t);
-  ContinueOrStop debug_one_step();
+  ContinueOrStop debug_one_step(RunDirection* last_direction);
   /**
    * If 'req' is a reverse-singlestep, try to obtain the resulting state
    * directly from ReplayTimeline's mark database. If that succeeds,

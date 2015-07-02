@@ -847,11 +847,14 @@ GdbServer::ContinueOrStop GdbServer::handle_exited_state(Task* t) {
   return STOP_DEBUGGING;
 }
 
-GdbServer::ContinueOrStop GdbServer::debug_one_step() {
+GdbServer::ContinueOrStop GdbServer::debug_one_step(
+    RunDirection* last_direction) {
   ReplayResult result;
   Task* t = timeline.current_session().current_task();
   if (!t || t->task_group()->tguid() != debuggee_tguid) {
-    result = timeline.replay_step(RUN_CONTINUE, RUN_FORWARD, target.event);
+    result =
+        timeline.replay_step(RUN_CONTINUE, *last_direction,
+                             *last_direction == RUN_FORWARD ? target.event : 0);
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state(nullptr);
     }
@@ -865,6 +868,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
   while (true) {
     ContinueOrStop s;
     if (detach_or_restart(req, &s)) {
+      *last_direction = RUN_FORWARD;
       return s;
     }
     assert(req.is_resume_request());
@@ -874,10 +878,11 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step() {
         compute_run_command_from_actions(t, req, &signal_to_deliver);
     // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
 
-    result = timeline.replay_step(
-        command, req.cont().run_direction,
-        req.cont().run_direction == RUN_FORWARD ? target.event : 0,
-        [&]() { return dbg->sniff_packet(); });
+    *last_direction = req.cont().run_direction;
+    result =
+        timeline.replay_step(command, *last_direction,
+                             *last_direction == RUN_FORWARD ? target.event : 0,
+                             [&]() { return dbg->sniff_packet(); });
     t = timeline.current_session().find_task(tuid);
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state(t);
@@ -1076,7 +1081,8 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 
   activate_debugger();
 
-  while (debug_one_step() == CONTINUE_DEBUGGING) {
+  RunDirection last_direction = RUN_FORWARD;
+  while (debug_one_step(&last_direction) == CONTINUE_DEBUGGING) {
   }
 
   LOG(debug) << "debugger server exiting ...";
