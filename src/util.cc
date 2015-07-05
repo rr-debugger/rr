@@ -512,6 +512,11 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
     LOG(debug) << "  copying file on tmpfs";
     return true;
   }
+  if (file_name == "/etc/ld.so.cache") {
+    // This file changes on almost every system update so we should copy it.
+    LOG(debug) << "  copying " << file_name;
+    return true;
+  }
   if (private_mapping && (prot & PROT_EXEC)) {
     /* We currently don't record the images that we
      * exec(). Since we're being optimistic there (*cough*
