@@ -725,31 +725,32 @@ bool ReplayTimeline::is_start_of_reverse_execution_barrier_event() {
 
 ReplayResult ReplayTimeline::reverse_continue(
     std::function<bool()> interrupt_check) {
-  ReplayResult result;
   Mark end = mark();
   LOG(debug) << "ReplayTimeline::reverse_continue from " << end;
 
-  while (true) {
+  bool last_stop_is_watch_or_signal;
+  ReplayResult final_result;
+  TaskUid final_tuid;
+  Mark dest;
+
+  while (!dest) {
     seek_to_before_key(end.ptr->key);
     if (current_mark_key() == end.ptr->key) {
       LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
       // Can't go backwards. Call this an exit.
-      result.status = REPLAY_EXITED;
-      result.break_status = BreakStatus();
-      return result;
+      final_result.status = REPLAY_EXITED;
+      final_result.break_status = BreakStatus();
+      return final_result;
     }
     maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
 
     Mark start = mark();
     LOG(debug) << "Seeked backward from " << end << " to " << start;
     bool at_breakpoint = false;
-    bool last_stop_is_watch_or_signal = false;
-    Mark dest;
-    ReplayResult final_result;
-    TaskUid final_tuid;
     ReplayStepToMarkStrategy strategy;
     while (true) {
       apply_breakpoints_and_watchpoints();
+      ReplayResult result;
       if (at_breakpoint) {
         result = singlestep_with_breakpoints_disabled();
       } else {
@@ -782,6 +783,7 @@ ReplayResult ReplayTimeline::reverse_continue(
         final_result.break_status.task = current->current_task();
         final_result.break_status.task_exit = true;
         final_tuid = final_result.break_status.task->tuid();
+        last_stop_is_watch_or_signal = false;
       }
 
       if (at_mark(end)) {
@@ -807,27 +809,25 @@ ReplayResult ReplayTimeline::reverse_continue(
       }
     }
 
-    if (dest) {
-      if (last_stop_is_watch_or_signal) {
-        LOG(debug)
-            << "Performing final reverse-singlestep to pass over watch/signal";
-        reverse_singlestep(dest, final_tuid);
-      } else {
-        LOG(debug) << "Seeking to final destination " << dest;
-        seek_to_mark(dest);
-      }
-      // fix break_status.task since the actual Task* may have changed
-      // since we saved final_result
-      final_result.break_status.task = current->find_task(final_tuid);
-      // Hide any singlestepping we did, since a continue operation should
-      // never return a singlestep status
-      final_result.break_status.singlestep_complete = false;
-      return final_result;
-    }
-
-    // No breakpoint was hit. Retry from an earlier checkpoint.
+    // In the next iteration, retry from an earlier checkpoint.
     end = start;
   }
+
+  if (last_stop_is_watch_or_signal) {
+    LOG(debug)
+        << "Performing final reverse-singlestep to pass over watch/signal";
+    reverse_singlestep(dest, final_tuid);
+  } else {
+    LOG(debug) << "Seeking to final destination " << dest;
+    seek_to_mark(dest);
+  }
+  // fix break_status.task since the actual Task* may have changed
+  // since we saved final_result
+  final_result.break_status.task = current->find_task(final_tuid);
+  // Hide any singlestepping we did, since a continue operation should
+  // never return a singlestep status
+  final_result.break_status.singlestep_complete = false;
+  return final_result;
 }
 
 ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
