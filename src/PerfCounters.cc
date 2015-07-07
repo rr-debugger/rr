@@ -117,6 +117,7 @@ static CpuMicroarch get_cpu_microarch() {
     case 0x306A0:
       return IntelIvyBridge;
     case 0x306C0:
+    case 0x306F0:
     case 0x40650:
     case 0x40660:
       return IntelHaswell;
