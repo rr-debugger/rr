@@ -589,6 +589,7 @@ set(TESTS_WITHOUT_PROGRAM
   step1
   step_rdtsc
   step_signal
+  string_instructions_break
   string_instructions_replay_quirk
   subprocess_exit_ends_session
   switch_processes

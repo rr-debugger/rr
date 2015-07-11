@@ -123,8 +123,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
   }
 
   MarkKey key = current_mark_key();
-  Task* t = current->current_task();
-  shared_ptr<InternalMark> m = make_shared<InternalMark>(this, t, key);
+  shared_ptr<InternalMark> m = make_shared<InternalMark>(this, *current, key);
 
   auto& mark_vector = marks[key];
   if (mark_vector.empty()) {
@@ -189,7 +188,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       if (!result.did_fast_forward && !result.break_status.signal) {
         new_marks.back()->singlestep_to_next_mark_no_signal = true;
       }
-      new_marks.push_back(make_shared<InternalMark>(this, t, key));
+      new_marks.push_back(make_shared<InternalMark>(this, *tmp_session, key));
     }
 
     LOG(debug) << "Mark location found";
@@ -723,6 +722,109 @@ bool ReplayTimeline::is_start_of_reverse_execution_barrier_event() {
   return true;
 }
 
+bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
+                                                       ForceProgress force) {
+  unapply_breakpoints_and_watchpoints();
+
+  LOG(debug) << "Trying to find intermediate point between "
+             << current_mark_key() << " and " << end
+             << (force == FORCE_PROGRESS ? " (forced)" : "");
+
+  TraceFrame::Time now = current->trace_reader().time();
+  TraceFrame::Time mid = (now + end.ptr->key.trace_time) / 2;
+  if (now < mid && mid < end.ptr->key.trace_time) {
+    ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+    constraints.stop_at_time = mid;
+    while (current->trace_reader().time() < mid) {
+      current->replay_step(constraints);
+    }
+    assert(current->trace_reader().time() == mid);
+    LOG(debug) << "Ran forward to mid event " << current_mark_key();
+    return true;
+  }
+
+  if (current->trace_reader().time() < end.ptr->key.trace_time &&
+      end.ptr->ticks_at_event_start < end.ptr->key.ticks) {
+    ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+    constraints.stop_at_time = end.ptr->key.trace_time;
+    while (current->trace_reader().time() < end.ptr->key.trace_time) {
+      current->replay_step(constraints);
+    }
+    assert(current->trace_reader().time() == end.ptr->key.trace_time);
+    LOG(debug) << "Ran forward to event " << current_mark_key();
+    return true;
+  }
+
+  Task* t = current->current_task();
+  if (t) {
+    Ticks start_ticks = t->tick_count();
+    Ticks end_ticks = current->current_trace_frame().ticks();
+    if (end.ptr->key.trace_time == current->trace_reader().time()) {
+      end_ticks = min(end_ticks, end.ptr->key.ticks);
+    }
+    ASSERT(t, start_ticks <= end_ticks);
+    Ticks target = min(end_ticks, (start_ticks + end_ticks) / 2);
+    ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+    constraints.ticks_target = target;
+    ProtoMark m = proto_mark();
+    ReplayResult result = current->replay_step(constraints);
+    if (m.equal_states(t)) {
+      assert(result.break_status.approaching_ticks_target);
+      assert(t->tick_count() == start_ticks);
+      // We didn't make any progress that way.
+      // Normally we should just give up now and let reverse_continue keep
+      // running and hitting breakpoints etc since we're pretty close to the
+      // target already and the overhead of what we have to do here otherwise
+      // can be high. But there's a pathological case where reverse_continue
+      // is hitting a breakpoint on each iteration of a string instruction.
+      // If that's happening then we will be told to force progress.
+      if (force == FORCE_PROGRESS) {
+        // Let's try a fast-forward singlestep to jump over an x86 string
+        // instruction that may be triggering a lot of breakpoint hits. Make
+        // sure
+        // we stop before |end|.
+        ReplaySession::shr_ptr tmp_session;
+        if (start_ticks + 1 >= end_ticks) {
+          // This singlestep operation might leave us at |end|, which is not
+          // allowed. So make a backup of the current state.
+          tmp_session = current->clone();
+          LOG(debug) << "Created backup tmp_session";
+        }
+        constraints =
+            ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
+        constraints.stop_before_states.push_back(&end.ptr->regs);
+        result = current->replay_step(constraints);
+        if (at_mark(end)) {
+          assert(tmp_session);
+          current = move(tmp_session);
+          LOG(debug) << "Singlestepping arrived at |end|, restoring session";
+        } else if (!m.equal_states(t)) {
+          LOG(debug) << "Did fast-singlestep forward to " << current_mark_key();
+          return true;
+        }
+      }
+    } else {
+      while (t->tick_count() < target &&
+             !result.break_status.approaching_ticks_target) {
+        result = current->replay_step(constraints);
+      }
+      LOG(debug) << "Ran forward to " << current_mark_key();
+      return true;
+    }
+  }
+
+  LOG(debug) << "Made no progress";
+  return false;
+}
+
+/**
+ * Don't allow more than this number of breakpoint/watchpoint stops
+ * in a given replay interval. If we hit more than this, try to split
+ * the interval in half and replay with watchpoints/breakpoints in the latter
+ * half.
+ */
+static const int stop_count_limit = 20;
+
 ReplayResult ReplayTimeline::reverse_continue(
     std::function<bool()> interrupt_check) {
   Mark end = mark();
@@ -732,22 +834,43 @@ ReplayResult ReplayTimeline::reverse_continue(
   ReplayResult final_result;
   TaskUid final_tuid;
   Mark dest;
+  vector<Mark> restart_points;
 
   while (!dest) {
-    seek_to_before_key(end.ptr->key);
-    if (current_mark_key() == end.ptr->key) {
-      LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
-      // Can't go backwards. Call this an exit.
-      final_result.status = REPLAY_EXITED;
-      final_result.break_status = BreakStatus();
-      return final_result;
+    Mark start = mark();
+    bool checkpoint_at_first_break;
+    if (start >= end) {
+      checkpoint_at_first_break = true;
+      if (restart_points.empty()) {
+        seek_to_before_key(end.ptr->key);
+        start = mark();
+        if (start >= end) {
+          LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
+          // Can't go backwards. Call this an exit.
+          final_result.status = REPLAY_EXITED;
+          final_result.break_status = BreakStatus();
+          return final_result;
+        }
+        LOG(debug) << "Seeked backward from " << end << " to " << start;
+      } else {
+        Mark seek = restart_points.back();
+        restart_points.pop_back();
+        seek_to_mark(seek);
+        LOG(debug) << "Seeked directly backward from " << start << " to "
+                   << seek;
+        start = move(seek);
+      }
+    } else {
+      checkpoint_at_first_break = false;
     }
     maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
 
-    Mark start = mark();
-    LOG(debug) << "Seeked backward from " << end << " to " << start;
     bool at_breakpoint = false;
     ReplayStepToMarkStrategy strategy;
+    int stop_count = 0;
+    bool made_progress_between_stops = false;
+    remote_code_ptr avoidable_stop_ip;
+    Ticks avoidable_stop_ticks = 0;
     while (true) {
       apply_breakpoints_and_watchpoints();
       ReplayResult result;
@@ -763,8 +886,22 @@ ReplayResult ReplayTimeline::reverse_continue(
         // the following seek and possibly future operations.
       }
       at_breakpoint = result.break_status.breakpoint_hit;
+      bool avoidable_stop = result.break_status.breakpoint_hit ||
+                            !result.break_status.watchpoints_hit.empty();
+      if (avoidable_stop) {
+        made_progress_between_stops =
+            avoidable_stop_ip != result.break_status.task->ip() ||
+            avoidable_stop_ticks != result.break_status.task->tick_count();
+        avoidable_stop_ip = result.break_status.task->ip();
+        avoidable_stop_ticks = result.break_status.task->tick_count();
+      }
       evaluate_conditions(result);
       maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
+      if (checkpoint_at_first_break && dest != start &&
+          result.break_status.any_break()) {
+        checkpoint_at_first_break = false;
+        set_short_checkpoint();
+      }
 
       if (!result.break_status.watchpoints_hit.empty() ||
           result.break_status.signal) {
@@ -787,8 +924,11 @@ ReplayResult ReplayTimeline::reverse_continue(
       }
 
       if (at_mark(end)) {
+        // In the next iteration, retry from an earlier checkpoint.
+        end = start;
         break;
       }
+
       // If there is a breakpoint at the current ip() where we start a
       // reverse-continue, gdb expects us to skip it.
       if (result.break_status.breakpoint_hit) {
@@ -807,10 +947,30 @@ ReplayResult ReplayTimeline::reverse_continue(
         final_result.break_status.task = current->current_task();
         return final_result;
       }
-    }
 
-    // In the next iteration, retry from an earlier checkpoint.
-    end = start;
+      if (avoidable_stop) {
+        ++stop_count;
+        if (stop_count > stop_count_limit) {
+          Mark before_running = mark();
+          if (run_forward_to_intermediate_point(end, made_progress_between_stops
+                                                         ? DONT_FORCE_PROGRESS
+                                                         : FORCE_PROGRESS)) {
+            assert(!at_mark(end));
+            // We made some progress towards |end| with breakpoints/watchpoints
+            // disabled, without reaching |end|. Continuing running forward from
+            // here with breakpoints/watchpoints enabled. If we need to seek
+            // backwards again, try resuming from the point where we disabled
+            // breakpoints/watchpoints.
+            if (dest) {
+              restart_points.push_back(start);
+            }
+            restart_points.push_back(before_running);
+            dest = Mark();
+            break;
+          }
+        }
+      }
+    }
   }
 
   if (last_stop_is_watch_or_signal) {
@@ -885,7 +1045,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
           if (result.break_status.approaching_ticks_target) {
             LOG(debug) << "   approached ticks target at "
                        << current_mark_key();
-            constraints = ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
+            constraints =
+                ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
           }
         } else {
           current->replay_step(RUN_CONTINUE);

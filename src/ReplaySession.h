@@ -265,9 +265,9 @@ public:
     TraceFrame::Time stop_at_time;
     Ticks ticks_target;
     // When the RunCommand is RUN_SINGLESTEP_FAST_FORWARD, stop if the next
-    // singlestep would enter one of the register states in this (null-
-    // terminated) list. RUN_SINGLESTEP_FAST_FORWARD will always singlestep
-    // at least once regardless.
+    // singlestep would enter one of the register states in this list.
+    // RUN_SINGLESTEP_FAST_FORWARD will always singlestep at least once
+    // regardless.
     std::vector<const Registers*> stop_before_states;
 
     bool is_singlestep() const {

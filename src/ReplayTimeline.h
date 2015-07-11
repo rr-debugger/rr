@@ -261,6 +261,9 @@ private:
       }
       return step_key < other.step_key;
     }
+    bool operator>(const MarkKey& other) const { return other < *this; }
+    bool operator>=(const MarkKey& other) const { return !(*this < other); }
+    bool operator<=(const MarkKey& other) const { return !(other < *this); }
     bool operator==(const MarkKey& other) const {
       return trace_time == other.trace_time && ticks == other.ticks &&
              step_key == other.step_key;
@@ -289,11 +292,14 @@ private:
    * record the ordering in the ReplayTimeline.
    */
   struct InternalMark {
-    InternalMark(ReplayTimeline* owner, Task* t, const MarkKey& key)
+    InternalMark(ReplayTimeline* owner, ReplaySession& session,
+                 const MarkKey& key)
         : owner(owner),
           key(key),
+          ticks_at_event_start(session.ticks_at_start_of_current_event()),
           checkpoint_refcount(0),
           singlestep_to_next_mark_no_signal(false) {
+      Task* t = session.current_task();
       if (t) {
         regs = t->regs();
         return_addresses = t->return_addresses();
@@ -312,6 +318,7 @@ private:
     ExtraRegisters extra_regs;
     ReturnAddressList return_addresses;
     ReplaySession::shr_ptr checkpoint;
+    Ticks ticks_at_event_start;
     uint32_t checkpoint_refcount;
     // The next InternalMark in the mark vector is the result of singlestepping
     // from this mark *and* no signal is reported in the break_status.
@@ -343,6 +350,11 @@ private:
   std::shared_ptr<InternalMark> current_mark();
   void remove_mark_with_checkpoint(const MarkKey& key);
   void seek_to_before_key(const MarkKey& key);
+  enum ForceProgress { FORCE_PROGRESS, DONT_FORCE_PROGRESS };
+  // Run forward towards the midpoint of the current position and |end|.
+  // Must stop before we reach |end|.
+  // Returns false if we made no progress.
+  bool run_forward_to_intermediate_point(const Mark& end, ForceProgress force);
   struct ReplayStepToMarkStrategy {
     ReplayStepToMarkStrategy() : singlesteps_to_perform(0) {}
     ReplaySession::StepConstraints setup_step_constraints();

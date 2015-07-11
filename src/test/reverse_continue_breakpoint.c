@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
      is patched now, not later. */
   test_assert(1 == write(fd, ".", 1));
 
-  for (i = 0; i < 20; ++i) {
+  for (i = 0; i < 2000000; ++i) {
     breakpoint2();
     for (j = 0; j < 10; ++j) {
       k = k * 37;
