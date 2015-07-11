@@ -248,6 +248,10 @@ public:
     return ReplayStepKey(current_step.action);
   }
 
+  Ticks ticks_at_start_of_current_event() const {
+    return ticks_at_start_of_event;
+  }
+
   /**
    * Create a replay session that will use the trace directory specified
    * by 'dir', or the latest trace if 'dir' is not supplied.
@@ -314,7 +318,11 @@ public:
 
 private:
   ReplaySession(const std::string& dir)
-      : emu_fs(EmuFs::create()), trace_in(dir), trace_frame(), current_step() {
+      : emu_fs(EmuFs::create()),
+        trace_in(dir),
+        trace_frame(),
+        current_step(),
+        ticks_at_start_of_event(0) {
     advance_to_next_trace_frame(0);
   }
 
@@ -324,6 +332,7 @@ private:
         trace_in(other.trace_in),
         trace_frame(other.trace_frame),
         current_step(other.current_step),
+        ticks_at_start_of_event(other.ticks_at_start_of_event),
         cpuid_bug_detector(other.cpuid_bug_detector),
         flags(other.flags) {}
 
@@ -380,6 +389,7 @@ private:
   TraceReader trace_in;
   TraceFrame trace_frame;
   ReplayTraceStep current_step;
+  Ticks ticks_at_start_of_event;
   CPUIDBugDetector cpuid_bug_detector;
   Flags flags;
   bool did_fast_forward;

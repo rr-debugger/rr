@@ -1652,6 +1652,9 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       !is_in_exec_syscall(next_task)) {
     next_task->vm()->set_first_run_event(trace_frame.time());
   }
+  if (next_task) {
+    ticks_at_start_of_event = next_task->tick_count();
+  }
 
   return result;
 }
