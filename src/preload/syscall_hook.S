@@ -149,7 +149,7 @@ _stub_buffer:
            basically in the same state as before the call. */
         lea    _syscall_stack_adjust(%esp),%esp
         /* Backtrace here will be invalid! */
-        jmp   _stub_buffer /* FAKE, filled in by rr */
+        .byte 0xe9, 0x00, 0x00, 0x00, 0x00 /* Fake jmp filled in by rr */
         .cfi_endproc
         .endr
 _stub_buffer_end:
@@ -335,7 +335,7 @@ _stub_buffer:
            basically in the same state as before the call. */
         lea    _syscall_stack_adjust(%rsp),%rsp
         /* Backtrace here will be invalid! */
-        jmp   _stub_buffer /* FAKE, filled in by rr */
+        .byte 0xe9, 0x00, 0x00, 0x00, 0x00 /* Fake jmp filled in by rr */
         .cfi_endproc
         .endr
 _stub_buffer_end:
