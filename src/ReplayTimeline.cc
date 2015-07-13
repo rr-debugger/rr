@@ -832,8 +832,6 @@ ReplayResult ReplayTimeline::reverse_continue(
 
 ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
                                                 const TaskUid& tuid) {
-  ReplayResult result;
-
   LOG(debug) << "ReplayTimeline::reverse_singlestep from " << origin;
 
   while (true) {
@@ -851,6 +849,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         if (current_mark_key() == current_key) {
           // Can't go further back. Treat this as an exit.
           LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
+          ReplayResult result;
           result.status = REPLAY_EXITED;
           result.break_status = BreakStatus();
           return result;
@@ -863,6 +862,9 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       Mark start = mark();
       LOG(debug) << "Running forward from " << start;
       // Now run forward until we're reasonably close to the correct tick value.
+      ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+      constraints.ticks_target = end.ptr->key.ticks - 1;
+      bool approaching_ticks_target = false;
       while (true) {
         unapply_breakpoints_and_watchpoints();
 
@@ -872,13 +874,18 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
 
         Task* t = current->current_task();
         if (t->tuid() == tuid) {
-          ReplaySession::StepConstraints constraints(RUN_CONTINUE);
-          constraints.ticks_target = end.ptr->key.ticks - 1;
+          if (current->can_validate() &&
+              t->tick_count() >= end.ptr->key.ticks - 1) {
+            // Don't step any further.
+            approaching_ticks_target = true;
+            break;
+          }
+          ReplayResult result;
           result = current->replay_step(constraints);
           if (result.break_status.approaching_ticks_target) {
             LOG(debug) << "   approached ticks target at "
                        << current_mark_key();
-            break;
+            constraints = ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
           }
         } else {
           current->replay_step(RUN_CONTINUE);
@@ -889,7 +896,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
       }
 
-      if (result.break_status.approaching_ticks_target ||
+      if (approaching_ticks_target ||
           is_start_of_reverse_execution_barrier_event()) {
         break;
       }
@@ -909,6 +916,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     no_watchpoints_hit_interval_start = Mark();
     while (true) {
       Mark now;
+      ReplayResult result;
       if (current->current_task()->tuid() == tuid) {
         apply_breakpoints_and_watchpoints();
         Mark before_step = mark();
