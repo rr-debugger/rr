@@ -132,7 +132,7 @@ Task* Session::clone(Task* p, int flags, remote_ptr<void> stack,
 }
 
 Task* Session::find_task(pid_t rec_tid) const {
-  assert_fully_initialized();
+  finish_initializing();
   auto it = tasks().find(rec_tid);
   return tasks().end() != it ? it->second : nullptr;
 }
@@ -143,7 +143,7 @@ Task* Session::find_task(const TaskUid& tuid) const {
 }
 
 TaskGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
-  assert_fully_initialized();
+  finish_initializing();
   auto it = task_group_map.find(tguid);
   if (task_group_map.end() == it) {
     return nullptr;
@@ -152,7 +152,7 @@ TaskGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
 }
 
 AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
-  assert_fully_initialized();
+  finish_initializing();
   auto it = vm_map.find(vmuid);
   if (vm_map.end() == it) {
     return nullptr;
@@ -314,23 +314,24 @@ void Session::assert_fully_initialized() const {
   assert(!clone_completion && "Session not fully initialized");
 }
 
-void Session::finish_initializing() {
+void Session::finish_initializing() const {
   if (!clone_completion) {
     return;
   }
 
+  Session* self = const_cast<Session*>(this);
   for (auto& tgleader : clone_completion->task_groups) {
     AutoRemoteSyscalls remote(tgleader.clone_leader);
     for (auto& tgmember : tgleader.member_states) {
       Task* t_clone =
           Task::os_clone_into(tgmember, tgleader.clone_leader, remote);
-      on_create(t_clone);
+      self->on_create(t_clone);
       t_clone->copy_state(tgmember);
     }
     tgleader.clone_leader->copy_state(tgleader.clone_leader_state);
   }
 
-  clone_completion = nullptr;
+  self->clone_completion = nullptr;
 }
 
 static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,

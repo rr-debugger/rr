@@ -173,7 +173,7 @@ public:
 
   /** Return the set of Tasks being tracekd in this session. */
   const TaskMap& tasks() const {
-    assert_fully_initialized();
+    finish_initializing();
     return task_map;
   }
 
@@ -225,8 +225,8 @@ protected:
 
   struct CloneCompletion;
   // Call this before doing anything that requires access to the full set
-  // of tasks (i.e., almost anything!).
-  void finish_initializing();
+  // of tasks (i.e., almost anything!). Not really const!
+  void finish_initializing() const;
   void assert_fully_initialized() const;
 
   AddressSpaceMap vm_map;
