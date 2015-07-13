@@ -13,12 +13,18 @@ static void handler(int sig, siginfo_t* si, void* p) {
   /* some versions of system headers don't define si_arch, si_call_addr or
    * si_syscall. Just skip tests on those systems.
    */
-#ifdef si_arch
 #ifdef __i386__
   int syscallno = ctx->uc_mcontext.gregs[REG_EAX];
-  test_assert(si->si_arch == AUDIT_ARCH_I386);
 #elif defined(__x86_64__)
   int syscallno = ctx->uc_mcontext.gregs[REG_RAX];
+#else
+#error define architecture here
+#endif
+
+#ifdef si_arch
+#ifdef __i386__
+  test_assert(si->si_arch == AUDIT_ARCH_I386);
+#elif defined(__x86_64__)
   test_assert(si->si_arch == AUDIT_ARCH_X86_64);
 #endif
 #endif
