@@ -10,6 +10,10 @@ static int pipe_fds[2];
 
 static void handler(int sig, siginfo_t* si, void* p) {
   ucontext_t* ctx = p;
+  /* some versions of system headers don't define si_arch, si_call_addr or
+   * si_syscall. Just skip tests on those systems.
+   */
+#ifdef si_arch
 #ifdef __i386__
   int syscallno = ctx->uc_mcontext.gregs[REG_EAX];
   test_assert(si->si_arch == AUDIT_ARCH_I386);
@@ -17,14 +21,19 @@ static void handler(int sig, siginfo_t* si, void* p) {
   int syscallno = ctx->uc_mcontext.gregs[REG_RAX];
   test_assert(si->si_arch == AUDIT_ARCH_X86_64);
 #endif
+#endif
   test_assert(syscallno == SYS_geteuid || syscallno == SYS_open);
 
   test_assert(sig == SIGSYS);
   test_assert(si->si_signo == SIGSYS);
   test_assert(si->si_errno == 0);
   test_assert(si->si_code == 1 /* SYS_SECCOMP */);
+#ifdef si_call_addr
   test_assert(si->si_call_addr > 0);
+#endif
+#ifdef si_syscall
   test_assert(si->si_syscall == syscallno);
+#endif
   ++count_SIGSYS;
 }
 
