@@ -165,7 +165,9 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
 
         Registers r = t->regs();
 
-        siginfo_t si;
+        // Use NativeArch here because different versions of system headers
+        // have inconsistent field naming.
+        NativeArch::siginfo_t si;
         memset(&si, 0, sizeof(si));
         si.si_signo = SIGSYS;
         si.si_errno = 0;
@@ -173,7 +175,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
         // Documentation says that si_call_addr is the address of the syscall
         // instruction, but in tests it's immediately after the syscall
         // instruction.
-        si._sifields._sigsys._call_addr = (void*)r.ip().register_value();
+        si._sifields._sigsys._call_addr = r.ip().to_data_ptr<void>();
         switch (r.arch()) {
           case x86:
             si._sifields._sigsys._arch = AUDIT_ARCH_I386;
@@ -186,7 +188,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
             break;
         }
         si._sifields._sigsys._syscall = syscallno;
-        t->stash_synthetic_sig(si);
+        t->stash_synthetic_sig(*reinterpret_cast<siginfo_t*>(&si));
 
         // Tests show that the current registers are preserved (on x86, eax/rax
         // retains the syscall number).
@@ -711,7 +713,23 @@ void RecordSession::check_perf_counters_working(Task* t,
 }
 
 template <typename Arch>
-static void setup_sigframe_siginfo_arch(Task* t, const siginfo_t& siginfo) {
+static void assign_sigval(typename Arch::sigval_t& to,
+                          const NativeArch::sigval_t& from) {
+  // si_ptr/si_int are a union and we don't know which part is valid.
+  // The only case where it matters is when we're mapping 64->32, in which
+  // case we can just assign the ptr first (which is bigger) and then the
+  // int (to be endian-independent).
+  to.sival_ptr = from.sival_ptr.rptr();
+  to.sival_int = from.sival_int;
+}
+
+/**
+ * Take a NativeArch::siginfo_t& here instead of siginfo_t because different
+ * versions of system headers have inconsistent field naming.
+ */
+template <typename Arch>
+static void setup_sigframe_siginfo_arch(Task* t,
+                                        const NativeArch::siginfo_t& siginfo) {
   remote_ptr<typename Arch::siginfo_t> dest;
   switch (Arch::arch()) {
     case x86: {
@@ -737,36 +755,30 @@ static void setup_sigframe_siginfo_arch(Task* t, const siginfo_t& siginfo) {
   switch (siginfo.si_code) {
     case SI_USER:
     case SI_TKILL:
-      si._sifields._kill.si_pid_ = siginfo.si_pid;
-      si._sifields._kill.si_uid_ = siginfo.si_uid;
+      si._sifields._kill.si_pid_ = siginfo._sifields._kill.si_pid_;
+      si._sifields._kill.si_uid_ = siginfo._sifields._kill.si_uid_;
       break;
     case SI_QUEUE:
     case SI_MESGQ:
-      si._sifields._rt.si_pid_ = siginfo.si_pid;
-      si._sifields._rt.si_uid_ = siginfo.si_uid;
-      // si_ptr/si_int are a union and we don't know which part is valid.
-      // The only case where it matters is when we're mapping 64->32, in which
-      // case we can just assign the ptr first (which is bigger) and then the
-      // int (to be endian-independent).
-      si._sifields._rt.si_sigval_.sival_ptr =
-          remote_ptr<void>((uintptr_t)siginfo.si_ptr);
-      si._sifields._rt.si_sigval_.sival_int = siginfo.si_int;
+      si._sifields._rt.si_pid_ = siginfo._sifields._rt.si_pid_;
+      si._sifields._rt.si_uid_ = siginfo._sifields._rt.si_uid_;
+      assign_sigval<Arch>(si._sifields._rt.si_sigval_,
+                          siginfo._sifields._rt.si_sigval_);
       break;
     case SI_TIMER:
-      si._sifields._timer.si_overrun_ = siginfo.si_overrun;
-      si._sifields._timer.si_tid_ = siginfo.si_timerid;
-      si._sifields._timer.si_sigval_.sival_ptr =
-          remote_ptr<void>((uintptr_t)siginfo.si_ptr);
-      si._sifields._timer.si_sigval_.sival_int = siginfo.si_int;
+      si._sifields._timer.si_overrun_ = siginfo._sifields._timer.si_overrun_;
+      si._sifields._timer.si_tid_ = siginfo._sifields._timer.si_tid_;
+      assign_sigval<Arch>(si._sifields._timer.si_sigval_,
+                          siginfo._sifields._timer.si_sigval_);
       break;
   }
   switch (siginfo.si_signo) {
     case SIGCHLD:
-      si._sifields._sigchld.si_pid_ = siginfo.si_pid;
-      si._sifields._sigchld.si_uid_ = siginfo.si_uid;
-      si._sifields._sigchld.si_status_ = siginfo.si_status;
-      si._sifields._sigchld.si_utime_ = siginfo.si_utime;
-      si._sifields._sigchld.si_stime_ = siginfo.si_stime;
+      si._sifields._sigchld.si_pid_ = siginfo._sifields._sigchld.si_pid_;
+      si._sifields._sigchld.si_uid_ = siginfo._sifields._sigchld.si_uid_;
+      si._sifields._sigchld.si_status_ = siginfo._sifields._sigchld.si_status_;
+      si._sifields._sigchld.si_utime_ = siginfo._sifields._sigchld.si_utime_;
+      si._sifields._sigchld.si_stime_ = siginfo._sifields._sigchld.si_stime_;
       break;
     case SIGILL:
     case SIGBUS:
@@ -774,17 +786,17 @@ static void setup_sigframe_siginfo_arch(Task* t, const siginfo_t& siginfo) {
     case SIGSEGV:
     case SIGTRAP:
       si._sifields._sigfault.si_addr_ =
-          remote_ptr<void>((uintptr_t)siginfo.si_addr);
+          siginfo._sifields._sigfault.si_addr_.rptr();
       si._sifields._sigfault.si_addr_lsb_ =
-          siginfo._sifields._sigfault.si_addr_lsb;
+          siginfo._sifields._sigfault.si_addr_lsb_;
       break;
     case SIGIO:
-      si._sifields._sigpoll.si_band_ = siginfo.si_band;
-      si._sifields._sigpoll.si_fd_ = siginfo.si_fd;
+      si._sifields._sigpoll.si_band_ = siginfo._sifields._sigpoll.si_band_;
+      si._sifields._sigpoll.si_fd_ = siginfo._sifields._sigpoll.si_fd_;
       break;
     case SIGSYS:
       si._sifields._sigsys._call_addr =
-          remote_ptr<void>((uintptr_t)siginfo._sifields._sigsys._call_addr);
+          siginfo._sifields._sigsys._call_addr.rptr();
       si._sifields._sigsys._syscall = siginfo._sifields._sigsys._syscall;
       si._sifields._sigsys._arch = siginfo._sifields._sigsys._arch;
       break;
@@ -793,7 +805,8 @@ static void setup_sigframe_siginfo_arch(Task* t, const siginfo_t& siginfo) {
 }
 
 static void setup_sigframe_siginfo(Task* t, const siginfo_t& siginfo) {
-  RR_ARCH_FUNCTION(setup_sigframe_siginfo_arch, t->arch(), t, siginfo);
+  RR_ARCH_FUNCTION(setup_sigframe_siginfo_arch, t->arch(), t,
+                   *reinterpret_cast<const NativeArch::siginfo_t*>(&siginfo));
 }
 
 static void inject_signal(Task* t) {
