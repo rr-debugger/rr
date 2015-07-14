@@ -909,7 +909,7 @@ Completion ReplaySession::emulate_signal_delivery(
 }
 
 void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
-  if (!can_validate() || trace_frame.event().has_exec_info() == NO_EXEC_INFO) {
+  if (!can_validate()) {
     return;
   }
 
