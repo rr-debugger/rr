@@ -74,6 +74,10 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifndef PERF_FLAG_FD_CLOEXEC
+#define PERF_FLAG_FD_CLOEXEC (1 << 3)
+#endif
+
 /* NB: don't include any other local headers here. */
 
 #ifdef memcpy
@@ -525,7 +529,12 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   attr.sample_period = nr_descheds;
 
   fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/, -1,
-                                         0);
+                                         PERF_FLAG_FD_CLOEXEC);
+  if (0 > fd && errno == EINVAL) {
+    /* Maybe PERF_FLAG_FD_CLOEXEC is not understood by this kernel. */
+    fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/,
+                                           -1, 0);
+  }
   if (0 > fd) {
     fatal("Failed to perf_event_open(cs, period=%zu)", nr_descheds);
   }

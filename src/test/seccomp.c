@@ -10,9 +10,9 @@ static int pipe_fds[2];
 
 static void handler(int sig, siginfo_t* si, void* p) {
   ucontext_t* ctx = p;
-  /* some versions of system headers don't define si_arch, si_call_addr or
-   * si_syscall. Just skip tests on those systems.
-   */
+/* some versions of system headers don't define si_arch, si_call_addr or
+ * si_syscall. Just skip tests on those systems.
+ */
 #ifdef __i386__
   int syscallno = ctx->uc_mcontext.gregs[REG_EAX];
 #elif defined(__x86_64__)
