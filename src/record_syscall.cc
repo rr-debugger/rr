@@ -1711,7 +1711,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           break;
 
         case Arch::SETFD:
-          if ((int)t->regs().arg1() == RR_RESERVED_ROOT_DIR_FD) {
+          if (!t->fd_table()->allow_close((int)t->regs().arg1())) {
             // Don't let tracee set FD_CLOEXEC on this fd. Disable the syscall,
             // but emulate a successful return.
             Registers r = t->regs();
@@ -2142,7 +2142,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::close:
       syscall_state.syscall_entry_registers =
           unique_ptr<Registers>(new Registers(t->regs()));
-      if ((int)t->regs().arg1() == RR_RESERVED_ROOT_DIR_FD) {
+      if (!t->fd_table()->allow_close((int)t->regs().arg1())) {
         // Don't let processes close this fd. Abort with EBADF by setting
         // oldfd to -1, as if the fd is already closed.
         Registers r = t->regs();
@@ -2155,7 +2155,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::dup3:
       syscall_state.syscall_entry_registers =
           unique_ptr<Registers>(new Registers(t->regs()));
-      if ((int)t->regs().arg2() == RR_RESERVED_ROOT_DIR_FD) {
+      if (!t->fd_table()->allow_close((int)t->regs().arg1())) {
         // Don't let processes dup over this fd. Abort with EBADF by setting
         // oldfd to -1.
         Registers r = t->regs();

@@ -7,8 +7,6 @@
 
 /**
  * A FileMonitor to track writes to RR_MAGIC_SAVE_DATA_FD.
- * Currently does nothing other than prevent syscallbuf from buffering output
- * to those fds.
  */
 class MagicSaveDataMonitor : public FileMonitor {
 public:

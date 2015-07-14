@@ -21,6 +21,7 @@ public:
     assert(!is_monitoring(fd));
     fds[fd] = FileMonitor::shr_ptr(monitor);
   }
+  bool allow_close(int fd);
   Switchable will_write(Task* t, int fd);
   void did_write(Task* t, int fd,
                  const std::vector<FileMonitor::Range>& ranges);

@@ -11,12 +11,20 @@
 
 using namespace std;
 
+bool FdTable::allow_close(int fd) {
+  auto it = fds.find(fd);
+  if (it == fds.end()) {
+    return true;
+  }
+  return it->second->allow_close();
+}
+
 Switchable FdTable::will_write(Task* t, int fd) {
   auto it = fds.find(fd);
-  if (it != fds.end()) {
-    return it->second->will_write(t);
+  if (it == fds.end()) {
+    return ALLOW_SWITCH;
   }
-  return ALLOW_SWITCH;
+  return it->second->will_write(t);
 }
 
 void FdTable::did_write(Task* t, int fd,
@@ -65,8 +73,7 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
 
     if (!t->syscallbuf_fds_disabled_child.is_null() &&
         fd < SYSCALLBUF_FDS_DISABLED_SIZE) {
-      bool disable =
-          is_fd_monitored_in_any_task(vm, fd) || RR_RESERVED_ROOT_DIR_FD == fd;
+      bool disable = is_fd_monitored_in_any_task(vm, fd);
       t->write_mem(t->syscallbuf_fds_disabled_child + fd, (char)disable);
     }
   }
@@ -79,8 +86,6 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
 
   char disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
   memset(disabled, 0, sizeof(disabled));
-  assert(RR_RESERVED_ROOT_DIR_FD < SYSCALLBUF_FDS_DISABLED_SIZE);
-  disabled[RR_RESERVED_ROOT_DIR_FD] = 1;
 
   // It's possible that some tasks in this address space have a different
   // FdTable. We need to disable syscallbuf for an fd if any tasks for this

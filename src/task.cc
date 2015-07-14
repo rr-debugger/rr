@@ -32,6 +32,7 @@
 #include "kernel_supplement.h"
 #include "log.h"
 #include "MagicSaveDataMonitor.h"
+#include "PreserveFileMonitor.h"
 #include "RecordSession.h"
 #include "record_signal.h"
 #include "ReplaySession.h"
@@ -2041,6 +2042,9 @@ static void set_up_process(Session& session) {
   /* TODO tracees can probably undo some of the setup below
    * ... */
 
+  /* CLOEXEC so that the original fd here will be closed by the exec that's
+   * about to happen.
+   */
   int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
   if (0 > fd) {
     FATAL() << "error opening /dev/null";
@@ -2049,6 +2053,9 @@ static void set_up_process(Session& session) {
     FATAL() << "error duping to RR_MAGIC_SAVE_DATA_FD";
   }
 
+  /* CLOEXEC so that the original fd here will be closed by the exec that's
+   * about to happen.
+   */
   fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
   if (0 > fd) {
     FATAL() << "error opening root directory";
@@ -2957,6 +2964,7 @@ static void setup_fd_table(FdTable& fds) {
   fds.add_monitor(STDOUT_FILENO, new StdioMonitor(STDOUT_FILENO));
   fds.add_monitor(STDERR_FILENO, new StdioMonitor(STDERR_FILENO));
   fds.add_monitor(RR_MAGIC_SAVE_DATA_FD, new MagicSaveDataMonitor());
+  fds.add_monitor(RR_RESERVED_ROOT_DIR_FD, new PreserveFileMonitor());
 }
 
 /*static*/ Task* Task::spawn(Session& session, const TraceStream& trace,

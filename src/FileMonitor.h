@@ -20,6 +20,12 @@ public:
   virtual ~FileMonitor() {}
 
   /**
+   * Overriding this to return false will cause close() (and related fd-smashing
+   * operations such as dup2) to return EBADF.
+   */
+  virtual bool allow_close() { return true; }
+
+  /**
    * Notification that task |t| is about to write |data| bytes of length
    * |length| to the file.
    * In general writes can block, and concurrent blocking writes to the same
