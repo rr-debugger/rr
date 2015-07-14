@@ -11,6 +11,14 @@
 
 using namespace std;
 
+void FdTable::add_monitor(int fd, FileMonitor* monitor) {
+  // In the future we could support multiple monitors on an fd, but we don't
+  // need to yet.
+  assert(!is_monitoring(fd));
+  fds[fd] = FileMonitor::shr_ptr(monitor);
+  update_syscallbuf_fds_disabled(fd);
+}
+
 bool FdTable::allow_close(int fd) {
   auto it = fds.find(fd);
   if (it == fds.end()) {

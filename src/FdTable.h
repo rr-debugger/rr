@@ -15,12 +15,7 @@ class FdTable : public HasTaskSet {
 public:
   typedef std::shared_ptr<FdTable> shr_ptr;
 
-  void add_monitor(int fd, FileMonitor* monitor) {
-    // In the future we could support multiple monitors on an fd, but we don't
-    // need to yet.
-    assert(!is_monitoring(fd));
-    fds[fd] = FileMonitor::shr_ptr(monitor);
-  }
+  void add_monitor(int fd, FileMonitor* monitor);
   bool allow_close(int fd);
   Switchable will_write(Task* t, int fd);
   void did_write(Task* t, int fd,

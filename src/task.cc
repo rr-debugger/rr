@@ -42,12 +42,6 @@
 #include "StringVectorToCharArray.h"
 #include "util.h"
 
-/* The tracee doesn't open the desched event fd during replay, so it
- * can't be shared to this process.  We pretend that the tracee shared
- * this magic fd number with us and then give it a free pass for fd
- * checks that include this fd. */
-static const int REPLAY_DESCHED_EVENT_FD = -123;
-
 static const unsigned int NUM_X86_DEBUG_REGS = 8;
 static const unsigned int NUM_X86_WATCHPOINTS = 4;
 
@@ -691,11 +685,11 @@ void Task::init_buffers_arch(remote_ptr<void> map_hint,
   if (as->syscallbuf_enabled()) {
     init_syscall_buffer(remote, map_hint);
     args.syscallbuf_ptr = syscallbuf_child;
+    desched_fd_child = args.desched_counter_fd;
+    // Prevent the child from closing this fd
+    fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
     if (share_desched_fd == SHARE_DESCHED_EVENT_FD) {
-      desched_fd_child = args.desched_counter_fd;
       desched_fd = remote.retrieve_fd(desched_fd_child);
-    } else {
-      desched_fd_child = REPLAY_DESCHED_EVENT_FD;
     }
   } else {
     args.syscallbuf_ptr = remote_ptr<void>(nullptr);
@@ -726,6 +720,7 @@ void Task::destroy_buffers() {
                    num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
     remote.syscall(syscall_number_for_close(arch()), desched_fd_child);
+    fds->did_close(desched_fd_child);
   }
 }
 
@@ -735,8 +730,7 @@ bool Task::is_arm_desched_event_syscall() {
 
 bool Task::is_desched_event_syscall() {
   return is_ioctl_syscall(regs().original_syscallno(), arch()) &&
-         (desched_fd_child == (int)regs().arg1_signed() ||
-          desched_fd_child == REPLAY_DESCHED_EVENT_FD);
+         desched_fd_child == (int)regs().arg1_signed();
 }
 
 bool Task::is_disarm_desched_event_syscall() {
@@ -2214,12 +2208,12 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   t->tg->insert_task(t);
   if (CLONE_SHARE_VM & flags) {
     t->as = as;
-    t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
-    // FdTable is either shared or copied, so we don't need to update
-    // syscallbuf_fds_disabled here.
   } else {
     t->as = sess.clone(t, as);
   }
+  t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
+  // FdTable is either shared or copied, so the contents of
+  // syscallbuf_fds_disabled_child are still valid.
   if (CLONE_SHARE_FILES & flags) {
     t->fds = fds;
   } else {

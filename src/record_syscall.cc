@@ -2155,7 +2155,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::dup3:
       syscall_state.syscall_entry_registers =
           unique_ptr<Registers>(new Registers(t->regs()));
-      if (!t->fd_table()->allow_close((int)t->regs().arg1())) {
+      if (!t->fd_table()->allow_close((int)t->regs().arg2())) {
         // Don't let processes dup over this fd. Abort with EBADF by setting
         // oldfd to -1.
         Registers r = t->regs();

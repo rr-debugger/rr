@@ -7,6 +7,7 @@ int main(int argc, char* argv[]) {
   int status;
   int ret;
   int fd;
+  int pipe_fds[2];
   struct rlimit nofile;
 
   if (argc == 2) {
@@ -19,16 +20,20 @@ int main(int argc, char* argv[]) {
      those don't interfere with rr by closing RR_RESERVED_ROOT_DIR_FD
      or some other essential file descriptor. */
   test_assert(0 == getrlimit(RLIMIT_NOFILE, &nofile));
-  for (fd = STDOUT_FILENO + 1; fd < nofile.rlim_cur; ++fd) {
+  for (fd = STDERR_FILENO + 1; fd < nofile.rlim_cur; ++fd) {
     ret = fcntl(fd, F_SETFD, FD_CLOEXEC);
     test_assert(ret == 0 || (ret == -1 && errno == EBADF));
-    ret = dup2(STDOUT_FILENO, fd);
+    ret = dup2(STDERR_FILENO, fd);
     test_assert(ret == fd || (ret == -1 && errno == EBADF));
-    ret = dup3(STDOUT_FILENO, fd, O_CLOEXEC);
+    ret = dup3(STDERR_FILENO, fd, O_CLOEXEC);
     test_assert(ret == fd || (ret == -1 && errno == EBADF));
     ret = close(fd);
     test_assert(ret == 0 || (ret == -1 && errno == EBADF));
   }
+
+  /* Check that syscall buffering still works */
+  test_assert(0 == pipe(pipe_fds));
+  test_assert(1 == write(pipe_fds[1], "c", 1));
 
   if (0 == (child = fork())) {
     execl(argv[0], argv[0], "step2", NULL);
