@@ -948,7 +948,6 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::fcntl:
       if (regs.arg2() == Arch::DUPFD ||
           regs.arg2() == Arch::DUPFD_CLOEXEC) {
-        LOG(debug) << "Recording fcntl dup of " << regs.arg1() << " to " << regs.syscall_result();
         fd_table()->did_dup(regs.arg1(), regs.syscall_result());
       }
       return;
