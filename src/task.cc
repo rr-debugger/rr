@@ -944,6 +944,13 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::dup3:
       fd_table()->did_dup(regs.arg1(), regs.syscall_result());
       return;
+    case Arch::fcntl64:
+    case Arch::fcntl:
+      if (regs.arg2() == Arch::DUPFD ||
+          regs.arg2() == Arch::DUPFD_CLOEXEC) {
+        fd_table()->did_dup(regs.arg1(), regs.syscall_result());
+      }
+      return;
     case Arch::close:
       fd_table()->did_close(regs.arg1());
       return;
