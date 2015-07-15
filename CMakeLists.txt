@@ -302,6 +302,7 @@ set(BASIC_TESTS
   fadvise
   fault_in_code_page
   fcntl_owner_ex
+  fcntl_dupfd
   flock
   flock2
   fork_child_crash
