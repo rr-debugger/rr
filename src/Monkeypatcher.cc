@@ -4,6 +4,8 @@
 
 #include "Monkeypatcher.h"
 
+#include "AddressSpace.h"
+#include "elf.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -302,53 +304,158 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
   return false;
 }
 
-template <typename Arch> struct VdsoSymbols {
-  vector<typename Arch::ElfSym> symbols;
+class SymbolTable {
+public:
+  bool is_name(size_t i, const char* name) {
+    size_t offset = symbols[i].name_index;
+    return offset < strtab.size() && strcmp(&strtab[offset], name) == 0;
+  }
+  uintptr_t value(size_t i) { return symbols[i].value; }
+  size_t size() { return symbols.size(); }
+
+  struct Symbol {
+    Symbol(uintptr_t value, size_t name_index)
+        : value(value), name_index(name_index) {}
+    Symbol() {}
+    uintptr_t value;
+    size_t name_index;
+  };
+  vector<Symbol> symbols;
   vector<char> strtab;
 };
 
-template <typename Arch> static VdsoSymbols<Arch> read_vdso_symbols(Task* t) {
-  auto vdso_start = t->vm()->vdso().start;
-  auto elfheader = t->read_mem(vdso_start.cast<typename Arch::ElfEhdr>());
-  assert(elfheader.e_ident[EI_CLASS] == Arch::elfclass);
-  assert(elfheader.e_ident[EI_DATA] == Arch::elfendian);
-  assert(elfheader.e_machine == Arch::elfmachine);
-  assert(elfheader.e_shentsize == sizeof(typename Arch::ElfShdr));
+class ElfReader {
+public:
+  virtual ~ElfReader() {}
+  virtual bool read(size_t offset, size_t size, void* buf) = 0;
+  template <typename T> bool read(size_t offset, T& result) {
+    return read(offset, sizeof(result), &result);
+  }
+  template <typename T> vector<T> read(size_t offset, size_t count) {
+    vector<T> result;
+    result.resize(count);
+    if (!read(offset, sizeof(T) * count, result.data())) {
+      result.clear();
+    }
+    return result;
+  }
+  template <typename Arch>
+  SymbolTable read_symbols_arch(const char* symtab, const char* strtab);
+  SymbolTable read_symbols(SupportedArch arch, const char* symtab,
+                           const char* strtab);
+};
 
-  auto sections_start = vdso_start + elfheader.e_shoff;
-  typename Arch::ElfShdr sections[elfheader.e_shnum];
-  t->read_bytes_helper(sections_start, sizeof(sections), sections);
+template <typename Arch>
+SymbolTable ElfReader::read_symbols_arch(const char* symtab,
+                                         const char* strtab) {
+  SymbolTable result;
+  typename Arch::ElfEhdr elfheader;
+  if (!read(0, elfheader) || memcmp(&elfheader, ELFMAG, SELFMAG) != 0 ||
+      elfheader.e_ident[EI_CLASS] != Arch::elfclass ||
+      elfheader.e_ident[EI_DATA] != Arch::elfendian ||
+      elfheader.e_machine != Arch::elfmachine ||
+      elfheader.e_shentsize != sizeof(typename Arch::ElfShdr) ||
+      elfheader.e_shstrndx >= elfheader.e_shnum) {
+    LOG(debug) << "Invalid ELF file: invalid header";
+    return result;
+  }
 
-  typename Arch::ElfShdr* dynsym = nullptr;
-  typename Arch::ElfShdr* dynstr = nullptr;
+  auto sections =
+      read<typename Arch::ElfShdr>(elfheader.e_shoff, elfheader.e_shnum);
+  if (sections.empty()) {
+    LOG(debug) << "Invalid ELF file: no sections";
+    return result;
+  }
 
+  auto& section_names_section = sections[elfheader.e_shstrndx];
+  auto section_names = read<char>(section_names_section.sh_offset,
+                                  section_names_section.sh_size);
+  if (section_names.empty()) {
+    LOG(debug) << "Invalid ELF file: can't read section names";
+    return result;
+  }
+  section_names[section_names.size() - 1] = 0;
+
+  typename Arch::ElfShdr* symbols = nullptr;
+  typename Arch::ElfShdr* strings = nullptr;
   for (size_t i = 0; i < elfheader.e_shnum; ++i) {
-    auto header = &sections[i];
-    if (header->sh_type == SHT_DYNSYM) {
-      assert(!dynsym && "multiple .dynsym sections?!");
-      dynsym = header;
-      continue;
+    auto& s = sections[i];
+    if (s.sh_name >= section_names.size()) {
+      LOG(debug) << "Invalid ELF file: invalid name offset for section " << i;
+      return result;
     }
-    if (header->sh_type == SHT_STRTAB && (header->sh_flags & SHF_ALLOC) &&
-        i != elfheader.e_shstrndx) {
-      assert(!dynstr && "multiple .dynstr sections?!");
-      dynstr = header;
+    const char* name = section_names.data() + s.sh_name;
+    if (strcmp(name, symtab) == 0) {
+      if (symbols) {
+        LOG(debug) << "Invalid ELF file: duplicate symbol section " << symtab;
+        return result;
+      }
+      symbols = &s;
+    }
+    if (strcmp(name, strtab) == 0) {
+      if (strings) {
+        LOG(debug) << "Invalid ELF file: duplicate string section " << strtab;
+        return result;
+      }
+      strings = &s;
     }
   }
 
-  if (!dynsym || !dynstr) {
-    assert(0 && "Unable to locate vdso information");
+  if (!symbols) {
+    LOG(debug) << "Invalid ELF file: missing symbol section " << symtab;
+    return result;
+  }
+  if (!strings) {
+    LOG(debug) << "Invalid ELF file: missing string section " << strtab;
+    return result;
+  }
+  if (symbols->sh_entsize != sizeof(typename Arch::ElfSym)) {
+    LOG(debug) << "Invalid ELF file: incorrect symbol size "
+               << symbols->sh_entsize;
+    return result;
+  }
+  if (symbols->sh_size % symbols->sh_entsize) {
+    LOG(debug) << "Invalid ELF file: incorrect symbol section size "
+               << symbols->sh_size;
+    return result;
   }
 
-  assert(dynsym->sh_entsize == sizeof(typename Arch::ElfSym));
-  remote_ptr<void> symbols_start = vdso_start + dynsym->sh_offset;
-  size_t nsymbols = dynsym->sh_size / dynsym->sh_entsize;
-  remote_ptr<void> strtab_start = vdso_start + dynstr->sh_offset;
-  VdsoSymbols<Arch> result;
-  result.symbols =
-      t->read_mem(symbols_start.cast<typename Arch::ElfSym>(), nsymbols);
-  result.strtab = t->read_mem(strtab_start.cast<char>(), dynstr->sh_size);
+  auto symbol_list = read<typename Arch::ElfSym>(
+      symbols->sh_offset, symbols->sh_size / symbols->sh_entsize);
+  if (symbol_list.empty()) {
+    LOG(debug) << "Invalid ELF file: can't read symbols " << symtab;
+    return result;
+  }
+  result.strtab = read<char>(strings->sh_offset, strings->sh_size);
+  if (result.strtab.empty()) {
+    LOG(debug) << "Invalid ELF file: can't read strings " << strtab;
+  }
+  result.symbols.resize(symbol_list.size());
+  for (size_t i = 0; i < symbol_list.size(); ++i) {
+    auto& s = symbol_list[i];
+    result.symbols[i] = SymbolTable::Symbol(s.st_value, s.st_name);
+  }
   return result;
+}
+
+SymbolTable ElfReader::read_symbols(SupportedArch arch, const char* symtab,
+                                    const char* strtab) {
+  RR_ARCH_FUNCTION(read_symbols_arch, arch, symtab, strtab);
+}
+
+class VdsoReader : public ElfReader {
+public:
+  VdsoReader(Task* t) : t(t) {}
+  virtual bool read(size_t offset, size_t size, void* buf) {
+    bool ok = true;
+    t->read_bytes_helper(t->vm()->vdso().start + offset, size, buf, &ok);
+    return ok;
+  }
+  Task* t;
+};
+
+static SymbolTable read_vdso_symbols(Task* t) {
+  return VdsoReader(t).read_symbols(t->arch(), ".dynsym", ".dynstr");
 }
 
 /**
@@ -366,7 +473,7 @@ static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
  * implementation in |t|'s address space.
  */
 static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
-  auto syms = read_vdso_symbols<X86Arch>(t);
+  auto syms = read_vdso_symbols(t);
 
   remote_ptr<void> kernel_vsyscall = nullptr;
   // It is unlikely but possible that multiple, versioned __kernel_vsyscall
@@ -377,9 +484,8 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
   // this possbility.
   bool seen_kernel_vsyscall = false;
 
-  for (auto& sym : syms.symbols) {
-    const char* name = &syms.strtab[sym.st_name];
-    if (strcmp(name, "__kernel_vsyscall") == 0) {
+  for (size_t i = 0; i < syms.size(); ++i) {
+    if (syms.is_name(i, "__kernel_vsyscall")) {
       assert(!seen_kernel_vsyscall);
       seen_kernel_vsyscall = true;
       // The ELF information in the VDSO assumes that the VDSO
@@ -387,7 +493,7 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
       // however, subjects the VDSO to ASLR, which means that
       // we have to adjust the offsets properly.
       auto vdso_start = t->vm()->vdso().start;
-      remote_ptr<void> candidate = sym.st_value;
+      remote_ptr<void> candidate = syms.value(i);
       // The symbol values can be absolute or relative addresses.
       // The first part of the assertion is for absolute
       // addresses, and the second part is for relative.
@@ -429,7 +535,7 @@ template <> void patch_after_exec_arch<X86Arch>(Task* t) {
 
   auto vdso_start = t->vm()->vdso().start;
 
-  auto syms = read_vdso_symbols<X86Arch>(t);
+  auto syms = read_vdso_symbols(t);
 
   static const named_syscall syscalls_to_monkeypatch[] = {
 #define S(n)                                                                   \
@@ -438,12 +544,11 @@ template <> void patch_after_exec_arch<X86Arch>(Task* t) {
 #undef S
   };
 
-  for (auto& sym : syms.symbols) {
-    const char* symname = &syms.strtab[sym.st_name];
+  for (size_t i = 0; i < syms.size(); ++i) {
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
-      if (strcmp(symname, syscalls_to_monkeypatch[j].name) == 0) {
+      if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
         static const uintptr_t vdso_max_size = 0xffffLL;
-        uintptr_t sym_address = uintptr_t(sym.st_value);
+        uintptr_t sym_address = syms.value(i);
         assert((sym_address & ~vdso_max_size) == 0);
         uintptr_t absolute_address = vdso_start.as_int() + sym_address;
 
@@ -452,7 +557,8 @@ template <> void patch_after_exec_arch<X86Arch>(Task* t) {
         X86VsyscallMonkeypatch::substitute(patch, syscall_number);
 
         t->write_bytes(absolute_address, patch);
-        LOG(debug) << "monkeypatched " << symname << " to syscall "
+        LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
+                   << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
       }
     }
@@ -514,7 +620,7 @@ template <> void patch_after_exec_arch<X64Arch>(Task* t) {
 
   auto vdso_start = t->vm()->vdso().start;
 
-  auto syms = read_vdso_symbols<X64Arch>(t);
+  auto syms = read_vdso_symbols(t);
 
   static const named_syscall syscalls_to_monkeypatch[] = {
 #define S(n)                                                                   \
@@ -527,14 +633,13 @@ template <> void patch_after_exec_arch<X64Arch>(Task* t) {
 #undef S
   };
 
-  for (auto& sym : syms.symbols) {
-    const char* symname = &syms.strtab[sym.st_name];
+  for (size_t i = 0; i < syms.size(); ++i) {
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
-      if (strcmp(symname, syscalls_to_monkeypatch[j].name) == 0) {
+      if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
         // Absolutely-addressed symbols in the VDSO claim to start here.
         static const uint64_t vdso_static_base = 0xffffffffff700000LL;
         static const uintptr_t vdso_max_size = 0xffffLL;
-        uintptr_t sym_address = uintptr_t(sym.st_value);
+        uintptr_t sym_address = syms.value(i);
         // The symbol values can be absolute or relative addresses.
         // The first part of the assertion is for absolute
         // addresses, and the second part is for relative.
@@ -548,7 +653,8 @@ template <> void patch_after_exec_arch<X64Arch>(Task* t) {
         X64VsyscallMonkeypatch::substitute(patch, syscall_number);
 
         t->write_bytes(absolute_address, patch);
-        LOG(debug) << "monkeypatched " << symname << " to syscall "
+        LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
+                   << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
       }
     }
