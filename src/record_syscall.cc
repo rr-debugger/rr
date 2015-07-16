@@ -2710,7 +2710,8 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   // trace directory as |fs/[st_dev].[st_inode]|.  Then
   // we wouldn't have to care about looking up a name
   // for the resource.
-  auto result = t->fstat(fd);
+  ScopedFd open_fd;
+  auto result = t->fstat(fd, &open_fd);
   TraceMappedRegion file(TraceMappedRegion::MMAP, result.file_name, result.st,
                          addr, addr + size, offset_pages);
   if (t->trace_writer().write_mapped_region(file, prot, flags) ==
@@ -2735,6 +2736,8 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
 
   t->vm()->map(addr, size, prot, flags, offset,
                MappableResource(FileId(result.st), result.file_name));
+  t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages,
+                                            open_fd);
 }
 
 static void process_shmat(Task* t, int shmid, int shm_flags,

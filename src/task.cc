@@ -603,7 +603,7 @@ void Task::dump(FILE* out) const {
   }
 }
 
-Task::FStatResult Task::fstat(int fd) {
+Task::FStatResult Task::fstat(int fd, ScopedFd* save_fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
   ScopedFd backing_fd(path, O_RDONLY);
@@ -616,6 +616,11 @@ Task::FStatResult Task::fstat(int fd) {
   auto ret = ::fstat(backing_fd, &result.st);
   ASSERT(this, ret == 0);
   result.file_name = path;
+
+  if (save_fd) {
+    *save_fd = move(backing_fd);
+  }
+
   return result;
 }
 
@@ -946,8 +951,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       return;
     case Arch::fcntl64:
     case Arch::fcntl:
-      if (regs.arg2() == Arch::DUPFD ||
-          regs.arg2() == Arch::DUPFD_CLOEXEC) {
+      if (regs.arg2() == Arch::DUPFD || regs.arg2() == Arch::DUPFD_CLOEXEC) {
         fd_table()->did_dup(regs.arg1(), regs.syscall_result());
       }
       return;

@@ -357,6 +357,7 @@ set(BASIC_TESTS
   orphan_process
   pause
   perf_event
+  pthread_rwlocks
   poll_sig_race
   prctl
   prctl_deathsig

@@ -11,6 +11,7 @@
 #include "remote_ptr.h"
 #include "remote_code_ptr.h"
 
+class ScopedFd;
 class Task;
 
 /**
@@ -70,6 +71,9 @@ public:
    * if there's no buffer or we've run out of free stubs.
    */
   remote_ptr<uint8_t> allocate_stub(Task* t, size_t bytes);
+
+  void patch_after_mmap(Task* t, remote_ptr<void> start, size_t size,
+                        size_t offset_pages, ScopedFd& open_fd);
 
 private:
   /**

@@ -23,9 +23,10 @@
 #include "util.h"
 
 class AutoRemoteSyscalls;
-class Session;
 class RecordSession;
 class ReplaySession;
+class ScopedFd;
+class Session;
 struct Sighandlers;
 class Task;
 
@@ -425,8 +426,9 @@ public:
   /**
    * Stat |fd| in the context of this task's fd table, returning
    * the result and the file name in FStatResult.
+   * If *save_fd is not null, moves an open handle to the file into *save_fd.
    */
-  FStatResult fstat(int fd);
+  FStatResult fstat(int fd, ScopedFd* save_fd = nullptr);
 
   /**
    * Force the wait status of this to |status|, as if

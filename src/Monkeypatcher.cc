@@ -10,6 +10,7 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
+#include "ScopedFd.h"
 #include "task.h"
 
 using namespace rr;
@@ -689,4 +690,59 @@ void Monkeypatcher::patch_at_preload_init(Task* t) {
   // we're processing the rrcall, because it's masked off all
   // signals.
   RR_ARCH_FUNCTION(patch_at_preload_init_arch, t->arch(), t, *this);
+}
+
+class FileReader : public ElfReader {
+public:
+  FileReader(ScopedFd& fd) : fd(fd) {}
+  virtual bool read(size_t offset, size_t size, void* buf) {
+    return pread(fd.get(), buf, size, offset) == ssize_t(size);
+  }
+  ScopedFd& fd;
+};
+
+static void set_and_record_bytes(Task* t, uint64_t file_offset,
+                                 const void* bytes, size_t size,
+                                 remote_ptr<void> map_start, size_t map_size,
+                                 size_t map_offset_pages) {
+  uint64_t map_offset = uint64_t(map_offset_pages) * page_size();
+  if (file_offset < map_offset || file_offset + size > map_offset + map_size) {
+    // The value(s) to be set are outside the mapped range. This happens
+    // because code and data can be mapped in separate, partial mmaps in which
+    // case some symbols will be outside the mapped range.
+    return;
+  }
+  remote_ptr<void> addr = map_start + uintptr_t(file_offset - map_offset);
+  t->write_bytes_helper(addr, size, bytes);
+  t->record_local(addr, size, bytes);
+}
+
+void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
+                                     size_t size, size_t offset_pages,
+                                     ScopedFd& open_fd) {
+  const auto& map = t->vm()->mapping_of(start);
+  if (map.second.fsname.find("libpthread.so") != string::npos &&
+      (t->arch() == x86 || t->arch() == x86_64)) {
+    auto syms =
+        FileReader(open_fd).read_symbols(t->arch(), ".symtab", ".strtab");
+    for (size_t i = 0; i < syms.size(); ++i) {
+      if (syms.is_name(i, "__elision_aconf")) {
+        static const int zero = 0;
+        // Setting __elision_aconf.retry_try_xbegin to zero means that
+        // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
+        // in glibc's elide.h.
+        set_and_record_bytes(t, syms.value(i) + 8, &zero, sizeof(zero), start,
+                             size, offset_pages);
+      }
+      if (syms.is_name(i, "elision_init")) {
+        // Make elision_init return without doing anything. This means
+        // the __elision_available and __pthread_force_elision flags will
+        // remain zero, disabling elision for mutexes. See glibc's
+        // elision-conf.c.
+        static const uint8_t ret = 0xC3;
+        set_and_record_bytes(t, syms.value(i), &ret, sizeof(ret), start, size,
+                             offset_pages);
+      }
+    }
+  }
 }
