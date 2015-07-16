@@ -28,4 +28,13 @@
  */
 #define RR_RESERVED_ROOT_DIR_FD 1000
 
+/**
+ * The preferred fd that rr uses to control tracee desched. Some software
+ * (e.g. the chromium IPC code) wants to have the first few fds all to itself,
+ * so we need to stay above some floor. Tracee close()es of the fd that is
+ * actually assigned will be silently ignored, and tracee dup()s to that fd will
+ * fail with EBADF.
+ */
+#define RR_DESCHED_EVENT_FLOOR_FD 100
+
 #endif /* RR_H_ */

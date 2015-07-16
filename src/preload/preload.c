@@ -55,6 +55,7 @@
 #include <linux/perf_event.h>
 #include <poll.h>
 #include <pthread.h>
+#include "rr/rr.h"
 #include <signal.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -73,10 +74,6 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
-
-#ifndef PERF_FLAG_FD_CLOEXEC
-#define PERF_FLAG_FD_CLOEXEC (1 << 3)
-#endif
 
 /* NB: don't include any other local headers here. */
 
@@ -322,6 +319,10 @@ static long traced_raw_syscall(const struct syscall_info* call) {
 #define RR_FCNTL_SYSCALL SYS_fcntl
 #endif
 
+static int privileged_traced_close(int fd) {
+  return privileged_traced_syscall1(SYS_close, fd);
+}
+
 static int privileged_traced_fcntl(int fd, int cmd, ...) {
   va_list ap;
   void* arg;
@@ -518,7 +519,7 @@ static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
  */
 static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   struct perf_event_attr attr;
-  int fd;
+  int tmp_fd, fd;
   struct f_owner_ex own;
 
   memset(&attr, 0, sizeof(attr));
@@ -528,15 +529,17 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   attr.disabled = 1;
   attr.sample_period = nr_descheds;
 
-  fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/, -1,
-                                         PERF_FLAG_FD_CLOEXEC);
-  if (0 > fd && errno == EINVAL) {
-    /* Maybe PERF_FLAG_FD_CLOEXEC is not understood by this kernel. */
-    fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/,
-                                           -1, 0);
-  }
-  if (0 > fd) {
+  tmp_fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/,
+                                             -1, 0);
+  if (0 > tmp_fd) {
     fatal("Failed to perf_event_open(cs, period=%zu)", nr_descheds);
+  }
+  fd = privileged_traced_fcntl(tmp_fd, F_DUPFD_CLOEXEC, RR_DESCHED_EVENT_FLOOR_FD);
+  if (0 > fd) {
+    fatal("Failed to dup desched fd");
+  }
+  if (privileged_traced_close(tmp_fd)) {
+    fatal("Failed to close tmp_fd");
   }
   if (privileged_traced_fcntl(fd, F_SETFL, O_ASYNC)) {
     fatal("Failed to fcntl(O_ASYNC) the desched counter");
