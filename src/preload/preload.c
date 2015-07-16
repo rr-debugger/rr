@@ -749,24 +749,10 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 
 #define PTHREAD_MUTEX_TYPE_MASK 3
 #define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
-#define PTHREAD_MUTEX_ELISION_NP 256
-#define PTHREAD_MUTEX_NO_ELISION_NP 512
 
 static void fix_mutex_kind(pthread_mutex_t* mutex) {
-  int type = mutex->__data.__kind & PTHREAD_MUTEX_TYPE_MASK;
   /* Disable priority inheritance. */
   mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
-  if (type != PTHREAD_MUTEX_TIMED_NP) {
-    /* Currently glibc only tries to use elision for TIMED/NORMAL
-     * mutexes. Setting elision flag bits for other types of
-     * mutexes triggers glibc misbehavior.
-     */
-    return;
-  }
-  /* Cancel explicitly-set elision requests */
-  mutex->__data.__kind &= ~PTHREAD_MUTEX_ELISION_NP;
-  /* Prevent auto-enabling of elision */
-  mutex->__data.__kind |= PTHREAD_MUTEX_NO_ELISION_NP;
 }
 
 /*
