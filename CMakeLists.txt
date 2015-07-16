@@ -303,6 +303,7 @@ set(BASIC_TESTS
   fault_in_code_page
   fcntl_owner_ex
   fcntl_dupfd
+  fds_clean
   flock
   flock2
   fork_child_crash
