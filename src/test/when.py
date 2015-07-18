@@ -7,6 +7,12 @@ t = eval(last_match().group(1));
 if t < 1 or t > 10000:
     failed('ERROR in first "when"')
 
+send_gdb('when-ticks')
+expect_gdb(re.compile(r'= (\d+)'))
+ticks = eval(last_match().group(1));
+if ticks != 0:
+    failed('ERROR in first "when-ticks"')
+
 send_gdb('b main')
 expect_gdb('Breakpoint 1')
 send_gdb('c')
@@ -18,5 +24,13 @@ if t2 < 1 or t2 > 10000:
     failed('ERROR in second "when"')
 if t2 <= t:
     failed('ERROR ... "when" failed to advance')
+
+send_gdb('when-ticks')
+expect_gdb(re.compile(r'= (\d+)'))
+ticks2 = eval(last_match().group(1));
+if ticks2 < 0 or ticks2 > 100000:
+    failed('ERROR in second "when-ticks"')
+if ticks2 <= ticks:
+    failed('ERROR ... "when-ticks" failed to advance')
 
 ok()

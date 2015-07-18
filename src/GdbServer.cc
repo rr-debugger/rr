@@ -58,6 +58,13 @@ static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
  */
 static const uintptr_t DBG_WHEN_MAGIC_ADDRESS = DBG_COMMAND_MAGIC_ADDRESS + 4;
 
+/**
+ * 64-bit reads from DBG_WHEN_TICKS_MAGIC_ADDRESS return the current trace's
+ * tick count.
+ */
+static const uintptr_t DBG_WHEN_TICKS_MAGIC_ADDRESS =
+    DBG_COMMAND_MAGIC_ADDRESS + 12;
+
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
@@ -80,6 +87,9 @@ static const char gdb_rr_macros[] =
     "end\n"
     "define when\n"
     "  p *(long long int*)(29298 + 4)\n"
+    "end\n"
+    "define when-ticks\n"
+    "  p *(long long int*)(29298 + 12)\n"
     "end\n"
     // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
     // issued before any user-generated resume-execution command
@@ -248,12 +258,19 @@ bool GdbServer::maybe_process_magic_command(Task* t, const GdbRequest& req) {
 }
 
 bool GdbServer::maybe_process_magic_read(Task* t, const GdbRequest& req) {
-  if (req.mem().addr == DBG_WHEN_MAGIC_ADDRESS && req.mem().len == 8) {
+  if ((req.mem().addr == DBG_WHEN_MAGIC_ADDRESS ||
+       req.mem().addr == DBG_WHEN_TICKS_MAGIC_ADDRESS) &&
+      req.mem().len == 8) {
     vector<uint8_t> mem;
     mem.resize(req.mem().len);
-    int64_t when = t->session().as_replay()
-                       ? int64_t(t->current_trace_frame().time())
-                       : int64_t(-1);
+    int64_t when(-1);
+    if (t->session().as_replay()) {
+      if (req.mem().addr == DBG_WHEN_TICKS_MAGIC_ADDRESS) {
+        when = int64_t(t->tick_count());
+      } else {
+        when = int64_t(t->current_trace_frame().time());
+      }
+    }
     memcpy(mem.data(), &when, mem.size());
     dbg->reply_get_mem(mem);
     return true;
