@@ -534,7 +534,8 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   if (0 > tmp_fd) {
     fatal("Failed to perf_event_open(cs, period=%zu)", nr_descheds);
   }
-  fd = privileged_traced_fcntl(tmp_fd, F_DUPFD_CLOEXEC, RR_DESCHED_EVENT_FLOOR_FD);
+  fd = privileged_traced_fcntl(tmp_fd, F_DUPFD_CLOEXEC,
+                               RR_DESCHED_EVENT_FLOOR_FD);
   if (0 > fd) {
     fatal("Failed to dup desched fd");
   }
