@@ -23,8 +23,8 @@ int main(int argc, char* argv[]) {
   test_assert(1 == read(fd, &ch, 1));
   test_assert(ch == '1');
 
-  fd = dup3(pipe_fds[0], 99, O_CLOEXEC);
-  test_assert(fd == 99);
+  fd = dup3(pipe_fds[0], 49, O_CLOEXEC);
+  test_assert(fd == 49);
   test_assert(1 == read(fd, &ch, 1));
   test_assert(ch == '2');
   test_assert(FD_CLOEXEC == fcntl(fd, F_GETFD));
@@ -32,14 +32,14 @@ int main(int argc, char* argv[]) {
   test_assert(fd == dup2(0, fd));
   test_assert(0 == fcntl(fd, F_GETFD));
 
-  fd = fcntl(pipe_fds[0], F_DUPFD, 99);
-  test_assert(fd == 100);
+  fd = fcntl(pipe_fds[0], F_DUPFD, 49);
+  test_assert(fd == 50);
   test_assert(1 == read(fd, &ch, 1));
   test_assert(ch == '3');
   test_assert(0 == fcntl(fd, F_GETFD));
 
-  fd = fcntl(pipe_fds[0], F_DUPFD_CLOEXEC, 99);
-  test_assert(fd == 101);
+  fd = fcntl(pipe_fds[0], F_DUPFD_CLOEXEC, 49);
+  test_assert(fd == 51);
   test_assert(1 == read(fd, &ch, 1));
   test_assert(ch == '4');
   test_assert(FD_CLOEXEC == fcntl(fd, F_GETFD));
