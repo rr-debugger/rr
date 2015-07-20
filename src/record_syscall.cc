@@ -455,6 +455,9 @@ struct TaskSyscallState {
    */
   bool scratch_enabled;
 
+  /** Miscellaneous saved data that can be used by particular syscalls */
+  vector<uint8_t> saved_data;
+
   TaskSyscallState()
       : t(nullptr),
         ptraced_tracee(nullptr),
@@ -2355,6 +2358,23 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           new sig_set_t(t->read_mem(remote_ptr<sig_set_t>(t->regs().arg1()))));
       return ALLOW_SWITCH;
 
+    case Arch::rt_sigprocmask:
+    case Arch::sigprocmask: {
+      syscall_state.reg_parameter<typename Arch::sigset_t>(3);
+      remote_ptr<sig_set_t> setp = t->regs().arg2();
+      if (!setp.is_null()) {
+        auto sig_set = t->read_mem(setp);
+        syscall_state.saved_data.resize(sizeof(sig_set));
+        memcpy(syscall_state.saved_data.data(), &sig_set, sizeof(sig_set));
+        // Don't let the tracee block TIME_SLICE_SIGNAL or
+        // SYSCALLBUF_DESCHED_SIGNAL.
+        sig_set &= ~(uint64_t(1) << (PerfCounters::TIME_SLICE_SIGNAL - 1)) &
+                   ~(uint64_t(1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
+        t->write_mem(setp, sig_set);
+      }
+      return PREVENT_SWITCH;
+    }
+
     case Arch::getxattr:
     case Arch::lgetxattr:
     case Arch::fgetxattr:
@@ -3042,6 +3062,17 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     case Arch::sigsuspend:
       t->sigsuspend_blocked_sigs = nullptr;
       break;
+
+    case Arch::rt_sigprocmask:
+    case Arch::sigprocmask: {
+      remote_ptr<sig_set_t> setp = t->regs().arg2();
+      if (!setp.is_null()) {
+        // Restore modified sig_set
+        t->write_bytes_helper(setp, syscall_state.saved_data.size(),
+                              syscall_state.saved_data.data());
+      }
+      break;
+    }
 
     case Arch::ptrace:
     case Arch::sched_setaffinity: {

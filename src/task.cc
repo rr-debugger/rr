@@ -708,7 +708,6 @@ void Task::init_buffers_arch(remote_ptr<void> map_hint,
   // away in the return value slot so that we can easily check
   // that we map the segment at the same addr during replay.
   remote.regs().set_syscall_result(syscallbuf_child);
-  syscallbuf_hdr->locked = is_desched_sig_blocked();
 }
 
 void Task::init_buffers(remote_ptr<void> map_hint,
@@ -1741,10 +1740,6 @@ void Task::update_sigmask(const Registers& regs) {
     return;
   }
 
-  ASSERT(this, (!syscallbuf_hdr || !syscallbuf_hdr->locked ||
-                is_desched_sig_blocked()))
-      << "syscallbuf is locked but SYSCALLBUF_DESCHED_SIGNAL isn't blocked";
-
   auto set = read_mem(setp);
 
   // Update the blocked signals per |how|.
@@ -1760,19 +1755,6 @@ void Task::update_sigmask(const Registers& regs) {
       break;
     default:
       FATAL() << "Unknown sigmask manipulator " << how;
-  }
-
-  // In the syscallbuf, we rely on SYSCALLBUF_DESCHED_SIGNAL being raised when
-  // tracees are descheduled in blocked syscalls.  But
-  // unfortunately, if tracees block SYSCALLBUF_DESCHED_SIGNAL, then we don't
-  // get notification of the pending signal and deadlock.  If we did
-  // get those notifications, this code would be unnecessary.
-  //
-  // So we lock the syscallbuf while the desched signal is
-  // blocked, which prevents the tracee from attempting a
-  // buffered call.
-  if (syscallbuf_hdr) {
-    syscallbuf_hdr->locked = is_desched_sig_blocked();
   }
 }
 
@@ -2579,10 +2561,6 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 
   shmem_fd.close();
   remote.syscall(syscall_number_for_close(arch()), child_shmem_fd);
-}
-
-bool Task::is_desched_sig_blocked() {
-  return is_sig_blocked(SYSCALLBUF_DESCHED_SIGNAL);
 }
 
 void Task::tgkill(int sig) { syscall(SYS_tgkill, real_tgid(), tid, sig); }

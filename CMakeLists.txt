@@ -403,6 +403,8 @@ set(BASIC_TESTS
   sigill
   signalfd
   sigprocmask
+  sigprocmask_in_syscallbuf_sighandler
+  sigprocmask_syscallbuf
   sigqueueinfo
   sigreturn
   sigreturn_reg

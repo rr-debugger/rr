@@ -358,7 +358,7 @@ static void advance_to_disarm_desched_syscall(Task* t) {
   /* TODO: mask off signals and avoid this loop. */
   do {
     t->cont_syscall();
-    /* We can safely ignore SIG_TIMESLICE while trying to
+    /* We can safely ignore TIME_SLICE_SIGNAL while trying to
      * reach the disarm-desched ioctl: once we reach it,
      * the desched'd syscall will be "done" and the tracee
      * will be at a preemption point.  In fact, we *want*
@@ -367,7 +367,7 @@ static void advance_to_disarm_desched_syscall(Task* t) {
      * copy-out the buffered out data to the user's
      * buffer.  This happens in the interval where we're
      * reaching the disarm-desched ioctl, so that code is
-     * susceptible to receiving SIG_TIMESLICE. */
+     * susceptible to receiving TIME_SLICE_SIGNAL. */
     int sig = t->pending_sig();
     if (PerfCounters::TIME_SLICE_SIGNAL == sig) {
       continue;

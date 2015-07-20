@@ -11,6 +11,7 @@ class BaseSyscall(object):
         assert x86 or x64       # Must exist on one architecture.
         self.x86 = x86
         self.x64 = x64
+        assert len(kwargs) is 0
 
 class ReplaySemantics(object):
     """A class representing how rr replays syscalls."""
@@ -69,11 +70,12 @@ class RegularSyscall(BaseSyscall, ReplaySemantics):
         assert semantics in [ReplaySemantics.EMU,
                              ReplaySemantics.EXEC]
         ReplaySemantics.__init__(self, semantics)
-        BaseSyscall.__init__(self, **kwargs)
         for a in range(1,6):
             arg = 'arg' + str(a)
             if arg in kwargs:
                 self.__setattr__(arg, kwargs[arg])
+                kwargs.pop(arg)
+        BaseSyscall.__init__(self, **kwargs)
 
 class EmulatedSyscall(RegularSyscall):
     """A wrapper for regular syscalls.
@@ -711,7 +713,7 @@ mprotect = ExecutedSyscall(x86=125, x64=10)
 # calling thread.  The signal mask is the set of signals whose
 # delivery is currently blocked for the caller (see also signal(7)
 # for more details).
-sigprocmask = EmulatedSyscall(x86=126, arg3="typename Arch::sigset_t")
+sigprocmask = IrregularEmulatedSyscall(x86=126)
 
 create_module = UnsupportedSyscall(x86=127, x64=174)
 init_module = UnsupportedSyscall(x86=128, x64=175)
@@ -949,7 +951,7 @@ prctl = IrregularMayExecSyscall(x86=172, x64=157)
 
 rt_sigreturn = EmulatedSyscall(x86=173, x64=15)
 rt_sigaction = EmulatedSyscall(x86=174, x64=13, arg3="typename Arch::kernel_sigaction")
-rt_sigprocmask = EmulatedSyscall(x86=175, x64=14, arg3="typename Arch::sigset_t")
+rt_sigprocmask = IrregularEmulatedSyscall(x86=175, x64=14)
 
 #  int sigpending(sigset_t *set);
 #
