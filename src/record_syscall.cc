@@ -1669,11 +1669,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
 
     case Arch::execve: {
-      if (!syscall_state.syscall_entry_registers) {
-        syscall_state.syscall_entry_registers =
-            unique_ptr<Registers>(new Registers(t->regs()));
-      }
-
       vector<string> cmd_line;
       remote_ptr<typename Arch::unsigned_word> argv = t->regs().arg2();
       while (true) {
