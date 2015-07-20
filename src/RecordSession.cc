@@ -273,12 +273,6 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
 
       t->post_exec();
 
-      t->push_event(
-          SyscallEvent(syscall_number_for_execve(t->arch()), t->arch()));
-      t->ev().Syscall().state = ENTERING_SYSCALL;
-      t->record_current_event();
-      t->pop_syscall();
-
       // Skip past the ptrace event.
       step_state->continue_type = CONTINUE_SYSCALL;
       break;

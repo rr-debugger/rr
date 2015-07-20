@@ -298,11 +298,6 @@ Completion ReplaySession::cont_syscall_boundary(
     return cont_syscall_boundary(t, emu, constraints);
   }
 
-  if (t->ptrace_event() == PTRACE_EVENT_EXEC) {
-    t->post_exec(&t->current_trace_frame().regs(),
-                 &t->current_trace_frame().extra_regs());
-  }
-
   if (SIGTRAP == t->child_sig) {
     return INCOMPLETE;
   } else if (t->child_sig == PerfCounters::TIME_SLICE_SIGNAL) {

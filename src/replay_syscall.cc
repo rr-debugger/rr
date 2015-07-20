@@ -159,7 +159,7 @@ static string maybe_dump_written_string(Task* t) {
 /**
  * Proceeds until the next system call, which is being executed.
  */
-static void __ptrace_cont(Task* t) {
+static void __ptrace_cont(Task* t, int expect_syscallno) {
   do {
     t->cont_syscall();
   } while (ReplaySession::is_ignored_signal(t->stop_sig()));
@@ -169,13 +169,11 @@ static void __ptrace_cont(Task* t) {
   t->child_sig = 0;
 
   /* check if we are synchronized with the trace -- should never fail */
-  int rec_syscall = t->current_trace_frame().regs().original_syscallno();
   int current_syscall = t->regs().original_syscallno();
-  ASSERT(t, current_syscall == rec_syscall ||
-                (rec_syscall == syscall_number_for_vfork(t->arch()) &&
-                 current_syscall == syscall_number_for_fork(t->arch())))
-      << "Should be at " << t->syscall_name(rec_syscall) << ", but instead at "
-      << t->syscall_name(current_syscall) << maybe_dump_written_string(t);
+  ASSERT(t, current_syscall == expect_syscallno)
+      << "Should be at " << t->syscall_name(expect_syscallno)
+      << ", but instead at " << t->syscall_name(current_syscall)
+      << maybe_dump_written_string(t);
 }
 
 static void init_scratch_memory(Task* t) {
@@ -264,7 +262,7 @@ static TraceTaskEvent read_task_trace_event(Task* t,
 template <typename Arch>
 static void process_clone(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, ReplayTraceStep* step,
-                          unsigned long flags) {
+                          unsigned long flags, int expect_syscallno) {
   if (is_failed_syscall(t, trace_frame)) {
     /* creation failed, emulate it */
     step->syscall.emu = EMULATE;
@@ -287,7 +285,8 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
 
   // The syscall may be interrupted. Keep trying it until we get the
   // ptrace event we're expecting.
-  __ptrace_cont(t);
+  __ptrace_cont(t, expect_syscallno);
+
   while (!t->clone_syscall_is_complete()) {
     if (t->regs().syscall_result_signed() == -EAGAIN) {
       // clone() calls sometimes fail with -EAGAIN due to load issues or
@@ -298,16 +297,16 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
       r.set_ip(trace_frame.regs().ip() - syscall_instruction_length(t->arch()));
       t->set_regs(r);
       // reenter syscall
-      __ptrace_cont(t);
+      __ptrace_cont(t, expect_syscallno);
       // continue to exit
-      __ptrace_cont(t);
+      __ptrace_cont(t, expect_syscallno);
     } else {
-      __ptrace_cont(t);
+      __ptrace_cont(t, expect_syscallno);
     }
   }
 
   // Now continue again to get the syscall exit event.
-  __ptrace_cont(t);
+  __ptrace_cont(t, expect_syscallno);
   ASSERT(t, !t->ptrace_event())
       << "Unexpected ptrace event while waiting for syscall exit; got "
       << ptrace_event_name(t->ptrace_event());
@@ -374,7 +373,6 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   step->action = TSTEP_RETIRE;
 }
 
-template <typename Arch>
 static void process_execve(Task* t, const TraceFrame& trace_frame,
                            SyscallEntryOrExit state, ReplayTraceStep* step) {
   if (is_failed_syscall(t, trace_frame)) {
@@ -392,10 +390,20 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
 
   step->action = TSTEP_RETIRE;
 
-  /* Wait for the syscall exit */
-  __ptrace_cont(t);
-  ASSERT(t, !t->ptrace_event()) << "Expected no ptrace event, but got "
-                                << ptrace_event_name(t->ptrace_event());
+  /* The original_syscallno is execve in the old architecture. The kernel does
+   * not update the original_syscallno when the architecture changes across
+   * an exec.
+   */
+  int expect_syscallno = syscall_number_for_execve(t->arch());
+  /* Wait for the PTRACE_EVENT_EXREC */
+  __ptrace_cont(t, expect_syscallno);
+  ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXEC)
+      << "Expected PTRACE_EVENT_EXEC";
+
+  /* Wait for the execve exit. */
+  __ptrace_cont(t, expect_syscallno);
+
+  t->post_exec(&trace_frame.regs(), &trace_frame.extra_regs());
 
   TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::EXEC);
   t->post_exec_syscall(tte);
@@ -963,7 +971,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   switch (syscall) {
     case Arch::clone:
       return process_clone<Arch>(t, trace_frame, state, step,
-                                 trace_frame.regs().arg1());
+                                 trace_frame.regs().arg1(), syscall);
 
     case Arch::vfork:
       if (state == SYSCALL_EXIT) {
@@ -971,13 +979,13 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         r.set_original_syscallno(Arch::fork);
         t->set_regs(r);
       }
-      return process_clone<Arch>(t, trace_frame, state, step, 0);
+      return process_clone<Arch>(t, trace_frame, state, step, 0, Arch::fork);
 
     case Arch::fork:
-      return process_clone<Arch>(t, trace_frame, state, step, 0);
+      return process_clone<Arch>(t, trace_frame, state, step, 0, syscall);
 
     case Arch::execve:
-      return process_execve<Arch>(t, trace_frame, state, step);
+      return process_execve(t, trace_frame, state, step);
 
     case Arch::futex:
       return process_futex(t, trace_frame, state, step);
