@@ -206,10 +206,13 @@ target_link_libraries(rrpreload
   -ldl
 )
 
+add_executable(exec_stub src/exec_stub.c)
+set_target_properties(exec_stub PROPERTIES LINK_FLAGS -nostdlib)
+
 install(PROGRAMS scripts/signal-rr-recording.sh
   DESTINATION bin)
 
-install(TARGETS rr rrpreload
+install(TARGETS rr rrpreload exec_stub
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
@@ -252,7 +255,19 @@ if(rr_64BIT)
     -ldl
   )
 
-  install(TARGETS rrpreload_32
+  foreach(file exec_stub.c)
+    set_source_files_properties(32/${file}
+                                PROPERTIES GENERATED true COMPILE_FLAGS "-m32")
+    add_custom_command(OUTPUT 32/${file}
+                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
+                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/${file}"
+                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${file}")
+  endforeach(file)
+
+  add_executable(exec_stub_32 32/exec_stub.c)
+  set_target_properties(exec_stub_32 PROPERTIES LINK_FLAGS "-nostdlib -m32")
+
+  install(TARGETS rrpreload_32 exec_stub_32
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
