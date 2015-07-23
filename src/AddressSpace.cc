@@ -521,6 +521,12 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
     syscallbuf_lib_start_ = addr;
     syscallbuf_lib_end_ = addr + num_bytes;
   }
+
+  // During an emulated exec, we explicitly map in a (copy of) the VDSO
+  // at the recorded address.
+  if (res.id.psuedodevice() == PSEUDODEVICE_VDSO) {
+    vdso_start_addr = addr;
+  }
 }
 
 template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
@@ -1528,9 +1534,6 @@ void AddressSpace::map_and_coalesce(const Mapping& m,
     } else {
       as->update_heap(as->heap.start, info.end_addr);
     }
-  } else if (psdev == PSEUDODEVICE_VDSO) {
-    assert(!as->vdso_start_addr);
-    as->vdso_start_addr = info.start_addr;
   }
   FileId id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode, psdev);
 
