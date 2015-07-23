@@ -11,6 +11,7 @@
 #include "kernel_metadata.h"
 #include "main.h"
 #include "TraceStream.h"
+#include "util.h"
 
 using namespace std;
 
@@ -31,6 +32,7 @@ DumpCommand DumpCommand::singleton(
     "  like `1000-5000'.  By default, all events are dumped.\n"
     "  -b, --syscallbuf           dump syscallbuf contents\n"
     "  -m, --recorded-metadata    dump recorded data metadata\n"
+    "  -p, --mmaps                dump mmap data\n"
     "  -r, --raw                  dump trace frames in a more easily\n"
     "                             machine-parseable format instead of the\n"
     "                             default human-readable format\n"
@@ -39,12 +41,14 @@ DumpCommand DumpCommand::singleton(
 struct DumpFlags {
   bool dump_syscallbuf;
   bool dump_recorded_data_metadata;
+  bool dump_mmaps;
   bool raw_dump;
   bool dump_statistics;
 
   DumpFlags()
       : dump_syscallbuf(false),
         dump_recorded_data_metadata(false),
+        dump_mmaps(false),
         raw_dump(false),
         dump_statistics(false) {}
 };
@@ -57,6 +61,7 @@ static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
   static const OptionSpec options[] = { { 'b', "syscallbuf", NO_PARAMETER },
                                         { 'm', "recorded-metadata",
                                           NO_PARAMETER },
+                                          { 'p', "mmaps", NO_PARAMETER },
                                         { 'r', "raw", NO_PARAMETER },
                                         { 's', "statistics", NO_PARAMETER } };
   ParsedOption opt;
@@ -70,6 +75,9 @@ static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
       break;
     case 'm':
       flags.dump_recorded_data_metadata = true;
+      break;
+    case 'p':
+      flags.dump_mmaps = true;
       break;
     case 'r':
       flags.raw_dump = true;
@@ -159,12 +167,34 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
                   (void*)data.data.size());
         }
       }
+      while (true) {
+        TraceMappedRegion region = trace.peek_mapped_region();
+        if (region.type() == TraceMappedRegion::NONE) {
+          break;
+        }
+        TraceReader::MappedData data;
+        trace.read_mapped_region(&data);
+        if (flags.dump_mmaps) {
+          fprintf(out, "  { map_file:\"%s\", addr:%p, length:%p, file_offset:0x%llx }\n",
+              region.file_name().c_str(), (void*)region.start().as_int(),
+              (void*)region.size(),
+              (long long)region.offset_pages()*page_size());
+        }
+      }
       if (!flags.raw_dump) {
         fprintf(out, "}\n");
       }
     } else {
       TraceReader::RawData data;
       while (process_raw_data && trace.read_raw_data_for_frame(frame, data)) {
+      }
+      while (true) {
+        TraceMappedRegion region = trace.peek_mapped_region();
+        if (region.type() == TraceMappedRegion::NONE) {
+          break;
+        }
+        TraceReader::MappedData data;
+        trace.read_mapped_region(&data);
       }
     }
   }
