@@ -88,6 +88,8 @@ private:
  */
 class AutoRemoteSyscalls {
 public:
+  enum MemParamsEnabled { ENABLE_MEMORY_PARAMS, DISABLE_MEMORY_PARAMS };
+
   /**
    * Prepare |t| for a series of remote syscalls.
    *
@@ -95,7 +97,8 @@ public:
    * the caller *must* ensure the callee will not receive any
    * signals.  This code does not attempt to deal with signals.
    */
-  AutoRemoteSyscalls(Task* t);
+  AutoRemoteSyscalls(Task* t,
+                     MemParamsEnabled enable_mem_params = ENABLE_MEMORY_PARAMS);
   /**
    * Undo in |t| any preparations that were made for a series of
    * remote syscalls.

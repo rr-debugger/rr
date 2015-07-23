@@ -26,6 +26,9 @@ template <typename Arch> struct socketcall_args {
 } __attribute__((packed));
 
 void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
+  ASSERT(remote.task(), !remote.regs().sp().is_null())
+      << "Memory parameters were disabled";
+
   len = num_bytes;
   saved_sp = remote.regs().sp();
 
@@ -50,7 +53,8 @@ AutoRestoreMem::~AutoRestoreMem() {
   remote.task()->set_regs(remote.regs());
 }
 
-AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t)
+AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
+                                       MemParamsEnabled enable_mem_params)
     : t(t),
       initial_regs(t->regs()),
       initial_ip(t->ip()),
@@ -61,7 +65,11 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t)
   // produce PTRACE_SECCOMP_EVENTs that we ignore. And before the rr page is
   // loaded, the privileged_traced_syscall_ip is not available.
   initial_regs.set_ip(t->vm()->traced_syscall_ip());
-  maybe_fix_stack_pointer();
+  if (enable_mem_params == ENABLE_MEMORY_PARAMS) {
+    maybe_fix_stack_pointer();
+  } else {
+    initial_regs.set_sp(remote_ptr<void>());
+  }
 }
 
 void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
