@@ -141,7 +141,8 @@ private:
  * offset of the mapping, its protection flags, the offest within the
  * resource, and more.
  */
-struct KernelMapping {
+class KernelMapping {
+public:
   /**
    * These are the flags we track internally to distinguish
    * between adjacent segments.  For example, the kernel
