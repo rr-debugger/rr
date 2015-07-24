@@ -400,28 +400,28 @@ enum DebugStatus {
  */
 struct MemoryRange {
   MemoryRange(remote_ptr<void> addr, size_t num_bytes)
-      : addr(addr), num_bytes(num_bytes) {}
+      : start(addr), num_bytes(num_bytes) {}
   MemoryRange(remote_ptr<void> addr, remote_ptr<void> end)
-      : addr(addr), num_bytes(end - addr) {}
+      : start(addr), num_bytes(end - addr) {}
   MemoryRange(const MemoryRange&) = default;
   MemoryRange& operator=(const MemoryRange&) = default;
 
   bool operator==(const MemoryRange& o) const {
-    return addr == o.addr && num_bytes == o.num_bytes;
+    return start == o.start && num_bytes == o.num_bytes;
   }
   bool operator<(const MemoryRange& o) const {
-    return addr != o.addr ? addr < o.addr : num_bytes < o.num_bytes;
+    return start != o.start ? start < o.start : num_bytes < o.num_bytes;
   }
 
   bool intersects(const MemoryRange& other) const {
-    remote_ptr<void> s = std::max(addr, other.addr);
+    remote_ptr<void> s = std::max(start, other.start);
     remote_ptr<void> e = std::min(end(), other.end());
     return s < e;
   }
 
-  remote_ptr<void> end() const { return addr + num_bytes; }
+  remote_ptr<void> end() const { return start + num_bytes; }
 
-  remote_ptr<void> addr;
+  remote_ptr<void> start;
   size_t num_bytes;
 };
 
