@@ -489,7 +489,7 @@ static void remove_range(set<MemoryRange>& ranges, const MemoryRange& range) {
   auto start = ranges.lower_bound(range);
   auto end = start;
   auto prev_end = start;
-  while (end != ranges.end() && end->start < range.end()) {
+  while (end != ranges.end() && end->start < range.end) {
     prev_end = end;
     ++end;
   }
@@ -502,8 +502,8 @@ static void remove_range(set<MemoryRange>& ranges, const MemoryRange& range) {
   if (start_range.start < range.start) {
     ranges.insert(MemoryRange(start_range.start, range.start));
   }
-  if (range.end() < end_range.end()) {
-    ranges.insert(MemoryRange(range.end(), end_range.end()));
+  if (range.end < end_range.end) {
+    ranges.insert(MemoryRange(range.end, end_range.end));
   }
 }
 
@@ -805,7 +805,7 @@ bool AddressSpace::update_watchpoint_value(const MemoryRange& range,
     value_bytes[i] = 0xFF;
   }
   remote_ptr<void> addr = range.start;
-  size_t num_bytes = range.num_bytes;
+  size_t num_bytes = range.size();
   while (num_bytes > 0) {
     ssize_t bytes_read = t->read_bytes_fallible(
         addr, num_bytes, value_bytes.data() + (addr - range.start));
@@ -946,9 +946,9 @@ void AddressSpace::did_fork_into(Task* t) {
     if (!t->session().is_recording()) {
       AutoRemoteSyscalls remote(t);
       remote.syscall(syscall_number_for_munmap(remote.arch()), range.start,
-                     range.num_bytes);
+                     range.size());
     }
-    t->vm()->unmap(range.start, range.num_bytes);
+    t->vm()->unmap(range.start, range.size());
   }
 }
 
@@ -1286,19 +1286,18 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
 
 static bool try_split_unaligned_range(MemoryRange& range, size_t bytes,
                                       vector<MemoryRange>& result) {
-  if ((range.start.as_int() & (bytes - 1)) || range.num_bytes < bytes) {
+  if ((range.start.as_int() & (bytes - 1)) || range.size() < bytes) {
     return false;
   }
   result.push_back(MemoryRange(range.start, bytes));
   range.start += bytes;
-  range.num_bytes -= bytes;
   return true;
 }
 
 static vector<MemoryRange> split_range(const MemoryRange& range) {
   vector<MemoryRange> result;
   MemoryRange r = range;
-  while (r.num_bytes > 0) {
+  while (r.size() > 0) {
     if ((sizeof(void*) < 8 || !try_split_unaligned_range(r, 8, result)) &&
         !try_split_unaligned_range(r, 4, result) &&
         !try_split_unaligned_range(r, 2, result)) {
@@ -1314,21 +1313,21 @@ static void configure_watch_registers(vector<WatchConfig>& regs,
                                       vector<int8_t>* assigned_regs) {
   auto split_ranges = split_range(range);
 
-  if (type == WATCH_WRITE && range.num_bytes > 1) {
+  if (type == WATCH_WRITE && range.size() > 1) {
     // We can suppress spurious write-watchpoint triggerings by checking
     // whether memory values have changed. So we can sometimes conserve
     // debug registers by upgrading an unaligned range to an aligned range
     // of a larger size.
     uintptr_t align;
-    if (range.num_bytes <= 2) {
+    if (range.size() <= 2) {
       align = 2;
-    } else if (range.num_bytes <= 4 || sizeof(void*) <= 4) {
+    } else if (range.size() <= 4 || sizeof(void*) <= 4) {
       align = 4;
     } else {
       align = 8;
     }
     remote_ptr<void> aligned_start(range.start.as_int() & ~(align - 1));
-    remote_ptr<void> aligned_end((range.end().as_int() + (align - 1)) &
+    remote_ptr<void> aligned_end((range.end.as_int() + (align - 1)) &
                                  ~(align - 1));
     auto split = split_range(MemoryRange(aligned_start, aligned_end));
     // If the aligned range doesn't reduce register usage, use the original
@@ -1342,7 +1341,7 @@ static void configure_watch_registers(vector<WatchConfig>& regs,
     if (assigned_regs) {
       assigned_regs->push_back(regs.size());
     }
-    regs.push_back(WatchConfig(r.start, r.num_bytes, type));
+    regs.push_back(WatchConfig(r.start, r.size(), type));
   }
 }
 
@@ -1382,12 +1381,12 @@ vector<WatchConfig> AddressSpace::get_watchpoints_internal(
     const MemoryRange& r = kv.first;
     int watching = kv.second.watched_bits();
     if (EXEC_BIT & watching) {
-      result.push_back(WatchConfig(r.start, r.num_bytes, WATCH_EXEC));
+      result.push_back(WatchConfig(r.start, r.size(), WATCH_EXEC));
     }
     if (READ_BIT & watching) {
-      result.push_back(WatchConfig(r.start, r.num_bytes, WATCH_READWRITE));
+      result.push_back(WatchConfig(r.start, r.size(), WATCH_READWRITE));
     } else if (WRITE_BIT & watching) {
-      result.push_back(WatchConfig(r.start, r.num_bytes, WATCH_WRITE));
+      result.push_back(WatchConfig(r.start, r.size(), WATCH_WRITE));
     }
   }
   return result;
@@ -1519,9 +1518,9 @@ void AddressSpace::for_all_mappings(
 void AddressSpace::for_all_mappings_in_range(
     std::function<void(const Mapping& m, const MappableResource& r)> f,
     const MemoryRange& range) {
-  Mapping m(range.start, range.end());
+  Mapping m(range.start, range.end);
   for (auto it = mem.lower_bound(m); it != mem.end(); ++it) {
-    if (it->first.start >= range.end()) {
+    if (it->first.start >= range.end) {
       break;
     }
     f(it->first, it->second);
