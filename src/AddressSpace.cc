@@ -72,7 +72,8 @@ FileId::FileId(dev_t dev_major, dev_t dev_minor, ino_t ino, PseudoDevice psdev)
     : device(MKDEV(dev_major, dev_minor)), inode(ino), psdev(psdev) {}
 
 ostream& operator<<(ostream& o, const KernelMapping& m) {
-  o << m.start << "-" << m.end << " " << HEX(m.prot) << " f:" << HEX(m.flags);
+  o << m.start() << "-" << m.end() << " " << HEX(m.prot)
+    << " f:" << HEX(m.flags);
   return o;
 }
 
@@ -276,14 +277,13 @@ uint32_t AddressSpace::offset_to_syscall_in_vdso[SupportedArch_MAX + 1];
 remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
   SupportedArch arch = t->arch();
   if (!offset_to_syscall_in_vdso[arch]) {
-    auto vdso_data =
-        t->read_mem(vdso().start.cast<uint8_t>(), vdso().num_bytes());
+    auto vdso_data = t->read_mem(vdso().start().cast<uint8_t>(), vdso().size());
     offset_to_syscall_in_vdso[arch] = find_offset_of_syscall_instruction_in(
         arch, vdso_data.data(), vdso_data.size());
     ASSERT(t, offset_to_syscall_in_vdso[arch])
         << "No syscall instruction found in VDSO";
   }
-  return remote_code_ptr((vdso().start.cast<uint8_t>() +
+  return remote_code_ptr((vdso().start().cast<uint8_t>() +
                           offset_to_syscall_in_vdso[arch]).as_int());
 }
 
@@ -438,21 +438,21 @@ void AddressSpace::post_exec_syscall(Task* t) {
 void AddressSpace::brk(remote_ptr<void> addr) {
   LOG(debug) << "brk(" << addr << ")";
 
-  assert(heap.start <= addr);
+  assert(heap.start() <= addr);
 
   remote_ptr<void> vm_addr = ceil_page_size(addr);
-  if (heap.end < vm_addr) {
-    map(heap.end, vm_addr - heap.end, heap.prot, heap.flags, heap.offset,
+  if (heap.end() < vm_addr) {
+    map(heap.end(), vm_addr - heap.end(), heap.prot, heap.flags, heap.offset,
         MappableResource::heap());
   } else {
-    unmap(vm_addr, heap.end - vm_addr);
+    unmap(vm_addr, heap.end() - vm_addr);
   }
-  update_heap(heap.start, vm_addr);
+  update_heap(heap.start(), vm_addr);
 }
 
 void AddressSpace::dump() const {
-  fprintf(stderr, "  (heap: %p-%p)\n", (void*)heap.start.as_int(),
-          (void*)heap.end.as_int());
+  fprintf(stderr, "  (heap: %p-%p)\n", (void*)heap.start().as_int(),
+          (void*)heap.end().as_int());
   for (auto it = mem.begin(); it != mem.end(); ++it) {
     const KernelMapping& m = it->first;
     const MappableResource& r = it->second;
@@ -529,7 +529,8 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
   KernelMapping m(addr, num_bytes, prot, flags, offset_bytes);
 
   bool insert_guard_page = false;
-  if (has_mapping(m.end) && (mapping_of(m.end).first.flags & MAP_GROWSDOWN)) {
+  if (has_mapping(m.end()) &&
+      (mapping_of(m.end()).first.flags & MAP_GROWSDOWN)) {
     // When inserting a mapping immediately before a grow-down VMA,
     // the kernel unmaps an extra page to form a guard page. We need to
     // emulate that.
@@ -549,7 +550,7 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
   if (flags & MAP_GROWSDOWN) {
     // The first page is made into a guard page by the kernel
     m = KernelMapping(addr + page_size(), num_bytes - page_size(), prot, flags,
-                offset_bytes + page_size());
+                      offset_bytes + page_size());
   }
   map_and_coalesce(m, res);
 
@@ -598,7 +599,7 @@ MappingResourcePair AddressSpace::mapping_of(remote_ptr<void> addr) const {
   KernelMapping m(floor_page_size(addr), page_size());
   auto it = mem.find(m);
   assert(it != mem.end());
-  assert(it->first.has_subset(m));
+  assert(it->first.contains(m));
   return *it;
 }
 
@@ -609,7 +610,7 @@ bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
   }
   KernelMapping m(floor_page_size(addr), page_size());
   auto it = mem.find(m);
-  return it != mem.end() && it->first.has_subset(m);
+  return it != mem.end() && it->first.contains(m);
 }
 
 /**
@@ -627,8 +628,9 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
              << ")";
 
   KernelMapping last_overlap;
-  auto protector = [this, prot, &last_overlap](
-      const KernelMapping& m, const MappableResource& r, const KernelMapping& rem) {
+  auto protector = [this, prot, &last_overlap](const KernelMapping& m,
+                                               const MappableResource& r,
+                                               const KernelMapping& rem) {
     LOG(debug) << "  protecting (" << rem << ") ...";
 
     // PROT_GROWSDOWN means that if this is a grows-down segment
@@ -637,12 +639,12 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // We don't try to handle the analogous PROT_GROWSUP, because we
     // don't understand the idea of a grows-up segment.
     remote_ptr<void> new_start;
-    if ((m.start < rem.start) && (prot & PROT_GROWSDOWN) &&
+    if ((m.start() < rem.start()) && (prot & PROT_GROWSDOWN) &&
         (m.flags & MAP_GROWSDOWN)) {
-      new_start = m.start;
+      new_start = m.start();
       LOG(debug) << "  PROT_GROWSDOWN: expanded region down to " << new_start;
     } else {
-      new_start = rem.start;
+      new_start = rem.start();
     }
 
     mem.erase(m);
@@ -651,24 +653,25 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // If the first segment we protect underflows the
     // region, remap the underflow region with previous
     // prot.
-    if (m.start < new_start) {
-      KernelMapping underflow(m.start, rem.start, m.prot, m.flags, m.offset);
+    if (m.start() < new_start) {
+      KernelMapping underflow(m.start(), rem.start(), m.prot, m.flags,
+                              m.offset);
       mem[underflow] = r;
     }
     // Remap the overlapping region with the new prot.
-    remote_ptr<void> new_end = min(rem.end, m.end);
+    remote_ptr<void> new_end = min(rem.end(), m.end());
     KernelMapping overlap(new_start, new_end,
-                    prot & (PROT_READ | PROT_WRITE | PROT_EXEC), m.flags,
-                    adjust_offset(r, m, new_start - m.start));
+                          prot & (PROT_READ | PROT_WRITE | PROT_EXEC), m.flags,
+                          adjust_offset(r, m, new_start - m.start()));
     mem[overlap] = r;
     last_overlap = overlap;
 
     // If the last segment we protect overflows the
     // region, remap the overflow region with previous
     // prot.
-    if (rem.end < m.end) {
-      KernelMapping overflow(rem.end, m.end, m.prot, m.flags,
-                       adjust_offset(r, m, rem.end - m.start));
+    if (rem.end() < m.end()) {
+      KernelMapping overflow(rem.end(), m.end(), m.prot, m.flags,
+                             adjust_offset(r, m, rem.end() - m.start()));
       mem[overflow] = r;
     }
   };
@@ -705,7 +708,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   }
 
   map_and_coalesce(KernelMapping(new_addr, new_num_bytes, m.prot, m.flags,
-                           adjust_offset(r, m, old_addr - m.start)),
+                                 adjust_offset(r, m, old_addr - m.start())),
                    r);
 }
 
@@ -892,8 +895,8 @@ void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
 void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
 
-  auto unmapper =
-      [this](const KernelMapping& m, const MappableResource& r, const KernelMapping& rem) {
+  auto unmapper = [this](const KernelMapping& m, const MappableResource& r,
+                         const KernelMapping& rem) {
     LOG(debug) << "  unmapping (" << rem << ") ...";
 
     mem.erase(m);
@@ -901,8 +904,9 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
 
     // If the first segment we unmap underflows the unmap
     // region, remap the underflow region.
-    if (m.start < rem.start) {
-      KernelMapping underflow(m.start, rem.start, m.prot, m.flags, m.offset);
+    if (m.start() < rem.start()) {
+      KernelMapping underflow(m.start(), rem.start(), m.prot, m.flags,
+                              m.offset);
       MappableResource new_r = r;
       // When splitting a stack mapping, the bottom part of the split is no
       // longer treated as stack by the kernel.
@@ -911,9 +915,9 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
     }
     // If the last segment we unmap overflows the unmap
     // region, remap the overflow region.
-    if (rem.end < m.end) {
-      KernelMapping overflow(rem.end, m.end, m.prot, m.flags,
-                       adjust_offset(r, m, rem.end - m.start));
+    if (rem.end() < m.end()) {
+      KernelMapping overflow(rem.end(), m.end(), m.prot, m.flags,
+                             adjust_offset(r, m, rem.end() - m.start()));
       mem[overflow] = r;
     }
   };
@@ -962,7 +966,7 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
                                 int32_t flags_to_check = 0xFFFFFFFF) {
   const KernelMapping& mleft = left.first;
   const KernelMapping& mright = right.first;
-  if (mleft.end != mright.start) {
+  if (mleft.end() != mright.start()) {
     LOG(debug) << "    (not adjacent in memory)";
     return false;
   }
@@ -982,8 +986,8 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
     return false;
   }
   if (rleft.id.is_real_device() &&
-      mleft.offset + off64_t(mleft.num_bytes()) != mright.offset) {
-    LOG(debug) << "    (" << mleft.offset << " + " << mleft.num_bytes()
+      mleft.offset + off64_t(mleft.size()) != mright.offset) {
+    LOG(debug) << "    (" << mleft.offset << " + " << mleft.size()
                << " != " << mright.offset
                << ": offsets into real device aren't adjacent)";
     return false;
@@ -1001,14 +1005,15 @@ static bool is_adjacent_mapping(const MappingResourcePair& left,
  * |is_adjacent_mapping()|), write a merged segment descriptor to
  * |*left_m| and return true.  Otherwise return false.
  */
-static bool try_merge_adjacent(KernelMapping* left_m, const MappableResource& left_r,
+static bool try_merge_adjacent(KernelMapping* left_m,
+                               const MappableResource& left_r,
                                const KernelMapping& right_m,
                                const MappableResource& right_r) {
   if (is_adjacent_mapping(MappingResourcePair(*left_m, left_r),
                           MappingResourcePair(right_m, right_r),
                           KernelMapping::checkable_flags_mask)) {
-    *left_m = KernelMapping(left_m->start, right_m.end, right_m.prot, right_m.flags,
-                      left_m->offset);
+    *left_m = KernelMapping(left_m->start(), right_m.end(), right_m.prot,
+                            right_m.flags, left_m->offset);
     return true;
   }
   return false;
@@ -1067,13 +1072,13 @@ struct VerifyAddressSpace {
 
 void VerifyAddressSpace::assert_segments_match(Task* t) {
   assert(MERGING_KERNEL == phase);
-  bool same_mapping = (m.start == km.start && m.end == km.end &&
+  bool same_mapping = (m.start() == km.start() && m.end() == km.end() &&
                        m.prot == km.prot && m.flags == km.flags);
   // When we stripped most identifying info from |r| with
   // |to_kernel()|, we also lost its "is stack" flag.  So to check if
   // it's a grows-down stack segment, we see if it has the special
   // linux name for the process stack segment, "[stack]".
-  if (!same_mapping && km.start < m.start && "[stack]" == r.fsname) {
+  if (!same_mapping && km.start() < m.start() && "[stack]" == r.fsname) {
     // TODO: the stack can grow down arbitrarily, and rr needs to be
     // aware of the updated mapping in case the user tries to map or
     // unmap pages near the stack.  But keeping track of expanded
@@ -1083,7 +1088,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
     // We do fix up our current mapping to match the kernel as closely
     // as possible. Then, if the grow-down VMA is split somehow, we know
     // about the split parts.
-    t->vm()->fix_stack_segment_start(m, km.start);
+    t->vm()->fix_stack_segment_start(m, km.start());
     return;
   }
   if (!same_mapping) {
@@ -1164,7 +1169,7 @@ void AddressSpace::fix_stack_segment_start(const KernelMapping& mapping,
   // Merge adjacent kernel mappings.
   assert(info.flags == (info.flags & KernelMapping::checkable_flags_mask));
   KernelMapping km(info.start_addr, info.end_addr, info.prot, info.flags,
-             info.file_offset);
+                   info.file_offset);
   PseudoDevice psdev = pseudodevice_for_name(info.name);
   MappableResource kr = MappableResource(FileId(info.dev_major, info.dev_minor,
                                                 info.inode, psdev),
@@ -1451,8 +1456,8 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
     return;
   }
 
-  KernelMapping c(first_kv->first.start, last_kv->first.end, m.prot, m.flags,
-            first_kv->first.offset);
+  KernelMapping c(first_kv->first.start(), last_kv->first.end(), m.prot,
+                  m.flags, first_kv->first.offset);
   LOG(debug) << "  coalescing " << c;
 
   mem.erase(first_kv, ++last_kv);
@@ -1490,13 +1495,13 @@ void AddressSpace::for_each_in_range(
     }
 
     KernelMapping m = it->first;
-    if (rem.end <= m.start) {
-      LOG(debug) << "  mapping at " << m.start << " out of range, done.";
+    if (rem.end() <= m.start()) {
+      LOG(debug) << "  mapping at " << m.start() << " out of range, done.";
       return;
     }
     if (ITERATE_CONTIGUOUS == how &&
-        !(m.start < region_start || rem.start == m.start)) {
-      LOG(debug) << "  discontiguous mapping at " << m.start << ", done.";
+        !(m.start() < region_start || rem.start() == m.start())) {
+      LOG(debug) << "  discontiguous mapping at " << m.start() << ", done.";
       return;
     }
 
@@ -1504,7 +1509,7 @@ void AddressSpace::for_each_in_range(
     f(m, r, rem);
 
     // Maintain the loop invariant.
-    last_unmapped_end = m.end;
+    last_unmapped_end = m.end();
   }
 }
 
@@ -1520,7 +1525,7 @@ void AddressSpace::for_all_mappings_in_range(
     const MemoryRange& range) {
   KernelMapping m(range.start(), range.end());
   for (auto it = mem.lower_bound(m); it != mem.end(); ++it) {
-    if (it->first.start >= range.end()) {
+    if (it->first.start() >= range.end()) {
       break;
     }
     f(it->first, it->second);
@@ -1535,7 +1540,7 @@ void AddressSpace::map_and_coalesce(const KernelMapping& m,
   assert(ins.second); // key didn't already exist
   coalesce_around(ins.first);
 
-  update_watchpoint_values(m.start, m.end);
+  update_watchpoint_values(m.start(), m.end());
 }
 
 /*static*/ void AddressSpace::populate_address_space(
@@ -1543,10 +1548,10 @@ void AddressSpace::map_and_coalesce(const KernelMapping& m,
   AddressSpace* as = static_cast<AddressSpace*>(asp);
   const struct mapped_segment_info& info = data->info;
 
-  if (!as->heap.start && as->exe == info.name && !(info.prot & PROT_EXEC) &&
+  if (!as->heap.start() && as->exe == info.name && !(info.prot & PROT_EXEC) &&
       (info.prot & (PROT_READ | PROT_WRITE))) {
     as->update_heap(info.end_addr, info.end_addr);
-    LOG(debug) << "  guessing heap starts at " << as->heap.start
+    LOG(debug) << "  guessing heap starts at " << as->heap.start()
                << " (end of text segment)";
   }
 
@@ -1557,20 +1562,20 @@ void AddressSpace::map_and_coalesce(const KernelMapping& m,
   // segment of the exe.  (This is seen with x86-64 bash on Fedora
   // Core 20.)  Update the guess.
   if (!(info.prot & PROT_EXEC) &&
-      (as->heap.end == info.start_addr || as->exe == info.name)) {
-    assert(as->heap.start == as->heap.end || as->exe == info.name);
+      (as->heap.end() == info.start_addr || as->exe == info.name)) {
+    assert(as->heap.start() == as->heap.end() || as->exe == info.name);
     as->update_heap(info.end_addr, info.end_addr);
-    LOG(debug) << "  updating start-of-heap guess to " << as->heap.start
+    LOG(debug) << "  updating start-of-heap guess to " << as->heap.start()
                << " (end of mapped-data segment)";
   }
 
   PseudoDevice psdev = pseudodevice_for_name(info.name);
   if (psdev == PSEUDODEVICE_HEAP) {
-    if (!as->heap.start) {
+    if (!as->heap.start()) {
       // No guess for the heap start. Assume it's just the [heap] segment.
       as->update_heap(info.start_addr, info.end_addr);
     } else {
-      as->update_heap(as->heap.start, info.end_addr);
+      as->update_heap(as->heap.start(), info.end_addr);
     }
   }
   FileId id = FileId(MKDEV(info.dev_major, info.dev_minor), info.inode, psdev);

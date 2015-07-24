@@ -335,10 +335,11 @@ void Session::finish_initializing() const {
 }
 
 static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
-                              const KernelMapping& m, const MappableResource& r) {
-  LOG(debug) << "    remapping shared region at " << m.start << "-" << m.end;
-  remote.syscall(syscall_number_for_munmap(remote.arch()), m.start,
-                 m.num_bytes());
+                              const KernelMapping& m,
+                              const MappableResource& r) {
+  LOG(debug) << "    remapping shared region at " << m.start() << "-"
+             << m.end();
+  remote.syscall(syscall_number_for_munmap(remote.arch()), m.start(), m.size());
   // NB: we don't have to unmap then re-map |t->vm()|'s idea of
   // the emulated file mapping.  Though we'll be remapping the
   // *real* OS mapping in |t| to a different file, that new
@@ -364,14 +365,14 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   }
   // XXX this condition is x86/x64-specific, I imagine.
   remote_ptr<void> addr =
-      remote.mmap_syscall(m.start, m.num_bytes(), m.prot,
+      remote.mmap_syscall(m.start(), m.size(), m.prot,
                           // The remapped segment *must* be
                           // remapped at the same address,
                           // or else many things will go
                           // haywire.
                           (m.flags & ~MAP_ANONYMOUS) | MAP_FIXED, remote_fd,
                           m.offset / page_size());
-  ASSERT(remote.task(), addr == m.start);
+  ASSERT(remote.task(), addr == m.start());
 
   remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }

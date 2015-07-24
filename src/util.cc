@@ -156,17 +156,17 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
     const KernelMapping& first = kv.first;
     const MappableResource& second = kv.second;
     vector<uint8_t> mem;
-    mem.resize(first.num_bytes());
+    mem.resize(first.size());
 
     ssize_t mem_len =
-        t->read_bytes_fallible(first.start, first.num_bytes(), mem.data());
+        t->read_bytes_fallible(first.start(), first.size(), mem.data());
     mem_len = max(ssize_t(0), mem_len);
 
     string label = first.str() + ' ' + second.str();
 
-    if (!is_start_of_scratch_region(t, first.start)) {
+    if (!is_start_of_scratch_region(t, first.start())) {
       dump_binary_chunk(dump_file, label.c_str(), (const uint32_t*)mem.data(),
-                        mem_len / sizeof(uint32_t), first.start);
+                        mem_len / sizeof(uint32_t), first.start());
     }
   }
   fclose(dump_file);
@@ -274,9 +274,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     ssize_t valid_mem_len = 0;
 
     if (checksum_segment_filter(first, second)) {
-      mem.resize(first.num_bytes());
+      mem.resize(first.size());
       valid_mem_len =
-          t->read_bytes_fallible(first.start, first.num_bytes(), mem.data());
+          t->read_bytes_fallible(first.start(), first.size(), mem.data());
       valid_mem_len = max(ssize_t(0), valid_mem_len);
     }
 
@@ -297,7 +297,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       *
       * So here, we set things up so that we only checksum
       * the deterministic region. */
-      auto child_hdr = first.start.cast<struct syscallbuf_hdr>();
+      auto child_hdr = first.start().cast<struct syscallbuf_hdr>();
       auto hdr = t->read_mem(child_hdr);
       valid_mem_len = !buf ? 0 : sizeof(hdr) + hdr.num_rec_bytes +
                                      sizeof(struct syscallbuf_record);
@@ -325,7 +325,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       remote_ptr<void> rec_end_addr = rec_end;
       ASSERT(t, 3 == nparsed) << "Only parsed " << nparsed << " items";
 
-      ASSERT(t, rec_start_addr == first.start && rec_end_addr == first.end)
+      ASSERT(t, rec_start_addr == first.start() && rec_end_addr == first.end())
           << "Segment " << rec_start_addr << "-" << rec_end_addr
           << " changed to " << first << "??";
 

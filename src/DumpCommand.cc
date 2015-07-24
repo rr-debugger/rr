@@ -61,7 +61,7 @@ static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
   static const OptionSpec options[] = { { 'b', "syscallbuf", NO_PARAMETER },
                                         { 'm', "recorded-metadata",
                                           NO_PARAMETER },
-                                          { 'p', "mmaps", NO_PARAMETER },
+                                        { 'p', "mmaps", NO_PARAMETER },
                                         { 'r', "raw", NO_PARAMETER },
                                         { 's', "statistics", NO_PARAMETER } };
   ParsedOption opt;
@@ -175,10 +175,12 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         TraceReader::MappedData data;
         trace.read_mapped_region(&data);
         if (flags.dump_mmaps) {
-          fprintf(out, "  { map_file:\"%s\", addr:%p, length:%p, file_offset:0x%llx }\n",
+          fprintf(
+              out,
+              "  { map_file:\"%s\", addr:%p, length:%p, file_offset:0x%llx }\n",
               region.file_name().c_str(), (void*)region.start().as_int(),
               (void*)region.size(),
-              (long long)region.offset_pages()*page_size());
+              (long long)region.offset_pages() * page_size());
         }
       }
       if (!flags.raw_dump) {

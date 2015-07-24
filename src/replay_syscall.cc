@@ -781,9 +781,9 @@ static void process_shmdt(Task* t, const TraceFrame& trace_frame,
   {
     AutoRemoteSyscalls remote(t);
     auto mapping = t->vm()->mapping_of(addr);
-    ASSERT(t, mapping.first.start == addr);
+    ASSERT(t, mapping.first.start() == addr);
     int result = remote.syscall(syscall_number_for_munmap(t->arch()), addr,
-                                mapping.first.end - addr);
+                                mapping.first.end() - addr);
     ASSERT(t, result == 0);
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }

@@ -141,7 +141,7 @@ private:
  * offset of the mapping, its protection flags, the offest within the
  * resource, and more.
  */
-class KernelMapping {
+class KernelMapping : public MemoryRange {
 public:
   /**
    * These are the flags we track internally to distinguish
@@ -157,19 +157,17 @@ public:
   static const int checkable_flags_mask = MAP_PRIVATE | MAP_SHARED;
 
   KernelMapping() : prot(0), flags(0), offset(0) {}
-  KernelMapping(remote_ptr<void> addr, size_t num_bytes, int prot = 0, int flags = 0,
-          off64_t offset = 0)
-      : start(addr),
-        end(addr + ceil_page_size(num_bytes)),
+  KernelMapping(remote_ptr<void> addr, size_t num_bytes, int prot = 0,
+                int flags = 0, off64_t offset = 0)
+      : MemoryRange(addr, addr + ceil_page_size(num_bytes)),
         prot(prot),
         flags(flags & map_flags_mask),
         offset(offset) {
     assert_valid();
   }
   KernelMapping(remote_ptr<void> start, remote_ptr<void> end, int prot = 0,
-          int flags = 0, off64_t offset = 0)
-      : start(start),
-        end(end),
+                int flags = 0, off64_t offset = 0)
+      : MemoryRange(start, end),
         prot(prot),
         flags(flags & map_flags_mask),
         offset(offset) {
@@ -177,11 +175,8 @@ public:
   }
 
   KernelMapping(const KernelMapping& o)
-      : start(o.start),
-        end(o.end),
-        prot(o.prot),
-        flags(o.flags),
-        offset(o.offset) {
+      : MemoryRange(o), prot(o.prot), flags(o.flags), offset(o.offset) {
+    assert_valid();
   }
   KernelMapping operator=(const KernelMapping& o) {
     memcpy(this, &o, sizeof(*this));
@@ -190,33 +185,10 @@ public:
   }
 
   void assert_valid() const {
-    assert(end >= start);
-    assert(num_bytes() % page_size() == 0);
+    assert(end() >= start());
+    assert(size() % page_size() == 0);
     assert(!(flags & ~map_flags_mask));
     assert(offset % page_size() == 0);
-  }
-
-  /**
-   * Return true iff |o| is an address range fully contained by
-   * this.
-   */
-  bool has_subset(const KernelMapping& o) const {
-    return start <= o.start && o.end <= end;
-  }
-
-  /**
-   * Return true iff |o| and this map at least one shared byte.
-   */
-  bool intersects(const KernelMapping& o) const {
-    return (start == o.start && o.end == end) ||
-           (start <= o.start && o.start < end) ||
-           (start < o.end && o.end <= end);
-  }
-
-  size_t num_bytes() const {
-    ssize_t s = end - start;
-    assert(s >= 0);
-    return s;
   }
 
   /**
@@ -225,7 +197,8 @@ public:
    * /proc/maps.
    */
   KernelMapping to_kernel() const {
-    return KernelMapping(start, end, prot, flags & checkable_flags_mask, offset);
+    return KernelMapping(start(), end(), prot, flags & checkable_flags_mask,
+                         offset);
   }
 
   /**
@@ -234,23 +207,13 @@ public:
   */
   std::string str() const {
     char str[200];
-    sprintf(str, "%8p-%8p %c%c%c%c %08" PRIx64, (void*)start.as_int(),
-            (void*)end.as_int(), (PROT_READ & prot) ? 'r' : '-',
+    sprintf(str, "%8p-%8p %c%c%c%c %08" PRIx64, (void*)start().as_int(),
+            (void*)end().as_int(), (PROT_READ & prot) ? 'r' : '-',
             (PROT_WRITE & prot) ? 'w' : '-', (PROT_EXEC & prot) ? 'x' : '-',
             (MAP_SHARED & flags) ? 's' : 'p', offset);
     return str;
   }
 
-  /**
-   * Super-dangerous! Only call this if it's guaranteed not to change
-   * the ordering of Mappings.
-   */
-  void update_start(remote_ptr<void> new_start) const {
-    *const_cast<remote_ptr<void>*>(&start) = new_start;
-  }
-
-  const remote_ptr<void> start;
-  const remote_ptr<void> end;
   const int prot;
   const int flags;
   const off64_t offset;
@@ -269,7 +232,7 @@ std::ostream& operator<<(std::ostream& o, const KernelMapping& m);
  */
 struct MappingComparator {
   bool operator()(const KernelMapping& a, const KernelMapping& b) const {
-    return a.intersects(b) ? false : a.start < b.start;
+    return a.intersects(b) ? false : a.start() < b.start();
   }
 };
 
@@ -418,7 +381,8 @@ class AddressSpace : public HasTaskSet {
   friend struct VerifyAddressSpace;
 
 public:
-  typedef std::map<KernelMapping, MappableResource, MappingComparator> MemoryMap;
+  typedef std::map<KernelMapping, MappableResource, MappingComparator>
+      MemoryMap;
   typedef std::shared_ptr<AddressSpace> shr_ptr;
 
   ~AddressSpace();
@@ -822,7 +786,7 @@ private:
   /** Set the dynamic heap segment to |[start, end)| */
   void update_heap(remote_ptr<void> start, remote_ptr<void> end) {
     heap = KernelMapping(start, end, PROT_READ | PROT_WRITE,
-                   MAP_ANONYMOUS | MAP_PRIVATE, 0);
+                         MAP_ANONYMOUS | MAP_PRIVATE, 0);
   }
 
   template <typename Arch> void at_preload_init_arch(Task* t);

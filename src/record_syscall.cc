@@ -1078,9 +1078,9 @@ static void record_file_change(Task* t, int fd, uint64_t offset,
       const KernelMapping& m, const MappableResource& r) {
     if (r.fsname == file_name) {
       uint64_t start = max(offset, uint64_t(m.offset));
-      uint64_t end = min(offset + length, uint64_t(m.offset) + m.num_bytes());
+      uint64_t end = min(offset + length, uint64_t(m.offset) + m.size());
       if (start < end) {
-        t->record_remote(m.start + (start - m.offset), end - start);
+        t->record_remote(m.start() + (start - m.offset), end - start);
       }
     }
   };

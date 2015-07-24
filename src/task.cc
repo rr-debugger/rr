@@ -901,8 +901,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::shmdt: {
       remote_ptr<void> addr = regs.arg1();
       auto mapping = vm()->mapping_of(addr);
-      ASSERT(this, mapping.first.start == addr);
-      return vm()->unmap(addr, mapping.first.end - addr);
+      ASSERT(this, mapping.first.start() == addr);
+      return vm()->unmap(addr, mapping.first.end() - addr);
     }
     case Arch::madvise: {
       remote_ptr<void> addr = regs.arg1();
@@ -915,8 +915,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
         case SHMDT: {
           remote_ptr<void> addr = regs.arg5();
           auto mapping = vm()->mapping_of(addr);
-          ASSERT(this, mapping.first.start == addr);
-          return vm()->unmap(addr, mapping.first.end - addr);
+          ASSERT(this, mapping.first.start() == addr);
+          return vm()->unmap(addr, mapping.first.end() - addr);
         }
         default:
           break;
@@ -2218,7 +2218,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       if (mapping.second.id.psuedodevice() != PSEUDODEVICE_HEAP) {
         const KernelMapping& m = mapping.first;
         LOG(debug) << "mapping stack for " << new_tid << " at " << m;
-        t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
+        t->as->map(m.start(), m.size(), m.prot, m.flags, m.offset,
                    MappableResource::stack(new_tid));
       }
     }
@@ -2781,14 +2781,13 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
   AutoRemoteSyscalls remote(t);
   int mprotect_syscallno = syscall_number_for_mprotect(t->arch());
   for (auto& m : mappings_to_fix) {
-    int ret = remote.syscall(mprotect_syscallno, m.start, m.num_bytes(),
+    int ret = remote.syscall(mprotect_syscallno, m.start(), m.size(),
                              m.prot | PROT_WRITE);
     ASSERT(t, ret == 0);
   }
   ssize_t nwritten = pwrite64(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
   for (auto& m : mappings_to_fix) {
-    int ret =
-        remote.syscall(mprotect_syscallno, m.start, m.num_bytes(), m.prot);
+    int ret = remote.syscall(mprotect_syscallno, m.start(), m.size(), m.prot);
     ASSERT(t, ret == 0);
   }
   return nwritten;

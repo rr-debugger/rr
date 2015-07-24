@@ -449,7 +449,7 @@ public:
   VdsoReader(Task* t) : t(t) {}
   virtual bool read(size_t offset, size_t size, void* buf) {
     bool ok = true;
-    t->read_bytes_helper(t->vm()->vdso().start + offset, size, buf, &ok);
+    t->read_bytes_helper(t->vm()->vdso().start() + offset, size, buf, &ok);
     return ok;
   }
   Task* t;
@@ -473,8 +473,8 @@ static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
  * Return the address of a recognized |__kernel_vsyscall()|
  * implementation in |t|'s address space.
  */
-static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t,
-    const SymbolTable& syms) {
+static remote_ptr<void> locate_and_verify_kernel_vsyscall(
+    Task* t, const SymbolTable& syms) {
   remote_ptr<void> kernel_vsyscall = nullptr;
   // It is unlikely but possible that multiple, versioned __kernel_vsyscall
   // symbols will exist.  But we can't rely on setting |kernel_vsyscall| to
@@ -492,7 +492,7 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t,
       // is always loaded at a particular address.  The kernel,
       // however, subjects the VDSO to ASLR, which means that
       // we have to adjust the offsets properly.
-      auto vdso_start = t->vm()->vdso().start;
+      auto vdso_start = t->vm()->vdso().start();
       remote_ptr<void> candidate = syms.value(i);
       // The symbol values can be absolute or relative addresses.
       // The first part of the assertion is for absolute
@@ -515,7 +515,8 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t,
 // time and current CPU.  We need to ensure that these syscalls get redirected
 // into actual trap-into-the-kernel syscalls so rr can intercept them.
 
-template <typename Arch> static void patch_after_exec_arch(Task* t, Monkeypatcher& patcher);
+template <typename Arch>
+static void patch_after_exec_arch(Task* t, Monkeypatcher& patcher);
 
 template <typename Arch>
 static void patch_at_preload_init_arch(Task* t, Monkeypatcher& patcher);
@@ -530,7 +531,8 @@ struct named_syscall {
 // static constructors, so we can't wait for our preload library to be
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
-template <> void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
+template <>
+void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X86Arch>(t);
 
   auto syms = read_vdso_symbols(t);
@@ -555,7 +557,7 @@ template <> void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher)
   t->write_bytes(patcher.x86_sysenter_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to use int $80";
 
-  auto vdso_start = t->vm()->vdso().start;
+  auto vdso_start = t->vm()->vdso().start();
 
   static const named_syscall syscalls_to_monkeypatch[] = {
 #define S(n)                                                                   \
@@ -624,10 +626,11 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
 // static constructors, so we can't wait for our preload library to be
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
-template <> void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
+template <>
+void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X64Arch>(t);
 
-  auto vdso_start = t->vm()->vdso().start;
+  auto vdso_start = t->vm()->vdso().start();
 
   auto syms = read_vdso_symbols(t);
 
