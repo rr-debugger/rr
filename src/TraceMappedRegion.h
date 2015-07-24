@@ -22,7 +22,7 @@ class TraceReader;
  */
 class TraceMappedRegion {
 public:
-  enum Type { MMAP, SYSV_SHM };
+  enum Type { MMAP, SYSV_SHM, NONE };
   TraceMappedRegion(Type type, const std::string& filename,
                     const struct stat& stat, remote_ptr<void> start,
                     remote_ptr<void> end, uint64_t file_offset_pages = 0)
@@ -53,7 +53,7 @@ private:
    * TraceReader calls this and fills it in, so we don't need to initialize
    * anything.
    */
-  TraceMappedRegion() {}
+  TraceMappedRegion() : type_(NONE) {}
 
   std::string filename;
   struct stat stat_;

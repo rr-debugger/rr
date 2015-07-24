@@ -321,6 +321,29 @@ TraceMappedRegion TraceReader::read_mapped_region(MappedData* data) {
   return map;
 }
 
+TraceMappedRegion TraceReader::peek_mapped_region() {
+  TraceMappedRegion result;
+
+  auto& mmaps = reader(MMAPS);
+  if (mmaps.at_end()) {
+    return result;
+  }
+
+  mmaps.save_state();
+  TraceFrame::Time time;
+  mmaps >> time;
+  mmaps.restore_state();
+  if (time != global_time) {
+    return result;
+  }
+
+  mmaps.save_state();
+  MappedData data;
+  result = read_mapped_region(&data);
+  mmaps.restore_state();
+  return result;
+}
+
 static ostream& operator<<(ostream& out, const vector<string>& vs) {
   out << vs.size() << endl;
   for (auto& v : vs) {

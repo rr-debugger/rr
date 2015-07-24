@@ -207,6 +207,12 @@ public:
   TraceMappedRegion read_mapped_region(MappedData* data);
 
   /**
+   * Peek at the next TraceMappedRegion. Returns an empty region if there
+   * isn't one for the current event.
+   */
+  TraceMappedRegion peek_mapped_region();
+
+  /**
    * Read a task event (clone or exec record) from the trace.
    * Returns a record of type NONE at the end of the trace.
    */
