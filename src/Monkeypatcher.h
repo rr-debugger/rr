@@ -32,12 +32,7 @@ class Task;
 class Monkeypatcher {
 public:
   Monkeypatcher() : stub_buffer_allocated(0) {}
-  Monkeypatcher(const Monkeypatcher& o)
-      : syscall_hooks(o.syscall_hooks),
-        tried_to_patch_syscall_addresses(o.tried_to_patch_syscall_addresses),
-        stub_buffer(o.stub_buffer),
-        stub_buffer_end(o.stub_buffer_end),
-        stub_buffer_allocated(o.stub_buffer_allocated) {}
+  Monkeypatcher(const Monkeypatcher& o) = default;
 
   /**
    * Apply any necessary patching immediately after exec.
@@ -74,6 +69,8 @@ public:
 
   void patch_after_mmap(Task* t, remote_ptr<void> start, size_t size,
                         size_t offset_pages, ScopedFd& open_fd);
+
+  remote_ptr<void> x86_sysenter_vsyscall;
 
 private:
   /**

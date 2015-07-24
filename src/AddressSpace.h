@@ -180,7 +180,6 @@ struct Mapping {
         prot(o.prot),
         flags(o.flags),
         offset(o.offset) {
-    assert_valid();
   }
   Mapping operator=(const Mapping& o) {
     memcpy(this, &o, sizeof(*this));

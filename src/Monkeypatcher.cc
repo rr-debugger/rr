@@ -206,7 +206,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
 template <>
 bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
-  return patch_syscall_with_hook_x86ish<X86SysenterVsyscallMonkeypatch,
+  return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
                                         X86SyscallStubMonkeypatch, 30>(patcher,
                                                                        t, hook);
 }
@@ -307,12 +307,12 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
 
 class SymbolTable {
 public:
-  bool is_name(size_t i, const char* name) {
+  bool is_name(size_t i, const char* name) const {
     size_t offset = symbols[i].name_index;
     return offset < strtab.size() && strcmp(&strtab[offset], name) == 0;
   }
-  uintptr_t value(size_t i) { return symbols[i].value; }
-  size_t size() { return symbols.size(); }
+  uintptr_t value(size_t i) const { return symbols[i].value; }
+  size_t size() const { return symbols.size(); }
 
   struct Symbol {
     Symbol(uintptr_t value, size_t name_index)
@@ -473,9 +473,8 @@ static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
  * Return the address of a recognized |__kernel_vsyscall()|
  * implementation in |t|'s address space.
  */
-static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
-  auto syms = read_vdso_symbols(t);
-
+static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t,
+    const SymbolTable& syms) {
   remote_ptr<void> kernel_vsyscall = nullptr;
   // It is unlikely but possible that multiple, versioned __kernel_vsyscall
   // symbols will exist.  But we can't rely on setting |kernel_vsyscall| to
@@ -512,31 +511,51 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(Task* t) {
   return kernel_vsyscall;
 }
 
-template <typename Arch>
-static void patch_at_preload_init_arch(Task* t, Monkeypatcher& patcher);
-
 // VDSOs are filled with overhead critical functions related to getting the
 // time and current CPU.  We need to ensure that these syscalls get redirected
 // into actual trap-into-the-kernel syscalls so rr can intercept them.
+
+template <typename Arch> static void patch_after_exec_arch(Task* t, Monkeypatcher& patcher);
+
+template <typename Arch>
+static void patch_at_preload_init_arch(Task* t, Monkeypatcher& patcher);
 
 struct named_syscall {
   const char* name;
   int syscall_number;
 };
 
-template <typename Arch> static void patch_after_exec_arch(Task* t);
-
 // Monkeypatch x86-32 vdso syscalls immediately after exec. The vdso syscalls
 // will cause replay to fail if called by the dynamic loader or some library's
 // static constructors, so we can't wait for our preload library to be
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
-template <> void patch_after_exec_arch<X86Arch>(Task* t) {
+template <> void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X86Arch>(t);
 
-  auto vdso_start = t->vm()->vdso().start;
-
   auto syms = read_vdso_symbols(t);
+  patcher.x86_sysenter_vsyscall = locate_and_verify_kernel_vsyscall(t, syms);
+  if (!patcher.x86_sysenter_vsyscall) {
+    FATAL() << "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't "
+               "recognized.\n"
+               "    Syscall buffering is now effectively disabled.  If you're "
+               "OK with\n"
+               "    running rr without syscallbuf, then run the recorder "
+               "passing the\n"
+               "    --no-syscall-buffer arg.\n"
+               "    If you're *not* OK with that, file an issue.";
+  }
+
+  // Patch __kernel_vsyscall to use int 80 instead of sysenter.
+  // During replay we may remap the VDSO to a new address, and the sysenter
+  // instruction would return to the old address, so we must make sure sysenter
+  // is never used.
+  uint8_t patch[X86SysenterVsyscallUseInt80::size];
+  X86SysenterVsyscallUseInt80::substitute(patch);
+  t->write_bytes(patcher.x86_sysenter_vsyscall, patch);
+  LOG(debug) << "monkeypatched __kernel_vsyscall to use int $80";
+
+  auto vdso_start = t->vm()->vdso().start;
 
   static const named_syscall syscalls_to_monkeypatch[] = {
 #define S(n)                                                                   \
@@ -578,30 +597,19 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
     return;
   }
 
-  auto kernel_vsyscall = locate_and_verify_kernel_vsyscall(t);
-  if (!kernel_vsyscall) {
-    FATAL() << "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't "
-               "recognized.\n"
-               "    Syscall buffering is now effectively disabled.  If you're "
-               "OK with\n"
-               "    running rr without syscallbuf, then run the recorder "
-               "passing the\n"
-               "    --no-syscall-buffer arg.\n"
-               "    If you're *not* OK with that, file an issue.";
-  }
+  auto kernel_vsyscall = patcher.x86_sysenter_vsyscall;
 
   // Luckily, linux is happy for us to scribble directly over
   // the vdso mapping's bytes without mprotecting the region, so
   // we don't need to prepare remote syscalls here.
   remote_ptr<void> syscall_hook_trampoline = params.syscall_hook_trampoline;
 
-  uint8_t patch[X86SysenterVsyscallMonkeypatch::size];
+  uint8_t patch[X86SysenterVsyscallSyscallHook::size];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
-  X86SysenterVsyscallMonkeypatch::substitute(
+  X86SysenterVsyscallSyscallHook::substitute(
       patch, syscall_hook_trampoline.as_int() -
                  (kernel_vsyscall + sizeof(patch)).as_int());
-
   t->write_bytes(kernel_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
              << HEX(syscall_hook_trampoline.as_int());
@@ -616,7 +624,7 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
 // static constructors, so we can't wait for our preload library to be
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
-template <> void patch_after_exec_arch<X64Arch>(Task* t) {
+template <> void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X64Arch>(t);
 
   auto vdso_start = t->vm()->vdso().start;
@@ -679,7 +687,7 @@ void Monkeypatcher::patch_after_exec(Task* t) {
   ASSERT(t, 1 == t->vm()->task_set().size())
       << "Can't have multiple threads immediately after exec!";
 
-  RR_ARCH_FUNCTION(patch_after_exec_arch, t->arch(), t);
+  RR_ARCH_FUNCTION(patch_after_exec_arch, t->arch(), t, *this);
 }
 
 void Monkeypatcher::patch_at_preload_init(Task* t) {
