@@ -418,6 +418,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
 
   init_scratch_memory(t);
 
+  t->vm()->save_auxv(t);
   t->set_return_value_from_trace();
   t->validate_regs();
 }

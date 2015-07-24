@@ -385,29 +385,7 @@ void GdbServer::dispatch_debugger_request(Session& session, Task* t,
   }
   switch (req.type) {
     case DREQ_GET_AUXV: {
-      char filename[] = "/proc/01234567890/auxv";
-      vector<GdbAuxvPair> auxv;
-      auxv.resize(4096);
-
-      snprintf(filename, sizeof(filename) - 1, "/proc/%d/auxv",
-               target->real_tgid());
-      ScopedFd fd(filename, O_RDONLY);
-      if (0 > fd) {
-        auxv.clear();
-        dbg->reply_get_auxv(auxv);
-        return;
-      }
-
-      ssize_t len = read(fd, auxv.data(), sizeof(auxv[0]) * auxv.size());
-      if (0 > len) {
-        auxv.clear();
-        dbg->reply_get_auxv(auxv);
-        return;
-      }
-
-      assert(0 == len % sizeof(auxv[0]));
-      auxv.resize(len / sizeof(auxv[0]));
-      dbg->reply_get_auxv(auxv);
+      dbg->reply_get_auxv(target->vm()->saved_auxv());
       return;
     }
     case DREQ_GET_MEM: {

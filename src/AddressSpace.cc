@@ -383,6 +383,44 @@ void AddressSpace::map_rr_page(Task* t) {
       rr_page_privileged_traced_syscall_ip(t->arch());
 }
 
+template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
+  auto stack_ptr = t->regs().sp().cast<typename Arch::unsigned_word>();
+
+  auto argc = t->read_mem(stack_ptr);
+  stack_ptr += argc + 1;
+
+  // Check final NULL in argv
+  auto null_ptr = t->read_mem(stack_ptr);
+  assert(null_ptr == 0);
+  stack_ptr++;
+
+  // Should now point to envp
+  while (0 != t->read_mem(stack_ptr)) {
+    stack_ptr++;
+  }
+  stack_ptr++;
+  // should now point to ELF Auxiliary Table
+
+  vector<uint8_t> result;
+  while (true) {
+    auto pair_vec = t->read_mem(stack_ptr, 2);
+    stack_ptr += 2;
+    typename Arch::unsigned_word pair[2] = { pair_vec[0], pair_vec[1] };
+    result.resize(result.size() + sizeof(pair));
+    memcpy(result.data() + result.size() - sizeof(pair), pair, sizeof(pair));
+    if (pair[0] == 0) {
+      break;
+    }
+  }
+  return result;
+}
+
+static vector<uint8_t> read_auxv(Task* t) {
+  RR_ARCH_FUNCTION(read_auxv_arch, t->arch(), t);
+}
+
+void AddressSpace::save_auxv(Task* t) { saved_auxv_ = read_auxv(t); }
+
 void AddressSpace::post_exec_syscall(Task* t) {
   // First locate a syscall instruction we can use for remote syscalls.
   traced_syscall_ip_ = find_syscall_instruction(t);
@@ -1230,6 +1268,7 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       privileged_untraced_syscall_ip_(o.privileged_untraced_syscall_ip_),
       syscallbuf_lib_start_(o.syscallbuf_lib_start_),
       syscallbuf_lib_end_(o.syscallbuf_lib_end_),
+      saved_auxv_(o.saved_auxv_),
       first_run_event_(0) {
   for (auto& it : o.breakpoints) {
     breakpoints.insert(make_pair(it.first, it.second));

@@ -777,6 +777,9 @@ public:
   void set_first_run_event(TraceFrame::Time event) { first_run_event_ = event; }
   TraceFrame::Time first_run_event() { return first_run_event_; }
 
+  const std::vector<uint8_t>& saved_auxv() { return saved_auxv_; }
+  void save_auxv(Task* t);
+
 private:
   class Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
@@ -1026,6 +1029,8 @@ private:
   remote_code_ptr privileged_untraced_syscall_ip_;
   remote_ptr<void> syscallbuf_lib_start_;
   remote_ptr<void> syscallbuf_lib_end_;
+
+  std::vector<uint8_t> saved_auxv_;
 
   /**
    * The time of the first event that ran code for a task in this address space.

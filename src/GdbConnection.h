@@ -250,15 +250,6 @@ struct GdbRequest {
 };
 
 /**
- * An item in a process's auxiliary vector, for example { AT_SYSINFO,
- * 0xb7fff414 }.
- */
-struct GdbAuxvPair {
-  uintptr_t key;
-  uintptr_t value;
-};
-
-/**
  * This struct wraps up the state of the gdb protocol, so that we can
  * offer a (mostly) stateless interface to clients.
  */
@@ -357,7 +348,7 @@ public:
    * Reply with the target thread's |auxv| pairs. |auxv.empty()|
    * if there was an error reading the auxiliary vector.
    */
-  void reply_get_auxv(const std::vector<GdbAuxvPair>& auxv);
+  void reply_get_auxv(const std::vector<uint8_t>& auxv);
 
   /**
    * |alive| is true if the requested thread is alive, false if dead.
