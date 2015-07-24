@@ -2216,7 +2216,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     if (t->as->has_mapping(last_stack_byte)) {
       auto mapping = t->as->mapping_of(last_stack_byte);
       if (mapping.second.id.psuedodevice() != PSEUDODEVICE_HEAP) {
-        const Mapping& m = mapping.first;
+        const KernelMapping& m = mapping.first;
         LOG(debug) << "mapping stack for " << new_tid << " at " << m;
         t->as->map(m.start, m.num_bytes(), m.prot, m.flags, m.offset,
                    MappableResource::stack(new_tid));
@@ -2709,7 +2709,7 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
       (addr.as_int() + buf_size + page_size - 1) & ~(page_size - 1);
   int all_prot, all_flags;
   for (uintptr_t p = page_start; p < page_end; p += page_size) {
-    const Mapping& m = as->mapping_of(p).first;
+    const KernelMapping& m = as->mapping_of(p).first;
     if (p > page_start) {
       if (all_prot != m.prot || all_flags != m.flags) {
         return false;
@@ -2763,9 +2763,9 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
  */
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
-  vector<Mapping> mappings_to_fix;
+  vector<KernelMapping> mappings_to_fix;
   auto check_prot =
-      [&mappings_to_fix](const Mapping& m, const MappableResource& r) {
+      [&mappings_to_fix](const KernelMapping& m, const MappableResource& r) {
     if (!(m.prot & (PROT_READ | PROT_WRITE))) {
       mappings_to_fix.push_back(m);
     }

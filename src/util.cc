@@ -153,7 +153,7 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
 
   const AddressSpace& as = *(t->vm());
   for (auto& kv : as.memmap()) {
-    const Mapping& first = kv.first;
+    const KernelMapping& first = kv.first;
     const MappableResource& second = kv.second;
     vector<uint8_t> mem;
     mem.resize(first.num_bytes());
@@ -222,7 +222,7 @@ struct checksum_iterator_data {
   TraceFrame::Time global_time;
 };
 
-static bool checksum_segment_filter(const Mapping& m,
+static bool checksum_segment_filter(const KernelMapping& m,
                                     const MappableResource& r) {
   struct stat st;
   int may_diverge;
@@ -267,7 +267,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 
   const AddressSpace& as = *(t->vm());
   for (auto& kv : as.memmap()) {
-    const Mapping& first = kv.first;
+    const KernelMapping& first = kv.first;
     const MappableResource& second = kv.second;
 
     vector<uint8_t> mem;

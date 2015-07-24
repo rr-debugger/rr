@@ -87,9 +87,9 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
     }
   }
 
-  Mapping found_stack;
+  KernelMapping found_stack;
   auto find_stack =
-      [&found_stack](const Mapping& m, const MappableResource& r) {
+      [&found_stack](const KernelMapping& m, const MappableResource& r) {
     if (r.is_stack()) {
       found_stack = m;
     }

@@ -141,7 +141,7 @@ private:
  * offset of the mapping, its protection flags, the offest within the
  * resource, and more.
  */
-struct Mapping {
+struct KernelMapping {
   /**
    * These are the flags we track internally to distinguish
    * between adjacent segments.  For example, the kernel
@@ -155,8 +155,8 @@ struct Mapping {
                                     MAP_GROWSDOWN;
   static const int checkable_flags_mask = MAP_PRIVATE | MAP_SHARED;
 
-  Mapping() : prot(0), flags(0), offset(0) {}
-  Mapping(remote_ptr<void> addr, size_t num_bytes, int prot = 0, int flags = 0,
+  KernelMapping() : prot(0), flags(0), offset(0) {}
+  KernelMapping(remote_ptr<void> addr, size_t num_bytes, int prot = 0, int flags = 0,
           off64_t offset = 0)
       : start(addr),
         end(addr + ceil_page_size(num_bytes)),
@@ -165,7 +165,7 @@ struct Mapping {
         offset(offset) {
     assert_valid();
   }
-  Mapping(remote_ptr<void> start, remote_ptr<void> end, int prot = 0,
+  KernelMapping(remote_ptr<void> start, remote_ptr<void> end, int prot = 0,
           int flags = 0, off64_t offset = 0)
       : start(start),
         end(end),
@@ -175,14 +175,14 @@ struct Mapping {
     assert_valid();
   }
 
-  Mapping(const Mapping& o)
+  KernelMapping(const KernelMapping& o)
       : start(o.start),
         end(o.end),
         prot(o.prot),
         flags(o.flags),
         offset(o.offset) {
   }
-  Mapping operator=(const Mapping& o) {
+  KernelMapping operator=(const KernelMapping& o) {
     memcpy(this, &o, sizeof(*this));
     assert_valid();
     return *this;
@@ -199,14 +199,14 @@ struct Mapping {
    * Return true iff |o| is an address range fully contained by
    * this.
    */
-  bool has_subset(const Mapping& o) const {
+  bool has_subset(const KernelMapping& o) const {
     return start <= o.start && o.end <= end;
   }
 
   /**
    * Return true iff |o| and this map at least one shared byte.
    */
-  bool intersects(const Mapping& o) const {
+  bool intersects(const KernelMapping& o) const {
     return (start == o.start && o.end == end) ||
            (start <= o.start && o.start < end) ||
            (start < o.end && o.end <= end);
@@ -223,8 +223,8 @@ struct Mapping {
    * mapping, namely, the one that can be parsed out of
    * /proc/maps.
    */
-  Mapping to_kernel() const {
-    return Mapping(start, end, prot, flags & checkable_flags_mask, offset);
+  KernelMapping to_kernel() const {
+    return KernelMapping(start, end, prot, flags & checkable_flags_mask, offset);
   }
 
   /**
@@ -254,7 +254,7 @@ struct Mapping {
   const int flags;
   const off64_t offset;
 };
-std::ostream& operator<<(std::ostream& o, const Mapping& m);
+std::ostream& operator<<(std::ostream& o, const KernelMapping& m);
 
 /**
  * Compare |a| and |b| so that "subset" lookups will succeed.  What
@@ -267,7 +267,7 @@ std::ostream& operator<<(std::ostream& o, const Mapping& m);
  * less than |b|'s/
  */
 struct MappingComparator {
-  bool operator()(const Mapping& a, const Mapping& b) const {
+  bool operator()(const KernelMapping& a, const KernelMapping& b) const {
     return a.intersects(b) ? false : a.start < b.start;
   }
 };
@@ -417,7 +417,7 @@ class AddressSpace : public HasTaskSet {
   friend struct VerifyAddressSpace;
 
 public:
-  typedef std::map<Mapping, MappableResource, MappingComparator> MemoryMap;
+  typedef std::map<KernelMapping, MappableResource, MappingComparator> MemoryMap;
   typedef std::shared_ptr<AddressSpace> shr_ptr;
 
   ~AddressSpace();
@@ -536,7 +536,7 @@ public:
    * Notify that the stack segment 'mapping' has grown down to a new start
    * address.
    */
-  void fix_stack_segment_start(const Mapping& mapping,
+  void fix_stack_segment_start(const KernelMapping& mapping,
                                remote_ptr<void> new_start);
 
   /**
@@ -607,7 +607,7 @@ public:
   void advise(remote_ptr<void> addr, ssize_t num_bytes, int advice);
 
   /** Return the vdso mapping of this. */
-  Mapping vdso() const;
+  KernelMapping vdso() const;
 
   /**
    * Verify that this cached address space matches what the
@@ -616,9 +616,9 @@ public:
   void verify(Task* t) const;
 
   void for_all_mappings(
-      std::function<void(const Mapping& m, const MappableResource& r)> f);
+      std::function<void(const KernelMapping& m, const MappableResource& r)> f);
   void for_all_mappings_in_range(
-      std::function<void(const Mapping& m, const MappableResource& r)> f,
+      std::function<void(const KernelMapping& m, const MappableResource& r)> f,
       const MemoryRange& range);
 
   bool has_breakpoints() { return !breakpoints.empty(); }
@@ -808,19 +808,19 @@ private:
   enum { ITERATE_DEFAULT, ITERATE_CONTIGUOUS };
   void for_each_in_range(
       remote_ptr<void> addr, ssize_t num_bytes,
-      std::function<void(const Mapping& m, const MappableResource& r,
-                         const Mapping& rem)> f,
+      std::function<void(const KernelMapping& m, const MappableResource& r,
+                         const KernelMapping& rem)> f,
       int how = ITERATE_DEFAULT);
 
   /**
    * Map |m| of |r| into this address space, and coalesce any
    * mappings of |r| that are adjacent to |m|.
    */
-  void map_and_coalesce(const Mapping& m, const MappableResource& r);
+  void map_and_coalesce(const KernelMapping& m, const MappableResource& r);
 
   /** Set the dynamic heap segment to |[start, end)| */
   void update_heap(remote_ptr<void> start, remote_ptr<void> end) {
-    heap = Mapping(start, end, PROT_READ | PROT_WRITE,
+    heap = KernelMapping(start, end, PROT_READ | PROT_WRITE,
                    MAP_ANONYMOUS | MAP_PRIVATE, 0);
   }
 
@@ -965,7 +965,7 @@ private:
   uint32_t exec_count;
   /* Track the special process-global heap in order to support
    * adjustments by brk(). */
-  Mapping heap;
+  KernelMapping heap;
   /* Were we cloned from another address space? */
   bool is_clone;
   /* All segments mapped into this address space. */

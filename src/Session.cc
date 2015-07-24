@@ -335,7 +335,7 @@ void Session::finish_initializing() const {
 }
 
 static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
-                              const Mapping& m, const MappableResource& r) {
+                              const KernelMapping& m, const MappableResource& r) {
   LOG(debug) << "    remapping shared region at " << m.start << "-" << m.end;
   remote.syscall(syscall_number_for_munmap(remote.arch()), m.start,
                  m.num_bytes());
@@ -399,7 +399,7 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
     {
       AutoRemoteSyscalls remote(group.clone_leader);
       for (auto& kv : group.clone_leader->vm()->memmap()) {
-        const Mapping& m = kv.first;
+        const KernelMapping& m = kv.first;
         const MappableResource& r = kv.second;
         if (!r.is_shared_mmap_file()) {
           continue;
