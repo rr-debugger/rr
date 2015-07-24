@@ -541,7 +541,7 @@ readdir = UnsupportedSyscall(x86=89)
 # the file in 4096-byte units (instead of bytes, as is done by
 # mmap(2)).  This enables applications that use a 32-bit off_t to map
 # large files (up to 2^44 bytes).
-mmap = IrregularMayExecSyscall(x86=90, x64=9)
+mmap = IrregularEmulatedSyscall(x86=90, x64=9)
 
 #  int munmap(void *addr, size_t length)
 #
@@ -1025,7 +1025,7 @@ vfork = IrregularEmulatedSyscall(x86=190, x64=58)
 # getrlimit() and setrlimit()):
 ugetrlimit = EmulatedSyscall(x86=191, arg2="typename Arch::rlimit")
 
-mmap2 = IrregularMayExecSyscall(x86=192)
+mmap2 = IrregularEmulatedSyscall(x86=192)
 
 truncate64 = EmulatedSyscall(x86=193)
 ftruncate64 = EmulatedSyscall(x86=194)
