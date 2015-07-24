@@ -398,35 +398,39 @@ enum DebugStatus {
 /**
  * Range of memory addresses that can be used as a std::map key.
  */
-struct MemoryRange {
+class MemoryRange {
+public:
   MemoryRange(remote_ptr<void> addr, size_t num_bytes)
-      : start(addr), end(addr + num_bytes) {
-    assert(start <= end);
+      : start_(addr), end_(addr + num_bytes) {
+    assert(start_ <= end_);
   }
   MemoryRange(remote_ptr<void> addr, remote_ptr<void> end)
-      : start(addr), end(end) {
-    assert(start <= end);
+      : start_(addr), end_(end) {
+    assert(start_ <= end);
   }
   MemoryRange(const MemoryRange&) = default;
   MemoryRange& operator=(const MemoryRange&) = default;
 
   bool operator==(const MemoryRange& o) const {
-    return start == o.start && end == o.end;
+    return start_ == o.start_ && end_ == o.end_;
   }
   bool operator<(const MemoryRange& o) const {
-    return start != o.start ? start < o.start : end < o.end;
+    return start_ != o.start_ ? start_ < o.start_ : end_ < o.end_;
   }
 
   bool intersects(const MemoryRange& other) const {
-    remote_ptr<void> s = std::max(start, other.start);
-    remote_ptr<void> e = std::min(end, other.end);
+    remote_ptr<void> s = std::max(start_, other.start_);
+    remote_ptr<void> e = std::min(end_, other.end_);
     return s < e;
   }
 
-  size_t size() const { return end - start; }
+  remote_ptr<void> start() const { return start_; }
+  remote_ptr<void> end() const { return end_; }
+  size_t size() const { return end_ - start_; }
 
-  remote_ptr<void> start;
-  remote_ptr<void> end;
+private:
+  remote_ptr<void> start_;
+  remote_ptr<void> end_;
 };
 
 /**
