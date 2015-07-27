@@ -222,25 +222,25 @@ struct checksum_iterator_data {
   TraceFrame::Time global_time;
 };
 
-static bool checksum_segment_filter(const KernelMapping& m,
-                                    const MappableResource& r) {
+static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
   struct stat st;
   int may_diverge;
 
-  if (stat(r.fsname.c_str(), &st)) {
+  if (stat(m.res.fsname.c_str(), &st)) {
     /* If there's no persistent resource backing this
      * mapping, we should expect it to change. */
-    LOG(debug) << "CHECKSUMMING unlinked '" << r.fsname << "'";
+    LOG(debug) << "CHECKSUMMING unlinked '" << m.res.fsname << "'";
     return true;
   }
   /* If we're pretty sure the backing resource is effectively
    * immutable, skip checksumming, it's a waste of time.  Except
    * if the mapping is mutable, for example the rw data segment
    * of a system library, then it's interesting. */
-  may_diverge = should_copy_mmap_region(r.fsname, &st, m.prot, m.flags) ||
-                (PROT_WRITE & m.prot);
+  may_diverge =
+      should_copy_mmap_region(m.res.fsname, &st, m.map.prot, m.map.flags) ||
+      (PROT_WRITE & m.map.prot);
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"
-             << r.fsname << "'";
+             << m.res.fsname << "'";
   return may_diverge;
 }
 
@@ -267,16 +267,14 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 
   const AddressSpace& as = *(t->vm());
   for (auto& kv : as.memmap()) {
-    const KernelMapping& first = kv.second.map;
-    const MappableResource& second = kv.second.res;
-
+    const AddressSpace::Mapping& m = kv.second;
     vector<uint8_t> mem;
     ssize_t valid_mem_len = 0;
 
-    if (checksum_segment_filter(first, second)) {
-      mem.resize(first.size());
+    if (checksum_segment_filter(m)) {
+      mem.resize(m.map.size());
       valid_mem_len =
-          t->read_bytes_fallible(first.start(), first.size(), mem.data());
+          t->read_bytes_fallible(m.map.start(), m.map.size(), mem.data());
       valid_mem_len = max(ssize_t(0), valid_mem_len);
     }
 
@@ -284,7 +282,8 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     unsigned checksum = 0;
     int i;
 
-    if (second.fsname.find(SYSCALLBUF_SHMEM_PATH_PREFIX) != string::npos) {
+    if (kv.second.res.fsname.find(SYSCALLBUF_SHMEM_PATH_PREFIX) !=
+        string::npos) {
       /* The syscallbuf consists of a region that's written
       * deterministically wrt the trace events, and a
       * region that's written nondeterministically in the
@@ -297,7 +296,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       *
       * So here, we set things up so that we only checksum
       * the deterministic region. */
-      auto child_hdr = first.start().cast<struct syscallbuf_hdr>();
+      auto child_hdr = m.map.start().cast<struct syscallbuf_hdr>();
       auto hdr = t->read_mem(child_hdr);
       valid_mem_len = !buf ? 0 : sizeof(hdr) + hdr.num_rec_bytes +
                                      sizeof(struct syscallbuf_record);
@@ -308,7 +307,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       checksum += buf[i];
     }
 
-    string raw_map_line = first.str() + ' ' + second.str();
+    string raw_map_line = m.map.str() + ' ' + m.res.str();
     if (STORE_CHECKSUMS == c.mode) {
       fprintf(c.checksums_file, "(%x) %s\n", checksum, raw_map_line.c_str());
     } else {
@@ -325,9 +324,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       remote_ptr<void> rec_end_addr = rec_end;
       ASSERT(t, 3 == nparsed) << "Only parsed " << nparsed << " items";
 
-      ASSERT(t, rec_start_addr == first.start() && rec_end_addr == first.end())
+      ASSERT(t, rec_start_addr == m.map.start() && rec_end_addr == m.map.end())
           << "Segment " << rec_start_addr << "-" << rec_end_addr
-          << " changed to " << first << "??";
+          << " changed to " << m.map << "??";
 
       if (is_start_of_scratch_region(t, rec_start_addr)) {
         /* Replay doesn't touch scratch regions, so
