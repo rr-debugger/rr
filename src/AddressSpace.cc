@@ -1521,16 +1521,6 @@ void AddressSpace::for_each_in_range(
   }
 }
 
-void AddressSpace::for_all_mappings_in_range(
-    std::function<void(const Mapping& m)> f, const MemoryRange& range) {
-  for (auto it = mem.lower_bound(range); it != mem.end(); ++it) {
-    if (it->first.start() >= range.end()) {
-      break;
-    }
-    f(it->second);
-  }
-}
-
 void AddressSpace::map_and_coalesce(const KernelMapping& m,
                                     const MappableResource& r) {
   LOG(debug) << "  mapping " << m;

@@ -493,7 +493,7 @@ public:
    */
   class Maps {
   public:
-    Maps(const AddressSpace& self) : self(self) {}
+    Maps(const AddressSpace& self, remote_ptr<void> start) : self(self), start(start) {}
     class iterator {
     public:
       const iterator& operator++() {
@@ -509,13 +509,17 @@ public:
       iterator(const MemoryMap::const_iterator& it) : it(it) {}
       MemoryMap::const_iterator it;
     };
-    iterator begin() const { return iterator(self.mem.begin()); }
+    iterator begin() const {
+      return iterator(self.mem.lower_bound(MemoryRange(start, start)));
+    }
     iterator end() const { return iterator(self.mem.end()); }
   private:
     const AddressSpace& self;
+    remote_ptr<void> start;
   };
   friend class Maps;
-  Maps maps() const { return Maps(*this); }
+  Maps maps() const { return Maps(*this, remote_ptr<void>()); }
+  Maps maps_starting_at(remote_ptr<void> start) { return Maps(*this, start); }
 
   /**
    * Change the protection bits of [addr, addr + num_bytes) to
@@ -612,9 +616,6 @@ public:
    * kernel thinks it should be.
    */
   void verify(Task* t) const;
-
-  void for_all_mappings_in_range(std::function<void(const Mapping& m)> f,
-                                 const MemoryRange& range);
 
   bool has_breakpoints() { return !breakpoints.empty(); }
   bool has_watchpoints() { return !watchpoints.empty(); }
