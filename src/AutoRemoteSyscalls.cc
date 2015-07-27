@@ -88,12 +88,11 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   }
 
   KernelMapping found_stack;
-  auto find_stack = [&found_stack](const AddressSpace::Mapping& m) {
+  for (auto& m : t->vm()->maps()) {
     if (m.res.is_stack()) {
       found_stack = m.map;
     }
   };
-  t->vm()->for_all_mappings(find_stack);
   ASSERT(t, !found_stack.start().is_null()) << "No stack area found";
 
   initial_regs.set_sp(found_stack.end());

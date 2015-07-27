@@ -613,7 +613,6 @@ public:
    */
   void verify(Task* t) const;
 
-  void for_all_mappings(std::function<void(const Mapping& m)> f);
   void for_all_mappings_in_range(std::function<void(const Mapping& m)> f,
                                  const MemoryRange& range);
 

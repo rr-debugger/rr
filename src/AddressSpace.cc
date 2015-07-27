@@ -1521,12 +1521,6 @@ void AddressSpace::for_each_in_range(
   }
 }
 
-void AddressSpace::for_all_mappings(std::function<void(const Mapping& m)> f) {
-  for (auto& m : mem) {
-    f(m.second);
-  }
-}
-
 void AddressSpace::for_all_mappings_in_range(
     std::function<void(const Mapping& m)> f, const MemoryRange& range) {
   for (auto it = mem.lower_bound(range); it != mem.end(); ++it) {

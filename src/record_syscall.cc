@@ -1074,8 +1074,7 @@ static void record_file_change(Task* t, int fd, uint64_t offset,
   Task::FStatResult fd_info = t->fstat(fd);
   string& file_name = fd_info.file_name;
 
-  auto check_mapping =
-      [t, &file_name, offset, length](const AddressSpace::Mapping& m) {
+  for (auto& m : t->vm()->maps()) {
     if (m.res.fsname == file_name) {
       uint64_t start = max(offset, uint64_t(m.map.offset));
       uint64_t end =
@@ -1085,7 +1084,6 @@ static void record_file_change(Task* t, int fd, uint64_t offset,
       }
     }
   };
-  t->vm()->for_all_mappings(check_mapping);
 }
 
 template <typename Arch> static void record_v4l2_buffer_contents(Task* t) {
