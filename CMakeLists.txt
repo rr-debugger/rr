@@ -358,6 +358,7 @@ set(BASIC_TESTS
   orphan_process
   pause
   perf_event
+  personality
   pthread_rwlocks
   poll_sig_race
   prctl

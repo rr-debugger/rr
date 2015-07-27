@@ -745,7 +745,7 @@ fchdir = EmulatedSyscall(x86=133, x64=81)
 
 bdflush = UnsupportedSyscall(x86=134)
 sysfs = UnsupportedSyscall(x86=135, x64=139)
-personality = UnsupportedSyscall(x86=136, x64=135)
+personality = IrregularEmulatedSyscall(x86=136, x64=135)
 afs_syscall = InvalidSyscall(x86=137, x64=183)
 setfsuid = UnsupportedSyscall(x86=138, x64=122)
 setfsgid = UnsupportedSyscall(x86=139, x64=123)
