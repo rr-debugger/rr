@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "AddressSpace.h"
 #include "ScopedFd.h"
 #include "task.h"
 
@@ -119,16 +120,26 @@ private:
 };
 
 class EmuFs {
-  typedef std::map<FileId, EmuFile::shr_ptr> FileMap;
-
 public:
   typedef std::shared_ptr<EmuFs> shr_ptr;
+
+  struct FileId {
+    FileId(dev_t device, ino_t inode) : device(device), inode(inode) {}
+    bool operator<(const FileId& other) const {
+      return device < other.device ||
+             (device == other.device && inode < other.inode);
+    }
+    dev_t device;
+    ino_t inode;
+  };
+
+  typedef std::map<FileId, EmuFile::shr_ptr> FileMap;
 
   /**
    * Return the EmuFile defined by |id|, which must exist or
    * this won't return.
    */
-  EmuFile::shr_ptr at(const FileId& id) const;
+  EmuFile::shr_ptr at(const AddressSpace::Mapping& m) const;
 
   /**
    * Return a copy of this fs such that |at()| and
@@ -147,7 +158,7 @@ public:
    * Create an emulated file representing the shared anonymous mapping
    * referenced by |id|.
    */
-  EmuFile::shr_ptr create_anonymous(const FileId& id, size_t size);
+  EmuFile::shr_ptr create_anonymous(const MappableResource& res, size_t size);
 
   /**
    * Dump information about this emufs to the "error" log.

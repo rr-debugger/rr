@@ -73,7 +73,13 @@ void EmuFile::update(const struct stat& st) {
 EmuFile::EmuFile(ScopedFd&& fd, const struct stat& est, const string& orig_path)
     : est(est), orig_path(orig_path), file(std::move(fd)), is_marked(false) {}
 
-EmuFile::shr_ptr EmuFs::at(const FileId& id) const { return files.at(id); }
+static EmuFs::FileId id_for(const AddressSpace::Mapping& m) {
+  return EmuFs::FileId(m.res.id.dev(), m.res.id.internal_inode());
+}
+
+EmuFile::shr_ptr EmuFs::at(const AddressSpace::Mapping& m) const {
+  return files.at(id_for(m));
+}
 
 EmuFs::shr_ptr EmuFs::clone() {
   shr_ptr fs(new EmuFs());
@@ -135,16 +141,14 @@ void EmuFs::gc(const Session& session) {
     it->second->unmark();
   }
   for (auto it = garbage.begin(); it != garbage.end(); ++it) {
-    LOG(debug) << "  emufs gc reclaiming einode:" << it->disp_inode()
-               << "; fs name `" << files[*it]->emu_path() << "'";
+    LOG(debug) << "  emufs gc reclaiming einode:" << it->inode << "; fs name `"
+               << files[*it]->emu_path() << "'";
     files.erase(*it);
   }
 }
 
 EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
-  FileId id(mf.stat(), mf.type() == TraceMappedRegion::MMAP
-                           ? PSEUDODEVICE_SHARED_MMAP_FILE
-                           : PSEUDODEVICE_SYSV_SHM);
+  FileId id(mf.stat().st_dev, mf.stat().st_ino);
   auto it = files.find(id);
   if (it != files.end()) {
     it->second->update(mf.stat());
@@ -155,14 +159,16 @@ EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
   return vf;
 }
 
-EmuFile::shr_ptr EmuFs::create_anonymous(const FileId& id, size_t size) {
+EmuFile::shr_ptr EmuFs::create_anonymous(const MappableResource& res,
+                                         size_t size) {
+  FileId id(res.id.dev(), res.id.internal_inode());
   assert(files.find(id) == files.end());
   struct stat fake_stat;
   memset(&fake_stat, 0, sizeof(fake_stat));
-  fake_stat.st_ino = id.internal_inode();
+  fake_stat.st_ino = id.inode;
   fake_stat.st_size = size;
   stringstream name;
-  name << "anonymous-" << id.internal_inode();
+  name << "anonymous-" << id.inode;
   auto vf = EmuFile::create(name.str(), fake_stat);
   files[id] = vf;
   return vf;
@@ -183,18 +189,18 @@ EmuFs::EmuFs() {}
 void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
                              size_t* nr_marked_files) {
   for (auto& m : as.maps()) {
-    const MappableResource& r = m.res;
-    LOG(debug) << "  examining " << r.fsname.c_str() << " ...";
+    LOG(debug) << "  examining " << m.res.fsname.c_str() << " ...";
 
-    auto id_ef = files.find(r.id);
+    FileId id = id_for(m);
+    auto id_ef = files.find(id);
     if (id_ef == files.end()) {
-      ASSERT(t, !r.is_shared_mmap_file());
+      ASSERT(t, !m.res.is_shared_mmap_file());
       continue;
     }
     auto ef = id_ef->second;
     if (!ef->marked()) {
       ef->mark();
-      LOG(debug) << "    marked einode:" << r.id.disp_inode();
+      LOG(debug) << "    marked einode:" << id.inode;
       ++*nr_marked_files;
       if (files.size() == *nr_marked_files) {
         LOG(debug) << "  (marked all files, bailing)";

@@ -547,7 +547,7 @@ static remote_ptr<void> finish_anonymous_mmap(
   } else {
     r = MappableResource::shared_mmap_anonymous(trace_frame.time());
     auto emufile =
-        remote.task()->replay_session().emufs().create_anonymous(r.id, length);
+        remote.task()->replay_session().emufs().create_anonymous(r, length);
     TraceMappedRegion vfile(TraceMappedRegion::MMAP, emufile->proc_path(),
                             emufile->stat(), rec_addr,
                             rec_addr + ceil_page_size(length));

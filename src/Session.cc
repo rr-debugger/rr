@@ -346,7 +346,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   // mapping still refers to the same *emulated* file, with the
   // same emulated metadata.
 
-  auto emufile = dest_emu_fs.at(m.res.id);
+  auto emufile = dest_emu_fs.at(m);
   // TODO: this duplicates some code in replay_syscall.cc, but
   // it's somewhat nontrivial to factor that code out.
   int remote_fd;

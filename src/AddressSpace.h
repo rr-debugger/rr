@@ -81,6 +81,7 @@ public:
    */
   dev_t dev_major() const;
   dev_t dev_minor() const;
+  dev_t dev() const { return device; }
   /**
    * Return a displayable "real" inode.  If |is_real_device()|
    * is false, return 0 (NO_INODE).
