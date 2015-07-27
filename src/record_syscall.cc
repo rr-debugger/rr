@@ -1074,13 +1074,14 @@ static void record_file_change(Task* t, int fd, uint64_t offset,
   Task::FStatResult fd_info = t->fstat(fd);
   string& file_name = fd_info.file_name;
 
-  auto check_mapping = [t, &file_name, offset, length](
-      const KernelMapping& m, const MappableResource& r) {
-    if (r.fsname == file_name) {
-      uint64_t start = max(offset, uint64_t(m.offset));
-      uint64_t end = min(offset + length, uint64_t(m.offset) + m.size());
+  auto check_mapping =
+      [t, &file_name, offset, length](const AddressSpace::Mapping& m) {
+    if (m.res.fsname == file_name) {
+      uint64_t start = max(offset, uint64_t(m.map.offset));
+      uint64_t end =
+          min(offset + length, uint64_t(m.map.offset) + m.map.size());
       if (start < end) {
-        t->record_remote(m.start() + (start - m.offset), end - start);
+        t->record_remote(m.map.start() + (start - m.map.offset), end - start);
       }
     }
   };

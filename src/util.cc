@@ -153,8 +153,8 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
 
   const AddressSpace& as = *(t->vm());
   for (auto& kv : as.memmap()) {
-    const KernelMapping& first = kv.first;
-    const MappableResource& second = kv.second;
+    const KernelMapping& first = kv.second.map;
+    const MappableResource& second = kv.second.res;
     vector<uint8_t> mem;
     mem.resize(first.size());
 
@@ -267,8 +267,8 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 
   const AddressSpace& as = *(t->vm());
   for (auto& kv : as.memmap()) {
-    const KernelMapping& first = kv.first;
-    const MappableResource& second = kv.second;
+    const KernelMapping& first = kv.second.map;
+    const MappableResource& second = kv.second.res;
 
     vector<uint8_t> mem;
     ssize_t valid_mem_len = 0;

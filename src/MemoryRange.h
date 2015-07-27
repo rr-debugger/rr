@@ -57,4 +57,9 @@ private:
   remote_ptr<void> end_;
 };
 
+inline std::ostream& operator<<(std::ostream& o, const MemoryRange& m) {
+  o << m.start() << "-" << m.end();
+  return o;
+}
+
 #endif /* RR_MEMORY_RANGE_H_ */

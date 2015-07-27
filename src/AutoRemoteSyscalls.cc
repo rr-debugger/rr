@@ -80,7 +80,7 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   remote_ptr<void> last_stack_byte = t->regs().sp() - 1;
   if (t->vm()->has_mapping(last_stack_byte)) {
     auto m = t->vm()->mapping_of(last_stack_byte);
-    if (m.second.is_stack() && m.first.start() + 1024 <= t->regs().sp()) {
+    if (m.res.is_stack() && m.map.start() + 1024 <= t->regs().sp()) {
       // 'sp' is in a stack region and there's plenty of space there. No need
       // to fix anything.
       return;
@@ -88,10 +88,9 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   }
 
   KernelMapping found_stack;
-  auto find_stack =
-      [&found_stack](const KernelMapping& m, const MappableResource& r) {
-    if (r.is_stack()) {
-      found_stack = m;
+  auto find_stack = [&found_stack](const AddressSpace::Mapping& m) {
+    if (m.res.is_stack()) {
+      found_stack = m.map;
     }
   };
   t->vm()->for_all_mappings(find_stack);

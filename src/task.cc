@@ -901,8 +901,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::shmdt: {
       remote_ptr<void> addr = regs.arg1();
       auto mapping = vm()->mapping_of(addr);
-      ASSERT(this, mapping.first.start() == addr);
-      return vm()->unmap(addr, mapping.first.end() - addr);
+      ASSERT(this, mapping.map.start() == addr);
+      return vm()->unmap(addr, mapping.map.end() - addr);
     }
     case Arch::madvise: {
       remote_ptr<void> addr = regs.arg1();
@@ -915,8 +915,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
         case SHMDT: {
           remote_ptr<void> addr = regs.arg5();
           auto mapping = vm()->mapping_of(addr);
-          ASSERT(this, mapping.first.start() == addr);
-          return vm()->unmap(addr, mapping.first.end() - addr);
+          ASSERT(this, mapping.map.start() == addr);
+          return vm()->unmap(addr, mapping.map.end() - addr);
         }
         default:
           break;
@@ -2215,8 +2215,8 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     remote_ptr<void> last_stack_byte = stack - 1;
     if (t->as->has_mapping(last_stack_byte)) {
       auto mapping = t->as->mapping_of(last_stack_byte);
-      if (mapping.second.id.psuedodevice() != PSEUDODEVICE_HEAP) {
-        const KernelMapping& m = mapping.first;
+      if (mapping.res.id.psuedodevice() != PSEUDODEVICE_HEAP) {
+        const KernelMapping& m = mapping.map;
         LOG(debug) << "mapping stack for " << new_tid << " at " << m;
         t->as->map(m.start(), m.size(), m.prot, m.flags, m.offset,
                    MappableResource::stack(new_tid));
@@ -2709,7 +2709,7 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
       (addr.as_int() + buf_size + page_size - 1) & ~(page_size - 1);
   int all_prot, all_flags;
   for (uintptr_t p = page_start; p < page_end; p += page_size) {
-    const KernelMapping& m = as->mapping_of(p).first;
+    const KernelMapping& m = as->mapping_of(p).map;
     if (p > page_start) {
       if (all_prot != m.prot || all_flags != m.flags) {
         return false;
@@ -2764,10 +2764,9 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
   vector<KernelMapping> mappings_to_fix;
-  auto check_prot =
-      [&mappings_to_fix](const KernelMapping& m, const MappableResource& r) {
-    if (!(m.prot & (PROT_READ | PROT_WRITE))) {
-      mappings_to_fix.push_back(m);
+  auto check_prot = [&mappings_to_fix](const AddressSpace::Mapping& m) {
+    if (!(m.map.prot & (PROT_READ | PROT_WRITE))) {
+      mappings_to_fix.push_back(m.map);
     }
   };
   t->vm()->for_all_mappings_in_range(

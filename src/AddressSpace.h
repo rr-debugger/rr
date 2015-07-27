@@ -137,9 +137,9 @@ private:
 };
 
 /**
- * Describe the mapping of a MappableResource.  This includes the
- * offset of the mapping, its protection flags, the offest within the
- * resource, and more.
+ * Records information that the kernel knows about a mapping. This includes
+ * everything returned through /proc/<pid>/maps but also information that
+ * we know from observing mmap and mprotect calls.
  */
 class KernelMapping : public MemoryRange {
 public:
@@ -231,7 +231,7 @@ std::ostream& operator<<(std::ostream& o, const KernelMapping& m);
  * less than |b|'s/
  */
 struct MappingComparator {
-  bool operator()(const KernelMapping& a, const KernelMapping& b) const {
+  bool operator()(const MemoryRange& a, const MemoryRange& b) const {
     return a.intersects(b) ? false : a.start() < b.start();
   }
 };
@@ -381,8 +381,17 @@ class AddressSpace : public HasTaskSet {
   friend struct VerifyAddressSpace;
 
 public:
-  typedef std::map<KernelMapping, MappableResource, MappingComparator>
-      MemoryMap;
+  class Mapping {
+  public:
+    Mapping(const KernelMapping& map, const MappableResource& res)
+        : map(map), res(res) {}
+    Mapping(const Mapping& other) = default;
+    Mapping() {}
+    KernelMapping map;
+    MappableResource res;
+  };
+
+  typedef std::map<MemoryRange, Mapping, MappingComparator> MemoryMap;
   typedef std::shared_ptr<AddressSpace> shr_ptr;
 
   ~AddressSpace();
@@ -472,7 +481,7 @@ public:
    * Return the mapping and mapped resource for the byte at address 'addr'.
    * There must be such a mapping.
    */
-  MemoryMap::value_type mapping_of(remote_ptr<void> addr) const;
+  const Mapping& mapping_of(remote_ptr<void> addr) const;
 
   /**
    * Return true if there is some mapping for the byte at 'addr'.
@@ -501,7 +510,7 @@ public:
    * Notify that the stack segment 'mapping' has grown down to a new start
    * address.
    */
-  void fix_stack_segment_start(const KernelMapping& mapping,
+  void fix_stack_segment_start(const MemoryRange& mapping,
                                remote_ptr<void> new_start);
 
   /**
@@ -580,11 +589,9 @@ public:
    */
   void verify(Task* t) const;
 
-  void for_all_mappings(
-      std::function<void(const KernelMapping& m, const MappableResource& r)> f);
-  void for_all_mappings_in_range(
-      std::function<void(const KernelMapping& m, const MappableResource& r)> f,
-      const MemoryRange& range);
+  void for_all_mappings(std::function<void(const Mapping& m)> f);
+  void for_all_mappings_in_range(std::function<void(const Mapping& m)> f,
+                                 const MemoryRange& range);
 
   bool has_breakpoints() { return !breakpoints.empty(); }
   bool has_watchpoints() { return !watchpoints.empty(); }
@@ -773,8 +780,7 @@ private:
   enum { ITERATE_DEFAULT, ITERATE_CONTIGUOUS };
   void for_each_in_range(
       remote_ptr<void> addr, ssize_t num_bytes,
-      std::function<void(const KernelMapping& m, const MappableResource& r,
-                         const KernelMapping& rem)> f,
+      std::function<void(const Mapping& m, const MemoryRange& rem)> f,
       int how = ITERATE_DEFAULT);
 
   /**
