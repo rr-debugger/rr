@@ -16,6 +16,7 @@
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/net.h>
+#include <linux/personality.h>
 #include <linux/prctl.h>
 #include <linux/seccomp.h>
 #include <linux/sem.h>
@@ -2456,6 +2457,19 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case MADV_NOHUGEPAGE:
         case MADV_DONTDUMP:
         case MADV_DODUMP:
+          break;
+        default:
+          syscall_state.expect_errno = EINVAL;
+      }
+      return PREVENT_SWITCH;
+
+    case Arch::personality:
+      switch ((int)t->regs().arg1()) {
+        case PER_LINUX:
+          // The default personality requires no handling.
+          break;
+        case 0xffffffff:
+          // A special argument that only returns the existing personality.
           break;
         default:
           syscall_state.expect_errno = EINVAL;
