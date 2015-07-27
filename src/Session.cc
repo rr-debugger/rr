@@ -335,18 +335,18 @@ void Session::finish_initializing() const {
 }
 
 static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
-                              const KernelMapping& m,
-                              const MappableResource& r) {
-  LOG(debug) << "    remapping shared region at " << m.start() << "-"
-             << m.end();
-  remote.syscall(syscall_number_for_munmap(remote.arch()), m.start(), m.size());
+                              const AddressSpace::Mapping& m) {
+  LOG(debug) << "    remapping shared region at " << m.map.start() << "-"
+             << m.map.end();
+  remote.syscall(syscall_number_for_munmap(remote.arch()), m.map.start(),
+                 m.map.size());
   // NB: we don't have to unmap then re-map |t->vm()|'s idea of
   // the emulated file mapping.  Though we'll be remapping the
   // *real* OS mapping in |t| to a different file, that new
   // mapping still refers to the same *emulated* file, with the
   // same emulated metadata.
 
-  auto emufile = dest_emu_fs.at(r.id);
+  auto emufile = dest_emu_fs.at(m.res.id);
   // TODO: this duplicates some code in replay_syscall.cc, but
   // it's somewhat nontrivial to factor that code out.
   int remote_fd;
@@ -365,14 +365,14 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   }
   // XXX this condition is x86/x64-specific, I imagine.
   remote_ptr<void> addr =
-      remote.mmap_syscall(m.start(), m.size(), m.prot,
+      remote.mmap_syscall(m.map.start(), m.map.size(), m.map.prot,
                           // The remapped segment *must* be
                           // remapped at the same address,
                           // or else many things will go
                           // haywire.
-                          (m.flags & ~MAP_ANONYMOUS) | MAP_FIXED, remote_fd,
-                          m.offset / page_size());
-  ASSERT(remote.task(), addr == m.start());
+                          (m.map.flags & ~MAP_ANONYMOUS) | MAP_FIXED, remote_fd,
+                          m.map.offset / page_size());
+  ASSERT(remote.task(), addr == m.map.start());
 
   remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
@@ -400,11 +400,10 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
     {
       AutoRemoteSyscalls remote(group.clone_leader);
       for (auto& m : group.clone_leader->vm()->maps()) {
-        const MappableResource& r = m.res;
-        if (!r.is_shared_mmap_file()) {
+        if (!m.res.is_shared_mmap_file()) {
           continue;
         }
-        remap_shared_mmap(remote, dest_emu_fs, m.map, r);
+        remap_shared_mmap(remote, dest_emu_fs, m);
       }
 
       for (auto t : group_leader->task_group()->task_set()) {

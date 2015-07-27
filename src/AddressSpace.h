@@ -493,17 +493,17 @@ public:
    */
   class Maps {
   public:
-    Maps(const AddressSpace& self, remote_ptr<void> start) : self(self), start(start) {}
+    Maps(const AddressSpace& self, remote_ptr<void> start)
+        : self(self), start(start) {}
     class iterator {
     public:
       const iterator& operator++() {
         ++it;
         return *this;
       }
-      bool operator!=(const iterator& other) {
-        return other.it != it;
-      }
+      bool operator!=(const iterator& other) { return other.it != it; }
       const Mapping& operator*() const { return it->second; }
+
     private:
       friend class Maps;
       iterator(const MemoryMap::const_iterator& it) : it(it) {}
