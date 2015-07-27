@@ -225,10 +225,10 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
   struct stat st;
   int may_diverge;
 
-  if (stat(m.res.fsname.c_str(), &st)) {
+  if (stat(m.fsname().c_str(), &st)) {
     /* If there's no persistent resource backing this
      * mapping, we should expect it to change. */
-    LOG(debug) << "CHECKSUMMING unlinked '" << m.res.fsname << "'";
+    LOG(debug) << "CHECKSUMMING unlinked '" << m.fsname() << "'";
     return true;
   }
   /* If we're pretty sure the backing resource is effectively
@@ -236,10 +236,10 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
    * if the mapping is mutable, for example the rw data segment
    * of a system library, then it's interesting. */
   may_diverge =
-      should_copy_mmap_region(m.res.fsname, &st, m.map.prot, m.map.flags) ||
+      should_copy_mmap_region(m.fsname(), &st, m.map.prot, m.map.flags) ||
       (PROT_WRITE & m.map.prot);
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"
-             << m.res.fsname << "'";
+             << m.fsname() << "'";
   return may_diverge;
 }
 
@@ -280,7 +280,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     unsigned checksum = 0;
     int i;
 
-    if (m.res.fsname.find(SYSCALLBUF_SHMEM_PATH_PREFIX) != string::npos) {
+    if (m.fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) != string::npos) {
       /* The syscallbuf consists of a region that's written
       * deterministically wrt the trace events, and a
       * region that's written nondeterministically in the

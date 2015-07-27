@@ -2219,7 +2219,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
         const KernelMapping& m = mapping.map;
         LOG(debug) << "mapping stack for " << new_tid << " at " << m;
         t->as->map(m.start(), m.size(), m.prot, m.flags, m.file_offset_bytes,
-                   MappableResource::stack(new_tid));
+                   MappableResource::stack(new_tid), "[stack]");
       }
     }
   }
@@ -2557,7 +2557,7 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   memset(syscallbuf_hdr, 0, sizeof(*syscallbuf_hdr));
 
   vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags, 0,
-            MappableResource::syscallbuf(rec_tid, shmem_fd, path));
+            MappableResource::syscallbuf(rec_tid, shmem_fd), path);
 
   shmem_fd.close();
   remote.syscall(syscall_number_for_close(arch()), child_shmem_fd);

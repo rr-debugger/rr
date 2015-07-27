@@ -189,7 +189,7 @@ EmuFs::EmuFs() {}
 void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
                              size_t* nr_marked_files) {
   for (auto& m : as.maps()) {
-    LOG(debug) << "  examining " << m.res.fsname.c_str() << " ...";
+    LOG(debug) << "  examining " << m.fsname().c_str() << " ...";
 
     FileId id = id_for(m);
     auto id_ef = files.find(id);

@@ -732,7 +732,7 @@ void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
                                      size_t size, size_t offset_pages,
                                      ScopedFd& open_fd) {
   const auto& map = t->vm()->mapping_of(start);
-  if (map.res.fsname.find("libpthread.so") != string::npos &&
+  if (map.fsname().find("libpthread.so") != string::npos &&
       (t->arch() == x86 || t->arch() == x86_64)) {
     auto syms =
         FileReader(open_fd).read_symbols(t->arch(), ".symtab", ".strtab");

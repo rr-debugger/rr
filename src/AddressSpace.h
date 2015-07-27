@@ -158,17 +158,21 @@ public:
   static const int checkable_flags_mask = MAP_PRIVATE | MAP_SHARED;
 
   KernelMapping() : prot(0), flags(0), file_offset_bytes(0) {}
-  KernelMapping(remote_ptr<void> addr, size_t num_bytes, int prot = 0,
+  KernelMapping(remote_ptr<void> addr, size_t num_bytes,
+                const std::string& fsname = std::string(), int prot = 0,
                 int flags = 0, off64_t offset = 0)
       : MemoryRange(addr, addr + ceil_page_size(num_bytes)),
+        fsname_(fsname),
         prot(prot),
         flags(flags & map_flags_mask),
         file_offset_bytes(offset) {
     assert_valid();
   }
-  KernelMapping(remote_ptr<void> start, remote_ptr<void> end, int prot = 0,
+  KernelMapping(remote_ptr<void> start, remote_ptr<void> end,
+                const std::string& fsname = std::string(), int prot = 0,
                 int flags = 0, off64_t offset = 0)
       : MemoryRange(start, end),
+        fsname_(fsname),
         prot(prot),
         flags(flags & map_flags_mask),
         file_offset_bytes(offset) {
@@ -177,14 +181,15 @@ public:
 
   KernelMapping(const KernelMapping& o)
       : MemoryRange(o),
+        fsname_(o.fsname_),
         prot(o.prot),
         flags(o.flags),
         file_offset_bytes(o.file_offset_bytes) {
     assert_valid();
   }
   KernelMapping operator=(const KernelMapping& o) {
-    memcpy(this, &o, sizeof(*this));
-    assert_valid();
+    this->~KernelMapping();
+    new (this) KernelMapping(o);
     return *this;
   }
 
@@ -201,8 +206,8 @@ public:
    * /proc/maps.
    */
   KernelMapping to_kernel() const {
-    return KernelMapping(start(), end(), prot, flags & checkable_flags_mask,
-                         file_offset_bytes);
+    return KernelMapping(start(), end(), fsname_, prot,
+                         flags & checkable_flags_mask, file_offset_bytes);
   }
 
   /**
@@ -215,9 +220,14 @@ public:
             (void*)end().as_int(), (PROT_READ & prot) ? 'r' : '-',
             (PROT_WRITE & prot) ? 'w' : '-', (PROT_EXEC & prot) ? 'x' : '-',
             (MAP_SHARED & flags) ? 's' : 'p', file_offset_bytes);
-    return str;
+    return str + fsname();
   }
 
+  const std::string& fsname() const { return fsname_; }
+
+  // The kernel's name for the mapping, as per /proc/<pid>/maps. This must
+  // be exactly correct.
+  const std::string fsname_;
   const int prot;
   const int flags;
   const off64_t file_offset_bytes;
@@ -247,8 +257,6 @@ struct MappingComparator {
 struct MappableResource {
   MappableResource() : id(FileId()) {}
   MappableResource(const FileId& id) : id(id) {}
-  MappableResource(const FileId& id, const std::string& fsname)
-      : id(id), fsname(fsname) {}
 
   bool operator==(const MappableResource& o) const {
     return id.equivalent_to(o.id);
@@ -265,7 +273,6 @@ struct MappableResource {
     if (is_stack()) {
       id = FileId(id.dev_major(), id.dev_minor(), id.internal_inode(),
                   PSEUDODEVICE_ANONYMOUS);
-      fsname = "";
     }
   }
 
@@ -290,8 +297,7 @@ struct MappableResource {
     }
 
     return MappableResource(
-        FileId(id.dev_major(), id.dev_minor(), id.disp_inode(), psdev),
-        fsname.c_str());
+        FileId(id.dev_major(), id.dev_minor(), id.disp_inode(), psdev));
   }
 
   /**
@@ -301,8 +307,8 @@ struct MappableResource {
   */
   std::string str() const {
     char str[200];
-    sprintf(str, "%02" PRIx64 ":%02" PRIx64 " %-10ld %s %s", id.dev_major(),
-            id.dev_minor(), id.disp_inode(), fsname.c_str(), id.special_name());
+    sprintf(str, "%02" PRIx64 ":%02" PRIx64 " %-10ld %s", id.dev_major(),
+            id.dev_minor(), id.disp_inode(), id.special_name());
     return str;
   }
 
@@ -312,12 +318,11 @@ struct MappableResource {
   }
   static MappableResource heap() {
     return MappableResource(
-        FileId(FileId::NO_DEVICE, FileId::NO_INODE, PSEUDODEVICE_HEAP),
-        "[heap]");
+        FileId(FileId::NO_DEVICE, FileId::NO_INODE, PSEUDODEVICE_HEAP));
   }
   static MappableResource scratch(pid_t tid) {
     return MappableResource(
-        FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_SCRATCH), "[scratch]");
+        FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_SCRATCH));
   }
   static MappableResource shared_mmap_file(const TraceMappedRegion& file);
   static MappableResource shared_mmap_anonymous(uint32_t unique_id) {
@@ -325,17 +330,11 @@ struct MappableResource {
         FileId(FileId::NO_DEVICE, unique_id, PSEUDODEVICE_SHARED_MMAP_FILE));
   }
   static MappableResource stack(pid_t tid) {
-    return MappableResource(FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_STACK),
-                            "[stack]");
+    return MappableResource(FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_STACK));
   }
-  static MappableResource syscallbuf(pid_t tid, int fd, const char* path);
+  static MappableResource syscallbuf(pid_t tid, int fd);
 
   FileId id;
-  /**
-   * Some name that this file may have on its underlying file
-   * system.
-   */
-  std::string fsname;
 
   static ino_t nr_anonymous_maps;
 };
@@ -391,6 +390,9 @@ public:
         : map(map), res(res) {}
     Mapping(const Mapping& other) = default;
     Mapping() {}
+
+    const std::string& fsname() const { return map.fsname(); }
+
     KernelMapping map;
     MappableResource res;
   };
@@ -476,10 +478,12 @@ public:
   /**
    * Map |num_bytes| into this address space at |addr|, with
    * |prot| protection and |flags|.  The pages are (possibly
-   * initially) backed starting at |offset| of |res|.
+   * initially) backed starting at |offset| of |res|. |fsname| is the
+   * name we expect the kernel to give the file, or nullptr if not known.
    */
   void map(remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
-           off64_t offset_bytes, const MappableResource& res);
+           off64_t offset_bytes, const MappableResource& res,
+           const std::string& fsname = std::string());
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.
@@ -517,6 +521,7 @@ public:
       return iterator(self.mem.lower_bound(MemoryRange(start, start)));
     }
     iterator end() const { return iterator(self.mem.end()); }
+
   private:
     const AddressSpace& self;
     remote_ptr<void> start;
@@ -819,7 +824,7 @@ private:
 
   /** Set the dynamic heap segment to |[start, end)| */
   void update_heap(remote_ptr<void> start, remote_ptr<void> end) {
-    heap = KernelMapping(start, end, PROT_READ | PROT_WRITE,
+    heap = KernelMapping(start, end, "[heap]", PROT_READ | PROT_WRITE,
                          MAP_ANONYMOUS | MAP_PRIVATE, 0);
   }
 

@@ -82,17 +82,15 @@ ostream& operator<<(ostream& o, const KernelMapping& m) {
   return MappableResource(
       FileId(file.stat(), file.type() == TraceMappedRegion::MMAP
                               ? PSEUDODEVICE_SHARED_MMAP_FILE
-                              : PSEUDODEVICE_SYSV_SHM),
-      file.file_name().c_str());
+                              : PSEUDODEVICE_SYSV_SHM));
 }
 
-/*static*/ MappableResource MappableResource::syscallbuf(pid_t tid, int fd,
-                                                         const char* path) {
+/*static*/ MappableResource MappableResource::syscallbuf(pid_t tid, int fd) {
   struct stat st;
   if (fstat(fd, &st)) {
-    FATAL() << "Failed to fstat(" << fd << ") (" << path << ")";
+    FATAL() << "Failed to fstat(" << fd << ")";
   }
-  return MappableResource(FileId(st), path);
+  return MappableResource(FileId(st));
 }
 
 /**
@@ -349,6 +347,8 @@ void AddressSpace::map_rr_page(Task* t) {
   int prot = PROT_EXEC | PROT_READ;
   int flags = MAP_PRIVATE | MAP_FIXED;
 
+  Task::FStatResult fstat;
+
   {
     AutoRemoteSyscalls remote(t);
     SupportedArch arch = t->arch();
@@ -365,15 +365,15 @@ void AddressSpace::map_rr_page(Task* t) {
                                       flags, child_fd, 0);
     ASSERT(t, result == rr_page_start());
 
+    fstat = t->fstat(child_fd);
+
     remote.syscall(syscall_number_for_close(arch), child_fd);
   }
 
   unlink(path);
 
-  struct stat stat_buf;
-  ASSERT(t, fstat(fd, &stat_buf) == 0);
   map(rr_page_start(), rr_page_size(), prot, flags, 0,
-      MappableResource(FileId(stat_buf), path));
+      MappableResource(FileId(fstat.st)), fstat.file_name);
 
   untraced_syscall_ip_ = rr_page_untraced_syscall_ip(t->arch());
   traced_syscall_ip_ = rr_page_traced_syscall_ip(t->arch());
@@ -443,7 +443,7 @@ void AddressSpace::brk(remote_ptr<void> addr) {
   remote_ptr<void> vm_addr = ceil_page_size(addr);
   if (heap.end() < vm_addr) {
     map(heap.end(), vm_addr - heap.end(), heap.prot, heap.flags,
-        heap.file_offset_bytes, MappableResource::heap());
+        heap.file_offset_bytes, MappableResource::heap(), "[heap]");
   } else {
     unmap(vm_addr, heap.end() - vm_addr);
   }
@@ -516,7 +516,7 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
 
 void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
                        int flags, off64_t offset_bytes,
-                       const MappableResource& res) {
+                       const MappableResource& res, const string& fsname) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
   num_bytes = ceil_page_size(num_bytes);
@@ -526,7 +526,7 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
 
-  KernelMapping m(addr, num_bytes, prot, flags, offset_bytes);
+  KernelMapping m(addr, num_bytes, fsname, prot, flags, offset_bytes);
 
   bool insert_guard_page = false;
   if (has_mapping(m.end()) && (mapping_of(m.end()).map.flags & MAP_GROWSDOWN)) {
@@ -548,14 +548,14 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
 
   if (flags & MAP_GROWSDOWN) {
     // The first page is made into a guard page by the kernel
-    m = KernelMapping(addr + page_size(), num_bytes - page_size(), prot, flags,
-                      offset_bytes + page_size());
+    m = KernelMapping(addr + page_size(), num_bytes - page_size(), fsname, prot,
+                      flags, offset_bytes + page_size());
   }
   map_and_coalesce(m, res);
 
   if ((prot & PROT_EXEC) &&
-      (res.fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
-       res.fsname.find(SYSCALLBUF_LIB_FILENAME_32) != string::npos)) {
+      (fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
+       fsname.find(SYSCALLBUF_LIB_FILENAME_32) != string::npos)) {
     syscallbuf_lib_start_ = addr;
     syscallbuf_lib_end_ = addr + num_bytes;
   }
@@ -654,15 +654,16 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // region, remap the underflow region with previous
     // prot.
     if (m.map.start() < new_start) {
-      Mapping underflow(KernelMapping(m.map.start(), rem.start(), m.map.prot,
-                                      m.map.flags, m.map.file_offset_bytes),
+      Mapping underflow(KernelMapping(m.map.start(), rem.start(),
+                                      m.map.fsname(), m.map.prot, m.map.flags,
+                                      m.map.file_offset_bytes),
                         m.res);
       mem[underflow.map] = underflow;
     }
     // Remap the overlapping region with the new prot.
     remote_ptr<void> new_end = min(rem.end(), m.map.end());
     Mapping overlap(
-        KernelMapping(new_start, new_end,
+        KernelMapping(new_start, new_end, m.map.fsname(),
                       prot & (PROT_READ | PROT_WRITE | PROT_EXEC), m.map.flags,
                       adjust_offset(m.res, m.map, new_start - m.map.start())),
         m.res);
@@ -674,7 +675,8 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // prot.
     if (rem.end() < m.map.end()) {
       Mapping overflow(
-          KernelMapping(rem.end(), m.map.end(), m.map.prot, m.map.flags,
+          KernelMapping(rem.end(), m.map.end(), m.map.fsname(), m.map.prot,
+                        m.map.flags,
                         adjust_offset(m.res, m.map, rem.end() - m.map.start())),
           m.res);
       mem[overflow.map] = overflow;
@@ -712,7 +714,8 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
     remove_range(dont_fork, MemoryRange(new_addr, new_num_bytes));
   }
 
-  map_and_coalesce(KernelMapping(new_addr, new_num_bytes, m.prot, m.flags,
+  map_and_coalesce(KernelMapping(new_addr, new_num_bytes, m.fsname(), m.prot,
+                                 m.flags,
                                  adjust_offset(r, m, old_addr - m.start())),
                    r);
 }
@@ -914,8 +917,9 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
       // When splitting a stack mapping, the bottom part of the split is no
       // longer treated as stack by the kernel.
       new_r.remove_stackness();
-      Mapping underflow(KernelMapping(m.map.start(), rem.start(), m.map.prot,
-                                      m.map.flags, m.map.file_offset_bytes),
+      Mapping underflow(KernelMapping(m.map.start(), rem.start(),
+                                      m.map.fsname(), m.map.prot, m.map.flags,
+                                      m.map.file_offset_bytes),
                         new_r);
       mem[underflow.map] = underflow;
     }
@@ -923,7 +927,8 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
     // region, remap the overflow region.
     if (rem.end() < m.map.end()) {
       Mapping overflow(
-          KernelMapping(rem.end(), m.map.end(), m.map.prot, m.map.flags,
+          KernelMapping(rem.end(), m.map.end(), m.map.fsname(), m.map.prot,
+                        m.map.flags,
                         adjust_offset(m.res, m.map, rem.end() - m.map.start())),
           m.res);
       mem[overflow.map] = overflow;
@@ -985,7 +990,7 @@ static bool is_adjacent_mapping(const AddressSpace::Mapping& left,
   }
   const MappableResource& rleft = left.res;
   const MappableResource& rright = right.res;
-  if (rright.fsname.substr(0, strlen(PREFIX_FOR_EMPTY_MMAPED_REGIONS)) ==
+  if (right.fsname().substr(0, strlen(PREFIX_FOR_EMPTY_MMAPED_REGIONS)) ==
       PREFIX_FOR_EMPTY_MMAPED_REGIONS) {
     return true;
   }
@@ -1021,8 +1026,9 @@ static bool try_merge_adjacent(KernelMapping* left_m,
   if (is_adjacent_mapping(AddressSpace::Mapping(*left_m, left_r),
                           AddressSpace::Mapping(right_m, right_r),
                           KernelMapping::checkable_flags_mask)) {
-    *left_m = KernelMapping(left_m->start(), right_m.end(), right_m.prot,
-                            right_m.flags, left_m->file_offset_bytes);
+    *left_m =
+        KernelMapping(left_m->start(), right_m.end(), left_m->fsname(),
+                      right_m.prot, right_m.flags, left_m->file_offset_bytes);
     return true;
   }
   return false;
@@ -1087,7 +1093,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
   // |to_kernel()|, we also lost its "is stack" flag.  So to check if
   // it's a grows-down stack segment, we see if it has the special
   // linux name for the process stack segment, "[stack]".
-  if (!same_mapping && km.start() < m.start() && "[stack]" == r.fsname) {
+  if (!same_mapping && km.start() < m.start() && "[stack]" == m.fsname()) {
     // TODO: the stack can grow down arbitrarily, and rr needs to be
     // aware of the updated mapping in case the user tries to map or
     // unmap pages near the stack.  But keeping track of expanded
@@ -1179,12 +1185,11 @@ void AddressSpace::fix_stack_segment_start(const MemoryRange& mapping,
 
   // Merge adjacent kernel mappings.
   assert(info.flags == (info.flags & KernelMapping::checkable_flags_mask));
-  KernelMapping km(info.start_addr, info.end_addr, info.prot, info.flags,
-                   info.file_offset);
+  KernelMapping km(info.start_addr, info.end_addr, info.name, info.prot,
+                   info.flags, info.file_offset);
   PseudoDevice psdev = pseudodevice_for_name(info.name);
   MappableResource kr = MappableResource(FileId(info.dev_major, info.dev_minor,
-                                                info.inode, psdev),
-                                         info.name).to_kernel();
+                                                info.inode, psdev)).to_kernel();
 
   if (vas->INITING_KERNEL == vas->phase) {
     assert(kr ==
@@ -1198,8 +1203,8 @@ void AddressSpace::fix_stack_segment_start(const MemoryRange& mapping,
                // (i.e. emulated in replay) device/inode for
                // gc.  So this suffices for now.
            ||
-           string::npos != kr.fsname.find(SHMEM_FS "/rr-emufs") ||
-           string::npos != kr.fsname.find(SHMEM_FS2 "/rr-emufs"));
+           string::npos != km.fsname().find(SHMEM_FS "/rr-emufs") ||
+           string::npos != km.fsname().find(SHMEM_FS2 "/rr-emufs"));
     vas->km = km;
     vas->r = kr;
     vas->phase = vas->MERGING_KERNEL;
@@ -1467,7 +1472,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
 
   Mapping& m = it->second;
   Mapping new_m(KernelMapping(first_kv->first.start(), last_kv->first.end(),
-                              m.map.prot, m.map.flags,
+                              m.map.fsname(), m.map.prot, m.map.flags,
                               first_kv->second.map.file_offset_bytes),
                 m.res);
   LOG(debug) << "  coalescing " << new_m.map;
@@ -1574,5 +1579,5 @@ void AddressSpace::map_and_coalesce(const KernelMapping& m,
     flags |= MAP_GROWSDOWN;
   }
   as->map(info.start_addr, info.end_addr - info.start_addr, info.prot, flags,
-          info.file_offset, MappableResource(id, info.name));
+          info.file_offset, MappableResource(id), info.name);
 }

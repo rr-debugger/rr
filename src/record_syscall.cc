@@ -1075,7 +1075,7 @@ static void record_file_change(Task* t, int fd, uint64_t offset,
   string& file_name = fd_info.file_name;
 
   for (auto& m : t->vm()->maps()) {
-    if (m.res.fsname == file_name) {
+    if (m.fsname() == file_name) {
       uint64_t start = max(offset, uint64_t(m.map.file_offset_bytes));
       uint64_t end = min(offset + length,
                          uint64_t(m.map.file_offset_bytes) + m.map.size());
@@ -2764,7 +2764,7 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   }
 
   t->vm()->map(addr, size, prot, flags, offset,
-               MappableResource(FileId(result.st), result.file_name));
+               MappableResource(FileId(result.st)), result.file_name);
   t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages,
                                             open_fd);
 }
@@ -2803,8 +2803,8 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
                 "of tracees";
 
   t->vm()->map(addr, size, prot, flags, 0,
-               MappableResource(FileId(0, shmid, PSEUDODEVICE_SYSV_SHM),
-                                fake_file_name));
+               MappableResource(FileId(0, shmid, PSEUDODEVICE_SYSV_SHM)),
+               fake_file_name);
 }
 
 template <typename Arch>
