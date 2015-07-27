@@ -248,4 +248,6 @@ void dump_task_map(const std::map<pid_t, Task*>& tasks);
  */
 void install_patched_seccomp_filter(Task* t);
 
+std::string real_path(const std::string& path);
+
 #endif /* RR_UTIL_H_ */

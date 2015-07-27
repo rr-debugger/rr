@@ -13,6 +13,7 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <linux/filter.h>
 #include <linux/magic.h>
 #include <linux/prctl.h>
@@ -807,4 +808,12 @@ static void install_patched_seccomp_filter_arch(Task* t) {
 
 void install_patched_seccomp_filter(Task* t) {
   RR_ARCH_FUNCTION(install_patched_seccomp_filter_arch, t->arch(), t);
+}
+
+string real_path(const string& path) {
+  char buf[PATH_MAX];
+  if (realpath(path.c_str(), buf) == buf) {
+    return string(buf);
+  }
+  return path;
 }

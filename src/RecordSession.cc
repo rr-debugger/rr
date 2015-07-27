@@ -1125,9 +1125,7 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
 }
 
 static string find_syscall_buffer_library() {
-  char* exe_path = realpath("/proc/self/exe", nullptr);
-  string lib_path = exe_path;
-  free(exe_path);
+  string lib_path = real_path("/proc/self/exe");
 
   int end = lib_path.length();
   // Chop off the filename
