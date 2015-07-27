@@ -87,7 +87,7 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
     }
   }
 
-  KernelMapping found_stack;
+  MemoryRange found_stack;
   for (auto& m : t->vm()->maps()) {
     if (m.res.is_stack()) {
       found_stack = m.map;
