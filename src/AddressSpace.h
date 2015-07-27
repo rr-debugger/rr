@@ -125,12 +125,6 @@ public:
   }
   const char* special_name() const;
 
-  bool operator<(const FileId& o) const {
-    return psdev != o.psdev ? psdev < o.psdev : device != o.device
-                                                    ? device < o.device
-                                                    : inode < o.inode;
-  }
-
 private:
   dev_t device;
   ino_t inode;
