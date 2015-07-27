@@ -152,21 +152,19 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
   dump_file = fopen64(filename, "w");
 
   const AddressSpace& as = *(t->vm());
-  for (auto& kv : as.memmap()) {
-    const KernelMapping& first = kv.second.map;
-    const MappableResource& second = kv.second.res;
+  for (auto& m : as.maps()) {
     vector<uint8_t> mem;
-    mem.resize(first.size());
+    mem.resize(m.map.size());
 
     ssize_t mem_len =
-        t->read_bytes_fallible(first.start(), first.size(), mem.data());
+        t->read_bytes_fallible(m.map.start(), m.map.size(), mem.data());
     mem_len = max(ssize_t(0), mem_len);
 
-    string label = first.str() + ' ' + second.str();
+    string label = m.map.str() + ' ' + m.res.str();
 
-    if (!is_start_of_scratch_region(t, first.start())) {
+    if (!is_start_of_scratch_region(t, m.map.start())) {
       dump_binary_chunk(dump_file, label.c_str(), (const uint32_t*)mem.data(),
-                        mem_len / sizeof(uint32_t), first.start());
+                        mem_len / sizeof(uint32_t), m.map.start());
     }
   }
   fclose(dump_file);
@@ -266,8 +264,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   }
 
   const AddressSpace& as = *(t->vm());
-  for (auto& kv : as.memmap()) {
-    const AddressSpace::Mapping& m = kv.second;
+  for (auto& m : as.maps()) {
     vector<uint8_t> mem;
     ssize_t valid_mem_len = 0;
 
@@ -282,7 +279,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     unsigned checksum = 0;
     int i;
 
-    if (kv.second.res.fsname.find(SYSCALLBUF_SHMEM_PATH_PREFIX) !=
+    if (m.res.fsname.find(SYSCALLBUF_SHMEM_PATH_PREFIX) !=
         string::npos) {
       /* The syscallbuf consists of a region that's written
       * deterministically wrt the trace events, and a

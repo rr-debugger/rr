@@ -489,9 +489,33 @@ public:
   bool has_mapping(remote_ptr<void> addr) const;
 
   /**
-   * Return the memory map.
+   * Iterate through the memory map.
    */
-  const MemoryMap& memmap() const { return mem; }
+  class Maps {
+  public:
+    Maps(const AddressSpace& self) : self(self) {}
+    class iterator {
+    public:
+      const iterator& operator++() {
+        ++it;
+        return *this;
+      }
+      bool operator!=(const iterator& other) {
+        return other.it != it;
+      }
+      const Mapping& operator*() const { return it->second; }
+    private:
+      friend class Maps;
+      iterator(const MemoryMap::const_iterator& it) : it(it) {}
+      MemoryMap::const_iterator it;
+    };
+    iterator begin() const { return iterator(self.mem.begin()); }
+    iterator end() const { return iterator(self.mem.end()); }
+  private:
+    const AddressSpace& self;
+  };
+  friend class Maps;
+  Maps maps() const { return Maps(*this); }
 
   /**
    * Change the protection bits of [addr, addr + num_bytes) to

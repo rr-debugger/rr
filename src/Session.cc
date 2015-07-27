@@ -399,13 +399,12 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
 
     {
       AutoRemoteSyscalls remote(group.clone_leader);
-      for (auto& kv : group.clone_leader->vm()->memmap()) {
-        const KernelMapping& m = kv.second.map;
-        const MappableResource& r = kv.second.res;
+      for (auto& m : group.clone_leader->vm()->maps()) {
+        const MappableResource& r = m.res;
         if (!r.is_shared_mmap_file()) {
           continue;
         }
-        remap_shared_mmap(remote, dest_emu_fs, m, r);
+        remap_shared_mmap(remote, dest_emu_fs, m.map, r);
       }
 
       for (auto t : group_leader->task_group()->task_set()) {
