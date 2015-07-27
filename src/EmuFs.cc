@@ -74,7 +74,7 @@ EmuFile::EmuFile(ScopedFd&& fd, const struct stat& est, const string& orig_path)
     : est(est), orig_path(orig_path), file(std::move(fd)), is_marked(false) {}
 
 static EmuFs::FileId id_for(const AddressSpace::Mapping& m) {
-  return EmuFs::FileId(m.res.id.dev(), m.res.id.internal_inode());
+  return EmuFs::FileId(m.map.device(), m.map.inode());
 }
 
 EmuFile::shr_ptr EmuFs::at(const AddressSpace::Mapping& m) const {
@@ -161,7 +161,7 @@ EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
 
 EmuFile::shr_ptr EmuFs::create_anonymous(const MappableResource& res,
                                          size_t size) {
-  FileId id(res.id.dev(), res.id.internal_inode());
+  FileId id(res.device, res.inode);
   assert(files.find(id) == files.end());
   struct stat fake_stat;
   memset(&fake_stat, 0, sizeof(fake_stat));

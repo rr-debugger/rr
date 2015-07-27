@@ -2763,8 +2763,10 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
                   "tree.";
   }
 
-  t->vm()->map(addr, size, prot, flags, offset,
-               MappableResource(FileId(result.st)), result.file_name);
+  t->vm()->map(
+      addr, size, prot, flags, offset,
+      MappableResource(result.st.st_dev, result.st.st_ino, PSEUDODEVICE_NONE),
+      result.file_name);
   t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages,
                                             open_fd);
 }
@@ -2803,7 +2805,7 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
                 "of tracees";
 
   t->vm()->map(addr, size, prot, flags, 0,
-               MappableResource(FileId(0, shmid, PSEUDODEVICE_SYSV_SHM)),
+               MappableResource(0, shmid, PSEUDODEVICE_SYSV_SHM),
                fake_file_name);
 }
 

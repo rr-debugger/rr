@@ -4,6 +4,7 @@
 #define RR_ADDRESS_SPACE_H_
 
 #include <inttypes.h>
+#include <linux/kdev_t.h>
 #include <sys/mman.h>
 
 #include <map>
@@ -62,72 +63,13 @@ enum PseudoDevice {
  */
 class FileId {
 public:
-  static const dev_t NO_DEVICE = 0;
-  static const ino_t NO_INODE = 0;
+  FileId(PseudoDevice psdev = PSEUDODEVICE_NONE) : psdev(psdev) {}
 
-  FileId(PseudoDevice psdev = PSEUDODEVICE_NONE)
-      : device(NO_DEVICE), inode(NO_INODE), psdev(psdev) {}
-  FileId(const struct stat& st, PseudoDevice psdev = PSEUDODEVICE_NONE)
-      : device(st.st_dev), inode(st.st_ino), psdev(psdev) {}
-  FileId(dev_t dev, ino_t ino, PseudoDevice psdev = PSEUDODEVICE_NONE)
-      : device(dev), inode(ino), psdev(psdev) {}
-  FileId(dev_t dev_major, dev_t dev_minor, ino_t ino,
-         PseudoDevice psdev = PSEUDODEVICE_NONE);
-
-  /**
-   * Return the major/minor ID for the device underlying this
-   * file.  If |is_real_device()| is false, return 0
-   * (NO_DEVICE).
-   */
-  dev_t dev_major() const;
-  dev_t dev_minor() const;
-  dev_t dev() const { return device; }
-  /**
-   * Return a displayable "real" inode.  If |is_real_device()|
-   * is false, return 0 (NO_INODE).
-   */
-  ino_t disp_inode() const;
-  ino_t internal_inode() const { return inode; }
   PseudoDevice psuedodevice() const { return psdev; }
 
-  /**
-   * Return true iff |this| and |o| are the same "real device"
-   * (i.e., same device and inode), or |this| and |o| are
-   * ANONYMOUS pseudo-devices.  Results are undefined for other
-   * pseudo-devices.
-   */
-  bool equivalent_to(const FileId& o) const {
-    if (psdev != o.psdev) {
-      return false;
-    }
-    if (psdev == PSEUDODEVICE_ANONYMOUS) {
-      return true;
-    }
-    if (psdev != PSEUDODEVICE_SYSV_SHM) {
-      if (dev_major() != o.dev_major()) {
-        return false;
-      }
-      // Allow device minor numbers to vary if the major device is
-      // 0. This was observed to be happening on
-      // "3.13.0-24-generic #46-Ubuntu SMP" in KVM with btrfs.
-      if (dev_major() != 0 && dev_minor() != o.dev_minor()) {
-        return false;
-      }
-    }
-    return inode == o.inode;
-  }
-  /**
-   * Return true if this file is/was backed by an external
-   * device, as opposed to a transient RAM mapping.
-   */
-  bool is_real_device() const {
-    return device > NO_DEVICE || psdev == PSEUDODEVICE_SYSV_SHM;
-  }
   const char* special_name() const;
 
 private:
-  dev_t device;
-  ino_t inode;
   PseudoDevice psdev;
 };
 
@@ -150,23 +92,18 @@ public:
                                     MAP_PRIVATE | MAP_SHARED | MAP_STACK |
                                     MAP_GROWSDOWN;
   static const int checkable_flags_mask = MAP_PRIVATE | MAP_SHARED;
+  static const dev_t NO_DEVICE = 0;
+  static const ino_t NO_INODE = 0;
 
-  KernelMapping() : prot(0), flags(0), file_offset_bytes(0) {}
-  KernelMapping(remote_ptr<void> addr, size_t num_bytes,
-                const std::string& fsname = std::string(), int prot = 0,
-                int flags = 0, off64_t offset = 0)
-      : MemoryRange(addr, addr + ceil_page_size(num_bytes)),
-        fsname_(fsname),
-        prot(prot),
-        flags(flags & map_flags_mask),
-        file_offset_bytes(offset) {
-    assert_valid();
-  }
+  KernelMapping()
+      : device_(0), inode_(0), prot(0), flags(0), file_offset_bytes(0) {}
   KernelMapping(remote_ptr<void> start, remote_ptr<void> end,
-                const std::string& fsname = std::string(), int prot = 0,
-                int flags = 0, off64_t offset = 0)
+                const std::string& fsname, dev_t device, ino_t inode, int prot,
+                int flags, off64_t offset = 0)
       : MemoryRange(start, end),
         fsname_(fsname),
+        device_(device),
+        inode_(inode),
         prot(prot),
         flags(flags & map_flags_mask),
         file_offset_bytes(offset) {
@@ -176,6 +113,8 @@ public:
   KernelMapping(const KernelMapping& o)
       : MemoryRange(o),
         fsname_(o.fsname_),
+        device_(o.device_),
+        inode_(o.inode_),
         prot(o.prot),
         flags(o.flags),
         file_offset_bytes(o.file_offset_bytes) {
@@ -200,7 +139,7 @@ public:
    * /proc/maps.
    */
   KernelMapping to_kernel() const {
-    return KernelMapping(start(), end(), fsname_, prot,
+    return KernelMapping(start(), end(), fsname_, device_, inode_, prot,
                          flags & checkable_flags_mask, file_offset_bytes);
   }
 
@@ -210,18 +149,33 @@ public:
   */
   std::string str() const {
     char str[200];
-    sprintf(str, "%8p-%8p %c%c%c%c %08" PRIx64, (void*)start().as_int(),
-            (void*)end().as_int(), (PROT_READ & prot) ? 'r' : '-',
-            (PROT_WRITE & prot) ? 'w' : '-', (PROT_EXEC & prot) ? 'x' : '-',
-            (MAP_SHARED & flags) ? 's' : 'p', file_offset_bytes);
+    sprintf(str, "%8p-%8p %c%c%c%c %02d:%02d" PRIx64 " %-10ld %08" PRIx64 " ",
+            (void*)start().as_int(), (void*)end().as_int(),
+            (PROT_READ & prot) ? 'r' : '-', (PROT_WRITE & prot) ? 'w' : '-',
+            (PROT_EXEC & prot) ? 'x' : '-', (MAP_SHARED & flags) ? 's' : 'p',
+            (int)MAJOR(device()), (int)MINOR(device()), (long)inode(),
+            file_offset_bytes);
     return str + fsname();
   }
 
   const std::string& fsname() const { return fsname_; }
+  dev_t device() const { return device_; }
+  ino_t inode() const { return inode_; }
 
+  /**
+   * Return true if this file is/was backed by an external
+   * device, as opposed to a transient RAM mapping.
+   */
+  bool is_real_device() const { return device() > NO_DEVICE; }
+
+private:
   // The kernel's name for the mapping, as per /proc/<pid>/maps. This must
   // be exactly correct.
   const std::string fsname_;
+  dev_t device_;
+  ino_t inode_;
+
+public:
   const int prot;
   const int flags;
   const off64_t file_offset_bytes;
@@ -249,13 +203,10 @@ struct MappingComparator {
  * mapping into RAM of a MappableResource.
  */
 struct MappableResource {
-  MappableResource() : id(FileId()) {}
-  MappableResource(const FileId& id) : id(id) {}
+  MappableResource() : device(0), inode(0) {}
+  MappableResource(dev_t device, ino_t inode, PseudoDevice p)
+      : id(p), device(device), inode(inode) {}
 
-  bool operator==(const MappableResource& o) const {
-    return id.equivalent_to(o.id);
-  }
-  bool operator!=(const MappableResource& o) const { return !(*this == o); }
   bool is_scratch() const { return PSEUDODEVICE_SCRATCH == id.psuedodevice(); }
   bool is_shared_mmap_file() const {
     return PSEUDODEVICE_SHARED_MMAP_FILE == id.psuedodevice() ||
@@ -265,8 +216,7 @@ struct MappableResource {
 
   void remove_stackness() {
     if (is_stack()) {
-      id = FileId(id.dev_major(), id.dev_minor(), id.internal_inode(),
-                  PSEUDODEVICE_ANONYMOUS);
+      id = FileId(PSEUDODEVICE_ANONYMOUS);
     }
   }
 
@@ -290,8 +240,7 @@ struct MappableResource {
         break;
     }
 
-    return MappableResource(
-        FileId(id.dev_major(), id.dev_minor(), id.disp_inode(), psdev));
+    return MappableResource(device, inode, psdev);
   }
 
   /**
@@ -299,36 +248,33 @@ struct MappableResource {
    * similar to the tail part of /proc/[tid]/maps. Some extra
    * informations are put in a '()'.
   */
-  std::string str() const {
-    char str[200];
-    sprintf(str, "%02" PRIx64 ":%02" PRIx64 " %-10ld %s", id.dev_major(),
-            id.dev_minor(), id.disp_inode(), id.special_name());
-    return str;
-  }
+  std::string str() const { return id.special_name(); }
 
   static MappableResource anonymous() {
-    return FileId(FileId::NO_DEVICE, nr_anonymous_maps++,
-                  PSEUDODEVICE_ANONYMOUS);
+    return MappableResource(KernelMapping::NO_DEVICE, nr_anonymous_maps++,
+                            PSEUDODEVICE_ANONYMOUS);
   }
   static MappableResource heap() {
-    return MappableResource(
-        FileId(FileId::NO_DEVICE, FileId::NO_INODE, PSEUDODEVICE_HEAP));
+    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
+                            PSEUDODEVICE_HEAP);
   }
   static MappableResource scratch(pid_t tid) {
-    return MappableResource(
-        FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_SCRATCH));
+    return MappableResource(KernelMapping::NO_DEVICE, tid,
+                            PSEUDODEVICE_SCRATCH);
   }
   static MappableResource shared_mmap_file(const TraceMappedRegion& file);
   static MappableResource shared_mmap_anonymous(uint32_t unique_id) {
-    return MappableResource(
-        FileId(FileId::NO_DEVICE, unique_id, PSEUDODEVICE_SHARED_MMAP_FILE));
+    return MappableResource(KernelMapping::NO_DEVICE, unique_id,
+                            PSEUDODEVICE_SHARED_MMAP_FILE);
   }
   static MappableResource stack(pid_t tid) {
-    return MappableResource(FileId(FileId::NO_DEVICE, tid, PSEUDODEVICE_STACK));
+    return MappableResource(KernelMapping::NO_DEVICE, tid, PSEUDODEVICE_STACK);
   }
   static MappableResource syscallbuf(pid_t tid, int fd);
 
   FileId id;
+  dev_t device;
+  ino_t inode;
 
   static ino_t nr_anonymous_maps;
 };
@@ -818,7 +764,7 @@ private:
 
   /** Set the dynamic heap segment to |[start, end)| */
   void update_heap(remote_ptr<void> start, remote_ptr<void> end) {
-    heap = KernelMapping(start, end, "[heap]", PROT_READ | PROT_WRITE,
+    heap = KernelMapping(start, end, "[heap]", 0, 0, PROT_READ | PROT_WRITE,
                          MAP_ANONYMOUS | MAP_PRIVATE, 0);
   }
 

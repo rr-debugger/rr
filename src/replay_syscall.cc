@@ -529,7 +529,9 @@ static void finish_direct_mmap(
   if (note_task_map) {
     t->vm()->map(mapped_addr, length, prot, flags,
                  page_size() * mmap_offset_pages,
-                 MappableResource(FileId(file.stat())), real_file_name);
+                 MappableResource(file.stat().st_dev, file.stat().st_ino,
+                                  PSEUDODEVICE_NONE),
+                 real_file_name);
   }
 }
 
@@ -635,7 +637,8 @@ static void finish_private_mmap(AutoRemoteSyscalls& remote,
    * mapping at the kernel level.
    */
   t->vm()->map(mapped_addr, num_bytes, prot, flags, page_size() * offset_pages,
-               MappableResource(FileId(file.stat(), PSEUDODEVICE_ANONYMOUS)));
+               MappableResource(file.stat().st_dev, file.stat().st_ino,
+                                PSEUDODEVICE_ANONYMOUS));
 }
 
 static void finish_shared_mmap(AutoRemoteSyscalls& remote,
