@@ -442,8 +442,8 @@ void AddressSpace::brk(remote_ptr<void> addr) {
 
   remote_ptr<void> vm_addr = ceil_page_size(addr);
   if (heap.end() < vm_addr) {
-    map(heap.end(), vm_addr - heap.end(), heap.prot, heap.flags, heap.offset,
-        MappableResource::heap());
+    map(heap.end(), vm_addr - heap.end(), heap.prot, heap.flags,
+        heap.file_offset_bytes, MappableResource::heap());
   } else {
     unmap(vm_addr, heap.end() - vm_addr);
   }
@@ -619,7 +619,7 @@ bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
  */
 static off64_t adjust_offset(const MappableResource& r, const KernelMapping& m,
                              off64_t delta) {
-  return r.id.is_real_device() ? m.offset + delta : 0;
+  return r.id.is_real_device() ? m.file_offset_bytes + delta : 0;
 }
 
 void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
@@ -655,7 +655,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // prot.
     if (m.map.start() < new_start) {
       Mapping underflow(KernelMapping(m.map.start(), rem.start(), m.map.prot,
-                                      m.map.flags, m.map.offset),
+                                      m.map.flags, m.map.file_offset_bytes),
                         m.res);
       mem[underflow.map] = underflow;
     }
@@ -915,7 +915,7 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
       // longer treated as stack by the kernel.
       new_r.remove_stackness();
       Mapping underflow(KernelMapping(m.map.start(), rem.start(), m.map.prot,
-                                      m.map.flags, m.map.offset),
+                                      m.map.flags, m.map.file_offset_bytes),
                         new_r);
       mem[underflow.map] = underflow;
     }
@@ -994,9 +994,10 @@ static bool is_adjacent_mapping(const AddressSpace::Mapping& left,
     return false;
   }
   if (rleft.id.is_real_device() &&
-      mleft.offset + off64_t(mleft.size()) != mright.offset) {
-    LOG(debug) << "    (" << mleft.offset << " + " << mleft.size()
-               << " != " << mright.offset
+      mleft.file_offset_bytes + off64_t(mleft.size()) !=
+          mright.file_offset_bytes) {
+    LOG(debug) << "    (" << mleft.file_offset_bytes << " + " << mleft.size()
+               << " != " << mright.file_offset_bytes
                << ": offsets into real device aren't adjacent)";
     return false;
   }
@@ -1021,7 +1022,7 @@ static bool try_merge_adjacent(KernelMapping* left_m,
                           AddressSpace::Mapping(right_m, right_r),
                           KernelMapping::checkable_flags_mask)) {
     *left_m = KernelMapping(left_m->start(), right_m.end(), right_m.prot,
-                            right_m.flags, left_m->offset);
+                            right_m.flags, left_m->file_offset_bytes);
     return true;
   }
   return false;
@@ -1467,7 +1468,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   Mapping& m = it->second;
   Mapping new_m(KernelMapping(first_kv->first.start(), last_kv->first.end(),
                               m.map.prot, m.map.flags,
-                              first_kv->second.map.offset),
+                              first_kv->second.map.file_offset_bytes),
                 m.res);
   LOG(debug) << "  coalescing " << new_m.map;
 

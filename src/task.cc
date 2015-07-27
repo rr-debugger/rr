@@ -2218,7 +2218,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       if (mapping.res.id.psuedodevice() != PSEUDODEVICE_HEAP) {
         const KernelMapping& m = mapping.map;
         LOG(debug) << "mapping stack for " << new_tid << " at " << m;
-        t->as->map(m.start(), m.size(), m.prot, m.flags, m.offset,
+        t->as->map(m.start(), m.size(), m.prot, m.flags, m.file_offset_bytes,
                    MappableResource::stack(new_tid));
       }
     }

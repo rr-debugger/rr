@@ -156,13 +156,13 @@ public:
                                     MAP_GROWSDOWN;
   static const int checkable_flags_mask = MAP_PRIVATE | MAP_SHARED;
 
-  KernelMapping() : prot(0), flags(0), offset(0) {}
+  KernelMapping() : prot(0), flags(0), file_offset_bytes(0) {}
   KernelMapping(remote_ptr<void> addr, size_t num_bytes, int prot = 0,
                 int flags = 0, off64_t offset = 0)
       : MemoryRange(addr, addr + ceil_page_size(num_bytes)),
         prot(prot),
         flags(flags & map_flags_mask),
-        offset(offset) {
+        file_offset_bytes(offset) {
     assert_valid();
   }
   KernelMapping(remote_ptr<void> start, remote_ptr<void> end, int prot = 0,
@@ -170,12 +170,15 @@ public:
       : MemoryRange(start, end),
         prot(prot),
         flags(flags & map_flags_mask),
-        offset(offset) {
+        file_offset_bytes(offset) {
     assert_valid();
   }
 
   KernelMapping(const KernelMapping& o)
-      : MemoryRange(o), prot(o.prot), flags(o.flags), offset(o.offset) {
+      : MemoryRange(o),
+        prot(o.prot),
+        flags(o.flags),
+        file_offset_bytes(o.file_offset_bytes) {
     assert_valid();
   }
   KernelMapping operator=(const KernelMapping& o) {
@@ -188,7 +191,7 @@ public:
     assert(end() >= start());
     assert(size() % page_size() == 0);
     assert(!(flags & ~map_flags_mask));
-    assert(offset % page_size() == 0);
+    assert(file_offset_bytes % page_size() == 0);
   }
 
   /**
@@ -198,7 +201,7 @@ public:
    */
   KernelMapping to_kernel() const {
     return KernelMapping(start(), end(), prot, flags & checkable_flags_mask,
-                         offset);
+                         file_offset_bytes);
   }
 
   /**
@@ -210,13 +213,13 @@ public:
     sprintf(str, "%8p-%8p %c%c%c%c %08" PRIx64, (void*)start().as_int(),
             (void*)end().as_int(), (PROT_READ & prot) ? 'r' : '-',
             (PROT_WRITE & prot) ? 'w' : '-', (PROT_EXEC & prot) ? 'x' : '-',
-            (MAP_SHARED & flags) ? 's' : 'p', offset);
+            (MAP_SHARED & flags) ? 's' : 'p', file_offset_bytes);
     return str;
   }
 
   const int prot;
   const int flags;
-  const off64_t offset;
+  const off64_t file_offset_bytes;
 };
 std::ostream& operator<<(std::ostream& o, const KernelMapping& m);
 

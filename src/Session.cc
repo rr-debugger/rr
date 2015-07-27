@@ -371,7 +371,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
                           // or else many things will go
                           // haywire.
                           (m.map.flags & ~MAP_ANONYMOUS) | MAP_FIXED, remote_fd,
-                          m.map.offset / page_size());
+                          m.map.file_offset_bytes / page_size());
   ASSERT(remote.task(), addr == m.map.start());
 
   remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);

@@ -1076,11 +1076,12 @@ static void record_file_change(Task* t, int fd, uint64_t offset,
 
   for (auto& m : t->vm()->maps()) {
     if (m.res.fsname == file_name) {
-      uint64_t start = max(offset, uint64_t(m.map.offset));
-      uint64_t end =
-          min(offset + length, uint64_t(m.map.offset) + m.map.size());
+      uint64_t start = max(offset, uint64_t(m.map.file_offset_bytes));
+      uint64_t end = min(offset + length,
+                         uint64_t(m.map.file_offset_bytes) + m.map.size());
       if (start < end) {
-        t->record_remote(m.map.start() + (start - m.map.offset), end - start);
+        t->record_remote(m.map.start() + (start - m.map.file_offset_bytes),
+                         end - start);
       }
     }
   };
