@@ -81,7 +81,7 @@ EmuFile::EmuFile(ScopedFd&& fd, const string& orig_path, dev_t orig_device,
       is_marked(false) {}
 
 static EmuFs::FileId id_for(const AddressSpace::Mapping& m) {
-  return EmuFs::FileId(m.map.device(), m.map.inode());
+  return EmuFs::FileId(m.recorded_map.device(), m.recorded_map.inode());
 }
 
 EmuFile::shr_ptr EmuFs::at(const AddressSpace::Mapping& m) const {
@@ -167,9 +167,9 @@ EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& km,
   return vf;
 }
 
-EmuFile::shr_ptr EmuFs::create_anonymous(const MappableResource& res,
+EmuFile::shr_ptr EmuFs::create_anonymous(dev_t device, ino_t inode,
                                          size_t size) {
-  FileId id(res.device, res.inode);
+  FileId id(device, inode);
   assert(files.find(id) == files.end());
   stringstream name;
   name << "anonymous-" << id.inode;

@@ -152,11 +152,11 @@ public:
   */
   std::string str() const {
     char str[200];
-    sprintf(str, "%8p-%8p %c%c%c%c %02d:%02d" PRIx64 " %-10ld %08" PRIx64 " ",
+    sprintf(str, "%8p-%8p %c%c%c%c %08" PRIx64 " %02x:%02x %-10ld ",
             (void*)start().as_int(), (void*)end().as_int(),
             (PROT_READ & prot_) ? 'r' : '-', (PROT_WRITE & prot_) ? 'w' : '-',
             (PROT_EXEC & prot_) ? 'x' : '-', (MAP_SHARED & flags_) ? 's' : 'p',
-            (int)MAJOR(device()), (int)MINOR(device()), (long)inode(), offset);
+            offset, (int)MAJOR(device()), (int)MINOR(device()), (long)inode());
     return str + fsname();
   }
 

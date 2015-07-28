@@ -542,17 +542,24 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
   string file_name;
   dev_t device = KernelMapping::NO_DEVICE;
   ino_t inode = KernelMapping::NO_INODE;
+  KernelMapping recorded_km;
   if (flags & MAP_PRIVATE) {
     r = MappableResource::anonymous();
     auto result = remote.mmap_syscall(rec_addr, length, prot,
                                       // Tell the kernel to take |rec_addr|
                                       // seriously.
                                       flags | MAP_FIXED, fd, 0);
+    recorded_km = KernelMapping(rec_addr, rec_addr + ceil_page_size(length),
+                                string(), KernelMapping::NO_DEVICE,
+                                KernelMapping::NO_INODE, prot, flags, 0);
     ASSERT(remote.task(), rec_addr == result);
   } else {
     r = MappableResource::shared_mmap_anonymous(trace_frame.time());
-    auto emufile =
-        remote.task()->replay_session().emufs().create_anonymous(r, length);
+    TraceReader::MappedData data;
+    recorded_km = remote.task()->trace_reader().read_mapped_region(&data);
+    ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
+    auto emufile = remote.task()->replay_session().emufs().create_anonymous(
+        recorded_km.device(), recorded_km.inode(), length);
     Task::FStatResult real_file;
     finish_direct_mmap(remote, trace_frame, rec_addr, length, prot,
                        flags & ~MAP_ANONYMOUS, 0, emufile->proc_path(), 0,
@@ -563,7 +570,7 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
 
   if (note_task_map) {
     remote.task()->vm()->map(rec_addr, length, prot, flags, 0, r, file_name,
-                             device, inode);
+                             device, inode, &recorded_km);
   }
   return rec_addr;
 }
@@ -734,7 +741,7 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
             real_file.file_name, real_file.st.st_dev, real_file.st.st_ino, &km);
       } else {
         ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
-        if (!(MAP_SHARED & flags)) {
+        if (MAP_PRIVATE & flags) {
           finish_private_mmap(remote, trace_frame, length, prot, flags, fd,
                               offset_pages, km);
         } else {

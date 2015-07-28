@@ -2720,17 +2720,33 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   }
   remote_ptr<void> addr = t->regs().syscall_result();
   if (flags & MAP_ANONYMOUS) {
-    // Anonymous mappings are by definition not
-    // backed by any file-like object, and are
-    // initialized to zero, so there's no
-    // nondeterminism to record.
-    t->vm()->map(addr, size, prot, flags, 0, MappableResource::anonymous(),
-                 string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+    if (flags & MAP_PRIVATE) {
+      // Anonymous mappings are by definition not backed by any file-like
+      // object, and are initialized to zero, so there's no nondeterminism to
+      // record.
+      t->vm()->map(addr, size, prot, flags, 0, MappableResource::anonymous(),
+                   string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+    } else {
+      ASSERT(t, !(flags & MAP_GROWSDOWN));
+      // Read the kernel's mapping. There doesn't seem to be any other way to
+      // get the correct device/inode numbers. Fortunately anonymous shared
+      // mappings are rare.
+      KernelMapping kernel_info = t->vm()->read_kernel_mapping(t, addr);
+      KernelMapping km = t->vm()->map(
+          addr, size, prot, flags, 0, MappableResource::anonymous(),
+          kernel_info.fsname(), kernel_info.device(), kernel_info.inode());
+      struct stat st;
+      memset(&st, 0, sizeof(st));
+      st.st_dev = kernel_info.device();
+      st.st_ino = kernel_info.inode();
+      auto d = t->trace_writer().write_mapped_region(km, st);
+      ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
+    }
     return;
   }
 
   ASSERT(t, fd >= 0) << "Valid fd required for file mapping";
-  assert(!(flags & MAP_GROWSDOWN));
+  ASSERT(t, !(flags & MAP_GROWSDOWN));
 
   // TODO: save a reflink copy of the resource to the
   // trace directory as |fs/[st_dev].[st_inode]|.  Then

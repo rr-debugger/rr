@@ -353,6 +353,7 @@ set(BASIC_TESTS
   mmap_private
   mmap_ro
   mmap_shared
+  mmap_shared_multiple
   mmap_shared_subpage
   mmap_short_file
   mmap_tmpfs

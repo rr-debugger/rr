@@ -102,19 +102,35 @@ public:
     sprintf(maps_path, "/proc/%d/maps", t->tid);
     ASSERT(t, (maps_file = fopen(maps_path, "r"))) << "Failed to open "
                                                    << maps_path;
+    ++*this;
   }
-  ~KernelMapIterator() { fclose(maps_file); }
-  bool next(KernelMapping* result, string* raw_line = nullptr);
+  ~KernelMapIterator() {
+    if (maps_file) {
+      fclose(maps_file);
+    }
+  }
+  const KernelMapping& current(string* raw_line = nullptr) {
+    if (raw_line) {
+      *raw_line = this->raw_line;
+    }
+    return km;
+  }
+  bool at_end() { return !maps_file; }
+  void operator++();
 
 private:
   Task* t;
   FILE* maps_file;
+  string raw_line;
+  KernelMapping km;
 };
 
-bool KernelMapIterator::next(KernelMapping* result, string* raw_line) {
+void KernelMapIterator::operator++() {
   char line[PATH_MAX * 2];
   if (!fgets(line, sizeof(line), maps_file)) {
-    return false;
+    fclose(maps_file);
+    maps_file = nullptr;
+    return;
   }
 
   uint64_t start, end, offset, inode;
@@ -133,9 +149,7 @@ bool KernelMapIterator::next(KernelMapping* result, string* raw_line) {
   if (line[last_char] == '\n') {
     line[last_char] = 0;
   }
-  if (raw_line) {
-    *raw_line = line;
-  }
+  raw_line = line;
 
   const char* name = trim_leading_blanks(line + chars_scanned);
 #if defined(__i386__)
@@ -160,32 +174,29 @@ bool KernelMapIterator::next(KernelMapping* result, string* raw_line) {
   int f = (strchr(flags, 'p') ? MAP_PRIVATE : 0) |
           (strchr(flags, 's') ? MAP_SHARED : 0);
 
-  *result = KernelMapping(start, end, name, MKDEV(dev_major, dev_minor), inode,
-                          prot, f, offset);
-  return true;
+  km = KernelMapping(start, end, name, MKDEV(dev_major, dev_minor), inode, prot,
+                     f, offset);
 }
 
 KernelMapping AddressSpace::read_kernel_mapping(Task* t,
                                                 remote_ptr<void> addr) {
-  KernelMapIterator it(t);
-  KernelMapping km;
   MemoryRange range(addr, 1);
-  while (it.next(&km)) {
+  for (KernelMapIterator it(t); !it.at_end(); ++it) {
+    const KernelMapping& km = it.current();
     if (km.contains(range)) {
       return km;
     }
   }
-  return km;
+  return KernelMapping();
 }
 
 /**
  * Cat the /proc/[t->tid]/maps file to stdout, line by line.
  */
 static void print_process_mmap(Task* t) {
-  KernelMapIterator it(t);
-  KernelMapping km;
-  string line;
-  while (it.next(&km, &line)) {
+  for (KernelMapIterator it(t); !it.at_end(); ++it) {
+    string line;
+    it.current(&line);
     cerr << line << '\n';
   }
 }
@@ -195,9 +206,8 @@ AddressSpace::~AddressSpace() { session_->on_destroy(this); }
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
 static remote_ptr<void> find_rr_vdso(Task* t, size_t* len) {
-  KernelMapIterator it(t);
-  KernelMapping km;
-  while (it.next(&km)) {
+  for (KernelMapIterator it(t); !it.at_end(); ++it) {
+    auto& km = it.current();
     if (km.fsname() == "[vdso]") {
       *len = km.size();
       ASSERT(t, uint32_t(*len) == *len) << "VDSO more than 4GB???";
@@ -473,8 +483,8 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
   num_bytes = ceil_page_size(num_bytes);
-  KernelMapping m(addr, addr + num_bytes, fsname, res.device, res.inode, prot,
-                  flags, offset_bytes);
+  KernelMapping m(addr, addr + num_bytes, fsname, device, inode, prot, flags,
+                  offset_bytes);
   if (!num_bytes) {
     return m;
   }
@@ -502,8 +512,8 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
 
   if (flags & MAP_GROWSDOWN) {
     // The first page is made into a guard page by the kernel
-    m = KernelMapping(addr + page_size(), addr + num_bytes, fsname, res.device,
-                      res.inode, prot, flags, offset_bytes + page_size());
+    m = KernelMapping(addr + page_size(), addr + num_bytes, fsname, device,
+                      inode, prot, flags, offset_bytes + page_size());
   }
   map_and_coalesce(m, recorded_map ? *recorded_map : m, res.psdev);
 
@@ -911,6 +921,19 @@ void AddressSpace::did_fork_into(Task* t) {
   }
 }
 
+static PseudoDevice to_kernel(PseudoDevice psdev) {
+  switch (psdev) {
+    case PSEUDODEVICE_STACK:
+    case PSEUDODEVICE_SCRATCH:
+    case PSEUDODEVICE_ANONYMOUS:
+      return PSEUDODEVICE_ANONYMOUS;
+    case PSEUDODEVICE_SYSV_SHM:
+      return PSEUDODEVICE_SYSV_SHM;
+    default:
+      return PSEUDODEVICE_NONE;
+  }
+}
+
 static bool is_equivalent(const KernelMapping& km1, PseudoDevice pd1,
                           const KernelMapping& km2, PseudoDevice pd2) {
   if (pd1 != pd2) {
@@ -978,15 +1001,16 @@ static bool is_adjacent_mapping(const KernelMapping& mleft,
 }
 
 /**
- * If (*left_m, left_r), (right_m, right_r) are adjacent (see
+ * If |*left_m| and |right_m| are adjacent (see
  * |is_adjacent_mapping()|), write a merged segment descriptor to
  * |*left_m| and return true.  Otherwise return false.
  */
-static bool try_merge_adjacent(KernelMapping* left_m, PseudoDevice left_psdev,
-                               const KernelMapping& right_m,
-                               PseudoDevice right_psdev) {
-  if (is_adjacent_mapping(*left_m, left_psdev, right_m, right_psdev,
-                          KernelMapping::checkable_flags_mask)) {
+static bool try_merge_adjacent(KernelMapping* left_m,
+                               const KernelMapping& right_m) {
+  if (is_adjacent_mapping(
+          *left_m, to_kernel(pseudodevice_for_name(left_m->fsname())), right_m,
+          to_kernel(pseudodevice_for_name(right_m.fsname())),
+          KernelMapping::checkable_flags_mask)) {
     *left_m = KernelMapping(left_m->start(), right_m.end(), left_m->fsname(),
                             left_m->device(), left_m->inode(), right_m.prot(),
                             right_m.flags(), left_m->file_offset_bytes());
@@ -995,35 +1019,8 @@ static bool try_merge_adjacent(KernelMapping* left_m, PseudoDevice left_psdev,
   return false;
 }
 
-struct VerifyAddressSpace {
-  typedef AddressSpace::MemoryMap::const_iterator const_iterator;
-
-  VerifyAddressSpace(const AddressSpace* as)
-      : as(as), it(as->mem.begin()), phase(NO_PHASE) {}
-
-  /**
-   * |km| and |m| are the same mapping of the same resource, or
-   * don't return.
-   */
-  void assert_segments_match(Task* t);
-
-  /* Current kernel Mapping we're merging and trying to
-   * match. */
-  KernelMapping km;
-  /* Current cached Mapping we've merged and are trying to
-   * match. */
-  KernelMapping m;
-  /* The resource that |km| and |m| map. */
-  PseudoDevice psdev;
-  const AddressSpace* as;
-  /* Iterator over mappings in |as|. */
-  const_iterator it;
-  /* Which mapping-checking phase we're in.  See below. */
-  enum { NO_PHASE, MERGING_CACHED, INITING_KERNEL, MERGING_KERNEL } phase;
-};
-
-void VerifyAddressSpace::assert_segments_match(Task* t) {
-  assert(MERGING_KERNEL == phase);
+static void assert_segments_match(Task* t, const KernelMapping& m,
+                                  const KernelMapping& km) {
   bool same_mapping = (m.start() == km.start() && m.end() == km.end() &&
                        m.prot() == km.prot() && m.flags() == km.flags());
   // When we stripped most identifying info from |r| with
@@ -1045,7 +1042,7 @@ void VerifyAddressSpace::assert_segments_match(Task* t) {
   }
   if (!same_mapping) {
     LOG(error) << "cached mmap:";
-    as->dump();
+    t->vm()->dump();
     LOG(error) << "/proc/" << t->tid << "/mmaps:";
     print_process_mmap(t);
 
@@ -1089,90 +1086,49 @@ KernelMapping AddressSpace::vdso() const {
   return mapping_of(vdso_start_addr).map;
 }
 
-static PseudoDevice to_kernel(PseudoDevice psdev) {
-  switch (psdev) {
-    case PSEUDODEVICE_STACK:
-    case PSEUDODEVICE_SCRATCH:
-    case PSEUDODEVICE_ANONYMOUS:
-      return PSEUDODEVICE_ANONYMOUS;
-    case PSEUDODEVICE_SYSV_SHM:
-      return PSEUDODEVICE_SYSV_SHM;
-    default:
-      return PSEUDODEVICE_NONE;
-  }
-}
-
 /**
  * Iterate over /proc/maps segments for a task and verify that the
  * task's cached mapping matches the kernel's (given a lenient fuzz
  * factor).
  */
 void AddressSpace::verify(Task* t) const {
-  assert(task_set().end() != task_set().find(t));
+  ASSERT(t, task_set().end() != task_set().find(t));
 
-  VerifyAddressSpace vas(this);
-  KernelMapIterator it(t);
-  KernelMapping km;
-  while (it.next(&km)) {
-    while (true) {
-      LOG(debug) << "examining /proc/maps segment " << km;
-
-      // Merge adjacent cached mappings.
-      if (vas.NO_PHASE == vas.phase) {
-        assert(vas.it != mem.end());
-
-        vas.phase = vas.MERGING_CACHED;
-        // Start of next segment range to match.
-        vas.m = vas.it->second.map.to_kernel();
-        vas.psdev = to_kernel(vas.it->second.pseudodevice());
-        do {
-          ++vas.it;
-        } while (vas.it != mem.end() &&
-                 try_merge_adjacent(&vas.m, vas.psdev,
-                                    vas.it->second.map.to_kernel(),
-                                    to_kernel(vas.it->second.pseudodevice())));
-        vas.phase = vas.INITING_KERNEL;
-      }
-
-      LOG(debug) << "  merged cached seg: " << vas.m;
-
-      // Merge adjacent kernel mappings.
-      assert(km.flags() == (km.flags() & KernelMapping::checkable_flags_mask));
-      PseudoDevice kpsdev = to_kernel(pseudodevice_for_name(km.fsname()));
-
-      if (vas.INITING_KERNEL == vas.phase) {
-        assert(is_equivalent(km, kpsdev, vas.m, vas.psdev)
-               // XXX not-so-pretty hack.  If the mapped file
-               // lives in our replayer's emulated fs, then it
-               // will have a real system device/inode
-               // descriptor.  We /could/ initialize the
-               // MappableResource with that descriptor, but
-               // we rely on quick access to the recorded
-               // (i.e. emulated in replay) device/inode for
-               // gc.  So this suffices for now.
-               ||
-               string::npos != km.fsname().find(SHMEM_FS "/rr-emufs") ||
-               string::npos != km.fsname().find(SHMEM_FS2 "/rr-emufs"));
-        vas.km = km;
-        vas.psdev = kpsdev;
-        vas.phase = vas.MERGING_KERNEL;
-        break;
-      }
-      if (vas.MERGING_KERNEL == vas.phase &&
-          try_merge_adjacent(&vas.km, vas.psdev, km, kpsdev)) {
-        break;
-      }
-
-      // Merged as much as we can ... now the mappings must be
-      // equal.
-      vas.assert_segments_match(t);
-
-      vas.phase = vas.NO_PHASE;
+  MemoryMap::const_iterator mem_it = mem.begin();
+  KernelMapIterator kernel_it(t);
+  while (!kernel_it.at_end() && mem_it != mem.end()) {
+    KernelMapping km = kernel_it.current();
+    ++kernel_it;
+    while (!kernel_it.at_end() &&
+           try_merge_adjacent(&km, kernel_it.current())) {
+      ++kernel_it;
     }
+
+    KernelMapping vm = mem_it->second.map;
+    ++mem_it;
+    while (mem_it != mem.end() && try_merge_adjacent(&vm, mem_it->second.map)) {
+      ++mem_it;
+    }
+
+    ASSERT(t, is_equivalent(
+                  km.to_kernel(), to_kernel(pseudodevice_for_name(km.fsname())),
+                  vm.to_kernel(), to_kernel(pseudodevice_for_name(vm.fsname())))
+                  // XXX not-so-pretty hack.  If the mapped file
+                  // lives in our replayer's emulated fs, then it
+                  // will have a real system device/inode
+                  // descriptor.  We /could/ initialize the
+                  // MappableResource with that descriptor, but
+                  // we rely on quick access to the recorded
+                  // (i.e. emulated in replay) device/inode for
+                  // gc.  So this suffices for now.
+                  ||
+                  string::npos != km.fsname().find(SHMEM_FS "/rr-emufs") ||
+                  string::npos != km.fsname().find(SHMEM_FS2 "/rr-emufs"));
+
+    assert_segments_match(t, vm.to_kernel(), km.to_kernel());
   }
 
-  assert(vas.MERGING_KERNEL == vas.phase);
-  vas.assert_segments_match(t);
+  ASSERT(t, kernel_it.at_end() && mem_it == mem.end());
 }
 
 AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
@@ -1480,9 +1436,8 @@ void AddressSpace::map_and_coalesce(const KernelMapping& m,
 }
 
 void AddressSpace::populate_address_space(Task* t) {
-  KernelMapIterator it(t);
-  KernelMapping km;
-  while (it.next(&km)) {
+  for (KernelMapIterator it(t); !it.at_end(); ++it) {
+    auto& km = it.current();
     if (!heap.start() && exe == km.fsname() && !(km.prot() & PROT_EXEC) &&
         (km.prot() & (PROT_READ | PROT_WRITE))) {
       update_heap(km.end(), km.end());

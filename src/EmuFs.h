@@ -163,7 +163,7 @@ public:
    * Create an emulated file representing the shared anonymous mapping
    * referenced by |id|.
    */
-  EmuFile::shr_ptr create_anonymous(const MappableResource& res, size_t size);
+  EmuFile::shr_ptr create_anonymous(dev_t device, ino_t inode, size_t size);
 
   /**
    * Dump information about this emufs to the "error" log.
