@@ -704,6 +704,11 @@ private:
   AddressSpace(Task* t, const std::string& exe, uint32_t exec_count);
   AddressSpace(Session* session, const AddressSpace& o, pid_t leader_tid,
                uint32_t leader_serial, uint32_t exec_count);
+  /**
+   * After an exec, populate the new address space of |t| with
+   * the existing mappings we find in /proc/maps.
+   */
+  void populate_address_space(Task* t);
 
   void unmap_internal(remote_ptr<void> addr, ssize_t num_bytes);
 
@@ -965,13 +970,6 @@ private:
    * as possible given the data available from /proc/maps.
    */
   static void check_segment_iterator(void* vasp, Task* t,
-                                     const struct map_iterator_data* data);
-
-  /**
-   * After an exec, populate the new address space of |t| with
-   * the existing mappings we find in /proc/maps.
-   */
-  static void populate_address_space(void* asp, Task* t,
                                      const struct map_iterator_data* data);
 
   AddressSpace operator=(const AddressSpace&) = delete;

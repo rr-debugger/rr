@@ -96,157 +96,107 @@ static const char* trim_leading_blanks(const char* str) {
 }
 
 /**
- * Collecion of data describing a mapped memory segment, as parsed
- * from /proc/[tid]/maps on linux.
+ * The following helper is used to iterate over a tracee's memory
+ * map.
  */
-struct mapped_segment_info {
-  mapped_segment_info()
-      : prot(0),
-        flags(0),
-        file_offset(0),
-        inode(0),
-        dev_major(0),
-        dev_minor(0) {}
-  /* Name of the segment, which isn't necessarily an fs entry
-   * anywhere. */
-  std::string name;
-  remote_ptr<void> start_addr;
-  remote_ptr<void> end_addr;
-  int prot;
-  int flags;
-  int64_t file_offset;
-  int64_t inode;
-  int dev_major;
-  int dev_minor;
-};
-
-ostream& operator<<(ostream& o, const mapped_segment_info& m) {
-  o << m.start_addr << "-" << m.end_addr << " " << HEX(m.prot)
-    << " f:" << HEX(m.flags);
-  return o;
-}
-
-/**
- * The following helpers are used to iterate over a tracee's memory
- * maps.  Clients call |iterate_memory_map()|, passing an iterator
- * function that's invoked for each mapping.
- *
- * For each map, a |struct map_iterator_data| object is provided which
- * contains segment info, the size of the mapping, and the raw
- * /proc/maps line the data was parsed from.
- *
- * Any pointers passed transitively to the iterator function are
- * *owned by |iterate_memory_map()||*.  Iterator functions must copy
- * the data they wish to save beyond the scope of the iterator
- * function invocation.
- */
-struct map_iterator_data {
-  map_iterator_data() : raw_map_line(nullptr) {}
-  struct mapped_segment_info info;
-  const char* raw_map_line;
-};
-typedef void (*memory_map_iterator_t)(void* it_data, Task* t,
-                                      const struct map_iterator_data* data);
-
-static void iterate_memory_map(Task* t, memory_map_iterator_t it,
-                               void* it_data) {
-  FILE* maps_file;
-  char line[PATH_MAX * 2];
-  {
+class KernelMapIterator {
+public:
+  KernelMapIterator(Task* t) : t(t) {
     char maps_path[PATH_MAX];
-    snprintf(maps_path, sizeof(maps_path) - 1, "/proc/%d/maps", t->tid);
+    sprintf(maps_path, "/proc/%d/maps", t->tid);
     ASSERT(t, (maps_file = fopen(maps_path, "r"))) << "Failed to open "
                                                    << maps_path;
   }
-  while (fgets(line, sizeof(line), maps_file)) {
-    struct map_iterator_data data;
-    data.raw_map_line = line;
-    uint64_t start, end;
-    char flags[32];
-    int chars_scanned;
-    int nparsed = sscanf(
-        line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64 " %x:%x %" SCNu64 " %n",
-        &start, &end, flags, &data.info.file_offset, &data.info.dev_major,
-        &data.info.dev_minor, &data.info.inode, &chars_scanned);
-    ASSERT(t, (8 /*number of info fields*/ == nparsed ||
-               7 /*num fields if name is blank*/ == nparsed))
-        << "Only parsed " << nparsed << " fields of segment info from\n"
-        << data.raw_map_line;
+  ~KernelMapIterator() { fclose(maps_file); }
+  bool next(KernelMapping* result, string* raw_line = nullptr);
 
-    // trim trailing newline, if any
-    int last_char = strlen(line) - 1;
-    if (line[last_char] == '\n') {
-      line[last_char] = 0;
-    }
-    data.info.name = trim_leading_blanks(line + chars_scanned);
-#if defined(__i386__)
-    if (start > numeric_limits<uint32_t>::max() ||
-        end > numeric_limits<uint32_t>::max() ||
-        data.info.name == "[vsyscall]") {
-      // We manually read the exe link here because
-      // this helper is used to set
-      // |t->vm()->exe_image()|, so we can't rely on
-      // that being correct yet.
-      char proc_exe[PATH_MAX];
-      char exe[PATH_MAX];
-      snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
-      readlink(proc_exe, exe, sizeof(exe));
-      FATAL() << "Sorry, tracee " << t->tid << " has x86-64 image " << exe
-              << " and that's not supported with a 32-bit rr.";
-    }
-#endif
-    data.info.start_addr = start;
-    data.info.end_addr = end;
+private:
+  Task* t;
+  FILE* maps_file;
+};
 
-    data.info.prot |= strchr(flags, 'r') ? PROT_READ : 0;
-    data.info.prot |= strchr(flags, 'w') ? PROT_WRITE : 0;
-    data.info.prot |= strchr(flags, 'x') ? PROT_EXEC : 0;
-    data.info.flags |= strchr(flags, 'p') ? MAP_PRIVATE : 0;
-    data.info.flags |= strchr(flags, 's') ? MAP_SHARED : 0;
-
-    it(it_data, t, &data);
+bool KernelMapIterator::next(KernelMapping* result, string* raw_line) {
+  char line[PATH_MAX * 2];
+  if (!fgets(line, sizeof(line), maps_file)) {
+    return false;
   }
-  fclose(maps_file);
-}
 
-static void print_process_mmap_iterator(void* unused, Task* t,
-                                        const struct map_iterator_data* data) {
-  fputs(data->raw_map_line, stderr);
-  fputc('\n', stderr);
+  uint64_t start, end, offset, inode;
+  int dev_major, dev_minor;
+  char flags[32];
+  int chars_scanned;
+  int nparsed = sscanf(line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64
+                             " %x:%x %" SCNu64 " %n",
+                       &start, &end, flags, &offset, &dev_major, &dev_minor,
+                       &inode, &chars_scanned);
+  ASSERT(t, 8 /*number of info fields*/ == nparsed ||
+                7 /*num fields if name is blank*/ == nparsed);
+
+  // trim trailing newline, if any
+  int last_char = strlen(line) - 1;
+  if (line[last_char] == '\n') {
+    line[last_char] = 0;
+  }
+  if (raw_line) {
+    *raw_line = line;
+  }
+
+  const char* name = trim_leading_blanks(line + chars_scanned);
+#if defined(__i386__)
+  if (start > numeric_limits<uint32_t>::max() ||
+      end > numeric_limits<uint32_t>::max() ||
+      strcmp(name, "[vsyscall]") == 0) {
+    // We manually read the exe link here because
+    // this helper is used to set
+    // |t->vm()->exe_image()|, so we can't rely on
+    // that being correct yet.
+    char proc_exe[PATH_MAX];
+    char exe[PATH_MAX];
+    snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
+    readlink(proc_exe, exe, sizeof(exe));
+    FATAL() << "Sorry, tracee " << t->tid << " has x86-64 image " << exe
+            << " and that's not supported with a 32-bit rr.";
+  }
+#endif
+  int prot = (strchr(flags, 'r') ? PROT_READ : 0) |
+             (strchr(flags, 'w') ? PROT_WRITE : 0) |
+             (strchr(flags, 'x') ? PROT_EXEC : 0);
+  int f = (strchr(flags, 'p') ? MAP_PRIVATE : 0) |
+          (strchr(flags, 's') ? MAP_SHARED : 0);
+
+  *result = KernelMapping(start, end, name, MKDEV(dev_major, dev_minor), inode,
+                          prot, f, offset);
+  return true;
 }
 
 /**
  * Cat the /proc/[t->tid]/maps file to stdout, line by line.
  */
 static void print_process_mmap(Task* t) {
-  iterate_memory_map(t, print_process_mmap_iterator, nullptr);
+  KernelMapIterator it(t);
+  KernelMapping km;
+  string line;
+  while (it.next(&km, &line)) {
+    cerr << line << '\n';
+  }
 }
 
 AddressSpace::~AddressSpace() { session_->on_destroy(this); }
 
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
-struct RrVdso {
-  remote_ptr<uint8_t> start;
-  remote_ptr<uint8_t> end;
-};
-
-static void find_rr_vdso_map(void* it_data, Task* t,
-                             const struct map_iterator_data* data) {
-  if (data->info.name == "[vdso]") {
-    auto result = static_cast<RrVdso*>(it_data);
-    result->start = data->info.start_addr.cast<uint8_t>();
-    result->end = data->info.end_addr.cast<uint8_t>();
-  }
-}
-
 static remote_ptr<void> find_rr_vdso(Task* t, size_t* len) {
-  RrVdso result;
-  iterate_memory_map(t, find_rr_vdso_map, &result);
-  ASSERT(t, result.start) << "rr VDSO not found?";
-  *len = result.end - result.start;
-  ASSERT(t, uint32_t(*len) == *len) << "VDSO more than 4GB???";
-  return result.start;
+  KernelMapIterator it(t);
+  KernelMapping km;
+  while (it.next(&km)) {
+    if (km.fsname() == "[vdso]") {
+      *len = km.size();
+      ASSERT(t, uint32_t(*len) == *len) << "VDSO more than 4GB???";
+      return km.start();
+    }
+  }
+  ASSERT(t, false) << "rr VDSO not found?";
+  return nullptr;
 }
 
 static uint32_t find_offset_of_syscall_instruction_in(SupportedArch arch,
@@ -1073,11 +1023,6 @@ static PseudoDevice pseudodevice_for_name(const string& name) {
   return PSEUDODEVICE_NONE;
 }
 
-/**
- * Iterate over /proc/maps segments for a task and verify that the
- * task's cached mapping matches the kernel's (given a lenient fuzz
- * factor).
- */
 struct VerifyAddressSpace {
   typedef AddressSpace::MemoryMap::const_iterator const_iterator;
 
@@ -1154,8 +1099,7 @@ void AddressSpace::fix_stack_segment_start(const MemoryRange& mapping,
  *  3. Ensure that the two merged mappings are the same.
  *  4. Move on to the next mapping region, goto 1.
  *
- * There are two subtleties of this implementation.  The first is that
- * the kernel and rr have (only very slightly! argh) different
+ * The kernel and rr have (only very slightly! argh) different
  * heuristics for merging adjacent memory mappings.  That means we
  * can't simply iterate through /proc/maps and assert that a cached
  * mapping corresponds to it, though we sure would like to.  Instead,
@@ -1165,94 +1109,83 @@ void AddressSpace::fix_stack_segment_start(const MemoryRange& mapping,
  * not honoring either rr or kernel criteria).  That means that the
  * mapped segments that this helper compares may look nothing like the
  * segments you would see in a /proc/maps dump or |as->dump()|.
- *
- * The second subtlety is that rr's /proc/maps iterator uses a C-style
- * callback iterator, whereas the cached map iterator uses a C++
- * iterator in a loop.  That means we have to do a bit of fancy
- * footwork to make the two styles iterate over the same mappings.
- * Since C++ iterators are more flexible, we do the C++ iteration
- * first, and then force a state machine to make the matchin required
- * C-iterator calls.
- *
- * TODO: replace iterate_memory_map()
  */
-/*static*/ void AddressSpace::check_segment_iterator(
-    void* pvas, Task* t, const struct map_iterator_data* data) {
-  VerifyAddressSpace* vas = static_cast<VerifyAddressSpace*>(pvas);
-  const AddressSpace* as = vas->as;
-  const struct mapped_segment_info& info = data->info;
-
-  LOG(debug) << "examining /proc/maps segment " << info;
-
-  // Merge adjacent cached mappings.
-  if (vas->NO_PHASE == vas->phase) {
-    assert(vas->it != as->mem.end());
-
-    vas->phase = vas->MERGING_CACHED;
-    // Start of next segment range to match.
-    vas->m = vas->it->second.map.to_kernel();
-    vas->r = vas->it->second.res.to_kernel();
-    do {
-      ++vas->it;
-    } while (vas->it != as->mem.end() &&
-             try_merge_adjacent(&vas->m, vas->r,
-                                vas->it->second.map.to_kernel(),
-                                vas->it->second.res.to_kernel()));
-    vas->phase = vas->INITING_KERNEL;
-  }
-
-  LOG(debug) << "  merged cached seg: " << vas->m;
-
-  // Merge adjacent kernel mappings.
-  assert(info.flags == (info.flags & KernelMapping::checkable_flags_mask));
-  KernelMapping km(info.start_addr, info.end_addr, info.name,
-                   MKDEV(info.dev_major, info.dev_minor), info.inode, info.prot,
-                   info.flags, info.file_offset);
-  PseudoDevice psdev = pseudodevice_for_name(info.name);
-  MappableResource kr = MappableResource(MKDEV(info.dev_major, info.dev_minor),
-                                         info.inode, psdev).to_kernel();
-
-  if (vas->INITING_KERNEL == vas->phase) {
-    assert(is_equivalent(km, kr, vas->m, vas->r)
-           // XXX not-so-pretty hack.  If the mapped file
-           // lives in our replayer's emulated fs, then it
-           // will have a real system device/inode
-           // descriptor.  We /could/ initialize the
-           // MappableResource with that descriptor, but
-           // we rely on quick access to the recorded
-           // (i.e. emulated in replay) device/inode for
-           // gc.  So this suffices for now.
-           ||
-           string::npos != km.fsname().find(SHMEM_FS "/rr-emufs") ||
-           string::npos != km.fsname().find(SHMEM_FS2 "/rr-emufs"));
-    vas->km = km;
-    vas->r = kr;
-    vas->phase = vas->MERGING_KERNEL;
-    return;
-  }
-  if (vas->MERGING_KERNEL == vas->phase &&
-      try_merge_adjacent(&vas->km, vas->r, km, kr)) {
-    return;
-  }
-
-  // Merged as much as we can ... now the mappings must be
-  // equal.
-  vas->assert_segments_match(t);
-
-  vas->phase = vas->NO_PHASE;
-  check_segment_iterator(pvas, t, data);
-}
 
 KernelMapping AddressSpace::vdso() const {
   assert(!vdso_start_addr.is_null());
   return mapping_of(vdso_start_addr).map;
 }
 
+/**
+ * Iterate over /proc/maps segments for a task and verify that the
+ * task's cached mapping matches the kernel's (given a lenient fuzz
+ * factor).
+ */
 void AddressSpace::verify(Task* t) const {
   assert(task_set().end() != task_set().find(t));
 
   VerifyAddressSpace vas(this);
-  iterate_memory_map(t, check_segment_iterator, &vas);
+  KernelMapIterator it(t);
+  KernelMapping km;
+  while (it.next(&km)) {
+    while (true) {
+      LOG(debug) << "examining /proc/maps segment " << km;
+
+      // Merge adjacent cached mappings.
+      if (vas.NO_PHASE == vas.phase) {
+        assert(vas.it != mem.end());
+
+        vas.phase = vas.MERGING_CACHED;
+        // Start of next segment range to match.
+        vas.m = vas.it->second.map.to_kernel();
+        vas.r = vas.it->second.res.to_kernel();
+        do {
+          ++vas.it;
+        } while (vas.it != mem.end() &&
+                 try_merge_adjacent(&vas.m, vas.r,
+                                    vas.it->second.map.to_kernel(),
+                                    vas.it->second.res.to_kernel()));
+        vas.phase = vas.INITING_KERNEL;
+      }
+
+      LOG(debug) << "  merged cached seg: " << vas.m;
+
+      // Merge adjacent kernel mappings.
+      assert(km.flags == (km.flags & KernelMapping::checkable_flags_mask));
+      PseudoDevice psdev = pseudodevice_for_name(km.fsname());
+      MappableResource kr =
+          MappableResource(km.device(), km.inode(), psdev).to_kernel();
+
+      if (vas.INITING_KERNEL == vas.phase) {
+        assert(is_equivalent(km, kr, vas.m, vas.r)
+               // XXX not-so-pretty hack.  If the mapped file
+               // lives in our replayer's emulated fs, then it
+               // will have a real system device/inode
+               // descriptor.  We /could/ initialize the
+               // MappableResource with that descriptor, but
+               // we rely on quick access to the recorded
+               // (i.e. emulated in replay) device/inode for
+               // gc.  So this suffices for now.
+               ||
+               string::npos != km.fsname().find(SHMEM_FS "/rr-emufs") ||
+               string::npos != km.fsname().find(SHMEM_FS2 "/rr-emufs"));
+        vas.km = km;
+        vas.r = kr;
+        vas.phase = vas.MERGING_KERNEL;
+        break;
+      }
+      if (vas.MERGING_KERNEL == vas.phase &&
+          try_merge_adjacent(&vas.km, vas.r, km, kr)) {
+        break;
+      }
+
+      // Merged as much as we can ... now the mappings must be
+      // equal.
+      vas.assert_segments_match(t);
+
+      vas.phase = vas.NO_PHASE;
+    }
+  }
 
   assert(vas.MERGING_KERNEL == vas.phase);
   vas.assert_segments_match(t);
@@ -1270,7 +1203,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
   if (session_->can_validate()) {
-    iterate_memory_map(t, populate_address_space, this);
+    populate_address_space(t);
     assert(!vdso_start_addr.is_null());
   } else {
     // Find the location of the VDSO in the just-spawned process. This will
@@ -1559,49 +1492,46 @@ void AddressSpace::map_and_coalesce(const KernelMapping& m,
   update_watchpoint_values(m.start(), m.end());
 }
 
-/*static*/ void AddressSpace::populate_address_space(
-    void* asp, Task* t, const struct map_iterator_data* data) {
-  AddressSpace* as = static_cast<AddressSpace*>(asp);
-  const struct mapped_segment_info& info = data->info;
-
-  if (!as->heap.start() && as->exe == info.name && !(info.prot & PROT_EXEC) &&
-      (info.prot & (PROT_READ | PROT_WRITE))) {
-    as->update_heap(info.end_addr, info.end_addr);
-    LOG(debug) << "  guessing heap starts at " << as->heap.start()
-               << " (end of text segment)";
-  }
-
-  // This segment is adjacent to our previous guess at the start of
-  // the dynamic heap, but it's still not an explicit heap segment.
-  // Or, in corner cases, the segment is the final mapping of the data
-  // segment of the exe image, but is not adjacent to the prior mapped
-  // segment of the exe.  (This is seen with x86-64 bash on Fedora
-  // Core 20.)  Update the guess.
-  if (!(info.prot & PROT_EXEC) &&
-      (as->heap.end() == info.start_addr || as->exe == info.name)) {
-    assert(as->heap.start() == as->heap.end() || as->exe == info.name);
-    as->update_heap(info.end_addr, info.end_addr);
-    LOG(debug) << "  updating start-of-heap guess to " << as->heap.start()
-               << " (end of mapped-data segment)";
-  }
-
-  PseudoDevice psdev = pseudodevice_for_name(info.name);
-  if (psdev == PSEUDODEVICE_HEAP) {
-    if (!as->heap.start()) {
-      // No guess for the heap start. Assume it's just the [heap] segment.
-      as->update_heap(info.start_addr, info.end_addr);
-    } else {
-      as->update_heap(as->heap.start(), info.end_addr);
+void AddressSpace::populate_address_space(Task* t) {
+  KernelMapIterator it(t);
+  KernelMapping km;
+  while (it.next(&km)) {
+    if (!heap.start() && exe == km.fsname() && !(km.prot & PROT_EXEC) &&
+        (km.prot & (PROT_READ | PROT_WRITE))) {
+      update_heap(km.end(), km.end());
+      LOG(debug) << "  guessing heap starts at " << heap.start()
+                 << " (end of text segment)";
     }
-  }
 
-  int flags = info.flags;
-  if (psdev == PSEUDODEVICE_STACK) {
-    flags |= MAP_GROWSDOWN;
+    // This segment is adjacent to our previous guess at the start of
+    // the dynamic heap, but it's still not an explicit heap segment.
+    // Or, in corner cases, the segment is the final mapping of the data
+    // segment of the exe image, but is not adjacent to the prior mapped
+    // segment of the exe.  (This is seen with x86-64 bash on Fedora
+    // Core 20.)  Update the guess.
+    if (!(km.prot & PROT_EXEC) &&
+        (heap.end() == km.start() || exe == km.fsname())) {
+      assert(heap.start() == heap.end() || exe == km.fsname());
+      update_heap(km.end(), km.end());
+      LOG(debug) << "  updating start-of-heap guess to " << heap.start()
+                 << " (end of mapped-data segment)";
+    }
+
+    PseudoDevice psdev = pseudodevice_for_name(km.fsname());
+    if (psdev == PSEUDODEVICE_HEAP) {
+      if (!heap.start()) {
+        // No guess for the heap start. Assume it's just the [heap] segment.
+        update_heap(km.start(), km.end());
+      } else {
+        update_heap(heap.start(), km.end());
+      }
+    }
+
+    int flags = km.flags;
+    if (psdev == PSEUDODEVICE_STACK) {
+      flags |= MAP_GROWSDOWN;
+    }
+    map(km.start(), km.size(), km.prot, flags, km.file_offset_bytes,
+        MappableResource(km.device(), km.inode(), psdev), km.fsname());
   }
-  as->map(info.start_addr, info.end_addr - info.start_addr, info.prot, flags,
-          info.file_offset,
-          MappableResource(MKDEV(info.dev_major, info.dev_minor), info.inode,
-                           psdev),
-          info.name);
 }
