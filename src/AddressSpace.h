@@ -207,42 +207,6 @@ struct MappableResource {
   MappableResource(dev_t device, ino_t inode, PseudoDevice p)
       : id(p), device(device), inode(inode) {}
 
-  bool is_scratch() const { return PSEUDODEVICE_SCRATCH == id.psuedodevice(); }
-  bool is_shared_mmap_file() const {
-    return PSEUDODEVICE_SHARED_MMAP_FILE == id.psuedodevice() ||
-           PSEUDODEVICE_SYSV_SHM == id.psuedodevice();
-  }
-  bool is_stack() const { return PSEUDODEVICE_STACK == id.psuedodevice(); }
-
-  void remove_stackness() {
-    if (is_stack()) {
-      id = FileId(PSEUDODEVICE_ANONYMOUS);
-    }
-  }
-
-  /**
-   * Return a representation of this resource that would be
-   * parsed from /proc/maps if this were mapped.
-   */
-  MappableResource to_kernel() const {
-    PseudoDevice psdev;
-    switch (id.psuedodevice()) {
-      case PSEUDODEVICE_STACK:
-      case PSEUDODEVICE_SCRATCH:
-      case PSEUDODEVICE_ANONYMOUS:
-        psdev = PSEUDODEVICE_ANONYMOUS;
-        break;
-      case PSEUDODEVICE_SYSV_SHM:
-        psdev = PSEUDODEVICE_SYSV_SHM;
-        break;
-      default:
-        psdev = PSEUDODEVICE_NONE;
-        break;
-    }
-
-    return MappableResource(device, inode, psdev);
-  }
-
   /**
    * Dump a representation of |this| to a string in a format
    * similar to the tail part of /proc/[tid]/maps. Some extra
@@ -326,18 +290,30 @@ class AddressSpace : public HasTaskSet {
 public:
   class Mapping {
   public:
-    Mapping(const KernelMapping& map, const MappableResource& res)
-        : map(map), res(res) {}
+    Mapping(const KernelMapping& map, PseudoDevice psdev)
+        : map(map), psdev(psdev) {}
     Mapping(const Mapping& other) = default;
-    Mapping() {}
+    Mapping() : psdev(PSEUDODEVICE_NONE) {}
+    const Mapping& operator=(const Mapping& other) {
+      this->~Mapping();
+      new (this) Mapping(other);
+      return *this;
+    }
 
     const std::string& fsname() const { return map.fsname(); }
     int prot() const { return map.prot(); }
     int flags() const { return map.flags(); }
     uint64_t file_offset_bytes() const { return map.file_offset_bytes(); }
+    PseudoDevice pseudodevice() const { return psdev; }
 
-    KernelMapping map;
-    MappableResource res;
+    bool is_shared_mmap_file() const {
+      return PSEUDODEVICE_SHARED_MMAP_FILE == psdev ||
+             PSEUDODEVICE_SYSV_SHM == psdev;
+    }
+    bool is_stack() const { return PSEUDODEVICE_STACK == psdev; }
+
+    const KernelMapping map;
+    const PseudoDevice psdev;
   };
 
   typedef std::map<MemoryRange, Mapping, MappingComparator> MemoryMap;
@@ -768,7 +744,7 @@ private:
    * Map |m| of |r| into this address space, and coalesce any
    * mappings of |r| that are adjacent to |m|.
    */
-  void map_and_coalesce(const KernelMapping& m, const MappableResource& r);
+  void map_and_coalesce(const KernelMapping& m, PseudoDevice psdev);
 
   /** Set the dynamic heap segment to |[start, end)| */
   void update_heap(remote_ptr<void> start, remote_ptr<void> end) {

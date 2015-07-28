@@ -194,7 +194,7 @@ void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
     FileId id = id_for(m);
     auto id_ef = files.find(id);
     if (id_ef == files.end()) {
-      ASSERT(t, !m.res.is_shared_mmap_file());
+      ASSERT(t, !m.is_shared_mmap_file());
       continue;
     }
     auto ef = id_ef->second;

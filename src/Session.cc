@@ -400,7 +400,7 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
     {
       AutoRemoteSyscalls remote(group.clone_leader);
       for (auto& m : group.clone_leader->vm()->maps()) {
-        if (!m.res.is_shared_mmap_file()) {
+        if (!m.is_shared_mmap_file()) {
           continue;
         }
         remap_shared_mmap(remote, dest_emu_fs, m);

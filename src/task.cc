@@ -2215,7 +2215,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     remote_ptr<void> last_stack_byte = stack - 1;
     if (t->as->has_mapping(last_stack_byte)) {
       auto mapping = t->as->mapping_of(last_stack_byte);
-      if (mapping.res.id.psuedodevice() != PSEUDODEVICE_HEAP) {
+      if (mapping.pseudodevice() != PSEUDODEVICE_HEAP) {
         const KernelMapping& m = mapping.map;
         LOG(debug) << "mapping stack for " << new_tid << " at " << m;
         t->as->map(m.start(), m.size(), m.prot(), m.flags(),

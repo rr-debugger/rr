@@ -161,11 +161,10 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
         t->read_bytes_fallible(m.map.start(), m.map.size(), mem.data());
     mem_len = max(ssize_t(0), mem_len);
 
-    string label = m.map.str() + ' ' + m.res.str();
-
     if (!is_start_of_scratch_region(t, m.map.start())) {
-      dump_binary_chunk(dump_file, label.c_str(), (const uint32_t*)mem.data(),
-                        mem_len / sizeof(uint32_t), m.map.start());
+      dump_binary_chunk(dump_file, m.map.str().c_str(),
+                        (const uint32_t*)mem.data(), mem_len / sizeof(uint32_t),
+                        m.map.start());
     }
   }
   fclose(dump_file);
@@ -303,7 +302,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       checksum += buf[i];
     }
 
-    string raw_map_line = m.map.str() + ' ' + m.res.str();
+    string raw_map_line = m.map.str();
     if (STORE_CHECKSUMS == c.mode) {
       fprintf(c.checksums_file, "(%x) %s\n", checksum, raw_map_line.c_str());
     } else {
