@@ -2218,8 +2218,9 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       if (mapping.res.id.psuedodevice() != PSEUDODEVICE_HEAP) {
         const KernelMapping& m = mapping.map;
         LOG(debug) << "mapping stack for " << new_tid << " at " << m;
-        t->as->map(m.start(), m.size(), m.prot, m.flags, m.file_offset_bytes,
-                   MappableResource::stack(new_tid), "[stack]");
+        t->as->map(m.start(), m.size(), m.prot(), m.flags(),
+                   m.file_offset_bytes(), MappableResource::stack(new_tid),
+                   "[stack]");
       }
     }
   }
@@ -2711,12 +2712,12 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
   for (uintptr_t p = page_start; p < page_end; p += page_size) {
     const KernelMapping& m = as->mapping_of(p).map;
     if (p > page_start) {
-      if (all_prot != m.prot || all_flags != m.flags) {
+      if (all_prot != m.prot() || all_flags != m.flags()) {
         return false;
       }
     } else {
-      all_prot = m.prot;
-      all_flags = m.flags;
+      all_prot = m.prot();
+      all_flags = m.flags();
     }
   }
   if (!(all_flags & MAP_PRIVATE)) {
@@ -2768,7 +2769,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
     if (m.map.start() >= ceil_page_size(addr + buf_size)) {
       break;
     }
-    if (!(m.map.prot & (PROT_READ | PROT_WRITE))) {
+    if (!(m.prot() & (PROT_READ | PROT_WRITE))) {
       mappings_to_fix.push_back(m.map);
     }
   };
@@ -2781,12 +2782,12 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
   int mprotect_syscallno = syscall_number_for_mprotect(t->arch());
   for (auto& m : mappings_to_fix) {
     int ret = remote.syscall(mprotect_syscallno, m.start(), m.size(),
-                             m.prot | PROT_WRITE);
+                             m.prot() | PROT_WRITE);
     ASSERT(t, ret == 0);
   }
   ssize_t nwritten = pwrite64(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
   for (auto& m : mappings_to_fix) {
-    int ret = remote.syscall(mprotect_syscallno, m.start(), m.size(), m.prot);
+    int ret = remote.syscall(mprotect_syscallno, m.start(), m.size(), m.prot());
     ASSERT(t, ret == 0);
   }
   return nwritten;

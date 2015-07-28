@@ -235,9 +235,8 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
    * immutable, skip checksumming, it's a waste of time.  Except
    * if the mapping is mutable, for example the rw data segment
    * of a system library, then it's interesting. */
-  may_diverge =
-      should_copy_mmap_region(m.fsname(), &st, m.map.prot, m.map.flags) ||
-      (PROT_WRITE & m.map.prot);
+  may_diverge = should_copy_mmap_region(m.fsname(), &st, m.prot(), m.flags()) ||
+                (PROT_WRITE & m.prot());
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"
              << m.fsname() << "'";
   return may_diverge;

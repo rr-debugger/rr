@@ -95,8 +95,7 @@ public:
   static const dev_t NO_DEVICE = 0;
   static const ino_t NO_INODE = 0;
 
-  KernelMapping()
-      : device_(0), inode_(0), prot(0), flags(0), file_offset_bytes(0) {}
+  KernelMapping() : device_(0), inode_(0), prot_(0), flags_(0), offset(0) {}
   KernelMapping(remote_ptr<void> start, remote_ptr<void> end,
                 const std::string& fsname, dev_t device, ino_t inode, int prot,
                 int flags, off64_t offset = 0)
@@ -104,9 +103,9 @@ public:
         fsname_(fsname),
         device_(device),
         inode_(inode),
-        prot(prot),
-        flags(flags & map_flags_mask),
-        file_offset_bytes(offset) {
+        prot_(prot),
+        flags_(flags & map_flags_mask),
+        offset(offset) {
     assert_valid();
   }
 
@@ -115,9 +114,9 @@ public:
         fsname_(o.fsname_),
         device_(o.device_),
         inode_(o.inode_),
-        prot(o.prot),
-        flags(o.flags),
-        file_offset_bytes(o.file_offset_bytes) {
+        prot_(o.prot_),
+        flags_(o.flags_),
+        offset(o.offset) {
     assert_valid();
   }
   KernelMapping operator=(const KernelMapping& o) {
@@ -129,8 +128,8 @@ public:
   void assert_valid() const {
     assert(end() >= start());
     assert(size() % page_size() == 0);
-    assert(!(flags & ~map_flags_mask));
-    assert(file_offset_bytes % page_size() == 0);
+    assert(!(flags_ & ~map_flags_mask));
+    assert(offset % page_size() == 0);
   }
 
   /**
@@ -139,8 +138,8 @@ public:
    * /proc/maps.
    */
   KernelMapping to_kernel() const {
-    return KernelMapping(start(), end(), fsname_, device_, inode_, prot,
-                         flags & checkable_flags_mask, file_offset_bytes);
+    return KernelMapping(start(), end(), fsname_, device_, inode_, prot_,
+                         flags_ & checkable_flags_mask, offset);
   }
 
   /**
@@ -151,10 +150,9 @@ public:
     char str[200];
     sprintf(str, "%8p-%8p %c%c%c%c %02d:%02d" PRIx64 " %-10ld %08" PRIx64 " ",
             (void*)start().as_int(), (void*)end().as_int(),
-            (PROT_READ & prot) ? 'r' : '-', (PROT_WRITE & prot) ? 'w' : '-',
-            (PROT_EXEC & prot) ? 'x' : '-', (MAP_SHARED & flags) ? 's' : 'p',
-            (int)MAJOR(device()), (int)MINOR(device()), (long)inode(),
-            file_offset_bytes);
+            (PROT_READ & prot_) ? 'r' : '-', (PROT_WRITE & prot_) ? 'w' : '-',
+            (PROT_EXEC & prot_) ? 'x' : '-', (MAP_SHARED & flags_) ? 's' : 'p',
+            (int)MAJOR(device()), (int)MINOR(device()), (long)inode(), offset);
     return str + fsname();
   }
 
@@ -168,17 +166,19 @@ public:
    */
   bool is_real_device() const { return device() > NO_DEVICE; }
 
+  int prot() const { return prot_; }
+  int flags() const { return flags_; }
+  uint64_t file_offset_bytes() const { return offset; }
+
 private:
   // The kernel's name for the mapping, as per /proc/<pid>/maps. This must
   // be exactly correct.
   const std::string fsname_;
   dev_t device_;
   ino_t inode_;
-
-public:
-  const int prot;
-  const int flags;
-  const off64_t file_offset_bytes;
+  const int prot_;
+  const int flags_;
+  const uint64_t offset;
 };
 std::ostream& operator<<(std::ostream& o, const KernelMapping& m);
 
@@ -332,6 +332,9 @@ public:
     Mapping() {}
 
     const std::string& fsname() const { return map.fsname(); }
+    int prot() const { return map.prot(); }
+    int flags() const { return map.flags(); }
+    uint64_t file_offset_bytes() const { return map.file_offset_bytes(); }
 
     KernelMapping map;
     MappableResource res;

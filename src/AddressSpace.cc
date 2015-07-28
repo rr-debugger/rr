@@ -63,8 +63,8 @@ void HasTaskSet::erase_task(Task* t) {
 }
 
 ostream& operator<<(ostream& o, const KernelMapping& m) {
-  o << static_cast<const MemoryRange&>(m) << " " << HEX(m.prot)
-    << " f:" << HEX(m.flags);
+  o << static_cast<const MemoryRange&>(m) << " " << HEX(m.prot())
+    << " f:" << HEX(m.flags());
   return o;
 }
 
@@ -384,8 +384,8 @@ void AddressSpace::brk(remote_ptr<void> addr) {
 
   remote_ptr<void> vm_addr = ceil_page_size(addr);
   if (heap.end() < vm_addr) {
-    map(heap.end(), vm_addr - heap.end(), heap.prot, heap.flags,
-        heap.file_offset_bytes, MappableResource::heap(), "[heap]");
+    map(heap.end(), vm_addr - heap.end(), heap.prot(), heap.flags(),
+        heap.file_offset_bytes(), MappableResource::heap(), "[heap]");
   } else {
     unmap(vm_addr, heap.end() - vm_addr);
   }
@@ -472,7 +472,7 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
                   flags, offset_bytes);
 
   bool insert_guard_page = false;
-  if (has_mapping(m.end()) && (mapping_of(m.end()).map.flags & MAP_GROWSDOWN)) {
+  if (has_mapping(m.end()) && (mapping_of(m.end()).flags() & MAP_GROWSDOWN)) {
     // When inserting a mapping immediately before a grow-down VMA,
     // the kernel unmaps an extra page to form a guard page. We need to
     // emulate that.
@@ -562,7 +562,7 @@ bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
  */
 static off64_t adjust_offset(const MappableResource& r, const KernelMapping& m,
                              off64_t delta) {
-  return m.is_real_device() ? m.file_offset_bytes + delta : 0;
+  return m.is_real_device() ? m.file_offset_bytes() + delta : 0;
 }
 
 void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
@@ -584,7 +584,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // don't understand the idea of a grows-up segment.
     remote_ptr<void> new_start;
     if ((m.map.start() < rem.start()) && (prot & PROT_GROWSDOWN) &&
-        (m.map.flags & MAP_GROWSDOWN)) {
+        (m.flags() & MAP_GROWSDOWN)) {
       new_start = m.map.start();
       LOG(debug) << "  PROT_GROWSDOWN: expanded region down to " << new_start;
     } else {
@@ -599,8 +599,8 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     if (m.map.start() < new_start) {
       Mapping underflow(KernelMapping(m.map.start(), rem.start(),
                                       m.map.fsname(), m.map.device(),
-                                      m.map.inode(), m.map.prot, m.map.flags,
-                                      m.map.file_offset_bytes),
+                                      m.map.inode(), m.prot(), m.flags(),
+                                      m.file_offset_bytes()),
                         m.res);
       mem[underflow.map] = underflow;
     }
@@ -609,7 +609,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     Mapping overlap(
         KernelMapping(new_start, new_end, m.map.fsname(), m.map.device(),
                       m.map.inode(),
-                      prot & (PROT_READ | PROT_WRITE | PROT_EXEC), m.map.flags,
+                      prot & (PROT_READ | PROT_WRITE | PROT_EXEC), m.flags(),
                       adjust_offset(m.res, m.map, new_start - m.map.start())),
         m.res);
     mem[overlap.map] = overlap;
@@ -621,7 +621,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     if (rem.end() < m.map.end()) {
       Mapping overflow(
           KernelMapping(rem.end(), m.map.end(), m.map.fsname(), m.map.device(),
-                        m.map.inode(), m.map.prot, m.map.flags,
+                        m.map.inode(), m.map.prot(), m.flags(),
                         adjust_offset(m.res, m.map, rem.end() - m.map.start())),
           m.res);
       mem[overflow.map] = overflow;
@@ -660,7 +660,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   }
 
   map_and_coalesce(KernelMapping(new_addr, new_addr + new_num_bytes, m.fsname(),
-                                 m.device(), m.inode(), m.prot, m.flags,
+                                 m.device(), m.inode(), m.prot(), m.flags(),
                                  adjust_offset(r, m, old_addr - m.start())),
                    r);
 }
@@ -864,8 +864,8 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
       new_r.remove_stackness();
       Mapping underflow(KernelMapping(m.map.start(), rem.start(),
                                       m.map.fsname(), m.map.device(),
-                                      m.map.inode(), m.map.prot, m.map.flags,
-                                      m.map.file_offset_bytes),
+                                      m.map.inode(), m.map.prot(), m.flags(),
+                                      m.file_offset_bytes()),
                         new_r);
       mem[underflow.map] = underflow;
     }
@@ -874,7 +874,7 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
     if (rem.end() < m.map.end()) {
       Mapping overflow(
           KernelMapping(rem.end(), m.map.end(), m.map.fsname(), m.map.device(),
-                        m.map.inode(), m.map.prot, m.map.flags,
+                        m.map.inode(), m.map.prot(), m.flags(),
                         adjust_offset(m.res, m.map, rem.end() - m.map.start())),
           m.res);
       mem[overflow.map] = overflow;
@@ -953,8 +953,8 @@ static bool is_adjacent_mapping(const AddressSpace::Mapping& left,
     LOG(debug) << "    (not adjacent in memory)";
     return false;
   }
-  if (((mleft.flags ^ mright.flags) & flags_to_check) ||
-      mleft.prot != mright.prot) {
+  if (((mleft.flags() ^ mright.flags()) & flags_to_check) ||
+      mleft.prot() != mright.prot()) {
     LOG(debug) << "    (flags or prot differ)";
     return false;
   }
@@ -969,10 +969,10 @@ static bool is_adjacent_mapping(const AddressSpace::Mapping& left,
     return false;
   }
   if (mleft.is_real_device() &&
-      mleft.file_offset_bytes + off64_t(mleft.size()) !=
-          mright.file_offset_bytes) {
-    LOG(debug) << "    (" << mleft.file_offset_bytes << " + " << mleft.size()
-               << " != " << mright.file_offset_bytes
+      mleft.file_offset_bytes() + off64_t(mleft.size()) !=
+          mright.file_offset_bytes()) {
+    LOG(debug) << "    (" << mleft.file_offset_bytes() << " + " << mleft.size()
+               << " != " << mright.file_offset_bytes()
                << ": offsets into real device aren't adjacent)";
     return false;
   }
@@ -997,8 +997,8 @@ static bool try_merge_adjacent(KernelMapping* left_m,
                           AddressSpace::Mapping(right_m, right_r),
                           KernelMapping::checkable_flags_mask)) {
     *left_m = KernelMapping(left_m->start(), right_m.end(), left_m->fsname(),
-                            left_m->device(), left_m->inode(), right_m.prot,
-                            right_m.flags, left_m->file_offset_bytes);
+                            left_m->device(), left_m->inode(), right_m.prot(),
+                            right_m.flags(), left_m->file_offset_bytes());
     return true;
   }
   return false;
@@ -1053,7 +1053,7 @@ struct VerifyAddressSpace {
 void VerifyAddressSpace::assert_segments_match(Task* t) {
   assert(MERGING_KERNEL == phase);
   bool same_mapping = (m.start() == km.start() && m.end() == km.end() &&
-                       m.prot == km.prot && m.flags == km.flags);
+                       m.prot() == km.prot() && m.flags() == km.flags());
   // When we stripped most identifying info from |r| with
   // |to_kernel()|, we also lost its "is stack" flag.  So to check if
   // it's a grows-down stack segment, we see if it has the special
@@ -1151,7 +1151,7 @@ void AddressSpace::verify(Task* t) const {
       LOG(debug) << "  merged cached seg: " << vas.m;
 
       // Merge adjacent kernel mappings.
-      assert(km.flags == (km.flags & KernelMapping::checkable_flags_mask));
+      assert(km.flags() == (km.flags() & KernelMapping::checkable_flags_mask));
       PseudoDevice psdev = pseudodevice_for_name(km.fsname());
       MappableResource kr =
           MappableResource(km.device(), km.inode(), psdev).to_kernel();
@@ -1426,8 +1426,8 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   Mapping& m = it->second;
   Mapping new_m(KernelMapping(first_kv->first.start(), last_kv->first.end(),
                               m.map.fsname(), m.map.device(), m.map.inode(),
-                              m.map.prot, m.map.flags,
-                              first_kv->second.map.file_offset_bytes),
+                              m.map.prot(), m.flags(),
+                              first_kv->second.map.file_offset_bytes()),
                 m.res);
   LOG(debug) << "  coalescing " << new_m.map;
 
@@ -1496,8 +1496,8 @@ void AddressSpace::populate_address_space(Task* t) {
   KernelMapIterator it(t);
   KernelMapping km;
   while (it.next(&km)) {
-    if (!heap.start() && exe == km.fsname() && !(km.prot & PROT_EXEC) &&
-        (km.prot & (PROT_READ | PROT_WRITE))) {
+    if (!heap.start() && exe == km.fsname() && !(km.prot() & PROT_EXEC) &&
+        (km.prot() & (PROT_READ | PROT_WRITE))) {
       update_heap(km.end(), km.end());
       LOG(debug) << "  guessing heap starts at " << heap.start()
                  << " (end of text segment)";
@@ -1509,7 +1509,7 @@ void AddressSpace::populate_address_space(Task* t) {
     // segment of the exe image, but is not adjacent to the prior mapped
     // segment of the exe.  (This is seen with x86-64 bash on Fedora
     // Core 20.)  Update the guess.
-    if (!(km.prot & PROT_EXEC) &&
+    if (!(km.prot() & PROT_EXEC) &&
         (heap.end() == km.start() || exe == km.fsname())) {
       assert(heap.start() == heap.end() || exe == km.fsname());
       update_heap(km.end(), km.end());
@@ -1527,11 +1527,11 @@ void AddressSpace::populate_address_space(Task* t) {
       }
     }
 
-    int flags = km.flags;
+    int flags = km.flags();
     if (psdev == PSEUDODEVICE_STACK) {
       flags |= MAP_GROWSDOWN;
     }
-    map(km.start(), km.size(), km.prot, flags, km.file_offset_bytes,
+    map(km.start(), km.size(), km.prot(), flags, km.file_offset_bytes(),
         MappableResource(km.device(), km.inode(), psdev), km.fsname());
   }
 }
