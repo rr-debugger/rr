@@ -27,31 +27,6 @@ using namespace std;
 
 /*static*/ const uint8_t AddressSpace::breakpoint_insn;
 
-const char* FileId::special_name() const {
-  switch (psdev) {
-    case PSEUDODEVICE_ANONYMOUS:
-      return "";
-    case PSEUDODEVICE_HEAP:
-      return "(heap)";
-    case PSEUDODEVICE_NONE:
-      return "";
-    case PSEUDODEVICE_SCRATCH:
-      return "";
-    case PSEUDODEVICE_SHARED_MMAP_FILE:
-      return "(shmmap)";
-    case PSEUDODEVICE_STACK:
-      return "(stack)";
-    case PSEUDODEVICE_SYSCALLBUF:
-      return "(syscallbuf)";
-    case PSEUDODEVICE_VDSO:
-      return "(vdso)";
-    case PSEUDODEVICE_SYSV_SHM:
-      return "";
-  }
-  FATAL() << "Not reached";
-  return nullptr;
-}
-
 void HasTaskSet::insert_task(Task* t) {
   LOG(debug) << "adding " << t->tid << " to task set " << this;
   tasks.insert(t);
@@ -493,7 +468,7 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
     m = KernelMapping(addr + page_size(), addr + num_bytes, fsname, res.device,
                       res.inode, prot, flags, offset_bytes + page_size());
   }
-  map_and_coalesce(m, res.id.psuedodevice());
+  map_and_coalesce(m, res.psdev);
 
   if ((prot & PROT_EXEC) &&
       (fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
@@ -504,7 +479,7 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
 
   // During an emulated exec, we explicitly map in a (copy of) the VDSO
   // at the recorded address.
-  if (res.id.psuedodevice() == PSEUDODEVICE_VDSO) {
+  if (res.psdev == PSEUDODEVICE_VDSO) {
     vdso_start_addr = addr;
   }
 }

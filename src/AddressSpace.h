@@ -58,22 +58,6 @@ enum PseudoDevice {
 };
 
 /**
- * FileIds uniquely identify a file at a point in time (when the file
- * is stat'd).
- */
-class FileId {
-public:
-  FileId(PseudoDevice psdev = PSEUDODEVICE_NONE) : psdev(psdev) {}
-
-  PseudoDevice psuedodevice() const { return psdev; }
-
-  const char* special_name() const;
-
-private:
-  PseudoDevice psdev;
-};
-
-/**
  * Records information that the kernel knows about a mapping. This includes
  * everything returned through /proc/<pid>/maps but also information that
  * we know from observing mmap and mprotect calls.
@@ -203,16 +187,9 @@ struct MappingComparator {
  * mapping into RAM of a MappableResource.
  */
 struct MappableResource {
-  MappableResource() : device(0), inode(0) {}
+  MappableResource() : psdev(PSEUDODEVICE_NONE), device(0), inode(0) {}
   MappableResource(dev_t device, ino_t inode, PseudoDevice p)
-      : id(p), device(device), inode(inode) {}
-
-  /**
-   * Dump a representation of |this| to a string in a format
-   * similar to the tail part of /proc/[tid]/maps. Some extra
-   * informations are put in a '()'.
-  */
-  std::string str() const { return id.special_name(); }
+      : psdev(p), device(device), inode(inode) {}
 
   static MappableResource anonymous() {
     return MappableResource(KernelMapping::NO_DEVICE, nr_anonymous_maps++,
@@ -236,7 +213,7 @@ struct MappableResource {
   }
   static MappableResource syscallbuf(pid_t tid, int fd);
 
-  FileId id;
+  PseudoDevice psdev;
   dev_t device;
   ino_t inode;
 
