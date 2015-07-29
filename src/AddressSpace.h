@@ -116,6 +116,26 @@ public:
     assert(offset % page_size() == 0);
   }
 
+  KernelMapping extend(remote_ptr<void> end) const {
+    assert(end >= MemoryRange::end());
+    return KernelMapping(start(), end, fsname_, device_, inode_, prot_, flags_,
+                         offset);
+  }
+  KernelMapping set_range(remote_ptr<void> start, remote_ptr<void> end) const {
+    return KernelMapping(start, end, fsname_, device_, inode_, prot_, flags_,
+                         offset);
+  }
+  KernelMapping subrange(remote_ptr<void> start, remote_ptr<void> end) const {
+    assert(start >= MemoryRange::start() && end <= MemoryRange::end());
+    return KernelMapping(
+        start, end, fsname_, device_, inode_, prot_, flags_,
+        offset + (is_real_device() ? start - MemoryRange::start() : 0));
+  }
+  KernelMapping set_prot(int prot) const {
+    return KernelMapping(start(), end(), fsname_, device_, inode_, prot, flags_,
+                         offset);
+  }
+
   /**
    * Return the lowest-common-denominator interpretation of this
    * mapping, namely, the one that can be parsed out of
@@ -268,8 +288,9 @@ class AddressSpace : public HasTaskSet {
 public:
   class Mapping {
   public:
-    Mapping(const KernelMapping& map, PseudoDevice psdev)
-        : map(map), psdev(psdev) {}
+    Mapping(const KernelMapping& map, const KernelMapping& recorded_map,
+            const PseudoDevice psdev)
+        : map(map), recorded_map(recorded_map), psdev(psdev) {}
     Mapping(const Mapping& other) = default;
     Mapping() : psdev(PSEUDODEVICE_NONE) {}
     const Mapping& operator=(const Mapping& other) {
@@ -291,6 +312,9 @@ public:
     bool is_stack() const { return PSEUDODEVICE_STACK == psdev; }
 
     const KernelMapping map;
+    // The corresponding KernelMapping in the recording. During recording,
+    // equal to 'map'.
+    const KernelMapping recorded_map;
     const PseudoDevice psdev;
   };
 
@@ -377,11 +401,15 @@ public:
    * |prot| protection and |flags|.  The pages are (possibly
    * initially) backed starting at |offset| of |res|. |fsname| is the
    * name we expect the kernel to give the file, or nullptr if not known.
+   * |*recorded_map| is the mapping during recording, or null if the mapping
+   * during recording is known to be the same as the new map (e.g. because
+   * we are recording!).
    */
   KernelMapping map(remote_ptr<void> addr, size_t num_bytes, int prot,
                     int flags, off64_t offset_bytes,
                     const MappableResource& res,
-                    const std::string& fsname = std::string());
+                    const std::string& fsname = std::string(),
+                    const KernelMapping* recorded_map = nullptr);
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.
@@ -723,7 +751,8 @@ private:
    * Map |m| of |r| into this address space, and coalesce any
    * mappings of |r| that are adjacent to |m|.
    */
-  void map_and_coalesce(const KernelMapping& m, PseudoDevice psdev);
+  void map_and_coalesce(const KernelMapping& m,
+                        const KernelMapping& recorded_map, PseudoDevice psdev);
 
   /** Set the dynamic heap segment to |[start, end)| */
   void update_heap(remote_ptr<void> start, remote_ptr<void> end) {

@@ -454,7 +454,8 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
 KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
                                 int prot, int flags, off64_t offset_bytes,
                                 const MappableResource& res,
-                                const string& fsname) {
+                                const string& fsname,
+                                const KernelMapping* recorded_map) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
   num_bytes = ceil_page_size(num_bytes);
@@ -489,7 +490,7 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
     m = KernelMapping(addr + page_size(), addr + num_bytes, fsname, res.device,
                       res.inode, prot, flags, offset_bytes + page_size());
   }
-  map_and_coalesce(m, res.psdev);
+  map_and_coalesce(m, recorded_map ? *recorded_map : m, res.psdev);
 
   if ((prot & PROT_EXEC) &&
       (fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
@@ -552,15 +553,6 @@ bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
   return it != mem.end() && it->first.contains(m);
 }
 
-/**
- * Return the offset of |m| into |r| updated by |delta|, unless |r| is
- * a pseudo-device that doesn't have offsets, in which case the
- * updated offset 0 is returned.
- */
-static off64_t adjust_offset(const KernelMapping& m, off64_t delta) {
-  return m.is_real_device() ? m.file_offset_bytes() + delta : 0;
-}
-
 void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
   LOG(debug) << "mprotect(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ")";
@@ -593,20 +585,19 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // region, remap the underflow region with previous
     // prot.
     if (m.map.start() < new_start) {
-      Mapping underflow(KernelMapping(m.map.start(), rem.start(),
-                                      m.map.fsname(), m.map.device(),
-                                      m.map.inode(), m.prot(), m.flags(),
-                                      m.file_offset_bytes()),
-                        m.pseudodevice());
+      Mapping underflow(
+          m.map.subrange(m.map.start(), rem.start()),
+          m.recorded_map.subrange(m.recorded_map.start(), rem.start()),
+          m.pseudodevice());
       mem[underflow.map] = underflow;
     }
     // Remap the overlapping region with the new prot.
     remote_ptr<void> new_end = min(rem.end(), m.map.end());
+
+    int new_prot = prot & (PROT_READ | PROT_WRITE | PROT_EXEC);
     Mapping overlap(
-        KernelMapping(new_start, new_end, m.map.fsname(), m.map.device(),
-                      m.map.inode(),
-                      prot & (PROT_READ | PROT_WRITE | PROT_EXEC), m.flags(),
-                      adjust_offset(m.map, new_start - m.map.start())),
+        m.map.subrange(new_start, new_end).set_prot(new_prot),
+        m.recorded_map.subrange(new_start, new_end).set_prot(new_prot),
         m.pseudodevice());
     mem[overlap.map] = overlap;
     last_overlap = overlap.map;
@@ -615,11 +606,9 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // region, remap the overflow region with previous
     // prot.
     if (rem.end() < m.map.end()) {
-      Mapping overflow(
-          KernelMapping(rem.end(), m.map.end(), m.map.fsname(), m.map.device(),
-                        m.map.inode(), m.map.prot(), m.flags(),
-                        adjust_offset(m.map, rem.end() - m.map.start())),
-          m.pseudodevice());
+      Mapping overflow(m.map.subrange(rem.end(), m.map.end()),
+                       m.recorded_map.subrange(rem.end(), m.map.end()),
+                       m.pseudodevice());
       mem[overflow.map] = overflow;
     }
   };
@@ -654,9 +643,9 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
     remove_range(dont_fork, MemoryRange(new_addr, new_num_bytes));
   }
 
-  map_and_coalesce(KernelMapping(new_addr, new_addr + new_num_bytes, m.fsname(),
-                                 m.device(), m.inode(), m.prot(), m.flags(),
-                                 adjust_offset(m, old_addr - m.start())),
+  remote_ptr<void> new_end = new_addr + new_num_bytes;
+  map_and_coalesce(m.set_range(new_addr, new_end),
+                   mr.recorded_map.set_range(new_addr, new_end),
                    mr.pseudodevice());
 }
 
@@ -858,21 +847,17 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
       PseudoDevice psdev = m.pseudodevice() == PSEUDODEVICE_STACK
                                ? PSEUDODEVICE_ANONYMOUS
                                : m.pseudodevice();
-      Mapping underflow(KernelMapping(m.map.start(), rem.start(),
-                                      m.map.fsname(), m.map.device(),
-                                      m.map.inode(), m.prot(), m.flags(),
-                                      m.file_offset_bytes()),
+      Mapping underflow(m.map.subrange(m.map.start(), rem.start()),
+                        m.recorded_map.subrange(m.map.start(), rem.start()),
                         psdev);
       mem[underflow.map] = underflow;
     }
     // If the last segment we unmap overflows the unmap
     // region, remap the overflow region.
     if (rem.end() < m.map.end()) {
-      Mapping overflow(
-          KernelMapping(rem.end(), m.map.end(), m.map.fsname(), m.map.device(),
-                        m.map.inode(), m.map.prot(), m.flags(),
-                        adjust_offset(m.map, rem.end() - m.map.start())),
-          m.pseudodevice());
+      Mapping overflow(m.map.subrange(rem.end(), m.map.end()),
+                       m.recorded_map.subrange(rem.end(), m.map.end()),
+                       m.pseudodevice());
       mem[overflow.map] = overflow;
     }
   };
@@ -939,11 +924,11 @@ static bool is_equivalent(const KernelMapping& km1, PseudoDevice pd1,
  * with the same metadata, and map adjacent locations of the same
  * underlying (real) device.
  */
-static bool is_adjacent_mapping(const AddressSpace::Mapping& left,
-                                const AddressSpace::Mapping& right,
+static bool is_adjacent_mapping(const KernelMapping& mleft,
+                                PseudoDevice left_psdev,
+                                const KernelMapping& mright,
+                                PseudoDevice right_psdev,
                                 int32_t flags_to_check = 0xFFFFFFFF) {
-  const KernelMapping& mleft = left.map;
-  const KernelMapping& mright = right.map;
   if (mleft.end() != mright.start()) {
     LOG(debug) << "    (not adjacent in memory)";
     return false;
@@ -953,12 +938,11 @@ static bool is_adjacent_mapping(const AddressSpace::Mapping& left,
     LOG(debug) << "    (flags or prot differ)";
     return false;
   }
-  if (right.fsname().substr(0, strlen(PREFIX_FOR_EMPTY_MMAPED_REGIONS)) ==
+  if (mright.fsname().substr(0, strlen(PREFIX_FOR_EMPTY_MMAPED_REGIONS)) ==
       PREFIX_FOR_EMPTY_MMAPED_REGIONS) {
     return true;
   }
-  if (!is_equivalent(mleft, left.pseudodevice(), mright,
-                     right.pseudodevice())) {
+  if (!is_equivalent(mleft, left_psdev, mright, right_psdev)) {
     LOG(debug) << "    (not the same resource)";
     return false;
   }
@@ -970,7 +954,7 @@ static bool is_adjacent_mapping(const AddressSpace::Mapping& left,
                << ": offsets into real device aren't adjacent)";
     return false;
   }
-  if (left.pseudodevice() == PSEUDODEVICE_SYSV_SHM) {
+  if (left_psdev == PSEUDODEVICE_SYSV_SHM) {
     LOG(debug) << "    (SysV shm not coalescable)";
     return false;
   }
@@ -986,8 +970,7 @@ static bool is_adjacent_mapping(const AddressSpace::Mapping& left,
 static bool try_merge_adjacent(KernelMapping* left_m, PseudoDevice left_psdev,
                                const KernelMapping& right_m,
                                PseudoDevice right_psdev) {
-  if (is_adjacent_mapping(AddressSpace::Mapping(*left_m, left_psdev),
-                          AddressSpace::Mapping(right_m, right_psdev),
+  if (is_adjacent_mapping(*left_m, left_psdev, right_m, right_psdev,
                           KernelMapping::checkable_flags_mask)) {
     *left_m = KernelMapping(left_m->start(), right_m.end(), left_m->fsname(),
                             left_m->device(), left_m->inode(), right_m.prot(),
@@ -1060,6 +1043,7 @@ void AddressSpace::fix_stack_segment_start(const MemoryRange& mapping,
   auto it = mem.find(mapping);
   it->first.update_start(new_start);
   it->second.map.update_start(new_start);
+  it->second.recorded_map.update_start(new_start);
 }
 
 /**
@@ -1388,7 +1372,9 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   auto first_kv = it;
   while (mem.begin() != first_kv) {
     auto next = first_kv;
-    if (!is_adjacent_mapping((--first_kv)->second, next->second)) {
+    --first_kv;
+    if (!is_adjacent_mapping(first_kv->second.map, first_kv->second.psdev,
+                             next->second.map, next->second.psdev)) {
       first_kv = next;
       break;
     }
@@ -1396,8 +1382,10 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   auto last_kv = it;
   while (true) {
     auto prev = last_kv;
-    if (mem.end() == ++last_kv ||
-        !is_adjacent_mapping(prev->second, last_kv->second)) {
+    ++last_kv;
+    if (mem.end() == last_kv ||
+        !is_adjacent_mapping(prev->second.map, prev->second.psdev,
+                             last_kv->second.map, last_kv->second.psdev)) {
       last_kv = prev;
       break;
     }
@@ -1408,12 +1396,9 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
     return;
   }
 
-  Mapping& m = it->second;
-  Mapping new_m(KernelMapping(first_kv->first.start(), last_kv->first.end(),
-                              m.map.fsname(), m.map.device(), m.map.inode(),
-                              m.map.prot(), m.flags(),
-                              first_kv->second.map.file_offset_bytes()),
-                m.pseudodevice());
+  Mapping new_m(first_kv->second.map.extend(last_kv->first.end()),
+                first_kv->second.recorded_map.extend(last_kv->first.end()),
+                first_kv->second.pseudodevice());
   LOG(debug) << "  coalescing " << new_m.map;
 
   mem.erase(first_kv, ++last_kv);
@@ -1468,10 +1453,12 @@ void AddressSpace::for_each_in_range(
 }
 
 void AddressSpace::map_and_coalesce(const KernelMapping& m,
+                                    const KernelMapping& recorded_map,
                                     PseudoDevice psdev) {
   LOG(debug) << "  mapping " << m;
 
-  auto ins = mem.insert(MemoryMap::value_type(m, Mapping(m, psdev)));
+  auto ins =
+      mem.insert(MemoryMap::value_type(m, Mapping(m, recorded_map, psdev)));
   coalesce_around(ins.first);
 
   update_watchpoint_values(m.start(), m.end());
