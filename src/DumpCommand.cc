@@ -169,7 +169,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       }
       while (true) {
         TraceMappedRegion region = trace.peek_mapped_region();
-        if (region.type() == TraceMappedRegion::NONE) {
+        if (region.start() == region.end()) {
           break;
         }
         TraceReader::MappedData data;
@@ -192,7 +192,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       }
       while (true) {
         TraceMappedRegion region = trace.peek_mapped_region();
-        if (region.type() == TraceMappedRegion::NONE) {
+        if (region.start() == region.end()) {
           break;
         }
         TraceReader::MappedData data;

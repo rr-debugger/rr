@@ -43,12 +43,32 @@ ostream& operator<<(ostream& o, const KernelMapping& m) {
   return o;
 }
 
+static PseudoDevice pseudodevice_for_name(const string& name) {
+  if ("[heap]" == name) {
+    return PSEUDODEVICE_HEAP;
+  }
+  if ("[stack" == name.substr(0, 6)) {
+    return PSEUDODEVICE_STACK;
+  }
+  if ("[vdso]" == name) {
+    return PSEUDODEVICE_VDSO;
+  }
+  if ("" == name || "/dev/zero (deleted)" == name) {
+    return PSEUDODEVICE_ANONYMOUS;
+  }
+  if ("/SYSV" == name.substr(0, 5)) {
+    return PSEUDODEVICE_SYSV_SHM;
+  }
+  return PSEUDODEVICE_NONE;
+}
+
 /*static*/ MappableResource MappableResource::shared_mmap_file(
     const TraceMappedRegion& file) {
   return MappableResource(file.stat().st_dev, file.stat().st_ino,
-                          file.type() == TraceMappedRegion::MMAP
-                              ? PSEUDODEVICE_SHARED_MMAP_FILE
-                              : PSEUDODEVICE_SYSV_SHM);
+                          pseudodevice_for_name(file.file_name()) ==
+                                  PSEUDODEVICE_SYSV_SHM
+                              ? PSEUDODEVICE_SYSV_SHM
+                              : PSEUDODEVICE_SHARED_MMAP_FILE);
 }
 
 /*static*/ MappableResource MappableResource::syscallbuf(pid_t tid, int fd) {
@@ -972,25 +992,6 @@ static bool try_merge_adjacent(KernelMapping* left_m, PseudoDevice left_psdev,
     return true;
   }
   return false;
-}
-
-static PseudoDevice pseudodevice_for_name(const string& name) {
-  if ("[heap]" == name) {
-    return PSEUDODEVICE_HEAP;
-  }
-  if ("[stack" == name.substr(0, 6)) {
-    return PSEUDODEVICE_STACK;
-  }
-  if ("[vdso]" == name) {
-    return PSEUDODEVICE_VDSO;
-  }
-  if ("" == name || "/dev/zero (deleted)" == name) {
-    return PSEUDODEVICE_ANONYMOUS;
-  }
-  if ("/SYSV" == name.substr(0, 5)) {
-    return PSEUDODEVICE_SYSV_SHM;
-  }
-  return PSEUDODEVICE_NONE;
 }
 
 struct VerifyAddressSpace {

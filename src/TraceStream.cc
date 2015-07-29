@@ -261,7 +261,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   auto& mmaps = writer(MMAPS);
   TraceReader::MappedDataSource source;
   string backing_file_name;
-  if (map.type() == TraceMappedRegion::SYSV_SHM) {
+  if (map.file_name().find("/SYSV") == 0) {
     source = TraceReader::SOURCE_TRACE;
   } else if (map.stat().st_ino == 0) {
     source = TraceReader::SOURCE_ZERO;
