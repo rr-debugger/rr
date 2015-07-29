@@ -95,9 +95,10 @@ public:
    * Ensure that the emulated file is sized to match a later
    * stat() of it, |st|.
    */
-  void update(const struct stat& st);
+  void update(dev_t device, ino_t inode, uint64_t size);
 
-  const struct stat& stat() { return est; }
+  dev_t device() const { return device_; }
+  ino_t inode() const { return inode_; }
 
   /**
    * Create a new emulated file for |orig_path| that will
@@ -105,14 +106,18 @@ public:
    * uniquely identify this file among multiple EmuFs's that
    * might exist concurrently in this tracer process.
    */
-  static shr_ptr create(const std::string& orig_path, const struct stat& est);
+  static shr_ptr create(const std::string& orig_path, dev_t orig_device,
+                        ino_t orig_inode, size_t orig_file_size);
 
 private:
-  EmuFile(ScopedFd&& fd, const struct stat& est, const std::string& orig_path);
+  EmuFile(ScopedFd&& fd, const std::string& orig_path, dev_t device,
+          ino_t inode, size_t file_size);
 
-  struct stat est;
   std::string orig_path;
   ScopedFd file;
+  size_t size_;
+  dev_t device_;
+  ino_t inode_;
   bool is_marked;
 
   EmuFile(const EmuFile&) = delete;
@@ -152,7 +157,7 @@ public:
   /**
    * Return an emulated file representing the recorded file underlying |mf|.
    */
-  EmuFile::shr_ptr get_or_create(const TraceMappedRegion& mf);
+  EmuFile::shr_ptr get_or_create(const KernelMapping& km, size_t file_size);
 
   /**
    * Create an emulated file representing the shared anonymous mapping

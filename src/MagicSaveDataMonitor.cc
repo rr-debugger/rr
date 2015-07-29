@@ -2,6 +2,8 @@
 
 #include "MagicSaveDataMonitor.h"
 
+#include <limits.h>
+
 #include <rr/rr.h>
 
 #include "log.h"

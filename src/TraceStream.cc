@@ -5,6 +5,7 @@
 #include "TraceStream.h"
 
 #include <inttypes.h>
+#include <limits.h>
 #include <sysexits.h>
 
 #include <fstream>
@@ -257,16 +258,16 @@ string TraceWriter::try_hardlink_file(const string& file_name) {
 }
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
-    const TraceMappedRegion& map, int prot, int flags) {
+    const KernelMapping& km, const struct stat& stat) {
   auto& mmaps = writer(MMAPS);
   TraceReader::MappedDataSource source;
   string backing_file_name;
-  if (map.file_name().find("/SYSV") == 0) {
+  if (km.fsname().find("/SYSV") == 0) {
     source = TraceReader::SOURCE_TRACE;
-  } else if (map.stat().st_ino == 0) {
+  } else if (km.inode() == 0) {
     source = TraceReader::SOURCE_ZERO;
   } else {
-    if (should_copy_mmap_region(map.file_name(), &map.stat(), prot, flags)) {
+    if (should_copy_mmap_region(km.fsname(), &stat, km.prot(), km.flags())) {
       source = TraceReader::SOURCE_TRACE;
     } else {
       source = TraceReader::SOURCE_FILE;
@@ -275,54 +276,59 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
       // if it is overwritten in-place). If try_hardlink_file fails it
       // just returns the original file name.
       // A relative backing_file_name is relative to the trace directory.
-      backing_file_name = try_hardlink_file(map.file_name());
+      backing_file_name = try_hardlink_file(km.fsname());
     }
   }
-  mmaps << source << map.type() << map.file_name() << map.stat() << map.start()
-        << map.end() << map.offset_pages() << backing_file_name;
+  mmaps << source << km.start() << km.end() << km.fsname() << km.device()
+        << km.inode() << km.prot() << km.flags() << km.file_offset_bytes()
+        << backing_file_name << (uint32_t)stat.st_mode << (uint32_t)stat.st_uid
+        << (uint32_t)stat.st_gid << (int64_t)stat.st_size
+        << (int64_t)stat.st_mtime;
   ++mmap_count;
   return source == TraceReader::SOURCE_TRACE ? RECORD_IN_TRACE
                                              : DONT_RECORD_IN_TRACE;
 }
 
-static void verify_backing_file(const TraceMappedRegion& map,
-                                const string& backing_file_name) {
-  struct stat backing_stat;
-  if (stat(backing_file_name.c_str(), &backing_stat)) {
-    FATAL() << "Failed to stat " << backing_file_name
-            << ": replay is impossible";
-  }
-  if (backing_stat.st_ino != map.stat().st_ino ||
-      backing_stat.st_mode != map.stat().st_mode ||
-      backing_stat.st_uid != map.stat().st_uid ||
-      backing_stat.st_gid != map.stat().st_gid ||
-      backing_stat.st_size != map.stat().st_size ||
-      backing_stat.st_mtime != map.stat().st_mtime) {
-    LOG(error)
-        << "Metadata of " << map.file_name()
-        << " changed: replay divergence likely, but continuing anyway ...";
-  }
-}
-
-TraceMappedRegion TraceReader::read_mapped_region(MappedData* data) {
+KernelMapping TraceReader::read_mapped_region(MappedData* data) {
   auto& mmaps = reader(MMAPS);
-  TraceMappedRegion map;
+  string original_file_name;
   string backing_file_name;
-  mmaps >> data->source >> map.type_ >> map.filename >> map.stat_ >>
-      map.start_ >> map.end_ >> map.file_offset_pages >> backing_file_name;
+  remote_ptr<void> start, end;
+  dev_t device;
+  ino_t inode;
+  int prot, flags;
+  uint32_t uid, gid, mode;
+  uint64_t file_offset_bytes;
+  int64_t mtime, file_size;
+  mmaps >> data->source >> start >> end >> original_file_name >> device >>
+      inode >> prot >> flags >> file_offset_bytes >> backing_file_name >>
+      mode >> uid >> gid >> file_size >> mtime;
   if (data->source == SOURCE_FILE) {
     if (backing_file_name[0] != '/') {
       backing_file_name = dir() + "/" + backing_file_name;
     }
-    data->file_name = backing_file_name;
-    data->file_data_offset_pages = map.file_offset_pages;
-    verify_backing_file(map, backing_file_name);
+    struct stat backing_stat;
+    if (stat(backing_file_name.c_str(), &backing_stat)) {
+      FATAL() << "Failed to stat " << backing_file_name
+              << ": replay is impossible";
+    }
+    if (backing_stat.st_ino != inode || backing_stat.st_mode != mode ||
+        backing_stat.st_uid != uid || backing_stat.st_gid != gid ||
+        backing_stat.st_size != file_size || backing_stat.st_mtime != mtime) {
+      LOG(error)
+          << "Metadata of " << original_file_name
+          << " changed: replay divergence likely, but continuing anyway ...";
+    }
   }
-  return map;
+  data->file_name = backing_file_name;
+  data->file_data_offset_bytes = file_offset_bytes;
+  data->file_size_bytes = file_size;
+  return KernelMapping(start, end, original_file_name, device, inode, prot,
+                       flags, file_offset_bytes);
 }
 
-TraceMappedRegion TraceReader::peek_mapped_region() {
-  TraceMappedRegion result;
+KernelMapping TraceReader::peek_mapped_region() {
+  KernelMapping result;
 
   auto& mmaps = reader(MMAPS);
   if (mmaps.at_end()) {

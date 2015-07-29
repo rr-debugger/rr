@@ -10,6 +10,7 @@
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <linux/ethtool.h>
 #include <linux/futex.h>
 #include <linux/if.h>
@@ -2597,21 +2598,15 @@ static void init_scratch_memory(Task* t,
   r.set_syscall_result(t->scratch_ptr);
   t->set_regs(r);
 
-  char filename[PATH_MAX];
-  sprintf(filename, "scratch for thread %d", t->tid);
+  KernelMapping km = t->vm()->map(t->scratch_ptr, sz, prot, flags, 0,
+                                  MappableResource::scratch(t->rec_tid));
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
-  TraceMappedRegion file(TraceMappedRegion::MMAP, filename, stat,
-                         t->scratch_ptr, t->scratch_ptr + scratch_size);
-  auto record_in_trace =
-      t->trace_writer().write_mapped_region(file, prot, flags);
+  auto record_in_trace = t->trace_writer().write_mapped_region(km, stat);
   ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
 
   r.set_syscall_result(saved_result);
   t->set_regs(r);
-
-  t->vm()->map(t->scratch_ptr, sz, prot, flags, 0,
-               MappableResource::scratch(t->rec_tid));
 }
 
 // We have |keys_length| instead of using array_length(keys) to work
@@ -2741,9 +2736,13 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   // for the resource.
   ScopedFd open_fd;
   auto result = t->fstat(fd, &open_fd);
-  TraceMappedRegion file(TraceMappedRegion::MMAP, result.file_name, result.st,
-                         addr, addr + size, offset_pages);
-  if (t->trace_writer().write_mapped_region(file, prot, flags) ==
+
+  KernelMapping km = t->vm()->map(
+      addr, size, prot, flags, offset,
+      MappableResource(result.st.st_dev, result.st.st_ino, PSEUDODEVICE_NONE),
+      result.file_name);
+
+  if (t->trace_writer().write_mapped_region(km, result.st) ==
       TraceWriter::RECORD_IN_TRACE) {
     if (result.st.st_size > 0) {
       off64_t end = (off64_t)result.st.st_size - offset;
@@ -2763,10 +2762,6 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
                   "tree.";
   }
 
-  t->vm()->map(
-      addr, size, prot, flags, offset,
-      MappableResource(result.st.st_dev, result.st.st_ino, PSEUDODEVICE_NONE),
-      result.file_name);
   t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages,
                                             open_fd);
 }
@@ -2793,20 +2788,17 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
   struct stat fake_stat;
   memset(&fake_stat, 0, sizeof(fake_stat));
   fake_stat.st_ino = shmid;
+  KernelMapping km = t->vm()->map(
+      addr, size, prot, flags, 0,
+      MappableResource(0, shmid, PSEUDODEVICE_SYSV_SHM), fake_file_name);
 
-  TraceMappedRegion file(TraceMappedRegion::SYSV_SHM, fake_file_name, fake_stat,
-                         addr, addr + size, 0);
-  if (t->trace_writer().write_mapped_region(file, prot, flags) ==
+  if (t->trace_writer().write_mapped_region(km, fake_stat) ==
       TraceWriter::RECORD_IN_TRACE) {
     t->record_remote(addr, size);
   }
 
   LOG(debug) << "Optimistically hoping that SysV segment is not used outside "
                 "of tracees";
-
-  t->vm()->map(addr, size, prot, flags, 0,
-               MappableResource(0, shmid, PSEUDODEVICE_SYSV_SHM),
-               fake_file_name);
 }
 
 template <typename Arch>

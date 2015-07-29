@@ -4,6 +4,8 @@
 
 #include "AutoRemoteSyscalls.h"
 
+#include <limits.h>
+
 #include "rr/rr.h"
 
 #include "kernel_metadata.h"

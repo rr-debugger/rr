@@ -4,6 +4,8 @@
 
 #include "RecordSession.h"
 
+#include <limits.h>
+
 #include <algorithm>
 #include <sstream>
 

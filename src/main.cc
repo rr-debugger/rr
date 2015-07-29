@@ -2,6 +2,7 @@
 
 #include "main.h"
 
+#include <limits.h>
 #include <linux/version.h>
 #include <stdio.h>
 #include <string.h>

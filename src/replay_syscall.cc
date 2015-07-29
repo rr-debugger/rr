@@ -184,11 +184,11 @@ static void init_scratch_memory(Task* t) {
    * means. But we make it PROT_NONE so that rogue reads/writes
    * to the scratch memory are caught. */
   TraceReader::MappedData data;
-  auto mapped_region = t->trace_reader().read_mapped_region(&data);
+  KernelMapping km = t->trace_reader().read_mapped_region(&data);
   ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
 
-  t->scratch_ptr = mapped_region.start();
-  t->scratch_size = mapped_region.size();
+  t->scratch_ptr = km.start();
+  t->scratch_size = km.size();
   size_t sz = t->scratch_size;
   int prot = PROT_NONE;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
@@ -197,9 +197,9 @@ static void init_scratch_memory(Task* t) {
     AutoRemoteSyscalls remote(t);
     map_addr = remote.mmap_syscall(t->scratch_ptr, sz, prot, flags, -1, 0);
   }
-  ASSERT(t, t->scratch_ptr == map_addr)
-      << "scratch mapped " << mapped_region.start() << " during recording, but "
-      << map_addr << " in replay";
+  ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped " << km.start()
+                                        << " during recording, but " << map_addr
+                                        << " in replay";
 
   t->vm()->map(map_addr, sz, prot, flags, 0,
                MappableResource::scratch(t->rec_tid));
@@ -470,19 +470,13 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
   step->action = TSTEP_EXIT_SYSCALL;
 }
 
-/**
- * Pass NOTE_TASK_MAP to update |t|'s cached mmap data.  If the data
- * need to be manually updated, pass |DONT_NOTE_TASK_MAP| and update
- * it manually.
- */
-enum NoteTaskMap { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
-
-static void finish_direct_mmap(
-    AutoRemoteSyscalls& remote, const TraceFrame& trace_frame,
-    remote_ptr<void> rec_addr, size_t length, int prot, int flags,
-    const TraceMappedRegion& file, off64_t mmap_offset_pages,
-    const string& backing_file_name, off64_t backing_offset_pages,
-    NoteTaskMap note_task_map, string& real_file_name) {
+static void finish_direct_mmap(AutoRemoteSyscalls& remote,
+                               const TraceFrame& trace_frame,
+                               remote_ptr<void> rec_addr, size_t length,
+                               int prot, int flags, off64_t mmap_offset_pages,
+                               const string& backing_file_name,
+                               off64_t backing_offset_pages,
+                               string& real_file_name) {
   Task* t = remote.task();
   int fd;
 
@@ -525,15 +519,14 @@ static void finish_direct_mmap(
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
   remote.syscall(syscall_number_for_close(remote.arch()), fd);
-
-  if (note_task_map) {
-    t->vm()->map(mapped_addr, length, prot, flags,
-                 page_size() * mmap_offset_pages,
-                 MappableResource(file.stat().st_dev, file.stat().st_ino,
-                                  PSEUDODEVICE_NONE),
-                 real_file_name);
-  }
 }
+
+/**
+ * Pass NOTE_TASK_MAP to update cached mmap data.  If the data
+ * need to be manually updated, pass |DONT_NOTE_TASK_MAP| and update
+ * it manually.
+ */
+enum NoteTaskMap { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
 
 static remote_ptr<void> finish_anonymous_mmap(
     AutoRemoteSyscalls& remote, const TraceFrame& trace_frame, size_t length,
@@ -556,12 +549,9 @@ static remote_ptr<void> finish_anonymous_mmap(
     r = MappableResource::shared_mmap_anonymous(trace_frame.time());
     auto emufile =
         remote.task()->replay_session().emufs().create_anonymous(r, length);
-    TraceMappedRegion vfile(TraceMappedRegion::MMAP, emufile->proc_path(),
-                            emufile->stat(), rec_addr,
-                            rec_addr + ceil_page_size(length));
     finish_direct_mmap(remote, trace_frame, rec_addr, length, prot,
-                       flags & ~MAP_ANONYMOUS, vfile, 0, vfile.file_name(), 0,
-                       DONT_NOTE_TASK_MAP, file_name);
+                       flags & ~MAP_ANONYMOUS, 0, emufile->proc_path(), 0,
+                       file_name);
   }
 
   if (note_task_map) {
@@ -613,9 +603,8 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 static void finish_private_mmap(AutoRemoteSyscalls& remote,
                                 const TraceFrame& trace_frame, size_t length,
                                 int prot, int flags, int fd,
-                                off64_t offset_pages,
-                                const TraceMappedRegion& file) {
-  LOG(debug) << "  finishing private mmap of " << file.file_name();
+                                off64_t offset_pages, const KernelMapping& km) {
+  LOG(debug) << "  finishing private mmap of " << km.fsname();
 
   Task* t = remote.task();
   size_t num_bytes = length;
@@ -636,33 +625,31 @@ static void finish_private_mmap(AutoRemoteSyscalls& remote,
   /* Mark the resource as ANONYMOUS since it's backed by an anonymous
    * mapping at the kernel level.
    */
-  t->vm()->map(mapped_addr, num_bytes, prot, flags, page_size() * offset_pages,
-               MappableResource(file.stat().st_dev, file.stat().st_ino,
-                                PSEUDODEVICE_ANONYMOUS));
+  t->vm()->map(
+      mapped_addr, num_bytes, prot, flags, page_size() * offset_pages,
+      MappableResource(km.device(), km.inode(), PSEUDODEVICE_ANONYMOUS));
 }
 
 static void finish_shared_mmap(AutoRemoteSyscalls& remote,
                                const TraceFrame& trace_frame, int prot,
                                int flags, off64_t offset_pages,
-                               const TraceMappedRegion& file) {
+                               size_t file_size, const KernelMapping& km) {
   Task* t = remote.task();
   auto buf = t->trace_reader().read_raw_data();
   size_t rec_num_bytes = ceil_page_size(buf.data.size());
 
   // Ensure there's a virtual file for the file that was mapped
   // during recording.
-  auto emufile = t->replay_session().emufs().get_or_create(file);
+  auto emufile = t->replay_session().emufs().get_or_create(km, file_size);
   // Re-use the direct_map() machinery to map the virtual file.
   //
   // NB: the tracee will map the procfs link to our fd; there's
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
-  TraceMappedRegion vfile(TraceMappedRegion::MMAP, emufile->proc_path(),
-                          file.stat(), file.start(), file.end());
   string real_file_name;
   finish_direct_mmap(remote, trace_frame, buf.addr, rec_num_bytes, prot, flags,
-                     vfile, offset_pages, vfile.file_name(), offset_pages,
-                     DONT_NOTE_TASK_MAP, real_file_name);
+                     offset_pages, emufile->proc_path(), offset_pages,
+                     real_file_name);
   // Write back the snapshot of the segment that we recorded.
   // We have to write directly to the underlying file, because
   // the tracee may have mapped its segment read-only.
@@ -674,13 +661,13 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
   if (ssize_t(buf.data.size()) !=
       pwrite64(emufile->fd(), buf.data.data(), buf.data.size(), offset_bytes)) {
     FATAL() << "Failed to write " << buf.data.size() << " bytes at "
-            << HEX(offset_bytes) << " to " << vfile.file_name();
+            << HEX(offset_bytes) << " to " << km.fsname();
   }
   LOG(debug) << "  restored " << buf.data.size() << " bytes at "
-             << HEX(offset_bytes) << " to " << vfile.file_name();
+             << HEX(offset_bytes) << " to " << km.fsname();
 
   t->vm()->map(buf.addr, buf.data.size(), prot, flags, offset_bytes,
-               MappableResource::shared_mmap_file(file), real_file_name);
+               MappableResource::shared_mmap_file(km), real_file_name);
 }
 
 static void process_mmap(Task* t, const TraceFrame& trace_frame,
@@ -712,22 +699,26 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
       finish_anonymous_mmap(remote, trace_frame, length, prot, flags, fd);
     } else {
       TraceReader::MappedData data;
-      auto file = t->trace_reader().read_mapped_region(&data);
+      KernelMapping km = t->trace_reader().read_mapped_region(&data);
 
       if (data.source == TraceReader::SOURCE_FILE) {
         string real_file_name;
         finish_direct_mmap(
             remote, trace_frame, trace_frame.regs().syscall_result(), length,
-            prot, flags, file, offset_pages, data.file_name,
-            data.file_data_offset_pages, NOTE_TASK_MAP, real_file_name);
+            prot, flags, offset_pages, data.file_name,
+            data.file_data_offset_bytes / page_size(), real_file_name);
+        t->vm()->map(
+            km.start(), length, prot, flags, page_size() * offset_pages,
+            MappableResource(km.device(), km.inode(), PSEUDODEVICE_NONE),
+            real_file_name);
       } else {
         ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
         if (!(MAP_SHARED & flags)) {
           finish_private_mmap(remote, trace_frame, length, prot, flags, fd,
-                              offset_pages, file);
+                              offset_pages, km);
         } else {
           finish_shared_mmap(remote, trace_frame, prot, flags, offset_pages,
-                             file);
+                             data.file_size_bytes, km);
         }
       }
     }
@@ -757,10 +748,11 @@ static void process_shmat(Task* t, const TraceFrame& trace_frame,
   {
     AutoRemoteSyscalls remote(t);
     TraceReader::MappedData data;
-    auto file = t->trace_reader().read_mapped_region(&data);
+    KernelMapping km = t->trace_reader().read_mapped_region(&data);
     int prot = shm_flags_to_mmap_prot(shm_flags);
     int flags = MAP_SHARED;
-    finish_shared_mmap(remote, trace_frame, prot, flags, 0, file);
+    finish_shared_mmap(remote, trace_frame, prot, flags, 0,
+                       data.file_size_bytes, km);
 
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());

@@ -4,6 +4,7 @@
 
 #include "AddressSpace.h"
 
+#include <limits.h>
 #include <linux/kdev_t.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -63,9 +64,9 @@ static PseudoDevice pseudodevice_for_name(const string& name) {
 }
 
 /*static*/ MappableResource MappableResource::shared_mmap_file(
-    const TraceMappedRegion& file) {
-  return MappableResource(file.stat().st_dev, file.stat().st_ino,
-                          pseudodevice_for_name(file.file_name()) ==
+    const KernelMapping& km) {
+  return MappableResource(km.device(), km.inode(),
+                          pseudodevice_for_name(km.fsname()) ==
                                   PSEUDODEVICE_SYSV_SHM
                               ? PSEUDODEVICE_SYSV_SHM
                               : PSEUDODEVICE_SHARED_MMAP_FILE);
@@ -450,20 +451,20 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
   // We could coalesce adjacent ranges, but there's probably no need.
 }
 
-void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
-                       int flags, off64_t offset_bytes,
-                       const MappableResource& res, const string& fsname) {
+KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
+                                int prot, int flags, off64_t offset_bytes,
+                                const MappableResource& res,
+                                const string& fsname) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
   num_bytes = ceil_page_size(num_bytes);
+  KernelMapping m(addr, addr + num_bytes, fsname, res.device, res.inode, prot,
+                  flags, offset_bytes);
   if (!num_bytes) {
-    return;
+    return m;
   }
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
-
-  KernelMapping m(addr, addr + num_bytes, fsname, res.device, res.inode, prot,
-                  flags, offset_bytes);
 
   bool insert_guard_page = false;
   if (has_mapping(m.end()) && (mapping_of(m.end()).flags() & MAP_GROWSDOWN)) {
@@ -502,6 +503,8 @@ void AddressSpace::map(remote_ptr<void> addr, size_t num_bytes, int prot,
   if (res.psdev == PSEUDODEVICE_VDSO) {
     vdso_start_addr = addr;
   }
+
+  return m;
 }
 
 template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {

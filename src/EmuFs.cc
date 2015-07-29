@@ -26,11 +26,11 @@ static void replace_char(string& s, char c, char replacement) {
 }
 
 EmuFile::~EmuFile() {
-  LOG(debug) << "    EmuFs::~File(einode:" << est.st_ino << ")";
+  LOG(debug) << "    EmuFs::~File(einode:" << inode_ << ")";
 }
 
 EmuFile::shr_ptr EmuFile::clone() {
-  auto f = EmuFile::create(orig_path.c_str(), est);
+  auto f = EmuFile::create(orig_path.c_str(), device(), inode(), size_);
   // NB: this isn't the most efficient possible file copy, but
   // it's simple and not too slow.
   ifstream src(proc_path(), ifstream::binary);
@@ -45,33 +45,40 @@ string EmuFile::proc_path() const {
   return ss.str();
 }
 
-void EmuFile::update(const struct stat& st) {
-  assert(est.st_dev == st.st_dev && est.st_ino == st.st_ino);
-  if (est.st_size != st.st_size) {
-    resize_shmem_segment(file, st.st_size);
+void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
+  assert(device_ == device && inode_ == inode);
+  if (size_ != size) {
+    resize_shmem_segment(file, size);
   }
-  est = st;
+  size_ = size;
 }
 
 /*static*/ EmuFile::shr_ptr EmuFile::create(const string& orig_path,
-                                            const struct stat& est) {
+                                            dev_t orig_device, ino_t orig_inode,
+                                            uint64_t orig_file_size) {
   // Sanitize the mapped file path so that we can use it in a
   // leaf name.
   string path_tag(orig_path);
   replace_char(path_tag, '/', '\\');
 
   stringstream name;
-  name << "rr-emufs-" << getpid() << "-dev-" << est.st_dev << "-inode-"
-       << est.st_ino << "-" << path_tag;
-  shr_ptr f(new EmuFile(create_shmem_segment(name.str(), est.st_size), est,
-                        orig_path));
+  name << "rr-emufs-" << getpid() << "-dev-" << orig_device << "-inode-"
+       << orig_inode << "-" << path_tag;
+  shr_ptr f(new EmuFile(create_shmem_segment(name.str(), orig_file_size),
+                        orig_path, orig_device, orig_inode, orig_file_size));
   LOG(debug) << "created emulated file for " << orig_path << " as "
              << name.str();
   return f;
 }
 
-EmuFile::EmuFile(ScopedFd&& fd, const struct stat& est, const string& orig_path)
-    : est(est), orig_path(orig_path), file(std::move(fd)), is_marked(false) {}
+EmuFile::EmuFile(ScopedFd&& fd, const string& orig_path, dev_t orig_device,
+                 ino_t orig_inode, uint64_t orig_file_size)
+    : orig_path(orig_path),
+      file(std::move(fd)),
+      size_(orig_file_size),
+      device_(orig_device),
+      inode_(orig_inode),
+      is_marked(false) {}
 
 static EmuFs::FileId id_for(const AddressSpace::Mapping& m) {
   return EmuFs::FileId(m.map.device(), m.map.inode());
@@ -147,14 +154,15 @@ void EmuFs::gc(const Session& session) {
   }
 }
 
-EmuFile::shr_ptr EmuFs::get_or_create(const TraceMappedRegion& mf) {
-  FileId id(mf.stat().st_dev, mf.stat().st_ino);
+EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& km,
+                                      size_t file_size) {
+  FileId id(km.device(), km.inode());
   auto it = files.find(id);
   if (it != files.end()) {
-    it->second->update(mf.stat());
+    it->second->update(km.device(), km.inode(), file_size);
     return it->second;
   }
-  auto vf = EmuFile::create(mf.file_name(), mf.stat());
+  auto vf = EmuFile::create(km.fsname(), km.device(), km.inode(), file_size);
   files[id] = vf;
   return vf;
 }
@@ -163,13 +171,9 @@ EmuFile::shr_ptr EmuFs::create_anonymous(const MappableResource& res,
                                          size_t size) {
   FileId id(res.device, res.inode);
   assert(files.find(id) == files.end());
-  struct stat fake_stat;
-  memset(&fake_stat, 0, sizeof(fake_stat));
-  fake_stat.st_ino = id.inode;
-  fake_stat.st_size = size;
   stringstream name;
   name << "anonymous-" << id.inode;
-  auto vf = EmuFile::create(name.str(), fake_stat);
+  auto vf = EmuFile::create(name.str(), 0, id.inode, size);
   files[id] = vf;
   return vf;
 }

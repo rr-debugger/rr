@@ -192,7 +192,7 @@ struct MappableResource {
       : psdev(p), device(device), inode(inode) {}
 
   static MappableResource anonymous() {
-    return MappableResource(KernelMapping::NO_DEVICE, nr_anonymous_maps++,
+    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                             PSEUDODEVICE_ANONYMOUS);
   }
   static MappableResource heap() {
@@ -200,16 +200,17 @@ struct MappableResource {
                             PSEUDODEVICE_HEAP);
   }
   static MappableResource scratch(pid_t tid) {
-    return MappableResource(KernelMapping::NO_DEVICE, tid,
+    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                             PSEUDODEVICE_SCRATCH);
   }
-  static MappableResource shared_mmap_file(const TraceMappedRegion& file);
+  static MappableResource shared_mmap_file(const KernelMapping& file);
   static MappableResource shared_mmap_anonymous(uint32_t unique_id) {
-    return MappableResource(KernelMapping::NO_DEVICE, unique_id,
+    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                             PSEUDODEVICE_SHARED_MMAP_FILE);
   }
   static MappableResource stack(pid_t tid) {
-    return MappableResource(KernelMapping::NO_DEVICE, tid, PSEUDODEVICE_STACK);
+    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
+                            PSEUDODEVICE_STACK);
   }
   static MappableResource syscallbuf(pid_t tid, int fd);
 
@@ -377,9 +378,10 @@ public:
    * initially) backed starting at |offset| of |res|. |fsname| is the
    * name we expect the kernel to give the file, or nullptr if not known.
    */
-  void map(remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
-           off64_t offset_bytes, const MappableResource& res,
-           const std::string& fsname = std::string());
+  KernelMapping map(remote_ptr<void> addr, size_t num_bytes, int prot,
+                    int flags, off64_t offset_bytes,
+                    const MappableResource& res,
+                    const std::string& fsname = std::string());
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.

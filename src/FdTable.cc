@@ -2,6 +2,8 @@
 
 #include "FdTable.h"
 
+#include <limits.h>
+
 #include <unordered_set>
 
 #include "rr/rr.h"

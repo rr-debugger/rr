@@ -14,8 +14,9 @@
 #include "Event.h"
 #include "remote_ptr.h"
 #include "TraceFrame.h"
-#include "TraceMappedRegion.h"
 #include "TraceTaskEvent.h"
+
+class KernelMapping;
 
 /**
  * TraceStream stores all the data common to both recording and
@@ -117,12 +118,12 @@ public:
 
   enum RecordInTrace { DONT_RECORD_IN_TRACE, RECORD_IN_TRACE };
   /**
-   * Write TraceMappedRegion record to the trace.
+   * Write mapped-region record to the trace.
    * If this returns RECORD_IN_TRACE, then the data for the map should be
    * recorded in the trace raw-data.
    */
-  RecordInTrace write_mapped_region(const TraceMappedRegion& map, int prot,
-                                    int flags);
+  RecordInTrace write_mapped_region(const KernelMapping& map,
+                                    const struct stat& stat);
 
   /**
    * Write a raw-data record to the trace.
@@ -197,20 +198,22 @@ public:
     MappedDataSource source;
     /** Name of file to map the data from. */
     string file_name;
-    /** Data offset in pages within the file. */
-    uint64_t file_data_offset_pages;
+    /** Data offset within the file. */
+    uint64_t file_data_offset_bytes;
+    /** Original size of mapped file. */
+    uint64_t file_size_bytes;
   };
   /**
    * Read the next mapped region descriptor and return it.
    * Also returns where to get the mapped data in 'data'.
    */
-  TraceMappedRegion read_mapped_region(MappedData* data);
+  KernelMapping read_mapped_region(MappedData* data);
 
   /**
-   * Peek at the next TraceMappedRegion. Returns an empty region if there
-   * isn't one for the current event.
+   * Peek at the next mapping. Returns an empty region if there isn't one for
+   * the current event.
    */
-  TraceMappedRegion peek_mapped_region();
+  KernelMapping peek_mapped_region();
 
   /**
    * Read a task event (clone or exec record) from the trace.

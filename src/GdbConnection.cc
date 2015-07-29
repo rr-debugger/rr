@@ -16,6 +16,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <stdlib.h>

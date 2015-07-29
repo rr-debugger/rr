@@ -7,6 +7,7 @@
 
 #include "preload/preload_interface.h"
 
+#include "AddressSpace.h"
 #include "Command.h"
 #include "kernel_metadata.h"
 #include "main.h"
@@ -168,8 +169,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         }
       }
       while (true) {
-        TraceMappedRegion region = trace.peek_mapped_region();
-        if (region.start() == region.end()) {
+        KernelMapping km = trace.peek_mapped_region();
+        if (km.start() == km.end()) {
           break;
         }
         TraceReader::MappedData data;
@@ -178,9 +179,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           fprintf(
               out,
               "  { map_file:\"%s\", addr:%p, length:%p, file_offset:0x%llx }\n",
-              region.file_name().c_str(), (void*)region.start().as_int(),
-              (void*)region.size(),
-              (long long)region.offset_pages() * page_size());
+              km.fsname().c_str(), (void*)km.start().as_int(), (void*)km.size(),
+              (long long)km.file_offset_bytes() * page_size());
         }
       }
       if (!flags.raw_dump) {
@@ -191,7 +191,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       while (process_raw_data && trace.read_raw_data_for_frame(frame, data)) {
       }
       while (true) {
-        TraceMappedRegion region = trace.peek_mapped_region();
+        KernelMapping region = trace.peek_mapped_region();
         if (region.start() == region.end()) {
           break;
         }
