@@ -299,10 +299,6 @@ public:
       return *this;
     }
 
-    const std::string& fsname() const { return map.fsname(); }
-    int prot() const { return map.prot(); }
-    int flags() const { return map.flags(); }
-    uint64_t file_offset_bytes() const { return map.file_offset_bytes(); }
     PseudoDevice pseudodevice() const { return psdev; }
 
     bool is_shared_mmap_file() const {

@@ -365,13 +365,13 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   }
   // XXX this condition is x86/x64-specific, I imagine.
   remote_ptr<void> addr =
-      remote.mmap_syscall(m.map.start(), m.map.size(), m.prot(),
+      remote.mmap_syscall(m.map.start(), m.map.size(), m.map.prot(),
                           // The remapped segment *must* be
                           // remapped at the same address,
                           // or else many things will go
                           // haywire.
-                          (m.flags() & ~MAP_ANONYMOUS) | MAP_FIXED, remote_fd,
-                          m.file_offset_bytes() / page_size());
+                          (m.map.flags() & ~MAP_ANONYMOUS) | MAP_FIXED,
+                          remote_fd, m.map.file_offset_bytes() / page_size());
   ASSERT(remote.task(), addr == m.map.start());
 
   remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);

@@ -2769,7 +2769,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
     if (m.map.start() >= ceil_page_size(addr + buf_size)) {
       break;
     }
-    if (!(m.prot() & (PROT_READ | PROT_WRITE))) {
+    if (!(m.map.prot() & (PROT_READ | PROT_WRITE))) {
       mappings_to_fix.push_back(m.map);
     }
   };

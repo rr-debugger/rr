@@ -224,20 +224,21 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
   struct stat st;
   int may_diverge;
 
-  if (stat(m.fsname().c_str(), &st)) {
+  if (stat(m.map.fsname().c_str(), &st)) {
     /* If there's no persistent resource backing this
      * mapping, we should expect it to change. */
-    LOG(debug) << "CHECKSUMMING unlinked '" << m.fsname() << "'";
+    LOG(debug) << "CHECKSUMMING unlinked '" << m.map.fsname() << "'";
     return true;
   }
   /* If we're pretty sure the backing resource is effectively
    * immutable, skip checksumming, it's a waste of time.  Except
    * if the mapping is mutable, for example the rw data segment
    * of a system library, then it's interesting. */
-  may_diverge = should_copy_mmap_region(m.fsname(), &st, m.prot(), m.flags()) ||
-                (PROT_WRITE & m.prot());
+  may_diverge = should_copy_mmap_region(m.map.fsname(), &st, m.map.prot(),
+                                        m.map.flags()) ||
+                (PROT_WRITE & m.map.prot());
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"
-             << m.fsname() << "'";
+             << m.map.fsname() << "'";
   return may_diverge;
 }
 
@@ -278,7 +279,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     unsigned checksum = 0;
     int i;
 
-    if (m.fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) != string::npos) {
+    if (m.map.fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) != string::npos) {
       /* The syscallbuf consists of a region that's written
       * deterministically wrt the trace events, and a
       * region that's written nondeterministically in the

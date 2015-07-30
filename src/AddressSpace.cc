@@ -468,7 +468,8 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
 
   bool insert_guard_page = false;
-  if (has_mapping(m.end()) && (mapping_of(m.end()).flags() & MAP_GROWSDOWN)) {
+  if (has_mapping(m.end()) &&
+      (mapping_of(m.end()).map.flags() & MAP_GROWSDOWN)) {
     // When inserting a mapping immediately before a grow-down VMA,
     // the kernel unmaps an extra page to form a guard page. We need to
     // emulate that.
@@ -572,7 +573,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // don't understand the idea of a grows-up segment.
     remote_ptr<void> new_start;
     if ((m.map.start() < rem.start()) && (prot & PROT_GROWSDOWN) &&
-        (m.flags() & MAP_GROWSDOWN)) {
+        (m.map.flags() & MAP_GROWSDOWN)) {
       new_start = m.map.start();
       LOG(debug) << "  PROT_GROWSDOWN: expanded region down to " << new_start;
     } else {
