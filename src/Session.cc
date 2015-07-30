@@ -376,7 +376,6 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   // name and we need to update that.
   remote.task()->vm()->map(m.map.start(), m.map.size(), m.map.prot(),
                            m.map.flags(), m.map.file_offset_bytes(),
-                           MappableResource::shared_mmap_file(m.map),
                            real_file.file_name, real_file.st.st_dev,
                            real_file.st.st_ino, &m.recorded_map);
 

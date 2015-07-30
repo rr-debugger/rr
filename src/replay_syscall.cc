@@ -201,9 +201,8 @@ static void init_scratch_memory(Task* t) {
                                         << " during recording, but " << map_addr
                                         << " in replay";
 
-  t->vm()->map(map_addr, sz, prot, flags, 0,
-               MappableResource::scratch(t->rec_tid), string(),
-               KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km);
+  t->vm()->map(map_addr, sz, prot, flags, 0, string(), KernelMapping::NO_DEVICE,
+               KernelMapping::NO_INODE, &km);
 }
 
 /**
@@ -538,13 +537,11 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
      of what the recorded tracee passed as the |addr| hint. */
   remote_ptr<void> rec_addr = rec_regs.syscall_result();
 
-  MappableResource r;
   string file_name;
   dev_t device = KernelMapping::NO_DEVICE;
   ino_t inode = KernelMapping::NO_INODE;
   KernelMapping recorded_km;
   if (flags & MAP_PRIVATE) {
-    r = MappableResource::anonymous();
     auto result = remote.mmap_syscall(rec_addr, length, prot,
                                       // Tell the kernel to take |rec_addr|
                                       // seriously.
@@ -554,7 +551,6 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
                                 KernelMapping::NO_INODE, prot, flags, 0);
     ASSERT(remote.task(), rec_addr == result);
   } else {
-    r = MappableResource::shared_mmap_anonymous(trace_frame.time());
     TraceReader::MappedData data;
     recorded_km = remote.task()->trace_reader().read_mapped_region(&data);
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
@@ -570,7 +566,7 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
   }
 
   if (note_task_map) {
-    remote.task()->vm()->map(rec_addr, length, prot, flags, 0, r, file_name,
+    remote.task()->vm()->map(rec_addr, length, prot, flags, 0, file_name,
                              device, inode, &recorded_km);
   }
   return rec_addr;
@@ -619,10 +615,9 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   remote.syscall(syscall_number_for_close(remote.arch()), child_fd);
 
   KernelMapping km_slice = km.subrange(start, start + length);
-  remote.task()->vm()->map(
-      start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
-      MappableResource(km.device(), km.inode(), PSEUDODEVICE_ANONYMOUS),
-      fstat.file_name, fstat.st.st_dev, fstat.st.st_ino, &km_slice);
+  remote.task()->vm()->map(start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
+                           fstat.file_name, fstat.st.st_dev, fstat.st.st_ino,
+                           &km_slice);
 }
 
 static void finish_private_mmap(AutoRemoteSyscalls& remote,
@@ -645,14 +640,9 @@ static void finish_private_mmap(AutoRemoteSyscalls& remote,
   size_t data_pages = ceil_page_size(data_size);
   size_t mapped_pages = ceil_page_size(num_bytes);
 
-  /* Mark the resource as ANONYMOUS since it's backed by an anonymous
-   * mapping at the kernel level.
-   */
-  t->vm()->map(
-      mapped_addr, num_bytes, prot, flags | MAP_ANONYMOUS,
-      page_size() * offset_pages,
-      MappableResource(km.device(), km.inode(), PSEUDODEVICE_ANONYMOUS),
-      string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km);
+  t->vm()->map(mapped_addr, num_bytes, prot, flags | MAP_ANONYMOUS,
+               page_size() * offset_pages, string(), KernelMapping::NO_DEVICE,
+               KernelMapping::NO_INODE, &km);
 
   create_sigbus_region(remote, prot, mapped_addr + data_pages,
                        mapped_pages - data_pages, km);
@@ -695,8 +685,8 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
              << HEX(offset_bytes) << " to " << km.fsname();
 
   t->vm()->map(buf.addr, buf.data.size(), prot, flags, offset_bytes,
-               MappableResource::shared_mmap_file(km), real_file.file_name,
-               real_file.st.st_dev, real_file.st.st_ino, &km);
+               real_file.file_name, real_file.st.st_dev, real_file.st.st_ino,
+               &km);
 }
 
 static void process_mmap(Task* t, const TraceFrame& trace_frame,
@@ -737,10 +727,9 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
             remote, trace_frame, trace_frame.regs().syscall_result(), length,
             prot, flags, offset_pages, data.file_name,
             data.file_data_offset_bytes / page_size(), real_file);
-        t->vm()->map(
-            km.start(), length, prot, flags, page_size() * offset_pages,
-            MappableResource(km.device(), km.inode(), PSEUDODEVICE_NONE),
-            real_file.file_name, real_file.st.st_dev, real_file.st.st_ino, &km);
+        t->vm()->map(km.start(), length, prot, flags,
+                     page_size() * offset_pages, real_file.file_name,
+                     real_file.st.st_dev, real_file.st.st_ino, &km);
       } else {
         ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
         if (MAP_PRIVATE & flags) {

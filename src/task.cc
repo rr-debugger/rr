@@ -2208,8 +2208,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
           const KernelMapping& m = mapping.map;
           LOG(debug) << "mapping stack for " << new_tid << " at " << m;
           t->as->map(m.start(), m.size(), m.prot(), m.flags(),
-                     m.file_offset_bytes(), MappableResource::stack(new_tid),
-                     "[stack]", m.device(), m.inode());
+                     m.file_offset_bytes(), "[stack]", m.device(), m.inode());
         }
       }
     }
@@ -2259,8 +2258,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       auto p = remote.mmap_syscall(syscallbuf_child, num_syscallbuf_bytes, prot,
                                    flags, -1, 0);
       ASSERT(t, p == syscallbuf_child.cast<void>());
-      t->vm()->map(p, num_syscallbuf_bytes, prot, flags, 0,
-                   MappableResource::anonymous(), string(),
+      t->vm()->map(p, num_syscallbuf_bytes, prot, flags, 0, string(),
                    KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
 
       // Mark the clone's syscallbuf as locked. This will prevent the
@@ -2560,9 +2558,8 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 
   struct stat st;
   ASSERT(this, 0 == ::fstat(shmem_fd, &st));
-  vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags, 0,
-            MappableResource::syscallbuf(rec_tid, shmem_fd), path, st.st_dev,
-            st.st_ino);
+  vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags, 0, path,
+            st.st_dev, st.st_ino);
 
   shmem_fd.close();
   remote.syscall(syscall_number_for_close(arch()), child_shmem_fd);

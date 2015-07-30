@@ -24,8 +24,6 @@
 using namespace rr;
 using namespace std;
 
-/*static*/ ino_t MappableResource::nr_anonymous_maps;
-
 /*static*/ const uint8_t AddressSpace::breakpoint_insn;
 
 void HasTaskSet::insert_task(Task* t) {
@@ -36,42 +34,6 @@ void HasTaskSet::insert_task(Task* t) {
 void HasTaskSet::erase_task(Task* t) {
   LOG(debug) << "removing " << t->tid << " from task group " << this;
   tasks.erase(t);
-}
-
-static PseudoDevice pseudodevice_for_name(const string& name) {
-  if ("[heap]" == name) {
-    return PSEUDODEVICE_HEAP;
-  }
-  if ("[stack" == name.substr(0, 6)) {
-    return PSEUDODEVICE_STACK;
-  }
-  if ("[vdso]" == name) {
-    return PSEUDODEVICE_VDSO;
-  }
-  if ("" == name || "/dev/zero (deleted)" == name) {
-    return PSEUDODEVICE_ANONYMOUS;
-  }
-  if ("/SYSV" == name.substr(0, 5)) {
-    return PSEUDODEVICE_SYSV_SHM;
-  }
-  return PSEUDODEVICE_NONE;
-}
-
-/*static*/ MappableResource MappableResource::shared_mmap_file(
-    const KernelMapping& km) {
-  return MappableResource(km.device(), km.inode(),
-                          pseudodevice_for_name(km.fsname()) ==
-                                  PSEUDODEVICE_SYSV_SHM
-                              ? PSEUDODEVICE_SYSV_SHM
-                              : PSEUDODEVICE_SHARED_MMAP_FILE);
-}
-
-/*static*/ MappableResource MappableResource::syscallbuf(pid_t tid, int fd) {
-  struct stat st;
-  if (fstat(fd, &st)) {
-    FATAL() << "Failed to fstat(" << fd << ")";
-  }
-  return MappableResource(st.st_dev, st.st_ino, PSEUDODEVICE_NONE);
 }
 
 /**
@@ -326,9 +288,8 @@ void AddressSpace::map_rr_page(Task* t) {
 
   unlink(path);
 
-  map(rr_page_start(), rr_page_size(), prot, flags, 0,
-      MappableResource(fstat.st.st_dev, fstat.st.st_ino, PSEUDODEVICE_NONE),
-      fstat.file_name, fstat.st.st_dev, fstat.st.st_ino);
+  map(rr_page_start(), rr_page_size(), prot, flags, 0, fstat.file_name,
+      fstat.st.st_dev, fstat.st.st_ino);
 
   untraced_syscall_ip_ = rr_page_untraced_syscall_ip(t->arch());
   traced_syscall_ip_ = rr_page_traced_syscall_ip(t->arch());
@@ -398,8 +359,8 @@ void AddressSpace::brk(remote_ptr<void> addr) {
   remote_ptr<void> vm_addr = ceil_page_size(addr);
   if (heap.end() < vm_addr) {
     map(heap.end(), vm_addr - heap.end(), heap.prot(), heap.flags(),
-        heap.file_offset_bytes(), MappableResource::heap(), "[heap]",
-        KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+        heap.file_offset_bytes(), "[heap]", KernelMapping::NO_DEVICE,
+        KernelMapping::NO_INODE);
   } else {
     unmap(vm_addr, heap.end() - vm_addr);
   }
@@ -471,7 +432,6 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
 
 KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
                                 int prot, int flags, off64_t offset_bytes,
-                                const MappableResource& res,
                                 const string& fsname, dev_t device, ino_t inode,
                                 const KernelMapping* recorded_map) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
@@ -1426,7 +1386,6 @@ void AddressSpace::populate_address_space(Task* t) {
       flags |= MAP_GROWSDOWN;
     }
     map(km.start(), km.size(), km.prot(), flags, km.file_offset_bytes(),
-        MappableResource(km.device(), km.inode(), PSEUDODEVICE_NONE),
         km.fsname(), km.device(), km.inode());
   }
 }

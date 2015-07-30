@@ -41,23 +41,6 @@ protected:
 };
 
 /**
- * PseudoDevices aren't real disk devices, but they differentiate
- * memory mappings when we're trying to decide whether adjacent
- * FileId::NO_DEVICE mappings should be coalesced.
- */
-enum PseudoDevice {
-  PSEUDODEVICE_NONE = 0,
-  PSEUDODEVICE_ANONYMOUS,
-  PSEUDODEVICE_HEAP,
-  PSEUDODEVICE_SCRATCH,
-  PSEUDODEVICE_SHARED_MMAP_FILE,
-  PSEUDODEVICE_STACK,
-  PSEUDODEVICE_SYSCALLBUF,
-  PSEUDODEVICE_VDSO,
-  PSEUDODEVICE_SYSV_SHM
-};
-
-/**
  * Records information that the kernel knows about a mapping. This includes
  * everything returned through /proc/<pid>/maps but also information that
  * we know from observing mmap and mprotect calls.
@@ -199,45 +182,6 @@ struct MappingComparator {
   bool operator()(const MemoryRange& a, const MemoryRange& b) const {
     return a.intersects(b) ? false : a.start() < b.start();
   }
-};
-
-/**
- * A resource that can be mapped into RAM.  |Mapping| represents a
- * mapping into RAM of a MappableResource.
- */
-struct MappableResource {
-  MappableResource() : psdev(PSEUDODEVICE_NONE), device(0), inode(0) {}
-  MappableResource(dev_t device, ino_t inode, PseudoDevice p)
-      : psdev(p), device(device), inode(inode) {}
-
-  static MappableResource anonymous() {
-    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
-                            PSEUDODEVICE_ANONYMOUS);
-  }
-  static MappableResource heap() {
-    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
-                            PSEUDODEVICE_HEAP);
-  }
-  static MappableResource scratch(pid_t tid) {
-    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
-                            PSEUDODEVICE_SCRATCH);
-  }
-  static MappableResource shared_mmap_file(const KernelMapping& file);
-  static MappableResource shared_mmap_anonymous(uint32_t unique_id) {
-    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
-                            PSEUDODEVICE_SHARED_MMAP_FILE);
-  }
-  static MappableResource stack(pid_t tid) {
-    return MappableResource(KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
-                            PSEUDODEVICE_STACK);
-  }
-  static MappableResource syscallbuf(pid_t tid, int fd);
-
-  PseudoDevice psdev;
-  dev_t device;
-  ino_t inode;
-
-  static ino_t nr_anonymous_maps;
 };
 
 enum TrapType {
@@ -391,8 +335,7 @@ public:
    * we are recording!).
    */
   KernelMapping map(remote_ptr<void> addr, size_t num_bytes, int prot,
-                    int flags, off64_t offset_bytes,
-                    const MappableResource& res, const std::string& fsname,
+                    int flags, off64_t offset_bytes, const std::string& fsname,
                     dev_t device, ino_t inode,
                     const KernelMapping* recorded_map = nullptr);
 

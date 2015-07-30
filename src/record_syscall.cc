@@ -2598,9 +2598,9 @@ static void init_scratch_memory(Task* t,
   r.set_syscall_result(t->scratch_ptr);
   t->set_regs(r);
 
-  KernelMapping km = t->vm()->map(
-      t->scratch_ptr, sz, prot, flags, 0, MappableResource::scratch(t->rec_tid),
-      string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+  KernelMapping km =
+      t->vm()->map(t->scratch_ptr, sz, prot, flags, 0, string(),
+                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
   auto record_in_trace = t->trace_writer().write_mapped_region(km, stat);
@@ -2724,17 +2724,17 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
       // Anonymous mappings are by definition not backed by any file-like
       // object, and are initialized to zero, so there's no nondeterminism to
       // record.
-      t->vm()->map(addr, size, prot, flags, 0, MappableResource::anonymous(),
-                   string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+      t->vm()->map(addr, size, prot, flags, 0, string(),
+                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
     } else {
       ASSERT(t, !(flags & MAP_GROWSDOWN));
       // Read the kernel's mapping. There doesn't seem to be any other way to
       // get the correct device/inode numbers. Fortunately anonymous shared
       // mappings are rare.
       KernelMapping kernel_info = t->vm()->read_kernel_mapping(t, addr);
-      KernelMapping km = t->vm()->map(
-          addr, size, prot, flags, 0, MappableResource::anonymous(),
-          kernel_info.fsname(), kernel_info.device(), kernel_info.inode());
+      KernelMapping km =
+          t->vm()->map(addr, size, prot, flags, 0, kernel_info.fsname(),
+                       kernel_info.device(), kernel_info.inode());
       struct stat st;
       memset(&st, 0, sizeof(st));
       st.st_dev = kernel_info.device();
@@ -2755,10 +2755,9 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   ScopedFd open_fd;
   auto result = t->fstat(fd, &open_fd);
 
-  KernelMapping km = t->vm()->map(
-      addr, size, prot, flags, offset,
-      MappableResource(result.st.st_dev, result.st.st_ino, PSEUDODEVICE_NONE),
-      result.file_name, result.st.st_dev, result.st.st_ino);
+  KernelMapping km =
+      t->vm()->map(addr, size, prot, flags, offset, result.file_name,
+                   result.st.st_dev, result.st.st_ino);
 
   if (t->trace_writer().write_mapped_region(km, result.st) ==
       TraceWriter::RECORD_IN_TRACE) {
@@ -2805,10 +2804,9 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
   // be the shm key.) This should be OK since SysV shmem is not used very much
   // and reading /proc/<pid>/maps should be reasonably cheap.
   KernelMapping kernel_info = t->vm()->read_kernel_mapping(t, addr);
-  KernelMapping km = t->vm()->map(
-      addr, size, prot, flags, 0,
-      MappableResource(0, shmid, PSEUDODEVICE_SYSV_SHM), kernel_info.fsname(),
-      kernel_info.device(), kernel_info.inode());
+  KernelMapping km =
+      t->vm()->map(addr, size, prot, flags, 0, kernel_info.fsname(),
+                   kernel_info.device(), kernel_info.inode());
   struct stat fake_stat;
   memset(&fake_stat, 0, sizeof(fake_stat));
   fake_stat.st_dev = kernel_info.device();
