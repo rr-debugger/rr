@@ -395,16 +395,16 @@ public:
   /**
    * Map |num_bytes| into this address space at |addr|, with
    * |prot| protection and |flags|.  The pages are (possibly
-   * initially) backed starting at |offset| of |res|. |fsname| is the
-   * name we expect the kernel to give the file, or nullptr if not known.
+   * initially) backed starting at |offset| of |res|. |fsname|, |device| and
+   * |inode| are values that will appear in the /proc/<pid>/maps entry.
    * |*recorded_map| is the mapping during recording, or null if the mapping
    * during recording is known to be the same as the new map (e.g. because
    * we are recording!).
    */
   KernelMapping map(remote_ptr<void> addr, size_t num_bytes, int prot,
                     int flags, off64_t offset_bytes,
-                    const MappableResource& res,
-                    const std::string& fsname = std::string(),
+                    const MappableResource& res, const std::string& fsname,
+                    dev_t device, ino_t inode,
                     const KernelMapping* recorded_map = nullptr);
 
   /**
@@ -677,6 +677,11 @@ public:
 
   const std::vector<uint8_t>& saved_auxv() { return saved_auxv_; }
   void save_auxv(Task* t);
+
+  /**
+   * Reads the /proc/<pid>/maps entry for a specific address. Does no caching.
+   */
+  KernelMapping read_kernel_mapping(Task* t, remote_ptr<void> addr);
 
 private:
   class Breakpoint;

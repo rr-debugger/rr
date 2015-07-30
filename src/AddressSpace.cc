@@ -165,6 +165,19 @@ bool KernelMapIterator::next(KernelMapping* result, string* raw_line) {
   return true;
 }
 
+KernelMapping AddressSpace::read_kernel_mapping(Task* t,
+                                                remote_ptr<void> addr) {
+  KernelMapIterator it(t);
+  KernelMapping km;
+  MemoryRange range(addr, 1);
+  while (it.next(&km)) {
+    if (km.contains(range)) {
+      return km;
+    }
+  }
+  return km;
+}
+
 /**
  * Cat the /proc/[t->tid]/maps file to stdout, line by line.
  */
@@ -311,7 +324,7 @@ void AddressSpace::map_rr_page(Task* t) {
 
   map(rr_page_start(), rr_page_size(), prot, flags, 0,
       MappableResource(fstat.st.st_dev, fstat.st.st_ino, PSEUDODEVICE_NONE),
-      fstat.file_name);
+      fstat.file_name, fstat.st.st_dev, fstat.st.st_ino);
 
   untraced_syscall_ip_ = rr_page_untraced_syscall_ip(t->arch());
   traced_syscall_ip_ = rr_page_traced_syscall_ip(t->arch());
@@ -381,7 +394,8 @@ void AddressSpace::brk(remote_ptr<void> addr) {
   remote_ptr<void> vm_addr = ceil_page_size(addr);
   if (heap.end() < vm_addr) {
     map(heap.end(), vm_addr - heap.end(), heap.prot(), heap.flags(),
-        heap.file_offset_bytes(), MappableResource::heap(), "[heap]");
+        heap.file_offset_bytes(), MappableResource::heap(), "[heap]",
+        KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
   } else {
     unmap(vm_addr, heap.end() - vm_addr);
   }
@@ -454,7 +468,7 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
 KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
                                 int prot, int flags, off64_t offset_bytes,
                                 const MappableResource& res,
-                                const string& fsname,
+                                const string& fsname, dev_t device, ino_t inode,
                                 const KernelMapping* recorded_map) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
@@ -1505,6 +1519,7 @@ void AddressSpace::populate_address_space(Task* t) {
       flags |= MAP_GROWSDOWN;
     }
     map(km.start(), km.size(), km.prot(), flags, km.file_offset_bytes(),
-        MappableResource(km.device(), km.inode(), psdev), km.fsname());
+        MappableResource(km.device(), km.inode(), psdev), km.fsname(),
+        km.device(), km.inode());
   }
 }

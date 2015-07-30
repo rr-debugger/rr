@@ -2598,8 +2598,9 @@ static void init_scratch_memory(Task* t,
   r.set_syscall_result(t->scratch_ptr);
   t->set_regs(r);
 
-  KernelMapping km = t->vm()->map(t->scratch_ptr, sz, prot, flags, 0,
-                                  MappableResource::scratch(t->rec_tid));
+  KernelMapping km = t->vm()->map(
+      t->scratch_ptr, sz, prot, flags, 0, MappableResource::scratch(t->rec_tid),
+      string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
   auto record_in_trace = t->trace_writer().write_mapped_region(km, stat);
@@ -2723,7 +2724,8 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
     // backed by any file-like object, and are
     // initialized to zero, so there's no
     // nondeterminism to record.
-    t->vm()->map(addr, size, prot, flags, 0, MappableResource::anonymous());
+    t->vm()->map(addr, size, prot, flags, 0, MappableResource::anonymous(),
+                 string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
     return;
   }
 
@@ -2740,7 +2742,7 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   KernelMapping km = t->vm()->map(
       addr, size, prot, flags, offset,
       MappableResource(result.st.st_dev, result.st.st_ino, PSEUDODEVICE_NONE),
-      result.file_name);
+      result.file_name, result.st.st_dev, result.st.st_ino);
 
   if (t->trace_writer().write_mapped_region(km, result.st) ==
       TraceWriter::RECORD_IN_TRACE) {
@@ -2782,16 +2784,19 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
   int prot = shm_flags_to_mmap_prot(shm_flags);
   int flags = MAP_SHARED;
 
-  char fake_file_name[PATH_MAX];
-  snprintf(fake_file_name, sizeof(fake_file_name), "/SYSV%08x (deleted)",
-           ds.shm_perm.key);
-  struct stat fake_stat;
-  memset(&fake_stat, 0, sizeof(fake_stat));
-  fake_stat.st_ino = shmid;
+  // Read the kernel's mapping for the shm segment. There doesn't seem to be
+  // any other way to get the correct device number. (The inode number seems to
+  // be the shm key.) This should be OK since SysV shmem is not used very much
+  // and reading /proc/<pid>/maps should be reasonably cheap.
+  KernelMapping kernel_info = t->vm()->read_kernel_mapping(t, addr);
   KernelMapping km = t->vm()->map(
       addr, size, prot, flags, 0,
-      MappableResource(0, shmid, PSEUDODEVICE_SYSV_SHM), fake_file_name);
-
+      MappableResource(0, shmid, PSEUDODEVICE_SYSV_SHM), kernel_info.fsname(),
+      kernel_info.device(), kernel_info.inode());
+  struct stat fake_stat;
+  memset(&fake_stat, 0, sizeof(fake_stat));
+  fake_stat.st_dev = kernel_info.device();
+  fake_stat.st_ino = kernel_info.inode();
   if (t->trace_writer().write_mapped_region(km, fake_stat) ==
       TraceWriter::RECORD_IN_TRACE) {
     t->record_remote(addr, size);
