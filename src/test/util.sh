@@ -70,7 +70,7 @@ function onexit {
     if [[ "$leave_data" != "y" ]]; then
         rm -rf $workdir
     else
-        echo Test $TESTNAME failed, leaving behind $workdir.
+        echo Test $TESTNAME failed, leaving behind $workdir
         echo To replay the failed test, run
         echo " " _RR_TRACE_DIR="$workdir" rr replay
     fi

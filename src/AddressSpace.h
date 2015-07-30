@@ -137,16 +137,6 @@ public:
   }
 
   /**
-   * Return the lowest-common-denominator interpretation of this
-   * mapping, namely, the one that can be parsed out of
-   * /proc/maps.
-   */
-  KernelMapping to_kernel() const {
-    return KernelMapping(start(), end(), fsname_, device_, inode_, prot_,
-                         flags_ & checkable_flags_mask, offset);
-  }
-
-  /**
    * Dump a representation of |this| to a string in a format
    * similar to the former part of /proc/[tid]/maps.
   */
@@ -163,16 +153,22 @@ public:
   const std::string& fsname() const { return fsname_; }
   dev_t device() const { return device_; }
   ino_t inode() const { return inode_; }
+  int prot() const { return prot_; }
+  int flags() const { return flags_; }
+  uint64_t file_offset_bytes() const { return offset; }
 
   /**
    * Return true if this file is/was backed by an external
    * device, as opposed to a transient RAM mapping.
    */
   bool is_real_device() const { return device() > NO_DEVICE; }
-
-  int prot() const { return prot_; }
-  int flags() const { return flags_; }
-  uint64_t file_offset_bytes() const { return offset; }
+  bool is_vdso() const { return fsname() == "[vdso]"; }
+  bool is_heap() const { return fsname() == "[heap]"; }
+  bool is_stack() const { return fsname().find("[stack") == 0; }
+  bool is_application_shared_mapping() const {
+    return !(flags() & MAP_PRIVATE) &&
+           fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) != 0;
+  }
 
 private:
   // The kernel's name for the mapping, as per /proc/<pid>/maps. This must
@@ -184,7 +180,10 @@ private:
   const int flags_;
   const uint64_t offset;
 };
-std::ostream& operator<<(std::ostream& o, const KernelMapping& m);
+inline std::ostream& operator<<(std::ostream& o, const KernelMapping& m) {
+  o << m.str();
+  return o;
+}
 
 /**
  * Compare |a| and |b| so that "subset" lookups will succeed.  What
@@ -288,30 +287,20 @@ class AddressSpace : public HasTaskSet {
 public:
   class Mapping {
   public:
-    Mapping(const KernelMapping& map, const KernelMapping& recorded_map,
-            const PseudoDevice psdev)
-        : map(map), recorded_map(recorded_map), psdev(psdev) {}
+    Mapping(const KernelMapping& map, const KernelMapping& recorded_map)
+        : map(map), recorded_map(recorded_map) {}
     Mapping(const Mapping& other) = default;
-    Mapping() : psdev(PSEUDODEVICE_NONE) {}
+    Mapping() = default;
     const Mapping& operator=(const Mapping& other) {
       this->~Mapping();
       new (this) Mapping(other);
       return *this;
     }
 
-    PseudoDevice pseudodevice() const { return psdev; }
-
-    bool is_shared_mmap_file() const {
-      return PSEUDODEVICE_SHARED_MMAP_FILE == psdev ||
-             PSEUDODEVICE_SYSV_SHM == psdev;
-    }
-    bool is_stack() const { return PSEUDODEVICE_STACK == psdev; }
-
     const KernelMapping map;
     // The corresponding KernelMapping in the recording. During recording,
     // equal to 'map'.
     const KernelMapping recorded_map;
-    const PseudoDevice psdev;
   };
 
   typedef std::map<MemoryRange, Mapping, MappingComparator> MemoryMap;
@@ -469,8 +458,8 @@ public:
    * Notify that the stack segment 'mapping' has grown down to a new start
    * address.
    */
-  void fix_stack_segment_start(const MemoryRange& mapping,
-                               remote_ptr<void> new_start);
+  KernelMapping fix_stack_segment_start(const MemoryRange& mapping,
+                                        remote_ptr<void> new_start);
 
   /**
    * Notify that data was written to this address space by rr or
@@ -753,7 +742,7 @@ private:
    * mappings of |r| that are adjacent to |m|.
    */
   void map_and_coalesce(const KernelMapping& m,
-                        const KernelMapping& recorded_map, PseudoDevice psdev);
+                        const KernelMapping& recorded_map);
 
   /** Set the dynamic heap segment to |[start, end)| */
   void update_heap(remote_ptr<void> start, remote_ptr<void> end) {

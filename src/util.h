@@ -50,13 +50,11 @@ template <typename T> bool type_has_no_holes() {
 }
 
 #define SHMEM_FS "/dev/shm"
-#define SHMEM_FS2 "/run/shm"
 
 /* The syscallbuf shared with tracees is created with this prefix
  * followed by the tracee tid, then immediately unlinked and shared
  * anonymously. */
-#define SYSCALLBUF_SHMEM_NAME_PREFIX "rr-tracee-shmem-"
-#define SYSCALLBUF_SHMEM_PATH_PREFIX SHMEM_FS "/" SYSCALLBUF_SHMEM_NAME_PREFIX
+#define SYSCALLBUF_SHMEM_PATH_PREFIX "/tmp/rr-tracee-shmem-"
 
 #define PREFIX_FOR_EMPTY_MMAPED_REGIONS "/tmp/rr-emptyfile-"
 

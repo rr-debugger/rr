@@ -2200,6 +2200,19 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   t->tg->insert_task(t);
   if (CLONE_SHARE_VM & flags) {
     t->as = as;
+    if (!stack.is_null()) {
+      remote_ptr<void> last_stack_byte = stack - 1;
+      if (t->as->has_mapping(last_stack_byte)) {
+        auto mapping = t->as->mapping_of(last_stack_byte);
+        if (!mapping.recorded_map.is_heap()) {
+          const KernelMapping& m = mapping.map;
+          LOG(debug) << "mapping stack for " << new_tid << " at " << m;
+          t->as->map(m.start(), m.size(), m.prot(), m.flags(),
+                     m.file_offset_bytes(), MappableResource::stack(new_tid),
+                     "[stack]", m.device(), m.inode());
+        }
+      }
+    }
   } else {
     t->as = sess.clone(t, as);
   }
@@ -2210,19 +2223,6 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->fds = fds;
   } else {
     t->fds = fds->clone(t);
-  }
-  if (!stack.is_null()) {
-    remote_ptr<void> last_stack_byte = stack - 1;
-    if (t->as->has_mapping(last_stack_byte)) {
-      auto mapping = t->as->mapping_of(last_stack_byte);
-      if (mapping.pseudodevice() != PSEUDODEVICE_HEAP) {
-        const KernelMapping& m = mapping.map;
-        LOG(debug) << "mapping stack for " << new_tid << " at " << m;
-        t->as->map(m.start(), m.size(), m.prot(), m.flags(),
-                   m.file_offset_bytes(), MappableResource::stack(new_tid),
-                   "[stack]", m.device(), m.inode());
-      }
-    }
   }
   t->top_of_stack = stack;
   // Clone children, both thread and fork, inherit the parent
@@ -2503,8 +2503,8 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
-  snprintf(path, sizeof(path) - 1, "/tmp/" SYSCALLBUF_SHMEM_NAME_PREFIX "%d-%d",
-           tid, nonce++);
+  snprintf(path, sizeof(path) - 1, SYSCALLBUF_SHMEM_PATH_PREFIX "%d-%d", tid,
+           nonce++);
 
   // Let the child create the shmem block and then send the fd back to us.
   // This lets us avoid having to make the file world-writeable so that

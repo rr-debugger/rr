@@ -564,6 +564,7 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
     finish_direct_mmap(remote, trace_frame, rec_addr, length, prot,
                        flags & ~MAP_ANONYMOUS, 0, emufile->proc_path(), 0,
                        real_file);
+    file_name = real_file.file_name;
     device = real_file.st.st_dev;
     inode = real_file.st.st_ino;
   }
@@ -605,7 +606,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   /* Unlink it now that the child has opened it */
   unlink(filename);
 
-  /*  Task::FStatResult fstat = remote.task()->fstat(child_fd); */
+  Task::FStatResult fstat = remote.task()->fstat(child_fd);
 
   /* mmap it in the tracee. We need to set the correct 'prot' flags
      so that the correct signal is generated on a memory access
@@ -617,11 +618,11 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
    * stay open. */
   remote.syscall(syscall_number_for_close(remote.arch()), child_fd);
 
-  /* KernelMapping km_slice = km.subrange(start, start + length);
-     t->vm()->map(
-        start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
-        MappableResource(km.device(), km.inode(), PSEUDODEVICE_ANONYMOUS),
-        string(), fstat.st.st_dev, fstat.st.st_ino, km_slice); */
+  KernelMapping km_slice = km.subrange(start, start + length);
+  remote.task()->vm()->map(
+      start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
+      MappableResource(km.device(), km.inode(), PSEUDODEVICE_ANONYMOUS),
+      fstat.file_name, fstat.st.st_dev, fstat.st.st_ino, &km_slice);
 }
 
 static void finish_private_mmap(AutoRemoteSyscalls& remote,
@@ -643,8 +644,6 @@ static void finish_private_mmap(AutoRemoteSyscalls& remote,
   /* Ensure pages past the end of the file fault on access */
   size_t data_pages = ceil_page_size(data_size);
   size_t mapped_pages = ceil_page_size(num_bytes);
-  create_sigbus_region(remote, prot, mapped_addr + data_pages,
-                       mapped_pages - data_pages, km);
 
   /* Mark the resource as ANONYMOUS since it's backed by an anonymous
    * mapping at the kernel level.
@@ -654,6 +653,9 @@ static void finish_private_mmap(AutoRemoteSyscalls& remote,
       page_size() * offset_pages,
       MappableResource(km.device(), km.inode(), PSEUDODEVICE_ANONYMOUS),
       string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km);
+
+  create_sigbus_region(remote, prot, mapped_addr + data_pages,
+                       mapped_pages - data_pages, km);
 }
 
 static void finish_shared_mmap(AutoRemoteSyscalls& remote,

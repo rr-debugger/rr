@@ -279,7 +279,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     unsigned checksum = 0;
     int i;
 
-    if (m.map.fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) != string::npos) {
+    if (m.map.fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) == 0) {
       /* The syscallbuf consists of a region that's written
       * deterministically wrt the trace events, and a
       * region that's written nondeterministically in the

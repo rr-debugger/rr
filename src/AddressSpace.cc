@@ -38,12 +38,6 @@ void HasTaskSet::erase_task(Task* t) {
   tasks.erase(t);
 }
 
-ostream& operator<<(ostream& o, const KernelMapping& m) {
-  o << static_cast<const MemoryRange&>(m) << " " << HEX(m.prot())
-    << " f:" << HEX(m.flags());
-  return o;
-}
-
 static PseudoDevice pseudodevice_for_name(const string& name) {
   if ("[heap]" == name) {
     return PSEUDODEVICE_HEAP;
@@ -515,7 +509,8 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
     m = KernelMapping(addr + page_size(), addr + num_bytes, fsname, device,
                       inode, prot, flags, offset_bytes + page_size());
   }
-  map_and_coalesce(m, recorded_map ? *recorded_map : m, res.psdev);
+  const KernelMapping& actual_recorded_map = recorded_map ? *recorded_map : m;
+  map_and_coalesce(m, actual_recorded_map);
 
   if ((prot & PROT_EXEC) &&
       (fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
@@ -524,9 +519,9 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
     syscallbuf_lib_end_ = addr + num_bytes;
   }
 
-  // During an emulated exec, we explicitly map in a (copy of) the VDSO
+  // During an emulated exec, we will explicitly map in a (copy of) the VDSO
   // at the recorded address.
-  if (res.psdev == PSEUDODEVICE_VDSO) {
+  if (actual_recorded_map.is_vdso()) {
     vdso_start_addr = addr;
   }
 
@@ -612,8 +607,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     if (m.map.start() < new_start) {
       Mapping underflow(
           m.map.subrange(m.map.start(), rem.start()),
-          m.recorded_map.subrange(m.recorded_map.start(), rem.start()),
-          m.pseudodevice());
+          m.recorded_map.subrange(m.recorded_map.start(), rem.start()));
       mem[underflow.map] = underflow;
     }
     // Remap the overlapping region with the new prot.
@@ -622,8 +616,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     int new_prot = prot & (PROT_READ | PROT_WRITE | PROT_EXEC);
     Mapping overlap(
         m.map.subrange(new_start, new_end).set_prot(new_prot),
-        m.recorded_map.subrange(new_start, new_end).set_prot(new_prot),
-        m.pseudodevice());
+        m.recorded_map.subrange(new_start, new_end).set_prot(new_prot));
     mem[overlap.map] = overlap;
     last_overlap = overlap.map;
 
@@ -632,8 +625,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // prot.
     if (rem.end() < m.map.end()) {
       Mapping overflow(m.map.subrange(rem.end(), m.map.end()),
-                       m.recorded_map.subrange(rem.end(), m.map.end()),
-                       m.pseudodevice());
+                       m.recorded_map.subrange(rem.end(), m.map.end()));
       mem[overflow.map] = overflow;
     }
   };
@@ -670,8 +662,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
 
   remote_ptr<void> new_end = new_addr + new_num_bytes;
   map_and_coalesce(m.set_range(new_addr, new_end),
-                   mr.recorded_map.set_range(new_addr, new_end),
-                   mr.pseudodevice());
+                   mr.recorded_map.set_range(new_addr, new_end));
 }
 
 void AddressSpace::remove_breakpoint(remote_code_ptr addr, TrapType type) {
@@ -867,22 +858,15 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
     // If the first segment we unmap underflows the unmap
     // region, remap the underflow region.
     if (m.map.start() < rem.start()) {
-      // When splitting a stack mapping, the bottom part of the split is no
-      // longer treated as stack by the kernel.
-      PseudoDevice psdev = m.pseudodevice() == PSEUDODEVICE_STACK
-                               ? PSEUDODEVICE_ANONYMOUS
-                               : m.pseudodevice();
       Mapping underflow(m.map.subrange(m.map.start(), rem.start()),
-                        m.recorded_map.subrange(m.map.start(), rem.start()),
-                        psdev);
+                        m.recorded_map.subrange(m.map.start(), rem.start()));
       mem[underflow.map] = underflow;
     }
     // If the last segment we unmap overflows the unmap
     // region, remap the overflow region.
     if (rem.end() < m.map.end()) {
       Mapping overflow(m.map.subrange(rem.end(), m.map.end()),
-                       m.recorded_map.subrange(rem.end(), m.map.end()),
-                       m.pseudodevice());
+                       m.recorded_map.subrange(rem.end(), m.map.end()));
       mem[overflow.map] = overflow;
     }
   };
@@ -921,40 +905,26 @@ void AddressSpace::did_fork_into(Task* t) {
   }
 }
 
-static PseudoDevice to_kernel(PseudoDevice psdev) {
-  switch (psdev) {
-    case PSEUDODEVICE_STACK:
-    case PSEUDODEVICE_SCRATCH:
-    case PSEUDODEVICE_ANONYMOUS:
-      return PSEUDODEVICE_ANONYMOUS;
-    case PSEUDODEVICE_SYSV_SHM:
-      return PSEUDODEVICE_SYSV_SHM;
-    default:
-      return PSEUDODEVICE_NONE;
+static string strip_deleted(const string& s) {
+  static const char deleted[] = " (deleted)";
+  ssize_t find_deleted = s.size() - (sizeof(deleted) - 1);
+  if (s.find(deleted) == size_t(find_deleted)) {
+    return s.substr(0, find_deleted);
   }
+  return s;
 }
 
-static bool is_equivalent(const KernelMapping& km1, PseudoDevice pd1,
-                          const KernelMapping& km2, PseudoDevice pd2) {
-  if (pd1 != pd2) {
-    return false;
-  }
-  if (pd1 == PSEUDODEVICE_ANONYMOUS) {
+static bool normalized_file_names_equal(const string& s1, const string& s2) {
+  // The kernel uses "[stack:<tid>]" for non-main threads whose stack pointers
+  // are in the right region. When the thread exits, the next read of the maps
+  // doesn't treat the area as stack at all. We don't want to track thread
+  // exits so we'll just allow anything.
+  if (s1.find("[stack") == 0 || s2.find("[stack") == 0) {
     return true;
   }
-  if (pd1 != PSEUDODEVICE_SYSV_SHM) {
-    if (MAJOR(km1.device()) != MAJOR(km2.device())) {
-      return false;
-    }
-    // Allow device minor numbers to vary if the major device is
-    // 0. This was observed to be happening on
-    // "3.13.0-24-generic #46-Ubuntu SMP" in KVM with btrfs.
-    if (MAJOR(km1.device()) != 0 &&
-        MINOR(km1.device()) != MINOR(km2.device())) {
-      return false;
-    }
-  }
-  return km1.inode() == km2.inode();
+  // We don't track when a file gets deleted, so it's possible for the kernel
+  // to have " (deleted)" when we don't.
+  return strip_deleted(s1) == strip_deleted(s2);
 }
 
 /**
@@ -963,9 +933,7 @@ static bool is_equivalent(const KernelMapping& km1, PseudoDevice pd1,
  * underlying (real) device.
  */
 static bool is_adjacent_mapping(const KernelMapping& mleft,
-                                PseudoDevice left_psdev,
                                 const KernelMapping& mright,
-                                PseudoDevice right_psdev,
                                 int32_t flags_to_check = 0xFFFFFFFF) {
   if (mleft.end() != mright.start()) {
     LOG(debug) << "    (not adjacent in memory)";
@@ -976,12 +944,12 @@ static bool is_adjacent_mapping(const KernelMapping& mleft,
     LOG(debug) << "    (flags or prot differ)";
     return false;
   }
-  if (mright.fsname().substr(0, strlen(PREFIX_FOR_EMPTY_MMAPED_REGIONS)) ==
-      PREFIX_FOR_EMPTY_MMAPED_REGIONS) {
-    return true;
+  if (!normalized_file_names_equal(mleft.fsname(), mright.fsname())) {
+    LOG(debug) << "    (not the same filename)";
+    return false;
   }
-  if (!is_equivalent(mleft, left_psdev, mright, right_psdev)) {
-    LOG(debug) << "    (not the same resource)";
+  if (mleft.device() != mright.device() || mleft.inode() != mright.inode()) {
+    LOG(debug) << "    (not the same device/inode)";
     return false;
   }
   if (mleft.is_real_device() &&
@@ -990,10 +958,6 @@ static bool is_adjacent_mapping(const KernelMapping& mleft,
     LOG(debug) << "    (" << mleft.file_offset_bytes() << " + " << mleft.size()
                << " != " << mright.file_offset_bytes()
                << ": offsets into real device aren't adjacent)";
-    return false;
-  }
-  if (left_psdev == PSEUDODEVICE_SYSV_SHM) {
-    LOG(debug) << "    (SysV shm not coalescable)";
     return false;
   }
   LOG(debug) << "    adjacent!";
@@ -1007,10 +971,8 @@ static bool is_adjacent_mapping(const KernelMapping& mleft,
  */
 static bool try_merge_adjacent(KernelMapping* left_m,
                                const KernelMapping& right_m) {
-  if (is_adjacent_mapping(
-          *left_m, to_kernel(pseudodevice_for_name(left_m->fsname())), right_m,
-          to_kernel(pseudodevice_for_name(right_m.fsname())),
-          KernelMapping::checkable_flags_mask)) {
+  if (is_adjacent_mapping(*left_m, right_m,
+                          KernelMapping::checkable_flags_mask)) {
     *left_m = KernelMapping(left_m->start(), right_m.end(), left_m->fsname(),
                             left_m->device(), left_m->inode(), right_m.prot(),
                             right_m.flags(), left_m->file_offset_bytes());
@@ -1019,15 +981,10 @@ static bool try_merge_adjacent(KernelMapping* left_m,
   return false;
 }
 
-static void assert_segments_match(Task* t, const KernelMapping& m,
+static void assert_segments_match(Task* t, const KernelMapping& input_m,
                                   const KernelMapping& km) {
-  bool same_mapping = (m.start() == km.start() && m.end() == km.end() &&
-                       m.prot() == km.prot() && m.flags() == km.flags());
-  // When we stripped most identifying info from |r| with
-  // |to_kernel()|, we also lost its "is stack" flag.  So to check if
-  // it's a grows-down stack segment, we see if it has the special
-  // linux name for the process stack segment, "[stack]".
-  if (!same_mapping && km.start() < m.start() && "[stack]" == m.fsname()) {
+  KernelMapping m = input_m;
+  if (km.start() < m.start() && "[stack]" == m.fsname()) {
     // TODO: the stack can grow down arbitrarily, and rr needs to be
     // aware of the updated mapping in case the user tries to map or
     // unmap pages near the stack.  But keeping track of expanded
@@ -1037,25 +994,41 @@ static void assert_segments_match(Task* t, const KernelMapping& m,
     // We do fix up our current mapping to match the kernel as closely
     // as possible. Then, if the grow-down VMA is split somehow, we know
     // about the split parts.
-    t->vm()->fix_stack_segment_start(m, km.start());
-    return;
+    m = t->vm()->fix_stack_segment_start(m, km.start());
   }
-  if (!same_mapping) {
+  string err;
+  if (m.start() != km.start()) {
+    err = "starts differ";
+  } else if (m.end() != km.end()) {
+    err = "ends differ";
+  } else if (m.prot() != km.prot()) {
+    err = "prots differ";
+  } else if ((m.flags() ^ km.flags()) & KernelMapping::checkable_flags_mask) {
+    err = "flags differ";
+  } else if (!normalized_file_names_equal(m.fsname(), km.fsname())) {
+    err = "filenames differ";
+  } else if (m.device() != km.device()) {
+    err = "devices_differ";
+  } else if (m.inode() != km.inode()) {
+    err = "inodes differ";
+  }
+  if (err.size()) {
     LOG(error) << "cached mmap:";
     t->vm()->dump();
     LOG(error) << "/proc/" << t->tid << "/mmaps:";
     print_process_mmap(t);
-
-    ASSERT(t, same_mapping) << "\nCached mapping " << m << " should be " << km;
+    ASSERT(t, false) << "\nCached mapping " << m << " should be " << km << "; "
+                     << err;
   }
 }
 
-void AddressSpace::fix_stack_segment_start(const MemoryRange& mapping,
-                                           remote_ptr<void> new_start) {
+KernelMapping AddressSpace::fix_stack_segment_start(
+    const MemoryRange& mapping, remote_ptr<void> new_start) {
   auto it = mem.find(mapping);
   it->first.update_start(new_start);
   it->second.map.update_start(new_start);
   it->second.recorded_map.update_start(new_start);
+  return it->second.map;
 }
 
 /**
@@ -1110,22 +1083,7 @@ void AddressSpace::verify(Task* t) const {
       ++mem_it;
     }
 
-    ASSERT(t, is_equivalent(
-                  km.to_kernel(), to_kernel(pseudodevice_for_name(km.fsname())),
-                  vm.to_kernel(), to_kernel(pseudodevice_for_name(vm.fsname())))
-                  // XXX not-so-pretty hack.  If the mapped file
-                  // lives in our replayer's emulated fs, then it
-                  // will have a real system device/inode
-                  // descriptor.  We /could/ initialize the
-                  // MappableResource with that descriptor, but
-                  // we rely on quick access to the recorded
-                  // (i.e. emulated in replay) device/inode for
-                  // gc.  So this suffices for now.
-                  ||
-                  string::npos != km.fsname().find(SHMEM_FS "/rr-emufs") ||
-                  string::npos != km.fsname().find(SHMEM_FS2 "/rr-emufs"));
-
-    assert_segments_match(t, vm.to_kernel(), km.to_kernel());
+    assert_segments_match(t, vm, km);
   }
 
   ASSERT(t, kernel_it.at_end() && mem_it == mem.end());
@@ -1344,8 +1302,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   while (mem.begin() != first_kv) {
     auto next = first_kv;
     --first_kv;
-    if (!is_adjacent_mapping(first_kv->second.map, first_kv->second.psdev,
-                             next->second.map, next->second.psdev)) {
+    if (!is_adjacent_mapping(first_kv->second.map, next->second.map)) {
       first_kv = next;
       break;
     }
@@ -1355,8 +1312,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
     auto prev = last_kv;
     ++last_kv;
     if (mem.end() == last_kv ||
-        !is_adjacent_mapping(prev->second.map, prev->second.psdev,
-                             last_kv->second.map, last_kv->second.psdev)) {
+        !is_adjacent_mapping(prev->second.map, last_kv->second.map)) {
       last_kv = prev;
       break;
     }
@@ -1368,8 +1324,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   }
 
   Mapping new_m(first_kv->second.map.extend(last_kv->first.end()),
-                first_kv->second.recorded_map.extend(last_kv->first.end()),
-                first_kv->second.pseudodevice());
+                first_kv->second.recorded_map.extend(last_kv->first.end()));
   LOG(debug) << "  coalescing " << new_m.map;
 
   mem.erase(first_kv, ++last_kv);
@@ -1424,12 +1379,10 @@ void AddressSpace::for_each_in_range(
 }
 
 void AddressSpace::map_and_coalesce(const KernelMapping& m,
-                                    const KernelMapping& recorded_map,
-                                    PseudoDevice psdev) {
+                                    const KernelMapping& recorded_map) {
   LOG(debug) << "  mapping " << m;
 
-  auto ins =
-      mem.insert(MemoryMap::value_type(m, Mapping(m, recorded_map, psdev)));
+  auto ins = mem.insert(MemoryMap::value_type(m, Mapping(m, recorded_map)));
   coalesce_around(ins.first);
 
   update_watchpoint_values(m.start(), m.end());
@@ -1459,8 +1412,7 @@ void AddressSpace::populate_address_space(Task* t) {
                  << " (end of mapped-data segment)";
     }
 
-    PseudoDevice psdev = pseudodevice_for_name(km.fsname());
-    if (psdev == PSEUDODEVICE_HEAP) {
+    if (km.is_heap()) {
       if (!heap.start()) {
         // No guess for the heap start. Assume it's just the [heap] segment.
         update_heap(km.start(), km.end());
@@ -1470,11 +1422,11 @@ void AddressSpace::populate_address_space(Task* t) {
     }
 
     int flags = km.flags();
-    if (psdev == PSEUDODEVICE_STACK) {
+    if (km.is_stack()) {
       flags |= MAP_GROWSDOWN;
     }
     map(km.start(), km.size(), km.prot(), flags, km.file_offset_bytes(),
-        MappableResource(km.device(), km.inode(), psdev), km.fsname(),
-        km.device(), km.inode());
+        MappableResource(km.device(), km.inode(), PSEUDODEVICE_NONE),
+        km.fsname(), km.device(), km.inode());
   }
 }
