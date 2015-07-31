@@ -184,7 +184,8 @@ void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
     FileId id(m.recorded_map);
     auto id_ef = files.find(id);
     if (id_ef == files.end()) {
-      ASSERT(t, !m.map.is_application_shared_mapping());
+      // Mapping isn't relevant. Not all shared mappings get EmuFs entries
+      // (e.g. readonly shared mappings of certain system files, like fonts).
       continue;
     }
     auto ef = id_ef->second;

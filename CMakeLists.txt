@@ -412,6 +412,7 @@ set(BASIC_TESTS
   set_ptracer
   setgid
   setsid
+  shared_persistent_file
   shm
   sigaction_old
   sigaltstack
