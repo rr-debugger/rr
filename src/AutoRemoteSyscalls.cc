@@ -90,7 +90,7 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   }
 
   MemoryRange found_stack;
-  for (auto& m : t->vm()->maps()) {
+  for (auto m : t->vm()->maps()) {
     if (m.map.is_stack()) {
       found_stack = m.map;
     }

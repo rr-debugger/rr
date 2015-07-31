@@ -1075,7 +1075,7 @@ static void record_file_change(Task* t, int fd, uint64_t offset,
   Task::FStatResult fd_info = t->fstat(fd);
   string& file_name = fd_info.file_name;
 
-  for (auto& m : t->vm()->maps()) {
+  for (auto m : t->vm()->maps()) {
     if (m.map.fsname() == file_name) {
       uint64_t start = max(offset, uint64_t(m.map.file_offset_bytes()));
       uint64_t end = min(offset + length,

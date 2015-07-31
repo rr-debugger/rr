@@ -348,20 +348,46 @@ public:
   bool has_mapping(remote_ptr<void> addr) const;
 
   /**
-   * Iterate through the memory map. We copy the elements to a vector so that
-   * clients that modify the memory map don't corrupt things.
+   * Object that generates robust iterators through the memory map. The
+   * memory map can be updated without invalidating iterators, as long as
+   * Mappings are not added or removed.
    */
-  std::vector<Mapping> maps() const {
-    return maps_starting_at(remote_ptr<void>());
-  }
-  std::vector<Mapping> maps_starting_at(remote_ptr<void> start) const {
-    std::vector<Mapping> r;
-    for (auto it = mem.lower_bound(MemoryRange(start, start)); it != mem.end();
-         ++it) {
-      r.push_back(it->second);
-    }
-    return r;
-  }
+  class Maps {
+  public:
+    Maps(const AddressSpace& outer, remote_ptr<void> start)
+        : outer(outer), start(start) {}
+    class iterator {
+    public:
+      const iterator& operator++() {
+        ptr = to_it()->second.map.end();
+        return *this;
+      }
+      bool operator!=(const iterator& other) const {
+        return to_it() != other.to_it();
+      }
+      Mapping operator*() const {
+        return to_it()->second;
+      }
+    private:
+      friend class Maps;
+      iterator(const MemoryMap& outer, remote_ptr<void> ptr) : outer(outer), ptr(ptr), at_end(false) {}
+      iterator(const MemoryMap& outer) : outer(outer), at_end(true) {}
+      MemoryMap::const_iterator to_it() const {
+        return at_end ? outer.end() : outer.lower_bound(MemoryRange(ptr, ptr));
+      }
+      const MemoryMap& outer;
+      remote_ptr<void> ptr;
+      bool at_end;
+    };
+    iterator begin() const { return iterator(outer.mem, start); }
+    iterator end() const { return iterator(outer.mem); }
+  private:
+    const AddressSpace& outer;
+    remote_ptr<void> start;
+  };
+  friend class Maps;
+  Maps maps() const { return Maps(*this, remote_ptr<void>()); }
+  Maps maps_starting_at(remote_ptr<void> start) { return Maps(*this, start); }
 
   /**
    * Change the protection bits of [addr, addr + num_bytes) to

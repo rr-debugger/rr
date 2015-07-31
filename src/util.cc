@@ -153,7 +153,7 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
   dump_file = fopen64(filename, "w");
 
   const AddressSpace& as = *(t->vm());
-  for (auto& m : as.maps()) {
+  for (auto m : as.maps()) {
     vector<uint8_t> mem;
     mem.resize(m.map.size());
 
@@ -264,7 +264,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   }
 
   const AddressSpace& as = *(t->vm());
-  for (auto& m : as.maps()) {
+  for (auto m : as.maps()) {
     vector<uint8_t> mem;
     ssize_t valid_mem_len = 0;
 

@@ -182,7 +182,7 @@ EmuFs::EmuFs() {}
 
 void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
                              size_t* nr_marked_files) {
-  for (auto& m : as.maps()) {
+  for (auto m : as.maps()) {
     LOG(debug) << "  examining " << m.map.fsname().c_str() << " ...";
 
     FileId id(m.recorded_map);

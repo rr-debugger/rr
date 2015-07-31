@@ -2766,7 +2766,7 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
   vector<KernelMapping> mappings_to_fix;
-  for (auto& m : t->vm()->maps_starting_at(floor_page_size(addr))) {
+  for (auto m : t->vm()->maps_starting_at(floor_page_size(addr))) {
     if (m.map.start() >= ceil_page_size(addr + buf_size)) {
       break;
     }
