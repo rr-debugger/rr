@@ -62,15 +62,15 @@ public:
   ~EmuFile();
 
   /**
-   * Return a copy of this file.  See |create()| for the meaning
-   * of |fs_tag|.
-   */
-  shr_ptr clone();
-
-  /**
    * Return the fd of the real file backing this.
    */
   const ScopedFd& fd() const { return file; }
+
+  /**
+   * Return a pathname referring to the fd of this in this
+   * tracer's address space.  For example, "/proc/12345/fd/5".
+   */
+  std::string proc_path() const;
 
   /**
    * Return the path of the original file from recording, the
@@ -78,11 +78,20 @@ public:
    */
   const std::string emu_path() const { return orig_path; }
 
+  dev_t device() const { return device_; }
+  ino_t inode() const { return inode_; }
+
+private:
+  friend class EmuFs;
+
+  EmuFile(ScopedFd&& fd, const std::string& orig_path, dev_t device,
+          ino_t inode, size_t file_size);
+
   /**
-   * Return a pathname referring to the fd of this in this
-   * tracer's address space.  For example, "/proc/12345/fd/5".
+   * Return a copy of this file.  See |create()| for the meaning
+   * of |fs_tag|.
    */
-  std::string proc_path() const;
+  shr_ptr clone();
 
   /**
    * Mark/unmark/check to see if this file is marked.
@@ -97,9 +106,6 @@ public:
    */
   void update(dev_t device, ino_t inode, uint64_t size);
 
-  dev_t device() const { return device_; }
-  ino_t inode() const { return inode_; }
-
   /**
    * Create a new emulated file for |orig_path| that will
    * emulate the recorded attributes |est|.  |tag| is used to
@@ -108,10 +114,6 @@ public:
    */
   static shr_ptr create(const std::string& orig_path, dev_t orig_device,
                         ino_t orig_inode, size_t orig_file_size);
-
-private:
-  EmuFile(ScopedFd&& fd, const std::string& orig_path, dev_t device,
-          ino_t inode, size_t file_size);
 
   std::string orig_path;
   ScopedFd file;
