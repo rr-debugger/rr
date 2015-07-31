@@ -136,6 +136,8 @@ public:
    */
   EmuFile::shr_ptr at(const KernelMapping& recorded_map) const;
 
+  bool has_file_for(const KernelMapping& recorded_map) const;
+
   /**
    * Return a copy of this fs such that |at()| and |get_or_create()| will
    * return semantically identical results as this, and such that mutations of

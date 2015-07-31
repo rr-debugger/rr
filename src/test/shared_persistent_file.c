@@ -2,6 +2,9 @@
 
 #include "rrutil.h"
 
+static void breakpoint(void) {
+}
+
 int main(int argc, char* argv[]) {
   int fd = open("/bin/sh", O_RDONLY);
   void* p = mmap(NULL, 4096, PROT_READ, MAP_SHARED, fd, 0);
@@ -11,6 +14,9 @@ int main(int argc, char* argv[]) {
   test_assert(fd >= 0);
   test_assert(p != MAP_FAILED);
   pid = fork();
+
+  breakpoint();
+
   if (!pid) {
     return 77;
   }

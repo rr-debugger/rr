@@ -148,10 +148,6 @@ public:
   bool is_vdso() const { return fsname() == "[vdso]"; }
   bool is_heap() const { return fsname() == "[heap]"; }
   bool is_stack() const { return fsname().find("[stack") == 0; }
-  bool is_application_shared_mapping() const {
-    return !(flags() & MAP_PRIVATE) &&
-           fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) != 0;
-  }
 
 private:
   // The kernel's name for the mapping, as per /proc/<pid>/maps. This must

@@ -412,7 +412,6 @@ set(BASIC_TESTS
   set_ptracer
   setgid
   setsid
-  shared_persistent_file
   shm
   sigaction_old
   sigaltstack
@@ -525,6 +524,7 @@ set(TESTS_WITH_PROGRAM
   reverse_continue_breakpoint
   reverse_continue_process_signal
   segfault
+  shared_persistent_file
   stack_growth
   step_thread
   string_instructions

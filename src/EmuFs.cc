@@ -84,6 +84,10 @@ EmuFile::shr_ptr EmuFs::at(const KernelMapping& recorded_map) const {
   return files.at(FileId(recorded_map));
 }
 
+bool EmuFs::has_file_for(const KernelMapping& recorded_map) const {
+  return files.find(FileId(recorded_map)) != files.end();
+}
+
 EmuFs::shr_ptr EmuFs::clone() {
   shr_ptr fs(new EmuFs());
   for (auto& kv : files) {
