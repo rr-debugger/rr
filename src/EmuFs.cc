@@ -80,12 +80,8 @@ EmuFile::EmuFile(ScopedFd&& fd, const string& orig_path, dev_t orig_device,
       inode_(orig_inode),
       is_marked(false) {}
 
-static EmuFs::FileId id_for(const AddressSpace::Mapping& m) {
-  return EmuFs::FileId(m.recorded_map.device(), m.recorded_map.inode());
-}
-
-EmuFile::shr_ptr EmuFs::at(const AddressSpace::Mapping& m) const {
-  return files.at(id_for(m));
+EmuFile::shr_ptr EmuFs::at(const KernelMapping& recorded_map) const {
+  return files.at(FileId(recorded_map));
 }
 
 EmuFs::shr_ptr EmuFs::clone() {
@@ -154,26 +150,16 @@ void EmuFs::gc(const Session& session) {
   }
 }
 
-EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& km,
+EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& recorded_km,
                                       size_t file_size) {
-  FileId id(km.device(), km.inode());
+  FileId id(recorded_km);
   auto it = files.find(id);
   if (it != files.end()) {
-    it->second->update(km.device(), km.inode(), file_size);
+    it->second->update(recorded_km.device(), recorded_km.inode(), file_size);
     return it->second;
   }
-  auto vf = EmuFile::create(km.fsname(), km.device(), km.inode(), file_size);
-  files[id] = vf;
-  return vf;
-}
-
-EmuFile::shr_ptr EmuFs::create_anonymous(dev_t device, ino_t inode,
-                                         size_t size) {
-  FileId id(device, inode);
-  assert(files.find(id) == files.end());
-  stringstream name;
-  name << "anonymous-" << id.inode;
-  auto vf = EmuFile::create(name.str(), 0, id.inode, size);
+  auto vf = EmuFile::create(recorded_km.fsname(), recorded_km.device(),
+                            recorded_km.inode(), file_size);
   files[id] = vf;
   return vf;
 }
@@ -195,7 +181,7 @@ void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
   for (auto& m : as.maps()) {
     LOG(debug) << "  examining " << m.map.fsname().c_str() << " ...";
 
-    FileId id = id_for(m);
+    FileId id(m.recorded_map);
     auto id_ef = files.find(id);
     if (id_ef == files.end()) {
       ASSERT(t, !m.map.is_application_shared_mapping());

@@ -93,7 +93,7 @@ public:
 
   /**
    * Ensure that the emulated file is sized to match a later
-   * stat() of it, |st|.
+   * stat() of it.
    */
   void update(dev_t device, ino_t inode, uint64_t size);
 
@@ -128,42 +128,25 @@ class EmuFs {
 public:
   typedef std::shared_ptr<EmuFs> shr_ptr;
 
-  struct FileId {
-    FileId(dev_t device, ino_t inode) : device(device), inode(inode) {}
-    bool operator<(const FileId& other) const {
-      return device < other.device ||
-             (device == other.device && inode < other.inode);
-    }
-    dev_t device;
-    ino_t inode;
-  };
-
-  typedef std::map<FileId, EmuFile::shr_ptr> FileMap;
-
   /**
-   * Return the EmuFile defined by |id|, which must exist or
-   * this won't return.
+   * Return the EmuFile for |recorded_map|, which must exist or this won't
+   * return.
    */
-  EmuFile::shr_ptr at(const AddressSpace::Mapping& m) const;
+  EmuFile::shr_ptr at(const KernelMapping& recorded_map) const;
 
   /**
-   * Return a copy of this fs such that |at()| and
-   * |get_or_create()| will return semantically identical
-   * results as this, and such that mutations of the returned fs
-   * won't affect this and vice versa.
+   * Return a copy of this fs such that |at()| and |get_or_create()| will
+   * return semantically identical results as this, and such that mutations of
+   * the returned fs won't affect this and vice versa.
    */
   shr_ptr clone();
 
   /**
-   * Return an emulated file representing the recorded file underlying |mf|.
+   * Return an emulated file representing the recorded shared mapping
+   * |recorded_km|.
    */
-  EmuFile::shr_ptr get_or_create(const KernelMapping& km, size_t file_size);
-
-  /**
-   * Create an emulated file representing the shared anonymous mapping
-   * referenced by |id|.
-   */
-  EmuFile::shr_ptr create_anonymous(dev_t device, ino_t inode, size_t size);
+  EmuFile::shr_ptr get_or_create(const KernelMapping& recorded_km,
+                                 size_t file_size);
 
   /**
    * Dump information about this emufs to the "error" log.
@@ -207,6 +190,19 @@ private:
    */
   void mark_used_vfiles(Task* t, const AddressSpace& as,
                         size_t* nr_marked_files);
+
+  struct FileId {
+    FileId(const KernelMapping& recorded_map) :
+      device(recorded_map.device()), inode(recorded_map.inode()) {}
+    bool operator<(const FileId& other) const {
+      return device < other.device ||
+             (device == other.device && inode < other.inode);
+    }
+    dev_t device;
+    ino_t inode;
+  };
+
+  typedef std::map<FileId, EmuFile::shr_ptr> FileMap;
 
   FileMap files;
 

@@ -343,7 +343,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   remote.syscall(syscall_number_for_munmap(remote.arch()), m.map.start(),
                  m.map.size());
 
-  auto emufile = dest_emu_fs.at(m);
+  auto emufile = dest_emu_fs.at(m.recorded_map);
   // TODO: this duplicates some code in replay_syscall.cc, but
   // it's somewhat nontrivial to factor that code out.
   int remote_fd;

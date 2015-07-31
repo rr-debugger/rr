@@ -554,8 +554,8 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
     TraceReader::MappedData data;
     recorded_km = remote.task()->trace_reader().read_mapped_region(&data);
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
-    auto emufile = remote.task()->replay_session().emufs().create_anonymous(
-        recorded_km.device(), recorded_km.inode(), length);
+    auto emufile = remote.task()->replay_session().emufs().get_or_create(
+        recorded_km, length);
     Task::FStatResult real_file;
     finish_direct_mmap(remote, trace_frame, rec_addr, length, prot,
                        flags & ~MAP_ANONYMOUS, 0, emufile->proc_path(), 0,
