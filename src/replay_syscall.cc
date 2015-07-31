@@ -134,15 +134,14 @@ static void __ptrace_cont(Task* t, int expect_syscallno) {
       << maybe_dump_written_string(t);
 }
 
-static void init_scratch_memory(Task* t) {
+static void init_scratch_memory(Task* t, const KernelMapping& km,
+                                const TraceReader::MappedData& data) {
   /* Initialize the scratchpad as the recorder did, but make it
    * PROT_NONE. The idea is just to reserve the address space so
    * the replayed process address map looks like the recorded
    * process, if it were to be probed by madvise or some other
    * means. But we make it PROT_NONE so that rogue reads/writes
    * to the scratch memory are caught. */
-  TraceReader::MappedData data;
-  KernelMapping km = t->trace_reader().read_mapped_region(&data);
   ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
 
   t->scratch_ptr = km.start();
@@ -326,108 +325,32 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   t->set_return_value_from_trace();
   t->validate_regs();
 
-  init_scratch_memory(new_task);
+  TraceReader::MappedData data;
+  KernelMapping km = t->trace_reader().read_mapped_region(&data);
+  init_scratch_memory(new_task, km, data);
 
   new_task->vm()->after_clone();
 
   step->action = TSTEP_RETIRE;
 }
 
-static void process_execve(Task* t, const TraceFrame& trace_frame,
-                           SyscallEntryOrExit state, ReplayTraceStep* step) {
-  if (is_failed_syscall(t, trace_frame)) {
-    /* exec failed, emulate it */
-    step->syscall.emu = EMULATE;
-    step->action = syscall_action(state);
-    return;
+static string find_exec_stub(SupportedArch arch) {
+  char* exe_path = realpath("/proc/self/exe", nullptr);
+  string lib_path = exe_path;
+  free(exe_path);
+
+  int end = lib_path.length();
+  // Chop off the filename
+  while (end > 0 && lib_path[end - 1] != '/') {
+    --end;
   }
-
-  if (SYSCALL_ENTRY == state) {
-    // Executed, not emulated.
-    step->action = TSTEP_ENTER_SYSCALL;
-    return;
+  lib_path.erase(end);
+  if (arch == x86 && NativeArch::arch() == x86_64) {
+    lib_path += "exec_stub_32";
+  } else {
+    lib_path += "exec_stub";
   }
-
-  step->action = TSTEP_RETIRE;
-
-  /* The original_syscallno is execve in the old architecture. The kernel does
-   * not update the original_syscallno when the architecture changes across
-   * an exec.
-   */
-  int expect_syscallno = syscall_number_for_execve(t->arch());
-  /* Wait for the PTRACE_EVENT_EXREC */
-  __ptrace_cont(t, expect_syscallno);
-  ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXEC)
-      << "Expected PTRACE_EVENT_EXEC";
-
-  /* Wait for the execve exit. */
-  __ptrace_cont(t, expect_syscallno);
-
-  t->post_exec(&trace_frame.regs(), &trace_frame.extra_regs());
-
-  TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::EXEC);
-  t->post_exec_syscall(tte);
-
-  bool check = t->regs().arg1();
-  /* if the execve comes from a vfork system call the ebx
-   * register is not zero. in this case, no recorded data needs
-   * to be injected */
-  if (check == 0) {
-    t->set_data_from_trace();
-  }
-
-  init_scratch_memory(t);
-
-  t->vm()->save_auxv(t);
-  t->set_return_value_from_trace();
-  t->validate_regs();
-}
-
-/**
- * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
- * will transition the futex into the contended state.  (This results
- * in the kernel atomically setting the FUTEX_WAITERS bit on the futex
- * value.)  The new value of the futex after the kernel updates it is
- * returned in |next_val|.
- */
-static bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex,
-                                      int* next_val) {
-  int val = t->read_mem(futex);
-  pid_t owner_tid = (val & FUTEX_TID_MASK);
-  bool now_contended =
-      (owner_tid != 0 && owner_tid != t->rec_tid && !(val & FUTEX_WAITERS));
-  if (now_contended) {
-    LOG(debug) << t->tid << ": futex " << futex << " is " << val
-               << ", so WAITERS bit will be set";
-    *next_val = (owner_tid & FUTEX_TID_MASK) | FUTEX_WAITERS;
-  }
-  return now_contended;
-}
-
-static void process_futex(Task* t, const TraceFrame& trace_frame,
-                          SyscallEntryOrExit state, ReplayTraceStep* step) {
-  step->syscall.emu = EMULATE;
-
-  if (state == SYSCALL_ENTRY) {
-    const Registers& regs = trace_frame.regs();
-    int op = (int)regs.arg2_signed() & FUTEX_CMD_MASK;
-    if (FUTEX_LOCK_PI == op) {
-      remote_ptr<int> futex = regs.arg1();
-      int next_val;
-      if (is_now_contended_pi_futex(t, futex, &next_val)) {
-        // During recording, we waited for the
-        // kernel to update the futex, but
-        // since we emulate SYS_futex in
-        // replay, we need to set it ourselves
-        // here.
-        t->write_mem(futex, next_val);
-      }
-    }
-    step->action = TSTEP_ENTER_SYSCALL;
-    return;
-  }
-
-  step->action = TSTEP_EXIT_SYSCALL;
+  return lib_path;
 }
 
 static void finish_direct_mmap(AutoRemoteSyscalls& remote,
@@ -479,6 +402,242 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
   remote.syscall(syscall_number_for_close(remote.arch()), fd);
 }
 
+static void restore_mapped_region(AutoRemoteSyscalls& remote,
+                                  const KernelMapping& km,
+                                  const TraceReader::MappedData& data) {
+  Task* t = remote.task();
+  ASSERT(t, km.flags() & MAP_PRIVATE)
+      << "Shared mappings after exec not supported";
+
+  string real_file_name;
+  dev_t device = KernelMapping::NO_DEVICE;
+  ino_t inode = KernelMapping::NO_INODE;
+  int flags = km.flags();
+  uint64_t offset_bytes = 0;
+  if (data.source == TraceReader::SOURCE_FILE) {
+    Task::FStatResult real_file;
+    offset_bytes = km.file_offset_bytes();
+    finish_direct_mmap(remote, km.start(), km.size(), km.prot(), km.flags(),
+                       offset_bytes / page_size(), data.file_name,
+                       data.file_data_offset_bytes / page_size(), real_file);
+    real_file_name = real_file.file_name;
+    device = real_file.st.st_dev;
+    inode = real_file.st.st_ino;
+  } else {
+    ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
+    flags |= MAP_ANONYMOUS;
+    auto result = remote.mmap_syscall(km.start(), km.size(), km.prot(),
+                                      flags | MAP_FIXED, -1, 0);
+    ASSERT(t, result == km.start());
+    // The data will be written back by Task::apply_all_data_records_from_trace
+  }
+
+  t->vm()->map(km.start(), km.size(), km.prot(), flags, offset_bytes,
+               real_file_name, device, inode, &km);
+}
+
+static void process_execve(Task* t, const TraceFrame& trace_frame,
+                           SyscallEntryOrExit state, ReplayTraceStep* step) {
+  if (SYSCALL_ENTRY == state) {
+    step->action = TSTEP_ENTER_SYSCALL;
+    step->syscall.emu = EMULATE;
+    return;
+  }
+
+  if (trace_frame.regs().syscall_failed()) {
+    step->action = TSTEP_EXIT_SYSCALL;
+    step->syscall.emu = EMULATE;
+    return;
+  }
+
+  /* First, exec a stub program */
+  string stub_filename = find_exec_stub(trace_frame.regs().arch());
+
+  // Setup memory and registers for the execve call. We don't need to save
+  // the old values since they're going to be wiped out by execve.
+  Registers regs = t->regs();
+  regs.set_ip(t->vm()->traced_syscall_ip());
+  remote_ptr<void> remote_mem = floor_page_size(regs.sp());
+  // We write a zero word in the host size, not t's size, but that's OK,
+  // since the host size must be bigger than t's size.
+  // We pass no argv or envp, so exec params 2 and 3 just point to the NULL
+  // word.
+  t->write_mem(remote_mem.cast<size_t>(), size_t(0));
+  regs.set_arg2(remote_mem);
+  regs.set_arg3(remote_mem);
+  remote_mem += sizeof(size_t);
+  t->write_bytes_helper(remote_mem, stub_filename.size() + 1,
+                        stub_filename.c_str());
+  regs.set_arg1(remote_mem);
+  regs.set_syscallno(syscall_number_for_execve(t->arch()));
+  t->set_regs(regs);
+
+  /* The original_syscallno is execve in the old architecture. The kernel does
+   * not update the original_syscallno when the architecture changes across
+   * an exec.
+   */
+  int expect_syscallno = syscall_number_for_execve(t->arch());
+  /* Enter our execve syscall. */
+  __ptrace_cont(t, expect_syscallno);
+  ASSERT(t, !t->pending_sig()) << "Stub exec failed on entry";
+  /* Proceed to the PTRACE_EVENT_EXEC. */
+  __ptrace_cont(t, expect_syscallno);
+  ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXEC) << "Stub exec failed?";
+  /* Wait for the execve exit. */
+  __ptrace_cont(t, expect_syscallno);
+
+  vector<KernelMapping> kms;
+  vector<TraceReader::MappedData> datas;
+  ssize_t exe_km = -1;
+  while (true) {
+    TraceReader::MappedData data;
+    KernelMapping km = t->trace_reader().read_mapped_region(&data);
+    if (km.size() == 0) {
+      break;
+    }
+    const string& file_name = km.fsname();
+    if ((km.prot() & PROT_EXEC) && file_name.size() > 0 &&
+        file_name[0] == '/' && file_name.rfind(".so") != file_name.size() - 3) {
+      exe_km = kms.size();
+    }
+    kms.push_back(km);
+    datas.push_back(data);
+  }
+
+  ASSERT(t, exe_km >= 0) << "Can't find exe mapping";
+  ASSERT(t, kms[0].is_stack()) << "Can't find stack";
+
+  TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::EXEC);
+  // The exe name we pass in here will be passed to gdb. Pass the backing file
+  // name if there is one, otherwise pass the original file name (which means
+  // we declined to copy it to the trace file during recording for whatever
+  // reason).
+  const string& exe_name = datas[exe_km].file_name.empty()
+                               ? kms[exe_km].fsname()
+                               : datas[exe_km].file_name;
+  t->post_exec(&trace_frame.regs(), &trace_frame.extra_regs(), &exe_name);
+  t->post_exec_syscall(tte);
+
+  {
+    // Tell AutoRemoteSyscalls that we don't need memory parameters. This will
+    // stop it from having trouble if our current stack pointer (the value
+    // from the replay) isn't in the [stack] mapping created for our stub.
+    AutoRemoteSyscalls remote(t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
+
+    // Now fix up the address space. First unmap all the mappings other than
+    // our rr page.
+    vector<MemoryRange> unmaps;
+    for (auto m : t->vm()->maps()) {
+      // Do not attempt to unmap [vsyscall] --- it doesn't work.
+      if (m.map.start() != AddressSpace::rr_page_start() &&
+          !m.map.is_vsyscall()) {
+        MemoryRange adjusted(m.map);
+        if (m.map.is_stack()) {
+          // Unmap two leading pages, to work around a kernel issue that it
+          // doesn't like us unmapping the start of a stack.
+          adjusted =
+              MemoryRange(adjusted.start() - 2 * page_size(), adjusted.end());
+        }
+        unmaps.push_back(adjusted);
+      }
+    }
+    for (auto& m : unmaps) {
+      int ret = remote.syscall(syscall_number_for_munmap(t->arch()), m.start(),
+                               m.size());
+      ASSERT(t, ret == 0);
+      t->vm()->unmap(m.start(), m.size());
+    }
+    // We will have unmapped the stack memory that |remote| would have used for
+    // memory parameters. Fortunately process_mapped_region below doesn't
+    // need any memory parameters for its remote syscalls.
+
+    // Process the [stack] mapping.
+    restore_mapped_region(remote, kms[0], datas[0]);
+  }
+
+  const string& recorded_exe_name = kms[exe_km].fsname();
+
+  {
+    // Now that [stack] is mapped, reinitialize AutoRemoteSyscalls with
+    // memory parameters enabled.
+    AutoRemoteSyscalls remote(t);
+
+    // Now map in all the mappings that we recorded from the real exec.
+    for (ssize_t i = 1; i < ssize_t(kms.size()) - 1; ++i) {
+      restore_mapped_region(remote, kms[i], datas[i]);
+    }
+
+    size_t index = recorded_exe_name.rfind('/');
+    string name =
+        string("rr:") +
+        recorded_exe_name.substr(index == string::npos ? 0 : index + 1);
+    AutoRestoreMem mem(remote, name.c_str());
+    remote.syscall(syscall_number_for_prctl(t->arch()), PR_SET_NAME, mem.get());
+  }
+
+  init_scratch_memory(t, kms.back(), datas.back());
+
+  // Apply final data records (fixing up the last page in each data segment
+  // for zeroing applied by the kernel).
+  t->apply_all_data_records_from_trace();
+
+  t->vm()->locate_heap(recorded_exe_name);
+  // Now it's safe to save the auxv data
+  t->vm()->save_auxv(t);
+
+  // Now that memory has been set up, patch LD_PRELOAD and other things in it.
+  t->vm()->monkeypatcher().patch_after_exec(t);
+
+  step->action = TSTEP_RETIRE;
+}
+
+/**
+ * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
+ * will transition the futex into the contended state.  (This results
+ * in the kernel atomically setting the FUTEX_WAITERS bit on the futex
+ * value.)  The new value of the futex after the kernel updates it is
+ * returned in |next_val|.
+ */
+static bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex,
+                                      int* next_val) {
+  int val = t->read_mem(futex);
+  pid_t owner_tid = (val & FUTEX_TID_MASK);
+  bool now_contended =
+      (owner_tid != 0 && owner_tid != t->rec_tid && !(val & FUTEX_WAITERS));
+  if (now_contended) {
+    LOG(debug) << t->tid << ": futex " << futex << " is " << val
+               << ", so WAITERS bit will be set";
+    *next_val = (owner_tid & FUTEX_TID_MASK) | FUTEX_WAITERS;
+  }
+  return now_contended;
+}
+
+static void process_futex(Task* t, const TraceFrame& trace_frame,
+                          SyscallEntryOrExit state, ReplayTraceStep* step) {
+  step->syscall.emu = EMULATE;
+
+  if (state == SYSCALL_ENTRY) {
+    const Registers& regs = trace_frame.regs();
+    int op = (int)regs.arg2_signed() & FUTEX_CMD_MASK;
+    if (FUTEX_LOCK_PI == op) {
+      remote_ptr<int> futex = regs.arg1();
+      int next_val;
+      if (is_now_contended_pi_futex(t, futex, &next_val)) {
+        // During recording, we waited for the
+        // kernel to update the futex, but
+        // since we emulate SYS_futex in
+        // replay, we need to set it ourselves
+        // here.
+        t->write_mem(futex, next_val);
+      }
+    }
+    step->action = TSTEP_ENTER_SYSCALL;
+    return;
+  }
+
+  step->action = TSTEP_EXIT_SYSCALL;
+}
+
 /**
  * Pass NOTE_TASK_MAP to update cached mmap data.  If the data
  * need to be manually updated, pass |DONT_NOTE_TASK_MAP| and update
@@ -516,9 +675,8 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
     auto emufile = remote.task()->replay_session().emufs().get_or_create(
         recorded_km, length);
     Task::FStatResult real_file;
-    finish_direct_mmap(remote, rec_addr, length, prot,
-                       flags & ~MAP_ANONYMOUS, 0, emufile->proc_path(), 0,
-                       real_file);
+    finish_direct_mmap(remote, rec_addr, length, prot, flags & ~MAP_ANONYMOUS,
+                       0, emufile->proc_path(), 0, real_file);
     file_name = real_file.file_name;
     device = real_file.st.st_dev;
     inode = real_file.st.st_ino;
@@ -581,8 +739,8 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 
 static void finish_private_mmap(AutoRemoteSyscalls& remote,
                                 const TraceFrame& trace_frame, size_t length,
-                                int prot, int flags,
-                                off64_t offset_pages, const KernelMapping& km) {
+                                int prot, int flags, off64_t offset_pages,
+                                const KernelMapping& km) {
   LOG(debug) << "  finishing private mmap of " << km.fsname();
 
   Task* t = remote.task();
@@ -624,9 +782,8 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
   Task::FStatResult real_file;
-  finish_direct_mmap(remote, buf.addr, rec_num_bytes, prot, flags,
-                     offset_pages, emufile->proc_path(), offset_pages,
-                     real_file);
+  finish_direct_mmap(remote, buf.addr, rec_num_bytes, prot, flags, offset_pages,
+                     emufile->proc_path(), offset_pages, real_file);
   // Write back the snapshot of the segment that we recorded.
   // We have to write directly to the underlying file, because
   // the tracee may have mapped its segment read-only.
@@ -682,10 +839,10 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
 
       if (data.source == TraceReader::SOURCE_FILE) {
         Task::FStatResult real_file;
-        finish_direct_mmap(
-            remote, trace_frame.regs().syscall_result(), length,
-            prot, flags, offset_pages, data.file_name,
-            data.file_data_offset_bytes / page_size(), real_file);
+        finish_direct_mmap(remote, trace_frame.regs().syscall_result(), length,
+                           prot, flags, offset_pages, data.file_name,
+                           data.file_data_offset_bytes / page_size(),
+                           real_file);
         t->vm()->map(km.start(), length, prot, flags,
                      page_size() * offset_pages, real_file.file_name,
                      real_file.st.st_dev, real_file.st.st_ino, &km);
@@ -985,8 +1142,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
           auto args = t->read_mem(
               remote_ptr<typename Arch::mmap_args>(trace_regs.arg1()));
           return process_mmap(t, trace_frame, state, args.len, args.prot,
-                              args.flags, args.offset / page_size(),
-                              step);
+                              args.flags, args.offset / page_size(), step);
         }
         case Arch::RegisterArguments:
           return process_mmap(t, trace_frame, state, trace_regs.arg2(),
@@ -1006,6 +1162,24 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::shmdt:
       return process_shmdt(t, trace_frame, state, trace_regs.arg1(), step);
 
+    case Arch::mremap:
+      // We must emulate mremap because the kernel's choice for the remap
+      // destination can vary (in particular, when we emulate exec it makes
+      // different decisions).
+      step->action = syscall_action(state);
+      step->syscall.emu = EMULATE;
+      if (TSTEP_EXIT_SYSCALL == step->action) {
+        AutoRemoteSyscalls remote(t);
+        // Force the mremap to use the destination address from recording.
+        remote_ptr<void> result = remote.syscall(
+            syscall, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3(),
+            trace_regs.arg4() | MREMAP_MAYMOVE | MREMAP_FIXED,
+            trace_regs.syscall_result());
+        ASSERT(t, result == trace_regs.syscall_result());
+        // Task::on_syscall_exit takes care of updating AddressSpace.
+      }
+      return;
+
     case Arch::ipc:
       switch ((int)trace_regs.arg1_signed()) {
         case SHMAT:
@@ -1020,23 +1194,18 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       step->syscall.emu = EMULATE;
       break;
 
-    case Arch::prctl: {
+    case Arch::prctl:
       step->action = syscall_action(state);
       step->syscall.emu = EMULATE;
       if (TSTEP_EXIT_SYSCALL == step->action) {
         switch ((int)trace_regs.arg1_signed()) {
           case PR_SET_NAME: {
-            remote_ptr<void> arg2 = trace_regs.arg2();
-            t->update_prname(arg2);
-            AutoRemoteSyscalls remote(t);
-            remote.syscall(syscall_number_for_prctl(t->arch()), PR_SET_NAME,
-                           arg2);
+            t->update_prname(trace_regs.arg2());
             return;
           }
         }
       }
       return;
-    }
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:

@@ -872,7 +872,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
         // our address space.
         return;
       }
-      return vm()->brk(addr);
+      return vm()->brk(addr, session().is_replaying() ? this : nullptr);
     }
     case Arch::mmap:
     case Arch::mmap2: {
@@ -1009,8 +1009,7 @@ void Task::move_ip_before_breakpoint() {
 
 static string prname_from_exe_image(const string& e) {
   size_t last_slash = e.rfind('/');
-  string basename = (last_slash != e.npos) ? e.substr(last_slash + 1) : e;
-  return basename.substr(0, 15);
+  return e.substr(last_slash == e.npos ? 0 : last_slash + 1);
 }
 
 static SupportedArch determine_arch(Task* t, const string& file_name) {
@@ -1042,7 +1041,8 @@ static string exe_path(Task* t) {
 }
 
 void Task::post_exec(const Registers* replay_regs,
-                     const ExtraRegisters* replay_extra_regs) {
+                     const ExtraRegisters* replay_extra_regs,
+                     const string* replay_exe) {
   /* We just saw a successful exec(), so from now on we know
    * that the address space layout for the replay tasks will
    * (should!) be the same as for the recorded tasks.  So we can
@@ -1052,7 +1052,7 @@ void Task::post_exec(const Registers* replay_regs,
   as->erase_task(this);
   fds->erase_task(this);
 
-  string exe_file = exe_path(this);
+  string exe_file = replay_exe ? *replay_exe : exe_path(this);
   if (replay_regs) {
     registers = *replay_regs;
     extra_registers = *replay_extra_regs;
@@ -1174,6 +1174,22 @@ void Task::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
 
   auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
   trace_writer().write_raw(buf.data(), num_bytes, addr);
+}
+
+void Task::record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes) {
+  // We shouldn't be recording a scratch address.
+  ASSERT(this, !addr || addr != scratch_ptr);
+  ASSERT(this, num_bytes >= 0);
+
+  maybe_flush_syscallbuf();
+
+  vector<uint8_t> buf;
+  if (!addr.is_null()) {
+    buf.resize(num_bytes);
+    ssize_t nread = read_bytes_fallible(addr, num_bytes, buf.data());
+    buf.resize(max<ssize_t>(0, nread));
+  }
+  trace_writer().write_raw(buf.data(), buf.size(), addr);
 }
 
 void Task::record_remote_even_if_null(remote_ptr<void> addr,
@@ -2083,6 +2099,7 @@ static void set_up_process(Session& session) {
   if (0 > personality(orig_pers | ADDR_NO_RANDOMIZE | ADDR_COMPAT_LAYOUT)) {
     FATAL() << "error disabling randomization";
   }
+
   /* Trap to the rr process if a 'rdtsc' instruction is issued.
    * That allows rr to record the tsc and replay it
    * deterministically. */
@@ -2690,6 +2707,8 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
 
 void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
                              bool* ok) {
+  // pread64 etc can't handle addresses that appear to be negative ...
+  // like [vsyscall].
   ssize_t nread = read_bytes_fallible(addr, buf_size, buf);
   if (nread != buf_size) {
     if (ok) {

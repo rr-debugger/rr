@@ -26,7 +26,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 29
+#define TRACE_VERSION 30
 
 struct SubstreamData {
   const char* name;
@@ -258,13 +258,14 @@ string TraceWriter::try_hardlink_file(const string& file_name) {
 }
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
-    const KernelMapping& km, const struct stat& stat) {
+    const KernelMapping& km, const struct stat& stat, MappingOrigin origin) {
   auto& mmaps = writer(MMAPS);
   TraceReader::MappedDataSource source;
   string backing_file_name;
   if (km.fsname().find("/SYSV") == 0) {
     source = TraceReader::SOURCE_TRACE;
-  } else if (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)") {
+  } else if (origin == SYSCALL_MAPPING &&
+             (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
     source = TraceReader::SOURCE_ZERO;
   } else {
     if (should_copy_mmap_region(km.fsname(), &stat, km.prot(), km.flags())) {
@@ -279,11 +280,11 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
       backing_file_name = try_hardlink_file(km.fsname());
     }
   }
-  mmaps << source << km.start() << km.end() << km.fsname() << km.device()
-        << km.inode() << km.prot() << km.flags() << km.file_offset_bytes()
-        << backing_file_name << (uint32_t)stat.st_mode << (uint32_t)stat.st_uid
-        << (uint32_t)stat.st_gid << (int64_t)stat.st_size
-        << (int64_t)stat.st_mtime;
+  mmaps << global_time << source << km.start() << km.end() << km.fsname()
+        << km.device() << km.inode() << km.prot() << km.flags()
+        << km.file_offset_bytes() << backing_file_name << (uint32_t)stat.st_mode
+        << (uint32_t)stat.st_uid << (uint32_t)stat.st_gid
+        << (int64_t)stat.st_size << (int64_t)stat.st_mtime;
   ++mmap_count;
   return source == TraceReader::SOURCE_TRACE ? RECORD_IN_TRACE
                                              : DONT_RECORD_IN_TRACE;
@@ -291,6 +292,18 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
 
 KernelMapping TraceReader::read_mapped_region(MappedData* data) {
   auto& mmaps = reader(MMAPS);
+  if (mmaps.at_end()) {
+    return KernelMapping();
+  }
+
+  mmaps.save_state();
+  TraceFrame::Time time;
+  mmaps >> time;
+  mmaps.restore_state();
+  if (time != global_time) {
+    return KernelMapping();
+  }
+
   string original_file_name;
   string backing_file_name;
   remote_ptr<void> start, end;
@@ -300,9 +313,10 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data) {
   uint32_t uid, gid, mode;
   uint64_t file_offset_bytes;
   int64_t mtime, file_size;
-  mmaps >> data->source >> start >> end >> original_file_name >> device >>
-      inode >> prot >> flags >> file_offset_bytes >> backing_file_name >>
-      mode >> uid >> gid >> file_size >> mtime;
+  mmaps >> time >> data->source >> start >> end >> original_file_name >>
+      device >> inode >> prot >> flags >> file_offset_bytes >>
+      backing_file_name >> mode >> uid >> gid >> file_size >> mtime;
+  assert(time == global_time);
   if (data->source == SOURCE_FILE) {
     if (backing_file_name[0] != '/') {
       backing_file_name = dir() + "/" + backing_file_name;
@@ -325,29 +339,6 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data) {
   data->file_size_bytes = file_size;
   return KernelMapping(start, end, original_file_name, device, inode, prot,
                        flags, file_offset_bytes);
-}
-
-KernelMapping TraceReader::peek_mapped_region() {
-  KernelMapping result;
-
-  auto& mmaps = reader(MMAPS);
-  if (mmaps.at_end()) {
-    return result;
-  }
-
-  mmaps.save_state();
-  TraceFrame::Time time;
-  mmaps >> time;
-  mmaps.restore_state();
-  if (time != global_time) {
-    return result;
-  }
-
-  mmaps.save_state();
-  MappedData data;
-  result = read_mapped_region(&data);
-  mmaps.restore_state();
-  return result;
 }
 
 static ostream& operator<<(ostream& out, const vector<string>& vs) {

@@ -169,18 +169,17 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
         }
       }
       while (true) {
-        KernelMapping km = trace.peek_mapped_region();
-        if (km.start() == km.end()) {
+        TraceReader::MappedData data;
+        KernelMapping km = trace.read_mapped_region(&data);
+        if (km.size() == 0) {
           break;
         }
-        TraceReader::MappedData data;
-        trace.read_mapped_region(&data);
         if (flags.dump_mmaps) {
           fprintf(
               out,
               "  { map_file:\"%s\", addr:%p, length:%p, file_offset:0x%llx }\n",
               km.fsname().c_str(), (void*)km.start().as_int(), (void*)km.size(),
-              (long long)km.file_offset_bytes() * page_size());
+              (long long)km.file_offset_bytes());
         }
       }
       if (!flags.raw_dump) {
@@ -191,12 +190,11 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       while (process_raw_data && trace.read_raw_data_for_frame(frame, data)) {
       }
       while (true) {
-        KernelMapping region = trace.peek_mapped_region();
-        if (region.start() == region.end()) {
+        TraceReader::MappedData data;
+        KernelMapping km = trace.read_mapped_region(&data);
+        if (km.size() == 0) {
           break;
         }
-        TraceReader::MappedData data;
-        trace.read_mapped_region(&data);
       }
     }
   }

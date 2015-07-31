@@ -208,7 +208,7 @@ unlink = EmulatedSyscall(x86=10, x64=87)
 #  int execve(const char *filename, char *const argv[], char *const envp[]);
 #
 # execve() executes the program pointed to by filename.
-execve = IrregularMayExecSyscall(x86=11, x64=59)
+execve = IrregularEmulatedSyscall(x86=11, x64=59)
 
 #  int chdir(const char *path);
 #
@@ -367,7 +367,7 @@ prof = InvalidSyscall(x86=44)
 # addr, when that value is reasonable, the system has enough memory,
 # and the process does not exceed its maximum data size (see
 # setrlimit(2)).
-brk = ExecutedSyscall(x86=45, x64=12)
+brk = EmulatedSyscall(x86=45, x64=12)
 
 #  int setgid(gid_t gid)
 #
@@ -902,7 +902,7 @@ nanosleep = IrregularEmulatedSyscall(x86=162, x64=35)
 # mremap() expands (or shrinks) an existing memory mapping,
 # potentially moving it at the same time (controlled by the flags
 # argument and the available virtual address space).
-mremap = ExecutedSyscall(x86=163, x64=25)
+mremap = EmulatedSyscall(x86=163, x64=25)
 
 #  int setresuid(uid_t ruid, uid_t euid, uid_t suid);
 #

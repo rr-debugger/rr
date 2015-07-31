@@ -348,20 +348,32 @@ void AddressSpace::post_exec_syscall(Task* t) {
   // Now we can set up the "rr page" at its fixed address. This gives
   // us traced and untraced syscall instructions at known, fixed addresses.
   map_rr_page(t);
-  monkeypatcher().patch_after_exec(t);
 }
 
-void AddressSpace::brk(remote_ptr<void> addr) {
+void AddressSpace::brk(remote_ptr<void> addr, Task* t) {
   LOG(debug) << "brk(" << addr << ")";
 
   assert(heap.start() <= addr);
 
   remote_ptr<void> vm_addr = ceil_page_size(addr);
   if (heap.end() < vm_addr) {
-    map(heap.end(), vm_addr - heap.end(), heap.prot(), heap.flags(),
-        heap.file_offset_bytes(), "[heap]", KernelMapping::NO_DEVICE,
-        KernelMapping::NO_INODE);
+    if (t) {
+      AutoRemoteSyscalls remote(t);
+      int flags = heap.flags() | MAP_ANONYMOUS;
+      remote.mmap_syscall(heap.end(), vm_addr - heap.end(), heap.prot(),
+                          flags | MAP_FIXED, -1, 0);
+      map(heap.end(), vm_addr - heap.end(), heap.prot(), flags, 0, string(),
+          KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+    } else {
+      map(heap.end(), vm_addr - heap.end(), heap.prot(), heap.flags(), 0,
+          heap.fsname(), heap.device(), heap.inode());
+    }
   } else {
+    if (t) {
+      AutoRemoteSyscalls remote(t);
+      remote.syscall(syscall_number_for_munmap(t->arch()), vm_addr,
+                     heap.end() - vm_addr);
+    }
     unmap(vm_addr, heap.end() - vm_addr);
   }
   update_heap(heap.start(), vm_addr);
@@ -433,7 +445,8 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
 KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
                                 int prot, int flags, off64_t offset_bytes,
                                 const string& fsname, dev_t device, ino_t inode,
-                                const KernelMapping* recorded_map) {
+                                const KernelMapping* recorded_map,
+                                TraceWriter::MappingOrigin origin) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
   num_bytes = ceil_page_size(num_bytes);
@@ -464,7 +477,7 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
     unmap_internal(addr, num_bytes + (insert_guard_page ? page_size() : 0));
   }
 
-  if (flags & MAP_GROWSDOWN) {
+  if (origin == TraceWriter::SYSCALL_MAPPING && (flags & MAP_GROWSDOWN)) {
     // The first page is made into a guard page by the kernel
     m = KernelMapping(addr + page_size(), addr + num_bytes, fsname, device,
                       inode, prot, flags, offset_bytes + page_size());
@@ -874,17 +887,29 @@ static string strip_deleted(const string& s) {
   return s;
 }
 
-static bool normalized_file_names_equal(const string& s1, const string& s2) {
-  // The kernel uses "[stack:<tid>]" for non-main threads whose stack pointers
-  // are in the right region. When the thread exits, the next read of the maps
-  // doesn't treat the area as stack at all. We don't want to track thread
-  // exits so we'll just allow anything.
-  if (s1.find("[stack") == 0 || s2.find("[stack") == 0) {
+enum HandleHeap { TREAT_HEAP_AS_ANONYMOUS, RESPECT_HEAP };
+
+static bool normalized_file_names_equal(const KernelMapping& km1,
+                                        const KernelMapping& km2,
+                                        HandleHeap handle_heap) {
+  if (km1.is_stack() || km2.is_stack()) {
+    // The kernel seems to use "[stack:<tid>]" for any mapping area containing
+    // thread |tid|'s stack pointer. When the thread exits, the next read of
+    // the maps doesn't treat the area as stack at all. We don't want to track
+    // thread exits, so if one of the mappings is a stack, skip the name
+    // comparison. Device and inode numbers will still be checked.
+    return true;
+  }
+  if (handle_heap == TREAT_HEAP_AS_ANONYMOUS &&
+      (km1.is_heap() || km2.is_heap())) {
+    // The kernel's heuristics for treating an anonymous mapping as "[heap]"
+    // are obscure. Just skip the name check. Device and inode numbers will
+    // still be checked.
     return true;
   }
   // We don't track when a file gets deleted, so it's possible for the kernel
   // to have " (deleted)" when we don't.
-  return strip_deleted(s1) == strip_deleted(s2);
+  return strip_deleted(km1.fsname()) == strip_deleted(km2.fsname());
 }
 
 /**
@@ -894,6 +919,7 @@ static bool normalized_file_names_equal(const string& s1, const string& s2) {
  */
 static bool is_adjacent_mapping(const KernelMapping& mleft,
                                 const KernelMapping& mright,
+                                HandleHeap handle_heap,
                                 int32_t flags_to_check = 0xFFFFFFFF) {
   if (mleft.end() != mright.start()) {
     LOG(debug) << "    (not adjacent in memory)";
@@ -904,7 +930,7 @@ static bool is_adjacent_mapping(const KernelMapping& mleft,
     LOG(debug) << "    (flags or prot differ)";
     return false;
   }
-  if (!normalized_file_names_equal(mleft.fsname(), mright.fsname())) {
+  if (!normalized_file_names_equal(mleft, mright, handle_heap)) {
     LOG(debug) << "    (not the same filename)";
     return false;
   }
@@ -931,7 +957,7 @@ static bool is_adjacent_mapping(const KernelMapping& mleft,
  */
 static bool try_merge_adjacent(KernelMapping* left_m,
                                const KernelMapping& right_m) {
-  if (is_adjacent_mapping(*left_m, right_m,
+  if (is_adjacent_mapping(*left_m, right_m, TREAT_HEAP_AS_ANONYMOUS,
                           KernelMapping::checkable_flags_mask)) {
     *left_m = KernelMapping(left_m->start(), right_m.end(), left_m->fsname(),
                             left_m->device(), left_m->inode(), right_m.prot(),
@@ -944,7 +970,7 @@ static bool try_merge_adjacent(KernelMapping* left_m,
 static void assert_segments_match(Task* t, const KernelMapping& input_m,
                                   const KernelMapping& km) {
   KernelMapping m = input_m;
-  if (km.start() < m.start() && "[stack]" == m.fsname()) {
+  if (km.start() < m.start() && km.is_stack()) {
     // TODO: the stack can grow down arbitrarily, and rr needs to be
     // aware of the updated mapping in case the user tries to map or
     // unmap pages near the stack.  But keeping track of expanded
@@ -965,7 +991,11 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
     err = "prots differ";
   } else if ((m.flags() ^ km.flags()) & KernelMapping::checkable_flags_mask) {
     err = "flags differ";
-  } else if (!normalized_file_names_equal(m.fsname(), km.fsname())) {
+  } else if (!normalized_file_names_equal(m, km, TREAT_HEAP_AS_ANONYMOUS) &&
+             !(km.is_heap() && m.fsname() == "") &&
+             !(m.is_heap() && km.fsname() == "")) {
+    // Due to emulated exec, the kernel may identify any of our anonymous maps
+    // as [heap] (or not).
     err = "filenames differ";
   } else if (m.device() != km.device()) {
     err = "devices_differ";
@@ -990,29 +1020,6 @@ KernelMapping AddressSpace::fix_stack_segment_start(
   it->second.recorded_map.update_start(new_start);
   return it->second.map;
 }
-
-/**
- * Iterate over the segments that are parsed from
- * |/proc/[t->tid]/maps| and ensure that they match up with the cached
- * segments for |t|.
- *
- * This implementation does the following
- *  1. Merge as many adjacent cached mappings as it can.
- *  2. Merge as many adjacent /proc/maps mappings as it can.
- *  3. Ensure that the two merged mappings are the same.
- *  4. Move on to the next mapping region, goto 1.
- *
- * The kernel and rr have (only very slightly! argh) different
- * heuristics for merging adjacent memory mappings.  That means we
- * can't simply iterate through /proc/maps and assert that a cached
- * mapping corresponds to it, though we sure would like to.  Instead,
- * we reduce the rr mappings to the lowest common denonminator that
- * can be parsed from /proc/maps, and assume that adjacent mappings
- * should be merged if they're equal per common lax criteria (i.e.,
- * not honoring either rr or kernel criteria).  That means that the
- * mapped segments that this helper compares may look nothing like the
- * segments you would see in a /proc/maps dump or |as->dump()|.
- */
 
 KernelMapping AddressSpace::vdso() const {
   assert(!vdso_start_addr.is_null());
@@ -1062,11 +1069,12 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
   // https://github.com/mozilla/rr/issues/1113 .
   if (session_->can_validate()) {
     populate_address_space(t);
+    locate_heap(exe);
     assert(!vdso_start_addr.is_null());
   } else {
     // Find the location of the VDSO in the just-spawned process. This will
     // match the VDSO in rr itself since we haven't execed yet. So, speed
-    // things up by search rr's own VDSO for a syscall instruction.
+    // things up by searching rr's own VDSO for a syscall instruction.
     size_t rr_vdso_len;
     remote_ptr<void> rr_vdso = find_rr_vdso(t, &rr_vdso_len);
     // Here we rely on the VDSO location in the spawned tracee being the same
@@ -1262,7 +1270,8 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   while (mem.begin() != first_kv) {
     auto next = first_kv;
     --first_kv;
-    if (!is_adjacent_mapping(first_kv->second.map, next->second.map)) {
+    if (!is_adjacent_mapping(first_kv->second.map, next->second.map,
+                             RESPECT_HEAP)) {
       first_kv = next;
       break;
     }
@@ -1272,7 +1281,8 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
     auto prev = last_kv;
     ++last_kv;
     if (mem.end() == last_kv ||
-        !is_adjacent_mapping(prev->second.map, last_kv->second.map)) {
+        !is_adjacent_mapping(prev->second.map, last_kv->second.map,
+                             RESPECT_HEAP)) {
       last_kv = prev;
       break;
     }
@@ -1351,7 +1361,20 @@ void AddressSpace::map_and_coalesce(const KernelMapping& m,
 void AddressSpace::populate_address_space(Task* t) {
   for (KernelMapIterator it(t); !it.at_end(); ++it) {
     auto& km = it.current();
-    if (!heap.start() && exe == km.fsname() && !(km.prot() & PROT_EXEC) &&
+    int flags = km.flags();
+    if (km.is_stack()) {
+      flags |= MAP_GROWSDOWN;
+    }
+    map(km.start(), km.size(), km.prot(), flags, km.file_offset_bytes(),
+        km.fsname(), km.device(), km.inode(), nullptr,
+        TraceWriter::EXEC_MAPPING);
+  }
+}
+
+void AddressSpace::locate_heap(const string& exe_name) {
+  for (auto& mapping : mem) {
+    auto& km = mapping.second.recorded_map;
+    if (!heap.start() && exe_name == km.fsname() && !(km.prot() & PROT_EXEC) &&
         (km.prot() & (PROT_READ | PROT_WRITE))) {
       update_heap(km.end(), km.end());
       LOG(debug) << "  guessing heap starts at " << heap.start()
@@ -1365,8 +1388,8 @@ void AddressSpace::populate_address_space(Task* t) {
     // segment of the exe.  (This is seen with x86-64 bash on Fedora
     // Core 20.)  Update the guess.
     if (!(km.prot() & PROT_EXEC) &&
-        (heap.end() == km.start() || exe == km.fsname())) {
-      assert(heap.start() == heap.end() || exe == km.fsname());
+        (heap.end() == km.start() || exe_name == km.fsname())) {
+      assert(heap.start() == heap.end() || exe_name == km.fsname());
       update_heap(km.end(), km.end());
       LOG(debug) << "  updating start-of-heap guess to " << heap.start()
                  << " (end of mapped-data segment)";
@@ -1380,12 +1403,5 @@ void AddressSpace::populate_address_space(Task* t) {
         update_heap(heap.start(), km.end());
       }
     }
-
-    int flags = km.flags();
-    if (km.is_stack()) {
-      flags |= MAP_GROWSDOWN;
-    }
-    map(km.start(), km.size(), km.prot(), flags, km.file_offset_bytes(),
-        km.fsname(), km.device(), km.inode());
   }
 }

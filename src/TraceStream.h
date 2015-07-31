@@ -117,13 +117,15 @@ public:
   void write_frame(const TraceFrame& frame);
 
   enum RecordInTrace { DONT_RECORD_IN_TRACE, RECORD_IN_TRACE };
+  enum MappingOrigin { SYSCALL_MAPPING, EXEC_MAPPING };
   /**
    * Write mapped-region record to the trace.
    * If this returns RECORD_IN_TRACE, then the data for the map should be
    * recorded in the trace raw-data.
    */
   RecordInTrace write_mapped_region(const KernelMapping& map,
-                                    const struct stat& stat);
+                                    const struct stat& stat,
+                                    MappingOrigin origin = SYSCALL_MAPPING);
 
   /**
    * Write a raw-data record to the trace.
@@ -206,6 +208,7 @@ public:
   /**
    * Read the next mapped region descriptor and return it.
    * Also returns where to get the mapped data in 'data'.
+   * Returns en empty mapping if there isn't one for the current event.
    */
   KernelMapping read_mapped_region(MappedData* data);
 

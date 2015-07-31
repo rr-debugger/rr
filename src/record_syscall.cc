@@ -2568,7 +2568,6 @@ enum ScratchAddrType { FIXED_ADDRESS, DYNAMIC_ADDRESS };
    here. */
 static const uintptr_t FIXED_SCRATCH_PTR = 0x68000000;
 
-template <typename Arch>
 static void init_scratch_memory(Task* t,
                                 ScratchAddrType addr_type = DYNAMIC_ADDRESS) {
   const int scratch_size = 512 * page_size();
@@ -2610,39 +2609,21 @@ static void init_scratch_memory(Task* t,
   t->set_regs(r);
 }
 
-// We have |keys_length| instead of using array_length(keys) to work
-// around a gcc bug.
-template <typename Arch> struct elf_auxv_ordering {
-  static const unsigned int keys[];
-  static const size_t keys_length;
-};
+static struct stat make_fake_stat(const KernelMapping& km) {
+  struct stat fake_stat;
+  memset(&fake_stat, 0, sizeof(fake_stat));
+  fake_stat.st_dev = km.device();
+  fake_stat.st_ino = km.inode();
+  return fake_stat;
+}
 
-template <>
-const unsigned int elf_auxv_ordering<X86Arch>::keys[] = {
-  AT_SYSINFO, AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
-  AT_PHENT,   AT_PHNUM,        AT_BASE,  AT_FLAGS,  AT_ENTRY,  AT_UID,
-  AT_EUID,    AT_GID,          AT_EGID,  AT_SECURE
-};
-template <>
-const size_t elf_auxv_ordering<X86Arch>::keys_length = array_length(keys);
-
-template <>
-const unsigned int elf_auxv_ordering<X64Arch>::keys[] = {
-  AT_SYSINFO_EHDR, AT_HWCAP, AT_PAGESZ, AT_CLKTCK, AT_PHDR,
-  AT_PHENT,        AT_PHNUM, AT_BASE,   AT_FLAGS,  AT_ENTRY,
-  AT_UID,          AT_EUID,  AT_GID,    AT_EGID,   AT_SECURE,
-};
-template <>
-const size_t elf_auxv_ordering<X64Arch>::keys_length = array_length(keys);
-
-template <typename Arch>
 static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
     return;
   }
 
-  // XXX what does this signifiy?
+  // XXX what does this signify?
   if (r.arg1() != 0) {
     return;
   }
@@ -2652,61 +2633,71 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   t->record_session().trace_writer().write_task_event(
       *syscall_state.exec_saved_event);
 
-  auto stack_ptr = t->regs().sp().cast<typename Arch::unsigned_word>();
-
-  /* start_stack points to argc - iterate over argv pointers */
-
-  /* FIXME: there are special cases, like when recording gcc,
-   *        where the stack pointer does not point to argc. For example,
-   *        it may point to &argc.
-   */
-  // long* argc = (long*)t->read_word((uint8_t*)stack_ptr);
-  // stack_ptr += *argc + 1;
-  auto argc = t->read_mem(stack_ptr);
-  stack_ptr += argc + 1;
-
-  // unsigned long* null_ptr = read_child_data(t, sizeof(void*), stack_ptr);
-  // assert(*null_ptr == 0);
-  auto null_ptr = t->read_mem(stack_ptr);
-  assert(null_ptr == 0);
-  stack_ptr++;
-
-  /* should now point to envp (pointer to environment strings) */
-  while (0 != t->read_mem(stack_ptr)) {
-    stack_ptr++;
-  }
-  stack_ptr++;
-  /* should now point to ELF Auxiliary Table */
-
-  struct ElfEntry {
-    typename Arch::unsigned_word key;
-    typename Arch::unsigned_word value;
-  };
-  union {
-    ElfEntry entries[elf_auxv_ordering<Arch>::keys_length];
-    uint8_t bytes[sizeof(entries)];
-  } table;
-  t->read_bytes(stack_ptr, table.bytes);
-  stack_ptr += 2 * array_length(elf_auxv_ordering<Arch>::keys);
-
-  for (size_t i = 0; i < array_length(elf_auxv_ordering<Arch>::keys); ++i) {
-    auto expected_field = elf_auxv_ordering<Arch>::keys[i];
-    const ElfEntry& entry = table.entries[i];
-    ASSERT(t, expected_field == entry.key)
-        << "Elf aux entry " << i << " should be " << HEX(expected_field)
-        << ", but is " << HEX(entry.key);
+  // Write out stack mappings first since during replay we need to set up the
+  // stack before any files get mapped.
+  for (auto m : t->vm()->maps()) {
+    auto& km = m.map;
+    if (km.is_stack()) {
+      auto mode = t->trace_writer().write_mapped_region(
+          km, make_fake_stat(km), TraceWriter::EXEC_MAPPING);
+      ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
+      t->record_remote(km.start(), km.size());
+    }
   }
 
-  auto at_random = t->read_mem(stack_ptr);
-  stack_ptr++;
-  ASSERT(t, AT_RANDOM == at_random) << "ELF item should be " << HEX(AT_RANDOM)
-                                    << ", but is " << HEX(at_random);
+  // The kernel may zero part of the last page in each data mapping according
+  // to ELF BSS metadata. So we record the last page of each data mapping in
+  // the trace.
+  vector<remote_ptr<void> > pages_to_record;
 
-  remote_ptr<void> rand_addr = t->read_mem(stack_ptr);
-  // XXX where does the magic number come from?
-  t->record_remote(rand_addr, 16);
+  for (auto m : t->vm()->maps()) {
+    auto& km = m.map;
+    if (km.start() == AddressSpace::rr_page_start()) {
+      continue;
+    }
+    if (km.is_vvar() || km.is_stack() || km.is_vsyscall()) {
+      // [vvar] is used by VDSO syscalls --- which we disable --- so it's not
+      // actually needed or used under rr. Furthermore there's a quirk
+      // (in 4.0.7-300.fc22.x86_64 at least) where /proc/<pid>/mem can't read
+      // the contents of [vvar]. So we'll just ignore this and leave it
+      // unmapped in the replay.
+      // [stack] has already been handled.
+      // [vsyscall] can't be read via /proc/<pid>/mem, *should*
+      // be the same across all execs, and can't be munmapped so we can't fix
+      // it even if it does vary. Plus no-one should be using it anymore.
+      continue;
+    }
+    struct stat st;
+    if (stat(km.fsname().c_str(), &st) != 0) {
+      st = make_fake_stat(km);
+    }
+    if (t->trace_writer().write_mapped_region(km, st,
+                                              TraceWriter::EXEC_MAPPING) ==
+        TraceWriter::RECORD_IN_TRACE) {
+      if (st.st_size > 0) {
+        off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
+        t->record_remote(km.start(), min(end, (off64_t)km.size()));
+      } else {
+        // st_size is not valid. Some device files are mmappable but have zero
+        // size. We also take this path if there's no file at all (vdso etc).
+        t->record_remote(km.start(), km.size());
+      }
+    } else {
+      if (!(km.prot() & PROT_EXEC)) {
+        pages_to_record.push_back(km.end() - page_size());
+      }
+    }
+  }
 
-  init_scratch_memory<Arch>(t, FIXED_ADDRESS);
+  init_scratch_memory(t, FIXED_ADDRESS);
+
+  for (auto& p : pages_to_record) {
+    t->record_remote(p, page_size());
+  }
+
+  // Patch LD_PRELOAD and VDSO after saving the mappings. Replay will apply
+  // patches to the saved mappings.
+  t->vm()->monkeypatcher().patch_after_exec(t);
 }
 
 static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
@@ -2807,11 +2798,7 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
   KernelMapping km =
       t->vm()->map(addr, size, prot, flags, 0, kernel_info.fsname(),
                    kernel_info.device(), kernel_info.inode());
-  struct stat fake_stat;
-  memset(&fake_stat, 0, sizeof(fake_stat));
-  fake_stat.st_dev = kernel_info.device();
-  fake_stat.st_ino = kernel_info.inode();
-  if (t->trace_writer().write_mapped_region(km, fake_stat) ==
+  if (t->trace_writer().write_mapped_region(km, make_fake_stat(km)) ==
       TraceWriter::RECORD_IN_TRACE) {
     t->record_remote(addr, size);
   }
@@ -2835,7 +2822,7 @@ static void process_fork(Task* t, TaskSyscallState& syscall_state) {
   t->record_session().trace_writer().write_task_event(
       TraceTaskEvent(new_task->tid, t->tid));
 
-  init_scratch_memory<Arch>(new_task);
+  init_scratch_memory(new_task);
 }
 
 template <typename Arch>
@@ -2897,7 +2884,7 @@ static void process_clone(Task* t, TaskSyscallState& syscall_state) {
   t->record_session().trace_writer().write_task_event(
       TraceTaskEvent(new_task->tid, t->tid, flags));
 
-  init_scratch_memory<Arch>(new_task);
+  init_scratch_memory(new_task);
 }
 
 template <typename Arch>
@@ -3014,7 +3001,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
 
     case Arch::execve:
-      process_execve<Arch>(t, syscall_state);
+      process_execve(t, syscall_state);
       break;
 
     case Arch::mmap:

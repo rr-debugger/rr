@@ -28,14 +28,15 @@ static void overwrite_file(const char* path, ssize_t num_bytes) {
 
 int main(int argc, char* argv[]) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
-  int fd = open(DUMMY_FILE, O_CREAT | O_EXCL | O_RDWR, 0600);
+  char file_name[] = "/tmp/rr-test-mremap-XXXXXX";
+  int fd = mkstemp(file_name);
   int* wpage;
   int* rpage;
   int* old_wpage;
 
   test_assert(fd >= 0);
 
-  overwrite_file(DUMMY_FILE, 2 * num_bytes);
+  overwrite_file(file_name, 2 * num_bytes);
 
   wpage = mmap(NULL, num_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   rpage = mmap(NULL, num_bytes, PROT_READ, MAP_SHARED, fd, 0);
@@ -45,14 +46,14 @@ int main(int argc, char* argv[]) {
   /* NB: this is a bad test in that it assumes
    * ADDR_COMPAT_LAYOUT address-space allocation semantics.  If
    * this test is run "normally", it will most likely fail this
-   * assertion.  To fix this we'd need to dyanmically determine
+   * assertion.  To fix this we'd need to dynamically determine
    * which page is mapped just before the other and then remap
    * that page. */
   test_assert((uint8_t*)rpage - (uint8_t*)wpage == num_bytes);
 
   check_mapping(rpage, wpage, num_bytes / sizeof(*wpage));
 
-  overwrite_file(DUMMY_FILE, 2 * num_bytes);
+  overwrite_file(file_name, 2 * num_bytes);
 
   old_wpage = wpage;
   wpage = mremap(old_wpage, num_bytes, 2 * num_bytes, MREMAP_MAYMOVE);

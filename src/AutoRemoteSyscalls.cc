@@ -82,7 +82,8 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   remote_ptr<void> last_stack_byte = t->regs().sp() - 1;
   if (t->vm()->has_mapping(last_stack_byte)) {
     auto m = t->vm()->mapping_of(last_stack_byte);
-    if (m.map.is_stack() && m.map.start() + 1024 <= t->regs().sp()) {
+    if (m.recorded_map.is_stack() &&
+        m.recorded_map.start() + 1024 <= t->regs().sp()) {
       // 'sp' is in a stack region and there's plenty of space there. No need
       // to fix anything.
       return;
@@ -91,8 +92,8 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
 
   MemoryRange found_stack;
   for (auto m : t->vm()->maps()) {
-    if (m.map.is_stack()) {
-      found_stack = m.map;
+    if (m.recorded_map.is_stack()) {
+      found_stack = m.recorded_map;
     }
   };
   ASSERT(t, !found_stack.start().is_null()) << "No stack area found";

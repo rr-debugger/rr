@@ -650,7 +650,8 @@ public:
    * recorded immediately after the exec.
    */
   void post_exec(const Registers* replay_regs = nullptr,
-                 const ExtraRegisters* replay_extra_regs = nullptr);
+                 const ExtraRegisters* replay_extra_regs = nullptr,
+                 const std::string* replay_exe = nullptr);
 
   /**
    * Call this method when this task has exited a successful execve() syscall.
@@ -712,6 +713,9 @@ public:
   template <typename T> void record_remote(remote_ptr<T> addr) {
     record_remote(addr, sizeof(T));
   }
+
+  // Record as much as we can of the bytes in this range.
+  void record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes);
 
   /**
    * Save tracee data to the trace.  |addr| is the address in

@@ -952,8 +952,9 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
         last_task_switchable = PREVENT_SWITCH;
       }
 
-      // We record this data regardless to simplify replay.
-      t->record_remote(t->sp(), sigframe_size);
+      // We record this data regardless to simplify replay. If the addresses
+      // are unmapped, write 0 bytes.
+      t->record_remote_fallible(t->sp(), sigframe_size);
 
       // This event is used by the replayer to set up the
       // signal handler frame, or to record the resulting

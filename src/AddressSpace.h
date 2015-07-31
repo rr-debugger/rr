@@ -149,6 +149,8 @@ public:
   bool is_vdso() const { return fsname() == "[vdso]"; }
   bool is_heap() const { return fsname() == "[heap]"; }
   bool is_stack() const { return fsname().find("[stack") == 0; }
+  bool is_vvar() const { return fsname() == "[vvar]"; }
+  bool is_vsyscall() const { return fsname() == "[vsyscall]"; }
 
 private:
   // The kernel's name for the mapping, as per /proc/<pid>/maps. This must
@@ -262,10 +264,17 @@ public:
   void post_exec_syscall(Task* t);
 
   /**
-   * Change the program data break of this address space to
-   * |addr|.
+   * Call this after all exec mappings have been performed.
+   * |original_exe| is the name of the executable file from the recording.
    */
-  void brk(remote_ptr<void> addr);
+  void locate_heap(const std::string& original_exe);
+
+  /**
+   * Change the program data break of this address space to
+   * |addr|. If |t| is not null, actually perform mapping/unmapping of
+   * pages in |t| to emulate the brk().
+   */
+  void brk(remote_ptr<void> addr, Task* t);
 
   /**
    * Dump a representation of |this| to stderr in a format
@@ -331,10 +340,11 @@ public:
    * during recording is known to be the same as the new map (e.g. because
    * we are recording!).
    */
-  KernelMapping map(remote_ptr<void> addr, size_t num_bytes, int prot,
-                    int flags, off64_t offset_bytes, const std::string& fsname,
-                    dev_t device, ino_t inode,
-                    const KernelMapping* recorded_map = nullptr);
+  KernelMapping map(
+      remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
+      off64_t offset_bytes, const std::string& fsname, dev_t device,
+      ino_t inode, const KernelMapping* recorded_map = nullptr,
+      TraceWriter::MappingOrigin origin = TraceWriter::SYSCALL_MAPPING);
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.
@@ -365,12 +375,12 @@ public:
       bool operator!=(const iterator& other) const {
         return to_it() != other.to_it();
       }
-      Mapping operator*() const {
-        return to_it()->second;
-      }
+      Mapping operator*() const { return to_it()->second; }
+
     private:
       friend class Maps;
-      iterator(const MemoryMap& outer, remote_ptr<void> ptr) : outer(outer), ptr(ptr), at_end(false) {}
+      iterator(const MemoryMap& outer, remote_ptr<void> ptr)
+          : outer(outer), ptr(ptr), at_end(false) {}
       iterator(const MemoryMap& outer) : outer(outer), at_end(true) {}
       MemoryMap::const_iterator to_it() const {
         return at_end ? outer.end() : outer.lower_bound(MemoryRange(ptr, ptr));
@@ -381,6 +391,7 @@ public:
     };
     iterator begin() const { return iterator(outer.mem, start); }
     iterator end() const { return iterator(outer.mem); }
+
   private:
     const AddressSpace& outer;
     remote_ptr<void> start;
@@ -829,7 +840,7 @@ private:
 
   // All breakpoints set in this VM.
   BreakpointMap breakpoints;
-  /* Path of the executable image this address space was
+  /* Path of the real executable image this address space was
    * exec()'d with. */
   std::string exe;
   /* Pid of first task for this address space */
