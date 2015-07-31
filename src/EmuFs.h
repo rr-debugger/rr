@@ -196,8 +196,8 @@ private:
                         size_t* nr_marked_files);
 
   struct FileId {
-    FileId(const KernelMapping& recorded_map) :
-      device(recorded_map.device()), inode(recorded_map.inode()) {}
+    FileId(const KernelMapping& recorded_map)
+        : device(recorded_map.device()), inode(recorded_map.inode()) {}
     bool operator<(const FileId& other) const {
       return device < other.device ||
              (device == other.device && inode < other.inode);

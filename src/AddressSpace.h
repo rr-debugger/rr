@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <vector>
 
 #include "preload/preload_interface.h"
 
@@ -347,38 +348,16 @@ public:
   bool has_mapping(remote_ptr<void> addr) const;
 
   /**
-   * Iterate through the memory map.
+   * Iterate through the memory map. We copy the elements to a vector so that
+   * clients that modify the memory map don't corrupt things.
    */
-  class Maps {
-  public:
-    Maps(const AddressSpace& self, remote_ptr<void> start)
-        : self(self), start(start) {}
-    class iterator {
-    public:
-      const iterator& operator++() {
-        ++it;
-        return *this;
-      }
-      bool operator!=(const iterator& other) { return other.it != it; }
-      const Mapping& operator*() const { return it->second; }
-
-    private:
-      friend class Maps;
-      iterator(const MemoryMap::const_iterator& it) : it(it) {}
-      MemoryMap::const_iterator it;
-    };
-    iterator begin() const {
-      return iterator(self.mem.lower_bound(MemoryRange(start, start)));
-    }
-    iterator end() const { return iterator(self.mem.end()); }
-
-  private:
-    const AddressSpace& self;
-    remote_ptr<void> start;
-  };
-  friend class Maps;
-  Maps maps() const { return Maps(*this, remote_ptr<void>()); }
-  Maps maps_starting_at(remote_ptr<void> start) { return Maps(*this, start); }
+  std::vector<Mapping> maps() const {
+    return std::vector<Mapping>(mem.begin(), mem.end());
+  }
+  std::vector<Mappping> maps_starting_at(remote_ptr<void> start) {
+    return std::vector<Mapping>(mem.lower_bound(MemoryRange(start, start)),
+                                mem.end());
+  }
 
   /**
    * Change the protection bits of [addr, addr + num_bytes) to

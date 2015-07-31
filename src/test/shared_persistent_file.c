@@ -2,8 +2,7 @@
 
 #include "rrutil.h"
 
-static void breakpoint(void) {
-}
+static void breakpoint(void) {}
 
 int main(int argc, char* argv[]) {
   int fd = open("/bin/sh", O_RDONLY);
