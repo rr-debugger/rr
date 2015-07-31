@@ -352,11 +352,15 @@ public:
    * clients that modify the memory map don't corrupt things.
    */
   std::vector<Mapping> maps() const {
-    return std::vector<Mapping>(mem.begin(), mem.end());
+    return maps_starting_at(remote_ptr<void>());
   }
-  std::vector<Mappping> maps_starting_at(remote_ptr<void> start) {
-    return std::vector<Mapping>(mem.lower_bound(MemoryRange(start, start)),
-                                mem.end());
+  std::vector<Mapping> maps_starting_at(remote_ptr<void> start) const {
+    std::vector<Mapping> r;
+    for (auto it = mem.lower_bound(MemoryRange(start, start)); it != mem.end();
+         ++it) {
+      r.push_back(it->second);
+    }
+    return r;
   }
 
   /**
