@@ -894,6 +894,7 @@ public:
 
   /** Update the clear-tid futex to |tid_addr|. */
   void set_tid_addr(remote_ptr<int> tid_addr);
+  remote_ptr<int> tid_addr() { return tid_futex; }
 
   /**
    * Call this after |sig| is delivered to this task.  Emulate

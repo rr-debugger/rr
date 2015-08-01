@@ -1325,7 +1325,7 @@ remap_file_pages = UnsupportedSyscall(x86=257, x64=216)
 #
 # When set_child_tid is set, the very first thing the new process
 # does is writing its PID at this address.
-set_tid_address = ExecutedSyscall(x86=258, x64=218, arg1="typename Arch::pid_t")
+set_tid_address = EmulatedSyscall(x86=258, x64=218)
 
 timer_create = EmulatedSyscall(x86=259, x64=222, arg3="typename Arch::__kernel_timer_t")
 timer_settime = EmulatedSyscall(x86=260, x64=223, arg4="typename Arch::itimerspec")

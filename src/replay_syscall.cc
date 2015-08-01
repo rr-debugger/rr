@@ -274,10 +274,12 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
     return;
   }
 
-  if (flags & CLONE_UNTRACED) {
-    ASSERT(t, trace_frame.regs().original_syscallno() == Arch::clone);
+  if (Arch::clone == t->regs().original_syscallno()) {
     Registers r = t->regs();
-    r.set_arg1(flags & ~CLONE_UNTRACED);
+    // If we allow CLONE_UNTRACED then the child would escape from rr control
+    // and we can't allow that.
+    // Block CLONE_CHILD_CLEARTID because we'll emulate that ourselves.
+    r.set_arg1(flags & ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID));
     t->set_regs(r);
   }
 
@@ -315,7 +317,7 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   // Restore original_syscallno if vfork set it to fork
   r.set_original_syscallno(trace_frame.regs().original_syscallno());
   // Restore the saved flags, to hide the fact that we may have
-  // masked out CLONE_UNTRACED.
+  // masked out CLONE_UNTRACED/CLONE_CHILD_CLEARTID.
   r.set_arg1(trace_frame.regs().arg1());
   t->set_regs(r);
 
