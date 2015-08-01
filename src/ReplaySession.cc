@@ -345,6 +345,7 @@ Completion ReplaySession::exit_syscall(Task* t,
     if (cont_syscall_boundary(t, emu, constraints) == INCOMPLETE) {
       return INCOMPLETE;
     }
+    t->validate_regs();
   }
 
   t->on_syscall_exit(current_step.syscall.number, current_trace_frame().regs());
