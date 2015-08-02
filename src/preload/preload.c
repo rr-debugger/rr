@@ -1769,6 +1769,20 @@ static long sys_gettid(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_getpid(const struct syscall_info* call) {
+  const int syscallno = SYS_getpid;
+  void* ptr = prep_syscall();
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall0(syscallno);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_getrusage(const struct syscall_info* call) {
   const int syscallno = SYS_getrusage;
   int who = (int)call->args[0];
@@ -1809,6 +1823,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(fcntl);
 #endif
     CASE(futex);
+    CASE(getpid);
     CASE(getrusage);
     CASE(gettid);
     CASE(gettimeofday);
