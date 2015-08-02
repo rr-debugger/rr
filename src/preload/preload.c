@@ -897,6 +897,28 @@ static void disarm_desched_event(void) {
   }
 }
 
+#ifdef SYS_recvmsg
+static int syscall_buffer_valid(void* record_end) {
+  void* record_start;
+  void* stored_end;
+  if (!buffer) {
+    return 0;
+  }
+  record_start = buffer_last();
+  stored_end = record_start + stored_record_size(record_end - record_start);
+  if (stored_end < record_start + sizeof(struct syscallbuf_record)) {
+    /* Either a catastrophic buffer overflow or
+     * we failed to lock the buffer. */
+    return 0;
+  }
+  if (stored_end > (void*)buffer_end() - sizeof(struct syscallbuf_record)) {
+    /* Buffer overflow. */
+    return 0;
+  }
+  return 1;
+}
+#endif
+
 /**
  * Return 1 if it's ok to proceed with buffering this system call.
  * Return 0 if we should trace the system call.
@@ -1656,13 +1678,86 @@ static long sys_recvfrom(const struct syscall_info* call) {
   ret = untraced_syscall6(syscallno, sockfd, buf2, len, flags, src_addr2,
                           addrlen2);
 
-  if (src_addr2 && ret >= 0) {
-    local_memcpy(src_addr, src_addr2, sizeof(*src_addr));
-  }
-  if (addrlen2 && ret >= 0) {
-    *addrlen = *addrlen2;
+  if (ret >= 0) {
+    if (src_addr2) {
+      local_memcpy(src_addr, src_addr2, sizeof(*src_addr));
+    }
+    if (addrlen2) {
+      *addrlen = *addrlen2;
+    }
   }
   ptr = copy_output_buffer(ret, ptr, buf, buf2);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
+#ifdef SYS_recvmsg
+static void* align_ptr(void* p) {
+  uintptr_t v = (uintptr_t)p;
+  v = (v + sizeof(uintptr_t) - 1) & ~(uintptr_t)(sizeof(uintptr_t) - 1);
+  return (void*)v;
+}
+
+static long sys_recvmsg(const struct syscall_info* call) {
+  const int syscallno = SYS_recvmsg;
+  int sockfd = call->args[0];
+  struct msghdr* msg = (struct msghdr*)call->args[1];
+  int flags = call->args[2];
+
+  void* ptr = prep_syscall_for_fd(sockfd);
+  long ret;
+  struct msghdr* msg2;
+
+  assert(syscallno == call->no);
+
+  msg2 = ptr;
+  ptr += sizeof(struct msghdr);
+  *msg2 = *msg;
+
+  msg2->msg_iov = ptr;
+  ptr += sizeof(struct iovec)*msg->msg_iovlen;
+  if (syscall_buffer_valid(ptr)) {
+    for (size_t i = 0; i < msg->msg_iovlen; ++i) {
+      msg2->msg_iov[i].iov_base = ptr;
+      ptr = align_ptr(ptr + msg->msg_iov[i].iov_len);
+      msg2->msg_iov[i].iov_len = msg->msg_iov[i].iov_len;
+    }
+  }
+
+  if (msg->msg_name) {
+    msg2->msg_name = ptr;
+    ptr = align_ptr(ptr + msg->msg_namelen);
+  }
+  if (msg->msg_control) {
+    msg2->msg_control = ptr;
+    ptr = align_ptr(ptr + msg->msg_controllen);
+  }
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall3(syscallno, sockfd, msg2, flags);
+
+  if (ret >= 0) {
+    long bytes = ret;
+    for (size_t i = 0; i < msg->msg_iovlen; ++i) {
+      long copy_bytes = bytes < msg->msg_iov[i].iov_len ? bytes :
+          msg->msg_iov[i].iov_len;
+      local_memcpy(msg->msg_iov[i].iov_base, msg2->msg_iov[i].iov_base,
+                   copy_bytes);
+      bytes -= copy_bytes;
+    }
+    if (msg->msg_name) {
+      local_memcpy(msg->msg_name, msg2->msg_name, msg2->msg_namelen);
+    }
+    msg->msg_namelen = msg2->msg_namelen;
+    if (msg->msg_control) {
+      local_memcpy(msg->msg_control, msg2->msg_control, msg2->msg_controllen);
+    }
+    msg->msg_controllen = msg2->msg_controllen;
+    msg->msg_flags = msg2->msg_flags;
+  }
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 #endif
@@ -1837,6 +1932,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(poll);
     CASE(read);
     CASE(readlink);
+#if defined(SYS_recvmsg)
+    CASE(recvmsg);
+#endif
 #if defined(SYS_recvfrom)
     CASE(recvfrom);
 #endif
