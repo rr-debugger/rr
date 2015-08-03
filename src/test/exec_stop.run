@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record exec_self$bitness
+debug exec_stop

@@ -580,6 +580,7 @@ set(TESTS_WITHOUT_PROGRAM
   dead_thread_target
   deliver_async_signal_during_syscalls
   env_newline
+  exec_stop
   execp
   explicit_checkpoint_clone
   final_sigkill

@@ -606,6 +606,15 @@ static bool is_last_thread_exit(const BreakStatus& break_status) {
          break_status.task->task_group()->task_set().size() == 1;
 }
 
+static Task* is_in_exec(ReplayTimeline& timeline) {
+  Task* t = timeline.current_session().current_task();
+  return t &&
+                 timeline.current_session().next_step_is_syscall_exit(
+                     syscall_number_for_execve(t->arch()))
+             ? t
+             : nullptr;
+}
+
 void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
   int sig = -1;
   remote_ptr<void> watch_addr;
@@ -625,10 +634,16 @@ void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
     // backwards from the end of the task.
     sig = SIGKILL;
   }
+  Task* t = break_status.task;
+  Task* in_exec_task = is_in_exec(timeline);
+  if (in_exec_task) {
+    sig = SIGTRAP;
+    t = in_exec_task;
+  }
   if (sig >= 0) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    dbg->notify_stop(get_threadid(break_status.task), sig, watch_addr.as_int());
+    dbg->notify_stop(get_threadid(t), sig, watch_addr.as_int());
   }
 }
 
@@ -874,10 +889,16 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
 
     *last_direction = req.cont().run_direction;
-    result =
-        timeline.replay_step(command, *last_direction,
-                             *last_direction == RUN_FORWARD ? target.event : 0,
-                             [&]() { return dbg->sniff_packet(); });
+    if (*last_direction == RUN_FORWARD && is_in_exec(timeline)) {
+      // Don't go any further forward. maybe_notify_stop will generate a
+      // stop.
+      result = ReplayResult();
+    } else {
+      result = timeline.replay_step(
+          command, *last_direction,
+          *last_direction == RUN_FORWARD ? target.event : 0,
+          [&]() { return dbg->sniff_packet(); });
+    }
     t = timeline.current_session().find_task(tuid);
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state(t);

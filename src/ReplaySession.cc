@@ -1538,6 +1538,13 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
   }
 }
 
+bool ReplaySession::next_step_is_syscall_exit(int syscallno) {
+  return current_step.action == TSTEP_NONE &&
+         trace_frame.event().is_syscall_event() &&
+         trace_frame.event().Syscall().number == syscallno &&
+         trace_frame.event().Syscall().state == EXITING_SYSCALL;
+}
+
 ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   finish_initializing();
 
