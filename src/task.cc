@@ -1042,26 +1042,23 @@ void Task::post_exec(const Registers* replay_regs,
   fds->erase_task(this);
 
   string exe_file = replay_exe ? *replay_exe : exe_path(this);
-  if (replay_regs) {
-    registers = *replay_regs;
-    extra_registers = *replay_extra_regs;
-    ASSERT(this, !extra_registers.empty());
-  } else {
-    registers.set_arch(determine_arch(this, exe_file));
-    extra_registers.set_arch(registers.arch());
-    // Read registers now that the architecture is known.
-    struct user_regs_struct ptrace_regs;
-    ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
-    registers.set_from_ptrace(ptrace_regs);
-    // Change syscall number to execve *for the new arch*. If we don't do this,
-    // and the arch changes, then the syscall number for execve in the old arch/
-    // is treated as the syscall we're executing in the new arch, with hilarious
-    // results.
-    registers.set_original_syscallno(syscall_number_for_execve(arch()));
+  registers.set_arch(determine_arch(this, exe_file));
+  extra_registers.set_arch(registers.arch());
+  // Read registers now that the architecture is known.
+  struct user_regs_struct ptrace_regs;
+  ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
+  registers.set_from_ptrace(ptrace_regs);
+  // Change syscall number to execve *for the new arch*. If we don't do this,
+  // and the arch changes, then the syscall number for execve in the old arch/
+  // is treated as the syscall we're executing in the new arch, with hilarious
+  // results.
+  registers.set_original_syscallno(syscall_number_for_execve(arch()));
+  set_regs(registers);
+
+  if (!replay_regs) {
     ev().set_arch(arch());
     ev().Syscall().number = registers.original_syscallno();
   }
-  set_regs(registers);
 
   // Clear robust_list state to match kernel state. If this task is cloned
   // soon after exec, we must not do a bogus set_robust_list syscall for
@@ -1077,6 +1074,16 @@ void Task::post_exec(const Registers* replay_regs,
   // It's barely-documented, but Linux unshares the fd table on exec
   fds = fds->clone(this);
   prname = prname_from_exe_image(as->exe_image());
+
+  if (replay_regs) {
+    // Delay setting the replay_regs until here so the original registers
+    // are set while we populate AddressSpace. We need that for the kernel
+    // to identify the original stack region correctly.
+    registers = *replay_regs;
+    extra_registers = *replay_extra_regs;
+    ASSERT(this, !extra_registers.empty());
+    set_regs(registers);
+  }
 }
 
 void Task::post_exec_syscall(TraceTaskEvent& event) {
@@ -2074,19 +2081,6 @@ static void set_up_process(Session& session) {
     if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
       FATAL() << "Couldn't set parent-death signal";
     }
-  }
-
-  /* Disable address space layout randomization, for obvious
-   * reasons, and ensure that the layout is otherwise well-known
-   * ("COMPAT").  For not-understood reasons, "COMPAT" layouts
-   * have been observed in certain recording situations but not
-   * in replay, which causes divergence. */
-  int orig_pers;
-  if (0 > (orig_pers = personality(0xffffffff))) {
-    FATAL() << "error getting personaity";
-  }
-  if (0 > personality(orig_pers | ADDR_NO_RANDOMIZE | ADDR_COMPAT_LAYOUT)) {
-    FATAL() << "error disabling randomization";
   }
 
   /* Trap to the rr process if a 'rdtsc' instruction is issued.

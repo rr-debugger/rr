@@ -43,14 +43,6 @@ int main(int argc, char* argv[]) {
   atomic_printf("wpage:%p rpage:%p\n", wpage, rpage);
   test_assert(wpage != (void*)-1 && rpage != (void*)-1 && rpage != wpage);
 
-  /* NB: this is a bad test in that it assumes
-   * ADDR_COMPAT_LAYOUT address-space allocation semantics.  If
-   * this test is run "normally", it will most likely fail this
-   * assertion.  To fix this we'd need to dynamically determine
-   * which page is mapped just before the other and then remap
-   * that page. */
-  test_assert((uint8_t*)rpage - (uint8_t*)wpage == num_bytes);
-
   check_mapping(rpage, wpage, num_bytes / sizeof(*wpage));
 
   overwrite_file(file_name, 2 * num_bytes);
