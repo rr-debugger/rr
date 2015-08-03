@@ -121,7 +121,7 @@ static void advance_syscall(Task* t) {
   ASSERT(t, t->ptrace_event() == 0);
 }
 
-long AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
+void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
                                         Registers& callregs) {
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);
@@ -140,12 +140,11 @@ long AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
   pending_syscallno = syscallno;
   t->cont_syscall_nonblocking();
   if (WAIT == wait) {
-    return wait_syscall(syscallno);
+    wait_syscall(syscallno);
   }
-  return 0;
 }
 
-long AutoRemoteSyscalls::wait_syscall(int syscallno) {
+void AutoRemoteSyscalls::wait_syscall(int syscallno) {
   ASSERT(t, pending_syscallno == syscallno || syscallno < 0);
 
   // Wait for syscall-exit trap.
@@ -155,8 +154,6 @@ long AutoRemoteSyscalls::wait_syscall(int syscallno) {
   ASSERT(t, t->regs().original_syscallno() == syscallno || syscallno < 0)
       << "Should be entering " << t->syscall_name(syscallno)
       << ", but instead at " << t->syscall_name(t->regs().original_syscallno());
-
-  return t->regs().syscall_result_signed();
 }
 
 SupportedArch AutoRemoteSyscalls::arch() const { return t->arch(); }
@@ -407,7 +404,8 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     FATAL() << "Failed to create parent socket";
   }
   // Complete child's connect() syscall
-  int child_syscall_result = wait_syscall();
+  wait_syscall();
+  int child_syscall_result = t->regs().syscall_result_signed();
   if (child_syscall_result) {
     FATAL() << "Failed to connect() in tracee; err="
             << errno_name(-child_syscall_result);
@@ -418,7 +416,8 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   close(listen_sock);
   unlink(path);
   child_sendmsg(*this, remote_buf, sc_args, sc_args_end, child_sock, fd);
-  child_syscall_result = wait_syscall();
+  wait_syscall();
+  child_syscall_result = t->regs().syscall_result_signed();
   if (0 >= child_syscall_result) {
     FATAL() << "Failed to sendmsg() in tracee; err="
             << errno_name(-child_syscall_result);
@@ -446,12 +445,13 @@ remote_ptr<void> AutoRemoteSyscalls::mmap_syscall(remote_ptr<void> addr,
                                                   size_t length, int prot,
                                                   int flags, int child_fd,
                                                   uint64_t offset_pages) {
+  // The first syscall argument is called "arg 1", so
+  // our syscall-arg-index template parameter starts
+  // with "1".
   if (has_mmap2_syscall(arch())) {
-    syscall(syscall_number_for_mmap2(arch()), addr, length, prot, flags,
-            child_fd, (off_t)offset_pages);
-  } else {
-    syscall(syscall_number_for_mmap(arch()), addr, length, prot, flags,
-            child_fd, offset_pages * page_size());
+    return syscall_ptr(syscall_number_for_mmap2(arch()), addr, length, prot,
+                       flags, child_fd, (off_t)offset_pages);
   }
-  return t->regs().syscall_result();
+  return syscall_ptr(syscall_number_for_mmap(arch()), addr, length, prot, flags,
+                     child_fd, offset_pages * page_size());
 }

@@ -9,6 +9,7 @@
 
 #include "Registers.h"
 #include "ScopedFd.h"
+#include "task.h"
 
 class AutoRemoteSyscalls;
 class Task;
@@ -141,7 +142,15 @@ public:
     // The first syscall argument is called "arg 1", so
     // our syscall-arg-index template parameter starts
     // with "1".
-    return syscall_helper<1>(syscallno, callregs, args...);
+    syscall_helper<1>(syscallno, callregs, args...);
+    return t->regs().syscall_result_signed();
+  }
+
+  template <typename... Rest>
+  remote_ptr<void> syscall_ptr(int syscallno, Rest... args) {
+    Registers callregs = regs();
+    syscall_helper<1>(syscallno, callregs, args...);
+    return t->regs().syscall_result();
   }
 
   /**
@@ -178,7 +187,7 @@ public:
    * finish the syscall and get the return value.
    */
   enum SyscallWaiting { WAIT = 1, DONT_WAIT = 0 };
-  long syscall_helper(SyscallWaiting wait, int syscallno, Registers& callregs);
+  void syscall_helper(SyscallWaiting wait, int syscallno, Registers& callregs);
 
 private:
   /**
@@ -187,7 +196,7 @@ private:
    * |syscallno| is only for assertion checking. If no value is passed in,
    * everything should work without the assertion checking.
    */
-  long wait_syscall(int syscallno = -1);
+  void wait_syscall(int syscallno = -1);
 
   /**
    * "Recursively" build the set of syscall registers in
@@ -195,16 +204,16 @@ private:
    * |arg|, and |args| are the remaining arguments.
    */
   template <int Index, typename T, typename... Rest>
-  long syscall_helper(int syscallno, Registers& callregs, T arg, Rest... args) {
+  void syscall_helper(int syscallno, Registers& callregs, T arg, Rest... args) {
     callregs.set_arg<Index>(arg);
-    return syscall_helper<Index + 1>(syscallno, callregs, args...);
+    syscall_helper<Index + 1>(syscallno, callregs, args...);
   }
   /**
    * "Recursion" "base case": no more arguments to build, so
    * just make the syscall and return the kernel return value.
    */
-  template <int Index> long syscall_helper(int syscallno, Registers& callregs) {
-    return syscall_helper(WAIT, syscallno, callregs);
+  template <int Index> void syscall_helper(int syscallno, Registers& callregs) {
+    syscall_helper(WAIT, syscallno, callregs);
   }
 
   template <typename Arch> ScopedFd retrieve_fd_arch(int fd);
