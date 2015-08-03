@@ -113,27 +113,23 @@ remote_ptr<uint8_t> Monkeypatcher::allocate_stub(Task* t, size_t bytes) {
 
 template <typename StubPatch>
 static void substitute(uint8_t* buffer, uint64_t return_addr,
-                       uint32_t trampoline_relative_addr,
-                       uint32_t return_relative_addr);
+                       uint32_t trampoline_relative_addr);
 
 template <>
 void substitute<X86SyscallStubMonkeypatch>(uint8_t* buffer,
                                            uint64_t return_addr,
-                                           uint32_t trampoline_relative_addr,
-                                           uint32_t return_relative_addr) {
+                                           uint32_t trampoline_relative_addr) {
   X86SyscallStubMonkeypatch::substitute(buffer, (uint32_t)return_addr,
-                                        trampoline_relative_addr,
-                                        return_relative_addr);
+                                        trampoline_relative_addr);
 }
 
 template <>
 void substitute<X64SyscallStubMonkeypatch>(uint8_t* buffer,
                                            uint64_t return_addr,
-                                           uint32_t trampoline_relative_addr,
-                                           uint32_t return_relative_addr) {
+                                           uint32_t trampoline_relative_addr) {
   X64SyscallStubMonkeypatch::substitute(
       buffer, (uint32_t)return_addr, (uint32_t)(return_addr >> 32),
-      trampoline_relative_addr, return_relative_addr);
+      trampoline_relative_addr);
 }
 
 /**
@@ -156,7 +152,6 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
   }
   auto stub_patch_after_trampoline_call =
       stub_patch_start + trampoline_call_end;
-  auto stub_patch_end = stub_patch_start + sizeof(stub_patch);
 
   uint8_t jump_patch[JumpPatch::size];
   // We're patching in a relative jump, so we need to compute the offset from
@@ -169,13 +164,6 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
   if (jump_offset32 != jump_offset) {
     LOG(debug) << "syscall can't be patched due to jump out of range from "
                << jump_patch_end << " to " << stub_patch_start;
-    return false;
-  }
-  intptr_t return_jump_offset = jump_patch_end - stub_patch_end;
-  int32_t return_jump_offset32 = (int32_t)return_jump_offset;
-  if (return_jump_offset32 != return_jump_offset) {
-    LOG(debug) << "syscall can't be patched due to jump out of range from "
-               << stub_patch_end << " to " << jump_patch_end;
     return false;
   }
   intptr_t trampoline_call_offset =
@@ -197,7 +185,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
 
   // Now write out the stub
   substitute<StubPatch>(stub_patch, jump_patch_end.as_int(),
-                        trampoline_call_offset32, return_jump_offset32);
+                        trampoline_call_offset32);
   t->write_bytes(stub_patch_start, stub_patch);
 
   return true;

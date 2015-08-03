@@ -116,8 +116,7 @@ templates = {
         RawBytes(0xe8),         # call $trampoline_relative_addr
         Field('trampoline_relative_addr', 4),
         RawBytes(0x8d, 0xa4, 0x24, 0x00, 0x01, 0x00, 0x00), # lea 256(%esp),%esp
-        RawBytes(0xe9),         # jmp $return_relative_addr
-        Field('return_relative_addr', 4),
+        RawBytes(0xff, 0xa4, 0x24, 0x00, 0xff, 0xff, 0xff), # jmp -256(%esp)
     ),
 
     'X64JumpMonkeypatch': AssemblyTemplate(
@@ -149,8 +148,7 @@ templates = {
         RawBytes(0xe8),         # call $trampoline_relative_addr
         Field('trampoline_relative_addr', 4),
         RawBytes(0x48, 0x8d, 0xa4, 0x24, 0x00, 0x01, 0x00, 0x00), # lea 256(%rsp),%rsp
-        RawBytes(0xe9),         # jmp $return_relative_addr
-        Field('return_relative_addr', 4),
+        RawBytes(0xff, 0xa4, 0x24, 0x00, 0xff, 0xff, 0xff), # jmp -256(%rsp)
     ),
 }
 
