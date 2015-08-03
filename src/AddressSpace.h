@@ -368,14 +368,22 @@ public:
         : outer(outer), start(start) {}
     class iterator {
     public:
+      iterator(const iterator& it) = default;
       const iterator& operator++() {
         ptr = to_it()->second.map.end();
         return *this;
       }
-      bool operator!=(const iterator& other) const {
-        return to_it() != other.to_it();
+      bool operator==(const iterator& other) const {
+        return to_it() == other.to_it();
       }
+      bool operator!=(const iterator& other) const { return !(*this == other); }
+      const Mapping* operator->() const { return &to_it()->second; }
       Mapping operator*() const { return to_it()->second; }
+      iterator& operator=(const iterator& other) {
+        this->~iterator();
+        new (this) iterator(other);
+        return *this;
+      }
 
     private:
       friend class Maps;

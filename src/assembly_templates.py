@@ -105,6 +105,10 @@ templates = {
         RawBytes(0x5b),         # pop %ebx
         RawBytes(0xc3),         # ret
     ),
+    'X86SyscallStubExtendedJump': AssemblyTemplate(
+        RawBytes(0xe9), # jmp
+        Field('relative_jump_target', 4),
+    ),
     'X86SyscallStubMonkeypatch': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
         # We must adjust the stack pointer without modifying flags,
@@ -134,6 +138,10 @@ templates = {
         RawBytes(0x90),         # nop
         RawBytes(0x90),         # nop
         RawBytes(0xc3),         # ret
+    ),
+    'X64SyscallStubExtendedJump': AssemblyTemplate(
+        RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00), # jmp *0(%rip)
+        Field('jump_target', 8),
     ),
     'X64SyscallStubMonkeypatch': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.

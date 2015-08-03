@@ -71,6 +71,15 @@ public:
                         size_t offset_pages, ScopedFd& open_fd);
 
   remote_ptr<void> x86_sysenter_vsyscall;
+  /**
+   * The list of pages we've allocated to hold our extended jumps.
+   */
+  struct ExtendedJumpPage {
+    ExtendedJumpPage(remote_ptr<uint8_t> addr) : addr(addr), allocated(0) {}
+    remote_ptr<uint8_t> addr;
+    size_t allocated;
+  };
+  std::vector<ExtendedJumpPage> extended_jump_pages;
 
 private:
   /**

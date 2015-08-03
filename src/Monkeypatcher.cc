@@ -5,6 +5,7 @@
 #include "Monkeypatcher.h"
 
 #include "AddressSpace.h"
+#include "AutoRemoteSyscalls.h"
 #include "elf.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
@@ -127,9 +128,113 @@ template <>
 void substitute<X64SyscallStubMonkeypatch>(uint8_t* buffer,
                                            uint64_t return_addr,
                                            uint32_t trampoline_relative_addr) {
-  X64SyscallStubMonkeypatch::substitute(
-      buffer, (uint32_t)return_addr, (uint32_t)(return_addr >> 32),
-      trampoline_relative_addr);
+  X64SyscallStubMonkeypatch::substitute(buffer, (uint32_t)return_addr,
+                                        (uint32_t)(return_addr >> 32),
+                                        trampoline_relative_addr);
+}
+
+template <typename ExtendedJumpPatch>
+static void substitute_extended_jump(uint8_t* buffer, uint64_t from_end,
+                                     uint64_t to_start);
+
+template <>
+void substitute_extended_jump<X86SyscallStubExtendedJump>(uint8_t* buffer,
+                                                          uint64_t from_end,
+                                                          uint64_t to_start) {
+  int64_t offset = to_start - from_end;
+  // An offset that appears to be > 2GB is OK here, since EIP will just
+  // wrap around.
+  X86SyscallStubExtendedJump::substitute(buffer, (int32_t)offset);
+}
+
+template <>
+void substitute_extended_jump<X64SyscallStubExtendedJump>(uint8_t* buffer,
+                                                          uint64_t from_end,
+                                                          uint64_t to_start) {
+  X64SyscallStubExtendedJump::substitute(buffer, to_start);
+}
+
+/**
+ * Allocate an extended jump in an extended jump page and return its address.
+ * The resulting address must be within 2G of from_end, and the instruction
+ * there must jump to to_start.
+ */
+template <typename ExtendedJumpPatch>
+static remote_ptr<uint8_t> allocate_extended_jump(
+    Task* t, vector<Monkeypatcher::ExtendedJumpPage>& pages,
+    remote_ptr<uint8_t> from_end, remote_ptr<uint8_t> to_start) {
+  Monkeypatcher::ExtendedJumpPage* page = nullptr;
+  for (auto& p : pages) {
+    remote_ptr<uint8_t> page_jump_start = p.addr + p.allocated;
+    int64_t offset = page_jump_start - from_end;
+    if ((int32_t)offset == offset &&
+        p.allocated + ExtendedJumpPatch::size <= page_size()) {
+      page = &p;
+      break;
+    }
+  }
+
+  if (!page) {
+    // Find free space after the patch site.
+    auto maps =
+        t->vm()->maps_starting_at(t->vm()->mapping_of(from_end).map.start());
+    auto current = maps.begin();
+    // We're looking for a gap of three pages --- one page to allocate and
+    // a page on each side as a guard page.
+    uint32_t required_space = 3 * page_size();
+    while (current != maps.end()) {
+      auto next = current;
+      ++next;
+      if (next == maps.end()) {
+        if (current->map.end() + required_space >= current->map.end()) {
+          break;
+        }
+      } else {
+        if (current->map.end() + required_space <= next->map.start()) {
+          break;
+        }
+      }
+      current = next;
+    }
+    if (current == maps.end()) {
+      LOG(debug) << "Can't find space for our jump page";
+      return nullptr;
+    }
+
+    remote_ptr<uint8_t> addr =
+        (current->map.end() + page_size()).cast<uint8_t>();
+    int64_t offset = addr - from_end;
+    if ((int32_t)offset != offset) {
+      sleep(1000);
+      LOG(debug) << "Can't find space close enough for the jump";
+      return nullptr;
+    }
+
+    {
+      AutoRemoteSyscalls remote(t);
+      int prot = PROT_READ | PROT_EXEC;
+      int flags = MAP_ANONYMOUS | MAP_FIXED | MAP_PRIVATE;
+      auto result = remote.mmap_syscall(addr, page_size(), prot, flags, -1, 0);
+      ASSERT(t, result == addr);
+      KernelMapping recorded(addr, addr + page_size(), string(),
+                             KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
+                             prot, flags);
+      t->vm()->map(addr, page_size(), prot, flags, 0, string(),
+                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
+                   &recorded);
+    }
+
+    pages.push_back(Monkeypatcher::ExtendedJumpPage(addr));
+    page = &pages.back();
+  }
+
+  uint8_t jump_patch[ExtendedJumpPatch::size];
+  remote_ptr<uint8_t> jump_addr = page->addr + page->allocated;
+  substitute_extended_jump<ExtendedJumpPatch>(
+      jump_patch, jump_addr.as_int() + sizeof(jump_patch), to_start.as_int());
+  t->write_bytes(jump_addr, jump_patch);
+  page->allocated += sizeof(jump_patch);
+  return jump_addr;
 }
 
 /**
@@ -140,8 +245,24 @@ void substitute<X64SyscallStubMonkeypatch>(uint8_t* buffer,
  * from the callsite to the stub. The stub decrements the stack pointer,
  * calls the appropriate syscall hook function, reincrements the stack pointer,
  * and jumps back to immediately after the patched callsite.
+ *
+ * It's important that gdb stack traces work while a thread is stopped in the
+ * syscallbuf code. To ensure that the above manipulations don't foil gdb's
+ * stack walking code, we add CFI data to all the stubs. To ease that, the
+ * stubs are written in assembly and linked into the preload library.
+ *
+ * On x86-64 with ASLR, we need to be able to patch a call to a stub from
+ * sites more than 2^31 bytes away. We only have space for a 5-byte jump
+ * instruction. So, we allocate "extender pages" --- pages of memory within
+ * 2GB of the patch site, within which we allocate instructions that can jump
+ * anywhere in memory. We don't really need this on x86, but we do it there
+ * too for consistency.
+ *
+ * This is all implemented to be completely deterministic so we allocate, patch
+ * etc in exactly the same way during recording and replay.
  */
-template <typename JumpPatch, typename StubPatch, uint32_t trampoline_call_end>
+template <typename JumpPatch, typename ExtendedJumpPatch, typename StubPatch,
+          uint32_t trampoline_call_end>
 static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   uint8_t stub_patch[StubPatch::size];
@@ -159,13 +280,17 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
   auto jump_patch_start = t->regs().ip().to_data_ptr<uint8_t>();
   auto jump_patch_end = jump_patch_start + sizeof(jump_patch);
 
-  intptr_t jump_offset = stub_patch_start - jump_patch_end;
-  int32_t jump_offset32 = (int32_t)jump_offset;
-  if (jump_offset32 != jump_offset) {
-    LOG(debug) << "syscall can't be patched due to jump out of range from "
-               << jump_patch_end << " to " << stub_patch_start;
+  remote_ptr<uint8_t> extended_jump_start =
+      allocate_extended_jump<ExtendedJumpPatch>(
+          t, patcher.extended_jump_pages, jump_patch_end, stub_patch_start);
+  if (extended_jump_start.is_null()) {
     return false;
   }
+  intptr_t jump_offset = extended_jump_start - jump_patch_end;
+  int32_t jump_offset32 = (int32_t)jump_offset;
+  ASSERT(t, jump_offset32 == jump_offset)
+      << "allocate_extended_jump didn't work";
+
   intptr_t trampoline_call_offset =
       hook.hook_address - stub_patch_after_trampoline_call.as_int();
   int32_t trampoline_call_offset32 = (int32_t)trampoline_call_offset;
@@ -194,16 +319,17 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
 template <>
 bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
-  return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
-                                        X86SyscallStubMonkeypatch, 30>(patcher,
-                                                                       t, hook);
+  return patch_syscall_with_hook_x86ish<
+      X86SysenterVsyscallSyscallHook, X86SyscallStubExtendedJump,
+      X86SyscallStubMonkeypatch, 30>(patcher, t, hook);
 }
 
 template <>
 bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<
-      X64JumpMonkeypatch, X64SyscallStubMonkeypatch, 43>(patcher, t, hook);
+      X64JumpMonkeypatch, X64SyscallStubExtendedJump, X64SyscallStubMonkeypatch,
+      43>(patcher, t, hook);
 }
 
 static bool patch_syscall_with_hook(Monkeypatcher& patcher, Task* t,
