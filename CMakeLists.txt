@@ -301,6 +301,7 @@ set(BASIC_TESTS
   block
   blocked_sigsegv
   brk
+  brk2
   capget
   chew_cpu
   chown

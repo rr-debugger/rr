@@ -491,8 +491,9 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   ssize_t exe_km = -1;
   while (true) {
     TraceReader::MappedData data;
-    KernelMapping km = t->trace_reader().read_mapped_region(&data);
-    if (km.size() == 0) {
+    bool found;
+    KernelMapping km = t->trace_reader().read_mapped_region(&data, &found);
+    if (!found) {
       break;
     }
     const string& file_name = km.fsname();

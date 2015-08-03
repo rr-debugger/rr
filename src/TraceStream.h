@@ -208,9 +208,10 @@ public:
   /**
    * Read the next mapped region descriptor and return it.
    * Also returns where to get the mapped data in 'data'.
-   * Returns en empty mapping if there isn't one for the current event.
+   * If |found| is non-null, set *found to indicate whether a descriptor
+   * was found for the current event.
    */
-  KernelMapping read_mapped_region(MappedData* data);
+  KernelMapping read_mapped_region(MappedData* data, bool* found = nullptr);
 
   /**
    * Peek at the next mapping. Returns an empty region if there isn't one for

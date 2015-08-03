@@ -290,7 +290,11 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
                                              : DONT_RECORD_IN_TRACE;
 }
 
-KernelMapping TraceReader::read_mapped_region(MappedData* data) {
+KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found) {
+  if (found) {
+    *found = false;
+  }
+
   auto& mmaps = reader(MMAPS);
   if (mmaps.at_end()) {
     return KernelMapping();
@@ -337,6 +341,9 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data) {
   data->file_name = backing_file_name;
   data->file_data_offset_bytes = file_offset_bytes;
   data->file_size_bytes = file_size;
+  if (found) {
+    *found = true;
+  }
   return KernelMapping(start, end, original_file_name, device, inode, prot,
                        flags, file_offset_bytes);
 }

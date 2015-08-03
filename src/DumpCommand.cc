@@ -170,8 +170,9 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       }
       while (true) {
         TraceReader::MappedData data;
-        KernelMapping km = trace.read_mapped_region(&data);
-        if (km.size() == 0) {
+        bool found;
+        KernelMapping km = trace.read_mapped_region(&data, &found);
+        if (!found) {
           break;
         }
         if (flags.dump_mmaps) {
