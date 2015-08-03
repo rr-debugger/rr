@@ -367,7 +367,7 @@ prof = InvalidSyscall(x86=44)
 # addr, when that value is reasonable, the system has enough memory,
 # and the process does not exceed its maximum data size (see
 # setrlimit(2)).
-brk = EmulatedSyscall(x86=45, x64=12)
+brk = IrregularEmulatedSyscall(x86=45, x64=12)
 
 #  int setgid(gid_t gid)
 #

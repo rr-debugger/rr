@@ -284,6 +284,11 @@ void AddressSpace::map_rr_page(Task* t) {
     fstat = t->fstat(child_fd);
 
     remote.syscall(syscall_number_for_close(arch), child_fd);
+
+    if (t->session().is_recording()) {
+      // brk() will not have been called yet so the brk area is empty.
+      brk_start = brk_end = remote.syscall(syscall_number_for_brk(arch), 0);
+    }
   }
 
   unlink(path);
@@ -350,38 +355,23 @@ void AddressSpace::post_exec_syscall(Task* t) {
   map_rr_page(t);
 }
 
-void AddressSpace::brk(remote_ptr<void> addr, Task* t) {
+void AddressSpace::brk(remote_ptr<void> addr, int prot) {
   LOG(debug) << "brk(" << addr << ")";
 
-  assert(heap.start() <= addr);
-
-  remote_ptr<void> vm_addr = ceil_page_size(addr);
-  if (heap.end() < vm_addr) {
-    if (t) {
-      AutoRemoteSyscalls remote(t);
-      int flags = heap.flags() | MAP_ANONYMOUS;
-      remote.mmap_syscall(heap.end(), vm_addr - heap.end(), heap.prot(),
-                          flags | MAP_FIXED, -1, 0);
-      map(heap.end(), vm_addr - heap.end(), heap.prot(), flags, 0, string(),
-          KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
-    } else {
-      map(heap.end(), vm_addr - heap.end(), heap.prot(), heap.flags(), 0,
-          heap.fsname(), heap.device(), heap.inode());
-    }
+  remote_ptr<void> old_brk = ceil_page_size(brk_end);
+  remote_ptr<void> new_brk = ceil_page_size(addr);
+  if (old_brk < new_brk) {
+    map(old_brk, new_brk - old_brk, prot, MAP_ANONYMOUS | MAP_PRIVATE, 0,
+        "[heap]", KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
   } else {
-    if (t) {
-      AutoRemoteSyscalls remote(t);
-      remote.syscall(syscall_number_for_munmap(t->arch()), vm_addr,
-                     heap.end() - vm_addr);
-    }
-    unmap(vm_addr, heap.end() - vm_addr);
+    unmap(new_brk, old_brk - new_brk);
   }
-  update_heap(heap.start(), vm_addr);
+  brk_end = addr;
 }
 
 void AddressSpace::dump() const {
-  fprintf(stderr, "  (heap: %p-%p)\n", (void*)heap.start().as_int(),
-          (void*)heap.end().as_int());
+  fprintf(stderr, "  (heap: %p-%p)\n", (void*)brk_start.as_int(),
+          (void*)brk_end.as_int());
   for (auto it = mem.begin(); it != mem.end(); ++it) {
     const KernelMapping& m = it->second.map;
     fprintf(stderr, "%s\n", m.str().c_str());
@@ -1069,7 +1059,6 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
   // https://github.com/mozilla/rr/issues/1113 .
   if (session_->can_validate()) {
     populate_address_space(t);
-    locate_heap(exe);
     assert(!vdso_start_addr.is_null());
   } else {
     // Find the location of the VDSO in the just-spawned process. This will
@@ -1096,7 +1085,6 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       leader_tid_(leader_tid),
       leader_serial(leader_serial),
       exec_count(exec_count),
-      heap(o.heap),
       is_clone(true),
       mem(o.mem),
       session_(session),
@@ -1368,40 +1356,5 @@ void AddressSpace::populate_address_space(Task* t) {
     map(km.start(), km.size(), km.prot(), flags, km.file_offset_bytes(),
         km.fsname(), km.device(), km.inode(), nullptr,
         TraceWriter::EXEC_MAPPING);
-  }
-}
-
-void AddressSpace::locate_heap(const string& exe_name) {
-  for (auto& mapping : mem) {
-    auto& km = mapping.second.recorded_map;
-    if (!heap.start() && exe_name == km.fsname() && !(km.prot() & PROT_EXEC) &&
-        (km.prot() & (PROT_READ | PROT_WRITE))) {
-      update_heap(km.end(), km.end());
-      LOG(debug) << "  guessing heap starts at " << heap.start()
-                 << " (end of text segment)";
-    }
-
-    // This segment is adjacent to our previous guess at the start of
-    // the dynamic heap, but it's still not an explicit heap segment.
-    // Or, in corner cases, the segment is the final mapping of the data
-    // segment of the exe image, but is not adjacent to the prior mapped
-    // segment of the exe.  (This is seen with x86-64 bash on Fedora
-    // Core 20.)  Update the guess.
-    if (!(km.prot() & PROT_EXEC) &&
-        (heap.end() == km.start() || exe_name == km.fsname())) {
-      assert(heap.start() == heap.end() || exe_name == km.fsname());
-      update_heap(km.end(), km.end());
-      LOG(debug) << "  updating start-of-heap guess to " << heap.start()
-                 << " (end of mapped-data segment)";
-    }
-
-    if (km.is_heap()) {
-      if (!heap.start()) {
-        // No guess for the heap start. Assume it's just the [heap] segment.
-        update_heap(km.start(), km.end());
-      } else {
-        update_heap(heap.start(), km.end());
-      }
-    }
   }
 }

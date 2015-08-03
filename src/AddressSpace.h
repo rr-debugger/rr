@@ -264,17 +264,18 @@ public:
   void post_exec_syscall(Task* t);
 
   /**
-   * Call this after all exec mappings have been performed.
-   * |original_exe| is the name of the executable file from the recording.
+   * Change the program data break of this address space to
+   * |addr|. Only called during recording!
    */
-  void locate_heap(const std::string& original_exe);
+  void brk(remote_ptr<void> addr, int prot);
 
   /**
-   * Change the program data break of this address space to
-   * |addr|. If |t| is not null, actually perform mapping/unmapping of
-   * pages in |t| to emulate the brk().
+   * This can only be called during recording.
    */
-  void brk(remote_ptr<void> addr, Task* t);
+  remote_ptr<void> current_brk() const {
+    assert(!brk_end.is_null());
+    return brk_end;
+  }
 
   /**
    * Dump a representation of |this| to stderr in a format
@@ -655,6 +656,7 @@ private:
 
   void unmap_internal(remote_ptr<void> addr, ssize_t num_bytes);
 
+  // Also sets brk_ptr.
   void map_rr_page(Task* t);
 
   bool update_watchpoint_value(const MemoryRange& range,
@@ -710,12 +712,6 @@ private:
    */
   void map_and_coalesce(const KernelMapping& m,
                         const KernelMapping& recorded_map);
-
-  /** Set the dynamic heap segment to |[start, end)| */
-  void update_heap(remote_ptr<void> start, remote_ptr<void> end) {
-    heap = KernelMapping(start, end, "[heap]", 0, 0, PROT_READ | PROT_WRITE,
-                         MAP_ANONYMOUS | MAP_PRIVATE, 0);
-  }
 
   template <typename Arch> void at_preload_init_arch(Task* t);
 
@@ -856,9 +852,10 @@ private:
   /* Serial number of first task for this address space */
   uint32_t leader_serial;
   uint32_t exec_count;
-  /* Track the special process-global heap in order to support
-   * adjustments by brk(). */
-  KernelMapping heap;
+  // Only valid during recording
+  remote_ptr<void> brk_start;
+  /* Current brk. Not necessarily page-aligned. */
+  remote_ptr<void> brk_end;
   /* Were we cloned from another address space? */
   bool is_clone;
   /* All segments mapped into this address space. */

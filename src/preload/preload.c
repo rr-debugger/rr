@@ -1715,7 +1715,7 @@ static long sys_recvmsg(const struct syscall_info* call) {
   *msg2 = *msg;
 
   msg2->msg_iov = ptr;
-  ptr += sizeof(struct iovec)*msg->msg_iovlen;
+  ptr += sizeof(struct iovec) * msg->msg_iovlen;
   if (syscall_buffer_valid(ptr)) {
     for (size_t i = 0; i < msg->msg_iovlen; ++i) {
       msg2->msg_iov[i].iov_base = ptr;
@@ -1742,8 +1742,8 @@ static long sys_recvmsg(const struct syscall_info* call) {
   if (ret >= 0) {
     long bytes = ret;
     for (size_t i = 0; i < msg->msg_iovlen; ++i) {
-      long copy_bytes = bytes < msg->msg_iov[i].iov_len ? bytes :
-          msg->msg_iov[i].iov_len;
+      long copy_bytes =
+          bytes < msg->msg_iov[i].iov_len ? bytes : msg->msg_iov[i].iov_len;
       local_memcpy(msg->msg_iov[i].iov_base, msg2->msg_iov[i].iov_base,
                    copy_bytes);
       bytes -= copy_bytes;

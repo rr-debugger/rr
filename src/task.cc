@@ -862,22 +862,11 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   }
 
   switch (syscallno) {
-    case Arch::brk: {
-      remote_ptr<void> addr = regs.arg1();
-      if (!addr) {
-        // A brk() update of nullptr is observed with
-        // libc, which apparently is its means of
-        // finding out the initial brk().  We can
-        // ignore that for the purposes of updating
-        // our address space.
-        return;
-      }
-      return vm()->brk(addr, session().is_replaying() ? this : nullptr);
-    }
+    case Arch::brk:
     case Arch::mmap:
     case Arch::mmap2: {
       LOG(debug)
-          << "(mmap/mmap2 will receive / has received direct processing)";
+          << "(brk/mmap/mmap2 will receive / has received direct processing)";
       return;
     }
     case Arch::mprotect: {

@@ -581,7 +581,6 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   // for zeroing applied by the kernel).
   t->apply_all_data_records_from_trace();
 
-  t->vm()->locate_heap(recorded_exe_name);
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
 
@@ -628,11 +627,46 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
         // since we emulate SYS_futex in
         // replay, we need to set it ourselves
         // here.
+        // XXX this seems wrong. we're setting it while there is still tracee
+        // code to execute before we reach the syscall!
         t->write_mem(futex, next_val);
       }
     }
     step->action = TSTEP_ENTER_SYSCALL;
     return;
+  }
+
+  step->action = TSTEP_EXIT_SYSCALL;
+}
+
+static void process_brk(Task* t, const TraceFrame& trace_frame,
+                        SyscallEntryOrExit state, ReplayTraceStep* step) {
+  step->syscall.emu = EMULATE;
+
+  if (state == SYSCALL_ENTRY) {
+    step->action = TSTEP_ENTER_SYSCALL;
+    return;
+  }
+
+  TraceReader::MappedData data;
+  KernelMapping km = t->trace_reader().read_mapped_region(&data);
+  // Zero flags means it's an an unmap, or no change.
+  if (km.flags()) {
+    AutoRemoteSyscalls remote(t);
+    ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
+    remote_ptr<void> ret =
+        remote.mmap_syscall(km.start(), km.size(), km.prot(),
+                            MAP_ANONYMOUS | MAP_FIXED | km.flags(), -1, 0);
+    ASSERT(t, ret == km.start());
+    t->vm()->map(km.start(), km.size(), km.prot(), MAP_ANONYMOUS | km.flags(),
+                 0, "[heap]", KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
+                 &km);
+  } else if (km.size() > 0) {
+    AutoRemoteSyscalls remote(t);
+    long ret = remote.syscall(syscall_number_for_munmap(t->arch()), km.start(),
+                              km.size());
+    ASSERT(t, ret == 0);
+    t->vm()->unmap(km.start(), km.size());
   }
 
   step->action = TSTEP_EXIT_SYSCALL;
@@ -1127,6 +1161,9 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::futex:
       return process_futex(t, trace_frame, state, step);
+
+    case Arch::brk:
+      return process_brk(t, trace_frame, state, step);
 
     case Arch::mmap: {
       // process_mmap checks 'state' too, but we need to check it now to

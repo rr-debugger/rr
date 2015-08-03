@@ -2477,6 +2477,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       }
       return PREVENT_SWITCH;
 
+    case Arch::brk:
     case Arch::mmap:
     case Arch::mmap2:
     case Arch::rrcall_init_buffers:
@@ -2726,11 +2727,7 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
       KernelMapping km =
           t->vm()->map(addr, size, prot, flags, 0, kernel_info.fsname(),
                        kernel_info.device(), kernel_info.inode());
-      struct stat st;
-      memset(&st, 0, sizeof(st));
-      st.st_dev = kernel_info.device();
-      st.st_ino = kernel_info.inode();
-      auto d = t->trace_writer().write_mapped_region(km, st);
+      auto d = t->trace_writer().write_mapped_region(km, make_fake_stat(km));
       ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
     }
     return;
@@ -3003,6 +3000,31 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     case Arch::execve:
       process_execve(t, syscall_state);
       break;
+
+    case Arch::brk: {
+      remote_ptr<void> old_brk = ceil_page_size(t->vm()->current_brk());
+      remote_ptr<void> new_brk = ceil_page_size(t->regs().syscall_result());
+      int prot;
+      KernelMapping km;
+      if (old_brk < new_brk) {
+        // Read the kernel's mapping. There doesn't seem to be any other way to
+        // get the correct prot bits for heaps. Usually it's READ|WRITE but
+        // there seem to be exceptions depending on system settings.
+        km = t->vm()->read_kernel_mapping(t, old_brk);
+        ASSERT(t, km.device() == KernelMapping::NO_DEVICE);
+        ASSERT(t, km.inode() == KernelMapping::NO_INODE);
+        prot = km.prot();
+      } else {
+        // Write a dummy KernelMapping that indicates an unmap
+        km = KernelMapping(new_brk, old_brk, string(), KernelMapping::NO_DEVICE,
+                           KernelMapping::NO_INODE, 0, 0, 0);
+        prot = 0;
+      }
+      auto d = t->trace_writer().write_mapped_region(km, make_fake_stat(km));
+      ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
+      t->vm()->brk(t->regs().syscall_result(), prot);
+      break;
+    }
 
     case Arch::mmap:
       switch (Arch::mmap_semantics) {
