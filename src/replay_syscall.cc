@@ -1171,7 +1171,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       if (TSTEP_EXIT_SYSCALL == step->action) {
         AutoRemoteSyscalls remote(t);
         // Force the mremap to use the destination address from recording.
-        remote_ptr<void> result = remote.syscall(
+        remote_ptr<void> result = remote.syscall_ptr(
             syscall, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3(),
             trace_regs.arg4() | MREMAP_MAYMOVE | MREMAP_FIXED,
             trace_regs.syscall_result());
