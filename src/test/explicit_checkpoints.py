@@ -26,11 +26,11 @@ send_gdb('checkpoint')
 expect_gdb('= 3')
 
 # Resume checkpoints: each one stops at its breakpoint
-send_gdb("restart 1\n");
+send_gdb("restart 1");
 expect_gdb('Breakpoint 1, main')
-send_gdb("restart 3\n");
+send_gdb("restart 3");
 expect_gdb('Breakpoint 3, breakpoint3')
-send_gdb("restart 2\n");
+send_gdb("restart 2");
 expect_gdb('Breakpoint 2, breakpoint2')
 
 # Bare 'run' defaults to last resumed checkpoint
@@ -40,21 +40,21 @@ expect_gdb('Breakpoint 2, breakpoint2')
 # Delete breakpoint 2 and resume checkpoint; should stop
 # at breakpoint 3
 send_gdb('del 2')
-send_gdb("restart 2\n");
+send_gdb("restart 2");
 expect_gdb('Breakpoint 3, breakpoint3')
 
 # Remove checkpoint 2 and try resuming it; it should fail
 send_gdb('delete checkpoint 2')
-send_gdb("restart 2\n");
+send_gdb("restart 2");
 expect_gdb('failed')
 
 # Resume checkpoint 3 and continue to end; make sure we can resume checkpoint
 # after that.
-send_gdb("restart 3\n");
+send_gdb("restart 3");
 expect_gdb('Breakpoint 3, breakpoint3')
 send_gdb('c')
 expect_gdb('exited normally')
-send_gdb("restart 3\n");
+send_gdb("restart 3");
 expect_gdb('Breakpoint 3, breakpoint3')
 
 ok()

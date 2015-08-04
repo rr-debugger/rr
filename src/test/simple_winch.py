@@ -1,17 +1,17 @@
 from rrutil import *
 
 # Signal all processes in the process group
-send_gdb('!kill -WINCH 0\n')
-send_gdb('c\n')
+send_gdb('!kill -WINCH 0')
+send_gdb('c')
 expect_rr('EXIT-SUCCESS')
 expect_gdb('exited normally')
 
-send_gdb('break main\n')
+send_gdb('break main')
 expect_gdb('Breakpoint 1')
-send_gdb('run\n')
+send_gdb('run')
 expect_gdb('Breakpoint 1')
-send_gdb('!kill -WINCH 0\n')
-send_gdb('reverse-cont\n')
+send_gdb('!kill -WINCH 0')
+send_gdb('reverse-cont')
 expect_gdb('SIGTRAP')
 
 ok()

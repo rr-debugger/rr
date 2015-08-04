@@ -35,7 +35,7 @@ while True:
 if eip is None:
     failed('%s not found' % regex_info[arch].ip_name)
 
-send_gdb('b *%s\n'%eip)
+send_gdb('b *%s'%eip)
 expect_gdb('Breakpoint 1')
 
 send_gdb('c')
