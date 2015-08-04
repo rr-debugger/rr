@@ -101,12 +101,10 @@ ReplaySession::shr_ptr ReplaySession::clone() {
  * Return true if |t| appears to have entered but not exited an atomic
  * syscall (one that can't be interrupted).
  */
-static bool is_atomic_syscall(Task* t) {
-  return (t->is_probably_replaying_syscall() &&
-          (is_execve_syscall(t->regs().original_syscallno(), t->arch()) ||
-           (-ENOSYS == t->regs().syscall_result_signed() &&
-            !is_always_emulated_syscall(t->regs().original_syscallno(),
-                                        t->arch()))));
+static bool is_atomic_syscall(Task* t, const TraceFrame& frame) {
+  return frame.event().is_syscall_event() &&
+         frame.event().Syscall().state == EXITING_SYSCALL &&
+         !is_always_emulated_syscall(frame.event().Syscall().number, t->arch());
 }
 
 /**
@@ -114,7 +112,7 @@ static bool is_atomic_syscall(Task* t) {
  * |frame| that |t| will replay.
  */
 static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
-  if (is_atomic_syscall(t)) {
+  if (is_atomic_syscall(t, frame)) {
     return false;
   }
   const Event& ev = frame.event();
@@ -1332,12 +1330,6 @@ Completion ReplaySession::advance_to_ticks_target(
   }
 }
 
-static bool is_in_exec_syscall(Task* t) {
-  const Event& ev = t->session().as_replay()->current_trace_frame().event();
-  return ev.is_syscall_event() &&
-         ev.Syscall().number == syscall_number_for_execve(t->arch());
-}
-
 /**
  * Try to execute |step|, adjusting for |req| if needed.  Return COMPLETE if
  * |step| was made, or INCOMPLETE if there was a trap or |step| needs
@@ -1658,8 +1650,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   current_step.action = TSTEP_NONE;
 
   Task* next_task = current_task();
-  if (next_task && !next_task->vm()->first_run_event() && can_validate() &&
-      !is_in_exec_syscall(next_task)) {
+  if (next_task && !next_task->vm()->first_run_event() && can_validate()) {
     next_task->vm()->set_first_run_event(trace_frame.time());
   }
   if (next_task) {

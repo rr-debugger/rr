@@ -584,6 +584,7 @@ set(TESTS_WITHOUT_PROGRAM
   execp
   explicit_checkpoint_clone
   final_sigkill
+  first_instruction
   fork_exec_info_thr
   get_thread_list
   hardlink_mmapped_files

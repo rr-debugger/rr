@@ -969,7 +969,11 @@ bool GdbServer::at_target() {
   return timeline.current_session().current_trace_frame().time() >
              target.event &&
          (!target.pid || t->tgid() == target.pid) &&
-         (!target.require_exec || t->vm()->execed());
+         (!target.require_exec || t->vm()->execed()) &&
+         // Ensure we're at the start of processing an event. We don't
+         // want to attach while we're finishing an exec() since that's a
+         // slightly confusing state for ReplayTimeline's reverse execution.
+         !timeline.current_session().current_step_key().in_execution();
 }
 
 /**
@@ -1091,8 +1095,9 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   }
   debuggee_tguid = t->task_group()->tguid();
 
-  if (t->vm()->first_run_event()) {
-    timeline.set_reverse_execution_barrier_event(t->vm()->first_run_event());
+  TraceFrame::Time first_run_event = t->vm()->first_run_event();
+  if (first_run_event) {
+    timeline.set_reverse_execution_barrier_event(first_run_event);
   }
 
   activate_debugger();
