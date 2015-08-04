@@ -223,6 +223,11 @@ static int record(const vector<string>& args, const RecordFlags& flags) {
 }
 
 int RecordCommand::run(std::vector<std::string>& args) {
+  if (getenv("RUNNING_UNDER_RR")) {
+    fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n");
+    return 1;
+  }
+
   RecordFlags flags;
   while (parse_record_arg(args, flags)) {
   }

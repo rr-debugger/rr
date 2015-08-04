@@ -1200,6 +1200,7 @@ static string find_syscall_buffer_library() {
   }
 
   env.push_back("LIBGL_ALWAYS_INDIRECT=1");
+  env.push_back("RUNNING_UNDER_RR=1");
 
   // Disable Gecko's "wait for gdb to attach on process crash" behavior, since
   // it is useless when running under rr.
