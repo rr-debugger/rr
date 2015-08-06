@@ -654,7 +654,7 @@ void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
     sig = SIGTRAP;
     t = in_exec_task;
   }
-  if (sig >= 0) {
+  if (sig >= 0 && t->task_group()->tguid() == debuggee_tguid) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
     dbg->notify_stop(get_threadid(t), sig, watch_addr.as_int());
@@ -881,21 +881,7 @@ GdbServer::ContinueOrStop GdbServer::handle_exited_state() {
 GdbServer::ContinueOrStop GdbServer::debug_one_step(
     RunDirection* last_direction) {
   ReplayResult result;
-  Task* t = timeline.current_session().current_task();
-  if (!t || t->task_group()->tguid() != debuggee_tguid) {
-    result =
-        timeline.replay_step(RUN_CONTINUE, *last_direction,
-                             *last_direction == RUN_FORWARD ? target.event : 0);
-    if (result.status == REPLAY_EXITED) {
-      return handle_exited_state();
-    }
-    return CONTINUE_DEBUGGING;
-  }
-
-  TaskUid tuid = t->tuid();
   GdbRequest req = process_debugger_requests();
-  // Refetch t since it can be recreated during process_debugger_requests
-  t = timeline.current_session().find_task(tuid);
   while (true) {
     ContinueOrStop s;
     if (detach_or_restart(req, &s)) {
@@ -905,12 +891,14 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     assert(req.is_resume_request());
 
     int signal_to_deliver;
-    RunCommand command =
-        compute_run_command_from_actions(t, req, &signal_to_deliver);
+    RunCommand command = compute_run_command_from_actions(
+        timeline.current_session().current_task(), req, &signal_to_deliver);
     // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
 
     *last_direction = req.cont().run_direction;
-    if (*last_direction == RUN_FORWARD && is_in_exec(timeline)) {
+    if (*last_direction == RUN_FORWARD && is_in_exec(timeline) &&
+        timeline.current_session().current_task()->task_group()->tguid() ==
+            debuggee_tguid) {
       // Don't go any further forward. maybe_notify_stop will generate a
       // stop.
       result = ReplayResult();
@@ -920,7 +908,6 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
           *last_direction == RUN_FORWARD ? target.event : 0,
           [&]() { return dbg->sniff_packet(); });
     }
-    t = timeline.current_session().find_task(tuid);
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state();
     }
@@ -945,7 +932,6 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       // Treat the state where the last thread is about to exit like
       // termination.
       req = process_debugger_requests();
-      t = timeline.current_session().find_task(tuid);
       // If it's a forward execution request, fake the exited state.
       if (req.is_resume_request() && req.cont().run_direction == RUN_FORWARD) {
         return handle_exited_state();
