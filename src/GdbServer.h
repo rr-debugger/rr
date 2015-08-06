@@ -89,14 +89,18 @@ public:
                                   GdbRegister which);
 
 private:
-  GdbServer(std::unique_ptr<GdbConnection>& dbg)
-      : dbg(std::move(dbg)), stop_replaying_to_target(false) {}
+  GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
+      : dbg(std::move(dbg)),
+        debuggee_tguid(t->task_group()->tguid()),
+        last_continue_tuid(t->tuid()),
+        last_query_tuid(t->tuid()),
+        stop_replaying_to_target(false) {}
 
   /**
    * If |req| is a magic-write command, interpret it and return true.
    * Otherwise, do nothing and return false.
    */
-  bool maybe_process_magic_command(Task* t, const GdbRequest& req);
+  bool maybe_process_magic_command(const GdbRequest& req);
   /**
    * If |req| is a magic-read command, interpret it and return true.
    * Otherwise, do nothing and return false.
@@ -113,16 +117,15 @@ private:
    * particular debugger requests before calling this helper, to do
    * generic processing.
    */
-  void dispatch_debugger_request(Session& session, Task* t,
-                                 const GdbRequest& req, ReportState state);
+  void dispatch_debugger_request(Session& session, const GdbRequest& req,
+                                 ReportState state);
   bool at_target();
   void activate_debugger();
   void restart_session(const GdbRequest& req);
-  GdbRequest process_debugger_requests(Task* t,
-                                       ReportState state = REPORT_NORMAL);
+  GdbRequest process_debugger_requests(ReportState state = REPORT_NORMAL);
   enum ContinueOrStop { CONTINUE_DEBUGGING, STOP_DEBUGGING };
   bool detach_or_restart(const GdbRequest& req, ContinueOrStop* s);
-  ContinueOrStop handle_exited_state(Task* t);
+  ContinueOrStop handle_exited_state();
   ContinueOrStop debug_one_step(RunDirection* last_direction);
   /**
    * If 'req' is a reverse-singlestep, try to obtain the resulting state
@@ -135,19 +138,17 @@ private:
    * more efficient by avoiding having to actually reverse-singlestep the
    * session.
    */
-  void try_lazy_reverse_singlesteps(Task* t, GdbRequest& req);
+  void try_lazy_reverse_singlesteps(GdbRequest& req);
 
   /**
    * Process debugger requests made in |diversion_session| until action needs
    * to be taken by the caller (a resume-execution request is received).
-   * The returned Task* is the target of the resume-execution request.
-   *
    * The received request is returned through |req|.
+   * Returns true if diversion should continue, false if it should end.
    */
-  Task* diverter_process_debugger_requests(Task* t,
-                                           DiversionSession& diversion_session,
-                                           uint32_t& diversion_refcount,
-                                           GdbRequest* req);
+  bool diverter_process_debugger_requests(DiversionSession& diversion_session,
+                                          uint32_t& diversion_refcount,
+                                          GdbRequest* req);
   /**
    * Create a new diversion session using |replay| session as the
    * template.  The |replay| session isn't mutated.
@@ -159,7 +160,7 @@ private:
    * is, the first request that should be handled by |replay| upon
    * resuming execution in that session.
    */
-  GdbRequest divert(ReplaySession& replay, pid_t task);
+  GdbRequest divert(ReplaySession& replay);
 
   /**
    * If break_status indicates a stop that we should report to gdb,
@@ -186,17 +187,28 @@ private:
   // changes once the connection is established --- we don't currently
   // support switching gdb between debuggee processes.
   TaskGroupUid debuggee_tguid;
+  // The TaskUid of the last continued task.
+  TaskUid last_continue_tuid;
+  // The TaskUid of the last queried task.
+  TaskUid last_query_tuid;
   // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
 
   ReplayTimeline timeline;
 
+  struct Checkpoint {
+    Checkpoint(const ReplayTimeline::Mark& mark, TaskUid last_continue_tuid)
+        : mark(mark), last_continue_tuid(last_continue_tuid) {}
+    Checkpoint() = default;
+    ReplayTimeline::Mark mark;
+    TaskUid last_continue_tuid;
+  };
   // |debugger_restart_mark| is the point where we will restart from with
   // a no-op debugger "run" command.
-  ReplayTimeline::Mark debugger_restart_mark;
+  Checkpoint debugger_restart_checkpoint;
 
   // gdb checkpoints, indexed by ID
-  std::map<int, ReplayTimeline::Mark> checkpoints;
+  std::map<int, Checkpoint> checkpoints;
 };
 
 #endif /* RR_GDB_SERVER_H_ */

@@ -1327,9 +1327,10 @@ void GdbConnection::notify_stop(GdbThreadId thread, int sig,
   // don't do this, gdb will sometimes continue to send requests
   // for the previously-stopped thread when it obviously intends
   // to be making requests about the stopped thread.
-  LOG(debug) << "forcing query/resume thread to " << thread;
-  query_thread = thread;
-  resume_thread = thread;
+  // Setting to ANY here will make the client choose the correct default thread.
+  LOG(debug) << "forcing query/resume thread to ANY";
+  query_thread = GdbThreadId::ANY;
+  resume_thread = GdbThreadId::ANY;
 
   consume_request();
 }
