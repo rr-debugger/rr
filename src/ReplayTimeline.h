@@ -179,7 +179,7 @@ public:
   static bool never_interrupt() { return false; }
 
   /**
-   * Replay 'current' forwards.
+   * Replay 'current'.
    * If there is a breakpoint at the current task's current ip(), then
    * when running forward we will immediately break at the breakpoint. When
    * running backward we will ignore the initial "hit" of the breakpoint ---
@@ -189,9 +189,11 @@ public:
    * running backward will ignore the initial "hit" of the breakpoint; this is
    * what gdb expects.
    */
-  ReplayResult replay_step(
-      RunCommand command = RUN_CONTINUE, RunDirection direction = RUN_FORWARD,
-      TraceFrame::Time stop_at_time = 0,
+  ReplayResult replay_step_forward(
+      RunCommand command, TraceFrame::Time stop_at_time,
+      std::function<bool()> interrupt_check = never_interrupt);
+  ReplayResult replay_step_backward(
+      RunCommand command,
       std::function<bool()> interrupt_check = never_interrupt);
 
   /**

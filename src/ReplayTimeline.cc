@@ -1183,56 +1183,56 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
   }
 }
 
-ReplayResult ReplayTimeline::replay_step(
-    RunCommand command, RunDirection direction, TraceFrame::Time stop_at_time,
+ReplayResult ReplayTimeline::replay_step_forward(
+    RunCommand command, TraceFrame::Time stop_at_time,
     std::function<bool()> interrupt_check) {
   assert(command != RUN_SINGLESTEP_FAST_FORWARD);
 
   ReplayResult result;
-  if (direction == RUN_FORWARD) {
-    apply_breakpoints_and_watchpoints();
-    ProtoMark before = proto_mark();
+  apply_breakpoints_and_watchpoints();
+  ProtoMark before = proto_mark();
+  current->set_visible_execution(true);
+  ReplaySession::StepConstraints constraints(command);
+  constraints.stop_at_time = stop_at_time;
+  result = current->replay_step(constraints);
+  current->set_visible_execution(false);
+  if (command == RUN_CONTINUE) {
+    // Since it's easy for us to fix the coalescing quirk for forward
+    // execution, we may as well do so. It's nice to have forward execution
+    // behave consistently with reverse execution.
+    fix_watchpoint_coalescing_quirk(result, before);
+    // Hide any singlestepping we did
+    result.break_status.singlestep_complete = false;
+  }
+  maybe_add_reverse_exec_checkpoint(LOW_OVERHEAD);
+
+  bool did_hit_breakpoint = result.break_status.breakpoint_hit;
+  evaluate_conditions(result);
+  if (did_hit_breakpoint && !result.break_status.any_break()) {
+    // Singlestep past the breakpoint
     current->set_visible_execution(true);
-    ReplaySession::StepConstraints constraints(command);
-    constraints.stop_at_time = stop_at_time;
-    result = current->replay_step(constraints);
-    current->set_visible_execution(false);
+    result = singlestep_with_breakpoints_disabled();
     if (command == RUN_CONTINUE) {
-      // Since it's easy for us to fix the coalescing quirk for forward
-      // execution, we may as well do so. It's nice to have forward execution
-      // behave consistently with reverse execution.
-      fix_watchpoint_coalescing_quirk(result, before);
-      // Hide any singlestepping we did
       result.break_status.singlestep_complete = false;
     }
-    maybe_add_reverse_exec_checkpoint(LOW_OVERHEAD);
+    current->set_visible_execution(false);
+  }
+  return result;
+}
 
-    bool did_hit_breakpoint = result.break_status.breakpoint_hit;
-    evaluate_conditions(result);
-    if (did_hit_breakpoint && !result.break_status.any_break()) {
-      // Singlestep past the breakpoint
-      current->set_visible_execution(true);
-      result = singlestep_with_breakpoints_disabled();
-      if (command == RUN_CONTINUE) {
-        result.break_status.singlestep_complete = false;
-      }
-      current->set_visible_execution(false);
-    }
-  } else {
-    assert(stop_at_time == 0 &&
-           "stop_at_time unsupported for reverse execution");
-
-    switch (command) {
-      case RUN_CONTINUE:
-        result = reverse_continue(interrupt_check);
-        break;
-      case RUN_SINGLESTEP:
-        result = reverse_singlestep(mark(), current->current_task()->tuid());
-        break;
-      default:
-        assert(0 && "Unknown RunCommand");
-        return ReplayResult();
-    }
+ReplayResult ReplayTimeline::replay_step_backward(
+    RunCommand command, std::function<bool()> interrupt_check) {
+  ReplayResult result;
+  switch (command) {
+    case RUN_CONTINUE:
+      result = reverse_continue(interrupt_check);
+      break;
+    case RUN_SINGLESTEP:
+      result = reverse_singlestep(mark(), current->current_task()->tuid());
+      break;
+    default:
+      assert(0 && "Unknown RunCommand");
+      return ReplayResult();
   }
   return result;
 }

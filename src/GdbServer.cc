@@ -896,17 +896,20 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
 
     *last_direction = req.cont().run_direction;
-    if (*last_direction == RUN_FORWARD && is_in_exec(timeline) &&
-        timeline.current_session().current_task()->task_group()->tguid() ==
-            debuggee_tguid) {
-      // Don't go any further forward. maybe_notify_stop will generate a
-      // stop.
-      result = ReplayResult();
+    auto interrupt_check = [&]() { return dbg->sniff_packet(); };
+    if (*last_direction == RUN_FORWARD) {
+      if (is_in_exec(timeline) &&
+          timeline.current_session().current_task()->task_group()->tguid() ==
+              debuggee_tguid) {
+        // Don't go any further forward. maybe_notify_stop will generate a
+        // stop.
+        result = ReplayResult();
+      } else {
+        result = timeline.replay_step_forward(command, target.event,
+                                              interrupt_check);
+      }
     } else {
-      result = timeline.replay_step(
-          command, *last_direction,
-          *last_direction == RUN_FORWARD ? target.event : 0,
-          [&]() { return dbg->sniff_packet(); });
+      result = timeline.replay_step_backward(command, interrupt_check);
     }
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state();
@@ -1064,7 +1067,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
   timeline.seek_to_before_event(target.event);
   do {
     ReplayResult result =
-        timeline.replay_step(RUN_CONTINUE, RUN_FORWARD, target.event);
+        timeline.replay_step_forward(RUN_CONTINUE, target.event);
     if (result.status == REPLAY_EXITED) {
       LOG(info) << "Event was not reached before end of trace";
       timeline.seek_to_before_event(target.event);
@@ -1082,7 +1085,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
   do {
     ReplayResult result =
-        timeline.replay_step(RUN_CONTINUE, RUN_FORWARD, target.event);
+        timeline.replay_step_forward(RUN_CONTINUE, target.event);
     if (result.status == REPLAY_EXITED) {
       LOG(info) << "Debugger was not launched before end of trace";
       return;
