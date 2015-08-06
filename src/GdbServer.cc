@@ -682,6 +682,35 @@ static RunCommand compute_run_command_from_actions(Task* t,
   return RUN_CONTINUE;
 }
 
+struct AllowedTasks {
+  TaskUid task; // tid 0 means 'any member of debuggee_tguid'
+  RunCommand command;
+};
+static RunCommand compute_run_command_for_reverse_exec(
+    Session& session, const TaskGroupUid& debuggee_tguid, const GdbRequest& req,
+    vector<AllowedTasks>& allowed_tasks) {
+  // Singlestep if any of the actions request singlestepping.
+  RunCommand result = RUN_CONTINUE;
+  for (auto& action : req.cont().actions) {
+    if (action.target.pid > 0 && action.target.pid != debuggee_tguid.tid()) {
+      continue;
+    }
+    AllowedTasks allowed;
+    allowed.command = RUN_CONTINUE;
+    if (action.type == ACTION_STEP) {
+      allowed.command = result = RUN_SINGLESTEP;
+    }
+    if (action.target.tid > 0) {
+      Task* t = session.find_task(action.target.tid);
+      if (t) {
+        allowed.task = t->tuid();
+      }
+    }
+    allowed_tasks.push_back(allowed);
+  }
+  return result;
+}
+
 /**
  * Create a new diversion session using |replay| session as the
  * template.  The |replay| session isn't mutated.
@@ -890,11 +919,6 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     }
     assert(req.is_resume_request());
 
-    int signal_to_deliver;
-    RunCommand command = compute_run_command_from_actions(
-        timeline.current_session().current_task(), req, &signal_to_deliver);
-    // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
-
     *last_direction = req.cont().run_direction;
     auto interrupt_check = [&]() { return dbg->sniff_packet(); };
     if (*last_direction == RUN_FORWARD) {
@@ -905,25 +929,62 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
         // stop.
         result = ReplayResult();
       } else {
+        int signal_to_deliver;
+        RunCommand command = compute_run_command_from_actions(
+            timeline.current_session().current_task(), req, &signal_to_deliver);
+        // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
         result = timeline.replay_step_forward(command, target.event,
                                               interrupt_check);
       }
+      if (result.status == REPLAY_EXITED) {
+        return handle_exited_state();
+      }
     } else {
-      result = timeline.replay_step_backward(command, interrupt_check);
-    }
-    if (result.status == REPLAY_EXITED) {
-      return handle_exited_state();
-    }
-    if (req.cont().run_direction == RUN_BACKWARD &&
-        result.break_status.task_exit) {
-      // If we reached the start of the debuggee task group, report that as
-      // a breakpoint hit or singlestep complete. We need to report a stop to
-      // gdb.
-      result.break_status.task_exit = false;
-      if (command == RUN_SINGLESTEP) {
-        result.break_status.singlestep_complete = true;
-      } else {
-        result.break_status.breakpoint_hit = true;
+      vector<AllowedTasks> allowed_tasks;
+      // Convert the tids in GdbContActions into TaskUids to avoid issues
+      // if tids get reused.
+      RunCommand command = compute_run_command_for_reverse_exec(
+          timeline.current_session(), debuggee_tguid, req, allowed_tasks);
+      auto stop_filter = [&](Task* t) -> bool {
+        if (t->task_group()->tguid() != debuggee_tguid) {
+          return false;
+        }
+        // If gdb's requested actions don't allow the task to run, we still
+        // let it run (we can't do anything else, since we're replaying), but
+        // we won't report stops in that task.
+        for (auto& a : allowed_tasks) {
+          if (a.task.tid() == 0 || a.task == t->tuid()) {
+            return true;
+          }
+        }
+        return false;
+      };
+      result =
+          timeline.replay_step_backward(command, stop_filter, interrupt_check);
+      if (result.status == REPLAY_EXITED) {
+        return handle_exited_state();
+      }
+      if (result.break_status.task_exit) {
+        // If we reached the start of the debuggee task group, report that as
+        // a breakpoint hit or singlestep complete. We need to report a stop to
+        // gdb.
+        result.break_status.task_exit = false;
+        bool allow_singlestep = false;
+        bool allowed_to_run = false;
+        for (auto& a : allowed_tasks) {
+          if (a.task.tid() == 0 || a.task == result.break_status.task->tuid()) {
+            allowed_to_run = true;
+            if (a.command == RUN_SINGLESTEP) {
+              allow_singlestep = true;
+            }
+          }
+        }
+        ASSERT(result.break_status.task, allowed_to_run);
+        if (allow_singlestep) {
+          result.break_status.singlestep_complete = true;
+        } else {
+          result.break_status.breakpoint_hit = true;
+        }
       }
     }
     if (!req.suppress_debugger_stop) {

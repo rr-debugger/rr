@@ -826,7 +826,8 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
 static const int stop_count_limit = 20;
 
 ReplayResult ReplayTimeline::reverse_continue(
-    std::function<bool()> interrupt_check) {
+    const std::function<bool(Task* t)>& stop_filter,
+    const std::function<bool()>& interrupt_check) {
   Mark end = mark();
   LOG(debug) << "ReplayTimeline::reverse_continue from " << end;
 
@@ -895,7 +896,13 @@ ReplayResult ReplayTimeline::reverse_continue(
         avoidable_stop_ip = result.break_status.task->ip();
         avoidable_stop_ticks = result.break_status.task->tick_count();
       }
+
       evaluate_conditions(result);
+      if (result.break_status.any_break() &&
+          !stop_filter(result.break_status.task)) {
+        result.break_status = BreakStatus();
+      }
+
       maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
       if (checkpoint_at_first_break && dest != start &&
           result.break_status.any_break()) {
@@ -906,7 +913,9 @@ ReplayResult ReplayTimeline::reverse_continue(
       if (!result.break_status.watchpoints_hit.empty() ||
           result.break_status.signal) {
         dest = mark();
-        LOG(debug) << "Found watch/signal break at " << dest;
+        LOG(debug) << "Found "
+                   << (result.break_status.signal ? "signal" : "watch")
+                   << " break at " << dest;
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
@@ -976,7 +985,8 @@ ReplayResult ReplayTimeline::reverse_continue(
   if (last_stop_is_watch_or_signal) {
     LOG(debug)
         << "Performing final reverse-singlestep to pass over watch/signal";
-    reverse_singlestep(dest, final_tuid);
+    auto stop_filter = [&](Task* t) { return t->tuid() == final_tuid; };
+    reverse_singlestep(dest, stop_filter);
   } else {
     LOG(debug) << "Seeking to final destination " << dest;
     seek_to_mark(dest);
@@ -990,8 +1000,8 @@ ReplayResult ReplayTimeline::reverse_continue(
   return final_result;
 }
 
-ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
-                                                const TaskUid& tuid) {
+ReplayResult ReplayTimeline::reverse_singlestep(
+    const Mark& origin, const std::function<bool(Task* t)>& stop_filter) {
   LOG(debug) << "ReplayTimeline::reverse_singlestep from " << origin;
 
   while (true) {
@@ -1033,7 +1043,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         }
 
         Task* t = current->current_task();
-        if (t->tuid() == tuid) {
+        if (stop_filter(t)) {
           if (current->can_validate() &&
               t->tick_count() >= end.ptr->key.ticks - 1) {
             // Don't step any further.
@@ -1063,22 +1073,24 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
       }
       end = start;
     }
-    assert(current->current_task()->tuid() == tuid);
+    assert(stop_filter(current->current_task()));
 
     Mark destination_candidate;
     Mark step_start = set_short_checkpoint();
     ReplayResult destination_candidate_result;
+    TaskUid destination_candidate_tuid;
 
     if (is_start_of_reverse_execution_barrier_event()) {
       destination_candidate = mark();
       destination_candidate_result.break_status.task_exit = true;
+      destination_candidate_tuid = current->current_task()->tuid();
     }
 
     no_watchpoints_hit_interval_start = Mark();
     while (true) {
       Mark now;
       ReplayResult result;
-      if (current->current_task()->tuid() == tuid) {
+      if (stop_filter(current->current_task())) {
         apply_breakpoints_and_watchpoints();
         Mark before_step = mark();
         ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
@@ -1098,6 +1110,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
           }
           destination_candidate = step_start;
           destination_candidate_result = result;
+          destination_candidate_tuid = result.break_status.task->tuid();
           step_start = now;
           if (!no_watchpoints_hit_interval_start ||
               !result.break_status.watchpoints_hit.empty()) {
@@ -1115,6 +1128,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
         destination_candidate = mark();
         destination_candidate_result = result;
         destination_candidate_result.break_status.task_exit = true;
+        destination_candidate_tuid = current->current_task()->tuid();
       }
 
       if (now >= end) {
@@ -1128,7 +1142,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(const Mark& origin,
     if (destination_candidate) {
       LOG(debug) << "Found destination " << destination_candidate;
       seek_to_mark(destination_candidate);
-      destination_candidate_result.break_status.task = current->find_task(tuid);
+      destination_candidate_result.break_status.task =
+          current->find_task(destination_candidate_tuid);
       assert(destination_candidate_result.break_status.task);
       evaluate_conditions(destination_candidate_result);
       return destination_candidate_result;
@@ -1141,6 +1156,7 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
   if (!t) {
     return;
   }
+
   auto auid = t->vm()->uid();
 
   if (result.break_status.breakpoint_hit) {
@@ -1185,7 +1201,7 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
 
 ReplayResult ReplayTimeline::replay_step_forward(
     RunCommand command, TraceFrame::Time stop_at_time,
-    std::function<bool()> interrupt_check) {
+    const std::function<bool()>& interrupt_check) {
   assert(command != RUN_SINGLESTEP_FAST_FORWARD);
 
   ReplayResult result;
@@ -1221,14 +1237,15 @@ ReplayResult ReplayTimeline::replay_step_forward(
 }
 
 ReplayResult ReplayTimeline::replay_step_backward(
-    RunCommand command, std::function<bool()> interrupt_check) {
+    RunCommand command, const std::function<bool(Task* t)>& stop_filter,
+    const std::function<bool()>& interrupt_check) {
   ReplayResult result;
   switch (command) {
     case RUN_CONTINUE:
-      result = reverse_continue(interrupt_check);
+      result = reverse_continue(stop_filter, interrupt_check);
       break;
     case RUN_SINGLESTEP:
-      result = reverse_singlestep(mark(), current->current_task()->tuid());
+      result = reverse_singlestep(mark(), stop_filter);
       break;
     default:
       assert(0 && "Unknown RunCommand");
