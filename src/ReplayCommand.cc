@@ -361,6 +361,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     server_ptr = &server;
     struct sigaction sa;
     memset(&sa, 0, sizeof(sa));
+    sa.sa_flags = SA_RESTART;
     sa.sa_handler = handle_SIGINT_in_child;
     if (sigaction(SIGINT, &sa, nullptr)) {
       FATAL() << "Couldn't set sigaction for SIGINT.";
@@ -376,8 +377,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 
   struct sigaction sa;
   memset(&sa, 0, sizeof(sa));
-  sa.sa_handler = handle_SIGINT_in_parent;
   sa.sa_flags = SA_RESTART;
+  sa.sa_handler = handle_SIGINT_in_parent;
   if (sigaction(SIGINT, &sa, nullptr)) {
     FATAL() << "Couldn't set sigaction for SIGINT.";
   }
