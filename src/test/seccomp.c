@@ -35,8 +35,15 @@ static void handler(int sig, siginfo_t* si, void* p) {
   test_assert(si->si_errno == 0);
   test_assert(si->si_code == 1 /* SYS_SECCOMP */);
 #ifdef si_call_addr
-  test_assert(si->si_call_addr > 0);
+#ifdef __i386__
+  test_assert((uintptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_EIP]);
+#elif defined(__x86_64__)
+  test_assert((uintptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_RIP]);
+#else
+#error define architecture here
 #endif
+#endif
+
 #ifdef si_syscall
   test_assert(si->si_syscall == syscallno);
 #endif

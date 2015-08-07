@@ -36,6 +36,10 @@
 #define SECCOMP_SET_MODE_FILTER 1
 #endif
 
+#ifndef SYS_SECCOMP
+#define SYS_SECCOMP 1
+#endif
+
 // These are defined by the include/linux/errno.h in the kernel tree.
 // Since userspace doesn't see these errnos in normal operation, that
 // header apparently isn't distributed with libc.

@@ -163,11 +163,7 @@ static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
   memset(&si, 0, sizeof(si));
   si.si_signo = SIGSYS;
   si.si_errno = seccomp_data;
-  si.si_code = 1; /* SYS_SECCOMP */
-  // Documentation says that si_call_addr is the address of the syscall
-  // instruction, but in tests it's immediately after the syscall
-  // instruction.
-  si._sifields._sigsys._call_addr = r.ip().to_data_ptr<void>();
+  si.si_code = SYS_SECCOMP;
   switch (r.arch()) {
     case x86:
       si._sifields._sigsys._arch = AUDIT_ARCH_I386;
@@ -180,6 +176,10 @@ static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
       break;
   }
   si._sifields._sigsys._syscall = syscallno;
+  // We don't set call_addr here, because the current ip() might not be the
+  // ip() at which we deliver the signal, and they must match. In particular
+  // this event might be triggered during syscallbuf processing but delivery
+  // delayed until we exit the syscallbuf code.
   t->stash_synthetic_sig(*reinterpret_cast<siginfo_t*>(&si));
 
   // Tests show that the current registers are preserved (on x86, eax/rax
@@ -1137,6 +1137,19 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
     t->pop_stash_sig();
     return false;
   }
+
+  if (si.si_signo == SIGSYS && si.si_code == SYS_SECCOMP) {
+    // Set call_addr to the current ip(). We don't do this when synthesizing
+    // the SIGSYS because the SIGSYS might be triggered during syscallbuf
+    // processing but be delivered later at a
+    // SYS_rrcall_notify_syscall_hook_exit.
+    // Documentation says that si_call_addr is the address of the syscall
+    // instruction, but in tests it's immediately after the syscall
+    // instruction.
+    auto& native_si = reinterpret_cast<NativeArch::siginfo_t&>(si);
+    native_si._sifields._sigsys._call_addr = t->ip().to_data_ptr<void>();
+  }
+
   switch (handle_signal(t, &si)) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
