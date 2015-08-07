@@ -74,14 +74,8 @@ public:
     return seccomp_filter_rewriter_;
   }
 
-private:
-  RecordSession(const std::vector<std::string>& argv,
-                const std::vector<std::string>& envp, const std::string& cwd,
-                uint32_t flags);
-
-  virtual void on_create(Task* t);
-
   enum ContinueType { DONT_CONTINUE = 0, CONTINUE, CONTINUE_SYSCALL };
+
   struct StepState {
     // Continue with this continuation type.
     ContinueType continue_type;
@@ -90,6 +84,13 @@ private:
     StepState(ContinueType continue_type)
         : continue_type(continue_type), continue_sig(0) {}
   };
+
+private:
+  RecordSession(const std::vector<std::string>& argv,
+                const std::vector<std::string>& envp, const std::string& cwd,
+                uint32_t flags);
+
+  virtual void on_create(Task* t);
 
   void check_perf_counters_working(Task* t, RecordResult* step_result);
   bool handle_ptrace_event(Task* t, StepState* step_state);

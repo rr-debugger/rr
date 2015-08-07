@@ -24,7 +24,9 @@ static void set_syscall_result(Task* t, long ret) {
 }
 
 template <typename Arch>
-static void install_patched_seccomp_filter_arch(Task* t) {
+static void install_patched_seccomp_filter_arch(
+    Task* t, unordered_map<uint32_t, uint16_t>& result_to_index,
+    vector<uint32_t>& index_to_result) {
   // Take advantage of the fact that the filter program is arg3() in both
   // prctl and seccomp syscalls.
   bool ok = true;
@@ -39,29 +41,21 @@ static void install_patched_seccomp_filter_arch(Task* t) {
     set_syscall_result(t, -EFAULT);
     return;
   }
-  // Convert ERRNO/TRAP returns to TRACE returns so that rr can handle them.
+  // Convert all returns to TRACE returns so that rr can handle them.
   // See handle_ptrace_event in RecordSession.
   for (auto& u : code) {
     if (BPF_CLASS(u.code) == BPF_RET) {
-      // XXX If we need to support RET with A/X registers, we should
-      // extend the filter patch to dynamically cap the errno (if any) to
-      // max_errno and switch to SECCOMP_RET_TRACE.
       ASSERT(t, BPF_RVAL(u.code) == BPF_K)
           << "seccomp-bpf program uses BPF_RET with A/X register, not "
              "supported";
-      if ((u.k & SECCOMP_RET_ACTION) == SECCOMP_RET_ERRNO) {
-        // The kernel caps the max errno to 4095, so we may as well do that
-        // here. This means filter data values > 4095 cannot be generated
-        // by this filter, which lets us disambiguate seccomp errno filter
-        // returns from our filter returns.
-        int filter_errno = min<int>(MAX_ERRNO, u.k & SECCOMP_RET_DATA);
-        // Instead of forcing an errno return directly, trigger a ptrace
-        // trap so we can detect and handle it.
-        u.k = filter_errno | SECCOMP_RET_TRACE;
-      } else if ((u.k & SECCOMP_RET_ACTION) == SECCOMP_RET_TRAP) {
-        ASSERT(t, (u.k & SECCOMP_RET_DATA) == 0)
-            << "nonzero SECCOMP_RET_DATA not supported for SECCOMP_RET_TRAP";
-        u.k = EMULATE_RET_TRAP | SECCOMP_RET_TRACE;
+      if (u.k != SECCOMP_RET_ALLOW) {
+        if (result_to_index.find(u.k) == result_to_index.end()) {
+          ASSERT(t, index_to_result.size() < SECCOMP_RET_DATA)
+              << "Too many distinct constants used in seccomp-bpf programs";
+          result_to_index[u.k] = index_to_result.size();
+          index_to_result.push_back(u.k);
+        }
+        u.k = result_to_index[u.k] | SECCOMP_RET_TRACE;
       }
     }
   }
@@ -103,5 +97,6 @@ static void install_patched_seccomp_filter_arch(Task* t) {
 }
 
 void SeccompFilterRewriter::install_patched_seccomp_filter(Task* t) {
-  RR_ARCH_FUNCTION(install_patched_seccomp_filter_arch, t->arch(), t);
+  RR_ARCH_FUNCTION(install_patched_seccomp_filter_arch, t->arch(), t,
+                   result_to_index, index_to_result);
 }

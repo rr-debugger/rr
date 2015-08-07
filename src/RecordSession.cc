@@ -118,6 +118,106 @@ static bool handle_ptrace_exit_event(Task* t) {
   return true;
 }
 
+static void handle_seccomp_traced_syscall(
+    Task* t, RecordSession::StepState* step_state) {
+  int syscallno = t->regs().original_syscallno();
+  if (syscallno < 0) {
+    // negative syscall numbers after a SECCOMP event
+    // are treated as "skip this syscall". There will be one syscall event
+    // reported instead of two. So, record an enter-syscall event now
+    // and treat the other event as the exit.
+    t->fixup_syscall_regs();
+    t->push_event(SyscallEvent(syscallno, t->arch()));
+    ASSERT(t, EV_SYSCALL == t->ev().type());
+    t->ev().Syscall().state = ENTERING_SYSCALL;
+    t->record_current_event();
+    // Don't continue yet. At the next iteration of record_step, we'll
+    // enter syscall_state_changed and that will trigger a continue to
+    // the syscall exit.
+    step_state->continue_type = RecordSession::DONT_CONTINUE;
+  } else {
+    // The next continue needs to be a PTRACE_SYSCALL to observe
+    // the enter-syscall event.
+    step_state->continue_type = RecordSession::CONTINUE_SYSCALL;
+  }
+}
+
+static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
+                                uint16_t seccomp_data) {
+  int syscallno = t->regs().original_syscallno();
+
+  t->fixup_syscall_regs();
+
+  if (!t->is_in_untraced_syscall()) {
+    t->push_event(SyscallEvent(syscallno, t->arch()));
+    ASSERT(t, EV_SYSCALL == t->ev().type());
+    t->ev().Syscall().state = ENTERING_SYSCALL;
+    t->record_current_event();
+  }
+
+  Registers r = t->regs();
+
+  // Use NativeArch here because different versions of system headers
+  // have inconsistent field naming.
+  NativeArch::siginfo_t si;
+  memset(&si, 0, sizeof(si));
+  si.si_signo = SIGSYS;
+  si.si_errno = seccomp_data;
+  si.si_code = 1; /* SYS_SECCOMP */
+  // Documentation says that si_call_addr is the address of the syscall
+  // instruction, but in tests it's immediately after the syscall
+  // instruction.
+  si._sifields._sigsys._call_addr = r.ip().to_data_ptr<void>();
+  switch (r.arch()) {
+    case x86:
+      si._sifields._sigsys._arch = AUDIT_ARCH_I386;
+      break;
+    case x86_64:
+      si._sifields._sigsys._arch = AUDIT_ARCH_X86_64;
+      break;
+    default:
+      assert(0 && "Unknown architecture");
+      break;
+  }
+  si._sifields._sigsys._syscall = syscallno;
+  t->stash_synthetic_sig(*reinterpret_cast<siginfo_t*>(&si));
+
+  // Tests show that the current registers are preserved (on x86, eax/rax
+  // retains the syscall number).
+  r.set_syscallno(syscallno);
+  // Cause kernel processing to skip the syscall
+  r.set_original_syscallno(-1);
+  t->set_regs(r);
+  // Don't continue yet. At the next iteration of record_step, if we
+  // recorded the syscall-entry we'll enter syscall_state_changed and
+  // that will trigger a continue to the syscall exit.
+  step_state->continue_type = RecordSession::DONT_CONTINUE;
+}
+
+static void handle_seccomp_errno(Task* t, RecordSession::StepState* step_state,
+                                 uint16_t seccomp_data) {
+  int syscallno = t->regs().original_syscallno();
+
+  t->fixup_syscall_regs();
+
+  if (!t->is_in_untraced_syscall()) {
+    t->push_event(SyscallEvent(syscallno, t->arch()));
+    ASSERT(t, EV_SYSCALL == t->ev().type());
+    t->ev().Syscall().state = ENTERING_SYSCALL;
+    t->record_current_event();
+  }
+
+  Registers r = t->regs();
+  // Cause kernel processing to skip the syscall
+  r.set_original_syscallno(-1);
+  r.set_syscall_result(-seccomp_data);
+  t->set_regs(r);
+  // Don't continue yet. At the next iteration of record_step, if we
+  // recorded the syscall-entry we'll enter syscall_state_changed and
+  // that will trigger a continue to the syscall exit.
+  step_state->continue_type = RecordSession::DONT_CONTINUE;
+}
+
 bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
   int event = t->ptrace_event();
   if (event == PTRACE_EVENT_NONE) {
@@ -132,97 +232,24 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
     case PTRACE_EVENT_SECCOMP: {
       t->seccomp_bpf_enabled = true;
       uint16_t seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
-      int syscallno = t->regs().original_syscallno();
       if (seccomp_data == SECCOMP_RET_DATA) {
-        if (syscallno < 0) {
-          // negative syscall numbers after a SECCOMP event
-          // are treated as "skip this syscall". There will be one syscall event
-          // reported instead of two. So, record an enter-syscall event now
-          // and treat the other event as the exit.
-          t->fixup_syscall_regs();
-          t->push_event(SyscallEvent(syscallno, t->arch()));
-          ASSERT(t, EV_SYSCALL == t->ev().type());
-          t->ev().Syscall().state = ENTERING_SYSCALL;
-          t->record_current_event();
-          // Don't continue yet. At the next iteration of record_step, we'll
-          // enter syscall_state_changed and that will trigger a continue to
-          // the syscall exit.
-          step_state->continue_type = DONT_CONTINUE;
-        } else {
-          // The next continue needs to be a PTRACE_SYSCALL to observe
-          // the enter-syscall event.
-          step_state->continue_type = CONTINUE_SYSCALL;
-        }
-      } else if (seccomp_data == EMULATE_RET_TRAP) {
-        // A seccomp filter generated SECCOMP_RET_TRAP (with 0
-        // SECCOMP_RET_DATA). Emulate that now.
-        t->fixup_syscall_regs();
-
-        if (!t->is_in_untraced_syscall()) {
-          t->push_event(SyscallEvent(syscallno, t->arch()));
-          ASSERT(t, EV_SYSCALL == t->ev().type());
-          t->ev().Syscall().state = ENTERING_SYSCALL;
-          t->record_current_event();
-        }
-
-        Registers r = t->regs();
-
-        // Use NativeArch here because different versions of system headers
-        // have inconsistent field naming.
-        NativeArch::siginfo_t si;
-        memset(&si, 0, sizeof(si));
-        si.si_signo = SIGSYS;
-        si.si_errno = 0;
-        si.si_code = 1; /* SYS_SECCOMP */
-        // Documentation says that si_call_addr is the address of the syscall
-        // instruction, but in tests it's immediately after the syscall
-        // instruction.
-        si._sifields._sigsys._call_addr = r.ip().to_data_ptr<void>();
-        switch (r.arch()) {
-          case x86:
-            si._sifields._sigsys._arch = AUDIT_ARCH_I386;
+        handle_seccomp_traced_syscall(t, step_state);
+      } else {
+        uint32_t real_result =
+            seccomp_filter_rewriter().map_filter_data_to_real_result(
+                seccomp_data);
+        uint16_t real_result_data = real_result & SECCOMP_RET_DATA;
+        switch (real_result & SECCOMP_RET_ACTION) {
+          case SECCOMP_RET_TRAP:
+            handle_seccomp_trap(t, step_state, real_result_data);
             break;
-          case x86_64:
-            si._sifields._sigsys._arch = AUDIT_ARCH_X86_64;
+          case SECCOMP_RET_ERRNO:
+            handle_seccomp_errno(t, step_state, real_result_data);
             break;
           default:
-            assert(0 && "Unknown architecture");
+            ASSERT(t, false) << "Seccomp result not handled";
             break;
         }
-        si._sifields._sigsys._syscall = syscallno;
-        t->stash_synthetic_sig(*reinterpret_cast<siginfo_t*>(&si));
-
-        // Tests show that the current registers are preserved (on x86, eax/rax
-        // retains the syscall number).
-        r.set_syscallno(syscallno);
-        // Cause kernel processing to skip the syscall
-        r.set_original_syscallno(-1);
-        t->set_regs(r);
-        // Don't continue yet. At the next iteration of record_step, if we
-        // recorded the syscall-entry we'll enter syscall_state_changed and
-        // that will trigger a continue to the syscall exit.
-        step_state->continue_type = DONT_CONTINUE;
-      } else {
-        // user seccomp filter that would have returned SECOMP_RET_ERRNO.
-        // Emulate that.
-        t->fixup_syscall_regs();
-
-        if (!t->is_in_untraced_syscall()) {
-          t->push_event(SyscallEvent(syscallno, t->arch()));
-          ASSERT(t, EV_SYSCALL == t->ev().type());
-          t->ev().Syscall().state = ENTERING_SYSCALL;
-          t->record_current_event();
-        }
-
-        Registers r = t->regs();
-        // Cause kernel processing to skip the syscall
-        r.set_original_syscallno(-1);
-        r.set_syscall_result(-seccomp_data);
-        t->set_regs(r);
-        // Don't continue yet. At the next iteration of record_step, if we
-        // recorded the syscall-entry we'll enter syscall_state_changed and
-        // that will trigger a continue to the syscall exit.
-        step_state->continue_type = DONT_CONTINUE;
       }
       break;
     }
