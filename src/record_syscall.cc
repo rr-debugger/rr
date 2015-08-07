@@ -3186,7 +3186,10 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
       t->set_regs(r);
       if (t->regs().arg1() == PR_SET_SECCOMP && t->session().can_validate()) {
-        install_patched_seccomp_filter(t);
+        t->session()
+            .as_record()
+            ->seccomp_filter_rewriter()
+            .install_patched_seccomp_filter(t);
         // install_patched_seccomp_filter can set registers to indicate
         // failure.
         if (!t->regs().syscall_failed()) {
@@ -3202,7 +3205,10 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
       t->set_regs(r);
       if (t->regs().arg1() == SECCOMP_SET_MODE_FILTER) {
-        install_patched_seccomp_filter(t);
+        t->session()
+            .as_record()
+            ->seccomp_filter_rewriter()
+            .install_patched_seccomp_filter(t);
         // install_patched_seccomp_filter can set registers to indicate
         // failure.
         ASSERT(t, t->session().can_validate())

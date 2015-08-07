@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Scheduler.h"
+#include "SeccompFilterRewriter.h"
 #include "Session.h"
 #include "task.h"
 #include "TraceFrame.h"
@@ -69,6 +70,10 @@ public:
 
   Scheduler& scheduler() { return scheduler_; }
 
+  SeccompFilterRewriter& seccomp_filter_rewriter() {
+    return seccomp_filter_rewriter_;
+  }
+
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
@@ -102,6 +107,7 @@ private:
   Scheduler scheduler_;
   Task* last_recorded_task;
   TaskGroup::shr_ptr initial_task_group;
+  SeccompFilterRewriter seccomp_filter_rewriter_;
 
   int ignore_sig;
   Switchable last_task_switchable;

@@ -187,6 +187,7 @@ add_executable(rr
   src/replay_syscall.cc
   src/ReplayTimeline.cc
   src/Scheduler.cc
+  src/SeccompFilterRewriter.cc
   src/Session.cc
   src/StdioMonitor.cc
   src/task.cc
