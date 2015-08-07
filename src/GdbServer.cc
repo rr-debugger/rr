@@ -812,7 +812,7 @@ GdbRequest GdbServer::process_debugger_requests(ReportState state) {
     }
 
     if (req.is_resume_request()) {
-      Task* t = timeline.current_session().find_task(last_continue_tuid);
+      Task* t = current_session().find_task(last_continue_tuid);
       if (t) {
         maybe_singlestep_for_event(t, &req);
       }
@@ -831,7 +831,7 @@ GdbRequest GdbServer::process_debugger_requests(ReportState state) {
       return req;
     }
 
-    dispatch_debugger_request(timeline.current_session(), req, state);
+    dispatch_debugger_request(current_session(), req, state);
   }
 }
 

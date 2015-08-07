@@ -45,7 +45,8 @@ public:
             const ReplaySession::Flags& flags, const Target& target)
       : target(target),
         stop_replaying_to_target(false),
-        timeline(std::move(session), flags) {}
+        timeline(std::move(session), flags),
+        emergency_debug_session(nullptr) {}
 
   /**
    * Actually run the server. Returns only when the debugger disconnects.
@@ -94,7 +95,13 @@ private:
         debuggee_tguid(t->task_group()->tguid()),
         last_continue_tuid(t->tuid()),
         last_query_tuid(t->tuid()),
-        stop_replaying_to_target(false) {}
+        stop_replaying_to_target(false),
+        emergency_debug_session(&t->session()) {}
+
+  Session& current_session() {
+    return timeline.is_running() ? timeline.current_session()
+        : *emergency_debug_session;
+  }
 
   /**
    * If |req| is a magic-write command, interpret it and return true.
@@ -195,6 +202,7 @@ private:
   volatile bool stop_replaying_to_target;
 
   ReplayTimeline timeline;
+  Session* emergency_debug_session;
 
   struct Checkpoint {
     Checkpoint(const ReplayTimeline::Mark& mark, TaskUid last_continue_tuid)
