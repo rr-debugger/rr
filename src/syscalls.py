@@ -489,7 +489,7 @@ sethostname = UnsupportedSyscall(x86=74, x64=170)
 # can set a limit on the stack size that will trigger a synchronous SIGSEGV,
 # and we expect synchronous SIGSEGVs to be triggered by the kernel
 # during replay.
-setrlimit = ExecutedSyscall(x86=75, x64=160, arg2="typename Arch::rlimit")
+setrlimit = EmulatedSyscall(x86=75, x64=160, arg2="typename Arch::rlimit")
 
 getrlimit = EmulatedSyscall(x64=97, arg2="typename Arch::rlimit")
 
@@ -1660,7 +1660,7 @@ fanotify_mark = UnsupportedSyscall(x86=339, x64=301)
 # can set a limit on the stack size that will trigger a synchronous SIGSEGV,
 # and we expect synchronous SIGSEGVs to be triggered by the kernel
 # during replay.
-prlimit64 = ExecutedSyscall(x86=340, x64=302, arg4="typename Arch::rlimit64")
+prlimit64 = EmulatedSyscall(x86=340, x64=302, arg4="typename Arch::rlimit64")
 
 name_to_handle_at = UnsupportedSyscall(x86=341, x64=303)
 open_by_handle_at = UnsupportedSyscall(x86=342, x64=304)
