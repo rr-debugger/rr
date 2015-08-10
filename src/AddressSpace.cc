@@ -960,7 +960,7 @@ static bool try_merge_adjacent(KernelMapping* left_m,
 static void assert_segments_match(Task* t, const KernelMapping& input_m,
                                   const KernelMapping& km) {
   KernelMapping m = input_m;
-  if (km.start() < m.start() && km.is_stack()) {
+  if (km.start() < m.start() && (m.flags() & MAP_GROWSDOWN)) {
     // TODO: the stack can grow down arbitrarily, and rr needs to be
     // aware of the updated mapping in case the user tries to map or
     // unmap pages near the stack.  But keeping track of expanded

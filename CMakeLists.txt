@@ -436,6 +436,7 @@ set(BASIC_TESTS
   sioc
   sock_names_opts
   splice
+  stack_overflow
   statfs
   stdout_child
   stdout_cloexec

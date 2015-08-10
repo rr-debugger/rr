@@ -100,7 +100,7 @@ private:
 
   Session& current_session() {
     return timeline.is_running() ? timeline.current_session()
-        : *emergency_debug_session;
+                                 : *emergency_debug_session;
   }
 
   /**
