@@ -986,7 +986,7 @@ ReplayResult ReplayTimeline::reverse_continue(
     LOG(debug)
         << "Performing final reverse-singlestep to pass over watch/signal";
     auto stop_filter = [&](Task* t) { return t->tuid() == final_tuid; };
-    reverse_singlestep(dest, stop_filter);
+    reverse_singlestep(dest, final_tuid, stop_filter, interrupt_check);
   } else {
     LOG(debug) << "Seeking to final destination " << dest;
     seek_to_mark(dest);
@@ -1000,8 +1000,19 @@ ReplayResult ReplayTimeline::reverse_continue(
   return final_result;
 }
 
+void ReplayTimeline::update_observable_break_status(
+    ReplayTimeline::Mark& now, const ReplayResult& result) {
+  now = mark();
+  if (!no_watchpoints_hit_interval_start ||
+      !result.break_status.watchpoints_hit.empty()) {
+    no_watchpoints_hit_interval_start = now;
+  }
+}
+
 ReplayResult ReplayTimeline::reverse_singlestep(
-    const Mark& origin, const std::function<bool(Task* t)>& stop_filter) {
+    const Mark& origin, const TaskUid& step_tuid,
+    const std::function<bool(Task* t)>& stop_filter,
+    const std::function<bool()>& interrupt_check) {
   LOG(debug) << "ReplayTimeline::reverse_singlestep from " << origin;
 
   while (true) {
@@ -1033,35 +1044,48 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       LOG(debug) << "Running forward from " << start;
       // Now run forward until we're reasonably close to the correct tick value.
       ReplaySession::StepConstraints constraints(RUN_CONTINUE);
-      constraints.ticks_target = end.ptr->key.ticks - 1;
       bool approaching_ticks_target = false;
-      while (true) {
-        unapply_breakpoints_and_watchpoints();
-
-        if (current_mark() == end.ptr) {
-          break;
-        }
-
+      bool seen_other_task_break = false;
+      Ticks ticks_target = end.ptr->key.ticks - 1;
+      while (!at_mark(end)) {
         Task* t = current->current_task();
-        if (stop_filter(t)) {
-          if (current->can_validate() &&
-              t->tick_count() >= end.ptr->key.ticks - 1) {
-            // Don't step any further.
-            approaching_ticks_target = true;
-            break;
-          }
-          ReplayResult result;
-          result = current->replay_step(constraints);
-          if (result.break_status.approaching_ticks_target) {
-            LOG(debug) << "   approached ticks target at "
-                       << current_mark_key();
-            constraints =
-                ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
+        if (stop_filter(t) && current->can_validate()) {
+          if (t->tuid() == step_tuid) {
+            if (t->tick_count() >= ticks_target) {
+              // Don't step any further.
+              LOG(debug) << "Approaching ticks target";
+              approaching_ticks_target = true;
+              break;
+            }
+            constraints.ticks_target =
+                constraints.command == RUN_CONTINUE ? ticks_target : 0;
+            ReplayResult result;
+            result = current->replay_step(constraints);
+            if (result.break_status.approaching_ticks_target) {
+              LOG(debug) << "   approached ticks target at "
+                         << current_mark_key();
+              constraints =
+                  ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
+            }
+          } else {
+            if (seen_other_task_break) {
+              unapply_breakpoints_and_watchpoints();
+            } else {
+              apply_breakpoints_and_watchpoints();
+            }
+            constraints.ticks_target = 0;
+            ReplayResult result = current->replay_step(RUN_CONTINUE);
+            if (result.break_status.any_break()) {
+              seen_other_task_break = true;
+            }
           }
         } else {
+          unapply_breakpoints_and_watchpoints();
+          constraints.ticks_target = 0;
           current->replay_step(RUN_CONTINUE);
         }
         if (is_start_of_reverse_execution_barrier_event()) {
+          LOG(debug) << "Stopping at barrier";
           break;
         }
         maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
@@ -1070,6 +1094,13 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       if (approaching_ticks_target ||
           is_start_of_reverse_execution_barrier_event()) {
         break;
+      }
+      if (seen_other_task_break) {
+        // We saw a break in another task that the debugger cares about, but
+        // that's not the stepping task. At this point reverse-singlestep
+        // will move back past that break, so We'll need to report that break
+        // instead of the singlestep.
+        return reverse_continue(stop_filter, interrupt_check);
       }
       end = start;
     }
@@ -1087,34 +1118,52 @@ ReplayResult ReplayTimeline::reverse_singlestep(
     }
 
     no_watchpoints_hit_interval_start = Mark();
+    bool seen_other_task_break = false;
     while (true) {
       Mark now;
       ReplayResult result;
       if (stop_filter(current->current_task())) {
         apply_breakpoints_and_watchpoints();
-        Mark before_step = mark();
-        ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
-        constraints.stop_before_states.push_back(&end.ptr->regs);
-        result = current->replay_step(constraints);
-        if (result.break_status.breakpoint_hit) {
-          unapply_breakpoints_and_watchpoints();
+        if (current->current_task()->tuid() == step_tuid) {
+          Mark before_step = mark();
+          ReplaySession::StepConstraints constraints(
+              RUN_SINGLESTEP_FAST_FORWARD);
+          constraints.stop_before_states.push_back(&end.ptr->regs);
           result = current->replay_step(constraints);
-        }
-        now = mark();
-        if (result.break_status.singlestep_complete) {
-          mark_after_singlestep(before_step, result);
-          if (now > end) {
-            // This last step is not usable.
-            LOG(debug) << "   not usable, stopping now";
-            break;
+          update_observable_break_status(now, result);
+          if (result.break_status.breakpoint_hit) {
+            // If we hit a breakpoint while singlestepping, we didn't
+            // make any progress.
+            unapply_breakpoints_and_watchpoints();
+            result = current->replay_step(constraints);
+            update_observable_break_status(now, result);
           }
-          destination_candidate = step_start;
-          destination_candidate_result = result;
-          destination_candidate_tuid = result.break_status.task->tuid();
-          step_start = now;
-          if (!no_watchpoints_hit_interval_start ||
-              !result.break_status.watchpoints_hit.empty()) {
-            no_watchpoints_hit_interval_start = now;
+          if (result.break_status.singlestep_complete) {
+            mark_after_singlestep(before_step, result);
+            if (now > end) {
+              // This last step is not usable.
+              LOG(debug) << "   not usable, stopping now";
+              break;
+            }
+            destination_candidate = step_start;
+            destination_candidate_result = result;
+            destination_candidate_tuid = result.break_status.task->tuid();
+            seen_other_task_break = false;
+            step_start = now;
+          }
+        } else {
+          result = current->replay_step(RUN_CONTINUE);
+          update_observable_break_status(now, result);
+          if (result.break_status.any_break()) {
+            seen_other_task_break = true;
+          }
+          if (result.break_status.breakpoint_hit) {
+            unapply_breakpoints_and_watchpoints();
+            result = current->replay_step(RUN_SINGLESTEP_FAST_FORWARD);
+            update_observable_break_status(now, result);
+            if (result.break_status.any_break()) {
+              seen_other_task_break = true;
+            }
           }
         }
       } else {
@@ -1129,6 +1178,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
         destination_candidate_result = result;
         destination_candidate_result.break_status.task_exit = true;
         destination_candidate_tuid = current->current_task()->tuid();
+        seen_other_task_break = false;
       }
 
       if (now >= end) {
@@ -1138,6 +1188,13 @@ ReplayResult ReplayTimeline::reverse_singlestep(
     }
     no_watchpoints_hit_interval_end =
         no_watchpoints_hit_interval_start ? end : Mark();
+
+    if (seen_other_task_break) {
+      // We saw a break in another task that the debugger cares about, but
+      // that's not the stepping task. Report that break instead of the
+      // singlestep.
+      return reverse_continue(stop_filter, interrupt_check);
+    }
 
     if (destination_candidate) {
       LOG(debug) << "Found destination " << destination_candidate;
@@ -1236,22 +1293,10 @@ ReplayResult ReplayTimeline::replay_step_forward(
   return result;
 }
 
-ReplayResult ReplayTimeline::replay_step_backward(
-    RunCommand command, const std::function<bool(Task* t)>& stop_filter,
+ReplayResult ReplayTimeline::reverse_singlestep(
+    const TaskUid& tuid, const std::function<bool(Task* t)>& stop_filter,
     const std::function<bool()>& interrupt_check) {
-  ReplayResult result;
-  switch (command) {
-    case RUN_CONTINUE:
-      result = reverse_continue(stop_filter, interrupt_check);
-      break;
-    case RUN_SINGLESTEP:
-      result = reverse_singlestep(mark(), stop_filter);
-      break;
-    default:
-      assert(0 && "Unknown RunCommand");
-      return ReplayResult();
-  }
-  return result;
+  return reverse_singlestep(mark(), tuid, stop_filter, interrupt_check);
 }
 
 ReplayTimeline::Progress ReplayTimeline::estimate_progress() {

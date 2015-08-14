@@ -108,8 +108,7 @@ void GdbConnection::await_debugger(ScopedFd& listen_fd) {
   struct sockaddr_in client_addr;
   socklen_t len = sizeof(client_addr);
 
-  sock_fd = ScopedFd(
-      accept(listen_fd, (struct sockaddr*)&client_addr, &len));
+  sock_fd = ScopedFd(accept(listen_fd, (struct sockaddr*)&client_addr, &len));
   // We might restart this debugging session, so don't set the
   // socket fd CLOEXEC.
 }

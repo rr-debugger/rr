@@ -195,14 +195,12 @@ public:
   ReplayResult replay_step_forward(
       RunCommand command, TraceFrame::Time stop_at_time,
       const std::function<bool()>& interrupt_check = never_interrupt);
-  /**
-   * replay_step_backward can perform multiple replay steps. That means we can
-   * execute code from potentially many tasks. This can be controlled via the
-   * task filter.
-   */
-  ReplayResult replay_step_backward(
-      RunCommand command, const std::function<bool(Task* t)>& stop_filter,
-      const std::function<bool()>& interrupt_check = never_interrupt);
+
+  ReplayResult reverse_continue(const std::function<bool(Task* t)>& stop_filter,
+                                const std::function<bool()>& interrupt_check);
+  ReplayResult reverse_singlestep(
+      const TaskUid& tuid, const std::function<bool(Task* t)>& stop_filter,
+      const std::function<bool()>& interrupt_check);
 
   /**
    * Try to identify an existing Mark which is known to be one singlestep
@@ -387,10 +385,12 @@ private:
   Mark find_singlestep_before(const Mark& mark);
   bool is_start_of_reverse_execution_barrier_event();
 
-  ReplayResult reverse_continue(const std::function<bool(Task* t)>& stop_filter,
-                                const std::function<bool()>& interrupt_check);
+  void update_observable_break_status(ReplayTimeline::Mark& now,
+                                      const ReplayResult& result);
   ReplayResult reverse_singlestep(
-      const Mark& origin, const std::function<bool(Task* t)>& stop_filter);
+      const Mark& origin, const TaskUid& step_tuid,
+      const std::function<bool(Task* t)>& stop_filter,
+      const std::function<bool()>& interrupt_check);
 
   // Reasonably fast since it just relies on checking the mark map.
   static bool less_than(const Mark& m1, const Mark& m2);

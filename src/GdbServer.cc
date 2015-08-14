@@ -959,8 +959,19 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
         }
         return false;
       };
-      result =
-          timeline.replay_step_backward(command, stop_filter, interrupt_check);
+
+      switch (command) {
+        case RUN_CONTINUE:
+          result = timeline.reverse_continue(stop_filter, interrupt_check);
+          break;
+        case RUN_SINGLESTEP:
+          result = timeline.reverse_singlestep(last_continue_tuid, stop_filter,
+                                               interrupt_check);
+          break;
+        default:
+          assert(0 && "Unknown RunCommand");
+      }
+
       if (result.status == REPLAY_EXITED) {
         return handle_exited_state();
       }
