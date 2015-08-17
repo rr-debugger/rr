@@ -150,7 +150,7 @@ _stub_buffer:
         lea    _syscall_stack_adjust(%esp),%esp
         /* Backtrace here will be invalid! */
         /* Jump to the return address we saved on the stack */
-        jmp    (-_syscall_stack_adjust)(%esp)
+        jmp    *(-_syscall_stack_adjust)(%esp)
         .cfi_endproc
         .endr
 _stub_buffer_end:
@@ -337,7 +337,7 @@ _stub_buffer:
         lea    _syscall_stack_adjust(%rsp),%rsp
         /* Backtrace here will be invalid! */
         /* Jump to the return address we saved on the stack */
-        jmp    (-_syscall_stack_adjust)(%rsp)
+        jmp    *(-_syscall_stack_adjust)(%rsp)
         .cfi_endproc
         .endr
 _stub_buffer_end:
