@@ -29,6 +29,7 @@ int main(int argc, char* argv[]) {
   __asm__ __volatile__(
       /* Push the constants in stack order so they look as
        * we expect in gdb. */
+#if __i386__
       "fldl st7\n\t"
       "fldl st6\n\t"
       "fldl st5\n\t"
@@ -44,7 +45,28 @@ int main(int argc, char* argv[]) {
       "movss xmm4, %xmm4\n\t"
       "movss xmm5, %xmm5\n\t"
       "movss xmm6, %xmm6\n\t"
-      "movss xmm7, %xmm7\n\t");
+      "movss xmm7, %xmm7\n\t"
+#elif __x86_64__
+      "fldl st7(%rip)\n\t"
+      "fldl st6(%rip)\n\t"
+      "fldl st5(%rip)\n\t"
+      "fldl st4(%rip)\n\t"
+      "fldl st3(%rip)\n\t"
+      "fldl st2(%rip)\n\t"
+      "fldl st1(%rip)\n\t"
+      "fldl st0(%rip)\n\t"
+      "movss xmm0(%rip), %xmm0\n\t"
+      "movss xmm1(%rip), %xmm1\n\t"
+      "movss xmm2(%rip), %xmm2\n\t"
+      "movss xmm3(%rip), %xmm3\n\t"
+      "movss xmm4(%rip), %xmm4\n\t"
+      "movss xmm5(%rip), %xmm5\n\t"
+      "movss xmm6(%rip), %xmm6\n\t"
+      "movss xmm7(%rip), %xmm7\n\t"
+#else
+#error unexpected architecture
+#endif
+);
 
   breakpoint();
 
