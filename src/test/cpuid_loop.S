@@ -82,7 +82,7 @@ cpuid_loop:
         movl    %edi, 4(%esp)
         call    cpuid_call
         addl    %eax, %ebx
-        call    geteuid
+        call    geteuid@PLT
         subl    $1, %esi
         jne     .L10
         addl    $44, %esp
@@ -131,7 +131,7 @@ cpuid_loop:
 1:
         call cpuid_call
 	addq %rax, %r12
-	call geteuid
+	call geteuid@PLT
 	subq $1, %rbx
 	jne 1b
 	movq %r12, %rax
