@@ -2624,11 +2624,6 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
     return;
   }
 
-  // XXX what does this signify?
-  if (r.arg1() != 0) {
-    return;
-  }
-
   t->post_exec_syscall(*syscall_state.exec_saved_event);
 
   t->record_session().trace_writer().write_task_event(
