@@ -183,6 +183,10 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
                               struct perf_event_attr* attr) {
   int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, 0);
   if (0 > fd) {
+    if (errno == EACCES) {
+      FATAL() << "Permission denied to use 'perf_event_open'; are perf events "
+                 "enabled? Try 'perf record'.";
+    }
     FATAL() << "Failed to initialize counter";
   }
   if (ioctl(fd, PERF_EVENT_IOC_ENABLE, 0)) {

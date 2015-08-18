@@ -204,8 +204,10 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
 static string find_rr_page_file(Task* t) {
   string exe_path = exe_directory();
   switch (t->arch()) {
-    case x86: return exe_path + "rr_page_32";
-    case x86_64: return exe_path + "rr_page_64";
+    case x86:
+      return exe_path + "rr_page_32";
+    case x86_64:
+      return exe_path + "rr_page_64";
     default:
       ASSERT(t, false) << "Unknown architecture";
       return exe_path;

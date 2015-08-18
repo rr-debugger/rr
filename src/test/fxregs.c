@@ -27,8 +27,8 @@ static const float xmm7 = 17;
 
 int main(int argc, char* argv[]) {
   __asm__ __volatile__(
-      /* Push the constants in stack order so they look as
-       * we expect in gdb. */
+/* Push the constants in stack order so they look as
+ * we expect in gdb. */
 #if __i386__
       "fldl st7\n\t"
       "fldl st6\n\t"
@@ -66,7 +66,7 @@ int main(int argc, char* argv[]) {
 #else
 #error unexpected architecture
 #endif
-);
+      );
 
   breakpoint();
 
