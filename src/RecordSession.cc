@@ -1168,15 +1168,7 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
 }
 
 static string find_syscall_buffer_library() {
-  string lib_path = real_path("/proc/self/exe");
-
-  int end = lib_path.length();
-  // Chop off the filename
-  while (end > 0 && lib_path[end - 1] != '/') {
-    --end;
-  }
-  lib_path.erase(end);
-  lib_path += "../lib/";
+  string lib_path = exe_directory() + "../lib/";
   string file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
   if (access(file_name.c_str(), F_OK) != 0) {
     // File does not exist. Assume install put it in LD_LIBRARY_PATH.

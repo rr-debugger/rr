@@ -201,65 +201,18 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
                           offset_to_syscall_in_vdso[arch]).as_int());
 }
 
-static void write_rr_page(Task* t, ScopedFd& fd) {
+static string find_rr_page_file(Task* t) {
+  string exe_path = exe_directory();
   switch (t->arch()) {
-    case x86: {
-      static const uint8_t x86_data[32] = {
-        0x90, 0x90, // padding
-        // rr_page_untraced_syscall_ip:
-        0xcd, 0x80, // int 0x80
-        // rr_page_ip_in_untraced_syscall:
-        0xc3, // ret
-        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
-        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, // padding
-        // rr_page_traced_syscall_ip:
-        0xcd, 0x80, // int 0x80
-        // rr_page_ip_in_traced_syscall:
-        0xc3, // ret
-        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
-      };
-      ASSERT(t, sizeof(x86_data) == write(fd, x86_data, sizeof(x86_data)));
-      break;
-    }
-    case x86_64:
-      // See Task::did_waitpid for an explanation of why we have to
-      // modify R11 and RCX here.
-      static const uint8_t x86_64_data[32] = {
-        0x90, 0x90, // padding
-        // rr_page_untraced_syscall_ip:
-        0x0f, 0x05, // syscall
-        // rr_page_ip_in_untraced_syscall:
-        0x49, 0x81, 0xe3, 0xff,
-        0xfe, 0xff, 0xff, // and $0xfffffffffffffeff,%r11
-        0x48, 0xc7, 0xc1, 0xff,
-        0xff, 0xff, 0xff, // mov $-1,%rcx
-        0xc3,             // ret
-        0x90, 0x90, 0x90, // padding
-        // rr_page_traced_syscall_ip:
-        0x0f, 0x05, // syscall
-        // rr_page_ip_in_traced_syscall:
-        0xc3, // ret
-        0x90, 0x90, 0x90, 0x90,
-        0x90, 0x90, 0x90
-      };
-      ASSERT(t, sizeof(x86_64_data) ==
-                    write(fd, x86_64_data, sizeof(x86_64_data)));
-      break;
+    case x86: return exe_path + "rr_page_32";
+    case x86_64: return exe_path + "rr_page_64";
+    default:
+      ASSERT(t, false) << "Unknown architecture";
+      return exe_path;
   }
 }
 
 void AddressSpace::map_rr_page(Task* t) {
-  // We initialize the rr page by creating a temporary file with the data
-  // and mapping it PROT_READ | PROT_EXEC. There are simpler ways to do it,
-  // but this is the only way allowed by PaX.
-  char path[] = "/tmp/rr-page-XXXXXX";
-  ScopedFd fd(mkstemp(path));
-  ASSERT(t, fd.is_open());
-  // Write two copies of the page so we get both unpriviledged and privileged
-  // entry points. Privileged entry points are in the second copy.
-  write_rr_page(t, fd);
-  write_rr_page(t, fd);
-
   int prot = PROT_EXEC | PROT_READ;
   int flags = MAP_PRIVATE | MAP_FIXED;
 
@@ -269,8 +222,8 @@ void AddressSpace::map_rr_page(Task* t) {
     AutoRemoteSyscalls remote(t);
     SupportedArch arch = t->arch();
 
-    AutoRestoreMem child_path(remote, reinterpret_cast<uint8_t*>(path),
-                              sizeof(path));
+    string path = find_rr_page_file(t);
+    AutoRestoreMem child_path(remote, path.c_str());
     // skip leading '/' since we want the path to be relative to the root fd
     int child_fd =
         remote.syscall(syscall_number_for_openat(arch), RR_RESERVED_ROOT_DIR_FD,
@@ -290,8 +243,6 @@ void AddressSpace::map_rr_page(Task* t) {
       brk_start = brk_end = remote.syscall(syscall_number_for_brk(arch), 0);
     }
   }
-
-  unlink(path);
 
   map(rr_page_start(), rr_page_size(), prot, flags, 0, fstat.file_name,
       fstat.st.st_dev, fstat.st.st_ino);

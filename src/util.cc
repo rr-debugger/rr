@@ -725,3 +725,14 @@ string real_path(const string& path) {
   }
   return path;
 }
+
+string exe_directory() {
+  string exe_path = real_path("/proc/self/exe");
+  int end = exe_path.length();
+  // Chop off the filename
+  while (end > 0 && exe_path[end - 1] != '/') {
+    --end;
+  }
+  exe_path.erase(end);
+  return exe_path;
+}

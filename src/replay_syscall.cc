@@ -335,22 +335,13 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
 }
 
 static string find_exec_stub(SupportedArch arch) {
-  char* exe_path = realpath("/proc/self/exe", nullptr);
-  string lib_path = exe_path;
-  free(exe_path);
-
-  int end = lib_path.length();
-  // Chop off the filename
-  while (end > 0 && lib_path[end - 1] != '/') {
-    --end;
-  }
-  lib_path.erase(end);
+  string exe_path = exe_directory();
   if (arch == x86 && NativeArch::arch() == x86_64) {
-    lib_path += "exec_stub_32";
+    exe_path += "exec_stub_32";
   } else {
-    lib_path += "exec_stub";
+    exe_path += "exec_stub";
   }
-  return lib_path;
+  return exe_path;
 }
 
 static void finish_direct_mmap(AutoRemoteSyscalls& remote,

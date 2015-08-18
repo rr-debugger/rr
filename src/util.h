@@ -239,4 +239,6 @@ void dump_task_map(const std::map<pid_t, Task*>& tasks);
 
 std::string real_path(const std::string& path);
 
+std::string exe_directory();
+
 #endif /* RR_UTIL_H_ */

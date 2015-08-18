@@ -147,6 +147,17 @@ endforeach(generated_file)
 
 add_custom_target(Generated DEPENDS ${GENERATED_FILES})
 
+add_custom_command(OUTPUT rr_page_64
+                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
+                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64"
+                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
+add_custom_command(OUTPUT rr_page_32
+                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
+                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32"
+                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
+
+add_custom_target(Pages DEPENDS rr_page_32 rr_page_64)
+
 add_executable(rr
   src/test/cpuid_loop.S
   src/AddressSpace.cc
@@ -195,7 +206,7 @@ add_executable(rr
   src/TraceStream.cc
   src/util.cc
 )
-add_dependencies(rr Generated)
+add_dependencies(rr Generated Pages)
 
 target_link_libraries(rr
   -ldl
@@ -211,6 +222,7 @@ add_executable(exec_stub src/exec_stub.c)
 set_target_properties(exec_stub PROPERTIES LINK_FLAGS -nostdlib)
 
 install(PROGRAMS scripts/signal-rr-recording.sh
+                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64 ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32
   DESTINATION bin)
 
 install(TARGETS rr rrpreload exec_stub
