@@ -1923,7 +1923,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     }
 
     case Arch::sendmsg:
-      if (!((unsigned int)t->regs().arg4() & MSG_DONTWAIT)) {
+      if (!((unsigned int)t->regs().arg3() & MSG_DONTWAIT)) {
         return ALLOW_SWITCH;
       }
       return PREVENT_SWITCH;
