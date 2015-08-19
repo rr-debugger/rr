@@ -408,6 +408,7 @@ set(BASIC_TESTS
   ptracer_death_multithread_peer
   quotactl
   rdtsc
+  read_nothing
   readdir
   readlink
   readv

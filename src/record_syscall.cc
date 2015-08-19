@@ -220,7 +220,7 @@ size_t ParamSize::eval(Task* t, size_t already_consumed) const {
     s = min(s, mem_size - already_consumed);
   }
   if (from_syscall) {
-    size_t syscall_size = t->regs().syscall_result();
+    size_t syscall_size = max<ssize_t>(0, t->regs().syscall_result_signed());
     switch (read_size) {
       case 4:
         syscall_size = uint32_t(syscall_size);
@@ -1782,8 +1782,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
     case Arch::getrandom:
       syscall_state.reg_parameter(
-          1, ParamSize::from_syscall_result<typename Arch::size_t>(
-                 (size_t)t->regs().arg2()));
+          1, ParamSize::from_syscall_result<int>((size_t)t->regs().arg2()));
       return (GRND_NONBLOCK & t->regs().arg3()) ? PREVENT_SWITCH : ALLOW_SWITCH;
 
     case Arch::ipc:
@@ -1890,7 +1889,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
     case Arch::recvfrom: {
       syscall_state.reg_parameter(
-          2, ParamSize::from_syscall_result<typename Arch::size_t>(
+          2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                  t->regs().arg3()));
       auto addrlen_ptr =
           syscall_state.reg_parameter<typename Arch::socklen_t>(6, IN_OUT);
@@ -1959,7 +1958,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     /* ssize_t read(int fd, void *buf, size_t count); */
     case Arch::read:
       syscall_state.reg_parameter(
-          2, ParamSize::from_syscall_result<typename Arch::size_t>(
+          2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                  (size_t)t->regs().arg3()));
       return ALLOW_SWITCH;
 
@@ -2028,7 +2027,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       auto iovecsp = iovecsp_void.cast<typename Arch::iovec>();
       auto iovecs = t->read_mem(iovecsp, iovcnt);
       ParamSize io_size =
-          ParamSize::from_syscall_result<typename Arch::size_t>();
+          ParamSize::from_syscall_result<typename Arch::ssize_t>();
       for (int i = 0; i < iovcnt; ++i) {
         syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(iovecsp + i, iov_base),
                                         io_size.limit_size(iovecs[i].iov_len));
@@ -2381,7 +2380,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::lgetxattr:
     case Arch::fgetxattr:
       syscall_state.reg_parameter(
-          3, ParamSize::from_syscall_result<size_t>(t->regs().arg4()));
+          3, ParamSize::from_syscall_result<ssize_t>(t->regs().arg4()));
       return PREVENT_SWITCH;
 
     case Arch::sched_setaffinity: {
