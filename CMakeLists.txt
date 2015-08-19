@@ -619,6 +619,7 @@ set(TESTS_WITHOUT_PROGRAM
   reverse_finish
   reverse_step_breakpoint
   reverse_step_signal
+  reverse_step_threads2
   reverse_watchpoint
   reverse_watchpoint_syscall
   run_in_function

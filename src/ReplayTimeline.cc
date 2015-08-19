@@ -1057,6 +1057,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
               approaching_ticks_target = true;
               break;
             }
+            unapply_breakpoints_and_watchpoints();
             constraints.ticks_target =
                 constraints.command == RUN_CONTINUE ? ticks_target : 0;
             ReplayResult result;
