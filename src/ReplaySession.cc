@@ -1,6 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 //#define DEBUGTAG "ReplaySession"
+
 #define USE_BREAKPOINT_TARGET 1
 #define USE_TIMESLICE_COALESCING 1
 
@@ -1444,7 +1445,8 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
 
   LOG(debug) << "[line " << trace_frame.time() << "] " << t->rec_tid
              << ": replaying " << Event(ev) << "; state "
-             << state_name(ev.Syscall().state);
+             << (ev.is_syscall_event() ? state_name(ev.Syscall().state)
+                                       : " (none)");
   if (t->syscallbuf_hdr) {
     LOG(debug) << "    (syscllbufsz:" << t->syscallbuf_hdr->num_rec_bytes
                << ", abrtcmt:" << bool(t->syscallbuf_hdr->abort_commit)

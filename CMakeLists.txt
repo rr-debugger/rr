@@ -321,6 +321,7 @@ set(BASIC_TESTS
   clock
   clone
   clone_bad_stack
+  clone_immediate_exit
   clone_untraced
   constructor
   desched_blocking_poll

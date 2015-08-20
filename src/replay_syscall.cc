@@ -311,6 +311,12 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
     }
     new_task->set_data_from_trace();
     new_task->set_data_from_trace();
+
+    // Fix registers in new task
+    Registers new_r = new_task->regs();
+    new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
+    new_r.set_arg1(trace_frame.regs().arg1());
+    new_task->set_regs(new_r);
   }
 
   if (!(CLONE_VM & flags)) {

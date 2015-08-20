@@ -2819,6 +2819,7 @@ static void process_fork(Task* t, TaskSyscallState& syscall_state) {
 template <typename Arch>
 static void process_clone(Task* t, TaskSyscallState& syscall_state) {
   uintptr_t flags = syscall_state.syscall_entry_registers->arg1();
+  // Restore modified registers in cloning task
   Registers r = t->regs();
   r.set_arg1(flags);
   t->set_regs(r);
@@ -2833,6 +2834,12 @@ static void process_clone(Task* t, TaskSyscallState& syscall_state) {
   // directly. Instead the new task will have been stashed in syscall_state.
   Task* new_task = syscall_state.new_task;
   ASSERT(t, new_task) << "new_task not found";
+
+  // Restore modified registers in cloned task
+  Registers new_r = new_task->regs();
+  new_r.set_arg1(flags);
+  new_task->set_regs(new_r);
+
   new_task->push_event(SyscallEvent(t->ev().Syscall().number, t->arch()));
 
   /* record child id here */
