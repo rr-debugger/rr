@@ -549,6 +549,7 @@ set(TESTS_WITH_PROGRAM
   step_thread
   string_instructions
   string_instructions_replay
+  string_instructions_watch
   syscallbuf_fd_disabling
   target_fork
   target_process

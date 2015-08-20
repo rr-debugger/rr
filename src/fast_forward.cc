@@ -345,11 +345,9 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT);
       did_execute = true;
       ASSERT(t, t->pending_sig() == SIGTRAP);
-      auto debug_status = t->consume_debug_status();
-      // No watchpoints should have fired. If we exited the loop, we should
-      // still not have triggered any EXEC watchpoints since we haven't
-      // executed any instructions outside the loop.
-      ASSERT(t, !(debug_status & DS_WATCHPOINT_ANY));
+      t->consume_debug_status();
+      // Watchpoints can fire spuriously because configure_watch_registers
+      // can increase the size of the watched area to conserve watch registers.
       --iterations;
     }
 
