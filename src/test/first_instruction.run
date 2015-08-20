@@ -1,3 +1,3 @@
 source `dirname $0`/util.sh
-record simple$bitness
+record exec_stub$bitness
 debug first_instruction
