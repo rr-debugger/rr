@@ -1426,6 +1426,8 @@ static void end_task(Task* t) {
 Completion ReplaySession::exit_task(Task* t,
                                     const StepConstraints& constraints) {
   ASSERT(t, !t->seen_ptrace_exit_event);
+  // Apply robust-futex updates captured during recording.
+  t->apply_all_data_records_from_trace();
   end_task(t);
   /* |t| is dead now. */
   gc_emufs();

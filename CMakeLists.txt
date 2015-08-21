@@ -415,6 +415,7 @@ set(BASIC_TESTS
   readlink
   readv
   rlimit
+  robust_futex
   rusage
   save_data_fd
   sched_setaffinity

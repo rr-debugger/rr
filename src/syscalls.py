@@ -1481,9 +1481,9 @@ unshare = IrregularEmulatedSyscall(x86=310, x64=272)
 #
 # set_robust_list sets the head of the list of robust futexes owned
 # by the current thread to head.  len is the size of *head.
-set_robust_list = ExecutedSyscall(x86=311, x64=273)
+set_robust_list = EmulatedSyscall(x86=311, x64=273)
 
-get_robust_list = UnsupportedSyscall(x86=312, x64=274)
+get_robust_list = EmulatedSyscall(x86=312, x64=274, arg2="typename Arch::unsigned_word", arg3="typename Arch::size_t")
 
 #  ssize_t splice(int fd_in, loff_t *off_in, int fd_out, loff_t *off_out,
 #size_t len, unsigned int flags);

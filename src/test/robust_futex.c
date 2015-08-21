@@ -4,7 +4,11 @@
 
 static pthread_mutex_t mutex;
 
-static void* run_thread(void* p) {
+static void* run_thread(void* arg) {
+  void* p;
+  size_t len;
+  syscall(SYS_get_robust_list, 0, &p, &len);
+  atomic_printf("robust_list = %p, len = %d\n", p, (int)len);
   test_assert(0 == pthread_mutex_lock(&mutex));
   return NULL;
 }

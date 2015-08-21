@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <sstream>
 
+#include "AutoRemoteSyscalls.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "record_signal.h"
@@ -92,6 +93,73 @@ static int choose_cpu(uint32_t flags) {
   return random() % get_num_cpus();
 }
 
+template <typename T> static remote_ptr<T> mask_low_bit(remote_ptr<T> p) {
+  return p.as_int() & ~uintptr_t(1);
+}
+
+template <typename Arch>
+static void record_robust_futex_change(
+    Task* t, const typename Arch::robust_list_head& head,
+    remote_ptr<void> base) {
+  if (base.is_null()) {
+    return;
+  }
+  remote_ptr<void> futex_void_ptr = base + head.futex_offset;
+  auto futex_ptr = futex_void_ptr.cast<uint32_t>();
+  // We can't just record the current futex value because at this point
+  // in task exit the robust futex handling has not happened yet. So we have
+  // to emulate what the kernel will do!
+  bool ok = true;
+  uint32_t val = t->read_mem(futex_ptr, &ok);
+  if (!ok) {
+    return;
+  }
+  if (pid_t(val & FUTEX_TID_MASK) != t->own_namespace_rec_tid) {
+    return;
+  }
+  val = (val & FUTEX_WAITERS) | FUTEX_OWNER_DIED;
+  t->record_local(futex_ptr, &val);
+}
+
+/**
+ * Any user-space writes performed by robust futex handling are captured here.
+ * They must be emulated during replay; the kernel will not do it for us
+ * during replay because the TID value in each futex is the recorded
+ * TID, not the actual TID of the dying task.
+ */
+template <typename Arch> static void record_robust_futex_changes_arch(Task* t) {
+  if (t->vm()->task_set().size() == 1) {
+    // This address space is going away --- actually, has probably already
+    // gone away. Any robust futex cleanup will not be observable.
+    return;
+  }
+  auto head_ptr = t->robust_list().cast<typename Arch::robust_list_head>();
+  if (head_ptr.is_null()) {
+    return;
+  }
+  ASSERT(t, t->robust_list_len() == sizeof(typename Arch::robust_list_head));
+  bool ok = true;
+  auto head = t->read_mem(head_ptr, &ok);
+  if (!ok) {
+    return;
+  }
+  record_robust_futex_change<Arch>(t, head,
+                                   mask_low_bit(head.list_op_pending.rptr()));
+  for (auto current = mask_low_bit(head.list.next.rptr());
+       current.as_int() != head_ptr.as_int();) {
+    record_robust_futex_change<Arch>(t, head, current);
+    auto next = t->read_mem(current, &ok);
+    if (!ok) {
+      return;
+    }
+    current = mask_low_bit(next.next.rptr());
+  }
+}
+
+static void record_robust_futex_changes(Task* t) {
+  RR_ARCH_FUNCTION(record_robust_futex_changes_arch, t->arch(), t);
+}
+
 /**
  * Return true if we handle a ptrace exit event for task t. When this returns
  * true, t has been deleted and cannot be referenced again.
@@ -108,6 +176,8 @@ static bool handle_ptrace_exit_event(Task* t) {
         << "unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";
     t->destabilize_task_group();
   }
+
+  record_robust_futex_changes(t);
 
   EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
   t->record_event(Event(ev, NO_EXEC_INFO, t->arch()));
@@ -280,6 +350,13 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       Task* new_task = clone(t, clone_flags_to_task_flags(flags_arg), stack,
                              tls, ctid, new_tid);
       rec_set_syscall_new_task(t, new_task);
+
+      {
+        AutoRemoteSyscalls remote(new_task);
+        new_task->own_namespace_rec_tid =
+            remote.syscall(syscall_number_for_gettid(new_task->arch()));
+      }
+
       // Skip past the ptrace event.
       step_state->continue_type = CONTINUE_SYSCALL;
       break;

@@ -15,6 +15,7 @@
 #include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>
+#include <linux/futex.h>
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/net.h>
@@ -1157,6 +1158,18 @@ struct BaseArch : public wordsize, public FcntlConstants {
     ptr<sock_filter> filter;
   };
   RR_VERIFY_TYPE(sock_fprog);
+
+  struct robust_list {
+    ptr<robust_list> next;
+  };
+  RR_VERIFY_TYPE(robust_list);
+
+  struct robust_list_head {
+    robust_list list;
+    signed_long futex_offset;
+    ptr<robust_list> list_op_pending;
+  };
+  RR_VERIFY_TYPE(robust_list_head);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

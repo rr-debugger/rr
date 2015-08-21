@@ -240,6 +240,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       hpc(_tid),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
+      own_namespace_rec_tid(0),
       syscallbuf_hdr(),
       num_syscallbuf_bytes(),
       serial(serial),
@@ -2399,11 +2400,6 @@ void Task::copy_state(const CapturedState& state) {
 
     if (!state.robust_futex_list.is_null()) {
       set_robust_list(state.robust_futex_list, state.robust_futex_list_len);
-      LOG(debug) << "    setting robust-list " << this->robust_list()
-                 << " (size " << this->robust_list_len() << ")";
-      err = remote.syscall(syscall_number_for_set_robust_list(arch()),
-                           this->robust_list(), this->robust_list_len());
-      ASSERT(this, 0 == err);
     }
 
     copy_tls(state, remote);
