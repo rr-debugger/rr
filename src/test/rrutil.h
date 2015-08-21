@@ -7,6 +7,7 @@
 #define _POSIX_C_SOURCE 2
 
 #include <arpa/inet.h>
+#include <asm/prctl.h>
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>

@@ -4,6 +4,7 @@
 
 #include "record_syscall.h"
 
+#include <asm/prctl.h>
 #include <arpa/inet.h>
 #include <asm/ldt.h>
 #include <assert.h>
@@ -2271,6 +2272,23 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       }
       return PREVENT_SWITCH;
 
+    case Arch::arch_prctl:
+      switch ((int)t->regs().arg1_signed()) {
+        case ARCH_SET_FS:
+        case ARCH_SET_GS:
+          break;
+
+        case ARCH_GET_FS:
+        case ARCH_GET_GS:
+          syscall_state.reg_parameter<typename Arch::unsigned_long>(2);
+          break;
+
+        default:
+          syscall_state.expect_errno = EINVAL;
+          break;
+      }
+      return PREVENT_SWITCH;
+
     case Arch::ioctl:
       return prepare_ioctl<Arch>(t, syscall_state);
 
@@ -2918,6 +2936,10 @@ static string extra_expected_errno_info(Task* t,
           break;
         case Arch::prctl:
           ss << "; unknown prctl(" << HEX((int)t->regs().arg1_signed()) << ")";
+          break;
+        case Arch::arch_prctl:
+          ss << "; unknown arch_prctl(" << HEX((int)t->regs().arg1_signed())
+             << ")";
           break;
         case Arch::socketcall:
           ss << "; unknown socketcall(" << HEX((int)t->regs().arg1_signed())

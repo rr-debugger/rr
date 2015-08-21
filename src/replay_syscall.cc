@@ -4,6 +4,7 @@
 
 #include "replay_syscall.h"
 
+#include <asm/prctl.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -1225,13 +1226,18 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::munmap:
     case Arch::mprotect:
+    case Arch::arch_prctl:
       step->action = syscall_action(state);
       step->syscall.emu = EMULATE;
       if (TSTEP_EXIT_SYSCALL == step->action) {
-        AutoRemoteSyscalls remote(t);
-        remote_ptr<void> result = remote.syscall(
-            syscall, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3());
-        ASSERT(t, result == trace_regs.syscall_result());
+        // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
+        Registers r = t->regs();
+        r.set_syscallno(t->regs().original_syscallno());
+        r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+        t->set_regs(r);
+        __ptrace_cont(t, syscall);
+        __ptrace_cont(t, syscall);
+        ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
       }
       return;
 

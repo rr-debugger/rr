@@ -304,6 +304,7 @@ set(BASIC_TESTS
   accept
   alarm
   alarm2
+  arch_prctl
   async_segv_ignored
   async_signal_syscalls2
   at_threadexit

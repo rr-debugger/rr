@@ -1709,7 +1709,7 @@ msgctl = IrregularEmulatedSyscall(x64=71)
 semtimedop = IrregularEmulatedSyscall(x64=220)
 
 # These syscalls simply don't exist on x86.
-arch_prctl = ExecutedSyscall(x64=158)
+arch_prctl = IrregularEmulatedSyscall(x64=158)
 tuxcall = InvalidSyscall(x64=184)
 security = InvalidSyscall(x64=185)
 epoll_ctl_old = UnsupportedSyscall(x64=214)
