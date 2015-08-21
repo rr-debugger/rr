@@ -2408,12 +2408,7 @@ void Task::copy_state(const CapturedState& state) {
 
     copy_tls(state, remote);
 
-    auto ctid = state.tid_futex;
-    if (!ctid.is_null()) {
-      err = remote.syscall(syscall_number_for_set_tid_address(arch()), ctid);
-      ASSERT(this, tid == err);
-    }
-    tid_futex = ctid;
+    tid_futex = state.tid_futex;
 
     ASSERT(this, !syscallbuf_child)
         << "Syscallbuf should not already be initialized in clone";
