@@ -46,28 +46,6 @@
 using namespace std;
 using namespace rr;
 
-enum SyscallDefType {
-  rep_UNDEFINED = 0, /* NB: this symbol must have the value 0 */
-  rep_EMU
-};
-
-template <size_t N> struct SyscallTable : array<SyscallDefType, N> {
-  SyscallTable(initializer_list<int> init) {
-    for (auto& i : init) {
-      (*this)[i] = rep_EMU;
-    }
-  }
-};
-
-template <typename Arch> struct SyscallDefs {
-  // Reserve a final element which is guaranteed to be an undefined syscall.
-  // Negative and out-of-range syscall numbers are mapped to this element.
-  typedef SyscallTable<Arch::SYSCALL_COUNT + 1> Table;
-  static Table table;
-};
-
-#include "SyscallDefsTable.generated"
-
 // XXX: x86-only currently.
 #ifdef CHECK_SYSCALL_NUMBERS
 
@@ -1117,29 +1095,16 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     }
   }
 
-  auto& table = SyscallDefs<Arch>::table;
-  if (syscall < 0 || syscall >= int(array_length(table))) {
-    // map to an invalid syscall.
-    syscall = array_length(table) - 1;
-    // we ensure this when we construct the table
-    assert(table[syscall] == rep_UNDEFINED);
-  }
-
   step->syscall.number = syscall;
-
-  if (table[syscall] == rep_UNDEFINED) {
-    ASSERT(t, trace_regs.syscall_result_signed() == -ENOSYS)
-        << "Valid but unhandled syscallno " << syscall;
-    step->action = syscall_action(state);
-    step->syscall.emu = EMULATE;
-    return;
-  }
 
   /* Manual implementations of irregular syscalls that need to do more during
    * replay than just modify register and memory state.
+   * Don't let a negative incoming syscall number be treated as a real
+   * system call that we assigned a negative number because it doesn't
+   * exist in this architecture.
+   * All invalid/unsupported syscalls get the default emulation treatment.
    */
-
-  switch (syscall) {
+  switch (syscall < 0 ? INT32_MAX : syscall) {
     case Arch::clone:
       return process_clone<Arch>(t, trace_frame, state, step,
                                  trace_frame.regs().arg1(), syscall);

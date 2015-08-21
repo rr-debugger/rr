@@ -121,17 +121,6 @@ def write_syscall_helper_functions(f):
     for name, obj in syscalls.all():
         write_helpers(name)
 
-def write_syscall_defs_table(f):
-    for specializer, arch in [("X86Arch", "x86"), ("X64Arch", "x64")]:
-        f.write("template<> SyscallDefs<%s>::Table SyscallDefs<%s>::table = {\n"
-                % (specializer, specializer))
-        arch_syscalls = sorted(syscalls.for_arch(arch), key=lambda x: getattr(x[1], arch))
-        for name, obj in arch_syscalls:
-            if not isinstance(obj, syscalls.UnsupportedSyscall):
-                f.write("  { %s::%s },\n" % (specializer, name))
-        f.write("};\n")
-        f.write("\n")
-
 def write_check_syscall_numbers(f):
     for name, obj in syscalls.all():
         # XXX hard-coded to x86 currently
@@ -143,7 +132,6 @@ def write_check_syscall_numbers(f):
 generators_for = {
     'AssemblyTemplates': lambda f: assembly_templates.generate(f),
     'CheckSyscallNumbers': write_check_syscall_numbers,
-    'SyscallDefsTable': write_syscall_defs_table,
     'SyscallEnumsX86': lambda f: write_syscall_enum(f, 'x86'),
     'SyscallEnumsX64': lambda f: write_syscall_enum(f, 'x64'),
     'SyscallEnumsForTestsX86': lambda f: write_syscall_enum_for_tests(f, 'x86'),

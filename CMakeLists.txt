@@ -123,7 +123,6 @@ add_library(rrpreload
 set(GENERATED_FILES
   AssemblyTemplates.generated
   CheckSyscallNumbers.generated
-  SyscallDefsTable.generated
   SyscallEnumsX64.generated
   SyscallEnumsX86.generated
   SyscallEnumsForTestsX64.generated
