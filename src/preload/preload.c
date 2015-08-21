@@ -1440,8 +1440,9 @@ static long sys_madvise(const struct syscall_info* call) {
   long ret;
 
   switch (advice) {
-    case MADV_DONTFORK:
     case MADV_DOFORK:
+    case MADV_DONTFORK:
+    case MADV_REMOVE:
       return traced_raw_syscall(call);
   }
 

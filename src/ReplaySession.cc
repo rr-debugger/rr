@@ -1095,6 +1095,32 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
   }
 }
 
+template <typename Arch>
+static void perform_syscallbuf_syscall_side_effects_arch(Task* t,
+    const Registers& regs) {
+  switch (regs.original_syscallno()) {
+    case Arch::madvise:
+      if ((int)regs.arg3() == MADV_DONTNEED) {
+        // madvise MADV_DONTNEED is the only syscall-buffered syscall that
+        // needs side effects other than restoring from the syscallbuf data.
+        // XXX Note that for non-anonymous mappings this might not reproduce
+        // exactly the behavior we saw during recording!
+        AutoRemoteSyscalls remote(t);
+        remote.syscall(regs.original_syscallno(),
+            regs.arg1(), regs.arg2(), MADV_DONTNEED);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+static void perform_syscallbuf_syscall_side_effects(Task* t,
+    const Registers& regs) {
+  RR_ARCH_FUNCTION(perform_syscallbuf_syscall_side_effects_arch, t->arch(),
+      t, regs);
+}
+
 /**
  * Try to flush one buffered syscall as described by |flush|.  Return
  * INCOMPLETE if an unhandled interrupt occurred, and COMPLETE if the syscall
@@ -1112,7 +1138,7 @@ Completion ReplaySession::flush_one_syscall(
                                   current_step.flush.syscall_record_offset);
   int call = rec_rec->syscallno;
   // TODO: use syscall_defs table information to determine this.
-  ExecOrEmulate emu = is_madvise_syscall(call, t->arch()) ? EXEC : EMULATE;
+  ExecOrEmulate emu = EMULATE;
 
   switch (current_step.flush.state) {
     case FLUSH_START:
@@ -1179,9 +1205,15 @@ Completion ReplaySession::flush_one_syscall(
         }
         assert_at_buffered_syscall(t, call);
       }
+
+      Registers saved_regs = t->regs();
+
       if (emu == EMULATE) {
         t->finish_emulated_syscall();
       }
+
+      perform_syscallbuf_syscall_side_effects(t, saved_regs);
+
       Registers r = t->regs();
       r.set_syscall_result(rec_rec->ret);
       t->set_regs(r);
