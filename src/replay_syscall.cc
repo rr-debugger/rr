@@ -220,9 +220,9 @@ template <typename Arch>
 static void process_clone(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, ReplayTraceStep* step,
                           unsigned long flags, int expect_syscallno) {
+  step->syscall.emu = EMULATE;
   if (is_failed_syscall(t, trace_frame)) {
     /* creation failed, emulate it */
-    step->syscall.emu = EMULATE;
     step->action = syscall_action(state);
     return;
   }
@@ -240,8 +240,16 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
     t->set_regs(r);
   }
 
-  // TODO: can debugger signals interrupt us here?
+  {
+    // Prepare to restart syscall
+    Registers r = t->regs();
+    r.set_syscallno(t->regs().original_syscallno());
+    r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+    t->set_regs(r);
+  }
 
+  // Enter syscall
+  __ptrace_cont(t, expect_syscallno);
   // The syscall may be interrupted. Keep trying it until we get the
   // ptrace event we're expecting.
   __ptrace_cont(t, expect_syscallno);
