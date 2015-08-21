@@ -14,6 +14,7 @@ send_gdb('c')
 expect_gdb('Breakpoint 1, sighandler')
 
 send_gdb("restart 1");
+send_gdb('c')
 expect_gdb('Breakpoint 1, sighandler')
 
 ok()

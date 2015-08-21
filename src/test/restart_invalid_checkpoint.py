@@ -15,6 +15,7 @@ send_gdb('restart 8')
 send_gdb('restart -1')
 send_gdb('restart abc')
 send_gdb('restart 1')
+send_gdb('c')
 # If rr crashes, a 'restart' will re-run the program directly under gdb from
 # the beginning. If that happens, we'll stop at breakpoint 1, not 2.
 expect_gdb('Breakpoint 2')

@@ -45,6 +45,7 @@ public:
             const ReplaySession::Flags& flags, const Target& target)
       : target(target),
         stop_replaying_to_target(false),
+        stop_immediately_after_restart(false),
         timeline(std::move(session), flags),
         emergency_debug_session(nullptr) {}
 
@@ -96,6 +97,7 @@ private:
         last_continue_tuid(t->tuid()),
         last_query_tuid(t->tuid()),
         stop_replaying_to_target(false),
+        stop_immediately_after_restart(false),
         emergency_debug_session(&t->session()) {}
 
   Session& current_session() {
@@ -200,6 +202,9 @@ private:
   TaskUid last_query_tuid;
   // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
+  // True when we should signal an immediate stop after the next continue
+  // (after a restart).
+  bool stop_immediately_after_restart;
 
   ReplayTimeline timeline;
   Session* emergency_debug_session;

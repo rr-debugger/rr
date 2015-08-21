@@ -919,6 +919,15 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     }
     assert(req.is_resume_request());
 
+    if (stop_immediately_after_restart) {
+      Task* t = timeline.current_session().current_task();
+      if (t->task_group()->tguid() == debuggee_tguid) {
+        stop_immediately_after_restart = false;
+        dbg->notify_stop(get_threadid(t), SIGTRAP, 0);
+        return CONTINUE_DEBUGGING;
+      }
+    }
+
     *last_direction = req.cont().run_direction;
     auto interrupt_check = [&]() { return dbg->sniff_packet(); };
     if (*last_direction == RUN_FORWARD) {
@@ -1116,6 +1125,9 @@ void GdbServer::restart_session(const GdbRequest& req) {
   } else if (req.restart().type == RESTART_FROM_PREVIOUS) {
     checkpoint_to_restore = debugger_restart_checkpoint;
   }
+
+  stop_immediately_after_restart = true;
+
   if (checkpoint_to_restore.mark) {
     timeline.seek_to_mark(checkpoint_to_restore.mark);
     last_query_tuid = last_continue_tuid =

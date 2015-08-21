@@ -12,6 +12,7 @@ expect_gdb('Breakpoint 1, breakpoint')
 send_gdb('checkpoint');
 expect_gdb('= 1')
 send_gdb('restart 1');
+send_gdb('c')
 expect_gdb('Breakpoint 1, breakpoint')
 
 send_gdb('c')

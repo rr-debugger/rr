@@ -42,6 +42,7 @@ def restart_replay(event=0):
     # gdb may not prompt here. It's ok to send an unnecessary 'y'
     # since there is no such command.
     send_gdb('y')
+    send_gdb('c')
 
 def send_gdb(what):
     send(gdb_rr, "%s\n"%what)
