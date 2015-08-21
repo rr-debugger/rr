@@ -306,15 +306,13 @@ Completion ReplaySession::cont_syscall_boundary(
  */
 Completion ReplaySession::enter_syscall(Task* t,
                                         const StepConstraints& constraints) {
-  if (cont_syscall_boundary(t, current_step.syscall.emu, constraints) ==
+  if (cont_syscall_boundary(t, EMULATE, constraints) ==
       INCOMPLETE) {
     return INCOMPLETE;
   }
   t->validate_regs();
-  if (current_step.syscall.emu == EMULATE) {
-    // boot it out of the syscall now.
-    t->finish_emulated_syscall();
-  }
+  // boot it out of the emulated syscall now.
+  t->finish_emulated_syscall();
   return COMPLETE;
 }
 
@@ -324,15 +322,6 @@ Completion ReplaySession::enter_syscall(Task* t,
  */
 Completion ReplaySession::exit_syscall(Task* t,
                                        const StepConstraints& constraints) {
-  ExecOrEmulate emu = current_step.syscall.emu;
-
-  if (emu == EXEC) {
-    if (cont_syscall_boundary(t, emu, constraints) == INCOMPLETE) {
-      return INCOMPLETE;
-    }
-    t->validate_regs();
-  }
-
   t->on_syscall_exit(current_step.syscall.number, current_trace_frame().regs());
 
   t->apply_all_data_records_from_trace();

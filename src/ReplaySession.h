@@ -116,9 +116,6 @@ struct ReplayTraceStep {
       /* The syscall number we expect to
        * enter/exit. */
       int number;
-      /* Is the kernel entry and exit for this
-       * syscall emulated, that is, not executed? */
-      ExecOrEmulate emu;
     } syscall;
 
     int signo;
