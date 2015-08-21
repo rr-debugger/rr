@@ -194,13 +194,13 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
                           unsigned long flags, int expect_syscallno) {
   if (is_failed_syscall(t, trace_frame)) {
     /* creation failed, emulate it */
-    step->action = syscall_action(state);
     return;
   }
   if (state == SYSCALL_ENTRY) {
-    step->action = TSTEP_ENTER_SYSCALL;
     return;
   }
+
+  step->action = TSTEP_RETIRE;
 
   if (Arch::clone == t->regs().original_syscallno()) {
     Registers r = t->regs();
@@ -315,8 +315,6 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   init_scratch_memory(new_task, km, data);
 
   new_task->vm()->after_clone();
-
-  step->action = TSTEP_RETIRE;
 }
 
 static string find_exec_stub(SupportedArch arch) {
@@ -415,14 +413,13 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
 static void process_execve(Task* t, const TraceFrame& trace_frame,
                            SyscallEntryOrExit state, ReplayTraceStep* step) {
   if (SYSCALL_ENTRY == state) {
-    step->action = TSTEP_ENTER_SYSCALL;
+    return;
+  }
+  if (trace_frame.regs().syscall_failed()) {
     return;
   }
 
-  if (trace_frame.regs().syscall_failed()) {
-    step->action = TSTEP_EXIT_SYSCALL;
-    return;
-  }
+  step->action = TSTEP_RETIRE;
 
   /* First, exec a stub program */
   string stub_filename = find_exec_stub(trace_frame.regs().arch());
@@ -561,8 +558,6 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
 
   // Now that memory has been set up, patch LD_PRELOAD and other things in it.
   t->vm()->monkeypatcher().patch_after_exec(t);
-
-  step->action = TSTEP_RETIRE;
 }
 
 /**
@@ -588,34 +583,31 @@ static bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex,
 
 static void process_futex(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, ReplayTraceStep* step) {
-  if (state == SYSCALL_ENTRY) {
-    const Registers& regs = trace_frame.regs();
-    int op = (int)regs.arg2_signed() & FUTEX_CMD_MASK;
-    if (FUTEX_LOCK_PI == op) {
-      remote_ptr<int> futex = regs.arg1();
-      int next_val;
-      if (is_now_contended_pi_futex(t, futex, &next_val)) {
-        // During recording, we waited for the
-        // kernel to update the futex, but
-        // since we emulate SYS_futex in
-        // replay, we need to set it ourselves
-        // here.
-        // XXX this seems wrong. we're setting it while there is still tracee
-        // code to execute before we reach the syscall!
-        t->write_mem(futex, next_val);
-      }
-    }
-    step->action = TSTEP_ENTER_SYSCALL;
+  if (state == SYSCALL_EXIT) {
     return;
   }
 
-  step->action = TSTEP_EXIT_SYSCALL;
+  const Registers& regs = trace_frame.regs();
+  int op = (int)regs.arg2_signed() & FUTEX_CMD_MASK;
+  if (FUTEX_LOCK_PI == op) {
+    remote_ptr<int> futex = regs.arg1();
+    int next_val;
+    if (is_now_contended_pi_futex(t, futex, &next_val)) {
+      // During recording, we waited for the
+      // kernel to update the futex, but
+      // since we emulate SYS_futex in
+      // replay, we need to set it ourselves
+      // here.
+      // XXX this seems wrong. we're setting it while there is still tracee
+      // code to execute before we reach the syscall!
+      t->write_mem(futex, next_val);
+    }
+  }
 }
 
 static void process_brk(Task* t, const TraceFrame& trace_frame,
                         SyscallEntryOrExit state, ReplayTraceStep* step) {
   if (state == SYSCALL_ENTRY) {
-    step->action = TSTEP_ENTER_SYSCALL;
     return;
   }
 
@@ -639,8 +631,6 @@ static void process_brk(Task* t, const TraceFrame& trace_frame,
     ASSERT(t, ret == 0);
     t->vm()->unmap(km.start(), km.size());
   }
-
-  step->action = TSTEP_EXIT_SYSCALL;
 }
 
 /**
@@ -815,18 +805,13 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
                          int flags, off64_t offset_pages,
                          ReplayTraceStep* step) {
   if (SYSCALL_ENTRY == state) {
-    /* We emulate entry for all types of mmap calls,
-     * successful and not. */
-    step->action = TSTEP_ENTER_SYSCALL;
+    return;
+  }
+  if (trace_frame.regs().syscall_failed()) {
     return;
   }
 
-  if (trace_frame.regs().syscall_failed()) {
-    /* Failed maps are fully emulated too; nothing
-     * interesting to do. */
-    step->action = TSTEP_EXIT_SYSCALL;
-    return;
-  }
+  step->action = TSTEP_RETIRE;
 
   /* Successful mmap calls are much more interesting to process. */
   {
@@ -864,22 +849,19 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }
   t->validate_regs();
-
-  step->action = TSTEP_RETIRE;
 }
 
 static void process_shmat(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, int shmid, int shm_flags,
                           ReplayTraceStep* step) {
   if (SYSCALL_ENTRY == state) {
-    step->action = TSTEP_ENTER_SYSCALL;
+    return;
+  }
+  if (trace_frame.regs().syscall_failed()) {
     return;
   }
 
-  if (trace_frame.regs().syscall_failed()) {
-    step->action = TSTEP_EXIT_SYSCALL;
-    return;
-  }
+  step->action = TSTEP_RETIRE;
 
   {
     AutoRemoteSyscalls remote(t);
@@ -897,22 +879,19 @@ static void process_shmat(Task* t, const TraceFrame& trace_frame,
   // the ipc syscall's klugy out-parameter.
   t->apply_all_data_records_from_trace();
   t->validate_regs();
-
-  step->action = TSTEP_RETIRE;
 }
 
 static void process_shmdt(Task* t, const TraceFrame& trace_frame,
                           SyscallEntryOrExit state, remote_ptr<void> addr,
                           ReplayTraceStep* step) {
   if (SYSCALL_ENTRY == state) {
-    step->action = TSTEP_ENTER_SYSCALL;
+    return;
+  }
+  if (trace_frame.regs().syscall_failed()) {
     return;
   }
 
-  if (trace_frame.regs().syscall_failed()) {
-    step->action = TSTEP_EXIT_SYSCALL;
-    return;
-  }
+  step->action = TSTEP_RETIRE;
 
   {
     AutoRemoteSyscalls remote(t);
@@ -924,15 +903,12 @@ static void process_shmdt(Task* t, const TraceFrame& trace_frame,
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }
   t->validate_regs();
-
-  step->action = TSTEP_RETIRE;
 }
 
 static void process_init_buffers(Task* t, SyscallEntryOrExit state,
                                  ReplayTraceStep* step) {
   /* This was a phony syscall to begin with. */
   if (SYSCALL_ENTRY == state) {
-    step->action = TSTEP_ENTER_SYSCALL;
     return;
   }
 
@@ -1081,6 +1057,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   }
 
   step->syscall.number = syscall;
+  step->action = syscall_action(state);
 
   /* Manual implementations of irregular syscalls that need to do more during
    * replay than just modify register and memory state.
@@ -1119,7 +1096,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       // avoid reading 'args' prematurely. When state == SYSCALL_ENTRY,
       // there could be a lot of code to execute before we reach the syscall.
       if (SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
         return;
       }
       switch (Arch::mmap_semantics) {
@@ -1148,11 +1124,10 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       return process_shmdt(t, trace_frame, state, trace_regs.arg1(), step);
 
     case Arch::mremap:
-      // We must emulate mremap because the kernel's choice for the remap
-      // destination can vary (in particular, when we emulate exec it makes
-      // different decisions).
-      step->action = syscall_action(state);
-      if (TSTEP_EXIT_SYSCALL == step->action) {
+      if (state == SYSCALL_EXIT) {
+        // We must emulate mremap because the kernel's choice for the remap
+        // destination can vary (in particular, when we emulate exec it makes
+        // different decisions).
         AutoRemoteSyscalls remote(t);
         // Force the mremap to use the destination address from recording.
         remote_ptr<void> result = remote.syscall_ptr(
@@ -1168,8 +1143,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::mprotect:
     case Arch::arch_prctl:
     case Arch::set_thread_area:
-      step->action = syscall_action(state);
-      if (TSTEP_EXIT_SYSCALL == step->action) {
+      if (state == SYSCALL_EXIT) {
         // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
         Registers r = t->regs();
         r.set_syscallno(t->regs().original_syscallno());
@@ -1191,12 +1165,10 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         default:
           break;
       }
-      step->action = syscall_action(state);
       break;
 
     case Arch::prctl:
-      step->action = syscall_action(state);
-      if (TSTEP_EXIT_SYSCALL == step->action) {
+      if (state == SYSCALL_EXIT) {
         switch ((int)trace_regs.arg1_signed()) {
           case PR_SET_NAME: {
             t->update_prname(trace_regs.arg2());
@@ -1208,18 +1180,15 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
-      if (state == SYSCALL_ENTRY) {
-        step->action = TSTEP_ENTER_SYSCALL;
-        return;
+      if (state == SYSCALL_EXIT) {
+        t->set_regs(trace_regs);
+        t->set_extra_regs(trace_frame.extra_regs());
+        step->action = TSTEP_RETIRE;
       }
-      t->set_regs(trace_regs);
-      t->set_extra_regs(trace_frame.extra_regs());
-      step->action = TSTEP_RETIRE;
       return;
 
     case Arch::write:
     case Arch::writev:
-      step->action = syscall_action(state);
       if (state == SYSCALL_EXIT) {
         /* write*() can be desched'd, but don't use scratch,
          * so we might have saved 0 bytes of scratch after a
@@ -1232,19 +1201,16 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       return process_init_buffers(t, state, step);
 
     case SYS_rrcall_init_preload:
-      if (SYSCALL_ENTRY == state) {
-        step->action = TSTEP_ENTER_SYSCALL;
-        return;
+      if (state == SYSCALL_EXIT) {
+        /* Proceed to syscall exit so we can run our own syscalls. */
+        t->set_return_value_from_trace();
+        t->validate_regs();
+        t->at_preload_init();
+        step->action = TSTEP_RETIRE;
       }
-      /* Proceed to syscall exit so we can run our own syscalls. */
-      t->set_return_value_from_trace();
-      t->validate_regs();
-      t->at_preload_init();
-      step->action = TSTEP_RETIRE;
       return;
 
     case SYS_rrcall_notify_syscall_hook_exit:
-      step->action = syscall_action(state);
       if (SYSCALL_ENTRY == state) {
         ASSERT(t, t->syscallbuf_hdr);
         t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
@@ -1252,7 +1218,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       return;
 
     default:
-      step->action = syscall_action(state);
       return;
   }
 }
