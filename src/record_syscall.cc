@@ -2479,6 +2479,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::brk:
     case Arch::mmap:
     case Arch::mmap2:
+    case Arch::mprotect:
+    case Arch::munmap:
     case Arch::rrcall_init_buffers:
     case Arch::rrcall_init_preload:
     case Arch::rrcall_notify_syscall_hook_exit:

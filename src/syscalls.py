@@ -532,7 +532,7 @@ mmap = IrregularEmulatedSyscall(x86=90, x64=9)
 # the range to generate invalid memory references.  The region is
 # also automatically unmapped when the process is terminated.  On the
 # other hand, closing the file descriptor does not unmap the region.
-munmap = ExecutedSyscall(x86=91, x64=11)
+munmap = IrregularEmulatedSyscall(x86=91, x64=11)
 
 #  int truncate(const char *path, off_t length);
 #  int ftruncate(int fd, off_t length)
@@ -687,7 +687,7 @@ adjtimex = UnsupportedSyscall(x86=124, x64=159)
 # If the calling process tries to access memory in a manner that
 # violates the protection, then the kernel generates a SIGSEGV signal
 # for the process.
-mprotect = ExecutedSyscall(x86=125, x64=10)
+mprotect = IrregularEmulatedSyscall(x86=125, x64=10)
 
 #  int sigprocmask(int how, const sigset_t *set, sigset_t *oldset);
 #

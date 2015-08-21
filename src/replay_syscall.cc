@@ -1223,6 +1223,18 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       }
       return;
 
+    case Arch::munmap:
+    case Arch::mprotect:
+      step->action = syscall_action(state);
+      step->syscall.emu = EMULATE;
+      if (TSTEP_EXIT_SYSCALL == step->action) {
+        AutoRemoteSyscalls remote(t);
+        remote_ptr<void> result = remote.syscall(
+            syscall, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3());
+        ASSERT(t, result == trace_regs.syscall_result());
+      }
+      return;
+
     case Arch::ipc:
       switch ((int)trace_regs.arg1_signed()) {
         case SHMAT:
