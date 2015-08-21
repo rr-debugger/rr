@@ -1240,7 +1240,7 @@ sched_getaffinity = EmulatedSyscall(x86=242, x64=204, arg3="typename Arch::cpu_s
 # TLS entry.  If set_thread_area() finds a free TLS entry, the  value  of
 # u_info->entry_number  is  set  upon  return  to  show  which  entry was
 # changed.
-set_thread_area = ExecutedSyscall(x86=243, x64=205, arg1="typename Arch::user_desc")
+set_thread_area = IrregularEmulatedSyscall(x86=243, x64=205)
 
 get_thread_area = UnsupportedSyscall(x86=244, x64=211)
 io_setup = UnsupportedSyscall(x86=245, x64=206)

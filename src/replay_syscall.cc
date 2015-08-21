@@ -1227,6 +1227,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::munmap:
     case Arch::mprotect:
     case Arch::arch_prctl:
+    case Arch::set_thread_area:
       step->action = syscall_action(state);
       step->syscall.emu = EMULATE;
       if (TSTEP_EXIT_SYSCALL == step->action) {

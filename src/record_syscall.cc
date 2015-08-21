@@ -1786,6 +1786,10 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           1, ParamSize::from_syscall_result<int>((size_t)t->regs().arg2()));
       return (GRND_NONBLOCK & t->regs().arg3()) ? PREVENT_SWITCH : ALLOW_SWITCH;
 
+    case Arch::set_thread_area:
+      syscall_state.reg_parameter<typename Arch::user_desc>(1, IN_OUT);
+      return PREVENT_SWITCH;
+
     case Arch::ipc:
       switch ((int)t->regs().arg1_signed()) {
         case MSGGET:
