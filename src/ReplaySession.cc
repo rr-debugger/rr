@@ -219,7 +219,7 @@ bool ReplaySession::is_ignored_signal(int sig) {
  * interrupted by an unknown trap.
  */
 Completion ReplaySession::cont_syscall_boundary(
-    Task* t, ExecOrEmulate emu, const StepConstraints& constraints) {
+    Task* t, const StepConstraints& constraints) {
   Ticks ticks_period = 0;
   if (constraints.ticks_target > 0) {
     ticks_period = constraints.ticks_target - SKID_SIZE - t->tick_count();
@@ -230,42 +230,11 @@ Completion ReplaySession::cont_syscall_boundary(
     }
   }
 
-  bool is_syscall_entry =
-      !trace_frame.event().is_syscall_event() ||
-      ENTERING_SYSCALL == trace_frame.event().Syscall().state;
-  if (is_syscall_entry) {
-    t->stepped_into_syscall = false;
-  }
-
   ResumeRequest resume_how;
-  if (emu == EMULATE && constraints.is_singlestep()) {
+  if (constraints.is_singlestep()) {
     resume_how = RESUME_SYSEMU_SINGLESTEP;
-  } else if (emu == EMULATE) {
-    resume_how = RESUME_SYSEMU;
-  } else if (constraints.is_singlestep()) {
-    resume_how = RESUME_SINGLESTEP;
-    // Annoyingly, PTRACE_SINGLESTEP doesn't raise
-    // PTRACE_O_SYSGOOD traps.  (Unlike
-    // PTRACE_SINGLESTEP_SYSEMU, which does.)  That means
-    // if we just blindly stepi'd the tracee to a
-    // non-emulated syscall, we'd shoot right past it
-    // without knowing.
-    //
-    // The correct solution to this problem is to emulate
-    // all syscalls during replay and then inject the
-    // executed ones (as we do for mmap).  But for now,
-    // work around this problem by recognizing syscall
-    // insns and issuing PTRACE_SYSCALL to enter them
-    // instead of PTRACE_SINGLESTEP.
-    if (is_at_syscall_instruction(t, t->ip()) || t->stepped_into_syscall) {
-      resume_how = RESUME_SYSCALL;
-      // Leave this breadcrumb on syscall entry so
-      // that we know to issue PTRACE_SYSCALL to
-      // exit the syscall the next time we stepi.
-      t->stepped_into_syscall = is_syscall_entry;
-    }
   } else {
-    resume_how = RESUME_SYSCALL;
+    resume_how = RESUME_SYSEMU;
   }
   if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD &&
       (resume_how == RESUME_SYSEMU_SINGLESTEP ||
@@ -280,7 +249,7 @@ Completion ReplaySession::cont_syscall_boundary(
 
   t->child_sig = t->pending_sig();
   if (is_ignored_signal(t->child_sig)) {
-    return cont_syscall_boundary(t, emu, constraints);
+    return cont_syscall_boundary(t, constraints);
   }
 
   if (SIGTRAP == t->child_sig) {
@@ -306,8 +275,7 @@ Completion ReplaySession::cont_syscall_boundary(
  */
 Completion ReplaySession::enter_syscall(Task* t,
                                         const StepConstraints& constraints) {
-  if (cont_syscall_boundary(t, EMULATE, constraints) ==
-      INCOMPLETE) {
+  if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
     return INCOMPLETE;
   }
   t->validate_regs();
@@ -982,7 +950,7 @@ Completion ReplaySession::skip_desched_ioctl(
     Task* t, ReplayDeschedState* ds, const StepConstraints& constraints) {
   /* Skip ahead to the syscall entry. */
   if (DESCHED_ENTER == ds->state &&
-      cont_syscall_boundary(t, EMULATE, constraints) == INCOMPLETE) {
+      cont_syscall_boundary(t, constraints) == INCOMPLETE) {
     return INCOMPLETE;
   }
   ds->state = DESCHED_EXIT;
@@ -1096,8 +1064,8 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
 }
 
 template <typename Arch>
-static void perform_syscallbuf_syscall_side_effects_arch(Task* t,
-    const Registers& regs) {
+static void perform_syscallbuf_syscall_side_effects_arch(
+    Task* t, const Registers& regs) {
   switch (regs.original_syscallno()) {
     case Arch::madvise:
       if ((int)regs.arg3() == MADV_DONTNEED) {
@@ -1106,8 +1074,8 @@ static void perform_syscallbuf_syscall_side_effects_arch(Task* t,
         // XXX Note that for non-anonymous mappings this might not reproduce
         // exactly the behavior we saw during recording!
         AutoRemoteSyscalls remote(t);
-        remote.syscall(regs.original_syscallno(),
-            regs.arg1(), regs.arg2(), MADV_DONTNEED);
+        remote.syscall(regs.original_syscallno(), regs.arg1(), regs.arg2(),
+                       MADV_DONTNEED);
       }
       break;
     default:
@@ -1116,9 +1084,9 @@ static void perform_syscallbuf_syscall_side_effects_arch(Task* t,
 }
 
 static void perform_syscallbuf_syscall_side_effects(Task* t,
-    const Registers& regs) {
-  RR_ARCH_FUNCTION(perform_syscallbuf_syscall_side_effects_arch, t->arch(),
-      t, regs);
+                                                    const Registers& regs) {
+  RR_ARCH_FUNCTION(perform_syscallbuf_syscall_side_effects_arch, t->arch(), t,
+                   regs);
 }
 
 /**
@@ -1137,8 +1105,6 @@ Completion ReplaySession::flush_one_syscall(
       (struct syscallbuf_record*)((uint8_t*)t->syscallbuf_hdr->recs +
                                   current_step.flush.syscall_record_offset);
   int call = rec_rec->syscallno;
-  // TODO: use syscall_defs table information to determine this.
-  ExecOrEmulate emu = EMULATE;
 
   switch (current_step.flush.state) {
     case FLUSH_START:
@@ -1179,7 +1145,7 @@ Completion ReplaySession::flush_one_syscall(
 
     case FLUSH_ENTER:
       LOG(debug) << "  advancing to buffered syscall entry";
-      if (cont_syscall_boundary(t, emu, constraints) == INCOMPLETE) {
+      if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
         return INCOMPLETE;
       }
       assert_at_buffered_syscall(t, call);
@@ -1197,20 +1163,9 @@ Completion ReplaySession::flush_one_syscall(
       // Restore saved trace data.
       memcpy(child_rec->extra_data, rec_rec->extra_data, rec_rec->size);
 
-      // Restore return value.
-      // TODO: try to share more code with cont_syscall_boundary()
-      if (emu == EXEC) {
-        if (cont_syscall_boundary(t, emu, constraints) == INCOMPLETE) {
-          return INCOMPLETE;
-        }
-        assert_at_buffered_syscall(t, call);
-      }
-
       Registers saved_regs = t->regs();
 
-      if (emu == EMULATE) {
-        t->finish_emulated_syscall();
-      }
+      t->finish_emulated_syscall();
 
       perform_syscallbuf_syscall_side_effects(t, saved_regs);
 
@@ -1287,7 +1242,7 @@ Completion ReplaySession::flush_syscallbuf(Task* t,
 
 Completion ReplaySession::patch_next_syscall(
     Task* t, const StepConstraints& constraints) {
-  if (cont_syscall_boundary(t, EMULATE, constraints) == INCOMPLETE) {
+  if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
     return INCOMPLETE;
   }
   bool did_patch = t->vm()->monkeypatcher().try_patch_syscall(t);

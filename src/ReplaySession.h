@@ -102,8 +102,6 @@ enum ReplayTraceStepType {
   TSTEP_RETIRE,
 };
 
-enum ExecOrEmulate { EXEC = 0, EMULATE = 1 };
-
 /**
  * rep_trace_step is saved in Session and cloned with its Session, so it needs
  * to be simple data, i.e. not holding pointers to per-Session data.
@@ -347,8 +345,7 @@ private:
                                      const StepConstraints& constraints);
   Completion try_one_trace_step(Task* t,
                                 const StepConstraints& step_constraints);
-  Completion cont_syscall_boundary(Task* t, ExecOrEmulate emu,
-                                   const StepConstraints& constraints);
+  Completion cont_syscall_boundary(Task* t, const StepConstraints& constraints);
   Completion enter_syscall(Task* t, const StepConstraints& constraints);
   Completion exit_syscall(Task* t, const StepConstraints& constraints);
   Completion exit_task(Task* t, const StepConstraints& constraints);
