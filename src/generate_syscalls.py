@@ -36,25 +36,6 @@ def write_syscall_enum_for_tests(f, arch):
     f.write("};\n")
     f.write("\n")
 
-def write_is_always_emulated_syscall(f):
-    semantics_to_retval = { syscalls.ReplaySemantics.EMU: 'true',
-                            syscalls.ReplaySemantics.EXEC: 'false' }
-
-    f.write("template <typename Arch> static bool is_always_emulated_syscall_arch(int syscall);\n");
-    f.write("\n");
-    for specializer, arch in [("X86Arch", "x86"), ("X64Arch", "x64")]:
-        f.write("template<> bool is_always_emulated_syscall_arch<%s>(int syscallno) {\n" % specializer)
-        f.write("  switch (syscallno) {\n")
-        for name, obj in syscalls.all():
-            f.write("    case %s::%s: return %s;\n"
-                    % (specializer, name, semantics_to_retval[obj.semantics]))
-        f.write("    default:\n")
-        f.write("      FATAL() << \"Unknown syscall \" << syscallno;\n")
-        f.write("      return true;\n")
-        f.write("  }\n")
-        f.write("}\n")
-        f.write("\n")
-
 def write_syscallname_arch(f):
     f.write("template <typename Arch> static std::string syscallname_arch(int syscall);\n")
     f.write("\n");
@@ -147,8 +128,8 @@ def write_syscall_defs_table(f):
         arch_syscalls = sorted(syscalls.for_arch(arch), key=lambda x: getattr(x[1], arch))
         for name, obj in arch_syscalls:
             if isinstance(obj, syscalls.RegularSyscall):
-                f.write("  { %s::%s, { rep_%s } },\n"
-                        % (specializer, name, obj.semantics))
+                f.write("  { %s::%s, { rep_EMU } },\n"
+                        % (specializer, name))
             elif isinstance(obj, (syscalls.IrregularEmulatedSyscall, syscalls.RestartSyscall)):
                 f.write("  { %s::%s, { rep_EMU } },\n" % (specializer, name))
             elif isinstance(obj, syscalls.UnsupportedSyscall):
@@ -167,7 +148,6 @@ def write_check_syscall_numbers(f):
 generators_for = {
     'AssemblyTemplates': lambda f: assembly_templates.generate(f),
     'CheckSyscallNumbers': write_check_syscall_numbers,
-    'IsAlwaysEmulatedSyscall': write_is_always_emulated_syscall,
     'SyscallDefsTable': write_syscall_defs_table,
     'SyscallEnumsX86': lambda f: write_syscall_enum(f, 'x86'),
     'SyscallEnumsX64': lambda f: write_syscall_enum(f, 'x64'),

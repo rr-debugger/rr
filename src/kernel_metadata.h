@@ -35,13 +35,6 @@ const char* ptrace_req_name(int request);
 const char* signal_name(int sig);
 
 /**
- * Return true iff replaying |syscall| will never ever require
- * actually executing it, i.e. replay of |syscall| is always
- * emulated.
- */
-bool is_always_emulated_syscall(int syscall, SupportedArch arch);
-
-/**
  * Return true if this is some kind of sigreturn syscall.
  */
 bool is_sigreturn(int syscall, SupportedArch arch);

@@ -99,23 +99,10 @@ ReplaySession::shr_ptr ReplaySession::clone() {
 }
 
 /**
- * Return true if |t| appears to have entered but not exited an atomic
- * syscall (one that can't be interrupted).
- */
-static bool is_atomic_syscall(Task* t, const TraceFrame& frame) {
-  return frame.event().is_syscall_event() &&
-         frame.event().Syscall().state == EXITING_SYSCALL &&
-         !is_always_emulated_syscall(frame.event().Syscall().number, t->arch());
-}
-
-/**
  * Return true if it's possible/meaningful to make a checkpoint at the
  * |frame| that |t| will replay.
  */
 static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
-  if (is_atomic_syscall(t, frame)) {
-    return false;
-  }
   const Event& ev = frame.event();
   if (ev.has_ticks_slop()) {
     return false;
@@ -127,8 +114,7 @@ static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
     // don't event bother trying to checkpoint.
     case EV_SYSCALLBUF_RESET:
     // RESETs are usually inserted in between syscall
-    // entry/exit.  Help the |is_atomic_syscall()|
-    // heuristics by not attempting to checkpoint at
+    // entry/exit.  Do not attempting to checkpoint at
     // RESETs.  Users would never want to do that anyway.
     case EV_TRACE_TERMINATION:
       // There's nothing to checkpoint at the end of an

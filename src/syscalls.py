@@ -13,25 +13,12 @@ class BaseSyscall(object):
         self.x64 = x64
         assert len(kwargs) is 0
 
-class ReplaySemantics(object):
-    """A class representing how rr replays syscalls."""
-
-    EMU = "EMU"                 # Syscall is fully emulated.
-    EXEC = "EXEC"               # Syscall is fully executed.
-
-    ALL_SEMANTICS = ["EMU", "EXEC"]
-
-    def __init__(self, semantics):
-        assert semantics in self.ALL_SEMANTICS
-        self.semantics = semantics
-
-class RestartSyscall(BaseSyscall, ReplaySemantics):
+class RestartSyscall(BaseSyscall):
     """A special class for the restart_syscall syscall."""
     def __init__(self, x86=None, x64=None):
         BaseSyscall.__init__(self, x86=x86, x64=x64)
-        ReplaySemantics.__init__(self, ReplaySemantics.EXEC)
 
-class UnsupportedSyscall(BaseSyscall, ReplaySemantics):
+class UnsupportedSyscall(BaseSyscall):
     """A syscall that is unsupported by rr.
 
     It is useful to expose these syscalls to the system, so that proper names
@@ -40,7 +27,6 @@ class UnsupportedSyscall(BaseSyscall, ReplaySemantics):
     """
     def __init__(self, x86=None, x64=None):
         BaseSyscall.__init__(self, x86=x86, x64=x64)
-        ReplaySemantics.__init__(self, ReplaySemantics.EXEC)
 
 class InvalidSyscall(UnsupportedSyscall):
     """A syscall that is unsupported by rr and unimplemented by Linux.
@@ -52,7 +38,7 @@ class InvalidSyscall(UnsupportedSyscall):
     def __init__(self, x86=None, x64=None):
         UnsupportedSyscall.__init__(self, x86=x86, x64=x64)
 
-class RegularSyscall(BaseSyscall, ReplaySemantics):
+class RegularSyscall(BaseSyscall):
     """A syscall for which replay information may be recorded automatically.
 
     The arguments required for rr to record may be specified directly
@@ -65,10 +51,7 @@ class RegularSyscall(BaseSyscall, ReplaySemantics):
     and 64-bit processes), types should be specified using Arch instead of
     referring directly to the host system types.
     """
-    def __init__(self, semantics=None, **kwargs):
-        assert semantics in [ReplaySemantics.EMU,
-                             ReplaySemantics.EXEC]
-        ReplaySemantics.__init__(self, semantics)
+    def __init__(self, **kwargs):
         for a in range(1,6):
             arg = 'arg' + str(a)
             if arg in kwargs:
@@ -78,33 +61,14 @@ class RegularSyscall(BaseSyscall, ReplaySemantics):
 
 class EmulatedSyscall(RegularSyscall):
     """A wrapper for regular syscalls.
-
-    This class should be used in preference to manually passing the semantics
-    keyword argument.  Its constructor ensures the correct value is passed for
-    the semantics argument.
     """
     def __init__(self, **kwargs):
-        RegularSyscall.__init__(self, semantics=ReplaySemantics.EMU, **kwargs)
+        RegularSyscall.__init__(self, **kwargs)
 
-class ExecutedSyscall(RegularSyscall):
-    """A wrapper for regular syscalls.
-
-    This class should be used in preference to manually passing the semantics
-    keyword argument.  Its constructor ensures the correct value is passed for
-    the semantics argument.
+class IrregularEmulatedSyscall(BaseSyscall):
+    """A wrapper for irregular syscalls.
     """
     def __init__(self, **kwargs):
-        RegularSyscall.__init__(self, semantics=ReplaySemantics.EXEC, **kwargs)
-
-class IrregularEmulatedSyscall(BaseSyscall, ReplaySemantics):
-    """A wrapper for irregular syscalls having EMU semantics.
-
-    This class should be used in preference to manually passing the semantics
-    keyword argument.  Its constructor ensures the correct value is passed for
-    the semantics argument.
-    """
-    def __init__(self, **kwargs):
-        ReplaySemantics.__init__(self, ReplaySemantics.EMU)
         BaseSyscall.__init__(self, **kwargs)
 
 #  void exit(int status)
