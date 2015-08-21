@@ -18,9 +18,8 @@ class ReplaySemantics(object):
 
     EMU = "EMU"                 # Syscall is fully emulated.
     EXEC = "EXEC"               # Syscall is fully executed.
-    MAY_EXEC = "MAY_EXEC"       # Syscall may be fully executed
 
-    ALL_SEMANTICS = ["EMU", "EXEC", "MAY_EXEC"]
+    ALL_SEMANTICS = ["EMU", "EXEC"]
 
     def __init__(self, semantics):
         assert semantics in self.ALL_SEMANTICS
@@ -97,15 +96,7 @@ class ExecutedSyscall(RegularSyscall):
     def __init__(self, **kwargs):
         RegularSyscall.__init__(self, semantics=ReplaySemantics.EXEC, **kwargs)
 
-class IrregularSyscall(BaseSyscall, ReplaySemantics):
-    """A base class for irregular syscalls.  Not to be manually instantiated."""
-    def __init__(self, semantics=None, **kwargs):
-        assert semantics in [ReplaySemantics.MAY_EXEC,
-                             ReplaySemantics.EMU]
-        ReplaySemantics.__init__(self, semantics)
-        BaseSyscall.__init__(self, **kwargs)
-
-class IrregularEmulatedSyscall(IrregularSyscall):
+class IrregularEmulatedSyscall(BaseSyscall, ReplaySemantics):
     """A wrapper for irregular syscalls having EMU semantics.
 
     This class should be used in preference to manually passing the semantics
@@ -113,17 +104,8 @@ class IrregularEmulatedSyscall(IrregularSyscall):
     the semantics argument.
     """
     def __init__(self, **kwargs):
-        IrregularSyscall.__init__(self, semantics=ReplaySemantics.EMU, **kwargs)
-
-class IrregularMayExecSyscall(IrregularSyscall):
-    """A wrapper for irregular syscalls having MAY_EXEC semantics.
-
-    This class should be used in preference to manually passing the semantics
-    keyword argument.  Its constructor ensures the correct value is passed for
-    the semantics argument.
-    """
-    def __init__(self, **kwargs):
-        IrregularSyscall.__init__(self, semantics=ReplaySemantics.MAY_EXEC, **kwargs)
+        ReplaySemantics.__init__(self, ReplaySemantics.EMU)
+        BaseSyscall.__init__(self, **kwargs)
 
 #  void exit(int status)
 #

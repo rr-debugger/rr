@@ -38,8 +38,7 @@ def write_syscall_enum_for_tests(f, arch):
 
 def write_is_always_emulated_syscall(f):
     semantics_to_retval = { syscalls.ReplaySemantics.EMU: 'true',
-                            syscalls.ReplaySemantics.EXEC: 'false',
-                            syscalls.ReplaySemantics.MAY_EXEC: 'false' }
+                            syscalls.ReplaySemantics.EXEC: 'false' }
 
     f.write("template <typename Arch> static bool is_always_emulated_syscall_arch(int syscall);\n");
     f.write("\n");
@@ -150,7 +149,7 @@ def write_syscall_defs_table(f):
             if isinstance(obj, syscalls.RegularSyscall):
                 f.write("  { %s::%s, { rep_%s } },\n"
                         % (specializer, name, obj.semantics))
-            elif isinstance(obj, (syscalls.IrregularSyscall, syscalls.RestartSyscall)):
+            elif isinstance(obj, (syscalls.IrregularEmulatedSyscall, syscalls.RestartSyscall)):
                 f.write("  { %s::%s, { rep_EMU } },\n" % (specializer, name))
             elif isinstance(obj, syscalls.UnsupportedSyscall):
                 pass
