@@ -683,7 +683,7 @@ sigreturn = EmulatedSyscall(x86=119)
 #
 #  long sys_clone(unsigned long clone_flags, unsigned long newsp, void __user
 #*parent_tid, void __user *child_tid, struct pt_regs *regs)
-clone = IrregularMayExecSyscall(x86=120, x64=56)
+clone = IrregularEmulatedSyscall(x86=120, x64=56)
 
 setdomainname = UnsupportedSyscall(x86=121, x64=171)
 
@@ -947,7 +947,7 @@ getresgid = EmulatedSyscall(x86=171, x64=120, arg1="typename Arch::legacy_gid_t"
 # values defined in <linux/prctl.h>), and further arguments with a
 # significance depending on the first one.
 #
-prctl = IrregularMayExecSyscall(x86=172, x64=157)
+prctl = IrregularEmulatedSyscall(x86=172, x64=157)
 
 rt_sigreturn = EmulatedSyscall(x86=173, x64=15)
 rt_sigaction = EmulatedSyscall(x86=174, x64=13, arg3="typename Arch::kernel_sigaction")
