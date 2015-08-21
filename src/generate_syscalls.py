@@ -123,17 +123,12 @@ def write_syscall_helper_functions(f):
 
 def write_syscall_defs_table(f):
     for specializer, arch in [("X86Arch", "x86"), ("X64Arch", "x64")]:
-        f.write("template<> syscall_defs<%s>::Table syscall_defs<%s>::table = {\n"
+        f.write("template<> SyscallDefs<%s>::Table SyscallDefs<%s>::table = {\n"
                 % (specializer, specializer))
         arch_syscalls = sorted(syscalls.for_arch(arch), key=lambda x: getattr(x[1], arch))
         for name, obj in arch_syscalls:
-            if isinstance(obj, syscalls.RegularSyscall):
-                f.write("  { %s::%s, { rep_EMU } },\n"
-                        % (specializer, name))
-            elif isinstance(obj, (syscalls.IrregularEmulatedSyscall, syscalls.RestartSyscall)):
-                f.write("  { %s::%s, { rep_EMU } },\n" % (specializer, name))
-            elif isinstance(obj, syscalls.UnsupportedSyscall):
-                pass
+            if not isinstance(obj, syscalls.UnsupportedSyscall):
+                f.write("  { %s::%s },\n" % (specializer, name))
         f.write("};\n")
         f.write("\n")
 

@@ -48,25 +48,18 @@ using namespace rr;
 
 enum SyscallDefType {
   rep_UNDEFINED = 0, /* NB: this symbol must have the value 0 */
-  rep_EMU,
-  rep_EXEC
-};
-struct syscall_def {
-  /* See syscalls.py for documentation on these values. */
-  SyscallDefType type;
+  rep_EMU
 };
 
-typedef pair<size_t, syscall_def> SyscallInit;
-
-template <size_t N> struct SyscallTable : array<syscall_def, N> {
-  SyscallTable(initializer_list<SyscallInit> init) {
+template <size_t N> struct SyscallTable : array<SyscallDefType, N> {
+  SyscallTable(initializer_list<int> init) {
     for (auto& i : init) {
-      (*this)[i.first] = i.second;
+      (*this)[i] = rep_EMU;
     }
   }
 };
 
-template <typename Arch> struct syscall_defs {
+template <typename Arch> struct SyscallDefs {
   // Reserve a final element which is guaranteed to be an undefined syscall.
   // Negative and out-of-range syscall numbers are mapped to this element.
   typedef SyscallTable<Arch::SYSCALL_COUNT + 1> Table;
@@ -1124,18 +1117,17 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     }
   }
 
-  auto& table = syscall_defs<Arch>::table;
+  auto& table = SyscallDefs<Arch>::table;
   if (syscall < 0 || syscall >= int(array_length(table))) {
     // map to an invalid syscall.
     syscall = array_length(table) - 1;
     // we ensure this when we construct the table
-    assert(table[syscall].type == rep_UNDEFINED);
+    assert(table[syscall] == rep_UNDEFINED);
   }
 
-  const struct syscall_def* def = &table[syscall];
   step->syscall.number = syscall;
 
-  if (def->type == rep_UNDEFINED) {
+  if (table[syscall] == rep_UNDEFINED) {
     ASSERT(t, trace_regs.syscall_result_signed() == -ENOSYS)
         << "Valid but unhandled syscallno " << syscall;
     step->action = syscall_action(state);
@@ -1320,7 +1312,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     default:
       step->action = syscall_action(state);
-      step->syscall.emu = rep_EXEC == def->type ? EXEC : EMULATE;
+      step->syscall.emu = EMULATE;
       return;
   }
 }
