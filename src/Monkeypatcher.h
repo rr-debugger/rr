@@ -28,6 +28,8 @@ class Task;
  *
  * 3) Patch syscall instructions whose following instructions match a known
  * pattern to call the syscall hook.
+ *
+ * Monkeypatcher only runs during recording, never replay.
  */
 class Monkeypatcher {
 public:
@@ -38,14 +40,12 @@ public:
    * Apply any necessary patching immediately after exec.
    * In this hook we patch everything that doesn't depend on the preload
    * library being loaded.
-   * All patches are recorded to the trace; don't call this during replay.
    */
   void patch_after_exec(Task* t);
 
   /**
    * During librrpreload initialization, apply patches that require the
    * preload library to be initialized.
-   * All patches are recorded to the trace; don't call this during replay.
    */
   void patch_at_preload_init(Task* t);
 
@@ -55,7 +55,6 @@ public:
    * as normal. If this returns true, patching succeeded and the syscall
    * was aborted; ip() has been reset to the start of the patched syscall,
    * and execution should resume normally to execute the patched code.
-   * All patches are recorded to the trace; don't call this during replay.
    * Zero or more mapping operations are also recorded to the trace and must
    * be replayed.
    */
@@ -75,7 +74,6 @@ public:
   /**
    * Apply any necessary patching immediately after an mmap. We use this to
    * patch libpthread.so.
-   * All patches are recorded to the trace; don't call this during replay.
    */
   void patch_after_mmap(Task* t, remote_ptr<void> start, size_t size,
                         size_t offset_pages, ScopedFd& open_fd);

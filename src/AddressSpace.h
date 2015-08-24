@@ -3,6 +3,7 @@
 #ifndef RR_ADDRESS_SPACE_H_
 #define RR_ADDRESS_SPACE_H_
 
+#include <assert.h>
 #include <inttypes.h>
 #include <linux/kdev_t.h>
 #include <sys/mman.h>
@@ -523,7 +524,10 @@ public:
   ScopedFd& mem_fd() { return child_mem_fd; }
   void set_mem_fd(ScopedFd&& fd) { child_mem_fd = std::move(fd); }
 
-  Monkeypatcher& monkeypatcher() { return monkeypatch_state; }
+  Monkeypatcher& monkeypatcher() {
+    assert(monkeypatch_state);
+    return *monkeypatch_state;
+  }
 
   /**
    * Call this only during recording.
@@ -883,7 +887,7 @@ private:
   /* First mapped byte of the vdso. */
   remote_ptr<void> vdso_start_addr;
   // The monkeypatcher that's handling this address space.
-  Monkeypatcher monkeypatch_state;
+  std::unique_ptr<Monkeypatcher> monkeypatch_state;
   // The watchpoints set for tasks in this VM.  Watchpoints are
   // programmed per Task, but we track them per address space on
   // behalf of debuggers that assume that model.

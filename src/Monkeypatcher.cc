@@ -278,9 +278,6 @@ static remote_ptr<uint8_t> allocate_extended_jump(
  * 2GB of the patch site, within which we allocate instructions that can jump
  * anywhere in memory. We don't really need this on x86, but we do it there
  * too for consistency.
- *
- * This is all implemented to be completely deterministic so we allocate, patch
- * etc in exactly the same way during recording and replay.
  */
 template <typename JumpPatch, typename ExtendedJumpPatch, typename StubPatch,
           uint32_t trampoline_call_end>

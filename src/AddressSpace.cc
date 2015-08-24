@@ -460,7 +460,7 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
     return;
   }
 
-  monkeypatch_state.patch_at_preload_init(t);
+  monkeypatch_state->patch_at_preload_init(t);
 }
 
 void AddressSpace::at_preload_init(Task* t) {
@@ -1005,6 +1005,8 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
       exec_count(exec_count),
       is_clone(false),
       session_(&t->session()),
+      monkeypatch_state(t->session().is_recording() ? new Monkeypatcher()
+                                                    : nullptr),
       child_mem_fd(-1),
       first_run_event_(0) {
   // TODO: this is a workaround of
@@ -1041,7 +1043,9 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       mem(o.mem),
       session_(session),
       vdso_start_addr(o.vdso_start_addr),
-      monkeypatch_state(o.monkeypatch_state),
+      monkeypatch_state(o.monkeypatch_state
+                            ? new Monkeypatcher(*o.monkeypatch_state)
+                            : nullptr),
       traced_syscall_ip_(o.traced_syscall_ip_),
       untraced_syscall_ip_(o.untraced_syscall_ip_),
       privileged_traced_syscall_ip_(o.privileged_traced_syscall_ip_),
