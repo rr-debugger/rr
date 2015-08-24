@@ -161,13 +161,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       if (flags.dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);
       }
-      TraceReader::RawData data;
-      while (process_raw_data && trace.read_raw_data_for_frame(frame, data)) {
-        if (flags.dump_recorded_data_metadata) {
-          fprintf(out, "  { addr:%p, length:%p }\n", (void*)data.addr.as_int(),
-                  (void*)data.data.size());
-        }
-      }
+
       while (true) {
         TraceReader::MappedData data;
         bool found;
@@ -181,6 +175,14 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
               "  { map_file:\"%s\", addr:%p, length:%p, file_offset:0x%llx }\n",
               km.fsname().c_str(), (void*)km.start().as_int(), (void*)km.size(),
               (long long)km.file_offset_bytes());
+        }
+      }
+
+      TraceReader::RawData data;
+      while (process_raw_data && trace.read_raw_data_for_frame(frame, data)) {
+        if (flags.dump_recorded_data_metadata) {
+          fprintf(out, "  { addr:%p, length:%p }\n", (void*)data.addr.as_int(),
+                  (void*)data.data.size());
         }
       }
       if (!flags.raw_dump) {
