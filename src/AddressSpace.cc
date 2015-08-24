@@ -448,9 +448,8 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
 
-  ASSERT(t, !t->session().as_record() ||
-                t->session().as_record()->use_syscall_buffer() ==
-                    params.syscallbuf_enabled)
+  ASSERT(t, t->session().as_record()->use_syscall_buffer() ==
+                params.syscallbuf_enabled)
       << "Tracee thinks syscallbuf is "
       << (params.syscallbuf_enabled ? "en" : "dis")
       << "abled, but tracer thinks "

@@ -996,6 +996,32 @@ void Task::move_ip_before_breakpoint() {
   set_regs(r);
 }
 
+// TODO de-dup
+static void advance_syscall(Task* t) {
+  do {
+    t->cont_syscall();
+  } while (t->is_ptrace_seccomp_event() ||
+           ReplaySession::is_ignored_signal(t->pending_sig()));
+  assert(t->ptrace_event() == 0);
+}
+
+void Task::exit_syscall_and_prepare_restart() {
+  Registers r = regs();
+  int syscallno = r.original_syscallno();
+  r.set_original_syscallno(syscall_number_for_gettid(r.arch()));
+  set_regs(r);
+  // This exits the hijacked SYS_gettid.  Now the tracee is
+  // ready to do our bidding.
+  advance_syscall(this);
+
+  // Restore these regs to what they would have been just before
+  // the tracee trapped at the syscall.
+  r.set_original_syscallno(-1);
+  r.set_syscallno(syscallno);
+  r.set_ip(r.ip() - syscall_instruction_length(r.arch()));
+  set_regs(r);
+}
+
 static string prname_from_exe_image(const string& e) {
   size_t last_slash = e.rfind('/');
   return e.substr(last_slash == e.npos ? 0 : last_slash + 1);
@@ -2880,7 +2906,6 @@ static remote_ptr<char> get_syscallbuf_fds_disabled(Task* t) {
 }
 
 void Task::at_preload_init() {
-  vm()->at_preload_init(this);
   syscallbuf_fds_disabled_child = get_syscallbuf_fds_disabled(this);
   fd_table()->init_syscallbuf_fds_disabled(this);
 }

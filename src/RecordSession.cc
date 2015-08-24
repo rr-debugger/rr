@@ -1181,6 +1181,9 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
       }
       // We just entered a syscall.
       if (!maybe_restart_syscall(t)) {
+        // Emit FLUSH_SYSCALLBUF if necessary before we do any patching work
+        t->maybe_flush_syscallbuf();
+
         if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
           // Syscall was patched. Emit event and continue execution.
           t->record_event(Event(EV_PATCH_SYSCALL, NO_EXEC_INFO, t->arch()));

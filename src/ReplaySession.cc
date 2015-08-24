@@ -1245,8 +1245,31 @@ Completion ReplaySession::patch_next_syscall(
   if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
     return INCOMPLETE;
   }
-  bool did_patch = t->vm()->monkeypatcher().try_patch_syscall(t);
-  ASSERT(t, did_patch) << "Should have patched the syscall, but did not!";
+
+  t->exit_syscall_and_prepare_restart();
+
+  // All patching effects have been recorded to the trace.
+  // First, replay any memory mapping done by Monkeypatcher. There should be
+  // at most one but we might as well be general.
+  while (true) {
+    TraceReader::MappedData data;
+    bool found;
+    KernelMapping km = t->trace_reader().read_mapped_region(&data, &found);
+    if (!found) {
+      break;
+    }
+    AutoRemoteSyscalls remote(t);
+    ASSERT(t, km.flags() & MAP_ANONYMOUS);
+    auto result = remote.mmap_syscall(km.start(), km.size(), km.prot(),
+                                      km.flags(), -1, 0);
+    ASSERT(t, result == km.start());
+    t->vm()->map(km.start(), km.size(), km.prot(), km.flags(), 0, string(),
+                 KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km,
+                 TraceWriter::PATCH_MAPPING);
+  }
+
+  // Now replay all data records.
+  t->apply_all_data_records_from_trace();
   return COMPLETE;
 }
 

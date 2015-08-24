@@ -637,6 +637,12 @@ public:
   void move_ip_before_breakpoint();
 
   /**
+   * Assuming we've just entered a syscall, exit that syscall and reset
+   * state to reenter the syscall just as it was called the first time.
+   */
+  void exit_syscall_and_prepare_restart();
+
+  /**
    * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or
    * /proc/tid/comm would say that the task's name is.
    */

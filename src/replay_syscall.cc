@@ -1199,11 +1199,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case SYS_rrcall_init_preload:
       if (state == SYSCALL_EXIT) {
-        /* Proceed to syscall exit so we can run our own syscalls. */
-        t->set_return_value_from_trace();
-        t->validate_regs();
         t->at_preload_init();
-        step->action = TSTEP_RETIRE;
       }
       return;
 

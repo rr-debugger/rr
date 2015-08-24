@@ -225,7 +225,6 @@ static remote_ptr<uint8_t> allocate_extended_jump(
         (current->map.end() + page_size()).cast<uint8_t>();
     int64_t offset = addr - from_end;
     if ((int32_t)offset != offset) {
-      sleep(1000);
       LOG(debug) << "Can't find space close enough for the jump";
       return nullptr;
     }
@@ -242,6 +241,8 @@ static remote_ptr<uint8_t> allocate_extended_jump(
       t->vm()->map(addr, page_size(), prot, flags, 0, string(),
                    KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                    &recorded);
+      t->trace_writer().write_mapped_region(recorded, recorded.fake_stat(),
+                                            TraceWriter::PATCH_MAPPING);
     }
 
     pages.push_back(Monkeypatcher::ExtendedJumpPage(addr));
@@ -252,7 +253,7 @@ static remote_ptr<uint8_t> allocate_extended_jump(
   remote_ptr<uint8_t> jump_addr = page->addr + page->allocated;
   substitute_extended_jump<ExtendedJumpPatch>(
       jump_patch, jump_addr.as_int() + sizeof(jump_patch), to_start.as_int());
-  t->write_bytes(jump_addr, jump_patch);
+  write_and_record_bytes(t, jump_addr, jump_patch);
   page->allocated += sizeof(jump_patch);
   return jump_addr;
 }
@@ -318,7 +319,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
       << "How did the stub area get far away from the hooks?";
 
   JumpPatch::substitute(jump_patch, jump_offset32);
-  t->write_bytes(jump_patch_start, jump_patch);
+  write_and_record_bytes(t, jump_patch_start, jump_patch);
 
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
@@ -326,12 +327,13 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
   uint8_t nops[syscall_instruction_length(x86_64) +
                hook.next_instruction_length - sizeof(jump_patch)];
   memset(nops, NOP, sizeof(nops));
-  t->write_mem(jump_patch_start + sizeof(jump_patch), nops, sizeof(nops));
+  write_and_record_mem(t, jump_patch_start + sizeof(jump_patch), nops,
+                       sizeof(nops));
 
   // Now write out the stub
   substitute<StubPatch>(stub_patch, jump_patch_end.as_int(),
                         trampoline_call_offset32);
-  t->write_bytes(stub_patch_start, stub_patch);
+  write_and_record_bytes(t, stub_patch_start, stub_patch);
 
   return true;
 }
@@ -355,15 +357,6 @@ bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
 static bool patch_syscall_with_hook(Monkeypatcher& patcher, Task* t,
                                     const syscall_patch_hook& hook) {
   RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), patcher, t, hook);
-}
-
-// TODO de-dup
-static void advance_syscall(Task* t) {
-  do {
-    t->cont_syscall();
-  } while (t->is_ptrace_seccomp_event() ||
-           ReplaySession::is_ignored_signal(t->pending_sig()));
-  assert(t->ptrace_event() == 0);
 }
 
 static void operator<<(ostream& stream, const vector<uint8_t>& bytes) {
@@ -411,18 +404,7 @@ bool Monkeypatcher::try_patch_syscall(Task* t) {
     if (memcmp(next_instruction.data(), hook.next_instruction_bytes,
                hook.next_instruction_length) == 0) {
       // Get out of executing the current syscall before we patch it.
-      r.set_original_syscallno(syscall_number_for_gettid(t->arch()));
-      t->set_regs(r);
-      // This exits the hijacked SYS_gettid.  Now the tracee is
-      // ready to do our bidding.
-      advance_syscall(t);
-
-      // Restore these regs to what they would have been just before
-      // the tracee trapped at the syscall.
-      r.set_original_syscallno(-1);
-      r.set_syscallno(syscallno);
-      r.set_ip(r.ip() - syscall_instruction_length(t->arch()));
-      t->set_regs(r);
+      t->exit_syscall_and_prepare_restart();
 
       patch_syscall_with_hook(*this, t, hook);
 
@@ -746,7 +728,7 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
   X86SysenterVsyscallSyscallHook::substitute(
       patch, syscall_hook_trampoline.as_int() -
                  (kernel_vsyscall + sizeof(patch)).as_int());
-  t->write_bytes(kernel_vsyscall, patch);
+  write_and_record_bytes(t, kernel_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
              << HEX(syscall_hook_trampoline.as_int());
 

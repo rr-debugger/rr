@@ -6,6 +6,7 @@
 #include <inttypes.h>
 #include <linux/kdev_t.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 
 #include <map>
 #include <memory>
@@ -151,6 +152,14 @@ public:
   bool is_stack() const { return fsname().find("[stack") == 0; }
   bool is_vvar() const { return fsname() == "[vvar]"; }
   bool is_vsyscall() const { return fsname() == "[vsyscall]"; }
+
+  struct stat fake_stat() const {
+    struct stat fake_stat;
+    memset(&fake_stat, 0, sizeof(fake_stat));
+    fake_stat.st_dev = device();
+    fake_stat.st_ino = inode();
+    return fake_stat;
+  }
 
 private:
   // The kernel's name for the mapping, as per /proc/<pid>/maps. This must
@@ -516,6 +525,9 @@ public:
 
   Monkeypatcher& monkeypatcher() { return monkeypatch_state; }
 
+  /**
+   * Call this only during recording.
+   */
   void at_preload_init(Task* t);
 
   /* The address of the syscall instruction from which traced syscalls made by
@@ -713,6 +725,9 @@ private:
   void map_and_coalesce(const KernelMapping& m,
                         const KernelMapping& recorded_map);
 
+  /**
+   * Call this only during recording.
+   */
   template <typename Arch> void at_preload_init_arch(Task* t);
 
   enum { EXEC_BIT = 1 << 0, READ_BIT = 1 << 1, WRITE_BIT = 1 << 2 };

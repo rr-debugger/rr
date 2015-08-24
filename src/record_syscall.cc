@@ -2633,14 +2633,6 @@ static void init_scratch_memory(Task* t,
   t->set_regs(r);
 }
 
-static struct stat make_fake_stat(const KernelMapping& km) {
-  struct stat fake_stat;
-  memset(&fake_stat, 0, sizeof(fake_stat));
-  fake_stat.st_dev = km.device();
-  fake_stat.st_ino = km.inode();
-  return fake_stat;
-}
-
 static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
@@ -2658,7 +2650,7 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
     auto& km = m.map;
     if (km.is_stack()) {
       auto mode = t->trace_writer().write_mapped_region(
-          km, make_fake_stat(km), TraceWriter::EXEC_MAPPING);
+          km, km.fake_stat(), TraceWriter::EXEC_MAPPING);
       ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
       t->record_remote(km.start(), km.size());
     }
@@ -2688,7 +2680,7 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
     }
     struct stat st;
     if (stat(km.fsname().c_str(), &st) != 0) {
-      st = make_fake_stat(km);
+      st = km.fake_stat();
     }
     if (t->trace_writer().write_mapped_region(km, st,
                                               TraceWriter::EXEC_MAPPING) ==
@@ -2745,7 +2737,7 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
       KernelMapping km =
           t->vm()->map(addr, size, prot, flags, 0, kernel_info.fsname(),
                        kernel_info.device(), kernel_info.inode());
-      auto d = t->trace_writer().write_mapped_region(km, make_fake_stat(km));
+      auto d = t->trace_writer().write_mapped_region(km, km.fake_stat());
       ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
     }
     return;
@@ -2813,7 +2805,7 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
   KernelMapping km =
       t->vm()->map(addr, size, prot, flags, 0, kernel_info.fsname(),
                    kernel_info.device(), kernel_info.inode());
-  if (t->trace_writer().write_mapped_region(km, make_fake_stat(km)) ==
+  if (t->trace_writer().write_mapped_region(km, km.fake_stat()) ==
       TraceWriter::RECORD_IN_TRACE) {
     t->record_remote(addr, size);
   }
@@ -3047,7 +3039,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         km = KernelMapping(new_brk, old_brk, string(), KernelMapping::NO_DEVICE,
                            KernelMapping::NO_INODE, 0, 0, 0);
       }
-      auto d = t->trace_writer().write_mapped_region(km, make_fake_stat(km));
+      auto d = t->trace_writer().write_mapped_region(km, km.fake_stat());
       ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
       t->vm()->brk(t->regs().syscall_result(), km.prot());
       break;
@@ -3265,6 +3257,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
 
     case SYS_rrcall_init_preload: {
+      t->vm()->at_preload_init(t);
       t->at_preload_init();
 
       Registers r = t->regs();

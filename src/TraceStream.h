@@ -117,7 +117,7 @@ public:
   void write_frame(const TraceFrame& frame);
 
   enum RecordInTrace { DONT_RECORD_IN_TRACE, RECORD_IN_TRACE };
-  enum MappingOrigin { SYSCALL_MAPPING, EXEC_MAPPING };
+  enum MappingOrigin { SYSCALL_MAPPING, EXEC_MAPPING, PATCH_MAPPING };
   /**
    * Write mapped-region record to the trace.
    * If this returns RECORD_IN_TRACE, then the data for the map should be
