@@ -38,6 +38,7 @@ public:
    * Apply any necessary patching immediately after exec.
    * In this hook we patch everything that doesn't depend on the preload
    * library being loaded.
+   * All patches are recorded to the trace.
    */
   void patch_after_exec(Task* t);
 

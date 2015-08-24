@@ -19,6 +19,26 @@ using namespace std;
 
 #include "AssemblyTemplates.generated"
 
+static void write_and_record_bytes(Task* t, remote_ptr<void> child_addr,
+                                   size_t size, const void* buf) {
+  t->write_bytes_helper(child_addr, size, buf);
+  t->record_local(child_addr, size, buf);
+}
+
+template <size_t N>
+static void write_and_record_bytes(Task* t, remote_ptr<void> child_addr,
+                                   const uint8_t (&buf)[N]) {
+  write_and_record_bytes(t, child_addr, N, buf);
+}
+
+template <typename T>
+static void write_and_record_mem(Task* t, remote_ptr<T> child_addr,
+                                 const T* val, int count) {
+  t->write_bytes_helper(child_addr, sizeof(*val) * count,
+                        static_cast<const void*>(val));
+  t->record_local(child_addr, sizeof(T) * count, val);
+}
+
 /**
  * RecordSession sets up an LD_PRELOAD environment variable with an entry
  * SYSCALLBUF_LIB_FILENAME_PADDED which is big enough to hold either the
@@ -77,8 +97,8 @@ template <typename Arch> static void setup_preload_library_path(Task* t) {
       return;
     }
     remote_ptr<void> dest = envp + lib_pos;
-    t->write_mem(dest.cast<char>(), lib_name,
-                 sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1);
+    write_and_record_mem(t, dest.cast<char>(), lib_name,
+                         sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1);
     return;
   }
 }
@@ -668,7 +688,7 @@ void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
   // is never used.
   uint8_t patch[X86SysenterVsyscallUseInt80::size];
   X86SysenterVsyscallUseInt80::substitute(patch);
-  t->write_bytes(patcher.x86_sysenter_vsyscall, patch);
+  write_and_record_bytes(t, patcher.x86_sysenter_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to use int $80";
 
   auto vdso_start = t->vm()->vdso().start();
@@ -692,7 +712,7 @@ void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
         uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
         X86VsyscallMonkeypatch::substitute(patch, syscall_number);
 
-        t->write_bytes(absolute_address, patch);
+        write_and_record_bytes(t, absolute_address, patch);
         LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
                    << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
@@ -778,7 +798,7 @@ void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
         uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
         X64VsyscallMonkeypatch::substitute(patch, syscall_number);
 
-        t->write_bytes(absolute_address, patch);
+        write_and_record_bytes(t, absolute_address, patch);
         LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
                    << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
@@ -838,8 +858,7 @@ static void set_and_record_bytes(Task* t, uint64_t file_offset,
     return;
   }
   remote_ptr<void> addr = map_start + uintptr_t(file_offset - map_offset);
-  t->write_bytes_helper(addr, size, bytes);
-  t->record_local(addr, size, bytes);
+  write_and_record_bytes(t, addr, size, bytes);
 }
 
 void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,

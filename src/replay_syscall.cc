@@ -549,15 +549,12 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
 
   init_scratch_memory(t, kms.back(), datas.back());
 
-  // Apply final data records (fixing up the last page in each data segment
-  // for zeroing applied by the kernel).
+  // Apply final data records --- fixing up the last page in each data segment
+  // for zeroing applied by the kernel, and applying monkeypatches.
   t->apply_all_data_records_from_trace();
 
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
-
-  // Now that memory has been set up, patch LD_PRELOAD and other things in it.
-  t->vm()->monkeypatcher().patch_after_exec(t);
 }
 
 /**
