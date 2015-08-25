@@ -1120,7 +1120,7 @@ public:
   void read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
                          bool* ok = nullptr);
   void write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
-                          const void* buf);
+                          const void* buf, bool* ok = nullptr);
 
   /** See |pending_sig()| above. */
   int pending_sig_from_status(int status) const;

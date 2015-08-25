@@ -591,6 +591,7 @@ set(TESTS_WITHOUT_PROGRAM
   break_time_slice
   breakpoint_consistent
   call_exit
+  check_patched_pthread
   checkpoint_async_signal_syscalls_1000
   checkpoint_mmap_shared
   checkpoint_prctl_name

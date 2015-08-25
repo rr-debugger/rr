@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record threads$bitness
+debug check_patched_pthread

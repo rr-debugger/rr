@@ -845,6 +845,8 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }
+  // Monkeypatcher can emit data records that need to be applied now
+  t->apply_all_data_records_from_trace();
   t->validate_regs();
 }
 

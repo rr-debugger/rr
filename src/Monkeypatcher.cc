@@ -424,14 +424,14 @@ public:
     size_t offset = symbols[i].name_index;
     return offset < strtab.size() && strcmp(&strtab[offset], name) == 0;
   }
-  uintptr_t value(size_t i) const { return symbols[i].value; }
+  uintptr_t file_offset(size_t i) const { return symbols[i].file_offset; }
   size_t size() const { return symbols.size(); }
 
   struct Symbol {
-    Symbol(uintptr_t value, size_t name_index)
-        : value(value), name_index(name_index) {}
+    Symbol(uintptr_t file_offset, size_t name_index)
+        : file_offset(file_offset), name_index(name_index) {}
     Symbol() {}
-    uintptr_t value;
+    uintptr_t file_offset;
     size_t name_index;
   };
   vector<Symbol> symbols;
@@ -547,7 +547,12 @@ SymbolTable ElfReader::read_symbols_arch(const char* symtab,
   result.symbols.resize(symbol_list.size());
   for (size_t i = 0; i < symbol_list.size(); ++i) {
     auto& s = symbol_list[i];
-    result.symbols[i] = SymbolTable::Symbol(s.st_value, s.st_name);
+    if (s.st_shndx >= sections.size()) {
+      continue;
+    }
+    auto& section = sections[s.st_shndx];
+    result.symbols[i] = SymbolTable::Symbol(
+        s.st_value - section.sh_addr + section.sh_offset, s.st_name);
   }
   return result;
 }
@@ -606,7 +611,7 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
       // however, subjects the VDSO to ASLR, which means that
       // we have to adjust the offsets properly.
       auto vdso_start = t->vm()->vdso().start();
-      remote_ptr<void> candidate = syms.value(i);
+      remote_ptr<void> candidate = syms.file_offset(i);
       // The symbol values can be absolute or relative addresses.
       // The first part of the assertion is for absolute
       // addresses, and the second part is for relative.
@@ -683,7 +688,7 @@ void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
       if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
         static const uintptr_t vdso_max_size = 0xffffLL;
-        uintptr_t sym_address = syms.value(i);
+        uintptr_t sym_address = syms.file_offset(i);
         assert((sym_address & ~vdso_max_size) == 0);
         uintptr_t absolute_address = vdso_start.as_int() + sym_address;
 
@@ -764,7 +769,7 @@ void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
         // Absolutely-addressed symbols in the VDSO claim to start here.
         static const uint64_t vdso_static_base = 0xffffffffff700000LL;
         static const uintptr_t vdso_max_size = 0xffffLL;
-        uintptr_t sym_address = syms.value(i);
+        uintptr_t sym_address = syms.file_offset(i);
         // The symbol values can be absolute or relative addresses.
         // The first part of the assertion is for absolute
         // addresses, and the second part is for relative.
@@ -837,14 +842,20 @@ static void set_and_record_bytes(Task* t, uint64_t file_offset,
     return;
   }
   remote_ptr<void> addr = map_start + uintptr_t(file_offset - map_offset);
-  write_and_record_bytes(t, addr, size, bytes);
+  bool ok = true;
+  t->write_bytes_helper(addr, size, bytes, &ok);
+  // Writing can fail when the value appears to be in the mapped range, but it
+  // actually is beyond the file length.
+  if (ok) {
+    t->record_local(addr, size, bytes);
+  }
 }
 
 void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
                                      size_t size, size_t offset_pages,
                                      ScopedFd& open_fd) {
   const auto& map = t->vm()->mapping_of(start);
-  if (map.map.fsname().find("libpthread.so") != string::npos &&
+  if (map.map.fsname().find("libpthread") != string::npos &&
       (t->arch() == x86 || t->arch() == x86_64)) {
     auto syms =
         FileReader(open_fd).read_symbols(t->arch(), ".symtab", ".strtab");
@@ -854,7 +865,7 @@ void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
         // Setting __elision_aconf.retry_try_xbegin to zero means that
         // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
         // in glibc's elide.h.
-        set_and_record_bytes(t, syms.value(i) + 8, &zero, sizeof(zero), start,
+        set_and_record_bytes(t, syms.file_offset(i) + 8, &zero, sizeof(zero), start,
                              size, offset_pages);
       }
       if (syms.is_name(i, "elision_init")) {
@@ -863,7 +874,7 @@ void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
         // remain zero, disabling elision for mutexes. See glibc's
         // elision-conf.c.
         static const uint8_t ret = 0xC3;
-        set_and_record_bytes(t, syms.value(i), &ret, sizeof(ret), start, size,
+        set_and_record_bytes(t, syms.file_offset(i), &ret, sizeof(ret), start, size,
                              offset_pages);
       }
     }

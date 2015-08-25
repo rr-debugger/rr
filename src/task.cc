@@ -2813,7 +2813,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
 }
 
 void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
-                              const void* buf) {
+                              const void* buf, bool* ok) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
   if (0 == buf_size) {
     return;
@@ -2821,7 +2821,12 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
 
   if (!as->mem_fd().is_open()) {
     ssize_t nwritten = write_bytes_ptrace(addr, buf_size, buf);
-    vm()->notify_written(addr, nwritten);
+    if (nwritten > 0) {
+      vm()->notify_written(addr, nwritten);
+    }
+    if (ok && nwritten < buf_size) {
+      *ok = false;
+    }
     return;
   }
 
@@ -2830,17 +2835,25 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   // See comment in read_bytes_helper().
   if (0 == nwritten && 0 == errno) {
     open_mem_fd();
-    return write_bytes_helper(addr, buf_size, buf);
+    return write_bytes_helper(addr, buf_size, buf, ok);
   }
   if (errno == EPERM && try_replace_pages(addr, buf_size, buf)) {
     // Maybe a PaX kernel and we're trying to write to an executable page.
     vm()->notify_written(addr, buf_size);
     return;
   }
-  ASSERT(this, nwritten == buf_size) << "Should have written " << buf_size
-                                     << " bytes to " << addr
-                                     << ", but only wrote " << nwritten;
-  vm()->notify_written(addr, nwritten);
+  if (ok) {
+    if (nwritten < buf_size) {
+      *ok = false;
+    }
+  } else {
+    ASSERT(this, nwritten == buf_size) << "Should have written " << buf_size
+                                       << " bytes to " << addr
+                                       << ", but only wrote " << nwritten;
+  }
+  if (nwritten > 0) {
+    vm()->notify_written(addr, nwritten);
+  }
 }
 
 const TraceStream* Task::trace_stream() const {

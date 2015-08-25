@@ -390,20 +390,19 @@ TraceReader::RawData TraceReader::read_raw_data() {
 
 bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame, RawData& d) {
   auto& data_header = reader(RAW_DATA_HEADER);
-  while (!data_header.at_end()) {
-    TraceFrame::Time time;
-    data_header.save_state();
-    data_header >> time;
-    data_header.restore_state();
-    if (time == frame.time()) {
-      d = read_raw_data();
-      return true;
-    }
-    if (time > frame.time()) {
-      return false;
-    }
+  if (data_header.at_end()) {
+    return false;
   }
-  return false;
+  TraceFrame::Time time;
+  data_header.save_state();
+  data_header >> time;
+  data_header.restore_state();
+  assert(time >= frame.time());
+  if (time > frame.time()) {
+    return false;
+  }
+  d = read_raw_data();
+  return true;
 }
 
 void TraceWriter::close() {
