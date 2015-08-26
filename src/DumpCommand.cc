@@ -170,11 +170,24 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           break;
         }
         if (flags.dump_mmaps) {
+          char prot_flags[] = "rwxp";
+          if (!(km.prot() & PROT_READ)) {
+            prot_flags[0] = '-';
+          }
+          if (!(km.prot() & PROT_WRITE)) {
+            prot_flags[1] = '-';
+          }
+          if (!(km.prot() & PROT_EXEC)) {
+            prot_flags[2] = '-';
+          }
+          if (km.flags() & MAP_SHARED) {
+            prot_flags[3] = 's';
+          }
           fprintf(
               out,
-              "  { map_file:\"%s\", addr:%p, length:%p, file_offset:0x%llx }\n",
+              "  { map_file:\"%s\", addr:%p, length:%p, prot_flags:\"%s\", file_offset:0x%llx }\n",
               km.fsname().c_str(), (void*)km.start().as_int(), (void*)km.size(),
-              (long long)km.file_offset_bytes());
+              prot_flags, (long long)km.file_offset_bytes());
         }
       }
 
