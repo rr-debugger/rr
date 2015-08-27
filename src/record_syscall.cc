@@ -2644,6 +2644,8 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   t->record_session().trace_writer().write_task_event(
       *syscall_state.exec_saved_event);
 
+  KernelMapping vvar;
+
   // Write out stack mappings first since during replay we need to set up the
   // stack before any files get mapped.
   for (auto m : t->vm()->maps()) {
@@ -2653,7 +2655,24 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
           km, km.fake_stat(), TraceWriter::EXEC_MAPPING);
       ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
       t->record_remote(km.start(), km.size());
+    } else if (km.is_vvar()) {
+      vvar = km;
     }
+  }
+
+  if (vvar.size()) {
+    // We're not going to map [vvar] during replay --- that wouldn't
+    // make sense, since it contains data from the kernel that isn't correct
+    // for replay, and we patch out the vdso syscalls that would use it.
+    // Unmapping it now makes recording look more like replay.
+    // Also note that under 4.0.7-300.fc22.x86_64 (at least) /proc/<pid>/mem
+    // can't read the contents of [vvar].
+    AutoRemoteSyscalls remote(t);
+    long result =
+        remote.syscall(syscall_number_for_munmap(remote.arch()),
+            vvar.start(), vvar.size());
+    ASSERT(t, result == 0);
+    t->vm()->unmap(vvar.start(), vvar.size());
   }
 
   // The kernel may zero part of the last page in each data mapping according
@@ -2666,12 +2685,7 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
     if (km.start() == AddressSpace::rr_page_start()) {
       continue;
     }
-    if (km.is_vvar() || km.is_stack() || km.is_vsyscall()) {
-      // [vvar] is used by VDSO syscalls --- which we disable --- so it's not
-      // actually needed or used under rr. Furthermore there's a quirk
-      // (in 4.0.7-300.fc22.x86_64 at least) where /proc/<pid>/mem can't read
-      // the contents of [vvar]. So we'll just ignore this and leave it
-      // unmapped in the replay.
+    if (km.is_stack() || km.is_vsyscall()) {
       // [stack] has already been handled.
       // [vsyscall] can't be read via /proc/<pid>/mem, *should*
       // be the same across all execs, and can't be munmapped so we can't fix
