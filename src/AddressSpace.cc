@@ -1325,12 +1325,37 @@ void AddressSpace::map_and_coalesce(const KernelMapping& m,
   update_watchpoint_values(m.start(), m.end());
 }
 
+static bool could_be_stack(const KernelMapping& km) {
+  // On 4.1.6-200.fc22.x86_64 we observe that during exec of the exec_stub
+  // during replay, when the process switches from 32-bit to 64-bit, the 64-bit
+  // registers seem truncated to 32 bits during the initial PTRACE_GETREGS so
+  // our sp looks wrong and /proc/<pid>/maps doesn't identify the region as
+  // stack.
+  // On stub execs there should only be one read-writable memory area anyway.
+  return km.prot() == (PROT_READ | PROT_WRITE) &&
+      km.fsname() == "" && km.device() == KernelMapping::NO_DEVICE &&
+      km.inode() == KernelMapping::NO_INODE;
+}
+
 void AddressSpace::populate_address_space(Task* t) {
+  bool found_proper_stack = false;
+  for (KernelMapIterator it(t); !it.at_end(); ++it) {
+    auto& km = it.current();
+    if (km.is_stack()) {
+      found_proper_stack = true;
+    }
+  }
+
+  int found_stacks = 0;
   for (KernelMapIterator it(t); !it.at_end(); ++it) {
     auto& km = it.current();
     int flags = km.flags();
     remote_ptr<void> start = km.start();
-    if (km.is_stack()) {
+    ASSERT(t, flags & MAP_PRIVATE);
+    bool is_stack = found_proper_stack ? km.is_stack() :
+        could_be_stack(km);
+    if (is_stack) {
+      ++found_stacks;
       flags |= MAP_GROWSDOWN;
       // MAP_GROWSDOWN segments really occupy one additional page before
       // the start address shown by /proc/<pid>/maps --- unless that page
@@ -1343,4 +1368,5 @@ void AddressSpace::populate_address_space(Task* t) {
         km.fsname(), km.device(), km.inode(), nullptr,
         TraceWriter::EXEC_MAPPING);
   }
+  ASSERT(t, found_stacks == 1);
 }
