@@ -865,8 +865,8 @@ void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
         // Setting __elision_aconf.retry_try_xbegin to zero means that
         // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
         // in glibc's elide.h.
-        set_and_record_bytes(t, syms.file_offset(i) + 8, &zero, sizeof(zero), start,
-                             size, offset_pages);
+        set_and_record_bytes(t, syms.file_offset(i) + 8, &zero, sizeof(zero),
+                             start, size, offset_pages);
       }
       if (syms.is_name(i, "elision_init")) {
         // Make elision_init return without doing anything. This means
@@ -874,8 +874,8 @@ void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
         // remain zero, disabling elision for mutexes. See glibc's
         // elision-conf.c.
         static const uint8_t ret = 0xC3;
-        set_and_record_bytes(t, syms.file_offset(i), &ret, sizeof(ret), start, size,
-                             offset_pages);
+        set_and_record_bytes(t, syms.file_offset(i), &ret, sizeof(ret), start,
+                             size, offset_pages);
       }
     }
   }

@@ -144,8 +144,8 @@ enum GdbRestartType {
 enum GdbActionType { ACTION_CONTINUE, ACTION_STEP };
 
 struct GdbContAction {
-  GdbContAction() {}
-  GdbContAction(GdbActionType type, const GdbThreadId& target,
+  GdbContAction(GdbActionType type = ACTION_CONTINUE,
+                const GdbThreadId& target = GdbThreadId::ANY,
                 int signal_to_deliver = 0)
       : type(type), target(target), signal_to_deliver(signal_to_deliver) {}
   GdbActionType type;

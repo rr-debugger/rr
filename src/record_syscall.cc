@@ -2668,9 +2668,8 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
     // Also note that under 4.0.7-300.fc22.x86_64 (at least) /proc/<pid>/mem
     // can't read the contents of [vvar].
     AutoRemoteSyscalls remote(t);
-    long result =
-        remote.syscall(syscall_number_for_munmap(remote.arch()),
-            vvar.start(), vvar.size());
+    long result = remote.syscall(syscall_number_for_munmap(remote.arch()),
+                                 vvar.start(), vvar.size());
     ASSERT(t, result == 0);
     t->vm()->unmap(vvar.start(), vvar.size());
   }

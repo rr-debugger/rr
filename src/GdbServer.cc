@@ -352,10 +352,9 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     }
     case DREQ_INTERRUPT: {
-      // Tell the debugger we stopped and await further
-      // instructions.
-      Task* t = session.is_replaying() ? session.as_replay()->current_task()
-                                       : session.find_task(last_continue_tuid);
+      Task* t = session.find_task(last_continue_tuid);
+      ASSERT(t, session.is_diversion())
+          << "Replay interrupts should be handled at a higher level";
       assert(!t || t->task_group()->tguid() == debuggee_tguid);
       dbg->notify_stop(t ? get_threadid(t) : GdbThreadId(), 0);
       if (t) {
@@ -629,7 +628,8 @@ static Task* is_in_exec(ReplayTimeline& timeline) {
              : nullptr;
 }
 
-void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
+void GdbServer::maybe_notify_stop(const GdbRequest& req,
+                                  const BreakStatus& break_status) {
   int sig = -1;
   remote_ptr<void> watch_addr;
   if (!break_status.watchpoints_hit.empty()) {
@@ -643,15 +643,20 @@ void GdbServer::maybe_notify_stop(const BreakStatus& break_status) {
     sig = break_status.signal;
   }
   if (is_last_thread_exit(break_status) && dbg->features().reverse_execution) {
-    // The exit of the last task in a task group generates a fake SIGKILL,
-    // when reverse-execution is enabled, because users often want to run
-    // backwards from the end of the task.
-    sig = SIGKILL;
+    if (req.cont().run_direction == RUN_FORWARD) {
+      // The exit of the last task in a task group generates a fake SIGKILL,
+      // when reverse-execution is enabled, because users often want to run
+      // backwards from the end of the task.
+      sig = SIGKILL;
+    } else {
+      // The start of the debuggee task-group should trigger a silent stop.
+      sig = 0;
+    }
   }
   Task* t = break_status.task;
   Task* in_exec_task = is_in_exec(timeline);
   if (in_exec_task) {
-    sig = SIGTRAP;
+    sig = 0;
     t = in_exec_task;
   }
   if (sig >= 0 && t->task_group()->tguid() == debuggee_tguid) {
@@ -738,11 +743,12 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
   while (diverter_process_debugger_requests(*diversion_session,
                                             diversion_refcount, &req)) {
+    assert(req.is_resume_request());
+
     if (req.cont().run_direction == RUN_BACKWARD) {
       // We don't support reverse execution in a diversion. Just issue
       // an immediate stop.
-      dbg->notify_stop(get_threadid(*diversion_session, last_continue_tuid),
-                       SIGTRAP, 0);
+      dbg->notify_stop(get_threadid(*diversion_session, last_continue_tuid), 0);
       last_query_tuid = last_continue_tuid;
       continue;
     }
@@ -768,7 +774,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
     assert(result.status == DiversionSession::DIVERSION_CONTINUE);
 
-    maybe_notify_stop(result.break_status);
+    maybe_notify_stop(req, result.break_status);
   }
 
   LOG(debug) << "... ending debugging diversion";
@@ -782,7 +788,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
 /**
  * Reply to debugger requests until the debugger asks us to resume
- * execution, detach, or restart.
+ * execution, detach, restart, or interrupt.
  */
 GdbRequest GdbServer::process_debugger_requests(ReportState state) {
   while (true) {
@@ -816,6 +822,11 @@ GdbRequest GdbServer::process_debugger_requests(ReportState state) {
       if (t) {
         maybe_singlestep_for_event(t, &req);
       }
+      return req;
+    }
+
+    if (req.type == DREQ_INTERRUPT) {
+      LOG(debug) << "  request to interrupt";
       return req;
     }
 
@@ -864,7 +875,7 @@ void GdbServer::try_lazy_reverse_singlesteps(GdbRequest& req) {
     break_status.task = t;
     break_status.singlestep_complete = true;
     LOG(debug) << "  using lazy reverse-singlestep";
-    maybe_notify_stop(break_status);
+    maybe_notify_stop(req, break_status);
 
     while (true) {
       req = dbg->get_request();
@@ -895,42 +906,57 @@ bool GdbServer::detach_or_restart(const GdbRequest& req, ContinueOrStop* s) {
   return false;
 }
 
-GdbServer::ContinueOrStop GdbServer::handle_exited_state() {
+GdbServer::ContinueOrStop GdbServer::handle_exited_state(
+    GdbRequest& last_resume_request) {
   // TODO return real exit code, if it's useful.
   dbg->notify_exit_code(0);
   GdbRequest req = process_debugger_requests(REPORT_THREADS_DEAD);
   ContinueOrStop s;
   if (detach_or_restart(req, &s)) {
+    last_resume_request = GdbRequest();
     return s;
   }
-  FATAL() << "Received continue request after end-of-trace.";
+  FATAL() << "Received continue/interrupt request after end-of-trace.";
   return STOP_DEBUGGING;
 }
 
 GdbServer::ContinueOrStop GdbServer::debug_one_step(
-    RunDirection* last_direction) {
+    GdbRequest& last_resume_request) {
   ReplayResult result;
-  GdbRequest req = process_debugger_requests();
+  GdbRequest req;
+  if (!interrupt_pending || last_resume_request.type == DREQ_NONE) {
+    req = process_debugger_requests();
+  } else {
+    req = last_resume_request;
+  }
+
   while (true) {
     ContinueOrStop s;
     if (detach_or_restart(req, &s)) {
-      *last_direction = RUN_FORWARD;
+      last_resume_request = GdbRequest();
       return s;
     }
-    assert(req.is_resume_request());
 
-    if (stop_immediately_after_restart) {
+    if (req.is_resume_request()) {
+      last_resume_request = req;
+    } else {
+      assert(req.type == DREQ_INTERRUPT);
+      interrupt_pending = true;
+      req = last_resume_request;
+      assert(req.is_resume_request());
+    }
+
+    if (interrupt_pending) {
       Task* t = timeline.current_session().current_task();
       if (t->task_group()->tguid() == debuggee_tguid) {
-        stop_immediately_after_restart = false;
-        dbg->notify_stop(get_threadid(t), SIGTRAP, 0);
+        interrupt_pending = false;
+        dbg->notify_stop(get_threadid(t), 0);
         return CONTINUE_DEBUGGING;
       }
     }
 
-    *last_direction = req.cont().run_direction;
     auto interrupt_check = [&]() { return dbg->sniff_packet(); };
-    if (*last_direction == RUN_FORWARD) {
+    if (req.cont().run_direction == RUN_FORWARD) {
       if (is_in_exec(timeline) &&
           timeline.current_session().current_task()->task_group()->tguid() ==
               debuggee_tguid) {
@@ -946,7 +972,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
                                               interrupt_check);
       }
       if (result.status == REPLAY_EXITED) {
-        return handle_exited_state();
+        return handle_exited_state(last_resume_request);
       }
     } else {
       vector<AllowedTasks> allowed_tasks;
@@ -982,33 +1008,11 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       }
 
       if (result.status == REPLAY_EXITED) {
-        return handle_exited_state();
-      }
-      if (result.break_status.task_exit) {
-        // If we reached the start of the debuggee task group, report that as
-        // a breakpoint hit or singlestep complete. We need to report a stop to
-        // gdb.
-        result.break_status.task_exit = false;
-        bool allow_singlestep = false;
-        bool allowed_to_run = false;
-        for (auto& a : allowed_tasks) {
-          if (a.task.tid() == 0 || a.task == result.break_status.task->tuid()) {
-            allowed_to_run = true;
-            if (a.command == RUN_SINGLESTEP) {
-              allow_singlestep = true;
-            }
-          }
-        }
-        ASSERT(result.break_status.task, allowed_to_run);
-        if (allow_singlestep) {
-          result.break_status.singlestep_complete = true;
-        } else {
-          result.break_status.breakpoint_hit = true;
-        }
+        return handle_exited_state(last_resume_request);
       }
     }
     if (!req.suppress_debugger_stop) {
-      maybe_notify_stop(result.break_status);
+      maybe_notify_stop(req, result.break_status);
     }
     if (req.cont().run_direction == RUN_FORWARD &&
         is_last_thread_exit(result.break_status) &&
@@ -1018,10 +1022,10 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       req = process_debugger_requests();
       // If it's a forward execution request, fake the exited state.
       if (req.is_resume_request() && req.cont().run_direction == RUN_FORWARD) {
-        return handle_exited_state();
+        return handle_exited_state(last_resume_request);
       }
-      // Otherwise (e.g. detach, restart or reverse-exec) process the request
-      // as normal.
+      // Otherwise (e.g. detach, restart, interrupt or reverse-exec) process
+      // the request as normal.
       continue;
     }
     return CONTINUE_DEBUGGING;
@@ -1126,7 +1130,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
     checkpoint_to_restore = debugger_restart_checkpoint;
   }
 
-  stop_immediately_after_restart = true;
+  interrupt_pending = true;
 
   if (checkpoint_to_restore.mark) {
     timeline.seek_to_mark(checkpoint_to_restore.mark);
@@ -1200,8 +1204,8 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 
   activate_debugger();
 
-  RunDirection last_direction = RUN_FORWARD;
-  while (debug_one_step(&last_direction) == CONTINUE_DEBUGGING) {
+  GdbRequest last_resume_request;
+  while (debug_one_step(last_resume_request) == CONTINUE_DEBUGGING) {
   }
 
   LOG(debug) << "debugger server exiting ...";

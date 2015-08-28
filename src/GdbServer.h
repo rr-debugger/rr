@@ -45,7 +45,7 @@ public:
             const ReplaySession::Flags& flags, const Target& target)
       : target(target),
         stop_replaying_to_target(false),
-        stop_immediately_after_restart(false),
+        interrupt_pending(false),
         timeline(std::move(session), flags),
         emergency_debug_session(nullptr) {}
 
@@ -97,7 +97,7 @@ private:
         last_continue_tuid(t->tuid()),
         last_query_tuid(t->tuid()),
         stop_replaying_to_target(false),
-        stop_immediately_after_restart(false),
+        interrupt_pending(false),
         emergency_debug_session(&t->session()) {}
 
   Session& current_session() {
@@ -134,8 +134,8 @@ private:
   GdbRequest process_debugger_requests(ReportState state = REPORT_NORMAL);
   enum ContinueOrStop { CONTINUE_DEBUGGING, STOP_DEBUGGING };
   bool detach_or_restart(const GdbRequest& req, ContinueOrStop* s);
-  ContinueOrStop handle_exited_state();
-  ContinueOrStop debug_one_step(RunDirection* last_direction);
+  ContinueOrStop handle_exited_state(GdbRequest& last_resume_request);
+  ContinueOrStop debug_one_step(GdbRequest& last_resume_request);
   /**
    * If 'req' is a reverse-singlestep, try to obtain the resulting state
    * directly from ReplayTimeline's mark database. If that succeeds,
@@ -172,10 +172,11 @@ private:
   GdbRequest divert(ReplaySession& replay);
 
   /**
-   * If break_status indicates a stop that we should report to gdb,
-   * report it.
+   * If |break_status| indicates a stop that we should report to gdb,
+   * report it. |req| is the resume request that generated the stop.
    */
-  void maybe_notify_stop(const BreakStatus& break_status);
+  void maybe_notify_stop(const GdbRequest& req,
+                         const BreakStatus& break_status);
 
   /**
    * Return the checkpoint stored as |checkpoint_id| or nullptr if there
@@ -202,9 +203,9 @@ private:
   TaskUid last_query_tuid;
   // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
-  // True when we should signal an immediate stop after the next continue
-  // (after a restart).
-  bool stop_immediately_after_restart;
+  // True when a DREQ_INTERRUPT has been received but not handled, or when
+  // we've restarted and want the first continue to be interrupted immediately.
+  bool interrupt_pending;
 
   ReplayTimeline timeline;
   Session* emergency_debug_session;

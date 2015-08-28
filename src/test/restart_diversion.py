@@ -19,7 +19,8 @@ send_gdb('p atomic_printf("hello%s", "kitty")')
 expect_gdb('hellokitty')
 
 send_gdb('restart 1')
+expect_gdb('stopped')
 send_gdb('c')
-expect_gdb('Breakpoint 1')
+expect_rr('EXIT-SUCCESS')
 
 ok()

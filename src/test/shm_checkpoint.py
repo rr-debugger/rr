@@ -16,9 +16,7 @@ send_gdb('c');
 expect_gdb('Breakpoint 2, after_writing')
 
 send_gdb('restart 1');
-send_gdb('c')
-expect_gdb('Breakpoint 1, before_writing')
-
+expect_gdb('stopped')
 send_gdb('c');
 expect_gdb('Breakpoint 2, after_writing')
 
