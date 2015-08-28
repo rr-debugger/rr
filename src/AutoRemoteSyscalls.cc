@@ -74,6 +74,11 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
   }
 }
 
+static bool is_usable_area(const KernelMapping& km) {
+  return (km.prot() & (PROT_READ | PROT_WRITE)) == (PROT_READ | PROT_WRITE) &&
+      (km.flags() & MAP_PRIVATE);
+}
+
 void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   if (!t->session().can_validate()) {
     return;
@@ -82,8 +87,7 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   remote_ptr<void> last_stack_byte = t->regs().sp() - 1;
   if (t->vm()->has_mapping(last_stack_byte)) {
     auto m = t->vm()->mapping_of(last_stack_byte);
-    if (m.recorded_map.is_stack() &&
-        m.recorded_map.start() + 1024 <= t->regs().sp()) {
+    if (is_usable_area(m.map) && m.map.start() + 2048 <= t->regs().sp()) {
       // 'sp' is in a stack region and there's plenty of space there. No need
       // to fix anything.
       return;
@@ -92,8 +96,9 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
 
   MemoryRange found_stack;
   for (auto m : t->vm()->maps()) {
-    if (m.recorded_map.is_stack()) {
-      found_stack = m.recorded_map;
+    if (is_usable_area(m.map)) {
+      found_stack = m.map;
+      break;
     }
   };
   ASSERT(t, !found_stack.start().is_null()) << "No stack area found";

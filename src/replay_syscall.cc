@@ -503,14 +503,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
       // Do not attempt to unmap [vsyscall] --- it doesn't work.
       if (m.map.start() != AddressSpace::rr_page_start() &&
           !m.map.is_vsyscall()) {
-        MemoryRange adjusted(m.map);
-        if (m.map.is_stack()) {
-          // Unmap two leading pages, to work around a kernel issue that it
-          // doesn't like us unmapping the start of a stack.
-          adjusted =
-              MemoryRange(adjusted.start() - 2 * page_size(), adjusted.end());
-        }
-        unmaps.push_back(adjusted);
+        unmaps.push_back(m.map);
       }
     }
     for (auto& m : unmaps) {

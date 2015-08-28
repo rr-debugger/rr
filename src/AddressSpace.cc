@@ -401,30 +401,14 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
 
-  bool insert_guard_page = false;
-  if (has_mapping(m.end()) &&
-      (mapping_of(m.end()).map.flags() & MAP_GROWSDOWN)) {
-    // When inserting a mapping immediately before a grow-down VMA,
-    // the kernel unmaps an extra page to form a guard page. We need to
-    // emulate that.
-    insert_guard_page = true;
-  }
+  // The mmap() man page doesn't specifically describe
+  // what should happen if an existing map is
+  // "overwritten" by a new map (of the same resource).
+  // In testing, the behavior seems to be as if the
+  // overlapping region is unmapped and then remapped
+  // per the arguments to the second call.
+  unmap_internal(addr, num_bytes);
 
-  if (mem.end() != mem.find(m)) {
-    // The mmap() man page doesn't specifically describe
-    // what should happen if an existing map is
-    // "overwritten" by a new map (of the same resource).
-    // In testing, the behavior seems to be as if the
-    // overlapping region is unmapped and then remapped
-    // per the arguments to the second call.
-    unmap_internal(addr, num_bytes + (insert_guard_page ? page_size() : 0));
-  }
-
-  if (origin == TraceWriter::SYSCALL_MAPPING && (flags & MAP_GROWSDOWN)) {
-    // The first page is made into a guard page by the kernel
-    m = KernelMapping(addr + page_size(), addr + num_bytes, fsname, device,
-                      inode, prot, flags, offset_bytes + page_size());
-  }
   const KernelMapping& actual_recorded_map = recorded_map ? *recorded_map : m;
   map_and_coalesce(m, actual_recorded_map);
 
@@ -968,6 +952,38 @@ KernelMapping AddressSpace::vdso() const {
   return mapping_of(vdso_start_addr).map;
 }
 
+KernelMapping AddressSpace::fix_growsdown_mapping(
+    Task* t, const KernelMapping& km, const KernelMapping& prev_km) const {
+  // Consult our stored map to see if |km| is GROWSDOWN, because unfortunately
+  // /proc/<pid>/maps itself doesn't tell us.
+  // We can get it from /proc/<pid>/smaps, but that seems like overkill and
+  // isn't needed for now.
+  if (km.size() == 0) {
+    // This is only observed for GROWSDOWN mappings that are one page.
+    remote_ptr<void> extended_start = km.start() - page_size();
+    ASSERT(t, has_mapping(extended_start));
+    KernelMapping vm = mapping_of(extended_start).map;
+    ASSERT(t, vm.flags() & MAP_GROWSDOWN);
+    ASSERT(t, prev_km.end() <= extended_start);
+    return km.set_range(extended_start, km.end());
+  }
+
+  remote_ptr<void> last_page = km.end() - page_size();
+  if (has_mapping(last_page)) {
+    KernelMapping vm = mapping_of(last_page).map;
+    if (vm.flags() & MAP_GROWSDOWN) {
+      remote_ptr<void> extended_start = km.start() - page_size();
+      // The mapping should only be extended to include the previous page if
+      // there isn't a different mapping already there.
+      if (prev_km.end() <= extended_start) {
+        return km.set_range(extended_start, km.end());
+      }
+    }
+  }
+
+  return km;
+}
+
 /**
  * Iterate over /proc/maps segments for a task and verify that the
  * task's cached mapping matches the kernel's (given a lenient fuzz
@@ -978,11 +994,18 @@ void AddressSpace::verify(Task* t) const {
 
   MemoryMap::const_iterator mem_it = mem.begin();
   KernelMapIterator kernel_it(t);
+  KernelMapping prev_km;
   while (!kernel_it.at_end() && mem_it != mem.end()) {
-    KernelMapping km = kernel_it.current();
+    KernelMapping km = fix_growsdown_mapping(t, kernel_it.current(), prev_km);
+    prev_km = km;
     ++kernel_it;
-    while (!kernel_it.at_end() &&
-           try_merge_adjacent(&km, kernel_it.current())) {
+    while (!kernel_it.at_end()) {
+      KernelMapping next_km =
+          fix_growsdown_mapping(t, kernel_it.current(), prev_km);
+      if (!try_merge_adjacent(&km, next_km)) {
+        break;
+      }
+      prev_km = next_km;
       ++kernel_it;
     }
 
@@ -1306,10 +1329,17 @@ void AddressSpace::populate_address_space(Task* t) {
   for (KernelMapIterator it(t); !it.at_end(); ++it) {
     auto& km = it.current();
     int flags = km.flags();
+    remote_ptr<void> start = km.start();
     if (km.is_stack()) {
       flags |= MAP_GROWSDOWN;
+      // MAP_GROWSDOWN segments really occupy one additional page before
+      // the start address shown by /proc/<pid>/maps --- unless that page
+      // is already occupied by another mapping.
+      if (!has_mapping(start - page_size())) {
+        start -= page_size();
+      }
     }
-    map(km.start(), km.size(), km.prot(), flags, km.file_offset_bytes(),
+    map(start, km.end() - start, km.prot(), flags, km.file_offset_bytes(),
         km.fsname(), km.device(), km.inode(), nullptr,
         TraceWriter::EXEC_MAPPING);
   }

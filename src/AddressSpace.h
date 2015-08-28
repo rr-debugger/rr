@@ -672,6 +672,12 @@ private:
 
   void unmap_internal(remote_ptr<void> addr, ssize_t num_bytes);
 
+  // km is a mapping we retrieved from the /proc/<pid>/maps iterator. Determine
+  // if it is a GROWSDOWN mapping, and if it is, extend it to include the
+  // preceding page since /proc/<pid>/maps chops that off.
+  KernelMapping fix_growsdown_mapping(Task* t, const KernelMapping& km,
+                                      const KernelMapping& prev_km) const;
+
   // Also sets brk_ptr.
   void map_rr_page(Task* t);
 
