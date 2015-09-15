@@ -717,13 +717,15 @@ void Task::init_buffers(remote_ptr<void> map_hint,
 
 void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
-  remote.syscall(syscall_number_for_munmap(arch()), scratch_ptr, scratch_size);
+  remote.infallible_syscall(syscall_number_for_munmap(arch()), scratch_ptr,
+                            scratch_size);
   vm()->unmap(scratch_ptr, scratch_size);
   if (!syscallbuf_child.is_null()) {
-    remote.syscall(syscall_number_for_munmap(arch()), syscallbuf_child,
-                   num_syscallbuf_bytes);
+    remote.infallible_syscall(syscall_number_for_munmap(arch()),
+                              syscallbuf_child, num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
-    remote.syscall(syscall_number_for_close(arch()), desched_fd_child);
+    remote.infallible_syscall(syscall_number_for_close(arch()),
+                              desched_fd_child);
     fds->did_close(desched_fd_child);
   }
 }
@@ -2352,13 +2354,9 @@ static void copy_tls_arch(const Task::CapturedState& state,
       AutoRestoreMem remote_tls(remote, (const uint8_t*)&state.thread_area,
                                 sizeof(struct user_desc));
       LOG(debug) << "    setting tls " << remote_tls.get();
-      long err =
-          remote.syscall(syscall_number_for_set_thread_area(remote.arch()),
-                         remote_tls.get().as_int());
-      if (0 > err) {
-        errno = err;
-        FATAL() << "Failed set_thread_area in tracee";
-      }
+      remote.infallible_syscall(
+          syscall_number_for_set_thread_area(remote.arch()),
+          remote_tls.get().as_int());
       remote.task()->set_thread_area(remote_tls.get());
     }
   }
@@ -2408,7 +2406,6 @@ Task::CapturedState Task::capture_state() {
 }
 
 void Task::copy_state(const CapturedState& state) {
-  long err;
   set_regs(state.regs);
   set_extra_regs(state.extra_regs);
   {
@@ -2419,12 +2416,8 @@ void Task::copy_state(const CapturedState& state) {
       AutoRestoreMem remote_prname(remote, (const uint8_t*)prname,
                                    sizeof(prname));
       LOG(debug) << "    setting name to " << prname;
-      err = remote.syscall(syscall_number_for_prctl(arch()), PR_SET_NAME,
-                           remote_prname.get().as_int());
-      if (0 > err) {
-        errno = -err;
-        FATAL() << "Failed PR_SET_NAME in tracee";
-      }
+      remote.infallible_syscall(syscall_number_for_prctl(arch()), PR_SET_NAME,
+                                remote_prname.get().as_int());
       update_prname(remote_prname.get());
     }
 
@@ -2498,23 +2491,15 @@ void Task::open_mem_fd() {
   {
     AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
     // skip leading '/' since we want the path to be relative to the root fd
-    remote_fd =
-        remote.syscall(syscall_number_for_openat(arch()),
-                       RR_RESERVED_ROOT_DIR_FD, remote_path.get() + 1, O_RDWR);
-    if (0 > remote_fd) {
-      errno = -remote_fd;
-      FATAL() << "Failed to open " << remote_path.get() << " in tracee";
-    }
+    remote_fd = remote.infallible_syscall(syscall_number_for_openat(arch()),
+                                          RR_RESERVED_ROOT_DIR_FD,
+                                          remote_path.get() + 1, O_RDWR);
   }
 
   as->set_mem_fd(remote.retrieve_fd(remote_fd));
   ASSERT(this, as->mem_fd().is_open());
 
-  long err = remote.syscall(syscall_number_for_close(arch()), remote_fd);
-  if (0 > err) {
-    errno = -err;
-    FATAL() << "Failed to close " << remote_fd << " in tracee";
-  }
+  remote.infallible_syscall(syscall_number_for_close(arch()), remote_fd);
 }
 
 void Task::open_mem_fd_if_needed() {
@@ -2580,7 +2565,7 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
             st.st_dev, st.st_ino);
 
   shmem_fd.close();
-  remote.syscall(syscall_number_for_close(arch()), child_shmem_fd);
+  remote.infallible_syscall(syscall_number_for_close(arch()), child_shmem_fd);
 }
 
 void Task::tgkill(int sig) { syscall(SYS_tgkill, real_tgid(), tid, sig); }
@@ -2801,14 +2786,13 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
   AutoRemoteSyscalls remote(t);
   int mprotect_syscallno = syscall_number_for_mprotect(t->arch());
   for (auto& m : mappings_to_fix) {
-    int ret = remote.syscall(mprotect_syscallno, m.start(), m.size(),
-                             m.prot() | PROT_WRITE);
-    ASSERT(t, ret == 0);
+    remote.infallible_syscall(mprotect_syscallno, m.start(), m.size(),
+                              m.prot() | PROT_WRITE);
   }
   ssize_t nwritten = pwrite64(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
   for (auto& m : mappings_to_fix) {
-    int ret = remote.syscall(mprotect_syscallno, m.start(), m.size(), m.prot());
-    ASSERT(t, ret == 0);
+    remote.infallible_syscall(mprotect_syscallno, m.start(), m.size(),
+                              m.prot());
   }
   return nwritten;
 }

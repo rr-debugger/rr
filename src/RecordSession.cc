@@ -353,8 +353,8 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
 
       {
         AutoRemoteSyscalls remote(new_task);
-        new_task->own_namespace_rec_tid =
-            remote.syscall(syscall_number_for_gettid(new_task->arch()));
+        new_task->own_namespace_rec_tid = remote.infallible_syscall(
+            syscall_number_for_gettid(new_task->arch()));
       }
 
       // Skip past the ptrace event.

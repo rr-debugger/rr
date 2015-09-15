@@ -240,7 +240,8 @@ void AddressSpace::map_rr_page(Task* t) {
 
     if (t->session().is_recording()) {
       // brk() will not have been called yet so the brk area is empty.
-      brk_start = brk_end = remote.syscall(syscall_number_for_brk(arch), 0);
+      brk_start = brk_end =
+          remote.infallible_syscall(syscall_number_for_brk(arch), 0);
     }
   }
 
@@ -795,8 +796,8 @@ void AddressSpace::did_fork_into(Task* t) {
     // have had its dontfork areas unmapped by the kernel already
     if (!t->session().is_recording()) {
       AutoRemoteSyscalls remote(t);
-      remote.syscall(syscall_number_for_munmap(remote.arch()), range.start(),
-                     range.size());
+      remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
+                                range.start(), range.size());
     }
     t->vm()->unmap(range.start(), range.size());
   }

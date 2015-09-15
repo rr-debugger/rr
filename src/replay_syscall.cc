@@ -496,9 +496,8 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
       }
     }
     for (auto& m : unmaps) {
-      int ret = remote.syscall(syscall_number_for_munmap(t->arch()), m.start(),
-                               m.size());
-      ASSERT(t, ret == 0);
+      remote.infallible_syscall(syscall_number_for_munmap(t->arch()), m.start(),
+                                m.size());
       t->vm()->unmap(m.start(), m.size());
     }
     // We will have unmapped the stack memory that |remote| would have used for
@@ -526,7 +525,8 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
         string("rr:") +
         recorded_exe_name.substr(index == string::npos ? 0 : index + 1);
     AutoRestoreMem mem(remote, name.c_str());
-    remote.syscall(syscall_number_for_prctl(t->arch()), PR_SET_NAME, mem.get());
+    remote.infallible_syscall(syscall_number_for_prctl(t->arch()), PR_SET_NAME,
+                              mem.get());
   }
 
   init_scratch_memory(t, kms.back(), datas.back());
@@ -604,9 +604,8 @@ static void process_brk(Task* t, const TraceFrame& trace_frame,
                  &km);
   } else if (km.size() > 0) {
     AutoRemoteSyscalls remote(t);
-    long ret = remote.syscall(syscall_number_for_munmap(t->arch()), km.start(),
+    remote.infallible_syscall(syscall_number_for_munmap(t->arch()), km.start(),
                               km.size());
-    ASSERT(t, ret == 0);
     t->vm()->unmap(km.start(), km.size());
   }
 }
@@ -873,9 +872,8 @@ static void process_shmdt(Task* t, const TraceFrame& trace_frame,
     AutoRemoteSyscalls remote(t);
     auto mapping = t->vm()->mapping_of(addr);
     ASSERT(t, mapping.map.start() == addr);
-    int result = remote.syscall(syscall_number_for_munmap(t->arch()), addr,
-                                mapping.map.end() - addr);
-    ASSERT(t, result == 0);
+    remote.infallible_syscall(syscall_number_for_munmap(t->arch()), addr,
+                              mapping.map.end() - addr);
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }
   t->validate_regs();

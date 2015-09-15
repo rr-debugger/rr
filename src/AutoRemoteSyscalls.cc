@@ -218,14 +218,13 @@ static int child_create_socket(AutoRemoteSyscalls& remote,
                                remote_ptr<socketcall_args<Arch> > sc_args) {
   int child_sock;
   if (sc_args.is_null()) {
-    child_sock = remote.syscall(Arch::socket, AF_UNIX, SOCK_STREAM, 0);
+    child_sock =
+        remote.infallible_syscall(Arch::socket, AF_UNIX, SOCK_STREAM, 0);
   } else {
     write_socketcall_args<Arch>(remote.task(), sc_args, AF_UNIX, SOCK_STREAM,
                                 0);
-    child_sock = remote.syscall(Arch::socketcall, SYS_SOCKET, sc_args);
-  }
-  if (child_sock < 0) {
-    FATAL() << "Failed to create child socket";
+    child_sock =
+        remote.infallible_syscall(Arch::socketcall, SYS_SOCKET, sc_args);
   }
   return child_sock;
 }
@@ -246,17 +245,9 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
   auto tmp_buf_end = buf_end;
   auto remote_dot = allocate(&tmp_buf_end, remote_buf, 2);
   remote.task()->write_mem(remote_dot.cast<char>(), ".", 2);
-  *cwd_fd = remote.syscall(syscall_number_for_open(Arch::arch()), remote_dot,
-                           O_PATH | O_DIRECTORY);
-  if (0 > *cwd_fd) {
-    FATAL() << "Failed to open() cwd in tracee; err=" << errno_name(-*cwd_fd);
-  }
-  int child_syscall_result =
-      remote.syscall(Arch::fchdir, RR_RESERVED_ROOT_DIR_FD);
-  if (0 > child_syscall_result) {
-    FATAL() << "Failed to fchdir() in tracee; err="
-            << errno_name(-child_syscall_result);
-  }
+  *cwd_fd = remote.infallible_syscall(syscall_number_for_open(Arch::arch()),
+                                      remote_dot, O_PATH | O_DIRECTORY);
+  remote.infallible_syscall(Arch::fchdir, RR_RESERVED_ROOT_DIR_FD);
 
   auto remote_addr = allocate<typename Arch::sockaddr_un>(&buf_end, remote_buf);
   remote.task()->write_mem(remote_addr, addr);
@@ -276,21 +267,6 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
   }
   remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, remote_syscall,
                         callregs);
-}
-
-template <typename Arch>
-static void child_restore_cwd(AutoRemoteSyscalls& remote, int cwd_fd) {
-  // Restore child's cwd
-  int child_syscall_result = remote.syscall(Arch::fchdir, cwd_fd);
-  if (0 > child_syscall_result) {
-    FATAL() << "Failed to fchdir() to old cwd in tracee; err="
-            << errno_name(-child_syscall_result);
-  }
-  child_syscall_result = remote.syscall(Arch::close, cwd_fd);
-  if (0 > child_syscall_result) {
-    FATAL() << "Failed to close() cwd in tracee; err="
-            << errno_name(-child_syscall_result);
-  }
 }
 
 template <typename Arch>
@@ -415,7 +391,8 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     FATAL() << "Failed to connect() in tracee; err="
             << errno_name(-child_syscall_result);
   }
-  child_restore_cwd<Arch>(*this, cwd_fd);
+  infallible_syscall(Arch::fchdir, cwd_fd);
+  infallible_syscall(Arch::close, cwd_fd);
 
   // Listening socket not needed anymore
   close(listen_sock);
@@ -430,11 +407,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   // Child may be waiting on our recvmsg().
   int our_fd = recvmsg_socket(sock);
 
-  child_syscall_result = syscall(Arch::close, child_sock);
-  if (0 > child_syscall_result) {
-    FATAL() << "Failed to close() in tracee; err="
-            << errno_name(-child_syscall_result);
-  }
+  child_syscall_result = infallible_syscall(Arch::close, child_sock);
   if (0 > close(sock)) {
     FATAL() << "Failed to close parent socket";
   }

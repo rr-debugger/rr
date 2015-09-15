@@ -51,10 +51,9 @@ static void restore_sigsegv_state(Task* t) {
   AutoRemoteSyscalls remote(t);
   {
     AutoRestoreMem child_sa(remote, sa.data(), sa.size());
-    int ret = remote.syscall(syscall_number_for_rt_sigaction(remote.arch()),
-                             SIGSEGV, child_sa.get().as_int(), nullptr,
-                             sigaction_sigset_size(remote.arch()));
-    ASSERT(t, 0 == ret) << "Failed to restore SIGSEGV handler";
+    remote.infallible_syscall(syscall_number_for_rt_sigaction(remote.arch()),
+                              SIGSEGV, child_sa.get().as_int(), nullptr,
+                              sigaction_sigset_size(remote.arch()));
   }
   // NB: we would normally want to restore the SIG_BLOCK for
   // SIGSEGV here, but doing so doesn't change the kernel's
