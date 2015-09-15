@@ -2281,11 +2281,10 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       // also lock it in the task we cloned from!
       int prot = PROT_READ | PROT_WRITE;
       int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
-      auto p = remote.mmap_syscall(syscallbuf_child, num_syscallbuf_bytes, prot,
-                                   flags, -1, 0);
-      ASSERT(t, p == syscallbuf_child.cast<void>());
-      t->vm()->map(p, num_syscallbuf_bytes, prot, flags, 0, string(),
-                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+      remote.infallible_mmap_syscall(syscallbuf_child, num_syscallbuf_bytes,
+                                     prot, flags, -1, 0);
+      t->vm()->map(syscallbuf_child, num_syscallbuf_bytes, prot, flags, 0,
+                   string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
 
       // Mark the clone's syscallbuf as locked. This will prevent the
       // clone using syscallbuf until the clone reinitializes the
@@ -2356,7 +2355,10 @@ static void copy_tls_arch(const Task::CapturedState& state,
       long err =
           remote.syscall(syscall_number_for_set_thread_area(remote.arch()),
                          remote_tls.get().as_int());
-      ASSERT(remote.task(), 0 == err);
+      if (0 > err) {
+        errno = err;
+        FATAL() << "Failed set_thread_area in tracee";
+      }
       remote.task()->set_thread_area(remote_tls.get());
     }
   }
@@ -2419,7 +2421,10 @@ void Task::copy_state(const CapturedState& state) {
       LOG(debug) << "    setting name to " << prname;
       err = remote.syscall(syscall_number_for_prctl(arch()), PR_SET_NAME,
                            remote_prname.get().as_int());
-      ASSERT(this, 0 == err);
+      if (0 > err) {
+        errno = -err;
+        FATAL() << "Failed PR_SET_NAME in tracee";
+      }
       update_prname(remote_prname.get());
     }
 
@@ -2496,14 +2501,20 @@ void Task::open_mem_fd() {
     remote_fd =
         remote.syscall(syscall_number_for_openat(arch()),
                        RR_RESERVED_ROOT_DIR_FD, remote_path.get() + 1, O_RDWR);
-    assert(remote_fd >= 0);
+    if (0 > remote_fd) {
+      errno = -remote_fd;
+      FATAL() << "Failed to open " << remote_path.get() << " in tracee";
+    }
   }
 
   as->set_mem_fd(remote.retrieve_fd(remote_fd));
-  assert(as->mem_fd().is_open());
+  ASSERT(this, as->mem_fd().is_open());
 
   long err = remote.syscall(syscall_number_for_close(arch()), remote_fd);
-  assert(!err);
+  if (0 > err) {
+    errno = -err;
+    FATAL() << "Failed to close " << remote_fd << " in tracee";
+  }
 }
 
 void Task::open_mem_fd_if_needed() {
@@ -2528,13 +2539,9 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   {
     AutoRestoreMem child_path(remote, path);
     // skip leading '/' since we want the path to be relative to the root fd
-    child_shmem_fd = remote.syscall(
+    child_shmem_fd = remote.infallible_syscall(
         syscall_number_for_openat(arch()), RR_RESERVED_ROOT_DIR_FD,
         child_path.get() + 1, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
-    if (0 > child_shmem_fd) {
-      errno = -child_shmem_fd;
-      FATAL() << "Failed to open(" << path << ") in tracee";
-    }
   }
 
   /* Remove the fs name so that we don't have to worry about
@@ -2557,13 +2564,8 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   if (!map_hint.is_null()) {
     flags |= MAP_FIXED;
   }
-  remote_ptr<void> child_map_addr = remote.mmap_syscall(
+  remote_ptr<void> child_map_addr = remote.infallible_mmap_syscall(
       map_hint, num_syscallbuf_bytes, prot, flags, child_shmem_fd, 0);
-  if (!map_hint.is_null()) {
-    ASSERT(this, child_map_addr == map_hint)
-        << "Tried to map syscallbuf at " << HEX(map_hint.as_int())
-        << " but got " << HEX(child_map_addr.as_int());
-  }
 
   ASSERT(this, !syscallbuf_child)
       << "Should not already have syscallbuf initialized!";
@@ -2759,17 +2761,16 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
   AutoRestoreMem child_path(remote, reinterpret_cast<uint8_t*>(path),
                             sizeof(path));
   // skip leading '/' since we want the path to be relative to the root fd
-  int child_fd =
-      remote.syscall(syscall_number_for_openat(a), RR_RESERVED_ROOT_DIR_FD,
-                     child_path.get() + 1, O_RDWR);
+  int child_fd = remote.infallible_syscall(syscall_number_for_openat(a),
+                                           RR_RESERVED_ROOT_DIR_FD,
+                                           child_path.get() + 1, O_RDWR);
   ASSERT(this, child_fd >= 0);
 
   // Just map the new file right over the top of existing pages
-  auto result = remote.mmap_syscall(page_start, cur.size(), all_prot,
-                                    all_flags | MAP_FIXED, child_fd, 0);
-  ASSERT(this, result.as_int() == page_start);
+  remote.infallible_mmap_syscall(page_start, cur.size(), all_prot,
+                                 all_flags | MAP_FIXED, child_fd, 0);
 
-  remote.syscall(syscall_number_for_close(a), child_fd);
+  remote.infallible_syscall(syscall_number_for_close(a), child_fd);
 
   unlink(path);
   return true;

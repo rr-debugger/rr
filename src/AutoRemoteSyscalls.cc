@@ -76,7 +76,7 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
 
 static bool is_usable_area(const KernelMapping& km) {
   return (km.prot() & (PROT_READ | PROT_WRITE)) == (PROT_READ | PROT_WRITE) &&
-      (km.flags() & MAP_PRIVATE);
+         (km.flags() & MAP_PRIVATE);
 }
 
 void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
@@ -446,17 +446,36 @@ ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
   RR_ARCH_FUNCTION(retrieve_fd_arch, arch(), fd);
 }
 
-remote_ptr<void> AutoRemoteSyscalls::mmap_syscall(remote_ptr<void> addr,
-                                                  size_t length, int prot,
-                                                  int flags, int child_fd,
-                                                  uint64_t offset_pages) {
+remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall(
+    remote_ptr<void> addr, size_t length, int prot, int flags, int child_fd,
+    uint64_t offset_pages) {
   // The first syscall argument is called "arg 1", so
   // our syscall-arg-index template parameter starts
   // with "1".
-  if (has_mmap2_syscall(arch())) {
-    return syscall_ptr(syscall_number_for_mmap2(arch()), addr, length, prot,
-                       flags, child_fd, (off_t)offset_pages);
+  remote_ptr<void> ret =
+      has_mmap2_syscall(arch())
+          ? infallible_syscall_ptr(syscall_number_for_mmap2(arch()), addr,
+                                   length, prot, flags, child_fd,
+                                   (off_t)offset_pages)
+          : infallible_syscall_ptr(syscall_number_for_mmap(arch()), addr,
+                                   length, prot, flags, child_fd,
+                                   offset_pages * page_size());
+  if (flags & MAP_FIXED) {
+    ASSERT(t, addr == ret) << "MAP_FIXED at " << addr << " but got " << ret;
   }
-  return syscall_ptr(syscall_number_for_mmap(arch()), addr, length, prot, flags,
-                     child_fd, offset_pages * page_size());
+  return ret;
+}
+
+void AutoRemoteSyscalls::check_syscall_result(int syscallno) {
+  long ret = t->regs().syscall_result_signed();
+  if (-4096 < ret && ret < 0) {
+    string extra_msg;
+    if (is_open_syscall(syscallno, arch())) {
+      extra_msg = " opening " + t->read_c_str(t->regs().arg1());
+    } else if (is_openat_syscall(syscallno, arch())) {
+      extra_msg = " opening " + t->read_c_str(t->regs().arg2());
+    }
+    ASSERT(t, false) << "Syscall " << syscall_name(syscallno, arch())
+                     << " failed with errno " << errno_name(-ret) << extra_msg;
+  }
 }

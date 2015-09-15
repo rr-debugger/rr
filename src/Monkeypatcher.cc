@@ -233,8 +233,7 @@ static remote_ptr<uint8_t> allocate_extended_jump(
       AutoRemoteSyscalls remote(t);
       int prot = PROT_READ | PROT_EXEC;
       int flags = MAP_ANONYMOUS | MAP_FIXED | MAP_PRIVATE;
-      auto result = remote.mmap_syscall(addr, page_size(), prot, flags, -1, 0);
-      ASSERT(t, result == addr);
+      remote.infallible_mmap_syscall(addr, page_size(), prot, flags, -1, 0);
       KernelMapping recorded(addr, addr + page_size(), string(),
                              KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                              prot, flags);

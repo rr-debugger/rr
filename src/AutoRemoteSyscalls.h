@@ -147,9 +147,21 @@ public:
   }
 
   template <typename... Rest>
-  remote_ptr<void> syscall_ptr(int syscallno, Rest... args) {
+  long infallible_syscall(int syscallno, Rest... args) {
+    Registers callregs = regs();
+    // The first syscall argument is called "arg 1", so
+    // our syscall-arg-index template parameter starts
+    // with "1".
+    syscall_helper<1>(syscallno, callregs, args...);
+    check_syscall_result(syscallno);
+    return t->regs().syscall_result_signed();
+  }
+
+  template <typename... Rest>
+  remote_ptr<void> infallible_syscall_ptr(int syscallno, Rest... args) {
     Registers callregs = regs();
     syscall_helper<1>(syscallno, callregs, args...);
+    check_syscall_result(syscallno);
     return t->regs().syscall_result();
   }
 
@@ -157,8 +169,9 @@ public:
    * Remote mmap syscalls are common and non-trivial due to the need to
    * select either mmap2 or mmap.
    */
-  remote_ptr<void> mmap_syscall(remote_ptr<void> addr, size_t length, int prot,
-                                int flags, int child_fd, uint64_t offset_pages);
+  remote_ptr<void> infallible_mmap_syscall(remote_ptr<void> addr, size_t length,
+                                           int prot, int flags, int child_fd,
+                                           uint64_t offset_pages);
 
   /** The Task in the context of which we're making syscalls. */
   Task* task() const { return t; }
@@ -197,6 +210,8 @@ private:
    * everything should work without the assertion checking.
    */
   void wait_syscall(int syscallno = -1);
+
+  void check_syscall_result(int syscallno);
 
   /**
    * "Recursively" build the set of syscall registers in

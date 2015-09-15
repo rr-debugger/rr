@@ -2607,11 +2607,12 @@ static void init_scratch_memory(Task* t,
     AutoRemoteSyscalls remote(t);
 
     if (addr_type == DYNAMIC_ADDRESS) {
-      t->scratch_ptr =
-          remote.mmap_syscall(remote_ptr<void>(), sz, prot, flags, -1, 0);
+      t->scratch_ptr = remote.infallible_mmap_syscall(remote_ptr<void>(), sz,
+                                                      prot, flags, -1, 0);
     } else {
-      t->scratch_ptr = remote.mmap_syscall(remote_ptr<void>(FIXED_SCRATCH_PTR),
-                                           sz, prot, flags | MAP_FIXED, -1, 0);
+      t->scratch_ptr =
+          remote.infallible_mmap_syscall(remote_ptr<void>(FIXED_SCRATCH_PTR),
+                                         sz, prot, flags | MAP_FIXED, -1, 0);
     }
     t->scratch_size = scratch_size;
   }

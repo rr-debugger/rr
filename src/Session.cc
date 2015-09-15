@@ -340,8 +340,8 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
 
   LOG(debug) << "    remapping shared region at " << m.map.start() << "-"
              << m.map.end();
-  remote.syscall(syscall_number_for_munmap(remote.arch()), m.map.start(),
-                 m.map.size());
+  remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
+                            m.map.start(), m.map.size());
 
   auto emufile = dest_emu_fs.at(m.recorded_map);
   // TODO: this duplicates some code in replay_syscall.cc, but
@@ -353,24 +353,23 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
     // Always open the emufs file O_RDWR, even if the current mapping prot
     // is read-only. We might mprotect it to read-write later.
     // skip leading '/' since we want the path to be relative to the root fd
-    remote_fd =
-        remote.syscall(syscall_number_for_openat(remote.arch()),
-                       RR_RESERVED_ROOT_DIR_FD, child_path.get() + 1, O_RDWR);
+    remote_fd = remote.infallible_syscall(
+        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
+        child_path.get() + 1, O_RDWR);
     if (0 > remote_fd) {
       FATAL() << "Couldn't open " << path << " in tracee";
     }
   }
   Task::FStatResult real_file = remote.task()->fstat(remote_fd);
   // XXX this condition is x86/x64-specific, I imagine.
-  remote_ptr<void> addr =
-      remote.mmap_syscall(m.map.start(), m.map.size(), m.map.prot(),
-                          // The remapped segment *must* be
-                          // remapped at the same address,
-                          // or else many things will go
-                          // haywire.
-                          (m.map.flags() & ~MAP_ANONYMOUS) | MAP_FIXED,
-                          remote_fd, m.map.file_offset_bytes() / page_size());
-  ASSERT(remote.task(), addr == m.map.start());
+  remote.infallible_mmap_syscall(m.map.start(), m.map.size(), m.map.prot(),
+                                 // The remapped segment *must* be
+                                 // remapped at the same address,
+                                 // or else many things will go
+                                 // haywire.
+                                 (m.map.flags() & ~MAP_ANONYMOUS) | MAP_FIXED,
+                                 remote_fd,
+                                 m.map.file_offset_bytes() / page_size());
 
   // We update the AddressSpace mapping too, since that tracks the real file
   // name and we need to update that.
@@ -379,7 +378,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
                            real_file.file_name, real_file.st.st_dev,
                            real_file.st.st_ino, &m.recorded_map);
 
-  remote.syscall(syscall_number_for_close(remote.arch()), remote_fd);
+  remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
 
 void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {

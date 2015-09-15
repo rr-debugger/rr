@@ -1260,9 +1260,8 @@ Completion ReplaySession::patch_next_syscall(
     }
     AutoRemoteSyscalls remote(t);
     ASSERT(t, km.flags() & MAP_ANONYMOUS);
-    auto result = remote.mmap_syscall(km.start(), km.size(), km.prot(),
-                                      km.flags(), -1, 0);
-    ASSERT(t, result == km.start());
+    remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
+                                   km.flags() | MAP_FIXED, -1, 0);
     t->vm()->map(km.start(), km.size(), km.prot(), km.flags(), 0, string(),
                  KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km,
                  TraceWriter::PATCH_MAPPING);

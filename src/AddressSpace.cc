@@ -227,18 +227,16 @@ void AddressSpace::map_rr_page(Task* t) {
     string path = find_rr_page_file(t);
     AutoRestoreMem child_path(remote, path.c_str());
     // skip leading '/' since we want the path to be relative to the root fd
-    int child_fd =
-        remote.syscall(syscall_number_for_openat(arch), RR_RESERVED_ROOT_DIR_FD,
-                       child_path.get() + 1, O_RDONLY);
-    ASSERT(t, child_fd >= 0);
+    int child_fd = remote.infallible_syscall(syscall_number_for_openat(arch),
+                                             RR_RESERVED_ROOT_DIR_FD,
+                                             child_path.get() + 1, O_RDONLY);
 
-    auto result = remote.mmap_syscall(rr_page_start(), rr_page_size(), prot,
-                                      flags, child_fd, 0);
-    ASSERT(t, result == rr_page_start());
+    remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
+                                   child_fd, 0);
 
     fstat = t->fstat(child_fd);
 
-    remote.syscall(syscall_number_for_close(arch), child_fd);
+    remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
 
     if (t->session().is_recording()) {
       // brk() will not have been called yet so the brk area is empty.
@@ -1332,9 +1330,9 @@ static bool could_be_stack(const KernelMapping& km) {
   // our sp looks wrong and /proc/<pid>/maps doesn't identify the region as
   // stack.
   // On stub execs there should only be one read-writable memory area anyway.
-  return km.prot() == (PROT_READ | PROT_WRITE) &&
-      km.fsname() == "" && km.device() == KernelMapping::NO_DEVICE &&
-      km.inode() == KernelMapping::NO_INODE;
+  return km.prot() == (PROT_READ | PROT_WRITE) && km.fsname() == "" &&
+         km.device() == KernelMapping::NO_DEVICE &&
+         km.inode() == KernelMapping::NO_INODE;
 }
 
 void AddressSpace::populate_address_space(Task* t) {
@@ -1352,8 +1350,7 @@ void AddressSpace::populate_address_space(Task* t) {
     int flags = km.flags();
     remote_ptr<void> start = km.start();
     ASSERT(t, flags & MAP_PRIVATE);
-    bool is_stack = found_proper_stack ? km.is_stack() :
-        could_be_stack(km);
+    bool is_stack = found_proper_stack ? km.is_stack() : could_be_stack(km);
     if (is_stack) {
       ++found_stacks;
       flags |= MAP_GROWSDOWN;

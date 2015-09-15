@@ -121,17 +121,11 @@ static void init_scratch_memory(Task* t, const KernelMapping& km,
   size_t sz = t->scratch_size;
   int prot = PROT_NONE;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
-  remote_ptr<void> map_addr;
-  {
-    AutoRemoteSyscalls remote(t);
-    map_addr = remote.mmap_syscall(t->scratch_ptr, sz, prot, flags, -1, 0);
-  }
-  ASSERT(t, t->scratch_ptr == map_addr) << "scratch mapped " << km.start()
-                                        << " during recording, but " << map_addr
-                                        << " in replay";
 
-  t->vm()->map(map_addr, sz, prot, flags, 0, string(), KernelMapping::NO_DEVICE,
-               KernelMapping::NO_INODE, &km);
+  AutoRemoteSyscalls remote(t);
+  remote.infallible_mmap_syscall(t->scratch_ptr, sz, prot, flags, -1, 0);
+  t->vm()->map(t->scratch_ptr, sz, prot, flags, 0, string(),
+               KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km);
 }
 
 /**
@@ -352,28 +346,24 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
     int oflags =
         (MAP_SHARED & flags) && (PROT_WRITE & prot) ? O_RDWR : O_RDONLY;
     /* TODO: unclear if O_NOATIME is relevant for mmaps */
-    fd = remote.syscall(syscall_number_for_open(remote.arch()),
-                        child_str.get().as_int(), oflags);
-    if (0 > fd) {
-      FATAL() << "Couldn't open " << backing_file_name << " to mmap in tracee";
-    }
+    fd = remote.infallible_syscall(syscall_number_for_open(remote.arch()),
+                                   child_str.get().as_int(), oflags);
   }
   /* And mmap that file. */
-  remote_ptr<void> mapped_addr =
-      remote.mmap_syscall(rec_addr, length,
-                          /* (We let SHARED|WRITEABLE
-                           * mappings go through while
-                           * they're not handled properly,
-                           * but we shouldn't do that.) */
-                          prot, flags | MAP_FIXED, fd, backing_offset_pages);
-  ASSERT(t, mapped_addr == rec_addr);
+  remote.infallible_mmap_syscall(rec_addr, length,
+                                 /* (We let SHARED|WRITEABLE
+                                  * mappings go through while
+                                  * they're not handled properly,
+                                  * but we shouldn't do that.) */
+                                 prot, flags | MAP_FIXED, fd,
+                                 backing_offset_pages);
 
   // While it's open, grab the link reference.
   real_file = t->fstat(fd);
 
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
-  remote.syscall(syscall_number_for_close(remote.arch()), fd);
+  remote.infallible_syscall(syscall_number_for_close(remote.arch()), fd);
 }
 
 static void restore_mapped_region(AutoRemoteSyscalls& remote,
@@ -400,9 +390,8 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
   } else {
     ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
     flags |= MAP_ANONYMOUS;
-    auto result = remote.mmap_syscall(km.start(), km.size(), km.prot(),
-                                      flags | MAP_FIXED, -1, 0);
-    ASSERT(t, result == km.start());
+    remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
+                                   flags | MAP_FIXED, -1, 0);
     // The data will be written back by Task::apply_all_data_records_from_trace
   }
 
@@ -607,10 +596,9 @@ static void process_brk(Task* t, const TraceFrame& trace_frame,
   if (km.flags()) {
     AutoRemoteSyscalls remote(t);
     ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
-    remote_ptr<void> ret =
-        remote.mmap_syscall(km.start(), km.size(), km.prot(),
-                            MAP_ANONYMOUS | MAP_FIXED | km.flags(), -1, 0);
-    ASSERT(t, ret == km.start());
+    remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
+                                   MAP_ANONYMOUS | MAP_FIXED | km.flags(), -1,
+                                   0);
     t->vm()->map(km.start(), km.size(), km.prot(), MAP_ANONYMOUS | km.flags(),
                  0, "[heap]", KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                  &km);
@@ -645,14 +633,13 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
   ino_t inode = KernelMapping::NO_INODE;
   KernelMapping recorded_km;
   if (flags & MAP_PRIVATE) {
-    auto result = remote.mmap_syscall(rec_addr, length, prot,
-                                      // Tell the kernel to take |rec_addr|
-                                      // seriously.
-                                      flags | MAP_FIXED, -1, 0);
+    remote.infallible_mmap_syscall(rec_addr, length, prot,
+                                   // Tell the kernel to take |rec_addr|
+                                   // seriously.
+                                   flags | MAP_FIXED, -1, 0);
     recorded_km = KernelMapping(rec_addr, rec_addr + ceil_page_size(length),
                                 string(), KernelMapping::NO_DEVICE,
                                 KernelMapping::NO_INODE, prot, flags, 0);
-    ASSERT(remote.task(), rec_addr == result);
   } else {
     TraceReader::MappedData data;
     recorded_km = remote.task()->trace_reader().read_mapped_region(&data);
@@ -694,11 +681,8 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   int child_fd;
   {
     AutoRestoreMem child_str(remote, filename);
-    child_fd = remote.syscall(syscall_number_for_open(remote.arch()),
-                              child_str.get(), O_RDONLY);
-    if (0 > child_fd) {
-      FATAL() << "Couldn't open " << filename << " to mmap in tracee";
-    }
+    child_fd = remote.infallible_syscall(syscall_number_for_open(remote.arch()),
+                                         child_str.get(), O_RDONLY);
   }
 
   /* Unlink it now that the child has opened it */
@@ -710,11 +694,11 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
      so that the correct signal is generated on a memory access
      (SEGV if 'prot' doesn't allow the access, BUS if 'prot' does allow
      the access). */
-  remote.mmap_syscall(start, length, prot, MAP_FIXED | MAP_PRIVATE, child_fd,
-                      0);
+  remote.infallible_mmap_syscall(start, length, prot, MAP_FIXED | MAP_PRIVATE,
+                                 child_fd, 0);
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
-  remote.syscall(syscall_number_for_close(remote.arch()), child_fd);
+  remote.infallible_syscall(syscall_number_for_close(remote.arch()), child_fd);
 
   KernelMapping km_slice = km.subrange(start, start + length);
   remote.task()->vm()->map(start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
@@ -1122,11 +1106,10 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         // different decisions).
         AutoRemoteSyscalls remote(t);
         // Force the mremap to use the destination address from recording.
-        remote_ptr<void> result = remote.syscall_ptr(
+        remote.infallible_syscall_ptr(
             syscall, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3(),
             trace_regs.arg4() | MREMAP_MAYMOVE | MREMAP_FIXED,
             trace_regs.syscall_result());
-        ASSERT(t, result == trace_regs.syscall_result());
         // Task::on_syscall_exit takes care of updating AddressSpace.
       }
       return;
