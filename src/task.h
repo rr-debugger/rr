@@ -151,11 +151,6 @@ enum WaitRequest {
   RESUME_NONBLOCKING
 };
 
-enum ShareDeschedEventFd {
-  SHARE_DESCHED_EVENT_FD = 1,
-  DONT_SHARE_DESCHED_EVENT_FD = 0
-};
-
 /** Different kinds of waits a task can do.
  */
 enum WaitType {
@@ -492,8 +487,7 @@ public:
    *
    * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
    */
-  void init_buffers(remote_ptr<void> map_hint,
-                    ShareDeschedEventFd share_desched_fd);
+  void init_buffers(remote_ptr<void> map_hint);
 
   /**
    * Destroy in the tracee task the scratch buffer and syscallbuf (if
@@ -1370,9 +1364,7 @@ private:
   template <typename Arch> void update_sigaction_arch(const Registers& regs);
 
   /** Helper function for init_buffers. */
-  template <typename Arch>
-  void init_buffers_arch(remote_ptr<void> map_hint,
-                         ShareDeschedEventFd share_desched_fd);
+  template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
 
   /**
    * Return a new Task cloned from |p|.  |flags| are a set of

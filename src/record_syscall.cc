@@ -3266,7 +3266,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
 
     case SYS_rrcall_init_buffers:
-      t->init_buffers(nullptr, SHARE_DESCHED_EVENT_FD);
+      t->init_buffers(nullptr);
       break;
 
     case SYS_rrcall_init_preload: {

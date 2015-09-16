@@ -675,8 +675,7 @@ RecordSession& Task::record_session() const { return *session().as_record(); }
 ReplaySession& Task::replay_session() const { return *session().as_replay(); }
 
 template <typename Arch>
-void Task::init_buffers_arch(remote_ptr<void> map_hint,
-                             ShareDeschedEventFd share_desched_fd) {
+void Task::init_buffers_arch(remote_ptr<void> map_hint) {
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
@@ -693,7 +692,7 @@ void Task::init_buffers_arch(remote_ptr<void> map_hint,
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
     fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
-    if (share_desched_fd == SHARE_DESCHED_EVENT_FD) {
+    if (session().is_recording()) {
       desched_fd = remote.retrieve_fd(desched_fd_child);
     }
   } else {
@@ -710,9 +709,8 @@ void Task::init_buffers_arch(remote_ptr<void> map_hint,
   remote.regs().set_syscall_result(syscallbuf_child);
 }
 
-void Task::init_buffers(remote_ptr<void> map_hint,
-                        ShareDeschedEventFd share_desched_fd) {
-  RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint, share_desched_fd);
+void Task::init_buffers(remote_ptr<void> map_hint) {
+  RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint);
 }
 
 void Task::destroy_buffers() {
@@ -724,9 +722,13 @@ void Task::destroy_buffers() {
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               syscallbuf_child, num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
-    remote.infallible_syscall(syscall_number_for_close(arch()),
-                              desched_fd_child);
-    fds->did_close(desched_fd_child);
+    if (desched_fd_child >= 0) {
+      if (session().is_recording()) {
+        remote.infallible_syscall(syscall_number_for_close(arch()),
+                                  desched_fd_child);
+      }
+      fds->did_close(desched_fd_child);
+    }
   }
 }
 
@@ -2298,6 +2300,12 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       // disabled but that's OK, those cases are rare (and in the case of vfork,
       // tracees should immediately exit or exec anyway).
       t->write_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked), uint8_t(1));
+
+      if (CLONE_SHARE_FILES & flags) {
+        // Clear our desched_fd_child so that we don't try to close it.
+        // It should only be closed in |this|.
+        t->desched_fd_child = -1;
+      }
     }
   }
 
