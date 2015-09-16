@@ -2891,10 +2891,11 @@ bool Task::clone_syscall_is_complete() {
   // handle this.
   // XXX ENOSYS shouldn't happen here.
   intptr_t result = regs().syscall_result_signed();
-  ASSERT(this,
-         regs().syscall_may_restart() || -ENOSYS == result || -EAGAIN == result)
-      << "Unexpected task status " << HEX(status())
-      << " (syscall result:" << regs().syscall_result_signed() << ")";
+  ASSERT(this, regs().syscall_may_restart() || -ENOSYS == result ||
+                   -EAGAIN == result || -ENOMEM == result)
+      << "Unexpected task status " << HEX(status()) << " ("
+      << syscall_name(regs().original_syscallno())
+      << " syscall result:" << regs().syscall_result_signed() << ")";
   return false;
 }
 

@@ -132,7 +132,7 @@ bool is_sigreturn(int syscallno, SupportedArch arch) {
          is_rt_sigreturn_syscall(syscallno, arch);
 }
 
-const char* errno_name(int err) {
+string errno_name(int err) {
   switch (err) {
     case 0:
       return "SUCCESS";
@@ -267,8 +267,11 @@ const char* errno_name(int err) {
       CASE(ENOTRECOVERABLE);
       CASE(ERFKILL);
       CASE(EHWPOISON);
-    default:
-      return "???errno";
+    default: {
+      char buf[100];
+      sprintf(buf, "errno(%d)", err);
+      return string(buf);
+    }
   }
 }
 

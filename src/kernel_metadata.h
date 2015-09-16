@@ -42,7 +42,7 @@ bool is_sigreturn(int syscall, SupportedArch arch);
 /**
  * Return the symbolic error name (e.g. "EINVAL") for errno.
  */
-const char* errno_name(int err);
+std::string errno_name(int err);
 
 /**
  * Return the symbolic name (e.g. "SI_USER") for an si_code.
