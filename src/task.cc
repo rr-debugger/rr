@@ -2895,7 +2895,7 @@ bool Task::clone_syscall_is_complete() {
                    -EAGAIN == result || -ENOMEM == result)
       << "Unexpected task status " << HEX(status()) << " ("
       << syscall_name(regs().original_syscallno())
-      << " syscall result:" << regs().syscall_result_signed() << ")";
+      << " syscall errno: " << errno_name(-result) << ")";
   return false;
 }
 
