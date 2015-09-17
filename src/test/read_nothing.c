@@ -2,14 +2,17 @@
 
 #include "rrutil.h"
 
+#define SIZE 100000000
+
 int main(int argc, char* argv[]) {
   int pipe_fds[2];
   int i;
-  char buf[1];
+  char* buf = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
+  test_assert(buf != MAP_FAILED);
   test_assert(0 == pipe2(pipe_fds, O_NONBLOCK));
   for (i = 0; i < 10000; ++i) {
-    test_assert(-1 == read(pipe_fds[0], buf, 100000000));
+    test_assert(-1 == read(pipe_fds[0], buf, SIZE));
     test_assert(errno == EAGAIN);
   }
 
