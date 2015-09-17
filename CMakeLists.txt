@@ -451,6 +451,8 @@ set(BASIC_TESTS
   sock_names_opts
   splice
   stack_overflow
+  stack_overflow_altstack
+  stack_overflow_with_guard
   statfs
   stdout_child
   stdout_cloexec

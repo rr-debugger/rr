@@ -26,18 +26,19 @@ int main(int argc, char* argv[]) {
   child = fork();
 
   if (!child) {
-    /* Testing shows that the output value of |depth| is not very sensitive to
-       small values of the limit, but it's very sensitive around the 500K mark.
-    */
-    struct rlimit r = { 500000, 500000 };
     struct sigaction act;
+    int* fake_sp = &argc;
 
     act.sa_sigaction = SEGV_handler;
     act.sa_flags = SA_SIGINFO;
     sigemptyset(&act.sa_mask);
     test_assert(0 == sigaction(SIGSEGV, &act, NULL));
 
-    test_assert(0 == setrlimit(RLIMIT_STACK, &r));
+    void* p =
+        (void*)((size_t)(fake_sp - 8 * PAGE_SIZE) & ~(size_t)(PAGE_SIZE - 1));
+
+    test_assert(mmap(p, PAGE_SIZE, PROT_NONE,
+                     MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0) == p);
 
     return recurse();
   }

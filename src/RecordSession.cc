@@ -967,6 +967,24 @@ static void inject_signal(Task* t) {
   LOG(debug) << "    injecting signal number " << t->ev().Signal().siginfo;
   t->set_siginfo(t->ev().Signal().siginfo);
   t->cont_singlestep(sig);
+
+  // It's been observed that when tasks enter
+  // sighandlers, the singlestep operation above
+  // doesn't retire any instructions; and
+  // indeed, if an instruction could be retired,
+  // this code wouldn't work.  This also
+  // cross-checks the sighandler information we
+  // maintain in |t->sighandlers|.
+  assert(!PerfCounters::extra_perf_counters_enabled() ||
+         0 == t->hpc.read_extra().instructions_retired);
+
+  if (t->pending_sig() == SIGSEGV) {
+    // Constructing the signal handler frame must have failed. The kernel will
+    // kill the process. We just need to inject this new signal now.
+    t->cont_singlestep(SIGSEGV);
+    return;
+  }
+
   ASSERT(t, t->pending_sig() == SIGTRAP);
   ASSERT(t, t->get_signal_user_handler(sig) == t->ip());
 
@@ -978,16 +996,6 @@ static void inject_signal(Task* t) {
     // which wipes out certain fields; e.g. we can't set SI_KERNEL in si_code.)
     setup_sigframe_siginfo(t, t->ev().Signal().siginfo);
   }
-
-  // It's been observed that when tasks enter
-  // sighandlers, the singlestep operation above
-  // doesn't retire any instructions; and
-  // indeed, if an instruction could be retired,
-  // this code wouldn't work.  This also
-  // cross-checks the sighandler information we
-  // maintain in |t->sighandlers|.
-  assert(!PerfCounters::extra_perf_counters_enabled() ||
-         0 == t->hpc.read_extra().instructions_retired);
 }
 
 /**
