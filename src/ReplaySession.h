@@ -116,8 +116,6 @@ struct ReplayTraceStep {
       int number;
     } syscall;
 
-    int signo;
-
     struct {
       Ticks ticks;
       int signo;
@@ -369,7 +367,7 @@ private:
                                      const StepConstraints& constraints);
   Completion emulate_deterministic_signal(Task* t, int sig,
                                           const StepConstraints& constraints);
-  Completion emulate_async_signal(Task* t, int sig,
+  Completion emulate_async_signal(Task* t,
                                   const StepConstraints& constraints,
                                   Ticks ticks);
   Completion skip_desched_ioctl(Task* t, ReplayDeschedState* ds,

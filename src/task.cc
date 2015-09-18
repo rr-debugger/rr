@@ -773,6 +773,11 @@ bool Task::is_sig_blocked(int sig) const {
   return (blocked_sigs >> sig_bit) & 1;
 }
 
+void Task::set_sig_blocked(int sig) {
+  int sig_bit = sig - 1;
+  blocked_sigs |= (sig_set_t)1 << sig_bit;
+}
+
 bool Task::is_sig_ignored(int sig) const {
   return sighandlers->get(sig).ignored(sig);
 }

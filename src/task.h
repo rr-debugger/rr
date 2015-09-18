@@ -590,6 +590,9 @@ public:
   /** Return true iff |sig| is blocked for this. */
   bool is_sig_blocked(int sig) const;
 
+  /** Set |sig| to be treated as blocked. */
+  void set_sig_blocked(int sig);
+
   /**
    * Return true iff |sig| is SIG_IGN, or it's SIG_DFL and the
    * default disposition is "ignore".

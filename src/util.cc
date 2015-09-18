@@ -454,27 +454,6 @@ SignalDeterministic is_deterministic_signal(const siginfo_t& si) {
   }
 }
 
-bool possibly_destabilizing_signal(Task* t, int sig,
-                                   SignalDeterministic deterministic) {
-  signal_action action = default_action(sig);
-  if (action != DUMP_CORE && action != TERMINATE) {
-    // If the default action doesn't kill the process, it won't die.
-    return false;
-  }
-
-  if (t->is_sig_ignored(sig)) {
-    // Deterministic fatal signals can't be ignored.
-    return deterministic == DETERMINISTIC_SIG;
-  }
-  if (!t->signal_has_user_handler(sig)) {
-    // The default action is going to happen: killing the process.
-    return true;
-  }
-  // If the signal's blocked, user handlers aren't going to run and the process
-  // will die.
-  return t->is_sig_blocked(sig);
-}
-
 static bool has_fs_name(const string& path) {
   struct stat dummy;
   return 0 == stat(path.c_str(), &dummy);

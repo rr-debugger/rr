@@ -909,7 +909,12 @@ static void setup_sigframe_siginfo(Task* t, const siginfo_t& siginfo) {
                    *reinterpret_cast<const NativeArch::siginfo_t*>(&siginfo));
 }
 
-static void inject_signal(Task* t) {
+/**
+ * Returns true if the signal should be delivered.
+ * Returns false if this signal should not be delivered because another signal
+ * occurred during delivery.
+ */
+static bool inject_signal(Task* t) {
   int sig = t->ev().Signal().siginfo.si_signo;
 
   /* Signal injection is tricky. Per the ptrace(2) man page, injecting
@@ -980,9 +985,11 @@ static void inject_signal(Task* t) {
 
   if (t->pending_sig() == SIGSEGV) {
     // Constructing the signal handler frame must have failed. The kernel will
-    // kill the process. We just need to inject this new signal now.
-    t->cont_singlestep(SIGSEGV);
-    return;
+    // kill the process after this. Stash the signal and mark it as blocked so
+    // we know to treat it as fatal when we inject it.
+    t->stash_sig();
+    t->set_sig_blocked(SIGSEGV);
+    return false;
   }
 
   ASSERT(t, t->pending_sig() == SIGTRAP);
@@ -996,6 +1003,29 @@ static void inject_signal(Task* t) {
     // which wipes out certain fields; e.g. we can't set SI_KERNEL in si_code.)
     setup_sigframe_siginfo(t, t->ev().Signal().siginfo);
   }
+
+  return true;
+}
+
+static bool is_fatal_signal(Task* t, int sig,
+                            SignalDeterministic deterministic) {
+  signal_action action = default_action(sig);
+  if (action != DUMP_CORE && action != TERMINATE) {
+    // If the default action doesn't kill the process, it won't die.
+    return false;
+  }
+
+  if (t->is_sig_ignored(sig)) {
+    // Deterministic fatal signals can't be ignored.
+    return deterministic == DETERMINISTIC_SIG;
+  }
+  if (!t->signal_has_user_handler(sig)) {
+    // The default action is going to happen: killing the process.
+    return true;
+  }
+  // If the signal's blocked, user handlers aren't going to run and the process
+  // will die.
+  return t->is_sig_blocked(sig);
 }
 
 /**
@@ -1014,13 +1044,28 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
       t->record_current_event();
       t->ev().transform(EV_SIGNAL_DELIVERY);
       ssize_t sigframe_size = 0;
+
+      bool blocked = t->is_sig_blocked(sig);
+      // If this is the signal delivered by a sigsuspend, then clear
+      // sigsuspend_blocked_sigs to indicate that future signals are not
+      // being delivered by sigsuspend.
+      t->sigsuspend_blocked_sigs = nullptr;
+
       // If a signal is blocked but is still delivered (e.g. a synchronous
       // terminating signal such as SIGSEGV), user handlers do not run.
-      if (t->signal_has_user_handler(sig) && !t->is_sig_blocked(sig)) {
+      if (t->signal_has_user_handler(sig) && !blocked) {
         LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
 
-        inject_signal(t);
+        if (!inject_signal(t)) {
+          // Signal delivery isn't happening. Prepare to process the new
+          // signal that aborted signal delivery.
+          t->signal_delivered(sig);
+          t->pop_event(EV_SIGNAL_DELIVERY);
+          step_state->continue_type = DONT_CONTINUE;
+          last_task_switchable = PREVENT_SWITCH;
+          break;
+        }
 
         // It's somewhat difficult engineering-wise to
         // compute the sigframe size at compile time,
@@ -1073,19 +1118,13 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
       // state of the stepi if there wasn't a signal
       // handler.
       t->record_current_event();
-
-      // If this is the signal delivered by a sigsuspend, then clear
-      // sigsuspend_blocked_sigs to indicate that future signals are not
-      // being delivered by sigsuspend.
-      t->sigsuspend_blocked_sigs = nullptr;
       break;
     }
 
     case EV_SIGNAL_DELIVERY:
       step_state->continue_sig = sig;
       t->signal_delivered(sig);
-      if (possibly_destabilizing_signal(t, sig,
-                                        t->ev().Signal().deterministic)) {
+      if (is_fatal_signal(t, sig, t->ev().Signal().deterministic)) {
         LOG(warn) << "Delivered core-dumping signal; may misrecord "
                      "CLONE_CHILD_CLEARTID memory race";
         t->destabilize_task_group();

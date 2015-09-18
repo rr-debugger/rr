@@ -789,16 +789,17 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
   }
 }
 
+static bool is_fatal_default_action(int sig) {
+  signal_action action = default_action(sig);
+  return action == DUMP_CORE || action == TERMINATE;
+}
+
 /**
  * Emulates delivery of |sig| to |oldtask|.  Returns INCOMPLETE if
  * emulation was interrupted, COMPLETE if completed.
  */
 Completion ReplaySession::emulate_signal_delivery(
     Task* oldtask, int sig, const StepConstraints& constraints) {
-  // We are now at the exact point in the child where the signal
-  // was recorded, emulate it using the next trace frame (records
-  // the state at sighandler entry).
-  advance_to_next_trace_frame(constraints.stop_at_time);
   Task* t = current_task();
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
@@ -807,26 +808,25 @@ Completion ReplaySession::emulate_signal_delivery(
   }
   ASSERT(oldtask, t == oldtask) << "emulate_signal_delivery changed task";
 
-  ASSERT(t, trace_frame.event().type() == EV_SIGNAL_DELIVERY ||
-                trace_frame.event().type() == EV_SIGNAL_HANDLER)
+  const Event& ev = trace_frame.event();
+  ASSERT(t, ev.type() == EV_SIGNAL_DELIVERY || ev.type() == EV_SIGNAL_HANDLER)
       << "Unexpected signal disposition";
   // Entering a signal handler seems to clear FP/SSE registers for some
   // reason. So we saved those cleared values, and now we restore that
   // state so they're cleared during replay.
-  if (trace_frame.event().type() == EV_SIGNAL_HANDLER) {
+  if (ev.type() == EV_SIGNAL_HANDLER) {
     t->set_extra_regs(trace_frame.extra_regs());
   }
 
   /* Restore the signal-hander frame data, if there was one. */
-  SignalDeterministic deterministic =
-      trace_frame.event().Signal().deterministic;
+  SignalDeterministic deterministic = ev.Signal().deterministic;
   bool restored_sighandler_frame = 0 < t->set_data_from_trace();
   if (restored_sighandler_frame) {
     t->push_event(SignalEvent(sig, deterministic, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
     LOG(debug) << "--> restoring sighandler frame for " << signal_name(sig);
     t->ev().transform(EV_SIGNAL_HANDLER);
-  } else if (possibly_destabilizing_signal(t, sig, deterministic)) {
+  } else if (ev.type() == EV_SIGNAL_DELIVERY && is_fatal_default_action(sig)) {
     t->push_event(SignalEvent(sig, deterministic, t->arch()));
     t->ev().transform(EV_SIGNAL_DELIVERY);
     t->notify_fatal_signal();
@@ -894,7 +894,12 @@ static bool treat_signal_event_as_deterministic(Task* t,
  */
 Completion ReplaySession::emulate_deterministic_signal(
     Task* t, int sig, const StepConstraints& constraints) {
-  const Event& ev = trace_frame.event();
+  if (t->regs().matches(trace_frame.regs()) &&
+      t->tick_count() == trace_frame.ticks()) {
+    // We're already at the target. This can happen when multiple signals
+    // are delivered with no intervening execution.
+    return COMPLETE;
+  }
 
   continue_or_step(t, constraints);
   if (is_ignored_signal(t->child_sig)) {
@@ -908,17 +913,16 @@ Completion ReplaySession::emulate_deterministic_signal(
   ASSERT(t, t->child_sig == sig) << "Replay got unrecorded signal "
                                  << t->child_sig << " (expecting " << sig
                                  << ")";
+  const Event& ev = trace_frame.event();
   check_ticks_consistency(t, ev);
 
   if (EV_SEGV_RDTSC == ev.type()) {
     t->set_regs(trace_frame.regs());
     /* We just "delivered" this pseudosignal. */
     t->child_sig = 0;
-    return COMPLETE;
   }
 
-  current_step.action = TSTEP_DELIVER_SIGNAL;
-  return INCOMPLETE;
+  return COMPLETE;
 }
 
 /**
@@ -928,16 +932,8 @@ Completion ReplaySession::emulate_deterministic_signal(
  * interrupt occurred.
  */
 Completion ReplaySession::emulate_async_signal(
-    Task* t, int sig, const StepConstraints& constraints, Ticks ticks) {
-  if (advance_to(t, trace_frame.regs(), 0, constraints, ticks) == INCOMPLETE) {
-    return INCOMPLETE;
-  }
-  if (sig) {
-    current_step.action = TSTEP_DELIVER_SIGNAL;
-    current_step.signo = sig;
-    return INCOMPLETE;
-  }
-  return COMPLETE;
+    Task* t, const StepConstraints& constraints, Ticks ticks) {
+  return advance_to(t, trace_frame.regs(), 0, constraints, ticks);
 }
 
 /**
@@ -1340,12 +1336,11 @@ Completion ReplaySession::try_one_trace_step(
     case TSTEP_EXIT_SYSCALL:
       return exit_syscall(t, constraints);
     case TSTEP_DETERMINISTIC_SIGNAL:
-      return emulate_deterministic_signal(t, current_step.signo, constraints);
+      return emulate_deterministic_signal(t, current_step.target.signo, constraints);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      return emulate_async_signal(t, current_step.target.signo, constraints,
-                                  current_step.target.ticks);
+      return emulate_async_signal(t, constraints, current_step.target.ticks);
     case TSTEP_DELIVER_SIGNAL:
-      return emulate_signal_delivery(t, current_step.signo, constraints);
+      return emulate_signal_delivery(t, current_step.target.signo, constraints);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, constraints);
     case TSTEP_PATCH_SYSCALL:
@@ -1440,7 +1435,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
   }
 
   if (t->child_sig != 0) {
-    assert(EV_SIGNAL == ev.type() &&
+    assert(ev.is_signal_event() &&
            t->child_sig == ev.Signal().siginfo.si_signo);
     t->child_sig = 0;
   }
@@ -1484,7 +1479,8 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       break;
     case EV_SEGV_RDTSC:
       current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
-      current_step.signo = SIGSEGV;
+      current_step.target.ticks = -1;
+      current_step.target.signo = SIGSEGV;
       break;
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
       LOG(debug) << "  popping interrupted but not restarted " << t->ev();
@@ -1499,12 +1495,18 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
     case EV_SIGNAL:
       if (treat_signal_event_as_deterministic(t, ev.Signal())) {
         current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
-        current_step.signo = ev.Signal().siginfo.si_signo;
+        current_step.target.signo = ev.Signal().siginfo.si_signo;
+        current_step.target.ticks = -1;
       } else {
         current_step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;
         current_step.target.signo = ev.Signal().siginfo.si_signo;
         current_step.target.ticks = trace_frame.ticks();
       }
+      break;
+    case EV_SIGNAL_DELIVERY:
+    case EV_SIGNAL_HANDLER:
+      current_step.action = TSTEP_DELIVER_SIGNAL;
+      current_step.target.signo = ev.Signal().siginfo.si_signo;
       break;
     case EV_SYSCALL:
       rep_process_syscall(t, &current_step);
@@ -1559,7 +1561,6 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   result.break_status.task = t;
 
   /* Advance towards fulfilling |current_step|. */
-  ReplayTraceStepType current_action = current_step.action;
   if (try_one_trace_step(t, constraints) == INCOMPLETE) {
     if (EV_TRACE_TERMINATION == trace_frame.event().type()) {
       // An irregular trace step had to read the
@@ -1572,21 +1573,12 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
     // We got INCOMPLETE because there was some kind of debugger trap or
     // we got close to ticks_target.
-    if (current_step.action != current_action &&
-        current_step.action == TSTEP_DELIVER_SIGNAL) {
-      result.break_status.signal = current_step.signo;
-      if (constraints.is_singlestep()) {
-        result.break_status.singlestep_complete = true;
-      }
-      check_for_watchpoint_changes(t, result.break_status);
-    } else {
-      result.break_status = diagnose_debugger_trap(t);
-      ASSERT(t, !result.break_status.signal)
-          << "Expected either SIGTRAP at $ip " << t->ip()
-          << " or USER breakpoint just after it";
-      ASSERT(t, !result.break_status.singlestep_complete ||
-                    constraints.is_singlestep());
-    }
+    result.break_status = diagnose_debugger_trap(t);
+    ASSERT(t, !result.break_status.signal)
+        << "Expected either SIGTRAP at $ip " << t->ip()
+        << " or USER breakpoint just after it";
+    ASSERT(t, !result.break_status.singlestep_complete ||
+                  constraints.is_singlestep());
 
     /* Don't restart with SIGTRAP anywhere. */
     t->child_sig = 0;
@@ -1594,13 +1586,37 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     result.did_fast_forward = did_fast_forward;
     return result;
   }
+
   result.did_fast_forward = did_fast_forward;
 
-  if (TSTEP_EXIT_TASK == current_step.action) {
-    t = result.break_status.task = nullptr;
-    assert(!result.break_status.any_break());
-  } else if (TSTEP_ENTER_SYSCALL == current_step.action) {
-    cpuid_bug_detector.notify_reached_syscall_during_replay(t);
+  switch (current_step.action) {
+    case TSTEP_DETERMINISTIC_SIGNAL:
+    case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
+      if (trace_frame.event().type() != EV_SEGV_RDTSC) {
+        result.break_status.signal = current_step.target.signo;
+      }
+      if (constraints.is_singlestep()) {
+        result.break_status.singlestep_complete = true;
+      }
+      break;
+    case TSTEP_DELIVER_SIGNAL:
+      // When we deliver a terminating signal, do not let the singlestep
+      // complete; proceed on to report our synthetic SIGKILL or task death.
+      if (constraints.is_singlestep() &&
+          !(trace_frame.event().type() == EV_SIGNAL_DELIVERY &&
+            is_fatal_default_action(current_step.target.signo))) {
+        result.break_status.singlestep_complete = true;
+      }
+      break;
+    case TSTEP_EXIT_TASK:
+      t = result.break_status.task = nullptr;
+      assert(!result.break_status.any_break());
+      break;
+    case TSTEP_ENTER_SYSCALL:
+      cpuid_bug_detector.notify_reached_syscall_during_replay(t);
+      break;
+    default:
+      break;
   }
 
   if (t) {
@@ -1616,13 +1632,6 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
     debug_memory(t);
 
-    if (constraints.is_singlestep() &&
-        (EV_SEGV_RDTSC == ev.type() || EV_SIGNAL_HANDLER == ev.type())) {
-      // We completed this RDTSC event, and that counts as a completed
-      // singlestep.
-      result.break_status.singlestep_complete = true;
-    }
-
     check_for_watchpoint_changes(t, result.break_status);
     check_approaching_ticks_target(t, constraints, result.break_status);
   }
@@ -1632,6 +1641,9 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   // replay as during recording
   advance_to_next_trace_frame(constraints.stop_at_time);
   if (TSTEP_ENTER_SYSCALL == current_step.action) {
+    // Advance to next trace frame before we call rep_after_enter_syscall,
+    // since that matches what we do during recording and it matters for
+    // reporting event numbers on stdio.
     rep_after_enter_syscall(t, current_step.syscall.number);
   }
   // Record that this step completed successfully.

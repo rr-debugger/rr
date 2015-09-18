@@ -146,16 +146,6 @@ size_t page_size();
 enum signal_action { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
 signal_action default_action(int sig);
 
-/**
- * Return true if |sig| may cause the status of other tasks to change
- * unpredictably beyond rr's observation.
- * 'deterministic' is true when the signal was delivered deterministically,
- * i.e. due to code execution as opposed to an asynchronous signal sent by some
- * process.
- */
-bool possibly_destabilizing_signal(Task* t, int sig,
-                                   SignalDeterministic deterministic);
-
 SignalDeterministic is_deterministic_signal(const siginfo_t& si);
 
 /**

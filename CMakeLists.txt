@@ -636,6 +636,7 @@ set(TESTS_WITHOUT_PROGRAM
   simple_script
   simple_script_debug
   simple_winch
+  stack_overflow_debug
   step1
   step_rdtsc
   step_signal

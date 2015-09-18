@@ -12,8 +12,14 @@ static void SEGV_handler(int sig, siginfo_t* si, void* context) {
 }
 
 static int recurse(void) {
+  int result;
   ++depth;
-  return recurse() * 13 + 1;
+  if (depth > 10000000) {
+    return 3;
+  }
+  result = recurse() * 13 + 1;
+  --depth;
+  return result;
 }
 
 int main(int argc, char* argv[]) {

@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+
+record stack_overflow$bitness
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+
+echo Targeting recorded pid $TARGET_PID ...
+debug stack_overflow_debug "-f $TARGET_PID"
