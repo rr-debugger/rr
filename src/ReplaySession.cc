@@ -205,6 +205,9 @@ bool ReplaySession::is_ignored_signal(int sig) {
     // SIGWINCH arrives when the user resizes the terminal window.
     // Not relevant to replay.
     case SIGWINCH:
+    // TIME_SLICE_SIGNALs can be queued but not delivered before we stop
+    // execution for some other reason. Ignore them.
+    case PerfCounters::TIME_SLICE_SIGNAL:
       return true;
     default:
       return false;
@@ -248,16 +251,18 @@ Completion ReplaySession::cont_syscall_boundary(
   }
 
   t->child_sig = t->pending_sig();
+  if (t->child_sig == PerfCounters::TIME_SLICE_SIGNAL) {
+    // This would normally be triggered by constraints.ticks_target but it's
+    // also possible to get stray signals here.
+    t->child_sig = 0;
+    return INCOMPLETE;
+  }
+
   if (is_ignored_signal(t->child_sig)) {
     return cont_syscall_boundary(t, constraints);
   }
 
   if (SIGTRAP == t->child_sig) {
-    return INCOMPLETE;
-  } else if (t->child_sig == PerfCounters::TIME_SLICE_SIGNAL) {
-    // This would normally be triggered by constraints.ticks_target but it's
-    // possible to get stray signals here.
-    t->child_sig = 0;
     return INCOMPLETE;
   } else if (t->child_sig) {
     ASSERT(t, false) << "Replay got unrecorded signal " << t->child_sig;
@@ -606,8 +611,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
                << " ticks";
 
     continue_or_step(t, constraints, ticks_left - SKID_SIZE);
-    if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
-        is_ignored_signal(t->child_sig)) {
+    if (is_ignored_signal(t->child_sig)) {
       t->child_sig = 0;
     }
     guard_unexpected_signal(t);
@@ -764,8 +768,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       }
     }
 
-    if (PerfCounters::TIME_SLICE_SIGNAL == t->child_sig ||
-        is_ignored_signal(t->child_sig)) {
+    if (is_ignored_signal(t->child_sig)) {
       /* We don't usually expect a time-slice signal
        * during this phase, but it's possible for an
        * ignored signal to interrupt the previous
