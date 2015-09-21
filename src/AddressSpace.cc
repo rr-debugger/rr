@@ -918,9 +918,14 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
     err = "flags differ";
   } else if (!normalized_file_names_equal(m, km, TREAT_HEAP_AS_ANONYMOUS) &&
              !(km.is_heap() && m.fsname() == "") &&
-             !(m.is_heap() && km.fsname() == "")) {
+             !(m.is_heap() && km.fsname() == "") && !km.is_vdso()) {
     // Due to emulated exec, the kernel may identify any of our anonymous maps
     // as [heap] (or not).
+    // Kernels before 3.16 have a bug where any mapping at the original VDSO
+    // address is marked [vdso] even if the VDSO was unmapped and replaced by
+    // something else, so if the kernel reports [vdso] it may be spurious and
+    // we skip this check. See kernel commit
+    // a62c34bd2a8a3f159945becd57401e478818d51c.
     err = "filenames differ";
   } else if (m.device() != km.device()) {
     err = "devices_differ";

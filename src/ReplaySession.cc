@@ -1339,7 +1339,8 @@ Completion ReplaySession::try_one_trace_step(
     case TSTEP_EXIT_SYSCALL:
       return exit_syscall(t, constraints);
     case TSTEP_DETERMINISTIC_SIGNAL:
-      return emulate_deterministic_signal(t, current_step.target.signo, constraints);
+      return emulate_deterministic_signal(t, current_step.target.signo,
+                                          constraints);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
       return emulate_async_signal(t, constraints, current_step.target.ticks);
     case TSTEP_DELIVER_SIGNAL:
