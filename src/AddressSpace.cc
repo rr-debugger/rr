@@ -218,7 +218,7 @@ void AddressSpace::map_rr_page(Task* t) {
   int prot = PROT_EXEC | PROT_READ;
   int flags = MAP_PRIVATE | MAP_FIXED;
 
-  Task::FStatResult fstat;
+  struct stat fstat;
   string file_name;
   {
     AutoRemoteSyscalls remote(t);
@@ -247,7 +247,7 @@ void AddressSpace::map_rr_page(Task* t) {
   }
 
   map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
-      fstat.st.st_dev, fstat.st.st_ino);
+      fstat.st_dev, fstat.st_ino);
 
   untraced_syscall_ip_ = rr_page_untraced_syscall_ip(t->arch());
   traced_syscall_ip_ = rr_page_traced_syscall_ip(t->arch());

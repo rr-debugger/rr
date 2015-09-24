@@ -326,7 +326,7 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
                                int prot, int flags, off64_t mmap_offset_pages,
                                const string& backing_file_name,
                                off64_t backing_offset_pages,
-                               Task::FStatResult& real_file,
+                               struct stat& real_file,
                                string& real_file_name) {
   Task* t = remote.task();
   int fd;
@@ -381,14 +381,14 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
   int flags = km.flags();
   uint64_t offset_bytes = 0;
   if (data.source == TraceReader::SOURCE_FILE) {
-    Task::FStatResult real_file;
+    struct stat real_file;
     offset_bytes = km.file_offset_bytes();
     finish_direct_mmap(remote, km.start(), km.size(), km.prot(), km.flags(),
                        offset_bytes / page_size(), data.file_name,
                        data.file_data_offset_bytes / page_size(), real_file,
                        real_file_name);
-    device = real_file.st.st_dev;
-    inode = real_file.st.st_ino;
+    device = real_file.st_dev;
+    inode = real_file.st_ino;
   } else {
     ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
     flags |= MAP_ANONYMOUS;
@@ -647,11 +647,11 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
     auto emufile = remote.task()->replay_session().emufs().get_or_create(
         recorded_km, length);
-    Task::FStatResult real_file;
+    struct stat real_file;
     finish_direct_mmap(remote, rec_addr, length, prot, flags & ~MAP_ANONYMOUS,
                        0, emufile->proc_path(), 0, real_file, file_name);
-    device = real_file.st.st_dev;
-    inode = real_file.st.st_ino;
+    device = real_file.st_dev;
+    inode = real_file.st_ino;
   }
 
   if (note_task_map) {
@@ -688,7 +688,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   /* Unlink it now that the child has opened it */
   unlink(filename);
 
-  Task::FStatResult fstat = remote.task()->fstat(child_fd);
+  struct stat fstat = remote.task()->fstat(child_fd);
   string file_name = remote.task()->file_name_of_fd(child_fd);
 
   /* mmap it in the tracee. We need to set the correct 'prot' flags
@@ -703,7 +703,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 
   KernelMapping km_slice = km.subrange(start, start + length);
   remote.task()->vm()->map(start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
-                           file_name, fstat.st.st_dev, fstat.st.st_ino,
+                           file_name, fstat.st_dev, fstat.st_ino,
                            &km_slice);
 }
 
@@ -751,7 +751,7 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
   // NB: the tracee will map the procfs link to our fd; there's
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
-  Task::FStatResult real_file;
+  struct stat real_file;
   string real_file_name;
   finish_direct_mmap(remote, buf.addr, rec_num_bytes, prot, flags, offset_pages,
                      emufile->proc_path(), offset_pages, real_file,
@@ -773,7 +773,7 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
              << HEX(offset_bytes) << " to " << km.fsname();
 
   t->vm()->map(buf.addr, buf.data.size(), prot, flags, offset_bytes,
-               real_file_name, real_file.st.st_dev, real_file.st.st_ino, &km);
+               real_file_name, real_file.st_dev, real_file.st_ino, &km);
 }
 
 static void process_mmap(Task* t, const TraceFrame& trace_frame,
@@ -802,7 +802,7 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
       KernelMapping km = t->trace_reader().read_mapped_region(&data);
 
       if (data.source == TraceReader::SOURCE_FILE) {
-        Task::FStatResult real_file;
+        struct stat real_file;
         string real_file_name;
         finish_direct_mmap(remote, trace_frame.regs().syscall_result(), length,
                            prot, flags, offset_pages, data.file_name,
@@ -810,7 +810,7 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
                            real_file_name);
         t->vm()->map(km.start(), length, prot, flags,
                      page_size() * offset_pages, real_file_name,
-                     real_file.st.st_dev, real_file.st.st_ino, &km);
+                     real_file.st_dev, real_file.st_ino, &km);
       } else {
         ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
         if (MAP_PRIVATE & flags) {

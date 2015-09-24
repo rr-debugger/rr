@@ -2767,12 +2767,12 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   string file_name = t->file_name_of_fd(fd);
 
   KernelMapping km = t->vm()->map(addr, size, prot, flags, offset, file_name,
-                                  result.st.st_dev, result.st.st_ino);
+                                  result.st_dev, result.st_ino);
 
-  if (t->trace_writer().write_mapped_region(km, result.st) ==
+  if (t->trace_writer().write_mapped_region(km, result) ==
       TraceWriter::RECORD_IN_TRACE) {
-    if (result.st.st_size > 0) {
-      off64_t end = (off64_t)result.st.st_size - offset;
+    if (result.st_size > 0) {
+      off64_t end = (off64_t)result.st_size - offset;
       t->record_remote(addr, min(end, (off64_t)size));
     } else {
       // st_size is not valid. Some device files are mmappable but have zero

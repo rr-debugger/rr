@@ -360,7 +360,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
       FATAL() << "Couldn't open " << path << " in tracee";
     }
   }
-  Task::FStatResult real_file = remote.task()->fstat(remote_fd);
+  struct stat real_file = remote.task()->fstat(remote_fd);
   string real_file_name = remote.task()->file_name_of_fd(remote_fd);
   // XXX this condition is x86/x64-specific, I imagine.
   remote.infallible_mmap_syscall(m.map.start(), m.map.size(), m.map.prot(),
@@ -376,8 +376,8 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   // name and we need to update that.
   remote.task()->vm()->map(m.map.start(), m.map.size(), m.map.prot(),
                            m.map.flags(), m.map.file_offset_bytes(),
-                           real_file_name, real_file.st.st_dev,
-                           real_file.st.st_ino, &m.recorded_map);
+                           real_file_name, real_file.st_dev,
+                           real_file.st_ino, &m.recorded_map);
 
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }

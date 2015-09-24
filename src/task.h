@@ -414,15 +414,12 @@ public:
   Event& ev() { return pending_events.back(); }
   const Event& ev() const { return pending_events.back(); }
 
-  struct FStatResult {
-    struct stat st;
-  };
   /**
    * Stat |fd| in the context of this task's fd table, returning
    * the result and the file name in FStatResult.
    * If *save_fd is not null, moves an open handle to the file into *save_fd.
    */
-  FStatResult fstat(int fd, ScopedFd* save_fd = nullptr);
+  struct stat fstat(int fd, ScopedFd* save_fd = nullptr);
   std::string file_name_of_fd(int fd);
 
   /**

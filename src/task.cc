@@ -603,14 +603,14 @@ void Task::dump(FILE* out) const {
   }
 }
 
-Task::FStatResult Task::fstat(int fd, ScopedFd* save_fd) {
+struct stat Task::fstat(int fd, ScopedFd* save_fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
   ScopedFd backing_fd(path, O_RDONLY);
   ASSERT(this, backing_fd.is_open());
 
-  FStatResult result;
-  auto ret = ::fstat(backing_fd, &result.st);
+  struct stat result;
+  auto ret = ::fstat(backing_fd, &result);
   ASSERT(this, ret == 0);
 
   if (save_fd) {
