@@ -603,21 +603,19 @@ void Task::dump(FILE* out) const {
   }
 }
 
-struct stat Task::fstat(int fd, ScopedFd* save_fd) {
+struct stat Task::stat_fd(int fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
-  ScopedFd backing_fd(path, O_RDONLY);
-  ASSERT(this, backing_fd.is_open());
-
   struct stat result;
-  auto ret = ::fstat(backing_fd, &result);
+  auto ret = ::stat(path, &result);
   ASSERT(this, ret == 0);
-
-  if (save_fd) {
-    *save_fd = move(backing_fd);
-  }
-
   return result;
+}
+
+ScopedFd Task::open_fd(int fd, int flags) {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
+  return ScopedFd(path, flags);
 }
 
 string Task::file_name_of_fd(int fd) {

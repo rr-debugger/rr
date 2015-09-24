@@ -415,11 +415,17 @@ public:
   const Event& ev() const { return pending_events.back(); }
 
   /**
-   * Stat |fd| in the context of this task's fd table, returning
-   * the result and the file name in FStatResult.
-   * If *save_fd is not null, moves an open handle to the file into *save_fd.
+   * Stat |fd| in the context of this task's fd table.
    */
-  struct stat fstat(int fd, ScopedFd* save_fd = nullptr);
+  struct stat stat_fd(int fd);
+  /**
+   * Open |fd| in the context of this task's fd table.
+   */
+  ScopedFd open_fd(int fd, int flags);
+  /**
+   * Get the name of the file referenced by |fd| in the context of this
+   * task's fd table.
+   */
   std::string file_name_of_fd(int fd);
 
   /**

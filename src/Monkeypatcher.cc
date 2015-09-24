@@ -852,10 +852,12 @@ static void set_and_record_bytes(Task* t, uint64_t file_offset,
 
 void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
                                      size_t size, size_t offset_pages,
-                                     ScopedFd& open_fd) {
+                                     int child_fd) {
   const auto& map = t->vm()->mapping_of(start);
   if (map.map.fsname().find("libpthread") != string::npos &&
       (t->arch() == x86 || t->arch() == x86_64)) {
+    ScopedFd open_fd = t->open_fd(child_fd, O_RDONLY);
+    ASSERT(t, open_fd.is_open()) << "Failed to open child fd " << child_fd;
     auto syms =
         FileReader(open_fd).read_symbols(t->arch(), ".symtab", ".strtab");
     for (size_t i = 0; i < syms.size(); ++i) {

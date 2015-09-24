@@ -326,8 +326,7 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
                                int prot, int flags, off64_t mmap_offset_pages,
                                const string& backing_file_name,
                                off64_t backing_offset_pages,
-                               struct stat& real_file,
-                               string& real_file_name) {
+                               struct stat& real_file, string& real_file_name) {
   Task* t = remote.task();
   int fd;
 
@@ -360,7 +359,7 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
                                  backing_offset_pages);
 
   // While it's open, grab the link reference.
-  real_file = t->fstat(fd);
+  real_file = t->stat_fd(fd);
   real_file_name = t->file_name_of_fd(fd);
 
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
@@ -688,7 +687,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   /* Unlink it now that the child has opened it */
   unlink(filename);
 
-  struct stat fstat = remote.task()->fstat(child_fd);
+  struct stat fstat = remote.task()->stat_fd(child_fd);
   string file_name = remote.task()->file_name_of_fd(child_fd);
 
   /* mmap it in the tracee. We need to set the correct 'prot' flags
@@ -703,8 +702,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 
   KernelMapping km_slice = km.subrange(start, start + length);
   remote.task()->vm()->map(start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
-                           file_name, fstat.st_dev, fstat.st_ino,
-                           &km_slice);
+                           file_name, fstat.st_dev, fstat.st_ino, &km_slice);
 }
 
 static void finish_private_mmap(AutoRemoteSyscalls& remote,

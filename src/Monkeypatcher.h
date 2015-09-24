@@ -76,7 +76,7 @@ public:
    * patch libpthread.so.
    */
   void patch_after_mmap(Task* t, remote_ptr<void> start, size_t size,
-                        size_t offset_pages, ScopedFd& open_fd);
+                        size_t offset_pages, int child_fd);
 
   remote_ptr<void> x86_sysenter_vsyscall;
   /**
