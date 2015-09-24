@@ -416,7 +416,6 @@ public:
 
   struct FStatResult {
     struct stat st;
-    std::string file_name;
   };
   /**
    * Stat |fd| in the context of this task's fd table, returning
@@ -424,6 +423,7 @@ public:
    * If *save_fd is not null, moves an open handle to the file into *save_fd.
    */
   FStatResult fstat(int fd, ScopedFd* save_fd = nullptr);
+  std::string file_name_of_fd(int fd);
 
   /**
    * Force the wait status of this to |status|, as if

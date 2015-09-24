@@ -219,7 +219,7 @@ void AddressSpace::map_rr_page(Task* t) {
   int flags = MAP_PRIVATE | MAP_FIXED;
 
   Task::FStatResult fstat;
-
+  string file_name;
   {
     AutoRemoteSyscalls remote(t);
     SupportedArch arch = t->arch();
@@ -235,6 +235,7 @@ void AddressSpace::map_rr_page(Task* t) {
                                    child_fd, 0);
 
     fstat = t->fstat(child_fd);
+    file_name = t->file_name_of_fd(child_fd);
 
     remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
 
@@ -245,7 +246,7 @@ void AddressSpace::map_rr_page(Task* t) {
     }
   }
 
-  map(rr_page_start(), rr_page_size(), prot, flags, 0, fstat.file_name,
+  map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
       fstat.st.st_dev, fstat.st.st_ino);
 
   untraced_syscall_ip_ = rr_page_untraced_syscall_ip(t->arch());

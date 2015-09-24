@@ -326,7 +326,8 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
                                int prot, int flags, off64_t mmap_offset_pages,
                                const string& backing_file_name,
                                off64_t backing_offset_pages,
-                               Task::FStatResult& real_file) {
+                               Task::FStatResult& real_file,
+                               string& real_file_name) {
   Task* t = remote.task();
   int fd;
 
@@ -360,6 +361,7 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
 
   // While it's open, grab the link reference.
   real_file = t->fstat(fd);
+  real_file_name = t->file_name_of_fd(fd);
 
   /* Don't leak the tmp fd.  The mmap doesn't need the fd to
    * stay open. */
@@ -383,8 +385,8 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
     offset_bytes = km.file_offset_bytes();
     finish_direct_mmap(remote, km.start(), km.size(), km.prot(), km.flags(),
                        offset_bytes / page_size(), data.file_name,
-                       data.file_data_offset_bytes / page_size(), real_file);
-    real_file_name = real_file.file_name;
+                       data.file_data_offset_bytes / page_size(), real_file,
+                       real_file_name);
     device = real_file.st.st_dev;
     inode = real_file.st.st_ino;
   } else {
@@ -647,8 +649,7 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
         recorded_km, length);
     Task::FStatResult real_file;
     finish_direct_mmap(remote, rec_addr, length, prot, flags & ~MAP_ANONYMOUS,
-                       0, emufile->proc_path(), 0, real_file);
-    file_name = real_file.file_name;
+                       0, emufile->proc_path(), 0, real_file, file_name);
     device = real_file.st.st_dev;
     inode = real_file.st.st_ino;
   }
@@ -688,6 +689,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   unlink(filename);
 
   Task::FStatResult fstat = remote.task()->fstat(child_fd);
+  string file_name = remote.task()->file_name_of_fd(child_fd);
 
   /* mmap it in the tracee. We need to set the correct 'prot' flags
      so that the correct signal is generated on a memory access
@@ -701,7 +703,7 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
 
   KernelMapping km_slice = km.subrange(start, start + length);
   remote.task()->vm()->map(start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
-                           fstat.file_name, fstat.st.st_dev, fstat.st.st_ino,
+                           file_name, fstat.st.st_dev, fstat.st.st_ino,
                            &km_slice);
 }
 
@@ -750,8 +752,10 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
   // no "real" name for the file anywhere, to ensure that when
   // we exit/crash the kernel will clean up for us.
   Task::FStatResult real_file;
+  string real_file_name;
   finish_direct_mmap(remote, buf.addr, rec_num_bytes, prot, flags, offset_pages,
-                     emufile->proc_path(), offset_pages, real_file);
+                     emufile->proc_path(), offset_pages, real_file,
+                     real_file_name);
   // Write back the snapshot of the segment that we recorded.
   // We have to write directly to the underlying file, because
   // the tracee may have mapped its segment read-only.
@@ -769,8 +773,7 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
              << HEX(offset_bytes) << " to " << km.fsname();
 
   t->vm()->map(buf.addr, buf.data.size(), prot, flags, offset_bytes,
-               real_file.file_name, real_file.st.st_dev, real_file.st.st_ino,
-               &km);
+               real_file_name, real_file.st.st_dev, real_file.st.st_ino, &km);
 }
 
 static void process_mmap(Task* t, const TraceFrame& trace_frame,
@@ -800,12 +803,13 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
 
       if (data.source == TraceReader::SOURCE_FILE) {
         Task::FStatResult real_file;
+        string real_file_name;
         finish_direct_mmap(remote, trace_frame.regs().syscall_result(), length,
                            prot, flags, offset_pages, data.file_name,
-                           data.file_data_offset_bytes / page_size(),
-                           real_file);
+                           data.file_data_offset_bytes / page_size(), real_file,
+                           real_file_name);
         t->vm()->map(km.start(), length, prot, flags,
-                     page_size() * offset_pages, real_file.file_name,
+                     page_size() * offset_pages, real_file_name,
                      real_file.st.st_dev, real_file.st.st_ino, &km);
       } else {
         ASSERT(t, data.source == TraceReader::SOURCE_TRACE);

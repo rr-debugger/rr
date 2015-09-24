@@ -608,20 +608,25 @@ Task::FStatResult Task::fstat(int fd, ScopedFd* save_fd) {
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
   ScopedFd backing_fd(path, O_RDONLY);
   ASSERT(this, backing_fd.is_open());
-  ssize_t nbytes = readlink(path, path, sizeof(path) - 1);
-  ASSERT(this, nbytes >= 0);
-  path[nbytes] = '\0';
 
   FStatResult result;
   auto ret = ::fstat(backing_fd, &result.st);
   ASSERT(this, ret == 0);
-  result.file_name = path;
 
   if (save_fd) {
     *save_fd = move(backing_fd);
   }
 
   return result;
+}
+
+string Task::file_name_of_fd(int fd) {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
+  ssize_t nbytes = readlink(path, path, sizeof(path) - 1);
+  ASSERT(this, nbytes >= 0);
+  path[nbytes] = '\0';
+  return path;
 }
 
 void Task::futex_wait(remote_ptr<int> futex, int val) {

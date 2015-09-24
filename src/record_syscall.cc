@@ -1073,8 +1073,7 @@ static Switchable prepare_semctl(Task* t, TaskSyscallState& syscall_state,
  */
 static void record_file_change(Task* t, int fd, uint64_t offset,
                                uint64_t length) {
-  Task::FStatResult fd_info = t->fstat(fd);
-  string& file_name = fd_info.file_name;
+  string file_name = t->file_name_of_fd(fd);
 
   for (auto m : t->vm()->maps()) {
     if (m.map.fsname() == file_name) {
@@ -2765,10 +2764,10 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   // for the resource.
   ScopedFd open_fd;
   auto result = t->fstat(fd, &open_fd);
+  string file_name = t->file_name_of_fd(fd);
 
-  KernelMapping km =
-      t->vm()->map(addr, size, prot, flags, offset, result.file_name,
-                   result.st.st_dev, result.st.st_ino);
+  KernelMapping km = t->vm()->map(addr, size, prot, flags, offset, file_name,
+                                  result.st.st_dev, result.st.st_ino);
 
   if (t->trace_writer().write_mapped_region(km, result.st) ==
       TraceWriter::RECORD_IN_TRACE) {
@@ -2783,11 +2782,10 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   }
 
   if ((prot & PROT_WRITE) && (flags & MAP_SHARED)) {
-    LOG(debug) << result.file_name
-               << " is SHARED|WRITEABLE; that's not handled "
-                  "correctly yet. Optimistically hoping it's not "
-                  "written by programs outside the rr tracee "
-                  "tree.";
+    LOG(debug) << file_name << " is SHARED|WRITEABLE; that's not handled "
+                               "correctly yet. Optimistically hoping it's not "
+                               "written by programs outside the rr tracee "
+                               "tree.";
   }
 
   t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages,

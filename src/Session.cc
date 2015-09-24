@@ -361,6 +361,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
     }
   }
   Task::FStatResult real_file = remote.task()->fstat(remote_fd);
+  string real_file_name = remote.task()->file_name_of_fd(remote_fd);
   // XXX this condition is x86/x64-specific, I imagine.
   remote.infallible_mmap_syscall(m.map.start(), m.map.size(), m.map.prot(),
                                  // The remapped segment *must* be
@@ -375,7 +376,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   // name and we need to update that.
   remote.task()->vm()->map(m.map.start(), m.map.size(), m.map.prot(),
                            m.map.flags(), m.map.file_offset_bytes(),
-                           real_file.file_name, real_file.st.st_dev,
+                           real_file_name, real_file.st.st_dev,
                            real_file.st.st_ino, &m.recorded_map);
 
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
