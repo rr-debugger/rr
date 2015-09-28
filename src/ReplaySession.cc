@@ -3,7 +3,6 @@
 //#define DEBUGTAG "ReplaySession"
 
 #define USE_BREAKPOINT_TARGET 1
-#define USE_TIMESLICE_COALESCING 1
 
 #include "ReplaySession.h"
 
@@ -180,20 +179,6 @@ void ReplaySession::advance_to_next_trace_frame(TraceFrame::Time stop_at_time) {
   }
 
   trace_frame = trace_in.read_frame();
-
-  // Subsequent reschedule-events of the same thread can be
-  // combined to a single event.  This meliorization is a
-  // tremendous win.
-  if (USE_TIMESLICE_COALESCING && trace_frame.event().type() == EV_SCHED) {
-    TraceFrame next_frame = trace_in.peek_frame();
-    while (EV_SCHED == next_frame.event().type() &&
-           next_frame.tid() == trace_frame.tid() &&
-           stop_at_time != trace_frame.time() &&
-           !trace_instructions_up_to_event(next_frame.time())) {
-      trace_frame = trace_in.read_frame();
-      next_frame = trace_in.peek_frame();
-    }
-  }
 }
 
 bool ReplaySession::is_ignored_signal(int sig) {
