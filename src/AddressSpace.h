@@ -653,6 +653,9 @@ public:
 
   /**
    * Reads the /proc/<pid>/maps entry for a specific address. Does no caching.
+   * If performed on a file in a btrfs file system, this may return the
+   * wrong device number! If you stick to anonymous or special file
+   * mappings, this should be OK.
    */
   KernelMapping read_kernel_mapping(Task* t, remote_ptr<void> addr);
 

@@ -65,6 +65,8 @@ public:
       fclose(maps_file);
     }
   }
+  // It's very important to keep in mind that btrfs files can have the wrong
+  // device number!
   const KernelMapping& current(string* raw_line = nullptr) {
     if (raw_line) {
       *raw_line = this->raw_line;
@@ -893,6 +895,18 @@ static bool try_merge_adjacent(KernelMapping* left_m,
   return false;
 }
 
+static dev_t normalized_device_number(const KernelMapping& m) {
+  if (m.fsname().c_str()[0] != '/') {
+    return m.device();
+  }
+  // btrfs files can report the wrong device number in /proc/<pid>/maps, so
+  // restrict ourselves to checking whether the device number is != 0
+  if (m.device() != KernelMapping::NO_DEVICE) {
+    return (dev_t)-1;
+  }
+  return m.device();
+}
+
 static void assert_segments_match(Task* t, const KernelMapping& input_m,
                                   const KernelMapping& km) {
   KernelMapping m = input_m;
@@ -928,7 +942,7 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
     // we skip this check. See kernel commit
     // a62c34bd2a8a3f159945becd57401e478818d51c.
     err = "filenames differ";
-  } else if (m.device() != km.device()) {
+  } else if (normalized_device_number(m) != normalized_device_number(km)) {
     err = "devices_differ";
   } else if (m.inode() != km.inode()) {
     err = "inodes differ";
@@ -1342,6 +1356,17 @@ static bool could_be_stack(const KernelMapping& km) {
          km.inode() == KernelMapping::NO_INODE;
 }
 
+static dev_t check_device(Task* t, const KernelMapping& km) {
+  if (km.fsname().c_str()[0] != '/') {
+    return km.device();
+  }
+  // btrfs files can return the wrong device number in /proc/<pid>/maps
+  struct stat st;
+  int ret = stat(km.fsname().c_str(), &st);
+  ASSERT(t, ret == 0);
+  return st.st_dev;
+}
+
 void AddressSpace::populate_address_space(Task* t) {
   bool found_proper_stack = false;
   for (KernelMapIterator it(t); !it.at_end(); ++it) {
@@ -1368,8 +1393,9 @@ void AddressSpace::populate_address_space(Task* t) {
         start -= page_size();
       }
     }
+
     map(start, km.end() - start, km.prot(), flags, km.file_offset_bytes(),
-        km.fsname(), km.device(), km.inode(), nullptr,
+        km.fsname(), check_device(t, km), km.inode(), nullptr,
         TraceWriter::EXEC_MAPPING);
   }
   ASSERT(t, found_stacks == 1);
