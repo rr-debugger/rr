@@ -1105,11 +1105,20 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         // destination can vary (in particular, when we emulate exec it makes
         // different decisions).
         AutoRemoteSyscalls remote(t);
-        // Force the mremap to use the destination address from recording.
-        remote.infallible_syscall_ptr(
-            syscall, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3(),
-            trace_regs.arg4() | MREMAP_MAYMOVE | MREMAP_FIXED,
-            trace_regs.syscall_result());
+        if (trace_regs.syscall_result() == trace_regs.arg1()) {
+          // Non-moving mremap. Don't pass MREMAP_FIXED or MREMAP_MAYMOVE
+          // since that triggers EINVAL when the new map overlaps the old map.
+          remote.infallible_syscall_ptr(syscall, trace_regs.arg1(),
+                                        trace_regs.arg2(), trace_regs.arg3(),
+                                        0);
+        } else {
+          // Force the mremap to use the destination address from recording.
+          // XXX could the new mapping overlap the old, with different start
+          // addresses? Hopefully the kernel doesn't do that to us!!!
+          remote.infallible_syscall_ptr(
+              syscall, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3(),
+              MREMAP_MAYMOVE | MREMAP_FIXED, trace_regs.syscall_result());
+        }
         // Task::on_syscall_exit takes care of updating AddressSpace.
       }
       return;

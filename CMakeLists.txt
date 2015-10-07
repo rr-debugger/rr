@@ -377,6 +377,7 @@ set(BASIC_TESTS
   mprotect_heterogenous
   mprotect_stack
   mremap
+  mremap_shrink
   msg
   msync
   multiple_pending_signals
