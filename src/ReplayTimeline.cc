@@ -1399,16 +1399,20 @@ void ReplayTimeline::maybe_add_reverse_exec_checkpoint(
   // maximum checkpoint count by one.
   discard_past_reverse_exec_checkpoints(strategy);
 
-  reverse_exec_checkpoints[add_explicit_checkpoint()] = now;
+  Mark m = add_explicit_checkpoint();
+  LOG(debug) << "Creating reverse-exec checkpoint at " << m;
+  reverse_exec_checkpoints[m] = now;
 }
 
 void ReplayTimeline::discard_future_reverse_exec_checkpoints() {
   Progress now = estimate_progress();
   while (true) {
     auto it = reverse_exec_checkpoints.rbegin();
-    if (it == reverse_exec_checkpoints.rend() || it->second < now) {
+    if (it == reverse_exec_checkpoints.rend() || it->second <= now) {
       break;
     }
+    LOG(debug) << "Discarding reverse-exec future checkpoint at "
+               << *it->first.ptr;
     remove_explicit_checkpoint(it->first);
     reverse_exec_checkpoints.erase(it->first);
   }
@@ -1448,6 +1452,7 @@ void ReplayTimeline::discard_past_reverse_exec_checkpoints(
   }
 
   for (auto& m : checkpoints_to_delete) {
+    LOG(debug) << "Discarding reverse-exec checkpoint at " << m;
     remove_explicit_checkpoint(m);
     reverse_exec_checkpoints.erase(m);
   }
@@ -1461,7 +1466,10 @@ ReplayTimeline::Mark ReplayTimeline::set_short_checkpoint() {
   // Add checkpoint before removing one in case m ==
   // reverse_exec_short_checkpoint
   Mark m = add_explicit_checkpoint();
+  LOG(debug) << "Creating short-checkpoint at " << m;
   if (reverse_exec_short_checkpoint) {
+    LOG(debug) << "Discarding old short-checkpoint at "
+               << reverse_exec_short_checkpoint;
     remove_explicit_checkpoint(reverse_exec_short_checkpoint);
   }
   swap(m, reverse_exec_short_checkpoint);
