@@ -255,7 +255,12 @@ static void serve_replay_no_debugger(const string& trace_dir,
       t->regs().print_register_file_compact(stderr);
       fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
     }
+
+    TraceFrame::Time before_time = replay_session->trace_reader().time();
     auto result = replay_session->replay_step(cmd);
+    TraceFrame::Time after_time = replay_session->trace_reader().time();
+    assert(after_time >= before_time && after_time <= before_time + 1);
+
     ++step_count;
     if (DUMP_STATS_PERIOD > 0 && step_count % DUMP_STATS_PERIOD == 0) {
       struct timeval now;
