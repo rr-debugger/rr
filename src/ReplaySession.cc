@@ -1455,7 +1455,13 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       current_step.flush.num_rec_bytes_remaining = 0;
       break;
     case EV_SYSCALLBUF_RESET:
-      t->syscallbuf_hdr->num_rec_bytes = 0;
+      // Reset syscallbuf_hdr->num_rec_bytes and zero out the recorded data.
+      // Zeroing out the data is important because we only save and restore
+      // the recorded data area when making checkpoints. We want the checkpoint
+      // to have the same syscallbuf contents as its original, i.e. zero outside
+      // the recorded data area. This is important because stray reads such
+      // as those performed by return_addresses should be consistent.
+      t->reset_syscallbuf();
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_PATCH_SYSCALL:

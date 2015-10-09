@@ -525,7 +525,7 @@ void RecordSession::desched_state_changed(Task* t) {
        * aborted record, and won't touch the syscallbuf
        * during this (aborted) transaction again.  So now is
        * a good time for us to reset the record counter. */
-      t->syscallbuf_hdr->num_rec_bytes = 0;
+      t->reset_syscallbuf();
       t->delay_syscallbuf_reset = false;
       t->delay_syscallbuf_flush = false;
       t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO, t->arch()));

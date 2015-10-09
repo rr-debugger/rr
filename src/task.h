@@ -1044,6 +1044,14 @@ public:
   void maybe_flush_syscallbuf();
 
   /**
+   * Call this to reset syscallbuf_hdr->num_rec_bytes and zero out the data
+   * recorded in the syscall buffer. This makes for more deterministic behavior
+   * especially during replay, where during checkpointing we only save and
+   * restore the recorded data area.
+   */
+  void reset_syscallbuf();
+
+  /**
    * Return the virtual memory mapping (address space) of this
    * task.
    */

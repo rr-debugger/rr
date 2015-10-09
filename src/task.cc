@@ -2586,6 +2586,12 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 
 void Task::tgkill(int sig) { syscall(SYS_tgkill, real_tgid(), tid, sig); }
 
+void Task::reset_syscallbuf() {
+  uint8_t* ptr = (uint8_t*)(syscallbuf_hdr + 1);
+  memset(ptr, 0, syscallbuf_hdr->num_rec_bytes);
+  syscallbuf_hdr->num_rec_bytes = 0;
+}
+
 void Task::maybe_flush_syscallbuf() {
   if (EV_SYSCALLBUF_FLUSH == ev().type()) {
     // Already flushing.
@@ -2615,7 +2621,7 @@ void Task::maybe_flush_syscallbuf() {
     // Reset header.
     assert(!syscallbuf_hdr->abort_commit);
     if (!delay_syscallbuf_reset) {
-      syscallbuf_hdr->num_rec_bytes = 0;
+      reset_syscallbuf();
     }
   }
   flushed_syscallbuf = true;
