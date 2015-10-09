@@ -287,7 +287,7 @@ private:
     ProtoMark(const MarkKey& key, Task* t)
         : key(key), regs(t->regs()), return_addresses(t->return_addresses()) {}
 
-    bool equal_states(Task* t) const;
+    bool equal_states(ReplaySession& session) const;
 
     MarkKey key;
     Registers regs;
@@ -318,7 +318,7 @@ private:
 
     bool operator<(const std::shared_ptr<InternalMark> other);
 
-    bool equal_states(Task* t) const;
+    bool equal_states(ReplaySession& session) const;
 
     ReplayTimeline* owner;
     MarkKey key;

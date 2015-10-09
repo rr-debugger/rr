@@ -86,12 +86,20 @@ static bool equal_regs(const Registers& r1, const Registers& r2) {
   return r1.ip() == r2.ip() && r1.matches(r2);
 }
 
-bool ReplayTimeline::InternalMark::equal_states(Task* t) const {
+bool ReplayTimeline::InternalMark::equal_states(ReplaySession& session) const {
+  if (session_mark_key(session) != key) {
+    return false;
+  }
+  Task* t = session.current_task();
   return equal_regs(regs, t->regs()) &&
          return_addresses == t->return_addresses();
 }
 
-bool ReplayTimeline::ProtoMark::equal_states(Task* t) const {
+bool ReplayTimeline::ProtoMark::equal_states(ReplaySession& session) const {
+  if (session_mark_key(session) != key) {
+    return false;
+  }
+  Task* t = session.current_task();
   return equal_regs(regs, t->regs()) &&
          return_addresses == t->return_addresses();
 }
@@ -101,12 +109,11 @@ ReplayTimeline::ProtoMark ReplayTimeline::proto_mark() const {
 }
 
 shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
-  Task* t = current->current_task();
   auto it = marks.find(current_mark_key());
   // Avoid creating an entry in 'marks' if it doesn't already exist
   if (it != marks.end()) {
     for (shared_ptr<InternalMark>& m : it->second) {
-      if (m->equal_states(t)) {
+      if (m->equal_states(*current)) {
         return m;
       }
     }
@@ -164,10 +171,9 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
         continue;
       }
 
-      Task* t = tmp_session->current_task();
       for (auto it = mark_vector.begin(); it != mark_vector.end(); ++it) {
         shared_ptr<InternalMark>& existing_mark = *it;
-        if (existing_mark->equal_states(t)) {
+        if (existing_mark->equal_states(*tmp_session)) {
           if (!result.did_fast_forward && !result.break_status.signal) {
             new_marks.back()->singlestep_to_next_mark_no_signal = true;
           }
@@ -477,8 +483,7 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
 void ReplayTimeline::seek_to_proto_mark(const ProtoMark& pmark) {
   seek_to_before_key(pmark.key);
   unapply_breakpoints_and_watchpoints();
-  while (current_mark_key() != pmark.key ||
-         !pmark.equal_states(current->current_task())) {
+  while (!pmark.equal_states(*current)) {
     if (current->trace_reader().time() < pmark.key.trace_time) {
       ReplaySession::StepConstraints constraints(RUN_CONTINUE);
       constraints.stop_at_time = pmark.key.trace_time;
@@ -768,7 +773,7 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
     constraints.ticks_target = target;
     ProtoMark m = proto_mark();
     ReplayResult result = current->replay_step(constraints);
-    if (m.equal_states(t)) {
+    if (m.equal_states(*current)) {
       assert(result.break_status.approaching_ticks_target);
       assert(t->tick_count() == start_ticks);
       // We didn't make any progress that way.
@@ -798,7 +803,7 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
           assert(tmp_session);
           current = move(tmp_session);
           LOG(debug) << "Singlestepping arrived at |end|, restoring session";
-        } else if (!m.equal_states(t)) {
+        } else if (!m.equal_states(*current)) {
           LOG(debug) << "Did fast-singlestep forward to " << current_mark_key();
           return true;
         }
