@@ -241,9 +241,9 @@ inline static long stored_record_size(size_t length) {
  * too much by piling on.
  */
 inline static int is_blacklisted_filename(const char* filename) {
-  return (!strcmp("/dev/dri/card0", filename) ||
-          !strcmp("/dev/nvidiactl", filename) ||
-          !strcmp("/usr/share/alsa/alsa.conf", filename));
+  return !strncmp("/dev/dri/", filename, 9) ||
+         !strcmp("/dev/nvidiactl", filename) ||
+         !strcmp("/usr/share/alsa/alsa.conf", filename);
 }
 
 #endif /* RR_PRELOAD_INTERFACE_H_ */
