@@ -3107,7 +3107,8 @@ static void setup_fd_table(FdTable& fds) {
     if (SIGSTOP == t->stop_sig()) {
       break;
     }
-    t->cont_nonblocking();
+    t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING,
+                        RESUME_UNLIMITED_TICKS);
   }
   t->wait_status = 0;
   t->open_mem_fd();

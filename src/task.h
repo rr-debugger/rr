@@ -212,21 +212,6 @@ public:
    */
   bool at_may_restart_syscall() const;
 
-  /**
-   * Continue according to the semantics implied by the helper's
-   * name.  See the ptrace manual for details of semantics.  If
-   * |sig| is nonzero, it's delivered to this as part of the
-   * resume request.
-   *
-   * By default, wait for status to change after resuming,
-   * before returning.  Return true if successful, false if
-   * interrupted.  Don't wait for status change in the
-   * "_nonblocking()" variants.
-   */
-  void cont_nonblocking(int sig = 0, Ticks tick_period = 0) {
-    resume_execution(RESUME_CONT, RESUME_NONBLOCKING, (TicksRequest)tick_period,
-                     sig);
-  }
   void cont_singlestep(int sig = 0) {
     resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS,
                      sig);
