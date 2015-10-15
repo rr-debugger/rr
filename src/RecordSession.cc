@@ -468,7 +468,7 @@ static void advance_to_disarm_desched_syscall(Task* t) {
   /* TODO: send this through main loop. */
   /* TODO: mask off signals and avoid this loop. */
   do {
-    t->cont_syscall();
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
     /* We can safely ignore TIME_SLICE_SIGNAL while trying to
      * reach the disarm-desched ioctl: once we reach it,
      * the desched'd syscall will be "done" and the tracee
@@ -497,7 +497,7 @@ static void advance_to_disarm_desched_syscall(Task* t) {
   } while (!t->is_disarm_desched_event_syscall());
 
   // Exit the syscall.
-  t->cont_syscall();
+  t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
 }
 
 /**
@@ -946,7 +946,8 @@ static bool inject_signal(Task* t) {
      */
     while (true) {
       auto old_ip = t->ip();
-      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT,
+                          RESUME_UNLIMITED_TICKS);
       ASSERT(t, old_ip == t->ip());
       ASSERT(t, t->pending_sig());
       if (t->pending_sig() == sig) {
@@ -976,7 +977,8 @@ static bool inject_signal(Task* t) {
    */
   LOG(debug) << "    injecting signal number " << t->ev().Signal().siginfo;
   t->set_siginfo(t->ev().Signal().siginfo);
-  t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS, sig);
+  t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS,
+                      sig);
 
   // It's been observed that when tasks enter
   // sighandlers, the singlestep operation above

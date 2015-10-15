@@ -1011,7 +1011,7 @@ void Task::move_ip_before_breakpoint() {
 // TODO de-dup
 static void advance_syscall(Task* t) {
   do {
-    t->cont_syscall();
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
   } while (t->is_ptrace_seccomp_event() ||
            ReplaySession::is_ignored_signal(t->pending_sig()));
   assert(t->ptrace_event() == 0);
@@ -2972,12 +2972,13 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
       perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
     } else {
       // XXX account for ReplaySession::is_ignored_signal?
-      parent->cont_syscall();
+      parent->resume_execution(RESUME_SYSCALL, RESUME_WAIT,
+                               RESUME_UNLIMITED_TICKS);
     }
   }
   pid_t new_tid = parent->get_ptrace_eventmsg_pid();
 
-  parent->cont_syscall();
+  parent->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
   Task* child =
       parent->clone(clone_flags_to_task_flags(base_flags), stack, tls, ctid,
                     new_tid, rec_child_tid, new_serial, session);

@@ -1369,7 +1369,7 @@ static void end_task(Task* t) {
   r.set_syscallno(syscall_number_for_exit(t->arch()));
   t->set_regs(r);
   // Enter the syscall.
-  t->cont_syscall();
+  t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
   ASSERT(t, t->pending_sig() == 0);
 
   do {
