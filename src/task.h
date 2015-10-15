@@ -152,7 +152,10 @@ enum WaitRequest {
 };
 enum TicksRequest {
   // We don't expect to see any ticks (though we seem to on the odd buggy
-  // system...)
+  // system...). Using this is a small performance optimization because we don't
+  // have to stop and restart the performance counters. This may also avoid
+  // bugs on some systems that report performance counter advances while
+  // in the kernel...
   RESUME_NO_TICKS = -2,
   RESUME_UNLIMITED_TICKS = -1
                            // Positive values are a request for an interrupt

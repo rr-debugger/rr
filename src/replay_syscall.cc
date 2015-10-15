@@ -91,7 +91,7 @@ static string maybe_dump_written_string(Task* t) {
  */
 static void __ptrace_cont(Task* t, int expect_syscallno) {
   do {
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
   } while (ReplaySession::is_ignored_signal(t->stop_sig()));
 
   ASSERT(t, !t->pending_sig()) << "Expected no pending signal, but got "

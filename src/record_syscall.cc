@@ -1516,7 +1516,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
 // TODO de-dup
 static void advance_syscall(Task* t) {
   do {
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
   } while (t->is_ptrace_seccomp_event());
   assert(t->ptrace_event() == 0);
 }

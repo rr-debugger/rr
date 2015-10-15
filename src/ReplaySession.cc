@@ -1357,12 +1357,12 @@ static void end_task(Task* t) {
   r.set_syscallno(syscall_number_for_exit(t->arch()));
   t->set_regs(r);
   // Enter the syscall.
-  t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+  t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
   ASSERT(t, t->pending_sig() == 0);
 
   do {
     // Singlestep to collect the PTRACE_EVENT_EXIT event.
-    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
   } while (t->is_ptrace_seccomp_event() ||
            ReplaySession::is_ignored_signal(t->pending_sig()));
 
