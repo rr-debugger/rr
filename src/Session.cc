@@ -421,10 +421,6 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
     }
 
     group.clone_leader_state = group_leader->capture_state();
-    // Close perfcounters for now. They will be automatically reopened
-    // when we next run this task (if ever). This reduces the numer of
-    // file descriptors we need to have open.
-    group.clone_leader->hpc.stop();
   }
   dest.clone_completion = move(completion);
 

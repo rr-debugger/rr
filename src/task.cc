@@ -1440,9 +1440,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   // makes counting bugs behave similarly between recording and
   // replay.
   // Accumulate any unknown stuff in tick_count().
-  if (tick_period == RESUME_NO_TICKS) {
-    hpc.stop();
-  } else {
+  if (tick_period != RESUME_NO_TICKS) {
     hpc.reset(tick_period == RESUME_UNLIMITED_TICKS ? 0xffffffff : tick_period);
   }
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
@@ -1997,6 +1995,13 @@ void Task::fixup_syscall_regs() {
 }
 
 void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
+  Ticks more_ticks = hpc.read_ticks();
+  // Stop PerfCounters ASAP to reduce the possibility that due to bugs or
+  // whatever they pick up something spurious later.
+  hpc.stop();
+  ticks += more_ticks;
+  session().accumulate_ticks_processed(more_ticks);
+
   LOG(debug) << "  (refreshing register cache)";
   intptr_t original_syscallno = registers.original_syscallno();
   // Skip reading registers immediately after a PTRACE_EVENT_EXEC, since
@@ -2024,9 +2029,6 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   if (ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
   }
-  Ticks more_ticks = hpc.read_ticks();
-  ticks += more_ticks;
-  session().accumulate_ticks_processed(more_ticks);
 
   bool need_to_set_regs = registers.clear_singlestep_flag();
   if (breakpoint_set_where_execution_resumed && pending_sig() == SIGTRAP &&
