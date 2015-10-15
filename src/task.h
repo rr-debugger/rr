@@ -150,6 +150,13 @@ enum WaitRequest {
   // Don't wait after resuming.
   RESUME_NONBLOCKING
 };
+enum TicksRequest {
+  // We don't expect to see any ticks (though we seem to on the odd buggy
+  // system...)
+  RESUME_NO_TICKS = -1,
+  RESUME_UNLIMITED_TICKS = 0
+  // Positive values are a request for an interrupt after that number of ticks
+};
 
 /** Different kinds of waits a task can do.
  */
@@ -216,24 +223,23 @@ public:
    * interrupted.  Don't wait for status change in the
    * "_nonblocking()" variants.
    */
-  enum { DONT_COUNT_TICKS = -1000 };
   void cont_nonblocking(int sig = 0, Ticks tick_period = 0) {
-    resume_execution(RESUME_CONT, RESUME_NONBLOCKING, sig, tick_period);
+    resume_execution(RESUME_CONT, RESUME_NONBLOCKING, (TicksRequest)tick_period, sig);
   }
   void cont_singlestep(int sig = 0) {
-    resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, sig);
+    resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS, sig);
   }
-  void cont_syscall(int sig = 0) {
-    resume_execution(RESUME_SYSCALL, RESUME_WAIT);
+  void cont_syscall(int sig = 0, Ticks tick_period = 0) {
+    resume_execution(RESUME_SYSCALL, RESUME_WAIT, (TicksRequest)tick_period, sig);
   }
   void cont_syscall_nonblocking(int sig = 0, Ticks tick_period = 0) {
-    resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, sig, tick_period);
+    resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, (TicksRequest)tick_period, sig);
   }
   void cont_sysemu(int sig = 0) {
-    resume_execution(RESUME_SYSEMU, RESUME_WAIT, sig);
+    resume_execution(RESUME_SYSEMU, RESUME_WAIT, RESUME_UNLIMITED_TICKS, sig);
   }
-  void cont_sysemu_singlestep(int sig = 0) {
-    resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT, sig);
+  void cont_sysemu_singlestep(Ticks tick_period = 0) {
+    resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT, (TicksRequest)tick_period);
   }
 
   /**
@@ -844,8 +850,8 @@ public:
    * You probably want to use one of the cont*() helpers above,
    * and not this.
    */
-  void resume_execution(ResumeRequest how, WaitRequest wait_how, int sig = 0,
-                        Ticks tick_period = 0);
+  void resume_execution(ResumeRequest how, WaitRequest wait_how,
+                        TicksRequest tick_period, int sig = 0);
 
   /** Return the session this is part of. */
   Session& session() const { return *session_; }

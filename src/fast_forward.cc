@@ -156,7 +156,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
 
   remote_code_ptr ip = t->ip();
 
-  t->resume_execution(how, RESUME_WAIT);
+  t->resume_execution(how, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
   if (t->pending_sig() != SIGTRAP) {
     // we might have stepped into a system call...
     return false;
@@ -300,7 +300,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       ok = t->vm()->add_breakpoint(limit_ip, TRAP_BKPT_INTERNAL);
       ASSERT(t, ok) << "Failed to add breakpoint";
 
-      t->resume_execution(RESUME_CONT, RESUME_WAIT);
+      t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
       did_execute = true;
       ASSERT(t, t->pending_sig() == SIGTRAP);
       // Grab debug_status before restoring watchpoints, since the latter
@@ -342,7 +342,8 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
 
     // Singlestep through the remaining iterations.
     while (iterations > 0 && t->ip() == ip) {
-      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT);
+      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT,
+          RESUME_UNLIMITED_TICKS);
       did_execute = true;
       ASSERT(t, t->pending_sig() == SIGTRAP);
       t->consume_debug_status();

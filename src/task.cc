@@ -1442,18 +1442,18 @@ void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
   write_bytes_helper(dst, num_bytes, buf);
 }
 
-void Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
-                            Ticks tick_period) {
+void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
+                            TicksRequest tick_period, int sig) {
   // Treat a 0 tick_period as a very large but finite number.
   // Always resetting here, and always to a nonzero number, improves
   // consistency between recording and replay and hopefully
   // makes counting bugs behave similarly between recording and
   // replay.
   // Accumulate any unknown stuff in tick_count().
-  if (tick_period == DONT_COUNT_TICKS) {
+  if (tick_period == RESUME_NO_TICKS) {
     hpc.stop();
   } else {
-    hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
+    hpc.reset(tick_period == RESUME_UNLIMITED_TICKS ? 0xffffffff : tick_period);
   }
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   breakpoint_set_where_execution_resumed =

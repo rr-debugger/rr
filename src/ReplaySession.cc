@@ -232,7 +232,7 @@ Completion ReplaySession::cont_syscall_boundary(
     did_fast_forward |= fast_forward_through_instruction(
         t, resume_how, constraints.stop_before_states);
   } else {
-    t->resume_execution(resume_how, RESUME_WAIT, 0, ticks_period);
+    t->resume_execution(resume_how, RESUME_WAIT, (TicksRequest)ticks_period);
   }
 
   t->child_sig = t->pending_sig();
@@ -318,7 +318,7 @@ void ReplaySession::continue_or_step(Task* t,
                                      const StepConstraints& constraints,
                                      int64_t tick_period) {
   if (constraints.command == RUN_SINGLESTEP) {
-    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, 0, tick_period);
+    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, (TicksRequest)tick_period);
   } else if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD) {
     did_fast_forward |= fast_forward_through_instruction(
         t, RESUME_SINGLESTEP, constraints.stop_before_states);
@@ -329,7 +329,7 @@ void ReplaySession::continue_or_step(Task* t,
      * shouldn't be any straight-line execution overhead
      * for SYSCALL vs. CONT, so the difference in cost
      * should be neglible. */
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, 0, tick_period);
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, (TicksRequest)tick_period);
   }
   check_pending_sig(t);
 }

@@ -433,7 +433,7 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
      * until it is installed. */
     t->cont_syscall_nonblocking(step_state.continue_sig,
          step_state.continue_type == CONTINUE_SYSCALL
-             ? Task::DONT_COUNT_TICKS
+             ? RESUME_NO_TICKS
              : t->record_session().scheduler().max_ticks());
   } else {
     /* When the seccomp filter is on, instead of capturing
