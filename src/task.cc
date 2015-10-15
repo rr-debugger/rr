@@ -750,19 +750,6 @@ bool Task::is_disarm_desched_event_syscall() {
           PERF_EVENT_IOC_DISABLE == regs().arg2());
 }
 
-bool Task::is_probably_replaying_syscall() {
-  assert(session().is_replaying());
-  // If the tracee is at our syscall entry points, we know for
-  // sure it's entering/exiting/just-exited a syscall.
-  return (is_in_traced_syscall() || is_in_untraced_syscall()
-          // Otherwise, we assume that if original_syscallno() has been
-          // saved from syscallno(), then the tracee is in a syscall.
-          // This seems to be the heuristic used by the linux
-          // kernel for /proc/PID/syscall.
-          ||
-          regs().original_syscallno() >= 0);
-}
-
 bool Task::is_ptrace_seccomp_event() const {
   int event = ptrace_event();
   return (PTRACE_EVENT_SECCOMP_OBSOLETE == event ||

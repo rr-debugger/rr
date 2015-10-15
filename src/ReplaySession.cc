@@ -1343,14 +1343,6 @@ Completion ReplaySession::try_one_trace_step(
  * syscall, which is apparently the only way to kill one specific thread.
  */
 static void end_task(Task* t) {
-  if (t->is_probably_replaying_syscall()) {
-    // Super-simplified version of Task::finish_emulated_syscall. We're not
-    // going to continue with this task so we don't care about idempotent
-    // instructions.
-    t->resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
-                        RESUME_UNLIMITED_TICKS);
-  }
-
   ASSERT(t, t->ptrace_event() != PTRACE_EVENT_EXIT);
 
   // Emulate what the kernel would do during a task exit. We don't let the
