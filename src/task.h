@@ -212,10 +212,6 @@ public:
    */
   bool at_may_restart_syscall() const;
 
-  void cont_singlestep(int sig = 0) {
-    resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS,
-                     sig);
-  }
   void cont_syscall(int sig = 0, Ticks tick_period = 0) {
     resume_execution(RESUME_SYSCALL, RESUME_WAIT, (TicksRequest)tick_period,
                      sig);

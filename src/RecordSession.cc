@@ -946,7 +946,7 @@ static bool inject_signal(Task* t) {
      */
     while (true) {
       auto old_ip = t->ip();
-      t->cont_singlestep();
+      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
       ASSERT(t, old_ip == t->ip());
       ASSERT(t, t->pending_sig());
       if (t->pending_sig() == sig) {
@@ -976,7 +976,7 @@ static bool inject_signal(Task* t) {
    */
   LOG(debug) << "    injecting signal number " << t->ev().Signal().siginfo;
   t->set_siginfo(t->ev().Signal().siginfo);
-  t->cont_singlestep(sig);
+  t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS, sig);
 
   // It's been observed that when tasks enter
   // sighandlers, the singlestep operation above
