@@ -560,7 +560,6 @@ Ticks ReplaySession::get_ticks_slack(Task* t) {
 Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
                                      const StepConstraints& constraints,
                                      Ticks ticks) {
-  pid_t tid = t->tid;
   remote_code_ptr ip = regs.ip();
   Ticks ticks_left;
   Ticks ticks_slack = get_ticks_slack(t);
@@ -568,7 +567,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
   bool ignored_early_match = false;
   Ticks ticks_left_at_ignored_early_match = 0;
 
-  assert(t->hpc.ticks_fd() > 0);
   assert(t->child_sig == 0);
 
   /* Step 1: advance to the target ticks (minus a slack region) as
@@ -600,14 +598,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       t->child_sig = 0;
     }
     guard_unexpected_signal(t);
-
-    /* TODO this assertion won't catch many spurious
-     * signals; should assert that the siginfo says the
-     * source is io-ready and the fd is the child's fd. */
-    if (fcntl(t->hpc.ticks_fd(), F_GETOWN) != tid) {
-      FATAL() << "Scheduled task " << tid
-              << " doesn't own hpc; replay divergence";
-    }
 
     ticks_left = ticks - t->tick_count();
   }
