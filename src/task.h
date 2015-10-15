@@ -153,8 +153,8 @@ enum WaitRequest {
 enum TicksRequest {
   // We don't expect to see any ticks (though we seem to on the odd buggy
   // system...)
-  RESUME_NO_TICKS = -1,
-  RESUME_UNLIMITED_TICKS = 0
+  RESUME_NO_TICKS = -2,
+  RESUME_UNLIMITED_TICKS = -1
   // Positive values are a request for an interrupt after that number of ticks
 };
 
