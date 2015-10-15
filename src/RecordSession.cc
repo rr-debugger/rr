@@ -432,7 +432,9 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
      * record in the traditional way (with PTRACE_SYSCALL)
      * until it is installed. */
     t->cont_syscall_nonblocking(step_state.continue_sig,
-                                t->record_session().scheduler().max_ticks());
+         step_state.continue_type == CONTINUE_SYSCALL
+             ? Task::DONT_COUNT_TICKS
+             : t->record_session().scheduler().max_ticks());
   } else {
     /* When the seccomp filter is on, instead of capturing
      * syscalls by using PTRACE_SYSCALL, the filter will

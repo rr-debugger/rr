@@ -1450,7 +1450,11 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how, int sig,
   // makes counting bugs behave similarly between recording and
   // replay.
   // Accumulate any unknown stuff in tick_count().
-  hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
+  if (tick_period == DONT_COUNT_TICKS) {
+    hpc.stop();
+  } else {
+    hpc.reset(tick_period == 0 ? 0xffffffff : tick_period);
+  }
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   breakpoint_set_where_execution_resumed =
       vm()->get_breakpoint_type_at_addr(ip()) != TRAP_NONE;

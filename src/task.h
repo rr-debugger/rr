@@ -216,6 +216,7 @@ public:
    * interrupted.  Don't wait for status change in the
    * "_nonblocking()" variants.
    */
+  enum { DONT_COUNT_TICKS = -1000 };
   void cont_nonblocking(int sig = 0, Ticks tick_period = 0) {
     resume_execution(RESUME_CONT, RESUME_NONBLOCKING, sig, tick_period);
   }

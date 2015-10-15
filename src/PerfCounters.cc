@@ -196,6 +196,8 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
 }
 
 void PerfCounters::reset(Ticks ticks_period) {
+  assert(ticks_period >= 0);
+
   stop();
 
   struct perf_event_attr attr = ticks_attr;
