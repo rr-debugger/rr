@@ -118,7 +118,7 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
 // TODO de-dup
 static void advance_syscall(Task* t) {
   do {
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
   } while (t->is_ptrace_seccomp_event() ||
            ReplaySession::is_ignored_signal(t->pending_sig()));
   // XXX During recording, a SIGCHLD or SIGWINCH delivered here should not just
@@ -143,8 +143,7 @@ void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
 
   // Start running the syscall.
   pending_syscallno = syscallno;
-  t->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
-                      RESUME_UNLIMITED_TICKS);
+  t->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, RESUME_NO_TICKS);
   if (WAIT == wait) {
     wait_syscall(syscallno);
   }
