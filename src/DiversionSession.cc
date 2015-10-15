@@ -118,10 +118,12 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
   switch (command) {
     case RUN_CONTINUE:
       LOG(debug) << "Continuing to next syscall";
-      t->resume_execution(RESUME_SYSEMU, RESUME_WAIT, RESUME_UNLIMITED_TICKS, signal_to_deliver);
+      t->resume_execution(RESUME_SYSEMU, RESUME_WAIT, RESUME_UNLIMITED_TICKS,
+                          signal_to_deliver);
       break;
     case RUN_SINGLESTEP:
-      t->cont_sysemu_singlestep(signal_to_deliver);
+      t->resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
+                          RESUME_UNLIMITED_TICKS, signal_to_deliver);
       LOG(debug) << "Stepping to next insn/syscall";
       break;
     default:

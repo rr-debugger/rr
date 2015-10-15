@@ -212,11 +212,6 @@ public:
    */
   bool at_may_restart_syscall() const;
 
-  void cont_sysemu_singlestep(Ticks tick_period = 0) {
-    resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
-                     (TicksRequest)tick_period);
-  }
-
   /**
    * This must be in an emulated syscall, entered through
    * |cont_sysemu()| or |cont_sysemu_singlestep()|, but that's

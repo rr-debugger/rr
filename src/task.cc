@@ -378,7 +378,8 @@ void Task::finish_emulated_syscall() {
     bool ok = vm()->add_breakpoint(ip, TRAP_BKPT_INTERNAL);
     ASSERT(this, ok) << "Can't add breakpoint???";
   }
-  cont_sysemu_singlestep();
+  resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
+                   RESUME_UNLIMITED_TICKS);
 
   if (!known_idempotent_insn_after_syscall) {
     // The breakpoint should raise SIGTRAP, but we can also see

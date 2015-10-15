@@ -1352,7 +1352,8 @@ static void end_task(Task* t) {
     // Super-simplified version of Task::finish_emulated_syscall. We're not
     // going to continue with this task so we don't care about idempotent
     // instructions.
-    t->cont_sysemu_singlestep();
+    t->resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
+                        RESUME_UNLIMITED_TICKS);
   }
 
   ASSERT(t, t->ptrace_event() != PTRACE_EVENT_EXIT);
