@@ -424,6 +424,8 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
     t->vm()->set_first_run_event(trace_writer().time());
   }
 
+  TicksRequest max_ticks =
+      (TicksRequest)t->record_session().scheduler().max_ticks();
   if (!t->seccomp_bpf_enabled || CONTINUE_SYSCALL == step_state.continue_type ||
       may_restart) {
     /* We won't receive PTRACE_EVENT_SECCOMP events until
@@ -431,10 +433,11 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
      * syscall_buffer lib in the child, therefore we must
      * record in the traditional way (with PTRACE_SYSCALL)
      * until it is installed. */
-    t->cont_syscall_nonblocking(step_state.continue_sig,
-         step_state.continue_type == CONTINUE_SYSCALL
-             ? RESUME_NO_TICKS
-             : t->record_session().scheduler().max_ticks());
+    t->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
+                        step_state.continue_type == CONTINUE_SYSCALL
+                            ? RESUME_NO_TICKS
+                            : max_ticks,
+                        step_state.continue_sig);
   } else {
     /* When the seccomp filter is on, instead of capturing
      * syscalls by using PTRACE_SYSCALL, the filter will
@@ -446,8 +449,8 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
      * process to continue to the actual entry point of
      * the syscall (using cont_syscall_block()) and then
      * using the same logic as before. */
-    t->cont_nonblocking(step_state.continue_sig,
-                        t->record_session().scheduler().max_ticks());
+    t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, max_ticks,
+                        step_state.continue_sig);
   }
 }
 

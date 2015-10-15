@@ -343,7 +343,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
     // Singlestep through the remaining iterations.
     while (iterations > 0 && t->ip() == ip) {
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT,
-          RESUME_UNLIMITED_TICKS);
+                          RESUME_UNLIMITED_TICKS);
       did_execute = true;
       ASSERT(t, t->pending_sig() == SIGTRAP);
       t->consume_debug_status();

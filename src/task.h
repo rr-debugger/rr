@@ -224,22 +224,27 @@ public:
    * "_nonblocking()" variants.
    */
   void cont_nonblocking(int sig = 0, Ticks tick_period = 0) {
-    resume_execution(RESUME_CONT, RESUME_NONBLOCKING, (TicksRequest)tick_period, sig);
+    resume_execution(RESUME_CONT, RESUME_NONBLOCKING, (TicksRequest)tick_period,
+                     sig);
   }
   void cont_singlestep(int sig = 0) {
-    resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS, sig);
+    resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_UNLIMITED_TICKS,
+                     sig);
   }
   void cont_syscall(int sig = 0, Ticks tick_period = 0) {
-    resume_execution(RESUME_SYSCALL, RESUME_WAIT, (TicksRequest)tick_period, sig);
+    resume_execution(RESUME_SYSCALL, RESUME_WAIT, (TicksRequest)tick_period,
+                     sig);
   }
   void cont_syscall_nonblocking(int sig = 0, Ticks tick_period = 0) {
-    resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, (TicksRequest)tick_period, sig);
+    resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
+                     (TicksRequest)tick_period, sig);
   }
   void cont_sysemu(int sig = 0) {
     resume_execution(RESUME_SYSEMU, RESUME_WAIT, RESUME_UNLIMITED_TICKS, sig);
   }
   void cont_sysemu_singlestep(Ticks tick_period = 0) {
-    resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT, (TicksRequest)tick_period);
+    resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
+                     (TicksRequest)tick_period);
   }
 
   /**
