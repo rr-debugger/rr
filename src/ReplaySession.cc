@@ -1118,18 +1118,13 @@ Completion ReplaySession::flush_one_syscall(
       current_step.flush.state = FLUSH_ENTER;
       return flush_one_syscall(t, constraints);
 
-    case FLUSH_ENTER:
+    case FLUSH_ENTER: {
       LOG(debug) << "  advancing to buffered syscall entry";
       if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
         return INCOMPLETE;
       }
       assert_at_buffered_syscall(t, call);
       assert_same_rec(t, rec_rec, child_rec);
-      current_step.flush.state = FLUSH_EXIT;
-      return flush_one_syscall(t, constraints);
-
-    case FLUSH_EXIT: {
-      LOG(debug) << "  advancing to buffered syscall exit";
 
       EmuFs::AutoGc gc(*this, t->arch(), call, EXITING_SYSCALL);
 

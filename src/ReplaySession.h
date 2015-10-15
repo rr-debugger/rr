@@ -36,7 +36,6 @@ enum ReplayFlushBufferedSyscallStep {
   FLUSH_START,
   FLUSH_ARM,
   FLUSH_ENTER,
-  FLUSH_EXIT,
   FLUSH_DISARM,
   FLUSH_DONE
 };
