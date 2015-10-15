@@ -143,7 +143,8 @@ void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
 
   // Start running the syscall.
   pending_syscallno = syscallno;
-  t->cont_syscall_nonblocking();
+  t->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
+                      RESUME_UNLIMITED_TICKS);
   if (WAIT == wait) {
     wait_syscall(syscallno);
   }

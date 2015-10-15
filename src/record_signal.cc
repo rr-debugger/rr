@@ -234,7 +234,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
     // syscall may have re-armed the event.
     disarm_desched_event(t);
 
-    t->cont_syscall();
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
     int sig = t->stop_sig();
 
     if (STOPSIG_SYSCALL == sig) {
