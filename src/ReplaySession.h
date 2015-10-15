@@ -351,7 +351,7 @@ private:
   void check_ticks_consistency(Task* t, const Event& ev);
   void check_pending_sig(Task* t);
   void continue_or_step(Task* t, const StepConstraints& constraints,
-                        int64_t tick_period = 0);
+                        TicksRequest tick_request);
   enum ExecStateType { UNKNOWN, NOT_AT_TARGET, AT_TARGET };
   TrapType compute_trap_type(Task* t, int target_sig,
                              SignalDeterministic deterministic,

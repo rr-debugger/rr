@@ -208,14 +208,15 @@ bool ReplaySession::is_ignored_signal(int sig) {
  */
 Completion ReplaySession::cont_syscall_boundary(
     Task* t, const StepConstraints& constraints) {
-  Ticks ticks_period = 0;
+  TicksRequest ticks_request = RESUME_UNLIMITED_TICKS;
   if (constraints.ticks_target > 0) {
-    ticks_period = constraints.ticks_target - SKID_SIZE - t->tick_count();
+    Ticks ticks_period = constraints.ticks_target - SKID_SIZE - t->tick_count();
     if (ticks_period <= 0) {
       // Behave as if we actually executed something. Callers assume we did.
       t->clear_wait_status();
       return INCOMPLETE;
     }
+    ticks_request = (TicksRequest)ticks_period;
   }
 
   ResumeRequest resume_how;
@@ -232,7 +233,7 @@ Completion ReplaySession::cont_syscall_boundary(
     did_fast_forward |= fast_forward_through_instruction(
         t, resume_how, constraints.stop_before_states);
   } else {
-    t->resume_execution(resume_how, RESUME_WAIT, (TicksRequest)ticks_period);
+    t->resume_execution(resume_how, RESUME_WAIT, ticks_request);
   }
 
   t->child_sig = t->pending_sig();
@@ -316,9 +317,9 @@ void ReplaySession::check_pending_sig(Task* t) {
  */
 void ReplaySession::continue_or_step(Task* t,
                                      const StepConstraints& constraints,
-                                     int64_t tick_period) {
+                                     TicksRequest tick_request) {
   if (constraints.command == RUN_SINGLESTEP) {
-    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, (TicksRequest)tick_period);
+    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, tick_request);
   } else if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD) {
     did_fast_forward |= fast_forward_through_instruction(
         t, RESUME_SINGLESTEP, constraints.stop_before_states);
@@ -329,7 +330,7 @@ void ReplaySession::continue_or_step(Task* t,
      * shouldn't be any straight-line execution overhead
      * for SYSCALL vs. CONT, so the difference in cost
      * should be neglible. */
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, (TicksRequest)tick_period);
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, tick_request);
   }
   check_pending_sig(t);
 }
@@ -593,7 +594,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
     LOG(debug) << "  programming interrupt for " << (ticks_left - SKID_SIZE)
                << " ticks";
 
-    continue_or_step(t, constraints, ticks_left - SKID_SIZE);
+    continue_or_step(t, constraints, (TicksRequest)(ticks_left - SKID_SIZE));
     if (is_ignored_signal(t->child_sig)) {
       t->child_sig = 0;
     }
@@ -723,7 +724,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       LOG(debug) << "    breaking on target $ip";
       t->vm()->add_breakpoint(ip, TRAP_BKPT_INTERNAL);
       did_set_internal_breakpoint = true;
-      continue_or_step(t, constraints);
+      continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
     } else {
       /* Case (3) above: we can't put a breakpoint
        * on the $ip, because resuming execution
@@ -731,7 +732,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
        * started.  Single-step or fast-forward past it. */
       LOG(debug) << "    (fast-forwarding over target $ip)";
       if (constraints.command == RUN_SINGLESTEP) {
-        continue_or_step(t, constraints);
+        continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
       } else {
         vector<const Registers*> states = constraints.stop_before_states;
         // This state may not be relevant if we don't have the correct tick
@@ -879,7 +880,7 @@ Completion ReplaySession::emulate_deterministic_signal(
     return COMPLETE;
   }
 
-  continue_or_step(t, constraints);
+  continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
   if (is_ignored_signal(t->child_sig)) {
     t->child_sig = 0;
     return emulate_deterministic_signal(t, sig, constraints);
@@ -1282,7 +1283,7 @@ Completion ReplaySession::advance_to_ticks_target(
       t->clear_wait_status();
       return INCOMPLETE;
     }
-    continue_or_step(t, constraints, ticks_left - SKID_SIZE);
+    continue_or_step(t, constraints, (TicksRequest)(ticks_left - SKID_SIZE));
     if (SIGTRAP == t->child_sig) {
       return INCOMPLETE;
     }
