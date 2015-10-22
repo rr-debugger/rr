@@ -256,8 +256,7 @@ New value = 11220
 0x00002aaab100c0fd in nsIFrame::SetRect (this=0x2aaadd7dbeb0, aRect=...)
     at /home/roc/mozilla-inbound/layout/base/../generic/nsIFrame.h:718
 718       mRect = aRect;</pre>
-     Here the "New value" is actually the value before this statement was executed, since we just executed backwards past it.
-     The combination of hardware data watchpoints with reverse execution is especially powerful!
+     This combination of hardware data watchpoints with reverse execution is extremely powerful!
   </section>
 
     <h2>video</h2>
