@@ -563,7 +563,7 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
   return true;
 }
 
-ScopedFd create_shmem_segment(const string& name, size_t num_bytes) {
+ScopedFd create_shmem_segment(const string& name, uint64_t num_bytes) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "%s/%s", SHMEM_FS, name.c_str());
 
@@ -580,7 +580,7 @@ ScopedFd create_shmem_segment(const string& name, size_t num_bytes) {
   return fd;
 }
 
-void resize_shmem_segment(ScopedFd& fd, size_t num_bytes) {
+void resize_shmem_segment(ScopedFd& fd, uint64_t num_bytes) {
   if (ftruncate(fd, num_bytes)) {
     FATAL() << "Failed to resize shmem to " << num_bytes;
   }

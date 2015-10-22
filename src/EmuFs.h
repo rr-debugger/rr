@@ -85,7 +85,7 @@ private:
   friend class EmuFs;
 
   EmuFile(ScopedFd&& fd, const std::string& orig_path, dev_t device,
-          ino_t inode, size_t file_size);
+          ino_t inode, uint64_t file_size);
 
   /**
    * Return a copy of this file.  See |create()| for the meaning
@@ -113,11 +113,11 @@ private:
    * might exist concurrently in this tracer process.
    */
   static shr_ptr create(const std::string& orig_path, dev_t orig_device,
-                        ino_t orig_inode, size_t orig_file_size);
+                        ino_t orig_inode, uint64_t orig_file_size);
 
   std::string orig_path;
   ScopedFd file;
-  size_t size_;
+  uint64_t size_;
   dev_t device_;
   ino_t inode_;
   bool is_marked;
@@ -150,7 +150,7 @@ public:
    * |recorded_km|.
    */
   EmuFile::shr_ptr get_or_create(const KernelMapping& recorded_km,
-                                 size_t file_size);
+                                 uint64_t file_size);
 
   /**
    * Dump information about this emufs to the "error" log.

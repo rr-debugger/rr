@@ -155,7 +155,7 @@ void EmuFs::gc(const Session& session) {
 }
 
 EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& recorded_km,
-                                      size_t file_size) {
+                                      uint64_t file_size) {
   FileId id(recorded_km);
   auto it = files.find(id);
   if (it != files.end()) {
