@@ -417,9 +417,13 @@ sudo dpkg -i rr-4.0.0-Linux-$(uname -m).deb</pre>
         syscalls &mdash; those needed by Firefox and other applications people
         have tackled with rr &mdash; but support
         isn't complete, so running rr on your application may
-        uncover a syscall that needs to be implemented. Please file
-        <a href="https://github.com/mozilla/rr/issues/">github issues</a>
+        uncover a syscall that needs to be implemented. Please
+        <a href="https://github.com/mozilla/rr/issues/">file github issues</a>
         for unsupported system calls.
+      <li>sometimes needs to be updated in response to kernel changes,
+        updates to system libraries, or new CPU families. If rr isn't working
+        for you (and the above caveats do not apply), please
+        <a href="https://github.com/mozilla/rr/issues/">file an</a>
     </ul>
   </section>
 
