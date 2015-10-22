@@ -1,5 +1,4 @@
 <html>
-
 <head>
   <meta charset="utf-8">
   <title>rr: lightweight recording & deterministic debugging</title>
@@ -173,12 +172,17 @@
     </ul>
   </div>
 
-  <h2>rr records nondeterministic executions and debugs them
-  deterministically</h2>
+  <h2>what rr does</h2>
   <h3>rr aspires to be your primary debugging tool, replacing &mdash;
     well, enhancing &mdash; gdb.  You record a failure once, then
     debug the recording, deterministically, as many times as you want.
-    Every time the same execution is replayed.</h3>
+    The same execution is replayed every time.</h3>
+  <h3>rr also provides efficient reverse execution
+    under gdb. Set breakpoints and data watchpoints and quickly
+    reverse-execute to where they were hit.</h3>
+  <h3>rr works on real applications such as Firefox, with low overhead.
+  It is being used <a href="https://github.com/mozilla/rr/wiki/Testimonials">by many developers</a>
+  inside and outside Mozilla to fix real bugs.</h3>
 
   <h2>the rr debugging experience</h2>
   <section>
@@ -187,21 +191,17 @@
       demonstration. -->
     <p>
       Start by using rr to record your application:
-      <pre>
-$ rr record /your/application --args
+      <pre>$ rr record /your/application --args
 ...
-FAIL: oh no!
-      </pre>
+FAIL: oh no!</pre>
     <p>
       The entire execution, including the failure, was saved to disk.
       That recording can now be debugged.
-      <pre>
-$ rr replay
+      <pre>$ rr replay
 GNU gdb (GDB) ...
 ...
 0x4cee2050 in _start () from /lib/ld-linux.so.2
-(gdb)
-      </pre>
+(gdb)</pre>
     <p>
       Remember, you're debugging the <em>recorded trace</em>
       deterministically; <em>not</em> a live, nondeterministic
@@ -209,29 +209,25 @@ GNU gdb (GDB) ...
       contents, syscall data etc are exactly the same in every run.
     <p>
       Most of the common gdb commands can be used.  
-      <pre>
-(gdb) break mozilla::dom::HTMLMediaElement::HTMLMediaElement
+      <pre>(gdb) break mozilla::dom::HTMLMediaElement::HTMLMediaElement
 ...
 (gdb) continue
 Continuing.
 ...
 Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70, aNodeInfo=...)
-...
-      </pre>
+...</pre>
     <p>
       If you need to restart the debugging session, for example
       because you missed breaking on some critical execution point, no
       problem.  Just use gdb's <code>run</code> command to restart
       replay.
-      <pre>
-(gdb) run
+      <pre>(gdb) run
 The program being debugged has been started already.
 Start it from the beginning? (y or n) y
 ...
 Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70, aNodeInfo=...)
 ...
-(gdb) 
-      </pre>
+(gdb) </pre>
     <p>
       The <code>run</code> command started another replay run of your
       recording from the beginning.  But after the session restarted,
@@ -242,8 +238,29 @@ Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70,
       dynamically-allocated object was the same in both replay
       sessions.  Memory allocations are exactly the same in each
       replay, meaning you can hard-code addresses you want to watch.
+    <p>
+      Even more powerful is reverse execution. Suppose we're debugging Firefox layout:
+<pre>Breakpoint 1, nsCanvasFrame::BuildDisplayList (this=0x2aaadd7dbeb0, aBuilder=0x7fffffffaaa0, aDirtyRect=..., aLists=...)
+    at /home/roc/mozilla-inbound/layout/generic/nsCanvasFrame.cpp:460
+460   if (GetPrevInFlow()) {
+(gdp) p mRect.width
+12000</pre>
+      We happen to know that that value is wrong. We want to find out where it was set.
+      rr makes that quick and easy.
+<pre>(gdb) watch -l mRect.width
+(gdb) reverse-cont
+Continuing.
+Hardware watchpoint 2: -location mRect.width
+Old value = 12000
+New value = 11220
+0x00002aaab100c0fd in nsIFrame::SetRect (this=0x2aaadd7dbeb0, aRect=...)
+    at /home/roc/mozilla-inbound/layout/base/../generic/nsIFrame.h:718
+718       mRect = aRect;</pre>
+     Here the "New value" is actually the value before this statement was executed, since we just executed backwards past it.
+     The combination of hardware data watchpoints with reverse execution is especially powerful!
   </section>
 
+    <h2>video</h2>
   <section id="video-container">
     <p>
       This video shows a quick demo of rr recording and replaying Firefox.
@@ -252,6 +269,9 @@ Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70,
       This video demonstrates rr's basic capabilities in a bit more
       detail.
       <iframe width="560" height="315" src="https://www.youtube.com/embed/61kD3x4Pu8I" frameborder="0" allowfullscreen></iframe>
+    <p>
+      This video is a high-level technical talk by Robert O'Callahan about rr.
+      <iframe width="560" height="315" src="https://www.youtube.com/embed/H4iNuufAe_8" frameborder="0" allowfullscreen></iframe>
   </section>
 
   <h2>getting started</h2>
@@ -259,33 +279,29 @@ Breakpoint 1, mozilla::dom::HTMLMediaElement::HTMLMediaElement (this=0x61362f70,
     <div>
       <h3>Build from source</h3>
       <a href="https://github.com/mozilla/rr/wiki/Building-And-Installing">Follow
-            these instructions.</a></h3>
+            these instructions.</a> Recommended if the packages don't work for you.
+      </h3>
     </div>
 
     <div>
       <h3>Or in Fedora:</h3>
-      <pre>
-cd /tmp
-wget https://github.com/mozilla/rr/releases/download/3.2.0/rr-3.2.0-Linux-$(uname -m).rpm
-sudo rpm -i rr-3.2.0-Linux-$(uname -m).rpm
-      </pre>
+      <pre>cd /tmp
+wget https://github.com/mozilla/rr/releases/download/4.0.0/rr-4.0.0-Linux-$(uname -m).rpm
+sudo rpm -i rr-4.0.0-Linux-$(uname -m).rpm</pre>
     </div>
 
     <div>
       <h3>Or in Ubuntu:</h3>
-      <pre>
-cd /tmp
-wget https://github.com/mozilla/rr/releases/download/3.2.0/rr-3.2.0-Linux-$(uname -m).deb
-sudo dpkg -i rr-3.2.0-Linux-$(uname -m).deb
-      </pre>
+      <pre>cd /tmp
+wget https://github.com/mozilla/rr/releases/download/4.0.0/rr-4.0.0-Linux-$(uname -m).deb
+sudo dpkg -i rr-4.0.0-Linux-$(uname -m).deb</pre>
     </div>
 
     <div>
-      <h3>run rr</h3>
+      <h3>Running rr</h3>
       <p>
         <a href="https://github.com/mozilla/rr/wiki/Usage">Follow the
-        usage instructions</a> to set up your machine (if necessary)
-        and learn how to use rr.
+        usage instructions</a> to learn how to use rr.
       <p>
         If you're using rr to debug Firefox, you may find
         <a href="https://github.com/mozilla/rr/wiki/Recording-Firefox">
@@ -297,59 +313,42 @@ sudo dpkg -i rr-3.2.0-Linux-$(uname -m).deb
   <h2>background and motivation</h2>
   <section>
     <p>
-      Everyone who's worked on a nontrivial application
-      (like <a href="https://firefox.com">Firefox</a>) has gone
-      through the pain of debugging an intermittently-reproducible
-      bug.  Since nontrivial applications
-      are <em>nondeterministic</em>, each execution is different, and
-      you may require 5, 10, or even 100 runs just to see the bug
-      manifest.
+      rr's original motivation was to make debugging of intermittent failures
+      easier. These failures are hard to debug because any given program run
+      may not show the failure. We wanted to create a tool that would record
+      program executions with low overhead, so you can record test executions
+      until you see a failure, and then replay the failing execution
+      repeatedly under a debugger until it has been completely understood.
     <p>
-      It's hard to debug these bugs with traditional techniques
-      because single stepping, setting breakpoints, inspecting program
-      state, etc, is all a waste of time if the program execution
-      you're debugging ends up not even exhibiting the bug. Even when
-      you can reproduce the bug consistently, important information
-      such as the addresses of suspect objects is unpredictable from
-      run to run. Given that software developers spend a lot of time
-      finding and fixing bugs, nondeterminism has a major impact on
-      their work.
+      We also hoped that deterministic replay would make debugging of any kind of bug
+      easier. With normal debuggers, information you learn during the debugging
+      session (e.g. the addresses of objects of interest, and the ordering of important
+      events) often becomes obsolete when you have to rerun the testcase.
+      With deterministic replay, that never needs to happen: your knowledge of
+      what happens during the failing run increases monotonically.
     <p>
-      And there are intermittent bugs that are so hard to reproduce
-      that they're literally not the worth the time to fix with
-      traditional techniques.  However, for big projects like Firefox
-      with its half-billion users, a bug that only reproduces 1 out of
-      10,000 test runs can still have a negative impact on users.
+      Furthermore, since debugging is the process of tracing effects to
+      their causes, it's much easier if your debugger can execute backwards in time.
+      It's well-known that
+      given a record/replay system which provides restartable checkpoints during replay,
+      you can simulate reverse execution to a particular point in time by restoring
+      the previous checkpoint and executing forwards to the desired point. So we hoped
+      that if we built a low-overhead record-and-replay system that works well on the
+      applications we care about (Firefox), we could build a really usable backend for
+      gdb's reverse execution commands.
     <p>
-      rr solves these problems by splitting debugging into two phases:
-      first <em>recording</em>, in which the application's execution
-      history is saved; then <em>deterministic debugging</em> of the
-      saved trace: using gdb to control replay of the trace, as many
-      times as you want.
+      <strong>These goals have all been met.</strong> rr is not only a working
+      tool, but it's being used regularly by developers inside and outside
+      Mozilla.
     <p>
-      The saved execution history captures all nondeterminism in the
-      program's execution.  By replaying that trace in the right way,
-      rr guarantees each debugging session is entirely deterministic.
+      rr records a group of Linux user-space processes and captures all
+      inputs to those processes from the kernel, plus any nondeterministic CPU
+      effects performed by those processes (of which there are very few).
+      rr replay guarantees that execution preserves instruction-level control flow
+      and memory and register contents.
       The memory layout is always the same, the addresses of objects
       don't change, register values are identical, syscalls return the
       same data, etc.
-    <p>
-      The benefit to developers is obvious: an intermittent bug can be
-      recorded by a script over lunchtime, say, and then debugged at
-      leisure in the afternoon.  Multiple cores can be used in
-      parallel to record failures.  If you accidentally set a
-      breakpoint in the wrong place and miss gathering critical
-      information, your precious intermittent failure isn't lost.
-      Just fix your breakpoint and then tell gdb to <code>run</code>
-      the recording back from the beginning again. Even for easily
-      reproducible bugs, a repeatable, deterministic, debugging
-      session is a powerful tool on top of traditional debugging.
-    <p>
-      And for projects like Firefox which run literally millions of
-      tests a day on a vast build and test infrastructure,
-      intermittent failures in those test runs can be recorded on the
-      infrastructure itself and then deterministically debugged at
-      some later time, offline.
     <p>
       Tools like fuzzers and randomized fault injectors become even
       more powerful when used with rr.  Those tools are very good at
@@ -359,45 +358,49 @@ sudo dpkg -i rr-3.2.0-Linux-$(uname -m).deb
       the execution failed, then the saved recording can be used to
       deterministically debug the problem.
     <p>
-      So rr lowers the cost of fixing intermittent bugs.  This allows
-      a new class of bugs to be fixed with the same amount of
-      engineering time and money, which in turn produces
-      higher-quality software for the same cost.
+      rr lowers the cost of fixing bugs.  rr helps produce
+      higher-quality software for the same cost. rr also makes
+      debugging more fun.
+  </section>
+  <h2>rr in context</h2>
+  <section>
     <p>
-      Deterministic debugging is an old idea; many systems have
-      preceded rr.  What makes rr different, in our opinion, are the
+      Record-and-replay debugging is an old idea; many systems
+      preceded rr.  What makes rr different are the
       design goals:
       <ul>
-        <li><em>Initially focus on debugging Firefox</em>. Firefox is
-          a complex application, so if rr is useful for debugging
-          Firefox, it is very likely to be generally useful.  However,
-          there's nothing about rr that's specific to Firefox; we've
-          just spent the majority of our testing time on Firefox.  rr
-          will work well with more programs as the project matures.
-        <li><em>Prioritize deployability</em>. rr runs on a stock
-          linux kernel, and requires no
-          system configuration changes. And of course rr works on
-          stock, relatively modern hardware.
-        <li><em>Make run-time overload low</em>. We want rr to replace
+        <li><em>Initial focus on Firefox</em>. Many record
+          and replay techniques require specific programming languages or
+          don't scale well and thus can't handle Firefox --- or were just
+          experimental and were never fleshed out. Firefox is
+          a complex application, so given rr is useful for debugging
+          Firefox, it is likely to be generally useful.
+        <li><em>Deployability</em>. rr runs on stock
+          Linux kernels, on commodity hardware, and requires no
+          system configuration changes. Many record and replay techniques
+          require kernel changes. Many rely on running the OS in a virtual
+          machine.
+        <li><em>Low run-time overload</em>. We want rr to replace
           gdb in your workflow. That means you need to start getting
           results with rr about as quickly as you would if you were
-          using gdb.
+          using gdb. Low overhead also means less perturbation of tests.
+        <li><em>Simplicity of design</em>. We didn't have a lot of resources
+          to develop rr, so we avoided approaches that rely on complex techniques
+          such as dynamic binary instrumentation. This simplicity has also made
+          rr more robust and lower overhead.
       </ul>
     <p>
       The overhead of rr depends on your application's workload.  On
       Firefox test suites, rr's recording performance is quite usable.
       We see slowdowns down to &le; 1.2x.  A 1.2x slowdown means that if
       the suite takes 10 minutes to run by itself, it will take around
-      12 minutes to be recorded by rr.  However, different test suites
-      have different performance characteristics, so they have
-      different overheads as well.
+      12 minutes to be recorded by rr.  However, overhead can vary dramatically
+      depending on the workload. For mostly-single-threaded programs, rr has
+      much lower overhead than any competing record-and-replay system we know of.
   </section>
 
   <h2>limitations</h2>
   <section>
-    <p>
-      Some of rr's limitations are inherent, and some will be removed
-      in future releases.
     <p>rr &hellip;
     <ul>
       <li>emulates a single-core machine. So, parallel programs incur
@@ -409,12 +412,15 @@ sudo dpkg -i rr-3.2.0-Linux-$(uname -m).deb
         memory for recorded processes to avoid this problem.
       <li>requires a reasonably modern x86 CPU. It depends on certain
         performance counter features that are not available in older
-        CPUs, or in ARM at all currently.
+        CPUs.
       <li>requires knowledge of every system call executed by the
         recorded processes. It already supports a wide range of
-        syscalls &mdash; those needed by Firefox &mdash; but support
-        isn't comprehensive, so running rr on your application may
-        uncover a syscall that needs to be implemented.
+        syscalls &mdash; those needed by Firefox and other applications people
+        have tackled with rr &mdash; but support
+        isn't complete, so running rr on your application may
+        uncover a syscall that needs to be implemented. Please file
+        <a href="https://github.com/mozilla/rr/issues/">github issues</a>
+        for unsupported system calls.
     </ul>
   </section>
 
@@ -429,14 +435,15 @@ sudo dpkg -i rr-3.2.0-Linux-$(uname -m).deb
       The <a href="https://github.com/mozilla/rr/wiki">rr wiki</a>
       contains pages that cover technical topics related to rr.
     <p>
-      More information about rr will be posted in the future.
+      Ask on <a href="https://mail.mozilla.org/listinfo/rr-dev">the mailing
+      list</a> or on #research on irc.mozilla.org if you have questions about rr.
   </section>
 
   <footer>
     <p><a href="https://www.mozilla.org/en-US/research/">
         <img alt="mozilla"
              src="https://mozorg.cdn.mozilla.net/media/img/sandstone/footer-mozilla.png"></img></a>
-             &copy; 2014
+             &copy; 2015
   </footer>
 </body>
 
