@@ -12,6 +12,12 @@ int main(int argc, char* argv[]) {
   int tsc = 99;
   int dummy;
 
+  test_assert(0 == prctl(PR_SET_KEEPCAPS, 0));
+  test_assert(0 == prctl(PR_GET_KEEPCAPS));
+
+  test_assert(0 == prctl(PR_SET_KEEPCAPS, 1));
+  test_assert(1 == prctl(PR_GET_KEEPCAPS));
+
   test_assert(0 == prctl(PR_SET_NAME, setname));
   test_assert(0 == prctl(PR_GET_NAME, getname));
   atomic_printf("set name `%s'; got name `%s'\n", setname, getname);

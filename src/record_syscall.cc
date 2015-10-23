@@ -2181,10 +2181,12 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           syscall_state.reg_parameter<int>(2);
           break;
 
+        case PR_GET_KEEPCAPS:
         case PR_GET_NO_NEW_PRIVS:
         case PR_GET_TIMERSLACK:
         case PR_MCE_KILL:
         case PR_MCE_KILL_GET:
+        case PR_SET_KEEPCAPS:
         case PR_SET_PDEATHSIG:
         case PR_SET_TIMERSLACK:
           break;
