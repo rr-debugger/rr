@@ -454,7 +454,7 @@ gettimeofday = EmulatedSyscall(x86=78, x64=96, arg1="typename Arch::timeval", ar
 
 settimeofday = UnsupportedSyscall(x86=79, x64=164)
 getgroups = IrregularEmulatedSyscall(x86=80, x64=115)
-setgroups = UnsupportedSyscall(x86=81, x64=116)
+setgroups = EmulatedSyscall(x86=81, x64=116)
 select = IrregularEmulatedSyscall(x86=82, x64=23)
 
 #  int symlink(const char *oldpath, const char *newpath)
@@ -1040,7 +1040,7 @@ setregid32 = EmulatedSyscall(x86=204)
 # be used in a further call to getgroups().
 getgroups32 = IrregularEmulatedSyscall(x86=205)
 
-setgroups32 = UnsupportedSyscall(x86=206)
+setgroups32 = EmulatedSyscall(x86=206)
 fchown32 = EmulatedSyscall(x86=207)
 
 #  int setresuid32(uid_t ruid, uid_t euid, uid_t suid);
