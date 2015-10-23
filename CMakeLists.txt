@@ -430,6 +430,7 @@ set(BASIC_TESTS
   set_ptracer
   setgid
   setsid
+  setuid
   shm
   sigaction_old
   sigaltstack
