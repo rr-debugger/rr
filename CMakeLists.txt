@@ -429,6 +429,7 @@ set(BASIC_TESTS
   sendfile
   set_ptracer
   setgid
+  setgroups
   setsid
   shm
   sigaction_old
