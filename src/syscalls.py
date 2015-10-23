@@ -196,7 +196,7 @@ getpid = EmulatedSyscall(x86=20, x64=39)
 
 mount = UnsupportedSyscall(x86=21, x64=165)
 umount = UnsupportedSyscall(x86=22)
-setuid = UnsupportedSyscall(x86=23, x64=105)
+setuid = EmulatedSyscall(x86=23, x64=105)
 getuid = EmulatedSyscall(x86=24, x64=102)
 stime = UnsupportedSyscall(x86=25)
 
@@ -1074,7 +1074,7 @@ setresgid32 = EmulatedSyscall(x86=210)
 getresgid32 = EmulatedSyscall(x86=211, arg1="typename Arch::gid_t", arg2="typename Arch::gid_t", arg3="typename Arch::gid_t")
 
 chown32 = EmulatedSyscall(x86=212)
-setuid32 = UnsupportedSyscall(x86=213)
+setuid32 = EmulatedSyscall(x86=213)
 setgid32 = EmulatedSyscall(x86=214)
 setfsuid32 = UnsupportedSyscall(x86=215)
 setfsgid32 = UnsupportedSyscall(x86=216)
