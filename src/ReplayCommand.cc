@@ -48,6 +48,7 @@ ReplayCommand ReplayCommand::singleton(
     "                             has been exec()d, AND the target event has "
     "been\n"
     "                             reached.\n"
+    "  -d, --debugger=<FILE>      use <FILE> as the gdb command\n"
     "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
     "  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
     "                             don't automatically launch the debugger\n"
@@ -87,6 +88,9 @@ struct ReplayFlags {
   // Pass this file name to debugger with -x
   string gdb_command_file_path;
 
+  // Specify a custom gdb binary with -d
+  string gdb_binary_file_path;
+
   /* When true, echo tracee stdout/stderr writes to console. */
   bool redirect;
 
@@ -97,6 +101,7 @@ struct ReplayFlags {
         process_created_how(CREATED_NONE),
         dont_launch_debugger(false),
         dbg_port(-1),
+        gdb_binary_file_path("gdb"),
         redirect(true) {}
 };
 
@@ -107,6 +112,7 @@ static bool parse_replay_arg(std::vector<std::string>& args,
   }
 
   static const OptionSpec options[] = { { 'a', "autopilot", NO_PARAMETER },
+                                        { 'd', "debugger", HAS_PARAMETER },
                                         { 's', "dbgport", HAS_PARAMETER },
                                         { 'g', "goto", HAS_PARAMETER },
                                         { 't', "trace", HAS_PARAMETER },
@@ -124,6 +130,9 @@ static bool parse_replay_arg(std::vector<std::string>& args,
     case 'a':
       flags.goto_event = numeric_limits<decltype(flags.goto_event)>::max();
       flags.dont_launch_debugger = true;
+      break;
+    case 'd':
+      flags.gdb_binary_file_path = opt.value;
       break;
     case 'f':
       if (!opt.verify_valid_int(1, INT32_MAX)) {
@@ -390,7 +399,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
-    GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_command_file_path);
+    GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_command_file_path,
+                          flags.gdb_binary_file_path);
   }
 
   // Child must have died before we were able to get debugger parameters

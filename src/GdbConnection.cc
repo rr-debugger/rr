@@ -166,7 +166,8 @@ static string create_gdb_command_file(const char* macros) {
 }
 
 void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
-                               const string& gdb_command_file_path) {
+                               const string& gdb_command_file_path,
+                               const string& gdb_binary_file_path) {
   DebuggerParams params;
   ssize_t nread;
   while (true) {
@@ -184,10 +185,11 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
   stringstream attach_cmd;
   attach_cmd << "target extended-remote " << connection_addr << ":"
              << params.port;
-  LOG(debug) << "launching gdb with command '" << attach_cmd.str() << "'";
+  LOG(debug) << "launching " << gdb_binary_file_path
+             << " with command '" << attach_cmd.str() << "'";
 
   vector<string> args;
-  args.push_back("gdb");
+  args.push_back(gdb_binary_file_path);
   // The gdb protocol uses the "vRun" packet to reload
   // remote targets.  The packet is specified to be like
   // "vCont", in which gdb waits infinitely long for a
@@ -220,7 +222,7 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
   args.push_back(attach_cmd.str());
 
   StringVectorToCharArray c_args(args);
-  execvp("gdb", c_args.get());
+  execvp(gdb_binary_file_path.c_str(), c_args.get());
   FATAL() << "Failed to exec gdb.";
 }
 
