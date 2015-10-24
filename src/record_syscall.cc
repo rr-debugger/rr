@@ -2419,6 +2419,12 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::sched_getaffinity:
+      syscall_state.reg_parameter(
+          3, ParamSize::from_syscall_result<int>(
+              (unsigned int)t->regs().arg2()));
+      return PREVENT_SWITCH;
+
     case Arch::ptrace:
       return prepare_ptrace<Arch>(t, syscall_state);
 

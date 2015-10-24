@@ -1094,11 +1094,6 @@ struct BaseArch : public wordsize, public FcntlConstants {
   };
   RR_VERIFY_TYPE(sched_param);
 
-  typedef struct {
-    unsigned_long __bits[1024 / (8 * sizeof(unsigned_long))];
-  } cpu_set_t;
-  RR_VERIFY_TYPE(cpu_set_t);
-
   static void* cmsg_data(cmsghdr* cmsg) { return cmsg + 1; }
   static size_t cmsg_align(size_t len) {
     return (len + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1);

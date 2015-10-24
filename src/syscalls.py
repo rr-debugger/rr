@@ -1190,7 +1190,7 @@ sched_setaffinity = IrregularEmulatedSyscall(x86=241, x64=203)
 # ID is pid into the cpu_set_t structure pointed to by mask.  The
 # cpusetsize argument specifies the size (in bytes) of mask.  If pid
 # is zero, then the mask of the calling process is returned.
-sched_getaffinity = EmulatedSyscall(x86=242, x64=204, arg3="typename Arch::cpu_set_t")
+sched_getaffinity = IrregularEmulatedSyscall(x86=242, x64=204)
 
 #  int set_thread_area(struct user_desc *u_info)
 #
