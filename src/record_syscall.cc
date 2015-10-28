@@ -1188,7 +1188,7 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
     switch (IOCTL_MASK_SIZE(request)) {
       case IOCTL_MASK_SIZE(FIOCLEX):
       case IOCTL_MASK_SIZE(FIONCLEX):
-      return PREVENT_SWITCH;
+        return PREVENT_SWITCH;
     }
     /* If the kernel isn't going to write any data back to
      * us, we hope and pray that the result of the ioctl
@@ -2425,9 +2425,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     }
 
     case Arch::sched_getaffinity:
-      syscall_state.reg_parameter(
-          3, ParamSize::from_syscall_result<int>(
-              (unsigned int)t->regs().arg2()));
+      syscall_state.reg_parameter(3, ParamSize::from_syscall_result<int>(
+                                         (unsigned int)t->regs().arg2()));
       return PREVENT_SWITCH;
 
     case Arch::ptrace:

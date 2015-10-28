@@ -185,8 +185,8 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
   stringstream attach_cmd;
   attach_cmd << "target extended-remote " << connection_addr << ":"
              << params.port;
-  LOG(debug) << "launching " << gdb_binary_file_path
-             << " with command '" << attach_cmd.str() << "'";
+  LOG(debug) << "launching " << gdb_binary_file_path << " with command '"
+             << attach_cmd.str() << "'";
 
   vector<string> args;
   args.push_back(gdb_binary_file_path);

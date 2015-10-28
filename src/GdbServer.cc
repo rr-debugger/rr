@@ -1215,8 +1215,7 @@ void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
                            const string& gdb_command_file_path,
                            const string& gdb_binary_file_path) {
   GdbConnection::launch_gdb(params_pipe_fd, gdb_rr_macros,
-                            gdb_command_file_path,
-                            gdb_binary_file_path);
+                            gdb_command_file_path, gdb_binary_file_path);
 }
 
 void GdbServer::emergency_debug(Task* t) {

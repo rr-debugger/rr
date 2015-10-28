@@ -1259,8 +1259,7 @@ static long sys_fcntl(const struct syscall_info* call)
   }
 }
 
-static long sys_safe_nonblocking_ioctl(const struct syscall_info* call)
-{
+static long sys_safe_nonblocking_ioctl(const struct syscall_info* call) {
   const int syscallno = SYS_ioctl;
   int fd = call->args[0];
 
@@ -1274,8 +1273,7 @@ static long sys_safe_nonblocking_ioctl(const struct syscall_info* call)
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_ioctl(const struct syscall_info* call)
-{
+static long sys_ioctl(const struct syscall_info* call) {
   switch (call->args[1]) {
     case FIOCLEX:
     case FIONCLEX:
