@@ -64,6 +64,7 @@
 #include <sysexits.h>
 #include <sys/epoll.h>
 #include <sys/file.h>
+#include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -1258,6 +1259,32 @@ static long sys_fcntl(const struct syscall_info* call)
   }
 }
 
+static long sys_safe_nonblocking_ioctl(const struct syscall_info* call)
+{
+  const int syscallno = SYS_ioctl;
+  int fd = call->args[0];
+
+  void* ptr = prep_syscall_for_fd(fd);
+  long ret;
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall2(syscallno, fd, call->args[1]);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_ioctl(const struct syscall_info* call)
+{
+  switch (call->args[1]) {
+    case FIOCLEX:
+    case FIONCLEX:
+      return sys_safe_nonblocking_ioctl(call);
+    default:
+      return traced_raw_syscall(call);
+  }
+}
+
 static long sys_futex(const struct syscall_info* call) {
   enum {
     FUTEX_USES_UADDR2 = 1 << 0,
@@ -1925,6 +1952,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(getrusage);
     CASE(gettid);
     CASE(gettimeofday);
+    CASE(ioctl);
 #if defined(SYS__llseek)
     CASE(_llseek);
 #else

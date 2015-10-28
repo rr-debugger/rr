@@ -359,6 +359,7 @@ set(BASIC_TESTS
   intr_sleep_no_restart
   invalid_fcntl
   io
+  ioctl
   legacy_ugid
   madvise
   map_fixed
