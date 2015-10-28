@@ -218,6 +218,8 @@ target_link_libraries(rrpreload
 
 add_executable(exec_stub src/exec_stub.c)
 set_target_properties(exec_stub PROPERTIES LINK_FLAGS -nostdlib)
+set_source_files_properties(src/exec_stub.c
+                            COMPILE_FLAGS "-fno-stack-protector")
 
 install(PROGRAMS scripts/signal-rr-recording.sh
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64 ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32
@@ -268,7 +270,7 @@ if(rr_64BIT)
 
   foreach(file exec_stub.c)
     set_source_files_properties(32/${file}
-                                PROPERTIES GENERATED true COMPILE_FLAGS "-m32")
+                                PROPERTIES GENERATED true COMPILE_FLAGS "-m32 -fno-stack-protector")
     add_custom_command(OUTPUT 32/${file}
                        COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
                                cp "${CMAKE_CURRENT_SOURCE_DIR}/src/${file}"
