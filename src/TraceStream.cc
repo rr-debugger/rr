@@ -51,7 +51,15 @@ static TraceStream::Substream operator++(TraceStream::Substream& s) {
   return s;
 }
 
-static string default_rr_trace_dir() { return string(getenv("HOME")) + "/.rr"; }
+static string default_rr_trace_dir() {
+  const char* xdg_data_home = getenv("XDG_DATA_HOME");
+
+  if (xdg_data_home) {
+    return string(xdg_data_home) + "/rr";
+  } else {
+    return string(getenv("HOME")) + "/.rr";
+  }
+}
 
 static string trace_save_dir() {
   const char* output_dir = getenv("_RR_TRACE_DIR");

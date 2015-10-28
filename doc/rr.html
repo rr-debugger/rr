@@ -499,7 +499,8 @@ asm("_untraced_syscall:\n\t"
 </section>
 
 <section>
-  <p>Traces are saved to <code>~/.rr</code> by default.
+    <p>Traces are saved to <code>$XDG_DATA_HOME/rr</code>,
+    or <code>~/.rr</code>.
   <p>Stored on disk uncompressed. Trace compression is planned.
 </section>
 
