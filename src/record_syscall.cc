@@ -1185,6 +1185,11 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
   /* In ioctl language, "_IOC_READ" means "outparam".  Both
    * READ and WRITE can be set for inout params. */
   if (!(_IOC_READ & dir)) {
+    switch (IOCTL_MASK_SIZE(request)) {
+      case IOCTL_MASK_SIZE(FIOCLEX):
+      case IOCTL_MASK_SIZE(FIONCLEX):
+      return PREVENT_SWITCH;
+    }
     /* If the kernel isn't going to write any data back to
      * us, we hope and pray that the result of the ioctl
      * (observable to the tracee) is deterministic.
@@ -1192,7 +1197,7 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
      * XXX this is far too risky! Many ioctls use irregular ioctl codes
      * that do not have the _IOC_READ bit set but actually do write to
      * user-space! */
-    LOG(debug) << "  (deterministic ioctl, nothing to do)";
+    LOG(debug) << "  (presumed ignorable ioctl, nothing to do)";
     return PREVENT_SWITCH;
   }
 
