@@ -1072,7 +1072,8 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         case PTRACE_POKETEXT:
         case PTRACE_POKEDATA:
           if (!trace_frame.regs().syscall_failed()) {
-            Task* target = t->session().find_task((pid_t)trace_frame.regs().arg2_signed());
+            Task* target =
+                t->session().find_task((pid_t)trace_frame.regs().arg2_signed());
             ASSERT(t, target);
             remote_ptr<typename Arch::unsigned_word> addr =
                 trace_frame.regs().arg3();

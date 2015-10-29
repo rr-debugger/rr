@@ -1459,6 +1459,11 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
         bool ok = true;
         tracee->write_mem(addr, data, &ok);
         if (ok) {
+          // Normally we'd call tracee->record_local to record the written
+          // data. We don't do that here because the write needs to be
+          // performed in a different address space to the current task's.
+          // Instead we don't record anything other than the usual syscall
+          // event, and replay_syscall performs the write.
           syscall_state.emulate_result(0);
         } else {
           syscall_state.emulate_result(-EIO);

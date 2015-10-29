@@ -1063,8 +1063,8 @@ public:
   /**
    * Write |val| to |child_addr|.
    */
-  template <typename T> void write_mem(remote_ptr<T> child_addr, const T& val,
-                                       bool* ok = nullptr) {
+  template <typename T>
+  void write_mem(remote_ptr<T> child_addr, const T& val, bool* ok = nullptr) {
     assert(type_has_no_holes<T>());
     write_bytes_helper(child_addr, sizeof(val), static_cast<const void*>(&val),
                        ok);
