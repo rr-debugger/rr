@@ -2,6 +2,8 @@
 
 #include "rrutil.h"
 
+#define NEW_VALUE 0xabcdef
+
 static size_t static_data = 0x12345678;
 
 int main(int argc, char* argv[]) {
@@ -20,6 +22,7 @@ int main(int argc, char* argv[]) {
   if (0 == (child = fork())) {
     char ch;
     read(pipe_fds[0], &ch, 1);
+    test_assert(static_data == NEW_VALUE);
     return 77;
   }
 
@@ -56,13 +59,13 @@ int main(int argc, char* argv[]) {
   test_assert(static_data ==
               ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
   test_assert(0 ==
-              ptrace(PTRACE_POKEDATA, child, &static_data, (void*)0xabcdef));
-  test_assert(0xabcdef == ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
+              ptrace(PTRACE_POKEDATA, child, &static_data, (void*)NEW_VALUE));
+  test_assert(NEW_VALUE == ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
 
   /* Test invalid locations */
   test_assert(-1 == ptrace(PTRACE_PEEKDATA, child, NULL, NULL));
   test_assert(errno == EIO || errno == EFAULT);
-  test_assert(-1 == ptrace(PTRACE_POKEDATA, child, NULL, (void*)0xabcdef));
+  test_assert(-1 == ptrace(PTRACE_POKEDATA, child, NULL, (void*)NEW_VALUE));
   test_assert(errno == EIO || errno == EFAULT);
 
   test_assert(regs->eflags == ptrace(PTRACE_PEEKUSER, child,
