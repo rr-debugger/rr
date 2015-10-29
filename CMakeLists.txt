@@ -366,6 +366,7 @@ set(BASIC_TESTS
   legacy_ugid
   madvise
   map_fixed
+  memfd_create
   mincore
   mknod
   mmap_discontinuous

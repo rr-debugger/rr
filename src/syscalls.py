@@ -1632,6 +1632,7 @@ sched_getattr = UnsupportedSyscall(x86=352, x64=315)
 renameat2 = UnsupportedSyscall(x86=353, x64=316)
 seccomp = IrregularEmulatedSyscall(x86=354, x64=317)
 getrandom = IrregularEmulatedSyscall(x86=355, x64=318)
+memfd_create = EmulatedSyscall(x86=356, x64=319)
 
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219)
