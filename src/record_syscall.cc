@@ -1363,6 +1363,9 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
       Task* tracee = t->session().find_task(pid);
       if (!tracee) {
+        // XXX This prevents a tracee from attaching to a process which isn't
+        // under rr's control. We could support this but it would complicate
+        // things.
         syscall_state.emulate_result(-ESRCH);
         break;
       }
@@ -1436,9 +1439,30 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
         auto datap =
             syscall_state.reg_parameter<typename Arch::unsigned_word>(4);
         remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
-        auto v = tracee->read_mem(addr);
-        t->write_mem(datap, v);
-        syscall_state.emulate_result(0);
+        bool ok = true;
+        auto v = tracee->read_mem(addr, &ok);
+        if (ok) {
+          t->write_mem(datap, v);
+          syscall_state.emulate_result(0);
+        } else {
+          syscall_state.emulate_result(-EIO);
+        }
+      }
+      break;
+    }
+    case PTRACE_POKETEXT:
+    case PTRACE_POKEDATA: {
+      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
+        typename Arch::unsigned_word data = t->regs().arg4();
+        bool ok = true;
+        tracee->write_mem(addr, data, &ok);
+        if (ok) {
+          syscall_state.emulate_result(0);
+        } else {
+          syscall_state.emulate_result(-EIO);
+        }
       }
       break;
     }

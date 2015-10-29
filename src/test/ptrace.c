@@ -55,6 +55,15 @@ int main(int argc, char* argv[]) {
 
   test_assert(static_data ==
               ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
+  test_assert(0 ==
+              ptrace(PTRACE_POKEDATA, child, &static_data, (void*)0xabcdef));
+  test_assert(0xabcdef == ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
+
+  /* Test invalid locations */
+  test_assert(-1 == ptrace(PTRACE_PEEKDATA, child, NULL, NULL));
+  test_assert(errno == EIO || errno == EFAULT);
+  test_assert(-1 == ptrace(PTRACE_POKEDATA, child, NULL, (void*)0xabcdef));
+  test_assert(errno == EIO || errno == EFAULT);
 
   test_assert(regs->eflags == ptrace(PTRACE_PEEKUSER, child,
                                      (void*)offsetof(struct user, regs.eflags),

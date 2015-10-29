@@ -1064,6 +1064,25 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::futex:
       return process_futex(t, trace_frame, state, step);
 
+    case Arch::ptrace:
+      if (SYSCALL_ENTRY == state) {
+        return;
+      }
+      switch ((int)trace_frame.regs().arg1_signed()) {
+        case PTRACE_POKETEXT:
+        case PTRACE_POKEDATA:
+          if (!trace_frame.regs().syscall_failed()) {
+            Task* target = t->session().find_task((pid_t)trace_frame.regs().arg2_signed());
+            ASSERT(t, target);
+            remote_ptr<typename Arch::unsigned_word> addr =
+                trace_frame.regs().arg3();
+            typename Arch::unsigned_word data = trace_frame.regs().arg4();
+            target->write_mem(addr, data);
+          }
+          break;
+      }
+      break;
+
     case Arch::brk:
       return process_brk(t, trace_frame, state, step);
 
