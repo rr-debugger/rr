@@ -1712,6 +1712,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case Arch::SETLK64:
         case Arch::SETOWN:
         case Arch::SETOWN_EX:
+        case Arch::GETSIG:
         case Arch::SETSIG:
           break;
 
