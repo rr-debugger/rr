@@ -334,6 +334,7 @@ set(BASIC_TESTS
   fault_in_code_page
   fcntl_owner_ex
   fcntl_dupfd
+  fcntl_seals
   fcntl_sig
   fds_clean
   flock

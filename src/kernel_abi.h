@@ -132,6 +132,7 @@ struct FcntlConstants {
     GETOWN_EX = 16,
     // Linux-specific operations
     DUPFD_CLOEXEC = 0x400 + 6,
+    ADD_SEALS = 0x400 + 9
   };
 };
 

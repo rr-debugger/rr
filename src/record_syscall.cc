@@ -1743,6 +1743,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case Arch::SETOWN_EX:
         case Arch::GETSIG:
         case Arch::SETSIG:
+        case Arch::ADD_SEALS:
           break;
 
         case Arch::SETFD:
