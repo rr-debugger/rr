@@ -3067,6 +3067,9 @@ static void setup_fd_table(FdTable& fds) {
     ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
   }
   if (ret) {
+    // Note that although the tracee may have died due to some fatal error,
+    // we haven't reaped its exit code so there's no danger of killing
+    // (or PTRACE_SEIZEing) the wrong process.
     kill(tid, SIGKILL);
     FATAL() << "PTRACE_SEIZE failed for tid " << tid;
   }
