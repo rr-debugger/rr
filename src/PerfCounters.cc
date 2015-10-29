@@ -143,7 +143,7 @@ static void init_perf_event_attr(struct perf_event_attr* attr,
   attr->exclude_guest = 1;
 }
 
-void PerfCounters::init_globals() {
+static void init_attributes() {
   if (attributes_initialized) {
     return;
   }
@@ -177,7 +177,7 @@ void PerfCounters::init_globals() {
 
 PerfCounters::PerfCounters(pid_t tid)
     : tid(tid), saved_fd_ticks(-1), started(false) {
-  init_globals();
+  init_attributes();
 }
 
 static ScopedFd start_counter(pid_t tid, int group_fd,

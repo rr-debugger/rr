@@ -29,13 +29,6 @@
 class PerfCounters {
 public:
   /**
-   * Global initialization. This is idempotent and need only be called once.
-   * It can cause fatal errors, so call this before entering sections of code
-   * that want to avoid fatal errors.
-   */
-  static void init_globals();
-
-  /**
    * Create performance counters monitoring the given task.
    */
   PerfCounters(pid_t tid);

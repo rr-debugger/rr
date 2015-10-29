@@ -2996,8 +2996,6 @@ static void setup_fd_table(FdTable& fds) {
     set_cpu_affinity(trace.bound_to_cpu());
   }
 
-  PerfCounters::init_globals();
-
   pid_t tid;
   do {
     tid = fork();
@@ -3052,8 +3050,6 @@ static void setup_fd_table(FdTable& fds) {
   sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
   sigaction(SIGALRM, &sa, nullptr);
 
-  Task* t = new Task(session, tid, rec_tid, session.next_task_serial(), 0,
-                     NativeArch::arch());
   // Sync with the child process.
   // We minimize the code we run between fork()ing and PTRACE_SEIZE, because
   // any abnormal exit of the rr process will leave the child paused and
@@ -3063,15 +3059,20 @@ static void setup_fd_table(FdTable& fds) {
       PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK |
       PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
       PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL | PTRACE_O_TRACESECCOMP;
-  long ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
+  long ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
   if (ret < 0 && errno == EINVAL) {
     // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
     // it for more robust cleanup, so tolerate not having it.
     options &= ~PTRACE_O_EXITKILL;
-    ret = t->fallible_ptrace(PTRACE_SEIZE, nullptr, (void*)options);
+    ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
   }
-  ASSERT(t, !ret) << "PTRACE_SEIZE failed for tid " << t->tid;
+  if (ret) {
+    kill(tid, SIGKILL);
+    FATAL() << "PTRACE_SEIZE failed for tid " << tid;
+  }
 
+  Task* t = new Task(session, tid, rec_tid, session.next_task_serial(), 0,
+                     NativeArch::arch());
   // The very first task we fork inherits the signal
   // dispositions of the current OS process (which should all be
   // default at this point, but ...).  From there on, new tasks
