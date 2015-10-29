@@ -10,8 +10,10 @@ static void futex(int* uaddr, int op, int val) {
           "syscall\n\t" ::"a"(SYS_futex),
           "D"(uaddr), "S"(op), "d"(val));
 #elif defined(__i386__)
-  __asm__("int $0x80\n\t" ::"a"(SYS_futex), "b"(uaddr), "c"(op), "d"(val),
-          "S"(NULL));
+  __asm__("xchg %%ebx,%%edi\n\t"
+          "int $0x80\n\t"
+          "xchg %%ebx,%%edi\n\t" ::"a"(SYS_futex), "c"(op), "d"(val),
+          "S"(NULL), "D"(uaddr));
 #else
   syscall(SYS_futex, uaddr, op, val, NULL, NULL, 0);
 #endif
