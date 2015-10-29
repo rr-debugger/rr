@@ -16,9 +16,11 @@ static size_t my_read(int fd, void* buf, size_t size) {
           : "=a"(ret)
           : "a"(SYS_read), "D"(fd), "S"(buf), "d"(size));
 #elif defined(__i386__)
-  __asm__("int $0x80\n\t"
+  __asm__("xchg %%ebx,%%edi\n\t"
+          "int $0x80\n\t"
+          "xchg %%ebx,%%edi\n\t"
           : "=a"(ret)
-          : "a"(SYS_read), "b"(fd), "c"(buf), "d"(size));
+          : "a"(SYS_read), "c"(buf), "d"(size), "D"(fd));
 #else
 #error define syscall here
 #endif

@@ -22,9 +22,10 @@ static void my_raise(int sig) {
   int tid = getpid();
   /* Use a special instruction after the syscall to make sure we don't patch
      it */
-  __asm__ __volatile__("int $0x80\n\t"
-                       "xchg %%edx,%%edx\n\t" ::"a"(SYS_tgkill),
-                       "b"(tid), "c"(tid), "d"(sig));
+  __asm__ __volatile__("xchg %%ebx,%%edi\n\t"
+                       "int $0x80\n\t"
+                       "xchg %%ebx,%%edi\n\t" ::"a"(SYS_tgkill),
+                       "c"(tid), "d"(sig), "D"(tid));
 #elif defined(__x86_64__)
   int tid = getpid();
   /* Use a special instruction after the syscall to make sure we don't patch
