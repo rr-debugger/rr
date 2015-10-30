@@ -8,7 +8,7 @@ static const char attr_value[] = "hello kitty";
 int main(int argc, char* argv[]) {
   char path[PATH_MAX];
   const char* home = getenv("HOME");
-  int fd = mkstemp(path);
+  int fd;
   int ret;
 
   snprintf(path, sizeof(path), "%s/rr-xattr-XXXXXX", home ? home : "/tmp");
