@@ -2748,9 +2748,11 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
         t->record_remote(km.start(), km.size());
       }
     } else {
-      if (!(km.prot() & PROT_EXEC)) {
-        pages_to_record.push_back(km.end() - page_size());
-      }
+      // See https://github.com/mozilla/rr/issues/1568; in some cases
+      // after exec we have memory areas that are rwx. These areas have
+      // a trailing page that may be partially zeroed by the kernel. Record the
+      // trailing page of every mapping just to be simple and safe.
+      pages_to_record.push_back(km.end() - page_size());
     }
   }
 
