@@ -51,18 +51,44 @@ static TraceStream::Substream operator++(TraceStream::Substream& s) {
   return s;
 }
 
+static bool dir_exists(const string& dir) {
+  struct stat dummy;
+  return !dir.empty() && stat(dir.c_str(), &dummy) == 0;
+}
+
 static string default_rr_trace_dir() {
-  const char* xdg_data_home = getenv("XDG_DATA_HOME");
-  if (xdg_data_home) {
-    return string(xdg_data_home) + "/rr";
+  static string cached_dir;
+
+  if (!cached_dir.empty()) {
+    return cached_dir;
   }
 
+  string dot_dir;
   const char* home = getenv("HOME");
   if (home) {
-    return string(home) + "/.rr";
+    dot_dir = string(home) + "/.rr";
+  }
+  string xdg_dir;
+  const char* xdg_data_home = getenv("XDG_DATA_HOME");
+  if (xdg_data_home) {
+    xdg_dir = string(xdg_data_home) + "/rr";
+  } else if (home) {
+    xdg_dir = string(home) + "/.local/share/rr";
   }
 
-  return string("/tmp/.rr");
+  // If XDG dir does not exist but ~/.rr does, prefer ~/.rr for backwards
+  // compatibility.
+  if (dir_exists(xdg_dir)) {
+    cached_dir = xdg_dir;
+  } else if (dir_exists(dot_dir)) {
+    cached_dir = dot_dir;
+  } else if (!xdg_dir.empty()) {
+    cached_dir = xdg_dir;
+  } else {
+    cached_dir = "/tmp/rr";
+  }
+
+  return cached_dir;
 }
 
 static string trace_save_dir() {
