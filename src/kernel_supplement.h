@@ -55,13 +55,6 @@
 #define GRND_RANDOM 0x0002
 #endif
 
-// These definitions haven't made it out to current libc-dev packages
-// yet.
-#ifndef MFD_CLOEXEC
-#define MFD_CLOEXEC 0x0001
-#define MFD_ALLOW_SEALING 0x0002
-#endif
-
 /* We need to complement sigsets in order to update the Task blocked
  * set, but POSIX doesn't appear to define a convenient helper.  So we
  * define our own linux-compatible sig_set_t and use bit operators to

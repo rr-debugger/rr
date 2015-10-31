@@ -29,9 +29,11 @@ int main(int argc, char* argv[]) {
     atomic_puts("SYS_memfd_create not supported on this kernel");
   } else {
     test_assert(fd >= 0);
-    test_assert(fcntl(fd, F_ADD_SEALS, F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW) == 0);
+    test_assert(
+        fcntl(fd, F_ADD_SEALS, F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW) == 0);
     /* Seal after F_SEAL_SEAL should fail */
-    test_assert(fcntl(fd, F_ADD_SEALS, F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW) == -1);
+    test_assert(fcntl(fd, F_ADD_SEALS,
+                      F_SEAL_SEAL | F_SEAL_SHRINK | F_SEAL_GROW) == -1);
   }
 
   atomic_puts("EXIT-SUCCESS");
