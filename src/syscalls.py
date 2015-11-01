@@ -1147,9 +1147,9 @@ fgetxattr = IrregularEmulatedSyscall(x86=231, x64=193)
 listxattr = UnsupportedSyscall(x86=232, x64=194)
 llistxattr = UnsupportedSyscall(x86=233, x64=195)
 flistxattr = UnsupportedSyscall(x86=234, x64=196)
-removexattr = UnsupportedSyscall(x86=235, x64=197)
-lremovexattr = UnsupportedSyscall(x86=236, x64=198)
-fremovexattr = UnsupportedSyscall(x86=237, x64=199)
+removexattr = EmulatedSyscall(x86=235, x64=197)
+lremovexattr = EmulatedSyscall(x86=236, x64=198)
+fremovexattr = EmulatedSyscall(x86=237, x64=199)
 tkill = UnsupportedSyscall(x86=238, x64=200)
 
 # ssize_t sendfile64 (int __out_fd, int __in_fd, __off64_t *__offset, size_t

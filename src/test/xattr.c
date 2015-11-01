@@ -41,6 +41,16 @@ int main(int argc, char* argv[]) {
     test_assert(ret == sizeof(attr_value));
     test_assert(0 == memcmp(attr_value, buf, sizeof(attr_value)));
     test_assert(buf[sizeof(attr_value)] == '-');
+
+    ret = fremovexattr(fd, attr_name);
+    test_assert(ret == 0);
+
+    memset(buf, '-', sizeof(buf));
+
+    ret = getxattr(path, attr_name, buf, sizeof(buf));
+    test_assert(ret == -1);
+    test_assert(errno == ENODATA);
+    test_assert(buf[0] == '-');
   }
 
   test_assert(0 == unlink(path));
