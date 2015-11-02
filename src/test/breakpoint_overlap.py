@@ -40,7 +40,7 @@ expect_gdb('Breakpoint 1')
 
 send_gdb('c')
 expect_gdb('Breakpoint 1')
-expect_gdb('(gdb)')
+expect_gdb('(rr)')
 
 send_gdb('p/x *(char*)$pc')
 expect_gdb('0x([a-f0-9]+)')

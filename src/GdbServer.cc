@@ -143,7 +143,8 @@ static const char gdb_rr_macros[] =
     // that changed recently.
     "set target-async 0\n"
     "maint set target-async 0\n"
-    "handle SIGURG stop\n";
+    "handle SIGURG stop\n"
+    "set prompt (rr) \n";
 
 /**
  * Attempt to find the value of |regname| (a DebuggerRegister

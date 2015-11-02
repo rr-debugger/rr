@@ -15,14 +15,14 @@ for bp in bps:
     send_gdb('b '+ bp +'')
     expect_gdb('Breakpoint \d')
 
-expect_gdb(r'\(gdb\)')
+expect_gdb(r'\(rr\)')
 
 hit_bps = { 'A': 0, 'B': 0, 'C': 0 }
 
 events = [ re.compile(r'Breakpoint 1, hit_barrier'),
            re.compile(r'Breakpoint \d, ([ABC])'),
            re.compile(r'Remote connection closed'),
-           re.compile(r'\(gdb\)') ]
+           re.compile(r'\(rr\)') ]
 while 1:
     send_gdb('s')
     i = expect_list(events)
@@ -36,7 +36,7 @@ while 1:
     bp = last_match().group(1)
     assert not hit_bps[bp]
     hit_bps[bp] = 1
-    expect_gdb(r'\(gdb\)')
+    expect_gdb(r'\(rr\)')
 
 for bp in hit_bps.iterkeys():
     assert hit_bps[bp]

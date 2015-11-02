@@ -7,7 +7,7 @@ send_gdb('c')
 expect_gdb('Breakpoint 1, breakpoint')
 
 send_gdb('f 1')
-expect_gdb('(gdb)')
+expect_gdb('(rr)')
 
 send_gdb('p big')
 expect_gdb("bytes = 'Z'")
