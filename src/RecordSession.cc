@@ -1172,7 +1172,8 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
       case SIGNAL_PTRACE_STOP:
         // Emulated ptrace-stop. Don't run the task again yet.
         last_task_switchable = ALLOW_SWITCH;
-        break;
+        step_state->continue_type = DONT_CONTINUE;
+        return true;
       case DEFER_SIGNAL:
         ASSERT(t, false) << "Can't defer deterministic or internal signals";
         break;

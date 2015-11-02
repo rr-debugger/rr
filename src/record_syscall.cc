@@ -1295,7 +1295,11 @@ static Task* verify_ptrace_target(Task* tracer, TaskSyscallState& syscall_state,
 }
 
 static void prepare_ptrace_cont(Task* tracee, int sig) {
-  ASSERT(tracee, !sig) << "PTRACE_CONT with signal not supported yet";
+  if (sig) {
+    siginfo_t si = tracee->take_ptrace_signal_siginfo(sig);
+    tracee->push_event(SignalEvent(si, tracee->arch()));
+  }
+
   tracee->emulated_stop_type = NOT_STOPPED;
 }
 

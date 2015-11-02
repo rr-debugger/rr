@@ -150,11 +150,7 @@ struct SignalEvent : public BaseEvent {
    * for deterministically-delivered signals (see
    * record_signal.cc).
    */
-  SignalEvent(const siginfo_t& siginfo, SignalDeterministic deterministic,
-              SupportedArch arch)
-      : BaseEvent(HAS_EXEC_INFO, arch),
-        siginfo(siginfo),
-        deterministic(deterministic) {}
+  SignalEvent(const siginfo_t& siginfo, SupportedArch arch);
   SignalEvent(int signo, SignalDeterministic deterministic, SupportedArch arch)
       : BaseEvent(HAS_EXEC_INFO, arch), deterministic(deterministic) {
     memset(&siginfo, 0, sizeof(siginfo));

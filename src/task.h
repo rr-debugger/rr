@@ -935,6 +935,19 @@ public:
   void pop_stash_sig();
 
   /**
+   * When a signal triggers an emulated a ptrace-stop for this task,
+   * save the siginfo so a later emulated ptrace-continue with this signal
+   * number can use it.
+   */
+  void save_ptrace_signal_siginfo(const siginfo_t& si);
+  /**
+   * When emulating a ptrace-continue with a signal number, extract the siginfo
+   * that was saved by |save_ptrace_signal_siginfo|. If no such siginfo was
+   * saved, make one up.
+   */
+  siginfo_t take_ptrace_signal_siginfo(int sig);
+
+  /**
    * Return true when the task is running, false if it's stopped.
    */
   bool is_running() const { return !is_stopped; }
@@ -1537,11 +1550,9 @@ private:
   std::shared_ptr<Sighandlers> sighandlers;
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
-  struct StashedSignal {
-    StashedSignal(const siginfo_t& si) : si(si) {}
-    siginfo_t si;
-  };
-  std::deque<StashedSignal> stashed_signals;
+  std::deque<siginfo_t> stashed_signals;
+  // Saved emulated-ptrace signals
+  std::vector<siginfo_t> saved_ptrace_siginfos;
   // The task group this belongs to.
   std::shared_ptr<TaskGroup> tg;
   // Contents of the |tls| argument passed to |clone()| and

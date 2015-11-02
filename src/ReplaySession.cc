@@ -744,6 +744,10 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       }
     }
 
+    /* Maintain the "'ticks_left'-is-up-to-date"
+     * invariant. */
+    ticks_left = ticks - t->tick_count();
+
     if (is_ignored_signal(t->child_sig)) {
       /* We don't usually expect a time-slice signal
        * during this phase, but it's possible for an
@@ -758,11 +762,20 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
        * "spurious" signal. */
       t->child_sig = 0;
     }
+    if (is_same_execution_point(t, regs, ticks_left, ticks_slack,
+                                &ignored_early_match,
+                                &ticks_left_at_ignored_early_match)) {
+      /* Sometimes (e.g. in the ptrace_signal_32 test), we're in almost
+       * the correct state when we enter |advance_to|, except that exotic
+       * registers (i.e. segment registers) need to be normalized by the kernel
+       * by continuing and hitting a deterministic signal without actually
+       * advancing execution. So we allow |advance_to| to proceed and actually
+       * reach the desired state.
+       */
+      t->child_sig = 0;
+    }
     guard_unexpected_signal(t);
 
-    /* Maintain the "'ticks_left'-is-up-to-date"
-     * invariant. */
-    ticks_left = ticks - t->tick_count();
     guard_overshoot(t, regs, ticks, ticks_left, ticks_slack,
                     ignored_early_match, ticks_left_at_ignored_early_match);
   }

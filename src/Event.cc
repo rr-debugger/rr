@@ -342,6 +342,11 @@ std::string Event::type_name() const {
   }
 }
 
+SignalEvent::SignalEvent(const siginfo_t& siginfo, SupportedArch arch)
+    : BaseEvent(HAS_EXEC_INFO, arch),
+      siginfo(siginfo),
+      deterministic(is_deterministic_signal(siginfo)) {}
+
 const char* state_name(SyscallState state) {
   switch (state) {
 #define CASE(_id)                                                              \

@@ -15,7 +15,6 @@ int main(int argc, char* argv[]) {
   struct user_fpxregs_struct* fpxregs;
 #endif
   int pipe_fds[2];
-  struct timespec ts = { 0, 50000000 };
 
   test_assert(0 == pipe(pipe_fds));
 
@@ -26,7 +25,6 @@ int main(int argc, char* argv[]) {
     return 77;
   }
 
-  nanosleep(&ts, NULL);
   test_assert(0 == ptrace(PTRACE_ATTACH, child, NULL, NULL));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((SIGSTOP << 8) | 0x7f));

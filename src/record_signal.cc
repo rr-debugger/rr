@@ -331,10 +331,6 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
              << t->syscall_name(call) << "'";
 }
 
-static void record_signal(Task* t, const siginfo_t& si) {
-  t->push_event(SignalEvent(si, is_deterministic_signal(si), t->arch()));
-}
-
 static bool is_safe_to_deliver_signal(Task* t) {
   struct syscallbuf_hdr* hdr = t->syscallbuf_hdr;
 
@@ -407,12 +403,18 @@ SignalHandled handle_signal(Task* t, siginfo_t* si) {
 
   if (t->emulate_ptrace_stop((si->si_signo << 8) | 0x7f,
                              SIGNAL_DELIVERY_STOP)) {
+    t->save_ptrace_signal_siginfo(*si);
+    // Record a SCHED event so that replay progresses the tracee to the
+    // current point before we notify the tracer.
+    t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
+    t->record_current_event();
+    t->pop_event(EV_SCHED);
     // ptracer has been notified, so don't deliver the signal now.
     // The signal won't be delivered for real until the ptracer calls
     // PTRACE_CONT with the signal number (which we don't support yet!).
     return SIGNAL_PTRACE_STOP;
   }
 
-  record_signal(t, *si);
+  t->push_event(SignalEvent(*si, t->arch()));
   return SIGNAL_HANDLED;
 }

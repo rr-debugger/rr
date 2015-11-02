@@ -851,8 +851,9 @@ void Task::log_pending_events() const {
 }
 
 bool Task::may_be_blocked() const {
-  return EV_SYSCALL == ev().type() &&
-         PROCESSING_SYSCALL == ev().Syscall().state;
+  return (EV_SYSCALL == ev().type() &&
+          PROCESSING_SYSCALL == ev().Syscall().state) ||
+         emulated_stop_type != NOT_STOPPED;
 }
 
 template <typename Arch>
@@ -1687,7 +1688,7 @@ void Task::stash_sig() {
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
-      if (it->si.si_signo == sig) {
+      if (it->si_signo == sig) {
         LOG(debug) << "discarding stashed signal " << sig
                    << " since we already have one pending";
         return;
@@ -1696,7 +1697,7 @@ void Task::stash_sig() {
   }
 
   const siginfo_t& si = get_siginfo();
-  stashed_signals.push_back(StashedSignal(si));
+  stashed_signals.push_back(si);
   wait_status = 0;
 }
 
@@ -1708,7 +1709,7 @@ void Task::stash_synthetic_sig(const siginfo_t& si) {
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
-      if (it->si.si_signo == sig) {
+      if (it->si_signo == sig) {
         LOG(debug) << "discarding stashed signal " << sig
                    << " since we already have one pending";
         return;
@@ -1716,18 +1717,43 @@ void Task::stash_synthetic_sig(const siginfo_t& si) {
     }
   }
 
-  stashed_signals.push_back(StashedSignal(si));
+  stashed_signals.push_back(si);
 }
 
 void Task::pop_stash_sig() {
   assert(has_stashed_sig());
-  siginfo_t si = stashed_signals.front().si;
   stashed_signals.pop_front();
 }
 
 siginfo_t Task::peek_stash_sig() {
   assert(has_stashed_sig());
-  return stashed_signals.front().si;
+  return stashed_signals.front();
+}
+
+void Task::save_ptrace_signal_siginfo(const siginfo_t& si) {
+  for (auto it = saved_ptrace_siginfos.begin();
+       it != saved_ptrace_siginfos.end(); ++it) {
+    if (it->si_signo == si.si_signo) {
+      saved_ptrace_siginfos.erase(it);
+      break;
+    }
+  }
+  saved_ptrace_siginfos.push_back(si);
+}
+
+siginfo_t Task::take_ptrace_signal_siginfo(int sig) {
+  for (auto it = saved_ptrace_siginfos.begin();
+       it != saved_ptrace_siginfos.end(); ++it) {
+    if (it->si_signo == sig) {
+      siginfo_t si = *it;
+      saved_ptrace_siginfos.erase(it);
+      return si;
+    }
+  }
+  siginfo_t si;
+  memset(&si, 0, sizeof(si));
+  si.si_signo = sig;
+  return si;
 }
 
 const string& Task::trace_dir() const {
