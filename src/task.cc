@@ -1719,11 +1719,10 @@ void Task::stash_synthetic_sig(const siginfo_t& si) {
   stashed_signals.push_back(StashedSignal(si));
 }
 
-siginfo_t Task::pop_stash_sig() {
+void Task::pop_stash_sig() {
   assert(has_stashed_sig());
   siginfo_t si = stashed_signals.front().si;
   stashed_signals.pop_front();
-  return si;
 }
 
 siginfo_t Task::peek_stash_sig() {

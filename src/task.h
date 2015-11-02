@@ -932,7 +932,7 @@ public:
   void stash_synthetic_sig(const siginfo_t& si);
   bool has_stashed_sig() const { return !stashed_signals.empty(); }
   siginfo_t peek_stash_sig();
-  siginfo_t pop_stash_sig();
+  void pop_stash_sig();
 
   /**
    * Return true when the task is running, false if it's stopped.
