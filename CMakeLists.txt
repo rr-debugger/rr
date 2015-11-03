@@ -381,6 +381,7 @@ set(BASIC_TESTS
   mprotect
   mprotect_growsdown
   mprotect_heterogenous
+  mprotect_none
   mprotect_stack
   mremap
   mremap_shrink

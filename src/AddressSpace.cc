@@ -531,9 +531,11 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     }
   };
   for_each_in_range(addr, num_bytes, protector, ITERATE_CONTIGUOUS);
-  // All mappings that we altered which might need coalescing
-  // are adjacent to |last_overlap|.
-  coalesce_around(mem.find(last_overlap));
+  if (last_overlap.size()) {
+    // All mappings that we altered which might need coalescing
+    // are adjacent to |last_overlap|.
+    coalesce_around(mem.find(last_overlap));
+  }
 }
 
 void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
