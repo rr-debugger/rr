@@ -29,6 +29,7 @@
 #include <linux/msdos_fs.h>
 #include <poll.h>
 #include <sched.h>
+#include <sound/asound.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -1179,6 +1180,14 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
 
     case TIOCGWINSZ:
       syscall_state.reg_parameter<typename Arch::winsize>(3);
+      return PREVENT_SWITCH;
+
+    case SNDRV_CTL_IOCTL_PVERSION:
+      syscall_state.reg_parameter<int>(3);
+      return PREVENT_SWITCH;
+
+    case SNDRV_CTL_IOCTL_CARD_INFO:
+      syscall_state.reg_parameter<typename Arch::snd_ctl_card_info>(3);
       return PREVENT_SWITCH;
   }
 

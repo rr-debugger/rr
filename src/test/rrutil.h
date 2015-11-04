@@ -31,6 +31,7 @@
 #include <pty.h>
 #include <sched.h>
 #include <signal.h>
+#include <sound/asound.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>

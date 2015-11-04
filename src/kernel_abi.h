@@ -29,6 +29,7 @@
 #include <signal.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <sound/asound.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/quota.h>
@@ -1166,6 +1167,19 @@ struct BaseArch : public wordsize, public FcntlConstants {
     ptr<robust_list> list_op_pending;
   };
   RR_VERIFY_TYPE(robust_list_head);
+
+  struct snd_ctl_card_info {
+    int card;
+    int pad;
+    unsigned char id[16];
+    unsigned char driver[16];
+    unsigned char name[32];
+    unsigned char longname[80];
+    unsigned char reserved_[16];
+    unsigned char mixername[80];
+    unsigned char components[128];
+  };
+  RR_VERIFY_TYPE(snd_ctl_card_info);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

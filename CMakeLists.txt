@@ -304,6 +304,7 @@ set(BASIC_TESTS
   accept
   alarm
   alarm2
+  alsa_ioctl
   arch_prctl
   async_segv_ignored
   async_signal_syscalls2
