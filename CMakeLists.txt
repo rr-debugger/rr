@@ -421,6 +421,7 @@ set(BASIC_TESTS
   read_nothing
   readdir
   readlink
+  readlinkat
   readv
   rlimit
   robust_futex
