@@ -32,9 +32,9 @@ static bool rcb_counts_ok(uint64_t prev, uint64_t current, const char* source) {
         "instructions\n"
         "    sometimes fails to be counted by the conditional branch "
         "performance\n"
-        "    counter. Partial workarounds have been enabled but replay may "
-        "diverge.\n"
-        "    Consider running rr not in a VMWare guest.\n"
+        "    counter. Work around this problem by adding\n"
+        "        monitor_control.disable_hvsim_clusters = true\n"
+        "    to your .vmx file.\n"
         "\n");
   }
   return false;
