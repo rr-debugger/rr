@@ -2036,6 +2036,13 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::readlinkat: {
+      syscall_state.reg_parameter(
+          3, ParamSize::from_syscall_result<typename Arch::ssize_t>(
+                 (size_t)t->regs().arg4()));
+      return PREVENT_SWITCH;
+    }
+
     case Arch::getgroups: {
       // We could record a little less data by restricting the recorded data
       // to the syscall result * sizeof(Arch::legacy_gid_t), but that would
