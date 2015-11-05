@@ -8,7 +8,7 @@
 int main(int argc, char* argv[]) {
   char path[] = "rr-test-file-XXXXXX";
   char dpath[] = "rr-test-dir-XXXXXX";
-  const char *dir_path = mkdtemp(dpath);
+  const char* dir_path = mkdtemp(dpath);
   int count;
   char link[PATH_MAX];
   char* buf = allocate_guard(BUF_SIZE, 'q');
