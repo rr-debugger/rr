@@ -11,6 +11,7 @@ int main(int argc, char* argv[]) {
   int ret;
 
   orig = getuid();
+  test_assert(0 == setuid(orig));
   new = orig + 1;
   ret = setuid(new);
   if (ret == -1) {
