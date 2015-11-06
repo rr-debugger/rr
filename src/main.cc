@@ -82,7 +82,7 @@ void check_performance_settings() {
             "governor\n"
             "    by running the following commands:\n"
             "\n"
-            "    $ sudo yum install kernel-tools\n"
+            "    $ sudo dnf install kernel-tools\n"
             "    $ sudo cpupower frequency-set -g performance\n"
             "\n",
             governor);
