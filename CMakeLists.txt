@@ -440,6 +440,7 @@ set(BASIC_TESTS
   setgid
   setgroups
   setsid
+  setuid
   shm
   sigaction_old
   sigaltstack
