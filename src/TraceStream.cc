@@ -112,7 +112,7 @@ static string default_rr_trace_dir() {
   return cached_dir;
 }
 
-static string trace_save_dir() {
+string trace_save_dir() {
   const char* output_dir = getenv("_RR_TRACE_DIR");
   return output_dir ? output_dir : default_rr_trace_dir();
 }
@@ -1075,14 +1075,14 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
     int ret = mkdir(output_trace_dir.c_str(), S_IRWXU | S_IRWXG);
     if (ret == 0) {
       return output_trace_dir;
-    } 
+    }
     if (EEXIST == errno) {
       // directory already exists
       FATAL() << "Directory `" << output_trace_dir << "' already exists.";
     } else {
       FATAL() << "Unable to create trace directory `" << output_trace_dir << "'";
     }
-  } else {	  
+  } else {
     // save trace dir set in _RR_TRACE_DIR or in the default trace dir
     ensure_dir(trace_save_dir(), "trace directory", S_IRWXU);
 
