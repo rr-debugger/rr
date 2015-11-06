@@ -290,4 +290,5 @@ private:
   std::unique_ptr<CompressedReader> readers[SUBSTREAM_COUNT];
 };
 
+std::string trace_save_dir();
 #endif /* RR_TRACE_H_ */
