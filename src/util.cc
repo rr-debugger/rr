@@ -490,11 +490,7 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
     return true;
   }
   if (private_mapping && (prot & PROT_EXEC)) {
-    /* We currently don't record the images that we
-     * exec(). Since we're being optimistic there (*cough*
-     * *cough*), we're doing no worse (in theory) by being
-     * optimistic about the shared libraries too, most of
-     * which are system libraries. */
+    /* Be optimistic about private executable mappings */
     LOG(debug) << "  (no copy for +x private mapping " << file_name << ")";
     return false;
   }
