@@ -869,8 +869,9 @@ public:
   size_t robust_list_len() const { return robust_futex_list_len; }
 
   /** Update the thread area to |addr|. */
-  void set_thread_area(remote_ptr<void> tls);
-  const struct user_desc* tls() const;
+  void set_thread_area(remote_ptr<struct user_desc> tls);
+
+  const std::vector<struct user_desc>& thread_areas() { return thread_areas_; }
 
   /** Update the clear-tid futex to |tid_addr|. */
   void set_tid_addr(remote_ptr<int> tid_addr);
@@ -1335,8 +1336,7 @@ public:
     std::string prname;
     remote_ptr<void> robust_futex_list;
     size_t robust_futex_list_len;
-    struct user_desc thread_area;
-    bool thread_area_valid;
+    std::vector<struct user_desc> thread_areas;
     size_t num_syscallbuf_bytes;
     int desched_fd_child;
     remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
@@ -1555,10 +1555,10 @@ private:
   std::vector<siginfo_t> saved_ptrace_siginfos;
   // The task group this belongs to.
   std::shared_ptr<TaskGroup> tg;
-  // Contents of the |tls| argument passed to |clone()| and
-  // |set_thread_area()|, when |thread_area_valid| is true.
-  struct user_desc thread_area;
-  bool thread_area_valid;
+  // Entries set by |set_thread_area()| or the |tls| argument to |clone()|
+  // (when that's a user_desc). May be more than one due to different
+  // entry_numbers.
+  std::vector<struct user_desc> thread_areas_;
   // The memory cell the kernel will clear and notify on exit,
   // if our clone parent requested it.
   remote_ptr<int> tid_futex;

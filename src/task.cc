@@ -253,8 +253,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       robust_futex_list(),
       robust_futex_list_len(),
       session_(&session),
-      thread_area(),
-      thread_area_valid(),
       tid_futex(),
       top_of_stack(),
       wait_status(),
@@ -1101,6 +1099,8 @@ void Task::post_exec(const Registers* replay_regs,
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
 
+  thread_areas_.clear();
+
   as = session().create_vm(this, exe_file, as->uid().exec_count() + 1);
   // It's barely-documented, but Linux unshares the fd table on exec
   fds = fds->clone(this);
@@ -1621,13 +1621,16 @@ uintptr_t Task::get_debug_reg(size_t regno) {
   return result;
 }
 
-void Task::set_thread_area(remote_ptr<void> tls) {
-  thread_area = read_mem(tls.cast<struct user_desc>());
-  thread_area_valid = true;
-}
-
-const struct user_desc* Task::tls() const {
-  return thread_area_valid ? &thread_area : nullptr;
+void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
+  // We rely on the fact that user_desc is word-size-independent.
+  auto desc = read_mem(tls);
+  for (auto& t : thread_areas_) {
+    if (t.entry_number == desc.entry_number) {
+      t = desc;
+      return;
+    }
+  }
+  thread_areas_.push_back(desc);
 }
 
 void Task::set_tid_addr(remote_ptr<int> tid_addr) {
@@ -2238,6 +2241,17 @@ int Task::stop_sig_from_status(int status) const {
   return WSTOPSIG(status);
 }
 
+template <typename Arch>
+static void set_thread_area_from_clone_arch(Task* t, remote_ptr<void> tls) {
+  if (Arch::clone_tls_type == Arch::UserDescPointer) {
+    t->set_thread_area(tls.cast<struct user_desc>());
+  }
+}
+
+static void set_thread_area_from_clone(Task* t, remote_ptr<void> tls) {
+  RR_ARCH_FUNCTION(set_thread_area_from_clone_arch, t->arch(), t, tls);
+}
+
 Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                   remote_ptr<int> cleartid_addr, pid_t new_tid,
                   pid_t new_rec_tid, uint32_t new_serial,
@@ -2301,8 +2315,9 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   t->wait();
 
   t->open_mem_fd_if_needed();
+  t->thread_areas_ = thread_areas_;
   if (CLONE_SET_TLS & flags) {
-    t->set_thread_area(tls);
+    set_thread_area_from_clone(t, tls);
   }
 
   t->as->insert_task(t);
@@ -2389,14 +2404,12 @@ template <typename Arch>
 static void copy_tls_arch(const Task::CapturedState& state,
                           AutoRemoteSyscalls& remote) {
   if (Arch::clone_tls_type == Arch::UserDescPointer) {
-    if (state.thread_area_valid) {
-      AutoRestoreMem remote_tls(remote, (const uint8_t*)&state.thread_area,
-                                sizeof(struct user_desc));
+    for (const struct user_desc& t : state.thread_areas) {
+      AutoRestoreMem remote_tls(remote, (const uint8_t*)&t, sizeof(t));
       LOG(debug) << "    setting tls " << remote_tls.get();
       remote.infallible_syscall(
           syscall_number_for_set_thread_area(remote.arch()),
           remote_tls.get().as_int());
-      remote.task()->set_thread_area(remote_tls.get());
     }
   }
 }
@@ -2415,8 +2428,7 @@ Task::CapturedState Task::capture_state() {
   state.prname = prname;
   state.robust_futex_list = robust_futex_list;
   state.robust_futex_list_len = robust_futex_list_len;
-  state.thread_area = thread_area;
-  state.thread_area_valid = thread_area_valid;
+  state.thread_areas = thread_areas_;
   state.num_syscallbuf_bytes = num_syscallbuf_bytes;
   state.desched_fd_child = desched_fd_child;
   state.syscallbuf_child = syscallbuf_child;
@@ -2465,6 +2477,7 @@ void Task::copy_state(const CapturedState& state) {
     }
 
     copy_tls(state, remote);
+    thread_areas_ = state.thread_areas;
 
     tid_futex = state.tid_futex;
 
