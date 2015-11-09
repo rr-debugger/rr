@@ -78,14 +78,17 @@ public:
    */
   const std::string emu_path() const { return orig_path; }
 
+  const std::string real_path() const { return tmp_path; }
+
   dev_t device() const { return device_; }
   ino_t inode() const { return inode_; }
 
 private:
   friend class EmuFs;
 
-  EmuFile(ScopedFd&& fd, const std::string& orig_path, dev_t device,
-          ino_t inode, uint64_t file_size);
+  EmuFile(ScopedFd&& fd, const std::string& orig_path,
+          const std::string& real_path, dev_t device, ino_t inode,
+          uint64_t file_size);
 
   /**
    * Return a copy of this file.  See |create()| for the meaning
@@ -116,6 +119,7 @@ private:
                         ino_t orig_inode, uint64_t orig_file_size);
 
   std::string orig_path;
+  std::string tmp_path;
   ScopedFd file;
   uint64_t size_;
   dev_t device_;

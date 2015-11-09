@@ -563,9 +563,11 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
   return true;
 }
 
-ScopedFd create_shmem_segment(const string& name, uint64_t num_bytes) {
+ScopedFd create_shmem_segment(const string& name, uint64_t num_bytes,
+                              string* real_name) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "%s/%s", SHMEM_FS, name.c_str());
+  *real_name = path;
 
   ScopedFd fd = open(path, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
   if (0 > fd) {

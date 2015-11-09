@@ -765,10 +765,12 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
   if (ssize_t(buf.data.size()) !=
       pwrite64(emufile->fd(), buf.data.data(), buf.data.size(), offset_bytes)) {
     FATAL() << "Failed to write " << buf.data.size() << " bytes at "
-            << HEX(offset_bytes) << " to " << km.fsname();
+            << HEX(offset_bytes) << " to " << emufile->real_path() << " for "
+            << emufile->emu_path();
   }
   LOG(debug) << "  restored " << buf.data.size() << " bytes at "
-             << HEX(offset_bytes) << " to " << km.fsname();
+             << HEX(offset_bytes) << " to " << emufile->real_path() << " for "
+             << emufile->emu_path();
 
   t->vm()->map(buf.addr, buf.data.size(), prot, flags, offset_bytes,
                real_file_name, real_file.st_dev, real_file.st_ino, &km);

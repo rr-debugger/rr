@@ -64,16 +64,20 @@ void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
   stringstream name;
   name << "rr-emufs-" << getpid() << "-dev-" << orig_device << "-inode-"
        << orig_inode << "-" << path_tag;
-  shr_ptr f(new EmuFile(create_shmem_segment(name.str(), orig_file_size),
-                        orig_path, orig_device, orig_inode, orig_file_size));
+  string real_name;
+  shr_ptr f(new EmuFile(
+      create_shmem_segment(name.str(), orig_file_size, &real_name), orig_path,
+      real_name, orig_device, orig_inode, orig_file_size));
   LOG(debug) << "created emulated file for " << orig_path << " as "
              << name.str();
   return f;
 }
 
-EmuFile::EmuFile(ScopedFd&& fd, const string& orig_path, dev_t orig_device,
-                 ino_t orig_inode, uint64_t orig_file_size)
+EmuFile::EmuFile(ScopedFd&& fd, const string& orig_path,
+                 const string& real_path, dev_t orig_device, ino_t orig_inode,
+                 uint64_t orig_file_size)
     : orig_path(orig_path),
+      tmp_path(real_path),
       file(std::move(fd)),
       size_(orig_file_size),
       device_(orig_device),
