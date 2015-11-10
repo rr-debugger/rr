@@ -818,15 +818,10 @@ Completion ReplaySession::emulate_signal_delivery(
     t->ev().transform(EV_SIGNAL_DELIVERY);
     LOG(debug) << "--> restoring sighandler frame for " << signal_name(sig);
     t->ev().transform(EV_SIGNAL_HANDLER);
-  } else if (ev.type() == EV_SIGNAL_DELIVERY && is_fatal_default_action(sig)) {
-    t->push_event(SignalEvent(sig, deterministic, t->arch()));
-    t->ev().transform(EV_SIGNAL_DELIVERY);
-    t->notify_fatal_signal();
-    // Note that the fatal signal is not actually injected into the task!
-    // This is very important; we must never actually inject fatal signals
-    // into a task. All replay task death must go through exit_task.
-    t->pop_signal_delivery();
   }
+  // Note that fatal signals are not actually injected into the task!
+  // This is very important; we must never actually inject fatal signals
+  // into a task. All replay task death must go through exit_task.
   /* If this signal had a user handler, and we just set up the
    * callframe, and we need to restore the $sp for continued
    * execution. */

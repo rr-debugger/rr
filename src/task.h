@@ -309,12 +309,6 @@ public:
   void destabilize_task_group();
 
   /**
-   * Print out a warning message when we're in the process of delivering a
-   * fatal signal, if appropriate.
-   */
-  void notify_fatal_signal();
-
-  /**
    * Emulate 'tracer' ptracing this task.
    */
   void set_emulated_ptracer(Task* tracer);

@@ -1215,11 +1215,6 @@ void GdbConnection::notify_exit_signal(int sig) {
  * made according to gdb/include/gdb/signals.def.
  */
 static int to_gdb_signum(int sig) {
-  if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
-    /* GDB_SIGNAL_REALTIME_34 is numbered 46, hence this
-     * offset. */
-    return sig + 12;
-  }
   switch (sig) {
     case 0:
       return 0;
@@ -1287,9 +1282,19 @@ static int to_gdb_signum(int sig) {
       return 32;
     case SIGSYS:
       return 12;
+    case 32:
+      return 77;
     default:
-      FATAL() << "Unknown signal " << sig;
-      return -1; // not reached
+      if (33 <= sig && sig <= 63) {
+        /* GDB_SIGNAL_REALTIME_33 is numbered 45, hence this offset. */
+        return sig + 12;
+      }
+      if (64 <= sig && sig <= 127) {
+        /* GDB_SIGNAL_REALTIME_64 is numbered 78, hence this offset. */
+        return sig + 14;
+      }
+      LOG(warn) << "Unknown signal " << sig;
+      return 143; // GDB_SIGNAL_UNKNOWN
   }
 }
 

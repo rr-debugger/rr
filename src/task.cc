@@ -73,6 +73,10 @@ struct Sighandler {
   }
 
   bool ignored(int sig) const {
+    if (sig == SIGSTOP || sig == SIGKILL) {
+      // These can never be ignored
+      return false;
+    }
     return (uintptr_t)SIG_IGN == k_sa_handler.as_int() ||
            ((uintptr_t)SIG_DFL == k_sa_handler.as_int() &&
             IGNORE == default_action(sig));
@@ -408,29 +412,7 @@ bool Task::running_inside_desched() const {
   return false;
 }
 
-void Task::notify_fatal_signal() {
-  // Only print this helper warning if there's (probably) a
-  // human around to see it.  This is done to avoid polluting
-  // output from tests.
-  if (EV_SIGNAL_DELIVERY == ev().type() && !probably_not_interactive()) {
-    /**
-     * In recording, Task is notified of a destabilizing signal event
-     * *after* it's been recorded, at the next trace-event-time.  In
-     * replay though we're notified at the occurrence of the signal.  So
-     * to display the same event time in logging across record/replay,
-     * apply this offset.
-     */
-    int signal_delivery_event_offset = session().is_recording() ? -1 : 0;
-    printf(
-        "[rr.%d] Warning: task %d (process %d) dying from fatal signal %s.\n",
-        trace_time() + signal_delivery_event_offset, rec_tid, tgid(),
-        signal_name(ev().Signal().siginfo.si_signo));
-  }
-}
-
 void Task::destabilize_task_group() {
-  notify_fatal_signal();
-
   tg->destabilize();
 }
 
@@ -1644,26 +1626,28 @@ void Task::signal_delivered(int sig) {
     reset_handler(&h, arch());
   }
 
-  switch (sig) {
-    case SIGSTOP:
-    case SIGTSTP:
-    case SIGTTIN:
-    case SIGTTOU:
-      // All threads in the process are stopped.
-      for (Task* t : tg->task_set()) {
-        LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal "
-                   << sig;
-        t->emulated_stop_type = GROUP_STOP;
-      }
-      break;
-    case SIGCONT:
-      // All threads in the process are resumed.
-      for (Task* t : tg->task_set()) {
-        LOG(debug) << "setting " << tid << " to NOT_STOPPED due to signal "
-                   << sig;
-        t->emulated_stop_type = NOT_STOPPED;
-      }
-      break;
+  if (!h.ignored(sig)) {
+    switch (sig) {
+      case SIGSTOP:
+      case SIGTSTP:
+      case SIGTTIN:
+      case SIGTTOU:
+        // All threads in the process are stopped.
+        for (Task* t : tg->task_set()) {
+          LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal "
+                     << sig;
+          t->emulated_stop_type = GROUP_STOP;
+        }
+        break;
+      case SIGCONT:
+        // All threads in the process are resumed.
+        for (Task* t : tg->task_set()) {
+          LOG(debug) << "setting " << tid << " to NOT_STOPPED due to signal "
+                     << sig;
+          t->emulated_stop_type = NOT_STOPPED;
+        }
+        break;
+    }
   }
 
   send_synthetic_SIGCHLD_if_necessary();

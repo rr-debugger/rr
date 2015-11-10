@@ -378,7 +378,7 @@ void validate_process_memory(Task* t, TraceFrame::Time global_time) {
 }
 
 signal_action default_action(int sig) {
-  if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
+  if (32 <= sig && sig <= 64) {
     return TERMINATE;
   }
   switch (sig) {

@@ -84,9 +84,9 @@ const char* ptrace_req_name(int request) {
 
 const char* signal_name(int sig) {
   /* strsignal() would be nice to use here, but it provides TMI. */
-  if (SIGRTMIN <= sig && sig <= SIGRTMAX) {
+  if (32 <= sig && sig <= 64) {
     static __thread char buf[] = "SIGRT00000000";
-    snprintf(buf, sizeof(buf) - 1, "SIGRT%d", sig - SIGRTMIN);
+    snprintf(buf, sizeof(buf) - 1, "SIGRT%d", sig);
     return buf;
   }
 
