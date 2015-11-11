@@ -305,18 +305,19 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   } else if (origin == SYSCALL_MAPPING &&
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
     source = TraceReader::SOURCE_ZERO;
+  } else if (should_copy_mmap_region(km, stat) &&
+             files_assumed_immutable.find(make_pair(
+                 stat.st_dev, stat.st_ino)) == files_assumed_immutable.end()) {
+    source = TraceReader::SOURCE_TRACE;
   } else {
-    if (should_copy_mmap_region(km, stat)) {
-      source = TraceReader::SOURCE_TRACE;
-    } else {
-      source = TraceReader::SOURCE_FILE;
-      // Try hardlinking file into the trace directory. This will avoid
-      // replay failures if the original file is deleted or replaced (but not
-      // if it is overwritten in-place). If try_hardlink_file fails it
-      // just returns the original file name.
-      // A relative backing_file_name is relative to the trace directory.
-      backing_file_name = try_hardlink_file(km.fsname());
-    }
+    source = TraceReader::SOURCE_FILE;
+    // Try hardlinking file into the trace directory. This will avoid
+    // replay failures if the original file is deleted or replaced (but not
+    // if it is overwritten in-place). If try_hardlink_file fails it
+    // just returns the original file name.
+    // A relative backing_file_name is relative to the trace directory.
+    backing_file_name = try_hardlink_file(km.fsname());
+    files_assumed_immutable.insert(make_pair(stat.st_dev, stat.st_ino));
   }
   mmaps << global_time << source << km.start() << km.end() << km.fsname()
         << km.device() << km.inode() << km.prot() << km.flags()

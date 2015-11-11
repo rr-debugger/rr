@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -169,6 +170,11 @@ private:
   const CompressedWriter& writer(Substream s) const { return *writers[s]; }
 
   std::unique_ptr<CompressedWriter> writers[SUBSTREAM_COUNT];
+  /**
+   * Files that have already been mapped without being copied to the trace,
+   * i.e. that we have already assumed to be immutable.
+   */
+  std::set<std::pair<dev_t, ino_t> > files_assumed_immutable;
   uint32_t mmap_count;
 };
 
