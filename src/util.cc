@@ -23,6 +23,7 @@
 
 #include "preload/preload_interface.h"
 
+#include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
 #include "kernel_abi.h"
@@ -232,9 +233,8 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
    * immutable, skip checksumming, it's a waste of time.  Except
    * if the mapping is mutable, for example the rw data segment
    * of a system library, then it's interesting. */
-  may_diverge = should_copy_mmap_region(m.map.fsname(), &st, m.map.prot(),
-                                        m.map.flags()) ||
-                (PROT_WRITE & m.map.prot());
+  may_diverge =
+      should_copy_mmap_region(m.map, st) || (PROT_WRITE & m.map.prot());
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"
              << m.map.fsname() << "'";
   return may_diverge;
@@ -470,8 +470,11 @@ static bool is_tmp_file(const string& path) {
           path.c_str() == strstr(path.c_str(), "/tmp/"));
 }
 
-bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
-                             int prot, int flags) {
+bool should_copy_mmap_region(const KernelMapping& mapping,
+                             const struct stat& stat) {
+  int flags = mapping.flags();
+  int prot = mapping.prot();
+  const string& file_name = mapping.fsname();
   bool private_mapping = (flags & MAP_PRIVATE);
 
   // TODO: handle mmap'd files that are unlinked during
@@ -494,7 +497,7 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
     LOG(debug) << "  (no copy for +x private mapping " << file_name << ")";
     return false;
   }
-  if (private_mapping && (0111 & stat->st_mode)) {
+  if (private_mapping && (0111 & stat.st_mode)) {
     /* A private mapping of an executable file usually
      * indicates mapping data sections of object files.
      * Since we're already assuming those change very
@@ -510,7 +513,7 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
   // set*[gu]id(), the real answer may be different.
   bool can_write_file = (0 == access(file_name.c_str(), W_OK));
 
-  if (!can_write_file && 0 == stat->st_uid) {
+  if (!can_write_file && 0 == stat.st_uid) {
     // We would like to assert this, but on Ubuntu 13.10,
     // the file /lib/i386-linux-gnu/libdl-2.17.so is
     // writeable by root for unknown reasons.
@@ -541,7 +544,7 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
     LOG(debug) << "  copying private mapping of non-system -x " << file_name;
     return true;
   }
-  if (!(0222 & stat->st_mode)) {
+  if (!(0222 & stat.st_mode)) {
     /* We couldn't write the file because it's read only.
      * But it's not a root-owned file (therefore not a
      * system file), so it's likely that it could be
@@ -554,7 +557,7 @@ bool should_copy_mmap_region(const string& file_name, const struct stat* stat,
      * irregular ... */
     FATAL() << "Unhandled mmap " << file_name << "(prot:" << HEX(prot)
             << ((flags & MAP_SHARED) ? ";SHARED" : "")
-            << "); uid:" << stat->st_uid << " mode:" << stat->st_mode;
+            << "); uid:" << stat.st_uid << " mode:" << stat.st_mode;
   }
   return true;
 }

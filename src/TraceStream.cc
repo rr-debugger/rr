@@ -306,7 +306,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
     source = TraceReader::SOURCE_ZERO;
   } else {
-    if (should_copy_mmap_region(km.fsname(), &stat, km.prot(), km.flags())) {
+    if (should_copy_mmap_region(km, stat)) {
       source = TraceReader::SOURCE_TRACE;
     } else {
       source = TraceReader::SOURCE_FILE;

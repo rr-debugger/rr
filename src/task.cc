@@ -412,9 +412,7 @@ bool Task::running_inside_desched() const {
   return false;
 }
 
-void Task::destabilize_task_group() {
-  tg->destabilize();
-}
+void Task::destabilize_task_group() { tg->destabilize(); }
 
 void Task::set_emulated_ptracer(Task* tracer) {
   if (tracer) {

@@ -13,6 +13,7 @@
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 
+class KernelMapping;
 class Task;
 class TraceFrame;
 
@@ -156,8 +157,8 @@ SignalDeterministic is_deterministic_signal(const siginfo_t& si);
  * get away/ with not copying the region.  That doesn't mean it's
  * necessarily safe to skip copying!
  */
-bool should_copy_mmap_region(const std::string& filename,
-                             const struct stat* stat, int prot, int flags);
+bool should_copy_mmap_region(const KernelMapping& mapping,
+                             const struct stat& stat);
 
 /**
  * Return an fd referring to a new shmem segment with descriptive
