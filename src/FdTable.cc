@@ -8,6 +8,7 @@
 
 #include "rr/rr.h"
 
+#include "log.h"
 #include "Session.h"
 #include "task.h"
 
@@ -70,6 +71,7 @@ static bool is_fd_monitored_in_any_task(AddressSpace* vm, int fd) {
 
 void FdTable::update_syscallbuf_fds_disabled(int fd) {
   assert(fd >= 0);
+  assert(task_set().size() > 0);
 
   unordered_set<AddressSpace*> vms_updated;
   // It's possible for tasks with different VMs to share this fd table.
@@ -90,6 +92,8 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
 }
 
 void FdTable::init_syscallbuf_fds_disabled(Task* t) {
+  ASSERT(t, has_task(t));
+
   if (t->syscallbuf_fds_disabled_child.is_null()) {
     return;
   }
@@ -122,6 +126,8 @@ static bool is_fd_open(Task* t, int fd) {
 }
 
 void FdTable::update_for_cloexec(Task* t, TraceTaskEvent& event) {
+  ASSERT(t, has_task(t));
+
   vector<int> fds_to_close;
 
   if (t->session().is_recording()) {

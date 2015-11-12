@@ -337,6 +337,7 @@ set(BASIC_TESTS
   fcntl_dupfd
   fcntl_seals
   fcntl_sig
+  fd_tracking_across_threads
   fds_clean
   flock
   flock2

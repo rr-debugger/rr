@@ -2273,13 +2273,16 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->as = sess.clone(t, as);
   }
   t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
+
   // FdTable is either shared or copied, so the contents of
   // syscallbuf_fds_disabled_child are still valid.
   if (CLONE_SHARE_FILES & flags) {
     t->fds = fds;
+    t->fds->insert_task(t);
   } else {
     t->fds = fds->clone(t);
   }
+
   t->top_of_stack = stack;
   // Clone children, both thread and fork, inherit the parent
   // prname.

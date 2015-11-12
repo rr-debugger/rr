@@ -38,6 +38,7 @@ public:
 
   void insert_task(Task* t);
   void erase_task(Task* t);
+  bool has_task(Task* t) const { return tasks.find(t) != tasks.end(); }
 
 protected:
   TaskSet tasks;
