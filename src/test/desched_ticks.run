@@ -1,0 +1,8 @@
+source `dirname $0`/util.sh
+
+# Without the syscallbuf, this test makes no sense
+# and will fail since it sets a breakpoint in the preload code.
+skip_if_no_syscall_buf
+
+record desched_blocking_poll$bitness
+debug desched_ticks

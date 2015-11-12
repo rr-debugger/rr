@@ -618,6 +618,7 @@ set(TESTS_WITHOUT_PROGRAM
   cont_signal
   cpuid
   dead_thread_target
+  desched_ticks
   deliver_async_signal_during_syscalls
   env_newline
   exec_stop

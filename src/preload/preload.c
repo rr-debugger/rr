@@ -1518,6 +1518,11 @@ static long sys_open(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+/**
+ * Make this function external so desched_ticks.py can set a breakpoint on it.
+ */
+void __before_poll_syscall_breakpoint(void) {}
+
 static long sys_poll(const struct syscall_info* call) {
   const int syscallno = SYS_poll;
   struct pollfd* fds = (struct pollfd*)call->args[0];
@@ -1540,6 +1545,8 @@ static long sys_poll(const struct syscall_info* call) {
   if (fds2) {
     local_memcpy(fds2, fds, nfds * sizeof(*fds2));
   }
+
+  __before_poll_syscall_breakpoint();
 
   ret = untraced_syscall3(syscallno, fds2, nfds, timeout);
 

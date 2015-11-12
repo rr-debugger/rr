@@ -1300,13 +1300,13 @@ Completion ReplaySession::advance_to_ticks_target(
  */
 Completion ReplaySession::try_one_trace_step(
     Task* t, const StepConstraints& constraints) {
-  if (constraints.ticks_target > 0 &&
-      current_step.action != TSTEP_FLUSH_SYSCALLBUF &&
+  if (constraints.ticks_target > 0 && !trace_frame.event().has_ticks_slop() &&
       t->current_trace_frame().ticks() > constraints.ticks_target) {
     // Instead of doing this step, just advance to the ticks_target, since
     // that happens before this event completes.
-    // Unfortunately we can't do this for TSTEP_FLUSH_SYSCALLBUF; that needs
-    // to be handled below.
+    // Unfortunately we can't do this for TSTEP_FLUSH_SYSCALLBUF and
+    // TSTEP_DESCHED, because their tick count can't be trusted.
+    // cont_syscall_boundary handles the ticks constraint for those cases.
     return advance_to_ticks_target(t, constraints);
   }
 

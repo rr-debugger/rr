@@ -2,15 +2,21 @@
 
 #include "rrutil.h"
 
+#define NUM_PFDS 200
+
 int main(int argc, char* argv[]) {
   int fds[2];
-  struct pollfd pfd;
+  struct pollfd pfds[NUM_PFDS];
   char ch = 'x';
+  int i;
 
   pipe(fds);
 
-  pfd.fd = fds[0];
-  pfd.events = POLLIN;
+  for (i = 0; i < NUM_PFDS; ++i) {
+    pfds[i].fd = fds[0];
+    pfds[i].events = POLLIN;
+  }
+
   if (fork() == 0) {
     usleep(1000);
     write(fds[1], &ch, 1);
@@ -18,9 +24,9 @@ int main(int argc, char* argv[]) {
   }
 
   /* This should block */
-  test_assert(1 == poll(&pfd, 1, -1));
-  test_assert(POLLIN & pfd.revents);
-  test_assert(1 == read(pfd.fd, &ch, 1));
+  test_assert(NUM_PFDS == poll(pfds, NUM_PFDS, -1));
+  test_assert(POLLIN & pfds[0].revents);
+  test_assert(1 == read(pfds[0].fd, &ch, 1));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
