@@ -9,7 +9,7 @@ static void handle_segv(int sig) {
 }
 
 int main(int argc, char* argv[]) {
-  int dummy, i;
+  int dummy = 0, i;
 
   signal(SIGSEGV, handle_segv);
 

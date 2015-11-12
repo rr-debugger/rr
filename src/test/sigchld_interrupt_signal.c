@@ -4,7 +4,7 @@
 
 int main(int argc, char* argv[]) {
   pid_t c;
-  int dummy, i;
+  int dummy = 0, i;
   int status;
 
   atomic_puts("forking child");

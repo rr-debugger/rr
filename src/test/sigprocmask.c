@@ -11,7 +11,7 @@ static void handle_usr1(int sig) {
 
 int main(int argc, char* argv[]) {
   sigset_t mask, oldmask;
-  int i, dummy;
+  int i, dummy = 0;
 
   signal(SIGUSR1, handle_usr1);
 
