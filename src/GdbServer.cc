@@ -13,6 +13,7 @@
 #include <limits>
 #include <map>
 #include <string>
+#include <sstream>
 #include <vector>
 
 #include "BreakpointCondition.h"
@@ -31,120 +32,134 @@ using namespace std;
  * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
  * rr commands.
  */
-static const uintptr_t DBG_COMMAND_MAGIC_ADDRESS = 29298; // 'rr'
+static const int DBG_COMMAND_MAGIC_ADDRESS = 29298; // 'rr'
 
 /**
  * The high-order byte of the 32-bit value indicates the specific command
  * message. Not-understood command messages are ignored.
  */
-static const uintptr_t DBG_COMMAND_MSG_MASK = 0xFF000000;
+static const uint32_t DBG_COMMAND_MSG_MASK = 0xFF000000;
 /**
  * Create a checkpoint of the current state whose index is given by the
  * command parameter. If there is already a checkpoint with that index, it
  * is deleted first.
  */
-static const uintptr_t DBG_COMMAND_MSG_CREATE_CHECKPOINT = 0x01000000;
+static const int DBG_COMMAND_MSG_CREATE_CHECKPOINT = 0x01000000;
 /**
  * Delete the checkpoint of the current state whose index is given by the
  * command parameter.
  */
-static const uintptr_t DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
+static const int DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
 
-static const uintptr_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
+static const uint32_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
 
 /**
  * 64-bit reads from DBG_WHEN_MAGIC_ADDRESS return the current trace frame's
  * event number (the event we're working towards).
  */
-static const uintptr_t DBG_WHEN_MAGIC_ADDRESS = DBG_COMMAND_MAGIC_ADDRESS + 4;
+static const int DBG_WHEN_MAGIC_ADDRESS = DBG_COMMAND_MAGIC_ADDRESS + 4;
 
 /**
  * 64-bit reads from DBG_WHEN_TICKS_MAGIC_ADDRESS return the current trace's
  * tick count.
  */
-static const uintptr_t DBG_WHEN_TICKS_MAGIC_ADDRESS =
-    DBG_COMMAND_MAGIC_ADDRESS + 12;
+static const int DBG_WHEN_TICKS_MAGIC_ADDRESS = DBG_WHEN_MAGIC_ADDRESS + 8;
+
+static const int DBG_REAL_TID_MAGIC_ADDRESS = DBG_WHEN_TICKS_MAGIC_ADDRESS + 8;
 
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
-//
-// See #define's above for origin of magic values below.
-static const char gdb_rr_macros[] =
-    // TODO define `document' sections for these
-    "define checkpoint\n"
-    "  init-if-undefined $_next_checkpoint_index = 1\n"
-    /* Ensure the command echoes the checkpoint number, not the encoded message
-       */
-    "  p (*(int*)29298 = 0x01000000 | $_next_checkpoint_index), "
-    "$_next_checkpoint_index++\n"
-    "end\n"
-    "define delete checkpoint\n"
-    "  p (*(int*)29298 = 0x02000000 | $arg0), $arg0\n"
-    "end\n"
-    "define restart\n"
-    "  run c$arg0\n"
-    "end\n"
-    "define when\n"
-    "  p *(long long int*)(29298 + 4)\n"
-    "end\n"
-    "define when-ticks\n"
-    "  p *(long long int*)(29298 + 12)\n"
-    "end\n"
-    // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
-    // issued before any user-generated resume-execution command
-    // results in gdb hanging just after the inferior hits an internal
-    // gdb breakpoint.  This happens outside of rr, with gdb
-    // controlling gdbserver, as well.  We work around that by
-    // ensuring *some* resume-execution command has been issued before
-    // restarting the session.  But, only if the inferior hasn't
-    // already finished execution ($_thread != 0).  If it has and we
-    // issue the "stepi" command, then gdb refuses to restart
-    // execution.
-    "define hook-run\n"
-    "  if $_thread != 0 && !$suppress_run_hook\n"
-    "    stepi\n"
-    "  end\n"
-    "end\n"
-    "define hookpost-continue\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-step\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-stepi\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-next\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-nexti\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-finish\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-reverse-continue\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-reverse-step\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-reverse-stepi\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-reverse-finish\n"
-    "  set $suppress_run_hook = 1\n"
-    "end\n"
-    "define hookpost-run\n"
-    "  set $suppress_run_hook = 0\n"
-    "end\n"
-    "handle SIGURG stop\n"
-    "set prompt (rr) \n"
-    // Try both "set target-async" and "maint set target-async" since
-    // that changed recently.
-    "set target-async 0\n"
-    "maint set target-async 0\n";
+static const string& gdb_rr_macros() {
+  static string s;
+
+  if (s.empty()) {
+    stringstream ss;
+    ss
+        // TODO define `document' sections for these
+        << "define checkpoint\n"
+        << "  init-if-undefined $_next_checkpoint_index = 1\n"
+        /* Ensure the command echoes the checkpoint number, not the encoded
+         * message
+           */
+        << "  p (*(int*)" << DBG_COMMAND_MAGIC_ADDRESS << " = "
+        << DBG_COMMAND_MSG_CREATE_CHECKPOINT << " | $_next_checkpoint_index), "
+        << "$_next_checkpoint_index++\n"
+        << "end\n"
+        << "define delete checkpoint\n"
+        << "  p (*(int*)" << DBG_COMMAND_MAGIC_ADDRESS << " = "
+        << DBG_COMMAND_MSG_DELETE_CHECKPOINT << " | $arg0), $arg0\n"
+        << "end\n"
+        << "define restart\n"
+        << "  run c$arg0\n"
+        << "end\n"
+        << "define when\n"
+        << "  p *(long long int*)" << DBG_WHEN_MAGIC_ADDRESS << "\n"
+        << "end\n"
+        << "define when-ticks\n"
+        << "  p *(long long int*)" << DBG_WHEN_TICKS_MAGIC_ADDRESS << "\n"
+        << "end\n"
+        << "define real-tid\n"
+        << "  p *(long long int*)" << DBG_REAL_TID_MAGIC_ADDRESS << "\n"
+        << "end\n"
+        // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
+        // issued before any user-generated resume-execution command
+        // results in gdb hanging just after the inferior hits an internal
+        // gdb breakpoint.  This happens outside of rr, with gdb
+        // controlling gdbserver, as well.  We work around that by
+        // ensuring *some* resume-execution command has been issued before
+        // restarting the session.  But, only if the inferior hasn't
+        // already finished execution ($_thread != 0).  If it has and we
+        // issue the "stepi" command, then gdb refuses to restart
+        // execution.
+        << "define hook-run\n"
+        << "  if $_thread != 0 && !$suppress_run_hook\n"
+        << "    stepi\n"
+        << "  end\n"
+        << "end\n"
+        << "define hookpost-continue\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-step\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-stepi\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-next\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-nexti\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-finish\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-reverse-continue\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-reverse-step\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-reverse-stepi\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-reverse-finish\n"
+        << "  set $suppress_run_hook = 1\n"
+        << "end\n"
+        << "define hookpost-run\n"
+        << "  set $suppress_run_hook = 0\n"
+        << "end\n"
+        << "handle SIGURG stop\n"
+        << "set prompt (rr) \n"
+        // Try both "set target-async" and "maint set target-async" since
+        // that changed recently.
+        << "set target-async 0\n"
+        << "maint set target-async 0\n";
+    s = ss.str();
+  }
+  return s;
+}
 
 /**
  * Attempt to find the value of |regname| (a DebuggerRegister
@@ -264,24 +279,30 @@ bool GdbServer::maybe_process_magic_command(const GdbRequest& req) {
 }
 
 bool GdbServer::maybe_process_magic_read(Task* t, const GdbRequest& req) {
-  if ((req.mem().addr == DBG_WHEN_MAGIC_ADDRESS ||
-       req.mem().addr == DBG_WHEN_TICKS_MAGIC_ADDRESS) &&
-      req.mem().len == 8) {
-    vector<uint8_t> mem;
-    mem.resize(req.mem().len);
-    int64_t when(-1);
-    if (t->session().as_replay()) {
-      if (req.mem().addr == DBG_WHEN_TICKS_MAGIC_ADDRESS) {
-        when = int64_t(t->tick_count());
-      } else {
-        when = int64_t(t->current_trace_frame().time());
-      }
-    }
-    memcpy(mem.data(), &when, mem.size());
-    dbg->reply_get_mem(mem);
-    return true;
+  int64_t value;
+  switch (req.mem().addr) {
+    case DBG_WHEN_MAGIC_ADDRESS:
+      value = t->current_trace_frame().time();
+      break;
+    case DBG_WHEN_TICKS_MAGIC_ADDRESS:
+      value = t->tick_count();
+      break;
+    case DBG_REAL_TID_MAGIC_ADDRESS:
+      value = t->tid;
+      break;
+    default:
+      return false;
   }
-  return false;
+
+  if (req.mem().len != 8) {
+    return false;
+  }
+
+  vector<uint8_t> mem;
+  mem.resize(req.mem().len);
+  memcpy(mem.data(), &value, mem.size());
+  dbg->reply_get_mem(mem);
+  return true;
 }
 
 void GdbServer::dispatch_regs_request(const Registers& regs,
@@ -1219,7 +1240,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
                            const string& gdb_command_file_path,
                            const string& gdb_binary_file_path) {
-  GdbConnection::launch_gdb(params_pipe_fd, gdb_rr_macros,
+  GdbConnection::launch_gdb(params_pipe_fd, gdb_rr_macros(),
                             gdb_command_file_path, gdb_binary_file_path);
 }
 
@@ -1248,4 +1269,4 @@ void GdbServer::emergency_debug(Task* t) {
   GdbServer(dbg, t).process_debugger_requests();
 }
 
-string GdbServer::init_script() { return gdb_rr_macros; }
+string GdbServer::init_script() { return gdb_rr_macros(); }

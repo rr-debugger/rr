@@ -147,15 +147,15 @@ unique_ptr<GdbConnection> GdbConnection::await_client_connection(
   return dbg;
 }
 
-static string create_gdb_command_file(const char* macros) {
+static string create_gdb_command_file(const string& macros) {
   char tmp[] = "/tmp/rr-gdb-commands-XXXXXX";
   // This fd is just leaked. That's fine since we only call this once
   // per rr invocation at the moment.
   int fd = mkstemp(tmp);
   unlink(tmp);
 
-  ssize_t len = strlen(macros);
-  int written = write(fd, macros, len);
+  ssize_t len = macros.size();
+  int written = write(fd, macros.c_str(), len);
   if (written != len) {
     FATAL() << "Failed to write gdb command file";
   }
@@ -165,7 +165,7 @@ static string create_gdb_command_file(const char* macros) {
   return procfile.str();
 }
 
-void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
+void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const string& macros,
                                const string& gdb_command_file_path,
                                const string& gdb_binary_file_path) {
   DebuggerParams params;
@@ -213,7 +213,7 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const char* macros,
     args.push_back("-x");
     args.push_back(gdb_command_file_path);
   }
-  if (macros) {
+  if (macros.size()) {
     string gdb_command_file = create_gdb_command_file(macros);
     args.push_back("-x");
     args.push_back(gdb_command_file);
