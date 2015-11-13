@@ -559,6 +559,7 @@ set(TESTS_WITH_PROGRAM
   reverse_continue_breakpoint
   reverse_continue_multiprocess
   reverse_continue_process_signal
+  reverse_step_long
   reverse_step_threads
   reverse_step_threads_break
   segfault

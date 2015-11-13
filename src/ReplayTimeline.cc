@@ -839,6 +839,7 @@ ReplayResult ReplayTimeline::reverse_continue(
   bool last_stop_is_watch_or_signal;
   ReplayResult final_result;
   TaskUid final_tuid;
+  Ticks final_ticks;
   Mark dest;
   vector<Mark> restart_points;
 
@@ -924,6 +925,9 @@ ReplayResult ReplayTimeline::reverse_continue(
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
+        final_ticks = result.break_status.task
+                          ? result.break_status.task->tick_count()
+                          : 0;
         last_stop_is_watch_or_signal = true;
       }
       assert(result.status == REPLAY_CONTINUE);
@@ -934,6 +938,7 @@ ReplayResult ReplayTimeline::reverse_continue(
         final_result.break_status.task = current->current_task();
         final_result.break_status.task_exit = true;
         final_tuid = final_result.break_status.task->tuid();
+        final_ticks = result.break_status.task->tick_count();
         last_stop_is_watch_or_signal = false;
       }
 
@@ -951,6 +956,9 @@ ReplayResult ReplayTimeline::reverse_continue(
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
+        final_ticks = result.break_status.task
+                          ? result.break_status.task->tick_count()
+                          : 0;
         last_stop_is_watch_or_signal = false;
       }
 
@@ -991,7 +999,8 @@ ReplayResult ReplayTimeline::reverse_continue(
     LOG(debug)
         << "Performing final reverse-singlestep to pass over watch/signal";
     auto stop_filter = [&](Task* t) { return t->tuid() == final_tuid; };
-    reverse_singlestep(dest, final_tuid, stop_filter, interrupt_check);
+    reverse_singlestep(dest, final_tuid, final_ticks, stop_filter,
+                       interrupt_check);
   } else {
     LOG(debug) << "Seeking to final destination " << dest;
     seek_to_mark(dest);
@@ -1015,13 +1024,19 @@ void ReplayTimeline::update_observable_break_status(
 }
 
 ReplayResult ReplayTimeline::reverse_singlestep(
-    const Mark& origin, const TaskUid& step_tuid,
+    const Mark& origin, const TaskUid& step_tuid, Ticks step_ticks,
     const std::function<bool(Task* t)>& stop_filter,
     const std::function<bool()>& interrupt_check) {
   LOG(debug) << "ReplayTimeline::reverse_singlestep from " << origin;
 
+  Mark outer = origin;
+  Ticks ticks_target = step_ticks - 1;
+
   while (true) {
-    Mark end = origin;
+    Mark end = outer;
+    Mark start;
+    bool seen_barrier;
+
     while (true) {
       MarkKey current_key = end.ptr->key;
 
@@ -1045,13 +1060,12 @@ ReplayResult ReplayTimeline::reverse_singlestep(
         current_key = current_mark_key();
       }
 
-      Mark start = mark();
+      start = mark();
       LOG(debug) << "Running forward from " << start;
       // Now run forward until we're reasonably close to the correct tick value.
       ReplaySession::StepConstraints constraints(RUN_CONTINUE);
       bool approaching_ticks_target = false;
       bool seen_other_task_break = false;
-      Ticks ticks_target = end.ptr->key.ticks - 1;
       while (!at_mark(end)) {
         Task* t = current->current_task();
         if (stop_filter(t) && current->can_validate()) {
@@ -1091,14 +1105,12 @@ ReplayResult ReplayTimeline::reverse_singlestep(
           current->replay_step(RUN_CONTINUE);
         }
         if (is_start_of_reverse_execution_barrier_event()) {
-          LOG(debug) << "Stopping at barrier";
-          break;
+          seen_barrier = true;
         }
         maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
       }
 
-      if (approaching_ticks_target ||
-          is_start_of_reverse_execution_barrier_event()) {
+      if (approaching_ticks_target || seen_barrier) {
         break;
       }
       if (seen_other_task_break) {
@@ -1110,7 +1122,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       }
       end = start;
     }
-    assert(stop_filter(current->current_task()));
+    assert(stop_filter(current->current_task()) || seen_barrier);
 
     Mark destination_candidate;
     Mark step_start = set_short_checkpoint();
@@ -1211,6 +1223,9 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       evaluate_conditions(destination_candidate_result);
       return destination_candidate_result;
     }
+
+    // No destination candidate found. Search further backward.
+    outer = start;
   }
 }
 
@@ -1300,9 +1315,11 @@ ReplayResult ReplayTimeline::replay_step_forward(
 }
 
 ReplayResult ReplayTimeline::reverse_singlestep(
-    const TaskUid& tuid, const std::function<bool(Task* t)>& stop_filter,
+    const TaskUid& tuid, Ticks tuid_ticks,
+    const std::function<bool(Task* t)>& stop_filter,
     const std::function<bool()>& interrupt_check) {
-  return reverse_singlestep(mark(), tuid, stop_filter, interrupt_check);
+  return reverse_singlestep(mark(), tuid, tuid_ticks, stop_filter,
+                            interrupt_check);
 }
 
 ReplayTimeline::Progress ReplayTimeline::estimate_progress() {

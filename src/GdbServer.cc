@@ -1000,10 +1000,14 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
         case RUN_CONTINUE:
           result = timeline.reverse_continue(stop_filter, interrupt_check);
           break;
-        case RUN_SINGLESTEP:
-          result = timeline.reverse_singlestep(last_continue_tuid, stop_filter,
-                                               interrupt_check);
+        case RUN_SINGLESTEP: {
+          Task* t = timeline.current_session().find_task(last_continue_tuid);
+          assert(t);
+          result =
+              timeline.reverse_singlestep(last_continue_tuid, t->tick_count(),
+                                          stop_filter, interrupt_check);
           break;
+        }
         default:
           assert(0 && "Unknown RunCommand");
       }

@@ -199,7 +199,8 @@ public:
   ReplayResult reverse_continue(const std::function<bool(Task* t)>& stop_filter,
                                 const std::function<bool()>& interrupt_check);
   ReplayResult reverse_singlestep(
-      const TaskUid& tuid, const std::function<bool(Task* t)>& stop_filter,
+      const TaskUid& tuid, Ticks tuid_ticks,
+      const std::function<bool(Task* t)>& stop_filter,
       const std::function<bool()>& interrupt_check);
 
   /**
@@ -388,7 +389,7 @@ private:
   void update_observable_break_status(ReplayTimeline::Mark& now,
                                       const ReplayResult& result);
   ReplayResult reverse_singlestep(
-      const Mark& origin, const TaskUid& step_tuid,
+      const Mark& origin, const TaskUid& step_tuid, Ticks step_ticks,
       const std::function<bool(Task* t)>& stop_filter,
       const std::function<bool()>& interrupt_check);
 
