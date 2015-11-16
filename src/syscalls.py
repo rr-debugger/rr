@@ -785,7 +785,7 @@ mlock = UnsupportedSyscall(x86=150, x64=149)
 munlock = UnsupportedSyscall(x86=151, x64=150)
 mlockall = UnsupportedSyscall(x86=152, x64=151)
 munlockall = UnsupportedSyscall(x86=153, x64=152)
-sched_setparam = UnsupportedSyscall(x86=154, x64=142)
+sched_setparam = EmulatedSyscall(x86=154, x64=142)
 
 #  int sched_getparam(pid_t pid, struct sched_param *param)
 #
