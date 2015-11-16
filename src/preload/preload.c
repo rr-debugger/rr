@@ -710,17 +710,12 @@ struct thread_func_data {
 };
 
 static void* thread_trampoline(void* arg) {
-  struct thread_func_data* data = arg;
-  void* ret;
+  struct thread_func_data data = *(struct thread_func_data*)arg;
+  free(arg);
 
   init_thread();
 
-  ret = data->start_routine(data->arg);
-
-  /* We don't want glibc re-entering us during thread cleanup. */
-  buffer = NULL;
-  free(data);
-  return ret;
+  return data.start_routine(data.arg);
 }
 
 /**
