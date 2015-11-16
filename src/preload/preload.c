@@ -559,16 +559,23 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   return fd;
 }
 
-static void set_up_buffer(void) {
+/**
+ * Initialize thread-local buffering state, if enabled.
+ */
+static void init_thread(void) {
   struct rrcall_init_buffers_params args;
 
-  /* NB: we want this setup emulated during replay. */
-  if (buffer_enabled) {
-    desched_counter_fd =
-        open_desched_event_counter(1, privileged_traced_gettid());
-  } else {
-    desched_counter_fd = -1;
+  assert(process_inited);
+  assert(!thread_inited);
+
+  if (!buffer_enabled) {
+    thread_inited = 1;
+    return;
   }
+
+  /* NB: we want this setup emulated during replay. */
+  desched_counter_fd =
+      open_desched_event_counter(1, privileged_traced_gettid());
 
   args.desched_counter_fd = desched_counter_fd;
 
@@ -582,21 +589,7 @@ static void set_up_buffer(void) {
 
   /* rr initializes the buffer header. */
   buffer = args.syscallbuf_ptr;
-}
 
-/**
- * Initialize thread-local buffering state, if enabled.
- */
-static void init_thread(void) {
-  assert(process_inited);
-  assert(!thread_inited);
-
-  if (!buffer_enabled) {
-    thread_inited = 1;
-    return;
-  }
-
-  set_up_buffer();
   thread_inited = 1;
 }
 
