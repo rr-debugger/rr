@@ -372,6 +372,7 @@ set(BASIC_TESTS
   memfd_create
   mincore
   mknod
+  mlock
   mmap_discontinuous
   mmap_private
   mmap_ro
