@@ -1145,6 +1145,15 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       }
       return;
 
+    case Arch::madvise:
+      switch ((int)t->regs().arg3()) {
+        case MADV_DONTNEED:
+        case MADV_REMOVE:
+          break;
+        default:
+          return;
+      }
+    /* fall through */
     case Arch::munmap:
     case Arch::mprotect:
     case Arch::arch_prctl:

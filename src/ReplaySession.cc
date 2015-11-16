@@ -1046,16 +1046,34 @@ static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
   }
 }
 
+static bool only_private_anonymous_mappings(Task* t, remote_ptr<void> addr,
+                                            size_t len) {
+  bool seen_following_mapping = false;
+  for (const auto& mapping : t->vm()->maps_starting_at(addr)) {
+    if (mapping.map.start() >= addr + len) {
+      if (seen_following_mapping || !(mapping.map.flags() & PROT_GROWSDOWN)) {
+        break;
+      }
+      seen_following_mapping = true;
+    }
+    if ((mapping.map.flags() & (MAP_PRIVATE | MAP_ANONYMOUS)) !=
+        (MAP_PRIVATE | MAP_ANONYMOUS)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 template <typename Arch>
 static void perform_syscallbuf_syscall_side_effects_arch(
     Task* t, const Registers& regs) {
   switch (regs.original_syscallno()) {
     case Arch::madvise:
       if ((int)regs.arg3() == MADV_DONTNEED) {
+        ASSERT(t, only_private_anonymous_mappings(t, regs.arg1(), regs.arg2()))
+            << "MADV_DONTNEED on non-private+anonymous mappings";
         // madvise MADV_DONTNEED is the only syscall-buffered syscall that
         // needs side effects other than restoring from the syscallbuf data.
-        // XXX Note that for non-anonymous mappings this might not reproduce
-        // exactly the behavior we saw during recording!
         AutoRemoteSyscalls remote(t);
         remote.syscall(regs.original_syscallno(), regs.arg1(), regs.arg2(),
                        MADV_DONTNEED);

@@ -3315,17 +3315,6 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
 
-    case Arch::madvise:
-      switch ((int)t->regs().arg3()) {
-        case MADV_DONTNEED:
-        case MADV_REMOVE:
-          t->record_remote(t->regs().arg1(), t->regs().arg2());
-          break;
-        default:
-          break;
-      }
-      break;
-
     case SYS_rrcall_init_buffers:
       t->init_buffers(nullptr);
       break;
