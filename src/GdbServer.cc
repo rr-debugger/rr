@@ -32,7 +32,7 @@ using namespace std;
  * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
  * rr commands.
  */
-static const int DBG_COMMAND_MAGIC_ADDRESS = 29298; // 'rr'
+static const uint32_t DBG_COMMAND_MAGIC_ADDRESS = 29298; // 'rr'
 
 /**
  * The high-order byte of the 32-bit value indicates the specific command
