@@ -252,7 +252,7 @@ access = EmulatedSyscall(x86=33, x64=21)
 
 nice = UnsupportedSyscall(x86=34)
 ftime = InvalidSyscall(x86=35)
-sync = UnsupportedSyscall(x86=36, x64=162)
+sync = EmulatedSyscall(x86=36, x64=162)
 
 #  int kill(pid_t pid, int sig)
 #
@@ -1611,7 +1611,7 @@ prlimit64 = EmulatedSyscall(x86=340, x64=302, arg4="typename Arch::rlimit64")
 name_to_handle_at = UnsupportedSyscall(x86=341, x64=303)
 open_by_handle_at = UnsupportedSyscall(x86=342, x64=304)
 clock_adjtime = UnsupportedSyscall(x86=343, x64=305)
-syncfs = UnsupportedSyscall(x86=344, x64=306)
+syncfs = EmulatedSyscall(x86=344, x64=306)
 
 #  int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
 #               unsigned int flags);

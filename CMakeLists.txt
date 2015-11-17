@@ -477,6 +477,7 @@ set(BASIC_TESTS
   stdout_redirect
   strict_priorities
   switch_read
+  sync
   syscallbuf_timeslice
   syscallbuf_timeslice2
   sysconf
