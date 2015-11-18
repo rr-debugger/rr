@@ -484,7 +484,7 @@ static long privileged_untraced_syscall(int syscallno, long a0, long a1,
   privileged_untraced_syscall3(no, a0, a1, 0)
 #define privileged_untraced_syscall1(no, a0)                                   \
   privileged_untraced_syscall2(no, a0, 0)
-#define uprivileged_ntraced_syscall0(no) privileged_untraced_syscall1(no, 0)
+#define privileged_untraced_syscall0(no) privileged_untraced_syscall1(no, 0)
 
 #if RR_SYSCALL_FILTERING
 extern RR_HIDDEN void _syscall_hook_trampoline(void);
