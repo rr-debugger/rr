@@ -872,16 +872,16 @@ static void arm_desched_event(void) {
    * avoid! :) Although we don't allocate extra space for these
    * ioctl's, we do record that we called them; the replayer
    * knows how to skip over them. */
-  if (privileged_untraced_syscall3(SYS_ioctl, desched_counter_fd,
-                                   PERF_EVENT_IOC_ENABLE, 0)) {
+  if ((int)privileged_untraced_syscall3(SYS_ioctl, desched_counter_fd,
+                                        PERF_EVENT_IOC_ENABLE, 0)) {
     fatal("Failed to ENABLE counter %d", desched_counter_fd);
   }
 }
 
 static void disarm_desched_event(void) {
   /* See above. */
-  if (privileged_untraced_syscall3(SYS_ioctl, desched_counter_fd,
-                                   PERF_EVENT_IOC_DISABLE, 0)) {
+  if ((int)privileged_untraced_syscall3(SYS_ioctl, desched_counter_fd,
+                                        PERF_EVENT_IOC_DISABLE, 0)) {
     fatal("Failed to DISABLE counter %d", desched_counter_fd);
   }
 }

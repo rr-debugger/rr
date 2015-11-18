@@ -25,21 +25,6 @@ struct ReplayDeschedState {
 };
 
 /**
- * The state of a syscallbuf flush that's being processed.  Syscallbuf
- * flushes are an odd duck among the trace-step types (along with the
- * desched step above), because they must maintain extra state in
- * order to know which commands to issue when being resumed after an
- * interruption.  So the process of flushing the syscallbuf will
- * mutate this state in between attempts to retire the step.
- */
-enum ReplayFlushBufferedSyscallStep {
-  FLUSH_START,
-  FLUSH_ARM,
-  FLUSH_ENTER,
-  FLUSH_DISARM,
-  FLUSH_DONE
-};
-/**
  * ReplayFlushBufferedSyscallState is saved in Session and cloned with its
  * Session, so it needs to be simple data, i.e. not holding pointers to
  * per-Session data.
@@ -51,11 +36,6 @@ struct ReplayFlushBufferedSyscallState {
   /* The offset of the next syscall record in both the rr and child
    * buffers */
   size_t syscall_record_offset;
-  /* The next step to take. */
-  ReplayFlushBufferedSyscallStep state;
-  /* Track the state of retiring desched arm/disarm ioctls, when
-   * necessary. */
-  ReplayDeschedState desched;
 };
 
 /**

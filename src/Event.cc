@@ -225,13 +225,8 @@ bool Event::has_ticks_slop() const {
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_FLUSH:
     case EV_SYSCALLBUF_RESET:
-      return true;
     case EV_DESCHED:
-      // ARM_DESCHED events are like the SYSCALLBUF_* events
-      // in that they weren't actually observed during
-      // recording, only inferred, so we don't have any
-      // reference to assert against during replay.
-      return (ARMING_DESCHED_EVENT == Desched().state);
+      return true;
     default:
       return false;
   }

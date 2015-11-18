@@ -1162,10 +1162,14 @@ void Task::record_event(const Event& ev) {
 
   trace_writer().write_frame(frame);
 
-  // After we've output an event, it's safe to reset the syscallbuf (if not
-  // explicitly delayed) since we will have exited the syscallbuf code that
-  // consumed the syscallbuf data.
-  maybe_reset_syscallbuf();
+  if (!ev.has_ticks_slop()) {
+    // After we've output an event, it's safe to reset the syscallbuf (if not
+    // explicitly delayed) since we will have exited the syscallbuf code that
+    // consumed the syscallbuf data.
+    // This only works if the event has a reliable tick count so when we
+    // reach it, we're done.
+    maybe_reset_syscallbuf();
+  }
 }
 
 void Task::flush_inconsistent_state() { ticks = 0; }

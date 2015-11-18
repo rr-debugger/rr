@@ -895,28 +895,6 @@ Completion ReplaySession::emulate_async_signal(
  */
 Completion ReplaySession::skip_desched_ioctl(
     Task* t, ReplayDeschedState* ds, const StepConstraints& constraints) {
-  /* Skip ahead to the syscall entry. */
-  if (DESCHED_ENTER == ds->state &&
-      cont_syscall_boundary(t, constraints) == INCOMPLETE) {
-    return INCOMPLETE;
-  }
-  ds->state = DESCHED_EXIT;
-
-  bool is_desched_syscall =
-      (DESCHED_ARM == ds->type ? t->is_arm_desched_event_syscall()
-                               : t->is_disarm_desched_event_syscall());
-  ASSERT(t, is_desched_syscall)
-      << "Failed to reach desched ioctl; at "
-      << t->syscall_name(t->regs().original_syscallno()) << "("
-      << t->regs().arg1() << ", " << t->regs().arg2() << ") instead";
-  t->finish_emulated_syscall();
-  /* Emulate a return value of "0".  It's OK for us to hard-code
-   * that value here, because the syscallbuf lib aborts if a
-   * desched ioctl returns non-zero (it doesn't know how to
-   * handle that). */
-  Registers r = t->regs();
-  r.set_syscall_result(0);
-  t->set_regs(r);
   return COMPLETE;
 }
 
@@ -1066,98 +1044,50 @@ Completion ReplaySession::flush_one_syscall(
                                   current_step.flush.syscall_record_offset);
   int call = rec_rec->syscallno;
 
-  switch (current_step.flush.state) {
-    case FLUSH_START:
-      ASSERT(t, 0 == ((uintptr_t)rec_rec & (sizeof(int) - 1)))
-          << "Recorded record must be int-aligned, but instead is " << rec_rec;
-      ASSERT(t, 0 == ((uintptr_t)child_rec & (sizeof(int) - 1)))
-          << "Replaying record must be int-aligned, but instead is %p"
-          << child_rec;
-      ASSERT(t, 0 == rec_rec->desched || 1 == rec_rec->desched)
-          << "Recorded record is corrupted: rec->desched is "
-          << rec_rec->desched;
-      // We'll check at syscall entry that the recorded and
-      // replayed record values match.
+  ASSERT(t, 0 == ((uintptr_t)rec_rec & (sizeof(int) - 1)))
+      << "Recorded record must be int-aligned, but instead is " << rec_rec;
+  ASSERT(t, 0 == ((uintptr_t)child_rec & (sizeof(int) - 1)))
+      << "Replaying record must be int-aligned, but instead is " << child_rec;
+  ASSERT(t, 0 == rec_rec->desched || 1 == rec_rec->desched)
+      << "Recorded record is corrupted: rec->desched is " << rec_rec->desched;
+  // We'll check at syscall entry that the recorded and
+  // replayed record values match.
 
-      LOG(debug) << "Replaying buffered `" << t->syscall_name(call)
-                 << "' (ret:" << rec_rec->ret << ") which does"
-                 << (!rec_rec->desched ? " not" : "") << " use desched event";
+  LOG(debug) << "Replaying buffered `" << t->syscall_name(call)
+             << "' (ret:" << rec_rec->ret << ") which does"
+             << (!rec_rec->desched ? " not" : "") << " use desched event";
 
-      if (!rec_rec->desched) {
-        current_step.flush.state = FLUSH_ENTER;
-      } else {
-        current_step.flush.state = FLUSH_ARM;
-        current_step.flush.desched.type = DESCHED_ARM;
-        current_step.flush.desched.state = DESCHED_ENTER;
-      }
-      return flush_one_syscall(t, constraints);
-
-    case FLUSH_ARM:
-      /* Skip past the ioctl that armed the desched
-       * notification. */
-      LOG(debug) << "  skipping over arm-desched ioctl";
-      if (skip_desched_ioctl(t, &current_step.flush.desched, constraints) ==
-          INCOMPLETE) {
-        return INCOMPLETE;
-      }
-      current_step.flush.state = FLUSH_ENTER;
-      return flush_one_syscall(t, constraints);
-
-    case FLUSH_ENTER: {
-      LOG(debug) << "  advancing to buffered syscall entry";
-      if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
-        return INCOMPLETE;
-      }
-      assert_at_buffered_syscall(t, call);
-      assert_same_rec(t, rec_rec, child_rec);
-
-      EmuFs::AutoGc gc(*this, t->arch(), call, EXITING_SYSCALL);
-
-      assert_at_buffered_syscall(t, call);
-
-      // Restore saved trace data.
-      memcpy(child_rec->extra_data, rec_rec->extra_data, rec_rec->size);
-
-      Registers saved_regs = t->regs();
-
-      t->finish_emulated_syscall();
-
-      perform_syscallbuf_syscall_side_effects(t, saved_regs);
-
-      Registers r = t->regs();
-      r.set_syscall_result(rec_rec->ret);
-      t->set_regs(r);
-
-      if (is_futex_syscall(call, t->arch())) {
-        restore_futex_words(t, rec_rec);
-      }
-
-      accumulate_syscall_performed();
-
-      if (!rec_rec->desched) {
-        current_step.flush.state = FLUSH_DONE;
-        return COMPLETE;
-      }
-      current_step.flush.state = FLUSH_DISARM;
-      current_step.flush.desched.type = DESCHED_DISARM;
-      current_step.flush.desched.state = DESCHED_ENTER;
-      return flush_one_syscall(t, constraints);
-    }
-    case FLUSH_DISARM:
-      /* And skip past the ioctl that disarmed the desched
-       * notification. */
-      LOG(debug) << "  skipping over disarm-desched ioctl";
-      if (skip_desched_ioctl(t, &current_step.flush.desched, constraints) ==
-          INCOMPLETE) {
-        return INCOMPLETE;
-      }
-      current_step.flush.state = FLUSH_DONE;
-      return COMPLETE;
-
-    default:
-      FATAL() << "Unknown buffer-flush state " << current_step.flush.state;
-      return COMPLETE; /* unreached */
+  LOG(debug) << "  advancing to buffered syscall entry";
+  if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
+    return INCOMPLETE;
   }
+  assert_at_buffered_syscall(t, call);
+  assert_same_rec(t, rec_rec, child_rec);
+
+  EmuFs::AutoGc gc(*this, t->arch(), call, EXITING_SYSCALL);
+
+  assert_at_buffered_syscall(t, call);
+
+  // Restore saved trace data.
+  memcpy(child_rec->extra_data, rec_rec->extra_data, rec_rec->size);
+
+  Registers saved_regs = t->regs();
+
+  t->finish_emulated_syscall();
+
+  perform_syscallbuf_syscall_side_effects(t, saved_regs);
+
+  Registers r = t->regs();
+  r.set_syscall_result(rec_rec->ret);
+  t->set_regs(r);
+
+  if (is_futex_syscall(call, t->arch())) {
+    restore_futex_words(t, rec_rec);
+  }
+
+  accumulate_syscall_performed();
+
+  return COMPLETE;
 }
 
 /**
@@ -1175,8 +1105,6 @@ Completion ReplaySession::flush_syscallbuf(Task* t,
       return INCOMPLETE;
     }
 
-    assert(FLUSH_DONE == current_step.flush.state);
-
     const struct syscallbuf_record* record =
         (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
                                           current_step.flush
@@ -1184,7 +1112,6 @@ Completion ReplaySession::flush_syscallbuf(Task* t,
     size_t stored_rec_size = stored_record_size(record->size);
     current_step.flush.syscall_record_offset += stored_rec_size;
     current_step.flush.num_rec_bytes_remaining -= stored_rec_size;
-    current_step.flush.state = FLUSH_START;
 
     LOG(debug) << "  " << current_step.flush.num_rec_bytes_remaining
                << " bytes remain to flush";

@@ -4,7 +4,7 @@ import io
 import os
 import sys
 
-def write_rr_page_32(f):
+def write_rr_page_32(f, is_replay):
     bytes = bytearray([
         0x90, 0x90, # padding
         # rr_page_untraced_syscall_ip:
@@ -20,9 +20,14 @@ def write_rr_page_32(f):
         0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
     ])
     f.write(bytes)
+    if is_replay:
+        # privileged untraced syscalls are not executed during replay.
+        # Instead we just emulate success.
+        bytes[2] = 0x31
+        bytes[3] = 0xc0 # xor %eax,%eax
     f.write(bytes)
 
-def write_rr_page_64(f):
+def write_rr_page_64(f, is_replay):
     # See Task::did_waitpid for an explanation of why we have to
     # modify R11 and RCX here.
     bytes = bytearray([
@@ -41,11 +46,18 @@ def write_rr_page_64(f):
         0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
     ])
     f.write(bytes)
+    if is_replay:
+        # privileged untraced syscalls are not executed during replay.
+        # Instead we just emulate success.
+        bytes[2] = 0x31
+        bytes[3] = 0xc0 # xor %eax,%eax
     f.write(bytes)
 
 generators_for = {
-    'rr_page_32': write_rr_page_32,
-    'rr_page_64': write_rr_page_64,
+    'rr_page_32': lambda stream: write_rr_page_32(stream, False),
+    'rr_page_64': lambda stream: write_rr_page_64(stream, False),
+    'rr_page_32_replay': lambda stream: write_rr_page_32(stream, True),
+    'rr_page_64_replay': lambda stream: write_rr_page_64(stream, True),
 }
 
 def main(argv):

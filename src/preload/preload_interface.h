@@ -192,7 +192,7 @@ struct syscallbuf_hdr {
   uint8_t abort_commit;
   /* True if, next time we exit the syscall buffer hook, libpreload should
    * execute SYS_rrcall_notify_syscall_hook_exit to give rr the opportunity to
-   * deliver a signal. */
+   * deliver a signal and/or reset the syscallbuf. */
   uint8_t notify_on_syscall_hook_exit;
   /* This tracks whether the buffer is currently in use for a
    * system call. This is helpful when a signal handler runs

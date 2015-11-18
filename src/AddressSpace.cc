@@ -204,16 +204,22 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
 }
 
 static string find_rr_page_file(Task* t) {
-  string exe_path = exe_directory();
+  string path = exe_directory() + "rr_page_";
   switch (t->arch()) {
     case x86:
-      return exe_path + "rr_page_32";
+      path += "32";
+      break;
     case x86_64:
-      return exe_path + "rr_page_64";
+      path += "64";
+      break;
     default:
       ASSERT(t, false) << "Unknown architecture";
-      return exe_path;
+      return path;
   }
+  if (!t->session().is_recording()) {
+    path += "_replay";
+  }
+  return path;
 }
 
 void AddressSpace::map_rr_page(Task* t) {

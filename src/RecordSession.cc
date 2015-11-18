@@ -532,7 +532,10 @@ void RecordSession::desched_state_changed(Task* t) {
        * is a good time for us to reset the record counter. */
       t->delay_syscallbuf_reset = false;
       t->delay_syscallbuf_flush = false;
-      t->maybe_reset_syscallbuf();
+      ASSERT(t, t->syscallbuf_hdr);
+      // Run the syscallbuf exit hook. This ensures we'll be able to reset
+      // the syscallbuf before trying to buffer another syscall.
+      t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
 
       // We were just descheduled for potentially a long
       // time, and may have just had a signal become
