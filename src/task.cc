@@ -1125,6 +1125,20 @@ static bool record_extra_regs(const Event& ev) {
   }
 }
 
+/**
+ * If the syscallbuf has just been flushed, and resetting hasn't been
+ * overridden with a delay request, then record the reset event for
+ * replay.
+ */
+void Task::maybe_reset_syscallbuf() {
+  if (flushed_syscallbuf && !delay_syscallbuf_reset) {
+    flushed_syscallbuf = false;
+    LOG(debug) << "Syscallbuf reset";
+    reset_syscallbuf();
+    record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO, arch()));
+  }
+}
+
 void Task::record_event(const Event& ev) {
   maybe_flush_syscallbuf();
 
@@ -1148,6 +1162,11 @@ void Task::record_event(const Event& ev) {
   }
 
   trace_writer().write_frame(frame);
+
+  // After we've output an event, it's safe to reset the syscallbuf (if not
+  // explicitly delayed) since we will have exited the syscallbuf code that
+  // consumed the syscallbuf data.
+  maybe_reset_syscallbuf();
 }
 
 void Task::flush_inconsistent_state() { ticks = 0; }
@@ -1158,7 +1177,7 @@ void Task::record_local(remote_ptr<void> addr, ssize_t num_bytes,
                         const void* data) {
   maybe_flush_syscallbuf();
 
-  assert(num_bytes >= 0);
+  ASSERT(this, num_bytes >= 0);
 
   if (!addr) {
     return;
@@ -1168,10 +1187,10 @@ void Task::record_local(remote_ptr<void> addr, ssize_t num_bytes,
 }
 
 void Task::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
+  maybe_flush_syscallbuf();
+
   // We shouldn't be recording a scratch address.
   ASSERT(this, !addr || addr != scratch_ptr);
-
-  maybe_flush_syscallbuf();
 
   assert(num_bytes >= 0);
 
@@ -1184,11 +1203,11 @@ void Task::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
 }
 
 void Task::record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes) {
+  maybe_flush_syscallbuf();
+
   // We shouldn't be recording a scratch address.
   ASSERT(this, !addr || addr != scratch_ptr);
   ASSERT(this, num_bytes >= 0);
-
-  maybe_flush_syscallbuf();
 
   vector<uint8_t> buf;
   if (!addr.is_null()) {
@@ -1201,10 +1220,10 @@ void Task::record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes) {
 
 void Task::record_remote_even_if_null(remote_ptr<void> addr,
                                       ssize_t num_bytes) {
+  maybe_flush_syscallbuf();
+
   // We shouldn't be recording a scratch address.
   ASSERT(this, !addr || addr != scratch_ptr);
-
-  maybe_flush_syscallbuf();
 
   assert(num_bytes >= 0);
 
@@ -2618,18 +2637,20 @@ void Task::maybe_flush_syscallbuf() {
     // Already flushing.
     return;
   }
+
+  ASSERT(this, !flushed_syscallbuf ||
+                   flushed_num_rec_bytes == syscallbuf_hdr->num_rec_bytes);
+
   // This can be called while the task is not stopped, when we prematurely
   // terminate the trace. In that case, we should avoid reading header data
   // that the task could be concurrently modifying. We could still race on
   // the actual syscallbuf data, but there's nothing we can do about that and
   // it could only affect replay of the very last syscall before termination.
   if (!syscallbuf_hdr || (is_stopped && 0 == syscallbuf_hdr->num_rec_bytes) ||
-      delay_syscallbuf_flush) {
-    // No syscallbuf or no records.  No flushing to do.
+      delay_syscallbuf_flush || flushed_syscallbuf) {
+    // No syscallbuf or no records, or we've already flushed.
     return;
   }
-
-  ASSERT(this, !flushed_syscallbuf);
 
   // Write the entire buffer in one shot without parsing it,
   // because replay will take care of that.
@@ -2641,14 +2662,11 @@ void Task::maybe_flush_syscallbuf() {
   record_current_event();
   pop_event(EV_SYSCALLBUF_FLUSH);
 
-  if (is_stopped) {
-    // Reset header.
-    assert(!syscallbuf_hdr->abort_commit);
-    if (!delay_syscallbuf_reset) {
-      reset_syscallbuf();
-    }
-  }
   flushed_syscallbuf = true;
+  flushed_num_rec_bytes = syscallbuf_hdr->num_rec_bytes;
+
+  LOG(debug) << "Syscallbuf flushed with num_rec_bytes="
+             << flushed_num_rec_bytes;
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,

@@ -1018,8 +1018,23 @@ public:
    * Call this before recording events or data.  Records
    * syscallbuf data and flushes the buffer, if there's buffered
    * data.
+   *
+   * The timing of calls to this is tricky. We must flush the syscallbuf
+   * before recording any data associated with events that happened after the
+   * buffered syscalls. But we don't support flushing a syscallbuf twice with
+   * no intervening reset, i.e. after flushing we have to be sure we'll get
+   * a chance to reset the syscallbuf (i.e. record some other kind of event)
+   * before the tracee runs again in a way that might append another buffered
+   * syscall --- so we can't flush too early
    */
   void maybe_flush_syscallbuf();
+
+  /**
+   * Call this after recording an event when it might be safe to reset the
+   * syscallbuf. It must be after recording an event to ensure during replay
+   * we run past any syscallbuf after-syscall code that uses the buffer data.
+   */
+  void maybe_reset_syscallbuf();
 
   /**
    * Call this to reset syscallbuf_hdr->num_rec_bytes and zero out the data
@@ -1265,6 +1280,8 @@ public:
    * next available slow (taking |desched| into
    * consideration). */
   bool flushed_syscallbuf;
+  /* Value of hdr->num_rec_bytes when the buffer was flushed */
+  uint32_t flushed_num_rec_bytes;
   /* This bit is set when code wants to prevent the syscall
    * record buffer from being reset when it normally would be.
    * Currently, the desched'd syscall code uses this. */

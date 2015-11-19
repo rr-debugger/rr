@@ -528,12 +528,12 @@ void RecordSession::desched_state_changed(Task* t) {
 
       /* The tracee has just finished sanity-checking the
        * aborted record, and won't touch the syscallbuf
-       * during this (aborted) transaction again.  So now is
-       * a good time for us to reset the record counter. */
-      t->reset_syscallbuf();
+       * during this (aborted) transaction again.  So now
+       * is a good time for us to reset the record counter. */
       t->delay_syscallbuf_reset = false;
       t->delay_syscallbuf_flush = false;
-      t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO, t->arch()));
+      t->maybe_reset_syscallbuf();
+
       // We were just descheduled for potentially a long
       // time, and may have just had a signal become
       // pending.  Ensure we get another chance to run.
@@ -775,21 +775,6 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
     default:
       FATAL() << "Unknown exec state " << t->ev().Syscall().state;
   }
-}
-
-/**
- * If the syscallbuf has just been flushed, and resetting hasn't been
- * overridden with a delay request, then record the reset event for
- * replay.
- */
-static void maybe_reset_syscallbuf(Task* t) {
-  if (t->flushed_syscallbuf && !t->delay_syscallbuf_reset) {
-    t->record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO, t->arch()));
-  }
-  /* Any code that sets |delay_syscallbuf_reset| is responsible
-   * for recording its own SYSCALLBUF_RESET event at a
-   * convenient time. */
-  t->flushed_syscallbuf = false;
 }
 
 /** If the perf counters seem to be working return, otherwise don't return. */
@@ -1285,12 +1270,15 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;
+      LOG(debug) << "Signal " << si.si_signo << ", emulating ptrace stop";
       break;
     case DEFER_SIGNAL:
+      LOG(debug) << "Signal " << si.si_signo << " deferred";
       // Leave signal on the stack and continue task execution. We'll try again
       // later.
       return false;
     case SIGNAL_HANDLED:
+      LOG(debug) << "Signal " << si.si_signo << " handled";
       break;
   }
   step_state->continue_type = DONT_CONTINUE;
@@ -1439,7 +1427,6 @@ RecordSession::RecordResult RecordSession::record_step() {
   if (!(did_wait && handle_ptrace_event(t, &step_state)) &&
       !(did_wait && handle_signal_event(t, &step_state))) {
     runnable_state_changed(t, &result, did_wait, &step_state);
-    maybe_reset_syscallbuf(t);
 
     if (result.status != STEP_CONTINUE ||
         step_state.continue_type == DONT_CONTINUE) {

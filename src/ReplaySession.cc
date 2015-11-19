@@ -1422,8 +1422,6 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
   }
 
   if (t->child_sig != 0) {
-    assert(ev.is_signal_event() &&
-           t->child_sig == ev.Signal().siginfo.si_signo);
     t->child_sig = 0;
   }
 
