@@ -96,7 +96,6 @@ static void __ptrace_cont(Task* t, int expect_syscallno) {
 
   ASSERT(t, !t->pending_sig()) << "Expected no pending signal, but got "
                                << t->pending_sig();
-  t->child_sig = 0;
 
   /* check if we are synchronized with the trace -- should never fail */
   int current_syscall = t->regs().original_syscallno();

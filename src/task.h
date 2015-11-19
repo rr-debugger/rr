@@ -1311,10 +1311,6 @@ public:
   // Value to return from PR_GET_SECCOMP
   uint8_t prctl_seccomp_status;
 
-  /* State used only during replay. */
-
-  int child_sig;
-
   /* State used during both recording and replay. */
 
   PerfCounters hpc;

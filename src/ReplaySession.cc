@@ -236,11 +236,9 @@ Completion ReplaySession::cont_syscall_boundary(
     t->resume_execution(resume_how, RESUME_WAIT, ticks_request);
   }
 
-  t->child_sig = t->pending_sig();
   if (t->pending_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
     // This would normally be triggered by constraints.ticks_target but it's
     // also possible to get stray signals here.
-    t->child_sig = 0;
     return INCOMPLETE;
   }
 
@@ -296,7 +294,6 @@ Completion ReplaySession::exit_syscall(Task* t,
 }
 
 void ReplaySession::check_pending_sig(Task* t) {
-  t->child_sig = t->pending_sig();
   ASSERT(t, 0 < t->pending_sig())
       << "Replaying `" << trace_frame.event()
       << "': expecting tracee signal or trap, but instead at `"
@@ -557,8 +554,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
   bool ignored_early_match = false;
   Ticks ticks_left_at_ignored_early_match = 0;
 
-  assert(t->child_sig == 0);
-
   /* Step 1: advance to the target ticks (minus a slack region) as
    * quickly as possible by programming the hpc. */
   ticks_left = ticks - t->tick_count();
@@ -568,8 +563,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
 
   /* XXX should we only do this if (ticks > 10000)? */
   while (ticks_left - SKID_SIZE > SKID_SIZE) {
-    t->child_sig = 0;
-
     LOG(debug) << "  programming interrupt for " << (ticks_left - SKID_SIZE)
                << " ticks";
 
@@ -655,7 +648,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
            * target.) */
           assert(!at_target);
 
-          t->child_sig = 0;
           pending_SIGTRAP = false;
           t->move_ip_before_breakpoint();
           /* We just backed up the $ip, but
@@ -673,7 +665,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
            * awkward to assert that here, so we
            * don't yet.  TODO. */
           LOG(debug) << "    (SIGTRAP; stepi'd target $ip)";
-          t->child_sig = 0;
           break;
       }
     }
@@ -804,8 +795,6 @@ Completion ReplaySession::emulate_signal_delivery(
    * callframe, and we need to restore the $sp for continued
    * execution. */
   t->set_regs(trace_frame.regs());
-  /* Delivered the signal. */
-  t->child_sig = 0;
 
   t->validate_regs();
   return COMPLETE;
@@ -868,7 +857,6 @@ Completion ReplaySession::emulate_deterministic_signal(
 
   continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
   if (is_ignored_signal(t->pending_sig())) {
-    t->child_sig = 0;
     return emulate_deterministic_signal(t, sig, constraints);
   }
   if (SIGTRAP == t->pending_sig() &&
@@ -883,8 +871,6 @@ Completion ReplaySession::emulate_deterministic_signal(
 
   if (EV_SEGV_RDTSC == ev.type()) {
     t->set_regs(trace_frame.regs());
-    /* We just "delivered" this pseudosignal. */
-    t->child_sig = 0;
   }
 
   return COMPLETE;
@@ -1399,10 +1385,6 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
                << ", locked:" << bool(t->syscallbuf_hdr->locked) << ")";
   }
 
-  if (t->child_sig != 0) {
-    t->child_sig = 0;
-  }
-
   /* Ask the trace-interpretation code what to do next in order
    * to retire the current frame. */
   memset(&current_step, 0, sizeof(current_step));
@@ -1548,8 +1530,6 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     ASSERT(t, !result.break_status.singlestep_complete ||
                   constraints.is_singlestep());
 
-    /* Don't restart with SIGTRAP anywhere. */
-    t->child_sig = 0;
     check_approaching_ticks_target(t, constraints, result.break_status);
     result.did_fast_forward = did_fast_forward;
     return result;
