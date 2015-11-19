@@ -36,7 +36,10 @@ enum EventType {
   // Recorded syscallbuf data for one or more buffered syscalls.
   EV_SYSCALLBUF_FLUSH,
   EV_SYSCALLBUF_ABORT_COMMIT,
-  // The syscallbuf was reset to the empty state.
+  // The syscallbuf was reset to the empty state. We record this event
+  // later than it really happens, because during replay we must proceed to
+  // the event *after* a syscallbuf flush and then reset the syscallbuf,
+  // to ensure we don't reset it while preload code is still using the data.
   EV_SYSCALLBUF_RESET,
   // Syscall was entered, the syscall instruction was patched, and the
   // syscall was aborted. Resume execution at the patch.
