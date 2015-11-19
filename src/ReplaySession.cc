@@ -470,22 +470,19 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
 }
 
 static void guard_unexpected_signal(Task* t) {
-  Event ev;
-  int child_sig_is_zero_or_sigtrap =
-      (0 == t->child_sig || SIGTRAP == t->child_sig);
-  /* "0" normally means "syscall", but continue_or_step() guards
-   * against unexpected syscalls.  So the caller must have set
-   * "0" intentionally. */
-  if (child_sig_is_zero_or_sigtrap) {
+  if (ReplaySession::is_ignored_signal(t->pending_sig()) ||
+      SIGTRAP == t->pending_sig()) {
     return;
   }
-  if (t->child_sig) {
-    ev = SignalEvent(t->child_sig, NONDETERMINISTIC_SIG, t->arch());
+
+  Event ev;
+  if (t->pending_sig()) {
+    ev = SignalEvent(t->pending_sig(), NONDETERMINISTIC_SIG, t->arch());
   } else {
     ev = SyscallEvent(max(0L, (long)t->regs().original_syscallno()), t->arch());
   }
-  ASSERT(t, child_sig_is_zero_or_sigtrap) << "Replay got unrecorded event "
-                                          << ev << " while awaiting signal";
+  ASSERT(t, false) << "Replay got unrecorded event " << ev
+                   << " while awaiting signal";
 }
 
 static bool is_same_execution_point(Task* t, const Registers& rec_regs,
@@ -577,9 +574,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
                << " ticks";
 
     continue_or_step(t, constraints, (TicksRequest)(ticks_left - SKID_SIZE));
-    if (is_ignored_signal(t->pending_sig())) {
-      t->child_sig = 0;
-    }
     guard_unexpected_signal(t);
 
     ticks_left = ticks - t->tick_count();
@@ -747,33 +741,18 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
      * invariant. */
     ticks_left = ticks - t->tick_count();
 
-    if (is_ignored_signal(t->child_sig)) {
-      /* We don't usually expect a time-slice signal
-       * during this phase, but it's possible for an
-       * ignored signal to interrupt the previous
-       * step just as the tracee enters the slack
-       * region, i.e., where a ticks signal was just
-       * about to fire.  (There's not really a
-       * non-racy way to disable the ticks interrupt,
-       * and we need to keep the counter running for
-       * overshoot checking anyway.)  So this is the
-       * most convenient way to squelch that
-       * "spurious" signal. */
-      t->child_sig = 0;
+    /* Sometimes (e.g. in the ptrace_signal_32 test), we're in almost
+     * the correct state when we enter |advance_to|, except that exotic
+     * registers (i.e. segment registers) need to be normalized by the kernel
+     * by continuing and hitting a deterministic signal without actually
+     * advancing execution. So we allow |advance_to| to proceed and actually
+     * reach the desired state.
+     */
+    if (!is_same_execution_point(t, regs, ticks_left, ticks_slack,
+                                 &ignored_early_match,
+                                 &ticks_left_at_ignored_early_match)) {
+      guard_unexpected_signal(t);
     }
-    if (is_same_execution_point(t, regs, ticks_left, ticks_slack,
-                                &ignored_early_match,
-                                &ticks_left_at_ignored_early_match)) {
-      /* Sometimes (e.g. in the ptrace_signal_32 test), we're in almost
-       * the correct state when we enter |advance_to|, except that exotic
-       * registers (i.e. segment registers) need to be normalized by the kernel
-       * by continuing and hitting a deterministic signal without actually
-       * advancing execution. So we allow |advance_to| to proceed and actually
-       * reach the desired state.
-       */
-      t->child_sig = 0;
-    }
-    guard_unexpected_signal(t);
 
     guard_overshoot(t, regs, ticks, ticks_left, ticks_slack,
                     ignored_early_match, ticks_left_at_ignored_early_match);
