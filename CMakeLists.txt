@@ -533,6 +533,7 @@ set(TESTS_WITH_PROGRAM
   checkpoint_dying_threads
   checkpoint_mixed_mode
   clone_interruption
+  clone_vfork
   conditional_breakpoint_calls
   conditional_breakpoint_offload
   condvar_stress
