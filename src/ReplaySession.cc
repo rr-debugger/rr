@@ -962,11 +962,6 @@ Completion ReplaySession::skip_desched_ioctl(
  * bytes and a pointer to the first record through outparams.
  */
 void ReplaySession::prepare_syscallbuf_records(Task* t) {
-  if (!current_step.flush.need_buffer_restore) {
-    return;
-  }
-  current_step.flush.need_buffer_restore = false;
-
   // Read the recorded syscall buffer back into the buffer
   // region.
   auto buf = t->trace_reader().read_raw_data();
@@ -1209,8 +1204,6 @@ Completion ReplaySession::flush_one_syscall(
  */
 Completion ReplaySession::flush_syscallbuf(Task* t,
                                            const StepConstraints& constraints) {
-  prepare_syscallbuf_records(t);
-
   const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
 
   while (current_step.flush.num_rec_bytes_remaining > 0) {
@@ -1456,8 +1449,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       break;
     case EV_SYSCALLBUF_FLUSH:
       current_step.action = TSTEP_FLUSH_SYSCALLBUF;
-      current_step.flush.need_buffer_restore = true;
-      current_step.flush.num_rec_bytes_remaining = 0;
+      prepare_syscallbuf_records(t);
       break;
     case EV_SYSCALLBUF_RESET:
       // Reset syscallbuf_hdr->num_rec_bytes and zero out the recorded data.

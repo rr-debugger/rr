@@ -45,9 +45,6 @@ enum ReplayFlushBufferedSyscallStep {
  * per-Session data.
  */
 struct ReplayFlushBufferedSyscallState {
-  /* True when we need to write the syscallbuf data back to
-   * the child. */
-  bool need_buffer_restore;
   /* After the data is restored, the number of record bytes that
    * still need to be flushed. */
   size_t num_rec_bytes_remaining;
