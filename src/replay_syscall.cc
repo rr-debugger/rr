@@ -201,7 +201,8 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
     // If we allow CLONE_UNTRACED then the child would escape from rr control
     // and we can't allow that.
     // Block CLONE_CHILD_CLEARTID because we'll emulate that ourselves.
-    r.set_arg1(flags & ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID));
+    // Filter CLONE_VFORK too
+    r.set_arg1(flags & ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK));
     t->set_regs(r);
   }
 
