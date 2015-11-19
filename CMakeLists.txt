@@ -478,6 +478,7 @@ set(BASIC_TESTS
   strict_priorities
   switch_read
   sync
+  syscallbuf_signal_reset
   syscallbuf_timeslice
   syscallbuf_timeslice2
   sysconf

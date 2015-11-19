@@ -1254,8 +1254,6 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
     default:
       return;
   }
-
-  maybe_reset_syscallbuf(t);
 }
 
 bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
@@ -1441,6 +1439,8 @@ RecordSession::RecordResult RecordSession::record_step() {
   if (!(did_wait && handle_ptrace_event(t, &step_state)) &&
       !(did_wait && handle_signal_event(t, &step_state))) {
     runnable_state_changed(t, &result, did_wait, &step_state);
+    maybe_reset_syscallbuf(t);
+
     if (result.status != STEP_CONTINUE ||
         step_state.continue_type == DONT_CONTINUE) {
       return result;

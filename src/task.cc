@@ -2628,6 +2628,9 @@ void Task::maybe_flush_syscallbuf() {
     // No syscallbuf or no records.  No flushing to do.
     return;
   }
+
+  ASSERT(this, !flushed_syscallbuf);
+
   // Write the entire buffer in one shot without parsing it,
   // because replay will take care of that.
   push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));

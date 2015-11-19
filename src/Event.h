@@ -33,8 +33,10 @@ enum EventType {
   // Scheduling signal interrupted the trace.
   EV_SCHED,
   EV_SEGV_RDTSC,
+  // Recorded syscallbuf data for one or more buffered syscalls.
   EV_SYSCALLBUF_FLUSH,
   EV_SYSCALLBUF_ABORT_COMMIT,
+  // The syscallbuf was reset to the empty state.
   EV_SYSCALLBUF_RESET,
   // Syscall was entered, the syscall instruction was patched, and the
   // syscall was aborted. Resume execution at the patch.
