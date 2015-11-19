@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+
+save_exe simple$bitness
+record $TESTNAME simple$bitness-$nonce
+replay
+check clone-vfork-EXIT-SUCCESS

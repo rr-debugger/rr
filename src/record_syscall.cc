@@ -1692,6 +1692,11 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       syscall_state.syscall_entry_registers =
           unique_ptr<Registers>(new Registers(t->regs()));
       unsigned long flags = t->regs().arg1();
+      if (flags & CLONE_VFORK) {
+        Registers r = t->regs();
+        r.set_arg1(flags & ~CLONE_VFORK);
+        t->set_regs(r);
+      }
       if (flags & CLONE_UNTRACED) {
         Registers r = t->regs();
         // We can't let tracees clone untraced tasks,
