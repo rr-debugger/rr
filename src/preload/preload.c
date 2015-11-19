@@ -320,10 +320,6 @@ static long traced_raw_syscall(const struct syscall_info* call) {
 #define RR_FCNTL_SYSCALL SYS_fcntl
 #endif
 
-static int privileged_traced_close(int fd) {
-  return privileged_traced_syscall1(SYS_close, fd);
-}
-
 static int privileged_traced_fcntl(int fd, int cmd, ...) {
   va_list ap;
   void* arg;
@@ -352,15 +348,6 @@ static int privileged_traced_perf_event_open(struct perf_event_attr* attr,
 
 static int privileged_traced_raise(int sig) {
   return privileged_traced_syscall2(SYS_kill, privileged_traced_getpid(), sig);
-}
-
-static int privileged_traced_sigprocmask(int how, const sigset_t* set,
-                                         sigset_t* oldset) {
-  /* Warning: expecting this to only change the mask of the
-   * current task is a linux-ism; POSIX leaves the behavior
-   * undefined. */
-  return privileged_traced_syscall4(SYS_rt_sigprocmask, how, set, oldset,
-                                    _NSIG / 8);
 }
 
 static ssize_t privileged_traced_write(int fd, const void* buf, size_t count) {
@@ -409,24 +396,6 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
 #else
 #define debug(msg, ...) ((void)0)
 #endif
-
-/**
- * Mask out all signals in preparation for a critical section.
- * Previous mask saved to |saved_mask|, which should be passed to
- * |exit_signal_critical_section()|.
- */
-static void enter_signal_critical_section(sigset_t* saved_mask) {
-  sigset_t mask;
-  sigfillset(&mask);
-  privileged_traced_sigprocmask(SIG_BLOCK, &mask, saved_mask);
-}
-
-/**
- * Restore |saved_mask|, after exiting critical section.
- */
-static void exit_signal_critical_section(const sigset_t* saved_mask) {
-  privileged_traced_sigprocmask(SIG_SETMASK, saved_mask, NULL);
-}
 
 /* Helpers for invoking untraced syscalls, which do *not* generate
  * ptrace traps.
@@ -486,6 +455,21 @@ static long privileged_untraced_syscall(int syscallno, long a0, long a1,
   privileged_untraced_syscall2(no, a0, 0)
 #define privileged_untraced_syscall0(no) privileged_untraced_syscall1(no, 0)
 
+static int privileged_untraced_close(int fd) {
+  return privileged_untraced_syscall1(SYS_close, fd);
+}
+
+static int privileged_untraced_fcntl(int fd, int cmd, ...) {
+  va_list ap;
+  void* arg;
+
+  va_start(ap, cmd);
+  arg = va_arg(ap, void*);
+  va_end(ap);
+
+  return privileged_untraced_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
+}
+
 #if RR_SYSCALL_FILTERING
 extern RR_HIDDEN void _syscall_hook_trampoline(void);
 #else
@@ -508,10 +492,7 @@ static void _syscall_hook_trampoline(void) {}
  * This is a "magic" syscall implemented by rr.
  */
 static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
-  sigset_t mask;
-  enter_signal_critical_section(&mask);
   privileged_traced_syscall1(SYS_rrcall_init_buffers, args);
-  exit_signal_critical_section(&mask);
 }
 
 /**
@@ -540,18 +521,18 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   if (0 > fd) {
     fatal("Failed to dup desched fd");
   }
-  if (privileged_traced_close(tmp_fd)) {
+  if (privileged_untraced_close(tmp_fd)) {
     fatal("Failed to close tmp_fd");
   }
-  if (privileged_traced_fcntl(fd, F_SETFL, O_ASYNC)) {
+  if (privileged_untraced_fcntl(fd, F_SETFL, O_ASYNC)) {
     fatal("Failed to fcntl(O_ASYNC) the desched counter");
   }
   own.type = F_OWNER_TID;
   own.pid = tid;
-  if (privileged_traced_fcntl(fd, F_SETOWN_EX, &own)) {
+  if (privileged_untraced_fcntl(fd, F_SETOWN_EX, &own)) {
     fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
   }
-  if (privileged_traced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
+  if (privileged_untraced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
     fatal("Failed to fcntl(SETSIG, %d) the desched counter",
           SYSCALLBUF_DESCHED_SIGNAL);
   }
@@ -610,7 +591,6 @@ static void post_fork_child(void) {
  * Initialize process-global buffering state, if enabled.
  */
 static void __attribute__((constructor)) init_process(void) {
-  sigset_t mask;
   struct rrcall_init_preload_params params;
   extern RR_HIDDEN void _stub_buffer(void);
   extern RR_HIDDEN void _stub_buffer_end(void);
@@ -683,9 +663,7 @@ static void __attribute__((constructor)) init_process(void) {
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
 
-  enter_signal_critical_section(&mask);
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
-  exit_signal_critical_section(&mask);
 
   process_inited = 1;
 
