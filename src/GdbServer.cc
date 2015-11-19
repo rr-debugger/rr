@@ -379,6 +379,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
           << "Replay interrupts should be handled at a higher level";
       assert(!t || t->task_group()->tguid() == debuggee_tguid);
       dbg->notify_stop(t ? get_threadid(t) : GdbThreadId(), 0);
+      stop_reason = 0;
       if (t) {
         last_query_tuid = last_continue_tuid = t->tuid();
       }
@@ -510,7 +511,8 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     }
     case DREQ_GET_STOP_REASON: {
-      dbg->reply_get_stop_reason(get_threadid(target), target->child_sig);
+      dbg->reply_get_stop_reason(get_threadid(session, last_continue_tuid),
+                                 stop_reason);
       return;
     }
     case DREQ_SET_SW_BREAK: {
@@ -685,6 +687,7 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
     dbg->notify_stop(get_threadid(t), sig, watch_addr.as_int());
+    stop_reason = sig;
     last_query_tuid = last_continue_tuid = t->tuid();
   }
 }
@@ -771,6 +774,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
       // We don't support reverse execution in a diversion. Just issue
       // an immediate stop.
       dbg->notify_stop(get_threadid(*diversion_session, last_continue_tuid), 0);
+      stop_reason = 0;
       last_query_tuid = last_continue_tuid;
       continue;
     }
@@ -973,6 +977,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       if (t->task_group()->tguid() == debuggee_tguid) {
         interrupt_pending = false;
         dbg->notify_stop(get_threadid(t), 0);
+        stop_reason = 0;
         return CONTINUE_DEBUGGING;
       }
     }

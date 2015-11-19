@@ -44,6 +44,7 @@ public:
   GdbServer(std::shared_ptr<ReplaySession> session,
             const ReplaySession::Flags& flags, const Target& target)
       : target(target),
+        stop_reason(0),
         stop_replaying_to_target(false),
         interrupt_pending(false),
         timeline(std::move(session), flags),
@@ -202,6 +203,8 @@ private:
   TaskUid last_continue_tuid;
   // The TaskUid of the last queried task.
   TaskUid last_query_tuid;
+  // Stop reason for last notified stop.
+  int stop_reason;
   // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
   // True when a DREQ_INTERRUPT has been received but not handled, or when
