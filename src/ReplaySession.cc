@@ -237,24 +237,22 @@ Completion ReplaySession::cont_syscall_boundary(
   }
 
   t->child_sig = t->pending_sig();
-  if (t->child_sig == PerfCounters::TIME_SLICE_SIGNAL) {
+  if (t->pending_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
     // This would normally be triggered by constraints.ticks_target but it's
     // also possible to get stray signals here.
     t->child_sig = 0;
     return INCOMPLETE;
   }
 
-  if (is_ignored_signal(t->child_sig)) {
+  if (is_ignored_signal(t->pending_sig())) {
     return cont_syscall_boundary(t, constraints);
   }
 
-  if (SIGTRAP == t->child_sig) {
+  if (SIGTRAP == t->pending_sig()) {
     return INCOMPLETE;
-  } else if (t->child_sig) {
-    ASSERT(t, false) << "Replay got unrecorded signal " << t->child_sig;
   }
-
-  assert(t->child_sig == 0);
+  ASSERT(t, !t->pending_sig()) << "Replay got unrecorded signal "
+                               << t->pending_sig();
 
   return COMPLETE;
 }
@@ -299,11 +297,7 @@ Completion ReplaySession::exit_syscall(Task* t,
 
 void ReplaySession::check_pending_sig(Task* t) {
   t->child_sig = t->pending_sig();
-  bool child_sig_gt_zero = 0 < t->child_sig;
-  if (child_sig_gt_zero) {
-    return;
-  }
-  ASSERT(t, child_sig_gt_zero)
+  ASSERT(t, 0 < t->pending_sig())
       << "Replaying `" << trace_frame.event()
       << "': expecting tracee signal or trap, but instead at `"
       << t->syscall_name(t->regs().original_syscallno())
@@ -313,7 +307,7 @@ void ReplaySession::check_pending_sig(Task* t) {
 /**
  * Advance |t| to the next signal or trap.  If |stepi| is |SINGLESTEP|,
  * then execution resumes by single-stepping.  Otherwise it continues
- * normally.  The delivered signal is recorded in |t->child_sig|.
+ * normally. |t->pending_sig()| contains any pending signal.
  */
 void ReplaySession::continue_or_step(Task* t,
                                      const StepConstraints& constraints,
@@ -340,8 +334,6 @@ void ReplaySession::continue_or_step(Task* t,
  * as opposed to a trace trap.  Return zero in the latter case.
  */
 static bool is_breakpoint_trap(Task* t) {
-  assert(SIGTRAP == t->child_sig);
-
   const siginfo_t& si = t->get_siginfo();
   assert(SIGTRAP == si.si_signo);
 
@@ -368,7 +360,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
                                           const StepConstraints& constraints) {
   TrapType trap_type;
 
-  assert(SIGTRAP == t->child_sig);
+  assert(SIGTRAP == t->pending_sig());
 
   /* We're not replaying a trap, and it was clearly raised on
    * behalf of the debugger.  (The debugger will verify
@@ -436,7 +428,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
 
 /**
  * Shortcut for callers that don't care about internal breakpoints.
- * Return nonzero if |t|'s trap is for the debugger, zero otherwise.
+ * Return nonzero if |t|'s |pending_sig()| is for the debugger, zero otherwise.
  */
 bool ReplaySession::is_debugger_trap(Task* t, int target_sig,
                                      SignalDeterministic deterministic,
@@ -579,7 +571,20 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
 
   /* XXX should we only do this if (ticks > 10000)? */
   while (ticks_left - SKID_SIZE > SKID_SIZE) {
-    if (SIGTRAP == t->child_sig) {
+    t->child_sig = 0;
+
+    LOG(debug) << "  programming interrupt for " << (ticks_left - SKID_SIZE)
+               << " ticks";
+
+    continue_or_step(t, constraints, (TicksRequest)(ticks_left - SKID_SIZE));
+    if (is_ignored_signal(t->pending_sig())) {
+      t->child_sig = 0;
+    }
+    guard_unexpected_signal(t);
+
+    ticks_left = ticks - t->tick_count();
+
+    if (SIGTRAP == t->pending_sig()) {
       /* We proved we're not at the execution
        * target, and we haven't set any internal
        * breakpoints, and we're not temporarily
@@ -589,21 +594,13 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
        * debugging code will verify that.) */
       return INCOMPLETE;
     }
-    t->child_sig = 0;
-
-    LOG(debug) << "  programming interrupt for " << (ticks_left - SKID_SIZE)
-               << " ticks";
-
-    continue_or_step(t, constraints, (TicksRequest)(ticks_left - SKID_SIZE));
-    if (is_ignored_signal(t->child_sig)) {
-      t->child_sig = 0;
-    }
-    guard_unexpected_signal(t);
-
-    ticks_left = ticks - t->tick_count();
   }
   guard_overshoot(t, regs, ticks, ticks_left, ticks_slack, ignored_early_match,
                   ticks_left_at_ignored_early_match);
+
+  /* True when our advancing has triggered a tracee SIGTRAP that needs to
+   * be dealt with. */
+  bool pending_SIGTRAP = false;
 
   /* Step 2: more slowly, find our way to the target ticks and
    * execution point.  We set an internal breakpoint on the
@@ -638,7 +635,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
     bool at_target = is_same_execution_point(
         t, regs, ticks_left, ticks_slack, &ignored_early_match,
         &ticks_left_at_ignored_early_match);
-    if (SIGTRAP == t->child_sig) {
+    if (pending_SIGTRAP) {
       TrapType trap_type =
           compute_trap_type(t, sig, NONDETERMINISTIC_SIG,
                             at_target ? AT_TARGET : NOT_AT_TARGET, constraints);
@@ -665,6 +662,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
           assert(!at_target);
 
           t->child_sig = 0;
+          pending_SIGTRAP = false;
           t->move_ip_before_breakpoint();
           /* We just backed up the $ip, but
            * rewound it over an |int $3|
@@ -743,6 +741,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
         check_pending_sig(t);
       }
     }
+    pending_SIGTRAP = SIGTRAP == t->pending_sig();
 
     /* Maintain the "'ticks_left'-is-up-to-date"
      * invariant. */
@@ -889,17 +888,17 @@ Completion ReplaySession::emulate_deterministic_signal(
   }
 
   continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
-  if (is_ignored_signal(t->child_sig)) {
+  if (is_ignored_signal(t->pending_sig())) {
     t->child_sig = 0;
     return emulate_deterministic_signal(t, sig, constraints);
-  } else if (SIGTRAP == t->child_sig &&
-             is_debugger_trap(t, sig, DETERMINISTIC_SIG, UNKNOWN,
-                              constraints)) {
+  }
+  if (SIGTRAP == t->pending_sig() &&
+      is_debugger_trap(t, sig, DETERMINISTIC_SIG, UNKNOWN, constraints)) {
     return INCOMPLETE;
   }
-  ASSERT(t, t->child_sig == sig) << "Replay got unrecorded signal "
-                                 << t->child_sig << " (expecting " << sig
-                                 << ")";
+  ASSERT(t, t->pending_sig() == sig) << "Replay got unrecorded signal "
+                                     << t->pending_sig() << " (expecting "
+                                     << sig << ")";
   const Event& ev = trace_frame.event();
   check_ticks_consistency(t, ev);
 
@@ -1298,7 +1297,7 @@ Completion ReplaySession::advance_to_ticks_target(
       return INCOMPLETE;
     }
     continue_or_step(t, constraints, (TicksRequest)(ticks_left - SKID_SIZE));
-    if (SIGTRAP == t->child_sig) {
+    if (SIGTRAP == t->pending_sig()) {
       return INCOMPLETE;
     }
   }
