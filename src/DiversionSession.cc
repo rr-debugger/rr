@@ -115,6 +115,11 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
     return result;
   }
 
+  if (t->syscallbuf_hdr) {
+    // Disable syscall buffering during diversions
+    t->syscallbuf_hdr->locked = 1;
+  }
+
   switch (command) {
     case RUN_CONTINUE:
       LOG(debug) << "Continuing to next syscall";
