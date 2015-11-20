@@ -1,13 +1,9 @@
-#ifndef RAW_SYSCALL_FUNCTION
-#error must define RAW_SYSCALL_FUNCTION before including this file
-#endif
-
 #if defined(__i386__)
         .text
-        .globl RAW_SYSCALL_FUNCTION
-        .hidden RAW_SYSCALL_FUNCTION
-        .type RAW_SYSCALL_FUNCTION, @function
-RAW_SYSCALL_FUNCTION:     /* syscallno = 4(%esp) */
+        .globl _raw_syscall
+        .hidden _raw_syscall
+        .type _raw_syscall, @function
+_raw_syscall:     /* syscallno = 4(%esp) */
         .cfi_startproc
         pushl %ebx        /* syscallno = 8(%esp) */
         .cfi_adjust_cfa_offset 4
@@ -53,14 +49,14 @@ RAW_SYSCALL_FUNCTION:     /* syscallno = 4(%esp) */
         .cfi_restore %ebx
         ret
         .cfi_endproc
-        .size RAW_SYSCALL_FUNCTION, . - RAW_SYSCALL_FUNCTION
+        .size _raw_syscall, . - _raw_syscall
 
 #elif defined(__x86_64__)
         .text
-        .globl RAW_SYSCALL_FUNCTION
-        .hidden RAW_SYSCALL_FUNCTION
-        .type RAW_SYSCALL_FUNCTION, @function
-RAW_SYSCALL_FUNCTION:
+        .globl _raw_syscall
+        .hidden _raw_syscall
+        .type _raw_syscall, @function
+_raw_syscall:
         .cfi_startproc
 	/* Incoming args are in %rdi, %rsi, %rdx, %rcx, %r8, %r9, and 8(%rsp).
 	   Syscall arguments are %rdi, %rsi, %rdx, %r10, %r8, %r9. */
@@ -83,7 +79,7 @@ RAW_SYSCALL_FUNCTION:
         .cfi_adjust_cfa_offset -16
         ret
         .cfi_endproc
-	.size RAW_SYSCALL_FUNCTION, . - RAW_SYSCALL_FUNCTION
+	.size _raw_syscall, . - _raw_syscall
 
 #else
 #error unknown CPU architecture

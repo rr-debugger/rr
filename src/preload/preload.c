@@ -236,13 +236,14 @@ static void local_memcpy(void* dest, const void* source, int n) {
  * stack_param_1 and stack_param_2 are pushed onto the stack just before
  * the syscall, for SYS_rrcall_notify_syscall_hook_exit which takes stack
  * parameters as well as register parameters.
+ * syscall_instruction is the actual syscall invocation instruction
+ * (a function which we call with the registers set up appropriately).
  */
 
-extern RR_HIDDEN long _traced_raw_syscall(int syscallno, long a0, long a1,
-                                          long a2, long a3, long a4, long a5,
-                                          void* traced_syscall_instruction,
-                                          long stack_param_1,
-                                          long stack_param_2);
+extern RR_HIDDEN long _raw_syscall(int syscallno, long a0, long a1, long a2,
+                                   long a3, long a4, long a5,
+                                   void* syscall_instruction,
+                                   long stack_param_1, long stack_param_2);
 
 static int update_errno_ret(long ret) {
   /* EHWPOISON is the last known errno as of linux 3.9.5. */
@@ -272,8 +273,8 @@ static void* privileged_untraced_syscall_instruction =
 
 static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
                                      long a3, long a4, long a5) {
-  long ret = _traced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                                 privileged_traced_syscall_instruction, 0, 0);
+  long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
+                          privileged_traced_syscall_instruction, 0, 0);
   return update_errno_ret(ret);
 }
 #define privileged_traced_syscall6(no, a0, a1, a2, a3, a4, a5)                 \
@@ -298,9 +299,9 @@ static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
 static long traced_raw_syscall(const struct syscall_info* call) {
   /* FIXME: pass |call| to avoid pushing these on the stack
    * again. */
-  return _traced_raw_syscall(call->no, call->args[0], call->args[1],
-                             call->args[2], call->args[3], call->args[4],
-                             call->args[5], traced_syscall_instruction, 0, 0);
+  return _raw_syscall(call->no, call->args[0], call->args[1], call->args[2],
+                      call->args[3], call->args[4], call->args[5],
+                      traced_syscall_instruction, 0, 0);
 }
 
 #if defined(SYS_fcntl64)
@@ -386,22 +387,6 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
 #define debug(msg, ...) ((void)0)
 #endif
 
-/* Helpers for invoking untraced syscalls, which do *not* generate
- * ptrace traps.
- *
- * XXX make a nice assembly helper like libc's |syscall()|?
- *
- * stack_param_1 and stack_param_2 are pushed onto the stack just before making
- * the syscall, for SYS_rrcall_notify_syscall_hook_exit which takes
- * parameters on the stack as well as in registers.
- */
-
-extern RR_HIDDEN long _untraced_raw_syscall(int syscallno, long a0, long a1,
-                                            long a2, long a3, long a4, long a5,
-                                            void* syscall_instruction,
-                                            long stack_param_1,
-                                            long stack_param_2);
-
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
  * the direct kernel return value), because the syscall hooks have to
@@ -426,8 +411,8 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
 
 static long privileged_untraced_syscall(int syscallno, long a0, long a1,
                                         long a2, long a3, long a4, long a5) {
-  return _untraced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                               privileged_untraced_syscall_instruction, 0, 0);
+  return _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
+                      privileged_untraced_syscall_instruction, 0, 0);
 }
 #define privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, a5)               \
   privileged_untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, \
@@ -1997,7 +1982,7 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     //
     // Another crazy thing is going on here: it's possible that a signal
     // intended to be delivered
-    result = _traced_raw_syscall(
+    result = _raw_syscall(
         SYS_rrcall_notify_syscall_hook_exit, call->args[0], call->args[1],
         call->args[2], call->args[3], call->args[4], call->args[5],
         privileged_traced_syscall_instruction, result, call->no);

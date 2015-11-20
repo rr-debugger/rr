@@ -112,8 +112,7 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(rrpreload
   src/preload/preload.c
-  src/preload/traced_syscall.S
-  src/preload/untraced_syscall.S
+  src/preload/raw_syscall.S
   src/preload/syscall_hook.S
 )
 
@@ -247,7 +246,7 @@ install(TARGETS rr rrpreload exec_stub
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
 if(rr_64BIT)
-  foreach(file preload_interface.h traced_syscall_shared.S)
+  foreach(file preload_interface.h)
     set_source_files_properties(32/${file}
                                 PROPERTIES GENERATED true HEADER_FILE_ONLY true)
     add_custom_command(OUTPUT 32/${file}
@@ -257,7 +256,7 @@ if(rr_64BIT)
 	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}")
   endforeach(file)
 
-  foreach(file preload.c traced_syscall.S untraced_syscall.S syscall_hook.S)
+  foreach(file preload.c raw_syscall.S syscall_hook.S)
     set_source_files_properties(32/${file}
                                 PROPERTIES GENERATED true COMPILE_FLAGS "-m32 -O2")
     add_custom_command(OUTPUT 32/${file}
@@ -265,13 +264,12 @@ if(rr_64BIT)
                                cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
 	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
-                               32/preload_interface.h 32/traced_syscall_shared.S)
+                               32/preload_interface.h)
   endforeach(file)
 
   add_library(rrpreload_32
     32/preload.c
-    32/traced_syscall.S
-    32/untraced_syscall.S
+    32/raw_syscall.S
     32/syscall_hook.S
   )
   set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS -m32)
