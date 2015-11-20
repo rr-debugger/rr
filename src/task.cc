@@ -2957,21 +2957,25 @@ bool Task::clone_syscall_is_complete() {
   return false;
 }
 
-template <typename Arch>
-static remote_ptr<char> get_syscallbuf_fds_disabled_arch(Task* t) {
+template <typename Arch> static void do_preload_init_arch(Task* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
+
   remote_ptr<volatile char> syscallbuf_fds_disabled =
-      params.syscallbuf_fds_disabled;
-  return syscallbuf_fds_disabled.cast<char>();
+      params.syscallbuf_fds_disabled.rptr();
+  t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled.cast<char>();
+
+  t->write_mem(params.in_replay_flag.rptr(),
+               (unsigned char)t->session().is_replaying());
 }
 
-static remote_ptr<char> get_syscallbuf_fds_disabled(Task* t) {
-  RR_ARCH_FUNCTION(get_syscallbuf_fds_disabled_arch, t->arch(), t);
+static void do_preload_init(Task* t) {
+  RR_ARCH_FUNCTION(do_preload_init_arch, t->arch(), t);
 }
 
 void Task::at_preload_init() {
-  syscallbuf_fds_disabled_child = get_syscallbuf_fds_disabled(this);
+  do_preload_init(this);
+
   fd_table()->init_syscallbuf_fds_disabled(this);
 }
 

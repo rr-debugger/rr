@@ -113,6 +113,13 @@ static int buffer_enabled;
 /* Nonzero after process-global state has been initialized. */
 static int process_inited;
 
+/* 0 during recording, 1 during replay.
+ * This MUST NOT be used in conditional branches. It should only be used
+ * as the condition for conditional moves in the select_* functions so that
+ * control flow during replay does not diverge from control flow during
+ * recording. */
+static unsigned char in_replay;
+
 /**
  * If syscallbuf_fds_disabled[fd] is nonzero, then operations on that fd
  * must be performed through traced syscalls, not the syscallbuf.
@@ -662,6 +669,7 @@ static void __attribute__((constructor)) init_process(void) {
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
+  params.in_replay_flag = &in_replay;
 
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
 

@@ -121,6 +121,7 @@ struct rrcall_init_preload_params {
   PTR(void) syscall_hook_stub_buffer_end;
   /* Array of size SYSCALLBUF_FDS_DISABLED_SIZE */
   PTR(volatile char) syscallbuf_fds_disabled;
+  PTR(unsigned char) in_replay_flag;
 };
 
 /**
