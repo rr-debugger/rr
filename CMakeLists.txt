@@ -230,7 +230,10 @@ set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
 
 install(PROGRAMS scripts/signal-rr-recording.sh
-                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64 ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32
+                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64
+                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay
+                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32
+                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay
   DESTINATION bin)
 
 install(TARGETS rr rrpreload exec_stub
