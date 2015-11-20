@@ -523,7 +523,6 @@ void RecordSession::desched_state_changed(Task* t) {
    * during this (aborted) transaction again.  So now
    * is a good time for us to reset the record counter. */
   t->delay_syscallbuf_reset = false;
-  t->delay_syscallbuf_flush = false;
   ASSERT(t, t->syscallbuf_hdr);
   // Run the syscallbuf exit hook. This ensures we'll be able to reset
   // the syscallbuf before trying to buffer another syscall.

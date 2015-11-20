@@ -234,7 +234,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       scratch_size(),
       flushed_syscallbuf(false),
       delay_syscallbuf_reset(false),
-      delay_syscallbuf_flush(false),
       // This will be initialized when the syscall buffer is.
       desched_fd_child(-1),
       seccomp_bpf_enabled(false),
@@ -2650,7 +2649,7 @@ void Task::maybe_flush_syscallbuf() {
   // the actual syscallbuf data, but there's nothing we can do about that and
   // it could only affect replay of the very last syscall before termination.
   if (!syscallbuf_hdr || (is_stopped && 0 == syscallbuf_hdr->num_rec_bytes) ||
-      delay_syscallbuf_flush || flushed_syscallbuf) {
+      flushed_syscallbuf) {
     // No syscallbuf or no records, or we've already flushed.
     return;
   }
