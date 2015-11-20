@@ -213,40 +213,22 @@ static uint8_t* buffer_last(void) {
  */
 static uint8_t* buffer_end(void) { return buffer + SYSCALLBUF_BUFFER_SIZE; }
 
-#define MEMCPY_UNROLL 4
-#define MEMCPY_WORD uintptr_t
-
 /**
  * Same as libc memcpy(), but usable within syscallbuf transaction
  * critical sections.
  */
-static void local_memcpy(void* dest, const void* source, size_t n) {
-  char* dst = dest;
-  const char* src = source;
-  static const size_t block_size = MEMCPY_UNROLL * sizeof(MEMCPY_WORD);
-  char* dst_end = dest + n;
-
-  while (dst < dst_end) {
-    if (!((uintptr_t)dst & (block_size - 1))) {
-      // destination is aligned. Use a fast path.
-      size_t words = ((dst_end - dst) / block_size) * MEMCPY_UNROLL;
-      if (words) {
-        const MEMCPY_WORD* block_src = (const MEMCPY_WORD*)src;
-        MEMCPY_WORD* block_dst = (MEMCPY_WORD*)dst;
-        MEMCPY_WORD* block_dst_end = block_dst + words;
-        while (block_dst < block_dst_end) {
-          *block_dst++ = *block_src++;
-          *block_dst++ = *block_src++;
-          *block_dst++ = *block_src++;
-          *block_dst++ = *block_src++;
-        }
-        src = (const char*)block_src;
-        dst = (char*)block_dst;
-        continue;
-      }
-    }
-    *dst++ = *src++;
-  }
+static void local_memcpy(void* dest, const void* source, int n) {
+#if defined(__i386__) || defined(__x86_64__)
+  /* On modern x86-ish CPUs rep movsb is fast, usually able to move
+   * 64 bytes at a time.
+   */
+  __asm__ __volatile__("rep movsb\n\t"
+                       : "+S"(source), "+D"(dest), "+c"(n)
+                       :
+                       : "cc", "memory");
+#else
+#error Unknown architecture
+#endif
 }
 
 /* The following are wrappers for the syscalls invoked by this library
