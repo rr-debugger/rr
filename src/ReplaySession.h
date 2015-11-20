@@ -291,10 +291,6 @@ private:
         cpuid_bug_detector(other.cpuid_bug_detector),
         flags(other.flags) {}
 
-  const struct syscallbuf_hdr* syscallbuf_flush_buffer_hdr() {
-    return (const struct syscallbuf_hdr*)syscallbuf_flush_buffer_array;
-  }
-
   void setup_replay_one_trace_frame(Task* t);
   void advance_to_next_trace_frame(TraceFrame::Time stop_at_time);
   Completion emulate_signal_delivery(Task* oldtask, int sig,
@@ -344,18 +340,6 @@ private:
   CPUIDBugDetector cpuid_bug_detector;
   Flags flags;
   bool did_fast_forward;
-  /**
-   * Buffer for recorded syscallbuf bytes.  By definition buffer flushes
-   * must be replayed sequentially, so we can use one buffer for all
-   * tracees.  At the start of the flush, the recorded bytes are read
-   * back into this buffer.  Then they're copied back to the tracee
-   * record-by-record, as the tracee exits those syscalls.
-   * This needs to be word-aligned.
-   */
-  union {
-    uint8_t syscallbuf_flush_buffer_array[SYSCALLBUF_BUFFER_SIZE];
-    uint64_t align_padding;
-  };
 };
 
 #endif // RR_REPLAY_SESSION_H_

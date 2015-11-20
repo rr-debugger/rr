@@ -89,8 +89,6 @@ ReplaySession::shr_ptr ReplaySession::clone() {
 
   shr_ptr session(new ReplaySession(*this));
   LOG(debug) << "  deepfork session is " << session.get();
-  memcpy(session->syscallbuf_flush_buffer_array, syscallbuf_flush_buffer_array,
-         sizeof(syscallbuf_flush_buffer_array));
 
   copy_state_to(*session, session->emufs());
 
@@ -896,21 +894,23 @@ void ReplaySession::prepare_syscallbuf_records(Task* t) {
   // Read the recorded syscall buffer back into the buffer
   // region.
   auto buf = t->trace_reader().read_raw_data();
-  assert(buf.data.size() >= sizeof(struct syscallbuf_hdr));
-  current_step.flush.num_rec_bytes_remaining =
-      sizeof(struct syscallbuf_hdr) +
-      ((struct syscallbuf_hdr*)buf.data.data())->num_rec_bytes;
+  ASSERT(t, buf.data.size() >= sizeof(struct syscallbuf_hdr));
+  ASSERT(t, buf.data.size() <= SYSCALLBUF_BUFFER_SIZE);
+  ASSERT(t, buf.addr == t->syscallbuf_child.cast<void>());
 
-  assert(current_step.flush.num_rec_bytes_remaining <= SYSCALLBUF_BUFFER_SIZE);
-  memcpy(syscallbuf_flush_buffer_array, buf.data.data(),
-         current_step.flush.num_rec_bytes_remaining);
+  struct syscallbuf_hdr recorded_hdr;
+  memcpy(&recorded_hdr, buf.data.data(), sizeof(struct syscallbuf_hdr));
+  // Don't overwrite t->syscallbuf_hdr. That needs to keep tracking the current
+  // syscallbuf state.
+  memcpy(t->syscallbuf_hdr + 1, buf.data.data() + sizeof(struct syscallbuf_hdr),
+         buf.data.size() - sizeof(struct syscallbuf_hdr));
 
-  // The stored num_rec_bytes in the header doesn't include the
-  // header bytes, but the stored trace data does.
-  current_step.flush.num_rec_bytes_remaining -= sizeof(struct syscallbuf_hdr);
-  assert(buf.addr == t->syscallbuf_child.cast<void>());
-
+  current_step.flush.num_rec_bytes_remaining = recorded_hdr.num_rec_bytes;
   current_step.flush.syscall_record_offset = 0;
+
+  ASSERT(t, current_step.flush.num_rec_bytes_remaining +
+                    sizeof(struct syscallbuf_hdr) <=
+                SYSCALLBUF_BUFFER_SIZE);
 
   LOG(debug) << "Prepared " << current_step.flush.num_rec_bytes_remaining
              << " bytes of syscall records";
@@ -926,26 +926,6 @@ static void assert_at_buffered_syscall(Task* t, int syscallno) {
       << "At " << t->syscall_name(t->regs().original_syscallno())
       << "; should have been at " << t->syscall_name(syscallno) << "("
       << syscallno << ")";
-}
-
-/**
- * Bail if |rec_rec| and |rep_rec| haven't been prepared for the same
- * syscall (including desched'd-ness and reserved extra space).
- */
-static void assert_same_rec(Task* t, const struct syscallbuf_record* rec_rec,
-                            struct syscallbuf_record* rep_rec) {
-  // It's OK for the recorded size to be less than the size set during replay,
-  // since the syscallbuf code is allowed to reduce the size based on the result
-  // of the syscall.
-  ASSERT(t, (rec_rec->syscallno == rep_rec->syscallno &&
-             rec_rec->desched == rep_rec->desched &&
-             rec_rec->size <= rep_rec->size))
-      << "Recorded rec { no=" << rec_rec->syscallno
-      << ", desched:" << rec_rec->desched << ", size: " << rec_rec->size
-      << " } "
-      << "being replayed as { no=" << rep_rec->syscallno
-      << ", desched:" << rep_rec->desched << ", size: " << rep_rec->size
-      << " }";
 }
 
 /**
@@ -1023,55 +1003,38 @@ static void perform_syscallbuf_syscall_side_effects(Task* t,
  */
 Completion ReplaySession::flush_one_syscall(
     Task* t, const StepConstraints& constraints) {
-  const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
-  const struct syscallbuf_record* rec_rec =
-      (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
-                                        current_step.flush
-                                            .syscall_record_offset);
   struct syscallbuf_record* child_rec =
       (struct syscallbuf_record*)((uint8_t*)t->syscallbuf_hdr->recs +
                                   current_step.flush.syscall_record_offset);
-  int call = rec_rec->syscallno;
-
-  ASSERT(t, 0 == ((uintptr_t)rec_rec & (sizeof(int) - 1)))
-      << "Recorded record must be int-aligned, but instead is " << rec_rec;
   ASSERT(t, 0 == ((uintptr_t)child_rec & (sizeof(int) - 1)))
       << "Replaying record must be int-aligned, but instead is " << child_rec;
-  ASSERT(t, 0 == rec_rec->desched || 1 == rec_rec->desched)
-      << "Recorded record is corrupted: rec->desched is " << rec_rec->desched;
+  ASSERT(t, 0 == child_rec->desched || 1 == child_rec->desched)
+      << "Recorded record is corrupted: rec->desched is " << child_rec->desched;
   // We'll check at syscall entry that the recorded and
   // replayed record values match.
 
+  int call = child_rec->syscallno;
   LOG(debug) << "Replaying buffered `" << t->syscall_name(call)
-             << "' (ret:" << rec_rec->ret << ") which does"
-             << (!rec_rec->desched ? " not" : "") << " use desched event";
+             << "' (ret:" << child_rec->ret << ") which does"
+             << (!child_rec->desched ? " not" : "") << " use desched event";
 
   LOG(debug) << "  advancing to buffered syscall entry";
   if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
     return INCOMPLETE;
   }
   assert_at_buffered_syscall(t, call);
-  assert_same_rec(t, rec_rec, child_rec);
 
   EmuFs::AutoGc gc(*this, t->arch(), call, EXITING_SYSCALL);
 
-  assert_at_buffered_syscall(t, call);
-
-  // Restore saved trace data.
-  memcpy(child_rec->extra_data, rec_rec->extra_data, rec_rec->size);
-
   Registers saved_regs = t->regs();
-
   t->finish_emulated_syscall();
-
   perform_syscallbuf_syscall_side_effects(t, saved_regs);
 
-  Registers r = t->regs();
-  r.set_syscall_result(rec_rec->ret);
-  t->set_regs(r);
+  // The tracee syscall buffering code is responsible for setting the
+  // syscall result register during replay.
 
   if (is_futex_syscall(call, t->arch())) {
-    restore_futex_words(t, rec_rec);
+    restore_futex_words(t, child_rec);
   }
 
   accumulate_syscall_performed();
@@ -1087,18 +1050,20 @@ Completion ReplaySession::flush_one_syscall(
  */
 Completion ReplaySession::flush_syscallbuf(Task* t,
                                            const StepConstraints& constraints) {
-  const syscallbuf_hdr* flush_hdr = syscallbuf_flush_buffer_hdr();
-
   while (current_step.flush.num_rec_bytes_remaining > 0) {
+    const struct syscallbuf_record* record =
+        (const struct syscallbuf_record*)((uint8_t*)t->syscallbuf_hdr->recs +
+                                          current_step.flush
+                                              .syscall_record_offset);
+    // Save actual record size while we have it. After flush_one_syscall the
+    // size will have been (temporarily) reset by syscall buffering code to the
+    // allocated max size.
+    size_t stored_rec_size = stored_record_size(record->size);
+
     if (flush_one_syscall(t, constraints) == INCOMPLETE) {
       return INCOMPLETE;
     }
 
-    const struct syscallbuf_record* record =
-        (const struct syscallbuf_record*)((uint8_t*)flush_hdr->recs +
-                                          current_step.flush
-                                              .syscall_record_offset);
-    size_t stored_rec_size = stored_record_size(record->size);
     current_step.flush.syscall_record_offset += stored_rec_size;
     current_step.flush.num_rec_bytes_remaining -= stored_rec_size;
 

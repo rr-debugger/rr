@@ -177,7 +177,7 @@ struct syscallbuf_record {
   uint32_t size;
   /* Extra recorded outparam data starts here. */
   uint8_t extra_data[0];
-} __attribute__((__packed__));
+};
 
 /**
  * This struct summarizes the state of the syscall buffer.  It happens

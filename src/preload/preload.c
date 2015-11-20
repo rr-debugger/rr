@@ -115,9 +115,12 @@ static int process_inited;
 
 /* 0 during recording, 1 during replay.
  * This MUST NOT be used in conditional branches. It should only be used
- * as the condition for conditional moves in the select_* functions so that
- * control flow during replay does not diverge from control flow during
- * recording. */
+ * as the condition for conditional moves so that control flow during replay
+ * does not diverge from control flow during recording.
+ * We also have to be careful that values different between record and replay
+ * don't accidentally leak into other memory locations or registers.
+ * USE WITH CAUTION.
+ */
 static unsigned char in_replay;
 
 /**
@@ -391,11 +394,36 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
  * the direct kernel return value), because the syscall hooks have to
  * save that raw return value.
+ * This is only called from syscall wrappers that are doing a proper
+ * buffered syscall.
  */
 static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
                              long a4, long a5) {
-  return _untraced_raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                               untraced_syscall_instruction, 0, 0);
+  struct syscallbuf_record* rec = (struct syscallbuf_record*)buffer_last();
+  long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
+                          untraced_syscall_instruction, 0, 0);
+  unsigned char tmp_in_replay = in_replay;
+/* During replay, return the result that's already in the buffer, instead
+   of what our "syscall" returned. */
+#if defined(__i386__) || defined(__x86_64__)
+  /* On entry, during recording %eax/%rax are whatever the kernel returned
+   * but during replay they may be invalid (e.g. 0). During replay, reload
+   * %eax/%rax from |rec->ret|. At the end of this sequence all registers
+   * will match between recording and replay. We clobber the temporary
+   * in_replay register, and the condition codes, to ensure this.
+   * This all assumes the compiler doesn't create unnecessary temporaries
+   * holding values like |ret|. Inspection of generated code shows it doesn't.
+   */
+  __asm__("test %1,%1\n\t"
+          "cmovne %2,%0\n\t"
+          "xor %1,%1\n\t"
+          : "+a"(ret), "+c"(tmp_in_replay)
+          : "m"(rec->ret)
+          : "cc");
+#else
+#error Unknown architecture
+#endif
+  return ret;
 }
 #define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)                          \
   untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,            \
@@ -839,28 +867,6 @@ static void disarm_desched_event(void) {
   }
 }
 
-#ifdef SYS_recvmsg
-static int syscall_buffer_valid(void* record_end) {
-  void* record_start;
-  void* stored_end;
-  if (!buffer) {
-    return 0;
-  }
-  record_start = buffer_last();
-  stored_end = record_start + stored_record_size(record_end - record_start);
-  if (stored_end < record_start + sizeof(struct syscallbuf_record)) {
-    /* Either a catastrophic buffer overflow or
-     * we failed to lock the buffer. */
-    return 0;
-  }
-  if (stored_end > (void*)buffer_end() - sizeof(struct syscallbuf_record)) {
-    /* Buffer overflow. */
-    return 0;
-  }
-  return 1;
-}
-#endif
-
 /**
  * Return 1 if it's ok to proceed with buffering this system call.
  * Return 0 if we should trace the system call.
@@ -982,6 +988,8 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
      * pair.  So don't record the syscall in the buffer or
      * replay will go haywire. */
     hdr->abort_commit = 0;
+    /* Clear the return value that rr pus there during replay */
+    rec->ret = 0;
   } else {
     rec->ret = ret;
     hdr->num_rec_bytes += stored_record_size(rec->size);
@@ -999,6 +1007,52 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   buffer_hdr()->locked = 0;
 
   return ret;
+}
+
+/**
+ * |ret_size| is the result of a syscall indicating how much data was returned
+ * in scratch buffer |buf2|; this function copies that data to |buf| and returns
+ * a pointer to the end of it. If there is no scratch buffer (|buf2| is NULL)
+ * just returns |ptr|.
+ */
+static void* copy_output_buffer(int ret_size, void* ptr, void* buf,
+                                void* buf2) {
+  if (!buf2) {
+    return ptr;
+  }
+  if (ret_size <= 0) {
+    return buf2;
+  }
+  local_memcpy(buf, buf2, ret_size);
+  return buf2 + ret_size;
+}
+
+/**
+ * Copy an input parameter to the syscallbuf where the kernel needs to
+ * read and write it. During replay, we do a no-op self-copy in the buffer
+ * so that the buffered data is not lost.
+ * This code is written in assembler to ensure that the registers that receive
+ * values differing between record and replay (%0, rsi/esi, and flags)
+ * are reset to values that are the same between record and replay immediately
+ * afterward. This guards against diverging register values leaking into
+ * later code.
+ * Use local_memcpy or plain assignment instead if the kernel is not going to
+ * overwrite the values.
+ */
+static void memcpy_input_parameter(void* buf, void* src, int size) {
+#if defined(__i386__) || defined(__x86_64__)
+  unsigned char tmp_in_replay = in_replay;
+  __asm__ __volatile__("test %0,%0\n\t"
+                       "cmovne %1,%2\n\t"
+                       "rep movsb\n\t"
+                       "xor %0,%0\n\t"
+                       "xor %2,%2\n\t"
+                       : "+a"(tmp_in_replay), "+D"(buf), "+S"(src), "+c"(size)
+                       :
+                       : "cc", "memory");
+#else
+#error Unknown architecture
+#endif
 }
 
 /* Keep syscalls in alphabetical order, please. */
@@ -1116,7 +1170,7 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
   if (owner2) {
-    local_memcpy(owner2, owner, sizeof(*owner2));
+    memcpy_input_parameter(owner2, owner, sizeof(*owner2));
   }
   ret = untraced_syscall3(syscallno, fd, cmd, owner2);
   if (owner2) {
@@ -1145,7 +1199,7 @@ static int sys_fcntl64_xlk64(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
   if (lock2) {
-    local_memcpy(lock2, lock, sizeof(*lock2));
+    memcpy_input_parameter(lock2, lock, sizeof(*lock2));
   }
   ret = untraced_syscall3(syscallno, fd, cmd, lock2);
   if (lock2) {
@@ -1484,7 +1538,7 @@ static long sys_poll(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
   if (fds2) {
-    local_memcpy(fds2, fds, nfds * sizeof(*fds2));
+    memcpy_input_parameter(fds2, fds, nfds * sizeof(*fds2));
   }
 
   __before_poll_syscall_breakpoint();
@@ -1501,24 +1555,6 @@ static long sys_poll(const struct syscall_info* call) {
     local_memcpy(fds, fds2, nfds * sizeof(*fds));
   }
   return commit_raw_syscall(syscallno, ptr, ret);
-}
-
-/**
- * |ret_size| is the result of a syscall indicating how much data was returned
- * in scratch buffer |buf2|; this function copies that data to |buf| and returns
- * a pointer to the end of it. If there is no scratch buffer (|buf2| is NULL)
- * just returns |ptr|.
- */
-static void* copy_output_buffer(int ret_size, void* ptr, void* buf,
-                                void* buf2) {
-  if (!buf2) {
-    return ptr;
-  }
-  if (ret_size <= 0) {
-    return buf2;
-  }
-  local_memcpy(buf, buf2, ret_size);
-  return buf2 + ret_size;
 }
 
 static long sys_read(const struct syscall_info* call) {
@@ -1638,7 +1674,6 @@ static long sys_recvfrom(const struct syscall_info* call) {
   }
   if (addrlen) {
     addrlen2 = ptr;
-    *addrlen2 = *addrlen;
     ptr += sizeof(*addrlen);
   }
   if (buf && len > 0) {
@@ -1648,7 +1683,9 @@ static long sys_recvfrom(const struct syscall_info* call) {
   if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
   }
-
+  if (addrlen) {
+    memcpy_input_parameter(addrlen2, addrlen, sizeof(*addrlen2));
+  }
   ret = untraced_syscall6(syscallno, sockfd, buf2, len, flags, src_addr2,
                           addrlen2);
 
@@ -1681,24 +1718,49 @@ static long sys_recvmsg(const struct syscall_info* call) {
   void* ptr = prep_syscall_for_fd(sockfd);
   long ret;
   struct msghdr* msg2;
+  void* ptr_base = ptr;
+  size_t i;
 
   assert(syscallno == call->no);
 
-  msg2 = ptr;
-  ptr += sizeof(struct msghdr);
-  *msg2 = *msg;
-
-  msg2->msg_iov = ptr;
-  ptr += sizeof(struct iovec) * msg->msg_iovlen;
-  if (syscall_buffer_valid(ptr)) {
-    size_t i;
-    for (i = 0; i < msg->msg_iovlen; ++i) {
-      msg2->msg_iov[i].iov_base = ptr;
-      ptr = align_ptr(ptr + msg->msg_iov[i].iov_len);
-      msg2->msg_iov[i].iov_len = msg->msg_iov[i].iov_len;
-    }
+  /* Compute final buffer size up front, before writing syscall inputs to the
+   * buffer. Thus if we decide not to buffer this syscall, we bail out
+   * before trying to write to a buffer that won't be recorded and may be
+   * invalid (e.g. overflow).
+   */
+  ptr += sizeof(struct msghdr) + sizeof(struct iovec) * msg->msg_iovlen;
+  for (i = 0; i < msg->msg_iovlen; ++i) {
+    ptr = align_ptr(ptr + msg->msg_iov[i].iov_len);
+  }
+  if (msg->msg_name) {
+    ptr = align_ptr(ptr + msg->msg_namelen);
+  }
+  if (msg->msg_control) {
+    ptr = align_ptr(ptr + msg->msg_controllen);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
   }
 
+  /**
+   * The kernel only writes to the struct msghdr, and the iov buffers. We must
+   * not overwrite that data (except using memcpy_input_parameter) during
+   * replay. For the rest of the data, the values we write here during replay
+   * are guaranteed to match what was recorded in the buffer.
+   * We can't rely on the values we wrote here during recording also being
+   * here during replay since the syscall might have been aborted and our
+   * written data not recorded.
+   */
+  msg2 = ptr = ptr_base;
+  memcpy_input_parameter(msg2, msg, sizeof(*msg));
+  ptr += sizeof(struct msghdr);
+  msg2->msg_iov = ptr;
+  ptr += sizeof(struct iovec) * msg->msg_iovlen;
+  for (i = 0; i < msg->msg_iovlen; ++i) {
+    msg2->msg_iov[i].iov_base = ptr;
+    ptr = align_ptr(ptr + msg->msg_iov[i].iov_len);
+    msg2->msg_iov[i].iov_len = msg->msg_iov[i].iov_len;
+  }
   if (msg->msg_name) {
     msg2->msg_name = ptr;
     ptr = align_ptr(ptr + msg->msg_namelen);
@@ -1706,10 +1768,6 @@ static long sys_recvmsg(const struct syscall_info* call) {
   if (msg->msg_control) {
     msg2->msg_control = ptr;
     ptr = align_ptr(ptr + msg->msg_controllen);
-  }
-
-  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
-    return traced_raw_syscall(call);
   }
 
   ret = untraced_syscall3(syscallno, sockfd, msg2, flags);

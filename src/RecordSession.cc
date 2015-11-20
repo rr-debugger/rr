@@ -667,13 +667,19 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
 
       assert(t->pending_sig() == 0);
 
+      int syscallno = t->ev().Syscall().number;
+      int retval = t->regs().syscall_result();
+
       if (t->desched_rec()) {
         // If we enabled the desched event above, disable it.
         disarm_desched_event(t);
+        // Record storing the return value in the syscallbuf record, where
+        // we expect to find it during replay.
+        auto child_rec = ((t->syscallbuf_child + 1).cast<uint8_t>() +
+            t->syscallbuf_hdr->num_rec_bytes).cast<struct syscallbuf_record>();
+        int64_t ret = retval;
+        t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
       }
-
-      int syscallno = t->ev().Syscall().number;
-      int retval = t->regs().syscall_result();
 
       // sigreturn is a special snowflake, because it
       // doesn't actually return.  Instead, it undoes the
