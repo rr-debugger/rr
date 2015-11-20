@@ -888,17 +888,6 @@ Completion ReplaySession::emulate_async_signal(
 }
 
 /**
- * Skip over the entry/exit of either an arm-desched-event or
- * disarm-desched-event ioctl(), as described by |ds|.  Return INCOMPLETE
- * if an unhandled interrupt occurred, COMPLETE if the ioctl() was
- * successfully skipped over.
- */
-Completion ReplaySession::skip_desched_ioctl(
-    Task* t, ReplayDeschedState* ds, const StepConstraints& constraints) {
-  return COMPLETE;
-}
-
-/**
  * Restore the recorded syscallbuf data to the tracee, preparing the
  * tracee for replaying the records.  Return the number of record
  * bytes and a pointer to the first record through outparams.
@@ -1206,8 +1195,8 @@ Completion ReplaySession::try_one_trace_step(
       t->current_trace_frame().ticks() > constraints.ticks_target) {
     // Instead of doing this step, just advance to the ticks_target, since
     // that happens before this event completes.
-    // Unfortunately we can't do this for TSTEP_FLUSH_SYSCALLBUF and
-    // TSTEP_DESCHED, because their tick count can't be trusted.
+    // Unfortunately we can't do this for TSTEP_FLUSH_SYSCALLBUF
+    // because its tick count can't be trusted.
     // cont_syscall_boundary handles the ticks constraint for those cases.
     return advance_to_ticks_target(t, constraints);
   }
@@ -1230,8 +1219,6 @@ Completion ReplaySession::try_one_trace_step(
       return flush_syscallbuf(t, constraints);
     case TSTEP_PATCH_SYSCALL:
       return patch_next_syscall(t, constraints);
-    case TSTEP_DESCHED:
-      return skip_desched_ioctl(t, &current_step.desched, constraints);
     case TSTEP_EXIT_TASK:
       return exit_task(t, constraints);
     default:
@@ -1320,13 +1307,6 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
     case EV_UNSTABLE_EXIT:
     case EV_EXIT:
       current_step.action = TSTEP_EXIT_TASK;
-      break;
-    case EV_DESCHED:
-      current_step.action = TSTEP_DESCHED;
-      current_step.desched.type = ARMING_DESCHED_EVENT == ev.Desched().state
-                                      ? DESCHED_ARM
-                                      : DESCHED_DISARM;
-      current_step.desched.state = DESCHED_ENTER;
       break;
     case EV_SYSCALLBUF_ABORT_COMMIT:
       t->syscallbuf_hdr->abort_commit = 1;

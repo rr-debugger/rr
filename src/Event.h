@@ -12,9 +12,24 @@
 #include "kernel_abi.h"
 #include "Registers.h"
 
+/**
+ * Events serve two purposes: tracking Task state during recording, and
+ * being stored in traces to guide replay. Some events are only used during
+ * recording and are never actually stored in traces (and are thus irrelevant
+ * to replay).
+ */
 enum EventType {
   EV_UNASSIGNED,
   EV_SENTINEL,
+  // TODO: this is actually a pseudo-pseudosignal: it will never
+  // appear in a trace, but is only used to communicate between
+  // different parts of the recorder code that should be
+  // refactored to not have to do that.
+  EV_NOOP,
+  EV_DESCHED,
+
+  // Events present in traces:
+
   // No associated data.
   EV_EXIT,
   // Tracee exited its sighandler.  We leave this breadcrumb so
@@ -25,11 +40,6 @@ enum EventType {
   // interrupted syscall wasn't restarted, so the interruption
   // record can be popped off the tracee's event stack.
   EV_INTERRUPTED_SYSCALL_NOT_RESTARTED,
-  // TODO: this is actually a pseudo-pseudosignal: it will never
-  // appear in a trace, but is only used to communicate between
-  // different parts of the recorder code that should be
-  // refactored to not have to do that.
-  EV_NOOP,
   // Scheduling signal interrupted the trace.
   EV_SCHED,
   EV_SEGV_RDTSC,
@@ -53,8 +63,6 @@ enum EventType {
   // "unstable" state in which we're not sure we can
   // synchronously wait for it to "really finish".
   EV_UNSTABLE_EXIT,
-  // Uses the .desched struct below.
-  EV_DESCHED,
   // Use .signal.
   EV_SIGNAL,
   EV_SIGNAL_DELIVERY,
@@ -62,6 +70,7 @@ enum EventType {
   // Use .syscall.
   EV_SYSCALL,
   EV_SYSCALL_INTERRUPTION,
+
   EV_LAST
 };
 
@@ -125,23 +134,16 @@ struct BaseEvent {
  * unbounded amount of time).  After the syscall exits, rr advances
  * the tracee to where the desched is "disarmed" by the tracee.
  */
-enum DeschedState {
-  ARMING_DESCHED_EVENT,
-  IN_SYSCALL,
-  DISARMING_DESCHED_EVENT,
-  DISARMED_DESCHED_EVENT
-};
 struct DeschedEvent : public BaseEvent {
   /** Desched of |rec|. */
   DeschedEvent(const struct syscallbuf_record* rec, SupportedArch arch)
-      : BaseEvent(NO_EXEC_INFO, arch), rec(rec), state(IN_SYSCALL) {}
+      : BaseEvent(NO_EXEC_INFO, arch), rec(rec) {}
   // Record of the syscall that was interrupted by a desched
   // notification.  It's legal to reference this memory /while
   // the desched is being processed only/, because |t| is in the
   // middle of a desched, which means it's successfully
   // allocated (but not yet committed) this syscall record.
   const struct syscallbuf_record* rec;
-  DeschedState state;
 };
 
 /**

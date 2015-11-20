@@ -293,17 +293,6 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
         next_record(t->syscallbuf_hdr);
     t->push_event(DeschedEvent(desched_rec, t->arch()));
     int call = t->desched_rec()->syscallno;
-    /* Replay needs to be prepared to see the ioctl() that arms
-     * the desched counter when it's trying to step to the entry
-     * of |call|.  We'll record the syscall entry when the main
-     * recorder code sees the tracee's syscall event. */
-    t->record_current_event();
-
-    /* Because we set the |delay_syscallbuf_reset| flag and the
-     * record counter will stay intact for a bit, we need to also
-     * prevent later events from flushing the syscallbuf until
-     * we've unblocked the reset. */
-    t->delay_syscallbuf_flush = true;
 
     /* The descheduled syscall was interrupted by a signal, like
      * all other may-restart syscalls, with the exception that

@@ -18,22 +18,6 @@
 using namespace rr;
 using namespace std;
 
-static const char* desched_state_name(DeschedState state) {
-  switch (state) {
-    case ARMING_DESCHED_EVENT:
-      return "arming";
-    case IN_SYSCALL:
-      return "in-syscall";
-    case DISARMING_DESCHED_EVENT:
-      return "disarming";
-    case DISARMED_DESCHED_EVENT:
-      return "disarmed";
-    default:
-      FATAL() << "Unknown desched state " << state;
-      return nullptr; // not reached
-  }
-}
-
 Event::Event(EncodedEvent e) {
   switch (event_type = e.type) {
     case EV_SEGV_RDTSC:
@@ -54,7 +38,6 @@ Event::Event(EncodedEvent e) {
 
     case EV_DESCHED:
       new (&Desched()) DeschedEvent(nullptr, e.arch());
-      Desched().state = DeschedState(e.data);
       return;
 
     case EV_SIGNAL:
@@ -170,15 +153,6 @@ EncodedEvent Event::encode() const {
       set_encoded_event_data(&e, 0);
       return e;
 
-    case EV_DESCHED:
-      // Disarming the desched notification is a transient
-      // state that we shouldn't try to record.
-      assert(DISARMING_DESCHED_EVENT != Desched().state);
-      set_encoded_event_data(&e, IN_SYSCALL == Desched().state
-                                     ? ARMING_DESCHED_EVENT
-                                     : Desched().state);
-      return e;
-
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER: {
@@ -206,19 +180,7 @@ EncodedEvent Event::encode() const {
   }
 }
 
-HasExecInfo Event::record_exec_info() const {
-  switch (event_type) {
-    case EV_DESCHED: {
-      // By the time the tracee is in the buffered syscall,
-      // it's by definition already armed the desched event.
-      // So we're recording that event ex post facto, and
-      // there's no meaningful execution information.
-      return IN_SYSCALL != Desched().state ? HAS_EXEC_INFO : NO_EXEC_INFO;
-    }
-    default:
-      return Base().has_exec_info;
-  }
-}
+HasExecInfo Event::record_exec_info() const { return Base().has_exec_info; }
 
 bool Event::has_ticks_slop() const {
   switch (type()) {
@@ -259,13 +221,6 @@ string Event::str() const {
   stringstream ss;
   ss << type_name();
   switch (event_type) {
-    case EV_DESCHED:
-      ss << ": " << desched_state_name(Desched().state);
-      // This is null during replay.
-      if (Desched().rec) {
-        ss << "; " << Desched().rec->syscallno;
-      }
-      break;
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:

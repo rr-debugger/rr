@@ -506,46 +506,33 @@ static void advance_to_disarm_desched_syscall(Task* t) {
  * being restarted.)
  */
 void RecordSession::desched_state_changed(Task* t) {
-  switch (t->ev().Desched().state) {
-    case IN_SYSCALL:
-      LOG(debug) << "desched: IN_SYSCALL";
-      /* We need to ensure that the syscallbuf code doesn't
-       * try to commit the current record; we've already
-       * recorded that syscall.  The following event sets
-       * the abort-commit bit. */
-      t->syscallbuf_hdr->abort_commit = 1;
-      t->record_event(
-          Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO, t->arch()));
+  LOG(debug) << "desched: IN_SYSCALL";
+  /* We need to ensure that the syscallbuf code doesn't
+   * try to commit the current record; we've already
+   * recorded that syscall.  The following event sets
+   * the abort-commit bit. */
+  t->syscallbuf_hdr->abort_commit = 1;
+  t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO, t->arch()));
 
-      t->ev().Desched().state = DISARMING_DESCHED_EVENT;
-    /* fall through */
-    case DISARMING_DESCHED_EVENT: {
-      advance_to_disarm_desched_syscall(t);
+  advance_to_disarm_desched_syscall(t);
 
-      t->ev().Desched().state = DISARMED_DESCHED_EVENT;
-      t->record_current_event();
-      t->pop_desched();
+  t->pop_desched();
 
-      /* The tracee has just finished sanity-checking the
-       * aborted record, and won't touch the syscallbuf
-       * during this (aborted) transaction again.  So now
-       * is a good time for us to reset the record counter. */
-      t->delay_syscallbuf_reset = false;
-      t->delay_syscallbuf_flush = false;
-      ASSERT(t, t->syscallbuf_hdr);
-      // Run the syscallbuf exit hook. This ensures we'll be able to reset
-      // the syscallbuf before trying to buffer another syscall.
-      t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
+  /* The tracee has just finished sanity-checking the
+   * aborted record, and won't touch the syscallbuf
+   * during this (aborted) transaction again.  So now
+   * is a good time for us to reset the record counter. */
+  t->delay_syscallbuf_reset = false;
+  t->delay_syscallbuf_flush = false;
+  ASSERT(t, t->syscallbuf_hdr);
+  // Run the syscallbuf exit hook. This ensures we'll be able to reset
+  // the syscallbuf before trying to buffer another syscall.
+  t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
 
-      // We were just descheduled for potentially a long
-      // time, and may have just had a signal become
-      // pending.  Ensure we get another chance to run.
-      last_task_switchable = PREVENT_SWITCH;
-      return;
-    }
-    default:
-      FATAL() << "Unhandled desched state";
-  }
+  // We were just descheduled for potentially a long
+  // time, and may have just had a signal become
+  // pending.  Ensure we get another chance to run.
+  last_task_switchable = PREVENT_SWITCH;
 }
 
 static void syscall_not_restarted(Task* t) {

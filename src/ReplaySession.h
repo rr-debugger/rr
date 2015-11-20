@@ -13,18 +13,6 @@
 struct syscallbuf_hdr;
 
 /**
- * The state of a (dis)arm-desched-event ioctl that's being processed.
- */
-enum ReplayDeschedType { DESCHED_ARM, DESCHED_DISARM };
-enum ReplayDeschedEnterExit { DESCHED_ENTER, DESCHED_EXIT };
-struct ReplayDeschedState {
-  /* Is this an arm or disarm request? */
-  ReplayDeschedType type;
-  /* What's our next step to retire the ioctl? */
-  ReplayDeschedEnterExit state;
-};
-
-/**
  * ReplayFlushBufferedSyscallState is saved in Session and cloned with its
  * Session, so it needs to be simple data, i.e. not holding pointers to
  * per-Session data.
@@ -67,10 +55,6 @@ enum ReplayTraceStepType {
   /* Replay until we enter the next syscall, then patch it. */
   TSTEP_PATCH_SYSCALL,
 
-  /* Emulate arming or disarming the desched event.  |desched|
-   * tracks the replay state. */
-  TSTEP_DESCHED,
-
   /* Exit the task */
   TSTEP_EXIT_TASK,
 
@@ -98,8 +82,6 @@ struct ReplayTraceStep {
     } target;
 
     ReplayFlushBufferedSyscallState flush;
-
-    ReplayDeschedState desched;
   };
 };
 
@@ -345,8 +327,6 @@ private:
                                           const StepConstraints& constraints);
   Completion emulate_async_signal(Task* t, const StepConstraints& constraints,
                                   Ticks ticks);
-  Completion skip_desched_ioctl(Task* t, ReplayDeschedState* ds,
-                                const StepConstraints& constraints);
   void prepare_syscallbuf_records(Task* t);
   Completion flush_one_syscall(Task* t, const StepConstraints& constraints);
   Completion flush_syscallbuf(Task* t, const StepConstraints& constraints);
