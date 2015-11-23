@@ -100,29 +100,46 @@ static string latest_trace_symlink() {
   return trace_save_dir() + "/latest-trace";
 }
 
+static void ensure_dir(const string& dir, mode_t mode) {
+  string d = dir;
+  while (!d.empty() && d[d.length() - 1] == '/') {
+    d = d.substr(0, d.length() - 1);
+  }
+
+  struct stat st;
+  if (0 > stat(d.c_str(), &st)) {
+    if (errno != ENOENT) {
+      FATAL() << "Error accessing trace directory `" << dir << "'";
+    }
+
+    size_t last_slash = d.find_last_of('/');
+    if (last_slash == string::npos || last_slash == 0) {
+      FATAL() << "Can't find trace directory `" << dir << "'";
+    }
+    ensure_dir(d.substr(0, last_slash), mode);
+
+    // Allow for a race condition where someone else creates the directory
+    if (0 > mkdir(d.c_str(), mode) && errno != EEXIST) {
+      FATAL() << "Can't create trace directory `" << dir << "'";
+    }
+    if (0 > stat(d.c_str(), &st)) {
+      FATAL() << "Can't stat trace directory `" << dir << "'";
+    }
+  }
+
+  if (!(S_IFDIR & st.st_mode)) {
+    FATAL() << "`" << dir << "' exists but isn't a directory.";
+  }
+  if (access(d.c_str(), W_OK)) {
+    FATAL() << "Can't write to `" << dir << "'.";
+  }
+}
+
 /**
  * Create the default ~/.rr directory if it doesn't already exist.
  */
 static void ensure_default_rr_trace_dir() {
-  string dir = default_rr_trace_dir();
-  struct stat st;
-  if (0 == stat(dir.c_str(), &st)) {
-    if (!(S_IFDIR & st.st_mode)) {
-      FATAL() << "`" << dir << "' exists but isn't a directory.";
-    }
-    if (access(dir.c_str(), W_OK)) {
-      FATAL() << "Can't write to `" << dir << "'.";
-    }
-    return;
-  }
-  int ret = mkdir(dir.c_str(), S_IRWXU | S_IRWXG);
-  int err = errno;
-  // Another rr process can be concurrently attempting to create
-  // ~/.rr, so the directory may have come into existence since
-  // we checked above.
-  if (ret && EEXIST != err) {
-    FATAL() << "Failed to create directory `" << dir << "'";
-  }
+  ensure_dir(default_rr_trace_dir(), S_IRWXU);
 }
 
 string TraceStream::path(Substream s) {
