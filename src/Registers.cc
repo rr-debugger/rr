@@ -641,6 +641,18 @@ bool Registers::clear_singlestep_flag() {
   }
 }
 
+uintptr_t Registers::flags() const {
+  switch (arch()) {
+    case x86:
+      return u.x86regs.eflags;
+    case x86_64:
+      return u.x64regs.eflags | (uint64_t(u.x64regs.eflags_upper) << 32);
+    default:
+      assert(0 && "Unknown arch");
+      return false;
+  }
+}
+
 ostream& operator<<(ostream& stream, const Registers& r) {
   stream << "{ args:(" << HEX(r.arg1()) << "," << HEX(r.arg2()) << ","
          << HEX(r.arg3()) << "," << HEX(r.arg4()) << "," << HEX(r.arg5()) << ","

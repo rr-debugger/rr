@@ -267,6 +267,9 @@ static void* traced_syscall_instruction =
     (void*)(RR_PAGE_IN_TRACED_SYSCALL_ADDR - SYSCALL_INSTRUCTION_LENGTH);
 static void* untraced_syscall_instruction =
     (void*)(RR_PAGE_IN_UNTRACED_SYSCALL_ADDR - SYSCALL_INSTRUCTION_LENGTH);
+static void* untraced_replayed_syscall_instruction =
+    (void*)(RR_PAGE_IN_UNTRACED_REPLAYED_SYSCALL_ADDR -
+            SYSCALL_INSTRUCTION_LENGTH);
 static void* privileged_traced_syscall_instruction =
     (void*)(RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR -
             SYSCALL_INSTRUCTION_LENGTH);
@@ -397,11 +400,12 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
  * This is only called from syscall wrappers that are doing a proper
  * buffered syscall.
  */
-static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
-                             long a4, long a5) {
+static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
+                                  long a3, long a4, long a5,
+                                  void* syscall_instruction) {
   struct syscallbuf_record* rec = (struct syscallbuf_record*)buffer_last();
   long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                          untraced_syscall_instruction, 0, 0);
+                          syscall_instruction, 0, 0);
   unsigned char tmp_in_replay = in_replay;
 /* During replay, return the result that's already in the buffer, instead
    of what our "syscall" returned. */
@@ -426,8 +430,9 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
   return ret;
 }
 #define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)                          \
-  untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,            \
-                   (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
+  untraced_syscall_base(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,       \
+                        (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,           \
+                        untraced_syscall_instruction)
 #define untraced_syscall5(no, a0, a1, a2, a3, a4)                              \
   untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
 #define untraced_syscall4(no, a0, a1, a2, a3)                                  \
@@ -437,14 +442,25 @@ static long untraced_syscall(int syscallno, long a0, long a1, long a2, long a3,
 #define untraced_syscall1(no, a0) untraced_syscall2(no, a0, 0)
 #define untraced_syscall0(no) untraced_syscall1(no, 0)
 
-static long privileged_untraced_syscall(int syscallno, long a0, long a1,
-                                        long a2, long a3, long a4, long a5) {
-  return _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                      privileged_untraced_syscall_instruction, 0, 0);
-}
+#define untraced_replayed_syscall6(no, a0, a1, a2, a3, a4, a5)                 \
+  untraced_syscall_base(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,       \
+                        (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,           \
+                        untraced_replayed_syscall_instruction)
+#define untraced_replayed_syscall5(no, a0, a1, a2, a3, a4)                     \
+  untraced_replayed_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define untraced_replayed_syscall4(no, a0, a1, a2, a3)                         \
+  untraced_replayed_syscall5(no, a0, a1, a2, a3, 0)
+#define untraced_replayed_syscall3(no, a0, a1, a2)                             \
+  untraced_replayed_syscall4(no, a0, a1, a2, 0)
+#define untraced_replayed_syscall2(no, a0, a1)                                 \
+  untraced_replayed_syscall3(no, a0, a1, 0)
+#define untraced_replayed_syscall1(no, a0) untraced_replayed_syscall2(no, a0, 0)
+#define untraced_replayed_syscall0(no) untraced_replayed_syscall1(no, 0)
+
 #define privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, a5)               \
-  privileged_untraced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, \
-                              (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5)
+  _raw_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, \
+               (uintptr_t)a4, (uintptr_t)a5,                                   \
+               privileged_untraced_syscall_instruction, 0, 0)
 #define privileged_untraced_syscall5(no, a0, a1, a2, a3, a4)                   \
   privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
 #define privileged_untraced_syscall4(no, a0, a1, a2, a3)                       \
@@ -998,14 +1014,17 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
     /* Clear the return value that rr pus there during replay */
     rec->ret = 0;
   } else {
-    uint32_t entry_num = ((char*)rec - (char*)hdr) / 8;
     int breakpoint_entry_size =
         &_breakpoint_table_entry_end - &_breakpoint_table_entry_start;
-    breakpoint_function = (void*)(&_breakpoint_table_entry_start +
-                                  entry_num * breakpoint_entry_size);
 
     rec->ret = ret;
+    // Finish 'rec' first before updating num_rec_bytes, since
+    // rr might read the record anytime after this update.
     hdr->num_rec_bytes += stored_record_size(rec->size);
+
+    breakpoint_function =
+        (void*)(&_breakpoint_table_entry_start +
+                (hdr->num_rec_bytes / 8) * breakpoint_entry_size);
   }
 
   if (rec->desched) {
@@ -1515,7 +1534,10 @@ static long sys_madvise(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
 
-  ret = untraced_syscall3(syscallno, addr, length, advice);
+  /* Ensure this syscall happens during replay. In particular MADV_DONTNEED
+   * must be executed.
+   */
+  ret = untraced_replayed_syscall3(syscallno, addr, length, advice);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 

@@ -244,6 +244,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       own_namespace_rec_tid(0),
       syscallbuf_hdr(),
       num_syscallbuf_bytes(),
+      stopping_breakpoint_table_entry_size(0),
       serial(serial),
       blocked_sigs(),
       prname("???"),
@@ -1997,6 +1998,10 @@ static void fixup_syscall_registers(Registers& registers) {
     // We assume user-space never cares about the flags appearing in R11 so
     // we just clear it. That's simpler and easier to emulate in
     // machine code.
+    // For untraced syscalls, the untraced-syscall entry point code (see
+    // write_rr_page) does this itself.
+    // This doesn't matter when exiting a sigreturn syscall, since it
+    // restores the original flags.
     registers.set_r11(0);
     // x86-64 'syscall' instruction copies return address to RCX on syscall
     // entry. rr-related kernel activity normally sets RCX to -1 at some point
@@ -2021,9 +2026,10 @@ static void fixup_syscall_registers(Registers& registers) {
   }
 }
 
-void Task::fixup_syscall_regs() {
-  fixup_syscall_registers(registers);
-  set_regs(registers);
+void Task::fixup_syscall_regs(const Registers& regs) {
+  Registers r = regs;
+  fixup_syscall_registers(r);
+  set_regs(r);
 }
 
 void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
@@ -2074,7 +2080,8 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     need_to_set_regs = true;
   }
 
-  if (is_in_non_sigreturn_exit_syscall(this) || is_in_untraced_syscall()) {
+  // When exiting a syscall, We need to normalize nondeterministic registers.
+  if (is_in_non_sigreturn_exit_syscall(this)) {
     fixup_syscall_registers(registers);
     need_to_set_regs = true;
   }
@@ -2175,16 +2182,23 @@ static void set_up_seccomp_filter(Session& session) {
   if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
     uintptr_t in_untraced_syscall_ip =
         AddressSpace::rr_page_ip_in_untraced_syscall().register_value();
+    uintptr_t in_untraced_replayed_syscall_ip =
+        AddressSpace::rr_page_ip_in_untraced_replayed_syscall()
+            .register_value();
     uintptr_t privileged_in_untraced_syscall_ip =
         AddressSpace::rr_page_ip_in_privileged_untraced_syscall()
             .register_value();
     assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
+    assert(in_untraced_replayed_syscall_ip ==
+           uint32_t(in_untraced_replayed_syscall_ip));
     assert(privileged_in_untraced_syscall_ip ==
            uint32_t(privileged_in_untraced_syscall_ip));
 
     struct sock_filter filter[] = {
       /* Allow all system calls from our untraced_syscall callsite */
       ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_syscall_ip)),
+      /* Allow all system calls from our untraced_syscall callsite */
+      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_replayed_syscall_ip)),
       /* Allow all system calls from our privilged_untraced_syscall callsite */
       ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_untraced_syscall_ip)),
       /* All the rest are handled in rr */
@@ -2293,6 +2307,10 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->as = sess.clone(t, as);
   }
   t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
+
+  t->stopping_breakpoint_table = stopping_breakpoint_table;
+  t->stopping_breakpoint_table_entry_size =
+      stopping_breakpoint_table_entry_size;
 
   // FdTable is either shared or copied, so the contents of
   // syscallbuf_fds_disabled_child are still valid.
@@ -2638,36 +2656,45 @@ void Task::maybe_flush_syscallbuf() {
     // Already flushing.
     return;
   }
-
-  ASSERT(this, !flushed_syscallbuf ||
-                   flushed_num_rec_bytes == syscallbuf_hdr->num_rec_bytes);
+  if (!syscallbuf_hdr) {
+    return;
+  }
 
   // This can be called while the task is not stopped, when we prematurely
-  // terminate the trace. In that case, we should avoid reading header data
-  // that the task could be concurrently modifying. We could still race on
-  // the actual syscallbuf data, but there's nothing we can do about that and
-  // it could only affect replay of the very last syscall before termination.
-  if (!syscallbuf_hdr || (is_stopped && 0 == syscallbuf_hdr->num_rec_bytes) ||
-      flushed_syscallbuf) {
-    // No syscallbuf or no records, or we've already flushed.
+  // terminate the trace. In that case, the tracee could be concurrently
+  // modifying the header. We'll take a snapshot of the header now.
+  // The syscallbuf code ensures that writes to syscallbuf records
+  // complete before num_rec_bytes is incremented.
+  struct syscallbuf_hdr hdr = *syscallbuf_hdr;
+
+  ASSERT(this,
+         !flushed_syscallbuf || flushed_num_rec_bytes == hdr.num_rec_bytes);
+
+  if (!hdr.num_rec_bytes || flushed_syscallbuf) {
+    // no records, or we've already flushed.
     return;
   }
 
   // Write the entire buffer in one shot without parsing it,
   // because replay will take care of that.
   push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));
-  record_local(syscallbuf_child,
-               // Record the header for consistency checking.
-               is_stopped ? syscallbuf_data_size() : num_syscallbuf_bytes,
-               syscallbuf_hdr);
+  if (is_stopped) {
+    record_local(syscallbuf_child, syscallbuf_data_size(), syscallbuf_hdr);
+  } else {
+    vector<uint8_t> buf;
+    buf.resize(sizeof(hdr) + hdr.num_rec_bytes);
+    memcpy(buf.data(), &hdr, sizeof(hdr));
+    memcpy(buf.data() + sizeof(hdr), syscallbuf_hdr + 1, hdr.num_rec_bytes);
+    record_local(syscallbuf_child, buf.size(), buf.data());
+  }
   record_current_event();
   pop_event(EV_SYSCALLBUF_FLUSH);
 
   flushed_syscallbuf = true;
-  flushed_num_rec_bytes = syscallbuf_hdr->num_rec_bytes;
+  flushed_num_rec_bytes = hdr.num_rec_bytes;
 
   LOG(debug) << "Syscallbuf flushed with num_rec_bytes="
-             << flushed_num_rec_bytes;
+             << (uint32_t)hdr.num_rec_bytes;
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
@@ -2963,6 +2990,9 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
   remote_ptr<volatile char> syscallbuf_fds_disabled =
       params.syscallbuf_fds_disabled.rptr();
   t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled.cast<char>();
+
+  t->stopping_breakpoint_table = params.breakpoint_table.rptr().as_int();
+  t->stopping_breakpoint_table_entry_size = params.breakpoint_table_entry_size;
 
   t->write_mem(params.in_replay_flag.rptr(),
                (unsigned char)t->session().is_replaying());

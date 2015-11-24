@@ -316,6 +316,8 @@ public:
 
   Session* session() const { return session_; }
 
+  SupportedArch arch() const;
+
   /**
    * Return the path this address space was exec()'d with.
    */
@@ -334,6 +336,14 @@ public:
    * |addr|.
    */
   TrapType get_breakpoint_type_at_addr(remote_code_ptr addr);
+
+  /**
+   * Returns true when the breakpoint at |addr| is in private
+   * non-writeable memory. When this returns true, the breakpoint can't be
+   * overwritten by the tracee without an intervening mprotect or mmap
+   * syscall.
+   */
+  bool is_breakpoint_in_private_read_only_memory(remote_code_ptr addr);
 
   /**
    * The buffer |dest| of length |length| represents the contents of tracee
@@ -538,20 +548,10 @@ public:
   /* The address of the syscall instruction from which traced syscalls made by
    * the syscallbuf will originate. */
   remote_code_ptr traced_syscall_ip() const { return traced_syscall_ip_; }
-  /* The address of the syscall instruction from which untraced syscalls will
-   * originate, used to determine whether a syscall is being
-   * made by the syscallbuf wrappers or not. */
-  remote_code_ptr untraced_syscall_ip() const { return untraced_syscall_ip_; }
   /* The address of the syscall instruction from which privileged traced
    * syscalls made by the syscallbuf will originate. */
   remote_code_ptr privileged_traced_syscall_ip() const {
     return privileged_traced_syscall_ip_;
-  }
-  /* The address of the syscall instruction from which privileged untraced
-   * syscalls will originate, used to determine whether a syscall is being
-   * made by the syscallbuf wrappers or not. */
-  remote_code_ptr privileged_untraced_syscall_ip() const {
-    return privileged_untraced_syscall_ip_;
   }
   /* Start and end of the mapping of the syscallbuf code
    * section, used to determine whether a tracee's $ip is in the
@@ -582,6 +582,13 @@ public:
    */
   static remote_code_ptr rr_page_ip_in_untraced_syscall() {
     return RR_PAGE_IN_UNTRACED_SYSCALL_ADDR;
+  }
+  /**
+   * ip() when we're in an untraced replayed system call; same for all supported
+   * architectures (hence static).
+   */
+  static remote_code_ptr rr_page_ip_in_untraced_replayed_syscall() {
+    return RR_PAGE_IN_UNTRACED_REPLAYED_SYSCALL_ADDR;
   }
   /**
    * This doesn't need to be the same for all architectures, but may as well
@@ -914,9 +921,7 @@ private:
   // access when child_mem_fd is not open.
   ScopedFd child_mem_fd;
   remote_code_ptr traced_syscall_ip_;
-  remote_code_ptr untraced_syscall_ip_;
   remote_code_ptr privileged_traced_syscall_ip_;
-  remote_code_ptr privileged_untraced_syscall_ip_;
   remote_ptr<void> syscallbuf_lib_start_;
   remote_ptr<void> syscallbuf_lib_end_;
 

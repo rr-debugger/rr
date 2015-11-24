@@ -257,10 +257,7 @@ void AddressSpace::map_rr_page(Task* t) {
   map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name, fstat.st_dev,
       fstat.st_ino);
 
-  untraced_syscall_ip_ = rr_page_untraced_syscall_ip(t->arch());
   traced_syscall_ip_ = rr_page_traced_syscall_ip(t->arch());
-  privileged_untraced_syscall_ip_ =
-      rr_page_privileged_untraced_syscall_ip(t->arch());
   privileged_traced_syscall_ip_ =
       rr_page_privileged_traced_syscall_ip(t->arch());
 }
@@ -307,8 +304,6 @@ void AddressSpace::post_exec_syscall(Task* t) {
   // First locate a syscall instruction we can use for remote syscalls.
   traced_syscall_ip_ = find_syscall_instruction(t);
   privileged_traced_syscall_ip_ = nullptr;
-  untraced_syscall_ip_ = nullptr;
-  privileged_untraced_syscall_ip_ = nullptr;
   // Now remote syscalls work, we can open_mem_fd.
   t->open_mem_fd();
   // Now we can set up the "rr page" at its fixed address. This gives
@@ -339,6 +334,10 @@ void AddressSpace::dump() const {
   }
 }
 
+SupportedArch AddressSpace::arch() const {
+  return (*task_set().begin())->arch();
+}
+
 TrapType AddressSpace::get_breakpoint_type_for_retired_insn(
     remote_code_ptr ip) {
   remote_code_ptr addr = ip.decrement_by_bkpt_insn_length(SupportedArch::x86);
@@ -348,6 +347,20 @@ TrapType AddressSpace::get_breakpoint_type_for_retired_insn(
 TrapType AddressSpace::get_breakpoint_type_at_addr(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
   return it == breakpoints.end() ? TRAP_NONE : it->second.type();
+}
+
+bool AddressSpace::is_breakpoint_in_private_read_only_memory(
+    remote_code_ptr addr) {
+  for (const auto& m : maps_starting_at(addr.to_data_ptr<void>())) {
+    if (m.map.start() >=
+        addr.increment_by_bkpt_insn_length(arch()).to_data_ptr<void>()) {
+      break;
+    }
+    if ((m.map.prot() & PROT_WRITE) || (m.map.flags() & MAP_SHARED)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void AddressSpace::replace_breakpoints_with_original_values(
@@ -1099,9 +1112,7 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
                             ? new Monkeypatcher(*o.monkeypatch_state)
                             : nullptr),
       traced_syscall_ip_(o.traced_syscall_ip_),
-      untraced_syscall_ip_(o.untraced_syscall_ip_),
       privileged_traced_syscall_ip_(o.privileged_traced_syscall_ip_),
-      privileged_untraced_syscall_ip_(o.privileged_untraced_syscall_ip_),
       syscallbuf_lib_start_(o.syscallbuf_lib_start_),
       syscallbuf_lib_end_(o.syscallbuf_lib_end_),
       saved_auxv_(o.saved_auxv_),

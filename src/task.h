@@ -415,9 +415,9 @@ public:
   /**
    * If we're at the entry to (or exit from) a syscall, we may need to
    * fix up registers that are set nondeterministically so they're
-   * deterministic.
+   * deterministic. Fixes up |regs| and does set_regs() on that.
    */
-  void fixup_syscall_regs();
+  void fixup_syscall_regs(const Registers& regs);
 
   /**
    * Wait for |futex| in this address space to have the value
@@ -539,12 +539,9 @@ public:
    * instruction.
    */
   bool is_in_untraced_syscall() {
-    return ip() ==
-               as->untraced_syscall_ip().increment_by_syscall_insn_length(
-                   arch()) ||
-           ip() ==
-               as->privileged_untraced_syscall_ip()
-                   .increment_by_syscall_insn_length(arch());
+    return ip() == AddressSpace::rr_page_ip_in_untraced_syscall() ||
+           ip() == AddressSpace::rr_page_ip_in_untraced_replayed_syscall() ||
+           ip() == AddressSpace::rr_page_ip_in_privileged_untraced_syscall();
   }
 
   /**
@@ -1325,6 +1322,8 @@ public:
   /* Points at the tracee's mapping of the buffer. */
   remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
   remote_ptr<char> syscallbuf_fds_disabled_child;
+  remote_code_ptr stopping_breakpoint_table;
+  int stopping_breakpoint_table_entry_size;
 
   PropertyTable& properties() { return properties_; }
 

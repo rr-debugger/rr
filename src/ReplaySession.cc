@@ -147,8 +147,7 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
 void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
 
 void ReplaySession::maybe_gc_emufs(SupportedArch arch, int syscallno) {
-  if (is_close_syscall(syscallno, arch) ||
-      is_munmap_syscall(syscallno, arch)) {
+  if (is_close_syscall(syscallno, arch) || is_munmap_syscall(syscallno, arch)) {
     gc_emufs();
   }
 }
@@ -204,40 +203,47 @@ bool ReplaySession::is_ignored_signal(int sig) {
   }
 }
 
+static bool compute_ticks_request(
+    Task* t, const ReplaySession::StepConstraints& constraints,
+    TicksRequest* ticks_request) {
+  *ticks_request = RESUME_UNLIMITED_TICKS;
+  if (constraints.ticks_target > 0) {
+    Ticks ticks_period = constraints.ticks_target - SKID_SIZE - t->tick_count();
+    if (ticks_period <= 0) {
+      // Behave as if we actually executed something. Callers assume we did.
+      t->clear_wait_status();
+      return false;
+    }
+    *ticks_request = (TicksRequest)ticks_period;
+  }
+  return true;
+}
+
 /**
  * Continue until reaching either the "entry" of an emulated syscall,
  * or the entry or exit of an executed syscall.  |emu| is nonzero when
  * we're emulating the syscall.  Return COMPLETE when the next syscall
  * boundary is reached, or INCOMPLETE if advancing to the boundary was
  * interrupted by an unknown trap.
+ * When |syscall_trace_frame| is non-null, we continue to the syscall by
+ * setting a breakpoint instead of running until we execute a system
+ * call instruction. In that case we will not actually enter the kernel.
  */
 Completion ReplaySession::cont_syscall_boundary(
     Task* t, const StepConstraints& constraints) {
-  TicksRequest ticks_request = RESUME_UNLIMITED_TICKS;
-  if (constraints.ticks_target > 0) {
-    Ticks ticks_period = constraints.ticks_target - SKID_SIZE - t->tick_count();
-    if (ticks_period <= 0) {
-      // Behave as if we actually executed something. Callers assume we did.
-      t->clear_wait_status();
-      return INCOMPLETE;
-    }
-    ticks_request = (TicksRequest)ticks_period;
+  TicksRequest ticks_request;
+  if (!compute_ticks_request(t, constraints, &ticks_request)) {
+    return INCOMPLETE;
   }
 
-  ResumeRequest resume_how;
-  if (constraints.is_singlestep()) {
-    resume_how = RESUME_SYSEMU_SINGLESTEP;
-  } else {
-    resume_how = RESUME_SYSEMU;
-  }
-  if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD &&
-      (resume_how == RESUME_SYSEMU_SINGLESTEP ||
-       resume_how == RESUME_SINGLESTEP)) {
+  if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD) {
     // ignore ticks_period. We can't add more than one tick during a
     // fast_forward so it doesn't matter.
     did_fast_forward |= fast_forward_through_instruction(
-        t, resume_how, constraints.stop_before_states);
+        t, RESUME_SYSEMU_SINGLESTEP, constraints.stop_before_states);
   } else {
+    ResumeRequest resume_how =
+        constraints.is_singlestep() ? RESUME_SYSEMU_SINGLESTEP : RESUME_SYSEMU;
     t->resume_execution(resume_how, RESUME_WAIT, ticks_request);
   }
 
@@ -267,12 +273,54 @@ Completion ReplaySession::cont_syscall_boundary(
  */
 Completion ReplaySession::enter_syscall(Task* t,
                                         const StepConstraints& constraints) {
-  if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
-    return INCOMPLETE;
+  bool use_breakpoint_optimization = false;
+  remote_code_ptr syscall_instruction;
+
+  if (can_validate()) {
+    syscall_instruction =
+        current_trace_frame().regs().ip().decrement_by_syscall_insn_length(
+            t->arch());
+    // Skip this optimization if we can't set the breakpoint, or if it's
+    // in writeable or shared memory, since in those cases it could be
+    // overwritten by the tracee. It could even be dynamically generated and
+    // not generated yet.
+    if (t->vm()->is_breakpoint_in_private_read_only_memory(
+            syscall_instruction) &&
+        t->vm()->add_breakpoint(syscall_instruction, TRAP_BKPT_INTERNAL)) {
+      use_breakpoint_optimization = true;
+    }
   }
-  t->validate_regs();
-  // boot it out of the emulated syscall now.
-  t->finish_emulated_syscall();
+
+  if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
+    bool reached_target =
+        use_breakpoint_optimization && SIGTRAP == t->pending_sig() &&
+        t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
+            syscall_instruction &&
+        t->vm()->get_breakpoint_type_at_addr(syscall_instruction) ==
+            TRAP_BKPT_INTERNAL;
+    if (reached_target) {
+      // Emulate syscall state change
+      Registers r = t->regs();
+      r.set_ip(syscall_instruction.increment_by_syscall_insn_length(t->arch()));
+      r.set_original_syscallno(r.syscallno());
+      r.set_syscall_result(-ENOSYS);
+      t->fixup_syscall_regs(r);
+      t->validate_regs();
+    }
+    if (use_breakpoint_optimization) {
+      t->vm()->remove_breakpoint(syscall_instruction, TRAP_BKPT_INTERNAL);
+    }
+    if (!reached_target) {
+      return INCOMPLETE;
+    }
+  } else {
+    // If we use the breakpoint optimization, we must get a SIGTRAP before
+    // reaching a syscall, so cont_syscall_boundary must return INCOMPLETE.
+    ASSERT(t, !use_breakpoint_optimization);
+    t->validate_regs();
+    t->finish_emulated_syscall();
+  }
+
   return COMPLETE;
 }
 
@@ -310,23 +358,28 @@ void ReplaySession::check_pending_sig(Task* t) {
  * Advance |t| to the next signal or trap.  If |stepi| is |SINGLESTEP|,
  * then execution resumes by single-stepping.  Otherwise it continues
  * normally. |t->pending_sig()| contains any pending signal.
+ *
+ * Default |resume_how| is RESUME_SYSCALL for error checking:
+ * since the next event is supposed to be a signal,
+ * entering a syscall here means divergence.  There
+ * shouldn't be any straight-line execution overhead
+ * for SYSCALL vs. CONT, so the difference in cost
+ * should be neglible.
+ *
+ * Some callers pass RESUME_CONT because they want to execute any syscalls
+ * encountered.
  */
 void ReplaySession::continue_or_step(Task* t,
                                      const StepConstraints& constraints,
-                                     TicksRequest tick_request) {
+                                     TicksRequest tick_request,
+                                     ResumeRequest resume_how) {
   if (constraints.command == RUN_SINGLESTEP) {
     t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, tick_request);
   } else if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD) {
     did_fast_forward |= fast_forward_through_instruction(
         t, RESUME_SINGLESTEP, constraints.stop_before_states);
   } else {
-    /* We continue with RESUME_SYSCALL for error checking:
-     * since the next event is supposed to be a signal,
-     * entering a syscall here means divergence.  There
-     * shouldn't be any straight-line execution overhead
-     * for SYSCALL vs. CONT, so the difference in cost
-     * should be neglible. */
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, tick_request);
+    t->resume_execution(resume_how, RESUME_WAIT, tick_request);
   }
   check_pending_sig(t);
 }
@@ -912,113 +965,16 @@ void ReplaySession::prepare_syscallbuf_records(Task* t) {
   memcpy(t->syscallbuf_hdr + 1, buf.data.data() + sizeof(struct syscallbuf_hdr),
          buf.data.size() - sizeof(struct syscallbuf_hdr));
 
-  current_step.flush.num_rec_bytes_remaining = recorded_hdr.num_rec_bytes;
-  current_step.flush.syscall_record_offset = 0;
-
-  ASSERT(t, current_step.flush.num_rec_bytes_remaining +
-                    sizeof(struct syscallbuf_hdr) <=
+  ASSERT(t, recorded_hdr.num_rec_bytes + sizeof(struct syscallbuf_hdr) <=
                 SYSCALLBUF_BUFFER_SIZE);
 
-  LOG(debug) << "Prepared " << current_step.flush.num_rec_bytes_remaining
+  current_step.flush.stop_breakpoint_addr =
+      t->stopping_breakpoint_table.to_data_ptr<void>().as_int() +
+      (recorded_hdr.num_rec_bytes / 8) *
+          t->stopping_breakpoint_table_entry_size;
+
+  LOG(debug) << "Prepared " << (uint32_t)recorded_hdr.num_rec_bytes
              << " bytes of syscall records";
-}
-
-/**
- * Bail if |t| isn't at the buffered syscall |syscallno|.
- */
-static void assert_at_buffered_syscall(Task* t, int syscallno) {
-  ASSERT(t, t->is_in_untraced_syscall())
-      << "Bad ip " << t->ip() << ": should have been buffered-syscall ip";
-  ASSERT(t, t->regs().original_syscallno() == syscallno)
-      << "At " << t->syscall_name(t->regs().original_syscallno())
-      << "; should have been at " << t->syscall_name(syscallno) << "("
-      << syscallno << ")";
-}
-
-static bool only_private_anonymous_mappings(Task* t, remote_ptr<void> addr,
-                                            size_t len) {
-  bool seen_following_mapping = false;
-  for (const auto& mapping : t->vm()->maps_starting_at(addr)) {
-    if (mapping.map.start() >= addr + len) {
-      if (seen_following_mapping || !(mapping.map.flags() & PROT_GROWSDOWN)) {
-        break;
-      }
-      seen_following_mapping = true;
-    }
-    if ((mapping.map.flags() & (MAP_PRIVATE | MAP_ANONYMOUS)) !=
-        (MAP_PRIVATE | MAP_ANONYMOUS)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-template <typename Arch>
-static void perform_syscallbuf_syscall_side_effects_arch(
-    Task* t, const Registers& regs) {
-  switch (regs.original_syscallno()) {
-    case Arch::madvise:
-      if ((int)regs.arg3() == MADV_DONTNEED) {
-        ASSERT(t, only_private_anonymous_mappings(t, regs.arg1(), regs.arg2()))
-            << "MADV_DONTNEED on non-private+anonymous mappings";
-        // madvise MADV_DONTNEED is the only syscall-buffered syscall that
-        // needs side effects other than restoring from the syscallbuf data.
-        AutoRemoteSyscalls remote(t);
-        remote.syscall(regs.original_syscallno(), regs.arg1(), regs.arg2(),
-                       MADV_DONTNEED);
-      }
-      break;
-    default:
-      break;
-  }
-}
-
-static void perform_syscallbuf_syscall_side_effects(Task* t,
-                                                    const Registers& regs) {
-  RR_ARCH_FUNCTION(perform_syscallbuf_syscall_side_effects_arch, t->arch(), t,
-                   regs);
-}
-
-/**
- * Try to flush one buffered syscall as described by |flush|.  Return
- * INCOMPLETE if an unhandled interrupt occurred, and COMPLETE if the syscall
- * was flushed (in which case |flush->state == DONE|).
- */
-Completion ReplaySession::flush_one_syscall(
-    Task* t, const StepConstraints& constraints) {
-  struct syscallbuf_record* child_rec =
-      (struct syscallbuf_record*)((uint8_t*)t->syscallbuf_hdr->recs +
-                                  current_step.flush.syscall_record_offset);
-  ASSERT(t, 0 == ((uintptr_t)child_rec & (sizeof(int) - 1)))
-      << "Replaying record must be int-aligned, but instead is " << child_rec;
-  ASSERT(t, 0 == child_rec->desched || 1 == child_rec->desched)
-      << "Recorded record is corrupted: rec->desched is " << child_rec->desched;
-  // We'll check at syscall entry that the recorded and
-  // replayed record values match.
-
-  int call = child_rec->syscallno;
-  LOG(debug) << "Replaying buffered `" << t->syscall_name(call)
-             << "' (ret:" << child_rec->ret << ") which does"
-             << (!child_rec->desched ? " not" : "") << " use desched event";
-
-  LOG(debug) << "  advancing to buffered syscall entry";
-  if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
-    return INCOMPLETE;
-  }
-  assert_at_buffered_syscall(t, call);
-
-  Registers saved_regs = t->regs();
-  t->finish_emulated_syscall();
-  perform_syscallbuf_syscall_side_effects(t, saved_regs);
-
-  // The tracee syscall buffering code is responsible for setting the
-  // syscall result register during replay.
-
-  accumulate_syscall_performed();
-
-  maybe_gc_emufs(t->arch(), call);
-
-  return COMPLETE;
 }
 
 /**
@@ -1029,28 +985,54 @@ Completion ReplaySession::flush_one_syscall(
  */
 Completion ReplaySession::flush_syscallbuf(Task* t,
                                            const StepConstraints& constraints) {
-  while (current_step.flush.num_rec_bytes_remaining > 0) {
-    const struct syscallbuf_record* record =
-        (const struct syscallbuf_record*)((uint8_t*)t->syscallbuf_hdr->recs +
-                                          current_step.flush
-                                              .syscall_record_offset);
-    // Save actual record size while we have it. After flush_one_syscall the
-    // size will have been (temporarily) reset by syscall buffering code to the
-    // allocated max size.
-    size_t stored_rec_size = stored_record_size(record->size);
+  struct syscallbuf_record* next_rec = next_record(t->syscallbuf_hdr);
 
-    if (flush_one_syscall(t, constraints) == INCOMPLETE) {
-      return INCOMPLETE;
-    }
-
-    current_step.flush.syscall_record_offset += stored_rec_size;
-    current_step.flush.num_rec_bytes_remaining -= stored_rec_size;
-
-    LOG(debug) << "  " << current_step.flush.num_rec_bytes_remaining
-               << " bytes remain to flush";
+  TicksRequest ticks_request;
+  if (!compute_ticks_request(t, constraints, &ticks_request)) {
+    return INCOMPLETE;
   }
 
-  return COMPLETE;
+  bool added = t->vm()->add_breakpoint(current_step.flush.stop_breakpoint_addr,
+                                       TRAP_BKPT_INTERNAL);
+  ASSERT(t, added);
+  continue_or_step(t, constraints, ticks_request, RESUME_CONT);
+  bool user_breakpoint_at_addr =
+      t->vm()->get_breakpoint_type_at_addr(
+          current_step.flush.stop_breakpoint_addr) != TRAP_BKPT_INTERNAL;
+  t->vm()->remove_breakpoint(current_step.flush.stop_breakpoint_addr,
+                             TRAP_BKPT_INTERNAL);
+
+  // Account for buffered syscalls just completed
+  struct syscallbuf_record* end_rec = next_record(t->syscallbuf_hdr);
+  while (next_rec != end_rec) {
+    accumulate_syscall_performed();
+    maybe_gc_emufs(t->arch(), next_rec->syscallno);
+    next_rec = (struct syscallbuf_record*)((uint8_t*)next_rec +
+                                           stored_record_size(next_rec->size));
+  }
+
+  if (t->pending_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
+    // This would normally be triggered by constraints.ticks_target but it's
+    // also possible to get stray signals here.
+    return INCOMPLETE;
+  }
+
+  if (is_ignored_signal(t->pending_sig())) {
+    return flush_syscallbuf(t, constraints);
+  }
+
+  ASSERT(t, t->pending_sig() == SIGTRAP)
+      << "Replay got unexpected signal (or none) " << t->pending_sig();
+  if (t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
+          remote_code_ptr(current_step.flush.stop_breakpoint_addr) &&
+      !user_breakpoint_at_addr) {
+    Registers r = t->regs();
+    r.set_ip(current_step.flush.stop_breakpoint_addr);
+    t->set_regs(r);
+    return COMPLETE;
+  }
+
+  return INCOMPLETE;
 }
 
 Completion ReplaySession::patch_next_syscall(
@@ -1115,13 +1097,11 @@ void ReplaySession::check_approaching_ticks_target(
 Completion ReplaySession::advance_to_ticks_target(
     Task* t, const StepConstraints& constraints) {
   while (true) {
-    Ticks ticks_left = constraints.ticks_target - t->tick_count();
-    if (ticks_left <= SKID_SIZE) {
-      // Behave as if we actually executed something. Callers assume we did.
-      t->clear_wait_status();
+    TicksRequest ticks_request;
+    if (!compute_ticks_request(t, constraints, &ticks_request)) {
       return INCOMPLETE;
     }
-    continue_or_step(t, constraints, (TicksRequest)(ticks_left - SKID_SIZE));
+    continue_or_step(t, constraints, ticks_request);
     if (SIGTRAP == t->pending_sig()) {
       return INCOMPLETE;
     }
@@ -1238,7 +1218,8 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
              << (ev.is_syscall_event() ? state_name(ev.Syscall().state)
                                        : " (none)");
   if (t->syscallbuf_hdr) {
-    LOG(debug) << "    (syscllbufsz:" << t->syscallbuf_hdr->num_rec_bytes
+    LOG(debug) << "    (syscllbufsz:"
+               << (uint32_t)t->syscallbuf_hdr->num_rec_bytes
                << ", abrtcmt:" << bool(t->syscallbuf_hdr->abort_commit)
                << ", locked:" << bool(t->syscallbuf_hdr->locked) << ")";
   }

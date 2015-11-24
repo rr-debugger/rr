@@ -44,10 +44,11 @@
 #define SYSCALLBUF_FDS_DISABLED_SIZE 1024
 
 #define RR_PAGE_ADDR 0x70000000
-#define RR_PAGE_IN_UNTRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 4)
-#define RR_PAGE_IN_TRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 24)
-#define RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 36)
-#define RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 56)
+#define RR_PAGE_IN_TRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 2)
+#define RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 16 + 2)
+#define RR_PAGE_IN_UNTRACED_REPLAYED_SYSCALL_ADDR (RR_PAGE_ADDR + 32 + 2)
+#define RR_PAGE_IN_UNTRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 48 + 2)
+#define RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR (RR_PAGE_ADDR + 64 + 2)
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.
@@ -193,8 +194,10 @@ struct syscallbuf_record {
  */
 struct syscallbuf_hdr {
   /* The number of valid syscallbuf_record bytes in the buffer,
-   * not counting this header. */
-  uint32_t num_rec_bytes;
+   * not counting this header.
+   * Make this volatile so that memory writes aren't reordered around
+   * updates to this field. */
+  volatile uint32_t num_rec_bytes;
   /* True if the current syscall should not be committed to the
    * buffer, for whatever reason; likely interrupted by
    * desched. Set by rr. */

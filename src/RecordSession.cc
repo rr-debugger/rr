@@ -196,7 +196,7 @@ static void handle_seccomp_traced_syscall(
     // are treated as "skip this syscall". There will be one syscall event
     // reported instead of two. So, record an enter-syscall event now
     // and treat the other event as the exit.
-    t->fixup_syscall_regs();
+    t->fixup_syscall_regs(t->regs());
     t->push_event(SyscallEvent(syscallno, t->arch()));
     ASSERT(t, EV_SYSCALL == t->ev().type());
     t->ev().Syscall().state = ENTERING_SYSCALL;
@@ -216,7 +216,7 @@ static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
                                 uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
-  t->fixup_syscall_regs();
+  t->fixup_syscall_regs(t->regs());
 
   if (!t->is_in_untraced_syscall()) {
     t->push_event(SyscallEvent(syscallno, t->arch()));
@@ -268,7 +268,7 @@ static void handle_seccomp_errno(Task* t, RecordSession::StepState* step_state,
                                  uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
-  t->fixup_syscall_regs();
+  t->fixup_syscall_regs(t->regs());
 
   if (!t->is_in_untraced_syscall()) {
     t->push_event(SyscallEvent(syscallno, t->arch()));
@@ -675,8 +675,9 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
         disarm_desched_event(t);
         // Record storing the return value in the syscallbuf record, where
         // we expect to find it during replay.
-        auto child_rec = ((t->syscallbuf_child + 1).cast<uint8_t>() +
-            t->syscallbuf_hdr->num_rec_bytes).cast<struct syscallbuf_record>();
+        auto child_rec =
+            ((t->syscallbuf_child + 1).cast<uint8_t>() +
+             t->syscallbuf_hdr->num_rec_bytes).cast<struct syscallbuf_record>();
         int64_t ret = retval;
         t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
       }

@@ -4,60 +4,43 @@ import io
 import os
 import sys
 
-def write_rr_page_32(f, is_replay):
-    bytes = bytearray([
-        0x90, 0x90, # padding
-        # rr_page_untraced_syscall_ip:
-        0xcd, 0x80, # int 0x80
-        # rr_page_ip_in_untraced_syscall:
-        0xc3, # ret
-        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
-        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, # padding
-        # rr_page_traced_syscall_ip:
-        0xcd, 0x80, # int 0x80
-        # rr_page_ip_in_traced_syscall:
-        0xc3, # ret
-        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
-    ])
+def write_rr_page(f, is_64, is_replay):
+    if is_64:
+        bytes = bytearray([
+            0x0f, 0x05, # syscall
+            0x4d, 0x31, 0xdb, # xor %r11,%r11
+            0x48, 0xc7, 0xc1, 0xff, 0xff, 0xff, 0xff, # mov $-1,%rcx
+            0xc3, # ret
+            0x90, 0x90, 0x90
+        ])
+    else:
+        bytes = bytearray([
+            0xcd, 0x80, # int 0x80
+            0xc3, # ret
+            0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+            0x90, 0x90, 0x90, 0x90
+        ])
+    # traced
+    f.write(bytes)
+    # privileged traced
+    f.write(bytes)
+    # untraced replayed
     f.write(bytes)
     if is_replay:
-        # privileged untraced syscalls are not executed during replay.
+        # regular untraced syscalls are not executed during replay.
         # Instead we just emulate success.
-        bytes[2] = 0x31
-        bytes[3] = 0xc0 # xor %eax,%eax
+        bytes[0] = 0x31
+        bytes[1] = 0xc0 # xor %eax,%eax
+    # untraced
     f.write(bytes)
-
-def write_rr_page_64(f, is_replay):
-    # See Task::did_waitpid for an explanation of why we have to
-    # modify R11 and RCX here.
-    bytes = bytearray([
-        0x90, 0x90, # padding
-        # rr_page_untraced_syscall_ip:
-        0x0f, 0x05, # syscall
-        # rr_page_ip_in_untraced_syscall:
-        0x4d, 0x31, 0xdb, 0x90, 0x90, 0x90, 0x90, # xor %r11,%r11
-        0x48, 0xc7, 0xc1, 0xff, 0xff, 0xff, 0xff, # mov $-1,%rcx
-        0xc3,             # ret
-        0x90, 0x90, 0x90, # padding
-        # rr_page_traced_syscall_ip:
-        0x0f, 0x05, # syscall
-        # rr_page_ip_in_traced_syscall:
-        0xc3, # ret
-        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
-    ])
-    f.write(bytes)
-    if is_replay:
-        # privileged untraced syscalls are not executed during replay.
-        # Instead we just emulate success.
-        bytes[2] = 0x31
-        bytes[3] = 0xc0 # xor %eax,%eax
+    # privileged untraced
     f.write(bytes)
 
 generators_for = {
-    'rr_page_32': lambda stream: write_rr_page_32(stream, False),
-    'rr_page_64': lambda stream: write_rr_page_64(stream, False),
-    'rr_page_32_replay': lambda stream: write_rr_page_32(stream, True),
-    'rr_page_64_replay': lambda stream: write_rr_page_64(stream, True),
+    'rr_page_32': lambda stream: write_rr_page(stream, False, False),
+    'rr_page_64': lambda stream: write_rr_page(stream, True, False),
+    'rr_page_32_replay': lambda stream: write_rr_page(stream, False, True),
+    'rr_page_64_replay': lambda stream: write_rr_page(stream, True, True),
 }
 
 def main(argv):

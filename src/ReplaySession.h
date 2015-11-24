@@ -18,12 +18,8 @@ struct syscallbuf_hdr;
  * per-Session data.
  */
 struct ReplayFlushBufferedSyscallState {
-  /* After the data is restored, the number of record bytes that
-   * still need to be flushed. */
-  size_t num_rec_bytes_remaining;
-  /* The offset of the next syscall record in both the rr and child
-   * buffers */
-  size_t syscall_record_offset;
+  /* An internal breakpoint is set at this address */
+  uintptr_t stop_breakpoint_addr;
 };
 
 /**
@@ -308,7 +304,8 @@ private:
   void check_ticks_consistency(Task* t, const Event& ev);
   void check_pending_sig(Task* t);
   void continue_or_step(Task* t, const StepConstraints& constraints,
-                        TicksRequest tick_request);
+                        TicksRequest tick_request,
+                        ResumeRequest resume_how = RESUME_SYSCALL);
   enum ExecStateType { UNKNOWN, NOT_AT_TARGET, AT_TARGET };
   TrapType compute_trap_type(Task* t, int target_sig,
                              SignalDeterministic deterministic,
@@ -327,7 +324,6 @@ private:
   Completion emulate_async_signal(Task* t, const StepConstraints& constraints,
                                   Ticks ticks);
   void prepare_syscallbuf_records(Task* t);
-  Completion flush_one_syscall(Task* t, const StepConstraints& constraints);
   Completion flush_syscallbuf(Task* t, const StepConstraints& constraints);
   Completion patch_next_syscall(Task* t, const StepConstraints& constraints);
   void check_approaching_ticks_target(Task* t,
