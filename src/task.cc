@@ -1993,12 +1993,11 @@ static void fixup_syscall_registers(Registers& registers) {
     // If we single-stepped into the syscall instruction, the TF flag will be
     // set in R11. We don't want the value in R11 to depend on whether we
     // were single-stepping during record or replay, possibly causing
-    // divergence, so we clear it here before anything is recorded or checked.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
-    // This doesn't matter when exiting a sigreturn syscall, since it
-    // restores the original flags.
-    registers.set_r11(registers.r11() & ~X86_TF_FLAG);
+    // divergence.
+    // We assume user-space never cares about the flags appearing in R11 so
+    // we just clear it. That's simpler and easier to emulate in
+    // machine code.
+    registers.set_r11(0);
     // x86-64 'syscall' instruction copies return address to RCX on syscall
     // entry. rr-related kernel activity normally sets RCX to -1 at some point
     // during syscall execution, but apparently in some (unknown) situations
