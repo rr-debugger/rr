@@ -928,30 +928,6 @@ static void assert_at_buffered_syscall(Task* t, int syscallno) {
       << syscallno << ")";
 }
 
-/**
- * Directly restore the uaddr/uaddr2 outparams that were saved to
- * buffer.  Because the syscallbuf can't use scratch values for the
- * futexes, it can't restore the record data itself.
- */
-static void restore_futex_words(Task* t, const struct syscallbuf_record* rec) {
-  ssize_t extra_data_size = rec->size - sizeof(*rec);
-  bool saved_uaddr2 = (2 * sizeof(uint32_t) == extra_data_size);
-  ASSERT(t, sizeof(uint32_t) == extra_data_size || saved_uaddr2)
-      << "Futex should have saved 4 or 8 bytes, but instead saved "
-      << extra_data_size;
-
-  remote_ptr<int> child_uaddr = t->regs().arg1();
-  auto rec_uaddr = *reinterpret_cast<const int*>(rec->extra_data);
-  t->write_mem(child_uaddr, rec_uaddr);
-
-  if (saved_uaddr2) {
-    remote_ptr<int> child_uaddr2 = t->regs().arg5();
-    auto rec_uaddr2 =
-        *reinterpret_cast<const int*>(rec->extra_data + sizeof(int));
-    t->write_mem(child_uaddr2, rec_uaddr2);
-  }
-}
-
 static bool only_private_anonymous_mappings(Task* t, remote_ptr<void> addr,
                                             size_t len) {
   bool seen_following_mapping = false;
@@ -1032,10 +1008,6 @@ Completion ReplaySession::flush_one_syscall(
 
   // The tracee syscall buffering code is responsible for setting the
   // syscall result register during replay.
-
-  if (is_futex_syscall(call, t->arch())) {
-    restore_futex_words(t, child_rec);
-  }
 
   accumulate_syscall_performed();
 

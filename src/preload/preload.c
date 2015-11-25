@@ -1055,6 +1055,30 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
 #endif
 }
 
+/**
+ * During recording, we copy *real to *buf.
+ * During replay, we copy *buf to *real.
+ * Behaves like memcpy_input_parameter in terms of hiding differences between
+ * recording and replay.
+ */
+static void copy_futex_int(uint32_t* buf, uint32_t* real) {
+#if defined(__i386__) || defined(__x86_64__)
+  uint32_t tmp_in_replay = in_replay;
+  __asm__ __volatile__("test %0,%0\n\t"
+                       "mov %2,%0\n\t"
+                       "cmovne %1,%0\n\t"
+                       "mov %0,%1\n\t"
+                       "mov %0,%2\n\t"
+                       /* This instruction is just to clear flags */
+                       "xor %0,%0\n\t"
+                       : "+a"(tmp_in_replay)
+                       : "m"(*buf), "m"(*real)
+                       : "cc", "memory");
+#else
+#error Unknown architecture
+#endif
+}
+
 /* Keep syscalls in alphabetical order, please. */
 
 static long sys_access(const struct syscall_info* call) {
@@ -1341,20 +1365,15 @@ static long sys_futex(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall6(syscallno, uaddr, op, val, timeout, uaddr2, val3);
-  /* During recording, we just saved these outparams to the
-   * buffer.  In replay, the rr tracer has already restored the
-   * saved values directly to uaddr/uaddr2, bypassing us.  So
-   * these stores read the same values, but don't serve any
-   * purpose other than preventing divergence.
+  /* During recording, save the real outparams to the buffer.
+   * During replay, save the values from the buffer to the real outparams.
    *
-   * The *ONLY* reason it's correct for us to read these values
-   * so carelessly is that rr protects this syscallbuf
-   * transaction as as a critical section.  It's OK if we get
-   * desched'd here; we'll just abort the record commit,
-   * throwing away the garbage values we read here. */
-  *saved_uaddr = *uaddr;
+   * The *ONLY* reason it's correct for us to read the outparams
+   * carelessly is that rr protects this syscallbuf
+   * transaction as as a critical section. */
+  copy_futex_int(saved_uaddr, uaddr);
   if (saved_uaddr2) {
-    *saved_uaddr2 = *uaddr2;
+    copy_futex_int(saved_uaddr2, uaddr2);
   }
   return commit_raw_syscall(syscallno, ptr, ret);
 }
