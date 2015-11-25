@@ -3,15 +3,21 @@
 #include "rrutil.h"
 
 int main(int argc, char* argv[]) {
-  const int syscallno = SYS_gettid;
   int var = 41;
 
+#ifdef __i386__
   __asm__ __volatile__("int $0x80\n\t"
                        "incl %0\n\t"
                        : "=m"(var)
-                       : "a"(syscallno));
+                       : "a"(SYS_gettid));
+#elif defined(__x86_64__)
+  __asm__ __volatile__("syscall\n\t"
+                       "incl %0\n\t"
+                       : "=m"(var)
+                       : "a"(SYS_gettid));
+#endif
 
-  atomic_printf("var should be 42, is %d\n", var);
+  test_assert(var == 42);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
