@@ -167,20 +167,6 @@ public:
   static shr_ptr create();
 
   /**
-   * RAII helper that schedules an EmuFs GC when the exit of a given
-   * syscall may have dropped the last reference to an emulated file.
-   */
-  struct AutoGc {
-    AutoGc(ReplaySession& session, SupportedArch arch, int syscallno,
-           SyscallState state);
-    ~AutoGc();
-
-  private:
-    ReplaySession& session;
-    const bool is_gc_point;
-  };
-
-  /**
    * Collect emulated files that aren't referenced by tracees.
    * Call this only when a tracee's (possibly shared) file table
    * has been destroyed.  All other gc triggers are handled

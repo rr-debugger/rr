@@ -208,21 +208,3 @@ void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
     }
   }
 }
-
-EmuFs::AutoGc::AutoGc(ReplaySession& session, SupportedArch arch, int syscallno,
-                      SyscallState state)
-    : session(session),
-      is_gc_point(session.emufs().size() > 0 && EXITING_SYSCALL == state &&
-                  (is_close_syscall(syscallno, arch) ||
-                   is_munmap_syscall(syscallno, arch))) {
-  if (is_gc_point) {
-    LOG(debug) << "emufs gc required because of syscall `"
-               << syscall_name(syscallno, arch) << "'";
-  }
-}
-
-EmuFs::AutoGc::~AutoGc() {
-  if (is_gc_point) {
-    session.gc_emufs();
-  }
-}

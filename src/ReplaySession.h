@@ -173,6 +173,9 @@ public:
   /** Collect garbage files from this session's emufs. */
   void gc_emufs();
 
+  /** Run emufs gc if this syscall may release a file */
+  void maybe_gc_emufs(SupportedArch arch, int syscallno);
+
   TraceReader& trace_reader() { return trace_in; }
   const TraceReader& trace_reader() const { return trace_in; }
 

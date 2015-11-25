@@ -146,6 +146,13 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
 
 void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
 
+void ReplaySession::maybe_gc_emufs(SupportedArch arch, int syscallno) {
+  if (is_close_syscall(syscallno, arch) ||
+      is_munmap_syscall(syscallno, arch)) {
+    gc_emufs();
+  }
+}
+
 /*static*/ ReplaySession::shr_ptr ReplaySession::create(const string& dir) {
   shr_ptr session(new ReplaySession(dir));
 
@@ -1000,8 +1007,6 @@ Completion ReplaySession::flush_one_syscall(
   }
   assert_at_buffered_syscall(t, call);
 
-  EmuFs::AutoGc gc(*this, t->arch(), call, EXITING_SYSCALL);
-
   Registers saved_regs = t->regs();
   t->finish_emulated_syscall();
   perform_syscallbuf_syscall_side_effects(t, saved_regs);
@@ -1010,6 +1015,8 @@ Completion ReplaySession::flush_one_syscall(
   // syscall result register during replay.
 
   accumulate_syscall_performed();
+
+  maybe_gc_emufs(t->arch(), call);
 
   return COMPLETE;
 }
@@ -1307,6 +1314,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       if (trace_frame.event().Syscall().state == EXITING_SYSCALL &&
           current_step.action == TSTEP_RETIRE) {
         t->on_syscall_exit(current_step.syscall.number, trace_frame.regs());
+        maybe_gc_emufs(t->arch(), trace_frame.regs().syscallno());
       }
       break;
     default:
