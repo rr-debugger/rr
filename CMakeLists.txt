@@ -114,6 +114,7 @@ add_library(rrpreload
   src/preload/preload.c
   src/preload/raw_syscall.S
   src/preload/syscall_hook.S
+  src/preload/breakpoint_table.S
 )
 
 # Ensure that CMake knows about our generated files.
@@ -256,7 +257,7 @@ if(rr_64BIT)
 	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}")
   endforeach(file)
 
-  foreach(file preload.c raw_syscall.S syscall_hook.S)
+  foreach(file preload.c raw_syscall.S syscall_hook.S breakpoint_table.S)
     set_source_files_properties(32/${file}
                                 PROPERTIES GENERATED true COMPILE_FLAGS "-m32 -O2")
     add_custom_command(OUTPUT 32/${file}
@@ -271,6 +272,7 @@ if(rr_64BIT)
     32/preload.c
     32/raw_syscall.S
     32/syscall_hook.S
+    32/breakpoint_table.S
   )
   set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS -m32)
   target_link_libraries(rrpreload_32

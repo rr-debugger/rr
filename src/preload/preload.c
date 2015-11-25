@@ -589,6 +589,9 @@ static void post_fork_child(void) {
   init_thread();
 }
 
+extern char _breakpoint_table_entry_start;
+extern char _breakpoint_table_entry_end;
+
 /**
  * Initialize process-global buffering state, if enabled.
  */
@@ -665,6 +668,9 @@ static void __attribute__((constructor)) init_process(void) {
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
   params.in_replay_flag = &in_replay;
+  params.breakpoint_table = &_breakpoint_table_entry_start;
+  params.breakpoint_table_entry_size =
+      &_breakpoint_table_entry_end - &_breakpoint_table_entry_start;
 
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
 
@@ -951,6 +957,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   void* record_start = buffer_last();
   struct syscallbuf_record* rec = record_start;
   struct syscallbuf_hdr* hdr = buffer_hdr();
+  void (*breakpoint_function)(void) = 0;
 
   assert(record_end >= record_start);
   rec->size = record_end - record_start;
@@ -991,6 +998,12 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
     /* Clear the return value that rr pus there during replay */
     rec->ret = 0;
   } else {
+    uint32_t entry_num = ((char*)rec - (char*)hdr) / 8;
+    int breakpoint_entry_size =
+        &_breakpoint_table_entry_end - &_breakpoint_table_entry_start;
+    breakpoint_function = (void*)(&_breakpoint_table_entry_start +
+                                  entry_num * breakpoint_entry_size);
+
     rec->ret = ret;
     hdr->num_rec_bytes += stored_record_size(rec->size);
   }
@@ -1005,6 +1018,15 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
    * not assume it's unchanged). */
 
   buffer_hdr()->locked = 0;
+
+  if (breakpoint_function) {
+    /* Call the breakpoint function corresponding to the record we just
+     * committed. This function just returns, but during replay it gives rr
+     * a chance to set a breakpoint for when a specific syscallbuf record
+     * has been processed.
+     */
+    breakpoint_function();
+  }
 
   return ret;
 }

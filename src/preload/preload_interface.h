@@ -121,7 +121,15 @@ struct rrcall_init_preload_params {
   PTR(void) syscall_hook_stub_buffer_end;
   /* Array of size SYSCALLBUF_FDS_DISABLED_SIZE */
   PTR(volatile char) syscallbuf_fds_disabled;
+  /* Address of the flag which is 0 during recording and 1 during replay. */
   PTR(unsigned char) in_replay_flag;
+  /* Address of the first entry of the breakpoint table.
+   * After processing a sycallbuf record (and unlocking the syscallbuf),
+   * we call a function in this table corresponding to the record processed.
+   * rr can set a breakpoint in this table to break on the completion of a
+   * particular syscallbuf record. */
+  PTR(void) breakpoint_table;
+  int breakpoint_table_entry_size;
 };
 
 /**
