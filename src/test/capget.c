@@ -23,10 +23,6 @@ int main(int argc, char* argv[]) {
   VERIFY_GUARD(hdr);
   VERIFY_GUARD(data);
 
-  test_assert(0 == data[0].effective);
-  test_assert(0 == data[0].permitted);
-  test_assert(0 == data[0].inheritable);
-
   ALLOCATE_GUARD(hdr, 'c');
   hdr->version = _LINUX_CAPABILITY_VERSION_3;
   hdr->pid = 0;
@@ -34,14 +30,6 @@ int main(int argc, char* argv[]) {
   test_assert(0 == capget(hdr, data));
   VERIFY_GUARD(hdr);
   verify_guard(sizeof(*data) * 2, data);
-
-  test_assert(0 == data[0].effective);
-  test_assert(0 == data[0].permitted);
-  test_assert(0 == data[0].inheritable);
-
-  test_assert(0 == data[1].effective);
-  test_assert(0 == data[1].permitted);
-  test_assert(0 == data[1].inheritable);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
