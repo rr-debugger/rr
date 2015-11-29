@@ -10,11 +10,23 @@ static void handle_usr1(int sig) {
   caught_usr1 = 1;
 }
 
+static void* do_thread(void* p) {
+  while (1) {
+    sched_yield();
+  }
+  return NULL;
+}
+
 int main(int argc, char** argv) {
   struct timespec ts;
   struct timeval tv;
   int num_its;
   int i;
+  pthread_t thread;
+
+  /* Create an extra thread so context switches can happen
+     and SCHED events will be recorded. */
+  pthread_create(&thread, NULL, do_thread, NULL);
 
   test_assert(argc == 2);
   num_its = atoi(argv[1]);

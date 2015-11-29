@@ -26,9 +26,22 @@
 #define STATEMENT128(i) STATEMENT64(i) STATEMENT64(i + 64)
 #define STATEMENT256(i) STATEMENT128(i) STATEMENT128(i + 128)
 
+static void* do_thread(void* p) {
+  while (1) {
+    sched_yield();
+  }
+  return NULL;
+}
+
 int main(int argc, char** argv) {
   int a = atoi(argv[1]);
   int b = atoi(argv[2]);
+  pthread_t thread;
+
+  /* Create an extra thread so context switches can happen
+     and SCHED events will be recorded. */
+  pthread_create(&thread, NULL, do_thread, NULL);
+
   /* This syscall signals the test that we're in the test body proper */
   getgid();
   STATEMENT256(0)

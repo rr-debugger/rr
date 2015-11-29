@@ -1200,12 +1200,6 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
       t->record_current_event();
       t->pop_event(t->ev().type());
       break;
-    case EV_SCHED:
-      t->record_current_event();
-      t->pop_event(t->ev().type());
-      last_task_switchable = ALLOW_SWITCH;
-      step_state->continue_type = DONT_CONTINUE;
-      break;
 
     case EV_SENTINEL:
     case EV_SIGNAL_HANDLER:
@@ -1275,6 +1269,11 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
       return false;
     case SIGNAL_HANDLED:
       LOG(debug) << "Signal " << si.si_signo << " handled";
+      if (t->ev().type() == EV_SCHED) {
+        // Allow switching after a SCHED. We'll flush the SCHED if and only
+        // if we really do a switch.
+        last_task_switchable = ALLOW_SWITCH;
+      }
       break;
   }
   step_state->continue_type = DONT_CONTINUE;
@@ -1391,6 +1390,14 @@ RecordSession::RecordResult RecordSession::record_step() {
     // a chance to do something triggered by the signal
     // (e.g. terminate the recording).
     return result;
+  }
+  if (last_recorded_task && last_recorded_task->ev().type() == EV_SCHED) {
+    if (last_recorded_task != t) {
+      // We did do a context switch, so record the SCHED event. Otherwise
+      // we'll just discard it.
+      last_recorded_task->record_current_event();
+    }
+    last_recorded_task->pop_event(EV_SCHED);
   }
   last_recorded_task = t;
 

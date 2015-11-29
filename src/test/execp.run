@@ -1,7 +1,5 @@
 source `dirname $0`/util.sh
 
-# Ensure that the test records some USR_SCHED interrupt events.
-
 exe=simple$bitness
 cp ${OBJDIR}/bin/$exe $exe-$nonce
 PATH="${PATH}:." just_record $exe-$nonce

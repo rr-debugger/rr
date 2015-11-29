@@ -499,6 +499,7 @@ set(BASIC_TESTS
   tcgets
   tgkill
   thread_stress
+  thread_yield
   timer
   timerfd
   times

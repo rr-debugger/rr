@@ -4,7 +4,7 @@ source `dirname $0`/util.sh
 # of CPU binding.
 GLOBAL_OPTIONS="$GLOBAL_OPTIONS_BIND_CPU"
 
-# Ensure that the test records some USR_SCHED interrupt events.
+# Ensure that the test records some SCHED interrupt events.
 timeslice=100
 RECORD_ARGS="-c$timeslice"
 
