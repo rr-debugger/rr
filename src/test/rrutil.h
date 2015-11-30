@@ -24,6 +24,7 @@
 #include <linux/random.h>
 #include <linux/seccomp.h>
 #include <linux/sockios.h>
+#include <linux/unistd.h>
 #include <linux/videodev2.h>
 #include <linux/wireless.h>
 #include <poll.h>

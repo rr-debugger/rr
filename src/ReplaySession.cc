@@ -1170,7 +1170,9 @@ static void end_task(Task* t) {
   // kernel do these during replay. The kernel would also do a FUTEX_WAKE on
   // this address, but we don't need to do that.
   if (!t->tid_addr().is_null()) {
-    t->write_mem(t->tid_addr(), 0);
+    bool ok = true;
+    // Ignore writes to invalid locations; the kernel does
+    t->write_mem(t->tid_addr(), 0, &ok);
   }
 
   Registers r = t->regs();

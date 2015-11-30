@@ -452,6 +452,7 @@ set(BASIC_TESTS
   sem
   sendfile
   set_ptracer
+  set_tid_address
   setgid
   setgroups
   setsid

@@ -613,7 +613,13 @@ void Task::futex_wait(remote_ptr<int> futex, int val) {
   // available kernel tools.
   //
   // TODO: find clever way to avoid busy-waiting.
-  while (val != read_mem(futex)) {
+  while (true) {
+    bool ok = true;
+    int mem = read_mem(futex, &ok);
+    if (!ok || val == mem) {
+      // Invalid addresses are just ignored by the kernel
+      break;
+    }
     // Try to give our scheduling slot to the kernel
     // thread that's going to write sync_addr.
     sched_yield();
