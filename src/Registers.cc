@@ -118,6 +118,11 @@ enum {
      states during system calls.  It always seems to be 1 during user-space
      execution so we should be able to ignore it.  */
   RESERVED_FLAG_1 = 1 << 1,
+  /* This is usually set but we have observed cases where it's clear. It
+   * shouldn't be modifiable by user space so we don't know why it would
+   * change.
+   */
+  INTERRUPT_FLAG = 1 << 9,
   /* According to http://www.logix.cz/michal/doc/i386/chp04-01.htm:
         The RF flag temporarily disables debug exceptions so that an
        instruction can be restarted after a debug exception without
@@ -133,8 +138,8 @@ enum {
   /* It is no longer known why this bit is ignored.  */
   CPUID_ENABLED_FLAG = 1 << 21,
 };
-const uint64_t deterministic_eflags_mask =
-    ~uint32_t(RESERVED_FLAG_1 | RESUME_FLAG | CPUID_ENABLED_FLAG);
+const uint64_t deterministic_eflags_mask = ~uint32_t(
+    RESERVED_FLAG_1 | INTERRUPT_FLAG | RESUME_FLAG | CPUID_ENABLED_FLAG);
 
 RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
   RV_X86(EAX, eax),
