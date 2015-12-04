@@ -61,7 +61,7 @@ public:
   /**
    * Return the fd we last used to monitor the ticks counter.
    */
-  int ticks_fd() const { return saved_fd_ticks; }
+  int ticks_fd() const { return fd_ticks.get(); }
 
   /* This choice is fairly arbitrary; linux doesn't use SIGSTKFLT so we
    * hope that tracees don't either. */
@@ -78,7 +78,6 @@ public:
 
 private:
   pid_t tid;
-  int saved_fd_ticks;
   ScopedFd fd_ticks;
   ScopedFd fd_page_faults;
   ScopedFd fd_hw_interrupts;

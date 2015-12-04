@@ -1173,11 +1173,15 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
      * we reset the HPC counters.  There be a way to handle that
      * more elegantly, but bridge will be crossed in due time.
      *
-     * We check this here because later, when this signal is delivered,
-     * t->hpc.ticks_fd() may have changed.
+     * We can't check that the fd matches t->hpc.ticks_fd() because this
+     * signal could have been queued quite a long time ago and the PerfCounters
+     * might have been stopped (and restarted!), perhaps even more than once,
+     * since the signal was queued. possibly changing its fd. We could check
+     * against all fds the PerfCounters have ever used, but that seems like
+     * overkill.
      */
-    ASSERT(t, (PerfCounters::TIME_SLICE_SIGNAL == si.si_signo &&
-               si.si_fd == t->hpc.ticks_fd() && POLL_IN == si.si_code))
+    ASSERT(t, PerfCounters::TIME_SLICE_SIGNAL == si.si_signo &&
+                  POLL_IN == si.si_code)
         << "Tracee is using SIGSTKFLT??? (code=" << si.si_code
         << ", fd=" << si.si_fd << ")";
   }
