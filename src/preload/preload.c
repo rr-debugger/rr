@@ -1180,7 +1180,7 @@ static long sys_close(const struct syscall_info* call) {
 
 static long sys_open(const struct syscall_info* call);
 static long sys_creat(const struct syscall_info* call) {
-  int fd = call->args[0];
+  const char* pathname = (const char*)call->args[0];
   mode_t mode = call->args[1];
   /* Thus sayeth the man page:
    *
@@ -1188,7 +1188,7 @@ static long sys_creat(const struct syscall_info* call) {
    *   O_CREAT|O_WRONLY|O_TRUNC. */
   struct syscall_info open_call;
   open_call.no = SYS_open;
-  open_call.args[0] = fd;
+  open_call.args[0] = (long)pathname;
   open_call.args[1] = O_CREAT | O_TRUNC | O_WRONLY;
   open_call.args[2] = mode;
   return sys_open(&open_call);
