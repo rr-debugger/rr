@@ -2917,6 +2917,9 @@ static void process_clone(Task* t, TaskSyscallState& syscall_state) {
   // Restore modified registers in cloning task
   Registers r = t->regs();
   r.set_arg1(flags);
+  // On a 3.19.0-39-generic #44-Ubuntu kernel we have observed clone()
+  // clearing the parity flag internally.
+  r.set_flags(syscall_state.syscall_entry_registers->flags());
   t->set_regs(r);
 
   if (t->regs().syscall_result_signed() < 0) {

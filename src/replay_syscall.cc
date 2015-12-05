@@ -249,6 +249,7 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   // Restore the saved flags, to hide the fact that we may have
   // masked out CLONE_UNTRACED/CLONE_CHILD_CLEARTID.
   r.set_arg1(trace_frame.regs().arg1());
+  r.set_flags(trace_frame.regs().flags());
   t->set_regs(r);
 
   // Dig the recorded tid out out of the trace. The tid value returned in
