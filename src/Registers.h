@@ -277,8 +277,6 @@ public:
     u.x64regs.r11 = value;
   }
 
-  bool df_flag() const { return RR_GET_REG(eflags, eflags) & X86_DF_FLAG; }
-
   uintptr_t di() const { return RR_GET_REG(edi, rdi); }
   void set_di(uintptr_t value) { RR_SET_REG(edi, rdi, value); }
 
@@ -291,12 +289,10 @@ public:
   uintptr_t bp() const { return RR_GET_REG(ebp, rbp); }
 
   uintptr_t flags() const;
-
-  void set_eflags(uintptr_t value) {
-    assert(arch() == x86);
-    u.x86regs.eflags = value;
-  }
-  bool clear_singlestep_flag();
+  void set_flags(uintptr_t value);
+  bool singlestep_flag() { return flags() & X86_TF_FLAG; }
+  void clear_singlestep_flag() { set_flags(flags() & ~X86_TF_FLAG); }
+  bool df_flag() const { return flags() & X86_DF_FLAG; }
 
   // End of X86-specific stuff
 

@@ -626,26 +626,6 @@ vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {
   return result;
 }
 
-bool Registers::clear_singlestep_flag() {
-  switch (arch()) {
-    case x86:
-      if (u.x86regs.eflags & X86_TF_FLAG) {
-        u.x86regs.eflags &= ~X86_TF_FLAG;
-        return true;
-      }
-      return false;
-    case x86_64:
-      if (u.x64regs.eflags & X86_TF_FLAG) {
-        u.x64regs.eflags &= ~X86_TF_FLAG;
-        return true;
-      }
-      return false;
-    default:
-      assert(0 && "Unknown arch");
-      return false;
-  }
-}
-
 uintptr_t Registers::flags() const {
   switch (arch()) {
     case x86:
@@ -655,6 +635,21 @@ uintptr_t Registers::flags() const {
     default:
       assert(0 && "Unknown arch");
       return false;
+  }
+}
+
+void Registers::set_flags(uintptr_t value) {
+  switch (arch()) {
+    case x86:
+      u.x86regs.eflags = value;
+      break;
+    case x86_64:
+      u.x64regs.eflags = value;
+      u.x64regs.eflags_upper = value >> 32;
+      break;
+    default:
+      assert(0 && "Unknown arch");
+      break;
   }
 }
 

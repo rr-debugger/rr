@@ -2028,7 +2028,7 @@ static void fixup_syscall_registers(Registers& registers) {
     // In a VMWare guest, the modifications to EFLAGS appear to be
     // nondeterministic. Cover that up by setting EFLAGS to reasonable values
     // now.
-    registers.set_eflags(0x246);
+    registers.set_flags(0x246);
   }
 }
 
@@ -2074,7 +2074,11 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     seen_ptrace_exit_event = true;
   }
 
-  bool need_to_set_regs = registers.clear_singlestep_flag();
+  bool need_to_set_regs = false;
+  if (registers.singlestep_flag()) {
+    registers.clear_singlestep_flag();
+    need_to_set_regs = true;
+  }
   if (breakpoint_set_where_execution_resumed && pending_sig() == SIGTRAP &&
       !ptrace_event()) {
     ASSERT(this, more_ticks == 0);
