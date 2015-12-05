@@ -357,10 +357,8 @@ bool Registers::compare_registers_core(const char* name1, const Registers& reg1,
     uint64_t val1 = 0, val2 = 0;
     memcpy(&val1, rv.pointer_into(&reg1.u), rv.nbytes);
     memcpy(&val2, rv.pointer_into(&reg2.u), rv.nbytes);
-    val1 &= rv.comparison_mask;
-    val2 &= rv.comparison_mask;
 
-    if (val1 != val2) {
+    if ((val1 ^ val2) & rv.comparison_mask) {
       maybe_print_reg_mismatch(mismatch_behavior, rv.name, name1, val1, name2,
                                val2);
       match = false;
