@@ -374,15 +374,23 @@ void GdbConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
   write_packet(buf);
 }
 
+static void parser_assert(bool cond) {
+  if (!cond) {
+    fputs("Failed to parse gdb request\n", stderr);
+    assert(false);
+    exit(2);
+  }
+}
+
 static string decode_ascii_encoded_hex_str(const char* encoded) {
   ssize_t enc_len = strlen(encoded);
-  assert(enc_len % 2 == 0);
+  parser_assert(enc_len % 2 == 0);
   string str;
   for (int i = 0; i < enc_len / 2; ++i) {
     char enc_byte[] = { encoded[2 * i], encoded[2 * i + 1], '\0' };
     char* endp;
     int c = strtol(enc_byte, &endp, 16);
-    assert(c < 128);
+    parser_assert(c < 128);
     str += static_cast<char>(c);
   }
   return str;
@@ -410,8 +418,8 @@ bool GdbConnection::skip_to_packet_start() {
   memmove(inbuf, p, inlen - (p - inbuf));
   inlen -= (p - inbuf);
 
-  assert(1 <= inlen);
-  assert('$' == inbuf[0] || INTERRUPT_CHAR == inbuf[0]);
+  parser_assert(1 <= inlen);
+  parser_assert('$' == inbuf[0] || INTERRUPT_CHAR == inbuf[0]);
   return true;
 }
 
@@ -420,7 +428,7 @@ bool GdbConnection::sniff_packet() {
     /* We've already seen a (possibly partial) packet. */
     return true;
   }
-  assert(0 == inlen);
+  parser_assert(0 == inlen);
   return poll_incoming(sock_fd, 0 /*don't wait*/);
 }
 
@@ -458,7 +466,7 @@ void GdbConnection::read_packet() {
    * gdb is corrupted enough to garble a checksum over TCP, it's
    * not really clear why asking for the packet again might make
    * the bug go away. */
-  assert('$' == inbuf[0] && packetend < inlen);
+  parser_assert('$' == inbuf[0] && packetend < inlen);
 
   /* Acknowledge receipt of the packet. */
   if (!no_ack) {
@@ -492,14 +500,14 @@ static GdbThreadId parse_threadid(const char* str, char** endptr) {
     ++str;
   }
   t.pid = strtol(str, &endp, 16);
-  assert(endp);
+  parser_assert(endp);
   if ('\0' == *endp) {
     t.tid = -1;
     *endptr = endp;
     return t;
   }
 
-  assert('.' == *endp);
+  parser_assert('.' == *endp);
   str = endp + 1;
   t.tid = strtol(str, &endp, 16);
 
@@ -511,7 +519,7 @@ bool GdbConnection::xfer(const char* name, char* args) {
   LOG(debug) << "gdb asks us to transfer " << name << "(" << args << ")";
 
   if (!strcmp(name, "auxv")) {
-    assert(!strncmp(args, "read::", sizeof("read::") - 1));
+    parser_assert(!strncmp(args, "read::", sizeof("read::") - 1));
 
     req = GdbRequest(DREQ_GET_AUXV);
     req.target = query_thread;
@@ -522,14 +530,14 @@ bool GdbConnection::xfer(const char* name, char* args) {
       req = GdbRequest(DREQ_READ_SIGINFO);
       req.target = query_thread;
       args += strlen("read");
-      assert(':' == *args++);
-      assert(':' == *args++);
+      parser_assert(':' == *args++);
+      parser_assert(':' == *args++);
 
       req.mem().addr = strtoul(args, &args, 16);
-      assert(',' == *args++);
+      parser_assert(',' == *args++);
 
       req.mem().len = strtoul(args, &args, 16);
-      assert('\0' == *args);
+      parser_assert('\0' == *args);
 
       return true;
     }
@@ -554,7 +562,7 @@ bool GdbConnection::xfer(const char* name, char* args) {
  * guaranteed to be null-terminated.
  */
 static size_t print_reg_value(const GdbRegisterValue& reg, char* buf) {
-  assert(reg.size <= GdbRegisterValue::MAX_SIZE);
+  parser_assert(reg.size <= GdbRegisterValue::MAX_SIZE);
   if (reg.defined) {
     /* gdb wants the register value in native endianness.
      * reg.value read in native endianness is exactly that.
@@ -590,7 +598,7 @@ static void read_reg_value(char** strp, GdbRegisterValue* reg) {
     str[2] = '\0';
 
     reg->value[i] = strtoul(str, &str, 16);
-    assert('\0' == *str);
+    parser_assert('\0' == *str);
 
     str[0] = tmp;
   }
@@ -673,13 +681,13 @@ bool GdbConnection::query(char* payload) {
   if (strstr(name, "ThreadExtraInfo") == name) {
     // ThreadExtraInfo is a special snowflake that
     // delimits its args with ','.
-    assert(!args);
+    parser_assert(!args);
     args = payload;
     args = 1 + strchr(args, ',' /*sic*/);
 
     req = GdbRequest(DREQ_GET_THREAD_EXTRA_INFO);
     req.target = parse_threadid(args, &args);
-    assert('\0' == *args);
+    parser_assert('\0' == *args);
     return true;
   }
   if (!strcmp(name, "TStatus")) {
@@ -912,9 +920,9 @@ bool GdbConnection::process_packet() {
   char* payload = nullptr;
   bool ret;
 
-  assert(INTERRUPT_CHAR == inbuf[0] ||
-         ('$' == inbuf[0] &&
-          (((uint8_t*)memchr(inbuf, '#', inlen) - inbuf) == packetend)));
+  parser_assert(INTERRUPT_CHAR == inbuf[0] ||
+                ('$' == inbuf[0] &&
+                 (((uint8_t*)memchr(inbuf, '#', inlen) - inbuf) == packetend)));
 
   if (INTERRUPT_CHAR == inbuf[0]) {
     request = INTERRUPT_CHAR;
@@ -961,7 +969,7 @@ bool GdbConnection::process_packet() {
         req = GdbRequest(DREQ_SET_QUERY_THREAD);
       }
       req.target = parse_threadid(payload, &payload);
-      assert('\0' == *payload);
+      parser_assert('\0' == *payload);
 
       LOG(debug) << "gdb selecting " << req.target;
 
@@ -975,9 +983,9 @@ bool GdbConnection::process_packet() {
       req = GdbRequest(DREQ_GET_MEM);
       req.target = query_thread;
       req.mem().addr = strtoul(payload, &payload, 16);
-      ++payload;
+      parser_assert(',' == *payload++);
       req.mem().len = strtoul(payload, &payload, 16);
-      assert('\0' == *payload);
+      parser_assert('\0' == *payload);
 
       LOG(debug) << "gdb requests memory (addr=" << HEX(req.mem().addr)
                  << ", len=" << req.mem().len << ")";
@@ -996,7 +1004,7 @@ bool GdbConnection::process_packet() {
       req = GdbRequest(DREQ_GET_REG);
       req.target = query_thread;
       req.reg().name = GdbRegister(strtoul(payload, &payload, 16));
-      assert('\0' == *payload);
+      parser_assert('\0' == *payload);
       LOG(debug) << "gdb requests register value (" << req.reg().name << ")";
       ret = true;
       break;
@@ -1004,11 +1012,11 @@ bool GdbConnection::process_packet() {
       req = GdbRequest(DREQ_SET_REG);
       req.target = query_thread;
       req.reg().name = GdbRegister(strtoul(payload, &payload, 16));
-      assert('=' == *payload++);
+      parser_assert('=' == *payload++);
 
       read_reg_value(&payload, &req.reg());
 
-      assert('\0' == *payload);
+      parser_assert('\0' == *payload);
 
       ret = true;
       break;
@@ -1021,7 +1029,7 @@ bool GdbConnection::process_packet() {
     case 'T':
       req = GdbRequest(DREQ_GET_IS_THREAD_ALIVE);
       req.target = parse_threadid(payload, &payload);
-      assert('\0' == *payload);
+      parser_assert('\0' == *payload);
       LOG(debug) << "gdb wants to know if " << req.target << " is alive";
       ret = true;
       break;
@@ -1032,9 +1040,9 @@ bool GdbConnection::process_packet() {
       req = GdbRequest(DREQ_SET_MEM);
       req.target = query_thread;
       req.mem().addr = strtoul(payload, &payload, 16);
-      ++payload;
+      parser_assert(',' == *payload++);
       req.mem().len = strtoul(payload, &payload, 16);
-      ++payload;
+      parser_assert(':' == *payload++);
       req.mem().data.resize(req.mem().len);
       // TODO: verify that the length of |payload| is as
       // expected in the presence of escaped data.  Right
@@ -1051,7 +1059,7 @@ bool GdbConnection::process_packet() {
     case 'z':
     case 'Z': {
       int type = strtol(payload, &payload, 16);
-      assert(',' == *payload++);
+      parser_assert(',' == *payload++);
       if (!(0 <= type && type <= 4)) {
         LOG(warn) << "Unknown watch type " << type;
         write_packet("");
@@ -1061,7 +1069,7 @@ bool GdbConnection::process_packet() {
       req = GdbRequest(GdbRequestType(
           type + (request == 'Z' ? DREQ_SET_SW_BREAK : DREQ_REMOVE_SW_BREAK)));
       req.watch().addr = strtoul(payload, &payload, 16);
-      assert(',' == *payload);
+      parser_assert(',' == *payload);
       payload++;
       req.watch().kind = strtoul(payload, &payload, 16);
       if (';' == *payload) {
@@ -1069,21 +1077,21 @@ bool GdbConnection::process_packet() {
         while ('X' == *payload) {
           ++payload;
           int len = strtol(payload, &payload, 16);
-          assert(',' == *payload);
+          parser_assert(',' == *payload);
           payload++;
           vector<uint8_t> bytes;
           for (int i = 0; i < len; ++i) {
-            assert(payload[0] && payload[1]);
+            parser_assert(payload[0] && payload[1]);
             char tmp = payload[2];
             payload[2] = '\0';
             bytes.push_back(strtol(payload, &payload, 16));
-            assert('\0' == *payload);
+            parser_assert('\0' == *payload);
             payload[0] = tmp;
           }
           req.watch().conditions.push_back(move(bytes));
         }
       }
-      assert('\0' == *payload);
+      parser_assert('\0' == *payload);
 
       LOG(debug) << "gdb requests " << ('Z' == request ? "set" : "remove")
                  << "breakpoint (addr=" << HEX(req.watch().addr)
