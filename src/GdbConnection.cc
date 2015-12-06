@@ -475,15 +475,16 @@ void GdbConnection::read_packet() {
   }
 }
 
-static void read_binary_data(const uint8_t* payload, ssize_t data_len,
-                             uint8_t* data) {
-  ssize_t payload_idx = 0;
-  for (ssize_t i = 0; i < data_len; ++i) {
-    uint8_t b = payload[payload_idx++];
+static void read_binary_data(const uint8_t* payload, const uint8_t* payload_end,
+                             vector<uint8_t>& data) {
+  data.clear();
+  while (payload < payload_end) {
+    uint8_t b = *payload++;
     if ('}' == b) {
-      b = 0x20 ^ payload[payload_idx++];
+      parser_assert(payload < payload_end);
+      b = 0x20 ^ *payload++;
     }
-    data[i] = b;
+    data.push_back(b);
   }
 }
 
@@ -1043,12 +1044,9 @@ bool GdbConnection::process_packet() {
       parser_assert(',' == *payload++);
       req.mem().len = strtoul(payload, &payload, 16);
       parser_assert(':' == *payload++);
-      req.mem().data.resize(req.mem().len);
-      // TODO: verify that the length of |payload| is as
-      // expected in the presence of escaped data.  Right
-      // now this call is potential-buffer-overrun-city.
-      read_binary_data((const uint8_t*)payload, req.mem().len,
-                       req.mem().data.data());
+      read_binary_data((const uint8_t*)payload, inbuf + packetend,
+                       req.mem().data);
+      parser_assert(req.mem().len == req.mem().data.size());
 
       LOG(debug) << "gdb setting memory (addr=" << HEX(req.mem().addr)
                  << ", len=" << req.mem().len << ")";
