@@ -708,6 +708,28 @@ bool GdbConnection::query(char* payload) {
     }
     return xfer(name, args);
   }
+  if (!strcmp(name, "Search")) {
+    name = args;
+    args = strchr(args, ':');
+    if (args) {
+      *args++ = '\0';
+    }
+    if (!strcmp(name, "memory") && args) {
+      req = GdbRequest(DREQ_SEARCH_MEM);
+      req.target = query_thread;
+      req.mem().addr = strtoul(args, &args, 16);
+      parser_assert(';' == *args++);
+      req.mem().len = strtoul(args, &args, 16);
+      parser_assert(';' == *args++);
+      read_binary_data((const uint8_t*)args, inbuf + packetend, req.mem().data);
+
+      LOG(debug) << "gdb searching memory (addr=" << HEX(req.mem().addr)
+                 << ", len=" << req.mem().len << ")";
+      return true;
+    }
+    write_packet("");
+    return false;
+  }
 
   UNHANDLED_REQ() << "Unhandled gdb query: q" << name;
   return false;
@@ -1427,6 +1449,20 @@ void GdbConnection::reply_set_mem(bool ok) {
   assert(DREQ_SET_MEM == req.type);
 
   write_packet(ok ? "OK" : "E01");
+
+  consume_request();
+}
+
+void GdbConnection::reply_search_mem(bool found, remote_ptr<void> addr) {
+  assert(DREQ_SEARCH_MEM == req.type);
+
+  if (found) {
+    char buf[256];
+    sprintf(buf, "1,%llx", (long long)addr.as_int());
+    write_packet(buf);
+  } else {
+    write_packet("0");
+  }
 
   consume_request();
 }

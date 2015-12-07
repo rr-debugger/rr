@@ -346,6 +346,37 @@ static unique_ptr<BreakpointCondition> breakpoint_condition(
       new GdbBreakpointCondition(request.watch().conditions));
 }
 
+static bool search_memory(Task* t, const MemoryRange& where,
+                          const vector<uint8_t>& find,
+                          remote_ptr<void>* result) {
+  vector<uint8_t> buf;
+  buf.resize(page_size() + find.size() - 1);
+  for (const auto& m : t->vm()->maps()) {
+    MemoryRange r = MemoryRange(m.map.start(), m.map.end() + find.size() - 1)
+                        .intersect(where);
+    // We basically read page by page here, but we read past the end of the
+    // page to handle the case where a found string crosses page boundaries.
+    // This approach isn't great for handling long search strings but gdb's find
+    // command isn't really suited to that.
+    // Reading page by page lets us avoid problems where some pages in a
+    // mapping aren't readable (e.g. reading beyond end of file).
+    while (r.size() >= find.size()) {
+      ssize_t nread = t->read_bytes_fallible(
+          r.start(), std::min(buf.size(), r.size()), buf.data());
+      if (nread >= ssize_t(find.size())) {
+        void* found = memmem(buf.data(), nread, find.data(), find.size());
+        if (found) {
+          *result = r.start() + (static_cast<uint8_t*>(found) - buf.data());
+          return true;
+        }
+      }
+      r = MemoryRange(
+          std::min(r.end(), floor_page_size(r.start()) + page_size()), r.end());
+    }
+  }
+  return false;
+}
+
 void GdbServer::dispatch_debugger_request(Session& session,
                                           const GdbRequest& req,
                                           ReportState state) {
@@ -474,6 +505,14 @@ void GdbServer::dispatch_debugger_request(Session& session,
       target->write_bytes_helper(req.mem().addr, req.mem().len,
                                  req.mem().data.data());
       dbg->reply_set_mem(true);
+      return;
+    }
+    case DREQ_SEARCH_MEM: {
+      remote_ptr<void> addr;
+      bool found =
+          search_memory(target, MemoryRange(req.mem().addr, req.mem().len),
+                        req.mem().data, &addr);
+      dbg->reply_search_mem(found, addr);
       return;
     }
     case DREQ_GET_REG: {

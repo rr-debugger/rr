@@ -104,8 +104,9 @@ enum GdbRequestType {
   //
   // Uses .mem for offset/len.
   DREQ_READ_SIGINFO,
+  DREQ_SEARCH_MEM,
   DREQ_MEM_FIRST = DREQ_GET_MEM,
-  DREQ_MEM_LAST = DREQ_READ_SIGINFO,
+  DREQ_MEM_LAST = DREQ_SEARCH_MEM,
 
   DREQ_REMOVE_SW_BREAK,
   DREQ_REMOVE_HW_BREAK,
@@ -183,6 +184,7 @@ struct GdbRequest {
     uintptr_t addr;
     size_t len;
     // For SET_MEM requests, the |len| raw bytes that are to be written.
+    // For SEARCH_MEM requests, the bytes to search for.
     std::vector<uint8_t> data;
   } mem_;
   struct Watch {
@@ -379,6 +381,13 @@ public:
    * regardless of success/failure or special interpretation.
    */
   void reply_set_mem(bool ok);
+
+  /**
+   * Reply to the DREQ_SEARCH_MEM request.
+   * |found| is true if we found the searched-for bytes starting at address
+   * |addr|.
+   */
+  void reply_search_mem(bool found, remote_ptr<void> addr);
 
   /**
    * Reply to the DREQ_GET_OFFSETS request.

@@ -581,6 +581,7 @@ set(TESTS_WITH_PROGRAM
   reverse_step_long
   reverse_step_threads
   reverse_step_threads_break
+  search
   segfault
   shared_persistent_file
   signal_numbers
