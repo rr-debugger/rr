@@ -2777,20 +2777,35 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
     return read_bytes_ptrace(addr, buf_size, buf);
   }
 
-  errno = 0;
-  ssize_t nread = pread64(as->mem_fd(), buf, buf_size, addr.as_int());
-  // We open the mem_fd just after being notified of
-  // exec(), when the Task is created.  Trying to read from that
-  // fd seems to return 0 with errno 0.  Reopening the mem fd
-  // allows the pwrite to succeed.  It seems that the first mem
-  // fd we open, very early in exec, refers to some resource
-  // that's different than the one we see after reopening the
-  // fd, after exec.
-  if (0 == nread && 0 == errno) {
-    open_mem_fd();
-    return read_bytes_fallible(addr, buf_size, buf);
+  ssize_t all_read = 0;
+  while (all_read < buf_size) {
+    errno = 0;
+    ssize_t nread = pread64(as->mem_fd(), static_cast<uint8_t*>(buf) + all_read,
+                            buf_size - all_read, addr.as_int() + all_read);
+    // We open the mem_fd just after being notified of
+    // exec(), when the Task is created.  Trying to read from that
+    // fd seems to return 0 with errno 0.  Reopening the mem fd
+    // allows the pwrite to succeed.  It seems that the first mem
+    // fd we open, very early in exec, refers to some resource
+    // that's different than the one we see after reopening the
+    // fd, after exec.
+    if (0 == nread && 0 == all_read && 0 == errno) {
+      open_mem_fd();
+      continue;
+    }
+    if (nread <= 0) {
+      if (all_read > 0) {
+        // We did successfully read some data, so return success and ignore
+        // any error.
+        errno = 0;
+        return all_read;
+      }
+      return nread;
+    }
+    // We read some data. We should try again in case we get short reads.
+    all_read += nread;
   }
-  return nread;
+  return all_read;
 }
 
 void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
