@@ -43,6 +43,12 @@ public:
     return s < e;
   }
 
+  MemoryRange intersect(const MemoryRange& other) const {
+    remote_ptr<void> s = std::max(start_, other.start_);
+    remote_ptr<void> e = std::min(end_, other.end_);
+    return MemoryRange(s, std::max(s, e));
+  }
+
   remote_ptr<void> start() const { return start_; }
   remote_ptr<void> end() const { return end_; }
   size_t size() const { return end_ - start_; }
