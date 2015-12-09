@@ -300,7 +300,6 @@ private:
   Completion enter_syscall(Task* t, const StepConstraints& constraints);
   Completion exit_syscall(Task* t, const StepConstraints& constraints);
   Completion exit_task(Task* t, const StepConstraints& constraints);
-  Ticks get_ticks_slack(Task* t);
   void check_ticks_consistency(Task* t, const Event& ev);
   void check_pending_sig(Task* t);
   void continue_or_step(Task* t, const StepConstraints& constraints,

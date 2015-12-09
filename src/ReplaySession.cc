@@ -496,10 +496,8 @@ bool ReplaySession::is_debugger_trap(Task* t, int target_sig,
 }
 
 static void guard_overshoot(Task* t, const Registers& target_regs,
-                            Ticks target_ticks, Ticks remaining_ticks,
-                            Ticks ticks_slack, bool ignored_early_match,
-                            Ticks ticks_left_at_ignored_early_match) {
-  if (remaining_ticks < -ticks_slack) {
+                            Ticks target_ticks, Ticks remaining_ticks) {
+  if (remaining_ticks < 0) {
     remote_code_ptr target_ip = target_regs.ip();
 
     LOG(error) << "Replay diverged.  Dumping register comparison.";
@@ -513,14 +511,8 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
     }
     Registers::compare_register_files(t, "rep overshoot", t->regs(), "rec",
                                       target_regs, LOG_MISMATCHES);
-    if (ignored_early_match) {
-      ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
-                       << -remaining_ticks << "; ignored early match with "
-                       << ticks_left_at_ignored_early_match << " ticks left";
-    } else {
-      ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
-                       << -remaining_ticks;
-    }
+    ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
+                     << -remaining_ticks;
   }
 }
 
@@ -541,9 +533,7 @@ static void guard_unexpected_signal(Task* t) {
 }
 
 static bool is_same_execution_point(Task* t, const Registers& rec_regs,
-                                    Ticks ticks_left, Ticks ticks_slack,
-                                    bool* ignoring_early_match,
-                                    Ticks* ticks_left_at_ignored_early_match) {
+                                    Ticks ticks_left) {
   MismatchBehavior behavior =
 #ifdef DEBUGTAG
       LOG_MISMATCHES
@@ -551,22 +541,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
       EXPECT_MISMATCHES
 #endif
       ;
-  if (ticks_left > 0) {
-    if (ticks_left <= ticks_slack &&
-        Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)",
-                                          rec_regs, EXPECT_MISMATCHES)) {
-      *ignoring_early_match = true;
-      *ticks_left_at_ignored_early_match = ticks_left;
-    }
-    LOG(debug) << "  not same execution point: " << ticks_left
-               << " ticks left (@" << rec_regs.ip() << ")";
-#ifdef DEBUGTAG
-    Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
-                                      LOG_MISMATCHES);
-#endif
-    return false;
-  }
-  if (ticks_left < -ticks_slack) {
+  if (ticks_left != 0) {
     LOG(debug) << "  not same execution point: " << ticks_left
                << " ticks left (@" << rec_regs.ip() << ")";
 #ifdef DEBUGTAG
@@ -585,14 +560,6 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
   return true;
 }
 
-Ticks ReplaySession::get_ticks_slack(Task* t) {
-  if (cpuid_bug_detector.is_cpuid_bug_detected()) {
-    // Somewhat arbitrary guess
-    return 6;
-  }
-  return 0;
-}
-
 /**
  * Run execution forwards for |t| until |ticks| is reached, and the $ip
  * reaches the recorded $ip.  Return COMPLETE if successful or INCOMPLETE if an
@@ -607,10 +574,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
                                      Ticks ticks) {
   remote_code_ptr ip = regs.ip();
   Ticks ticks_left;
-  Ticks ticks_slack = get_ticks_slack(t);
   bool did_set_internal_breakpoint = false;
-  bool ignored_early_match = false;
-  Ticks ticks_left_at_ignored_early_match = 0;
 
   /* Step 1: advance to the target ticks (minus a slack region) as
    * quickly as possible by programming the hpc. */
@@ -640,8 +604,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       return INCOMPLETE;
     }
   }
-  guard_overshoot(t, regs, ticks, ticks_left, ticks_slack, ignored_early_match,
-                  ticks_left_at_ignored_early_match);
+  guard_overshoot(t, regs, ticks, ticks_left);
 
   /* True when our advancing has triggered a tracee SIGTRAP that needs to
    * be dealt with. */
@@ -662,7 +625,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
   while (true) {
     /* Invariants here are
      *  o ticks_left is up-to-date
-     *  o ticks_left >= -ticks_slack
+     *  o ticks_left >= 0
      *
      * Possible state of the execution of |t|
      *  0. at a debugger trap (breakpoint or stepi)
@@ -678,8 +641,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
      * straightforwardly computed with ticks value and
      * registers. */
     bool at_target = is_same_execution_point(
-        t, regs, ticks_left, ticks_slack, &ignored_early_match,
-        &ticks_left_at_ignored_early_match);
+        t, regs, ticks_left);
     if (pending_SIGTRAP) {
       TrapType trap_type =
           compute_trap_type(t, sig, NONDETERMINISTIC_SIG,
@@ -797,14 +759,11 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
      * advancing execution. So we allow |advance_to| to proceed and actually
      * reach the desired state.
      */
-    if (!is_same_execution_point(t, regs, ticks_left, ticks_slack,
-                                 &ignored_early_match,
-                                 &ticks_left_at_ignored_early_match)) {
+    if (!is_same_execution_point(t, regs, ticks_left)) {
       guard_unexpected_signal(t);
     }
 
-    guard_overshoot(t, regs, ticks, ticks_left, ticks_slack,
-                    ignored_early_match, ticks_left_at_ignored_early_match);
+    guard_overshoot(t, regs, ticks, ticks_left);
   }
 }
 
@@ -863,15 +822,12 @@ void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
     return;
   }
 
-  Ticks ticks_slack = get_ticks_slack(t);
   Ticks ticks_now = t->tick_count();
   Ticks trace_ticks = trace_frame.ticks();
 
-  ASSERT(t, llabs(ticks_now - trace_ticks) <= ticks_slack)
+  ASSERT(t, ticks_now == trace_ticks)
       << "ticks mismatch for '" << ev << "'; expected " << trace_ticks
       << ", got " << ticks_now << "";
-  // Sync task ticks with trace ticks so we don't keep accumulating errors
-  t->set_tick_count(trace_ticks);
 }
 
 static bool treat_signal_event_as_deterministic(Task* t,
