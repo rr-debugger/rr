@@ -496,11 +496,11 @@ bool ReplaySession::is_debugger_trap(Task* t, int target_sig,
 }
 
 static void guard_overshoot(Task* t, const Registers& target_regs,
-                            Ticks target_ticks, Ticks remaining_ticks) {
+                            Ticks target_ticks, Ticks remaining_ticks,
+                            const Registers* closest_matching_regs) {
   if (remaining_ticks < 0) {
     remote_code_ptr target_ip = target_regs.ip();
 
-    LOG(error) << "Replay diverged.  Dumping register comparison.";
     /* Cover up the internal breakpoint that we may have
      * set, and restore the tracee's $ip to what it would
      * have been had it not hit the breakpoint (if it did
@@ -509,8 +509,15 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
     if (t->regs().ip() == target_ip.increment_by_bkpt_insn_length(t->arch())) {
       t->move_ip_before_breakpoint();
     }
-    Registers::compare_register_files(t, "rep overshoot", t->regs(), "rec",
-                                      target_regs, LOG_MISMATCHES);
+    if (closest_matching_regs) {
+      LOG(error) << "Replay diverged; target registers at ticks target mismatched: ";
+      Registers::compare_register_files(t, "rep overshoot", t->regs(), "rec",
+                                        *closest_matching_regs, LOG_MISMATCHES);
+    } else {
+      LOG(error) << "Replay diverged; target registers mismatched: ";
+      Registers::compare_register_files(t, "rep overshoot", t->regs(), "rec",
+                                        target_regs, LOG_MISMATCHES);
+    }
     ASSERT(t, false) << "overshot target ticks=" << target_ticks << " by "
                      << -remaining_ticks;
   }
@@ -533,7 +540,8 @@ static void guard_unexpected_signal(Task* t) {
 }
 
 static bool is_same_execution_point(Task* t, const Registers& rec_regs,
-                                    Ticks ticks_left) {
+                                    Ticks ticks_left, Registers* mismatched_regs,
+                                    const Registers** mismatched_regs_ptr) {
   MismatchBehavior behavior =
 #ifdef DEBUGTAG
       LOG_MISMATCHES
@@ -554,6 +562,8 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
                                          behavior)) {
     LOG(debug) << "  not same execution point: regs differ (@" << rec_regs.ip()
                << ")";
+    *mismatched_regs = t->regs();
+    *mismatched_regs_ptr = mismatched_regs;
     return false;
   }
   LOG(debug) << "  same execution point";
@@ -604,7 +614,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
       return INCOMPLETE;
     }
   }
-  guard_overshoot(t, regs, ticks, ticks_left);
+  guard_overshoot(t, regs, ticks, ticks_left, NULL);
 
   /* True when our advancing has triggered a tracee SIGTRAP that needs to
    * be dealt with. */
@@ -622,6 +632,8 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
    * What we really want to do is set a (precise)
    * retired-instruction interrupt and do away with all this
    * cruft. */
+  Registers mismatched_regs;
+  const Registers* mismatched_regs_ptr = NULL;
   while (true) {
     /* Invariants here are
      *  o ticks_left is up-to-date
@@ -641,7 +653,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
      * straightforwardly computed with ticks value and
      * registers. */
     bool at_target = is_same_execution_point(
-        t, regs, ticks_left);
+        t, regs, ticks_left, &mismatched_regs, &mismatched_regs_ptr);
     if (pending_SIGTRAP) {
       TrapType trap_type =
           compute_trap_type(t, sig, NONDETERMINISTIC_SIG,
@@ -756,11 +768,12 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
      * advancing execution. So we allow |advance_to| to proceed and actually
      * reach the desired state.
      */
-    if (!is_same_execution_point(t, regs, ticks_left)) {
+    if (!is_same_execution_point(t, regs, ticks_left,
+        &mismatched_regs, &mismatched_regs_ptr)) {
       guard_unexpected_signal(t);
     }
 
-    guard_overshoot(t, regs, ticks, ticks_left);
+    guard_overshoot(t, regs, ticks, ticks_left, mismatched_regs_ptr);
   }
 }
 
