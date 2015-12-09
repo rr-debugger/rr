@@ -700,9 +700,6 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
     }
 
     if (at_target) {
-      // Adjust dynamic ticks count to match trace, in case
-      // there was slack.
-      t->set_tick_count(ticks);
       /* Case (2) above: done. */
       return COMPLETE;
     }
