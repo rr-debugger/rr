@@ -30,78 +30,65 @@ class Task;
  * sched_yield are often expecting some kind of fair scheduling and may deadlock
  * (e.g. trying to acquire a spinlock) if some other tasks don't get a chance
  * to run.
+ *
+ * The scheduler only runs during recording. During replay we're just replaying
+ * the recorded scheduling decisions.
+ *
+ * The main interface to the scheduler is |get_next_thread|. This gets called
+ * after every rr event to decide which task to run next.
+ *
+ * The scheduler gives the current task a 'timeslice', a ticks deadline after
+ * which we will try to switch to another task. So |get_next_thread| first
+ * checks whether the currently running task has exceeded that deadline. If
+ * not, and the current task is runnable, we schedule it again. If it's blocked
+ * or has exceeded its deadline, we search for another task to run:
+ * taking tasks from the round-robin queue until we find one that's runnable,
+ * and then if the round-robin queue is empty, choosing the highest-priority
+ * task that's runnable. If the highest-priority runnable task has the same
+ * priority as the current task, choose the next runnable task after the
+ * current task (so equal priority tasks run in round-robin order).
+ *
+ * The main parameter to the scheduler is |max_ticks|, which controls the
+ * length of each timeslice.
  */
 class Scheduler {
 public:
   /**
-   * The following parameters define the default scheduling parameters.
-   * The recorder scheduler basically works as follows
+   * Like most task schedulers, there are conflicting goals to balance. Lower
+   * max-ticks generally makes the application more "interactive", generally
+   * speaking lower latency. (And wrt catching bugs, this setting generally
+   * creates more opportunity for bugs to arise in multi-threaded/process
+   * applications.) This comes at the cost of more overhead from scheduling and
+   * context switching. Context switches during recording are expensive because
+   * we must context switch to the rr process and then to the next tracee task.
+   * Increasing max-ticks generally gives the application higher throughput.
    *
-   *  0. Find a task A with a pending event.
-   *  1. If A was the last task scheduled, decrease its "max-event"
-   *     counter.
-   *  2. Program an HPC interrupt for A that will fire after "max-ticks"
-   *     retired conditional branches (or so, it may not be precise).
-   *  3. Resume the execution of A.
-   *
-   * The next thing that will occur is another scheduling event, after
-   * which one of two things happens
-   *
-   *  0. Task A triggers a trace event in rr, which could be a signal,
-   *     syscall entry/exit, HPC interrupt, ...
-   *  1. Some other task triggers an event.
-   *
-   * And then we make another scheduling decision.
-   *
-   * Like in most task schedulers, there are conflicting goals to
-   * balance.  Lower max-ticks / max-events generally makes the
-   * application more "interactive", generally speaking lower latency.
-   * (And wrt catching bugs, this setting generally creates more
-   * opportunity for bugs to arise in multi-threaded/process
-   * applications.)  This comes at the cost of more overhead from
-   * scheduling and context switching.  Higher max-ticks / max-events
-   * generally gives the application higher throughput.
-   *
-   * The rr scheduler is relatively dumb compared to modern OS
-   * schedulers, but the default parameters are configured to achieve
-   *
-   *  o IO-heavy tasks are relatively quickly switched, in the hope this
-   *    improves latency.
-   *  o CPU-heavy tasks are given an O(10ms) timeslice before being
-   *    switched.
-   *  o Keep max number of HPC interrupts small to avoid overhead.
-   *
-   * In addition to all the aforementioned deficiencies, using retired
-   * conditional branches to compute timeslices is quite crude, since
-   * they don't correspond to any unit of time in general.  Hopefully
-   * that can be improved, but empirical data from Firefox demonstrate,
-   * surprisingly consistently, a distribution of insns/rcb massed
-   * around 10.  Somewhat arbitrarily guessing ~4cycles/insn on average
-   * (fair amount of pointer chasing), that implies
-   *
-   *  10ms = .01s = x rcb * (10insn / rcb) * (4cycle / insn) * (1s / 2e9cycle)
-   *  x = 500000rcb / 10ms
-   *
-   * We'll arbitrarily decide to allow 10 max successive events for
-   * latency reasons.  To try to keep overhead lower (since trace traps
-   * are heavyweight), we'll give each task a relatively large 50ms
-   * timeslice.  This works out to
-   *
-   *   50ms * (500000rcb / 10ms) / 10event = 250000 rcb / event
+   * Using ticks (retired conditional branches) to compute timeslices is quite
+   * crude, since they don't correspond to any unit of time in general.
+   * Hopefully that can be improved, but empirical data from Firefox
+   * demonstrate, surprisingly consistently, a distribution of insns/rcb massed
+   * around 10. Somewhat arbitrarily guessing ~4cycles/insn on average
+   * (fair amount of pointer chasing), that implies for a nominal 2GHz CPU
+   * 50,000 ticks per millisecond. We choose the default max ticks to give us
+   * 10ms timeslices, i.e. 500,000 ticks.
    */
-  enum { DEFAULT_MAX_TICKS = 250000 };
-  enum { DEFAULT_MAX_EVENTS = 10 };
+  enum { DEFAULT_MAX_TICKS = 500000 };
 
   Scheduler(RecordSession& session)
       : session(session),
         current(nullptr),
         max_ticks_(DEFAULT_MAX_TICKS),
-        max_events(DEFAULT_MAX_EVENTS) {}
+        events_until_reset_priorities(0),
+        priority_levels(2),
+        always_switch(false),
+        enable_chaos(false) {}
 
   void set_max_ticks(Ticks max_ticks) { max_ticks_ = max_ticks; }
-  Ticks max_ticks() const { return max_ticks_; }
-  void set_max_events(TraceFrame::Time max_events) {
-    this->max_events = max_events;
+  void set_always_switch(bool always_switch) {
+    this->always_switch = always_switch;
+  }
+  void set_enable_chaos(bool enable_chaos) {
+    this->enable_chaos = enable_chaos;
   }
 
   /**
@@ -145,21 +132,22 @@ private:
   /**
    * Pull a task from the round-robin queue if available. Otherwise,
    * find the highest-priority task that is runnable. If the highest-priority
-   * runnable task has the same priority as 'current', return 'current' or
-   * the next runnable task after 'current' in round-robin order.
+   * runnable task has the same priority as 't', return 't' or
+   * the next runnable task after 't' in round-robin order.
    * Sets 'by_waitpid' to true if we determined the task was runnable by
    * calling waitpid on it and observing a state change.
    */
-  Task* find_next_runnable_task(bool* by_waitpid);
+  Task* find_next_runnable_task(Task* t, bool* by_waitpid);
   /**
-   * Returns the first task in the round-robin queue or null if it's empty.
+   * Returns the first task in the round-robin queue or null if it's empty,
+   * removing it from the round-robin queue.
    */
-  Task* get_next_round_robin_task();
-  /**
-   * Removes a task from the front of the round-robin queue.
-   */
-  void remove_round_robin_task();
+  Task* take_next_round_robin_task();
   Task* get_next_task_with_same_priority(Task* t);
+  void setup_new_timeslice(Task* t);
+  void maybe_reset_priorities();
+  int choose_random_priority();
+  void update_task_priority_internal(Task* t, int value);
 
   RecordSession& session;
 
@@ -183,7 +171,17 @@ private:
   Task* current;
 
   Ticks max_ticks_;
-  TraceFrame::Time max_events;
+  int events_until_reset_priorities;
+  int priority_levels;
+  /**
+   * When true, context switch at every possible point.
+   */
+  bool always_switch;
+  /**
+   * When true, make random scheduling decisions to try to increase the
+   * probability of finding buggy schedules.
+   */
+  bool enable_chaos;
 };
 
 #endif /* RR_REC_SCHED_H_ */

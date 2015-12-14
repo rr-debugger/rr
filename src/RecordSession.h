@@ -20,10 +20,14 @@ public:
   /**
    * Create a recording session for the initial command line |argv|.
    */
-  enum { DISABLE_SYSCALL_BUF = 0x01, CPU_UNBOUND = 0x02 };
+  enum SyscallBuffering { ENABLE_SYSCALL_BUF, DISABLE_SYSCALL_BUF };
+  enum BindCPU { BIND_CPU, UNBOUND_CPU };
+  enum Chaos { ENABLE_CHAOS, DISABLE_CHAOS };
   static shr_ptr create(
-      const std::vector<std::string>& argv, uint32_t flags = 0,
-      const std::vector<std::string>& extra_env = std::vector<std::string>());
+      const std::vector<std::string>& argv,
+      const std::vector<std::string>& extra_env = std::vector<std::string>(),
+      SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
+      BindCPU bind_cpu = BIND_CPU, Chaos chaos = DISABLE_CHAOS);
 
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
   void set_ignore_sig(int ignore_sig) { this->ignore_sig = ignore_sig; }
@@ -88,7 +92,7 @@ public:
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
-                uint32_t flags);
+                SyscallBuffering syscallbuf, BindCPU bind_cpu, Chaos chaos);
 
   virtual void on_create(Task* t);
 

@@ -2258,7 +2258,9 @@ static Switchable rec_prepare_syscall_arch(Task* t,
               target, (int)t->regs().arg3_signed());
         }
       }
-      // Allow switching so we can switch to a lower priority task immediately
+      // Give up our timeslice so we can switch to a higher priority task
+      // immediately
+      t->expire_timeslice();
       return ALLOW_SWITCH;
 
     case Arch::pause:
@@ -2499,17 +2501,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return ALLOW_SWITCH;
 
     case Arch::sched_yield:
-      // Force |t| to be context-switched if another thread
-      // of equal or higher priority is available.  We set
-      // the counter to INT_MAX / 2 because various other
-      // irrelevant events intervening between now and
-      // scheduling may increment t's event counter, and we
-      // don't want it to overflow.
-      t->succ_event_counter = numeric_limits<int>::max() / 2;
-      // We're just pretending that t is blocked.  The next
-      // time its scheduling slot opens up, it's OK to
-      // blocking-waitpid on t to see its status change.
-      t->pseudo_blocked = true;
       t->record_session().scheduler().schedule_one_round_robin(t);
       return ALLOW_SWITCH;
 

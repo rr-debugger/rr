@@ -90,8 +90,8 @@ static int get_num_cpus() {
  * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
  * in which case we return -1.
  */
-static int choose_cpu(uint32_t flags) {
-  if (flags & RecordSession::CPU_UNBOUND) {
+static int choose_cpu(RecordSession::BindCPU bind_cpu) {
+  if (bind_cpu == RecordSession::UNBOUND_CPU) {
     return -1;
   }
 
@@ -447,7 +447,7 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
   }
 
   TicksRequest max_ticks =
-      (TicksRequest)t->record_session().scheduler().max_ticks();
+      (TicksRequest)max<Ticks>(0, t->timeslice_end - t->tick_count());
   if (!t->seccomp_bpf_enabled || CONTINUE_SYSCALL == step_state.continue_type ||
       may_restart) {
     /* We won't receive PTRACE_EVENT_SECCOMP events until
@@ -1321,13 +1321,13 @@ static string find_syscall_buffer_library() {
 }
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
-    const vector<string>& argv, uint32_t flags,
-    const vector<string>& extra_env) {
+    const vector<string>& argv, const vector<string>& extra_env,
+    SyscallBuffering syscallbuf, BindCPU bind_cpu, Chaos chaos) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
   // syscallbuf is enabled.
-  if (flags & DISABLE_SYSCALL_BUF) {
+  if (syscallbuf == DISABLE_SYSCALL_BUF) {
     unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
   } else {
     setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
@@ -1395,20 +1395,23 @@ static string find_syscall_buffer_library() {
   // it is useless when running under rr.
   env.push_back("MOZ_GDB_SLEEP=0");
 
-  shr_ptr session(new RecordSession(argv, env, cwd, flags));
+  shr_ptr session(
+      new RecordSession(argv, env, cwd, syscallbuf, bind_cpu, chaos));
   return session;
 }
 
 RecordSession::RecordSession(const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
-                             const string& cwd, uint32_t flags)
-    : trace_out(argv, envp, cwd, choose_cpu(flags)),
+                             const string& cwd, SyscallBuffering syscallbuf,
+                             BindCPU bind_cpu, Chaos chaos)
+    : trace_out(argv, envp, cwd, choose_cpu(bind_cpu)),
       scheduler_(*this),
       last_recorded_task(nullptr),
       ignore_sig(0),
       last_task_switchable(PREVENT_SWITCH),
-      use_syscall_buffer_(!(flags & DISABLE_SYSCALL_BUF)),
+      use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
       can_deliver_signals(false) {
+  scheduler().set_enable_chaos(chaos == ENABLE_CHAOS);
   last_recorded_task = Task::spawn(*this, trace_out);
   initial_task_group = last_recorded_task->task_group();
   on_create(last_recorded_task);

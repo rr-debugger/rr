@@ -1081,6 +1081,11 @@ public:
   bool try_wait();
 
   /**
+   * End this task's timeslice now. This will force a new scheduling decision.
+   */
+  void expire_timeslice() { timeslice_end = 0; }
+
+  /**
    * Currently we don't allow recording across uid changes, so we can just
    * return rr's uid.
    */
@@ -1196,16 +1201,8 @@ public:
 
   /* State only used during recording. */
 
-  /* True when this is switchable for semantic purposes, but
-   * definitely isn't blocked on ony resource.  In that case,
-   * it's safe for the scheduler to do a blocking waitpid on
-   * this if our scheduling slot is open. */
-  bool pseudo_blocked;
-  /* Number of times this context has been scheduled in a row,
-   * which approximately corresponds to the number of events
-   * it's processed in succession.  The scheduler maintains this
-   * state and uses it to make scheduling decisions. */
-  uint32_t succ_event_counter;
+  /* Context switch after this number of ticks have elapsed. */
+  Ticks timeslice_end;
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
    * with a waitpid() call. Only applies to tasks which are dying, usually

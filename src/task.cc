@@ -220,8 +220,7 @@ TaskGroup::~TaskGroup() {
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            int _priority, SupportedArch a)
-    : pseudo_blocked(false),
-      succ_event_counter(),
+    : timeslice_end(0),
       unstable(false),
       stable_exit(false),
       priority(_priority),
@@ -1460,15 +1459,16 @@ void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
 
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
-  // Treat a 0 tick_period as a very large but finite number.
+  // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
   // Always resetting here, and always to a nonzero number, improves
   // consistency between recording and replay and hopefully
   // makes counting bugs behave similarly between recording and
   // replay.
   // Accumulate any unknown stuff in tick_count().
   if (tick_period != RESUME_NO_TICKS) {
-    hpc.reset(tick_period == RESUME_UNLIMITED_TICKS ? 0xffffffff
-                                                    : (Ticks)tick_period);
+    hpc.reset(tick_period == RESUME_UNLIMITED_TICKS
+                  ? 0xffffffff
+                  : max<Ticks>(1, tick_period));
   }
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   breakpoint_set_where_execution_resumed =
@@ -1986,9 +1986,8 @@ void Task::wait(AllowInterrupt allow_interrupt) {
       PTRACE_EVENT_STOP == ptrace_event_from_status(status) &&
       is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(status))) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
-    // Starve the runaway task of CPU time.  It just got
-    // the equivalent of hundreds of time slices.
-    succ_event_counter = numeric_limits<int>::max() / 2;
+    // Force this timeslice to end
+    expire_timeslice();
     status = (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
     siginfo_t si;
     memset(&si, 0, sizeof(si));

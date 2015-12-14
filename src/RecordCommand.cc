@@ -25,14 +25,14 @@ RecordCommand RecordCommand::singleton(
     "  -c, --num-cpu-ticks=<NUM>  maximum number of 'CPU ticks' (currently \n"
     "                             retired conditional branches) to allow a \n"
     "                             task to run before interrupting it\n"
-    "  -e, --num-events=<NUM>     maximum number of events (syscall \n"
-    "                             enter/exit, signal, CPU interrupt, ...) \n"
-    "                             to allow a task before descheduling it\n"
+    "  -h, --chaos                randomize scheduling decisions to try to \n"
+    "                             reproduce bugs\n"
     "  -i, --ignore-signal=<SIG>  block <SIG> from being delivered to \n"
     "                             tracees. Probably only useful for unit \n"
     "                             tests.\n"
     "  -n, --no-syscall-buffer    disable the syscall buffer preload \n"
     "                             library even if it would otherwise be used\n"
+    "  -s, --always-switch        tryto context switch at every rr event\n"
     "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
     "                             Default is to bind to CPU 0.  This option\n"
     "                             can cause replay divergence: use with\n"
@@ -46,27 +46,30 @@ struct RecordFlags {
   /* Max counter value before the scheduler interrupts a tracee. */
   Ticks max_ticks;
 
-  /* Max number of trace events before the scheduler
-   * de-schedules a tracee. */
-  TraceFrame::Time max_events;
-
   /* Whenever |ignore_sig| is pending for a tracee, decline to
    * deliver it. */
   int ignore_sig;
 
-  /* When true, use syscall buffering optimization during recording. */
-  bool use_syscall_buffer;
+  /* Whether to use syscall buffering optimization during recording. */
+  RecordSession::SyscallBuffering use_syscall_buffer;
 
-  /* True when tracee processes in record and replay are allowed
+  /* Whether tracee processes in record and replay are allowed
    * to run on any logical CPU. */
-  bool cpu_unbound;
+  RecordSession::BindCPU bind_cpu;
+
+  /* True if we should context switch after every rr event */
+  bool always_switch;
+
+  /* Whether to enable chaos mode in the scheduler */
+  RecordSession::Chaos chaos;
 
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
-        max_events(Scheduler::DEFAULT_MAX_EVENTS),
         ignore_sig(0),
-        use_syscall_buffer(true),
-        cpu_unbound(false) {}
+        use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
+        bind_cpu(RecordSession::BIND_CPU),
+        always_switch(false),
+        chaos(RecordSession::DISABLE_CHAOS) {}
 };
 
 static bool parse_record_arg(std::vector<std::string>& args,
@@ -77,10 +80,11 @@ static bool parse_record_arg(std::vector<std::string>& args,
 
   static const OptionSpec options[] = {
     { 'b', "force-syscall-buffer", NO_PARAMETER },
-    { 'i', "ignore-signal", HAS_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
-    { 'e', "num-events", HAS_PARAMETER },
+    { 'h', "chaos", NO_PARAMETER },
+    { 'i', "ignore-signal", HAS_PARAMETER },
     { 'n', "no-syscall-buffer", NO_PARAMETER },
+    { 's', "always-switch", NO_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'v', "env", HAS_PARAMETER }
   };
@@ -92,7 +96,7 @@ static bool parse_record_arg(std::vector<std::string>& args,
 
   switch (opt.short_name) {
     case 'b':
-      flags.use_syscall_buffer = true;
+      flags.use_syscall_buffer = RecordSession::ENABLE_SYSCALL_BUF;
       break;
     case 'c':
       if (!opt.verify_valid_int(1, INT64_MAX)) {
@@ -100,12 +104,8 @@ static bool parse_record_arg(std::vector<std::string>& args,
       }
       flags.max_ticks = opt.int_value;
       break;
-    case 'e':
-      if (!opt.verify_valid_int(1, UINT32_MAX)) {
-        return false;
-      }
-      flags.max_events = opt.int_value;
-      ;
+    case 'h':
+      flags.chaos = RecordSession::ENABLE_CHAOS;
       break;
     case 'i':
       if (!opt.verify_valid_int(1, _NSIG - 1)) {
@@ -114,10 +114,13 @@ static bool parse_record_arg(std::vector<std::string>& args,
       flags.ignore_sig = opt.int_value;
       break;
     case 'n':
-      flags.use_syscall_buffer = false;
+      flags.use_syscall_buffer = RecordSession::DISABLE_SYSCALL_BUF;
+      break;
+    case 's':
+      flags.always_switch = true;
       break;
     case 'u':
-      flags.cpu_unbound = true;
+      flags.bind_cpu = RecordSession::UNBOUND_CPU;
       break;
     case 'v':
       flags.extra_env.push_back(opt.value);
@@ -162,18 +165,16 @@ static void install_signal_handlers(void) {
 static void setup_session_from_flags(RecordSession& session,
                                      const RecordFlags& flags) {
   session.scheduler().set_max_ticks(flags.max_ticks);
-  session.scheduler().set_max_events(flags.max_events);
+  session.scheduler().set_always_switch(flags.always_switch);
   session.set_ignore_sig(flags.ignore_sig);
 }
 
 static int record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
-  auto session = RecordSession::create(
-      args,
-      (flags.cpu_unbound ? RecordSession::CPU_UNBOUND : 0) |
-          (flags.use_syscall_buffer ? 0 : RecordSession::DISABLE_SYSCALL_BUF),
-      flags.extra_env);
+  auto session =
+      RecordSession::create(args, flags.extra_env, flags.use_syscall_buffer,
+                            flags.bind_cpu, flags.chaos);
   setup_session_from_flags(*session, flags);
 
   // Install signal handlers after creating the session, to ensure they're not

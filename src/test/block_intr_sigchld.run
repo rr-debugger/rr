@@ -2,7 +2,7 @@ source `dirname $0`/util.sh
 
 # The underlying failure here is difficult to reproduce without a lot
 # of tracee concurrency.
-RECORD_ARGS="-e 1"
+RECORD_ARGS="-s"
 
 # TODO: when the syscallbuf is disabled, this test intermittently fails
 # with an error that looks like

@@ -22,18 +22,11 @@
 #include "RecordSession.h"
 #include "task.h"
 
+using namespace rr;
 using namespace std;
 
-static void note_switch(Task* prev_t, Task* t) {
-  if (prev_t == t) {
-    t->succ_event_counter++;
-  } else {
-    t->succ_event_counter = 0;
-  }
-}
-
 Task* Scheduler::get_next_task_with_same_priority(Task* t) {
-  if (t->in_round_robin_queue) {
+  if (!t || t->in_round_robin_queue) {
     return nullptr;
   }
 
@@ -46,13 +39,15 @@ Task* Scheduler::get_next_task_with_same_priority(Task* t) {
   return it->second;
 }
 
+int Scheduler::choose_random_priority() { return random() % priority_levels; }
+
 /**
  * Returns true if we should return t as the runnable task. Otherwise we
  * should check the next task.
  */
 static bool is_task_runnable(Task* t, bool* by_waitpid) {
   if (t->unstable) {
-    LOG(debug) << "  " << t->tid << " is unstable, doing waitpid(-1)";
+    LOG(debug) << "  " << t->tid << " is unstable";
     return true;
   }
 
@@ -66,17 +61,23 @@ static bool is_task_runnable(Task* t, bool* by_waitpid) {
     return false;
   }
 
+  if (EV_SYSCALL == t->ev().type() &&
+      PROCESSING_SYSCALL == t->ev().Syscall().state &&
+      is_sched_yield_syscall(t->ev().Syscall().number, t->arch())) {
+    // sched_yield syscalls never really blocks but the kernel may report that
+    // the task is not stopped yet if we pass WNOHANG. To make sched_yield
+    // behave predictably, do a blocking wait.
+    t->wait();
+    LOG(debug) << "  sched_yield ready with status " << HEX(t->status());
+    *by_waitpid = true;
+    return true;
+  }
+
   LOG(debug) << "  " << t->tid << " is blocked on " << t->ev()
              << "; checking status ...";
   bool did_wait_for_t;
-  if (t->pseudo_blocked) {
-    t->wait();
-    did_wait_for_t = true;
-  } else {
-    did_wait_for_t = t->try_wait();
-  }
+  did_wait_for_t = t->try_wait();
   if (did_wait_for_t) {
-    t->pseudo_blocked = false;
     *by_waitpid = true;
     LOG(debug) << "  ready with status " << HEX(t->status());
     return true;
@@ -86,21 +87,19 @@ static bool is_task_runnable(Task* t, bool* by_waitpid) {
   return false;
 }
 
-Task* Scheduler::find_next_runnable_task(bool* by_waitpid) {
+Task* Scheduler::find_next_runnable_task(Task* t, bool* by_waitpid) {
   *by_waitpid = false;
 
   while (true) {
-    Task* t = get_next_round_robin_task();
-    if (!t) {
+    Task* next = take_next_round_robin_task();
+    if (!next) {
       break;
     }
-    LOG(debug) << "Choosing task " << t->tid << " from yield queue";
-    if (is_task_runnable(t, by_waitpid)) {
-      return t;
+    LOG(debug) << "Trying task " << next->tid << " from yield queue";
+    if (is_task_runnable(next, by_waitpid)) {
+      return next;
     }
-    // This task had its chance to run but couldn't. Move to the
-    // next task in the queue.
-    remove_round_robin_task();
+    maybe_pop_round_robin_task(next);
   }
 
   // The outer loop has one iteration per unique priority value.
@@ -111,29 +110,89 @@ Task* Scheduler::find_next_runnable_task(bool* by_waitpid) {
     auto same_priority_end = task_priority_set.lower_bound(
         make_pair(same_priority_start->first + 1, nullptr));
 
-    auto begin_at = same_priority_start;
-    if (current && priority == current->priority) {
-      begin_at = task_priority_set.find(make_pair(priority, current));
+    if (enable_chaos) {
+      vector<Task*> tasks;
+      for (auto it = same_priority_start; it != same_priority_end; ++it) {
+        tasks.push_back(it->second);
+      }
+      random_shuffle(tasks.begin(), tasks.end());
+      for (Task* next : tasks) {
+        if (is_task_runnable(next, by_waitpid)) {
+          return next;
+        }
+      }
+    } else {
+      auto begin_at = same_priority_start;
+      if (t && priority == t->priority) {
+        begin_at = task_priority_set.find(make_pair(priority, t));
+        ++begin_at;
+        if (begin_at == same_priority_end) {
+          begin_at = same_priority_start;
+        }
+      }
+
+      auto task_iterator = begin_at;
+      do {
+        Task* next = task_iterator->second;
+
+        if (is_task_runnable(next, by_waitpid)) {
+          return next;
+        }
+
+        ++task_iterator;
+        if (task_iterator == same_priority_end) {
+          task_iterator = same_priority_start;
+        }
+      } while (task_iterator != begin_at);
     }
-
-    auto task_iterator = begin_at;
-    do {
-      Task* t = task_iterator->second;
-
-      if (is_task_runnable(t, by_waitpid)) {
-        return t;
-      }
-
-      ++task_iterator;
-      if (task_iterator == same_priority_end) {
-        task_iterator = same_priority_start;
-      }
-    } while (task_iterator != begin_at);
 
     same_priority_start = same_priority_end;
   }
 
   return nullptr;
+}
+
+void Scheduler::setup_new_timeslice(Task* t) {
+  Ticks timeslice_duration = max_ticks_;
+  if (enable_chaos) {
+    // Hypothesis: some bugs require short timeslices to expose. But we don't
+    // want the average timeslice to be too small. So make 10% of timeslices
+    // very short, 10% short-ish, and the rest uniformly distributed between 0
+    // and |max_size|.
+    switch (random() % 10) {
+      case 0:
+        timeslice_duration = random() % min<Ticks>(max_ticks_, 100);
+        break;
+      case 1:
+        timeslice_duration = random() % min<Ticks>(max_ticks_, 10000);
+        break;
+      default:
+        timeslice_duration = random() % max_ticks_;
+    }
+  }
+  t->timeslice_end = t->tick_count() + timeslice_duration;
+}
+
+void Scheduler::maybe_reset_priorities() {
+  if (!enable_chaos) {
+    return;
+  }
+  if (events_until_reset_priorities > 0) {
+    --events_until_reset_priorities;
+    return;
+  }
+  // Reset task priorities again at some point in the future.
+  events_until_reset_priorities = random() % 10000;
+  vector<Task*> tasks;
+  for (auto p : task_priority_set) {
+    tasks.push_back(p.second);
+  }
+  for (Task* t : task_round_robin_queue) {
+    tasks.push_back(t);
+  }
+  for (Task* t : tasks) {
+    update_task_priority_internal(t, choose_random_priority());
+  }
 }
 
 Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
@@ -146,6 +205,8 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
     current = t;
   }
   assert(!t || t == current);
+
+  maybe_reset_priorities();
 
   if (t && switchable == PREVENT_SWITCH) {
     LOG(debug) << "  (" << current->tid << " is un-switchable at "
@@ -171,19 +232,15 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
     return current;
   }
 
-  /* Prefer switching to the next task if the current one
-   * exceeded its event limit. */
-  if (current && current->succ_event_counter > max_events) {
-    LOG(debug) << "  previous task exceeded event limit, preferring next";
-    current->succ_event_counter = 0;
-    if (current == get_next_round_robin_task()) {
-      remove_round_robin_task();
-    }
-    current = get_next_task_with_same_priority(current);
+  if (current && !current->unstable && !always_switch &&
+      current->tick_count() < current->timeslice_end &&
+      is_task_runnable(current, by_waitpid)) {
+    return current;
   }
 
-  Task* next = find_next_runnable_task(by_waitpid);
+  LOG(debug) << "  need to reschedule";
 
+  Task* next = find_next_runnable_task(current, by_waitpid);
   if (next && !next->unstable) {
     LOG(debug) << "  selecting task " << next->tid;
   } else {
@@ -218,13 +275,17 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
     *by_waitpid = true;
   }
 
-  note_switch(current, next);
+  setup_new_timeslice(next);
   current = next;
   return current;
 }
 
 void Scheduler::on_create(Task* t) {
   assert(!t->in_round_robin_queue);
+  if (enable_chaos) {
+    // new tasks get a random priority
+    t->priority = choose_random_priority();
+  }
   task_priority_set.insert(make_pair(t->priority, t));
 }
 
@@ -246,6 +307,12 @@ void Scheduler::on_destroy(Task* t) {
 }
 
 void Scheduler::update_task_priority(Task* t, int value) {
+  if (!enable_chaos) {
+    update_task_priority_internal(t, value);
+  }
+}
+
+void Scheduler::update_task_priority_internal(Task* t, int value) {
   if (t->priority == value) {
     return;
   }
@@ -259,36 +326,28 @@ void Scheduler::update_task_priority(Task* t, int value) {
 }
 
 void Scheduler::schedule_one_round_robin(Task* t) {
-  if (!task_round_robin_queue.empty()) {
-    return;
-  }
+  ASSERT(t, !t->in_round_robin_queue);
 
   for (auto iter : task_priority_set) {
-    if (iter.second != t) {
+    if (iter.second != t && !iter.second->in_round_robin_queue) {
       task_round_robin_queue.push_back(iter.second);
       iter.second->in_round_robin_queue = true;
     }
   }
+  task_priority_set.clear();
   task_round_robin_queue.push_back(t);
   t->in_round_robin_queue = true;
-  task_priority_set.clear();
+  t->expire_timeslice();
 }
 
-Task* Scheduler::get_next_round_robin_task() {
+Task* Scheduler::take_next_round_robin_task() {
   if (task_round_robin_queue.empty()) {
     return nullptr;
   }
 
-  return task_round_robin_queue.front();
-}
-
-void Scheduler::remove_round_robin_task() {
-  assert(!task_round_robin_queue.empty());
-
   Task* t = task_round_robin_queue.front();
   task_round_robin_queue.pop_front();
-  if (t) {
-    t->in_round_robin_queue = false;
-    task_priority_set.insert(make_pair(t->priority, t));
-  }
+  t->in_round_robin_queue = false;
+  task_priority_set.insert(make_pair(t->priority, t));
+  return t;
 }

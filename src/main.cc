@@ -152,7 +152,9 @@ void print_usage(FILE* out) {
 
 static void init_random() {
   // Not very good, but good enough for our non-security-sensitive needs.
-  srandom(time(nullptr) ^ getpid());
+  int key = time(nullptr) ^ getpid();
+  srandom(key);
+  srand(key);
 }
 
 bool parse_global_option(std::vector<std::string>& args) {
