@@ -510,7 +510,8 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
       t->move_ip_before_breakpoint();
     }
     if (closest_matching_regs) {
-      LOG(error) << "Replay diverged; target registers at ticks target mismatched: ";
+      LOG(error)
+          << "Replay diverged; target registers at ticks target mismatched: ";
       Registers::compare_register_files(t, "rep overshoot", t->regs(), "rec",
                                         *closest_matching_regs, LOG_MISMATCHES);
     } else {
@@ -540,7 +541,8 @@ static void guard_unexpected_signal(Task* t) {
 }
 
 static bool is_same_execution_point(Task* t, const Registers& rec_regs,
-                                    Ticks ticks_left, Registers* mismatched_regs,
+                                    Ticks ticks_left,
+                                    Registers* mismatched_regs,
                                     const Registers** mismatched_regs_ptr) {
   MismatchBehavior behavior =
 #ifdef DEBUGTAG
@@ -768,8 +770,8 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs, int sig,
      * advancing execution. So we allow |advance_to| to proceed and actually
      * reach the desired state.
      */
-    if (!is_same_execution_point(t, regs, ticks_left,
-        &mismatched_regs, &mismatched_regs_ptr)) {
+    if (!is_same_execution_point(t, regs, ticks_left, &mismatched_regs,
+                                 &mismatched_regs_ptr)) {
       guard_unexpected_signal(t);
     }
 
@@ -835,9 +837,9 @@ void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
   Ticks ticks_now = t->tick_count();
   Ticks trace_ticks = trace_frame.ticks();
 
-  ASSERT(t, ticks_now == trace_ticks)
-      << "ticks mismatch for '" << ev << "'; expected " << trace_ticks
-      << ", got " << ticks_now << "";
+  ASSERT(t, ticks_now == trace_ticks) << "ticks mismatch for '" << ev
+                                      << "'; expected " << trace_ticks
+                                      << ", got " << ticks_now << "";
 }
 
 static bool treat_signal_event_as_deterministic(Task* t,
