@@ -1182,6 +1182,10 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
       syscall_state.reg_parameter<typename Arch::winsize>(3);
       return PREVENT_SWITCH;
 
+    case TIOCGPGRP:
+      syscall_state.reg_parameter<typename Arch::pid_t>(3);
+      return PREVENT_SWITCH;
+
     case SNDRV_CTL_IOCTL_PVERSION:
       syscall_state.reg_parameter<int>(3);
       return PREVENT_SWITCH;

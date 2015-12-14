@@ -506,6 +506,7 @@ set(BASIC_TESTS
   timerfd
   times
   tiocgwinsz
+  tiocgpgrp
   truncate
   tty_ioctls
   uname
