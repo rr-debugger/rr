@@ -431,11 +431,10 @@ sethostname = UnsupportedSyscall(x86=74, x64=170)
 # as defined by the rlimit structure (the rlim argument to both
 # getrlimit() and setrlimit()):
 #
-# NOTE: We should execute this system call, since this system call
-# can set a limit on the stack size that will trigger a synchronous SIGSEGV,
-# and we expect synchronous SIGSEGVs to be triggered by the kernel
-# during replay.
-setrlimit = EmulatedSyscall(x86=75, x64=160, arg2="typename Arch::rlimit")
+# NOTE: This syscall is emulated so the limit does not apply during
+# replay. Any signals triggered due to exceeded limits are emulated
+# by other means.
+setrlimit = EmulatedSyscall(x86=75, x64=160)
 
 getrlimit = EmulatedSyscall(x64=97, arg2="typename Arch::rlimit")
 
