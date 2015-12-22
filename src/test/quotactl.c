@@ -52,6 +52,8 @@ int main(int argc, char* argv[]) {
     atomic_puts("Quotas not supported in this kernel; aborting test");
   } else if (ret < 0 && errno == ESRCH) {
     atomic_puts("Quotas not enabled on this file system; aborting test");
+  } else if (ret < 0 && errno == ENOTBLK) {
+    atomic_puts("Home directory device is not a block device; aborting test");
   } else {
     test_assert(0 == ret);
     atomic_printf("QIF bits=%x\n", dq.dqb_valid);
