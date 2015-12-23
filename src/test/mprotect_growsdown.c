@@ -14,6 +14,14 @@ int main(int argc, char* argv[]) {
   test_assert(
       0 == mprotect(p + PAGE_SIZE * 2, PAGE_SIZE, PROT_NONE | PROT_GROWSDOWN));
 
+  test_assert(-1 == mprotect(p + 1, PAGE_SIZE, PROT_NONE | PROT_GROWSDOWN));
+  test_assert(EINVAL == errno);
+
+  p = (char*)(((uintptr_t)main) & ~((uintptr_t)PAGE_SIZE - 1));
+  test_assert(-1 ==
+              mprotect(p, PAGE_SIZE, PROT_READ | PROT_EXEC | PROT_GROWSDOWN));
+  test_assert(EINVAL == errno);
+
   atomic_puts("EXIT-SUCCESS");
 
   return 0;

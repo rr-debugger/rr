@@ -1144,8 +1144,10 @@ void Task::maybe_reset_syscallbuf() {
   }
 }
 
-void Task::record_event(const Event& ev) {
-  maybe_flush_syscallbuf();
+void Task::record_event(const Event& ev, FlushSyscallbuf flush) {
+  if (flush == FLUSH_SYSCALLBUF) {
+    maybe_flush_syscallbuf();
+  }
 
   TraceFrame frame(trace_writer().time(), tid, ev, tick_count());
   if (ev.record_exec_info() == HAS_EXEC_INFO) {
@@ -1169,6 +1171,7 @@ void Task::record_event(const Event& ev) {
   trace_writer().write_frame(frame);
 
   if (!ev.has_ticks_slop()) {
+    ASSERT(this, flush == FLUSH_SYSCALLBUF);
     // After we've output an event, it's safe to reset the syscallbuf (if not
     // explicitly delayed) since we will have exited the syscallbuf code that
     // consumed the syscallbuf data.

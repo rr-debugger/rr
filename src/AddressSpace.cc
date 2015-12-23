@@ -511,8 +511,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // We don't try to handle the analogous PROT_GROWSUP, because we
     // don't understand the idea of a grows-up segment.
     remote_ptr<void> new_start;
-    if ((m.map.start() < rem.start()) && (prot & PROT_GROWSDOWN) &&
-        (m.map.flags() & MAP_GROWSDOWN)) {
+    if ((m.map.start() < rem.start()) && (prot & PROT_GROWSDOWN)) {
       new_start = m.map.start();
       LOG(debug) << "  PROT_GROWSDOWN: expanded region down to " << new_start;
     } else {
@@ -554,6 +553,23 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // All mappings that we altered which might need coalescing
     // are adjacent to |last_overlap|.
     coalesce_around(mem.find(last_overlap));
+  }
+}
+
+void AddressSpace::fixup_mprotect_growsdown_parameters(Task* t) {
+  ASSERT(t, !(t->regs().arg3() & PROT_GROWSUP));
+  if (t->regs().arg3() & PROT_GROWSDOWN) {
+    Registers r = t->regs();
+    if (r.arg1() == floor_page_size(r.arg1()) && has_mapping(r.arg1())) {
+      auto& km = mapping_of(r.arg1()).map;
+      if (km.flags() & MAP_GROWSDOWN) {
+        auto new_start = km.start();
+        r.set_arg2(remote_ptr<void>(r.arg1()) + size_t(r.arg2()) - new_start);
+        r.set_arg1(new_start);
+        r.set_arg3(r.arg3() & ~PROT_GROWSDOWN);
+        t->set_regs(r);
+      }
+    }
   }
 }
 
@@ -931,18 +947,6 @@ static dev_t normalized_device_number(const KernelMapping& m) {
 static void assert_segments_match(Task* t, const KernelMapping& input_m,
                                   const KernelMapping& km) {
   KernelMapping m = input_m;
-  if (km.start() < m.start() && (m.flags() & MAP_GROWSDOWN)) {
-    // TODO: the stack can grow down arbitrarily, and rr needs to be
-    // aware of the updated mapping in case the user tries to map or
-    // unmap pages near the stack.  But keeping track of expanded
-    // stack in general is somewhat difficult, because the stack grows
-    // without rr being notified.  So we just add a special early-exit
-    // case for the assert for now.
-    // We do fix up our current mapping to match the kernel as closely
-    // as possible. Then, if the grow-down VMA is split somehow, we know
-    // about the split parts.
-    m = t->vm()->fix_stack_segment_start(m, km.start());
-  }
   string err;
   if (m.start() != km.start()) {
     err = "starts differ";
@@ -992,38 +996,6 @@ KernelMapping AddressSpace::vdso() const {
   return mapping_of(vdso_start_addr).map;
 }
 
-KernelMapping AddressSpace::fix_growsdown_mapping(
-    Task* t, const KernelMapping& km, const KernelMapping& prev_km) const {
-  // Consult our stored map to see if |km| is GROWSDOWN, because unfortunately
-  // /proc/<pid>/maps itself doesn't tell us.
-  // We can get it from /proc/<pid>/smaps, but that seems like overkill and
-  // isn't needed for now.
-  if (km.size() == 0) {
-    // This is only observed for GROWSDOWN mappings that are one page.
-    remote_ptr<void> extended_start = km.start() - page_size();
-    ASSERT(t, has_mapping(extended_start));
-    KernelMapping vm = mapping_of(extended_start).map;
-    ASSERT(t, vm.flags() & MAP_GROWSDOWN);
-    ASSERT(t, prev_km.end() <= extended_start);
-    return km.set_range(extended_start, km.end());
-  }
-
-  remote_ptr<void> last_page = km.end() - page_size();
-  if (has_mapping(last_page)) {
-    KernelMapping vm = mapping_of(last_page).map;
-    if (vm.flags() & MAP_GROWSDOWN) {
-      remote_ptr<void> extended_start = km.start() - page_size();
-      // The mapping should only be extended to include the previous page if
-      // there isn't a different mapping already there.
-      if (prev_km.end() <= extended_start) {
-        return km.set_range(extended_start, km.end());
-      }
-    }
-  }
-
-  return km;
-}
-
 /**
  * Iterate over /proc/maps segments for a task and verify that the
  * task's cached mapping matches the kernel's (given a lenient fuzz
@@ -1034,18 +1006,14 @@ void AddressSpace::verify(Task* t) const {
 
   MemoryMap::const_iterator mem_it = mem.begin();
   KernelMapIterator kernel_it(t);
-  KernelMapping prev_km;
   while (!kernel_it.at_end() && mem_it != mem.end()) {
-    KernelMapping km = fix_growsdown_mapping(t, kernel_it.current(), prev_km);
-    prev_km = km;
+    KernelMapping km = kernel_it.current();
     ++kernel_it;
     while (!kernel_it.at_end()) {
-      KernelMapping next_km =
-          fix_growsdown_mapping(t, kernel_it.current(), prev_km);
+      KernelMapping next_km = kernel_it.current();
       if (!try_merge_adjacent(&km, next_km)) {
         break;
       }
-      prev_km = next_km;
       ++kernel_it;
     }
 

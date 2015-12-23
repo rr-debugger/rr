@@ -54,6 +54,9 @@ enum EventType {
   // Syscall was entered, the syscall instruction was patched, and the
   // syscall was aborted. Resume execution at the patch.
   EV_PATCH_SYSCALL,
+  // Map memory pages due to a (future) memory access. This is associated
+  // with a mmap entry for the new pages.
+  EV_GROW_MAP,
   // The trace was terminated before all tasks exited, most
   // likely because the recorder was sent a terminating signal.
   // There are no more trace frames coming, so the best thing to

@@ -2569,10 +2569,44 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       }
       return PREVENT_SWITCH;
 
-    case Arch::brk:
     case Arch::mmap:
-    case Arch::mmap2:
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
+      switch (Arch::mmap_semantics) {
+        case Arch::StructArguments: {
+          auto args = t->read_mem(
+              remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
+          // XXX fix this
+          ASSERT(t, !(args.flags & MAP_GROWSDOWN));
+          break;
+        }
+        case Arch::RegisterArguments: {
+          Registers r = t->regs();
+          r.set_arg4(r.arg4_signed() & ~MAP_GROWSDOWN);
+          t->set_regs(r);
+          break;
+        }
+      }
+      return PREVENT_SWITCH;
+
+    case Arch::mmap2: {
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
+      Registers r = t->regs();
+      r.set_arg4(r.arg4_signed() & ~MAP_GROWSDOWN);
+      t->set_regs(r);
+      return PREVENT_SWITCH;
+    }
+
     case Arch::mprotect:
+      syscall_state.syscall_entry_registers =
+          unique_ptr<Registers>(new Registers(t->regs()));
+      // Since we're stripping MAP_GROWSDOWN from kernel mmap calls, we need
+      // to implement PROT_GROWSDOWN ourselves.
+      t->vm()->fixup_mprotect_growsdown_parameters(t);
+      return PREVENT_SWITCH;
+
+    case Arch::brk:
     case Arch::munmap:
     case Arch::rrcall_init_buffers:
     case Arch::rrcall_init_preload:
@@ -2720,29 +2754,54 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
 
   // Write out stack mappings first since during replay we need to set up the
   // stack before any files get mapped.
+  vector<KernelMapping> stacks;
   for (auto m : t->vm()->maps()) {
     auto& km = m.map;
     if (km.is_stack()) {
-      auto mode = t->trace_writer().write_mapped_region(
-          km, km.fake_stat(), TraceWriter::EXEC_MAPPING);
-      ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
-      t->record_remote(km.start(), km.size());
+      stacks.push_back(km);
     } else if (km.is_vvar()) {
       vvar = km;
     }
   }
 
-  if (vvar.size()) {
-    // We're not going to map [vvar] during replay --- that wouldn't
-    // make sense, since it contains data from the kernel that isn't correct
-    // for replay, and we patch out the vdso syscalls that would use it.
-    // Unmapping it now makes recording look more like replay.
-    // Also note that under 4.0.7-300.fc22.x86_64 (at least) /proc/<pid>/mem
-    // can't read the contents of [vvar].
-    AutoRemoteSyscalls remote(t);
-    remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
-                              vvar.start(), vvar.size());
-    t->vm()->unmap(vvar.start(), vvar.size());
+  {
+    AutoRemoteSyscalls remote(t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
+
+    if (vvar.size()) {
+      // We're not going to map [vvar] during replay --- that wouldn't
+      // make sense, since it contains data from the kernel that isn't correct
+      // for replay, and we patch out the vdso syscalls that would use it.
+      // Unmapping it now makes recording look more like replay.
+      // Also note that under 4.0.7-300.fc22.x86_64 (at least) /proc/<pid>/mem
+      // can't read the contents of [vvar].
+      remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
+                                vvar.start(), vvar.size());
+      t->vm()->unmap(vvar.start(), vvar.size());
+    }
+
+    for (auto& km : stacks) {
+      auto mode = t->trace_writer().write_mapped_region(
+          km, km.fake_stat(), TraceWriter::EXEC_MAPPING);
+      ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
+      auto buf = t->read_mem(km.start().cast<uint8_t>(), km.size());
+      t->trace_writer().write_raw(buf.data(), km.size(), km.start());
+
+      // Remove MAP_GROWSDOWN from stacks by remapping the memory and
+      // writing the contents back.
+      int flags = (km.flags() & ~MAP_GROWSDOWN) | MAP_ANONYMOUS;
+      remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
+                                km.start(), km.size());
+      if (!t->vm()->has_mapping(km.start() - page_size())) {
+        // Unmap an extra page at the start; this seems to be necessary
+        // to properly wipe out the growsdown mapping. Doing it as a separate
+        // munmap call also seems to be necessary.
+        remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
+                                  km.start() - page_size(), page_size());
+      }
+      remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(), flags,
+                                     -1, 0);
+      t->write_mem(km.start().cast<uint8_t>(), buf.data(), buf.size());
+    }
   }
 
   // The kernel may zero part of the last page in each data mapping according
@@ -3140,20 +3199,27 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
                        args.offset / 4096);
           break;
         }
-        case Arch::RegisterArguments:
-          process_mmap(
-              t, (size_t)t->regs().arg2(), (int)t->regs().arg3_signed(),
-              (int)t->regs().arg4_signed(), (int)t->regs().arg5_signed(),
-              ((off_t)t->regs().arg6_signed()) / 4096);
+        case Arch::RegisterArguments: {
+          Registers r = t->regs();
+          r.set_arg4(syscall_state.syscall_entry_registers->arg4_signed());
+          t->set_regs(r);
+          process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
+                       (int)r.arg4_signed(), (int)r.arg5_signed(),
+                       ((off_t)r.arg6_signed()) / 4096);
           break;
+        }
       }
       break;
 
-    case Arch::mmap2:
-      process_mmap(t, (size_t)t->regs().arg2(), (int)t->regs().arg3_signed(),
-                   (int)t->regs().arg4_signed(), (int)t->regs().arg5_signed(),
-                   (off_t)t->regs().arg6_signed());
+    case Arch::mmap2: {
+      Registers r = t->regs();
+      r.set_arg4(syscall_state.syscall_entry_registers->arg4_signed());
+      t->set_regs(r);
+      process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
+                   (int)r.arg4_signed(), (int)r.arg5_signed(),
+                   (off_t)r.arg6_signed());
       break;
+    }
 
     case Arch::shmat:
       process_shmat(t, (int)t->regs().arg1_signed(),
@@ -3215,11 +3281,19 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
 
+    case Arch::close:
+    case Arch::dup2:
+    case Arch::dup3:
+    case Arch::fcntl:
+    case Arch::fcntl64:
     case Arch::ptrace:
-    case Arch::sched_setaffinity: {
-      // Restore the register that we altered.
+    case Arch::sched_setaffinity:
+    case Arch::mprotect: {
+      // Restore the registers that we may have altered.
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers->arg1());
+      r.set_arg2(syscall_state.syscall_entry_registers->arg2());
+      r.set_arg3(syscall_state.syscall_entry_registers->arg3());
       t->set_regs(r);
       break;
     }
@@ -3272,18 +3346,6 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
           syscall_state.ptraced_tracee->emulated_ptrace_stop_code = 0;
         }
       }
-      break;
-    }
-
-    case Arch::close:
-    case Arch::dup2:
-    case Arch::dup3:
-    case Arch::fcntl:
-    case Arch::fcntl64: {
-      // Restore arg1 in case we modified it to disable the syscall
-      Registers r = t->regs();
-      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
-      t->set_regs(r);
       break;
     }
 

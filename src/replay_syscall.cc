@@ -335,6 +335,8 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
              << backing_file_name << " at page offset "
              << HEX(backing_offset_pages);
 
+  ASSERT(t, !(flags & MAP_GROWSDOWN));
+
   /* Open in the tracee the file that was mapped during
    * recording. */
   {
@@ -380,21 +382,30 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
   ino_t inode = KernelMapping::NO_INODE;
   int flags = km.flags();
   uint64_t offset_bytes = 0;
-  if (data.source == TraceReader::SOURCE_FILE) {
-    struct stat real_file;
-    offset_bytes = km.file_offset_bytes();
-    finish_direct_mmap(remote, km.start(), km.size(), km.prot(), km.flags(),
-                       offset_bytes / page_size(), data.file_name,
-                       data.file_data_offset_bytes / page_size(), real_file,
-                       real_file_name);
-    device = real_file.st_dev;
-    inode = real_file.st_ino;
-  } else {
-    ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
-    flags |= MAP_ANONYMOUS;
-    remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
-                                   flags | MAP_FIXED, -1, 0);
-    // The data will be written back by Task::apply_all_data_records_from_trace
+  switch (data.source) {
+    case TraceReader::SOURCE_FILE: {
+      struct stat real_file;
+      offset_bytes = km.file_offset_bytes();
+      finish_direct_mmap(remote, km.start(), km.size(), km.prot(), km.flags(),
+                         offset_bytes / page_size(), data.file_name,
+                         data.file_data_offset_bytes / page_size(), real_file,
+                         real_file_name);
+      device = real_file.st_dev;
+      inode = real_file.st_ino;
+      break;
+    }
+    case TraceReader::SOURCE_TRACE:
+    case TraceReader::SOURCE_ZERO:
+      flags |= MAP_ANONYMOUS;
+      remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
+                                     (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1,
+                                     0);
+      // The data, if any, will be written back by
+      // Task::apply_all_data_records_from_trace
+      break;
+    default:
+      ASSERT(t, false) << "Unknown data source";
+      break;
   }
 
   t->vm()->map(km.start(), km.size(), km.prot(), flags, offset_bytes,
@@ -637,7 +648,7 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
     remote.infallible_mmap_syscall(rec_addr, length, prot,
                                    // Tell the kernel to take |rec_addr|
                                    // seriously.
-                                   flags | MAP_FIXED, -1, 0);
+                                   (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1, 0);
     recorded_km = KernelMapping(rec_addr, rec_addr + ceil_page_size(length),
                                 string(), KernelMapping::NO_DEVICE,
                                 KernelMapping::NO_INODE, prot, flags, 0);
@@ -829,6 +840,14 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
   // Monkeypatcher can emit data records that need to be applied now
   t->apply_all_data_records_from_trace();
   t->validate_regs();
+}
+
+void process_grow_map(Task* t) {
+  AutoRemoteSyscalls remote(t);
+  TraceReader::MappedData data;
+  KernelMapping km = t->trace_reader().read_mapped_region(&data);
+  ASSERT(t, km.size());
+  restore_mapped_region(remote, km, data);
 }
 
 static void process_shmat(Task* t, const TraceFrame& trace_frame,
@@ -1163,9 +1182,19 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         r.set_syscallno(t->regs().original_syscallno());
         r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
         t->set_regs(r);
+        if (syscall == Arch::mprotect) {
+          t->vm()->fixup_mprotect_growsdown_parameters(t);
+        }
         __ptrace_cont(t, syscall);
         __ptrace_cont(t, syscall);
         ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
+        if (syscall == Arch::mprotect) {
+          Registers r2 = t->regs();
+          r2.set_arg1(r.arg1());
+          r2.set_arg2(r.arg2());
+          r2.set_arg3(r.arg3());
+          t->set_regs(r2);
+        }
       }
       return;
 

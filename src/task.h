@@ -661,7 +661,14 @@ public:
    * |record_event()| records the specified event.
    */
   void record_current_event();
-  void record_event(const Event& ev);
+  enum FlushSyscallbuf {
+    FLUSH_SYSCALLBUF,
+    /* Pass this if it's safe to replay the event before we process the
+     * syscallbuf records.
+     */
+    DONT_FLUSH_SYSCALLBUF
+  };
+  void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF);
 
   /**
    * Save tracee data to the trace.  |addr| is the address in

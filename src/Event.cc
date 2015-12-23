@@ -27,6 +27,7 @@ Event::Event(EncodedEvent e) {
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_RESET:
     case EV_PATCH_SYSCALL:
+    case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
     case EV_UNSTABLE_EXIT:
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
@@ -145,6 +146,7 @@ EncodedEvent Event::encode() const {
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_RESET:
     case EV_PATCH_SYSCALL:
+    case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
     case EV_UNSTABLE_EXIT:
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
@@ -188,6 +190,7 @@ bool Event::has_ticks_slop() const {
     case EV_SYSCALLBUF_FLUSH:
     case EV_SYSCALLBUF_RESET:
     case EV_DESCHED:
+    case EV_GROW_MAP:
       return true;
     default:
       return false;
@@ -277,6 +280,7 @@ std::string Event::type_name() const {
       CASE(SYSCALLBUF_ABORT_COMMIT);
       CASE(SYSCALLBUF_RESET);
       CASE(PATCH_SYSCALL);
+      CASE(GROW_MAP);
       CASE(UNSTABLE_EXIT);
       CASE(DESCHED);
       CASE(SIGNAL);

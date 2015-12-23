@@ -56,8 +56,7 @@ public:
    * between adjacent segments.  For example, the kernel
    * considers a NORESERVE anonynmous mapping that's adjacent to
    * a non-NORESERVE mapping distinct, even if all other
-   * metadata are the same.  See |is_adjacent_mapping()| in
-   * task.cc.
+   * metadata are the same.  See |is_adjacent_mapping()|.
    */
   static const int map_flags_mask = MAP_ANONYMOUS | MAP_NORESERVE |
                                     MAP_PRIVATE | MAP_SHARED | MAP_STACK |
@@ -437,6 +436,11 @@ public:
   void protect(remote_ptr<void> addr, size_t num_bytes, int prot);
 
   /**
+   * Fix up mprotect registers parameters to take account of PROT_GROWSDOWN.
+   */
+  void fixup_mprotect_growsdown_parameters(Task* t);
+
+  /**
    * Move the mapping [old_addr, old_addr + old_num_bytes) to
    * [new_addr, old_addr + new_num_bytes), preserving metadata.
    */
@@ -682,12 +686,6 @@ private:
   void populate_address_space(Task* t);
 
   void unmap_internal(remote_ptr<void> addr, ssize_t num_bytes);
-
-  // km is a mapping we retrieved from the /proc/<pid>/maps iterator. Determine
-  // if it is a GROWSDOWN mapping, and if it is, extend it to include the
-  // preceding page since /proc/<pid>/maps chops that off.
-  KernelMapping fix_growsdown_mapping(Task* t, const KernelMapping& km,
-                                      const KernelMapping& prev_km) const;
 
   // Also sets brk_ptr.
   void map_rr_page(Task* t);

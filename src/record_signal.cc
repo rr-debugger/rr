@@ -79,10 +79,9 @@ static bool is_ip_rdtsc(Task* t) {
  * from a rdtsc and |t| was updated appropriately, false otherwise.
  */
 static bool try_handle_rdtsc(Task* t, siginfo_t* si) {
-  int sig = si->si_signo;
-  assert(sig != SIGTRAP);
+  ASSERT(t, si->si_signo == SIGSEGV);
 
-  if (sig != SIGSEGV || !is_ip_rdtsc(t)) {
+  if (!is_ip_rdtsc(t)) {
     return false;
   }
 
@@ -92,29 +91,68 @@ static bool try_handle_rdtsc(Task* t, siginfo_t* si) {
   r.set_ip(r.ip() + sizeof(rdtsc_insn));
   t->set_regs(r);
 
-  // When SIGSEGV is blocked, apparently the kernel has to do
-  // some ninjutsu to raise the RDTSC trap.  We see the SIGSEGV
-  // bit in the "SigBlk" mask in /proc/status cleared, and if
-  // there's a user handler the SIGSEGV bit in "SigCgt" is
-  // cleared too.  That's perfectly fine, except that it's
-  // unclear who's supposed to undo the signal-state munging.  A
-  // legitimate argument can be made that the tracer is
-  // responsible, so we go ahead and restore the old state.
-  //
-  // One could also argue that this is a kernel bug.  If so,
-  // then this is a workaround that can be removed in the
-  // future.
-  //
-  // If we don't restore the old state, at least firefox has
-  // been observed to hang at delivery of SIGSEGV.  However, the
-  // test written for this bug, fault_in_code_addr, doesn't hang
-  // without the restore.
-  if (t->is_sig_blocked(SIGSEGV)) {
-    restore_sigsegv_state(t);
-  }
-
   t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO, t->arch()));
   LOG(debug) << "  trapped for rdtsc: returning " << current_time;
+  return true;
+}
+
+/**
+ * Return true if |t| was stopped because of a SIGSEGV and we want to retry
+ * the instruction after emulating MAP_GROWSDOWN.
+ */
+static bool try_grow_map(Task* t, siginfo_t* si) {
+  ASSERT(t, si->si_signo == SIGSEGV);
+
+  // Use kernel_abi to avoid odd inconsistencies between distros
+  auto arch_si = reinterpret_cast<NativeArch::siginfo_t*>(si);
+  auto addr = arch_si->_sifields._sigfault.si_addr_.rptr();
+
+  auto maps = t->vm()->maps_starting_at(floor_page_size(addr));
+  auto it = maps.begin();
+  if (it == maps.end() || addr >= it->map.start() ||
+      !(it->map.flags() & MAP_GROWSDOWN)) {
+    return false;
+  }
+
+  auto new_start = floor_page_size(addr);
+  static const int grow_size = 0x10000;
+  if (it->map.start().as_int() >= grow_size) {
+    auto possible_new_start = std::min(new_start, it->map.start() - grow_size);
+    auto earlier_maps = t->vm()->maps_starting_at(possible_new_start);
+    if (earlier_maps.begin()->map.start() == it->map.start()) {
+      // No intervening map
+      new_start = possible_new_start;
+    }
+  }
+
+  struct rlimit stack_limit;
+  int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
+  if (ret >= 0) {
+    new_start = std::max(new_start,
+                         ceil_page_size(it->map.end() - stack_limit.rlim_cur));
+    if (new_start > addr) {
+      return false;
+    }
+  }
+
+  {
+    AutoRemoteSyscalls remote(t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
+    remote.infallible_mmap_syscall(
+        new_start, it->map.start() - new_start, it->map.prot(),
+        (it->map.flags() & ~MAP_GROWSDOWN) | MAP_ANONYMOUS, -1, 0);
+  }
+
+  KernelMapping km =
+      t->vm()->map(new_start, it->map.start() - new_start, it->map.prot(),
+                   it->map.flags() | MAP_ANONYMOUS, 0, string(),
+                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+  t->trace_writer().write_mapped_region(km, km.fake_stat());
+  // No need to flush syscallbuf here. It's safe to map these pages "early"
+  // before they're really needed.
+  t->record_event(Event(EV_GROW_MAP, NO_EXEC_INFO, t->arch()),
+                  Task::DONT_FLUSH_SYSCALLBUF);
+  t->push_event(Event::noop(t->arch()));
+  LOG(debug) << "  trapped for MAP_GROWSDOWN";
   return true;
 }
 
@@ -377,7 +415,27 @@ SignalHandled handle_signal(Task* t, siginfo_t* si) {
    * and fudge t appropriately. */
   switch (si->si_signo) {
     case SIGSEGV:
-      if (try_handle_rdtsc(t, si)) {
+      if (try_handle_rdtsc(t, si) || try_grow_map(t, si)) {
+        // When SIGSEGV is blocked, apparently the kernel has to do
+        // some ninjutsu to raise the trap.  We see the SIGSEGV
+        // bit in the "SigBlk" mask in /proc/status cleared, and if
+        // there's a user handler the SIGSEGV bit in "SigCgt" is
+        // cleared too.  That's perfectly fine, except that it's
+        // unclear who's supposed to undo the signal-state munging.  A
+        // legitimate argument can be made that the tracer is
+        // responsible, so we go ahead and restore the old state.
+        //
+        // One could also argue that this is a kernel bug.  If so,
+        // then this is a workaround that can be removed in the
+        // future.
+        //
+        // If we don't restore the old state, at least firefox has
+        // been observed to hang at delivery of SIGSEGV.  However, the
+        // test written for this bug, fault_in_code_addr, doesn't hang
+        // without the restore.
+        if (t->is_sig_blocked(SIGSEGV)) {
+          restore_sigsegv_state(t);
+        }
         return SIGNAL_HANDLED;
       }
       break;

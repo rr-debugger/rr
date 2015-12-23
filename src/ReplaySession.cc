@@ -1234,6 +1234,10 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       current_step.target.ticks = -1;
       current_step.target.signo = SIGSEGV;
       break;
+    case EV_GROW_MAP:
+      process_grow_map(t);
+      current_step.action = TSTEP_RETIRE;
+      break;
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
       LOG(debug) << "  popping interrupted but not restarted " << t->ev();
       t->pop_syscall_interruption();

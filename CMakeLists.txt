@@ -480,6 +480,7 @@ set(BASIC_TESTS
   sioc
   sock_names_opts
   splice
+  stack_growth_after_syscallbuf
   stack_overflow
   stack_overflow_altstack
   stack_overflow_with_guard
