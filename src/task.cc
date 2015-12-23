@@ -1697,9 +1697,9 @@ bool Task::signal_handler_takes_siginfo(int sig) const {
 
 void Task::stash_sig() {
   int sig = pending_sig();
-  assert(sig);
+  ASSERT(this, sig);
   // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
-  assert(sig != SYSCALLBUF_DESCHED_SIGNAL);
+  ASSERT(this, sig != SYSCALLBUF_DESCHED_SIGNAL);
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
