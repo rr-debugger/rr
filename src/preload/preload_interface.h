@@ -237,8 +237,8 @@ inline static struct syscallbuf_record* next_record(
  * the buffer if committed, including padding.
  */
 inline static long stored_record_size(size_t length) {
-  /* Round up to a whole number of 32-bit words. */
-  return (length + sizeof(int) - 1) & ~(sizeof(int) - 1);
+  /* Round up to a whole number of 64-bit words. */
+  return (length + 7) & ~7;
 }
 
 /**
