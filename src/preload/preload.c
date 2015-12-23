@@ -1768,12 +1768,6 @@ static long sys_recvfrom(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_recvmsg
-static void* align_ptr(void* p) {
-  uintptr_t v = (uintptr_t)p;
-  v = (v + sizeof(uintptr_t) - 1) & ~(uintptr_t)(sizeof(uintptr_t) - 1);
-  return (void*)v;
-}
-
 static long sys_recvmsg(const struct syscall_info* call) {
   const int syscallno = SYS_recvmsg;
   int sockfd = call->args[0];
@@ -1795,13 +1789,13 @@ static long sys_recvmsg(const struct syscall_info* call) {
    */
   ptr += sizeof(struct msghdr) + sizeof(struct iovec) * msg->msg_iovlen;
   for (i = 0; i < msg->msg_iovlen; ++i) {
-    ptr = align_ptr(ptr + msg->msg_iov[i].iov_len);
+    ptr += msg->msg_iov[i].iov_len;
   }
   if (msg->msg_name) {
-    ptr = align_ptr(ptr + msg->msg_namelen);
+    ptr += msg->msg_namelen;
   }
   if (msg->msg_control) {
-    ptr = align_ptr(ptr + msg->msg_controllen);
+    ptr += msg->msg_controllen;
   }
   if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
@@ -1823,16 +1817,16 @@ static long sys_recvmsg(const struct syscall_info* call) {
   ptr += sizeof(struct iovec) * msg->msg_iovlen;
   for (i = 0; i < msg->msg_iovlen; ++i) {
     msg2->msg_iov[i].iov_base = ptr;
-    ptr = align_ptr(ptr + msg->msg_iov[i].iov_len);
+    ptr += msg->msg_iov[i].iov_len;
     msg2->msg_iov[i].iov_len = msg->msg_iov[i].iov_len;
   }
   if (msg->msg_name) {
     msg2->msg_name = ptr;
-    ptr = align_ptr(ptr + msg->msg_namelen);
+    ptr += msg->msg_namelen;
   }
   if (msg->msg_control) {
     msg2->msg_control = ptr;
-    ptr = align_ptr(ptr + msg->msg_controllen);
+    ptr += msg->msg_controllen;
   }
 
   ret = untraced_syscall3(syscallno, sockfd, msg2, flags);
