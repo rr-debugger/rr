@@ -5,19 +5,25 @@
 static int pipefds[2];
 static int poll_pipe(int timeout_ms) {
   struct pollfd pfd;
+  int ret;
 
   pfd.fd = pipefds[0];
   pfd.events = POLLIN;
   errno = 0;
-  return poll(&pfd, 1, timeout_ms);
+  ret = poll(&pfd, 1, timeout_ms);
+  /* Verify that our input fields were not trashed */
+  test_assert(pfd.fd == pipefds[0]);
+  test_assert(pfd.events == POLLIN);
+  return ret;
 }
 
 static int caught_signal;
 static void handle_signal(int sig) { ++caught_signal; }
 
 int main(int argc, char* argv[]) {
+  struct timespec dummy;
 
-  pipe(pipefds);
+  test_assert(0 == pipe(pipefds));
 
   signal(SIGALRM, SIG_IGN);
   alarm(1);
@@ -27,6 +33,7 @@ int main(int argc, char* argv[]) {
   signal(SIGALRM, handle_signal);
   alarm(1);
   atomic_puts("handling SIGALRM, going into poll ...");
+  clock_gettime(CLOCK_MONOTONIC, &dummy);
   test_assert(-1 == poll_pipe(-1) && EINTR == errno);
   test_assert(1 == caught_signal);
 

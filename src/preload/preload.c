@@ -1608,13 +1608,15 @@ static long sys_poll(const struct syscall_info* call) {
 
   ret = untraced_syscall3(syscallno, fds2, nfds, timeout);
 
-  if (fds2) {
+  if (fds2 && ret >= 0) {
     /* NB: even when poll returns 0 indicating no pending
      * fds, it still sets each .revent outparam to 0.
      * (Reasonably.)  So we always need to copy on return
-     * value >= 0.  poll() may or may not copy on errors,
-     * but we assume those are rare enough not to merit a
-     * special case here. */
+     * value >= 0.
+     * It's important that we not copy when there's an error.
+     * The syscallbuf commit might have been aborted, which means
+     * during replay fds2 might be non-recorded data, so we'd be
+     * incorrectly trashing 'fds'. */
     local_memcpy(fds, fds2, nfds * sizeof(*fds));
   }
   return commit_raw_syscall(syscallno, ptr, ret);
