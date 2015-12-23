@@ -1778,6 +1778,9 @@ static long sys_recvmsg(const struct syscall_info* call) {
   long ret;
   struct msghdr* msg2;
   void* ptr_base = ptr;
+  void* ptr_overwritten_end;
+  void* ptr_bytes_start;
+  void* ptr_end;
   size_t i;
 
   assert(syscallno == call->no);
@@ -1788,14 +1791,14 @@ static long sys_recvmsg(const struct syscall_info* call) {
    * invalid (e.g. overflow).
    */
   ptr += sizeof(struct msghdr) + sizeof(struct iovec) * msg->msg_iovlen;
-  for (i = 0; i < msg->msg_iovlen; ++i) {
-    ptr += msg->msg_iov[i].iov_len;
-  }
   if (msg->msg_name) {
     ptr += msg->msg_namelen;
   }
   if (msg->msg_control) {
     ptr += msg->msg_controllen;
+  }
+  for (i = 0; i < msg->msg_iovlen; ++i) {
+    ptr += msg->msg_iov[i].iov_len;
   }
   if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
@@ -1815,11 +1818,7 @@ static long sys_recvmsg(const struct syscall_info* call) {
   ptr += sizeof(struct msghdr);
   msg2->msg_iov = ptr;
   ptr += sizeof(struct iovec) * msg->msg_iovlen;
-  for (i = 0; i < msg->msg_iovlen; ++i) {
-    msg2->msg_iov[i].iov_base = ptr;
-    ptr += msg->msg_iov[i].iov_len;
-    msg2->msg_iov[i].iov_len = msg->msg_iov[i].iov_len;
-  }
+  ptr_overwritten_end = ptr;
   if (msg->msg_name) {
     msg2->msg_name = ptr;
     ptr += msg->msg_namelen;
@@ -1828,19 +1827,18 @@ static long sys_recvmsg(const struct syscall_info* call) {
     msg2->msg_control = ptr;
     ptr += msg->msg_controllen;
   }
+  ptr_bytes_start = ptr;
+  for (i = 0; i < msg->msg_iovlen; ++i) {
+    msg2->msg_iov[i].iov_base = ptr;
+    ptr += msg->msg_iov[i].iov_len;
+    msg2->msg_iov[i].iov_len = msg->msg_iov[i].iov_len;
+  }
 
   ret = untraced_syscall3(syscallno, sockfd, msg2, flags);
 
   if (ret >= 0) {
     long bytes = ret;
     size_t i;
-    for (i = 0; i < msg->msg_iovlen; ++i) {
-      long copy_bytes =
-          bytes < msg->msg_iov[i].iov_len ? bytes : msg->msg_iov[i].iov_len;
-      local_memcpy(msg->msg_iov[i].iov_base, msg2->msg_iov[i].iov_base,
-                   copy_bytes);
-      bytes -= copy_bytes;
-    }
     if (msg->msg_name) {
       local_memcpy(msg->msg_name, msg2->msg_name, msg2->msg_namelen);
     }
@@ -1849,9 +1847,23 @@ static long sys_recvmsg(const struct syscall_info* call) {
       local_memcpy(msg->msg_control, msg2->msg_control, msg2->msg_controllen);
     }
     msg->msg_controllen = msg2->msg_controllen;
+    ptr_end = ptr_bytes_start + bytes;
+    for (i = 0; i < msg->msg_iovlen; ++i) {
+      long copy_bytes =
+          bytes < msg->msg_iov[i].iov_len ? bytes : msg->msg_iov[i].iov_len;
+      local_memcpy(msg->msg_iov[i].iov_base, msg2->msg_iov[i].iov_base,
+                   copy_bytes);
+      bytes -= copy_bytes;
+    }
     msg->msg_flags = msg2->msg_flags;
+  } else {
+    /* Allocate record space as least to cover the data we overwrote above.
+     * We don't want to start the next record overlapping that data, since then
+     * we'll corrupt it during replay.
+     */
+    ptr_end = ptr_overwritten_end;
   }
-  return commit_raw_syscall(syscallno, ptr, ret);
+  return commit_raw_syscall(syscallno, ptr_end, ret);
 }
 #endif
 
