@@ -842,29 +842,8 @@ void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
                                       << ", got " << ticks_now << "";
 }
 
-static bool treat_signal_event_as_deterministic(Task* t,
-                                                const SignalEvent& ev) {
-  if (ev.deterministic == NONDETERMINISTIC_SIG) {
-    return false;
-  }
-  if (ev.siginfo.si_signo != SIGSEGV) {
-    return true;
-  }
-
-  remote_ptr<void> fault_addr = uintptr_t(ev.siginfo.si_addr);
-  uint8_t byte;
-  if (!t->vm()->has_mapping(fault_addr) &&
-      t->read_bytes_fallible(fault_addr, 1, &byte) == 1) {
-    // We don't know about any mapping for 'fault_addr', yet there is
-    // memory there. This should only happen if there's a MAP_GROWDOWN
-    // virtual memory area which grew down. Note that all kinds of mmap/
-    // munmap activity may have happened since the stack grew down, so we
-    // can't assert anything about mappings in the vicinity.
-    // Since an actual SIGSEGV might not happen, let's just replay this
-    // as if it was an async signal, to *force* it to happen.
-    return false;
-  }
-  return true;
+static bool treat_signal_event_as_deterministic(const SignalEvent& ev) {
+  return ev.deterministic == DETERMINISTIC_SIG;
 }
 
 /**
@@ -1249,7 +1228,7 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_SIGNAL:
-      if (treat_signal_event_as_deterministic(t, ev.Signal())) {
+      if (treat_signal_event_as_deterministic(ev.Signal())) {
         current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
         current_step.target.signo = ev.Signal().siginfo.si_signo;
         current_step.target.ticks = -1;
