@@ -576,7 +576,7 @@ static bool maybe_restart_syscall(Task* t) {
  * check to see if there's an interrupted syscall that /won't/ be
  * restarted, and if so, pop it off the pending event stack.
  */
-static void maybe_discard_syscall_interruption(Task* t, int ret) {
+static void maybe_discard_syscall_interruption(Task* t, intptr_t ret) {
   int syscallno;
 
   if (EV_SYSCALL_INTERRUPTION != t->ev().type()) {
@@ -668,7 +668,7 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
       assert(t->pending_sig() == 0);
 
       int syscallno = t->ev().Syscall().number;
-      int retval = t->regs().syscall_result();
+      intptr_t retval = t->regs().syscall_result_signed();
 
       if (t->desched_rec()) {
         // If we enabled the desched event above, disable it.
