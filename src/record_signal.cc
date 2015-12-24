@@ -127,7 +127,7 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
 
   struct rlimit stack_limit;
   int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
-  if (ret >= 0) {
+  if (ret >= 0 && stack_limit.rlim_cur != RLIM_INFINITY) {
     new_start = std::max(new_start,
                          ceil_page_size(it->map.end() - stack_limit.rlim_cur));
     if (new_start > addr) {

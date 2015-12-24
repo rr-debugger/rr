@@ -10,9 +10,16 @@ static int recurse(int count) {
 }
 
 int main(int argc, char* argv[]) {
+  struct rlimit limit;
   int fd = open("/dev/zero", O_RDONLY);
   char ch;
   test_assert(fd >= 0);
+
+  test_assert(0 == getrlimit(RLIMIT_STACK, &limit));
+  limit.rlim_cur = RLIM_INFINITY;
+  /* This could fail; that's OK. We just want to try to test an
+     unlimited stack size. */
+  setrlimit(RLIMIT_STACK, &limit);
 
   test_assert(1 == read(fd, &ch, 1));
   test_assert(1 == read(fd, &ch, 1));
