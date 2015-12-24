@@ -115,7 +115,7 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
   }
 
   auto new_start = floor_page_size(addr);
-  static const int grow_size = 0x10000;
+  static const uintptr_t grow_size = 0x10000;
   if (it->map.start().as_int() >= grow_size) {
     auto possible_new_start = std::min(new_start, it->map.start() - grow_size);
     auto earlier_maps = t->vm()->maps_starting_at(possible_new_start);
