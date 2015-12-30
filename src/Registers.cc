@@ -589,18 +589,22 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
  * the 32-bit register values from u.x86regs into it.
  */
 struct user_regs_struct Registers::get_ptrace() const {
-  struct user_regs_struct result;
+  union
+  {
+    struct user_regs_struct linux_api;
+    struct X64Arch::user_regs_struct x64arch_api;
+  } result;
   if (arch() == NativeArch::arch()) {
     memcpy(&result, &u, sizeof(result));
-    return result;
+    return result.linux_api;
   }
 
   assert(arch() == x86 && NativeArch::arch() == x86_64);
   memset(&result, 0, sizeof(result));
   convert_x86<from_x86_narrow, from_x86_same>(
       const_cast<Registers*>(this)->u.x86regs,
-      *reinterpret_cast<X64Arch::user_regs_struct*>(&result));
-  return result;
+      result.x64arch_api);
+  return result.linux_api;
 }
 
 vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {

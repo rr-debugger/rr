@@ -248,28 +248,32 @@ static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
 
   // Use NativeArch here because different versions of system headers
   // have inconsistent field naming.
-  NativeArch::siginfo_t si;
+  union
+  {
+    NativeArch::siginfo_t native_api;
+    siginfo_t linux_api;
+  } si;
   memset(&si, 0, sizeof(si));
-  si.si_signo = SIGSYS;
-  si.si_errno = seccomp_data;
-  si.si_code = SYS_SECCOMP;
+  si.native_api.si_signo = SIGSYS;
+  si.native_api.si_errno = seccomp_data;
+  si.native_api.si_code = SYS_SECCOMP;
   switch (r.arch()) {
     case x86:
-      si._sifields._sigsys._arch = AUDIT_ARCH_I386;
+      si.native_api._sifields._sigsys._arch = AUDIT_ARCH_I386;
       break;
     case x86_64:
-      si._sifields._sigsys._arch = AUDIT_ARCH_X86_64;
+      si.native_api._sifields._sigsys._arch = AUDIT_ARCH_X86_64;
       break;
     default:
       assert(0 && "Unknown architecture");
       break;
   }
-  si._sifields._sigsys._syscall = syscallno;
+  si.native_api._sifields._sigsys._syscall = syscallno;
   // We don't set call_addr here, because the current ip() might not be the
   // ip() at which we deliver the signal, and they must match. In particular
   // this event might be triggered during syscallbuf processing but delivery
   // delayed until we exit the syscallbuf code.
-  t->stash_synthetic_sig(*reinterpret_cast<siginfo_t*>(&si));
+  t->stash_synthetic_sig(si.linux_api);
 
   // Tests show that the current registers are preserved (on x86, eax/rax
   // retains the syscall number).
@@ -1259,15 +1263,20 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
       step_state->continue_type != CONTINUE) {
     return false;
   }
-  siginfo_t si = t->peek_stash_sig();
-  if (si.si_signo == get_ignore_sig()) {
-    LOG(info) << "Declining to deliver " << signal_name(si.si_signo)
+  union
+  {
+    NativeArch::siginfo_t native_api;
+    siginfo_t linux_api;
+  } si;
+  si.linux_api = t->peek_stash_sig();
+  if (si.linux_api.si_signo == get_ignore_sig()) {
+    LOG(info) << "Declining to deliver " << signal_name(si.linux_api.si_signo)
               << " by user request";
     t->pop_stash_sig();
     return false;
   }
 
-  if (si.si_signo == SIGSYS && si.si_code == SYS_SECCOMP) {
+  if (si.linux_api.si_signo == SIGSYS && si.linux_api.si_code == SYS_SECCOMP) {
     // Set call_addr to the current ip(). We don't do this when synthesizing
     // the SIGSYS because the SIGSYS might be triggered during syscallbuf
     // processing but be delivered later at a
@@ -1275,23 +1284,23 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
     // Documentation says that si_call_addr is the address of the syscall
     // instruction, but in tests it's immediately after the syscall
     // instruction.
-    auto& native_si = reinterpret_cast<NativeArch::siginfo_t&>(si);
+    auto& native_si = si.native_api;
     native_si._sifields._sigsys._call_addr = t->ip().to_data_ptr<void>();
   }
 
-  switch (handle_signal(t, &si)) {
+  switch (handle_signal(t, &si.linux_api)) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;
-      LOG(debug) << "Signal " << si.si_signo << ", emulating ptrace stop";
+      LOG(debug) << "Signal " << si.linux_api.si_signo << ", emulating ptrace stop";
       break;
     case DEFER_SIGNAL:
-      LOG(debug) << "Signal " << si.si_signo << " deferred";
+      LOG(debug) << "Signal " << si.linux_api.si_signo << " deferred";
       // Leave signal on the stack and continue task execution. We'll try again
       // later.
       return false;
     case SIGNAL_HANDLED:
-      LOG(debug) << "Signal " << si.si_signo << " handled";
+      LOG(debug) << "Signal " << si.linux_api.si_signo << " handled";
       if (t->ev().type() == EV_SCHED) {
         // Allow switching after a SCHED. We'll flush the SCHED if and only
         // if we really do a switch.

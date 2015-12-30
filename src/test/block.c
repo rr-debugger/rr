@@ -118,7 +118,8 @@ static void* reader_thread(void* dontcare) {
     test_assert(msg_magic == magic);
     test_assert(mmsg.msg_hdr.msg_iov == &data);
 
-    int fd = *(int*)CMSG_DATA(cmptr);
+    int fd;
+    memcpy(&fd, CMSG_DATA(cmptr), sizeof(fd));
     struct stat fs_new, fs_old;
     fstat(fd, &fs_new);
     fstat(STDERR_FILENO, &fs_old);
@@ -438,7 +439,10 @@ int main(int argc, char* argv[]) {
     cmptr->cmsg_len = CTRLMSG_LEN;
     mmsg.msg_hdr.msg_control = cmptr;
     mmsg.msg_hdr.msg_controllen = CTRLMSG_LEN;
-    *(int*)CMSG_DATA(cmptr) = STDERR_FILENO; // send stderr as fd
+    {
+      const int fd = STDERR_FILENO;
+      memcpy(CMSG_DATA(cmptr), &fd, sizeof(fd)); // send stderr as fd
+    }
 
     /* Force a wait on recvmsg() */
     atomic_puts("M: sleeping again ...");

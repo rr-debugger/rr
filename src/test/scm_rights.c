@@ -51,7 +51,7 @@ static void child(int sock, int fd_minus_one) {
 
   cmsg = CMSG_FIRSTHDR(&msg);
   test_assert(SOL_SOCKET == cmsg->cmsg_level && SCM_RIGHTS == cmsg->cmsg_type);
-  fd = *(int*)CMSG_DATA(cmsg);
+  memcpy(&fd, CMSG_DATA(cmsg), sizeof(fd));
   atomic_printf("c:   ... and fd %d; should have received %d\n", fd,
                 fd_minus_one + 1);
   test_assert(fd - 1 == fd_minus_one || fd - 2 == fd_minus_one);
@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
   cmsg->cmsg_level = SOL_SOCKET;
   cmsg->cmsg_type = SCM_RIGHTS;
   cmsg->cmsg_len = CMSG_LEN(sizeof(fd));
-  *(int*)CMSG_DATA(cmsg) = fd;
+  memcpy(CMSG_DATA(cmsg), &fd, sizeof(fd));
 
   atomic_printf("P: sending %#x with fd %d ...\n", mbuf, fd);
   nsent = sendmsg(sock, &msg, 0);
