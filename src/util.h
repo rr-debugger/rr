@@ -13,6 +13,14 @@
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 
+/*
+ * This file is a dumping ground for functionality that needs to be shared but
+ * has no other obvious place to go.
+ *
+ * We should minimize the amount of code here. Code that's only needed in one
+ * place can move out of this file.
+ */
+
 class KernelMapping;
 class Task;
 class TraceFrame;
@@ -159,14 +167,6 @@ SignalDeterministic is_deterministic_signal(const siginfo_t& si);
  */
 bool should_copy_mmap_region(const KernelMapping& mapping,
                              const struct stat& stat);
-
-/**
- * Return an fd referring to a new shmem segment with descriptive
- * |name| of size |num_bytes|. |real_name| is set to the real file name
- * (though the file has been deleted).
- */
-ScopedFd create_shmem_segment(const std::string& name, uint64_t num_bytes,
-                              std::string* real_name);
 
 /**
  * Ensure that the shmem segment referred to by |fd| has exactly the
