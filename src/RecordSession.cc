@@ -67,6 +67,11 @@ static string create_pulseaudio_config() {
   return envpair.str();
 }
 
+static int get_num_cpus() {
+  int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
+  return cpus > 0 ? cpus : 1;
+}
+
 /**
  * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
  * in which case we return -1.

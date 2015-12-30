@@ -576,22 +576,6 @@ void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
                : "ebx");
 }
 
-void set_cpu_affinity(int cpu) {
-  assert(cpu >= 0);
-
-  cpu_set_t mask;
-  CPU_ZERO(&mask);
-  CPU_SET(cpu, &mask);
-  if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
-    FATAL() << "Couldn't bind to CPU " << cpu;
-  }
-}
-
-int get_num_cpus() {
-  int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
-  return cpus > 0 ? cpus : 1;
-}
-
 template <typename Arch>
 static void extract_clone_parameters_arch(const Registers& regs,
                                           remote_ptr<void>* stack,

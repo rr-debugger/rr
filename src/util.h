@@ -197,17 +197,6 @@ void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
            unsigned int* d);
 
 /**
- * Force this process (and its descendants) to only use the cpu with the given
- * index.
- */
-void set_cpu_affinity(int cpu);
-
-/**
- * Return the number of available CPUs in the system.
- */
-int get_num_cpus();
-
-/**
  * Extract various clone(2) parameters out of the given Task's registers.
  * Each remote_ptr parameter may be nullptr.
  */

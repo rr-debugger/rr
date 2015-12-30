@@ -3092,6 +3092,17 @@ static void setup_fd_table(FdTable& fds) {
   fds.add_monitor(RR_RESERVED_ROOT_DIR_FD, new PreserveFileMonitor());
 }
 
+static void set_cpu_affinity(int cpu) {
+  assert(cpu >= 0);
+
+  cpu_set_t mask;
+  CPU_ZERO(&mask);
+  CPU_SET(cpu, &mask);
+  if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
+    FATAL() << "Couldn't bind to CPU " << cpu;
+  }
+}
+
 /*static*/ Task* Task::spawn(Session& session, const TraceStream& trace,
                              pid_t rec_tid) {
   assert(session.tasks().size() == 0);
