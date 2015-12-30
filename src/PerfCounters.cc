@@ -191,6 +191,10 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
       FATAL() << "Permission denied to use 'perf_event_open'; are perf events "
                  "enabled? Try 'perf record'.";
     }
+    if (errno == ENOENT) {
+      FATAL() << "Unable to open performance counter with 'perf_event_open'; are perf events "
+                 "enabled? Try 'perf record'.";
+    }
     FATAL() << "Failed to initialize counter";
   }
   if (ioctl(fd, PERF_EVENT_IOC_ENABLE, 0)) {
