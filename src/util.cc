@@ -679,3 +679,13 @@ string exe_directory() {
   exe_path.erase(end);
   return exe_path;
 }
+
+/**
+ * Get the current time from the preferred monotonic clock in units of
+ * seconds, relative to an unspecific point in the past.
+ */
+double monotonic_now_sec(void) {
+  struct timespec tp;
+  clock_gettime(CLOCK_MONOTONIC, &tp);
+  return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
+}

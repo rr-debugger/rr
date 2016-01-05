@@ -223,4 +223,10 @@ std::string real_path(const std::string& path);
 
 std::string exe_directory();
 
+/**
+ * Get the current time from the preferred monotonic clock in units of
+ * seconds, relative to an unspecific point in the past.
+ */
+double monotonic_now_sec(void);
+
 #endif /* RR_UTIL_H_ */

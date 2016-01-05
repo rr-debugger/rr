@@ -136,18 +136,6 @@ Task* Scheduler::find_next_runnable_task(bool* by_waitpid) {
   return nullptr;
 }
 
-#ifdef MONITOR_UNSWITCHABLE_WAITS
-/**
- * Get the current time from the preferred monotonic clock in units of
- * seconds, relative to an unspecific point in the past.
- */
-static double now_sec(void) {
-  struct timespec tp;
-  clock_gettime(CLOCK_MONOTONIC, &tp);
-  return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
-}
-#endif
-
 Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
                                  bool* by_waitpid) {
   LOG(debug) << "Scheduling next task";
@@ -167,11 +155,11 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
 /* |current| is un-switchable, but already running. Wait for it to change state
  * before "scheduling it", so avoid busy-waiting with our client. */
 #ifdef MONITOR_UNSWITCHABLE_WAITS
-      double start = now_sec(), wait_duration;
+      double start = monotonic_now_sec(), wait_duration;
 #endif
       current->wait();
 #ifdef MONITOR_UNSWITCHABLE_WAITS
-      wait_duration = now_sec() - start;
+      wait_duration = monotonic_now_sec() - start;
       if (wait_duration >= 0.010) {
         log_warn("Waiting for unswitchable %s took %g ms",
                  strevent(current->event), 1000.0 * wait_duration);
