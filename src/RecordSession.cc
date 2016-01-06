@@ -47,16 +47,30 @@ static string create_pulseaudio_config() {
 
   stringstream procfile;
   procfile << "/proc/" << getpid() << "/fd/" << fd;
-  stringstream cmd;
-  cmd << "cp " << pulseaudio_config_path << " " << procfile.str();
 
-  int status = system(cmd.str().c_str());
-  if (-1 == status || !WIFEXITED(status) || 0 != WEXITSTATUS(status)) {
-    FATAL() << "The command '" << cmd.str() << "' failed.";
+  // Running cp passing the procfile path under Docker fails for some
+  // odd filesystem-related reason, so just read/write the contents.
+  int pulse_config_fd = open(pulseaudio_config_path, O_RDONLY, 0);
+  if (pulse_config_fd < 0) {
+    FATAL() << "Failed to open pulseaudio config file: '"
+            << pulseaudio_config_path << "'";
   }
-  if (-1 == lseek(fd, 0, SEEK_END)) {
-    FATAL() << "Failed to seek to end of file.";
+
+  char buf[BUFSIZ];
+  while (true) {
+    ssize_t size = read(pulse_config_fd, buf, BUFSIZ);
+    if (size == 0) {
+      break;
+    } else if (size < 0) {
+      FATAL() << "Failed to read pulseaudio config file";
+    }
+    if (write(fd, buf, size) != size) {
+      FATAL() << "Failed to write temp pulseaudio config file to "
+              << procfile.str();
+    }
   }
+  close(pulse_config_fd);
+
   char disable_shm[] = "disable-shm = true\n";
   ssize_t nwritten = write(fd, disable_shm, sizeof(disable_shm) - 1);
   if (nwritten != sizeof(disable_shm) - 1) {
