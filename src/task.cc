@@ -2023,6 +2023,13 @@ static void fixup_syscall_registers(Registers& registers) {
     // sigreturn syscall, since it will restore the original RCX and we don't
     // want to clobber that.
     registers.set_cx((intptr_t)-1);
+    // On kernel 3.13.0-68-generic #111-Ubuntu SMP we have observed a failed
+    // execve() clearing all flags during recording. During replay we emulate
+    // the exec so this wouldn't happen. Just reset all flags so everything's
+    // consistent.
+    // 0x246 is ZF+PF+IF+reserved, the result clearing a register using
+    // "xor reg, reg".
+    registers.set_flags(0x246);
   } else if (registers.arch() == x86) {
     // The x86 SYSENTER handling in Linux modifies EBP and EFLAGS on entry.
     // EBP is the potential sixth syscall parameter, stored on the user stack.

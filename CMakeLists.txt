@@ -342,6 +342,7 @@ set(BASIC_TESTS
   dup
   epoll_create
   epoll_create1
+  exec_flags
   exec_self
   fadvise
   fault_in_code_page
