@@ -148,6 +148,9 @@ if [[ ! -d $TESTDIR ]]; then
     fatal FAILED: TESTDIR "($TESTDIR)" not found.
 fi
 
+# Our test programs intentionally crash a lot. Don't generate coredumps for them.
+ulimit -c 0
+
 # NB: must set up the trap handler *before* mktemp
 trap onexit EXIT
 workdir=`mktemp -dt rr-test-$TESTNAME-XXXXXXXXX`
