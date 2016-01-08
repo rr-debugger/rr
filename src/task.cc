@@ -2167,14 +2167,6 @@ static void set_up_process(Session& session) {
       FATAL() << "Didn't change sigmask.";
     }
 
-    // Synchronous SIGSEGVs and other fatal signals can't be blocked. Make
-    // sure they don't generate core dumps.
-    // We don't normally send any kind of signal to a replayed task, but
-    // when detaching and killing we set its IP to an invalid address, which
-    // will generate a synchronous SIGSEGV.
-    struct rlimit limit = { 0, 0 };
-    setrlimit(RLIMIT_CORE, &limit);
-
     // If the rr process dies, prevent runaway tracee processes
     // from dragging down the underlying system.
     //

@@ -581,6 +581,12 @@ public:
     return rr_page_start() + rr_page_size();
   }
   /**
+   * ip() which will cause the tracee to get stuck in an infinite loop.
+   */
+  static remote_code_ptr rr_page_infinite_loop_addr() {
+    return RR_PAGE_INFINITE_LOOP_ADDR;
+  }
+  /**
    * ip() when we're in an untraced system call; same for all supported
    * architectures (hence static).
    */

@@ -185,12 +185,19 @@ void Session::kill_all_tasks() {
       LOG(debug) << "safely detaching from " << t->tid << " ...";
       // Detaching from the process lets it continue. We don't want a replaying
       // process to perform syscalls or do anything else observable before we
-      // get around to SIGKILLing it. So we move its ip() to an invalid
-      // address. If it does continue, it will probably get a fatal signal.
-      // We don't install real signal handlers in replayed processes so there's
-      // no way it could handle the signal and continue.
+      // get around to SIGKILLing it. So we move its ip() to an address
+      // which will cause it to go into an infinite loop if it runs at all.
+      // We used to set this to an invalid address, but that causes a SIGSEGV
+      // to be raised which can cause core dumps after we detach from ptrace.
+      // Making the process undumpable with PR_SET_DUMPABLE turned out not to
+      // be practical because that has a side effect of triggering various
+      // security measures blocking inspection of the process (PTRACE_ATTACH,
+      // access to /proc/<pid>/fd).
+      // Disabling dumps via setrlimit(RLIMIT_CORE, 0) doesn't stop dumps
+      // if /proc/sys/kernel/core_pattern is set to pipe the core to a process
+      // (e.g. to systemd-coredump).
       Registers r = t->regs();
-      r.set_ip(intptr_t(-1));
+      r.set_ip(AddressSpace::rr_page_infinite_loop_addr());
       t->set_regs(r);
       long result;
       do {
