@@ -87,26 +87,18 @@ static bool is_task_runnable(Task* t, bool* by_waitpid) {
   return false;
 }
 
-Task* Scheduler::find_next_runnable_task(Task* t, bool* by_waitpid) {
+Task* Scheduler::find_next_runnable_task(Task* t, bool* by_waitpid,
+                                         int priority_threshold) {
   *by_waitpid = false;
-
-  while (true) {
-    Task* next = take_next_round_robin_task();
-    if (!next) {
-      break;
-    }
-    LOG(debug) << "Trying task " << next->tid << " from yield queue";
-    if (is_task_runnable(next, by_waitpid)) {
-      return next;
-    }
-    maybe_pop_round_robin_task(next);
-  }
 
   // The outer loop has one iteration per unique priority value.
   // The inner loop iterates over all tasks with that priority.
   for (auto same_priority_start = task_priority_set.begin();
        same_priority_start != task_priority_set.end();) {
     int priority = same_priority_start->first;
+    if (priority > priority_threshold) {
+      return nullptr;
+    }
     auto same_priority_end = task_priority_set.lower_bound(
         make_pair(same_priority_start->first + 1, nullptr));
 
@@ -232,15 +224,36 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
     return current;
   }
 
-  if (current && !current->unstable && !always_switch &&
-      current->tick_count() < current->timeslice_end &&
-      is_task_runnable(current, by_waitpid)) {
-    return current;
+  Task* next = nullptr;
+  if (current) {
+    next = get_round_robin_task() ? nullptr :
+        find_next_runnable_task(current, by_waitpid, current->priority - 1);
+    if (!next && !current->unstable && !always_switch &&
+        current->tick_count() < current->timeslice_end &&
+        is_task_runnable(current, by_waitpid)) {
+      LOG(debug) << "  Carrying on with task " << current->tid;
+      return current;
+    }
+    maybe_pop_round_robin_task(current);
   }
 
   LOG(debug) << "  need to reschedule";
 
-  Task* next = find_next_runnable_task(current, by_waitpid);
+  while (true) {
+    next = get_round_robin_task();
+    if (next) {
+      LOG(debug) << "Trying task " << next->tid << " from yield queue";
+      if (is_task_runnable(next, by_waitpid)) {
+        break;
+      }
+      maybe_pop_round_robin_task(next);
+    }
+  }
+
+  if (!next) {
+    next = find_next_runnable_task(current, by_waitpid, INT32_MAX);
+  }
+
   if (next && !next->unstable) {
     LOG(debug) << "  selecting task " << next->tid;
   } else {
@@ -326,6 +339,8 @@ void Scheduler::update_task_priority_internal(Task* t, int value) {
 }
 
 void Scheduler::schedule_one_round_robin(Task* t) {
+  maybe_pop_round_robin_task(t);
+
   ASSERT(t, !t->in_round_robin_queue);
 
   for (auto iter : task_priority_set) {
@@ -340,14 +355,17 @@ void Scheduler::schedule_one_round_robin(Task* t) {
   t->expire_timeslice();
 }
 
-Task* Scheduler::take_next_round_robin_task() {
-  if (task_round_robin_queue.empty()) {
-    return nullptr;
-  }
+Task* Scheduler::get_round_robin_task() {
+  return task_round_robin_queue.empty() ? nullptr :
+      task_round_robin_queue.front();
+}
 
-  Task* t = task_round_robin_queue.front();
+void Scheduler::maybe_pop_round_robin_task(Task* t) {
+  if (task_round_robin_queue.empty() ||
+      t != task_round_robin_queue.front()) {
+    return;
+  }
   task_round_robin_queue.pop_front();
   t->in_round_robin_queue = false;
   task_priority_set.insert(make_pair(t->priority, t));
-  return t;
 }

@@ -136,13 +136,16 @@ private:
    * the next runnable task after 't' in round-robin order.
    * Sets 'by_waitpid' to true if we determined the task was runnable by
    * calling waitpid on it and observing a state change.
+   * Considers only tasks with priority <= priority_threshold
    */
-  Task* find_next_runnable_task(Task* t, bool* by_waitpid);
+  Task* find_next_runnable_task(Task* t, bool* by_waitpid,
+                                int priority_threshold);
   /**
    * Returns the first task in the round-robin queue or null if it's empty,
    * removing it from the round-robin queue.
    */
-  Task* take_next_round_robin_task();
+  Task* get_round_robin_task();
+  void maybe_pop_round_robin_task(Task* t);
   Task* get_next_task_with_same_priority(Task* t);
   void setup_new_timeslice(Task* t);
   void maybe_reset_priorities();
