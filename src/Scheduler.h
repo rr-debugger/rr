@@ -77,9 +77,9 @@ public:
   Scheduler(RecordSession& session)
       : session(session),
         current(nullptr),
+        high_priority_only_intervals_refresh_time(0),
         max_ticks_(DEFAULT_MAX_TICKS),
         events_until_reset_priorities(0),
-        priority_levels(2),
         always_switch(false),
         enable_chaos(false) {}
 
@@ -151,6 +151,8 @@ private:
   void maybe_reset_priorities();
   int choose_random_priority();
   void update_task_priority_internal(Task* t, int value);
+  void maybe_reset_high_priority_only_intervals();
+  bool in_high_priority_only_interval();
 
   RecordSession& session;
 
@@ -173,9 +175,24 @@ private:
    */
   Task* current;
 
+  struct SleepInterval {
+    double start;
+    double end;
+  };
+  /**
+   * During these intervals we avoid running low-priority threads. If only
+   * a low-priority thread is runnable, we just sleep to give high-priority
+   * threads a chance to wake up and proceed.
+   */
+  std::vector<SleepInterval> high_priority_only_intervals;
+  /**
+   * At this time (or later) we should refresh high_priority_only_intervals
+   */
+  double high_priority_only_intervals_refresh_time;
+
   Ticks max_ticks_;
   int events_until_reset_priorities;
-  int priority_levels;
+
   /**
    * When true, context switch at every possible point.
    */
