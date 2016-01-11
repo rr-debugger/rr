@@ -97,9 +97,8 @@ typedef unsigned char uint8_t;
  * manage.  Async-signal-safe.  Does not flush stdio buffers (doing so
  * isn't signal safe).
  */
-__attribute__((format(printf, 1,
-                      2))) inline static int atomic_printf(const char* fmt,
-                                                           ...) {
+__attribute__((format(printf, 1, 2))) inline static int atomic_printf(
+    const char* fmt, ...) {
   va_list args;
   char buf[1024];
   int len;

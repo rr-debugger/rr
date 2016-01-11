@@ -27,7 +27,7 @@ static void write_and_record_bytes(Task* t, remote_ptr<void> child_addr,
 
 template <size_t N>
 static void write_and_record_bytes(Task* t, remote_ptr<void> child_addr,
-                                   const uint8_t (&buf)[N]) {
+                                   const uint8_t(&buf)[N]) {
   write_and_record_bytes(t, child_addr, N, buf);
 }
 
@@ -337,17 +337,19 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
 template <>
 bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
-  return patch_syscall_with_hook_x86ish<
-      X86SysenterVsyscallSyscallHook, X86SyscallStubExtendedJump,
-      X86SyscallStubMonkeypatch, 30>(patcher, t, hook);
+  return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
+                                        X86SyscallStubExtendedJump,
+                                        X86SyscallStubMonkeypatch, 30>(patcher,
+                                                                       t, hook);
 }
 
 template <>
 bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
-  return patch_syscall_with_hook_x86ish<
-      X64JumpMonkeypatch, X64SyscallStubExtendedJump, X64SyscallStubMonkeypatch,
-      43>(patcher, t, hook);
+  return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
+                                        X64SyscallStubExtendedJump,
+                                        X64SyscallStubMonkeypatch, 43>(patcher,
+                                                                       t, hook);
 }
 
 static bool patch_syscall_with_hook(Monkeypatcher& patcher, Task* t,

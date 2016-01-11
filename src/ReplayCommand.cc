@@ -111,16 +111,17 @@ static bool parse_replay_arg(std::vector<std::string>& args,
     return true;
   }
 
-  static const OptionSpec options[] = { { 'a', "autopilot", NO_PARAMETER },
-                                        { 'd', "debugger", HAS_PARAMETER },
-                                        { 's', "dbgport", HAS_PARAMETER },
-                                        { 'g', "goto", HAS_PARAMETER },
-                                        { 't', "trace", HAS_PARAMETER },
-                                        { 'q', "no-redirect-output",
-                                          NO_PARAMETER },
-                                        { 'f', "onfork", HAS_PARAMETER },
-                                        { 'p', "onprocess", HAS_PARAMETER },
-                                        { 'x', "gdb-x", HAS_PARAMETER } };
+  static const OptionSpec options[] = {
+    { 'a', "autopilot", NO_PARAMETER },
+    { 'd', "debugger", HAS_PARAMETER },
+    { 's', "dbgport", HAS_PARAMETER },
+    { 'g', "goto", HAS_PARAMETER },
+    { 't', "trace", HAS_PARAMETER },
+    { 'q', "no-redirect-output", NO_PARAMETER },
+    { 'f', "onfork", HAS_PARAMETER },
+    { 'p', "onprocess", HAS_PARAMETER },
+    { 'x', "gdb-x", HAS_PARAMETER }
+  };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
     return false;

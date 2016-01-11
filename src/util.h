@@ -25,7 +25,7 @@ class KernelMapping;
 class Task;
 class TraceFrame;
 
-template <typename T, size_t N> constexpr size_t array_length(T (&array)[N]) {
+template <typename T, size_t N> constexpr size_t array_length(T(&array)[N]) {
   return N;
 }
 

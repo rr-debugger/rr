@@ -27,10 +27,10 @@ int main(int argc, char* argv[]) {
   }
 
   {
-    struct flock lock = { .l_type = F_RDLCK,
-                          .l_whence = SEEK_SET,
-                          .l_start = pagesize,
-                          .l_len = -pagesize / 2 };
+    struct flock lock = {.l_type = F_RDLCK,
+                         .l_whence = SEEK_SET,
+                         .l_start = pagesize,
+                         .l_len = -pagesize / 2 };
 
     atomic_printf("sizeof(flock) = %zu\n", sizeof(lock));
 

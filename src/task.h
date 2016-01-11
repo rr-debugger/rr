@@ -158,8 +158,8 @@ enum TicksRequest {
   // in the kernel...
   RESUME_NO_TICKS = -2,
   RESUME_UNLIMITED_TICKS = -1
-                           // Positive values are a request for an interrupt
-                           // after that number of ticks
+  // Positive values are a request for an interrupt
+  // after that number of ticks
 };
 
 /** Different kinds of waits a task can do.
@@ -648,7 +648,7 @@ public:
    * return.
    */
   template <size_t N>
-  void read_bytes(remote_ptr<void> child_addr, uint8_t (&buf)[N]) {
+  void read_bytes(remote_ptr<void> child_addr, uint8_t(&buf)[N]) {
     return read_bytes_helper(child_addr, N, buf);
   }
 
@@ -1083,7 +1083,7 @@ public:
    * Write |N| bytes from |buf| to |child_addr|, or don't return.
    */
   template <size_t N>
-  void write_bytes(remote_ptr<void> child_addr, const uint8_t (&buf)[N]) {
+  void write_bytes(remote_ptr<void> child_addr, const uint8_t(&buf)[N]) {
     write_bytes_helper(child_addr, N, buf);
   }
 

@@ -1360,8 +1360,9 @@ void Task::validate_regs(uint32_t flags) {
   if (flags & IGNORE_ESI) {
     if (regs().arg4() != rec_regs.arg4()) {
       LOG(warn) << "Probably saw kernel bug mutating $esi across pread/write64 "
-                   "call: recorded:" << HEX(rec_regs.arg4())
-                << "; replaying:" << regs().arg4() << ".  Fudging registers.";
+                   "call: recorded:"
+                << HEX(rec_regs.arg4()) << "; replaying:" << regs().arg4()
+                << ".  Fudging registers.";
       rec_regs.set_arg4(regs().arg4());
     }
   }
@@ -1460,7 +1461,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   breakpoint_set_where_execution_resumed =
       vm()->get_breakpoint_type_at_addr(ip()) != TRAP_NONE;
-  ptrace_if_alive(how, nullptr, (void*)(uintptr_t) sig);
+  ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   is_stopped = false;
   extra_registers_known = false;
   if (RESUME_WAIT == wait_how) {

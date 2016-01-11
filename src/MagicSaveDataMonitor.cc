@@ -35,20 +35,21 @@ static void notify_save_data_error(Task* t, remote_ptr<void> addr,
          (rec_buf_len == rep_buf_len && !memcmp(rec_buf, rep_buf, rec_buf_len)))
       << "Divergence in contents of 'tracee-save buffer'.  Recording executed\n"
          "\n"
-         "  write(" << RR_MAGIC_SAVE_DATA_FD << ", " << addr << ", "
-      << rec_buf_len << ")\n"
-                        "\n"
-                        "and replay executed\n"
-                        "\n"
-                        "  write(" << RR_MAGIC_SAVE_DATA_FD << ", " << addr
-      << ", " << rep_buf_len
+         "  write("
+      << RR_MAGIC_SAVE_DATA_FD << ", " << addr << ", " << rec_buf_len
+      << ")\n"
+         "\n"
+         "and replay executed\n"
+         "\n"
+         "  write("
+      << RR_MAGIC_SAVE_DATA_FD << ", " << addr << ", " << rep_buf_len
       << ")\n"
          "\n"
          "The contents of the tracee-save buffers have been dumped to disk.\n"
          "Compare them by using the following command\n"
          "\n"
-         "$ diff -u " << rec_dump << " " << rep_dump
-      << " >save-data-diverge.diff\n";
+         "$ diff -u "
+      << rec_dump << " " << rep_dump << " >save-data-diverge.diff\n";
 }
 
 void MagicSaveDataMonitor::did_write(Task* t,

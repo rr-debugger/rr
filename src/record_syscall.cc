@@ -1975,7 +1975,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       auto vlen = (unsigned int)t->regs().arg3();
       auto mmsgp =
           syscall_state.reg_parameter(2, sizeof(typename Arch::mmsghdr) * vlen,
-                                      IN_OUT).cast<typename Arch::mmsghdr>();
+                                      IN_OUT)
+              .cast<typename Arch::mmsghdr>();
       prepare_recvmmsg<Arch>(t, syscall_state, mmsgp, vlen);
       if (!((unsigned int)t->regs().arg4() & MSG_DONTWAIT)) {
         return ALLOW_SWITCH;

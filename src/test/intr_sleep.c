@@ -8,7 +8,7 @@ static void breakpoint(void) {
 }
 
 static int interrupted_sleep(void) {
-  struct timespec ts = { .tv_sec = 2 };
+  struct timespec ts = {.tv_sec = 2 };
 
   alarm(1);
   errno = 0;

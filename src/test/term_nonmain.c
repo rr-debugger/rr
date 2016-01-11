@@ -3,7 +3,7 @@
 #include "rrutil.h"
 
 static void waittermsig(int sig, const char* waiter) {
-  struct timespec ts = { .tv_sec = 1 };
+  struct timespec ts = {.tv_sec = 1 };
   sigset_t set;
   siginfo_t si;
 
