@@ -549,11 +549,6 @@ void RecordSession::desched_state_changed(Task* t) {
   // Run the syscallbuf exit hook. This ensures we'll be able to reset
   // the syscallbuf before trying to buffer another syscall.
   t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
-
-  // We were just descheduled for potentially a long
-  // time, and may have just had a signal become
-  // pending.  Ensure we get another chance to run.
-  last_task_switchable = PREVENT_SWITCH;
 }
 
 static void syscall_not_restarted(Task* t) {
@@ -726,7 +721,8 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
           desched_state_changed(t);
         }
 
-        // XXX probably not necessary to leave the tracee unswitchable
+        last_task_switchable = ALLOW_SWITCH;
+        step_state->continue_type = DONT_CONTINUE;
         return;
       }
 
@@ -782,6 +778,8 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
           LOG(debug) << "  exiting desched critical section";
           desched_state_changed(t);
         }
+        last_task_switchable = ALLOW_SWITCH;
+        step_state->continue_type = DONT_CONTINUE;
       } else {
         t->ev().transform(EV_SYSCALL_INTERRUPTION);
         t->ev().Syscall().is_restart = true;

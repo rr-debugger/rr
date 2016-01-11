@@ -2258,9 +2258,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
               target, (int)t->regs().arg3_signed());
         }
       }
-      // Give up our timeslice so we can switch to a higher priority task
-      // immediately
-      t->expire_timeslice();
       return ALLOW_SWITCH;
 
     case Arch::pause:
