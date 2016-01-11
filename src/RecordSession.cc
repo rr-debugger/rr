@@ -1334,6 +1334,20 @@ static string find_syscall_buffer_library() {
     unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
   } else {
     setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
+
+    ScopedFd fd("/proc/sys/kernel/perf_event_paranoid", O_RDONLY);
+    if (fd.is_open()) {
+      char buf[100];
+      ssize_t size = read(fd, buf, sizeof(buf) - 1);
+      if (size >= 0) {
+        buf[size] = 0;
+        int val = atoi(buf);
+        if (val > 1) {
+          FATAL() << "rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is "
+              << val << ".\nChange it to 1, or use 'rr record -n' (slow).";
+        }
+      }
+    }
   }
 
   vector<string> env;
