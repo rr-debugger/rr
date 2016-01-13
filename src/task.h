@@ -1086,6 +1086,12 @@ public:
   void expire_timeslice() { timeslice_end = 0; }
 
   /**
+   * Returns true if it looks like this task has been spinning on an atomic
+   * access/lock.
+   */
+  bool maybe_in_spinlock();
+
+  /**
    * Currently we don't allow recording across uid changes, so we can just
    * return rr's uid.
    */
@@ -1203,6 +1209,7 @@ public:
 
   /* Context switch after this number of ticks have elapsed. */
   Ticks timeslice_end;
+  std::unique_ptr<Registers> registers_at_start_of_uninterrupted_timeslice;
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
    * with a waitpid() call. Only applies to tasks which are dying, usually

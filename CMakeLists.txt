@@ -497,6 +497,7 @@ set(BASIC_TESTS
   simple
   sioc
   sock_names_opts
+  spinlock_priorities
   splice
   stack_growth_after_syscallbuf
   stack_overflow

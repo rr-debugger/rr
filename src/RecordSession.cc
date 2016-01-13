@@ -1299,6 +1299,9 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
       if (t->ev().type() == EV_SCHED) {
         // Allow switching after a SCHED. We'll flush the SCHED if and only
         // if we really do a switch.
+        if (t->maybe_in_spinlock()) {
+          scheduler().schedule_one_round_robin(t);
+        }
         last_task_switchable = ALLOW_SWITCH;
       }
       break;

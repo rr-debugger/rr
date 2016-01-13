@@ -166,6 +166,8 @@ void Scheduler::setup_new_timeslice(Task* t) {
     }
   }
   t->timeslice_end = t->tick_count() + timeslice_duration;
+  t->registers_at_start_of_uninterrupted_timeslice =
+      unique_ptr<Registers>(new Registers(t->regs()));
 }
 
 static void sleep_time(double t) {
