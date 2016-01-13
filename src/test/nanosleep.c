@@ -6,7 +6,7 @@ int main(int argc, char* argv[]) {
   test_assert(argc == 2);
 
   int sleep_secs = atoi(argv[1]);
-  struct timespec ts = { .tv_sec = sleep_secs };
+  struct timespec ts = {.tv_sec = sleep_secs };
 
   atomic_puts("sleeping");
 

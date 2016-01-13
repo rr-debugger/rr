@@ -9,10 +9,10 @@ static void test(int use_preadv) {
   int fd = mkstemp(name);
   struct {
     char ch[7];
-  }* part1;
+  } * part1;
   struct {
     char ch[10];
-  }* part2;
+  } * part2;
   struct iovec iovs[2];
   ssize_t nread;
 

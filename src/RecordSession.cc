@@ -248,8 +248,7 @@ static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
 
   // Use NativeArch here because different versions of system headers
   // have inconsistent field naming.
-  union
-  {
+  union {
     NativeArch::siginfo_t native_api;
     siginfo_t linux_api;
   } si;
@@ -698,9 +697,9 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
         disarm_desched_event(t);
         // Record storing the return value in the syscallbuf record, where
         // we expect to find it during replay.
-        auto child_rec =
-            ((t->syscallbuf_child + 1).cast<uint8_t>() +
-             t->syscallbuf_hdr->num_rec_bytes).cast<struct syscallbuf_record>();
+        auto child_rec = ((t->syscallbuf_child + 1).cast<uint8_t>() +
+                          t->syscallbuf_hdr->num_rec_bytes)
+                             .cast<struct syscallbuf_record>();
         int64_t ret = retval;
         t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
       }
@@ -746,8 +745,7 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
       bool may_restart = !is_restart_syscall_syscall(syscallno, t->arch())
                          // SYS_pause is either interrupted or
                          // never returns.  It doesn't restart.
-                         &&
-                         !is_pause_syscall(syscallno, t->arch()) &&
+                         && !is_pause_syscall(syscallno, t->arch()) &&
                          t->regs().syscall_may_restart();
       /* no need to process the syscall in case its
        * restarted this will be done in the exit from the
@@ -1263,8 +1261,7 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
       step_state->continue_type != CONTINUE) {
     return false;
   }
-  union
-  {
+  union {
     NativeArch::siginfo_t native_api;
     siginfo_t linux_api;
   } si;
@@ -1292,7 +1289,8 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;
-      LOG(debug) << "Signal " << si.linux_api.si_signo << ", emulating ptrace stop";
+      LOG(debug) << "Signal " << si.linux_api.si_signo
+                 << ", emulating ptrace stop";
       break;
     case DEFER_SIGNAL:
       LOG(debug) << "Signal " << si.linux_api.si_signo << " deferred";
@@ -1334,6 +1332,21 @@ static string find_syscall_buffer_library() {
     unsetenv(SYSCALLBUF_ENABLED_ENV_VAR);
   } else {
     setenv(SYSCALLBUF_ENABLED_ENV_VAR, "1", 1);
+
+    ScopedFd fd("/proc/sys/kernel/perf_event_paranoid", O_RDONLY);
+    if (fd.is_open()) {
+      char buf[100];
+      ssize_t size = read(fd, buf, sizeof(buf) - 1);
+      if (size >= 0) {
+        buf[size] = 0;
+        int val = atoi(buf);
+        if (val > 1) {
+          FATAL() << "rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but "
+                     "it is "
+                  << val << ".\nChange it to 1, or use 'rr record -n' (slow).";
+        }
+      }
+    }
   }
 
   vector<string> env;

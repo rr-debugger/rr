@@ -62,8 +62,8 @@ void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
   replace_char(path_tag, '/', '\\');
 
   stringstream name;
-  name << SHMEM_FS << "/rr-emufs-" << getpid() << "-dev-" << orig_device << "-inode-"
-       << orig_inode << "-" << path_tag;
+  name << SHMEM_FS << "/rr-emufs-" << getpid() << "-dev-" << orig_device
+       << "-inode-" << orig_inode << "-" << path_tag;
   string real_name = name.str().substr(0, 255);
 
   ScopedFd fd =
@@ -76,8 +76,8 @@ void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
   unlink(real_name.c_str());
   resize_shmem_segment(fd, orig_file_size);
 
-  shr_ptr f(new EmuFile(std::move(fd), orig_path,
-      real_name, orig_device, orig_inode, orig_file_size));
+  shr_ptr f(new EmuFile(std::move(fd), orig_path, real_name, orig_device,
+                        orig_inode, orig_file_size));
 
   LOG(debug) << "created emulated file for " << orig_path << " as "
              << name.str();

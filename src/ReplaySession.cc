@@ -421,16 +421,14 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
    * behalf of the debugger.  (The debugger will verify
    * that.) */
   if (SIGTRAP != target_sig
-          /* Replay of deterministic signals never internally
-           * single-steps or sets internal breakpoints. */
-      &&
-      (DETERMINISTIC_SIG == deterministic
-           /* Replay of async signals will sometimes internally
-            * single-step when advancing to an execution target,
-            * so the trap was only clearly for the debugger if
-            * the debugger was requesting single-stepping. */
-       ||
-       (constraints.is_singlestep() && NOT_AT_TARGET == exec_state))) {
+      /* Replay of deterministic signals never internally
+       * single-steps or sets internal breakpoints. */
+      && (DETERMINISTIC_SIG == deterministic
+          /* Replay of async signals will sometimes internally
+           * single-step when advancing to an execution target,
+           * so the trap was only clearly for the debugger if
+           * the debugger was requesting single-stepping. */
+          || (constraints.is_singlestep() && NOT_AT_TARGET == exec_state))) {
     return constraints.is_singlestep() ? TRAP_STEPI : TRAP_BKPT_USER;
   }
 

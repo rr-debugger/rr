@@ -391,7 +391,7 @@ int main(int argc, char* argv[]) {
   atomic_puts("M:   ... done");
   /* Force a wait on readv() */
   {
-    struct iovec v = { .iov_base = &token, .iov_len = sizeof(token) };
+    struct iovec v = {.iov_base = &token, .iov_len = sizeof(token) };
 
     atomic_puts("M: sleeping again ...");
     usleep(500000);

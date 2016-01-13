@@ -9,7 +9,7 @@ static void test(int use_pwritev) {
   int fd = mkstemp(name);
   struct {
     char ch[50];
-  }* buf;
+  } * buf;
   struct iovec iovs[2];
   ssize_t nwritten;
 

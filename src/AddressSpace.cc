@@ -199,8 +199,9 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
     ASSERT(t, offset_to_syscall_in_vdso[arch])
         << "No syscall instruction found in VDSO";
   }
-  return remote_code_ptr((vdso().start().cast<uint8_t>() +
-                          offset_to_syscall_in_vdso[arch]).as_int());
+  return remote_code_ptr(
+      (vdso().start().cast<uint8_t>() + offset_to_syscall_in_vdso[arch])
+          .as_int());
 }
 
 static string find_rr_page_file(Task* t) {
@@ -498,8 +499,8 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
              << ")";
 
   MemoryRange last_overlap;
-  auto protector =
-      [this, prot, &last_overlap](const Mapping& mm, const MemoryRange& rem) {
+  auto protector = [this, prot, &last_overlap](const Mapping& mm,
+                                               const MemoryRange& rem) {
     LOG(debug) << "  protecting (" << rem << ") ...";
 
     Mapping m = move(mm);

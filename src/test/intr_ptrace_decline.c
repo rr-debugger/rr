@@ -14,8 +14,8 @@ pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 static void fin_intr_sleep(int secs) {
-  struct timespec req = { .tv_sec = secs };
-  struct timespec rem = { .tv_sec = -1, .tv_nsec = -1 };
+  struct timespec req = {.tv_sec = secs };
+  struct timespec rem = {.tv_sec = -1, .tv_nsec = -1 };
 
   test_assert(0 == nanosleep(&req, &rem));
   /* We would normally assert that the outparam wasn't touched

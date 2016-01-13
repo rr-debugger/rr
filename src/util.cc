@@ -462,12 +462,10 @@ static bool has_fs_name(const string& path) {
 static bool is_tmp_file(const string& path) {
   struct statfs sfs;
   statfs(path.c_str(), &sfs);
-  return (TMPFS_MAGIC ==
-              sfs.f_type
-              // In observed configurations of Ubuntu 13.10, /tmp is
-              // a folder in the / fs, not a separate tmpfs.
-          ||
-          path.c_str() == strstr(path.c_str(), "/tmp/"));
+  return (TMPFS_MAGIC == sfs.f_type
+          // In observed configurations of Ubuntu 13.10, /tmp is
+          // a folder in the / fs, not a separate tmpfs.
+          || path.c_str() == strstr(path.c_str(), "/tmp/"));
 }
 
 bool should_copy_mmap_region(const KernelMapping& mapping,
