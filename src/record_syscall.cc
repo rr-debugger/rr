@@ -1862,13 +1862,11 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       int op = t->regs().arg2_signed();
       switch (op & FUTEX_CMD_MASK) {
         case FUTEX_WAIT:
-          syscall_state.reg_parameter<int>(1, IN_OUT_NO_SCRATCH);
           t->sleeping_until =
               user_timespec_to_absolute_sec<Arch>(t, t->regs().arg4());
           return ALLOW_SWITCH;
 
         case FUTEX_WAIT_BITSET:
-          syscall_state.reg_parameter<int>(1, IN_OUT_NO_SCRATCH);
           if (op & FUTEX_CLOCK_REALTIME) {
             t->sleeping_until =
                 absolute_realtime_timespec_to_absolute_sec<Arch>(
@@ -1884,12 +1882,10 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
         case FUTEX_CMP_REQUEUE:
         case FUTEX_WAKE_OP:
-          syscall_state.reg_parameter<int>(1, IN_OUT_NO_SCRATCH);
           syscall_state.reg_parameter<int>(5, IN_OUT_NO_SCRATCH);
           break;
 
         case FUTEX_WAKE:
-          syscall_state.reg_parameter<int>(1, IN_OUT_NO_SCRATCH);
           break;
 
         default:
