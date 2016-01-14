@@ -374,6 +374,7 @@ set(BASIC_TESTS
   fork_brk
   fork_child_crash
   fork_stress
+  futex_priorities
   fxregs
   getgroups
   getrandom
