@@ -67,6 +67,22 @@ template <typename T> bool type_has_no_holes() {
 
 enum Completion { COMPLETE, INCOMPLETE };
 
+/**
+ * During recording, sometimes we need to ensure that an iteration of
+ * RecordSession::record_step schedules the same task as in the previous
+ * iteration. The PREVENT_SWITCH value indicates that this is required.
+ * For example, the futex operation FUTEX_WAKE_OP modifies userspace
+ * memory; those changes are only recorded after the system call completes;
+ * and they must be replayed before we allow a context switch to a woken-up
+ * task (because the kernel guarantees those effects are seen by woken-up
+ * tasks).
+ * Entering a potentially blocking system call must use ALLOW_SWITCH, or
+ * we risk deadlock. Most non-blocking system calls could use PREVENT_SWITCH
+ * or ALLOW_SWITCH; for simplicity we use ALLOW_SWITCH to indicate a call could
+ * block and PREVENT_SWITCH otherwise.
+ * Note that even if a system call uses PREVENT_SWITCH, as soon as we've
+ * recorded the completion of the system call, we can switch to another task.
+ */
 enum Switchable { PREVENT_SWITCH, ALLOW_SWITCH };
 
 /**
