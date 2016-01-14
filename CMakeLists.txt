@@ -336,7 +336,6 @@ set(BASIC_TESTS
   alsa_ioctl
   arch_prctl
   async_segv_ignored
-  async_signal_syscalls2
   at_threadexit
   bad_ip
   bad_syscall
@@ -557,6 +556,7 @@ set(TESTS_WITH_PROGRAM
   async_kill_with_threads_thread_running
   async_segv
   async_signal_syscalls
+  async_signal_syscalls2
   async_signal_syscalls_siginfo
   async_usr1
   block_intr_sigchld
