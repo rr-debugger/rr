@@ -884,47 +884,46 @@ bool GdbConnection::process_vpacket(char* payload) {
 
   if (!strcmp("Run", name)) {
     req = GdbRequest(DREQ_RESTART);
-    req.restart().type = RESTART_FROM_PREVIOUS;
 
-    if ('\0' == *args) {
-      return true;
-    }
     const char* filename = args;
-    *args++ = '\0';
+    args = strchr(args, ';');
+    if (args) {
+      *args++ = '\0';
+    }
     if (strlen(filename)) {
       FATAL() << "gdb wants us to run the exe image `" << filename
               << "', but we don't support that.";
     }
-    if (strchr(args, ';')) {
-      FATAL() << "Extra arguments '" << args
-              << "' passed to run. We don't support that.";
+    if (!args) {
+      req.restart().type = RESTART_FROM_PREVIOUS;
+      return true;
     }
-    if (strlen(args)) {
-      string event_str = decode_ascii_encoded_hex_str(args);
-      char* endp;
-      // TODO: ideally we would keep checkpointing
-      // out of the gdb protocol translator, and
-      // just pass up the run parameters, but that's
-      // unnecessarily awkward due to the C-style
-      // request struct and the way gdb encodes the
-      // run args.
-      if (event_str[0] == 'c') {
-        int param = strtol(event_str.c_str() + 1, &endp, 0);
-        req.restart().type = RESTART_FROM_CHECKPOINT;
-        req.restart().param_str = event_str.substr(1);
-        req.restart().param = param;
-        LOG(debug) << "next replayer restarting from checkpoint "
-                   << req.restart().param;
-      } else {
-        req.restart().type = RESTART_FROM_EVENT;
-        req.restart().param = strtol(event_str.c_str(), &endp, 0);
-        LOG(debug) << "next replayer advancing to event "
-                   << req.restart().param;
-      }
-      if (!endp || *endp != '\0') {
-        LOG(debug) << "Couldn't parse event string `" << event_str << "'";
-        req.restart().param = -1;
-      }
+    const char* arg1 = args;
+    args = strchr(args, ';');
+    if (args) {
+      *args++ = 0;
+      LOG(debug) << "Ignoring extra parameters " << args;
+    }
+    string event_str = decode_ascii_encoded_hex_str(arg1);
+    char* endp;
+    if (event_str[0] == 'c') {
+      int param = strtol(event_str.c_str() + 1, &endp, 0);
+      req.restart().type = RESTART_FROM_CHECKPOINT;
+      req.restart().param_str = event_str.substr(1);
+      req.restart().param = param;
+      LOG(debug) << "next replayer restarting from checkpoint "
+                 << req.restart().param;
+    } else {
+      req.restart().type = RESTART_FROM_EVENT;
+      req.restart().param = strtol(event_str.c_str(), &endp, 0);
+      LOG(debug) << "next replayer advancing to event "
+                 << req.restart().param;
+    }
+    if (!endp || *endp != '\0') {
+      LOG(debug) << "Couldn't parse event string `" << event_str << "'"
+          << "; restarting from previous";
+      req.restart().type = RESTART_FROM_PREVIOUS;
+      req.restart().param = -1;
     }
     return true;
   }
