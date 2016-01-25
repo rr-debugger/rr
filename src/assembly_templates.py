@@ -65,18 +65,6 @@ templates = {
         RawBytes(0x55),         # push %ebp
         RawBytes(0x89, 0xe5),   # mov %esp,%ebp
         RawBytes(0x0f, 0x34),   # sysenter
-        RawBytes(0x90),         # nop
-        RawBytes(0x90),         # nop
-        RawBytes(0x90),         # nop
-        RawBytes(0x90),         # nop
-        RawBytes(0x90),         # nop
-        RawBytes(0x90),         # nop
-        RawBytes(0x90),         # nop
-        RawBytes(0xcd, 0x80),   # int $0x80
-        RawBytes(0x5d),         # pop %ebp
-        RawBytes(0x5a),         # pop %edx
-        RawBytes(0x59),         # pop %ecx
-        RawBytes(0xc3),         # ret
     ),
     'X86SysenterVsyscallUseInt80': AssemblyTemplate(
         RawBytes(0xcd, 0x80),   # int $0x80
