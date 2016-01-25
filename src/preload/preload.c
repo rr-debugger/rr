@@ -1479,7 +1479,7 @@ static long sys__llseek(const struct syscall_info* call) {
   }
 
   if (result2) {
-    *result2 = *result;
+    memcpy_input_parameter(result2, result, sizeof(*result2));
   }
   ret = untraced_syscall5(syscallno, fd, offset_high, offset_low, result2,
                           whence);

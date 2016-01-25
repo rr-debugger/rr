@@ -312,6 +312,7 @@ endif()
 # Alphabetical, please.
 set(BASIC_TESTS
   64bit_child
+  _llseek
   accept
   alarm
   alarm2
