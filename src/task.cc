@@ -3165,6 +3165,11 @@ static void set_cpu_affinity(int cpu) {
     execvpe(trace.initial_exe().c_str(),
             StringVectorToCharArray(trace.initial_argv()).get(),
             StringVectorToCharArray(trace.initial_envp()).get());
+    // That failed. Try executing the file directly.
+    execve(trace.initial_exe().c_str(),
+           StringVectorToCharArray(trace.initial_argv()).get(),
+           StringVectorToCharArray(trace.initial_envp()).get());
+
     FATAL() << "Failed to exec '" << trace.initial_exe().c_str() << "'";
   }
 
