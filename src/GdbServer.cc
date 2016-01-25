@@ -975,6 +975,7 @@ GdbServer::ContinueOrStop GdbServer::handle_exited_state(
     GdbRequest& last_resume_request) {
   // TODO return real exit code, if it's useful.
   dbg->notify_exit_code(0);
+  final_event = timeline.current_session().trace_reader().time();
   GdbRequest req = process_debugger_requests(REPORT_THREADS_DEAD);
   ContinueOrStop s;
   if (detach_or_restart(req, &s)) {
@@ -989,117 +990,123 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     GdbRequest& last_resume_request) {
   ReplayResult result;
   GdbRequest req;
-  if (!interrupt_pending || last_resume_request.type == DREQ_NONE) {
+
+  if (in_debuggee_end_state) {
+    // Treat the state where the last thread is about to exit like
+    // termination.
+    req = process_debugger_requests();
+    // If it's a forward execution request, fake the exited state.
+    if (req.is_resume_request() && req.cont().run_direction == RUN_FORWARD) {
+      if (interrupt_pending) {
+        // Just process this. We're getting it after a restart.
+      } else {
+        return handle_exited_state(last_resume_request);
+      }
+    } else {
+      in_debuggee_end_state = false;
+    }
+    // Otherwise (e.g. detach, restart, interrupt or reverse-exec) process
+    // the request as normal.
+  } else if (!interrupt_pending || last_resume_request.type == DREQ_NONE) {
     req = process_debugger_requests();
   } else {
     req = last_resume_request;
   }
 
-  while (true) {
-    ContinueOrStop s;
-    if (detach_or_restart(req, &s)) {
-      last_resume_request = GdbRequest();
-      return s;
-    }
-
-    if (req.is_resume_request()) {
-      last_resume_request = req;
-    } else {
-      assert(req.type == DREQ_INTERRUPT);
-      interrupt_pending = true;
-      req = last_resume_request;
-      assert(req.is_resume_request());
-    }
-
-    if (interrupt_pending) {
-      Task* t = timeline.current_session().current_task();
-      if (t->task_group()->tguid() == debuggee_tguid) {
-        interrupt_pending = false;
-        dbg->notify_stop(get_threadid(t), 0);
-        stop_reason = 0;
-        return CONTINUE_DEBUGGING;
-      }
-    }
-
-    auto interrupt_check = [&]() { return dbg->sniff_packet(); };
-    if (req.cont().run_direction == RUN_FORWARD) {
-      if (is_in_exec(timeline) &&
-          timeline.current_session().current_task()->task_group()->tguid() ==
-              debuggee_tguid) {
-        // Don't go any further forward. maybe_notify_stop will generate a
-        // stop.
-        result = ReplayResult();
-      } else {
-        int signal_to_deliver;
-        RunCommand command = compute_run_command_from_actions(
-            timeline.current_session().current_task(), req, &signal_to_deliver);
-        // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
-        result = timeline.replay_step_forward(command, target.event,
-                                              interrupt_check);
-      }
-      if (result.status == REPLAY_EXITED) {
-        return handle_exited_state(last_resume_request);
-      }
-    } else {
-      vector<AllowedTasks> allowed_tasks;
-      // Convert the tids in GdbContActions into TaskUids to avoid issues
-      // if tids get reused.
-      RunCommand command = compute_run_command_for_reverse_exec(
-          timeline.current_session(), debuggee_tguid, req, allowed_tasks);
-      auto stop_filter = [&](Task* t) -> bool {
-        if (t->task_group()->tguid() != debuggee_tguid) {
-          return false;
-        }
-        // If gdb's requested actions don't allow the task to run, we still
-        // let it run (we can't do anything else, since we're replaying), but
-        // we won't report stops in that task.
-        for (auto& a : allowed_tasks) {
-          if (a.task.tid() == 0 || a.task == t->tuid()) {
-            return true;
-          }
-        }
-        return false;
-      };
-
-      switch (command) {
-        case RUN_CONTINUE:
-          result = timeline.reverse_continue(stop_filter, interrupt_check);
-          break;
-        case RUN_SINGLESTEP: {
-          Task* t = timeline.current_session().find_task(last_continue_tuid);
-          assert(t);
-          result =
-              timeline.reverse_singlestep(last_continue_tuid, t->tick_count(),
-                                          stop_filter, interrupt_check);
-          break;
-        }
-        default:
-          assert(0 && "Unknown RunCommand");
-      }
-
-      if (result.status == REPLAY_EXITED) {
-        return handle_exited_state(last_resume_request);
-      }
-    }
-    if (!req.suppress_debugger_stop) {
-      maybe_notify_stop(req, result.break_status);
-    }
-    if (req.cont().run_direction == RUN_FORWARD &&
-        is_last_thread_exit(result.break_status) &&
-        result.break_status.task->task_group()->tguid() == debuggee_tguid) {
-      // Treat the state where the last thread is about to exit like
-      // termination.
-      req = process_debugger_requests();
-      // If it's a forward execution request, fake the exited state.
-      if (req.is_resume_request() && req.cont().run_direction == RUN_FORWARD) {
-        return handle_exited_state(last_resume_request);
-      }
-      // Otherwise (e.g. detach, restart, interrupt or reverse-exec) process
-      // the request as normal.
-      continue;
-    }
-    return CONTINUE_DEBUGGING;
+  ContinueOrStop s;
+  if (detach_or_restart(req, &s)) {
+    last_resume_request = GdbRequest();
+    return s;
   }
+
+  if (req.is_resume_request()) {
+    last_resume_request = req;
+  } else {
+    assert(req.type == DREQ_INTERRUPT);
+    interrupt_pending = true;
+    req = last_resume_request;
+    assert(req.is_resume_request());
+  }
+
+  if (interrupt_pending) {
+    Task* t = timeline.current_session().current_task();
+    if (t->task_group()->tguid() == debuggee_tguid) {
+      interrupt_pending = false;
+      dbg->notify_stop(get_threadid(t), in_debuggee_end_state ? SIGKILL : 0);
+      stop_reason = 0;
+      return CONTINUE_DEBUGGING;
+    }
+  }
+
+  auto interrupt_check = [&]() { return dbg->sniff_packet(); };
+  if (req.cont().run_direction == RUN_FORWARD) {
+    if (is_in_exec(timeline) &&
+        timeline.current_session().current_task()->task_group()->tguid() ==
+            debuggee_tguid) {
+      // Don't go any further forward. maybe_notify_stop will generate a
+      // stop.
+      result = ReplayResult();
+    } else {
+      int signal_to_deliver;
+      RunCommand command = compute_run_command_from_actions(
+          timeline.current_session().current_task(), req, &signal_to_deliver);
+      // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
+      result = timeline.replay_step_forward(command, target.event,
+                                            interrupt_check);
+    }
+    if (result.status == REPLAY_EXITED) {
+      return handle_exited_state(last_resume_request);
+    }
+  } else {
+    vector<AllowedTasks> allowed_tasks;
+    // Convert the tids in GdbContActions into TaskUids to avoid issues
+    // if tids get reused.
+    RunCommand command = compute_run_command_for_reverse_exec(
+        timeline.current_session(), debuggee_tguid, req, allowed_tasks);
+    auto stop_filter = [&](Task* t) -> bool {
+      if (t->task_group()->tguid() != debuggee_tguid) {
+        return false;
+      }
+      // If gdb's requested actions don't allow the task to run, we still
+      // let it run (we can't do anything else, since we're replaying), but
+      // we won't report stops in that task.
+      for (auto& a : allowed_tasks) {
+        if (a.task.tid() == 0 || a.task == t->tuid()) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    switch (command) {
+      case RUN_CONTINUE:
+        result = timeline.reverse_continue(stop_filter, interrupt_check);
+        break;
+      case RUN_SINGLESTEP: {
+        Task* t = timeline.current_session().find_task(last_continue_tuid);
+        assert(t);
+        result =
+            timeline.reverse_singlestep(last_continue_tuid, t->tick_count(),
+                                        stop_filter, interrupt_check);
+        break;
+      }
+      default:
+        assert(0 && "Unknown RunCommand");
+    }
+
+    if (result.status == REPLAY_EXITED) {
+      return handle_exited_state(last_resume_request);
+    }
+  }
+  if (!req.suppress_debugger_stop) {
+    maybe_notify_stop(req, result.break_status);
+  }
+  if (req.cont().run_direction == RUN_FORWARD &&
+      is_last_thread_exit(result.break_status) &&
+      result.break_status.task->task_group()->tguid() == debuggee_tguid) {
+    in_debuggee_end_state = true;
+  }
+  return CONTINUE_DEBUGGING;
 }
 
 bool GdbServer::at_target() {
@@ -1185,6 +1192,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
   assert(req.type == DREQ_RESTART);
   assert(dbg);
 
+  in_debuggee_end_state = false;
   timeline.remove_breakpoints_and_watchpoints();
 
   Checkpoint checkpoint_to_restore;
@@ -1227,18 +1235,20 @@ void GdbServer::restart_session(const GdbRequest& req) {
   // Note that we don't reset the target pid; we intentionally keep targeting
   // the same process no matter what is running when we hit the event.
   target.event = req.restart().param;
+  if (final_event >= 0) {
+    target.event = min(final_event - 1, target.event);
+  }
   timeline.seek_to_before_event(target.event);
   do {
     ReplayResult result =
         timeline.replay_step_forward(RUN_CONTINUE, target.event);
-    if (result.status == REPLAY_EXITED) {
-      LOG(info) << "Event was not reached before end of trace";
-      timeline.seek_to_before_event(target.event);
-      break;
-    }
+    // We should never reach the end of the trace without hitting the stop
+    // condition below.
+    assert(result.status != REPLAY_EXITED);
     if (is_last_thread_exit(result.break_status) &&
         result.break_status.task->task_group()->tgid == target.pid) {
       // Debuggee task is about to exit. Stop here.
+      in_debuggee_end_state = true;
       break;
     }
   } while (!at_target());
