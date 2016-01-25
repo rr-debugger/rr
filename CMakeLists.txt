@@ -597,6 +597,7 @@ set(TESTS_WITH_PROGRAM
   target_fork
   target_process
   term_nonmain
+  term_rr
   threaded_syscall_spam
   threads
   tiocinq
