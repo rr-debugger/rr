@@ -259,7 +259,7 @@ bool GdbServer::maybe_process_magic_command(const GdbRequest& req) {
     case DBG_COMMAND_MSG_CREATE_CHECKPOINT: {
       if (timeline.can_add_checkpoint()) {
         checkpoints[param] =
-            Checkpoint(timeline.add_explicit_checkpoint(), last_continue_tuid);
+            Checkpoint(timeline, last_continue_tuid, Checkpoint::EXPLICIT);
       }
       break;
     }
@@ -1172,8 +1172,13 @@ void GdbServer::activate_debugger() {
   // session.  The cloned tasks will look like children
   // of the clonees, so this scheme prevents |pstree|
   // output from getting /too/ far out of whack.
-  debugger_restart_checkpoint =
-      Checkpoint(timeline.add_explicit_checkpoint(), last_continue_tuid);
+  if (timeline.can_add_checkpoint()) {
+    debugger_restart_checkpoint =
+        Checkpoint(timeline, last_continue_tuid, Checkpoint::EXPLICIT);
+  } else {
+    debugger_restart_checkpoint =
+        Checkpoint(timeline, last_continue_tuid, Checkpoint::NOT_EXPLICIT);
+  }
 }
 
 void GdbServer::restart_session(const GdbRequest& req) {
@@ -1206,7 +1211,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
     timeline.seek_to_mark(checkpoint_to_restore.mark);
     last_query_tuid = last_continue_tuid =
         checkpoint_to_restore.last_continue_tuid;
-    if (debugger_restart_checkpoint.mark) {
+    if (debugger_restart_checkpoint.is_explicit == Checkpoint::EXPLICIT) {
       timeline.remove_explicit_checkpoint(debugger_restart_checkpoint.mark);
     }
     debugger_restart_checkpoint = checkpoint_to_restore;

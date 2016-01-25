@@ -215,11 +215,21 @@ private:
   Session* emergency_debug_session;
 
   struct Checkpoint {
-    Checkpoint(const ReplayTimeline::Mark& mark, TaskUid last_continue_tuid)
-        : mark(mark), last_continue_tuid(last_continue_tuid) {}
-    Checkpoint() = default;
+    enum Explicit { EXPLICIT, NOT_EXPLICIT };
+    Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid,
+               Explicit e)
+        : last_continue_tuid(last_continue_tuid),
+          is_explicit(e) {
+      if (e == EXPLICIT) {
+        mark = timeline.add_explicit_checkpoint();
+      } else {
+        mark = timeline.mark();
+      }
+    }
+    Checkpoint() : is_explicit(NOT_EXPLICIT) {}
     ReplayTimeline::Mark mark;
     TaskUid last_continue_tuid;
+    Explicit is_explicit;
   };
   // |debugger_restart_mark| is the point where we will restart from with
   // a no-op debugger "run" command.
