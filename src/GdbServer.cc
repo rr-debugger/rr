@@ -1051,8 +1051,8 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       RunCommand command = compute_run_command_from_actions(
           timeline.current_session().current_task(), req, &signal_to_deliver);
       // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
-      result = timeline.replay_step_forward(command, target.event,
-                                            interrupt_check);
+      result =
+          timeline.replay_step_forward(command, target.event, interrupt_check);
     }
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state(last_resume_request);
@@ -1085,9 +1085,8 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       case RUN_SINGLESTEP: {
         Task* t = timeline.current_session().find_task(last_continue_tuid);
         assert(t);
-        result =
-            timeline.reverse_singlestep(last_continue_tuid, t->tick_count(),
-                                        stop_filter, interrupt_check);
+        result = timeline.reverse_singlestep(
+            last_continue_tuid, t->tick_count(), stop_filter, interrupt_check);
         break;
       }
       default:

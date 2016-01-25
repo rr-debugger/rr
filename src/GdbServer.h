@@ -222,10 +222,8 @@ private:
 
   struct Checkpoint {
     enum Explicit { EXPLICIT, NOT_EXPLICIT };
-    Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid,
-               Explicit e)
-        : last_continue_tuid(last_continue_tuid),
-          is_explicit(e) {
+    Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid, Explicit e)
+        : last_continue_tuid(last_continue_tuid), is_explicit(e) {
       if (e == EXPLICIT) {
         mark = timeline.add_explicit_checkpoint();
       } else {
