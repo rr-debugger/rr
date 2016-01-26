@@ -15,6 +15,8 @@
 #include "TraceFrame.h"
 
 class GdbServer {
+  friend class GdbCommand;
+
 public:
   struct Target {
     Target() : pid(0), require_exec(false), event(0) {}
@@ -116,11 +118,6 @@ private:
    * Otherwise, do nothing and return false.
    */
   bool maybe_process_magic_command(const GdbRequest& req);
-  /**
-   * If |req| is a magic-read command, interpret it and return true.
-   * Otherwise, do nothing and return false.
-   */
-  bool maybe_process_magic_read(Task* t, const GdbRequest& req);
   void dispatch_regs_request(const Registers& regs,
                              const ExtraRegisters& extra_regs);
   enum ReportState { REPORT_NORMAL, REPORT_THREADS_DEAD };

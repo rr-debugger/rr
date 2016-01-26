@@ -17,6 +17,7 @@
 #include <vector>
 
 #include "BreakpointCondition.h"
+#include "GdbCommandHandler.h"
 #include "GdbExpression.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -53,20 +54,6 @@ static const int DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
 
 static const uint32_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
 
-/**
- * 64-bit reads from DBG_WHEN_MAGIC_ADDRESS return the current trace frame's
- * event number (the event we're working towards).
- */
-static const int DBG_WHEN_MAGIC_ADDRESS = DBG_COMMAND_MAGIC_ADDRESS + 4;
-
-/**
- * 64-bit reads from DBG_WHEN_TICKS_MAGIC_ADDRESS return the current trace's
- * tick count.
- */
-static const int DBG_WHEN_TICKS_MAGIC_ADDRESS = DBG_WHEN_MAGIC_ADDRESS + 8;
-
-static const int DBG_REAL_TID_MAGIC_ADDRESS = DBG_WHEN_TICKS_MAGIC_ADDRESS + 8;
-
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
@@ -92,15 +79,6 @@ static const string& gdb_rr_macros() {
         << "end\n"
         << "define restart\n"
         << "  run c$arg0\n"
-        << "end\n"
-        << "define when\n"
-        << "  p *(long long int*)" << DBG_WHEN_MAGIC_ADDRESS << "\n"
-        << "end\n"
-        << "define when-ticks\n"
-        << "  p *(long long int*)" << DBG_WHEN_TICKS_MAGIC_ADDRESS << "\n"
-        << "end\n"
-        << "define real-tid\n"
-        << "  p *(long long int*)" << DBG_REAL_TID_MAGIC_ADDRESS << "\n"
         << "end\n"
         // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
         // issued before any user-generated resume-execution command
@@ -155,7 +133,7 @@ static const string& gdb_rr_macros() {
         // Try both "set target-async" and "maint set target-async" since
         // that changed recently.
         << "set target-async 0\n"
-        << "maint set target-async 0\n";
+        << "maint set target-async 0\n" << GdbCommandHandler::gdb_macros();
     s = ss.str();
   }
   return s;
@@ -275,33 +253,6 @@ bool GdbServer::maybe_process_magic_command(const GdbRequest& req) {
       return false;
   }
   dbg->reply_set_mem(true);
-  return true;
-}
-
-bool GdbServer::maybe_process_magic_read(Task* t, const GdbRequest& req) {
-  int64_t value;
-  switch (req.mem().addr) {
-    case DBG_WHEN_MAGIC_ADDRESS:
-      value = t->current_trace_frame().time();
-      break;
-    case DBG_WHEN_TICKS_MAGIC_ADDRESS:
-      value = t->tick_count();
-      break;
-    case DBG_REAL_TID_MAGIC_ADDRESS:
-      value = t->tid;
-      break;
-    default:
-      return false;
-  }
-
-  if (req.mem().len != 8) {
-    return false;
-  }
-
-  vector<uint8_t> mem;
-  mem.resize(req.mem().len);
-  memcpy(mem.data(), &value, mem.size());
-  dbg->reply_get_mem(mem);
   return true;
 }
 
@@ -466,9 +417,6 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     }
     case DREQ_GET_MEM: {
-      if (maybe_process_magic_read(target, req)) {
-        return;
-      }
       vector<uint8_t> mem;
       mem.resize(req.mem().len);
       ssize_t nread = target->read_bytes_fallible(req.mem().addr, req.mem().len,
@@ -616,6 +564,10 @@ void GdbServer::dispatch_debugger_request(Session& session,
     case DREQ_WRITE_SIGINFO:
       LOG(warn) << "WRITE_SIGINFO request outside of diversion session";
       dbg->reply_write_siginfo();
+      return;
+    case DREQ_RR_CMD:
+      dbg->reply_rr_cmd(
+          GdbCommandHandler::process_command(*this, target, req.text()));
       return;
     default:
       FATAL() << "Unknown debugger request " << req.type;
