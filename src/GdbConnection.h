@@ -134,6 +134,9 @@ enum GdbRequestType {
 
   /* Uses params.restart. */
   DREQ_RESTART,
+
+  /* Uses params.text. */
+  DREQ_RR_CMD,
 };
 
 enum GdbRestartType {
@@ -169,7 +172,8 @@ struct GdbRequest {
         watch_(other.watch_),
         reg_(other.reg_),
         restart_(other.restart_),
-        cont_(other.cont_) {}
+        cont_(other.cont_),
+        text_(other.text_) {}
   GdbRequest& operator=(const GdbRequest& other) {
     this->~GdbRequest();
     new (this) GdbRequest(other);
@@ -202,6 +206,7 @@ struct GdbRequest {
     RunDirection run_direction;
     std::vector<GdbContAction> actions;
   } cont_;
+  std::string text_;
 
   Mem& mem() {
     assert(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
@@ -242,6 +247,10 @@ struct GdbRequest {
   const Cont& cont() const {
     assert(type == DREQ_CONT);
     return cont_;
+  }
+  const std::string& text() const {
+    assert(type == DREQ_RR_CMD);
+    return text_;
   }
 
   /**
@@ -447,6 +456,11 @@ public:
    * anyway.
    */
   void reply_write_siginfo(/* TODO*/);
+
+  /**
+   * Send a manual text response to a rr cmd (maintenance) packet.
+   */
+  void reply_rr_cmd(const std::string& text);
 
   /**
    * Create a checkpoint of the given Session with the given id. Delete the

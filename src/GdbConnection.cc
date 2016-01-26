@@ -29,6 +29,7 @@
 #include <vector>
 
 #include "log.h"
+#include "GdbCommandHandler.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "StringVectorToCharArray.h"
@@ -617,6 +618,12 @@ bool GdbConnection::query(char* payload) {
   }
   name = payload;
 
+  if (strstr(name, "RRCmd") == name) {
+    LOG(debug) << "gdb requests rr cmd: " << name;
+    req = GdbRequest(DREQ_RR_CMD);
+    req.text_ = args;
+    return true;
+  }
   if (!strcmp(name, "C")) {
     LOG(debug) << "gdb requests current thread ID";
     req = GdbRequest(DREQ_GET_CURRENT_THREAD);
@@ -1588,6 +1595,14 @@ void GdbConnection::reply_write_siginfo(/* TODO*/) {
   assert(DREQ_WRITE_SIGINFO == req.type);
 
   write_packet("E01");
+
+  consume_request();
+}
+
+void GdbConnection::reply_rr_cmd(const std::string& text) {
+  assert(DREQ_RR_CMD == req.type);
+
+  write_packet(text.c_str());
 
   consume_request();
 }

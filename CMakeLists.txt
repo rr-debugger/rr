@@ -180,6 +180,8 @@ add_executable(rr
   src/fast_forward.cc
   src/FdTable.cc
   src/Flags.cc
+  src/GdbCommand.cc
+  src/GdbCommandHandler.cc
   src/GdbConnection.cc
   src/GdbExpression.cc
   src/GdbInitCommand.cc
