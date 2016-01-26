@@ -187,13 +187,6 @@ void ReplaySession::advance_to_next_trace_frame(TraceFrame::Time stop_at_time) {
 
 bool ReplaySession::is_ignored_signal(int sig) {
   switch (sig) {
-    // SIGCHLD can arrive after tasks die during replay.  We don't
-    // care about SIGCHLD unless it was recorded, in which case
-    // we'll emulate its delivery.
-    case SIGCHLD:
-    // SIGWINCH arrives when the user resizes the terminal window.
-    // Not relevant to replay.
-    case SIGWINCH:
     // TIME_SLICE_SIGNALs can be queued but not delivered before we stop
     // execution for some other reason. Ignore them.
     case PerfCounters::TIME_SLICE_SIGNAL:
@@ -261,7 +254,8 @@ Completion ReplaySession::cont_syscall_boundary(
     return INCOMPLETE;
   }
   ASSERT(t, !t->pending_sig()) << "Replay got unrecorded signal "
-                               << t->pending_sig();
+                               << t->pending_sig() << " ("
+                               << signal_name(t->pending_sig()) << ")";
 
   return COMPLETE;
 }

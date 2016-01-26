@@ -2161,13 +2161,6 @@ static void set_up_process(Session& session) {
     // children.
     signal(SIGCHLD, SIG_IGN);
 
-    sigset_t sset;
-    sigemptyset(&sset);
-    sigaddset(&sset, SIGINT);
-    if (sigprocmask(SIG_BLOCK, &sset, nullptr)) {
-      FATAL() << "Didn't change sigmask.";
-    }
-
     // If the rr process dies, prevent runaway tracee processes
     // from dragging down the underlying system.
     //
@@ -2175,6 +2168,11 @@ static void set_up_process(Session& session) {
     if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
       FATAL() << "Couldn't set parent-death signal";
     }
+
+    // Put the replaying processes into their own session. This will stop
+    // signals being sent to these processes by the terminal --- in particular
+    // SIGTSTP/SIGINT/SIGWINCH.
+    setsid();
   }
 
   /* Trap to the rr process if a 'rdtsc' instruction is issued.
