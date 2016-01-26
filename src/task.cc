@@ -2664,7 +2664,9 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   remote.infallible_syscall(syscall_number_for_close(arch()), child_shmem_fd);
 }
 
-void Task::tgkill(int sig) { syscall(SYS_tgkill, real_tgid(), tid, sig); }
+void Task::tgkill(int sig) {
+  ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
+}
 
 void Task::reset_syscallbuf() {
   uint8_t* ptr = (uint8_t*)(syscallbuf_hdr + 1);

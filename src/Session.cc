@@ -186,7 +186,7 @@ void Session::kill_all_tasks() {
       // Detaching from the process lets it continue. We don't want a replaying
       // process to perform syscalls or do anything else observable before we
       // get around to SIGKILLing it. So we move its ip() to an address
-      // which will cause it to go into an infinite loop if it runs at all.
+      // which will cause it to do an exit() syscall if it runs at all.
       // We used to set this to an invalid address, but that causes a SIGSEGV
       // to be raised which can cause core dumps after we detach from ptrace.
       // Making the process undumpable with PR_SET_DUMPABLE turned out not to
@@ -196,8 +196,13 @@ void Session::kill_all_tasks() {
       // Disabling dumps via setrlimit(RLIMIT_CORE, 0) doesn't stop dumps
       // if /proc/sys/kernel/core_pattern is set to pipe the core to a process
       // (e.g. to systemd-coredump).
+      // We also tried setting ip() to an address that does an infinite loop,
+      // but that leaves a runaway process if something happens to kill rr
+      // after detaching but before we get a chance to SIGKILL the tracee.
       Registers r = t->regs();
-      r.set_ip(AddressSpace::rr_page_infinite_loop_addr());
+      r.set_ip(t->vm()->privileged_traced_syscall_ip());
+      r.set_syscallno(syscall_number_for_exit(r.arch()));
+      r.set_arg1(0);
       t->set_regs(r);
       long result;
       do {
@@ -222,7 +227,13 @@ void Session::kill_all_tasks() {
       LOG(debug) << "sending SIGKILL to " << t->tid << " ...";
       // If we haven't already done a stable exit via syscall,
       // kill the task and note that the entire task group is unstable.
-      t->tgkill(SIGKILL);
+      // The task may already have exited due to the preparation above,
+      // so we might accidentally shoot down the wrong task :-(, but we
+      // have to do this because the task might be in a state where it's not
+      // going to run and exit by itself.
+      // Linux doesn't seem to give us a reliable way to detach and kill
+      // the tracee without races.
+      syscall(SYS_tgkill, t->real_tgid(), t->tid, SIGKILL);
       t->task_group()->destabilize();
     }
 
