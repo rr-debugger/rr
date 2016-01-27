@@ -7,7 +7,7 @@ echo The slave is `uname -a`
 
 packages=(linux-libc-dev linux-libc-dev:i386
 	  gcc-multilib libc6-dev:i386 rpm
-	  g++ lib32stdc++6
+	  g++ lib32stdc++6 gdb
 	  zlib1g:i386 zlib1g-dev:i386
 	  python-pexpect)
 
