@@ -413,11 +413,11 @@ public:
   void did_waitpid(int status, siginfo_t* override_siginfo = nullptr);
 
   /**
-   * If we're at the entry to (or exit from) a syscall, we may need to
-   * fix up registers that are set nondeterministically so they're
-   * deterministic. Fixes up |regs| and does set_regs() on that.
+   * Syscalls have side effects on registers (e.g. setting the flags register).
+   * Perform those side effects on |regs| and do set_regs() on that to make it
+   * look like a syscall happened.
    */
-  void fixup_syscall_regs(const Registers& regs);
+  void emulate_syscall_entry(const Registers& regs);
 
   /**
    * Wait for |futex| in this address space to have the value

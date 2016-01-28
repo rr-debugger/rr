@@ -5,20 +5,18 @@ import os
 import sys
 
 def write_rr_page(f, is_64, is_replay):
+    # The length of each code sequence must be RR_PAGE_SYSCALL_STUB_SIZE.
+    # The end of each syscall instruction must be at offset
+    # RR_PAGE_SYSCALL_INSTRUCTION_END.
     if is_64:
         bytes = bytearray([
             0x0f, 0x05, # syscall
-            0x4d, 0x31, 0xdb, # xor %r11,%r11
-            0x48, 0xc7, 0xc1, 0xff, 0xff, 0xff, 0xff, # mov $-1,%rcx
             0xc3, # ret
-            0x90, 0x90, 0x90
         ])
     else:
         bytes = bytearray([
             0xcd, 0x80, # int 0x80
             0xc3, # ret
-            0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
-            0x90, 0x90, 0x90, 0x90
         ])
     # traced
     f.write(bytes)

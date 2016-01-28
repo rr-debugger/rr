@@ -91,7 +91,16 @@ static string maybe_dump_written_string(Task* t) {
  */
 static void __ptrace_cont(Task* t, int expect_syscallno) {
   do {
+    uintptr_t saved_r11 = t->arch() == x86_64 ? t->regs().r11() : 0;
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    if (t->arch() == x86_64) {
+      // Restore previous R11 value. R11 gets reset to RFLAGS by the syscall,
+      // and RFLAGS might have changed since we first entered the syscall
+      // we're replaying (we reset it to 0x246 in fixup_syscall_registers).
+      Registers r = t->regs();
+      r.set_r11(saved_r11);
+      t->set_regs(r);
+    }
   } while (ReplaySession::is_ignored_signal(t->stop_sig()));
 
   ASSERT(t, !t->pending_sig()) << "Expected no pending signal, but got "
@@ -1039,10 +1048,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
                  << t->ev().Syscall().regs.syscall_result() << " at " << intr_ip
                  << "; now at " << cur_ip;
       if (cur_ip == intr_ip) {
-        // See long comment above; this
-        // "emulates" the restart by just
-        // continuing on from the interrupted
-        // syscall.
+        t->emulate_syscall_entry(t->regs());
         step->action = TSTEP_RETIRE;
         return;
       }

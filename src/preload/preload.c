@@ -257,25 +257,19 @@ static int update_errno_ret(long ret) {
   return ret;
 }
 
-#if defined(__i386__) || defined(__x86_64__)
-#define SYSCALL_INSTRUCTION_LENGTH 2
-#else
-#error define syscall instruction length here
-#endif
-
 static void* traced_syscall_instruction =
-    (void*)(RR_PAGE_IN_TRACED_SYSCALL_ADDR - SYSCALL_INSTRUCTION_LENGTH);
+    (void*)(RR_PAGE_IN_TRACED_SYSCALL_ADDR - RR_PAGE_SYSCALL_INSTRUCTION_END);
 static void* untraced_syscall_instruction =
-    (void*)(RR_PAGE_IN_UNTRACED_SYSCALL_ADDR - SYSCALL_INSTRUCTION_LENGTH);
+    (void*)(RR_PAGE_IN_UNTRACED_SYSCALL_ADDR - RR_PAGE_SYSCALL_INSTRUCTION_END);
 static void* untraced_replayed_syscall_instruction =
     (void*)(RR_PAGE_IN_UNTRACED_REPLAYED_SYSCALL_ADDR -
-            SYSCALL_INSTRUCTION_LENGTH);
+            RR_PAGE_SYSCALL_INSTRUCTION_END);
 static void* privileged_traced_syscall_instruction =
     (void*)(RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR -
-            SYSCALL_INSTRUCTION_LENGTH);
+            RR_PAGE_SYSCALL_INSTRUCTION_END);
 static void* privileged_untraced_syscall_instruction =
     (void*)(RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR -
-            SYSCALL_INSTRUCTION_LENGTH);
+            RR_PAGE_SYSCALL_INSTRUCTION_END);
 
 static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
                                      long a3, long a4, long a5) {

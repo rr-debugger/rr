@@ -1998,6 +1998,10 @@ static bool is_in_non_sigreturn_exit_syscall(Task* t) {
           !is_sigreturn(t->ev().Syscall().number, t->arch()));
 }
 
+/**
+ * Call this when we've trapped in a syscall (entry or exit) in the kernel,
+ * to normalize registers.
+ */
 static void fixup_syscall_registers(Registers& registers) {
   if (registers.arch() == x86_64) {
     // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
@@ -2005,24 +2009,23 @@ static void fixup_syscall_registers(Registers& registers) {
     // set in R11. We don't want the value in R11 to depend on whether we
     // were single-stepping during record or replay, possibly causing
     // divergence.
-    // We assume user-space never cares about the flags appearing in R11 so
-    // we just clear it. That's simpler and easier to emulate in
-    // machine code.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
     // This doesn't matter when exiting a sigreturn syscall, since it
     // restores the original flags.
-    registers.set_r11(0);
+    // For untraced syscalls, the untraced-syscall entry point code (see
+    // write_rr_page) does this itself.
+    // We tried just clearing %r11, but that seemed to cause hangs in
+    // Ubuntu/Debian kernels for some unknown reason.
+    registers.set_r11(registers.r11() & ~X86_TF_FLAG);
     // x86-64 'syscall' instruction copies return address to RCX on syscall
     // entry. rr-related kernel activity normally sets RCX to -1 at some point
     // during syscall execution, but apparently in some (unknown) situations
     // probably involving untraced syscalls, that doesn't happen. To avoid
     // potential issues, forcibly replace RCX with -1 always.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
     // This doesn't matter (and we should not do this) when exiting a
     // sigreturn syscall, since it will restore the original RCX and we don't
     // want to clobber that.
+    // For untraced syscalls, the untraced-syscall entry point code (see
+    // write_rr_page) does this itself.
     registers.set_cx((intptr_t)-1);
     // On kernel 3.13.0-68-generic #111-Ubuntu SMP we have observed a failed
     // execve() clearing all flags during recording. During replay we emulate
@@ -2043,8 +2046,11 @@ static void fixup_syscall_registers(Registers& registers) {
   }
 }
 
-void Task::fixup_syscall_regs(const Registers& regs) {
+void Task::emulate_syscall_entry(const Registers& regs) {
   Registers r = regs;
+  if (r.arch() == x86_64) {
+    r.set_r11(r.flags());
+  }
   fixup_syscall_registers(r);
   set_regs(r);
 }

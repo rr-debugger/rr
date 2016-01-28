@@ -215,7 +215,7 @@ static void handle_seccomp_traced_syscall(
     // are treated as "skip this syscall". There will be one syscall event
     // reported instead of two. So, record an enter-syscall event now
     // and treat the other event as the exit.
-    t->fixup_syscall_regs(t->regs());
+    t->emulate_syscall_entry(t->regs());
     t->push_event(SyscallEvent(syscallno, t->arch()));
     ASSERT(t, EV_SYSCALL == t->ev().type());
     t->ev().Syscall().state = ENTERING_SYSCALL;
@@ -235,7 +235,7 @@ static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
                                 uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
-  t->fixup_syscall_regs(t->regs());
+  t->emulate_syscall_entry(t->regs());
 
   if (!t->is_in_untraced_syscall()) {
     t->push_event(SyscallEvent(syscallno, t->arch()));
@@ -290,7 +290,7 @@ static void handle_seccomp_errno(Task* t, RecordSession::StepState* step_state,
                                  uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
-  t->fixup_syscall_regs(t->regs());
+  t->emulate_syscall_entry(t->regs());
 
   if (!t->is_in_untraced_syscall()) {
     t->push_event(SyscallEvent(syscallno, t->arch()));

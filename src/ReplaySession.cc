@@ -298,7 +298,7 @@ Completion ReplaySession::enter_syscall(Task* t,
       r.set_ip(syscall_instruction.increment_by_syscall_insn_length(t->arch()));
       r.set_original_syscallno(r.syscallno());
       r.set_syscall_result(-ENOSYS);
-      t->fixup_syscall_regs(r);
+      t->emulate_syscall_entry(r);
       t->validate_regs();
     }
     if (use_breakpoint_optimization) {
