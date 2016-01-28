@@ -25,8 +25,12 @@ enum MismatchBehavior {
   BAIL_ON_MISMATCH
 };
 
-const uintptr_t X86_TF_FLAG = 0x100;
-const uintptr_t X86_DF_FLAG = 0x400;
+const uintptr_t X86_RESERVED_FLAG = 1 << 1;
+const uintptr_t X86_TF_FLAG = 1 << 8;
+const uintptr_t X86_IF_FLAG = 1 << 9;
+const uintptr_t X86_DF_FLAG = 1 << 10;
+const uintptr_t X86_RF_FLAG = 1 << 16;
+const uintptr_t X86_ID_FLAG = 1 << 21;
 
 /**
  * A Registers object contains values for all general-purpose registers.

@@ -110,36 +110,33 @@ template <> struct RegisterInfo<rr::X64Arch> {
 #define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask)                    \
   RV_ARCH(gdb_suffix, name, rr::X64Arch, COMMA comparison_mask)
 
-/* The following are eflags that have been observed to be non-deterministic
-   in practice.  We need to mask them off when comparing registers to
-   prevent replay from diverging.  */
-enum {
-  /* The linux kernel has been observed to report this as zero in some
-     states during system calls.  It always seems to be 1 during user-space
-     execution so we should be able to ignore it.  */
-  RESERVED_FLAG_1 = 1 << 1,
-  /* This is usually set but we have observed cases where it's clear. It
-   * shouldn't be modifiable by user space so we don't know why it would
-   * change.
-   */
-  INTERRUPT_FLAG = 1 << 9,
-  /* According to http://www.logix.cz/michal/doc/i386/chp04-01.htm:
-        The RF flag temporarily disables debug exceptions so that an
-       instruction can be restarted after a debug exception without
-       immediately causing another debug exception.  Refer to Chapter 12
-       for details.
-      Chapter 12 isn't particularly clear on the point, but the flag appears
-     to be set by |int3| exceptions.
-      This divergence has been observed when continuing a tracee to an
-     execution target by setting an |int3| breakpoint, which isn't used
-     during recording.  No single-stepping was used during the recording
-     either.  */
-  RESUME_FLAG = 1 << 16,
-  /* It is no longer known why this bit is ignored.  */
-  CPUID_ENABLED_FLAG = 1 << 21,
-};
 const uint64_t deterministic_eflags_mask = ~uint32_t(
-    RESERVED_FLAG_1 | INTERRUPT_FLAG | RESUME_FLAG | CPUID_ENABLED_FLAG);
+    /* The following are eflags that have been observed to be non-deterministic
+       in practice.  We need to mask them off when comparing registers to
+       prevent replay from diverging.  */
+    /* The linux kernel has been observed to report this as zero in some
+       states during system calls.  It always seems to be 1 during user-space
+       execution so we should be able to ignore it.  */
+    X86_RESERVED_FLAG |
+    /* This is usually set but we have observed cases where it's clear. It
+     * shouldn't be modifiable by user space so we don't know why it would
+     * change.
+     */
+    X86_IF_FLAG |
+    /* According to http://www.logix.cz/michal/doc/i386/chp04-01.htm:
+          The RF flag temporarily disables debug exceptions so that an
+         instruction can be restarted after a debug exception without
+         immediately causing another debug exception.  Refer to Chapter 12
+         for details.
+        Chapter 12 isn't particularly clear on the point, but the flag appears
+       to be set by |int3| exceptions.
+        This divergence has been observed when continuing a tracee to an
+       execution target by setting an |int3| breakpoint, which isn't used
+       during recording.  No single-stepping was used during the recording
+       either.  */
+    X86_RF_FLAG |
+    /* It is no longer known why this bit is ignored.  */
+    X86_ID_FLAG);
 
 RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
   RV_X86(EAX, eax), RV_X86(ECX, ecx), RV_X86(EDX, edx), RV_X86(EBX, ebx),
