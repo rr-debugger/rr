@@ -58,28 +58,28 @@ _raw_syscall:     /* syscallno = 4(%esp) */
         .type _raw_syscall, @function
 _raw_syscall:
         .cfi_startproc
-	/* Incoming args are in %rdi, %rsi, %rdx, %rcx, %r8, %r9, and 8(%rsp).
-	   Syscall arguments are %rdi, %rsi, %rdx, %r10, %r8, %r9. */
-	movq %rdi, %rax         /* syscall number */
-	movq %rsi, %rdi         /* first syscall arg */
-	movq %rdx, %rsi         /* second syscall arg */
-	movq %rcx, %rdx         /* third syscall arg */
-	movq %r8, %r10          /* fourth syscall arg */
-	movq %r9, %r8           /* fifth syscall arg */
-	movq 8(%rsp), %r9       /* sixth syscall arg */
+        /* Incoming args are in %rdi, %rsi, %rdx, %rcx, %r8, %r9, and 8(%rsp).
+	       Syscall arguments are %rdi, %rsi, %rdx, %r10, %r8, %r9. */
+        movq %rdi, %rax         /* syscall number */
+        movq %rsi, %rdi         /* first syscall arg */
+        movq %rdx, %rsi         /* second syscall arg */
+        movq %rcx, %rdx         /* third syscall arg */
+        movq %r8, %r10          /* fourth syscall arg */
+        movq %r9, %r8           /* fifth syscall arg */
+        movq 8(%rsp), %r9       /* sixth syscall arg */
 
         pushq 32(%rsp)
         .cfi_adjust_cfa_offset 8
         pushq 32(%rsp)
         .cfi_adjust_cfa_offset 8
 
-	callq *32(%rsp)
+        callq *32(%rsp)
 
         addq $16,%rsp
         .cfi_adjust_cfa_offset -16
         ret
         .cfi_endproc
-	.size _raw_syscall, . - _raw_syscall
+        .size _raw_syscall, . - _raw_syscall
 
 #else
 #error unknown CPU architecture
