@@ -129,11 +129,11 @@ static const string& gdb_rr_macros() {
         << "  set $suppress_run_hook = 0\n"
         << "end\n"
         << "handle SIGURG stop\n"
-        << "set prompt (rr) \n"
+        << "set prompt (rr) \n" << GdbCommandHandler::gdb_macros()
         // Try both "set target-async" and "maint set target-async" since
         // that changed recently.
         << "set target-async 0\n"
-        << "maint set target-async 0\n" << GdbCommandHandler::gdb_macros();
+        << "maint set target-async 0\n";
     s = ss.str();
   }
   return s;
