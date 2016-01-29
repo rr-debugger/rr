@@ -19,8 +19,6 @@ send_gdb('c')
 
 send_gdb('when')
 expect_gdb(re.compile(r'Current event: (\d+)'))
-with open("/tmp/out", "w") as text_file:
-    text_file.write(last_match().group(1))
 t2 = eval(last_match().group(1));
 if t2 < 1 or t2 > 10000:
     failed('ERROR in second "when"')
