@@ -1358,6 +1358,8 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     uint64_t rdx;
     uint64_t rsi;
     uint64_t rdi;
+    // Unsigned type matches <sys/user.h>, but we need to treat this as
+    // signed in practice.
     uint64_t orig_rax;
     uint64_t rip;
     uint32_t cs;

@@ -389,7 +389,8 @@ template <>
                                                    mismatch_behavior);
   // XXX haven't actually observed this to be true on x86-64 yet, but
   // assuming that it follows the x86 behavior.
-  if (reg1.u.x64regs.orig_rax >= 0 || reg2.u.x64regs.orig_rax >= 0) {
+  if ((intptr_t)reg1.u.x64regs.orig_rax >= 0 ||
+      (intptr_t)reg2.u.x64regs.orig_rax >= 0) {
     X64_REGCMP(orig_rax);
   }
   // Check the _upper bits of various registers we defined more conveniently
