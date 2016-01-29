@@ -984,13 +984,23 @@ void Task::move_ip_before_breakpoint() {
   set_regs(r);
 }
 
-// TODO de-dup
-static void advance_syscall(Task* t) {
-  do {
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-  } while (t->is_ptrace_seccomp_event() ||
-           ReplaySession::is_ignored_signal(t->pending_sig()));
-  assert(t->ptrace_event() == 0);
+void Task::advance_syscall() {
+  while (true) {
+    resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    if (is_ptrace_seccomp_event()) {
+      continue;
+    }
+    ASSERT(this, ptrace_event() == 0);
+    if (!pending_sig()) {
+      break;
+    }
+    if (ReplaySession::is_ignored_signal(pending_sig()) &&
+        session().is_replaying()) {
+      continue;
+    }
+    ASSERT(this, session().is_recording());
+    stash_sig();
+  }
 }
 
 void Task::exit_syscall_and_prepare_restart() {
@@ -1000,7 +1010,7 @@ void Task::exit_syscall_and_prepare_restart() {
   set_regs(r);
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
-  advance_syscall(this);
+  advance_syscall();
 
   // Restore these regs to what they would have been just before
   // the tracee trapped at the syscall.

@@ -1,0 +1,16 @@
+source `dirname $0`/util.sh
+
+record $TESTNAME 100 &
+
+for i in $(seq 1 30); do
+  sleep 0.01
+  kill -CHLD $rrpid $(pidof $TESTNAME-$nonce) >& /dev/null
+done
+
+# Wait for 'record' to actually terminate. Otherwise we might start
+# replaying before the trace file has been completely written.
+wait
+
+echo "Replaying ..."
+replay
+check 'EXIT-SUCCESS'

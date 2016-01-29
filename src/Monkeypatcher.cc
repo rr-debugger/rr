@@ -600,24 +600,29 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
   // catch that case, because only one of the versioned symbols will
   // actually match what we expect to see, and the matching one might be
   // the last one.  Therefore, we have this separate flag to alert us to
-  // this possbility.
+  // this possibility.
   bool seen_kernel_vsyscall = false;
 
   for (size_t i = 0; i < syms.size(); ++i) {
     if (syms.is_name(i, "__kernel_vsyscall")) {
-      assert(!seen_kernel_vsyscall);
+      remote_ptr<void> candidate = syms.file_offset(i);
+      // The symbol values can be absolute or relative addresses.
+      // The first part of the assertion is for absolute
+      // addresses, and the second part is for relative.
+      if ((candidate.as_int() & ~uintptr_t(0xfff)) != 0xffffe000 &&
+          (candidate.as_int() & ~uintptr_t(0xfff)) != 0) {
+        // With 4.2.8-300.fc23.x86_64, execve_loop_32 seems to once in a while
+        // see a VDSO with a crazy file offset in it which is a duplicate
+        // __kernel_vsyscall. Bizzarro. Ignore it.
+        continue;
+      }
+      ASSERT(t, !seen_kernel_vsyscall);
       seen_kernel_vsyscall = true;
       // The ELF information in the VDSO assumes that the VDSO
       // is always loaded at a particular address.  The kernel,
       // however, subjects the VDSO to ASLR, which means that
       // we have to adjust the offsets properly.
       auto vdso_start = t->vm()->vdso().start();
-      remote_ptr<void> candidate = syms.file_offset(i);
-      // The symbol values can be absolute or relative addresses.
-      // The first part of the assertion is for absolute
-      // addresses, and the second part is for relative.
-      assert((candidate.as_int() & ~uintptr_t(0xfff)) == 0xffffe000 ||
-             (candidate.as_int() & ~uintptr_t(0xfff)) == 0);
       uintptr_t candidate_offset = candidate.as_int() & uintptr_t(0xfff);
       candidate = vdso_start + candidate_offset;
 
@@ -690,7 +695,7 @@ void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
       if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
         static const uintptr_t vdso_max_size = 0xffffLL;
         uintptr_t sym_address = syms.file_offset(i);
-        assert((sym_address & ~vdso_max_size) == 0);
+        ASSERT(t, (sym_address & ~vdso_max_size) == 0);
         uintptr_t absolute_address = vdso_start.as_int() + sym_address;
 
         uint8_t patch[X86VsyscallMonkeypatch::size];
@@ -774,7 +779,7 @@ void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
         // The symbol values can be absolute or relative addresses.
         // The first part of the assertion is for absolute
         // addresses, and the second part is for relative.
-        assert((sym_address & ~vdso_max_size) == vdso_static_base ||
+        ASSERT(t, (sym_address & ~vdso_max_size) == vdso_static_base ||
                (sym_address & ~vdso_max_size) == 0);
         uintptr_t sym_offset = sym_address & vdso_max_size;
         uintptr_t absolute_address = vdso_start.as_int() + sym_offset;

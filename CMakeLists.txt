@@ -565,6 +565,7 @@ set(TESTS_WITH_PROGRAM
   condvar_stress
   crash
   crash_in_function
+  execve_loop
   exit_group
   exit_status
   explicit_checkpoints

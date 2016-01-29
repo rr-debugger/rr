@@ -1564,14 +1564,6 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   return PREVENT_SWITCH;
 }
 
-// TODO de-dup
-static void advance_syscall(Task* t) {
-  do {
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-  } while (t->is_ptrace_seccomp_event());
-  assert(t->ptrace_event() == 0);
-}
-
 /**
  * At thread exit time, undo the work that init_buffers() did.
  *
@@ -1605,7 +1597,7 @@ static void destroy_buffers(Task* t) {
   t->set_regs(exit_regs);
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
-  advance_syscall(t);
+  t->advance_syscall();
 
   // Restore these regs to what they would have been just before
   // the tracee trapped at SYS_exit.  When we've finished
@@ -1621,7 +1613,11 @@ static void destroy_buffers(Task* t) {
 
   // Restart the SYS_exit call.
   t->set_regs(exit_regs);
-  advance_syscall(t);
+  t->advance_syscall();
+  // XXX a signal might be received during the above, and stashed, and then
+  // lost because we exited. But I don't really see that there's anything we
+  // can do to prevent such a race :-(.
+  ASSERT(t, !t->has_stashed_sig());
 }
 
 template <typename Arch>

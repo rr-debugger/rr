@@ -115,23 +115,12 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   t->set_regs(initial_regs);
 }
 
-// TODO de-dup
-static void advance_syscall(Task* t) {
-  do {
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-  } while (t->is_ptrace_seccomp_event() ||
-           ReplaySession::is_ignored_signal(t->pending_sig()));
-  // XXX During recording, a SIGCHLD or SIGWINCH delivered here should not just
-  // be ignored; the tracee might be expecting it!
-  ASSERT(t, t->ptrace_event() == 0);
-}
-
 void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
                                         Registers& callregs) {
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);
 
-  advance_syscall(t);
+  t->advance_syscall();
 
   ASSERT(t, t->regs().ip() - callregs.ip() ==
                 syscall_instruction_length(t->arch()))

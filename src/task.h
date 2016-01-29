@@ -604,6 +604,13 @@ public:
   void exit_syscall_and_prepare_restart();
 
   /**
+   * Resume execution until we get a syscall entry or exit event.
+   * During recording, any signals received are stashed.
+   * seccomp events are ignored; we assume this syscall is under rr's control.
+   */
+  void advance_syscall();
+
+  /**
    * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or
    * /proc/tid/comm would say that the task's name is.
    */
