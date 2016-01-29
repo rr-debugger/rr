@@ -6,11 +6,13 @@ static void breakpoint(void) {}
 
 static volatile int caught_sig = 0;
 
-void catcher(int signum, siginfo_t* siginfo_ptr, void* ucontext_ptr) {
+void catcher(__attribute__((unused)) int signum,
+             __attribute__((unused)) siginfo_t* siginfo_ptr,
+             __attribute__((unused)) void* ucontext_ptr) {
   caught_sig = signum;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   struct sigaction sact;
   int counter;
 

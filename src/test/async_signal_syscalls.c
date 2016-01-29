@@ -10,14 +10,14 @@ static void handle_usr1(int sig) {
   caught_usr1 = 1;
 }
 
-static void* do_thread(void* p) {
+static void* do_thread(__attribute__((unused)) void* p) {
   while (1) {
     sched_yield();
   }
   return NULL;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
   struct timespec ts;
   struct timeval tv;
   int num_its;

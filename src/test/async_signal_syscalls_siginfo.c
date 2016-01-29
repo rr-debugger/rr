@@ -7,7 +7,8 @@ static siginfo_t siginfo;
 
 #define MAGIC_NUMBER 0x7654321 /* positive */
 
-static void handle_usr1(int sig, siginfo_t* si, void* context) {
+static void handle_usr1(int sig, siginfo_t* si,
+                        __attribute__((unused)) void* context) {
   test_assert(SIGUSR1 == sig);
   test_assert(si->si_code == siginfo.si_code);
   test_assert(si->si_pid == siginfo.si_pid);
@@ -18,7 +19,7 @@ static void handle_usr1(int sig, siginfo_t* si, void* context) {
   atomic_puts("caught usr1");
 }
 
-static void* thread_start(void* p) {
+static void* thread_start(__attribute__((unused)) void* p) {
   usleep(1000);
 
   siginfo.si_code = SI_QUEUE;
@@ -30,7 +31,7 @@ static void* thread_start(void* p) {
   return NULL;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
   struct timespec ts;
   struct timeval tv;
   int num_its;

@@ -2,13 +2,13 @@
 
 #include "rrutil.h"
 
-static void* start_thread(void* p) {
+static void* start_thread(__attribute__((unused)) void* p) {
   while (1) {
   }
   return NULL;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   pthread_t thread;
 
   pthread_create(&thread, NULL, start_thread, NULL);

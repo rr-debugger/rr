@@ -1831,7 +1831,7 @@ static long sys_recvmsg(const struct syscall_info* call) {
   ret = untraced_syscall3(syscallno, sockfd, msg2, flags);
 
   if (ret >= 0) {
-    long bytes = ret;
+    size_t bytes = ret;
     size_t i;
     if (msg->msg_name) {
       local_memcpy(msg->msg_name, msg2->msg_name, msg2->msg_namelen);
@@ -2138,12 +2138,17 @@ long sysconf(int name) {
 }
 
 /** Disable XShm since rr doesn't work with it */
-int XShmQueryExtension(void* dpy) { return 0; }
+int XShmQueryExtension(__attribute__((unused)) void* dpy) { return 0; }
 
 /** Make sure XShmCreateImage returns null in case an application doesn't do
     extension checks first. */
-void* XShmCreateImage(register void* dpy, register void* visual,
-                      unsigned int depth, int format, char* data, void* shminfo,
-                      unsigned int width, unsigned int height) {
+void* XShmCreateImage(__attribute__((unused)) register void* dpy,
+                      __attribute__((unused)) register void* visual,
+                      __attribute__((unused)) unsigned int depth,
+                      __attribute__((unused)) int format,
+                      __attribute__((unused)) char* data,
+                      __attribute__((unused)) void* shminfo,
+                      __attribute__((unused)) unsigned int width,
+                      __attribute__((unused)) unsigned int height) {
   return 0;
 }

@@ -68,7 +68,7 @@ static void server(int use_accept4, int pass_addr) {
   close(listenfd);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int use_accept4, pass_addr;
   for (use_accept4 = 0; use_accept4 <= 1; ++use_accept4) {
     for (pass_addr = 0; pass_addr <= 1; ++pass_addr) {

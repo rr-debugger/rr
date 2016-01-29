@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(__attribute__((unused)) int argc, char* argv[]) {
   int fd = open(argv[0], O_RDONLY);
 #ifdef SYS__llseek
   loff_t result = -1234;

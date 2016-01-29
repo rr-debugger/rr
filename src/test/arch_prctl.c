@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
 #ifdef __x86_64__
   unsigned long addr;
   test_assert(0 == syscall(SYS_arch_prctl, ARCH_GET_FS, &addr));

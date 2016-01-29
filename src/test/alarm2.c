@@ -2,12 +2,14 @@
 
 #include "rrutil.h"
 
-void catcher(int signum, siginfo_t* siginfo_ptr, void* ucontext_ptr) {
+void catcher(__attribute__((unused)) int signum,
+             __attribute__((unused)) siginfo_t* siginfo_ptr,
+             __attribute__((unused)) void* ucontext_ptr) {
   atomic_puts("EXIT-SUCCESS");
   exit(0);
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   struct sigaction sact;
   int r = 0;
 

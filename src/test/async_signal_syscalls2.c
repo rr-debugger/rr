@@ -29,7 +29,7 @@ static void handle_signal(int sig) {
   test_assert(1 == write(ready_fds[1], "K", 1));
 }
 
-static void* thread_start(void* p) {
+static void* thread_start(__attribute__((unused)) void* p) {
   struct timespec ts = { 0, 1000 };
   sigset_t mask;
   int i;
@@ -64,7 +64,7 @@ static void* thread_start(void* p) {
   return NULL;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   struct timespec ts;
   pthread_t thread;
   int fd;
