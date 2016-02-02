@@ -603,7 +603,6 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
   // this possibility.
   bool seen_kernel_vsyscall = false;
 
-  fprintf(stderr, "Vdso at %p", (void*)t->vm()->vdso().start().as_int());
   for (size_t i = 0; i < syms.size(); ++i) {
     if (syms.is_name(i, "__kernel_vsyscall")) {
       remote_ptr<void> candidate = syms.file_offset(i);
@@ -615,7 +614,6 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
         // With 4.2.8-300.fc23.x86_64, execve_loop_32 seems to once in a while
         // see a VDSO with a crazy file offset in it which is a duplicate
         // __kernel_vsyscall. Bizzarro. Ignore it.
-        fprintf(stderr, "... skipping bad entry %d: offset %p", (int)i, (void*)candidate.as_int());
         continue;
       }
       ASSERT(t, !seen_kernel_vsyscall);
@@ -633,8 +631,6 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
       }
     }
   }
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Found __vsyscall at %p\n", (void*)kernel_vsyscall.as_int());
 
   return kernel_vsyscall;
 }
