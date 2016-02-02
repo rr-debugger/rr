@@ -14,7 +14,8 @@ arch = get_exe_arch()
 # The locations the threads are stopped at depends on the architecture.
 stopped_locations = {
     # on i386, we sometimes stop in the middle of nowhere
-    'i386': ['(0x[0-9a-f]+ in )?__kernel_vsyscall', '(0x[0-9a-f]+ in )?_traced_raw_syscall', '0x[0-9a-f]+ in \?\?'],
+    'i386': ['(0x[0-9a-f]+ in )?__kernel_vsyscall', '(0x[0-9a-f]+ in )?_traced_raw_syscall', '0x[0-9a-f]+ in \?\?',
+             '(0x[0-9a-f]+ in )?__lll_lock_wait', '(0x[0-9a-f]+ in )?pthread_barrier_wait'],
     'i386:x86-64': ['(0x[0-9a-f]+ in )?__lll_lock_wait', '(0x[0-9a-f]+ in )?pthread_barrier_wait', '0x70000010 in \?\?'],
 }
 
