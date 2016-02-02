@@ -13,7 +13,7 @@ static int create_segment(size_t num_bytes) {
 
 static void breakpoint(void) {}
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
   int fd = create_segment(num_bytes);
   char* p = mmap(NULL, num_bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);

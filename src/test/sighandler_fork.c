@@ -6,7 +6,7 @@ static void sighandler(int sig) {
   atomic_printf("caught signal %d, exiting\n", sig);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t c;
 
   signal(SIGCHLD, sighandler);

@@ -124,7 +124,7 @@ static int run_child(void) {
   return 0;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child;
   int status;
 

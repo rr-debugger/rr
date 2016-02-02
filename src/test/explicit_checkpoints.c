@@ -12,7 +12,7 @@ static void breakpoint3(void) {
   (void)break_here;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   /* NO SYSCALLS BETWEEN HERE AND RDTSC: next event for
    * replay must be rdtsc */
   rdtsc();

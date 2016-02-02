@@ -38,7 +38,7 @@ static void my_raise(int sig) {
 #endif
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
 
   for (i = SIGRTMIN; i <= SIGRTMAX; ++i) {

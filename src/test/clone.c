@@ -15,7 +15,7 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
-static int child(void* arg) {
+static int child(__attribute__((unused)) void* arg) {
   sigset_t set;
 
   /* Be careful in here. This thread was set up by a raw clone() call
@@ -42,7 +42,7 @@ static int child(void* arg) {
   return 0;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   const size_t stack_size = 1 << 20;
   void* stack = mmap(NULL, stack_size, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

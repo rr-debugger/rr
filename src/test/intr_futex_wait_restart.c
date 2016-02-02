@@ -24,7 +24,7 @@ static void cond_wait(int secs) {
   test_assert(ETIMEDOUT == pthread_cond_timedwait(&cond, &lock, &ts));
 }
 
-static void sighandler(int sig) {
+static void sighandler(__attribute__((unused)) int sig) {
   test_assert(sys_gettid() == reader_tid);
   ++reader_caught_signal;
 
@@ -33,7 +33,7 @@ static void sighandler(int sig) {
   atomic_puts("r: ... wait done");
 }
 
-static void* reader_thread(void* dontcare) {
+static void* reader_thread(__attribute__((unused)) void* dontcare) {
   char token = start_token;
   struct sigaction act;
   int readsock = sockfds[1];
@@ -69,7 +69,7 @@ static void* reader_thread(void* dontcare) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char token = start_token;
   struct timeval ts;
 

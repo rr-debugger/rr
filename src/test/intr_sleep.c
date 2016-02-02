@@ -19,14 +19,14 @@ static int interrupted_sleep(void) {
 }
 
 static int caught_signal;
-static void handle_signal(int sig) {
+static void handle_signal(__attribute__((unused)) int sig) {
   ++caught_signal;
 
   breakpoint();
   /* No more syscalls after here. */
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int err;
 
   signal(SIGALRM, SIG_IGN);

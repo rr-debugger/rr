@@ -4,7 +4,7 @@
 
 static int pipe_fds[2];
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char buf;
   pid_t pid;
   int status;

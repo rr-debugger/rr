@@ -9,7 +9,7 @@ int* argc_ptr;
 
 static void breakpoint(void) {}
 
-int main(int argc, char* argv[]) {
+int main(int argc, __attribute__((unused)) char* argv[]) {
   /* 'buf' could be mapped twice in our address space, once in our data segment
      and once in the text segment. Tests that search the whole address space for
      the contents of 'buf' don't want to find a spurious match in .text, so

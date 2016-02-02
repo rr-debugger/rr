@@ -5,7 +5,7 @@
 static int pseudospinlock;
 static pthread_barrier_t bar;
 
-static void* thread(void* unused) {
+static void* thread(__attribute__((unused)) void* unused) {
   pthread_barrier_wait(&bar);
 
   sched_yield();
@@ -14,7 +14,7 @@ static void* thread(void* unused) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   sigset_t old, mask;
   pthread_t t;
 

@@ -25,7 +25,8 @@ static void queue_siginfo_tg(int sig, int val) {
 static int usr1_val;
 static int usr2_val;
 
-static void handle_signal(int sig, siginfo_t* si, void* ctx) {
+static void handle_signal(int sig, siginfo_t* si,
+                          __attribute__((unused)) void* ctx) {
   int val = si->si_value.sival_int;
   if (SIGUSR1 == sig) {
     usr1_val = val;
@@ -36,7 +37,7 @@ static void handle_signal(int sig, siginfo_t* si, void* ctx) {
   }
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct sigaction sa;
 
   sa.sa_sigaction = handle_signal;

@@ -7,7 +7,7 @@
 #define GRND_RANDOM 0x0002
 #endif
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char buf[128];
   int ret;
 

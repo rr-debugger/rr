@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t c;
   int dummy = 0, i;
   int status;

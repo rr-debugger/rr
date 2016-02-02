@@ -5,7 +5,7 @@
 #define NUM_PROCESSES 4
 #define NUM_ITERATIONS 500
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
   int j;
 

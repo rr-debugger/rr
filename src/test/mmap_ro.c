@@ -4,7 +4,7 @@
 
 #define DUMMY_FILE "dummy.txt"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
   int fd = open(DUMMY_FILE, O_CREAT | O_EXCL | O_RDWR, 0600);
   int one = 1;

@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   uint8_t* map1 = mmap(NULL, page_size * 2, PROT_READ | PROT_WRITE,
                        MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);

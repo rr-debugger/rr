@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   gid_t groups[1024];
   int num_groups = getgroups(ALEN(groups), groups);
   int i;

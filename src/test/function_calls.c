@@ -26,7 +26,7 @@ static void funcall(int n) {
   funcallA(n);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   funcall(1);
   funcall(1);
 

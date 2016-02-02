@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t sid = getsid(0);
   atomic_printf("getsid(0) session ID: %d\n", sid);
   test_assert(sid > 0);

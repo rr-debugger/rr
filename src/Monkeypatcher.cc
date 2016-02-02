@@ -780,7 +780,7 @@ void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
         // The first part of the assertion is for absolute
         // addresses, and the second part is for relative.
         ASSERT(t, (sym_address & ~vdso_max_size) == vdso_static_base ||
-               (sym_address & ~vdso_max_size) == 0);
+                      (sym_address & ~vdso_max_size) == 0);
         uintptr_t sym_offset = sym_address & vdso_max_size;
         uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
 

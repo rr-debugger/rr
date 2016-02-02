@@ -55,7 +55,7 @@ static void cond_wait(int secs) {
   test_assert(ETIMEDOUT == pthread_cond_timedwait(&cond, &lock, &ts));
 }
 
-static void* reader_thread(void* dontcare) {
+static void* reader_thread(__attribute__((unused)) void* dontcare) {
   char token = start_token;
   int readsock = sockfds[1];
   char c = sentinel_token;
@@ -81,7 +81,7 @@ static void* reader_thread(void* dontcare) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char token = start_token;
   struct timeval ts;
   int i;

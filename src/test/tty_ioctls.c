@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd = open("/dev/ptmx", O_RDONLY);
   test_assert(fd >= 0);
 

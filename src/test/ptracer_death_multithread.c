@@ -23,7 +23,7 @@ static pid_t read_tid(void) {
   return tid;
 }
 
-static void* child_thread(void* p) {
+static void* child_thread(__attribute__((unused)) void* p) {
   char ch = 0;
   write_tid();
   test_assert(1 == read(thread_wait_pipe[0], &ch, 1));
@@ -90,7 +90,7 @@ static int ptracer(void) {
   return 44;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char ch = 0;
   pid_t ptracer_pid;
   int status;

@@ -20,7 +20,7 @@ static void assert_prname_is(const char* tag, const char* name) {
   test_assert(!strcmp(prname, name));
 }
 
-static void* thread(void* unused) {
+static void* thread(__attribute__((unused)) void* unused) {
   pid_t child;
 
   assert_prname_is("thread", main_name);

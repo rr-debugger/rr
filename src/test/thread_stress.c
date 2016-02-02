@@ -7,13 +7,13 @@
 #define THREAD_GROUPS 150
 #define THREADS_PER_GROUP 10
 
-static void* thread(void* unused) {
+static void* thread(__attribute__((unused)) void* unused) {
   struct timeval tv;
   gettimeofday(&tv, NULL);
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
 
   for (i = 0; i < THREAD_GROUPS; ++i) {

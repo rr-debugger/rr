@@ -5,7 +5,7 @@
 static const int MOD_TIME = 888888;
 static const int ACCESS_TIME = 999999;
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char path[] = "rr-test-file-XXXXXX";
   int fd = mkstemp(path);
   struct utimbuf utim = { ACCESS_TIME, MOD_TIME };

@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   void* start = (void*)syscall(SYS_brk, 0);
   void* p = (void*)syscall(SYS_brk, start + 5000);
   int res;

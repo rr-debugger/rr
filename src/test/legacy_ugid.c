@@ -39,7 +39,7 @@ static void verify_results(size_t n, union legacy_id* ids) {
   }
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   union legacy_id resuid_results[3];
   union legacy_id resgid_results[3];
 

@@ -11,12 +11,12 @@ static int create_segment(size_t num_bytes) {
   return fd;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t num_bytes = 120; /* Not a multiple of the page size */
   int fd = create_segment(num_bytes);
   int* wpage = mmap(NULL, num_bytes, PROT_WRITE, MAP_SHARED, fd, 0);
   int* rpage = mmap(NULL, num_bytes, PROT_READ, MAP_SHARED, fd, 0);
-  int i;
+  size_t i;
 
   test_assert(wpage != (void*)-1 && rpage != (void*)-1 && rpage != wpage);
 
@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
 
   for (i = 0; i < num_bytes / sizeof(int); ++i) {
     wpage[i] = i;
-    test_assert(rpage[i] == i);
+    test_assert(rpage[i] == (ssize_t)i);
     atomic_printf("%d,", rpage[i]);
   }
 

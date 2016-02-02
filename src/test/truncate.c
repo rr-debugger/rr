@@ -17,7 +17,7 @@ ssize_t get_file_size(const char* filename) {
   return result;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd;
   ssize_t size;
 

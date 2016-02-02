@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   void* p = mmap(NULL, 3 * PAGE_SIZE, PROT_READ | PROT_WRITE,
                  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   void* p2 = mremap(p, 3 * PAGE_SIZE, 2 * PAGE_SIZE, 0);

@@ -6,7 +6,7 @@
    of these will be received during an AutoRemoteSyscalls sycall, which is
    what we want to test here. */
 
-int main(int argc, char* argv[], char* envp[]) {
+int main(__attribute__((unused)) int argc, char* argv[], char* envp[]) {
   int count = atoi(argv[1]);
 
   if (count > 0) {

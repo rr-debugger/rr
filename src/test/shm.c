@@ -12,7 +12,7 @@ static void before_writing(void) {}
 static void after_writing(void) {}
 
 static int run_child(void) {
-  int i;
+  size_t i;
   char* p;
   char* p2;
   pid_t child2;
@@ -83,7 +83,7 @@ static int run_child(void) {
   return 0;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child;
   int status;
 

@@ -4,7 +4,7 @@
 
 #define NUM_ITERATIONS 10
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fds[2];
   struct pollfd pfd;
   int i;

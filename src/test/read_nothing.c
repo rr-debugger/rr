@@ -4,7 +4,7 @@
 
 #define SIZE 100000000
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int pipe_fds[2];
   int i;
   char* buf = mmap(NULL, SIZE, PROT_READ | PROT_WRITE,

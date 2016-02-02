@@ -4,14 +4,14 @@
 
 pthread_barrier_t bar;
 
-static void* thread(void* unused) {
+static void* thread(__attribute__((unused)) void* unused) {
   pthread_barrier_wait(&bar);
 
   sleep(-1);
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t t;
 
   pthread_barrier_init(&bar, NULL, 2);

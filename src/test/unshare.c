@@ -6,7 +6,7 @@ extern int capset(cap_user_header_t header, const cap_user_data_t data);
 
 static char tmp_name[] = "/tmp/rr-unshare-tmp-XXXXXX";
 
-static void* start_thread(void* p) {
+static void* start_thread(__attribute__((unused)) void* p) {
   test_assert(0 == unshare(CLONE_FILES));
   test_assert(0 == close(STDOUT_FILENO));
   return NULL;
@@ -52,7 +52,7 @@ static int run_test(void) {
 
   /* Emulate what sandboxes trying to close all open file descriptors */
   test_assert(0 == getrlimit(RLIMIT_NOFILE, &nofile));
-  for (fd = STDOUT_FILENO + 1; fd < nofile.rlim_cur; ++fd) {
+  for (fd = STDOUT_FILENO + 1; fd < (int)nofile.rlim_cur; ++fd) {
     ret = close(fd);
     test_assert(ret == 0 || (ret == -1 && errno == EBADF));
   }
@@ -81,7 +81,7 @@ static int run_test(void) {
   return 77;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child;
   int ret;
   int status;

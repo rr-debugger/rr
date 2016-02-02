@@ -2,7 +2,9 @@
 
 #include "rrutil.h"
 
-static void* start_thread(void* dontcare) { return NULL; }
+static void* start_thread(__attribute__((unused)) void* dontcare) {
+  return NULL;
+}
 
 static void constructor(void) __attribute__((constructor));
 

@@ -5,7 +5,7 @@
 #define FILENAME "foo"
 #define MODE (S_IFIFO)
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int result;
   struct stat* st;
 

@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   /* Descendant process will write one byte to the pipe to signal that it's
    * complete */
   int pipe_fds[2];

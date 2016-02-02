@@ -36,9 +36,9 @@ static void handler(int sig, siginfo_t* si, void* p) {
   test_assert(si->si_code == 1 /* SYS_SECCOMP */);
 #ifdef si_call_addr
 #ifdef __i386__
-  test_assert((uintptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_EIP]);
+  test_assert((intptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_EIP]);
 #elif defined(__x86_64__)
-  test_assert((uintptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_RIP]);
+  test_assert((intptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_RIP]);
 #else
 #error define architecture here
 #endif
@@ -97,7 +97,7 @@ static void install_filter(void) {
   test_assert(ret == 0);
 }
 
-static void* waiting_thread(void* p) {
+static void* waiting_thread(__attribute__((unused)) void* p) {
   char buf;
   test_assert(1 == read(pipe_fds[0], &buf, 1));
   /* Check this thread wasn't affected by the SET_SECCOMP */
@@ -105,12 +105,12 @@ static void* waiting_thread(void* p) {
   return NULL;
 }
 
-static void* run_thread(void* p) {
+static void* run_thread(__attribute__((unused)) void* p) {
   atomic_printf("EXIT-");
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct sigaction sa;
   pthread_t thread;
   pthread_t w_thread;

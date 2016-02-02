@@ -2,13 +2,19 @@
 
 #include "rrutil.h"
 
-static void handler1(int sig, siginfo_t* si, void* p) {}
+static void handler1(__attribute__((unused)) int sig,
+                     __attribute__((unused)) siginfo_t* si,
+                     __attribute__((unused)) void* p) {}
 
-static void handler2(int sig, siginfo_t* si, void* p) {}
+static void handler2(__attribute__((unused)) int sig,
+                     __attribute__((unused)) siginfo_t* si,
+                     __attribute__((unused)) void* p) {}
 
-static void handler3(int sig, siginfo_t* si, void* p) {}
+static void handler3(__attribute__((unused)) int sig,
+                     __attribute__((unused)) siginfo_t* si,
+                     __attribute__((unused)) void* p) {}
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct sigaction sa;
   struct sigaction old_sa;
 

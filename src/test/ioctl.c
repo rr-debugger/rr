@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int pipe_fds[2];
 
   test_assert(0 == pipe(pipe_fds));

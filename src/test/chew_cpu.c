@@ -26,8 +26,7 @@ int spin(void) {
   return dummy;
 }
 
-int main(int argc, char* argv[]) {
-
+int main(void) {
   atomic_printf("EXIT-SUCCESS dummy=%d\n", spin());
   return 0;
 }

@@ -21,7 +21,7 @@ static void* thread(void* idp) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_mutexattr_t attr;
   pthread_t threads[NUM_THREADS];
   int i;

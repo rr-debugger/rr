@@ -51,7 +51,7 @@ static void print_time(void) {
   atomic_printf("now is %g sec\n", now_sec);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   var = -42;
 
   breakpoint();

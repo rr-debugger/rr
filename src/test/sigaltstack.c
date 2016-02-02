@@ -4,7 +4,7 @@
 
 static char buf[128 * 1024];
 
-int main(int argc, char* argv[]) {
+int main(void) {
   stack_t* ss;
   stack_t* oss;
 

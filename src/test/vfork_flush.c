@@ -8,7 +8,7 @@ static void unblock_signals(void) {
   sigprocmask(SIG_SETMASK, &mask, NULL);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child;
   int status;
 

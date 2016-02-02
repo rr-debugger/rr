@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   uint8_t* map_base;
   uint8_t* map;

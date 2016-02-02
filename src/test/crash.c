@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   volatile int* p = NULL;
   *p = 42;
   test_assert("Not reached" && 0);

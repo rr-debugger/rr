@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-static void* thread(void* p) {
+static void* thread(__attribute__((unused)) void* p) {
   sigset_t mask;
 
   sigemptyset(&mask);
@@ -19,7 +19,8 @@ static void* thread(void* p) {
 static int usr1_hit;
 static int usr2_hit;
 
-static void handle_signal(int sig, siginfo_t* si, void* ctx) {
+static void handle_signal(int sig, __attribute__((unused)) siginfo_t* si,
+                          __attribute__((unused)) void* ctx) {
   if (SIGUSR1 == sig) {
     ++usr1_hit;
   } else if (SIGUSR2 == sig) {
@@ -29,7 +30,7 @@ static void handle_signal(int sig, siginfo_t* si, void* ctx) {
   }
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct sigaction sa;
   pthread_t t;
   sigset_t mask;

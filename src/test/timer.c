@@ -4,11 +4,12 @@
 
 static volatile int caught_sig = 0;
 
-void catcher(int signum, siginfo_t* siginfo_ptr, void* ucontext_ptr) {
+void catcher(int signum, __attribute__((unused)) siginfo_t* siginfo_ptr,
+             __attribute__((unused)) void* ucontext_ptr) {
   caught_sig = signum;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   timer_t* id;
   struct itimerspec its = { { 100000, 0 }, { 0, 100000000 } };
   struct itimerspec its2 = { { 100000, 0 }, { 100000, 0 } };

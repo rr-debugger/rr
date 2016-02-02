@@ -5,7 +5,9 @@
 static int depth = 0;
 static char buf[SIGSTKSZ];
 
-static void SEGV_handler(int sig, siginfo_t* si, void* context) {
+static void SEGV_handler(__attribute__((unused)) int sig,
+                         __attribute__((unused)) siginfo_t* si,
+                         __attribute__((unused)) void* context) {
   atomic_printf("depth = %d\n", depth);
   atomic_puts("EXIT-SUCCESS");
   exit(0);
@@ -22,7 +24,7 @@ static int recurse(void) {
   return result;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   /* Testing shows that the output value of |depth| is not very sensitive to
      small values of the limit, but it's very sensitive around the 500K mark.
   */

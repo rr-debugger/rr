@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   atomic_puts("Line 1");
   atomic_puts("Line 2");
   atomic_puts("Line 3");

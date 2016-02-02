@@ -2,12 +2,12 @@
 
 #include "rrutil.h"
 
-static void breakpointA(int v4) {
+static void breakpointA(__attribute__((unused)) int v4) {
   int break_here = 1;
   (void)break_here;
 }
 
-static void breakpointB(int v4) {
+static void breakpointB(__attribute__((unused)) int v4) {
   int break_here = 1;
   (void)break_here;
 }
@@ -21,7 +21,7 @@ int vm2 = -2;
 uint64_t u64max = (uint64_t)(int64_t)-1;
 int* p = (int*)&u64max;
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
   for (i = 0; i < 10000; ++i) {
     breakpointA(4);

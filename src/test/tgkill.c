@@ -13,7 +13,7 @@ static void sighandler(int sig) {
   ++num_signals_caught;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   signal(SIGUSR1, sighandler);
   signal(SIGUSR2, sighandler);
   tgkill(getpid(), sys_gettid(), SIGUSR1);

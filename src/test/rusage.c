@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct rusage* r;
 
   ALLOCATE_GUARD(r, 0);

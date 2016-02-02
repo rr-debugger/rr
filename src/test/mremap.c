@@ -19,14 +19,14 @@ static void check_mapping(int* rpage, int* wpage, ssize_t nr_ints) {
 static void overwrite_file(const char* path, ssize_t num_bytes) {
   const int magic = 0x5a5a5a5a;
   int fd = open(path, O_TRUNC | O_RDWR, 0600);
-  int i;
+  size_t i;
   for (i = 0; i < num_bytes / sizeof(magic); ++i) {
     write(fd, &magic, sizeof(magic));
   }
   close(fd);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
   char file_name[] = "/tmp/rr-test-mremap-XXXXXX";
   int fd = mkstemp(file_name);

@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int ret = syscall(RR_seccomp, SECCOMP_SET_MODE_FILTER, 0, NULL);
   if (ret == -1 && errno == ENOSYS) {
     ret = prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, NULL);

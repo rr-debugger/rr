@@ -27,7 +27,7 @@ static size_t my_read(int fd, void* buf, size_t size) {
   return ret;
 }
 
-static void* do_thread(void* p) {
+static void* do_thread(__attribute__((unused)) void* p) {
   char ch;
   breakpoint_thread();
   test_assert(1 == write(thread_to_main_fds[1], "y", 1));
@@ -35,7 +35,7 @@ static void* do_thread(void* p) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t thread;
   char ch;
 

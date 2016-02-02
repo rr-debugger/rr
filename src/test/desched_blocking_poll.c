@@ -4,7 +4,7 @@
 
 #define NUM_PFDS 200
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fds[2];
   struct pollfd pfds[NUM_PFDS];
   char ch = 'x';

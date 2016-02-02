@@ -26,7 +26,7 @@ static int spin(void) {
  * several checkpoints to find the last completed singlestep for
  * the thread.
  */
-static void* do_thread(void* p) {
+static void* do_thread(__attribute__((unused)) void* p) {
   char ch;
   breakpoint();
   /* Will never return */
@@ -34,7 +34,7 @@ static void* do_thread(void* p) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t thread;
 
   pthread_create(&thread, NULL, do_thread, NULL);

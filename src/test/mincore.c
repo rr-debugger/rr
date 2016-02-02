@@ -4,7 +4,7 @@
 
 #define BUF_SIZE 10
 
-int main(int argc, char* argv[]) {
+int main(int argc, __attribute__((unused)) char* argv[]) {
   unsigned char* buf;
   void* p = (void*)((long)&argc & ~(long)(PAGE_SIZE - 1));
   ALLOCATE_GUARD(buf, 'q');

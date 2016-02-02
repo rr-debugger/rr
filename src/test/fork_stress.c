@@ -4,7 +4,7 @@
 
 #define NUM_ITERATIONS 250
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
 
   for (i = 0; i < NUM_ITERATIONS; ++i) {

@@ -6,18 +6,18 @@ static int v;
 static int* p;
 static int pipe_fds[2];
 
-static void* run_thread(void* p) {
+static void* run_thread(__attribute__((unused)) void* p) {
   test_assert(sys_gettid() == syscall(SYS_set_tid_address, &v));
   return NULL;
 }
 
-static void* run_thread2(void* q) {
+static void* run_thread2(__attribute__((unused)) void* q) {
   test_assert(sys_gettid() == syscall(SYS_set_tid_address, p));
   test_assert(1 == write(pipe_fds[1], "x", 1));
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t thread;
   char ch;
 

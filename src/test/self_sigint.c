@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   /* rr should ignore SIGINT */
   kill(getppid(), SIGINT);
   atomic_puts("EXIT-SUCCESS");

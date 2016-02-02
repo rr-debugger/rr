@@ -15,13 +15,15 @@ static int recurse(void) {
   return result;
 }
 
-static void SEGV_handler(int sig, siginfo_t* si, void* context) {
+static void SEGV_handler(__attribute__((unused)) int sig,
+                         __attribute__((unused)) siginfo_t* si,
+                         __attribute__((unused)) void* context) {
   atomic_puts(
       "Should not reach SEGV handler, since there's no safe altstack to use");
   exit(1);
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, __attribute__((unused)) char* argv[]) {
   pid_t child;
   int status;
 

@@ -13,7 +13,7 @@
 static int to_child[2];
 static int from_child[2];
 
-static void* run_thread(void* p) {
+static void* run_thread(__attribute__((unused)) void* p) {
   char ch;
   sigset_t s;
 
@@ -35,7 +35,8 @@ static void* run_thread(void* p) {
 
 static int handler_count;
 
-static void handler(int sig, siginfo_t* si, void* p) {
+static void handler(int sig, __attribute__((unused)) siginfo_t* si,
+                    __attribute__((unused)) void* p) {
   atomic_printf("Handling signal %s\n", sig == SIGUSR1 ? "SIGUSR1" : "SIGUSR2");
   ++handler_count;
   if (handler_count == 2) {
@@ -43,7 +44,7 @@ static void handler(int sig, siginfo_t* si, void* p) {
   }
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t t;
   char ch;
   struct sigaction sa;

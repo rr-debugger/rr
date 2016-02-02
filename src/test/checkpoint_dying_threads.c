@@ -10,7 +10,7 @@ static int wait_forever_fds[2];
 
 static char ch = 'X';
 
-static void* run_thread(void* p) {
+static void* run_thread(__attribute__((unused)) void* p) {
   test_assert(1 == write(thread_to_main_fds[1], &ch, 1));
   read(wait_forever_fds[0], &ch, 1);
   test_assert(0);
@@ -27,7 +27,7 @@ static int run_child(void) {
   return 0;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   pthread_t thread;
   pid_t child;
 

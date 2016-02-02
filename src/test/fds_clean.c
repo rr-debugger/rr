@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char** argv) {
+int main(void) {
   int fd;
 
   for (fd = 3; fd < 100; ++fd) {

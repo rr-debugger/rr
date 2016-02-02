@@ -46,7 +46,7 @@ static void child(void) {
   exit(0);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   const char* id = "P";
   int ret;
   int err;

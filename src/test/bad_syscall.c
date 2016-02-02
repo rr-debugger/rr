@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int ret = syscall(-10);
   test_assert(-1 == ret && ENOSYS == errno);
   ret = syscall(9999);

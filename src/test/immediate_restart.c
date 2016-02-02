@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char** argv) {
+int main(void) {
   int child;
 
   atomic_printf("%d: forking...\n", getpid());

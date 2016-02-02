@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd = timerfd_create(CLOCK_MONOTONIC, 0);
   struct itimerspec spec, old;
   uint64_t num_expirations;

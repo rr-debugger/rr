@@ -6,7 +6,7 @@
 
 static const char dummy_filename[] = "dummy.txt";
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
 
   // Request an address where casting to int could corrupt the address on 64-bit

@@ -4,7 +4,7 @@
 
 static volatile int low_priority_thread_scheduled;
 
-static void* low_priority_thread(void* p) {
+static void* low_priority_thread(__attribute__((unused)) void* p) {
   setpriority(PRIO_PROCESS, 0, 4);
 
   low_priority_thread_scheduled = 1;

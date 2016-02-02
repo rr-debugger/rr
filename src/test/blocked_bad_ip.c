@@ -2,11 +2,13 @@
 
 #include "rrutil.h"
 
-static void fault_handler(int sig, siginfo_t* si, void* context) {
+static void fault_handler(__attribute__((unused)) int sig,
+                          __attribute__((unused)) siginfo_t* si,
+                          __attribute__((unused)) void* context) {
   atomic_puts("FAILED: handler should not have been called for blocked signal");
 }
 
-static void* start_thread(void* p) {
+static void* start_thread(__attribute__((unused)) void* p) {
   sigset_t s;
 
   syscall(SYS_write, STDOUT_FILENO, "EXIT-", 5);
@@ -22,7 +24,7 @@ static void* start_thread(void* p) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct sigaction act;
   pthread_t thread;
 

@@ -2,13 +2,13 @@
 
 #include "rrutil.h"
 
-static void* run_thread(void* p) {
+static void* run_thread(__attribute__((unused)) void* p) {
   atomic_puts("EXIT-SUCCESS");
   exit(0);
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t thread;
 
   pthread_create(&thread, NULL, run_thread, NULL);

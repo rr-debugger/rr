@@ -30,7 +30,7 @@ static void unblock_signals(void) {
   atomic_printf("  %d: unblocked all sigs\n", sys_gettid());
 }
 
-static void* thread(void* unused) {
+static void* thread(__attribute__((unused)) void* unused) {
   unblock_signals();
   syscall_spam();
   return NULL;

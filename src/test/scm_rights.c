@@ -65,7 +65,7 @@ static void child(int sock, int fd_minus_one) {
   exit(0);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int sockfds[2];
   int sock;
   pid_t c;

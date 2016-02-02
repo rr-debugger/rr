@@ -13,7 +13,7 @@ struct big {
   char bytes[8192];
 };
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct big big;
 
   memset(&big, 0x5a, sizeof(big));

@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char buf[32];
   int garbage_fd = 1 << 30;
 

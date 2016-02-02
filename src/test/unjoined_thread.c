@@ -2,12 +2,12 @@
 
 #include "rrutil.h"
 
-static void* thread(void* unused) {
+static void* thread(__attribute__((unused)) void* unused) {
   sleep(-1);
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t t;
 
   pthread_create(&t, NULL, thread, NULL);

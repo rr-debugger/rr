@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char setname[16] = "prctl-test";
   char getname[16];
   unsigned long slack = sizeof(unsigned long) == 4

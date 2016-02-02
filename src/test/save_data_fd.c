@@ -4,7 +4,7 @@
 
 #define DEV_RANDOM "/dev/urandom"
 
-int main(int argc, char** argv) {
+int main(void) {
   int fd = open(DEV_RANDOM, O_RDONLY);
   char buf[128];
   ssize_t nread;

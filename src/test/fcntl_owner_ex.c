@@ -10,7 +10,7 @@ static void dump_owner(const char* tag, int fd) {
   atomic_printf("%s: { type: %d, pid: %d }\n", tag, own.type, own.pid);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int sockfds[2];
   int fd;
   struct f_owner_ex own;

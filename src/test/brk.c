@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   void* prev;
   void* start = sbrk(0);
   test_assert((intptr_t)start != -1);

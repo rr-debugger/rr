@@ -4,7 +4,7 @@
 
 void crash(void) { *(int*)NULL = 0; }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

@@ -11,8 +11,8 @@ static int create_segment(size_t num_bytes) {
   return fd;
 }
 
-int main(int argc, char* argv[]) {
-  size_t page_size = sysconf(_SC_PAGESIZE);
+int main(void) {
+  ssize_t page_size = sysconf(_SC_PAGESIZE);
   int fd = create_segment(3 * page_size);
 
   uint8_t* wpage1 = mmap(NULL, page_size, PROT_WRITE, MAP_SHARED, fd, 0);

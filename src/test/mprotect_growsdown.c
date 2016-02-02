@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char* p;
 
   /* map 3 pages since the first page will be made into a guard page by the

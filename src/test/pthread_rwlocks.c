@@ -6,7 +6,7 @@ static pthread_rwlock_t lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static int pipe_fds[2];
 
-static void* start_thread(void* p) {
+static void* start_thread(__attribute__((unused)) void* p) {
   pthread_rwlock_rdlock(&lock);
   pthread_rwlock_unlock(&lock);
 
@@ -18,7 +18,7 @@ static void* start_thread(void* p) {
   return NULL;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   pthread_t thread;
   char ch;
 

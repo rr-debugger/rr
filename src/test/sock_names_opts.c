@@ -23,7 +23,7 @@ static void client(const struct sockaddr_un* addr) {
   exit(7);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct sockaddr_un addr;
   struct sockaddr_un got_name;
   socklen_t got_name_len = sizeof(got_name);

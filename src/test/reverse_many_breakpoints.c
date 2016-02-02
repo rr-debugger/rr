@@ -4,7 +4,7 @@
 
 static void breakpoint(void) {}
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
   int result = 0;
   for (i = 0; i < 100000; ++i) {

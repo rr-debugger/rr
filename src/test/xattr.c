@@ -5,7 +5,7 @@
 static const char attr_name[] = "user.testAttr";
 static const char attr_value[] = "hello kitty";
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char path[PATH_MAX];
   const char* home = getenv("HOME");
   int fd;

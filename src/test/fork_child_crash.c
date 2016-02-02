@@ -7,7 +7,7 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child = fork();
   int status;
 

@@ -27,7 +27,7 @@ static void signal_handler(int sig) {
   test_assert(1 == write(thread_to_main_fds[1], &ch, 1));
 }
 
-static void* run_thread(void* p) {
+static void* run_thread(__attribute__((unused)) void* p) {
   char ch = 'X';
   int futex_val = 0;
   test_assert(SIG_ERR != signal(SIGCHLD, signal_handler));
@@ -37,7 +37,7 @@ static void* run_thread(void* p) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t thread;
   char ch;
   int i;

@@ -7,7 +7,7 @@ static void breakpoint(void) {}
 static int parent_to_child[2];
 static int child_to_parent[2];
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t pid;
   int status;
   int i;

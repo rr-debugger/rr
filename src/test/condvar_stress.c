@@ -57,7 +57,7 @@ static void* thread(void* idp) {
   pthread_exit((void*)(intptr_t)num_written);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t threads[NUM_THREADS];
   int i;
   int threads_num_written = 0;

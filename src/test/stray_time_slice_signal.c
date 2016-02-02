@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
   int fd = open("/dev/zero", O_RDONLY);
   int sum = 0;

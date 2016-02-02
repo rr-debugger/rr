@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd;
 
   fd = fcntl(1, F_DUPFD, 3);

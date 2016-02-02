@@ -4,7 +4,7 @@
 
 static int pipe_fds[2];
 
-static void* child_thread(void* p) {
+static void* child_thread(__attribute__((unused)) void* p) {
   char ch;
   test_assert(1 == read(pipe_fds[0], &ch, 1));
   test_assert(ch == 'K');
@@ -12,7 +12,7 @@ static void* child_thread(void* p) {
   return NULL;
 }
 
-static void* child_thread_running(void* p) {
+static void* child_thread_running(__attribute__((unused)) void* p) {
   while (1) {
   }
   return NULL;
@@ -29,7 +29,7 @@ static void run_child(void) {
   nanosleep(&ts, NULL);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child;
   int status;
   struct timespec ts = { 0, 50000000 };

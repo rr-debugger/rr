@@ -4,11 +4,11 @@
 
 #define FILENAME "foo.txt"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   int fd = open(FILENAME, O_CREAT | O_EXCL | O_RDWR, 0600);
   int* wpage;
-  int i;
+  size_t i;
   int* rpage;
 
   unlink(FILENAME);
@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
   msync(wpage, page_size, MS_INVALIDATE);
 
   for (i = 0; i < page_size / sizeof(int); ++i) {
-    test_assert(rpage[i] == i);
+    test_assert(rpage[i] == (ssize_t)i);
     atomic_printf("%d,", rpage[i]);
   }
 

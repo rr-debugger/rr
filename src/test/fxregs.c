@@ -25,7 +25,7 @@ static const float xmm5 = 15;
 static const float xmm6 = 16;
 static const float xmm7 = 17;
 
-int main(int argc, char* argv[]) {
+int main(void) {
   __asm__ __volatile__(
 /* Push the constants in stack order so they look as
  * we expect in gdb. */

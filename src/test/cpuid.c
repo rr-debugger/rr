@@ -4,7 +4,7 @@
 
 extern int cpuid_loop(int iterations);
 
-int main(int argc, char** argv) {
+int main(void) {
   int sum;
   getegid();
   sum = cpuid_loop(1000);

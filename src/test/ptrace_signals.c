@@ -4,12 +4,12 @@
 
 static char* p;
 
-static void sighandler(int sig) {
+static void sighandler(__attribute__((unused)) int sig) {
   p[1] = 78;
   signal(SIGSEGV, SIG_DFL);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child;
   int status;
   int pipe_fds[2];

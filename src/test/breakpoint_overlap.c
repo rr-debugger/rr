@@ -30,14 +30,14 @@
 #define STATEMENT2048(i) STATEMENT1024(i) STATEMENT1024(i + 1024)
 #define STATEMENT4096(i) STATEMENT2048(i) STATEMENT2048(i + 2048)
 
-static void* do_thread(void* p) {
+static void* do_thread(__attribute__((unused)) void* p) {
   while (1) {
     sched_yield();
   }
   return NULL;
 }
 
-int main(int argc, char** argv) {
+int main(__attribute__((unused)) int argc, char* argv[]) {
   int a = atoi(argv[1]);
   int b = atoi(argv[2]);
   pthread_t thread;

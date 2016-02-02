@@ -6,14 +6,14 @@ static pthread_t main_thread;
 
 static void breakpoint(void) {}
 
-static void* start_thread(void* p) {
+static void* start_thread(__attribute__((unused)) void* p) {
   test_assert(0 == pthread_join(main_thread, NULL));
   breakpoint();
   atomic_puts("EXIT-SUCCESS");
   return NULL;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   pthread_t thread;
 
   main_thread = pthread_self();

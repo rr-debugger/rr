@@ -7,7 +7,7 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
   uint64_t last_tsc = 0;
 

@@ -4,7 +4,7 @@
 
 static void breakpoint(void) {}
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char* page;
   pid_t pid;
   int status;

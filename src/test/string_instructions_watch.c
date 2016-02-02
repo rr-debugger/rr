@@ -54,7 +54,7 @@ static void string_store(char* dest, uintptr_t a, uintptr_t size, int unit,
   set_dir(1);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   buf = (char*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 

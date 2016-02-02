@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
   const char* exe_image;
   int child;
 

@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-static void sighandler(int sig) {
+static void sighandler(__attribute__((unused)) int sig) {
   /* Must be a syscall we've already executed, otherwise patching gets in the
    * way */
   open("/dev/zero", O_RDONLY);
@@ -12,7 +12,7 @@ static void sighandler(int sig) {
   exit(0);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char ch;
   int fd = open("/dev/zero", O_RDONLY);
 

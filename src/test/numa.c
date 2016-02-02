@@ -20,7 +20,7 @@ static long mbind(void* start, unsigned long len, int mode,
   return syscall(SYS_mbind, start, len, mode, nmask, maxnode, flags);
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   void* p = mmap(NULL, 16 * PAGE_SIZE, PROT_READ | PROT_WRITE,
                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   int ret;

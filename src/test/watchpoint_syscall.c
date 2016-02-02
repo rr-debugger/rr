@@ -6,7 +6,7 @@ static void breakpoint(void) {}
 
 static char* p;
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd = open("/dev/zero", O_RDONLY);
   test_assert(fd >= 0);
 

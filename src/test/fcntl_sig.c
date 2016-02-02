@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   test_assert(0 == fcntl(1, F_SETSIG, SIGCHLD));
   test_assert(SIGCHLD == fcntl(1, F_GETSIG, 0));
 

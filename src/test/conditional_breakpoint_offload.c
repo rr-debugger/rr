@@ -9,7 +9,7 @@ static void breakpoint(void) {
 
 static int var;
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
 
   for (i = 0; i < 5000; ++i) {

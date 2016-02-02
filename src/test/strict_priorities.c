@@ -10,7 +10,7 @@
 
 static volatile int main_thread_done = 0;
 
-static void* low_priority_func(void* unused) {
+static void* low_priority_func(__attribute__((unused)) void* unused) {
   setpriority(PRIO_PROCESS, 0, 4);
   /* This thread should never be scheduled again unless/until the main
      thread exits. */
@@ -18,7 +18,7 @@ static void* low_priority_func(void* unused) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i, j;
   int dummy = 0;
   pthread_t low_priority_thread;

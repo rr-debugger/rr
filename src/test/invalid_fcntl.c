@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   /* Do an invalid fcntl command on valid fd 0 */
   test_assert(-1 == fcntl(0, 9999));
   test_assert(errno == EINVAL);

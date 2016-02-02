@@ -8,7 +8,7 @@ static void sighandler(int sig) {
   _exit(0);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   signal(SIGILL, sighandler);
 
   atomic_puts("running undefined instruction ...");

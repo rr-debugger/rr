@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   long pagesize = sysconf(_SC_PAGESIZE);
   long ncpus = sysconf(_SC_NPROCESSORS_ONLN);
 

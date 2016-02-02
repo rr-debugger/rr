@@ -4,7 +4,7 @@
 
 extern int capget(cap_user_header_t header, cap_user_data_t data);
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct __user_cap_header_struct* hdr;
   struct __user_cap_data_struct* data;
 

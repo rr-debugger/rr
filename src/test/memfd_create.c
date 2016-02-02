@@ -9,7 +9,7 @@
 #define MFD_ALLOW_SEALING 0x0002
 #endif
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd;
 
   /* There's no libc helper for this syscall. */

@@ -4,12 +4,12 @@
 
 static int pipe_fds[2];
 
-static int run_thread(void* p) {
+static int run_thread(__attribute__((unused)) void* p) {
   test_assert(1 == write(pipe_fds[1], ".", 1));
   return 0;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char* stack = (char*)malloc(65536) + 65536;
   int ret;
   char ch;

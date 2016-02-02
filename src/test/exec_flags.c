@@ -28,7 +28,8 @@ static void my_exec(const char* filename, const char** argv,
 #endif
 }
 
-int main(int argc, const char* argv[], const char* envp[]) {
+int main(__attribute__((unused)) int argc, const char* argv[],
+         const char* envp[]) {
   my_exec("/no-exist!", argv, envp);
 
   atomic_puts("EXIT-SUCCESS");

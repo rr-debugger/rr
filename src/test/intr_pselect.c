@@ -20,10 +20,9 @@ static int pselect_pipe(int timeout) {
 }
 
 static int caught_signal;
-static void handle_signal(int sig) { ++caught_signal; }
+static void handle_signal(__attribute__((unused)) int sig) { ++caught_signal; }
 
-int main(int argc, char* argv[]) {
-
+int main(void) {
   pipe(pipefds);
 
   signal(SIGALRM, SIG_IGN);

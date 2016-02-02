@@ -5,7 +5,7 @@
 
 #define FILENAME "foo.txt"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd;
   int result;
 

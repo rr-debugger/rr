@@ -35,7 +35,7 @@ static void test(int use_pwritev) {
   VERIFY_GUARD(buf);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   test(0);
   test(1);
 

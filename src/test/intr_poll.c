@@ -18,9 +18,9 @@ static int poll_pipe(int timeout_ms) {
 }
 
 static int caught_signal;
-static void handle_signal(int sig) { ++caught_signal; }
+static void handle_signal(__attribute__((unused)) int sig) { ++caught_signal; }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct timespec dummy;
 
   test_assert(0 == pipe(pipefds));

@@ -15,12 +15,12 @@ int spin(int iterations) {
 
 static int ran_thread = 0;
 
-static void* do_thread(void* p) {
+static void* do_thread(__attribute__((unused)) void* p) {
   ran_thread = 1;
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t t;
 
   pthread_create(&t, NULL, do_thread, NULL);

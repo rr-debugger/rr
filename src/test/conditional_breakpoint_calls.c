@@ -15,7 +15,7 @@ static void print_dot(void) {
   ++dot_counter;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   int i;
 
   for (i = 0; i < 10; ++i) {

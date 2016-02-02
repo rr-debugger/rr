@@ -9,12 +9,12 @@ static void breakpoint(void) {
 
 static int var;
 
-static void* thread(void* unused) {
+static void* thread(__attribute__((unused)) void* unused) {
   var = 1337;
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_t t;
 
   breakpoint();

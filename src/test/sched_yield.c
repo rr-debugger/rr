@@ -49,7 +49,7 @@ static void ping_pong(int which) {
   }
 }
 
-static void* pong_thread(void* unused) {
+static void* pong_thread(__attribute__((unused)) void* unused) {
   ping_pong(PONG);
   return NULL;
 }

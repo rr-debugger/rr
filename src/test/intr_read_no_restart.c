@@ -12,7 +12,7 @@ static int reader_caught_signal;
 
 static int sockfds[2];
 
-static void sighandler(int sig) {
+static void sighandler(__attribute__((unused)) int sig) {
   char c = sentinel_token;
 
   test_assert(sys_gettid() == reader_tid);
@@ -25,7 +25,7 @@ static void sighandler(int sig) {
   test_assert(c == sentinel_token);
 }
 
-static void sighandler2(int sig) {
+static void sighandler2(__attribute__((unused)) int sig) {
   char c = sentinel_token;
 
   test_assert(sys_gettid() == reader_tid);
@@ -38,7 +38,7 @@ static void sighandler2(int sig) {
   test_assert(c == start_token);
 }
 
-static void* reader_thread(void* dontcare) {
+static void* reader_thread(__attribute__((unused)) void* dontcare) {
   struct sigaction act;
   struct timeval ts;
   int readsock = sockfds[1];
@@ -72,7 +72,7 @@ static void* reader_thread(void* dontcare) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char token = start_token;
   struct timeval ts;
 

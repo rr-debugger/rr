@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int sig;
 
   for (sig = 1; sig <= 64; ++sig) {

@@ -4,10 +4,10 @@
 
 #define FILENAME "foo.txt"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   ssize_t pagesize = sysconf(_SC_PAGESIZE);
   int fd;
-  int i;
+  size_t i;
   int err;
   pid_t parent_pid = getpid();
   pid_t pid;

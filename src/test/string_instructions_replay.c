@@ -36,7 +36,7 @@ static int string_compare(char* s1, char* s2, uintptr_t size) {
 #endif
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
 
   p = mmap(NULL, SIZE, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1,

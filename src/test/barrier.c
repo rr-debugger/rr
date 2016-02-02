@@ -44,11 +44,11 @@ static void* thread(void* datap) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct timeval tv;
   pthread_barrier_t bar;
   pthread_t threads[10];
-  int i;
+  size_t i;
 
   /* (Kick on the syscallbuf lib.) */
   gettimeofday(&tv, NULL);

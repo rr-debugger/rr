@@ -4,7 +4,7 @@
 
 #include <grp.h>
 
-int main(int argc, char* argv[]) {
+int main(void) {
   gid_t old_groups[1024];
   gid_t new_groups[1024];
   int i;

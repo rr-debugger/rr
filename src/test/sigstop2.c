@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child;
   int status = -1;
   struct timespec ts = { 0, 50000000 };

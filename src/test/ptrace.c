@@ -6,7 +6,7 @@
 
 static size_t static_data = 0x12345678;
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t child;
   int status;
   struct user_regs_struct* regs;
@@ -55,7 +55,7 @@ int main(int argc, char* argv[]) {
 #endif
 
   test_assert(static_data ==
-              ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
+              (size_t)ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
   test_assert(0 ==
               ptrace(PTRACE_POKEDATA, child, &static_data, (void*)NEW_VALUE));
   test_assert(NEW_VALUE == ptrace(PTRACE_PEEKDATA, child, &static_data, NULL));
@@ -66,9 +66,9 @@ int main(int argc, char* argv[]) {
   test_assert(-1 == ptrace(PTRACE_POKEDATA, child, NULL, (void*)NEW_VALUE));
   test_assert(errno == EIO || errno == EFAULT);
 
-  test_assert(regs->eflags == ptrace(PTRACE_PEEKUSER, child,
-                                     (void*)offsetof(struct user, regs.eflags),
-                                     NULL));
+  test_assert((long)regs->eflags ==
+              ptrace(PTRACE_PEEKUSER, child,
+                     (void*)offsetof(struct user, regs.eflags), NULL));
   test_assert(0 == ptrace(PTRACE_PEEKUSER, child,
                           (void*)offsetof(struct user, u_debugreg[0]), NULL));
   test_assert(0 == ptrace(PTRACE_PEEKUSER, child,

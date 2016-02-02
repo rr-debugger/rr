@@ -132,7 +132,7 @@ static void close_device(int fd) {
   test_assert(0 == ioctl(fd, VIDIOC_STREAMOFF, &type));
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd = open_device();
   init_device(fd);
   read_frames(fd);

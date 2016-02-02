@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   gid_t gid = getgid();
   int err = setgid(gid);
   atomic_printf("setgid returned: %d\n", err);

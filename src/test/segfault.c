@@ -12,7 +12,7 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   signal(SIGSEGV, sighandler);
 
   breakpoint();

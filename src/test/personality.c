@@ -4,7 +4,7 @@
 
 #include <sys/personality.h>
 
-int main(int argc, char* argv[]) {
+int main(void) {
   personality(PER_LINUX);
   test_assert(personality(0xffffffff) == PER_LINUX);
 

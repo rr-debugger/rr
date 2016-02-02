@@ -4,9 +4,9 @@
 
 #define PAGE_ZEROES (PAGE_SIZE / sizeof(int))
 
-static int count_page_zeroes(int* p) {
-  int zeroes = 0;
-  int i;
+static size_t count_page_zeroes(int* p) {
+  size_t zeroes = 0;
+  size_t i;
   for (i = 0; i < PAGE_SIZE / sizeof(*p); ++i) {
     if (!p[i]) {
       ++zeroes;
@@ -16,13 +16,13 @@ static int count_page_zeroes(int* p) {
 }
 
 static void set_page_values_nonzero(int* p) {
-  int i;
+  size_t i;
   for (i = 0; i < PAGE_SIZE / sizeof(*p); ++i) {
     p[i] = i + 1;
   }
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int* page;
   void* fixed_area;
 

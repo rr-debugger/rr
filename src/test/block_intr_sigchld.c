@@ -13,7 +13,7 @@ const ssize_t num_sockbuf_bytes = 1 << 20;
 
 static void child_proc(void) { exit(MAGIC_EXIT_CODE); }
 
-static void* writer_thread(void* dontcare) {
+static void* writer_thread(__attribute__((unused)) void* dontcare) {
   char token = '!';
   int sock = sockfds[1];
   int i;
@@ -31,7 +31,7 @@ static void* writer_thread(void* dontcare) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char token = '!';
   char c = '\0';
   pthread_t t;

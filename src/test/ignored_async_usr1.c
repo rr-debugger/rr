@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int dummy = 0, i;
 
   /* NB: since we're masking out the signal, there's no way for

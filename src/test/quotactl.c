@@ -28,7 +28,8 @@ static void find_home_device(void) {
       sscanf(mount_line, "%*d %*d %d:%d %*s %*s %*s - %*s %1000s %*s", &maj,
              &min, home_device);
     }
-    if (maj == major(home_stat.st_dev) && min == minor(home_stat.st_dev)) {
+    if (maj == (int)major(home_stat.st_dev) &&
+        min == (int)minor(home_stat.st_dev)) {
       atomic_printf("%s (%d:%d) is on device special file %s\n", home, maj, min,
                     home_device);
       return;
@@ -41,7 +42,7 @@ static void find_home_device(void) {
   exit(0);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct dqblk dq;
   int ret;
 

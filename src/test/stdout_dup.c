@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd = dup(STDOUT_FILENO);
 
   static const char msg[] = "EXIT-SUCCESS\n";

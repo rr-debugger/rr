@@ -5,7 +5,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-int main(int argc, char* argv[]) {
+int main(void) {
   uid_t orig;
   uid_t new;
   int ret;

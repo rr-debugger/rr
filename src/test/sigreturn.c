@@ -113,7 +113,7 @@ static long double st_bad = -1.23456789;
 
 static int regnum;
 
-static void handle_usr1_xmm(int sig) {
+static void handle_usr1_xmm(__attribute__((unused)) int sig) {
   int xmm[XMM_SIZE / sizeof(int)] XMM_ALIGNMENT;
   xmm_ops[regnum].get(xmm);
   /* Print incoming xmm value to ensure any modifications made while
@@ -124,7 +124,7 @@ static void handle_usr1_xmm(int sig) {
   xmm_ops[regnum].set(xmm_bad);
 }
 
-static void handle_usr1_st(int sig) {
+static void handle_usr1_st(__attribute__((unused)) int sig) {
   char st[ST_SIZE];
   st_ops[regnum].get(st);
   /* Print incoming st value to ensure any modifications made while
@@ -135,7 +135,7 @@ static void handle_usr1_st(int sig) {
   st_ops[regnum].set(&st_bad);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   init();
 
   signal(SIGUSR1, handle_usr1_xmm);

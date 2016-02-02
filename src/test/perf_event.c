@@ -17,7 +17,7 @@ static uint64_t get_desched(void) {
   return nr_desched;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct perf_event_attr attr;
   int i;
 

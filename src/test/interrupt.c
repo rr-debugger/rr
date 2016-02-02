@@ -16,8 +16,7 @@ void spin(void) {
   }
 }
 
-int main(int argc, char* argv[]) {
-
+int main(void) {
   spin();
   atomic_puts("done");
   return 0;

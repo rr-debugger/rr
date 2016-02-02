@@ -3,7 +3,7 @@
 #include "rrutil.h"
 #include <sys/sysctl.h>
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int name[2] = { CTL_KERN, KERN_RTSIGMAX };
   int sig_max = -1;
   size_t len = sizeof(sig_max);

@@ -20,12 +20,12 @@ int spin(int iterations) {
   return dummy;
 }
 
-static void* do_thread(void* p) {
+static void* do_thread(__attribute__((unused)) void* p) {
   breakpoint();
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int s = spin(NUM_ITERATIONS);
   pthread_t thread;
 

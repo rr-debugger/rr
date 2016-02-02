@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char buf[1024];
   ssize_t count = read(STDIN_FILENO, &buf[0], 0);
   test_assert(count == 0);

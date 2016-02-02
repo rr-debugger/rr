@@ -2,7 +2,8 @@
 
 #include "rrutil.h"
 
-static void sighandler(int sig, siginfo_t* si, void* utp) {
+static void sighandler(int sig, siginfo_t* si,
+                       __attribute__((unused)) void* utp) {
   test_assert(SIGSEGV == sig && si->si_addr == (void*)0x42);
 
   atomic_puts("EXIT-SUCCESS");

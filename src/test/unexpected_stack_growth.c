@@ -8,7 +8,7 @@ static void breakpoint(void) {}
 
 static void funcall(void) {
   char buf[2000000];
-  int i;
+  size_t i;
   for (i = 0; i < sizeof(buf); ++i) {
     buf[i] = (char)i;
   }
@@ -17,7 +17,7 @@ static void funcall(void) {
   }
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char v;
   char* fix_addr;
   void* p;

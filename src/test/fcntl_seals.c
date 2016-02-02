@@ -20,7 +20,7 @@
 #define F_SEAL_WRITE 0x0008
 #endif
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd;
 
   /* There's no libc helper for this syscall. */

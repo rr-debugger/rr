@@ -4,7 +4,7 @@
 
 static int pipe_fds[2];
 
-static void handle_signal(int sig) {
+static void handle_signal(__attribute__((unused)) int sig) {
   sigset_t mask;
 
   atomic_puts("Caught SIGALRM");
@@ -18,7 +18,7 @@ static void handle_signal(int sig) {
   test_assert(2 == write(pipe_fds[1], "xx", 2));
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct sigaction sact;
   char buf;
 

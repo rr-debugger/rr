@@ -58,7 +58,7 @@ static void get_ifconfig(int sockfd, struct ifreq* req) {
   }
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   struct ifreq req;
   char name[PATH_MAX];

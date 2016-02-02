@@ -8,7 +8,7 @@ static void breakpoint(void) {}
 
 static void breakpoint2(void) {}
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int i;
   int j;
   int fd = open("/dev/null", O_WRONLY);

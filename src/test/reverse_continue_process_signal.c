@@ -15,7 +15,7 @@ int spin(void) {
   return dummy;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pid_t pid;
   int status;
 

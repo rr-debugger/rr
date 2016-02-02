@@ -5,7 +5,7 @@
 #define BUF_SIZE 10
 #define BUF2_SIZE 1000
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char path[] = "rr-test-file-XXXXXX";
   char dpath[] = "rr-test-dir-XXXXXX";
   const char* dir_path = mkdtemp(dpath);
@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) {
   char* buf = allocate_guard(BUF_SIZE, 'q');
   char* buf2 = allocate_guard(BUF2_SIZE, 'r');
 
-  test_assert(0 <= dirfd);
+  test_assert(dir_path != NULL);
 
   chdir(dir_path);
 
@@ -31,7 +31,8 @@ int main(int argc, char* argv[]) {
   test_assert(0 == memcmp(path, buf, BUF_SIZE));
   verify_guard(BUF_SIZE, buf);
 
-  test_assert(strlen(path) == readlinkat(AT_FDCWD, link, buf2, BUF2_SIZE));
+  test_assert((ssize_t)strlen(path) ==
+              readlinkat(AT_FDCWD, link, buf2, BUF2_SIZE));
   test_assert(0 == memcmp(path, buf2, strlen(path)));
   verify_guard(BUF2_SIZE, buf2);
 

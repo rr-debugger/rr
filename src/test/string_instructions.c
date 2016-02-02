@@ -232,7 +232,7 @@ static int string_cmp_not_equal(char* s, char* t, uintptr_t size, int unit,
   return (sp - s - dir) / dir;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int u;
   uintptr_t pattern = to_uintptr("aaaaaaaa");
   uintptr_t pattern2 = to_uintptr("bbbbbbbb");

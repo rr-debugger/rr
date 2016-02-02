@@ -23,7 +23,7 @@ static void change_group_fd(int fd, gid_t new_gid) {
   test_assert(0 == fchown(fd, geteuid(), new_gid));
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   gid_t groups[32];
   int ngroups;
   gid_t this_group, other_group;

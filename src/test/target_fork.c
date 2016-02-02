@@ -12,7 +12,7 @@ static void good_breakpoint(void) {
   (void)break_here;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char* argv[]) {
   int num_syscalls;
   int child;
   int i;

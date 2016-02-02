@@ -4,7 +4,7 @@
 
 static void breakpoint(void) {}
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd = open("/bin/sh", O_RDONLY);
   void* p = mmap(NULL, 4096, PROT_READ, MAP_SHARED, fd, 0);
   pid_t pid;

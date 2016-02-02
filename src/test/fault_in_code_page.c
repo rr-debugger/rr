@@ -13,7 +13,8 @@ static uint8_t* code_page;
 static size_t page_size;
 
 static int fault_count;
-static void fault_in_code_page(int sig, siginfo_t* si, void* context) {
+static void fault_in_code_page(int sig, siginfo_t* si,
+                               __attribute__((unused)) void* context) {
   atomic_printf("FAULT: signal %d: code %d for addr %p\n", sig, si->si_code,
                 si->si_addr);
   test_assert(SIGSEGV == sig);
@@ -44,7 +45,7 @@ static uint64_t sigsegv_blocked_rdtsc(void) {
   return tsc;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct sigaction act;
 
   page_size = sysconf(_SC_PAGESIZE);

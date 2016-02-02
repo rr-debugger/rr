@@ -4,7 +4,7 @@
 
 static pthread_mutex_t mutex;
 
-static void* run_thread(void* arg) {
+static void* run_thread(__attribute__((unused)) void* unused) {
   void* p;
   size_t len;
   syscall(SYS_get_robust_list, 0, &p, &len);
@@ -13,7 +13,7 @@ static void* run_thread(void* arg) {
   return NULL;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   pthread_mutexattr_t attr;
   pthread_t thread;
 

@@ -2,12 +2,12 @@
 
 #include "rrutil.h"
 
-static void sighandler(int sig) {
+static void sighandler(__attribute__((unused)) int sig) {
   atomic_puts("EXIT-SUCCESS");
   _exit(0);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char* p = (char*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   test_assert(p != MAP_FAILED);

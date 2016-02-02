@@ -27,7 +27,7 @@ static int run_child(void) {
   return 0;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char ch;
 
   test_assert(0 == pipe(child_to_main_fds));

@@ -4,7 +4,7 @@
 
 static char buf[] = "0123456789";
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int pipe_fds[2];
   int fd;
   char ch;

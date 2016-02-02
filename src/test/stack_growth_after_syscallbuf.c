@@ -9,7 +9,7 @@ static int recurse(int count) {
   return recurse(count - 1) * 99;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   struct rlimit limit;
   int fd = open("/dev/zero", O_RDONLY);
   char ch;

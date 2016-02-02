@@ -5,7 +5,7 @@
 #define BUF_SIZE 10
 #define BUF2_SIZE 1000
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char path[] = "rr-test-file-XXXXXX";
   int fd = mkstemp(path);
   int count;
@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
   test_assert(0 == memcmp(path, buf, BUF_SIZE));
   verify_guard(BUF_SIZE, buf);
 
-  test_assert(strlen(path) == readlink(link, buf2, BUF2_SIZE));
+  test_assert((ssize_t)strlen(path) == readlink(link, buf2, BUF2_SIZE));
   test_assert(0 == memcmp(path, buf2, strlen(path)));
   verify_guard(BUF2_SIZE, buf2);
 

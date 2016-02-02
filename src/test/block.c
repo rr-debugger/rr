@@ -39,7 +39,7 @@ static int sockfds[2];
 static const int msg_magic = 0x1337beef;
 const ssize_t num_sockbuf_bytes = 1 << 20;
 
-static void* reader_thread(void* dontcare) {
+static void* reader_thread(__attribute__((unused)) void* dontcare) {
   char token = '!';
   int sock = sockfds[1];
   struct timeval ts;
@@ -89,11 +89,13 @@ static void* reader_thread(void* dontcare) {
     ++token;
   }
   {
-    struct mmsghdr mmsg = { { 0 } };
-    struct iovec data = { 0 };
+    struct mmsghdr mmsg;
+    struct iovec data;
     int magic = ~msg_magic;
     int err, ret;
 
+    memset(&mmsg, 0, sizeof(mmsg));
+    memset(&data, 0, sizeof(data));
     data.iov_base = &magic;
     data.iov_len = sizeof(magic);
     mmsg.msg_hdr.msg_iov = &data;
@@ -360,7 +362,7 @@ static void read_all_chunks(int sock, char* buf, ssize_t num_sockbuf_bytes,
   }
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char token = '!';
   struct timeval ts;
   pthread_t reader;
@@ -424,10 +426,12 @@ int main(int argc, char* argv[]) {
   ++token;
   atomic_puts("M:   ... done");
   {
-    struct mmsghdr mmsg = { { 0 } };
-    struct iovec data = { 0 };
+    struct mmsghdr mmsg;
+    struct iovec data;
     int magic = msg_magic;
 
+    memset(&mmsg, 0, sizeof(mmsg));
+    memset(&data, 0, sizeof(data));
     data.iov_base = &magic;
     data.iov_len = sizeof(magic);
     mmsg.msg_hdr.msg_iov = &data;

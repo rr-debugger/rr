@@ -5,7 +5,9 @@
 int caught_sig = 0;
 long long v = 99;
 
-void catcher(int signum, siginfo_t* siginfo_ptr, void* ucontext_ptr) {
+void catcher(__attribute__((unused)) int signum,
+             __attribute__((unused)) siginfo_t* siginfo_ptr,
+             __attribute__((unused)) void* ucontext_ptr) {
 #ifdef __x86_64__
   ucontext_t* ctx = (ucontext_t*)ucontext_ptr;
   test_assert(ctx->uc_mcontext.gregs[REG_RCX] == 0);
@@ -15,7 +17,7 @@ void catcher(int signum, siginfo_t* siginfo_ptr, void* ucontext_ptr) {
   caught_sig = signum;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   struct sigaction sact;
   long long ax = v;
   long long cx = 0;

@@ -42,7 +42,7 @@ static void test(int use_preadv) {
   VERIFY_GUARD(part2);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   test(0);
   test(1);
 

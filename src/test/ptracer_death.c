@@ -33,7 +33,7 @@ static int ptracer(void) {
   return 44;
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   char ch = 0;
   pid_t ptracer_pid;
   int status;

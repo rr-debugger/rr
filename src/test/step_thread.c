@@ -15,11 +15,11 @@ static void B(void) {
   pthread_barrier_wait(&bar);
 }
 
-static void* threadA(void* unused) {
+static void* threadA(__attribute__((unused)) void* unused) {
   A();
   return NULL;
 }
-static void* threadB(void* unused) {
+static void* threadB(__attribute__((unused)) void* unused) {
   B();
   return NULL;
 }

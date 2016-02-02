@@ -5,7 +5,7 @@
 static pthread_cond_t condvar = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t mutex;
 
-static void* start_thread(void* p) {
+static void* start_thread(__attribute__((unused)) void* p) {
   while (1) {
     sched_yield();
     pthread_mutex_lock(&mutex);
@@ -15,7 +15,7 @@ static void* start_thread(void* p) {
   return NULL;
 }
 
-int main(int argc, char** argv) {
+int main(void) {
   pthread_mutexattr_t attr;
   pthread_t thread;
 

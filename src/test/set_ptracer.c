@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   test_assert(0 == prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY));
 
   atomic_puts("EXIT-SUCCESS");

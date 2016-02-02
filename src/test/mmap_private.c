@@ -7,12 +7,12 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
-int main(int argc, char* argv[]) {
+int main(__attribute__((unused)) int argc, char* argv[]) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
   int fd = open(argv[0], O_RDONLY);
   int* wpage;
   int* rpage;
-  int i;
+  size_t i;
 
   test_assert(fd >= 0);
 

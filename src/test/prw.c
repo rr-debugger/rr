@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-int main(int argc, char* argv[]) {
+int main(void) {
   int fd = open("prw.txt", O_CREAT | O_RDWR, 0600);
   const char content[] = "01234567890\nhello there\n";
   char buf[sizeof(content)];

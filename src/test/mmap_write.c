@@ -6,9 +6,9 @@
 
 static const int magic = 0x5a5a5a5a;
 
-static void overwrite_file(const char* path, ssize_t num_bytes) {
+static void overwrite_file(const char* path, size_t num_bytes) {
   int fd = open(path, O_TRUNC | O_RDWR, 0600);
-  int i;
+  size_t i;
 
   test_assert(fd >= 0);
   for (i = 0; i < num_bytes / sizeof(magic); ++i) {
@@ -17,11 +17,11 @@ static void overwrite_file(const char* path, ssize_t num_bytes) {
   close(fd);
 }
 
-int main(int argc, char* argv[]) {
+int main(void) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
   int fd = open(DUMMY_FILE, O_CREAT | O_EXCL | O_RDWR, 0600);
   int* rpage;
-  int i;
+  size_t i;
 
   test_assert(fd >= 0);
 
@@ -42,8 +42,8 @@ int main(int argc, char* argv[]) {
 
     write(fd, &i, sizeof(i));
     written = rpage[i];
-    atomic_printf("(wrote %d, read %d)", i, written);
-    test_assert(written == i);
+    atomic_printf("(wrote %d, read %d)", (int)i, written);
+    test_assert(written == (ssize_t)i);
   }
 
   atomic_puts(" done");
