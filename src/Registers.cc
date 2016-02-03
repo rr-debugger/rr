@@ -618,7 +618,7 @@ void Registers::set_flags(uintptr_t value) {
       break;
     case x86_64:
       u.x64regs.eflags = value;
-      u.x64regs.eflags_upper = value >> 32;
+      u.x64regs.eflags_upper = uint64_t(value) >> 32;
       break;
     default:
       assert(0 && "Unknown arch");
