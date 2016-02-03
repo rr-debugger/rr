@@ -29,31 +29,6 @@
 using namespace rr;
 using namespace std;
 
-/**
- * 32-bit writes to DBG_COMMAND_MAGIC_ADDRESS by the debugger trigger
- * rr commands.
- */
-static const uint32_t DBG_COMMAND_MAGIC_ADDRESS = 29298; // 'rr'
-
-/**
- * The high-order byte of the 32-bit value indicates the specific command
- * message. Not-understood command messages are ignored.
- */
-static const uint32_t DBG_COMMAND_MSG_MASK = 0xFF000000;
-/**
- * Create a checkpoint of the current state whose index is given by the
- * command parameter. If there is already a checkpoint with that index, it
- * is deleted first.
- */
-static const int DBG_COMMAND_MSG_CREATE_CHECKPOINT = 0x01000000;
-/**
- * Delete the checkpoint of the current state whose index is given by the
- * command parameter.
- */
-static const int DBG_COMMAND_MSG_DELETE_CHECKPOINT = 0x02000000;
-
-static const uint32_t DBG_COMMAND_PARAMETER_MASK = 0x00FFFFFF;
-
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
 // (Don't stare at them too long or you'll go blind ;).)
@@ -63,20 +38,6 @@ static const string& gdb_rr_macros() {
   if (s.empty()) {
     stringstream ss;
     ss
-        // TODO define `document' sections for these
-        << "define checkpoint\n"
-        << "  init-if-undefined $_next_checkpoint_index = 1\n"
-        /* Ensure the command echoes the checkpoint number, not the encoded
-         * message
-           */
-        << "  p (*(int*)" << DBG_COMMAND_MAGIC_ADDRESS << " = "
-        << DBG_COMMAND_MSG_CREATE_CHECKPOINT << " | $_next_checkpoint_index), "
-        << "$_next_checkpoint_index++\n"
-        << "end\n"
-        << "define delete checkpoint\n"
-        << "  p (*(int*)" << DBG_COMMAND_MAGIC_ADDRESS << " = "
-        << DBG_COMMAND_MSG_DELETE_CHECKPOINT << " | $arg0), $arg0\n"
-        << "end\n"
         << "define restart\n"
         << "  run c$arg0\n"
         << "end\n"
@@ -224,36 +185,6 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
     req->cont().actions.push_back(GdbContAction(
         ACTION_STEP, get_threadid(t->replay_session(), t->tuid())));
   }
-}
-
-bool GdbServer::maybe_process_magic_command(const GdbRequest& req) {
-  if (!(req.mem().addr == DBG_COMMAND_MAGIC_ADDRESS && req.mem().len == 4)) {
-    return false;
-  }
-  uint32_t cmd;
-  memcpy(&cmd, req.mem().data.data(), sizeof(cmd));
-  uintptr_t param = cmd & DBG_COMMAND_PARAMETER_MASK;
-  switch (cmd & DBG_COMMAND_MSG_MASK) {
-    case DBG_COMMAND_MSG_CREATE_CHECKPOINT: {
-      if (timeline.can_add_checkpoint()) {
-        checkpoints[param] =
-            Checkpoint(timeline, last_continue_tuid, Checkpoint::EXPLICIT);
-      }
-      break;
-    }
-    case DBG_COMMAND_MSG_DELETE_CHECKPOINT: {
-      auto it = checkpoints.find(param);
-      if (it != checkpoints.end()) {
-        timeline.remove_explicit_checkpoint(it->second.mark);
-        checkpoints.erase(it);
-      }
-      break;
-    }
-    default:
-      return false;
-  }
-  dbg->reply_set_mem(true);
-  return true;
 }
 
 void GdbServer::dispatch_regs_request(const Registers& regs,
@@ -433,9 +364,6 @@ void GdbServer::dispatch_debugger_request(Session& session,
       // (e.g. before sending the magic write to create a checkpoint)
       if (req.mem().len == 0) {
         dbg->reply_set_mem(true);
-        return;
-      }
-      if (maybe_process_magic_command(req)) {
         return;
       }
       // We only allow the debugger to write memory if the
@@ -1130,12 +1058,13 @@ void GdbServer::activate_debugger() {
   // session.  The cloned tasks will look like children
   // of the clonees, so this scheme prevents |pstree|
   // output from getting /too/ far out of whack.
+  const char* where = "???";
   if (timeline.can_add_checkpoint()) {
     debugger_restart_checkpoint =
-        Checkpoint(timeline, last_continue_tuid, Checkpoint::EXPLICIT);
+        Checkpoint(timeline, last_continue_tuid, Checkpoint::EXPLICIT, where);
   } else {
-    debugger_restart_checkpoint =
-        Checkpoint(timeline, last_continue_tuid, Checkpoint::NOT_EXPLICIT);
+    debugger_restart_checkpoint = Checkpoint(timeline, last_continue_tuid,
+                                             Checkpoint::NOT_EXPLICIT, where);
   }
 }
 

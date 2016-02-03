@@ -10,7 +10,7 @@ send_gdb('c')
 expect_gdb('Breakpoint 2')
 
 send_gdb('checkpoint')
-expect_gdb('= 1')
+expect_gdb('Checkpoint 1 at')
 send_gdb('restart 8')
 send_gdb('restart -1')
 send_gdb('restart abc')
