@@ -3,7 +3,8 @@
 #include "rrutil.h"
 
 static void queue_siginfo(int sig, int val) {
-  siginfo_t si = { 0 };
+  siginfo_t si;
+  memset(&si, 0, sizeof(si));
 
   si.si_code = SI_QUEUE;
   si.si_pid = getpid();
@@ -13,7 +14,8 @@ static void queue_siginfo(int sig, int val) {
 }
 
 static void queue_siginfo_tg(int sig, int val) {
-  siginfo_t si = { 0 };
+  siginfo_t si;
+  memset(&si, 0, sizeof(si));
 
   si.si_code = SI_QUEUE;
   si.si_pid = getpid();

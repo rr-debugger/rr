@@ -8,16 +8,16 @@ static pid_t reader_tid;
 static int reader_caught_signal;
 
 static void intr_sleep(int secs) {
-  struct timespec req = {.tv_sec = secs };
-  struct timespec rem = { 0 };
+  struct timespec req = { secs, 0 };
+  struct timespec rem = { 0, 0 };
 
   test_assert(-1 == nanosleep(&req, &rem) && EINTR == errno);
   test_assert(rem.tv_sec > 0 || rem.tv_nsec > 0);
 }
 
 static void fin_sleep(int secs) {
-  struct timespec req = {.tv_sec = secs };
-  struct timespec rem = {.tv_sec = -1, .tv_nsec = -1 };
+  struct timespec req = { secs, 0 };
+  struct timespec rem = { -1, -1 };
 
   test_assert(0 == nanosleep(&req, &rem));
   test_assert(-1 == rem.tv_sec && -1 == rem.tv_nsec);

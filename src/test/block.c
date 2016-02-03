@@ -159,9 +159,10 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     free(cmptr);
   }
   {
-    struct msghdr msg = { 0 };
+    struct msghdr msg;
     struct iovec iovs[2];
     char c1 = '\0', c2 = '\0';
+    memset(&msg, 0, sizeof(msg));
 
     iovs[0].iov_base = &c1;
     iovs[0].iov_len = sizeof(c1);
@@ -213,12 +214,15 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     const struct timeval infinity = { 1 << 30, 0 };
     struct timeval tv = infinity;
     int ret;
+#if defined(__i386__)
+    struct select_arg arg;
+#endif
 
     atomic_puts("r: select()ing socket ...");
     FD_ZERO(&fds);
     FD_SET(sock, &fds);
 #if defined(__i386__)
-    struct select_arg arg = { 0 };
+    memset(&arg, 0, sizeof(arg));
     arg.n_fds = sock + 1;
     arg.read = &fds;
     arg.write = NULL;
@@ -429,6 +433,9 @@ int main(void) {
     struct mmsghdr mmsg;
     struct iovec data;
     int magic = msg_magic;
+#if defined(SYS_socketcall)
+    struct sendmmsg_arg arg;
+#endif
 
     memset(&mmsg, 0, sizeof(mmsg));
     memset(&data, 0, sizeof(data));
@@ -472,7 +479,7 @@ int main(void) {
                   msg_magic);
 
 #if defined(SYS_socketcall)
-    struct sendmmsg_arg arg = { 0 };
+    memset(&arg, 0, sizeof(arg));
     arg.sockfd = sock;
     arg.msgvec = &mmsg;
     arg.vlen = 1;
@@ -486,10 +493,11 @@ int main(void) {
     free(cmptr);
   }
   {
-    struct msghdr msg = { 0 };
+    struct msghdr msg;
     struct iovec iovs[2];
     char c1 = token++;
     char c2 = token++;
+    memset(&msg, 0, sizeof(msg));
 
     iovs[0].iov_base = &c1;
     iovs[0].iov_len = sizeof(c1);

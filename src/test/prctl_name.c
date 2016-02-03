@@ -13,7 +13,7 @@ const char fork_child_name[] = "fchild";
 const char exec_child_name[] = "echild";
 
 static void assert_prname_is(const char* tag, const char* name) {
-  char prname[PRNAME_NUM_BYTES] = { 0 };
+  char prname[PRNAME_NUM_BYTES] = "";
   test_assert(0 == prctl(PR_GET_NAME, prname));
 
   atomic_printf("%s: prname is '%s'; expecting '%s'\n", tag, prname, name);
@@ -50,7 +50,7 @@ static void* thread(__attribute__((unused)) void* unused) {
   return NULL;
 }
 
-char initial_name[PRNAME_NUM_BYTES] = { 0 };
+char initial_name[PRNAME_NUM_BYTES] = "";
 static void compute_initial_name(const char* exe_image) {
   const char* basename = strrchr(exe_image, '/');
   if (basename) {

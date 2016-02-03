@@ -3,8 +3,9 @@
 #include "rrutil.h"
 
 int main(void) {
-  struct termios tc = { 0 };
+  struct termios tc;
   int ret;
+  memset(&tc, 0, sizeof(tc));
 
   ret = ioctl(STDIN_FILENO, TCGETS, &tc);
   atomic_printf("TCGETS returned %d: { iflag=0x%x, oflag=0x%x, cflag=0x%x, "

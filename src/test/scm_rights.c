@@ -7,7 +7,7 @@
 static void child(int sock, int fd_minus_one) {
   struct sockaddr addr;
   int fd;
-  struct msghdr msg = { 0 };
+  struct msghdr msg;
   union {
     int ints[2];
     uint8_t bytes[sizeof(int[2])];
@@ -20,6 +20,7 @@ static void child(int sock, int fd_minus_one) {
   int zero = ~0;
   ssize_t nread;
 
+  memset(&msg, 0, sizeof(msg));
   memset(&addr, 0x51, sizeof(addr));
   msg.msg_name = &addr;
   msg.msg_namelen = sizeof(addr);
@@ -70,7 +71,7 @@ int main(void) {
   int sock;
   pid_t c;
   int fd;
-  struct msghdr msg = { 0 };
+  struct msghdr msg;
   int mbuf = MAGIC;
   struct iovec iov;
   uint8_t cbuf[CMSG_SPACE(sizeof(fd))];
@@ -79,6 +80,7 @@ int main(void) {
   int err;
   int status;
 
+  memset(&msg, 0, sizeof(msg));
   test_assert(0 == socketpair(AF_LOCAL, SOCK_STREAM, 0, sockfds));
   sock = sockfds[0];
 
