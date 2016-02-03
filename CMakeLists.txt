@@ -24,9 +24,31 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Wextra -Werror -Wstr
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++0x -pthread -O0 -g3 -Wall -Wextra -Werror")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
-# Check that a 32-bit cross-compile works. This is needed regardless
-# of whether the entire build is being built 32-bit.
-if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+option(force32bit, "Force a 32-bit build, rather than both 64 and 32-bit")
+option(disable32bit, "Build only 64-bit on a 64-bit platform")
+
+if(force32bit)
+  set(rr_32BIT true)
+  set(rr_64BIT false)
+  set(rr_MBITNESS_OPTION -m32)
+else()
+  if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+    if(disable32bit)
+      set(rr_32BIT false)
+    else()
+      set(rr_32BIT true)
+    endif()
+    set(rr_64BIT true)
+  else()
+    set(rr_32BIT true)
+    set(rr_64BIT false)
+  endif()
+  set(rr_MBITNESS_OPTION)
+endif()
+
+
+# Check that a 32-bit cross-compile works, if required.
+if(rr_32BIT AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
   # try_compile won't accept LINK_FLAGS, so do this manually.
   file(WRITE "${CMAKE_BINARY_DIR}/test32.c" "int main() { return 0; }")
   execute_process(COMMAND ${CMAKE_CXX_COMPILER} -o ${CMAKE_BINARY_DIR}/test32 ${CMAKE_BINARY_DIR}/test32.c -m32
@@ -34,19 +56,6 @@ if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
   if(NOT (COMPILER_32BIT_RESULT EQUAL 0))
     message(FATAL_ERROR "Your toolchain doesn't support 32-bit cross-compilation.")
   endif()
-endif()
-
-option(force32bit, "Force a 32-bit build, rather than a 64-bit one")
-if(force32bit)
-  set(rr_64BIT false)
-  set(rr_MBITNESS_OPTION -m32)
-else()
-  if (CMAKE_SIZEOF_VOID_P EQUAL 8)
-    set(rr_64BIT true)
-  else()
-    set(rr_64BIT false)
-  endif()
-  set(rr_MBITNESS_OPTION)
 endif()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${rr_MBITNESS_OPTION}")
@@ -62,7 +71,7 @@ set(LIBDIR32_CANDIDATES
   /usr/lib/i386-linux-gnu/pkgconfig/
   /usr/lib/pkgconfig/
 )
-if((NOT rr_64BIT) AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+if(rr_32BIT AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
   foreach(libdir ${LIBDIR32_CANDIDATES})
     if(IS_DIRECTORY ${libdir})
       set(ENV{PKG_CONFIG_LIBDIR} ${libdir})
@@ -254,7 +263,7 @@ install(TARGETS rr rrpreload exec_stub
 # directory, so we can set different compile options on them.
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
-if(rr_64BIT)
+if(rr_32BIT AND rr_64BIT)
   foreach(file preload_interface.h)
     set_source_files_properties(32/${file}
                                 PROPERTIES GENERATED true HEADER_FILE_ONLY true)
@@ -752,7 +761,7 @@ endforeach(test)
 # directory, so we can set different compile options on them.
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
-if(rr_64BIT)
+if(rr_32BIT AND rr_64BIT)
   set_source_files_properties(32/rrutil.h
                               PROPERTIES GENERATED true HEADER_FILE_ONLY true)
   add_custom_command(OUTPUT 32/rrutil.h
