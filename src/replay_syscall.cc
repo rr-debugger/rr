@@ -463,6 +463,15 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   ASSERT(t, !t->pending_sig()) << "Stub exec failed on entry";
   /* Proceed to the PTRACE_EVENT_EXEC. */
   __ptrace_cont(t, expect_syscallno);
+  if (t->ptrace_event() != PTRACE_EVENT_EXEC) {
+    if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
+        trace_frame.regs().arch() == x86) {
+      FATAL() << "Cannot find exec stub " << stub_filename
+              << " to replay this 32-bit process; you probably built rr with "
+                 "disable32bit";
+    }
+    FATAL() << "Exec of stub " << stub_filename << " failed";
+  }
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXEC) << "Stub exec failed?";
   /* Wait for the execve exit. */
   __ptrace_cont(t, expect_syscallno);

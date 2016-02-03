@@ -25,7 +25,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACRO
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
 option(force32bit, "Force a 32-bit rr build, rather than both 64 and 32-bit. rr will only be able to record and replay 32-bit processes.")
-option(disable32bit, "On a 64-bit platform, avoid requiring a 32-bit cross-compilation toolchain by not building 32-bit tests. rr will still be able to record and replay 32-bit processes.")
+option(disable32bit, "On a 64-bit platform, avoid requiring a 32-bit cross-compilation toolchain by not building 32-bit components. rr will be able to record 32-bit processes but not replay them.")
 
 if(force32bit)
   set(rr_32BIT true)
