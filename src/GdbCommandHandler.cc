@@ -14,10 +14,19 @@
 static std::vector<GdbCommand*>* gdb_command_list;
 
 static std::string gdb_macro_binding(const GdbCommand& cmd) {
-  return "python RRCmd('" + cmd.name() + "')\n";
+  std::string auto_args_str = "[";
+  for (size_t i = 0; i < cmd.auto_args().size(); i++) {
+    if (i > 0) {
+      auto_args_str += ", ";
+    }
+    auto_args_str += "'" + cmd.auto_args()[i] + "'";
+  }
+  auto_args_str += "]";
+  return "python RRCmd('" + cmd.name() + "', " + auto_args_str + ")\n";
 }
 
 /* static */ std::string GdbCommandHandler::gdb_macros() {
+  GdbCommand::init_auto_args();
   std::stringstream ss;
   ss << std::string(R"Delimiter(
 
@@ -38,21 +47,51 @@ def gdb_escape(string):
     result = ""
     pos = 0
     for curr_char in string:
-        result += format(ord(curr_char), 'x')
+        result += format(ord(curr_char), '02x')
     return result
 
+class RRWhere(gdb.Command):
+    """Helper to get the location for checkpoints/history. Used by auto-args"""
+    def __init__(self):
+        gdb.Command.__init__(self, 'rr-where',
+                             gdb.COMMAND_USER, gdb.COMPLETE_NONE, True)
+
+    def invoke(self, arg, from_tty):
+#Get the symbol name from 'frame 0' in the format:
+# '#0  0x00007f9d81a04c46 in _dl_start (arg=0x7ffee1f1c740) at rtld.c:356
+# 356 in rtld.c'
+        try:
+            rv = gdb.execute('frame 0', to_string=True)
+        except:
+            rv = "???" # This may occurs if we're not running
+        m = re.match("#0\w*(.*)", rv);
+        if m:
+            rv = m.group(1)
+        else:
+            rv = rv + "???"
+        gdb.write(rv)
+
+RRWhere()
+
 class RRCmd(gdb.Command):
-    def __init__(self, name):
+    def __init__(self, name, auto_args):
         gdb.Command.__init__(self, name,
                              gdb.COMMAND_USER, gdb.COMPLETE_NONE, True)
         self.cmd_name = name
+        self.auto_args = auto_args
 
     def invoke(self, arg, from_tty):
         args = gdb.string_to_argv(arg)
         self.rr_cmd(args)
 
     def rr_cmd(self, args):
-        rv = gdb.execute("maint packet qRRCmd:" + gdb_escape(self.cmd_name), to_string=True);
+        cmd_prefix = "maint packet qRRCmd:" + gdb_escape(self.cmd_name)
+        argStr = ""
+        for auto_arg in self.auto_args:
+            argStr += ":" + gdb_escape(gdb.execute(auto_arg, to_string=True))
+        for arg in args:
+            argStr += ":" + gdb_escape(arg)
+        rv = gdb.execute(cmd_prefix + argStr, to_string=True);
         rv_match = re.search('received: "(.*)"', rv, re.MULTILINE);
         if not rv_match:
             gdb.write("Response error: " + rv)
@@ -72,7 +111,8 @@ end
   return ss.str();
 }
 
-static GdbCommand* command_for_name(const std::string& name) {
+/*static*/ GdbCommand* GdbCommandHandler::command_for_name(
+    const std::string& name) {
   if (!gdb_command_list) {
     return nullptr;
   }
@@ -97,10 +137,12 @@ static std::string gdb_escape(const std::string& str) {
   std::stringstream ss;
   ss << std::hex;
   for (size_t i = 0; i < str.size(); i++) {
-    auto chr = str.at(i);
-    ss << (int)chr;
+    int chr = (int)str.at(i);
+    if (chr < 16) {
+      ss << "0";
+    }
+    ss << chr;
   }
-
   return ss.str();
 }
 static std::string gdb_unescape(const std::string& str) {

@@ -27,6 +27,8 @@ public:
   static std::string process_command(GdbServer& gdb_server, Task* t,
                                      std::string payload);
 
+  static GdbCommand* command_for_name(const std::string& name);
+
 private:
 };
 
