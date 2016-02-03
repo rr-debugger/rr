@@ -64,6 +64,8 @@ public:
     const Registers& regs() const { return ptr->regs; }
     const ExtraRegisters& extra_regs() const { return ptr->extra_regs; }
 
+    TraceFrame::Time time() const { return ptr->key.trace_time; }
+
   private:
     friend class ReplayTimeline;
     friend std::ostream& operator<<(std::ostream& s, const Mark& o);
