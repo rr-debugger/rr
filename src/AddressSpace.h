@@ -361,11 +361,10 @@ public:
    * during recording is known to be the same as the new map (e.g. because
    * we are recording!).
    */
-  KernelMapping map(
-      remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
-      off64_t offset_bytes, const std::string& fsname, dev_t device,
-      ino_t inode, const KernelMapping* recorded_map = nullptr,
-      TraceWriter::MappingOrigin origin = TraceWriter::SYSCALL_MAPPING);
+  KernelMapping map(remote_ptr<void> addr, size_t num_bytes, int prot,
+                    int flags, off64_t offset_bytes, const std::string& fsname,
+                    dev_t device, ino_t inode,
+                    const KernelMapping* recorded_map = nullptr);
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.

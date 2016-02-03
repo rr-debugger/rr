@@ -1278,8 +1278,7 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
 }
 
 ReplayResult ReplayTimeline::replay_step_forward(
-    RunCommand command, TraceFrame::Time stop_at_time,
-    const std::function<bool()>& interrupt_check) {
+    RunCommand command, TraceFrame::Time stop_at_time) {
   assert(command != RUN_SINGLESTEP_FAST_FORWARD);
 
   ReplayResult result;

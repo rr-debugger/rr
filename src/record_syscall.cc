@@ -948,8 +948,8 @@ static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
 }
 
 template <typename Arch>
-static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
-                                 int cmd, int ptr_reg) {
+static Switchable prepare_msgctl(TaskSyscallState& syscall_state, int cmd,
+                                 int ptr_reg) {
   switch (cmd) {
     case IPC_STAT:
     case MSG_STAT:
@@ -972,8 +972,8 @@ static Switchable prepare_msgctl(Task* t, TaskSyscallState& syscall_state,
 }
 
 template <typename Arch>
-static Switchable prepare_shmctl(Task* t, TaskSyscallState& syscall_state,
-                                 int cmd, int ptr_reg) {
+static Switchable prepare_shmctl(TaskSyscallState& syscall_state, int cmd,
+                                 int ptr_reg) {
   switch (cmd) {
     case IPC_SET:
     case IPC_RMID:
@@ -1853,7 +1853,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
         case MSGCTL: {
           int cmd = (int)t->regs().arg3_signed() & ~IPC_64;
-          return prepare_msgctl<Arch>(t, syscall_state, cmd, 5);
+          return prepare_msgctl<Arch>(syscall_state, cmd, 5);
         }
 
         case MSGSND:
@@ -1881,7 +1881,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
         case SHMCTL: {
           int cmd = (int)t->regs().arg3_signed() & ~IPC_64;
-          return prepare_shmctl<Arch>(t, syscall_state, cmd, 5);
+          return prepare_shmctl<Arch>(syscall_state, cmd, 5);
         }
 
         case SEMCTL: {
@@ -1898,8 +1898,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
 
     case Arch::msgctl:
-      return prepare_msgctl<Arch>(t, syscall_state,
-                                  (int)t->regs().arg2_signed(), 3);
+      return prepare_msgctl<Arch>(syscall_state, (int)t->regs().arg2_signed(),
+                                  3);
 
     case Arch::msgrcv: {
       size_t msgsize = t->regs().arg3();
@@ -2502,8 +2502,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
 
     case Arch::shmctl:
-      return prepare_shmctl<Arch>(t, syscall_state,
-                                  (int)t->regs().arg2_signed(), 3);
+      return prepare_shmctl<Arch>(syscall_state, (int)t->regs().arg2_signed(),
+                                  3);
 
     case Arch::semctl:
       return prepare_semctl<Arch>(

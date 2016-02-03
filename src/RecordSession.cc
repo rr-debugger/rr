@@ -1215,8 +1215,7 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
  * a new event that needs to be processed.  Prepare that new event.
  */
 void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
-                                           bool can_consume_wait_status,
-                                           StepState* step_state) {
+                                           bool can_consume_wait_status) {
   switch (t->ev().type()) {
     case EV_NOOP:
       t->pop_noop();
@@ -1474,7 +1473,7 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   if (!(did_wait && handle_ptrace_event(t, &step_state)) &&
       !(did_wait && handle_signal_event(t, &step_state))) {
-    runnable_state_changed(t, &result, did_wait, &step_state);
+    runnable_state_changed(t, &result, did_wait);
 
     if (result.status != STEP_CONTINUE ||
         step_state.continue_type == DONT_CONTINUE) {

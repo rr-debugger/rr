@@ -25,12 +25,12 @@ class KernelMapping;
 class Task;
 class TraceFrame;
 
-template <typename T, size_t N> constexpr size_t array_length(T(&array)[N]) {
+template <typename T, size_t N> constexpr size_t array_length(T(&)[N]) {
   return N;
 }
 
 template <typename T, size_t N>
-constexpr size_t array_length(std::array<T, N>& array) {
+constexpr size_t array_length(std::array<T, N>&) {
   return N;
 }
 
@@ -94,9 +94,9 @@ void format_dump_filename(Task* t, TraceFrame::Time global_time,
                           size_t filename_size);
 
 /**
- * Return true if the user requested memory be dumped for |t| at |f|.
+ * Return true if the user requested memory be dumped at |f|.
  */
-bool should_dump_memory(Task* t, const TraceFrame& f);
+bool should_dump_memory(const TraceFrame& f);
 /**
  * Dump all of the memory in |t|'s address to the file
  * "[trace_dir]/[t->tid]_[global_time]_[tag]".
@@ -108,7 +108,7 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
  * Return true if the user has requested |t|'s memory be
  * checksummed at |f|.
  */
-bool should_checksum(Task* t, const TraceFrame& f);
+bool should_checksum(const TraceFrame& f);
 /**
  * Write a checksum of each mapped region in |t|'s address space to a
  * special log, where it can be read by |validate_process_memory()|

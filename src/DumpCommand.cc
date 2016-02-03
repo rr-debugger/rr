@@ -219,8 +219,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
 static void dump_statistics(const TraceReader& trace, FILE* out) {
   uint64_t uncompressed = trace.uncompressed_bytes();
   uint64_t compressed = trace.compressed_bytes();
-  fprintf(stdout, "// Uncompressed bytes %" PRIu64 ", compressed bytes %" PRIu64
-                  ", ratio %.2fx\n",
+  fprintf(out, "// Uncompressed bytes %" PRIu64 ", compressed bytes %" PRIu64
+               ", ratio %.2fx\n",
           uncompressed, compressed, double(uncompressed) / compressed);
 }
 

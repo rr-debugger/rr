@@ -990,7 +990,6 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     }
   }
 
-  auto interrupt_check = [&]() { return dbg->sniff_packet(); };
   if (req.cont().run_direction == RUN_FORWARD) {
     if (is_in_exec(timeline) &&
         timeline.current_session().current_task()->task_group()->tguid() ==
@@ -1003,8 +1002,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       RunCommand command = compute_run_command_from_actions(
           timeline.current_session().current_task(), req, &signal_to_deliver);
       // Ignore gdb's |signal_to_deliver|; we just have to follow the replay.
-      result =
-          timeline.replay_step_forward(command, target.event, interrupt_check);
+      result = timeline.replay_step_forward(command, target.event);
     }
     if (result.status == REPLAY_EXITED) {
       return handle_exited_state(last_resume_request);
@@ -1030,6 +1028,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       return false;
     };
 
+    auto interrupt_check = [&]() { return dbg->sniff_packet(); };
     switch (command) {
       case RUN_CONTINUE:
         result = timeline.reverse_continue(stop_filter, interrupt_check);
@@ -1186,9 +1185,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
   // Note that we don't reset the target pid; we intentionally keep targeting
   // the same process no matter what is running when we hit the event.
   target.event = req.restart().param;
-  if (final_event >= 0) {
-    target.event = min(final_event - 1, target.event);
-  }
+  target.event = min(final_event - 1, target.event);
   timeline.seek_to_before_event(target.event);
   do {
     ReplayResult result =

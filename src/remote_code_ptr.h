@@ -14,7 +14,7 @@ class remote_code_ptr {
 public:
   remote_code_ptr() : ptr(0) {}
   remote_code_ptr(uintptr_t ptr) : ptr(ptr) {}
-  remote_code_ptr(std::nullptr_t null) : ptr(0) {}
+  remote_code_ptr(std::nullptr_t) : ptr(0) {}
 
   bool operator==(const remote_code_ptr& other) const {
     return ptr == other.ptr;
@@ -41,10 +41,10 @@ public:
   remote_code_ptr increment_by_syscall_insn_length(SupportedArch arch) const {
     return remote_code_ptr(ptr + rr::syscall_instruction_length(arch));
   }
-  remote_code_ptr decrement_by_bkpt_insn_length(SupportedArch arch) const {
+  remote_code_ptr decrement_by_bkpt_insn_length(SupportedArch) const {
     return remote_code_ptr(ptr - 1);
   }
-  remote_code_ptr increment_by_bkpt_insn_length(SupportedArch arch) const {
+  remote_code_ptr increment_by_bkpt_insn_length(SupportedArch) const {
     return remote_code_ptr(ptr + 1);
   }
 

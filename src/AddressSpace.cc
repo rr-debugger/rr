@@ -410,8 +410,7 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
 KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
                                 int prot, int flags, off64_t offset_bytes,
                                 const string& fsname, dev_t device, ino_t inode,
-                                const KernelMapping* recorded_map,
-                                TraceWriter::MappingOrigin origin) {
+                                const KernelMapping* recorded_map) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
   num_bytes = ceil_page_size(num_bytes);
@@ -1385,8 +1384,7 @@ void AddressSpace::populate_address_space(Task* t) {
     }
 
     map(start, km.end() - start, km.prot(), flags, km.file_offset_bytes(),
-        km.fsname(), check_device(t, km), km.inode(), nullptr,
-        TraceWriter::EXEC_MAPPING);
+        km.fsname(), check_device(t, km), km.inode(), nullptr);
   }
   ASSERT(t, found_stacks == 1);
 }

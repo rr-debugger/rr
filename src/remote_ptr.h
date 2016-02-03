@@ -23,7 +23,7 @@ template <typename T> class remote_ptr {
 public:
   remote_ptr() : ptr(0) {}
   remote_ptr(uintptr_t ptr) : ptr(ptr) {}
-  remote_ptr(std::nullptr_t null) : ptr(0) {}
+  remote_ptr(std::nullptr_t) : ptr(0) {}
   template <typename U> remote_ptr(remote_ptr<U> p) : ptr(p.as_int()) {
     consume_dummy(static_cast<U*>(nullptr));
   }

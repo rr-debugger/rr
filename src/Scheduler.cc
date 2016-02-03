@@ -24,7 +24,7 @@
 
 using namespace std;
 
-static void note_switch(Task* prev_t, Task* t, int max_events) {
+static void note_switch(Task* prev_t, Task* t) {
   if (prev_t == t) {
     t->succ_event_counter++;
   } else {
@@ -230,7 +230,7 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
     *by_waitpid = true;
   }
 
-  note_switch(current, next, max_events);
+  note_switch(current, next);
   current = next;
   return current;
 }

@@ -169,7 +169,7 @@ void substitute_extended_jump<X86SyscallStubExtendedJump>(uint8_t* buffer,
 
 template <>
 void substitute_extended_jump<X64SyscallStubExtendedJump>(uint8_t* buffer,
-                                                          uint64_t from_end,
+                                                          uint64_t,
                                                           uint64_t to_start) {
   X64SyscallStubExtendedJump::substitute(buffer, to_start);
 }
@@ -750,8 +750,7 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
 // static constructors, so we can't wait for our preload library to be
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
-template <>
-void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
+template <> void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher&) {
   setup_preload_library_path<X64Arch>(t);
 
   auto vdso_start = t->vm()->vdso().start();

@@ -182,8 +182,7 @@ private:
    * increment |nt_marked_files| by the number of files that
    * were marked.
    */
-  void mark_used_vfiles(Task* t, const AddressSpace& as,
-                        size_t* nr_marked_files);
+  void mark_used_vfiles(const AddressSpace& as, size_t* nr_marked_files);
 
   struct FileId {
     FileId(const KernelMapping& recorded_map)

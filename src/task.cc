@@ -1171,10 +1171,10 @@ void Task::record_event(const Event& ev, FlushSyscallbuf flush) {
                         record_extra_regs(ev) ? &extra_regs() : nullptr);
   }
 
-  if (should_dump_memory(this, frame)) {
+  if (should_dump_memory(frame)) {
     dump_process_memory(this, frame.time(), "rec");
   }
-  if (should_checksum(this, frame)) {
+  if (should_checksum(frame)) {
     checksum_process_memory(this, frame.time());
   }
 
@@ -1466,7 +1466,8 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   // replay.
   // Accumulate any unknown stuff in tick_count().
   if (tick_period != RESUME_NO_TICKS) {
-    hpc.reset(tick_period == RESUME_UNLIMITED_TICKS ? 0xffffffff : tick_period);
+    hpc.reset(tick_period == RESUME_UNLIMITED_TICKS ? 0xffffffff
+                                                    : (Ticks)tick_period);
   }
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   breakpoint_set_where_execution_resumed =
@@ -1592,7 +1593,8 @@ bool Task::set_debug_regs(const DebugRegs& regs) {
     WatchBytesX86 dr2_len : 2;
     WatchType dr3_type : 2;
     WatchBytesX86 dr3_len : 2;
-  } dr7 = { 0 };
+  } dr7;
+  memset(&dr7, 0, sizeof(dr7));
   static_assert(sizeof(DebugControl) == sizeof(uintptr_t),
                 "Can't pack DebugControl");
 
@@ -1897,7 +1899,7 @@ static bool is_signal_triggered_by_ptrace_interrupt(int sig) {
 
 // This function doesn't really need to do anything. The signal will cause
 // waitpid to return EINTR and that's all we need.
-static void handle_alarm_signal(int sig) {
+static void handle_alarm_signal(__attribute__((unused)) int sig) {
   LOG(debug) << "SIGALRM fired; maybe runaway tracee";
 }
 

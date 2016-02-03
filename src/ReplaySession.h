@@ -277,7 +277,7 @@ private:
         trace_frame(),
         current_step(),
         ticks_at_start_of_event(0) {
-    advance_to_next_trace_frame(0);
+    advance_to_next_trace_frame();
   }
 
   ReplaySession(const ReplaySession& other)
@@ -291,15 +291,14 @@ private:
         flags(other.flags) {}
 
   void setup_replay_one_trace_frame(Task* t);
-  void advance_to_next_trace_frame(TraceFrame::Time stop_at_time);
-  Completion emulate_signal_delivery(Task* oldtask, int sig,
-                                     const StepConstraints& constraints);
+  void advance_to_next_trace_frame();
+  Completion emulate_signal_delivery(Task* oldtask, int sig);
   Completion try_one_trace_step(Task* t,
                                 const StepConstraints& step_constraints);
   Completion cont_syscall_boundary(Task* t, const StepConstraints& constraints);
   Completion enter_syscall(Task* t, const StepConstraints& constraints);
-  Completion exit_syscall(Task* t, const StepConstraints& constraints);
-  Completion exit_task(Task* t, const StepConstraints& constraints);
+  Completion exit_syscall(Task* t);
+  Completion exit_task(Task* t);
   void check_ticks_consistency(Task* t, const Event& ev);
   void check_pending_sig(Task* t);
   void continue_or_step(Task* t, const StepConstraints& constraints,

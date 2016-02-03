@@ -48,7 +48,7 @@ private:
                                                                                \
   static RR_CMD_CLASSNAME() RR_CMD_OBJ();                                      \
                                                                                \
-  std::string RR_CMD_CLASSNAME()::invoke(GdbServer& gdb_server, Task* t,       \
-                                         const std::vector<std::string>& args)
+  std::string RR_CMD_CLASSNAME()::invoke(GdbServer&, Task* t,                  \
+                                         const std::vector<std::string>&)
 
 #endif

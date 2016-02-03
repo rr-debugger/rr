@@ -36,7 +36,7 @@ public:
    * write a blocking write. This ensures that writes are performed in the order
    * of will_write notifications.
    */
-  virtual Switchable will_write(Task* t) { return ALLOW_SWITCH; }
+  virtual Switchable will_write(Task*) { return ALLOW_SWITCH; }
   /**
    * Notification that task |t| wrote to the file descriptor.
    * Due to races, if will_write did not return PREVENT_SWITCH, it's possible
@@ -47,7 +47,7 @@ public:
     size_t length;
     Range(remote_ptr<void> data, size_t length) : data(data), length(length) {}
   };
-  virtual void did_write(Task* t, const std::vector<Range>& ranges) {}
+  virtual void did_write(Task*, const std::vector<Range>&) {}
 };
 
 #endif /* RR_FILE_MONITOR_H_ */

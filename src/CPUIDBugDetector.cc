@@ -19,7 +19,7 @@ void CPUIDBugDetector::run_detection_code() {
   cpuid_loop(4);
 }
 
-static bool rcb_counts_ok(uint64_t prev, uint64_t current, const char* source) {
+static bool rcb_counts_ok(uint64_t prev, uint64_t current) {
   if (current - prev == 2) {
     return true;
   }
@@ -54,10 +54,8 @@ void CPUIDBugDetector::notify_reached_syscall_during_replay(Task* t) {
   uint64_t trace_rcb_count = t->current_trace_frame().ticks();
   uint64_t actual_rcb_count = t->tick_count();
   if (trace_rcb_count_at_last_geteuid32 > 0 && !detected_cpuid_bug) {
-    if (!rcb_counts_ok(trace_rcb_count_at_last_geteuid32, trace_rcb_count,
-                       "trace") ||
-        !rcb_counts_ok(actual_rcb_count_at_last_geteuid32, actual_rcb_count,
-                       "actual")) {
+    if (!rcb_counts_ok(trace_rcb_count_at_last_geteuid32, trace_rcb_count) ||
+        !rcb_counts_ok(actual_rcb_count_at_last_geteuid32, actual_rcb_count)) {
       detected_cpuid_bug = true;
     }
   }

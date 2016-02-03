@@ -142,7 +142,7 @@ void EmuFs::gc(const Session& session) {
     Task* t = *as->task_set().begin();
     LOG(debug) << "  iterating /proc/" << t->tid << "/maps ...";
 
-    mark_used_vfiles(t, *as, &nr_marked_files);
+    mark_used_vfiles(*as, &nr_marked_files);
     if (files.size() == nr_marked_files) {
       break;
     }
@@ -195,8 +195,7 @@ void EmuFs::log() const {
 
 EmuFs::EmuFs() {}
 
-void EmuFs::mark_used_vfiles(Task* t, const AddressSpace& as,
-                             size_t* nr_marked_files) {
+void EmuFs::mark_used_vfiles(const AddressSpace& as, size_t* nr_marked_files) {
   for (auto m : as.maps()) {
     LOG(debug) << "  examining " << m.map.fsname().c_str() << " ...";
 

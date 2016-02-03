@@ -60,11 +60,11 @@ using namespace std;
 static const int SKID_SIZE = 70;
 
 static void debug_memory(Task* t) {
-  if (should_dump_memory(t, t->current_trace_frame())) {
+  if (should_dump_memory(t->current_trace_frame())) {
     dump_process_memory(t, t->current_trace_frame().time(), "rep");
   }
   if (t->session().can_validate() &&
-      should_checksum(t, t->current_trace_frame())) {
+      should_checksum(t->current_trace_frame())) {
     /* Validate the checksum we computed during the
      * recording phase. */
     validate_process_memory(t, t->current_trace_frame().time());
@@ -99,7 +99,7 @@ ReplaySession::shr_ptr ReplaySession::clone() {
  * Return true if it's possible/meaningful to make a checkpoint at the
  * |frame| that |t| will replay.
  */
-static bool can_checkpoint_at(Task* t, const TraceFrame& frame) {
+static bool can_checkpoint_at(const TraceFrame& frame) {
   const Event& ev = frame.event();
   if (ev.has_ticks_slop()) {
     return false;
@@ -126,7 +126,7 @@ bool ReplaySession::can_clone() {
   finish_initializing();
 
   Task* t = current_task();
-  return t && can_validate() && can_checkpoint_at(t, current_trace_frame());
+  return t && can_validate() && can_checkpoint_at(current_trace_frame());
 }
 
 DiversionSession::shr_ptr ReplaySession::clone_diversion() {
@@ -177,7 +177,7 @@ void ReplaySession::maybe_gc_emufs(SupportedArch arch, int syscallno) {
   return session;
 }
 
-void ReplaySession::advance_to_next_trace_frame(TraceFrame::Time stop_at_time) {
+void ReplaySession::advance_to_next_trace_frame() {
   if (trace_in.at_end()) {
     return;
   }
@@ -322,8 +322,7 @@ Completion ReplaySession::enter_syscall(Task* t,
  * Advance past the reti (or virtual reti) according to |step|.
  * Return COMPLETE if successful, or INCOMPLETE if an unhandled trap occurred.
  */
-Completion ReplaySession::exit_syscall(Task* t,
-                                       const StepConstraints& constraints) {
+Completion ReplaySession::exit_syscall(Task* t) {
   t->on_syscall_exit(current_step.syscall.number, current_trace_frame().regs());
 
   t->apply_all_data_records_from_trace();
@@ -780,8 +779,7 @@ static bool is_fatal_default_action(int sig) {
  * Emulates delivery of |sig| to |oldtask|.  Returns INCOMPLETE if
  * emulation was interrupted, COMPLETE if completed.
  */
-Completion ReplaySession::emulate_signal_delivery(
-    Task* oldtask, int sig, const StepConstraints& constraints) {
+Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
   Task* t = current_task();
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
@@ -997,8 +995,7 @@ Completion ReplaySession::patch_next_syscall(
     remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
                                    km.flags() | MAP_FIXED, -1, 0);
     t->vm()->map(km.start(), km.size(), km.prot(), km.flags(), 0, string(),
-                 KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km,
-                 TraceWriter::PATCH_MAPPING);
+                 KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km);
   }
 
   // Now replay all data records.
@@ -1070,20 +1067,20 @@ Completion ReplaySession::try_one_trace_step(
     case TSTEP_ENTER_SYSCALL:
       return enter_syscall(t, constraints);
     case TSTEP_EXIT_SYSCALL:
-      return exit_syscall(t, constraints);
+      return exit_syscall(t);
     case TSTEP_DETERMINISTIC_SIGNAL:
       return emulate_deterministic_signal(t, current_step.target.signo,
                                           constraints);
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
       return emulate_async_signal(t, constraints, current_step.target.ticks);
     case TSTEP_DELIVER_SIGNAL:
-      return emulate_signal_delivery(t, current_step.target.signo, constraints);
+      return emulate_signal_delivery(t, current_step.target.signo);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, constraints);
     case TSTEP_PATCH_SYSCALL:
       return patch_next_syscall(t, constraints);
     case TSTEP_EXIT_TASK:
-      return exit_task(t, constraints);
+      return exit_task(t);
     default:
       FATAL() << "Unhandled step type " << current_step.action;
       return COMPLETE;
@@ -1132,8 +1129,7 @@ static void end_task(Task* t) {
   delete t;
 }
 
-Completion ReplaySession::exit_task(Task* t,
-                                    const StepConstraints& constraints) {
+Completion ReplaySession::exit_task(Task* t) {
   ASSERT(t, !t->seen_ptrace_exit_event);
   // Apply robust-futex updates captured during recording.
   t->apply_all_data_records_from_trace();
@@ -1274,7 +1270,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     setup_replay_one_trace_frame(t);
     if (current_step.action == TSTEP_NONE) {
       // Already at the destination event.
-      advance_to_next_trace_frame(constraints.stop_at_time);
+      advance_to_next_trace_frame();
     }
     if (current_step.action == TSTEP_EXIT_TASK) {
       result.break_status.task = t;
@@ -1365,7 +1361,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   // Advance to next trace frame before doing rep_after_enter_syscall,
   // so that FdTable notifications run with the same trace timestamp during
   // replay as during recording
-  advance_to_next_trace_frame(constraints.stop_at_time);
+  advance_to_next_trace_frame();
   if (TSTEP_ENTER_SYSCALL == current_step.action) {
     // Advance to next trace frame before we call rep_after_enter_syscall,
     // since that matches what we do during recording and it matters for

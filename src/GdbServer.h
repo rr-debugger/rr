@@ -46,7 +46,7 @@ public:
   GdbServer(std::shared_ptr<ReplaySession> session,
             const ReplaySession::Flags& flags, const Target& target)
       : target(target),
-        final_event(-1),
+        final_event(UINT32_MAX),
         stop_reason(0),
         in_debuggee_end_state(false),
         stop_replaying_to_target(false),
@@ -102,7 +102,7 @@ private:
         debuggee_tguid(t->task_group()->tguid()),
         last_continue_tuid(t->tuid()),
         last_query_tuid(t->tuid()),
-        final_event(-1),
+        final_event(UINT32_MAX),
         stop_reason(0),
         stop_replaying_to_target(false),
         interrupt_pending(false),

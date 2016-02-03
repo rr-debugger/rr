@@ -125,7 +125,7 @@ void format_dump_filename(Task* t, TraceFrame::Time global_time,
            t->rec_tid, global_time, tag);
 }
 
-bool should_dump_memory(Task* t, const TraceFrame& f) {
+bool should_dump_memory(const TraceFrame& f) {
   const Flags* flags = &Flags::get();
 
 #if defined(FIRST_INTERESTING_EVENT)
@@ -342,7 +342,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   fclose(c.checksums_file);
 }
 
-bool should_checksum(Task* t, const TraceFrame& f) {
+bool should_checksum(const TraceFrame& f) {
   int checksum = Flags::get().checksum;
   bool is_syscall_exit = EV_SYSCALL == f.event().type() &&
                          EXITING_SYSCALL == f.event().Syscall().state;

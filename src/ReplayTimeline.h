@@ -176,8 +176,6 @@ public:
    */
   void seek_to_mark(const Mark& mark);
 
-  static bool never_interrupt() { return false; }
-
   /**
    * Replay 'current'.
    * If there is a breakpoint at the current task's current ip(), then
@@ -192,9 +190,8 @@ public:
    * replay_step_forward only does one replay step. That means we'll only
    * execute code in current_session().current_task().
    */
-  ReplayResult replay_step_forward(
-      RunCommand command, TraceFrame::Time stop_at_time,
-      const std::function<bool()>& interrupt_check = never_interrupt);
+  ReplayResult replay_step_forward(RunCommand command,
+                                   TraceFrame::Time stop_at_time);
 
   ReplayResult reverse_continue(const std::function<bool(Task* t)>& stop_filter,
                                 const std::function<bool()>& interrupt_check);

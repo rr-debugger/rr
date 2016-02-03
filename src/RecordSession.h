@@ -96,8 +96,7 @@ private:
   bool handle_ptrace_event(Task* t, StepState* step_state);
   bool handle_signal_event(Task* t, StepState* step_state);
   void runnable_state_changed(Task* t, RecordResult* step_result,
-                              bool can_consume_wait_status,
-                              StepState* step_state);
+                              bool can_consume_wait_status);
   void signal_state_changed(Task* t, StepState* step_state);
   void syscall_state_changed(Task* t, StepState* step_state);
   void desched_state_changed(Task* t);

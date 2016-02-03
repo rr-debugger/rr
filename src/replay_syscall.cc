@@ -333,7 +333,7 @@ static string find_exec_stub(SupportedArch arch) {
 
 static void finish_direct_mmap(AutoRemoteSyscalls& remote,
                                remote_ptr<void> rec_addr, size_t length,
-                               int prot, int flags, off64_t mmap_offset_pages,
+                               int prot, int flags,
                                const string& backing_file_name,
                                off64_t backing_offset_pages,
                                struct stat& real_file, string& real_file_name) {
@@ -395,10 +395,9 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
     case TraceReader::SOURCE_FILE: {
       struct stat real_file;
       offset_bytes = km.file_offset_bytes();
-      finish_direct_mmap(remote, km.start(), km.size(), km.prot(), km.flags(),
-                         offset_bytes / page_size(), data.file_name,
-                         data.file_data_offset_bytes / page_size(), real_file,
-                         real_file_name);
+      finish_direct_mmap(
+          remote, km.start(), km.size(), km.prot(), km.flags(), data.file_name,
+          data.file_data_offset_bytes / page_size(), real_file, real_file_name);
       device = real_file.st_dev;
       inode = real_file.st_ino;
       break;
@@ -583,7 +582,7 @@ static bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex,
 }
 
 static void process_futex(Task* t, const TraceFrame& trace_frame,
-                          SyscallEntryOrExit state, ReplayTraceStep* step) {
+                          SyscallEntryOrExit state) {
   if (state == SYSCALL_EXIT) {
     return;
   }
@@ -606,8 +605,7 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
   }
 }
 
-static void process_brk(Task* t, const TraceFrame& trace_frame,
-                        SyscallEntryOrExit state, ReplayTraceStep* step) {
+static void process_brk(Task* t, SyscallEntryOrExit state) {
   if (state == SYSCALL_ENTRY) {
     return;
   }
@@ -669,7 +667,7 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
         recorded_km, length);
     struct stat real_file;
     finish_direct_mmap(remote, rec_addr, length, prot, flags & ~MAP_ANONYMOUS,
-                       0, emufile->proc_path(), 0, real_file, file_name);
+                       emufile->proc_path(), 0, real_file, file_name);
     device = real_file.st_dev;
     inode = real_file.st_ino;
   }
@@ -754,10 +752,9 @@ static void finish_private_mmap(AutoRemoteSyscalls& remote,
                        mapped_pages - data_pages, km);
 }
 
-static void finish_shared_mmap(AutoRemoteSyscalls& remote,
-                               const TraceFrame& trace_frame, int prot,
-                               int flags, off64_t offset_pages,
-                               size_t file_size, const KernelMapping& km) {
+static void finish_shared_mmap(AutoRemoteSyscalls& remote, int prot, int flags,
+                               off64_t offset_pages, size_t file_size,
+                               const KernelMapping& km) {
   Task* t = remote.task();
   auto buf = t->trace_reader().read_raw_data();
   size_t rec_num_bytes = ceil_page_size(buf.data.size());
@@ -772,7 +769,7 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote,
   // we exit/crash the kernel will clean up for us.
   struct stat real_file;
   string real_file_name;
-  finish_direct_mmap(remote, buf.addr, rec_num_bytes, prot, flags, offset_pages,
+  finish_direct_mmap(remote, buf.addr, rec_num_bytes, prot, flags,
                      emufile->proc_path(), offset_pages, real_file,
                      real_file_name);
   // Write back the snapshot of the segment that we recorded.
@@ -826,7 +823,7 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
         struct stat real_file;
         string real_file_name;
         finish_direct_mmap(remote, trace_frame.regs().syscall_result(), length,
-                           prot, flags, offset_pages, data.file_name,
+                           prot, flags, data.file_name,
                            data.file_data_offset_bytes / page_size(), real_file,
                            real_file_name);
         t->vm()->map(km.start(), length, prot, flags,
@@ -838,7 +835,7 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame,
           finish_private_mmap(remote, trace_frame, length, prot, flags,
                               offset_pages, km);
         } else {
-          finish_shared_mmap(remote, trace_frame, prot, flags, offset_pages,
+          finish_shared_mmap(remote, prot, flags, offset_pages,
                              data.file_size_bytes, km);
         }
       }
@@ -860,7 +857,7 @@ void process_grow_map(Task* t) {
 }
 
 static void process_shmat(Task* t, const TraceFrame& trace_frame,
-                          SyscallEntryOrExit state, int shmid, int shm_flags,
+                          SyscallEntryOrExit state, int shm_flags,
                           ReplayTraceStep* step) {
   if (SYSCALL_ENTRY == state) {
     return;
@@ -877,8 +874,7 @@ static void process_shmat(Task* t, const TraceFrame& trace_frame,
     KernelMapping km = t->trace_reader().read_mapped_region(&data);
     int prot = shm_flags_to_mmap_prot(shm_flags);
     int flags = MAP_SHARED;
-    finish_shared_mmap(remote, trace_frame, prot, flags, 0,
-                       data.file_size_bytes, km);
+    finish_shared_mmap(remote, prot, flags, 0, data.file_size_bytes, km);
 
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
@@ -1088,7 +1084,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       return process_execve(t, trace_frame, state, step);
 
     case Arch::futex:
-      return process_futex(t, trace_frame, state, step);
+      return process_futex(t, trace_frame, state);
 
     case Arch::ptrace:
       if (SYSCALL_ENTRY == state) {
@@ -1111,7 +1107,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       break;
 
     case Arch::brk:
-      return process_brk(t, trace_frame, state, step);
+      return process_brk(t, state);
 
     case Arch::mmap: {
       // process_mmap checks 'state' too, but we need to check it now to
@@ -1139,8 +1135,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
                           trace_regs.arg6(), step);
 
     case Arch::shmat:
-      return process_shmat(t, trace_frame, state, trace_regs.arg1(),
-                           trace_regs.arg3(), step);
+      return process_shmat(t, trace_frame, state, trace_regs.arg3(), step);
 
     case Arch::shmdt:
       return process_shmdt(t, trace_frame, state, trace_regs.arg1(), step);
@@ -1207,8 +1202,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::ipc:
       switch ((int)trace_regs.arg1_signed()) {
         case SHMAT:
-          return process_shmat(t, trace_frame, state, trace_regs.arg2(),
-                               trace_regs.arg3(), step);
+          return process_shmat(t, trace_frame, state, trace_regs.arg3(), step);
         case SHMDT:
           return process_shmdt(t, trace_frame, state, trace_regs.arg5(), step);
         default:
