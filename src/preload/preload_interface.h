@@ -59,6 +59,9 @@
 #define RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR                            \
   (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 4 +                              \
    RR_PAGE_SYSCALL_INSTRUCTION_END)
+#define RR_PAGE_FF_BYTES                                                       \
+  (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 5 +                              \
+   RR_PAGE_SYSCALL_INSTRUCTION_END)
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.

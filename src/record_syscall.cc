@@ -1571,32 +1571,32 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
  * tracee will be returned at a state in which it has entered (or
  * re-entered) SYS_exit.
  */
-static void destroy_buffers(Task* t) {
-  // NB: we have to pay all this complexity here because glibc
-  // makes its SYS_exit call through an inline int $0x80 insn,
-  // instead of going through the vdso.  There may be a deep
-  // reason for why it does that, but if it starts going through
-  // the vdso in the future, this code can be eliminated in
-  // favor of a *much* simpler vsyscall SYS_exit hook in the
-  // preload lib.
-  Registers exit_regs = t->regs();
+static void process_exit(Task* t) {
+  Registers r = t->regs();
+  Registers exit_regs = r;
   ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(), t->arch()))
       << "Tracee should have been at exit, but instead at "
       << t->syscall_name(exit_regs.original_syscallno());
 
+  // The first thing we need to do is to block all signals to prevent
+  // a signal being delivered to the thread (since it's going to exit and
+  // won't be able to handle any more signals).
+  //
   // The tracee is at the entry to SYS_exit, but hasn't started
   // the call yet.  We can't directly start injecting syscalls
   // because the tracee is still in the kernel.  And obviously,
   // if we finish the SYS_exit syscall, the tracee isn't around
   // anymore.
   //
-  // So hijack this SYS_exit call and rewrite it into a harmless
-  // one that we can exit successfully, SYS_gettid here (though
-  // that choice is arbitrary).
-  exit_regs.set_original_syscallno(syscall_number_for_gettid(t->arch()));
-  t->set_regs(exit_regs);
-  // This exits the hijacked SYS_gettid.  Now the tracee is
-  // ready to do our bidding.
+  // So hijack this SYS_exit call and rewrite it into a SYS_rt_sigprocmask.
+  r.set_original_syscallno(syscall_number_for_rt_sigprocmask(t->arch()));
+  r.set_arg1(SIG_BLOCK);
+  r.set_arg2(AddressSpace::rr_page_ff_bytes());
+  r.set_arg3(0);
+  r.set_arg4(sizeof(sig_set_t));
+  t->set_regs(r);
+  // This exits the SYS_rt_sigprocmask.  Now the tracee is ready to do our
+  // bidding.
   t->advance_syscall();
 
   // Restore these regs to what they would have been just before
@@ -1614,10 +1614,14 @@ static void destroy_buffers(Task* t) {
   // Restart the SYS_exit call.
   t->set_regs(exit_regs);
   t->advance_syscall();
-  // XXX a signal might be received during the above, and stashed, and then
-  // lost because we exited. But I don't really see that there's anything we
-  // can do to prevent such a race :-(.
-  ASSERT(t, !t->has_stashed_sig());
+
+  if (t->has_stashed_sig()) {
+    // An unblockable signal (SIGKILL, SIGSTOP) might be received during the
+    // above, and stashed. Since these signals are unblockable they take
+    // effect no matter what and we don't need to deliver them.
+    ASSERT(t, t->peek_stash_sig().si_signo == SIGKILL ||
+        t->peek_stash_sig().si_signo == SIGSTOP);
+  }
 }
 
 template <typename Arch>
@@ -1762,7 +1766,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       if (t->task_group()->task_set().size() == 1) {
         t->task_group()->exit_code = (int)t->regs().arg1();
       }
-      destroy_buffers(t);
+      process_exit(t);
       return PREVENT_SWITCH;
 
     case Arch::exit_group:

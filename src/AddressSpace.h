@@ -615,6 +615,12 @@ public:
     return RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR;
   }
   /**
+   * Return a pointer to 8 bytes of 0xFF
+   */
+  static remote_ptr<uint8_t> rr_page_ff_bytes() {
+    return RR_PAGE_FF_BYTES;
+  }
+  /**
    * ip() of the untraced traced system call instruction.
    */
   remote_code_ptr rr_page_untraced_syscall_ip(SupportedArch arch) {

@@ -189,6 +189,7 @@ bool Event::has_ticks_slop() const {
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_FLUSH:
     case EV_SYSCALLBUF_RESET:
+    case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
     case EV_DESCHED:
     case EV_GROW_MAP:
       return true;

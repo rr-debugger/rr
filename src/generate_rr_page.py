@@ -33,6 +33,8 @@ def write_rr_page(f, is_64, is_replay):
     f.write(bytes)
     # privileged untraced
     f.write(bytes)
+    bytes = bytearray([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
+    f.write(bytes)
 
 generators_for = {
     'rr_page_32': lambda stream: write_rr_page(stream, False, False),

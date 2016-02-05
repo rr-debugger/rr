@@ -620,6 +620,7 @@ set(TESTS_WITH_PROGRAM
   target_process
   term_nonmain
   term_rr
+  thread_exit_signal
   threaded_syscall_spam
   threads
   tiocinq
