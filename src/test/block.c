@@ -142,7 +142,8 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
 
     magic = ~msg_magic;
 #if defined(SYS_socketcall)
-    struct recvmmsg_arg arg = { 0 };
+    struct recvmmsg_arg arg;
+    memset(&arg, 0, sizeof(arg));
     arg.sockfd = sock;
     arg.msgvec = &mmsg;
     arg.vlen = 1;
