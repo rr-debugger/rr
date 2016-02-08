@@ -1564,6 +1564,17 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   return PREVENT_SWITCH;
 }
 
+static void check_signals_while_exiting(Task* t) {
+  if (t->has_stashed_sig()) {
+    // An unblockable signal (SIGKILL, SIGSTOP) might be received
+    // and stashed. Since these signals are unblockable they take
+    // effect no matter what and we don't need to deliver them to an exiting
+    // thread.
+    ASSERT(t, t->peek_stash_sig().si_signo == SIGKILL ||
+        t->peek_stash_sig().si_signo == SIGSTOP);
+  }
+}
+
 /**
  * At thread exit time, undo the work that init_buffers() did.
  *
@@ -1572,6 +1583,8 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
  * re-entered) SYS_exit.
  */
 static void process_exit(Task* t) {
+  check_signals_while_exiting(t);
+
   Registers r = t->regs();
   Registers exit_regs = r;
   ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(), t->arch()))
@@ -1598,6 +1611,11 @@ static void process_exit(Task* t) {
   // This exits the SYS_rt_sigprocmask.  Now the tracee is ready to do our
   // bidding.
   t->advance_syscall();
+  check_signals_while_exiting(t);
+
+  // Do the actual buffer and fd cleanup.
+  t->destroy_buffers();
+  check_signals_while_exiting(t);
 
   // Restore these regs to what they would have been just before
   // the tracee trapped at SYS_exit.  When we've finished
@@ -1607,21 +1625,10 @@ static void process_exit(Task* t) {
   exit_regs.set_ip(exit_regs.ip() - syscall_instruction_length(t->arch()));
   ASSERT(t, is_at_syscall_instruction(t, exit_regs.ip()))
       << "Tracee should have entered through int $0x80.";
-
-  // Do the actual buffer and fd cleanup.
-  t->destroy_buffers();
-
   // Restart the SYS_exit call.
   t->set_regs(exit_regs);
   t->advance_syscall();
-
-  if (t->has_stashed_sig()) {
-    // An unblockable signal (SIGKILL, SIGSTOP) might be received during the
-    // above, and stashed. Since these signals are unblockable they take
-    // effect no matter what and we don't need to deliver them.
-    ASSERT(t, t->peek_stash_sig().si_signo == SIGKILL ||
-        t->peek_stash_sig().si_signo == SIGSTOP);
-  }
+  check_signals_while_exiting(t);
 }
 
 template <typename Arch>
