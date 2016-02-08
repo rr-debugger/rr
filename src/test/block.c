@@ -93,6 +93,9 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     struct iovec data;
     int magic = ~msg_magic;
     int err, ret;
+#if defined(SYS_socketcall)
+    struct recvmmsg_arg arg;
+#endif
 
     memset(&mmsg, 0, sizeof(mmsg));
     memset(&data, 0, sizeof(data));
@@ -142,7 +145,6 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
 
     magic = ~msg_magic;
 #if defined(SYS_socketcall)
-    struct recvmmsg_arg arg;
     memset(&arg, 0, sizeof(arg));
     arg.sockfd = sock;
     arg.msgvec = &mmsg;
