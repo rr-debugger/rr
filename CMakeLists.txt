@@ -47,8 +47,8 @@ else()
 endif()
 
 
-# Check that a 32-bit cross-compile works, if required.
-if(rr_32BIT AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+# Check that compiling 32-bit code on a 64-bit target works, if required.
+if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND rr_32BIT)
   # try_compile won't accept LINK_FLAGS, so do this manually.
   file(WRITE "${CMAKE_BINARY_DIR}/test32.c" "int main() { return 0; }")
   execute_process(COMMAND ${CMAKE_CXX_COMPILER} -o ${CMAKE_BINARY_DIR}/test32 ${CMAKE_BINARY_DIR}/test32.c -m32
@@ -64,14 +64,14 @@ set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} ${rr_MBITNESS_OPTION}")
 
 find_package(PkgConfig REQUIRED)
 
-# If we're cross-compiling a 32-bit build on a 64-bit host we need
+# If we're cross-compiling a 32-bit rr build on a 64-bit host we need
 # to ensure we're looking for the right libraries.
 # This has been tested on Ubuntu and Fedora.
-set(LIBDIR32_CANDIDATES
-  /usr/lib/i386-linux-gnu/pkgconfig/
-  /usr/lib/pkgconfig/
-)
-if(rr_32BIT AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64")
+if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND NOT rr_64BIT)
+  set(LIBDIR32_CANDIDATES
+    /usr/lib/i386-linux-gnu/pkgconfig/
+    /usr/lib/pkgconfig/
+  )
   foreach(libdir ${LIBDIR32_CANDIDATES})
     if(IS_DIRECTORY ${libdir})
       set(ENV{PKG_CONFIG_LIBDIR} ${libdir})
