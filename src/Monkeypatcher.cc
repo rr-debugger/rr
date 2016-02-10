@@ -695,7 +695,13 @@ void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
       if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
         static const uintptr_t vdso_max_size = 0xffffLL;
         uintptr_t sym_address = syms.file_offset(i);
-        ASSERT(t, (sym_address & ~vdso_max_size) == 0);
+        if ((sym_address & ~vdso_max_size) != 0) {
+          // With 4.3.3-301.fc23.x86_64, once in a while we
+          // see a VDSO symbol with a crazy file offset in it which is a
+          // duplicate of another symbol. Bizzarro. Ignore it.
+          continue;
+        }
+
         uintptr_t absolute_address = vdso_start.as_int() + sym_address;
 
         uint8_t patch[X86VsyscallMonkeypatch::size];
