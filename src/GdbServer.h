@@ -15,7 +15,13 @@
 #include "TraceFrame.h"
 
 class GdbServer {
-  friend class GdbCommand;
+  // Not ideal but we can't inherit friend from GdbCommand
+  friend std::string invoke_checkpoint(GdbServer&, Task*,
+                                       const std::vector<std::string>&);
+  friend std::string invoke_delete_checkpoint(GdbServer&, Task*,
+                                              const std::vector<std::string>&);
+  friend std::string invoke_info_checkpoints(GdbServer&, Task*,
+                                             const std::vector<std::string>&);
 
 public:
   struct Target {
@@ -113,11 +119,6 @@ private:
                                  : *emergency_debug_session;
   }
 
-  /**
-   * If |req| is a magic-write command, interpret it and return true.
-   * Otherwise, do nothing and return false.
-   */
-  bool maybe_process_magic_command(const GdbRequest& req);
   void dispatch_regs_request(const Registers& regs,
                              const ExtraRegisters& extra_regs);
   enum ReportState { REPORT_NORMAL, REPORT_THREADS_DEAD };
@@ -219,8 +220,9 @@ private:
 
   struct Checkpoint {
     enum Explicit { EXPLICIT, NOT_EXPLICIT };
-    Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid, Explicit e)
-        : last_continue_tuid(last_continue_tuid), is_explicit(e) {
+    Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid, Explicit e,
+               const std::string& where)
+        : last_continue_tuid(last_continue_tuid), is_explicit(e), where(where) {
       if (e == EXPLICIT) {
         mark = timeline.add_explicit_checkpoint();
       } else {
@@ -231,6 +233,7 @@ private:
     ReplayTimeline::Mark mark;
     TaskUid last_continue_tuid;
     Explicit is_explicit;
+    std::string where;
   };
   // |debugger_restart_mark| is the point where we will restart from with
   // a no-op debugger "run" command.
