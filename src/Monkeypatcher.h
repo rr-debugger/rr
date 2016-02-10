@@ -34,7 +34,7 @@ class Task;
 class Monkeypatcher {
 public:
   Monkeypatcher() : stub_buffer_allocated(0) {}
-  Monkeypatcher(const Monkeypatcher& o) = default;
+  Monkeypatcher(const Monkeypatcher&) = default;
 
   /**
    * Apply any necessary patching immediately after exec.

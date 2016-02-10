@@ -242,7 +242,7 @@ public:
   public:
     Mapping(const KernelMapping& map, const KernelMapping& recorded_map)
         : map(map), recorded_map(recorded_map) {}
-    Mapping(const Mapping& other) = default;
+    Mapping(const Mapping&) = default;
     Mapping() = default;
     const Mapping& operator=(const Mapping& other) {
       this->~Mapping();
