@@ -1571,7 +1571,7 @@ static void check_signals_while_exiting(Task* t) {
     // effect no matter what and we don't need to deliver them to an exiting
     // thread.
     ASSERT(t, t->peek_stash_sig().si_signo == SIGKILL ||
-        t->peek_stash_sig().si_signo == SIGSTOP);
+                  t->peek_stash_sig().si_signo == SIGSTOP);
   }
 }
 

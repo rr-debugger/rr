@@ -5,17 +5,11 @@
 static volatile int count;
 static volatile int stop;
 
-static void handler(__attribute__((unused)) int sig) {
-  ++count;
-}
+static void handler(__attribute__((unused)) int sig) { ++count; }
 
-static void handler2(__attribute__((unused)) int sig) {
-  stop = 1;
-}
+static void handler2(__attribute__((unused)) int sig) { stop = 1; }
 
-static void* do_thread(__attribute__((unused)) void* p) {
-  return NULL;
-}
+static void* do_thread(__attribute__((unused)) void* p) { return NULL; }
 
 int main(void) {
   test_assert(0 == signal(SIGCHLD, handler));

@@ -506,12 +506,25 @@ size_t Registers::total_registers() const {
   RR_ARCH_FUNCTION(total_registers_arch, arch());
 }
 
+// In theory it doesn't matter how 32-bit register values are sign extended
+// to 64 bits for PTRACE_SETREGS. However:
+// -- When setting up a signal handler frame, the kernel does some arithmetic
+// on the 64-bit SP value and validates that the result points to writeable
+// memory. This validation fails if SP has been sign-extended to point
+// outside the 32-bit address space.
+// -- Some kernels (e.g. 4.3.3-301.fc23.x86_64) with commmit
+// c5c46f59e4e7c1ab244b8d38f2b61d317df90bba have a bug where if you clear
+// the upper 32 bits of %rax while in the kernel, syscalls may fail to
+// restart. So sign-extension is necessary for %eax in this case. We may as
+// well sign-extend %eax in all cases.
+
 typedef void (*NarrowConversion)(int32_t& r32, uint64_t& r64);
 typedef void (*SameConversion)(int32_t& r32, uint32_t& r64);
-template <NarrowConversion narrow, SameConversion same>
+template <NarrowConversion narrow, NarrowConversion narrow_signed,
+          SameConversion same>
 void convert_x86(X86Arch::user_regs_struct& x86,
                  X64Arch::user_regs_struct& x64) {
-  narrow(x86.eax, x64.rax);
+  narrow_signed(x86.eax, x64.rax);
   narrow(x86.ebx, x64.rbx);
   narrow(x86.ecx, x64.rcx);
   narrow(x86.edx, x64.rdx);
@@ -532,15 +545,8 @@ void convert_x86(X86Arch::user_regs_struct& x86,
 
 void to_x86_narrow(int32_t& r32, uint64_t& r64) { r32 = r64; }
 void to_x86_same(int32_t& r32, uint32_t& r64) { r32 = r64; }
-void from_x86_narrow(int32_t& r32, uint64_t& r64) {
-  // We must zero-extend 32-bit register values to 64-bit values when we
-  // do a PTRACE_SETREGS. Most of the time the upper 32 bits are irrelevant for
-  // a 32-bit tracee, but when setting up a signal handler frame, the kernel
-  // does some arithmetic on the 64-bit SP value and validates that the
-  // result points to writeable memory. This validation fails if SP has been
-  // sign-extended to point outside the 32-bit address space.
-  r64 = (uint32_t)r32;
-}
+void from_x86_narrow(int32_t& r32, uint64_t& r64) { r64 = (uint32_t)r32; }
+void from_x86_narrow_signed(int32_t& r32, uint64_t& r64) { r64 = (int64_t)r32; }
 void from_x86_same(int32_t& r32, uint32_t& r64) { r64 = r32; }
 
 void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
@@ -550,7 +556,7 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
   }
 
   assert(arch() == x86 && NativeArch::arch() == x86_64);
-  convert_x86<to_x86_narrow, to_x86_same>(
+  convert_x86<to_x86_narrow, to_x86_narrow, to_x86_same>(
       u.x86regs, *reinterpret_cast<X64Arch::user_regs_struct*>(
                      const_cast<struct user_regs_struct*>(&ptrace_regs)));
 }
@@ -573,7 +579,7 @@ struct user_regs_struct Registers::get_ptrace() const {
 
   assert(arch() == x86 && NativeArch::arch() == x86_64);
   memset(&result, 0, sizeof(result));
-  convert_x86<from_x86_narrow, from_x86_same>(
+  convert_x86<from_x86_narrow, from_x86_narrow_signed, from_x86_same>(
       const_cast<Registers*>(this)->u.x86regs, result.x64arch_api);
   return result.linux_api;
 }
