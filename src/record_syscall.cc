@@ -66,6 +66,7 @@
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"
+
 using namespace std;
 using namespace rr;
 
@@ -1678,6 +1679,28 @@ static double user_timeval_to_absolute_sec(
   return monotonic_now_sec() + (double)val.tv_sec + (double)val.tv_usec / 1e6;
 }
 
+static void prepare_mmap_register_params(Task* t) {
+  Registers r = t->regs();
+  if (t->record_session().enable_chaos() &&
+      !(r.arg4_signed() & (MAP_FIXED | MAP_32BIT)) && r.arg1() == 0) {
+    // No address hint was provided. Randomize the allocation address.
+    size_t len = r.arg2();
+    if (r.arg4_signed() & MAP_GROWSDOWN) {
+      // Ensure stacks can grow to at least 1MB
+      len = max<size_t>(1024 * 1024, len);
+    }
+    remote_ptr<void> addr = t->vm()->chaos_mode_find_free_memory(t, len);
+    if (!addr.is_null()) {
+      r.set_arg1(addr + len - r.arg2());
+      // Note that we don't set MAP_FIXED here. If anything goes wrong (e.g.
+      // we pick a hint address that actually can't be used on this system), the
+      // kernel will pick a valid address instead.
+    }
+  }
+  r.set_arg4(r.arg4_signed() & ~MAP_GROWSDOWN);
+  t->set_regs(r);
+}
+
 template <typename Arch>
 static Switchable rec_prepare_syscall_arch(Task* t,
                                            TaskSyscallState& syscall_state) {
@@ -2656,9 +2679,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           break;
         }
         case Arch::RegisterArguments: {
-          Registers r = t->regs();
-          r.set_arg4(r.arg4_signed() & ~MAP_GROWSDOWN);
-          t->set_regs(r);
+          prepare_mmap_register_params(t);
           break;
         }
       }
@@ -2667,9 +2688,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::mmap2: {
       syscall_state.syscall_entry_registers =
           unique_ptr<Registers>(new Registers(t->regs()));
-      Registers r = t->regs();
-      r.set_arg4(r.arg4_signed() & ~MAP_GROWSDOWN);
-      t->set_regs(r);
+      prepare_mmap_register_params(t);
       return PREVENT_SWITCH;
     }
 
@@ -3277,6 +3296,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         }
         case Arch::RegisterArguments: {
           Registers r = t->regs();
+          r.set_arg1(syscall_state.syscall_entry_registers->arg1());
           r.set_arg4(syscall_state.syscall_entry_registers->arg4_signed());
           t->set_regs(r);
           process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
@@ -3289,6 +3309,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
 
     case Arch::mmap2: {
       Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
       r.set_arg4(syscall_state.syscall_entry_registers->arg4_signed());
       t->set_regs(r);
       process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),

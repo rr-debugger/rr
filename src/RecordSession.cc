@@ -1413,8 +1413,10 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       ignore_sig(0),
       last_task_switchable(PREVENT_SWITCH),
       use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
-      can_deliver_signals(false) {
+      can_deliver_signals(false),
+      enable_chaos_(false) {
   scheduler().set_enable_chaos(chaos == ENABLE_CHAOS);
+  set_enable_chaos(chaos == ENABLE_CHAOS);
   last_recorded_task = Task::spawn(*this, trace_out);
   initial_task_group = last_recorded_task->task_group();
   on_create(last_recorded_task);

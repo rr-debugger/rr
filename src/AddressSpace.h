@@ -674,6 +674,8 @@ public:
    */
   KernelMapping read_kernel_mapping(Task* t, remote_ptr<void> addr);
 
+  remote_ptr<void> chaos_mode_find_free_memory(Task* t, size_t len);
+
 private:
   class Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;

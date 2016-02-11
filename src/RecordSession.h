@@ -89,6 +89,11 @@ public:
         : continue_type(continue_type), continue_sig(0) {}
   };
 
+  void set_enable_chaos(bool enable_chaos) {
+    this->enable_chaos_ = enable_chaos;
+  }
+  bool enable_chaos() { return enable_chaos_; }
+
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
@@ -123,6 +128,10 @@ private:
    * replay won't be able to find the right execution point to deliver
    * the signal. */
   bool can_deliver_signals;
+  /**
+   * When true, try to increase the probability of finding bugs.
+   */
+  bool enable_chaos_;
 };
 
 #endif // RR_RECORD_SESSION_H_

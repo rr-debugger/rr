@@ -1388,3 +1388,62 @@ void AddressSpace::populate_address_space(Task* t) {
   }
   ASSERT(t, found_stacks == 1);
 }
+
+static int random_addr_bits(SupportedArch arch) {
+  switch (arch) {
+    default:
+      assert(0 && "Unknown architecture");
+    case x86:
+      return 32;
+    // Current x86-64 systems have only 48 bits of virtual address space,
+    // and only the bottom half is usable by user space
+    case x86_64:
+      return 47;
+  }
+}
+
+remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
+                                                           size_t len) {
+  remote_ptr<void> addr;
+  // Half the time, try to allocate at a completely random address. The other
+  // half of the time, we'll try to allocate immediately before or after a
+  // randomly chosen existing mapping.
+  if (random() % 2) {
+    int bits = random_addr_bits(t->arch());
+    // Some of these addresses will not be mappable. That's fine, the
+    // kernel will fall back to a valid address if the hint is not valid.
+    uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
+    addr = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << bits) - 1)));
+  } else {
+    int map_count = 0;
+    for (const auto& m : maps()) {
+      ++map_count;
+    }
+    ASSERT(t, map_count > 0);
+    int map_index = random() % map_count;
+    map_count = 0;
+    for (const auto& m : maps()) {
+      if (map_count == map_index) {
+        addr = m.map.start();
+        break;
+      }
+    }
+  }
+
+  // If there's a collision (which there always will be in the second case
+  // above), either move the mapping forwards or backwards in memory until it
+  // fits. Choose the direction randomly.
+  int direction = (random() % 2) ? 1 : -1;
+  while (true) {
+    Maps m = maps_starting_at(addr);
+    if (m.begin() == m.end() || m.begin()->map.start() >= addr + len) {
+      // No overlap with an existing mapping; we're good!
+      return addr;
+    }
+    if (direction == -1) {
+      addr = m.begin()->map.start() - len;
+    } else {
+      addr = m.begin()->map.end();
+    }
+  }
+}
