@@ -2283,9 +2283,9 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         t->sleeping_until =
             user_timespec_to_absolute_sec<Arch>(t, t->regs().arg3());
       } else {
-        if (t->regs().arg3() >= 0) {
+        if ((int)t->regs().arg3() >= 0) {
           t->sleeping_until =
-              monotonic_now_sec() + (double)t->regs().arg3() / 1000;
+              monotonic_now_sec() + (double)(int)t->regs().arg3() / 1000;
         }
       }
       return ALLOW_SWITCH;
