@@ -1402,6 +1402,14 @@ static int random_addr_bits(SupportedArch arch) {
   }
 }
 
+static MemoryRange adjust_range_for_stack_growth(const KernelMapping& km) {
+  remote_ptr<void> start = km.start();
+  if (km.flags() & MAP_GROWSDOWN) {
+    start = min(start, km.end() - AddressSpace::chaos_mode_min_stack_size());
+  }
+  return MemoryRange(start, km.end());
+}
+
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
                                                            size_t len) {
   remote_ptr<void> addr;
@@ -1433,14 +1441,18 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
   int direction = (random() % 2) ? 1 : -1;
   while (true) {
     Maps m = maps_starting_at(addr);
-    if (m.begin() == m.end() || m.begin()->map.start() >= addr + len) {
+    if (m.begin() == m.end()) {
+      return addr;
+    }
+    MemoryRange range = adjust_range_for_stack_growth(m.begin()->map);
+    if (range.start() >= addr + len) {
       // No overlap with an existing mapping; we're good!
       return addr;
     }
     if (direction == -1) {
-      addr = m.begin()->map.start() - len;
+      addr = range.start() - len;
     } else {
-      addr = m.begin()->map.end();
+      addr = range.end();
     }
   }
 }

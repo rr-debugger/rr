@@ -1686,8 +1686,8 @@ static void prepare_mmap_register_params(Task* t) {
     // No address hint was provided. Randomize the allocation address.
     size_t len = r.arg2();
     if (r.arg4_signed() & MAP_GROWSDOWN) {
-      // Ensure stacks can grow to at least 1MB
-      len = max<size_t>(1024 * 1024, len);
+      // Ensure stacks can grow to the minimum size we choose
+      len = max<size_t>(AddressSpace::chaos_mode_min_stack_size(), len);
     }
     remote_ptr<void> addr = t->vm()->chaos_mode_find_free_memory(t, len);
     if (!addr.is_null()) {
