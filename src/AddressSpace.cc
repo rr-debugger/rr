@@ -1415,18 +1415,15 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
     uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
     addr = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << bits) - 1)));
   } else {
+    ASSERT(t, !mem.empty());
+    int map_index = random() % mem.size();
     int map_count = 0;
-    for (const auto& m : maps()) {
-      ++map_count;
-    }
-    ASSERT(t, map_count > 0);
-    int map_index = random() % map_count;
-    map_count = 0;
     for (const auto& m : maps()) {
       if (map_count == map_index) {
         addr = m.map.start();
         break;
       }
+      ++map_count;
     }
   }
 
