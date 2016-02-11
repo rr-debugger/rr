@@ -12,7 +12,7 @@ static void before_writing(void) {}
 static void after_writing(void) {}
 
 static int run_child(void) {
-  size_t i;
+  int i;
   char* p;
   char* p2;
   pid_t child2;
