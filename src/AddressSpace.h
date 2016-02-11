@@ -674,9 +674,7 @@ public:
    */
   KernelMapping read_kernel_mapping(Task* t, remote_ptr<void> addr);
 
-  static uint32_t chaos_mode_min_stack_size() {
-    return 8 * 1024 * 1024;
-  }
+  static uint32_t chaos_mode_min_stack_size() { return 8 * 1024 * 1024; }
 
   remote_ptr<void> chaos_mode_find_free_memory(Task* t, size_t len);
 
