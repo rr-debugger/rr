@@ -1,6 +1,9 @@
         /* This must match the numbers in X86SyscallStubMonkeypatch and
            X64SyscallStubMonkeypatch */
         .set _syscall_stack_adjust,256
+        /* This must exceed the maximum stack usage of the syscall hook and
+           its callees */
+        .set _stack_pad_size,2048
 
         .global _stub_buffer
         .hidden _stub_buffer
@@ -127,6 +130,7 @@ _stub_buffer:
            can build the correct CFI unwinding info, so gdb gives good stack
            traces from inside the syscall hook code. */
         .cfi_startproc
+        movl   $0,-_stack_pad_size(%esp)
         /* Save fake return address and old sp to the stack, for gdb to use
            during stack unwinding. Addresses will be filled in by rr. */
         movl   $0x12345678,-_syscall_stack_adjust(%esp)
@@ -312,6 +316,11 @@ _stub_buffer:
            can build the correct CFI unwinding info, so gdb gives good stack
            traces from inside the syscall hook code. */
         .cfi_startproc
+        /* Force the stack to be extended to at least _stack_pad_size.
+           This forces any MAP_GROWSDOWN emulation to happen before we enter
+           the syscallbuf, which avoids having to reason about system calls
+           being recorded while we're in the middle of syscallbuf processing */
+        movl   $0,-_stack_pad_size(%rsp)
         /* Save fake return address and old sp to the stack, for gdb to use
            during stack unwinding. Addresses will be filled in by rr. */
         movl   $0x12345678,-_syscall_stack_adjust(%rsp)

@@ -101,6 +101,8 @@ templates = {
         # This code must match the stubs in syscall_hook.S.
         # We must adjust the stack pointer without modifying flags,
         # at least on the return path.
+        RawBytes(0xc7, 0x84, 0x24, 0x00, 0xf8, 0xff, 0xff), # movq $0,-2048(%esp)
+        RawBytes(0x00, 0x00, 0x00, 0x00),
         RawBytes(0xc7, 0x84, 0x24, 0x00, 0xff, 0xff, 0xff), # movq $fake_return_addr,-256(%esp)
         Field('fake_return_addr', 4),
         RawBytes(0x89, 0xa4, 0x24, 0x04, 0xff, 0xff, 0xff), # mov %esp,-252(%esp)
@@ -135,6 +137,8 @@ templates = {
         # This code must match the stubs in syscall_hook.S.
         # We must adjust the stack pointer without modifying flags,
         # at least on the return path.
+        RawBytes(0xc7, 0x84, 0x24, 0x00, 0xf8, 0xff, 0xff), # movl $0,-2048(%rsp)
+        RawBytes(0x00, 0x00, 0x00, 0x00),
         RawBytes(0xc7, 0x84, 0x24, 0x00, 0xff, 0xff, 0xff), # movl $return_addr_lo,-256(%rsp)
         Field('return_addr_lo', 4),
         RawBytes(0xc7, 0x84, 0x24, 0x04, 0xff, 0xff, 0xff), # movl $return_addr_hi,-252(%rsp)

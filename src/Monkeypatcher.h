@@ -89,6 +89,10 @@ public:
   };
   std::vector<ExtendedJumpPage> extended_jump_pages;
 
+  bool in_stub_buffer(remote_ptr<void> p) {
+    return stub_buffer <= p && p < stub_buffer_end;
+  }
+
 private:
   /**
    * The list of supported syscall patches obtained from the preload

@@ -277,6 +277,9 @@ static remote_ptr<uint8_t> allocate_extended_jump(
  * 2GB of the patch site, within which we allocate instructions that can jump
  * anywhere in memory. We don't really need this on x86, but we do it there
  * too for consistency.
+ *
+ * trampoline_call_end is the offset within the StubPatch where the call to
+ * the trampoline ends.
  */
 template <typename JumpPatch, typename ExtendedJumpPatch, typename StubPatch,
           uint32_t trampoline_call_end>
@@ -339,7 +342,7 @@ bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
                                         X86SyscallStubExtendedJump,
-                                        X86SyscallStubMonkeypatch, 30>(patcher,
+                                        X86SyscallStubMonkeypatch, 41>(patcher,
                                                                        t, hook);
 }
 
@@ -348,7 +351,7 @@ bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
                                         X64SyscallStubExtendedJump,
-                                        X64SyscallStubMonkeypatch, 43>(patcher,
+                                        X64SyscallStubMonkeypatch, 54>(patcher,
                                                                        t, hook);
 }
 
