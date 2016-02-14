@@ -105,6 +105,7 @@ static bool parse_record_arg(std::vector<std::string>& args,
       flags.max_ticks = opt.int_value;
       break;
     case 'h':
+      LOG(info) << "Enabled chaos mode";
       flags.chaos = RecordSession::ENABLE_CHAOS;
       break;
     case 'i':
