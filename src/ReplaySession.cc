@@ -383,7 +383,7 @@ void ReplaySession::continue_or_step(Task* t,
  */
 static bool is_breakpoint_trap(Task* t) {
   const siginfo_t& si = t->get_siginfo();
-  assert(SIGTRAP == si.si_signo);
+  ASSERT(t, SIGTRAP == si.si_signo);
 
   /* XXX unable to find docs on which of these "should" be
    * right.  The SI_KERNEL code is seen in the int3 test, so we
@@ -408,7 +408,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
                                           const StepConstraints& constraints) {
   TrapType trap_type;
 
-  assert(SIGTRAP == t->pending_sig());
+  ASSERT(t, SIGTRAP == t->pending_sig());
 
   /* We're not replaying a trap, and it was clearly raised on
    * behalf of the debugger.  (The debugger will verify
@@ -430,7 +430,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
 
   trap_type = t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
   if (TRAP_BKPT_USER == trap_type || TRAP_BKPT_INTERNAL == trap_type) {
-    assert(is_breakpoint_trap(t));
+    ASSERT(t, is_breakpoint_trap(t));
     return trap_type;
   }
 
@@ -440,7 +440,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
      * |int3|, but not one we injected.)  Not for the
      * debugger, although we'll end up notifying it
      * anyway. */
-    assert(DETERMINISTIC_SIG == deterministic);
+    ASSERT(t, DETERMINISTIC_SIG == deterministic);
     return TRAP_NONE;
   }
 
@@ -450,7 +450,7 @@ TrapType ReplaySession::compute_trap_type(Task* t, int target_sig,
      * and this wasn't a breakpoint, we must have been
      * single stepping.  So definitely for the
      * debugger. */
-    assert(constraints.is_singlestep());
+    ASSERT(t, constraints.is_singlestep());
     return TRAP_STEPI;
   }
 
