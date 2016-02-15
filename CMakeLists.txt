@@ -614,6 +614,7 @@ set(TESTS_WITH_PROGRAM
   stack_growth
   step_thread
   string_instructions
+  string_instructions_async_signals
   string_instructions_replay
   string_instructions_watch
   syscallbuf_fd_disabling

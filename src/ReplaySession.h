@@ -304,16 +304,7 @@ private:
   void continue_or_step(Task* t, const StepConstraints& constraints,
                         TicksRequest tick_request,
                         ResumeRequest resume_how = RESUME_SYSCALL);
-  enum ExecStateType { UNKNOWN, NOT_AT_TARGET, AT_TARGET };
-  TrapType compute_trap_type(Task* t, int target_sig,
-                             SignalDeterministic deterministic,
-                             ExecStateType exec_state,
-                             const StepConstraints& constraints);
-  bool is_debugger_trap(Task* t, int target_sig,
-                        SignalDeterministic deterministic,
-                        ExecStateType exec_state,
-                        const StepConstraints& constraints);
-  Completion advance_to(Task* t, const Registers& regs, int sig,
+  Completion advance_to(Task* t, const Registers& regs,
                         const StepConstraints& constraints, Ticks ticks);
   Completion advance_to_ticks_target(Task* t,
                                      const StepConstraints& constraints);

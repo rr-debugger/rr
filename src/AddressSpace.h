@@ -195,8 +195,6 @@ struct MappingComparator {
 
 enum TrapType {
   TRAP_NONE = 0,
-  // Trap for debugger 'stepi' request.
-  TRAP_STEPI,
   // Trap for internal rr purposes, f.e. replaying async
   // signals.
   TRAP_BKPT_INTERNAL,
