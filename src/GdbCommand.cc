@@ -27,15 +27,15 @@ string invoke_checkpoint(GdbServer& gdb_server, Task*,
                          const vector<string>& args) {
   const string& where = args[1];
   int checkpoint_id = ++gNextCheckpointId;
+  GdbServer::Checkpoint::Explicit e;
   if (gdb_server.timeline.can_add_checkpoint()) {
-    gdb_server.checkpoints[checkpoint_id] = GdbServer::Checkpoint(
-        gdb_server.timeline, gdb_server.last_continue_tuid,
-        GdbServer::Checkpoint::EXPLICIT, where);
-    return string("Checkpoint ") + to_string(checkpoint_id) + " at " + where;
+    e = GdbServer::Checkpoint::EXPLICIT;
   } else {
-    // TODO Use non-explicit mark checkpoints.
-    return "Error: Checkpoints are not supported here.";
+    e = GdbServer::Checkpoint::NOT_EXPLICIT;
   }
+  gdb_server.checkpoints[checkpoint_id] = GdbServer::Checkpoint(
+      gdb_server.timeline, gdb_server.last_continue_tuid, e, where);
+  return string("Checkpoint ") + to_string(checkpoint_id) + " at " + where;
 }
 static SimpleGdbCommand checkpoint("checkpoint", invoke_checkpoint);
 
