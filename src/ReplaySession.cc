@@ -467,9 +467,9 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
  * that will be decremented by branches retired during this attempted
  * step.
  */
-Completion ReplaySession::advance_to(Task* t, const Registers& regs,
-                                     const StepConstraints& constraints,
-                                     Ticks ticks) {
+Completion ReplaySession::emulate_async_signal(
+    Task* t, const StepConstraints& constraints, Ticks ticks) {
+  const Registers& regs = trace_frame.regs();
   remote_code_ptr ip = regs.ip();
   bool did_set_internal_breakpoint = false;
 
@@ -802,17 +802,6 @@ Completion ReplaySession::emulate_deterministic_signal(
   }
 
   return COMPLETE;
-}
-
-/**
- * Run execution forwards for |t| until |t->trace.ticks| is reached,
- * and the $ip reaches the recorded $ip.  After that, deliver |sig| if
- * nonzero.  Return COMPLETE if successful or INCOMPLETE if an unhandled
- * interrupt occurred.
- */
-Completion ReplaySession::emulate_async_signal(
-    Task* t, const StepConstraints& constraints, Ticks ticks) {
-  return advance_to(t, trace_frame.regs(), constraints, ticks);
 }
 
 /**

@@ -304,8 +304,6 @@ private:
   void continue_or_step(Task* t, const StepConstraints& constraints,
                         TicksRequest tick_request,
                         ResumeRequest resume_how = RESUME_SYSCALL);
-  Completion advance_to(Task* t, const Registers& regs,
-                        const StepConstraints& constraints, Ticks ticks);
   Completion advance_to_ticks_target(Task* t,
                                      const StepConstraints& constraints);
   Completion emulate_deterministic_signal(Task* t, int sig,
