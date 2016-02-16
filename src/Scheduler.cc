@@ -296,7 +296,11 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
       next = find_next_runnable_task(current, by_waitpid, INT32_MAX);
     }
 
-    if (next && next->priority > 0 && in_high_priority_only_interval()) {
+    // When there's only one thread, treat it as low priority for the
+    // purposes of high-priority-only-intervals. Otherwise single-threaded
+    // workloads mostly don't get any chaos mode effects.
+    if (next && (next->priority > 0 || task_priority_set.size() == 1) &&
+        in_high_priority_only_interval()) {
       if (*by_waitpid) {
         LOG(debug)
             << "Waking up low-priority task with by_waitpid; not sleeping";
@@ -350,13 +354,13 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
   }
 
   if (current && current != next) {
-    maybe_reset_high_priority_only_intervals();
     LOG(debug) << "Switching from " << current->tid << "(" << current->name()
                << ") to " << next->tid << "(" << next->name() << ") (priority "
                << current->priority << " to " << next->priority << ") at "
                << current->trace_writer().time();
   }
 
+  maybe_reset_high_priority_only_intervals();
   setup_new_timeslice(next);
   current = next;
   return current;
