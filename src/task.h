@@ -185,6 +185,18 @@ enum EmulatedStopType {
   SIGNAL_DELIVERY_STOP // Stopped before delivering a signal. ptracees only.
 };
 
+/** Reasons why a SIGTRAP might have been delivered. Multiple reasons can
+ * apply. Also, none can apply, e.g. if someone sent us a SIGTRAP via kill().
+ */
+struct TrapReasons {
+  /* Singlestep completed (RESUME_SINGLESTEP, RESUME_SYSEMU_SINGLESTEP). */
+  bool singlestep;
+  /* Hardware watchpoint fired. */
+  bool watchpoint;
+  /* Breakpoint instruction was executed. */
+  bool breakpoint;
+};
+
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -758,6 +770,12 @@ public:
    */
   uintptr_t consume_debug_status();
   void replace_debug_status(uintptr_t status);
+
+  /**
+   * Determine why a SIGTRAP occurred. Uses debug_status() but doesn't
+   * consume it.
+   */
+  TrapReasons compute_trap_reasons();
 
   /**
    * Return the address of the watchpoint programmed at slot
@@ -1542,12 +1560,12 @@ private:
   Ticks ticks;
   // When |is_stopped|, these are our child registers.
   Registers registers;
+  // True when there was a breakpoint set at the location where we resumed
+  // execution
+  remote_code_ptr address_of_last_execution_resume;
   // True when we know via waitpid() that the task is stopped and we haven't
   // resumed it.
   bool is_stopped;
-  // True when there was a breakpoint set at the location where we resumed
-  // execution
-  bool breakpoint_set_where_execution_resumed;
   // When |extra_registers_known|, we have saved our extra registers.
   ExtraRegisters extra_registers;
   bool extra_registers_known;

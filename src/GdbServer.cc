@@ -439,7 +439,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
                                         breakpoint_condition(req));
       if (ok && &session != &timeline.current_session()) {
         bool diversion_ok =
-            target->vm()->add_breakpoint(req.watch().addr, TRAP_BKPT_USER);
+            target->vm()->add_breakpoint(req.watch().addr, BKPT_USER);
         ASSERT(target, diversion_ok);
       }
       dbg->reply_watchpoint_request(ok);
@@ -465,7 +465,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       Task* replay_task = timeline.current_session().find_task(target->tuid());
       timeline.remove_breakpoint(replay_task, req.watch().addr);
       if (&session != &timeline.current_session()) {
-        target->vm()->remove_breakpoint(req.watch().addr, TRAP_BKPT_USER);
+        target->vm()->remove_breakpoint(req.watch().addr, BKPT_USER);
       }
       dbg->reply_watchpoint_request(true);
       return;

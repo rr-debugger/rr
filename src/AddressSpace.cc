@@ -339,15 +339,15 @@ SupportedArch AddressSpace::arch() const {
   return (*task_set().begin())->arch();
 }
 
-TrapType AddressSpace::get_breakpoint_type_for_retired_insn(
+BreakpointType AddressSpace::get_breakpoint_type_for_retired_insn(
     remote_code_ptr ip) {
   remote_code_ptr addr = ip.decrement_by_bkpt_insn_length(SupportedArch::x86);
   return get_breakpoint_type_at_addr(addr);
 }
 
-TrapType AddressSpace::get_breakpoint_type_at_addr(remote_code_ptr addr) {
+BreakpointType AddressSpace::get_breakpoint_type_at_addr(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
-  return it == breakpoints.end() ? TRAP_NONE : it->second.type();
+  return it == breakpoints.end() ? BKPT_NONE : it->second.type();
 }
 
 bool AddressSpace::is_breakpoint_in_private_read_only_memory(
@@ -376,6 +376,11 @@ void AddressSpace::replace_breakpoints_with_original_values(
              it.second.original_data() + (start - bkpt_location), end - start);
     }
   }
+}
+
+bool AddressSpace::is_breakpoint_instruction(Task* t, remote_code_ptr ip) {
+  bool ok = true;
+  return t->read_mem(ip.to_data_ptr<uint8_t>(), &ok) == breakpoint_insn && ok;
 }
 
 static void remove_range(set<MemoryRange>& ranges, const MemoryRange& range) {
@@ -603,7 +608,8 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
                    mr.recorded_map.set_range(new_addr, new_end));
 }
 
-void AddressSpace::remove_breakpoint(remote_code_ptr addr, TrapType type) {
+void AddressSpace::remove_breakpoint(remote_code_ptr addr,
+                                     BreakpointType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end() || it->second.unref(type) > 0) {
     return;
@@ -611,7 +617,7 @@ void AddressSpace::remove_breakpoint(remote_code_ptr addr, TrapType type) {
   destroy_breakpoint(it);
 }
 
-bool AddressSpace::add_breakpoint(remote_code_ptr addr, TrapType type) {
+bool AddressSpace::add_breakpoint(remote_code_ptr addr, BreakpointType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end()) {
     uint8_t overwritten_data;
@@ -1213,6 +1219,25 @@ vector<WatchConfig> AddressSpace::consume_watchpoint_changes() {
 
 vector<WatchConfig> AddressSpace::all_watchpoints() {
   return get_watchpoints_internal(ALL_WATCHPOINTS);
+}
+
+bool AddressSpace::has_any_watchpoint_changes() {
+  for (auto& kv : watchpoints) {
+    if (kv.second.changed) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool AddressSpace::has_exec_watchpoint_fired(remote_code_ptr addr) {
+  for (auto& kv : watchpoints) {
+    if (kv.second.changed && kv.second.exec_count > 0 &&
+        kv.first.start() == addr.to_data_ptr<void>()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool AddressSpace::allocate_watchpoints() {

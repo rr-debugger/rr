@@ -259,19 +259,10 @@ BreakStatus Session::diagnose_debugger_trap(Task* t) {
   BreakStatus break_status;
   break_status.task = t;
 
-  TrapType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
-  TrapType retired_bp = t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
-
-  uintptr_t debug_status = t->consume_debug_status();
-
-  // NBB: very little effort has been made to handle
-  // corner cases where multiple
-  // breakpoints/watchpoints/singlesteps are fired
-  // simultaneously.  These cases will be addressed as
-  // they arise in practice.
   int stop_sig = t->pending_sig();
   if (SIGTRAP != stop_sig) {
-    if (TRAP_BKPT_USER == pending_bp) {
+    BreakpointType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
+    if (BKPT_USER == pending_bp) {
       // A signal was raised /just/ before a trap
       // instruction for a SW breakpoint.  This is
       // observed when debuggers write trap
@@ -296,29 +287,32 @@ BreakStatus Session::diagnose_debugger_trap(Task* t) {
     } else if (stop_sig && stop_sig != PerfCounters::TIME_SLICE_SIGNAL) {
       break_status.signal = stop_sig;
     }
-  } else if (TRAP_BKPT_USER == retired_bp) {
-    LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
-    // SW breakpoint: $ip is just past the
-    // breakpoint instruction.  Move $ip back
-    // right before it.
-    t->move_ip_before_breakpoint();
-    break_status.breakpoint_hit = true;
-  } else if (DS_SINGLESTEP & debug_status) {
-    LOG(debug) << "  finished debugger stepi";
-    break_status.singlestep_complete = true;
+  } else {
+    TrapReasons trap_reasons = t->compute_trap_reasons();
+    t->consume_debug_status();
+
+    if (trap_reasons.singlestep) {
+      LOG(debug) << "  finished debugger stepi";
+      break_status.singlestep_complete = true;
+    }
+
+    if (trap_reasons.watchpoint) {
+      check_for_watchpoint_changes(t, break_status);
+    }
+
+    if (trap_reasons.breakpoint) {
+      BreakpointType retired_bp =
+          t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
+      if (BKPT_USER == retired_bp) {
+        LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
+        // SW breakpoint: $ip is just past the
+        // breakpoint instruction.  Move $ip back
+        // right before it.
+        t->move_ip_before_breakpoint();
+        break_status.breakpoint_hit = true;
+      }
+    }
   }
-  // In VMWare Player 6.0.4 build-2249910, 32-bit Ubuntu x86 guest,
-  // single-stepping does not trigger watchpoints :-(. We work around
-  // that here by calling notify_watchpoint_fired if there's a singlestep
-  // but no watchpoints reported; write-watchpoints will detect that their
-  // value has changed and trigger. Read/exec watchpoints can't be detected
-  // this way so they're still broken :-(.
-  if ((DS_WATCHPOINT_ANY | DS_SINGLESTEP) & debug_status) {
-    LOG(debug) << "  " << t->tid << "(rec:" << t->rec_tid
-               << "): hit debugger watchpoint.";
-    t->vm()->notify_watchpoint_fired(debug_status);
-  }
-  check_for_watchpoint_changes(t, break_status);
 
   return break_status;
 }

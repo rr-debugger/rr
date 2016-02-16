@@ -376,7 +376,7 @@ void Task::finish_emulated_syscall() {
   // idempotent insn after the syscall trap (restore register
   // from stack), so we don't have to pay this expense.
   if (!known_idempotent_insn_after_syscall) {
-    bool ok = vm()->add_breakpoint(ip, TRAP_BKPT_INTERNAL);
+    bool ok = vm()->add_breakpoint(ip, BKPT_INTERNAL);
     ASSERT(this, ok) << "Can't add breakpoint???";
   }
   // Passing RESUME_NO_TICKS here is not only a small performance optimization,
@@ -390,7 +390,7 @@ void Task::finish_emulated_syscall() {
     ASSERT(this, (pending_sig() == SIGTRAP ||
                   ReplaySession::is_ignored_signal(pending_sig())))
         << "PENDING SIG IS " << signal_name(pending_sig());
-    vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
+    vm()->remove_breakpoint(ip, BKPT_INTERNAL);
   }
   set_regs(r);
   wait_status = 0;
@@ -1446,6 +1446,55 @@ void Task::replace_debug_status(uintptr_t status) {
   fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(6), (void*)status);
 }
 
+TrapReasons Task::compute_trap_reasons() {
+  ASSERT(this, pending_sig() == SIGTRAP);
+  TrapReasons reasons;
+  uintptr_t status = debug_status();
+
+  reasons.singlestep = (status & DS_SINGLESTEP) != 0;
+
+  // In VMWare Player 6.0.4 build-2249910, 32-bit Ubuntu x86 guest,
+  // single-stepping does not trigger watchpoints :-(. So we have to
+  // check watchpoints here. fast_forward also hides watchpoint changes.
+  // Write-watchpoints will detect that their value has changed and trigger.
+  // XXX Read/exec watchpoints can't be detected this way so they're still
+  // broken in the above configuration :-(.
+  if ((DS_WATCHPOINT_ANY | DS_SINGLESTEP) & status) {
+    as->notify_watchpoint_fired(status);
+  }
+  reasons.watchpoint = as->has_any_watchpoint_changes();
+
+  // If we triggered a breakpoint, this would be the address of the breakpoint
+  remote_code_ptr ip_at_breakpoint = ip().decrement_by_bkpt_insn_length(arch());
+  // Don't trust siginfo to report execution of a breakpoint if singlestep or
+  // watchpoint triggered.
+  if (reasons.singlestep) {
+    reasons.breakpoint =
+        as->is_breakpoint_instruction(this, address_of_last_execution_resume);
+    if (reasons.breakpoint) {
+      ASSERT(this, address_of_last_execution_resume == ip_at_breakpoint);
+    }
+  } else if (reasons.watchpoint) {
+    // We didn't singlestep, so watchpoint state is completely accurate.
+    // The only way the last instruction could have triggered a watchpoint
+    // and be a breakpoint instruction is if an EXEC watchpoint fired
+    // at the breakpoint address.
+    reasons.breakpoint = as->has_exec_watchpoint_fired(ip_at_breakpoint) &&
+                         as->is_breakpoint_instruction(this, ip_at_breakpoint);
+  } else {
+    const siginfo_t& si = get_siginfo();
+    ASSERT(this, SIGTRAP == si.si_signo);
+    /* XXX unable to find docs on which of these "should" be
+     * right.  The SI_KERNEL code is seen in the int3 test, so we
+     * at least need to handle that. */
+    reasons.breakpoint = SI_KERNEL == si.si_code || TRAP_BRKPT == si.si_code;
+    if (reasons.breakpoint) {
+      ASSERT(this, as->is_breakpoint_instruction(this, ip_at_breakpoint));
+    }
+  }
+  return reasons;
+}
+
 remote_ptr<void> Task::watchpoint_addr(size_t i) {
   assert(i < NUM_X86_WATCHPOINTS);
   return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(i), nullptr);
@@ -1473,8 +1522,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                   : max<Ticks>(1, tick_period));
   }
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
-  breakpoint_set_where_execution_resumed =
-      vm()->get_breakpoint_type_at_addr(ip()) != TRAP_NONE;
+  address_of_last_execution_resume = ip();
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   is_stopped = false;
   extra_registers_known = false;
@@ -2110,8 +2158,14 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     registers.clear_singlestep_flag();
     need_to_set_regs = true;
   }
-  if (breakpoint_set_where_execution_resumed && pending_sig() == SIGTRAP &&
-      !ptrace_event()) {
+
+  if (as->get_breakpoint_type_at_addr(address_of_last_execution_resume) !=
+          BKPT_NONE &&
+      pending_sig() == SIGTRAP && !ptrace_event()) {
+    ASSERT(this,
+           ip() ==
+               address_of_last_execution_resume.increment_by_bkpt_insn_length(
+                   arch()));
     ASSERT(this, more_ticks == 0);
     // When we resume execution and immediately hit a breakpoint, the original
     // syscall number can be reset to -1. Undo that, so that the register

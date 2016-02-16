@@ -630,6 +630,7 @@ set(TESTS_WITH_PROGRAM
   user_ignore_sig
   vfork
   watchpoint
+  watchpoint_before_signal
   watchpoint_syscall
   watchpoint_unaligned
 )

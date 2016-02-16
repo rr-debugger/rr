@@ -280,7 +280,7 @@ Completion ReplaySession::enter_syscall(Task* t,
     // not generated yet.
     if (t->vm()->is_breakpoint_in_private_read_only_memory(
             syscall_instruction) &&
-        t->vm()->add_breakpoint(syscall_instruction, TRAP_BKPT_INTERNAL)) {
+        t->vm()->add_breakpoint(syscall_instruction, BKPT_INTERNAL)) {
       use_breakpoint_optimization = true;
     }
   }
@@ -291,7 +291,7 @@ Completion ReplaySession::enter_syscall(Task* t,
         t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
             syscall_instruction &&
         t->vm()->get_breakpoint_type_at_addr(syscall_instruction) ==
-            TRAP_BKPT_INTERNAL;
+            BKPT_INTERNAL;
     if (reached_target) {
       // Emulate syscall state change
       Registers r = t->regs();
@@ -302,7 +302,7 @@ Completion ReplaySession::enter_syscall(Task* t,
       t->validate_regs();
     }
     if (use_breakpoint_optimization) {
-      t->vm()->remove_breakpoint(syscall_instruction, TRAP_BKPT_INTERNAL);
+      t->vm()->remove_breakpoint(syscall_instruction, BKPT_INTERNAL);
     }
     if (!reached_target) {
       return INCOMPLETE;
@@ -377,20 +377,6 @@ void ReplaySession::continue_or_step(Task* t,
   check_pending_sig(t);
 }
 
-/**
- * Return nonzero if |t| was stopped for a breakpoint trap (int3),
- * as opposed to a trace trap.  Return zero in the latter case.
- */
-static bool is_breakpoint_trap(Task* t) {
-  const siginfo_t& si = t->get_siginfo();
-  ASSERT(t, SIGTRAP == si.si_signo);
-
-  /* XXX unable to find docs on which of these "should" be
-   * right.  The SI_KERNEL code is seen in the int3 test, so we
-   * at least need to handle that. */
-  return SI_KERNEL == si.si_code || TRAP_BRKPT == si.si_code;
-}
-
 static bool is_singlestep(RunCommand command) {
   return command == RUN_SINGLESTEP || command == RUN_SINGLESTEP_FAST_FORWARD;
 }
@@ -405,7 +391,7 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
      * set, and restore the tracee's $ip to what it would
      * have been had it not hit the breakpoint (if it did
      * hit the breakpoint).*/
-    t->vm()->remove_breakpoint(target_ip, TRAP_BKPT_INTERNAL);
+    t->vm()->remove_breakpoint(target_ip, BKPT_INTERNAL);
     if (t->regs().ip() == target_ip.increment_by_bkpt_insn_length(t->arch())) {
       t->move_ip_before_breakpoint();
     }
@@ -542,7 +528,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
      *  o ticks_left >= 0
      *
      * Possible state of the execution of |t|
-     *  0. at a debugger trap (breakpoint or stepi)
+     *  0. at a debugger trap (breakpoint, watchpoint, stepi)
      *  1. at an internal breakpoint
      *  2. at the execution target
      *  3. not at the execution target, but incidentally
@@ -550,35 +536,35 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
      *  4. otherwise not at the execution target
      *
      * Determining whether we're at a debugger trap is
-     * surprisingly complicated, but we delegate the work
-     * to |compute_debugger_trap()|.  The rest can be
-     * straightforwardly computed with ticks value and
-     * registers. */
+     * surprisingly complicated. */
     bool at_target = is_same_execution_point(
         t, regs, ticks_left, &mismatched_regs, &mismatched_regs_ptr);
     if (pending_SIGTRAP) {
-      ASSERT(t, t->pending_sig() == SIGTRAP);
-
-      TrapType breakpoint_type =
+      TrapReasons trap_reasons = t->compute_trap_reasons();
+      BreakpointType breakpoint_type =
           t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
-      if (breakpoint_type != TRAP_NONE) {
-        ASSERT(t, is_breakpoint_trap(t));
-      }
 
-      if ((constraints.is_singlestep() &&
-           (t->debug_status() & DS_SINGLESTEP)) ||
-          TRAP_BKPT_USER == breakpoint_type) {
-        /* Case (0) above: interrupt for the
-         * debugger. */
-        LOG(debug) << "    trap was debugger interrupt";
+      if (constraints.is_singlestep()) {
+        ASSERT(t, trap_reasons.singlestep);
+      }
+      if (constraints.is_singlestep() || trap_reasons.watchpoint ||
+          (trap_reasons.breakpoint && BKPT_USER == breakpoint_type)) {
+        /* Case (0) above: interrupt for the debugger. */
+        LOG(debug) << "    trap was debugger singlestep/breakpoint";
         if (did_set_internal_breakpoint) {
-          t->vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
-          did_set_internal_breakpoint = false;
+          t->vm()->remove_breakpoint(ip, BKPT_INTERNAL);
         }
         return INCOMPLETE;
       }
 
-      if (TRAP_BKPT_INTERNAL == breakpoint_type) {
+      if (trap_reasons.breakpoint) {
+        // We must have hit our internal breakpoint.
+        ASSERT(t, did_set_internal_breakpoint);
+        ASSERT(t,
+               regs.ip().increment_by_bkpt_insn_length(t->arch()) == t->ip());
+        // We didn't do an internal singlestep, and if we'd done a
+        // user-requested singlestep we would have hit the above case.
+        ASSERT(t, !trap_reasons.singlestep);
         /* Case (1) above: cover the tracks of
          * our internal breakpoint, and go
          * check again if we're at the
@@ -591,6 +577,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
 
         pending_SIGTRAP = false;
         t->move_ip_before_breakpoint();
+        t->consume_debug_status();
         /* We just backed up the $ip, but
          * rewound it over an |int $3|
          * instruction, which couldn't have
@@ -604,8 +591,9 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
        * $ip was incidentally the same as
        * the target. */
       LOG(debug) << "    (SIGTRAP; stepi'd target $ip)";
-      ASSERT(t, is_singlestep(SIGTRAP_run_command) &&
-                    (t->debug_status() & DS_SINGLESTEP));
+      ASSERT(t, trap_reasons.singlestep);
+      ASSERT(t, is_singlestep(SIGTRAP_run_command));
+      t->consume_debug_status();
     }
 
     /* We had to keep the internal breakpoint set (if it
@@ -615,7 +603,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
      * and it's simpler to start out knowing that the
      * breakpoint isn't set. */
     if (did_set_internal_breakpoint) {
-      t->vm()->remove_breakpoint(ip, TRAP_BKPT_INTERNAL);
+      t->vm()->remove_breakpoint(ip, BKPT_INTERNAL);
       did_set_internal_breakpoint = false;
     }
 
@@ -642,7 +630,7 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
        * no slower than single-stepping our way to
        * the target execution point. */
       LOG(debug) << "    breaking on target $ip";
-      t->vm()->add_breakpoint(ip, TRAP_BKPT_INTERNAL);
+      t->vm()->add_breakpoint(ip, BKPT_INTERNAL);
       did_set_internal_breakpoint = true;
       continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
       SIGTRAP_run_command = constraints.command;
@@ -652,7 +640,14 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
        * would just trap and we'd be back where we
        * started.  Single-step or fast-forward past it. */
       LOG(debug) << "    (fast-forwarding over target $ip)";
-      if (constraints.command == RUN_SINGLESTEP) {
+      /* Just do whatever the user asked for if the user requested
+       * singlestepping
+       * or there is user breakpoint at the run address. The latter is safe
+       * because the breakpoint will be triggered immediately. This gives us the
+       * invariant that an internal singlestep never triggers a user breakpoint.
+       */
+      if (constraints.command == RUN_SINGLESTEP ||
+          t->vm()->get_breakpoint_type_at_addr(t->regs().ip()) == BKPT_USER) {
         continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
         SIGTRAP_run_command = constraints.command;
       } else {
@@ -773,15 +768,22 @@ Completion ReplaySession::emulate_deterministic_signal(
     return emulate_deterministic_signal(t, sig, constraints);
   }
   if (SIGTRAP == t->pending_sig()) {
-    if (t->debug_status() & DS_SINGLESTEP) {
-      ASSERT(t, constraints.is_singlestep());
+    TrapReasons trap_reasons = t->compute_trap_reasons();
+    if (trap_reasons.singlestep || trap_reasons.watchpoint) {
+      // Singlestep or watchpoint must have been debugger-requested
       return INCOMPLETE;
     }
-    TrapType type = t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
-    if (TRAP_NONE != type) {
-      ASSERT(t, TRAP_BKPT_USER == type);
-      return INCOMPLETE;
+    if (trap_reasons.breakpoint) {
+      // An explicit breakpoint instruction in the tracee would produce a
+      // |breakpoint| reason as we emulate the deterministic SIGTRAP.
+      BreakpointType type =
+          t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
+      if (BKPT_NONE != type) {
+        ASSERT(t, BKPT_USER == type);
+        return INCOMPLETE;
+      }
     }
+    t->consume_debug_status();
   }
   ASSERT(t, t->pending_sig() == sig) << "Replay got unrecorded signal "
                                      << t->pending_sig() << " (expecting "
@@ -855,14 +857,14 @@ Completion ReplaySession::flush_syscallbuf(Task* t,
   }
 
   bool added = t->vm()->add_breakpoint(current_step.flush.stop_breakpoint_addr,
-                                       TRAP_BKPT_INTERNAL);
+                                       BKPT_INTERNAL);
   ASSERT(t, added);
   continue_or_step(t, constraints, ticks_request, RESUME_CONT);
   bool user_breakpoint_at_addr =
       t->vm()->get_breakpoint_type_at_addr(
-          current_step.flush.stop_breakpoint_addr) != TRAP_BKPT_INTERNAL;
+          current_step.flush.stop_breakpoint_addr) != BKPT_INTERNAL;
   t->vm()->remove_breakpoint(current_step.flush.stop_breakpoint_addr,
-                             TRAP_BKPT_INTERNAL);
+                             BKPT_INTERNAL);
 
   // Account for buffered syscalls just completed
   struct syscallbuf_record* end_rec = next_record(t->syscallbuf_hdr);

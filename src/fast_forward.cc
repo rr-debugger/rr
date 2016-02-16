@@ -165,7 +165,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
   if (t->ip() != ip) {
     return false;
   }
-  if (t->vm()->get_breakpoint_type_at_addr(ip) != TRAP_NONE) {
+  if (t->vm()->get_breakpoint_type_at_addr(ip) != BKPT_NONE) {
     // breakpoint must have fired
     return false;
   }
@@ -301,7 +301,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       LOG(debug) << "Set x86-string fast-forward watchpoint at " << watch_di;
       bool ok = t->vm()->add_watchpoint(watch_di, 1, WATCH_READWRITE);
       ASSERT(t, ok) << "Can't even handle one watchpoint???";
-      ok = t->vm()->add_breakpoint(limit_ip, TRAP_BKPT_INTERNAL);
+      ok = t->vm()->add_breakpoint(limit_ip, BKPT_INTERNAL);
       ASSERT(t, ok) << "Failed to add breakpoint";
 
       t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
@@ -311,7 +311,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       // clears the debug status
       bool triggered_watchpoint =
           t->vm()->notify_watchpoint_fired(t->consume_debug_status());
-      t->vm()->remove_breakpoint(limit_ip, TRAP_BKPT_INTERNAL);
+      t->vm()->remove_breakpoint(limit_ip, BKPT_INTERNAL);
       t->vm()->restore_watchpoints();
 
       iterations -= cur_cx - t->regs().cx();

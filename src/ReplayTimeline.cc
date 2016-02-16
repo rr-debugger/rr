@@ -447,11 +447,11 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
   // Setting the breakpoint may fail; the mark address may be in invalid
   // memory, e.g. because it's at the delivery of a SIGSEGV for a bad IP.
   if (t->regs().ip() != mark_addr &&
-      t->vm()->add_breakpoint(mark_addr, TRAP_BKPT_USER)) {
+      t->vm()->add_breakpoint(mark_addr, BKPT_USER)) {
     ReplaySession::StepConstraints constraints =
         strategy.setup_step_constraints();
     result = current->replay_step(constraints);
-    t->vm()->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
+    t->vm()->remove_breakpoint(mark_addr, BKPT_USER);
     // If we hit our breakpoint and there is no client breakpoint there,
     // pretend we didn't hit it.
     if (result.break_status.breakpoint_hit &&
@@ -501,9 +501,9 @@ void ReplayTimeline::seek_to_proto_mark(const ProtoMark& pmark) {
       } else {
         // Get a shared reference to t->vm() in case t dies during replay_step
         shared_ptr<AddressSpace> vm = t->vm();
-        vm->add_breakpoint(mark_addr, TRAP_BKPT_USER);
+        vm->add_breakpoint(mark_addr, BKPT_USER);
         current->replay_step(RUN_CONTINUE);
-        vm->remove_breakpoint(mark_addr, TRAP_BKPT_USER);
+        vm->remove_breakpoint(mark_addr, BKPT_USER);
       }
     }
   }
@@ -598,7 +598,7 @@ bool ReplayTimeline::add_breakpoint(
   // Apply breakpoints now; we need to actually try adding this breakpoint
   // to see if it works.
   apply_breakpoints_and_watchpoints();
-  if (!t->vm()->add_breakpoint(addr, TRAP_BKPT_USER)) {
+  if (!t->vm()->add_breakpoint(addr, BKPT_USER)) {
     return false;
   }
   breakpoints.insert(make_tuple(t->vm()->uid(), addr, move(condition)));
@@ -607,7 +607,7 @@ bool ReplayTimeline::add_breakpoint(
 
 void ReplayTimeline::remove_breakpoint(Task* t, remote_code_ptr addr) {
   if (breakpoints_applied) {
-    t->vm()->remove_breakpoint(addr, TRAP_BKPT_USER);
+    t->vm()->remove_breakpoint(addr, BKPT_USER);
   }
   ASSERT(t, has_breakpoint_at_address(t, addr));
   auto it = breakpoints.lower_bound(make_tuple(t->vm()->uid(), addr, nullptr));
@@ -676,7 +676,7 @@ void ReplayTimeline::apply_breakpoints_and_watchpoints() {
     // during replay the address space might be created (or new mappings might
     // be created) and we should reapply breakpoints then.
     if (vm) {
-      vm->add_breakpoint(get<1>(bp), TRAP_BKPT_USER);
+      vm->add_breakpoint(get<1>(bp), BKPT_USER);
     }
   }
   for (auto& wp : watchpoints) {
@@ -712,7 +712,7 @@ ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
   for (auto& bp : breakpoints) {
     AddressSpace* vm = current->find_address_space(get<0>(bp));
     if (vm) {
-      vm->add_breakpoint(get<1>(bp), TRAP_BKPT_USER);
+      vm->add_breakpoint(get<1>(bp), BKPT_USER);
     }
   }
   return result;

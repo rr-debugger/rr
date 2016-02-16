@@ -193,13 +193,13 @@ struct MappingComparator {
   }
 };
 
-enum TrapType {
-  TRAP_NONE = 0,
+enum BreakpointType {
+  BKPT_NONE = 0,
   // Trap for internal rr purposes, f.e. replaying async
   // signals.
-  TRAP_BKPT_INTERNAL,
+  BKPT_INTERNAL,
   // Trap on behalf of a debugger user.
-  TRAP_BKPT_USER,
+  BKPT_USER,
 };
 
 enum WatchType {
@@ -326,13 +326,13 @@ public:
    * of breakpoint set at |ip() - sizeof(breakpoint_insn)|, if
    * one exists.  Otherwise return TRAP_NONE.
    */
-  TrapType get_breakpoint_type_for_retired_insn(remote_code_ptr ip);
+  BreakpointType get_breakpoint_type_for_retired_insn(remote_code_ptr ip);
 
   /**
    * Return the type of breakpoint that's been registered for
    * |addr|.
    */
-  TrapType get_breakpoint_type_at_addr(remote_code_ptr addr);
+  BreakpointType get_breakpoint_type_at_addr(remote_code_ptr addr);
 
   /**
    * Returns true when the breakpoint at |addr| is in private
@@ -341,6 +341,12 @@ public:
    * syscall.
    */
   bool is_breakpoint_in_private_read_only_memory(remote_code_ptr addr);
+
+  /**
+   * Return true if there's a breakpoint instruction at |ip|. This might
+   * be an explicit instruction, even if there's no breakpoint set via our API.
+   */
+  bool is_breakpoint_instruction(Task* t, remote_code_ptr ip);
 
   /**
    * The buffer |dest| of length |length| represents the contents of tracee
@@ -458,13 +464,13 @@ public:
   void notify_written(remote_ptr<void> addr, size_t num_bytes);
 
   /** Ensure a breakpoint of |type| is set at |addr|. */
-  bool add_breakpoint(remote_code_ptr addr, TrapType type);
+  bool add_breakpoint(remote_code_ptr addr, BreakpointType type);
   /**
    * Remove a |type| reference to the breakpoint at |addr|.  If
    * the removed reference was the last, the breakpoint is
    * destroyed.
    */
-  void remove_breakpoint(remote_code_ptr addr, TrapType type);
+  void remove_breakpoint(remote_code_ptr addr, BreakpointType type);
   /**
    * Destroy all breakpoints in this VM, regardless of their
    * reference counts.
@@ -502,6 +508,17 @@ public:
    * are known to not be set on singlestep).
    */
   bool notify_watchpoint_fired(uintptr_t debug_status);
+  /**
+   * Return true if any watchpoint has fired. Will keep returning true until
+   * consume_watchpoint_changes() is called.
+   */
+  bool has_any_watchpoint_changes();
+  /**
+   * Return true if an EXEC watchpoint has fired at addr since the lsat
+   * consume_watchpoint_changes.
+   */
+  bool has_exec_watchpoint_fired(remote_code_ptr addr);
+
   /**
    * Return all changed watchpoints in |watches| and clear their changed flags.
    */
@@ -775,24 +792,24 @@ private:
     // are valid.
     ~Breakpoint() { assert(internal_count >= 0 && user_count >= 0); }
 
-    void ref(TrapType which) {
+    void ref(BreakpointType which) {
       assert(internal_count >= 0 && user_count >= 0);
       ++*counter(which);
     }
-    int unref(TrapType which) {
+    int unref(BreakpointType which) {
       assert(internal_count > 0 || user_count > 0);
       --*counter(which);
       assert(internal_count >= 0 && user_count >= 0);
       return internal_count + user_count;
     }
 
-    TrapType type() const {
+    BreakpointType type() const {
       // NB: USER breakpoints need to be processed before
       // INTERNAL ones.  We want to give the debugger a
       // chance to dispatch commands before we attend to the
       // internal rr business.  So if there's a USER "ref"
       // on the breakpoint, treat it as a USER breakpoint.
-      return user_count > 0 ? TRAP_BKPT_USER : TRAP_BKPT_INTERNAL;
+      return user_count > 0 ? BKPT_USER : BKPT_INTERNAL;
     }
 
     size_t data_length() { return 1; }
@@ -808,9 +825,9 @@ private:
                       sizeof(AddressSpace::breakpoint_insn),
                   "Must have the same size.");
 
-    int* counter(TrapType which) {
-      assert(TRAP_BKPT_INTERNAL == which || TRAP_BKPT_USER == which);
-      int* p = TRAP_BKPT_USER == which ? &user_count : &internal_count;
+    int* counter(BreakpointType which) {
+      assert(BKPT_INTERNAL == which || BKPT_USER == which);
+      int* p = BKPT_USER == which ? &user_count : &internal_count;
       assert(*p >= 0);
       return p;
     }
