@@ -547,7 +547,8 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
       if (constraints.is_singlestep()) {
         ASSERT(t, trap_reasons.singlestep);
       }
-      if (constraints.is_singlestep() || trap_reasons.watchpoint ||
+      if (constraints.is_singlestep() ||
+          (trap_reasons.watchpoint && t->vm()->has_any_watchpoint_changes()) ||
           (trap_reasons.breakpoint && BKPT_USER == breakpoint_type)) {
         /* Case (0) above: interrupt for the debugger. */
         LOG(debug) << "    trap was debugger singlestep/breakpoint";
@@ -558,7 +559,10 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
       }
 
       if (trap_reasons.breakpoint) {
-        // We must have hit our internal breakpoint.
+        // We didn't hit a user breakpoint, and executing an explicit
+        // breakpoint instruction in the tracee would have triggered a
+        // deterministic signal instead of an async one.
+        // So we must have hit our internal breakpoint.
         ASSERT(t, did_set_internal_breakpoint);
         ASSERT(t,
                regs.ip().increment_by_bkpt_insn_length(t->arch()) == t->ip());
@@ -586,13 +590,15 @@ Completion ReplaySession::advance_to(Task* t, const Registers& regs,
         continue;
       }
 
-      /* Otherwise, we must have been forced
-       * to single-step because the tracee's
-       * $ip was incidentally the same as
-       * the target. */
-      LOG(debug) << "    (SIGTRAP; stepi'd target $ip)";
-      ASSERT(t, trap_reasons.singlestep);
-      ASSERT(t, is_singlestep(SIGTRAP_run_command));
+      /* Otherwise, either we did an internal singlestep or a hardware
+       * watchpoint fired but values didn't change. */
+      if (trap_reasons.singlestep) {
+        ASSERT(t, is_singlestep(SIGTRAP_run_command));
+        LOG(debug) << "    (SIGTRAP; stepi'd target $ip)";
+      } else {
+        ASSERT(t, trap_reasons.watchpoint);
+        LOG(debug) << "    (SIGTRAP; HW watchpoint fired without changes)";
+      }
       t->consume_debug_status();
     }
 

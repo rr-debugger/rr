@@ -1462,7 +1462,8 @@ TrapReasons Task::compute_trap_reasons() {
   if ((DS_WATCHPOINT_ANY | DS_SINGLESTEP) & status) {
     as->notify_watchpoint_fired(status);
   }
-  reasons.watchpoint = as->has_any_watchpoint_changes();
+  reasons.watchpoint = as->has_any_watchpoint_changes() ||
+      (DS_WATCHPOINT_ANY & status);
 
   // If we triggered a breakpoint, this would be the address of the breakpoint
   remote_code_ptr ip_at_breakpoint = ip().decrement_by_bkpt_insn_length(arch());

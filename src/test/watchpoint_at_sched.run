@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+RECORD_ARGS="-c50"
+debug_test

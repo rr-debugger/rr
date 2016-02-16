@@ -191,7 +191,9 @@ enum EmulatedStopType {
 struct TrapReasons {
   /* Singlestep completed (RESUME_SINGLESTEP, RESUME_SYSEMU_SINGLESTEP). */
   bool singlestep;
-  /* Hardware watchpoint fired. */
+  /* Hardware watchpoint fired. This includes cases where the actual values
+   * did not change (i.e. AddressSpace::has_any_watchpoint_changes may return
+   * false even though this is set). */
   bool watchpoint;
   /* Breakpoint instruction was executed. */
   bool breakpoint;
