@@ -1861,6 +1861,28 @@ static long sys_recvmsg(const struct syscall_info* call) {
 }
 #endif
 
+#ifdef SYS_sendmsg
+static long sys_sendmsg(const struct syscall_info* call) {
+  const int syscallno = SYS_sendmsg;
+  int sockfd = call->args[0];
+  struct msghdr* msg = (struct msghdr*)call->args[1];
+  int flags = call->args[2];
+
+  void* ptr = prep_syscall_for_fd(sockfd);
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall3(syscallno, sockfd, msg, flags);
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 #ifdef SYS_socketpair
 struct TwoInts {
   int sv[2];
@@ -2060,11 +2082,14 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(poll);
     CASE(read);
     CASE(readlink);
+#if defined(SYS_recvfrom)
+    CASE(recvfrom);
+#endif
 #if defined(SYS_recvmsg)
     CASE(recvmsg);
 #endif
-#if defined(SYS_recvfrom)
-    CASE(recvfrom);
+#if defined(SYS_sendmsg)
+    CASE(sendmsg);
 #endif
 #if defined(SYS_socketcall)
     CASE(socketcall);
