@@ -1861,6 +1861,34 @@ static long sys_recvmsg(const struct syscall_info* call) {
 }
 #endif
 
+#ifdef SYS_socketpair
+struct TwoInts {
+  int sv[2];
+};
+static long sys_socketpair(const struct syscall_info* call) {
+  const int syscallno = SYS_socketpair;
+  int domain = call->args[0];
+  int type = call->args[1];
+  int protocol = call->args[2];
+  struct TwoInts* sv = (struct TwoInts*)call->args[3];
+
+  void* ptr = prep_syscall();
+  struct timezone* sv2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  sv2 = ptr;
+  ptr += sizeof(*sv2);
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall4(syscallno, domain, type, protocol, sv2);
+  local_memcpy(sv, sv2, sizeof(*sv));
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 static long sys_time(const struct syscall_info* call) {
   const int syscallno = SYS_time;
   time_t* tp = (time_t*)call->args[0];
@@ -2040,6 +2068,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #endif
 #if defined(SYS_socketcall)
     CASE(socketcall);
+#endif
+#if defined(SYS_socketpair)
+    CASE(socketpair);
 #endif
     CASE(time);
     CASE(write);
