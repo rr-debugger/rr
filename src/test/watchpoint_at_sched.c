@@ -20,7 +20,7 @@ int main(void) {
 
   /* Trigger async SCHED signal */
   for (i = 0; i < 1000; ++i) {
-    v = v * 7;
+    v = v * 7 + 3;
     x = v;
   }
 

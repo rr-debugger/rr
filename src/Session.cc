@@ -254,7 +254,7 @@ void Session::on_destroy(Task* t) {
 
 void Session::on_create(Task* t) { task_map[t->rec_tid] = t; }
 
-BreakStatus Session::diagnose_debugger_trap(Task* t) {
+BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
   assert_fully_initialized();
   BreakStatus break_status;
   break_status.task = t;
@@ -291,7 +291,8 @@ BreakStatus Session::diagnose_debugger_trap(Task* t) {
     TrapReasons trap_reasons = t->compute_trap_reasons();
     t->consume_debug_status();
 
-    if (trap_reasons.singlestep) {
+    // Conceal any internal singlestepping
+    if (trap_reasons.singlestep && is_singlestep(run_command)) {
       LOG(debug) << "  finished debugger stepi";
       break_status.singlestep_complete = true;
     }

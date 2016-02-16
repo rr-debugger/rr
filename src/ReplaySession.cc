@@ -377,10 +377,6 @@ void ReplaySession::continue_or_step(Task* t,
   check_pending_sig(t);
 }
 
-static bool is_singlestep(RunCommand command) {
-  return command == RUN_SINGLESTEP || command == RUN_SINGLESTEP_FAST_FORWARD;
-}
-
 static void guard_overshoot(Task* t, const Registers& target_regs,
                             Ticks target_ticks, Ticks remaining_ticks,
                             const Registers* closest_matching_regs) {
@@ -1219,7 +1215,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
     // We got INCOMPLETE because there was some kind of debugger trap or
     // we got close to ticks_target.
-    result.break_status = diagnose_debugger_trap(t);
+    result.break_status = diagnose_debugger_trap(t, constraints.command);
     ASSERT(t, !result.break_status.signal)
         << "Expected either SIGTRAP at $ip " << t->ip()
         << " or USER breakpoint just after it";

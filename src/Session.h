@@ -71,6 +71,10 @@ enum RunCommand {
   RUN_SINGLESTEP_FAST_FORWARD
 };
 
+inline bool is_singlestep(RunCommand command) {
+  return command == RUN_SINGLESTEP || command == RUN_SINGLESTEP_FAST_FORWARD;
+}
+
 /**
  * Sessions track the global state of a set of tracees corresponding
  * to an rr recorder or replayer.  During recording, the tracked
@@ -218,7 +222,7 @@ protected:
 
   virtual void on_create(Task* t);
 
-  BreakStatus diagnose_debugger_trap(Task* t);
+  BreakStatus diagnose_debugger_trap(Task* t, RunCommand run_command);
   void check_for_watchpoint_changes(Task* t, BreakStatus& break_status);
 
   void copy_state_to(Session& dest, EmuFs& dest_emu_fs);

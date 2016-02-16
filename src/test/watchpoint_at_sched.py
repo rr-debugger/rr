@@ -7,10 +7,9 @@ expect_gdb('SIGKILL')
 
 send_gdb('watch -l x')
 expect_gdb('Hardware[()/a-z ]+watchpoint 1')
-send_gdb('break main')
-expect_gdb('Breakpoint 2')
 
 send_gdb('rc')
-expect_gdb('Breakpoint 2')
+expect_gdb('watchpoint 1')
+expect_gdb('New value = 1564779003')
 
 ok()
