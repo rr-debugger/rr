@@ -31,6 +31,7 @@ static double very_short_timeslice_probability = 0.1;
 static Ticks very_short_timeslice_max_duration = 100;
 static double short_timeslice_probability = 0.1;
 static Ticks short_timeslice_max_duration = 10000;
+static int reset_priorities_event_max_period = 10000;
 
 Task* Scheduler::get_next_task_with_same_priority(Task* t) {
   if (!t || t->in_round_robin_queue) {
@@ -193,7 +194,7 @@ void Scheduler::maybe_reset_priorities() {
     return;
   }
   // Reset task priorities again at some point in the future.
-  events_until_reset_priorities = random() % 10000;
+  events_until_reset_priorities = random() % reset_priorities_event_max_period;
   vector<Task*> tasks;
   for (auto p : task_priority_set) {
     tasks.push_back(p.second);
