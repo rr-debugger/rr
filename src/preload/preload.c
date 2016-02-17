@@ -1884,15 +1884,13 @@ static long sys_sendmsg(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_socketpair
-struct TwoInts {
-  int sv[2];
-};
+typedef int two_ints[2];
 static long sys_socketpair(const struct syscall_info* call) {
   const int syscallno = SYS_socketpair;
   int domain = call->args[0];
   int type = call->args[1];
   int protocol = call->args[2];
-  struct TwoInts* sv = (struct TwoInts*)call->args[3];
+  two_ints* sv = (two_ints*)call->args[3];
 
   void* ptr = prep_syscall();
   struct timezone* sv2 = NULL;
