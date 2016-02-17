@@ -1954,7 +1954,7 @@ static const int ptrace_exit_wait_status = (PTRACE_EVENT_EXIT << 16) | 0x857f;
 static struct timeval to_timeval(double t) {
   struct timeval v;
   v.tv_sec = (time_t)floor(t);
-  v.tv_usec = (int)floor((t - v.tv_sec)*1000000);
+  v.tv_usec = (int)floor((t - v.tv_sec) * 1000000);
   return v;
 }
 
@@ -1969,7 +1969,7 @@ void Task::wait(double interrupt_after_elapsed) {
   while (true) {
     if (interrupt_after_elapsed) {
       struct itimerval timer = { { 0, 0 },
-          to_timeval(interrupt_after_elapsed) };
+                                 to_timeval(interrupt_after_elapsed) };
       setitimer(ITIMER_REAL, &timer, nullptr);
     }
     ret = waitpid(tid, &status, __WALL);

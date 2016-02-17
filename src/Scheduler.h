@@ -79,10 +79,15 @@ public:
         current_(nullptr),
         current_timeslice_end_(0),
         high_priority_only_intervals_refresh_time(0),
+        high_priority_only_intervals_start(0),
+        high_priority_only_intervals_duration(0),
+        high_priority_only_intervals_period(0),
+        priorities_refresh_time(0),
         max_ticks_(DEFAULT_MAX_TICKS),
-        events_until_reset_priorities(0),
         always_switch(false),
-        enable_chaos(false) {}
+        enable_chaos(false),
+        last_reschedule_in_high_priority_only_interval(false),
+        must_run_task(nullptr) {}
 
   void set_max_ticks(Ticks max_ticks) { max_ticks_ = max_ticks; }
   void set_always_switch(bool always_switch) {
@@ -97,7 +102,7 @@ public:
    *
    * The new current() task is guaranteed to either have already been
    * runnable, or have been made runnable by a waitpid status change (in
-   * which case, *by_waitpid will be nonzero.)
+   * which case, by_waitpid be true.
    *
    * Returns false if rescheduling is interrupted by a signal.
    */
@@ -143,8 +148,10 @@ private:
    * runnable task has the same priority as 't', return 't' or
    * the next runnable task after 't' in round-robin order.
    * Sets 'by_waitpid' to true if we determined the task was runnable by
-   * calling waitpid on it and observing a state change.
-   * Considers only tasks with priority <= priority_threshold
+   * calling waitpid on it and observing a state change. This task *must*
+   * be returned by get_next_thread, and is_runnable_task must not be called
+   * on it again until it has run.
+   * Considers only tasks with priority <= priority_threshold.
    */
   Task* find_next_runnable_task(Task* t, bool* by_waitpid,
                                 int priority_threshold);
@@ -156,11 +163,13 @@ private:
   void maybe_pop_round_robin_task(Task* t);
   Task* get_next_task_with_same_priority(Task* t);
   void setup_new_timeslice();
-  void maybe_reset_priorities();
-  int choose_random_priority();
+  void maybe_reset_priorities(double now);
+  int choose_random_priority(Task* t);
   void update_task_priority_internal(Task* t, int value);
-  void maybe_reset_high_priority_only_intervals();
-  bool in_high_priority_only_interval();
+  void maybe_reset_high_priority_only_intervals(double now);
+  bool in_high_priority_only_interval(double now);
+  bool treat_as_high_priority(Task* t);
+  bool is_task_runnable(Task* t, bool* by_waitpid);
 
   RecordSession& session;
 
@@ -184,23 +193,19 @@ private:
   Task* current_;
   Ticks current_timeslice_end_;
 
-  struct SleepInterval {
-    double start;
-    double end;
-  };
   /**
-   * During these intervals we avoid running low-priority threads. If only
-   * a low-priority thread is runnable, we just sleep to give high-priority
-   * threads a chance to wake up and proceed.
-   */
-  std::vector<SleepInterval> high_priority_only_intervals;
-  /**
-   * At this time (or later) we should refresh high_priority_only_intervals
+   * At this time (or later) we should refresh these values.
    */
   double high_priority_only_intervals_refresh_time;
+  double high_priority_only_intervals_start;
+  double high_priority_only_intervals_duration;
+  double high_priority_only_intervals_period;
+  /**
+   * At this time (or later) we should rerandomize Task priorities.
+   */
+  double priorities_refresh_time;
 
   Ticks max_ticks_;
-  int events_until_reset_priorities;
 
   /**
    * When true, context switch at every possible point.
@@ -211,6 +216,10 @@ private:
    * probability of finding buggy schedules.
    */
   bool enable_chaos;
+
+  bool last_reschedule_in_high_priority_only_interval;
+
+  Task* must_run_task;
 };
 
 #endif /* RR_REC_SCHED_H_ */
