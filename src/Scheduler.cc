@@ -32,6 +32,9 @@ static Ticks very_short_timeslice_max_duration = 100;
 static double short_timeslice_probability = 0.1;
 static Ticks short_timeslice_max_duration = 10000;
 static int reset_priorities_event_max_period = 10000;
+static double max_high_priority_only_duration = 2;
+// Allow this much of overall runtime to be in the "high priority only" interval
+static double high_priority_only_fraction = 0.2;
 
 Task* Scheduler::get_next_task_with_same_priority(Task* t) {
   if (!t || t->in_round_robin_queue) {
@@ -211,10 +214,10 @@ void Scheduler::maybe_reset_high_priority_only_intervals() {
   if (enable_chaos && high_priority_only_intervals_refresh_time == 0) {
     double now = monotonic_now_sec();
     // Stop scheduling low-priority threads for 0-2 seconds
-    double duration = random_frac() * 2;
+    double duration = random_frac() * max_high_priority_only_duration;
     // Make the schedule-stop 20% of the total run time
-    double interval_length = duration * 5;
-    double start = now + random_frac() * duration * 4;
+    double interval_length = duration / high_priority_only_fraction;
+    double start = now + random_frac() * (interval_length - duration);
     high_priority_only_intervals.push_back({ start, start + duration });
     high_priority_only_intervals_refresh_time = now + interval_length;
   }
