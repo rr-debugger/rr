@@ -25,6 +25,13 @@
 using namespace rr;
 using namespace std;
 
+// Probability of making a thread low priority
+static double low_priority_probability = 0.1;
+static double very_short_timeslice_probability = 0.1;
+static Ticks very_short_timeslice_max_duration = 100;
+static double short_timeslice_probability = 0.1;
+static Ticks short_timeslice_max_duration = 10000;
+
 Task* Scheduler::get_next_task_with_same_priority(Task* t) {
   if (!t || t->in_round_robin_queue) {
     return nullptr;
@@ -39,9 +46,10 @@ Task* Scheduler::get_next_task_with_same_priority(Task* t) {
   return it->second;
 }
 
+static double random_frac() { return double(random() % INT32_MAX) / INT32_MAX; }
+
 int Scheduler::choose_random_priority() {
-  // Make a thread low-priority with probability 0.1
-  return (random() % 10) ? 0 : 1;
+  return random_frac() < low_priority_probability;
 }
 
 /**
@@ -148,24 +156,23 @@ Task* Scheduler::find_next_runnable_task(Task* t, bool* by_waitpid,
 }
 
 void Scheduler::setup_new_timeslice(Task* t) {
-  Ticks timeslice_duration = max_ticks_;
+  Ticks max_timeslice_duration = max_ticks_;
   if (enable_chaos) {
     // Hypothesis: some bugs require short timeslices to expose. But we don't
     // want the average timeslice to be too small. So make 10% of timeslices
     // very short, 10% short-ish, and the rest uniformly distributed between 0
-    // and |max_size|.
-    switch (random() % 10) {
-      case 0:
-        timeslice_duration = random() % min<Ticks>(max_ticks_, 100);
-        break;
-      case 1:
-        timeslice_duration = random() % min<Ticks>(max_ticks_, 10000);
-        break;
-      default:
-        timeslice_duration = random() % max_ticks_;
+    // and |max_ticks_|.
+    double timeslice_kind_frac = random_frac();
+    if (timeslice_kind_frac < very_short_timeslice_probability) {
+      max_timeslice_duration = very_short_timeslice_max_duration;
+    } else if (timeslice_kind_frac < very_short_timeslice_probability + short_timeslice_probability) {
+      max_timeslice_duration = short_timeslice_max_duration;
+    } else {
+      max_timeslice_duration = max_ticks_;
     }
   }
-  t->timeslice_end = t->tick_count() + timeslice_duration;
+  t->timeslice_end = t->tick_count() +
+      (random() % min(max_ticks_, max_timeslice_duration));
   t->registers_at_start_of_uninterrupted_timeslice =
       unique_ptr<Registers>(new Registers(t->regs()));
 }
@@ -198,8 +205,6 @@ void Scheduler::maybe_reset_priorities() {
     update_task_priority_internal(t, choose_random_priority());
   }
 }
-
-static double random_frac() { return double(random() % INT32_MAX) / INT32_MAX; }
 
 void Scheduler::maybe_reset_high_priority_only_intervals() {
   if (enable_chaos && high_priority_only_intervals_refresh_time == 0) {
