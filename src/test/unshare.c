@@ -12,14 +12,35 @@ static void* start_thread(__attribute__((unused)) void* p) {
   return NULL;
 }
 
+static void test_mount(void) {
+  test_assert(0 == mkdir("/aaa", 0777));
+  /* Most filesystems can't be mounted in a non-root namespace,
+     but proc can. */
+  test_assert(0 == mount("dummy", "/aaa", "proc", 0, NULL));
+  test_assert(0 == access("/aaa/cpuinfo", F_OK));
+  test_assert(0 == umount("/aaa"));
+  test_assert(0 == mount("dummy", "/aaa", "proc", 0, NULL));
+  test_assert(0 == umount2("/aaa", 0));
+  test_assert(0 == rmdir("/aaa"));
+}
+
+static void test_privileged(void) {
+  struct __user_cap_header_struct hdr = { _LINUX_CAPABILITY_VERSION_1, 0 };
+  struct __user_cap_data_struct data = { 0x1, 0x1, 0x1 };
+
+  /* Run privileged tests *before* we reset our privileges below */
+  test_mount();
+
+  /* Test using capset. capset is privileged, but we are privileged
+     in our user namespace. */
+  test_assert(0 == capset(&hdr, &data));
+}
+
 static void run_child(void) {
   pid_t child = fork();
   int status;
 
   if (!child) {
-    struct __user_cap_header_struct hdr = { _LINUX_CAPABILITY_VERSION_1, 0 };
-    struct __user_cap_data_struct data = { 0x1, 0x1, 0x1 };
-
     /* Test creating a nested child */
     pid_t nested_child = fork();
     if (!nested_child) {
@@ -33,9 +54,7 @@ static void run_child(void) {
     pthread_create(&thread, NULL, start_thread, NULL);
     pthread_join(thread, NULL);
 
-    /* Test using capset. capset is privileged, but we are privileged
-       in our user namespace. */
-    test_assert(0 == capset(&hdr, &data));
+    test_privileged();
 
     /* stdout should still be writable due to the unshare() */
     test_assert(13 == write(STDOUT_FILENO, "EXIT-SUCCESS\n", 13));
