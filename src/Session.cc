@@ -278,11 +278,7 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
       // execution, which should raise the original
       // signal again.
       LOG(debug) << "hit debugger breakpoint BEFORE ip " << t->ip() << " for "
-                 << signal_name(stop_sig);
-#ifdef DEBUGTAG
-      siginfo_t si = t->get_siginfo();
-      psiginfo(&si, "  siginfo for signal-stop:\n    ");
-#endif
+                 << t->get_siginfo();
       break_status.breakpoint_hit = true;
     } else if (stop_sig && stop_sig != PerfCounters::TIME_SLICE_SIGNAL) {
       break_status.signal = stop_sig;

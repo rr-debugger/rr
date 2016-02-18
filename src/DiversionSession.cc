@@ -5,6 +5,7 @@
 #include "DiversionSession.h"
 
 #include "AutoRemoteSyscalls.h"
+#include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
 
@@ -143,6 +144,9 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
   result.status = DIVERSION_CONTINUE;
   if (t->pending_sig()) {
     result.break_status = diagnose_debugger_trap(t, command);
+    if (result.break_status.signal) {
+      LOG(debug) << "Signal received: " << t->get_siginfo();
+    }
     ASSERT(t, !result.break_status.singlestep_complete ||
                   command == RUN_SINGLESTEP);
     return result;
