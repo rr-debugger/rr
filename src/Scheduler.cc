@@ -169,14 +169,15 @@ void Scheduler::setup_new_timeslice(Task* t) {
     double timeslice_kind_frac = random_frac();
     if (timeslice_kind_frac < very_short_timeslice_probability) {
       max_timeslice_duration = very_short_timeslice_max_duration;
-    } else if (timeslice_kind_frac < very_short_timeslice_probability + short_timeslice_probability) {
+    } else if (timeslice_kind_frac <
+               very_short_timeslice_probability + short_timeslice_probability) {
       max_timeslice_duration = short_timeslice_max_duration;
     } else {
       max_timeslice_duration = max_ticks_;
     }
   }
-  t->timeslice_end = t->tick_count() +
-      (random() % min(max_ticks_, max_timeslice_duration));
+  t->timeslice_end =
+      t->tick_count() + (random() % min(max_ticks_, max_timeslice_duration));
   t->registers_at_start_of_uninterrupted_timeslice =
       unique_ptr<Registers>(new Registers(t->regs()));
 }

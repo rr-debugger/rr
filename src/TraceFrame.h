@@ -28,9 +28,9 @@ class TraceFrame {
 public:
   typedef uint32_t Time;
 
-  TraceFrame(Time global_time, pid_t tid, const Event& event, Ticks tick_count)
-      : global_time(global_time), tid_(tid), ev(event), ticks_(tick_count) {}
-  TraceFrame() : global_time(0), tid_(0), ticks_(0) {}
+  TraceFrame(Time global_time, pid_t tid, const Event& event, Ticks tick_count,
+             double monotonic_time = 0);
+  TraceFrame() : global_time(0), tid_(0), ticks_(0), monotonic_time_(0) {}
 
   void set_exec_info(const Registers& regs,
                      const PerfCounters::Extra* extra_perf_values,
@@ -40,6 +40,7 @@ public:
   pid_t tid() const { return tid_; }
   const Event& event() const { return ev; }
   Ticks ticks() const { return ticks_; }
+  double monotonic_time() const { return monotonic_time_; }
 
   const Registers& regs() const { return recorded_regs; }
   const ExtraRegisters& extra_regs() const { return recorded_extra_regs; }
@@ -67,6 +68,7 @@ private:
   pid_t tid_;
   Event ev;
   Ticks ticks_;
+  double monotonic_time_;
 
   PerfCounters::Extra extra_perf;
   Registers recorded_regs;

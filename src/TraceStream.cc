@@ -26,7 +26,7 @@ using namespace std;
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 40
+#define TRACE_VERSION 41
 
 struct SubstreamData {
   const char* name;
@@ -169,13 +169,14 @@ struct BasicInfo {
   pid_t tid_;
   EncodedEvent ev;
   Ticks ticks_;
+  double monotonic_sec;
 };
 
 void TraceWriter::write_frame(const TraceFrame& frame) {
   auto& events = writer(EVENTS);
 
   BasicInfo basic_info = { frame.time(), frame.tid(), frame.event().encode(),
-                           frame.ticks() };
+                           frame.ticks(), frame.monotonic_time() };
   events << basic_info;
   if (!events.good()) {
     FATAL() << "Tried to save " << sizeof(basic_info)
@@ -220,7 +221,8 @@ TraceFrame TraceReader::read_frame() {
   BasicInfo basic_info;
   events >> basic_info;
   TraceFrame frame(basic_info.global_time, basic_info.tid_,
-                   Event(basic_info.ev), basic_info.ticks_);
+                   Event(basic_info.ev), basic_info.ticks_,
+                   basic_info.monotonic_sec);
   if (frame.event().has_exec_info() == HAS_EXEC_INFO) {
     events >> frame.recorded_regs >> frame.extra_perf;
 
