@@ -943,6 +943,20 @@ bool GdbConnection::process_vpacket(char* payload) {
   return false;
 }
 
+static string to_string(const vector<uint8_t>& bytes, size_t max_len) {
+  stringstream ss;
+  for (size_t i = 0; i < bytes.size(); ++i) {
+    if (i >= max_len) {
+      ss << "...";
+      break;
+    }
+    char buf[3];
+    sprintf(buf, "%02x", bytes[i]);
+    ss << buf;
+  }
+  return ss.str();
+}
+
 bool GdbConnection::process_packet() {
   char request;
   char* payload = nullptr;
@@ -1076,7 +1090,8 @@ bool GdbConnection::process_packet() {
       parser_assert(req.mem().len == req.mem().data.size());
 
       LOG(debug) << "gdb setting memory (addr=" << HEX(req.mem().addr)
-                 << ", len=" << req.mem().len << ")";
+                 << ", len=" << req.mem().len
+                 << ", data=" << to_string(req.mem().data, 32) << ")";
 
       ret = true;
       break;
