@@ -275,7 +275,7 @@ string errno_name(int err) {
   }
 }
 
-const char* sicode_name(int code, int sig) {
+string sicode_name(int code, int sig) {
   switch (code) {
     CASE(SI_USER);
     CASE(SI_KERNEL);
@@ -285,6 +285,7 @@ const char* sicode_name(int code, int sig) {
     CASE(SI_ASYNCIO);
     CASE(SI_SIGIO);
     CASE(SI_TKILL);
+    CASE(SI_ASYNCNL);
   }
 
   switch (sig) {
@@ -293,14 +294,71 @@ const char* sicode_name(int code, int sig) {
         CASE(SEGV_MAPERR);
         CASE(SEGV_ACCERR);
       }
+      break;
     case SIGTRAP:
       switch (code) {
         CASE(TRAP_BRKPT);
         CASE(TRAP_TRACE);
       }
+      break;
+    case SIGILL:
+      switch (code) {
+        CASE(ILL_ILLOPC);
+        CASE(ILL_ILLOPN);
+        CASE(ILL_ILLADR);
+        CASE(ILL_ILLTRP);
+        CASE(ILL_PRVOPC);
+        CASE(ILL_PRVREG);
+        CASE(ILL_COPROC);
+        CASE(ILL_BADSTK);
+      }
+      break;
+    case SIGFPE:
+      switch (code) {
+        CASE(FPE_INTDIV);
+        CASE(FPE_INTOVF);
+        CASE(FPE_FLTDIV);
+        CASE(FPE_FLTOVF);
+        CASE(FPE_FLTUND);
+        CASE(FPE_FLTRES);
+        CASE(FPE_FLTINV);
+        CASE(FPE_FLTSUB);
+      }
+      break;
+    case SIGBUS:
+      switch (code) {
+        CASE(BUS_ADRALN);
+        CASE(BUS_ADRERR);
+        CASE(BUS_OBJERR);
+        CASE(BUS_MCEERR_AR);
+        CASE(BUS_MCEERR_AO);
+      }
+      break;
+    case SIGCHLD:
+      switch (code) {
+        CASE(CLD_EXITED);
+        CASE(CLD_KILLED);
+        CASE(CLD_DUMPED);
+        CASE(CLD_TRAPPED);
+        CASE(CLD_STOPPED);
+        CASE(CLD_CONTINUED);
+      }
+      break;
+    case SIGPOLL:
+      switch (code) {
+        CASE(POLL_IN);
+        CASE(POLL_OUT);
+        CASE(POLL_MSG);
+        CASE(POLL_ERR);
+        CASE(POLL_PRI);
+        CASE(POLL_HUP);
+      }
+      break;
   }
 
-  return "???sicode";
+  char buf[100];
+  sprintf(buf, "sicode(%d)", code);
+  return string(buf);
 }
 
 std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo) {

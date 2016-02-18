@@ -47,7 +47,7 @@ std::string errno_name(int err);
 /**
  * Return the symbolic name (e.g. "SI_USER") for an si_code.
  */
-const char* sicode_name(int code, int sig);
+std::string sicode_name(int code, int sig);
 
 /**
  * Print siginfo on ostream.
