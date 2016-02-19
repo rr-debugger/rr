@@ -82,10 +82,10 @@ const char* ptrace_req_name(int request) {
   }
 }
 
-const char* signal_name(int sig) {
+string signal_name(int sig) {
   /* strsignal() would be nice to use here, but it provides TMI. */
   if (32 <= sig && sig <= 64) {
-    static __thread char buf[] = "SIGRT00000000";
+    char buf[100];
     snprintf(buf, sizeof(buf) - 1, "SIGRT%d", sig);
     return buf;
   }
@@ -122,8 +122,11 @@ const char* signal_name(int sig) {
     CASE(SIGIO);
     CASE(SIGPWR);
     CASE(SIGSYS);
-    default:
-      return "???signal";
+    default: {
+      char buf[100];
+      sprintf(buf, "signal(%d)", sig);
+      return string(buf);
+    }
   }
 }
 

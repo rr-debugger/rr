@@ -11,7 +11,7 @@
 #include "kernel_abi.h"
 
 /**
- * Return the symbolic name of |syscall|, f.e. "read", or "???syscall"
+ * Return the symbolic name of |syscall|, f.e. "read", or "syscall(%d)"
  * if unknown.
  */
 std::string syscall_name(int syscall, SupportedArch arch);
@@ -29,10 +29,10 @@ const char* ptrace_event_name(int event);
 const char* ptrace_req_name(int request);
 
 /**
- * Return the symbolic name of |sig|, f.e. "SIGILL", or "???signal" if
+ * Return the symbolic name of |sig|, f.e. "SIGILL", or "signal(%d)" if
  * unknown.
  */
-const char* signal_name(int sig);
+std::string signal_name(int sig);
 
 /**
  * Return true if this is some kind of sigreturn syscall.
