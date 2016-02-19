@@ -18,15 +18,15 @@ std::string syscall_name(int syscall, SupportedArch arch);
 
 /**
  * Return the symbolic name of the PTRACE_EVENT_* |event|, or
- * "???EVENT" if unknown.
+ * "PTRACE_EVENT(%d)" if unknown.
  */
-const char* ptrace_event_name(int event);
+std::string ptrace_event_name(int event);
 
 /**
- * Return the symbolic name of the PTRACE_ |request|, or "???REQ" if
+ * Return the symbolic name of the PTRACE_ |request|, or "PTRACE_REQUEST(%d)" if
  * unknown.
  */
-const char* ptrace_req_name(int request);
+std::string ptrace_req_name(int request);
 
 /**
  * Return the symbolic name of |sig|, f.e. "SIGILL", or "signal(%d)" if

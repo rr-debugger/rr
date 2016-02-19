@@ -25,7 +25,7 @@ string syscall_name(int syscall, SupportedArch arch) {
   case _id:                                                                    \
     return #_id;
 
-const char* ptrace_event_name(int event) {
+string ptrace_event_name(int event) {
   switch (event) {
     CASE(PTRACE_EVENT_FORK);
     CASE(PTRACE_EVENT_VFORK);
@@ -39,13 +39,16 @@ const char* ptrace_event_name(int event) {
     CASE(PTRACE_EVENT_SECCOMP_OBSOLETE);
     CASE(PTRACE_EVENT_SECCOMP);
     CASE(PTRACE_EVENT_STOP);
-    default:
-      return "???PTRACE_EVENT";
+    default: {
+      char buf[100];
+      sprintf(buf, "PTRACE_EVENT(%d)", event);
+      return string(buf);
+    }
   }
 }
 
-const char* ptrace_req_name(int request) {
-  switch (int(request)) {
+string ptrace_req_name(int request) {
+  switch (request) {
     CASE(PTRACE_TRACEME);
     CASE(PTRACE_PEEKTEXT);
     CASE(PTRACE_PEEKDATA);
@@ -77,8 +80,11 @@ const char* ptrace_req_name(int request) {
     // These aren't part of the official ptrace-request enum.
     CASE(PTRACE_SYSEMU);
     CASE(PTRACE_SYSEMU_SINGLESTEP);
-    default:
-      return "???PTRACE_REQ";
+    default: {
+      char buf[100];
+      sprintf(buf, "PTRACE_REQUEST(%d)", request);
+      return string(buf);
+    }
   }
 }
 
