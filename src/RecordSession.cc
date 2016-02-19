@@ -1176,8 +1176,7 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
         return true;
       case DEFER_SIGNAL:
         ASSERT(t, false) << "Can't defer deterministic or internal signal "
-                         << signal_name(siginfo.si_signo) << " (code "
-                         << siginfo.si_code << ")";
+                         << siginfo << " at ip " << t->ip();
         break;
       case SIGNAL_HANDLED:
         break;
