@@ -217,7 +217,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
     uintptr_t cur_cx = t->regs().cx();
     if (cur_cx == 0) {
       // Fake singlestep status for trap diagnosis
-      t->replace_debug_status(DS_SINGLESTEP);
+      t->set_debug_status(DS_SINGLESTEP);
       // This instruction will be skipped entirely.
       return did_execute;
     }
@@ -276,7 +276,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
 
     if (iterations == 0) {
       // Fake singlestep status for trap diagnosis
-      t->replace_debug_status(DS_SINGLESTEP);
+      t->set_debug_status(DS_SINGLESTEP);
       return did_execute;
     }
 
@@ -310,7 +310,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       // Grab debug_status before restoring watchpoints, since the latter
       // clears the debug status
       bool triggered_watchpoint =
-          t->vm()->notify_watchpoint_fired(t->consume_debug_status());
+          t->vm()->notify_watchpoint_fired(t->debug_status());
       t->vm()->remove_breakpoint(limit_ip, BKPT_INTERNAL);
       t->vm()->restore_watchpoints();
 
@@ -330,7 +330,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
         watch_offset = decoded.operand_size * (iterations - 1);
         if (watch_offset > BYTES_COALESCED) {
           // Fake singlestep status for trap diagnosis
-          t->replace_debug_status(DS_SINGLESTEP);
+          t->set_debug_status(DS_SINGLESTEP);
           // We fired the watchpoint too early, perhaps because reads through SI
           // triggered it. Let's just bail out now; better for the caller to
           // retry
@@ -352,7 +352,6 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
                           RESUME_UNLIMITED_TICKS);
       did_execute = true;
       ASSERT(t, t->pending_sig() == SIGTRAP);
-      t->consume_debug_status();
       // Watchpoints can fire spuriously because configure_watch_registers
       // can increase the size of the watched area to conserve watch registers.
       --iterations;
@@ -374,7 +373,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
     } else {
       LOG(debug) << "x86-string fast-forward done; ip()==" << t->ip();
       // Fake singlestep status for trap diagnosis
-      t->replace_debug_status(DS_SINGLESTEP);
+      t->set_debug_status(DS_SINGLESTEP);
       return did_execute;
     }
   }

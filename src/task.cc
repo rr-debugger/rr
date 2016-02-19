@@ -1435,14 +1435,7 @@ uintptr_t Task::debug_status() {
   return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(6), nullptr);
 }
 
-uintptr_t Task::consume_debug_status() {
-  uintptr_t status =
-      fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(6), nullptr);
-  fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(6), 0);
-  return status;
-}
-
-void Task::replace_debug_status(uintptr_t status) {
+void Task::set_debug_status(uintptr_t status) {
   fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(6), (void*)status);
 }
 
@@ -1524,6 +1517,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   }
   LOG(debug) << "resuming execution with " << ptrace_req_name(how);
   address_of_last_execution_resume = ip();
+  set_debug_status(0);
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
   is_stopped = false;
   extra_registers_known = false;

@@ -51,6 +51,13 @@ static void print_time(void) {
   atomic_printf("now is %g sec\n", now_sec);
 }
 
+static void make_stack_executable(void) {
+  int v = 0;
+  void* p = (void*)((uintptr_t)&v & ~((uintptr_t)PAGE_SIZE - 1));
+  int ret = mprotect(p, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC);
+  test_assert(ret == 0 || errno == EACCES);
+}
+
 int main(void) {
   var = -42;
 
@@ -58,6 +65,10 @@ int main(void) {
 
   atomic_printf("var is %d\n", var);
   test_assert(var == -42);
+
+  make_stack_executable();
+
+  breakpoint();
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

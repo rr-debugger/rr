@@ -577,7 +577,6 @@ Completion ReplaySession::emulate_async_signal(
 
         pending_SIGTRAP = false;
         t->move_ip_before_breakpoint();
-        t->consume_debug_status();
         /* We just backed up the $ip, but
          * rewound it over an |int $3|
          * instruction, which couldn't have
@@ -595,7 +594,6 @@ Completion ReplaySession::emulate_async_signal(
         ASSERT(t, trap_reasons.watchpoint);
         LOG(debug) << "    (SIGTRAP; HW watchpoint fired without changes)";
       }
-      t->consume_debug_status();
     }
 
     /* We had to keep the internal breakpoint set (if it
@@ -785,7 +783,6 @@ Completion ReplaySession::emulate_deterministic_signal(
         return INCOMPLETE;
       }
     }
-    t->consume_debug_status();
   }
   ASSERT(t, t->pending_sig() == sig) << "Replay got unrecorded signal "
                                      << t->pending_sig() << " (expecting "

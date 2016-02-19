@@ -762,16 +762,15 @@ public:
   ReturnAddressList return_addresses();
 
   /**
-   * Return the debug status, which is a bitfield comprising
-   * |DebugStatus| bits (see above).
+   * Return the debug status (DR6 on x86). The debug status is always cleared
+   * in resume_execution() before we resume, so it always only reflects the
+   * events since the last resume.
    */
   uintptr_t debug_status();
   /**
-   * Return the debug status, which is a bitfield comprising
-   * |DebugStatus| bits (see above), and clear the kernel state.
+   * Set the debug status (DR6 on x86).
    */
-  uintptr_t consume_debug_status();
-  void replace_debug_status(uintptr_t status);
+  void set_debug_status(uintptr_t status);
 
   /**
    * Determine why a SIGTRAP occurred. Uses debug_status() but doesn't

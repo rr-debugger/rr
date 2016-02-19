@@ -285,7 +285,6 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
     }
   } else {
     TrapReasons trap_reasons = t->compute_trap_reasons();
-    t->consume_debug_status();
 
     // Conceal any internal singlestepping
     if (trap_reasons.singlestep && is_singlestep(run_command)) {
