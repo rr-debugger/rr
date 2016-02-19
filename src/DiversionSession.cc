@@ -52,18 +52,16 @@ template <typename Arch>
 static void process_syscall_arch(Task* t, int syscallno) {
   LOG(debug) << "Processing " << t->syscall_name(syscallno);
 
-  switch (syscallno) {
+  if (syscallno == Arch::ioctl && t->is_desched_event_syscall()) {
     // The arm/disarm-desched ioctls are emulated as no-ops.
     // However, because the rr preload library expects these
     // syscalls to succeed and aborts if they don't, we fudge a
     // "0" return value.
-    case Arch::ioctl:
-      if (!t->is_desched_event_syscall()) {
-        break;
-      }
-      finish_emulated_syscall_with_ret(t, 0);
-      return;
+    finish_emulated_syscall_with_ret(t, 0);
+    return;
+  }
 
+  switch (syscallno) {
     // We blacklist these syscalls because the params include
     // namespaced identifiers that are different in replay than
     // recording, and during replay they may refer to different,
@@ -89,9 +87,12 @@ static void process_syscall_arch(Task* t, int syscallno) {
     case Arch::rt_tgsigqueueinfo:
     case Arch::tgkill:
     case Arch::tkill:
+      LOG(debug) << "Suppressing syscall "
+                 << syscall_name(syscallno, t->arch());
       return;
   }
 
+  LOG(debug) << "Executing syscall " << syscall_name(syscallno, t->arch());
   return execute_syscall(t);
 }
 
@@ -128,9 +129,9 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
                           signal_to_deliver);
       break;
     case RUN_SINGLESTEP:
+      LOG(debug) << "Stepping to next insn/syscall";
       t->resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT,
                           RESUME_UNLIMITED_TICKS, signal_to_deliver);
-      LOG(debug) << "Stepping to next insn/syscall";
       break;
     default:
       FATAL() << "Illegal run command " << command;
@@ -147,6 +148,10 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
     if (result.break_status.signal) {
       LOG(debug) << "Signal received: " << t->get_siginfo();
     }
+    LOG(debug) << "Diversion break at ip=" << (void*)t->ip().register_value()
+               << "; break=" << result.break_status.breakpoint_hit
+               << ", watch=" << !result.break_status.watchpoints_hit.empty()
+               << ", singlestep=" << result.break_status.singlestep_complete;
     ASSERT(t, !result.break_status.singlestep_complete ||
                   command == RUN_SINGLESTEP);
     return result;
