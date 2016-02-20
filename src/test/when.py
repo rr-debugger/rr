@@ -33,4 +33,12 @@ if ticks2 < 0 or ticks2 > 100000:
 if ticks2 <= ticks:
     failed('ERROR ... "when-ticks" failed to advance')
 
+# Ensure 'when' terminates a diversion
+send_gdb('call strlen("abcd")')
+send_gdb('when')
+expect_gdb(re.compile(r'Current event: (\d+)'))
+t3 = eval(last_match().group(1));
+if t2 != t3:
+    failed('ERROR in third "when"')
+
 ok()
