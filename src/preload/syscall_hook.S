@@ -29,6 +29,15 @@
 _syscall_hook_trampoline:
         .cfi_startproc
 
+        /* Force the stack to be extended to at least _stack_pad_size.
+           This forces any MAP_GROWSDOWN emulation to happen before we enter
+           the syscallbuf, which avoids having to reason about system calls
+           being recorded while we're in the middle of syscallbuf processing.
+           This must be the first instruction of _syscall_hook_trampoline so
+           that we can treat this one instruction as "not part of the
+           syscallbuf library". */
+        movb $0,-_stack_pad_size(%esp)
+
         /* Build a |struct syscall_info| by pushing all the syscall
          * args and the number onto the stack. */
                           /* struct syscall_info info; */
@@ -130,7 +139,6 @@ _stub_buffer:
            can build the correct CFI unwinding info, so gdb gives good stack
            traces from inside the syscall hook code. */
         .cfi_startproc
-        movl   $0,-_stack_pad_size(%esp)
         /* Save fake return address and old sp to the stack, for gdb to use
            during stack unwinding. Addresses will be filled in by rr. */
         movl   $0x12345678,-_syscall_stack_adjust(%esp)
@@ -165,6 +173,16 @@ _stub_buffer_end:
         .p2align 4
 _syscall_hook_trampoline:
         .cfi_startproc
+
+        /* Force the stack to be extended to at least _stack_pad_size.
+           This forces any MAP_GROWSDOWN emulation to happen before we enter
+           the syscallbuf, which avoids having to reason about system calls
+           being recorded while we're in the middle of syscallbuf processing.
+           This must be the first instruction of _syscall_hook_trampoline so
+           that we can treat this one instruction as "not part of the
+           syscallbuf library". */
+        movb $0,-_stack_pad_size(%rsp)
+
         /* Build a |struct syscall_info| on the stack by pushing the arguments
            and syscall number. */
         pushq %r9
@@ -316,11 +334,6 @@ _stub_buffer:
            can build the correct CFI unwinding info, so gdb gives good stack
            traces from inside the syscall hook code. */
         .cfi_startproc
-        /* Force the stack to be extended to at least _stack_pad_size.
-           This forces any MAP_GROWSDOWN emulation to happen before we enter
-           the syscallbuf, which avoids having to reason about system calls
-           being recorded while we're in the middle of syscallbuf processing */
-        movl   $0,-_stack_pad_size(%rsp)
         /* Save fake return address and old sp to the stack, for gdb to use
            during stack unwinding. Addresses will be filled in by rr. */
         movl   $0x12345678,-_syscall_stack_adjust(%rsp)

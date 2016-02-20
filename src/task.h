@@ -527,7 +527,7 @@ public:
   bool is_in_syscallbuf() {
     remote_ptr<void> p = ip().to_data_ptr<void>();
     return (as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end() &&
-            !as->monkeypatcher().in_stub_buffer(p)) ||
+            !as->monkeypatcher().is_syscallbuf_excluded_instruction(p)) ||
            (as->rr_page_start() <= p && p < as->rr_page_end());
   }
 

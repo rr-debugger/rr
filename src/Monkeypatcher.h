@@ -63,7 +63,8 @@ public:
   void init_dynamic_syscall_patching(
       Task* t, int syscall_patch_hook_count,
       remote_ptr<syscall_patch_hook> syscall_patch_hooks,
-      remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end);
+      remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end,
+      remote_ptr<void> syscall_hook_trampoline);
 
   /**
    * Try to allocate a stub from the sycall patching stub buffer. Returns null
@@ -89,8 +90,13 @@ public:
   };
   std::vector<ExtendedJumpPage> extended_jump_pages;
 
-  bool in_stub_buffer(remote_ptr<void> p) {
-    return stub_buffer <= p && p < stub_buffer_end;
+  /**
+   * Returns true if the instruction at address p should be considered
+   * "not part of the syscallbuf code", i.e. it's safe to deliver signals there
+   * without affecting the syscall buffering logic. If not sure, return false.
+   */
+  bool is_syscallbuf_excluded_instruction(remote_ptr<void> p) {
+    return p == syscall_hook_trampoline;
   }
 
 private:
@@ -110,6 +116,7 @@ private:
    */
   remote_ptr<void> stub_buffer;
   remote_ptr<void> stub_buffer_end;
+  remote_ptr<void> syscall_hook_trampoline;
   size_t stub_buffer_allocated;
 };
 

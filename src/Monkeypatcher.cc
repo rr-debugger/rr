@@ -106,12 +106,14 @@ template <typename Arch> static void setup_preload_library_path(Task* t) {
 void Monkeypatcher::init_dynamic_syscall_patching(
     Task* t, int syscall_patch_hook_count,
     remote_ptr<struct syscall_patch_hook> syscall_patch_hooks,
-    remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end) {
+    remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end,
+    remote_ptr<void> syscall_hook_trampoline) {
   if (syscall_patch_hook_count) {
     syscall_hooks = t->read_mem(syscall_patch_hooks, syscall_patch_hook_count);
   }
   this->stub_buffer = stub_buffer;
   this->stub_buffer_end = stub_buffer_end;
+  this->syscall_hook_trampoline = syscall_hook_trampoline;
 }
 
 template <typename Arch>
@@ -342,7 +344,7 @@ bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
                                         X86SyscallStubExtendedJump,
-                                        X86SyscallStubMonkeypatch, 41>(patcher,
+                                        X86SyscallStubMonkeypatch, 30>(patcher,
                                                                        t, hook);
 }
 
@@ -351,7 +353,7 @@ bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
                                         X64SyscallStubExtendedJump,
-                                        X64SyscallStubMonkeypatch, 54>(patcher,
+                                        X64SyscallStubMonkeypatch, 43>(patcher,
                                                                        t, hook);
 }
 
@@ -751,7 +753,8 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
 
   patcher.init_dynamic_syscall_patching(
       t, params.syscall_patch_hook_count, params.syscall_patch_hooks,
-      params.syscall_hook_stub_buffer, params.syscall_hook_stub_buffer_end);
+      params.syscall_hook_stub_buffer, params.syscall_hook_stub_buffer_end,
+      params.syscall_hook_trampoline);
 }
 
 // Monkeypatch x86-64 vdso syscalls immediately after exec. The vdso syscalls
@@ -820,7 +823,8 @@ void patch_at_preload_init_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
 
   patcher.init_dynamic_syscall_patching(
       t, params.syscall_patch_hook_count, params.syscall_patch_hooks,
-      params.syscall_hook_stub_buffer, params.syscall_hook_stub_buffer_end);
+      params.syscall_hook_stub_buffer, params.syscall_hook_stub_buffer_end,
+      params.syscall_hook_trampoline);
 }
 
 void Monkeypatcher::patch_after_exec(Task* t) {

@@ -119,7 +119,7 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
   }
   if (!(it->map.flags() & MAP_GROWSDOWN)) {
     LOG(debug) << "try_grow_map " << addr << ": map is not MAP_GROWSDOWN ("
-        << it->map << ")";
+               << it->map << ")";
     return false;
   }
 
@@ -163,8 +163,8 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
   t->record_event(Event(EV_GROW_MAP, NO_EXEC_INFO, t->arch()),
                   Task::DONT_FLUSH_SYSCALLBUF);
   t->push_event(Event::noop(t->arch()));
-  LOG(debug) << "try_grow_map " << addr << ": extended map " <<
-      t->vm()->mapping_of(addr).map;
+  LOG(debug) << "try_grow_map " << addr << ": extended map "
+             << t->vm()->mapping_of(addr).map;
   return true;
 }
 

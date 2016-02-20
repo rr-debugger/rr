@@ -88,15 +88,6 @@
 #endif
 #define syscall you_must_use_traced_syscall
 
-/* x86 is the only architecture whose syscalls all come through a pinch point
-   that we can monkeypatch.  There are ways to handle other architectures, but
-   for now, we can't filter on any architecture but x86.  */
-#if defined(__i386__)
-#define RR_SYSCALL_FILTERING 1
-#else
-#define RR_SYSCALL_FILTERING 0
-#endif
-
 #define RR_HIDDEN __attribute__((visibility("hidden")))
 
 /**
@@ -482,11 +473,7 @@ static int privileged_untraced_fcntl(int fd, int cmd, ...) {
   return privileged_untraced_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
 }
 
-#if RR_SYSCALL_FILTERING
 extern RR_HIDDEN void _syscall_hook_trampoline(void);
-#else
-static void _syscall_hook_trampoline(void) {}
-#endif
 
 /**
  * Do what's necessary to set up buffers for the caller.
