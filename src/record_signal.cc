@@ -109,8 +109,17 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
 
   auto maps = t->vm()->maps_starting_at(floor_page_size(addr));
   auto it = maps.begin();
-  if (it == maps.end() || addr >= it->map.start() ||
-      !(it->map.flags() & MAP_GROWSDOWN)) {
+  if (it == maps.end()) {
+    LOG(debug) << "try_grow_map " << addr << ": no later map to grow downward";
+    return false;
+  }
+  if (addr >= it->map.start()) {
+    LOG(debug) << "try_grow_map " << addr << ": address already mapped";
+    return false;
+  }
+  if (!(it->map.flags() & MAP_GROWSDOWN)) {
+    LOG(debug) << "try_grow_map " << addr << ": map is not MAP_GROWSDOWN ("
+        << it->map << ")";
     return false;
   }
 
@@ -124,6 +133,7 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
       new_start = possible_new_start;
     }
   }
+  LOG(debug) << "try_grow_map " << addr << ": trying to grow map " << it->map;
 
   struct rlimit stack_limit;
   int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
@@ -131,6 +141,7 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
     new_start = std::max(new_start,
                          ceil_page_size(it->map.end() - stack_limit.rlim_cur));
     if (new_start > addr) {
+      LOG(debug) << "try_grow_map " << addr << ": RLIMIT_STACK exceeded";
       return false;
     }
   }
@@ -152,7 +163,8 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
   t->record_event(Event(EV_GROW_MAP, NO_EXEC_INFO, t->arch()),
                   Task::DONT_FLUSH_SYSCALLBUF);
   t->push_event(Event::noop(t->arch()));
-  LOG(debug) << "  trapped for MAP_GROWSDOWN";
+  LOG(debug) << "try_grow_map " << addr << ": extended map " <<
+      t->vm()->mapping_of(addr).map;
   return true;
 }
 
