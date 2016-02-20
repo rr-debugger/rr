@@ -376,6 +376,7 @@ set(BASIC_TESTS
   fork_stress
   futex_priorities
   fxregs
+  getcpu
   getgroups
   getrandom
   setitimer

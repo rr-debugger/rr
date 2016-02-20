@@ -1470,7 +1470,7 @@ sync_file_range = UnsupportedSyscall(x86=314, x64=277)
 tee = UnsupportedSyscall(x86=315, x64=276)
 vmsplice = UnsupportedSyscall(x86=316, x64=278)
 move_pages = UnsupportedSyscall(x86=317, x64=279)
-getcpu = UnsupportedSyscall(x86=318, x64=309)
+getcpu = EmulatedSyscall(x86=318, x64=309, arg1="unsigned int", arg2="unsigned int")
 epoll_pwait = UnsupportedSyscall(x86=319, x64=281)
 
 #  int utimensat(int dirfd, const char *pathname, const struct timespec
