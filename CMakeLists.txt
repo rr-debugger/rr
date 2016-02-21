@@ -347,6 +347,7 @@ set(BASIC_TESTS
   brk2
   capget
   chew_cpu
+  chmod
   chown
   clock
   clone

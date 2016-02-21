@@ -1420,7 +1420,7 @@ renameat = EmulatedSyscall(x86=302, x64=264)
 linkat = EmulatedSyscall(x86=303, x64=265)
 symlinkat = EmulatedSyscall(x86=304, x64=266)
 readlinkat = IrregularEmulatedSyscall(x86=305, x64=267)
-fchmodat = UnsupportedSyscall(x86=306, x64=268)
+fchmodat = EmulatedSyscall(x86=306, x64=268)
 
 #  int faccessat(int dirfd, const char *pathname, int mode, int flags)
 #
