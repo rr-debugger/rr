@@ -359,6 +359,7 @@ set(BASIC_TESTS
   dup
   epoll_create
   epoll_create1
+  eventfd
   exec_flags
   exec_self
   fadvise

@@ -44,6 +44,7 @@
 #include <sys/file.h>
 #include <sys/xattr.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>

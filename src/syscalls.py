@@ -1496,7 +1496,7 @@ signalfd = EmulatedSyscall(x86=321, x64=282)
 # descriptor that refers to that timer.
 timerfd_create = EmulatedSyscall(x86=322, x64=283)
 
-eventfd = UnsupportedSyscall(x86=323, x64=284)
+eventfd = EmulatedSyscall(x86=323, x64=284)
 
 # int fallocate(int fd, int mode, off_t offset, off_t len);
 #
