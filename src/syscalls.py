@@ -1398,7 +1398,7 @@ openat = EmulatedSyscall(x86=295, x64=257)
 mkdirat = EmulatedSyscall(x86=296, x64=258)
 
 mknodat = UnsupportedSyscall(x86=297, x64=259)
-fchownat = UnsupportedSyscall(x86=298, x64=260)
+fchownat = EmulatedSyscall(x86=298, x64=260)
 futimesat = UnsupportedSyscall(x86=299, x64=261)
 
 #  int fstatat(int dirfd, const char *pathname, struct stat *buf, int flags);
