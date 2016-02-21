@@ -463,6 +463,7 @@ set(BASIC_TESTS
   robust_futex
   rusage
   save_data_fd
+  # sched_attr ... disabled since suitable headers are not widely available yet
   sched_setaffinity
   sched_setparam
   sched_yield
