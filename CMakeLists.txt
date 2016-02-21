@@ -517,6 +517,7 @@ set(BASIC_TESTS
   stdout_redirect
   strict_priorities
   switch_read
+  symlink
   sync
   syscallbuf_signal_reset
   syscallbuf_timeslice

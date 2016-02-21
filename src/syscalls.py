@@ -1418,7 +1418,7 @@ unlinkat = EmulatedSyscall(x86=301, x64=263)
 
 renameat = EmulatedSyscall(x86=302, x64=264)
 linkat = EmulatedSyscall(x86=303, x64=265)
-symlinkat = UnsupportedSyscall(x86=304, x64=266)
+symlinkat = EmulatedSyscall(x86=304, x64=266)
 readlinkat = IrregularEmulatedSyscall(x86=305, x64=267)
 fchmodat = UnsupportedSyscall(x86=306, x64=268)
 
