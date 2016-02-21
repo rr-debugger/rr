@@ -72,4 +72,12 @@ static_assert(_NSIG / 8 == sizeof(sig_set_t), "Update sig_set_t for _NSIG.");
 #define MADV_SOFT_OFFLINE 101
 #endif
 
+#ifndef BUS_MCEERR_AR
+#define BUS_MCEERR_AR 4
+#endif
+
+#ifndef BUS_MCEERR_AO
+#define BUS_MCEERR_AO 5
+#endif
+
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */
