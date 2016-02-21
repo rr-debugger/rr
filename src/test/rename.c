@@ -5,14 +5,7 @@
 int main(void) {
   static const char file_path[] = "rr-test-file";
   static const char file2_path[] = "rr-test-file2";
-  char dir_path[] = "/tmp/rr-test-dir-XXXXXX";
-  int fd;
-
-  test_assert(mkdtemp(dir_path) != NULL);
-
-  test_assert(0 == chdir(dir_path));
-
-  fd = open(file_path, O_WRONLY | O_CREAT, 0700);
+  int fd = open(file_path, O_WRONLY | O_CREAT, 0700);
   test_assert(0 == close(fd));
 
   test_assert(0 == rename(file_path, file2_path));
@@ -21,7 +14,6 @@ int main(void) {
                            file2_path, 0));
 
   test_assert(0 == unlink(file2_path));
-  test_assert(0 == rmdir(dir_path));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

@@ -8,13 +8,8 @@
 int main(void) {
   static const char file_path[] = "rr-test-file";
   static const char link_path[] = "rr-test-link";
-  char dir_path[] = "/tmp/rr-test-dir-XXXXXX";
   char* buf = allocate_guard(BUF_SIZE, 'q');
   char* buf2 = allocate_guard(BUF2_SIZE, 'r');
-
-  test_assert(mkdtemp(dir_path) != NULL);
-
-  test_assert(0 == chdir(dir_path));
 
   test_assert(0 == symlink(file_path, link_path));
   test_assert(BUF_SIZE == readlinkat(AT_FDCWD, link_path, buf, BUF_SIZE));
@@ -27,7 +22,6 @@ int main(void) {
   verify_guard(BUF2_SIZE, buf2);
 
   test_assert(0 == unlink(link_path));
-  test_assert(0 == rmdir(dir_path));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
