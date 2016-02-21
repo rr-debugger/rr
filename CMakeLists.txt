@@ -350,6 +350,7 @@ set(BASIC_TESTS
   chmod
   chown
   clock
+  clock_nanosleep
   clone
   clone_bad_stack
   clone_immediate_exit
@@ -429,6 +430,7 @@ set(BASIC_TESTS
   multiple_pending_signals_sequential
   munmap_segv
   munmap_discontinuous
+  nanosleep
   no_mask_timeslice
   numa
   old_fork
@@ -603,7 +605,6 @@ set(TESTS_WITH_PROGRAM
   mmap_shared_prot
   mmap_write
   mutex_pi_stress
-  nanosleep
   priority
   read_big_struct
   restart_abnormal_exit
@@ -629,6 +630,7 @@ set(TESTS_WITH_PROGRAM
   target_process
   term_nonmain
   term_rr
+  term_trace_syscall
   thread_exit_signal
   threaded_syscall_spam
   threads
@@ -725,7 +727,6 @@ set(TESTS_WITHOUT_PROGRAM
   syscallbuf_timeslice_250
   trace_version
   term_trace_cpu
-  term_trace_syscall
   when
 )
 

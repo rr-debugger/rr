@@ -2520,11 +2520,21 @@ static Switchable rec_prepare_syscall_arch(Task* t,
      * client program may have carefully optimized its own context
      * switching and we should take the hint. */
 
-    /* int nanosleep(const struct timespec *req, struct timespec *rem); */
     case Arch::nanosleep:
       syscall_state.reg_parameter<typename Arch::timespec>(2);
       t->sleeping_until =
           user_timespec_to_absolute_sec<Arch>(t, t->regs().arg1());
+      return ALLOW_SWITCH;
+
+    case Arch::clock_nanosleep:
+      syscall_state.reg_parameter<typename Arch::timespec>(4);
+      if (t->regs().arg2() == TIMER_ABSTIME) {
+        t->sleeping_until = absolute_monotonic_timespec_to_absolute_sec<Arch>(
+            t, t->regs().arg3());
+      } else {
+        t->sleeping_until =
+            user_timespec_to_absolute_sec<Arch>(t, t->regs().arg3());
+      }
       return ALLOW_SWITCH;
 
     case Arch::sched_yield:
@@ -2747,7 +2757,8 @@ static void rec_prepare_restart_syscall_arch(Task* t,
   int syscallno = t->ev().Syscall().number;
   switch (syscallno) {
     case Arch::nanosleep:
-      /* Hopefully uniquely among syscalls, nanosleep()
+    case Arch::clock_nanosleep:
+      /* Hopefully uniquely among syscalls, nanosleep()/clock_nanosleep()
        * requires writing to its remaining-time outparam
        * *only if* the syscall fails with -EINTR.  When a
        * nanosleep() is interrupted by a signal, we don't
@@ -3337,6 +3348,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       }
       break;
 
+    case Arch::clock_nanosleep:
     case Arch::nanosleep: {
       /* If the sleep completes, the kernel doesn't
        * write back to the remaining-time

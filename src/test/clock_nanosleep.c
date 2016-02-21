@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-/* Keep this roughly in sync with 'clock_nanosleep' */
+/* Keep this roughly in sync with 'nanosleep' */
 
 static void* do_thread(__attribute__((unused)) void* p) {
   sigset_t sigs;
@@ -24,12 +24,12 @@ int main(void) {
   struct timespec* remain;
   pthread_t thread;
 
-  test_assert(0 == nanosleep(&sleep, NULL));
+  test_assert(0 == clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep, NULL));
 
   ALLOCATE_GUARD(remain, 'x');
   remain->tv_sec = 9999;
   remain->tv_nsec = 9998;
-  test_assert(0 == nanosleep(&sleep, remain));
+  test_assert(0 == clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep, remain));
   VERIFY_GUARD(remain);
   test_assert(remain->tv_sec == 9999 && remain->tv_nsec == 9998);
 
@@ -37,8 +37,7 @@ int main(void) {
   pthread_create(&thread, NULL, do_thread, NULL);
 
   sleep.tv_sec = 1000000;
-  test_assert(-1 == nanosleep(&sleep, remain));
-  test_assert(errno == EINTR);
+  test_assert(EINTR == clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep, remain));
   VERIFY_GUARD(remain);
   test_assert(remain->tv_sec <= sleep.tv_sec);
 

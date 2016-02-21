@@ -1,4 +1,0 @@
-source `dirname $0`/util.sh
-record $TESTNAME 1                  # 1 second
-replay
-check EXIT-SUCCESS

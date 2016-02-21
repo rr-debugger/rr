@@ -1296,7 +1296,7 @@ clock_gettime = EmulatedSyscall(x86=265, x64=228, arg2="typename Arch::timespec"
 # truncated to a multiple of res.
 clock_getres = EmulatedSyscall(x86=266, x64=229, arg2="typename Arch::timespec")
 
-clock_nanosleep = UnsupportedSyscall(x86=267, x64=230)
+clock_nanosleep = IrregularEmulatedSyscall(x86=267, x64=230)
 
 #  int statfs(const char *path, struct statfs *buf)
 #
