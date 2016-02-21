@@ -19,7 +19,6 @@
 #include <linux/filter.h>
 #include <linux/futex.h>
 #include <linux/if.h>
-#include <linux/kcmp.h>
 #include <linux/limits.h>
 #include <linux/perf_event.h>
 #include <linux/random.h>
@@ -197,5 +196,9 @@ inline static void free_guard(size_t size, void* p) {
 #ifndef SECCOMP_SET_MODE_FILTER
 #define SECCOMP_SET_MODE_FILTER 1
 #endif
+
+/* Old systems don't have linux/kcmp.h */
+#define RR_KCMP_FILE 0
+#define RR_KCMP_FILES 2
 
 #endif /* RRUTIL_H */
