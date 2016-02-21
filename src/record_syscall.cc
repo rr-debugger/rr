@@ -2579,6 +2579,13 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           3, ParamSize::from_syscall_result<ssize_t>(t->regs().arg4()));
       return PREVENT_SWITCH;
 
+    case Arch::listxattr:
+    case Arch::llistxattr:
+    case Arch::flistxattr:
+      syscall_state.reg_parameter(
+          2, ParamSize::from_syscall_result<ssize_t>(t->regs().arg3()));
+      return PREVENT_SWITCH;
+
     case Arch::sched_setaffinity: {
       syscall_state.syscall_entry_registers =
           unique_ptr<Registers>(new Registers(t->regs()));
