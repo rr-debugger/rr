@@ -19,6 +19,7 @@
 #include <linux/filter.h>
 #include <linux/futex.h>
 #include <linux/if.h>
+#include <linux/kcmp.h>
 #include <linux/limits.h>
 #include <linux/perf_event.h>
 #include <linux/random.h>

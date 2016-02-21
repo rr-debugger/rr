@@ -398,6 +398,7 @@ set(BASIC_TESTS
   invalid_fcntl
   io
   ioctl
+  kcmp
   legacy_ugid
   madvise
   map_fixed
