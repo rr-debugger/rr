@@ -114,6 +114,7 @@ void Monkeypatcher::init_dynamic_syscall_patching(
   this->stub_buffer = stub_buffer;
   this->stub_buffer_end = stub_buffer_end;
   this->syscall_hook_trampoline = syscall_hook_trampoline;
+  ASSERT(t, syscall_hook_trampoline < stub_buffer_end);
 }
 
 template <typename Arch>

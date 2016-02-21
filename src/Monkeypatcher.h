@@ -96,7 +96,7 @@ public:
    * without affecting the syscall buffering logic. If not sure, return false.
    */
   bool is_syscallbuf_excluded_instruction(remote_ptr<void> p) {
-    return p == syscall_hook_trampoline;
+    return p >= syscall_hook_trampoline && p < stub_buffer_end;
   }
 
 private:

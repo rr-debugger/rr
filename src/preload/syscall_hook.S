@@ -5,14 +5,18 @@
            its callees */
         .set _stack_pad_size,2048
 
-        .global _stub_buffer
-        .hidden _stub_buffer
-        .global _stub_buffer_end
-        .hidden _stub_buffer_end
+        /* _syscall_hook_trampoline must be the first instruction defined
+           in this file, and _stub_buffer_end must be at the end of the last
+           instruction. */
 
         .global _syscall_hook_trampoline
         .hidden _syscall_hook_trampoline
         .type _syscall_hook_trampoline, @function
+
+        .global _stub_buffer
+        .hidden _stub_buffer
+        .global _stub_buffer_end
+        .hidden _stub_buffer_end
 
 #if defined(__i386__)
 /**

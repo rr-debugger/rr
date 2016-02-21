@@ -473,8 +473,6 @@ static int privileged_untraced_fcntl(int fd, int cmd, ...) {
   return privileged_untraced_syscall3(RR_FCNTL_SYSCALL, fd, cmd, arg);
 }
 
-extern RR_HIDDEN void _syscall_hook_trampoline(void);
-
 /**
  * Do what's necessary to set up buffers for the caller.
  * |untraced_syscall_ip| lets rr know where our untraced syscalls will
@@ -594,6 +592,7 @@ extern char _breakpoint_table_entry_end;
  */
 static void __attribute__((constructor)) init_process(void) {
   struct rrcall_init_preload_params params;
+  extern RR_HIDDEN void _syscall_hook_trampoline(void);
   extern RR_HIDDEN void _stub_buffer(void);
   extern RR_HIDDEN void _stub_buffer_end(void);
 
