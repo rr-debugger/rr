@@ -2,47 +2,18 @@
 
 #include "rrutil.h"
 
-#define TOKEN "ABC"
-#define TOKEN_SIZE sizeof(TOKEN)
-
-static const char token_file[] = "rr-link-file.txt";
-static const char link_name[] = "rr-link-file.link";
-
-void verify_token(int fd) {
-  ssize_t len;
-  char buf[TOKEN_SIZE];
-
-  len = read(fd, buf, sizeof(buf));
-  if (len != TOKEN_SIZE || strcmp(buf, TOKEN)) {
-    atomic_puts("Internal error: FAILED: splice wrote the wrong data");
-    exit(1);
-  }
-  atomic_puts("Got expected token " TOKEN);
-}
-
 int main(void) {
-  int fd;
+  static const char token_file[] = "rr-link-file.txt";
+  static const char link_name[] = "rr-link-file.link";
+  int fd = open(token_file, O_RDWR | O_CREAT | O_TRUNC, 0600);
+  test_assert(fd >= 0);
+  test_assert(0 == close(fd));
 
-  fd = open(token_file, O_RDWR | O_CREAT | O_TRUNC, 0600);
-  write(fd, TOKEN, TOKEN_SIZE);
-  close(fd);
-
-  if (link(token_file, link_name)) {
-    atomic_puts("Internal error: FAILED: link not created");
-    exit(1);
-  }
-
-  fd = open(link_name, O_RDONLY);
-  verify_token(fd);
-  close(fd);
-
-  unlink(token_file);
-
-  fd = open(link_name, O_RDONLY);
-  verify_token(fd);
-  close(fd);
-
-  unlink(link_name);
+  test_assert(0 == link(token_file, link_name));
+  test_assert(0 == unlink(token_file));
+  test_assert(0 == linkat(AT_FDCWD, link_name, AT_FDCWD, token_file, 0));
+  test_assert(0 == unlink(token_file));
+  test_assert(0 == unlink(link_name));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
