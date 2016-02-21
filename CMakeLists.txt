@@ -458,6 +458,7 @@ set(BASIC_TESTS
   readlink
   readlinkat
   readv
+  rename
   rlimit
   robust_futex
   rusage

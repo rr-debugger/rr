@@ -6,37 +6,28 @@
 #define BUF2_SIZE 1000
 
 int main(void) {
-  char path[] = "rr-test-file-XXXXXX";
-  char dpath[] = "rr-test-dir-XXXXXX";
-  const char* dir_path = mkdtemp(dpath);
-  int count;
-  char link[PATH_MAX];
+  static const char file_path[] = "rr-test-file";
+  static const char link_path[] = "rr-test-link";
+  char dir_path[] = "/tmp/rr-test-dir-XXXXXX";
   char* buf = allocate_guard(BUF_SIZE, 'q');
   char* buf2 = allocate_guard(BUF2_SIZE, 'r');
 
-  test_assert(dir_path != NULL);
+  test_assert(mkdtemp(dir_path) != NULL);
 
-  chdir(dir_path);
+  test_assert(0 == chdir(dir_path));
 
-  for (count = 0;; ++count) {
-    sprintf(link, "rr-test-link-%d", count);
-    int ret = symlink(path, link);
-    if (ret == 0) {
-      break;
-    }
-    test_assert(errno == EEXIST);
-  }
-  int ret = readlinkat(AT_FDCWD, link, buf, BUF_SIZE);
-  test_assert(BUF_SIZE == ret);
-  test_assert(0 == memcmp(path, buf, BUF_SIZE));
+  test_assert(0 == symlink(file_path, link_path));
+  test_assert(BUF_SIZE == readlinkat(AT_FDCWD, link_path, buf, BUF_SIZE));
+  test_assert(0 == memcmp(file_path, buf, BUF_SIZE));
   verify_guard(BUF_SIZE, buf);
 
-  test_assert((ssize_t)strlen(path) ==
-              readlinkat(AT_FDCWD, link, buf2, BUF2_SIZE));
-  test_assert(0 == memcmp(path, buf2, strlen(path)));
+  test_assert((ssize_t)(sizeof(file_path) - 1) ==
+              readlinkat(AT_FDCWD, link_path, buf2, BUF2_SIZE));
+  test_assert(0 == memcmp(file_path, buf2, sizeof(file_path) - 1));
   verify_guard(BUF2_SIZE, buf2);
 
-  test_assert(0 == unlink(link));
+  test_assert(0 == unlink(link_path));
+  test_assert(0 == rmdir(dir_path));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
