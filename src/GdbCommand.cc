@@ -44,7 +44,9 @@ string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
   int id = stoi(args[1]);
   auto it = gdb_server.checkpoints.find(id);
   if (it != gdb_server.checkpoints.end()) {
-    gdb_server.timeline.remove_explicit_checkpoint(it->second.mark);
+    if (it->second.is_explicit == GdbServer::Checkpoint::EXPLICIT) {
+      gdb_server.timeline.remove_explicit_checkpoint(it->second.mark);
+    }
     gdb_server.checkpoints.erase(it);
     return string("Deleted checkpoint ") + to_string(id) + ".";
   } else {
