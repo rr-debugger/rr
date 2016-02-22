@@ -834,12 +834,15 @@ public:
    * After resuming, |wait_how|. In replay, reset hpcs and
    * request a tick period of tick_period. The default value
    * of tick_period is 0, which means effectively infinite.
+   * If interrupt_after_elapsed is nonzero, we interrupt the task
+   * after that many seconds have elapsed.
    *
    * You probably want to use one of the cont*() helpers above,
    * and not this.
    */
   void resume_execution(ResumeRequest how, WaitRequest wait_how,
-                        TicksRequest tick_period, int sig = 0);
+                        TicksRequest tick_period, int sig = 0,
+                        double interrupt_after_elapsed = 0);
 
   /** Return the session this is part of. */
   Session& session() const { return *session_; }

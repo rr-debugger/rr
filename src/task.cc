@@ -1503,7 +1503,8 @@ void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
 }
 
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
-                            TicksRequest tick_period, int sig) {
+                            TicksRequest tick_period, int sig,
+                            double interrupt_after_elapsed) {
   // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
   // Always resetting here, and always to a nonzero number, improves
   // consistency between recording and replay and hopefully
@@ -1522,14 +1523,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   is_stopped = false;
   extra_registers_known = false;
   if (RESUME_WAIT == wait_how) {
-    // Where does the 3 seconds come from?  No especially
-    // good reason.  We want this to be pretty high,
-    // because it's a last-ditch recovery mechanism, not a
-    // primary thread scheduler.  Though in theory the
-    // PTRACE_INTERRUPT's shouldn't interfere with other
-    // events, that's hard to test thoroughly so try to
-    // avoid it.
-    wait(session().is_recording() ? 3 : 0);
+    wait(interrupt_after_elapsed);
   }
 }
 

@@ -130,6 +130,15 @@ public:
 
   void expire_timeslice() { current_timeslice_end_ = 0; }
 
+  // Where does the 3 seconds come from?  No especially
+  // good reason.  We want this to be pretty high,
+  // because it's a last-ditch recovery mechanism, not a
+  // primary thread scheduler.  Though in theory the
+  // PTRACE_INTERRUPT's shouldn't interfere with other
+  // events, that's hard to test thoroughly so try to
+  // avoid it.
+  double interrupt_after_elapsed_time() const { return 3; }
+
 private:
   // Tasks sorted by priority.
   typedef std::set<std::pair<int, Task*> > TaskPrioritySet;
