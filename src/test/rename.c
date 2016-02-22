@@ -10,8 +10,8 @@ int main(void) {
 
   test_assert(0 == rename(file_path, file2_path));
   test_assert(0 == renameat(AT_FDCWD, file2_path, AT_FDCWD, file_path));
-  test_assert(0 == syscall(SYS_renameat2, AT_FDCWD, file_path, AT_FDCWD,
-                           file2_path, 0));
+  test_assert(
+      0 == syscall(RR_renameat2, AT_FDCWD, file_path, AT_FDCWD, file2_path, 0));
 
   test_assert(0 == unlink(file2_path));
 
