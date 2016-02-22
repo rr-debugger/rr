@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
@@ -1521,7 +1522,14 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   is_stopped = false;
   extra_registers_known = false;
   if (RESUME_WAIT == wait_how) {
-    wait();
+    // Where does the 3 seconds come from?  No especially
+    // good reason.  We want this to be pretty high,
+    // because it's a last-ditch recovery mechanism, not a
+    // primary thread scheduler.  Though in theory the
+    // PTRACE_INTERRUPT's shouldn't interfere with other
+    // events, that's hard to test thoroughly so try to
+    // avoid it.
+    wait(session().is_recording() ? 3 : 0);
   }
 }
 
@@ -1950,31 +1958,31 @@ static void handle_alarm_signal(__attribute__((unused)) int sig) {
 
 static const int ptrace_exit_wait_status = (PTRACE_EVENT_EXIT << 16) | 0x857f;
 
-void Task::wait(AllowInterrupt allow_interrupt) {
+static struct timeval to_timeval(double t) {
+  struct timeval v;
+  v.tv_sec = (time_t)floor(t);
+  v.tv_usec = (int)floor((t - v.tv_sec)*1000000);
+  return v;
+}
+
+void Task::wait(double interrupt_after_elapsed) {
   LOG(debug) << "going into blocking waitpid(" << tid << ") ...";
   ASSERT(this, !unstable) << "Don't wait for unstable tasks";
+  ASSERT(this, session().is_recording() || interrupt_after_elapsed == 0);
 
-  // We only need this during recording.  If tracees go runaway
-  // during replay, something else is at fault.
-  bool enable_wait_interrupt = session().is_recording();
   int status;
-
   bool sent_wait_interrupt = false;
   pid_t ret;
   while (true) {
-    if (enable_wait_interrupt) {
-      // Where does the 3 seconds come from?  No especially
-      // good reason.  We want this to be pretty high,
-      // because it's a last-ditch recovery mechanism, not a
-      // primary thread scheduler.  Though in theory the
-      // PTRACE_INTERRUPT's shouldn't interfere with other
-      // events, that's hard to test thoroughly so try to
-      // avoid it.
-      alarm(3);
+    if (interrupt_after_elapsed) {
+      struct itimerval timer = { { 0, 0 },
+          to_timeval(interrupt_after_elapsed) };
+      setitimer(ITIMER_REAL, &timer, nullptr);
     }
     ret = waitpid(tid, &status, __WALL);
-    if (enable_wait_interrupt) {
-      alarm(0);
+    if (interrupt_after_elapsed) {
+      struct itimerval timer = { { 0, 0 }, { 0, 0 } };
+      setitimer(ITIMER_REAL, &timer, nullptr);
     }
     if (ret >= 0 || errno != EINTR) {
       // waitpid was not interrupted by the alarm.
@@ -1995,7 +2003,7 @@ void Task::wait(AllowInterrupt allow_interrupt) {
       break;
     }
 
-    if (!sent_wait_interrupt && allow_interrupt == ALLOW_INTERRUPT) {
+    if (!sent_wait_interrupt) {
       ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
       sent_wait_interrupt = true;
     }
@@ -3310,7 +3318,7 @@ static void set_cpu_affinity(int cpu) {
   // Alternatively, it would be possible to remove the
   // requirement of the tracing beginning from a known point.
   while (true) {
-    t->wait(DONT_ALLOW_INTERRUPT);
+    t->wait();
     if (SIGSTOP == t->stop_sig()) {
       break;
     }

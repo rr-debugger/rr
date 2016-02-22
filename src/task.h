@@ -1083,17 +1083,12 @@ public:
 
   FdTable::shr_ptr fd_table() { return fds; }
 
-  enum AllowInterrupt {
-    ALLOW_INTERRUPT,
-    // Pass this when the caller has already triggered a ptrace stop
-    // and wait() must not trigger a new one.
-    DONT_ALLOW_INTERRUPT
-  };
   /**
    * Block until the status of this changes. wait() expects the wait to end
-   * with the process in a stopped() state.
+   * with the process in a stopped() state. If interrupt_after_elapsed > 0,
+   * interrupt the task after that many seconds have elapsed.
    */
-  void wait(AllowInterrupt allow_interrupt = ALLOW_INTERRUPT);
+  void wait(double interrupt_after_elapsed = 0);
   /**
    * Return true if the status of this has changed, but don't
    * block.
