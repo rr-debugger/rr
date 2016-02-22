@@ -841,8 +841,7 @@ public:
    * and not this.
    */
   void resume_execution(ResumeRequest how, WaitRequest wait_how,
-                        TicksRequest tick_period, int sig = 0,
-                        double interrupt_after_elapsed = 0);
+                        TicksRequest tick_period, int sig = 0);
 
   /** Return the session this is part of. */
   Session& session() const { return *session_; }

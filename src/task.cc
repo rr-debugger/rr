@@ -1503,8 +1503,7 @@ void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
 }
 
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
-                            TicksRequest tick_period, int sig,
-                            double interrupt_after_elapsed) {
+                            TicksRequest tick_period, int sig) {
   // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
   // Always resetting here, and always to a nonzero number, improves
   // consistency between recording and replay and hopefully
@@ -1523,7 +1522,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   is_stopped = false;
   extra_registers_known = false;
   if (RESUME_WAIT == wait_how) {
-    wait(interrupt_after_elapsed);
+    wait();
   }
 }
 

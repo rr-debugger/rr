@@ -448,8 +448,6 @@ void RecordSession::task_continue(const StepState& step_state) {
     t->vm()->set_first_run_event(trace_writer().time());
   }
 
-  double interrupt_after_elapsed = scheduler().interrupt_after_elapsed_time();
-
   TicksRequest max_ticks = (TicksRequest)max<Ticks>(
       0, scheduler().current_timeslice_end() - t->tick_count());
   if (!t->seccomp_bpf_enabled || CONTINUE_SYSCALL == step_state.continue_type ||
@@ -463,7 +461,7 @@ void RecordSession::task_continue(const StepState& step_state) {
                         step_state.continue_type == CONTINUE_SYSCALL
                             ? RESUME_NO_TICKS
                             : max_ticks,
-                        step_state.continue_sig, interrupt_after_elapsed);
+                        step_state.continue_sig);
   } else {
     /* When the seccomp filter is on, instead of capturing
      * syscalls by using PTRACE_SYSCALL, the filter will
@@ -476,7 +474,7 @@ void RecordSession::task_continue(const StepState& step_state) {
      * the syscall (using cont_syscall_block()) and then
      * using the same logic as before. */
     t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, max_ticks,
-                        step_state.continue_sig, interrupt_after_elapsed);
+                        step_state.continue_sig);
   }
 }
 

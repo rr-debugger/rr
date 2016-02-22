@@ -253,9 +253,9 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
       /* |current| is un-switchable, but already running. Wait for it to change
        * state
        * before "scheduling it", so avoid busy-waiting with our client. */
-      current_->wait();
+      current_->wait(interrupt_after_elapsed_time());
 #ifdef MONITOR_UNSWITCHABLE_WAITS
-      wait_duration = monotonic_now_sec() - now;
+      double wait_duration = monotonic_now_sec() - now;
       if (wait_duration >= 0.010) {
         log_warn("Waiting for unswitchable %s took %g ms",
                  strevent(current_->event), 1000.0 * wait_duration);
@@ -370,6 +370,22 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
   current_ = next;
   setup_new_timeslice();
   return true;
+}
+
+double Scheduler::interrupt_after_elapsed_time() const {
+  // Where does the 3 seconds come from?  No especially
+  // good reason.  We want this to be pretty high,
+  // because it's a last-ditch recovery mechanism, not a
+  // primary thread scheduler.  Though in theory the
+  // PTRACE_INTERRUPT's shouldn't interfere with other
+  // events, that's hard to test thoroughly so try to
+  // avoid it.
+  double delay = 3;
+  if (!high_priority_only_intervals.empty()) {
+    double now = monotonic_now_sec();
+    delay = min(delay, high_priority_only_intervals.begin()->start - now);
+  }
+  return delay;
 }
 
 void Scheduler::on_create(Task* t) {
