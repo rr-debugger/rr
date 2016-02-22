@@ -852,6 +852,19 @@ if(rr_32BIT AND rr_64BIT)
   endforeach(test)
 endif()
 
+set(CHAOS_TESTS
+  mmap_adjacent
+  mmap_bits
+  starvation_multithreaded
+  starvation_singlethreaded
+)
+
+foreach(test ${CHAOS_TESTS})
+  add_executable(${test} src/chaos-test/${test}.c)
+  add_dependencies(${test} Generated)
+  target_link_libraries(${test} -lrt)
+endforeach(test)
+
 include(ProcessorCount)
 ProcessorCount(N)
 if(NOT N EQUAL 0)
