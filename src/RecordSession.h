@@ -110,11 +110,10 @@ private:
   void syscall_state_changed(Task* t, StepState* step_state);
   void desched_state_changed(Task* t);
   bool prepare_to_inject_signal(Task* t, StepState* step_state);
-  void task_continue(Task* t, const StepState& step_state);
+  void task_continue(const StepState& step_state);
 
   TraceWriter trace_out;
   Scheduler scheduler_;
-  Task* last_recorded_task;
   TaskGroup::shr_ptr initial_task_group;
   SeccompFilterRewriter seccomp_filter_rewriter_;
 

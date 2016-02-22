@@ -159,7 +159,7 @@ Task* Scheduler::find_next_runnable_task(Task* t, bool* by_waitpid,
   return nullptr;
 }
 
-void Scheduler::setup_new_timeslice(Task* t) {
+void Scheduler::setup_new_timeslice() {
   Ticks max_timeslice_duration = max_ticks_;
   if (enable_chaos) {
     // Hypothesis: some bugs require short timeslices to expose. But we don't
@@ -176,10 +176,10 @@ void Scheduler::setup_new_timeslice(Task* t) {
       max_timeslice_duration = max_ticks_;
     }
   }
-  t->timeslice_end =
-      t->tick_count() + (random() % min(max_ticks_, max_timeslice_duration));
-  t->registers_at_start_of_uninterrupted_timeslice =
-      unique_ptr<Registers>(new Registers(t->regs()));
+  current_timeslice_end_ = current_->tick_count() +
+                           (random() % min(max_ticks_, max_timeslice_duration));
+  current_->registers_at_start_of_uninterrupted_timeslice =
+      unique_ptr<Registers>(new Registers(current_->regs()));
 }
 
 static void sleep_time(double t) {
@@ -234,60 +234,56 @@ bool Scheduler::in_high_priority_only_interval() {
   return false;
 }
 
-Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
-                                 bool* by_waitpid) {
+bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
   LOG(debug) << "Scheduling next task";
 
   *by_waitpid = false;
 
-  if (!current) {
-    current = t;
-  }
-  assert(!t || t == current);
+#ifdef MONITOR_UNSWITCHABLE_WAITS
+  double now = monotonic_now_sec();
+#endif
 
   maybe_reset_priorities();
 
-  if (t && switchable == PREVENT_SWITCH) {
-    LOG(debug) << "  (" << current->tid << " is un-switchable at "
-               << current->ev() << ")";
-    if (current->is_running()) {
+  if (current_ && switchable == PREVENT_SWITCH) {
+    LOG(debug) << "  (" << current_->tid << " is un-switchable at "
+               << current_->ev() << ")";
+    if (current_->is_running()) {
       LOG(debug) << "  and running; waiting for state change";
-/* |current| is un-switchable, but already running. Wait for it to change state
- * before "scheduling it", so avoid busy-waiting with our client. */
+      /* |current| is un-switchable, but already running. Wait for it to change
+       * state
+       * before "scheduling it", so avoid busy-waiting with our client. */
+      current_->wait();
 #ifdef MONITOR_UNSWITCHABLE_WAITS
-      double start = monotonic_now_sec(), wait_duration;
-#endif
-      current->wait();
-#ifdef MONITOR_UNSWITCHABLE_WAITS
-      wait_duration = monotonic_now_sec() - start;
+      wait_duration = monotonic_now_sec() - now;
       if (wait_duration >= 0.010) {
         log_warn("Waiting for unswitchable %s took %g ms",
-                 strevent(current->event), 1000.0 * wait_duration);
+                 strevent(current_->event), 1000.0 * wait_duration);
       }
 #endif
       *by_waitpid = true;
-      LOG(debug) << "  new status is " << HEX(current->status());
+      LOG(debug) << "  new status is " << HEX(current_->status());
     }
-    return current;
+    return true;
   }
 
   Task* next;
   while (true) {
-    if (current) {
+    if (current_) {
       next = get_round_robin_task()
                  ? nullptr
-                 : find_next_runnable_task(current, by_waitpid,
-                                           current->priority - 1);
+                 : find_next_runnable_task(current_, by_waitpid,
+                                           current_->priority - 1);
       if (next) {
         break;
       }
-      if (!next && !current->unstable && !always_switch &&
-          current->tick_count() < current->timeslice_end &&
-          is_task_runnable(current, by_waitpid)) {
-        LOG(debug) << "  Carrying on with task " << current->tid;
-        return current;
+      if (!next && !current_->unstable && !always_switch &&
+          current_->tick_count() < current_timeslice_end() &&
+          is_task_runnable(current_, by_waitpid)) {
+        LOG(debug) << "  Carrying on with task " << current_->tid;
+        return current_;
       }
-      maybe_pop_round_robin_task(current);
+      maybe_pop_round_robin_task(current_);
     }
 
     LOG(debug) << "  need to reschedule";
@@ -303,7 +299,7 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
     }
 
     if (!next) {
-      next = find_next_runnable_task(current, by_waitpid, INT32_MAX);
+      next = find_next_runnable_task(current_, by_waitpid, INT32_MAX);
     }
 
     // When there's only one thread, treat it as low priority for the
@@ -344,7 +340,7 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
       if (-1 == tid) {
         if (EINTR == errno) {
           LOG(debug) << "  waitpid(-1) interrupted";
-          return nullptr;
+          return false;
         }
         FATAL() << "Failed to waitpid()";
       }
@@ -363,17 +359,17 @@ Task* Scheduler::get_next_thread(Task* t, Switchable switchable,
     *by_waitpid = true;
   }
 
-  if (current && current != next) {
-    LOG(debug) << "Switching from " << current->tid << "(" << current->name()
+  if (current_ && current_ != next) {
+    LOG(debug) << "Switching from " << current_->tid << "(" << current_->name()
                << ") to " << next->tid << "(" << next->name() << ") (priority "
-               << current->priority << " to " << next->priority << ") at "
-               << current->trace_writer().time();
+               << current_->priority << " to " << next->priority << ") at "
+               << current_->trace_writer().time();
   }
 
   maybe_reset_high_priority_only_intervals();
-  setup_new_timeslice(next);
-  current = next;
-  return current;
+  current_ = next;
+  setup_new_timeslice();
+  return true;
 }
 
 void Scheduler::on_create(Task* t) {
@@ -386,10 +382,10 @@ void Scheduler::on_create(Task* t) {
 }
 
 void Scheduler::on_destroy(Task* t) {
-  if (t == current) {
-    current = get_next_task_with_same_priority(t);
-    if (t == current) {
-      current = nullptr;
+  if (t == current_) {
+    current_ = get_next_task_with_same_priority(t);
+    if (t == current_) {
+      current_ = nullptr;
     }
   }
 
@@ -435,7 +431,7 @@ void Scheduler::schedule_one_round_robin(Task* t) {
   task_priority_set.clear();
   task_round_robin_queue.push_back(t);
   t->in_round_robin_queue = true;
-  t->expire_timeslice();
+  expire_timeslice();
 }
 
 Task* Scheduler::get_round_robin_task() {

@@ -220,8 +220,7 @@ TaskGroup::~TaskGroup() {
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            int _priority, SupportedArch a)
-    : timeslice_end(0),
-      unstable(false),
+    : unstable(false),
       stable_exit(false),
       priority(_priority),
       in_round_robin_queue(false),
@@ -2032,7 +2031,7 @@ void Task::wait(AllowInterrupt allow_interrupt) {
       is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(status))) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
     // Force this timeslice to end
-    expire_timeslice();
+    record_session().scheduler().expire_timeslice();
     status = (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
     siginfo_t si;
     memset(&si, 0, sizeof(si));

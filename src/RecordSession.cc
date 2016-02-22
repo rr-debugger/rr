@@ -429,7 +429,9 @@ static void debug_exec_state(const char* msg, Task* t) {
              << " pevent=" << t->ptrace_event();
 }
 
-void RecordSession::task_continue(Task* t, const StepState& step_state) {
+void RecordSession::task_continue(const StepState& step_state) {
+  Task* t = scheduler().current();
+
   ASSERT(t, step_state.continue_type != DONT_CONTINUE);
 
   bool may_restart = t->at_may_restart_syscall();
@@ -446,8 +448,8 @@ void RecordSession::task_continue(Task* t, const StepState& step_state) {
     t->vm()->set_first_run_event(trace_writer().time());
   }
 
-  TicksRequest max_ticks =
-      (TicksRequest)max<Ticks>(0, t->timeslice_end - t->tick_count());
+  TicksRequest max_ticks = (TicksRequest)max<Ticks>(
+      0, scheduler().current_timeslice_end() - t->tick_count());
   if (!t->seccomp_bpf_enabled || CONTINUE_SYSCALL == step_state.continue_type ||
       may_restart) {
     /* We won't receive PTRACE_EVENT_SECCOMP events until
@@ -1408,7 +1410,6 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
                              BindCPU bind_cpu, Chaos chaos)
     : trace_out(argv, envp, cwd, choose_cpu(bind_cpu)),
       scheduler_(*this),
-      last_recorded_task(nullptr),
       ignore_sig(0),
       last_task_switchable(PREVENT_SWITCH),
       use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
@@ -1416,9 +1417,9 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       enable_chaos_(false) {
   scheduler().set_enable_chaos(chaos == ENABLE_CHAOS);
   set_enable_chaos(chaos == ENABLE_CHAOS);
-  last_recorded_task = Task::spawn(*this, trace_out);
-  initial_task_group = last_recorded_task->task_group();
-  on_create(last_recorded_task);
+  Task* t = Task::spawn(*this, trace_out);
+  initial_task_group = t->task_group();
+  on_create(t);
 }
 
 RecordSession::RecordResult RecordSession::record_step() {
@@ -1433,24 +1434,23 @@ RecordSession::RecordResult RecordSession::record_step() {
   result.status = STEP_CONTINUE;
 
   bool did_wait;
-  Task* t = scheduler().get_next_thread(last_recorded_task,
-                                        last_task_switchable, &did_wait);
-  if (!t) {
+  Task* prev_task = scheduler().current();
+  if (!scheduler().reschedule(last_task_switchable, &did_wait)) {
     // The scheduler was waiting for some task to become active, but was
     // interrupted by a signal. Yield to our caller now to give the caller
     // a chance to do something triggered by the signal
     // (e.g. terminate the recording).
     return result;
   }
-  if (last_recorded_task && last_recorded_task->ev().type() == EV_SCHED) {
-    if (last_recorded_task != t) {
+  Task* t = scheduler().current();
+  if (prev_task && prev_task->ev().type() == EV_SCHED) {
+    if (prev_task != t) {
       // We did do a context switch, so record the SCHED event. Otherwise
       // we'll just discard it.
-      last_recorded_task->record_current_event();
+      prev_task->record_current_event();
     }
-    last_recorded_task->pop_event(EV_SCHED);
+    prev_task->pop_event(EV_SCHED);
   }
-  last_recorded_task = t;
 
   // Have to disable context-switching until we know it's safe
   // to allow switching the context.
@@ -1463,7 +1463,6 @@ RecordSession::RecordResult RecordSession::record_step() {
 #endif
   if (handle_ptrace_exit_event(t)) {
     // t is dead and has been deleted.
-    last_recorded_task = nullptr;
     return result;
   }
 
@@ -1515,15 +1514,16 @@ RecordSession::RecordResult RecordSession::record_step() {
 
     debug_exec_state("EXEC_START", t);
 
-    task_continue(t, step_state);
+    task_continue(step_state);
   }
 
   return result;
 }
 
 void RecordSession::terminate_recording() {
-  if (last_recorded_task) {
-    last_recorded_task->maybe_flush_syscallbuf();
+  Task* t = scheduler().current();
+  if (t) {
+    t->maybe_flush_syscallbuf();
   }
 
   LOG(info) << "Processing termination request ...";
@@ -1536,10 +1536,9 @@ void RecordSession::terminate_recording() {
 
   LOG(info) << "  recording final TRACE_TERMINATION event ...";
 
-  TraceFrame frame(trace_out.time(),
-                   last_recorded_task ? last_recorded_task->tid : 0,
+  TraceFrame frame(trace_out.time(), t ? t->tid : 0,
                    Event(EV_TRACE_TERMINATION, NO_EXEC_INFO, RR_NATIVE_ARCH),
-                   last_recorded_task ? last_recorded_task->tick_count() : 0);
+                   t ? t->tick_count() : 0);
   trace_out.write_frame(frame);
   trace_out.close();
 }

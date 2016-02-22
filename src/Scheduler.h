@@ -76,7 +76,8 @@ public:
 
   Scheduler(RecordSession& session)
       : session(session),
-        current(nullptr),
+        current_(nullptr),
+        current_timeslice_end_(0),
         high_priority_only_intervals_refresh_time(0),
         max_ticks_(DEFAULT_MAX_TICKS),
         events_until_reset_priorities(0),
@@ -92,16 +93,15 @@ public:
   }
 
   /**
-   * Given a previously-scheduled task |t|, return a new runnable task (which
-   * may be |t|).
+   * Schedule a new runnable task (which may be the same as current()).
    *
-   * The returned task is guaranteed to either have already been
+   * The new current() task is guaranteed to either have already been
    * runnable, or have been made runnable by a waitpid status change (in
    * which case, *by_waitpid will be nonzero.)
    *
-   * Return nullptr if an interrupt occurred while waiting on a tracee.
+   * Returns false if rescheduling is interrupted by a signal.
    */
-  Task* get_next_thread(Task* t, Switchable switchable, bool* by_waitpid);
+  bool reschedule(Switchable switchable, bool* by_waitpid);
 
   /**
    * Set the priority of |t| to |value| and update related
@@ -123,6 +123,12 @@ public:
    * De-register a thread. This function should be called when a thread exits.
    */
   void on_destroy(Task* t);
+
+  Task* current() const { return current_; }
+
+  Ticks current_timeslice_end() const { return current_timeslice_end_; }
+
+  void expire_timeslice() { current_timeslice_end_ = 0; }
 
 private:
   // Tasks sorted by priority.
@@ -147,7 +153,7 @@ private:
   Task* get_round_robin_task();
   void maybe_pop_round_robin_task(Task* t);
   Task* get_next_task_with_same_priority(Task* t);
-  void setup_new_timeslice(Task* t);
+  void setup_new_timeslice();
   void maybe_reset_priorities();
   int choose_random_priority();
   void update_task_priority_internal(Task* t, int value);
@@ -173,7 +179,8 @@ private:
    * task
    * has been destroyed.
    */
-  Task* current;
+  Task* current_;
+  Ticks current_timeslice_end_;
 
   struct SleepInterval {
     double start;

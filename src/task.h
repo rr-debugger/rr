@@ -1101,11 +1101,6 @@ public:
   bool try_wait();
 
   /**
-   * End this task's timeslice now. This will force a new scheduling decision.
-   */
-  void expire_timeslice() { timeslice_end = 0; }
-
-  /**
    * Returns true if it looks like this task has been spinning on an atomic
    * access/lock.
    */
@@ -1227,8 +1222,6 @@ public:
 
   /* State only used during recording. */
 
-  /* Context switch after this number of ticks have elapsed. */
-  Ticks timeslice_end;
   std::unique_ptr<Registers> registers_at_start_of_uninterrupted_timeslice;
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
