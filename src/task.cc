@@ -1260,36 +1260,25 @@ void Task::record_remote_even_if_null(remote_ptr<void> addr,
   trace_writer().write_raw(buf.data(), num_bytes, addr);
 }
 
-void Task::record_remote_str(remote_ptr<void> str) {
-  maybe_flush_syscallbuf();
-
-  if (!str) {
-    return;
-  }
-
-  string s = read_c_str(str);
-  // Record the \0 byte.
-  trace_writer().write_raw(s.c_str(), s.size() + 1, str);
-}
-
-string Task::read_c_str(remote_ptr<void> child_addr) {
+string Task::read_c_str(remote_ptr<char> child_addr) {
   // XXX handle invalid C strings
+  remote_ptr<void> p = child_addr;
   string str;
   while (true) {
     // We're only guaranteed that [child_addr,
     // end_of_page) is mapped.
-    remote_ptr<void> end_of_page = ceil_page_size(child_addr + 1);
-    ssize_t nbytes = end_of_page - child_addr;
+    remote_ptr<void> end_of_page = ceil_page_size(p + 1);
+    ssize_t nbytes = end_of_page - p;
     char buf[nbytes];
 
-    read_bytes_helper(child_addr, nbytes, buf);
+    read_bytes_helper(p, nbytes, buf);
     for (int i = 0; i < nbytes; ++i) {
       if ('\0' == buf[i]) {
         return str;
       }
       str += buf[i];
     }
-    child_addr = end_of_page;
+    p = end_of_page;
   }
 }
 

@@ -723,8 +723,6 @@ public:
     record_remote_even_if_null(addr, sizeof(T));
   }
 
-  void record_remote_str(remote_ptr<void> str);
-
   /** Return the current regs of this. */
   const Registers& regs() const;
 
@@ -815,7 +813,7 @@ public:
    * Read and return the C string located at |child_addr| in
    * this address space.
    */
-  std::string read_c_str(remote_ptr<void> child_addr);
+  std::string read_c_str(remote_ptr<char> child_addr);
 
   /**
    * Copy |num_bytes| from |src| to |dst| in the address space

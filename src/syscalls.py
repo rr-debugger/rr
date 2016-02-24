@@ -109,7 +109,7 @@ write = IrregularEmulatedSyscall(x86=4, x64=1)
 # (read(2), write(2), lseek(2), fcntl(2), etc.).  The file descriptor
 # returned by a successful call will be the lowest-numbered file
 # descriptor not currently open for the process.
-open = EmulatedSyscall(x86=5, x64=2)
+open = IrregularEmulatedSyscall(x86=5, x64=2)
 
 #  int close(int fd)
 #

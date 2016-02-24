@@ -2306,6 +2306,18 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return ALLOW_SWITCH;
     }
 
+    case Arch::open: {
+      string pathname = t->read_c_str(remote_ptr<char>(t->regs().arg1()));
+      if (is_blacklisted_filename(pathname.c_str())) {
+        LOG(warn) << "Cowardly refusing to open " << pathname;
+        Registers r = t->regs();
+        // Set path to terminating null byte. This forces ENOENT.
+        r.set_arg1(remote_ptr<char>(r.arg1()) + pathname.size());
+        t->set_regs(r);
+      }
+      return PREVENT_SWITCH;
+    }
+
     case Arch::close:
       if (!t->fd_table()->allow_close((int)t->regs().arg1())) {
         // Don't let processes close this fd. Abort with EBADF by setting
@@ -3341,21 +3353,6 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
 
-    case Arch::open: {
-      string pathname = t->read_c_str(remote_ptr<void>(t->regs().arg1()));
-      if (is_blacklisted_filename(pathname.c_str())) {
-        /* NB: the file will still be open in the
-         * process's file table, but let's hope this
-         * gross hack dies before we have to worry
-         * about that. */
-        LOG(warn) << "Cowardly refusing to open " << pathname;
-        Registers r = t->regs();
-        r.set_syscall_result(-ENOENT);
-        t->set_regs(r);
-      }
-      break;
-    }
-
     case Arch::rt_sigsuspend:
     case Arch::sigsuspend:
       t->sigsuspend_blocked_sigs = nullptr;
@@ -3377,6 +3374,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     case Arch::dup3:
     case Arch::fcntl:
     case Arch::fcntl64:
+    case Arch::open:
     case Arch::ptrace:
     case Arch::sched_setaffinity:
     case Arch::mprotect: {
