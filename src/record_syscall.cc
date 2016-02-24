@@ -426,10 +426,10 @@ struct TaskSyscallState {
    */
   Task* new_task;
 
-  /** Saved syscall-entry registers, used by a couple of code paths that
-   *  modify the registers temporarily.
+  /** Saved syscall-entry registers, used by code paths that modify the
+   *  registers temporarily.
    */
-  std::unique_ptr<Registers> syscall_entry_registers;
+  Registers syscall_entry_registers;
 
   /** When nonzero, syscall is expected to return the given errno and we should
    *  die if it does not. This is set when we detect an error condition during
@@ -1366,8 +1366,6 @@ static bool is_same_namespace(const char* name, pid_t tid1, pid_t tid2) {
 
 template <typename Arch>
 static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
-  syscall_state.syscall_entry_registers =
-      unique_ptr<Registers>(new Registers(t->regs()));
   pid_t pid = (pid_t)t->regs().arg2_signed();
   bool emulate = true;
   switch ((int)t->regs().arg1_signed()) {
@@ -1723,6 +1721,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     return PREVENT_SWITCH;
   }
 
+  syscall_state.syscall_entry_registers = t->regs();
+
   switch (syscallno) {
 // All the regular syscalls are handled here.
 #include "SyscallRecordCase.generated"
@@ -1770,8 +1770,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     }
 
     case Arch::clone: {
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       unsigned long flags = t->regs().arg1();
       if (flags & CLONE_VFORK) {
         Registers r = t->regs();
@@ -1828,8 +1826,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
     case Arch::fcntl:
     case Arch::fcntl64:
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       switch ((int)t->regs().arg2_signed()) {
         case Arch::DUPFD:
         case Arch::DUPFD_CLOEXEC:
@@ -2209,8 +2205,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
      */
     case Arch::waitpid:
     case Arch::wait4: {
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       syscall_state.reg_parameter<int>(2, IN_OUT);
       if (syscallno == Arch::wait4) {
         syscall_state.reg_parameter<typename Arch::rusage>(4);
@@ -2239,8 +2233,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     }
 
     case Arch::waitid: {
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       syscall_state.reg_parameter<typename Arch::siginfo_t>(3, IN_OUT);
       t->in_wait_pid = (id_t)t->regs().arg2();
       switch ((idtype_t)t->regs().arg1()) {
@@ -2315,8 +2307,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     }
 
     case Arch::close:
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       if (!t->fd_table()->allow_close((int)t->regs().arg1())) {
         // Don't let processes close this fd. Abort with EBADF by setting
         // oldfd to -1, as if the fd is already closed.
@@ -2328,8 +2318,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
     case Arch::dup2:
     case Arch::dup3:
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       if (!t->fd_table()->allow_close((int)t->regs().arg2())) {
         // Don't let processes dup over this fd. Abort with EBADF by setting
         // oldfd to -1.
@@ -2342,8 +2330,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     /* int prctl(int option, unsigned long arg2, unsigned long arg3, unsigned
      * long arg4, unsigned long arg5); */
     case Arch::prctl:
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       switch ((int)t->regs().arg1_signed()) {
         case PR_GET_ENDIAN:
         case PR_GET_FPEMU:
@@ -2587,8 +2573,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
 
     case Arch::sched_setaffinity: {
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       // Ignore all sched_setaffinity syscalls. They might interfere
       // with our own affinity settings.
       Registers r = t->regs();
@@ -2629,8 +2613,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           (int)t->regs().arg3_signed(), 4, USE_DIRECTLY);
 
     case Arch::seccomp:
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       switch ((unsigned int)t->regs().arg1()) {
         case SECCOMP_SET_MODE_STRICT:
           break;
@@ -2685,8 +2667,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       return PREVENT_SWITCH;
 
     case Arch::mmap:
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       switch (Arch::mmap_semantics) {
         case Arch::StructArguments: {
           auto args = t->read_mem(
@@ -2702,16 +2682,11 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       }
       return PREVENT_SWITCH;
 
-    case Arch::mmap2: {
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
+    case Arch::mmap2:
       prepare_mmap_register_params(t);
       return PREVENT_SWITCH;
-    }
 
     case Arch::mprotect:
-      syscall_state.syscall_entry_registers =
-          unique_ptr<Registers>(new Registers(t->regs()));
       // Since we're stripping MAP_GROWSDOWN from kernel mmap calls, we need
       // to implement PROT_GROWSDOWN ourselves.
       t->vm()->fixup_mprotect_growsdown_parameters(t);
@@ -2783,7 +2758,7 @@ static void rec_prepare_restart_syscall_arch(Task* t,
     case Arch::waitpid: {
       Registers r = t->regs();
       r.set_original_syscallno(
-          syscall_state.syscall_entry_registers->original_syscallno());
+          syscall_state.syscall_entry_registers.original_syscallno());
       t->set_regs(r);
       t->in_wait_type = WAIT_TYPE_NONE;
       break;
@@ -3088,13 +3063,13 @@ static void process_fork(Task* t, TaskSyscallState& syscall_state) {
 
 template <typename Arch>
 static void process_clone(Task* t, TaskSyscallState& syscall_state) {
-  uintptr_t flags = syscall_state.syscall_entry_registers->arg1();
+  uintptr_t flags = syscall_state.syscall_entry_registers.arg1();
   // Restore modified registers in cloning task
   Registers r = t->regs();
   r.set_arg1(flags);
   // On a 3.19.0-39-generic #44-Ubuntu kernel we have observed clone()
   // clearing the parity flag internally.
-  r.set_flags(syscall_state.syscall_entry_registers->flags());
+  r.set_flags(syscall_state.syscall_entry_registers.flags());
   t->set_regs(r);
 
   if (t->regs().syscall_result_signed() < 0) {
@@ -3314,8 +3289,8 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         }
         case Arch::RegisterArguments: {
           Registers r = t->regs();
-          r.set_arg1(syscall_state.syscall_entry_registers->arg1());
-          r.set_arg4(syscall_state.syscall_entry_registers->arg4_signed());
+          r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+          r.set_arg4(syscall_state.syscall_entry_registers.arg4_signed());
           t->set_regs(r);
           process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
                        (int)r.arg4_signed(), (int)r.arg5_signed(),
@@ -3327,8 +3302,8 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
 
     case Arch::mmap2: {
       Registers r = t->regs();
-      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
-      r.set_arg4(syscall_state.syscall_entry_registers->arg4_signed());
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      r.set_arg4(syscall_state.syscall_entry_registers.arg4_signed());
       t->set_regs(r);
       process_mmap(t, (size_t)r.arg2(), (int)r.arg3_signed(),
                    (int)r.arg4_signed(), (int)r.arg5_signed(),
@@ -3407,9 +3382,9 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     case Arch::mprotect: {
       // Restore the registers that we may have altered.
       Registers r = t->regs();
-      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
-      r.set_arg2(syscall_state.syscall_entry_registers->arg2());
-      r.set_arg3(syscall_state.syscall_entry_registers->arg3());
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      r.set_arg2(syscall_state.syscall_entry_registers.arg2());
+      r.set_arg3(syscall_state.syscall_entry_registers.arg3());
       t->set_regs(r);
       break;
     }
@@ -3420,12 +3395,12 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       t->in_wait_type = WAIT_TYPE_NONE;
       // Restore possibly-modified registers
       Registers r = t->regs();
-      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
-      r.set_arg2(syscall_state.syscall_entry_registers->arg2());
-      r.set_arg3(syscall_state.syscall_entry_registers->arg3());
-      r.set_arg4(syscall_state.syscall_entry_registers->arg4());
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      r.set_arg2(syscall_state.syscall_entry_registers.arg2());
+      r.set_arg3(syscall_state.syscall_entry_registers.arg3());
+      r.set_arg4(syscall_state.syscall_entry_registers.arg4());
       r.set_original_syscallno(
-          syscall_state.syscall_entry_registers->original_syscallno());
+          syscall_state.syscall_entry_registers.original_syscallno());
       t->set_regs(r);
 
       if (syscall_state.ptraced_tracee) {
@@ -3468,7 +3443,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     case Arch::prctl: {
       // Restore arg1 in case we modified it to disable the syscall
       Registers r = t->regs();
-      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       t->set_regs(r);
       if (t->regs().arg1() == PR_SET_SECCOMP && t->session().can_validate()) {
         t->session()
@@ -3487,7 +3462,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     case Arch::seccomp: {
       // Restore arg1 in case we modified it to disable the syscall
       Registers r = t->regs();
-      r.set_arg1(syscall_state.syscall_entry_registers->arg1());
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       t->set_regs(r);
       if (t->regs().arg1() == SECCOMP_SET_MODE_FILTER) {
         t->session()
