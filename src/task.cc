@@ -1515,7 +1515,8 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                   ? 0xffffffff
                   : max<Ticks>(1, tick_period));
   }
-  LOG(debug) << "resuming execution with " << ptrace_req_name(how);
+  LOG(debug) << "resuming execution with " << ptrace_req_name(how)
+             << (sig ? string(", signal ") + signal_name(sig) : string());
   address_of_last_execution_resume = ip();
   set_debug_status(0);
   ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);

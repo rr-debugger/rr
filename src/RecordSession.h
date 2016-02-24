@@ -83,10 +83,7 @@ public:
   struct StepState {
     // Continue with this continuation type.
     ContinueType continue_type;
-    // If continuing, inject this signal
-    int continue_sig;
-    StepState(ContinueType continue_type)
-        : continue_type(continue_type), continue_sig(0) {}
+    StepState(ContinueType continue_type) : continue_type(continue_type) {}
   };
 
   void set_enable_chaos(bool enable_chaos) {

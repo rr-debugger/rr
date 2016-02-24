@@ -436,10 +436,6 @@ void RecordSession::task_continue(const StepState& step_state) {
 
   bool may_restart = t->at_may_restart_syscall();
 
-  if (step_state.continue_sig) {
-    LOG(debug) << "  delivering " << signal_name(step_state.continue_sig)
-               << " to " << t->tid;
-  }
   if (may_restart && t->seccomp_bpf_enabled) {
     LOG(debug) << "  PTRACE_SYSCALL to possibly-restarted " << t->ev();
   }
@@ -460,8 +456,7 @@ void RecordSession::task_continue(const StepState& step_state) {
     t->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
                         step_state.continue_type == CONTINUE_SYSCALL
                             ? RESUME_NO_TICKS
-                            : max_ticks,
-                        step_state.continue_sig);
+                            : max_ticks);
   } else {
     /* When the seccomp filter is on, instead of capturing
      * syscalls by using PTRACE_SYSCALL, the filter will
@@ -473,8 +468,7 @@ void RecordSession::task_continue(const StepState& step_state) {
      * process to continue to the actual entry point of
      * the syscall (using cont_syscall_block()) and then
      * using the same logic as before. */
-    t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, max_ticks,
-                        step_state.continue_sig);
+    t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, max_ticks);
   }
 }
 
@@ -917,11 +911,9 @@ static void setup_sigframe_siginfo(Task* t, const siginfo_t& siginfo) {
 }
 
 /**
- * Returns true if the signal should be delivered.
- * Returns false if this signal should not be delivered because another signal
- * occurred during delivery.
+ * Get t into a state where resume_execution with a signal will actually work.
  */
-static bool inject_signal(Task* t) {
+static void preinject_signal(Task* t) {
   int sig = t->ev().Signal().siginfo.si_signo;
 
   /* Signal injection is tricky. Per the ptrace(2) man page, injecting
@@ -978,6 +970,17 @@ static bool inject_signal(Task* t) {
    */
   LOG(debug) << "    injecting signal number " << t->ev().Signal().siginfo;
   t->set_siginfo(t->ev().Signal().siginfo);
+}
+
+/**
+ * Returns true if the signal should be delivered.
+ * Returns false if this signal should not be delivered because another signal
+ * occurred during delivery.
+ */
+static bool inject_handled_signal(Task* t) {
+  preinject_signal(t);
+
+  int sig = t->ev().Signal().siginfo.si_signo;
   t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
 
   // It's been observed that when tasks enter
@@ -999,6 +1002,7 @@ static bool inject_signal(Task* t) {
     return false;
   }
 
+  // We stepped into a user signal handler.
   ASSERT(t, t->pending_sig() == SIGTRAP);
   ASSERT(t, t->get_signal_user_handler(sig) == t->ip());
 
@@ -1010,7 +1014,6 @@ static bool inject_signal(Task* t) {
     // which wipes out certain fields; e.g. we can't set SI_KERNEL in si_code.)
     setup_sigframe_siginfo(t, t->ev().Signal().siginfo);
   }
-
   return true;
 }
 
@@ -1064,7 +1067,7 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
         LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
 
-        if (!inject_signal(t)) {
+        if (!inject_handled_signal(t)) {
           // Signal delivery isn't happening. Prepare to process the new
           // signal that aborted signal delivery.
           t->signal_delivered(sig);
@@ -1128,17 +1131,29 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
       break;
     }
 
-    case EV_SIGNAL_DELIVERY:
-      step_state->continue_sig = sig;
-      t->signal_delivered(sig);
+    case EV_SIGNAL_DELIVERY: {
+      // Only inject fatal signals. Non-fatal signals with signal handlers
+      // were taken care of above; for non-fatal signals without signal
+      // handlers, there is no need to deliver the signal at all. In fact,
+      // there is really no way to inject a non-fatal, non-handled signal
+      // without letting the task execute at least one instruction, which
+      // we don't want to do here.
       if (is_fatal_signal(t, sig, t->ev().Signal().deterministic)) {
+        preinject_signal(t);
+        t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, RESUME_NO_TICKS,
+                            sig);
         LOG(warn) << "Delivered core-dumping signal; may misrecord "
                      "CLONE_CHILD_CLEARTID memory race";
         t->destabilize_task_group();
-        last_task_switchable = ALLOW_SWITCH;
       }
+      t->signal_delivered(sig);
       t->pop_signal_delivery();
+      // A fatal signal or SIGSTOP requires us to allow switching to another
+      // task.
+      last_task_switchable = ALLOW_SWITCH;
+      step_state->continue_type = DONT_CONTINUE;
       break;
+    }
 
     default:
       FATAL() << "Unhandled signal state " << t->ev().type();
@@ -1289,16 +1304,16 @@ bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;
-      LOG(debug) << "Signal " << si.linux_api.si_signo
+      LOG(debug) << signal_name(si.linux_api.si_signo)
                  << ", emulating ptrace stop";
       break;
     case DEFER_SIGNAL:
-      LOG(debug) << "Signal " << si.linux_api.si_signo << " deferred";
+      LOG(debug) << signal_name(si.linux_api.si_signo) << " deferred";
       // Leave signal on the stack and continue task execution. We'll try again
       // later.
       return false;
     case SIGNAL_HANDLED:
-      LOG(debug) << "Signal " << si.linux_api.si_signo << " handled";
+      LOG(debug) << signal_name(si.linux_api.si_signo) << " handled";
       if (t->ev().type() == EV_SCHED) {
         // Allow switching after a SCHED. We'll flush the SCHED if and only
         // if we really do a switch.
@@ -1456,8 +1471,8 @@ RecordSession::RecordResult RecordSession::record_step() {
   // to allow switching the context.
   last_task_switchable = PREVENT_SWITCH;
 
-  LOG(debug) << "line " << t->trace_time() << ": Active task is " << t->tid
-             << ". Events:";
+  LOG(debug) << "trace time " << t->trace_time() << ": Active task is "
+             << t->tid << ". Events:";
 #ifdef DEBUGTAG
   t->log_pending_events();
 #endif
@@ -1468,9 +1483,11 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   if (t->unstable) {
     // Do not record non-ptrace-exit events for tasks in
-    // an unstable exit. We can't replay them.
+    // an unstable exit. We can't replay them. This happens in the
+    // signal_deferred test; the signal gets re-reported to us.
     LOG(debug) << "Task in unstable exit; "
                   "refusing to record non-ptrace events";
+    // Resume the task so hopefully we'll get to its exit.
     last_task_switchable = ALLOW_SWITCH;
     return result;
   }
