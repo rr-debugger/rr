@@ -34,6 +34,7 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
+#include "StdioMonitor.h"
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -1238,6 +1239,21 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         step->action = TSTEP_RETIRE;
       }
       return;
+
+    case Arch::open: {
+      if (state == SYSCALL_EXIT) {
+        if ((int)trace_frame.regs().syscall_result_signed() >= 0) {
+          string pathname = t->read_c_str(remote_ptr<char>(t->regs().arg1()));
+          if (is_dev_tty(pathname.c_str())) {
+            // This will let rr echo output that was to /dev/tty to stderr.
+            t->fd_table()->add_monitor(
+                (int)trace_frame.regs().syscall_result_signed(),
+                new StdioMonitor(STDERR_FILENO));
+          }
+        }
+      }
+      break;
+    }
 
     case Arch::write:
     case Arch::writev:

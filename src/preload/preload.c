@@ -1537,14 +1537,10 @@ static long sys_open(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  /* The strcmp() done here is OK because we're not in the
+  /* The strcmp()s done here are OK because we're not in the
    * critical section yet. */
-  if (is_blacklisted_filename(pathname)) {
-    /* Would be nice to debug() here, but that would flush
-     * the syscallbuf ...  This special bail-out case is
-     * deterministic, so no need to save any breadcrumbs
-     * in the syscallbuf. */
-    return -ENOENT;
+  if (!allow_buffered_open(pathname)) {
+    return traced_raw_syscall(call);
   }
 
   ptr = prep_syscall();

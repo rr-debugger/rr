@@ -271,4 +271,16 @@ inline static int is_blacklisted_filename(const char* filename) {
          !strcmp("/usr/share/alsa/alsa.conf", filename);
 }
 
+inline static int is_dev_tty(const char* filename) {
+  return !strcmp("/dev/tty", filename);
+}
+
+/**
+ * Returns nonzero if an attempted open() of |filename| can be syscall-buffered.
+ * When this returns zero, the open must be forwarded to the rr process.
+ */
+inline static int allow_buffered_open(const char* filename) {
+  return !is_blacklisted_filename(filename) && !is_dev_tty(filename);
+}
+
 #endif /* RR_PRELOAD_INTERFACE_H_ */

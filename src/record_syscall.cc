@@ -63,6 +63,7 @@
 #include "log.h"
 #include "RecordSession.h"
 #include "Scheduler.h"
+#include "StdioMonitor.h"
 #include "task.h"
 #include "TraceStream.h"
 #include "util.h"
@@ -3216,6 +3217,14 @@ static string extra_expected_errno_info(Task* t,
   return ss.str();
 }
 
+static int dev_tty_fd() {
+  static int fd = -1;
+  if (fd < 0) {
+    fd = open("/dev/tty", O_WRONLY);
+  }
+  return fd;
+}
+
 template <typename Arch>
 static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
@@ -3369,12 +3378,29 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
 
+    case Arch::open: {
+      // Restore the registers that we may have altered.
+      Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      t->set_regs(r);
+
+      if ((int)r.syscall_result_signed() >= 0) {
+        string pathname = t->read_c_str(remote_ptr<char>(r.arg1()));
+        if (is_dev_tty(pathname.c_str())) {
+          // This will let rr event annotations echo to /dev/tty. It will also
+          // ensure writes to this fd are not syscall-buffered.
+          t->fd_table()->add_monitor((int)r.syscall_result_signed(),
+              new StdioMonitor(dev_tty_fd()));
+        }
+      }
+      break;
+    }
+
     case Arch::close:
     case Arch::dup2:
     case Arch::dup3:
     case Arch::fcntl:
     case Arch::fcntl64:
-    case Arch::open:
     case Arch::ptrace:
     case Arch::sched_setaffinity:
     case Arch::mprotect: {
