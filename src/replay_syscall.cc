@@ -1246,6 +1246,10 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
           string pathname = t->read_c_str(remote_ptr<char>(t->regs().arg1()));
           if (is_dev_tty(pathname.c_str())) {
             // This will let rr echo output that was to /dev/tty to stderr.
+            // XXX the tracee's /dev/tty could refer to a tty other than
+            // the recording tty, in which case output should not be
+            // redirected. That's not too bad, replay will still work, just
+            // with some spurious echoes.
             t->fd_table()->add_monitor(
                 (int)trace_frame.regs().syscall_result_signed(),
                 new StdioMonitor(STDERR_FILENO));

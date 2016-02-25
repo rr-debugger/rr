@@ -3389,8 +3389,12 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
         if (is_dev_tty(pathname.c_str())) {
           // This will let rr event annotations echo to /dev/tty. It will also
           // ensure writes to this fd are not syscall-buffered.
+          // XXX the tracee's /dev/tty could refer to a tty other than
+          // the recording tty, in which case output should not be
+          // redirected. That's not too bad, replay will still work, just
+          // with some spurious echoes.
           t->fd_table()->add_monitor((int)r.syscall_result_signed(),
-              new StdioMonitor(dev_tty_fd()));
+                                     new StdioMonitor(dev_tty_fd()));
         }
       }
       break;
