@@ -1429,7 +1429,8 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       last_task_switchable(PREVENT_SWITCH),
       use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
       can_deliver_signals(false),
-      enable_chaos_(false) {
+      enable_chaos_(false),
+      wait_for_all_(false) {
   scheduler().set_enable_chaos(chaos == ENABLE_CHAOS);
   set_enable_chaos(chaos == ENABLE_CHAOS);
   Task* t = Task::spawn(*this, trace_out);
@@ -1438,6 +1439,9 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
 }
 
 bool RecordSession::can_end() {
+  if (wait_for_all_) {
+    return task_map.empty();
+  }
   return initial_task_group->task_set().empty();
 }
 

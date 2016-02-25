@@ -91,6 +91,10 @@ public:
   }
   bool enable_chaos() { return enable_chaos_; }
 
+  void set_wait_for_all(bool wait_for_all) {
+    this->wait_for_all_ = wait_for_all;
+  }
+
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
@@ -129,6 +133,10 @@ private:
    * When true, try to increase the probability of finding bugs.
    */
   bool enable_chaos_;
+  /**
+   * When true, wait for all tracees to exit before finishing recording.
+   */
+  bool wait_for_all_;
 };
 
 #endif // RR_RECORD_SESSION_H_

@@ -38,7 +38,9 @@ RecordCommand RecordCommand::singleton(
     "                             can cause replay divergence: use with\n"
     "                             caution.\n"
     "  -v, --env=NAME=VALUE       value to add to the environment of the\n"
-    "                             tracee. There can be any number of these.\n");
+    "                             tracee. There can be any number of these.\n"
+    "  -w, --wait                 Wait for all child processes to exit, not\n"
+    "                             just the initial process\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -63,13 +65,18 @@ struct RecordFlags {
   /* Whether to enable chaos mode in the scheduler */
   RecordSession::Chaos chaos;
 
+  /* True if we should wait for all processes to exit before finishing
+   * recording. */
+  bool wait_for_all;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
         bind_cpu(RecordSession::BIND_CPU),
         always_switch(false),
-        chaos(RecordSession::DISABLE_CHAOS) {}
+        chaos(RecordSession::DISABLE_CHAOS),
+        wait_for_all(false) {}
 };
 
 static bool parse_record_arg(std::vector<std::string>& args,
@@ -86,7 +93,8 @@ static bool parse_record_arg(std::vector<std::string>& args,
     { 'n', "no-syscall-buffer", NO_PARAMETER },
     { 's', "always-switch", NO_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
-    { 'v', "env", HAS_PARAMETER }
+    { 'v', "env", HAS_PARAMETER },
+    { 'w', "wait", NO_PARAMETER }
   };
   ParsedOption opt;
   auto args_copy = args;
@@ -125,6 +133,9 @@ static bool parse_record_arg(std::vector<std::string>& args,
       break;
     case 'v':
       flags.extra_env.push_back(opt.value);
+      break;
+    case 'w':
+      flags.wait_for_all = true;
       break;
     default:
       assert(0 && "Unknown option");
@@ -168,6 +179,7 @@ static void setup_session_from_flags(RecordSession& session,
   session.scheduler().set_max_ticks(flags.max_ticks);
   session.scheduler().set_always_switch(flags.always_switch);
   session.set_ignore_sig(flags.ignore_sig);
+  session.set_wait_for_all(flags.wait_for_all);
 }
 
 static int record(const vector<string>& args, const RecordFlags& flags) {

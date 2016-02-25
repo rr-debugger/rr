@@ -641,6 +641,7 @@ set(TESTS_WITH_PROGRAM
   unexpected_stack_growth
   user_ignore_sig
   vfork
+  wait_for_all
   watchpoint
   watchpoint_at_sched
   watchpoint_before_signal
