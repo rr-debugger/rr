@@ -357,6 +357,7 @@ set(BASIC_TESTS
   clone_untraced
   constructor
   creat_address_not_truncated
+  daemon
   desched_blocking_poll
   dup
   epoll_create

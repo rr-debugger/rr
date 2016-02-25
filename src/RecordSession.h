@@ -108,6 +108,7 @@ private:
   void desched_state_changed(Task* t);
   bool prepare_to_inject_signal(Task* t, StepState* step_state);
   void task_continue(const StepState& step_state);
+  bool can_end();
 
   TraceWriter trace_out;
   Scheduler scheduler_;

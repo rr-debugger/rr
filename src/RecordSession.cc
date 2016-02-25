@@ -1437,10 +1437,14 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
   on_create(t);
 }
 
+bool RecordSession::can_end() {
+  return initial_task_group->task_set().empty();
+}
+
 RecordSession::RecordResult RecordSession::record_step() {
   RecordResult result;
 
-  if (tasks().empty()) {
+  if (can_end()) {
     result.status = STEP_EXITED;
     result.exit_code = initial_task_group->exit_code;
     return result;
