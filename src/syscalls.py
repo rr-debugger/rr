@@ -418,8 +418,8 @@ sigaction = EmulatedSyscall(x86=67, arg3="typename Arch::kernel_sigaction")
 
 sgetmask = UnsupportedSyscall(x86=68)
 ssetmask = UnsupportedSyscall(x86=69)
-setreuid = UnsupportedSyscall(x86=70, x64=113)
-setregid = UnsupportedSyscall(x86=71, x64=114)
+setreuid = EmulatedSyscall(x86=70, x64=113)
+setregid = EmulatedSyscall(x86=71, x64=114)
 sigsuspend = IrregularEmulatedSyscall(x86=72)
 sigpending = UnsupportedSyscall(x86=73)
 sethostname = UnsupportedSyscall(x86=74, x64=170)
@@ -692,8 +692,8 @@ bdflush = UnsupportedSyscall(x86=134)
 sysfs = UnsupportedSyscall(x86=135, x64=139)
 personality = IrregularEmulatedSyscall(x86=136, x64=135)
 afs_syscall = InvalidSyscall(x86=137, x64=183)
-setfsuid = UnsupportedSyscall(x86=138, x64=122)
-setfsgid = UnsupportedSyscall(x86=139, x64=123)
+setfsuid = EmulatedSyscall(x86=138, x64=122)
+setfsgid = EmulatedSyscall(x86=139, x64=123)
 
 #  int _llseek(unsigned int fd, unsigned long offset_high, unsigned long
 #offset_low, loff_t *result, unsigned int whence);
@@ -1015,7 +1015,7 @@ geteuid32 = EmulatedSyscall(x86=201)
 # getegid() returns the effective group ID of the calling process.
 getegid32 = EmulatedSyscall(x86=202)
 
-setreuid32 = UnsupportedSyscall(x86=203)
+setreuid32 = EmulatedSyscall(x86=203)
 
 #  int setregid(gid_t rgid, gid_t egid)
 #
@@ -1075,8 +1075,8 @@ getresgid32 = EmulatedSyscall(x86=211, arg1="typename Arch::gid_t", arg2="typena
 chown32 = EmulatedSyscall(x86=212)
 setuid32 = EmulatedSyscall(x86=213)
 setgid32 = EmulatedSyscall(x86=214)
-setfsuid32 = UnsupportedSyscall(x86=215)
-setfsgid32 = UnsupportedSyscall(x86=216)
+setfsuid32 = EmulatedSyscall(x86=215)
+setfsgid32 = EmulatedSyscall(x86=216)
 pivot_root = UnsupportedSyscall(x86=217, x64=155)
 mincore = IrregularEmulatedSyscall(x86=218, x64=27)
 
