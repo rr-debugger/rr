@@ -318,7 +318,6 @@ private:
                                       BreakStatus& break_status);
 
   std::shared_ptr<EmuFs> emu_fs;
-  Task* last_debugged_task;
   TraceReader trace_in;
   TraceFrame trace_frame;
   ReplayTraceStep current_step;

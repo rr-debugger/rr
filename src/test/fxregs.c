@@ -7,23 +7,23 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
-static const double st0 = 1;
-static const double st1 = 2;
-static const double st2 = 3;
-static const double st3 = 4;
-static const double st4 = 5;
-static const double st5 = 6;
-static const double st6 = 7;
-static const double st7 = 8;
+static __attribute__((used)) const double st0 = 1;
+static __attribute__((used)) const double st1 = 2;
+static __attribute__((used)) const double st2 = 3;
+static __attribute__((used)) const double st3 = 4;
+static __attribute__((used)) const double st4 = 5;
+static __attribute__((used)) const double st5 = 6;
+static __attribute__((used)) const double st6 = 7;
+static __attribute__((used)) const double st7 = 8;
 
-static const float xmm0 = 10;
-static const float xmm1 = 11;
-static const float xmm2 = 12;
-static const float xmm3 = 13;
-static const float xmm4 = 14;
-static const float xmm5 = 15;
-static const float xmm6 = 16;
-static const float xmm7 = 17;
+static __attribute__((used)) const float xmm0 = 10;
+static __attribute__((used)) const float xmm1 = 11;
+static __attribute__((used)) const float xmm2 = 12;
+static __attribute__((used)) const float xmm3 = 13;
+static __attribute__((used)) const float xmm4 = 14;
+static __attribute__((used)) const float xmm5 = 15;
+static __attribute__((used)) const float xmm6 = 16;
+static __attribute__((used)) const float xmm7 = 17;
 
 int main(void) {
   __asm__ __volatile__(

@@ -4,6 +4,7 @@
 #define RR_LOG_H
 
 #include <iostream>
+#include <vector>
 
 #include "Flags.h"
 #include "task.h"
@@ -60,6 +61,8 @@ inline static std::ostream& log_stream() {
   return std::cerr;
 #endif
 }
+
+void operator<<(std::ostream& stream, const std::vector<uint8_t>& bytes);
 
 struct NewlineTerminatingOstream {
   NewlineTerminatingOstream(LogLevel level) : level(level) {}

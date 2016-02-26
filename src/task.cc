@@ -69,7 +69,7 @@ struct Sighandler {
   template <typename Arch> void reset_arch() {
     typename Arch::kernel_sigaction ksa;
     memset(&ksa, 0, sizeof(ksa));
-    static_assert((uintptr_t)SIG_DFL == 0, "");
+    assert(uintptr_t(SIG_DFL) == 0);
     init_arch<Arch>(ksa);
   }
 
@@ -86,7 +86,7 @@ struct Sighandler {
     return (uintptr_t)SIG_DFL == k_sa_handler.as_int() && !resethand;
   }
   bool is_user_handler() const {
-    static_assert(1 == (uintptr_t)SIG_IGN, "");
+    assert(1 == uintptr_t(SIG_IGN));
     return k_sa_handler.as_int() & ~(uintptr_t)SIG_IGN;
   }
   remote_code_ptr get_user_handler() const {

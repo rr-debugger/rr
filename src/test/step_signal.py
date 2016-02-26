@@ -8,7 +8,10 @@ send_gdb('c')
 expect_gdb('Breakpoint 1, breakpoint')
 
 send_gdb('fin')
-expect_gdb(r'signal\(i, handle_sigrt\)')
+index = expect_list([re.compile(r'signal\(i, handle_sigrt\)'), re.compile('breakpoint')])
+if index == 1:
+    send_gdb('n')
+    expect_gdb(r'signal\(i, handle_sigrt\)')
 
 send_gdb('n')
 expect_gdb(r'raise\(i\)')

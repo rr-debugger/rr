@@ -28,7 +28,7 @@ int main(void) {
     signal(SIGSEGV, sighandler);
     p[0] = 77;
     /* trigger SIGSEGV */
-    *(char*)NULL = 0;
+    crash_null_deref();
     return 77;
   }
 

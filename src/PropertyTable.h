@@ -45,6 +45,8 @@ private:
 template <typename T, typename Object>
 class Property : protected PropertyTable::PropertyBase {
 public:
+  Property() {}
+
   T& create(Object& o) const {
     assert(!get(o));
     T* t = new T();

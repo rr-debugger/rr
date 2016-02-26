@@ -694,7 +694,7 @@ public:
   remote_ptr<void> chaos_mode_find_free_memory(Task* t, size_t len);
 
 private:
-  class Breakpoint;
+  struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
   class Watchpoint;
 

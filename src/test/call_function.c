@@ -9,12 +9,12 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
-static void mutate_var(void) {
+void mutate_var(void) {
   var = 22;
   atomic_printf("var is %d\n", var);
 }
 
-static void print_nums(void) {
+void print_nums(void) {
   int i;
   for (i = 1; i <= 5; ++i) {
     atomic_printf("%d ", i);
@@ -22,7 +22,7 @@ static void print_nums(void) {
   atomic_puts("");
 }
 
-static void alloc_and_print(void) {
+void alloc_and_print(void) {
   static const int num_bytes = 4096;
   char* str = mmap(NULL, num_bytes, PROT_WRITE | PROT_READ,
                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -33,7 +33,7 @@ static void alloc_and_print(void) {
   munmap(str, num_bytes);
 }
 
-static void make_unhandled_syscall(void) {
+void make_unhandled_syscall(void) {
   ssize_t ret = kill(getpid(), SIGKILL);
   /* XXX the error return is somewhat arbitrary here, but as
    * long as |splice()| remains unimplemented in experiment
@@ -42,7 +42,7 @@ static void make_unhandled_syscall(void) {
   atomic_printf("return from kill: %zd\n", ret);
 }
 
-static void print_time(void) {
+void print_time(void) {
   struct timespec ts = { -1, -1 };
   double now_sec;
 

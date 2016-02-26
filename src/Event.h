@@ -249,7 +249,9 @@ struct SyscallEvent : public BaseEvent {
   bool is_restart;
 };
 
-struct syscall_interruption_t {};
+struct syscall_interruption_t {
+  syscall_interruption_t() {};
+};
 static const syscall_interruption_t interrupted;
 
 /**

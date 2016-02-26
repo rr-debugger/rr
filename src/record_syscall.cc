@@ -1120,7 +1120,7 @@ static void record_page_below_stack_ptr(Task* t) {
 
 template <typename Arch>
 static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
-  int request = (int)t->regs().arg2_signed();
+  unsigned long request = t->regs().arg2();
   int type = _IOC_TYPE(request);
   int nr = _IOC_NR(request);
   int dir = _IOC_DIR(request);
@@ -1854,14 +1854,14 @@ static Switchable rec_prepare_syscall_arch(Task* t,
           break;
 
         case Arch::GETLK:
-          syscall_state.reg_parameter<typename Arch::flock>(3, IN_OUT);
+          syscall_state.reg_parameter<struct Arch::flock>(3, IN_OUT);
           break;
 
         case Arch::GETLK64:
           // flock and flock64 better be different on 32-bit architectures,
           // but on 64-bit architectures, it's OK if they're the same.
           static_assert(
-              sizeof(typename Arch::flock) < sizeof(typename Arch::flock64) ||
+              sizeof(struct Arch::flock) < sizeof(typename Arch::flock64) ||
                   Arch::elfclass == ELFCLASS64,
               "struct flock64 not declared differently from struct flock");
           syscall_state.reg_parameter<typename Arch::flock64>(3, IN_OUT);
@@ -2671,7 +2671,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case PER_LINUX:
           // The default personality requires no handling.
           break;
-        case 0xffffffff:
+        case -1:
           // A special argument that only returns the existing personality.
           break;
         default:

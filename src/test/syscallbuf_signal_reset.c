@@ -20,7 +20,7 @@ int main(void) {
 
   read(fd, &ch, 1);
 
-  *(int*)0 = 0;
+  crash_null_deref();
 
   return 0;
 }

@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-void crash(void) { *(int*)NULL = 0; }
+void crash(void) { crash_null_deref(); }
 
 int main(void) {
   atomic_puts("EXIT-SUCCESS");

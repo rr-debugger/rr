@@ -363,15 +363,6 @@ static bool patch_syscall_with_hook(Monkeypatcher& patcher, Task* t,
   RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), patcher, t, hook);
 }
 
-static void operator<<(ostream& stream, const vector<uint8_t>& bytes) {
-  for (uint32_t i = 0; i < bytes.size(); ++i) {
-    if (i > 0) {
-      stream << ' ';
-    }
-    stream << HEX(bytes[i]);
-  }
-}
-
 bool Monkeypatcher::try_patch_syscall(Task* t) {
   if (syscall_hooks.empty()) {
     // Syscall hooks not set up yet. Don't spew warnings, and don't

@@ -8,7 +8,6 @@
 
 static int sockfds[2];
 
-static const int msg_magic = 0x1337beef;
 const ssize_t num_sockbuf_bytes = 1 << 20;
 
 static void child_proc(void) { exit(MAGIC_EXIT_CODE); }

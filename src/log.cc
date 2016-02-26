@@ -5,6 +5,8 @@
 #include "GdbServer.h"
 #include "RecordSession.h"
 
+using namespace std;
+
 static void emergency_debug(Task* t) {
   // Enable SIGINT in case it was disabled. Users want to be able to ctrl-C
   // out of this.
@@ -32,4 +34,13 @@ EmergencyDebugOstream::~EmergencyDebugOstream() {
   log_stream() << std::endl;
   t->log_pending_events();
   emergency_debug(t);
+}
+
+void operator<<(ostream& stream, const vector<uint8_t>& bytes) {
+  for (uint32_t i = 0; i < bytes.size(); ++i) {
+    if (i > 0) {
+      stream << ' ';
+    }
+    stream << HEX(bytes[i]);
+  }
 }
