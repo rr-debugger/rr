@@ -137,6 +137,8 @@ struct rrcall_init_preload_params {
   PTR(volatile char) syscallbuf_fds_disabled;
   /* Address of the flag which is 0 during recording and 1 during replay. */
   PTR(unsigned char) in_replay_flag;
+  /* Address where we store the number of cores we're pretending to have. */
+  PTR(int) pretend_num_cores;
   /* Address of the first entry of the breakpoint table.
    * After processing a sycallbuf record (and unlocking the syscallbuf),
    * we call a function in this table corresponding to the record processed.

@@ -3096,6 +3096,11 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
 
   t->write_mem(params.in_replay_flag.rptr(),
                (unsigned char)t->session().is_replaying());
+  if (t->session().is_recording()) {
+    int cores = t->record_session().scheduler().pretend_num_cores();
+    t->write_mem(params.pretend_num_cores.rptr(), cores);
+    t->record_local(params.pretend_num_cores.rptr(), &cores);
+  }
 }
 
 static void do_preload_init(Task* t) {

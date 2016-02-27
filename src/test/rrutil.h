@@ -187,9 +187,7 @@ inline static void free_guard(size_t size, void* p) {
   free((char*)p - sizeof(GUARD_VALUE));
 }
 
-inline static void crash_null_deref(void) {
-  *(volatile int*)NULL = 0;
-}
+inline static void crash_null_deref(void) { *(volatile int*)NULL = 0; }
 
 #define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
 #define VERIFY_GUARD(p) verify_guard(sizeof(*p), p)

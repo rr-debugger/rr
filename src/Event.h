@@ -250,7 +250,7 @@ struct SyscallEvent : public BaseEvent {
 };
 
 struct syscall_interruption_t {
-  syscall_interruption_t() {};
+  syscall_interruption_t(){};
 };
 static const syscall_interruption_t interrupted;
 

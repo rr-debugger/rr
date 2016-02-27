@@ -9,6 +9,8 @@
 
 cd `dirname $0`
 
+python harness.py $1 40 40 core_count 3
+echo
 python harness.py $1 500 500 mmap_bits 7
 echo
 python harness.py $1 500 500 mmap_adjacent 10

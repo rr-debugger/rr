@@ -77,6 +77,32 @@ static double high_priority_only_duration_step_factor = 2;
 // Allow this much of overall runtime to be in the "high priority only" interval
 static double high_priority_only_fraction = 0.2;
 
+Scheduler::Scheduler(RecordSession& session)
+    : session(session),
+      current_(nullptr),
+      current_timeslice_end_(0),
+      high_priority_only_intervals_refresh_time(0),
+      high_priority_only_intervals_start(0),
+      high_priority_only_intervals_duration(0),
+      high_priority_only_intervals_period(0),
+      priorities_refresh_time(0),
+      pretend_num_cores_(1),
+      max_ticks_(DEFAULT_MAX_TICKS),
+      always_switch(false),
+      enable_chaos(false),
+      last_reschedule_in_high_priority_only_interval(false),
+      must_run_task(nullptr) {}
+
+void Scheduler::set_enable_chaos(bool enable_chaos) {
+  this->enable_chaos = enable_chaos;
+
+  /* When chaos mode is enabled, pretend to have 1-8 cores at random, otherwise
+   * return 1 to maximize throughput (since effectively we really only have
+   * one core).
+   */
+  pretend_num_cores_ = enable_chaos ? (random() % 8 + 1) : 1;
+}
+
 Task* Scheduler::get_next_task_with_same_priority(Task* t) {
   if (!t || t->in_round_robin_queue) {
     return nullptr;

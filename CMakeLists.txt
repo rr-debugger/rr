@@ -862,6 +862,7 @@ if(rr_32BIT AND rr_64BIT)
 endif()
 
 set(CHAOS_TESTS
+  core_count
   mmap_adjacent
   mmap_bits
   starvation_multithreaded

@@ -114,6 +114,10 @@ static int process_inited;
  */
 static unsigned char in_replay;
 
+/* Number of cores to pretend we have. Initially 1; we'll reset this when
+ * the syscallbuf library is initialized. */
+static int pretend_num_cores = 1;
+
 /**
  * If syscallbuf_fds_disabled[fd] is nonzero, then operations on that fd
  * must be performed through traced syscalls, not the syscallbuf.
@@ -664,6 +668,7 @@ static void __attribute__((constructor)) init_process(void) {
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
   params.in_replay_flag = &in_replay;
+  params.pretend_num_cores = &pretend_num_cores;
   params.breakpoint_table = &_breakpoint_table_entry_start;
   params.breakpoint_table_entry_size =
       &_breakpoint_table_entry_end - &_breakpoint_table_entry_start;
@@ -2168,7 +2173,7 @@ long sysconf(int name) {
   switch (name) {
     case _SC_NPROCESSORS_ONLN:
     case _SC_NPROCESSORS_CONF:
-      return 1;
+      return pretend_num_cores;
   }
   return __sysconf(name);
 }

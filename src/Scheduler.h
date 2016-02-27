@@ -74,28 +74,13 @@ public:
    */
   enum { DEFAULT_MAX_TICKS = 500000 };
 
-  Scheduler(RecordSession& session)
-      : session(session),
-        current_(nullptr),
-        current_timeslice_end_(0),
-        high_priority_only_intervals_refresh_time(0),
-        high_priority_only_intervals_start(0),
-        high_priority_only_intervals_duration(0),
-        high_priority_only_intervals_period(0),
-        priorities_refresh_time(0),
-        max_ticks_(DEFAULT_MAX_TICKS),
-        always_switch(false),
-        enable_chaos(false),
-        last_reschedule_in_high_priority_only_interval(false),
-        must_run_task(nullptr) {}
+  Scheduler(RecordSession& session);
 
   void set_max_ticks(Ticks max_ticks) { max_ticks_ = max_ticks; }
   void set_always_switch(bool always_switch) {
     this->always_switch = always_switch;
   }
-  void set_enable_chaos(bool enable_chaos) {
-    this->enable_chaos = enable_chaos;
-  }
+  void set_enable_chaos(bool enable_chaos);
 
   /**
    * Schedule a new runnable task (which may be the same as current()).
@@ -136,6 +121,11 @@ public:
   void expire_timeslice() { current_timeslice_end_ = 0; }
 
   double interrupt_after_elapsed_time() const;
+
+  /**
+   * Return the number of cores we should report to applications.
+   */
+  int pretend_num_cores() const { return pretend_num_cores_; }
 
 private:
   // Tasks sorted by priority.
@@ -204,6 +194,8 @@ private:
    * At this time (or later) we should rerandomize Task priorities.
    */
   double priorities_refresh_time;
+
+  int pretend_num_cores_;
 
   Ticks max_ticks_;
 
