@@ -1397,7 +1397,7 @@ openat = EmulatedSyscall(x86=295, x64=257)
 # page....
 mkdirat = EmulatedSyscall(x86=296, x64=258)
 
-mknodat = UnsupportedSyscall(x86=297, x64=259)
+mknodat = EmulatedSyscall(x86=297, x64=259)
 fchownat = EmulatedSyscall(x86=298, x64=260)
 futimesat = UnsupportedSyscall(x86=299, x64=261)
 
