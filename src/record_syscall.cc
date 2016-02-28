@@ -2712,7 +2712,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
     case Arch::rrcall_notify_syscall_hook_exit:
     case Arch::shmat:
     case Arch::shmdt:
-    case Arch::unshare:
       return PREVENT_SWITCH;
 
     default:

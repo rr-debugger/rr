@@ -1433,7 +1433,7 @@ pselect6 = IrregularEmulatedSyscall(x86=308, x64=270)
 
 ppoll = IrregularEmulatedSyscall(x86=309, x64=271)
 
-unshare = IrregularEmulatedSyscall(x86=310, x64=272)
+unshare = EmulatedSyscall(x86=310, x64=272)
 
 #  long set_robust_list(struct robust_list_head *head, size_t len)
 #
