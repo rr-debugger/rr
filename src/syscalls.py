@@ -422,7 +422,7 @@ setreuid = EmulatedSyscall(x86=70, x64=113)
 setregid = EmulatedSyscall(x86=71, x64=114)
 sigsuspend = IrregularEmulatedSyscall(x86=72)
 sigpending = UnsupportedSyscall(x86=73)
-sethostname = UnsupportedSyscall(x86=74, x64=170)
+sethostname = EmulatedSyscall(x86=74, x64=170)
 
 #  int setrlimit(int resource, const struct rlimit *rlim)
 #
@@ -630,7 +630,7 @@ sigreturn = EmulatedSyscall(x86=119)
 #*parent_tid, void __user *child_tid, struct pt_regs *regs)
 clone = IrregularEmulatedSyscall(x86=120, x64=56)
 
-setdomainname = UnsupportedSyscall(x86=121, x64=171)
+setdomainname = EmulatedSyscall(x86=121, x64=171)
 
 #  int uname(struct utsname *buf)
 #

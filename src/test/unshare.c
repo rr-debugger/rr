@@ -96,6 +96,22 @@ static void test_setns(void) {
   test_assert(0 == close(uts_ns));
 }
 
+static void test_sethostname(void) {
+  char name[] = "hello";
+  char buf[1000];
+  test_assert(0 == sethostname(name, strlen(name)));
+  test_assert(0 == gethostname(buf, sizeof(buf)));
+  test_assert(0 == strcmp(buf, name));
+}
+
+static void test_setdomainname(void) {
+  char name[] = "kitty";
+  char buf[1000];
+  test_assert(0 == setdomainname(name, strlen(name)));
+  test_assert(0 == getdomainname(buf, sizeof(buf)));
+  test_assert(0 == strcmp(buf, name));
+}
+
 static void test_capset_and_drop_privileges(void) {
   struct __user_cap_header_struct hdr = { _LINUX_CAPABILITY_VERSION_1, 0 };
   struct __user_cap_data_struct data = { 0x1, 0x1, 0x1 };
@@ -160,6 +176,8 @@ static void run_child(void) {
     test_mount();
     test_uids();
     test_setns();
+    test_sethostname();
+    test_setdomainname();
 
     test_assert(0 == umount("/proc"));
     test_assert(0 == rmdir("/proc"));
