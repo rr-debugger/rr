@@ -77,25 +77,37 @@ static void test_uids(void) {
 #endif
 }
 
-static void test_privileged(void) {
+static void test_setns(void) {
+  int uts_ns = open("/proc/self/ns/uts", O_RDONLY);
+  pid_t child;
+  int status;
+  test_assert(uts_ns >= 0);
+
+  child = fork();
+  if (!child) {
+    test_assert(0 == unshare(CLONE_NEWUTS));
+    /* setns requires that this process be privileged in both the old and new
+     * uts namespaces. We are. */
+    test_assert(0 == setns(uts_ns, CLONE_NEWUTS));
+    exit(76);
+  }
+  test_assert(child = wait(&status));
+  test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 76);
+  test_assert(0 == close(uts_ns));
+}
+
+static void test_capset_and_drop_privileges(void) {
   struct __user_cap_header_struct hdr = { _LINUX_CAPABILITY_VERSION_1, 0 };
   struct __user_cap_data_struct data = { 0x1, 0x1, 0x1 };
 
-  /* Run privileged tests *before* we reset our privileges below */
-  test_mount();
-  test_uids();
-
   /* Test using capset. capset is privileged, but we are privileged
-     in our user namespace. */
+     in our user namespace. After this we are no longer privileged. */
   test_assert(0 == capset(&hdr, &data));
 }
 
 static void write_user_namespace_mappings(void) {
   char buf[100];
   int fd;
-
-  test_assert(0 == mkdir("/proc", 0777));
-  test_assert(0 == mount("dummy", "/proc", "proc", 0, NULL));
 
   fd = open("/proc/self/uid_map", O_WRONLY | O_CREAT);
   test_assert(fd >= 0);
@@ -119,9 +131,6 @@ static void write_user_namespace_mappings(void) {
   sprintf(buf, "8 %d 1\n", uid);
   test_assert((ssize_t)strlen(buf) == write(fd, buf, strlen(buf)));
   test_assert(0 == close(fd));
-
-  test_assert(0 == umount("/proc"));
-  test_assert(0 == rmdir("/proc"));
 }
 
 static void run_child(void) {
@@ -130,6 +139,9 @@ static void run_child(void) {
 
   child = fork();
   if (!child) {
+    test_assert(0 == mkdir("/proc", 0777));
+    test_assert(0 == mount("dummy", "/proc", "proc", 0, NULL));
+
     write_user_namespace_mappings();
 
     /* Test creating a nested child */
@@ -145,9 +157,16 @@ static void run_child(void) {
     pthread_create(&thread, NULL, start_thread, NULL);
     pthread_join(thread, NULL);
 
-    test_privileged();
+    test_mount();
+    test_uids();
+    test_setns();
 
-    /* stdout should still be writable due to the unshare() */
+    test_assert(0 == umount("/proc"));
+    test_assert(0 == rmdir("/proc"));
+
+    test_capset_and_drop_privileges();
+
+    /* stdout should still be writable due to the unshare() in start_thread */
     test_assert(13 == write(STDOUT_FILENO, "EXIT-SUCCESS\n", 13));
     exit(55);
   }
@@ -177,6 +196,7 @@ static int run_test(void) {
   test_assert(0 == unshare(CLONE_NEWNS));
   test_assert(0 == unshare(CLONE_NEWIPC));
   test_assert(0 == unshare(CLONE_NEWNET));
+  test_assert(0 == unshare(CLONE_NEWUTS));
   ret = unshare(CLONE_NEWPID);
   if (ret == -1 && errno == EINVAL) {
     atomic_puts("EXIT-SUCCESS");

@@ -1621,7 +1621,7 @@ syncfs = EmulatedSyscall(x86=344, x64=306)
 # applications.)
 sendmmsg = IrregularEmulatedSyscall(x86=345, x64=307)
 
-setns = UnsupportedSyscall(x86=346, x64=308)
+setns = EmulatedSyscall(x86=346, x64=308)
 process_vm_readv = UnsupportedSyscall(x86=347, x64=310)
 process_vm_writev = UnsupportedSyscall(x86=348, x64=311)
 kcmp = EmulatedSyscall(x86=349, x64=312)
