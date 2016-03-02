@@ -1107,10 +1107,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
             Task* target =
                 t->session().find_task((pid_t)trace_frame.regs().arg2_signed());
             ASSERT(t, target);
-            remote_ptr<typename Arch::unsigned_word> addr =
-                trace_frame.regs().arg3();
-            typename Arch::unsigned_word data = trace_frame.regs().arg4();
-            target->write_mem(addr, data);
+            target->set_data_from_trace();
           }
           break;
       }
@@ -1266,6 +1263,19 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
          * so we might have saved 0 bytes of scratch after a
          * desched. */
         maybe_noop_restore_syscallbuf_scratch(t);
+      }
+      return;
+
+    case Arch::process_vm_writev:
+      if (state == SYSCALL_EXIT) {
+        // Recorded data records may be for another process.
+        Task* dest = t->session().find_task(t->regs().arg1());
+        if (dest) {
+          uint32_t iov_cnt = t->regs().arg5();
+          for (uint32_t i = 0; i < iov_cnt; ++i) {
+            dest->set_data_from_trace();
+          }
+        }
       }
       return;
 

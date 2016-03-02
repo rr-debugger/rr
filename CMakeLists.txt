@@ -553,6 +553,7 @@ set(BASIC_TESTS
   utimes
   vfork_flush
   video_capture
+  vm_readv_writev
   wait
   write_race
   writev

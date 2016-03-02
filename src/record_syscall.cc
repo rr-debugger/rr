@@ -1530,11 +1530,9 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
         bool ok = true;
         tracee->write_mem(addr, data, &ok);
         if (ok) {
-          // Normally we'd call tracee->record_local to record the written
-          // data. We don't do that here because the write needs to be
-          // performed in a different address space to the current task's.
-          // Instead we don't record anything other than the usual syscall
-          // event, and replay_syscall performs the write.
+          // Since we're recording data that might not be for |t|, we have to
+          // handle this specially during replay.
+          tracee->record_local(addr, &data);
           syscall_state.emulate_result(0);
         } else {
           syscall_state.emulate_result(-EIO);
@@ -2761,6 +2759,8 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
     case Arch::brk:
     case Arch::munmap:
+    case Arch::process_vm_readv:
+    case Arch::process_vm_writev:
     case Arch::rrcall_init_buffers:
     case Arch::rrcall_init_preload:
     case Arch::rrcall_notify_syscall_hook_exit:
@@ -3279,6 +3279,18 @@ static int dev_tty_fd() {
 }
 
 template <typename Arch>
+static void record_iovec_output(Task* t, Task* dest,
+                                remote_ptr<typename Arch::iovec> piov,
+                                uint32_t iov_cnt) {
+  // Ignore the syscall result, the kernel may have written more data than that.
+  // See https://bugzilla.kernel.org/show_bug.cgi?id=113541
+  auto iovs = t->read_mem(piov, iov_cnt);
+  for (auto& iov : iovs) {
+    dest->record_remote_fallible(iov.iov_base, iov.iov_len);
+  }
+}
+
+template <typename Arch>
 static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
 
@@ -3450,6 +3462,18 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
           t->fd_table()->add_monitor((int)r.syscall_result_signed(),
                                      new StdioMonitor(dev_tty_fd()));
         }
+      }
+      break;
+    }
+
+    case Arch::process_vm_readv:
+      record_iovec_output<Arch>(t, t, t->regs().arg2(), t->regs().arg3());
+      break;
+
+    case Arch::process_vm_writev: {
+      Task* dest = t->session().find_task(t->regs().arg1());
+      if (dest) {
+        record_iovec_output<Arch>(t, dest, t->regs().arg4(), t->regs().arg5());
       }
       break;
     }
