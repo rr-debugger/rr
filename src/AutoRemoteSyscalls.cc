@@ -80,7 +80,7 @@ static bool is_usable_area(const KernelMapping& km) {
 }
 
 void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
-  if (!t->session().can_validate()) {
+  if (!t->session().done_initial_exec()) {
     return;
   }
 

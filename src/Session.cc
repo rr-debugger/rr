@@ -32,7 +32,7 @@ struct Session::CloneCompletion {
 
 Session::Session()
     : next_task_serial_(1),
-      tracees_consistent(false),
+      done_initial_exec_(false),
       visible_execution_(true) {
   LOG(debug) << "Session " << this << " created";
 }
@@ -49,7 +49,7 @@ Session::~Session() {
 Session::Session(const Session& other) {
   statistics_ = other.statistics_;
   next_task_serial_ = other.next_task_serial_;
-  tracees_consistent = other.tracees_consistent;
+  done_initial_exec_ = other.done_initial_exec_;
   visible_execution_ = other.visible_execution_;
 }
 
@@ -58,10 +58,10 @@ void Session::on_destroy(TaskGroup* tg) { task_group_map.erase(tg->tguid()); }
 
 void Session::post_exec() {
   assert_fully_initialized();
-  if (tracees_consistent) {
+  if (done_initial_exec_) {
     return;
   }
-  tracees_consistent = true;
+  done_initial_exec_ = true;
   assert(tasks().size() == 1);
   tasks().begin()->second->flush_inconsistent_state();
 }

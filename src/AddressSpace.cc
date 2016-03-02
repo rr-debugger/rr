@@ -1048,7 +1048,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
       first_run_event_(0) {
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
-  if (session_->can_validate()) {
+  if (session_->done_initial_exec()) {
     populate_address_space(t);
     assert(!vdso_start_addr.is_null());
   } else {

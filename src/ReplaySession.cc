@@ -63,7 +63,7 @@ static void debug_memory(Task* t) {
   if (should_dump_memory(t->current_trace_frame())) {
     dump_process_memory(t, t->current_trace_frame().time(), "rep");
   }
-  if (t->session().can_validate() &&
+  if (t->session().done_initial_exec() &&
       should_checksum(t->current_trace_frame())) {
     /* Validate the checksum we computed during the
      * recording phase. */
@@ -126,7 +126,7 @@ bool ReplaySession::can_clone() {
   finish_initializing();
 
   Task* t = current_task();
-  return t && can_validate() && can_checkpoint_at(current_trace_frame());
+  return t && done_initial_exec() && can_checkpoint_at(current_trace_frame());
 }
 
 DiversionSession::shr_ptr ReplaySession::clone_diversion() {
@@ -270,7 +270,7 @@ Completion ReplaySession::enter_syscall(Task* t,
   bool use_breakpoint_optimization = false;
   remote_code_ptr syscall_instruction;
 
-  if (can_validate()) {
+  if (done_initial_exec()) {
     syscall_instruction =
         current_trace_frame().regs().ip().decrement_by_syscall_insn_length(
             t->arch());
@@ -733,7 +733,7 @@ Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
 }
 
 void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
-  if (!can_validate()) {
+  if (!done_initial_exec()) {
     return;
   }
 
@@ -1258,7 +1258,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
   if (t) {
     const Event& ev = trace_frame.event();
-    if (can_validate() && ev.is_syscall_event() &&
+    if (done_initial_exec() && ev.is_syscall_event() &&
         ::Flags::get().check_cached_mmaps) {
       t->vm()->verify(t);
     }
@@ -1287,7 +1287,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   current_step.action = TSTEP_NONE;
 
   Task* next_task = current_task();
-  if (next_task && !next_task->vm()->first_run_event() && can_validate()) {
+  if (next_task && !next_task->vm()->first_run_event() && done_initial_exec()) {
     next_task->vm()->set_first_run_event(trace_frame.time());
   }
   if (next_task) {

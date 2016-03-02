@@ -111,7 +111,12 @@ public:
    */
   void post_exec();
 
-  bool can_validate() const { return tracees_consistent; }
+  /**
+   * Returns true after the tracee has done the initial exec in Task::spawn.
+   * Before then, tracee state can be inconsistent; from the exec exit-event
+   * onwards, the tracee state much be consistent.
+   */
+  bool done_initial_exec() const { return done_initial_exec_; }
 
   /**
    * Create and return a new address space that's constructed
@@ -249,7 +254,7 @@ protected:
    * True if we've done an exec so tracees are now in a state that will be
    * consistent across record and replay.
    */
-  bool tracees_consistent;
+  bool done_initial_exec_;
 
   /**
    * True while the execution of this session is visible to users.

@@ -990,7 +990,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
 bool GdbServer::at_target() {
   // Don't launch the debugger for the initial rr fork child.
   // No one ever wants that to happen.
-  if (!timeline.current_session().can_validate()) {
+  if (!timeline.current_session().done_initial_exec()) {
     return false;
   }
   Task* t = timeline.current_session().current_task();

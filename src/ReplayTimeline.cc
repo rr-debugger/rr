@@ -1068,7 +1068,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       bool seen_other_task_break = false;
       while (!at_mark(end)) {
         Task* t = current->current_task();
-        if (stop_filter(t) && current->can_validate()) {
+        if (stop_filter(t) && current->done_initial_exec()) {
           if (t->tuid() == step_tuid) {
             if (t->tick_count() >= ticks_target) {
               // Don't step any further.

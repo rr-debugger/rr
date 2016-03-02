@@ -394,11 +394,6 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
     }
 
     case PTRACE_EVENT_EXEC:
-      /* The initial tracee, if it's still around, is now
-       * for sure not running in the initial rr address
-       * space, so we can unblock signals. */
-      can_deliver_signals = true;
-
       t->post_exec();
 
       // Skip past the ptrace event.
@@ -648,7 +643,7 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
       // Resume the syscall execution in the kernel context.
       step_state->continue_type = CONTINUE_SYSCALL;
 
-      if (t->session().can_validate() && Flags::get().check_cached_mmaps) {
+      if (t->session().done_initial_exec() && Flags::get().check_cached_mmaps) {
         t->vm()->verify(t);
       }
 
@@ -744,7 +739,7 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
        * restart_syscall */
       if (!may_restart) {
         rec_process_syscall(t);
-        if (t->session().can_validate() && Flags::get().check_cached_mmaps) {
+        if (t->session().done_initial_exec() && Flags::get().check_cached_mmaps) {
           t->vm()->verify(t);
         }
       } else {
@@ -791,7 +786,7 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
 /** If the perf counters seem to be working return, otherwise don't return. */
 void RecordSession::check_perf_counters_working(Task* t,
                                                 RecordResult* step_result) {
-  if (can_deliver_signals ||
+  if (done_initial_exec() ||
       !is_write_syscall(t->ev().Syscall().number, t->arch())) {
     return;
   }
@@ -1166,7 +1161,7 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
   if (!sig) {
     return false;
   }
-  if (!can_deliver_signals) {
+  if (!done_initial_exec()) {
     // If the initial tracee isn't prepared to handle
     // signals yet, then us ignoring the ptrace
     // notification here will have the side effect of
@@ -1272,7 +1267,7 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
 }
 
 bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
-  if (!t->has_stashed_sig() || !can_deliver_signals ||
+  if (!t->has_stashed_sig() || !done_initial_exec() ||
       step_state->continue_type != CONTINUE) {
     return false;
   }
@@ -1428,7 +1423,6 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       ignore_sig(0),
       last_task_switchable(PREVENT_SWITCH),
       use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
-      can_deliver_signals(false),
       enable_chaos_(false),
       wait_for_all_(false) {
   scheduler().set_enable_chaos(chaos == ENABLE_CHAOS);

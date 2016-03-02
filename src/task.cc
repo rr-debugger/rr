@@ -1352,7 +1352,7 @@ const ExtraRegisters& Task::extra_regs() {
 void Task::validate_regs(uint32_t flags) {
   /* don't validate anything before execve is done as the actual
    * process did not start prior to this point */
-  if (!session().can_validate()) {
+  if (!session().done_initial_exec()) {
     return;
   }
 

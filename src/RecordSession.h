@@ -123,12 +123,6 @@ private:
   Switchable last_task_switchable;
   bool use_syscall_buffer_;
 
-  /* True when it's safe to deliver signals, namely, when the initial
-   * tracee has exec()'d the tracee image.  Before then, the address
-   * space layout will not be the same during replay as recording, so
-   * replay won't be able to find the right execution point to deliver
-   * the signal. */
-  bool can_deliver_signals;
   /**
    * When true, try to increase the probability of finding bugs.
    */
