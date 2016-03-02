@@ -1317,9 +1317,9 @@ const ExtraRegisters& Task::extra_regs() {
       LOG(debug) << "  (refreshing extra-register cache using XSAVE)";
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
-      extra_registers.data.resize(xsave_area_size);
-      struct iovec vec = { extra_registers.data.data(),
-                           extra_registers.data.size() };
+      extra_registers.data_.resize(xsave_area_size);
+      struct iovec vec = { extra_registers.data_.data(),
+                           extra_registers.data_.size() };
       xptrace(PTRACE_GETREGSET, NT_X86_XSTATE, &vec);
       ASSERT(this, vec.iov_len == xsave_area_size)
           << "Didn't get enough register data; expected " << xsave_area_size
@@ -1329,16 +1329,16 @@ const ExtraRegisters& Task::extra_regs() {
       LOG(debug) << "  (refreshing extra-register cache using FPXREGS)";
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
-      extra_registers.data.resize(sizeof(user_fpxregs_struct));
-      xptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data.data());
+      extra_registers.data_.resize(sizeof(user_fpxregs_struct));
+      xptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data_.data_());
 #elif defined(__x86_64__)
       // x86-64 that doesn't support XSAVE; apparently Xeon E5620 (Westmere)
       // is in this class.
       LOG(debug) << "  (refreshing extra-register cache using FPREGS)";
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
-      extra_registers.data.resize(sizeof(user_fpregs_struct));
-      xptrace(PTRACE_GETFPREGS, nullptr, extra_registers.data.data());
+      extra_registers.data_.resize(sizeof(user_fpregs_struct));
+      xptrace(PTRACE_GETFPREGS, nullptr, extra_registers.data_.data());
 #else
 #error need to define new extra_regs support
 #endif
@@ -1564,15 +1564,16 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
   switch (extra_registers.format()) {
     case ExtraRegisters::XSAVE: {
       if (xsave_area_size) {
-        struct iovec vec = { extra_registers.data.data(),
-                             extra_registers.data.size() };
+        struct iovec vec = { extra_registers.data_.data(),
+                             extra_registers.data_.size() };
         ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
       } else {
 #if defined(__i386__)
         ptrace_if_alive(PTRACE_SETFPXREGS, nullptr,
-                        extra_registers.data.data());
+                        extra_registers.data_.data_());
 #elif defined(__x86_64__)
-        ptrace_if_alive(PTRACE_SETFPREGS, nullptr, extra_registers.data.data());
+        ptrace_if_alive(PTRACE_SETFPREGS, nullptr,
+                        extra_registers.data_.data());
 #else
 #error Unsupported architecture
 #endif

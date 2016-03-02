@@ -51,15 +51,16 @@ public:
   // Set values from raw data
   void set_to_raw_data(Format format, std::vector<uint8_t>& consume_data) {
     format_ = format;
-    std::swap(data, consume_data);
+    std::swap(data_, consume_data);
   }
   void set_arch(SupportedArch a) { arch_ = a; }
 
   Format format() const { return format_; }
   SupportedArch arch() const { return arch_; }
-  int data_size() const { return data.size(); }
-  const uint8_t* data_bytes() const { return data.data(); }
-  bool empty() const { return data.empty(); }
+  const std::vector<uint8_t> data() const { return data_; }
+  int data_size() const { return data_.size(); }
+  const uint8_t* data_bytes() const { return data_.data(); }
+  bool empty() const { return data_.empty(); }
 
   /**
    * Like |Registers::read_register()|, except attempts to read
@@ -82,7 +83,7 @@ private:
 
   Format format_;
   SupportedArch arch_;
-  std::vector<uint8_t> data;
+  std::vector<uint8_t> data_;
 };
 
 #endif /* RR_EXTRA_REGISTERS_H_ */

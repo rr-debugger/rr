@@ -10,6 +10,7 @@
 #include <asm/prctl.h>
 #include <assert.h>
 #include <dirent.h>
+#include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>

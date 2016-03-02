@@ -1366,6 +1366,19 @@ static bool is_same_namespace(const char* name, pid_t tid1, pid_t tid2) {
 }
 
 template <typename Arch>
+static void ptrace_get_reg_set(Task* t, TaskSyscallState& syscall_state,
+                               const vector<uint8_t>& regs) {
+  auto piov = syscall_state.reg_parameter<typename Arch::iovec>(4, IN_OUT);
+  auto iov = t->read_mem(piov);
+  iov.iov_len = min<size_t>(iov.iov_len, regs.size());
+  t->write_mem(piov, iov);
+  auto data = syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(piov, iov_base),
+                                              iov.iov_len);
+  t->write_bytes_helper(data, iov.iov_len, regs.data());
+  syscall_state.emulate_result(0);
+}
+
+template <typename Arch>
 static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   pid_t pid = (pid_t)t->regs().arg2_signed();
   bool emulate = true;
@@ -1443,6 +1456,47 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
         auto regs = tracee->extra_regs().get_user_fpxregs_struct();
         t->write_mem(data, regs);
         syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETREGSET: {
+      switch ((int)t->regs().arg3()) {
+        case NT_PRSTATUS: {
+          Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
+            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
+          }
+          break;
+        }
+        case NT_FPREGSET: {
+          Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            auto regs =
+                tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
+            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
+          }
+          break;
+        }
+        case NT_X86_XSTATE: {
+          Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            switch (tracee->extra_regs().format()) {
+              case ExtraRegisters::XSAVE:
+                ptrace_get_reg_set<Arch>(t, syscall_state,
+                                         tracee->extra_regs().data());
+                break;
+              default:
+                syscall_state.emulate_result(EINVAL);
+                break;
+            }
+          }
+          break;
+        }
+        default:
+          syscall_state.expect_errno = EINVAL;
+          emulate = false;
+          break;
       }
       break;
     }
@@ -3245,7 +3299,8 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
     ASSERT(t, t->regs().syscall_result_signed() == -syscall_state.expect_errno)
         << "Expected " << errno_name(syscall_state.expect_errno) << " for '"
         << t->syscall_name(syscallno) << "' but got result "
-        << t->regs().syscall_result_signed()
+        << t->regs().syscall_result_signed() << " (errno "
+        << errno_name(-t->regs().syscall_result_signed()) << ")"
         << extra_expected_errno_info<Arch>(t, syscall_state);
     return;
   }

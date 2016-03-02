@@ -133,7 +133,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
 
   *defined = true;
 
-  memcpy(buf, data.data() + reg_data.offset, reg_data.size);
+  memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
   return reg_data.size;
 }
 
@@ -171,13 +171,14 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
   assert(format_ == XSAVE);
   switch (arch) {
     case x86:
-      assert(data.size() >= sizeof(X86Arch::user_fpxregs_struct));
+      assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
       return to_vector(convert_fxsave_to_x86_fpregs(
-          *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(data.data())));
+          *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(
+              data_.data())));
     case x86_64:
-      assert(data.size() >= sizeof(X64Arch::user_fpregs_struct));
+      assert(data_.size() >= sizeof(X64Arch::user_fpregs_struct));
       return to_vector(
-          *reinterpret_cast<const X64Arch::user_fpregs_struct*>(data.data()));
+          *reinterpret_cast<const X64Arch::user_fpregs_struct*>(data_.data()));
     default:
       assert(0 && "Unknown arch");
       return vector<uint8_t>();
@@ -186,6 +187,6 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
 
 X86Arch::user_fpxregs_struct ExtraRegisters::get_user_fpxregs_struct() const {
   assert(format_ == XSAVE);
-  assert(data.size() >= sizeof(X86Arch::user_fpxregs_struct));
-  return *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(data.data());
+  assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
+  return *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(data_.data());
 }
