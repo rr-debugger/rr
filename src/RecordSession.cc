@@ -739,7 +739,8 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
        * restart_syscall */
       if (!may_restart) {
         rec_process_syscall(t);
-        if (t->session().done_initial_exec() && Flags::get().check_cached_mmaps) {
+        if (t->session().done_initial_exec() &&
+            Flags::get().check_cached_mmaps) {
           t->vm()->verify(t);
         }
       } else {
@@ -786,25 +787,29 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
 /** If the perf counters seem to be working return, otherwise don't return. */
 void RecordSession::check_perf_counters_working(Task* t,
                                                 RecordResult* step_result) {
-  if (done_initial_exec() ||
-      !is_write_syscall(t->ev().Syscall().number, t->arch())) {
-    return;
-  }
-  int fd = t->regs().arg1_signed();
-  if (-1 != fd && Flags::get().force_things) {
-    LOG(warn) << "Unexpected write(" << fd << ") call";
-    return;
-  }
-  if (-1 != fd) {
-    step_result->status = RecordSession::STEP_EXEC_FAILED;
+  if (done_initial_exec()) {
     return;
   }
 
-  Ticks ticks = t->tick_count();
-  LOG(debug) << "ticks on entry to dummy write: " << ticks;
-  if (ticks == 0) {
-    step_result->status = RecordSession::STEP_PERF_COUNTERS_UNAVAILABLE;
-    return;
+  if (is_write_syscall(t->ev().Syscall().number, t->arch())) {
+    int fd = t->regs().arg1_signed();
+    if (fd == -1) {
+      Ticks ticks = t->tick_count();
+      LOG(debug) << "ticks on entry to dummy write: " << ticks;
+      if (ticks == 0) {
+        step_result->status = RecordSession::STEP_SPAWN_FAILED;
+        step_result->failure_message = string(
+            "rr internal recorder error: Performance counter doesn't seem to "
+            "be working. Are you perhaps running rr in a VM but didn't enable "
+            "perf-counter virtualization?");
+      }
+    } else {
+      ASSERT(t, fd == -2);
+      step_result->status = RecordSession::STEP_SPAWN_FAILED;
+      auto chars =
+          t->read_mem(remote_ptr<char>(t->regs().arg2()), t->regs().arg3());
+      step_result->failure_message = string(chars.data(), chars.size());
+    }
   }
 }
 

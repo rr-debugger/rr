@@ -38,15 +38,16 @@ public:
     STEP_CONTINUE,
     // All tracees are dead. record_step() should not be called again.
     STEP_EXITED,
-    // Initial exec of the tracee failed.
-    STEP_EXEC_FAILED,
-    // Required performance counter features not detected.
-    STEP_PERF_COUNTERS_UNAVAILABLE
+    // Spawning the initial tracee failed. An error message will be in
+    // failure_message.
+    STEP_SPAWN_FAILED
   };
   struct RecordResult {
     RecordStatus status;
     // When status == STEP_EXITED
     int exit_code;
+    // When status == STEP_SPAWN_FAILED
+    std::string failure_message;
   };
   /**
    * Record some tracee execution.

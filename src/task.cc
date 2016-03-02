@@ -10,6 +10,7 @@
 #include <linux/net.h>
 #include <linux/perf_event.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
@@ -2190,6 +2191,18 @@ bool Task::maybe_in_spinlock() {
          regs().matches(*registers_at_start_of_uninterrupted_timeslice);
 }
 
+static void spawned_child_fatal_error(const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  char* buf;
+  vasprintf(&buf, format, args);
+
+  char* buf2;
+  asprintf(&buf2, "%s (%s)", buf, errno_name(errno).c_str());
+  write(-2, buf, strlen(buf));
+  exit(1);
+}
+
 /**
  * Prepare this process and its ancestors for recording/replay by
  * preventing direct access to sources of nondeterminism, and ensuring
@@ -2204,10 +2217,10 @@ static void set_up_process(Session& session) {
    */
   int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
   if (0 > fd) {
-    FATAL() << "error opening /dev/null";
+    spawned_child_fatal_error("error opening /dev/null");
   }
   if (RR_MAGIC_SAVE_DATA_FD != dup2(fd, RR_MAGIC_SAVE_DATA_FD)) {
-    FATAL() << "error duping to RR_MAGIC_SAVE_DATA_FD";
+    spawned_child_fatal_error("error duping to RR_MAGIC_SAVE_DATA_FD");
   }
 
   /* CLOEXEC so that the original fd here will be closed by the exec that's
@@ -2215,10 +2228,10 @@ static void set_up_process(Session& session) {
    */
   fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
   if (0 > fd) {
-    FATAL() << "error opening root directory";
+    spawned_child_fatal_error("error opening root directory");
   }
   if (RR_RESERVED_ROOT_DIR_FD != dup2(fd, RR_RESERVED_ROOT_DIR_FD)) {
-    FATAL() << "error duping to RR_RESERVED_ROOT_DIR_FD";
+    spawned_child_fatal_error("error duping to RR_RESERVED_ROOT_DIR_FD");
   }
 
   if (session.is_replaying()) {
@@ -2231,7 +2244,7 @@ static void set_up_process(Session& session) {
     //
     // TODO: this isn't inherited across fork().
     if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
-      FATAL() << "Couldn't set parent-death signal";
+      spawned_child_fatal_error("Couldn't set parent-death signal");
     }
 
     // Put the replaying processes into their own session. This will stop
@@ -2244,13 +2257,13 @@ static void set_up_process(Session& session) {
    * That allows rr to record the tsc and replay it
    * deterministically. */
   if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
-    FATAL() << "error setting up prctl";
+    spawned_child_fatal_error("error setting up prctl");
   }
 
   if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-    FATAL()
-        << "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
-           "kernel is too old. Use `record -n` to disable the filter.";
+    spawned_child_fatal_error(
+        "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
+        "kernel is too old. Use `record -n` to disable the filter.");
   }
 }
 
@@ -2305,8 +2318,9 @@ static void set_up_seccomp_filter(Session& session) {
   /* Note: the filter is installed only for record. This call
    * will be emulated in the replay */
   if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {
-    FATAL() << "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
-               "kernel is too old.";
+    spawned_child_fatal_error(
+        "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
+        "kernel is too old.");
   }
   /* anything that happens from this point on gets filtered! */
 }
@@ -3240,7 +3254,16 @@ static void set_cpu_affinity(int cpu) {
            StringVectorToCharArray(trace.initial_argv()).get(),
            StringVectorToCharArray(trace.initial_envp()).get());
 
-    FATAL() << "Failed to exec '" << trace.initial_exe().c_str() << "'";
+    switch (errno) {
+      case ENOENT:
+        spawned_child_fatal_error(
+            "execve failed: '%s' (or interpreter) not found",
+            trace.initial_exe().c_str());
+        break;
+      default:
+        spawned_child_fatal_error("execve failed");
+        break;
+    }
   }
 
   if (0 > tid) {

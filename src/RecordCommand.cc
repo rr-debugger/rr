@@ -209,25 +209,8 @@ static int record(const vector<string>& args, const RecordFlags& flags) {
     case RecordSession::STEP_EXITED:
       return step_result.exit_code;
 
-    case RecordSession::STEP_EXEC_FAILED:
-      fprintf(stderr,
-              "\n"
-              "rr: error:\n"
-              "  Unexpected `write()' call from first tracee process.\n"
-              "  Most likely, the executable image `%s' is 64-bit, doesn't "
-              "exist, or\n"
-              "  isn't in your $PATH.  Terminating recording.\n"
-              "\n",
-              session->trace_writer().initial_exe().c_str());
-      return EX_NOINPUT;
-
-    case RecordSession::STEP_PERF_COUNTERS_UNAVAILABLE:
-      fprintf(stderr, "\n"
-                      "rr: internal recorder error:\n"
-                      "  Performance counter doesn't seem to be working.  Are "
-                      "you perhaps\n"
-                      "  running rr in a VM but didn't enable perf-counter "
-                      "virtualization?\n");
+    case RecordSession::STEP_SPAWN_FAILED:
+      cerr << "\n" << step_result.failure_message << "\n";
       return EX_UNAVAILABLE;
 
     default:

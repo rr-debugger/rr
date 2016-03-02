@@ -3527,7 +3527,8 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       t->set_regs(r);
-      if (t->regs().arg1() == PR_SET_SECCOMP && t->session().done_initial_exec()) {
+      if (t->regs().arg1() == PR_SET_SECCOMP &&
+          t->session().done_initial_exec()) {
         t->session()
             .as_record()
             ->seccomp_filter_rewriter()
