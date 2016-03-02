@@ -2199,7 +2199,7 @@ static void spawned_child_fatal_error(const char* format, ...) {
 
   char* buf2;
   asprintf(&buf2, "%s (%s)", buf, errno_name(errno).c_str());
-  write(-2, buf, strlen(buf));
+  write(-2, buf2, strlen(buf2));
   exit(1);
 }
 
@@ -3246,22 +3246,22 @@ static void set_cpu_affinity(int cpu) {
 
     CPUIDBugDetector::run_detection_code();
 
-    execvpe(trace.initial_exe().c_str(),
+    const char* exe = trace.initial_exe().c_str();
+    execvpe(exe,
             StringVectorToCharArray(trace.initial_argv()).get(),
             StringVectorToCharArray(trace.initial_envp()).get());
     // That failed. Try executing the file directly.
-    execve(trace.initial_exe().c_str(),
+    execve(exe,
            StringVectorToCharArray(trace.initial_argv()).get(),
            StringVectorToCharArray(trace.initial_envp()).get());
 
     switch (errno) {
       case ENOENT:
         spawned_child_fatal_error(
-            "execve failed: '%s' (or interpreter) not found",
-            trace.initial_exe().c_str());
+            "execve failed: '%s' (or interpreter) not found", exe);
         break;
       default:
-        spawned_child_fatal_error("execve failed");
+        spawned_child_fatal_error("execve of '%s' failed", exe);
         break;
     }
   }

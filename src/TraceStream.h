@@ -163,6 +163,12 @@ public:
               const std::vector<std::string>& envp, const string& cwd,
               int bind_to_cpu);
 
+  /**
+   * We got far enough into recording that we should set this as the latest
+   * trace.
+   */
+  void make_latest_trace();
+
 private:
   std::string try_hardlink_file(const std::string& file_name);
 
