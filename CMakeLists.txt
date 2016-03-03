@@ -277,8 +277,6 @@ if(rr_32BIT AND rr_64BIT)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                    COPYONLY)
-    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}32/${file}"
-                                HEADER_FILE_ONLY true)
   endforeach(file)
 
   foreach(file preload.c raw_syscall.S syscall_hook.S breakpoint_table.S)
@@ -788,8 +786,6 @@ if(rr_32BIT AND rr_64BIT)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/rrutil.h"
                  "${CMAKE_CURRENT_BINARY_DIR}/32/rrutil.h"
                  COPYONLY)
-  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/rrutil.h"
-                              PROPERTIES HEADER_FILE_ONLY true)
 
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} cpuid test_lib)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
