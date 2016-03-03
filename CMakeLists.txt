@@ -165,24 +165,28 @@ endforeach(generated_file)
 
 add_custom_target(Generated DEPENDS ${GENERATED_FILES})
 
-add_custom_command(OUTPUT rr_page_64
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
                    "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT rr_page_32
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
                    "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT rr_page_64_replay
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
                    "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT rr_page_32_replay
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
                    "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
 
-add_custom_target(Pages DEPENDS rr_page_32 rr_page_64 rr_page_32_replay rr_page_64_replay)
+add_custom_target(Pages DEPENDS
+                  "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32"
+                  "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64"
+                  "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay"
+                  "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay")
 
 add_executable(rr
   src/test/cpuid_loop.S
