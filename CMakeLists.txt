@@ -119,7 +119,7 @@ foreach(py_module ${REQUIRED_PYTHON_MODULES})
 endforeach(py_module)
 
 # Check for gdb
-execute_process(COMMAND "gdb" "--version" RESULT_VARIABLE module_status)
+execute_process(COMMAND "gdb" "--version" RESULT_VARIABLE module_status OUTPUT_QUIET)
 if(module_status)
   message(FATAL_ERROR "Couldn't find gdb.")
 endif()
