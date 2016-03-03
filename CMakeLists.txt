@@ -241,13 +241,13 @@ add_executable(rr
 add_dependencies(rr Generated Pages)
 
 target_link_libraries(rr
-  -ldl
+  ${CMAKE_DL_LIBS}
   -lrt
   ${ZLIB_LDFLAGS}
 )
 
 target_link_libraries(rrpreload
-  -ldl
+  ${CMAKE_DL_LIBS}
 )
 
 add_executable(exec_stub src/exec_stub.c)
@@ -297,7 +297,7 @@ if(rr_32BIT AND rr_64BIT)
   )
   set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS -m32)
   target_link_libraries(rrpreload_32
-    -ldl
+    ${CMAKE_DL_LIBS}
   )
 
   foreach(file exec_stub.c)
