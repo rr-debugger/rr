@@ -4,7 +4,7 @@
 
 static void clear(unsigned char* p) {
   size_t i;
-  for (i = 0; i < PAGE_SIZE; ++i) {
+  for (i = 0; i < (unsigned) PAGE_SIZE; ++i) {
     p[i] = i & 0xFF;
   }
 }
