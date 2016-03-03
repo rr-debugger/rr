@@ -155,7 +155,7 @@ set(GENERATED_FILES
 foreach(generated_file ${GENERATED_FILES})
   set_source_files_properties(${generated_file}
                               PROPERTIES GENERATED true HEADER_FILE_ONLY true)
-  add_custom_command(OUTPUT ${generated_file}
+  add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
                      COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
 		               "${CMAKE_CURRENT_BINARY_DIR}/${generated_file}"
 		     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_syscalls.py"
@@ -270,24 +270,19 @@ install(TARGETS rr rrpreload exec_stub
 # the same source file in two different ways.
 if(rr_32BIT AND rr_64BIT)
   foreach(file preload_interface.h)
-    set_source_files_properties(32/${file}
-                                PROPERTIES GENERATED true HEADER_FILE_ONLY true)
-    add_custom_command(OUTPUT 32/${file}
-                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
-                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
-                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                   COPYONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}32/${file}"
+                                HEADER_FILE_ONLY true)
   endforeach(file)
 
   foreach(file preload.c raw_syscall.S syscall_hook.S breakpoint_table.S)
-    set_source_files_properties(32/${file}
-                                PROPERTIES GENERATED true COMPILE_FLAGS "-m32 -O2")
-    add_custom_command(OUTPUT 32/${file}
-                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
-                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
-                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
-                               32/preload_interface.h)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                   COPYONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                                PROPERTIES COMPILE_FLAGS "-m32 -O2")
   endforeach(file)
 
   add_library(rrpreload_32
@@ -302,12 +297,11 @@ if(rr_32BIT AND rr_64BIT)
   )
 
   foreach(file exec_stub.c)
-    set_source_files_properties(32/${file}
-                                PROPERTIES GENERATED true COMPILE_FLAGS "-m32 -fno-stack-protector")
-    add_custom_command(OUTPUT 32/${file}
-                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
-                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/${file}"
-                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${file}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/${file}"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                   COPYONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                                PROPERTIES COMPILE_FLAGS "-m32 -fno-stack-protector")
   endforeach(file)
 
   add_executable(exec_stub_32 32/exec_stub.c)
@@ -787,44 +781,37 @@ endforeach(test)
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
 if(rr_32BIT AND rr_64BIT)
-  set_source_files_properties(32/rrutil.h
-                              PROPERTIES GENERATED true HEADER_FILE_ONLY true)
-  add_custom_command(OUTPUT 32/rrutil.h
-                     COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
-                             mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/bin/32 &&
-                             cp -f "${CMAKE_CURRENT_SOURCE_DIR}/src/test/rrutil.h"
-                                "${CMAKE_CURRENT_BINARY_DIR}/32/rrutil.h"
-  	             DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/test/rrutil.h")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/rrutil.h"
+                 "${CMAKE_CURRENT_BINARY_DIR}/32/rrutil.h"
+                 COPYONLY)
+  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/rrutil.h"
+                              PROPERTIES HEADER_FILE_ONLY true)
 
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} cpuid test_lib)
-    set_source_files_properties(32/${test}.c
-                                PROPERTIES GENERATED true COMPILE_FLAGS -m32)
-    add_custom_command(OUTPUT 32/${test}.c
-                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
-                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
-                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
-	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c" 32/rrutil.h)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
+                   COPYONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
+                                PROPERTIES COMPILE_FLAGS -m32)
   endforeach(test)
 
   foreach(file cpuid_loop.S)
-    set_source_files_properties(32/${file}
-                                PROPERTIES GENERATED true COMPILE_FLAGS -m32)
-    add_custom_command(OUTPUT 32/${file}
-                       COMMAND mkdir -p ${CMAKE_CURRENT_BINARY_DIR}/32 &&
-                               cp "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
-                                  "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-	               DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                   COPYONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                                PROPERTIES COMPILE_FLAGS -m32)
   endforeach(file)
 
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
-    add_executable(${test}_32 32/${test}.c)
+    add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
     add_dependencies(${test}_32 Generated)
     set_target_properties(${test}_32 PROPERTIES LINK_FLAGS -m32)
     target_link_libraries(${test}_32 -lrt)
   endforeach(test)
 
   add_library(test_lib_32
-    32/test_lib.c
+    "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"
   )
   add_dependencies(test_lib_32 Generated)
   set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS -m32)
