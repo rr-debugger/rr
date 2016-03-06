@@ -4,13 +4,15 @@
 
 static void clear(unsigned char* p) {
   size_t i;
-  for (i = 0; i < (unsigned) PAGE_SIZE; ++i) {
+  for (i = 0; i < (unsigned)PAGE_SIZE; ++i) {
     p[i] = i & 0xFF;
   }
 }
 
 int main(void) {
-  unsigned char* p = (unsigned char*)mmap(NULL, PAGE_SIZE * 2, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  unsigned char* p =
+      (unsigned char*)mmap(NULL, PAGE_SIZE * 2, PROT_READ | PROT_WRITE,
+                           MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   struct iovec in_iov[2];
   struct iovec out_iov[2];
 

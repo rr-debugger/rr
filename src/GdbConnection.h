@@ -575,12 +575,9 @@ private:
   // to send ack packets back to gdb.  This is a huge perf win.
   bool no_ack;
   ScopedFd sock_fd;
-  /* XXX probably need to dynamically size these */
-  uint8_t inbuf[32768];  /* buffered input from gdb */
-  ssize_t inlen;         /* length of valid data */
-  ssize_t packetend;     /* index of '#' character */
-  uint8_t outbuf[32768]; /* buffered output for gdb */
-  ssize_t outlen;
+  std::vector<uint8_t> inbuf;  /* buffered input from gdb */
+  size_t packetend;            /* index of '#' character */
+  std::vector<uint8_t> outbuf; /* buffered output for gdb */
   Features features_;
 };
 

@@ -3247,12 +3247,10 @@ static void set_cpu_affinity(int cpu) {
     CPUIDBugDetector::run_detection_code();
 
     const char* exe = trace.initial_exe().c_str();
-    execvpe(exe,
-            StringVectorToCharArray(trace.initial_argv()).get(),
+    execvpe(exe, StringVectorToCharArray(trace.initial_argv()).get(),
             StringVectorToCharArray(trace.initial_envp()).get());
     // That failed. Try executing the file directly.
-    execve(exe,
-           StringVectorToCharArray(trace.initial_argv()).get(),
+    execve(exe, StringVectorToCharArray(trace.initial_argv()).get(),
            StringVectorToCharArray(trace.initial_envp()).get());
 
     switch (errno) {
