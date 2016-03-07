@@ -175,9 +175,10 @@ inline static T& prepare_log_stream(T&& stream, LogLevel level,
  * Ensure that |_v| is streamed in hex format.
  * We make sure that signed types are *not* sign-extended.
  */
-inline void* HEX(uint64_t v) { return reinterpret_cast<void*>(v); }
-inline void* HEX(int64_t v) { return reinterpret_cast<void*>(v); }
-inline void* HEX(uint32_t v) { return reinterpret_cast<void*>(v); }
-inline void* HEX(int32_t v) { return reinterpret_cast<void*>(uint32_t(v)); }
+template<typename T> inline void *HEX(T v)
+{
+  return reinterpret_cast<void*>(
+    static_cast<typename std::make_unsigned<T>::type>(v));
+}
 
 #endif // RR_LOG_H
