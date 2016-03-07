@@ -1331,7 +1331,7 @@ const ExtraRegisters& Task::extra_regs() {
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
       extra_registers.data_.resize(sizeof(user_fpxregs_struct));
-      xptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data_.data_());
+      xptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data_.data());
 #elif defined(__x86_64__)
       // x86-64 that doesn't support XSAVE; apparently Xeon E5620 (Westmere)
       // is in this class.
@@ -1571,7 +1571,7 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
       } else {
 #if defined(__i386__)
         ptrace_if_alive(PTRACE_SETFPXREGS, nullptr,
-                        extra_registers.data_.data_());
+                        extra_registers.data_.data());
 #elif defined(__x86_64__)
         ptrace_if_alive(PTRACE_SETFPREGS, nullptr,
                         extra_registers.data_.data());
