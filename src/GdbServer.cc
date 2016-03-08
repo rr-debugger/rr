@@ -88,6 +88,7 @@ static const string& gdb_rr_macros() {
        << "define hookpost-run\n"
        << "  set $suppress_run_hook = 0\n"
        << "end\n"
+       << "set unwindonsignal on\n"
        << "handle SIGURG stop\n"
        << "set prompt (rr) \n" << GdbCommandHandler::gdb_macros()
        // Try both "set target-async" and "maint set target-async" since
