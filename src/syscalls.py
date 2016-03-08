@@ -1591,8 +1591,8 @@ perf_event_open = EmulatedSyscall(x86=336, x64=298)
 # a timeout on the receive operation.
 recvmmsg = IrregularEmulatedSyscall(x86=337, x64=299)
 
-fanotify_init = UnsupportedSyscall(x86=338, x64=300)
-fanotify_mark = UnsupportedSyscall(x86=339, x64=301)
+fanotify_init = EmulatedSyscall(x86=338, x64=300)
+fanotify_mark = EmulatedSyscall(x86=339, x64=301)
 
 #  int prlimit(pid_t pid, int resource, const struct rlimit *new_limit, struct
 #rlimit *old_limit);

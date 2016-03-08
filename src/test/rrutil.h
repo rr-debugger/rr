@@ -45,6 +45,7 @@
 #include <sys/xattr.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <sys/fanotify.h>
 #include <sys/fsuid.h>
 #include <sys/inotify.h>
 #include <sys/ioctl.h>

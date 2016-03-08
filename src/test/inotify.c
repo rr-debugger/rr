@@ -28,6 +28,8 @@ int main(void) {
 
   test_assert(0 == inotify_rm_watch(fd, desc));
 
+  test_assert(0 == unlink("foo"));
+
   atomic_puts("EXIT-SUCCESS");
 
   return 0;

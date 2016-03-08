@@ -367,6 +367,7 @@ set(BASIC_TESTS
   exec_flags
   exec_self
   fadvise
+  fanotify
   fault_in_code_page
   fcntl_owner_ex
   fcntl_dupfd
