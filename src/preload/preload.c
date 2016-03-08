@@ -1703,7 +1703,11 @@ static long sys_recvfrom(const struct syscall_info* call) {
   void* buf = (void*)call->args[1];
   size_t len = call->args[2];
   int flags = call->args[3];
-  struct sockaddr* src_addr = (struct sockaddr*)call->args[4];
+  /* struct sockaddr isn't useful here since some sockaddrs are bigger than
+   * it. To avoid making false assumptions, treat the sockaddr parameter
+   * as an untyped buffer.
+   */
+  void* src_addr = (void*)call->args[4];
   socklen_t* addrlen = (socklen_t*)call->args[5];
 
   void* ptr = prep_syscall_for_fd(sockfd);
@@ -1713,10 +1717,12 @@ static long sys_recvfrom(const struct syscall_info* call) {
   long ret;
 
   assert(syscallno == call->no);
+  /* If addrlen is NULL then src_addr must also be null */
+  assert(addrlen || !src_addr);
 
   if (src_addr) {
     src_addr2 = ptr;
-    ptr += sizeof(*src_addr);
+    ptr += *addrlen;
   }
   if (addrlen) {
     addrlen2 = ptr;
@@ -1737,7 +1743,11 @@ static long sys_recvfrom(const struct syscall_info* call) {
 
   if (ret >= 0) {
     if (src_addr2) {
-      local_memcpy(src_addr, src_addr2, sizeof(*src_addr));
+      socklen_t actual_size = *addrlen2;
+      if (actual_size > *addrlen) {
+        actual_size = *addrlen;
+      }
+      local_memcpy(src_addr, src_addr2, actual_size);
     }
     if (addrlen2) {
       *addrlen = *addrlen2;
