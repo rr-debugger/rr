@@ -46,6 +46,7 @@
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/fsuid.h>
+#include <sys/inotify.h>
 #include <sys/ioctl.h>
 #include <sys/ipc.h>
 #include <sys/mman.h>
