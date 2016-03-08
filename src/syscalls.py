@@ -663,7 +663,7 @@ sigprocmask = IrregularEmulatedSyscall(x86=126)
 create_module = UnsupportedSyscall(x86=127, x64=174)
 init_module = UnsupportedSyscall(x86=128, x64=175)
 delete_module = UnsupportedSyscall(x86=129, x64=176)
-get_kernel_syms = UnsupportedSyscall(x86=130, x64=177)
+get_kernel_syms = InvalidSyscall(x86=130, x64=177)
 
 #  int quotactl(int cmd, const char *special, int id, caddr_t addr);
 #
