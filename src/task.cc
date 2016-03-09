@@ -2375,6 +2375,8 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
   t->blocked_sigs = blocked_sigs;
   t->prctl_seccomp_status = prctl_seccomp_status;
+  t->robust_futex_list = robust_futex_list;
+  t->robust_futex_list_len = robust_futex_list_len;
   if (CLONE_SHARE_SIGHANDLERS & flags) {
     t->sighandlers = sighandlers;
   } else {

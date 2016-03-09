@@ -147,11 +147,6 @@ static void record_robust_futex_change(
  * TID, not the actual TID of the dying task.
  */
 template <typename Arch> static void record_robust_futex_changes_arch(Task* t) {
-  if (t->vm()->task_set().size() == 1) {
-    // This address space is going away --- actually, has probably already
-    // gone away. Any robust futex cleanup will not be observable.
-    return;
-  }
   auto head_ptr = t->robust_list().cast<typename Arch::robust_list_head>();
   if (head_ptr.is_null()) {
     return;
@@ -310,6 +305,12 @@ static void handle_seccomp_errno(Task* t, RecordSession::StepState* step_state,
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
+static void set_own_namespace_tid(Task* t) {
+  AutoRemoteSyscalls remote(t);
+  t->own_namespace_rec_tid = remote.infallible_syscall(
+      syscall_number_for_gettid(t->arch()));
+}
+
 bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
   int event = t->ptrace_event();
   if (event == PTRACE_EVENT_NONE) {
@@ -372,13 +373,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       Task* new_task = clone(t, clone_flags_to_task_flags(flags_arg), stack,
                              tls, ctid, new_tid);
       rec_set_syscall_new_task(t, new_task);
-
-      {
-        AutoRemoteSyscalls remote(new_task);
-        new_task->own_namespace_rec_tid = remote.infallible_syscall(
-            syscall_number_for_gettid(new_task->arch()));
-      }
-
+      set_own_namespace_tid(new_task);
       // Skip past the ptrace event.
       step_state->continue_type = CONTINUE_SYSCALL;
       break;
@@ -388,6 +383,7 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       pid_t new_tid = t->find_newborn_child_process();
       Task* new_task = clone(t, 0, nullptr, nullptr, nullptr, new_tid);
       rec_set_syscall_new_task(t, new_task);
+      set_own_namespace_tid(new_task);
       // Skip past the ptrace event.
       step_state->continue_type = CONTINUE_SYSCALL;
       break;
