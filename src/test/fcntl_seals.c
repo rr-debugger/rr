@@ -27,6 +27,8 @@ int main(void) {
   fd = syscall(RR_memfd_create, TEST_MEMFD, MFD_ALLOW_SEALING);
   if (-1 == fd && ENOSYS == errno) {
     atomic_puts("SYS_memfd_create not supported on this kernel");
+  } else if (-1 == fd && EINVAL == errno) {
+    atomic_puts("MFD_ALLOW_SEALING not supported on this kernel");
   } else {
     test_assert(fd >= 0);
     test_assert(
