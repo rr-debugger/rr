@@ -259,6 +259,11 @@ function check { token=$1;
         echo "--------------------------------------------------"
         cat record.out
         echo "--------------------------------------------------"
+    elif [[ "$token" != "" && "record.out" != $(grep -l "$token" record.out) ]]; then
+        failed ": token '$token' not in record.out:"
+        echo "--------------------------------------------------"
+        cat record.out
+        echo "--------------------------------------------------"
     elif [[ $(cat replay.err) != "" ]]; then
         failed ": error during replay:"
         echo "--------------------------------------------------"
@@ -272,11 +277,6 @@ function check { token=$1;
         failed ": output from recording different than replay"
         echo "diff -U8 $workdir/record.out $workdir/replay.out"
         diff -U8 record.out replay.out
-    elif [[ "$token" != "" && "record.out" != $(grep -l "$token" record.out) ]]; then
-        failed ": token '$token' not in record.out:"
-        echo "--------------------------------------------------"
-        cat record.out
-        echo "--------------------------------------------------"
     else
         passed
     fi
