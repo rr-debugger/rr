@@ -3305,8 +3305,13 @@ static void set_cpu_affinity(int cpu) {
     FATAL() << "PTRACE_SEIZE failed for tid " << tid;
   }
 
+  if (session.is_recording()) {
+    rec_tid = tid;
+  }
   Task* t = new Task(session, tid, rec_tid, session.next_task_serial(), 0,
                      NativeArch::arch());
+  // Our initial child will be in the same namespace as rr.
+  t->own_namespace_rec_tid = rec_tid;
   // The very first task we fork inherits the signal
   // dispositions of the current OS process (which should all be
   // default at this point, but ...).  From there on, new tasks

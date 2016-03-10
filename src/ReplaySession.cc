@@ -1044,10 +1044,81 @@ static void end_task(Task* t) {
   delete t;
 }
 
+template <typename T> static remote_ptr<T> mask_low_bit(remote_ptr<T> p) {
+  return p.as_int() & ~uintptr_t(1);
+}
+
+template <typename Arch>
+static void apply_robust_futex_change(
+    Task* t, const typename Arch::robust_list_head& head,
+    remote_ptr<void> base) {
+  if (base.is_null()) {
+    return;
+  }
+  remote_ptr<void> futex_void_ptr = base + head.futex_offset;
+  auto futex_ptr = futex_void_ptr.cast<uint32_t>();
+  // We can't just record the current futex value because at this point
+  // in task exit the robust futex handling has not happened yet. So we have
+  // to emulate what the kernel will do!
+  bool ok = true;
+  uint32_t val = t->read_mem(futex_ptr, &ok);
+  if (!ok) {
+    return;
+  }
+  if (pid_t(val & FUTEX_TID_MASK) != t->own_namespace_rec_tid) {
+    return;
+  }
+  val = (val & FUTEX_WAITERS) | FUTEX_OWNER_DIED;
+  t->write_mem(futex_ptr, val);
+}
+
+/**
+ * Any user-space writes performed by robust futex handling are performed here.
+ * The kernel cannot do it for us during replay because the TID value in
+ * each futex is the recorded TID, not the actual TID of the dying task, and
+ * anyway we emulate set_robust_list during replay so the kernel doesn't
+ * know about it.
+ */
+template <typename Arch> static void apply_robust_futex_changes_arch(Task* t) {
+  auto head_ptr = t->robust_list().cast<typename Arch::robust_list_head>();
+  if (head_ptr.is_null()) {
+    return;
+  }
+  ASSERT(t, t->robust_list_len() == sizeof(typename Arch::robust_list_head));
+  bool ok = true;
+  auto head = t->read_mem(head_ptr, &ok);
+  if (!ok) {
+    return;
+  }
+  apply_robust_futex_change<Arch>(t, head,
+                                  mask_low_bit(head.list_op_pending.rptr()));
+  for (auto current = mask_low_bit(head.list.next.rptr());
+       current.as_int() != head_ptr.as_int();) {
+    apply_robust_futex_change<Arch>(t, head, current);
+    auto next = t->read_mem(current, &ok);
+    if (!ok) {
+      return;
+    }
+    current = mask_low_bit(next.next.rptr());
+  }
+}
+
+/**
+ * When a task exits, the kernel walks the robust-futex list and applies some
+ * writes to futexes found there. We can't record these effects during recording
+ * because by the time we find out a task has exited, sometimes we can no longer
+ * read its address space (after we get PTRACE_EVENT_EXIT caused by SIGKILL
+ * we sometimes get errors reading /proc/pid/maps). So we have to emulate them
+ * during replay instead. This is robust because during replay we control the
+ * lifetimes of all tasks.
+ */
+static void apply_robust_futex_changes(Task* t) {
+  RR_ARCH_FUNCTION(apply_robust_futex_changes_arch, t->arch(), t);
+}
+
 Completion ReplaySession::exit_task(Task* t) {
   ASSERT(t, !t->seen_ptrace_exit_event);
-  // Apply robust-futex updates captured during recording.
-  t->apply_all_data_records_from_trace();
+  apply_robust_futex_changes(t);
   end_task(t);
   /* |t| is dead now. */
   gc_emufs();

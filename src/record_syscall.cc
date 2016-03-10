@@ -3109,6 +3109,14 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
                 "of tracees";
 }
 
+static pid_t own_namespace_tid(Task* t) {
+  AutoRemoteSyscalls remote(t);
+  pid_t result =
+      remote.infallible_syscall(syscall_number_for_gettid(t->arch()));
+  t->own_namespace_rec_tid = result;
+  return result;
+}
+
 template <typename Arch>
 static void process_fork(Task* t, TaskSyscallState& syscall_state) {
   if (t->regs().syscall_result_signed() < 0) {
@@ -3122,7 +3130,7 @@ static void process_fork(Task* t, TaskSyscallState& syscall_state) {
   Task* new_task = syscall_state.new_task;
   ASSERT(t, new_task) << "new_task not found";
   t->record_session().trace_writer().write_task_event(
-      TraceTaskEvent(new_task->tid, t->tid));
+      TraceTaskEvent(new_task->tid, t->tid, own_namespace_tid(new_task)));
 
   init_scratch_memory(new_task);
 }
@@ -3193,8 +3201,8 @@ static void process_clone(Task* t, TaskSyscallState& syscall_state) {
 
   new_task->pop_syscall();
 
-  t->record_session().trace_writer().write_task_event(
-      TraceTaskEvent(new_task->tid, t->tid, flags));
+  t->record_session().trace_writer().write_task_event(TraceTaskEvent(
+      new_task->tid, t->tid, own_namespace_tid(new_task), flags));
 
   init_scratch_memory(new_task);
 }
