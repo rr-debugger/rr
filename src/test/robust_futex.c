@@ -2,6 +2,7 @@
 
 #include "rrutil.h"
 
+static int pipe_fds[2];
 static pthread_mutex_t* mutex;
 
 static void* run_thread(__attribute__((unused)) void* unused) {
@@ -18,6 +19,9 @@ int main(void) {
   pthread_t thread;
   pid_t child;
   int status;
+  char ch;
+
+  test_assert(0 == pipe(pipe_fds));
 
   mutex = (pthread_mutex_t*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
                                  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -39,12 +43,15 @@ int main(void) {
   child = fork();
   if (!child) {
     test_assert(0 == pthread_mutex_lock(mutex));
-    /* leave locked */
-    _exit(77);
+    test_assert(1 == write(pipe_fds[1], "x", 1));
+    sleep(1000000);
+    return 1;
   }
 
+  test_assert(1 == read(pipe_fds[0], &ch, 1));
+  kill(child, SIGKILL);
   test_assert(child == wait(&status));
-  test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
+  test_assert(WIFSIGNALED(status) && WTERMSIG(status) == 9);
 
   test_assert(EOWNERDEAD == pthread_mutex_lock(mutex));
   pthread_mutex_consistent(mutex);
