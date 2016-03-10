@@ -1229,7 +1229,7 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static int sys_fcntl64_xlk64(const struct syscall_info* call) {
+static int sys_fcntl64_setlk64(const struct syscall_info* call) {
   const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
@@ -1255,6 +1255,24 @@ static int sys_fcntl64_xlk64(const struct syscall_info* call) {
   if (lock2) {
     local_memcpy(lock, lock2, sizeof(*lock));
   }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static int sys_fcntl64_setlkw64(const struct syscall_info* call) {
+  const int syscallno = RR_FCNTL_SYSCALL;
+  int fd = call->args[0];
+  int cmd = call->args[1];
+  struct flock64* lock = (struct flock64*)call->args[2];
+
+  void* ptr = prep_syscall_for_fd(fd);
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall3(syscallno, fd, cmd, lock);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -1284,21 +1302,15 @@ static long sys_fcntl(const struct syscall_info* call)
 #else
     case F_SETLK:
 #endif
-      return sys_fcntl64_xlk64(call);
+      return sys_fcntl64_setlk64(call);
 
-    case F_GETLK:
-#if F_SETLK != F_SETLK64
-    case F_SETLK:
-#endif
-    case F_SETLKW:
-#if F_GETLK != F_GETLK64
-    case F_GETLK64:
-#endif
 #if F_SETLKW != F_SETLKW64
     case F_SETLKW64:
+#else
+    case F_SETLKW:
 #endif
-    /* TODO: buffer the F_*LK API. */
-    /* fall through */
+      return sys_fcntl64_setlkw64(call);
+
     default:
       return traced_raw_syscall(call);
   }
