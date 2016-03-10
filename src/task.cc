@@ -1702,16 +1702,21 @@ void Task::set_tid_addr(remote_ptr<int> tid_addr) {
 
 void Task::signal_delivered(int sig) {
   Sighandler& h = sighandlers->get(sig);
+  bool is_user_handler = h.is_user_handler();
   if (h.resethand) {
     reset_handler(&h, arch());
   }
 
   if (!h.ignored(sig)) {
     switch (sig) {
-      case SIGSTOP:
       case SIGTSTP:
       case SIGTTIN:
       case SIGTTOU:
+        if (is_user_handler) {
+          break;
+        }
+      // Fall through...
+      case SIGSTOP:
         // All threads in the process are stopped.
         for (Task* t : tg->task_set()) {
           LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal "

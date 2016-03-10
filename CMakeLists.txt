@@ -494,6 +494,7 @@ set(BASIC_TESTS
   sigaction_old
   sigaltstack
   sigchld_interrupt_signal
+  sigcont
   sighandler_fork
   sigill
   signal_deferred

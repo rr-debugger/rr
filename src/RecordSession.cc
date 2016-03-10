@@ -307,8 +307,8 @@ static void handle_seccomp_errno(Task* t, RecordSession::StepState* step_state,
 
 static void set_own_namespace_tid(Task* t) {
   AutoRemoteSyscalls remote(t);
-  t->own_namespace_rec_tid = remote.infallible_syscall(
-      syscall_number_for_gettid(t->arch()));
+  t->own_namespace_rec_tid =
+      remote.infallible_syscall(syscall_number_for_gettid(t->arch()));
 }
 
 bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
@@ -938,6 +938,11 @@ static void preinject_signal(Task* t) {
       auto old_ip = t->ip();
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
       ASSERT(t, old_ip == t->ip());
+      if (t->ptrace_event() == PTRACE_EVENT_STOP) {
+        /* Sending SIGCONT (4.4.3-300.fc23.x86_64) triggers this. Unclear why
+         * it would... */
+        continue;
+      }
       ASSERT(t, t->pending_sig());
       if (t->pending_sig() == sig) {
         LOG(debug) << "    stopped with signal " << signal_name(sig);
