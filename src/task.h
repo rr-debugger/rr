@@ -1340,9 +1340,7 @@ public:
    * recording, it's synonymous with |tid|, and during replay
    * it's the tid that was recorded. */
   pid_t rec_tid;
-  /* This is the recorded tid of the tracee *in its own pid namespace*.
-   * Only valid during recording, otherwise 0!
-   */
+  /* This is the recorded tid of the tracee *in its own pid namespace*. */
   pid_t own_namespace_rec_tid;
 
   /* Points at rr's mapping of the (shared) syscall buffer. */
