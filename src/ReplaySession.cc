@@ -1111,6 +1111,15 @@ template <typename Arch> static void apply_robust_futex_changes_arch(Task* t) {
  * we sometimes get errors reading /proc/pid/maps). So we have to emulate them
  * during replay instead. This is robust because during replay we control the
  * lifetimes of all tasks.
+ *
+ * XXX There is a potential race that we haven't fixed. During recording,
+ * a SIGKILL directed at a tracee (possibly from a non-traced process) could
+ * cause it to die while another tracee is running, causing kernel writes
+ * to locked robust futexes that could race with the running tracee's reads of
+ * those futexes. There doesn't seem to be much we can do about that if the
+ * SIGKILL comes from a non-traced process. (If it comes from a tracee we
+ * could detect the sending of the signal and refuse to run tracees until the
+ * exit of the target task has been processed.)
  */
 static void apply_robust_futex_changes(Task* t) {
   RR_ARCH_FUNCTION(apply_robust_futex_changes_arch, t->arch(), t);
