@@ -3301,7 +3301,9 @@ static void set_cpu_affinity(int cpu) {
     // Note that although the tracee may have died due to some fatal error,
     // we haven't reaped its exit code so there's no danger of killing
     // (or PTRACE_SEIZEing) the wrong process.
+    int tmp_errno = errno;
     kill(tid, SIGKILL);
+    errno = tmp_errno;
     FATAL() << "PTRACE_SEIZE failed for tid " << tid;
   }
 
