@@ -2126,6 +2126,7 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
       registers.set_from_ptrace(ptrace_regs);
     } else {
+      LOG(debug) << "Unexpected process death for " << tid;
       status = ptrace_exit_wait_status;
     }
   }
@@ -2134,6 +2135,7 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
       pending_siginfo = *override_siginfo;
     } else {
       if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
+        LOG(debug) << "Unexpected process death for " << tid;
         status = ptrace_exit_wait_status;
       }
     }
