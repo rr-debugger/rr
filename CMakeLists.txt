@@ -204,6 +204,7 @@ add_executable(rr
   src/fast_forward.cc
   src/FdTable.cc
   src/Flags.cc
+  src/ftrace.cc
   src/GdbCommand.cc
   src/GdbCommandHandler.cc
   src/GdbConnection.cc
@@ -864,9 +865,9 @@ set(CHAOS_TESTS
 
 foreach(test ${CHAOS_TESTS})
   add_executable(${test} src/chaos-test/${test}.c)
-  add_dependencies(${test} Generated)
-  target_link_libraries(${test} -lrt)
 endforeach(test)
+
+add_executable(ftrace_helper src/ftrace/ftrace_helper.c)
 
 include(ProcessorCount)
 ProcessorCount(N)

@@ -9,6 +9,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
+#include "ftrace.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "record_signal.h"

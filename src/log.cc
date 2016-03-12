@@ -5,9 +5,11 @@
 #include <stdlib.h>
 
 #include <memory>
+#include <sstream>
 #include <unordered_map>
 
 #include "Flags.h"
+#include "ftrace.h"
 #include "GdbServer.h"
 #include "RecordSession.h"
 
@@ -60,6 +62,7 @@ static bool log_globals_initialized = false;
 static LogLevel default_level = LOG_error;
 static unique_ptr<unordered_map<string, LogLevel> > level_map;
 static unique_ptr<unordered_map<const char*, LogModule> > log_modules;
+static unique_ptr<stringstream> logging_stream;
 
 static void init_log_globals() {
   if (log_globals_initialized) {
@@ -70,6 +73,7 @@ static void init_log_globals() {
       new unordered_map<string, LogLevel>());
   log_modules = unique_ptr<unordered_map<const char*, LogModule> >(
       new unordered_map<const char*, LogModule>());
+  logging_stream = unique_ptr<stringstream>(new stringstream());
   char* env = getenv("RR_LOG");
   if (env) {
     env = strdup(env);
@@ -176,7 +180,16 @@ static const char* log_name(LogLevel level) {
   }
 }
 
-ostream& log_stream() { return cerr; }
+ostream& log_stream() {
+  init_log_globals();
+  return *logging_stream;
+}
+
+static void flush_log_stream() {
+  cerr << logging_stream->str();
+  ftrace::write(logging_stream->str());
+  logging_stream->str(string());
+}
 
 template <typename T>
 static void write_prefix(T& stream, LogLevel level, const char* file, int line,
@@ -211,6 +224,7 @@ NewlineTerminatingOstream::NewlineTerminatingOstream(LogLevel level,
 NewlineTerminatingOstream::~NewlineTerminatingOstream() {
   if (enabled) {
     log_stream() << std::endl;
+    flush_log_stream();
     if (Flags::get().fatal_errors_and_warnings && level <= LOG_warn) {
       abort();
     }
@@ -223,10 +237,13 @@ FatalOstream::FatalOstream(const char* file, int line, const char* function) {
 
 FatalOstream::~FatalOstream() {
   log_stream() << std::endl;
+  flush_log_stream();
   abort();
 }
 
 static void emergency_debug(Task* t) {
+  ftrace::stop();
+
   // Enable SIGINT in case it was disabled. Users want to be able to ctrl-C
   // out of this.
   struct sigaction sa;
@@ -263,6 +280,7 @@ EmergencyDebugOstream::EmergencyDebugOstream(bool cond, const Task* t,
 EmergencyDebugOstream::~EmergencyDebugOstream() {
   if (!cond) {
     log_stream() << std::endl;
+    flush_log_stream();
     t->log_pending_events();
     emergency_debug(t);
   }

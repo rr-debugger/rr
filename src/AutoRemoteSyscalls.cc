@@ -314,13 +314,12 @@ static void child_sendmsg(AutoRemoteSyscalls& remote,
 }
 
 static int recvmsg_socket(int sock) {
-  char cmsgbuf[CMSG_SPACE(sizeof(int))];
-
   char received_data;
   struct iovec msgdata;
   msgdata.iov_base = &received_data;
   msgdata.iov_len = 1;
 
+  char cmsgbuf[CMSG_SPACE(sizeof(int))];
   struct msghdr msg;
   memset(&msg, 0, sizeof(msg));
   msg.msg_control = cmsgbuf;

@@ -55,6 +55,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "drm.h"
 #include "Flags.h"
+#include "ftrace.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
