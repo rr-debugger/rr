@@ -18,40 +18,18 @@ class TraceWriter;
 
 class TraceTaskEvent {
 public:
-  TraceTaskEvent(pid_t tid, pid_t parent_tid, pid_t own_namespace_tid)
-      : type_(FORK),
-        tid_(tid),
-        parent_tid_(parent_tid),
-        own_namespace_tid_(own_namespace_tid),
-        clone_flags_(0) {}
-  TraceTaskEvent(pid_t tid, pid_t parent_tid, pid_t own_namespace_tid,
-                 uint32_t clone_flags)
+  TraceTaskEvent(pid_t tid, pid_t parent_tid)
+      : type_(FORK), tid_(tid), parent_tid_(parent_tid) {}
+  TraceTaskEvent(pid_t tid, pid_t parent_tid, uint32_t clone_flags)
       : type_(CLONE),
         tid_(tid),
         parent_tid_(parent_tid),
-        own_namespace_tid_(own_namespace_tid),
         clone_flags_(clone_flags) {}
   TraceTaskEvent(pid_t tid, const std::string& file_name,
                  const std::vector<std::string> cmd_line)
-      : type_(EXEC),
-        tid_(tid),
-        parent_tid_(0),
-        own_namespace_tid_(0),
-        clone_flags_(0),
-        file_name_(file_name),
-        cmd_line_(cmd_line) {}
-  TraceTaskEvent(pid_t tid)
-      : type_(EXIT),
-        tid_(tid),
-        parent_tid_(0),
-        own_namespace_tid_(0),
-        clone_flags_(0) {}
-  TraceTaskEvent()
-      : type_(NONE),
-        tid_(0),
-        parent_tid_(0),
-        own_namespace_tid_(0),
-        clone_flags_(0) {}
+      : type_(EXEC), tid_(tid), file_name_(file_name), cmd_line_(cmd_line) {}
+  TraceTaskEvent(pid_t tid) : type_(EXIT), tid_(tid) {}
+  TraceTaskEvent() : type_(NONE) {}
 
   enum Type {
     NONE,
@@ -66,10 +44,6 @@ public:
   pid_t parent_tid() const {
     assert(type() == CLONE || type() == FORK);
     return parent_tid_;
-  }
-  pid_t own_namespace_tid() const {
-    assert(type() == CLONE || type() == FORK);
-    return own_namespace_tid_;
   }
   uintptr_t clone_flags() const {
     assert(type() == CLONE);
@@ -104,7 +78,6 @@ private:
   Type type_;
   pid_t tid_;
   pid_t parent_tid_;                  // CLONE only
-  pid_t own_namespace_tid_;           // CLONE only
   uintptr_t clone_flags_;             // CLONE only
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only

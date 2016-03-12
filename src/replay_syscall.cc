@@ -279,7 +279,6 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
   }
   Task* new_task = t->session().clone(t, clone_flags_to_task_flags(flags),
                                       stack, tls, ctid, new_tid, rec_tid);
-  new_task->own_namespace_rec_tid = tte.own_namespace_tid();
 
   if (Arch::clone == t->regs().original_syscallno()) {
     /* FIXME: what if registers are non-null and contain an
