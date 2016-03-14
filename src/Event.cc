@@ -14,6 +14,7 @@
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
+#include "util.h"
 
 using namespace rr;
 using namespace std;

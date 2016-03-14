@@ -12,6 +12,7 @@
 #include <string>
 #include <sstream>
 
+#include "AddressSpace.h"
 #include "log.h"
 #include "util.h"
 

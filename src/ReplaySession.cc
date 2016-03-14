@@ -13,6 +13,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "fast_forward.h"
+#include "Flags.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "replay_syscall.h"

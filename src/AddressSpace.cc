@@ -474,7 +474,7 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
 }
 
 void AddressSpace::at_preload_init(Task* t) {
-  ASSERT(t, syscallbuf_lib_start_)
+  ASSERT(t, !syscallbuf_lib_start_.is_null())
       << "should have found preload library already";
   RR_ARCH_FUNCTION(at_preload_init_arch, t->arch(), t);
 }

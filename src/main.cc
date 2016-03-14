@@ -146,7 +146,9 @@ void print_usage(FILE* out) {
       "  -V, --verbose              log messages that may not be urgently \n"
       "                             critical to the user\n"
       "  -W, --wait-secs=<NUM_SECS> wait NUM_SECS seconds just after startup,\n"
-      "                             before initiating recording or replaying\n",
+      "                             before initiating recording or replaying\n"
+      "\n"
+      "Use RR_LOG to control logging; e.g. RR_LOG=all:warn,Task:debug\n",
       out);
 }
 
