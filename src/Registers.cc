@@ -418,9 +418,13 @@ template <>
   bool match = compare_register_files_internal(name1, reg1, name2, reg2,
                                                mismatch_behavior);
 
-  ASSERT(t, !bail_error || match)
-      << "Fatal register mismatch (ticks/rec:" << t->tick_count() << "/"
-      << t->current_trace_frame().ticks() << ")";
+  if (t) {
+    ASSERT(t, !bail_error || match)
+        << "Fatal register mismatch (ticks/rec:" << t->tick_count() << "/"
+        << t->current_trace_frame().ticks() << ")";
+  } else {
+    assert(!bail_error || match);
+  }
 
   if (match && mismatch_behavior == LOG_MISMATCHES) {
     LOG(info) << "(register files are the same for " << name1 << " and "
