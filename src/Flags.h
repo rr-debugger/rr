@@ -30,10 +30,6 @@ struct Flags {
   /* time at which to create memory dump */
   int dump_at; // global time
 
-  /* True when not-absolutely-urgently-critical messages will be
-   * logged. */
-  bool verbose;
-
   // Force rr to do some things that it otherwise wouldn't, for
   // example launching an emergency debugger when the output
   // doesn't seem to be a tty.
@@ -61,7 +57,6 @@ struct Flags {
       : checksum(CHECKSUM_NONE),
         dump_on(DUMP_ON_NONE),
         dump_at(DUMP_AT_NONE),
-        verbose(false),
         force_things(false),
         mark_stdio(false),
         check_cached_mmaps(false),

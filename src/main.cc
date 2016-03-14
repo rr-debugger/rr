@@ -218,9 +218,6 @@ bool parse_global_option(std::vector<std::string>& args) {
     case 'T':
       flags.dump_at = atoi(opt.value.c_str());
       break;
-    case 'V':
-      flags.verbose = true;
-      break;
     case 'N':
       show_version = true;
       break;
