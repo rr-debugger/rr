@@ -1,7 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define DEBUGTAG "DiversionSession"
-
 #include "DiversionSession.h"
 
 #include "AutoRemoteSyscalls.h"

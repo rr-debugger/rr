@@ -1,7 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define DEBUGTAG "TraceFrame"
-
 #include "TraceFrame.h"
 
 #include <assert.h>

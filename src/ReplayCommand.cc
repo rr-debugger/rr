@@ -1,7 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define DEBUGTAG "ReplayCommand"
-
 #include <assert.h>
 #include <sys/wait.h>
 #include <unistd.h>

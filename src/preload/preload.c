@@ -1,7 +1,5 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define DEBUGTAG "rrpreload"
-
 #define RR_IMPLEMENT_PRELOAD
 
 #ifndef _GNU_SOURCE

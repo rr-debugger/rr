@@ -1,7 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define DEBUGTAG "Util"
-
 //#define FIRST_INTERESTING_EVENT 10700
 //#define LAST_INTERESTING_EVENT 10900
 
