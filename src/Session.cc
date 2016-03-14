@@ -258,6 +258,12 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
   break_status.task = t;
 
   int stop_sig = t->pending_sig();
+  if (!stop_sig) {
+    // This can happen if we were INCOMPLETE because we're close to
+    // the ticks_target.
+    return break_status;
+  }
+
   if (SIGTRAP != stop_sig) {
     BreakpointType pending_bp = t->vm()->get_breakpoint_type_at_addr(t->ip());
     if (BKPT_USER == pending_bp) {
