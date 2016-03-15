@@ -1555,6 +1555,9 @@ private:
   // True when we know via waitpid() that the task is stopped and we haven't
   // resumed it.
   bool is_stopped;
+  // True when we consumed a PTRACE_EVENT_EXIT that was about to race with
+  // a resume_execution, that was issued while stopped (i.e. SIGKILL).
+  bool detected_unexpected_exit;
   // When |extra_registers_known|, we have saved our extra registers.
   ExtraRegisters extra_registers;
   bool extra_registers_known;

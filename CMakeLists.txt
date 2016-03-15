@@ -407,6 +407,7 @@ set(BASIC_TESTS
   io
   ioctl
   kcmp
+  kill_newborn
   legacy_ugid
   madvise
   map_fixed

@@ -250,6 +250,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       ticks(0),
       registers(a),
       is_stopped(false),
+      detected_unexpected_exit(false),
       extra_registers(a),
       extra_registers_known(false),
       robust_futex_list(),
@@ -1508,7 +1509,37 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
              << (sig ? string(", signal ") + signal_name(sig) : string());
   address_of_last_execution_resume = ip();
   set_debug_status(0);
-  ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
+
+  pid_t wait_ret = 0;
+  if (session().is_recording()) {
+    /* There's a nasty race where a stopped task gets woken up by a SIGKILL
+     * and advances to the PTRACE_EXIT_EVENT ptrace-stop just before we
+     * send a PTRACE_CONT. Our PTRACE_CONT will cause it to continue and exit,
+     * which means we don't get a chance to clean up robust futexes etc.
+     * Avoid that by doing a waitpid() here to see if it has exited.
+     * This doesn't fully close the race since in theory we could be preempted
+     * between the waitpid and the ptrace_if_alive, giving another task
+     * a chance to SIGKILL our tracee and advance it to the PTRACE_EXIT_EVENT,
+     * or just letting the tracee be scheduled to process its pending SIGKILL.
+     */
+    int status;
+    wait_ret = waitpid(tid, &status, WNOHANG | __WALL | WSTOPPED);
+    ASSERT(this, 0 <= wait_ret) << "waitpid(" << tid << ", NOHANG) failed with "
+                                << wait_ret;
+    if (wait_ret == tid) {
+      ASSERT(this, ptrace_event_from_status(status) == PTRACE_EVENT_EXIT);
+    } else {
+      ASSERT(this, 0 == wait_ret) << "waitpid(" << tid
+                                  << ", NOHANG) failed with " << wait_ret;
+    }
+  }
+  if (wait_ret == tid) {
+    // wait() will see this and report the ptrace-exit event.
+    detected_unexpected_exit = true;
+  } else {
+    ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
+  }
+
   is_stopped = false;
   extra_registers_known = false;
   if (RESUME_WAIT == wait_how) {
@@ -1958,6 +1989,13 @@ void Task::wait(double interrupt_after_elapsed) {
   LOG(debug) << "going into blocking waitpid(" << tid << ") ...";
   ASSERT(this, !unstable) << "Don't wait for unstable tasks";
   ASSERT(this, session().is_recording() || interrupt_after_elapsed == 0);
+
+  if (detected_unexpected_exit) {
+    LOG(debug) << "Unexpected (SIGKILL) exit was detected; reporting it now";
+    did_waitpid(ptrace_exit_wait_status);
+    detected_unexpected_exit = false;
+    return;
+  }
 
   int status;
   bool sent_wait_interrupt = false;
