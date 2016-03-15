@@ -137,6 +137,9 @@ static void record_robust_futex_change(
     return;
   }
   val = (val & FUTEX_WAITERS) | FUTEX_OWNER_DIED;
+  // Update memory now so that the kernel doesn't decide to do it later, at
+  // a time that might race with other tracee execution.
+  t->write_mem(futex_ptr, val);
   t->record_local(futex_ptr, &val);
 }
 
