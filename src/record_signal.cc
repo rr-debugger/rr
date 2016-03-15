@@ -105,14 +105,14 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
   auto arch_si = reinterpret_cast<NativeArch::siginfo_t*>(si);
   auto addr = arch_si->_sifields._sigfault.si_addr_.rptr();
 
+  if (t->vm()->has_mapping(addr)) {
+    LOG(debug) << "try_grow_map " << addr << ": address already mapped";
+    return false;
+  }
   auto maps = t->vm()->maps_starting_at(floor_page_size(addr));
   auto it = maps.begin();
   if (it == maps.end()) {
     LOG(debug) << "try_grow_map " << addr << ": no later map to grow downward";
-    return false;
-  }
-  if (addr >= it->map.start()) {
-    LOG(debug) << "try_grow_map " << addr << ": address already mapped";
     return false;
   }
   if (!(it->map.flags() & MAP_GROWSDOWN)) {
@@ -120,35 +120,45 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
                << it->map << ")";
     return false;
   }
-
-  auto new_start = floor_page_size(addr);
-  static const uintptr_t grow_size = 0x10000;
-  if (it->map.start().as_int() >= grow_size) {
-    auto possible_new_start = std::min(new_start, it->map.start() - grow_size);
-    auto earlier_maps = t->vm()->maps_starting_at(possible_new_start);
-    if (earlier_maps.begin()->map.start() == it->map.start()) {
-      // No intervening map
-      new_start = possible_new_start;
-    }
+  if (addr >= page_size() && t->vm()->has_mapping(addr - page_size())) {
+    LOG(debug) << "try_grow_map " << addr << ": address would be in guard page";
+    return false;
   }
-  LOG(debug) << "try_grow_map " << addr << ": trying to grow map " << it->map;
-
   struct rlimit stack_limit;
+  remote_ptr<void> limit_bottom;
   int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
   if (ret >= 0 && stack_limit.rlim_cur != RLIM_INFINITY) {
-    new_start = std::max(new_start,
-                         ceil_page_size(it->map.end() - stack_limit.rlim_cur));
-    if (new_start > addr) {
+    limit_bottom = ceil_page_size(it->map.end() - stack_limit.rlim_cur);
+    if (limit_bottom > addr) {
       LOG(debug) << "try_grow_map " << addr << ": RLIMIT_STACK exceeded";
       return false;
     }
   }
 
+  // Try to grow by 64K at a time to reduce signal frequency.
+  auto new_start = floor_page_size(addr);
+  static const uintptr_t grow_size = 0x10000;
+  if (it->map.start().as_int() >= grow_size) {
+    auto possible_new_start = std::max(
+        limit_bottom, std::min(new_start, it->map.start() - grow_size));
+    // Ensure that no mapping exists between possible_new_start - page_size()
+    // and new_start. If there is, possible_new_start is not valid, in which
+    // case we just abandon the optimization.
+    if (possible_new_start >= page_size() &&
+        !t->vm()->has_mapping(possible_new_start - page_size()) &&
+        t->vm()->maps_starting_at(possible_new_start - page_size())
+                .begin()
+                ->map.start() == it->map.start()) {
+      new_start = possible_new_start;
+    }
+  }
+  LOG(debug) << "try_grow_map " << addr << ": trying to grow map " << it->map;
+
   {
     AutoRemoteSyscalls remote(t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
     remote.infallible_mmap_syscall(
         new_start, it->map.start() - new_start, it->map.prot(),
-        (it->map.flags() & ~MAP_GROWSDOWN) | MAP_ANONYMOUS, -1, 0);
+        (it->map.flags() & ~MAP_GROWSDOWN) | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   }
 
   KernelMapping km =

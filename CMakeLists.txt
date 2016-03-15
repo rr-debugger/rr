@@ -519,6 +519,7 @@ set(BASIC_TESTS
   splice
   stack_growth_after_syscallbuf
   stack_growth_syscallbuf
+  stack_growth_with_guard
   stack_overflow
   stack_overflow_altstack
   stack_overflow_with_guard
