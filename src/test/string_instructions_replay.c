@@ -50,7 +50,7 @@ int main(void) {
     string_store(p, i, SIZE);
     string_store(q, i, SIZE);
     q[DIFF] = i ^ 0xff;
-    test_assert(string_compare(p, q, SIZE) == DIFF);
+    test_assert(string_compare(p, q, (uintptr_t)-1) == DIFF);
   }
 
   atomic_puts("EXIT-SUCCESS");
