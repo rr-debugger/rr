@@ -144,7 +144,7 @@ static void write_user_namespace_mappings(void) {
 
   fd = open("/proc/self/gid_map", O_WRONLY | O_CREAT);
   test_assert(fd >= 0);
-  sprintf(buf, "8 %d 1\n", uid);
+  sprintf(buf, "8 %d 1\n", gid);
   test_assert((ssize_t)strlen(buf) == write(fd, buf, strlen(buf)));
   test_assert(0 == close(fd));
 }
