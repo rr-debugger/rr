@@ -564,6 +564,10 @@ set(BASIC_TESTS
   zero_length_read
 )
 
+set(BASIC_CPP_TESTS
+  std_random
+)
+
 # A "test with program" consists of a foo.c source file and a foo.run driver
 # script.  See src/test/util.sh to learn how the .run files work.
 #
@@ -750,6 +754,12 @@ foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   target_link_libraries(${test} -lrt)
 endforeach(test)
 
+foreach(test ${BASIC_CPP_TESTS})
+  add_executable(${test} src/test/${test}.cc)
+  add_dependencies(${test} Generated)
+  target_link_libraries(${test} -lrt)
+endforeach(test)
+
 add_library(test_lib
   src/test/test_lib.c
 )
@@ -761,7 +771,7 @@ add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
 add_dependencies(cpuid Generated)
 target_link_libraries(cpuid -lrt)
 
-foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
+foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
   add_test(${test}
     bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
   set_tests_properties(${test}
@@ -803,6 +813,14 @@ if(rr_32BIT AND rr_64BIT)
                                 PROPERTIES COMPILE_FLAGS -m32)
   endforeach(test)
 
+  foreach(test ${BASIC_CPP_TESTS})
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.cc"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
+                   COPYONLY)
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
+                                PROPERTIES COMPILE_FLAGS -m32)
+  endforeach(test)
+
   foreach(file cpuid_loop.S)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
@@ -813,6 +831,13 @@ if(rr_32BIT AND rr_64BIT)
 
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
     add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
+    add_dependencies(${test}_32 Generated)
+    set_target_properties(${test}_32 PROPERTIES LINK_FLAGS -m32)
+    target_link_libraries(${test}_32 -lrt)
+  endforeach(test)
+
+  foreach(test ${BASIC_CPP_TESTS})
+    add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc")
     add_dependencies(${test}_32 Generated)
     set_target_properties(${test}_32 PROPERTIES LINK_FLAGS -m32)
     target_link_libraries(${test}_32 -lrt)
@@ -832,7 +857,7 @@ if(rr_32BIT AND rr_64BIT)
   set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
   target_link_libraries(cpuid_32 -lrt)
 
-  foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
+  foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
     add_test(${test}-32
       bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
     set_tests_properties(${test}-32

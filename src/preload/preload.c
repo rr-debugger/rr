@@ -2213,3 +2213,16 @@ void* XShmCreateImage(__attribute__((unused)) register void* dpy,
                       __attribute__((unused)) unsigned int height) {
   return 0;
 }
+
+typedef void* (*fopen_ptr)(const char* filename, const char* mode);
+
+/**
+ * libstdc++3 uses RDRAND. Bypass that with this incredible hack.
+ */
+void _ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE(
+    void* this, __attribute__((unused)) void* token) {
+  void** file_ptr = (void**)this;
+  void* f_ptr = dlsym(RTLD_DEFAULT, "fopen");
+  fopen_ptr fopen = (fopen_ptr)f_ptr;
+  *file_ptr = fopen("/dev/urandom", "rb");
+}
