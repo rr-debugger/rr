@@ -14,7 +14,7 @@ kill -USR2 $(pidof $TESTNAME-$nonce) >& /dev/null
 
 # Wait for 'record' to actually terminate. Otherwise we might start
 # replaying before the trace file has been completely written.
-wait -n %1
+wait %1
 
 echo "Replaying ..."
 replay
