@@ -112,7 +112,7 @@ static bool mem_intersect(remote_ptr<void> a1, int s1, remote_ptr<void> a2,
 static void bound_iterations_for_watchpoint(Task* t, remote_ptr<void> reg,
                                             const DecodedInstruction& decoded,
                                             const WatchConfig& watch,
-                                            uintptr_t* iterations) {
+                                            intptr_t* iterations) {
   // Compute how many iterations it will take before we hit the watchpoint.
   // 0 means the first iteration will hit the watchpoint.
   int size = decoded.operand_size;
@@ -141,7 +141,7 @@ static void bound_iterations_for_watchpoint(Task* t, remote_ptr<void> reg,
     steps = (reg - (watch.addr + watch.num_bytes)) / size + 1;
   }
 
-  *iterations = min(*iterations, steps);
+  *iterations = min<intptr_t>(*iterations, steps);
 }
 
 static bool is_x86ish(Task* t) {
@@ -224,7 +224,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
     // simplifies code below that tries to emulate the register effects
     // of singlestepping to predict if the next singlestep would result in a
     // mark_vector state.
-    uintptr_t iterations = cur_cx - 1;
+    intptr_t iterations = cur_cx - 1;
 
     // Bound |iterations| to ensure we stop before reaching any |states|.
     for (auto& state : *using_states) {
@@ -239,14 +239,14 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
           // This can't be reached in the current loop.
           continue;
         }
-        iterations = min(iterations, cur_cx - dest_cx - 1);
+        iterations = min<intptr_t>(iterations, cur_cx - dest_cx - 1);
       } else if (state->ip() == limit_ip) {
         uintptr_t dest_cx = state->cx();
         if (dest_cx >= cur_cx) {
           // This can't be reached in the current loop.
           continue;
         }
-        iterations = min(iterations, cur_cx - dest_cx - 1);
+        iterations = min<intptr_t>(iterations, cur_cx - dest_cx - 1);
       }
     }
 
@@ -313,6 +313,14 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       t->vm()->restore_watchpoints();
 
       iterations -= cur_cx - t->regs().cx();
+      // instructions that don't modify flags should not terminate too early
+      ASSERT(t, decoded.modifies_flags || iterations <= BYTES_COALESCED);
+      // we shoudn't execute more iterations than we asked for.
+      // In Ubuntu-14 4.2.0-27-generic in a KVM guest we have seen watchpoints
+      // failing to fire during string_instructions_replay. We plow through
+      // and hit the backup breakpoint. triggered_watchpoint is true because
+      // the memory has changed. This assertion should catch such errors.
+      ASSERT(t, iterations >= 0);
 
       if (!triggered_watchpoint) {
         // watchpoint didn't fire. We must have exited the loop early and
@@ -325,6 +333,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
         tmp.set_ip(limit_ip);
         t->set_regs(tmp);
       } else {
+        ASSERT(t, t->ip() == limit_ip || t->ip() == ip);
         watch_offset = decoded.operand_size * (iterations - 1);
         if (watch_offset > BYTES_COALESCED) {
           // Fake singlestep status for trap diagnosis
