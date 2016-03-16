@@ -199,7 +199,7 @@ static int run_test(void) {
 
   /* Emulate what sandboxes trying to close all open file descriptors */
   test_assert(0 == getrlimit(RLIMIT_NOFILE, &nofile));
-  for (fd = STDOUT_FILENO + 1; fd < (int)nofile.rlim_cur; ++fd) {
+  for (fd = STDERR_FILENO + 1; fd < (int)nofile.rlim_cur; ++fd) {
     ret = close(fd);
     test_assert(ret == 0 || (ret == -1 && errno == EBADF));
   }
