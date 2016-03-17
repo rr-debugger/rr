@@ -17,6 +17,11 @@ int main(void) {
   test_assert(0 == close(file_fd));
 
   desc = inotify_add_watch(fd, "foo", IN_ALL_EVENTS);
+  if (desc == -1 && errno == ENOSPC) {
+    atomic_puts("Hit inotify watch limit");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(desc >= 0);
 
   test_assert(0 <= open("foo", O_WRONLY | O_CREAT, 0777));
