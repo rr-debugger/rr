@@ -15,6 +15,7 @@ int main(void) {
                            MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   struct iovec in_iov[2];
   struct iovec out_iov[2];
+  int ret;
 
   test_assert(p != MAP_FAILED);
   test_assert(0 == munmap(p + PAGE_SIZE, PAGE_SIZE));
@@ -36,14 +37,30 @@ int main(void) {
   test_assert(p[PAGE_SIZE - 5] == 1);
   test_assert(p[PAGE_SIZE - 4] == 3);
   test_assert(p[PAGE_SIZE - 3] == ((PAGE_SIZE - 3) & 0xff));
+  test_assert(p[PAGE_SIZE - 2] == ((PAGE_SIZE - 2) & 0xff));
+  test_assert(p[PAGE_SIZE - 1] == 4);
   clear(p);
-  test_assert(4 == process_vm_writev(getpid(), in_iov, 2, out_iov, 2, 0));
-  test_assert(out_iov[1].iov_len == 2);
-  test_assert(p[PAGE_SIZE - 7] == ((PAGE_SIZE - 7) & 0xff));
-  test_assert(p[PAGE_SIZE - 6] == 0);
-  test_assert(p[PAGE_SIZE - 5] == 1);
-  test_assert(p[PAGE_SIZE - 4] == 3);
-  test_assert(p[PAGE_SIZE - 3] == ((PAGE_SIZE - 3) & 0xff));
+  ret = process_vm_writev(getpid(), in_iov, 2, out_iov, 2, 0);
+  if (3 == ret) {
+    test_assert(out_iov[1].iov_len == 2);
+    test_assert(p[PAGE_SIZE - 7] == ((PAGE_SIZE - 7) & 0xff));
+    test_assert(p[PAGE_SIZE - 6] == 0);
+    test_assert(p[PAGE_SIZE - 5] == 1);
+    test_assert(p[PAGE_SIZE - 4] == 3);
+    test_assert(p[PAGE_SIZE - 3] == ((PAGE_SIZE - 3) & 0xff));
+    test_assert(p[PAGE_SIZE - 2] == ((PAGE_SIZE - 2) & 0xff));
+    test_assert(p[PAGE_SIZE - 1] == ((PAGE_SIZE - 1) & 0xff));
+  } else {
+    test_assert(4 == ret);
+    test_assert(out_iov[1].iov_len == 2);
+    test_assert(p[PAGE_SIZE - 7] == ((PAGE_SIZE - 7) & 0xff));
+    test_assert(p[PAGE_SIZE - 6] == 0);
+    test_assert(p[PAGE_SIZE - 5] == 1);
+    test_assert(p[PAGE_SIZE - 4] == 3);
+    test_assert(p[PAGE_SIZE - 3] == ((PAGE_SIZE - 3) & 0xff));
+    test_assert(p[PAGE_SIZE - 2] == ((PAGE_SIZE - 2) & 0xff));
+    test_assert(p[PAGE_SIZE - 1] == 4);
+  }
 
   out_iov[1].iov_base = p + PAGE_SIZE - 2;
   out_iov[1].iov_len = 3;
@@ -58,14 +75,25 @@ int main(void) {
   test_assert(p[PAGE_SIZE - 2] == 4);
   test_assert(p[PAGE_SIZE - 1] == 5);
   clear(p);
-  test_assert(5 == process_vm_writev(getpid(), in_iov, 2, out_iov, 2, 0));
-  test_assert(p[PAGE_SIZE - 7] == ((PAGE_SIZE - 7) & 0xff));
-  test_assert(p[PAGE_SIZE - 6] == 0);
-  test_assert(p[PAGE_SIZE - 5] == 1);
-  test_assert(p[PAGE_SIZE - 4] == 3);
-  test_assert(p[PAGE_SIZE - 3] == ((PAGE_SIZE - 3) & 0xff));
-  test_assert(p[PAGE_SIZE - 2] == 4);
-  test_assert(p[PAGE_SIZE - 1] == 5);
+  ret = process_vm_writev(getpid(), in_iov, 2, out_iov, 2, 0);
+  if (3 == ret) {
+    test_assert(p[PAGE_SIZE - 7] == ((PAGE_SIZE - 7) & 0xff));
+    test_assert(p[PAGE_SIZE - 6] == 0);
+    test_assert(p[PAGE_SIZE - 5] == 1);
+    test_assert(p[PAGE_SIZE - 4] == 3);
+    test_assert(p[PAGE_SIZE - 3] == ((PAGE_SIZE - 3) & 0xff));
+    test_assert(p[PAGE_SIZE - 2] == ((PAGE_SIZE - 2) & 0xff));
+    test_assert(p[PAGE_SIZE - 1] == ((PAGE_SIZE - 1) & 0xff));
+  } else {
+    test_assert(5 == ret);
+    test_assert(p[PAGE_SIZE - 7] == ((PAGE_SIZE - 7) & 0xff));
+    test_assert(p[PAGE_SIZE - 6] == 0);
+    test_assert(p[PAGE_SIZE - 5] == 1);
+    test_assert(p[PAGE_SIZE - 4] == 3);
+    test_assert(p[PAGE_SIZE - 3] == ((PAGE_SIZE - 3) & 0xff));
+    test_assert(p[PAGE_SIZE - 2] == 4);
+    test_assert(p[PAGE_SIZE - 1] == 5);
+  }
 
   in_iov[0].iov_base = p + PAGE_SIZE - 1;
   in_iov[0].iov_len = 2;
@@ -73,9 +101,15 @@ int main(void) {
   out_iov[0].iov_len = 3;
 
   clear(p);
-  test_assert(1 == process_vm_readv(getpid(), out_iov, 1, in_iov, 1, 0));
-  test_assert(p[0] == ((PAGE_SIZE - 1) & 0xff));
-  test_assert(p[1] == 1);
+  ret = process_vm_readv(getpid(), out_iov, 1, in_iov, 1, 0);
+  if (ret == -1 && errno == EFAULT) {
+    test_assert(p[0] == 0);
+    test_assert(p[1] == 1);
+  } else {
+    test_assert(1 == ret);
+    test_assert(p[0] == ((PAGE_SIZE - 1) & 0xff));
+    test_assert(p[1] == 1);
+  }
   clear(p);
   test_assert(1 == process_vm_writev(getpid(), in_iov, 1, out_iov, 1, 0));
   test_assert(p[0] == ((PAGE_SIZE - 1) & 0xff));
@@ -96,13 +130,23 @@ int main(void) {
   out_iov[1].iov_len = 4;
 
   clear(p);
-  test_assert(4 == process_vm_readv(getpid(), out_iov, 2, in_iov, 2, 0));
-  test_assert(p[0] == ((PAGE_SIZE - 4) & 0xff));
-  test_assert(p[1] == 1);
-  test_assert(p[2] == ((PAGE_SIZE - 3) & 0xff));
-  test_assert(p[3] == ((PAGE_SIZE - 2) & 0xff));
-  test_assert(p[4] == ((PAGE_SIZE - 1) & 0xff));
-  test_assert(p[5] == 5);
+  ret = process_vm_readv(getpid(), out_iov, 2, in_iov, 2, 0);
+  if (2 == ret) {
+    test_assert(p[0] == ((PAGE_SIZE - 4) & 0xff));
+    test_assert(p[1] == 1);
+    test_assert(p[2] == ((PAGE_SIZE - 3) & 0xff));
+    test_assert(p[3] == 3);
+    test_assert(p[4] == 4);
+    test_assert(p[5] == 5);
+  } else {
+    test_assert(4 == ret);
+    test_assert(p[0] == ((PAGE_SIZE - 4) & 0xff));
+    test_assert(p[1] == 1);
+    test_assert(p[2] == ((PAGE_SIZE - 3) & 0xff));
+    test_assert(p[3] == ((PAGE_SIZE - 2) & 0xff));
+    test_assert(p[4] == ((PAGE_SIZE - 1) & 0xff));
+    test_assert(p[5] == 5);
+  }
   clear(p);
   test_assert(4 == process_vm_writev(getpid(), in_iov, 2, out_iov, 2, 0));
   test_assert(p[0] == ((PAGE_SIZE - 4) & 0xff));
