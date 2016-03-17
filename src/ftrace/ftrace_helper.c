@@ -199,7 +199,7 @@ static uint64_t pad_output_to_page_size(int fd) {
   char buf[PAGE_SIZE];
   uint64_t offset = file_offset(fd);
   memset(buf, 0, sizeof(buf));
-  uint32_t pad = ((offset + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1)) - offset;
+  ssize_t pad = ((offset + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1)) - offset;
   check(pad == write(fd, buf, pad));
   return offset + pad;
 }
