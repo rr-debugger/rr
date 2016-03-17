@@ -2409,6 +2409,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
         case PR_MCE_KILL:
         case PR_MCE_KILL_GET:
         case PR_SET_KEEPCAPS:
+        case PR_SET_NAME:
         case PR_SET_PDEATHSIG:
         case PR_SET_TIMERSLACK:
           break;
@@ -2448,10 +2449,6 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 
         case PR_GET_NAME:
           syscall_state.reg_parameter(2, 16);
-          break;
-
-        case PR_SET_NAME:
-          t->update_prname(t->regs().arg2());
           break;
 
         case PR_SET_NO_NEW_PRIVS:
@@ -3550,17 +3547,20 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       t->set_regs(r);
-      if (t->regs().arg1() == PR_SET_SECCOMP &&
-          t->session().done_initial_exec()) {
-        t->session()
-            .as_record()
-            ->seccomp_filter_rewriter()
-            .install_patched_seccomp_filter(t);
-        // install_patched_seccomp_filter can set registers to indicate
-        // failure.
-        if (!t->regs().syscall_failed()) {
-          t->prctl_seccomp_status = 2;
-        }
+      switch ((int)t->regs().arg1()) {
+        case PR_SET_SECCOMP:
+          if (t->session().done_initial_exec()) {
+            t->session()
+                .as_record()
+                ->seccomp_filter_rewriter()
+                .install_patched_seccomp_filter(t);
+            // install_patched_seccomp_filter can set registers to indicate
+            // failure.
+            if (!t->regs().syscall_failed()) {
+              t->prctl_seccomp_status = 2;
+            }
+          }
+          break;
       }
       break;
     }

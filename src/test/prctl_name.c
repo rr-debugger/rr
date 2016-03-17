@@ -82,6 +82,10 @@ int main(int argc, char* argv[]) {
 
   assert_prname_is("main", initial_name);
 
+  test_assert(-1 == prctl(PR_SET_NAME, NULL));
+  test_assert(EFAULT == errno);
+  assert_prname_is("main", initial_name);
+
   prctl(PR_SET_NAME, main_name);
   assert_prname_is("main", main_name);
 

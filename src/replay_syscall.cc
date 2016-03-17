@@ -1215,17 +1215,6 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       }
       break;
 
-    case Arch::prctl:
-      if (state == SYSCALL_EXIT) {
-        switch ((int)trace_regs.arg1_signed()) {
-          case PR_SET_NAME: {
-            t->update_prname(trace_regs.arg2());
-            return;
-          }
-        }
-      }
-      return;
-
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
       if (state == SYSCALL_EXIT) {

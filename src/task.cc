@@ -920,6 +920,15 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       update_sigmask(regs);
       return;
 
+    case Arch::prctl:
+      switch ((int)regs.arg1_signed()) {
+        case PR_SET_NAME: {
+          update_prname(regs.arg2());
+          break;
+        }
+      }
+      return;
+
     case Arch::dup:
     case Arch::dup2:
     case Arch::dup3:
