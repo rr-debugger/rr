@@ -865,13 +865,12 @@ void rep_after_enter_syscall(Task* t, int syscallno) {
   RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, syscallno)
 }
 
-template <typename Arch>
-static void rep_prepare_run_to_syscall_arch(Task* t, ReplayTraceStep* step) {
+void rep_prepare_run_to_syscall(Task* t, ReplayTraceStep* step) {
   int sys = t->current_trace_frame().event().Syscall().number;
 
   LOG(debug) << "processing " << t->syscall_name(sys) << " (entry)";
 
-  if (Arch::restart_syscall == sys) {
+  if (is_restart_syscall_syscall(sys, t->arch())) {
     ASSERT(t, EV_SYSCALL_INTERRUPTION == t->ev().type())
         << "Must have interrupted syscall to restart";
 
@@ -900,13 +899,6 @@ static void rep_prepare_run_to_syscall_arch(Task* t, ReplayTraceStep* step) {
     ASSERT(t, t->syscallbuf_hdr);
     t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
   }
-}
-
-void rep_prepare_run_to_syscall(Task* t, ReplayTraceStep* step) {
-  // Use the event's arch, not the task's, because the task's arch may
-  // be out of date immediately after an exec.
-  RR_ARCH_FUNCTION(rep_prepare_run_to_syscall_arch,
-                   t->current_trace_frame().event().arch(), t, step)
 }
 
 template <typename Arch>
