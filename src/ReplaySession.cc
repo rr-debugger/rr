@@ -1146,11 +1146,14 @@ void ReplaySession::setup_replay_one_trace_frame(Task* t) {
       current_step.target.signo = ev.Signal().siginfo.si_signo;
       break;
     case EV_SYSCALL:
-      rep_process_syscall(t, &current_step);
-      if (trace_frame.event().Syscall().state == EXITING_SYSCALL &&
-          current_step.action == TSTEP_RETIRE) {
-        t->on_syscall_exit(current_step.syscall.number, trace_frame.regs());
-        maybe_gc_emufs(t->arch(), trace_frame.regs().syscallno());
+      if (trace_frame.event().Syscall().state == ENTERING_SYSCALL) {
+        rep_prepare_run_to_syscall(t, &current_step);
+      } else {
+        rep_process_syscall(t, &current_step);
+        if (current_step.action == TSTEP_RETIRE) {
+          t->on_syscall_exit(current_step.syscall.number, trace_frame.regs());
+          maybe_gc_emufs(t->arch(), trace_frame.regs().syscallno());
+        }
       }
       break;
     default:

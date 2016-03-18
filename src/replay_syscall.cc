@@ -55,24 +55,6 @@ using namespace rr;
 
 #endif // CHECK_SYSCALL_NUMBERS
 
-enum SyscallEntryOrExit { SYSCALL_ENTRY, SYSCALL_EXIT };
-
-/**
- * Return the symbolic name of |state|, or "???state" if unknown.
- */
-static const char* state_name(SyscallEntryOrExit state) {
-  switch (state) {
-#define CASE(_id)                                                              \
-  case _id:                                                                    \
-    return #_id
-    CASE(SYSCALL_ENTRY);
-    CASE(SYSCALL_EXIT);
-#undef CASE
-    default:
-      return "???state";
-  }
-}
-
 static string maybe_dump_written_string(Task* t) {
   if (!is_write_syscall(t->regs().original_syscallno(), t->arch())) {
     return "";
@@ -170,10 +152,6 @@ static bool is_failed_syscall(Task* t, const TraceFrame& frame) {
   return frame.regs().syscall_failed();
 }
 
-static ReplayTraceStepType syscall_action(SyscallEntryOrExit state) {
-  return state == SYSCALL_ENTRY ? TSTEP_ENTER_SYSCALL : TSTEP_EXIT_SYSCALL;
-}
-
 static TraceTaskEvent read_task_trace_event(Task* t,
                                             TraceTaskEvent::Type type) {
   TraceTaskEvent tte;
@@ -191,13 +169,10 @@ static TraceTaskEvent read_task_trace_event(Task* t,
 
 template <typename Arch>
 static void process_clone(Task* t, const TraceFrame& trace_frame,
-                          SyscallEntryOrExit state, ReplayTraceStep* step,
-                          unsigned long flags, int expect_syscallno) {
+                          ReplayTraceStep* step, unsigned long flags,
+                          int expect_syscallno) {
   if (is_failed_syscall(t, trace_frame)) {
     /* creation failed, emulate it */
-    return;
-  }
-  if (state == SYSCALL_ENTRY) {
     return;
   }
 
@@ -420,10 +395,7 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
 }
 
 static void process_execve(Task* t, const TraceFrame& trace_frame,
-                           SyscallEntryOrExit state, ReplayTraceStep* step) {
-  if (SYSCALL_ENTRY == state) {
-    return;
-  }
+                           ReplayTraceStep* step) {
   if (trace_frame.regs().syscall_failed()) {
     return;
   }
@@ -589,12 +561,7 @@ static bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex,
   return now_contended;
 }
 
-static void process_futex(Task* t, const TraceFrame& trace_frame,
-                          SyscallEntryOrExit state) {
-  if (state == SYSCALL_EXIT) {
-    return;
-  }
-
+static void process_futex(Task* t, const TraceFrame& trace_frame) {
   const Registers& regs = trace_frame.regs();
   int op = (int)regs.arg2_signed() & FUTEX_CMD_MASK;
   if (FUTEX_LOCK_PI == op) {
@@ -613,11 +580,7 @@ static void process_futex(Task* t, const TraceFrame& trace_frame,
   }
 }
 
-static void process_brk(Task* t, SyscallEntryOrExit state) {
-  if (state == SYSCALL_ENTRY) {
-    return;
-  }
-
+static void process_brk(Task* t) {
   TraceReader::MappedData data;
   KernelMapping km = t->trace_reader().read_mapped_region(&data);
   // Zero flags means it's an an unmap, or no change.
@@ -802,13 +765,9 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote, int prot, int flags,
                real_file_name, real_file.st_dev, real_file.st_ino, &km);
 }
 
-static void process_mmap(Task* t, const TraceFrame& trace_frame,
-                         SyscallEntryOrExit state, size_t length, int prot,
-                         int flags, off64_t offset_pages,
+static void process_mmap(Task* t, const TraceFrame& trace_frame, size_t length,
+                         int prot, int flags, off64_t offset_pages,
                          ReplayTraceStep* step) {
-  if (SYSCALL_ENTRY == state) {
-    return;
-  }
   if (trace_frame.regs().syscall_failed()) {
     return;
   }
@@ -864,12 +823,8 @@ void process_grow_map(Task* t) {
   restore_mapped_region(remote, km, data);
 }
 
-static void process_shmat(Task* t, const TraceFrame& trace_frame,
-                          SyscallEntryOrExit state, int shm_flags,
+static void process_shmat(Task* t, const TraceFrame& trace_frame, int shm_flags,
                           ReplayTraceStep* step) {
-  if (SYSCALL_ENTRY == state) {
-    return;
-  }
   if (trace_frame.regs().syscall_failed()) {
     return;
   }
@@ -894,11 +849,7 @@ static void process_shmat(Task* t, const TraceFrame& trace_frame,
 }
 
 static void process_shmdt(Task* t, const TraceFrame& trace_frame,
-                          SyscallEntryOrExit state, remote_ptr<void> addr,
-                          ReplayTraceStep* step) {
-  if (SYSCALL_ENTRY == state) {
-    return;
-  }
+                          remote_ptr<void> addr, ReplayTraceStep* step) {
   if (trace_frame.regs().syscall_failed()) {
     return;
   }
@@ -916,13 +867,7 @@ static void process_shmdt(Task* t, const TraceFrame& trace_frame,
   t->validate_regs();
 }
 
-static void process_init_buffers(Task* t, SyscallEntryOrExit state,
-                                 ReplayTraceStep* step) {
-  /* This was a phony syscall to begin with. */
-  if (SYSCALL_ENTRY == state) {
-    return;
-  }
-
+static void process_init_buffers(Task* t, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
   /* Proceed to syscall exit so we can run our own syscalls. */
@@ -961,44 +906,81 @@ void rep_after_enter_syscall(Task* t, int syscallno) {
 }
 
 template <typename Arch>
+static void rep_prepare_run_to_syscall_arch(Task* t, ReplayTraceStep* step) {
+  int sys = t->current_trace_frame().event().Syscall().number;
+
+  LOG(debug) << "processing " << t->syscall_name(sys) << " (entry)";
+
+  if (Arch::restart_syscall == sys) {
+    ASSERT(t, EV_SYSCALL_INTERRUPTION == t->ev().type())
+        << "Must have interrupted syscall to restart";
+
+    sys = t->ev().Syscall().number;
+    remote_code_ptr intr_ip = t->ev().Syscall().regs.ip();
+    auto cur_ip = t->ip();
+
+    LOG(debug) << "'restarting' " << t->syscall_name(sys) << " interrupted by "
+               << t->ev().Syscall().regs.syscall_result() << " at " << intr_ip
+               << "; now at " << cur_ip;
+    if (cur_ip == intr_ip) {
+      t->emulate_syscall_entry(t->regs());
+      step->action = TSTEP_RETIRE;
+      return;
+    }
+  }
+
+  step->syscall.number = sys;
+  step->action = TSTEP_ENTER_SYSCALL;
+
+  /* Don't let a negative incoming syscall number be treated as a real
+   * system call that we assigned a negative number because it doesn't
+   * exist in this architecture.
+   * All invalid/unsupported syscalls get the default emulation treatment.
+   */
+  switch (sys < 0 ? INT32_MAX : sys) {
+    case Arch::futex:
+      return process_futex(t, t->replay_session().current_trace_frame());
+
+    case SYS_rrcall_notify_syscall_hook_exit:
+      ASSERT(t, t->syscallbuf_hdr);
+      t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
+      return;
+
+    default:
+      return;
+  }
+}
+
+void rep_prepare_run_to_syscall(Task* t, ReplayTraceStep* step) {
+  // Use the event's arch, not the task's, because the task's arch may
+  // be out of date immediately after an exec.
+  RR_ARCH_FUNCTION(rep_prepare_run_to_syscall_arch,
+                   t->current_trace_frame().event().arch(), t, step)
+}
+
+template <typename Arch>
 static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
-  /* FIXME: don't shadow syscall() */
-  int syscall = t->current_trace_frame().event().Syscall().number;
+  int sys = t->current_trace_frame().event().Syscall().number;
   const TraceFrame& trace_frame = t->replay_session().current_trace_frame();
   const Registers& trace_regs = trace_frame.regs();
 
-  SyscallEntryOrExit state;
-  switch (trace_frame.event().Syscall().state) {
-    case ENTERING_SYSCALL:
-      state = SYSCALL_ENTRY;
-      break;
-    case EXITING_SYSCALL:
-      state = SYSCALL_EXIT;
-      break;
-    default:
-      ASSERT(t, "Not entering or exiting?");
-      return;
-  }
-
-  LOG(debug) << "processing " << t->syscall_name(syscall) << " ("
-             << state_name(state) << ")";
+  LOG(debug) << "processing " << t->syscall_name(sys) << " (exit)";
 
   // sigreturns are never restartable, and the value of the
   // syscall-result register after a sigreturn is not actually the
   // syscall result --- and may be anything, including one of the values
   // below.
-  if (SYSCALL_EXIT == state && trace_regs.syscall_may_restart() &&
-      !is_sigreturn(syscall, t->arch())) {
+  if (trace_regs.syscall_may_restart() && !is_sigreturn(sys, t->arch())) {
     bool interrupted_restart = (EV_SYSCALL_INTERRUPTION == t->ev().type());
     // The tracee was interrupted while attempting to
     // restart a syscall.  We have to look at the previous
     // event to see which syscall we're trying to restart.
     if (interrupted_restart) {
-      syscall = t->ev().Syscall().number;
-      LOG(debug) << "  interrupted " << t->syscall_name(syscall)
+      sys = t->ev().Syscall().number;
+      LOG(debug) << "  interrupted " << t->syscall_name(sys)
                  << " interrupted again";
     }
-    // During recording, when a syscall exits with a
+    // During recording, when a sys exits with a
     // restart "error", the kernel sometimes restarts the
     // tracee by resetting its $ip to the syscall entry
     // point, but other times restarts the syscall without
@@ -1017,10 +999,10 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     // whether syscall re-entry needs to occur.
     t->apply_all_data_records_from_trace();
     t->set_return_value_from_trace();
-    // Use this record to recognize the syscall if it
-    // indeed restarts.  If the syscall isn't restarted,
+    // Use this record to recognize the sys if it
+    // indeed restarts.  If the sys isn't restarted,
     // we'll pop this event eventually, at the point when
-    // the recorder determined that the syscall wasn't
+    // the recorder determined that the sys wasn't
     // going to be restarted.
     if (!interrupted_restart) {
       // For interrupted SYS_restart_syscall's,
@@ -1028,42 +1010,27 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       // that's semantically correct, and because
       // we'll only know how to pop one interruption
       // event later.
-      t->push_event(Event(interrupted, SyscallEvent(syscall, t->arch())));
+      t->push_event(Event(interrupted, SyscallEvent(sys, t->arch())));
       t->ev().Syscall().regs = t->regs();
     }
     step->action = TSTEP_RETIRE;
-    LOG(debug) << "  " << t->syscall_name(syscall) << " interrupted by "
+    LOG(debug) << "  " << t->syscall_name(sys) << " interrupted by "
                << trace_regs.syscall_result() << " at " << trace_regs.ip()
                << ", may restart";
     return;
   }
 
-  if (Arch::restart_syscall == syscall) {
+  if (Arch::restart_syscall == sys) {
     ASSERT(t, EV_SYSCALL_INTERRUPTION == t->ev().type())
-        << "Must have interrupted syscall to restart";
+        << "Must have interrupted sys to restart";
 
-    syscall = t->ev().Syscall().number;
-    if (SYSCALL_ENTRY == state) {
-      remote_code_ptr intr_ip = t->ev().Syscall().regs.ip();
-      auto cur_ip = t->ip();
-
-      LOG(debug) << "'restarting' " << t->syscall_name(syscall)
-                 << " interrupted by "
-                 << t->ev().Syscall().regs.syscall_result() << " at " << intr_ip
-                 << "; now at " << cur_ip;
-      if (cur_ip == intr_ip) {
-        t->emulate_syscall_entry(t->regs());
-        step->action = TSTEP_RETIRE;
-        return;
-      }
-    } else {
-      t->pop_syscall_interruption();
-      LOG(debug) << "exiting restarted " << t->syscall_name(syscall);
-    }
+    sys = t->ev().Syscall().number;
+    t->pop_syscall_interruption();
+    LOG(debug) << "exiting restarted " << t->syscall_name(sys);
   }
 
-  step->syscall.number = syscall;
-  step->action = syscall_action(state);
+  step->syscall.number = sys;
+  step->action = TSTEP_EXIT_SYSCALL;
 
   /* Manual implementations of irregular syscalls that need to do more during
    * replay than just modify register and memory state.
@@ -1072,38 +1039,30 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
    * exist in this architecture.
    * All invalid/unsupported syscalls get the default emulation treatment.
    */
-  switch (syscall < 0 ? INT32_MAX : syscall) {
+  switch (sys < 0 ? INT32_MAX : sys) {
     case Arch::clone:
-      return process_clone<Arch>(t, trace_frame, state, step,
-                                 trace_frame.regs().arg1(), syscall);
+      return process_clone<Arch>(t, trace_frame, step, trace_regs.arg1(), sys);
 
-    case Arch::vfork:
-      if (state == SYSCALL_EXIT) {
-        Registers r = t->regs();
-        r.set_original_syscallno(Arch::fork);
-        t->set_regs(r);
-      }
-      return process_clone<Arch>(t, trace_frame, state, step, 0, Arch::fork);
+    case Arch::vfork: {
+      Registers r = t->regs();
+      r.set_original_syscallno(Arch::fork);
+      t->set_regs(r);
+      return process_clone<Arch>(t, trace_frame, step, 0, Arch::fork);
+    }
 
     case Arch::fork:
-      return process_clone<Arch>(t, trace_frame, state, step, 0, syscall);
+      return process_clone<Arch>(t, trace_frame, step, 0, sys);
 
     case Arch::execve:
-      return process_execve(t, trace_frame, state, step);
-
-    case Arch::futex:
-      return process_futex(t, trace_frame, state);
+      return process_execve(t, trace_frame, step);
 
     case Arch::ptrace:
-      if (SYSCALL_ENTRY == state) {
-        return;
-      }
-      switch ((int)trace_frame.regs().arg1_signed()) {
+      switch ((int)trace_regs.arg1_signed()) {
         case PTRACE_POKETEXT:
         case PTRACE_POKEDATA:
-          if (!trace_frame.regs().syscall_failed()) {
+          if (!trace_regs.syscall_failed()) {
             Task* target =
-                t->session().find_task((pid_t)trace_frame.regs().arg2_signed());
+                t->session().find_task((pid_t)trace_regs.arg2_signed());
             ASSERT(t, target);
             target->set_data_from_trace();
           }
@@ -1112,62 +1071,54 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
       break;
 
     case Arch::brk:
-      return process_brk(t, state);
+      return process_brk(t);
 
     case Arch::mmap: {
-      // process_mmap checks 'state' too, but we need to check it now to
-      // avoid reading 'args' prematurely. When state == SYSCALL_ENTRY,
-      // there could be a lot of code to execute before we reach the syscall.
-      if (SYSCALL_ENTRY == state) {
-        return;
-      }
       switch (Arch::mmap_semantics) {
         case Arch::StructArguments: {
           auto args = t->read_mem(
               remote_ptr<typename Arch::mmap_args>(trace_regs.arg1()));
-          return process_mmap(t, trace_frame, state, args.len, args.prot,
-                              args.flags, args.offset / page_size(), step);
+          return process_mmap(t, trace_frame, args.len, args.prot, args.flags,
+                              args.offset / page_size(), step);
         }
         case Arch::RegisterArguments:
-          return process_mmap(t, trace_frame, state, trace_regs.arg2(),
+          return process_mmap(t, trace_frame, trace_regs.arg2(),
                               trace_regs.arg3(), trace_regs.arg4(),
                               trace_regs.arg6() / page_size(), step);
       }
+      break;
     }
     case Arch::mmap2:
-      return process_mmap(t, trace_frame, state, trace_regs.arg2(),
-                          trace_regs.arg3(), trace_regs.arg4(),
-                          trace_regs.arg6(), step);
+      return process_mmap(t, trace_frame, trace_regs.arg2(), trace_regs.arg3(),
+                          trace_regs.arg4(), trace_regs.arg6(), step);
 
     case Arch::shmat:
-      return process_shmat(t, trace_frame, state, trace_regs.arg3(), step);
+      return process_shmat(t, trace_frame, trace_regs.arg3(), step);
 
     case Arch::shmdt:
-      return process_shmdt(t, trace_frame, state, trace_regs.arg1(), step);
+      return process_shmdt(t, trace_frame, trace_regs.arg1(), step);
 
-    case Arch::mremap:
-      if (state == SYSCALL_EXIT) {
-        // We must emulate mremap because the kernel's choice for the remap
-        // destination can vary (in particular, when we emulate exec it makes
-        // different decisions).
-        AutoRemoteSyscalls remote(t);
-        if (trace_regs.syscall_result() == trace_regs.arg1()) {
-          // Non-moving mremap. Don't pass MREMAP_FIXED or MREMAP_MAYMOVE
-          // since that triggers EINVAL when the new map overlaps the old map.
-          remote.infallible_syscall_ptr(syscall, trace_regs.arg1(),
-                                        trace_regs.arg2(), trace_regs.arg3(),
-                                        0);
-        } else {
-          // Force the mremap to use the destination address from recording.
-          // XXX could the new mapping overlap the old, with different start
-          // addresses? Hopefully the kernel doesn't do that to us!!!
-          remote.infallible_syscall_ptr(
-              syscall, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3(),
-              MREMAP_MAYMOVE | MREMAP_FIXED, trace_regs.syscall_result());
-        }
-        // Task::on_syscall_exit takes care of updating AddressSpace.
+    case Arch::mremap: {
+      // We must emulate mremap because the kernel's choice for the remap
+      // destination can vary (in particular, when we emulate exec it makes
+      // different decisions).
+      AutoRemoteSyscalls remote(t);
+      if (trace_regs.syscall_result() == trace_regs.arg1()) {
+        // Non-moving mremap. Don't pass MREMAP_FIXED or MREMAP_MAYMOVE
+        // since that triggers EINVAL when the new map overlaps the old map.
+        remote.infallible_syscall_ptr(sys, trace_regs.arg1(), trace_regs.arg2(),
+                                      trace_regs.arg3(), 0);
+      } else {
+        // Force the mremap to use the destination address from recording.
+        // XXX could the new mapping overlap the old, with different start
+        // addresses? Hopefully the kernel doesn't do that to us!!!
+        remote.infallible_syscall_ptr(
+            sys, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3(),
+            MREMAP_MAYMOVE | MREMAP_FIXED, trace_regs.syscall_result());
       }
+      // Task::on_syscall_exit takes care of updating AddressSpace.
       return;
+    }
 
     case Arch::madvise:
       switch ((int)t->regs().arg3()) {
@@ -1181,35 +1132,34 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
     case Arch::munmap:
     case Arch::mprotect:
     case Arch::arch_prctl:
-    case Arch::set_thread_area:
-      if (state == SYSCALL_EXIT) {
-        // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
-        Registers r = t->regs();
-        r.set_syscallno(t->regs().original_syscallno());
-        r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
-        t->set_regs(r);
-        if (syscall == Arch::mprotect) {
-          t->vm()->fixup_mprotect_growsdown_parameters(t);
-        }
-        __ptrace_cont(t, syscall);
-        __ptrace_cont(t, syscall);
-        ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
-        if (syscall == Arch::mprotect) {
-          Registers r2 = t->regs();
-          r2.set_arg1(r.arg1());
-          r2.set_arg2(r.arg2());
-          r2.set_arg3(r.arg3());
-          t->set_regs(r2);
-        }
+    case Arch::set_thread_area: {
+      // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
+      Registers r = t->regs();
+      r.set_syscallno(t->regs().original_syscallno());
+      r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+      t->set_regs(r);
+      if (sys == Arch::mprotect) {
+        t->vm()->fixup_mprotect_growsdown_parameters(t);
+      }
+      __ptrace_cont(t, sys);
+      __ptrace_cont(t, sys);
+      ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
+      if (sys == Arch::mprotect) {
+        Registers r2 = t->regs();
+        r2.set_arg1(r.arg1());
+        r2.set_arg2(r.arg2());
+        r2.set_arg3(r.arg3());
+        t->set_regs(r2);
       }
       return;
+    }
 
     case Arch::ipc:
       switch ((int)trace_regs.arg1_signed()) {
         case SHMAT:
-          return process_shmat(t, trace_frame, state, trace_regs.arg3(), step);
+          return process_shmat(t, trace_frame, trace_regs.arg3(), step);
         case SHMDT:
-          return process_shmdt(t, trace_frame, state, trace_regs.arg5(), step);
+          return process_shmdt(t, trace_frame, trace_regs.arg5(), step);
         default:
           break;
       }
@@ -1217,27 +1167,22 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
-      if (state == SYSCALL_EXIT) {
-        t->set_regs(trace_regs);
-        t->set_extra_regs(trace_frame.extra_regs());
-        step->action = TSTEP_RETIRE;
-      }
+      t->set_regs(trace_regs);
+      t->set_extra_regs(trace_frame.extra_regs());
+      step->action = TSTEP_RETIRE;
       return;
 
     case Arch::open: {
-      if (state == SYSCALL_EXIT) {
-        if ((int)trace_frame.regs().syscall_result_signed() >= 0) {
-          string pathname = t->read_c_str(remote_ptr<char>(t->regs().arg1()));
-          if (is_dev_tty(pathname.c_str())) {
-            // This will let rr echo output that was to /dev/tty to stderr.
-            // XXX the tracee's /dev/tty could refer to a tty other than
-            // the recording tty, in which case output should not be
-            // redirected. That's not too bad, replay will still work, just
-            // with some spurious echoes.
-            t->fd_table()->add_monitor(
-                (int)trace_frame.regs().syscall_result_signed(),
-                new StdioMonitor(STDERR_FILENO));
-          }
+      if (!trace_regs.syscall_failed()) {
+        string pathname = t->read_c_str(remote_ptr<char>(t->regs().arg1()));
+        if (is_dev_tty(pathname.c_str())) {
+          // This will let rr echo output that was to /dev/tty to stderr.
+          // XXX the tracee's /dev/tty could refer to a tty other than
+          // the recording tty, in which case output should not be
+          // redirected. That's not too bad, replay will still work, just
+          // with some spurious echoes.
+          t->fd_table()->add_monitor((int)trace_regs.syscall_result_signed(),
+                                     new StdioMonitor(STDERR_FILENO));
         }
       }
       break;
@@ -1245,41 +1190,29 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::write:
     case Arch::writev:
-      if (state == SYSCALL_EXIT) {
-        /* write*() can be desched'd, but don't use scratch,
-         * so we might have saved 0 bytes of scratch after a
-         * desched. */
-        maybe_noop_restore_syscallbuf_scratch(t);
-      }
+      /* write*() can be desched'd, but don't use scratch,
+       * so we might have saved 0 bytes of scratch after a
+       * desched. */
+      maybe_noop_restore_syscallbuf_scratch(t);
       return;
 
-    case Arch::process_vm_writev:
-      if (state == SYSCALL_EXIT) {
-        // Recorded data records may be for another process.
-        Task* dest = t->session().find_task(t->regs().arg1());
-        if (dest) {
-          uint32_t iov_cnt = t->regs().arg5();
-          for (uint32_t i = 0; i < iov_cnt; ++i) {
-            dest->set_data_from_trace();
-          }
+    case Arch::process_vm_writev: {
+      // Recorded data records may be for another process.
+      Task* dest = t->session().find_task(t->regs().arg1());
+      if (dest) {
+        uint32_t iov_cnt = t->regs().arg5();
+        for (uint32_t i = 0; i < iov_cnt; ++i) {
+          dest->set_data_from_trace();
         }
       }
       return;
+    }
 
     case SYS_rrcall_init_buffers:
-      return process_init_buffers(t, state, step);
+      return process_init_buffers(t, step);
 
     case SYS_rrcall_init_preload:
-      if (state == SYSCALL_EXIT) {
-        t->at_preload_init();
-      }
-      return;
-
-    case SYS_rrcall_notify_syscall_hook_exit:
-      if (SYSCALL_ENTRY == state) {
-        ASSERT(t, t->syscallbuf_hdr);
-        t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
-      }
+      t->at_preload_init();
       return;
 
     default:
