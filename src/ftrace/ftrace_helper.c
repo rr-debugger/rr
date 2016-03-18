@@ -211,7 +211,7 @@ static void write_final_output(void) {
                                                                   */
                                 0, /* little-endian */
                                 sizeof(long) };
-  static const uint32_t page_size = PAGE_SIZE;
+  const uint32_t page_size = PAGE_SIZE;
   uint32_t ftrace_count;
   static const uint32_t zero = 0;
   static const uint32_t cpus = 1;
