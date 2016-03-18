@@ -892,6 +892,7 @@ set(CHAOS_TESTS
 
 foreach(test ${CHAOS_TESTS})
   add_executable(${test} src/chaos-test/${test}.c)
+  target_link_libraries(${test} -lrt)
 endforeach(test)
 
 add_executable(ftrace_helper src/ftrace/ftrace_helper.c)
