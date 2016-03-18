@@ -540,46 +540,6 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   t->vm()->save_auxv(t);
 }
 
-/**
- * Return true if a FUTEX_LOCK_PI operation on |futex| done by |t|
- * will transition the futex into the contended state.  (This results
- * in the kernel atomically setting the FUTEX_WAITERS bit on the futex
- * value.)  The new value of the futex after the kernel updates it is
- * returned in |next_val|.
- */
-static bool is_now_contended_pi_futex(Task* t, remote_ptr<int> futex,
-                                      int* next_val) {
-  int val = t->read_mem(futex);
-  pid_t owner_tid = (val & FUTEX_TID_MASK);
-  bool now_contended =
-      (owner_tid != 0 && owner_tid != t->rec_tid && !(val & FUTEX_WAITERS));
-  if (now_contended) {
-    LOG(debug) << t->tid << ": futex " << futex << " is " << val
-               << ", so WAITERS bit will be set";
-    *next_val = (owner_tid & FUTEX_TID_MASK) | FUTEX_WAITERS;
-  }
-  return now_contended;
-}
-
-static void process_futex(Task* t, const TraceFrame& trace_frame) {
-  const Registers& regs = trace_frame.regs();
-  int op = (int)regs.arg2_signed() & FUTEX_CMD_MASK;
-  if (FUTEX_LOCK_PI == op) {
-    remote_ptr<int> futex = regs.arg1();
-    int next_val;
-    if (is_now_contended_pi_futex(t, futex, &next_val)) {
-      // During recording, we waited for the
-      // kernel to update the futex, but
-      // since we emulate SYS_futex in
-      // replay, we need to set it ourselves
-      // here.
-      // XXX this seems wrong. we're setting it while there is still tracee
-      // code to execute before we reach the syscall!
-      t->write_mem(futex, next_val);
-    }
-  }
-}
-
 static void process_brk(Task* t) {
   TraceReader::MappedData data;
   KernelMapping km = t->trace_reader().read_mapped_region(&data);
@@ -935,19 +895,10 @@ static void rep_prepare_run_to_syscall_arch(Task* t, ReplayTraceStep* step) {
   /* Don't let a negative incoming syscall number be treated as a real
    * system call that we assigned a negative number because it doesn't
    * exist in this architecture.
-   * All invalid/unsupported syscalls get the default emulation treatment.
    */
-  switch (sys < 0 ? INT32_MAX : sys) {
-    case Arch::futex:
-      return process_futex(t, t->replay_session().current_trace_frame());
-
-    case SYS_rrcall_notify_syscall_hook_exit:
-      ASSERT(t, t->syscallbuf_hdr);
-      t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
-      return;
-
-    default:
-      return;
+  if (is_rrcall_notify_syscall_hook_exit_syscall(sys, t->arch())) {
+    ASSERT(t, t->syscallbuf_hdr);
+    t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
   }
 }
 
