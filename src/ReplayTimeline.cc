@@ -90,7 +90,7 @@ bool ReplayTimeline::InternalMark::equal_states(ReplaySession& session) const {
   }
   Task* t = session.current_task();
   return equal_regs(regs, t->regs()) &&
-         return_addresses == t->return_addresses();
+         return_addresses == ReturnAddressList(t);
 }
 
 bool ReplayTimeline::ProtoMark::equal_states(ReplaySession& session) const {
@@ -99,7 +99,7 @@ bool ReplayTimeline::ProtoMark::equal_states(ReplaySession& session) const {
   }
   Task* t = session.current_task();
   return equal_regs(regs, t->regs()) &&
-         return_addresses == t->return_addresses();
+         return_addresses == ReturnAddressList(t);
 }
 
 ReplayTimeline::ProtoMark ReplayTimeline::proto_mark() const {

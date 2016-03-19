@@ -230,6 +230,7 @@ add_executable(rr
   src/ReplaySession.cc
   src/replay_syscall.cc
   src/ReplayTimeline.cc
+  src/ReturnAddressList.cc
   src/Scheduler.cc
   src/SeccompFilterRewriter.cc
   src/Session.cc

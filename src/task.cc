@@ -1382,48 +1382,6 @@ void Task::validate_regs(uint32_t flags) {
                                     rec_regs, BAIL_ON_MISMATCH);
 }
 
-template <typename Arch>
-static ReturnAddressList return_addresses_x86ish(Task* t) {
-  ReturnAddressList result;
-  // Immediately after a function call the return address is on the stack at
-  // SP. After BP is pushed, but before it's initialized for the new stack
-  // frame, the return address is on the stack at SP+wordsize. Just
-  // capture those words now. We could inspect the code for known prologs/
-  // epilogs but that misses cases such as calling into optimized code
-  // or PLT stubs (which start with 'jmp'). Since it doesn't matter if we
-  // capture addresses that aren't real return addresses, just capture those
-  // words unconditionally.
-  typename Arch::size_t frame[2];
-  int next_address = 0;
-  if (t->read_bytes_fallible(t->regs().sp(), sizeof(frame), frame) ==
-      sizeof(frame)) {
-    result.addresses[0] = frame[0];
-    result.addresses[1] = frame[1];
-    next_address = 2;
-  }
-
-  remote_ptr<void> bp = t->regs().bp();
-  for (int i = next_address; i < ReturnAddressList::COUNT; ++i) {
-    if (t->read_bytes_fallible(bp, sizeof(frame), frame) != sizeof(frame)) {
-      return result;
-    }
-    result.addresses[i] = frame[1];
-    bp = frame[0];
-  }
-  return result;
-}
-
-ReturnAddressList Task::return_addresses() {
-  switch (arch()) {
-    case x86:
-    case x86_64:
-      RR_ARCH_FUNCTION(return_addresses_x86ish, arch(), this);
-    default:
-      ASSERT(this, "Unknown architecture");
-      return ReturnAddressList();
-  }
-}
-
 static ssize_t dr_user_word_offset(size_t i) {
   assert(i < NUM_X86_DEBUG_REGS);
   return offsetof(struct user, u_debugreg[0]) + sizeof(void*) * i;

@@ -12,6 +12,7 @@
 #include "BreakpointCondition.h"
 #include "Registers.h"
 #include "ReplaySession.h"
+#include "ReturnAddressList.h"
 #include "TraceFrame.h"
 
 enum RunDirection { RUN_FORWARD, RUN_BACKWARD };
@@ -285,7 +286,7 @@ private:
    */
   struct ProtoMark {
     ProtoMark(const MarkKey& key, Task* t)
-        : key(key), regs(t->regs()), return_addresses(t->return_addresses()) {}
+        : key(key), regs(t->regs()), return_addresses(ReturnAddressList(t)) {}
 
     bool equal_states(ReplaySession& session) const;
 
@@ -310,7 +311,7 @@ private:
       Task* t = session.current_task();
       if (t) {
         regs = t->regs();
-        return_addresses = t->return_addresses();
+        return_addresses = ReturnAddressList(t);
         extra_regs = t->extra_regs();
       }
     }
