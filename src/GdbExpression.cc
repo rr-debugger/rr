@@ -3,7 +3,7 @@
 #include "GdbExpression.h"
 
 #include "GdbServer.h"
-#include "task.h"
+#include "Task.h"
 
 using namespace std;
 

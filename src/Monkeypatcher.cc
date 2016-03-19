@@ -10,7 +10,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
-#include "task.h"
+#include "Task.h"
 
 using namespace rr;
 using namespace std;

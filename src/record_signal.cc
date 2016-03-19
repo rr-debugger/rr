@@ -21,7 +21,7 @@
 #include "log.h"
 #include "PerfCounters.h"
 #include "RecordSession.h"
-#include "task.h"
+#include "Task.h"
 #include "TraceStream.h"
 #include "util.h"
 

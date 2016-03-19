@@ -10,7 +10,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 #include "Session.h"
-#include "task.h"
+#include "Task.h"
 #include "util.h"
 
 using namespace rr;

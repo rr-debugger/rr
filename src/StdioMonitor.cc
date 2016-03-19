@@ -6,7 +6,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 #include "Session.h"
-#include "task.h"
+#include "Task.h"
 
 Switchable StdioMonitor::will_write(Task* t) {
   if (Flags::get().mark_stdio && t->session().visible_execution()) {

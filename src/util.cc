@@ -29,7 +29,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 #include "seccomp-bpf.h"
-#include "task.h"
+#include "Task.h"
 #include "TraceStream.h"
 
 using namespace std;
@@ -58,7 +58,7 @@ bool probably_not_interactive(int fd) {
 
 int clone_flags_to_task_flags(int flags_arg) {
   int flags = CLONE_SHARE_NOTHING;
-  // See task.h for description of the flags.
+  // See Task.h for description of the flags.
   flags |= (CLONE_CHILD_CLEARTID & flags_arg) ? CLONE_CLEARTID : 0;
   flags |= (CLONE_SETTLS & flags_arg) ? CLONE_SET_TLS : 0;
   flags |= (CLONE_SIGHAND & flags_arg) ? CLONE_SHARE_SIGHANDLERS : 0;

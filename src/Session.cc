@@ -13,7 +13,7 @@
 #include "EmuFs.h"
 #include "kernel_metadata.h"
 #include "log.h"
-#include "task.h"
+#include "Task.h"
 #include "TaskGroup.h"
 #include "util.h"
 

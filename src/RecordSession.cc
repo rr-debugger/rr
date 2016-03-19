@@ -15,7 +15,7 @@
 #include "record_signal.h"
 #include "record_syscall.h"
 #include "seccomp-bpf.h"
-#include "task.h"
+#include "Task.h"
 
 // Undef si_addr_lsb since it's an alias for a field name that doesn't exist,
 // and we need to use the actual field name.

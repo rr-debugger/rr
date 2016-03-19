@@ -33,7 +33,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 #include "StdioMonitor.h"
-#include "task.h"
+#include "Task.h"
 #include "TraceStream.h"
 #include "util.h"
 

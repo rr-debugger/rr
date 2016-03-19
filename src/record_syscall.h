@@ -3,7 +3,7 @@
 #ifndef RR_PROCESS_SYSCALL_H_
 #define RR_PROCESS_SYSCALL_H_
 
-#include "task.h"
+#include "Task.h"
 
 /**
  * Prepare |t| to enter its current syscall event.  Return ALLOW_SWITCH if

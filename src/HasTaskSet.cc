@@ -3,7 +3,7 @@
 #include "HasTaskSet.h"
 
 #include "log.h"
-#include "task.h"
+#include "Task.h"
 
 void HasTaskSet::insert_task(Task* t) {
   LOG(debug) << "adding " << t->tid << " to task set " << this;

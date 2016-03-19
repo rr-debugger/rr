@@ -2,7 +2,7 @@
 
 #include "ReturnAddressList.h"
 
-#include "task.h"
+#include "Task.h"
 
 template <typename Arch>
 static void return_addresses_x86ish(ReturnAddressList* result, Task* t) {

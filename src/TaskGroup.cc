@@ -4,7 +4,7 @@
 
 #include "log.h"
 #include "Session.h"
-#include "task.h"
+#include "Task.h"
 
 TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
                      pid_t real_tgid, uint32_t serial)

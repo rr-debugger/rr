@@ -10,7 +10,7 @@
 
 #include "AddressSpace.h"
 #include "ScopedFd.h"
-#include "task.h"
+#include "Task.h"
 
 class ReplaySession;
 class Session;

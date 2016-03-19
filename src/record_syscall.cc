@@ -63,7 +63,7 @@
 #include "RecordSession.h"
 #include "Scheduler.h"
 #include "StdioMonitor.h"
-#include "task.h"
+#include "Task.h"
 #include "TraceStream.h"
 #include "util.h"
 

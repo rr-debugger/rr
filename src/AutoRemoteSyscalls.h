@@ -9,7 +9,7 @@
 
 #include "Registers.h"
 #include "ScopedFd.h"
-#include "task.h"
+#include "Task.h"
 
 class AutoRemoteSyscalls;
 class Task;
@@ -178,7 +178,7 @@ public:
 
   /**
    * A small helper to get at the Task's arch.
-   * Out-of-line to avoid including task.h here.
+   * Out-of-line to avoid including Task.h here.
    */
   SupportedArch arch() const;
 

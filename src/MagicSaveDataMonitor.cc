@@ -8,7 +8,7 @@
 
 #include "log.h"
 #include "Session.h"
-#include "task.h"
+#include "Task.h"
 #include "util.h"
 
 static void dump_path_data(Task* t, TraceFrame::Time global_time,

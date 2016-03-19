@@ -9,7 +9,7 @@
 #include "Scheduler.h"
 #include "SeccompFilterRewriter.h"
 #include "Session.h"
-#include "task.h"
+#include "Task.h"
 #include "TaskGroup.h"
 #include "TraceFrame.h"
 

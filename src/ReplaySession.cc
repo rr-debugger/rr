@@ -15,7 +15,7 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "replay_syscall.h"
-#include "task.h"
+#include "Task.h"
 #include "util.h"
 
 using namespace rr;

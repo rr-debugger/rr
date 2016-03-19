@@ -236,7 +236,7 @@ add_executable(rr
   src/SeccompFilterRewriter.cc
   src/Session.cc
   src/StdioMonitor.cc
-  src/task.cc
+  src/Task.cc
   src/TaskGroup.cc
   src/TraceFrame.cc
   src/TraceStream.cc
