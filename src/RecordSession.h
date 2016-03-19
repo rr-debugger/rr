@@ -10,6 +10,7 @@
 #include "SeccompFilterRewriter.h"
 #include "Session.h"
 #include "task.h"
+#include "TaskGroup.h"
 #include "TraceFrame.h"
 
 /** Encapsulates additional session state related to recording. */

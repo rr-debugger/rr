@@ -103,16 +103,7 @@ public:
                                   GdbRegister which);
 
 private:
-  GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
-      : dbg(std::move(dbg)),
-        debuggee_tguid(t->task_group()->tguid()),
-        last_continue_tuid(t->tuid()),
-        last_query_tuid(t->tuid()),
-        final_event(UINT32_MAX),
-        stop_reason(0),
-        stop_replaying_to_target(false),
-        interrupt_pending(false),
-        emergency_debug_session(&t->session()) {}
+  GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t);
 
   Session& current_session() {
     return timeline.is_running() ? timeline.current_session()

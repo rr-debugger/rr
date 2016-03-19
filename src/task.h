@@ -28,56 +28,10 @@ class ReplaySession;
 class ScopedFd;
 class Session;
 struct Sighandlers;
-class Task;
+class TaskGroup;
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
-
-/**
- * Tracks a group of tasks with an associated ID, set from the
- * original "thread group leader", the child of |fork()| which became
- * the ancestor of all other threads in the group.  Each constituent
- * task must own a reference to this.
- */
-class TaskGroup : public HasTaskSet {
-public:
-  TaskGroup(Session* session, TaskGroup* parent, pid_t tgid, pid_t real_tgid,
-            uint32_t serial);
-  ~TaskGroup();
-
-  typedef std::shared_ptr<TaskGroup> shr_ptr;
-
-  /** See |Task::destabilize_task_group()|. */
-  void destabilize();
-
-  const pid_t tgid;
-  const pid_t real_tgid;
-
-  int exit_code;
-
-  Session* session() const { return session_; }
-  void forget_session() { session_ = nullptr; }
-
-  TaskGroup* parent() { return parent_; }
-
-  TaskGroupUid tguid() const { return TaskGroupUid(tgid, serial); }
-
-  // We don't allow tasks to make themselves undumpable. If they try,
-  // record that here and lie about it if necessary.
-  bool dumpable;
-
-private:
-  TaskGroup(const TaskGroup&) = delete;
-  TaskGroup operator=(const TaskGroup&) = delete;
-
-  Session* session_;
-  /** Parent TaskGroup, or nullptr if it's not a tracee (rr or init). */
-  TaskGroup* parent_;
-
-  std::set<TaskGroup*> children;
-
-  uint32_t serial;
-};
 
 enum CloneFlags {
   /**
@@ -975,12 +929,12 @@ public:
   void clear_wait_status() { wait_status = 0; }
 
   /** Return the task group this belongs to. */
-  TaskGroup::shr_ptr task_group() { return tg; }
+  std::shared_ptr<TaskGroup> task_group() { return tg; }
 
   /** Return the id of this task's recorded thread group. */
-  pid_t tgid() const { return tg->tgid; }
+  pid_t tgid() const;
   /** Return id of real OS task group. */
-  pid_t real_tgid() const { return tg->real_tgid; }
+  pid_t real_tgid() const;
 
   TaskUid tuid() const { return TaskUid(rec_tid, serial); }
 

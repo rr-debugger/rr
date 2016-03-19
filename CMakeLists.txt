@@ -237,6 +237,7 @@ add_executable(rr
   src/Session.cc
   src/StdioMonitor.cc
   src/task.cc
+  src/TaskGroup.cc
   src/TraceFrame.cc
   src/TraceStream.cc
   src/util.cc

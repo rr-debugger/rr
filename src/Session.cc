@@ -14,6 +14,7 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "task.h"
+#include "TaskGroup.h"
 #include "util.h"
 
 using namespace rr;

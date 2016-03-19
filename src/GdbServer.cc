@@ -22,10 +22,22 @@
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "task.h"
+#include "TaskGroup.h"
 #include "util.h"
 
 using namespace rr;
 using namespace std;
+
+GdbServer::GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
+    : dbg(std::move(dbg)),
+      debuggee_tguid(t->task_group()->tguid()),
+      last_continue_tuid(t->tuid()),
+      last_query_tuid(t->tuid()),
+      final_event(UINT32_MAX),
+      stop_reason(0),
+      stop_replaying_to_target(false),
+      interrupt_pending(false),
+      emergency_debug_session(&t->session()) {}
 
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
