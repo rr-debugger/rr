@@ -24,16 +24,6 @@ using namespace std;
 
 /*static*/ const uint8_t AddressSpace::breakpoint_insn;
 
-void HasTaskSet::insert_task(Task* t) {
-  LOG(debug) << "adding " << t->tid << " to task set " << this;
-  tasks.insert(t);
-}
-
-void HasTaskSet::erase_task(Task* t) {
-  LOG(debug) << "removing " << t->tid << " from task group " << this;
-  tasks.erase(t);
-}
-
 /**
  * Advance *str to skip leading blank characters.
  */

@@ -211,6 +211,7 @@ add_executable(rr
   src/GdbExpression.cc
   src/GdbInitCommand.cc
   src/GdbServer.cc
+  src/HasTaskSet.cc
   src/HelpCommand.cc
   src/kernel_abi.cc
   src/kernel_metadata.cc

@@ -16,6 +16,7 @@
 
 #include "preload/preload_interface.h"
 
+#include "HasTaskSet.h"
 #include "kernel_abi.h"
 #include "MemoryRange.h"
 #include "Monkeypatcher.h"
@@ -26,23 +27,6 @@
 
 class Session;
 class Task;
-
-/**
- * Base class for classes that manage a set of Tasks.
- */
-class HasTaskSet {
-public:
-  typedef std::set<Task*> TaskSet;
-
-  const TaskSet& task_set() const { return tasks; }
-
-  void insert_task(Task* t);
-  void erase_task(Task* t);
-  bool has_task(Task* t) const { return tasks.find(t) != tasks.end(); }
-
-protected:
-  TaskSet tasks;
-};
 
 /**
  * Records information that the kernel knows about a mapping. This includes

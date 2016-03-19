@@ -6,8 +6,8 @@
 #include <unordered_map>
 #include <memory>
 
-#include "AddressSpace.h"
 #include "FileMonitor.h"
+#include "HasTaskSet.h"
 
 class TraceTaskEvent;
 
