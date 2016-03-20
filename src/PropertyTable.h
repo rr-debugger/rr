@@ -6,7 +6,8 @@
 #include <assert.h>
 
 #include <memory>
-#include <unordered_map>
+#include <utility>
+#include <vector>
 
 template <typename T, typename Object> class Property;
 
@@ -31,10 +32,11 @@ private:
 
   class PropertyBase {
   public:
+    virtual ~PropertyBase() {}
     virtual void destroy_property(void* v) const = 0;
   };
 
-  std::unordered_map<const PropertyBase*, void*> values;
+  std::vector<std::pair<const PropertyBase*, void*> > values;
 };
 
 /**
@@ -45,19 +47,18 @@ private:
 template <typename T, typename Object>
 class Property : protected PropertyTable::PropertyBase {
 public:
-  Property() {}
-
   T& create(Object& o) const {
     assert(!get(o));
     T* t = new T();
-    o.properties().values[this] = t;
+    o.properties().values.push_back(std::make_pair(
+        static_cast<const PropertyTable::PropertyBase*>(this), t));
     return *t;
   }
   T* get(Object& o) const {
-    auto& properties = o.properties();
-    auto e = properties.values.find(this);
-    if (e != properties.values.end()) {
-      return static_cast<T*>(e->second);
+    for (auto& p : o.properties().values) {
+      if (p.first == this) {
+        return static_cast<T*>(p.second);
+      }
     }
     return nullptr;
   }
@@ -69,12 +70,14 @@ public:
     return create(o);
   }
   std::unique_ptr<T> remove(Object& o) const {
-    auto& properties = o.properties();
-    auto e = properties.values.find(this);
+    auto& values = o.properties().values;
     std::unique_ptr<T> result;
-    if (e != properties.values.end()) {
-      result = std::unique_ptr<T>(static_cast<T*>(e->second));
-      properties.values.erase(e);
+    for (auto it = values.begin(); it != values.end(); ++it) {
+      if (it->first == this) {
+        result = std::unique_ptr<T>(static_cast<T*>(it->second));
+        values.erase(it);
+        break;
+      }
     }
     return result;
   }
