@@ -1163,9 +1163,6 @@ public:
   // If not NOT_STOPPED, then the task is logically stopped and this is the type
   // of stop.
   EmulatedStopType emulated_stop_type;
-  // If not 0, then a CLOCK_MONOTONIC time (in seconds) at which this
-  // task is expected to wake from a system call (if not interrupted earlier).
-  double sleeping_until;
 
   // Task for which we're emulating ptrace of this task, or null
   Task* emulated_ptracer;
