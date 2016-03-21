@@ -92,29 +92,6 @@ enum TicksRequest {
   // after that number of ticks
 };
 
-/** Different kinds of waits a task can do.
- */
-enum WaitType {
-  // Not waiting for anything
-  WAIT_TYPE_NONE,
-  // Waiting for any child process
-  WAIT_TYPE_ANY,
-  // Waiting for any child with the same process group ID
-  WAIT_TYPE_SAME_PGID,
-  // Waiting for any child with a specific process group ID
-  WAIT_TYPE_PGID,
-  // Waiting for a specific process ID
-  WAIT_TYPE_PID
-};
-
-/** Reasons why we simulate stopping of a task (see ptrace(2) man page).
- */
-enum EmulatedStopType {
-  NOT_STOPPED,
-  GROUP_STOP,          // stopped by a signal. This applies to non-ptracees too.
-  SIGNAL_DELIVERY_STOP // Stopped before delivering a signal. ptracees only.
-};
-
 /** Reasons why a SIGTRAP might have been delivered. Multiple reasons can
  * apply. Also, none can apply, e.g. if someone sent us a SIGTRAP via kill().
  */
