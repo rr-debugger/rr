@@ -5,12 +5,21 @@
 
 #include "Task.h"
 
+class TraceFrame;
+
 class ReplayTask : public Task {
 public:
   ReplayTask(ReplaySession& session, pid_t _tid, pid_t _rec_tid,
              uint32_t serial, SupportedArch a);
 
   ReplaySession& session() const;
+
+  /**
+   * Call this method when this task has just performed an |execve()|
+   * (so we're in the new address space), but before the system call has
+   * returned.
+   */
+  void post_exec(const std::string& replay_exe);
 
   enum {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu

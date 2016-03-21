@@ -327,12 +327,9 @@ public:
    * Call this method when this task has just performed an |execve()|
    * (so we're in the new address space), but before the system call has
    * returned.
-   * During replay replay_regs is non-null and contains the register values
-   * recorded immediately after the exec.
+   * |arch| is the architecture of the new address space.
    */
-  virtual void post_exec(const Registers* replay_regs = nullptr,
-                         const ExtraRegisters* replay_extra_regs = nullptr,
-                         const std::string* replay_exe = nullptr);
+  void post_exec(SupportedArch arch, const std::string& exe_file);
 
   /**
    * Call this method when this task has exited a successful execve() syscall.

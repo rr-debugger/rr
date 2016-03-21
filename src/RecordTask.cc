@@ -281,8 +281,38 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   return t;
 }
 
+static string exe_path(RecordTask* t) {
+  char proc_exe[PATH_MAX];
+  snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
+  char exe[PATH_MAX];
+  ssize_t ret = readlink(proc_exe, exe, sizeof(exe) - 1);
+  ASSERT(t, ret >= 0);
+  exe[ret] = 0;
+  return exe;
+}
+
+static SupportedArch determine_arch(RecordTask* t, const string& file_name) {
+  ASSERT(t, file_name.size() > 0);
+  switch (read_elf_class(file_name)) {
+    case ELFCLASS32:
+      return x86;
+    case ELFCLASS64:
+      ASSERT(t, NativeArch::arch() == x86_64) << "64-bit tracees not supported";
+      return x86_64;
+    case NOT_ELF:
+      // Probably a script. Optimistically assume the same architecture as
+      // the rr binary.
+      return NativeArch::arch();
+    default:
+      ASSERT(t, false) << "Unknown ELF class";
+      return x86;
+  }
+}
+
 void RecordTask::post_exec() {
-  Task::post_exec(nullptr, nullptr, nullptr);
+  string exe_file = exe_path(this);
+  Task::post_exec(determine_arch(this, exe_file), exe_file);
+
   // Clear robust_list state to match kernel state. If this task is cloned
   // soon after exec, we must not do a bogus set_robust_list syscall for
   // the clone.

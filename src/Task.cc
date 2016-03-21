@@ -510,37 +510,7 @@ static string prname_from_exe_image(const string& e) {
   return e.substr(last_slash == e.npos ? 0 : last_slash + 1);
 }
 
-static SupportedArch determine_arch(Task* t, const string& file_name) {
-  ASSERT(t, file_name.size() > 0);
-  switch (read_elf_class(file_name)) {
-    case ELFCLASS32:
-      return x86;
-    case ELFCLASS64:
-      ASSERT(t, NativeArch::arch() == x86_64) << "64-bit tracees not supported";
-      return x86_64;
-    case NOT_ELF:
-      // Probably a script. Optimistically assume the same architecture as
-      // the rr binary.
-      return NativeArch::arch();
-    default:
-      ASSERT(t, false) << "Unknown ELF class";
-      return x86;
-  }
-}
-
-static string exe_path(Task* t) {
-  char proc_exe[PATH_MAX];
-  snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
-  char exe[PATH_MAX];
-  ssize_t ret = readlink(proc_exe, exe, sizeof(exe) - 1);
-  ASSERT(t, ret >= 0);
-  exe[ret] = 0;
-  return exe;
-}
-
-void Task::post_exec(const Registers* replay_regs,
-                     const ExtraRegisters* replay_extra_regs,
-                     const string* replay_exe) {
+void Task::post_exec(SupportedArch a, const string& exe_file) {
   /* We just saw a successful exec(), so from now on we know
    * that the address space layout for the replay tasks will
    * (should!) be the same as for the recorded tasks.  So we can
@@ -550,9 +520,8 @@ void Task::post_exec(const Registers* replay_regs,
   as->erase_task(this);
   fds->erase_task(this);
 
-  string exe_file = replay_exe ? *replay_exe : exe_path(this);
-  registers.set_arch(determine_arch(this, exe_file));
-  extra_registers.set_arch(registers.arch());
+  registers.set_arch(a);
+  extra_registers.set_arch(a);
   // Read registers now that the architecture is known.
   struct user_regs_struct ptrace_regs;
   ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
@@ -564,7 +533,7 @@ void Task::post_exec(const Registers* replay_regs,
   registers.set_original_syscallno(syscall_number_for_execve(arch()));
   set_regs(registers);
 
-  if (!replay_regs) {
+  if (session().is_recording()) {
     ev().set_arch(arch());
     ev().Syscall().number = registers.original_syscallno();
   }
@@ -578,16 +547,6 @@ void Task::post_exec(const Registers* replay_regs,
   // It's barely-documented, but Linux unshares the fd table on exec
   fds = fds->clone(this);
   prname = prname_from_exe_image(as->exe_image());
-
-  if (replay_regs) {
-    // Delay setting the replay_regs until here so the original registers
-    // are set while we populate AddressSpace. We need that for the kernel
-    // to identify the original stack region correctly.
-    registers = *replay_regs;
-    extra_registers = *replay_extra_regs;
-    ASSERT(this, !extra_registers.empty());
-    set_regs(registers);
-  }
 }
 
 void Task::post_exec_syscall(TraceTaskEvent& event) {

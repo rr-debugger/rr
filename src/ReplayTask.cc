@@ -16,6 +16,19 @@ ReplaySession& ReplayTask::session() const {
   return *Task::session().as_replay();
 }
 
+void ReplayTask::post_exec(const string& replay_exe) {
+  Task::post_exec(current_trace_frame().regs().arch(), replay_exe);
+
+  // Delay setting the replay_regs until here so the original registers
+  // are set while we populate AddressSpace. We need that for the kernel
+  // to identify the original stack region correctly.
+  registers = current_trace_frame().regs();
+  extra_registers = current_trace_frame().extra_regs();
+  ASSERT(this, !extra_registers.empty());
+  set_regs(registers);
+  set_extra_regs(extra_registers);
+}
+
 void ReplayTask::validate_regs(uint32_t flags) {
   /* don't validate anything before execve is done as the actual
    * process did not start prior to this point */

@@ -476,7 +476,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   const string& exe_name = datas[exe_km].file_name.empty()
                                ? kms[exe_km].fsname()
                                : datas[exe_km].file_name;
-  t->post_exec(&trace_frame.regs(), &trace_frame.extra_regs(), &exe_name);
+  t->post_exec(exe_name);
   t->post_exec_syscall(tte);
 
   {
