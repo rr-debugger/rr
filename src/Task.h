@@ -1142,10 +1142,6 @@ public:
   /* exit(), or exit_group() with one task, has been called, so
    * the exit can be treated as stable. */
   bool stable_exit;
-  /* Tasks with in_round_robin_queue set are in the session's
-   * in_round_robin_queue instead of its task_priority_set.
-   */
-  bool in_round_robin_queue;
   // The set of signals that were blocked during a sigsuspend. Only present
   // during the first EV_SIGNAL during an interrupted sigsuspend.
   std::unique_ptr<sig_set_t> sigsuspend_blocked_sigs;

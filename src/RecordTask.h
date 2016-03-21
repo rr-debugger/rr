@@ -13,7 +13,8 @@ public:
              SupportedArch a)
       : Task(session, _tid, _rec_tid, serial, a),
         time_at_start_of_last_timeslice(0),
-        priority(0) {}
+        priority(0),
+        in_round_robin_queue(false) {}
 
   virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                       remote_ptr<int> cleartid_addr, pid_t new_tid,
@@ -37,6 +38,10 @@ public:
      deliberately simple and unfair; a task never runs as long as there's
      another runnable task with a lower nice value. */
   int priority;
+  /* Tasks with in_round_robin_queue set are in the session's
+   * in_round_robin_queue instead of its task_priority_set.
+   */
+  bool in_round_robin_queue;
 };
 
 #endif /* RR_RECORD_TASK_H_ */

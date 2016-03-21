@@ -185,7 +185,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            SupportedArch a)
     : unstable(false),
       stable_exit(false),
-      in_round_robin_queue(false),
       emulated_stop_type(NOT_STOPPED),
       emulated_ptracer(nullptr),
       emulated_ptrace_stop_code(0),
