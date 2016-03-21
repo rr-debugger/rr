@@ -148,7 +148,7 @@ private:
   Sighandlers operator=(const Sighandlers&);
 };
 
-RecordTask::RecordTask(Session& session, pid_t _tid, pid_t _rec_tid,
+RecordTask::RecordTask(RecordSession& session, pid_t _tid, pid_t _rec_tid,
                        uint32_t serial, SupportedArch a)
     : Task(session, _tid, _rec_tid, serial, a),
       time_at_start_of_last_timeslice(0),

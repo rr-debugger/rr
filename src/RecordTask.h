@@ -34,8 +34,8 @@ enum EmulatedStopType {
 
 class RecordTask : public Task {
 public:
-  RecordTask(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
-             SupportedArch a);
+  RecordTask(RecordSession& session, pid_t _tid, pid_t _rec_tid,
+             uint32_t serial, SupportedArch a);
   virtual ~RecordTask();
 
   virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,

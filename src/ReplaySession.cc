@@ -15,7 +15,7 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "replay_syscall.h"
-#include "Task.h"
+#include "ReplayTask.h"
 #include "util.h"
 
 using namespace rr;
@@ -141,6 +141,11 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
   session->finish_initializing();
 
   return session;
+}
+
+Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
+                              SupportedArch a) {
+  return new ReplayTask(*this, tid, rec_tid, serial, a);
 }
 
 void ReplaySession::gc_emufs() { emu_fs->gc(*this); }

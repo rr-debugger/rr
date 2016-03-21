@@ -231,6 +231,7 @@ add_executable(rr
   src/ReplayCommand.cc
   src/ReplaySession.cc
   src/replay_syscall.cc
+  src/ReplayTask.cc
   src/ReplayTimeline.cc
   src/ReturnAddressList.cc
   src/Scheduler.cc
