@@ -158,12 +158,6 @@ public:
    */
   Ticks tick_count() { return ticks; }
 
-  /**
-   * Return true if this exited because of a SYS_exit/exit_group
-   * call.
-   */
-  bool exited() const { return WIFEXITED(wait_status); }
-
   /** Return the event at the top of this's stack. */
   Event& ev() { return pending_events.back(); }
   const Event& ev() const { return pending_events.back(); }
