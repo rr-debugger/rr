@@ -795,11 +795,6 @@ TrapReasons Task::compute_trap_reasons() {
   return reasons;
 }
 
-remote_ptr<void> Task::watchpoint_addr(size_t i) {
-  assert(i < NUM_X86_WATCHPOINTS);
-  return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(i), nullptr);
-}
-
 void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
                          size_t num_bytes) {
   // XXX this could be more efficient

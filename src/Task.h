@@ -402,15 +402,6 @@ public:
   TrapReasons compute_trap_reasons();
 
   /**
-   * Return the address of the watchpoint programmed at slot
-   * |i|.
-   */
-  remote_ptr<void> watchpoint_addr(size_t i);
-
-  /** Return the current $sp of this. */
-  remote_ptr<void> sp() { return regs().sp(); }
-
-  /**
    * Read |val| from |child_addr|.
    * If the data can't all be read, then if |ok| is non-null
    * sets *ok to false, otherwise asserts.
