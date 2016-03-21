@@ -591,7 +591,7 @@ static remote_ptr<void> finish_anonymous_mmap(
     TraceReader::MappedData data;
     recorded_km = remote.task()->trace_reader().read_mapped_region(&data);
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
-    auto emufile = remote.task()->replay_session().emufs().get_or_create(
+    auto emufile = t->session().emufs().get_or_create(
         recorded_km, length);
     struct stat real_file;
     finish_direct_mmap(t, remote, rec_addr, length, prot,
@@ -688,7 +688,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 
   // Ensure there's a virtual file for the file that was mapped
   // during recording.
-  auto emufile = t->replay_session().emufs().get_or_create(km, file_size);
+  auto emufile = t->session().emufs().get_or_create(km, file_size);
   // Re-use the direct_map() machinery to map the virtual file.
   //
   // NB: the tracee will map the procfs link to our fd; there's
@@ -900,7 +900,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
 template <typename Arch>
 static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
   int sys = t->current_trace_frame().event().Syscall().number;
-  const TraceFrame& trace_frame = t->replay_session().current_trace_frame();
+  const TraceFrame& trace_frame = t->session().current_trace_frame();
   const Registers& trace_regs = trace_frame.regs();
 
   LOG(debug) << "processing " << t->syscall_name(sys) << " (exit)";

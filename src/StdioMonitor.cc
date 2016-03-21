@@ -6,7 +6,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 #include "Session.h"
-#include "Task.h"
+#include "ReplayTask.h"
 
 Switchable StdioMonitor::will_write(Task* t) {
   if (Flags::get().mark_stdio && t->session().visible_execution()) {
@@ -22,8 +22,11 @@ Switchable StdioMonitor::will_write(Task* t) {
 }
 
 void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges) {
-  if (t->session().is_replaying() && t->replay_session().redirect_stdio() &&
-      t->session().visible_execution()) {
+  if (!t->session().is_replaying()) {
+    return;
+  }
+  auto rt = static_cast<ReplayTask*>(t);
+  if (rt->session().redirect_stdio() && rt->session().visible_execution()) {
     for (auto& r : ranges) {
       auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
       if (bytes.size() !=

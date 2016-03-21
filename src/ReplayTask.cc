@@ -41,7 +41,7 @@ void ReplayTask::validate_regs(uint32_t flags) {
 }
 
 const TraceFrame& ReplayTask::current_trace_frame() {
-  return replay_session().current_trace_frame();
+  return session().current_trace_frame();
 }
 
 ssize_t ReplayTask::set_data_from_trace() {

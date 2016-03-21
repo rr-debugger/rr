@@ -185,15 +185,19 @@ static WatchType watchpoint_type(GdbRequestType req) {
 }
 
 static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
+  if (!t->session().is_replaying()) {
+    return;
+  }
+  auto rt = static_cast<ReplayTask*>(t);
   if (trace_instructions_up_to_event(
-          t->replay_session().current_trace_frame().time())) {
+          rt->session().current_trace_frame().time())) {
     fputs("Stepping: ", stderr);
     t->regs().print_register_file_compact(stderr);
     fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
     *req = GdbRequest(DREQ_CONT);
     req->suppress_debugger_stop = true;
     req->cont().actions.push_back(GdbContAction(
-        ACTION_STEP, get_threadid(t->replay_session(), t->tuid())));
+        ACTION_STEP, get_threadid(t->session(), t->tuid())));
   }
 }
 

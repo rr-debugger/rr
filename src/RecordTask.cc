@@ -240,7 +240,7 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
 
-  int cores = t->record_session().scheduler().pretend_num_cores();
+  int cores = t->session().scheduler().pretend_num_cores();
   t->write_mem(params.pretend_num_cores.rptr(), cores);
   t->record_local(params.pretend_num_cores.rptr(), &cores);
 }

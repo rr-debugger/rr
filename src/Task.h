@@ -459,8 +459,6 @@ public:
 
   /** Return the session this is part of. */
   Session& session() const { return *session_; }
-  RecordSession& record_session() const;
-  ReplaySession& replay_session() const;
 
   /** Set the tracee's registers to |regs|. */
   void set_regs(const Registers& regs);

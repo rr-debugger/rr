@@ -200,7 +200,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
   t->record_event(Event(ev, NO_EXEC_INFO, t->arch()));
 
-  t->record_session().trace_writer().write_task_event(TraceTaskEvent(t->tid));
+  t->session().trace_writer().write_task_event(TraceTaskEvent(t->tid));
 
   delete t;
   return true;

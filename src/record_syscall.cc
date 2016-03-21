@@ -1690,7 +1690,7 @@ static void process_exit(RecordTask* t) {
 
 static void prepare_mmap_register_params(RecordTask* t) {
   Registers r = t->regs();
-  if (t->record_session().enable_chaos() &&
+  if (t->session().enable_chaos() &&
       !(r.arg4_signed() & (MAP_FIXED | MAP_32BIT)) && r.arg1() == 0) {
     // No address hint was provided. Randomize the allocation address.
     size_t len = r.arg2();
@@ -2265,7 +2265,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         if (target) {
           LOG(debug) << "Setting nice value for tid " << t->tid << " to "
                      << t->regs().arg3();
-          target->record_session().scheduler().update_task_priority(
+          target->session().scheduler().update_task_priority(
               target, (int)t->regs().arg3_signed());
         }
       }
@@ -2504,7 +2504,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
 
     case Arch::sched_yield:
-      t->record_session().scheduler().schedule_one_round_robin(t);
+      t->session().scheduler().schedule_one_round_robin(t);
       return ALLOW_SWITCH;
 
     case Arch::rt_sigpending:
@@ -2815,7 +2815,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
   t->post_exec_syscall(*syscall_state.exec_saved_event);
 
-  t->record_session().trace_writer().write_task_event(
+  t->session().trace_writer().write_task_event(
       *syscall_state.exec_saved_event);
 
   KernelMapping vvar;
@@ -3036,7 +3036,7 @@ static void process_fork(RecordTask* t, TaskSyscallState& syscall_state) {
   // directly. Instead the new task will have been stashed in syscall_state.
   RecordTask* new_task = syscall_state.new_task;
   ASSERT(t, new_task) << "new_task not found";
-  t->record_session().trace_writer().write_task_event(
+  t->session().trace_writer().write_task_event(
       TraceTaskEvent(new_task->tid, t->tid));
 
   init_scratch_memory(new_task);
@@ -3108,7 +3108,7 @@ static void process_clone(RecordTask* t, TaskSyscallState& syscall_state) {
 
   new_task->pop_syscall();
 
-  t->record_session().trace_writer().write_task_event(
+  t->session().trace_writer().write_task_event(
       TraceTaskEvent(new_task->tid, t->tid, flags));
 
   init_scratch_memory(new_task);

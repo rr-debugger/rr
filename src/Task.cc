@@ -279,12 +279,9 @@ void Task::set_siginfo(const siginfo_t& si) {
   ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
 }
 
-TraceReader& Task::trace_reader() { return replay_session().trace_reader(); }
+TraceReader& Task::trace_reader() { return session().as_replay()->trace_reader(); }
 
-TraceWriter& Task::trace_writer() { return record_session().trace_writer(); }
-
-RecordSession& Task::record_session() const { return *session().as_record(); }
-ReplaySession& Task::replay_session() const { return *session().as_replay(); }
+TraceWriter& Task::trace_writer() { return session().as_record()->trace_writer(); }
 
 template <typename Arch>
 void Task::init_buffers_arch(remote_ptr<void> map_hint) {
@@ -1172,7 +1169,9 @@ void Task::wait(double interrupt_after_elapsed) {
       is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(status))) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
     // Force this timeslice to end
-    record_session().scheduler().expire_timeslice();
+    if (session().is_recording()) {
+      session().as_record()->scheduler().expire_timeslice();
+    }
     status = (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
     siginfo_t si;
     memset(&si, 0, sizeof(si));
@@ -2128,10 +2127,10 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
 
 const TraceStream* Task::trace_stream() const {
   if (session().as_record()) {
-    return &record_session().trace_writer();
+    return &session().as_record()->trace_writer();
   }
   if (session().as_replay()) {
-    return &replay_session().trace_reader();
+    return &session().as_replay()->trace_reader();
   }
   return nullptr;
 }
