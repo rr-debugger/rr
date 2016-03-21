@@ -28,7 +28,6 @@ class RecordTask;
 class ReplaySession;
 class ScopedFd;
 class Session;
-struct Sighandlers;
 class TaskGroup;
 
 struct syscallbuf_hdr;
@@ -452,25 +451,6 @@ public:
    */
   bool is_ptrace_seccomp_event() const;
 
-  /** Return true iff |sig| is blocked for this. */
-  bool is_sig_blocked(int sig) const;
-
-  /** Set |sig| to be treated as blocked. */
-  void set_sig_blocked(int sig);
-
-  /**
-   * Return true iff |sig| is SIG_IGN, or it's SIG_DFL and the
-   * default disposition is "ignore".
-   */
-  bool is_sig_ignored(int sig) const;
-
-  /**
-   * Return true if the current state of this looks like the
-   * interrupted syscall at the top of our event stack, if there
-   * is one.
-   */
-  bool is_syscall_restart();
-
   /** Dump all pending events to the INFO log. */
   void log_pending_events() const;
 
@@ -514,9 +494,19 @@ public:
    * During replay replay_regs is non-null and contains the register values
    * recorded immediately after the exec.
    */
-  void post_exec(const Registers* replay_regs = nullptr,
-                 const ExtraRegisters* replay_extra_regs = nullptr,
-                 const std::string* replay_exe = nullptr);
+  virtual void post_exec(const Registers* replay_regs = nullptr,
+                         const ExtraRegisters* replay_extra_regs = nullptr,
+                         const std::string* replay_exe = nullptr);
+
+  /**
+   * Call this when SYS_sigaction is finishing with |regs|.
+   */
+  virtual void update_sigaction(const Registers&) {}
+  /**
+   * Call this when the tracee is about to complete a
+   * SYS_rt_sigprocmask syscall with |regs|.
+   */
+  virtual void update_sigmask(const Registers&) {}
 
   /**
    * Call this method when this task has exited a successful execve() syscall.
@@ -771,38 +761,6 @@ public:
   remote_ptr<int> tid_addr() { return tid_futex; }
 
   /**
-   * Call this after |sig| is delivered to this task.  Emulate
-   * sighandler updates induced by the signal delivery.
-   */
-  void signal_delivered(int sig);
-
-  /** Return true if this died because of a signal. */
-  bool signaled() const { return WIFSIGNALED(wait_status); }
-
-  /**
-   * Return true if the disposition of |sig| in |table| isn't
-   * SIG_IGN or SIG_DFL, that is, if a user sighandler will be
-   * invoked when |sig| is received.
-   */
-  bool signal_has_user_handler(int sig) const;
-  /**
-   * If signal_has_user_handler(sig) is true, return the address of the
-   * user handler, otherwise return null.
-   */
-  remote_code_ptr get_signal_user_handler(int sig) const;
-  /**
-   * Return true if the signal handler for |sig| takes a siginfo_t*
-   * parameter.
-   */
-  bool signal_handler_takes_siginfo(int sig) const;
-
-  /**
-   * Return |sig|'s current sigaction. Returned as raw bytes since the
-   * data is architecture-dependent.
-   */
-  const std::vector<uint8_t>& signal_action(int sig) const;
-
-  /**
    * Stashed-signal API: if a signal becomes pending at an
    * awkward time, but could be handled "soon", call
    * |stash_sig()| to stash the current pending-signal state.
@@ -901,17 +859,6 @@ public:
    * |child_addr|.
    */
   void update_prname(remote_ptr<void> child_addr);
-
-  /**
-   * Call this when SYS_sigaction is finishing with |regs|.
-   */
-  void update_sigaction(const Registers& regs);
-
-  /**
-   * Call this when the tracee is about to complete a
-   * SYS_rt_sigprocmask syscall with |regs|.
-   */
-  void update_sigmask(const Registers& regs);
 
   /**
    * Call this before recording events or data.  Records
@@ -1087,12 +1034,6 @@ public:
   /* exit(), or exit_group() with one task, has been called, so
    * the exit can be treated as stable. */
   bool stable_exit;
-  // The set of signals that were blocked during a sigsuspend. Only present
-  // during the first EV_SIGNAL during an interrupted sigsuspend.
-  std::unique_ptr<sig_set_t> sigsuspend_blocked_sigs;
-  // If not NOT_STOPPED, then the task is logically stopped and this is the type
-  // of stop.
-  EmulatedStopType emulated_stop_type;
 
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
@@ -1210,7 +1151,6 @@ public:
     remote_ptr<void> scratch_ptr;
     ssize_t scratch_size;
     int wait_status;
-    sig_set_t blocked_sigs;
     std::deque<Event> pending_events;
     Ticks ticks;
     remote_ptr<int> tid_futex;
@@ -1237,9 +1177,6 @@ protected:
 private:
   template <typename Arch>
   void on_syscall_exit_arch(int syscallno, const Registers& regs);
-
-  /** Helper function for update_sigaction. */
-  template <typename Arch> void update_sigaction_arch(const Registers& regs);
 
   /** Helper function for init_buffers. */
   template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
@@ -1375,8 +1312,6 @@ private:
   AddressSpace::shr_ptr as;
   // The file descriptor table of this task.
   FdTable::shr_ptr fds;
-  // The set of signals that are currently blocked.
-  sig_set_t blocked_sigs;
   // The current stack of events being processed.  (We use a
   // deque instead of a stack because we need to iterate the
   // events.)
@@ -1408,16 +1343,6 @@ private:
   size_t robust_futex_list_len;
   // The session we're part of.
   Session* session_;
-  // Points to the signal-hander table of this task.  If this
-  // task is a non-fork clone child, then the table will be
-  // shared with all its "thread" siblings.  Any updates made to
-  // that shared table are immediately visible to all sibling
-  // threads.
-  //
-  // fork children always get their own copies of the table.
-  // And if this task exec()s, the table is copied and stripped
-  // of user sighandlers (see below). */
-  std::shared_ptr<Sighandlers> sighandlers;
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
   std::deque<siginfo_t> stashed_signals;

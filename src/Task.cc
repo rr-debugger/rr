@@ -49,143 +49,10 @@ static const unsigned int NUM_X86_WATCHPOINTS = 4;
 using namespace rr;
 using namespace std;
 
-/**
- * Stores the table of signal dispositions and metadata for an
- * arbitrary set of tasks.  Each of those tasks must own one one of
- * the |refcount|s while they still refer to this.
- */
-struct Sighandler {
-  Sighandler() : resethand(false) {}
-
-  template <typename Arch>
-  void init_arch(const typename Arch::kernel_sigaction& ksa) {
-    k_sa_handler = ksa.k_sa_handler;
-    sa.resize(sizeof(ksa));
-    memcpy(sa.data(), &ksa, sizeof(ksa));
-    resethand = (ksa.sa_flags & SA_RESETHAND) != 0;
-    takes_siginfo = (ksa.sa_flags & SA_SIGINFO) != 0;
-  }
-
-  template <typename Arch> void reset_arch() {
-    typename Arch::kernel_sigaction ksa;
-    memset(&ksa, 0, sizeof(ksa));
-    assert(uintptr_t(SIG_DFL) == 0);
-    init_arch<Arch>(ksa);
-  }
-
-  bool ignored(int sig) const {
-    if (sig == SIGSTOP || sig == SIGKILL) {
-      // These can never be ignored
-      return false;
-    }
-    return (uintptr_t)SIG_IGN == k_sa_handler.as_int() ||
-           ((uintptr_t)SIG_DFL == k_sa_handler.as_int() &&
-            IGNORE == default_action(sig));
-  }
-  bool is_default() const {
-    return (uintptr_t)SIG_DFL == k_sa_handler.as_int() && !resethand;
-  }
-  bool is_user_handler() const {
-    assert(1 == uintptr_t(SIG_IGN));
-    return k_sa_handler.as_int() & ~(uintptr_t)SIG_IGN;
-  }
-  remote_code_ptr get_user_handler() const {
-    return is_user_handler() ? remote_code_ptr(k_sa_handler.as_int())
-                             : remote_code_ptr();
-  }
-
-  remote_ptr<void> k_sa_handler;
-  // Saved kernel_sigaction; used to restore handler
-  vector<uint8_t> sa;
-  bool resethand;
-  bool takes_siginfo;
-};
-
-static void reset_handler(Sighandler* handler, SupportedArch arch) {
-  RR_ARCH_FUNCTION(handler->reset_arch, arch);
-}
-
-struct Sighandlers {
-  typedef shared_ptr<Sighandlers> shr_ptr;
-
-  shr_ptr clone() const {
-    shr_ptr s(new Sighandlers());
-    // NB: depends on the fact that Sighandler is for all
-    // intents and purposes a POD type, though not
-    // technically.
-    for (size_t i = 0; i < array_length(handlers); ++i) {
-      s->handlers[i] = handlers[i];
-    }
-    return s;
-  }
-
-  Sighandler& get(int sig) {
-    assert_valid(sig);
-    return handlers[sig];
-  }
-  const Sighandler& get(int sig) const {
-    assert_valid(sig);
-    return handlers[sig];
-  }
-
-  void init_from_current_process() {
-    for (size_t i = 0; i < array_length(handlers); ++i) {
-      Sighandler& h = handlers[i];
-
-      NativeArch::kernel_sigaction sa;
-      if (::syscall(SYS_rt_sigaction, i, nullptr, &sa, sizeof(sigset_t))) {
-        /* EINVAL means we're querying an
-         * unused signal number. */
-        assert(EINVAL == errno);
-        assert(h.is_default());
-        continue;
-      }
-
-      h.init_arch<NativeArch>(sa);
-    }
-  }
-
-  /**
-   * For each signal in |table| such that is_user_handler() is
-   * true, reset the disposition of that signal to SIG_DFL, and
-   * clear the resethand flag if it's set.  SIG_IGN signals are
-   * not modified.
-   *
-   * (After an exec() call copies the original sighandler table,
-   * this is the operation required by POSIX to initialize that
-   * table copy.)
-   */
-  void reset_user_handlers(SupportedArch arch) {
-    for (int i = 0; i < ssize_t(array_length(handlers)); ++i) {
-      Sighandler& h = handlers[i];
-      // If the handler was a user handler, reset to
-      // default.  If it was SIG_IGN or SIG_DFL,
-      // leave it alone.
-      if (h.is_user_handler()) {
-        reset_handler(&h, arch);
-      }
-    }
-  }
-
-  void assert_valid(int sig) const {
-    assert(0 < sig && sig < ssize_t(array_length(handlers)));
-  }
-
-  static shr_ptr create() { return shr_ptr(new Sighandlers()); }
-
-  Sighandler handlers[_NSIG];
-
-private:
-  Sighandlers() {}
-  Sighandlers(const Sighandlers&);
-  Sighandlers operator=(const Sighandlers&);
-};
-
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            SupportedArch a)
     : unstable(false),
       stable_exit(false),
-      emulated_stop_type(NOT_STOPPED),
       scratch_ptr(),
       scratch_size(),
       flushed_syscallbuf(false),
@@ -202,7 +69,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       num_syscallbuf_bytes(),
       stopping_breakpoint_table_entry_size(0),
       serial(serial),
-      blocked_sigs(),
       prname("???"),
       ticks(0),
       registers(a),
@@ -530,82 +396,6 @@ bool Task::is_ptrace_seccomp_event() const {
           PTRACE_EVENT_SECCOMP == event);
 }
 
-bool Task::is_sig_blocked(int sig) const {
-  int sig_bit = sig - 1;
-  if (sigsuspend_blocked_sigs) {
-    return (*sigsuspend_blocked_sigs >> sig_bit) & 1;
-  }
-  return (blocked_sigs >> sig_bit) & 1;
-}
-
-void Task::set_sig_blocked(int sig) {
-  int sig_bit = sig - 1;
-  blocked_sigs |= (sig_set_t)1 << sig_bit;
-}
-
-bool Task::is_sig_ignored(int sig) const {
-  return sighandlers->get(sig).ignored(sig);
-}
-
-bool Task::is_syscall_restart() {
-  int syscallno = regs().original_syscallno();
-  bool is_restart = false;
-
-  LOG(debug) << "  is syscall interruption of recorded " << ev() << "? (now "
-             << syscall_name(syscallno) << ")";
-
-  if (EV_SYSCALL_INTERRUPTION != ev().type()) {
-    goto done;
-  }
-
-  /* It's possible for the tracee to resume after a sighandler
-   * with a fresh syscall that happens to be the same as the one
-   * that was interrupted.  So we check here if the args are the
-   * same.
-   *
-   * Of course, it's possible (but less likely) for the tracee
-   * to incidentally resume with a fresh syscall that just
-   * happens to have the same *arguments* too.  But in that
-   * case, we would usually set up scratch buffers etc the same
-   * was as for the original interrupted syscall, so we just
-   * save a step here.
-   *
-   * TODO: it's possible for arg structures to be mutated
-   * between the original call and restarted call in such a way
-   * that it might change the scratch allocation decisions. */
-  if (is_restart_syscall_syscall(syscallno, arch())) {
-    is_restart = true;
-    syscallno = ev().Syscall().number;
-    LOG(debug) << "  (SYS_restart_syscall)";
-  }
-  if (ev().Syscall().number != syscallno) {
-    LOG(debug) << "  interrupted " << ev() << " != " << syscall_name(syscallno);
-    goto done;
-  }
-
-  {
-    const Registers& old_regs = ev().Syscall().regs;
-    if (!(old_regs.arg1() == regs().arg1() &&
-          old_regs.arg2() == regs().arg2() &&
-          old_regs.arg3() == regs().arg3() &&
-          old_regs.arg4() == regs().arg4() &&
-          old_regs.arg5() == regs().arg5() &&
-          old_regs.arg6() == regs().arg6())) {
-      LOG(debug) << "  regs different at interrupted "
-                 << syscall_name(syscallno);
-      goto done;
-    }
-  }
-
-  is_restart = true;
-
-done:
-  if (is_restart) {
-    LOG(debug) << "  restart of " << syscall_name(syscallno);
-  }
-  return is_restart;
-}
-
 void Task::log_pending_events() const {
   ssize_t depth = pending_events.size();
 
@@ -882,9 +672,6 @@ void Task::post_exec(const Registers* replay_regs,
   set_robust_list(nullptr, 0);
   syscallbuf_child = nullptr;
   syscallbuf_fds_disabled_child = nullptr;
-
-  sighandlers = sighandlers->clone();
-  sighandlers->reset_user_handlers(arch());
 
   thread_areas_.clear();
 
@@ -1478,58 +1265,6 @@ void Task::set_tid_addr(remote_ptr<int> tid_addr) {
   tid_futex = tid_addr;
 }
 
-void Task::signal_delivered(int sig) {
-  Sighandler& h = sighandlers->get(sig);
-  bool is_user_handler = h.is_user_handler();
-  if (h.resethand) {
-    reset_handler(&h, arch());
-  }
-
-  if (!h.ignored(sig)) {
-    switch (sig) {
-      case SIGTSTP:
-      case SIGTTIN:
-      case SIGTTOU:
-        if (is_user_handler) {
-          break;
-        }
-      // Fall through...
-      case SIGSTOP:
-        // All threads in the process are stopped.
-        for (Task* t : tg->task_set()) {
-          LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal "
-                     << sig;
-          t->emulated_stop_type = GROUP_STOP;
-        }
-        break;
-      case SIGCONT:
-        // All threads in the process are resumed.
-        for (Task* t : tg->task_set()) {
-          LOG(debug) << "setting " << tid << " to NOT_STOPPED due to signal "
-                     << sig;
-          t->emulated_stop_type = NOT_STOPPED;
-        }
-        break;
-    }
-  }
-}
-
-bool Task::signal_has_user_handler(int sig) const {
-  return sighandlers->get(sig).is_user_handler();
-}
-
-remote_code_ptr Task::get_signal_user_handler(int sig) const {
-  return sighandlers->get(sig).get_user_handler();
-}
-
-const vector<uint8_t>& Task::signal_action(int sig) const {
-  return sighandlers->get(sig).sa;
-}
-
-bool Task::signal_handler_takes_siginfo(int sig) const {
-  return sighandlers->get(sig).takes_siginfo;
-}
-
 void Task::stash_sig() {
   int sig = pending_sig();
   ASSERT(this, sig);
@@ -1628,55 +1363,6 @@ void Task::update_prname(remote_ptr<void> child_addr) {
   auto name = read_mem(child_addr.cast<prname_buf>());
   name.chars[sizeof(name.chars) - 1] = '\0';
   prname = name.chars;
-}
-
-template <typename Arch>
-void Task::update_sigaction_arch(const Registers& regs) {
-  int sig = regs.arg1_signed();
-  remote_ptr<typename Arch::kernel_sigaction> new_sigaction = regs.arg2();
-  if (0 == regs.syscall_result() && !new_sigaction.is_null()) {
-    // A new sighandler was installed.  Update our
-    // sighandler table.
-    // TODO: discard attempts to handle or ignore signals
-    // that can't be by POSIX
-    typename Arch::kernel_sigaction sa;
-    size_t sigset_size = min(sizeof(typename Arch::sigset_t), regs.arg4());
-    memset(&sa, 0, sizeof(sa));
-    read_bytes_helper(
-        new_sigaction,
-        sizeof(sa) - (sizeof(typename Arch::sigset_t) - sigset_size), &sa);
-    sighandlers->get(sig).init_arch<Arch>(sa);
-  }
-}
-
-void Task::update_sigaction(const Registers& regs) {
-  RR_ARCH_FUNCTION(update_sigaction_arch, regs.arch(), regs);
-}
-
-void Task::update_sigmask(const Registers& regs) {
-  int how = regs.arg1_signed();
-  remote_ptr<sig_set_t> setp = regs.arg2();
-
-  if (regs.syscall_failed() || !setp) {
-    return;
-  }
-
-  auto set = read_mem(setp);
-
-  // Update the blocked signals per |how|.
-  switch (how) {
-    case SIG_BLOCK:
-      blocked_sigs |= set;
-      break;
-    case SIG_UNBLOCK:
-      blocked_sigs &= ~set;
-      break;
-    case SIG_SETMASK:
-      blocked_sigs = set;
-      break;
-    default:
-      FATAL() << "Unknown sigmask manipulator " << how;
-  }
 }
 
 static bool is_zombie_process(pid_t pid) {
@@ -2162,16 +1848,9 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   auto& sess = other_session ? *other_session : session();
   Task* t = sess.new_task(new_tid, new_rec_tid, new_serial, arch());
 
-  t->blocked_sigs = blocked_sigs;
   t->prctl_seccomp_status = prctl_seccomp_status;
   t->robust_futex_list = robust_futex_list;
   t->robust_futex_list_len = robust_futex_list_len;
-  if (CLONE_SHARE_SIGHANDLERS & flags) {
-    t->sighandlers = sighandlers;
-  } else {
-    auto sh = sighandlers->clone();
-    t->sighandlers.swap(sh);
-  }
   if (CLONE_SHARE_TASK_GROUP & flags) {
     t->tg = tg;
   } else {
@@ -2360,7 +2039,6 @@ Task::CapturedState Task::capture_state() {
   state.scratch_ptr = scratch_ptr;
   state.scratch_size = scratch_size;
   state.wait_status = wait_status;
-  state.blocked_sigs = blocked_sigs;
   state.pending_events = pending_events;
   state.ticks = ticks;
   state.tid_futex = tid_futex;
@@ -2426,7 +2104,6 @@ void Task::copy_state(const CapturedState& state) {
 
   // These are only metadata that have been inferred from the
   // series of syscalls made by the trace so far.
-  blocked_sigs = state.blocked_sigs;
   pending_events = state.pending_events;
 
   ticks = state.ticks;
@@ -3093,19 +2770,6 @@ static void set_cpu_affinity(int cpu) {
 
   Task* t = session.new_task(tid, rec_tid, session.next_task_serial(),
                              NativeArch::arch());
-  // The very first task we fork inherits the signal
-  // dispositions of the current OS process (which should all be
-  // default at this point, but ...).  From there on, new tasks
-  // will transitively inherit from this first task.
-  auto sh = Sighandlers::create();
-  sh->init_from_current_process();
-  t->sighandlers.swap(sh);
-  // Don't use the POSIX wrapper, because it doesn't necessarily
-  // read the entire sigset tracked by the kernel.
-  if (::syscall(SYS_rt_sigprocmask, SIG_SETMASK, nullptr, &t->blocked_sigs,
-                sizeof(t->blocked_sigs))) {
-    FATAL() << "Failed to read blocked signals";
-  }
   auto tg = session.create_tg(t);
   t->tg.swap(tg);
   auto as = session.create_vm(t, trace.initial_exe());

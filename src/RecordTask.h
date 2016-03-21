@@ -7,29 +7,24 @@
 #include "Task.h"
 #include "TraceFrame.h"
 
+struct Sighandlers;
+
 class RecordTask : public Task {
 public:
   RecordTask(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
-             SupportedArch a)
-      : Task(session, _tid, _rec_tid, serial, a),
-        time_at_start_of_last_timeslice(0),
-        priority(0),
-        in_round_robin_queue(false),
-        emulated_ptracer(nullptr),
-        emulated_ptrace_stop_code(0),
-        emulated_ptrace_SIGCHLD_pending(false),
-        in_wait_type(WAIT_TYPE_NONE),
-        in_wait_pid(0) {}
+             SupportedArch a);
   virtual ~RecordTask();
 
   virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                       remote_ptr<int> cleartid_addr, pid_t new_tid,
                       pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session);
+  virtual void update_sigaction(const Registers& regs);
+  virtual void update_sigmask(const Registers& regs);
+
+  void post_exec();
 
   RecordSession& session() const;
-
-  void signal_delivered(int sig);
 
   /**
    * Emulate 'tracer' ptracing this task.
@@ -67,6 +62,49 @@ public:
   bool is_waiting_for(RecordTask* t);
 
   /**
+   * Call this after |sig| is delivered to this task.  Emulate
+   * sighandler updates induced by the signal delivery.
+   */
+  void signal_delivered(int sig);
+  /**
+   * Return true if the disposition of |sig| in |table| isn't
+   * SIG_IGN or SIG_DFL, that is, if a user sighandler will be
+   * invoked when |sig| is received.
+   */
+  bool signal_has_user_handler(int sig) const;
+  /**
+   * If signal_has_user_handler(sig) is true, return the address of the
+   * user handler, otherwise return null.
+   */
+  remote_code_ptr get_signal_user_handler(int sig) const;
+  /**
+   * Return true if the signal handler for |sig| takes a siginfo_t*
+   * parameter.
+   */
+  bool signal_handler_takes_siginfo(int sig) const;
+  /**
+   * Return |sig|'s current sigaction. Returned as raw bytes since the
+   * data is architecture-dependent.
+   */
+  const std::vector<uint8_t>& signal_action(int sig) const;
+  /** Return true iff |sig| is blocked for this. */
+  bool is_sig_blocked(int sig) const;
+
+  /** Set |sig| to be treated as blocked. */
+  void set_sig_blocked(int sig);
+  /**
+   * Return true iff |sig| is SIG_IGN, or it's SIG_DFL and the
+   * default disposition is "ignore".
+   */
+  bool is_sig_ignored(int sig) const;
+
+  /**
+   * Return true if the current state of this looks like the
+   * interrupted syscall at the top of our event stack, if there
+   * is one.
+   */
+  bool is_syscall_restart();
+  /**
    * Return true if |t| may not be immediately runnable,
    * i.e., resuming execution and then |waitpid()|'ing may block
    * for an unbounded amount of time.  When the task is in this
@@ -89,6 +127,9 @@ private:
    * sent for them.
    */
   void send_synthetic_SIGCHLD_if_necessary();
+
+  /** Helper function for update_sigaction. */
+  template <typename Arch> void update_sigaction_arch(const Registers& regs);
 
 public:
   // Scheduler state
@@ -117,6 +158,26 @@ public:
   bool emulated_ptrace_SIGCHLD_pending;
   WaitType in_wait_type;
   pid_t in_wait_pid;
+
+  // Signal handler state
+
+  // Points to the signal-hander table of this task.  If this
+  // task is a non-fork clone child, then the table will be
+  // shared with all its "thread" siblings.  Any updates made to
+  // that shared table are immediately visible to all sibling
+  // threads.
+  //
+  // fork children always get their own copies of the table.
+  // And if this task exec()s, the table is copied and stripped
+  // of user sighandlers (see below). */
+  std::shared_ptr<Sighandlers> sighandlers;
+  // The set of signals that were blocked during a sigsuspend. Only present
+  // during the first EV_SIGNAL during an interrupted sigsuspend.
+  std::unique_ptr<sig_set_t> sigsuspend_blocked_sigs;
+  // If not NOT_STOPPED, then the task is logically stopped and this is the type
+  // of stop.
+  EmulatedStopType emulated_stop_type;
+  sig_set_t blocked_sigs;
 };
 
 #endif /* RR_RECORD_TASK_H_ */
