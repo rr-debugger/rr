@@ -433,11 +433,6 @@ public:
   void remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
                      size_t num_bytes);
 
-  template <typename T>
-  void remote_memcpy(remote_ptr<T> dst, remote_ptr<T> src) {
-    remote_memcpy(dst, src, sizeof(T));
-  }
-
   /**
    * Resume execution |how|, deliverying |sig| if nonzero.
    * After resuming, |wait_how|. In replay, reset hpcs and
