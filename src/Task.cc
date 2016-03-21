@@ -332,9 +332,6 @@ void Task::init_buffers_arch(remote_ptr<void> map_hint) {
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
     fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
-    if (session().is_recording()) {
-      desched_fd = remote.retrieve_fd(desched_fd_child);
-    }
   } else {
     args.syscallbuf_ptr = remote_ptr<void>(nullptr);
   }
@@ -1974,7 +1971,6 @@ void Task::copy_state(const CapturedState& state) {
 }
 
 void Task::destroy_local_buffers() {
-  desched_fd.close();
   munmap(syscallbuf_hdr, num_syscallbuf_bytes);
 }
 

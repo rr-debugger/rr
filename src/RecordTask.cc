@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <sys/syscall.h>
 
+#include "AutoRemoteSyscalls.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -239,6 +240,14 @@ static void do_preload_init(RecordTask* t) {
 void RecordTask::at_preload_init() {
   Task::at_preload_init();
   do_preload_init(this);
+}
+
+void RecordTask::init_buffers(remote_ptr<void> map_hint) {
+  Task::init_buffers(map_hint);
+  if (vm()->syscallbuf_enabled()) {
+    AutoRemoteSyscalls remote(this);
+    desched_fd = remote.retrieve_fd(desched_fd_child);
+  }
 }
 
 void RecordTask::set_emulated_ptracer(RecordTask* tracer) {

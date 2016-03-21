@@ -44,6 +44,7 @@ public:
                       Session* other_session);
   virtual void update_sigaction(const Registers& regs);
   virtual void update_sigmask(const Registers& regs);
+  virtual void init_buffers(remote_ptr<void> map_hint);
 
   void post_exec();
   /**
@@ -291,6 +292,7 @@ public:
 
   // Syscallbuf state
 
+  ScopedFd desched_fd;
   /* Value of hdr->num_rec_bytes when the buffer was flushed */
   uint32_t flushed_num_rec_bytes;
   /* Nonzero after the trace recorder has flushed the

@@ -275,7 +275,7 @@ public:
    *
    * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
    */
-  void init_buffers(remote_ptr<void> map_hint);
+  virtual void init_buffers(remote_ptr<void> map_hint);
 
   /**
    * Destroy in the tracee task the scratch buffer and syscallbuf (if
@@ -899,9 +899,7 @@ public:
   remote_ptr<void> scratch_ptr;
   ssize_t scratch_size;
 
-  /* The child's desched counter event fd number, and our local
-   * dup. */
-  ScopedFd desched_fd;
+  /* The child's desched counter event fd number */
   int desched_fd_child;
   /* True when the tracee has started using the syscallbuf, and
    * the tracer will start receiving PTRACE_SECCOMP events for
