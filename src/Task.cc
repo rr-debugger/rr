@@ -151,14 +151,6 @@ Task::~Task() {
   LOG(debug) << "  dead";
 }
 
-bool Task::at_may_restart_syscall() const {
-  ssize_t depth = pending_events.size();
-  const Event* prev_ev = depth > 2 ? &pending_events[depth - 2] : nullptr;
-  return EV_SYSCALL_INTERRUPTION == ev().type() ||
-         (EV_SIGNAL_DELIVERY == ev().type() && prev_ev &&
-          EV_SYSCALL_INTERRUPTION == prev_ev->type());
-}
-
 void Task::finish_emulated_syscall() {
   // XXX verify that this can't be interrupted by a breakpoint trap
   Registers r = regs();

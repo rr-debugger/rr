@@ -126,18 +126,6 @@ public:
   virtual ~Task();
 
   /**
-   * Return true iff this is at an execution state where
-   * resuming execution may lead to the restart of an
-   * interrupted syscall.
-   *
-   * For example, if a signal without a user handler is about to
-   * be delivered to this just after a syscall interruption,
-   * then delivering the signal may restart the first syscall
-   * and this method will return true.
-   */
-  bool at_may_restart_syscall() const;
-
-  /**
    * This must be in an emulated syscall, entered through
    * |cont_sysemu()| or |cont_sysemu_singlestep()|, but that's
    * not checked.  If so, step over the system call instruction
@@ -939,7 +927,6 @@ protected:
                       pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session = nullptr);
 
-private:
   template <typename Arch>
   void on_syscall_exit_arch(int syscallno, const Registers& regs);
 

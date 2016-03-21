@@ -630,6 +630,14 @@ done:
   return is_restart;
 }
 
+bool RecordTask::at_may_restart_syscall() const {
+  ssize_t depth = pending_events.size();
+  const Event* prev_ev = depth > 2 ? &pending_events[depth - 2] : nullptr;
+  return EV_SYSCALL_INTERRUPTION == ev().type() ||
+         (EV_SIGNAL_DELIVERY == ev().type() && prev_ev &&
+          EV_SYSCALL_INTERRUPTION == prev_ev->type());
+}
+
 bool RecordTask::may_be_blocked() const {
   return (EV_SYSCALL == ev().type() &&
           PROCESSING_SYSCALL == ev().Syscall().state) ||
