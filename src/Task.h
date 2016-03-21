@@ -254,14 +254,6 @@ public:
   void destabilize_task_group();
 
   /**
-   * Called when this task is able to receive a SIGCHLD (e.g. because
-   * we completed delivery of a signal already). Sends a new synthetic
-   * SIGCHLD to the task if there are still ptraced tasks that need a SIGCHLD
-   * sent for them.
-   */
-  void send_synthetic_SIGCHLD_if_necessary();
-
-  /**
    * Returns true if this task is in a waitpid or similar that would return
    * when t's status changes due to a ptrace event.
    */
@@ -1125,7 +1117,7 @@ public:
   EmulatedStopType emulated_stop_type;
 
   // Task for which we're emulating ptrace of this task, or null
-  Task* emulated_ptracer;
+  RecordTask* emulated_ptracer;
   // true if this task needs to send a SIGCHLD to its ptracer for its
   // emulated ptrace stop
   bool emulated_ptrace_SIGCHLD_pending;

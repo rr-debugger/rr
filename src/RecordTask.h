@@ -23,6 +23,8 @@ public:
 
   RecordSession& session() const;
 
+  void signal_delivered(int sig);
+
   /**
    * Emulate 'tracer' ptracing this task.
    */
@@ -53,6 +55,16 @@ public:
    */
   bool maybe_in_spinlock();
 
+private:
+  /**
+   * Called when this task is able to receive a SIGCHLD (e.g. because
+   * we completed delivery of a signal already). Sends a new synthetic
+   * SIGCHLD to the task if there are still ptraced tasks that need a SIGCHLD
+   * sent for them.
+   */
+  void send_synthetic_SIGCHLD_if_necessary();
+
+public:
   // Scheduler state
 
   Registers registers_at_start_of_last_timeslice;

@@ -420,60 +420,6 @@ bool Task::is_waiting_for(Task* t) {
   }
 }
 
-void Task::send_synthetic_SIGCHLD_if_necessary() {
-  Task* wake_task = nullptr;
-  bool need_signal = false;
-  for (Task* tracee : emulated_ptrace_tracees) {
-    if (tracee->emulated_ptrace_SIGCHLD_pending) {
-      need_signal = true;
-      // check to see if any thread in the ptracer process is in a waitpid that
-      // could read the status of 'tracee'. If it is, we should wake up that
-      // thread. Otherwise we send SIGCHLD to the ptracer thread.
-      for (Task* t : task_group()->task_set()) {
-        if (t->is_waiting_for_ptrace(tracee)) {
-          wake_task = t;
-          break;
-        }
-      }
-      if (wake_task) {
-        break;
-      }
-    }
-  }
-  if (!need_signal) {
-    return;
-  }
-
-  // ptrace events trigger SIGCHLD in the ptracer's wake_task.
-  // We can't set all the siginfo values to their correct values here, so
-  // we'll patch this up when the signal is received.
-  // If there's already a pending SIGCHLD, this signal will be ignored,
-  // but at some point the pending SIGCHLD will be delivered and then
-  // send_synthetic_SIGCHLD_if_necessary will be called again to deliver a new
-  // SIGCHLD if necessary.
-  siginfo_t si;
-  memset(&si, 0, sizeof(si));
-  si.si_code = SI_QUEUE;
-  si.si_value.sival_int = SIGCHLD_SYNTHETIC;
-  int ret;
-  if (wake_task) {
-    ASSERT(wake_task, !wake_task->is_sig_blocked(SIGCHLD))
-        << "Waiting task has SIGCHLD blocked so we have no way to wake it up "
-           ":-(";
-    // We must use the raw SYS_rt_tgsigqueueinfo syscall here to ensure the
-    // signal is sent to the correct thread by tid.
-    ret = syscall(SYS_rt_tgsigqueueinfo, wake_task->tgid(), wake_task->tid,
-                  SIGCHLD, &si);
-    LOG(debug) << "Sending synthetic SIGCHLD to tid " << wake_task->tid;
-  } else {
-    // Send the signal to the process as a whole and let the kernel
-    // decide which thread gets it.
-    ret = syscall(SYS_rt_sigqueueinfo, tgid(), SIGCHLD, &si);
-    LOG(debug) << "Sending synthetic SIGCHLD to pid " << tgid();
-  }
-  ASSERT(this, ret == 0);
-}
-
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
   fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s)<%p>\n", prname.c_str(),
@@ -1632,8 +1578,6 @@ void Task::signal_delivered(int sig) {
         break;
     }
   }
-
-  send_synthetic_SIGCHLD_if_necessary();
 }
 
 bool Task::signal_has_user_handler(int sig) const {
