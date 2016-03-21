@@ -159,11 +159,6 @@ public:
   Ticks tick_count() { return ticks; }
 
   /**
-   * Set tick count to 'count'.
-   */
-  void set_tick_count(Ticks count);
-
-  /**
    * Return true if this exited because of a SYS_exit/exit_group
    * call.
    */

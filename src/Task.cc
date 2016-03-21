@@ -643,8 +643,6 @@ void Task::pop_event(EventType expected_type) {
 
 void Task::flush_inconsistent_state() { ticks = 0; }
 
-void Task::set_tick_count(Ticks count) { ticks = count; }
-
 string Task::read_c_str(remote_ptr<char> child_addr) {
   // XXX handle invalid C strings
   remote_ptr<void> p = child_addr;
