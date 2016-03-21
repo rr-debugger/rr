@@ -192,7 +192,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   } else {
     LOG(warn)
         << "unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";
-    t->destabilize_task_group();
+    t->task_group()->destabilize();
   }
 
   record_robust_futex_changes(t);
@@ -1153,7 +1153,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
                             sig);
         LOG(warn) << "Delivered core-dumping signal; may misrecord "
                      "CLONE_CHILD_CLEARTID memory race";
-        t->destabilize_task_group();
+        t->task_group()->destabilize();
       }
       t->signal_delivered(sig);
       t->pop_signal_delivery();

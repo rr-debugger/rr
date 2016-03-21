@@ -224,8 +224,6 @@ bool Task::running_inside_desched() const {
   return false;
 }
 
-void Task::destabilize_task_group() { tg->destabilize(); }
-
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
   fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s)<%p>\n", prname.c_str(),
