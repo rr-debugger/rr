@@ -165,7 +165,8 @@ RecordTask::RecordTask(Session& session, pid_t _tid, pid_t _rec_tid,
       flushed_syscallbuf(false),
       delay_syscallbuf_reset(false),
       seccomp_bpf_enabled(false),
-      prctl_seccomp_status(0) {
+      prctl_seccomp_status(0),
+      own_namespace_rec_tid(0) {
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
     // The very first task we fork inherits the signal

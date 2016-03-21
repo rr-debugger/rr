@@ -317,6 +317,9 @@ public:
   bool seccomp_bpf_enabled;
   // Value to return from PR_GET_SECCOMP
   uint8_t prctl_seccomp_status;
+
+  /* This is the recorded tid of the tracee *in its own pid namespace*. */
+  pid_t own_namespace_rec_tid;
 };
 
 #endif /* RR_RECORD_TASK_H_ */
