@@ -260,13 +260,6 @@ public:
    * sent for them.
    */
   void send_synthetic_SIGCHLD_if_necessary();
-  /**
-   * Called when we're about to deliver a signal to this task. If it's a
-   * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
-   * update the siginfo to reflect the status and note that that
-   * ptraced task has had its SIGCHLD sent.
-   */
-  void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
 
   /**
    * Returns true if this task is in a waitpid or similar that would return

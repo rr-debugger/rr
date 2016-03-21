@@ -39,6 +39,13 @@ public:
    * Force the ptrace-stop state no matter what state the task is currently in.
    */
   void force_emulate_ptrace_stop(int code, EmulatedStopType stop_type);
+  /**
+   * Called when we're about to deliver a signal to this task. If it's a
+   * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
+   * update the siginfo to reflect the status and note that that
+   * ptraced task has had its SIGCHLD sent.
+   */
+  void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
 
   /**
    * Returns true if it looks like this task has been spinning on an atomic

@@ -4,6 +4,7 @@
 
 #include "log.h"
 #include "RecordSession.h"
+#include "record_signal.h"
 
 RecordSession& RecordTask::session() const {
   return *Task::session().as_record();
@@ -61,6 +62,24 @@ void RecordTask::force_emulate_ptrace_stop(int code,
   // wait will be resumed, at which point rec_prepare_syscall_arch will
   // discover the pending ptrace result and emulate the wait syscall to
   // return that result immediately.
+}
+
+void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
+  if (si->si_signo != SIGCHLD || si->si_value.sival_int != SIGCHLD_SYNTHETIC) {
+    return;
+  }
+
+  for (Task* tracee : emulated_ptrace_tracees) {
+    if (tracee->emulated_ptrace_SIGCHLD_pending) {
+      tracee->emulated_ptrace_SIGCHLD_pending = false;
+      si->si_code = CLD_TRAPPED;
+      si->si_pid = tracee->tgid();
+      si->si_uid = tracee->getuid();
+      si->si_status = WSTOPSIG(tracee->emulated_ptrace_stop_code);
+      si->si_value.sival_int = 0;
+      return;
+    }
+  }
 }
 
 bool RecordTask::maybe_in_spinlock() {

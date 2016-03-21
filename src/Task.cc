@@ -474,24 +474,6 @@ void Task::send_synthetic_SIGCHLD_if_necessary() {
   ASSERT(this, ret == 0);
 }
 
-void Task::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
-  if (si->si_signo != SIGCHLD || si->si_value.sival_int != SIGCHLD_SYNTHETIC) {
-    return;
-  }
-
-  for (Task* tracee : emulated_ptrace_tracees) {
-    if (tracee->emulated_ptrace_SIGCHLD_pending) {
-      tracee->emulated_ptrace_SIGCHLD_pending = false;
-      si->si_code = CLD_TRAPPED;
-      si->si_pid = tracee->tgid();
-      si->si_uid = tracee->getuid();
-      si->si_status = WSTOPSIG(tracee->emulated_ptrace_stop_code);
-      si->si_value.sival_int = 0;
-      return;
-    }
-  }
-}
-
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
   fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s)<%p>\n", prname.c_str(),
