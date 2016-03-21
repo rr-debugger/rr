@@ -22,6 +22,20 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   return t;
 }
 
+void RecordTask::set_emulated_ptracer(RecordTask* tracer) {
+  if (tracer) {
+    ASSERT(this, !emulated_ptracer);
+    emulated_ptracer = tracer;
+    emulated_ptracer->emulated_ptrace_tracees.insert(this);
+  } else {
+    ASSERT(this, emulated_ptracer);
+    ASSERT(this, emulated_stop_type == NOT_STOPPED ||
+                     emulated_stop_type == GROUP_STOP);
+    emulated_ptracer->emulated_ptrace_tracees.erase(this);
+    emulated_ptracer = nullptr;
+  }
+}
+
 bool RecordTask::emulate_ptrace_stop(int code, EmulatedStopType stop_type) {
   ASSERT(this, emulated_stop_type == NOT_STOPPED);
   ASSERT(this, stop_type != NOT_STOPPED);

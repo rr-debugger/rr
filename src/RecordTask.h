@@ -24,6 +24,10 @@ public:
   RecordSession& session() const;
 
   /**
+   * Emulate 'tracer' ptracing this task.
+   */
+  void set_emulated_ptracer(RecordTask* tracer);
+  /**
    * Call this when an event occurs that should stop a ptraced task.
    * If we're emulating ptrace of the task, stop the task and wake the ptracer
    * if it's waiting, and queue "code" as an status code to be reported to the

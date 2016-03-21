@@ -374,22 +374,6 @@ bool Task::running_inside_desched() const {
 
 void Task::destabilize_task_group() { tg->destabilize(); }
 
-void Task::set_emulated_ptracer(Task* tracer) {
-  if (tracer) {
-    ASSERT(this, !emulated_ptracer);
-    emulated_ptracer = tracer;
-    emulated_ptracer->emulated_ptrace_tracees.insert(
-        static_cast<RecordTask*>(this));
-  } else {
-    ASSERT(this, emulated_ptracer);
-    ASSERT(this, emulated_stop_type == NOT_STOPPED ||
-                     emulated_stop_type == GROUP_STOP);
-    emulated_ptracer->emulated_ptrace_tracees.erase(
-        static_cast<RecordTask*>(this));
-    emulated_ptracer = nullptr;
-  }
-}
-
 bool Task::is_waiting_for_ptrace(Task* t) {
   // This task's process must be a ptracer of t.
   if (!t->emulated_ptracer || t->emulated_ptracer->tg != tg) {

@@ -254,11 +254,6 @@ public:
   void destabilize_task_group();
 
   /**
-   * Emulate 'tracer' ptracing this task.
-   */
-  void set_emulated_ptracer(Task* tracer);
-
-  /**
    * Called when this task is able to receive a SIGCHLD (e.g. because
    * we completed delivery of a signal already). Sends a new synthetic
    * SIGCHLD to the task if there are still ptraced tasks that need a SIGCHLD
