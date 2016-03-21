@@ -226,17 +226,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
 Task::~Task() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
 
-  if (emulated_ptracer) {
-    emulated_ptracer->emulated_ptrace_tracees.erase(
-        static_cast<RecordTask*>(this));
-  }
-  for (Task* t : emulated_ptrace_tracees) {
-    // XXX emulate PTRACE_O_EXITKILL
-    ASSERT(this, t->emulated_ptracer == this);
-    t->emulated_ptracer = nullptr;
-    t->emulated_stop_type = NOT_STOPPED;
-  }
-
   // We expect tasks to usually exit by a call to exit() or
   // exit_group(), so it's not helpful to warn about that.
   if (EV_SENTINEL != ev().type() &&

@@ -15,6 +15,7 @@ public:
         time_at_start_of_last_timeslice(0),
         priority(0),
         in_round_robin_queue(false) {}
+  virtual ~RecordTask();
 
   virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                       remote_ptr<int> cleartid_addr, pid_t new_tid,

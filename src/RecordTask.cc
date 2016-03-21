@@ -8,6 +8,19 @@
 #include "RecordSession.h"
 #include "record_signal.h"
 
+RecordTask::~RecordTask() {
+  if (emulated_ptracer) {
+    emulated_ptracer->emulated_ptrace_tracees.erase(
+        static_cast<RecordTask*>(this));
+  }
+  for (Task* t : emulated_ptrace_tracees) {
+    // XXX emulate PTRACE_O_EXITKILL
+    ASSERT(this, t->emulated_ptracer == this);
+    t->emulated_ptracer = nullptr;
+    t->emulated_stop_type = NOT_STOPPED;
+  }
+}
+
 RecordSession& RecordTask::session() const {
   return *Task::session().as_record();
 }
