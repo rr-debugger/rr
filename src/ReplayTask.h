@@ -26,6 +26,16 @@ public:
    *  current trace record.
    */
   void validate_regs(uint32_t flags = 0);
+  const TraceFrame& current_trace_frame();
+  /** Restore the next chunk of saved data from the trace to this. */
+  ssize_t set_data_from_trace();
+  /** Restore all remaining chunks of saved data for the current trace frame. */
+  void apply_all_data_records_from_trace();
+  /**
+   * Set the syscall-return-value register of this to what was
+   * saved in the current trace frame.
+   */
+  void set_return_value_from_trace();
 };
 
 #endif /* RR_REPLAY_TASK_H_ */

@@ -17,7 +17,7 @@
 #include "remote_ptr.h"
 #include "remote_code_ptr.h"
 
-class Task;
+class ReplayTask;
 
 enum MismatchBehavior {
   EXPECT_MISMATCHES = 0,
@@ -313,7 +313,7 @@ public:
    * match.  Passing BAIL_ON_MISMATCH will additionally abort on
    * mismatch.
    */
-  static bool compare_register_files(Task* t, const char* name1,
+  static bool compare_register_files(ReplayTask* t, const char* name1,
                                      const Registers& reg1, const char* name2,
                                      const Registers& reg2,
                                      MismatchBehavior mismatch_behavior);

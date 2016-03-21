@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-class Task;
+class ReplayTask;
 
 /**
  * Helper to detect when the "CPUID can cause rcbs to be lost" bug is present.
@@ -31,7 +31,7 @@ public:
   /**
    * Call this when task t enters a traced syscall during replay.
    */
-  void notify_reached_syscall_during_replay(Task* t);
+  void notify_reached_syscall_during_replay(ReplayTask* t);
 
 private:
   uint64_t trace_rcb_count_at_last_geteuid32;

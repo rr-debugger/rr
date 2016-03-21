@@ -859,37 +859,6 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   }
 }
 
-const TraceFrame& Task::current_trace_frame() {
-  return replay_session().current_trace_frame();
-}
-
-ssize_t Task::set_data_from_trace() {
-  auto buf = trace_reader().read_raw_data();
-  if (!buf.addr.is_null() && buf.data.size() > 0) {
-    write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
-  }
-  return buf.data.size();
-}
-
-void Task::apply_all_data_records_from_trace() {
-  TraceReader::RawData buf;
-  while (trace_reader().read_raw_data_for_frame(current_trace_frame(), buf)) {
-    if (!buf.addr.is_null() && buf.data.size() > 0) {
-      write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
-    }
-  }
-}
-
-void Task::set_return_value_from_trace() {
-  Registers r = regs();
-  r.set_syscall_result(current_trace_frame().regs().syscall_result());
-  // In some cases (e.g. syscalls forced to return an error by tracee
-  // seccomp filters) we need to emulate a change to the original_syscallno
-  // (to -1 in that case).
-  r.set_original_syscallno(current_trace_frame().regs().original_syscallno());
-  set_regs(r);
-}
-
 void Task::set_regs(const Registers& regs) {
   ASSERT(this, is_stopped);
   registers = regs;

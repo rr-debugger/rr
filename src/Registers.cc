@@ -10,7 +10,7 @@
 #include <string.h>
 
 #include "log.h"
-#include "Task.h"
+#include "ReplayTask.h"
 
 using namespace rr;
 using namespace std;
@@ -412,7 +412,7 @@ template <>
 }
 
 /*static*/ bool Registers::compare_register_files(
-    Task* t, const char* name1, const Registers& reg1, const char* name2,
+    ReplayTask* t, const char* name1, const Registers& reg1, const char* name2,
     const Registers& reg2, MismatchBehavior mismatch_behavior) {
   bool bail_error = mismatch_behavior >= BAIL_ON_MISMATCH;
   bool match = compare_register_files_internal(name1, reg1, name2, reg2,

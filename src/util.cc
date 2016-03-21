@@ -29,7 +29,7 @@
 #include "log.h"
 #include "ReplaySession.h"
 #include "seccomp-bpf.h"
-#include "Task.h"
+#include "ReplayTask.h"
 #include "TraceStream.h"
 
 using namespace std;
@@ -167,7 +167,7 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
   fclose(dump_file);
 }
 
-static void notify_checksum_error(Task* t, TraceFrame::Time global_time,
+static void notify_checksum_error(ReplayTask* t, TraceFrame::Time global_time,
                                   unsigned checksum, unsigned rec_checksum,
                                   const string& raw_map_line) {
   char cur_dump[PATH_MAX];
@@ -300,9 +300,11 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     }
 
     string raw_map_line = m.map.str();
-    if (STORE_CHECKSUMS == c.mode) {
+    if (STORE_CHECKSUMS == mode) {
       fprintf(c.checksums_file, "(%x) %s\n", checksum, raw_map_line.c_str());
     } else {
+      ASSERT(t, t->session().is_replaying());
+      auto rt = static_cast<ReplayTask*>(t);
       char line[1024];
       unsigned rec_checksum;
       unsigned long rec_start;
@@ -331,7 +333,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
         continue;
       }
       if (checksum != rec_checksum) {
-        notify_checksum_error(t, c.global_time, checksum, rec_checksum,
+        notify_checksum_error(rt, c.global_time, checksum, rec_checksum,
                               raw_map_line.c_str());
       }
     }

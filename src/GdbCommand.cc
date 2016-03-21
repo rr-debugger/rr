@@ -2,11 +2,17 @@
 
 #include "GdbCommand.h"
 
+#include "ReplayTask.h"
+
 using namespace std;
 
 static SimpleGdbCommand when("when", [](GdbServer&, Task* t,
                                         const vector<string>&) {
-  return string("Current event: ") + to_string(t->current_trace_frame().time());
+  if (t->session().is_replaying()) {
+    return string("Current event: ") +
+           to_string(static_cast<ReplayTask*>(t)->current_trace_frame().time());
+  }
+  return string("Current event not known (diversion?)");
 });
 
 static SimpleGdbCommand when_ticks("when-ticks", [](GdbServer&, Task* t,
