@@ -356,18 +356,9 @@ void Task::destroy_buffers() {
   }
 }
 
-bool Task::is_arm_desched_event_syscall() {
-  return is_desched_event_syscall() && PERF_EVENT_IOC_ENABLE == regs().arg2();
-}
-
 bool Task::is_desched_event_syscall() {
   return is_ioctl_syscall(regs().original_syscallno(), arch()) &&
          desched_fd_child == (int)regs().arg1_signed();
-}
-
-bool Task::is_disarm_desched_event_syscall() {
-  return (is_desched_event_syscall() &&
-          PERF_EVENT_IOC_DISABLE == regs().arg2());
 }
 
 bool Task::is_ptrace_seccomp_event() const {

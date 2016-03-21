@@ -277,20 +277,10 @@ public:
   remote_code_ptr ip() { return regs().ip(); }
 
   /**
-   * Return true if this is at an arm-desched-event syscall.
-   */
-  bool is_arm_desched_event_syscall();
-
-  /**
    * Return true if this is at an arm-desched-event or
    * disarm-desched-event syscall.
    */
   bool is_desched_event_syscall();
-
-  /**
-   * Return true if this is at a disarm-desched-event syscall.
-   */
-  bool is_disarm_desched_event_syscall();
 
   /**
    * Return true if this is within the syscallbuf library.  This

@@ -143,6 +143,14 @@ public:
    */
   bool at_may_restart_syscall() const;
   /**
+   * Return true if this is at an arm-desched-event syscall.
+   */
+  bool is_arm_desched_event_syscall();
+  /**
+   * Return true if this is at a disarm-desched-event syscall.
+   */
+  bool is_disarm_desched_event_syscall();
+  /**
    * Return true if |t| may not be immediately runnable,
    * i.e., resuming execution and then |waitpid()|'ing may block
    * for an unbounded amount of time.  When the task is in this

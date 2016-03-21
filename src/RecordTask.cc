@@ -4,6 +4,7 @@
 
 #include <dirent.h>
 #include <limits.h>
+#include <linux/perf_event.h>
 #include <sys/syscall.h>
 
 #include "AutoRemoteSyscalls.h"
@@ -636,6 +637,15 @@ bool RecordTask::at_may_restart_syscall() const {
   return EV_SYSCALL_INTERRUPTION == ev().type() ||
          (EV_SIGNAL_DELIVERY == ev().type() && prev_ev &&
           EV_SYSCALL_INTERRUPTION == prev_ev->type());
+}
+
+bool RecordTask::is_arm_desched_event_syscall() {
+  return is_desched_event_syscall() && PERF_EVENT_IOC_ENABLE == regs().arg2();
+}
+
+bool RecordTask::is_disarm_desched_event_syscall() {
+  return (is_desched_event_syscall() &&
+          PERF_EVENT_IOC_DISABLE == regs().arg2());
 }
 
 bool RecordTask::may_be_blocked() const {
