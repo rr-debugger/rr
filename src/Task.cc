@@ -182,10 +182,9 @@ private:
 };
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
-           int _priority, SupportedArch a)
+           SupportedArch a)
     : unstable(false),
       stable_exit(false),
-      priority(_priority),
       in_round_robin_queue(false),
       emulated_stop_type(NOT_STOPPED),
       emulated_ptracer(nullptr),
@@ -2344,7 +2343,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                   pid_t new_rec_tid, uint32_t new_serial,
                   Session* other_session) {
   auto& sess = other_session ? *other_session : session();
-  Task* t = sess.new_task(new_tid, new_rec_tid, new_serial, priority, arch());
+  Task* t = sess.new_task(new_tid, new_rec_tid, new_serial, arch());
 
   t->blocked_sigs = blocked_sigs;
   t->prctl_seccomp_status = prctl_seccomp_status;
@@ -3275,7 +3274,7 @@ static void set_cpu_affinity(int cpu) {
     FATAL() << "PTRACE_SEIZE failed for tid " << tid;
   }
 
-  Task* t = session.new_task(tid, rec_tid, session.next_task_serial(), 0,
+  Task* t = session.new_task(tid, rec_tid, session.next_task_serial(),
                              NativeArch::arch());
   // The very first task we fork inherits the signal
   // dispositions of the current OS process (which should all be

@@ -1585,8 +1585,8 @@ void RecordSession::terminate_recording() {
 }
 
 Task* RecordSession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
-                              int priority, SupportedArch a) {
-  return new RecordTask(*this, tid, rec_tid, serial, priority, a);
+                              SupportedArch a) {
+  return new RecordTask(*this, tid, rec_tid, serial, a);
 }
 
 void RecordSession::on_create(Task* t) {

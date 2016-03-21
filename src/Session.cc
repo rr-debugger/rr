@@ -112,9 +112,9 @@ TaskGroup::shr_ptr Session::clone(Task* t, TaskGroup::shr_ptr tg) {
       new TaskGroup(this, parent, tg->tgid, t->tid, tg->tguid().serial()));
 }
 
-Task* Session::new_task(pid_t tid, pid_t rec_tid, uint32_t serial, int priority,
+Task* Session::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
                         SupportedArch a) {
-  return new Task(*this, tid, rec_tid, serial, priority, a);
+  return new Task(*this, tid, rec_tid, serial, a);
 }
 
 vector<AddressSpace*> Session::vms() const {

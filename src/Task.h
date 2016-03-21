@@ -1142,11 +1142,6 @@ public:
   /* exit(), or exit_group() with one task, has been called, so
    * the exit can be treated as stable. */
   bool stable_exit;
-  /* Task 'nice' value set by setpriority(2).
-     We use this to drive scheduling decisions. rr's scheduler is
-     deliberately simple and unfair; a task never runs as long as there's
-     another runnable task with a lower nice value. */
-  int priority;
   /* Tasks with in_round_robin_queue set are in the session's
    * in_round_robin_queue instead of its task_priority_set.
    */
@@ -1295,7 +1290,20 @@ public:
 
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
-       int priority, SupportedArch a);
+       SupportedArch a);
+
+  /**
+   * Return a new Task cloned from |p|.  |flags| are a set of
+   * CloneFlags (see above) that determine which resources are
+   * shared or copied to the new child.  |new_tid| is the tid
+   * assigned to the new task by the kernel.  |new_rec_tid| is
+   * only relevant to replay, and is the pid that was assigned
+   * to the task during recording.
+   */
+  virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
+                      remote_ptr<int> cleartid_addr, pid_t new_tid,
+                      pid_t new_rec_tid, uint32_t new_serial,
+                      Session* other_session = nullptr);
 
 private:
   template <typename Arch>
@@ -1306,18 +1314,6 @@ private:
 
   /** Helper function for init_buffers. */
   template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
-
-  /**
-   * Return a new Task cloned from |p|.  |flags| are a set of
-   * CloneFlags (see above) that determine which resources are
-   * shared or copied to the new child.  |new_tid| is the tid
-   * assigned to the new task by the kernel.  |new_rec_tid| is
-   * only relevant to replay, and is the pid that was assigned
-   * to the task during recording.
-   */
-  Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
-              remote_ptr<int> cleartid_addr, pid_t new_tid, pid_t new_rec_tid,
-              uint32_t new_serial, Session* other_session = nullptr);
 
   /**
    * Grab state from this task into a structure that we can use to

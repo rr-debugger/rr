@@ -219,7 +219,7 @@ public:
   Statistics statistics() { return statistics_; }
 
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
-                         int priority, SupportedArch a);
+                         SupportedArch a);
 
 protected:
   Session();
