@@ -80,7 +80,7 @@ static void receive_marker_fd() {
   struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
   assert(cmsg && cmsg->cmsg_level == SOL_SOCKET &&
          cmsg->cmsg_type == SCM_RIGHTS);
-  marker_fd = move(ScopedFd(*(int*)CMSG_DATA(cmsg)));
+  marker_fd = ScopedFd(*(int*)CMSG_DATA(cmsg));
   assert(marker_fd.is_open());
 }
 
