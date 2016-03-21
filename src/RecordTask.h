@@ -42,9 +42,8 @@ public:
                       remote_ptr<int> cleartid_addr, pid_t new_tid,
                       pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session);
-  virtual void update_sigaction(const Registers& regs);
-  virtual void update_sigmask(const Registers& regs);
   virtual void init_buffers(remote_ptr<void> map_hint);
+  virtual void on_syscall_exit(int syscallno, const Registers& regs);
 
   void post_exec();
   /**
@@ -230,6 +229,9 @@ public:
    */
   void tgkill(int sig);
 
+  remote_ptr<void> robust_list() const { return robust_futex_list; }
+  size_t robust_list_len() const { return robust_futex_list_len; }
+
 private:
   /**
    * Called when this task is able to receive a SIGCHLD (e.g. because
@@ -239,6 +241,26 @@ private:
    */
   void send_synthetic_SIGCHLD_if_necessary();
 
+  /**
+   * Call this when SYS_sigaction is finishing with |regs|.
+   */
+  void update_sigaction(const Registers& regs);
+  /**
+   * Call this when the tracee is about to complete a
+   * SYS_rt_sigprocmask syscall with |regs|.
+   */
+  void update_sigmask(const Registers& regs);
+  /**
+   * Update the futex robust list head pointer to |list| (which
+   * is of size |len|).
+   */
+  void set_robust_list(remote_ptr<void> list, size_t len) {
+    robust_futex_list = list;
+    robust_futex_list_len = len;
+  }
+
+  template <typename Arch>
+  void on_syscall_exit_arch(int syscallno, const Registers& regs);
   /** Helper function for update_sigaction. */
   template <typename Arch> void update_sigaction_arch(const Registers& regs);
 
@@ -318,6 +340,12 @@ public:
   // Value to return from PR_GET_SECCOMP
   uint8_t prctl_seccomp_status;
 
+  // Futex list passed to |set_robust_list()|.  We could keep a
+  // strong type for this list head and read it if we wanted to,
+  // but for now we only need to remember its address / size at
+  // the time of the most recent set_robust_list() call.
+  remote_ptr<void> robust_futex_list;
+  size_t robust_futex_list_len;
   /* This is the recorded tid of the tracee *in its own pid namespace*. */
   pid_t own_namespace_rec_tid;
 };

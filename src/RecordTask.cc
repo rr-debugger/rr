@@ -166,6 +166,7 @@ RecordTask::RecordTask(Session& session, pid_t _tid, pid_t _rec_tid,
       delay_syscallbuf_reset(false),
       seccomp_bpf_enabled(false),
       prctl_seccomp_status(0),
+      robust_futex_list_len(0),
       own_namespace_rec_tid(0) {
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
@@ -212,6 +213,8 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     rt->priority = priority;
     rt->blocked_sigs = blocked_sigs;
     rt->prctl_seccomp_status = prctl_seccomp_status;
+    rt->robust_futex_list = robust_futex_list;
+    rt->robust_futex_list_len = robust_futex_list_len;
     if (CLONE_SHARE_SIGHANDLERS & flags) {
       rt->sighandlers = sighandlers;
     } else {
@@ -224,6 +227,10 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
 void RecordTask::post_exec() {
   Task::post_exec(nullptr, nullptr, nullptr);
+  // Clear robust_list state to match kernel state. If this task is cloned
+  // soon after exec, we must not do a bogus set_robust_list syscall for
+  // the clone.
+  set_robust_list(nullptr, 0);
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
 }
@@ -252,6 +259,33 @@ void RecordTask::init_buffers(remote_ptr<void> map_hint) {
     AutoRemoteSyscalls remote(this);
     desched_fd = remote.retrieve_fd(desched_fd_child);
   }
+}
+
+template <typename Arch>
+void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
+  if (regs.syscall_failed()) {
+    return;
+  }
+
+  switch (syscallno) {
+    case Arch::set_robust_list:
+      set_robust_list(regs.arg1(), (size_t)regs.arg2());
+      return;
+    case Arch::sigaction:
+    case Arch::rt_sigaction:
+      // TODO: SYS_signal
+      update_sigaction(regs);
+      return;
+    case Arch::sigprocmask:
+    case Arch::rt_sigprocmask:
+      update_sigmask(regs);
+      return;
+  }
+}
+
+void RecordTask::on_syscall_exit(int syscallno, const Registers& regs) {
+  Task::on_syscall_exit(syscallno, regs);
+  RR_ARCH_FUNCTION(on_syscall_exit_arch, arch(), syscallno, regs)
 }
 
 void RecordTask::set_emulated_ptracer(RecordTask* tracer) {

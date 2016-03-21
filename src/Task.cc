@@ -71,8 +71,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       detected_unexpected_exit(false),
       extra_registers(a),
       extra_registers_known(false),
-      robust_futex_list(),
-      robust_futex_list_len(),
       session_(&session),
       tid_futex(),
       top_of_stack(),
@@ -464,23 +462,11 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       break;
     }
 
-    case Arch::set_robust_list:
-      set_robust_list(regs.arg1(), (size_t)regs.arg2());
-      return;
     case Arch::set_thread_area:
       set_thread_area(regs.arg1());
       return;
     case Arch::set_tid_address:
       set_tid_addr(regs.arg1());
-      return;
-    case Arch::sigaction:
-    case Arch::rt_sigaction:
-      // TODO: SYS_signal
-      update_sigaction(regs);
-      return;
-    case Arch::sigprocmask:
-    case Arch::rt_sigprocmask:
-      update_sigmask(regs);
       return;
 
     case Arch::prctl:
@@ -656,10 +642,6 @@ void Task::post_exec(const Registers* replay_regs,
     ev().Syscall().number = registers.original_syscallno();
   }
 
-  // Clear robust_list state to match kernel state. If this task is cloned
-  // soon after exec, we must not do a bogus set_robust_list syscall for
-  // the clone.
-  set_robust_list(nullptr, 0);
   syscallbuf_child = nullptr;
   syscallbuf_fds_disabled_child = nullptr;
 
@@ -1706,8 +1688,6 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   auto& sess = other_session ? *other_session : session();
   Task* t = sess.new_task(new_tid, new_rec_tid, new_serial, arch());
 
-  t->robust_futex_list = robust_futex_list;
-  t->robust_futex_list_len = robust_futex_list_len;
   if (CLONE_SHARE_TASK_GROUP & flags) {
     t->tg = tg;
   } else {
@@ -1874,8 +1854,6 @@ Task::CapturedState Task::capture_state() {
   state.regs = regs();
   state.extra_regs = extra_regs();
   state.prname = prname;
-  state.robust_futex_list = robust_futex_list;
-  state.robust_futex_list_len = robust_futex_list_len;
   state.thread_areas = thread_areas_;
   state.num_syscallbuf_bytes = num_syscallbuf_bytes;
   state.desched_fd_child = desched_fd_child;
@@ -1917,10 +1895,6 @@ void Task::copy_state(const CapturedState& state) {
       remote.infallible_syscall(syscall_number_for_prctl(arch()), PR_SET_NAME,
                                 remote_prname.get().as_int());
       update_prname(remote_prname.get());
-    }
-
-    if (!state.robust_futex_list.is_null()) {
-      set_robust_list(state.robust_futex_list, state.robust_futex_list_len);
     }
 
     copy_tls(state, remote);

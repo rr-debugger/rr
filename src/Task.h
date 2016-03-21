@@ -371,7 +371,7 @@ public:
    * Use 'regs' instead of this->regs() because some registers may not be
    * set properly in the task yet.
    */
-  void on_syscall_exit(int syscallno, const Registers& regs);
+  virtual void on_syscall_exit(int syscallno, const Registers& regs);
 
   /**
    * Assuming ip() is just past a breakpoint instruction, adjust
@@ -408,16 +408,6 @@ public:
   virtual void post_exec(const Registers* replay_regs = nullptr,
                          const ExtraRegisters* replay_extra_regs = nullptr,
                          const std::string* replay_exe = nullptr);
-
-  /**
-   * Call this when SYS_sigaction is finishing with |regs|.
-   */
-  virtual void update_sigaction(const Registers&) {}
-  /**
-   * Call this when the tracee is about to complete a
-   * SYS_rt_sigprocmask syscall with |regs|.
-   */
-  virtual void update_sigmask(const Registers&) {}
 
   /**
    * Call this method when this task has exited a successful execve() syscall.
@@ -601,17 +591,6 @@ public:
    * Reads the value of the given debug register.
    */
   uintptr_t get_debug_reg(size_t regno);
-
-  /**
-   * Update the futex robust list head pointer to |list| (which
-   * is of size |len|).
-   */
-  void set_robust_list(remote_ptr<void> list, size_t len) {
-    robust_futex_list = list;
-    robust_futex_list_len = len;
-  }
-  remote_ptr<void> robust_list() const { return robust_futex_list; }
-  size_t robust_list_len() const { return robust_futex_list_len; }
 
   /** Update the thread area to |addr|. */
   void set_thread_area(remote_ptr<struct user_desc> tls);
@@ -928,8 +907,6 @@ public:
     Registers regs;
     ExtraRegisters extra_regs;
     std::string prname;
-    remote_ptr<void> robust_futex_list;
-    size_t robust_futex_list_len;
     std::vector<struct user_desc> thread_areas;
     size_t num_syscallbuf_bytes;
     int desched_fd_child;
@@ -1123,12 +1100,6 @@ private:
   // When |extra_registers_known|, we have saved our extra registers.
   ExtraRegisters extra_registers;
   bool extra_registers_known;
-  // Futex list passed to |set_robust_list()|.  We could keep a
-  // strong type for this list head and read it if we wanted to,
-  // but for now we only need to remember its address / size at
-  // the time of the most recent set_robust_list() call.
-  remote_ptr<void> robust_futex_list;
-  size_t robust_futex_list_len;
   // The session we're part of.
   Session* session_;
   // Stashed signal-delivery state, ready to be delivered at
