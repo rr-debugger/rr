@@ -851,3 +851,7 @@ pid_t RecordTask::find_newborn_child_process() {
     }
   }
 }
+
+void RecordTask::tgkill(int sig) {
+  ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
+}

@@ -201,6 +201,11 @@ public:
    */
   pid_t find_newborn_child_process();
 
+  /**
+   * Do a tgkill to send a specific signal to this task.
+   */
+  void tgkill(int sig);
+
 private:
   /**
    * Called when this task is able to receive a SIGCHLD (e.g. because

@@ -932,11 +932,6 @@ public:
   void open_mem_fd_if_needed();
 
   /**
-   * Do a tgkill to send a specific signal to this task.
-   */
-  void tgkill(int sig);
-
-  /**
    * Return the name of the given syscall.
    */
   std::string syscall_name(int syscallno) const;
