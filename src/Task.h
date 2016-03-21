@@ -293,17 +293,6 @@ public:
   bool is_disarm_desched_event_syscall();
 
   /**
-   * Return true when this is just before a syscall trap
-   * instruction for a traced syscall made by the syscallbuf
-   * code. Callers may assume |is_in_syscallbuf()| is implied
-   * by this.
-   */
-  bool is_entering_traced_syscall() {
-    return ip() == as->traced_syscall_ip() ||
-           ip() == as->privileged_traced_syscall_ip();
-  }
-
-  /**
    * Return true if this is within the syscallbuf library.  This
    * *does not* imply that $ip is at a buffered syscall; see
    * below.
