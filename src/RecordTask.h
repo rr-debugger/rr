@@ -50,6 +50,17 @@ public:
   void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
 
   /**
+   * Returns true if this task is in a waitpid or similar that would return
+   * when t's status changes due to a ptrace event.
+   */
+  bool is_waiting_for_ptrace(RecordTask* t);
+  /**
+   * Returns true if this task is in a waitpid or similar that would return
+   * when t's status changes due to a regular event (exit).
+   */
+  bool is_waiting_for(RecordTask* t);
+
+  /**
    * Returns true if it looks like this task has been spinning on an atomic
    * access/lock.
    */

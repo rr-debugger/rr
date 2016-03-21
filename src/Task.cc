@@ -374,52 +374,6 @@ bool Task::running_inside_desched() const {
 
 void Task::destabilize_task_group() { tg->destabilize(); }
 
-bool Task::is_waiting_for_ptrace(Task* t) {
-  // This task's process must be a ptracer of t.
-  if (!t->emulated_ptracer || t->emulated_ptracer->tg != tg) {
-    return false;
-  }
-  switch (in_wait_type) {
-    case WAIT_TYPE_NONE:
-      return false;
-    case WAIT_TYPE_ANY:
-      return true;
-    case WAIT_TYPE_SAME_PGID:
-      return getpgid(t->tgid()) == getpgid(tgid());
-    case WAIT_TYPE_PGID:
-      return getpgid(t->tgid()) == in_wait_pid;
-    case WAIT_TYPE_PID:
-      // When waiting for a ptracee, a specific pid is interpreted as the
-      // exact tid.
-      return t->tid == in_wait_pid;
-    default:
-      ASSERT(this, false);
-      return false;
-  }
-}
-
-bool Task::is_waiting_for(Task* t) {
-  // t must be a child of this task.
-  if (t->tg->parent() != tg.get()) {
-    return false;
-  }
-  switch (in_wait_type) {
-    case WAIT_TYPE_NONE:
-      return false;
-    case WAIT_TYPE_ANY:
-      return true;
-    case WAIT_TYPE_SAME_PGID:
-      return getpgid(t->tgid()) == getpgid(tgid());
-    case WAIT_TYPE_PGID:
-      return getpgid(t->tgid()) == in_wait_pid;
-    case WAIT_TYPE_PID:
-      return t->tgid() == in_wait_pid;
-    default:
-      ASSERT(this, false);
-      return false;
-  }
-}
-
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
   fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s)<%p>\n", prname.c_str(),

@@ -254,18 +254,6 @@ public:
   void destabilize_task_group();
 
   /**
-   * Returns true if this task is in a waitpid or similar that would return
-   * when t's status changes due to a ptrace event.
-   */
-  bool is_waiting_for_ptrace(Task* t);
-
-  /**
-   * Returns true if this task is in a waitpid or similar that would return
-   * when t's status changes due to a regular event (exit).
-   */
-  bool is_waiting_for(Task* t);
-
-  /**
    * Dump attributes of this process, including pending events,
    * to |out|, which defaults to LOG_FILE.
    */

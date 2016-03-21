@@ -73,17 +73,18 @@ void RecordTask::force_emulate_ptrace_stop(int code,
 }
 
 void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
-  Task* wake_task = nullptr;
+  RecordTask* wake_task = nullptr;
   bool need_signal = false;
-  for (Task* tracee : emulated_ptrace_tracees) {
+  for (RecordTask* tracee : emulated_ptrace_tracees) {
     if (tracee->emulated_ptrace_SIGCHLD_pending) {
       need_signal = true;
       // check to see if any thread in the ptracer process is in a waitpid that
       // could read the status of 'tracee'. If it is, we should wake up that
       // thread. Otherwise we send SIGCHLD to the ptracer thread.
       for (Task* t : task_group()->task_set()) {
-        if (t->is_waiting_for_ptrace(tracee)) {
-          wake_task = t;
+        auto rt = static_cast<RecordTask*>(t);
+        if (rt->is_waiting_for_ptrace(tracee)) {
+          wake_task = rt;
           break;
         }
       }
@@ -141,6 +142,53 @@ void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
       si->si_value.sival_int = 0;
       return;
     }
+  }
+}
+
+bool RecordTask::is_waiting_for_ptrace(RecordTask* t) {
+  // This task's process must be a ptracer of t.
+  if (!t->emulated_ptracer ||
+      t->emulated_ptracer->task_group() != task_group()) {
+    return false;
+  }
+  switch (in_wait_type) {
+    case WAIT_TYPE_NONE:
+      return false;
+    case WAIT_TYPE_ANY:
+      return true;
+    case WAIT_TYPE_SAME_PGID:
+      return getpgid(t->tgid()) == getpgid(tgid());
+    case WAIT_TYPE_PGID:
+      return getpgid(t->tgid()) == in_wait_pid;
+    case WAIT_TYPE_PID:
+      // When waiting for a ptracee, a specific pid is interpreted as the
+      // exact tid.
+      return t->tid == in_wait_pid;
+    default:
+      ASSERT(this, false);
+      return false;
+  }
+}
+
+bool RecordTask::is_waiting_for(RecordTask* t) {
+  // t must be a child of this task.
+  if (t->task_group()->parent() != task_group().get()) {
+    return false;
+  }
+  switch (in_wait_type) {
+    case WAIT_TYPE_NONE:
+      return false;
+    case WAIT_TYPE_ANY:
+      return true;
+    case WAIT_TYPE_SAME_PGID:
+      return getpgid(t->tgid()) == getpgid(tgid());
+    case WAIT_TYPE_PGID:
+      return getpgid(t->tgid()) == in_wait_pid;
+    case WAIT_TYPE_PID:
+      return t->tgid() == in_wait_pid;
+    default:
+      ASSERT(this, false);
+      return false;
   }
 }
 
