@@ -315,6 +315,16 @@ private:
   ~RecordTask();
 
   /**
+   * Wait for |futex| in this address space to have the value
+   * |val|.
+   *
+   * WARNING: this implementation semi-busy-waits for the value
+   * change.  This must only be used in contexts where the futex
+   * will change "soon".
+   */
+  void futex_wait(remote_ptr<int> futex, int val, bool* ok);
+
+  /**
    * Called when this task is able to receive a SIGCHLD (e.g. because
    * we completed delivery of a signal already). Sends a new synthetic
    * SIGCHLD to the task if there are still ptraced tasks that need a SIGCHLD

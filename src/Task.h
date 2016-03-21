@@ -198,16 +198,6 @@ public:
   void emulate_syscall_entry(const Registers& regs);
 
   /**
-   * Wait for |futex| in this address space to have the value
-   * |val|.
-   *
-   * WARNING: this implementation semi-busy-waits for the value
-   * change.  This must only be used in contexts where the futex
-   * will change "soon".
-   */
-  void futex_wait(remote_ptr<int> futex, int val, bool* ok);
-
-  /**
    * Return the ptrace message pid associated with the current ptrace
    * event, f.e. the new child's pid at PTRACE_EVENT_CLONE.
    */

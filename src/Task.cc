@@ -211,24 +211,6 @@ string Task::file_name_of_fd(int fd) {
   return path;
 }
 
-void Task::futex_wait(remote_ptr<int> futex, int val, bool* ok) {
-  // Wait for *sync_addr == sync_val.  This implementation isn't
-  // pretty, but it's pretty much the best we can do with
-  // available kernel tools.
-  //
-  // TODO: find clever way to avoid busy-waiting.
-  while (true) {
-    int mem = read_mem(futex, ok);
-    if (!ok || val == mem) {
-      // Invalid addresses are just ignored by the kernel
-      break;
-    }
-    // Try to give our scheduling slot to the kernel
-    // thread that's going to write sync_addr.
-    sched_yield();
-  }
-}
-
 pid_t Task::get_ptrace_eventmsg_pid() {
   unsigned long msg = 0;
   // in theory we could hit an assertion failure if the tracee suffers
