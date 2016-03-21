@@ -97,6 +97,9 @@ public:
     this->wait_for_all_ = wait_for_all;
   }
 
+  virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
+                         int priority, SupportedArch a);
+
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,

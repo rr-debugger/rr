@@ -14,6 +14,7 @@
 #include "log.h"
 #include "record_signal.h"
 #include "record_syscall.h"
+#include "RecordTask.h"
 #include "seccomp-bpf.h"
 #include "Task.h"
 
@@ -1570,6 +1571,11 @@ void RecordSession::terminate_recording() {
                    t ? t->tick_count() : 0);
   trace_out.write_frame(frame);
   trace_out.close();
+}
+
+Task* RecordSession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
+                              int priority, SupportedArch a) {
+  return new RecordTask(*this, tid, rec_tid, serial, priority, a);
 }
 
 void RecordSession::on_create(Task* t) {

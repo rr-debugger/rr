@@ -146,7 +146,7 @@ class Task {
 public:
   typedef std::vector<WatchConfig> DebugRegs;
 
-  ~Task();
+  virtual ~Task();
 
   /**
    * Return true iff this is at an execution state where
@@ -1299,10 +1299,11 @@ public:
     remote_ptr<void> top_of_stack;
   };
 
-private:
+protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        int priority, SupportedArch a);
 
+private:
   template <typename Arch>
   void on_syscall_exit_arch(int syscallno, const Registers& regs);
 
