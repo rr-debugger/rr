@@ -2,6 +2,8 @@
 
 #include "RecordTask.h"
 
+#include <dirent.h>
+#include <limits.h>
 #include <sys/syscall.h>
 
 #include "kernel_abi.h"
@@ -767,3 +769,85 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush) {
 }
 
 void RecordTask::record_current_event() { record_event(ev()); }
+
+pid_t RecordTask::find_newborn_thread() {
+  ASSERT(this, session().is_recording());
+  ASSERT(this, ptrace_event() == PTRACE_EVENT_CLONE);
+
+  pid_t hint = get_ptrace_eventmsg_pid();
+  char path[PATH_MAX];
+  sprintf(path, "/proc/%d/task/%d", tid, hint);
+  struct stat stat_buf;
+  // This should always succeed, but may fail in old kernels due to
+  // a kernel bug. See RecordSession::handle_ptrace_event.
+  if (!session().find_task(hint) && 0 == stat(path, &stat_buf)) {
+    return hint;
+  }
+
+  sprintf(path, "/proc/%d/task", tid);
+  DIR* dir = opendir(path);
+  ASSERT(this, dir);
+  while (true) {
+    struct dirent* result;
+    struct dirent entry;
+    int ret = readdir_r(dir, &entry, &result);
+    ASSERT(this, !ret && result == &entry);
+    char* end;
+    pid_t thread_tid = strtol(entry.d_name, &end, 10);
+    if (*end == '\0' && !session().find_task(thread_tid)) {
+      closedir(dir);
+      return thread_tid;
+    }
+  }
+}
+
+static bool is_ppid_of(pid_t ppid, pid_t pid) {
+  char path[PATH_MAX];
+  sprintf(path, "/proc/%d/status", pid);
+  FILE* status = fopen(path, "r");
+  if (!status) {
+    return false;
+  }
+  while (true) {
+    char line[1024];
+    if (!fgets(line, sizeof(line), status)) {
+      fclose(status);
+      return false;
+    }
+    if (strncmp(line, "PPid:", 5) == 0) {
+      fclose(status);
+      char* end;
+      int actual_ppid = strtol(line + 5, &end, 10);
+      return *end == '\n' && actual_ppid == ppid;
+    }
+  }
+}
+
+pid_t RecordTask::find_newborn_child_process() {
+  ASSERT(this, session().is_recording());
+  ASSERT(this, ptrace_event() == PTRACE_EVENT_CLONE ||
+                   ptrace_event() == PTRACE_EVENT_FORK);
+
+  pid_t hint = get_ptrace_eventmsg_pid();
+  // This should always succeed, but may fail in old kernels due to
+  // a kernel bug. See RecordSession::handle_ptrace_event.
+  if (!session().find_task(hint) && is_ppid_of(real_tgid(), hint)) {
+    return hint;
+  }
+
+  DIR* dir = opendir("/proc");
+  ASSERT(this, dir);
+  while (true) {
+    struct dirent* result;
+    struct dirent entry;
+    int ret = readdir_r(dir, &entry, &result);
+    ASSERT(this, !ret && result == &entry);
+    char* end;
+    pid_t proc_tid = strtol(entry.d_name, &end, 10);
+    if (*end == '\0' && !session().find_task(proc_tid) &&
+        is_ppid_of(real_tgid(), proc_tid)) {
+      closedir(dir);
+      return proc_tid;
+    }
+  }
+}
