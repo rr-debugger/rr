@@ -72,7 +72,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       extra_registers(a),
       extra_registers_known(false),
       session_(&session),
-      tid_futex(),
       top_of_stack(),
       wait_status(),
       seen_ptrace_exit_event(false) {
@@ -395,9 +394,6 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
     case Arch::set_thread_area:
       set_thread_area(regs.arg1());
-      return;
-    case Arch::set_tid_address:
-      set_tid_addr(regs.arg1());
       return;
 
     case Arch::prctl:
@@ -969,11 +965,6 @@ void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
   thread_areas_.push_back(desc);
 }
 
-void Task::set_tid_addr(remote_ptr<int> tid_addr) {
-  LOG(debug) << "updating cleartid futex to " << tid_addr;
-  tid_futex = tid_addr;
-}
-
 pid_t Task::tgid() const { return tg->tgid; }
 
 pid_t Task::real_tgid() const { return tg->real_tgid; }
@@ -1477,7 +1468,7 @@ static void set_thread_area_from_clone(Task* t, remote_ptr<void> tls) {
 }
 
 Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
-                  remote_ptr<int> cleartid_addr, pid_t new_tid,
+                  remote_ptr<int>, pid_t new_tid,
                   pid_t new_rec_tid, uint32_t new_serial,
                   Session* other_session) {
   auto& sess = other_session ? *other_session : session();
@@ -1525,13 +1516,6 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   // Clone children, both thread and fork, inherit the parent
   // prname.
   t->prname = prname;
-  if (CLONE_CLEARTID & flags) {
-    LOG(debug) << "cleartid futex is " << cleartid_addr;
-    assert(!cleartid_addr.is_null());
-    t->tid_futex = cleartid_addr;
-  } else {
-    LOG(debug) << "(clone child not enabling CLEARTID)";
-  }
 
   // wait() before trying to do anything that might need to
   // use ptrace to access memory
@@ -1671,7 +1655,6 @@ Task::CapturedState Task::capture_state() {
   state.wait_status = wait_status;
   state.pending_events = pending_events;
   state.ticks = ticks;
-  state.tid_futex = tid_futex;
   state.top_of_stack = top_of_stack;
   return state;
 }
@@ -1694,8 +1677,6 @@ void Task::copy_state(const CapturedState& state) {
 
     copy_tls(state, remote);
     thread_areas_ = state.thread_areas;
-
-    tid_futex = state.tid_futex;
 
     ASSERT(this, !syscallbuf_child)
         << "Syscallbuf should not already be initialized in clone";

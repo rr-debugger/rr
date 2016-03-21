@@ -355,6 +355,9 @@ private:
   /** Helper function for update_sigaction. */
   template <typename Arch> void update_sigaction_arch(const Registers& regs);
 
+  /** Update the clear-tid futex to |tid_addr|. */
+  void set_tid_addr(remote_ptr<int> tid_addr);
+
 public:
   // Scheduler state
 
@@ -437,6 +440,9 @@ public:
   // the time of the most recent set_robust_list() call.
   remote_ptr<void> robust_futex_list;
   size_t robust_futex_list_len;
+  // The memory cell the kernel will clear and notify on exit,
+  // if our clone parent requested it.
+  remote_ptr<int> tid_futex;
   /* This is the recorded tid of the tracee *in its own pid namespace*. */
   pid_t own_namespace_rec_tid;
   // Stashed signal-delivery state, ready to be delivered at

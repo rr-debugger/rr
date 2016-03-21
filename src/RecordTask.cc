@@ -270,6 +270,13 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       auto sh = sighandlers->clone();
       rt->sighandlers.swap(sh);
     }
+    if (CLONE_CLEARTID & flags) {
+      LOG(debug) << "cleartid futex is " << cleartid_addr;
+      ASSERT(this, !cleartid_addr.is_null());
+      rt->tid_futex = cleartid_addr;
+    } else {
+      LOG(debug) << "(clone child not enabling CLEARTID)";
+    }
   }
   return t;
 }
@@ -328,6 +335,9 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::sigprocmask:
     case Arch::rt_sigprocmask:
       update_sigmask(regs);
+      return;
+    case Arch::set_tid_address:
+      set_tid_addr(regs.arg1());
       return;
   }
 }
@@ -1057,6 +1067,11 @@ pid_t RecordTask::find_newborn_child_process() {
       return proc_tid;
     }
   }
+}
+
+void RecordTask::set_tid_addr(remote_ptr<int> tid_addr) {
+  LOG(debug) << "updating cleartid futex to " << tid_addr;
+  tid_futex = tid_addr;
 }
 
 void RecordTask::tgkill(int sig) {

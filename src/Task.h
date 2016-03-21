@@ -482,10 +482,6 @@ public:
 
   const std::vector<struct user_desc>& thread_areas() { return thread_areas_; }
 
-  /** Update the clear-tid futex to |tid_addr|. */
-  void set_tid_addr(remote_ptr<int> tid_addr);
-  remote_ptr<int> tid_addr() { return tid_futex; }
-
   /**
    * Return true when the task is running, false if it's stopped.
    */
@@ -764,7 +760,6 @@ public:
     int wait_status;
     std::deque<Event> pending_events;
     Ticks ticks;
-    remote_ptr<int> tid_futex;
     remote_ptr<void> top_of_stack;
   };
 
@@ -954,9 +949,6 @@ protected:
   // (when that's a user_desc). May be more than one due to different
   // entry_numbers.
   std::vector<struct user_desc> thread_areas_;
-  // The memory cell the kernel will clear and notify on exit,
-  // if our clone parent requested it.
-  remote_ptr<int> tid_futex;
   // The |stack| argument passed to |clone()|, which for
   // "threads" is the top of the user-allocated stack.
   remote_ptr<void> top_of_stack;
