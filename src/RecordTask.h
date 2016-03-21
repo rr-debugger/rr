@@ -288,6 +288,21 @@ public:
   // of stop.
   EmulatedStopType emulated_stop_type;
   sig_set_t blocked_sigs;
+
+  // Syscallbuf state
+
+  /* Value of hdr->num_rec_bytes when the buffer was flushed */
+  uint32_t flushed_num_rec_bytes;
+  /* Nonzero after the trace recorder has flushed the
+   * syscallbuf.  When this happens, the recorder must prepare a
+   * "reset" of the buffer, to zero the record count, at the
+   * next available slow (taking |desched| into
+   * consideration). */
+  bool flushed_syscallbuf;
+  /* This bit is set when code wants to prevent the syscall
+   * record buffer from being reset when it normally would be.
+   * Currently, the desched'd syscall code uses this. */
+  bool delay_syscallbuf_reset;
 };
 
 #endif /* RR_RECORD_TASK_H_ */

@@ -55,8 +55,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       stable_exit(false),
       scratch_ptr(),
       scratch_size(),
-      flushed_syscallbuf(false),
-      delay_syscallbuf_reset(false),
       // This will be initialized when the syscall buffer is.
       desched_fd_child(-1),
       seccomp_bpf_enabled(false),

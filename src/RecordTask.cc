@@ -159,7 +159,10 @@ RecordTask::RecordTask(Session& session, pid_t _tid, pid_t _rec_tid,
       in_wait_type(WAIT_TYPE_NONE),
       in_wait_pid(0),
       emulated_stop_type(NOT_STOPPED),
-      blocked_sigs() {
+      blocked_sigs(),
+      flushed_num_rec_bytes(0),
+      flushed_syscallbuf(false),
+      delay_syscallbuf_reset(false) {
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
     // The very first task we fork inherits the signal

@@ -847,8 +847,6 @@ public:
    */
   std::string syscall_name(int syscallno) const;
 
-  /* State only used during recording. */
-
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
    * with a waitpid() call. Only applies to tasks which are dying, usually
@@ -900,19 +898,6 @@ public:
    * and |size| is the total available space. */
   remote_ptr<void> scratch_ptr;
   ssize_t scratch_size;
-
-  /* Nonzero after the trace recorder has flushed the
-   * syscallbuf.  When this happens, the recorder must prepare a
-   * "reset" of the buffer, to zero the record count, at the
-   * next available slow (taking |desched| into
-   * consideration). */
-  bool flushed_syscallbuf;
-  /* Value of hdr->num_rec_bytes when the buffer was flushed */
-  uint32_t flushed_num_rec_bytes;
-  /* This bit is set when code wants to prevent the syscall
-   * record buffer from being reset when it normally would be.
-   * Currently, the desched'd syscall code uses this. */
-  bool delay_syscallbuf_reset;
 
   /* The child's desched counter event fd number, and our local
    * dup. */
