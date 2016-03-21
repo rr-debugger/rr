@@ -24,6 +24,7 @@
 
 class AutoRemoteSyscalls;
 class RecordSession;
+class RecordTask;
 class ReplaySession;
 class ScopedFd;
 class Session;
@@ -1171,7 +1172,7 @@ public:
   bool emulated_ptrace_SIGCHLD_pending;
   // if nonzero, code to deliver to ptracer when it waits
   int emulated_ptrace_stop_code;
-  std::set<Task*> emulated_ptrace_tracees;
+  std::set<RecordTask*> emulated_ptrace_tracees;
 
   WaitType in_wait_type;
   pid_t in_wait_pid;

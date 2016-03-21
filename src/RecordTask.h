@@ -10,6 +10,7 @@ public:
   RecordTask(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
              int _priority, SupportedArch a)
       : Task(session, _tid, _rec_tid, serial, _priority, a) {}
+  RecordSession& session() { return *Task::session().as_record(); }
 };
 
 #endif /* RR_RECORD_TASK_H_ */

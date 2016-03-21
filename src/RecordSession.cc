@@ -16,7 +16,6 @@
 #include "record_syscall.h"
 #include "RecordTask.h"
 #include "seccomp-bpf.h"
-#include "Task.h"
 
 // Undef si_addr_lsb since it's an alias for a field name that doesn't exist,
 // and we need to use the actual field name.
@@ -119,7 +118,7 @@ template <typename T> static remote_ptr<T> mask_low_bit(remote_ptr<T> p) {
 
 template <typename Arch>
 static void record_robust_futex_change(
-    Task* t, const typename Arch::robust_list_head& head,
+    RecordTask* t, const typename Arch::robust_list_head& head,
     remote_ptr<void> base) {
   if (base.is_null()) {
     return;
@@ -150,7 +149,8 @@ static void record_robust_futex_change(
  * during replay because the TID value in each futex is the recorded
  * TID, not the actual TID of the dying task.
  */
-template <typename Arch> static void record_robust_futex_changes_arch(Task* t) {
+template <typename Arch>
+static void record_robust_futex_changes_arch(RecordTask* t) {
   auto head_ptr = t->robust_list().cast<typename Arch::robust_list_head>();
   if (head_ptr.is_null()) {
     return;
@@ -174,7 +174,7 @@ template <typename Arch> static void record_robust_futex_changes_arch(Task* t) {
   }
 }
 
-static void record_robust_futex_changes(Task* t) {
+static void record_robust_futex_changes(RecordTask* t) {
   RR_ARCH_FUNCTION(record_robust_futex_changes_arch, t->arch(), t);
 }
 
@@ -182,7 +182,7 @@ static void record_robust_futex_changes(Task* t) {
  * Return true if we handle a ptrace exit event for task t. When this returns
  * true, t has been deleted and cannot be referenced again.
  */
-static bool handle_ptrace_exit_event(Task* t) {
+static bool handle_ptrace_exit_event(RecordTask* t) {
   if (t->ptrace_event() != PTRACE_EVENT_EXIT) {
     return false;
   }
@@ -207,7 +207,7 @@ static bool handle_ptrace_exit_event(Task* t) {
 }
 
 static void handle_seccomp_traced_syscall(
-    Task* t, RecordSession::StepState* step_state) {
+    RecordTask* t, RecordSession::StepState* step_state) {
   int syscallno = t->regs().original_syscallno();
   if (syscallno < 0) {
     // negative syscall numbers after a SECCOMP event
@@ -230,7 +230,8 @@ static void handle_seccomp_traced_syscall(
   }
 }
 
-static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
+static void handle_seccomp_trap(RecordTask* t,
+                                RecordSession::StepState* step_state,
                                 uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
@@ -285,7 +286,8 @@ static void handle_seccomp_trap(Task* t, RecordSession::StepState* step_state,
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
-static void handle_seccomp_errno(Task* t, RecordSession::StepState* step_state,
+static void handle_seccomp_errno(RecordTask* t,
+                                 RecordSession::StepState* step_state,
                                  uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
@@ -309,13 +311,13 @@ static void handle_seccomp_errno(Task* t, RecordSession::StepState* step_state,
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
-static void set_own_namespace_tid(Task* t) {
+static void set_own_namespace_tid(RecordTask* t) {
   AutoRemoteSyscalls remote(t);
   t->own_namespace_rec_tid =
       remote.infallible_syscall(syscall_number_for_gettid(t->arch()));
 }
 
-bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
+bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
   int event = t->ptrace_event();
   if (event == PTRACE_EVENT_NONE) {
     return false;
@@ -374,8 +376,8 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
       } else {
         new_tid = t->find_newborn_child_process();
       }
-      Task* new_task = clone(t, clone_flags_to_task_flags(flags_arg), stack,
-                             tls, ctid, new_tid);
+      RecordTask* new_task = static_cast<RecordTask*>(clone(
+          t, clone_flags_to_task_flags(flags_arg), stack, tls, ctid, new_tid));
       rec_set_syscall_new_task(t, new_task);
       set_own_namespace_tid(new_task);
       // Skip past the ptrace event.
@@ -385,7 +387,8 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
 
     case PTRACE_EVENT_FORK: {
       pid_t new_tid = t->find_newborn_child_process();
-      Task* new_task = clone(t, 0, nullptr, nullptr, nullptr, new_tid);
+      RecordTask* new_task = static_cast<RecordTask*>(
+          clone(t, 0, nullptr, nullptr, nullptr, new_tid));
       rec_set_syscall_new_task(t, new_task);
       set_own_namespace_tid(new_task);
       // Skip past the ptrace event.
@@ -419,13 +422,13 @@ bool RecordSession::handle_ptrace_event(Task* t, StepState* step_state) {
   return true;
 }
 
-static void debug_exec_state(const char* msg, Task* t) {
+static void debug_exec_state(const char* msg, RecordTask* t) {
   LOG(debug) << msg << ": status=" << HEX(t->status())
              << " pevent=" << t->ptrace_event();
 }
 
 void RecordSession::task_continue(const StepState& step_state) {
-  Task* t = scheduler().current();
+  RecordTask* t = scheduler().current();
 
   ASSERT(t, step_state.continue_type != DONT_CONTINUE);
 
@@ -474,7 +477,7 @@ void RecordSession::task_continue(const StepState& step_state) {
  * (In reality the desched event will already have been disarmed before we
  * enter this function.)
  */
-static void advance_to_disarm_desched_syscall(Task* t) {
+static void advance_to_disarm_desched_syscall(RecordTask* t) {
   int old_sig = 0;
 
   LOG(debug) << "desched: DISARMING_DESCHED_EVENT";
@@ -518,7 +521,7 @@ static void advance_to_disarm_desched_syscall(Task* t) {
  * changed.  (For now, changes except the original desched'd syscall
  * being restarted.)
  */
-void RecordSession::desched_state_changed(Task* t) {
+void RecordSession::desched_state_changed(RecordTask* t) {
   LOG(debug) << "desched: IN_SYSCALL";
   /* We need to ensure that the syscallbuf code doesn't
    * try to commit the current record; we've already
@@ -542,7 +545,7 @@ void RecordSession::desched_state_changed(Task* t) {
   t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
 }
 
-static void syscall_not_restarted(Task* t) {
+static void syscall_not_restarted(RecordTask* t) {
   LOG(debug) << "  " << t->tid << ": popping abandoned interrupted " << t->ev()
              << "; pending events:";
 #ifdef DEBUGTAG
@@ -562,7 +565,7 @@ static void syscall_not_restarted(Task* t) {
  * syscall interruption, whether or whether not a syscall was
  * restarted.
  */
-static bool maybe_restart_syscall(Task* t) {
+static bool maybe_restart_syscall(RecordTask* t) {
   if (is_restart_syscall_syscall(t->regs().original_syscallno(), t->arch())) {
     LOG(debug) << "  " << t->tid << ": SYS_restart_syscall'ing " << t->ev();
   }
@@ -584,7 +587,7 @@ static bool maybe_restart_syscall(Task* t) {
  * check to see if there's an interrupted syscall that /won't/ be
  * restarted, and if so, pop it off the pending event stack.
  */
-static void maybe_discard_syscall_interruption(Task* t, intptr_t ret) {
+static void maybe_discard_syscall_interruption(RecordTask* t, intptr_t ret) {
   int syscallno;
 
   if (EV_SYSCALL_INTERRUPTION != t->ev().type()) {
@@ -618,7 +621,8 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
   to->set_arg6(from.arg6());
 }
 
-void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
+void RecordSession::syscall_state_changed(RecordTask* t,
+                                          StepState* step_state) {
   switch (t->ev().Syscall().state) {
     case ENTERING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
@@ -785,7 +789,7 @@ void RecordSession::syscall_state_changed(Task* t, StepState* step_state) {
 }
 
 /** If the perf counters seem to be working return, otherwise don't return. */
-void RecordSession::check_perf_counters_working(Task* t,
+void RecordSession::check_perf_counters_working(RecordTask* t,
                                                 RecordResult* step_result) {
   if (done_initial_exec()) {
     return;
@@ -829,7 +833,7 @@ static void assign_sigval(typename Arch::sigval_t& to,
  * versions of system headers have inconsistent field naming.
  */
 template <typename Arch>
-static void setup_sigframe_siginfo_arch(Task* t,
+static void setup_sigframe_siginfo_arch(RecordTask* t,
                                         const NativeArch::siginfo_t& siginfo) {
   remote_ptr<typename Arch::siginfo_t> dest;
   switch (Arch::arch()) {
@@ -905,7 +909,7 @@ static void setup_sigframe_siginfo_arch(Task* t,
   t->write_mem(dest, si);
 }
 
-static void setup_sigframe_siginfo(Task* t, const siginfo_t& siginfo) {
+static void setup_sigframe_siginfo(RecordTask* t, const siginfo_t& siginfo) {
   RR_ARCH_FUNCTION(setup_sigframe_siginfo_arch, t->arch(), t,
                    *reinterpret_cast<const NativeArch::siginfo_t*>(&siginfo));
 }
@@ -913,7 +917,7 @@ static void setup_sigframe_siginfo(Task* t, const siginfo_t& siginfo) {
 /**
  * Get t into a state where resume_execution with a signal will actually work.
  */
-static void preinject_signal(Task* t) {
+static void preinject_signal(RecordTask* t) {
   int sig = t->ev().Signal().siginfo.si_signo;
 
   /* Signal injection is tricky. Per the ptrace(2) man page, injecting
@@ -982,7 +986,7 @@ static void preinject_signal(Task* t) {
  * Returns false if this signal should not be delivered because another signal
  * occurred during delivery.
  */
-static bool inject_handled_signal(Task* t) {
+static bool inject_handled_signal(RecordTask* t) {
   preinject_signal(t);
 
   int sig = t->ev().Signal().siginfo.si_signo;
@@ -1022,7 +1026,7 @@ static bool inject_handled_signal(Task* t) {
   return true;
 }
 
-static bool is_fatal_signal(Task* t, int sig,
+static bool is_fatal_signal(RecordTask* t, int sig,
                             SignalDeterministic deterministic) {
   signal_action action = default_action(sig);
   if (action != DUMP_CORE && action != TERMINATE) {
@@ -1049,7 +1053,7 @@ static bool is_fatal_signal(Task* t, int sig,
  * Return true if execution was incidentally resumed to a new event,
  * false otherwise.
  */
-void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
+void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
   int sig = t->ev().Signal().siginfo.si_signo;
 
   switch (t->ev().type()) {
@@ -1166,7 +1170,7 @@ void RecordSession::signal_state_changed(Task* t, StepState* step_state) {
   }
 }
 
-bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
+bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
   int sig = t->pending_sig();
   if (!sig) {
     return false;
@@ -1235,7 +1239,8 @@ bool RecordSession::handle_signal_event(Task* t, StepState* step_state) {
  * The execution of |t| has just been resumed, and it most likely has
  * a new event that needs to be processed.  Prepare that new event.
  */
-void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
+void RecordSession::runnable_state_changed(RecordTask* t,
+                                           RecordResult* step_result,
                                            bool can_consume_wait_status) {
   switch (t->ev().type()) {
     case EV_NOOP:
@@ -1276,7 +1281,8 @@ void RecordSession::runnable_state_changed(Task* t, RecordResult* step_result,
   }
 }
 
-bool RecordSession::prepare_to_inject_signal(Task* t, StepState* step_state) {
+bool RecordSession::prepare_to_inject_signal(RecordTask* t,
+                                             StepState* step_state) {
   if (!t->has_stashed_sig() || !done_initial_exec() ||
       step_state->continue_type != CONTINUE) {
     return false;
@@ -1438,7 +1444,7 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       wait_for_all_(false) {
   scheduler().set_enable_chaos(chaos == ENABLE_CHAOS);
   set_enable_chaos(chaos == ENABLE_CHAOS);
-  Task* t = Task::spawn(*this, trace_out);
+  RecordTask* t = static_cast<RecordTask*>(Task::spawn(*this, trace_out));
   initial_task_group = t->task_group();
   on_create(t);
 }
@@ -1462,7 +1468,7 @@ RecordSession::RecordResult RecordSession::record_step() {
   result.status = STEP_CONTINUE;
 
   bool did_wait;
-  Task* prev_task = scheduler().current();
+  RecordTask* prev_task = scheduler().current();
   if (!scheduler().reschedule(last_task_switchable, &did_wait)) {
     // The scheduler was waiting for some task to become active, but was
     // interrupted by a signal. Yield to our caller now to give the caller
@@ -1470,7 +1476,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     // (e.g. terminate the recording).
     return result;
   }
-  Task* t = scheduler().current();
+  RecordTask* t = scheduler().current();
   if (prev_task && prev_task->ev().type() == EV_SCHED) {
     if (prev_task != t) {
       // We did do a context switch, so record the SCHED event. Otherwise
@@ -1551,7 +1557,7 @@ RecordSession::RecordResult RecordSession::record_step() {
 }
 
 void RecordSession::terminate_recording() {
-  Task* t = scheduler().current();
+  RecordTask* t = scheduler().current();
   if (t) {
     t->maybe_flush_syscallbuf();
   }
@@ -1580,10 +1586,14 @@ Task* RecordSession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
 
 void RecordSession::on_create(Task* t) {
   Session::on_create(t);
-  scheduler().on_create(t);
+  scheduler().on_create(static_cast<RecordTask*>(t));
 }
 
 void RecordSession::on_destroy(Task* t) {
-  scheduler().on_destroy(t);
+  scheduler().on_destroy(static_cast<RecordTask*>(t));
   Session::on_destroy(t);
+}
+
+RecordTask* RecordSession::find_task(pid_t rec_tid) const {
+  return static_cast<RecordTask*>(Session::find_task(rec_tid));
 }

@@ -21,7 +21,7 @@
 #include "log.h"
 #include "PerfCounters.h"
 #include "RecordSession.h"
-#include "Task.h"
+#include "RecordTask.h"
 #include "TraceStream.h"
 #include "util.h"
 
@@ -44,7 +44,7 @@ static size_t sigaction_sigset_size(SupportedArch arch) {
  * Restore the blocked-ness and sigaction for SIGSEGV from |t|'s local
  * copy.
  */
-static void restore_sigsegv_state(Task* t) {
+static void restore_sigsegv_state(RecordTask* t) {
   const vector<uint8_t>& sa = t->signal_action(SIGSEGV);
   AutoRemoteSyscalls remote(t);
   {
@@ -62,7 +62,7 @@ static void restore_sigsegv_state(Task* t) {
 
 /** Return true iff |t->ip()| points at a RDTSC instruction. */
 static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
-static bool is_ip_rdtsc(Task* t) {
+static bool is_ip_rdtsc(RecordTask* t) {
   uint8_t insn[sizeof(rdtsc_insn)];
   if (sizeof(insn) !=
       t->read_bytes_fallible(t->ip().to_data_ptr<uint8_t>(), sizeof(insn),
@@ -76,7 +76,7 @@ static bool is_ip_rdtsc(Task* t) {
  * Return true if |t| was stopped because of a SIGSEGV resulting
  * from a rdtsc and |t| was updated appropriately, false otherwise.
  */
-static bool try_handle_rdtsc(Task* t, siginfo_t* si) {
+static bool try_handle_rdtsc(RecordTask* t, siginfo_t* si) {
   ASSERT(t, si->si_signo == SIGSEGV);
 
   if (!is_ip_rdtsc(t)) {
@@ -98,7 +98,7 @@ static bool try_handle_rdtsc(Task* t, siginfo_t* si) {
  * Return true if |t| was stopped because of a SIGSEGV and we want to retry
  * the instruction after emulating MAP_GROWSDOWN.
  */
-static bool try_grow_map(Task* t, siginfo_t* si) {
+static bool try_grow_map(RecordTask* t, siginfo_t* si) {
   ASSERT(t, si->si_signo == SIGSEGV);
 
   // Use kernel_abi to avoid odd inconsistencies between distros
@@ -169,20 +169,20 @@ static bool try_grow_map(Task* t, siginfo_t* si) {
   // No need to flush syscallbuf here. It's safe to map these pages "early"
   // before they're really needed.
   t->record_event(Event(EV_GROW_MAP, NO_EXEC_INFO, t->arch()),
-                  Task::DONT_FLUSH_SYSCALLBUF);
+                  RecordTask::DONT_FLUSH_SYSCALLBUF);
   t->push_event(Event::noop(t->arch()));
   LOG(debug) << "try_grow_map " << addr << ": extended map "
              << t->vm()->mapping_of(addr).map;
   return true;
 }
 
-void disarm_desched_event(Task* t) {
+void disarm_desched_event(RecordTask* t) {
   if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
     FATAL() << "Failed to disarm desched event";
   }
 }
 
-void arm_desched_event(Task* t) {
+void arm_desched_event(RecordTask* t) {
   if (ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
     FATAL() << "Failed to disarm desched event";
   }
@@ -193,7 +193,7 @@ void arm_desched_event(Task* t) {
  * The tracee's execution may be advanced, and if so |regs| is updated
  * to the tracee's latest state.
  */
-static void handle_desched_event(Task* t, const siginfo_t* si) {
+static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
   ASSERT(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo &&
              si->si_code == POLL_IN && si->si_fd == t->desched_fd_child))
       << "Tracee is using SIGPWR??? (code=" << si->si_code
@@ -378,7 +378,7 @@ static void handle_desched_event(Task* t, const siginfo_t* si) {
              << t->syscall_name(call) << "'";
 }
 
-static bool is_safe_to_deliver_signal(Task* t) {
+static bool is_safe_to_deliver_signal(RecordTask* t) {
   struct syscallbuf_hdr* hdr = t->syscallbuf_hdr;
 
   if (!hdr) {
@@ -412,7 +412,7 @@ static bool is_safe_to_deliver_signal(Task* t) {
   return false;
 }
 
-SignalHandled handle_signal(Task* t, siginfo_t* si) {
+SignalHandled handle_signal(RecordTask* t, siginfo_t* si) {
   LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
              << " (pevent: " << t->ptrace_event() << ", event: " << t->ev();
 

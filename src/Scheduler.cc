@@ -19,7 +19,7 @@
 #include "Flags.h"
 #include "log.h"
 #include "RecordSession.h"
-#include "Task.h"
+#include "RecordTask.h"
 
 using namespace rr;
 using namespace std;
@@ -102,7 +102,7 @@ void Scheduler::set_enable_chaos(bool enable_chaos) {
   pretend_num_cores_ = enable_chaos ? (random() % 8 + 1) : 1;
 }
 
-Task* Scheduler::get_next_task_with_same_priority(Task* t) {
+RecordTask* Scheduler::get_next_task_with_same_priority(RecordTask* t) {
   if (!t || t->in_round_robin_queue) {
     return nullptr;
   }
@@ -118,7 +118,7 @@ Task* Scheduler::get_next_task_with_same_priority(Task* t) {
 
 static double random_frac() { return double(random() % INT32_MAX) / INT32_MAX; }
 
-int Scheduler::choose_random_priority(Task* t) {
+int Scheduler::choose_random_priority(RecordTask* t) {
   double prob = t->tgid() == t->tid ? main_thread_low_priority_probability
                                     : low_priority_probability;
   return random_frac() < prob;
@@ -130,7 +130,7 @@ int Scheduler::choose_random_priority(Task* t) {
  * |must| return t as the runnable task, otherwise we will lose an event and
  * probably deadlock!!!
  */
-bool Scheduler::is_task_runnable(Task* t, bool* by_waitpid) {
+bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   ASSERT(t, !must_run_task) << "is_task_runnable called again after it "
                                "returned a task that must run!";
 
@@ -177,8 +177,8 @@ bool Scheduler::is_task_runnable(Task* t, bool* by_waitpid) {
   return false;
 }
 
-Task* Scheduler::find_next_runnable_task(Task* t, bool* by_waitpid,
-                                         int priority_threshold) {
+RecordTask* Scheduler::find_next_runnable_task(RecordTask* t, bool* by_waitpid,
+                                               int priority_threshold) {
   *by_waitpid = false;
 
   // The outer loop has one iteration per unique priority value.
@@ -193,12 +193,12 @@ Task* Scheduler::find_next_runnable_task(Task* t, bool* by_waitpid,
         make_pair(same_priority_start->first + 1, nullptr));
 
     if (enable_chaos) {
-      vector<Task*> tasks;
+      vector<RecordTask*> tasks;
       for (auto it = same_priority_start; it != same_priority_end; ++it) {
         tasks.push_back(it->second);
       }
       random_shuffle(tasks.begin(), tasks.end());
-      for (Task* next : tasks) {
+      for (RecordTask* next : tasks) {
         if (is_task_runnable(next, by_waitpid)) {
           return next;
         }
@@ -215,7 +215,7 @@ Task* Scheduler::find_next_runnable_task(Task* t, bool* by_waitpid,
 
       auto task_iterator = begin_at;
       do {
-        Task* next = task_iterator->second;
+        RecordTask* next = task_iterator->second;
 
         if (is_task_runnable(next, by_waitpid)) {
           return next;
@@ -271,14 +271,14 @@ void Scheduler::maybe_reset_priorities(double now) {
   // Reset task priorities again at some point in the future.
   priorities_refresh_time =
       now + random_frac() * priorities_refresh_max_interval;
-  vector<Task*> tasks;
+  vector<RecordTask*> tasks;
   for (auto p : task_priority_set) {
     tasks.push_back(p.second);
   }
-  for (Task* t : task_round_robin_queue) {
+  for (RecordTask* t : task_round_robin_queue) {
     tasks.push_back(t);
   }
-  for (Task* t : tasks) {
+  for (RecordTask* t : tasks) {
     update_task_priority_internal(t, choose_random_priority(t));
   }
 }
@@ -314,7 +314,7 @@ bool Scheduler::in_high_priority_only_interval(double now) {
   return mod < high_priority_only_intervals_duration;
 }
 
-bool Scheduler::treat_as_high_priority(Task* t) {
+bool Scheduler::treat_as_high_priority(RecordTask* t) {
   return task_priority_set.size() > 1 && t->priority == 0;
 }
 
@@ -350,7 +350,7 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
     return true;
   }
 
-  Task* next;
+  RecordTask* next;
   while (true) {
     maybe_reset_high_priority_only_intervals(now);
     last_reschedule_in_high_priority_only_interval =
@@ -444,9 +444,9 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
         LOG(debug) << "    ... but it's dead";
       }
     } while (!next);
-    ASSERT(next,
-           next->unstable || next->may_be_blocked() ||
-               Task::ptrace_event_from_status(status) == PTRACE_EVENT_EXIT)
+    ASSERT(next, next->unstable || next->may_be_blocked() ||
+                     RecordTask::ptrace_event_from_status(status) ==
+                         PTRACE_EVENT_EXIT)
         << "Scheduled task should have been blocked or unstable";
     next->did_waitpid(status);
     *by_waitpid = true;
@@ -497,7 +497,7 @@ double Scheduler::interrupt_after_elapsed_time() const {
   return max(0.001, delay);
 }
 
-void Scheduler::on_create(Task* t) {
+void Scheduler::on_create(RecordTask* t) {
   assert(!t->in_round_robin_queue);
   if (enable_chaos) {
     // new tasks get a random priority
@@ -506,7 +506,7 @@ void Scheduler::on_create(Task* t) {
   task_priority_set.insert(make_pair(t->priority, t));
 }
 
-void Scheduler::on_destroy(Task* t) {
+void Scheduler::on_destroy(RecordTask* t) {
   if (t == current_) {
     current_ = nullptr;
   }
@@ -520,13 +520,13 @@ void Scheduler::on_destroy(Task* t) {
   }
 }
 
-void Scheduler::update_task_priority(Task* t, int value) {
+void Scheduler::update_task_priority(RecordTask* t, int value) {
   if (!enable_chaos) {
     update_task_priority_internal(t, value);
   }
 }
 
-void Scheduler::update_task_priority_internal(Task* t, int value) {
+void Scheduler::update_task_priority_internal(RecordTask* t, int value) {
   if (t->priority == value) {
     return;
   }
@@ -539,7 +539,7 @@ void Scheduler::update_task_priority_internal(Task* t, int value) {
   task_priority_set.insert(make_pair(t->priority, t));
 }
 
-void Scheduler::schedule_one_round_robin(Task* t) {
+void Scheduler::schedule_one_round_robin(RecordTask* t) {
   maybe_pop_round_robin_task(t);
 
   ASSERT(t, !t->in_round_robin_queue);
@@ -556,12 +556,12 @@ void Scheduler::schedule_one_round_robin(Task* t) {
   expire_timeslice();
 }
 
-Task* Scheduler::get_round_robin_task() {
+RecordTask* Scheduler::get_round_robin_task() {
   return task_round_robin_queue.empty() ? nullptr
                                         : task_round_robin_queue.front();
 }
 
-void Scheduler::maybe_pop_round_robin_task(Task* t) {
+void Scheduler::maybe_pop_round_robin_task(RecordTask* t) {
   if (task_round_robin_queue.empty() || t != task_round_robin_queue.front()) {
     return;
   }

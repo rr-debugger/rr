@@ -9,9 +9,10 @@
 #include "Scheduler.h"
 #include "SeccompFilterRewriter.h"
 #include "Session.h"
-#include "Task.h"
 #include "TaskGroup.h"
 #include "TraceFrame.h"
+
+class RecordTask;
 
 /** Encapsulates additional session state related to recording. */
 class RecordSession : public Session {
@@ -100,6 +101,8 @@ public:
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
                          int priority, SupportedArch a);
 
+  RecordTask* find_task(pid_t rec_tid) const;
+
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
@@ -107,15 +110,15 @@ private:
 
   virtual void on_create(Task* t);
 
-  void check_perf_counters_working(Task* t, RecordResult* step_result);
-  bool handle_ptrace_event(Task* t, StepState* step_state);
-  bool handle_signal_event(Task* t, StepState* step_state);
-  void runnable_state_changed(Task* t, RecordResult* step_result,
+  void check_perf_counters_working(RecordTask* t, RecordResult* step_result);
+  bool handle_ptrace_event(RecordTask* t, StepState* step_state);
+  bool handle_signal_event(RecordTask* t, StepState* step_state);
+  void runnable_state_changed(RecordTask* t, RecordResult* step_result,
                               bool can_consume_wait_status);
-  void signal_state_changed(Task* t, StepState* step_state);
-  void syscall_state_changed(Task* t, StepState* step_state);
-  void desched_state_changed(Task* t);
-  bool prepare_to_inject_signal(Task* t, StepState* step_state);
+  void signal_state_changed(RecordTask* t, StepState* step_state);
+  void syscall_state_changed(RecordTask* t, StepState* step_state);
+  void desched_state_changed(RecordTask* t);
+  bool prepare_to_inject_signal(RecordTask* t, StepState* step_state);
   void task_continue(const StepState& step_state);
   bool can_end();
 

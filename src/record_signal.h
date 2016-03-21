@@ -5,12 +5,12 @@
 
 #include <signal.h>
 
-class Task;
+class RecordTask;
 
 const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
 
-void disarm_desched_event(Task* t);
-void arm_desched_event(Task* t);
+void disarm_desched_event(RecordTask* t);
+void arm_desched_event(RecordTask* t);
 
 enum SignalHandled { SIGNAL_HANDLED, SIGNAL_PTRACE_STOP, DEFER_SIGNAL };
 /**
@@ -22,6 +22,6 @@ enum SignalHandled { SIGNAL_HANDLED, SIGNAL_PTRACE_STOP, DEFER_SIGNAL };
  * Handling the signal means we either pushed a new signal event, new
  * desched + syscall-interruption events, or no-op.
  */
-SignalHandled handle_signal(Task* t, siginfo_t* si);
+SignalHandled handle_signal(RecordTask* t, siginfo_t* si);
 
 #endif /* RR_HANDLE_SIGNAL_H__ */

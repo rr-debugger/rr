@@ -35,6 +35,7 @@
 #include "PreserveFileMonitor.h"
 #include "RecordSession.h"
 #include "record_signal.h"
+#include "RecordTask.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "seccomp-bpf.h"
@@ -228,7 +229,8 @@ Task::~Task() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
 
   if (emulated_ptracer) {
-    emulated_ptracer->emulated_ptrace_tracees.erase(this);
+    emulated_ptracer->emulated_ptrace_tracees.erase(
+        static_cast<RecordTask*>(this));
   }
   for (Task* t : emulated_ptrace_tracees) {
     // XXX emulate PTRACE_O_EXITKILL
@@ -378,12 +380,14 @@ void Task::set_emulated_ptracer(Task* tracer) {
   if (tracer) {
     ASSERT(this, !emulated_ptracer);
     emulated_ptracer = tracer;
-    emulated_ptracer->emulated_ptrace_tracees.insert(this);
+    emulated_ptracer->emulated_ptrace_tracees.insert(
+        static_cast<RecordTask*>(this));
   } else {
     ASSERT(this, emulated_ptracer);
     ASSERT(this, emulated_stop_type == NOT_STOPPED ||
                      emulated_stop_type == GROUP_STOP);
-    emulated_ptracer->emulated_ptrace_tracees.erase(this);
+    emulated_ptracer->emulated_ptrace_tracees.erase(
+        static_cast<RecordTask*>(this));
     emulated_ptracer = nullptr;
   }
 }

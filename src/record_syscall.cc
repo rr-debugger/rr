@@ -61,9 +61,9 @@
 #include "kernel_supplement.h"
 #include "log.h"
 #include "RecordSession.h"
+#include "RecordTask.h"
 #include "Scheduler.h"
 #include "StdioMonitor.h"
-#include "Task.h"
 #include "TraceStream.h"
 #include "util.h"
 
@@ -136,7 +136,7 @@ struct ParamSize {
    * in with the size of the data by the kernel when the syscall exits.
    */
   template <typename T>
-  static ParamSize from_initialized_mem(Task* t, remote_ptr<T> p) {
+  static ParamSize from_initialized_mem(RecordTask* t, remote_ptr<T> p) {
     ParamSize r(p.is_null() ? size_t(0) : size_t(t->read_mem(p)));
     r.mem_ptr = p;
     r.read_size = sizeof(T);
@@ -192,7 +192,7 @@ struct ParamSize {
    * 'already_consumed' bytes are subtracted from the syscall-result/
    * memory-location part of the size.
    */
-  size_t eval(Task* t, size_t already_consumed) const;
+  size_t eval(RecordTask* t, size_t already_consumed) const;
 
   size_t incoming_size;
   /** If non-null, the size is limited by the value at this location after
@@ -204,7 +204,7 @@ struct ParamSize {
   bool from_syscall;
 };
 
-size_t ParamSize::eval(Task* t, size_t already_consumed) const {
+size_t ParamSize::eval(RecordTask* t, size_t already_consumed) const {
   size_t s = incoming_size;
   if (!mem_ptr.is_null()) {
     size_t mem_size;
@@ -281,7 +281,7 @@ size_t ParamSize::eval(Task* t, size_t already_consumed) const {
  * the relevant syscallbuf record data in rec_process_syscall_arch.
  */
 struct TaskSyscallState {
-  void init(Task* t) {
+  void init(RecordTask* t) {
     if (preparation_done) {
       return;
     }
@@ -351,7 +351,7 @@ struct TaskSyscallState {
   remote_ptr<void> mem_ptr_parameter(remote_ptr<void> addr_of_buf_ptr,
                                      const ParamSize& size, ArgMode mode = OUT);
 
-  typedef void (*AfterSyscallAction)(Task* t);
+  typedef void (*AfterSyscallAction)(RecordTask* t);
   void after_syscall_action(AfterSyscallAction action) {
     after_syscall_actions.push_back(action);
   }
@@ -408,7 +408,7 @@ struct TaskSyscallState {
     ArgMode mode;
   };
 
-  Task* t;
+  RecordTask* t;
 
   vector<MemoryParam> param_list;
   /** Tracks the position in t's scratch_ptr buffer where we should allocate
@@ -420,11 +420,11 @@ struct TaskSyscallState {
 
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
-  Task* ptraced_tracee;
+  RecordTask* ptraced_tracee;
 
   /** Task created by clone()/fork(). Set when we get a PTRACE_EVENT_CLONE/FORK.
    */
-  Task* new_task;
+  RecordTask* new_task;
 
   /** Saved syscall-entry registers, used by code paths that modify the
    *  registers temporarily.
@@ -473,9 +473,9 @@ struct TaskSyscallState {
         scratch_enabled(false) {}
 };
 
-static const Property<TaskSyscallState, Task> syscall_state_property;
+static const Property<TaskSyscallState, RecordTask> syscall_state_property;
 
-void rec_set_syscall_new_task(Task* t, Task* new_task) {
+void rec_set_syscall_new_task(RecordTask* t, RecordTask* new_task) {
   auto syscall_state = syscall_state_property.get(*t);
   ASSERT(t, syscall_state) << "new task created outside of syscall?";
   ASSERT(t, is_clone_syscall(t->regs().original_syscallno(), t->arch()) ||
@@ -485,25 +485,26 @@ void rec_set_syscall_new_task(Task* t, Task* new_task) {
 }
 
 template <typename Arch>
-static void set_remote_ptr_arch(Task* t, remote_ptr<void> addr,
+static void set_remote_ptr_arch(RecordTask* t, remote_ptr<void> addr,
                                 remote_ptr<void> value) {
   auto typed_addr = addr.cast<typename Arch::unsigned_word>();
   t->write_mem(typed_addr, (typename Arch::unsigned_word)value.as_int());
 }
 
-static void set_remote_ptr(Task* t, remote_ptr<void> addr,
+static void set_remote_ptr(RecordTask* t, remote_ptr<void> addr,
                            remote_ptr<void> value) {
   RR_ARCH_FUNCTION(set_remote_ptr_arch, t->arch(), t, addr, value);
 }
 
 template <typename Arch>
-static remote_ptr<void> get_remote_ptr_arch(Task* t, remote_ptr<void> addr) {
+static remote_ptr<void> get_remote_ptr_arch(RecordTask* t,
+                                            remote_ptr<void> addr) {
   auto typed_addr = addr.cast<typename Arch::unsigned_word>();
   auto old = t->read_mem(typed_addr);
   return remote_ptr<void>(old);
 }
 
-static remote_ptr<void> get_remote_ptr(Task* t, remote_ptr<void> addr) {
+static remote_ptr<void> get_remote_ptr(RecordTask* t, remote_ptr<void> addr) {
   RR_ARCH_FUNCTION(get_remote_ptr_arch, t->arch(), t, addr);
 }
 
@@ -727,7 +728,7 @@ void TaskSyscallState::process_syscall_results() {
 }
 
 template <typename Arch>
-static void prepare_recvmsg(Task* t, TaskSyscallState& syscall_state,
+static void prepare_recvmsg(RecordTask* t, TaskSyscallState& syscall_state,
                             remote_ptr<typename Arch::msghdr> msgp,
                             const ParamSize& io_size) {
   auto namelen_ptr = REMOTE_PTR_FIELD(msgp, msg_namelen);
@@ -753,7 +754,7 @@ static void prepare_recvmsg(Task* t, TaskSyscallState& syscall_state,
 }
 
 template <typename Arch>
-static void prepare_recvmmsg(Task* t, TaskSyscallState& syscall_state,
+static void prepare_recvmmsg(RecordTask* t, TaskSyscallState& syscall_state,
                              remote_ptr<typename Arch::mmsghdr> mmsgp,
                              unsigned int vlen) {
   for (unsigned int i = 0; i < vlen; ++i) {
@@ -764,7 +765,8 @@ static void prepare_recvmmsg(Task* t, TaskSyscallState& syscall_state,
 }
 
 template <typename Arch>
-static Switchable prepare_socketcall(Task* t, TaskSyscallState& syscall_state) {
+static Switchable prepare_socketcall(RecordTask* t,
+                                     TaskSyscallState& syscall_state) {
   /* int socketcall(int call, unsigned long *args) {
    *   long a[6];
    *   copy_from_user(a,args);
@@ -1005,7 +1007,7 @@ static Switchable prepare_shmctl(TaskSyscallState& syscall_state, int cmd,
 enum SemctlDereference { DEREFERENCE, USE_DIRECTLY };
 
 template <typename Arch>
-static Switchable prepare_semctl(Task* t, TaskSyscallState& syscall_state,
+static Switchable prepare_semctl(RecordTask* t, TaskSyscallState& syscall_state,
                                  int semid, int cmd, int ptr_reg,
                                  SemctlDereference deref) {
   switch (cmd) {
@@ -1073,7 +1075,7 @@ static Switchable prepare_semctl(Task* t, TaskSyscallState& syscall_state,
  * shared in multiple locations will be recorded once per location.
  * This doesn't handle mappings of the file into other address spaces.
  */
-static void record_file_change(Task* t, int fd, uint64_t offset,
+static void record_file_change(RecordTask* t, int fd, uint64_t offset,
                                uint64_t length) {
   string file_name = t->file_name_of_fd(fd);
 
@@ -1090,7 +1092,8 @@ static void record_file_change(Task* t, int fd, uint64_t offset,
   };
 }
 
-template <typename Arch> static void record_v4l2_buffer_contents(Task* t) {
+template <typename Arch>
+static void record_v4l2_buffer_contents(RecordTask* t) {
   remote_ptr<typename Arch::v4l2_buffer> bufp = t->regs().arg3();
   auto buf = t->read_mem(bufp);
 
@@ -1106,7 +1109,7 @@ template <typename Arch> static void record_v4l2_buffer_contents(Task* t) {
   }
 }
 
-static void record_page_below_stack_ptr(Task* t) {
+static void record_page_below_stack_ptr(RecordTask* t) {
   /* Record.the page above the top of |t|'s stack.  The SIOC* ioctls
    * have been observed to write beyond the end of tracees' stacks, as
    * if they had allocated scratch space for themselves.  All we can do
@@ -1118,7 +1121,8 @@ static void record_page_below_stack_ptr(Task* t) {
 #define IOCTL_MASK_SIZE(v) ((v) & ~(_IOC_SIZEMASK << _IOC_SIZESHIFT))
 
 template <typename Arch>
-static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
+static Switchable prepare_ioctl(RecordTask* t,
+                                TaskSyscallState& syscall_state) {
   unsigned long request = t->regs().arg2();
   int type = _IOC_TYPE(request);
   int nr = _IOC_NR(request);
@@ -1266,8 +1270,8 @@ static Switchable prepare_ioctl(Task* t, TaskSyscallState& syscall_state) {
   return PREVENT_SWITCH;
 }
 
-static bool maybe_emulate_wait(Task* t, TaskSyscallState& syscall_state) {
-  for (Task* child : t->emulated_ptrace_tracees) {
+static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state) {
+  for (RecordTask* child : t->emulated_ptrace_tracees) {
     if (t->is_waiting_for_ptrace(child) && child->emulated_ptrace_stop_code) {
       syscall_state.ptraced_tracee = child;
       return true;
@@ -1276,11 +1280,11 @@ static bool maybe_emulate_wait(Task* t, TaskSyscallState& syscall_state) {
   return false;
 }
 
-static void maybe_pause_instead_of_waiting(Task* t) {
+static void maybe_pause_instead_of_waiting(RecordTask* t) {
   if (t->in_wait_type != WAIT_TYPE_PID) {
     return;
   }
-  Task* child = t->session().find_task(t->in_wait_pid);
+  RecordTask* child = t->session().find_task(t->in_wait_pid);
   if (!child || !t->is_waiting_for_ptrace(child) || t->is_waiting_for(child)) {
     return;
   }
@@ -1297,9 +1301,10 @@ static void maybe_pause_instead_of_waiting(Task* t) {
   t->set_regs(r);
 }
 
-static Task* verify_ptrace_target(Task* tracer, TaskSyscallState& syscall_state,
-                                  pid_t pid) {
-  Task* tracee = tracer->session().find_task(pid);
+static RecordTask* verify_ptrace_target(RecordTask* tracer,
+                                        TaskSyscallState& syscall_state,
+                                        pid_t pid) {
+  RecordTask* tracee = tracer->session().find_task(pid);
   if (!tracee || tracee->emulated_ptracer != tracer ||
       tracee->emulated_stop_type == NOT_STOPPED) {
     syscall_state.emulate_result(-ESRCH);
@@ -1308,7 +1313,7 @@ static Task* verify_ptrace_target(Task* tracer, TaskSyscallState& syscall_state,
   return tracee;
 }
 
-static void prepare_ptrace_cont(Task* tracee, int sig) {
+static void prepare_ptrace_cont(RecordTask* tracee, int sig) {
   if (sig) {
     siginfo_t si = tracee->take_ptrace_signal_siginfo(sig);
     tracee->push_event(SignalEvent(si, tracee->arch()));
@@ -1365,7 +1370,7 @@ static bool is_same_namespace(const char* name, pid_t tid1, pid_t tid2) {
 }
 
 template <typename Arch>
-static void ptrace_get_reg_set(Task* t, TaskSyscallState& syscall_state,
+static void ptrace_get_reg_set(RecordTask* t, TaskSyscallState& syscall_state,
                                const vector<uint8_t>& regs) {
   auto piov = syscall_state.reg_parameter<typename Arch::iovec>(4, IN_OUT);
   auto iov = t->read_mem(piov);
@@ -1378,7 +1383,8 @@ static void ptrace_get_reg_set(Task* t, TaskSyscallState& syscall_state,
 }
 
 template <typename Arch>
-static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
+static Switchable prepare_ptrace(RecordTask* t,
+                                 TaskSyscallState& syscall_state) {
   pid_t pid = (pid_t)t->regs().arg2_signed();
   bool emulate = true;
   switch ((int)t->regs().arg1_signed()) {
@@ -1390,7 +1396,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       // This could be supported, but would require some work to translate
       // rr's pids to/from the ptracer's pid namespace.
       ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
-      Task* tracee = t->session().find_task(pid);
+      RecordTask* tracee = t->session().find_task(pid);
       if (!tracee) {
         // XXX This prevents a tracee from attaching to a process which isn't
         // under rr's control. We could support this but it would complicate
@@ -1419,7 +1425,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
     case PTRACE_GETREGS: {
-      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         auto data =
             syscall_state.reg_parameter<typename Arch::user_regs_struct>(4);
@@ -1431,7 +1437,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
     case PTRACE_GETFPREGS: {
-      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         auto data =
             syscall_state.reg_parameter<typename Arch::user_fpregs_struct>(4);
@@ -1448,7 +1454,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
         syscall_state.expect_errno = EIO;
         break;
       }
-      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         auto data =
             syscall_state.reg_parameter<X86Arch::user_fpxregs_struct>(4);
@@ -1461,7 +1467,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
     case PTRACE_GETREGSET: {
       switch ((int)t->regs().arg3()) {
         case NT_PRSTATUS: {
-          Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
             ptrace_get_reg_set<Arch>(t, syscall_state, regs);
@@ -1469,7 +1475,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
           break;
         }
         case NT_FPREGSET: {
-          Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             auto regs =
                 tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
@@ -1478,7 +1484,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
           break;
         }
         case NT_X86_XSTATE: {
-          Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             switch (tracee->extra_regs().format()) {
               case ExtraRegisters::XSAVE:
@@ -1501,7 +1507,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
     }
     case PTRACE_PEEKTEXT:
     case PTRACE_PEEKDATA: {
-      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         // The actual syscall returns the data via the 'data' out-parameter.
         // The behavior of returning the data as the system call result is
@@ -1522,7 +1528,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
     }
     case PTRACE_POKETEXT:
     case PTRACE_POKEDATA: {
-      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         remote_ptr<typename Arch::unsigned_word> addr = t->regs().arg3();
         typename Arch::unsigned_word data = t->regs().arg4();
@@ -1540,7 +1546,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
     case PTRACE_PEEKUSER: {
-      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         // The actual syscall returns the data via the 'data' out-parameter.
         // The behavior of returning the data as the system call result is
@@ -1586,7 +1592,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
     case PTRACE_CONT: {
-      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         prepare_ptrace_cont(tracee, t->regs().arg4());
         syscall_state.emulate_result(0);
@@ -1594,7 +1600,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
       break;
     }
     case PTRACE_DETACH: {
-      Task* tracee = verify_ptrace_target(t, syscall_state, pid);
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         prepare_ptrace_cont(tracee, t->regs().arg4());
         tracee->set_emulated_ptracer(nullptr);
@@ -1615,7 +1621,7 @@ static Switchable prepare_ptrace(Task* t, TaskSyscallState& syscall_state) {
   return PREVENT_SWITCH;
 }
 
-static void check_signals_while_exiting(Task* t) {
+static void check_signals_while_exiting(RecordTask* t) {
   if (t->has_stashed_sig()) {
     // An unblockable signal (SIGKILL, SIGSTOP) might be received
     // and stashed. Since these signals are unblockable they take
@@ -1633,7 +1639,7 @@ static void check_signals_while_exiting(Task* t) {
  * tracee will be returned at a state in which it has entered (or
  * re-entered) SYS_exit.
  */
-static void process_exit(Task* t) {
+static void process_exit(RecordTask* t) {
   check_signals_while_exiting(t);
 
   Registers r = t->regs();
@@ -1682,7 +1688,7 @@ static void process_exit(Task* t) {
   check_signals_while_exiting(t);
 }
 
-static void prepare_mmap_register_params(Task* t) {
+static void prepare_mmap_register_params(RecordTask* t) {
   Registers r = t->regs();
   if (t->record_session().enable_chaos() &&
       !(r.arg4_signed() & (MAP_FIXED | MAP_32BIT)) && r.arg1() == 0) {
@@ -1705,7 +1711,7 @@ static void prepare_mmap_register_params(Task* t) {
 }
 
 template <typename Arch>
-static Switchable rec_prepare_syscall_arch(Task* t,
+static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
 
@@ -2252,7 +2258,7 @@ static Switchable rec_prepare_syscall_arch(Task* t,
       // has a lower nice value than its parent, which requires
       // lowering the child's nice value.
       if ((int)t->regs().arg1_signed() == PRIO_PROCESS) {
-        Task* target =
+        RecordTask* target =
             (int)t->regs().arg2_signed()
                 ? t->session().find_task((int)t->regs().arg2_signed())
                 : t;
@@ -2689,11 +2695,11 @@ static Switchable rec_prepare_syscall_arch(Task* t,
 }
 
 static Switchable rec_prepare_syscall_internal(
-    Task* t, TaskSyscallState& syscall_state) {
+    RecordTask* t, TaskSyscallState& syscall_state) {
   RR_ARCH_FUNCTION(rec_prepare_syscall_arch, t->arch(), t, syscall_state)
 }
 
-Switchable rec_prepare_syscall(Task* t) {
+Switchable rec_prepare_syscall(RecordTask* t) {
   auto& syscall_state = syscall_state_property.get_or_create(*t);
   syscall_state.init(t);
 
@@ -2709,7 +2715,7 @@ Switchable rec_prepare_syscall(Task* t) {
 }
 
 template <typename Arch>
-static void rec_prepare_restart_syscall_arch(Task* t,
+static void rec_prepare_restart_syscall_arch(RecordTask* t,
                                              TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
   switch (syscallno) {
@@ -2742,12 +2748,12 @@ static void rec_prepare_restart_syscall_arch(Task* t,
 }
 
 static void rec_prepare_restart_syscall_internal(
-    Task* t, TaskSyscallState& syscall_state) {
+    RecordTask* t, TaskSyscallState& syscall_state) {
   RR_ARCH_FUNCTION(rec_prepare_restart_syscall_arch, t->arch(), t,
                    syscall_state);
 }
 
-void rec_prepare_restart_syscall(Task* t) {
+void rec_prepare_restart_syscall(RecordTask* t) {
   auto& syscall_state = *syscall_state_property.get(*t);
   rec_prepare_restart_syscall_internal(t, syscall_state);
   syscall_state_property.remove(*t);
@@ -2759,7 +2765,7 @@ enum ScratchAddrType { FIXED_ADDRESS, DYNAMIC_ADDRESS };
    here. */
 static const uintptr_t FIXED_SCRATCH_PTR = 0x68000000;
 
-static void init_scratch_memory(Task* t,
+static void init_scratch_memory(RecordTask* t,
                                 ScratchAddrType addr_type = DYNAMIC_ADDRESS) {
   const int scratch_size = 512 * page_size();
   size_t sz = scratch_size;
@@ -2801,7 +2807,7 @@ static void init_scratch_memory(Task* t,
   t->set_regs(r);
 }
 
-static void process_execve(Task* t, TaskSyscallState& syscall_state) {
+static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
     return;
@@ -2918,8 +2924,8 @@ static void process_execve(Task* t, TaskSyscallState& syscall_state) {
   t->vm()->monkeypatcher().patch_after_exec(t);
 }
 
-static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
-                         off_t offset_pages) {
+static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
+                         int fd, off_t offset_pages) {
   size_t size = ceil_page_size(length);
   off64_t offset = offset_pages * 4096;
 
@@ -2985,7 +2991,7 @@ static void process_mmap(Task* t, size_t length, int prot, int flags, int fd,
   t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages, fd);
 }
 
-static void process_shmat(Task* t, int shmid, int shm_flags,
+static void process_shmat(RecordTask* t, int shmid, int shm_flags,
                           remote_ptr<void> addr) {
   if (t->regs().syscall_failed()) {
     // We purely emulate failed shmats.
@@ -3019,7 +3025,7 @@ static void process_shmat(Task* t, int shmid, int shm_flags,
 }
 
 template <typename Arch>
-static void process_fork(Task* t, TaskSyscallState& syscall_state) {
+static void process_fork(RecordTask* t, TaskSyscallState& syscall_state) {
   if (t->regs().syscall_result_signed() < 0) {
     // fork failed.
     return;
@@ -3028,7 +3034,7 @@ static void process_fork(Task* t, TaskSyscallState& syscall_state) {
   // Note that the tid returned in the syscall result may be in a pid
   // namespace that's different from ours, so we should avoid using it
   // directly. Instead the new task will have been stashed in syscall_state.
-  Task* new_task = syscall_state.new_task;
+  RecordTask* new_task = syscall_state.new_task;
   ASSERT(t, new_task) << "new_task not found";
   t->record_session().trace_writer().write_task_event(
       TraceTaskEvent(new_task->tid, t->tid));
@@ -3037,7 +3043,7 @@ static void process_fork(Task* t, TaskSyscallState& syscall_state) {
 }
 
 template <typename Arch>
-static void process_clone(Task* t, TaskSyscallState& syscall_state) {
+static void process_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   uintptr_t flags = syscall_state.syscall_entry_registers.arg1();
   // Restore modified registers in cloning task
   Registers r = t->regs();
@@ -3055,7 +3061,7 @@ static void process_clone(Task* t, TaskSyscallState& syscall_state) {
   // Note that the tid returned in the syscall result may be in a pid
   // namespace that's different from ours, so we should avoid using it
   // directly. Instead the new task will have been stashed in syscall_state.
-  Task* new_task = syscall_state.new_task;
+  RecordTask* new_task = syscall_state.new_task;
   ASSERT(t, new_task) << "new_task not found";
 
   // Restore modified registers in cloned task
@@ -3109,7 +3115,7 @@ static void process_clone(Task* t, TaskSyscallState& syscall_state) {
 }
 
 template <typename Arch>
-static string extra_expected_errno_info(Task* t,
+static string extra_expected_errno_info(RecordTask* t,
                                         TaskSyscallState& syscall_state) {
   stringstream ss;
   switch (syscall_state.expect_errno) {
@@ -3188,7 +3194,7 @@ static int dev_tty_fd() {
 }
 
 template <typename Arch>
-static void record_iovec_output(Task* t, Task* dest,
+static void record_iovec_output(RecordTask* t, RecordTask* dest,
                                 remote_ptr<typename Arch::iovec> piov,
                                 uint32_t iov_cnt) {
   // Ignore the syscall result, the kernel may have written more data than that.
@@ -3200,7 +3206,8 @@ static void record_iovec_output(Task* t, Task* dest,
 }
 
 template <typename Arch>
-static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
+static void rec_process_syscall_arch(RecordTask* t,
+                                     TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
 
   LOG(debug) << t->tid << ": processing: " << t->ev()
@@ -3379,7 +3386,7 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
       break;
 
     case Arch::process_vm_writev: {
-      Task* dest = t->session().find_task(t->regs().arg1());
+      RecordTask* dest = t->session().find_task(t->regs().arg1());
       if (dest) {
         record_iovec_output<Arch>(t, dest, t->regs().arg4(), t->regs().arg5());
       }
@@ -3533,12 +3540,12 @@ static void rec_process_syscall_arch(Task* t, TaskSyscallState& syscall_state) {
   }
 }
 
-static void rec_process_syscall_internal(Task* t,
+static void rec_process_syscall_internal(RecordTask* t,
                                          TaskSyscallState& syscall_state) {
   RR_ARCH_FUNCTION(rec_process_syscall_arch, t->arch(), t, syscall_state)
 }
 
-void rec_process_syscall(Task* t) {
+void rec_process_syscall(RecordTask* t) {
   auto& syscall_state = *syscall_state_property.get(*t);
   rec_process_syscall_internal(t, syscall_state);
   syscall_state.process_syscall_results();

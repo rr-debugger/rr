@@ -11,7 +11,7 @@
 #include "util.h"
 
 class RecordSession;
-class Task;
+class RecordTask;
 
 /**
  * Overview of rr scheduling:
@@ -97,7 +97,7 @@ public:
    * Set the priority of |t| to |value| and update related
    * state.
    */
-  void update_task_priority(Task* t, int value);
+  void update_task_priority(RecordTask* t, int value);
 
   /**
    * Do one round of round-robin scheduling if we're not already doing one.
@@ -106,15 +106,15 @@ public:
    * If the task_round_robin_queue is empty this moves all tasks into it,
    * putting last_task last.
    */
-  void schedule_one_round_robin(Task* last_task);
+  void schedule_one_round_robin(RecordTask* last_task);
 
-  void on_create(Task* t);
+  void on_create(RecordTask* t);
   /**
    * De-register a thread. This function should be called when a thread exits.
    */
-  void on_destroy(Task* t);
+  void on_destroy(RecordTask* t);
 
-  Task* current() const { return current_; }
+  RecordTask* current() const { return current_; }
 
   Ticks current_timeslice_end() const { return current_timeslice_end_; }
 
@@ -129,8 +129,8 @@ public:
 
 private:
   // Tasks sorted by priority.
-  typedef std::set<std::pair<int, Task*> > TaskPrioritySet;
-  typedef std::deque<Task*> TaskQueue;
+  typedef std::set<std::pair<int, RecordTask*> > TaskPrioritySet;
+  typedef std::deque<RecordTask*> TaskQueue;
 
   /**
    * Pull a task from the round-robin queue if available. Otherwise,
@@ -143,23 +143,23 @@ private:
    * on it again until it has run.
    * Considers only tasks with priority <= priority_threshold.
    */
-  Task* find_next_runnable_task(Task* t, bool* by_waitpid,
-                                int priority_threshold);
+  RecordTask* find_next_runnable_task(RecordTask* t, bool* by_waitpid,
+                                      int priority_threshold);
   /**
    * Returns the first task in the round-robin queue or null if it's empty,
    * removing it from the round-robin queue.
    */
-  Task* get_round_robin_task();
-  void maybe_pop_round_robin_task(Task* t);
-  Task* get_next_task_with_same_priority(Task* t);
+  RecordTask* get_round_robin_task();
+  void maybe_pop_round_robin_task(RecordTask* t);
+  RecordTask* get_next_task_with_same_priority(RecordTask* t);
   void setup_new_timeslice();
   void maybe_reset_priorities(double now);
-  int choose_random_priority(Task* t);
-  void update_task_priority_internal(Task* t, int value);
+  int choose_random_priority(RecordTask* t);
+  void update_task_priority_internal(RecordTask* t, int value);
   void maybe_reset_high_priority_only_intervals(double now);
   bool in_high_priority_only_interval(double now);
-  bool treat_as_high_priority(Task* t);
-  bool is_task_runnable(Task* t, bool* by_waitpid);
+  bool treat_as_high_priority(RecordTask* t);
+  bool is_task_runnable(RecordTask* t, bool* by_waitpid);
 
   RecordSession& session;
 
@@ -180,7 +180,7 @@ private:
    * task
    * has been destroyed.
    */
-  Task* current_;
+  RecordTask* current_;
   Ticks current_timeslice_end_;
 
   /**
@@ -191,7 +191,7 @@ private:
   double high_priority_only_intervals_duration;
   double high_priority_only_intervals_period;
   /**
-   * At this time (or later) we should rerandomize Task priorities.
+   * At this time (or later) we should rerandomize RecordTask priorities.
    */
   double priorities_refresh_time;
 
@@ -211,7 +211,7 @@ private:
 
   bool last_reschedule_in_high_priority_only_interval;
 
-  Task* must_run_task;
+  RecordTask* must_run_task;
 };
 
 #endif /* RR_REC_SCHED_H_ */
