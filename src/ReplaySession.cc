@@ -1023,15 +1023,6 @@ Completion ReplaySession::try_one_trace_step(
 static void end_task(ReplayTask* t) {
   ASSERT(t, t->ptrace_event() != PTRACE_EVENT_EXIT);
 
-  // Emulate what the kernel would do during a task exit. We don't let the
-  // kernel do these during replay. The kernel would also do a FUTEX_WAKE on
-  // this address, but we don't need to do that.
-  if (!t->tid_addr().is_null()) {
-    bool ok = true;
-    // Ignore writes to invalid locations; the kernel does
-    t->write_mem(t->tid_addr(), 0, &ok);
-  }
-
   Registers r = t->regs();
   r.set_ip(t->vm()->privileged_traced_syscall_ip());
   r.set_syscallno(syscall_number_for_exit(t->arch()));
@@ -1047,7 +1038,7 @@ static void end_task(ReplayTask* t) {
            ReplaySession::is_ignored_signal(t->pending_sig()));
 
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
-  delete t;
+  t->destroy();
 }
 
 Completion ReplaySession::exit_task(ReplayTask* t) {

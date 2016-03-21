@@ -241,7 +241,7 @@ void Session::kill_all_tasks() {
       t->task_group()->destabilize();
     }
 
-    delete t;
+    t->destroy();
   }
 }
 

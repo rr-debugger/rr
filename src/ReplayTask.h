@@ -36,6 +36,9 @@ public:
    * saved in the current trace frame.
    */
   void set_return_value_from_trace();
+
+private:
+  ~ReplayTask() {}
 };
 
 #endif /* RR_REPLAY_TASK_H_ */

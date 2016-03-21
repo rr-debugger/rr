@@ -197,12 +197,10 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
 
   record_robust_futex_changes(t);
 
-  EventType ev = t->unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
-  t->record_event(Event(ev, NO_EXEC_INFO, t->arch()));
-
   t->session().trace_writer().write_task_event(TraceTaskEvent(t->tid));
 
-  delete t;
+  // Delete t. t's destructor writes the final EV_(UNSTABLE_)EXIT.
+  t->destroy();
   return true;
 }
 
@@ -1569,11 +1567,8 @@ void RecordSession::terminate_recording() {
 
   LOG(info) << "Processing termination request ...";
 
-  for (auto& p : tasks()) {
-    // Emit UNSTABLE_EXIT events so the debugger can stop on them.
-    static_cast<RecordTask*>(p.second)
-        ->record_event(Event(EV_UNSTABLE_EXIT, NO_EXEC_INFO, p.second->arch()));
-  }
+  // This will write unstable exit events for all tasks.
+  kill_all_tasks();
 
   LOG(info) << "  recording final TRACE_TERMINATION event ...";
 

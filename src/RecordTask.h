@@ -36,7 +36,6 @@ class RecordTask : public Task {
 public:
   RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
              SupportedArch a);
-  virtual ~RecordTask();
 
   virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                       remote_ptr<int> cleartid_addr, pid_t new_tid,
@@ -313,6 +312,8 @@ public:
   size_t robust_list_len() const { return robust_futex_list_len; }
 
 private:
+  ~RecordTask();
+
   /**
    * Called when this task is able to receive a SIGCHLD (e.g. because
    * we completed delivery of a signal already). Sends a new synthetic

@@ -123,7 +123,12 @@ class Task {
 public:
   typedef std::vector<WatchConfig> DebugRegs;
 
-  virtual ~Task();
+  /**
+   * We hide the destructor and require clients to call this instead. This
+   * lets us make virtual calls from within the destruction code. This
+   * does the actual PTRACE_DETACH and then calls the real destructor.
+   */
+  void destroy();
 
   /**
    * This must be in an emulated syscall, entered through
@@ -200,7 +205,7 @@ public:
    * change.  This must only be used in contexts where the futex
    * will change "soon".
    */
-  void futex_wait(remote_ptr<int> futex, int val);
+  void futex_wait(remote_ptr<int> futex, int val, bool* ok);
 
   /**
    * Return the ptrace message pid associated with the current ptrace
@@ -776,6 +781,7 @@ public:
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);
+  virtual ~Task();
 
   /**
    * Return a new Task cloned from |p|.  |flags| are a set of

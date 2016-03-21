@@ -79,8 +79,43 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
   push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
 }
 
-Task::~Task() {
+void Task::destroy() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
+
+  // child_mem_fd needs to be valid since we won't be able to open
+  // it for futex_wait after we've detached.
+  ASSERT(this, as->mem_fd().is_open());
+
+  fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+
+  // Subclasses can do something in their destructors after we've detached
+  delete this;
+}
+
+Task::~Task() {
+  if (unstable) {
+    LOG(warn) << tid << " is unstable; not blocking on its termination";
+    // This will probably leak a zombie process for rr's lifetime.
+  } else {
+    ASSERT(this, seen_ptrace_exit_event);
+
+    if (tg->task_set().empty() && !session().is_recording()) {
+      // Reap the zombie.
+      int ret = waitpid(tg->real_tgid, NULL, __WALL);
+      if (ret == -1) {
+        ASSERT(this, errno == ECHILD || errno == ESRCH);
+      } else {
+        ASSERT(this, ret == tg->real_tgid);
+      }
+    }
+  }
+
+  destroy_local_buffers();
+
+  session().on_destroy(this);
+  tg->erase_task(this);
+  as->erase_task(this);
+  fds->erase_task(this);
 
   // We expect tasks to usually exit by a call to exit() or
   // exit_group(), so it's not helpful to warn about that.
@@ -92,60 +127,6 @@ Task::~Task() {
                                 ev().Syscall().regs.arch()))))) {
     LOG(warn) << tid << " still has pending events.  From top down:";
     log_pending_events();
-  }
-
-  session().on_destroy(this);
-  tg->erase_task(this);
-  as->erase_task(this);
-  fds->erase_task(this);
-
-  destroy_local_buffers();
-
-  // child_mem_fd needs to be valid since we won't be able to open
-  // it for futex_wait below after we've detached.
-  ASSERT(this, as->mem_fd().is_open());
-
-  fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-
-  if (unstable) {
-    // In addition to problems described in the long
-    // comment at the prototype of this function, unstable
-    // exits may result in the kernel *not* clearing the
-    // futex, for example for fatal signals.  So we would
-    // deadlock waiting on the futex.
-    LOG(warn) << tid << " is unstable; not blocking on its termination";
-    // This will probably leak a zombie process for rr's lifetime.
-    return;
-  }
-
-  ASSERT(this, seen_ptrace_exit_event);
-
-  if (tg->task_set().empty() && !session().is_recording()) {
-    // Reap the zombie.
-    int ret = waitpid(tg->real_tgid, NULL, __WALL);
-    if (ret == -1) {
-      ASSERT(this, errno == ECHILD || errno == ESRCH);
-    } else {
-      ASSERT(this, ret == tg->real_tgid);
-    }
-  }
-
-  if (!tid_futex.is_null() && as->task_set().size() > 0) {
-    // clone()'d tasks can have a pid_t* |ctid| argument
-    // that's written with the new task's pid.  That
-    // pointer can also be used as a futex: when the task
-    // dies, the original ctid value is cleared and a
-    // FUTEX_WAKE is done on the address. So
-    // pthread_join() is basically a standard futex wait
-    // loop.
-    LOG(debug) << "  waiting for tid futex " << tid_futex
-               << " to be cleared ...";
-    futex_wait(tid_futex, 0);
-  } else if (!tid_futex.is_null()) {
-    // There are no other live tasks in this address
-    // space, which means the address space just died
-    // along with our exit.  So we can't read the futex.
-    LOG(debug) << "  (can't futex_wait last task in vm)";
   }
 
   LOG(debug) << "  dead";
@@ -230,15 +211,14 @@ string Task::file_name_of_fd(int fd) {
   return path;
 }
 
-void Task::futex_wait(remote_ptr<int> futex, int val) {
+void Task::futex_wait(remote_ptr<int> futex, int val, bool* ok) {
   // Wait for *sync_addr == sync_val.  This implementation isn't
   // pretty, but it's pretty much the best we can do with
   // available kernel tools.
   //
   // TODO: find clever way to avoid busy-waiting.
   while (true) {
-    bool ok = true;
-    int mem = read_mem(futex, &ok);
+    int mem = read_mem(futex, ok);
     if (!ok || val == mem) {
       // Invalid addresses are just ignored by the kernel
       break;

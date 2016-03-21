@@ -197,6 +197,36 @@ RecordTask::~RecordTask() {
     t->emulated_ptracer = nullptr;
     t->emulated_stop_type = NOT_STOPPED;
   }
+
+  // Task::destroy has already done PTRACE_DETACH so the task can complete
+  // exiting.
+  // The kernel explicitly only clears the futex if the address space is shared.
+  // If the address space has no other users then the futex will not be cleared
+  // even if it lives in shared memory which other tasks can read.
+  // Unstable exits may result in the kernel *not* clearing the
+  // futex, for example for fatal signals.  So we would
+  // deadlock waiting on the futex.
+  if (!unstable && !tid_futex.is_null() && as->task_set().size() > 1) {
+    // clone()'d tasks can have a pid_t* |ctid| argument
+    // that's written with the new task's pid.  That
+    // pointer can also be used as a futex: when the task
+    // dies, the original ctid value is cleared and a
+    // FUTEX_WAKE is done on the address. So
+    // pthread_join() is basically a standard futex wait
+    // loop.
+    LOG(debug) << "  waiting for tid futex " << tid_futex
+               << " to be cleared ...";
+    bool ok = true;
+    futex_wait(tid_futex, 0, &ok);
+    if (ok) {
+      int val = 0;
+      record_local(tid_futex, &val);
+    }
+  }
+
+  // Write the exit event here so that the value recorded above is captured.
+  EventType ev = unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
+  record_event(Event(ev, NO_EXEC_INFO, arch()));
 }
 
 RecordSession& RecordTask::session() const {
