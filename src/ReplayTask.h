@@ -9,6 +9,8 @@ class ReplayTask : public Task {
 public:
   ReplayTask(ReplaySession& session, pid_t _tid, pid_t _rec_tid,
              uint32_t serial, SupportedArch a);
+
+  ReplaySession& session() const;
 };
 
 #endif /* RR_REPLAY_TASK_H_ */

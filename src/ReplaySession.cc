@@ -58,7 +58,7 @@ using namespace std;
  */
 static const int SKID_SIZE = 70;
 
-static void debug_memory(Task* t) {
+static void debug_memory(ReplayTask* t) {
   if (should_dump_memory(t->current_trace_frame())) {
     dump_process_memory(t, t->current_trace_frame().time(), "rep");
   }
@@ -124,7 +124,7 @@ static bool can_checkpoint_at(const TraceFrame& frame) {
 bool ReplaySession::can_clone() {
   finish_initializing();
 
-  Task* t = current_task();
+  ReplayTask* t = current_task();
   return t && done_initial_exec() && can_checkpoint_at(current_trace_frame());
 }
 
@@ -174,8 +174,8 @@ void ReplaySession::maybe_gc_emufs(SupportedArch arch, int syscallno) {
     }
   }
 
-  Task* t = Task::spawn(*session, session->trace_in,
-                        session->trace_reader().peek_frame().tid());
+  ReplayTask* t = static_cast<ReplayTask*>(Task::spawn(
+      *session, session->trace_in, session->trace_reader().peek_frame().tid()));
   session->on_create(t);
 
   return session;
@@ -201,7 +201,7 @@ bool ReplaySession::is_ignored_signal(int sig) {
 }
 
 static bool compute_ticks_request(
-    Task* t, const ReplaySession::StepConstraints& constraints,
+    ReplayTask* t, const ReplaySession::StepConstraints& constraints,
     TicksRequest* ticks_request) {
   *ticks_request = RESUME_UNLIMITED_TICKS;
   if (constraints.ticks_target > 0) {
@@ -227,7 +227,7 @@ static bool compute_ticks_request(
  * call instruction. In that case we will not actually enter the kernel.
  */
 Completion ReplaySession::cont_syscall_boundary(
-    Task* t, const StepConstraints& constraints) {
+    ReplayTask* t, const StepConstraints& constraints) {
   TicksRequest ticks_request;
   if (!compute_ticks_request(t, constraints, &ticks_request)) {
     return INCOMPLETE;
@@ -269,7 +269,7 @@ Completion ReplaySession::cont_syscall_boundary(
  * |step|.  Return COMPLETE if successful, or INCOMPLETE if an unhandled trap
  * occurred.
  */
-Completion ReplaySession::enter_syscall(Task* t,
+Completion ReplaySession::enter_syscall(ReplayTask* t,
                                         const StepConstraints& constraints) {
   bool use_breakpoint_optimization = false;
   remote_code_ptr syscall_instruction;
@@ -326,7 +326,7 @@ Completion ReplaySession::enter_syscall(Task* t,
  * Advance past the reti (or virtual reti) according to |step|.
  * Return COMPLETE if successful, or INCOMPLETE if an unhandled trap occurred.
  */
-Completion ReplaySession::exit_syscall(Task* t) {
+Completion ReplaySession::exit_syscall(ReplayTask* t) {
   t->on_syscall_exit(current_step.syscall.number, current_trace_frame().regs());
 
   t->apply_all_data_records_from_trace();
@@ -336,14 +336,14 @@ Completion ReplaySession::exit_syscall(Task* t) {
   if (t->arch() == SupportedArch::x86 &&
       (X86Arch::pwrite64 == current_step.syscall.number ||
        X86Arch::pread64 == current_step.syscall.number)) {
-    flags |= Task::IGNORE_ESI;
+    flags |= ReplayTask::IGNORE_ESI;
   }
   t->validate_regs(flags);
 
   return COMPLETE;
 }
 
-void ReplaySession::check_pending_sig(Task* t) {
+void ReplaySession::check_pending_sig(ReplayTask* t) {
   ASSERT(t, 0 < t->pending_sig())
       << "Replaying `" << trace_frame.event()
       << "': expecting tracee signal or trap, but instead at `"
@@ -366,7 +366,7 @@ void ReplaySession::check_pending_sig(Task* t) {
  * Some callers pass RESUME_CONT because they want to execute any syscalls
  * encountered.
  */
-void ReplaySession::continue_or_step(Task* t,
+void ReplaySession::continue_or_step(ReplayTask* t,
                                      const StepConstraints& constraints,
                                      TicksRequest tick_request,
                                      ResumeRequest resume_how) {
@@ -381,7 +381,7 @@ void ReplaySession::continue_or_step(Task* t,
   check_pending_sig(t);
 }
 
-static void guard_overshoot(Task* t, const Registers& target_regs,
+static void guard_overshoot(ReplayTask* t, const Registers& target_regs,
                             Ticks target_ticks, Ticks remaining_ticks,
                             const Registers* closest_matching_regs) {
   if (remaining_ticks < 0) {
@@ -410,7 +410,7 @@ static void guard_overshoot(Task* t, const Registers& target_regs,
   }
 }
 
-static void guard_unexpected_signal(Task* t) {
+static void guard_unexpected_signal(ReplayTask* t) {
   if (ReplaySession::is_ignored_signal(t->pending_sig()) ||
       SIGTRAP == t->pending_sig()) {
     return;
@@ -426,7 +426,7 @@ static void guard_unexpected_signal(Task* t) {
                    << " while awaiting signal";
 }
 
-static bool is_same_execution_point(Task* t, const Registers& rec_regs,
+static bool is_same_execution_point(ReplayTask* t, const Registers& rec_regs,
                                     Ticks ticks_left,
                                     Registers* mismatched_regs,
                                     const Registers** mismatched_regs_ptr) {
@@ -468,7 +468,7 @@ static bool is_same_execution_point(Task* t, const Registers& rec_regs,
  * step.
  */
 Completion ReplaySession::emulate_async_signal(
-    Task* t, const StepConstraints& constraints, Ticks ticks) {
+    ReplayTask* t, const StepConstraints& constraints, Ticks ticks) {
   const Registers& regs = trace_frame.regs();
   remote_code_ptr ip = regs.ip();
   bool did_set_internal_breakpoint = false;
@@ -696,8 +696,9 @@ static bool is_fatal_default_action(int sig) {
  * Emulates delivery of |sig| to |oldtask|.  Returns INCOMPLETE if
  * emulation was interrupted, COMPLETE if completed.
  */
-Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
-  Task* t = current_task();
+Completion ReplaySession::emulate_signal_delivery(ReplayTask* oldtask,
+                                                  int sig) {
+  ReplayTask* t = current_task();
   if (!t) {
     // Trace terminated abnormally.  We'll pop out to code
     // that knows what to do.
@@ -736,7 +737,7 @@ Completion ReplaySession::emulate_signal_delivery(Task* oldtask, int sig) {
   return COMPLETE;
 }
 
-void ReplaySession::check_ticks_consistency(Task* t, const Event& ev) {
+void ReplaySession::check_ticks_consistency(ReplayTask* t, const Event& ev) {
   if (!done_initial_exec()) {
     return;
   }
@@ -759,7 +760,7 @@ static bool treat_signal_event_as_deterministic(const SignalEvent& ev) {
  * INCOMPLETE  if an unhandled interrupt occurred.
  */
 Completion ReplaySession::emulate_deterministic_signal(
-    Task* t, int sig, const StepConstraints& constraints) {
+    ReplayTask* t, int sig, const StepConstraints& constraints) {
   if (t->regs().matches(trace_frame.regs()) &&
       t->tick_count() == trace_frame.ticks()) {
     // We're already at the target. This can happen when multiple signals
@@ -806,7 +807,7 @@ Completion ReplaySession::emulate_deterministic_signal(
  * tracee for replaying the records.  Return the number of record
  * bytes and a pointer to the first record through outparams.
  */
-void ReplaySession::prepare_syscallbuf_records(Task* t) {
+void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
   // Read the recorded syscall buffer back into the buffer
   // region.
   auto buf = t->trace_reader().read_raw_data();
@@ -839,7 +840,7 @@ void ReplaySession::prepare_syscallbuf_records(Task* t) {
  * that flushed the buffer).  Return COMPLETE if successful or INCOMPLETE if an
  * unhandled interrupt occurred.
  */
-Completion ReplaySession::flush_syscallbuf(Task* t,
+Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                            const StepConstraints& constraints) {
   struct syscallbuf_record* next_rec = next_record(t->syscallbuf_hdr);
 
@@ -892,7 +893,7 @@ Completion ReplaySession::flush_syscallbuf(Task* t,
 }
 
 Completion ReplaySession::patch_next_syscall(
-    Task* t, const StepConstraints& constraints) {
+    ReplayTask* t, const StepConstraints& constraints) {
   if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
     return INCOMPLETE;
   }
@@ -940,7 +941,8 @@ static bool has_deterministic_ticks(const Event& ev,
 }
 
 void ReplaySession::check_approaching_ticks_target(
-    Task* t, const StepConstraints& constraints, BreakStatus& break_status) {
+    ReplayTask* t, const StepConstraints& constraints,
+    BreakStatus& break_status) {
   if (constraints.ticks_target > 0) {
     Ticks ticks_left = constraints.ticks_target - t->tick_count();
     if (ticks_left <= SKID_SIZE) {
@@ -950,7 +952,7 @@ void ReplaySession::check_approaching_ticks_target(
 }
 
 Completion ReplaySession::advance_to_ticks_target(
-    Task* t, const StepConstraints& constraints) {
+    ReplayTask* t, const StepConstraints& constraints) {
   while (true) {
     TicksRequest ticks_request;
     if (!compute_ticks_request(t, constraints, &ticks_request)) {
@@ -969,7 +971,7 @@ Completion ReplaySession::advance_to_ticks_target(
  * more work.
  */
 Completion ReplaySession::try_one_trace_step(
-    Task* t, const StepConstraints& constraints) {
+    ReplayTask* t, const StepConstraints& constraints) {
   if (constraints.ticks_target > 0 && !trace_frame.event().has_ticks_slop() &&
       t->current_trace_frame().ticks() > constraints.ticks_target) {
     // Instead of doing this step, just advance to the ticks_target, since
@@ -1018,7 +1020,7 @@ Completion ReplaySession::try_one_trace_step(
  * try to kill all the tasks in the task group. Instead we inject an |exit|
  * syscall, which is apparently the only way to kill one specific thread.
  */
-static void end_task(Task* t) {
+static void end_task(ReplayTask* t) {
   ASSERT(t, t->ptrace_event() != PTRACE_EVENT_EXIT);
 
   // Emulate what the kernel would do during a task exit. We don't let the
@@ -1048,7 +1050,7 @@ static void end_task(Task* t) {
   delete t;
 }
 
-Completion ReplaySession::exit_task(Task* t) {
+Completion ReplaySession::exit_task(ReplayTask* t) {
   ASSERT(t, !t->seen_ptrace_exit_event);
   // Apply robust-futex updates captured during recording.
   t->apply_all_data_records_from_trace();
@@ -1066,7 +1068,7 @@ Completion ReplaySession::exit_task(Task* t) {
  * requested a restart. If this returns false, t's Session state was not
  * modified.
  */
-void ReplaySession::setup_replay_one_trace_frame(Task* t) {
+void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   const Event& ev = trace_frame.event();
 
   LOG(debug) << "[line " << trace_frame.time() << "] " << t->rec_tid
@@ -1178,7 +1180,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
 
   ReplayResult result(REPLAY_CONTINUE);
 
-  Task* t = current_task();
+  ReplayTask* t = current_task();
 
   if (EV_TRACE_TERMINATION == trace_frame.event().type()) {
     result.status = REPLAY_EXITED;
@@ -1253,7 +1255,8 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
       }
       break;
     case TSTEP_EXIT_TASK:
-      t = result.break_status.task = nullptr;
+      result.break_status.task = nullptr;
+      t = nullptr;
       assert(!result.break_status.any_break());
       break;
     case TSTEP_ENTER_SYSCALL:
@@ -1293,7 +1296,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   // Record that this step completed successfully.
   current_step.action = TSTEP_NONE;
 
-  Task* next_task = current_task();
+  ReplayTask* next_task = current_task();
   if (next_task && !next_task->vm()->first_run_event() && done_initial_exec()) {
     next_task->vm()->set_first_run_event(trace_frame.time());
   }
@@ -1302,4 +1305,12 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   }
 
   return result;
+}
+
+ReplayTask* ReplaySession::find_task(pid_t rec_tid) const {
+  return static_cast<ReplayTask*>(Session::find_task(rec_tid));
+}
+
+ReplayTask* ReplaySession::find_task(const TaskUid& tuid) const {
+  return static_cast<ReplayTask*>(Session::find_task(tuid));
 }

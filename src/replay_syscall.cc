@@ -32,8 +32,8 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "ReplaySession.h"
+#include "ReplayTask.h"
 #include "StdioMonitor.h"
-#include "Task.h"
 #include "TraceStream.h"
 #include "util.h"
 
@@ -55,7 +55,7 @@ using namespace rr;
 
 #endif // CHECK_SYSCALL_NUMBERS
 
-static string maybe_dump_written_string(Task* t) {
+static string maybe_dump_written_string(ReplayTask* t) {
   if (!is_write_syscall(t->regs().original_syscallno(), t->arch())) {
     return "";
   }
@@ -70,7 +70,7 @@ static string maybe_dump_written_string(Task* t) {
 /**
  * Proceeds until the next system call, which is being executed.
  */
-static void __ptrace_cont(Task* t, int expect_syscallno) {
+static void __ptrace_cont(ReplayTask* t, int expect_syscallno) {
   do {
     uintptr_t saved_r11 = t->arch() == x86_64 ? t->regs().r11() : 0;
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
@@ -95,7 +95,7 @@ static void __ptrace_cont(Task* t, int expect_syscallno) {
       << maybe_dump_written_string(t);
 }
 
-static void init_scratch_memory(Task* t, const KernelMapping& km,
+static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
                                 const TraceReader::MappedData& data) {
   /* Initialize the scratchpad as the recorder did, but make it
    * PROT_NONE. The idea is just to reserve the address space so
@@ -130,7 +130,7 @@ static void init_scratch_memory(Task* t, const KernelMapping& km,
  * saved scratch memory during replay.  So, this helper can be used
  * for that class of syscalls.
  */
-static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
+static void maybe_noop_restore_syscallbuf_scratch(ReplayTask* t) {
   if (t->is_in_untraced_syscall()) {
     LOG(debug) << "  noop-restoring scratch for write-only desched'd "
                << t->syscall_name(t->regs().original_syscallno());
@@ -142,7 +142,7 @@ static void maybe_noop_restore_syscallbuf_scratch(Task* t) {
  * Return true iff the syscall represented by |frame| (either entry to
  * or exit from) failed.
  */
-static bool is_failed_syscall(Task* t, const TraceFrame& frame) {
+static bool is_failed_syscall(ReplayTask* t, const TraceFrame& frame) {
   TraceFrame next_frame;
   if (ENTERING_SYSCALL == frame.event().Syscall().state) {
     next_frame = t->trace_reader().peek_to(t->rec_tid, frame.event().type(),
@@ -152,7 +152,7 @@ static bool is_failed_syscall(Task* t, const TraceFrame& frame) {
   return frame.regs().syscall_failed();
 }
 
-static TraceTaskEvent read_task_trace_event(Task* t,
+static TraceTaskEvent read_task_trace_event(ReplayTask* t,
                                             TraceTaskEvent::Type type) {
   TraceTaskEvent tte;
   while (true) {
@@ -168,7 +168,7 @@ static TraceTaskEvent read_task_trace_event(Task* t,
 }
 
 template <typename Arch>
-static void process_clone(Task* t, const TraceFrame& trace_frame,
+static void process_clone(ReplayTask* t, const TraceFrame& trace_frame,
                           ReplayTraceStep* step, unsigned long flags,
                           int expect_syscallno) {
   if (is_failed_syscall(t, trace_frame)) {
@@ -252,8 +252,8 @@ static void process_clone(Task* t, const TraceFrame& trace_frame,
     remote_ptr<int>* ptid_not_needed = nullptr;
     extract_clone_parameters(t, &stack, ptid_not_needed, &tls, &ctid);
   }
-  Task* new_task = t->session().clone(t, clone_flags_to_task_flags(flags),
-                                      stack, tls, ctid, new_tid, rec_tid);
+  ReplayTask* new_task = static_cast<ReplayTask*>(t->session().clone(
+      t, clone_flags_to_task_flags(flags), stack, tls, ctid, new_tid, rec_tid));
 
   if (Arch::clone == t->regs().original_syscallno()) {
     /* FIXME: what if registers are non-null and contain an
@@ -305,13 +305,12 @@ static string find_exec_stub(SupportedArch arch) {
   return exe_path;
 }
 
-static void finish_direct_mmap(AutoRemoteSyscalls& remote,
+static void finish_direct_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                remote_ptr<void> rec_addr, size_t length,
                                int prot, int flags,
                                const string& backing_file_name,
                                off64_t backing_offset_pages,
                                struct stat& real_file, string& real_file_name) {
-  Task* t = remote.task();
   int fd;
 
   LOG(debug) << "directly mmap'ing " << length << " bytes of "
@@ -353,10 +352,9 @@ static void finish_direct_mmap(AutoRemoteSyscalls& remote,
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), fd);
 }
 
-static void restore_mapped_region(AutoRemoteSyscalls& remote,
+static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
                                   const KernelMapping& km,
                                   const TraceReader::MappedData& data) {
-  Task* t = remote.task();
   ASSERT(t, km.flags() & MAP_PRIVATE)
       << "Shared mappings after exec not supported";
 
@@ -369,9 +367,10 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
     case TraceReader::SOURCE_FILE: {
       struct stat real_file;
       offset_bytes = km.file_offset_bytes();
-      finish_direct_mmap(
-          remote, km.start(), km.size(), km.prot(), km.flags(), data.file_name,
-          data.file_data_offset_bytes / page_size(), real_file, real_file_name);
+      finish_direct_mmap(t, remote, km.start(), km.size(), km.prot(),
+                         km.flags(), data.file_name,
+                         data.file_data_offset_bytes / page_size(), real_file,
+                         real_file_name);
       device = real_file.st_dev;
       inode = real_file.st_ino;
       break;
@@ -383,7 +382,7 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
                                      (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1,
                                      0);
       // The data, if any, will be written back by
-      // Task::apply_all_data_records_from_trace
+      // ReplayTask::apply_all_data_records_from_trace
       break;
     default:
       ASSERT(t, false) << "Unknown data source";
@@ -394,7 +393,7 @@ static void restore_mapped_region(AutoRemoteSyscalls& remote,
                real_file_name, device, inode, &km);
 }
 
-static void process_execve(Task* t, const TraceFrame& trace_frame,
+static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
                            ReplayTraceStep* step) {
   if (trace_frame.regs().syscall_failed()) {
     return;
@@ -506,7 +505,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
     // need any memory parameters for its remote syscalls.
 
     // Process the [stack] mapping.
-    restore_mapped_region(remote, kms[0], datas[0]);
+    restore_mapped_region(t, remote, kms[0], datas[0]);
   }
 
   const string& recorded_exe_name = kms[exe_km].fsname();
@@ -518,7 +517,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
 
     // Now map in all the mappings that we recorded from the real exec.
     for (ssize_t i = 1; i < ssize_t(kms.size()) - 1; ++i) {
-      restore_mapped_region(remote, kms[i], datas[i]);
+      restore_mapped_region(t, remote, kms[i], datas[i]);
     }
 
     size_t index = recorded_exe_name.rfind('/');
@@ -540,7 +539,7 @@ static void process_execve(Task* t, const TraceFrame& trace_frame,
   t->vm()->save_auxv(t);
 }
 
-static void process_brk(Task* t) {
+static void process_brk(ReplayTask* t) {
   TraceReader::MappedData data;
   KernelMapping km = t->trace_reader().read_mapped_region(&data);
   // Zero flags means it's an an unmap, or no change.
@@ -568,11 +567,9 @@ static void process_brk(Task* t) {
  */
 enum NoteTaskMap { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
 
-static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
-                                              const TraceFrame& trace_frame,
-                                              size_t length, int prot,
-                                              int flags,
-                                              NoteTaskMap note_task_map) {
+static remote_ptr<void> finish_anonymous_mmap(
+    ReplayTask* t, AutoRemoteSyscalls& remote, const TraceFrame& trace_frame,
+    size_t length, int prot, int flags, NoteTaskMap note_task_map) {
   const Registers& rec_regs = trace_frame.regs();
   /* *Must* map the segment at the recorded address, regardless
      of what the recorded tracee passed as the |addr| hint. */
@@ -597,8 +594,9 @@ static remote_ptr<void> finish_anonymous_mmap(AutoRemoteSyscalls& remote,
     auto emufile = remote.task()->replay_session().emufs().get_or_create(
         recorded_km, length);
     struct stat real_file;
-    finish_direct_mmap(remote, rec_addr, length, prot, flags & ~MAP_ANONYMOUS,
-                       emufile->proc_path(), 0, real_file, file_name);
+    finish_direct_mmap(t, remote, rec_addr, length, prot,
+                       flags & ~MAP_ANONYMOUS, emufile->proc_path(), 0,
+                       real_file, file_name);
     device = real_file.st_dev;
     inode = real_file.st_ino;
   }
@@ -655,16 +653,15 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
                            file_name, fstat.st_dev, fstat.st_ino, &km_slice);
 }
 
-static void finish_private_mmap(AutoRemoteSyscalls& remote,
+static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                 const TraceFrame& trace_frame, size_t length,
                                 int prot, int flags, off64_t offset_pages,
                                 const KernelMapping& km) {
   LOG(debug) << "  finishing private mmap of " << km.fsname();
 
-  Task* t = remote.task();
   size_t num_bytes = length;
   remote_ptr<void> mapped_addr =
-      finish_anonymous_mmap(remote, trace_frame, length, prot,
+      finish_anonymous_mmap(t, remote, trace_frame, length, prot,
                             /* The restored region won't be backed
                              * by file. */
                             flags | MAP_ANONYMOUS, DONT_NOTE_TASK_MAP);
@@ -683,10 +680,9 @@ static void finish_private_mmap(AutoRemoteSyscalls& remote,
                        mapped_pages - data_pages, km);
 }
 
-static void finish_shared_mmap(AutoRemoteSyscalls& remote, int prot, int flags,
-                               off64_t offset_pages, size_t file_size,
-                               const KernelMapping& km) {
-  Task* t = remote.task();
+static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
+                               int prot, int flags, off64_t offset_pages,
+                               size_t file_size, const KernelMapping& km) {
   auto buf = t->trace_reader().read_raw_data();
   size_t rec_num_bytes = ceil_page_size(buf.data.size());
 
@@ -700,7 +696,7 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote, int prot, int flags,
   // we exit/crash the kernel will clean up for us.
   struct stat real_file;
   string real_file_name;
-  finish_direct_mmap(remote, buf.addr, rec_num_bytes, prot, flags,
+  finish_direct_mmap(t, remote, buf.addr, rec_num_bytes, prot, flags,
                      emufile->proc_path(), offset_pages, real_file,
                      real_file_name);
   // Write back the snapshot of the segment that we recorded.
@@ -725,9 +721,9 @@ static void finish_shared_mmap(AutoRemoteSyscalls& remote, int prot, int flags,
                real_file_name, real_file.st_dev, real_file.st_ino, &km);
 }
 
-static void process_mmap(Task* t, const TraceFrame& trace_frame, size_t length,
-                         int prot, int flags, off64_t offset_pages,
-                         ReplayTraceStep* step) {
+static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
+                         size_t length, int prot, int flags,
+                         off64_t offset_pages, ReplayTraceStep* step) {
   if (trace_frame.regs().syscall_failed()) {
     return;
   }
@@ -740,7 +736,7 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame, size_t length,
     // appropriate helper.
     AutoRemoteSyscalls remote(t);
     if (flags & MAP_ANONYMOUS) {
-      finish_anonymous_mmap(remote, trace_frame, length, prot, flags,
+      finish_anonymous_mmap(t, remote, trace_frame, length, prot, flags,
                             NOTE_TASK_MAP);
     } else {
       TraceReader::MappedData data;
@@ -749,8 +745,8 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame, size_t length,
       if (data.source == TraceReader::SOURCE_FILE) {
         struct stat real_file;
         string real_file_name;
-        finish_direct_mmap(remote, trace_frame.regs().syscall_result(), length,
-                           prot, flags, data.file_name,
+        finish_direct_mmap(t, remote, trace_frame.regs().syscall_result(),
+                           length, prot, flags, data.file_name,
                            data.file_data_offset_bytes / page_size(), real_file,
                            real_file_name);
         t->vm()->map(km.start(), length, prot, flags,
@@ -759,10 +755,10 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame, size_t length,
       } else {
         ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
         if (MAP_PRIVATE & flags) {
-          finish_private_mmap(remote, trace_frame, length, prot, flags,
+          finish_private_mmap(t, remote, trace_frame, length, prot, flags,
                               offset_pages, km);
         } else {
-          finish_shared_mmap(remote, prot, flags, offset_pages,
+          finish_shared_mmap(t, remote, prot, flags, offset_pages,
                              data.file_size_bytes, km);
         }
       }
@@ -775,16 +771,16 @@ static void process_mmap(Task* t, const TraceFrame& trace_frame, size_t length,
   t->validate_regs();
 }
 
-void process_grow_map(Task* t) {
+void process_grow_map(ReplayTask* t) {
   AutoRemoteSyscalls remote(t);
   TraceReader::MappedData data;
   KernelMapping km = t->trace_reader().read_mapped_region(&data);
   ASSERT(t, km.size());
-  restore_mapped_region(remote, km, data);
+  restore_mapped_region(t, remote, km, data);
 }
 
-static void process_shmat(Task* t, const TraceFrame& trace_frame, int shm_flags,
-                          ReplayTraceStep* step) {
+static void process_shmat(ReplayTask* t, const TraceFrame& trace_frame,
+                          int shm_flags, ReplayTraceStep* step) {
   if (trace_frame.regs().syscall_failed()) {
     return;
   }
@@ -797,7 +793,7 @@ static void process_shmat(Task* t, const TraceFrame& trace_frame, int shm_flags,
     KernelMapping km = t->trace_reader().read_mapped_region(&data);
     int prot = shm_flags_to_mmap_prot(shm_flags);
     int flags = MAP_SHARED;
-    finish_shared_mmap(remote, prot, flags, 0, data.file_size_bytes, km);
+    finish_shared_mmap(t, remote, prot, flags, 0, data.file_size_bytes, km);
 
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
@@ -808,7 +804,7 @@ static void process_shmat(Task* t, const TraceFrame& trace_frame, int shm_flags,
   t->validate_regs();
 }
 
-static void process_shmdt(Task* t, const TraceFrame& trace_frame,
+static void process_shmdt(ReplayTask* t, const TraceFrame& trace_frame,
                           remote_ptr<void> addr, ReplayTraceStep* step) {
   if (trace_frame.regs().syscall_failed()) {
     return;
@@ -827,7 +823,7 @@ static void process_shmdt(Task* t, const TraceFrame& trace_frame,
   t->validate_regs();
 }
 
-static void process_init_buffers(Task* t, ReplayTraceStep* step) {
+static void process_init_buffers(ReplayTask* t, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
   /* Proceed to syscall exit so we can run our own syscalls. */
@@ -846,7 +842,7 @@ static void process_init_buffers(Task* t, ReplayTraceStep* step) {
 }
 
 template <typename Arch>
-static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
+static void rep_after_enter_syscall_arch(ReplayTask* t, int syscallno) {
   switch (syscallno) {
     case Arch::exit:
       t->destroy_buffers();
@@ -861,11 +857,11 @@ static void rep_after_enter_syscall_arch(Task* t, int syscallno) {
   }
 }
 
-void rep_after_enter_syscall(Task* t, int syscallno) {
+void rep_after_enter_syscall(ReplayTask* t, int syscallno) {
   RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, syscallno)
 }
 
-void rep_prepare_run_to_syscall(Task* t, ReplayTraceStep* step) {
+void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   int sys = t->current_trace_frame().event().Syscall().number;
 
   LOG(debug) << "processing " << t->syscall_name(sys) << " (entry)";
@@ -902,7 +898,7 @@ void rep_prepare_run_to_syscall(Task* t, ReplayTraceStep* step) {
 }
 
 template <typename Arch>
-static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
+static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
   int sys = t->current_trace_frame().event().Syscall().number;
   const TraceFrame& trace_frame = t->replay_session().current_trace_frame();
   const Registers& trace_regs = trace_frame.regs();
@@ -1004,7 +1000,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
         case PTRACE_POKETEXT:
         case PTRACE_POKEDATA:
           if (!trace_regs.syscall_failed()) {
-            Task* target =
+            ReplayTask* target =
                 t->session().find_task((pid_t)trace_regs.arg2_signed());
             ASSERT(t, target);
             target->set_data_from_trace();
@@ -1059,7 +1055,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
             sys, trace_regs.arg1(), trace_regs.arg2(), trace_regs.arg3(),
             MREMAP_MAYMOVE | MREMAP_FIXED, trace_regs.syscall_result());
       }
-      // Task::on_syscall_exit takes care of updating AddressSpace.
+      // ReplayTask::on_syscall_exit takes care of updating AddressSpace.
       return;
     }
 
@@ -1141,7 +1137,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
 
     case Arch::process_vm_writev: {
       // Recorded data records may be for another process.
-      Task* dest = t->session().find_task(t->regs().arg1());
+      ReplayTask* dest = t->session().find_task(t->regs().arg1());
       if (dest) {
         uint32_t iov_cnt = t->regs().arg5();
         for (uint32_t i = 0; i < iov_cnt; ++i) {
@@ -1163,7 +1159,7 @@ static void rep_process_syscall_arch(Task* t, ReplayTraceStep* step) {
   }
 }
 
-void rep_process_syscall(Task* t, ReplayTraceStep* step) {
+void rep_process_syscall(ReplayTask* t, ReplayTraceStep* step) {
   // Use the event's arch, not the task's, because the task's arch may
   // be out of date immediately after an exec.
   RR_ARCH_FUNCTION(rep_process_syscall_arch,

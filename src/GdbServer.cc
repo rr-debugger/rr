@@ -445,7 +445,8 @@ void GdbServer::dispatch_debugger_request(Session& session,
           << "Debugger setting bad breakpoint insn";
       // Mirror all breakpoint/watchpoint sets/unsets to the target process
       // if it's not part of the timeline (i.e. it's a diversion).
-      Task* replay_task = timeline.current_session().find_task(target->tuid());
+      ReplayTask* replay_task =
+          timeline.current_session().find_task(target->tuid());
       bool ok = timeline.add_breakpoint(replay_task, req.watch().addr,
                                         breakpoint_condition(req));
       if (ok && &session != &timeline.current_session()) {
@@ -460,7 +461,8 @@ void GdbServer::dispatch_debugger_request(Session& session,
     case DREQ_SET_RD_WATCH:
     case DREQ_SET_WR_WATCH:
     case DREQ_SET_RDWR_WATCH: {
-      Task* replay_task = timeline.current_session().find_task(target->tuid());
+      ReplayTask* replay_task =
+          timeline.current_session().find_task(target->tuid());
       bool ok = timeline.add_watchpoint(
           replay_task, req.watch().addr, req.watch().kind,
           watchpoint_type(req.type), breakpoint_condition(req));
@@ -473,7 +475,8 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     }
     case DREQ_REMOVE_SW_BREAK: {
-      Task* replay_task = timeline.current_session().find_task(target->tuid());
+      ReplayTask* replay_task =
+          timeline.current_session().find_task(target->tuid());
       timeline.remove_breakpoint(replay_task, req.watch().addr);
       if (&session != &timeline.current_session()) {
         target->vm()->remove_breakpoint(req.watch().addr, BKPT_USER);
@@ -485,7 +488,8 @@ void GdbServer::dispatch_debugger_request(Session& session,
     case DREQ_REMOVE_RD_WATCH:
     case DREQ_REMOVE_WR_WATCH:
     case DREQ_REMOVE_RDWR_WATCH: {
-      Task* replay_task = timeline.current_session().find_task(target->tuid());
+      ReplayTask* replay_task =
+          timeline.current_session().find_task(target->tuid());
       timeline.remove_watchpoint(replay_task, req.watch().addr,
                                  req.watch().kind, watchpoint_type(req.type));
       if (&session != &timeline.current_session()) {
@@ -809,7 +813,7 @@ void GdbServer::try_lazy_reverse_singlesteps(GdbRequest& req) {
 
   ReplayTimeline::Mark now;
   bool need_seek = false;
-  Task* t = timeline.current_session().current_task();
+  ReplayTask* t = timeline.current_session().current_task();
   while (t && req.type == DREQ_CONT &&
          req.cont().run_direction == RUN_BACKWARD &&
          req.cont().actions.size() == 1 &&

@@ -19,6 +19,7 @@ class DiversionSession;
 class EmuFs;
 class RecordSession;
 class ReplaySession;
+class ReplayTask;
 class Task;
 class TaskGroup;
 

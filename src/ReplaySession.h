@@ -10,6 +10,7 @@
 #include "EmuFs.h"
 #include "Session.h"
 
+class ReplayTask;
 struct syscallbuf_hdr;
 
 /**
@@ -138,6 +139,7 @@ public:
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
                          SupportedArch a);
 
+  using Session::clone;
   /**
    * Return a semantic copy of all the state managed by this,
    * that is the entire tracee tree and the state it depends on.
@@ -187,10 +189,13 @@ public:
   /**
    * The Task for the current trace record.
    */
-  Task* current_task() {
+  ReplayTask* current_task() {
     finish_initializing();
     return find_task(trace_frame.tid());
   }
+
+  ReplayTask* find_task(pid_t rec_tid) const;
+  ReplayTask* find_task(const TaskUid& tuid) const;
 
   /**
    * Returns true if the next step for this session is to exit a syscall with
@@ -293,30 +298,34 @@ private:
         cpuid_bug_detector(other.cpuid_bug_detector),
         flags(other.flags) {}
 
-  void setup_replay_one_trace_frame(Task* t);
+  void setup_replay_one_trace_frame(ReplayTask* t);
   void advance_to_next_trace_frame();
-  Completion emulate_signal_delivery(Task* oldtask, int sig);
-  Completion try_one_trace_step(Task* t,
+  Completion emulate_signal_delivery(ReplayTask* oldtask, int sig);
+  Completion try_one_trace_step(ReplayTask* t,
                                 const StepConstraints& step_constraints);
-  Completion cont_syscall_boundary(Task* t, const StepConstraints& constraints);
-  Completion enter_syscall(Task* t, const StepConstraints& constraints);
-  Completion exit_syscall(Task* t);
-  Completion exit_task(Task* t);
-  void check_ticks_consistency(Task* t, const Event& ev);
-  void check_pending_sig(Task* t);
-  void continue_or_step(Task* t, const StepConstraints& constraints,
+  Completion cont_syscall_boundary(ReplayTask* t,
+                                   const StepConstraints& constraints);
+  Completion enter_syscall(ReplayTask* t, const StepConstraints& constraints);
+  Completion exit_syscall(ReplayTask* t);
+  Completion exit_task(ReplayTask* t);
+  void check_ticks_consistency(ReplayTask* t, const Event& ev);
+  void check_pending_sig(ReplayTask* t);
+  void continue_or_step(ReplayTask* t, const StepConstraints& constraints,
                         TicksRequest tick_request,
                         ResumeRequest resume_how = RESUME_SYSCALL);
-  Completion advance_to_ticks_target(Task* t,
+  Completion advance_to_ticks_target(ReplayTask* t,
                                      const StepConstraints& constraints);
-  Completion emulate_deterministic_signal(Task* t, int sig,
+  Completion emulate_deterministic_signal(ReplayTask* t, int sig,
                                           const StepConstraints& constraints);
-  Completion emulate_async_signal(Task* t, const StepConstraints& constraints,
+  Completion emulate_async_signal(ReplayTask* t,
+                                  const StepConstraints& constraints,
                                   Ticks ticks);
-  void prepare_syscallbuf_records(Task* t);
-  Completion flush_syscallbuf(Task* t, const StepConstraints& constraints);
-  Completion patch_next_syscall(Task* t, const StepConstraints& constraints);
-  void check_approaching_ticks_target(Task* t,
+  void prepare_syscallbuf_records(ReplayTask* t);
+  Completion flush_syscallbuf(ReplayTask* t,
+                              const StepConstraints& constraints);
+  Completion patch_next_syscall(ReplayTask* t,
+                                const StepConstraints& constraints);
+  void check_approaching_ticks_target(ReplayTask* t,
                                       const StepConstraints& constraints,
                                       BreakStatus& break_status);
 
