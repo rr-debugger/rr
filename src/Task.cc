@@ -194,21 +194,6 @@ void Task::finish_emulated_syscall() {
   wait_status = 0;
 }
 
-const struct syscallbuf_record* Task::desched_rec() const {
-  return (ev().is_syscall_event()
-              ? ev().Syscall().desched_rec
-              : (EV_DESCHED == ev().type()) ? ev().Desched().rec : nullptr);
-}
-
-bool Task::running_inside_desched() const {
-  for (auto& e : pending_events) {
-    if (e.type() == EV_DESCHED) {
-      return e.Desched().rec != desched_rec();
-    }
-  }
-  return false;
-}
-
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
   fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s)<%p>\n", prname.c_str(),
@@ -747,30 +732,6 @@ const ExtraRegisters& Task::extra_regs() {
     extra_registers_known = true;
   }
   return extra_registers;
-}
-
-void Task::validate_regs(uint32_t flags) {
-  /* don't validate anything before execve is done as the actual
-   * process did not start prior to this point */
-  if (!session().done_initial_exec()) {
-    return;
-  }
-
-  Registers rec_regs = current_trace_frame().regs();
-
-  if (flags & IGNORE_ESI) {
-    if (regs().arg4() != rec_regs.arg4()) {
-      LOG(warn) << "Probably saw kernel bug mutating $esi across pread/write64 "
-                   "call: recorded:"
-                << HEX(rec_regs.arg4()) << "; replaying:" << regs().arg4()
-                << ".  Fudging registers.";
-      rec_regs.set_arg4(regs().arg4());
-    }
-  }
-
-  /* TODO: add perf counter validations (hw int, page faults, insts) */
-  Registers::compare_register_files(this, "replaying", regs(), "recorded",
-                                    rec_regs, BAIL_ON_MISMATCH);
 }
 
 static ssize_t dr_user_word_offset(size_t i) {

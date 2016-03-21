@@ -133,20 +133,6 @@ public:
    */
   void finish_emulated_syscall();
 
-  /**
-   * Shortcut to the most recent |pending_event->desched.rec| when
-   * there's a desched event on the stack, and nullptr otherwise.
-   * Exists just so that clients don't need to dig around in the
-   * event stack to find this record.
-   */
-  const struct syscallbuf_record* desched_rec() const;
-
-  /**
-   * Returns true when the task is in a signal handler in an interrupted
-   * system call being handled by syscall buffering.
-   */
-  bool running_inside_desched() const;
-
   size_t syscallbuf_data_size() const {
     return syscallbuf_hdr->num_rec_bytes + sizeof(*syscallbuf_hdr);
   }
@@ -408,21 +394,6 @@ public:
     // be called while the task is not stopped.
     return registers.arch();
   }
-
-  enum {
-    /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu
-     * 12.04 has been observed to mutate $esi across
-     * syscall entry/exit.  (This has been verified
-     * outside of rr as well; not an rr bug.)  It's not
-     * clear whether this is a ptrace bug or a kernel bug,
-     * but either way it's not supposed to happen.  So we
-     * allow validate_args to cover up that bug. */
-    IGNORE_ESI = 0x01
-  };
-  /** Assert that the current register values match the values in the
-   *  current trace record.
-   */
-  void validate_regs(uint32_t flags = 0);
 
   /**
    * Return the debug status (DR6 on x86). The debug status is always cleared

@@ -659,6 +659,21 @@ bool RecordTask::maybe_in_spinlock() {
          regs().matches(registers_at_start_of_last_timeslice);
 }
 
+const struct syscallbuf_record* RecordTask::desched_rec() const {
+  return (ev().is_syscall_event()
+              ? ev().Syscall().desched_rec
+              : (EV_DESCHED == ev().type()) ? ev().Desched().rec : nullptr);
+}
+
+bool RecordTask::running_inside_desched() const {
+  for (auto& e : pending_events) {
+    if (e.type() == EV_DESCHED) {
+      return e.Desched().rec != desched_rec();
+    }
+  }
+  return false;
+}
+
 void RecordTask::record_local(remote_ptr<void> addr, ssize_t num_bytes,
                               const void* data) {
   maybe_flush_syscallbuf();
