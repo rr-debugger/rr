@@ -23,6 +23,10 @@ public:
   virtual void update_sigmask(const Registers& regs);
 
   void post_exec();
+  /**
+   * Called when SYS_rrcall_init_preload has happened.
+   */
+  virtual void at_preload_init();
 
   RecordSession& session() const;
 
@@ -118,6 +122,72 @@ public:
    * access/lock.
    */
   bool maybe_in_spinlock();
+
+  /**
+   * Save tracee data to the trace.  |addr| is the address in
+   * the address space of this task.  The |record_local*()|
+   * variants record data that's already been read from this,
+   * and the |record_remote*()| variants read the data and then
+   * record it.
+   * If 'addr' is null then no record is written.
+   */
+  void record_local(remote_ptr<void> addr, ssize_t num_bytes, const void* buf);
+  template <typename T> void record_local(remote_ptr<T> addr, const T* buf) {
+    record_local(addr, sizeof(T), buf);
+  }
+  void record_remote(remote_ptr<void> addr, ssize_t num_bytes);
+  template <typename T> void record_remote(remote_ptr<T> addr) {
+    record_remote(addr, sizeof(T));
+  }
+  // Record as much as we can of the bytes in this range.
+  void record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes);
+  /**
+   * Save tracee data to the trace.  |addr| is the address in
+   * the address space of this task.
+   * If 'addr' is null then a zero-length record is written.
+   */
+  void record_remote_even_if_null(remote_ptr<void> addr, ssize_t num_bytes);
+  template <typename T> void record_remote_even_if_null(remote_ptr<T> addr) {
+    record_remote_even_if_null(addr, sizeof(T));
+  }
+
+  /**
+   * Call this before recording events or data.  Records
+   * syscallbuf data and flushes the buffer, if there's buffered
+   * data.
+   *
+   * The timing of calls to this is tricky. We must flush the syscallbuf
+   * before recording any data associated with events that happened after the
+   * buffered syscalls. But we don't support flushing a syscallbuf twice with
+   * no intervening reset, i.e. after flushing we have to be sure we'll get
+   * a chance to reset the syscallbuf (i.e. record some other kind of event)
+   * before the tracee runs again in a way that might append another buffered
+   * syscall --- so we can't flush too early
+   */
+  void maybe_flush_syscallbuf();
+  /**
+   * Call this after recording an event when it might be safe to reset the
+   * syscallbuf. It must be after recording an event to ensure during replay
+   * we run past any syscallbuf after-syscall code that uses the buffer data.
+   */
+  void maybe_reset_syscallbuf();
+  /**
+   * Record an event on behalf of this.  Record the registers of
+   * this (and other relevant execution state) so that it can be
+   * used or verified during replay, if that state is available
+   * and meaningful at this's current execution point.
+   * |record_current_event()| record |this->ev()|, and
+   * |record_event()| records the specified event.
+   */
+  void record_current_event();
+  enum FlushSyscallbuf {
+    FLUSH_SYSCALLBUF,
+    /* Pass this if it's safe to replay the event before we process the
+     * syscallbuf records.
+     */
+    DONT_FLUSH_SYSCALLBUF
+  };
+  void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF);
 
 private:
   /**

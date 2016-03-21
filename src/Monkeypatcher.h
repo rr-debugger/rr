@@ -11,6 +11,7 @@
 #include "remote_ptr.h"
 #include "remote_code_ptr.h"
 
+class RecordTask;
 class ScopedFd;
 class Task;
 
@@ -41,13 +42,13 @@ public:
    * In this hook we patch everything that doesn't depend on the preload
    * library being loaded.
    */
-  void patch_after_exec(Task* t);
+  void patch_after_exec(RecordTask* t);
 
   /**
    * During librrpreload initialization, apply patches that require the
    * preload library to be initialized.
    */
-  void patch_at_preload_init(Task* t);
+  void patch_at_preload_init(RecordTask* t);
 
   /**
    * Try to patch the syscall instruction that |t| just entered. If this
@@ -58,10 +59,10 @@ public:
    * Zero or more mapping operations are also recorded to the trace and must
    * be replayed.
    */
-  bool try_patch_syscall(Task* t);
+  bool try_patch_syscall(RecordTask* t);
 
   void init_dynamic_syscall_patching(
-      Task* t, int syscall_patch_hook_count,
+      RecordTask* t, int syscall_patch_hook_count,
       remote_ptr<syscall_patch_hook> syscall_patch_hooks,
       remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end,
       remote_ptr<void> syscall_hook_trampoline);
@@ -70,13 +71,13 @@ public:
    * Try to allocate a stub from the sycall patching stub buffer. Returns null
    * if there's no buffer or we've run out of free stubs.
    */
-  remote_ptr<uint8_t> allocate_stub(Task* t, size_t bytes);
+  remote_ptr<uint8_t> allocate_stub(RecordTask* t, size_t bytes);
 
   /**
    * Apply any necessary patching immediately after an mmap. We use this to
    * patch libpthread.so.
    */
-  void patch_after_mmap(Task* t, remote_ptr<void> start, size_t size,
+  void patch_after_mmap(RecordTask* t, remote_ptr<void> start, size_t size,
                         size_t offset_pages, int child_fd);
 
   remote_ptr<void> x86_sysenter_vsyscall;

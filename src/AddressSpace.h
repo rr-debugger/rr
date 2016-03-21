@@ -25,6 +25,7 @@
 #include "TraceStream.h"
 #include "util.h"
 
+class RecordTask;
 class Session;
 class Task;
 
@@ -545,7 +546,7 @@ public:
   /**
    * Call this only during recording.
    */
-  void at_preload_init(Task* t);
+  void at_preload_init(RecordTask* t);
 
   /* The address of the syscall instruction from which traced syscalls made by
    * the syscallbuf will originate. */
@@ -753,7 +754,7 @@ private:
   /**
    * Call this only during recording.
    */
-  template <typename Arch> void at_preload_init_arch(Task* t);
+  template <typename Arch> void at_preload_init_arch(RecordTask* t);
 
   enum { EXEC_BIT = 1 << 0, READ_BIT = 1 << 1, WRITE_BIT = 1 << 2 };
 

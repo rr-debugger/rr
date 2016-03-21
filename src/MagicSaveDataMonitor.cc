@@ -7,6 +7,7 @@
 #include <rr/rr.h>
 
 #include "log.h"
+#include "RecordTask.h"
 #include "Session.h"
 #include "Task.h"
 #include "util.h"
@@ -56,7 +57,8 @@ void MagicSaveDataMonitor::did_write(Task* t,
                                      const std::vector<Range>& ranges) {
   for (auto& r : ranges) {
     if (t->session().is_recording()) {
-      t->record_remote(r.data.cast<uint8_t>(), r.length);
+      static_cast<RecordTask*>(t)
+          ->record_remote(r.data.cast<uint8_t>(), r.length);
     } else if (t->session().is_replaying()) {
       auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
       auto rec = t->trace_reader().read_raw_data();

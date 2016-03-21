@@ -16,6 +16,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "log.h"
 #include "RecordSession.h"
+#include "RecordTask.h"
 #include "Session.h"
 #include "Task.h"
 
@@ -442,7 +443,8 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
   return m;
 }
 
-template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
+template <typename Arch>
+void AddressSpace::at_preload_init_arch(RecordTask* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
 
@@ -461,7 +463,7 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
   monkeypatch_state->patch_at_preload_init(t);
 }
 
-void AddressSpace::at_preload_init(Task* t) {
+void AddressSpace::at_preload_init(RecordTask* t) {
   ASSERT(t, !syscallbuf_lib_start_.is_null())
       << "should have found preload library already";
   RR_ARCH_FUNCTION(at_preload_init_arch, t->arch(), t);

@@ -1569,10 +1569,10 @@ void RecordSession::terminate_recording() {
 
   LOG(info) << "Processing termination request ...";
 
-  for (auto& t : tasks()) {
+  for (auto& p : tasks()) {
     // Emit UNSTABLE_EXIT events so the debugger can stop on them.
-    t.second->record_event(
-        Event(EV_UNSTABLE_EXIT, NO_EXEC_INFO, t.second->arch()));
+    static_cast<RecordTask*>(p.second)
+        ->record_event(Event(EV_UNSTABLE_EXIT, NO_EXEC_INFO, p.second->arch()));
   }
 
   LOG(info) << "  recording final TRACE_TERMINATION event ...";

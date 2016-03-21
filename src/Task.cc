@@ -696,146 +696,14 @@ void Task::post_exec_syscall(TraceTaskEvent& event) {
   fds->update_for_cloexec(this, event);
 }
 
-void Task::record_current_event() { record_event(ev()); }
-
 void Task::pop_event(EventType expected_type) {
   ASSERT(this, pending_events.back().type() == expected_type);
   pending_events.pop_back();
 }
 
-static bool record_extra_regs(const Event& ev) {
-  switch (ev.type()) {
-    case EV_SYSCALL:
-      // sigreturn/rt_sigreturn restores register state
-      return ev.Syscall().state == EXITING_SYSCALL &&
-             (is_sigreturn(ev.Syscall().number, ev.arch()) ||
-              is_execve_syscall(ev.Syscall().number, ev.arch()));
-    case EV_SIGNAL_HANDLER:
-      // entering a signal handler seems to clear FP/SSE regs,
-      // so record these effects.
-      return true;
-    default:
-      return false;
-  }
-}
-
-/**
- * If the syscallbuf has just been flushed, and resetting hasn't been
- * overridden with a delay request, then record the reset event for
- * replay.
- */
-void Task::maybe_reset_syscallbuf() {
-  if (flushed_syscallbuf && !delay_syscallbuf_reset) {
-    flushed_syscallbuf = false;
-    LOG(debug) << "Syscallbuf reset";
-    reset_syscallbuf();
-    record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO, arch()));
-  }
-}
-
-void Task::record_event(const Event& ev, FlushSyscallbuf flush) {
-  if (flush == FLUSH_SYSCALLBUF) {
-    maybe_flush_syscallbuf();
-  }
-
-  TraceFrame frame(trace_writer().time(), tid, ev, tick_count());
-  if (ev.record_exec_info() == HAS_EXEC_INFO) {
-    PerfCounters::Extra extra_perf_values;
-    if (PerfCounters::extra_perf_counters_enabled()) {
-      extra_perf_values = hpc.read_extra();
-    }
-    frame.set_exec_info(regs(), PerfCounters::extra_perf_counters_enabled()
-                                    ? &extra_perf_values
-                                    : nullptr,
-                        record_extra_regs(ev) ? &extra_regs() : nullptr);
-  }
-
-  if (should_dump_memory(frame)) {
-    dump_process_memory(this, frame.time(), "rec");
-  }
-  if (should_checksum(frame)) {
-    checksum_process_memory(this, frame.time());
-  }
-
-  trace_writer().write_frame(frame);
-
-  if (!ev.has_ticks_slop()) {
-    ASSERT(this, flush == FLUSH_SYSCALLBUF);
-    // After we've output an event, it's safe to reset the syscallbuf (if not
-    // explicitly delayed) since we will have exited the syscallbuf code that
-    // consumed the syscallbuf data.
-    // This only works if the event has a reliable tick count so when we
-    // reach it, we're done.
-    maybe_reset_syscallbuf();
-  }
-}
-
 void Task::flush_inconsistent_state() { ticks = 0; }
 
 void Task::set_tick_count(Ticks count) { ticks = count; }
-
-void Task::record_local(remote_ptr<void> addr, ssize_t num_bytes,
-                        const void* data) {
-  maybe_flush_syscallbuf();
-
-  ASSERT(this, num_bytes >= 0);
-
-  if (!addr) {
-    return;
-  }
-
-  trace_writer().write_raw(data, num_bytes, addr);
-}
-
-void Task::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
-  maybe_flush_syscallbuf();
-
-  // We shouldn't be recording a scratch address.
-  ASSERT(this, !addr || addr != scratch_ptr);
-
-  assert(num_bytes >= 0);
-
-  if (!addr) {
-    return;
-  }
-
-  auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
-  trace_writer().write_raw(buf.data(), num_bytes, addr);
-}
-
-void Task::record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes) {
-  maybe_flush_syscallbuf();
-
-  // We shouldn't be recording a scratch address.
-  ASSERT(this, !addr || addr != scratch_ptr);
-  ASSERT(this, num_bytes >= 0);
-
-  vector<uint8_t> buf;
-  if (!addr.is_null()) {
-    buf.resize(num_bytes);
-    ssize_t nread = read_bytes_fallible(addr, num_bytes, buf.data());
-    buf.resize(max<ssize_t>(0, nread));
-  }
-  trace_writer().write_raw(buf.data(), buf.size(), addr);
-}
-
-void Task::record_remote_even_if_null(remote_ptr<void> addr,
-                                      ssize_t num_bytes) {
-  maybe_flush_syscallbuf();
-
-  // We shouldn't be recording a scratch address.
-  ASSERT(this, !addr || addr != scratch_ptr);
-
-  assert(num_bytes >= 0);
-
-  if (!addr) {
-    trace_writer().write_raw(nullptr, 0, addr);
-    return;
-  }
-
-  auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
-  trace_writer().write_raw(buf.data(), num_bytes, addr);
-}
 
 string Task::read_c_str(remote_ptr<char> child_addr) {
   // XXX handle invalid C strings
@@ -2219,52 +2087,6 @@ void Task::reset_syscallbuf() {
   syscallbuf_hdr->num_rec_bytes = 0;
 }
 
-void Task::maybe_flush_syscallbuf() {
-  if (EV_SYSCALLBUF_FLUSH == ev().type()) {
-    // Already flushing.
-    return;
-  }
-  if (!syscallbuf_hdr) {
-    return;
-  }
-
-  // This can be called while the task is not stopped, when we prematurely
-  // terminate the trace. In that case, the tracee could be concurrently
-  // modifying the header. We'll take a snapshot of the header now.
-  // The syscallbuf code ensures that writes to syscallbuf records
-  // complete before num_rec_bytes is incremented.
-  struct syscallbuf_hdr hdr = *syscallbuf_hdr;
-
-  ASSERT(this,
-         !flushed_syscallbuf || flushed_num_rec_bytes == hdr.num_rec_bytes);
-
-  if (!hdr.num_rec_bytes || flushed_syscallbuf) {
-    // no records, or we've already flushed.
-    return;
-  }
-
-  // Write the entire buffer in one shot without parsing it,
-  // because replay will take care of that.
-  push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));
-  if (is_stopped) {
-    record_local(syscallbuf_child, syscallbuf_data_size(), syscallbuf_hdr);
-  } else {
-    vector<uint8_t> buf;
-    buf.resize(sizeof(hdr) + hdr.num_rec_bytes);
-    memcpy(buf.data(), &hdr, sizeof(hdr));
-    memcpy(buf.data() + sizeof(hdr), syscallbuf_hdr + 1, hdr.num_rec_bytes);
-    record_local(syscallbuf_child, buf.size(), buf.data());
-  }
-  record_current_event();
-  pop_event(EV_SYSCALLBUF_FLUSH);
-
-  flushed_syscallbuf = true;
-  flushed_num_rec_bytes = hdr.num_rec_bytes;
-
-  LOG(debug) << "Syscallbuf flushed with num_rec_bytes="
-             << (uint32_t)hdr.num_rec_bytes;
-}
-
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
                                 void* buf) {
   ssize_t nread = 0;
@@ -2579,11 +2401,6 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
 
   t->write_mem(params.in_replay_flag.rptr(),
                (unsigned char)t->session().is_replaying());
-  if (t->session().is_recording()) {
-    int cores = t->record_session().scheduler().pretend_num_cores();
-    t->write_mem(params.pretend_num_cores.rptr(), cores);
-    t->record_local(params.pretend_num_cores.rptr(), &cores);
-  }
 }
 
 static void do_preload_init(Task* t) {

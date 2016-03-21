@@ -8,29 +8,29 @@
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
+#include "RecordTask.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
-#include "Task.h"
 
 using namespace rr;
 using namespace std;
 
 #include "AssemblyTemplates.generated"
 
-static void write_and_record_bytes(Task* t, remote_ptr<void> child_addr,
+static void write_and_record_bytes(RecordTask* t, remote_ptr<void> child_addr,
                                    size_t size, const void* buf) {
   t->write_bytes_helper(child_addr, size, buf);
   t->record_local(child_addr, size, buf);
 }
 
 template <size_t N>
-static void write_and_record_bytes(Task* t, remote_ptr<void> child_addr,
+static void write_and_record_bytes(RecordTask* t, remote_ptr<void> child_addr,
                                    const uint8_t(&buf)[N]) {
   write_and_record_bytes(t, child_addr, N, buf);
 }
 
 template <typename T>
-static void write_and_record_mem(Task* t, remote_ptr<T> child_addr,
+static void write_and_record_mem(RecordTask* t, remote_ptr<T> child_addr,
                                  const T* val, int count) {
   t->write_bytes_helper(child_addr, sizeof(*val) * count,
                         static_cast<const void*>(val));
@@ -48,7 +48,7 @@ static void write_and_record_mem(Task* t, remote_ptr<T> child_addr,
  * and then does an exec. That's just too bad. If we ever have to handle that,
  * we should modify the environment passed to the exec call.
  */
-template <typename Arch> static void setup_preload_library_path(Task* t) {
+template <typename Arch> static void setup_preload_library_path(RecordTask* t) {
   static_assert(sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) ==
                     sizeof(SYSCALLBUF_LIB_FILENAME_32),
                 "filename length mismatch");
@@ -102,7 +102,7 @@ template <typename Arch> static void setup_preload_library_path(Task* t) {
 }
 
 void Monkeypatcher::init_dynamic_syscall_patching(
-    Task* t, int syscall_patch_hook_count,
+    RecordTask* t, int syscall_patch_hook_count,
     remote_ptr<struct syscall_patch_hook> syscall_patch_hooks,
     remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end,
     remote_ptr<void> syscall_hook_trampoline) {
@@ -116,10 +116,10 @@ void Monkeypatcher::init_dynamic_syscall_patching(
 }
 
 template <typename Arch>
-static bool patch_syscall_with_hook_arch(Monkeypatcher& patcher, Task* t,
+static bool patch_syscall_with_hook_arch(Monkeypatcher& patcher, RecordTask* t,
                                          const syscall_patch_hook& hook);
 
-remote_ptr<uint8_t> Monkeypatcher::allocate_stub(Task* t, size_t bytes) {
+remote_ptr<uint8_t> Monkeypatcher::allocate_stub(RecordTask* t, size_t bytes) {
   if (!stub_buffer) {
     return nullptr;
   }
@@ -182,7 +182,7 @@ void substitute_extended_jump<X64SyscallStubExtendedJump>(uint8_t* buffer,
  */
 template <typename ExtendedJumpPatch>
 static remote_ptr<uint8_t> allocate_extended_jump(
-    Task* t, vector<Monkeypatcher::ExtendedJumpPage>& pages,
+    RecordTask* t, vector<Monkeypatcher::ExtendedJumpPage>& pages,
     remote_ptr<uint8_t> from_end, remote_ptr<uint8_t> to_start) {
   Monkeypatcher::ExtendedJumpPage* page = nullptr;
   for (auto& p : pages) {
@@ -284,7 +284,8 @@ static remote_ptr<uint8_t> allocate_extended_jump(
  */
 template <typename JumpPatch, typename ExtendedJumpPatch, typename StubPatch,
           uint32_t trampoline_call_end>
-static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
+static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
+                                           RecordTask* t,
                                            const syscall_patch_hook& hook) {
   uint8_t stub_patch[StubPatch::size];
   auto stub_patch_start = patcher.allocate_stub(t, sizeof(stub_patch));
@@ -339,7 +340,8 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher, Task* t,
 }
 
 template <>
-bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
+bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher,
+                                           RecordTask* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
                                         X86SyscallStubExtendedJump,
@@ -348,7 +350,8 @@ bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher, Task* t,
 }
 
 template <>
-bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
+bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher,
+                                           RecordTask* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
                                         X64SyscallStubExtendedJump,
@@ -356,12 +359,12 @@ bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher, Task* t,
                                                                        t, hook);
 }
 
-static bool patch_syscall_with_hook(Monkeypatcher& patcher, Task* t,
+static bool patch_syscall_with_hook(Monkeypatcher& patcher, RecordTask* t,
                                     const syscall_patch_hook& hook) {
   RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), patcher, t, hook);
 }
 
-bool Monkeypatcher::try_patch_syscall(Task* t) {
+bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
   if (syscall_hooks.empty()) {
     // Syscall hooks not set up yet. Don't spew warnings, and don't
     // fill tried_to_patch_syscall_addresses with addresses that we might be
@@ -560,16 +563,16 @@ SymbolTable ElfReader::read_symbols(SupportedArch arch, const char* symtab,
 
 class VdsoReader : public ElfReader {
 public:
-  VdsoReader(Task* t) : t(t) {}
+  VdsoReader(RecordTask* t) : t(t) {}
   virtual bool read(size_t offset, size_t size, void* buf) {
     bool ok = true;
     t->read_bytes_helper(t->vm()->vdso().start() + offset, size, buf, &ok);
     return ok;
   }
-  Task* t;
+  RecordTask* t;
 };
 
-static SymbolTable read_vdso_symbols(Task* t) {
+static SymbolTable read_vdso_symbols(RecordTask* t) {
   return VdsoReader(t).read_symbols(t->arch(), ".dynsym", ".dynstr");
 }
 
@@ -577,7 +580,7 @@ static SymbolTable read_vdso_symbols(Task* t) {
  * Return true iff |addr| points to a known |__kernel_vsyscall()|
  * implementation.
  */
-static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
+static bool is_kernel_vsyscall(RecordTask* t, remote_ptr<void> addr) {
   uint8_t impl[X86SysenterVsyscallImplementation::size];
   t->read_bytes(addr, impl);
   return X86SysenterVsyscallImplementation::match(impl);
@@ -588,7 +591,7 @@ static bool is_kernel_vsyscall(Task* t, remote_ptr<void> addr) {
  * implementation in |t|'s address space.
  */
 static remote_ptr<void> locate_and_verify_kernel_vsyscall(
-    Task* t, const SymbolTable& syms) {
+    RecordTask* t, const SymbolTable& syms) {
   remote_ptr<void> kernel_vsyscall = nullptr;
   // It is unlikely but possible that multiple, versioned __kernel_vsyscall
   // symbols will exist.  But we can't rely on setting |kernel_vsyscall| to
@@ -635,10 +638,10 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
 // into actual trap-into-the-kernel syscalls so rr can intercept them.
 
 template <typename Arch>
-static void patch_after_exec_arch(Task* t, Monkeypatcher& patcher);
+static void patch_after_exec_arch(RecordTask* t, Monkeypatcher& patcher);
 
 template <typename Arch>
-static void patch_at_preload_init_arch(Task* t, Monkeypatcher& patcher);
+static void patch_at_preload_init_arch(RecordTask* t, Monkeypatcher& patcher);
 
 struct named_syscall {
   const char* name;
@@ -651,7 +654,7 @@ struct named_syscall {
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
 template <>
-void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
+void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X86Arch>(t);
 
   auto syms = read_vdso_symbols(t);
@@ -717,7 +720,8 @@ void patch_after_exec_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
 // Before the preload library has initialized, the regular vsyscall code
 // will trigger ptrace traps and be handled correctly by rr.
 template <>
-void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
+void patch_at_preload_init_arch<X86Arch>(RecordTask* t,
+                                         Monkeypatcher& patcher) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<X86Arch> >(t->regs().arg1()));
   if (!params.syscallbuf_enabled) {
@@ -752,7 +756,7 @@ void patch_at_preload_init_arch<X86Arch>(Task* t, Monkeypatcher& patcher) {
 // static constructors, so we can't wait for our preload library to be
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
-template <> void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher&) {
+template <> void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher&) {
   setup_preload_library_path<X64Arch>(t);
 
   auto vdso_start = t->vm()->vdso().start();
@@ -804,7 +808,8 @@ template <> void patch_after_exec_arch<X64Arch>(Task* t, Monkeypatcher&) {
 }
 
 template <>
-void patch_at_preload_init_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
+void patch_at_preload_init_arch<X64Arch>(RecordTask* t,
+                                         Monkeypatcher& patcher) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<X64Arch> >(t->regs().arg1()));
   if (!params.syscallbuf_enabled) {
@@ -817,14 +822,14 @@ void patch_at_preload_init_arch<X64Arch>(Task* t, Monkeypatcher& patcher) {
       params.syscall_hook_trampoline);
 }
 
-void Monkeypatcher::patch_after_exec(Task* t) {
+void Monkeypatcher::patch_after_exec(RecordTask* t) {
   ASSERT(t, 1 == t->vm()->task_set().size())
       << "Can't have multiple threads immediately after exec!";
 
   RR_ARCH_FUNCTION(patch_after_exec_arch, t->arch(), t, *this);
 }
 
-void Monkeypatcher::patch_at_preload_init(Task* t) {
+void Monkeypatcher::patch_at_preload_init(RecordTask* t) {
   ASSERT(t, 1 == t->vm()->task_set().size())
       << "TODO: monkeypatch multithreaded process";
 
@@ -843,7 +848,7 @@ public:
   ScopedFd& fd;
 };
 
-static void set_and_record_bytes(Task* t, uint64_t file_offset,
+static void set_and_record_bytes(RecordTask* t, uint64_t file_offset,
                                  const void* bytes, size_t size,
                                  remote_ptr<void> map_start, size_t map_size,
                                  size_t map_offset_pages) {
@@ -864,7 +869,7 @@ static void set_and_record_bytes(Task* t, uint64_t file_offset,
   }
 }
 
-void Monkeypatcher::patch_after_mmap(Task* t, remote_ptr<void> start,
+void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
                                      size_t size, size_t offset_pages,
                                      int child_fd) {
   const auto& map = t->vm()->mapping_of(start);
