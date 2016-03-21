@@ -450,6 +450,32 @@ bool RecordTask::is_waiting_for(RecordTask* t) {
   }
 }
 
+void RecordTask::save_ptrace_signal_siginfo(const siginfo_t& si) {
+  for (auto it = saved_ptrace_siginfos.begin();
+       it != saved_ptrace_siginfos.end(); ++it) {
+    if (it->si_signo == si.si_signo) {
+      saved_ptrace_siginfos.erase(it);
+      break;
+    }
+  }
+  saved_ptrace_siginfos.push_back(si);
+}
+
+siginfo_t RecordTask::take_ptrace_signal_siginfo(int sig) {
+  for (auto it = saved_ptrace_siginfos.begin();
+       it != saved_ptrace_siginfos.end(); ++it) {
+    if (it->si_signo == sig) {
+      siginfo_t si = *it;
+      saved_ptrace_siginfos.erase(it);
+      return si;
+    }
+  }
+  siginfo_t si;
+  memset(&si, 0, sizeof(si));
+  si.si_signo = sig;
+  return si;
+}
+
 void RecordTask::signal_delivered(int sig) {
   Sighandler& h = sighandlers->get(sig);
   bool is_user_handler = h.is_user_handler();

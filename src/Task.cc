@@ -1011,32 +1011,6 @@ void Task::set_tid_addr(remote_ptr<int> tid_addr) {
   tid_futex = tid_addr;
 }
 
-void Task::save_ptrace_signal_siginfo(const siginfo_t& si) {
-  for (auto it = saved_ptrace_siginfos.begin();
-       it != saved_ptrace_siginfos.end(); ++it) {
-    if (it->si_signo == si.si_signo) {
-      saved_ptrace_siginfos.erase(it);
-      break;
-    }
-  }
-  saved_ptrace_siginfos.push_back(si);
-}
-
-siginfo_t Task::take_ptrace_signal_siginfo(int sig) {
-  for (auto it = saved_ptrace_siginfos.begin();
-       it != saved_ptrace_siginfos.end(); ++it) {
-    if (it->si_signo == sig) {
-      siginfo_t si = *it;
-      saved_ptrace_siginfos.erase(it);
-      return si;
-    }
-  }
-  siginfo_t si;
-  memset(&si, 0, sizeof(si));
-  si.si_signo = sig;
-  return si;
-}
-
 pid_t Task::tgid() const { return tg->tgid; }
 
 pid_t Task::real_tgid() const { return tg->real_tgid; }

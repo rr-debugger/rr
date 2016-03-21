@@ -494,19 +494,6 @@ public:
   remote_ptr<int> tid_addr() { return tid_futex; }
 
   /**
-   * When a signal triggers an emulated a ptrace-stop for this task,
-   * save the siginfo so a later emulated ptrace-continue with this signal
-   * number can use it.
-   */
-  void save_ptrace_signal_siginfo(const siginfo_t& si);
-  /**
-   * When emulating a ptrace-continue with a signal number, extract the siginfo
-   * that was saved by |save_ptrace_signal_siginfo|. If no such siginfo was
-   * saved, make one up.
-   */
-  siginfo_t take_ptrace_signal_siginfo(int sig);
-
-  /**
    * Return true when the task is running, false if it's stopped.
    */
   bool is_running() const { return !is_stopped; }
@@ -967,8 +954,6 @@ protected:
   bool extra_registers_known;
   // The session we're part of.
   Session* session_;
-  // Saved emulated-ptrace signals
-  std::vector<siginfo_t> saved_ptrace_siginfos;
   // The task group this belongs to.
   std::shared_ptr<TaskGroup> tg;
   // Entries set by |set_thread_area()| or the |tls| argument to |clone()|

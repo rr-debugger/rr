@@ -76,6 +76,18 @@ public:
    * ptraced task has had its SIGCHLD sent.
    */
   void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
+  /**
+   * When a signal triggers an emulated a ptrace-stop for this task,
+   * save the siginfo so a later emulated ptrace-continue with this signal
+   * number can use it.
+   */
+  void save_ptrace_signal_siginfo(const siginfo_t& si);
+  /**
+   * When emulating a ptrace-continue with a signal number, extract the siginfo
+   * that was saved by |save_ptrace_signal_siginfo|. If no such siginfo was
+   * saved, make one up.
+   */
+  siginfo_t take_ptrace_signal_siginfo(int sig);
 
   /**
    * Returns true if this task is in a waitpid or similar that would return
@@ -419,6 +431,8 @@ public:
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
   std::deque<siginfo_t> stashed_signals;
+  // Saved emulated-ptrace signals
+  std::vector<siginfo_t> saved_ptrace_siginfos;
 };
 
 #endif /* RR_RECORD_TASK_H_ */
