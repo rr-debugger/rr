@@ -279,9 +279,13 @@ void Task::set_siginfo(const siginfo_t& si) {
   ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
 }
 
-TraceReader& Task::trace_reader() { return session().as_replay()->trace_reader(); }
+TraceReader& Task::trace_reader() {
+  return session().as_replay()->trace_reader();
+}
 
-TraceWriter& Task::trace_writer() { return session().as_record()->trace_writer(); }
+TraceWriter& Task::trace_writer() {
+  return session().as_record()->trace_writer();
+}
 
 template <typename Arch>
 void Task::init_buffers_arch(remote_ptr<void> map_hint) {

@@ -196,8 +196,8 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
     fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
     *req = GdbRequest(DREQ_CONT);
     req->suppress_debugger_stop = true;
-    req->cont().actions.push_back(GdbContAction(
-        ACTION_STEP, get_threadid(t->session(), t->tuid())));
+    req->cont().actions.push_back(
+        GdbContAction(ACTION_STEP, get_threadid(t->session(), t->tuid())));
   }
 }
 

@@ -2815,8 +2815,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
   t->post_exec_syscall(*syscall_state.exec_saved_event);
 
-  t->session().trace_writer().write_task_event(
-      *syscall_state.exec_saved_event);
+  t->session().trace_writer().write_task_event(*syscall_state.exec_saved_event);
 
   KernelMapping vvar;
 
