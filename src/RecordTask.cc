@@ -2,6 +2,7 @@
 
 #include "RecordTask.h"
 
+#include "log.h"
 #include "RecordSession.h"
 
 RecordSession& RecordTask::session() const {
@@ -19,6 +20,33 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     rt->priority = priority;
   }
   return t;
+}
+
+bool RecordTask::emulate_ptrace_stop(int code, EmulatedStopType stop_type) {
+  ASSERT(this, emulated_stop_type == NOT_STOPPED);
+  ASSERT(this, stop_type != NOT_STOPPED);
+  if (!emulated_ptracer) {
+    return false;
+  }
+  force_emulate_ptrace_stop(code, stop_type);
+  return true;
+}
+
+void RecordTask::force_emulate_ptrace_stop(int code,
+                                           EmulatedStopType stop_type) {
+  emulated_stop_type = stop_type;
+  emulated_ptrace_stop_code = code;
+  emulated_ptrace_SIGCHLD_pending = true;
+
+  emulated_ptracer->send_synthetic_SIGCHLD_if_necessary();
+  // The SIGCHLD will eventually be reported to rr via a ptrace stop,
+  // interrupting wake_task's syscall (probably a waitpid) if necessary. At
+  // that point, we'll fix up the siginfo data with values that match what
+  // the kernel would have delivered for a real ptracer's SIGCHLD. When the
+  // signal handler (if any) returns, if wake_task was in a blocking wait that
+  // wait will be resumed, at which point rec_prepare_syscall_arch will
+  // discover the pending ptrace result and emulate the wait syscall to
+  // return that result immediately.
 }
 
 bool RecordTask::maybe_in_spinlock() {

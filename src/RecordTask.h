@@ -24,6 +24,19 @@ public:
   RecordSession& session() const;
 
   /**
+   * Call this when an event occurs that should stop a ptraced task.
+   * If we're emulating ptrace of the task, stop the task and wake the ptracer
+   * if it's waiting, and queue "code" as an status code to be reported to the
+   * ptracer.
+   * Returns true if the task is stopped-for-emulated-ptrace, false otherwise.
+   */
+  bool emulate_ptrace_stop(int code, EmulatedStopType stop_type);
+  /**
+   * Force the ptrace-stop state no matter what state the task is currently in.
+   */
+  void force_emulate_ptrace_stop(int code, EmulatedStopType stop_type);
+
+  /**
    * Returns true if it looks like this task has been spinning on an atomic
    * access/lock.
    */
