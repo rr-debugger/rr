@@ -866,21 +866,10 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   LOG(debug) << "processing " << t->syscall_name(sys) << " (entry)";
 
   if (is_restart_syscall_syscall(sys, t->arch())) {
-    ASSERT(t, EV_SYSCALL_INTERRUPTION == t->ev().type())
-        << "Must have interrupted syscall to restart";
-
-    sys = t->ev().Syscall().number;
-    remote_code_ptr intr_ip = t->ev().Syscall().regs.ip();
-    auto cur_ip = t->ip();
-
-    LOG(debug) << "'restarting' " << t->syscall_name(sys) << " interrupted by "
-               << t->ev().Syscall().regs.syscall_result() << " at " << intr_ip
-               << "; now at " << cur_ip;
-    if (cur_ip == intr_ip) {
-      t->emulate_syscall_entry(t->regs());
-      step->action = TSTEP_RETIRE;
-      return;
-    }
+    ASSERT(t, t->tick_count() == t->current_trace_frame().ticks());
+    t->set_regs(t->current_trace_frame().regs());
+    step->action = TSTEP_RETIRE;
+    return;
   }
 
   step->syscall.number = sys;
@@ -906,51 +895,15 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
 
   // sigreturns are never restartable, and the value of the
   // syscall-result register after a sigreturn is not actually the
-  // syscall result --- and may be anything, including one of the values
-  // below.
+  // syscall result.
   if (trace_regs.syscall_may_restart() && !is_sigreturn(sys, t->arch())) {
-    bool interrupted_restart = (EV_SYSCALL_INTERRUPTION == t->ev().type());
-    // The tracee was interrupted while attempting to
-    // restart a syscall.  We have to look at the previous
-    // event to see which syscall we're trying to restart.
-    if (interrupted_restart) {
-      sys = t->ev().Syscall().number;
-      LOG(debug) << "  interrupted " << t->syscall_name(sys)
-                 << " interrupted again";
-    }
     // During recording, when a sys exits with a
     // restart "error", the kernel sometimes restarts the
     // tracee by resetting its $ip to the syscall entry
     // point, but other times restarts the syscall without
-    // changing the $ip.  In the latter case, we have to
-    // leave the syscall return "hanging".  If it's
-    // restarted without changing the $ip, we'll skip
-    // advancing to the restart entry below and just
-    // emulate exit by setting the kernel outparams.
-    //
-    // It's probably possible to predict which case is
-    // going to happen (seems to be for
-    // -ERESTART_RESTARTBLOCK and
-    // ptrace-declined-signal-delivery restarts), but it's
-    // simpler and probably more reliable to just check
-    // the tracee $ip at syscall restart to determine
-    // whether syscall re-entry needs to occur.
+    // changing the $ip.
     t->apply_all_data_records_from_trace();
     t->set_return_value_from_trace();
-    // Use this record to recognize the sys if it
-    // indeed restarts.  If the sys isn't restarted,
-    // we'll pop this event eventually, at the point when
-    // the recorder determined that the sys wasn't
-    // going to be restarted.
-    if (!interrupted_restart) {
-      // For interrupted SYS_restart_syscall's,
-      // reuse the restart record, both because
-      // that's semantically correct, and because
-      // we'll only know how to pop one interruption
-      // event later.
-      t->push_event(Event(interrupted, SyscallEvent(sys, t->arch())));
-      t->ev().Syscall().regs = t->regs();
-    }
     step->action = TSTEP_RETIRE;
     LOG(debug) << "  " << t->syscall_name(sys) << " interrupted by "
                << trace_regs.syscall_result() << " at " << trace_regs.ip()
@@ -958,13 +911,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
     return;
   }
 
-  if (Arch::restart_syscall == sys) {
-    ASSERT(t, EV_SYSCALL_INTERRUPTION == t->ev().type())
-        << "Must have interrupted sys to restart";
-
-    sys = t->ev().Syscall().number;
-    t->pop_syscall_interruption();
-    LOG(debug) << "exiting restarted " << t->syscall_name(sys);
+  if (sys == Arch::restart_syscall) {
+    sys = t->regs().original_syscallno();
   }
 
   step->syscall.number = sys;

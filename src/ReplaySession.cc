@@ -717,13 +717,9 @@ Completion ReplaySession::emulate_signal_delivery(ReplayTask* oldtask,
   }
 
   /* Restore the signal-hander frame data, if there was one. */
-  SignalDeterministic deterministic = ev.Signal().deterministic;
   bool restored_sighandler_frame = 0 < t->set_data_from_trace();
   if (restored_sighandler_frame) {
-    t->push_event(SignalEvent(sig, deterministic, t->arch()));
-    t->ev().transform(EV_SIGNAL_DELIVERY);
     LOG(debug) << "--> restoring sighandler frame for " << signal_name(sig);
-    t->ev().transform(EV_SIGNAL_HANDLER);
   }
   // Note that fatal signals are not actually injected into the task!
   // This is very important; we must never actually inject fatal signals
@@ -1118,13 +1114,11 @@ void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
-      LOG(debug) << "  popping interrupted but not restarted " << t->ev();
-      t->pop_syscall_interruption();
+      LOG(debug) << "  popping interrupted but not restarted syscall";
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_EXIT_SIGHANDLER:
-      LOG(debug) << "<-- sigreturn from " << t->ev();
-      t->pop_signal_handler();
+      LOG(debug) << "<-- sigreturn";
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_SIGNAL:
