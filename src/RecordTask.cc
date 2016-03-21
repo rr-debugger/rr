@@ -10,10 +10,9 @@
 
 RecordTask::~RecordTask() {
   if (emulated_ptracer) {
-    emulated_ptracer->emulated_ptrace_tracees.erase(
-        static_cast<RecordTask*>(this));
+    emulated_ptracer->emulated_ptrace_tracees.erase(this);
   }
-  for (Task* t : emulated_ptrace_tracees) {
+  for (RecordTask* t : emulated_ptrace_tracees) {
     // XXX emulate PTRACE_O_EXITKILL
     ASSERT(this, t->emulated_ptracer == this);
     t->emulated_ptracer = nullptr;
@@ -145,7 +144,7 @@ void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
     return;
   }
 
-  for (Task* tracee : emulated_ptrace_tracees) {
+  for (RecordTask* tracee : emulated_ptrace_tracees) {
     if (tracee->emulated_ptrace_SIGCHLD_pending) {
       tracee->emulated_ptrace_SIGCHLD_pending = false;
       si->si_code = CLD_TRAPPED;

@@ -14,7 +14,11 @@ public:
       : Task(session, _tid, _rec_tid, serial, a),
         time_at_start_of_last_timeslice(0),
         priority(0),
-        in_round_robin_queue(false) {}
+        in_round_robin_queue(false),
+        emulated_ptracer(nullptr),
+        emulated_ptrace_stop_code(0),
+        in_wait_type(WAIT_TYPE_NONE),
+        in_wait_pid(0) {}
   virtual ~RecordTask();
 
   virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
@@ -90,6 +94,19 @@ public:
    * in_round_robin_queue instead of its task_priority_set.
    */
   bool in_round_robin_queue;
+
+  // ptrace emulation state
+
+  // Task for which we're emulating ptrace of this task, or null
+  RecordTask* emulated_ptracer;
+  std::set<RecordTask*> emulated_ptrace_tracees;
+  // if nonzero, code to deliver to ptracer when it waits
+  int emulated_ptrace_stop_code;
+  // true if this task needs to send a SIGCHLD to its ptracer for its
+  // emulated ptrace stop
+  bool emulated_ptrace_SIGCHLD_pending;
+  WaitType in_wait_type;
+  pid_t in_wait_pid;
 };
 
 #endif /* RR_RECORD_TASK_H_ */

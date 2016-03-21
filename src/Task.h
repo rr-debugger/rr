@@ -1104,18 +1104,6 @@ public:
   // of stop.
   EmulatedStopType emulated_stop_type;
 
-  // Task for which we're emulating ptrace of this task, or null
-  RecordTask* emulated_ptracer;
-  // true if this task needs to send a SIGCHLD to its ptracer for its
-  // emulated ptrace stop
-  bool emulated_ptrace_SIGCHLD_pending;
-  // if nonzero, code to deliver to ptracer when it waits
-  int emulated_ptrace_stop_code;
-  std::set<RecordTask*> emulated_ptrace_tracees;
-
-  WaitType in_wait_type;
-  pid_t in_wait_pid;
-
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
    * task B then writes to |b|.  Then B is switched out for A.
