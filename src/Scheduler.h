@@ -87,11 +87,14 @@ public:
    *
    * The new current() task is guaranteed to either have already been
    * runnable, or have been made runnable by a waitpid status change (in
-   * which case, by_waitpid be true.
-   *
-   * Returns false if rescheduling is interrupted by a signal.
+   * which case, result.by_waitpid will be true.
    */
-  bool reschedule(Switchable switchable, bool* by_waitpid);
+  struct Rescheduled {
+    bool interrupted_by_signal;
+    bool by_waitpid;
+    bool started_new_timeslice;
+  };
+  Rescheduled reschedule(Switchable switchable);
 
   /**
    * Set the priority of |t| to |value| and update related

@@ -253,8 +253,6 @@ void Scheduler::setup_new_timeslice() {
   }
   current_timeslice_end_ = current_->tick_count() +
                            (random() % min(max_ticks_, max_timeslice_duration));
-  current_->registers_at_start_of_uninterrupted_timeslice =
-      unique_ptr<Registers>(new Registers(current_->regs()));
 }
 
 static void sleep_time(double t) {
@@ -318,10 +316,14 @@ bool Scheduler::treat_as_high_priority(RecordTask* t) {
   return task_priority_set.size() > 1 && t->priority == 0;
 }
 
-bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
+Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
+  Rescheduled result;
+  result.interrupted_by_signal = false;
+  result.by_waitpid = false;
+  result.started_new_timeslice = false;
+
   LOG(debug) << "Scheduling next task";
 
-  *by_waitpid = false;
   must_run_task = nullptr;
 
   double now = monotonic_now_sec();
@@ -334,8 +336,7 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
     if (current_->is_running()) {
       LOG(debug) << "  and running; waiting for state change";
       /* |current| is un-switchable, but already running. Wait for it to change
-       * state
-       * before "scheduling it", so avoid busy-waiting with our client. */
+       * state before "scheduling it", so avoid busy-waiting with our client. */
       current_->wait(interrupt_after_elapsed_time());
 #ifdef MONITOR_UNSWITCHABLE_WAITS
       double wait_duration = monotonic_now_sec() - now;
@@ -344,10 +345,10 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
                  strevent(current_->event), 1000.0 * wait_duration);
       }
 #endif
-      *by_waitpid = true;
+      result.by_waitpid = true;
       LOG(debug) << "  new status is " << HEX(current_->status());
     }
-    return true;
+    return result;
   }
 
   RecordTask* next;
@@ -359,7 +360,7 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
     if (current_) {
       next = get_round_robin_task()
                  ? nullptr
-                 : find_next_runnable_task(current_, by_waitpid,
+                 : find_next_runnable_task(current_, &result.by_waitpid,
                                            current_->priority - 1);
       if (next) {
         break;
@@ -368,10 +369,10 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
           (treat_as_high_priority(current_) ||
            !last_reschedule_in_high_priority_only_interval) &&
           current_->tick_count() < current_timeslice_end() &&
-          is_task_runnable(current_, by_waitpid)) {
+          is_task_runnable(current_, &result.by_waitpid)) {
         LOG(debug) << "  Carrying on with task " << current_->tid;
         ASSERT(current_, !must_run_task || must_run_task == current_);
-        return true;
+        return result;
       }
       maybe_pop_round_robin_task(current_);
     }
@@ -381,7 +382,7 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
     next = get_round_robin_task();
     if (next) {
       LOG(debug) << "Trying task " << next->tid << " from yield queue";
-      if (is_task_runnable(next, by_waitpid)) {
+      if (is_task_runnable(next, &result.by_waitpid)) {
         break;
       }
       maybe_pop_round_robin_task(next);
@@ -389,7 +390,7 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
     }
 
     if (!next) {
-      next = find_next_runnable_task(current_, by_waitpid, INT32_MAX);
+      next = find_next_runnable_task(current_, &result.by_waitpid, INT32_MAX);
     }
 
     // When there's only one thread, treat it as low priority for the
@@ -397,7 +398,7 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
     // workloads mostly don't get any chaos mode effects.
     if (next && !treat_as_high_priority(next) &&
         last_reschedule_in_high_priority_only_interval) {
-      if (*by_waitpid) {
+      if (result.by_waitpid) {
         LOG(debug)
             << "Waking up low-priority task with by_waitpid; not sleeping";
         // We must run this low-priority task. Fortunately it's just waking
@@ -433,7 +434,8 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
         if (EINTR == errno) {
           LOG(debug) << "  waitpid(-1) interrupted";
           ASSERT(current_, !must_run_task);
-          return false;
+          result.interrupted_by_signal = true;
+          return result;
         }
         FATAL() << "Failed to waitpid()";
       }
@@ -449,7 +451,7 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
                          PTRACE_EVENT_EXIT)
         << "Scheduled task should have been blocked or unstable";
     next->did_waitpid(status);
-    *by_waitpid = true;
+    result.by_waitpid = true;
     must_run_task = next;
   }
 
@@ -464,7 +466,8 @@ bool Scheduler::reschedule(Switchable switchable, bool* by_waitpid) {
   current_ = next;
   ASSERT(current_, !must_run_task || must_run_task == current_);
   setup_new_timeslice();
-  return true;
+  result.started_new_timeslice = true;
+  return result;
 }
 
 double Scheduler::interrupt_after_elapsed_time() const {

@@ -1163,8 +1163,6 @@ void Task::record_event(const Event& ev, FlushSyscallbuf flush) {
     // reach it, we're done.
     maybe_reset_syscallbuf();
   }
-
-  registers_at_start_of_uninterrupted_timeslice = nullptr;
 }
 
 void Task::flush_inconsistent_state() { ticks = 0; }
@@ -2164,11 +2162,6 @@ bool Task::try_wait() {
     return true;
   }
   return false;
-}
-
-bool Task::maybe_in_spinlock() {
-  return registers_at_start_of_uninterrupted_timeslice &&
-         regs().matches(*registers_at_start_of_uninterrupted_timeslice);
 }
 
 static void spawned_child_fatal_error(const char* format, ...) {

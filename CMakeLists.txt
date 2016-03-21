@@ -225,6 +225,7 @@ add_executable(rr
   src/RecordSession.cc
   src/record_signal.cc
   src/record_syscall.cc
+  src/RecordTask.cc
   src/Registers.cc
   src/remote_code_ptr.cc
   src/ReplayCommand.cc

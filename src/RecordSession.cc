@@ -1326,11 +1326,12 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
     case SIGNAL_HANDLED:
       LOG(debug) << signal_name(si.linux_api.si_signo) << " handled";
       if (t->ev().type() == EV_SCHED) {
-        // Allow switching after a SCHED. We'll flush the SCHED if and only
-        // if we really do a switch.
         if (t->maybe_in_spinlock()) {
+          LOG(debug) << "Detected possible spinlock, forcing one round-robin";
           scheduler().schedule_one_round_robin(t);
         }
+        // Allow switching after a SCHED. We'll flush the SCHED if and only
+        // if we really do a switch.
         last_task_switchable = ALLOW_SWITCH;
       }
       break;
@@ -1467,9 +1468,9 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   result.status = STEP_CONTINUE;
 
-  bool did_wait;
   RecordTask* prev_task = scheduler().current();
-  if (!scheduler().reschedule(last_task_switchable, &did_wait)) {
+  auto rescheduled = scheduler().reschedule(last_task_switchable);
+  if (rescheduled.interrupted_by_signal) {
     // The scheduler was waiting for some task to become active, but was
     // interrupted by a signal. Yield to our caller now to give the caller
     // a chance to do something triggered by the signal
@@ -1484,6 +1485,10 @@ RecordSession::RecordResult RecordSession::record_step() {
       prev_task->record_current_event();
     }
     prev_task->pop_event(EV_SCHED);
+  }
+  if (rescheduled.started_new_timeslice) {
+    t->registers_at_start_of_last_timeslice = t->regs();
+    t->time_at_start_of_last_timeslice = trace_writer().time();
   }
 
   // Have to disable context-switching until we know it's safe
@@ -1513,9 +1518,9 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   StepState step_state(CONTINUE);
 
-  if (!(did_wait && handle_ptrace_event(t, &step_state)) &&
-      !(did_wait && handle_signal_event(t, &step_state))) {
-    runnable_state_changed(t, &result, did_wait);
+  if (!(rescheduled.by_waitpid && handle_ptrace_event(t, &step_state)) &&
+      !(rescheduled.by_waitpid && handle_signal_event(t, &step_state))) {
+    runnable_state_changed(t, &result, rescheduled.by_waitpid);
 
     if (result.status != STEP_CONTINUE ||
         step_state.continue_type == DONT_CONTINUE) {
