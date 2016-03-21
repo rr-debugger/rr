@@ -204,6 +204,12 @@ bool RecordTask::is_waiting_for(RecordTask* t) {
   }
 }
 
+bool RecordTask::may_be_blocked() const {
+  return (EV_SYSCALL == ev().type() &&
+          PROCESSING_SYSCALL == ev().Syscall().state) ||
+         emulated_stop_type != NOT_STOPPED;
+}
+
 bool RecordTask::maybe_in_spinlock() {
   return time_at_start_of_last_timeslice == session().trace_writer().time() &&
          regs().matches(registers_at_start_of_last_timeslice);

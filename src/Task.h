@@ -475,16 +475,6 @@ public:
   void log_pending_events() const;
 
   /**
-   * Return nonzero if |t| may not be immediately runnable,
-   * i.e., resuming execution and then |waitpid()|'ing may block
-   * for an unbounded amount of time.  When the task is in this
-   * state, the tracer must await a |waitpid()| notification
-   * that the task is no longer possibly-blocked before resuming
-   * its execution.
-   */
-  bool may_be_blocked() const;
-
-  /**
    * Call this hook just before exiting a syscall.  Often Task
    * attributes need to be updated based on the finishing syscall.
    * Use 'regs' instead of this->regs() because some registers may not be

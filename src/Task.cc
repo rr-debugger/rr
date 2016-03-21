@@ -622,12 +622,6 @@ void Task::log_pending_events() const {
   }
 }
 
-bool Task::may_be_blocked() const {
-  return (EV_SYSCALL == ev().type() &&
-          PROCESSING_SYSCALL == ev().Syscall().state) ||
-         emulated_stop_type != NOT_STOPPED;
-}
-
 template <typename Arch>
 void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   session().accumulate_syscall_performed();

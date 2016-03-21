@@ -17,6 +17,7 @@ public:
         in_round_robin_queue(false),
         emulated_ptracer(nullptr),
         emulated_ptrace_stop_code(0),
+        emulated_ptrace_SIGCHLD_pending(false),
         in_wait_type(WAIT_TYPE_NONE),
         in_wait_pid(0) {}
   virtual ~RecordTask();
@@ -65,6 +66,15 @@ public:
    */
   bool is_waiting_for(RecordTask* t);
 
+  /**
+   * Return true if |t| may not be immediately runnable,
+   * i.e., resuming execution and then |waitpid()|'ing may block
+   * for an unbounded amount of time.  When the task is in this
+   * state, the tracer must await a |waitpid()| notification
+   * that the task is no longer possibly-blocked before resuming
+   * its execution.
+   */
+  bool may_be_blocked() const;
   /**
    * Returns true if it looks like this task has been spinning on an atomic
    * access/lock.
