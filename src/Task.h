@@ -283,18 +283,6 @@ public:
   bool is_desched_event_syscall();
 
   /**
-   * Return true if this is within the syscallbuf library.  This
-   * *does not* imply that $ip is at a buffered syscall; see
-   * below.
-   */
-  bool is_in_syscallbuf() {
-    remote_ptr<void> p = ip().to_data_ptr<void>();
-    return (as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end() &&
-            !as->monkeypatcher().is_syscallbuf_excluded_instruction(p)) ||
-           (as->rr_page_start() <= p && p < as->rr_page_end());
-  }
-
-  /**
    * Return true when this task is in a traced syscall made by the
    * syscallbuf code. Callers may assume |is_in_syscallbuf()|
    * is implied by this. Note that once we've entered the traced syscall,
