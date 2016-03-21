@@ -427,13 +427,6 @@ public:
   std::string read_c_str(remote_ptr<char> child_addr);
 
   /**
-   * Copy |num_bytes| from |src| to |dst| in the address space
-   * of this.
-   */
-  void remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
-                     size_t num_bytes);
-
-  /**
    * Resume execution |how|, deliverying |sig| if nonzero.
    * After resuming, |wait_how|. In replay, reset hpcs and
    * request a tick period of tick_period. The default value

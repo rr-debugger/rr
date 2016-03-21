@@ -605,8 +605,9 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
     ASSERT(t, param.num_bytes.incoming_size < size_t(-1));
     if (param.mode == IN_OUT || param.mode == IN) {
       // Initialize scratch buffer with input data
-      t->remote_memcpy(param.scratch, param.dest,
-                       param.num_bytes.incoming_size);
+      uint8_t buf[param.num_bytes.incoming_size];
+      t->read_bytes_helper(param.dest, param.num_bytes.incoming_size, buf);
+      t->write_bytes_helper(param.scratch, param.num_bytes.incoming_size, buf);
     }
   }
   // Step 2: Update pointers in registers/memory to point to scratch areas

@@ -754,14 +754,6 @@ TrapReasons Task::compute_trap_reasons() {
   return reasons;
 }
 
-void Task::remote_memcpy(remote_ptr<void> dst, remote_ptr<void> src,
-                         size_t num_bytes) {
-  // XXX this could be more efficient
-  uint8_t buf[num_bytes];
-  read_bytes_helper(src, num_bytes, buf);
-  write_bytes_helper(dst, num_bytes, buf);
-}
-
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
   // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
