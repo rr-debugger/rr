@@ -572,6 +572,56 @@ void RecordTask::update_sigmask(const Registers& regs) {
   }
 }
 
+void RecordTask::stash_sig() {
+  int sig = pending_sig();
+  ASSERT(this, sig);
+  // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
+  ASSERT(this, sig != SYSCALLBUF_DESCHED_SIGNAL);
+  // multiple non-RT signals coalesce
+  if (sig < SIGRTMIN) {
+    for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
+      if (it->si_signo == sig) {
+        LOG(debug) << "discarding stashed signal " << sig
+                   << " since we already have one pending";
+        return;
+      }
+    }
+  }
+
+  const siginfo_t& si = get_siginfo();
+  stashed_signals.push_back(si);
+  wait_status = 0;
+}
+
+void RecordTask::stash_synthetic_sig(const siginfo_t& si) {
+  int sig = si.si_signo;
+  assert(sig);
+  // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
+  assert(sig != SYSCALLBUF_DESCHED_SIGNAL);
+  // multiple non-RT signals coalesce
+  if (sig < SIGRTMIN) {
+    for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
+      if (it->si_signo == sig) {
+        LOG(debug) << "discarding stashed signal " << sig
+                   << " since we already have one pending";
+        return;
+      }
+    }
+  }
+
+  stashed_signals.push_back(si);
+}
+
+void RecordTask::pop_stash_sig() {
+  assert(has_stashed_sig());
+  stashed_signals.pop_front();
+}
+
+siginfo_t RecordTask::peek_stash_sig() {
+  assert(has_stashed_sig());
+  return stashed_signals.front();
+}
+
 bool RecordTask::is_syscall_restart() {
   int syscallno = regs().original_syscallno();
   bool is_restart = false;

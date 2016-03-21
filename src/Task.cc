@@ -525,7 +525,7 @@ void Task::advance_syscall() {
       continue;
     }
     ASSERT(this, session().is_recording());
-    stash_sig();
+    static_cast<RecordTask*>(this)->stash_sig();
   }
 }
 
@@ -1009,56 +1009,6 @@ void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
 void Task::set_tid_addr(remote_ptr<int> tid_addr) {
   LOG(debug) << "updating cleartid futex to " << tid_addr;
   tid_futex = tid_addr;
-}
-
-void Task::stash_sig() {
-  int sig = pending_sig();
-  ASSERT(this, sig);
-  // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
-  ASSERT(this, sig != SYSCALLBUF_DESCHED_SIGNAL);
-  // multiple non-RT signals coalesce
-  if (sig < SIGRTMIN) {
-    for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
-      if (it->si_signo == sig) {
-        LOG(debug) << "discarding stashed signal " << sig
-                   << " since we already have one pending";
-        return;
-      }
-    }
-  }
-
-  const siginfo_t& si = get_siginfo();
-  stashed_signals.push_back(si);
-  wait_status = 0;
-}
-
-void Task::stash_synthetic_sig(const siginfo_t& si) {
-  int sig = si.si_signo;
-  assert(sig);
-  // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
-  assert(sig != SYSCALLBUF_DESCHED_SIGNAL);
-  // multiple non-RT signals coalesce
-  if (sig < SIGRTMIN) {
-    for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
-      if (it->si_signo == sig) {
-        LOG(debug) << "discarding stashed signal " << sig
-                   << " since we already have one pending";
-        return;
-      }
-    }
-  }
-
-  stashed_signals.push_back(si);
-}
-
-void Task::pop_stash_sig() {
-  assert(has_stashed_sig());
-  stashed_signals.pop_front();
-}
-
-siginfo_t Task::peek_stash_sig() {
-  assert(has_stashed_sig());
-  return stashed_signals.front();
 }
 
 void Task::save_ptrace_signal_siginfo(const siginfo_t& si) {

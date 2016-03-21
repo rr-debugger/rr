@@ -126,6 +126,32 @@ public:
   bool is_sig_ignored(int sig) const;
 
   /**
+   * Stashed-signal API: if a signal becomes pending at an
+   * awkward time, but could be handled "soon", call
+   * |stash_sig()| to stash the current pending-signal state.
+   *
+   * |has_stashed_sig()| obviously returns true if |stash_sig()|
+   * has been called successfully.
+   *
+   * |pop_stash_sig()| restores the (relevant) state of this
+   * Task to what was saved in |stash_sig()|, and returns the
+   * saved siginfo.  After this call, |has_stashed_sig()| is
+   * false.
+   *
+   * NB: |get_siginfo()| will always return the "real" siginfo,
+   * regardless of stash popped-ness state.  Callers must ensure
+   * they do the right thing with the popped siginfo.
+   *
+   * If the process unexpectedly died (due to SIGKILL), we don't
+   * stash anything.
+   */
+  void stash_sig();
+  void stash_synthetic_sig(const siginfo_t& si);
+  bool has_stashed_sig() const { return !stashed_signals.empty(); }
+  siginfo_t peek_stash_sig();
+  void pop_stash_sig();
+
+  /**
    * Return true if the current state of this looks like the
    * interrupted syscall at the top of our event stack, if there
    * is one.
@@ -390,6 +416,9 @@ public:
   size_t robust_futex_list_len;
   /* This is the recorded tid of the tracee *in its own pid namespace*. */
   pid_t own_namespace_rec_tid;
+  // Stashed signal-delivery state, ready to be delivered at
+  // next opportunity.
+  std::deque<siginfo_t> stashed_signals;
 };
 
 #endif /* RR_RECORD_TASK_H_ */
