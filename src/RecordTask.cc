@@ -163,7 +163,9 @@ RecordTask::RecordTask(Session& session, pid_t _tid, pid_t _rec_tid,
       blocked_sigs(),
       flushed_num_rec_bytes(0),
       flushed_syscallbuf(false),
-      delay_syscallbuf_reset(false) {
+      delay_syscallbuf_reset(false),
+      seccomp_bpf_enabled(false),
+      prctl_seccomp_status(0) {
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
     // The very first task we fork inherits the signal
@@ -208,6 +210,7 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     RecordTask* rt = static_cast<RecordTask*>(t);
     rt->priority = priority;
     rt->blocked_sigs = blocked_sigs;
+    rt->prctl_seccomp_status = prctl_seccomp_status;
     if (CLONE_SHARE_SIGHANDLERS & flags) {
       rt->sighandlers = sighandlers;
     } else {

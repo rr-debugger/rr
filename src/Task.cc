@@ -57,8 +57,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       scratch_size(),
       // This will be initialized when the syscall buffer is.
       desched_fd_child(-1),
-      seccomp_bpf_enabled(false),
-      prctl_seccomp_status(0),
       hpc(_tid),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
@@ -1709,7 +1707,6 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   auto& sess = other_session ? *other_session : session();
   Task* t = sess.new_task(new_tid, new_rec_tid, new_serial, arch());
 
-  t->prctl_seccomp_status = prctl_seccomp_status;
   t->robust_futex_list = robust_futex_list;
   t->robust_futex_list_len = robust_futex_list_len;
   if (CLONE_SHARE_TASK_GROUP & flags) {
