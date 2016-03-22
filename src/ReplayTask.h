@@ -7,6 +7,10 @@
 
 class TraceFrame;
 
+/**
+ * Every Task owned by a ReplaySession is a ReplayTask. Functionality that
+ * only applies during replay belongs here.
+ */
 class ReplayTask : public Task {
 public:
   ReplayTask(ReplaySession& session, pid_t _tid, pid_t _rec_tid,

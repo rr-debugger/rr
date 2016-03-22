@@ -32,6 +32,10 @@ enum EmulatedStopType {
   SIGNAL_DELIVERY_STOP // Stopped before delivering a signal. ptracees only.
 };
 
+/**
+ * Every Task owned by a RecordSession is a RecordTask. Functionality that
+ * only applies during recording belongs here.
+ */
 class RecordTask : public Task {
 public:
   RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
