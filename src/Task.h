@@ -828,11 +828,6 @@ protected:
                            remote_ptr<void> map_hint);
 
   /**
-   * True if this has blocked delivery of the desched signal.
-   */
-  bool is_desched_sig_blocked();
-
-  /**
    * Make the OS-level calls to create a new fork or clone that
    * will eventually be a copy of this task and return that Task
    * metadata.  These methods are used in concert with
