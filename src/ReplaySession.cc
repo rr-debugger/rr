@@ -1034,6 +1034,7 @@ static void end_task(ReplayTask* t) {
            ReplaySession::is_ignored_signal(t->pending_sig()));
 
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
+  t->stable_exit = true;
   t->destroy();
 }
 
