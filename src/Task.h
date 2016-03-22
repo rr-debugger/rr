@@ -714,22 +714,22 @@ public:
   PropertyTable& properties() { return properties_; }
 
   struct CapturedState {
-    pid_t rec_tid;
-    uint32_t serial;
+    Ticks ticks;
     Registers regs;
     ExtraRegisters extra_regs;
     std::string prname;
     std::vector<struct user_desc> thread_areas;
-    size_t num_syscallbuf_bytes;
-    int desched_fd_child;
     remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
     std::vector<uint8_t> syscallbuf_hdr;
+    size_t num_syscallbuf_bytes;
     remote_ptr<char> syscallbuf_fds_disabled_child;
     remote_ptr<void> scratch_ptr;
     ssize_t scratch_size;
-    int wait_status;
-    Ticks ticks;
     remote_ptr<void> top_of_stack;
+    pid_t rec_tid;
+    uint32_t serial;
+    int desched_fd_child;
+    int wait_status;
   };
 
 protected:
