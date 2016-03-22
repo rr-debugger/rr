@@ -9,6 +9,8 @@
 
 #include "TraceStream.h"
 
+namespace rr {
+
 class Session;
 
 /*
@@ -35,5 +37,7 @@ void write(const std::string& str);
  */
 void stop();
 }
+
+} // namespace rr
 
 #endif /* RR_FTRACE_H_ */

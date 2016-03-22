@@ -12,6 +12,8 @@
 #include "ScopedFd.h"
 #include "Task.h"
 
+namespace rr {
+
 class ReplaySession;
 class Session;
 class Task;
@@ -202,5 +204,7 @@ private:
   EmuFs(const EmuFs&) = delete;
   EmuFs& operator=(const EmuFs&) = delete;
 };
+
+} // namespace rr
 
 #endif // RR_EMUFS_H

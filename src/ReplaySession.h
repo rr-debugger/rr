@@ -10,8 +10,11 @@
 #include "EmuFs.h"
 #include "Session.h"
 
-class ReplayTask;
 struct syscallbuf_hdr;
+
+namespace rr {
+
+class ReplayTask;
 
 /**
  * ReplayFlushBufferedSyscallState is saved in Session and cloned with its
@@ -338,5 +341,7 @@ private:
   Flags flags;
   bool did_fast_forward;
 };
+
+} // namespace rr
 
 #endif // RR_REPLAY_SESSION_H_

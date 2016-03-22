@@ -17,6 +17,8 @@
 #include "RecordTask.h"
 #include "seccomp-bpf.h"
 
+namespace rr {
+
 // Undef si_addr_lsb since it's an alias for a field name that doesn't exist,
 // and we need to use the actual field name.
 #ifdef si_addr_lsb
@@ -1597,3 +1599,5 @@ void RecordSession::on_destroy(Task* t) {
 RecordTask* RecordSession::find_task(pid_t rec_tid) const {
   return static_cast<RecordTask*>(Session::find_task(rec_tid));
 }
+
+} // namespace rr

@@ -14,8 +14,9 @@
 #include "RecordSession.h"
 #include "record_signal.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 /**
  * Stores the table of signal dispositions and metadata for an
@@ -1144,3 +1145,5 @@ void RecordTask::set_tid_addr(remote_ptr<int> tid_addr) {
 void RecordTask::tgkill(int sig) {
   ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
 }
+
+} // namespace rr

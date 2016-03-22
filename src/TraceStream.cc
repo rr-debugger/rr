@@ -16,6 +16,8 @@
 
 using namespace std;
 
+namespace rr {
+
 //
 // This represents the format and layout of recorded traces.  This
 // version number doesn't track the rr version number, because changes
@@ -669,3 +671,5 @@ uint64_t TraceReader::compressed_bytes() const {
   }
   return total;
 }
+
+} // namespace rr

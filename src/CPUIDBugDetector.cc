@@ -7,9 +7,11 @@
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 
-using namespace rr;
-
 extern "C" int cpuid_loop(int iterations);
+
+using namespace std;
+
+namespace rr {
 
 void CPUIDBugDetector::run_detection_code() {
   // Call cpuid_loop to generate trace data we can use to detect
@@ -62,3 +64,5 @@ void CPUIDBugDetector::notify_reached_syscall_during_replay(ReplayTask* t) {
   trace_rcb_count_at_last_geteuid32 = trace_rcb_count;
   actual_rcb_count_at_last_geteuid32 = actual_rcb_count;
 }
+
+} // namespace rr

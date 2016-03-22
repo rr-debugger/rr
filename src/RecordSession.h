@@ -12,6 +12,8 @@
 #include "TaskGroup.h"
 #include "TraceFrame.h"
 
+namespace rr {
+
 class RecordTask;
 
 /** Encapsulates additional session state related to recording. */
@@ -140,5 +142,7 @@ private:
    */
   bool wait_for_all_;
 };
+
+} // namespace rr
 
 #endif // RR_RECORD_SESSION_H_

@@ -12,8 +12,9 @@
 #include "kernel_supplement.h"
 #include "log.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 #include "SyscallnameArch.generated"
 
@@ -391,3 +392,5 @@ int shm_flags_to_mmap_prot(int flags) {
   return PROT_READ | ((flags & SHM_RDONLY) ? 0 : PROT_WRITE) |
          ((flags & SHM_EXEC) ? PROT_EXEC : 0);
 }
+
+} // namespace rr

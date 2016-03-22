@@ -7,6 +7,8 @@
 
 using namespace std;
 
+namespace rr {
+
 #define WORKAROUND_GDB_BUGS
 
 // Extracted from
@@ -450,3 +452,5 @@ bool GdbExpression::evaluate(Task* t, Value* result) const {
 
   return true;
 }
+
+} // namespace rr

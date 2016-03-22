@@ -4,8 +4,9 @@
 
 #include "log.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 struct InstructionBuf {
   SupportedArch arch;
@@ -483,3 +484,5 @@ bool maybe_at_or_after_x86_string_instruction(Task* t) {
   return is_string_instruction_at(t, t->ip()) ||
          is_string_instruction_before(t, t->ip());
 }
+
+} // namespace rr

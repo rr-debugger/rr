@@ -6,6 +6,8 @@
 
 #include "kernel_abi.h"
 
+namespace rr {
+
 /*
  * A pointer to code in the tracee address space.  Convertible to a
  * remote_ptr<void>.
@@ -66,10 +68,12 @@ private:
 
 std::ostream& operator<<(std::ostream& stream, remote_code_ptr p);
 
+} // namespace rr
+
 namespace std {
 
-template <> struct hash<remote_code_ptr> {
-  size_t operator()(const remote_code_ptr& ptr) const {
+template <> struct hash<rr::remote_code_ptr> {
+  size_t operator()(const rr::remote_code_ptr& ptr) const {
     return hash<uintptr_t>()(ptr.register_value());
   }
 };

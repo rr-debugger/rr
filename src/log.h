@@ -7,6 +7,8 @@
 #include <type_traits>
 #include <vector>
 
+namespace rr {
+
 class Task;
 
 enum LogLevel { LOG_fatal, LOG_error, LOG_warn, LOG_info, LOG_debug };
@@ -97,5 +99,7 @@ template <typename T> inline void* HEX(T v) {
   return reinterpret_cast<void*>(
       static_cast<typename std::make_unsigned<T>::type>(v));
 }
+
+} // namespace rr
 
 #endif // RR_LOG_H

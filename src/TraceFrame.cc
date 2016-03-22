@@ -7,6 +7,8 @@
 
 #include "util.h"
 
+namespace rr {
+
 TraceFrame::TraceFrame(Time global_time, pid_t tid, const Event& event,
                        Ticks tick_count, double monotonic_time)
     : global_time(global_time),
@@ -65,3 +67,5 @@ void TraceFrame::dump_raw(FILE* out) const {
   regs().print_register_file_for_trace_raw(out);
   fprintf(out, "\n");
 }
+
+} // namespace rr

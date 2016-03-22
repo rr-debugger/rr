@@ -13,6 +13,8 @@ class Task;
 
 #include "util.h"
 
+namespace rr {
+
 class FileMonitor {
 public:
   typedef std::shared_ptr<FileMonitor> shr_ptr;
@@ -49,5 +51,7 @@ public:
   };
   virtual void did_write(Task*, const std::vector<Range>&) {}
 };
+
+} // namespace rr
 
 #endif /* RR_FILE_MONITOR_H_ */

@@ -8,6 +8,8 @@
 #include "Session.h"
 #include "ReplayTask.h"
 
+namespace rr {
+
 Switchable StdioMonitor::will_write(Task* t) {
   if (Flags::get().mark_stdio && t->session().visible_execution()) {
     char buf[256];
@@ -36,3 +38,5 @@ void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges) {
     }
   }
 }
+
+} // namespace rr

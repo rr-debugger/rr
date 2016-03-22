@@ -12,6 +12,8 @@
 
 #include "ScopedFd.h"
 
+namespace rr {
+
 /**
  * CompressedWriter opens an output file and writes compressed blocks to it.
  * Blocks of a fixed but unspecified size (currently 1MB) are compressed.
@@ -101,5 +103,7 @@ protected:
   uint64_t producer_reserved_upto_pos;
   bool error;
 };
+
+} // namespace rr
 
 #endif /* RR_COMPRESSED_WRITER_H_ */

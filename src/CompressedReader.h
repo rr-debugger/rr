@@ -12,6 +12,8 @@
 
 #include "ScopedFd.h"
 
+namespace rr {
+
 /**
  * CompressedReader opens an input file written by CompressedWriter
  * and reads data from it. Currently data is decompressed by the thread that
@@ -93,5 +95,7 @@ protected:
   std::vector<uint8_t> saved_buffer;
   size_t saved_buffer_read_pos;
 };
+
+} // namespace rr
 
 #endif /* RR_COMPRESSED_READER_H_ */

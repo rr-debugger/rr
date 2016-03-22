@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <vector>
 
+namespace rr {
+
 class Task;
 
 /**
@@ -40,5 +42,7 @@ private:
   std::unordered_map<uint32_t, uint16_t> result_to_index;
   std::vector<uint32_t> index_to_result;
 };
+
+} // namespace rr
 
 #endif // RR_SECCOMP_FILTER_REWRITER_H_

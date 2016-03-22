@@ -14,6 +14,8 @@
 #include "ScopedFd.h"
 #include "Ticks.h"
 
+namespace rr {
+
 /**
  * A class encapsulating the performance counters we use to monitor
  * each task during recording and replay.
@@ -84,5 +86,7 @@ private:
   ScopedFd fd_instructions_retired;
   bool started;
 };
+
+} // namespace rr
 
 #endif /* RR_PERF_COUNTERS_H_ */

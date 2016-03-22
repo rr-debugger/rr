@@ -11,6 +11,8 @@
 #include "ScopedFd.h"
 #include "Task.h"
 
+namespace rr {
+
 class AutoRemoteSyscalls;
 class Task;
 
@@ -244,5 +246,7 @@ private:
   void* operator new(size_t) = delete;
   void operator delete(void*) = delete;
 };
+
+} // namespace rr
 
 #endif // RR_AUTO_REMOTE_SYSCALLS_H_

@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+namespace rr {
+
 template <typename T, typename Object> class Property;
 
 /**
@@ -87,5 +89,7 @@ public:
 protected:
   virtual void destroy_property(void* v) const { delete static_cast<T*>(v); }
 };
+
+} // namespace rr
 
 #endif /* RR_PROPERTY_TABLE_H_ */

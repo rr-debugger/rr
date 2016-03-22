@@ -17,6 +17,8 @@
 
 using namespace std;
 
+namespace rr {
+
 // Show version and quit.
 static bool show_version = false;
 
@@ -226,6 +228,10 @@ bool parse_global_option(std::vector<std::string>& args) {
   }
   return true;
 }
+
+} // namespace rr
+
+using namespace rr;
 
 int main(int argc, char* argv[]) {
   init_random();

@@ -6,6 +6,8 @@
 #include "Session.h"
 #include "Task.h"
 
+namespace rr {
+
 TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
                      pid_t real_tgid, uint32_t serial)
     : tgid(tgid),
@@ -43,3 +45,5 @@ void TaskGroup::destabilize() {
     LOG(debug) << "  destabilized task " << t->tid;
   }
 }
+
+} // namespace rr

@@ -16,6 +16,8 @@
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
 
+namespace rr {
+
 /**
  * Descriptor for task within a task group.  Note: on linux, we can
  * uniquely identify any thread by its |tid| (ignoring pid
@@ -580,5 +582,7 @@ private:
   std::vector<uint8_t> outbuf; /* buffered output for gdb */
   Features features_;
 };
+
+} // namespace rr
 
 #endif /* RR_GDB_CONNECTION_H_ */

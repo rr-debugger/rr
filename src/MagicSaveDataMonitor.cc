@@ -12,6 +12,8 @@
 #include "ReplayTask.h"
 #include "util.h"
 
+namespace rr {
+
 static void dump_path_data(Task* t, TraceFrame::Time global_time,
                            const char* tag, char* filename,
                            size_t filename_size, const void* buf,
@@ -70,3 +72,5 @@ void MagicSaveDataMonitor::did_write(Task* t,
     }
   }
 }
+
+} // namespace rr

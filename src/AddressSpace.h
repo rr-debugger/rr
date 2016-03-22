@@ -25,6 +25,8 @@
 #include "TraceStream.h"
 #include "util.h"
 
+namespace rr {
+
 class RecordTask;
 class Session;
 class Task;
@@ -954,5 +956,7 @@ private:
 
   AddressSpace operator=(const AddressSpace&) = delete;
 };
+
+} // namespace rr
 
 #endif /* RR_ADDRESS_SPACE_H_ */

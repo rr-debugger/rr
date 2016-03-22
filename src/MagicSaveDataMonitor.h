@@ -5,6 +5,8 @@
 
 #include "FileMonitor.h"
 
+namespace rr {
+
 /**
  * A FileMonitor to track writes to RR_MAGIC_SAVE_DATA_FD.
  */
@@ -18,5 +20,7 @@ public:
    */
   virtual void did_write(Task* t, const std::vector<Range>& ranges);
 };
+
+} // namespace rr
 
 #endif /* RR_MAGIC_SAVE_DATA_MONITOR_H_ */

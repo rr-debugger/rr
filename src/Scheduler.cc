@@ -21,8 +21,9 @@
 #include "RecordSession.h"
 #include "RecordTask.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 // Probability of making a thread low priority. Keep this reasonably low
 // because the goal is to victimize some specific threads
@@ -572,3 +573,5 @@ void Scheduler::maybe_pop_round_robin_task(RecordTask* t) {
   t->in_round_robin_queue = false;
   task_priority_set.insert(make_pair(t->priority, t));
 }
+
+} // namespace rr

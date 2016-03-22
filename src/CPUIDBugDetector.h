@@ -5,6 +5,8 @@
 
 #include <stdint.h>
 
+namespace rr {
+
 class ReplayTask;
 
 /**
@@ -38,5 +40,7 @@ private:
   uint64_t actual_rcb_count_at_last_geteuid32;
   bool detected_cpuid_bug;
 };
+
+} // namespace rr
 
 #endif /* RR_CPUID_BUG_DETECTOR_H_ */

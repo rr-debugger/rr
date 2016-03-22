@@ -5,8 +5,9 @@
 #include "log.h"
 #include "ReplaySession.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 ReplayTask::ReplayTask(ReplaySession& session, pid_t _tid, pid_t _rec_tid,
                        uint32_t serial, SupportedArch a)
@@ -83,3 +84,5 @@ void ReplayTask::set_return_value_from_trace() {
   r.set_original_syscallno(current_trace_frame().regs().original_syscallno());
   set_regs(r);
 }
+
+} // namespace rr

@@ -33,7 +33,8 @@
 #include "TraceStream.h"
 
 using namespace std;
-using namespace rr;
+
+namespace rr {
 
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
@@ -689,3 +690,5 @@ double monotonic_now_sec(void) {
   clock_gettime(CLOCK_MONOTONIC, &tp);
   return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
 }
+
+} // namespace rr

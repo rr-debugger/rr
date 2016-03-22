@@ -15,7 +15,11 @@
 
 #include "CompressedWriter.h"
 
-CompressedReader::CompressedReader(const std::string& filename)
+using namespace std;
+
+namespace rr {
+
+CompressedReader::CompressedReader(const string& filename)
     : fd(new ScopedFd(filename.c_str(), O_CLOEXEC | O_RDONLY | O_LARGEFILE)) {
   fd_offset = 0;
   error = !fd->is_open();
@@ -174,3 +178,5 @@ uint64_t CompressedReader::uncompressed_bytes() const {
 uint64_t CompressedReader::compressed_bytes() const {
   return lseek(*fd, 0, SEEK_END);
 }
+
+} // namespace rr

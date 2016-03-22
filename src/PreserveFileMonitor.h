@@ -5,6 +5,8 @@
 
 #include "FileMonitor.h"
 
+namespace rr {
+
 /**
  * A FileMonitor that does no monitoring of I/O itself, but prevents the file
  * descriptor from being closed (except via privileged syscalls made by
@@ -20,5 +22,7 @@ public:
   PreserveFileMonitor() {}
   virtual bool allow_close() { return false; }
 };
+
+} // namespace rr
 
 #endif /* RR_PRESERVE_FILE_MONITOR_H_ */

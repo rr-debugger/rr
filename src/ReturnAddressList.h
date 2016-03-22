@@ -7,6 +7,8 @@
 
 #include "remote_ptr.h"
 
+namespace rr {
+
 class Task;
 
 /**
@@ -36,5 +38,7 @@ struct ReturnAddressList {
     return !(*this == other);
   }
 };
+
+} // namespace rr
 
 #endif /* RR_RETURNADDRESSLIST_H_ */

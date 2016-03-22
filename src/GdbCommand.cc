@@ -6,6 +6,8 @@
 
 using namespace std;
 
+namespace rr {
+
 static SimpleGdbCommand when("when", [](GdbServer&, Task* t,
                                         const vector<string>&) {
   if (t->session().is_replaying()) {
@@ -78,3 +80,5 @@ static SimpleGdbCommand info_checkpoints("info checkpoints",
 /*static*/ void GdbCommand::init_auto_args() {
   checkpoint.add_auto_arg("rr-where");
 }
+
+} // namespace rr

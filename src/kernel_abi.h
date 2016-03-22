@@ -49,12 +49,12 @@
 
 #include <vector>
 
+namespace rr {
+
 class remote_code_ptr;
 class Task;
 
 enum SupportedArch { x86, x86_64, SupportedArch_MAX = x86_64 };
-
-namespace rr {
 
 #if defined(__i386__)
 const SupportedArch RR_NATIVE_ARCH = SupportedArch::x86;

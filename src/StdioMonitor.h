@@ -5,6 +5,8 @@
 
 #include "FileMonitor.h"
 
+namespace rr {
+
 /**
  * A FileMonitor to track writes to rr's stdout/stderr fds.
  * StdioMonitor prevents syscallbuf from buffering output to those fds. It
@@ -41,5 +43,7 @@ public:
 private:
   int original_fd;
 };
+
+} // namespace rr
 
 #endif /* RR_STDIO_MONITOR_H_ */

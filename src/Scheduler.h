@@ -10,6 +10,8 @@
 #include "TraceFrame.h"
 #include "util.h"
 
+namespace rr {
+
 class RecordSession;
 class RecordTask;
 
@@ -216,5 +218,7 @@ private:
 
   RecordTask* must_run_task;
 };
+
+} // namespace rr
 
 #endif /* RR_REC_SCHED_H_ */

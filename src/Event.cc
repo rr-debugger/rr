@@ -14,8 +14,9 @@
 #include "log.h"
 #include "util.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 Event::Event(EncodedEvent e) {
   switch (event_type = e.type) {
@@ -315,3 +316,5 @@ const char* state_name(SyscallState state) {
       return "???state";
   }
 }
+
+} // namespace rr

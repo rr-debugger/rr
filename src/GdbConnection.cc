@@ -32,6 +32,10 @@
 #include "ScopedFd.h"
 #include "StringVectorToCharArray.h"
 
+using namespace std;
+
+namespace rr {
+
 static const char INTERRUPT_CHAR = '\x03';
 
 #ifdef DEBUGTAG
@@ -41,8 +45,6 @@ static const char INTERRUPT_CHAR = '\x03';
   write_packet("");                                                            \
   LOG(info)
 #endif
-
-using namespace std;
 
 const GdbThreadId GdbThreadId::ANY(0, 0);
 const GdbThreadId GdbThreadId::ALL(-1, -1);
@@ -1615,3 +1617,5 @@ void GdbConnection::reply_rr_cmd(const std::string& text) {
 
   consume_request();
 }
+
+} // namespace rr

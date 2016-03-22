@@ -17,6 +17,8 @@
 #include "remote_ptr.h"
 #include "remote_code_ptr.h"
 
+namespace rr {
+
 class ReplayTask;
 
 enum MismatchBehavior {
@@ -405,5 +407,7 @@ private:
 };
 
 std::ostream& operator<<(std::ostream& stream, const Registers& r);
+
+} // namespace rr
 
 #endif /* RR_REGISTERS_H_ */

@@ -14,6 +14,8 @@
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 
+namespace rr {
+
 class GdbServer {
   // Not ideal but we can't inherit friend from GdbCommand
   friend std::string invoke_checkpoint(GdbServer&, Task*,
@@ -233,5 +235,7 @@ private:
   // gdb checkpoints, indexed by ID
   std::map<int, Checkpoint> checkpoints;
 };
+
+} // namespace rr
 
 #endif /* RR_GDB_SERVER_H_ */

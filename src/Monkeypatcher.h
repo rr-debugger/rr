@@ -11,6 +11,8 @@
 #include "remote_ptr.h"
 #include "remote_code_ptr.h"
 
+namespace rr {
+
 class RecordTask;
 class ScopedFd;
 class Task;
@@ -120,5 +122,7 @@ private:
   remote_ptr<void> syscall_hook_trampoline;
   size_t stub_buffer_allocated;
 };
+
+} // namespace rr
 
 #endif /* RR_MONKEYPATCHER_H_ */

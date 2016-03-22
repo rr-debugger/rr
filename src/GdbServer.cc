@@ -25,8 +25,9 @@
 #include "TaskGroup.h"
 #include "util.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 GdbServer::GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
     : dbg(std::move(dbg)),
@@ -141,7 +142,7 @@ GdbRegisterValue GdbServer::get_reg(const Registers& regs,
   GdbRegisterValue reg;
   memset(&reg, 0, sizeof(reg));
   reg.name = which;
-  reg.size = ::get_reg(regs, extra_regs, &reg.value[0], which, &reg.defined);
+  reg.size = rr::get_reg(regs, extra_regs, &reg.value[0], which, &reg.defined);
   return reg;
 }
 
@@ -1225,3 +1226,5 @@ void GdbServer::emergency_debug(Task* t) {
 }
 
 string GdbServer::init_script() { return gdb_rr_macros(); }
+
+} // namespace rr

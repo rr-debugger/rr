@@ -15,6 +15,8 @@
 
 using namespace std;
 
+namespace rr {
+
 struct LogModule {
   string name;
   LogLevel level;
@@ -294,3 +296,5 @@ void operator<<(ostream& stream, const vector<uint8_t>& bytes) {
     stream << HEX(bytes[i]);
   }
 }
+
+} // namespace rr

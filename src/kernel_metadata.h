@@ -10,6 +10,8 @@
 
 #include "kernel_abi.h"
 
+namespace rr {
+
 /**
  * Return the symbolic name of |syscall|, f.e. "read", or "syscall(%d)"
  * if unknown.
@@ -55,5 +57,7 @@ std::string sicode_name(int code, int sig);
 std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo);
 
 int shm_flags_to_mmap_prot(int flags);
+
+} // namespace rr
 
 #endif

@@ -11,6 +11,8 @@
 #include "GdbRegister.h"
 #include "kernel_abi.h"
 
+namespace rr {
+
 /**
  * An ExtraRegisters object contains values for all user-space-visible
  * registers other than those in Registers.
@@ -85,5 +87,7 @@ private:
   SupportedArch arch_;
   std::vector<uint8_t> data_;
 };
+
+} // namespace rr
 
 #endif /* RR_EXTRA_REGISTERS_H_ */

@@ -9,6 +9,8 @@
 
 using namespace std;
 
+namespace rr {
+
 // HashMap would be better here but the unordered_map API is annoying
 // and linear search is fine.
 static vector<GdbCommand*>* gdb_command_list;
@@ -177,3 +179,5 @@ static vector<string> parse_cmd(string& str) {
   LOG(debug) << "cmd response: " << resp;
   return gdb_escape(resp + "\n");
 }
+
+} // namespace rr

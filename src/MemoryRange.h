@@ -5,6 +5,8 @@
 
 #include "remote_ptr.h"
 
+namespace rr {
+
 /**
  * Range of memory addresses that can be used as a std::map key.
  */
@@ -67,5 +69,7 @@ inline std::ostream& operator<<(std::ostream& o, const MemoryRange& m) {
   o << m.start() << "-" << m.end();
   return o;
 }
+
+} // namespace rr
 
 #endif /* RR_MEMORY_RANGE_H_ */

@@ -16,6 +16,8 @@
 #include "ReturnAddressList.h"
 #include "TraceFrame.h"
 
+namespace rr {
+
 enum RunDirection { RUN_FORWARD, RUN_BACKWARD };
 
 /**
@@ -485,5 +487,7 @@ private:
 };
 
 std::ostream& operator<<(std::ostream& s, const ReplayTimeline::Mark& o);
+
+} // namespace rr
 
 #endif // RR_REPLAY_TIMELINE_H_

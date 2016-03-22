@@ -13,8 +13,9 @@
 #include "Task.h"
 #include "util.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 /**
  * The ABI of the socketcall syscall is a nightmare; the first arg to
@@ -438,3 +439,5 @@ void AutoRemoteSyscalls::check_syscall_result(int syscallno) {
                      << " failed with errno " << errno_name(-ret) << extra_msg;
   }
 }
+
+} // namespace rr

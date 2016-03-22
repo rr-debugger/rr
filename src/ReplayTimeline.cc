@@ -7,8 +7,9 @@
 #include "fast_forward.h"
 #include "log.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 ReplayTimeline::InternalMark::~InternalMark() {
   if (owner && checkpoint) {
@@ -1499,3 +1500,5 @@ ReplayTimeline::Mark ReplayTimeline::set_short_checkpoint() {
   swap(m, reverse_exec_short_checkpoint);
   return reverse_exec_short_checkpoint;
 }
+
+} // namespace rr

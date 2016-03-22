@@ -13,6 +13,8 @@
 #include "PerfCounters.h"
 #include "TraceFrame.h"
 
+namespace rr {
+
 class TraceReader;
 class TraceWriter;
 
@@ -83,5 +85,7 @@ private:
   std::vector<std::string> cmd_line_; // EXEC only
   std::vector<int> fds_to_close_;     // EXEC only
 };
+
+} // namespace rr
 
 #endif /* RR_TRACE_TASK_EVENT_H_ */

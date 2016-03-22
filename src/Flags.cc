@@ -4,6 +4,10 @@
 
 #include <assert.h>
 
+namespace rr {
+
 Flags& Flags::get_for_init() { return singleton; }
 
 Flags Flags::singleton;
+
+} // namespace rr

@@ -11,6 +11,8 @@
 #include "Ticks.h"
 #include "TraceFrame.h"
 
+namespace rr {
+
 /**
  * Command line arguments for rr
  */
@@ -73,5 +75,7 @@ struct Flags {
 private:
   static Flags singleton;
 };
+
+} // namespace rr
 
 #endif /* RR_FLAGS_H_ */

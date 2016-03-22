@@ -6,6 +6,8 @@
 #include <inttypes.h>
 #include <unistd.h>
 
+namespace rr {
+
 class AddressSpace;
 class Task;
 class TaskGroup;
@@ -71,5 +73,7 @@ public:
 private:
   uint32_t exec_count_;
 };
+
+} // namespace rr
 
 #endif // RR_TASKISH_UID_H_

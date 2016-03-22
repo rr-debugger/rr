@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+namespace rr {
+
 class TraceReader;
 
 enum OptionParameters { NO_PARAMETER, HAS_PARAMETER };
@@ -58,11 +60,14 @@ public:
 
 protected:
   Command(const char* name, const char* help);
+  virtual ~Command() {}
 
   static bool less_than_by_name(Command* c1, Command* c2);
 
   const char* name;
   const char* help;
 };
+
+} // namespace rr
 
 #endif // RR_COMMAND_H_

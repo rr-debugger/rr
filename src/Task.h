@@ -22,6 +22,11 @@
 #include "TraceStream.h"
 #include "util.h"
 
+struct syscallbuf_hdr;
+struct syscallbuf_record;
+
+namespace rr {
+
 class AutoRemoteSyscalls;
 class RecordSession;
 class RecordTask;
@@ -29,9 +34,6 @@ class ReplaySession;
 class ScopedFd;
 class Session;
 class TaskGroup;
-
-struct syscallbuf_hdr;
-struct syscallbuf_record;
 
 enum CloneFlags {
   /**
@@ -922,5 +924,7 @@ protected:
   Task(Task&) = delete;
   Task operator=(Task&) = delete;
 };
+
+} // namespace rr
 
 #endif /* RR_TASK_H_ */

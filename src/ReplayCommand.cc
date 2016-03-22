@@ -17,6 +17,8 @@
 
 using namespace std;
 
+namespace rr {
+
 static int DUMP_STATS_PERIOD = 0;
 
 class ReplayCommand : public Command {
@@ -476,3 +478,5 @@ int ReplayCommand::run(std::vector<std::string>& args) {
 
   return replay(trace_dir, flags);
 }
+
+} // namespace rr

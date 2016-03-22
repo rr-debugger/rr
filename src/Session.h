@@ -14,6 +14,8 @@
 #include "TaskishUid.h"
 #include "TraceStream.h"
 
+namespace rr {
+
 class AddressSpace;
 class DiversionSession;
 class EmuFs;
@@ -265,5 +267,7 @@ protected:
    */
   bool visible_execution_;
 };
+
+} // namespace rr
 
 #endif // RR_SESSION_H_

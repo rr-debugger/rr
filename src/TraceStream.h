@@ -17,6 +17,8 @@
 #include "TraceFrame.h"
 #include "TraceTaskEvent.h"
 
+namespace rr {
+
 class KernelMapping;
 
 /**
@@ -301,5 +303,7 @@ private:
 
   std::unique_ptr<CompressedReader> readers[SUBSTREAM_COUNT];
 };
+
+} // namespace rr
 
 #endif /* RR_TRACE_H_ */

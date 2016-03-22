@@ -9,6 +9,8 @@
 #include "FileMonitor.h"
 #include "HasTaskSet.h"
 
+namespace rr {
+
 class TraceTaskEvent;
 
 class FdTable : public HasTaskSet {
@@ -60,5 +62,7 @@ private:
 
   std::unordered_map<int, FileMonitor::shr_ptr> fds;
 };
+
+} // namespace rr
 
 #endif /* RR_FD_TABLE_H_ */

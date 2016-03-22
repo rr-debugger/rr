@@ -13,6 +13,8 @@
 #include "Registers.h"
 #include "Ticks.h"
 
+namespace rr {
+
 class TraceReader;
 class TraceWriter;
 
@@ -77,5 +79,7 @@ private:
   // present) so we don't want to stuff it into exec_info
   ExtraRegisters recorded_extra_regs;
 };
+
+} // namespace rr
 
 #endif /* RR_TRACE_FRAME_H_ */

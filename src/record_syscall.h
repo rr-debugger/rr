@@ -5,6 +5,8 @@
 
 #include "util.h"
 
+namespace rr {
+
 class RecordTask;
 
 /**
@@ -29,5 +31,7 @@ void rec_set_syscall_new_task(RecordTask* t, RecordTask* new_task);
  * store any nondeterministic outparam data.
  */
 void rec_process_syscall(RecordTask* t);
+
+} // namespace rr
 
 #endif /* RR_PROCESS_SYSCALL_H_ */

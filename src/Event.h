@@ -12,6 +12,10 @@
 #include "kernel_abi.h"
 #include "Registers.h"
 
+struct syscallbuf_record;
+
+namespace rr {
+
 /**
  * Events serve two purposes: tracking Task state during recording, and
  * being stored in traces to guide replay. Some events are only used during
@@ -393,5 +397,7 @@ inline static std::ostream& operator<<(std::ostream& o,
 }
 
 const char* state_name(SyscallState state);
+
+} // namespace rr
 
 #endif // EVENT_H_

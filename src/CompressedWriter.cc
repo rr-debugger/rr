@@ -15,6 +15,8 @@
 
 using namespace std;
 
+namespace rr {
+
 void* CompressedWriter::compression_thread_callback(void* p) {
   static_cast<CompressedWriter*>(p)->compression_thread();
   return nullptr;
@@ -257,3 +259,5 @@ size_t CompressedWriter::do_compress(uint64_t offset, size_t length,
 
   return stream.total_out;
 }
+
+} // namespace rr

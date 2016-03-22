@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+namespace rr {
+
 /**
  * RAII helper to open a file and then close the fd when the helper
  * goes out of scope.
@@ -41,5 +43,7 @@ public:
 private:
   int fd;
 };
+
+} // namespace rr
 
 #endif // RR_SCOPED_FD_H

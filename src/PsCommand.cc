@@ -9,6 +9,8 @@
 
 using namespace std;
 
+namespace rr {
+
 class PsCommand : public Command {
 public:
   virtual int run(std::vector<std::string>& args);
@@ -110,3 +112,5 @@ int PsCommand::run(std::vector<std::string>& args) {
 
   return ps(trace_dir, stdout);
 }
+
+} // namespace rr

@@ -5,6 +5,8 @@
 
 #include <string>
 
+namespace rr {
+
 class GdbCommand;
 class GdbServer;
 class Task;
@@ -31,5 +33,7 @@ public:
 
 private:
 };
+
+} // namespace rr
 
 #endif

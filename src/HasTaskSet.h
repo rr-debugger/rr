@@ -5,6 +5,8 @@
 
 #include <set>
 
+namespace rr {
+
 class Task;
 
 /**
@@ -23,5 +25,7 @@ public:
 protected:
   TaskSet tasks;
 };
+
+} // namespace rr
 
 #endif /* RR_HASTASKSET_H_ */

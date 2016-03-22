@@ -5,6 +5,10 @@
 
 #include <stdint.h>
 
+namespace rr {
+
 typedef int64_t Ticks;
+
+} // namespace rr
 
 #endif /* RR_TICKS_H_ */

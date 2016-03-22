@@ -16,6 +16,8 @@
 
 using namespace std;
 
+namespace rr {
+
 RecordCommand RecordCommand::singleton(
     "record",
     " rr record [OPTION]... <exe> [exe-args]...\n"
@@ -243,3 +245,5 @@ int RecordCommand::run(std::vector<std::string>& args) {
 
   return record(args, flags);
 }
+
+} // namespace rr

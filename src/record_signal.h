@@ -5,6 +5,8 @@
 
 #include <signal.h>
 
+namespace rr {
+
 class RecordTask;
 
 const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
@@ -23,5 +25,7 @@ enum SignalHandled { SIGNAL_HANDLED, SIGNAL_PTRACE_STOP, DEFER_SIGNAL };
  * desched + syscall-interruption events, or no-op.
  */
 SignalHandled handle_signal(RecordTask* t, siginfo_t* si);
+
+} // namespace rr
 
 #endif /* RR_HANDLE_SIGNAL_H__ */

@@ -6,6 +6,8 @@
 #include "EmuFs.h"
 #include "Session.h"
 
+namespace rr {
+
 class ReplaySession;
 
 /**
@@ -58,5 +60,7 @@ private:
 
   std::shared_ptr<EmuFs> emu_fs;
 };
+
+} // namespace rr
 
 #endif // RR_DIVERSION_SESSION_H_

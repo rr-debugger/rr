@@ -6,6 +6,8 @@
 
 using namespace std;
 
+namespace rr {
+
 class GdbInitCommand : public Command {
 public:
   virtual int run(vector<string>& args);
@@ -25,3 +27,5 @@ int GdbInitCommand::run(vector<string>& args) {
   fputs(GdbServer::init_script().c_str(), stdout);
   return 0;
 }
+
+} // namespace rr

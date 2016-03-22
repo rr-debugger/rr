@@ -7,6 +7,8 @@
 #include <linux/seccomp.h>
 #include <sys/ptrace.h>
 
+namespace rr {
+
 /* Definitions that should be part of system headers (and maybe are on some but
  * not all systems).
  * This should not contain anything for which rr needs all the definitions
@@ -79,5 +81,7 @@ static_assert(_NSIG / 8 == sizeof(sig_set_t), "Update sig_set_t for _NSIG.");
 #ifndef BUS_MCEERR_AO
 #define BUS_MCEERR_AO 5
 #endif
+
+} // namespace rr
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */

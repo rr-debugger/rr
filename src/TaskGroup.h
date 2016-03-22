@@ -12,6 +12,8 @@
 #include "HasTaskSet.h"
 #include "TaskishUid.h"
 
+namespace rr {
+
 class Session;
 
 /**
@@ -122,5 +124,7 @@ private:
 
   uint32_t serial;
 };
+
+} // namespace rr
 
 #endif /* RR_TASKGROUP_H_ */

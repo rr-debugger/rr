@@ -13,8 +13,9 @@
 #include "log.h"
 #include "ReplaySession.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 static void replace_char(string& s, char c, char replacement) {
   size_t i;
@@ -216,3 +217,5 @@ void EmuFs::mark_used_vfiles(const AddressSpace& as, size_t* nr_marked_files) {
     }
   }
 }
+
+} // namespace rr

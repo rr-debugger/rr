@@ -17,8 +17,9 @@
 #include "TaskGroup.h"
 #include "util.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 struct Session::CloneCompletion {
   struct TaskGroup {
@@ -445,3 +446,5 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
 
   assert(dest.vms().size() > 0);
 }
+
+} // namespace rr

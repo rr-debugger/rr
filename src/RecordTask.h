@@ -7,6 +7,8 @@
 #include "Task.h"
 #include "TraceFrame.h"
 
+namespace rr {
+
 struct Sighandlers;
 
 /** Different kinds of waits a task can do.
@@ -478,5 +480,7 @@ public:
   // Saved emulated-ptrace signals
   std::vector<siginfo_t> saved_ptrace_siginfos;
 };
+
+} // namespace rr
 
 #endif /* RR_RECORD_TASK_H_ */

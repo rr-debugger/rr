@@ -3,6 +3,8 @@
 #ifndef RR_GDB_REGISTER_H_
 #define RR_GDB_REGISTER_H_
 
+namespace rr {
+
 /**
  * This is the register numbering used by GDB.
  */
@@ -152,5 +154,7 @@ enum GdbRegister {
   // Last register we can find in user_regs_struct (except for orig_rax).
   DREG_64_NUM_USER_REGS = DREG_64_GS + 1,
 };
+
+} // namespace rr
 
 #endif /* RR_GDB_REGISTER_H_ */

@@ -4,6 +4,8 @@
 
 #include "Task.h"
 
+namespace rr {
+
 template <typename Arch>
 static void return_addresses_x86ish(ReturnAddressList* result, Task* t) {
   // Immediately after a function call the return address is on the stack at
@@ -40,3 +42,5 @@ static void compute_return_addresses(ReturnAddressList* result, Task* t) {
 ReturnAddressList::ReturnAddressList(Task* t) {
   compute_return_addresses(this, t);
 }
+
+} // namespace rr

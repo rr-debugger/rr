@@ -7,7 +7,9 @@
 #include "log.h"
 #include "ReplaySession.h"
 
-using namespace rr;
+using namespace std;
+
+namespace rr {
 
 DiversionSession::DiversionSession(const ReplaySession& other)
     : emu_fs(other.emufs().clone()) {}
@@ -157,3 +159,5 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
   check_for_watchpoint_changes(t, result.break_status);
   return result;
 }
+
+} // namespace rr

@@ -13,6 +13,8 @@
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 
+namespace rr {
+
 /*
  * This file is a dumping ground for functionality that needs to be shared but
  * has no other obvious place to go.
@@ -244,5 +246,7 @@ std::string exe_directory();
  * seconds, relative to an unspecific point in the past.
  */
 double monotonic_now_sec(void);
+
+} // namespace rr
 
 #endif /* RR_UTIL_H_ */

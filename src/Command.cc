@@ -14,6 +14,8 @@
 
 using namespace std;
 
+namespace rr {
+
 bool ParsedOption::verify_valid_int(int64_t min, int64_t max) const {
   if (int_value < min || int_value > max) {
     return false;
@@ -167,3 +169,5 @@ bool Command::parse_optional_trace_dir(vector<string>& args, string* out) {
   }
   return true;
 }
+
+} // namespace rr

@@ -43,7 +43,8 @@
 //#define CHECK_SYSCALL_NUMBERS
 
 using namespace std;
-using namespace rr;
+
+namespace rr {
 
 // XXX: x86-only currently.
 #ifdef CHECK_SYSCALL_NUMBERS
@@ -1112,3 +1113,5 @@ void rep_process_syscall(ReplayTask* t, ReplayTraceStep* step) {
   RR_ARCH_FUNCTION(rep_process_syscall_arch,
                    t->current_trace_frame().event().arch(), t, step)
 }
+
+} // namespace rr

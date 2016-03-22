@@ -8,8 +8,9 @@
 #include "log.h"
 #include "util.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 // This is the byte offset at which the ST0-7 register data begins
 // with an xsave (or fxsave) block.
@@ -188,3 +189,5 @@ X86Arch::user_fpxregs_struct ExtraRegisters::get_user_fpxregs_struct() const {
   assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
   return *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(data_.data());
 }
+
+} // namespace rr

@@ -5,6 +5,8 @@
 
 using namespace std;
 
+namespace rr {
+
 class HelpCommand : public Command {
 public:
   virtual int run(std::vector<std::string>& args);
@@ -35,3 +37,5 @@ int HelpCommand::run(std::vector<std::string>& args) {
   command->print_help(stdout);
   return 0;
 }
+
+} // namespace rr

@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+namespace rr {
+
 class GdbCommand {
 protected:
   GdbCommand(const std::string& cmd_name) : cmd_name(cmd_name) {
@@ -67,5 +69,7 @@ public:
   std::function<std::string(GdbServer&, Task* t,
                             const std::vector<std::string>&)> invoker;
 };
+
+} // namespace rr
 
 #endif

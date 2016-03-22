@@ -16,7 +16,7 @@
 
 using namespace std;
 
-namespace ftrace {
+namespace rr { namespace ftrace {
 
 static ScopedFd control_fd;
 static ScopedFd marker_fd;
@@ -45,7 +45,7 @@ static void open_socket() {
 }
 
 static void write_control_message(const string& s) {
-  ssize_t ret = write(control_fd, s.c_str(), s.size());
+  ssize_t ret = ::write(control_fd, s.c_str(), s.size());
   if (ret != (ssize_t)s.size()) {
     FATAL() << "Can't write line to socket " << s;
   }
@@ -117,7 +117,7 @@ void write(const string& str) {
     if (str[i] == '\n') {
       if (i > last_start) {
         string s = str.substr(last_start, i + 1 - last_start);
-        ssize_t ret = write(marker_fd, s.c_str(), s.size());
+        ssize_t ret = ::write(marker_fd, s.c_str(), s.size());
         if (ret != (ssize_t)s.size()) {
           FATAL() << "Can't write line to socket " << s;
         }
@@ -135,4 +135,5 @@ void stop() {
     tracing = false;
   }
 }
-}
+
+} }

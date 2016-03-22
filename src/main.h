@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+namespace rr {
+
 void assert_prerequisites(bool use_syscall_buffer = false);
 
 void check_performance_settings();
@@ -13,5 +15,7 @@ void check_performance_settings();
 void print_usage(FILE*);
 
 bool parse_global_option(std::vector<std::string>& args);
+
+} // namespace rr
 
 #endif // RR_MAIN_H_

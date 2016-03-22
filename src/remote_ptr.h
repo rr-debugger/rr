@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <iostream>
 
+namespace rr {
+
 /**
  * Number of bytes to use as the element size when doing pointer arithmetic
  * on this type. We specialize 'void' to use 1 byte to make a lot of our
@@ -105,5 +107,7 @@ std::ostream& operator<<(std::ostream& stream, remote_ptr<T> p) {
   stream << (void*)p.as_int();
   return stream;
 }
+
+} // namespace rr
 
 #endif /* RR_REMOTE_PTR_H_ */

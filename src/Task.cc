@@ -43,11 +43,12 @@
 #include "StringVectorToCharArray.h"
 #include "util.h"
 
+using namespace std;
+
+namespace rr {
+
 static const unsigned int NUM_X86_DEBUG_REGS = 8;
 static const unsigned int NUM_X86_WATCHPOINTS = 4;
-
-using namespace rr;
-using namespace std;
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            SupportedArch a)
@@ -2260,5 +2261,7 @@ static void set_cpu_affinity(int cpu) {
 }
 
 string Task::syscall_name(int syscall) const {
-  return ::syscall_name(syscall, arch());
+  return rr::syscall_name(syscall, arch());
+} // namespace rr
+
 }

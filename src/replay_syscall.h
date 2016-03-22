@@ -5,6 +5,8 @@
 
 #include "TraceStream.h"
 
+namespace rr {
+
 class ReplayTask;
 struct ReplayTraceStep;
 
@@ -30,5 +32,7 @@ void rep_process_syscall(ReplayTask* t, ReplayTraceStep* step);
  * in replay_syscall.
  */
 void process_grow_map(ReplayTask* t);
+
+} // namespace rr
 
 #endif /* RR_REP_PROCESS_EVENT_H_ */

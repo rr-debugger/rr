@@ -23,6 +23,8 @@
 
 using namespace std;
 
+namespace rr {
+
 static bool attributes_initialized;
 static struct perf_event_attr ticks_attr;
 static struct perf_event_attr page_faults_attr;
@@ -273,3 +275,5 @@ PerfCounters::Extra PerfCounters::read_extra() {
   }
   return extra;
 }
+
+} // namespace rr

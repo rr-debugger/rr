@@ -25,8 +25,9 @@
 #include "TraceStream.h"
 #include "util.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
 
@@ -485,3 +486,5 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si) {
   t->push_event(SignalEvent(*si, t->arch()));
   return SIGNAL_HANDLED;
 }
+
+} // namespace rr

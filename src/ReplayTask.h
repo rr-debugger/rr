@@ -5,6 +5,8 @@
 
 #include "Task.h"
 
+namespace rr {
+
 class TraceFrame;
 
 /**
@@ -53,5 +55,7 @@ public:
 private:
   ~ReplayTask() {}
 };
+
+} // namespace rr
 
 #endif /* RR_REPLAY_TASK_H_ */

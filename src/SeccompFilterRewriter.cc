@@ -17,6 +17,8 @@
 
 using namespace std;
 
+namespace rr {
+
 static void set_syscall_result(Task* t, long ret) {
   Registers r = t->regs();
   r.set_syscall_result(ret);
@@ -100,3 +102,5 @@ void SeccompFilterRewriter::install_patched_seccomp_filter(Task* t) {
   RR_ARCH_FUNCTION(install_patched_seccomp_filter_arch, t->arch(), t,
                    result_to_index, index_to_result);
 }
+
+} // namespace rr

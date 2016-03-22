@@ -68,7 +68,8 @@
 #include "util.h"
 
 using namespace std;
-using namespace rr;
+
+namespace rr {
 
 union _semun {
   int val;
@@ -3551,3 +3552,5 @@ void rec_process_syscall(RecordTask* t) {
   syscall_state.process_syscall_results();
   syscall_state_property.remove(*t);
 }
+
+} // namespace rr

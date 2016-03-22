@@ -12,8 +12,9 @@
 #include "log.h"
 #include "ReplayTask.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 struct RegisterValue {
   // The name of this register.
@@ -640,3 +641,5 @@ ostream& operator<<(ostream& stream, const Registers& r) {
          << r.arg6() << ") orig_syscall:" << r.original_syscallno() << " }";
   return stream;
 }
+
+} // namespace rr

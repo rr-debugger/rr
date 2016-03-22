@@ -16,6 +16,8 @@
 
 using namespace std;
 
+namespace rr {
+
 class DumpCommand : public Command {
 public:
   virtual int run(std::vector<std::string>& args);
@@ -263,3 +265,5 @@ int DumpCommand::run(std::vector<std::string>& args) {
   dump(trace_dir, flags, args, stdout);
   return 0;
 }
+
+} // namespace rr

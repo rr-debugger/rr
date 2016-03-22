@@ -12,8 +12,9 @@
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 #include "AssemblyTemplates.generated"
 
@@ -900,3 +901,5 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
     }
   }
 }
+
+} // namespace rr

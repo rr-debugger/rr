@@ -20,8 +20,9 @@
 #include "Session.h"
 #include "Task.h"
 
-using namespace rr;
 using namespace std;
+
+namespace rr {
 
 /*static*/ const uint8_t AddressSpace::breakpoint_insn;
 
@@ -1471,3 +1472,5 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
     }
   }
 }
+
+} // namespace rr

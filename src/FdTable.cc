@@ -14,6 +14,8 @@
 
 using namespace std;
 
+namespace rr {
+
 void FdTable::add_monitor(int fd, FileMonitor* monitor) {
   // In the future we could support multiple monitors on an fd, but we don't
   // need to yet.
@@ -145,3 +147,5 @@ void FdTable::update_for_cloexec(Task* t, TraceTaskEvent& event) {
     did_close(fd);
   }
 }
+
+} // namespace rr

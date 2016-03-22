@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+namespace rr {
+
 /**
  * Converts a vector of strings to a POSIX-style array of char*s terminated
  * by a nullptr.
@@ -23,5 +25,7 @@ public:
 private:
   std::vector<char*> array;
 };
+
+} // namespace rr
 
 #endif
