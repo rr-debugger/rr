@@ -2211,10 +2211,9 @@ static void set_cpu_affinity(int cpu) {
   // parented by the init process, i.e. effectively leaked. After PTRACE_SEIZE
   // with PTRACE_O_EXITKILL, the tracee will die if rr dies.
   intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-                     PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC |
-                     PTRACE_O_TRACEEXIT;
+                     PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXIT;
   if (session.is_recording()) {
-    options |= PTRACE_O_TRACESECCOMP;
+    options |= PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
   }
   long ret = ptrace(PTRACE_SEIZE, tid, nullptr,
       (void*)(options | PTRACE_O_EXITKILL));

@@ -432,9 +432,9 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   /* Enter our execve syscall. */
   __ptrace_cont(t, expect_syscallno);
   ASSERT(t, !t->pending_sig()) << "Stub exec failed on entry";
-  /* Proceed to the PTRACE_EVENT_EXEC. */
+  /* Proceed to the SIGTRAP. */
   __ptrace_cont(t, expect_syscallno);
-  if (t->ptrace_event() != PTRACE_EVENT_EXEC) {
+  if (t->stop_sig() != (SIGTRAP | 0x80)) {
     if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
         trace_frame.regs().arch() == x86) {
       FATAL() << "Cannot find exec stub " << stub_filename
@@ -443,9 +443,6 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     }
     FATAL() << "Exec of stub " << stub_filename << " failed";
   }
-  ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXEC) << "Stub exec failed?";
-  /* Wait for the execve exit. */
-  __ptrace_cont(t, expect_syscallno);
 
   vector<KernelMapping> kms;
   vector<TraceReader::MappedData> datas;
