@@ -1386,7 +1386,8 @@ static void ptrace_get_reg_set(RecordTask* t, TaskSyscallState& syscall_state,
 
 static const int supported_ptrace_options = 0;
 
-static bool verify_ptrace_options(RecordTask* t, TaskSyscallState& syscall_state) {
+static bool verify_ptrace_options(RecordTask* t,
+                                  TaskSyscallState& syscall_state) {
   if ((int)t->regs().arg4() & ~supported_ptrace_options) {
     LOG(debug) << "Unsupported ptrace options " << HEX(t->regs().arg4());
     syscall_state.emulate_result(-EINVAL);

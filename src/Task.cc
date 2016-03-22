@@ -2210,10 +2210,10 @@ static void set_cpu_affinity(int cpu) {
   // any abnormal exit of the rr process will leave the child paused and
   // parented by the init process, i.e. effectively leaked. After PTRACE_SEIZE
   // with PTRACE_O_EXITKILL, the tracee will die if rr dies.
-  intptr_t options =
-      PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK |
-      PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC | PTRACE_O_TRACEVFORKDONE |
-      PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL | PTRACE_O_TRACESECCOMP;
+  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+                     PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC |
+                     PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL |
+                     PTRACE_O_TRACESECCOMP;
   long ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
   if (ret < 0 && errno == EINVAL) {
     // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
