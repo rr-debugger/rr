@@ -1021,15 +1021,9 @@ static void end_task(ReplayTask* t) {
   r.set_syscallno(syscall_number_for_exit(t->arch()));
   t->set_regs(r);
   // Enter the syscall.
-  t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-  ASSERT(t, t->pending_sig() == 0);
-
-  do {
-    // Singlestep to collect the PTRACE_EVENT_EXIT event.
-    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-  } while (ReplaySession::is_ignored_signal(t->pending_sig()));
-
+  t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
+
   t->stable_exit = true;
   t->destroy();
 }
