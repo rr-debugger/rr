@@ -158,7 +158,9 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       in_round_robin_queue(false),
       emulated_ptracer(nullptr),
       emulated_ptrace_stop_code(0),
+      emulated_ptrace_options(0),
       emulated_ptrace_SIGCHLD_pending(false),
+      emulated_ptrace_seized(false),
       in_wait_type(WAIT_TYPE_NONE),
       in_wait_pid(0),
       emulated_stop_type(NOT_STOPPED),
@@ -601,9 +603,17 @@ void RecordTask::signal_delivered(int sig) {
         // All threads in the process are stopped.
         for (Task* t : task_group()->task_set()) {
           auto rt = static_cast<RecordTask*>(t);
-          LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal "
-                     << sig;
-          rt->emulated_stop_type = GROUP_STOP;
+          if (rt->emulated_stop_type == NOT_STOPPED) {
+            LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal "
+                       << sig;
+            int code = (sig << 8) | 0x7f;
+            if (rt->emulated_ptrace_seized) {
+              code |= PTRACE_EVENT_STOP << 16;
+            }
+            if (!rt->emulate_ptrace_stop(code, GROUP_STOP)) {
+              rt->emulated_stop_type = GROUP_STOP;
+            }
+          }
         }
         break;
       case SIGCONT:

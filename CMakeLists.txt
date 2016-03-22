@@ -463,6 +463,7 @@ set(BASIC_TESTS
   ptrace_attach_sleeping
   ptrace_attach_stopped
   ptrace_attach_thread_running
+  ptrace_seize
   ptrace_signals
   ptracer_death
   ptracer_death_multithread

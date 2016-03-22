@@ -1384,6 +1384,17 @@ static void ptrace_get_reg_set(RecordTask* t, TaskSyscallState& syscall_state,
   syscall_state.emulate_result(0);
 }
 
+static const int supported_ptrace_options = 0;
+
+static bool verify_ptrace_options(RecordTask* t, TaskSyscallState& syscall_state) {
+  if ((int)t->regs().arg4() & ~supported_ptrace_options) {
+    LOG(debug) << "Unsupported ptrace options " << HEX(t->regs().arg4());
+    syscall_state.emulate_result(-EINVAL);
+    return false;
+  }
+  return true;
+}
+
 template <typename Arch>
 static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
@@ -1411,6 +1422,8 @@ static Switchable prepare_ptrace(RecordTask* t,
         break;
       }
       tracee->set_emulated_ptracer(t);
+      tracee->emulated_ptrace_seized = false;
+      tracee->emulated_ptrace_options = 0;
       syscall_state.emulate_result(0);
       if (tracee->emulated_stop_type == NOT_STOPPED) {
         // Send SIGSTOP to this specific thread. Otherwise the kernel might
@@ -1423,6 +1436,44 @@ static Switchable prepare_ptrace(RecordTask* t,
         // Sending a SIGSTOP won't work, but we don't need to.
         tracee->force_emulate_ptrace_stop((SIGSTOP << 8) | 0x7f,
                                           SIGNAL_DELIVERY_STOP);
+      }
+      break;
+    }
+    case PTRACE_SEIZE: {
+      ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
+      RecordTask* tracee = t->session().find_task(pid);
+      if (!tracee) {
+        // XXX This prevents a tracee from attaching to a process which isn't
+        // under rr's control. We could support this but it would complicate
+        // things.
+        syscall_state.emulate_result(-ESRCH);
+        break;
+      }
+      if (tracee->emulated_ptracer || tracee->tgid() == t->tgid()) {
+        syscall_state.emulate_result(-EPERM);
+        break;
+      }
+      if (t->regs().arg3()) {
+        syscall_state.emulate_result(-EIO);
+        break;
+      }
+      if (!verify_ptrace_options(t, syscall_state)) {
+        break;
+      }
+      tracee->set_emulated_ptracer(t);
+      tracee->emulated_ptrace_seized = true;
+      tracee->emulated_ptrace_options = (int)t->regs().arg4();
+      syscall_state.emulate_result(0);
+      break;
+    }
+    case PTRACE_SETOPTIONS: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        if (!verify_ptrace_options(t, syscall_state)) {
+          break;
+        }
+        tracee->emulated_ptrace_options = (int)t->regs().arg4();
+        syscall_state.emulate_result(0);
       }
       break;
     }
@@ -3441,8 +3492,8 @@ static void rec_process_syscall_arch(RecordTask* t,
                 syscall_state.ptraced_tracee->tgid();
             si._sifields._sigchld.si_uid_ =
                 syscall_state.ptraced_tracee->getuid();
-            si._sifields._sigchld.si_status_ =
-                syscall_state.ptraced_tracee->emulated_ptrace_stop_code;
+            si._sifields._sigchld.si_status_ = WSTOPSIG(
+                syscall_state.ptraced_tracee->emulated_ptrace_stop_code);
             t->write_mem(sip, si);
           }
         } else {

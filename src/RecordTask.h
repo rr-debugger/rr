@@ -405,9 +405,12 @@ public:
   std::set<RecordTask*> emulated_ptrace_tracees;
   // if nonzero, code to deliver to ptracer when it waits
   int emulated_ptrace_stop_code;
+  int emulated_ptrace_options;
   // true if this task needs to send a SIGCHLD to its ptracer for its
   // emulated ptrace stop
   bool emulated_ptrace_SIGCHLD_pending;
+  // tracer attached via PTRACE_SEIZE
+  bool emulated_ptrace_seized;
   WaitType in_wait_type;
   pid_t in_wait_pid;
 
