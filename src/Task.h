@@ -163,10 +163,6 @@ public:
    */
   Ticks tick_count() { return ticks; }
 
-  /** Return the event at the top of this's stack. */
-  Event& ev() { return pending_events.back(); }
-  const Event& ev() const { return pending_events.back(); }
-
   /**
    * Stat |fd| in the context of this task's fd table.
    */

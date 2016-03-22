@@ -268,6 +268,9 @@ public:
   void pop_syscall() { pop_event(EV_SYSCALL); }
   void pop_syscall_interruption() { pop_event(EV_SYSCALL_INTERRUPTION); }
   virtual void log_pending_events() const;
+  /** Return the event at the top of this's stack. */
+  Event& ev() { return pending_events.back(); }
+  const Event& ev() const { return pending_events.back(); }
 
   /**
    * Call this before recording events or data.  Records
