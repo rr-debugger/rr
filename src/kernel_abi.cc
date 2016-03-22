@@ -51,5 +51,4 @@ ssize_t syscall_instruction_length(SupportedArch arch) {
       return 0;
   }
 }
-
 }

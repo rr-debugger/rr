@@ -1064,7 +1064,7 @@ static bool is_in_non_sigreturn_exit_syscall(Task* t) {
   if (t->session().is_recording()) {
     auto rt = static_cast<RecordTask*>(t);
     return !rt->ev().is_syscall_event() ||
-        !is_sigreturn(rt->ev().Syscall().number, t->arch());
+           !is_sigreturn(rt->ev().Syscall().number, t->arch());
   }
   return true;
 }
@@ -2263,5 +2263,4 @@ static void set_cpu_affinity(int cpu) {
 string Task::syscall_name(int syscall) const {
   return rr::syscall_name(syscall, arch());
 } // namespace rr
-
 }

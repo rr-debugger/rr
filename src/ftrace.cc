@@ -16,7 +16,8 @@
 
 using namespace std;
 
-namespace rr { namespace ftrace {
+namespace rr {
+namespace ftrace {
 
 static ScopedFd control_fd;
 static ScopedFd marker_fd;
@@ -135,5 +136,5 @@ void stop() {
     tracing = false;
   }
 }
-
-} }
+}
+}
