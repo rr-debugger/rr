@@ -74,9 +74,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       session_(&session),
       top_of_stack(),
       wait_status(),
-      seen_ptrace_exit_event(false) {
-  push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
-}
+      seen_ptrace_exit_event(false) {}
 
 void Task::destroy() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
@@ -115,18 +113,6 @@ Task::~Task() {
   tg->erase_task(this);
   as->erase_task(this);
   fds->erase_task(this);
-
-  // We expect tasks to usually exit by a call to exit() or
-  // exit_group(), so it's not helpful to warn about that.
-  if (EV_SENTINEL != ev().type() &&
-      (pending_events.size() > 2 ||
-       !(ev().type() == EV_SYSCALL &&
-         (is_exit_syscall(ev().Syscall().number, ev().Syscall().regs.arch()) ||
-          is_exit_group_syscall(ev().Syscall().number,
-                                ev().Syscall().regs.arch()))))) {
-    LOG(warn) << tid << " still has pending events.  From top down:";
-    log_pending_events();
-  }
 
   LOG(debug) << "  dead";
 }
@@ -312,22 +298,6 @@ bool Task::is_ptrace_seccomp_event() const {
   int event = ptrace_event();
   return (PTRACE_EVENT_SECCOMP_OBSOLETE == event ||
           PTRACE_EVENT_SECCOMP == event);
-}
-
-void Task::log_pending_events() const {
-  ssize_t depth = pending_events.size();
-
-  assert(depth > 0);
-  if (1 == depth) {
-    LOG(info) << "(no pending events)";
-    return;
-  }
-
-  /* The event at depth 0 is the placeholder event, which isn't
-   * useful to log.  Skip it. */
-  for (auto it = pending_events.rbegin(); it != pending_events.rend(); ++it) {
-    it->log();
-  }
 }
 
 template <typename Arch>
@@ -552,11 +522,6 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
 void Task::post_exec_syscall(TraceTaskEvent& event) {
   as->post_exec_syscall(this);
   fds->update_for_cloexec(this, event);
-}
-
-void Task::pop_event(EventType expected_type) {
-  ASSERT(this, pending_events.back().type() == expected_type);
-  pending_events.pop_back();
 }
 
 void Task::flush_inconsistent_state() { ticks = 0; }
@@ -1419,9 +1384,8 @@ static void set_thread_area_from_clone(Task* t, remote_ptr<void> tls) {
 }
 
 Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
-                  remote_ptr<int>, pid_t new_tid,
-                  pid_t new_rec_tid, uint32_t new_serial,
-                  Session* other_session) {
+                  remote_ptr<int>, pid_t new_tid, pid_t new_rec_tid,
+                  uint32_t new_serial, Session* other_session) {
   auto& sess = other_session ? *other_session : session();
   Task* t = sess.new_task(new_tid, new_rec_tid, new_serial, arch());
 

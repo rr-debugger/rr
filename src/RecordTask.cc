@@ -169,6 +169,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       prctl_seccomp_status(0),
       robust_futex_list_len(0),
       own_namespace_rec_tid(0) {
+  push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
     // The very first task we fork inherits the signal
@@ -225,8 +226,20 @@ RecordTask::~RecordTask() {
   }
 
   // Write the exit event here so that the value recorded above is captured.
-  EventType ev = unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
-  record_event(Event(ev, NO_EXEC_INFO, arch()));
+  EventType e = unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
+  record_event(Event(e, NO_EXEC_INFO, arch()));
+
+  // We expect tasks to usually exit by a call to exit() or
+  // exit_group(), so it's not helpful to warn about that.
+  if (EV_SENTINEL != ev().type() &&
+      (pending_events.size() > 2 ||
+       !(ev().type() == EV_SYSCALL &&
+         (is_exit_syscall(ev().Syscall().number, ev().Syscall().regs.arch()) ||
+          is_exit_group_syscall(ev().Syscall().number,
+                                ev().Syscall().regs.arch()))))) {
+    LOG(warn) << tid << " still has pending events.  From top down:";
+    log_pending_events();
+  }
 }
 
 void RecordTask::futex_wait(remote_ptr<int> futex, int val, bool* ok) {
@@ -900,6 +913,27 @@ void RecordTask::record_remote_even_if_null(remote_ptr<void> addr,
 
   auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
   trace_writer().write_raw(buf.data(), num_bytes, addr);
+}
+
+void RecordTask::pop_event(EventType expected_type) {
+  ASSERT(this, pending_events.back().type() == expected_type);
+  pending_events.pop_back();
+}
+
+void RecordTask::log_pending_events() const {
+  ssize_t depth = pending_events.size();
+
+  assert(depth > 0);
+  if (1 == depth) {
+    LOG(info) << "(no pending events)";
+    return;
+  }
+
+  /* The event at depth 0 is the placeholder event, which isn't
+   * useful to log.  Skip it. */
+  for (auto it = pending_events.rbegin(); it != pending_events.rend(); ++it) {
+    it->log();
+  }
 }
 
 void RecordTask::maybe_flush_syscallbuf() {

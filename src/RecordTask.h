@@ -254,6 +254,22 @@ public:
   }
 
   /**
+   * Manage pending events.  |push_event()| pushes the given
+   * event onto the top of the event stack.  The |pop_*()|
+   * helpers pop the event at top of the stack, which must be of
+   * the specified type.
+   */
+  void push_event(const Event& ev) { pending_events.push_back(ev); }
+  void pop_event(EventType expected_type);
+  void pop_noop() { pop_event(EV_NOOP); }
+  void pop_desched() { pop_event(EV_DESCHED); }
+  void pop_signal_delivery() { pop_event(EV_SIGNAL_DELIVERY); }
+  void pop_signal_handler() { pop_event(EV_SIGNAL_HANDLER); }
+  void pop_syscall() { pop_event(EV_SYSCALL); }
+  void pop_syscall_interruption() { pop_event(EV_SYSCALL_INTERRUPTION); }
+  virtual void log_pending_events() const;
+
+  /**
    * Call this before recording events or data.  Records
    * syscallbuf data and flushes the buffer, if there's buffered
    * data.
