@@ -34,8 +34,10 @@ public:
       BindCPU bind_cpu = BIND_CPU, Chaos chaos = DISABLE_CHAOS);
 
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
-  void set_ignore_sig(int ignore_sig) { this->ignore_sig = ignore_sig; }
+  void set_ignore_sig(int sig) { ignore_sig = sig; }
   int get_ignore_sig() const { return ignore_sig; }
+  void set_continue_through_sig(int sig) { continue_through_sig = sig; }
+  int get_continue_through_sig() const { return continue_through_sig; }
 
   enum RecordStatus {
     // Some execution was recorded. record_step() can be called again.
@@ -130,6 +132,7 @@ private:
   SeccompFilterRewriter seccomp_filter_rewriter_;
 
   int ignore_sig;
+  int continue_through_sig;
   Switchable last_task_switchable;
   bool use_syscall_buffer_;
 

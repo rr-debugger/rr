@@ -618,6 +618,7 @@ set(TESTS_WITH_PROGRAM
   hello
   ignored_async_usr1
   immediate_restart
+  int3_ok
   interrupt
   intr_ptrace_decline
   link

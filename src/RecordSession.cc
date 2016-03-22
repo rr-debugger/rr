@@ -1147,7 +1147,8 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // there is really no way to inject a non-fatal, non-handled signal
       // without letting the task execute at least one instruction, which
       // we don't want to do here.
-      if (is_fatal_signal(t, sig, t->ev().Signal().deterministic)) {
+      if (is_fatal_signal(t, sig, t->ev().Signal().deterministic) &&
+          sig != get_continue_through_sig()) {
         preinject_signal(t);
         t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, RESUME_NO_TICKS,
                             sig);
@@ -1183,7 +1184,7 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
     //
     // This doesn't really occur in practice, only in
     // tests that force a degenerately low time slice.
-    LOG(warn) << "Dropping " << signal_name(t->pending_sig())
+    LOG(warn) << "Dropping " << signal_name(sig)
               << " because it can't be delivered yet";
     // No events to be recorded, so no syscallbuf updates
     // needed.
@@ -1439,6 +1440,7 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
     : trace_out(argv, envp, cwd, choose_cpu(bind_cpu)),
       scheduler_(*this),
       ignore_sig(0),
+      continue_through_sig(0),
       last_task_switchable(PREVENT_SWITCH),
       use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
       enable_chaos_(false),

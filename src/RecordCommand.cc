@@ -35,6 +35,11 @@ RecordCommand RecordCommand::singleton(
     "  -n, --no-syscall-buffer    disable the syscall buffer preload \n"
     "                             library even if it would otherwise be used\n"
     "  -s, --always-switch        tryto context switch at every rr event\n"
+    "  -t, --continue-through-signal=<SIG>\n"
+    "                             Unhandled <SIG> signals will be ignored\n"
+    "                             instead of terminating the program. The\n"
+    "                             signal will still be delivered for user\n"
+    "                             handlers and debugging.\n"
     "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
     "                             Default is to bind to CPU 0.  This option\n"
     "                             can cause replay divergence: use with\n"
@@ -53,6 +58,9 @@ struct RecordFlags {
   /* Whenever |ignore_sig| is pending for a tracee, decline to
    * deliver it. */
   int ignore_sig;
+  /* Whenever |continue_through_sig| is delivered to a tracee, if there is no
+   * user handler and the signal would terminate the program, just ignore it. */
+  int continue_through_sig;
 
   /* Whether to use syscall buffering optimization during recording. */
   RecordSession::SyscallBuffering use_syscall_buffer;
@@ -74,6 +82,7 @@ struct RecordFlags {
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
+        continue_through_sig(0),
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
         bind_cpu(RecordSession::BIND_CPU),
         always_switch(false),
@@ -94,6 +103,7 @@ static bool parse_record_arg(std::vector<std::string>& args,
     { 'i', "ignore-signal", HAS_PARAMETER },
     { 'n', "no-syscall-buffer", NO_PARAMETER },
     { 's', "always-switch", NO_PARAMETER },
+    { 't', "continue-through-signal", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'v', "env", HAS_PARAMETER },
     { 'w', "wait", NO_PARAMETER }
@@ -129,6 +139,12 @@ static bool parse_record_arg(std::vector<std::string>& args,
       break;
     case 's':
       flags.always_switch = true;
+      break;
+    case 't':
+      if (!opt.verify_valid_int(1, _NSIG - 1)) {
+        return false;
+      }
+      flags.continue_through_sig = opt.int_value;
       break;
     case 'u':
       flags.bind_cpu = RecordSession::UNBOUND_CPU;
@@ -181,6 +197,7 @@ static void setup_session_from_flags(RecordSession& session,
   session.scheduler().set_max_ticks(flags.max_ticks);
   session.scheduler().set_always_switch(flags.always_switch);
   session.set_ignore_sig(flags.ignore_sig);
+  session.set_continue_through_sig(flags.continue_through_sig);
   session.set_wait_for_all(flags.wait_for_all);
 }
 
