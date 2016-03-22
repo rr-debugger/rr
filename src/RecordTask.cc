@@ -326,6 +326,9 @@ void RecordTask::post_exec() {
   string exe_file = exe_path(this);
   Task::post_exec(determine_arch(this, exe_file), exe_file);
 
+  ev().set_arch(arch());
+  ev().Syscall().number = registers.original_syscallno();
+
   // Clear robust_list state to match kernel state. If this task is cloned
   // soon after exec, we must not do a bogus set_robust_list syscall for
   // the clone.

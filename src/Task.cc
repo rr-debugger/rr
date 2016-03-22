@@ -503,11 +503,6 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   registers.set_original_syscallno(syscall_number_for_execve(arch()));
   set_regs(registers);
 
-  if (session().is_recording()) {
-    ev().set_arch(arch());
-    ev().Syscall().number = registers.original_syscallno();
-  }
-
   syscallbuf_child = nullptr;
   syscallbuf_fds_disabled_child = nullptr;
 
@@ -1062,9 +1057,15 @@ void Task::wait(double interrupt_after_elapsed) {
 }
 
 static bool is_in_non_sigreturn_exit_syscall(Task* t) {
-  return t->stop_sig() == (SIGTRAP | 0x80) &&
-         (!t->ev().is_syscall_event() ||
-          !is_sigreturn(t->ev().Syscall().number, t->arch()));
+  if (t->stop_sig() != (SIGTRAP | 0x80)) {
+    return false;
+  }
+  if (t->session().is_recording()) {
+    auto rt = static_cast<RecordTask*>(t);
+    return !rt->ev().is_syscall_event() ||
+        !is_sigreturn(rt->ev().Syscall().number, t->arch());
+  }
+  return true;
 }
 
 /**
