@@ -2215,8 +2215,8 @@ static void set_cpu_affinity(int cpu) {
   if (session.is_recording()) {
     options |= PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
   }
-  long ret = ptrace(PTRACE_SEIZE, tid, nullptr,
-      (void*)(options | PTRACE_O_EXITKILL));
+  long ret =
+      ptrace(PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
   if (ret < 0 && errno == EINVAL) {
     // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
     // it for more robust cleanup, so tolerate not having it.

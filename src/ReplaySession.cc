@@ -353,16 +353,12 @@ void ReplaySession::check_pending_sig(ReplayTask* t) {
 }
 
 /**
- * Advance |t| to the next signal or trap.  If |stepi| is |SINGLESTEP|,
- * then execution resumes by single-stepping.  Otherwise it continues
- * normally. |t->pending_sig()| contains any pending signal.
+ * Advance |t| to the next signal or trap according to |constraints.command|.
  *
- * Default |resume_how| is RESUME_SYSCALL for error checking:
- * since the next event is supposed to be a signal,
- * entering a syscall here means divergence.  There
- * shouldn't be any straight-line execution overhead
- * for SYSCALL vs. CONT, so the difference in cost
- * should be neglible.
+ * Default |resume_how| is RESUME_SYSEMU for error checking:
+ * since the next event is supposed to be a signal, entering a syscall here
+ * means divergence.  There shouldn't be any straight-line execution overhead
+ * for SYSEMU vs. CONT, so the difference in cost should be neglible.
  *
  * Some callers pass RESUME_CONT because they want to execute any syscalls
  * encountered.
