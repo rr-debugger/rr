@@ -194,11 +194,16 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
 RecordTask::~RecordTask() {
   if (emulated_ptracer) {
     emulated_ptracer->emulated_ptrace_tracees.erase(this);
+    if (emulated_ptrace_options & PTRACE_O_TRACEEXIT) {
+      ASSERT(this, stable_exit)
+          << "PTRACE_O_TRACEEXIT only supported for stable exits for now";
+    }
   }
   for (RecordTask* t : emulated_ptrace_tracees) {
     // XXX emulate PTRACE_O_EXITKILL
     ASSERT(this, t->emulated_ptracer == this);
     t->emulated_ptracer = nullptr;
+    t->emulated_ptrace_options = 0;
     t->emulated_stop_type = NOT_STOPPED;
   }
 
@@ -410,11 +415,16 @@ void RecordTask::set_emulated_ptracer(RecordTask* tracer) {
   }
 }
 
-bool RecordTask::emulate_ptrace_stop(int code, EmulatedStopType stop_type) {
+bool RecordTask::emulate_ptrace_stop(int code, EmulatedStopType stop_type,
+                                     AddSysgoodFlag add_sysgood) {
   ASSERT(this, emulated_stop_type == NOT_STOPPED);
   ASSERT(this, stop_type != NOT_STOPPED);
   if (!emulated_ptracer) {
     return false;
+  }
+  if (add_sysgood == USE_SYSGOOD &&
+      (emulated_ptrace_options & PTRACE_O_TRACESYSGOOD)) {
+    code |= 0x80 << 8;
   }
   force_emulate_ptrace_stop(code, stop_type);
   return true;

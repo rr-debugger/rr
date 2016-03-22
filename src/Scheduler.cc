@@ -125,6 +125,12 @@ int Scheduler::choose_random_priority(RecordTask* t) {
   return random_frac() < prob;
 }
 
+static bool treat_syscall_as_nonblocking(int syscallno, SupportedArch arch) {
+  return is_sched_yield_syscall(syscallno, arch) ||
+         is_exit_syscall(syscallno, arch) ||
+         is_exit_group_syscall(syscallno, arch);
+}
+
 /**
  * Returns true if we should return t as the runnable task. Otherwise we
  * should check the next task. Note that if this returns true get_next_thread
@@ -152,9 +158,9 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
 
   if (EV_SYSCALL == t->ev().type() &&
       PROCESSING_SYSCALL == t->ev().Syscall().state &&
-      is_sched_yield_syscall(t->ev().Syscall().number, t->arch())) {
-    // sched_yield syscalls never really blocks but the kernel may report that
-    // the task is not stopped yet if we pass WNOHANG. To make sched_yield
+      treat_syscall_as_nonblocking(t->ev().Syscall().number, t->arch())) {
+    // These syscalls never really block but the kernel may report that
+    // the task is not stopped yet if we pass WNOHANG. To make them
     // behave predictably, do a blocking wait.
     t->wait();
     *by_waitpid = true;
@@ -530,7 +536,17 @@ void Scheduler::update_task_priority(RecordTask* t, int value) {
   }
 }
 
+void Scheduler::in_stable_exit(RecordTask* t) {
+  update_task_priority_internal(t, t->priority);
+}
+
 void Scheduler::update_task_priority_internal(RecordTask* t, int value) {
+  if (t->stable_exit) {
+    // Tasks in a stable exit have the highest priority. We should force them
+    // to complete exiting ASAP to clean up resources. They may not be runnable
+    // due to waiting for PTRACE_EVENT_EXIT to complete.
+    value = -9999;
+  }
   if (t->priority == value) {
     return;
   }

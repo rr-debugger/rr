@@ -132,6 +132,8 @@ public:
    */
   int pretend_num_cores() const { return pretend_num_cores_; }
 
+  void in_stable_exit(RecordTask* t);
+
 private:
   // Tasks sorted by priority.
   typedef std::set<std::pair<int, RecordTask*> > TaskPrioritySet;

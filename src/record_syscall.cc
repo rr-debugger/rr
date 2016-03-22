@@ -1387,7 +1387,8 @@ static void ptrace_get_reg_set(RecordTask* t, TaskSyscallState& syscall_state,
 static bool verify_ptrace_options(RecordTask* t,
                                   TaskSyscallState& syscall_state) {
   // We "support" PTRACE_O_SYSGOOD because we don't support PTRACE_SYSCALL yet
-  static const int supported_ptrace_options = PTRACE_O_TRACESYSGOOD;
+  static const int supported_ptrace_options =
+      PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT;
 
   if ((int)t->regs().arg4() & ~supported_ptrace_options) {
     LOG(debug) << "Unsupported ptrace options " << HEX(t->regs().arg4());
@@ -1659,6 +1660,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       if (tracee) {
         prepare_ptrace_cont(tracee, t->regs().arg4());
         tracee->set_emulated_ptracer(nullptr);
+        tracee->emulated_ptrace_options = 0;
         syscall_state.emulate_result(0);
       }
       break;
@@ -1690,27 +1692,32 @@ static void check_signals_while_exiting(RecordTask* t) {
 /**
  * At thread exit time, undo the work that init_buffers() did.
  *
- * Call this when the tracee has already entered SYS_exit. The
+ * Call this when the tracee has already entered SYS_exit/SYS_exit_group. The
  * tracee will be returned at a state in which it has entered (or
- * re-entered) SYS_exit.
+ * re-entered) SYS_exit/SYS_exit_group.
  */
-static void process_exit(RecordTask* t) {
+static void prepare_exit(RecordTask* t) {
+  t->stable_exit = true;
+  t->session().scheduler().in_stable_exit(t);
+
   check_signals_while_exiting(t);
 
   Registers r = t->regs();
   Registers exit_regs = r;
-  ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(), t->arch()))
-      << "Tracee should have been at exit, but instead at "
+  ASSERT(t,
+         is_exit_syscall(exit_regs.original_syscallno(), t->arch()) ||
+             is_exit_group_syscall(exit_regs.original_syscallno(), t->arch()))
+      << "Tracee should have been at exit/exit_group, but instead at "
       << t->syscall_name(exit_regs.original_syscallno());
 
   // The first thing we need to do is to block all signals to prevent
   // a signal being delivered to the thread (since it's going to exit and
   // won't be able to handle any more signals).
   //
-  // The tracee is at the entry to SYS_exit, but hasn't started
+  // The tracee is at the entry to SYS_exit/SYS_exit_group, but hasn't started
   // the call yet.  We can't directly start injecting syscalls
   // because the tracee is still in the kernel.  And obviously,
-  // if we finish the SYS_exit syscall, the tracee isn't around
+  // if we finish the SYS_exit/SYS_exit_group syscall, the tracee isn't around
   // anymore.
   //
   // So hijack this SYS_exit call and rewrite it into a SYS_rt_sigprocmask.
@@ -1730,10 +1737,10 @@ static void process_exit(RecordTask* t) {
   check_signals_while_exiting(t);
 
   // Restore these regs to what they would have been just before
-  // the tracee trapped at SYS_exit.  When we've finished
-  // cleanup, we'll restart the SYS_exit call.
+  // the tracee trapped at SYS_exit/SYS_exit_group.  When we've finished
+  // cleanup, we'll restart the call.
+  exit_regs.set_syscallno(exit_regs.original_syscallno());
   exit_regs.set_original_syscallno(-1);
-  exit_regs.set_syscallno(syscall_number_for_exit(t->arch()));
   exit_regs.set_ip(exit_regs.ip() - syscall_instruction_length(t->arch()));
   ASSERT(t, is_at_syscall_instruction(t, exit_regs.ip()))
       << "Tracee should have entered through int $0x80.";
@@ -1741,6 +1748,11 @@ static void process_exit(RecordTask* t) {
   t->set_regs(exit_regs);
   t->advance_syscall();
   check_signals_while_exiting(t);
+
+  if (t->emulated_ptrace_options & PTRACE_O_TRACEEXIT) {
+    t->emulate_ptrace_stop((PTRACE_EVENT_EXIT << 16) | (SIGTRAP << 8) | 0x7f,
+                           SIGNAL_DELIVERY_STOP);
+  }
 }
 
 static void prepare_mmap_register_params(RecordTask* t) {
@@ -1856,18 +1868,18 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     }
 
     case Arch::exit:
-      t->stable_exit = true;
       if (t->task_group()->task_set().size() == 1) {
         t->task_group()->exit_code = (int)t->regs().arg1();
       }
-      process_exit(t);
-      return PREVENT_SWITCH;
+      prepare_exit(t);
+      return ALLOW_SWITCH;
 
     case Arch::exit_group:
-      if (t->task_group()->task_set().size() == 1) {
-        t->stable_exit = true;
-      }
       t->task_group()->exit_code = (int)t->regs().arg1();
+      if (t->task_group()->task_set().size() == 1) {
+        prepare_exit(t);
+        return ALLOW_SWITCH;
+      }
       return PREVENT_SWITCH;
 
     case Arch::execve: {

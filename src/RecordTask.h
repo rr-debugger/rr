@@ -35,6 +35,12 @@ enum EmulatedStopType {
 };
 
 /**
+ * Pass USE_SYSGOOD to emulate_ptrace_stop to add 0x80 to the signal
+ * if PTRACE_O_TRACESYSGOOD is in effect.
+ */
+enum AddSysgoodFlag { IGNORE_SYSGOOD, USE_SYSGOOD };
+
+/**
  * Every Task owned by a RecordSession is a RecordTask. Functionality that
  * only applies during recording belongs here.
  */
@@ -69,7 +75,8 @@ public:
    * ptracer.
    * Returns true if the task is stopped-for-emulated-ptrace, false otherwise.
    */
-  bool emulate_ptrace_stop(int code, EmulatedStopType stop_type);
+  bool emulate_ptrace_stop(int code, EmulatedStopType stop_type,
+                           AddSysgoodFlag add_sysgood = IGNORE_SYSGOOD);
   /**
    * Force the ptrace-stop state no matter what state the task is currently in.
    */
@@ -405,6 +412,7 @@ public:
   std::set<RecordTask*> emulated_ptrace_tracees;
   // if nonzero, code to deliver to ptracer when it waits
   int emulated_ptrace_stop_code;
+  // Always zero while no ptracer is attached.
   int emulated_ptrace_options;
   // true if this task needs to send a SIGCHLD to its ptracer for its
   // emulated ptrace stop

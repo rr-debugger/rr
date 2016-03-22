@@ -24,7 +24,8 @@ int main(void) {
     return 77;
   }
 
-  test_assert(0 == ptrace(PTRACE_SEIZE, child, NULL, (void*)0));
+  test_assert(0 ==
+              ptrace(PTRACE_SEIZE, child, NULL, (void*)PTRACE_O_TRACESYSGOOD));
   /* Make sure child is still running */
   test_assert(1 == write(parent_to_child_fds[1], "p", 1));
   test_assert(1 == read(child_to_parent_fds[0], &ch, 1));
