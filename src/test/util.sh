@@ -106,7 +106,7 @@ fi
 OBJDIR=$3
 if [[ "$OBJDIR" == "" ]]; then
     # Default to assuming that the user's working directory is the
-    # test/ directory within the rr clone.
+    # src/test/ directory within the rr clone.
     OBJDIR=`realpath ../../../obj`
 fi
 TESTNAME=$4
