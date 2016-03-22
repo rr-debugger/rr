@@ -140,7 +140,7 @@ void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
 void AutoRemoteSyscalls::wait_syscall(int syscallno) {
   ASSERT(t, pending_syscallno == syscallno || syscallno < 0);
 
-  // Wait for syscall-exit trap.
+  // Wait for syscall-exit trap (or PTRACE_EVENT_* trap).
   t->wait();
   pending_syscallno = -1;
 
