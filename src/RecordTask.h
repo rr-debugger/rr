@@ -453,6 +453,10 @@ public:
   // Value to return from PR_GET_SECCOMP
   uint8_t prctl_seccomp_status;
 
+  // The current stack of events being processed.  (We use a
+  // deque instead of a stack because we need to iterate the
+  // events.)
+  std::deque<Event> pending_events;
   // Futex list passed to |set_robust_list()|.  We could keep a
   // strong type for this list head and read it if we wanted to,
   // but for now we only need to remember its address / size at

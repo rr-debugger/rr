@@ -883,10 +883,6 @@ protected:
   AddressSpace::shr_ptr as;
   // The file descriptor table of this task.
   FdTable::shr_ptr fds;
-  // The current stack of events being processed.  (We use a
-  // deque instead of a stack because we need to iterate the
-  // events.)
-  std::deque<Event> pending_events;
   // Task's OS name.
   std::string prname;
   // Count of all ticks seen by this task since tracees became
