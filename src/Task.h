@@ -728,7 +728,6 @@ public:
     remote_ptr<void> scratch_ptr;
     ssize_t scratch_size;
     int wait_status;
-    std::deque<Event> pending_events;
     Ticks ticks;
     remote_ptr<void> top_of_stack;
   };

@@ -1568,7 +1568,6 @@ Task::CapturedState Task::capture_state() {
   state.scratch_ptr = scratch_ptr;
   state.scratch_size = scratch_size;
   state.wait_status = wait_status;
-  state.pending_events = pending_events;
   state.ticks = ticks;
   state.top_of_stack = top_of_stack;
   return state;
@@ -1623,10 +1622,6 @@ void Task::copy_state(const CapturedState& state) {
   // Whatever |from|'s last wait status was is what ours would
   // have been.
   wait_status = state.wait_status;
-
-  // These are only metadata that have been inferred from the
-  // series of syscalls made by the trace so far.
-  pending_events = state.pending_events;
 
   ticks = state.ticks;
 }
