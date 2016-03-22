@@ -1031,8 +1031,7 @@ static void end_task(ReplayTask* t) {
   do {
     // Singlestep to collect the PTRACE_EVENT_EXIT event.
     t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-  } while (t->is_ptrace_seccomp_event() ||
-           ReplaySession::is_ignored_signal(t->pending_sig()));
+  } while (ReplaySession::is_ignored_signal(t->pending_sig()));
 
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
   t->stable_exit = true;

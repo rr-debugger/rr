@@ -2212,13 +2212,15 @@ static void set_cpu_affinity(int cpu) {
   // with PTRACE_O_EXITKILL, the tracee will die if rr dies.
   intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
                      PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC |
-                     PTRACE_O_TRACEEXIT | PTRACE_O_EXITKILL |
-                     PTRACE_O_TRACESECCOMP;
-  long ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
+                     PTRACE_O_TRACEEXIT;
+  if (session.is_recording()) {
+    options |= PTRACE_O_TRACESECCOMP;
+  }
+  long ret = ptrace(PTRACE_SEIZE, tid, nullptr,
+      (void*)(options | PTRACE_O_EXITKILL));
   if (ret < 0 && errno == EINVAL) {
     // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
     // it for more robust cleanup, so tolerate not having it.
-    options &= ~PTRACE_O_EXITKILL;
     ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
   }
   if (ret) {
