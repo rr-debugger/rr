@@ -2050,6 +2050,8 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
   t->stopping_breakpoint_table = params.breakpoint_table.rptr().as_int();
   t->stopping_breakpoint_table_entry_size = params.breakpoint_table_entry_size;
 
+  t->in_replay_flag = params.in_replay_flag.rptr();
+
   t->write_mem(params.in_replay_flag.rptr(),
                (unsigned char)t->session().is_replaying());
 }

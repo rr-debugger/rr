@@ -715,6 +715,9 @@ public:
   remote_code_ptr stopping_breakpoint_table;
   int stopping_breakpoint_table_entry_size;
 
+  /* Points at the in_replay flag in the tracee. */
+  remote_ptr<unsigned char> in_replay_flag;
+
   PropertyTable& properties() { return properties_; }
 
   struct CapturedState {

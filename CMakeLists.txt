@@ -702,6 +702,7 @@ set(TESTS_WITHOUT_PROGRAM
   checkpoint_mmap_shared
   checkpoint_prctl_name
   checkpoint_simple
+  checksum_sanity
   cont_signal
   cpuid
   dead_thread_target

@@ -260,6 +260,14 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     FATAL() << "Failed to open checksum file " << filename;
   }
 
+  bool wrote_in_replay = false;
+  unsigned char in_replay;
+  if (t->in_replay_flag) {
+    wrote_in_replay = true;
+    in_replay = t->read_mem(t->in_replay_flag);
+    t->write_mem(t->in_replay_flag, (unsigned char)0);
+  }
+
   const AddressSpace& as = *(t->vm());
   for (auto m : as.maps()) {
     vector<uint8_t> mem;
@@ -338,6 +346,10 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
                               raw_map_line.c_str());
       }
     }
+  }
+
+  if (wrote_in_replay) {
+    t->write_mem(t->in_replay_flag, in_replay);
   }
 
   fclose(c.checksums_file);
