@@ -150,7 +150,7 @@ _stub_buffer:
         /* Backtrace here will be invalid! */
         mov    %esp,4(%esp)
         /* Backtrace here will be invalid! */
-        addq   $_syscall_stack_adjust,4(%esp)
+        addl   $_syscall_stack_adjust,4(%esp)
         .cfi_rel_offset %esp,4
         /* We won't be able to get complete stack traces inside the above
            sequence, but that's not important. What's important is that at this
