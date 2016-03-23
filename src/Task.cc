@@ -1185,8 +1185,14 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
     need_to_set_regs = true;
   }
 
-  // When exiting a syscall, We need to normalize nondeterministic registers.
-  if (is_in_non_sigreturn_exit_syscall(this)) {
+  // When exiting a syscall, we need to normalize nondeterministic registers.
+  // We also need to do this when we receive a signal in the rr page, since
+  // we may have just returned from an untraced syscall there and while in the
+  // rr page registers need to be consistent between record and replay.
+  // During replay most untraced syscalls are replaced with "xor eax,eax" so
+  // rcx is always -1, but during recording it sometimes isn't after we've
+  // done a real syscall.
+  if (is_in_non_sigreturn_exit_syscall(this) || is_in_rr_page()) {
     fixup_syscall_registers(registers);
     need_to_set_regs = true;
   }
