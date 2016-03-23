@@ -157,10 +157,13 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       priority(0),
       in_round_robin_queue(false),
       emulated_ptracer(nullptr),
+      emulated_ptrace_event_msg(0),
       emulated_ptrace_stop_code(0),
       emulated_ptrace_options(0),
+      emulated_ptrace_stop_pending(false),
       emulated_ptrace_SIGCHLD_pending(false),
       emulated_ptrace_seized(false),
+      emulated_ptrace_queued_exit_stop(false),
       in_wait_type(WAIT_TYPE_NONE),
       in_wait_pid(0),
       emulated_stop_type(NOT_STOPPED),
@@ -171,7 +174,9 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       seccomp_bpf_enabled(false),
       prctl_seccomp_status(0),
       robust_futex_list_len(0),
-      own_namespace_rec_tid(0) {
+      own_namespace_rec_tid(0),
+      exit_code(0),
+      termination_signal(0) {
   push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
@@ -434,6 +439,7 @@ void RecordTask::force_emulate_ptrace_stop(int code,
                                            EmulatedStopType stop_type) {
   emulated_stop_type = stop_type;
   emulated_ptrace_stop_code = code;
+  emulated_ptrace_stop_pending = true;
   emulated_ptrace_SIGCHLD_pending = true;
 
   emulated_ptracer->send_synthetic_SIGCHLD_if_necessary();
@@ -526,6 +532,7 @@ bool RecordTask::is_waiting_for_ptrace(RecordTask* t) {
       t->emulated_ptracer->task_group() != task_group()) {
     return false;
   }
+  // XXX need to check |options| to make sure this task is eligible!!
   switch (in_wait_type) {
     case WAIT_TYPE_NONE:
       return false;
@@ -593,6 +600,19 @@ siginfo_t RecordTask::take_ptrace_signal_siginfo(int sig) {
   return si;
 }
 
+void RecordTask::apply_group_stop(int sig) {
+  if (emulated_stop_type == NOT_STOPPED) {
+    LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal " << sig;
+    int code = (sig << 8) | 0x7f;
+    if (emulated_ptrace_seized) {
+      code |= PTRACE_EVENT_STOP << 16;
+    }
+    if (!emulate_ptrace_stop(code, GROUP_STOP)) {
+      emulated_stop_type = GROUP_STOP;
+    }
+  }
+}
+
 void RecordTask::signal_delivered(int sig) {
   Sighandler& h = sighandlers->get(sig);
   bool is_user_handler = h.is_user_handler();
@@ -613,17 +633,7 @@ void RecordTask::signal_delivered(int sig) {
         // All threads in the process are stopped.
         for (Task* t : task_group()->task_set()) {
           auto rt = static_cast<RecordTask*>(t);
-          if (rt->emulated_stop_type == NOT_STOPPED) {
-            LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal "
-                       << sig;
-            int code = (sig << 8) | 0x7f;
-            if (rt->emulated_ptrace_seized) {
-              code |= PTRACE_EVENT_STOP << 16;
-            }
-            if (!rt->emulate_ptrace_stop(code, GROUP_STOP)) {
-              rt->emulated_stop_type = GROUP_STOP;
-            }
-          }
+          rt->apply_group_stop(sig);
         }
         break;
       case SIGCONT:
@@ -1108,7 +1118,7 @@ pid_t RecordTask::find_newborn_thread() {
   }
 }
 
-static bool is_ppid_of(pid_t ppid, pid_t pid) {
+static pid_t get_ppid(pid_t pid) {
   char path[PATH_MAX];
   sprintf(path, "/proc/%d/status", pid);
   FILE* status = fopen(path, "r");
@@ -1125,7 +1135,7 @@ static bool is_ppid_of(pid_t ppid, pid_t pid) {
       fclose(status);
       char* end;
       int actual_ppid = strtol(line + 5, &end, 10);
-      return *end == '\n' && actual_ppid == ppid;
+      return *end == '\n' ? actual_ppid : -1;
     }
   }
 }
@@ -1138,7 +1148,7 @@ pid_t RecordTask::find_newborn_child_process() {
   pid_t hint = get_ptrace_eventmsg_pid();
   // This should always succeed, but may fail in old kernels due to
   // a kernel bug. See RecordSession::handle_ptrace_event.
-  if (!session().find_task(hint) && is_ppid_of(real_tgid(), hint)) {
+  if (!session().find_task(hint) && get_ppid(hint) == real_tgid()) {
     return hint;
   }
 
@@ -1152,7 +1162,7 @@ pid_t RecordTask::find_newborn_child_process() {
     char* end;
     pid_t proc_tid = strtol(entry.d_name, &end, 10);
     if (*end == '\0' && !session().find_task(proc_tid) &&
-        is_ppid_of(real_tgid(), proc_tid)) {
+        get_ppid(proc_tid) == real_tgid()) {
       closedir(dir);
       return proc_tid;
     }
@@ -1167,5 +1177,7 @@ void RecordTask::set_tid_addr(remote_ptr<int> tid_addr) {
 void RecordTask::tgkill(int sig) {
   ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
 }
+
+pid_t RecordTask::get_parent_pid() { return get_ppid(tid); }
 
 } // namespace rr

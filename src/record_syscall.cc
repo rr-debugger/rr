@@ -1260,7 +1260,8 @@ static Switchable prepare_ioctl(RecordTask* t,
 
 static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state) {
   for (RecordTask* child : t->emulated_ptrace_tracees) {
-    if (t->is_waiting_for_ptrace(child) && child->emulated_ptrace_stop_code) {
+    if (t->is_waiting_for_ptrace(child) &&
+        child->emulated_ptrace_stop_pending) {
       syscall_state.ptraced_tracee = child;
       return true;
     }
@@ -1301,6 +1302,18 @@ static RecordTask* verify_ptrace_target(RecordTask* tracer,
   return tracee;
 }
 
+static void do_ptrace_exit_stop(RecordTask* t) {
+  // Notify ptracer of the exit if it's not going to receive it from the
+  // kernel because it's not the parent. (The kernel has similar logic to
+  // deliver two stops in this case.)
+  t->emulated_ptrace_queued_exit_stop = false;
+  if (t->emulated_ptracer &&
+      (t->is_clone_child() ||
+       t->get_parent_pid() != t->emulated_ptracer->real_tgid())) {
+    t->emulate_ptrace_stop(t->exit_code << 8, SIGNAL_DELIVERY_STOP);
+  }
+}
+
 static void prepare_ptrace_cont(RecordTask* tracee, int sig) {
   if (sig) {
     siginfo_t si = tracee->take_ptrace_signal_siginfo(sig);
@@ -1308,6 +1321,10 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig) {
   }
 
   tracee->emulated_stop_type = NOT_STOPPED;
+
+  if (tracee->emulated_ptrace_queued_exit_stop) {
+    do_ptrace_exit_stop(tracee);
+  }
 }
 
 static uint64_t widen_buffer_unsigned(const void* buf, size_t size) {
@@ -1463,6 +1480,18 @@ static Switchable prepare_ptrace(RecordTask* t,
           break;
         }
         tracee->emulated_ptrace_options = (int)t->regs().arg4();
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETEVENTMSG: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto datap =
+            syscall_state.reg_parameter<typename Arch::unsigned_long>(4);
+        t->write_mem(
+            datap,
+            (typename Arch::unsigned_long)tracee->emulated_ptrace_event_msg);
         syscall_state.emulate_result(0);
       }
       break;
@@ -1645,9 +1674,11 @@ static Switchable prepare_ptrace(RecordTask* t,
     case PTRACE_DETACH: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
+        tracee->emulated_ptrace_options = 0;
+        tracee->emulated_ptrace_stop_pending = false;
+        tracee->emulated_ptrace_queued_exit_stop = false;
         prepare_ptrace_cont(tracee, t->regs().arg4());
         tracee->set_emulated_ptracer(nullptr);
-        tracee->emulated_ptrace_options = 0;
         syscall_state.emulate_result(0);
       }
       break;
@@ -1683,8 +1714,9 @@ static void check_signals_while_exiting(RecordTask* t) {
  * tracee will be returned at a state in which it has entered (or
  * re-entered) SYS_exit/SYS_exit_group.
  */
-static void prepare_exit(RecordTask* t) {
+static void prepare_exit(RecordTask* t, int exit_code) {
   t->stable_exit = true;
+  t->exit_code = exit_code;
   t->session().scheduler().in_stable_exit(t);
 
   check_signals_while_exiting(t);
@@ -1737,8 +1769,14 @@ static void prepare_exit(RecordTask* t) {
   check_signals_while_exiting(t);
 
   if (t->emulated_ptrace_options & PTRACE_O_TRACEEXIT) {
+    // Ensure that do_ptrace_exit_stop can run later.
+    t->emulated_ptrace_queued_exit_stop = true;
     t->emulate_ptrace_stop((PTRACE_EVENT_EXIT << 16) | (SIGTRAP << 8) | 0x7f,
                            SIGNAL_DELIVERY_STOP);
+  } else {
+    // Only allow one stop at a time. After the PTRACE_EVENT_EXIT has been
+    // processed, PTRACE_CONT will call do_ptrace_exit_stop for us.
+    do_ptrace_exit_stop(t);
   }
 }
 
@@ -1818,21 +1856,48 @@ static void init_scratch_memory(RecordTask* t,
   t->set_regs(r);
 }
 
+static int ptrace_option_for_event(int ptrace_event) {
+  switch (ptrace_event) {
+    case PTRACE_EVENT_FORK:
+      return PTRACE_O_TRACEFORK;
+    case PTRACE_EVENT_CLONE:
+      return PTRACE_O_TRACECLONE;
+    case PTRACE_EVENT_VFORK:
+      return PTRACE_O_TRACEVFORK;
+    default:
+      FATAL() << "Unsupported ptrace event";
+      return 0;
+  }
+}
+
 template <typename Arch>
 static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   uintptr_t flags = 0;
   CloneParameters params;
   Registers r = t->regs();
   int original_syscall = r.original_syscallno();
+  int ptrace_event;
+  int termination_signal = SIGCHLD;
 
   if (is_clone_syscall(original_syscall, r.arch())) {
     params = extract_clone_parameters(t);
     flags = r.arg1();
     r.set_arg1(flags & ~uintptr_t(CLONE_VFORK | CLONE_UNTRACED));
     t->set_regs(r);
+    termination_signal = flags & 0xff;
+    if (flags & CLONE_VFORK) {
+      ptrace_event = PTRACE_EVENT_VFORK;
+    } else if (termination_signal == SIGCHLD) {
+      ptrace_event = PTRACE_EVENT_FORK;
+    } else {
+      ptrace_event = PTRACE_EVENT_CLONE;
+    }
   } else if (is_vfork_syscall(original_syscall, r.arch())) {
     r.set_original_syscallno(Arch::fork);
     t->set_regs(r);
+    ptrace_event = PTRACE_EVENT_VFORK;
+  } else {
+    ptrace_event = PTRACE_EVENT_FORK;
   }
 
   while (true) {
@@ -1890,6 +1955,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       syscall_state.syscall_entry_registers.original_syscallno());
   new_r.set_arg1(syscall_state.syscall_entry_registers.arg1());
   new_task->set_regs(new_r);
+  new_task->set_termination_signal(termination_signal);
 
   /* record child id here */
   if (is_clone_syscall(r.original_syscallno(), r.arch())) {
@@ -1915,6 +1981,18 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   }
 
   init_scratch_memory(new_task);
+
+  if (t->emulated_ptrace_options & ptrace_option_for_event(ptrace_event)) {
+    new_task->set_emulated_ptracer(t->emulated_ptracer);
+    new_task->emulated_ptrace_seized = t->emulated_ptrace_seized;
+    new_task->emulated_ptrace_options = t->emulated_ptrace_options;
+    t->emulated_ptrace_event_msg = new_task->rec_tid;
+    t->emulate_ptrace_stop((ptrace_event << 16) | (SIGTRAP << 8) | 0x7f,
+                           SIGNAL_DELIVERY_STOP);
+    // ptrace(2) man page says that SIGSTOP is used here, but it's really
+    // SIGTRAP (in 4.4.4-301.fc23.x86_64 anyway).
+    new_task->apply_group_stop(SIGTRAP);
+  }
 }
 
 template <typename Arch>
@@ -1997,13 +2075,13 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       if (t->task_group()->task_set().size() == 1) {
         t->task_group()->exit_code = (int)t->regs().arg1();
       }
-      prepare_exit(t);
+      prepare_exit(t, (int)t->regs().arg1());
       return ALLOW_SWITCH;
 
     case Arch::exit_group:
       t->task_group()->exit_code = (int)t->regs().arg1();
       if (t->task_group()->task_set().size() == 1) {
-        prepare_exit(t);
+        prepare_exit(t, (int)t->regs().arg1());
         return ALLOW_SWITCH;
       }
       return PREVENT_SWITCH;
@@ -3501,6 +3579,7 @@ static void rec_process_syscall_arch(RecordTask* t,
           // Leave the child in a waitable state
         } else {
           syscall_state.ptraced_tracee->emulated_ptrace_stop_code = 0;
+          syscall_state.ptraced_tracee->emulated_ptrace_stop_pending = false;
         }
       }
       break;

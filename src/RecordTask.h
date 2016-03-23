@@ -113,6 +113,11 @@ public:
   bool is_waiting_for(RecordTask* t);
 
   /**
+   * Call this to force a group stop for this task with signal 'sig',
+   * notifying ptracer if necessary.
+   */
+  void apply_group_stop(int sig);
+  /**
    * Call this after |sig| is delivered to this task.  Emulate
    * sighandler updates induced by the signal delivery.
    */
@@ -344,6 +349,16 @@ public:
   remote_ptr<void> robust_list() const { return robust_futex_list; }
   size_t robust_list_len() const { return robust_futex_list_len; }
 
+  /** Uses /proc so not trivially cheap. */
+  pid_t get_parent_pid();
+
+  /**
+   * Return true if this is a "clone child" per the wait(2) man page.
+   */
+  bool is_clone_child() { return termination_signal != SIGCHLD; }
+
+  void set_termination_signal(int sig) { termination_signal = sig; }
+
 private:
   ~RecordTask();
 
@@ -411,15 +426,20 @@ public:
   // Task for which we're emulating ptrace of this task, or null
   RecordTask* emulated_ptracer;
   std::set<RecordTask*> emulated_ptrace_tracees;
-  // if nonzero, code to deliver to ptracer when it waits
+  uintptr_t emulated_ptrace_event_msg;
+  // code to deliver to ptracer when it waits. Note that zero can be a valid
+  // code!
   int emulated_ptrace_stop_code;
   // Always zero while no ptracer is attached.
   int emulated_ptrace_options;
+  // true when a ptracer wait() can return |emulated_ptrace_stop_code|.
+  bool emulated_ptrace_stop_pending;
   // true if this task needs to send a SIGCHLD to its ptracer for its
   // emulated ptrace stop
   bool emulated_ptrace_SIGCHLD_pending;
   // tracer attached via PTRACE_SEIZE
   bool emulated_ptrace_seized;
+  bool emulated_ptrace_queued_exit_stop;
   WaitType in_wait_type;
   pid_t in_wait_pid;
 
@@ -491,6 +511,9 @@ public:
   std::deque<siginfo_t> stashed_signals;
   // Saved emulated-ptrace signals
   std::vector<siginfo_t> saved_ptrace_siginfos;
+  int exit_code;
+  // Signal delivered by the kernel when this task terminates, or zero
+  int termination_signal;
 };
 
 } // namespace rr
