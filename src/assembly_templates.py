@@ -133,18 +133,16 @@ templates = {
     ),
     'X64SyscallStubMonkeypatch': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
-        # We must adjust the stack pointer without modifying flags,
-        # at least on the return path.
-        RawBytes(0xc7, 0x84, 0x24, 0x00, 0xff, 0xff, 0xff), # movl $return_addr_lo,-256(%rsp)
+        RawBytes(0x48, 0x81, 0xec, 0x00, 0x01, 0x00, 0x00), # sub $256,%rsp
+        RawBytes(0xc7, 0x04, 0x24),                         # movl $return_addr_lo,(%rsp)
         Field('return_addr_lo', 4),
-        RawBytes(0xc7, 0x84, 0x24, 0x04, 0xff, 0xff, 0xff), # movl $return_addr_hi,-252(%rsp)
+        RawBytes(0xc7, 0x44, 0x24, 0x04),                   # movl $return_addr_hi,4(%rsp)
         Field('return_addr_hi', 4),
-        RawBytes(0x48, 0x89, 0xa4, 0x24, 0x08, 0xff, 0xff, 0xff), # mov %rsp,-248(%rsp)
-        RawBytes(0x48, 0x8d, 0xa4, 0x24, 0x00, 0xff, 0xff, 0xff), # lea -256(%rsp),%rsp
-        RawBytes(0xe8),         # call $trampoline_relative_addr
+        RawBytes(0x48, 0x89, 0x64, 0x24, 0x08),             # mov %rsp,8(%rsp)
+        RawBytes(0x48, 0x81, 0x44, 0x24, 0x08, 0x00, 0x01, 0x00, 0x00), # addq $256,8(%rsp)
+        RawBytes(0xe8),                                     # call $trampoline_relative_addr
         Field('trampoline_relative_addr', 4),
-        RawBytes(0x48, 0x8d, 0xa4, 0x24, 0x00, 0x01, 0x00, 0x00), # lea 256(%rsp),%rsp
-        RawBytes(0xff, 0xa4, 0x24, 0x00, 0xff, 0xff, 0xff), # jmp -256(%rsp)
+        RawBytes(0xc2, 0xf8, 0x00),                         # retq $248
     ),
 }
 

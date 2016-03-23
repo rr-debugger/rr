@@ -36,10 +36,7 @@ _syscall_hook_trampoline:
         /* Force the stack to be extended to at least _stack_pad_size.
            This forces any MAP_GROWSDOWN emulation to happen before we enter
            the syscallbuf, which avoids having to reason about system calls
-           being recorded while we're in the middle of syscallbuf processing.
-           This must be the first instruction of _syscall_hook_trampoline so
-           that we can treat this one instruction as "not part of the
-           syscallbuf library". */
+           being recorded while we're in the middle of syscallbuf processing. */
         movb $0,-_stack_pad_size(%esp)
 
         /* Build a |struct syscall_info| by pushing all the syscall
@@ -144,7 +141,10 @@ _stub_buffer:
            traces from inside the syscall hook code. */
         .cfi_startproc
         /* Save fake return address and old sp to the stack, for gdb to use
-           during stack unwinding. Addresses will be filled in by rr. */
+           during stack unwinding. Addresses will be filled in by rr.
+           _syscall_stack_adjust is greater than the implicit redzone,
+           avoiding overwriting below-ESP locals of leaf functions that call
+           syscalls. */
         movl   $0x12345678,-_syscall_stack_adjust(%esp)
         /* Backtrace here will be invalid! */
         mov    %esp,(-_syscall_stack_adjust+4)(%esp)
@@ -181,10 +181,7 @@ _syscall_hook_trampoline:
         /* Force the stack to be extended to at least _stack_pad_size.
            This forces any MAP_GROWSDOWN emulation to happen before we enter
            the syscallbuf, which avoids having to reason about system calls
-           being recorded while we're in the middle of syscallbuf processing.
-           This must be the first instruction of _syscall_hook_trampoline so
-           that we can treat this one instruction as "not part of the
-           syscallbuf library". */
+           being recorded while we're in the middle of syscallbuf processing. */
         movb $0,-_stack_pad_size(%rsp)
 
         /* Build a |struct syscall_info| on the stack by pushing the arguments
@@ -339,14 +336,23 @@ _stub_buffer:
            traces from inside the syscall hook code. */
         .cfi_startproc
         /* Save fake return address and old sp to the stack, for gdb to use
-           during stack unwinding. Addresses will be filled in by rr. */
-        movl   $0x12345678,-_syscall_stack_adjust(%rsp)
+           during stack unwinding. Addresses will be filled in by rr.
+           _syscall_stack_adjust is greater than the x86-64 redzone,
+           avoiding overwriting below-RSP locals of leaf functions that call
+           syscalls. */
+        /* Adjust %rsp first to ensure that x86-64 redzone is respected. If
+           we store directly to -_syscall_stack_adjust(%rsp) values can be
+           overwritten if a signal arrives and the kernel allocates a user
+           handler signal frame there. */
+        subq   $_syscall_stack_adjust,%rsp
         /* Backtrace here will be invalid! */
-        movl   $0x12345678,(-_syscall_stack_adjust+4)(%rsp)
+        movl   $0x12345678,(%rsp)
         /* Backtrace here will be invalid! */
-        mov    %rsp,(-_syscall_stack_adjust+8)(%rsp)
+        movl   $0x12345678,4(%rsp)
         /* Backtrace here will be invalid! */
-        lea    -_syscall_stack_adjust(%rsp),%rsp
+        movq   %rsp,8(%rsp)
+        addq   $_syscall_stack_adjust,8(%rsp)
+        /* Backtrace here will be invalid! */
         .cfi_rel_offset %rsp,8
         /* We won't be able to get complete stack traces inside the above
            sequence, but that's not important. What's important is that at this
@@ -357,13 +363,12 @@ _stub_buffer:
              patch site, and we've emitted CFI data to indicate that.
            This makes gdb treat the patch site as the caller of this stub,
            even though no call actually happened. */
-        call  _stub_buffer /* FAKE, filled in by rr */
+        call   _stub_buffer /* FAKE, filled in by rr */
+        /* Avoid modifying flags on the return path, though it's unclear
+           whether this is really necessary. */
         /* A backtrace here will be valid since for unwinding purposes we're
            basically in the same state as before the call. */
-        lea    _syscall_stack_adjust(%rsp),%rsp
-        /* Backtrace here will be invalid! */
-        /* Jump to the return address we saved on the stack */
-        jmp    *(-_syscall_stack_adjust)(%rsp)
+        ret    $_syscall_stack_adjust-8
         .cfi_endproc
         .endr
 _stub_buffer_end:

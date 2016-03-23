@@ -356,7 +356,7 @@ bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
                                         X64SyscallStubExtendedJump,
-                                        X64SyscallStubMonkeypatch, 43>(patcher,
+                                        X64SyscallStubMonkeypatch, 41>(patcher,
                                                                        t, hook);
 }
 
