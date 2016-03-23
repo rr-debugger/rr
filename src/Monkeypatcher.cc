@@ -283,8 +283,7 @@ static remote_ptr<uint8_t> allocate_extended_jump(
  * trampoline_call_end is the offset within the StubPatch where the call to
  * the trampoline ends.
  */
-template <typename JumpPatch, typename ExtendedJumpPatch, typename StubPatch,
-          uint32_t trampoline_call_end>
+template <typename JumpPatch, typename ExtendedJumpPatch, typename StubPatch>
 static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
                                            RecordTask* t,
                                            const syscall_patch_hook& hook) {
@@ -295,7 +294,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
     return false;
   }
   auto stub_patch_after_trampoline_call =
-      stub_patch_start + trampoline_call_end;
+      stub_patch_start + StubPatch::trampoline_relative_addr_end;
 
   uint8_t jump_patch[JumpPatch::size];
   // We're patching in a relative jump, so we need to compute the offset from
@@ -346,8 +345,8 @@ bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
                                         X86SyscallStubExtendedJump,
-                                        X86SyscallStubMonkeypatch, 30>(patcher,
-                                                                       t, hook);
+                                        X86SyscallStubMonkeypatch>(patcher, t,
+                                                                   hook);
 }
 
 template <>
@@ -356,8 +355,8 @@ bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
                                         X64SyscallStubExtendedJump,
-                                        X64SyscallStubMonkeypatch, 41>(patcher,
-                                                                       t, hook);
+                                        X64SyscallStubMonkeypatch>(patcher, t,
+                                                                   hook);
 }
 
 static bool patch_syscall_with_hook(Monkeypatcher& patcher, RecordTask* t,

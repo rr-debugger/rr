@@ -157,7 +157,7 @@ def generate_match_method(byte_array, template):
     args = ', ' + ', '.join("%s* %s" % (t, n) for t, n in zip(field_types, field_names)) \
            if fields else ''
     
-    s.write('static bool match(const uint8_t* buffer %s) {\n' % (args,))
+    s.write('  static bool match(const uint8_t* buffer %s) {\n' % (args,))
     offset = 0
     for chunk in template.chunks:
         if isinstance(chunk, Field):
@@ -180,7 +180,7 @@ def generate_substitute_method(byte_array, template):
     args = ', ' + ', '.join("%s %s" % (t, n) for t, n in zip(field_types, field_names)) \
            if fields else ''
     
-    s.write('static void substitute(uint8_t* buffer %s) {\n' % (args,))
+    s.write('  static void substitute(uint8_t* buffer %s) {\n' % (args,))
     offset = 0
     for chunk in template.chunks:
         if isinstance(chunk, Field):
@@ -194,9 +194,18 @@ def generate_substitute_method(byte_array, template):
     s.write('  }')
     return s.getvalue()
 
+def generate_field_end_methods(byte_array, template):
+    s = StringIO.StringIO()
+    offset = 0
+    for chunk in template.chunks:
+        offset += len(chunk)
+        if isinstance(chunk, Field):
+            s.write('  static const size_t %s_end = %d;\n' % (chunk.name, offset))
+    return s.getvalue()
+
 def generate_size_member(byte_array):
     s = StringIO.StringIO()
-    s.write('static const size_t size = sizeof(%s);' % byte_array)
+    s.write('  static const size_t size = sizeof(%s);' % byte_array)
     return s.getvalue()
 
 def generate(f):
@@ -212,14 +221,16 @@ def generate(f):
         byte_array = byte_array_name(name)
         f.write("""class %(class_name)s {
 public:
-  %(match_method)s
+%(match_method)s
 
-  %(substitute_method)s
+%(substitute_method)s
 
-  %(size_member)s
+%(field_end_methods)s
+%(size_member)s
 };
 """ % { 'class_name': name,
         'match_method': generate_match_method(byte_array, template),
         'substitute_method': generate_substitute_method(byte_array, template),
+        'field_end_methods': generate_field_end_methods(byte_array, template),
         'size_member': generate_size_member(byte_array), })
         f.write('\n\n')
