@@ -446,7 +446,7 @@ void Task::advance_syscall() {
     if (is_ptrace_seccomp_event()) {
       continue;
     }
-    ASSERT(this, ptrace_event() == 0);
+    ASSERT(this, !ptrace_event());
     if (!pending_sig()) {
       break;
     }

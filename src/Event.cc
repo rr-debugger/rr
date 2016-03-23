@@ -51,8 +51,9 @@ Event::Event(EncodedEvent e) {
       return;
 
     case EV_SYSCALL:
-      new (&Syscall()) SyscallEvent(e.data, e.arch());
-      Syscall().state = e.is_syscall_entry ? ENTERING_SYSCALL : EXITING_SYSCALL;
+      new (&Syscall()) SyscallEvent(e.data >> 2, e.arch());
+      Syscall().state = (e.data & 0x1) ? ENTERING_SYSCALL : EXITING_SYSCALL;
+      Syscall().failed_during_preparation = (e.data & 0x2) != 0;
       return;
 
     default:
@@ -133,10 +134,6 @@ EncodedEvent Event::encode() const {
   e.type = event_type;
   e.has_exec_info = has_exec_info();
   e.arch_ = arch();
-  // Arbitrarily designate events for which this isn't
-  // meaningful as being at "entry".  The events for which this
-  // is meaningful set it below.
-  e.is_syscall_entry = true;
 
   switch (event_type) {
     case EV_SEGV_RDTSC:
@@ -169,10 +166,17 @@ EncodedEvent Event::encode() const {
       // PROCESSING_SYSCALL is a transient state that we
       // should never attempt to record.
       assert(Syscall().state != PROCESSING_SYSCALL);
-      set_encoded_event_data(
-          &e, Syscall().is_restart ? syscall_number_for_restart_syscall(e.arch_)
-                                   : Syscall().number);
-      e.is_syscall_entry = Syscall().state == ENTERING_SYSCALL;
+      int data =
+          (Syscall().is_restart ? syscall_number_for_restart_syscall(e.arch_)
+                                : Syscall().number)
+          << 2;
+      if (Syscall().state == ENTERING_SYSCALL) {
+        data |= 0x1;
+      }
+      if (Syscall().failed_during_preparation) {
+        data |= 0x2;
+      }
+      set_encoded_event_data(&e, data);
       return e;
     }
 

@@ -79,7 +79,7 @@ exit = IrregularEmulatedSyscall(x86=1, x64=60)
 
 # Obsolete, glibc calls clone() instead.
 # But Google Breakpad uses it!
-fork = EmulatedSyscall(x86=2, x64=57)
+fork = IrregularEmulatedSyscall(x86=2, x64=57)
 
 #  ssize_t read(int fd, void *buf, size_t count);
 #

@@ -206,19 +206,32 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   return true;
 }
 
+static void note_entering_syscall(RecordTask* t) {
+  ASSERT(t, EV_SYSCALL == t->ev().type());
+  t->ev().Syscall().state = ENTERING_SYSCALL;
+  if (!t->ev().Syscall().is_restart) {
+    /* Save a copy of the arg registers so that we
+     * can use them to detect later restarted
+     * syscalls, if this syscall ends up being
+     * restarted.  We have to save the registers
+     * in this rather awkward place because we
+     * need the original registers; the restart
+     * (if it's not a SYS_restart_syscall restart)
+     * will use the original registers. */
+    t->ev().Syscall().regs = t->regs();
+  }
+}
+
 static void handle_seccomp_traced_syscall(
     RecordTask* t, RecordSession::StepState* step_state) {
   int syscallno = t->regs().original_syscallno();
   if (syscallno < 0) {
     // negative syscall numbers after a SECCOMP event
     // are treated as "skip this syscall". There will be one syscall event
-    // reported instead of two. So, record an enter-syscall event now
-    // and treat the other event as the exit.
+    // reported instead of two. So fake an enter-syscall event now.
     t->emulate_syscall_entry(t->regs());
     t->push_event(SyscallEvent(syscallno, t->arch()));
-    ASSERT(t, EV_SYSCALL == t->ev().type());
-    t->ev().Syscall().state = ENTERING_SYSCALL;
-    t->record_current_event();
+    note_entering_syscall(t);
     // Don't continue yet. At the next iteration of record_step, we'll
     // enter syscall_state_changed and that will trigger a continue to
     // the syscall exit.
@@ -239,9 +252,7 @@ static void handle_seccomp_trap(RecordTask* t,
 
   if (!t->is_in_untraced_syscall()) {
     t->push_event(SyscallEvent(syscallno, t->arch()));
-    ASSERT(t, EV_SYSCALL == t->ev().type());
-    t->ev().Syscall().state = ENTERING_SYSCALL;
-    t->record_current_event();
+    note_entering_syscall(t);
   }
 
   Registers r = t->regs();
@@ -295,9 +306,7 @@ static void handle_seccomp_errno(RecordTask* t,
 
   if (!t->is_in_untraced_syscall()) {
     t->push_event(SyscallEvent(syscallno, t->arch()));
-    ASSERT(t, EV_SYSCALL == t->ev().type());
-    t->ev().Syscall().state = ENTERING_SYSCALL;
-    t->record_current_event();
+    note_entering_syscall(t);
   }
 
   Registers r = t->regs();
@@ -309,12 +318,6 @@ static void handle_seccomp_errno(RecordTask* t,
   // recorded the syscall-entry we'll enter syscall_state_changed and
   // that will trigger a continue to the syscall exit.
   step_state->continue_type = RecordSession::DONT_CONTINUE;
-}
-
-static void set_own_namespace_tid(RecordTask* t) {
-  AutoRemoteSyscalls remote(t);
-  t->own_namespace_rec_tid =
-      remote.infallible_syscall(syscall_number_for_gettid(t->arch()));
 }
 
 bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
@@ -353,49 +356,6 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
       break;
     }
 
-    case PTRACE_EVENT_CLONE: {
-      remote_ptr<void> stack;
-      remote_ptr<int>* ptid_not_needed = nullptr;
-      remote_ptr<void> tls;
-      remote_ptr<int> ctid;
-      extract_clone_parameters(t, &stack, ptid_not_needed, &tls, &ctid);
-      // fork can never share these resources, only
-      // copy, so the flags here aren't meaningful for it.
-      unsigned long flags_arg =
-          is_clone_syscall(t->regs().original_syscallno(), t->arch())
-              ? t->regs().arg1()
-              : 0;
-
-      // Ideally we'd just use t->get_ptrace_eventmsg_pid() here, but
-      // kernels failed to translate that value from other pid namespaces to
-      // our pid namespace until June 2014:
-      // https://github.com/torvalds/linux/commit/4e52365f279564cef0ddd41db5237f0471381093
-      pid_t new_tid;
-      if (flags_arg & CLONE_THREAD) {
-        new_tid = t->find_newborn_thread();
-      } else {
-        new_tid = t->find_newborn_child_process();
-      }
-      RecordTask* new_task = static_cast<RecordTask*>(clone(
-          t, clone_flags_to_task_flags(flags_arg), stack, tls, ctid, new_tid));
-      rec_set_syscall_new_task(t, new_task);
-      set_own_namespace_tid(new_task);
-      // Skip past the ptrace event.
-      step_state->continue_type = CONTINUE_SYSCALL;
-      break;
-    }
-
-    case PTRACE_EVENT_FORK: {
-      pid_t new_tid = t->find_newborn_child_process();
-      RecordTask* new_task = static_cast<RecordTask*>(
-          clone(t, 0, nullptr, nullptr, nullptr, new_tid));
-      rec_set_syscall_new_task(t, new_task);
-      set_own_namespace_tid(new_task);
-      // Skip past the ptrace event.
-      step_state->continue_type = CONTINUE_SYSCALL;
-      break;
-    }
-
     case PTRACE_EVENT_EXEC:
       t->post_exec();
 
@@ -408,11 +368,6 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
       step_state->continue_type = DONT_CONTINUE;
       break;
 
-    // We map vfork() to fork() so we don't expect to see these:
-    case PTRACE_EVENT_VFORK:
-    case PTRACE_EVENT_VFORK_DONE:
-    // This is handled separately:
-    case PTRACE_EVENT_EXIT:
     default:
       ASSERT(t, false) << "Unhandled ptrace event " << ptrace_event_name(event)
                        << "(" << event << ")";
@@ -627,19 +582,9 @@ void RecordSession::syscall_state_changed(RecordTask* t,
     case ENTERING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
 
-      if (!t->ev().Syscall().is_restart) {
-        /* Save a copy of the arg registers so that we
-         * can use them to detect later restarted
-         * syscalls, if this syscall ends up being
-         * restarted.  We have to save the registers
-         * in this rather awkward place because we
-         * need the original registers; the restart
-         * (if it's not a SYS_restart_syscall restart)
-         * will use the original registers. */
-        t->ev().Syscall().regs = t->regs();
-      }
-
       last_task_switchable = rec_prepare_syscall(t);
+      t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF,
+                      &t->ev().Syscall().regs);
 
       debug_exec_state("after cont", t);
       t->ev().Syscall().state = PROCESSING_SYSCALL;
@@ -1271,10 +1216,8 @@ void RecordSession::runnable_state_changed(RecordTask* t,
 
         t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
       }
-      ASSERT(t, EV_SYSCALL == t->ev().type());
       check_perf_counters_working(t, step_result);
-      t->ev().Syscall().state = ENTERING_SYSCALL;
-      t->record_current_event();
+      note_entering_syscall(t);
       break;
 
     default:

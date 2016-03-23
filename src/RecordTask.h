@@ -321,7 +321,8 @@ public:
      */
     DONT_FLUSH_SYSCALLBUF
   };
-  void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF);
+  void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF,
+                    const Registers* registers = nullptr);
 
   /**
    * Return the pid of the newborn thread created by this task.

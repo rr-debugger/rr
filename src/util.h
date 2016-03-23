@@ -214,13 +214,16 @@ enum cpuid_requests {
 void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
            unsigned int* d);
 
+struct CloneParameters {
+  remote_ptr<void> stack;
+  remote_ptr<int> ptid;
+  remote_ptr<void> tls;
+  remote_ptr<int> ctid;
+};
 /**
  * Extract various clone(2) parameters out of the given Task's registers.
- * Each remote_ptr parameter may be nullptr.
  */
-void extract_clone_parameters(Task* t, remote_ptr<void>* stack,
-                              remote_ptr<int>* ptid, remote_ptr<void>* tls,
-                              remote_ptr<int>* ctid);
+CloneParameters extract_clone_parameters(Task* t);
 
 /**
  * Read the ELF CLASS from the given filename. If it's unable to be read,

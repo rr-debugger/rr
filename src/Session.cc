@@ -178,51 +178,49 @@ void Session::kill_all_tasks() {
       continue;
     }
 
-    if (!t->stable_exit) {
-      /*
-       * Prepare to forcibly kill this task by detaching it first. To ensure
-       * the task doesn't continue executing, we first set its ip() to an
-       * invalid value. We need to do this for all tasks in the Session before
-       * kill() is guaranteed to work properly. SIGKILL on ptrace-attached tasks
-       * seems to not work very well, and after sending SIGKILL we can't seem to
-       * reliably detach.
-       */
-      LOG(debug) << "safely detaching from " << t->tid << " ...";
-      // Detaching from the process lets it continue. We don't want a replaying
-      // process to perform syscalls or do anything else observable before we
-      // get around to SIGKILLing it. So we move its ip() to an address
-      // which will cause it to do an exit() syscall if it runs at all.
-      // We used to set this to an invalid address, but that causes a SIGSEGV
-      // to be raised which can cause core dumps after we detach from ptrace.
-      // Making the process undumpable with PR_SET_DUMPABLE turned out not to
-      // be practical because that has a side effect of triggering various
-      // security measures blocking inspection of the process (PTRACE_ATTACH,
-      // access to /proc/<pid>/fd).
-      // Disabling dumps via setrlimit(RLIMIT_CORE, 0) doesn't stop dumps
-      // if /proc/sys/kernel/core_pattern is set to pipe the core to a process
-      // (e.g. to systemd-coredump).
-      // We also tried setting ip() to an address that does an infinite loop,
-      // but that leaves a runaway process if something happens to kill rr
-      // after detaching but before we get a chance to SIGKILL the tracee.
-      Registers r = t->regs();
-      r.set_ip(t->vm()->privileged_traced_syscall_ip());
-      r.set_syscallno(syscall_number_for_exit(r.arch()));
-      r.set_arg1(0);
-      t->set_regs(r);
-      long result;
-      do {
-        // We have observed this failing with an ESRCH when the thread clearly
-        // still exists and is ptraced. Retrying the PTRACE_DETACH seems to
-        // work around it.
-        result = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-        ASSERT(t, result >= 0 || errno == ESRCH);
-      } while (result < 0);
-    }
+    /*
+     * Prepare to forcibly kill this task by detaching it first. To ensure
+     * the task doesn't continue executing, we first set its ip() to an
+     * invalid value. We need to do this for all tasks in the Session before
+     * kill() is guaranteed to work properly. SIGKILL on ptrace-attached tasks
+     * seems to not work very well, and after sending SIGKILL we can't seem to
+     * reliably detach.
+     */
+    LOG(debug) << "safely detaching from " << t->tid << " ...";
+    // Detaching from the process lets it continue. We don't want a replaying
+    // process to perform syscalls or do anything else observable before we
+    // get around to SIGKILLing it. So we move its ip() to an address
+    // which will cause it to do an exit() syscall if it runs at all.
+    // We used to set this to an invalid address, but that causes a SIGSEGV
+    // to be raised which can cause core dumps after we detach from ptrace.
+    // Making the process undumpable with PR_SET_DUMPABLE turned out not to
+    // be practical because that has a side effect of triggering various
+    // security measures blocking inspection of the process (PTRACE_ATTACH,
+    // access to /proc/<pid>/fd).
+    // Disabling dumps via setrlimit(RLIMIT_CORE, 0) doesn't stop dumps
+    // if /proc/sys/kernel/core_pattern is set to pipe the core to a process
+    // (e.g. to systemd-coredump).
+    // We also tried setting ip() to an address that does an infinite loop,
+    // but that leaves a runaway process if something happens to kill rr
+    // after detaching but before we get a chance to SIGKILL the tracee.
+    Registers r = t->regs();
+    r.set_ip(t->vm()->privileged_traced_syscall_ip());
+    r.set_syscallno(syscall_number_for_exit(r.arch()));
+    r.set_arg1(0);
+    t->set_regs(r);
+    long result;
+    do {
+      // We have observed this failing with an ESRCH when the thread clearly
+      // still exists and is ptraced. Retrying the PTRACE_DETACH seems to
+      // work around it.
+      result = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+      ASSERT(t, result >= 0 || errno == ESRCH);
+    } while (result < 0);
   }
 
   while (!task_map.empty()) {
     Task* t = task_map.rbegin()->second;
-    if (!t->stable_exit && !t->unstable) {
+    if (!t->unstable) {
       /**
        * Destroy the OS task backing this by sending it SIGKILL and
        * ensuring it was delivered.  After |kill()|, the only

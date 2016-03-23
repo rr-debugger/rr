@@ -1036,7 +1036,8 @@ static bool record_extra_regs(const Event& ev) {
   }
 }
 
-void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush) {
+void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
+                              const Registers* registers) {
   if (flush == FLUSH_SYSCALLBUF) {
     maybe_flush_syscallbuf();
   }
@@ -1047,9 +1048,10 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush) {
     if (PerfCounters::extra_perf_counters_enabled()) {
       extra_perf_values = hpc.read_extra();
     }
-    frame.set_exec_info(regs(), PerfCounters::extra_perf_counters_enabled()
-                                    ? &extra_perf_values
-                                    : nullptr,
+    frame.set_exec_info(registers ? *registers : regs(),
+                        PerfCounters::extra_perf_counters_enabled()
+                            ? &extra_perf_values
+                            : nullptr,
                         record_extra_regs(ev) ? &extra_regs() : nullptr);
   }
 

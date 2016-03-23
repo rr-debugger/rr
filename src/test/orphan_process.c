@@ -25,7 +25,7 @@ int main(void) {
     exit(0);
   }
 
-  /* In granchild */
+  /* In grandchild */
   /* Wait for parent to die */
   while (getppid() == dyingchild_pid) {
     sched_yield();

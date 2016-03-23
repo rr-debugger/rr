@@ -71,10 +71,11 @@ static string maybe_dump_written_string(ReplayTask* t) {
 /**
  * Proceeds until the next system call, which is being executed.
  */
-static void __ptrace_cont(ReplayTask* t, int expect_syscallno) {
+static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
+                          int expect_syscallno) {
   do {
     uintptr_t saved_r11 = t->arch() == x86_64 ? t->regs().r11() : 0;
-    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    t->resume_execution(resume_how, RESUME_WAIT, RESUME_NO_TICKS);
     if (t->arch() == x86_64) {
       // Restore previous R11 value. R11 gets reset to RFLAGS by the syscall,
       // and RFLAGS might have changed since we first entered the syscall
@@ -139,20 +140,6 @@ static void maybe_noop_restore_syscallbuf_scratch(ReplayTask* t) {
   }
 }
 
-/**
- * Return true iff the syscall represented by |frame| (either entry to
- * or exit from) failed.
- */
-static bool is_failed_syscall(ReplayTask* t, const TraceFrame& frame) {
-  TraceFrame next_frame;
-  if (ENTERING_SYSCALL == frame.event().Syscall().state) {
-    next_frame = t->trace_reader().peek_to(t->rec_tid, frame.event().type(),
-                                           EXITING_SYSCALL);
-    return next_frame.regs().syscall_failed();
-  }
-  return frame.regs().syscall_failed();
-}
-
 static TraceTaskEvent read_task_trace_event(ReplayTask* t,
                                             TraceTaskEvent::Type type) {
   TraceTaskEvent tte;
@@ -168,95 +155,81 @@ static TraceTaskEvent read_task_trace_event(ReplayTask* t,
   return tte;
 }
 
-template <typename Arch>
-static void process_clone(ReplayTask* t, const TraceFrame& trace_frame,
-                          ReplayTraceStep* step, unsigned long flags,
-                          int expect_syscallno) {
-  if (is_failed_syscall(t, trace_frame)) {
-    /* creation failed, emulate it */
+template <typename Arch> static void prepare_clone(ReplayTask* t) {
+  const TraceFrame& trace_frame = t->current_trace_frame();
+
+  if (trace_frame.event().Syscall().failed_during_preparation) {
+    /* creation failed, nothing special to do */
     return;
   }
 
-  step->action = TSTEP_RETIRE;
-
-  if (Arch::clone == t->regs().original_syscallno()) {
-    Registers r = t->regs();
+  Registers r = t->regs();
+  int sys = r.original_syscallno();
+  int flags = 0;
+  if (Arch::clone == sys) {
     // If we allow CLONE_UNTRACED then the child would escape from rr control
     // and we can't allow that.
     // Block CLONE_CHILD_CLEARTID because we'll emulate that ourselves.
-    // Filter CLONE_VFORK too
+    // Filter CLONE_VFORK too.
+    flags = r.arg1();
     r.set_arg1(flags & ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK));
-    t->set_regs(r);
+  } else if (Arch::vfork == sys) {
+    sys = Arch::fork;
   }
+  r.set_syscallno(sys);
+  r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+  t->set_regs(r);
+  Registers entry_regs = r;
 
-  {
-    // Prepare to restart syscall
-    Registers r = t->regs();
-    r.set_syscallno(t->regs().original_syscallno());
-    r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
-    t->set_regs(r);
-  }
-
-  // Enter syscall
-  __ptrace_cont(t, expect_syscallno);
-  // The syscall may be interrupted. Keep trying it until we get the
-  // ptrace event we're expecting.
-  __ptrace_cont(t, expect_syscallno);
+  // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK.
+  __ptrace_cont(t, RESUME_CONT, sys);
 
   while (!t->clone_syscall_is_complete()) {
-    if (t->regs().syscall_result_signed() == -EAGAIN) {
-      // clone() calls sometimes fail with -EAGAIN due to load issues or
-      // whatever. We need to retry the system call until it succeeds. Reset
-      // state to try the syscall again.
-      Registers r = t->regs();
-      r.set_syscallno(trace_frame.regs().original_syscallno());
-      r.set_ip(trace_frame.regs().ip() - syscall_instruction_length(t->arch()));
-      t->set_regs(r);
-      // reenter syscall
-      __ptrace_cont(t, expect_syscallno);
-      // continue to exit
-      __ptrace_cont(t, expect_syscallno);
-    } else {
-      __ptrace_cont(t, expect_syscallno);
-    }
+    // clone() calls sometimes fail with -EAGAIN due to load issues or
+    // whatever. We need to retry the system call until it succeeds. Reset
+    // state to try the syscall again.
+    ASSERT(t, t->regs().syscall_result_signed() == -EAGAIN);
+    t->set_regs(entry_regs);
+    __ptrace_cont(t, RESUME_CONT, sys);
   }
 
-  // Now continue again to get the syscall exit event.
-  __ptrace_cont(t, expect_syscallno);
+  // Get out of the syscall
+  __ptrace_cont(t, RESUME_SYSCALL, sys);
+
   ASSERT(t, !t->ptrace_event())
       << "Unexpected ptrace event while waiting for syscall exit; got "
       << ptrace_event_name(t->ptrace_event());
 
-  Registers r = t->regs();
+  r = t->regs();
   // Restore original_syscallno if vfork set it to fork
   r.set_original_syscallno(trace_frame.regs().original_syscallno());
   // Restore the saved flags, to hide the fact that we may have
   // masked out CLONE_UNTRACED/CLONE_CHILD_CLEARTID.
   r.set_arg1(trace_frame.regs().arg1());
-  r.set_flags(trace_frame.regs().flags());
+  // Pretend we're still in the system call
+  r.set_syscall_result(-ENOSYS);
   t->set_regs(r);
+  // Get out of the kernel
+  t->finish_emulated_syscall();
 
   // Dig the recorded tid out out of the trace. The tid value returned in
   // the recorded registers could be in a different pid namespace from rr's,
   // so we can't use it directly.
   TraceTaskEvent tte = read_task_trace_event(
-      t, Arch::clone == t->regs().original_syscallno() ? TraceTaskEvent::CLONE
-                                                       : TraceTaskEvent::FORK);
+      t, Arch::clone == sys ? TraceTaskEvent::CLONE : TraceTaskEvent::FORK);
   ASSERT(t, tte.parent_tid() == t->rec_tid);
   long rec_tid = tte.tid();
   pid_t new_tid = t->get_ptrace_eventmsg_pid();
 
-  remote_ptr<void> stack;
-  remote_ptr<void> tls;
-  remote_ptr<int> ctid;
+  CloneParameters params;
   if (Arch::clone == t->regs().original_syscallno()) {
-    remote_ptr<int>* ptid_not_needed = nullptr;
-    extract_clone_parameters(t, &stack, ptid_not_needed, &tls, &ctid);
+    params = extract_clone_parameters(t);
   }
-  ReplayTask* new_task = static_cast<ReplayTask*>(t->session().clone(
-      t, clone_flags_to_task_flags(flags), stack, tls, ctid, new_tid, rec_tid));
+  ReplayTask* new_task = static_cast<ReplayTask*>(
+      t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
+                         params.tls, params.ctid, new_tid, rec_tid));
 
-  if (Arch::clone == t->regs().original_syscallno()) {
+  if (Arch::clone == sys) {
     /* FIXME: what if registers are non-null and contain an
      * invalid address? */
     t->set_data_from_trace();
@@ -269,15 +242,15 @@ static void process_clone(ReplayTask* t, const TraceFrame& trace_frame,
     }
     new_task->set_data_from_trace();
     new_task->set_data_from_trace();
-
-    // Fix registers in new task
-    Registers new_r = new_task->regs();
-    new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
-    new_r.set_arg1(trace_frame.regs().arg1());
-    new_task->set_regs(new_r);
   }
 
-  if (!(CLONE_VM & flags)) {
+  // Fix registers in new task
+  Registers new_r = new_task->regs();
+  new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
+  new_r.set_arg1(trace_frame.regs().arg1());
+  new_task->emulate_syscall_entry(new_r);
+
+  if (!(CLONE_VM & r.arg1())) {
     // It's hard to imagine a scenario in which it would
     // be useful to inherit breakpoints (along with their
     // refcounts) across a non-VM-sharing clone, but for
@@ -285,9 +258,6 @@ static void process_clone(ReplayTask* t, const TraceFrame& trace_frame,
     new_task->vm()->remove_all_breakpoints();
     new_task->vm()->remove_all_watchpoints();
   }
-
-  t->set_return_value_from_trace();
-  t->validate_regs();
 
   TraceReader::MappedData data;
   KernelMapping km = t->trace_reader().read_mapped_region(&data);
@@ -430,10 +400,10 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
    */
   int expect_syscallno = syscall_number_for_execve(t->arch());
   /* Enter our execve syscall. */
-  __ptrace_cont(t, expect_syscallno);
+  __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
   ASSERT(t, !t->pending_sig()) << "Stub exec failed on entry";
   /* Proceed to the SIGTRAP. */
-  __ptrace_cont(t, expect_syscallno);
+  __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
   if (t->stop_sig() != (SIGTRAP | 0x80)) {
     if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
         trace_frame.regs().arch() == x86) {
@@ -838,9 +808,11 @@ static void process_init_buffers(ReplayTask* t, ReplayTraceStep* step) {
   t->validate_regs();
 }
 
+static int non_negative_syscall(int sys) { return sys < 0 ? INT32_MAX : sys; }
+
 template <typename Arch>
-static void rep_after_enter_syscall_arch(ReplayTask* t, int syscallno) {
-  switch (syscallno) {
+static void rep_after_enter_syscall_arch(ReplayTask* t) {
+  switch (non_negative_syscall(t->regs().original_syscallno())) {
     case Arch::exit:
       t->destroy_buffers();
       break;
@@ -851,11 +823,31 @@ static void rep_after_enter_syscall_arch(ReplayTask* t, int syscallno) {
       t->fd_table()->will_write(t, fd);
       break;
     }
+    case Arch::clone:
+    case Arch::vfork:
+    case Arch::fork:
+      // Create the new task now. It needs to exist before clone/fork/vfork
+      // returns so that a ptracer can touch it during PTRACE_EVENT handling.
+      prepare_clone<Arch>(t);
+      break;
+
+    case Arch::ptrace:
+      switch ((int)t->regs().arg1_signed()) {
+        case PTRACE_POKETEXT:
+        case PTRACE_POKEDATA:
+          ReplayTask* target =
+              t->session().find_task((pid_t)t->regs().arg2_signed());
+          if (target) {
+            target->apply_all_data_records_from_trace();
+          }
+          break;
+      }
+      break;
   }
 }
 
-void rep_after_enter_syscall(ReplayTask* t, int syscallno) {
-  RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, syscallno)
+void rep_after_enter_syscall(ReplayTask* t) {
+  RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t)
 }
 
 void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
@@ -923,36 +915,9 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
    * exist in this architecture.
    * All invalid/unsupported syscalls get the default emulation treatment.
    */
-  switch (sys < 0 ? INT32_MAX : sys) {
-    case Arch::clone:
-      return process_clone<Arch>(t, trace_frame, step, trace_regs.arg1(), sys);
-
-    case Arch::vfork: {
-      Registers r = t->regs();
-      r.set_original_syscallno(Arch::fork);
-      t->set_regs(r);
-      return process_clone<Arch>(t, trace_frame, step, 0, Arch::fork);
-    }
-
-    case Arch::fork:
-      return process_clone<Arch>(t, trace_frame, step, 0, sys);
-
+  switch (non_negative_syscall(sys)) {
     case Arch::execve:
       return process_execve(t, trace_frame, step);
-
-    case Arch::ptrace:
-      switch ((int)trace_regs.arg1_signed()) {
-        case PTRACE_POKETEXT:
-        case PTRACE_POKEDATA:
-          if (!trace_regs.syscall_failed()) {
-            ReplayTask* target =
-                t->session().find_task((pid_t)trace_regs.arg2_signed());
-            ASSERT(t, target);
-            target->set_data_from_trace();
-          }
-          break;
-      }
-      break;
 
     case Arch::brk:
       return process_brk(t);
@@ -1025,8 +990,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
       if (sys == Arch::mprotect) {
         t->vm()->fixup_mprotect_growsdown_parameters(t);
       }
-      __ptrace_cont(t, sys);
-      __ptrace_cont(t, sys);
+      __ptrace_cont(t, RESUME_SYSCALL, sys);
+      __ptrace_cont(t, RESUME_SYSCALL, sys);
       ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
       if (sys == Arch::mprotect) {
         Registers r2 = t->regs();

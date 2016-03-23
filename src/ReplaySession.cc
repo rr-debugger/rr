@@ -320,6 +320,7 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
     t->finish_emulated_syscall();
   }
 
+  rep_after_enter_syscall(t);
   return COMPLETE;
 }
 
@@ -1259,16 +1260,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     check_approaching_ticks_target(t, constraints, result.break_status);
   }
 
-  // Advance to next trace frame before doing rep_after_enter_syscall,
-  // so that FdTable notifications run with the same trace timestamp during
-  // replay as during recording
   advance_to_next_trace_frame();
-  if (TSTEP_ENTER_SYSCALL == current_step.action) {
-    // Advance to next trace frame before we call rep_after_enter_syscall,
-    // since that matches what we do during recording and it matters for
-    // reporting event numbers on stdio.
-    rep_after_enter_syscall(t, current_step.syscall.number);
-  }
   // Record that this step completed successfully.
   current_step.action = TSTEP_NONE;
 

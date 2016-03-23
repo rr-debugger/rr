@@ -423,10 +423,6 @@ struct TaskSyscallState {
 
   RecordTask* ptraced_tracee;
 
-  /** Task created by clone()/fork(). Set when we get a PTRACE_EVENT_CLONE/FORK.
-   */
-  RecordTask* new_task;
-
   /** Saved syscall-entry registers, used by code paths that modify the
    *  registers temporarily.
    */
@@ -467,7 +463,6 @@ struct TaskSyscallState {
   TaskSyscallState()
       : t(nullptr),
         ptraced_tracee(nullptr),
-        new_task(nullptr),
         expect_errno(0),
         should_emulate_result(false),
         preparation_done(false),
@@ -475,15 +470,6 @@ struct TaskSyscallState {
 };
 
 static const Property<TaskSyscallState, RecordTask> syscall_state_property;
-
-void rec_set_syscall_new_task(RecordTask* t, RecordTask* new_task) {
-  auto syscall_state = syscall_state_property.get(*t);
-  ASSERT(t, syscall_state) << "new task created outside of syscall?";
-  ASSERT(t, is_clone_syscall(t->regs().original_syscallno(), t->arch()) ||
-                is_fork_syscall(t->regs().original_syscallno(), t->arch()));
-  ASSERT(t, !syscall_state->new_task);
-  syscall_state->new_task = new_task;
-}
 
 template <typename Arch>
 static void set_remote_ptr_arch(RecordTask* t, remote_ptr<void> addr,
@@ -1388,7 +1374,8 @@ static bool verify_ptrace_options(RecordTask* t,
                                   TaskSyscallState& syscall_state) {
   // We "support" PTRACE_O_SYSGOOD because we don't support PTRACE_SYSCALL yet
   static const int supported_ptrace_options =
-      PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT | PTRACE_O_TRACEFORK | PTRACE_O_TRACECLONE;
+      PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT | PTRACE_O_TRACEFORK |
+      PTRACE_O_TRACECLONE;
 
   if ((int)t->regs().arg4() & ~supported_ptrace_options) {
     LOG(debug) << "Unsupported ptrace options " << HEX(t->regs().arg4());
@@ -1777,6 +1764,159 @@ static void prepare_mmap_register_params(RecordTask* t) {
   t->set_regs(r);
 }
 
+static void set_own_namespace_tid(RecordTask* t) {
+  AutoRemoteSyscalls remote(t);
+  t->own_namespace_rec_tid =
+      remote.infallible_syscall(syscall_number_for_gettid(t->arch()));
+}
+
+enum ScratchAddrType { FIXED_ADDRESS, DYNAMIC_ADDRESS };
+/* Pointer used when running RR in WINE. Memory below this address is
+   unmapped by WINE immediately after exec, so start the scratch buffer
+   here. */
+static const uintptr_t FIXED_SCRATCH_PTR = 0x68000000;
+
+static void init_scratch_memory(RecordTask* t,
+                                ScratchAddrType addr_type = DYNAMIC_ADDRESS) {
+  const int scratch_size = 512 * page_size();
+  size_t sz = scratch_size;
+  // The PROT_EXEC looks scary, and it is, but it's to prevent
+  // this region from being coalesced with another anonymous
+  // segment mapped just after this one.  If we named this
+  // segment, we could remove this hack.
+  int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
+  int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+  {
+    /* initialize the scratchpad for blocking system calls */
+    AutoRemoteSyscalls remote(t);
+
+    if (addr_type == DYNAMIC_ADDRESS) {
+      t->scratch_ptr = remote.infallible_mmap_syscall(remote_ptr<void>(), sz,
+                                                      prot, flags, -1, 0);
+    } else {
+      t->scratch_ptr =
+          remote.infallible_mmap_syscall(remote_ptr<void>(FIXED_SCRATCH_PTR),
+                                         sz, prot, flags | MAP_FIXED, -1, 0);
+    }
+    t->scratch_size = scratch_size;
+  }
+  // record this mmap for the replay
+  Registers r = t->regs();
+  uintptr_t saved_result = r.syscall_result();
+  r.set_syscall_result(t->scratch_ptr);
+  t->set_regs(r);
+
+  KernelMapping km =
+      t->vm()->map(t->scratch_ptr, sz, prot, flags, 0, string(),
+                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+  struct stat stat;
+  memset(&stat, 0, sizeof(stat));
+  auto record_in_trace = t->trace_writer().write_mapped_region(km, stat);
+  ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
+
+  r.set_syscall_result(saved_result);
+  t->set_regs(r);
+}
+
+template <typename Arch>
+static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
+  uintptr_t flags = 0;
+  CloneParameters params;
+  Registers r = t->regs();
+  int original_syscall = r.original_syscallno();
+
+  if (is_clone_syscall(original_syscall, r.arch())) {
+    params = extract_clone_parameters(t);
+    flags = r.arg1();
+    r.set_arg1(flags & ~uintptr_t(CLONE_VFORK | CLONE_UNTRACED));
+    t->set_regs(r);
+  } else if (is_vfork_syscall(original_syscall, r.arch())) {
+    r.set_original_syscallno(Arch::fork);
+    t->set_regs(r);
+  }
+
+  while (true) {
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    if (t->ptrace_event()) {
+      break;
+    }
+    ASSERT(t, !t->pending_sig());
+    ASSERT(t, t->regs().syscall_result_signed() < 0);
+    if (!t->regs().syscall_may_restart()) {
+      syscall_state.emulate_result(t->regs().syscall_result());
+      // clone failed and we're existing the syscall with an error. Reenter
+      // the syscall so that we're in the same state as the normal execution
+      // path.
+      t->ev().Syscall().failed_during_preparation = true;
+      r.set_syscallno(Arch::gettid);
+      r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+      t->set_regs(r);
+      t->advance_syscall();
+      r.set_ip(t->regs().ip());
+      r.set_original_syscallno(original_syscall);
+      t->set_regs(r);
+      return;
+    }
+    // Reenter the syscall. If we try to return an ERESTART* error using the
+    // code path above, our set_syscallno(SYS_gettid) fails to take effect and
+    // we actually do the clone, and things get horribly confused.
+    r.set_syscallno(r.original_syscallno());
+    r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
+    t->set_regs(r);
+    t->advance_syscall();
+  }
+
+  ASSERT(t, t->ptrace_event() == PTRACE_EVENT_CLONE ||
+                t->ptrace_event() == PTRACE_EVENT_FORK);
+
+  // Ideally we'd just use t->get_ptrace_eventmsg_pid() here, but
+  // kernels failed to translate that value from other pid namespaces to
+  // our pid namespace until June 2014:
+  // https://github.com/torvalds/linux/commit/4e52365f279564cef0ddd41db5237f0471381093
+  pid_t new_tid;
+  if (flags & CLONE_THREAD) {
+    new_tid = t->find_newborn_thread();
+  } else {
+    new_tid = t->find_newborn_child_process();
+  }
+  RecordTask* new_task = static_cast<RecordTask*>(
+      t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
+                         params.tls, params.ctid, new_tid));
+  set_own_namespace_tid(new_task);
+
+  // Restore modified registers in cloned task
+  Registers new_r = new_task->regs();
+  new_r.set_original_syscallno(
+      syscall_state.syscall_entry_registers.original_syscallno());
+  new_r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+  new_task->set_regs(new_r);
+
+  /* record child id here */
+  if (is_clone_syscall(r.original_syscallno(), r.arch())) {
+    CloneParameters child_params = extract_clone_parameters(new_task);
+    t->record_remote_even_if_null(params.ptid);
+
+    if (Arch::clone_tls_type == Arch::UserDescPointer) {
+      t->record_remote_even_if_null(
+          params.tls.cast<typename Arch::user_desc>());
+      new_task->record_remote_even_if_null(
+          child_params.tls.cast<typename Arch::user_desc>());
+    } else {
+      assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
+    }
+    new_task->record_remote_even_if_null(child_params.ptid);
+    new_task->record_remote_even_if_null(child_params.ctid);
+
+    t->session().trace_writer().write_task_event(
+        TraceTaskEvent(new_task->tid, t->tid, flags));
+  } else {
+    t->session().trace_writer().write_task_event(
+        TraceTaskEvent(new_task->tid, t->tid));
+  }
+
+  init_scratch_memory(new_task);
+}
+
 template <typename Arch>
 static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state) {
@@ -1847,25 +1987,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
-    case Arch::clone: {
-      unsigned long flags = t->regs().arg1();
-      if (flags & CLONE_VFORK) {
-        Registers r = t->regs();
-        r.set_arg1(flags & ~CLONE_VFORK);
-        t->set_regs(r);
-      }
-      if (flags & CLONE_UNTRACED) {
-        Registers r = t->regs();
-        // We can't let tracees clone untraced tasks,
-        // because they can create nondeterminism that
-        // we can't replay.  So unset the UNTRACED bit
-        // and then cover our tracks on exit from
-        // clone().
-        r.set_arg1(flags & ~CLONE_UNTRACED);
-        t->set_regs(r);
-      }
-      return PREVENT_SWITCH;
-    }
+    case Arch::fork:
+    case Arch::vfork:
+    case Arch::clone:
+      prepare_clone<Arch>(t, syscall_state);
+      return ALLOW_SWITCH;
 
     case Arch::exit:
       if (t->task_group()->task_set().size() == 1) {
@@ -2638,13 +2764,6 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::ptrace:
       return prepare_ptrace<Arch>(t, syscall_state);
 
-    case Arch::vfork: {
-      Registers r = t->regs();
-      r.set_original_syscallno(Arch::fork);
-      t->set_regs(r);
-      return PREVENT_SWITCH;
-    }
-
     case Arch::mincore:
       syscall_state.reg_parameter(3, (t->regs().arg2() + page_size() - 1) /
                                          page_size());
@@ -2824,54 +2943,6 @@ void rec_prepare_restart_syscall(RecordTask* t) {
   auto& syscall_state = *syscall_state_property.get(*t);
   rec_prepare_restart_syscall_internal(t, syscall_state);
   syscall_state_property.remove(*t);
-}
-
-enum ScratchAddrType { FIXED_ADDRESS, DYNAMIC_ADDRESS };
-/* Pointer used when running RR in WINE. Memory below this address is
-   unmapped by WINE immediately after exec, so start the scratch buffer
-   here. */
-static const uintptr_t FIXED_SCRATCH_PTR = 0x68000000;
-
-static void init_scratch_memory(RecordTask* t,
-                                ScratchAddrType addr_type = DYNAMIC_ADDRESS) {
-  const int scratch_size = 512 * page_size();
-  size_t sz = scratch_size;
-  // The PROT_EXEC looks scary, and it is, but it's to prevent
-  // this region from being coalesced with another anonymous
-  // segment mapped just after this one.  If we named this
-  // segment, we could remove this hack.
-  int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
-  int flags = MAP_PRIVATE | MAP_ANONYMOUS;
-  {
-    /* initialize the scratchpad for blocking system calls */
-    AutoRemoteSyscalls remote(t);
-
-    if (addr_type == DYNAMIC_ADDRESS) {
-      t->scratch_ptr = remote.infallible_mmap_syscall(remote_ptr<void>(), sz,
-                                                      prot, flags, -1, 0);
-    } else {
-      t->scratch_ptr =
-          remote.infallible_mmap_syscall(remote_ptr<void>(FIXED_SCRATCH_PTR),
-                                         sz, prot, flags | MAP_FIXED, -1, 0);
-    }
-    t->scratch_size = scratch_size;
-  }
-  // record this mmap for the replay
-  Registers r = t->regs();
-  uintptr_t saved_result = r.syscall_result();
-  r.set_syscall_result(t->scratch_ptr);
-  t->set_regs(r);
-
-  KernelMapping km =
-      t->vm()->map(t->scratch_ptr, sz, prot, flags, 0, string(),
-                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
-  struct stat stat;
-  memset(&stat, 0, sizeof(stat));
-  auto record_in_trace = t->trace_writer().write_mapped_region(km, stat);
-  ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
-
-  r.set_syscall_result(saved_result);
-  t->set_regs(r);
 }
 
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
@@ -3091,96 +3162,6 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
 }
 
 template <typename Arch>
-static void process_fork(RecordTask* t, TaskSyscallState& syscall_state) {
-  if (t->regs().syscall_result_signed() < 0) {
-    // fork failed.
-    return;
-  }
-
-  // Note that the tid returned in the syscall result may be in a pid
-  // namespace that's different from ours, so we should avoid using it
-  // directly. Instead the new task will have been stashed in syscall_state.
-  RecordTask* new_task = syscall_state.new_task;
-  ASSERT(t, new_task) << "new_task not found";
-  t->session().trace_writer().write_task_event(
-      TraceTaskEvent(new_task->tid, t->tid));
-
-  init_scratch_memory(new_task);
-}
-
-template <typename Arch>
-static void process_clone(RecordTask* t, TaskSyscallState& syscall_state) {
-  uintptr_t flags = syscall_state.syscall_entry_registers.arg1();
-  // Restore modified registers in cloning task
-  Registers r = t->regs();
-  r.set_arg1(flags);
-  // On a 3.19.0-39-generic #44-Ubuntu kernel we have observed clone()
-  // clearing the parity flag internally.
-  r.set_flags(syscall_state.syscall_entry_registers.flags());
-  t->set_regs(r);
-
-  if (t->regs().syscall_result_signed() < 0) {
-    // clone failed.
-    return;
-  }
-
-  // Note that the tid returned in the syscall result may be in a pid
-  // namespace that's different from ours, so we should avoid using it
-  // directly. Instead the new task will have been stashed in syscall_state.
-  RecordTask* new_task = syscall_state.new_task;
-  ASSERT(t, new_task) << "new_task not found";
-
-  // Restore modified registers in cloned task
-  Registers new_r = new_task->regs();
-  new_r.set_arg1(flags);
-  new_task->set_regs(new_r);
-
-  new_task->push_event(SyscallEvent(t->ev().Syscall().number, t->arch()));
-
-  /* record child id here */
-  remote_ptr<void>* stack_not_needed = nullptr;
-  remote_ptr<typename Arch::pid_t> parent_tid_in_parent, parent_tid_in_child;
-  remote_ptr<void> tls_in_parent, tls_in_child;
-  remote_ptr<typename Arch::pid_t> child_tid_in_parent, child_tid_in_child;
-  extract_clone_parameters(t, stack_not_needed, &parent_tid_in_parent,
-                           &tls_in_parent, &child_tid_in_parent);
-  extract_clone_parameters(new_task, stack_not_needed, &parent_tid_in_child,
-                           &tls_in_child, &child_tid_in_child);
-  // If these flags aren't set, the corresponding clone parameters may be
-  // invalid pointers, so make sure they're ignored.
-  if (!(flags & CLONE_PARENT_SETTID)) {
-    parent_tid_in_parent = nullptr;
-    parent_tid_in_child = nullptr;
-  }
-  if (!(flags & CLONE_CHILD_SETTID)) {
-    child_tid_in_child = nullptr;
-  }
-  if (!(flags & CLONE_SETTLS)) {
-    tls_in_parent = nullptr;
-    tls_in_child = nullptr;
-  }
-  t->record_remote_even_if_null(parent_tid_in_parent);
-
-  if (Arch::clone_tls_type == Arch::UserDescPointer) {
-    t->record_remote_even_if_null(
-        tls_in_parent.cast<typename Arch::user_desc>());
-    new_task->record_remote_even_if_null(
-        tls_in_child.cast<typename Arch::user_desc>());
-  } else {
-    assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
-  }
-  new_task->record_remote_even_if_null(parent_tid_in_child);
-  new_task->record_remote_even_if_null(child_tid_in_child);
-
-  new_task->pop_syscall();
-
-  t->session().trace_writer().write_task_event(
-      TraceTaskEvent(new_task->tid, t->tid, flags));
-
-  init_scratch_memory(new_task);
-}
-
-template <typename Arch>
 static string extra_expected_errno_info(RecordTask* t,
                                         TaskSyscallState& syscall_state) {
   stringstream ss;
@@ -3302,22 +3283,20 @@ static void rec_process_syscall_arch(RecordTask* t,
   // syscall completes --- and that our TaskSyscallState infrastructure can't
   // handle.
   switch (syscallno) {
-    case Arch::clone: {
-      process_clone<Arch>(t, syscall_state);
-      break;
-    }
-
-    case Arch::vfork: {
-      Registers r = t->regs();
-      r.set_original_syscallno(Arch::vfork);
-      t->set_regs(r);
-      process_fork<Arch>(t, syscall_state);
-      break;
-    }
-
     case Arch::fork:
-      process_fork<Arch>(t, syscall_state);
+    case Arch::vfork:
+    case Arch::clone: {
+      Registers r = t->regs();
+      // Restore possibly-modified registers
+      r.set_original_syscallno(
+          syscall_state.syscall_entry_registers.original_syscallno());
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      // On a 3.19.0-39-generic #44-Ubuntu kernel we have observed clone()
+      // clearing the parity flag internally.
+      r.set_flags(syscall_state.syscall_entry_registers.flags());
+      t->set_regs(r);
       break;
+    }
 
     case Arch::execve:
       process_execve(t, syscall_state);

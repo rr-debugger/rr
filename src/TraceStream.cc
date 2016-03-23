@@ -27,7 +27,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 41
+#define TRACE_VERSION 42
 
 struct SubstreamData {
   const char* name;
@@ -554,26 +554,6 @@ TraceFrame TraceReader::peek_frame() {
   }
   events.restore_state();
   global_time = saved_time;
-  return frame;
-}
-
-TraceFrame TraceReader::peek_to(pid_t pid, EventType type, SyscallState state) {
-  auto& events = reader(EVENTS);
-  TraceFrame frame;
-  events.save_state();
-  auto saved_time = global_time;
-  while (good() && !at_end()) {
-    frame = read_frame();
-    if (frame.tid() == pid && frame.event().type() == type &&
-        (!frame.event().is_syscall_event() ||
-         frame.event().Syscall().state == state)) {
-      events.restore_state();
-      global_time = saved_time;
-      return frame;
-    }
-  }
-  FATAL() << "Unable to find requested frame in stream";
-  // Unreachable
   return frame;
 }
 

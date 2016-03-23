@@ -90,10 +90,9 @@ enum HasExecInfo { NO_EXEC_INFO, HAS_EXEC_INFO };
 union EncodedEvent {
   struct {
     EventType type : 5;
-    bool is_syscall_entry : 1;
     HasExecInfo has_exec_info : 1;
     SupportedArch arch_ : 1;
-    int data : 24;
+    int data : 25;
   };
   int encoded;
 
@@ -236,7 +235,8 @@ struct SyscallEvent : public BaseEvent {
         desched_rec(nullptr),
         state(NO_SYSCALL),
         number(syscallno),
-        is_restart(false) {}
+        is_restart(false),
+        failed_during_preparation(false) {}
   // The original (before scratch is set up) arguments to the
   // syscall passed by the tracee.  These are used to detect
   // restarted syscalls.
@@ -248,9 +248,10 @@ struct SyscallEvent : public BaseEvent {
   SyscallState state;
   // Syscall number.
   int number;
-  // Nonzero when this syscall was restarted after a signal
-  // interruption.
+  // True when this syscall was restarted after a signal interruption.
   bool is_restart;
+  // True when this syscall failed during preparation.
+  bool failed_during_preparation;
 };
 
 struct syscall_interruption_t {

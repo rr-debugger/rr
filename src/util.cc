@@ -576,49 +576,37 @@ void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
 }
 
 template <typename Arch>
-static void extract_clone_parameters_arch(const Registers& regs,
-                                          remote_ptr<void>* stack,
-                                          remote_ptr<int>* parent_tid,
-                                          remote_ptr<void>* tls,
-                                          remote_ptr<int>* child_tid) {
+static CloneParameters extract_clone_parameters_arch(const Registers& regs) {
+  CloneParameters result;
+  result.stack = regs.arg2();
+  result.ptid = regs.arg3();
   switch (Arch::clone_parameter_ordering) {
     case Arch::FlagsStackParentTLSChild:
-      if (stack) {
-        *stack = regs.arg2();
-      }
-      if (parent_tid) {
-        *parent_tid = regs.arg3();
-      }
-      if (tls) {
-        *tls = regs.arg4();
-      }
-      if (child_tid) {
-        *child_tid = regs.arg5();
-      }
+      result.tls = regs.arg4();
+      result.ctid = regs.arg5();
       break;
     case Arch::FlagsStackParentChildTLS:
-      if (stack) {
-        *stack = regs.arg2();
-      }
-      if (parent_tid) {
-        *parent_tid = regs.arg3();
-      }
-      if (child_tid) {
-        *child_tid = regs.arg4();
-      }
-      if (tls) {
-        *tls = regs.arg5();
-      }
+      result.tls = regs.arg5();
+      result.ctid = regs.arg4();
       break;
   }
+  int flags = (int)regs.arg1();
+  // If these flags aren't set, the corresponding clone parameters may be
+  // invalid pointers, so make sure they're ignored.
+  if (!(flags & CLONE_PARENT_SETTID)) {
+    result.ptid = nullptr;
+  }
+  if (!(flags & (CLONE_CHILD_SETTID | CLONE_CHILD_CLEARTID))) {
+    result.ctid = nullptr;
+  }
+  if (!(flags & CLONE_SETTLS)) {
+    result.tls = nullptr;
+  }
+  return result;
 }
 
-void extract_clone_parameters(Task* t, remote_ptr<void>* stack,
-                              remote_ptr<int>* parent_tid,
-                              remote_ptr<void>* tls,
-                              remote_ptr<int>* child_tid) {
-  RR_ARCH_FUNCTION(extract_clone_parameters_arch, t->arch(), t->regs(), stack,
-                   parent_tid, tls, child_tid);
+CloneParameters extract_clone_parameters(Task* t) {
+  RR_ARCH_FUNCTION(extract_clone_parameters_arch, t->arch(), t->regs());
 }
 
 int read_elf_class(const string& filename) {
