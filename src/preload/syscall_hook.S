@@ -140,16 +140,17 @@ _stub_buffer:
            can build the correct CFI unwinding info, so gdb gives good stack
            traces from inside the syscall hook code. */
         .cfi_startproc
-        /* Save fake return address and old sp to the stack, for gdb to use
-           during stack unwinding. Addresses will be filled in by rr.
-           _syscall_stack_adjust is greater than the implicit redzone,
-           avoiding overwriting below-ESP locals of leaf functions that call
-           syscalls. */
-        movl   $0x12345678,-_syscall_stack_adjust(%esp)
+        /* Adjust %rsp first to ensure that x86-64 redzone is respected. If
+           we store directly to -_syscall_stack_adjust(%rsp) values can be
+           overwritten if a signal arrives and the kernel allocates a user
+           handler signal frame there. */
+        sub    $_syscall_stack_adjust,%esp
         /* Backtrace here will be invalid! */
-        mov    %esp,(-_syscall_stack_adjust+4)(%esp)
+        movl   $0x12345678,(%esp)
         /* Backtrace here will be invalid! */
-        lea    -_syscall_stack_adjust(%esp),%esp
+        mov    %esp,4(%esp)
+        /* Backtrace here will be invalid! */
+        addq   $_syscall_stack_adjust,4(%esp)
         .cfi_rel_offset %esp,4
         /* We won't be able to get complete stack traces inside the above
            sequence, but that's not important. What's important is that at this
@@ -161,12 +162,11 @@ _stub_buffer:
            This makes gdb treat the patch site as the caller of this stub,
            even though no call actually happened. */
         call  _stub_buffer /* FAKE, filled in by rr */
+        /* Avoid modifying flags on the return path, though it's unclear
+           whether this is really necessary. */
         /* A backtrace here will be valid since for unwinding purposes we're
            basically in the same state as before the call. */
-        lea    _syscall_stack_adjust(%esp),%esp
-        /* Backtrace here will be invalid! */
-        /* Jump to the return address we saved on the stack */
-        jmp    *(-_syscall_stack_adjust)(%esp)
+        ret    $_syscall_stack_adjust-4
         .cfi_endproc
         .endr
 _stub_buffer_end:
@@ -344,13 +344,14 @@ _stub_buffer:
            we store directly to -_syscall_stack_adjust(%rsp) values can be
            overwritten if a signal arrives and the kernel allocates a user
            handler signal frame there. */
-        subq   $_syscall_stack_adjust,%rsp
+        sub    $_syscall_stack_adjust,%rsp
         /* Backtrace here will be invalid! */
         movl   $0x12345678,(%rsp)
         /* Backtrace here will be invalid! */
         movl   $0x12345678,4(%rsp)
         /* Backtrace here will be invalid! */
-        movq   %rsp,8(%rsp)
+        mov    %rsp,8(%rsp)
+        /* Backtrace here will be invalid! */
         addq   $_syscall_stack_adjust,8(%rsp)
         /* Backtrace here will be invalid! */
         .cfi_rel_offset %rsp,8
