@@ -344,6 +344,11 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 }
 
 bool should_checksum(const TraceFrame& f) {
+  if (f.event().type() == EV_EXIT || f.event().type() == EV_UNSTABLE_EXIT) {
+    // Task is dead, or at least detached, and we can't read its memory safely.
+    return false;
+  }
+
   int checksum = Flags::get().checksum;
   bool is_syscall_exit = EV_SYSCALL == f.event().type() &&
                          EXITING_SYSCALL == f.event().Syscall().state;
