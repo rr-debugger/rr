@@ -1084,9 +1084,11 @@ static void fixup_syscall_registers(Registers& registers) {
     // restores the original flags.
     // For untraced syscalls, the untraced-syscall entry point code (see
     // write_rr_page) does this itself.
-    // We tried just clearing %r11, but that seemed to cause hangs in
-    // Ubuntu/Debian kernels for some unknown reason.
-    registers.set_r11(registers.r11() & ~X86_TF_FLAG);
+    // We tried just clearing %r11, but that caused hangs in
+    // Ubuntu/Debian kernels.
+    // Making this match the flags makes this operation idempotent, which is
+    // helpful.
+    registers.set_r11(0x246);
     // x86-64 'syscall' instruction copies return address to RCX on syscall
     // entry. rr-related kernel activity normally sets RCX to -1 at some point
     // during syscall execution, but apparently in some (unknown) situations
@@ -1119,9 +1121,6 @@ static void fixup_syscall_registers(Registers& registers) {
 
 void Task::emulate_syscall_entry(const Registers& regs) {
   Registers r = regs;
-  if (r.arch() == x86_64) {
-    r.set_r11(r.flags());
-  }
   fixup_syscall_registers(r);
   set_regs(r);
 }
