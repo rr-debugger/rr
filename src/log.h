@@ -28,7 +28,8 @@ void set_all_logging(LogLevel level);
  */
 void set_logging(const char* name, LogLevel level);
 
-void operator<<(std::ostream& stream, const std::vector<uint8_t>& bytes);
+std::ostream& operator<<(std::ostream& stream,
+                         const std::vector<uint8_t>& bytes);
 
 struct NewlineTerminatingOstream {
   NewlineTerminatingOstream(LogLevel level, const char* file, int line,

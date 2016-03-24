@@ -243,6 +243,7 @@ add_executable(rr
   src/TraceFrame.cc
   src/TraceStream.cc
   src/util.cc
+  src/WaitStatus.cc
 )
 add_dependencies(rr Generated Pages)
 

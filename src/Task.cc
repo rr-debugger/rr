@@ -42,6 +42,7 @@
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
 #include "util.h"
+#include "WaitStatus.h"
 
 using namespace std;
 
@@ -1026,7 +1027,7 @@ void Task::wait(double interrupt_after_elapsed) {
   }
 
   LOG(debug) << "  waitpid(" << tid << ") returns " << ret << "; status "
-             << HEX(status);
+             << WaitStatus(status);
   ASSERT(this, tid == ret) << "waitpid(" << tid << ") failed with " << ret;
 
   // If some other ptrace-stop happened to race with our
@@ -1374,9 +1375,7 @@ int Task::pending_sig_from_status(int status) {
   }
 }
 
-int Task::stop_sig_from_status(int status) {
-  return WSTOPSIG(status);
-}
+int Task::stop_sig_from_status(int status) { return WSTOPSIG(status); }
 
 template <typename Arch>
 static void set_thread_area_from_clone_arch(Task* t, remote_ptr<void> tls) {

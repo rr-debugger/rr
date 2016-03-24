@@ -294,13 +294,14 @@ EmergencyDebugOstream::~EmergencyDebugOstream() {
   }
 }
 
-void operator<<(ostream& stream, const vector<uint8_t>& bytes) {
+ostream& operator<<(ostream& stream, const vector<uint8_t>& bytes) {
   for (uint32_t i = 0; i < bytes.size(); ++i) {
     if (i > 0) {
       stream << ' ';
     }
     stream << HEX(bytes[i]);
   }
+  return stream;
 }
 
 } // namespace rr

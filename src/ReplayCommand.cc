@@ -473,10 +473,11 @@ int ReplayCommand::run(std::vector<std::string>& args) {
 
   if (getenv("RUNNING_UNDER_RR")) {
     fprintf(stderr, "rr: rr pid %d running under parent %d. Good luck.\n",
-        getpid(), getppid());
+            getpid(), getppid());
     if (trace_dir.empty()) {
-      fprintf(stderr, "rr: No trace-dir supplied. You'll try to replay the "
-          "recording of this rr and have a bad time. Bailing out.\n");
+      fprintf(stderr,
+              "rr: No trace-dir supplied. You'll try to replay the "
+              "recording of this rr and have a bad time. Bailing out.\n");
       return 3;
     }
   }
