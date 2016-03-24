@@ -489,7 +489,6 @@ public:
   static int ptrace_event_from_status(int status) {
     return (0xFF0000 & status) >> 16;
   }
-  static bool stopped_from_status(int status) { return WIFSTOPPED(status); }
   static int stop_sig_from_status(int status);
 
   /** Return the task group this belongs to. */
