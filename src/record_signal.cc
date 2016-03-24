@@ -294,14 +294,14 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
     disarm_desched_event(t);
 
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
-    int sig = t->stop_sig();
 
-    if (STOPSIG_SYSCALL == sig) {
+    if (t->status().is_syscall()) {
       if (t->is_arm_desched_event_syscall()) {
         continue;
       }
       break;
     }
+
     // Completely ignore spurious desched signals and
     // signals that aren't going to be delivered to the
     // tracee.
@@ -316,6 +316,8 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
     // TODO: it's theoretically possible for this to
     // happen an unbounded number of consecutive times
     // and the tracee never switched out.
+    int sig = t->status().stop_sig();
+    ASSERT(t, sig);
     if (SYSCALLBUF_DESCHED_SIGNAL == sig ||
         PerfCounters::TIME_SLICE_SIGNAL == sig || t->is_sig_ignored(sig)) {
       LOG(debug) << "  dropping ignored " << signal_name(sig);
