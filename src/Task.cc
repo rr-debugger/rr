@@ -707,12 +707,13 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
      * a chance to SIGKILL our tracee and advance it to the PTRACE_EXIT_EVENT,
      * or just letting the tracee be scheduled to process its pending SIGKILL.
      */
-    int status;
-    wait_ret = waitpid(tid, &status, WNOHANG | __WALL | WSTOPPED);
+    int raw_status;
+    wait_ret = waitpid(tid, &raw_status, WNOHANG | __WALL | WSTOPPED);
     ASSERT(this, 0 <= wait_ret) << "waitpid(" << tid << ", NOHANG) failed with "
                                 << wait_ret;
+    WaitStatus status(raw_status);
     if (wait_ret == tid) {
-      ASSERT(this, ptrace_event_from_status(status) == PTRACE_EVENT_EXIT);
+      ASSERT(this, status.ptrace_event() == PTRACE_EVENT_EXIT);
     } else {
       ASSERT(this, 0 == wait_ret) << "waitpid(" << tid
                                   << ", NOHANG) failed with " << wait_ret;
