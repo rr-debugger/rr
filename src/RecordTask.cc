@@ -734,7 +734,7 @@ void RecordTask::update_sigmask(const Registers& regs) {
 }
 
 void RecordTask::stash_sig() {
-  int sig = pending_sig();
+  int sig = stop_sig();
   ASSERT(this, sig);
   // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
   ASSERT(this, sig != SYSCALLBUF_DESCHED_SIGNAL);

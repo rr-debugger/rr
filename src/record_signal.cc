@@ -316,7 +316,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
     // TODO: it's theoretically possible for this to
     // happen an unbounded number of consecutive times
     // and the tracee never switched out.
-    int sig = t->status().stop_sig();
+    int sig = t->stop_sig();
     ASSERT(t, sig);
     if (SYSCALLBUF_DESCHED_SIGNAL == sig ||
         PerfCounters::TIME_SLICE_SIGNAL == sig || t->is_sig_ignored(sig)) {

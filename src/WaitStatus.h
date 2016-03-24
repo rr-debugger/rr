@@ -19,14 +19,17 @@ public:
     EXIT,
     // Task exited due to fatal signal.
     FATAL_SIGNAL,
-    // Task is stopped due to a signal. This is either a signal-delivery-stop
-    // or a group-stop (see ptrace man page).
-    STOP_SIGNAL,
-    // Task is stopped due to a syscall-stop signal triggered by PTRACE_SYSCALL
+    // Task is in a signal-delivery-stop.
+    SIGNAL_STOP,
+    // Task is in a group-stop. (See ptrace man page.)
+    // You must use PTRACE_SEIZE to generate PTRACE_EVENT_STOPs, or these
+    // will be treated as STOP_SIGNAL.
+    GROUP_STOP,
+    // Task is in a syscall-stop triggered by PTRACE_SYSCALL
     // and PTRACE_O_TRACESYSGOOD.
-    SYSCALL,
-    // Task is stopped due to a PTRACE_EVENT_*, except for PTRACE_EVENT_STOP
-    // which is treated as STOP_SIGNAL.
+    SYSCALL_STOP,
+    // Task is in a PTRACE_EVENT stop, except for PTRACE_EVENT_STOP
+    // which is treated as GROUP_STOP.
     PTRACE_EVENT
   };
 
@@ -39,9 +42,9 @@ public:
   // Stop signal if type() == STOP_SIGNAL, otherwise zero. A zero signal
   // (rare but observed via PTRACE_INTERRUPT) is converted to SIGSTOP.
   int stop_sig() const;
-  // True if type() == STOP_SIGNAL and a group-stop is indicated by
-  // PTRACE_EVENT_STOP, false otherwise.
-  bool has_PTRACE_EVENT_STOP() const;
+  // Stop signal if type() == GROUP_STOP, otherwise zero. A zero signal
+  // (rare but observed via PTRACE_INTERRUPT) is converted to SIGSTOP.
+  int group_stop() const;
   bool is_syscall() const;
   // ptrace event if type() == PTRACE_EVENT, otherwise zero.
   int ptrace_event() const;

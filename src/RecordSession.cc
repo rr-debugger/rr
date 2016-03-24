@@ -321,7 +321,7 @@ static void handle_seccomp_errno(RecordTask* t,
 }
 
 bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
-  if (t->status().has_PTRACE_EVENT_STOP()) {
+  if (t->status().group_stop()) {
     last_task_switchable = ALLOW_SWITCH;
     step_state->continue_type = DONT_CONTINUE;
     return true;
@@ -450,7 +450,7 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
      * buffer.  This happens in the interval where we're
      * reaching the disarm-desched ioctl, so that code is
      * susceptible to receiving TIME_SLICE_SIGNAL. */
-    int sig = t->pending_sig();
+    int sig = t->stop_sig();
     if (PerfCounters::TIME_SLICE_SIGNAL == sig) {
       continue;
     }
@@ -612,8 +612,8 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
       // Linux kicks tasks out of syscalls before delivering
       // signals.
-      ASSERT(t, !t->pending_sig()) << "Signal " << signal_name(t->pending_sig())
-                                   << " pending while in syscall???";
+      ASSERT(t, !t->stop_sig()) << "Signal " << signal_name(t->stop_sig())
+                                << " pending while in syscall???";
 
       t->ev().Syscall().state = EXITING_SYSCALL;
       step_state->continue_type = DONT_CONTINUE;
@@ -622,7 +622,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
     case EXITING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_DONE", t);
 
-      assert(t->pending_sig() == 0);
+      assert(t->stop_sig() == 0);
 
       int syscallno = t->ev().Syscall().number;
       intptr_t retval = t->regs().syscall_result_signed();
@@ -873,8 +873,8 @@ static void preinject_signal(RecordTask* t) {
    * So, first we check if we're in a signal-stop that we can use to inject
    * a signal. Some (all?) SIGTRAP stops are *not* usable for signal injection.
    */
-  if (t->pending_sig() && t->pending_sig() != SIGTRAP) {
-    LOG(debug) << "    in signal-stop for " << signal_name(t->pending_sig());
+  if (t->stop_sig() && t->stop_sig() != SIGTRAP) {
+    LOG(debug) << "    in signal-stop for " << signal_name(t->stop_sig());
   } else {
     /* We're not in a usable signal-stop. Force a signal-stop by sending
      * a new signal with tgkill (as the ptrace(2) man page recommends).
@@ -891,13 +891,13 @@ static void preinject_signal(RecordTask* t) {
       auto old_ip = t->ip();
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
       ASSERT(t, old_ip == t->ip());
-      if (t->status().has_PTRACE_EVENT_STOP()) {
+      if (t->status().group_stop()) {
         /* Sending SIGCONT (4.4.3-300.fc23.x86_64) triggers this. Unclear why
          * it would... */
         continue;
       }
-      ASSERT(t, t->pending_sig());
-      if (t->pending_sig() == sig) {
+      ASSERT(t, t->stop_sig());
+      if (t->stop_sig() == sig) {
         LOG(debug) << "    stopped with signal " << signal_name(sig);
         break;
       }
@@ -905,7 +905,7 @@ static void preinject_signal(RecordTask* t) {
        * get to the signal-stop for the signal we just sent. Stash them for
        * later delivery.
        */
-      if (t->pending_sig() == SYSCALLBUF_DESCHED_SIGNAL) {
+      if (t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL) {
         LOG(debug) << "    stopped with signal " << signal_name(sig)
                    << "; ignoring it and carrying on";
       } else {
@@ -947,7 +947,7 @@ static bool inject_handled_signal(RecordTask* t) {
   assert(!PerfCounters::extra_perf_counters_enabled() ||
          0 == t->hpc.read_extra().instructions_retired);
 
-  if (t->pending_sig() == SIGSEGV) {
+  if (t->stop_sig() == SIGSEGV) {
     // Constructing the signal handler frame must have failed. The kernel will
     // kill the process after this. Stash the signal and mark it as blocked so
     // we know to treat it as fatal when we inject it.
@@ -957,7 +957,7 @@ static bool inject_handled_signal(RecordTask* t) {
   }
 
   // We stepped into a user signal handler.
-  ASSERT(t, t->pending_sig() == SIGTRAP);
+  ASSERT(t, t->stop_sig() == SIGTRAP);
   ASSERT(t, t->get_signal_user_handler(sig) == t->ip());
 
   if (t->signal_handler_takes_siginfo(sig)) {
@@ -1117,7 +1117,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 }
 
 bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
-  int sig = t->pending_sig();
+  int sig = t->stop_sig();
   if (!sig) {
     return false;
   }

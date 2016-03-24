@@ -77,8 +77,8 @@ static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
     t->resume_execution(resume_how, RESUME_WAIT, RESUME_NO_TICKS);
   } while (ReplaySession::is_ignored_signal(t->status().stop_sig()));
 
-  ASSERT(t, !t->pending_sig()) << "Expected no pending signal, but got "
-                               << t->pending_sig();
+  ASSERT(t, !t->stop_sig()) << "Expected no pending signal, but got "
+                            << t->stop_sig();
 
   /* check if we are synchronized with the trace -- should never fail */
   int current_syscall = t->regs().original_syscallno();
@@ -392,7 +392,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   int expect_syscallno = syscall_number_for_execve(t->arch());
   /* Enter our execve syscall. */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
-  ASSERT(t, !t->pending_sig()) << "Stub exec failed on entry";
+  ASSERT(t, !t->stop_sig()) << "Stub exec failed on entry";
   /* Proceed to the SIGTRAP. */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
   if (!t->status().is_syscall()) {

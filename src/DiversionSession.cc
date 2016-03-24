@@ -143,7 +143,7 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
   }
 
   result.status = DIVERSION_CONTINUE;
-  if (t->pending_sig()) {
+  if (t->stop_sig()) {
     LOG(debug) << "Pending signal: " << t->get_siginfo();
     result.break_status = diagnose_debugger_trap(t, command);
     LOG(debug) << "Diversion break at ip=" << (void*)t->ip().register_value()

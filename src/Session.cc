@@ -262,7 +262,7 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
   BreakStatus break_status;
   break_status.task = t;
 
-  int stop_sig = t->pending_sig();
+  int stop_sig = t->stop_sig();
   if (!stop_sig) {
     // This can happen if we were INCOMPLETE because we're close to
     // the ticks_target.

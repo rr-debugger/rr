@@ -21,10 +21,13 @@ WaitStatus::Type WaitStatus::type() const {
     return FATAL_SIGNAL;
   }
   if (stop_sig() > 0) {
-    return STOP_SIGNAL;
+    return SIGNAL_STOP;
+  }
+  if (group_stop() > 0) {
+    return GROUP_STOP;
   }
   if (is_syscall()) {
-    return SYSCALL;
+    return SYSCALL_STOP;
   }
   if (ptrace_event() > 0) {
     return PTRACE_EVENT;
@@ -42,11 +45,7 @@ int WaitStatus::fatal_sig() const {
 }
 
 int WaitStatus::stop_sig() const {
-  if (!WIFSTOPPED(status)) {
-    return 0;
-  }
-  int pt_event = (status >> 16) & 0xff;
-  if (pt_event && pt_event != PTRACE_EVENT_STOP) {
+  if (!WIFSTOPPED(status) || ((status >> 16) & 0xff)) {
     return 0;
   }
   int sig = WSTOPSIG(status);
@@ -57,8 +56,13 @@ int WaitStatus::stop_sig() const {
   return sig ? sig : SIGSTOP;
 }
 
-bool WaitStatus::has_PTRACE_EVENT_STOP() const {
-  return ptrace_event() == PTRACE_EVENT_STOP;
+int WaitStatus::group_stop() const {
+  if (!WIFSTOPPED(status) || ((status >> 16) & 0xff) != PTRACE_EVENT_STOP) {
+    return 0;
+  }
+  int sig = WSTOPSIG(status);
+  sig &= ~0x80;
+  return sig ? sig : SIGSTOP;
 }
 
 bool WaitStatus::is_syscall() const {
@@ -82,10 +86,13 @@ ostream& operator<<(ostream& stream, WaitStatus status) {
     case WaitStatus::FATAL_SIGNAL:
       stream << " (FATAL-" << signal_name(status.fatal_sig()) << ")";
       break;
-    case WaitStatus::STOP_SIGNAL:
+    case WaitStatus::SIGNAL_STOP:
       stream << " (STOP-" << signal_name(status.stop_sig()) << ")";
       break;
-    case WaitStatus::SYSCALL:
+    case WaitStatus::GROUP_STOP:
+      stream << " (GROUP-STOP-" << signal_name(status.group_stop()) << ")";
+      break;
+    case WaitStatus::SYSCALL_STOP:
       stream << " (SYSCALL)";
       break;
     case WaitStatus::PTRACE_EVENT:

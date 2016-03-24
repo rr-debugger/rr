@@ -245,22 +245,21 @@ Completion ReplaySession::cont_syscall_boundary(
     t->resume_execution(resume_how, RESUME_WAIT, ticks_request);
   }
 
-  if (t->pending_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
+  if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
     // This would normally be triggered by constraints.ticks_target but it's
     // also possible to get stray signals here.
     return INCOMPLETE;
   }
 
-  if (is_ignored_signal(t->pending_sig())) {
+  if (is_ignored_signal(t->stop_sig())) {
     return cont_syscall_boundary(t, constraints);
   }
 
-  if (SIGTRAP == t->pending_sig()) {
+  if (SIGTRAP == t->stop_sig()) {
     return INCOMPLETE;
   }
-  ASSERT(t, !t->pending_sig()) << "Replay got unrecorded signal "
-                               << t->pending_sig() << " ("
-                               << signal_name(t->pending_sig()) << ")";
+  ASSERT(t, !t->stop_sig()) << "Replay got unrecorded signal " << t->stop_sig()
+                            << " (" << signal_name(t->stop_sig()) << ")";
 
   return COMPLETE;
 }
@@ -292,7 +291,7 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
 
   if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
     bool reached_target =
-        use_breakpoint_optimization && SIGTRAP == t->pending_sig() &&
+        use_breakpoint_optimization && SIGTRAP == t->stop_sig() &&
         t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
             syscall_instruction &&
         t->vm()->get_breakpoint_type_at_addr(syscall_instruction) ==
@@ -346,7 +345,7 @@ Completion ReplaySession::exit_syscall(ReplayTask* t) {
 }
 
 void ReplaySession::check_pending_sig(ReplayTask* t) {
-  ASSERT(t, 0 < t->pending_sig())
+  ASSERT(t, 0 < t->stop_sig())
       << "Replaying `" << trace_frame.event()
       << "': expecting tracee signal or trap, but instead at `"
       << t->syscall_name(t->regs().original_syscallno())
@@ -409,14 +408,14 @@ static void guard_overshoot(ReplayTask* t, const Registers& target_regs,
 }
 
 static void guard_unexpected_signal(ReplayTask* t) {
-  if (ReplaySession::is_ignored_signal(t->pending_sig()) ||
-      SIGTRAP == t->pending_sig()) {
+  if (ReplaySession::is_ignored_signal(t->stop_sig()) ||
+      SIGTRAP == t->stop_sig()) {
     return;
   }
 
   Event ev;
-  if (t->pending_sig()) {
-    ev = SignalEvent(t->pending_sig(), NONDETERMINISTIC_SIG, t->arch());
+  if (t->stop_sig()) {
+    ev = SignalEvent(t->stop_sig(), NONDETERMINISTIC_SIG, t->arch());
   } else {
     ev = SyscallEvent(max(0L, (long)t->regs().original_syscallno()), t->arch());
   }
@@ -488,7 +487,7 @@ Completion ReplaySession::emulate_async_signal(
 
     ticks_left = ticks - t->tick_count();
 
-    if (SIGTRAP == t->pending_sig()) {
+    if (SIGTRAP == t->stop_sig()) {
       /* We proved we're not at the execution
        * target, and we haven't set any internal
        * breakpoints, and we're not temporarily
@@ -663,7 +662,7 @@ Completion ReplaySession::emulate_async_signal(
         check_pending_sig(t);
       }
     }
-    pending_SIGTRAP = SIGTRAP == t->pending_sig();
+    pending_SIGTRAP = SIGTRAP == t->stop_sig();
 
     /* Maintain the "'ticks_left'-is-up-to-date"
      * invariant. */
@@ -763,10 +762,10 @@ Completion ReplaySession::emulate_deterministic_signal(
   }
 
   continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
-  if (is_ignored_signal(t->pending_sig())) {
+  if (is_ignored_signal(t->stop_sig())) {
     return emulate_deterministic_signal(t, sig, constraints);
   }
-  if (SIGTRAP == t->pending_sig()) {
+  if (SIGTRAP == t->stop_sig()) {
     TrapReasons trap_reasons = t->compute_trap_reasons();
     if (trap_reasons.singlestep || trap_reasons.watchpoint) {
       // Singlestep or watchpoint must have been debugger-requested
@@ -783,9 +782,9 @@ Completion ReplaySession::emulate_deterministic_signal(
       }
     }
   }
-  ASSERT(t, t->pending_sig() == sig) << "Replay got unrecorded signal "
-                                     << t->pending_sig() << " (expecting "
-                                     << sig << ")";
+  ASSERT(t, t->stop_sig() == sig) << "Replay got unrecorded signal "
+                                  << t->stop_sig() << " (expecting " << sig
+                                  << ")";
   const Event& ev = trace_frame.event();
   check_ticks_consistency(t, ev);
 
@@ -862,18 +861,18 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                            stored_record_size(next_rec->size));
   }
 
-  if (t->pending_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
+  if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
     // This would normally be triggered by constraints.ticks_target but it's
     // also possible to get stray signals here.
     return INCOMPLETE;
   }
 
-  if (is_ignored_signal(t->pending_sig())) {
+  if (is_ignored_signal(t->stop_sig())) {
     return flush_syscallbuf(t, constraints);
   }
 
-  ASSERT(t, t->pending_sig() == SIGTRAP)
-      << "Replay got unexpected signal (or none) " << t->pending_sig();
+  ASSERT(t, t->stop_sig() == SIGTRAP)
+      << "Replay got unexpected signal (or none) " << t->stop_sig();
   if (t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
           remote_code_ptr(current_step.flush.stop_breakpoint_addr) &&
       !user_breakpoint_at_addr) {
@@ -953,7 +952,7 @@ Completion ReplaySession::advance_to_ticks_target(
       return INCOMPLETE;
     }
     continue_or_step(t, constraints, ticks_request);
-    if (SIGTRAP == t->pending_sig()) {
+    if (SIGTRAP == t->stop_sig()) {
       return INCOMPLETE;
     }
   }

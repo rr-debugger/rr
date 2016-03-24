@@ -474,18 +474,11 @@ public:
 
   /**
    * Return the signal that's pending for this as of the last
-   * call to |wait()/try_wait()|.  The signal 0 means "no
-   * signals'.
+   * call to |wait()/try_wait()|.  The signal 0 means "no signal".
    */
-  int pending_sig() const { return pending_sig_from_status(wait_status.get()); }
+  int stop_sig() const { return wait_status.stop_sig(); }
 
   void clear_wait_status() { wait_status = WaitStatus(); }
-
-  static int pending_sig_from_status(int status);
-  static int ptrace_event_from_status(int status) {
-    return (0xFF0000 & status) >> 16;
-  }
-  static int stop_sig_from_status(int status);
 
   /** Return the task group this belongs to. */
   std::shared_ptr<TaskGroup> task_group() { return tg; }

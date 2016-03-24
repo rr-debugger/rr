@@ -156,7 +156,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
   remote_code_ptr ip = t->ip();
 
   t->resume_execution(how, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
-  if (t->pending_sig() != SIGTRAP) {
+  if (t->stop_sig() != SIGTRAP) {
     // we might have stepped into a system call...
     return false;
   }
@@ -305,7 +305,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
 
       t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
       did_execute = true;
-      ASSERT(t, t->pending_sig() == SIGTRAP);
+      ASSERT(t, t->stop_sig() == SIGTRAP);
       // Grab debug_status before restoring watchpoints, since the latter
       // clears the debug status
       bool triggered_watchpoint =
@@ -361,7 +361,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT,
                           RESUME_UNLIMITED_TICKS);
       did_execute = true;
-      ASSERT(t, t->pending_sig() == SIGTRAP);
+      ASSERT(t, t->stop_sig() == SIGTRAP);
       // Watchpoints can fire spuriously because configure_watch_registers
       // can increase the size of the watched area to conserve watch registers.
       --iterations;

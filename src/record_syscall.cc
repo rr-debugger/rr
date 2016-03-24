@@ -1905,7 +1905,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     if (t->ptrace_event()) {
       break;
     }
-    ASSERT(t, !t->pending_sig());
+    ASSERT(t, !t->stop_sig());
     ASSERT(t, t->regs().syscall_result_signed() < 0);
     if (!t->regs().syscall_may_restart()) {
       syscall_state.emulate_result(t->regs().syscall_result());

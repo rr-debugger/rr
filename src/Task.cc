@@ -152,9 +152,9 @@ void Task::finish_emulated_syscall() {
   if (!known_idempotent_insn_after_syscall) {
     // The breakpoint should raise SIGTRAP, but we can also see
     // any of the host of replay-ignored signals.
-    ASSERT(this, (pending_sig() == SIGTRAP ||
-                  ReplaySession::is_ignored_signal(pending_sig())))
-        << "PENDING SIG IS " << signal_name(pending_sig());
+    ASSERT(this, (stop_sig() == SIGTRAP ||
+                  ReplaySession::is_ignored_signal(stop_sig())))
+        << "PENDING SIG IS " << signal_name(stop_sig());
     vm()->remove_breakpoint(ip, BKPT_INTERNAL);
   }
   set_regs(r);
@@ -220,7 +220,7 @@ uint16_t Task::get_ptrace_eventmsg_seccomp_data() {
 }
 
 const siginfo_t& Task::get_siginfo() {
-  assert(pending_sig());
+  assert(stop_sig());
   return pending_siginfo;
 }
 
@@ -449,10 +449,10 @@ void Task::advance_syscall() {
       continue;
     }
     ASSERT(this, !ptrace_event());
-    if (!pending_sig()) {
+    if (!stop_sig()) {
       break;
     }
-    if (ReplaySession::is_ignored_signal(pending_sig()) &&
+    if (ReplaySession::is_ignored_signal(stop_sig()) &&
         session().is_replaying()) {
       continue;
     }
@@ -627,7 +627,7 @@ void Task::set_debug_status(uintptr_t status) {
 }
 
 TrapReasons Task::compute_trap_reasons() {
-  ASSERT(this, pending_sig() == SIGTRAP);
+  ASSERT(this, stop_sig() == SIGTRAP);
   TrapReasons reasons;
   uintptr_t status = debug_status();
 
@@ -931,8 +931,8 @@ static bool is_zombie_process(pid_t pid) {
   return true;
 }
 
-static bool is_signal_triggered_by_ptrace_interrupt(int sig) {
-  switch (sig) {
+static bool is_signal_triggered_by_ptrace_interrupt(int group_stop_sig) {
+  switch (group_stop_sig) {
     case SIGTRAP:
     // We sometimes see SIGSTOP at interrupts, though the
     // docs don't mention that.
@@ -1035,8 +1035,7 @@ void Task::wait(double interrupt_after_elapsed) {
   // want to interrupt tracees stuck running in userspace.
   // We convert the ptrace-stop to a reschedule signal.
   if (sent_wait_interrupt &&
-      is_signal_triggered_by_ptrace_interrupt(status.stop_sig()) &&
-      status.has_PTRACE_EVENT_STOP()) {
+      is_signal_triggered_by_ptrace_interrupt(status.group_stop())) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
     // Force this timeslice to end
     if (session().is_recording()) {
@@ -1172,7 +1171,7 @@ void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
 
   if (as->get_breakpoint_type_at_addr(address_of_last_execution_resume) !=
           BKPT_NONE &&
-      pending_sig() == SIGTRAP && !ptrace_event()) {
+      stop_sig() == SIGTRAP && !ptrace_event()) {
     ASSERT(this,
            ip() ==
                address_of_last_execution_resume.increment_by_bkpt_insn_length(
@@ -1349,33 +1348,6 @@ static void set_up_seccomp_filter(Session& session) {
   }
   /* anything that happens from this point on gets filtered! */
 }
-
-int Task::pending_sig_from_status(int status) {
-  if (status == 0) {
-    return 0;
-  }
-  int sig = stop_sig_from_status(status);
-  switch (sig) {
-    case SIGTRAP | 0x80:
-      /* We ask for PTRACE_O_TRACESYSGOOD, so this was a
-       * trap for a syscall.  Pretend like it wasn't a
-       * signal. */
-      return 0;
-    case SIGTRAP:
-      /* For a "normal" SIGTRAP, it's a ptrace trap if
-       * there's a ptrace event.  If so, pretend like we
-       * didn't get a signal.  Otherwise it was a genuine
-       * TRAP signal raised by something else (most likely a
-       * debugger breakpoint). */
-      return ptrace_event_from_status(status) ? 0 : SIGTRAP;
-    default:
-      /* XXX do we really get the high bit set on some
-       * SEGVs? */
-      return sig & ~0x80;
-  }
-}
-
-int Task::stop_sig_from_status(int status) { return WSTOPSIG(status); }
 
 template <typename Arch>
 static void set_thread_area_from_clone_arch(Task* t, remote_ptr<void> tls) {
@@ -2220,6 +2192,7 @@ static void set_cpu_affinity(int cpu) {
   if (session.is_recording()) {
     options |= PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
   }
+
   long ret =
       ptrace(PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
   if (ret < 0 && errno == EINVAL) {
@@ -2251,22 +2224,13 @@ static void set_cpu_affinity(int cpu) {
   t->fds = FdTable::create(t);
   setup_fd_table(*t->fds);
 
-  // PTRACE_SEIZE is fundamentally racy by design.  We depend on
-  // stopping the tracee at a known location, so raciness is
-  // bad.  To resolve the race condition, we just keep running
-  // the tracee until it reaches the known-safe starting point.
-  //
-  // Alternatively, it would be possible to remove the
-  // requirement of the tracing beginning from a known point.
-  while (true) {
-    t->wait();
-    if (SIGSTOP == t->status().stop_sig()) {
-      break;
-    }
-    t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING,
-                        RESUME_UNLIMITED_TICKS);
-  }
-  t->wait_status = WaitStatus();
+  t->wait();
+  // SIGSTOP can be reported as a signal-stop or group-stop depending on
+  // whether PTRACE_SEIZE happened before or after it was delivered.
+  ASSERT(t, SIGSTOP == t->status().stop_sig() ||
+                SIGSTOP == t->status().group_stop());
+
+  t->clear_wait_status();
   t->open_mem_fd();
   return t;
 }
