@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 
 #include "kernel_metadata.h"
+#include "kernel_supplement.h"
 #include "log.h"
 
 using namespace std;
@@ -41,14 +42,23 @@ int WaitStatus::fatal_sig() const {
 }
 
 int WaitStatus::stop_sig() const {
-  if (!WIFSTOPPED(status) || ptrace_event()) {
+  if (!WIFSTOPPED(status)) {
+    return 0;
+  }
+  int pt_event = (status >> 16) & 0xff;
+  if (pt_event && pt_event != PTRACE_EVENT_STOP) {
     return 0;
   }
   int sig = WSTOPSIG(status);
   if (sig == (SIGTRAP | 0x80)) {
     return 0;
   }
-  return sig & ~0x80;
+  sig &= ~0x80;
+  return sig ? sig : SIGSTOP;
+}
+
+bool WaitStatus::has_PTRACE_EVENT_STOP() const {
+  return ptrace_event() == PTRACE_EVENT_STOP;
 }
 
 bool WaitStatus::is_syscall() const {
@@ -58,7 +68,10 @@ bool WaitStatus::is_syscall() const {
   return WSTOPSIG(status) == (SIGTRAP | 0x80);
 }
 
-int WaitStatus::ptrace_event() const { return (status >> 16) & 0xff; }
+int WaitStatus::ptrace_event() const {
+  int event = (status >> 16) & 0xff;
+  return event == PTRACE_EVENT_STOP ? 0 : event;
+}
 
 ostream& operator<<(ostream& stream, WaitStatus status) {
   stream << HEX(status.get());

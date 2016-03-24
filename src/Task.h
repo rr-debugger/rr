@@ -187,7 +187,7 @@ public:
    * If override_siginfo is non-null and status indicates a pending signal,
    * use *override_siginfo as the siginfo instead of reading it from the kernel.
    */
-  void did_waitpid(int status, siginfo_t* override_siginfo = nullptr);
+  void did_waitpid(WaitStatus status, siginfo_t* override_siginfo = nullptr);
 
   /**
    * Syscalls have side effects on registers (e.g. setting the flags register).

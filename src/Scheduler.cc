@@ -457,7 +457,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
                      RecordTask::ptrace_event_from_status(status) ==
                          PTRACE_EVENT_EXIT)
         << "Scheduled task should have been blocked or unstable";
-    next->did_waitpid(status);
+    next->did_waitpid(WaitStatus(status));
     result.by_waitpid = true;
     must_run_task = next;
   }

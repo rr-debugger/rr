@@ -936,8 +936,6 @@ static bool is_signal_triggered_by_ptrace_interrupt(int sig) {
     // We sometimes see SIGSTOP at interrupts, though the
     // docs don't mention that.
     case SIGSTOP:
-    // We sometimes see 0 too...
-    case 0:
       return true;
     default:
       return false;
@@ -949,8 +947,6 @@ static bool is_signal_triggered_by_ptrace_interrupt(int sig) {
 static void handle_alarm_signal(__attribute__((unused)) int sig) {
   LOG(debug) << "SIGALRM fired; maybe runaway tracee";
 }
-
-static const int ptrace_exit_wait_status = (PTRACE_EVENT_EXIT << 16) | 0x857f;
 
 static struct timeval to_timeval(double t) {
   struct timeval v;
@@ -966,12 +962,12 @@ void Task::wait(double interrupt_after_elapsed) {
 
   if (detected_unexpected_exit) {
     LOG(debug) << "Unexpected (SIGKILL) exit was detected; reporting it now";
-    did_waitpid(ptrace_exit_wait_status);
+    did_waitpid(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
     detected_unexpected_exit = false;
     return;
   }
 
-  int status;
+  WaitStatus status;
   bool sent_wait_interrupt = false;
   pid_t ret;
   while (true) {
@@ -980,7 +976,9 @@ void Task::wait(double interrupt_after_elapsed) {
                                  to_timeval(interrupt_after_elapsed) };
       setitimer(ITIMER_REAL, &timer, nullptr);
     }
-    ret = waitpid(tid, &status, __WALL);
+    int raw_status;
+    ret = waitpid(tid, &raw_status, __WALL);
+    status = WaitStatus(raw_status);
     if (interrupt_after_elapsed) {
       struct itimerval timer = { { 0, 0 }, { 0, 0 } };
       setitimer(ITIMER_REAL, &timer, nullptr);
@@ -998,7 +996,7 @@ void Task::wait(double interrupt_after_elapsed) {
       // some cases it doesn't return normally at all!
 
       // Fake a PTRACE_EVENT_EXIT for this task.
-      status = ptrace_exit_wait_status;
+      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
       ret = tid;
       // XXX could this leave unreaped zombies lying around?
       break;
@@ -1010,7 +1008,7 @@ void Task::wait(double interrupt_after_elapsed) {
     }
   }
 
-  if (ret >= 0 && !stopped_from_status(status)) {
+  if (ret >= 0 && status.exit_code() >= 0) {
     // Unexpected non-stopping exit code returned in wait_status.
     // This shouldn't happen; a PTRACE_EXIT_EVENT for this task
     // should be observed first, and then we would kill the task
@@ -1024,7 +1022,7 @@ void Task::wait(double interrupt_after_elapsed) {
                                              "forgotten";
 
     // Turn this into a PTRACE_EXIT_EVENT.
-    status = ptrace_exit_wait_status;
+    status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
   }
 
   LOG(debug) << "  waitpid(" << tid << ") returns " << ret << "; status "
@@ -1036,8 +1034,8 @@ void Task::wait(double interrupt_after_elapsed) {
   // want to interrupt tracees stuck running in userspace.
   // We convert the ptrace-stop to a reschedule signal.
   if (sent_wait_interrupt &&
-      PTRACE_EVENT_STOP == ptrace_event_from_status(status) &&
-      is_signal_triggered_by_ptrace_interrupt(WSTOPSIG(status))) {
+      is_signal_triggered_by_ptrace_interrupt(status.stop_sig()) &&
+      status.has_PTRACE_EVENT_STOP()) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
     // Force this timeslice to end
     if (session().is_recording()) {
@@ -1054,7 +1052,7 @@ void Task::wait(double interrupt_after_elapsed) {
   }
 
   if (sent_wait_interrupt) {
-    LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << HEX(status);
+    LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << status;
   }
   did_waitpid(status);
 }
@@ -1127,7 +1125,7 @@ void Task::emulate_syscall_entry(const Registers& regs) {
   set_regs(r);
 }
 
-void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
+void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
   Ticks more_ticks = hpc.read_ticks();
   // Stop PerfCounters ASAP to reduce the possibility that due to bugs or
   // whatever they pick up something spurious later.
@@ -1145,22 +1143,22 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
       registers.set_from_ptrace(ptrace_regs);
     } else {
       LOG(debug) << "Unexpected process death for " << tid;
-      status = ptrace_exit_wait_status;
+      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     }
   }
-  if (pending_sig_from_status(status)) {
+  if (status.stop_sig()) {
     if (override_siginfo) {
       pending_siginfo = *override_siginfo;
     } else {
       if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
         LOG(debug) << "Unexpected process death for " << tid;
-        status = ptrace_exit_wait_status;
+        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
       }
     }
   }
 
   is_stopped = true;
-  wait_status = WaitStatus(status);
+  wait_status = status;
   if (ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
   }
@@ -1204,14 +1202,14 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
 }
 
 bool Task::try_wait() {
-  int status;
-  pid_t ret = waitpid(tid, &status, WNOHANG | __WALL | WSTOPPED);
-  LOG(debug) << "waitpid(" << tid << ", NOHANG) returns " << ret << ", status "
-             << wait_status;
+  int raw_status;
+  pid_t ret = waitpid(tid, &raw_status, WNOHANG | __WALL | WSTOPPED);
   ASSERT(this, 0 <= ret) << "waitpid(" << tid << ", NOHANG) failed with "
                          << ret;
+  LOG(debug) << "waitpid(" << tid << ", NOHANG) returns " << ret << ", status "
+             << WaitStatus(raw_status);
   if (ret == tid) {
-    did_waitpid(status);
+    did_waitpid(WaitStatus(raw_status));
     return true;
   }
   return false;
