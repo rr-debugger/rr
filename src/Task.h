@@ -468,11 +468,6 @@ public:
    */
   WaitStatus status() const { return wait_status; }
 
-  /**
-   * Return true if this is at a signal-stop.  If so,
-   * |stop_sig()| returns the signal that stopped us.
-   */
-  bool stopped() const { return stopped_from_status(wait_status.get()); }
   int stop_sig() const { return stop_sig_from_status(wait_status.get()); }
 
   /**
