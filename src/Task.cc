@@ -1349,7 +1349,7 @@ static void set_up_seccomp_filter(Session& session) {
   /* anything that happens from this point on gets filtered! */
 }
 
-int Task::pending_sig_from_status(int status) const {
+int Task::pending_sig_from_status(int status) {
   if (status == 0) {
     return 0;
   }
@@ -1374,8 +1374,7 @@ int Task::pending_sig_from_status(int status) const {
   }
 }
 
-int Task::stop_sig_from_status(int status) const {
-  ASSERT(const_cast<Task*>(this), stopped_from_status(status));
+int Task::stop_sig_from_status(int status) {
   return WSTOPSIG(status);
 }
 

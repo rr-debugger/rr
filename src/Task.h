@@ -489,6 +489,13 @@ public:
 
   void clear_wait_status() { wait_status = 0; }
 
+  static int pending_sig_from_status(int status);
+  static int ptrace_event_from_status(int status) {
+    return (0xFF0000 & status) >> 16;
+  }
+  static bool stopped_from_status(int status) { return WIFSTOPPED(status); }
+  static int stop_sig_from_status(int status);
+
   /** Return the task group this belongs to. */
   std::shared_ptr<TaskGroup> task_group() { return tg; }
 
@@ -600,16 +607,6 @@ public:
                          bool* ok = nullptr);
   void write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                           const void* buf, bool* ok = nullptr);
-
-  /** See |pending_sig()| above. */
-  int pending_sig_from_status(int status) const;
-  /** See |ptrace_event()| above. */
-  static int ptrace_event_from_status(int status) {
-    return (0xFF0000 & status) >> 16;
-  }
-  /** See |stopped()| and |stop_sig()| above. */
-  static bool stopped_from_status(int status) { return WIFSTOPPED(status); }
-  int stop_sig_from_status(int status) const;
 
   /**
    * Call this when performing a clone syscall in this task. Returns
