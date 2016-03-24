@@ -20,6 +20,7 @@
 
 #include <limits>
 #include <set>
+#include <sstream>
 
 #include <rr/rr.h>
 
@@ -42,7 +43,6 @@
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
 #include "util.h"
-#include "WaitStatus.h"
 
 using namespace std;
 
@@ -75,7 +75,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       extra_registers_known(false),
       session_(&session),
       top_of_stack(),
-      wait_status(),
       seen_ptrace_exit_event(false) {}
 
 void Task::destroy() {
@@ -159,13 +158,15 @@ void Task::finish_emulated_syscall() {
     vm()->remove_breakpoint(ip, BKPT_INTERNAL);
   }
   set_regs(r);
-  wait_status = 0;
+  wait_status = WaitStatus();
 }
 
 void Task::dump(FILE* out) const {
   out = out ? out : stderr;
-  fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%x%s)<%p>\n", prname.c_str(),
-          tid, rec_tid, wait_status, unstable ? " UNSTABLE" : "", this);
+  stringstream ss;
+  ss << wait_status;
+  fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%s%s)<%p>\n", prname.c_str(),
+          tid, rec_tid, ss.str().c_str(), unstable ? " UNSTABLE" : "", this);
   if (session().is_recording()) {
     // TODO pending events are currently only meaningful
     // during recording.  We should change that
@@ -1159,7 +1160,7 @@ void Task::did_waitpid(int status, siginfo_t* override_siginfo) {
   }
 
   is_stopped = true;
-  wait_status = status;
+  wait_status = WaitStatus(status);
   if (ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
   }
@@ -1206,7 +1207,7 @@ bool Task::try_wait() {
   int status;
   pid_t ret = waitpid(tid, &status, WNOHANG | __WALL | WSTOPPED);
   LOG(debug) << "waitpid(" << tid << ", NOHANG) returns " << ret << ", status "
-             << HEX(wait_status);
+             << wait_status;
   ASSERT(this, 0 <= ret) << "waitpid(" << tid << ", NOHANG) failed with "
                          << ret;
   if (ret == tid) {
@@ -2266,7 +2267,7 @@ static void set_cpu_affinity(int cpu) {
     t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING,
                         RESUME_UNLIMITED_TICKS);
   }
-  t->wait_status = 0;
+  t->wait_status = WaitStatus();
   t->open_mem_fd();
   return t;
 }

@@ -21,6 +21,7 @@
 #include "TaskishUid.h"
 #include "TraceStream.h"
 #include "util.h"
+#include "WaitStatus.h"
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
@@ -465,29 +466,31 @@ public:
    * Return the status of this as of the last successful
    * wait()/try_wait() call.
    */
-  int status() const { return wait_status; }
+  int status() const { return wait_status.get(); }
 
   /**
    * Return true if this is at a signal-stop.  If so,
    * |stop_sig()| returns the signal that stopped us.
    */
-  bool stopped() const { return stopped_from_status(wait_status); }
-  int stop_sig() const { return stop_sig_from_status(wait_status); }
+  bool stopped() const { return stopped_from_status(wait_status.get()); }
+  int stop_sig() const { return stop_sig_from_status(wait_status.get()); }
 
   /**
    * Return the ptrace event as of the last call to
    * |wait()/try_wait()|.
    */
-  int ptrace_event() const { return ptrace_event_from_status(wait_status); }
+  int ptrace_event() const {
+    return ptrace_event_from_status(wait_status.get());
+  }
 
   /**
    * Return the signal that's pending for this as of the last
    * call to |wait()/try_wait()|.  The signal 0 means "no
    * signals'.
    */
-  int pending_sig() const { return pending_sig_from_status(wait_status); }
+  int pending_sig() const { return pending_sig_from_status(wait_status.get()); }
 
-  void clear_wait_status() { wait_status = 0; }
+  void clear_wait_status() { wait_status = WaitStatus(); }
 
   static int pending_sig_from_status(int status);
   static int ptrace_event_from_status(int status) {
@@ -733,7 +736,7 @@ public:
     pid_t rec_tid;
     uint32_t serial;
     int desched_fd_child;
-    int wait_status;
+    WaitStatus wait_status;
   };
 
 protected:
@@ -918,7 +921,7 @@ protected:
   remote_ptr<void> top_of_stack;
   // The most recent status of this task as returned by
   // waitpid().
-  int wait_status;
+  WaitStatus wait_status;
   // The most recent siginfo (captured when wait_status shows pending_sig())
   siginfo_t pending_siginfo;
   // True when a PTRACE_EXIT_EVENT has been observed in the wait_status

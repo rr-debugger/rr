@@ -12,7 +12,7 @@ using namespace std;
 
 namespace rr {
 
-WaitStatus::Type WaitStatus::type() {
+WaitStatus::Type WaitStatus::type() const {
   if (exit_code() >= 0) {
     return EXIT;
   }
@@ -32,15 +32,15 @@ WaitStatus::Type WaitStatus::type() {
   return EXIT;
 }
 
-int WaitStatus::exit_code() {
+int WaitStatus::exit_code() const {
   return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-int WaitStatus::fatal_sig() {
+int WaitStatus::fatal_sig() const {
   return WIFSIGNALED(status) ? WTERMSIG(status) : 0;
 }
 
-int WaitStatus::stop_sig() {
+int WaitStatus::stop_sig() const {
   if (!WIFSTOPPED(status) || ptrace_event()) {
     return 0;
   }
@@ -51,14 +51,14 @@ int WaitStatus::stop_sig() {
   return sig & ~0x80;
 }
 
-bool WaitStatus::is_syscall() {
+bool WaitStatus::is_syscall() const {
   if (!WIFSTOPPED(status) || ptrace_event()) {
     return 0;
   }
   return WSTOPSIG(status) == (SIGTRAP | 0x80);
 }
 
-int WaitStatus::ptrace_event() { return (status >> 16) & 0xff; }
+int WaitStatus::ptrace_event() const { return (status >> 16) & 0xff; }
 
 ostream& operator<<(ostream& stream, WaitStatus status) {
   stream << HEX(status.get());

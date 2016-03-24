@@ -26,19 +26,19 @@ public:
     PTRACE_EVENT
   };
 
-  Type type();
+  Type type() const;
 
   // Exit code if type() == EXIT, otherwise -1.
-  int exit_code();
+  int exit_code() const;
   // Fatal signal if type() == FATAL_SIGNAL, otherwise zero.
-  int fatal_sig();
+  int fatal_sig() const;
   // Stop signal if type() == STOP_SIGNAL, otherwise zero.
-  int stop_sig();
-  bool is_syscall();
+  int stop_sig() const;
+  bool is_syscall() const;
   // ptrace event if type() == PTRACE_EVENT, otherwise zero.
-  int ptrace_event();
+  int ptrace_event() const;
 
-  int get() { return status; }
+  int get() const { return status; }
 
 private:
   int status;

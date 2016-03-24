@@ -751,7 +751,7 @@ void RecordTask::stash_sig() {
 
   const siginfo_t& si = get_siginfo();
   stashed_signals.push_back(si);
-  wait_status = 0;
+  wait_status = WaitStatus();
 }
 
 void RecordTask::stash_synthetic_sig(const siginfo_t& si) {
