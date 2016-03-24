@@ -429,13 +429,15 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   } else {
     // All the tasks are blocked (or we found an unstable-exit task).
     // Wait for the next one to change state.
-    int status;
+    WaitStatus status;
     pid_t tid;
 
     LOG(debug) << "  all tasks blocked or some unstable, waiting for runnable ("
                << task_priority_set.size() << " total)";
     do {
-      tid = waitpid(-1, &status, __WALL | WSTOPPED | WUNTRACED);
+      int raw_status;
+      tid = waitpid(-1, &raw_status, __WALL | WSTOPPED | WUNTRACED);
+      status = WaitStatus(raw_status);
       now = -1; // invalid, don't use
       if (-1 == tid) {
         if (EINTR == errno) {
@@ -446,7 +448,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         }
         FATAL() << "Failed to waitpid()";
       }
-      LOG(debug) << "  " << tid << " changed status to " << HEX(status);
+      LOG(debug) << "  " << tid << " changed status to " << status;
 
       next = session.find_task(tid);
       if (!next) {
@@ -454,10 +456,9 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       }
     } while (!next);
     ASSERT(next, next->unstable || next->may_be_blocked() ||
-                     RecordTask::ptrace_event_from_status(status) ==
-                         PTRACE_EVENT_EXIT)
+                     status.ptrace_event() == PTRACE_EVENT_EXIT)
         << "Scheduled task should have been blocked or unstable";
-    next->did_waitpid(WaitStatus(status));
+    next->did_waitpid(status);
     result.by_waitpid = true;
     must_run_task = next;
   }
