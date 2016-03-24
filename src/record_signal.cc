@@ -417,7 +417,8 @@ static bool is_safe_to_deliver_signal(RecordTask* t) {
 
 SignalHandled handle_signal(RecordTask* t, siginfo_t* si) {
   LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
-             << " (pevent: " << t->ptrace_event() << ", event: " << t->ev();
+             << " (pevent: " << ptrace_event_name(t->ptrace_event())
+             << ", event: " << t->ev();
 
   /* We have to check for a desched event first, because for
    * those we *do not* want to (and cannot, most of the time)

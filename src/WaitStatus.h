@@ -25,7 +25,8 @@ public:
     // Task is stopped due to a syscall-stop signal triggered by PTRACE_SYSCALL
     // and PTRACE_O_TRACESYSGOOD.
     SYSCALL,
-    // Task is stopped due to a PTRACE_EVENT_*.
+    // Task is stopped due to a PTRACE_EVENT_*, except for PTRACE_EVENT_STOP
+    // which is treated as STOP_SIGNAL.
     PTRACE_EVENT
   };
 

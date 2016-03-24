@@ -321,8 +321,14 @@ static void handle_seccomp_errno(RecordTask* t,
 }
 
 bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
+  if (t->status().has_PTRACE_EVENT_STOP()) {
+    last_task_switchable = ALLOW_SWITCH;
+    step_state->continue_type = DONT_CONTINUE;
+    return true;
+  }
+
   int event = t->ptrace_event();
-  if (event == PTRACE_EVENT_NONE) {
+  if (!event) {
     return false;
   }
 
@@ -361,11 +367,6 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
 
       // Skip past the ptrace event.
       step_state->continue_type = CONTINUE_SYSCALL;
-      break;
-
-    case PTRACE_EVENT_STOP:
-      last_task_switchable = ALLOW_SWITCH;
-      step_state->continue_type = DONT_CONTINUE;
       break;
 
     default:
@@ -890,7 +891,7 @@ static void preinject_signal(RecordTask* t) {
       auto old_ip = t->ip();
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
       ASSERT(t, old_ip == t->ip());
-      if (t->ptrace_event() == PTRACE_EVENT_STOP) {
+      if (t->status().has_PTRACE_EVENT_STOP()) {
         /* Sending SIGCONT (4.4.3-300.fc23.x86_64) triggers this. Unclear why
          * it would... */
         continue;

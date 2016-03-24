@@ -463,18 +463,14 @@ public:
   bool is_running() const { return !is_stopped; }
 
   /**
-   * Return the status of this as of the last successful
-   * wait()/try_wait() call.
+   * Return the status of this as of the last successful wait()/try_wait() call.
    */
   WaitStatus status() const { return wait_status; }
 
   /**
-   * Return the ptrace event as of the last call to
-   * |wait()/try_wait()|.
+   * Return the ptrace event as of the last call to |wait()/try_wait()|.
    */
-  int ptrace_event() const {
-    return ptrace_event_from_status(wait_status.get());
-  }
+  int ptrace_event() const { return wait_status.ptrace_event(); }
 
   /**
    * Return the signal that's pending for this as of the last
