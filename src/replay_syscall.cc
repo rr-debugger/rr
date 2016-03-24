@@ -74,16 +74,7 @@ static string maybe_dump_written_string(ReplayTask* t) {
 static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
                           int expect_syscallno) {
   do {
-    uintptr_t saved_r11 = t->arch() == x86_64 ? t->regs().r11() : 0;
     t->resume_execution(resume_how, RESUME_WAIT, RESUME_NO_TICKS);
-    if (t->arch() == x86_64) {
-      // Restore previous R11 value. R11 gets reset to RFLAGS by the syscall,
-      // and RFLAGS might have changed since we first entered the syscall
-      // we're replaying (we reset it to 0x246 in fixup_syscall_registers).
-      Registers r = t->regs();
-      r.set_r11(saved_r11);
-      t->set_regs(r);
-    }
   } while (ReplaySession::is_ignored_signal(t->stop_sig()));
 
   ASSERT(t, !t->pending_sig()) << "Expected no pending signal, but got "

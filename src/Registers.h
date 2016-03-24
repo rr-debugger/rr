@@ -274,10 +274,6 @@ public:
     RR_SET_REG(edx, rdx, value >> 32);
   }
 
-  uintptr_t r11() const {
-    assert(arch() == x86_64);
-    return u.x64regs.r11;
-  }
   void set_r11(uintptr_t value) {
     assert(arch() == x86_64);
     u.x64regs.r11 = value;
