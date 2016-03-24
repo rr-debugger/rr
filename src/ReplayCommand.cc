@@ -428,6 +428,10 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 }
 
 int ReplayCommand::run(std::vector<std::string>& args) {
+  if (getenv("RUNNING_UNDER_RR")) {
+    fprintf(stderr, "rr: rr pid %d running under rr. Good luck.\n", getpid());
+  }
+
   bool found_dir = false;
   string trace_dir;
   ReplayFlags flags;

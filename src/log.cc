@@ -76,7 +76,12 @@ static void init_log_globals() {
   log_modules = unique_ptr<unordered_map<const char*, LogModule> >(
       new unordered_map<const char*, LogModule>());
   logging_stream = unique_ptr<stringstream>(new stringstream());
-  char* env = getenv("RR_LOG");
+
+  const char* log_env = "RR_LOG";
+  if (getenv("RUNNING_UNDER_RR")) {
+    log_env = "RR_UNDER_RR_LOG";
+  }
+  char* env = getenv(log_env);
   if (env) {
     env = strdup(env);
     for (int i = 0; env[i]; ++i) {
