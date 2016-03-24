@@ -814,6 +814,10 @@ template <typename Arch>
 static void rep_after_enter_syscall_arch(ReplayTask* t) {
   switch (non_negative_syscall(t->regs().original_syscallno())) {
     case Arch::exit:
+    case Arch::exit_group:
+      // We don't really need to destroy buffers in exit_group since they'll
+      // go away anyway, but it makes memory consistent with recording
+      // for checksumming.
       t->destroy_buffers();
       break;
 
