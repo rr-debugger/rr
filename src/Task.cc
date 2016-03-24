@@ -2108,6 +2108,57 @@ static void set_up_seccomp_filter(Session& session, int err_fd) {
   /* anything that happens from this point on gets filtered! */
 }
 
+static void run_initial_child(Session& session, const ScopedFd& error_fd,
+                              const TraceStream& trace) {
+  // Set current working directory to the cwd used during
+  // recording. The main effect of this is to resolve relative
+  // paths in the following execvpe correctly during replay.
+  chdir(trace.initial_cwd().c_str());
+  set_up_process(session, error_fd);
+  // The preceding code must run before sending SIGSTOP here,
+  // since after SIGSTOP replay emulates almost all syscalls, but
+  // we need the above syscalls to run "for real".
+
+  // Signal to tracer that we're configured.
+  ::kill(getpid(), SIGSTOP);
+
+  // This code must run after rr has taken ptrace control.
+  set_up_seccomp_filter(session, error_fd);
+
+  // We do a small amount of dummy work here to retire
+  // some branches in order to ensure that the ticks value is
+  // non-zero.  The tracer can then check the ticks value
+  // at the first ptrace-trap to see if it seems to be
+  // working.
+  int start = random() % 5;
+  int num_its = start + 5;
+  int sum = 0;
+  for (int i = start; i < num_its; ++i) {
+    sum += i;
+  }
+  syscall(SYS_write, -1, &sum, sizeof(sum));
+
+  CPUIDBugDetector::run_detection_code();
+
+  const char* exe = trace.initial_exe().c_str();
+  execvpe(exe, StringVectorToCharArray(trace.initial_argv()).get(),
+          StringVectorToCharArray(trace.initial_envp()).get());
+  // That failed. Try executing the file directly.
+  execve(exe, StringVectorToCharArray(trace.initial_argv()).get(),
+         StringVectorToCharArray(trace.initial_envp()).get());
+
+  switch (errno) {
+    case ENOENT:
+      spawned_child_fatal_error(
+          error_fd, "execve failed: '%s' (or interpreter) not found", exe);
+      break;
+    default:
+      spawned_child_fatal_error(error_fd, "execve of '%s' failed", exe);
+      break;
+  }
+  // Never returns!
+}
+
 /*static*/ Task* Task::spawn(Session& session, const ScopedFd& error_fd,
                              const TraceStream& trace, pid_t rec_tid) {
   assert(session.tasks().size() == 0);
@@ -2129,52 +2180,8 @@ static void set_up_seccomp_filter(Session& session, int err_fd) {
   } while (0 > tid && errno == EAGAIN);
 
   if (0 == tid) {
-    // Set current working directory to the cwd used during
-    // recording. The main effect of this is to resolve relative
-    // paths in the following execvpe correctly during replay.
-    chdir(trace.initial_cwd().c_str());
-    set_up_process(session, error_fd);
-    // The preceding code must run before sending SIGSTOP here,
-    // since after SIGSTOP replay emulates almost all syscalls, but
-    // we need the above syscalls to run "for real".
-
-    // Signal to tracer that we're configured.
-    ::kill(getpid(), SIGSTOP);
-
-    // This code must run after rr has taken ptrace control.
-    set_up_seccomp_filter(session, error_fd);
-
-    // We do a small amount of dummy work here to retire
-    // some branches in order to ensure that the ticks value is
-    // non-zero.  The tracer can then check the ticks value
-    // at the first ptrace-trap to see if it seems to be
-    // working.
-    int start = random() % 5;
-    int num_its = start + 5;
-    int sum = 0;
-    for (int i = start; i < num_its; ++i) {
-      sum += i;
-    }
-    syscall(SYS_write, -1, &sum, sizeof(sum));
-
-    CPUIDBugDetector::run_detection_code();
-
-    const char* exe = trace.initial_exe().c_str();
-    execvpe(exe, StringVectorToCharArray(trace.initial_argv()).get(),
-            StringVectorToCharArray(trace.initial_envp()).get());
-    // That failed. Try executing the file directly.
-    execve(exe, StringVectorToCharArray(trace.initial_argv()).get(),
-           StringVectorToCharArray(trace.initial_envp()).get());
-
-    switch (errno) {
-      case ENOENT:
-        spawned_child_fatal_error(
-            error_fd, "execve failed: '%s' (or interpreter) not found", exe);
-        break;
-      default:
-        spawned_child_fatal_error(error_fd, "execve of '%s' failed", exe);
-        break;
-    }
+    run_initial_child(session, error_fd, trace);
+    // run_initial_child never returns
   }
 
   if (0 > tid) {
