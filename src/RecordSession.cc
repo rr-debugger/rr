@@ -332,7 +332,7 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
     return false;
   }
 
-  LOG(debug) << "  " << t->tid << ": handle_ptrace_event " << event
+  LOG(debug) << "  " << t->tid << ": handle_ptrace_event " << ptrace_event_name(event)
              << ": event " << t->ev();
 
   switch (event) {
