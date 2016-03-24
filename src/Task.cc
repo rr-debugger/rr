@@ -1215,145 +1215,6 @@ bool Task::try_wait() {
   return false;
 }
 
-static void spawned_child_fatal_error(const ScopedFd& err_fd,
-                                      const char* format, ...) {
-  va_list args;
-  va_start(args, format);
-  char* buf;
-  vasprintf(&buf, format, args);
-
-  char* buf2;
-  asprintf(&buf2, "%s (%s)", buf, errno_name(errno).c_str());
-  write(err_fd, buf2, strlen(buf2));
-  _exit(1);
-}
-
-/**
- * Prepare this process and its ancestors for recording/replay by
- * preventing direct access to sources of nondeterminism, and ensuring
- * that rr bugs don't adversely affect the underlying system.
- */
-static void set_up_process(Session& session, const ScopedFd& err_fd) {
-  /* TODO tracees can probably undo some of the setup below
-   * ... */
-
-  /* CLOEXEC so that the original fd here will be closed by the exec that's
-   * about to happen.
-   */
-  int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
-  if (0 > fd) {
-    spawned_child_fatal_error(err_fd, "error opening /dev/null");
-  }
-  if (RR_MAGIC_SAVE_DATA_FD != dup2(fd, RR_MAGIC_SAVE_DATA_FD)) {
-    spawned_child_fatal_error(err_fd, "error duping to RR_MAGIC_SAVE_DATA_FD");
-  }
-
-  /* CLOEXEC so that the original fd here will be closed by the exec that's
-   * about to happen.
-   */
-  fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
-  if (0 > fd) {
-    spawned_child_fatal_error(err_fd, "error opening root directory");
-  }
-  if (RR_RESERVED_ROOT_DIR_FD != dup2(fd, RR_RESERVED_ROOT_DIR_FD)) {
-    spawned_child_fatal_error(err_fd,
-                              "error duping to RR_RESERVED_ROOT_DIR_FD");
-  }
-
-  if (session.is_replaying()) {
-    // This task and all its descendants should silently reap any terminating
-    // children.
-    if (SIG_ERR == signal(SIGCHLD, SIG_IGN)) {
-      spawned_child_fatal_error(err_fd, "error doing signal()");
-    }
-
-    // If the rr process dies, prevent runaway tracee processes
-    // from dragging down the underlying system.
-    //
-    // TODO: this isn't inherited across fork().
-    if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
-      spawned_child_fatal_error(err_fd, "Couldn't set parent-death signal");
-    }
-
-    // Put the replaying processes into their own session. This will stop
-    // signals being sent to these processes by the terminal --- in particular
-    // SIGTSTP/SIGINT/SIGWINCH.
-    setsid();
-  }
-
-  /* Trap to the rr process if a 'rdtsc' instruction is issued.
-   * That allows rr to record the tsc and replay it
-   * deterministically. */
-  if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
-    spawned_child_fatal_error(err_fd, "error setting up prctl");
-  }
-
-  if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-    spawned_child_fatal_error(
-        err_fd,
-        "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
-        "kernel is too old. Use `record -n` to disable the filter.");
-  }
-}
-
-/**
- * This is called (and must be called) in the tracee after rr has taken
- * ptrace control. Otherwise, once we've installed the seccomp filter,
- * things go wrong because we have no ptracer and the seccomp filter demands
- * one.
- */
-static void set_up_seccomp_filter(Session& session, int err_fd) {
-  struct sock_fprog prog;
-
-  if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
-    uintptr_t in_untraced_syscall_ip =
-        AddressSpace::rr_page_ip_in_untraced_syscall().register_value();
-    uintptr_t in_untraced_replayed_syscall_ip =
-        AddressSpace::rr_page_ip_in_untraced_replayed_syscall()
-            .register_value();
-    uintptr_t privileged_in_untraced_syscall_ip =
-        AddressSpace::rr_page_ip_in_privileged_untraced_syscall()
-            .register_value();
-    assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
-    assert(in_untraced_replayed_syscall_ip ==
-           uint32_t(in_untraced_replayed_syscall_ip));
-    assert(privileged_in_untraced_syscall_ip ==
-           uint32_t(privileged_in_untraced_syscall_ip));
-
-    struct sock_filter filter[] = {
-      /* Allow all system calls from our untraced_syscall callsite */
-      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_syscall_ip)),
-      /* Allow all system calls from our untraced_syscall callsite */
-      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_replayed_syscall_ip)),
-      /* Allow all system calls from our privilged_untraced_syscall callsite */
-      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_untraced_syscall_ip)),
-      /* All the rest are handled in rr */
-      TRACE_PROCESS,
-    };
-    prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
-    prog.filter = filter;
-  } else {
-    // Use a dummy filter that always generates ptrace traps. Supplying this
-    // dummy filter makes ptrace-event behavior consistent whether or not
-    // we enable syscall buffering, and more importantly, consistent whether
-    // or not the tracee installs its own seccomp filter.
-    struct sock_filter filter[] = {
-      TRACE_PROCESS,
-    };
-    prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
-    prog.filter = filter;
-  }
-
-  /* Note: the filter is installed only for record. This call
-   * will be emulated in the replay */
-  if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {
-    spawned_child_fatal_error(
-        err_fd, "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
-                "kernel is too old.");
-  }
-  /* anything that happens from this point on gets filtered! */
-}
-
 template <typename Arch>
 static void set_thread_area_from_clone_arch(Task* t, remote_ptr<void> tls) {
   if (Arch::clone_tls_type == Arch::UserDescPointer) {
@@ -2106,6 +1967,145 @@ static void set_cpu_affinity(int cpu) {
   if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
     FATAL() << "Couldn't bind to CPU " << cpu;
   }
+}
+
+static void spawned_child_fatal_error(const ScopedFd& err_fd,
+                                      const char* format, ...) {
+  va_list args;
+  va_start(args, format);
+  char* buf;
+  vasprintf(&buf, format, args);
+
+  char* buf2;
+  asprintf(&buf2, "%s (%s)", buf, errno_name(errno).c_str());
+  write(err_fd, buf2, strlen(buf2));
+  _exit(1);
+}
+
+/**
+ * Prepare this process and its ancestors for recording/replay by
+ * preventing direct access to sources of nondeterminism, and ensuring
+ * that rr bugs don't adversely affect the underlying system.
+ */
+static void set_up_process(Session& session, const ScopedFd& err_fd) {
+  /* TODO tracees can probably undo some of the setup below
+   * ... */
+
+  /* CLOEXEC so that the original fd here will be closed by the exec that's
+   * about to happen.
+   */
+  int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
+  if (0 > fd) {
+    spawned_child_fatal_error(err_fd, "error opening /dev/null");
+  }
+  if (RR_MAGIC_SAVE_DATA_FD != dup2(fd, RR_MAGIC_SAVE_DATA_FD)) {
+    spawned_child_fatal_error(err_fd, "error duping to RR_MAGIC_SAVE_DATA_FD");
+  }
+
+  /* CLOEXEC so that the original fd here will be closed by the exec that's
+   * about to happen.
+   */
+  fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
+  if (0 > fd) {
+    spawned_child_fatal_error(err_fd, "error opening root directory");
+  }
+  if (RR_RESERVED_ROOT_DIR_FD != dup2(fd, RR_RESERVED_ROOT_DIR_FD)) {
+    spawned_child_fatal_error(err_fd,
+                              "error duping to RR_RESERVED_ROOT_DIR_FD");
+  }
+
+  if (session.is_replaying()) {
+    // This task and all its descendants should silently reap any terminating
+    // children.
+    if (SIG_ERR == signal(SIGCHLD, SIG_IGN)) {
+      spawned_child_fatal_error(err_fd, "error doing signal()");
+    }
+
+    // If the rr process dies, prevent runaway tracee processes
+    // from dragging down the underlying system.
+    //
+    // TODO: this isn't inherited across fork().
+    if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
+      spawned_child_fatal_error(err_fd, "Couldn't set parent-death signal");
+    }
+
+    // Put the replaying processes into their own session. This will stop
+    // signals being sent to these processes by the terminal --- in particular
+    // SIGTSTP/SIGINT/SIGWINCH.
+    setsid();
+  }
+
+  /* Trap to the rr process if a 'rdtsc' instruction is issued.
+   * That allows rr to record the tsc and replay it
+   * deterministically. */
+  if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
+    spawned_child_fatal_error(err_fd, "error setting up prctl");
+  }
+
+  if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+    spawned_child_fatal_error(
+        err_fd,
+        "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
+        "kernel is too old. Use `record -n` to disable the filter.");
+  }
+}
+
+/**
+ * This is called (and must be called) in the tracee after rr has taken
+ * ptrace control. Otherwise, once we've installed the seccomp filter,
+ * things go wrong because we have no ptracer and the seccomp filter demands
+ * one.
+ */
+static void set_up_seccomp_filter(Session& session, int err_fd) {
+  struct sock_fprog prog;
+
+  if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
+    uintptr_t in_untraced_syscall_ip =
+        AddressSpace::rr_page_ip_in_untraced_syscall().register_value();
+    uintptr_t in_untraced_replayed_syscall_ip =
+        AddressSpace::rr_page_ip_in_untraced_replayed_syscall()
+            .register_value();
+    uintptr_t privileged_in_untraced_syscall_ip =
+        AddressSpace::rr_page_ip_in_privileged_untraced_syscall()
+            .register_value();
+    assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
+    assert(in_untraced_replayed_syscall_ip ==
+           uint32_t(in_untraced_replayed_syscall_ip));
+    assert(privileged_in_untraced_syscall_ip ==
+           uint32_t(privileged_in_untraced_syscall_ip));
+
+    struct sock_filter filter[] = {
+      /* Allow all system calls from our untraced_syscall callsite */
+      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_syscall_ip)),
+      /* Allow all system calls from our untraced_syscall callsite */
+      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_replayed_syscall_ip)),
+      /* Allow all system calls from our privilged_untraced_syscall callsite */
+      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_untraced_syscall_ip)),
+      /* All the rest are handled in rr */
+      TRACE_PROCESS,
+    };
+    prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
+    prog.filter = filter;
+  } else {
+    // Use a dummy filter that always generates ptrace traps. Supplying this
+    // dummy filter makes ptrace-event behavior consistent whether or not
+    // we enable syscall buffering, and more importantly, consistent whether
+    // or not the tracee installs its own seccomp filter.
+    struct sock_filter filter[] = {
+      TRACE_PROCESS,
+    };
+    prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
+    prog.filter = filter;
+  }
+
+  /* Note: the filter is installed only for record. This call
+   * will be emulated in the replay */
+  if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {
+    spawned_child_fatal_error(
+        err_fd, "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
+                "kernel is too old.");
+  }
+  /* anything that happens from this point on gets filtered! */
 }
 
 /*static*/ Task* Task::spawn(Session& session, const ScopedFd& error_fd,
