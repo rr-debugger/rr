@@ -114,7 +114,7 @@ private:
 
   virtual void on_create(Task* t);
 
-  void check_perf_counters_working(RecordTask* t, RecordResult* step_result);
+  void check_initial_task_syscalls(RecordTask* t, RecordResult* step_result);
   bool handle_ptrace_event(RecordTask* t, StepState* step_state);
   bool handle_signal_event(RecordTask* t, StepState* step_state);
   void runnable_state_changed(RecordTask* t, RecordResult* step_result,

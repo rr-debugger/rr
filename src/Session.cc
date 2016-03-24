@@ -64,6 +64,7 @@ void Session::post_exec() {
   done_initial_exec_ = true;
   assert(tasks().size() == 1);
   tasks().begin()->second->flush_inconsistent_state();
+  spawned_task_error_fd_.close();
 }
 
 AddressSpace::shr_ptr Session::create_vm(Task* t, const std::string& exe,
@@ -256,6 +257,25 @@ void Session::on_destroy(Task* t) {
 }
 
 void Session::on_create(Task* t) { task_map[t->rec_tid] = t; }
+
+ScopedFd Session::create_spawn_task_error_pipe() {
+  int fds[2];
+  if (0 != pipe2(fds, O_CLOEXEC)) {
+    FATAL();
+  }
+  spawned_task_error_fd_ = fds[0];
+  return ScopedFd(fds[1]);
+}
+
+string Session::read_spawned_task_error() const {
+  char buf[1024] = "";
+  ssize_t len = read(spawned_task_error_fd_, buf, sizeof(buf));
+  if (len <= 0) {
+    return string();
+  }
+  buf[len] = 0;
+  return string(buf, len);
+}
 
 BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
   assert_fully_initialized();

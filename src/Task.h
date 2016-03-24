@@ -861,9 +861,13 @@ protected:
                         remote_ptr<void> tls = nullptr,
                         remote_ptr<int> ctid = nullptr);
 
-  /** Fork and exec a task to run |ae|, with |rec_tid|. */
-  static Task* spawn(Session& session, const TraceStream& trace,
-                     pid_t rec_tid = -1);
+  /**
+   * Fork and exec the initial task. If something goes wrong later
+   * (i.e. an exec does not occur before an exit), an error may be
+   * readable from the other end of the pipe whose write end is error_fd.
+   */
+  static Task* spawn(Session& session, const ScopedFd& error_fd,
+                     const TraceStream& trace, pid_t rec_tid = -1);
 
   uint32_t serial;
   // The address space of this task.

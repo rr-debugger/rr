@@ -1215,7 +1215,8 @@ bool Task::try_wait() {
   return false;
 }
 
-static void spawned_child_fatal_error(const char* format, ...) {
+static void spawned_child_fatal_error(const ScopedFd& err_fd,
+                                      const char* format, ...) {
   va_list args;
   va_start(args, format);
   char* buf;
@@ -1223,8 +1224,8 @@ static void spawned_child_fatal_error(const char* format, ...) {
 
   char* buf2;
   asprintf(&buf2, "%s (%s)", buf, errno_name(errno).c_str());
-  write(-2, buf2, strlen(buf2));
-  exit(1);
+  write(err_fd, buf2, strlen(buf2));
+  _exit(1);
 }
 
 /**
@@ -1232,7 +1233,7 @@ static void spawned_child_fatal_error(const char* format, ...) {
  * preventing direct access to sources of nondeterminism, and ensuring
  * that rr bugs don't adversely affect the underlying system.
  */
-static void set_up_process(Session& session) {
+static void set_up_process(Session& session, const ScopedFd& err_fd) {
   /* TODO tracees can probably undo some of the setup below
    * ... */
 
@@ -1241,10 +1242,10 @@ static void set_up_process(Session& session) {
    */
   int fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
   if (0 > fd) {
-    spawned_child_fatal_error("error opening /dev/null");
+    spawned_child_fatal_error(err_fd, "error opening /dev/null");
   }
   if (RR_MAGIC_SAVE_DATA_FD != dup2(fd, RR_MAGIC_SAVE_DATA_FD)) {
-    spawned_child_fatal_error("error duping to RR_MAGIC_SAVE_DATA_FD");
+    spawned_child_fatal_error(err_fd, "error duping to RR_MAGIC_SAVE_DATA_FD");
   }
 
   /* CLOEXEC so that the original fd here will be closed by the exec that's
@@ -1252,23 +1253,26 @@ static void set_up_process(Session& session) {
    */
   fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
   if (0 > fd) {
-    spawned_child_fatal_error("error opening root directory");
+    spawned_child_fatal_error(err_fd, "error opening root directory");
   }
   if (RR_RESERVED_ROOT_DIR_FD != dup2(fd, RR_RESERVED_ROOT_DIR_FD)) {
-    spawned_child_fatal_error("error duping to RR_RESERVED_ROOT_DIR_FD");
+    spawned_child_fatal_error(err_fd,
+                              "error duping to RR_RESERVED_ROOT_DIR_FD");
   }
 
   if (session.is_replaying()) {
     // This task and all its descendants should silently reap any terminating
     // children.
-    signal(SIGCHLD, SIG_IGN);
+    if (SIG_ERR == signal(SIGCHLD, SIG_IGN)) {
+      spawned_child_fatal_error(err_fd, "error doing signal()");
+    }
 
     // If the rr process dies, prevent runaway tracee processes
     // from dragging down the underlying system.
     //
     // TODO: this isn't inherited across fork().
     if (0 > prctl(PR_SET_PDEATHSIG, SIGKILL)) {
-      spawned_child_fatal_error("Couldn't set parent-death signal");
+      spawned_child_fatal_error(err_fd, "Couldn't set parent-death signal");
     }
 
     // Put the replaying processes into their own session. This will stop
@@ -1281,11 +1285,12 @@ static void set_up_process(Session& session) {
    * That allows rr to record the tsc and replay it
    * deterministically. */
   if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
-    spawned_child_fatal_error("error setting up prctl");
+    spawned_child_fatal_error(err_fd, "error setting up prctl");
   }
 
   if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
     spawned_child_fatal_error(
+        err_fd,
         "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
         "kernel is too old. Use `record -n` to disable the filter.");
   }
@@ -1297,7 +1302,7 @@ static void set_up_process(Session& session) {
  * things go wrong because we have no ptracer and the seccomp filter demands
  * one.
  */
-static void set_up_seccomp_filter(Session& session) {
+static void set_up_seccomp_filter(Session& session, int err_fd) {
   struct sock_fprog prog;
 
   if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
@@ -1343,8 +1348,8 @@ static void set_up_seccomp_filter(Session& session) {
    * will be emulated in the replay */
   if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {
     spawned_child_fatal_error(
-        "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
-        "kernel is too old.");
+        err_fd, "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
+                "kernel is too old.");
   }
   /* anything that happens from this point on gets filtered! */
 }
@@ -2103,8 +2108,8 @@ static void set_cpu_affinity(int cpu) {
   }
 }
 
-/*static*/ Task* Task::spawn(Session& session, const TraceStream& trace,
-                             pid_t rec_tid) {
+/*static*/ Task* Task::spawn(Session& session, const ScopedFd& error_fd,
+                             const TraceStream& trace, pid_t rec_tid) {
   assert(session.tasks().size() == 0);
 
   if (trace.bound_to_cpu() >= 0) {
@@ -2128,7 +2133,7 @@ static void set_cpu_affinity(int cpu) {
     // recording. The main effect of this is to resolve relative
     // paths in the following execvpe correctly during replay.
     chdir(trace.initial_cwd().c_str());
-    set_up_process(session);
+    set_up_process(session, error_fd);
     // The preceding code must run before sending SIGSTOP here,
     // since after SIGSTOP replay emulates almost all syscalls, but
     // we need the above syscalls to run "for real".
@@ -2137,7 +2142,7 @@ static void set_cpu_affinity(int cpu) {
     ::kill(getpid(), SIGSTOP);
 
     // This code must run after rr has taken ptrace control.
-    set_up_seccomp_filter(session);
+    set_up_seccomp_filter(session, error_fd);
 
     // We do a small amount of dummy work here to retire
     // some branches in order to ensure that the ticks value is
@@ -2164,16 +2169,16 @@ static void set_cpu_affinity(int cpu) {
     switch (errno) {
       case ENOENT:
         spawned_child_fatal_error(
-            "execve failed: '%s' (or interpreter) not found", exe);
+            error_fd, "execve failed: '%s' (or interpreter) not found", exe);
         break;
       default:
-        spawned_child_fatal_error("execve of '%s' failed", exe);
+        spawned_child_fatal_error(error_fd, "execve of '%s' failed", exe);
         break;
     }
   }
 
   if (0 > tid) {
-    FATAL() << "Failed to fork for '" << trace.initial_exe().c_str() << "'";
+    FATAL() << "Failed to fork";
   }
 
   struct sigaction sa;
@@ -2210,7 +2215,9 @@ static void set_cpu_affinity(int cpu) {
 
     string hint;
     if (errno == EPERM) {
-      hint = "; child probably died before reaching SIGSTOP";
+      hint = "; child probably died before reaching SIGSTOP\n"
+             "Child's message: " +
+             session.read_spawned_task_error();
     }
     FATAL() << "PTRACE_SEIZE failed for tid " << tid << hint;
   }
@@ -2225,10 +2232,19 @@ static void set_cpu_affinity(int cpu) {
   setup_fd_table(*t->fds);
 
   t->wait();
+  if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    FATAL() << "Tracee died before reaching SIGSTOP\n"
+               "Child's message: "
+            << session.read_spawned_task_error();
+  }
   // SIGSTOP can be reported as a signal-stop or group-stop depending on
   // whether PTRACE_SEIZE happened before or after it was delivered.
-  ASSERT(t, SIGSTOP == t->status().stop_sig() ||
-                SIGSTOP == t->status().group_stop());
+  if (SIGSTOP != t->status().stop_sig() &&
+      SIGSTOP != t->status().group_stop()) {
+    FATAL() << "Unexpected stop " << t->status() << "\n"
+                                                    "Child's message: "
+            << session.read_spawned_task_error();
+  }
 
   t->clear_wait_status();
   t->open_mem_fd();

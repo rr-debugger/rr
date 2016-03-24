@@ -224,9 +224,13 @@ public:
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
                          SupportedArch a);
 
+  std::string read_spawned_task_error() const;
+
 protected:
   Session();
   virtual ~Session();
+
+  ScopedFd create_spawn_task_error_pipe();
 
   Session(const Session& other);
   Session& operator=(const Session&) = delete;
@@ -255,6 +259,7 @@ protected:
   Statistics statistics_;
 
   uint32_t next_task_serial_;
+  ScopedFd spawned_task_error_fd_;
 
   /**
    * True if we've done an exec so tracees are now in a state that will be
