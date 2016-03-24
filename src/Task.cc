@@ -1060,7 +1060,7 @@ void Task::wait(double interrupt_after_elapsed) {
 }
 
 static bool is_in_non_sigreturn_exit_syscall(Task* t) {
-  if (t->stop_sig() != (SIGTRAP | 0x80)) {
+  if (!t->status().is_syscall()) {
     return false;
   }
   if (t->session().is_recording()) {
@@ -2261,7 +2261,7 @@ static void set_cpu_affinity(int cpu) {
   // requirement of the tracing beginning from a known point.
   while (true) {
     t->wait();
-    if (SIGSTOP == t->stop_sig()) {
+    if (SIGSTOP == t->status().stop_sig()) {
       break;
     }
     t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING,

@@ -75,7 +75,7 @@ static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
                           int expect_syscallno) {
   do {
     t->resume_execution(resume_how, RESUME_WAIT, RESUME_NO_TICKS);
-  } while (ReplaySession::is_ignored_signal(t->stop_sig()));
+  } while (ReplaySession::is_ignored_signal(t->status().stop_sig()));
 
   ASSERT(t, !t->pending_sig()) << "Expected no pending signal, but got "
                                << t->pending_sig();
@@ -395,7 +395,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   ASSERT(t, !t->pending_sig()) << "Stub exec failed on entry";
   /* Proceed to the SIGTRAP. */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
-  if (t->stop_sig() != (SIGTRAP | 0x80)) {
+  if (!t->status().is_syscall()) {
     if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
         trace_frame.regs().arch() == x86) {
       FATAL() << "Cannot find exec stub " << stub_filename

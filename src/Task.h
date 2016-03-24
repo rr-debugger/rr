@@ -468,8 +468,6 @@ public:
    */
   WaitStatus status() const { return wait_status; }
 
-  int stop_sig() const { return stop_sig_from_status(wait_status.get()); }
-
   /**
    * Return the ptrace event as of the last call to
    * |wait()/try_wait()|.
