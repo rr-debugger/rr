@@ -466,7 +466,7 @@ public:
    * Return the status of this as of the last successful
    * wait()/try_wait() call.
    */
-  int status() const { return wait_status.get(); }
+  WaitStatus status() const { return wait_status; }
 
   /**
    * Return true if this is at a signal-stop.  If so,

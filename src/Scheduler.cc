@@ -165,7 +165,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
     t->wait();
     *by_waitpid = true;
     must_run_task = t;
-    LOG(debug) << "  sched_yield ready with status " << HEX(t->status());
+    LOG(debug) << "  sched_yield ready with status " << t->status();
     return true;
   }
 
@@ -176,7 +176,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   if (did_wait_for_t) {
     *by_waitpid = true;
     must_run_task = t;
-    LOG(debug) << "  ready with status " << HEX(t->status());
+    LOG(debug) << "  ready with status " << t->status();
     return true;
   }
   LOG(debug) << "  still blocked";
@@ -353,7 +353,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       }
 #endif
       result.by_waitpid = true;
-      LOG(debug) << "  new status is " << HEX(current_->status());
+      LOG(debug) << "  new status is " << current_->status();
     }
     return result;
   }

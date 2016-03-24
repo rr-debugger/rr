@@ -378,8 +378,7 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
 }
 
 static void debug_exec_state(const char* msg, RecordTask* t) {
-  LOG(debug) << msg << ": status=" << HEX(t->status())
-             << " pevent=" << t->ptrace_event();
+  LOG(debug) << msg << ": status=" << t->status();
 }
 
 void RecordSession::task_continue(const StepState& step_state) {

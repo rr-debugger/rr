@@ -2032,7 +2032,7 @@ bool Task::clone_syscall_is_complete() {
   intptr_t result = regs().syscall_result_signed();
   ASSERT(this, regs().syscall_may_restart() || -ENOSYS == result ||
                    -EAGAIN == result || -ENOMEM == result)
-      << "Unexpected task status " << HEX(status()) << " ("
+      << "Unexpected task status " << status() << " ("
       << syscall_name(regs().original_syscallno())
       << " syscall errno: " << errno_name(-result) << ")";
   return false;
