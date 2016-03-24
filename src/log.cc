@@ -11,6 +11,7 @@
 #include "Flags.h"
 #include "ftrace.h"
 #include "GdbServer.h"
+#include "kernel_metadata.h"
 #include "RecordSession.h"
 
 using namespace std;
@@ -208,7 +209,7 @@ static void write_prefix(T& stream, LogLevel level, const char* file, int line,
   }
   stream << function << "()";
   if (level <= LOG_warn) {
-    stream << " errno: " << err << " '" << strerror(err) << "'";
+    stream << " errno: " << errno_name(err);
   }
   stream << "] ";
 }

@@ -411,7 +411,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     int ret = waitpid(waiting_for_child, &status, 0);
     int err = errno;
     LOG(debug) << getpid() << ": waitpid(" << waiting_for_child << ") returned "
-               << strerror(err) << "(" << err << "); status:" << HEX(status);
+               << errno_name(err) << "(" << err << "); status:" << HEX(status);
     if (waiting_for_child != ret) {
       if (EINTR == err) {
         continue;
