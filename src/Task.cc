@@ -2236,7 +2236,12 @@ static void set_cpu_affinity(int cpu) {
     int tmp_errno = errno;
     kill(tid, SIGKILL);
     errno = tmp_errno;
-    FATAL() << "PTRACE_SEIZE failed for tid " << tid;
+
+    string hint;
+    if (errno == EPERM) {
+      hint = "; child probably died before reaching SIGSTOP";
+    }
+    FATAL() << "PTRACE_SEIZE failed for tid " << tid << hint;
   }
 
   Task* t = session.new_task(tid, rec_tid, session.next_task_serial(),
