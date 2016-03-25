@@ -2657,13 +2657,28 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
 
         case PR_GET_TSC: {
-          // Prevent the actual GET_TSC call. We force-return PR_TSC_ENABLE.
+          // Prevent the actual GET_TSC call and return our emulated state.
           Registers r = t->regs();
           r.set_arg1(intptr_t(-1));
           t->set_regs(r);
           syscall_state.emulate_result(0);
           t->write_mem(syscall_state.reg_parameter<int>(2, IN_OUT_NO_SCRATCH),
-                       PR_TSC_ENABLE);
+                       t->tsc_mode);
+          break;
+        }
+
+        case PR_SET_TSC: {
+          // Prevent the actual SET_TSC call.
+          Registers r = t->regs();
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          int val = (int)t->regs().arg2();
+          if (val != PR_TSC_ENABLE && val != PR_TSC_SIGSEGV) {
+            syscall_state.emulate_result(-EINVAL);
+          } else {
+            syscall_state.emulate_result(0);
+            t->tsc_mode = val;
+          }
           break;
         }
 

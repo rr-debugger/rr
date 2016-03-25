@@ -491,10 +491,9 @@ public:
   // Value to return from PR_GET_SECCOMP
   uint8_t prctl_seccomp_status;
 
-  // The current stack of events being processed.  (We use a
-  // deque instead of a stack because we need to iterate the
-  // events.)
-  std::deque<Event> pending_events;
+  // Mirrored kernel state
+  // This state agrees with kernel-internal values
+
   // Futex list passed to |set_robust_list()|.  We could keep a
   // strong type for this list head and read it if we wanted to,
   // but for now we only need to remember its address / size at
@@ -506,14 +505,21 @@ public:
   remote_ptr<int> tid_futex;
   /* This is the recorded tid of the tracee *in its own pid namespace*. */
   pid_t own_namespace_rec_tid;
+  int exit_code;
+  // Signal delivered by the kernel when this task terminates, or zero
+  int termination_signal;
+
+  // Our value for PR_GET/SET_TSC (one of PR_TSC_ENABLED, PR_TSC_SIGSEGV).
+  int tsc_mode;
+  // The current stack of events being processed.  (We use a
+  // deque instead of a stack because we need to iterate the
+  // events.)
+  std::deque<Event> pending_events;
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
   std::deque<siginfo_t> stashed_signals;
   // Saved emulated-ptrace signals
   std::vector<siginfo_t> saved_ptrace_siginfos;
-  int exit_code;
-  // Signal delivered by the kernel when this task terminates, or zero
-  int termination_signal;
 };
 
 } // namespace rr

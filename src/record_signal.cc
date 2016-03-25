@@ -10,6 +10,7 @@
 #include <string.h>
 #include <syscall.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <sys/user.h>
 #include <x86intrin.h>
 
@@ -78,7 +79,7 @@ static bool is_ip_rdtsc(RecordTask* t) {
 static bool try_handle_rdtsc(RecordTask* t, siginfo_t* si) {
   ASSERT(t, si->si_signo == SIGSEGV);
 
-  if (!is_ip_rdtsc(t)) {
+  if (!is_ip_rdtsc(t) || t->tsc_mode == PR_TSC_SIGSEGV) {
     return false;
   }
 

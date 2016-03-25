@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <limits.h>
 #include <linux/perf_event.h>
+#include <sys/prctl.h>
 #include <sys/syscall.h>
 
 #include "AutoRemoteSyscalls.h"
@@ -176,7 +177,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       robust_futex_list_len(0),
       own_namespace_rec_tid(0),
       exit_code(0),
-      termination_signal(0) {
+      termination_signal(0),
+      tsc_mode(PR_TSC_ENABLE) {
   push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
@@ -290,6 +292,7 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     rt->prctl_seccomp_status = prctl_seccomp_status;
     rt->robust_futex_list = robust_futex_list;
     rt->robust_futex_list_len = robust_futex_list_len;
+    rt->tsc_mode = tsc_mode;
     if (CLONE_SHARE_SIGHANDLERS & flags) {
       rt->sighandlers = sighandlers;
     } else {
