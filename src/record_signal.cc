@@ -31,8 +31,6 @@ namespace rr {
 
 static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
 
-static const int STOPSIG_SYSCALL = 0x80 | SIGTRAP;
-
 template <typename Arch> static size_t sigaction_sigset_size_arch() {
   return Arch::sigaction_sigset_size;
 }
