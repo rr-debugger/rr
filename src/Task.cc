@@ -707,7 +707,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
      * a chance to SIGKILL our tracee and advance it to the PTRACE_EXIT_EVENT,
      * or just letting the tracee be scheduled to process its pending SIGKILL.
      */
-    int raw_status;
+    int raw_status = 0;
     wait_ret = waitpid(tid, &raw_status, WNOHANG | __WALL | WSTOPPED);
     ASSERT(this, 0 <= wait_ret) << "waitpid(" << tid << ", NOHANG) failed with "
                                 << wait_ret;
@@ -977,7 +977,7 @@ void Task::wait(double interrupt_after_elapsed) {
                                  to_timeval(interrupt_after_elapsed) };
       setitimer(ITIMER_REAL, &timer, nullptr);
     }
-    int raw_status;
+    int raw_status = 0;
     ret = waitpid(tid, &raw_status, __WALL);
     status = WaitStatus(raw_status);
     if (interrupt_after_elapsed) {
@@ -1027,7 +1027,7 @@ void Task::wait(double interrupt_after_elapsed) {
   }
 
   LOG(debug) << "  waitpid(" << tid << ") returns " << ret << "; status "
-             << WaitStatus(status);
+             << status;
   ASSERT(this, tid == ret) << "waitpid(" << tid << ") failed with " << ret;
 
   // If some other ptrace-stop happened to race with our
@@ -1202,7 +1202,7 @@ void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
 }
 
 bool Task::try_wait() {
-  int raw_status;
+  int raw_status = 0;
   pid_t ret = waitpid(tid, &raw_status, WNOHANG | __WALL | WSTOPPED);
   ASSERT(this, 0 <= ret) << "waitpid(" << tid << ", NOHANG) failed with "
                          << ret;

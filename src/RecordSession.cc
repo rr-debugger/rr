@@ -332,8 +332,8 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
     return false;
   }
 
-  LOG(debug) << "  " << t->tid << ": handle_ptrace_event " << ptrace_event_name(event)
-             << ": event " << t->ev();
+  LOG(debug) << "  " << t->tid << ": handle_ptrace_event "
+             << ptrace_event_name(event) << ": event " << t->ev();
 
   switch (event) {
     case PTRACE_EVENT_SECCOMP_OBSOLETE:
@@ -386,6 +386,8 @@ void RecordSession::task_continue(const StepState& step_state) {
   RecordTask* t = scheduler().current();
 
   ASSERT(t, step_state.continue_type != DONT_CONTINUE);
+  // A task in an emulated ptrace-stop must really stay stopped
+  ASSERT(t, !t->emulated_ptrace_stop_pending);
 
   bool may_restart = t->at_may_restart_syscall();
 
@@ -589,8 +591,12 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       debug_exec_state("after cont", t);
       t->ev().Syscall().state = PROCESSING_SYSCALL;
 
-      // Resume the syscall execution in the kernel context.
-      step_state->continue_type = CONTINUE_SYSCALL;
+      if (t->emulated_ptrace_stop_pending) {
+        step_state->continue_type = DONT_CONTINUE;
+      } else {
+        // Resume the syscall execution in the kernel context.
+        step_state->continue_type = CONTINUE_SYSCALL;
+      }
 
       if (t->session().done_initial_exec() && Flags::get().check_cached_mmaps) {
         t->vm()->verify(t);
@@ -668,7 +674,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
       LOG(debug) << "  original_syscallno:" << t->regs().original_syscallno()
                  << " (" << t->syscall_name(syscallno)
-                 << "); return val:" << t->regs().syscall_result();
+                 << "); return val:" << HEX(t->regs().syscall_result());
 
       /* a syscall_restart ending is equivalent to the
        * restarted syscall ending */
@@ -694,7 +700,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         }
       } else {
         LOG(debug) << "  may restart " << t->syscall_name(syscallno)
-                   << " (from retval " << retval << ")";
+                   << " (from retval " << HEX(retval) << ")";
 
         rec_prepare_restart_syscall(t);
         /* If we may restart this syscall, we've most

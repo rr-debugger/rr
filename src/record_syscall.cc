@@ -1310,6 +1310,7 @@ static void do_ptrace_exit_stop(RecordTask* t) {
   if (t->emulated_ptracer &&
       (t->is_clone_child() ||
        t->get_parent_pid() != t->emulated_ptracer->real_tgid())) {
+    // This is a bit wrong; this is an exit stop, not a signal/ptrace stop.
     t->emulate_ptrace_stop(t->exit_code << 8, SIGNAL_DELIVERY_STOP);
   }
 }
@@ -1321,6 +1322,13 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig) {
   }
 
   tracee->emulated_stop_type = NOT_STOPPED;
+
+  if (tracee->ev().is_syscall_event() &&
+      PROCESSING_SYSCALL == tracee->ev().Syscall().state) {
+    // Continue the task since we didn't in enter_syscall
+    tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
+                             RESUME_NO_TICKS);
+  }
 
   if (tracee->emulated_ptrace_queued_exit_stop) {
     do_ptrace_exit_stop(tracee);
@@ -3547,10 +3555,11 @@ static void rec_process_syscall_arch(RecordTask* t,
           syscall_state.syscall_entry_registers.original_syscallno());
       t->set_regs(r);
 
-      if (syscall_state.ptraced_tracee) {
+      RecordTask* tracee = syscall_state.ptraced_tracee;
+      if (tracee) {
         // Finish emulation of ptrace result
         Registers r = t->regs();
-        r.set_syscall_result(syscall_state.ptraced_tracee->tid);
+        r.set_syscall_result(tracee->tid);
         t->set_regs(r);
         if (syscallno == Arch::waitid) {
           remote_ptr<typename Arch::siginfo_t> sip = r.arg3();
@@ -3559,27 +3568,34 @@ static void rec_process_syscall_arch(RecordTask* t,
             memset(&si, 0, sizeof(si));
             si.si_signo = SIGCHLD;
             si.si_code = CLD_TRAPPED;
-            si._sifields._sigchld.si_pid_ =
-                syscall_state.ptraced_tracee->tgid();
-            si._sifields._sigchld.si_uid_ =
-                syscall_state.ptraced_tracee->getuid();
-            si._sifields._sigchld.si_status_ = WSTOPSIG(
-                syscall_state.ptraced_tracee->emulated_ptrace_stop_code);
+            si._sifields._sigchld.si_pid_ = tracee->tgid();
+            si._sifields._sigchld.si_uid_ = tracee->getuid();
+            si._sifields._sigchld.si_status_ =
+                WSTOPSIG(tracee->emulated_ptrace_stop_code);
             t->write_mem(sip, si);
           }
         } else {
           remote_ptr<int> statusp = r.arg2();
           if (!statusp.is_null()) {
-            t->write_mem(
-                statusp,
-                syscall_state.ptraced_tracee->emulated_ptrace_stop_code);
+            t->write_mem(statusp, tracee->emulated_ptrace_stop_code);
           }
         }
         if (syscallno == Arch::waitid && (r.arg4() & WNOWAIT)) {
           // Leave the child in a waitable state
         } else {
-          syscall_state.ptraced_tracee->emulated_ptrace_stop_code = 0;
-          syscall_state.ptraced_tracee->emulated_ptrace_stop_pending = false;
+          if (WIFEXITED(tracee->emulated_ptrace_stop_code)) {
+            // If we stopped the tracee to deliver this notification,
+            // now allow it to continue to exit properly and notify its
+            // real parent.
+            ASSERT(t, tracee->ev().is_syscall_event() &&
+                          PROCESSING_SYSCALL == tracee->ev().Syscall().state &&
+                          tracee->stable_exit);
+            // Continue the task since we didn't in enter_syscall
+            tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
+                                     RESUME_NO_TICKS);
+          }
+          tracee->emulated_ptrace_stop_code = 0;
+          tracee->emulated_ptrace_stop_pending = false;
         }
       }
       break;

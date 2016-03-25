@@ -8,6 +8,7 @@ int main(void) {
   pid_t child;
   char ch;
   int status;
+  struct user_regs_struct regs;
 
   test_assert(0 == pipe(parent_to_child_fds));
 
@@ -22,6 +23,7 @@ int main(void) {
 
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((PTRACE_EVENT_EXIT << 16) | (SIGTRAP << 8) | 0x7f));
+  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
 
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, (void*)0));
 
