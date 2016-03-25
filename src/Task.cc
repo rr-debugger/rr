@@ -209,16 +209,6 @@ pid_t Task::get_ptrace_eventmsg_pid() {
   return (pid_t)msg;
 }
 
-uint16_t Task::get_ptrace_eventmsg_seccomp_data() {
-  unsigned long data = 0;
-  // in theory we could hit an assertion failure if the tracee suffers
-  // a SIGKILL before we get here. But the SIGKILL would have to be
-  // precisely timed between the generation of a PTRACE_EVENT_FORK/CLONE/
-  // SYS_clone event, and us fetching the event message here.
-  xptrace(PTRACE_GETEVENTMSG, nullptr, &data);
-  return data;
-}
-
 const siginfo_t& Task::get_siginfo() {
   assert(stop_sig());
   return pending_siginfo;

@@ -893,6 +893,16 @@ bool RecordTask::running_inside_desched() const {
   return false;
 }
 
+uint16_t RecordTask::get_ptrace_eventmsg_seccomp_data() {
+  unsigned long data = 0;
+  // in theory we could hit an assertion failure if the tracee suffers
+  // a SIGKILL before we get here. But the SIGKILL would have to be
+  // precisely timed between the generation of a PTRACE_EVENT_FORK/CLONE/
+  // SYS_clone event, and us fetching the event message here.
+  xptrace(PTRACE_GETEVENTMSG, nullptr, &data);
+  return data;
+}
+
 void RecordTask::record_local(remote_ptr<void> addr, ssize_t num_bytes,
                               const void* data) {
   maybe_flush_syscallbuf();

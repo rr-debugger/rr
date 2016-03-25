@@ -242,6 +242,7 @@ public:
    * system call being handled by syscall buffering.
    */
   bool running_inside_desched() const;
+  uint16_t get_ptrace_eventmsg_seccomp_data();
 
   /**
    * Save tracee data to the trace.  |addr| is the address in

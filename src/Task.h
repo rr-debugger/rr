@@ -202,8 +202,6 @@ public:
    */
   pid_t get_ptrace_eventmsg_pid();
 
-  uint16_t get_ptrace_eventmsg_seccomp_data();
-
   /**
    * Return the siginfo at the signal-stop of this.
    * Not meaningful unless this is actually at a signal stop.
