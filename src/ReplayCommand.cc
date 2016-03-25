@@ -471,7 +471,7 @@ int ReplayCommand::run(std::vector<std::string>& args) {
   assert_prerequisites();
   check_performance_settings();
 
-  if (getenv("RUNNING_UNDER_RR")) {
+  if (running_under_rr()) {
     fprintf(stderr, "rr: rr pid %d running under parent %d. Good luck.\n",
             getpid(), getppid());
     if (trace_dir.empty()) {

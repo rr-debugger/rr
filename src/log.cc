@@ -13,6 +13,7 @@
 #include "GdbServer.h"
 #include "kernel_metadata.h"
 #include "RecordSession.h"
+#include "util.h"
 
 using namespace std;
 
@@ -79,7 +80,7 @@ static void init_log_globals() {
   logging_stream = unique_ptr<stringstream>(new stringstream());
 
   const char* log_env = "RR_LOG";
-  if (getenv("RUNNING_UNDER_RR")) {
+  if (running_under_rr()) {
     log_env = "RR_UNDER_RR_LOG";
   }
   char* env = getenv(log_env);

@@ -690,10 +690,12 @@ string exe_directory() {
  * Get the current time from the preferred monotonic clock in units of
  * seconds, relative to an unspecific point in the past.
  */
-double monotonic_now_sec(void) {
+double monotonic_now_sec() {
   struct timespec tp;
   clock_gettime(CLOCK_MONOTONIC, &tp);
   return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
 }
+
+bool running_under_rr() { return getenv("RUNNING_UNDER_RR") != NULL; }
 
 } // namespace rr
