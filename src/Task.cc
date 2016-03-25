@@ -2016,16 +2016,22 @@ static void set_up_process(Session& session, const ScopedFd& err_fd) {
     spawned_child_fatal_error(err_fd, "error duping to RR_MAGIC_SAVE_DATA_FD");
   }
 
-  /* CLOEXEC so that the original fd here will be closed by the exec that's
-   * about to happen.
-   */
-  fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
-  if (0 > fd) {
-    spawned_child_fatal_error(err_fd, "error opening root directory");
-  }
-  if (RR_RESERVED_ROOT_DIR_FD != dup2(fd, RR_RESERVED_ROOT_DIR_FD)) {
-    spawned_child_fatal_error(err_fd,
-                              "error duping to RR_RESERVED_ROOT_DIR_FD");
+  // If we're running under rr then don't try to set up RR_RESERVED_ROOT_DIR_FD;
+  // it should already be correct (unless someone chrooted in between,
+  // which would be crazy ... though we could fix it by dynamically
+  // assigning RR_RESERVED_ROOT_DIR_FD.)
+  if (!running_under_rr()) {
+    /* CLOEXEC so that the original fd here will be closed by the exec that's
+     * about to happen.
+     */
+    fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (0 > fd) {
+      spawned_child_fatal_error(err_fd, "error opening root directory");
+    }
+    if (RR_RESERVED_ROOT_DIR_FD != dup2(fd, RR_RESERVED_ROOT_DIR_FD)) {
+      spawned_child_fatal_error(err_fd,
+                                "error duping to RR_RESERVED_ROOT_DIR_FD");
+    }
   }
 
   if (session.is_replaying()) {
