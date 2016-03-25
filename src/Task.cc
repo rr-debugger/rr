@@ -214,11 +214,6 @@ const siginfo_t& Task::get_siginfo() {
   return pending_siginfo;
 }
 
-void Task::set_siginfo(const siginfo_t& si) {
-  pending_siginfo = si;
-  ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
-}
-
 TraceReader& Task::trace_reader() {
   return session().as_replay()->trace_reader();
 }

@@ -209,11 +209,6 @@ public:
   const siginfo_t& get_siginfo();
 
   /**
-   * Set the siginfo for the signal-stop of this.
-   */
-  void set_siginfo(const siginfo_t& si);
-
-  /**
    * Return the trace we're either recording to (|trace_reader()|)
    * or replaying from (|trace_writer()|).
    */

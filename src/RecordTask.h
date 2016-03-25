@@ -153,6 +153,10 @@ public:
    * default disposition is "ignore".
    */
   bool is_sig_ignored(int sig) const;
+  /**
+   * Set the siginfo for the signal-stop of this.
+   */
+  void set_siginfo(const siginfo_t& si);
 
   /**
    * Stashed-signal API: if a signal becomes pending at an

@@ -692,6 +692,11 @@ bool RecordTask::is_sig_ignored(int sig) const {
   return sighandlers->get(sig).ignored(sig);
 }
 
+void RecordTask::set_siginfo(const siginfo_t& si) {
+  pending_siginfo = si;
+  ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
+}
+
 template <typename Arch>
 void RecordTask::update_sigaction_arch(const Registers& regs) {
   int sig = regs.arg1_signed();
