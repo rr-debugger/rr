@@ -56,7 +56,7 @@ endif()
 if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND rr_32BIT)
   # try_compile won't accept LINK_FLAGS, so do this manually.
   file(WRITE "${CMAKE_BINARY_DIR}/test32.c" "int main() { return 0; }")
-  execute_process(COMMAND ${CMAKE_CXX_COMPILER} -o ${CMAKE_BINARY_DIR}/test32 ${CMAKE_BINARY_DIR}/test32.c -m32
+  execute_process(COMMAND ${CMAKE_C_COMPILER} -o ${CMAKE_BINARY_DIR}/test32 ${CMAKE_BINARY_DIR}/test32.c -m32
 			RESULT_VARIABLE COMPILER_32BIT_RESULT)
   if(NOT (COMPILER_32BIT_RESULT EQUAL 0))
     message(FATAL_ERROR "Your toolchain doesn't support 32-bit cross-compilation. Install the required packages or pass -Ddisable32bit=ON to cmake.")
