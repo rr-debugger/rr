@@ -608,6 +608,21 @@ vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {
   return result;
 }
 
+void Registers::set_from_ptrace_for_arch(SupportedArch a, const void* data,
+                                         size_t size) {
+  if (a == NativeArch::arch()) {
+    assert(size == sizeof(struct user_regs_struct));
+    set_from_ptrace(*static_cast<const struct user_regs_struct*>(data));
+    return;
+  }
+
+  assert(a == x86 && NativeArch::arch() == x86_64);
+  // We don't support a 32-bit tracee trying to set registers of a 64-bit tracee
+  assert(arch() == x86);
+  assert(size == sizeof(u.x86regs));
+  memcpy(&u.x86regs, data, sizeof(u.x86regs));
+}
+
 uintptr_t Registers::flags() const {
   switch (arch()) {
     case x86:

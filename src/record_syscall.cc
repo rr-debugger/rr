@@ -1410,6 +1410,34 @@ static bool verify_ptrace_options(RecordTask* t,
   return true;
 }
 
+static RecordTask* prepate_ptrace_attach(RecordTask* t, pid_t pid,
+                                         TaskSyscallState& syscall_state) {
+  // To simplify things, require that a ptracer be in the same pid
+  // namespace as rr itself. I.e., tracee tasks sandboxed in a pid
+  // namespace can't use ptrace. This is normally a requirement of
+  // sandboxes anyway.
+  // This could be supported, but would require some work to translate
+  // rr's pids to/from the ptracer's pid namespace.
+  ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
+  RecordTask* tracee = t->session().find_task(pid);
+  if (!tracee) {
+    // XXX This prevents a tracee from attaching to a process which isn't
+    // under rr's control. We could support this but it would complicate
+    // things.
+    syscall_state.emulate_result(-ESRCH);
+    return nullptr;
+  }
+  // Don't allow a 32-bit process to trace a 64-bit process. That doesn't
+  // make much sense (manipulating registers gets crazy), and would be hard to
+  // support.
+  if (tracee->emulated_ptracer || tracee->tgid() == t->tgid() ||
+      (t->arch() == x86 && tracee->arch() == x86_64)) {
+    syscall_state.emulate_result(-EPERM);
+    return nullptr;
+  }
+  return tracee;
+}
+
 template <typename Arch>
 static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
@@ -1417,23 +1445,8 @@ static Switchable prepare_ptrace(RecordTask* t,
   bool emulate = true;
   switch ((int)t->regs().arg1_signed()) {
     case PTRACE_ATTACH: {
-      // To simplify things, require that a ptracer be in the same pid
-      // namespace as rr itself. I.e., tracee tasks sandboxed in a pid
-      // namespace can't use ptrace. This is normally a requirement of
-      // sandboxes anyway.
-      // This could be supported, but would require some work to translate
-      // rr's pids to/from the ptracer's pid namespace.
-      ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
-      RecordTask* tracee = t->session().find_task(pid);
+      RecordTask* tracee = prepate_ptrace_attach(t, pid, syscall_state);
       if (!tracee) {
-        // XXX This prevents a tracee from attaching to a process which isn't
-        // under rr's control. We could support this but it would complicate
-        // things.
-        syscall_state.emulate_result(-ESRCH);
-        break;
-      }
-      if (tracee->emulated_ptracer || tracee->tgid() == t->tgid()) {
-        syscall_state.emulate_result(-EPERM);
         break;
       }
       tracee->set_emulated_ptracer(t);
@@ -1455,17 +1468,8 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_SEIZE: {
-      ASSERT(t, is_same_namespace("pid", t->tid, getpid()));
-      RecordTask* tracee = t->session().find_task(pid);
+      RecordTask* tracee = prepate_ptrace_attach(t, pid, syscall_state);
       if (!tracee) {
-        // XXX This prevents a tracee from attaching to a process which isn't
-        // under rr's control. We could support this but it would complicate
-        // things.
-        syscall_state.emulate_result(-ESRCH);
-        break;
-      }
-      if (tracee->emulated_ptracer || tracee->tgid() == t->tgid()) {
-        syscall_state.emulate_result(-EPERM);
         break;
       }
       if (t->regs().arg3()) {
@@ -1582,6 +1586,15 @@ static Switchable prepare_ptrace(RecordTask* t,
           syscall_state.expect_errno = EINVAL;
           emulate = false;
           break;
+      }
+      break;
+    }
+    case PTRACE_SETREGS: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual register effects are performed by
+        // Task::on_syscall_exit_arch
+        syscall_state.emulate_result(0);
       }
       break;
     }
@@ -3346,8 +3359,6 @@ static void rec_process_syscall_arch(RecordTask* t,
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();
 
-  t->on_syscall_exit(syscallno, t->regs());
-
   if (const struct syscallbuf_record* rec = t->desched_rec()) {
     t->record_local(t->syscallbuf_child.cast<void>() +
                         (rec->extra_data - (uint8_t*)t->syscallbuf_hdr),
@@ -3689,6 +3700,7 @@ void rec_process_syscall(RecordTask* t) {
   auto& syscall_state = *syscall_state_property.get(*t);
   rec_process_syscall_internal(t, syscall_state);
   syscall_state.process_syscall_results();
+  t->on_syscall_exit(t->ev().Syscall().number, t->regs());
   syscall_state_property.remove(*t);
 }
 

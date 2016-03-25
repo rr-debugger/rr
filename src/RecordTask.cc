@@ -337,7 +337,12 @@ static SupportedArch determine_arch(RecordTask* t, const string& file_name) {
 
 void RecordTask::post_exec() {
   string exe_file = exe_path(this);
-  Task::post_exec(determine_arch(this, exe_file), exe_file);
+  SupportedArch a = determine_arch(this, exe_file);
+  if (emulated_ptracer) {
+    ASSERT(this, !(emulated_ptracer->arch() == x86 && a == x86_64))
+        << "We don't support a 32-bit process tracing a 64-bit process";
+  }
+  Task::post_exec(a, exe_file);
 
   ev().set_arch(arch());
   ev().Syscall().number = registers.original_syscallno();

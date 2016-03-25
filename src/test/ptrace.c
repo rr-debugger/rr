@@ -48,6 +48,7 @@ int main(void) {
   struct iovec iov;
   int ret;
   size_t xsave_size = find_xsave_size();
+  uintptr_t saved_ip;
 
   test_assert(0 == pipe(pipe_fds));
 
@@ -64,16 +65,35 @@ int main(void) {
 
   ALLOCATE_GUARD(regs, 0xFF);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, regs));
+  VERIFY_GUARD(regs);
 #if defined(__i386__)
   test_assert((int32_t)regs->eip != -1);
   test_assert((int32_t)regs->esp != -1);
+  saved_ip = regs->eip;
+  regs->eip = 77;
 #elif defined(__x86_64__)
   test_assert((int64_t)regs->rip != -1);
   test_assert((int64_t)regs->rsp != -1);
+  saved_ip = regs->rip;
+  regs->rip = 77;
 #else
 #error unknown architecture
 #endif
-  VERIFY_GUARD(regs);
+  test_assert(0 == ptrace(PTRACE_SETREGS, child, NULL, regs));
+  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, regs));
+#if defined(__i386__)
+  test_assert((int32_t)regs->eip == 77);
+  regs->eip = saved_ip;
+#elif defined(__x86_64__)
+  test_assert((int64_t)regs->rip == 77);
+  regs->rip = saved_ip;
+#else
+#error unknown architecture
+#endif
+  test_assert(0 == ptrace(PTRACE_CONT, child, NULL, (void*)0));
+  test_assert(child == waitpid(child, &status, 0));
+  test_assert(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV);
+  test_assert(0 == ptrace(PTRACE_SETREGS, child, NULL, regs));
 
   ALLOCATE_GUARD(fpregs, 0xBB);
   test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, fpregs));

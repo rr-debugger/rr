@@ -428,6 +428,20 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       fd_table()->did_write(this, fd, ranges);
       return;
     }
+
+    case Arch::ptrace: {
+      pid_t pid = (pid_t)regs.arg2_signed();
+      Task* tracee = session().find_task(pid);
+      switch ((int)regs.arg1_signed()) {
+        case PTRACE_SETREGS: {
+          auto data = read_mem(
+              remote_ptr<typename Arch::user_regs_struct>(regs.arg4()));
+          Registers r = tracee->regs();
+          r.set_from_ptrace_for_arch(Arch::arch(), &data, sizeof(data));
+          tracee->set_regs(r);
+        }
+      }
+    }
   }
 }
 

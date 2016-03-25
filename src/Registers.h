@@ -91,6 +91,14 @@ public:
    * to the rr build (e.g. ARM vs x86).
    */
   std::vector<uint8_t> get_ptrace_for_arch(SupportedArch arch) const;
+  /**
+   * Copy an arch-specific user_regs_struct into these Registers.
+   * It's invalid to call this when 'arch' is 64-bit and the
+   * rr build is 32-bit, or when the Registers' arch is completely different
+   * to the rr build (e.g. ARM vs x86).
+   */
+  void set_from_ptrace_for_arch(SupportedArch arch, const void* data,
+                                size_t size);
 
 #define RR_GET_REG(x86case, x64case)                                           \
   (arch() == x86 ? (uint32_t)u.x86regs.x86case                                 \
