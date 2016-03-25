@@ -3442,6 +3442,11 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case Arch::execve:
       process_execve(t, syscall_state);
+      if (t->emulated_ptracer && !t->emulated_ptrace_seized &&
+          !(t->emulated_ptrace_options & PTRACE_O_TRACEEXEC)) {
+        // Inject legacy SIGTRAP-after-exec
+        t->tgkill(SIGTRAP);
+      }
       break;
 
     case Arch::brk: {

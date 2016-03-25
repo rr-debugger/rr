@@ -466,6 +466,7 @@ set(BASIC_TESTS
   ptrace_attach_stopped
   ptrace_attach_thread_running
   ptrace_debug_regs
+  ptrace_exec
   ptrace_seize
   ptrace_signals
   ptrace_trace_clone
