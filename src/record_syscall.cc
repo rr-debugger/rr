@@ -1698,6 +1698,22 @@ static Switchable prepare_ptrace(RecordTask* t,
       }
       break;
     }
+    case PTRACE_POKEUSER: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual syscall returns the data via the 'data' out-parameter.
+        // The behavior of returning the data as the system call result is
+        // provided by the glibc wrapper.
+        size_t addr = t->regs().arg3();
+        if ((addr & (sizeof(typename Arch::unsigned_word) - 1)) ||
+            addr >= sizeof(typename Arch::user)) {
+          syscall_state.emulate_result(-EIO);
+          break;
+        }
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
     case PTRACE_CONT: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {

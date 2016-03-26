@@ -424,8 +424,26 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           Registers r = tracee->regs();
           r.set_from_ptrace_for_arch(Arch::arch(), &data, sizeof(data));
           tracee->set_regs(r);
+          break;
+        }
+        case PTRACE_POKEUSER: {
+          size_t addr = regs.arg3();
+          typename Arch::unsigned_word data = regs.arg4();
+          if (addr < sizeof(typename Arch::user_regs_struct)) {
+            Registers r = tracee->regs();
+            r.write_register_by_user_offset(addr, data);
+            tracee->set_regs(r);
+          } else if (addr >= offsetof(typename Arch::user, u_debugreg[0]) &&
+                     addr < offsetof(typename Arch::user, u_debugreg[8])) {
+            size_t regno =
+                (addr - offsetof(typename Arch::user, u_debugreg[0])) /
+                sizeof(data);
+            tracee->set_debug_reg(regno, data);
+          }
+          break;
         }
       }
+      return;
     }
   }
 }
@@ -865,6 +883,10 @@ uintptr_t Task::get_debug_reg(size_t regno) {
     return 0;
   }
   return result;
+}
+
+void Task::set_debug_reg(size_t regno, uintptr_t value) {
+  fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(regno), (void*)value);
 }
 
 void Task::set_thread_area(remote_ptr<struct user_desc> tls) {

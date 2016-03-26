@@ -159,10 +159,20 @@ int main(void) {
   test_assert((long)regs->eflags ==
               ptrace(PTRACE_PEEKUSER, child,
                      (void*)offsetof(struct user, regs.eflags), NULL));
+  test_assert(0 == ptrace(PTRACE_POKEUSER, child,
+                          (void*)offsetof(struct user, regs.eflags), 0x246));
   test_assert(0 == ptrace(PTRACE_PEEKUSER, child,
                           (void*)offsetof(struct user, u_debugreg[0]), NULL));
   test_assert(0 == ptrace(PTRACE_PEEKUSER, child,
                           (void*)offsetof(struct user, u_debugreg[7]), NULL));
+  test_assert(0 == ptrace(PTRACE_POKEUSER, child,
+                          (void*)offsetof(struct user, u_debugreg[0]),
+                          (void*)55));
+  test_assert(55 == ptrace(PTRACE_PEEKUSER, child,
+                           (void*)offsetof(struct user, u_debugreg[0]), NULL));
+  test_assert(0 == ptrace(PTRACE_POKEUSER, child,
+                          (void*)offsetof(struct user, u_debugreg[0]),
+                          (void*)0));
 
   test_assert(0 == ptrace(PTRACE_DETACH, child, NULL, NULL));
 

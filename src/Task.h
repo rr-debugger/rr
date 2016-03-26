@@ -440,10 +440,8 @@ public:
    */
   bool set_debug_regs(const DebugRegs& regs);
 
-  /**
-   * Reads the value of the given debug register.
-   */
   uintptr_t get_debug_reg(size_t regno);
+  void set_debug_reg(size_t regno, uintptr_t value);
 
   /** Update the thread area to |addr|. */
   void set_thread_area(remote_ptr<struct user_desc> tls);

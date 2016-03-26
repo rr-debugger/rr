@@ -356,11 +356,17 @@ public:
                                       bool* defined) const;
 
   /**
-   * Update the registe named |reg_name| to |value| with
+   * Update the register named |reg_name| to |value| with
    * |value_size| number of bytes.
    */
-  void write_register(GdbRegister reg_name, const uint8_t* value,
+  void write_register(GdbRegister reg_name, const void* value,
                       size_t value_size);
+
+  /**
+   * Update the register at user offset |offset| to |value|, taking the low
+   * bytes if necessary.
+   */
+  void write_register_by_user_offset(uintptr_t offset, uintptr_t value);
 
 private:
   template <typename Arch>
@@ -398,8 +404,11 @@ private:
                                            bool* defined) const;
 
   template <typename Arch>
-  void write_register_arch(GdbRegister regno, const uint8_t* value,
+  void write_register_arch(GdbRegister regno, const void* value,
                            size_t value_size);
+
+  template <typename Arch>
+  void write_register_by_user_offset_arch(uintptr_t offset, uintptr_t value);
 
   template <typename Arch> size_t total_registers_arch() const;
 
