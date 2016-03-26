@@ -95,6 +95,11 @@ public:
    */
   void save_ptrace_signal_siginfo(const siginfo_t& si);
   /**
+   * Return a reference to the saved siginfo record for the stop-signal
+   * that we're currently in a ptrace-stop for.
+   */
+  siginfo_t& get_saved_ptrace_siginfo();
+  /**
    * When emulating a ptrace-continue with a signal number, extract the siginfo
    * that was saved by |save_ptrace_signal_siginfo|. If no such siginfo was
    * saved, make one up.
@@ -432,8 +437,10 @@ public:
   RecordTask* emulated_ptracer;
   std::set<RecordTask*> emulated_ptrace_tracees;
   uintptr_t emulated_ptrace_event_msg;
-  // code to deliver to ptracer when it waits. Note that zero can be a valid
-  // code!
+  // Saved emulated-ptrace signals
+  std::vector<siginfo_t> saved_ptrace_siginfos;
+  // Code to deliver to ptracer when it waits. Note that zero can be a valid
+  // code! Reset to zero when leaving the ptrace-stop due to PTRACE_CONT etc.
   int emulated_ptrace_stop_code;
   // Always zero while no ptracer is attached.
   int emulated_ptrace_options;
@@ -523,8 +530,6 @@ public:
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
   std::deque<siginfo_t> stashed_signals;
-  // Saved emulated-ptrace signals
-  std::vector<siginfo_t> saved_ptrace_siginfos;
 };
 
 } // namespace rr

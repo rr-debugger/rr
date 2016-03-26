@@ -1322,6 +1322,7 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig) {
   }
 
   tracee->emulated_stop_type = NOT_STOPPED;
+  tracee->emulated_ptrace_stop_code = 0;
 
   if (tracee->ev().is_syscall_event() &&
       PROCESSING_SYSCALL == tracee->ev().Syscall().state) {
@@ -1504,6 +1505,19 @@ static Switchable prepare_ptrace(RecordTask* t,
         t->write_mem(
             datap,
             (typename Arch::unsigned_long)tracee->emulated_ptrace_event_msg);
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETSIGINFO: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto datap = syscall_state.reg_parameter<typename Arch::siginfo_t>(4);
+        typename Arch::siginfo_t dest;
+        memset(&dest, 0, sizeof(dest));
+        set_arch_siginfo(tracee->get_saved_ptrace_siginfo(), Arch::arch(),
+                         &dest, sizeof(dest));
+        t->write_mem(datap, dest);
         syscall_state.emulate_result(0);
       }
       break;
@@ -3620,7 +3634,6 @@ static void rec_process_syscall_arch(RecordTask* t,
             tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
                                      RESUME_NO_TICKS);
           }
-          tracee->emulated_ptrace_stop_code = 0;
           tracee->emulated_ptrace_stop_pending = false;
         }
       }

@@ -49,6 +49,7 @@ int main(void) {
   int ret;
   size_t xsave_size = find_xsave_size();
   uintptr_t saved_ip;
+  siginfo_t* siginfo;
 
   test_assert(0 == pipe(pipe_fds));
 
@@ -94,6 +95,13 @@ int main(void) {
   test_assert(child == waitpid(child, &status, 0));
   test_assert(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSEGV);
   test_assert(0 == ptrace(PTRACE_SETREGS, child, NULL, regs));
+
+  ALLOCATE_GUARD(siginfo, 0xFE);
+  test_assert(0 == ptrace(PTRACE_GETSIGINFO, child, NULL, siginfo));
+  VERIFY_GUARD(siginfo);
+  test_assert(siginfo->si_signo == SIGSEGV);
+  test_assert(siginfo->si_code == SEGV_MAPERR);
+  test_assert(siginfo->si_addr == (void*)77);
 
   ALLOCATE_GUARD(fpregs, 0xBB);
   test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, fpregs));

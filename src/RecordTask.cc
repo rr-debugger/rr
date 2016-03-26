@@ -593,6 +593,21 @@ void RecordTask::save_ptrace_signal_siginfo(const siginfo_t& si) {
   saved_ptrace_siginfos.push_back(si);
 }
 
+siginfo_t& RecordTask::get_saved_ptrace_siginfo() {
+  int sig = WSTOPSIG(emulated_ptrace_stop_code);
+  ASSERT(this, sig > 0);
+  for (auto it = saved_ptrace_siginfos.begin();
+       it != saved_ptrace_siginfos.end(); ++it) {
+    if (it->si_signo == sig) {
+      return *it;
+    }
+  }
+  ASSERT(this, false) << "No saved siginfo found for stop-signal???";
+  while (true) {
+    // Avoid having to return anything along this (unreachable) path
+  }
+}
+
 siginfo_t RecordTask::take_ptrace_signal_siginfo(int sig) {
   for (auto it = saved_ptrace_siginfos.begin();
        it != saved_ptrace_siginfos.end(); ++it) {

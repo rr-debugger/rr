@@ -2,7 +2,8 @@
 
 #include "rrutil.h"
 
-static void skip_handler(__attribute__((unused)) int sig, __attribute__((unused)) siginfo_t* si, void* user) {
+static void skip_handler(__attribute__((unused)) int sig,
+                         __attribute__((unused)) siginfo_t* si, void* user) {
   ucontext_t* ctx = (ucontext_t*)user;
 #if defined(__i386__)
   ctx->uc_mcontext.gregs[REG_EIP] += 2;
@@ -18,9 +19,7 @@ static void print_handler(__attribute__((unused)) int sig) {
   exit(0);
 }
 
-static void exit_handler(__attribute__((unused)) int sig) {
-  exit(77);
-}
+static void exit_handler(__attribute__((unused)) int sig) { exit(77); }
 
 int main(void) {
   int status;
