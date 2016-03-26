@@ -1024,7 +1024,7 @@ void Task::wait(double interrupt_after_elapsed) {
       break;
     }
 
-    if (!sent_wait_interrupt) {
+    if (!sent_wait_interrupt && interrupt_after_elapsed) {
       ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
       sent_wait_interrupt = true;
     }
