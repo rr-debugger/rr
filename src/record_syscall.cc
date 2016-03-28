@@ -1315,7 +1315,7 @@ static void do_ptrace_exit_stop(RecordTask* t) {
   }
 }
 
-static void prepare_ptrace_cont(RecordTask* tracee, int sig) {
+static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   if (sig) {
     siginfo_t si = tracee->take_ptrace_signal_siginfo(sig);
     tracee->push_event(SignalEvent(si, tracee->arch()));
@@ -1323,6 +1323,7 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig) {
 
   tracee->emulated_stop_type = NOT_STOPPED;
   tracee->emulated_ptrace_stop_code = 0;
+  tracee->emulated_ptrace_cont_command = command;
 
   if (tracee->ev().is_syscall_event() &&
       PROCESSING_SYSCALL == tracee->ev().Syscall().state) {
@@ -1444,7 +1445,8 @@ static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
   pid_t pid = (pid_t)t->regs().arg2_signed();
   bool emulate = true;
-  switch ((int)t->regs().arg1_signed()) {
+  int command = (int)t->regs().arg1_signed();
+  switch (command) {
     case PTRACE_ATTACH: {
       RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
       if (!tracee) {
@@ -1714,10 +1716,11 @@ static Switchable prepare_ptrace(RecordTask* t,
       }
       break;
     }
+    case PTRACE_SYSCALL:
     case PTRACE_CONT: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
-        prepare_ptrace_cont(tracee, t->regs().arg4());
+        prepare_ptrace_cont(tracee, t->regs().arg4(), command);
         syscall_state.emulate_result(0);
       }
       break;
@@ -1726,9 +1729,10 @@ static Switchable prepare_ptrace(RecordTask* t,
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         tracee->emulated_ptrace_options = 0;
+        tracee->emulated_ptrace_cont_command = 0;
         tracee->emulated_ptrace_stop_pending = false;
         tracee->emulated_ptrace_queued_exit_stop = false;
-        prepare_ptrace_cont(tracee, t->regs().arg4());
+        prepare_ptrace_cont(tracee, t->regs().arg4(), 0);
         tracee->set_emulated_ptracer(nullptr);
         syscall_state.emulate_result(0);
       }
@@ -2044,6 +2048,18 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     // SIGTRAP (in 4.4.4-301.fc23.x86_64 anyway).
     new_task->apply_group_stop(SIGTRAP);
   }
+
+  // Restore our register modifications now, so that the emulated ptracer will
+  // see the original registers without our modifications if it inspects them
+  // in the ptrace event.
+  r = t->regs();
+  r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+  r.set_original_syscallno(
+      syscall_state.syscall_entry_registers.original_syscallno());
+  t->set_regs(r);
+
+  // We're in a PTRACE_EVENT_FORK/CLONE so the next PTRACE_SYSCALL for |t| will
+  // go to the exit of the syscall, as expected.
 }
 
 template <typename Arch>
@@ -3428,13 +3444,9 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::fork:
     case Arch::vfork:
     case Arch::clone: {
-      Registers r = t->regs();
-      // Restore possibly-modified registers
-      r.set_original_syscallno(
-          syscall_state.syscall_entry_registers.original_syscallno());
-      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       // On a 3.19.0-39-generic #44-Ubuntu kernel we have observed clone()
       // clearing the parity flag internally.
+      Registers r = t->regs();
       r.set_flags(syscall_state.syscall_entry_registers.flags());
       t->set_regs(r);
       break;

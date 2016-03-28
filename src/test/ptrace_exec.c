@@ -67,8 +67,7 @@ int main(int argc, __attribute__((unused)) char** argv) {
   }
 
   test_assert(proc_num_args(child) == 1);
-  test_assert(0 ==
-              ptrace(PTRACE_ATTACH, child, NULL, NULL));
+  test_assert(0 == ptrace(PTRACE_ATTACH, child, NULL, NULL));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP);
 

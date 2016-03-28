@@ -273,55 +273,65 @@ Completion ReplaySession::cont_syscall_boundary(
  */
 Completion ReplaySession::enter_syscall(ReplayTask* t,
                                         const StepConstraints& constraints) {
-  bool use_breakpoint_optimization = false;
-  remote_code_ptr syscall_instruction;
-
-  if (done_initial_exec()) {
-    syscall_instruction =
-        current_trace_frame().regs().ip().decrement_by_syscall_insn_length(
-            t->arch());
-    // Skip this optimization if we can't set the breakpoint, or if it's
-    // in writeable or shared memory, since in those cases it could be
-    // overwritten by the tracee. It could even be dynamically generated and
-    // not generated yet.
-    if (t->vm()->is_breakpoint_in_private_read_only_memory(
-            syscall_instruction) &&
-        t->vm()->add_breakpoint(syscall_instruction, BKPT_INTERNAL)) {
-      use_breakpoint_optimization = true;
-    }
-  }
-
-  if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
-    bool reached_target =
-        use_breakpoint_optimization && SIGTRAP == t->stop_sig() &&
-        t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
-            syscall_instruction &&
-        t->vm()->get_breakpoint_type_at_addr(syscall_instruction) ==
-            BKPT_INTERNAL;
-    if (reached_target) {
-      // Emulate syscall state change
-      Registers r = t->regs();
-      r.set_ip(syscall_instruction.increment_by_syscall_insn_length(t->arch()));
-      r.set_original_syscallno(r.syscallno());
-      r.set_syscall_result(-ENOSYS);
-      t->emulate_syscall_entry(r);
-      t->validate_regs();
-    }
-    if (use_breakpoint_optimization) {
-      t->vm()->remove_breakpoint(syscall_instruction, BKPT_INTERNAL);
-    }
-    if (!reached_target) {
-      return INCOMPLETE;
-    }
+  if (t->regs().matches(trace_frame.regs()) &&
+      t->tick_count() == trace_frame.ticks()) {
+    // We already entered the syscall via an ENTERING_SYSCALL_PTRACE
+    ASSERT(t,
+           current_trace_frame().event().Syscall().state == ENTERING_SYSCALL);
   } else {
-    // If we use the breakpoint optimization, we must get a SIGTRAP before
-    // reaching a syscall, so cont_syscall_boundary must return INCOMPLETE.
-    ASSERT(t, !use_breakpoint_optimization);
-    t->validate_regs();
-    t->finish_emulated_syscall();
+    bool use_breakpoint_optimization = false;
+    remote_code_ptr syscall_instruction;
+
+    if (done_initial_exec()) {
+      syscall_instruction =
+          current_trace_frame().regs().ip().decrement_by_syscall_insn_length(
+              t->arch());
+      // Skip this optimization if we can't set the breakpoint, or if it's
+      // in writeable or shared memory, since in those cases it could be
+      // overwritten by the tracee. It could even be dynamically generated and
+      // not generated yet.
+      if (t->vm()->is_breakpoint_in_private_read_only_memory(
+              syscall_instruction) &&
+          t->vm()->add_breakpoint(syscall_instruction, BKPT_INTERNAL)) {
+        use_breakpoint_optimization = true;
+      }
+    }
+
+    if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
+      bool reached_target =
+          use_breakpoint_optimization && SIGTRAP == t->stop_sig() &&
+          t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
+              syscall_instruction &&
+          t->vm()->get_breakpoint_type_at_addr(syscall_instruction) ==
+              BKPT_INTERNAL;
+      if (reached_target) {
+        // Emulate syscall state change
+        Registers r = t->regs();
+        r.set_ip(
+            syscall_instruction.increment_by_syscall_insn_length(t->arch()));
+        r.set_original_syscallno(r.syscallno());
+        r.set_syscall_result(-ENOSYS);
+        t->emulate_syscall_entry(r);
+        t->validate_regs();
+      }
+      if (use_breakpoint_optimization) {
+        t->vm()->remove_breakpoint(syscall_instruction, BKPT_INTERNAL);
+      }
+      if (!reached_target) {
+        return INCOMPLETE;
+      }
+    } else {
+      // If we use the breakpoint optimization, we must get a SIGTRAP before
+      // reaching a syscall, so cont_syscall_boundary must return INCOMPLETE.
+      ASSERT(t, !use_breakpoint_optimization);
+      t->validate_regs();
+      t->finish_emulated_syscall();
+    }
   }
 
-  rep_after_enter_syscall(t);
+  if (current_trace_frame().event().Syscall().state == ENTERING_SYSCALL) {
+    rep_after_enter_syscall(t);
+  }
   return COMPLETE;
 }
 
@@ -1131,7 +1141,8 @@ void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.target.signo = ev.Signal().siginfo.si_signo;
       break;
     case EV_SYSCALL:
-      if (trace_frame.event().Syscall().state == ENTERING_SYSCALL) {
+      if (trace_frame.event().Syscall().state == ENTERING_SYSCALL ||
+          trace_frame.event().Syscall().state == ENTERING_SYSCALL_PTRACE) {
         rep_prepare_run_to_syscall(t, &current_step);
       } else {
         rep_process_syscall(t, &current_step);

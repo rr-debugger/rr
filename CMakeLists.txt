@@ -469,6 +469,7 @@ set(BASIC_TESTS
   ptrace_exec
   ptrace_seize
   ptrace_signals
+  ptrace_syscall
   ptrace_trace_clone
   ptrace_trace_exit
   ptracer_death

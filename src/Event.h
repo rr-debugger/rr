@@ -216,15 +216,36 @@ struct SignalEvent : public BaseEvent {
  * others are detected at exit time and transformed into syscall
  * interruptions from the original, normal syscalls.
  *
- * During replay, we push interruptions to know when we need
- * to emulate syscall entry, since the kernel won't have set
- * things up for the tracee to restart on its own.
-
+ * Normal system calls (interrupted or not) record two events: ENTERING_SYSCALL
+ * and EXITING_SYSCALL. If the process exits before the syscall exit (because
+ * this is an exit/exit_group syscall or the process gets SIGKILL), there's no
+ * syscall exit event.
+ * When PTRACE_SYSCALL is used, there will be three events:
+ * ENTERING_SYSCALL_PTRACE to run the process until it gets into the kernel,
+ * then ENTERING_SYSCALL and EXITING_SYSCALL. We need three events to handle
+ * PTRACE_SYSCALL with clone/fork/vfork and execve. The tracee must run to
+ * the ENTERING_SYSCALL_PTRACE state, allow a context switch so the ptracer
+ * can modify tracee registers, then perform ENTERING_SYSCALL (which actually
+ * creates the new task or does the exec), allow a context switch so the
+ * ptracer can modify the new task or post-exec state in a PTRACE_EVENT_EXEC/
+ * CLONE/FORK/VFORK, then perform EXITING_SYSCALL to get into the correct
+ * post-syscall state.
  */
 enum SyscallState {
+  // Not present in trace. Just a dummy value.
   NO_SYSCALL,
+  // Run to the given register state and enter the kernel but don't
+  // perform any system call processing yet.
+  ENTERING_SYSCALL_PTRACE,
+  // Run to the given register state and enter the kernel, if not already
+  // there due to a ENTERING_SYSCALL_PTRACE, and then perform the initial part
+  // of the system call (any work required before issuing a during-system-call
+  // ptrace event).
   ENTERING_SYSCALL,
+  // Not present in trace.
   PROCESSING_SYSCALL,
+  // Already in the kernel. Perform the final part of the system call and exit
+  // with the recorded system call result.
   EXITING_SYSCALL
 };
 struct SyscallEvent : public BaseEvent {

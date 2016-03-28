@@ -581,6 +581,18 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
 void RecordSession::syscall_state_changed(RecordTask* t,
                                           StepState* step_state) {
   switch (t->ev().Syscall().state) {
+    case ENTERING_SYSCALL_PTRACE:
+      debug_exec_state("EXEC_SYSCALL_ENTRY_PTRACE", t);
+      step_state->continue_type = DONT_CONTINUE;
+      if (t->emulated_stop_type != NOT_STOPPED) {
+        // Don't go any further.
+        last_task_switchable = ALLOW_SWITCH;
+        return;
+      }
+      t->ev().Syscall().regs = t->regs();
+      t->ev().Syscall().state = ENTERING_SYSCALL;
+      return;
+
     case ENTERING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
 
@@ -613,6 +625,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
       return;
     }
+
     case PROCESSING_SYSCALL:
       debug_exec_state("EXEC_IN_SYSCALL", t);
 
@@ -666,70 +679,72 @@ void RecordSession::syscall_state_changed(RecordTask* t,
           LOG(debug) << "  exiting desched critical section";
           desched_state_changed(t);
         }
-
-        last_task_switchable = ALLOW_SWITCH;
-        step_state->continue_type = DONT_CONTINUE;
-        return;
-      }
-
-      LOG(debug) << "  original_syscallno:" << t->regs().original_syscallno()
-                 << " (" << t->syscall_name(syscallno)
-                 << "); return val:" << HEX(t->regs().syscall_result());
-
-      /* a syscall_restart ending is equivalent to the
-       * restarted syscall ending */
-      if (t->ev().Syscall().is_restart) {
-        LOG(debug) << "  exiting restarted " << t->syscall_name(syscallno);
-      }
-
-      /* TODO: is there any reason a restart_syscall can't
-       * be interrupted by a signal and itself restarted? */
-      bool may_restart = !is_restart_syscall_syscall(syscallno, t->arch())
-                         // SYS_pause is either interrupted or
-                         // never returns.  It doesn't restart.
-                         && !is_pause_syscall(syscallno, t->arch()) &&
-                         t->regs().syscall_may_restart();
-      /* no need to process the syscall in case its
-       * restarted this will be done in the exit from the
-       * restart_syscall */
-      if (!may_restart) {
-        rec_process_syscall(t);
-        if (t->session().done_initial_exec() &&
-            Flags::get().check_cached_mmaps) {
-          t->vm()->verify(t);
-        }
       } else {
-        LOG(debug) << "  may restart " << t->syscall_name(syscallno)
-                   << " (from retval " << HEX(retval) << ")";
+        LOG(debug) << "  original_syscallno:" << t->regs().original_syscallno()
+                   << " (" << t->syscall_name(syscallno)
+                   << "); return val:" << HEX(t->regs().syscall_result());
 
-        rec_prepare_restart_syscall(t);
-        /* If we may restart this syscall, we've most
-         * likely fudged some of the argument
-         * registers with scratch pointers.  We don't
-         * want to record those fudged registers,
-         * because scratch doesn't exist in replay.
-         * So cover our tracks here. */
-        Registers r = t->regs();
-        copy_syscall_arg_regs(&r, t->ev().Syscall().regs);
-        t->set_regs(r);
-      }
-      t->record_current_event();
-
-      /* If we're not going to restart this syscall, we're
-       * done with it.  But if we are, "freeze" it on the
-       * event stack until the execution point where it
-       * might be restarted. */
-      if (!may_restart) {
-        t->pop_syscall();
-        if (EV_DESCHED == t->ev().type()) {
-          LOG(debug) << "  exiting desched critical section";
-          desched_state_changed(t);
+        /* a syscall_restart ending is equivalent to the
+         * restarted syscall ending */
+        if (t->ev().Syscall().is_restart) {
+          LOG(debug) << "  exiting restarted " << t->syscall_name(syscallno);
         }
-        last_task_switchable = ALLOW_SWITCH;
-        step_state->continue_type = DONT_CONTINUE;
-      } else {
-        t->ev().transform(EV_SYSCALL_INTERRUPTION);
-        t->ev().Syscall().is_restart = true;
+
+        /* TODO: is there any reason a restart_syscall can't
+         * be interrupted by a signal and itself restarted? */
+        bool may_restart = !is_restart_syscall_syscall(syscallno, t->arch())
+                           // SYS_pause is either interrupted or
+                           // never returns.  It doesn't restart.
+                           && !is_pause_syscall(syscallno, t->arch()) &&
+                           t->regs().syscall_may_restart();
+        /* no need to process the syscall in case its
+         * restarted this will be done in the exit from the
+         * restart_syscall */
+        if (!may_restart) {
+          rec_process_syscall(t);
+          if (t->session().done_initial_exec() &&
+              Flags::get().check_cached_mmaps) {
+            t->vm()->verify(t);
+          }
+        } else {
+          LOG(debug) << "  may restart " << t->syscall_name(syscallno)
+                     << " (from retval " << HEX(retval) << ")";
+
+          rec_prepare_restart_syscall(t);
+          /* If we may restart this syscall, we've most
+           * likely fudged some of the argument
+           * registers with scratch pointers.  We don't
+           * want to record those fudged registers,
+           * because scratch doesn't exist in replay.
+           * So cover our tracks here. */
+          Registers r = t->regs();
+          copy_syscall_arg_regs(&r, t->ev().Syscall().regs);
+          t->set_regs(r);
+        }
+        t->record_current_event();
+
+        /* If we're not going to restart this syscall, we're
+         * done with it.  But if we are, "freeze" it on the
+         * event stack until the execution point where it
+         * might be restarted. */
+        if (!may_restart) {
+          t->pop_syscall();
+          if (EV_DESCHED == t->ev().type()) {
+            LOG(debug) << "  exiting desched critical section";
+            desched_state_changed(t);
+          }
+        } else {
+          t->ev().transform(EV_SYSCALL_INTERRUPTION);
+          t->ev().Syscall().is_restart = true;
+        }
+      }
+
+      last_task_switchable = ALLOW_SWITCH;
+      step_state->continue_type = DONT_CONTINUE;
+
+      if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL) {
+        t->emulate_ptrace_stop((SIGTRAP << 8) | 0x7f, SIGNAL_DELIVERY_STOP,
+                               USE_SYSGOOD);
       }
       return;
     }
@@ -1154,6 +1169,12 @@ void RecordSession::runnable_state_changed(RecordTask* t,
       }
       check_initial_task_syscalls(t, step_result);
       note_entering_syscall(t);
+      if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL) {
+        t->ev().Syscall().state = ENTERING_SYSCALL_PTRACE;
+        t->emulate_ptrace_stop((SIGTRAP << 8) | 0x7f, SIGNAL_DELIVERY_STOP,
+                               USE_SYSGOOD);
+        t->record_current_event();
+      }
       break;
 
     default:

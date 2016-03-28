@@ -371,6 +371,12 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
     // able to patch later.
     return false;
   }
+  if (t->emulated_ptracer) {
+    // Syscall patching can confuse ptracers, which may be surprised to see
+    // a syscall instruction at the current IP but then when running
+    // forwards, that the syscall occurs deep in the preload library instead.
+    return false;
+  }
   if (t->is_in_traced_syscall()) {
     // Never try to patch the traced-syscall in our preload library!
     return false;

@@ -444,6 +444,9 @@ public:
   int emulated_ptrace_stop_code;
   // Always zero while no ptracer is attached.
   int emulated_ptrace_options;
+  // One of PTRACE_CONT, PTRACE_SYSCALL --- or 0 if the tracee has not been
+  // continued by its ptracer yet, or has no ptracer.
+  int emulated_ptrace_cont_command;
   // true when a ptracer wait() can return |emulated_ptrace_stop_code|.
   bool emulated_ptrace_stop_pending;
   // true if this task needs to send a SIGCHLD to its ptracer for its
