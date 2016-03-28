@@ -1156,12 +1156,14 @@ void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
 
   LOG(debug) << "  (refreshing register cache)";
   intptr_t original_syscallno = registers.original_syscallno();
-  // Skip reading registers immediately after a PTRACE_EVENT_EXEC, since
+  // Skip reading registers in a PTRACE_EVENT_EXEC, since
   // we may not know the correct architecture.
-  if (ptrace_event() != PTRACE_EVENT_EXEC) {
+  bool did_read_regs = false;
+  if (status.ptrace_event() != PTRACE_EVENT_EXEC) {
     struct user_regs_struct ptrace_regs;
     if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
       registers.set_from_ptrace(ptrace_regs);
+      did_read_regs = true;
     } else {
       LOG(debug) << "Unexpected process death for " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
@@ -1217,7 +1219,8 @@ void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
     fixup_syscall_registers(registers);
     need_to_set_regs = true;
   }
-  if (need_to_set_regs) {
+  if (need_to_set_regs && did_read_regs) {
+    // If we couldn't read registers, don't fix them up!
     set_regs(registers);
   }
 }

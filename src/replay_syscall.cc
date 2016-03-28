@@ -382,20 +382,20 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   t->write_bytes_helper(remote_mem, stub_filename.size() + 1,
                         stub_filename.c_str());
   regs.set_arg1(remote_mem);
-  regs.set_syscallno(syscall_number_for_execve(t->arch()));
-  t->set_regs(regs);
-
   /* The original_syscallno is execve in the old architecture. The kernel does
    * not update the original_syscallno when the architecture changes across
    * an exec.
    */
   int expect_syscallno = syscall_number_for_execve(t->arch());
+  regs.set_syscallno(expect_syscallno);
+  t->set_regs(regs);
+
   /* Enter our execve syscall. */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
   ASSERT(t, !t->stop_sig()) << "Stub exec failed on entry";
-  /* Proceed to the SIGTRAP. */
+  /* Complete the syscall */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
-  if (!t->status().is_syscall()) {
+  if (t->regs().syscall_result()) {
     if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
         trace_frame.regs().arch() == x86) {
       FATAL() << "Cannot find exec stub " << stub_filename
