@@ -7,6 +7,8 @@ static int* p;
 static int pipe_fds[2];
 
 static void* run_thread(__attribute__((unused)) void* p) {
+  char ch;
+  test_assert(1 == read(pipe_fds[0], &ch, 1));
   test_assert(sys_gettid() == syscall(SYS_set_tid_address, &v));
   return NULL;
 }
@@ -21,8 +23,11 @@ int main(void) {
   pthread_t thread;
   char ch;
 
+  test_assert(0 == pipe(pipe_fds));
+
   v = 1;
   pthread_create(&thread, NULL, run_thread, NULL);
+  test_assert(1 == write(pipe_fds[1], "x", 1));
   test_assert(0 == syscall(SYS_futex, &v, FUTEX_WAIT, 1, NULL, NULL, 0));
   test_assert(0 == v);
 
@@ -30,7 +35,6 @@ int main(void) {
   test_assert(p != MAP_FAILED);
   test_assert(0 == munmap(p, PAGE_SIZE));
 
-  test_assert(0 == pipe(pipe_fds));
   pthread_create(&thread, NULL, run_thread2, NULL);
   test_assert(1 == read(pipe_fds[0], &ch, 1));
 
