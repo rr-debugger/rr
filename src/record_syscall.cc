@@ -1975,7 +1975,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   new_r.set_original_syscallno(
       syscall_state.syscall_entry_registers.original_syscallno());
   new_r.set_arg1(syscall_state.syscall_entry_registers.arg1());
-  new_task->set_regs(new_r);
+  new_task->emulate_syscall_entry(new_r);
   new_task->set_termination_signal(termination_signal);
 
   /* record child id here */
