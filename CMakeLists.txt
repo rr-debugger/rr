@@ -471,6 +471,7 @@ set(BASIC_TESTS
   ptrace_signals
   ptrace_syscall
   ptrace_syscall_clone_untraced
+  ptrace_sysemu
   ptrace_trace_clone
   ptrace_trace_exit
   ptracer_death

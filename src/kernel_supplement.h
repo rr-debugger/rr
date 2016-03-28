@@ -15,11 +15,19 @@ namespace rr {
  * across architectures; those definitions belong in kernel_abi.h.
  */
 
+#ifndef PTRACE_EVENT_NONE
 #define PTRACE_EVENT_NONE 0
+#endif
+#ifndef PTRACE_EVENT_STOP
 #define PTRACE_EVENT_STOP 128
+#endif
 
+#ifndef PTRACE_SYSEMU
 #define PTRACE_SYSEMU 31
+#endif
+#ifndef PTRACE_SYSEMU_SINGLESTEP
 #define PTRACE_SYSEMU_SINGLESTEP 32
+#endif
 
 #ifndef PTRACE_O_TRACESECCOMP
 #define PTRACE_O_TRACESECCOMP 0x00000080

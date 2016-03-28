@@ -220,6 +220,7 @@ struct SignalEvent : public BaseEvent {
  * and EXITING_SYSCALL. If the process exits before the syscall exit (because
  * this is an exit/exit_group syscall or the process gets SIGKILL), there's no
  * syscall exit event.
+ *
  * When PTRACE_SYSCALL is used, there will be three events:
  * ENTERING_SYSCALL_PTRACE to run the process until it gets into the kernel,
  * then ENTERING_SYSCALL and EXITING_SYSCALL. We need three events to handle
@@ -230,6 +231,9 @@ struct SignalEvent : public BaseEvent {
  * ptracer can modify the new task or post-exec state in a PTRACE_EVENT_EXEC/
  * CLONE/FORK/VFORK, then perform EXITING_SYSCALL to get into the correct
  * post-syscall state.
+ *
+ * When PTRACE_SYSEMU is used, there will only be one event: an
+ * ENTERING_SYSCALL_PTRACE.
  */
 enum SyscallState {
   // Not present in trace. Just a dummy value.
@@ -257,7 +261,8 @@ struct SyscallEvent : public BaseEvent {
         state(NO_SYSCALL),
         number(syscallno),
         is_restart(false),
-        failed_during_preparation(false) {}
+        failed_during_preparation(false),
+        in_sysemu(false) {}
   // The original (before scratch is set up) arguments to the
   // syscall passed by the tracee.  These are used to detect
   // restarted syscalls.
@@ -273,6 +278,8 @@ struct SyscallEvent : public BaseEvent {
   bool is_restart;
   // True when this syscall failed during preparation.
   bool failed_during_preparation;
+  // Syscall is being emulated via PTRACE_SYSEMU.
+  bool in_sysemu;
 };
 
 struct syscall_interruption_t {

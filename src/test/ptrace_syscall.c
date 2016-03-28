@@ -45,7 +45,7 @@ static uid_t my_geteuid(void) {
                        "nop\n\t"
                        "nop\n\t"
                        : "=a"(r)
-                       : "a"(SYS_getuid32));
+                       : "a"(SYS_geteuid32));
 #elif defined(__x86_64__)
   __asm__ __volatile__("syscall_addr: syscall\n\t"
                        "nop\n\t"
@@ -82,7 +82,7 @@ int main(void) {
   test_assert(status == (((0x80 | SIGTRAP) << 8) | 0x7f));
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* This assert will fail if we patched the syscall for syscallbuf. */
-  test_assert((void*)&syscall_addr == (void*)(regs.IP - 2));
+  test_assert(&syscall_addr + 2 == (char*)regs.IP);
   test_assert(SYSCALLNO == regs.ORIG_SYSCALLNO);
   test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
   regs.ORIG_SYSCALLNO = SYS_gettid;
@@ -94,7 +94,7 @@ int main(void) {
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   test_assert(SYS_gettid == regs.ORIG_SYSCALLNO);
   test_assert(child == (int)regs.SYSCALL_RESULT);
-  test_assert((void*)&syscall_addr == (void*)(regs.IP - 2));
+  test_assert(&syscall_addr + 2 == (char*)regs.IP);
   regs.SYSCALL_RESULT = uid + 1;
   test_assert(0 == ptrace(PTRACE_SETREGS, child, NULL, &regs));
 

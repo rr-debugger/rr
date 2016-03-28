@@ -1717,6 +1717,9 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_SYSCALL:
+    case PTRACE_SINGLESTEP:
+    case PTRACE_SYSEMU:
+    case PTRACE_SYSEMU_SINGLESTEP:
     case PTRACE_CONT: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
