@@ -2037,7 +2037,8 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
 
   init_scratch_memory(new_task);
 
-  if (t->emulated_ptrace_options & ptrace_option_for_event(ptrace_event)) {
+  if ((t->emulated_ptrace_options & ptrace_option_for_event(ptrace_event)) &&
+      !(flags & CLONE_UNTRACED)) {
     new_task->set_emulated_ptracer(t->emulated_ptracer);
     new_task->emulated_ptrace_seized = t->emulated_ptrace_seized;
     new_task->emulated_ptrace_options = t->emulated_ptrace_options;
