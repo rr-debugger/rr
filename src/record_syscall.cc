@@ -1484,6 +1484,10 @@ static Switchable prepare_ptrace(RecordTask* t,
       tracee->set_emulated_ptracer(t);
       tracee->emulated_ptrace_seized = true;
       tracee->emulated_ptrace_options = (int)t->regs().arg4();
+      if (tracee->emulated_stop_type == GROUP_STOP) {
+        // tracee is already stopped because of a group-stop signal.
+        tracee->force_emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGSTOP));
+      }
       syscall_state.emulate_result(0);
       break;
     }
