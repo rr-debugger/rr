@@ -1066,7 +1066,7 @@ void Task::wait(double interrupt_after_elapsed) {
     if (session().is_recording()) {
       session().as_record()->scheduler().expire_timeslice();
     }
-    status = (PerfCounters::TIME_SLICE_SIGNAL << 8) | 0x7f;
+    status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
     siginfo_t si;
     memset(&si, 0, sizeof(si));
     si.si_signo = PerfCounters::TIME_SLICE_SIGNAL;

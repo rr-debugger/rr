@@ -2,12 +2,14 @@
 
 #include "WaitStatus.h"
 
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
 #include "log.h"
+#include "RecordTask.h"
 
 using namespace std;
 
@@ -75,6 +77,43 @@ bool WaitStatus::is_syscall() const {
 int WaitStatus::ptrace_event() const {
   int event = (status >> 16) & 0xff;
   return event == PTRACE_EVENT_STOP ? 0 : event;
+}
+
+WaitStatus WaitStatus::for_exit_code(int code) {
+  assert(code >= 0 && code < 0x100);
+  return WaitStatus(code << 8);
+}
+
+WaitStatus WaitStatus::for_fatal_sig(int sig) {
+  assert(sig >= 1 && sig < 0x80);
+  return WaitStatus(sig);
+}
+
+WaitStatus WaitStatus::for_stop_sig(int sig) {
+  assert(sig >= 1 && sig < 0x80);
+  return WaitStatus((sig << 8) | 0x7f);
+}
+
+WaitStatus WaitStatus::for_group_sig(int sig, RecordTask* t) {
+  assert(sig >= 1 && sig < 0x80);
+  int code = (sig << 8) | 0x7f;
+  if (t->emulated_ptrace_seized) {
+    code |= PTRACE_EVENT_STOP << 16;
+  }
+  return WaitStatus(code);
+}
+
+WaitStatus WaitStatus::for_syscall(RecordTask* t) {
+  int code = (SIGTRAP << 8) | 0x7f;
+  if (t->emulated_ptrace_options & PTRACE_O_TRACESYSGOOD) {
+    code |= 0x80 << 8;
+  }
+  return WaitStatus(code);
+}
+
+WaitStatus WaitStatus::for_ptrace_event(int ptrace_event) {
+  assert(ptrace_event >= 1 && ptrace_event < 0x100);
+  return WaitStatus((ptrace_event << 16) | (SIGTRAP << 8) | 0x7f);
 }
 
 ostream& operator<<(ostream& stream, WaitStatus status) {

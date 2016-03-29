@@ -10,9 +10,11 @@
 
 namespace rr {
 
+class RecordTask;
+
 class WaitStatus {
 public:
-  WaitStatus(int status = 0) : status(status) {}
+  explicit WaitStatus(int status = 0) : status(status) {}
 
   enum Type {
     // Task exited normally.
@@ -51,9 +53,12 @@ public:
 
   int get() const { return status; }
 
-  static WaitStatus for_ptrace_event(int ptrace_event) {
-    return (ptrace_event << 16) | ((0x80 | SIGTRAP) << 8) | 0x7f;
-  }
+  static WaitStatus for_exit_code(int code);
+  static WaitStatus for_fatal_sig(int sig);
+  static WaitStatus for_stop_sig(int sig);
+  static WaitStatus for_group_sig(int sig, RecordTask* t);
+  static WaitStatus for_syscall(RecordTask* t);
+  static WaitStatus for_ptrace_event(int ptrace_event);
 
 private:
   int status;
