@@ -1311,7 +1311,7 @@ static void do_ptrace_exit_stop(RecordTask* t) {
       (t->is_clone_child() ||
        t->get_parent_pid() != t->emulated_ptracer->real_tgid())) {
     // This is a bit wrong; this is an exit stop, not a signal/ptrace stop.
-    t->emulate_ptrace_stop(t->exit_code << 8, SIGNAL_DELIVERY_STOP);
+    t->emulate_ptrace_stop(WaitStatus::for_exit_code(t->exit_code));
   }
 }
 
@@ -1322,7 +1322,7 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   }
 
   tracee->emulated_stop_type = NOT_STOPPED;
-  tracee->emulated_ptrace_stop_code = 0;
+  tracee->emulated_ptrace_stop_code = WaitStatus();
   tracee->emulated_ptrace_cont_command = command;
 
   if (tracee->ev().is_syscall_event() &&
@@ -1465,8 +1465,7 @@ static Switchable prepare_ptrace(RecordTask* t,
         ASSERT(tracee, tracee->emulated_stop_type == GROUP_STOP);
         // tracee is already stopped because of a group-stop signal.
         // Sending a SIGSTOP won't work, but we don't need to.
-        tracee->force_emulate_ptrace_stop((SIGSTOP << 8) | 0x7f,
-                                          SIGNAL_DELIVERY_STOP);
+        tracee->force_emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGSTOP));
       }
       break;
     }
@@ -1829,8 +1828,7 @@ static void prepare_exit(RecordTask* t, int exit_code) {
   if (t->emulated_ptrace_options & PTRACE_O_TRACEEXIT) {
     // Ensure that do_ptrace_exit_stop can run later.
     t->emulated_ptrace_queued_exit_stop = true;
-    t->emulate_ptrace_stop((PTRACE_EVENT_EXIT << 16) | (SIGTRAP << 8) | 0x7f,
-                           SIGNAL_DELIVERY_STOP);
+    t->emulate_ptrace_stop(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
   } else {
     // Only allow one stop at a time. After the PTRACE_EVENT_EXIT has been
     // processed, PTRACE_CONT will call do_ptrace_exit_stop for us.
@@ -2046,8 +2044,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     new_task->emulated_ptrace_seized = t->emulated_ptrace_seized;
     new_task->emulated_ptrace_options = t->emulated_ptrace_options;
     t->emulated_ptrace_event_msg = new_task->rec_tid;
-    t->emulate_ptrace_stop((ptrace_event << 16) | (SIGTRAP << 8) | 0x7f,
-                           SIGNAL_DELIVERY_STOP);
+    t->emulate_ptrace_stop(WaitStatus::for_ptrace_event(ptrace_event));
     // ptrace(2) man page says that SIGSTOP is used here, but it's really
     // SIGTRAP (in 4.4.4-301.fc23.x86_64 anyway).
     new_task->apply_group_stop(SIGTRAP);
@@ -3648,19 +3645,19 @@ static void rec_process_syscall_arch(RecordTask* t,
             si._sifields._sigchld.si_pid_ = tracee->tgid();
             si._sifields._sigchld.si_uid_ = tracee->getuid();
             si._sifields._sigchld.si_status_ =
-                WSTOPSIG(tracee->emulated_ptrace_stop_code);
+                tracee->emulated_ptrace_stop_code.ptrace_signal();
             t->write_mem(sip, si);
           }
         } else {
           remote_ptr<int> statusp = r.arg2();
           if (!statusp.is_null()) {
-            t->write_mem(statusp, tracee->emulated_ptrace_stop_code);
+            t->write_mem(statusp, tracee->emulated_ptrace_stop_code.get());
           }
         }
         if (syscallno == Arch::waitid && (r.arg4() & WNOWAIT)) {
           // Leave the child in a waitable state
         } else {
-          if (WIFEXITED(tracee->emulated_ptrace_stop_code)) {
+          if (tracee->emulated_ptrace_stop_code.exit_code() >= 0) {
             // If we stopped the tracee to deliver this notification,
             // now allow it to continue to exit properly and notify its
             // real parent.

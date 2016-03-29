@@ -71,16 +71,17 @@ public:
   /**
    * Call this when an event occurs that should stop a ptraced task.
    * If we're emulating ptrace of the task, stop the task and wake the ptracer
-   * if it's waiting, and queue "code" as an status code to be reported to the
-   * ptracer.
+   * if it's waiting, and queue "status" to be reported to the
+   * ptracer. If siginfo is non-null, we'll report that siginfo, otherwise we'll
+   * make one up based on the status (unless the status is an exit code).
    * Returns true if the task is stopped-for-emulated-ptrace, false otherwise.
    */
-  bool emulate_ptrace_stop(int code, EmulatedStopType stop_type,
-                           AddSysgoodFlag add_sysgood = IGNORE_SYSGOOD);
+  bool emulate_ptrace_stop(WaitStatus status,
+                           const siginfo_t* siginfo = nullptr, int si_code = 0);
   /**
    * Force the ptrace-stop state no matter what state the task is currently in.
    */
-  void force_emulate_ptrace_stop(int code, EmulatedStopType stop_type);
+  void force_emulate_ptrace_stop(WaitStatus status);
   /**
    * Called when we're about to deliver a signal to this task. If it's a
    * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
@@ -88,12 +89,6 @@ public:
    * ptraced task has had its SIGCHLD sent.
    */
   void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
-  /**
-   * When a signal triggers an emulated a ptrace-stop for this task,
-   * save the siginfo so a later emulated ptrace-continue with this signal
-   * number can use it.
-   */
-  void save_ptrace_signal_siginfo(const siginfo_t& si);
   /**
    * Return a reference to the saved siginfo record for the stop-signal
    * that we're currently in a ptrace-stop for.
@@ -391,6 +386,13 @@ private:
   void send_synthetic_SIGCHLD_if_necessary();
 
   /**
+   * When a signal triggers an emulated a ptrace-stop for this task,
+   * save the siginfo so a later emulated ptrace-continue with this signal
+   * number can use it.
+   */
+  void save_ptrace_signal_siginfo(const siginfo_t& si);
+
+  /**
    * Call this when SYS_sigaction is finishing with |regs|.
    */
   void update_sigaction(const Registers& regs);
@@ -441,7 +443,7 @@ public:
   std::vector<siginfo_t> saved_ptrace_siginfos;
   // Code to deliver to ptracer when it waits. Note that zero can be a valid
   // code! Reset to zero when leaving the ptrace-stop due to PTRACE_CONT etc.
-  int emulated_ptrace_stop_code;
+  WaitStatus emulated_ptrace_stop_code;
   // Always zero while no ptracer is attached.
   int emulated_ptrace_options;
   // One of PTRACE_CONT, PTRACE_SYSCALL --- or 0 if the tracee has not been

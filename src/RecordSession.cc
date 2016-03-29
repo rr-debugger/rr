@@ -599,13 +599,13 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
 
 static void maybe_trigger_emulated_ptrace_syscall_exit_stop(RecordTask* t) {
   if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL) {
-    t->emulate_ptrace_stop((SIGTRAP << 8) | 0x7f, SIGNAL_DELIVERY_STOP,
-                           USE_SYSGOOD);
+    t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
   } else if (t->emulated_ptrace_cont_command == PTRACE_SINGLESTEP ||
              t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) {
     // Deliver the singlestep trap now that we've finished executing the
     // syscall.
-    t->emulate_ptrace_stop((SIGTRAP << 8) | 0x7f, SIGNAL_DELIVERY_STOP);
+    t->emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGTRAP), nullptr,
+                           SI_KERNEL);
   }
 }
 
@@ -1217,8 +1217,7 @@ void RecordSession::runnable_state_changed(RecordTask* t,
           t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
           t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) {
         t->ev().Syscall().state = ENTERING_SYSCALL_PTRACE;
-        t->emulate_ptrace_stop((SIGTRAP << 8) | 0x7f, SIGNAL_DELIVERY_STOP,
-                               USE_SYSGOOD);
+        t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
         t->record_current_event();
 
         t->ev().Syscall().in_sysemu =

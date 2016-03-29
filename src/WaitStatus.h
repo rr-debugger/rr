@@ -51,6 +51,10 @@ public:
   // ptrace event if type() == PTRACE_EVENT, otherwise zero.
   int ptrace_event() const;
 
+  // For exit_code() and fatal_sig(), returns 0. For all other types
+  // returns the signal involved.
+  int ptrace_signal() const;
+
   int get() const { return status; }
 
   static WaitStatus for_exit_code(int code);

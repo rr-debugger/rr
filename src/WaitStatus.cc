@@ -79,6 +79,10 @@ int WaitStatus::ptrace_event() const {
   return event == PTRACE_EVENT_STOP ? 0 : event;
 }
 
+int WaitStatus::ptrace_signal() const {
+  return WIFSTOPPED(status) ? (WSTOPSIG(status) & 0x7f) : 0;
+}
+
 WaitStatus WaitStatus::for_exit_code(int code) {
   assert(code >= 0 && code < 0x100);
   return WaitStatus(code << 8);

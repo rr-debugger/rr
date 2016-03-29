@@ -159,7 +159,6 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       in_round_robin_queue(false),
       emulated_ptracer(nullptr),
       emulated_ptrace_event_msg(0),
-      emulated_ptrace_stop_code(0),
       emulated_ptrace_options(0),
       emulated_ptrace_cont_command(0),
       emulated_ptrace_stop_pending(false),
@@ -429,25 +428,33 @@ void RecordTask::set_emulated_ptracer(RecordTask* tracer) {
   }
 }
 
-bool RecordTask::emulate_ptrace_stop(int code, EmulatedStopType stop_type,
-                                     AddSysgoodFlag add_sysgood) {
+bool RecordTask::emulate_ptrace_stop(WaitStatus status,
+                                     const siginfo_t* siginfo, int si_code) {
   ASSERT(this, emulated_stop_type == NOT_STOPPED);
-  ASSERT(this, stop_type != NOT_STOPPED);
   if (!emulated_ptracer) {
     return false;
   }
-  if (add_sysgood == USE_SYSGOOD &&
-      (emulated_ptrace_options & PTRACE_O_TRACESYSGOOD)) {
-    code |= 0x80 << 8;
+  if (siginfo) {
+    ASSERT(this, status.ptrace_signal() == siginfo->si_signo);
+    save_ptrace_signal_siginfo(*siginfo);
+  } else {
+    siginfo_t si;
+    memset(&si, 0, sizeof(si));
+    si.si_signo = status.ptrace_signal();
+    if (status.ptrace_event() || status.is_syscall()) {
+      si.si_code = status.get() >> 8;
+    } else {
+      si.si_code = si_code;
+    }
+    save_ptrace_signal_siginfo(si);
   }
-  force_emulate_ptrace_stop(code, stop_type);
+  force_emulate_ptrace_stop(status);
   return true;
 }
 
-void RecordTask::force_emulate_ptrace_stop(int code,
-                                           EmulatedStopType stop_type) {
-  emulated_stop_type = stop_type;
-  emulated_ptrace_stop_code = code;
+void RecordTask::force_emulate_ptrace_stop(WaitStatus status) {
+  emulated_stop_type = status.group_stop() ? GROUP_STOP : SIGNAL_DELIVERY_STOP;
+  emulated_ptrace_stop_code = status;
   emulated_ptrace_stop_pending = true;
   emulated_ptrace_SIGCHLD_pending = true;
 
@@ -525,10 +532,11 @@ void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
   for (RecordTask* tracee : emulated_ptrace_tracees) {
     if (tracee->emulated_ptrace_SIGCHLD_pending) {
       tracee->emulated_ptrace_SIGCHLD_pending = false;
+      // XXX handle CLD_EXITED here
       si->si_code = CLD_TRAPPED;
       si->si_pid = tracee->tgid();
       si->si_uid = tracee->getuid();
-      si->si_status = WSTOPSIG(tracee->emulated_ptrace_stop_code);
+      si->si_status = tracee->emulated_ptrace_stop_code.ptrace_signal();
       si->si_value.sival_int = 0;
       return;
     }
@@ -595,7 +603,7 @@ void RecordTask::save_ptrace_signal_siginfo(const siginfo_t& si) {
 }
 
 siginfo_t& RecordTask::get_saved_ptrace_siginfo() {
-  int sig = WSTOPSIG(emulated_ptrace_stop_code);
+  int sig = emulated_ptrace_stop_code.ptrace_signal();
   ASSERT(this, sig > 0);
   for (auto it = saved_ptrace_siginfos.begin();
        it != saved_ptrace_siginfos.end(); ++it) {
@@ -627,11 +635,7 @@ siginfo_t RecordTask::take_ptrace_signal_siginfo(int sig) {
 void RecordTask::apply_group_stop(int sig) {
   if (emulated_stop_type == NOT_STOPPED) {
     LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal " << sig;
-    int code = (sig << 8) | 0x7f;
-    if (emulated_ptrace_seized) {
-      code |= PTRACE_EVENT_STOP << 16;
-    }
-    if (!emulate_ptrace_stop(code, GROUP_STOP)) {
+    if (!emulate_ptrace_stop(WaitStatus::for_group_sig(sig, this))) {
       emulated_stop_type = GROUP_STOP;
     }
   }

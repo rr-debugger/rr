@@ -66,6 +66,24 @@ static uid_t my_geteuid(void) {
   return r;
 }
 
+static void wait_for_syscall_enter(pid_t child) {
+  int status;
+  siginfo_t si; 
+  test_assert(child == waitpid(child, &status, 0));
+  test_assert(status == (((0x80 | SIGTRAP) << 8) | 0x7f));
+  test_assert(0 == ptrace(PTRACE_GETSIGINFO, child, NULL, &si));
+  test_assert(SIGTRAP == si.si_signo);
+}
+
+static void wait_for_singlestep(pid_t child) {
+  int status;
+  siginfo_t si; 
+  test_assert(child == waitpid(child, &status, 0));
+  test_assert(status == ((SIGTRAP << 8) | 0x7f));
+  test_assert(0 == ptrace(PTRACE_GETSIGINFO, child, NULL, &si));
+  test_assert(SIGTRAP == si.si_signo);
+}
+
 int main(int argc, char** argv) {
   pid_t child;
   int status;
@@ -94,8 +112,7 @@ int main(int argc, char** argv) {
 
   /* Test PTRACE_SYSEMU running into syscall */
   test_assert(0 == ptrace(PTRACE_SYSEMU, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == (((0x80 | SIGTRAP) << 8) | 0x7f));
+  wait_for_syscall_enter(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* This assert will fail if we patched the syscall for syscallbuf. */
   test_assert(&syscall_addr + 2 == (char*)regs.IP);
@@ -104,8 +121,7 @@ int main(int argc, char** argv) {
 
   /* Test PTRACE_SINGLESTEP stepping out of a syscall */
   test_assert(0 == ptrace(PTRACE_SINGLESTEP, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == ((SIGTRAP << 8) | 0x7f));
+  wait_for_singlestep(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* check that syscall did not run */
   test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
@@ -115,15 +131,13 @@ int main(int argc, char** argv) {
 
   /* Test PTRACE_SINGLESTEP stepping normally */
   test_assert(0 == ptrace(PTRACE_SINGLESTEP, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == ((SIGTRAP << 8) | 0x7f));
+  wait_for_singlestep(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   test_assert(&syscall_addr + 3 == (char*)regs.IP);
 
   /* Test PTRACE_SYSEMU_SINGLESTEP stepping normally */
   test_assert(0 == ptrace(PTRACE_SYSEMU_SINGLESTEP, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == ((SIGTRAP << 8) | 0x7f));
+  wait_for_singlestep(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   test_assert(&syscall_addr + 4 == (char*)regs.IP);
 
@@ -145,8 +159,7 @@ int main(int argc, char** argv) {
 
   /* Test PTRACE_SYSEMU_SINGLESTEP stepping into syscall */
   test_assert(0 == ptrace(PTRACE_SYSEMU_SINGLESTEP, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == (((0x80 | SIGTRAP) << 8) | 0x7f));
+  wait_for_syscall_enter(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* This assert will fail if we patched the syscall for syscallbuf. */
   test_assert(&syscall_addr + 2 == (char*)regs.IP);
@@ -155,8 +168,7 @@ int main(int argc, char** argv) {
 
   /* Test PTRACE_SYSEMU_SINGLESTEP stepping out of a syscall */
   test_assert(0 == ptrace(PTRACE_SYSEMU_SINGLESTEP, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == ((SIGTRAP << 8) | 0x7f));
+  wait_for_singlestep(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* check that syscall did not run */
   test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
@@ -182,8 +194,7 @@ int main(int argc, char** argv) {
 
   /* Test PTRACE_SYSCALL entering syscall */
   test_assert(0 == ptrace(PTRACE_SYSCALL, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == (((0x80 | SIGTRAP) << 8) | 0x7f));
+  wait_for_syscall_enter(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   test_assert(&syscall_addr + 2 == (char*)regs.IP);
   test_assert(SYSCALLNO == regs.ORIG_SYSCALLNO);
@@ -194,8 +205,7 @@ int main(int argc, char** argv) {
 
   /* Test PTRACE_SYSEMU_SINGLESTEP stepping out of a syscall */
   test_assert(0 == ptrace(PTRACE_SYSEMU_SINGLESTEP, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == ((SIGTRAP << 8) | 0x7f));
+  wait_for_singlestep(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* check that syscall did not run */
   test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
@@ -221,8 +231,7 @@ int main(int argc, char** argv) {
 
   /* Test PTRACE_SINGLESTEP stepping over syscall */
   test_assert(0 == ptrace(PTRACE_SINGLESTEP, child, NULL, (void*)0));
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(status == ((SIGTRAP << 8) | 0x7f));
+  wait_for_singlestep(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* This assert will fail if we patched the syscall for syscallbuf. */
   test_assert(&syscall_addr + 2 == (char*)regs.IP);
