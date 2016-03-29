@@ -628,6 +628,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         Registers r = t->regs();
         Registers orig_regs = r;
         r.set_original_syscallno(-1);
+        t->set_regs(r);
         t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
         ASSERT(t, t->ip() == r.ip());
         t->set_regs(orig_regs);

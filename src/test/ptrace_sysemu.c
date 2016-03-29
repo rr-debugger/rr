@@ -108,6 +108,8 @@ int main(int argc, char** argv) {
   if (0 == (child = fork())) {
     uid_t ret;
     kill(getpid(), SIGSTOP);
+    /* This will be skipped by the ptracer */
+    syscall(SYS_exit, 6);
     ret = my_geteuid();
     test_assert(ret == uid);
     ret = my_geteuid();
@@ -128,6 +130,21 @@ int main(int argc, char** argv) {
   test_assert(0 == ptrace(PTRACE_SYSEMU, child, NULL, (void*)0));
   wait_for_syscall_enter(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
+  test_assert(SYS_exit == regs.ORIG_SYSCALLNO);
+  test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
+
+  /* Test PTRACE_SINGLESTEP stepping out of a syscall.
+     We make sure it doesn't run. If the syscall runs then the child will
+     exit prematurely. */
+  test_assert(0 == ptrace(PTRACE_SINGLESTEP, child, NULL, (void*)0));
+  wait_for_singlestep(child);
+  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
+  test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
+
+  /* Test PTRACE_SYSEMU running into syscall */
+  test_assert(0 == ptrace(PTRACE_SYSEMU, child, NULL, (void*)0));
+  wait_for_syscall_enter(child);
+  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* This assert will fail if we patched the syscall for syscallbuf. */
   test_assert(&syscall_addr + 2 == (char*)regs.IP);
   test_assert(SYSCALLNO == regs.ORIG_SYSCALLNO);
@@ -137,7 +154,6 @@ int main(int argc, char** argv) {
   test_assert(0 == ptrace(PTRACE_SINGLESTEP, child, NULL, (void*)0));
   wait_for_singlestep(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
-  /* check that syscall did not run */
   test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
   test_assert(&syscall_addr + 2 == (char*)regs.IP);
   regs.SYSCALL_RESULT = uid;
