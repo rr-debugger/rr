@@ -44,23 +44,19 @@ int main(void) {
   struct user_fpxregs_struct* fpxregs;
 #endif
   void* xsave_regs;
-  int pipe_fds[2];
   struct iovec iov;
   int ret;
   size_t xsave_size = find_xsave_size();
   uintptr_t saved_ip;
   siginfo_t* siginfo;
 
-  test_assert(0 == pipe(pipe_fds));
-
   if (0 == (child = fork())) {
-    char ch;
-    read(pipe_fds[0], &ch, 1);
+    kill(getpid(), SIGSTOP);
     test_assert(static_data == NEW_VALUE);
     return 77;
   }
 
-  test_assert(0 == ptrace(PTRACE_ATTACH, child, NULL, NULL));
+  test_assert(0 == ptrace(PTRACE_SEIZE, child, NULL, NULL));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((SIGSTOP << 8) | 0x7f));
 
@@ -176,7 +172,6 @@ int main(void) {
 
   test_assert(0 == ptrace(PTRACE_DETACH, child, NULL, NULL));
 
-  test_assert(1 == write(pipe_fds[1], "x", 1));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(WIFEXITED(status));
   test_assert(WEXITSTATUS(status) == 77);
