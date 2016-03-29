@@ -1397,6 +1397,16 @@ static void ptrace_get_reg_set(RecordTask* t, TaskSyscallState& syscall_state,
   syscall_state.emulate_result(0);
 }
 
+template <typename Arch>
+static void ptrace_verify_set_reg_set(RecordTask* t, size_t min_size,
+                                      TaskSyscallState& syscall_state) {
+  auto iov = t->read_mem(remote_ptr<typename Arch::iovec>(t->regs().arg4()));
+  if (iov.iov_len < min_size) {
+    syscall_state.emulate_result(-EIO);
+  }
+  syscall_state.emulate_result(0);
+}
+
 static bool verify_ptrace_options(RecordTask* t,
                                   TaskSyscallState& syscall_state) {
   // We "support" PTRACE_O_SYSGOOD because we don't support PTRACE_SYSCALL yet
@@ -1614,6 +1624,71 @@ static Switchable prepare_ptrace(RecordTask* t,
         // The actual register effects are performed by
         // Task::on_syscall_exit_arch
         syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_SETFPREGS: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual register effects are performed by
+        // Task::on_syscall_exit_arch
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_SETFPXREGS: {
+      if (Arch::arch() != x86) {
+        // SETFPXREGS is x86-32 only
+        syscall_state.expect_errno = EIO;
+        break;
+      }
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual register effects are performed by
+        // Task::on_syscall_exit_arch
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_SETREGSET: {
+      // The actual register effects are performed by
+      // Task::on_syscall_exit_arch
+      switch ((int)t->regs().arg3()) {
+        case NT_PRSTATUS: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            ptrace_verify_set_reg_set<Arch>(
+                t, sizeof(typename Arch::user_regs_struct), syscall_state);
+          }
+          break;
+        }
+        case NT_FPREGSET: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            ptrace_verify_set_reg_set<Arch>(
+                t, sizeof(typename Arch::user_fpregs_struct), syscall_state);
+          }
+          break;
+        }
+        case NT_X86_XSTATE: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            switch (tracee->extra_regs().format()) {
+              case ExtraRegisters::XSAVE:
+                ptrace_verify_set_reg_set<Arch>(
+                    t, tracee->extra_regs().data_size(), syscall_state);
+                break;
+              default:
+                syscall_state.emulate_result(EINVAL);
+                break;
+            }
+          }
+          break;
+        }
+        default:
+          syscall_state.expect_errno = EINVAL;
+          emulate = false;
+          break;
       }
       break;
     }

@@ -158,6 +158,23 @@ static X86Arch::user_fpregs_struct convert_fxsave_to_x86_fpregs(
   return result;
 }
 
+static void convert_x86_fpregs_to_fxsave(const X86Arch::user_fpregs_struct& buf,
+                                         X86Arch::user_fpxregs_struct* result) {
+  for (int i = 0; i < 8; ++i) {
+    memcpy(&result->st_space[i * 4],
+           reinterpret_cast<const uint8_t*>(buf.st_space) + i * 10, 10);
+  }
+
+  result->cwd = buf.cwd;
+  result->swd = buf.swd;
+  // XXX Computing the correct twd is a pain. It probably doesn't matter to us
+  // in practice.
+  result->fip = buf.fip;
+  result->fcs = buf.fcs;
+  result->foo = buf.foo;
+  result->fos = buf.fos;
+}
+
 template <typename T> static vector<uint8_t> to_vector(const T& v) {
   vector<uint8_t> result;
   result.resize(sizeof(T));
@@ -184,10 +201,40 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
   }
 }
 
+void ExtraRegisters::set_user_fpregs_struct(SupportedArch arch, void* data,
+                                            size_t size) {
+  assert(format_ == XSAVE);
+  switch (arch) {
+    case x86:
+      assert(size >= sizeof(X86Arch::user_fpregs_struct));
+      assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
+      convert_x86_fpregs_to_fxsave(
+          *static_cast<X86Arch::user_fpregs_struct*>(data),
+          reinterpret_cast<X86Arch::user_fpxregs_struct*>(data_.data()));
+      return;
+    case x86_64:
+      assert(data_.size() >= sizeof(X64Arch::user_fpregs_struct));
+      assert(size >= sizeof(X64Arch::user_fpregs_struct));
+      memcpy(data_.data(), data, sizeof(X64Arch::user_fpregs_struct));
+      return;
+    default:
+      assert(0 && "Unknown arch");
+  }
+}
+
 X86Arch::user_fpxregs_struct ExtraRegisters::get_user_fpxregs_struct() const {
   assert(format_ == XSAVE);
+  assert(arch_ == x86);
   assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
   return *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(data_.data());
+}
+
+void ExtraRegisters::set_user_fpxregs_struct(
+    const X86Arch::user_fpxregs_struct& regs) {
+  assert(format_ == XSAVE);
+  assert(arch_ == x86);
+  assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
+  memcpy(data_.data(), &regs, sizeof(regs));
 }
 
 } // namespace rr

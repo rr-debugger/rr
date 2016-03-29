@@ -103,41 +103,46 @@ int main(void) {
   test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, fpregs));
   test_assert(NULL == memchr(fpregs, 0xBB, sizeof(*fpregs)));
   VERIFY_GUARD(fpregs);
+  test_assert(0 == ptrace(PTRACE_SETFPREGS, child, NULL, fpregs));
 
 #ifdef __i386__
   ALLOCATE_GUARD(fpxregs, 0xCC);
   test_assert(0 == ptrace(PTRACE_GETFPXREGS, child, NULL, fpxregs));
   test_assert(NULL == memchr(fpxregs, 0xCC, sizeof(*fpxregs)));
   VERIFY_GUARD(fpxregs);
+  test_assert(0 == ptrace(PTRACE_SETFPXREGS, child, NULL, fpxregs));
 #endif
 
   ALLOCATE_GUARD(regs2, 0xCD);
   iov.iov_base = regs2;
   iov.iov_len = sizeof(*regs2);
-  test_assert(0 ==
-              ptrace(PTRACE_GETREGSET, child, (void*)NT_PRSTATUS, (void*)&iov));
+  test_assert(0 == ptrace(PTRACE_GETREGSET, child, (void*)NT_PRSTATUS, &iov));
   test_assert(iov.iov_len == sizeof(*regs2));
   test_assert(0 == memcmp(regs, regs2, sizeof(*regs)));
   VERIFY_GUARD(regs2);
+  test_assert(0 == ptrace(PTRACE_SETREGSET, child, (void*)NT_PRSTATUS, &iov));
 
   ALLOCATE_GUARD(fpregs2, 0xCE);
   iov.iov_base = fpregs2;
   iov.iov_len = sizeof(*fpregs2);
-  test_assert(0 ==
-              ptrace(PTRACE_GETREGSET, child, (void*)NT_FPREGSET, (void*)&iov));
+  test_assert(0 == ptrace(PTRACE_GETREGSET, child, (void*)NT_FPREGSET, &iov));
   test_assert(iov.iov_len == sizeof(*fpregs2));
   test_assert(0 == memcmp(fpregs, fpregs2, sizeof(*fpregs)));
   VERIFY_GUARD(fpregs2);
+  test_assert(0 == ptrace(PTRACE_SETREGSET, child, (void*)NT_FPREGSET, &iov));
 
   if (xsave_size > 0) {
     xsave_regs = allocate_guard(xsave_size, 0xCF);
     iov.iov_base = xsave_regs;
     iov.iov_len = xsave_size;
-    ret = ptrace(PTRACE_GETREGSET, child, (void*)NT_X86_XSTATE, (void*)&iov);
+    ret = ptrace(PTRACE_GETREGSET, child, (void*)NT_X86_XSTATE, &iov);
     test_assert(0 == ret);
     test_assert(iov.iov_len == xsave_size);
     test_assert(NULL == memchr(xsave_regs, 0xCF, xsave_size));
     verify_guard(xsave_size, xsave_regs);
+
+    test_assert(0 ==
+                ptrace(PTRACE_SETREGSET, child, (void*)NT_X86_XSTATE, &iov));
   }
 
   test_assert(static_data ==

@@ -612,12 +612,12 @@ vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {
   vector<uint8_t> result;
   switch (arch) {
     case x86:
-      result.resize(sizeof(u.x86regs));
-      memcpy(result.data(), &u.x86regs, result.size());
+      result.resize(sizeof(tmp_regs.u.x86regs));
+      memcpy(result.data(), &tmp_regs.u.x86regs, result.size());
       break;
     case x86_64:
-      result.resize(sizeof(u.x64regs));
-      memcpy(result.data(), &u.x64regs, result.size());
+      result.resize(sizeof(tmp_regs.u.x64regs));
+      memcpy(result.data(), &tmp_regs.u.x64regs, result.size());
       break;
     default:
       assert(0 && "Unknown arch");

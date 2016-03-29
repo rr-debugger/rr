@@ -51,11 +51,12 @@ public:
   enum Format { NONE, XSAVE };
 
   // Set values from raw data
-  void set_to_raw_data(Format format, std::vector<uint8_t>& consume_data) {
+  void set_to_raw_data(SupportedArch a, Format format,
+                       std::vector<uint8_t>& consume_data) {
+    arch_ = a;
     format_ = format;
     std::swap(data_, consume_data);
   }
-  void set_arch(SupportedArch a) { arch_ = a; }
 
   Format format() const { return format_; }
   SupportedArch arch() const { return arch_; }
@@ -76,9 +77,19 @@ public:
   std::vector<uint8_t> get_user_fpregs_struct(SupportedArch arch) const;
 
   /**
+   * Update registers from a user_fpregs_struct.
+   */
+  void set_user_fpregs_struct(SupportedArch arch, void* data, size_t size);
+
+  /**
    * Get a user_fpxregs_struct for from these ExtraRegisters.
    */
-  rr::X86Arch::user_fpxregs_struct get_user_fpxregs_struct() const;
+  X86Arch::user_fpxregs_struct get_user_fpxregs_struct() const;
+
+  /**
+   * Update registers from a user_fpxregs_struct.
+   */
+  void set_user_fpxregs_struct(const X86Arch::user_fpxregs_struct& regs);
 
 private:
   friend class Task;

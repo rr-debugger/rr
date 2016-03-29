@@ -293,6 +293,15 @@ bool Task::is_ptrace_seccomp_event() const {
 }
 
 template <typename Arch>
+static vector<uint8_t> ptrace_get_regs_set(Task* t, const Registers& regs,
+                                           size_t min_size) {
+  auto iov = t->read_mem(remote_ptr<typename Arch::iovec>(regs.arg4()));
+  ASSERT(t, iov.iov_len >= min_size)
+      << "Should have been caught during prepare_ptrace";
+  return t->read_mem(iov.iov_base.rptr().template cast<uint8_t>(), iov.iov_len);
+}
+
+template <typename Arch>
 void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   session().accumulate_syscall_performed();
 
@@ -430,6 +439,64 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           tracee->set_regs(r);
           break;
         }
+        case PTRACE_SETFPREGS: {
+          auto data = read_mem(
+              remote_ptr<typename Arch::user_fpregs_struct>(regs.arg4()));
+          auto r = extra_regs();
+          r.set_user_fpregs_struct(Arch::arch(), &data, sizeof(data));
+          set_extra_regs(r);
+          break;
+        }
+        case PTRACE_SETFPXREGS: {
+          auto data =
+              read_mem(remote_ptr<X86Arch::user_fpxregs_struct>(regs.arg4()));
+          auto r = extra_regs();
+          r.set_user_fpxregs_struct(data);
+          set_extra_regs(r);
+          break;
+        }
+        case PTRACE_SETREGSET: {
+          switch ((int)regs.arg3()) {
+            case NT_PRSTATUS: {
+              auto set = ptrace_get_regs_set<Arch>(
+                  this, regs, sizeof(typename Arch::user_regs_struct));
+              Registers r = tracee->regs();
+              r.set_from_ptrace_for_arch(Arch::arch(), set.data(), set.size());
+              tracee->set_regs(r);
+              break;
+            }
+            case NT_FPREGSET: {
+              auto set = ptrace_get_regs_set<Arch>(
+                  this, regs, sizeof(typename Arch::user_fpregs_struct));
+              ExtraRegisters r = tracee->extra_regs();
+              r.set_user_fpregs_struct(Arch::arch(), set.data(), set.size());
+              tracee->set_extra_regs(r);
+              break;
+            }
+            case NT_X86_XSTATE: {
+              switch (tracee->extra_regs().format()) {
+                case ExtraRegisters::XSAVE: {
+                  auto set = ptrace_get_regs_set<Arch>(
+                      this, regs, tracee->extra_regs().data_size());
+                  ExtraRegisters r;
+                  r.set_to_raw_data(tracee->arch(), ExtraRegisters::XSAVE, set);
+                  tracee->set_extra_regs(r);
+                  break;
+                }
+                default:
+                  ASSERT(this, false) << "Unknown ExtraRegisters format; "
+                                         "Should have been caught during "
+                                         "prepare_ptrace";
+              }
+              break;
+            }
+            default:
+              ASSERT(this, false) << "Unknown regset type; Should have been "
+                                     "caught during prepare_ptrace";
+              break;
+          }
+          break;
+        }
         case PTRACE_POKEUSER: {
           size_t addr = regs.arg3();
           typename Arch::unsigned_word data = regs.arg4();
@@ -515,8 +582,8 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   fds->erase_task(this);
 
   registers.set_arch(a);
-  extra_registers.set_arch(a);
-  // Read registers now that the architecture is known.
+  extra_registers = ExtraRegisters(a);
+  extra_registers_known = false;
   struct user_regs_struct ptrace_regs;
   ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
   registers.set_from_ptrace(ptrace_regs);
