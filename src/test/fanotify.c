@@ -14,6 +14,12 @@ int main(void) {
     return 0;
   }
 
+  if (fd == -1 && errno == ENOSYS) {
+    atomic_puts("fanotify is not available in this kernel; skipping tests");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
+
   test_assert(fd >= 0);
 
   file_fd = open("foo", O_WRONLY | O_CREAT, 0777);
