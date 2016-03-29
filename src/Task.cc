@@ -1199,13 +1199,17 @@ void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
     need_to_set_regs = true;
   }
 
+  // We might have singlestepped at the resumption address and just exited
+  // the kernel without executing the breakpoint at that address.
+  // The kernel usually (always?) singlesteps an extra instruction when
+  // we do this with PTRACE_SYSEMU_SINGLESTEP, but rr's ptrace emulation doesn't
+  // and it's kind of a kernel bug.
   if (as->get_breakpoint_type_at_addr(address_of_last_execution_resume) !=
           BKPT_NONE &&
-      stop_sig() == SIGTRAP && !ptrace_event()) {
-    ASSERT(this,
-           ip() ==
-               address_of_last_execution_resume.increment_by_bkpt_insn_length(
-                   arch()));
+      stop_sig() == SIGTRAP && !ptrace_event() &&
+      ip() ==
+          address_of_last_execution_resume.increment_by_bkpt_insn_length(
+              arch())) {
     ASSERT(this, more_ticks == 0);
     // When we resume execution and immediately hit a breakpoint, the original
     // syscall number can be reset to -1. Undo that, so that the register
