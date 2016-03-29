@@ -1410,7 +1410,7 @@ static bool verify_ptrace_options(RecordTask* t,
   return true;
 }
 
-static RecordTask* prepate_ptrace_attach(RecordTask* t, pid_t pid,
+static RecordTask* prepare_ptrace_attach(RecordTask* t, pid_t pid,
                                          TaskSyscallState& syscall_state) {
   // To simplify things, require that a ptracer be in the same pid
   // namespace as rr itself. I.e., tracee tasks sandboxed in a pid
@@ -1445,7 +1445,7 @@ static Switchable prepare_ptrace(RecordTask* t,
   bool emulate = true;
   switch ((int)t->regs().arg1_signed()) {
     case PTRACE_ATTACH: {
-      RecordTask* tracee = prepate_ptrace_attach(t, pid, syscall_state);
+      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
       if (!tracee) {
         break;
       }
@@ -1468,7 +1468,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       break;
     }
     case PTRACE_SEIZE: {
-      RecordTask* tracee = prepate_ptrace_attach(t, pid, syscall_state);
+      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
       if (!tracee) {
         break;
       }
