@@ -11,6 +11,8 @@
 #define PTRACE_SYSEMU_SINGLESTEP 32
 #endif
 
+#define DS_SINGLESTEP (1 << 14)
+
 #if defined(__i386__)
 #define ORIG_SYSCALLNO orig_eax
 #elif defined(__x86_64__)
@@ -68,7 +70,7 @@ static uid_t my_geteuid(void) {
 
 static void wait_for_syscall_enter(pid_t child) {
   int status;
-  siginfo_t si; 
+  siginfo_t si;
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == (((0x80 | SIGTRAP) << 8) | 0x7f));
   test_assert(0 == ptrace(PTRACE_GETSIGINFO, child, NULL, &si));
@@ -77,11 +79,23 @@ static void wait_for_syscall_enter(pid_t child) {
 
 static void wait_for_singlestep(pid_t child) {
   int status;
-  siginfo_t si; 
+  siginfo_t si;
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((SIGTRAP << 8) | 0x7f));
   test_assert(0 == ptrace(PTRACE_GETSIGINFO, child, NULL, &si));
   test_assert(SIGTRAP == si.si_signo);
+}
+
+static void check_dr6(pid_t child) {
+  uintptr_t dr6;
+  errno = 0;
+  dr6 = ptrace(PTRACE_PEEKUSER, child,
+               (void*)offsetof(struct user, u_debugreg[6]), (void*)0);
+  test_assert(!errno);
+  test_assert(dr6 & DS_SINGLESTEP);
+  test_assert(0 == ptrace(PTRACE_POKEUSER, child,
+                          (void*)offsetof(struct user, u_debugreg[6]),
+                          (void*)0));
 }
 
 int main(int argc, char** argv) {
@@ -132,12 +146,14 @@ int main(int argc, char** argv) {
   /* Test PTRACE_SINGLESTEP stepping normally */
   test_assert(0 == ptrace(PTRACE_SINGLESTEP, child, NULL, (void*)0));
   wait_for_singlestep(child);
+  check_dr6(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   test_assert(&syscall_addr + 3 == (char*)regs.IP);
 
   /* Test PTRACE_SYSEMU_SINGLESTEP stepping normally */
   test_assert(0 == ptrace(PTRACE_SYSEMU_SINGLESTEP, child, NULL, (void*)0));
   wait_for_singlestep(child);
+  check_dr6(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   test_assert(&syscall_addr + 4 == (char*)regs.IP);
 

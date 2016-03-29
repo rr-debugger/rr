@@ -652,6 +652,9 @@ TrapReasons Task::compute_trap_reasons() {
   TrapReasons reasons;
   uintptr_t status = debug_status();
 
+  // XXX singlestepping over a syscall instruction doesn't trigger
+  // DS_SINGLESTEP. But we don't do that in ReplaySession or DiversionSession
+  // ... hopefully?
   reasons.singlestep = (status & DS_SINGLESTEP) != 0;
 
   // In VMWare Player 6.0.4 build-2249910, 32-bit Ubuntu x86 guest,
