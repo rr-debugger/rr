@@ -29,7 +29,8 @@ static void find_home_device(void) {
              &min, home_device);
     }
     if (maj == (int)major(home_stat.st_dev) &&
-        min == (int)minor(home_stat.st_dev)) {
+        min == (int)minor(home_stat.st_dev) &&
+        maj != 0) {
       atomic_printf("%s (%d:%d) is on device special file %s\n", home, maj, min,
                     home_device);
       return;
