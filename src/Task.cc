@@ -119,6 +119,10 @@ Task::~Task() {
 }
 
 void Task::finish_emulated_syscall() {
+  // We need to execute something to get us out of a SYSEMU syscall-stop into a
+  // signal-stop. SINGLESTEP/SYSEMU_SINGLESTEP works, but sometimes executes
+  // instruction after the syscall as well, so we need to be able to undo that.
+
   // XXX verify that this can't be interrupted by a breakpoint trap
   Registers r = regs();
   remote_code_ptr ip = r.ip();
