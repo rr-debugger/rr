@@ -372,6 +372,7 @@ set(BASIC_TESTS
   epoll_create1
   eventfd
   exec_flags
+  exec_no_env
   exec_self
   fadvise
   fanotify

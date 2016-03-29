@@ -47,7 +47,10 @@ static void write_and_record_mem(RecordTask* t, remote_ptr<T> child_addr,
  *
  * It's possible for this to fail if a tracee alters the LD_PRELOAD value
  * and then does an exec. That's just too bad. If we ever have to handle that,
- * we should modify the environment passed to the exec call.
+ * we should modify the environment passed to the exec call. This function
+ * failing isn't necessarily fatal; a tracee might not rely on the functions
+ * overridden by the preload library, or might override them itself (e.g.
+ * because we're recording an rr replay).
  */
 template <typename Arch> static void setup_preload_library_path(RecordTask* t) {
   static_assert(sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) ==
@@ -65,7 +68,7 @@ template <typename Arch> static void setup_preload_library_path(RecordTask* t) {
   while (true) {
     auto envp = t->read_mem(p);
     if (!envp) {
-      ASSERT(t, false) << "LD_PRELOAD not found";
+      LOG(debug) << "LD_PRELOAD not found";
       return;
     }
     string env = t->read_c_str(envp);
@@ -75,8 +78,7 @@ template <typename Arch> static void setup_preload_library_path(RecordTask* t) {
     }
     size_t lib_pos = env.find(SYSCALLBUF_LIB_FILENAME_BASE);
     if (lib_pos == string::npos) {
-      ASSERT(t, false) << SYSCALLBUF_LIB_FILENAME_BASE
-          " not found in LD_PRELOAD";
+      LOG(debug) << SYSCALLBUF_LIB_FILENAME_BASE " not found in LD_PRELOAD";
       return;
     }
     size_t next_colon = env.find(':', lib_pos);
@@ -85,14 +87,14 @@ template <typename Arch> static void setup_preload_library_path(RecordTask* t) {
         ++next_colon;
       }
       if (next_colon < lib_pos + sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1) {
-        ASSERT(t, false) << "Insufficient space for " << lib_name
-                         << " in LD_PRELOAD before next ':'";
+        LOG(debug) << "Insufficient space for " << lib_name
+                   << " in LD_PRELOAD before next ':'";
         return;
       }
     }
     if (env.length() < lib_pos + sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1) {
-      ASSERT(t, false) << "Insufficient space for " << lib_name
-                       << " in LD_PRELOAD before end of string";
+      LOG(debug) << "Insufficient space for " << lib_name
+                 << " in LD_PRELOAD before end of string";
       return;
     }
     remote_ptr<void> dest = envp + lib_pos;
