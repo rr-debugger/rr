@@ -139,7 +139,7 @@ int main(void) {
     atomic_printf("WARNING: %s doesn't appear to be a wireless iface; "
                   "SIOCGIWRATE test may have been meaningless (%s/%d)\n",
                   name, strerror(err), err);
-    test_assert(EOPNOTSUPP == err || EPERM == err);
+    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
   }
 
   atomic_puts("EXIT-SUCCESS");
