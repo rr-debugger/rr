@@ -1999,6 +1999,7 @@ static void do_preload_init(Task* t) {
 }
 
 void Task::at_preload_init() {
+  as->at_preload_init(this);
   do_preload_init(this);
 
   fd_table()->init_syscallbuf_fds_disabled(this);

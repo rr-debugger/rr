@@ -3802,7 +3802,6 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
 
     case SYS_rrcall_init_preload: {
-      t->vm()->at_preload_init(t);
       t->at_preload_init();
 
       Registers r = t->regs();

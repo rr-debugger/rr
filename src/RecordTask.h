@@ -229,6 +229,11 @@ public:
    * below.
    */
   bool is_in_syscallbuf() {
+    if (!as->syscallbuf_enabled()) {
+      // Even if we're in the rr page, if syscallbuf isn't enabled then the
+      // rr page is not being used by syscallbuf.
+      return false;
+    }
     remote_ptr<void> p = ip().to_data_ptr<void>();
     return (as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end() &&
             !as->monkeypatcher().is_syscallbuf_excluded_instruction(p)) ||

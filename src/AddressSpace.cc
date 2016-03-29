@@ -445,26 +445,32 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
 }
 
 template <typename Arch>
-void AddressSpace::at_preload_init_arch(RecordTask* t) {
+void AddressSpace::at_preload_init_arch(Task* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
 
-  ASSERT(t, t->session().as_record()->use_syscall_buffer() ==
-                params.syscallbuf_enabled)
-      << "Tracee thinks syscallbuf is "
-      << (params.syscallbuf_enabled ? "en" : "dis")
-      << "abled, but tracer thinks "
-      << (t->session().as_record()->use_syscall_buffer() ? "en" : "dis")
-      << "abled";
+  if (t->session().is_recording()) {
+    ASSERT(t, t->session().as_record()->use_syscall_buffer() ==
+                  params.syscallbuf_enabled)
+        << "Tracee thinks syscallbuf is "
+        << (params.syscallbuf_enabled ? "en" : "dis")
+        << "abled, but tracer thinks "
+        << (t->session().as_record()->use_syscall_buffer() ? "en" : "dis")
+        << "abled";
+  }
 
   if (!params.syscallbuf_enabled) {
     return;
   }
 
-  monkeypatch_state->patch_at_preload_init(t);
+  syscallbuf_enabled_ = true;
+
+  if (t->session().is_recording()) {
+    monkeypatch_state->patch_at_preload_init(static_cast<RecordTask*>(t));
+  }
 }
 
-void AddressSpace::at_preload_init(RecordTask* t) {
+void AddressSpace::at_preload_init(Task* t) {
   ASSERT(t, !syscallbuf_lib_start_.is_null())
       << "should have found preload library already";
   RR_ARCH_FUNCTION(at_preload_init_arch, t->arch(), t);
@@ -1035,7 +1041,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
       session_(&t->session()),
       monkeypatch_state(t->session().is_recording() ? new Monkeypatcher()
                                                     : nullptr),
-      child_mem_fd(-1),
+      syscallbuf_enabled_(false),
       first_run_event_(0) {
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
@@ -1080,6 +1086,7 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       privileged_traced_syscall_ip_(o.privileged_traced_syscall_ip_),
       syscallbuf_lib_start_(o.syscallbuf_lib_start_),
       syscallbuf_lib_end_(o.syscallbuf_lib_end_),
+      syscallbuf_enabled_(o.syscallbuf_enabled_),
       saved_auxv_(o.saved_auxv_),
       first_run_event_(0) {
   for (auto& it : o.breakpoints) {

@@ -545,10 +545,7 @@ public:
     return *monkeypatch_state;
   }
 
-  /**
-   * Call this only during recording.
-   */
-  void at_preload_init(RecordTask* t);
+  void at_preload_init(Task* t);
 
   /* The address of the syscall instruction from which traced syscalls made by
    * the syscallbuf will originate. */
@@ -566,7 +563,7 @@ public:
   }
   remote_ptr<void> syscallbuf_lib_end() const { return syscallbuf_lib_end_; }
 
-  bool syscallbuf_enabled() const { return syscallbuf_lib_start_ != nullptr; }
+  bool syscallbuf_enabled() const { return syscallbuf_enabled_; }
 
   /**
    * We'll map a page of memory here into every exec'ed process for our own
@@ -756,7 +753,7 @@ private:
   /**
    * Call this only during recording.
    */
-  template <typename Arch> void at_preload_init_arch(RecordTask* t);
+  template <typename Arch> void at_preload_init_arch(Task* t);
 
   enum { EXEC_BIT = 1 << 0, READ_BIT = 1 << 1, WRITE_BIT = 1 << 2 };
 
@@ -931,6 +928,7 @@ private:
   remote_code_ptr privileged_traced_syscall_ip_;
   remote_ptr<void> syscallbuf_lib_start_;
   remote_ptr<void> syscallbuf_lib_end_;
+  bool syscallbuf_enabled_;
 
   std::vector<uint8_t> saved_auxv_;
 
