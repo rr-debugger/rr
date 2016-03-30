@@ -17,8 +17,16 @@ ReplaySession& ReplayTask::session() const {
   return *Task::session().as_replay();
 }
 
-void ReplayTask::post_exec(const string& replay_exe) {
+void ReplayTask::post_exec_syscall(const string& replay_exe,
+                                   TraceTaskEvent& tte) {
   Task::post_exec(current_trace_frame().regs().arch(), replay_exe);
+
+  // Perform post-exec-syscall tasks now (e.g. opening mem_fd) before we
+  // switch registers. This lets us perform AutoRemoteSyscalls using the
+  // regular stack instead of having to search the address space for usable
+  // pages (which is error prone, e.g. if we happen to find the scratch space
+  // allocated by an rr recorder under which we're running).
+  Task::post_exec_syscall(tte);
 
   // Delay setting the replay_regs until here so the original registers
   // are set while we populate AddressSpace. We need that for the kernel

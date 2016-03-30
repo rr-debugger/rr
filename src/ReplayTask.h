@@ -21,11 +21,9 @@ public:
   ReplaySession& session() const;
 
   /**
-   * Call this method when this task has just performed an |execve()|
-   * (so we're in the new address space), but before the system call has
-   * returned.
+   * Call this method when the exec has completed.
    */
-  void post_exec(const std::string& replay_exe);
+  void post_exec_syscall(const std::string& replay_exe, TraceTaskEvent& tte);
 
   enum {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu

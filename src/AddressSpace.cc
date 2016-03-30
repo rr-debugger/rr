@@ -444,8 +444,7 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
   return m;
 }
 
-template <typename Arch>
-void AddressSpace::at_preload_init_arch(Task* t) {
+template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
 

@@ -435,8 +435,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   const string& exe_name = datas[exe_km].file_name.empty()
                                ? kms[exe_km].fsname()
                                : datas[exe_km].file_name;
-  t->post_exec(exe_name);
-  t->post_exec_syscall(tte);
+  t->post_exec_syscall(exe_name, tte);
 
   {
     // Tell AutoRemoteSyscalls that we don't need memory parameters. This will
