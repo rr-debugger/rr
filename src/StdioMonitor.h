@@ -38,7 +38,8 @@ public:
   /**
    * During replay, echo writes to stdout/stderr.
    */
-  virtual void did_write(Task* t, const std::vector<Range>& ranges);
+  virtual void did_write(Task* t, const std::vector<Range>& ranges,
+                         off_t offset);
 
 private:
   int original_fd;

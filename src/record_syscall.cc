@@ -60,6 +60,7 @@
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
 #include "log.h"
+#include "ProcMemMonitor.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "Scheduler.h"
@@ -3098,12 +3099,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       t->vm()->fixup_mprotect_growsdown_parameters(t);
       return PREVENT_SWITCH;
 
+    case Arch::rrcall_notify_control_msg:
+    case Arch::rrcall_init_preload:
+      syscall_state.emulate_result(0);
+      return PREVENT_SWITCH;
+
     case Arch::brk:
     case Arch::munmap:
     case Arch::process_vm_readv:
     case Arch::process_vm_writev:
     case Arch::rrcall_init_buffers:
-    case Arch::rrcall_init_preload:
     case Arch::rrcall_notify_syscall_hook_exit:
     case Arch::shmat:
     case Arch::shmdt:
@@ -3492,6 +3497,60 @@ static void record_iovec_output(RecordTask* t, RecordTask* dest,
   }
 }
 
+static void handle_opened_file(RecordTask* t, int fd) {
+  string pathname = t->file_name_of_fd(fd);
+
+  bool do_write = false;
+  // This must be kept in sync with replay_syscall's handle_opened_files.
+  if (is_dev_tty(pathname.c_str())) {
+    // This will let rr event annotations echo to /dev/tty. It will also
+    // ensure writes to this fd are not syscall-buffered.
+    // XXX the tracee's /dev/tty could refer to a tty other than
+    // the recording tty, in which case output should not be
+    // redirected. That's not too bad, replay will still work, just
+    // with some spurious echoes.
+    t->fd_table()->add_monitor(fd, new StdioMonitor(dev_tty_fd()));
+    do_write = true;
+  } else if (is_proc_mem_file(pathname.c_str())) {
+    t->fd_table()->add_monitor(fd, new ProcMemMonitor(t, pathname));
+    do_write = true;
+  }
+
+  if (do_write) {
+    // Write absolute file name
+    t->trace_writer().write_generic(&fd, sizeof(fd));
+    t->trace_writer().write_generic(pathname.c_str(), pathname.size());
+  }
+}
+
+template <typename Arch>
+static void check_scm_rights_fd(RecordTask* t, typename Arch::msghdr& msg) {
+  if (msg.msg_controllen < sizeof(typename Arch::cmsghdr)) {
+    return;
+  }
+  auto data = t->read_mem(msg.msg_control.rptr().template cast<uint8_t>(),
+                          msg.msg_controllen);
+  size_t index = 0;
+  while (true) {
+    auto cmsg = reinterpret_cast<typename Arch::cmsghdr*>(data.data() + index);
+    if (cmsg->cmsg_len < sizeof(*cmsg) ||
+        index + Arch::cmsg_align(cmsg->cmsg_len) > data.size()) {
+      break;
+    }
+    if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS) {
+      int* fds = static_cast<int*>(Arch::cmsg_data(cmsg));
+      int fd_count = (cmsg->cmsg_len - sizeof(*cmsg)) / sizeof(int);
+      for (int i = 0; i < fd_count; ++i) {
+        handle_opened_file(t, fds[i]);
+      }
+    }
+    index += Arch::cmsg_align(cmsg->cmsg_len);
+    if (index + sizeof(*cmsg) > data.size()) {
+      break;
+    }
+  }
+}
+
 template <typename Arch>
 static void rec_process_syscall_arch(RecordTask* t,
                                      TaskSyscallState& syscall_state) {
@@ -3648,22 +3707,67 @@ static void rec_process_syscall_arch(RecordTask* t,
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       t->set_regs(r);
-
-      if ((int)r.syscall_result_signed() >= 0) {
-        string pathname = t->read_c_str(remote_ptr<char>(r.arg1()));
-        if (is_dev_tty(pathname.c_str())) {
-          // This will let rr event annotations echo to /dev/tty. It will also
-          // ensure writes to this fd are not syscall-buffered.
-          // XXX the tracee's /dev/tty could refer to a tty other than
-          // the recording tty, in which case output should not be
-          // redirected. That's not too bad, replay will still work, just
-          // with some spurious echoes.
-          t->fd_table()->add_monitor((int)r.syscall_result_signed(),
-                                     new StdioMonitor(dev_tty_fd()));
-        }
+      if (!t->regs().syscall_failed()) {
+        handle_opened_file(t, (int)t->regs().syscall_result_signed());
       }
       break;
     }
+
+    case Arch::openat:
+      if (!t->regs().syscall_failed()) {
+        handle_opened_file(t, (int)t->regs().syscall_result_signed());
+      }
+      break;
+
+    case SYS_rrcall_notify_control_msg: {
+      auto msg =
+          t->read_mem(remote_ptr<typename Arch::msghdr>(t->regs().arg1()));
+      check_scm_rights_fd<Arch>(t, msg);
+      break;
+    }
+
+    case Arch::recvmsg:
+      if (!t->regs().syscall_failed()) {
+        auto msg =
+            t->read_mem(remote_ptr<typename Arch::msghdr>(t->regs().arg2()));
+        check_scm_rights_fd<Arch>(t, msg);
+      }
+      break;
+
+    case Arch::recvmmsg:
+      if (!t->regs().syscall_failed()) {
+        int msg_count = (int)t->regs().syscall_result_signed();
+        auto msgs = t->read_mem(
+            remote_ptr<typename Arch::mmsghdr>(t->regs().arg2()), msg_count);
+        for (auto& m : msgs) {
+          check_scm_rights_fd<Arch>(t, m.msg_hdr);
+        }
+      }
+      break;
+
+    case Arch::socketcall:
+      if (!t->regs().syscall_failed()) {
+        switch ((int)t->regs().arg1_signed()) {
+          case SYS_RECVMSG: {
+            auto args = t->read_mem(
+                remote_ptr<typename Arch::recvmsg_args>(t->regs().arg2()));
+            auto msg = t->read_mem(args.msg.rptr());
+            check_scm_rights_fd<Arch>(t, msg);
+            break;
+          }
+          case SYS_RECVMMSG: {
+            auto args = t->read_mem(
+                remote_ptr<typename Arch::recvmmsg_args>(t->regs().arg2()));
+            int msg_count = (int)t->regs().syscall_result_signed();
+            auto msgs = t->read_mem(args.msgvec.rptr(), msg_count);
+            for (auto& m : msgs) {
+              check_scm_rights_fd<Arch>(t, m.msg_hdr);
+            }
+            break;
+          }
+        }
+      }
+      break;
 
     case Arch::process_vm_readv:
       record_iovec_output<Arch>(t, t, t->regs().arg2(), t->regs().arg3());
@@ -3803,10 +3907,6 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case SYS_rrcall_init_preload: {
       t->at_preload_init();
-
-      Registers r = t->regs();
-      r.set_syscall_result(0);
-      t->set_regs(r);
       break;
     }
 

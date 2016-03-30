@@ -31,6 +31,7 @@
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
+#include "ProcMemMonitor.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "StdioMonitor.h"
@@ -872,6 +873,30 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   }
 }
 
+static void handle_opened_files(ReplayTask* t) {
+  vector<uint8_t> buf;
+  while (
+      t->trace_reader().read_generic_for_frame(t->current_trace_frame(), buf)) {
+    int fd = *reinterpret_cast<int*>(buf.data());
+    t->trace_reader().read_generic(buf);
+    string pathname(reinterpret_cast<const char*>(buf.data()), buf.size());
+    // This must be kept in sync with replay_syscall's handle_opened_file.
+    if (is_dev_tty(pathname.c_str())) {
+      // This will let rr event annotations echo to /dev/tty. It will also
+      // ensure writes to this fd are not syscall-buffered.
+      // XXX the tracee's /dev/tty could refer to a tty other than
+      // the recording tty, in which case output should not be
+      // redirected. That's not too bad, replay will still work, just
+      // with some spurious echoes.
+      t->fd_table()->add_monitor(fd, new StdioMonitor(STDERR_FILENO));
+    } else if (is_proc_mem_file(pathname.c_str())) {
+      t->fd_table()->add_monitor(fd, new ProcMemMonitor(t, pathname));
+    } else {
+      ASSERT(t, false) << "Why did we write filename " << pathname;
+    }
+  }
+}
+
 template <typename Arch>
 static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
   int sys = t->current_trace_frame().event().Syscall().number;
@@ -1018,21 +1043,14 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
       step->action = TSTEP_RETIRE;
       return;
 
-    case Arch::open: {
-      if (!trace_regs.syscall_failed()) {
-        string pathname = t->read_c_str(remote_ptr<char>(t->regs().arg1()));
-        if (is_dev_tty(pathname.c_str())) {
-          // This will let rr echo output that was to /dev/tty to stderr.
-          // XXX the tracee's /dev/tty could refer to a tty other than
-          // the recording tty, in which case output should not be
-          // redirected. That's not too bad, replay will still work, just
-          // with some spurious echoes.
-          t->fd_table()->add_monitor((int)trace_regs.syscall_result_signed(),
-                                     new StdioMonitor(STDERR_FILENO));
-        }
-      }
+    case Arch::recvmsg:
+    case Arch::recvmmsg:
+    case Arch::openat:
+    case Arch::open:
+    case Arch::socketcall:
+    case Arch::rrcall_notify_control_msg:
+      handle_opened_files(t);
       break;
-    }
 
     case Arch::write:
     case Arch::writev:

@@ -220,6 +220,7 @@ add_executable(rr
   src/main.cc
   src/Monkeypatcher.cc
   src/PerfCounters.cc
+  src/ProcMemMonitor.cc
   src/PsCommand.cc
   src/RecordCommand.cc
   src/RecordSession.cc
@@ -457,6 +458,7 @@ set(BASIC_TESTS
   prctl_deathsig
   prctl_name
   prctl_tsc
+  proc_mem
   protect_rr_fds
   prw
   pthread_condvar_locking

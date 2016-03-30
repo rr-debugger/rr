@@ -1639,6 +1639,7 @@ restart_syscall = RestartSyscall(x86=0, x64=219)
 rrcall_init_preload = IrregularEmulatedSyscall(x86=442, x64=442)
 rrcall_init_buffers = IrregularEmulatedSyscall(x86=443, x64=443)
 rrcall_notify_syscall_hook_exit = IrregularEmulatedSyscall(x86=444, x64=444)
+rrcall_notify_control_msg = IrregularEmulatedSyscall(x86=445, x64=445)
 
 # These syscalls are subsumed under socketcall on x86.
 socket = EmulatedSyscall(x64=41)

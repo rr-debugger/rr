@@ -18,7 +18,8 @@ public:
    * During recording, record the written data.
    * During replay, check that the written data matches what was recorded.
    */
-  virtual void did_write(Task* t, const std::vector<Range>& ranges);
+  virtual void did_write(Task* t, const std::vector<Range>& ranges,
+                         off_t offset);
 };
 
 } // namespace rr

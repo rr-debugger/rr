@@ -23,7 +23,12 @@ CompressedReader::CompressedReader(const string& filename)
     : fd(new ScopedFd(filename.c_str(), O_CLOEXEC | O_RDONLY | O_LARGEFILE)) {
   fd_offset = 0;
   error = !fd->is_open();
-  eof = false;
+  if (error) {
+    eof = false;
+  } else {
+    char ch;
+    eof = pread(*fd, &ch, 1, fd_offset) == 0;
+  }
   buffer_read_pos = 0;
   have_saved_state = false;
 }

@@ -398,6 +398,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       }
       return;
 
+    case Arch::pwrite64:
     case Arch::write: {
       int fd = (int)regs.arg1_signed();
       vector<FileMonitor::Range> ranges;
@@ -405,10 +406,21 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       if (amount > 0) {
         ranges.push_back(FileMonitor::Range(regs.arg2(), amount));
       }
-      fd_table()->did_write(this, fd, ranges);
+      off_t offset;
+      if (syscallno == Arch::pwrite64) {
+        if (sizeof(typename Arch::unsigned_word) == 4) {
+          offset = regs.arg4_signed() | (off_t(regs.arg5_signed()) << 32);
+        } else {
+          offset = regs.arg4_signed();
+        }
+      } else {
+        offset = -1;
+      }
+      fd_table()->did_write(this, fd, ranges, offset);
       return;
     }
 
+    case Arch::pwritev:
     case Arch::writev: {
       int fd = (int)regs.arg1_signed();
       vector<FileMonitor::Range> ranges;
@@ -423,7 +435,17 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           written -= amount;
         }
       }
-      fd_table()->did_write(this, fd, ranges);
+      off_t offset;
+      if (syscallno == Arch::pwritev) {
+        if (sizeof(typename Arch::unsigned_word) == 4) {
+          offset = regs.arg4_signed() | (off_t(regs.arg5_signed()) << 32);
+        } else {
+          offset = regs.arg4_signed();
+        }
+      } else {
+        offset = -1;
+      }
+      fd_table()->did_write(this, fd, ranges, offset);
       return;
     }
 

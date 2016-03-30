@@ -49,7 +49,7 @@ public:
     size_t length;
     Range(remote_ptr<void> data, size_t length) : data(data), length(length) {}
   };
-  virtual void did_write(Task*, const std::vector<Range>&) {}
+  virtual void did_write(Task*, const std::vector<Range>&, off_t) {}
 };
 
 } // namespace rr

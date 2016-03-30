@@ -177,6 +177,8 @@ static __thread uint8_t* buffer TLS_STORAGE_MODEL;
  * handle_signal.c, where they're dealt with. */
 static __thread int desched_counter_fd TLS_STORAGE_MODEL;
 
+static __thread struct msghdr* notify_control_msg TLS_STORAGE_MODEL;
+
 /* Points at the libc/pthread pthread_create().  We wrap
  * pthread_create, so need to retain this pointer to call out to the
  * libc version. There is no __pthread_create stub to call. There are
@@ -1857,6 +1859,13 @@ static long sys_recvmsg(const struct syscall_info* call) {
       bytes -= copy_bytes;
     }
     msg->msg_flags = msg2->msg_flags;
+
+    if (msg->msg_controllen) {
+      /* When we reach a safe point, notify rr that the control message was
+       * received.
+       */
+      notify_control_msg = msg;
+    }
   } else {
     /* Allocate record space as least to cover the data we overwrote above.
      * We don't want to start the next record overlapping that data, since then
@@ -2170,6 +2179,12 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
         SYS_rrcall_notify_syscall_hook_exit, call->args[0], call->args[1],
         call->args[2], call->args[3], call->args[4], call->args[5],
         privileged_traced_syscall_instruction, result, call->no);
+  }
+  // Do work that can only be safely done after syscallbuf can be flushed
+  if (notify_control_msg) {
+    privileged_traced_syscall1(SYS_rrcall_notify_control_msg,
+                               notify_control_msg);
+    notify_control_msg = NULL;
   }
   return result;
 }

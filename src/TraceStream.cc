@@ -27,7 +27,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 45
+#define TRACE_VERSION 46
 
 struct SubstreamData {
   const char* name;
@@ -36,11 +36,9 @@ struct SubstreamData {
 };
 
 static const SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
-  { "events", 1024 * 1024, 1 },
-  { "data_header", 1024 * 1024, 1 },
-  { "data", 8 * 1024 * 1024, 3 },
-  { "mmaps", 64 * 1024, 1 },
-  { "tasks", 64 * 1024, 1 }
+  { "events", 1024 * 1024, 1 },   { "data_header", 1024 * 1024, 1 },
+  { "data", 8 * 1024 * 1024, 3 }, { "mmaps", 64 * 1024, 1 },
+  { "tasks", 64 * 1024, 1 },      { "generic", 64 * 1024, 1 },
 };
 
 static const SubstreamData& substream(TraceStream::Substream s) {
@@ -460,6 +458,40 @@ bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame, RawData& d) {
     return false;
   }
   d = read_raw_data();
+  return true;
+}
+
+void TraceWriter::write_generic(const void* d, size_t len) {
+  auto& generic = writer(GENERIC);
+  generic << global_time << len;
+  generic.write(d, len);
+}
+
+void TraceReader::read_generic(vector<uint8_t>& out) {
+  auto& generic = reader(GENERIC);
+  TraceFrame::Time time;
+  size_t num_bytes;
+  generic >> time >> num_bytes;
+  assert(time == global_time);
+  out.resize(num_bytes);
+  generic.read((char*)out.data(), num_bytes);
+}
+
+bool TraceReader::read_generic_for_frame(const TraceFrame& frame,
+                                         vector<uint8_t>& out) {
+  auto& generic = reader(GENERIC);
+  if (generic.at_end()) {
+    return false;
+  }
+  TraceFrame::Time time;
+  generic.save_state();
+  generic >> time;
+  generic.restore_state();
+  assert(time >= frame.time());
+  if (time > frame.time()) {
+    return false;
+  }
+  read_generic(out);
   return true;
 }
 

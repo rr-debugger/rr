@@ -50,6 +50,8 @@ public:
     MMAPS,
     // Substream that stores task creation and exec events
     TASKS,
+    // Substream that stores arbitary per-event records
+    GENERIC,
     SUBSTREAM_COUNT
   };
 
@@ -141,6 +143,11 @@ public:
    * Write a task event (clone or exec record) to the trace.
    */
   void write_task_event(const TraceTaskEvent& event);
+
+  /**
+   * Write a generic data record to the trace.
+   */
+  void write_generic(const void* data, size_t len);
 
   /**
    * Return true iff all trace files are "good".
@@ -250,6 +257,10 @@ public:
    * false.
    */
   bool read_raw_data_for_frame(const TraceFrame& frame, RawData& d);
+
+  void read_generic(std::vector<uint8_t>& out);
+  bool read_generic_for_frame(const TraceFrame& frame,
+                              std::vector<uint8_t>& out);
 
   /**
    * Return true iff all trace files are "good".

@@ -23,7 +23,7 @@ Switchable StdioMonitor::will_write(Task* t) {
   return PREVENT_SWITCH;
 }
 
-void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges) {
+void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges, off_t) {
   if (!t->session().is_replaying()) {
     return;
   }

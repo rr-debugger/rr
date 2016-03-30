@@ -55,8 +55,8 @@ static void notify_save_data_error(ReplayTask* t, remote_ptr<void> addr,
       << rec_dump << " " << rep_dump << " >save-data-diverge.diff\n";
 }
 
-void MagicSaveDataMonitor::did_write(Task* t,
-                                     const std::vector<Range>& ranges) {
+void MagicSaveDataMonitor::did_write(Task* t, const std::vector<Range>& ranges,
+                                     off_t) {
   for (auto& r : ranges) {
     if (t->session().is_recording()) {
       static_cast<RecordTask*>(t)

@@ -34,6 +34,7 @@ DumpCommand DumpCommand::singleton(
     "  Event specs can be either an event number like `127', or a range\n"
     "  like `1000-5000'.  By default, all events are dumped.\n"
     "  -b, --syscallbuf           dump syscallbuf contents\n"
+    " --g, --generic              dump generic data\n"
     "  -m, --recorded-metadata    dump recorded data metadata\n"
     "  -p, --mmaps                dump mmap data\n"
     "  -r, --raw                  dump trace frames in a more easily\n"
@@ -43,6 +44,7 @@ DumpCommand DumpCommand::singleton(
 
 struct DumpFlags {
   bool dump_syscallbuf;
+  bool dump_generic;
   bool dump_recorded_data_metadata;
   bool dump_mmaps;
   bool raw_dump;
@@ -50,6 +52,7 @@ struct DumpFlags {
 
   DumpFlags()
       : dump_syscallbuf(false),
+        dump_generic(false),
         dump_recorded_data_metadata(false),
         dump_mmaps(false),
         raw_dump(false),
@@ -61,12 +64,14 @@ static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
     return true;
   }
 
-  static const OptionSpec options[] = { { 'b', "syscallbuf", NO_PARAMETER },
-                                        { 'm', "recorded-metadata",
-                                          NO_PARAMETER },
-                                        { 'p', "mmaps", NO_PARAMETER },
-                                        { 'r', "raw", NO_PARAMETER },
-                                        { 's', "statistics", NO_PARAMETER } };
+  static const OptionSpec options[] = {
+    { 'b', "syscallbuf", NO_PARAMETER },
+    { 'g', "generic", NO_PARAMETER },
+    { 'm', "recorded-metadata", NO_PARAMETER },
+    { 'p', "mmaps", NO_PARAMETER },
+    { 'r', "raw", NO_PARAMETER },
+    { 's', "statistics", NO_PARAMETER }
+  };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
     return false;
@@ -75,6 +80,9 @@ static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
   switch (opt.short_name) {
     case 'b':
       flags.dump_syscallbuf = true;
+      break;
+    case 'g':
+      flags.dump_generic = true;
       break;
     case 'm':
       flags.dump_recorded_data_metadata = true;
@@ -199,6 +207,10 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           fprintf(out, "  { addr:%p, length:%p }\n", (void*)data.addr.as_int(),
                   (void*)data.data.size());
         }
+      }
+      vector<uint8_t> buf;
+      while (flags.dump_generic && trace.read_generic_for_frame(frame, buf)) {
+        fprintf(out, "  { length:%p }\n", (void*)buf.size());
       }
       if (!flags.raw_dump) {
         fprintf(out, "}\n");

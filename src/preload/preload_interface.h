@@ -88,6 +88,12 @@
  * 8/16(sp) is stored in original_syscallno.
  */
 #define SYS_rrcall_notify_syscall_hook_exit 444
+/**
+ * When the preload library detects that control data has been received in a
+ * syscallbuf'ed recvmsg, it calls this syscall with a pointer to the
+ * 'struct msg' returned.
+ */
+#define SYS_rrcall_notify_control_msg 445
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.
@@ -277,12 +283,24 @@ inline static int is_dev_tty(const char* filename) {
   return !strcmp("/dev/tty", filename);
 }
 
+inline static int is_proc_mem_file(const char* filename) {
+  if (strncmp("/proc/", filename, 6)) {
+    return 0;
+  }
+  return !strcmp(filename + strlen(filename) - 4, "/mem");
+}
+
 /**
  * Returns nonzero if an attempted open() of |filename| can be syscall-buffered.
  * When this returns zero, the open must be forwarded to the rr process.
+ * This is imperfect because it doesn't handle symbolic links, hard links,
+ * files accessed with non-absolute paths, /proc mounted in differnet places,
+ * etc etc etc. Handling those efficiently (no additional syscalls in
+ * common cases) is a problem. Maybe we could afford fstat after every open...
  */
 inline static int allow_buffered_open(const char* filename) {
-  return !is_blacklisted_filename(filename) && !is_dev_tty(filename);
+  return !is_blacklisted_filename(filename) && !is_dev_tty(filename) &&
+         !is_proc_mem_file(filename);
 }
 
 #endif /* RR_PRELOAD_INTERFACE_H_ */
