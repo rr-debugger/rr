@@ -691,7 +691,10 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
   {
     // Next we hand off actual execution of the mapping to the
     // appropriate helper.
-    AutoRemoteSyscalls remote(t);
+    AutoRemoteSyscalls remote(t,
+                              (flags & MAP_PRIVATE) && (flags & MAP_ANONYMOUS)
+                                  ? AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS
+                                  : AutoRemoteSyscalls::ENABLE_MEMORY_PARAMS);
     if (flags & MAP_ANONYMOUS) {
       finish_anonymous_mmap(t, remote, trace_frame, length, prot, flags,
                             NOTE_TASK_MAP);
