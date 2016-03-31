@@ -732,6 +732,7 @@ set(TESTS_WITHOUT_PROGRAM
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   read_bad_mem
+  record_replay
   remove_watchpoint
   restart_invalid_checkpoint
   restart_unstable
