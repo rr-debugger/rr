@@ -397,13 +397,14 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   /* Complete the syscall */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
   if (t->regs().syscall_result()) {
+    errno = -t->regs().syscall_result();
     if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
         trace_frame.regs().arch() == x86) {
       FATAL() << "Cannot find exec stub " << stub_filename
               << " to replay this 32-bit process; you probably built rr with "
                  "disable32bit";
     }
-    FATAL() << "Exec of stub " << stub_filename << " failed";
+    ASSERT(t, false) << "Exec of stub " << stub_filename << " failed";
   }
 
   vector<KernelMapping> kms;
