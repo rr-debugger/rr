@@ -472,8 +472,10 @@ int ReplayCommand::run(std::vector<std::string>& args) {
   check_performance_settings();
 
   if (running_under_rr()) {
-    fprintf(stderr, "rr: rr pid %d running under parent %d. Good luck.\n",
-            getpid(), getppid());
+    if (!Flags::get().suppress_environment_warnings) {
+      fprintf(stderr, "rr: rr pid %d running under parent %d. Good luck.\n",
+              getpid(), getppid());
+    }
     if (trace_dir.empty()) {
       fprintf(stderr,
               "rr: No trace-dir supplied. You'll try to replay the "
