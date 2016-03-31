@@ -179,9 +179,16 @@ public:
    * stash anything.
    */
   void stash_sig();
-  void stash_synthetic_sig(const siginfo_t& si);
+  void stash_synthetic_sig(const siginfo_t& si,
+                           SignalDeterministic deterministic);
   bool has_stashed_sig() const { return !stashed_signals.empty(); }
-  siginfo_t peek_stash_sig();
+  struct StashedSignal {
+    StashedSignal(const siginfo_t& siginfo, SignalDeterministic deterministic)
+        : siginfo(siginfo), deterministic(deterministic) {}
+    siginfo_t siginfo;
+    SignalDeterministic deterministic;
+  };
+  const StashedSignal& peek_stash_sig();
   void pop_stash_sig();
 
   /**
@@ -539,7 +546,7 @@ public:
   std::deque<Event> pending_events;
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
-  std::deque<siginfo_t> stashed_signals;
+  std::deque<StashedSignal> stashed_signals;
 };
 
 } // namespace rr

@@ -14,6 +14,7 @@
 #include "log.h"
 #include "RecordSession.h"
 #include "record_signal.h"
+#include "util.h"
 
 using namespace std;
 
@@ -774,7 +775,7 @@ void RecordTask::stash_sig() {
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
-      if (it->si_signo == sig) {
+      if (it->siginfo.si_signo == sig) {
         LOG(debug) << "discarding stashed signal " << sig
                    << " since we already have one pending";
         return;
@@ -783,11 +784,12 @@ void RecordTask::stash_sig() {
   }
 
   const siginfo_t& si = get_siginfo();
-  stashed_signals.push_back(si);
+  stashed_signals.push_back(StashedSignal(si, is_deterministic_signal(this)));
   wait_status = WaitStatus();
 }
 
-void RecordTask::stash_synthetic_sig(const siginfo_t& si) {
+void RecordTask::stash_synthetic_sig(const siginfo_t& si,
+                                     SignalDeterministic deterministic) {
   int sig = si.si_signo;
   assert(sig);
   // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
@@ -795,7 +797,7 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si) {
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
-      if (it->si_signo == sig) {
+      if (it->siginfo.si_signo == sig) {
         LOG(debug) << "discarding stashed signal " << sig
                    << " since we already have one pending";
         return;
@@ -803,7 +805,7 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si) {
     }
   }
 
-  stashed_signals.push_back(si);
+  stashed_signals.push_back(StashedSignal(si, deterministic));
 }
 
 void RecordTask::pop_stash_sig() {
@@ -811,7 +813,7 @@ void RecordTask::pop_stash_sig() {
   stashed_signals.pop_front();
 }
 
-siginfo_t RecordTask::peek_stash_sig() {
+const RecordTask::StashedSignal& RecordTask::peek_stash_sig() {
   assert(has_stashed_sig());
   return stashed_signals.front();
 }

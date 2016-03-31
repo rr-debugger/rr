@@ -173,7 +173,7 @@ size_t page_size();
 enum signal_action { DUMP_CORE, TERMINATE, CONTINUE, STOP, IGNORE };
 signal_action default_action(int sig);
 
-SignalDeterministic is_deterministic_signal(const siginfo_t& si);
+SignalDeterministic is_deterministic_signal(Task* t);
 
 /**
  * Return nonzero if a mapping of |filename| with metadata |stat|,

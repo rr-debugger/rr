@@ -1319,7 +1319,9 @@ static void do_ptrace_exit_stop(RecordTask* t) {
 static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   if (sig) {
     siginfo_t si = tracee->take_ptrace_signal_siginfo(sig);
-    tracee->push_event(SignalEvent(si, tracee->arch()));
+    // Treat signal as nondeterministic; it won't happen just by
+    // replaying the tracee.
+    tracee->push_event(SignalEvent(si, NONDETERMINISTIC_SIG, tracee));
   }
 
   tracee->emulated_stop_type = NOT_STOPPED;
@@ -1839,8 +1841,8 @@ static void check_signals_while_exiting(RecordTask* t) {
     // and stashed. Since these signals are unblockable they take
     // effect no matter what and we don't need to deliver them to an exiting
     // thread.
-    ASSERT(t, t->peek_stash_sig().si_signo == SIGKILL ||
-                  t->peek_stash_sig().si_signo == SIGSTOP);
+    int sig = t->peek_stash_sig().siginfo.si_signo;
+    ASSERT(t, sig == SIGKILL || sig == SIGSTOP);
   }
 }
 

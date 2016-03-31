@@ -5,6 +5,8 @@
 
 #include <signal.h>
 
+#include "Event.h"
+
 namespace rr {
 
 class RecordTask;
@@ -24,7 +26,8 @@ enum SignalHandled { SIGNAL_HANDLED, SIGNAL_PTRACE_STOP, DEFER_SIGNAL };
  * Handling the signal means we either pushed a new signal event, new
  * desched + syscall-interruption events, or no-op.
  */
-SignalHandled handle_signal(RecordTask* t, siginfo_t* si);
+SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
+                            SignalDeterministic deterministic);
 
 } // namespace rr
 

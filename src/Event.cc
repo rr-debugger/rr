@@ -12,6 +12,7 @@
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
+#include "Task.h"
 #include "util.h"
 
 using namespace std;
@@ -300,10 +301,11 @@ std::string Event::type_name() const {
   }
 }
 
-SignalEvent::SignalEvent(const siginfo_t& siginfo, SupportedArch arch)
-    : BaseEvent(HAS_EXEC_INFO, arch),
+SignalEvent::SignalEvent(const siginfo_t& siginfo,
+                         SignalDeterministic deterministic, Task* t)
+    : BaseEvent(HAS_EXEC_INFO, t->arch()),
       siginfo(siginfo),
-      deterministic(is_deterministic_signal(siginfo)) {}
+      deterministic(deterministic) {}
 
 const char* state_name(SyscallState state) {
   switch (state) {

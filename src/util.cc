@@ -446,12 +446,12 @@ signal_action default_action(int sig) {
   }
 }
 
-SignalDeterministic is_deterministic_signal(const siginfo_t& si) {
+SignalDeterministic is_deterministic_signal(Task* t) {
+  const siginfo_t& si = t->get_siginfo();
   switch (si.si_signo) {
     /* These signals may be delivered deterministically;
      * we'll check for sure below. */
     case SIGILL:
-    case SIGTRAP:
     case SIGBUS:
     case SIGFPE:
     case SIGSEGV:
@@ -464,6 +464,14 @@ SignalDeterministic is_deterministic_signal(const siginfo_t& si) {
        * kernel delivered it, then it must have been
        * delivered deterministically. */
       return si.si_code > 0 ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
+    case SIGTRAP: {
+      // The kernel code is wrong about this one. It treats singlestep
+      // traps as deterministic, but they aren't. PTRACE_ATTACH traps aren't
+      // really deterministic either.
+      auto reasons = t->compute_trap_reasons();
+      return reasons.breakpoint || reasons.watchpoint ? DETERMINISTIC_SIG
+                                                      : NONDETERMINISTIC_SIG;
+    }
     default:
       /* All other signals can never be delivered
        * deterministically (to the approximation required by

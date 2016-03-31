@@ -414,7 +414,8 @@ static bool is_safe_to_deliver_signal(RecordTask* t) {
   return false;
 }
 
-SignalHandled handle_signal(RecordTask* t, siginfo_t* si) {
+SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
+                            SignalDeterministic deterministic) {
   LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
              << " (pevent: " << ptrace_event_name(t->ptrace_event())
              << ", event: " << t->ev();
@@ -479,8 +480,8 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si) {
     // more efficient than emulate_async_signal. Also emulate_async_signal
     // currently assumes it won't encounter a deterministic SIGTRAP (due to
     // a hardcoded breakpoint in the tracee).
-    if (is_deterministic_signal(*si)) {
-      t->push_event(SignalEvent(*si, t->arch()));
+    if (deterministic == DETERMINISTIC_SIG) {
+      t->push_event(SignalEvent(*si, deterministic, t));
       t->record_current_event();
       t->pop_event(EV_SIGNAL);
     } else {
@@ -494,7 +495,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si) {
     return SIGNAL_PTRACE_STOP;
   }
 
-  t->push_event(SignalEvent(*si, t->arch()));
+  t->push_event(SignalEvent(*si, deterministic, t));
   return SIGNAL_HANDLED;
 }
 

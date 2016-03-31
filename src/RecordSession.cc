@@ -283,7 +283,7 @@ static void handle_seccomp_trap(RecordTask* t,
   // ip() at which we deliver the signal, and they must match. In particular
   // this event might be triggered during syscallbuf processing but delivery
   // delayed until we exit the syscallbuf code.
-  t->stash_synthetic_sig(si.linux_api);
+  t->stash_synthetic_sig(si.linux_api, DETERMINISTIC_SIG);
 
   // Tests show that the current registers are preserved (on x86, eax/rax
   // retains the syscall number).
@@ -1144,12 +1144,12 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
     // needed.
     return true;
   }
-  if (is_deterministic_signal(t->get_siginfo()) ||
-      sig == SYSCALLBUF_DESCHED_SIGNAL) {
+  SignalDeterministic deterministic = is_deterministic_signal(t);
+  if (deterministic || sig == SYSCALLBUF_DESCHED_SIGNAL) {
     // Don't stash these signals; deliver them immediately.
     // We don't want them to be reordered around other signals.
     siginfo_t siginfo = t->get_siginfo();
-    switch (handle_signal(t, &siginfo)) {
+    switch (handle_signal(t, &siginfo, deterministic)) {
       case SIGNAL_PTRACE_STOP:
         // Emulated ptrace-stop. Don't run the task again yet.
         last_task_switchable = ALLOW_SWITCH;
@@ -1255,7 +1255,7 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
     NativeArch::siginfo_t native_api;
     siginfo_t linux_api;
   } si;
-  si.linux_api = t->peek_stash_sig();
+  si.linux_api = t->peek_stash_sig().siginfo;
   if (si.linux_api.si_signo == get_ignore_sig()) {
     LOG(info) << "Declining to deliver " << signal_name(si.linux_api.si_signo)
               << " by user request";
@@ -1275,7 +1275,7 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
     native_si._sifields._sigsys._call_addr = t->ip().to_data_ptr<void>();
   }
 
-  switch (handle_signal(t, &si.linux_api)) {
+  switch (handle_signal(t, &si.linux_api, t->peek_stash_sig().deterministic)) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;
