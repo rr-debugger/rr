@@ -468,6 +468,7 @@ set(BASIC_TESTS
   ptrace_attach_sleeping
   ptrace_attach_stopped
   ptrace_attach_thread_running
+  ptrace_breakpoint
   ptrace_debug_regs
   ptrace_exec
   ptrace_exec32

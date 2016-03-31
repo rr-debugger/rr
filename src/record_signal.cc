@@ -472,11 +472,22 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si) {
    * source, record it normally. */
 
   if (t->emulate_ptrace_stop(WaitStatus::for_stop_sig(si->si_signo), si)) {
-    // Record a SCHED event so that replay progresses the tracee to the
+    // Record an event so that replay progresses the tracee to the
     // current point before we notify the tracer.
-    t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
-    t->record_current_event();
-    t->pop_event(EV_SCHED);
+    // If the signal is deterministic, record it as an EV_SIGNAL so that
+    // we replay it using the deterministic-signal replay path. This is
+    // more efficient than emulate_async_signal. Also emulate_async_signal
+    // currently assumes it won't encounter a deterministic SIGTRAP (due to
+    // a hardcoded breakpoint in the tracee).
+    if (is_deterministic_signal(*si)) {
+      t->push_event(SignalEvent(*si, t->arch()));
+      t->record_current_event();
+      t->pop_event(EV_SIGNAL);
+    } else {
+      t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
+      t->record_current_event();
+      t->pop_event(EV_SCHED);
+    }
     // ptracer has been notified, so don't deliver the signal now.
     // The signal won't be delivered for real until the ptracer calls
     // PTRACE_CONT with the signal number (which we don't support yet!).

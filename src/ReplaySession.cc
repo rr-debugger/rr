@@ -1061,7 +1061,7 @@ Completion ReplaySession::exit_task(ReplayTask* t) {
 void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   const Event& ev = trace_frame.event();
 
-  LOG(debug) << "[line " << trace_frame.time() << "] " << t->rec_tid
+  LOG(debug) << "[event " << trace_frame.time() << "] " << t->rec_tid
              << ": replaying " << Event(ev) << "; state "
              << (ev.is_syscall_event() ? state_name(ev.Syscall().state)
                                        : " (none)");
