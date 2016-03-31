@@ -425,14 +425,14 @@ static void guard_unexpected_signal(ReplayTask* t) {
     return;
   }
 
-  Event ev;
   if (t->stop_sig()) {
-    ev = SignalEvent(t->stop_sig(), NONDETERMINISTIC_SIG, t->arch());
+    ASSERT(t, false) << "Replay got unrecorded signal "
+                     << signal_name(t->stop_sig()) << " while awaiting signal";
   } else {
-    ev = SyscallEvent(max(0L, (long)t->regs().original_syscallno()), t->arch());
+    ASSERT(t, false) << "Replay got unrecorded syscall "
+                     << syscall_name(t->regs().original_syscallno(), t->arch())
+                     << " while awaiting signal";
   }
-  ASSERT(t, false) << "Replay got unrecorded event " << ev
-                   << " while awaiting signal";
 }
 
 static bool is_same_execution_point(ReplayTask* t, const Registers& rec_regs,
