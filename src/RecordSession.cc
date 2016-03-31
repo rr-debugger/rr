@@ -609,6 +609,17 @@ static void maybe_trigger_emulated_ptrace_syscall_exit_stop(RecordTask* t) {
   }
 }
 
+static void save_interrupted_syscall_ret_in_syscallbuf(RecordTask* t,
+                                                       intptr_t retval) {
+  // Record storing the return value in the syscallbuf record, where
+  // we expect to find it during replay.
+  auto child_rec = ((t->syscallbuf_child + 1).cast<uint8_t>() +
+                    t->syscallbuf_hdr->num_rec_bytes)
+                       .cast<struct syscallbuf_record>();
+  int64_t ret = retval;
+  t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
+}
+
 void RecordSession::syscall_state_changed(RecordTask* t,
                                           StepState* step_state) {
   switch (t->ev().Syscall().state) {
@@ -697,13 +708,11 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       if (t->desched_rec()) {
         // If we enabled the desched event above, disable it.
         disarm_desched_event(t);
-        // Record storing the return value in the syscallbuf record, where
-        // we expect to find it during replay.
-        auto child_rec = ((t->syscallbuf_child + 1).cast<uint8_t>() +
-                          t->syscallbuf_hdr->num_rec_bytes)
-                             .cast<struct syscallbuf_record>();
-        int64_t ret = retval;
-        t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
+        // Write syscall return value to the syscallbuf now. This lets replay
+        // get the correct value even though we're aborting the commit. This
+        // value affects register values in the preload code (which must be
+        // correct since register values may escape).
+        save_interrupted_syscall_ret_in_syscallbuf(t, retval);
       }
 
       // sigreturn is a special snowflake, because it
@@ -725,6 +734,10 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
         if (EV_DESCHED == t->ev().type()) {
           LOG(debug) << "  exiting desched critical section";
+          // The signal handler could have modified the apparent syscall
+          // return handler. Save that value into the syscall buf again so
+          // replay will pick it up later.
+          save_interrupted_syscall_ret_in_syscallbuf(t, retval);
           desched_state_changed(t);
         }
       } else {

@@ -1083,6 +1083,7 @@ void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       break;
     case EV_SYSCALLBUF_ABORT_COMMIT:
       t->syscallbuf_hdr->abort_commit = 1;
+      t->apply_all_data_records_from_trace();
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_SYSCALLBUF_FLUSH:
