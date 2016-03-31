@@ -73,7 +73,7 @@ static string maybe_dump_written_string(ReplayTask* t) {
  * Proceeds until the next system call, which is being executed.
  */
 static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
-                          int expect_syscallno) {
+                          int expect_syscallno, int expect_syscallno2 = -1) {
   do {
     t->resume_execution(resume_how, RESUME_WAIT, RESUME_NO_TICKS);
   } while (ReplaySession::is_ignored_signal(t->status().stop_sig()));
@@ -83,7 +83,8 @@ static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
 
   /* check if we are synchronized with the trace -- should never fail */
   int current_syscall = t->regs().original_syscallno();
-  ASSERT(t, current_syscall == expect_syscallno)
+  ASSERT(t, current_syscall == expect_syscallno ||
+                current_syscall == expect_syscallno2)
       << "Should be at " << t->syscall_name(expect_syscallno)
       << ", but instead at " << t->syscall_name(current_syscall)
       << maybe_dump_written_string(t);
@@ -395,7 +396,8 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
   ASSERT(t, !t->stop_sig()) << "Stub exec failed on entry";
   /* Complete the syscall */
-  __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
+  __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno,
+                syscall_number_for_execve(trace_frame.regs().arch()));
   if (t->regs().syscall_result()) {
     errno = -t->regs().syscall_result();
     if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
