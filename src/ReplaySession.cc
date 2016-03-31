@@ -795,8 +795,8 @@ Completion ReplaySession::emulate_deterministic_signal(
     }
   }
   ASSERT(t, t->stop_sig() == sig) << "Replay got unrecorded signal "
-                                  << t->stop_sig() << " (expecting " << sig
-                                  << ")";
+                                  << signal_name(t->stop_sig())
+                                  << " (expecting " << signal_name(sig) << ")";
   const Event& ev = trace_frame.event();
   check_ticks_consistency(t, ev);
 
