@@ -499,6 +499,9 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
+
+  // Notify outer rr if there is one
+  syscall(SYS_rrcall_reload_auxv, t->tid);
 }
 
 static void process_brk(ReplayTask* t) {
@@ -1081,6 +1084,16 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
     case SYS_rrcall_init_preload:
       t->at_preload_init();
       return;
+
+    case SYS_rrcall_reload_auxv: {
+      // Inner rr has finished emulating execve for a tracee. Reload auxv
+      // vectors now so that if gdb gets attached to the inner tracee, it will
+      // get useful symbols.
+      Task* target = t->session().find_task((pid_t)t->regs().arg1());
+      ASSERT(t, target) << "SYS_rrcall_reload_auxv misused";
+      target->vm()->save_auxv(target);
+      return;
+    }
 
     default:
       return;

@@ -94,6 +94,12 @@
  * 'struct msg' returned.
  */
 #define SYS_rrcall_notify_control_msg 445
+/**
+ * When rr replay has restored the auxv vectors for a new process (completing
+ * emulation of exec), it calls this syscall. It takes one parameter, the tid
+ * of the task that it has restored auxv vectors for.
+ */
+#define SYS_rrcall_reload_auxv 446
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.
