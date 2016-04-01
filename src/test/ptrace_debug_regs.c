@@ -4,7 +4,7 @@
 
 #define NEW_VALUE 0xabcdef
 
-static void breakpoint() {}
+static void breakpoint(void) {}
 
 static char watch_var;
 
