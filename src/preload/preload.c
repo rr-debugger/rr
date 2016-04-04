@@ -125,6 +125,10 @@ static int pretend_num_cores = 1;
  */
 static volatile char syscallbuf_fds_disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
 
+#define MPROTECT_RECORD_COUNT 1000
+
+static struct mprotect_record mprotect_records[MPROTECT_RECORD_COUNT];
+
 /**
  * Because this library is always loaded via LD_PRELOAD, we can use the
  * initial-exec TLS model (see http://www.akkadia.org/drepper/tls.pdf) which
@@ -667,6 +671,7 @@ static void __attribute__((constructor)) init_process(void) {
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
+  params.mprotect_records = mprotect_records;
   params.in_replay_flag = &in_replay;
   params.pretend_num_cores = &pretend_num_cores;
   params.breakpoint_table = &_breakpoint_table_entry_start;
@@ -1538,6 +1543,40 @@ static long sys_madvise(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_mprotect(const struct syscall_info* call) {
+  const int syscallno = SYS_mprotect;
+  void* addr = (void*)call->args[0];
+  size_t length = call->args[1];
+  int prot = call->args[2];
+  struct mprotect_record* mrec;
+
+  void* ptr;
+  long ret;
+
+  if ((prot & ~(PROT_READ | PROT_WRITE | PROT_EXEC)) ||
+      !buffer_hdr() ||
+      buffer_hdr()->mprotect_record_count >= MPROTECT_RECORD_COUNT) {
+    return traced_raw_syscall(call);
+  }
+
+  ptr = prep_syscall();
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  mrec = &mprotect_records[buffer_hdr()->mprotect_record_count++];
+  mrec->start = (uint64_t)(uintptr_t)addr;
+  mrec->size = length;
+  mrec->prot = prot;
+  ret = untraced_replayed_syscall3(syscallno, addr, length, prot);
+  buffer_hdr()->mprotect_record_count_completed++;
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_open(const struct syscall_info* call) {
   const int syscallno = SYS_open;
   const char* pathname = (const char*)call->args[0];
@@ -2092,6 +2131,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(lseek);
 #endif
     CASE(madvise);
+    CASE(mprotect);
     CASE(open);
     CASE(poll);
     CASE(read);

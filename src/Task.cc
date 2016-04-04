@@ -618,6 +618,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
 
   syscallbuf_child = nullptr;
   syscallbuf_fds_disabled_child = nullptr;
+  mprotect_records = nullptr;
 
   thread_areas_.clear();
 
@@ -1380,6 +1381,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->as = sess.clone(t, as);
   }
   t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
+  t->mprotect_records = mprotect_records;
 
   t->stopping_breakpoint_table = stopping_breakpoint_table;
   t->stopping_breakpoint_table_entry_size =
@@ -1532,6 +1534,7 @@ Task::CapturedState Task::capture_state() {
            state.syscallbuf_hdr.size());
   }
   state.syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
+  state.mprotect_records = mprotect_records;
   state.scratch_ptr = scratch_ptr;
   state.scratch_size = scratch_size;
   state.wait_status = wait_status;
@@ -1579,6 +1582,7 @@ void Task::copy_state(const CapturedState& state) {
     }
   }
   syscallbuf_fds_disabled_child = state.syscallbuf_fds_disabled_child;
+  mprotect_records = state.mprotect_records;
   // The scratch buffer (for now) is merely a private mapping in
   // the remote task.  The CoW copy made by fork()'ing the
   // address space has the semantics we want.  It's not used in
@@ -2006,6 +2010,7 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
   remote_ptr<volatile char> syscallbuf_fds_disabled =
       params.syscallbuf_fds_disabled.rptr();
   t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled.cast<char>();
+  t->mprotect_records = params.mprotect_records;
 
   t->stopping_breakpoint_table = params.breakpoint_table.rptr().as_int();
   t->stopping_breakpoint_table_entry_size = params.breakpoint_table_entry_size;

@@ -839,6 +839,26 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
              << " bytes of syscall records";
 }
 
+static void apply_mprotect_records(ReplayTask* t, uint32_t skip_mprotect_records) {
+  uint32_t final_mprotect_record_count =
+      t->syscallbuf_hdr->mprotect_record_count;
+  if (skip_mprotect_records < final_mprotect_record_count) {
+    auto records = t->read_mem(t->mprotect_records + skip_mprotect_records,
+        final_mprotect_record_count - skip_mprotect_records);
+    for (size_t i = 0; i < records.size(); ++i) {
+      auto& r = records[i];
+      if (i >= t->syscallbuf_hdr->mprotect_record_count_completed) {
+        auto km = t->vm()->read_kernel_mapping(t, r.start);
+        if (km.prot() != r.prot) {
+          // mprotect didn't happen yet.
+          continue;
+        }
+      }
+      t->vm()->protect(r.start, r.size, r.prot);
+    }
+  }
+}
+
 /**
  * Replay all the syscalls recorded in the interval between |t|'s
  * current execution point and the next non-syscallbuf event (the one
@@ -848,6 +868,8 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
 Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                            const StepConstraints& constraints) {
   struct syscallbuf_record* next_rec = next_record(t->syscallbuf_hdr);
+  uint32_t skip_mprotect_records =
+      t->syscallbuf_hdr->mprotect_record_count_completed;
 
   TicksRequest ticks_request;
   if (!compute_ticks_request(t, constraints, &ticks_request)) {
@@ -873,6 +895,9 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                            stored_record_size(next_rec->size));
   }
 
+  // Apply the mprotect records we just completed.
+  apply_mprotect_records(t, skip_mprotect_records);
+
   if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
     // This would normally be triggered by constraints.ticks_target but it's
     // also possible to get stray signals here.
@@ -891,6 +916,8 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
     Registers r = t->regs();
     r.set_ip(current_step.flush.stop_breakpoint_addr);
     t->set_regs(r);
+    t->syscallbuf_hdr->mprotect_record_count = 0;
+    t->syscallbuf_hdr->mprotect_record_count_completed = 0;
     return COMPLETE;
   }
 

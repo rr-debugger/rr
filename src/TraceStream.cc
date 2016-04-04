@@ -27,7 +27,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 46
+#define TRACE_VERSION 47
 
 struct SubstreamData {
   const char* name;

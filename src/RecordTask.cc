@@ -1039,6 +1039,16 @@ void RecordTask::maybe_flush_syscallbuf() {
     return;
   }
 
+  // Apply buffered mprotect operations and flush the buffer in the tracee.
+  if (hdr.mprotect_record_count) {
+    auto records = read_mem(mprotect_records, hdr.mprotect_record_count);
+    syscallbuf_hdr->mprotect_record_count = 0;
+    syscallbuf_hdr->mprotect_record_count_completed = 0;
+    for (auto& r : records) {
+      as->protect(r.start, r.size, r.prot);
+    }
+  }
+
   // Write the entire buffer in one shot without parsing it,
   // because replay will take care of that.
   push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));

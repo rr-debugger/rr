@@ -43,6 +43,8 @@
  * to raise this value... */
 #define SYSCALLBUF_FDS_DISABLED_SIZE 1024
 
+#define MPROTECT_RECORD_COUNT 1000
+
 #define RR_PAGE_ADDR 0x70000000
 #define RR_PAGE_SYSCALL_STUB_SIZE 3
 #define RR_PAGE_SYSCALL_INSTRUCTION_END 2
@@ -130,6 +132,23 @@ struct syscall_patch_hook {
 };
 
 /**
+ * We buffer mprotect syscalls. Their effects need to be noted so we can
+ * update AddressSpace's cache of memory layout, which stores prot bits. So,
+ * the preload code builds a list of mprotect_records corresponding to the
+ * mprotect syscalls that have been buffered. This list is read by rr whenever
+ * we flush the syscallbuf, and its effects performed. The actual mprotect
+ * syscalls are performed during recording and replay.
+ *
+ * We simplify things by making this arch-independent.
+ */
+struct mprotect_record {
+  uint64_t start;
+  uint64_t size;
+  int prot;
+  int padding;
+};
+
+/**
  * Packs up the parameters passed to |SYS_rrcall_init_preload|.
  * We use this struct because it's a little cleaner.
  */
@@ -147,6 +166,7 @@ struct rrcall_init_preload_params {
   PTR(void) syscall_hook_stub_buffer_end;
   /* Array of size SYSCALLBUF_FDS_DISABLED_SIZE */
   PTR(volatile char) syscallbuf_fds_disabled;
+  PTR(struct mprotect_record) mprotect_records;
   /* Address of the flag which is 0 during recording and 1 during replay. */
   PTR(unsigned char) in_replay_flag;
   /* Address where we store the number of cores we're pretending to have. */
@@ -225,6 +245,14 @@ struct syscallbuf_hdr {
    * Make this volatile so that memory writes aren't reordered around
    * updates to this field. */
   volatile uint32_t num_rec_bytes;
+  /* Number of mprotect calls since last syscallbuf flush. The last record in
+   * the list may not have been applied yet.
+   */
+  volatile uint32_t mprotect_record_count;
+  /* Number of records whose syscalls have definitely completed.
+   * May be one less than mprotect_record_count.
+   */
+  volatile uint32_t mprotect_record_count_completed;
   /* True if the current syscall should not be committed to the
    * buffer, for whatever reason; likely interrupted by
    * desched. Set by rr. */
@@ -242,6 +270,8 @@ struct syscallbuf_hdr {
    * When it's zero, the desched signal can safely be
    * discarded. */
   uint8_t desched_signal_may_be_relevant;
+
+  uint8_t padding[4];
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
