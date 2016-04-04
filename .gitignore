@@ -20,3 +20,4 @@ obj/
 *.replay
 .settings/
 Testing/
+.idea/
