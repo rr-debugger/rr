@@ -144,8 +144,8 @@ struct syscall_patch_hook {
 struct mprotect_record {
   uint64_t start;
   uint64_t size;
-  int prot;
-  int padding;
+  int32_t prot;
+  int32_t padding;
 };
 
 /**
