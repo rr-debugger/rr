@@ -172,13 +172,16 @@ static bool term_request;
  * If there's already a term request pending, then assume rr is wedged
  * and abort().
  */
-static void handle_SIGTERM(int sig) {
+static void handle_SIGTERM(__attribute__((unused)) int sig) {
+  // Don't use LOG() here because we're in a signal handler. If we do anything
+  // that could allocate, we could deadlock.
   if (term_request) {
-    FATAL() << "Received termsig while an earlier one was pending.  We're "
-               "probably wedged.";
+    static const char msg[] =
+        "Received SIGTERM while an earlier one was pending.  We're "
+        "probably wedged.\n";
+    write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    abort();
   }
-  LOG(info) << "Received termsig " << signal_name(sig)
-            << ", requesting shutdown ...\n";
   term_request = true;
 }
 

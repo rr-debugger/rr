@@ -1065,9 +1065,7 @@ static bool is_signal_triggered_by_ptrace_interrupt(int group_stop_sig) {
 
 // This function doesn't really need to do anything. The signal will cause
 // waitpid to return EINTR and that's all we need.
-static void handle_alarm_signal(__attribute__((unused)) int sig) {
-  LOG(debug) << "SIGALRM fired; maybe runaway tracee";
-}
+static void handle_alarm_signal(__attribute__((unused)) int sig) {}
 
 static struct timeval to_timeval(double t) {
   struct timeval v;
