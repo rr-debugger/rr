@@ -376,6 +376,13 @@ public:
 
   void set_termination_signal(int sig) { termination_signal = sig; }
 
+  /**
+   * When a signal triggers an emulated a ptrace-stop for this task,
+   * save the siginfo so a later emulated ptrace-continue with this signal
+   * number can use it.
+   */
+  void save_ptrace_signal_siginfo(const siginfo_t& si);
+
 private:
   ~RecordTask();
 
@@ -396,13 +403,6 @@ private:
    * sent for them.
    */
   void send_synthetic_SIGCHLD_if_necessary();
-
-  /**
-   * When a signal triggers an emulated a ptrace-stop for this task,
-   * save the siginfo so a later emulated ptrace-continue with this signal
-   * number can use it.
-   */
-  void save_ptrace_signal_siginfo(const siginfo_t& si);
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.

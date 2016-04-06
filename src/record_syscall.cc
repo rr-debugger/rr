@@ -1466,6 +1466,18 @@ static RecordTask* prepare_ptrace_attach(RecordTask* t, pid_t pid,
   return tracee;
 }
 
+static void ptrace_attach_to_already_stopped_task(RecordTask* t) {
+  ASSERT(t, t->emulated_stop_type == GROUP_STOP);
+  // tracee is already stopped because of a group-stop signal.
+  // Sending a SIGSTOP won't work, but we don't need to.
+  t->force_emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGSTOP));
+  siginfo_t si;
+  memset(&si, 0, sizeof(si));
+  si.si_signo = SIGSTOP;
+  si.si_code = SI_USER;
+  t->save_ptrace_signal_siginfo(si);
+}
+
 template <typename Arch>
 static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
@@ -1488,10 +1500,7 @@ static Switchable prepare_ptrace(RecordTask* t,
         // generate any ptrace event if that thread isn't being ptraced.
         tracee->tgkill(SIGSTOP);
       } else {
-        ASSERT(tracee, tracee->emulated_stop_type == GROUP_STOP);
-        // tracee is already stopped because of a group-stop signal.
-        // Sending a SIGSTOP won't work, but we don't need to.
-        tracee->force_emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGSTOP));
+        ptrace_attach_to_already_stopped_task(tracee);
       }
       break;
     }
@@ -1511,8 +1520,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       tracee->emulated_ptrace_seized = true;
       tracee->emulated_ptrace_options = (int)t->regs().arg4();
       if (tracee->emulated_stop_type == GROUP_STOP) {
-        // tracee is already stopped because of a group-stop signal.
-        tracee->force_emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGSTOP));
+        ptrace_attach_to_already_stopped_task(tracee);
       }
       syscall_state.emulate_result(0);
       break;
