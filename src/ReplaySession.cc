@@ -839,12 +839,14 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
              << " bytes of syscall records";
 }
 
-static void apply_mprotect_records(ReplayTask* t, uint32_t skip_mprotect_records) {
+static void apply_mprotect_records(ReplayTask* t,
+                                   uint32_t skip_mprotect_records) {
   uint32_t final_mprotect_record_count =
       t->syscallbuf_hdr->mprotect_record_count;
   if (skip_mprotect_records < final_mprotect_record_count) {
-    auto records = t->read_mem(t->mprotect_records + skip_mprotect_records,
-        final_mprotect_record_count - skip_mprotect_records);
+    auto records =
+        t->read_mem(t->mprotect_records + skip_mprotect_records,
+                    final_mprotect_record_count - skip_mprotect_records);
     for (size_t i = 0; i < records.size(); ++i) {
       auto& r = records[i];
       if (i >= t->syscallbuf_hdr->mprotect_record_count_completed) {

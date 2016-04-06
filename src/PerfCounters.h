@@ -14,6 +14,8 @@
 #include "ScopedFd.h"
 #include "Ticks.h"
 
+struct perf_event_attr;
+
 namespace rr {
 
 /**
@@ -77,6 +79,8 @@ public:
     int64_t instructions_retired;
   };
   Extra read_extra();
+
+  static const struct perf_event_attr& ticks_attr();
 
 private:
   pid_t tid;

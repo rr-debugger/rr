@@ -32,6 +32,32 @@ bool FdTable::allow_close(int fd) {
   return it->second->allow_close();
 }
 
+bool FdTable::emulate_ioctl(int fd, RecordTask* t, uint64_t* result) {
+  auto it = fds.find(fd);
+  if (it == fds.end()) {
+    return false;
+  }
+  return it->second->emulate_ioctl(t, result);
+}
+
+bool FdTable::emulate_fcntl(int fd, RecordTask* t, uint64_t* result) {
+  auto it = fds.find(fd);
+  if (it == fds.end()) {
+    return false;
+  }
+  return it->second->emulate_fcntl(t, result);
+}
+
+bool FdTable::emulate_read(int fd, RecordTask* t,
+                           const std::vector<FileMonitor::Range>& ranges,
+                           off_t offset, uint64_t* result) {
+  auto it = fds.find(fd);
+  if (it == fds.end()) {
+    return false;
+  }
+  return it->second->emulate_read(t, ranges, offset, result);
+}
+
 Switchable FdTable::will_write(Task* t, int fd) {
   auto it = fds.find(fd);
   if (it == fds.end()) {

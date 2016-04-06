@@ -106,6 +106,7 @@ public:
                          SupportedArch a);
 
   RecordTask* find_task(pid_t rec_tid) const;
+  RecordTask* find_task(const TaskUid& tuid) const;
 
 private:
   RecordSession(const std::vector<std::string>& argv,

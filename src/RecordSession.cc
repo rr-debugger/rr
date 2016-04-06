@@ -1567,4 +1567,8 @@ RecordTask* RecordSession::find_task(pid_t rec_tid) const {
   return static_cast<RecordTask*>(Session::find_task(rec_tid));
 }
 
+RecordTask* RecordSession::find_task(const TaskUid& tuid) const {
+  return static_cast<RecordTask*>(Session::find_task(tuid));
+}
+
 } // namespace rr

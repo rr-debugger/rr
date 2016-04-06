@@ -16,6 +16,7 @@
 #include <linux/ipc.h>
 #include <linux/msg.h>
 #include <linux/net.h>
+#include <linux/perf_event.h>
 #include <linux/personality.h>
 #include <linux/prctl.h>
 #include <linux/seccomp.h>
@@ -67,6 +68,7 @@
 #include "StdioMonitor.h"
 #include "TraceStream.h"
 #include "util.h"
+#include "VirtualPerfCounterMonitor.h"
 
 using namespace std;
 
@@ -1112,6 +1114,17 @@ static void record_page_below_stack_ptr(RecordTask* t) {
 template <typename Arch>
 static Switchable prepare_ioctl(RecordTask* t,
                                 TaskSyscallState& syscall_state) {
+  int fd = t->regs().arg1();
+  uint64_t result;
+  if (t->fd_table()->emulate_ioctl(fd, t, &result)) {
+    // Don't perform this syscall.
+    Registers r = t->regs();
+    r.set_arg1(-1);
+    t->set_regs(r);
+    syscall_state.emulate_result(result);
+    return PREVENT_SWITCH;
+  }
+
   unsigned long request = t->regs().arg2();
   int type = _IOC_TYPE(request);
   int nr = _IOC_NR(request);
@@ -2145,6 +2158,19 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   // go to the exit of the syscall, as expected.
 }
 
+static void record_ranges(RecordTask* t,
+                          const vector<FileMonitor::Range>& ranges,
+                          size_t size) {
+  size_t s = size;
+  for (auto& r : ranges) {
+    size_t bytes = min(s, r.length);
+    if (bytes > 0) {
+      t->record_remote(r.data, bytes);
+      s -= bytes;
+    }
+  }
+}
+
 template <typename Arch>
 static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state) {
@@ -2257,7 +2283,17 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     }
 
     case Arch::fcntl:
-    case Arch::fcntl64:
+    case Arch::fcntl64: {
+      int fd = t->regs().arg1();
+      uint64_t result;
+      if (t->fd_table()->emulate_fcntl(fd, t, &result)) {
+        // Don't perform this syscall.
+        Registers r = t->regs();
+        r.set_arg1(-1);
+        t->set_regs(r);
+        syscall_state.emulate_result(result);
+        return PREVENT_SWITCH;
+      }
       switch ((int)t->regs().arg2_signed()) {
         case Arch::DUPFD:
         case Arch::DUPFD_CLOEXEC:
@@ -2274,7 +2310,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
 
         case Arch::SETFD:
-          if (!t->fd_table()->allow_close((int)t->regs().arg1())) {
+          if (!t->fd_table()->allow_close(fd)) {
             // Don't let tracee set FD_CLOEXEC on this fd. Disable the syscall,
             // but emulate a successful return.
             Registers r = t->regs();
@@ -2315,6 +2351,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
       }
       return PREVENT_SWITCH;
+    }
 
     /* int futex(int *uaddr, int op, int val, const struct timespec *timeout,
      *           int *uaddr2, int val3);
@@ -2523,11 +2560,26 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::pread64:
     /* ssize_t read(int fd, void *buf, size_t count); */
-    case Arch::read:
+    case Arch::read: {
+      int fd = t->regs().arg1();
+      uint64_t result;
+      vector<FileMonitor::Range> ranges;
+      ranges.push_back(FileMonitor::Range(t->regs().arg2(), t->regs().arg3()));
+      if (t->fd_table()->emulate_read(
+              fd, t, ranges, t->get_io_offset(syscallno, t->regs()), &result)) {
+        // Don't perform this syscall.
+        Registers r = t->regs();
+        r.set_arg1(-1);
+        t->set_regs(r);
+        record_ranges(t, ranges, result);
+        syscall_state.emulate_result(result);
+        return PREVENT_SWITCH;
+      }
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                  (size_t)t->regs().arg3()));
       return ALLOW_SWITCH;
+    }
 
     case Arch::accept:
     case Arch::accept4: {
@@ -2595,11 +2647,27 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     /* ssize_t preadv(int fd, const struct iovec *iov, int iovcnt,
                       off_t offset); */
     case Arch::preadv: {
+      int fd = (int)t->regs().arg1_signed();
       int iovcnt = (int)t->regs().arg3_signed();
       remote_ptr<void> iovecsp_void = syscall_state.reg_parameter(
           2, sizeof(typename Arch::iovec) * iovcnt, IN);
       auto iovecsp = iovecsp_void.cast<typename Arch::iovec>();
       auto iovecs = t->read_mem(iovecsp, iovcnt);
+      uint64_t result;
+      vector<FileMonitor::Range> ranges;
+      for (int i = 0; i < iovcnt; ++i) {
+        ranges.push_back(FileMonitor::Range(iovecs[i].iov_base, iovecs[i].iov_len));
+      }
+      if (t->fd_table()->emulate_read(
+              fd, t, ranges, t->get_io_offset(syscallno, t->regs()), &result)) {
+        // Don't perform this syscall.
+        Registers r = t->regs();
+        r.set_arg1(-1);
+        t->set_regs(r);
+        record_ranges(t, ranges, result);
+        syscall_state.emulate_result(result);
+        return PREVENT_SWITCH;
+      }
       ParamSize io_size =
           ParamSize::from_syscall_result<typename Arch::ssize_t>();
       for (int i = 0; i < iovcnt; ++i) {
@@ -2705,6 +2773,29 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.reg_parameter(1, sizeof(typename Arch::pollfd) * nfds,
                                   IN_OUT);
       return ALLOW_SWITCH;
+    }
+
+    case Arch::perf_event_open: {
+      RecordTask* target =
+          t->session().find_task((pid_t)t->regs().arg2_signed());
+      int cpu = t->regs().arg3_signed();
+      int group_fd = t->regs().arg4_signed();
+      unsigned long flags = t->regs().arg5();
+      if (target && cpu == -1 && group_fd == -1 && !flags) {
+        auto attr =
+            t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().arg1()));
+        if (VirtualPerfCounterMonitor::should_virtualize(attr)) {
+          Registers r = t->regs();
+          // Turn this into a socket() syscall. This just gives us an allocated
+          // fd. Syscalls using this fd will be emulated (except for close()).
+          r.set_original_syscallno(Arch::socket);
+          r.set_arg1(AF_UNIX);
+          r.set_arg2(SOCK_STREAM);
+          r.set_arg3(0);
+          t->set_regs(r);
+        }
+      }
+      return PREVENT_SWITCH;
     }
 
     case Arch::open: {
@@ -3704,6 +3795,26 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
     }
 
+    case Arch::perf_event_open:
+      if (t->regs().original_syscallno() == Arch::socket) {
+        ASSERT(t, !t->regs().syscall_failed());
+        int fd = t->regs().syscall_result_signed();
+        Registers r = t->regs();
+        r.set_original_syscallno(
+            syscall_state.syscall_entry_registers.original_syscallno());
+        r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+        r.set_arg2(syscall_state.syscall_entry_registers.arg2());
+        r.set_arg3(syscall_state.syscall_entry_registers.arg3());
+        t->set_regs(r);
+        auto attr =
+            t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().arg1()));
+        t->fd_table()->add_monitor(
+            fd, new VirtualPerfCounterMonitor(
+                    t, t->session().find_task((pid_t)t->regs().arg2_signed()),
+                    attr));
+      }
+      break;
+
     case Arch::open: {
       // Restore the registers that we may have altered.
       Registers r = t->regs();
@@ -3788,7 +3899,12 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::dup3:
     case Arch::fcntl:
     case Arch::fcntl64:
+    case Arch::ioctl:
+    case Arch::pread64:
+    case Arch::preadv:
     case Arch::ptrace:
+    case Arch::read:
+    case Arch::readv:
     case Arch::sched_setaffinity:
     case Arch::mprotect: {
       // Restore the registers that we may have altered.

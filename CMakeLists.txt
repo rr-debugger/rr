@@ -243,6 +243,7 @@ add_executable(rr
   src/TaskGroup.cc
   src/TraceFrame.cc
   src/TraceStream.cc
+  src/VirtualPerfCounterMonitor.cc
   src/util.cc
   src/WaitStatus.cc
 )

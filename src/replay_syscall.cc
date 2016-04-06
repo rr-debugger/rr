@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/futex.h>
+#include <linux/perf_event.h>
 #include <linux/shm.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -37,6 +38,7 @@
 #include "StdioMonitor.h"
 #include "TraceStream.h"
 #include "util.h"
+#include "VirtualPerfCounterMonitor.h"
 
 /* Uncomment this to check syscall names and numbers defined in syscalls.py
    against the definitions in unistd.h. This may cause the build to fail
@@ -848,6 +850,7 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
       }
       break;
   }
+  t->apply_all_data_records_from_trace();
 }
 
 void rep_after_enter_syscall(ReplayTask* t) {
@@ -1048,6 +1051,22 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
       t->set_extra_regs(trace_frame.extra_regs());
       step->action = TSTEP_RETIRE;
       return;
+
+    case Arch::perf_event_open: {
+      Task* target = t->session().find_task((pid_t)trace_regs.arg2_signed());
+      int cpu = trace_regs.arg3_signed();
+      int group_fd = trace_regs.arg4_signed();
+      unsigned long flags = trace_regs.arg5();
+      int fd = trace_regs.syscall_result_signed();
+      if (target && cpu == -1 && group_fd == -1 && !flags) {
+        auto attr =
+            t->read_mem(remote_ptr<struct perf_event_attr>(trace_regs.arg1()));
+        if (VirtualPerfCounterMonitor::should_virtualize(attr)) {
+          t->fd_table()->add_monitor(
+              fd, new VirtualPerfCounterMonitor(t, target, attr));
+        }
+      }
+    }
 
     case Arch::recvmsg:
     case Arch::recvmmsg:

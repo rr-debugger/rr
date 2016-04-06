@@ -1553,8 +1553,7 @@ static long sys_mprotect(const struct syscall_info* call) {
   void* ptr;
   long ret;
 
-  if ((prot & ~(PROT_READ | PROT_WRITE | PROT_EXEC)) ||
-      !buffer_hdr() ||
+  if ((prot & ~(PROT_READ | PROT_WRITE | PROT_EXEC)) || !buffer_hdr() ||
       buffer_hdr()->mprotect_record_count >= MPROTECT_RECORD_COUNT) {
     return traced_raw_syscall(call);
   }

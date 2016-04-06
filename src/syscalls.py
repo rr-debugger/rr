@@ -1578,7 +1578,7 @@ rt_tgsigqueueinfo = EmulatedSyscall(x86=335, x64=297)
 # Given a list of parameters, perf_event_open() returns a file
 # descriptor, for use in subsequent system calls (read(2), mmap(2),
 # prctl(2), fcntl(2), etc.).
-perf_event_open = EmulatedSyscall(x86=336, x64=298)
+perf_event_open = IrregularEmulatedSyscall(x86=336, x64=298)
 
 #  int recvmmsg(int sockfd, struct mmsghdr *msgvec,
 #               unsigned int vlen, unsigned int flags,

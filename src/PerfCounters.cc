@@ -183,6 +183,11 @@ static void init_attributes() {
                        PERF_COUNT_SW_PAGE_FAULTS);
 }
 
+const struct perf_event_attr& PerfCounters::ticks_attr() {
+  init_attributes();
+  return rr::ticks_attr;
+}
+
 PerfCounters::PerfCounters(pid_t tid) : tid(tid), started(false) {
   init_attributes();
 }
@@ -212,7 +217,7 @@ void PerfCounters::reset(Ticks ticks_period) {
 
   stop();
 
-  struct perf_event_attr attr = ticks_attr;
+  struct perf_event_attr attr = rr::ticks_attr;
   attr.sample_period = ticks_period;
   fd_ticks = start_counter(tid, -1, &attr);
 
