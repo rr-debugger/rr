@@ -47,10 +47,11 @@ public:
     }
     return result;
   }
-  template <typename Arch>
-  SymbolTable read_symbols_arch(const char* symtab, const char* strtab);
   SymbolTable read_symbols(SupportedArch arch, const char* symtab,
                            const char* strtab);
+private:
+  template <typename Arch>
+  SymbolTable read_symbols_arch(const char* symtab, const char* strtab);
 };
 
 } // namespace rr
