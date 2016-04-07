@@ -380,7 +380,7 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
 
 class VdsoReader : public ElfReader {
 public:
-  VdsoReader(RecordTask* t) : t(t) {}
+  VdsoReader(RecordTask* t) : ElfReader(t->arch()), t(t) {}
   virtual bool read(size_t offset, size_t size, void* buf) {
     bool ok = true;
     t->read_bytes_helper(t->vm()->vdso().start() + offset, size, buf, &ok);
@@ -390,7 +390,7 @@ public:
 };
 
 static SymbolTable read_vdso_symbols(RecordTask* t) {
-  return VdsoReader(t).read_symbols(t->arch(), ".dynsym", ".dynstr");
+  return VdsoReader(t).read_symbols(".dynsym", ".dynstr");
 }
 
 /**
@@ -661,7 +661,7 @@ void Monkeypatcher::patch_at_preload_init(RecordTask* t) {
 
 class FileReader : public ElfReader {
 public:
-  FileReader(ScopedFd& fd) : fd(fd) {}
+  FileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch), fd(fd) {}
   virtual bool read(size_t offset, size_t size, void* buf) {
     return pread(fd.get(), buf, size, offset) == ssize_t(size);
   }
@@ -698,7 +698,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
     ScopedFd open_fd = t->open_fd(child_fd, O_RDONLY);
     ASSERT(t, open_fd.is_open()) << "Failed to open child fd " << child_fd;
     auto syms =
-        FileReader(open_fd).read_symbols(t->arch(), ".symtab", ".strtab");
+        FileReader(open_fd, t->arch()).read_symbols(".symtab", ".strtab");
     for (size_t i = 0; i < syms.size(); ++i) {
       if (syms.is_name(i, "__elision_aconf")) {
         static const int zero = 0;

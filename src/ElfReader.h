@@ -12,6 +12,8 @@
 
 namespace rr {
 
+class ElfReaderImplBase;
+
 class SymbolTable {
 public:
   bool is_name(size_t i, const char* name) const {
@@ -32,11 +34,10 @@ public:
   std::vector<char> strtab;
 };
 
-template <typename Arch> class ElfReaderImpl;
-
 class ElfReader {
 public:
-  virtual ~ElfReader() {}
+  ElfReader(SupportedArch arch);
+  virtual ~ElfReader();
   virtual bool read(size_t offset, size_t size, void* buf) = 0;
   template <typename T> bool read(size_t offset, T& result) {
     return read(offset, sizeof(result), &result);
@@ -49,8 +50,13 @@ public:
     }
     return result;
   }
-  SymbolTable read_symbols(SupportedArch arch, const char* symtab,
-                           const char* strtab);
+  bool ok();
+  SymbolTable read_symbols(const char* symtab, const char* strtab);
+
+private:
+  ElfReaderImplBase& impl();
+  std::unique_ptr<ElfReaderImplBase> impl_;
+  SupportedArch arch;
 };
 
 } // namespace rr
