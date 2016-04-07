@@ -32,11 +32,22 @@ EmuFile::~EmuFile() {
 
 EmuFile::shr_ptr EmuFile::clone(EmuFs& owner) {
   auto f = EmuFile::create(owner, orig_path.c_str(), device(), inode(), size_);
-  // NB: this isn't the most efficient possible file copy, but
-  // it's simple and not too slow.
-  ifstream src(proc_path(), ifstream::binary);
-  ofstream dst(f->proc_path(), ofstream::binary);
-  dst << src.rdbuf();
+
+  uint64_t data[65536 / sizeof(uint64_t)];
+  uint64_t offset = 0;
+  while (offset < size_) {
+    ssize_t amount = min<uint64_t>(size_ - offset, sizeof(data));
+    ssize_t ret = pread64(fd(), data, amount, offset);
+    if (ret != amount) {
+      FATAL() << "Couldn't read all the data";
+    }
+    ret = pwrite64(f->fd(), data, amount, offset);
+    if (ret != amount) {
+      FATAL() << "Couldn't write all the data";
+    }
+    offset += amount;
+  }
+
   return f;
 }
 

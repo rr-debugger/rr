@@ -229,20 +229,23 @@ public:
     MappedDataSource source;
     /** Name of file to map the data from. */
     string file_name;
-    /** Data offset within the file. */
-    uint64_t file_data_offset_bytes;
+    /** Data offset within |file_name|. */
+    uint64_t data_offset_bytes;
     /** Original size of mapped file. */
     uint64_t file_size_bytes;
   };
   /**
    * Read the next mapped region descriptor and return it.
-   * Also returns where to get the mapped data in 'data'.
-   * If |found| is non-null, set *found to indicate whether a descriptor
+   * Also returns where to get the mapped data in |*data|, if it's non-null.
+   * If |found| is non-null, set |*found| to indicate whether a descriptor
    * was found for the current event.
    */
   enum ValidateSourceFile { VALIDATE, DONT_VALIDATE };
-  KernelMapping read_mapped_region(MappedData* data, bool* found = nullptr,
-                                   ValidateSourceFile validate = VALIDATE);
+  enum TimeConstraint { CURRENT_TIME_ONLY, ANY_TIME };
+  KernelMapping read_mapped_region(
+      MappedData* data, bool* found = nullptr,
+      ValidateSourceFile validate = VALIDATE,
+      TimeConstraint time_constraint = CURRENT_TIME_ONLY);
 
   /**
    * Peek at the next mapping. Returns an empty region if there isn't one for

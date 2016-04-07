@@ -333,7 +333,7 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
       offset_bytes = km.file_offset_bytes();
       finish_direct_mmap(t, remote, km.start(), km.size(), km.prot(),
                          km.flags(), data.file_name,
-                         data.file_data_offset_bytes / page_size(), real_file,
+                         data.data_offset_bytes / page_size(), real_file,
                          real_file_name);
       device = real_file.st_dev;
       inode = real_file.st_ino;
@@ -716,7 +716,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         string real_file_name;
         finish_direct_mmap(t, remote, trace_frame.regs().syscall_result(),
                            length, prot, flags, data.file_name,
-                           data.file_data_offset_bytes / page_size(), real_file,
+                           data.data_offset_bytes / page_size(), real_file,
                            real_file_name);
         t->vm()->map(km.start(), length, prot, flags,
                      page_size() * offset_pages, real_file_name,

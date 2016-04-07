@@ -40,6 +40,7 @@ public:
   bool contains(const MemoryRange& o) const {
     return start_ <= o.start_ && o.end_ <= end_;
   }
+  bool contains(remote_ptr<void> p) const { return start_ <= p && p < end_; }
 
   bool intersects(const MemoryRange& other) const {
     remote_ptr<void> s = std::max(start_, other.start_);

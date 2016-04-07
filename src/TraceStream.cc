@@ -398,7 +398,8 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
 }
 
 KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
-                                              ValidateSourceFile validate) {
+                                              ValidateSourceFile validate,
+                                              TimeConstraint time_constraint) {
   if (found) {
     *found = false;
   }
@@ -408,16 +409,19 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
     return KernelMapping();
   }
 
-  mmaps.save_state();
   TraceFrame::Time time;
-  mmaps >> time;
-  mmaps.restore_state();
-  if (time != global_time) {
-    return KernelMapping();
+  if (time_constraint == CURRENT_TIME_ONLY) {
+    mmaps.save_state();
+    mmaps >> time;
+    mmaps.restore_state();
+    if (time != global_time) {
+      return KernelMapping();
+    }
   }
 
   string original_file_name;
   string backing_file_name;
+  MappedDataSource source;
   remote_ptr<void> start, end;
   dev_t device;
   ino_t inode;
@@ -425,35 +429,41 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
   uint32_t uid, gid, mode;
   uint64_t file_offset_bytes;
   int64_t mtime, file_size;
-  mmaps >> time >> data->source >> start >> end >> original_file_name >>
-      device >> inode >> prot >> flags >> file_offset_bytes >>
-      backing_file_name >> mode >> uid >> gid >> file_size >> mtime;
-  assert(time == global_time);
-  if (data->source == SOURCE_FILE) {
-    static const string clone_prefix("mmap_clone_");
-    bool is_clone =
-        backing_file_name.substr(0, clone_prefix.size()) == clone_prefix;
-    if (backing_file_name[0] != '/') {
-      backing_file_name = dir() + "/" + backing_file_name;
-    }
-    if (!is_clone && validate == VALIDATE) {
-      struct stat backing_stat;
-      if (stat(backing_file_name.c_str(), &backing_stat)) {
-        FATAL() << "Failed to stat " << backing_file_name
-                << ": replay is impossible";
+  mmaps >> time >> source >> start >> end >> original_file_name >> device >>
+      inode >> prot >> flags >> file_offset_bytes >> backing_file_name >>
+      mode >> uid >> gid >> file_size >> mtime;
+  assert(time_constraint == ANY_TIME || time == global_time);
+  if (data) {
+    data->source = source;
+    if (data->source == SOURCE_FILE) {
+      static const string clone_prefix("mmap_clone_");
+      bool is_clone =
+          backing_file_name.substr(0, clone_prefix.size()) == clone_prefix;
+      if (backing_file_name[0] != '/') {
+        backing_file_name = dir() + "/" + backing_file_name;
       }
-      if (backing_stat.st_ino != inode || backing_stat.st_mode != mode ||
-          backing_stat.st_uid != uid || backing_stat.st_gid != gid ||
-          backing_stat.st_size != file_size || backing_stat.st_mtime != mtime) {
-        LOG(error)
-            << "Metadata of " << original_file_name
-            << " changed: replay divergence likely, but continuing anyway ...";
+      if (!is_clone && validate == VALIDATE) {
+        struct stat backing_stat;
+        if (stat(backing_file_name.c_str(), &backing_stat)) {
+          FATAL() << "Failed to stat " << backing_file_name
+                  << ": replay is impossible";
+        }
+        if (backing_stat.st_ino != inode || backing_stat.st_mode != mode ||
+            backing_stat.st_uid != uid || backing_stat.st_gid != gid ||
+            backing_stat.st_size != file_size ||
+            backing_stat.st_mtime != mtime) {
+          LOG(error) << "Metadata of " << original_file_name
+                     << " changed: replay divergence likely, but continuing "
+                        "anyway ...";
+        }
       }
+      data->file_name = backing_file_name;
+      data->data_offset_bytes = file_offset_bytes;
+    } else {
+      data->data_offset_bytes = 0;
     }
+    data->file_size_bytes = file_size;
   }
-  data->file_name = backing_file_name;
-  data->file_data_offset_bytes = file_offset_bytes;
-  data->file_size_bytes = file_size;
   if (found) {
     *found = true;
   }

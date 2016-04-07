@@ -4,7 +4,9 @@
 #define RR_REPLAY_SESSION_H_
 
 #include <memory>
+#include <set>
 
+#include "AddressSpace.h"
 #include "CPUIDBugDetector.h"
 #include "DiversionSession.h"
 #include "EmuFs.h"
@@ -276,25 +278,16 @@ public:
 
   void set_flags(const Flags& flags) { this->flags = flags; }
 
-private:
-  ReplaySession(const std::string& dir)
-      : emu_fs(EmuFs::create()),
-        trace_in(dir),
-        trace_frame(),
-        current_step(),
-        ticks_at_start_of_event(0) {
-    advance_to_next_trace_frame();
-  }
+  typedef std::set<MemoryRange, MappingComparator> MemoryRanges;
+  /**
+   * Returns an ordered set of MemoryRanges representing the address space
+   * that is never allocated by any process in the whole lifetime of the trace.
+   */
+  static MemoryRanges always_free_address_space(const TraceReader& reader);
 
-  ReplaySession(const ReplaySession& other)
-      : Session(other),
-        emu_fs(EmuFs::create()),
-        trace_in(other.trace_in),
-        trace_frame(other.trace_frame),
-        current_step(other.current_step),
-        ticks_at_start_of_event(other.ticks_at_start_of_event),
-        cpuid_bug_detector(other.cpuid_bug_detector),
-        flags(other.flags) {}
+private:
+  ReplaySession(const std::string& dir);
+  ReplaySession(const ReplaySession& other);
 
   void setup_replay_one_trace_frame(ReplayTask* t);
   void advance_to_next_trace_frame();

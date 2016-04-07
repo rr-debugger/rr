@@ -71,6 +71,70 @@ static void debug_memory(ReplayTask* t) {
   }
 }
 
+static void split_at_address(ReplaySession::MemoryRanges& ranges,
+                             remote_ptr<void> addr) {
+  ReplaySession::MemoryRanges::iterator it =
+      ranges.lower_bound(MemoryRange(addr, addr + 1));
+  if (it != ranges.end() && it->contains(addr)) {
+    MemoryRange r1(it->start(), addr);
+    MemoryRange r2(addr, it->end());
+    ranges.erase(it);
+    ranges.insert(r1);
+    ranges.insert(r2);
+  }
+}
+
+static void delete_range(ReplaySession::MemoryRanges& ranges,
+                         const MemoryRange& r) {
+  split_at_address(ranges, r.start());
+  split_at_address(ranges, r.end());
+  auto first = ranges.lower_bound(MemoryRange(r.start(), r.start() + 1));
+  auto last = ranges.lower_bound(MemoryRange(r.end(), r.end() + 1));
+  ranges.erase(first, last);
+}
+
+ReplaySession::MemoryRanges ReplaySession::always_free_address_space(
+    const TraceReader& reader) {
+  MemoryRanges result;
+  remote_ptr<void> addressable_min = remote_ptr<void>(64 * 1024);
+  // Assume 64-bit address spaces with the 47-bit user-space limitation,
+  // for now.
+  remote_ptr<void> addressable_max = uint64_t(1) << 47;
+  result.insert(MemoryRange(addressable_min, addressable_max));
+  TraceReader tmp_reader(reader);
+  bool found;
+  while (true) {
+    KernelMapping km = tmp_reader.read_mapped_region(
+        nullptr, &found, TraceReader::DONT_VALIDATE, TraceReader::ANY_TIME);
+    if (!found) {
+      break;
+    }
+    delete_range(result, km);
+  }
+  delete_range(result, MemoryRange(AddressSpace::rr_page_start(),
+                                   AddressSpace::rr_page_end()));
+  return result;
+}
+
+ReplaySession::ReplaySession(const std::string& dir)
+    : emu_fs(EmuFs::create()),
+      trace_in(dir),
+      trace_frame(),
+      current_step(),
+      ticks_at_start_of_event(0) {
+  advance_to_next_trace_frame();
+}
+
+ReplaySession::ReplaySession(const ReplaySession& other)
+    : Session(other),
+      emu_fs(EmuFs::create()),
+      trace_in(other.trace_in),
+      trace_frame(other.trace_frame),
+      current_step(other.current_step),
+      ticks_at_start_of_event(other.ticks_at_start_of_event),
+      cpuid_bug_detector(other.cpuid_bug_detector),
+      flags(other.flags) {}
+
 ReplaySession::~ReplaySession() {
   // We won't permanently leak any OS resources by not ensuring
   // we've cleaned up here, but sessions can be created and
