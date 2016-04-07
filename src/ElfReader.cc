@@ -10,12 +10,36 @@ using namespace std;
 
 namespace rr {
 
+class ElfReaderImplBase {
+public:
+  ElfReaderImplBase(ElfReader& r) : r(r) {}
+  virtual ~ElfReaderImplBase() {}
+  virtual SymbolTable read_symbols(const char* symtab, const char* strtab) = 0;
+  ElfReader& r;
+};
+
+template <typename Arch> class ElfReaderImpl : public ElfReaderImplBase {
+public:
+  ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {}
+  virtual SymbolTable read_symbols(const char* symtab, const char* strtab);
+};
+
 template <typename Arch>
-SymbolTable ElfReader::read_symbols_arch(const char* symtab,
-                                         const char* strtab) {
+unique_ptr<ElfReaderImplBase> elf_reader_impl_arch(ElfReader& r) {
+  return unique_ptr<ElfReaderImplBase>(new ElfReaderImpl<Arch>(r));
+}
+
+unique_ptr<ElfReaderImplBase> elf_reader_impl(ElfReader& r,
+                                              SupportedArch arch) {
+  RR_ARCH_FUNCTION(elf_reader_impl_arch, arch, r);
+}
+
+template <typename Arch>
+SymbolTable ElfReaderImpl<Arch>::read_symbols(const char* symtab,
+                                              const char* strtab) {
   SymbolTable result;
   typename Arch::ElfEhdr elfheader;
-  if (!read(0, elfheader) || memcmp(&elfheader, ELFMAG, SELFMAG) != 0 ||
+  if (!r.read(0, elfheader) || memcmp(&elfheader, ELFMAG, SELFMAG) != 0 ||
       elfheader.e_ident[EI_CLASS] != Arch::elfclass ||
       elfheader.e_ident[EI_DATA] != Arch::elfendian ||
       elfheader.e_machine != Arch::elfmachine ||
@@ -26,15 +50,15 @@ SymbolTable ElfReader::read_symbols_arch(const char* symtab,
   }
 
   auto sections =
-      read<typename Arch::ElfShdr>(elfheader.e_shoff, elfheader.e_shnum);
+      r.read<typename Arch::ElfShdr>(elfheader.e_shoff, elfheader.e_shnum);
   if (sections.empty()) {
     LOG(debug) << "Invalid ELF file: no sections";
     return result;
   }
 
   auto& section_names_section = sections[elfheader.e_shstrndx];
-  auto section_names = read<char>(section_names_section.sh_offset,
-                                  section_names_section.sh_size);
+  auto section_names = r.read<char>(section_names_section.sh_offset,
+                                    section_names_section.sh_size);
   if (section_names.empty()) {
     LOG(debug) << "Invalid ELF file: can't read section names";
     return result;
@@ -85,13 +109,13 @@ SymbolTable ElfReader::read_symbols_arch(const char* symtab,
     return result;
   }
 
-  auto symbol_list = read<typename Arch::ElfSym>(
+  auto symbol_list = r.read<typename Arch::ElfSym>(
       symbols->sh_offset, symbols->sh_size / symbols->sh_entsize);
   if (symbol_list.empty()) {
     LOG(debug) << "Invalid ELF file: can't read symbols " << symtab;
     return result;
   }
-  result.strtab = read<char>(strings->sh_offset, strings->sh_size);
+  result.strtab = r.read<char>(strings->sh_offset, strings->sh_size);
   if (result.strtab.empty()) {
     LOG(debug) << "Invalid ELF file: can't read strings " << strtab;
   }
@@ -110,7 +134,7 @@ SymbolTable ElfReader::read_symbols_arch(const char* symtab,
 
 SymbolTable ElfReader::read_symbols(SupportedArch arch, const char* symtab,
                                     const char* strtab) {
-  RR_ARCH_FUNCTION(read_symbols_arch, arch, symtab, strtab);
+  return elf_reader_impl(*this, arch)->read_symbols(symtab, strtab);
 }
 
 } // namespace rr
