@@ -198,6 +198,7 @@ add_executable(rr
   src/CPUIDBugDetector.cc
   src/DiversionSession.cc
   src/DumpCommand.cc
+  src/ElfReader.cc
   src/EmuFs.cc
   src/Event.cc
   src/ExtraRegisters.cc
