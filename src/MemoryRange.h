@@ -3,6 +3,8 @@
 #ifndef RR_MEMORY_RANGE_H_
 #define RR_MEMORY_RANGE_H_
 
+#include <assert.h>
+
 #include "remote_ptr.h"
 
 namespace rr {
