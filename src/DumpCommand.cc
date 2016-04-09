@@ -20,7 +20,7 @@ namespace rr {
 
 class DumpCommand : public Command {
 public:
-  virtual int run(std::vector<std::string>& args);
+  virtual int run(vector<string>& args);
 
 protected:
   DumpCommand(const char* name, const char* help) : Command(name, help) {}
@@ -59,7 +59,7 @@ struct DumpFlags {
         dump_statistics(false) {}
 };
 
-static bool parse_dump_arg(std::vector<std::string>& args, DumpFlags& flags) {
+static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
   if (parse_global_option(args)) {
     return true;
   }
@@ -266,7 +266,7 @@ static void dump(const string& trace_dir, const DumpFlags& flags,
   }
 }
 
-int DumpCommand::run(std::vector<std::string>& args) {
+int DumpCommand::run(vector<string>& args) {
   DumpFlags flags;
 
   while (parse_dump_arg(args, flags)) {

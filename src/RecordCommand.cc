@@ -109,8 +109,7 @@ struct RecordFlags {
         wait_for_all(false) {}
 };
 
-static bool parse_record_arg(std::vector<std::string>& args,
-                             RecordFlags& flags) {
+static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
   if (parse_global_option(args)) {
     return true;
   }
@@ -285,7 +284,7 @@ static int record(const vector<string>& args, const RecordFlags& flags) {
   }
 }
 
-int RecordCommand::run(std::vector<std::string>& args) {
+int RecordCommand::run(vector<string>& args) {
   if (running_under_rr()) {
     fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n");
     return 1;

@@ -13,7 +13,7 @@ namespace rr {
 
 class PsCommand : public Command {
 public:
-  virtual int run(std::vector<std::string>& args);
+  virtual int run(vector<string>& args);
 
 protected:
   PsCommand(const char* name, const char* help) : Command(name, help) {}
@@ -32,7 +32,7 @@ static void print_exec_cmd_line(const TraceTaskEvent& event, FILE* out) {
   fprintf(out, "\n");
 }
 
-static void update_tid_to_pid_map(std::map<pid_t, pid_t>& tid_to_pid,
+static void update_tid_to_pid_map(map<pid_t, pid_t>& tid_to_pid,
                                   const TraceTaskEvent& e) {
   if (e.is_fork()) {
     // Some kind of fork. This task is its own pid.
@@ -58,8 +58,8 @@ static int count_tids_for_pid(const std::map<pid_t, pid_t> tid_to_pid,
 
 static ssize_t find_cmd_line(pid_t pid, const vector<TraceTaskEvent>& events,
                              size_t current_event,
-                             const std::map<pid_t, pid_t> current_tid_to_pid) {
-  std::map<pid_t, pid_t> tid_to_pid = current_tid_to_pid;
+                             const map<pid_t, pid_t> current_tid_to_pid) {
+  map<pid_t, pid_t> tid_to_pid = current_tid_to_pid;
   for (size_t i = current_event; i < events.size(); ++i) {
     const TraceTaskEvent& e = events[i];
     if (e.type() == TraceTaskEvent::EXEC && tid_to_pid[e.tid()] == pid) {
@@ -76,8 +76,8 @@ static ssize_t find_cmd_line(pid_t pid, const vector<TraceTaskEvent>& events,
 
 static int find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
                           size_t current_event,
-                          const std::map<pid_t, pid_t> current_tid_to_pid) {
-  std::map<pid_t, pid_t> tid_to_pid = current_tid_to_pid;
+                          const map<pid_t, pid_t> current_tid_to_pid) {
+  map<pid_t, pid_t> tid_to_pid = current_tid_to_pid;
   for (size_t i = current_event; i < events.size(); ++i) {
     const TraceTaskEvent& e = events[i];
     if (e.type() == TraceTaskEvent::EXIT && tid_to_pid[e.tid()] == pid &&
@@ -109,7 +109,7 @@ static int ps(const string& trace_dir, FILE* out) {
     return 1;
   }
 
-  std::map<pid_t, pid_t> tid_to_pid;
+  map<pid_t, pid_t> tid_to_pid;
 
   pid_t initial_tid = events[0].tid();
   tid_to_pid[initial_tid] = initial_tid;
@@ -139,7 +139,7 @@ static int ps(const string& trace_dir, FILE* out) {
   return 0;
 }
 
-int PsCommand::run(std::vector<std::string>& args) {
+int PsCommand::run(vector<string>& args) {
   while (parse_global_option(args)) {
   }
 

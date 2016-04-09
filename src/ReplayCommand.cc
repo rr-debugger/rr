@@ -23,7 +23,7 @@ static int DUMP_STATS_PERIOD = 0;
 
 class ReplayCommand : public Command {
 public:
-  virtual int run(std::vector<std::string>& args);
+  virtual int run(vector<string>& args);
 
 protected:
   ReplayCommand(const char* name, const char* help) : Command(name, help) {}
@@ -105,8 +105,7 @@ struct ReplayFlags {
         redirect(true) {}
 };
 
-static bool parse_replay_arg(std::vector<std::string>& args,
-                             ReplayFlags& flags) {
+static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
   if (parse_global_option(args)) {
     return true;
   }
@@ -427,7 +426,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
   return 0;
 }
 
-int ReplayCommand::run(std::vector<std::string>& args) {
+int ReplayCommand::run(vector<string>& args) {
   bool found_dir = false;
   string trace_dir;
   ReplayFlags flags;
