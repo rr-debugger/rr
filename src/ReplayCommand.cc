@@ -235,7 +235,7 @@ static bool pid_execs(const string& trace_dir, pid_t pid) {
 // This needs to be global because it's used by a signal handler.
 static pid_t waiting_for_child;
 
-static ReplaySession::Flags session_flags(ReplayFlags flags) {
+static ReplaySession::Flags session_flags(const ReplayFlags& flags) {
   ReplaySession::Flags result;
   result.redirect_stdio = flags.redirect;
   return result;
