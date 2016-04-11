@@ -1448,6 +1448,36 @@ static long sys_futex(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_generic_getdents(const struct syscall_info* call) {
+  int fd = (int)call->args[0];
+  void* buf = (struct linux_dirent*)call->args[1];
+  unsigned int count = (unsigned int)call->args[2];
+
+  void* ptr = prep_syscall_for_fd(fd);
+  void* buf2 = NULL;
+  long ret;
+
+  if (buf && count > 0) {
+    buf2 = ptr;
+    ptr += count;
+  }
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall3(call->no, fd, buf2, count);
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
+  return commit_raw_syscall(call->no, ptr, ret);
+}
+
+static long sys_getdents(const struct syscall_info* call) {
+  return sys_generic_getdents(call);
+}
+
+static long sys_getdents64(const struct syscall_info* call) {
+  return sys_generic_getdents(call);
+}
+
 static long sys_gettimeofday(const struct syscall_info* call) {
   const int syscallno = SYS_gettimeofday;
   struct timeval* tp = (struct timeval*)call->args[0];
@@ -2133,6 +2163,8 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(flistxattr);
     CASE_GENERIC_NONBLOCKING_FD(fsetxattr);
     CASE(futex);
+    CASE(getdents);
+    CASE(getdents64);
     CASE_GENERIC_NONBLOCKING(geteuid);
     CASE_GENERIC_NONBLOCKING(getpid);
     CASE(getrusage);

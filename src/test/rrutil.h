@@ -158,9 +158,7 @@ inline static uint64_t rdtsc(void) { return __rdtsc(); }
 /**
  * Perform some syscall that writes an event, i.e. is not syscall-buffered.
  */
-inline static void event_syscall(void) {
-  syscall(-1);
-}
+inline static void event_syscall(void) { syscall(-1); }
 
 static uint64_t GUARD_VALUE = 0xdeadbeeff00dbaad;
 
