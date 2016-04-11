@@ -2137,6 +2137,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(clock_gettime);
     CASE(close);
     CASE(creat);
+    CASE_GENERIC_NONBLOCKING(fchmod);
 #if defined(SYS_fcntl64)
     CASE(fcntl64);
 #else
