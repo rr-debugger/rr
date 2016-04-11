@@ -2137,6 +2137,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE_GENERIC_NONBLOCKING(gettid);
     CASE(gettimeofday);
     CASE(ioctl);
+    CASE_GENERIC_NONBLOCKING(lchown);
     CASE(listxattr);
 #if defined(SYS__llseek)
     CASE(_llseek);
