@@ -2124,6 +2124,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE_GENERIC_NONBLOCKING_FD(close);
     CASE(creat);
     CASE_GENERIC_NONBLOCKING(fchmod);
+    CASE_GENERIC_NONBLOCKING_FD(fadvise64);
 #if defined(SYS_fcntl64)
     CASE(fcntl64);
 #else
