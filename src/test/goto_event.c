@@ -18,11 +18,9 @@ static void* child_thread(void* num_syscallsp) {
 
   first_breakpoint();
 
-  /* NB: this test assumes that geteuid() produces at least one
-   * trace event per syscall. */
   atomic_printf("%d: running %d syscalls ...\n", getpid(), num_syscalls);
   for (i = 0; i < num_syscalls; ++i) {
-    geteuid();
+    event_syscall();
   }
 
   second_breakpoint();

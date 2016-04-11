@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
 
   atomic_printf("%d: running %d syscalls ...\n", getpid(), num_syscalls);
   for (i = 0; i < num_syscalls; ++i) {
-    geteuid();
+    event_syscall();
   }
 
   if (0 == (child = fork())) {
