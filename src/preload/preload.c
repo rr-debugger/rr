@@ -2164,6 +2164,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(socketpair);
 #endif
     CASE(time);
+    CASE_GENERIC_NONBLOCKING_FD(utimensat);
     CASE(write);
     CASE(writev);
 #undef CASE
