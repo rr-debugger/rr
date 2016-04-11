@@ -2160,6 +2160,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #if defined(SYS_sendmsg)
     CASE(sendmsg);
 #endif
+    CASE_GENERIC_NONBLOCKING(setxattr);
 #if defined(SYS_socketcall)
     CASE(socketcall);
 #endif
