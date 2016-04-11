@@ -1450,7 +1450,7 @@ static long sys_futex(const struct syscall_info* call) {
 
 static long sys_generic_getdents(const struct syscall_info* call) {
   int fd = (int)call->args[0];
-  void* buf = (struct linux_dirent*)call->args[1];
+  void* buf = (void*)call->args[1];
   unsigned int count = (unsigned int)call->args[2];
 
   void* ptr = prep_syscall_for_fd(fd);
@@ -1512,6 +1512,62 @@ static long sys_gettimeofday(const struct syscall_info* call) {
     local_memcpy(tzp, tzp2, sizeof(*tzp));
   }
   return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_generic_getxattr(const struct syscall_info* call) {
+  const char* path = (const char*)call->args[0];
+  const char* name = (const char*)call->args[1];
+  void* value = (void*)call->args[2];
+  size_t size = call->args[3];
+
+  void* ptr = prep_syscall();
+  void* value2 = NULL;
+  long ret;
+
+  if (value && size > 0) {
+    value2 = ptr;
+    ptr += size;
+  }
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall4(call->no, path, name, value2, size);
+  ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, value,
+                           value2);
+  return commit_raw_syscall(call->no, ptr, ret);
+}
+
+static long sys_getxattr(const struct syscall_info* call) {
+  return sys_generic_getxattr(call);
+}
+
+static long sys_lgetxattr(const struct syscall_info* call) {
+  return sys_generic_getxattr(call);
+}
+
+static long sys_fgetxattr(const struct syscall_info* call) {
+  int fd = (int)call->args[0];
+  const char* name = (const char*)call->args[1];
+  void* value = (void*)call->args[2];
+  size_t size = call->args[3];
+
+  void* ptr = prep_syscall_for_fd(fd);
+  void* value2 = NULL;
+  long ret;
+
+  if (value && size > 0) {
+    value2 = ptr;
+    ptr += size;
+  }
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall4(call->no, fd, name, value2, size);
+  ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, value,
+                           value2);
+  return commit_raw_syscall(call->no, ptr, ret);
 }
 
 static long sys_listxattr(const struct syscall_info* call) {
@@ -2160,6 +2216,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #else
     CASE(fcntl);
 #endif
+    CASE(fgetxattr);
     CASE(flistxattr);
     CASE_GENERIC_NONBLOCKING_FD(fsetxattr);
     CASE(futex);
@@ -2170,8 +2227,10 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(getrusage);
     CASE_GENERIC_NONBLOCKING(gettid);
     CASE(gettimeofday);
+    CASE(getxattr);
     CASE(ioctl);
     CASE_GENERIC_NONBLOCKING(lchown);
+    CASE(lgetxattr);
     CASE(listxattr);
 #if defined(SYS__llseek)
     CASE(_llseek);
