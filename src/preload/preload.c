@@ -2131,6 +2131,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(fcntl);
 #endif
     CASE(flistxattr);
+    CASE_GENERIC_NONBLOCKING_FD(fsetxattr);
     CASE(futex);
     CASE_GENERIC_NONBLOCKING(getpid);
     CASE(getrusage);
