@@ -1112,21 +1112,20 @@ static void copy_futex_int(uint32_t* buf, uint32_t* real) {
 
 /* Keep syscalls in alphabetical order, please. */
 
-static long sys_access(const struct syscall_info* call) {
-  const int syscallno = SYS_access;
-  const char* pathname = (const char*)call->args[0];
-  int mode = call->args[1];
-
+/**
+ * Call this for syscalls that have no memory effects, don't block, and
+ * aren't fd-related.
+ */
+static long sys_generic_nonblocking(const struct syscall_info* call) {
   void* ptr = prep_syscall();
   long ret;
 
-  assert(syscallno == call->no);
-
-  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
-  ret = untraced_syscall2(syscallno, pathname, mode);
-  return commit_raw_syscall(syscallno, ptr, ret);
+  ret = untraced_syscall6(call->no, call->args[0], call->args[1], call->args[2],
+                          call->args[3], call->args[4], call->args[5]);
+  return commit_raw_syscall(call->no, ptr, ret);
 }
 
 static long sys_clock_gettime(const struct syscall_info* call) {
@@ -2101,34 +2100,6 @@ static long sys_writev(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
-static long sys_gettid(const struct syscall_info* call) {
-  const int syscallno = SYS_gettid;
-  void* ptr = prep_syscall();
-  long ret;
-
-  assert(syscallno == call->no);
-
-  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-    return traced_raw_syscall(call);
-  }
-  ret = untraced_syscall0(syscallno);
-  return commit_raw_syscall(syscallno, ptr, ret);
-}
-
-static long sys_getpid(const struct syscall_info* call) {
-  const int syscallno = SYS_getpid;
-  void* ptr = prep_syscall();
-  long ret;
-
-  assert(syscallno == call->no);
-
-  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-    return traced_raw_syscall(call);
-  }
-  ret = untraced_syscall0(syscallno);
-  return commit_raw_syscall(syscallno, ptr, ret);
-}
-
 static long sys_getrusage(const struct syscall_info* call) {
   const int syscallno = SYS_getrusage;
   int who = (int)call->args[0];
@@ -2159,7 +2130,10 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #define CASE(syscallname)                                                      \
   case SYS_##syscallname:                                                      \
     return sys_##syscallname(call)
-    CASE(access);
+#define CASE_GENERIC_NONBLOCKING(syscallname)                                  \
+  case SYS_##syscallname:                                                      \
+    return sys_generic_nonblocking(call)
+    CASE_GENERIC_NONBLOCKING(access);
     CASE(clock_gettime);
     CASE(close);
     CASE(creat);
@@ -2170,9 +2144,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #endif
     CASE(flistxattr);
     CASE(futex);
-    CASE(getpid);
+    CASE_GENERIC_NONBLOCKING(getpid);
     CASE(getrusage);
-    CASE(gettid);
+    CASE_GENERIC_NONBLOCKING(gettid);
     CASE(gettimeofday);
     CASE(ioctl);
     CASE(listxattr);
