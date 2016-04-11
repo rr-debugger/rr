@@ -1321,6 +1321,31 @@ static long sys_fcntl(const struct syscall_info* call)
   }
 }
 
+static long sys_flistxattr(const struct syscall_info* call) {
+  const int syscallno = SYS_flistxattr;
+  int fd = (int)call->args[0];
+  char* buf = (char*)call->args[1];
+  size_t size = call->args[2];
+
+  void* ptr = prep_syscall_for_fd(fd);
+  void* buf2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (buf && size > 0) {
+    buf2 = ptr;
+    ptr += size;
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall3(syscallno, fd, buf2, size);
+  ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, buf, buf2);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_safe_nonblocking_ioctl(const struct syscall_info* call) {
   const int syscallno = SYS_ioctl;
   int fd = call->args[0];
@@ -1454,6 +1479,31 @@ static long sys_gettimeofday(const struct syscall_info* call) {
   if (tzp) {
     local_memcpy(tzp, tzp2, sizeof(*tzp));
   }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_listxattr(const struct syscall_info* call) {
+  const int syscallno = SYS_listxattr;
+  char* path = (char*)call->args[0];
+  char* buf = (char*)call->args[1];
+  size_t size = call->args[2];
+
+  void* ptr = prep_syscall();
+  void* buf2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (buf && size > 0) {
+    buf2 = ptr;
+    ptr += size;
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall3(syscallno, path, buf2, size);
+  ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -2118,12 +2168,14 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #else
     CASE(fcntl);
 #endif
+    CASE(flistxattr);
     CASE(futex);
     CASE(getpid);
     CASE(getrusage);
     CASE(gettid);
     CASE(gettimeofday);
     CASE(ioctl);
+    CASE(listxattr);
 #if defined(SYS__llseek)
     CASE(_llseek);
 #else
