@@ -1128,6 +1128,23 @@ static long sys_generic_nonblocking(const struct syscall_info* call) {
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
+/**
+ * Call this for syscalls that have no memory effects, don't block, and
+ * have an fd as their first parameter.
+ */
+static long sys_generic_nonblocking_fd(const struct syscall_info* call) {
+  int fd = call->args[0];
+  void* ptr = prep_syscall_for_fd(fd);
+  long ret;
+
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall6(call->no, fd, call->args[1], call->args[2],
+                          call->args[3], call->args[4], call->args[5]);
+  return commit_raw_syscall(call->no, ptr, ret);
+}
+
 static long sys_clock_gettime(const struct syscall_info* call) {
   const int syscallno = SYS_clock_gettime;
   clockid_t clk_id = (clockid_t)call->args[0];
@@ -1150,20 +1167,6 @@ static long sys_clock_gettime(const struct syscall_info* call) {
   if (tp) {
     local_memcpy(tp, tp2, sizeof(*tp));
   }
-  return commit_raw_syscall(syscallno, ptr, ret);
-}
-
-static long sys_close(const struct syscall_info* call) {
-  const int syscallno = SYS_close;
-  int fd = call->args[0];
-
-  void* ptr = prep_syscall_for_fd(fd);
-  long ret;
-
-  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-    return traced_raw_syscall(call);
-  }
-  ret = untraced_syscall1(syscallno, fd);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -1537,26 +1540,6 @@ static long sys__llseek(const struct syscall_info* call) {
   if (result2) {
     *result = *result2;
   }
-  return commit_raw_syscall(syscallno, ptr, ret);
-}
-#else
-static long sys_lseek(const struct syscall_info* call) {
-  const int syscallno = SYS_lseek;
-  int fd = call->args[0];
-  off_t off = call->args[1];
-  int whence = call->args[2];
-
-  void* ptr = prep_syscall_for_fd(fd);
-  off_t ret = 0;
-
-  assert(syscallno == call->no);
-
-  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
-    return traced_raw_syscall(call);
-  }
-
-  ret = untraced_syscall3(syscallno, fd, off, whence);
-
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 #endif
@@ -2133,9 +2116,12 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #define CASE_GENERIC_NONBLOCKING(syscallname)                                  \
   case SYS_##syscallname:                                                      \
     return sys_generic_nonblocking(call)
+#define CASE_GENERIC_NONBLOCKING_FD(syscallname)                               \
+  case SYS_##syscallname:                                                      \
+    return sys_generic_nonblocking_fd(call)
     CASE_GENERIC_NONBLOCKING(access);
     CASE(clock_gettime);
-    CASE(close);
+    CASE_GENERIC_NONBLOCKING_FD(close);
     CASE(creat);
     CASE_GENERIC_NONBLOCKING(fchmod);
 #if defined(SYS_fcntl64)
@@ -2154,7 +2140,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #if defined(SYS__llseek)
     CASE(_llseek);
 #else
-    CASE(lseek);
+    CASE_GENERIC_NONBLOCKING_FD(lseek);
 #endif
     CASE(madvise);
     CASE(mprotect);
