@@ -2393,6 +2393,15 @@ void* XShmCreateImage(__attribute__((unused)) register void* dpy,
   return 0;
 }
 
+/**
+ * glibc geteuid() can be compiled to instructions ending in "syscall; ret"
+ * which can't be hooked. So override it here and call the hook directly.
+ */
+uid_t geteuid(void) {
+  struct syscall_info call = { SYS_geteuid, { 0, 0, 0, 0, 0, 0 } };
+  return syscall_hook(&call);
+}
+
 typedef void* (*fopen_ptr)(const char* filename, const char* mode);
 
 static void random_device_init_helper(void* this) {
