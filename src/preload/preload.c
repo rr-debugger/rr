@@ -850,10 +850,12 @@ static void* prep_syscall(void) {
  * Like prep_syscall, but preps a syscall to operate on a particular fd. If
  * syscallbuf is disabled for this fd, returns NULL (in which case
  * start_commit_syscall will abort cleanly and a traced syscall will be used).
+ * Allow negative fds to pass through; they'll either trigger an error or
+ * receive special treatment by the kernel (e.g. AT_FDCWD).
  */
 static void* prep_syscall_for_fd(int fd) {
-  if (fd < 0 || fd >= SYSCALLBUF_FDS_DISABLED_SIZE ||
-      syscallbuf_fds_disabled[fd]) {
+  if (fd >= 0 &&
+      (fd >= SYSCALLBUF_FDS_DISABLED_SIZE || syscallbuf_fds_disabled[fd])) {
     return NULL;
   }
   return prep_syscall();
@@ -1571,7 +1573,6 @@ static long sys_fgetxattr(const struct syscall_info* call) {
 }
 
 static long sys_generic_listxattr(const struct syscall_info* call) {
-  const int syscallno = SYS_listxattr;
   char* path = (char*)call->args[0];
   char* buf = (char*)call->args[1];
   size_t size = call->args[2];
@@ -1580,19 +1581,17 @@ static long sys_generic_listxattr(const struct syscall_info* call) {
   void* buf2 = NULL;
   long ret;
 
-  assert(syscallno == call->no);
-
   if (buf && size > 0) {
     buf2 = ptr;
     ptr += size;
   }
-  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
 
-  ret = untraced_syscall3(syscallno, path, buf2, size);
+  ret = untraced_syscall3(call->no, path, buf2, size);
   ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, buf, buf2);
-  return commit_raw_syscall(syscallno, ptr, ret);
+  return commit_raw_syscall(call->no, ptr, ret);
 }
 
 static long sys_listxattr(const struct syscall_info* call) {
