@@ -1,5 +1,5 @@
 #if defined(__i386__)
-.text
+        .text
 
 
 
@@ -82,7 +82,8 @@ cpuid_loop:
         movl    %edi, 4(%esp)
         call    cpuid_call
         addl    %eax, %ebx
-        call    geteuid@PLT
+        mov     $201, %eax
+        int     $0x80
         subl    $1, %esi
         jne     .L10
         addl    $44, %esp
@@ -105,38 +106,39 @@ cpuid_loop:
         .size   cpuid_loop, .-cpuid_loop
 #elif defined(__x86_64__)
         .text
-	.p2align 4,,15
-	.globl cpuid_call
-	.type  cpuid_call, @function
+        .p2align 4,,15
+        .globl cpuid_call
+        .type  cpuid_call, @function
 cpuid_call:
-	pushq %rbx
-	/* Call CPUID twice, once under a conditional.  */
-	xorl %eax, %eax
-	cpuid
-	cmpl $4, %eax
-	jbe 1f
-	movl $1, %eax
-	cpuid
+        pushq %rbx
+        /* Call CPUID twice, once under a conditional.  */
+        xorl %eax, %eax
+        cpuid
+        cmpl $4, %eax
+        jbe 1f
+        movl $1, %eax
+        cpuid
 1:
-	popq %rbx
-	ret
-	.size  cpuid_call, .-cpuid_call
+        popq %rbx
+        ret
+        .size  cpuid_call, .-cpuid_call
 
         .p2align 4,,15
-	.globl cpuid_loop
-	.type  cpuid_loop, @function
+        .globl cpuid_loop
+        .type  cpuid_loop, @function
 cpuid_loop:
-	mov %rdi, %rbx
-	xor %r12d, %r12d
+        mov %rdi, %rbx
+        xor %r12d, %r12d
 1:
         call cpuid_call
-	addq %rax, %r12
-	call geteuid@PLT
-	subq $1, %rbx
-	jne 1b
-	movq %r12, %rax
-	ret
-	.size  cpuid_loop, .-cpuid_loop
+        addq %rax, %r12
+        mov $107, %rax
+        syscall
+        subq $1, %rbx
+        jne 1b
+        movq %r12, %rax
+        ret
+        .size  cpuid_loop, .-cpuid_loop
 #else
 #error unknown CPU architecture
 #endif /* __i386__/__x86_64__ */
