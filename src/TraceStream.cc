@@ -35,13 +35,16 @@ struct SubstreamData {
   int threads;
 };
 
-static const SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
+static SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
   { "events", 1024 * 1024, 1 },   { "data_header", 1024 * 1024, 1 },
-  { "data", 8 * 1024 * 1024, 3 }, { "mmaps", 64 * 1024, 1 },
+  { "data", 8 * 1024 * 1024, 0 }, { "mmaps", 64 * 1024, 1 },
   { "tasks", 64 * 1024, 1 },      { "generic", 64 * 1024, 1 },
 };
 
 static const SubstreamData& substream(TraceStream::Substream s) {
+  if (!substreams[TraceStream::RAW_DATA].threads) {
+    substreams[TraceStream::RAW_DATA].threads = sysconf(_SC_NPROCESSORS_ONLN);
+  }
   return substreams[s];
 }
 
