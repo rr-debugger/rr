@@ -1570,7 +1570,7 @@ static long sys_fgetxattr(const struct syscall_info* call) {
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
-static long sys_listxattr(const struct syscall_info* call) {
+static long sys_generic_listxattr(const struct syscall_info* call) {
   const int syscallno = SYS_listxattr;
   char* path = (char*)call->args[0];
   char* buf = (char*)call->args[1];
@@ -1593,6 +1593,14 @@ static long sys_listxattr(const struct syscall_info* call) {
   ret = untraced_syscall3(syscallno, path, buf2, size);
   ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_listxattr(const struct syscall_info* call) {
+  return sys_generic_listxattr(call);
+}
+
+static long sys_llistxattr(const struct syscall_info* call) {
+  return sys_generic_listxattr(call);
 }
 
 #if defined(SYS__llseek)
@@ -2232,6 +2240,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE_GENERIC_NONBLOCKING(lchown);
     CASE(lgetxattr);
     CASE(listxattr);
+    CASE(llistxattr);
 #if defined(SYS__llseek)
     CASE(_llseek);
 #else
