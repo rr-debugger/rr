@@ -626,6 +626,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_00_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_8b_3c_24(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_5a_5e_c3(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_89_c2_f7_da(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
@@ -646,6 +647,11 @@ static void __attribute__((constructor)) init_process(void) {
     /* __lll_unlock_wake has 'syscall' followed by
      * pop %rdx; pop %rsi; ret */
     { 3, { 0x5a, 0x5e, 0xc3 }, (uintptr_t)_syscall_hook_trampoline_5a_5e_c3 },
+    /* posix_fadvise64 has 'syscall' followed by
+     * mov %eax,%edx; neg %edx (in glibc-2.22-11.fc23.x86_64) */
+    { 4,
+      { 0x89, 0xc2, 0xf7, 0xda },
+      (uintptr_t)_syscall_hook_trampoline_89_c2_f7_da },
     /* Our VDSO vsyscall patches have 'syscall' followed by "nop; nop; nop" */
     { 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };

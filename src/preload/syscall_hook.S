@@ -317,6 +317,22 @@ _syscall_hook_trampoline_5a_5e_c3:
 
 
 
+        .global _syscall_hook_trampoline_89_c2_f7_da
+        .hidden _syscall_hook_trampoline_89_c2_f7_da
+        .type _syscall_hook_trampoline_89_c2_f7_da, @function
+_syscall_hook_trampoline_89_c2_f7_da:
+        .cfi_startproc
+
+        call _syscall_hook_trampoline
+        mov %eax,%edx
+        neg %edx
+        ret
+
+        .cfi_endproc
+        .size _syscall_hook_trampoline_89_c2_f7_da, .-_syscall_hook_trampoline_89_c2_f7_da
+
+
+
         .global _syscall_hook_trampoline_90_90_90
         .hidden _syscall_hook_trampoline_90_90_90
         .type _syscall_hook_trampoline_90_90_90, @function
