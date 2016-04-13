@@ -2,8 +2,11 @@
 
 #include "ReplayTask.h"
 
+#include "AutoRemoteSyscalls.h"
 #include "log.h"
+#include "PreserveFileMonitor.h"
 #include "ReplaySession.h"
+#include "rr/rr.h"
 
 using namespace std;
 
@@ -15,6 +18,47 @@ ReplayTask::ReplayTask(ReplaySession& session, pid_t _tid, pid_t _rec_tid,
 
 ReplaySession& ReplayTask::session() const {
   return *Task::session().as_replay();
+}
+
+template <typename Arch>
+void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
+  apply_all_data_records_from_trace();
+
+  AutoRemoteSyscalls remote(this);
+
+  remote_ptr<rrcall_init_buffers_params<Arch> > child_args = regs().arg1();
+  auto args = read_mem(child_args);
+
+  if (args.syscallbuf_ptr) {
+    init_syscall_buffer(remote, map_hint);
+    args.syscallbuf_ptr = syscallbuf_child;
+    desched_fd_child = args.desched_counter_fd;
+    // Prevent the child from closing this fd
+    fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
+
+    if (args.cloned_file_data_fd >= 0) {
+      cloned_file_data_fd_child = args.cloned_file_data_fd;
+      string clone_file_name = trace_reader().file_data_clone_file_name(tuid());
+      AutoRestoreMem name(remote, clone_file_name.c_str());
+      int fd = remote.infallible_syscall(syscall_number_for_openat(arch()),
+                                         RR_RESERVED_ROOT_DIR_FD, name.get(),
+                                         O_RDONLY | O_CLOEXEC);
+      if (fd != cloned_file_data_fd_child) {
+        long ret =
+            remote.infallible_syscall(syscall_number_for_dup3(arch()), fd,
+                                      cloned_file_data_fd_child, O_CLOEXEC);
+        ASSERT(this, ret == cloned_file_data_fd_child);
+        remote.infallible_syscall(syscall_number_for_close(arch()), fd);
+      }
+      fds->add_monitor(cloned_file_data_fd_child, new PreserveFileMonitor());
+    }
+  }
+
+  remote.regs().set_syscall_result(syscallbuf_child);
+}
+
+void ReplayTask::init_buffers(remote_ptr<void> map_hint) {
+  RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint);
 }
 
 void ReplayTask::post_exec_syscall(const string& replay_exe,

@@ -21,6 +21,15 @@ public:
   ReplaySession& session() const;
 
   /**
+   * Initialize tracee buffers in this, i.e., implement
+   * RRCALL_init_syscall_buffer.  This task must be at the point
+   * of *exit from* the rrcall.  Registers will be updated with
+   * the return value from the rrcall, which is also returned
+   * from this call.  |map_hint| suggests where to map the
+   * region; see |init_syscallbuf_buffer()|.
+   */
+  void init_buffers(remote_ptr<void> map_hint);
+  /**
    * Call this method when the exec has completed.
    */
   void post_exec_syscall(const std::string& replay_exe, TraceTaskEvent& tte);
@@ -51,6 +60,8 @@ public:
   void set_return_value_from_trace();
 
 private:
+  template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
+
   ~ReplayTask() {}
 };
 

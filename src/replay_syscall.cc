@@ -94,18 +94,14 @@ static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
 
 static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
                                 const TraceReader::MappedData& data) {
-  /* Initialize the scratchpad as the recorder did, but make it
-   * PROT_NONE. The idea is just to reserve the address space so
-   * the replayed process address map looks like the recorded
-   * process, if it were to be probed by madvise or some other
-   * means. But we make it PROT_NONE so that rogue reads/writes
-   * to the scratch memory are caught. */
   ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
 
   t->scratch_ptr = km.start();
   t->scratch_size = km.size();
   size_t sz = t->scratch_size;
-  int prot = PROT_NONE;
+  // Make the scratch buffer read/write during replay so that
+  // preload's sys_read can use it to buffer cloned data.
+  int prot = PROT_READ | PROT_WRITE;
   int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
 
   AutoRemoteSyscalls remote(t);

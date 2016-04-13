@@ -53,9 +53,16 @@ public:
                       remote_ptr<int> cleartid_addr, pid_t new_tid,
                       pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session);
-  virtual void init_buffers(remote_ptr<void> map_hint);
   virtual void on_syscall_exit(int syscallno, const Registers& regs);
 
+  /**
+   * Initialize tracee buffers in this, i.e., implement
+   * RRCALL_init_syscall_buffer.  This task must be at the point
+   * of *exit from* the rrcall.  Registers will be updated with
+   * the return value from the rrcall, which is also returned
+   * from this call.
+   */
+  void init_buffers();
   void post_exec();
   /**
    * Called when SYS_rrcall_init_preload has happened.
@@ -422,6 +429,7 @@ private:
     robust_futex_list_len = len;
   }
 
+  template <typename Arch> void init_buffers_arch();
   template <typename Arch>
   void on_syscall_exit_arch(int syscallno, const Registers& regs);
   /** Helper function for update_sigaction. */

@@ -12,8 +12,10 @@
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
+#include "PreserveFileMonitor.h"
 #include "RecordSession.h"
 #include "record_signal.h"
+#include "rr/rr.h"
 #include "util.h"
 
 using namespace std;
@@ -377,13 +379,84 @@ void RecordTask::at_preload_init() {
   do_preload_init(this);
 }
 
-void RecordTask::init_buffers(remote_ptr<void> map_hint) {
-  Task::init_buffers(map_hint);
-  if (vm()->syscallbuf_enabled()) {
-    AutoRemoteSyscalls remote(this);
-    desched_fd = remote.retrieve_fd(desched_fd_child);
+/**
+ * Avoid using low-numbered file descriptors since that can confuse
+ * developers.
+ */
+static int find_free_file_descriptor(pid_t for_tid) {
+  int fd = 300 + (for_tid % 500);
+  while (true) {
+    char buf[PATH_MAX];
+    sprintf(buf, "/proc/%d/fd/%d", for_tid, fd);
+    if (access(buf, F_OK) == -1 && errno == ENOENT) {
+      return fd;
+    }
+    ++fd;
   }
 }
+
+template <typename Arch> void RecordTask::init_buffers_arch() {
+  // NB: the tracee can't be interrupted with a signal while
+  // we're processing the rrcall, because it's masked off all
+  // signals.
+  AutoRemoteSyscalls remote(this);
+
+  // Arguments to the rrcall.
+  remote_ptr<rrcall_init_buffers_params<Arch> > child_args = regs().arg1();
+  auto args = read_mem(child_args);
+
+  args.cloned_file_data_fd = -1;
+  if (as->syscallbuf_enabled()) {
+    init_syscall_buffer(remote, nullptr);
+    args.syscallbuf_ptr = syscallbuf_child;
+    desched_fd_child = args.desched_counter_fd;
+    // Prevent the child from closing this fd
+    fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
+    desched_fd = remote.retrieve_fd(desched_fd_child);
+
+    if (trace_writer().supports_file_data_cloning()) {
+      string clone_file_name = trace_writer().file_data_clone_file_name(tuid());
+      AutoRestoreMem name(remote, clone_file_name.c_str());
+      int cloned_file_data = remote.syscall(syscall_number_for_openat(arch()),
+                                            RR_RESERVED_ROOT_DIR_FD, name.get(),
+                                            O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+      if (cloned_file_data >= 0) {
+        int free_fd = find_free_file_descriptor(tid);
+        cloned_file_data_fd_child =
+            remote.syscall(syscall_number_for_dup3(arch()), cloned_file_data,
+                           free_fd, O_CLOEXEC);
+        if (cloned_file_data_fd_child != free_fd) {
+          ASSERT(this, cloned_file_data_fd_child < 0);
+          remote.infallible_syscall(syscall_number_for_close(arch()), free_fd);
+        } else {
+          // Prevent the child from closing this fd. We're going to close it
+          // ourselves and we don't want the child closing it and then reopening
+          // its own file with this fd.
+          fds->add_monitor(cloned_file_data_fd_child,
+                           new PreserveFileMonitor());
+          args.cloned_file_data_fd = cloned_file_data_fd_child;
+        }
+        remote.infallible_syscall(syscall_number_for_close(arch()),
+                                  cloned_file_data);
+      }
+    }
+  } else {
+    args.syscallbuf_ptr = remote_ptr<void>(nullptr);
+  }
+  args.scratch_buf = scratch_ptr;
+  args.scratch_size = scratch_size;
+
+  // Return the mapped buffers to the child.
+  write_mem(child_args, args);
+
+  // The tracee doesn't need this addr returned, because it's
+  // already written to the inout |args| param, but we stash it
+  // away in the return value slot so that we can easily check
+  // that we map the segment at the same addr during replay.
+  remote.regs().set_syscall_result(syscallbuf_child);
+}
+
+void RecordTask::init_buffers() { RR_ARCH_FUNCTION(init_buffers_arch, arch()); }
 
 template <typename Arch>
 void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {

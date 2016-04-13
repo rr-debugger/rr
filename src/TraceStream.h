@@ -14,6 +14,7 @@
 #include "CompressedWriter.h"
 #include "Event.h"
 #include "remote_ptr.h"
+#include "TaskishUid.h"
 #include "TraceFrame.h"
 #include "TraceTaskEvent.h"
 
@@ -70,6 +71,8 @@ public:
    */
   TraceFrame::Time time() const { return global_time; }
 
+  std::string file_data_clone_file_name(const TaskUid& tuid);
+
 protected:
   TraceStream(const string& trace_dir, TraceFrame::Time initial_time)
       : trace_dir(trace_dir), global_time(initial_time) {}
@@ -113,6 +116,8 @@ protected:
 
 class TraceWriter : public TraceStream {
 public:
+  bool supports_file_data_cloning() { return supports_file_data_cloning_; }
+
   /**
    * Write trace frame to the trace.
    *
@@ -191,6 +196,7 @@ private:
    */
   std::set<std::pair<dev_t, ino_t> > files_assumed_immutable;
   uint32_t mmap_count;
+  bool supports_file_data_cloning_;
 };
 
 class TraceReader : public TraceStream {

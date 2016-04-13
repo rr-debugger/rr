@@ -48,6 +48,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <link.h>
+#include <linux/btrfs.h>
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -180,6 +181,11 @@ static __thread uint8_t* buffer TLS_STORAGE_MODEL;
  * numerous implementation details that are documented in
  * handle_signal.c, where they're dealt with. */
 static __thread int desched_counter_fd TLS_STORAGE_MODEL;
+
+static __thread int cloned_file_data_fd TLS_STORAGE_MODEL;
+static __thread off_t cloned_file_data_offset TLS_STORAGE_MODEL;
+static __thread void* scratch_buf TLS_STORAGE_MODEL;
+static __thread size_t scratch_size TLS_STORAGE_MODEL;
 
 static __thread struct msghdr* notify_control_msg TLS_STORAGE_MODEL;
 
@@ -452,6 +458,20 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
   privileged_untraced_syscall2(no, a0, 0)
 #define privileged_untraced_syscall0(no) privileged_untraced_syscall1(no, 0)
 
+#define replay_only_syscall6(no, a0, a1, a2, a3, a4, a5)                       \
+  _raw_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, \
+               (uintptr_t)a4, (uintptr_t)a5,                                   \
+               RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_REPLAY_ONLY, 0, 0)
+#define replay_only_syscall5(no, a0, a1, a2, a3, a4)                           \
+  replay_only_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define replay_only_syscall4(no, a0, a1, a2, a3)                               \
+  replay_only_syscall5(no, a0, a1, a2, a3, 0)
+#define replay_only_syscall3(no, a0, a1, a2)                                   \
+  replay_only_syscall4(no, a0, a1, a2, 0)
+#define replay_only_syscall2(no, a0, a1) replay_only_syscall3(no, a0, a1, 0)
+#define replay_only_syscall1(no, a0) replay_only_syscall2(no, a0, 0)
+#define replay_only_syscall0(no) replay_only_syscall1(no, 0)
+
 static int privileged_untraced_close(int fd) {
   return privileged_untraced_syscall1(SYS_close, fd);
 }
@@ -559,8 +579,11 @@ static void init_thread(void) {
    * the signal is unblocked. */
   rrcall_init_buffers(&args);
 
+  cloned_file_data_fd = args.cloned_file_data_fd;
   /* rr initializes the buffer header. */
   buffer = args.syscallbuf_ptr;
+  scratch_buf = args.scratch_buf;
+  scratch_size = args.scratch_size;
 
   thread_inited = 1;
 }
@@ -838,6 +861,11 @@ static void* prep_syscall(void) {
   return buffer_last() + sizeof(struct syscallbuf_record);
 }
 
+static int is_bufferable_fd(int fd) {
+  return fd < 0 ||
+         (fd < SYSCALLBUF_FDS_DISABLED_SIZE && !syscallbuf_fds_disabled[fd]);
+}
+
 /**
  * Like prep_syscall, but preps a syscall to operate on a particular fd. If
  * syscallbuf is disabled for this fd, returns NULL (in which case
@@ -846,8 +874,7 @@ static void* prep_syscall(void) {
  * receive special treatment by the kernel (e.g. AT_FDCWD).
  */
 static void* prep_syscall_for_fd(int fd) {
-  if (fd >= 0 &&
-      (fd >= SYSCALLBUF_FDS_DISABLED_SIZE || syscallbuf_fds_disabled[fd])) {
+  if (!is_bufferable_fd(fd)) {
     return NULL;
   }
   return prep_syscall();
@@ -1352,12 +1379,13 @@ static long sys_safe_nonblocking_ioctl(const struct syscall_info* call) {
   if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
-  ret = untraced_syscall2(syscallno, fd, call->args[1]);
+  ret = untraced_syscall3(syscallno, fd, call->args[1], call->args[2]);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
 static long sys_ioctl(const struct syscall_info* call) {
   switch (call->args[1]) {
+    case BTRFS_IOC_CLONE_RANGE:
     case FIOCLEX:
     case FIONCLEX:
       return sys_safe_nonblocking_ioctl(call);
@@ -1770,15 +1798,84 @@ static long sys_poll(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+#define CLONE_SIZE_THRESHOLD 0x10000
+
 static long sys_read(const struct syscall_info* call) {
   const int syscallno = SYS_read;
   int fd = call->args[0];
   void* buf = (void*)call->args[1];
   size_t count = call->args[2];
 
-  void* ptr = prep_syscall_for_fd(fd);
+  void* ptr;
   void* buf2 = NULL;
   long ret;
+
+  // Try cloning data using CLONE_RANGE ioctl.
+  // XXX switch to FIOCLONERANGE when that's more widely available. It's the
+  // same ioctl number so it won't affect rr per se but it'd be cleaner code.
+  // 64-bit only for now, since lseek and pread64 need special handling for
+  // 32-bit.
+  // Basically we break down the read into three syscalls lseek, clone and
+  // read-from-clone, each of which is individually syscall-buffered.
+  // Crucially, the read-from-clone syscall does NOT store data in the syscall
+  // buffer; instead, we perform the syscall during replay, assuming that
+  // cloned_file_data_fd is open to the same file during replay.
+  // Reads that hit EOF are rejected by the CLONE_RANGE ioctl so we take the
+  // slow path. That's OK.
+  // There is a possible race here: between cloning the data and reading from
+  // |fd|, |fd|'s data may be overwritten, in which case the data read during
+  // replay will not match the data read during recording, causing divergence.
+  // I don't see any performant way to avoid this race; I tried reading from
+  // the cloned data instead of |fd|, but that is very slow because readahead
+  // doesn't work. (The cloned data file always ends at the current offset so
+  // there is nothing to readahead.) However, if an application triggers this
+  // race, it's almost certainly a bad bug because Linux can return any
+  // interleaving of old+new data for the read even without rr.
+  if (buf && count >= CLONE_SIZE_THRESHOLD && cloned_file_data_fd >= 0 &&
+      is_bufferable_fd(fd) && sizeof(void*) == 8 && !(count & 4095)) {
+    struct syscall_info lseek_call = { SYS_lseek,
+                                       { fd, 0, SEEK_CUR, 0, 0, 0 } };
+    off_t lseek_ret = sys_generic_nonblocking_fd(&lseek_call);
+    if (lseek_ret > 0 && !(lseek_ret & 4095)) {
+      struct btrfs_ioctl_clone_range_args ioctl_args;
+      struct syscall_info ioctl_call = { SYS_ioctl,
+                                         { cloned_file_data_fd,
+                                           BTRFS_IOC_CLONE_RANGE,
+                                           (long)&ioctl_args, 0, 0, 0 } };
+      int ioctl_ret;
+      ioctl_args.src_fd = fd;
+      ioctl_args.src_offset = lseek_ret;
+      ioctl_args.src_length = count;
+      ioctl_args.dest_offset = cloned_file_data_offset;
+      ioctl_ret = sys_ioctl(&ioctl_call);
+      if (ioctl_ret >= 0) {
+        struct syscall_info read_call = { SYS_read,
+                                          { fd, (long)buf, count, 0, 0, 0 } };
+        cloned_file_data_offset += count;
+
+        replay_only_syscall2(SYS_dup2, cloned_file_data_fd, fd);
+
+        ptr = prep_syscall();
+        if (count > scratch_size) {
+          if (!start_commit_buffered_syscall(SYS_read, ptr, WONT_BLOCK)) {
+            return traced_raw_syscall(&read_call);
+          }
+          ret = untraced_replayed_syscall3(SYS_read, fd, buf, count);
+        } else {
+          if (!start_commit_buffered_syscall(SYS_read, ptr, MAY_BLOCK)) {
+            return traced_raw_syscall(&read_call);
+          }
+          ret = untraced_replayed_syscall3(SYS_read, fd, scratch_buf, count);
+          copy_output_buffer(ret, NULL, buf, scratch_buf);
+        }
+        ret = commit_raw_syscall(SYS_read, ptr, ret);
+        replay_only_syscall1(SYS_close, fd);
+        return ret;
+      }
+    }
+  }
+
+  ptr = prep_syscall_for_fd(fd);
 
   assert(syscallno == call->no);
 
@@ -2234,9 +2331,8 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(llistxattr);
 #if defined(SYS__llseek)
     CASE(_llseek);
-#else
-    CASE_GENERIC_NONBLOCKING_FD(lseek);
 #endif
+    CASE_GENERIC_NONBLOCKING_FD(lseek);
     CASE(madvise);
     CASE_GENERIC_NONBLOCKING(mkdir);
     CASE(mprotect);

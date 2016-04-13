@@ -263,6 +263,13 @@ Completion ReplaySession::cont_syscall_boundary(
   ASSERT(t, !t->stop_sig()) << "Replay got unrecorded signal " << t->stop_sig()
                             << " (" << signal_name(t->stop_sig()) << ")";
 
+  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
+  if (type && type->traced == AddressSpace::UNTRACED &&
+      type->enabled == AddressSpace::REPLAY_ONLY) {
+    // Ignore these. They didn't happend during recording and we don't
+    // want to know about them during replay.
+    return cont_syscall_boundary(t, constraints);
+  }
   return COMPLETE;
 }
 

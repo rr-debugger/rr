@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/btrfs.h>
 #include <linux/ethtool.h>
 #include <linux/futex.h>
 #include <linux/if.h>
@@ -1206,6 +1207,8 @@ static Switchable prepare_ioctl(RecordTask* t,
    * READ and WRITE can be set for inout params. */
   if (!(_IOC_READ & dir)) {
     switch (IOCTL_MASK_SIZE(request)) {
+      case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):
+      case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):
       case IOCTL_MASK_SIZE(FIOCLEX):
       case IOCTL_MASK_SIZE(FIONCLEX):
         return PREVENT_SWITCH;
@@ -3201,17 +3204,20 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       t->vm()->fixup_mprotect_growsdown_parameters(t);
       return PREVENT_SWITCH;
 
-    case Arch::rrcall_notify_control_msg:
-    case Arch::rrcall_init_preload:
+    case SYS_rrcall_notify_control_msg:
+    case SYS_rrcall_init_preload:
       syscall_state.emulate_result(0);
+      return PREVENT_SWITCH;
+
+    case SYS_rrcall_init_buffers:
+      syscall_state.reg_parameter<rrcall_init_buffers_params<Arch> >(1, IN_OUT);
       return PREVENT_SWITCH;
 
     case Arch::brk:
     case Arch::munmap:
     case Arch::process_vm_readv:
     case Arch::process_vm_writev:
-    case Arch::rrcall_init_buffers:
-    case Arch::rrcall_notify_syscall_hook_exit:
+    case SYS_rrcall_notify_syscall_hook_exit:
     case Arch::shmat:
     case Arch::shmdt:
       return PREVENT_SWITCH;
@@ -4029,7 +4035,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case SYS_rrcall_init_buffers:
-      t->init_buffers(nullptr);
+      t->init_buffers();
       break;
 
     case SYS_rrcall_init_preload: {

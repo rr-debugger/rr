@@ -4,6 +4,7 @@
 
 #include <inttypes.h>
 #include <limits.h>
+#include <linux/btrfs.h>
 #include <sysexits.h>
 
 #include <fstream>
@@ -12,6 +13,7 @@
 
 #include "AddressSpace.h"
 #include "log.h"
+#include "TaskishUid.h"
 #include "util.h"
 
 using namespace std;
@@ -142,6 +144,12 @@ static void ensure_dir(const string& dir, mode_t mode) {
  */
 static void ensure_default_rr_trace_dir() {
   ensure_dir(default_rr_trace_dir(), S_IRWXU);
+}
+
+string TraceStream::file_data_clone_file_name(const TaskUid& tuid) {
+  stringstream ss;
+  ss << trace_dir << "/cloned_data_" << tuid.tid() << "_" << tuid.serial();
+  return ss.str();
 }
 
 string TraceStream::path(Substream s) {
@@ -532,7 +540,8 @@ TraceWriter::TraceWriter(const vector<string>& argv, const vector<string>& envp,
                   // Somewhat arbitrarily start the
                   // global time from 1.
                   1),
-      mmap_count(0) {
+      mmap_count(0),
+      supports_file_data_cloning_(false) {
   this->argv = argv;
   this->envp = envp;
   this->cwd = cwd;
@@ -544,11 +553,33 @@ TraceWriter::TraceWriter(const vector<string>& argv, const vector<string>& envp,
   }
 
   string ver_path = version_path();
-  fstream version(ver_path.c_str(), fstream::out);
-  if (!version.good()) {
+  ScopedFd version_fd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
+  if (!version_fd.is_open()) {
     FATAL() << "Unable to create " << ver_path;
   }
-  version << TRACE_VERSION << endl;
+  char buf[10];
+  sprintf(buf, "%d\n", TRACE_VERSION);
+  ssize_t buf_len = strlen(buf);
+  if (write(version_fd, buf, buf_len) != buf_len) {
+    FATAL() << "Unable to write " << ver_path;
+  }
+
+  // Test if file data cloning is supported
+  string version_clone_path = trace_dir + "/tmp_clone";
+  ScopedFd version_clone_fd(version_clone_path.c_str(), O_WRONLY | O_CREAT,
+                            0600);
+  if (!version_clone_fd.is_open()) {
+    FATAL() << "Unable to create " << version_clone_path;
+  }
+  btrfs_ioctl_clone_range_args clone_args;
+  clone_args.src_fd = version_fd;
+  clone_args.src_offset = 0;
+  clone_args.src_length = buf_len;
+  clone_args.dest_offset = 0;
+  if (ioctl(version_clone_fd, BTRFS_IOC_CLONE_RANGE, &clone_args) == 0) {
+    supports_file_data_cloning_ = true;
+  }
+  unlink(version_clone_path.c_str());
 
   if (!probably_not_interactive(STDOUT_FILENO)) {
     printf("rr: Saving the execution of `%s' to trace directory `%s'.\n",

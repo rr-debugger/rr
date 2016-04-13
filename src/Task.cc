@@ -59,6 +59,8 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       scratch_size(),
       // This will be initialized when the syscall buffer is.
       desched_fd_child(-1),
+      // This will be initialized when the syscall buffer is.
+      cloned_file_data_fd_child(-1),
       hpc(_tid),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
@@ -226,42 +228,6 @@ TraceWriter& Task::trace_writer() {
   return session().as_record()->trace_writer();
 }
 
-template <typename Arch>
-void Task::init_buffers_arch(remote_ptr<void> map_hint) {
-  // NB: the tracee can't be interrupted with a signal while
-  // we're processing the rrcall, because it's masked off all
-  // signals.
-  AutoRemoteSyscalls remote(this);
-
-  // Arguments to the rrcall.
-  remote_ptr<rrcall_init_buffers_params<Arch> > child_args =
-      remote.regs().arg1();
-  auto args = read_mem(child_args);
-
-  if (as->syscallbuf_enabled()) {
-    init_syscall_buffer(remote, map_hint);
-    args.syscallbuf_ptr = syscallbuf_child;
-    desched_fd_child = args.desched_counter_fd;
-    // Prevent the child from closing this fd
-    fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
-  } else {
-    args.syscallbuf_ptr = remote_ptr<void>(nullptr);
-  }
-
-  // Return the mapped buffers to the child.
-  write_mem(child_args, args);
-
-  // The tracee doesn't need this addr returned, because it's
-  // already written to the inout |args| param, but we stash it
-  // away in the return value slot so that we can easily check
-  // that we map the segment at the same addr during replay.
-  remote.regs().set_syscall_result(syscallbuf_child);
-}
-
-void Task::init_buffers(remote_ptr<void> map_hint) {
-  RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint);
-}
-
 void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
   remote.infallible_syscall(syscall_number_for_munmap(arch()), scratch_ptr,
@@ -277,6 +243,11 @@ void Task::destroy_buffers() {
                                   desched_fd_child);
       }
       fds->did_close(desched_fd_child);
+    }
+    if (cloned_file_data_fd_child >= 0) {
+      remote.infallible_syscall(syscall_number_for_close(arch()),
+                                cloned_file_data_fd_child);
+      fds->did_close(cloned_file_data_fd_child);
     }
   }
 }
@@ -1442,6 +1413,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
         // Clear our desched_fd_child so that we don't try to close it.
         // It should only be closed in |this|.
         t->desched_fd_child = -1;
+        t->cloned_file_data_fd_child = -1;
       }
     }
   }
@@ -1520,6 +1492,7 @@ Task::CapturedState Task::capture_state() {
   state.thread_areas = thread_areas_;
   state.num_syscallbuf_bytes = num_syscallbuf_bytes;
   state.desched_fd_child = desched_fd_child;
+  state.cloned_file_data_fd_child = cloned_file_data_fd_child;
   state.syscallbuf_child = syscallbuf_child;
   if (syscallbuf_hdr) {
     size_t data_size = syscallbuf_data_size();
@@ -1568,6 +1541,7 @@ void Task::copy_state(const CapturedState& state) {
       // All these fields are preserved by the fork.
       num_syscallbuf_bytes = state.num_syscallbuf_bytes;
       desched_fd_child = state.desched_fd_child;
+      cloned_file_data_fd_child = state.cloned_file_data_fd_child;
 
       // The syscallbuf is mapped as a shared
       // segment between rr and the tracee.  So we

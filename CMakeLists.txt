@@ -363,6 +363,7 @@ set(BASIC_TESTS
   clock_nanosleep
   clone
   clone_bad_stack
+  clone_file_range
   clone_immediate_exit
   clone_untraced
   constructor
@@ -487,6 +488,7 @@ set(BASIC_TESTS
   rdtsc
   read_nothing
   readdir
+  read_large
   readlink
   readlinkat
   readv

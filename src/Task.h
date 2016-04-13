@@ -216,18 +216,6 @@ public:
   TraceWriter& trace_writer();
 
   /**
-   * Initialize tracee buffers in this, i.e., implement
-   * RRCALL_init_syscall_buffer.  This task must be at the point
-   * of *exit from* the rrcall.  Registers will be updated with
-   * the return value from the rrcall, which is also returned
-   * from this call.  |map_hint| suggests where to map the
-   * region; see |init_syscallbuf_buffer()|.
-   *
-   * Pass SHARE_DESCHED_EVENT_FD to additionally share that fd.
-   */
-  virtual void init_buffers(remote_ptr<void> map_hint);
-
-  /**
    * Destroy in the tracee task the scratch buffer and syscallbuf (if
    * syscallbuf_child is non-null).
    * This task must already be at a state in which remote syscalls can be
@@ -673,6 +661,8 @@ public:
 
   /* The child's desched counter event fd number */
   int desched_fd_child;
+  /* The child's cloned_file_data_fd */
+  int cloned_file_data_fd_child;
 
   PerfCounters hpc;
 
@@ -715,6 +705,7 @@ public:
     pid_t rec_tid;
     uint32_t serial;
     int desched_fd_child;
+    int cloned_file_data_fd_child;
     WaitStatus wait_status;
   };
 

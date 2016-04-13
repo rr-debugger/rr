@@ -6,6 +6,9 @@
 #define _GNU_SOURCE 1
 #define _POSIX_C_SOURCE 2
 
+/* btrfs needs NULL but doesn't #include it */
+#include <stdlib.h>
+
 #include <arpa/inet.h>
 #include <asm/prctl.h>
 #include <assert.h>
@@ -15,6 +18,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <linux/audit.h>
+#include <linux/btrfs.h>
 #include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>
@@ -38,7 +42,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <syscall.h>
 #include <sys/file.h>
