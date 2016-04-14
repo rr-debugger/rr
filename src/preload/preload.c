@@ -1009,7 +1009,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
      * pair.  So don't record the syscall in the buffer or
      * replay will go haywire. */
     hdr->abort_commit = 0;
-    /* Clear the return value that rr pus there during replay */
+    /* Clear the return value that rr puts there during replay */
     rec->ret = 0;
   } else {
     int breakpoint_entry_size =
