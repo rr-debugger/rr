@@ -256,24 +256,10 @@ static int update_errno_ret(long ret) {
   return ret;
 }
 
-static void* traced_syscall_instruction =
-    (void*)(RR_PAGE_IN_TRACED_SYSCALL_ADDR - RR_PAGE_SYSCALL_INSTRUCTION_END);
-static void* untraced_syscall_instruction =
-    (void*)(RR_PAGE_IN_UNTRACED_SYSCALL_ADDR - RR_PAGE_SYSCALL_INSTRUCTION_END);
-static void* untraced_replayed_syscall_instruction =
-    (void*)(RR_PAGE_IN_UNTRACED_REPLAYED_SYSCALL_ADDR -
-            RR_PAGE_SYSCALL_INSTRUCTION_END);
-static void* privileged_traced_syscall_instruction =
-    (void*)(RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR -
-            RR_PAGE_SYSCALL_INSTRUCTION_END);
-static void* privileged_untraced_syscall_instruction =
-    (void*)(RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR -
-            RR_PAGE_SYSCALL_INSTRUCTION_END);
-
 static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
                                      long a3, long a4, long a5) {
   long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                          privileged_traced_syscall_instruction, 0, 0);
+                          RR_PAGE_SYSCALL_PRIVILEGED_TRACED, 0, 0);
   return update_errno_ret(ret);
 }
 #define privileged_traced_syscall6(no, a0, a1, a2, a3, a4, a5)                 \
@@ -300,7 +286,7 @@ static long traced_raw_syscall(const struct syscall_info* call) {
    * again. */
   return _raw_syscall(call->no, call->args[0], call->args[1], call->args[2],
                       call->args[3], call->args[4], call->args[5],
-                      traced_syscall_instruction, 0, 0);
+                      RR_PAGE_SYSCALL_TRACED, 0, 0);
 }
 
 #if defined(SYS_fcntl64)
@@ -425,7 +411,7 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
 #define untraced_syscall6(no, a0, a1, a2, a3, a4, a5)                          \
   untraced_syscall_base(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,       \
                         (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,           \
-                        untraced_syscall_instruction)
+                        RR_PAGE_SYSCALL_UNTRACED_RECORDING_ONLY)
 #define untraced_syscall5(no, a0, a1, a2, a3, a4)                              \
   untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
 #define untraced_syscall4(no, a0, a1, a2, a3)                                  \
@@ -438,7 +424,7 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
 #define untraced_replayed_syscall6(no, a0, a1, a2, a3, a4, a5)                 \
   untraced_syscall_base(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,       \
                         (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,           \
-                        untraced_replayed_syscall_instruction)
+                        RR_PAGE_SYSCALL_UNTRACED)
 #define untraced_replayed_syscall5(no, a0, a1, a2, a3, a4)                     \
   untraced_replayed_syscall6(no, a0, a1, a2, a3, a4, 0)
 #define untraced_replayed_syscall4(no, a0, a1, a2, a3)                         \
@@ -453,7 +439,7 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
 #define privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, a5)               \
   _raw_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, \
                (uintptr_t)a4, (uintptr_t)a5,                                   \
-               privileged_untraced_syscall_instruction, 0, 0)
+               RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_RECORDING_ONLY, 0, 0)
 #define privileged_untraced_syscall5(no, a0, a1, a2, a3, a4)                   \
   privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, 0)
 #define privileged_untraced_syscall4(no, a0, a1, a2, a3)                       \
@@ -2339,10 +2325,10 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     //
     // Another crazy thing is going on here: it's possible that a signal
     // intended to be delivered
-    result = _raw_syscall(
-        SYS_rrcall_notify_syscall_hook_exit, call->args[0], call->args[1],
-        call->args[2], call->args[3], call->args[4], call->args[5],
-        privileged_traced_syscall_instruction, result, call->no);
+    result = _raw_syscall(SYS_rrcall_notify_syscall_hook_exit, call->args[0],
+                          call->args[1], call->args[2], call->args[3],
+                          call->args[4], call->args[5],
+                          RR_PAGE_SYSCALL_PRIVILEGED_TRACED, result, call->no);
   }
   // Do work that can only be safely done after syscallbuf can be flushed
   if (notify_control_msg) {

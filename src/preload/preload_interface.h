@@ -45,25 +45,22 @@
 
 #define MPROTECT_RECORD_COUNT 1000
 
+/* Must match generate_rr_page.py */
 #define RR_PAGE_ADDR 0x70000000
 #define RR_PAGE_SYSCALL_STUB_SIZE 3
 #define RR_PAGE_SYSCALL_INSTRUCTION_END 2
-#define RR_PAGE_IN_TRACED_SYSCALL_ADDR                                         \
-  (RR_PAGE_ADDR + RR_PAGE_SYSCALL_INSTRUCTION_END)
-#define RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR                              \
-  (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE + RR_PAGE_SYSCALL_INSTRUCTION_END)
-#define RR_PAGE_IN_UNTRACED_REPLAYED_SYSCALL_ADDR                              \
-  (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 2 +                              \
-   RR_PAGE_SYSCALL_INSTRUCTION_END)
-#define RR_PAGE_IN_UNTRACED_SYSCALL_ADDR                                       \
-  (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 3 +                              \
-   RR_PAGE_SYSCALL_INSTRUCTION_END)
-#define RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR                            \
-  (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 4 +                              \
-   RR_PAGE_SYSCALL_INSTRUCTION_END)
-#define RR_PAGE_FF_BYTES                                                       \
-  (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 5 +                              \
-   RR_PAGE_SYSCALL_INSTRUCTION_END)
+#define RR_PAGE_SYSCALL_ADDR(index)                                            \
+  ((void*)(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * (index)))
+#define RR_PAGE_SYSCALL_TRACED RR_PAGE_SYSCALL_ADDR(0)
+#define RR_PAGE_SYSCALL_PRIVILEGED_TRACED RR_PAGE_SYSCALL_ADDR(1)
+#define RR_PAGE_SYSCALL_UNTRACED RR_PAGE_SYSCALL_ADDR(2)
+#define RR_PAGE_SYSCALL_UNTRACED_REPLAY_ONLY RR_PAGE_SYSCALL_ADDR(3)
+#define RR_PAGE_SYSCALL_UNTRACED_RECORDING_ONLY RR_PAGE_SYSCALL_ADDR(4)
+#define RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED RR_PAGE_SYSCALL_ADDR(5)
+#define RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_REPLAY_ONLY RR_PAGE_SYSCALL_ADDR(6)
+#define RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_RECORDING_ONLY                     \
+  RR_PAGE_SYSCALL_ADDR(7)
+#define RR_PAGE_FF_BYTES (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 8)
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.

@@ -578,73 +578,30 @@ public:
   static remote_ptr<void> rr_page_end() {
     return rr_page_start() + rr_page_size();
   }
-  /**
-   * ip() when we're in an untraced system call; same for all supported
-   * architectures (hence static).
-   */
-  static remote_code_ptr rr_page_ip_in_untraced_syscall() {
-    return RR_PAGE_IN_UNTRACED_SYSCALL_ADDR;
-  }
-  /**
-   * ip() when we're in an untraced replayed system call; same for all supported
-   * architectures (hence static).
-   */
-  static remote_code_ptr rr_page_ip_in_untraced_replayed_syscall() {
-    return RR_PAGE_IN_UNTRACED_REPLAYED_SYSCALL_ADDR;
-  }
-  /**
-   * This doesn't need to be the same for all architectures, but may as well
-   * make it so.
-   */
-  static remote_code_ptr rr_page_ip_in_traced_syscall() {
-    return RR_PAGE_IN_TRACED_SYSCALL_ADDR;
-  }
-  /**
-   * ip() when we're in an untraced system call; same for all supported
-   * architectures (hence static).
-   */
-  static remote_code_ptr rr_page_ip_in_privileged_untraced_syscall() {
-    return RR_PAGE_IN_PRIVILEGED_UNTRACED_SYSCALL_ADDR;
-  }
-  /**
-   * This doesn't need to be the same for all architectures, but may as well
-   * make it so.
-   */
-  static remote_code_ptr rr_page_ip_in_privileged_traced_syscall() {
-    return RR_PAGE_IN_PRIVILEGED_TRACED_SYSCALL_ADDR;
-  }
+
+  enum Traced { TRACED, UNTRACED };
+  enum Privileged { PRIVILEGED, UNPRIVILEGED };
+  enum Enabled { RECORDING_ONLY, REPLAY_ONLY, RECORDING_AND_REPLAY };
+  static remote_code_ptr rr_page_syscall_exit_point(Traced traced,
+                                                    Privileged privileged,
+                                                    Enabled enabled);
+  static remote_code_ptr rr_page_syscall_entry_point(Traced traced,
+                                                     Privileged privileged,
+                                                     Enabled enabled,
+                                                     SupportedArch arch);
+
+  struct SyscallType {
+    Traced traced;
+    Privileged privileged;
+    Enabled enabled;
+  };
+  static std::vector<SyscallType> rr_page_syscalls();
+  static const SyscallType* rr_page_syscall_from_exit_point(remote_code_ptr ip);
+
   /**
    * Return a pointer to 8 bytes of 0xFF
    */
   static remote_ptr<uint8_t> rr_page_ff_bytes() { return RR_PAGE_FF_BYTES; }
-  /**
-   * ip() of the untraced traced system call instruction.
-   */
-  remote_code_ptr rr_page_untraced_syscall_ip(SupportedArch arch) {
-    return rr_page_ip_in_untraced_syscall().decrement_by_syscall_insn_length(
-        arch);
-  }
-  /**
-   * ip() of the traced traced system call instruction.
-   */
-  remote_code_ptr rr_page_traced_syscall_ip(SupportedArch arch) {
-    return rr_page_ip_in_traced_syscall().decrement_by_syscall_insn_length(
-        arch);
-  }
-  /**
-   * ip() of the privileged untraced traced system call instruction.
-   */
-  remote_code_ptr rr_page_privileged_untraced_syscall_ip(SupportedArch arch) {
-    return rr_page_ip_in_privileged_untraced_syscall()
-        .decrement_by_syscall_insn_length(arch);
-  }
-  /**
-   * ip() of the privileged traced traced system call instruction.
-   */
-  remote_code_ptr rr_page_privileged_traced_syscall_ip(SupportedArch arch) {
-    return rr_page_ip_in_privileged_traced_syscall()
-        .decrement_by_syscall_insn_length(arch);
-  }
 
   /**
    * Locate a syscall instruction in t's VDSO.

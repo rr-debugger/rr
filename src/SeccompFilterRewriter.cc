@@ -62,33 +62,27 @@ static void install_patched_seccomp_filter_arch(
     }
   }
 
-  uintptr_t privileged_in_untraced_syscall_ip =
-      AddressSpace::rr_page_ip_in_privileged_untraced_syscall()
-          .register_value();
-  uintptr_t privileged_in_traced_syscall_ip =
-      AddressSpace::rr_page_ip_in_privileged_traced_syscall().register_value();
-  assert(privileged_in_untraced_syscall_ip ==
-         uint32_t(privileged_in_untraced_syscall_ip));
-  assert(privileged_in_traced_syscall_ip ==
-         uint32_t(privileged_in_traced_syscall_ip));
-
-  static const typename Arch::sock_filter prefix[] = {
-    ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_untraced_syscall_ip)),
-    ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_traced_syscall_ip))
-  };
-  code.insert(code.begin(), prefix, prefix + array_length(prefix));
+  SeccompFilter<typename Arch::sock_filter> f;
+  for (auto& e : AddressSpace::rr_page_syscalls()) {
+    if (e.privileged == AddressSpace::PRIVILEGED) {
+      auto ip = AddressSpace::rr_page_syscall_exit_point(e.traced, e.privileged,
+                                                         e.enabled);
+      f.allow_syscalls_from_callsite(ip);
+    }
+  }
+  f.filters.insert(f.filters.end(), code.begin(), code.end());
 
   long ret;
   {
     AutoRemoteSyscalls remote(t);
-    AutoRestoreMem mem(remote, nullptr,
-                       sizeof(prog) +
-                           code.size() * sizeof(typename Arch::sock_filter));
+    AutoRestoreMem mem(
+        remote, nullptr,
+        sizeof(prog) + f.filters.size() * sizeof(typename Arch::sock_filter));
     auto code_ptr = mem.get().cast<typename Arch::sock_filter>();
-    t->write_mem(code_ptr, code.data(), code.size());
-    prog.len = code.size();
+    t->write_mem(code_ptr, f.filters.data(), f.filters.size());
+    prog.len = f.filters.size();
     prog.filter = code_ptr;
-    auto prog_ptr = remote_ptr<void>(code_ptr + code.size())
+    auto prog_ptr = remote_ptr<void>(code_ptr + f.filters.size())
                         .cast<typename Arch::sock_fprog>();
     t->write_mem(prog_ptr, prog);
 

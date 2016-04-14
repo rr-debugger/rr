@@ -25,6 +25,10 @@
 
 #include <asm/unistd.h>
 
+#include <vector>
+
+#include "remote_code_ptr.h"
+
 #include <sys/user.h>
 #include <sys/prctl.h>
 #ifndef PR_SET_NO_NEW_PRIVS
@@ -57,15 +61,28 @@ struct seccomp_data {
 };
 #endif
 
+namespace rr {
+
 #define inst_ptr (offsetof(struct seccomp_data, instruction_pointer))
 
-#define ALLOW_SYSCALLS_FROM_CALLSITE(callsite)                                 \
-  BPF_STMT(BPF_LD + BPF_W + BPF_ABS, inst_ptr),                                \
-      BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, callsite, 0, 1), ALLOW_PROCESS
-
-#define ALLOW_PROCESS BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW)
-
-#define TRACE_PROCESS                                                          \
-  BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE | SECCOMP_RET_DATA)
+template <typename T> class SeccompFilter {
+public:
+  void allow() {
+    filters.push_back(BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW));
+  }
+  void trace() {
+    filters.push_back(
+        BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE | SECCOMP_RET_DATA));
+  }
+  void allow_syscalls_from_callsite(remote_code_ptr ip) {
+    uint32_t v(ip.register_value());
+    assert(ip.register_value() == v);
+    filters.push_back(BPF_STMT(BPF_LD + BPF_W + BPF_ABS, inst_ptr));
+    filters.push_back(BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, v, 0, 1));
+    allow();
+  }
+  std::vector<T> filters;
+};
+}
 
 #endif /* RR_SECCOMP_BPF_H_ */

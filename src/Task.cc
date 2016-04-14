@@ -2193,46 +2193,26 @@ static void set_up_process(Session& session, const ScopedFd& err_fd) {
  * one.
  */
 static void set_up_seccomp_filter(Session& session, int err_fd) {
-  struct sock_fprog prog;
-
+  SeccompFilter<struct sock_filter> f;
   if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
-    uintptr_t in_untraced_syscall_ip =
-        AddressSpace::rr_page_ip_in_untraced_syscall().register_value();
-    uintptr_t in_untraced_replayed_syscall_ip =
-        AddressSpace::rr_page_ip_in_untraced_replayed_syscall()
-            .register_value();
-    uintptr_t privileged_in_untraced_syscall_ip =
-        AddressSpace::rr_page_ip_in_privileged_untraced_syscall()
-            .register_value();
-    assert(in_untraced_syscall_ip == uint32_t(in_untraced_syscall_ip));
-    assert(in_untraced_replayed_syscall_ip ==
-           uint32_t(in_untraced_replayed_syscall_ip));
-    assert(privileged_in_untraced_syscall_ip ==
-           uint32_t(privileged_in_untraced_syscall_ip));
-
-    struct sock_filter filter[] = {
-      /* Allow all system calls from our untraced_syscall callsite */
-      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_syscall_ip)),
-      /* Allow all system calls from our untraced_syscall callsite */
-      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(in_untraced_replayed_syscall_ip)),
-      /* Allow all system calls from our privilged_untraced_syscall callsite */
-      ALLOW_SYSCALLS_FROM_CALLSITE(uint32_t(privileged_in_untraced_syscall_ip)),
-      /* All the rest are handled in rr */
-      TRACE_PROCESS,
-    };
-    prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
-    prog.filter = filter;
+    for (auto& e : AddressSpace::rr_page_syscalls()) {
+      if (e.traced == AddressSpace::UNTRACED) {
+        auto ip = AddressSpace::rr_page_syscall_exit_point(
+            e.traced, e.privileged, e.enabled);
+        f.allow_syscalls_from_callsite(ip);
+      }
+    }
+    f.trace();
   } else {
     // Use a dummy filter that always generates ptrace traps. Supplying this
     // dummy filter makes ptrace-event behavior consistent whether or not
     // we enable syscall buffering, and more importantly, consistent whether
     // or not the tracee installs its own seccomp filter.
-    struct sock_filter filter[] = {
-      TRACE_PROCESS,
-    };
-    prog.len = (unsigned short)(sizeof(filter) / sizeof(filter[0]));
-    prog.filter = filter;
+    f.trace();
   }
+
+  struct sock_fprog prog = { (unsigned short)f.filters.size(),
+                             f.filters.data() };
 
   /* Note: the filter is installed only for record. This call
    * will be emulated in the replay */

@@ -267,9 +267,8 @@ public:
    * instruction.
    */
   bool is_in_untraced_syscall() {
-    return ip() == AddressSpace::rr_page_ip_in_untraced_syscall() ||
-           ip() == AddressSpace::rr_page_ip_in_untraced_replayed_syscall() ||
-           ip() == AddressSpace::rr_page_ip_in_privileged_untraced_syscall();
+    auto t = AddressSpace::rr_page_syscall_from_exit_point(ip());
+    return t && t->traced == AddressSpace::UNTRACED;
   }
 
   bool is_in_rr_page() {

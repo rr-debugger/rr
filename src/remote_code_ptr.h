@@ -58,6 +58,8 @@ public:
   // intended for use by Registers and the operator <<
   uintptr_t register_value() const { return ptr; }
 
+  bool is_null() const { return !ptr; }
+
 private:
   // Return the integer value for this pointer viewed as a data pointer.
   // A no-op on Intel architectures, will mask off the thumb bit on ARM.

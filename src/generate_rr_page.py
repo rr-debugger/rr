@@ -18,23 +18,44 @@ def write_rr_page(f, is_64, is_replay):
             0xcd, 0x80, # int 0x80
             0xc3, # ret
         ])
+    nocall_bytes = bytearray([
+        0x31, 0xc0, # xor %eax,%eax
+        0xc3, # ret
+    ])
+
     # traced
     f.write(bytes)
     # privileged traced
     f.write(bytes)
-    # untraced replayed
-    f.write(bytes)
-    if is_replay:
-        # regular untraced syscalls are not executed during replay.
-        # Instead we just emulate success.
-        bytes[0] = 0x31
-        bytes[1] = 0xc0 # xor %eax,%eax
+
     # untraced
     f.write(bytes)
+    # untraced replay-only
+    if is_replay:
+        f.write(bytes)
+    else:
+        f.write(nocall_bytes)
+    # untraced record-only
+    if is_replay:
+        f.write(nocall_bytes)
+    else:
+        f.write(bytes)
+
     # privileged untraced
     f.write(bytes)
-    bytes = bytearray([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
-    f.write(bytes)
+    # privileged untraced replay-only
+    if is_replay:
+        f.write(bytes)
+    else:
+        f.write(nocall_bytes)
+    # privileged untraced record-only
+    if is_replay:
+        f.write(nocall_bytes)
+    else:
+        f.write(bytes)
+
+    ff_bytes = bytearray([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff])
+    f.write(ff_bytes)
 
 generators_for = {
     'rr_page_32': lambda stream: write_rr_page(stream, False, False),

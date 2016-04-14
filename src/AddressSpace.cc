@@ -248,9 +248,76 @@ void AddressSpace::map_rr_page(Task* t) {
   map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name, fstat.st_dev,
       fstat.st_ino);
 
-  traced_syscall_ip_ = rr_page_traced_syscall_ip(t->arch());
-  privileged_traced_syscall_ip_ =
-      rr_page_privileged_traced_syscall_ip(t->arch());
+  traced_syscall_ip_ = rr_page_syscall_entry_point(
+      TRACED, UNPRIVILEGED, RECORDING_AND_REPLAY, t->arch());
+  privileged_traced_syscall_ip_ = rr_page_syscall_entry_point(
+      TRACED, PRIVILEGED, RECORDING_AND_REPLAY, t->arch());
+}
+
+/**
+ * Must match generate_rr_page.py
+ */
+static const AddressSpace::SyscallType entry_points[] = {
+  { AddressSpace::TRACED, AddressSpace::UNPRIVILEGED,
+    AddressSpace::RECORDING_AND_REPLAY },
+  { AddressSpace::TRACED, AddressSpace::PRIVILEGED,
+    AddressSpace::RECORDING_AND_REPLAY },
+  { AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
+    AddressSpace::RECORDING_AND_REPLAY },
+  { AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
+    AddressSpace::REPLAY_ONLY },
+  { AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
+    AddressSpace::RECORDING_ONLY },
+  { AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
+    AddressSpace::RECORDING_AND_REPLAY },
+  { AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
+    AddressSpace::REPLAY_ONLY },
+  { AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
+    AddressSpace::RECORDING_ONLY },
+};
+
+static remote_code_ptr ip_from_index(size_t i) {
+  return remote_code_ptr(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * i +
+                         RR_PAGE_SYSCALL_INSTRUCTION_END);
+}
+
+remote_code_ptr AddressSpace::rr_page_syscall_exit_point(Traced traced,
+                                                         Privileged privileged,
+                                                         Enabled enabled) {
+  for (auto& e : entry_points) {
+    if (e.traced == traced && e.privileged == privileged &&
+        e.enabled == enabled) {
+      return ip_from_index(&e - entry_points);
+    }
+  }
+  return nullptr;
+}
+
+const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_exit_point(
+    remote_code_ptr ip) {
+  for (size_t i = 0; i < array_length(entry_points); ++i) {
+    if (ip_from_index(i) == ip) {
+      return &entry_points[i];
+    }
+  }
+  return nullptr;
+}
+
+remote_code_ptr AddressSpace::rr_page_syscall_entry_point(Traced traced,
+                                                          Privileged privileged,
+                                                          Enabled enabled,
+                                                          SupportedArch arch) {
+  remote_code_ptr ip = rr_page_syscall_exit_point(traced, privileged, enabled);
+  return ip.is_null() ? remote_code_ptr()
+                      : ip.decrement_by_syscall_insn_length(arch);
+}
+
+vector<AddressSpace::SyscallType> AddressSpace::rr_page_syscalls() {
+  vector<SyscallType> result;
+  for (auto& e : entry_points) {
+    result.push_back(e);
+  }
+  return result;
 }
 
 template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
