@@ -232,8 +232,10 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
    * immutable, skip checksumming, it's a waste of time.  Except
    * if the mapping is mutable, for example the rw data segment
    * of a system library, then it's interesting. */
+  static const char mmap_clone[] = "mmap_clone_";
   may_diverge =
-      should_copy_mmap_region(m.map, st) || (PROT_WRITE & m.map.prot());
+      m.map.fsname().substr(0, array_length(mmap_clone) - 1) != mmap_clone &&
+      (should_copy_mmap_region(m.map, st) || (PROT_WRITE & m.map.prot()));
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"
              << m.map.fsname() << "'";
   return may_diverge;
@@ -272,8 +274,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   for (auto m : as.maps()) {
     vector<uint8_t> mem;
     ssize_t valid_mem_len = 0;
+    bool use_checksum = checksum_segment_filter(m);
 
-    if (checksum_segment_filter(m)) {
+    if (use_checksum) {
       mem.resize(m.map.size());
       valid_mem_len =
           t->read_bytes_fallible(m.map.start(), m.map.size(), mem.data());
@@ -341,7 +344,8 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
                    << rec_start_addr << dec;
         continue;
       }
-      if (checksum != rec_checksum) {
+      // Ignore checksums when valid_mem_len == 0
+      if (use_checksum && checksum != rec_checksum) {
         notify_checksum_error(rt, c.global_time, checksum, rec_checksum,
                               raw_map_line.c_str());
       }

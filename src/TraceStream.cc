@@ -29,7 +29,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 48
+#define TRACE_VERSION 49
 
 struct SubstreamData {
   const char* name;
@@ -306,21 +306,52 @@ TraceTaskEvent TraceReader::read_task_event() {
   return r;
 }
 
+static string base_file_name(const string& file_name) {
+  size_t last_slash = file_name.rfind('/');
+  return (last_slash != file_name.npos) ? file_name.substr(last_slash + 1)
+                                        : file_name;
+}
+
 string TraceWriter::try_hardlink_file(const string& file_name) {
   char count_str[20];
   sprintf(count_str, "%d", mmap_count);
 
-  size_t last_slash = file_name.rfind('/');
-  string basename = (last_slash != file_name.npos)
-                        ? file_name.substr(last_slash + 1)
-                        : file_name;
-  string link_path = dir() + "/mmap_" + count_str + "_hardlink_" + basename;
-  int ret = link(file_name.c_str(), link_path.c_str());
+  string path =
+      string("mmap_hardlink_") + count_str + "_" + base_file_name(file_name);
+  int ret = link(file_name.c_str(), (dir() + "/" + path).c_str());
   if (ret < 0) {
     // maybe tried to link across filesystems?
     return file_name;
   }
-  return link_path;
+  return path;
+}
+
+bool TraceWriter::try_clone_file(const string& file_name, string* new_name) {
+  char count_str[20];
+  sprintf(count_str, "%d", mmap_count);
+
+  string path =
+      string("mmap_clone_") + count_str + "_" + base_file_name(file_name);
+
+  ScopedFd src(file_name.c_str(), O_RDONLY);
+  if (!src.is_open()) {
+    return false;
+  }
+  string dest_path = dir() + "/" + path;
+  ScopedFd dest(dest_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0700);
+  if (!dest.is_open()) {
+    return false;
+  }
+
+  int ret = ioctl(dest, BTRFS_IOC_CLONE, src.get());
+  if (ret < 0) {
+    // maybe not on the same filesystem, or filesystem doesn't support clone?
+    unlink(dest_path.c_str());
+    return false;
+  }
+
+  *new_name = path;
+  return true;
 }
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
@@ -333,6 +364,8 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   } else if (origin == SYSCALL_MAPPING &&
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
     source = TraceReader::SOURCE_ZERO;
+  } else if (try_clone_file(km.fsname(), &backing_file_name)) {
+    source = TraceReader::SOURCE_FILE;
   } else if (should_copy_mmap_region(km, stat) &&
              files_assumed_immutable.find(make_pair(
                  stat.st_dev, stat.st_ino)) == files_assumed_immutable.end()) {
@@ -389,20 +422,25 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found) {
       backing_file_name >> mode >> uid >> gid >> file_size >> mtime;
   assert(time == global_time);
   if (data->source == SOURCE_FILE) {
+    static const string clone_prefix("mmap_clone_");
+    bool is_clone =
+        backing_file_name.substr(0, clone_prefix.size()) == clone_prefix;
     if (backing_file_name[0] != '/') {
       backing_file_name = dir() + "/" + backing_file_name;
     }
-    struct stat backing_stat;
-    if (stat(backing_file_name.c_str(), &backing_stat)) {
-      FATAL() << "Failed to stat " << backing_file_name
-              << ": replay is impossible";
-    }
-    if (backing_stat.st_ino != inode || backing_stat.st_mode != mode ||
-        backing_stat.st_uid != uid || backing_stat.st_gid != gid ||
-        backing_stat.st_size != file_size || backing_stat.st_mtime != mtime) {
-      LOG(error)
-          << "Metadata of " << original_file_name
-          << " changed: replay divergence likely, but continuing anyway ...";
+    if (!is_clone) {
+      struct stat backing_stat;
+      if (stat(backing_file_name.c_str(), &backing_stat)) {
+        FATAL() << "Failed to stat " << backing_file_name
+                << ": replay is impossible";
+      }
+      if (backing_stat.st_ino != inode || backing_stat.st_mode != mode ||
+          backing_stat.st_uid != uid || backing_stat.st_gid != gid ||
+          backing_stat.st_size != file_size || backing_stat.st_mtime != mtime) {
+        LOG(error)
+            << "Metadata of " << original_file_name
+            << " changed: replay divergence likely, but continuing anyway ...";
+      }
     }
   }
   data->file_name = backing_file_name;
