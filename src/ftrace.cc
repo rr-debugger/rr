@@ -86,7 +86,9 @@ static void receive_marker_fd() {
 }
 
 void start_function_graph(const Session& session, const TraceStream& trace) {
-  assert(!tracing);
+  if (tracing) {
+    return;
+  }
 
   if (!control_fd.is_open()) {
     open_socket();
