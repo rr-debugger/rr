@@ -2335,6 +2335,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE_GENERIC_NONBLOCKING_FD(lseek);
     CASE(madvise);
     CASE_GENERIC_NONBLOCKING(mkdir);
+    CASE_GENERIC_NONBLOCKING(mknod);
     CASE(mprotect);
     CASE(open);
     CASE(poll);
