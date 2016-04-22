@@ -34,6 +34,8 @@ RecordCommand RecordCommand::singleton(
     "                             tests.\n"
     "  -n, --no-syscall-buffer    disable the syscall buffer preload \n"
     "                             library even if it would otherwise be used\n"
+    "  --no-read-cloning          disable file-block cloning for syscallbuf\n"
+    "                             reads\n"
     "  -s, --always-switch        tryto context switch at every rr event\n"
     "  -t, --continue-through-signal=<SIG>\n"
     "                             Unhandled <SIG> signals will be ignored\n"
@@ -65,6 +67,9 @@ struct RecordFlags {
   /* Whether to use syscall buffering optimization during recording. */
   RecordSession::SyscallBuffering use_syscall_buffer;
 
+  /* Whether to use read-cloning optimization during recording. */
+  bool use_read_cloning;
+
   /* Whether tracee processes in record and replay are allowed
    * to run on any logical CPU. */
   RecordSession::BindCPU bind_cpu;
@@ -73,7 +78,7 @@ struct RecordFlags {
   bool always_switch;
 
   /* Whether to enable chaos mode in the scheduler */
-  RecordSession::Chaos chaos;
+  bool chaos;
 
   /* True if we should wait for all processes to exit before finishing
    * recording. */
@@ -84,9 +89,10 @@ struct RecordFlags {
         ignore_sig(0),
         continue_through_sig(0),
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
+        use_read_cloning(true),
         bind_cpu(RecordSession::BIND_CPU),
         always_switch(false),
-        chaos(RecordSession::DISABLE_CHAOS),
+        chaos(false),
         wait_for_all(false) {}
 };
 
@@ -102,6 +108,7 @@ static bool parse_record_arg(std::vector<std::string>& args,
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
     { 'n', "no-syscall-buffer", NO_PARAMETER },
+    { 0, "no-read-cloning", NO_PARAMETER },
     { 's', "always-switch", NO_PARAMETER },
     { 't', "continue-through-signal", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
@@ -126,7 +133,7 @@ static bool parse_record_arg(std::vector<std::string>& args,
       break;
     case 'h':
       LOG(info) << "Enabled chaos mode";
-      flags.chaos = RecordSession::ENABLE_CHAOS;
+      flags.chaos = true;
       break;
     case 'i':
       if (!opt.verify_valid_int(1, _NSIG - 1)) {
@@ -136,6 +143,9 @@ static bool parse_record_arg(std::vector<std::string>& args,
       break;
     case 'n':
       flags.use_syscall_buffer = RecordSession::DISABLE_SYSCALL_BUF;
+      break;
+    case 0:
+      flags.use_read_cloning = false;
       break;
     case 's':
       flags.always_switch = true;
@@ -199,6 +209,8 @@ static void setup_session_from_flags(RecordSession& session,
                                      const RecordFlags& flags) {
   session.scheduler().set_max_ticks(flags.max_ticks);
   session.scheduler().set_always_switch(flags.always_switch);
+  session.set_enable_chaos(flags.chaos);
+  session.set_use_read_cloning(flags.use_read_cloning);
   session.set_ignore_sig(flags.ignore_sig);
   session.set_continue_through_sig(flags.continue_through_sig);
   session.set_wait_for_all(flags.wait_for_all);
@@ -207,9 +219,8 @@ static void setup_session_from_flags(RecordSession& session,
 static int record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
-  auto session =
-      RecordSession::create(args, flags.extra_env, flags.use_syscall_buffer,
-                            flags.bind_cpu, flags.chaos);
+  auto session = RecordSession::create(
+      args, flags.extra_env, flags.use_syscall_buffer, flags.bind_cpu);
   setup_session_from_flags(*session, flags);
 
   // Install signal handlers after creating the session, to ensure they're not

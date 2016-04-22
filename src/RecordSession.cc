@@ -1317,7 +1317,7 @@ static string find_syscall_buffer_library() {
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const vector<string>& argv, const vector<string>& extra_env,
-    SyscallBuffering syscallbuf, BindCPU bind_cpu, Chaos chaos) {
+    SyscallBuffering syscallbuf, BindCPU bind_cpu) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -1391,25 +1391,23 @@ static string find_syscall_buffer_library() {
   // it is useless when running under rr.
   env.push_back("MOZ_GDB_SLEEP=0");
 
-  shr_ptr session(
-      new RecordSession(argv, env, cwd, syscallbuf, bind_cpu, chaos));
+  shr_ptr session(new RecordSession(argv, env, cwd, syscallbuf, bind_cpu));
   return session;
 }
 
 RecordSession::RecordSession(const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              const string& cwd, SyscallBuffering syscallbuf,
-                             BindCPU bind_cpu, Chaos chaos)
+                             BindCPU bind_cpu)
     : trace_out(argv, envp, cwd, choose_cpu(bind_cpu)),
       scheduler_(*this),
       ignore_sig(0),
       continue_through_sig(0),
       last_task_switchable(PREVENT_SWITCH),
       use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
+      use_read_cloning_(true),
       enable_chaos_(false),
       wait_for_all_(false) {
-  scheduler().set_enable_chaos(chaos == ENABLE_CHAOS);
-  set_enable_chaos(chaos == ENABLE_CHAOS);
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t =
       static_cast<RecordTask*>(Task::spawn(*this, error_fd, trace_out));

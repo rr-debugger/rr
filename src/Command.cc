@@ -99,7 +99,7 @@ bool Command::parse_option(std::vector<std::string>& args,
   }
 
   for (size_t i = 0; i < count; ++i) {
-    if (args[0][1] == option_specs[i].short_name) {
+    if (args[0][1] == option_specs[i].short_name && args[0][1] >= 32) {
       out->short_name = option_specs[i].short_name;
       switch (option_specs[i].param) {
         case NO_PARAMETER:

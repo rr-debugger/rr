@@ -414,7 +414,8 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
     desched_fd = remote.retrieve_fd(desched_fd_child);
 
-    if (trace_writer().supports_file_data_cloning()) {
+    if (trace_writer().supports_file_data_cloning() &&
+        session().use_read_cloning()) {
       string clone_file_name = trace_writer().file_data_clone_file_name(tuid());
       AutoRestoreMem name(remote, clone_file_name.c_str());
       int cloned_file_data = remote.syscall(syscall_number_for_openat(arch()),

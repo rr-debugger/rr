@@ -26,14 +26,14 @@ public:
    */
   enum SyscallBuffering { ENABLE_SYSCALL_BUF, DISABLE_SYSCALL_BUF };
   enum BindCPU { BIND_CPU, UNBOUND_CPU };
-  enum Chaos { ENABLE_CHAOS, DISABLE_CHAOS };
   static shr_ptr create(
       const std::vector<std::string>& argv,
       const std::vector<std::string>& extra_env = std::vector<std::string>(),
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
-      BindCPU bind_cpu = BIND_CPU, Chaos chaos = DISABLE_CHAOS);
+      BindCPU bind_cpu = BIND_CPU);
 
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
+  bool use_read_cloning() const { return use_read_cloning_; }
   void set_ignore_sig(int sig) { ignore_sig = sig; }
   int get_ignore_sig() const { return ignore_sig; }
   void set_continue_through_sig(int sig) { continue_through_sig = sig; }
@@ -94,9 +94,12 @@ public:
   };
 
   void set_enable_chaos(bool enable_chaos) {
+    scheduler().set_enable_chaos(enable_chaos);
     this->enable_chaos_ = enable_chaos;
   }
-  bool enable_chaos() { return enable_chaos_; }
+  bool enable_chaos() const { return enable_chaos_; }
+
+  void set_use_read_cloning(bool enable) { this->use_read_cloning_ = enable; }
 
   void set_wait_for_all(bool wait_for_all) {
     this->wait_for_all_ = wait_for_all;
@@ -111,7 +114,7 @@ public:
 private:
   RecordSession(const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp, const std::string& cwd,
-                SyscallBuffering syscallbuf, BindCPU bind_cpu, Chaos chaos);
+                SyscallBuffering syscallbuf, BindCPU bind_cpu);
 
   virtual void on_create(Task* t);
 
@@ -137,6 +140,7 @@ private:
   Switchable last_task_switchable;
   bool use_syscall_buffer_;
 
+  bool use_read_cloning_;
   /**
    * When true, try to increase the probability of finding bugs.
    */
