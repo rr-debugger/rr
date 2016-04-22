@@ -1810,27 +1810,28 @@ static long sys_read(const struct syscall_info* call) {
   void* buf2 = NULL;
   long ret;
 
-  // Try cloning data using CLONE_RANGE ioctl.
-  // XXX switch to FIOCLONERANGE when that's more widely available. It's the
-  // same ioctl number so it won't affect rr per se but it'd be cleaner code.
-  // 64-bit only for now, since lseek and pread64 need special handling for
-  // 32-bit.
-  // Basically we break down the read into three syscalls lseek, clone and
-  // read-from-clone, each of which is individually syscall-buffered.
-  // Crucially, the read-from-clone syscall does NOT store data in the syscall
-  // buffer; instead, we perform the syscall during replay, assuming that
-  // cloned_file_data_fd is open to the same file during replay.
-  // Reads that hit EOF are rejected by the CLONE_RANGE ioctl so we take the
-  // slow path. That's OK.
-  // There is a possible race here: between cloning the data and reading from
-  // |fd|, |fd|'s data may be overwritten, in which case the data read during
-  // replay will not match the data read during recording, causing divergence.
-  // I don't see any performant way to avoid this race; I tried reading from
-  // the cloned data instead of |fd|, but that is very slow because readahead
-  // doesn't work. (The cloned data file always ends at the current offset so
-  // there is nothing to readahead.) However, if an application triggers this
-  // race, it's almost certainly a bad bug because Linux can return any
-  // interleaving of old+new data for the read even without rr.
+  /* Try cloning data using CLONE_RANGE ioctl.
+   * XXX switch to FIOCLONERANGE when that's more widely available. It's the
+   * same ioctl number so it won't affect rr per se but it'd be cleaner code.
+   * 64-bit only for now, since lseek and pread64 need special handling for
+   * 32-bit.
+   * Basically we break down the read into three syscalls lseek, clone and
+   * read-from-clone, each of which is individually syscall-buffered.
+   * Crucially, the read-from-clone syscall does NOT store data in the syscall
+   * buffer; instead, we perform the syscall during replay, assuming that
+   * cloned_file_data_fd is open to the same file during replay.
+   * Reads that hit EOF are rejected by the CLONE_RANGE ioctl so we take the
+   * slow path. That's OK.
+   * There is a possible race here: between cloning the data and reading from
+   * |fd|, |fd|'s data may be overwritten, in which case the data read during
+   * replay will not match the data read during recording, causing divergence.
+   * I don't see any performant way to avoid this race; I tried reading from
+   * the cloned data instead of |fd|, but that is very slow because readahead
+   * doesn't work. (The cloned data file always ends at the current offset so
+   * there is nothing to readahead.) However, if an application triggers this
+   * race, it's almost certainly a bad bug because Linux can return any
+   * interleaving of old+new data for the read even without rr.
+   */
   if (buf && count >= CLONE_SIZE_THRESHOLD && cloned_file_data_fd >= 0 &&
       is_bufferable_fd(fd) && sizeof(void*) == 8 && !(count & 4095)) {
     struct syscall_info lseek_call = { SYS_lseek,
@@ -1838,16 +1839,29 @@ static long sys_read(const struct syscall_info* call) {
     off_t lseek_ret = sys_generic_nonblocking_fd(&lseek_call);
     if (lseek_ret > 0 && !(lseek_ret & 4095)) {
       struct btrfs_ioctl_clone_range_args ioctl_args;
-      struct syscall_info ioctl_call = { SYS_ioctl,
-                                         { cloned_file_data_fd,
-                                           BTRFS_IOC_CLONE_RANGE,
-                                           (long)&ioctl_args, 0, 0, 0 } };
       int ioctl_ret;
+      void* ioctl_ptr = prep_syscall();
       ioctl_args.src_fd = fd;
       ioctl_args.src_offset = lseek_ret;
       ioctl_args.src_length = count;
       ioctl_args.dest_offset = cloned_file_data_offset;
-      ioctl_ret = sys_ioctl(&ioctl_call);
+
+      /* Don't call sys_ioctl here; cloned_file_data_fd has syscall buffering
+       * disabled for it so rr can reject attempts to close/dup to it. But
+       * we want to allow syscall buffering of this ioctl on it.
+       */
+      if (!start_commit_buffered_syscall(SYS_ioctl, ioctl_ptr, WONT_BLOCK)) {
+        struct syscall_info ioctl_call = { SYS_ioctl,
+                                           { cloned_file_data_fd,
+                                             BTRFS_IOC_CLONE_RANGE,
+                                             (long)&ioctl_args, 0, 0, 0 } };
+        ioctl_ret = traced_raw_syscall(&ioctl_call);
+      } else {
+        ioctl_ret = untraced_syscall3(SYS_ioctl, cloned_file_data_fd,
+                                      BTRFS_IOC_CLONE_RANGE, &ioctl_args);
+        ioctl_ret = commit_raw_syscall(SYS_ioctl, ioctl_ptr, ioctl_ret);
+      }
+
       if (ioctl_ret >= 0) {
         struct syscall_info read_call = { SYS_read,
                                           { fd, (long)buf, count, 0, 0, 0 } };
