@@ -809,7 +809,8 @@ template <> void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher&) {
         write_and_record_bytes(t, absolute_address, patch);
         LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
                    << " to syscall "
-                   << syscalls_to_monkeypatch[j].syscall_number;
+                   << syscalls_to_monkeypatch[j].syscall_number << " at "
+                   << absolute_address;
       }
     }
   }
