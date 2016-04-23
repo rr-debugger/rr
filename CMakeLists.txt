@@ -438,6 +438,7 @@ set(BASIC_TESTS
   mprotect_heterogenous
   mprotect_none
   mprotect_stack
+  mprotect_syscallbuf_overflow
   mremap
   mremap_shrink
   msg

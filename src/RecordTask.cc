@@ -1116,8 +1116,6 @@ void RecordTask::maybe_flush_syscallbuf() {
   // Apply buffered mprotect operations and flush the buffer in the tracee.
   if (hdr.mprotect_record_count) {
     auto records = read_mem(mprotect_records, hdr.mprotect_record_count);
-    syscallbuf_hdr->mprotect_record_count = 0;
-    syscallbuf_hdr->mprotect_record_count_completed = 0;
     for (auto& r : records) {
       as->protect(r.start, r.size, r.prot);
     }

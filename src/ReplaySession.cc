@@ -816,8 +816,7 @@ Completion ReplaySession::emulate_deterministic_signal(
 
 /**
  * Restore the recorded syscallbuf data to the tracee, preparing the
- * tracee for replaying the records.  Return the number of record
- * bytes and a pointer to the first record through outparams.
+ * tracee for replaying the records.
  */
 void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
   // Read the recorded syscall buffer back into the buffer
@@ -925,8 +924,6 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
     Registers r = t->regs();
     r.set_ip(current_step.flush.stop_breakpoint_addr);
     t->set_regs(r);
-    t->syscallbuf_hdr->mprotect_record_count = 0;
-    t->syscallbuf_hdr->mprotect_record_count_completed = 0;
     return COMPLETE;
   }
 

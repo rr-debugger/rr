@@ -1674,6 +1674,8 @@ void Task::reset_syscallbuf() {
   uint8_t* ptr = (uint8_t*)(syscallbuf_hdr + 1);
   memset(ptr, 0, syscallbuf_hdr->num_rec_bytes);
   syscallbuf_hdr->num_rec_bytes = 0;
+  syscallbuf_hdr->mprotect_record_count = 0;
+  syscallbuf_hdr->mprotect_record_count_completed = 0;
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
