@@ -768,6 +768,7 @@ template <> void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher&) {
   setup_preload_library_path<X64Arch>(t);
 
   auto vdso_start = t->vm()->vdso().start();
+  size_t vdso_size = t->vm()->vdso().size();
 
   auto syms = read_vdso_symbols(t);
 
@@ -786,25 +787,34 @@ template <> void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher&) {
     for (size_t i = 0; i < syms.size(); ++i) {
       if (syms.is_name(i, syscall.name)) {
         // Absolutely-addressed symbols in the VDSO claim to start here.
+        static const uint64_t vdso_static_base = 0xffffffffff700000LL;
         static const uintptr_t vdso_max_size = 0xffffLL;
         uintptr_t sym_address = syms.file_offset(i);
         uintptr_t sym_offset = sym_address & vdso_max_size;
-        uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
 
-        uint8_t patch[X64VsyscallMonkeypatch::size];
-        uint32_t syscall_number = syscall.syscall_number;
-        X64VsyscallMonkeypatch::substitute(patch, syscall_number);
+        // In 4.4.6-301.fc23.x86_64 we occasionally see a grossly invalid
+        // address, se.g. 0x11c6970 for __vdso_getcpu. :-(
+        if ((sym_address >= vdso_static_base &&
+             sym_address < vdso_static_base + vdso_size) ||
+            sym_address < vdso_size) {
+          uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
 
-        write_and_record_bytes(t, absolute_address, patch);
-        LOG(debug) << "monkeypatched " << syscall.name
-                   << " to syscall "
-                   << syscall.syscall_number << " at "
-                   << HEX(absolute_address) << " (" << HEX(sym_address) << ")";
-        // With 4.3.3-301.fc23.x86_64, once in a while we
-        // see a VDSO symbol with a crazy file offset in it which is a
-        // duplicate of another symbol. Bizzarro. So, stop once we see the
-        // first symbol (which always seems to be the valid one).
-        break;
+          uint8_t patch[X64VsyscallMonkeypatch::size];
+          uint32_t syscall_number = syscall.syscall_number;
+          X64VsyscallMonkeypatch::substitute(patch, syscall_number);
+
+          write_and_record_bytes(t, absolute_address, patch);
+          LOG(debug) << "monkeypatched " << syscall.name << " to syscall "
+                     << syscall.syscall_number << " at "
+                     << HEX(absolute_address) << " (" << HEX(sym_address)
+                     << ")";
+
+          // With 4.4.6-301.fc23.x86_64, once in a while we see a VDSO symbol
+          // with an incorrect file offset (a small integer) in it
+          // which is a duplicate of a previous symbol. Bizzarro. So, stop once
+          // we see a valid value for the symbol.
+          break;
+        }
       }
     }
   }
