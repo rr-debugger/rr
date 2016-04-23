@@ -782,35 +782,29 @@ template <> void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher&) {
 #undef S
   };
 
-  for (size_t i = 0; i < syms.size(); ++i) {
-    for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
-      if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
+  for (auto& syscall : syscalls_to_monkeypatch) {
+    for (size_t i = 0; i < syms.size(); ++i) {
+      if (syms.is_name(i, syscall.name)) {
         // Absolutely-addressed symbols in the VDSO claim to start here.
-        static const uint64_t vdso_static_base = 0xffffffffff700000LL;
         static const uintptr_t vdso_max_size = 0xffffLL;
         uintptr_t sym_address = syms.file_offset(i);
-        // The symbol values can be absolute or relative addresses.
-        // The first part of the assertion is for absolute
-        // addresses, and the second part is for relative.
-        if (uint64_t(sym_address & ~vdso_max_size) != vdso_static_base &&
-            (sym_address & ~vdso_max_size) != 0) {
-          // With 4.3.3-301.fc23.x86_64, once in a while we
-          // see a VDSO symbol with a crazy file offset in it which is a
-          // duplicate of another symbol. Bizzarro. Ignore it.
-          continue;
-        }
         uintptr_t sym_offset = sym_address & vdso_max_size;
         uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
 
         uint8_t patch[X64VsyscallMonkeypatch::size];
-        uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
+        uint32_t syscall_number = syscall.syscall_number;
         X64VsyscallMonkeypatch::substitute(patch, syscall_number);
 
         write_and_record_bytes(t, absolute_address, patch);
-        LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
+        LOG(debug) << "monkeypatched " << syscall.name
                    << " to syscall "
-                   << syscalls_to_monkeypatch[j].syscall_number << " at "
-                   << absolute_address;
+                   << syscall.syscall_number << " at "
+                   << HEX(absolute_address) << " (" << HEX(sym_address) << ")";
+        // With 4.3.3-301.fc23.x86_64, once in a while we
+        // see a VDSO symbol with a crazy file offset in it which is a
+        // duplicate of another symbol. Bizzarro. So, stop once we see the
+        // first symbol (which always seems to be the valid one).
+        break;
       }
     }
   }
