@@ -374,7 +374,8 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
   int call = t->desched_rec()->syscallno;
   ev.regs.set_original_syscallno(call);
   t->set_regs(ev.regs);
-  ev.state = EXITING_SYSCALL;
+  // runnable_state_changed will observe us entering this syscall and change
+  // state to ENTERING_SYSCALL
 
   LOG(debug) << "  resuming (and probably switching out) blocked `"
              << t->syscall_name(call) << "'";

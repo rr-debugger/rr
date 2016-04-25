@@ -2187,13 +2187,26 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
 
+  syscall_state.syscall_entry_registers = t->regs();
+
   if (t->desched_rec()) {
-    /* |t| was descheduled while in a buffered syscall.  We don't
+    /* |t| was descheduled while in a buffered syscall.  We normally don't
      * use scratch memory for the call, because the syscallbuf itself
      * is serving that purpose. More importantly, we *can't* set up
      * scratch for |t|, because it's already in the syscall. Instead, we will
      * record the syscallbuf memory in rec_process_syscall_arch.
+     *
+     * However there is one case where we use scratch memory: when
+     * sys_read's block-cloning path is interrupted. In that case, record
+     * the scratch memory.
      */
+    if (syscallno == Arch::read &&
+        remote_ptr<void>(t->regs().arg2()) == t->scratch_ptr) {
+      syscall_state.reg_parameter(
+          2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
+                 (size_t)t->regs().arg3()),
+          IN_OUT_NO_SCRATCH);
+    }
     return ALLOW_SWITCH;
   }
 
@@ -2203,8 +2216,6 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     syscall_state.expect_errno = ENOSYS;
     return PREVENT_SWITCH;
   }
-
-  syscall_state.syscall_entry_registers = t->regs();
 
   switch (syscallno) {
 // All the regular syscalls are handled here.

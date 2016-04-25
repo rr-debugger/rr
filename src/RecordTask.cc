@@ -1021,9 +1021,6 @@ void RecordTask::record_local(remote_ptr<void> addr, ssize_t num_bytes,
 void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
   maybe_flush_syscallbuf();
 
-  // We shouldn't be recording a scratch address.
-  ASSERT(this, !addr || addr != scratch_ptr);
-
   assert(num_bytes >= 0);
 
   if (!addr) {
@@ -1038,8 +1035,6 @@ void RecordTask::record_remote_fallible(remote_ptr<void> addr,
                                         ssize_t num_bytes) {
   maybe_flush_syscallbuf();
 
-  // We shouldn't be recording a scratch address.
-  ASSERT(this, !addr || addr != scratch_ptr);
   ASSERT(this, num_bytes >= 0);
 
   vector<uint8_t> buf;
@@ -1054,9 +1049,6 @@ void RecordTask::record_remote_fallible(remote_ptr<void> addr,
 void RecordTask::record_remote_even_if_null(remote_ptr<void> addr,
                                             ssize_t num_bytes) {
   maybe_flush_syscallbuf();
-
-  // We shouldn't be recording a scratch address.
-  ASSERT(this, !addr || addr != scratch_ptr);
 
   assert(num_bytes >= 0);
 
