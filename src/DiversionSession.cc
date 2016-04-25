@@ -20,7 +20,6 @@ DiversionSession::~DiversionSession() {
   // resources.
   kill_all_tasks();
   assert(tasks().size() == 0 && vms().size() == 0);
-  emu_fs->gc(*this);
   assert(emu_fs->size() == 0);
 }
 

@@ -78,7 +78,6 @@ ReplaySession::~ReplaySession() {
   // resources.
   kill_all_tasks();
   assert(task_map.empty() && vm_map.empty());
-  gc_emufs();
   assert(emufs().size() == 0);
 }
 
@@ -147,14 +146,6 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
 Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
                               SupportedArch a) {
   return new ReplayTask(*this, tid, rec_tid, serial, a);
-}
-
-void ReplaySession::gc_emufs() { emu_fs->gc(*this); }
-
-void ReplaySession::maybe_gc_emufs(SupportedArch arch, int syscallno) {
-  if (is_close_syscall(syscallno, arch) || is_munmap_syscall(syscallno, arch)) {
-    gc_emufs();
-  }
 }
 
 /*static*/ ReplaySession::shr_ptr ReplaySession::create(const string& dir) {
@@ -898,7 +889,6 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
   struct syscallbuf_record* end_rec = next_record(t->syscallbuf_hdr);
   while (next_rec != end_rec) {
     accumulate_syscall_performed();
-    maybe_gc_emufs(t->arch(), next_rec->syscallno);
     next_rec = (struct syscallbuf_record*)((uint8_t*)next_rec +
                                            stored_record_size(next_rec->size));
   }
@@ -1079,7 +1069,6 @@ Completion ReplaySession::exit_task(ReplayTask* t) {
   t->apply_all_data_records_from_trace();
   end_task(t);
   /* |t| is dead now. */
-  gc_emufs();
   return COMPLETE;
 }
 
@@ -1182,7 +1171,6 @@ void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
         rep_process_syscall(t, &current_step);
         if (current_step.action == TSTEP_RETIRE) {
           t->on_syscall_exit(current_step.syscall.number, trace_frame.regs());
-          maybe_gc_emufs(t->arch(), trace_frame.regs().syscallno());
         }
       }
       break;

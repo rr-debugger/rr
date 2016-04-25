@@ -112,8 +112,6 @@ EmuFile::shr_ptr EmuFs::clone_file(EmuFile::shr_ptr file) {
   return c;
 }
 
-void EmuFs::gc(const Session&) {}
-
 EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& recorded_km,
                                       uint64_t file_size) {
   FileId id(recorded_km);

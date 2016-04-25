@@ -158,14 +158,6 @@ public:
   /** Create and return a new emufs. */
   static shr_ptr create();
 
-  /**
-   * Collect emulated files that aren't referenced by tracees.
-   * Call this only when a tracee's (possibly shared) file table
-   * has been destroyed.  All other gc triggers are handled
-   * internally.
-   */
-  void gc(const Session& session);
-
   void destroyed_file(EmuFile& emu_file) { files.erase(FileId(emu_file)); }
 
 private:
