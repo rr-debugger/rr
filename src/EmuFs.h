@@ -38,7 +38,7 @@ class Task;
  * F_0 at trace time t_0 has the same (device, inode) ID as a
  * different file F_1 at trace time t_1.  By definition, if the inode
  * ID was recycled in [t_0, t_1), then all references to F_0 must have
- * been dropped in that inverval.  A corollary of that is that all
+ * been dropped in that interval.  A corollary of that is that all
  * memory mappings of F_0 must have been fully unmapped in the
  * interval.  As per the first long comment in |gc()| below, an
  * emulated file can only be "live" during replay if some tracee still
