@@ -472,7 +472,8 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
 KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
                                 int prot, int flags, off64_t offset_bytes,
                                 const string& fsname, dev_t device, ino_t inode,
-                                const KernelMapping* recorded_map) {
+                                const KernelMapping* recorded_map,
+                                EmuFile::shr_ptr emu_file) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
   num_bytes = ceil_page_size(num_bytes);
@@ -493,7 +494,7 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
   unmap_internal(addr, num_bytes);
 
   const KernelMapping& actual_recorded_map = recorded_map ? *recorded_map : m;
-  map_and_coalesce(m, actual_recorded_map);
+  map_and_coalesce(m, actual_recorded_map, emu_file);
 
   if ((prot & PROT_EXEC) &&
       (fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
@@ -594,7 +595,8 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     if (m.map.start() < new_start) {
       Mapping underflow(
           m.map.subrange(m.map.start(), rem.start()),
-          m.recorded_map.subrange(m.recorded_map.start(), rem.start()));
+          m.recorded_map.subrange(m.recorded_map.start(), rem.start()),
+          m.emu_file);
       mem[underflow.map] = underflow;
     }
     // Remap the overlapping region with the new prot.
@@ -603,7 +605,8 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     int new_prot = prot & (PROT_READ | PROT_WRITE | PROT_EXEC);
     Mapping overlap(
         m.map.subrange(new_start, new_end).set_prot(new_prot),
-        m.recorded_map.subrange(new_start, new_end).set_prot(new_prot));
+        m.recorded_map.subrange(new_start, new_end).set_prot(new_prot),
+        m.emu_file);
     mem[overlap.map] = overlap;
     last_overlap = overlap.map;
 
@@ -612,7 +615,8 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // prot.
     if (rem.end() < m.map.end()) {
       Mapping overflow(m.map.subrange(rem.end(), m.map.end()),
-                       m.recorded_map.subrange(rem.end(), m.map.end()));
+                       m.recorded_map.subrange(rem.end(), m.map.end()),
+                       m.emu_file);
       mem[overflow.map] = overflow;
     }
   };
@@ -668,7 +672,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
 
   remote_ptr<void> new_end = new_addr + new_num_bytes;
   map_and_coalesce(m.set_range(new_addr, new_end),
-                   mr.recorded_map.set_range(new_addr, new_end));
+                   mr.recorded_map.set_range(new_addr, new_end), mr.emu_file);
 }
 
 void AddressSpace::remove_breakpoint(remote_code_ptr addr,
@@ -866,14 +870,16 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
     // region, remap the underflow region.
     if (m.map.start() < rem.start()) {
       Mapping underflow(m.map.subrange(m.map.start(), rem.start()),
-                        m.recorded_map.subrange(m.map.start(), rem.start()));
+                        m.recorded_map.subrange(m.map.start(), rem.start()),
+                        m.emu_file);
       mem[underflow.map] = underflow;
     }
     // If the last segment we unmap overflows the unmap
     // region, remap the overflow region.
     if (rem.end() < m.map.end()) {
       Mapping overflow(m.map.subrange(rem.end(), m.map.end()),
-                       m.recorded_map.subrange(rem.end(), m.map.end()));
+                       m.recorded_map.subrange(rem.end(), m.map.end()),
+                       m.emu_file);
       mem[overflow.map] = overflow;
     }
   };
@@ -1339,6 +1345,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
       first_kv = next;
       break;
     }
+    assert(first_kv->second.emu_file == next->second.emu_file);
   }
   auto last_kv = it;
   while (true) {
@@ -1350,6 +1357,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
       last_kv = prev;
       break;
     }
+    assert(prev->second.emu_file == last_kv->second.emu_file);
   }
   assert(last_kv != mem.end());
   if (first_kv == last_kv) {
@@ -1358,7 +1366,8 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   }
 
   Mapping new_m(first_kv->second.map.extend(last_kv->first.end()),
-                first_kv->second.recorded_map.extend(last_kv->first.end()));
+                first_kv->second.recorded_map.extend(last_kv->first.end()),
+                first_kv->second.emu_file);
   LOG(debug) << "  coalescing " << new_m.map;
 
   mem.erase(first_kv, ++last_kv);
@@ -1413,10 +1422,12 @@ void AddressSpace::for_each_in_range(
 }
 
 void AddressSpace::map_and_coalesce(const KernelMapping& m,
-                                    const KernelMapping& recorded_map) {
+                                    const KernelMapping& recorded_map,
+                                    EmuFile::shr_ptr emu_file) {
   LOG(debug) << "  mapping " << m;
 
-  auto ins = mem.insert(MemoryMap::value_type(m, Mapping(m, recorded_map)));
+  auto ins =
+      mem.insert(MemoryMap::value_type(m, Mapping(m, recorded_map, emu_file)));
   coalesce_around(ins.first);
 
   update_watchpoint_values(m.start(), m.end());

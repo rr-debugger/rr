@@ -16,6 +16,7 @@
 
 #include "preload/preload_interface.h"
 
+#include "EmuFs.h"
 #include "HasTaskSet.h"
 #include "kernel_abi.h"
 #include "MemoryRange.h"
@@ -225,8 +226,9 @@ class AddressSpace : public HasTaskSet {
 public:
   class Mapping {
   public:
-    Mapping(const KernelMapping& map, const KernelMapping& recorded_map)
-        : map(map), recorded_map(recorded_map) {}
+    Mapping(const KernelMapping& map, const KernelMapping& recorded_map,
+            EmuFile::shr_ptr emu_file)
+        : map(map), recorded_map(recorded_map), emu_file(emu_file) {}
     Mapping(const Mapping&) = default;
     Mapping() = default;
     const Mapping& operator=(const Mapping& other) {
@@ -239,6 +241,7 @@ public:
     // The corresponding KernelMapping in the recording. During recording,
     // equal to 'map'.
     const KernelMapping recorded_map;
+    const EmuFile::shr_ptr emu_file;
   };
 
   typedef std::map<MemoryRange, Mapping, MappingComparator> MemoryMap;
@@ -355,7 +358,8 @@ public:
   KernelMapping map(remote_ptr<void> addr, size_t num_bytes, int prot,
                     int flags, off64_t offset_bytes, const std::string& fsname,
                     dev_t device, ino_t inode,
-                    const KernelMapping* recorded_map = nullptr);
+                    const KernelMapping* recorded_map = nullptr,
+                    EmuFile::shr_ptr emu_file = nullptr);
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.
@@ -705,7 +709,8 @@ private:
    * mappings of |r| that are adjacent to |m|.
    */
   void map_and_coalesce(const KernelMapping& m,
-                        const KernelMapping& recorded_map);
+                        const KernelMapping& recorded_map,
+                        EmuFile::shr_ptr emu_file);
 
   /**
    * Call this only during recording.

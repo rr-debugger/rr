@@ -8,12 +8,12 @@
 #include <string>
 #include <vector>
 
-#include "AddressSpace.h"
 #include "ScopedFd.h"
-#include "Task.h"
 
 namespace rr {
 
+class AddressSpace;
+class KernelMapping;
 class ReplaySession;
 class Session;
 class Task;
@@ -187,8 +187,7 @@ private:
   void mark_used_vfiles(const AddressSpace& as, size_t* nr_marked_files);
 
   struct FileId {
-    FileId(const KernelMapping& recorded_map)
-        : device(recorded_map.device()), inode(recorded_map.inode()) {}
+    FileId(const KernelMapping& recorded_map);
     bool operator<(const FileId& other) const {
       return device < other.device ||
              (device == other.device && inode < other.inode);

@@ -542,6 +542,7 @@ static remote_ptr<void> finish_anonymous_mmap(
   dev_t device = KernelMapping::NO_DEVICE;
   ino_t inode = KernelMapping::NO_INODE;
   KernelMapping recorded_km;
+  EmuFile::shr_ptr emu_file;
   if (flags & MAP_PRIVATE) {
     remote.infallible_mmap_syscall(rec_addr, length, prot,
                                    // Tell the kernel to take |rec_addr|
@@ -554,10 +555,10 @@ static remote_ptr<void> finish_anonymous_mmap(
     TraceReader::MappedData data;
     recorded_km = remote.task()->trace_reader().read_mapped_region(&data);
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
-    auto emufile = t->session().emufs().get_or_create(recorded_km, length);
+    emu_file = t->session().emufs().get_or_create(recorded_km, length);
     struct stat real_file;
     finish_direct_mmap(t, remote, rec_addr, length, prot,
-                       flags & ~MAP_ANONYMOUS, emufile->proc_path(), 0,
+                       flags & ~MAP_ANONYMOUS, emu_file->proc_path(), 0,
                        real_file, file_name);
     device = real_file.st_dev;
     inode = real_file.st_ino;
@@ -565,7 +566,7 @@ static remote_ptr<void> finish_anonymous_mmap(
 
   if (note_task_map) {
     remote.task()->vm()->map(rec_addr, length, prot, flags, 0, file_name,
-                             device, inode, &recorded_km);
+                             device, inode, &recorded_km, emu_file);
   }
   return rec_addr;
 }
@@ -680,7 +681,8 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
              << emufile->emu_path();
 
   t->vm()->map(buf.addr, buf.data.size(), prot, flags, offset_bytes,
-               real_file_name, real_file.st_dev, real_file.st_ino, &km);
+               real_file_name, real_file.st_dev, real_file.st_ino, &km,
+               emufile);
 }
 
 static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,

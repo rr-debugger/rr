@@ -9,6 +9,7 @@
 #include "DiversionSession.h"
 #include "EmuFs.h"
 #include "Session.h"
+#include "Task.h"
 
 struct syscallbuf_hdr;
 

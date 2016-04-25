@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 
+#include "AddressSpace.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -188,6 +189,9 @@ void EmuFs::log() const {
 /*static*/ EmuFs::shr_ptr EmuFs::create() { return shr_ptr(new EmuFs()); }
 
 EmuFs::EmuFs() {}
+
+EmuFs::FileId::FileId(const KernelMapping& recorded_map)
+    : device(recorded_map.device()), inode(recorded_map.inode()) {}
 
 void EmuFs::mark_used_vfiles(const AddressSpace& as, size_t* nr_marked_files) {
   for (auto m : as.maps()) {

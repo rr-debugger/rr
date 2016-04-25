@@ -414,7 +414,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   remote.task()->vm()->map(m.map.start(), m.map.size(), m.map.prot(),
                            m.map.flags(), m.map.file_offset_bytes(),
                            real_file_name, real_file.st_dev, real_file.st_ino,
-                           &m.recorded_map);
+                           &m.recorded_map, emufile);
 
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
