@@ -240,7 +240,7 @@ protected:
   BreakStatus diagnose_debugger_trap(Task* t, RunCommand run_command);
   void check_for_watchpoint_changes(Task* t, BreakStatus& break_status);
 
-  void copy_state_to(Session& dest, EmuFs& dest_emu_fs);
+  void copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs);
 
   struct CloneCompletion;
   // Call this before doing anything that requires access to the full set

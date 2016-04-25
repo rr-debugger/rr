@@ -371,7 +371,8 @@ void Session::finish_initializing() const {
   self->clone_completion = nullptr;
 }
 
-static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
+static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
+                              EmuFs& dest_emu_fs,
                               const AddressSpace::Mapping& m_in_mem) {
   AddressSpace::Mapping m = m_in_mem;
 
@@ -380,12 +381,18 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
                             m.map.start(), m.map.size());
 
-  auto emufile = dest_emu_fs.at(m.recorded_map);
+  EmuFile::shr_ptr emu_file;
+  if (dest_emu_fs.has_file_for(m.recorded_map)) {
+    emu_file = dest_emu_fs.at(m.recorded_map);
+  } else {
+    emu_file = dest_emu_fs.clone_file(emu_fs.at(m.recorded_map));
+  }
+
   // TODO: this duplicates some code in replay_syscall.cc, but
   // it's somewhat nontrivial to factor that code out.
   int remote_fd;
   {
-    string path = emufile->proc_path();
+    string path = emu_file->proc_path();
     AutoRestoreMem child_path(remote, path.c_str());
     // Always open the emufs file O_RDWR, even if the current mapping prot
     // is read-only. We might mprotect it to read-write later.
@@ -414,12 +421,12 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& dest_emu_fs,
   remote.task()->vm()->map(m.map.start(), m.map.size(), m.map.prot(),
                            m.map.flags(), m.map.file_offset_bytes(),
                            real_file_name, real_file.st_dev, real_file.st_ino,
-                           &m.recorded_map, emufile);
+                           &m.recorded_map, emu_file);
 
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
 
-void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
+void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   assert_fully_initialized();
   assert(!dest.clone_completion);
 
@@ -443,8 +450,8 @@ void Session::copy_state_to(Session& dest, EmuFs& dest_emu_fs) {
       AutoRemoteSyscalls remote(group.clone_leader);
       for (auto m : group.clone_leader->vm()->maps()) {
         if ((m.recorded_map.flags() & MAP_SHARED) &&
-            dest_emu_fs.has_file_for(m.recorded_map)) {
-          remap_shared_mmap(remote, dest_emu_fs, m);
+            emu_fs.has_file_for(m.recorded_map)) {
+          remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);
         }
       }
 

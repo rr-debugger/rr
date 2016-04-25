@@ -56,7 +56,7 @@ public:
 private:
   friend class ReplaySession;
 
-  DiversionSession(const ReplaySession& other);
+  DiversionSession();
 
   std::shared_ptr<EmuFs> emu_fs;
 };

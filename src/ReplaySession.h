@@ -294,7 +294,7 @@ private:
 
   ReplaySession(const ReplaySession& other)
       : Session(other),
-        emu_fs(other.emu_fs->clone()),
+        emu_fs(EmuFs::create()),
         trace_in(other.trace_in),
         trace_frame(other.trace_frame),
         current_step(other.current_step),

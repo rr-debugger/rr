@@ -90,7 +90,7 @@ ReplaySession::shr_ptr ReplaySession::clone() {
   shr_ptr session(new ReplaySession(*this));
   LOG(debug) << "  deepfork session is " << session.get();
 
-  copy_state_to(*session, session->emufs());
+  copy_state_to(*session, emufs(), session->emufs());
 
   return session;
 }
@@ -135,10 +135,10 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
   LOG(debug) << "Deepforking ReplaySession " << this
              << " to DiversionSession...";
 
-  DiversionSession::shr_ptr session(new DiversionSession(*this));
+  DiversionSession::shr_ptr session(new DiversionSession());
   LOG(debug) << "  deepfork session is " << session.get();
 
-  copy_state_to(*session, session->emufs());
+  copy_state_to(*session, emufs(), session->emufs());
   session->finish_initializing();
 
   return session;

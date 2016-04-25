@@ -11,8 +11,7 @@ using namespace std;
 
 namespace rr {
 
-DiversionSession::DiversionSession(const ReplaySession& other)
-    : emu_fs(other.emufs().clone()) {}
+DiversionSession::DiversionSession() : emu_fs(EmuFs::create()) {}
 
 DiversionSession::~DiversionSession() {
   // We won't permanently leak any OS resources by not ensuring
