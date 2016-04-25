@@ -244,63 +244,42 @@ _syscall_hook_trampoline:
         .cfi_endproc
         .size _syscall_hook_trampoline, . - _syscall_hook_trampoline
 
+#define SYSCALLHOOK_START(name) \
+        .global name;           \
+        .hidden name;           \
+        .type name, @function;  \
+name:                           \
+        .cfi_startproc;         \
+        .cfi_offset %rip, 0;    \
+        .cfi_offset %rsp, 8;
+
+#define SYSCALLHOOK_END(name)   \
+        ret;                    \
+        .cfi_endproc;           \
+        .size name, .-name
 
 
-        .global _syscall_hook_trampoline_48_3d_01_f0_ff_ff
-        .hidden _syscall_hook_trampoline_48_3d_01_f0_ff_ff
-        .type _syscall_hook_trampoline_48_3d_01_f0_ff_ff, @function
-_syscall_hook_trampoline_48_3d_01_f0_ff_ff:
-        .cfi_startproc
-
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_3d_01_f0_ff_ff)
         callq _syscall_hook_trampoline
         cmpq $0xfffffffffffff001,%rax
-        ret
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_3d_01_f0_ff_ff)
 
-        .cfi_endproc
-        .size _syscall_hook_trampoline_48_3d_01_f0_ff_ff, .-_syscall_hook_trampoline_48_3d_01_f0_ff_ff
-
-
-
-        .global _syscall_hook_trampoline_48_3d_00_f0_ff_ff
-        .hidden _syscall_hook_trampoline_48_3d_00_f0_ff_ff
-        .type _syscall_hook_trampoline_48_3d_00_f0_ff_ff, @function
-_syscall_hook_trampoline_48_3d_00_f0_ff_ff:
-        .cfi_startproc
-
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
         callq _syscall_hook_trampoline
         cmpq $0xfffffffffffff000,%rax
-        ret
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
 
-        .cfi_endproc
-        .size _syscall_hook_trampoline_48_3d_00_f0_ff_ff, .-_syscall_hook_trampoline_48_3d_00_f0_ff_ff
-
-
-
-        .global _syscall_hook_trampoline_48_8b_3c_24
-        .hidden _syscall_hook_trampoline_48_8b_3c_24
-        .type _syscall_hook_trampoline_48_8b_3c_24, @function
-_syscall_hook_trampoline_48_8b_3c_24:
-        .cfi_startproc
-
-        callq _syscall_hook_trampoline
-        /* The original instruction after the syscall is movq (%rsp),%rdi.
-           Because we pushed a return address and shifted RSP down
-           before reaching this point, to get the equivalent behavior we
-           need to use this offset. */
-        movq (8 + _syscall_stack_adjust)(%rsp),%rdi
-        ret
-
-        .cfi_endproc
-        .size _syscall_hook_trampoline_48_8b_3c_24, .-_syscall_hook_trampoline_48_8b_3c_24
+SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_3c_24)
+         callq _syscall_hook_trampoline
+         /* The original instruction after the syscall is movq (%rsp),%rdi.
+            Because we pushed a return address and shifted RSP down
+            before reaching this point, to get the equivalent behavior we
+            need to use this offset. */
+         movq (8 + _syscall_stack_adjust)(%rsp),%rdi
+SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_3c_24)
 
 
-
-        .global _syscall_hook_trampoline_5a_5e_c3
-        .hidden _syscall_hook_trampoline_5a_5e_c3
-        .type _syscall_hook_trampoline_5a_5e_c3, @function
-_syscall_hook_trampoline_5a_5e_c3:
-        .cfi_startproc
-
+SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
         callq _syscall_hook_trampoline
         /* The original instructions after the syscall are
            pop %rdx; pop %rsi; retq. */
@@ -316,34 +295,15 @@ _syscall_hook_trampoline_5a_5e_c3:
         .size _syscall_hook_trampoline_5a_5e_c3, .-_syscall_hook_trampoline_5a_5e_c3
 
 
-
-        .global _syscall_hook_trampoline_89_c2_f7_da
-        .hidden _syscall_hook_trampoline_89_c2_f7_da
-        .type _syscall_hook_trampoline_89_c2_f7_da, @function
-_syscall_hook_trampoline_89_c2_f7_da:
-        .cfi_startproc
-
+SYSCALLHOOK_START(_syscall_hook_trampoline_89_c2_f7_da)
         call _syscall_hook_trampoline
         mov %eax,%edx
         neg %edx
-        ret
+SYSCALLHOOK_END(_syscall_hook_trampoline_89_c2_f7_da)
 
-        .cfi_endproc
-        .size _syscall_hook_trampoline_89_c2_f7_da, .-_syscall_hook_trampoline_89_c2_f7_da
-
-
-
-        .global _syscall_hook_trampoline_90_90_90
-        .hidden _syscall_hook_trampoline_90_90_90
-        .type _syscall_hook_trampoline_90_90_90, @function
-_syscall_hook_trampoline_90_90_90:
-        .cfi_startproc
-
-        jmp _syscall_hook_trampoline
-
-        .cfi_endproc
-        .size _syscall_hook_trampoline_90_90_90, .-_syscall_hook_trampoline_90_90_90
-
+SYSCALLHOOK_START(_syscall_hook_trampoline_90_90_90)
+        call _syscall_hook_trampoline
+SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
 
 _stub_buffer:
         .rept 1000
