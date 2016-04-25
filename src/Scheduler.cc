@@ -5,6 +5,7 @@
 #include "Scheduler.h"
 
 #include <assert.h>
+#include <math.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
