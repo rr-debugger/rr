@@ -334,7 +334,9 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
                        sizeof(nops));
 
   // Now write out the stub
-  substitute<StubPatch>(stub_patch, jump_patch_end.as_int(),
+  substitute<StubPatch>(stub_patch, jump_patch_start.as_int() +
+                        syscall_instruction_length(x86_64) +
+                        hook.next_instruction_length,
                         trampoline_call_offset32);
   write_and_record_bytes(t, stub_patch_start, stub_patch);
 
