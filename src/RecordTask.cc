@@ -428,17 +428,18 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
                            free_fd, O_CLOEXEC);
         if (cloned_file_data_fd_child != free_fd) {
           ASSERT(this, cloned_file_data_fd_child < 0);
-          remote.infallible_syscall(syscall_number_for_close(arch()), free_fd);
+          LOG(warn) << "Couldn't dup clone-data file to free fd";
+          cloned_file_data_fd_child = cloned_file_data;
         } else {
           // Prevent the child from closing this fd. We're going to close it
           // ourselves and we don't want the child closing it and then reopening
           // its own file with this fd.
           fds->add_monitor(cloned_file_data_fd_child,
                            new PreserveFileMonitor());
-          args.cloned_file_data_fd = cloned_file_data_fd_child;
+          remote.infallible_syscall(syscall_number_for_close(arch()),
+                                    cloned_file_data);
         }
-        remote.infallible_syscall(syscall_number_for_close(arch()),
-                                  cloned_file_data);
+        args.cloned_file_data_fd = cloned_file_data_fd_child;
       }
     }
   } else {
