@@ -112,11 +112,6 @@ EmuFs::shr_ptr EmuFs::clone() {
 }
 
 void EmuFs::gc(const Session& session) {
-  // XXX this implementation is unnecessarily slow.  But before
-  // throwing it away for something different, give it another
-  // shot once rr is caching local mmaps for all address spaces,
-  // which obviates the need for the yuck slow maps parsing
-  // here.
   LOG(debug) << "Beginning emufs gc of " << files.size() << " files";
 
   // Mark in-use files by iterating through the mmaps of all
