@@ -364,7 +364,8 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   } else if (origin == SYSCALL_MAPPING &&
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
     source = TraceReader::SOURCE_ZERO;
-  } else if (try_clone_file(km.fsname(), &backing_file_name)) {
+  } else if ((km.flags() & MAP_PRIVATE) &&
+             try_clone_file(km.fsname(), &backing_file_name)) {
     source = TraceReader::SOURCE_FILE;
   } else if (should_copy_mmap_region(km, stat) &&
              files_assumed_immutable.find(make_pair(

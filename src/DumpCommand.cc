@@ -194,10 +194,12 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
             prot_flags[3] = 's';
           }
           fprintf(out, "  { map_file:\"%s\", addr:%p, length:%p, "
-                       "prot_flags:\"%s\", file_offset:0x%llx }\n",
+                       "prot_flags:\"%s\", file_offset:0x%llx, "
+                       "data_file:\"%s\", data_offset:0x%llx }\n",
                   km.fsname().c_str(), (void*)km.start().as_int(),
                   (void*)km.size(), prot_flags,
-                  (long long)km.file_offset_bytes());
+                  (long long)km.file_offset_bytes(), data.file_name.c_str(),
+                  (long long)data.file_data_offset_bytes);
         }
       }
 

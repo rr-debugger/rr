@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+record $TESTNAME
+replay
+replay
+check 'EXIT-SUCCESS'

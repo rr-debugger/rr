@@ -658,6 +658,7 @@ set(TESTS_WITH_PROGRAM
   reverse_step_threads_break
   search
   segfault
+  shared_map
   shared_persistent_file
   signal_numbers
   stack_growth
