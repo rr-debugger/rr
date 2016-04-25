@@ -107,75 +107,50 @@ template <typename Arch> static void setup_preload_library_path(RecordTask* t) {
 void Monkeypatcher::init_dynamic_syscall_patching(
     RecordTask* t, int syscall_patch_hook_count,
     remote_ptr<struct syscall_patch_hook> syscall_patch_hooks,
-    remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end,
-    remote_ptr<void> syscall_hook_trampoline) {
+    remote_ptr<void> syscall_hook_trampoline,
+    remote_ptr<void> syscall_hook_end
+  ) {
   if (syscall_patch_hook_count) {
     syscall_hooks = t->read_mem(syscall_patch_hooks, syscall_patch_hook_count);
   }
-  this->stub_buffer = stub_buffer;
-  this->stub_buffer_end = stub_buffer_end;
   this->syscall_hook_trampoline = syscall_hook_trampoline;
-  ASSERT(t, syscall_hook_trampoline < stub_buffer_end);
+  this->syscall_hook_end = syscall_hook_end;
+  ASSERT(t, syscall_hook_trampoline < syscall_hook_end);
 }
 
 template <typename Arch>
 static bool patch_syscall_with_hook_arch(Monkeypatcher& patcher, RecordTask* t,
                                          const syscall_patch_hook& hook);
 
-remote_ptr<uint8_t> Monkeypatcher::allocate_stub(RecordTask* t, size_t bytes) {
-  if (!stub_buffer) {
-    return nullptr;
-  }
-  ASSERT(t, (stub_buffer_end - stub_buffer) % bytes == 0)
-      << "Stub size mismatch";
-  if (stub_buffer + stub_buffer_allocated + bytes > stub_buffer_end) {
-    return nullptr;
-  }
-  auto result = stub_buffer.cast<uint8_t>() + stub_buffer_allocated;
-  stub_buffer_allocated += bytes;
-  return result;
-}
-
 template <typename StubPatch>
 static void substitute(uint8_t* buffer, uint64_t return_addr,
                        uint32_t trampoline_relative_addr);
 
-template <>
-void substitute<X86SyscallStubMonkeypatch>(uint8_t* buffer,
-                                           uint64_t return_addr,
-                                           uint32_t trampoline_relative_addr) {
-  X86SyscallStubMonkeypatch::substitute(buffer, (uint32_t)return_addr,
-                                        trampoline_relative_addr);
-}
-
-template <>
-void substitute<X64SyscallStubMonkeypatch>(uint8_t* buffer,
-                                           uint64_t return_addr,
-                                           uint32_t trampoline_relative_addr) {
-  X64SyscallStubMonkeypatch::substitute(buffer, (uint32_t)return_addr,
-                                        (uint32_t)(return_addr >> 32),
-                                        trampoline_relative_addr);
-}
-
 template <typename ExtendedJumpPatch>
 static void substitute_extended_jump(uint8_t* buffer, uint64_t from_end,
-                                     uint64_t to_start);
+                                     uint64_t return_addr,
+                                     uint64_t target_addr);                                     
 
 template <>
 void substitute_extended_jump<X86SyscallStubExtendedJump>(uint8_t* buffer,
                                                           uint64_t from_end,
-                                                          uint64_t to_start) {
-  int64_t offset = to_start - from_end;
+                                                          uint64_t return_addr,
+                                                          uint64_t target_addr) {
+  int64_t offset = target_addr - from_end;
   // An offset that appears to be > 2GB is OK here, since EIP will just
   // wrap around.
-  X86SyscallStubExtendedJump::substitute(buffer, (int32_t)offset);
+  X86SyscallStubExtendedJump::substitute(buffer, (uint32_t)return_addr,
+                                        (uint32_t)offset);
 }
 
 template <>
 void substitute_extended_jump<X64SyscallStubExtendedJump>(uint8_t* buffer,
                                                           uint64_t,
-                                                          uint64_t to_start) {
-  X64SyscallStubExtendedJump::substitute(buffer, to_start);
+                                                          uint64_t return_addr,
+                                                          uint64_t target_addr) {
+  X64SyscallStubExtendedJump::substitute(buffer, (uint32_t)return_addr,
+                                        (uint32_t)(return_addr >> 32),
+                                        target_addr);
 }
 
 /**
@@ -186,7 +161,8 @@ void substitute_extended_jump<X64SyscallStubExtendedJump>(uint8_t* buffer,
 template <typename ExtendedJumpPatch>
 static remote_ptr<uint8_t> allocate_extended_jump(
     RecordTask* t, vector<Monkeypatcher::ExtendedJumpPage>& pages,
-    remote_ptr<uint8_t> from_end, remote_ptr<uint8_t> to_start) {
+    remote_ptr<uint8_t> from_end,
+    remote_code_ptr return_addr, remote_code_ptr target_addr) {
   Monkeypatcher::ExtendedJumpPage* page = nullptr;
   for (auto& p : pages) {
     remote_ptr<uint8_t> page_jump_start = p.addr + p.allocated;
@@ -255,7 +231,8 @@ static remote_ptr<uint8_t> allocate_extended_jump(
   uint8_t jump_patch[ExtendedJumpPatch::size];
   remote_ptr<uint8_t> jump_addr = page->addr + page->allocated;
   substitute_extended_jump<ExtendedJumpPatch>(
-      jump_patch, jump_addr.as_int() + sizeof(jump_patch), to_start.as_int());
+      jump_patch, jump_addr.as_int() + sizeof(jump_patch),
+      return_addr.register_value(), target_addr.register_value());
   write_and_record_bytes(t, jump_addr, jump_patch);
   page->allocated += sizeof(jump_patch);
   return jump_addr;
@@ -278,26 +255,14 @@ static remote_ptr<uint8_t> allocate_extended_jump(
  * On x86-64 with ASLR, we need to be able to patch a call to a stub from
  * sites more than 2^31 bytes away. We only have space for a 5-byte jump
  * instruction. So, we allocate "extender pages" --- pages of memory within
- * 2GB of the patch site, within which we allocate instructions that can jump
- * anywhere in memory. We don't really need this on x86, but we do it there
- * too for consistency.
+ * 2GB of the patch site, that contain the stub code. We don't really need this
+ * on x86, but we do it there too for consistency.
  *
- * trampoline_call_end is the offset within the StubPatch where the call to
- * the trampoline ends.
  */
-template <typename JumpPatch, typename ExtendedJumpPatch, typename StubPatch>
+template <typename JumpPatch, typename ExtendedJumpPatch>
 static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
                                            RecordTask* t,
                                            const syscall_patch_hook& hook) {
-  uint8_t stub_patch[StubPatch::size];
-  auto stub_patch_start = patcher.allocate_stub(t, sizeof(stub_patch));
-  if (!stub_patch_start) {
-    LOG(debug) << "syscall can't be patched due to stub allocation failure";
-    return false;
-  }
-  auto stub_patch_after_trampoline_call =
-      stub_patch_start + StubPatch::trampoline_relative_addr_end;
-
   uint8_t jump_patch[JumpPatch::size];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
@@ -306,7 +271,11 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
 
   remote_ptr<uint8_t> extended_jump_start =
       allocate_extended_jump<ExtendedJumpPatch>(
-          t, patcher.extended_jump_pages, jump_patch_end, stub_patch_start);
+          t, patcher.extended_jump_pages, jump_patch_end,
+          jump_patch_start.as_int() +
+                                syscall_instruction_length(x86_64) +
+                                hook.next_instruction_length,
+          hook.hook_address);
   if (extended_jump_start.is_null()) {
     return false;
   }
@@ -314,12 +283,6 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   int32_t jump_offset32 = (int32_t)jump_offset;
   ASSERT(t, jump_offset32 == jump_offset)
       << "allocate_extended_jump didn't work";
-
-  intptr_t trampoline_call_offset =
-      hook.hook_address - stub_patch_after_trampoline_call.as_int();
-  int32_t trampoline_call_offset32 = (int32_t)trampoline_call_offset;
-  ASSERT(t, trampoline_call_offset32 == trampoline_call_offset)
-      << "How did the stub area get far away from the hooks?";
 
   JumpPatch::substitute(jump_patch, jump_offset32);
   write_and_record_bytes(t, jump_patch_start, jump_patch);
@@ -333,13 +296,6 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   write_and_record_mem(t, jump_patch_start + sizeof(jump_patch), nops,
                        sizeof(nops));
 
-  // Now write out the stub
-  substitute<StubPatch>(stub_patch, jump_patch_start.as_int() +
-                        syscall_instruction_length(x86_64) +
-                        hook.next_instruction_length,
-                        trampoline_call_offset32);
-  write_and_record_bytes(t, stub_patch_start, stub_patch);
-
   return true;
 }
 
@@ -348,8 +304,7 @@ bool patch_syscall_with_hook_arch<X86Arch>(Monkeypatcher& patcher,
                                            RecordTask* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X86SysenterVsyscallSyscallHook,
-                                        X86SyscallStubExtendedJump,
-                                        X86SyscallStubMonkeypatch>(patcher, t,
+                                        X86SyscallStubExtendedJump>(patcher, t,
                                                                    hook);
 }
 
@@ -358,8 +313,7 @@ bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher,
                                            RecordTask* t,
                                            const syscall_patch_hook& hook) {
   return patch_syscall_with_hook_x86ish<X64JumpMonkeypatch,
-                                        X64SyscallStubExtendedJump,
-                                        X64SyscallStubMonkeypatch>(patcher, t,
+                                        X64SyscallStubExtendedJump>(patcher, t,
                                                                    hook);
 }
 
@@ -757,8 +711,7 @@ void patch_at_preload_init_arch<X86Arch>(RecordTask* t,
 
   patcher.init_dynamic_syscall_patching(
       t, params.syscall_patch_hook_count, params.syscall_patch_hooks,
-      params.syscall_hook_stub_buffer, params.syscall_hook_stub_buffer_end,
-      params.syscall_hook_trampoline);
+      params.syscall_hook_trampoline, params.syscall_hook_end);
 }
 
 // Monkeypatch x86-64 vdso syscalls immediately after exec. The vdso syscalls
@@ -828,8 +781,7 @@ void patch_at_preload_init_arch<X64Arch>(RecordTask* t,
 
   patcher.init_dynamic_syscall_patching(
       t, params.syscall_patch_hook_count, params.syscall_patch_hooks,
-      params.syscall_hook_stub_buffer, params.syscall_hook_stub_buffer_end,
-      params.syscall_hook_trampoline);
+      params.syscall_hook_trampoline, params.syscall_hook_end);
 }
 
 void Monkeypatcher::patch_after_exec(RecordTask* t) {
