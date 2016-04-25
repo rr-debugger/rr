@@ -86,8 +86,8 @@ struct btrfs_ioctl_clone_range_args {
   uint64_t src_length;
   uint64_t dest_offset;
 };
-#define BTRFS_IOC_CLONE_RANGE _IOW(BTRFS_IOCTL_MAGIC, 13, \
-                                  struct btrfs_ioctl_clone_range_args)
+#define BTRFS_IOC_CLONE_RANGE                                                  \
+  _IOW(BTRFS_IOCTL_MAGIC, 13, struct btrfs_ioctl_clone_range_args)
 #endif
 
 #ifndef MADV_DONTDUMP

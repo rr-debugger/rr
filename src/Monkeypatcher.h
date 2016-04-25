@@ -36,7 +36,7 @@ class Task;
  */
 class Monkeypatcher {
 public:
-  Monkeypatcher() : stub_buffer_allocated(0) {}
+  Monkeypatcher() {}
   Monkeypatcher(const Monkeypatcher&) = default;
 
   /**
@@ -66,8 +66,8 @@ public:
   void init_dynamic_syscall_patching(
       RecordTask* t, int syscall_patch_hook_count,
       remote_ptr<syscall_patch_hook> syscall_patch_hooks,
-      remote_ptr<void> stub_buffer, remote_ptr<void> stub_buffer_end,
-      remote_ptr<void> syscall_hook_trampoline);
+      remote_ptr<void> syscall_hook_trampoline,
+      remote_ptr<void> syscall_hook_end);
 
   /**
    * Try to allocate a stub from the sycall patching stub buffer. Returns null
@@ -99,7 +99,7 @@ public:
    * without affecting the syscall buffering logic. If not sure, return false.
    */
   bool is_syscallbuf_excluded_instruction(remote_ptr<void> p) {
-    return p >= syscall_hook_trampoline && p < stub_buffer_end;
+    return p >= syscall_hook_trampoline && p < syscall_hook_end;
   }
 
 private:
@@ -114,13 +114,10 @@ private:
    * (or are currently trying) to patch.
    */
   std::unordered_set<remote_code_ptr> tried_to_patch_syscall_addresses;
-  /**
-   * Writable executable memory where we can generate stubs.
-   */
-  remote_ptr<void> stub_buffer;
-  remote_ptr<void> stub_buffer_end;
+
+  // The addresses that contain our syscall hooks
   remote_ptr<void> syscall_hook_trampoline;
-  size_t stub_buffer_allocated;
+  remote_ptr<void> syscall_hook_end;
 };
 
 } // namespace rr

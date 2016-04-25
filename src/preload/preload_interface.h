@@ -159,8 +159,7 @@ struct rrcall_init_preload_params {
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
   PTR(void) syscall_hook_trampoline;
-  PTR(void) syscall_hook_stub_buffer;
-  PTR(void) syscall_hook_stub_buffer_end;
+  PTR(void) syscall_hook_end;
   /* Array of size SYSCALLBUF_FDS_DISABLED_SIZE */
   PTR(volatile char) syscallbuf_fds_disabled;
   PTR(struct mprotect_record) mprotect_records;

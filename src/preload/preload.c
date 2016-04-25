@@ -84,8 +84,8 @@ struct btrfs_ioctl_clone_range_args {
   uint64_t src_length;
   uint64_t dest_offset;
 };
-#define BTRFS_IOC_CLONE_RANGE _IOW(BTRFS_IOCTL_MAGIC, 13, \
-                                  struct btrfs_ioctl_clone_range_args)
+#define BTRFS_IOC_CLONE_RANGE                                                  \
+  _IOW(BTRFS_IOCTL_MAGIC, 13, struct btrfs_ioctl_clone_range_args)
 #endif
 
 /* NB: don't include any other local headers here. */
@@ -623,8 +623,7 @@ extern char _breakpoint_table_entry_end;
 static void __attribute__((constructor)) init_process(void) {
   struct rrcall_init_preload_params params;
   extern RR_HIDDEN void _syscall_hook_trampoline(void);
-  extern RR_HIDDEN void _stub_buffer(void);
-  extern RR_HIDDEN void _stub_buffer_end(void);
+  extern RR_HIDDEN void _syscall_hook_end(void);
 
 #if defined(__i386__)
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);
@@ -694,8 +693,7 @@ static void __attribute__((constructor)) init_process(void) {
   params.syscallbuf_fds_disabled =
       buffer_enabled ? syscallbuf_fds_disabled : NULL;
   params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
-  params.syscall_hook_stub_buffer = (void*)_stub_buffer;
-  params.syscall_hook_stub_buffer_end = (void*)_stub_buffer_end;
+  params.syscall_hook_end = (void*)_syscall_hook_end;
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
