@@ -18,7 +18,6 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <linux/audit.h>
-#include <linux/btrfs.h>
 #include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>

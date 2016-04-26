@@ -4,7 +4,6 @@
 
 #include <inttypes.h>
 #include <limits.h>
-#include <linux/btrfs.h>
 #include <sysexits.h>
 
 #include <fstream>
@@ -12,6 +11,7 @@
 #include <sstream>
 
 #include "AddressSpace.h"
+#include "kernel_supplement.h"
 #include "log.h"
 #include "TaskishUid.h"
 #include "util.h"

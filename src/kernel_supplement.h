@@ -5,6 +5,7 @@
 
 #include <linux/mman.h>
 #include <linux/seccomp.h>
+#include <sys/ioctl.h>
 #include <sys/ptrace.h>
 
 namespace rr {
@@ -71,6 +72,23 @@ namespace rr {
  * manipulate sigsets. */
 typedef uint64_t sig_set_t;
 static_assert(_NSIG / 8 == sizeof(sig_set_t), "Update sig_set_t for _NSIG.");
+
+#ifndef BTRFS_IOCTL_MAGIC
+#define BTRFS_IOCTL_MAGIC 0x94
+#endif
+#ifndef BTRFS_IOC_CLONE
+#define BTRFS_IOC_CLONE _IOW(BTRFS_IOCTL_MAGIC, 9, int)
+#endif
+#ifndef BTRFS_IOC_CLONE_RANGE
+struct btrfs_ioctl_clone_range_args {
+  int64_t src_fd;
+  uint64_t src_offset;
+  uint64_t src_length;
+  uint64_t dest_offset;
+};
+#define BTRFS_IOC_CLONE_RANGE _IOW(BTRFS_IOCTL_MAGIC, 13, \
+                                  struct btrfs_ioctl_clone_range_args)
+#endif
 
 #ifndef MADV_DONTDUMP
 #define MADV_DONTDUMP 16

@@ -10,7 +10,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <linux/btrfs.h>
 #include <linux/ethtool.h>
 #include <linux/futex.h>
 #include <linux/if.h>

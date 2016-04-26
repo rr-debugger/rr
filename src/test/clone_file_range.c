@@ -2,6 +2,20 @@
 
 #include "rrutil.h"
 
+#ifndef BTRFS_IOCTL_MAGIC
+#define BTRFS_IOCTL_MAGIC 0x94
+#endif
+#ifndef BTRFS_IOC_CLONE_RANGE
+struct btrfs_ioctl_clone_range_args {
+  int64_t src_fd;
+  uint64_t src_offset;
+  uint64_t src_length;
+  uint64_t dest_offset;
+};
+#define BTRFS_IOC_CLONE_RANGE _IOW(BTRFS_IOCTL_MAGIC, 13, \
+                                  struct btrfs_ioctl_clone_range_args)
+#endif
+
 #define BUF_SIZE 65536
 #define FILE_SIZE 10
 
