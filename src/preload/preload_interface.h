@@ -267,8 +267,6 @@ struct syscallbuf_hdr {
    * discarded. */
   uint8_t desched_signal_may_be_relevant;
 
-  uint8_t padding[4];
-
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
 /* TODO: static_assert(sizeof(uint32_t) ==
