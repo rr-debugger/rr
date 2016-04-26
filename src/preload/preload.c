@@ -1882,8 +1882,12 @@ static long sys_read(const struct syscall_info* call) {
           ret = untraced_replayed_syscall3(SYS_read, fd, scratch_buf, count);
           copy_output_buffer(ret, NULL, buf, scratch_buf);
         }
-        ret = commit_raw_syscall(SYS_read, ptr, ret);
+        // Do this now before we finish processing the syscallbuf record.
+        // This means the syscall will be executed in
+        // ReplaySession::flush_syscallbuf instead of
+        // ReplaySession::enter_syscall or something similar.
         replay_only_syscall1(SYS_close, fd);
+        ret = commit_raw_syscall(SYS_read, ptr, ret);
         return ret;
       }
     }
