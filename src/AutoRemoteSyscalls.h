@@ -40,8 +40,7 @@ public:
    * available via |get|.
    * If |mem| is null, data is not written, only the space is reserved.
    */
-  AutoRestoreMem(AutoRemoteSyscalls& remote, const uint8_t* mem,
-                 ssize_t num_bytes)
+  AutoRestoreMem(AutoRemoteSyscalls& remote, const void* mem, ssize_t num_bytes)
       : remote(remote) {
     init(mem, num_bytes);
   }
@@ -67,7 +66,7 @@ public:
   size_t size() const { return data.size(); }
 
 private:
-  void init(const uint8_t* mem, ssize_t num_bytes);
+  void init(const void* mem, ssize_t num_bytes);
 
   AutoRemoteSyscalls& remote;
   /* Address of tmp mem. */
@@ -174,6 +173,8 @@ public:
   remote_ptr<void> infallible_mmap_syscall(remote_ptr<void> addr, size_t length,
                                            int prot, int flags, int child_fd,
                                            uint64_t offset_pages);
+
+  int64_t infallible_lseek_syscall(int fd, int64_t offset, int whence);
 
   /** The Task in the context of which we're making syscalls. */
   Task* task() const { return t; }

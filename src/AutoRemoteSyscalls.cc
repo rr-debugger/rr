@@ -26,7 +26,7 @@ template <typename Arch> struct socketcall_args {
   typename Arch::signed_long args[3];
 } __attribute__((packed));
 
-void AutoRestoreMem::init(const uint8_t* mem, ssize_t num_bytes) {
+void AutoRestoreMem::init(const void* mem, ssize_t num_bytes) {
   ASSERT(remote.task(), !remote.regs().sp().is_null())
       << "Memory parameters were disabled";
 
@@ -424,6 +424,24 @@ remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall(
     ASSERT(t, addr == ret) << "MAP_FIXED at " << addr << " but got " << ret;
   }
   return ret;
+}
+
+int64_t AutoRemoteSyscalls::infallible_lseek_syscall(int fd, int64_t offset,
+                                                     int whence) {
+  switch (arch()) {
+    case x86: {
+      AutoRestoreMem mem(*this, &offset, sizeof(int64_t));
+      infallible_syscall(syscall_number_for__llseek(arch()), fd, offset >> 32,
+                         offset, mem.get(), whence);
+      return t->read_mem(mem.get().cast<int64_t>());
+    }
+    case x86_64:
+      return infallible_syscall(syscall_number_for_lseek(arch()), fd, offset,
+                                whence);
+    default:
+      ASSERT(task(), false) << "Unknown arch";
+      return -1;
+  }
 }
 
 void AutoRemoteSyscalls::check_syscall_result(int syscallno) {

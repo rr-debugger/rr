@@ -702,6 +702,7 @@ public:
     remote_ptr<void> scratch_ptr;
     ssize_t scratch_size;
     remote_ptr<void> top_of_stack;
+    uint64_t cloned_file_data_offset;
     pid_t rec_tid;
     uint32_t serial;
     int desched_fd_child;

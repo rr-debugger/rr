@@ -591,6 +591,8 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
 
   syscallbuf_child = nullptr;
   syscallbuf_fds_disabled_child = nullptr;
+  cloned_file_data_fd_child = -1;
+  desched_fd_child = -1;
   mprotect_records = nullptr;
 
   thread_areas_.clear();
@@ -1482,6 +1484,30 @@ static void copy_tls(const Task::CapturedState& state,
   RR_ARCH_FUNCTION(copy_tls_arch, remote.arch(), state, remote);
 }
 
+static int64_t get_fd_offset(Task* t, int fd) {
+  char buf[PATH_MAX];
+  sprintf(buf, "/proc/%d/fdinfo/%d", t->tid, fd);
+  ScopedFd info(buf, O_RDONLY);
+  ASSERT(t, info.is_open()) << "Can't open " << buf;
+  ssize_t bytes = read(info, buf, sizeof(buf) - 1);
+  ASSERT(t, bytes > 0);
+  buf[bytes] = 0;
+
+  char* p = buf;
+  while (*p) {
+    if (strncmp(p, "pos:", 4) == 0) {
+      char* end;
+      long long int r = strtoll(p + 4, &end, 10);
+      ASSERT(t, *end == 0 || *end == '\n');
+      return r;
+    }
+    while (*p && *p != '\n') {
+      ++p;
+    }
+  }
+  return -1;
+}
+
 Task::CapturedState Task::capture_state() {
   CapturedState state;
   state.rec_tid = rec_tid;
@@ -1493,6 +1519,10 @@ Task::CapturedState Task::capture_state() {
   state.num_syscallbuf_bytes = num_syscallbuf_bytes;
   state.desched_fd_child = desched_fd_child;
   state.cloned_file_data_fd_child = cloned_file_data_fd_child;
+  state.cloned_file_data_offset =
+      cloned_file_data_fd_child >= 0
+          ? get_fd_offset(this, cloned_file_data_fd_child)
+          : 0;
   state.syscallbuf_child = syscallbuf_child;
   if (syscallbuf_hdr) {
     size_t data_size = syscallbuf_data_size();
@@ -1542,6 +1572,10 @@ void Task::copy_state(const CapturedState& state) {
       num_syscallbuf_bytes = state.num_syscallbuf_bytes;
       desched_fd_child = state.desched_fd_child;
       cloned_file_data_fd_child = state.cloned_file_data_fd_child;
+      if (cloned_file_data_fd_child >= 0) {
+        remote.infallible_lseek_syscall(
+            cloned_file_data_fd_child, state.cloned_file_data_offset, SEEK_SET);
+      }
 
       // The syscallbuf is mapped as a shared
       // segment between rr and the tracee.  So we

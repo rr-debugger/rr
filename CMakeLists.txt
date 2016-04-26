@@ -610,6 +610,7 @@ set(TESTS_WITH_PROGRAM
   async_signal_syscalls2
   async_signal_syscalls_siginfo
   async_usr1
+  block_clone_checkpoint
   block_clone_interrupted
   block_intr_sigchld
   blocked_bad_ip
