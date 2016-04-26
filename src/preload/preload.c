@@ -48,7 +48,6 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <link.h>
-#include <linux/btrfs.h>
 #include <linux/futex.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -74,6 +73,20 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+
+#ifndef BTRFS_IOCTL_MAGIC
+#define BTRFS_IOCTL_MAGIC 0x94
+#endif
+#ifndef BTRFS_IOC_CLONE_RANGE
+struct btrfs_ioctl_clone_range_args {
+  int64_t src_fd;
+  uint64_t src_offset;
+  uint64_t src_length;
+  uint64_t dest_offset;
+};
+#define BTRFS_IOC_CLONE_RANGE _IOW(BTRFS_IOCTL_MAGIC, 13, \
+                                  struct btrfs_ioctl_clone_range_args)
+#endif
 
 /* NB: don't include any other local headers here. */
 
