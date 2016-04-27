@@ -102,9 +102,8 @@ templates = {
         Field('fake_return_addr', 4),
         RawBytes(0x89, 0x64, 0x24, 0x04),                   # mov %esp,4(%esp)
         RawBytes(0x81, 0x44, 0x24, 0x04, 0x00, 0x01, 0x00, 0x00), # addl $256,4(%esp)
-        RawBytes(0xe9),                                     # call $trampoline_relative_addr
-        Field('trampoline_relative_addr', 4),
-        RawBytes(0xc2, 0xfc, 0x00),                         # ret $252
+        RawBytes(0xe9),                                     # jmp $trampoline_relative_addr
+        Field('trampoline_relative_addr', 4)
     ),
 
     'X64JumpMonkeypatch': AssemblyTemplate(
