@@ -101,12 +101,14 @@ static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
   size_t sz = t->scratch_size;
   // Make the scratch buffer read/write during replay so that
   // preload's sys_read can use it to buffer cloned data.
-  int prot = PROT_READ | PROT_WRITE;
-  int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
+  ASSERT(t, (km.prot() & (PROT_READ | PROT_WRITE)) == (PROT_READ | PROT_WRITE));
+  ASSERT(t, (km.flags() & (MAP_PRIVATE | MAP_ANONYMOUS)) ==
+                (MAP_PRIVATE | MAP_ANONYMOUS));
 
   AutoRemoteSyscalls remote(t);
-  remote.infallible_mmap_syscall(t->scratch_ptr, sz, prot, flags, -1, 0);
-  t->vm()->map(t->scratch_ptr, sz, prot, flags, 0, string(),
+  remote.infallible_mmap_syscall(t->scratch_ptr, sz, km.prot(),
+                                 km.flags() | MAP_FIXED, -1, 0);
+  t->vm()->map(t->scratch_ptr, sz, km.prot(), km.flags(), 0, string(),
                KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km);
 }
 

@@ -2,9 +2,7 @@
 
 #include "rrutil.h"
 
-static void* do_thread(__attribute__((unused)) void* p) {
-  return NULL;
-}
+static void* do_thread(__attribute__((unused)) void* p) { return NULL; }
 
 int main(int argc, char** argv) {
   pthread_t thread;

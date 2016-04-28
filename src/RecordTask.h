@@ -276,8 +276,9 @@ public:
    * If 'addr' is null then no record is written.
    */
   void record_local(remote_ptr<void> addr, ssize_t num_bytes, const void* buf);
-  template <typename T> void record_local(remote_ptr<T> addr, const T* buf) {
-    record_local(addr, sizeof(T), buf);
+  template <typename T>
+  void record_local(remote_ptr<T> addr, const T* buf, size_t count = 1) {
+    record_local(addr, sizeof(T) * count, buf);
   }
   void record_remote(remote_ptr<void> addr, ssize_t num_bytes);
   template <typename T> void record_remote(remote_ptr<T> addr) {

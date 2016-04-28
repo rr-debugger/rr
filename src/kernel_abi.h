@@ -23,6 +23,7 @@
 #include <linux/shm.h>
 #include <linux/sockios.h>
 #include <linux/sysctl.h>
+#include <linux/usbdevice_fs.h>
 #include <linux/videodev2.h>
 #include <linux/wireless.h>
 #include <poll.h>
@@ -1180,6 +1181,40 @@ struct BaseArch : public wordsize, public FcntlConstants {
     unsigned char components[128];
   };
   RR_VERIFY_TYPE(snd_ctl_card_info);
+
+  struct usbdevfs_iso_packet_desc {
+    unsigned int length;
+    unsigned int actual_length;
+    unsigned int status;
+  };
+  RR_VERIFY_TYPE(usbdevfs_iso_packet_desc);
+
+  struct usbdevfs_urb {
+    unsigned char type;
+    unsigned char endpoint;
+    int status;
+    unsigned int flags;
+    ptr<void> buffer;
+    int buffer_length;
+    int actual_length;
+    int start_frame;
+    union {
+      int number_of_packets;
+      unsigned int stream_id;
+    };
+    int error_count;
+    unsigned int signr;
+    ptr<void> usercontext;
+    struct usbdevfs_iso_packet_desc iso_frame_desc[0];
+  };
+  RR_VERIFY_TYPE(usbdevfs_urb);
+
+  struct usbdevfs_ioctl {
+    int ifno;
+    int ioctl_code;
+    ptr<void> data;
+  };
+  RR_VERIFY_TYPE(usbdevfs_ioctl);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

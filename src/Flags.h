@@ -24,7 +24,11 @@ struct Flags {
    */
   int checksum;
 
-  enum { DUMP_ON_ALL = 10000, DUMP_ON_RDTSC = 10001, DUMP_ON_NONE = -DUMP_ON_ALL };
+  enum {
+    DUMP_ON_ALL = 10000,
+    DUMP_ON_RDTSC = 10001,
+    DUMP_ON_NONE = -DUMP_ON_ALL
+  };
   int dump_on;
 
   enum { DUMP_AT_NONE = -1 };

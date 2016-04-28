@@ -1100,6 +1100,34 @@ static void record_v4l2_buffer_contents(RecordTask* t) {
   }
 }
 
+template <typename Arch> static void record_usbdevfs_reaped_urb(RecordTask* t) {
+  if (t->regs().syscall_failed()) {
+    return;
+  }
+
+  remote_ptr<typename Arch::unsigned_word> pp = t->regs().arg3();
+  remote_ptr<typename Arch::usbdevfs_urb> p = t->read_mem(pp);
+  t->record_remote(p);
+  auto urb = t->read_mem(p);
+  size_t length;
+  if (urb.type == USBDEVFS_URB_TYPE_ISO) {
+    auto iso_frame_descs_ptr = REMOTE_PTR_FIELD(p, iso_frame_desc[0]);
+    auto iso_frame_descs =
+        t->read_mem(iso_frame_descs_ptr, urb.number_of_packets);
+    length = 0;
+    for (auto& f : iso_frame_descs) {
+      length += f.length;
+    }
+    t->record_local(iso_frame_descs_ptr, iso_frame_descs.data(),
+                    iso_frame_descs.size());
+  } else {
+    length = urb.buffer_length;
+  }
+  // It's tempting to use actual_length here but in some cases the kernel
+  // writes back more data than that.
+  t->record_remote(urb.buffer, length);
+}
+
 static void record_page_below_stack_ptr(RecordTask* t) {
   /* Record.the page above the top of |t|'s stack.  The SIOC* ioctls
    * have been observed to write beyond the end of tracees' stacks, as
@@ -1203,7 +1231,10 @@ static Switchable prepare_ioctl(RecordTask* t,
   }
 
   /* In ioctl language, "_IOC_READ" means "outparam".  Both
-   * READ and WRITE can be set for inout params. */
+   * READ and WRITE can be set for inout params.
+   * USBDEVFS ioctls seem to be mostly backwards in their interpretation of the
+   * read/write bits :-(.
+   */
   if (!(_IOC_READ & dir)) {
     switch (IOCTL_MASK_SIZE(request)) {
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):
@@ -1211,6 +1242,15 @@ static Switchable prepare_ioctl(RecordTask* t,
       case IOCTL_MASK_SIZE(FIOCLEX):
       case IOCTL_MASK_SIZE(FIONCLEX):
         return PREVENT_SWITCH;
+      case IOCTL_MASK_SIZE(USBDEVFS_GETDRIVER):
+        // Reads and writes its parameter despite not having the _IOC_READ bit.
+        syscall_state.reg_parameter(3, size);
+        return PREVENT_SWITCH;
+      case IOCTL_MASK_SIZE(USBDEVFS_REAPURB):
+      case IOCTL_MASK_SIZE(USBDEVFS_REAPURBNDELAY):
+        syscall_state.reg_parameter(3, size);
+        syscall_state.after_syscall_action(record_usbdevfs_reaped_urb<Arch>);
+        return ALLOW_SWITCH;
     }
     /* If the kernel isn't going to write any data back to
      * us, we hope and pray that the result of the ioctl
@@ -1247,8 +1287,24 @@ static Switchable prepare_ioctl(RecordTask* t,
       return PREVENT_SWITCH;
 
     case IOCTL_MASK_SIZE(TIOCGPTN):
+    case IOCTL_MASK_SIZE(USBDEVFS_GET_CAPABILITIES):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
+
+    case IOCTL_MASK_SIZE(USBDEVFS_CLAIMINTERFACE):
+    case IOCTL_MASK_SIZE(USBDEVFS_SETINTERFACE):
+    case IOCTL_MASK_SIZE(USBDEVFS_SUBMITURB):
+      // Doesn't actually seem to write to userspace
+      return PREVENT_SWITCH;
+
+    case IOCTL_MASK_SIZE(USBDEVFS_IOCTL): {
+      auto argsp =
+          syscall_state.reg_parameter<typename Arch::usbdevfs_ioctl>(3, IN);
+      auto args = t->read_mem(argsp);
+      syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, data),
+                                      _IOC_SIZE(args.ioctl_code));
+      return PREVENT_SWITCH;
+    }
   }
 
   /* These ioctls are mostly regular but require additional recording. */

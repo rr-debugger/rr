@@ -139,9 +139,12 @@ bool should_dump_memory(const TraceFrame& f) {
   }
 #endif
   return flags->dump_on == Flags::DUMP_ON_ALL ||
-         (f.event().is_syscall_event() && f.event().Syscall().number == flags->dump_on) ||
-         (f.event().is_signal_event() && f.event().Signal().siginfo.si_signo == -flags->dump_on) ||
-         (flags->dump_on == Flags::DUMP_ON_RDTSC && f.event().type() == EV_SEGV_RDTSC) ||
+         (f.event().is_syscall_event() &&
+          f.event().Syscall().number == flags->dump_on) ||
+         (f.event().is_signal_event() &&
+          f.event().Signal().siginfo.si_signo == -flags->dump_on) ||
+         (flags->dump_on == Flags::DUMP_ON_RDTSC &&
+          f.event().type() == EV_SEGV_RDTSC) ||
          flags->dump_at == int(f.time());
 }
 
