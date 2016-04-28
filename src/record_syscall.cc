@@ -1241,6 +1241,7 @@ static Switchable prepare_ioctl(RecordTask* t,
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):
       case IOCTL_MASK_SIZE(FIOCLEX):
       case IOCTL_MASK_SIZE(FIONCLEX):
+      case IOCTL_MASK_SIZE(USBDEVFS_DISCARDURB):
         return PREVENT_SWITCH;
       case IOCTL_MASK_SIZE(USBDEVFS_GETDRIVER):
         // Reads and writes its parameter despite not having the _IOC_READ bit.
