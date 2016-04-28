@@ -1305,6 +1305,15 @@ static Switchable prepare_ioctl(RecordTask* t,
                                       _IOC_SIZE(args.ioctl_code));
       return PREVENT_SWITCH;
     }
+    case IOCTL_MASK_SIZE(USBDEVFS_CONTROL): {
+      auto argsp =
+          syscall_state.reg_parameter<typename Arch::usbdevfs_ctrltransfer>(3,
+                                                                            IN);
+      auto args = t->read_mem(argsp);
+      syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, data),
+                                      args.wLength);
+      return PREVENT_SWITCH;
+    }
   }
 
   /* These ioctls are mostly regular but require additional recording. */

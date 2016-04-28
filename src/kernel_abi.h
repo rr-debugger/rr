@@ -1215,6 +1215,17 @@ struct BaseArch : public wordsize, public FcntlConstants {
     ptr<void> data;
   };
   RR_VERIFY_TYPE(usbdevfs_ioctl);
+
+  struct usbdevfs_ctrltransfer {
+    uint8_t bRequestType;
+    uint8_t bRequest;
+    uint16_t wValue;
+    uint16_t wIndex;
+    uint16_t wLength;
+    uint32_t timeout;
+    ptr<void> data;
+  };
+  RR_VERIFY_TYPE(usbdevfs_ctrltransfer);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
