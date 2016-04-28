@@ -784,6 +784,12 @@ foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   target_link_libraries(${test} -lrt)
 endforeach(test)
 
+# Test disabled because it requires libuvc to be built and installed, and a
+# working USB camera
+# add_executable(usb src/test/usb.c)
+# add_dependencies(usb Generated)
+# target_link_libraries(usb -lrt -L/usr/local/lib -luvc -lusb-1.0)
+
 foreach(test ${BASIC_CPP_TESTS})
   add_executable(${test} src/test/${test}.cc)
   add_dependencies(${test} Generated)
