@@ -24,9 +24,8 @@ struct Flags {
    */
   int checksum;
 
-  enum { DUMP_ON_ALL = 10000, DUMP_ON_NONE = -DUMP_ON_ALL };
-  /* event(s) to create memory dumps for */
-  TraceFrame::Time dump_on; // event
+  enum { DUMP_ON_ALL = 10000, DUMP_ON_RDTSC = 10001, DUMP_ON_NONE = -DUMP_ON_ALL };
+  int dump_on;
 
   enum { DUMP_AT_NONE = -1 };
   /* time at which to create memory dump */

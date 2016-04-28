@@ -200,7 +200,11 @@ bool parse_global_option(std::vector<std::string>& args) {
       }
       break;
     case 'D':
-      flags.dump_on = atoi(opt.value.c_str());
+      if (opt.value == "RDTSC") {
+        flags.dump_on = Flags::DUMP_ON_RDTSC;
+      } else {
+        flags.dump_on = atoi(opt.value.c_str());
+      }
       break;
     case 'E':
       flags.fatal_errors_and_warnings = true;

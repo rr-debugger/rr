@@ -620,6 +620,7 @@ set(TESTS_WITH_PROGRAM
   call_function
   checkpoint_dying_threads
   checkpoint_mixed_mode
+  checksum_sanity
   clone_interruption
   clone_vfork
   conditional_breakpoint_calls
@@ -721,7 +722,6 @@ set(TESTS_WITHOUT_PROGRAM
   checkpoint_mmap_shared
   checkpoint_prctl_name
   checkpoint_simple
-  checksum_sanity
   cont_signal
   cpuid
   dead_thread_target

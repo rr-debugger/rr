@@ -139,6 +139,9 @@ bool should_dump_memory(const TraceFrame& f) {
   }
 #endif
   return flags->dump_on == Flags::DUMP_ON_ALL ||
+         (f.event().is_syscall_event() && f.event().Syscall().number == flags->dump_on) ||
+         (f.event().is_signal_event() && f.event().Signal().siginfo.si_signo == -flags->dump_on) ||
+         (flags->dump_on == Flags::DUMP_ON_RDTSC && f.event().type() == EV_SEGV_RDTSC) ||
          flags->dump_at == int(f.time());
 }
 
@@ -362,6 +365,11 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 bool should_checksum(const TraceFrame& f) {
   if (f.event().type() == EV_EXIT || f.event().type() == EV_UNSTABLE_EXIT) {
     // Task is dead, or at least detached, and we can't read its memory safely.
+    return false;
+  }
+  if (f.event().has_ticks_slop()) {
+    // We may not be at the same point during recording and replay, so don't
+    // compute checksums.
     return false;
   }
 

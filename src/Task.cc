@@ -594,6 +594,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
   mprotect_records = nullptr;
+  in_replay_flag = nullptr;
 
   thread_areas_.clear();
 
@@ -1359,6 +1360,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   t->stopping_breakpoint_table = stopping_breakpoint_table;
   t->stopping_breakpoint_table_entry_size =
       stopping_breakpoint_table_entry_size;
+  t->in_replay_flag = in_replay_flag;
 
   // FdTable is either shared or copied, so the contents of
   // syscallbuf_fds_disabled_child are still valid.

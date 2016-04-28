@@ -1,5 +1,5 @@
 source `dirname $0`/util.sh
 GLOBAL_OPTIONS="$GLOBAL_OPTIONS --checksum=on-all-events"
-record simple$bitness
+record $TESTNAME
 replay
 check EXIT-SUCCESS
