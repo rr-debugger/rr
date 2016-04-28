@@ -91,6 +91,27 @@ struct btrfs_ioctl_clone_range_args {
   _IOW(BTRFS_IOCTL_MAGIC, 13, struct btrfs_ioctl_clone_range_args)
 #endif
 
+#ifndef USBDEVFS_GET_CAPABILITIES
+#define USBDEVFS_GET_CAPABILITIES _IOR('U', 26, __u32)
+#endif
+#ifndef USBDEVFS_DISCONNECT_CLAIM
+struct usbdevfs_disconnect_claim {
+  unsigned int interface;
+  unsigned int flags;
+ char driver[USBDEVFS_MAXDRIVERNAME + 1];
+};
+#define USBDEVFS_DISCONNECT_CLAIM _IOR('U', 27, struct usbdevfs_disconnect_claim)
+#endif
+#ifndef USBDEVFS_ALLOC_STREAMS
+struct usbdevfs_streams {
+  unsigned int num_streams;
+  unsigned int num_eps;
+  unsigned char eps[0];
+};
+#define USBDEVFS_ALLOC_STREAMS _IOR('U', 28, struct usbdevfs_streams)
+#define USBDEVFS_FREE_STREAMS _IOR('U', 29, struct usbdevfs_streams)
+#endif
+
 #ifndef MADV_DONTDUMP
 #define MADV_DONTDUMP 16
 #endif
