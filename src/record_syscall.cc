@@ -1293,6 +1293,7 @@ static Switchable prepare_ioctl(RecordTask* t,
 
     case IOCTL_MASK_SIZE(USBDEVFS_CLAIMINTERFACE):
     case IOCTL_MASK_SIZE(USBDEVFS_SETINTERFACE):
+    case IOCTL_MASK_SIZE(USBDEVFS_RELEASEINTERFACE):
     case IOCTL_MASK_SIZE(USBDEVFS_SUBMITURB):
     case IOCTL_MASK_SIZE(USBDEVFS_SETCONFIGURATION):
       // Doesn't actually seem to write to userspace
