@@ -13,6 +13,8 @@
 #include "AddressSpace.h"
 #include "kernel_supplement.h"
 #include "log.h"
+#include "RecordSession.h"
+#include "Task.h"
 #include "TaskishUid.h"
 #include "util.h"
 
@@ -355,7 +357,8 @@ bool TraceWriter::try_clone_file(const string& file_name, string* new_name) {
 }
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
-    const KernelMapping& km, const struct stat& stat, MappingOrigin origin) {
+    Task* t, const KernelMapping& km, const struct stat& stat,
+    MappingOrigin origin) {
   auto& mmaps = writer(MMAPS);
   TraceReader::MappedDataSource source;
   string backing_file_name;
@@ -365,6 +368,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
     source = TraceReader::SOURCE_ZERO;
   } else if ((km.flags() & MAP_PRIVATE) &&
+             t->session().as_record()->use_file_cloning() &&
              try_clone_file(km.fsname(), &backing_file_name)) {
     source = TraceReader::SOURCE_FILE;
   } else if (should_copy_mmap_region(km, stat) &&

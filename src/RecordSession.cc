@@ -1405,6 +1405,7 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       continue_through_sig(0),
       last_task_switchable(PREVENT_SWITCH),
       use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
+      use_file_cloning_(true),
       use_read_cloning_(true),
       enable_chaos_(false),
       wait_for_all_(false) {

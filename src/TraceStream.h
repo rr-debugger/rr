@@ -21,6 +21,7 @@
 namespace rr {
 
 class KernelMapping;
+class Task;
 
 /**
  * TraceStream stores all the data common to both recording and
@@ -133,7 +134,7 @@ public:
    * If this returns RECORD_IN_TRACE, then the data for the map should be
    * recorded in the trace raw-data.
    */
-  RecordInTrace write_mapped_region(const KernelMapping& map,
+  RecordInTrace write_mapped_region(Task* t, const KernelMapping& map,
                                     const struct stat& stat,
                                     MappingOrigin origin = SYSCALL_MAPPING);
 

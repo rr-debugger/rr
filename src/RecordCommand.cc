@@ -34,6 +34,7 @@ RecordCommand RecordCommand::singleton(
     "                             tests.\n"
     "  -n, --no-syscall-buffer    disable the syscall buffer preload \n"
     "                             library even if it would otherwise be used\n"
+    "  --no-file-cloning          disable file cloning for mmapped files\n"
     "  --no-read-cloning          disable file-block cloning for syscallbuf\n"
     "                             reads\n"
     "  -s, --always-switch        tryto context switch at every rr event\n"
@@ -67,6 +68,9 @@ struct RecordFlags {
   /* Whether to use syscall buffering optimization during recording. */
   RecordSession::SyscallBuffering use_syscall_buffer;
 
+  /* Whether to use file-cloning optimization during recording. */
+  bool use_file_cloning;
+
   /* Whether to use read-cloning optimization during recording. */
   bool use_read_cloning;
 
@@ -89,6 +93,7 @@ struct RecordFlags {
         ignore_sig(0),
         continue_through_sig(0),
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
+        use_file_cloning(true),
         use_read_cloning(true),
         bind_cpu(RecordSession::BIND_CPU),
         always_switch(false),
@@ -103,12 +108,13 @@ static bool parse_record_arg(std::vector<std::string>& args,
   }
 
   static const OptionSpec options[] = {
+    { 0, "no-read-cloning", NO_PARAMETER },
+    { 1, "no-file-cloning", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
     { 'n', "no-syscall-buffer", NO_PARAMETER },
-    { 0, "no-read-cloning", NO_PARAMETER },
     { 's', "always-switch", NO_PARAMETER },
     { 't', "continue-through-signal", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
@@ -146,6 +152,9 @@ static bool parse_record_arg(std::vector<std::string>& args,
       break;
     case 0:
       flags.use_read_cloning = false;
+      break;
+    case 1:
+      flags.use_file_cloning = false;
       break;
     case 's':
       flags.always_switch = true;
@@ -211,6 +220,7 @@ static void setup_session_from_flags(RecordSession& session,
   session.scheduler().set_always_switch(flags.always_switch);
   session.set_enable_chaos(flags.chaos);
   session.set_use_read_cloning(flags.use_read_cloning);
+  session.set_use_file_cloning(flags.use_file_cloning);
   session.set_ignore_sig(flags.ignore_sig);
   session.set_continue_through_sig(flags.continue_through_sig);
   session.set_wait_for_all(flags.wait_for_all);
