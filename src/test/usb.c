@@ -45,8 +45,8 @@ POSSIBILITY OF SUCH DAMAGE.
 
 static int frame_count = 0;
 
-void cb(uvc_frame_t *frame, __attribute__((unused)) void *ptr) {
-  uvc_frame_t *bgr;
+void cb(uvc_frame_t* frame, __attribute__((unused)) void* ptr) {
+  uvc_frame_t* bgr;
   uvc_error_t ret;
   bgr = uvc_allocate_frame(frame->width * frame->height * 3);
   test_assert(bgr != NULL);
@@ -57,18 +57,17 @@ void cb(uvc_frame_t *frame, __attribute__((unused)) void *ptr) {
 }
 
 int main(void) {
-  uvc_context_t *ctx;
-  uvc_device_t *dev;
-  uvc_device_handle_t *devh;
+  uvc_context_t* ctx;
+  uvc_device_t* dev;
+  uvc_device_handle_t* devh;
   uvc_stream_ctrl_t ctrl;
   uvc_error_t res;
   res = uvc_init(&ctx, NULL);
   test_assert(res >= 0);
   atomic_puts("UVC initialized");
   /* Locates the first attached UVC device, stores in dev */
-  res = uvc_find_device(
-      ctx, &dev,
-      0, 0, NULL); /* filter devices: vendor_id, product_id, "serial_num" */
+  res = uvc_find_device(ctx, &dev, 0, 0, NULL); /* filter devices: vendor_id,
+                                                   product_id, "serial_num" */
   if (res < 0) {
     atomic_puts("No device found");
     atomic_puts("EXIT-SUCCESS");
@@ -88,10 +87,10 @@ int main(void) {
   uvc_print_diag(devh, stdout);
   /* Try to negotiate a 640x480 30 fps YUYV stream profile */
   res = uvc_get_stream_ctrl_format_size(
-      devh, &ctrl, /* result stored in ctrl */
+      devh, &ctrl,           /* result stored in ctrl */
       UVC_FRAME_FORMAT_YUYV, /* YUV 422, aka YUV 4:2:2. try _COMPRESSED */
-      640, 480, 30 /* width, height, fps */
-  );
+      640, 480, 30           /* width, height, fps */
+      );
   /* Print out the result */
   uvc_print_stream_ctrl(&ctrl, stdout);
   if (res < 0) {
@@ -106,7 +105,7 @@ int main(void) {
   test_assert(res >= 0);
   atomic_puts("Streaming...");
   uvc_set_ae_mode(devh, 1); /* e.g., turn on auto exposure */
-  sleep(2); /* stream for 2 seconds */
+  sleep(2);                 /* stream for 2 seconds */
   atomic_puts("Stopping streaming.");
   /* End the stream. Blocks until last callback is serviced */
   uvc_stop_streaming(devh);
@@ -116,11 +115,11 @@ int main(void) {
   atomic_puts("Device closed");
   /* Release the device descriptor */
   uvc_unref_device(dev);
-  /* Close the UVC context. This closes and cleans up any existing device handles,
+  /* Close the UVC context. This closes and cleans up any existing device
+   * handles,
    * and it closes the libusb context if one was not provided. */
   uvc_exit(ctx);
   test_assert(frame_count > 0);
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
-

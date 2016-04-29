@@ -98,9 +98,10 @@ struct btrfs_ioctl_clone_range_args {
 struct usbdevfs_disconnect_claim {
   unsigned int interface;
   unsigned int flags;
- char driver[USBDEVFS_MAXDRIVERNAME + 1];
+  char driver[USBDEVFS_MAXDRIVERNAME + 1];
 };
-#define USBDEVFS_DISCONNECT_CLAIM _IOR('U', 27, struct usbdevfs_disconnect_claim)
+#define USBDEVFS_DISCONNECT_CLAIM                                              \
+  _IOR('U', 27, struct usbdevfs_disconnect_claim)
 #endif
 #ifndef USBDEVFS_ALLOC_STREAMS
 struct usbdevfs_streams {
