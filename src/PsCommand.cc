@@ -40,13 +40,64 @@ static void update_tid_to_pid_map(std::map<pid_t, pid_t>& tid_to_pid,
   } else if (e.type() == TraceTaskEvent::CLONE) {
     // thread clone. Record thread's pid.
     tid_to_pid[e.tid()] = tid_to_pid[e.parent_tid()];
+  } else if (e.type() == TraceTaskEvent::EXIT) {
+    tid_to_pid.erase(e.tid());
   }
+}
+
+static int count_tids_for_pid(const std::map<pid_t, pid_t> tid_to_pid,
+                              pid_t pid) {
+  int count = 0;
+  for (auto& tp : tid_to_pid) {
+    if (tp.second == pid) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+static ssize_t find_cmd_line(pid_t pid, const vector<TraceTaskEvent>& events,
+                             size_t current_event,
+                             const std::map<pid_t, pid_t> current_tid_to_pid) {
+  std::map<pid_t, pid_t> tid_to_pid = current_tid_to_pid;
+  for (size_t i = current_event; i < events.size(); ++i) {
+    const TraceTaskEvent& e = events[i];
+    if (e.type() == TraceTaskEvent::EXEC && tid_to_pid[e.tid()] == pid) {
+      return i;
+    }
+    if (e.type() == TraceTaskEvent::EXIT && tid_to_pid[e.tid()] == pid &&
+        count_tids_for_pid(tid_to_pid, pid) == 1) {
+      return -1;
+    }
+    update_tid_to_pid_map(tid_to_pid, e);
+  }
+  return -1;
+}
+
+static int find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
+                          size_t current_event,
+                          const std::map<pid_t, pid_t> current_tid_to_pid) {
+  std::map<pid_t, pid_t> tid_to_pid = current_tid_to_pid;
+  for (size_t i = current_event; i < events.size(); ++i) {
+    const TraceTaskEvent& e = events[i];
+    if (e.type() == TraceTaskEvent::EXIT && tid_to_pid[e.tid()] == pid &&
+        count_tids_for_pid(tid_to_pid, pid) == 1) {
+      int status = e.exit_status();
+      if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+      }
+      assert(WIFSIGNALED(status));
+      return -WTERMSIG(status);
+    }
+    update_tid_to_pid_map(tid_to_pid, e);
+  }
+  return -SIGKILL;
 }
 
 static int ps(const string& trace_dir, FILE* out) {
   TraceReader trace(trace_dir);
 
-  fprintf(out, "PID\tPPID\tCMD\n");
+  fprintf(out, "PID\tPPID\tEXIT\tCMD\n");
 
   vector<TraceTaskEvent> events;
   while (trace.good()) {
@@ -60,40 +111,28 @@ static int ps(const string& trace_dir, FILE* out) {
 
   std::map<pid_t, pid_t> tid_to_pid;
 
-  fprintf(out, "%d\t--\t", events[0].tid());
+  pid_t initial_tid = events[0].tid();
+  tid_to_pid[initial_tid] = initial_tid;
+  fprintf(out, "%d\t--\t%d\t", initial_tid,
+          find_exit_code(initial_tid, events, 0, tid_to_pid));
   print_exec_cmd_line(events[0], out);
-  tid_to_pid[events[0].tid()] = events[0].tid();
 
   for (size_t i = 1; i < events.size(); ++i) {
     auto& e = events[i];
     update_tid_to_pid_map(tid_to_pid, e);
 
     if (e.is_fork()) {
-      fprintf(out, "%d\t%d\t", e.tid(), tid_to_pid[e.parent_tid()]);
+      pid_t pid = tid_to_pid[e.tid()];
+      fprintf(out, "%d\t%d\t%d\t", e.tid(), tid_to_pid[e.parent_tid()],
+              find_exit_code(pid, events, i, tid_to_pid));
 
-      // Look ahead for an EXEC in one of this process' threads.
-      std::map<pid_t, pid_t> tmp_tid_to_pid = tid_to_pid;
-      bool found_exec = false;
-      for (size_t j = i + 1; j < events.size(); ++j) {
-        auto& ej = events[j];
-
-        if (tmp_tid_to_pid[ej.tid()] == tmp_tid_to_pid[e.tid()] &&
-            ej.type() == TraceTaskEvent::EXEC) {
-          print_exec_cmd_line(events[j], out);
-          found_exec = true;
-          break;
-        }
-
-        update_tid_to_pid_map(tmp_tid_to_pid, ej);
-
-        if (ej.tid() == e.tid() && ej.type() == TraceTaskEvent::EXIT) {
-          break;
-        }
-      }
-      if (!found_exec) {
+      ssize_t cmd_line_index = find_cmd_line(pid, events, i, tid_to_pid);
+      if (cmd_line_index < 0) {
         // The main thread exited. All other threads must too, so there
         // is no more opportunity for e's pid to exec.
         fprintf(out, "(forked without exec)\n");
+      } else {
+        print_exec_cmd_line(events[cmd_line_index], out);
       }
     }
   }
