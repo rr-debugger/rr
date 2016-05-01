@@ -20,19 +20,6 @@ class TraceWriter;
 
 class TraceTaskEvent {
 public:
-  TraceTaskEvent(pid_t tid, pid_t parent_tid)
-      : type_(FORK), tid_(tid), parent_tid_(parent_tid) {}
-  TraceTaskEvent(pid_t tid, pid_t parent_tid, uint32_t clone_flags)
-      : type_(CLONE),
-        tid_(tid),
-        parent_tid_(parent_tid),
-        clone_flags_(clone_flags) {}
-  TraceTaskEvent(pid_t tid, const std::string& file_name,
-                 const std::vector<std::string> cmd_line)
-      : type_(EXEC), tid_(tid), file_name_(file_name), cmd_line_(cmd_line) {}
-  TraceTaskEvent(pid_t tid) : type_(EXIT), tid_(tid) {}
-  TraceTaskEvent() : type_(NONE) {}
-
   enum Type {
     NONE,
     CLONE, // created by clone(2) syscall
@@ -40,6 +27,33 @@ public:
     EXEC,
     EXIT
   };
+
+  TraceTaskEvent(Type type = NONE, pid_t tid = 0) : type_(type), tid_(tid) {}
+
+  static TraceTaskEvent for_fork(pid_t tid, pid_t parent_tid) {
+    TraceTaskEvent result(FORK, tid);
+    result.parent_tid_ = parent_tid;
+    return result;
+  }
+  static TraceTaskEvent for_clone(pid_t tid, pid_t parent_tid,
+                                  uint32_t clone_flags) {
+    TraceTaskEvent result(CLONE, tid);
+    result.parent_tid_ = parent_tid;
+    result.clone_flags_ = clone_flags;
+    return result;
+  }
+  static TraceTaskEvent for_exec(pid_t tid, const std::string& file_name,
+                                 const std::vector<std::string> cmd_line) {
+    TraceTaskEvent result(EXEC, tid);
+    result.file_name_ = file_name;
+    result.cmd_line_ = cmd_line;
+    return result;
+  }
+  static TraceTaskEvent for_exit(pid_t tid, int exit_status) {
+    TraceTaskEvent result(EXIT, tid);
+    result.exit_status_ = exit_status;
+    return result;
+  }
 
   Type type() const { return type_; }
   pid_t tid() const { return tid_; }
@@ -63,6 +77,10 @@ public:
     assert(type() == EXEC);
     return fds_to_close_;
   }
+  int exit_status() const {
+    assert(type() == EXIT);
+    return exit_status_;
+  }
 
   bool is_fork() const {
     return type() == FORK || (type() == CLONE && !(clone_flags() & CLONE_VM));
@@ -84,6 +102,7 @@ private:
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only
   std::vector<int> fds_to_close_;     // EXEC only
+  int exit_status_;                   // EXIT only
 };
 
 } // namespace rr

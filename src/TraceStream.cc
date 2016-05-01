@@ -31,7 +31,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 50
+#define TRACE_VERSION 51
 
 struct SubstreamData {
   const char* name;
@@ -277,6 +277,7 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
       tasks << event.file_name() << event.cmd_line() << event.fds_to_close();
       break;
     case TraceTaskEvent::EXIT:
+      tasks << event.exit_status_;
       break;
     case TraceTaskEvent::NONE:
       assert(0 && "Writing NONE TraceTaskEvent");
@@ -299,6 +300,7 @@ TraceTaskEvent TraceReader::read_task_event() {
       tasks >> r.file_name_ >> r.cmd_line_ >> r.fds_to_close_;
       break;
     case TraceTaskEvent::EXIT:
+      tasks >> r.exit_status_;
       break;
     case TraceTaskEvent::NONE:
       // Should be EOF only

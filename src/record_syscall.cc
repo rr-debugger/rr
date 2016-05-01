@@ -2208,10 +2208,10 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     new_task->record_remote_even_if_null(child_params.ctid);
 
     t->session().trace_writer().write_task_event(
-        TraceTaskEvent(new_task->tid, t->tid, flags));
+        TraceTaskEvent::for_clone(new_task->tid, t->tid, flags));
   } else {
     t->session().trace_writer().write_task_event(
-        TraceTaskEvent(new_task->tid, t->tid));
+        TraceTaskEvent::for_fork(new_task->tid, t->tid));
   }
 
   init_scratch_memory(new_task);
@@ -2370,8 +2370,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
       // Save the event. We can't record it here because the exec might fail.
       string raw_filename = t->read_c_str(t->regs().arg1());
-      syscall_state.exec_saved_event = unique_ptr<TraceTaskEvent>(
-          new TraceTaskEvent(t->tid, raw_filename, cmd_line));
+      syscall_state.exec_saved_event =
+          unique_ptr<TraceTaskEvent>(new TraceTaskEvent(
+              TraceTaskEvent::for_exec(t->tid, raw_filename, cmd_line)));
 
       return PREVENT_SWITCH;
     }

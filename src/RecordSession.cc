@@ -199,7 +199,8 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
 
   record_robust_futex_changes(t);
 
-  t->session().trace_writer().write_task_event(TraceTaskEvent(t->tid));
+  t->session().trace_writer().write_task_event(
+      TraceTaskEvent::for_exit(t->tid, t->get_ptrace_eventmsg<int>()));
 
   // Delete t. t's destructor writes the final EV_(UNSTABLE_)EXIT.
   t->destroy();

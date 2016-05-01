@@ -205,16 +205,6 @@ string Task::file_name_of_fd(int fd) {
   return path;
 }
 
-pid_t Task::get_ptrace_eventmsg_pid() {
-  unsigned long msg = 0;
-  // in theory we could hit an assertion failure if the tracee suffers
-  // a SIGKILL before we get here. But the SIGKILL would have to be
-  // precisely timed between the generation of a PTRACE_EVENT_FORK/CLONE/
-  // SYS_clone event, and us fetching the event message here.
-  xptrace(PTRACE_GETEVENTMSG, nullptr, &msg);
-  return (pid_t)msg;
-}
-
 const siginfo_t& Task::get_siginfo() {
   assert(stop_sig());
   return pending_siginfo;
@@ -2084,7 +2074,7 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
       parent->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
     }
   }
-  pid_t new_tid = parent->get_ptrace_eventmsg_pid();
+  pid_t new_tid = parent->get_ptrace_eventmsg<pid_t>();
 
   parent->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
   Task* child =

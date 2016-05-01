@@ -212,7 +212,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
       t, Arch::clone == sys ? TraceTaskEvent::CLONE : TraceTaskEvent::FORK);
   ASSERT(t, tte.parent_tid() == t->rec_tid);
   long rec_tid = tte.tid();
-  pid_t new_tid = t->get_ptrace_eventmsg_pid();
+  pid_t new_tid = t->get_ptrace_eventmsg<pid_t>();
 
   CloneParameters params;
   if (Arch::clone == t->regs().original_syscallno()) {
