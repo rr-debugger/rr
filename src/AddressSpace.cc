@@ -658,6 +658,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   if (0 == new_num_bytes) {
     return;
   }
+  new_num_bytes = ceil_page_size(new_num_bytes);
 
   auto it = dont_fork.lower_bound(MemoryRange(old_addr, old_num_bytes));
   if (it != dont_fork.end() && it->start() < old_addr + old_num_bytes) {

@@ -48,7 +48,8 @@ int main(void) {
   overwrite_file(file_name, 2 * num_bytes);
 
   old_wpage = wpage;
-  wpage = mremap(old_wpage, num_bytes, 2 * num_bytes, MREMAP_MAYMOVE);
+  /* Test remapping a non-page-sized range */
+  wpage = mremap(old_wpage, num_bytes, 2 * num_bytes - 1, MREMAP_MAYMOVE);
   atomic_printf("remapped wpage:%p\n", wpage);
   test_assert(wpage != (void*)-1 && wpage != old_wpage);
 
