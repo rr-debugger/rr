@@ -352,7 +352,6 @@ set(BASIC_TESTS
   barrier
   big_buffers
   block
-  block_clone_syscallbuf_overflow
   blocked_sigsegv
   brk
   brk2
@@ -613,6 +612,7 @@ set(TESTS_WITH_PROGRAM
   async_usr1
   block_clone_checkpoint
   block_clone_interrupted
+  block_clone_syscallbuf_overflow
   block_intr_sigchld
   blocked_bad_ip
   breakpoint

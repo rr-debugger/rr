@@ -4,7 +4,7 @@
 
 #define BUF_COUNT (int)(0x20000 / sizeof(int))
 #define FILE_BUFS 10
-#define ITERATIONS 10000
+#define ITERATIONS 100
 
 int main(void) {
   int i, j, count;
@@ -29,10 +29,6 @@ int main(void) {
       test_assert(buf[0] == count);
       test_assert(buf[BUF_COUNT - 1] == count + BUF_COUNT - 1);
       count += BUF_COUNT;
-    }
-    for (j = 0; j < rand()%10 + 5; ++j) {
-      struct timeval tv;
-      gettimeofday(&tv, NULL);
     }
   }
 
