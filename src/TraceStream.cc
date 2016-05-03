@@ -40,9 +40,9 @@ struct SubstreamData {
 };
 
 static SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
-  { "events", 1024 * 1024, 1 },   { "data_header", 1024 * 1024, 1 },
-  { "data", 8 * 1024 * 1024, 0 }, { "mmaps", 64 * 1024, 1 },
-  { "tasks", 64 * 1024, 1 },      { "generic", 64 * 1024, 1 },
+  { "events", 1024 * 1024, 1 }, { "data_header", 1024 * 1024, 1 },
+  { "data", 1024 * 1024, 0 },   { "mmaps", 64 * 1024, 1 },
+  { "tasks", 64 * 1024, 1 },    { "generic", 64 * 1024, 1 },
 };
 
 static const SubstreamData& substream(TraceStream::Substream s) {
