@@ -71,6 +71,7 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
   } else {
     initial_regs.set_sp(remote_ptr<void>());
   }
+  t->vm()->suspend_breakpoint_at(initial_regs.ip());
 }
 
 static bool is_usable_area(const KernelMapping& km) {
@@ -108,6 +109,7 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
 AutoRemoteSyscalls::~AutoRemoteSyscalls() { restore_state_to(t); }
 
 void AutoRemoteSyscalls::restore_state_to(Task* t) {
+  t->vm()->restore_breakpoint_at(initial_regs.ip());
   initial_regs.set_ip(initial_ip);
   initial_regs.set_sp(initial_sp);
   // Restore stomped registers.

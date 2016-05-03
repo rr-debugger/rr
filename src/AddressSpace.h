@@ -469,6 +469,15 @@ public:
   void remove_all_breakpoints();
 
   /**
+   * Temporarily remove the breakpoint at |addr|.
+   */
+  void suspend_breakpoint_at(remote_code_ptr addr);
+  /**
+   * Restore any temporarily removed breakpoint at |addr|.
+   */
+  void restore_breakpoint_at(remote_code_ptr addr);
+
+  /**
    * Manage watchpoints.  Analogous to breakpoint-managing
    * methods above, except that watchpoints can be set for an
    * address range.

@@ -714,6 +714,22 @@ void AddressSpace::remove_all_breakpoints() {
   }
 }
 
+void AddressSpace::suspend_breakpoint_at(remote_code_ptr addr) {
+  auto it = breakpoints.find(addr);
+  if (it != breakpoints.end()) {
+    Task* t = *task_set().begin();
+    t->write_mem(addr.to_data_ptr<uint8_t>(), it->second.overwritten_data);
+  }
+}
+
+void AddressSpace::restore_breakpoint_at(remote_code_ptr addr) {
+  auto it = breakpoints.find(addr);
+  if (it != breakpoints.end()) {
+    Task* t = *task_set().begin();
+    t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn);
+  }
+}
+
 int AddressSpace::access_bits_of(WatchType type) {
   switch (type) {
     case WATCH_EXEC:
