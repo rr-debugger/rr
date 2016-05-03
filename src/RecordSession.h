@@ -101,8 +101,9 @@ public:
   }
   bool enable_chaos() const { return enable_chaos_; }
 
-  void set_use_read_cloning(bool enable) { this->use_read_cloning_ = enable; }
-  void set_use_file_cloning(bool enable) { this->use_file_cloning_ = enable; }
+  void set_use_read_cloning(bool enable) { use_read_cloning_ = enable; }
+  void set_use_file_cloning(bool enable) { use_file_cloning_ = enable; }
+  void set_syscall_buffer_size(size_t size) { syscall_buffer_size_ = size; }
 
   void set_wait_for_all(bool wait_for_all) {
     this->wait_for_all_ = wait_for_all;

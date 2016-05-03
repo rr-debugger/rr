@@ -37,6 +37,8 @@ RecordCommand RecordCommand::singleton(
     "  --no-file-cloning          disable file cloning for mmapped files\n"
     "  --no-read-cloning          disable file-block cloning for syscallbuf\n"
     "                             reads\n"
+    "  --syscall-buffer-size=<NUM> desired size of syscall buffer in kB.\n"
+    "                             Mainly for tests\n"
     "  -s, --always-switch        tryto context switch at every rr event\n"
     "  -t, --continue-through-signal=<SIG>\n"
     "                             Unhandled <SIG> signals will be ignored\n"
@@ -68,6 +70,11 @@ struct RecordFlags {
   /* Whether to use syscall buffering optimization during recording. */
   RecordSession::SyscallBuffering use_syscall_buffer;
 
+  /* If nonzero, the desired syscall buffer size. Must be a multiple of the page
+   * size.
+   */
+  size_t syscall_buffer_size;
+
   /* Whether to use file-cloning optimization during recording. */
   bool use_file_cloning;
 
@@ -93,6 +100,7 @@ struct RecordFlags {
         ignore_sig(0),
         continue_through_sig(0),
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
+        syscall_buffer_size(0),
         use_file_cloning(true),
         use_read_cloning(true),
         bind_cpu(RecordSession::BIND_CPU),
@@ -110,6 +118,7 @@ static bool parse_record_arg(std::vector<std::string>& args,
   static const OptionSpec options[] = {
     { 0, "no-read-cloning", NO_PARAMETER },
     { 1, "no-file-cloning", NO_PARAMETER },
+    { 2, "syscall-buffer-size", HAS_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -155,6 +164,13 @@ static bool parse_record_arg(std::vector<std::string>& args,
       break;
     case 1:
       flags.use_file_cloning = false;
+      break;
+    case 2:
+      if (!opt.verify_valid_int(4, 1024*1024) ||
+          (opt.int_value & (page_size()/1024 - 1))) {
+        return false;
+      }
+      flags.syscall_buffer_size = opt.int_value*1024;
       break;
     case 's':
       flags.always_switch = true;
@@ -224,6 +240,9 @@ static void setup_session_from_flags(RecordSession& session,
   session.set_ignore_sig(flags.ignore_sig);
   session.set_continue_through_sig(flags.continue_through_sig);
   session.set_wait_for_all(flags.wait_for_all);
+  if (flags.syscall_buffer_size > 0) {
+    session.set_syscall_buffer_size(flags.syscall_buffer_size);
+  }
 }
 
 static int record(const vector<string>& args, const RecordFlags& flags) {
