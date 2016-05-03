@@ -65,7 +65,8 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
       syscallbuf_hdr(),
-      num_syscallbuf_bytes(),
+      syscallbuf_size(0),
+      num_syscallbuf_bytes(0),
       stopping_breakpoint_table_entry_size(0),
       serial(serial),
       prname("???"),
@@ -1350,6 +1351,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
   t->mprotect_records = mprotect_records;
 
+  t->syscallbuf_size = syscallbuf_size;
   t->stopping_breakpoint_table = stopping_breakpoint_table;
   t->stopping_breakpoint_table_entry_size =
       stopping_breakpoint_table_entry_size;
@@ -1519,6 +1521,7 @@ Task::CapturedState Task::capture_state() {
           ? get_fd_offset(this, cloned_file_data_fd_child)
           : 0;
   state.syscallbuf_child = syscallbuf_child;
+  state.syscallbuf_size = syscallbuf_size;
   if (syscallbuf_hdr) {
     size_t data_size = syscallbuf_data_size();
     if (syscallbuf_hdr->locked) {
@@ -1559,6 +1562,7 @@ void Task::copy_state(const CapturedState& state) {
 
     copy_tls(state, remote);
     thread_areas_ = state.thread_areas;
+    syscallbuf_size = state.syscallbuf_size;
 
     ASSERT(this, !syscallbuf_child)
         << "Syscallbuf should not already be initialized in clone";
@@ -1665,12 +1669,12 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   unlink(path);
 
   ScopedFd shmem_fd = remote.retrieve_fd(child_shmem_fd);
-  resize_shmem_segment(shmem_fd, SYSCALLBUF_BUFFER_SIZE);
+  resize_shmem_segment(shmem_fd, syscallbuf_size);
   LOG(debug) << "created shmem segment " << path;
 
   // Map the segment in ours and the tracee's address spaces.
   void* map_addr;
-  num_syscallbuf_bytes = SYSCALLBUF_BUFFER_SIZE;
+  num_syscallbuf_bytes = syscallbuf_size;
   int prot = PROT_READ | PROT_WRITE;
   int flags = MAP_SHARED;
   if ((void*)-1 == (map_addr = mmap(nullptr, num_syscallbuf_bytes, prot, flags,

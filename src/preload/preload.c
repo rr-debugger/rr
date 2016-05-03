@@ -159,6 +159,7 @@ static __thread int thread_inited TLS_STORAGE_MODEL;
  * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
  * header. */
 static __thread uint8_t* buffer TLS_STORAGE_MODEL;
+static __thread size_t buffer_size TLS_STORAGE_MODEL;
 /* This is used to support the buffering of "may-block" system calls.
  * The problem that needs to be addressed can be introduced with a
  * simple example; assume that we're buffering the "read" and "write"
@@ -232,7 +233,7 @@ static uint8_t* buffer_last(void) {
  * Return a pointer to the byte just after the very end of the mapped
  * region.
  */
-static uint8_t* buffer_end(void) { return buffer + SYSCALLBUF_BUFFER_SIZE; }
+static uint8_t* buffer_end(void) { return buffer + buffer_size; }
 
 /**
  * Same as libc memcpy(), but usable within syscallbuf transaction
@@ -595,6 +596,7 @@ static void init_thread(void) {
   cloned_file_data_fd = args.cloned_file_data_fd;
   /* rr initializes the buffer header. */
   buffer = args.syscallbuf_ptr;
+  buffer_size = args.syscallbuf_size;
   scratch_buf = args.scratch_buf;
   scratch_size = args.scratch_size;
 

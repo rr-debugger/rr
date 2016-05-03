@@ -823,7 +823,7 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
   // region.
   auto buf = t->trace_reader().read_raw_data();
   ASSERT(t, buf.data.size() >= sizeof(struct syscallbuf_hdr));
-  ASSERT(t, buf.data.size() <= SYSCALLBUF_BUFFER_SIZE);
+  ASSERT(t, buf.data.size() <= t->syscallbuf_size);
   ASSERT(t, buf.addr == t->syscallbuf_child.cast<void>());
 
   struct syscallbuf_hdr recorded_hdr;
@@ -834,7 +834,7 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
          buf.data.size() - sizeof(struct syscallbuf_hdr));
 
   ASSERT(t, recorded_hdr.num_rec_bytes + sizeof(struct syscallbuf_hdr) <=
-                SYSCALLBUF_BUFFER_SIZE);
+                t->syscallbuf_size);
 
   current_step.flush.stop_breakpoint_addr =
       t->stopping_breakpoint_table.to_data_ptr<void>().as_int() +

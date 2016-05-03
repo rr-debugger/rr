@@ -407,6 +407,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
 
   args.cloned_file_data_fd = -1;
   if (as->syscallbuf_enabled()) {
+    args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
     init_syscall_buffer(remote, nullptr);
     args.syscallbuf_ptr = syscallbuf_child;
     desched_fd_child = args.desched_counter_fd;
@@ -444,6 +445,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     }
   } else {
     args.syscallbuf_ptr = remote_ptr<void>(nullptr);
+    args.syscallbuf_size = 0;
   }
   args.scratch_buf = scratch_ptr;
   args.scratch_size = scratch_size;

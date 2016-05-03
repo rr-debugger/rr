@@ -33,6 +33,7 @@ public:
       BindCPU bind_cpu = BIND_CPU);
 
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
+  size_t syscall_buffer_size() const { return syscall_buffer_size_; }
   bool use_read_cloning() const { return use_read_cloning_; }
   bool use_file_cloning() const { return use_file_cloning_; }
   void set_ignore_sig(int sig) { ignore_sig = sig; }
@@ -140,6 +141,7 @@ private:
   int ignore_sig;
   int continue_through_sig;
   Switchable last_task_switchable;
+  size_t syscall_buffer_size_;
   bool use_syscall_buffer_;
 
   bool use_file_cloning_;

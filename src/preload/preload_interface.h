@@ -32,9 +32,6 @@
  * so we can't use it. */
 #define SYSCALLBUF_DESCHED_SIGNAL SIGPWR
 
-/* This size counts the header along with record data. */
-#define SYSCALLBUF_BUFFER_SIZE (1 << 20)
-
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
@@ -192,7 +189,8 @@ struct rrcall_init_buffers_params {
   PTR(void) syscallbuf_ptr;
   /* Returned pointer to rr's syscall scratch buffer */
   PTR(void) scratch_buf;
-  size_t scratch_size;
+  uint32_t syscallbuf_size;
+  uint32_t scratch_size;
 };
 
 /**

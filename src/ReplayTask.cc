@@ -30,8 +30,8 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
   auto args = read_mem(child_args);
 
   if (args.syscallbuf_ptr) {
+    syscallbuf_size = args.syscallbuf_size;
     init_syscall_buffer(remote, map_hint);
-    args.syscallbuf_ptr = syscallbuf_child;
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
     fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
