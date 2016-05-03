@@ -257,10 +257,19 @@ Completion ReplaySession::cont_syscall_boundary(
   auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
   if (type && type->traced == AddressSpace::UNTRACED &&
       type->enabled == AddressSpace::REPLAY_ONLY) {
-    // Ignore these. They didn't happend during recording and we don't
-    // want to know about them during replay.
+    t->finish_emulated_syscall();
+    // Actually perform it. We can hit these when replaying through syscallbuf
+    // code that was interrupted.
+    {
+      AutoRemoteSyscalls remote(t);
+      const Registers& r = t->regs();
+      long ret = remote.syscall(r.original_syscallno(), r.arg1(), r.arg2(),
+                                r.arg3(), r.arg4(), r.arg5(), r.arg6());
+      remote.regs().set_syscall_result(ret);
+    }
     return cont_syscall_boundary(t, constraints);
   }
+
   return COMPLETE;
 }
 

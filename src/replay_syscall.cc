@@ -1097,6 +1097,22 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
       return;
     }
 
+    case Arch::read: {
+      int fd = (int)t->regs().arg1();
+      if (!trace_regs.syscall_failed() && t->cloned_file_data_fd_child >= 0) {
+        string file_name = t->file_name_of_fd(fd);
+        if (!file_name.empty() &&
+            file_name == t->file_name_of_fd(t->cloned_file_data_fd_child)) {
+          // This is a read of the cloned-data file. Replay logic depends on
+          // this file's offset actually advancing.
+          AutoRemoteSyscalls remote(t);
+          remote.infallible_lseek_syscall(fd, trace_regs.syscall_result(),
+                                          SEEK_CUR);
+        }
+      }
+      return;
+    }
+
     case SYS_rrcall_init_buffers:
       return process_init_buffers(t, step);
 

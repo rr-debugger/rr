@@ -200,8 +200,11 @@ string Task::file_name_of_fd(int fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
   ssize_t nbytes = readlink(path, path, sizeof(path) - 1);
-  ASSERT(this, nbytes >= 0);
-  path[nbytes] = '\0';
+  if (nbytes < 0) {
+    path[0] = 0;
+  } else {
+    path[nbytes] = 0;
+  }
   return path;
 }
 

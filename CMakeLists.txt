@@ -352,6 +352,7 @@ set(BASIC_TESTS
   barrier
   big_buffers
   block
+  block_clone_syscallbuf_overflow
   blocked_sigsegv
   brk
   brk2

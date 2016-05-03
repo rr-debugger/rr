@@ -4,7 +4,7 @@
 
 #define BUF_COUNT (int)(0x20000 / sizeof(int))
 #define FILE_BUFS 10
-#define ITERATIONS 100
+#define ITERATIONS 10000
 
 int main(void) {
   int i, j, count;
@@ -21,14 +21,18 @@ int main(void) {
   }
 
   for (i = 0; i < ITERATIONS; ++i) {
-    count = 0;
-    test_assert(0 == lseek(fd, 0, SEEK_SET));
-    for (j = 0; j < FILE_BUFS; ++j) {
+    count = BUF_COUNT;
+    test_assert(sizeof(buf) == lseek(fd, sizeof(buf), SEEK_SET));
+    for (j = 1; j < FILE_BUFS; ++j) {
       memset(buf, 0, sizeof(buf));
       test_assert(sizeof(buf) == read(fd, buf, sizeof(buf)));
       test_assert(buf[0] == count);
       test_assert(buf[BUF_COUNT - 1] == count + BUF_COUNT - 1);
       count += BUF_COUNT;
+    }
+    for (j = 0; j < rand()%10 + 5; ++j) {
+      struct timeval tv;
+      gettimeofday(&tv, NULL);
     }
   }
 
