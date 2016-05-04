@@ -327,6 +327,8 @@ private:
                                       const StepConstraints& constraints,
                                       BreakStatus& break_status);
 
+  void clear_syscall_bp();
+
   std::shared_ptr<EmuFs> emu_fs;
   TraceReader trace_in;
   TraceFrame trace_frame;
@@ -335,6 +337,9 @@ private:
   CPUIDBugDetector cpuid_bug_detector;
   Flags flags;
   bool did_fast_forward;
+
+  std::shared_ptr<AddressSpace> syscall_bp_vm;
+  remote_code_ptr syscall_bp_addr;
 };
 
 } // namespace rr

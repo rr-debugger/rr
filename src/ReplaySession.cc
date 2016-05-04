@@ -77,6 +77,7 @@ ReplaySession::~ReplaySession() {
   // destroyed many times, and we don't want to temporarily hog
   // resources.
   kill_all_tasks();
+  syscall_bp_vm = nullptr;
   assert(task_map.empty() && vm_map.empty());
   assert(emufs().size() == 0);
 }
@@ -85,6 +86,7 @@ ReplaySession::shr_ptr ReplaySession::clone() {
   LOG(debug) << "Deepforking ReplaySession " << this << " ...";
 
   finish_initializing();
+  clear_syscall_bp();
 
   shr_ptr session(new ReplaySession(*this));
   LOG(debug) << "  deepfork session is " << session.get();
@@ -130,6 +132,7 @@ bool ReplaySession::can_clone() {
 
 DiversionSession::shr_ptr ReplaySession::clone_diversion() {
   finish_initializing();
+  clear_syscall_bp();
 
   LOG(debug) << "Deepforking ReplaySession " << this
              << " to DiversionSession...";
@@ -273,6 +276,14 @@ Completion ReplaySession::cont_syscall_boundary(
   return COMPLETE;
 }
 
+void ReplaySession::clear_syscall_bp() {
+  if (syscall_bp_vm) {
+    syscall_bp_vm->remove_breakpoint(syscall_bp_addr, BKPT_INTERNAL);
+    syscall_bp_vm = nullptr;
+    syscall_bp_addr = nullptr;
+  }
+}
+
 /**
  * Advance to the next syscall entry (or virtual entry) according to
  * |step|.  Return COMPLETE if successful, or INCOMPLETE if an unhandled trap
@@ -286,31 +297,36 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
     ASSERT(t,
            current_trace_frame().event().Syscall().state == ENTERING_SYSCALL);
   } else {
-    bool use_breakpoint_optimization = false;
     remote_code_ptr syscall_instruction;
 
     if (done_initial_exec()) {
       syscall_instruction =
           current_trace_frame().regs().ip().decrement_by_syscall_insn_length(
               t->arch());
+      // If the breakpoint already exists, it must have been from a previous
+      // invocation of this function for the same event (once the event
+      // completes, the breakpoint is cleared).
+      assert(!syscall_bp_vm ||
+        (syscall_bp_vm == t->vm() && syscall_instruction == syscall_bp_addr));
       // Skip this optimization if we can't set the breakpoint, or if it's
       // in writeable or shared memory, since in those cases it could be
       // overwritten by the tracee. It could even be dynamically generated and
       // not generated yet.
-      if (t->vm()->is_breakpoint_in_private_read_only_memory(
+      if (!syscall_bp_vm &&
+          t->vm()->is_breakpoint_in_private_read_only_memory(
               syscall_instruction) &&
           t->vm()->add_breakpoint(syscall_instruction, BKPT_INTERNAL)) {
-        use_breakpoint_optimization = true;
+        syscall_bp_vm = t->vm();
+        syscall_bp_addr = syscall_instruction;
       }
     }
 
     if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
-      bool reached_target =
-          use_breakpoint_optimization && SIGTRAP == t->stop_sig() &&
-          t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
-              syscall_instruction &&
-          t->vm()->get_breakpoint_type_at_addr(syscall_instruction) ==
-              BKPT_INTERNAL;
+      bool reached_target = syscall_bp_vm && SIGTRAP == t->stop_sig() &&
+                            t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
+                                syscall_instruction &&
+                            t->vm()->get_breakpoint_type_at_addr(
+                                syscall_instruction) == BKPT_INTERNAL;
       if (reached_target) {
         // Emulate syscall state change
         Registers r = t->regs();
@@ -320,17 +336,14 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
         r.set_syscall_result(-ENOSYS);
         t->emulate_syscall_entry(r);
         t->validate_regs();
-      }
-      if (use_breakpoint_optimization) {
-        t->vm()->remove_breakpoint(syscall_instruction, BKPT_INTERNAL);
-      }
-      if (!reached_target) {
+        clear_syscall_bp();
+      } else {
         return INCOMPLETE;
       }
     } else {
       // If we use the breakpoint optimization, we must get a SIGTRAP before
       // reaching a syscall, so cont_syscall_boundary must return INCOMPLETE.
-      ASSERT(t, !use_breakpoint_optimization);
+      ASSERT(t, !syscall_bp_vm);
       t->validate_regs();
       t->finish_emulated_syscall();
     }
