@@ -1394,6 +1394,8 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
 }
 
 void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
+  if (task_set().empty())
+    return;
   Task* t = *task_set().begin();
   t->write_mem(it->first.to_data_ptr<uint8_t>(), it->second.overwritten_data);
   breakpoints.erase(it);
