@@ -175,7 +175,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       while (true) {
         TraceReader::MappedData data;
         bool found;
-        KernelMapping km = trace.read_mapped_region(&data, &found);
+        KernelMapping km =
+            trace.read_mapped_region(&data, &found, TraceReader::DONT_VALIDATE);
         if (!found) {
           break;
         }
@@ -223,7 +224,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       }
       while (true) {
         TraceReader::MappedData data;
-        KernelMapping km = trace.read_mapped_region(&data);
+        KernelMapping km = trace.read_mapped_region(&data, nullptr,
+                                                    TraceReader::DONT_VALIDATE);
         if (km.size() == 0) {
           break;
         }

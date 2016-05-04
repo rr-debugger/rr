@@ -240,7 +240,9 @@ public:
    * If |found| is non-null, set *found to indicate whether a descriptor
    * was found for the current event.
    */
-  KernelMapping read_mapped_region(MappedData* data, bool* found = nullptr);
+  enum ValidateSourceFile { VALIDATE, DONT_VALIDATE };
+  KernelMapping read_mapped_region(MappedData* data, bool* found = nullptr,
+                                   ValidateSourceFile validate = VALIDATE);
 
   /**
    * Peek at the next mapping. Returns an empty region if there isn't one for
