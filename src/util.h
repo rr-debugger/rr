@@ -63,7 +63,7 @@ template <typename T> bool type_has_no_holes() {
 /* The syscallbuf shared with tracees is created with this prefix
  * followed by the tracee tid, then immediately unlinked and shared
  * anonymously. */
-#define SYSCALLBUF_SHMEM_PATH_PREFIX "/tmp/rr-tracee-shmem-"
+#define SYSCALLBUF_SHMEM_PATH_PREFIX "/tmp/rr-syscallbuf-"
 
 #define PREFIX_FOR_EMPTY_MMAPED_REGIONS "/tmp/rr-emptyfile-"
 
