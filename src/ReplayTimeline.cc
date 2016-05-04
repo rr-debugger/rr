@@ -665,11 +665,7 @@ void ReplayTimeline::remove_breakpoints_and_watchpoints() {
   watchpoints.clear();
 }
 
-void ReplayTimeline::apply_breakpoints_and_watchpoints() {
-  if (breakpoints_applied) {
-    return;
-  }
-  breakpoints_applied = true;
+void ReplayTimeline::apply_breakpoints_internal() {
   for (auto& bp : breakpoints) {
     AddressSpace* vm = current->find_address_space(get<0>(bp));
     // XXX handle cases where we can't apply a breakpoint right now. Later
@@ -679,6 +675,14 @@ void ReplayTimeline::apply_breakpoints_and_watchpoints() {
       vm->add_breakpoint(get<1>(bp), BKPT_USER);
     }
   }
+}
+
+void ReplayTimeline::apply_breakpoints_and_watchpoints() {
+  if (breakpoints_applied) {
+    return;
+  }
+  breakpoints_applied = true;
+  apply_breakpoints_internal();
   for (auto& wp : watchpoints) {
     AddressSpace* vm = current->find_address_space(get<0>(wp));
     // XXX handle cases where we can't apply a watchpoint right now. Later
@@ -692,29 +696,34 @@ void ReplayTimeline::apply_breakpoints_and_watchpoints() {
   }
 }
 
+void ReplayTimeline::unapply_breakpoints_internal() {
+  for (auto& bp : breakpoints) {
+    AddressSpace* vm = current->find_address_space(get<0>(bp));
+    if (vm) {
+      vm->remove_breakpoint(get<1>(bp), BKPT_USER);
+    }
+  }
+}
+
 void ReplayTimeline::unapply_breakpoints_and_watchpoints() {
   if (!breakpoints_applied) {
     return;
   }
   breakpoints_applied = false;
-  for (auto& vm : current->vms()) {
-    vm->remove_all_breakpoints();
-    vm->remove_all_watchpoints();
+  unapply_breakpoints_internal();
+  for (auto& wp : watchpoints) {
+    AddressSpace* vm = current->find_address_space(get<0>(wp));
+    if (vm) {
+      vm->remove_watchpoint(get<1>(wp), get<2>(wp), get<3>(wp));
+    }
   }
 }
 
 ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
   apply_breakpoints_and_watchpoints();
-  for (auto& vm : current->vms()) {
-    vm->remove_all_breakpoints();
-  }
+  unapply_breakpoints_internal();
   auto result = current->replay_step(RUN_SINGLESTEP);
-  for (auto& bp : breakpoints) {
-    AddressSpace* vm = current->find_address_space(get<0>(bp));
-    if (vm) {
-      vm->add_breakpoint(get<1>(bp), BKPT_USER);
-    }
-  }
+  apply_breakpoints_internal();
   return result;
 }
 
