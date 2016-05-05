@@ -497,6 +497,43 @@ void Session::recreate_shared_mmap(AutoRemoteSyscalls& remote,
   memcpy(new_m.local_addr, m.local_addr, m.map.size());
 }
 
+// Replace a MAP_PRIVATE segment by one that is shared between rr and the
+// tracee. Returns true on success
+bool Session::make_private_shared(AutoRemoteSyscalls& remote,
+                                  const AddressSpace::Mapping& m) {
+  if (!(m.map.flags() & MAP_PRIVATE)) {
+    return false;
+  }
+  // Find a place to map the current segment to temporarily
+  remote_ptr<void> start = m.map.start();
+  size_t sz = m.map.size();
+  remote_ptr<void> free_mem = remote.task()->vm()->find_free_memory(sz);
+  remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), start, sz,
+                            sz, MREMAP_MAYMOVE | MREMAP_FIXED, free_mem);
+  remote.task()->vm()->remap(start, sz, free_mem, sz);
+
+  // AutoRemoteSyscalls may have gotten unlucky and picked the old stack
+  // segment as it's scratch space, reevaluate that choice
+  AutoRemoteSyscalls remote2(remote.task());
+
+  // Now create the new mapping in its place
+  const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
+      create_shared_mmap(remote2, sz, start).start());
+
+  // And copy over the contents. Since we can't just call memcpy in the
+  // inferior, just copy directly from the remote private into the local
+  // reference of the shared mapping. We use the fallible read method to
+  // handle the case where the mapping is larger than the backing file, which
+  // would otherwise cause a short read.
+  remote2.task()->read_bytes_fallible(free_mem, sz, new_m.local_addr);
+
+  // Finally unmap the original segment
+  remote2.infallible_syscall(syscall_number_for_munmap(remote.arch()), free_mem,
+                             sz);
+  remote.task()->vm()->unmap(free_mem, sz);
+  return true;
+}
+
 void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   assert_fully_initialized();
   assert(!dest.clone_completion);

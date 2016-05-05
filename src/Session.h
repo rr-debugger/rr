@@ -231,6 +231,9 @@ public:
                                           size_t size,
                                           remote_ptr<void> map_hint);
 
+  static bool make_private_shared(AutoRemoteSyscalls& remote,
+                                  const AddressSpace::Mapping& m);
+
 protected:
   Session();
   virtual ~Session();

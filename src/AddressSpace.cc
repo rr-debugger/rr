@@ -1610,4 +1610,25 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
   }
 }
 
+remote_ptr<void> AddressSpace::find_free_memory(size_t required_space,
+                                                remote_ptr<void> after) {
+  auto maps = maps_starting_at(after);
+  auto current = maps.begin();
+  while (current != maps.end()) {
+    auto next = current;
+    ++next;
+    if (next == maps.end()) {
+      if (current->map.end() + required_space >= current->map.end()) {
+        break;
+      }
+    } else {
+      if (current->map.end() + required_space <= next->map.start()) {
+        break;
+      }
+    }
+    current = next;
+  }
+  return current->map.end();
+}
+
 } // namespace rr
