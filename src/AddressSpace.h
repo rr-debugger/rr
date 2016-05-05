@@ -229,8 +229,11 @@ public:
   class Mapping {
   public:
     Mapping(const KernelMapping& map, const KernelMapping& recorded_map,
-            EmuFile::shr_ptr emu_file)
-        : map(map), recorded_map(recorded_map), emu_file(emu_file) {}
+            EmuFile::shr_ptr emu_file, void* local_addr = nullptr)
+        : map(map),
+          recorded_map(recorded_map),
+          emu_file(emu_file),
+          local_addr(static_cast<uint8_t*>(local_addr)) {}
     Mapping(const Mapping&) = default;
     Mapping() = default;
     const Mapping& operator=(const Mapping& other) {
@@ -244,6 +247,13 @@ public:
     // equal to 'map'.
     const KernelMapping recorded_map;
     const EmuFile::shr_ptr emu_file;
+    // If this mapping has been mapped into the local address space,
+    // this is the address of the first byte of the equivalent local mapping.
+    // This mapping is always mapped as PROT_READ|PROT_WRITE regardless of the
+    // mapping's permissions in the tracee. Also note that it is the caller's
+    // responsibility to keep this alive at least as long as this mapping is
+    // present in the address space.
+    uint8_t* local_addr;
   };
 
   typedef std::map<MemoryRange, Mapping, MappingComparator> MemoryMap;
@@ -361,7 +371,8 @@ public:
                     int flags, off64_t offset_bytes, const std::string& fsname,
                     dev_t device, ino_t inode,
                     const KernelMapping* recorded_map = nullptr,
-                    EmuFile::shr_ptr emu_file = nullptr);
+                    EmuFile::shr_ptr emu_file = nullptr,
+                    void* local_addr = nullptr);
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.
@@ -728,7 +739,7 @@ private:
    */
   void map_and_coalesce(const KernelMapping& m,
                         const KernelMapping& recorded_map,
-                        EmuFile::shr_ptr emu_file);
+                        EmuFile::shr_ptr emu_file, void* local_addr);
 
   /**
    * Call this only during recording.

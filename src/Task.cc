@@ -1760,9 +1760,9 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 
   struct stat st;
   ASSERT(this, 0 == ::fstat(shmem_fd, &st));
-  KernelMapping km = vm()->map(child_map_addr, num_syscallbuf_bytes, prot,
-                               flags, 0, path, st.st_dev, st.st_ino);
-
+  KernelMapping km =
+      vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags, 0, path,
+                st.st_dev, st.st_ino, nullptr, nullptr, map_addr);
   shmem_fd.close();
   remote.infallible_syscall(syscall_number_for_close(arch()), child_shmem_fd);
 
@@ -1836,6 +1836,21 @@ ssize_t Task::write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
   return nwritten;
 }
 
+uint8_t* Task::local_mapping(remote_ptr<void> addr, size_t size) {
+  if (vm()->has_mapping(addr)) {
+    const AddressSpace::Mapping& map = vm()->mapping_of(addr);
+    // Fall back to the slow path if we can't get the entire region
+    if (size > static_cast<size_t>(map.map.end() - addr)) {
+      return nullptr;
+    }
+    if (map.local_addr != nullptr) {
+      size_t offset = addr - map.map.start();
+      return static_cast<uint8_t*>(map.local_addr) + offset;
+    }
+  }
+  return nullptr;
+}
+
 ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
                                   void* buf) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
@@ -1843,8 +1858,13 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
     return 0;
   }
 
+  if (uint8_t* local_addr = local_mapping(addr, buf_size)) {
+    memcpy(buf, local_addr, buf_size);
+    return buf_size;
+  }
+
   if (!as->mem_fd().is_open()) {
-    return read_bytes_ptrace(addr, buf_size, buf);
+    return read_bytes_ptrace(addr, buf_size, static_cast<uint8_t*>(buf));
   }
 
   ssize_t all_read = 0;
@@ -1990,8 +2010,14 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
     return;
   }
 
+  if (uint8_t* local_addr = local_mapping(addr, buf_size)) {
+    memcpy(local_addr, buf, buf_size);
+    return;
+  }
+
   if (!as->mem_fd().is_open()) {
-    ssize_t nwritten = write_bytes_ptrace(addr, buf_size, buf);
+    ssize_t nwritten =
+        write_bytes_ptrace(addr, buf_size, static_cast<const uint8_t*>(buf));
     if (nwritten > 0) {
       vm()->notify_written(addr, nwritten);
     }

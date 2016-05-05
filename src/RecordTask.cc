@@ -1109,6 +1109,15 @@ void RecordTask::record_local(remote_ptr<void> addr, ssize_t num_bytes,
   trace_writer().write_raw(data, num_bytes, addr);
 }
 
+bool RecordTask::record_remote_by_local_map(remote_ptr<void> addr,
+                                              size_t num_bytes) {
+  if (uint8_t* local_addr = local_mapping(addr, num_bytes)) {
+    record_local(addr, num_bytes, local_addr);
+    return true;
+  }
+  return false;
+}
+
 void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
   maybe_flush_syscallbuf();
 
@@ -1117,6 +1126,9 @@ void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
   if (!addr) {
     return;
   }
+
+  if (record_remote_by_local_map(addr, num_bytes) != 0)
+    return;
 
   auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
   trace_writer().write_raw(buf.data(), num_bytes, addr);
@@ -1127,6 +1139,9 @@ void RecordTask::record_remote_fallible(remote_ptr<void> addr,
   maybe_flush_syscallbuf();
 
   ASSERT(this, num_bytes >= 0);
+
+  if (record_remote_by_local_map(addr, num_bytes) != 0)
+    return;
 
   vector<uint8_t> buf;
   if (!addr.is_null()) {
@@ -1147,6 +1162,9 @@ void RecordTask::record_remote_even_if_null(remote_ptr<void> addr,
     trace_writer().write_raw(nullptr, 0, addr);
     return;
   }
+
+  if (record_remote_by_local_map(addr, num_bytes) != 0)
+    return;
 
   auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
   trace_writer().write_raw(buf.data(), num_bytes, addr);

@@ -313,6 +313,11 @@ public:
   }
   // Record as much as we can of the bytes in this range.
   void record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes);
+
+  // Simple helper that attempts to use the local mapping to record if one
+  // exists
+  bool record_remote_by_local_map(remote_ptr<void> addr, size_t num_bytes);
+
   /**
    * Save tracee data to the trace.  |addr| is the address in
    * the address space of this task.
