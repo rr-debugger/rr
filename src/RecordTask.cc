@@ -1196,7 +1196,7 @@ void RecordTask::maybe_flush_syscallbuf() {
     // Already flushing.
     return;
   }
-  if (!syscallbuf_hdr) {
+  if (!syscallbuf_hdr || !syscallbuf_child) {
     return;
   }
 
@@ -1205,7 +1205,7 @@ void RecordTask::maybe_flush_syscallbuf() {
   // modifying the header. We'll take a snapshot of the header now.
   // The syscallbuf code ensures that writes to syscallbuf records
   // complete before num_rec_bytes is incremented.
-  struct syscallbuf_hdr hdr = *syscallbuf_hdr;
+  struct syscallbuf_hdr hdr = read_mem(syscallbuf_child);
 
   ASSERT(this,
          !flushed_syscallbuf || flushed_num_rec_bytes == hdr.num_rec_bytes);
@@ -1232,10 +1232,11 @@ void RecordTask::maybe_flush_syscallbuf() {
     vector<uint8_t> buf;
     buf.resize(sizeof(hdr) + hdr.num_rec_bytes);
     memcpy(buf.data(), &hdr, sizeof(hdr));
-    memcpy(buf.data() + sizeof(hdr), syscallbuf_hdr + 1, hdr.num_rec_bytes);
+    read_bytes_helper(syscallbuf_child + 1, hdr.num_rec_bytes,
+                      buf.data() + sizeof(hdr));
     record_local(syscallbuf_child, buf.size(), buf.data());
   } else {
-    record_local(syscallbuf_child, syscallbuf_data_size(), syscallbuf_hdr);
+    record_remote(syscallbuf_child, syscallbuf_data_size());
   }
   record_current_event();
   pop_event(EV_SYSCALLBUF_FLUSH);

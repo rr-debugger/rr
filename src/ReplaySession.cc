@@ -908,8 +908,9 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
   memcpy(&recorded_hdr, buf.data.data(), sizeof(struct syscallbuf_hdr));
   // Don't overwrite t->syscallbuf_hdr. That needs to keep tracking the current
   // syscallbuf state.
-  memcpy(t->syscallbuf_hdr + 1, buf.data.data() + sizeof(struct syscallbuf_hdr),
-         buf.data.size() - sizeof(struct syscallbuf_hdr));
+  t->write_bytes_helper(t->syscallbuf_child + 1,
+                        buf.data.size() - sizeof(struct syscallbuf_hdr),
+                        buf.data.data() + sizeof(struct syscallbuf_hdr));
 
   ASSERT(t, recorded_hdr.num_rec_bytes + sizeof(struct syscallbuf_hdr) <=
                 t->syscallbuf_size);

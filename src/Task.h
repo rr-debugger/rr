@@ -704,7 +704,6 @@ public:
     std::string prname;
     std::vector<struct user_desc> thread_areas;
     remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
-    std::vector<uint8_t> syscallbuf_hdr;
     size_t syscallbuf_size;
     size_t num_syscallbuf_bytes;
     remote_ptr<struct preload_globals> preload_globals;
