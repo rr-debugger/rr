@@ -306,8 +306,8 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
       // If the breakpoint already exists, it must have been from a previous
       // invocation of this function for the same event (once the event
       // completes, the breakpoint is cleared).
-      assert(!syscall_bp_vm ||
-        (syscall_bp_vm == t->vm() && syscall_instruction == syscall_bp_addr));
+      assert(!syscall_bp_vm || (syscall_bp_vm == t->vm() &&
+                                syscall_instruction == syscall_bp_addr));
       // Skip this optimization if we can't set the breakpoint, or if it's
       // in writeable or shared memory, since in those cases it could be
       // overwritten by the tracee. It could even be dynamically generated and

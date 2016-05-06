@@ -46,6 +46,20 @@ int main(void) {
   struct dqblk dq;
   int ret;
 
+  /* ENOTBLK returned before checking cmd */
+  ret = quotactl(0x12345678, "/", getuid(), (caddr_t)&dq);
+  test_assert(ret < 0 && errno == ENOTBLK);
+
+  /* ENOEND returned before checking cmd */
+  ret =
+      quotactl(0x12345678, "/asdfjlafdlkk289892389pkj", getuid(), (caddr_t)&dq);
+  test_assert(ret < 0 && errno == ENOENT);
+
+  /* ENODEV returned before checking cmd when the device is a Btrfs volume */
+  ret = quotactl(0x12345678, "/dev/dm-0", getuid(), (caddr_t)&dq);
+  test_assert(ret < 0 && (errno == ENOTBLK || errno == ENOENT ||
+                          errno == ENODEV || errno == EINVAL));
+
   find_home_device();
   ret =
       quotactl(QCMD(Q_GETQUOTA, USRQUOTA), home_device, getuid(), (caddr_t)&dq);
