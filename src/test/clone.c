@@ -17,10 +17,21 @@ static void breakpoint(void) {
 
 static int child(__attribute__((unused)) void* arg) {
   sigset_t set;
+  int fd;
+  char byte = 'x';
 
   /* Be careful in here. This thread was set up by a raw clone() call
    * without TLS support so many things won't work, e.g. atomic_printf.
    */
+
+  /* Do some syscall-bufferable syscalls to make sure that works.
+   * The syscallbuf will not have been set up, but the syscalls should
+   * still work by not buffering them. */
+  fd = open("/dev/zero", O_RDONLY);
+  test_assert(fd >= 0);
+  test_assert(1 == read(fd, &byte, 1));
+  test_assert(0 == byte);
+  test_assert(0 == close(fd));
 
   sigfillset(&set);
   /* NB: we have to naughtily make the linux assumption that

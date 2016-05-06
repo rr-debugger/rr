@@ -2390,6 +2390,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
  * _syscall_hook_trampoline without doing all sorts of special PIC handling.
  */
 RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
+  if (!globals.thread_locals_initialized) {
+    return traced_raw_syscall(call);
+  }
   long result = syscall_hook_internal(call);
   if (buffer_hdr() && buffer_hdr()->notify_on_syscall_hook_exit) {
     // SYS_rrcall_notify_syscall_hook_exit will clear
