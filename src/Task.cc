@@ -2,6 +2,7 @@
 
 #include "Task.h"
 
+#include <asm/prctl.h>
 #include <elf.h>
 #include <errno.h>
 #include <limits.h>
@@ -55,6 +56,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            SupportedArch a)
     : unstable(false),
       stable_exit(false),
+      thread_locals_initialized(false),
       scratch_ptr(),
       scratch_size(),
       // This will be initialized when the syscall buffer is.
@@ -350,6 +352,16 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
     case Arch::set_thread_area:
       set_thread_area(regs.arg1());
+      // Assume any set_thread_area sets up TLS
+      thread_locals_initialized = true;
+      return;
+
+    case Arch::arch_prctl:
+      switch ((int)regs.arg1_signed()) {
+        case ARCH_SET_FS:
+          thread_locals_initialized = true;
+          break;
+      }
       return;
 
     case Arch::prctl:
@@ -587,6 +599,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
   preload_globals = nullptr;
+  thread_locals_initialized = false;
 
   thread_areas_.clear();
 
@@ -758,6 +771,8 @@ TrapReasons Task::compute_trap_reasons() {
   return reasons;
 }
 
+static const Property<bool, AddressSpace> thread_locals_initialized_property;
+
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
   // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
@@ -770,7 +785,21 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     hpc.reset(tick_period == RESUME_UNLIMITED_TICKS
                   ? 0xffffffff
                   : max<Ticks>(1, tick_period));
+    // Ensure preload_globals.thread_locals_initialized is up to date. Avoid
+    // unnecessary writes by caching last written value per-AddressSpace.
+    if (preload_globals) {
+      bool* prop = thread_locals_initialized_property.get(*as);
+      if (!prop || *prop != thread_locals_initialized) {
+        write_mem(REMOTE_PTR_FIELD(preload_globals, thread_locals_initialized),
+                  (unsigned char)thread_locals_initialized);
+        if (!prop) {
+          prop = &thread_locals_initialized_property.create(*as);
+        }
+        *prop = thread_locals_initialized;
+      }
+    }
   }
+
   LOG(debug) << "resuming execution of " << tid << " with "
              << ptrace_req_name(how)
              << (sig ? string(", signal ") + signal_name(sig) : string());
@@ -1373,8 +1402,14 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
   t->open_mem_fd_if_needed();
   t->thread_areas_ = thread_areas_;
+  // When cloning a task in the same session, the new task's thread-locals
+  // are not initialized ... unless CLONE_SET_TLS is set.
+  if (other_session) {
+    t->thread_locals_initialized = thread_locals_initialized;
+  }
   if (CLONE_SET_TLS & flags) {
     set_thread_area_from_clone(t, tls);
+    t->thread_locals_initialized = true;
   }
 
   t->as->insert_task(t);
@@ -1536,6 +1571,7 @@ Task::CapturedState Task::capture_state() {
   state.wait_status = wait_status;
   state.ticks = ticks;
   state.top_of_stack = top_of_stack;
+  state.thread_locals_initialized = thread_locals_initialized;
   return state;
 }
 
@@ -1596,6 +1632,8 @@ void Task::copy_state(const CapturedState& state) {
   wait_status = state.wait_status;
 
   ticks = state.ticks;
+
+  thread_locals_initialized = state.thread_locals_initialized;
 }
 
 void Task::destroy_local_buffers() {

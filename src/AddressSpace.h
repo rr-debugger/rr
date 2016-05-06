@@ -21,6 +21,7 @@
 #include "kernel_abi.h"
 #include "MemoryRange.h"
 #include "Monkeypatcher.h"
+#include "PropertyTable.h"
 #include "remote_code_ptr.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
@@ -647,6 +648,8 @@ public:
 
   remote_ptr<void> chaos_mode_find_free_memory(Task* t, size_t len);
 
+  PropertyTable& properties() { return properties_; }
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
@@ -852,6 +855,8 @@ private:
     bool valid;
     bool changed;
   };
+
+  PropertyTable properties_;
 
   // All breakpoints set in this VM.
   BreakpointMap breakpoints;

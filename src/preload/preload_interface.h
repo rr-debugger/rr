@@ -160,6 +160,8 @@ struct preload_globals {
    * USE WITH CAUTION.
    */
   unsigned char in_replay;
+  /* 1 when thread-locals have been initialized for this task, 0 otherwise */
+  unsigned char thread_locals_initialized;
   /* Number of cores to pretend we have. 0 means 1. rr sets this when
    * the preload library is initialized. */
   int pretend_num_cores;
