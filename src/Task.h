@@ -687,13 +687,10 @@ public:
   size_t num_syscallbuf_bytes;
   /* Points at the tracee's mapping of the buffer. */
   remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
-  remote_ptr<char> syscallbuf_fds_disabled_child;
-  remote_ptr<struct mprotect_record> mprotect_records;
   remote_code_ptr stopping_breakpoint_table;
   int stopping_breakpoint_table_entry_size;
 
-  /* Points at the in_replay flag in the tracee. */
-  remote_ptr<unsigned char> in_replay_flag;
+  remote_ptr<struct preload_globals> preload_globals;
 
   PropertyTable& properties() { return properties_; }
 
@@ -707,8 +704,7 @@ public:
     std::vector<uint8_t> syscallbuf_hdr;
     size_t syscallbuf_size;
     size_t num_syscallbuf_bytes;
-    remote_ptr<char> syscallbuf_fds_disabled_child;
-    remote_ptr<struct mprotect_record> mprotect_records;
+    remote_ptr<struct preload_globals> preload_globals;
     remote_ptr<void> scratch_ptr;
     ssize_t scratch_size;
     remote_ptr<void> top_of_stack;

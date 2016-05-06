@@ -116,32 +116,7 @@ static int buffer_enabled;
 /* Nonzero after process-global state has been initialized. */
 static int process_inited;
 
-/* 0 during recording, 1 during replay.
- * This MUST NOT be used in conditional branches. It should only be used
- * as the condition for conditional moves so that control flow during replay
- * does not diverge from control flow during recording.
- * We also have to be careful that values different between record and replay
- * don't accidentally leak into other memory locations or registers.
- * USE WITH CAUTION.
- */
-static unsigned char in_replay;
-
-/* Number of cores to pretend we have. Initially 1; we'll reset this when
- * the syscallbuf library is initialized. */
-static int pretend_num_cores = 1;
-
-/**
- * If syscallbuf_fds_disabled[fd] is nonzero, then operations on that fd
- * must be performed through traced syscalls, not the syscallbuf.
- * The rr supervisor modifies this array directly to dynamically turn
- * syscallbuf on and off for particular fds. fds outside the array range must
- * never use the syscallbuf.
- */
-static volatile char syscallbuf_fds_disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
-
-#define MPROTECT_RECORD_COUNT 1000
-
-static struct mprotect_record mprotect_records[MPROTECT_RECORD_COUNT];
+static struct preload_globals globals;
 
 /**
  * Because this library is always loaded via LD_PRELOAD, we can use the
@@ -405,7 +380,7 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
   struct syscallbuf_record* rec = (struct syscallbuf_record*)buffer_last();
   long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
                           syscall_instruction, 0, 0);
-  unsigned char tmp_in_replay = in_replay;
+  unsigned char tmp_in_replay = globals.in_replay;
 /* During replay, return the result that's already in the buffer, instead
    of what our "syscall" returned. */
 #if defined(__i386__) || defined(__x86_64__)
@@ -692,16 +667,12 @@ static void __attribute__((constructor)) init_process(void) {
   pthread_atfork(NULL, NULL, post_fork_child);
 
   params.syscallbuf_enabled = buffer_enabled;
-  params.syscallbuf_fds_disabled =
-      buffer_enabled ? syscallbuf_fds_disabled : NULL;
   params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
   params.syscall_hook_end = (void*)_syscall_hook_end;
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
-  params.mprotect_records = mprotect_records;
-  params.in_replay_flag = &in_replay;
-  params.pretend_num_cores = &pretend_num_cores;
+  params.globals = &globals;
   params.breakpoint_table = &_breakpoint_table_entry_start;
   params.breakpoint_table_entry_size =
       &_breakpoint_table_entry_end - &_breakpoint_table_entry_start;
@@ -875,8 +846,8 @@ static void* prep_syscall(void) {
 }
 
 static int is_bufferable_fd(int fd) {
-  return fd < 0 ||
-         (fd < SYSCALLBUF_FDS_DISABLED_SIZE && !syscallbuf_fds_disabled[fd]);
+  return fd < 0 || (fd < SYSCALLBUF_FDS_DISABLED_SIZE &&
+                    !globals.syscallbuf_fds_disabled[fd]);
 }
 
 /**
@@ -1106,7 +1077,7 @@ static void* copy_output_buffer(int ret_size, void* ptr, void* buf,
  */
 static void memcpy_input_parameter(void* buf, void* src, int size) {
 #if defined(__i386__) || defined(__x86_64__)
-  unsigned char tmp_in_replay = in_replay;
+  unsigned char tmp_in_replay = globals.in_replay;
   __asm__ __volatile__("test %0,%0\n\t"
                        "cmovne %1,%2\n\t"
                        "rep movsb\n\t"
@@ -1128,7 +1099,7 @@ static void memcpy_input_parameter(void* buf, void* src, int size) {
  */
 static void copy_futex_int(uint32_t* buf, uint32_t* real) {
 #if defined(__i386__) || defined(__x86_64__)
-  uint32_t tmp_in_replay = in_replay;
+  uint32_t tmp_in_replay = globals.in_replay;
   __asm__ __volatile__("test %0,%0\n\t"
                        "mov %2,%0\n\t"
                        "cmovne %1,%0\n\t"
@@ -1724,7 +1695,7 @@ static long sys_mprotect(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
 
-  mrec = &mprotect_records[buffer_hdr()->mprotect_record_count++];
+  mrec = &globals.mprotect_records[buffer_hdr()->mprotect_record_count++];
   mrec->start = (uint64_t)(uintptr_t)addr;
   mrec->size = length;
   mrec->prot = prot;
@@ -2487,7 +2458,7 @@ long sysconf(int name) {
   switch (name) {
     case _SC_NPROCESSORS_ONLN:
     case _SC_NPROCESSORS_CONF:
-      return pretend_num_cores;
+      return globals.pretend_num_cores ? globals.pretend_num_cores : 1;
   }
   return __sysconf(name);
 }

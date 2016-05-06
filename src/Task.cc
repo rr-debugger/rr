@@ -584,11 +584,9 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   set_regs(registers);
 
   syscallbuf_child = nullptr;
-  syscallbuf_fds_disabled_child = nullptr;
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
-  mprotect_records = nullptr;
-  in_replay_flag = nullptr;
+  preload_globals = nullptr;
 
   thread_areas_.clear();
 
@@ -1348,14 +1346,12 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   } else {
     t->as = sess.clone(t, as);
   }
-  t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
-  t->mprotect_records = mprotect_records;
 
   t->syscallbuf_size = syscallbuf_size;
   t->stopping_breakpoint_table = stopping_breakpoint_table;
   t->stopping_breakpoint_table_entry_size =
       stopping_breakpoint_table_entry_size;
-  t->in_replay_flag = in_replay_flag;
+  t->preload_globals = preload_globals;
 
   // FdTable is either shared or copied, so the contents of
   // syscallbuf_fds_disabled_child are still valid.
@@ -1534,8 +1530,7 @@ Task::CapturedState Task::capture_state() {
     memcpy(state.syscallbuf_hdr.data(), syscallbuf_hdr,
            state.syscallbuf_hdr.size());
   }
-  state.syscallbuf_fds_disabled_child = syscallbuf_fds_disabled_child;
-  state.mprotect_records = mprotect_records;
+  state.preload_globals = preload_globals;
   state.scratch_ptr = scratch_ptr;
   state.scratch_size = scratch_size;
   state.wait_status = wait_status;
@@ -1588,8 +1583,7 @@ void Task::copy_state(const CapturedState& state) {
              state.syscallbuf_hdr.size());
     }
   }
-  syscallbuf_fds_disabled_child = state.syscallbuf_fds_disabled_child;
-  mprotect_records = state.mprotect_records;
+  preload_globals = state.preload_globals;
   // The scratch buffer (for now) is merely a private mapping in
   // the remote task.  The CoW copy made by fork()'ing the
   // address space has the semantics we want.  It's not used in
@@ -2016,17 +2010,12 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
 
-  remote_ptr<volatile char> syscallbuf_fds_disabled =
-      params.syscallbuf_fds_disabled.rptr();
-  t->syscallbuf_fds_disabled_child = syscallbuf_fds_disabled.cast<char>();
-  t->mprotect_records = params.mprotect_records;
+  t->preload_globals = params.globals.rptr();
 
   t->stopping_breakpoint_table = params.breakpoint_table.rptr().as_int();
   t->stopping_breakpoint_table_entry_size = params.breakpoint_table_entry_size;
 
-  t->in_replay_flag = params.in_replay_flag.rptr();
-
-  t->write_mem(params.in_replay_flag.rptr(),
+  t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, in_replay),
                (unsigned char)t->session().is_replaying());
 }
 

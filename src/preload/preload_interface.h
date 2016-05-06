@@ -103,9 +103,11 @@
 #ifdef RR_IMPLEMENT_PRELOAD
 #define TEMPLATE_ARCH
 #define PTR(T) T *
+#define VOLATILE volatile
 #else
 #define TEMPLATE_ARCH template <typename Arch>
 #define PTR(T) typename Arch::template ptr<T>
+#define VOLATILE
 #endif
 
 /**
@@ -143,12 +145,44 @@ struct mprotect_record {
 };
 
 /**
+ * Must be arch-independent.
+ * Variables used to communicate between preload and rr.
+ * We package these up into a single struct to simplify the preload/rr
+ * interface.
+ */
+struct preload_globals {
+  /* 0 during recording, 1 during replay. Set by rr.
+   * This MUST NOT be used in conditional branches. It should only be used
+   * as the condition for conditional moves so that control flow during replay
+   * does not diverge from control flow during recording.
+   * We also have to be careful that values different between record and replay
+   * don't accidentally leak into other memory locations or registers.
+   * USE WITH CAUTION.
+   */
+  unsigned char in_replay;
+  /* Number of cores to pretend we have. 0 means 1. rr sets this when
+   * the preload library is initialized. */
+  int pretend_num_cores;
+  /**
+   * Set by rr.
+   * If syscallbuf_fds_disabled[fd] is nonzero, then operations on that fd
+   * must be performed through traced syscalls, not the syscallbuf.
+   * The rr supervisor modifies this array directly to dynamically turn
+   * syscallbuf on and off for particular fds. fds outside the array range must
+   * never use the syscallbuf.
+   */
+  VOLATILE char syscallbuf_fds_disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
+  /* mprotect records. Set by preload. */
+  struct mprotect_record mprotect_records[MPROTECT_RECORD_COUNT];
+};
+
+/**
  * Packs up the parameters passed to |SYS_rrcall_init_preload|.
  * We use this struct because it's a little cleaner.
  */
 TEMPLATE_ARCH
 struct rrcall_init_preload_params {
-  /* "In" params. */
+  /* All "In" params. */
   /* The syscallbuf lib's idea of whether buffering is enabled.
    * We let the syscallbuf code decide in order to more simply
    * replay the same decision that was recorded. */
@@ -157,13 +191,7 @@ struct rrcall_init_preload_params {
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
   PTR(void) syscall_hook_trampoline;
   PTR(void) syscall_hook_end;
-  /* Array of size SYSCALLBUF_FDS_DISABLED_SIZE */
-  PTR(volatile char) syscallbuf_fds_disabled;
-  PTR(struct mprotect_record) mprotect_records;
-  /* Address of the flag which is 0 during recording and 1 during replay. */
-  PTR(unsigned char) in_replay_flag;
-  /* Address where we store the number of cores we're pretending to have. */
-  PTR(int) pretend_num_cores;
+  PTR(struct preload_globals) globals;
   /* Address of the first entry of the breakpoint table.
    * After processing a sycallbuf record (and unlocking the syscallbuf),
    * we call a function in this table corresponding to the record processed.

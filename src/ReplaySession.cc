@@ -864,7 +864,8 @@ static void apply_mprotect_records(ReplayTask* t,
       t->syscallbuf_hdr->mprotect_record_count;
   if (skip_mprotect_records < final_mprotect_record_count) {
     auto records =
-        t->read_mem(t->mprotect_records + skip_mprotect_records,
+        t->read_mem(REMOTE_PTR_FIELD(t->preload_globals, mprotect_records[0]) +
+                        skip_mprotect_records,
                     final_mprotect_record_count - skip_mprotect_records);
     for (size_t i = 0; i < records.size(); ++i) {
       auto& r = records[i];

@@ -366,8 +366,9 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
       remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
 
   int cores = t->session().scheduler().pretend_num_cores();
-  t->write_mem(params.pretend_num_cores.rptr(), cores);
-  t->record_local(params.pretend_num_cores.rptr(), &cores);
+  auto cores_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), pretend_num_cores);
+  t->write_mem(cores_ptr, cores);
+  t->record_local(cores_ptr, &cores);
 }
 
 static void do_preload_init(RecordTask* t) {
@@ -1110,7 +1111,9 @@ void RecordTask::maybe_flush_syscallbuf() {
 
   // Apply buffered mprotect operations and flush the buffer in the tracee.
   if (hdr.mprotect_record_count) {
-    auto records = read_mem(mprotect_records, hdr.mprotect_record_count);
+    auto records =
+        read_mem(REMOTE_PTR_FIELD(preload_globals, mprotect_records[0]),
+                 hdr.mprotect_record_count);
     for (auto& r : records) {
       as->protect(r.start, r.size, r.prot);
     }

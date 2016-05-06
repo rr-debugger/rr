@@ -112,10 +112,11 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
     }
     vms_updated.insert(vm);
 
-    if (!t->syscallbuf_fds_disabled_child.is_null() &&
-        fd < SYSCALLBUF_FDS_DISABLED_SIZE) {
+    if (!t->preload_globals.is_null() && fd < SYSCALLBUF_FDS_DISABLED_SIZE) {
       bool disable = is_fd_monitored_in_any_task(vm, fd);
-      t->write_mem(t->syscallbuf_fds_disabled_child + fd, (char)disable);
+      t->write_mem(
+          REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fds_disabled[0]) + fd,
+          (char)disable);
     }
   }
 }
@@ -123,7 +124,7 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
 void FdTable::init_syscallbuf_fds_disabled(Task* t) {
   ASSERT(t, has_task(t));
 
-  if (t->syscallbuf_fds_disabled_child.is_null()) {
+  if (t->preload_globals.is_null()) {
     return;
   }
 
@@ -143,8 +144,8 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
     }
   }
 
-  t->write_mem(t->syscallbuf_fds_disabled_child, disabled,
-               SYSCALLBUF_FDS_DISABLED_SIZE);
+  t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fds_disabled[0]),
+               disabled, SYSCALLBUF_FDS_DISABLED_SIZE);
 }
 
 static bool is_fd_open(Task* t, int fd) {
