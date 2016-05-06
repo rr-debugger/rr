@@ -3756,6 +3756,12 @@ static void rec_process_syscall_arch(RecordTask* t,
   }
 
   if (syscall_state.expect_errno) {
+    if (syscall_state.expect_errno == EINVAL && syscallno == Arch::ioctl &&
+        t->regs().syscall_result_signed() == -ENOTTY) {
+      // Unsupported ioctl was called, but is not supported for this device,
+      // so we can safely ignore it.
+      return;
+    }
     ASSERT(t, t->regs().syscall_result_signed() == -syscall_state.expect_errno)
         << "Expected " << errno_name(syscall_state.expect_errno) << " for '"
         << t->syscall_name(syscallno) << "' but got result "

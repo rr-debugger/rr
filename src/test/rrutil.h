@@ -24,6 +24,7 @@
 #include <linux/futex.h>
 #include <linux/if.h>
 #include <linux/limits.h>
+#include <linux/mtio.h>
 #include <linux/perf_event.h>
 #include <linux/random.h>
 #include <linux/seccomp.h>

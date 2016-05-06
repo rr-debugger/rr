@@ -443,6 +443,7 @@ set(BASIC_TESTS
   mremap_shrink
   msg
   msync
+  mtio
   multiple_pending_signals
   multiple_pending_signals_sequential
   munmap_segv
