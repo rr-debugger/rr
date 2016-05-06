@@ -586,21 +586,31 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
   si.si_value.sival_int = SIGCHLD_SYNTHETIC;
   int ret;
   if (wake_task) {
-    ASSERT(wake_task, !wake_task->is_sig_blocked(SIGCHLD))
-        << "Waiting task has SIGCHLD blocked so we have no way to wake it up "
-           ":-(";
+    LOG(debug) << "Sending synthetic SIGCHLD to tid " << wake_task->tid;
     // We must use the raw SYS_rt_tgsigqueueinfo syscall here to ensure the
     // signal is sent to the correct thread by tid.
     ret = syscall(SYS_rt_tgsigqueueinfo, wake_task->tgid(), wake_task->tid,
                   SIGCHLD, &si);
-    LOG(debug) << "Sending synthetic SIGCHLD to tid " << wake_task->tid;
+    ASSERT(this, ret == 0);
+    if (wake_task->is_sig_blocked(SIGCHLD)) {
+      // Just sending SIGCHLD won't wake it up. Send it a TIME_SLICE_SIGNAL
+      // as well to make sure it exits a blocking syscall. We ensure those
+      // can never be blocked.
+      // We have to send a negative code here because only the kernel can set
+      // positive codes. We set a magic number so we can recognize it
+      // when received.
+      si.si_code = SYNTHETIC_TIME_SLICE_SI_CODE;
+      ret = syscall(SYS_rt_tgsigqueueinfo, wake_task->tgid(), wake_task->tid,
+                    PerfCounters::TIME_SLICE_SIGNAL, &si);
+      ASSERT(this, ret == 0);
+    }
   } else {
     // Send the signal to the process as a whole and let the kernel
     // decide which thread gets it.
     ret = syscall(SYS_rt_sigqueueinfo, tgid(), SIGCHLD, &si);
+    ASSERT(this, ret == 0);
     LOG(debug) << "Sending synthetic SIGCHLD to pid " << tgid();
   }
-  ASSERT(this, ret == 0);
 }
 
 void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {

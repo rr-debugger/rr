@@ -94,6 +94,8 @@ public:
    * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
    * update the siginfo to reflect the status and note that that
    * ptraced task has had its SIGCHLD sent.
+   * Note that we can't set the correct siginfo when we send the signal, because
+   * it requires us to set information only the kernel has permission to set.
    */
   void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
   /**
@@ -390,6 +392,8 @@ public:
    * number can use it.
    */
   void save_ptrace_signal_siginfo(const siginfo_t& si);
+
+  enum { SYNTHETIC_TIME_SLICE_SI_CODE = -9999 };
 
 private:
   ~RecordTask();

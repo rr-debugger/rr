@@ -1183,7 +1183,8 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
      * overkill.
      */
     ASSERT(t, PerfCounters::TIME_SLICE_SIGNAL == si.si_signo &&
-                  POLL_IN == si.si_code)
+                  (RecordTask::SYNTHETIC_TIME_SLICE_SI_CODE == si.si_code ||
+                   POLL_IN == si.si_code))
         << "Tracee is using SIGSTKFLT??? (code=" << si.si_code
         << ", fd=" << si.si_fd << ")";
   }
