@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+
+# Use 4K syscallbuf size to force frequent overflows
+RECORD_ARGS=--syscall-buffer-size=4
+compare_test EXIT-SUCCESS

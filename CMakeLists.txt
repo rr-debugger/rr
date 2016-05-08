@@ -438,7 +438,6 @@ set(BASIC_TESTS
   mprotect_heterogenous
   mprotect_none
   mprotect_stack
-  mprotect_syscallbuf_overflow
   mremap
   mremap_shrink
   msg
@@ -651,6 +650,7 @@ set(TESTS_WITH_PROGRAM
   main_thread_exit
   mmap_shared_prot
   mmap_write
+  mprotect_syscallbuf_overflow
   mutex_pi_stress
   priority
   read_big_struct
@@ -810,28 +810,34 @@ add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
 add_dependencies(cpuid Generated)
 target_link_libraries(cpuid -lrt)
 
+function(configure_test test)
+  if ("${test}" MATCHES "^checkpoint_")
+    set(TIMEOUT 600)
+  elseif ("${test}" MATCHES "stress")
+    set(TIMEOUT 600)
+  else()
+    set(TIMEOUT 120)
+  endif()
+  set_tests_properties(${test}
+    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED" TIMEOUT ${TIMEOUT})
+endfunction(configure_test)
+
 foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
   add_test(${test}
     bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
-  set_tests_properties(${test}
-    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
-
+  configure_test(${test})
   add_test(${test}-no-syscallbuf
     bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
-  set_tests_properties(${test}-no-syscallbuf
-    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+  configure_test(${test}-no-syscallbuf)
 endforeach(test)
 
 foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
   add_test(${test}
     bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
-  set_tests_properties(${test}
-    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
-
+  configure_test(${test})
   add_test(${test}-no-syscallbuf
     bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
-  set_tests_properties(${test}-no-syscallbuf
-    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+  configure_test(${test}-no-syscallbuf)
 endforeach(test)
 
 # Run 32-bit tests on 64-bit builds.
@@ -899,25 +905,19 @@ if(rr_32BIT AND rr_64BIT)
   foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
     add_test(${test}-32
       bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
-    set_tests_properties(${test}-32
-      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
-
+    configure_test(${test}-32)
     add_test(${test}-32-no-syscallbuf
       bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
-    set_tests_properties(${test}-32-no-syscallbuf
-      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+    configure_test(${test}-32-no-syscallbuf)
   endforeach(test)
 
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
     add_test(${test}-32
       bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
-    set_tests_properties(${test}-32
-      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
-
+    configure_test(${test}-32)
     add_test(${test}-32-no-syscallbuf
       bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
-    set_tests_properties(${test}-32-no-syscallbuf
-      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED")
+    configure_test(${test}-32-no-syscallbuf)
   endforeach(test)
 endif()
 
