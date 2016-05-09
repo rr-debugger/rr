@@ -59,6 +59,7 @@ public:
   uintptr_t register_value() const { return ptr; }
 
   bool is_null() const { return !ptr; }
+  explicit operator bool() const { return ptr != 0; }
 
 private:
   // Return the integer value for this pointer viewed as a data pointer.
