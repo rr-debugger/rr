@@ -555,7 +555,7 @@ static remote_ptr<void> finish_anonymous_mmap(
                                 KernelMapping::NO_INODE, prot, flags, 0);
   } else {
     TraceReader::MappedData data;
-    recorded_km = remote.task()->trace_reader().read_mapped_region(&data);
+    recorded_km = t->trace_reader().read_mapped_region(&data);
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
     emu_file = t->session().emufs().get_or_create(recorded_km, length);
     struct stat real_file;

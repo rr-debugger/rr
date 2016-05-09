@@ -20,6 +20,10 @@ ReplaySession& ReplayTask::session() const {
   return *Task::session().as_replay();
 }
 
+TraceReader& ReplayTask::trace_reader() const {
+  return session().trace_reader();
+}
+
 template <typename Arch>
 void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
   apply_all_data_records_from_trace();

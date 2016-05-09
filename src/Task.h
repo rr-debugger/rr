@@ -216,11 +216,6 @@ public:
    */
   const siginfo_t& get_siginfo();
 
-  /**
-   * Return the trace we're either recording to (|trace_reader()|)
-   * or replaying from (|trace_writer()|).
-   */
-  TraceReader& trace_reader();
   TraceWriter& trace_writer();
 
   /**

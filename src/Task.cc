@@ -216,10 +216,6 @@ const siginfo_t& Task::get_siginfo() {
   return pending_siginfo;
 }
 
-TraceReader& Task::trace_reader() {
-  return session().as_replay()->trace_reader();
-}
-
 TraceWriter& Task::trace_writer() {
   return session().as_record()->trace_writer();
 }

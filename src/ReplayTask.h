@@ -19,6 +19,7 @@ public:
              uint32_t serial, SupportedArch a);
 
   ReplaySession& session() const;
+  TraceReader& trace_reader() const;
 
   /**
    * Initialize tracee buffers in this, i.e., implement

@@ -63,8 +63,8 @@ void MagicSaveDataMonitor::did_write(Task* t, const std::vector<Range>& ranges,
           ->record_remote(r.data.cast<uint8_t>(), r.length);
     } else if (t->session().is_replaying()) {
       auto rt = static_cast<ReplayTask*>(t);
-      auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
-      auto rec = t->trace_reader().read_raw_data();
+      auto bytes = rt->read_mem(r.data.cast<uint8_t>(), r.length);
+      auto rec = rt->trace_reader().read_raw_data();
       if (rec.data != bytes) {
         notify_save_data_error(rt, rec.addr, rec.data.data(), rec.data.size(),
                                bytes.data(), bytes.size());
