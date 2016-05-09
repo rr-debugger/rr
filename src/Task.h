@@ -216,8 +216,6 @@ public:
    */
   const siginfo_t& get_siginfo();
 
-  TraceWriter& trace_writer();
-
   /**
    * Destroy in the tracee task the scratch buffer and syscallbuf (if
    * syscallbuf_child is non-null).

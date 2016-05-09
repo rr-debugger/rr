@@ -70,6 +70,7 @@ public:
   virtual void at_preload_init();
 
   RecordSession& session() const;
+  TraceWriter& trace_writer() const;
 
   /**
    * Emulate 'tracer' ptracing this task.

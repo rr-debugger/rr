@@ -216,10 +216,6 @@ const siginfo_t& Task::get_siginfo() {
   return pending_siginfo;
 }
 
-TraceWriter& Task::trace_writer() {
-  return session().as_record()->trace_writer();
-}
-
 void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
   remote.infallible_syscall(syscall_number_for_munmap(arch()), scratch_ptr,
