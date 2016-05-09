@@ -179,7 +179,7 @@ inline std::ostream& operator<<(std::ostream& o, const KernelMapping& m) {
  */
 struct MappingComparator {
   bool operator()(const MemoryRange& a, const MemoryRange& b) const {
-    return a.intersects(b) ? false : a.start() < b.start();
+    return !a.intersects(b) && a.start() < b.start();
   }
 };
 
