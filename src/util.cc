@@ -228,6 +228,10 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
   struct stat st;
   int may_diverge;
 
+  if (m.map.fsname() == "[vsyscall]") {
+    // This can't be read/checksummed.
+    return false;
+  }
   if (stat(m.map.fsname().c_str(), &st)) {
     /* If there's no persistent resource backing this
      * mapping, we should expect it to change. */
@@ -246,6 +250,18 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
              << m.map.fsname() << "'";
   return may_diverge;
 }
+
+static uint32_t compute_checksum(void* data, size_t len) {
+  uint32_t checksum = len;
+  size_t words = len / sizeof(uint32_t);
+  uint32_t* buf = static_cast<uint32_t*>(data);
+  for (size_t i = 0; i < words; ++i) {
+    checksum = (checksum << 4) + checksum + buf[i];
+  }
+  return checksum;
+}
+
+static const uint32_t ignored_checksum = 0x98765432;
 
 /**
  * Either create and store checksums for each segment mapped in |t|'s
@@ -276,22 +292,53 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     t->write_mem(in_replay_flag, (unsigned char)0);
   }
 
-  const AddressSpace& as = *(t->vm());
+  const AddressSpace& as = *t->vm();
   for (auto m : as.maps()) {
-    vector<uint8_t> mem;
-    ssize_t valid_mem_len = 0;
-    bool use_checksum = checksum_segment_filter(m);
+    string raw_map_line = m.map.str();
+    uint32_t rec_checksum = 0;
 
-    if (use_checksum) {
-      mem.resize(m.map.size());
-      valid_mem_len =
-          t->read_bytes_fallible(m.map.start(), m.map.size(), mem.data());
-      valid_mem_len = max(ssize_t(0), valid_mem_len);
+    if (VALIDATE_CHECKSUMS == mode) {
+      char line[1024];
+      fgets(line, sizeof(line), c.checksums_file);
+      unsigned long rec_start;
+      unsigned long rec_end;
+      unsigned tmp_checksum;
+      int nparsed =
+          sscanf(line, "(%x) %lx-%lx", &tmp_checksum, &rec_start, &rec_end);
+      rec_checksum = tmp_checksum;
+      remote_ptr<void> rec_start_addr = rec_start;
+      remote_ptr<void> rec_end_addr = rec_end;
+      ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
+      ASSERT(t, rec_start_addr == m.map.start() && rec_end_addr == m.map.end())
+          << "Segment " << rec_start_addr << "-" << rec_end_addr
+          << " changed to " << m.map << "??";
+      if (is_start_of_scratch_region(t, rec_start_addr)) {
+        /* Replay doesn't touch scratch regions, so
+         * their contents are allowed to diverge.
+         * Tracees can't observe those segments unless
+         * they do something sneaky (or disastrously
+         * buggy). */
+        LOG(debug) << "Not validating scratch starting at " << rec_start_addr;
+        continue;
+      }
+      if (rec_checksum == ignored_checksum) {
+        LOG(debug) << "Checksum not computed during recording";
+        continue;
+      }
+    } else {
+      if (!checksum_segment_filter(m)) {
+        fprintf(c.checksums_file, "(%x) %s\n", ignored_checksum,
+                raw_map_line.c_str());
+        continue;
+      }
     }
 
-    unsigned* buf = (unsigned*)mem.data();
-    unsigned checksum = 0;
-    int i;
+    vector<uint8_t> mem;
+    mem.resize(m.map.size());
+    ssize_t valid_mem_len =
+        t->read_bytes_fallible(m.map.start(), m.map.size(), mem.data());
+    ASSERT(t, valid_mem_len >= 0);
+    mem.resize(valid_mem_len);
 
     if (m.map.fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) == 0) {
       /* The syscallbuf consists of a region that's written
@@ -308,50 +355,20 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       * the deterministic region. */
       auto child_hdr = m.map.start().cast<struct syscallbuf_hdr>();
       auto hdr = t->read_mem(child_hdr);
-      valid_mem_len = !buf ? 0 : sizeof(hdr) + hdr.num_rec_bytes +
-                                     sizeof(struct syscallbuf_record);
+      mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
+                 sizeof(struct syscallbuf_record));
     }
 
-    ASSERT(t, buf || valid_mem_len == 0);
-    for (i = 0; i < ssize_t(valid_mem_len / sizeof(*buf)); ++i) {
-      checksum += buf[i];
-    }
+    uint32_t checksum = compute_checksum(mem.data(), mem.size());
 
-    string raw_map_line = m.map.str();
     if (STORE_CHECKSUMS == mode) {
       fprintf(c.checksums_file, "(%x) %s\n", checksum, raw_map_line.c_str());
     } else {
       ASSERT(t, t->session().is_replaying());
       auto rt = static_cast<ReplayTask*>(t);
-      char line[1024];
-      unsigned rec_checksum;
-      unsigned long rec_start;
-      unsigned long rec_end;
-      int nparsed;
 
-      fgets(line, sizeof(line), c.checksums_file);
-      nparsed =
-          sscanf(line, "(%x) %lx-%lx", &rec_checksum, &rec_start, &rec_end);
-      remote_ptr<void> rec_start_addr = rec_start;
-      remote_ptr<void> rec_end_addr = rec_end;
-      ASSERT(t, 3 == nparsed) << "Only parsed " << nparsed << " items";
-
-      ASSERT(t, rec_start_addr == m.map.start() && rec_end_addr == m.map.end())
-          << "Segment " << rec_start_addr << "-" << rec_end_addr
-          << " changed to " << m.map << "??";
-
-      if (is_start_of_scratch_region(t, rec_start_addr)) {
-        /* Replay doesn't touch scratch regions, so
-         * their contents are allowed to diverge.
-         * Tracees can't observe those segments unless
-         * they do something sneaky (or disastrously
-         * buggy). */
-        LOG(debug) << "Not validating scratch starting at 0x" << hex
-                   << rec_start_addr << dec;
-        continue;
-      }
       // Ignore checksums when valid_mem_len == 0
-      if (use_checksum && checksum != rec_checksum) {
+      if (checksum != rec_checksum) {
         notify_checksum_error(rt, c.global_time, checksum, rec_checksum,
                               raw_map_line.c_str());
       }
