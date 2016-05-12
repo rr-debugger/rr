@@ -127,16 +127,18 @@ cpuid_call:
         .globl cpuid_loop
         .type  cpuid_loop, @function
 cpuid_loop:
+        pushq %rbx
         mov %rdi, %rbx
-        xor %r12d, %r12d
+        xor %r11d, %r11d
 1:
         call cpuid_call
-        addq %rax, %r12
+        addq %rax, %r11
         mov $107, %rax
         syscall
         subq $1, %rbx
         jne 1b
-        movq %r12, %rax
+        movq %r11, %rax
+        popq %rbx
         ret
         .size  cpuid_loop, .-cpuid_loop
 #else
