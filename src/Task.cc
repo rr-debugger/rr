@@ -1793,7 +1793,7 @@ uint8_t* Task::local_mapping(remote_ptr<void> addr, size_t size) {
 
 ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
                                   void* buf) {
-  ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
+  ASSERT_ACTIONS(this, buf_size >= 0, << "Invalid buf_size " << buf_size);
   if (0 == buf_size) {
     return 0;
   }
