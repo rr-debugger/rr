@@ -48,7 +48,7 @@ extern char syscall_addr;
 /* Make a syscallbuf-patchable syscall to check that syscallbuf patching
    doesn't happen when we are emulating a ptracer --- which can be
    potentially confused by it. */
-static uid_t my_geteuid(void) {
+static uid_t __attribute__((noinline)) my_geteuid(void) {
   int r;
 #ifdef __i386__
   __asm__ __volatile__("syscall_addr: int $0x80\n\t"
