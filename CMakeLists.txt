@@ -3,6 +3,13 @@
 cmake_minimum_required(VERSION 2.8.5)
 project(rr C CXX ASM)
 
+# On single configuration generators, make Debug the default configuration
+IF( NOT CMAKE_CONFIGURATION_TYPES )
+	IF (NOT CMAKE_BUILD_TYPE)
+		SET(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Whether to build in `Debug` or `Release` mode." FORCE)
+	ENDIF ()
+ENDIF()
+
 enable_testing()
 set(BUILD_SHARED_LIBS ON)
 
@@ -18,10 +25,14 @@ set(rr_VERSION_PATCH 0)
 
 add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSION_PATCH}")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -O0 -g3 -Wall -Wextra -Werror -Wstrict-prototypes")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g3 -Wall -Wextra -Werror -Wstrict-prototypes")
+set(CMAKE_C_FLAGS_DEBUG "-O0")
+set(CMAKE_C_FLAGS_RELEASE "-O2")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++0x -pthread -O0 -g3 -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++0x -pthread -g3 -Wall -Wextra -Werror")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
 if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
@@ -188,7 +199,7 @@ add_custom_target(Pages DEPENDS
                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay"
                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay")
 
-add_executable(rr
+set(RR_SOURCES
   src/test/cpuid_loop.S
   src/AddressSpace.cc
   src/AutoRemoteSyscalls.cc
@@ -218,7 +229,6 @@ add_executable(rr
   src/kernel_metadata.cc
   src/log.cc
   src/MagicSaveDataMonitor.cc
-  src/main.cc
   src/Monkeypatcher.cc
   src/PerfCounters.cc
   src/ProcMemMonitor.cc
@@ -246,8 +256,19 @@ add_executable(rr
   src/TraceStream.cc
   src/VirtualPerfCounterMonitor.cc
   src/util.cc
-  src/WaitStatus.cc
-)
+  src/WaitStatus.cc)
+
+option(RR_BUILD_SHARED "Build the rr shared library as well as the binary (experimental).")
+if (RR_BUILD_SHARED)
+  add_library(rr ${RR_SOURCES})
+  add_executable(rrbin src/main.cc)
+  set(RR_BIN rrbin)
+  set_target_properties(rrbin PROPERTIES OUTPUT_NAME rr)
+  target_link_libraries(rrbin rr)
+else()
+  add_executable(rr ${RR_SOURCES} src/main.cc)
+  set(RR_BIN)
+endif()
 add_dependencies(rr Generated Pages)
 
 target_link_libraries(rr
@@ -272,7 +293,7 @@ install(PROGRAMS scripts/signal-rr-recording.sh
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay
   DESTINATION bin)
 
-install(TARGETS rr rrpreload exec_stub
+install(TARGETS rr ${RR_BIN} rrpreload exec_stub
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
