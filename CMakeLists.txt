@@ -417,6 +417,7 @@ set(BASIC_TESTS
   fxregs
   getcpu
   getgroups
+  getpwnam
   getrandom
   setitimer
   getsid

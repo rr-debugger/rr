@@ -562,6 +562,14 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
     LOG(debug) << "  (no copy for private mapping of +x " << file_name << ")";
     return false;
   }
+  bool can_read_file = (0 == access(file_name.c_str(), R_OK));
+  if (!can_read_file) {
+    // It's possible for a tracee to mmap a file it doesn't have permission
+    // to read, e.g. if a daemon opened the file and passed the fd over a
+    // socket. We should copy the data now because we won't be able to read
+    // it later. nscd does this.
+    return true;
+  }
 
   // TODO: using "can the euid of the rr process write this
   // file" as an approximation of whether the tracee can write

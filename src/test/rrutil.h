@@ -35,6 +35,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <pty.h>
+#include <pwd.h>
 #include <sched.h>
 #include <signal.h>
 #include <sound/asound.h>
