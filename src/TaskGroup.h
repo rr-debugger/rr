@@ -105,6 +105,7 @@ public:
   void forget_session() { session_ = nullptr; }
 
   TaskGroup* parent() { return parent_; }
+  const std::set<TaskGroup*>& children() { return children_; }
 
   TaskGroupUid tguid() const { return TaskGroupUid(tgid, serial); }
 
@@ -120,7 +121,7 @@ private:
   /** Parent TaskGroup, or nullptr if it's not a tracee (rr or init). */
   TaskGroup* parent_;
 
-  std::set<TaskGroup*> children;
+  std::set<TaskGroup*> children_;
 
   uint32_t serial;
 };

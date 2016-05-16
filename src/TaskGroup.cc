@@ -20,7 +20,7 @@ TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
   LOG(debug) << "creating new task group " << tgid
              << " (real tgid:" << real_tgid << ")";
   if (parent) {
-    parent->children.insert(this);
+    parent->children_.insert(this);
   }
   session->on_create(this);
 }
@@ -29,11 +29,11 @@ TaskGroup::~TaskGroup() {
   if (session_) {
     session_->on_destroy(this);
   }
-  for (TaskGroup* tg : children) {
+  for (TaskGroup* tg : children()) {
     tg->parent_ = nullptr;
   }
   if (parent_) {
-    parent_->children.erase(this);
+    parent_->children_.erase(this);
   }
 }
 

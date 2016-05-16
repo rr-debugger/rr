@@ -216,6 +216,7 @@ private:
    */
   bool enable_chaos;
 
+  bool enable_poll;
   bool last_reschedule_in_high_priority_only_interval;
 
   RecordTask* must_run_task;

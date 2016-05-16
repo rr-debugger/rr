@@ -91,6 +91,7 @@ Scheduler::Scheduler(RecordSession& session)
       max_ticks_(DEFAULT_MAX_TICKS),
       always_switch(false),
       enable_chaos(false),
+      enable_poll(false),
       last_reschedule_in_high_priority_only_interval(false),
       must_run_task(nullptr) {}
 
@@ -153,8 +154,26 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   }
 
   if (t->emulated_stop_type != NOT_STOPPED) {
-    LOG(debug) << "  " << t->tid << " is stopped by ptrace or signal";
-    return false;
+    if (t->is_signal_pending(SIGCONT)) {
+      // We have to do this here. RecordTask::signal_delivered can't always
+      // do it because if we don't PTRACE_CONT the task, we'll never see the
+      // SIGCONT.
+      t->emulate_SIGCONT();
+      // We shouldn't run any user code since there is at least one signal
+      // pending.
+      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+      *by_waitpid = true;
+      must_run_task = t;
+      LOG(debug) << "  Got " << t->tid
+                 << " out of emulated stop due to pending SIGCONT";
+      return true;
+    } else {
+      LOG(debug) << "  " << t->tid << " is stopped by ptrace or signal";
+      // We have no way to detect a SIGCONT coming from outside the tracees.
+      // We just have to poll SigPnd in /proc/<pid>/status.
+      enable_poll = true;
+      return false;
+    }
   }
 
   if (EV_SYSCALL == t->ev().type() &&
@@ -333,6 +352,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   LOG(debug) << "Scheduling next task";
 
   must_run_task = nullptr;
+  enable_poll = false;
 
   double now = monotonic_now_sec();
 
@@ -437,7 +457,21 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
                << task_priority_set.size() << " total)";
     do {
       int raw_status;
+      if (enable_poll) {
+        struct itimerval timer = { { 0, 0 }, { 1, 0 } };
+        if (setitimer(ITIMER_REAL, &timer, nullptr) < 0) {
+          FATAL() << "Failed to set itimer";
+        }
+        LOG(debug) << "  Arming one-second timer for polling";
+      }
       tid = waitpid(-1, &raw_status, __WALL | WSTOPPED | WUNTRACED);
+      if (enable_poll) {
+        struct itimerval timer = { { 0, 0 }, { 0, 0 } };
+        if (setitimer(ITIMER_REAL, &timer, nullptr) < 0) {
+          FATAL() << "Failed to set itimer";
+        }
+        LOG(debug) << "  Disarming one-second timer for polling";
+      }
       status = WaitStatus(raw_status);
       now = -1; // invalid, don't use
       if (-1 == tid) {

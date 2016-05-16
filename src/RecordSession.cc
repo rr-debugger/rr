@@ -388,7 +388,7 @@ void RecordSession::task_continue(const StepState& step_state) {
 
   ASSERT(t, step_state.continue_type != DONT_CONTINUE);
   // A task in an emulated ptrace-stop must really stay stopped
-  ASSERT(t, !t->emulated_ptrace_stop_pending);
+  ASSERT(t, !t->emulated_stop_pending);
 
   bool may_restart = t->at_may_restart_syscall();
 
@@ -654,7 +654,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
     case ENTERING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
-      ASSERT(t, !t->emulated_ptrace_stop_pending);
+      ASSERT(t, !t->emulated_stop_pending);
 
       last_task_switchable = rec_prepare_syscall(t);
       t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF,
@@ -663,7 +663,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       debug_exec_state("after cont", t);
       t->ev().Syscall().state = PROCESSING_SYSCALL;
 
-      if (t->emulated_ptrace_stop_pending) {
+      if (t->emulated_stop_pending) {
         step_state->continue_type = DONT_CONTINUE;
       } else {
         // Resume the syscall execution in the kernel context.

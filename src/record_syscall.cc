@@ -424,7 +424,7 @@ struct TaskSyscallState {
 
   std::unique_ptr<TraceTaskEvent> exec_saved_event;
 
-  RecordTask* ptraced_tracee;
+  RecordTask* emulate_wait_for_child;
 
   /** Saved syscall-entry registers, used by code paths that modify the
    *  registers temporarily.
@@ -465,7 +465,7 @@ struct TaskSyscallState {
 
   TaskSyscallState()
       : t(nullptr),
-        ptraced_tracee(nullptr),
+        emulate_wait_for_child(nullptr),
         expect_errno(0),
         should_emulate_result(false),
         preparation_done(false),
@@ -1347,19 +1347,31 @@ static Switchable prepare_ioctl(RecordTask* t,
   return PREVENT_SWITCH;
 }
 
-static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state) {
+static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
+                               int options) {
   for (RecordTask* child : t->emulated_ptrace_tracees) {
-    if (t->is_waiting_for_ptrace(child) &&
-        child->emulated_ptrace_stop_pending) {
-      syscall_state.ptraced_tracee = child;
+    if (t->is_waiting_for_ptrace(child) && child->emulated_stop_pending) {
+      syscall_state.emulate_wait_for_child = child;
       return true;
+    }
+  }
+  if (options & WUNTRACED) {
+    for (TaskGroup* child_process : t->task_group()->children()) {
+      for (Task* child : child_process->task_set()) {
+        auto rchild = static_cast<RecordTask*>(child);
+        if (rchild->emulated_stop_type == GROUP_STOP &&
+            rchild->emulated_stop_pending && t->is_waiting_for(rchild)) {
+          syscall_state.emulate_wait_for_child = rchild;
+          return true;
+        }
+      }
     }
   }
   return false;
 }
 
-static void maybe_pause_instead_of_waiting(RecordTask* t) {
-  if (t->in_wait_type != WAIT_TYPE_PID) {
+static void maybe_pause_instead_of_waiting(RecordTask* t, int options) {
+  if (t->in_wait_type != WAIT_TYPE_PID || (options & WNOHANG)) {
     return;
   }
   RecordTask* child = t->session().find_task(t->in_wait_pid);
@@ -1413,7 +1425,7 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   }
 
   tracee->emulated_stop_type = NOT_STOPPED;
-  tracee->emulated_ptrace_stop_code = WaitStatus();
+  tracee->emulated_stop_code = WaitStatus();
   tracee->emulated_ptrace_cont_command = command;
 
   if (tracee->ev().is_syscall_event() &&
@@ -1910,7 +1922,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       if (tracee) {
         tracee->emulated_ptrace_options = 0;
         tracee->emulated_ptrace_cont_command = 0;
-        tracee->emulated_ptrace_stop_pending = false;
+        tracee->emulated_stop_pending = false;
         tracee->emulated_ptrace_queued_exit_stop = false;
         prepare_ptrace_cont(tracee, t->regs().arg4(), 0);
         tracee->set_emulated_ptracer(nullptr);
@@ -2795,14 +2807,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         t->in_wait_type = WAIT_TYPE_PID;
         t->in_wait_pid = pid;
       }
-      if (maybe_emulate_wait(t, syscall_state)) {
+      int options = (int)t->regs().arg3();
+      if (maybe_emulate_wait(t, syscall_state, options)) {
         Registers r = t->regs();
         // Set options to an invalid value to force syscall to fail
         r.set_arg3(0xffffffff);
         t->set_regs(r);
         return PREVENT_SWITCH;
       }
-      maybe_pause_instead_of_waiting(t);
+      maybe_pause_instead_of_waiting(t, options);
       return ALLOW_SWITCH;
     }
 
@@ -2823,14 +2836,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           syscall_state.expect_errno = EINVAL;
           break;
       }
-      if (maybe_emulate_wait(t, syscall_state)) {
+      int options = (int)t->regs().arg4();
+      if (maybe_emulate_wait(t, syscall_state, options)) {
         Registers r = t->regs();
         // Set options to an invalid value to force syscall to fail
         r.set_arg4(0xffffffff);
         t->set_regs(r);
         return PREVENT_SWITCH;
       }
-      maybe_pause_instead_of_waiting(t);
+      maybe_pause_instead_of_waiting(t, options);
       return ALLOW_SWITCH;
     }
 
@@ -4032,9 +4046,9 @@ static void rec_process_syscall_arch(RecordTask* t,
           syscall_state.syscall_entry_registers.original_syscallno());
       t->set_regs(r);
 
-      RecordTask* tracee = syscall_state.ptraced_tracee;
+      RecordTask* tracee = syscall_state.emulate_wait_for_child;
       if (tracee) {
-        // Finish emulation of ptrace result
+        // Finish emulation of ptrace result or stop-signal
         Registers r = t->regs();
         r.set_syscall_result(tracee->tid);
         t->set_regs(r);
@@ -4044,23 +4058,19 @@ static void rec_process_syscall_arch(RecordTask* t,
             typename Arch::siginfo_t si;
             memset(&si, 0, sizeof(si));
             si.si_signo = SIGCHLD;
-            si.si_code = CLD_TRAPPED;
-            si._sifields._sigchld.si_pid_ = tracee->tgid();
-            si._sifields._sigchld.si_uid_ = tracee->getuid();
-            si._sifields._sigchld.si_status_ =
-                tracee->emulated_ptrace_stop_code.ptrace_signal();
+            tracee->set_siginfo_for_waited_task<Arch>(&si);
             t->write_mem(sip, si);
           }
         } else {
           remote_ptr<int> statusp = r.arg2();
           if (!statusp.is_null()) {
-            t->write_mem(statusp, tracee->emulated_ptrace_stop_code.get());
+            t->write_mem(statusp, tracee->emulated_stop_code.get());
           }
         }
         if (syscallno == Arch::waitid && (r.arg4() & WNOWAIT)) {
           // Leave the child in a waitable state
         } else {
-          if (tracee->emulated_ptrace_stop_code.exit_code() >= 0) {
+          if (tracee->emulated_stop_code.exit_code() >= 0) {
             // If we stopped the tracee to deliver this notification,
             // now allow it to continue to exit properly and notify its
             // real parent.
@@ -4071,7 +4081,14 @@ static void rec_process_syscall_arch(RecordTask* t,
             tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
                                      RESUME_NO_TICKS);
           }
-          tracee->emulated_ptrace_stop_pending = false;
+          if (tracee->emulated_ptracer == t) {
+            tracee->emulated_stop_pending = false;
+          } else {
+            for (Task* thread : tracee->task_group()->task_set()) {
+              auto rt = static_cast<RecordTask*>(thread);
+              rt->emulated_stop_pending = false;
+            }
+          }
         }
       }
       break;

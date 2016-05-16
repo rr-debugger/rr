@@ -1011,31 +1011,46 @@ void Task::update_prname(remote_ptr<void> child_addr) {
   prname = name.chars;
 }
 
-static bool is_zombie_process(pid_t pid) {
+vector<string> Task::read_status_fields(pid_t tid, const char* name,
+                                        const char* name2) {
+  vector<string> result;
   char buf[1000];
-  sprintf(buf, "/proc/%d/status", pid);
+  sprintf(buf, "/proc/%d/status", tid);
   FILE* f = fopen(buf, "r");
   if (!f) {
-    // Something went terribly wrong. Just say it's a zombie
-    // so we treat it as dead.
-    return true;
+    return result;
   }
-  static const char state_keyword[] = "State:";
-  while (fgets(buf, sizeof(buf), f)) {
-    if (strncmp(buf, state_keyword, sizeof(state_keyword) - 1) == 0) {
-      fclose(f);
-
-      char* b = buf + sizeof(state_keyword) - 1;
-      while (*b == ' ' || *b == '\t') {
-        ++b;
+  vector<string> matches;
+  matches.push_back(string(name) + ":");
+  if (name2) {
+    matches.push_back(string(name2) + ":");
+  }
+  for (auto& m : matches) {
+    while (true) {
+      if (!fgets(buf, sizeof(buf), f)) {
+        break;
       }
-      return *b == 'Z';
+      if (strncmp(buf, m.c_str(), m.size()) == 0) {
+        char* b = buf + m.size();
+        while (*b == ' ' || *b == '\t') {
+          ++b;
+        }
+        char* e = b;
+        while (*e && *e != '\n') {
+          ++e;
+        }
+        result.push_back(string(b, e - b));
+        break;
+      }
     }
   }
   fclose(f);
-  // Something went terribly wrong. Just say it's a zombie
-  // so we treat it as dead.
-  return true;
+  return result;
+}
+
+static bool is_zombie_process(pid_t pid) {
+  auto state = Task::read_status_fields(pid, "State");
+  return state.empty() || state[0] == "Z";
 }
 
 static bool is_signal_triggered_by_ptrace_interrupt(int group_stop_sig) {

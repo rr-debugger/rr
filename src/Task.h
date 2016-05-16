@@ -715,6 +715,9 @@ public:
     bool thread_locals_initialized;
   };
 
+  static std::vector<std::string> read_status_fields(
+      pid_t tid, const char* name, const char* name2 = nullptr);
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);

@@ -606,6 +606,7 @@ set(BASIC_TESTS
   video_capture
   vm_readv_writev
   wait
+  wait_sigstop
   write_race
   writev
   xattr

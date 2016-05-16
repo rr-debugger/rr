@@ -100,6 +100,22 @@ public:
    */
   void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
   /**
+   * Sets up |si| as if we're delivering a SIGCHLD/waitid for this waited task.
+   */
+  template <typename Arch>
+  void set_siginfo_for_waited_task(typename Arch::siginfo_t* si) {
+    // XXX handle CLD_EXITED here
+    if (emulated_stop_type == GROUP_STOP) {
+      si->si_code = CLD_STOPPED;
+      si->_sifields._sigchld.si_status_ = emulated_stop_code.stop_sig();
+    } else {
+      si->si_code = CLD_TRAPPED;
+      si->_sifields._sigchld.si_status_ = emulated_stop_code.ptrace_signal();
+    }
+    si->_sifields._sigchld.si_pid_ = tgid();
+    si->_sifields._sigchld.si_uid_ = getuid();
+  }
+  /**
    * Return a reference to the saved siginfo record for the stop-signal
    * that we're currently in a ptrace-stop for.
    */
@@ -132,6 +148,14 @@ public:
    * sighandler updates induced by the signal delivery.
    */
   void signal_delivered(int sig);
+  /**
+   * Return true if |sig| is pending but hasn't been reported to ptrace yet
+   */
+  bool is_signal_pending(int sig);
+  /**
+   * Get all threads out of an emulated GROUP_STOP
+   */
+  void emulate_SIGCONT();
   /**
    * Return true if the disposition of |sig| in |table| isn't
    * SIG_IGN or SIG_DFL, that is, if a user sighandler will be
@@ -411,9 +435,10 @@ private:
 
   /**
    * Called when this task is able to receive a SIGCHLD (e.g. because
-   * we completed delivery of a signal already). Sends a new synthetic
-   * SIGCHLD to the task if there are still ptraced tasks that need a SIGCHLD
+   * we completed delivery of a signal). Sends a new synthetic
+   * SIGCHLD to the task if there are still tasks that need a SIGCHLD
    * sent for them.
+   * May queue signals for specific tasks.
    */
   void send_synthetic_SIGCHLD_if_necessary();
 
@@ -467,19 +492,22 @@ public:
   uintptr_t emulated_ptrace_event_msg;
   // Saved emulated-ptrace signals
   std::vector<siginfo_t> saved_ptrace_siginfos;
-  // Code to deliver to ptracer when it waits. Note that zero can be a valid
-  // code! Reset to zero when leaving the ptrace-stop due to PTRACE_CONT etc.
-  WaitStatus emulated_ptrace_stop_code;
+  // Code to deliver to ptracer/waiter when it waits. Note that zero can be a
+  // valid code! Reset to zero when leaving the stop due to PTRACE_CONT etc.
+  WaitStatus emulated_stop_code;
   // Always zero while no ptracer is attached.
   int emulated_ptrace_options;
   // One of PTRACE_CONT, PTRACE_SYSCALL --- or 0 if the tracee has not been
   // continued by its ptracer yet, or has no ptracer.
   int emulated_ptrace_cont_command;
-  // true when a ptracer wait() can return |emulated_ptrace_stop_code|.
-  bool emulated_ptrace_stop_pending;
+  // true when a ptracer/waiter wait() can return |emulated_stop_code|.
+  bool emulated_stop_pending;
   // true if this task needs to send a SIGCHLD to its ptracer for its
   // emulated ptrace stop
   bool emulated_ptrace_SIGCHLD_pending;
+  // true if this task needs to send a SIGCHLD to its parent for its
+  // emulated stop
+  bool emulated_SIGCHLD_pending;
   // tracer attached via PTRACE_SEIZE
   bool emulated_ptrace_seized;
   bool emulated_ptrace_queued_exit_stop;

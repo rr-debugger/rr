@@ -164,8 +164,9 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       emulated_ptrace_event_msg(0),
       emulated_ptrace_options(0),
       emulated_ptrace_cont_command(0),
-      emulated_ptrace_stop_pending(false),
+      emulated_stop_pending(false),
       emulated_ptrace_SIGCHLD_pending(false),
+      emulated_SIGCHLD_pending(false),
       emulated_ptrace_seized(false),
       emulated_ptrace_queued_exit_stop(false),
       in_wait_type(WAIT_TYPE_NONE),
@@ -537,8 +538,8 @@ bool RecordTask::emulate_ptrace_stop(WaitStatus status,
 
 void RecordTask::force_emulate_ptrace_stop(WaitStatus status) {
   emulated_stop_type = status.group_stop() ? GROUP_STOP : SIGNAL_DELIVERY_STOP;
-  emulated_ptrace_stop_code = status;
-  emulated_ptrace_stop_pending = true;
+  emulated_stop_code = status;
+  emulated_stop_pending = true;
   emulated_ptrace_SIGCHLD_pending = true;
 
   emulated_ptracer->send_synthetic_SIGCHLD_if_necessary();
@@ -574,7 +575,31 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
     }
   }
   if (!need_signal) {
-    return;
+    for (TaskGroup* child_tg : task_group()->children()) {
+      for (Task* child : child_tg->task_set()) {
+        RecordTask* rchild = static_cast<RecordTask*>(child);
+        if (rchild->emulated_SIGCHLD_pending) {
+          need_signal = true;
+          // check to see if any thread in the ptracer process is in a waitpid
+          // that
+          // could read the status of 'tracee'. If it is, we should wake up that
+          // thread. Otherwise we send SIGCHLD to the ptracer thread.
+          for (Task* t : task_group()->task_set()) {
+            auto rt = static_cast<RecordTask*>(t);
+            if (rt->is_waiting_for(rchild)) {
+              wake_task = rt;
+              break;
+            }
+          }
+          if (wake_task) {
+            break;
+          }
+        }
+      }
+    }
+    if (!need_signal) {
+      return;
+    }
   }
 
   // ptrace events trigger SIGCHLD in the ptracer's wake_task.
@@ -625,13 +650,23 @@ void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
   for (RecordTask* tracee : emulated_ptrace_tracees) {
     if (tracee->emulated_ptrace_SIGCHLD_pending) {
       tracee->emulated_ptrace_SIGCHLD_pending = false;
-      // XXX handle CLD_EXITED here
-      si->si_code = CLD_TRAPPED;
-      si->si_pid = tracee->tgid();
-      si->si_uid = tracee->getuid();
-      si->si_status = tracee->emulated_ptrace_stop_code.ptrace_signal();
+      tracee->set_siginfo_for_waited_task<NativeArch>(
+          reinterpret_cast<NativeArch::siginfo_t*>(si));
       si->si_value.sival_int = 0;
       return;
+    }
+  }
+
+  for (TaskGroup* child_tg : task_group()->children()) {
+    for (Task* child : child_tg->task_set()) {
+      auto rchild = static_cast<RecordTask*>(child);
+      if (rchild->emulated_SIGCHLD_pending) {
+        rchild->emulated_SIGCHLD_pending = false;
+        rchild->set_siginfo_for_waited_task<NativeArch>(
+            reinterpret_cast<NativeArch::siginfo_t*>(si));
+        si->si_value.sival_int = 0;
+        return;
+      }
     }
   }
 }
@@ -696,7 +731,7 @@ void RecordTask::save_ptrace_signal_siginfo(const siginfo_t& si) {
 }
 
 siginfo_t& RecordTask::get_saved_ptrace_siginfo() {
-  int sig = emulated_ptrace_stop_code.ptrace_signal();
+  int sig = emulated_stop_code.ptrace_signal();
   ASSERT(this, sig > 0);
   for (auto it = saved_ptrace_siginfos.begin();
        it != saved_ptrace_siginfos.end(); ++it) {
@@ -725,12 +760,51 @@ siginfo_t RecordTask::take_ptrace_signal_siginfo(int sig) {
   return si;
 }
 
+static pid_t get_ppid(pid_t pid) {
+  auto ppid_str = Task::read_status_fields(pid, "PPid");
+  if (ppid_str.empty()) {
+    return -1;
+  }
+  char* end;
+  int actual_ppid = strtol(ppid_str[0].c_str(), &end, 10);
+  return *end ? -1 : actual_ppid;
+}
+
 void RecordTask::apply_group_stop(int sig) {
   if (emulated_stop_type == NOT_STOPPED) {
     LOG(debug) << "setting " << tid << " to GROUP_STOP due to signal " << sig;
-    if (!emulate_ptrace_stop(WaitStatus::for_group_sig(sig, this))) {
+    WaitStatus status = WaitStatus::for_group_sig(sig, this);
+    if (!emulate_ptrace_stop(status)) {
       emulated_stop_type = GROUP_STOP;
+      emulated_stop_code = status;
+      emulated_stop_pending = true;
+      emulated_SIGCHLD_pending = true;
+      RecordTask* t = session().find_task(get_ppid(tid));
+      if (t) {
+        t->send_synthetic_SIGCHLD_if_necessary();
+      }
     }
+  }
+}
+
+bool RecordTask::is_signal_pending(int sig) {
+  auto pending_strs = Task::read_status_fields(tid, "SigPnd", "ShdPnd");
+  if (pending_strs.size() < 2) {
+    return false;
+  }
+  char* end1;
+  uint64_t mask1 = strtoull(pending_strs[0].c_str(), &end1, 16);
+  char* end2;
+  uint64_t mask2 = strtoull(pending_strs[1].c_str(), &end2, 16);
+  return !*end1 && !*end2 && ((mask1 | mask2) & (1 << (sig - 1)));
+}
+
+void RecordTask::emulate_SIGCONT() {
+  // All threads in the process are resumed.
+  for (Task* t : task_group()->task_set()) {
+    auto rt = static_cast<RecordTask*>(t);
+    LOG(debug) << "setting " << tid << " to NOT_STOPPED due to SIGCONT";
+    rt->emulated_stop_type = NOT_STOPPED;
   }
 }
 
@@ -758,13 +832,7 @@ void RecordTask::signal_delivered(int sig) {
         }
         break;
       case SIGCONT:
-        // All threads in the process are resumed.
-        for (Task* t : task_group()->task_set()) {
-          auto rt = static_cast<RecordTask*>(t);
-          LOG(debug) << "setting " << tid << " to NOT_STOPPED due to signal "
-                     << sig;
-          rt->emulated_stop_type = NOT_STOPPED;
-        }
+        emulate_SIGCONT();
         break;
     }
   }
@@ -1253,28 +1321,6 @@ pid_t RecordTask::find_newborn_thread() {
     if (*end == '\0' && !session().find_task(thread_tid)) {
       closedir(dir);
       return thread_tid;
-    }
-  }
-}
-
-static pid_t get_ppid(pid_t pid) {
-  char path[PATH_MAX];
-  sprintf(path, "/proc/%d/status", pid);
-  FILE* status = fopen(path, "r");
-  if (!status) {
-    return false;
-  }
-  while (true) {
-    char line[1024];
-    if (!fgets(line, sizeof(line), status)) {
-      fclose(status);
-      return false;
-    }
-    if (strncmp(line, "PPid:", 5) == 0) {
-      fclose(status);
-      char* end;
-      int actual_ppid = strtol(line + 5, &end, 10);
-      return *end == '\n' ? actual_ppid : -1;
     }
   }
 }
