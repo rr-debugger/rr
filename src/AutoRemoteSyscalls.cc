@@ -196,6 +196,10 @@ static int create_bind_and_listen_socket(const char* path) {
     FATAL() << "Failed to bind listen socket";
   }
 
+  if (chmod(path, 0666)) {
+    FATAL() << "Failed to make listening socket world-writeable";
+  }
+
   if (listen(listen_sock, 1)) {
     FATAL() << "Failed to mark listening for listen socket";
   }
@@ -373,6 +377,20 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   if (sock < 0) {
     FATAL() << "Failed to create parent socket";
   }
+
+  // Verify that the child's PID is correct. This is a world-writeable socket
+  // so anyone could connect, and this check is vital.
+  struct ucred cred;
+  cred.pid = -1;
+  socklen_t credlen = sizeof(cred);
+  if (getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &cred, &credlen) < 0) {
+    FATAL() << "Failed SO_PEERCRED";
+  }
+  ASSERT(t, credlen == sizeof(cred));
+  if (cred.pid != task()->real_tgid()) {
+    FATAL() << "Some other process connected to our socket!!!";
+  }
+
   // Complete child's connect() syscall
   wait_syscall();
   int child_syscall_result = t->regs().syscall_result_signed();

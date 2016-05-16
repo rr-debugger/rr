@@ -1657,7 +1657,8 @@ void Task::open_mem_fd() {
 
   // We could try opening /proc/<pid>/mem directly first and
   // only do this dance if that fails. But it's simpler to
-  // always take this path, and gives better test coverage.
+  // always take this path, and gives better test coverage. On Ubuntu
+  // the child has to open its own mem file (unless rr is root).
   static const char path[] = "/proc/self/mem";
 
   AutoRemoteSyscalls remote(this);
@@ -1665,15 +1666,24 @@ void Task::open_mem_fd() {
   {
     AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
     // skip leading '/' since we want the path to be relative to the root fd
-    remote_fd = remote.infallible_syscall(syscall_number_for_openat(arch()),
-                                          RR_RESERVED_ROOT_DIR_FD,
-                                          remote_path.get() + 1, O_RDWR);
+    remote_fd =
+        remote.syscall(syscall_number_for_openat(arch()),
+                       RR_RESERVED_ROOT_DIR_FD, remote_path.get() + 1, O_RDWR);
   }
-
-  as->set_mem_fd(remote.retrieve_fd(remote_fd));
-  ASSERT(this, as->mem_fd().is_open());
-
-  remote.infallible_syscall(syscall_number_for_close(arch()), remote_fd);
+  if (remote_fd < 0) {
+    // This can happen when a process fork()s after setuid; it can no longer
+    // open its own /proc/self/mem. Hopefully we can read the child's
+    // mem file in this case (because rr is probably running as root).
+    char buf[PATH_MAX];
+    sprintf(buf, "/proc/%d/mem", tid);
+    ScopedFd fd(buf, O_RDWR);
+    ASSERT(this, fd.is_open());
+    as->set_mem_fd(move(fd));
+  } else {
+    as->set_mem_fd(remote.retrieve_fd(remote_fd));
+    ASSERT(this, as->mem_fd().is_open());
+    remote.infallible_syscall(syscall_number_for_close(arch()), remote_fd);
+  }
 }
 
 void Task::open_mem_fd_if_needed() {
