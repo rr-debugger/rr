@@ -275,11 +275,10 @@ void GdbConnection::read_data_once() {
 void GdbConnection::write_flush() {
   size_t write_index = 0;
 
-#ifdef DEBUGTAG
   outbuf.push_back(0);
   LOG(debug) << "write_flush: '" << outbuf.data() << "'";
   outbuf.pop_back();
-#endif
+
   while (write_index < outbuf.size()) {
     ssize_t nwritten;
 
