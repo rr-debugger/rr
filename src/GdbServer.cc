@@ -1193,11 +1193,33 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   LOG(debug) << "debugger server exiting ...";
 }
 
+static string create_gdb_command_file(const string& macros) {
+  char tmp[] = "/tmp/rr-gdb-commands-XXXXXX";
+  // This fd is just leaked. That's fine since we only call this once
+  // per rr invocation at the moment.
+  int fd = mkstemp(tmp);
+  unlink(tmp);
+
+  ssize_t len = macros.size();
+  int written = write(fd, macros.c_str(), len);
+  if (written != len) {
+    FATAL() << "Failed to write gdb command file";
+  }
+
+  stringstream procfile;
+  procfile << "/proc/" << getpid() << "/fd/" << fd;
+  return procfile.str();
+}
+
 void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
-                           const string& gdb_command_file_path,
-                           const string& gdb_binary_file_path) {
-  GdbConnection::launch_gdb(params_pipe_fd, gdb_rr_macros(),
-                            gdb_command_file_path, gdb_binary_file_path);
+                           const string& gdb_binary_file_path,
+                           const vector<string>& gdb_options) {
+  auto macros = gdb_rr_macros();
+  string gdb_command_file = create_gdb_command_file(macros);
+  vector<string> options = gdb_options;
+  options.push_back("-x");
+  options.push_back(gdb_command_file);
+  GdbConnection::launch_gdb(params_pipe_fd, gdb_binary_file_path, options);
 }
 
 void GdbServer::emergency_debug(Task* t) {

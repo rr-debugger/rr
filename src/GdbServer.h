@@ -72,8 +72,8 @@ public:
    * the pipe passed to serve_replay_with_debugger).
    */
   static void launch_gdb(ScopedFd& params_pipe_fd,
-                         const std::string& gdb_command_file_path,
-                         const std::string& gdb_binary_file_path);
+                         const std::string& gdb_binary_file_path,
+                         const std::vector<std::string>& gdb_options);
 
   /**
    * Start a debugging connection for |t| and return when there are no

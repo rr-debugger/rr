@@ -121,6 +121,19 @@ struct DebuggerParams {
   short port;
 };
 
+static void push_default_gdb_options(vector<string>& vec) {
+  vec.push_back("-l");
+  vec.push_back("-1");
+}
+
+static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
+  vec.push_back("-ex");
+  stringstream ss;
+  ss << "target extended-remote :";
+  ss << port;
+  vec.push_back(ss.str());
+}
+
 unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     unsigned short desired_port, ProbePort probe, pid_t tgid,
     const string& exe_image, const Features& features,
@@ -137,38 +150,32 @@ unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
     assert(nwritten == sizeof(params));
   } else {
-    fprintf(stderr, "Launch gdb with\n"
-                    "  gdb %s\n"
-                    "and attach to the rr debug server with:\n"
-                    "  target remote :%d\n",
-            exe_image.c_str(), port);
+    vector<string> options;
+    push_default_gdb_options(options);
+    push_target_remote_cmd(options, port);
+    cerr << "Launch gdb with \n"
+         << "  gdb ";
+    for (auto& opt : options) {
+      cerr << "'" << opt << "' ";
+    }
+    cerr << exe_image << "\n";
   }
   LOG(debug) << "limiting debugger traffic to tgid " << tgid;
   dbg->await_debugger(listen_fd);
   return dbg;
 }
 
-static string create_gdb_command_file(const string& macros) {
-  char tmp[] = "/tmp/rr-gdb-commands-XXXXXX";
-  // This fd is just leaked. That's fine since we only call this once
-  // per rr invocation at the moment.
-  int fd = mkstemp(tmp);
-  unlink(tmp);
-
-  ssize_t len = macros.size();
-  int written = write(fd, macros.c_str(), len);
-  if (written != len) {
-    FATAL() << "Failed to write gdb command file";
+static string to_string(const vector<string>& args) {
+  stringstream ss;
+  for (auto& a : args) {
+    ss << "'" << a << "' ";
   }
-
-  stringstream procfile;
-  procfile << "/proc/" << getpid() << "/fd/" << fd;
-  return procfile.str();
+  return ss.str();
 }
 
-void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const string& macros,
-                               const string& gdb_command_file_path,
-                               const string& gdb_binary_file_path) {
+void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd,
+                               const string& gdb_binary_file_path,
+                               const vector<string>& gdb_options) {
   DebuggerParams params;
   ssize_t nread;
   while (true) {
@@ -182,12 +189,6 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const string& macros,
     }
   }
   assert(nread == sizeof(params));
-
-  stringstream attach_cmd;
-  attach_cmd << "target extended-remote " << connection_addr << ":"
-             << params.port;
-  LOG(debug) << "launching " << gdb_binary_file_path << " with command '"
-             << attach_cmd.str() << "'";
 
   vector<string> args;
   args.push_back(gdb_binary_file_path);
@@ -207,20 +208,12 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const string& macros,
   // the gdb reload models don't quite match up, we'll
   // work around it on the rr side by disabling the
   // remote-reply timeout.
-  args.push_back("-l");
-  args.push_back("-1");
+  push_default_gdb_options(args);
+  args.insert(args.end(), gdb_options.begin(), gdb_options.end());
+  push_target_remote_cmd(args, params.port);
   args.push_back(params.exe_image);
-  if (gdb_command_file_path.length() > 0) {
-    args.push_back("-x");
-    args.push_back(gdb_command_file_path);
-  }
-  if (macros.size()) {
-    string gdb_command_file = create_gdb_command_file(macros);
-    args.push_back("-x");
-    args.push_back(gdb_command_file);
-  }
-  args.push_back("-ex");
-  args.push_back(attach_cmd.str());
+
+  LOG(debug) << "launching " << to_string(args);
 
   StringVectorToCharArray c_args(args);
   execvp(gdb_binary_file_path.c_str(), c_args.get());

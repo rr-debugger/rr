@@ -399,8 +399,13 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
-    GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_command_file_path,
-                          flags.gdb_binary_file_path);
+    vector<string> options;
+    if (!flags.gdb_command_file_path.empty()) {
+      options.push_back("-x");
+      options.push_back(flags.gdb_command_file_path);
+    }
+    GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_binary_file_path,
+                          options);
   }
 
   // Child must have died before we were able to get debugger parameters

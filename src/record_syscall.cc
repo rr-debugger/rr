@@ -1967,8 +1967,8 @@ static void check_signals_while_exiting(RecordTask* t) {
     // thread.
     int sig = t->peek_stash_sig().siginfo.si_signo;
     ASSERT(t, sig == SIGKILL || sig == SIGSTOP)
-      << "Got unexpected signal " << t->peek_stash_sig().siginfo
-      << " (should have been blocked)";
+        << "Got unexpected signal " << t->peek_stash_sig().siginfo
+        << " (should have been blocked)";
   }
 }
 

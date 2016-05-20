@@ -303,9 +303,9 @@ public:
    * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
    * of macros defined in |macros| if nonnull.
    */
-  static void launch_gdb(ScopedFd& params_pipe_fd, const std::string& macros,
-                         const std::string& gdb_command_file_path,
-                         const std::string& gdb_binary_file_path);
+  static void launch_gdb(ScopedFd& params_pipe_fd,
+                         const std::string& gdb_binary_file_path,
+                         const std::vector<std::string>& gdb_options);
 
   /**
    * Call this when the target of |req| is needed to fulfill the
