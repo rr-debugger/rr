@@ -65,10 +65,10 @@ public:
     /**
      * Return the values of the general-purpose registers at this mark.
      */
-    const Registers& regs() const { return ptr->regs; }
+    const Registers& regs() const { return ptr->proto.regs; }
     const ExtraRegisters& extra_regs() const { return ptr->extra_regs; }
 
-    TraceFrame::Time time() const { return ptr->key.trace_time; }
+    TraceFrame::Time time() const { return ptr->proto.key.trace_time; }
 
   private:
     friend class ReplayTimeline;
@@ -291,6 +291,7 @@ private:
   struct ProtoMark {
     ProtoMark(const MarkKey& key, ReplayTask* t)
         : key(key), regs(t->regs()), return_addresses(ReturnAddressList(t)) {}
+    ProtoMark(const MarkKey& key) : key(key) {}
 
     bool equal_states(ReplaySession& session) const;
 
@@ -308,14 +309,13 @@ private:
     InternalMark(ReplayTimeline* owner, ReplaySession& session,
                  const MarkKey& key)
         : owner(owner),
-          key(key),
+          proto(key),
           ticks_at_event_start(session.ticks_at_start_of_current_event()),
           checkpoint_refcount(0),
           singlestep_to_next_mark_no_signal(false) {
       ReplayTask* t = session.current_task();
       if (t) {
-        regs = t->regs();
-        return_addresses = ReturnAddressList(t);
+        proto = ProtoMark(key, t);
         extra_regs = t->extra_regs();
       }
     }
@@ -326,10 +326,8 @@ private:
     bool equal_states(ReplaySession& session) const;
 
     ReplayTimeline* owner;
-    MarkKey key;
-    Registers regs;
+    ProtoMark proto;
     ExtraRegisters extra_regs;
-    ReturnAddressList return_addresses;
     ReplaySession::shr_ptr checkpoint;
     Ticks ticks_at_event_start;
     uint32_t checkpoint_refcount;
