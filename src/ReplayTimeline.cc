@@ -13,7 +13,7 @@ namespace rr {
 
 ReplayTimeline::InternalMark::~InternalMark() {
   if (owner && checkpoint) {
-    owner->remove_mark_with_checkpoint(key);
+    owner->remove_mark_with_checkpoint(proto.key);
   }
 }
 
@@ -23,7 +23,7 @@ ostream& operator<<(ostream& s, const ReplayTimeline::MarkKey& o) {
 }
 
 ostream& operator<<(ostream& s, const ReplayTimeline::InternalMark& o) {
-  return s << "{" << o.key << ",regs_ip:" << o.regs.ip() << "}";
+  return s << o.proto;
 }
 
 ostream& operator<<(ostream& s, const ReplayTimeline::Mark& o) {
@@ -39,16 +39,16 @@ ostream& operator<<(ostream& s, const ReplayTimeline::ProtoMark& o) {
 
 bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
   assert(m1.ptr->owner == m2.ptr->owner);
-  if (m1.ptr->key < m2.ptr->key) {
+  if (m1.ptr->proto.key < m2.ptr->proto.key) {
     return true;
   }
-  if (m2.ptr->key < m1.ptr->key) {
+  if (m2.ptr->proto.key < m1.ptr->proto.key) {
     return false;
   }
   if (!m1.ptr->owner) {
     return false;
   }
-  for (shared_ptr<InternalMark>& m : m1.ptr->owner->marks[m1.ptr->key]) {
+  for (shared_ptr<InternalMark>& m : m1.ptr->owner->marks[m1.ptr->proto.key]) {
     if (m == m2.ptr) {
       return false;
     }
@@ -86,12 +86,7 @@ static bool equal_regs(const Registers& r1, const Registers& r2) {
 }
 
 bool ReplayTimeline::InternalMark::equal_states(ReplaySession& session) const {
-  if (session_mark_key(session) != key) {
-    return false;
-  }
-  ReplayTask* t = session.current_task();
-  return equal_regs(regs, t->regs()) &&
-         return_addresses == ReturnAddressList(t);
+  return proto.equal_states(session);
 }
 
 bool ReplayTimeline::ProtoMark::equal_states(ReplaySession& session) const {
@@ -157,7 +152,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
     // instruction (as long as we don't reach one of our mark_vector states).
     ReplaySession::StepConstraints constraints(RUN_SINGLESTEP_FAST_FORWARD);
     for (auto& mv : mark_vector) {
-      constraints.stop_before_states.push_back(&mv->regs);
+      constraints.stop_before_states.push_back(&mv->proto.regs);
     }
 
     while (true) {
@@ -210,9 +205,9 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
 void ReplayTimeline::mark_after_singlestep(const Mark& from,
                                            const ReplayResult& result) {
   Mark m = mark();
-  if (!result.did_fast_forward && m.ptr->key == from.ptr->key &&
+  if (!result.did_fast_forward && m.ptr->proto.key == from.ptr->proto.key &&
       !result.break_status.signal) {
-    auto& mark_vector = marks[m.ptr->key];
+    auto& mark_vector = marks[m.ptr->proto.key];
     for (size_t i = 0; i < mark_vector.size(); ++i) {
       if (mark_vector[i] == from.ptr) {
         assert(i + 1 < mark_vector.size() && mark_vector[i + 1] == m.ptr);
@@ -224,7 +219,7 @@ void ReplayTimeline::mark_after_singlestep(const Mark& from,
 }
 
 ReplayTimeline::Mark ReplayTimeline::find_singlestep_before(const Mark& mark) {
-  auto& mark_vector = marks[mark.ptr->key];
+  auto& mark_vector = marks[mark.ptr->proto.key];
   ssize_t i;
   for (i = mark_vector.size() - 1; i >= 0; --i) {
     if (mark_vector[i] == mark.ptr) {
@@ -252,7 +247,7 @@ ReplayTimeline::Mark ReplayTimeline::lazy_reverse_singlestep(const Mark& from,
   Mark m = find_singlestep_before(from);
   if (m && m >= no_watchpoints_hit_interval_start &&
       m < no_watchpoints_hit_interval_end &&
-      !has_breakpoint_at_address(t, from.ptr->regs.ip())) {
+      !has_breakpoint_at_address(t, from.ptr->proto.regs.ip())) {
     return m;
   }
   return Mark();
@@ -265,7 +260,7 @@ ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
   if (!m.ptr->checkpoint) {
     unapply_breakpoints_and_watchpoints();
     m.ptr->checkpoint = current->clone();
-    auto key = m.ptr->key;
+    auto key = m.ptr->proto.key;
     if (marks_with_checkpoints.find(key) == marks_with_checkpoints.end()) {
       marks_with_checkpoints[key] = 1;
     } else {
@@ -287,7 +282,7 @@ void ReplayTimeline::remove_explicit_checkpoint(const Mark& mark) {
   assert(mark.ptr->checkpoint_refcount > 0);
   if (--mark.ptr->checkpoint_refcount == 0) {
     mark.ptr->checkpoint = nullptr;
-    remove_mark_with_checkpoint(mark.ptr->key);
+    remove_mark_with_checkpoint(mark.ptr->proto.key);
   }
 }
 
@@ -333,7 +328,7 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
 }
 
 void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
-  if (current_mark_key() == mark.ptr->key) {
+  if (current_mark_key() == mark.ptr->proto.key) {
     Mark cm = this->mark();
     if (cm <= mark) {
       // close enough, stay where we are
@@ -343,7 +338,7 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
 
   // Check if any of the marks with the same key as 'mark', but not after
   // 'mark', are usable.
-  auto& mark_vector = marks[mark.ptr->key];
+  auto& mark_vector = marks[mark.ptr->proto.key];
   bool at_or_before_mark = false;
   for (ssize_t i = mark_vector.size() - 1; i >= 0; --i) {
     auto& m = mark_vector[i];
@@ -362,7 +357,7 @@ void ReplayTimeline::seek_up_to_mark(const Mark& mark) {
     }
   }
 
-  return seek_to_before_key(mark.ptr->key);
+  return seek_to_before_key(mark.ptr->proto.key);
 }
 
 ReplaySession::StepConstraints
@@ -396,13 +391,13 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
     const Mark& mark, ReplayStepToMarkStrategy& strategy) {
   ProtoMark before = proto_mark();
   ReplayResult result;
-  if (current->trace_reader().time() < mark.ptr->key.trace_time) {
+  if (current->trace_reader().time() < mark.ptr->proto.key.trace_time) {
     // Easy case: each RUN_CONTINUE can only advance by at most one
     // trace event, so do one. But do a singlestep if our strategy suggests
     // we should.
     ReplaySession::StepConstraints constraints =
         strategy.setup_step_constraints();
-    constraints.stop_at_time = mark.ptr->key.trace_time;
+    constraints.stop_at_time = mark.ptr->proto.key.trace_time;
     result = current->replay_step(constraints);
     update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
                                              before);
@@ -410,25 +405,25 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
   }
 
   ReplayTask* t = current->current_task();
-  ASSERT(t, current->trace_reader().time() == mark.ptr->key.trace_time);
+  ASSERT(t, current->trace_reader().time() == mark.ptr->proto.key.trace_time);
   // t must remain valid through here since t can only die when we complete
   // an event, and we're not going to complete another event before
   // reaching the mark ... apart from where we call
   // fix_watchpoint_coalescing_quirk.
 
-  if (t->tick_count() < mark.ptr->key.ticks) {
+  if (t->tick_count() < mark.ptr->proto.key.ticks) {
     // Try to make progress by just continuing with a ticks constraint
     // set to stop us before the mark. This is efficient in the worst case,
     // when we must execute lots of instructions to reach the mark.
     ReplaySession::StepConstraints constraints =
         strategy.setup_step_constraints();
-    constraints.ticks_target = mark.ptr->key.ticks - 1;
+    constraints.ticks_target = mark.ptr->proto.key.ticks - 1;
     result = current->replay_step(constraints);
     bool approaching_ticks_target =
         result.break_status.approaching_ticks_target;
     result.break_status.approaching_ticks_target = false;
     // We can't be at the mark yet.
-    ASSERT(t, t->tick_count() < mark.ptr->key.ticks);
+    ASSERT(t, t->tick_count() < mark.ptr->proto.key.ticks);
     // If there's a break indicated, we should return that to the
     // caller without doing any more work
     if (!approaching_ticks_target || result.break_status.any_break()) {
@@ -439,7 +434,7 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
     // We may not have made any progress so we'll need to try another strategy
   }
 
-  remote_code_ptr mark_addr = mark.ptr->regs.ip();
+  remote_code_ptr mark_addr = mark.ptr->proto.regs.ip();
 
   // Try adding a breakpoint at the required IP and running to it.
   // We can't do this if we're currently at the IP, since we'd make no progress.
@@ -471,7 +466,7 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
   // least one singlestep so one call to replay_step_to_mark will fast-forward
   // to the state before the mark and return, then the next call to
   // replay_step_to_mark will singlestep into the mark state.
-  constraints.stop_before_states.push_back(&mark.ptr->regs);
+  constraints.stop_before_states.push_back(&mark.ptr->proto.regs);
   result = current->replay_step(constraints);
   // Hide internal singlestep but preserve other break statuses
   result.break_status.singlestep_complete = false;
@@ -745,8 +740,8 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
              << (force == FORCE_PROGRESS ? " (forced)" : "");
 
   TraceFrame::Time now = current->trace_reader().time();
-  TraceFrame::Time mid = (now + end.ptr->key.trace_time) / 2;
-  if (now < mid && mid < end.ptr->key.trace_time) {
+  TraceFrame::Time mid = (now + end.ptr->proto.key.trace_time) / 2;
+  if (now < mid && mid < end.ptr->proto.key.trace_time) {
     ReplaySession::StepConstraints constraints(RUN_CONTINUE);
     constraints.stop_at_time = mid;
     while (current->trace_reader().time() < mid) {
@@ -757,14 +752,14 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
     return true;
   }
 
-  if (current->trace_reader().time() < end.ptr->key.trace_time &&
-      end.ptr->ticks_at_event_start < end.ptr->key.ticks) {
+  if (current->trace_reader().time() < end.ptr->proto.key.trace_time &&
+      end.ptr->ticks_at_event_start < end.ptr->proto.key.ticks) {
     ReplaySession::StepConstraints constraints(RUN_CONTINUE);
-    constraints.stop_at_time = end.ptr->key.trace_time;
-    while (current->trace_reader().time() < end.ptr->key.trace_time) {
+    constraints.stop_at_time = end.ptr->proto.key.trace_time;
+    while (current->trace_reader().time() < end.ptr->proto.key.trace_time) {
       current->replay_step(constraints);
     }
-    assert(current->trace_reader().time() == end.ptr->key.trace_time);
+    assert(current->trace_reader().time() == end.ptr->proto.key.trace_time);
     LOG(debug) << "Ran forward to event " << current_mark_key();
     return true;
   }
@@ -773,8 +768,8 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
   if (t) {
     Ticks start_ticks = t->tick_count();
     Ticks end_ticks = current->current_trace_frame().ticks();
-    if (end.ptr->key.trace_time == current->trace_reader().time()) {
-      end_ticks = min(end_ticks, end.ptr->key.ticks);
+    if (end.ptr->proto.key.trace_time == current->trace_reader().time()) {
+      end_ticks = min(end_ticks, end.ptr->proto.key.ticks);
     }
     ASSERT(t, start_ticks <= end_ticks);
     Ticks target = min(end_ticks, (start_ticks + end_ticks) / 2);
@@ -806,7 +801,7 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
         }
         constraints =
             ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
-        constraints.stop_before_states.push_back(&end.ptr->regs);
+        constraints.stop_before_states.push_back(&end.ptr->proto.regs);
         result = current->replay_step(constraints);
         if (at_mark(end)) {
           assert(tmp_session);
@@ -862,7 +857,7 @@ ReplayResult ReplayTimeline::reverse_continue(
     if (start >= end) {
       checkpoint_at_first_break = true;
       if (restart_points.empty()) {
-        seek_to_before_key(end.ptr->key);
+        seek_to_before_key(end.ptr->proto.key);
         start = mark();
         if (start >= end) {
           LOG(debug) << "Couldn't seek to before " << end << ", returning exit";
@@ -1051,11 +1046,11 @@ ReplayResult ReplayTimeline::reverse_singlestep(
     bool seen_barrier;
 
     while (true) {
-      MarkKey current_key = end.ptr->key;
+      MarkKey current_key = end.ptr->proto.key;
 
       while (true) {
-        if (end.ptr->key.trace_time != current_key.trace_time ||
-            end.ptr->key.ticks != current_key.ticks) {
+        if (end.ptr->proto.key.trace_time != current_key.trace_time ||
+            end.ptr->proto.key.ticks != current_key.ticks) {
           break;
         }
         seek_to_before_key(current_key);
@@ -1159,7 +1154,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
           Mark before_step = mark();
           ReplaySession::StepConstraints constraints(
               RUN_SINGLESTEP_FAST_FORWARD);
-          constraints.stop_before_states.push_back(&end.ptr->regs);
+          constraints.stop_before_states.push_back(&end.ptr->proto.regs);
           result = current->replay_step(constraints);
           update_observable_break_status(now, result);
           if (result.break_status.breakpoint_hit) {
