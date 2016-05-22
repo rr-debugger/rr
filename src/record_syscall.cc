@@ -1254,11 +1254,21 @@ static Switchable prepare_ioctl(RecordTask* t,
         syscall_state.after_syscall_action(record_usbdevfs_reaped_urb<Arch>);
         return ALLOW_SWITCH;
     }
+
+    switch (type) {
+      case 0x54: // TIO*
+      case 0x89: // SIO*
+        // These ioctls are known to be irregular and don't usually have the
+        // correct |dir| bits. They must be handled above
+        syscall_state.expect_errno = EINVAL;
+        return PREVENT_SWITCH;
+    }
+
     /* If the kernel isn't going to write any data back to
      * us, we hope and pray that the result of the ioctl
      * (observable to the tracee) is deterministic.
      * We're also assuming it doesn't block.
-     * XXX this is far too risky! Many ioctls use irregular ioctl codes
+     * This is risky! Many ioctls use irregular ioctl codes
      * that do not have the _IOC_READ bit set but actually do write to
      * user-space! */
     LOG(debug) << "  (presumed ignorable ioctl, nothing to do)";
