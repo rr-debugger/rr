@@ -366,7 +366,7 @@ static void send_marker_fd(void) {
   cmsg->cmsg_len = CMSG_LEN(sizeof(int));
   cmsg->cmsg_level = SOL_SOCKET;
   cmsg->cmsg_type = SCM_RIGHTS;
-  *(int*)(CMSG_DATA(cmsg)) = trace_marker_fd;
+  memcpy(CMSG_DATA(cmsg), &trace_marker_fd, sizeof(int));
 
   check(1 == sendmsg(control_fd, &msg, 0));
   check(0 == close(trace_marker_fd));

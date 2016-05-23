@@ -849,10 +849,10 @@ ReplayResult ReplayTimeline::reverse_continue(
   Mark end = mark();
   LOG(debug) << "ReplayTimeline::reverse_continue from " << end;
 
-  bool last_stop_is_watch_or_signal;
+  bool last_stop_is_watch_or_signal = false;
   ReplayResult final_result;
   TaskUid final_tuid;
-  Ticks final_ticks;
+  Ticks final_ticks = 0;
   Mark dest;
   vector<Mark> restart_points;
 

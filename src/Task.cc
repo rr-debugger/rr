@@ -1882,24 +1882,23 @@ bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
                              const void* buf) {
   // Check that there are private-mapping pages covering the destination area.
   // The pages must all have the same prot and flags.
-  uintptr_t page_size = sysconf(_SC_PAGESIZE);
-  uintptr_t page_start = addr.as_int() & ~(page_size - 1);
-  uintptr_t page_end =
-      (addr.as_int() + buf_size + page_size - 1) & ~(page_size - 1);
-  int all_prot, all_flags;
-  for (uintptr_t p = page_start; p < page_end; p += page_size) {
-    const KernelMapping& m = as->mapping_of(p).map;
-    if (p > page_start) {
-      if (all_prot != m.prot() || all_flags != m.flags()) {
-        return false;
-      }
-    } else {
-      all_prot = m.prot();
-      all_flags = m.flags();
-    }
+  uintptr_t page_start = floor_page_size(addr).as_int();
+  uintptr_t page_end = ceil_page_size(addr + buf_size).as_int();
+  if (page_start == page_end) {
+    return true;
   }
+
+  const KernelMapping& m_start = as->mapping_of(page_start).map;
+  int all_prot = m_start.prot();
+  int all_flags = m_start.flags();
   if (!(all_flags & MAP_PRIVATE)) {
     return false;
+  }
+  for (uintptr_t p = page_start + page_size(); p < page_end; p += page_size()) {
+    const KernelMapping& m = as->mapping_of(p).map;
+    if (all_prot != m.prot() || all_flags != m.flags()) {
+      return false;
+    }
   }
 
   auto cur = read_mem(remote_ptr<uint8_t>(page_start), page_end - page_start);

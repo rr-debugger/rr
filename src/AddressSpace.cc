@@ -1141,7 +1141,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
     // Find the location of the VDSO in the just-spawned process. This will
     // match the VDSO in rr itself since we haven't execed yet. So, speed
     // things up by searching rr's own VDSO for a syscall instruction.
-    size_t rr_vdso_len;
+    size_t rr_vdso_len = 0;
     remote_ptr<void> rr_vdso = find_rr_vdso(t, &rr_vdso_len);
     // Here we rely on the VDSO location in the spawned tracee being the same
     // as in rr itself.

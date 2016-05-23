@@ -135,7 +135,8 @@ if(module_status)
   message(FATAL_ERROR "Couldn't find gdb.")
 endif()
 
-set_source_files_properties(src/preload/preload.c PROPERTIES COMPILE_FLAGS -O2)
+set_source_files_properties(src/preload/preload.c
+                            PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_RELEASE})
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
 # We need to know where our generated files are.
@@ -315,7 +316,7 @@ if(rr_32BIT AND rr_64BIT)
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                    COPYONLY)
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-                                PROPERTIES COMPILE_FLAGS "-m32 -O2")
+                                PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_C_FLAGS_RELEASE}")
   endforeach(file)
 
   add_library(rrpreload_32
@@ -807,6 +808,8 @@ set(TESTS_WITHOUT_PROGRAM
 
 foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   add_executable(${test} src/test/${test}.c)
+  set_source_files_properties(src/test/${test}.c
+                              PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
   add_dependencies(${test} Generated)
   target_link_libraries(${test} -lrt)
 endforeach(test)
@@ -819,6 +822,8 @@ endforeach(test)
 
 foreach(test ${BASIC_CPP_TESTS})
   add_executable(${test} src/test/${test}.cc)
+  set_source_files_properties(src/test/${test}.cc
+                              PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS_DEBUG})
   add_dependencies(${test} Generated)
   target_link_libraries(${test} -lrt)
 endforeach(test)
@@ -879,7 +884,7 @@ if(rr_32BIT AND rr_64BIT)
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
                    COPYONLY)
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
-                                PROPERTIES COMPILE_FLAGS -m32)
+                                PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
   endforeach(test)
 
   foreach(test ${BASIC_CPP_TESTS})
@@ -887,7 +892,7 @@ if(rr_32BIT AND rr_64BIT)
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
                    COPYONLY)
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
-                                PROPERTIES COMPILE_FLAGS -m32)
+                                PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
   endforeach(test)
 
   foreach(file cpuid_loop.S)
@@ -901,14 +906,14 @@ if(rr_32BIT AND rr_64BIT)
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
     add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
     add_dependencies(${test}_32 Generated)
-    set_target_properties(${test}_32 PROPERTIES LINK_FLAGS -m32)
+    set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
     target_link_libraries(${test}_32 -lrt)
   endforeach(test)
 
   foreach(test ${BASIC_CPP_TESTS})
     add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc")
     add_dependencies(${test}_32 Generated)
-    set_target_properties(${test}_32 PROPERTIES LINK_FLAGS -m32)
+    set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
     target_link_libraries(${test}_32 -lrt)
   endforeach(test)
 
