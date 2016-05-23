@@ -1188,11 +1188,17 @@ static Switchable prepare_ioctl(RecordTask* t,
     }
 
     case SIOCGIFADDR:
+    case SIOCGIFDSTADDR:
+    case SIOCGIFBRDADDR:
     case SIOCGIFHWADDR:
     case SIOCGIFFLAGS:
+    case SIOCGIFPFLAGS:
+    case SIOCGIFTXQLEN:
     case SIOCGIFINDEX:
     case SIOCGIFMTU:
     case SIOCGIFNAME:
+    case SIOCGIFNETMASK:
+    case SIOCGIFMETRIC:
       syscall_state.reg_parameter<typename Arch::ifreq>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;

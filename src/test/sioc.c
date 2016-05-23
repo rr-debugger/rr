@@ -97,6 +97,13 @@ int main(void) {
   test_assert(0 == ret);
   test_assert(!strcmp(name, req->ifr_name));
 
+  memset(&req->ifr_flags, 0xff, sizeof(req->ifr_flags));
+  ret = ioctl(sockfd, SIOCGIFFLAGS, req);
+  VERIFY_GUARD(req);
+  atomic_printf("SIOCGIFFLAGS(ret:%d): %s flags are", ret, req->ifr_name);
+  test_assert(0 == ret);
+  atomic_printf(" %#x\n", req->ifr_flags);
+
   memset(&req->ifr_addr, 0xff, sizeof(req->ifr_addr));
   ret = ioctl(sockfd, SIOCGIFADDR, req);
   VERIFY_GUARD(req);
@@ -105,18 +112,37 @@ int main(void) {
   test_assert(0 == ret);
 
   memset(&req->ifr_addr, 0xff, sizeof(req->ifr_addr));
-  ret = ioctl(sockfd, SIOCGIFHWADDR, req);
+  ret = ioctl(sockfd, SIOCGIFDSTADDR, req);
   VERIFY_GUARD(req);
-  atomic_printf("SIOCGIFHWADDR(ret:%d): %s addr is", ret, req->ifr_name);
-  atomic_printf(" %s\n", sockaddr_hw_name(&req->ifr_addr));
+  atomic_printf("SIOCGIFDSTADDR(ret:%d): %s addr is", ret, req->ifr_name);
+  atomic_printf(" %s\n", sockaddr_name(&req->ifr_addr));
   test_assert(0 == ret);
 
-  memset(&req->ifr_flags, 0xff, sizeof(req->ifr_flags));
-  ret = ioctl(sockfd, SIOCGIFFLAGS, req);
+  memset(&req->ifr_addr, 0xff, sizeof(req->ifr_addr));
+  ret = ioctl(sockfd, SIOCGIFBRDADDR, req);
   VERIFY_GUARD(req);
-  atomic_printf("SIOCGIFFLAGS(ret:%d): %s flags are", ret, req->ifr_name);
+  atomic_printf("SIOCGIFBRDADDR(ret:%d): %s addr is", ret, req->ifr_name);
+  atomic_printf(" %s\n", sockaddr_name(&req->ifr_addr));
   test_assert(0 == ret);
-  atomic_printf(" %#x\n", req->ifr_flags);
+
+  memset(&req->ifr_addr, 0xff, sizeof(req->ifr_addr));
+  ret = ioctl(sockfd, SIOCGIFNETMASK, req);
+  VERIFY_GUARD(req);
+  atomic_printf("SIOCGIFNETMASK(ret:%d): %s netmask is", ret, req->ifr_name);
+  atomic_printf(" %s\n", sockaddr_name(&req->ifr_addr));
+  test_assert(0 == ret);
+
+  memset(&req->ifr_metric, 0xff, sizeof(req->ifr_metric));
+  ret = ioctl(sockfd, SIOCGIFMETRIC, req);
+  VERIFY_GUARD(req);
+  atomic_printf("SIOCGIFMETRIC(ret:%d): %s metric is", ret, req->ifr_name);
+  atomic_printf(" %d\n", req->ifr_metric);
+  test_assert(0 == ret);
+
+  memset(&req->ifr_metric, 0xff, sizeof(req->ifr_metric));
+  ret = ioctl(sockfd, SIOCGIFMEM, req);
+  VERIFY_GUARD(req);
+  test_assert(-1 == ret && errno == ENOTTY);
 
   memset(&req->ifr_mtu, 0xff, sizeof(req->ifr_mtu));
   ret = ioctl(sockfd, SIOCGIFMTU, req);
@@ -124,6 +150,29 @@ int main(void) {
   atomic_printf("SIOCGIFMTU(ret:%d): %s MTU is", ret, req->ifr_name);
   test_assert(0 == ret);
   atomic_printf(" %d\n", req->ifr_mtu);
+
+  memset(&req->ifr_addr, 0xff, sizeof(req->ifr_addr));
+  ret = ioctl(sockfd, SIOCGIFHWADDR, req);
+  VERIFY_GUARD(req);
+  atomic_printf("SIOCGIFHWADDR(ret:%d): %s hwaddr is", ret, req->ifr_name);
+  atomic_printf(" %s\n", sockaddr_hw_name(&req->ifr_addr));
+  test_assert(0 == ret);
+
+  memset(&req->ifr_flags, 0xff, sizeof(req->ifr_flags));
+  ret = ioctl(sockfd, SIOCGIFPFLAGS, req);
+  VERIFY_GUARD(req);
+  if (ret != -1 || errno != EINVAL) {
+    test_assert(0 == ret);
+    atomic_printf("SIOCGIFPFLAGS(ret:%d): %s flags are", ret, req->ifr_name);
+    atomic_printf(" %#x\n", req->ifr_flags);
+  }
+
+  memset(&req->ifr_qlen, 0xff, sizeof(req->ifr_qlen));
+  ret = ioctl(sockfd, SIOCGIFTXQLEN, req);
+  VERIFY_GUARD(req);
+  atomic_printf("SIOCGIFTXQLEN(ret:%d): %s qlen is", ret, req->ifr_name);
+  test_assert(0 == ret);
+  atomic_printf(" %d\n", req->ifr_qlen);
 
   ALLOCATE_GUARD(etc, 'b');
   etc->cmd = ETHTOOL_GSET;
