@@ -414,12 +414,17 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
   args.cloned_file_data_fd = -1;
   if (as->syscallbuf_enabled()) {
     args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
-    init_syscall_buffer(remote, nullptr);
+    KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
     args.syscallbuf_ptr = syscallbuf_child;
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
     fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
     desched_fd = remote.retrieve_fd(desched_fd_child);
+
+    auto record_in_trace = trace_writer().write_mapped_region(
+        this, syscallbuf_km, syscallbuf_km.fake_stat(),
+        TraceWriter::RR_BUFFER_MAPPING);
+    ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
 
     if (trace_writer().supports_file_data_cloning() &&
         session().use_read_cloning()) {

@@ -814,8 +814,8 @@ protected:
    * there are no expectations.
    * Initializes syscallbuf_child.
    */
-  void init_syscall_buffer(AutoRemoteSyscalls& remote,
-                           remote_ptr<void> map_hint);
+  KernelMapping init_syscall_buffer(AutoRemoteSyscalls& remote,
+                                    remote_ptr<void> map_hint);
 
   /**
    * Make the OS-level calls to create a new fork or clone that

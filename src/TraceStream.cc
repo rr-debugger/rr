@@ -31,7 +31,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 53
+#define TRACE_VERSION 54
 
 struct SubstreamData {
   const char* name;
@@ -368,6 +368,8 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     source = TraceReader::SOURCE_TRACE;
   } else if (origin == SYSCALL_MAPPING &&
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
+    source = TraceReader::SOURCE_ZERO;
+  } else if (origin == RR_BUFFER_MAPPING) {
     source = TraceReader::SOURCE_ZERO;
   } else if ((km.flags() & MAP_PRIVATE) &&
              t->session().as_record()->use_file_cloning() &&

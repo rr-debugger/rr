@@ -1694,8 +1694,8 @@ void Task::open_mem_fd_if_needed() {
   }
 }
 
-void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
-                               remote_ptr<void> map_hint) {
+KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
+                                        remote_ptr<void> map_hint) {
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
@@ -1747,11 +1747,13 @@ void Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 
   struct stat st;
   ASSERT(this, 0 == ::fstat(shmem_fd, &st));
-  vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags, 0, path,
-            st.st_dev, st.st_ino);
+  KernelMapping km = vm()->map(child_map_addr, num_syscallbuf_bytes, prot,
+                               flags, 0, path, st.st_dev, st.st_ino);
 
   shmem_fd.close();
   remote.infallible_syscall(syscall_number_for_close(arch()), child_shmem_fd);
+
+  return km;
 }
 
 void Task::reset_syscallbuf() {

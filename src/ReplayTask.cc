@@ -40,6 +40,10 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
     // Prevent the child from closing this fd
     fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
 
+    // Skip mmap record. It exists mainly to inform non-replay code
+    // (e.g. RemixModule) that this memory will be mapped.
+    trace_reader().read_mapped_region();
+
     if (args.cloned_file_data_fd >= 0) {
       cloned_file_data_fd_child = args.cloned_file_data_fd;
       string clone_file_name = trace_reader().file_data_clone_file_name(tuid());

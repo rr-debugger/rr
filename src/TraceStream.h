@@ -128,7 +128,12 @@ public:
   void write_frame(const TraceFrame& frame);
 
   enum RecordInTrace { DONT_RECORD_IN_TRACE, RECORD_IN_TRACE };
-  enum MappingOrigin { SYSCALL_MAPPING, EXEC_MAPPING, PATCH_MAPPING };
+  enum MappingOrigin {
+    SYSCALL_MAPPING,
+    EXEC_MAPPING,
+    PATCH_MAPPING,
+    RR_BUFFER_MAPPING
+  };
   /**
    * Write mapped-region record to the trace.
    * If this returns RECORD_IN_TRACE, then the data for the map should be
@@ -243,7 +248,7 @@ public:
   enum ValidateSourceFile { VALIDATE, DONT_VALIDATE };
   enum TimeConstraint { CURRENT_TIME_ONLY, ANY_TIME };
   KernelMapping read_mapped_region(
-      MappedData* data, bool* found = nullptr,
+      MappedData* data = nullptr, bool* found = nullptr,
       ValidateSourceFile validate = VALIDATE,
       TimeConstraint time_constraint = CURRENT_TIME_ONLY);
 
