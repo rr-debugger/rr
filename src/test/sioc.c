@@ -22,9 +22,11 @@ const char* sockaddr_hw_name(const struct sockaddr* addr) {
 
 /**
  * Fetch and print the ifconfig for this machine.  Fill in
- * |req.ifr_name| with the first non-loopback interface name found.
+ * |req.ifr_name| with the first non-loopback interface name found, preferring
+ * a wireless interface if possible.
+ * |eth_req| returns an ethernet interface if possible.
  */
-static void get_ifconfig(int sockfd, struct ifreq* req) {
+static void get_ifconfig(int sockfd, struct ifreq* req, struct ifreq* eth_req) {
   struct {
     struct ifreq ifaces[100];
   } * ifaces;
@@ -32,7 +34,9 @@ static void get_ifconfig(int sockfd, struct ifreq* req) {
   int ret;
   ssize_t num_ifaces;
   int i;
-  int set_req_iface = 0;
+  int wireless_index = -1;
+  int eth_index = -1;
+  int non_loop_index = -1;
 
   ALLOCATE_GUARD(ifconf, 0xff);
   ALLOCATE_GUARD(ifaces, 'y');
@@ -49,25 +53,51 @@ static void get_ifconfig(int sockfd, struct ifreq* req) {
   test_assert(0 == ret);
   test_assert(0 == (ifconf->ifc_len % sizeof(ifaces->ifaces[0])));
 
+  if (!num_ifaces) {
+    atomic_puts("No interfaces found\n");
+    atomic_puts("EXIT-SUCCESS");
+    exit(0);
+  }
+
   for (i = 0; i < num_ifaces; ++i) {
     const struct ifreq* ifc = &ifconf->ifc_req[i];
     atomic_printf("  iface %d: name:%s addr:%s\n", i, ifc->ifr_name,
                   sockaddr_name(&ifc->ifr_addr));
-    if (!set_req_iface && strcmp("lo", ifc->ifr_name)) {
-      strcpy(req->ifr_name, ifc->ifr_name);
-      set_req_iface = 1;
+    switch (ifc->ifr_name[0]) {
+      case 'w':
+        wireless_index = i;
+        break;
+      case 'e':
+        eth_index = i;
+        break;
+      case 'l':
+        break;
+      default:
+        non_loop_index = i;
+        break;
     }
   }
-  if (!set_req_iface) {
-    atomic_puts("Only loopback interface found\n");
-    atomic_puts("EXIT-SUCCESS");
-    exit(0);
+
+  if (wireless_index >= 0) {
+    strcpy(req->ifr_name, ifaces->ifaces[wireless_index].ifr_name);
+  } else if (non_loop_index >= 0) {
+    strcpy(req->ifr_name, ifaces->ifaces[non_loop_index].ifr_name);
+  } else {
+    strcpy(req->ifr_name, ifaces->ifaces[0].ifr_name);
+  }
+  if (eth_index >= 0) {
+    strcpy(eth_req->ifr_name, ifaces->ifaces[eth_index].ifr_name);
+  } else if (non_loop_index >= 0) {
+    strcpy(eth_req->ifr_name, ifaces->ifaces[non_loop_index].ifr_name);
+  } else {
+    strcpy(eth_req->ifr_name, ifaces->ifaces[0].ifr_name);
   }
 }
 
 int main(void) {
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   struct ifreq* req;
+  struct ifreq* eth_req;
   char name[PATH_MAX];
   int index;
   struct ethtool_cmd* etc;
@@ -75,7 +105,8 @@ int main(void) {
   struct iwreq* wreq;
 
   ALLOCATE_GUARD(req, 'a');
-  get_ifconfig(sockfd, req);
+  ALLOCATE_GUARD(eth_req, 'a');
+  get_ifconfig(sockfd, req, eth_req);
   strcpy(name, req->ifr_name);
 
   req->ifr_ifindex = -1;
