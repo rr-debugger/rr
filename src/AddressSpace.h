@@ -148,6 +148,7 @@ public:
     memset(&fake_stat, 0, sizeof(fake_stat));
     fake_stat.st_dev = device();
     fake_stat.st_ino = inode();
+    fake_stat.st_size = size();
     return fake_stat;
   }
 
