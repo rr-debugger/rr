@@ -280,10 +280,12 @@ EmergencyDebugOstream::EmergencyDebugOstream(bool cond, const Task* t,
                                              const char* function,
                                              const char* cond_str)
     : t(const_cast<Task*>(t)), cond(cond) {
-  write_prefix(*this, LOG_fatal, file, line, function);
-  *this << "\n (task " << t->tid << " (rec:" << t->rec_tid << ") at time "
-        << t->trace_time() << ")"
-        << "\n -> Assertion `" << cond_str << "' failed to hold. ";
+  if (!cond) {
+    write_prefix(*this, LOG_fatal, file, line, function);
+    *this << "\n (task " << t->tid << " (rec:" << t->rec_tid << ") at time "
+          << t->trace_time() << ")"
+          << "\n -> Assertion `" << cond_str << "' failed to hold. ";
+  }
 }
 
 EmergencyDebugOstream::~EmergencyDebugOstream() {
