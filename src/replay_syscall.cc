@@ -543,19 +543,15 @@ static remote_ptr<void> finish_anonymous_mmap(
   string file_name;
   dev_t device = KernelMapping::NO_DEVICE;
   ino_t inode = KernelMapping::NO_INODE;
-  KernelMapping recorded_km;
+  TraceReader::MappedData data;
+  KernelMapping recorded_km = t->trace_reader().read_mapped_region(&data);
   EmuFile::shr_ptr emu_file;
   if (flags & MAP_PRIVATE) {
     remote.infallible_mmap_syscall(rec_addr, length, prot,
                                    // Tell the kernel to take |rec_addr|
                                    // seriously.
                                    (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1, 0);
-    recorded_km = KernelMapping(rec_addr, rec_addr + ceil_page_size(length),
-                                string(), KernelMapping::NO_DEVICE,
-                                KernelMapping::NO_INODE, prot, flags, 0);
   } else {
-    TraceReader::MappedData data;
-    recorded_km = t->trace_reader().read_mapped_region(&data);
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
     emu_file = t->session().emufs().get_or_create(recorded_km, length);
     struct stat real_file;
