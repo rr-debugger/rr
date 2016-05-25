@@ -1172,7 +1172,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
                                   : GdbConnection::PROBE_PORT;
   Task* t = timeline.current_session().current_task();
   dbg = GdbConnection::await_client_connection(
-      port, probe, t->tgid(), t->vm()->exe_image(), GdbConnection::Features(),
+      port, flags.show_fullnames, probe, t->tgid(), t->vm()->exe_image(), GdbConnection::Features(),
       flags.debugger_params_write_pipe);
   if (flags.debugger_params_write_pipe) {
     flags.debugger_params_write_pipe->close();
@@ -1219,7 +1219,7 @@ void GdbServer::emergency_debug(Task* t) {
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
   unique_ptr<GdbConnection> dbg = GdbConnection::await_client_connection(
-      t->tid, GdbConnection::PROBE_PORT, t->tgid(), t->vm()->exe_image(),
+      t->tid, false, GdbConnection::PROBE_PORT, t->tgid(), t->vm()->exe_image(),
       features);
 
   GdbServer(dbg, t).process_debugger_requests();

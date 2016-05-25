@@ -119,10 +119,11 @@ static const char connection_addr[] = "127.0.0.1";
 struct DebuggerParams {
   char exe_image[PATH_MAX];
   short port;
+  bool show_fullnames;
 };
 
 unique_ptr<GdbConnection> GdbConnection::await_client_connection(
-    unsigned short desired_port, ProbePort probe, pid_t tgid,
+    unsigned short desired_port, bool show_fullnames, ProbePort probe, pid_t tgid,
     const string& exe_image, const Features& features,
     ScopedFd* client_params_fd) {
   auto dbg = unique_ptr<GdbConnection>(new GdbConnection(tgid, features));
@@ -133,6 +134,7 @@ unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     memset(&params, 0, sizeof(params));
     strncpy(params.exe_image, exe_image.c_str(), sizeof(params.exe_image) - 1);
     params.port = port;
+    params.show_fullnames = show_fullnames;
 
     ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
     assert(nwritten == sizeof(params));
@@ -218,6 +220,9 @@ void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd, const string& macros,
     string gdb_command_file = create_gdb_command_file(macros);
     args.push_back("-x");
     args.push_back(gdb_command_file);
+  }
+  if (params.show_fullnames) {
+    args.push_back("-fullname");
   }
   args.push_back("-ex");
   args.push_back(attach_cmd.str());

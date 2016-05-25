@@ -38,6 +38,8 @@ ReplayCommand ReplayCommand::singleton(
     "  -f, --onfork=<PID>         start a debug server when <PID> has been\n"
     "                             fork()d, AND the target event has been\n"
     "                             reached.\n"
+    "  --fullname                 Output the full filename and line number\n"
+    "                             in an Emacs-compatible format\n"
     "  -g, --goto=<EVENT-NUM>     start a debug server on reaching "
     "<EVENT-NUM>\n"
     "                             in the trace.  See -M in the general "
@@ -94,6 +96,9 @@ struct ReplayFlags {
   /* When true, echo tracee stdout/stderr writes to console. */
   bool redirect;
 
+  // Instruct gdb to display full filenames for Emacs
+  bool show_fullnames;
+
   ReplayFlags()
       : goto_event(0),
         singlestep_to_event(0),
@@ -119,7 +124,8 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 'q', "no-redirect-output", NO_PARAMETER },
     { 'f', "onfork", HAS_PARAMETER },
     { 'p', "onprocess", HAS_PARAMETER },
-    { 'x', "gdb-x", HAS_PARAMETER }
+    { 'x', "gdb-x", HAS_PARAMETER },
+    { char(1), "fullname", NO_PARAMETER }
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -176,6 +182,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       break;
     case 'x':
       flags.gdb_command_file_path = opt.value;
+      break;
+    case char(1):
+      flags.show_fullnames = true;
       break;
     default:
       assert(0 && "Unknown option");
@@ -351,6 +360,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       auto session = ReplaySession::create(trace_dir);
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
+      conn_flags.show_fullnames = flags.show_fullnames;
       GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
     }
     return 0;
@@ -369,6 +379,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     auto session = ReplaySession::create(trace_dir);
     GdbServer::ConnectionFlags conn_flags;
     conn_flags.dbg_port = flags.dbg_port;
+    conn_flags.show_fullnames = flags.show_fullnames;
     conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
     GdbServer server(session, session_flags(flags), target);
 
