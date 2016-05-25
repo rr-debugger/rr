@@ -1219,7 +1219,7 @@ void GdbServer::emergency_debug(Task* t) {
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
   unique_ptr<GdbConnection> dbg = GdbConnection::await_client_connection(
-      0, false, GdbConnection::PROBE_PORT, t->tgid(), t->vm()->exe_image(),
+      t->tid, false, GdbConnection::PROBE_PORT, t->tgid(), t->vm()->exe_image(),
       features);
 
   GdbServer(dbg, t).process_debugger_requests();
