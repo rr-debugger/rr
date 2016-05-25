@@ -239,8 +239,15 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
   auto tmp_buf_end = buf_end;
   auto remote_dot = allocate(&tmp_buf_end, remote_buf, 2);
   remote.task()->write_mem(remote_dot.cast<char>(), ".", 2);
-  *cwd_fd = remote.infallible_syscall(syscall_number_for_open(Arch::arch()),
-                                      remote_dot, O_PATH | O_DIRECTORY);
+  // This may fail because the tracee has done a setuid and is no longer
+  // able to access its own CWD. There doesn't seem to be a way to save
+  // and restore the CWD in this situation --- and connectat() doesn't exist yet
+  // so we have no way to avoid having to set the CWD if we're in a chrooted
+  // environment. We'll hack around such a failure later by putting the child
+  // into a new directory that it can't access.
+  *cwd_fd = remote.syscall(syscall_number_for_open(Arch::arch()), remote_dot,
+                           O_PATH | O_DIRECTORY);
+  ASSERT(remote.task(), *cwd_fd >= 0 || *cwd_fd == -EACCES);
   remote.infallible_syscall(Arch::fchdir, RR_RESERVED_ROOT_DIR_FD);
 
   auto remote_addr = allocate<typename Arch::sockaddr_un>(&buf_end, remote_buf);
@@ -261,6 +268,31 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
   }
   remote.syscall_helper(AutoRemoteSyscalls::DONT_WAIT, remote_syscall,
                         callregs);
+}
+
+template <typename Arch>
+static void restore_cwd(AutoRemoteSyscalls& remote, int cwd_fd) {
+  if (cwd_fd >= 0) {
+    remote.infallible_syscall(Arch::fchdir, cwd_fd);
+    remote.infallible_syscall(Arch::close, cwd_fd);
+  } else {
+    // We can't get back to the original directory. (Note that we may not
+    // be able to access it ourselves from outside the tracee, if it's in a
+    // mount namespace created by the tracee.)
+    // Fake it by making a world-accessible directory, chdir the tracee into it,
+    // then make it inaccessible.
+    char path[PATH_MAX];
+    sprintf(path, "/tmp/rr-tracee-fd-inaccessible-dir-%d-%ld",
+            remote.task()->tid, random());
+    int ret = mkdir(path, 0777);
+    ASSERT(remote.task(), ret >= 0);
+    AutoRestoreMem mem(remote, path);
+    remote.infallible_syscall(Arch::chdir, mem.get());
+    ret = chmod(path, 0000);
+    ASSERT(remote.task(), ret >= 0);
+    ret = rmdir(path);
+    ASSERT(remote.task(), ret >= 0);
+  }
 }
 
 template <typename Arch>
@@ -398,8 +430,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     FATAL() << "Failed to connect() in tracee; err="
             << errno_name(-child_syscall_result);
   }
-  infallible_syscall(Arch::fchdir, cwd_fd);
-  infallible_syscall(Arch::close, cwd_fd);
+  restore_cwd<Arch>(*this, cwd_fd);
 
   // Listening socket not needed anymore
   close(listen_sock);

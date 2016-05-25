@@ -391,6 +391,7 @@ set(BASIC_TESTS
   clone_untraced
   constructor
   creat_address_not_truncated
+  cwd_inaccessible
   daemon
   desched_blocking_poll
   dup
