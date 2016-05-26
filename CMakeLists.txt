@@ -516,6 +516,7 @@ set(BASIC_TESTS
   read_nothing
   readdir
   read_large
+  read_oversize
   readlink
   readlinkat
   readv

@@ -132,8 +132,12 @@ enum ArgMode {
  * and final sizes is used, if both are present.
  */
 struct ParamSize {
-  ParamSize(size_t incoming_size = size_t(-1))
-      : incoming_size(incoming_size), from_syscall(false) {}
+  ParamSize() : incoming_size(size_t(-1)), from_syscall(false) {}
+  // Clamp incoming_size to INTPTR_MAX. No system call can read more data
+  // than that in practice (to a single output parameter).
+  ParamSize(size_t incoming_size)
+      : incoming_size(min<size_t>(INTPTR_MAX, incoming_size)),
+        from_syscall(false) {}
   /**
    * p points to a tracee location that is already initialized with a
    * "maximum buffer size" passed in by the tracee, and which will be filled
@@ -152,7 +156,7 @@ struct ParamSize {
    * is uninitialized before the syscall.
    */
   template <typename T> static ParamSize from_mem(remote_ptr<T> p) {
-    ParamSize r(size_t(-1));
+    ParamSize r;
     r.mem_ptr = p;
     r.read_size = sizeof(T);
     return r;
@@ -162,8 +166,14 @@ struct ParamSize {
    * the size of the data. 'incoming_size', if present, is a bound on the size
    * of the data.
    */
+  template <typename T> static ParamSize from_syscall_result() {
+    ParamSize r;
+    r.from_syscall = true;
+    r.read_size = sizeof(T);
+    return r;
+  }
   template <typename T>
-  static ParamSize from_syscall_result(size_t incoming_size = size_t(-1)) {
+  static ParamSize from_syscall_result(size_t incoming_size) {
     ParamSize r(incoming_size);
     r.from_syscall = true;
     r.read_size = sizeof(T);
@@ -572,12 +582,12 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
   preparation_done = true;
   write_back = WRITE_BACK;
 
-  ssize_t scratch_num_bytes = scratch - t->scratch_ptr;
-  ASSERT(t, scratch_num_bytes >= 0);
-  if (sw == ALLOW_SWITCH && scratch_num_bytes > t->scratch_size) {
+  ASSERT(t, scratch >= t->scratch_ptr);
+
+  if (sw == ALLOW_SWITCH && scratch > t->scratch_ptr + t->scratch_size) {
     LOG(warn)
         << "`" << t->syscall_name(t->ev().Syscall().number)
-        << "' needed a scratch buffer of size " << scratch_num_bytes
+        << "' needed a scratch buffer of size " << scratch - t->scratch_ptr
         << ", but only " << t->scratch_size
         << " was available.  Disabling context switching: deadlock may follow.";
     switchable = PREVENT_SWITCH;
