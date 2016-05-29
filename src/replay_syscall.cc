@@ -728,6 +728,18 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         }
       }
     }
+
+    // This code is used to test the sharing functionality. It is in
+    // general a bad idea to indiscriminately share mappings between the
+    // tracer and the tracee. Instead, only mappings that have
+    // sufficiently many memory access from the tracer to require
+    // acceleration should be shared.
+    if ((MAP_PRIVATE & flags) && t->session().share_private_mappings() &&
+        !trace_frame.regs().syscall_failed()) {
+      Session::make_private_shared(
+          remote, t->vm()->mapping_of(trace_frame.regs().syscall_result()));
+    }
+
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }

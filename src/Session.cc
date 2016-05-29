@@ -432,7 +432,8 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 
 KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
                                           size_t size,
-                                          remote_ptr<void> map_hint) {
+                                          remote_ptr<void> map_hint,
+                                          int tracee_prot) {
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
@@ -463,22 +464,22 @@ KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
 
   // Map the segment in ours and the tracee's address spaces.
   void* map_addr;
-  int prot = PROT_READ | PROT_WRITE;
   int flags = MAP_SHARED;
-  if ((void*)-1 == (map_addr = mmap(nullptr, size, prot, flags, shmem_fd, 0))) {
+  if ((void*)-1 == (map_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                                    flags, shmem_fd, 0))) {
     FATAL() << "Failed to mmap shmem region";
   }
   if (!map_hint.is_null()) {
     flags |= MAP_FIXED;
   }
   remote_ptr<void> child_map_addr = remote.infallible_mmap_syscall(
-      map_hint, size, prot, flags, child_shmem_fd, 0);
+      map_hint, size, tracee_prot, flags, child_shmem_fd, 0);
 
   struct stat st;
   ASSERT(remote.task(), 0 == ::fstat(shmem_fd, &st));
-  KernelMapping km = remote.task()->vm()->map(child_map_addr, size, prot, flags,
-                                              0, path, st.st_dev, st.st_ino,
-                                              nullptr, nullptr, map_addr);
+  KernelMapping km = remote.task()->vm()->map(
+      child_map_addr, size, tracee_prot, flags, 0, path, st.st_dev, st.st_ino,
+      nullptr, nullptr, map_addr);
 
   shmem_fd.close();
   remote.infallible_syscall(syscall_number_for_close(remote.arch()),
@@ -493,14 +494,15 @@ void Session::recreate_shared_mmap(AutoRemoteSyscalls& remote,
   remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
                             m.map.start(), m.map.size());
   const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
-      create_shared_mmap(remote, m.map.size(), m.map.start()).start());
+      create_shared_mmap(remote, m.map.size(), m.map.start(), m.map.prot())
+          .start());
   memcpy(new_m.local_addr, m.local_addr, m.map.size());
 }
 
 // Replace a MAP_PRIVATE segment by one that is shared between rr and the
 // tracee. Returns true on success
 bool Session::make_private_shared(AutoRemoteSyscalls& remote,
-                                  const AddressSpace::Mapping& m) {
+                                  const AddressSpace::Mapping m) {
   if (!(m.map.flags() & MAP_PRIVATE)) {
     return false;
   }
@@ -518,7 +520,7 @@ bool Session::make_private_shared(AutoRemoteSyscalls& remote,
 
   // Now create the new mapping in its place
   const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
-      create_shared_mmap(remote2, sz, start).start());
+      create_shared_mmap(remote2, sz, start, m.map.prot()).start());
 
   // And copy over the contents. Since we can't just call memcpy in the
   // inferior, just copy directly from the remote private into the local
