@@ -879,9 +879,9 @@ protected:
   Ticks ticks;
   // When |is_stopped|, these are our child registers.
   Registers registers;
-  // True when there was a breakpoint set at the location where we resumed
-  // execution
+  // Where we last resumed execution
   remote_code_ptr address_of_last_execution_resume;
+  ResumeRequest how_last_execution_resumed;
   // True when we know via waitpid() that the task is stopped and we haven't
   // resumed it.
   bool is_stopped;

@@ -658,6 +658,7 @@ set(TESTS_WITH_PROGRAM
   crash
   crash_in_function
   dev_tty
+  dlopen
   execve_loop
   exit_group
   exit_status
@@ -766,6 +767,7 @@ set(TESTS_WITHOUT_PROGRAM
   fork_exec_info_thr
   get_thread_list
   hardlink_mmapped_files
+  mprotect_step
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   read_bad_mem
@@ -813,7 +815,7 @@ foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   set_source_files_properties(src/test/${test}.c
                               PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
   add_dependencies(${test} Generated)
-  target_link_libraries(${test} -lrt)
+  target_link_libraries(${test} -lrt -ldl)
 endforeach(test)
 
 # Test disabled because it requires libuvc to be built and installed, and a
@@ -909,7 +911,7 @@ if(rr_32BIT AND rr_64BIT)
     add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
     add_dependencies(${test}_32 Generated)
     set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
-    target_link_libraries(${test}_32 -lrt)
+    target_link_libraries(${test}_32 -lrt -ldl)
   endforeach(test)
 
   foreach(test ${BASIC_CPP_TESTS})

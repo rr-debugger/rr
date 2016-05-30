@@ -74,6 +74,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       prname("???"),
       ticks(0),
       registers(a),
+      how_last_execution_resumed(RESUME_CONT),
       is_stopped(false),
       detected_unexpected_exit(false),
       extra_registers(a),
@@ -715,10 +716,18 @@ TrapReasons Task::compute_trap_reasons() {
   TrapReasons reasons;
   uintptr_t status = debug_status();
 
-  // XXX singlestepping over a syscall instruction doesn't trigger
-  // DS_SINGLESTEP. But we don't do that in ReplaySession or DiversionSession
-  // ... hopefully?
-  reasons.singlestep = (status & DS_SINGLESTEP) != 0;
+  // During replay we execute syscall instructions in certain cases, e.g.
+  // mprotect with syscallbuf. The kernel does not set DS_SINGLESTEP when we
+  // step over those instructions so we need to detect that here.
+  if (how_last_execution_resumed == RESUME_SINGLESTEP &&
+      is_at_syscall_instruction(this, address_of_last_execution_resume) &&
+      ip() ==
+          address_of_last_execution_resume +
+              syscall_instruction_length(arch())) {
+    reasons.singlestep = true;
+  } else {
+    reasons.singlestep = (status & DS_SINGLESTEP) != 0;
+  }
 
   // In VMWare Player 6.0.4 build-2249910, 32-bit Ubuntu x86 guest,
   // single-stepping does not trigger watchpoints :-(. So we have to
@@ -798,6 +807,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
              << ptrace_req_name(how)
              << (sig ? string(", signal ") + signal_name(sig) : string());
   address_of_last_execution_resume = ip();
+  how_last_execution_resumed = how;
   set_debug_status(0);
 
   pid_t wait_ret = 0;
