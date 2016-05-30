@@ -885,8 +885,10 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
    * exist in this architecture.
    */
   if (is_rrcall_notify_syscall_hook_exit_syscall(sys, t->arch())) {
-    ASSERT(t, t->syscallbuf_hdr);
-    t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
+    ASSERT(t, t->syscallbuf_child != nullptr);
+    t->write_mem(
+        REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
+        (uint8_t)1);
   }
 }
 

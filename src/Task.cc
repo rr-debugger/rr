@@ -70,7 +70,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       hpc(_tid),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
-      syscallbuf_hdr(),
       syscallbuf_size(0),
       num_syscallbuf_bytes(0),
       stopping_breakpoint_table_entry_size(0),
@@ -117,8 +116,6 @@ Task::~Task() {
       }
     }
   }
-
-  destroy_local_buffers();
 
   session().on_destroy(this);
   tg->erase_task(this);
@@ -1618,8 +1615,6 @@ void Task::copy_state(const CapturedState& state) {
             cloned_file_data_fd_child, state.cloned_file_data_offset, SEEK_SET);
       }
       syscallbuf_child = state.syscallbuf_child;
-      syscallbuf_hdr =
-          (struct syscallbuf_hdr*)vm()->mapping_of(syscallbuf_child).local_addr;
     }
   }
   preload_globals = state.preload_globals;
@@ -1639,8 +1634,15 @@ void Task::copy_state(const CapturedState& state) {
   thread_locals_initialized = state.thread_locals_initialized;
 }
 
-void Task::destroy_local_buffers() {
-  munmap(syscallbuf_hdr, num_syscallbuf_bytes);
+remote_ptr<const struct syscallbuf_record> Task::next_syscallbuf_record() {
+  return ((syscallbuf_child + 1).cast<uint8_t>() +
+          read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes)))
+      .cast<const struct syscallbuf_record>();
+}
+
+long Task::stored_record_size(
+    remote_ptr<const struct syscallbuf_record> record) {
+  return ::stored_record_size(read_mem(REMOTE_PTR_FIELD(record, size)));
 }
 
 long Task::fallible_ptrace(int request, remote_ptr<void> addr, void* data) {
@@ -1699,22 +1701,28 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 
   num_syscallbuf_bytes = syscallbuf_size;
   syscallbuf_child = km.start().cast<struct syscallbuf_hdr>();
-  syscallbuf_hdr = (struct syscallbuf_hdr*)m.local_addr;
 
   // No entries to begin with.
-  memset(syscallbuf_hdr, 0, sizeof(*syscallbuf_hdr));
+  memset(m.local_addr, 0, sizeof(struct syscallbuf_hdr));
 
   return km;
 }
 
 void Task::reset_syscallbuf() {
-  if (!syscallbuf_hdr)
+  if (!syscallbuf_child)
     return;
-  uint8_t* ptr = (uint8_t*)(syscallbuf_hdr + 1);
-  memset(ptr, 0, syscallbuf_hdr->num_rec_bytes);
-  syscallbuf_hdr->num_rec_bytes = 0;
-  syscallbuf_hdr->mprotect_record_count = 0;
-  syscallbuf_hdr->mprotect_record_count_completed = 0;
+  // Memset is easiest to do by using the local mapping which should always
+  // exist for the syscallbuf
+  uint32_t num_rec =
+      read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes));
+  uint8_t* ptr = local_mapping(syscallbuf_child + 1, num_rec);
+  assert(ptr != nullptr);
+  memset(ptr, 0, num_rec);
+  write_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes), (uint32_t)0);
+  write_mem(REMOTE_PTR_FIELD(syscallbuf_child, mprotect_record_count),
+            (uint32_t)0);
+  write_mem(REMOTE_PTR_FIELD(syscallbuf_child, mprotect_record_count_completed),
+            (uint32_t)0);
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,

@@ -1071,7 +1071,7 @@ bool RecordTask::maybe_in_spinlock() {
          regs().matches(registers_at_start_of_last_timeslice);
 }
 
-const struct syscallbuf_record* RecordTask::desched_rec() const {
+remote_ptr<const struct syscallbuf_record> RecordTask::desched_rec() const {
   return (ev().is_syscall_event()
               ? ev().Syscall().desched_rec
               : (EV_DESCHED == ev().type()) ? ev().Desched().rec : nullptr);
@@ -1196,7 +1196,7 @@ void RecordTask::maybe_flush_syscallbuf() {
     // Already flushing.
     return;
   }
-  if (!syscallbuf_hdr || !syscallbuf_child) {
+  if (!syscallbuf_child) {
     return;
   }
 
