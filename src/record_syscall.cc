@@ -1253,6 +1253,7 @@ static Switchable prepare_ioctl(RecordTask* t,
    */
   if (!(_IOC_READ & dir)) {
     switch (IOCTL_MASK_SIZE(request)) {
+      case IOCTL_MASK_SIZE(TIOCSPTLCK):
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):
       case IOCTL_MASK_SIZE(FIOCLEX):
@@ -1314,6 +1315,8 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
 
+    case IOCTL_MASK_SIZE(TIOCGPKT):
+    case IOCTL_MASK_SIZE(TIOCGPTLCK):
     case IOCTL_MASK_SIZE(TIOCGPTN):
     case IOCTL_MASK_SIZE(USBDEVFS_GET_CAPABILITIES):
       syscall_state.reg_parameter(3, size);

@@ -4,9 +4,21 @@
 
 int main(void) {
   int fd = open("/dev/ptmx", O_RDONLY);
+  int* arg;
   test_assert(fd >= 0);
 
   atomic_printf("tty ptsname = %s\n", ptsname(fd));
+
+  ALLOCATE_GUARD(arg, 'a');
+  test_assert(0 == ioctl(fd, TIOCGPKT, arg));
+  VERIFY_GUARD(arg);
+  test_assert(*arg == 0);
+
+  test_assert(0 == ioctl(fd, TIOCGPTLCK, arg));
+  VERIFY_GUARD(arg);
+  test_assert(*arg == 1);
+
+  test_assert(0 == ioctl(fd, TIOCSPTLCK, arg));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
