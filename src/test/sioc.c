@@ -66,9 +66,11 @@ static void get_ifconfig(int sockfd, struct ifreq* req, struct ifreq* eth_req) {
     switch (ifc->ifr_name[0]) {
       case 'w':
         wireless_index = i;
+        non_loop_index = i;
         break;
       case 'e':
         eth_index = i;
+        non_loop_index = i;
         break;
       case 'l':
         break;
