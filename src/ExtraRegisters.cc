@@ -151,6 +151,52 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   return reg_data.size;
 }
 
+static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
+                      const char* name, FILE* f) {
+  uint8_t buf[128];
+  bool defined = false;
+  size_t len = r.read_register(buf, low, &defined);
+  assert(defined && len <= 64);
+  if (hi != GdbRegister(0)) {
+    size_t len2 = r.read_register(buf + len, hi, &defined);
+    if (defined) {
+      assert(len == len2);
+      len += len2;
+    }
+  }
+  char out[257];
+  for (int i = len - 1; i >= 0; --i) {
+    sprintf(out + (len - 1 - i) * 2, "%02x", buf[i]);
+  }
+  fprintf(f, "%s:%s ", name, out);
+}
+
+static void print_regs(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
+                       int num_regs, const char* name_base, FILE* f) {
+  for (int i = 0; i < num_regs; ++i) {
+    char buf[80];
+    sprintf(buf, "%s%d", name_base, i);
+    print_reg(r, (GdbRegister)(low + i),
+              hi == GdbRegister(0) ? hi : (GdbRegister)(hi + i), buf, f);
+  }
+}
+
+void ExtraRegisters::print_register_file_compact(FILE* f) const {
+  switch (arch_) {
+    case x86:
+      print_regs(*this, DREG_ST0, GdbRegister(0), 8, "st", f);
+      print_regs(*this, DREG_XMM0, DREG_YMM0H, 8, "ymm", f);
+      break;
+    case x86_64:
+      print_regs(*this, DREG_64_ST0, GdbRegister(0), 8, "st", f);
+      print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, 16, "ymm", f);
+      break;
+    default:
+      assert(0 && "Unknown arch");
+      break;
+  }
+}
+
 static X86Arch::user_fpregs_struct convert_fxsave_to_x86_fpregs(
     const X86Arch::user_fpxregs_struct& buf) {
   X86Arch::user_fpregs_struct result;

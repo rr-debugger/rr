@@ -93,6 +93,8 @@ public:
    */
   void set_user_fpxregs_struct(const X86Arch::user_fpxregs_struct& regs);
 
+  void print_register_file_compact(FILE* f) const;
+
 private:
   friend class Task;
 

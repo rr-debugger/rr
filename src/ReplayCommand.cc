@@ -262,6 +262,8 @@ static void serve_replay_no_debugger(const string& trace_dir,
       fputs("Stepping from:", stderr);
       Task* t = replay_session->current_task();
       t->regs().print_register_file_compact(stderr);
+      fputs(" ", stderr);
+      t->extra_regs().print_register_file_compact(stderr);
       fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
     }
 
