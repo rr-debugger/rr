@@ -211,8 +211,10 @@ enum cpuid_requests {
  *  'code' is placed in EAX. 'subrequest' is placed in ECX.
  *  *a, *c and *d receive EAX, ECX and EDX respectively.
  */
-void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
-           unsigned int* d);
+struct CPUIDData {
+  unsigned int eax, ebx, ecx, edx;
+};
+CPUIDData cpuid(int code, int subrequest);
 
 struct CloneParameters {
   remote_ptr<void> stack;

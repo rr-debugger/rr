@@ -97,9 +97,8 @@ static CpuMicroarch get_cpu_microarch() {
     FATAL() << "Forced uarch " << Flags::get().forced_uarch << " isn't known.";
   }
 
-  unsigned int cpu_type, eax, ecx, edx;
-  cpuid(CPUID_GETFEATURES, 0, &eax, &ecx, &edx);
-  cpu_type = (eax & 0xF0FF0);
+  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
+  unsigned int cpu_type = (cpuid_data.eax & 0xF0FF0);
   switch (cpu_type) {
     case 0x006F0:
     case 0x10660:

@@ -646,17 +646,16 @@ static void init_xsave() {
   }
   xsave_initialized = true;
 
-  unsigned int eax, ecx, edx;
-  cpuid(CPUID_GETFEATURES, 0, &eax, &ecx, &edx);
-  if (!(ecx & (1 << 26))) {
+  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
+  if (!(cpuid_data.ecx & (1 << 26))) {
     // XSAVE not present
     return;
   }
 
   // We'll use the largest possible area all the time
   // even when it might not be needed. Simpler that way.
-  cpuid(CPUID_GETXSAVE, 0, &eax, &ecx, &edx);
-  xsave_area_size = ecx;
+  cpuid_data = cpuid(CPUID_GETXSAVE, 0);
+  xsave_area_size = cpuid_data.ecx;
 }
 
 const ExtraRegisters& Task::extra_regs() {

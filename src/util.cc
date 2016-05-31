@@ -632,12 +632,13 @@ void resize_shmem_segment(ScopedFd& fd, uint64_t num_bytes) {
   }
 }
 
-void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
-           unsigned int* d) {
+CPUIDData cpuid(int code, int subrequest) {
+  CPUIDData result;
   asm volatile("cpuid"
-               : "=a"(*a), "=c"(*c), "=d"(*d)
-               : "a"(code), "c"(subrequest)
-               : "ebx");
+               : "=a"(result.eax), "=b"(result.ebx), "=c"(result.ecx),
+                 "=d"(result.edx)
+               : "a"(code), "c"(subrequest));
+  return result;
 }
 
 template <typename Arch>
