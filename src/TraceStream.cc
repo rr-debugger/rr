@@ -354,7 +354,12 @@ string TraceWriter::try_hardlink_file(const string& file_name) {
   return path;
 }
 
-bool TraceWriter::try_clone_file(const string& file_name, string* new_name) {
+bool TraceWriter::try_clone_file(Task* t, const string& file_name,
+                                 string* new_name) {
+  if (!t->session().as_record()->use_file_cloning()) {
+    return false;
+  }
+
   char count_str[20];
   sprintf(count_str, "%d", mmap_count);
 
@@ -398,8 +403,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   } else if (origin == RR_BUFFER_MAPPING) {
     source = TraceReader::SOURCE_ZERO;
   } else if ((km.flags() & MAP_PRIVATE) &&
-             t->session().as_record()->use_file_cloning() &&
-             try_clone_file(km.fsname(), &backing_file_name)) {
+             try_clone_file(t, km.fsname(), &backing_file_name)) {
     source = TraceReader::SOURCE_FILE;
   } else if (should_copy_mmap_region(km, stat) &&
              files_assumed_immutable.find(make_pair(
@@ -407,13 +411,18 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     source = TraceReader::SOURCE_TRACE;
   } else {
     source = TraceReader::SOURCE_FILE;
-    // Try hardlinking file into the trace directory. This will avoid
-    // replay failures if the original file is deleted or replaced (but not
-    // if it is overwritten in-place). If try_hardlink_file fails it
-    // just returns the original file name.
-    // A relative backing_file_name is relative to the trace directory.
-    backing_file_name = try_hardlink_file(km.fsname());
-    files_assumed_immutable.insert(make_pair(stat.st_dev, stat.st_ino));
+    // should_copy_mmap_region's heuristics determined it was OK to just map
+    // the file here even if it's MAP_SHARED. So try cloning again to avoid
+    // the possibility of the file changing between recording and replay.
+    if (!try_clone_file(t, km.fsname(), &backing_file_name)) {
+      // Try hardlinking file into the trace directory. This will avoid
+      // replay failures if the original file is deleted or replaced (but not
+      // if it is overwritten in-place). If try_hardlink_file fails it
+      // just returns the original file name.
+      // A relative backing_file_name is relative to the trace directory.
+      backing_file_name = try_hardlink_file(km.fsname());
+      files_assumed_immutable.insert(make_pair(stat.st_dev, stat.st_ino));
+    }
   }
   mmaps << global_time << source << km.start() << km.end() << km.fsname()
         << km.device() << km.inode() << km.prot() << km.flags()
