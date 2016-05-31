@@ -36,6 +36,14 @@ static __attribute__((used)) const float xmm4 = 14;
 static __attribute__((used)) const float xmm5 = 15;
 static __attribute__((used)) const float xmm6 = 16;
 static __attribute__((used)) const float xmm7 = 17;
+static __attribute__((used)) const float xmm8 = 18;
+static __attribute__((used)) const float xmm9 = 19;
+static __attribute__((used)) const float xmm10 = 20;
+static __attribute__((used)) const float xmm11 = 21;
+static __attribute__((used)) const float xmm12 = 22;
+static __attribute__((used)) const float xmm13 = 23;
+static __attribute__((used)) const float xmm14 = 24;
+static __attribute__((used)) const float xmm15 = 25;
 
 #define AVX_FEATURE_FLAG (1 << 28)
 #define OSXSAVE_FEATURE_FLAG (1 << 27)
@@ -89,6 +97,14 @@ int main(void) {
       "movss xmm5(%rip), %xmm5\n\t"
       "movss xmm6(%rip), %xmm6\n\t"
       "movss xmm7(%rip), %xmm7\n\t"
+      "movss xmm8(%rip), %xmm8\n\t"
+      "movss xmm9(%rip), %xmm9\n\t"
+      "movss xmm10(%rip), %xmm10\n\t"
+      "movss xmm11(%rip), %xmm11\n\t"
+      "movss xmm12(%rip), %xmm12\n\t"
+      "movss xmm13(%rip), %xmm13\n\t"
+      "movss xmm14(%rip), %xmm14\n\t"
+      "movss xmm15(%rip), %xmm15\n\t"
 #else
 #error unexpected architecture
 #endif
@@ -105,6 +121,16 @@ int main(void) {
         "vinsertf128 $1,%xmm5,%ymm6,%ymm5\n\t"
         "vinsertf128 $1,%xmm6,%ymm7,%ymm6\n\t"
         "vinsertf128 $1,%xmm7,%ymm0,%ymm7\n\t"
+#endif
+#ifdef __x86_64__
+        "vinsertf128 $1,%xmm8,%ymm9,%ymm8\n\t"
+        "vinsertf128 $1,%xmm9,%ymm10,%ymm9\n\t"
+        "vinsertf128 $1,%xmm10,%ymm11,%ymm10\n\t"
+        "vinsertf128 $1,%xmm11,%ymm12,%ymm11\n\t"
+        "vinsertf128 $1,%xmm12,%ymm13,%ymm12\n\t"
+        "vinsertf128 $1,%xmm13,%ymm14,%ymm13\n\t"
+        "vinsertf128 $1,%xmm14,%ymm15,%ymm14\n\t"
+        "vinsertf128 $1,%xmm15,%ymm8,%ymm15\n\t"
 #endif
         );
   }
