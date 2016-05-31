@@ -1152,6 +1152,15 @@ void GdbServer::restart_session(const GdbRequest& req) {
   activate_debugger();
 }
 
+static unique_ptr<GdbConnection> await_connection(
+    Task* t, unsigned short port, GdbConnection::ProbePort probe,
+    const GdbConnection::Features& features,
+    ScopedFd* client_params_fd = nullptr) {
+  return GdbConnection::await_client_connection(
+      port, probe, t->tgid(), t->vm()->exe_image(), features,
+      client_params_fd);
+}
+
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
   do {
     ReplayResult result =
@@ -1171,9 +1180,8 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   auto probe = flags.dbg_port > 0 ? GdbConnection::DONT_PROBE
                                   : GdbConnection::PROBE_PORT;
   Task* t = timeline.current_session().current_task();
-  dbg = GdbConnection::await_client_connection(
-      port, probe, t->tgid(), t->vm()->exe_image(), GdbConnection::Features(),
-      flags.debugger_params_write_pipe);
+  dbg = await_connection(t, port, probe, GdbConnection::Features(),
+                         flags.debugger_params_write_pipe);
   if (flags.debugger_params_write_pipe) {
     flags.debugger_params_write_pipe->close();
   }
@@ -1240,9 +1248,8 @@ void GdbServer::emergency_debug(Task* t) {
   // b) some gdb versions will fail if the user doesn't turn off async
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
-  unique_ptr<GdbConnection> dbg = GdbConnection::await_client_connection(
-      t->tid, GdbConnection::PROBE_PORT, t->tgid(), t->vm()->exe_image(),
-      features);
+  unique_ptr<GdbConnection> dbg =
+      await_connection(t, t->tid, GdbConnection::PROBE_PORT, features);
 
   GdbServer(dbg, t).process_debugger_requests();
 }
