@@ -113,6 +113,13 @@ struct usbdevfs_streams {
 #define USBDEVFS_FREE_STREAMS _IOR('U', 29, struct usbdevfs_streams)
 #endif
 
+#ifndef TIOCGPKT
+#define TIOCGPKT _IOR('T', 0x38, int)
+#endif
+#ifndef TIOCGPTLCK
+#define TIOCGPTLCK _IOR('T', 0x39, int)
+#endif
+
 #ifndef MADV_DONTDUMP
 #define MADV_DONTDUMP 16
 #endif
