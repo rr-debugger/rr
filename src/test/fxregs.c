@@ -7,6 +7,18 @@ static void breakpoint(void) {
   (void)break_here;
 }
 
+enum cpuid_requests {
+  CPUID_GETFEATURES = 0x01,
+};
+
+static void cpuid(int code, int subrequest, unsigned int* a, unsigned int* c,
+                  unsigned int* d) {
+  asm volatile("cpuid"
+               : "=a"(*a), "=c"(*c), "=d"(*d)
+               : "a"(code), "c"(subrequest)
+               : "ebx");
+}
+
 static __attribute__((used)) const double st0 = 1;
 static __attribute__((used)) const double st1 = 2;
 static __attribute__((used)) const double st2 = 3;
@@ -25,7 +37,21 @@ static __attribute__((used)) const float xmm5 = 15;
 static __attribute__((used)) const float xmm6 = 16;
 static __attribute__((used)) const float xmm7 = 17;
 
+#define AVX_FEATURE_FLAG (1 << 28)
+#define OSXSAVE_FEATURE_FLAG (1 << 27)
+
 int main(void) {
+  unsigned int eax, ebx, ecx;
+  int AVX_enabled;
+  unsigned int required_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
+
+  cpuid(CPUID_GETFEATURES, 0, &eax, &ebx, &ecx);
+  AVX_enabled = (ecx & required_cpuid_flags) == required_cpuid_flags;
+
+  if (!AVX_enabled) {
+    atomic_puts("AVX YMM registers disabled, not tested");
+  }
+
   __asm__ __volatile__(
 /* Push the constants in stack order so they look as
  * we expect in gdb. */
@@ -67,6 +93,21 @@ int main(void) {
 #error unexpected architecture
 #endif
       );
+
+  if (AVX_enabled) {
+    __asm__ __volatile__(
+#if defined(__i386__) || defined(__x86_64__)
+        "vinsertf128 $1,%xmm0,%ymm1,%ymm0\n\t"
+        "vinsertf128 $1,%xmm1,%ymm2,%ymm1\n\t"
+        "vinsertf128 $1,%xmm2,%ymm3,%ymm2\n\t"
+        "vinsertf128 $1,%xmm3,%ymm4,%ymm3\n\t"
+        "vinsertf128 $1,%xmm4,%ymm5,%ymm4\n\t"
+        "vinsertf128 $1,%xmm5,%ymm6,%ymm5\n\t"
+        "vinsertf128 $1,%xmm6,%ymm7,%ymm6\n\t"
+        "vinsertf128 $1,%xmm7,%ymm0,%ymm7\n\t"
+#endif
+        );
+  }
 
   breakpoint();
 
