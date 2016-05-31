@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!-- Copyright (C) 2010-2014 Free Software Foundation, Inc.
+
+     Copying and distribution of this file, with or without modification,
+     are permitted in any medium without royalty provided the copyright
+     notice and this notice are preserved.  -->
+
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+<feature name="org.gnu.gdb.i386.avx">
+  <reg name="ymm0h" bitsize="128" type="uint128"/>
+  <reg name="ymm1h" bitsize="128" type="uint128"/>
+  <reg name="ymm2h" bitsize="128" type="uint128"/>
+  <reg name="ymm3h" bitsize="128" type="uint128"/>
+  <reg name="ymm4h" bitsize="128" type="uint128"/>
+  <reg name="ymm5h" bitsize="128" type="uint128"/>
+  <reg name="ymm6h" bitsize="128" type="uint128"/>
+  <reg name="ymm7h" bitsize="128" type="uint128"/>
+</feature>

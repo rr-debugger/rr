@@ -287,6 +287,28 @@ set_target_properties(exec_stub PROPERTIES LINK_FLAGS -nostdlib)
 set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
 
+set(RR_GDB_RESOURCES
+  32bit-avx.xml
+  32bit-core.xml
+  32bit-linux.xml
+  32bit-sse.xml
+  64bit-avx.xml
+  64bit-core.xml
+  64bit-linux.xml
+  64bit-sse.xml
+  amd64-avx-linux.xml
+  amd64-linux.xml
+  i386-avx-linux.xml
+  i386-linux.xml
+)
+foreach(file ${RR_GDB_RESOURCES})
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/third-party/gdb/${file}"
+                 "${CMAKE_CURRENT_BINARY_DIR}/share/${file}"
+                 COPYONLY)
+  install(FILES ${file}
+          DESTINATION share)
+endforeach(file)
+
 install(PROGRAMS scripts/signal-rr-recording.sh
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay

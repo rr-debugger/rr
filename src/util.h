@@ -205,6 +205,9 @@ enum cpuid_requests {
   CPUID_INTELBRANDSTRINGEND,
 };
 
+const int OSXSAVE_FEATURE_FLAG = 1 << 27;
+const int AVX_FEATURE_FLAG = 1 << 28;
+
 /** issue a single request to CPUID. Fits 'intel features', for instance
  *  note that even if only "eax" and "edx" are of interest, other registers
  *  will be modified by the operation, so we need to tell the compiler about it.

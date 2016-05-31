@@ -48,7 +48,10 @@ void TraceFrame::dump(FILE* out) const {
             extra_perf.hw_interrupts, extra_perf.page_faults,
             extra_perf.instructions_retired);
   }
-  regs().print_register_file_for_trace(out);
+  regs().print_register_file_compact(out);
+  if (recorded_extra_regs.format() != ExtraRegisters::NONE) {
+    recorded_extra_regs.print_register_file_compact(out);
+  }
   fprintf(out, "\n");
 }
 

@@ -48,9 +48,10 @@ static __attribute__((used)) const float xmm15 = 25;
 #define AVX_FEATURE_FLAG (1 << 28)
 #define OSXSAVE_FEATURE_FLAG (1 << 27)
 
+static int AVX_enabled;
+
 int main(void) {
   unsigned int eax, ebx, ecx;
-  int AVX_enabled;
   unsigned int required_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
 
   cpuid(CPUID_GETFEATURES, 0, &eax, &ebx, &ecx);
@@ -113,24 +114,24 @@ int main(void) {
   if (AVX_enabled) {
     __asm__ __volatile__(
 #if defined(__i386__) || defined(__x86_64__)
-        "vinsertf128 $1,%xmm0,%ymm1,%ymm0\n\t"
-        "vinsertf128 $1,%xmm1,%ymm2,%ymm1\n\t"
-        "vinsertf128 $1,%xmm2,%ymm3,%ymm2\n\t"
-        "vinsertf128 $1,%xmm3,%ymm4,%ymm3\n\t"
-        "vinsertf128 $1,%xmm4,%ymm5,%ymm4\n\t"
-        "vinsertf128 $1,%xmm5,%ymm6,%ymm5\n\t"
-        "vinsertf128 $1,%xmm6,%ymm7,%ymm6\n\t"
-        "vinsertf128 $1,%xmm7,%ymm0,%ymm7\n\t"
+        "vinsertf128 $1,%xmm1,%ymm0,%ymm0\n\t"
+        "vinsertf128 $1,%xmm2,%ymm1,%ymm1\n\t"
+        "vinsertf128 $1,%xmm3,%ymm2,%ymm2\n\t"
+        "vinsertf128 $1,%xmm4,%ymm3,%ymm3\n\t"
+        "vinsertf128 $1,%xmm5,%ymm4,%ymm4\n\t"
+        "vinsertf128 $1,%xmm6,%ymm5,%ymm5\n\t"
+        "vinsertf128 $1,%xmm7,%ymm6,%ymm6\n\t"
+        "vinsertf128 $1,%xmm0,%ymm7,%ymm7\n\t"
 #endif
 #ifdef __x86_64__
-        "vinsertf128 $1,%xmm8,%ymm9,%ymm8\n\t"
-        "vinsertf128 $1,%xmm9,%ymm10,%ymm9\n\t"
-        "vinsertf128 $1,%xmm10,%ymm11,%ymm10\n\t"
-        "vinsertf128 $1,%xmm11,%ymm12,%ymm11\n\t"
-        "vinsertf128 $1,%xmm12,%ymm13,%ymm12\n\t"
-        "vinsertf128 $1,%xmm13,%ymm14,%ymm13\n\t"
-        "vinsertf128 $1,%xmm14,%ymm15,%ymm14\n\t"
-        "vinsertf128 $1,%xmm15,%ymm8,%ymm15\n\t"
+        "vinsertf128 $1,%xmm9,%ymm8,%ymm8\n\t"
+        "vinsertf128 $1,%xmm10,%ymm9,%ymm9\n\t"
+        "vinsertf128 $1,%xmm11,%ymm10,%ymm10\n\t"
+        "vinsertf128 $1,%xmm12,%ymm11,%ymm11\n\t"
+        "vinsertf128 $1,%xmm13,%ymm12,%ymm12\n\t"
+        "vinsertf128 $1,%xmm14,%ymm13,%ymm13\n\t"
+        "vinsertf128 $1,%xmm15,%ymm14,%ymm14\n\t"
+        "vinsertf128 $1,%xmm8,%ymm15,%ymm15\n\t"
 #endif
         );
   }

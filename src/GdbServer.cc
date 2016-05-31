@@ -1152,13 +1152,41 @@ void GdbServer::restart_session(const GdbRequest& req) {
   activate_debugger();
 }
 
+static uint32_t get_cpu_features(SupportedArch arch) {
+  uint32_t cpu_features;
+  switch (arch) {
+    case x86:
+      cpu_features = 0;
+      break;
+    case x86_64:
+      cpu_features = GdbConnection::CPU_64BIT;
+      break;
+    default:
+      FATAL() << "Unknown architecture";
+  }
+
+  unsigned int AVX_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
+  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
+  // We're assuming here that AVX support on the system making the recording
+  // is the same as the AVX support during replay. But if that's not true,
+  // rr is totally broken anyway.
+  if ((cpuid_data.ecx & AVX_cpuid_flags) == AVX_cpuid_flags) {
+    cpu_features |= GdbConnection::CPU_AVX;
+  }
+
+  return cpu_features;
+}
+
 static unique_ptr<GdbConnection> await_connection(
     Task* t, unsigned short port, GdbConnection::ProbePort probe,
     const GdbConnection::Features& features,
     ScopedFd* client_params_fd = nullptr) {
-  return GdbConnection::await_client_connection(
-      port, probe, t->tgid(), t->vm()->exe_image(), features,
-      client_params_fd);
+  auto result = GdbConnection::await_client_connection(
+      port, probe, t->tgid(), t->vm()->exe_image(), features, client_params_fd);
+
+  result->set_cpu_features(get_cpu_features(t->arch()));
+
+  return result;
 }
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {

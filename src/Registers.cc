@@ -178,7 +178,6 @@ RegisterValue RegisterInfo<rr::X64Arch>::non_gdb_registers[2] = {
 
 // 32-bit format, 64-bit format for all of these.
 // format_index in RegisterPrinting depends on the ordering here.
-static const char* hex_format[] = { "%" PRIx32, "%" PRIx64 };
 static const char* hex_format_leading_0x[] = { "0x%" PRIx32, "0x%" PRIx64 };
 // static const char* decimal_format[] = { "%" PRId32, "%" PRId64 };
 
@@ -233,7 +232,7 @@ void Registers::print_register_file_arch(FILE* f, const char* formats[]) const {
 }
 
 void Registers::print_register_file(FILE* f) const {
-  RR_ARCH_FUNCTION(print_register_file_arch, arch(), f, hex_format);
+  RR_ARCH_FUNCTION(print_register_file_arch, arch(), f, hex_format_leading_0x);
 }
 
 template <typename Arch>
@@ -278,11 +277,6 @@ void Registers::print_register_file_for_trace_arch(
 }
 
 void Registers::print_register_file_compact(FILE* f) const {
-  RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(), f, Annotated,
-                   hex_format);
-}
-
-void Registers::print_register_file_for_trace(FILE* f) const {
   RR_ARCH_FUNCTION(print_register_file_for_trace_arch, arch(), f, Annotated,
                    hex_format_leading_0x);
 }

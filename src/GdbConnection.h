@@ -490,6 +490,12 @@ public:
 
   const Features& features() { return features_; }
 
+  enum {
+    CPU_64BIT = 0x1,
+    CPU_AVX = 0x2,
+  };
+  void set_cpu_features(uint32_t features) { cpu_features = features; }
+
 private:
   GdbConnection(pid_t tgid, const Features& features);
 
@@ -514,6 +520,8 @@ private:
   void write_binary_packet(const char* pfx, const uint8_t* data,
                            ssize_t num_bytes);
   void write_hex_bytes_packet(const uint8_t* bytes, size_t len);
+  void write_xfer_response(const void* data, size_t size, uint64_t offset,
+                           uint64_t len);
   /**
    * Consume bytes in the input buffer until start-of-packet ('$') or
    * the interrupt character is seen.  Does not block.  Return true if
@@ -573,6 +581,7 @@ private:
   // multi-exe-image debugging scenarios, so we pretend only
   // this task group exists when interfacing with gdb
   pid_t tgid;
+  uint32_t cpu_features;
   // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
   bool no_ack;

@@ -17,6 +17,7 @@
 #include <limits.h>
 #include <netinet/in.h>
 #include <poll.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -60,7 +61,7 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 
 GdbConnection::GdbConnection(pid_t tgid, const Features& features)
-    : tgid(tgid), no_ack(false), features_(features) {
+    : tgid(tgid), cpu_features(0), no_ack(false), features_(features) {
 #ifndef REVERSE_EXECUTION
   features_.reverse_execution = false;
 #endif
@@ -507,43 +508,136 @@ static GdbThreadId parse_threadid(const char* str, char** endptr) {
   return t;
 }
 
-bool GdbConnection::xfer(const char* name, char* args) {
-  LOG(debug) << "gdb asks us to transfer " << name << "(" << args << ")";
-
-  if (!strcmp(name, "auxv")) {
-    parser_assert(!strncmp(args, "read::", sizeof("read::") - 1));
-
-    req = GdbRequest(DREQ_GET_AUXV);
-    req.target = query_thread;
-    return true;
+void GdbConnection::write_xfer_response(const void* data, size_t size,
+                                        uint64_t offset, uint64_t len) {
+  if (offset > size) {
+    write_packet("E01");
+    return;
   }
-  if (name == strstr(name, "siginfo")) {
-    if (args == strstr(args, "read")) {
-      req = GdbRequest(DREQ_READ_SIGINFO);
-      req.target = query_thread;
-      args += strlen("read");
-      parser_assert(':' == *args++);
-      parser_assert(':' == *args++);
+  if (offset == size) {
+    write_packet("l");
+    return;
+  }
+  if (offset + len < size) {
+    write_binary_packet("m", static_cast<const uint8_t*>(data) + offset, len);
+    return;
+  }
+  write_binary_packet("l", static_cast<const uint8_t*>(data) + offset,
+                      size - offset);
+}
 
-      req.mem().addr = strtoul(args, &args, 16);
-      parser_assert(',' == *args++);
-
-      req.mem().len = strtoul(args, &args, 16);
-      parser_assert('\0' == *args);
-
-      return true;
+static string read_target_desc(const char* file_name) {
+  string path = exe_directory() + "../share/" + string(file_name);
+  stringstream ss;
+  FILE* f = fopen(path.c_str(), "r");
+  while (true) {
+    int ch = getc(f);
+    if (ch == EOF) {
+      break;
     }
-    if (args == strstr(args, "write")) {
-      req = GdbRequest(DREQ_WRITE_SIGINFO);
-      req.target = query_thread;
-      return true;
-    }
-    UNHANDLED_REQ() << "Unhandled 'siginfo' request: " << args;
+    ss << (char)ch;
+  }
+  fclose(f);
+  return ss.str();
+}
+
+static const char* target_description_name(uint32_t cpu_features) {
+  // This doesn't scale, but it's what gdb does...
+  switch (cpu_features) {
+    case 0:
+      return "i386-linux.xml";
+    case GdbConnection::CPU_64BIT:
+      return "amd64-linux.xml";
+    case GdbConnection::CPU_AVX:
+      return "i386-avx-linux.xml";
+    case GdbConnection::CPU_64BIT | GdbConnection::CPU_AVX:
+      return "amd64-avx-linux.xml";
+    default:
+      FATAL() << "Unknown features";
+      return nullptr;
+  }
+}
+
+bool GdbConnection::xfer(const char* name, char* args) {
+  const char* mode = args;
+  args = strchr(args, ':');
+  parser_assert(args);
+  *args++ = '\0';
+
+  if (strcmp(mode, "read") && strcmp(mode, "write")) {
+    write_packet("");
     return false;
   }
 
-  UNHANDLED_REQ() << "Unhandled gdb xfer request: " << name << "(" << args
-                  << ")";
+  const char* annex = args;
+  args = strchr(args, ':');
+  parser_assert(args);
+  *args++ = '\0';
+
+  uint64_t offset = strtoul(args, &args, 16);
+
+  uint64_t len = 0;
+  if (!strcmp(mode, "read")) {
+    parser_assert(',' == *args++);
+    len = strtoul(args, &args, 16);
+    parser_assert(!*args);
+  } else {
+    parser_assert(*args == ':');
+    ++args;
+  }
+
+  LOG(debug) << "gdb asks us to transfer " << name << " mode=" << mode
+             << ", annex=" << annex << ", offset=" << offset << " len=" << len;
+
+  if (!strcmp(name, "auxv")) {
+    if (strcmp(annex, "")) {
+      write_packet("E00");
+      return false;
+    }
+    if (strcmp(mode, "read")) {
+      write_packet("");
+      return false;
+    }
+
+    req = GdbRequest(DREQ_GET_AUXV);
+    req.target = query_thread;
+    // XXX handle offset/len here!
+    return true;
+  }
+
+  if (!strcmp(name, "siginfo")) {
+    if (strcmp(annex, "")) {
+      write_packet("E00");
+      return false;
+    }
+    if (!strcmp(mode, "read")) {
+      req = GdbRequest(DREQ_READ_SIGINFO);
+      req.target = query_thread;
+      req.mem().addr = offset;
+      req.mem().len = len;
+      return true;
+    }
+
+    req = GdbRequest(DREQ_WRITE_SIGINFO);
+    req.target = query_thread;
+    return true;
+  }
+
+  if (!strcmp(name, "features")) {
+    if (strcmp(mode, "read")) {
+      write_packet("");
+      return false;
+    }
+
+    string target_desc =
+        read_target_desc((strcmp(annex, "") && strcmp(annex, "target.xml"))
+                             ? annex
+                             : target_description_name(cpu_features));
+    write_xfer_response(target_desc.c_str(), target_desc.size(), offset, len);
+    return false;
+  }
+
+  write_packet("");
   return false;
 }
 
@@ -660,6 +754,7 @@ bool GdbConnection::query(char* payload) {
     // Encourage gdb to use very large packets since we support any packet size
     supported << "PacketSize=1048576"
                  ";QStartNoAckMode+"
+                 ";qXfer:features:read+"
                  ";qXfer:auxv:read+"
                  ";qXfer:siginfo:read+"
                  ";qXfer:siginfo:write+"
@@ -701,9 +796,9 @@ bool GdbConnection::query(char* payload) {
   if (!strcmp(name, "Xfer")) {
     name = args;
     args = strchr(args, ':');
-    if (args) {
-      *args++ = '\0';
-    }
+    parser_assert(args);
+    *args++ = '\0';
+
     return xfer(name, args);
   }
   if (!strcmp(name, "Search")) {

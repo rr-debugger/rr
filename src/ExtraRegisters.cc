@@ -43,8 +43,10 @@ static const uint8_t fxsave_387_ctrl_offsets[] = {
 struct RegData {
   int offset;
   int size;
+  int xsave_feature_bit;
 
-  RegData(int offset = -1, int size = 0) : offset(offset), size(size) {}
+  RegData(int offset = -1, int size = 0)
+      : offset(offset), size(size), xsave_feature_bit(-1) {}
 };
 
 static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
@@ -60,14 +62,14 @@ static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
 
 static const int AVX_FEATURE = 2;
 
+static const size_t xsave_header_offset = 512;
 // This is always at 576 since AVX is always the first optional feature,
 // if present.
-static const int AVX_xsave_offset = 576;
+static const size_t AVX_xsave_offset = 576;
 
 // Return the size and data location of register |regno|.
 // If we can't read the register, returns -1 in 'offset'.
-static RegData xsave_register_data(SupportedArch arch, GdbRegister regno,
-                                   const void* xsave_header) {
+static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
   // Check regno is in range, and if it's 32-bit then convert it to the
   // equivalent 64-bit register.
   switch (arch) {
@@ -109,10 +111,9 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno,
     return result;
   }
 
-  uint64_t feature_mask = *static_cast<const uint64_t*>(xsave_header);
-  if ((feature_mask & (1 << AVX_FEATURE)) &&
-      reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
+  if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
                    16, &result)) {
+    result.xsave_feature_bit = AVX_FEATURE;
     return result;
   }
 
@@ -137,17 +138,27 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
     return 0;
   }
 
-  auto reg_data = xsave_register_data(arch(), regno, data_.data() + 512);
+  auto reg_data = xsave_register_data(arch(), regno);
   if (reg_data.offset < 0 || empty()) {
     *defined = false;
     return reg_data.size;
   }
 
   assert(reg_data.size > 0);
+  uint64_t xsave_features =
+      *reinterpret_cast<const uint64_t*>(data_.data() + xsave_header_offset);
 
   *defined = true;
 
-  memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
+  // Apparently before any AVX registers are used, the feature bit is not set
+  // in the XSAVE data, so we'll just return 0 for them here.
+  if (reg_data.xsave_feature_bit >= 0 &&
+      !(xsave_features & (1 << reg_data.xsave_feature_bit))) {
+    memset(buf, 0, reg_data.size);
+  } else {
+    assert(size_t(reg_data.offset + reg_data.size) <= data_.size());
+    memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
+  }
   return reg_data.size;
 }
 
