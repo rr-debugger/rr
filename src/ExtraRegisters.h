@@ -56,6 +56,8 @@ public:
     arch_ = a;
     format_ = format;
     std::swap(data_, consume_data);
+    static const int min_xsave_size = 576;
+    assert(format == NONE || data_.size() >= min_xsave_size);
   }
 
   Format format() const { return format_; }

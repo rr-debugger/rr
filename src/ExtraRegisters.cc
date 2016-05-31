@@ -58,13 +58,26 @@ static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
   return true;
 }
 
+static const int AVX_FEATURE = 2;
+
+// This is always at 576 since AVX is always the first optional feature,
+// if present.
+static const int AVX_xsave_offset = 576;
+
 // Return the size and data location of register |regno|.
 // If we can't read the register, returns -1 in 'offset'.
-static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
+static RegData xsave_register_data(SupportedArch arch, GdbRegister regno,
+                                   const void* xsave_header) {
   // Check regno is in range, and if it's 32-bit then convert it to the
   // equivalent 64-bit register.
   switch (arch) {
     case x86:
+      // Convert regno to the equivalent 64-bit version since the XSAVE layout
+      // is compatible
+      if (regno >= DREG_XMM0 && regno <= DREG_XMM7) {
+        regno = (GdbRegister)(regno - DREG_XMM0 + DREG_64_XMM0);
+        break;
+      }
       if (regno >= DREG_YMM0H && regno <= DREG_YMM7H) {
         regno = (GdbRegister)(regno - DREG_YMM0H + DREG_64_YMM0H);
         break;
@@ -80,9 +93,6 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
       }
       break;
     case x86_64:
-      if (regno < DREG_64_FIRST_FXSAVE_REG || regno > DREG_64_LAST_FXSAVE_REG) {
-        return RegData();
-      }
       break;
     default:
       assert(0 && "Unknown arch");
@@ -98,15 +108,20 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
                    xmm_reg_space, 16, &result)) {
     return result;
   }
-  // TODO: support AVX registers properly. Right now we always return a location
-  // of -1.
-  if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, -1, 0, 16, &result)) {
+
+  uint64_t feature_mask = *static_cast<const uint64_t*>(xsave_header);
+  if ((feature_mask & (1 << AVX_FEATURE)) &&
+      reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
+                   16, &result)) {
     return result;
+  }
+
+  if (regno < DREG_64_FIRST_FXSAVE_REG || regno > DREG_64_LAST_FXSAVE_REG) {
+    return RegData();
   }
   if (regno == DREG_64_MXCSR) {
     return RegData(24, 4);
   }
-
   assert(regno >= DREG_64_FCTRL && regno <= DREG_64_FOP);
   // NB: most of these registers only occupy 2 bytes of space in
   // the (f)xsave region, but gdb's default x86 target
@@ -122,7 +137,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
     return 0;
   }
 
-  auto reg_data = xsave_register_data(arch(), regno);
+  auto reg_data = xsave_register_data(arch(), regno, data_.data() + 512);
   if (reg_data.offset < 0 || empty()) {
     *defined = false;
     return reg_data.size;
