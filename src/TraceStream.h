@@ -22,7 +22,7 @@ namespace rr {
 
 struct CPUIDRecord;
 class KernelMapping;
-class Task;
+class RecordTask;
 
 /**
  * TraceStream stores all the data common to both recording and
@@ -149,7 +149,7 @@ public:
    * If this returns RECORD_IN_TRACE, then the data for the map should be
    * recorded in the trace raw-data.
    */
-  RecordInTrace write_mapped_region(Task* t, const KernelMapping& map,
+  RecordInTrace write_mapped_region(RecordTask* t, const KernelMapping& map,
                                     const struct stat& stat,
                                     MappingOrigin origin = SYSCALL_MAPPING);
 
@@ -203,7 +203,7 @@ public:
 
 private:
   std::string try_hardlink_file(const std::string& file_name);
-  bool try_clone_file(Task* t, const std::string& file_name,
+  bool try_clone_file(RecordTask* t, const std::string& file_name,
                       std::string* new_name);
 
   CompressedWriter& writer(Substream s) { return *writers[s]; }
