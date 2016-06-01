@@ -75,7 +75,7 @@ static void split_at_address(ReplaySession::MemoryRanges& ranges,
                              remote_ptr<void> addr) {
   ReplaySession::MemoryRanges::iterator it =
       ranges.lower_bound(MemoryRange(addr, addr + 1));
-  if (it != ranges.end() && it->contains(addr)) {
+  if (it != ranges.end() && it->contains(addr) && it->start() != addr) {
     MemoryRange r1(it->start(), addr);
     MemoryRange r2(addr, it->end());
     ranges.erase(it);
