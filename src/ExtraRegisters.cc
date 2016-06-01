@@ -244,10 +244,12 @@ void ExtraRegisters::print_register_file_compact(FILE* f) const {
   switch (arch_) {
     case x86:
       print_regs(*this, DREG_ST0, GdbRegister(0), 8, "st", f);
+      fputc(' ', f);
       print_regs(*this, DREG_XMM0, DREG_YMM0H, 8, "ymm", f);
       break;
     case x86_64:
       print_regs(*this, DREG_64_ST0, GdbRegister(0), 8, "st", f);
+      fputc(' ', f);
       print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, 16, "ymm", f);
       break;
     default:

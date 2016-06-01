@@ -206,12 +206,16 @@ template <typename Arch>
 void Registers::print_register_file_for_trace_arch(
     FILE* f, TraceStyle style, const char* formats[]) const {
   const void* user_regs = &u;
+  bool first = true;
   for (auto& rv : RegisterInfo<Arch>::registers) {
     if (rv.nbytes == 0) {
       continue;
     }
 
-    fprintf(f, " ");
+    if (!first) {
+      fputc(' ', f);
+    }
+    first = false;
     const char* name = (style == Annotated ? rv.name : nullptr);
 
     switch (rv.nbytes) {
