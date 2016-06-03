@@ -11,6 +11,7 @@ int main(void) {
   int* navail;
   int* outq;
   struct winsize* w;
+  pid_t* sid;
 
   fd = open("/dev/tty", O_RDWR);
   if (fd < 0) {
@@ -73,6 +74,11 @@ int main(void) {
   VERIFY_GUARD(w);
   atomic_printf("TIOCGWINSZ returned {row:%d col:%d}\n", w->ws_row, w->ws_col);
   test_assert(0 == ioctl(fd, TIOCSWINSZ, w));
+
+  ALLOCATE_GUARD(sid, 'g');
+  test_assert(0 == ioctl(fd, TIOCGSID, sid));
+  VERIFY_GUARD(sid);
+  atomic_printf("TIOCGSID returned %d\n", *sid);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

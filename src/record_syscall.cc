@@ -1240,6 +1240,7 @@ static Switchable prepare_ioctl(RecordTask* t,
       return PREVENT_SWITCH;
 
     case TIOCGPGRP:
+    case TIOCGSID:
       syscall_state.reg_parameter<typename Arch::pid_t>(3);
       return PREVENT_SWITCH;
 
