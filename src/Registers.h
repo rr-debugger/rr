@@ -245,12 +245,14 @@ public:
    * Set the register containing syscall argument |Index| to
    * |value|.
    */
-  template <int Index, typename T> void set_arg(T value) {
-    set_arg(Index, uintptr_t(value));
+  template <int Index, typename T> void set_arg(std::nullptr_t value) {
+    set_arg(Index, 0);
   }
-
   template <int Index, typename T> void set_arg(remote_ptr<T> value) {
     set_arg(Index, value.as_int());
+  }
+  template <int Index, typename T> void set_arg(T value) {
+    set_arg(Index, uintptr_t(value));
   }
 
   void set_arg(int index, uintptr_t value) {
