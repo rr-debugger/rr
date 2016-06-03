@@ -9,6 +9,7 @@ int main(void) {
   struct termio* tio;
   pid_t* pgrp;
   int* navail;
+  int* outq;
   struct winsize* w;
 
   fd = open("/dev/tty", O_RDWR);
@@ -62,7 +63,12 @@ int main(void) {
   VERIFY_GUARD(navail);
   atomic_printf("TIOCINQ returned navail=%d\n", *navail);
 
-  ALLOCATE_GUARD(w, 'e');
+  ALLOCATE_GUARD(outq, 'e');
+  test_assert(0 == ioctl(fd, TIOCOUTQ, outq));
+  VERIFY_GUARD(outq);
+  atomic_printf("TIOCOUTQ returned outq=%d\n", *outq);
+
+  ALLOCATE_GUARD(w, 'f');
   test_assert(0 == ioctl(fd, TIOCGWINSZ, w));
   VERIFY_GUARD(w);
   atomic_printf("TIOCGWINSZ returned {row:%d col:%d}\n", w->ws_row, w->ws_col);
