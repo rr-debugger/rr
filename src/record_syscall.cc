@@ -1258,19 +1258,21 @@ static Switchable prepare_ioctl(RecordTask* t,
    */
   if (!(_IOC_READ & dir)) {
     switch (IOCTL_MASK_SIZE(request)) {
-      case IOCTL_MASK_SIZE(TCSETS):
-      case IOCTL_MASK_SIZE(TCSETSW):
-      case IOCTL_MASK_SIZE(TCSETSF):
-      case IOCTL_MASK_SIZE(TCSETA):
-      case IOCTL_MASK_SIZE(TCSETAW):
-      case IOCTL_MASK_SIZE(TCSETAF):
-      case IOCTL_MASK_SIZE(TIOCSLCKTRMIOS):
+      // Older ioctls don't use IOC macros at all, so don't mask size for them
+      case TCSETS:
+      case TCSETSW:
+      case TCSETSF:
+      case TCSETA:
+      case TCSETAW:
+      case TCSETAF:
+      case TIOCSLCKTRMIOS:
+      case TIOCSWINSZ:
       case IOCTL_MASK_SIZE(TIOCSPTLCK):
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):
-      case IOCTL_MASK_SIZE(FIOCLEX):
-      case IOCTL_MASK_SIZE(FIONCLEX):
-      case IOCTL_MASK_SIZE(FIONBIO):
+      case FIOCLEX:
+      case FIONCLEX:
+      case FIONBIO:
       case IOCTL_MASK_SIZE(USBDEVFS_DISCARDURB):
       case IOCTL_MASK_SIZE(USBDEVFS_RESET):
         return PREVENT_SWITCH;
