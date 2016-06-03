@@ -7,12 +7,16 @@ int main(void) {
   int* arg;
   test_assert(fd >= 0);
 
-  atomic_printf("tty ptsname = %s\n", ptsname(fd));
+  atomic_printf("pty ptsname = %s\n", ptsname(fd));
 
   ALLOCATE_GUARD(arg, 'a');
   test_assert(0 == ioctl(fd, TIOCGPKT, arg));
   VERIFY_GUARD(arg);
   test_assert(*arg == 0);
+
+  test_assert(0 == ioctl(fd, TIOCGPTN, arg));
+  VERIFY_GUARD(arg);
+  atomic_printf("pty number = %d\n", *arg);
 
   test_assert(0 == ioctl(fd, TIOCGPTLCK, arg));
   VERIFY_GUARD(arg);
