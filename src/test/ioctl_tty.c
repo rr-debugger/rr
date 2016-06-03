@@ -6,6 +6,8 @@ int main(void) {
   struct termios* tc;
   struct termio* tio;
   int fd;
+  int ret;
+  pid_t *pgrp;
 
   fd = open("/dev/tty", O_RDWR);
   if (fd < 0) {
@@ -33,6 +35,18 @@ int main(void) {
   test_assert(0 == ioctl(fd, TCSETA, tio));
   test_assert(0 == ioctl(fd, TCSETAW, tio));
   test_assert(0 == ioctl(fd, TCSETAF, tio));
+
+  test_assert(0 == ioctl(fd, TIOCGLCKTRMIOS, tc));
+  VERIFY_GUARD(tc);
+  atomic_printf("TIOCGLCKTRMIOS returned { iflag=0x%x, oflag=0x%x, cflag=0x%x, "
+                "lflag=0x%x }\n",
+                tio->c_iflag, tio->c_oflag, tio->c_cflag, tio->c_lflag);
+  ret = ioctl(fd, TIOCSLCKTRMIOS, tc);
+  test_assert(ret >= 0 || errno == EPERM);
+
+  ALLOCATE_GUARD(pgrp, 'c');
+  test_assert(0 == ioctl(fd, TIOCGPGRP, pgrp));
+  atomic_printf("TIOCGPGRP returned process group %d\n", *pgrp);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

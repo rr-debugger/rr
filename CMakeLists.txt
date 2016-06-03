@@ -621,7 +621,6 @@ set(BASIC_TESTS
   timerfd
   times
   tiocgwinsz
-  tiocgpgrp
   truncate
   uname
   unjoined_thread

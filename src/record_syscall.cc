@@ -1222,6 +1222,7 @@ static Switchable prepare_ioctl(RecordTask* t,
       return PREVENT_SWITCH;
 
     case TCGETS:
+    case TIOCGLCKTRMIOS:
       syscall_state.reg_parameter<typename Arch::termios>(3);
       return PREVENT_SWITCH;
 
@@ -1263,6 +1264,7 @@ static Switchable prepare_ioctl(RecordTask* t,
       case IOCTL_MASK_SIZE(TCSETA):
       case IOCTL_MASK_SIZE(TCSETAW):
       case IOCTL_MASK_SIZE(TCSETAF):
+      case IOCTL_MASK_SIZE(TIOCSLCKTRMIOS):
       case IOCTL_MASK_SIZE(TIOCSPTLCK):
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):
