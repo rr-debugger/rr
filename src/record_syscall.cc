@@ -1254,6 +1254,8 @@ static Switchable prepare_ioctl(RecordTask* t,
   if (!(_IOC_READ & dir)) {
     switch (IOCTL_MASK_SIZE(request)) {
       case IOCTL_MASK_SIZE(TCSETS):
+      case IOCTL_MASK_SIZE(TCSETSW):
+      case IOCTL_MASK_SIZE(TCSETSF):
       case IOCTL_MASK_SIZE(TIOCSPTLCK):
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):

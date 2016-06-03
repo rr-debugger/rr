@@ -14,6 +14,10 @@ int main(void) {
                 ret, tc.c_iflag, tc.c_oflag, tc.c_cflag, tc.c_lflag);
   ret = ioctl(STDIN_FILENO, TCSETS, &tc);
   test_assert(ret == 0);
+  ret = ioctl(STDIN_FILENO, TCSETSW, &tc);
+  test_assert(ret == 0);
+  ret = ioctl(STDIN_FILENO, TCSETSF, &tc);
+  test_assert(ret == 0);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
