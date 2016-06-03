@@ -224,9 +224,11 @@ void Task::destroy_buffers() {
                             scratch_size);
   vm()->unmap(scratch_ptr, scratch_size);
   if (!syscallbuf_child.is_null()) {
+    uint8_t *local_mapping = vm()->mapping_of(syscallbuf_child).local_addr;
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               syscallbuf_child, num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
+    munmap(local_mapping, num_syscallbuf_bytes);
     syscallbuf_child = nullptr;
     if (desched_fd_child >= 0) {
       if (session().is_recording()) {

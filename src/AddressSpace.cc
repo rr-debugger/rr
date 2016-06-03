@@ -688,7 +688,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   remote_ptr<void> new_end = new_addr + new_num_bytes;
   map_and_coalesce(m.set_range(new_addr, new_end),
                    mr.recorded_map.set_range(new_addr, new_end), mr.emu_file,
-                   mr.local_addr);
+                   nullptr);
 }
 
 void AddressSpace::remove_breakpoint(remote_code_ptr addr,
@@ -896,15 +896,6 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
 
     Mapping m = move(mm);
     mem.erase(m.map);
-
-    // Also unmap any corresponding mapping from the local address space
-    if (m.local_addr) {
-      uint8_t* start_addr =
-          m.local_addr + (max(m.map.start(), rem.start()) - m.map.start());
-      uint8_t* stop_addr =
-          m.local_addr + (min(m.map.end(), rem.end()) - m.map.end());
-      munmap(start_addr, stop_addr - start_addr);
-    }
 
     LOG(debug) << "  erased (" << m.map << ") ...";
 
