@@ -1233,6 +1233,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case TIOCINQ:
     case TIOCOUTQ:
     case TIOCGEXCL:
+    case TIOCGETD:
       syscall_state.reg_parameter<int>(3);
       return PREVENT_SWITCH;
 
@@ -1261,6 +1262,7 @@ static Switchable prepare_ioctl(RecordTask* t,
    */
   if (!(_IOC_READ & dir)) {
     switch (IOCTL_MASK_SIZE(request)) {
+      // Order by value
       // Older ioctls don't use IOC macros at all, so don't mask size for them
       case TCSETS:
       case TCSETSW:
@@ -1284,12 +1286,13 @@ static Switchable prepare_ioctl(RecordTask* t,
       case TIOCSWINSZ:
       // No test for TIOCCONS because if run as root it would do bad things
       case TIOCCONS:
+      case FIONBIO:
+      case TIOCSETD:
       case IOCTL_MASK_SIZE(TIOCSPTLCK):
-      case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):
-      case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):
       case FIOCLEX:
       case FIONCLEX:
-      case FIONBIO:
+      case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):
+      case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):
       case IOCTL_MASK_SIZE(USBDEVFS_DISCARDURB):
       case IOCTL_MASK_SIZE(USBDEVFS_RESET):
         return PREVENT_SWITCH;

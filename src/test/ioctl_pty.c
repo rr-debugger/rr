@@ -53,6 +53,12 @@ int main(void) {
   test_assert(*arg == 1);
   test_assert(0 == ioctl(fd, TIOCNXCL));
 
+  ALLOCATE_GUARD(arg, 'e');
+  test_assert(0 == ioctl(fd, TIOCGETD, arg));
+  VERIFY_GUARD(arg);
+  atomic_printf("pty TIOCGETD = %d\n", *arg);
+  test_assert(0 == ioctl(fd, TIOCSETD, arg));
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
