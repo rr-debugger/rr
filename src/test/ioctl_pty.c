@@ -25,6 +25,8 @@ int main(void) {
 
   test_assert(0 == ioctl(fd, TIOCSPTLCK, arg));
 
+  test_assert(0 == ioctl(fd, TCXONC, 0));
+
   ret = ioctl(fd, TIOCSTI, "x");
   test_assert(ret >= 0 || errno == EPERM);
 
