@@ -25,8 +25,8 @@ set(rr_VERSION_PATCH 0)
 
 add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSION_PATCH}")
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g3 -Wall -Wextra -Werror -Wstrict-prototypes")
-set(CMAKE_C_FLAGS_DEBUG "-O0")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g3 -Wall -Wextra -Wstrict-prototypes")
+set(CMAKE_C_FLAGS_DEBUG "-O0 -Werror")
 set(CMAKE_C_FLAGS_RELEASE "-O2")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
