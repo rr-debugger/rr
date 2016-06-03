@@ -46,6 +46,11 @@ int main(void) {
   ret = ioctl(fd, TIOCSLCKTRMIOS, tc);
   test_assert(ret >= 0 || errno == EPERM);
 
+  test_assert(0 == ioctl(fd, TCSBRK, 0));
+  test_assert(0 == ioctl(fd, TCSBRKP, 0));
+  test_assert(0 == ioctl(fd, TIOCSBRK));
+  test_assert(0 == ioctl(fd, TIOCCBRK));
+
   ALLOCATE_GUARD(pgrp, 'c');
   test_assert(0 == ioctl(fd, TIOCGPGRP, pgrp));
   VERIFY_GUARD(pgrp);
