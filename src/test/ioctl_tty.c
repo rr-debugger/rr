@@ -3,12 +3,13 @@
 #include "rrutil.h"
 
 int main(void) {
-  struct termios* tc;
-  struct termio* tio;
   int fd;
   int ret;
-  pid_t *pgrp;
-  int *navail;
+  struct termios* tc;
+  struct termio* tio;
+  pid_t* pgrp;
+  int* navail;
+  struct winsize* w;
 
   fd = open("/dev/tty", O_RDWR);
   if (fd < 0) {
@@ -47,11 +48,18 @@ int main(void) {
 
   ALLOCATE_GUARD(pgrp, 'c');
   test_assert(0 == ioctl(fd, TIOCGPGRP, pgrp));
+  VERIFY_GUARD(pgrp);
   atomic_printf("TIOCGPGRP returned process group %d\n", *pgrp);
 
   ALLOCATE_GUARD(navail, 'd');
   test_assert(0 == ioctl(fd, TIOCINQ, navail));
+  VERIFY_GUARD(navail);
   atomic_printf("TIOCINQ returned navail=%d\n", *navail);
+
+  ALLOCATE_GUARD(w, 'e');
+  test_assert(0 == ioctl(fd, TIOCGWINSZ, w));
+  VERIFY_GUARD(w);
+  atomic_printf("TIOCGWINSZ returned {row:%d col:%d}\n", w->ws_row, w->ws_col);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

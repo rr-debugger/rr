@@ -620,7 +620,6 @@ set(BASIC_TESTS
   timer
   timerfd
   times
-  tiocgwinsz
   truncate
   uname
   unjoined_thread
