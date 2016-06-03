@@ -50,6 +50,7 @@ int main(void) {
   test_assert(0 == ioctl(fd, TIOCGPGRP, pgrp));
   VERIFY_GUARD(pgrp);
   atomic_printf("TIOCGPGRP returned process group %d\n", *pgrp);
+  test_assert(0 == ioctl(fd, TIOCSPGRP, pgrp));
 
   ALLOCATE_GUARD(navail, 'd');
   test_assert(0 == ioctl(fd, TIOCINQ, navail));
