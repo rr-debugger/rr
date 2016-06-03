@@ -1232,6 +1232,7 @@ static Switchable prepare_ioctl(RecordTask* t,
 
     case TIOCINQ:
     case TIOCOUTQ:
+    case TIOCGEXCL:
       syscall_state.reg_parameter<int>(3);
       return PREVENT_SWITCH;
 
@@ -1274,6 +1275,8 @@ static Switchable prepare_ioctl(RecordTask* t,
       case TIOCCBRK:
       case TCXONC:
       case TCFLSH:
+      case TIOCEXCL:
+      case TIOCNXCL:
       case TIOCSCTTY:
       case TIOCNOTTY:
       case TIOCSPGRP:

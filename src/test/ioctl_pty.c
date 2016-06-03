@@ -17,10 +17,12 @@ int main(void) {
   VERIFY_GUARD(arg);
   test_assert(*arg == 0);
 
+  ALLOCATE_GUARD(arg, 'b');
   test_assert(0 == ioctl(fd, TIOCGPTN, arg));
   VERIFY_GUARD(arg);
   atomic_printf("pty number = %d\n", *arg);
 
+  ALLOCATE_GUARD(arg, 'c');
   test_assert(0 == ioctl(fd, TIOCGPTLCK, arg));
   VERIFY_GUARD(arg);
   test_assert(*arg == 1);
@@ -43,6 +45,13 @@ int main(void) {
 
   ret = ioctl(fd, TIOCSTI, "x");
   test_assert(ret >= 0 || errno == EPERM);
+
+  test_assert(0 == ioctl(fd, TIOCEXCL));
+  ALLOCATE_GUARD(arg, 'd');
+  test_assert(0 == ioctl(fd, TIOCGEXCL, arg));
+  VERIFY_GUARD(arg);
+  test_assert(*arg == 1);
+  test_assert(0 == ioctl(fd, TIOCNXCL));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
