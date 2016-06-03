@@ -8,9 +8,12 @@ int main(void) {
   memset(&tc, 0, sizeof(tc));
 
   ret = ioctl(STDIN_FILENO, TCGETS, &tc);
+  test_assert(ret == 0);
   atomic_printf("TCGETS returned %d: { iflag=0x%x, oflag=0x%x, cflag=0x%x, "
                 "lflag=0x%x }\n",
                 ret, tc.c_iflag, tc.c_oflag, tc.c_cflag, tc.c_lflag);
+  ret = ioctl(STDIN_FILENO, TCSETS, &tc);
+  test_assert(ret == 0);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
