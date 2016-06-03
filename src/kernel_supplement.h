@@ -119,6 +119,9 @@ struct usbdevfs_streams {
 #ifndef TIOCGPTLCK
 #define TIOCGPTLCK _IOR('T', 0x39, int)
 #endif
+#ifndef TIOCGEXCL
+#define TIOCGEXCL _IOR('T', 0x40, int)
+#endif
 
 #ifndef MADV_DONTDUMP
 #define MADV_DONTDUMP 16
