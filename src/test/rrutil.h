@@ -217,4 +217,15 @@ inline static void crash_null_deref(void) { *(volatile int*)NULL = 0; }
 #define RR_KCMP_FILE 0
 #define RR_KCMP_FILES 2
 
+/* Old systems don't have these */
+#ifndef TIOCGPKT
+#define TIOCGPKT _IOR('T', 0x38, int)
+#endif
+#ifndef TIOCGPTLCK
+#define TIOCGPTLCK _IOR('T', 0x39, int)
+#endif
+#ifndef TIOCGEXCL
+#define TIOCGEXCL _IOR('T', 0x40, int)
+#endif
+
 #endif /* RRUTIL_H */
