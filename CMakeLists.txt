@@ -463,6 +463,8 @@ set(BASIC_TESTS
   invalid_fcntl
   io
   ioctl
+  ioctl_pty
+  ioctl_tty
   kcmp
   kill_newborn
   legacy_ugid
@@ -612,7 +614,6 @@ set(BASIC_TESTS
   sysctl
   sysemu_singlestep
   sysinfo
-  tcgets
   tgkill
   thread_stress
   thread_yield
@@ -622,7 +623,6 @@ set(BASIC_TESTS
   tiocgwinsz
   tiocgpgrp
   truncate
-  tty_ioctls
   uname
   unjoined_thread
   unshare
