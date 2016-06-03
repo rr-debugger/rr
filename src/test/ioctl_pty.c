@@ -17,6 +17,8 @@ int main(void) {
   VERIFY_GUARD(arg);
   test_assert(*arg == 0);
 
+  test_assert(0 == ioctl(fd, TIOCPKT, arg));
+
   ALLOCATE_GUARD(arg, 'b');
   test_assert(0 == ioctl(fd, TIOCGPTN, arg));
   VERIFY_GUARD(arg);

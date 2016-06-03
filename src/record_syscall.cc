@@ -1286,6 +1286,7 @@ static Switchable prepare_ioctl(RecordTask* t,
       case TIOCSWINSZ:
       // No test for TIOCCONS because if run as root it would do bad things
       case TIOCCONS:
+      case TIOCPKT:
       case FIONBIO:
       case TIOCSETD:
       case IOCTL_MASK_SIZE(TIOCSPTLCK):
