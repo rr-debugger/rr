@@ -1273,6 +1273,8 @@ static Switchable prepare_ioctl(RecordTask* t,
       case TIOCCBRK:
       case TCXONC:
       case TCFLSH:
+      case TIOCSCTTY:
+      case TIOCNOTTY:
       case TIOCSPGRP:
       case TIOCSTI:
       case TIOCSWINSZ:

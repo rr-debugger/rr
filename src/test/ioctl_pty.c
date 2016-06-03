@@ -4,7 +4,9 @@
 
 int main(void) {
   int fd = open("/dev/ptmx", O_RDONLY);
+  pid_t child;
   int ret;
+  int status;
   int* arg;
   test_assert(fd >= 0);
 
@@ -27,6 +29,17 @@ int main(void) {
 
   test_assert(0 == ioctl(fd, TCXONC, TCOOFF));
   test_assert(0 == ioctl(fd, TCFLSH, TCIFLUSH));
+
+  child = fork();
+  if (!child) {
+    test_assert(getpid() == setsid());
+
+    test_assert(0 == ioctl(fd, TIOCSCTTY, 0));
+    ioctl(fd, TIOCNOTTY);
+  }
+
+  test_assert(child == waitpid(child, &status, 0));
+  test_assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGHUP);
 
   ret = ioctl(fd, TIOCSTI, "x");
   test_assert(ret >= 0 || errno == EPERM);
