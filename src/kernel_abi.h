@@ -451,6 +451,16 @@ struct BaseArch : public wordsize, public FcntlConstants {
   };
   RR_VERIFY_TYPE(termios);
 
+  struct termio {
+    unsigned_short c_iflag;
+    unsigned_short c_oflag;
+    unsigned_short c_cflag;
+    unsigned_short c_lflag;
+    unsigned char c_line;
+    unsigned char c_cc[8];
+  };
+  RR_VERIFY_TYPE(termio);
+
   struct winsize {
     unsigned_short ws_row;
     unsigned_short ws_col;
