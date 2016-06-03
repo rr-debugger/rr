@@ -40,6 +40,7 @@ mv "@CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM/tmpBBroot" $RPM_B
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/exec_stub*
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/rr_page*
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/signal-rr-recording.sh
+@CPACK_PACKAGING_INSTALL_PREFIX@/share/rr/*.xml
 
 %changelog
 * Tue Jun 25 2013 Chris Jones <cjones@triton> - 

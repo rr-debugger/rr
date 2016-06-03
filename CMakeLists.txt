@@ -303,10 +303,10 @@ set(RR_GDB_RESOURCES
 )
 foreach(file ${RR_GDB_RESOURCES})
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/third-party/gdb/${file}"
-                 "${CMAKE_CURRENT_BINARY_DIR}/share/${file}"
+                 "${CMAKE_CURRENT_BINARY_DIR}/share/rr/${file}"
                  COPYONLY)
-  install(FILES ${file}
-          DESTINATION share)
+  install(FILES third-party/gdb/${file}
+          DESTINATION share/rr)
 endforeach(file)
 
 install(PROGRAMS scripts/signal-rr-recording.sh
