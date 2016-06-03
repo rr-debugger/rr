@@ -1232,7 +1232,6 @@ static Switchable prepare_ioctl(RecordTask* t,
 
     case TIOCINQ:
     case TIOCOUTQ:
-    case TIOCGEXCL:
     case TIOCGETD:
       syscall_state.reg_parameter<int>(3);
       return PREVENT_SWITCH;
@@ -1351,9 +1350,10 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.reg_parameter(3, size, IN_OUT);
       return PREVENT_SWITCH;
 
+    case IOCTL_MASK_SIZE(TIOCGPTN):
     case IOCTL_MASK_SIZE(TIOCGPKT):
     case IOCTL_MASK_SIZE(TIOCGPTLCK):
-    case IOCTL_MASK_SIZE(TIOCGPTN):
+    case IOCTL_MASK_SIZE(TIOCGEXCL):
     case IOCTL_MASK_SIZE(USBDEVFS_GET_CAPABILITIES):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
