@@ -1,5 +1,0 @@
-source `dirname $0`/util.sh
-
-echo "hello" | (record $TESTNAME)
-replay
-check EXIT-SUCCESS

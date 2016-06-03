@@ -8,6 +8,7 @@ int main(void) {
   int fd;
   int ret;
   pid_t *pgrp;
+  int *navail;
 
   fd = open("/dev/tty", O_RDWR);
   if (fd < 0) {
@@ -47,6 +48,10 @@ int main(void) {
   ALLOCATE_GUARD(pgrp, 'c');
   test_assert(0 == ioctl(fd, TIOCGPGRP, pgrp));
   atomic_printf("TIOCGPGRP returned process group %d\n", *pgrp);
+
+  ALLOCATE_GUARD(navail, 'd');
+  test_assert(0 == ioctl(fd, TIOCINQ, navail));
+  atomic_printf("TIOCINQ returned navail=%d\n", *navail);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

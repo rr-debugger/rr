@@ -731,7 +731,6 @@ set(TESTS_WITH_PROGRAM
   thread_exit_signal
   threaded_syscall_spam
   threads
-  tiocinq
   unexpected_stack_growth
   user_ignore_sig
   vfork
