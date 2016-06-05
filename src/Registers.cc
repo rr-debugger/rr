@@ -662,6 +662,23 @@ void Registers::set_flags(uintptr_t value) {
   }
 }
 
+bool Registers::syscall_failed() const {
+  auto result = syscall_result_signed();
+  return -ERANGE <= result && result < 0;
+}
+
+bool Registers::syscall_may_restart() const {
+  switch (-syscall_result_signed()) {
+    case ERESTART_RESTARTBLOCK:
+    case ERESTARTNOINTR:
+    case ERESTARTNOHAND:
+    case ERESTARTSYS:
+      return true;
+    default:
+      return false;
+  }
+}
+
 ostream& operator<<(ostream& stream, const Registers& r) {
   stream << "{ args:(" << HEX(r.arg1()) << "," << HEX(r.arg2()) << ","
          << HEX(r.arg3()) << "," << HEX(r.arg4()) << "," << HEX(r.arg5()) << ","

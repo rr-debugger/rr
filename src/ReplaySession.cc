@@ -6,6 +6,7 @@
 
 #include <syscall.h>
 #include <sys/prctl.h>
+#include <linux/futex.h>
 
 #include <algorithm>
 

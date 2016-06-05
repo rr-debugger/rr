@@ -3,11 +3,14 @@
 #include "Task.h"
 
 #include <asm/prctl.h>
+#include <asm/ptrace.h>
 #include <elf.h>
 #include <errno.h>
 #include <limits.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
+#include <linux/unistd.h>
+#include <linux/ipc.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -16,6 +19,7 @@
 #include <sys/personality.h>
 #include <sys/prctl.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/wait.h>
 #include <sys/user.h>
 

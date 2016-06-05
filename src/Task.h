@@ -3,6 +3,8 @@
 #ifndef RR_TASK_H_
 #define RR_TASK_H_
 
+#include <asm/ldt.h>
+
 #include <memory>
 #include <vector>
 
@@ -25,6 +27,7 @@
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
+struct user_desc;
 
 namespace rr {
 
@@ -432,9 +435,9 @@ public:
   void set_debug_reg(size_t regno, uintptr_t value);
 
   /** Update the thread area to |addr|. */
-  void set_thread_area(remote_ptr<struct user_desc> tls);
+  void set_thread_area(remote_ptr<struct ::user_desc> tls);
 
-  const std::vector<struct user_desc>& thread_areas() { return thread_areas_; }
+  const std::vector<struct ::user_desc>& thread_areas() { return thread_areas_; }
 
   /**
    * Return true when the task is running, false if it's stopped.

@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/user.h>
+#include <sys/resource.h>
 #include <x86intrin.h>
 
 #include "preload/preload_interface.h"

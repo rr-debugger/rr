@@ -2,6 +2,9 @@
 
 #include "AutoRemoteSyscalls.h"
 
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <linux/net.h>
 #include <limits.h>
 
 #include "rr/rr.h"

@@ -1,5 +1,62 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+// Include remote_ptr.h first since it (indirectly) requires a definition of
+// ERANGE, which other headers below #undef :-(
+#include "remote_ptr.h"
+
+// Get all the kernel definitions so we can verify our alternative versions.
+#include <arpa/inet.h>
+#include <asm/ldt.h>
+#include <elf.h>
+#include <fcntl.h>
+#include <linux/capability.h>
+#include <linux/ethtool.h>
+#include <linux/filter.h>
+#include <linux/futex.h>
+#include <linux/ipc.h>
+#include <linux/msg.h>
+#include <linux/net.h>
+#include <linux/sem.h>
+#include <linux/shm.h>
+#include <linux/sockios.h>
+#include <linux/sysctl.h>
+#include <linux/usbdevice_fs.h>
+#include <linux/videodev2.h>
+#include <linux/wireless.h>
+#include <poll.h>
+#include <signal.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <sound/asound.h>
+#include <sys/epoll.h>
+#include <sys/ioctl.h>
+#include <sys/quota.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <sys/times.h>
+#include <sys/un.h>
+#include <sys/user.h>
+#include <sys/utsname.h>
+#include <sys/vfs.h>
+#include <sys/sysinfo.h>
+#include <termios.h>
+
+// Used to verify definitions in kernel_abi.h
+namespace rr {
+  #define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)                     \
+    static_assert(Verifier<arch_, system_type_, rr_type_>::same_size,            \
+                  "type " #system_type_ " not correctly defined");
+
+  // For instances where the system type and the rr type are named differently.
+  #define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)                        \
+    RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)
+
+  // For instances where the system type and the rr type are named identically.
+  #define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
+}
+
 #include "kernel_abi.h"
 
 #include <stdlib.h>
@@ -9,6 +66,17 @@
 using namespace std;
 
 namespace rr {
+
+#define CHECK_ELF(cond) static_assert(cond, "ELF constant defined incorrectly" #cond)
+
+CHECK_ELF(ELFCLASSNONE == ELFCLASS::CLASSNONE);
+CHECK_ELF(ELFCLASS32 == ELFCLASS::CLASS32);
+CHECK_ELF(ELFCLASS64 == ELFCLASS::CLASS64);
+
+CHECK_ELF(EM_386 == EM::I386);
+CHECK_ELF(EM_X86_64 == EM::X86_64);
+
+CHECK_ELF(ELFDATA2LSB == ELFENDIAN::DATA2LSB);
 
 static const uint8_t int80_insn[] = { 0xcd, 0x80 };
 static const uint8_t sysenter_insn[] = { 0x0f, 0x34 };

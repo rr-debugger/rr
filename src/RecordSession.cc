@@ -2,6 +2,7 @@
 
 #include "RecordSession.h"
 
+#include <linux/futex.h>
 #include <limits.h>
 
 #include <algorithm>

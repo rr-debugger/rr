@@ -3,52 +3,12 @@
 #ifndef RR_KERNEL_ABI_H
 #define RR_KERNEL_ABI_H
 
-// Include remote_ptr.h first since it (indirectly) requires a definition of
-// ERANGE, which other headers below #undef :-(
-#include "remote_ptr.h"
-
-// Get all the kernel definitions so we can verify our alternative versions.
-#include <arpa/inet.h>
-#include <asm/ldt.h>
-#include <elf.h>
-#include <fcntl.h>
-#include <linux/capability.h>
-#include <linux/ethtool.h>
-#include <linux/filter.h>
-#include <linux/futex.h>
-#include <linux/ipc.h>
-#include <linux/msg.h>
-#include <linux/net.h>
-#include <linux/sem.h>
-#include <linux/shm.h>
-#include <linux/sockios.h>
-#include <linux/sysctl.h>
-#include <linux/usbdevice_fs.h>
-#include <linux/videodev2.h>
-#include <linux/wireless.h>
-#include <poll.h>
 #include <signal.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <sound/asound.h>
-#include <sys/epoll.h>
-#include <sys/ioctl.h>
-#include <sys/quota.h>
-#include <sys/resource.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <sys/times.h>
-#include <sys/un.h>
-#include <sys/user.h>
-#include <sys/utsname.h>
-#include <sys/vfs.h>
-#include <sys/sysinfo.h>
-#include <termios.h>
-
 #include <assert.h>
 
 #include <vector>
+
+#include "remote_ptr.h"
 
 namespace rr {
 
@@ -81,16 +41,15 @@ template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
   // with itself or (unlikely) the system's structure with itself.
 };
 
-#define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)                     \
-  static_assert(Verifier<arch_, system_type_, rr_type_>::same_size,            \
-                "type " #system_type_ " not correctly defined");
-
-// For instances where the system type and the rr type are named differently.
-#define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)                        \
-  RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)
-
-// For instances where the system type and the rr type are named identically.
-#define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
+// We want verify that the types have the same size as their
+// counterparts in the system header. To avoid having to include
+// all system headers here, we instead make the verification macros
+// a no-op unless inlcuded from kernel_abi.cc.
+#ifndef RR_VERIFY_TYPE
+#define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_) // no-op
+#define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_) // no-op
+#define RR_VERIFY_TYPE(x) // no-op
+#endif
 
 struct KernelConstants {
   static const ::size_t SIGINFO_MAX_SIZE = 128;
@@ -138,9 +97,24 @@ struct FcntlConstants {
   };
 };
 
-struct WordSize32Defs : public KernelConstants {
+// Various ELF constants we use. These are verified to be the same
+// as those in the system headers by kernel_abi.cc
+enum ELFCLASS {
+  CLASSNONE = 0,
+  CLASS32   = 1, 
+  CLASS64   = 2
+};
+enum ELFENDIAN {
+  DATA2LSB  = 1
+};
+enum EM {
+  I386      = 3,
+  X86_64   = 62,
+};
+
+struct WordSize32Defs {
   static const ::size_t SIGINFO_PAD_SIZE =
-      (SIGINFO_MAX_SIZE / sizeof(int32_t)) - 3;
+      (KernelConstants::SIGINFO_MAX_SIZE / sizeof(int32_t)) - 3;
 
   typedef int16_t signed_short;
   typedef uint16_t unsigned_short;
@@ -164,7 +138,7 @@ struct WordSize32Defs : public KernelConstants {
   typedef int32_t sigchld_clock_t;
   typedef uint32_t __statfs_word;
 
-  static const size_t elfclass = ELFCLASS32;
+  static const size_t elfclass = ELFCLASS::CLASS32;
   typedef struct {
     uint8_t   e_ident[16];
     uint16_t  e_type;
@@ -206,9 +180,9 @@ struct WordSize32Defs : public KernelConstants {
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Sym, ElfSym);
 };
 
-struct WordSize64Defs : public KernelConstants {
+struct WordSize64Defs {
   static const ::size_t SIGINFO_PAD_SIZE =
-      (SIGINFO_MAX_SIZE / sizeof(int32_t)) - 4;
+      (KernelConstants::SIGINFO_MAX_SIZE / sizeof(int32_t)) - 4;
 
   typedef int16_t signed_short;
   typedef uint16_t unsigned_short;
@@ -232,7 +206,7 @@ struct WordSize64Defs : public KernelConstants {
   typedef int64_t sigchld_clock_t;
   typedef signed_long __statfs_word;
 
-  static const size_t elfclass = ELFCLASS64;
+  static const size_t elfclass = ELFCLASS::CLASS64;
   typedef struct {
     uint8_t   e_ident[16];
     uint16_t  e_type;
@@ -280,7 +254,7 @@ struct WordSize64Defs : public KernelConstants {
  * the tracee.
  */
 template <SupportedArch arch_, typename wordsize>
-struct BaseArch : public wordsize, public FcntlConstants {
+struct BaseArch : public wordsize, public FcntlConstants, public KernelConstants {
   static SupportedArch arch() { return arch_; }
 
   typedef typename wordsize::syscall_slong_t syscall_slong_t;
@@ -1311,8 +1285,8 @@ struct BaseArch : public wordsize, public FcntlConstants {
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
-  static const size_t elfmachine = EM_386;
-  static const size_t elfendian = ELFDATA2LSB;
+  static const size_t elfmachine = EM::I386;
+  static const size_t elfendian = ELFENDIAN::DATA2LSB;
 
   static const MmapCallingSemantics mmap_semantics = StructArguments;
   static const CloneTLSType clone_tls_type = UserDescPointer;
@@ -1449,8 +1423,8 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
-  static const size_t elfmachine = EM_X86_64;
-  static const size_t elfendian = ELFDATA2LSB;
+  static const size_t elfmachine = EM::X86_64;
+  static const size_t elfendian = ELFENDIAN::DATA2LSB;
 
   static const MmapCallingSemantics mmap_semantics = RegisterArguments;
   static const CloneTLSType clone_tls_type = PthreadStructurePointer;

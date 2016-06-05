@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <sys/wait.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <limits>

@@ -8,6 +8,7 @@
 #include <linux/usbdevice_fs.h>
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
+#include <signal.h>
 
 namespace rr {
 

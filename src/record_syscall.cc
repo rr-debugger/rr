@@ -26,6 +26,7 @@
 #include <linux/videodev2.h>
 #include <linux/wireless.h>
 #include <linux/msdos_fs.h>
+#include <linux/capability.h>
 #include <poll.h>
 #include <sched.h>
 #include <sound/asound.h>
@@ -44,7 +45,6 @@
 #include <sys/vfs.h>
 #include <sys/wait.h>
 #include <termios.h>
-
 #include <limits>
 #include <sstream>
 #include <utility>

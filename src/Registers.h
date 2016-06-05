@@ -147,24 +147,12 @@ public:
   /**
    * Returns true if syscall_result() indicates failure.
    */
-  bool syscall_failed() const {
-    auto result = syscall_result_signed();
-    return -ERANGE <= result && result < 0;
-  }
+  bool syscall_failed() const;
+
   /**
    * Returns true if syscall_result() indicates a syscall restart.
    */
-  bool syscall_may_restart() const {
-    switch (-syscall_result_signed()) {
-      case ERESTART_RESTARTBLOCK:
-      case ERESTARTNOINTR:
-      case ERESTARTNOHAND:
-      case ERESTARTSYS:
-        return true;
-      default:
-        return false;
-    }
-  }
+  bool syscall_may_restart() const;
 
   /**
    * This pseudo-register holds the system-call number when we get ptrace

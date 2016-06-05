@@ -2,8 +2,11 @@
 
 #include "Session.h"
 
-#include <syscall.h>
+#include <linux/limits.h>
+#include <linux/unistd.h>
+#include <asm/ptrace.h>
 #include <sys/prctl.h>
+#include <syscall.h>
 
 #include <algorithm>
 

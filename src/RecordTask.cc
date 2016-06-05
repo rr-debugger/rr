@@ -7,6 +7,7 @@
 #include <linux/perf_event.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <elf.h>
 
 #include "AutoRemoteSyscalls.h"
 #include "kernel_abi.h"
