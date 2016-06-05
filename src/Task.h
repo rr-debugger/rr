@@ -437,7 +437,9 @@ public:
   /** Update the thread area to |addr|. */
   void set_thread_area(remote_ptr<struct ::user_desc> tls);
 
-  const std::vector<struct ::user_desc>& thread_areas() { return thread_areas_; }
+  const std::vector<struct ::user_desc>& thread_areas() {
+    return thread_areas_;
+  }
 
   /**
    * Return true when the task is running, false if it's stopped.

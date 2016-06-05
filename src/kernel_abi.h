@@ -47,8 +47,8 @@ template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
 // a no-op unless inlcuded from kernel_abi.cc.
 #ifndef RR_VERIFY_TYPE
 #define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_) // no-op
-#define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_) // no-op
-#define RR_VERIFY_TYPE(x) // no-op
+#define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)    // no-op
+#define RR_VERIFY_TYPE(x)                                  // no-op
 #endif
 
 struct KernelConstants {
@@ -99,17 +99,11 @@ struct FcntlConstants {
 
 // Various ELF constants we use. These are verified to be the same
 // as those in the system headers by kernel_abi.cc
-enum ELFCLASS {
-  CLASSNONE = 0,
-  CLASS32   = 1, 
-  CLASS64   = 2
-};
-enum ELFENDIAN {
-  DATA2LSB  = 1
-};
+enum ELFCLASS { CLASSNONE = 0, CLASS32 = 1, CLASS64 = 2 };
+enum ELFENDIAN { DATA2LSB = 1 };
 enum EM {
-  I386      = 3,
-  X86_64   = 62,
+  I386 = 3,
+  X86_64 = 62,
 };
 
 struct WordSize32Defs {
@@ -140,33 +134,33 @@ struct WordSize32Defs {
 
   static const size_t elfclass = ELFCLASS::CLASS32;
   typedef struct {
-    uint8_t   e_ident[16];
-    uint16_t  e_type;
-    uint16_t  e_machine;
-    uint32_t  e_version;
-    uint32_t  e_entry;
-    uint32_t  e_phoff;
-    uint32_t  e_shoff;
-    uint32_t  e_flags;
-    uint16_t  e_ehsize;
-    uint16_t  e_phentsize;
-    uint16_t  e_phnum;
-    uint16_t  e_shentsize;
-    uint16_t  e_shnum;
-    uint16_t  e_shstrndx;
+    uint8_t e_ident[16];
+    uint16_t e_type;
+    uint16_t e_machine;
+    uint32_t e_version;
+    uint32_t e_entry;
+    uint32_t e_phoff;
+    uint32_t e_shoff;
+    uint32_t e_flags;
+    uint16_t e_ehsize;
+    uint16_t e_phentsize;
+    uint16_t e_phnum;
+    uint16_t e_shentsize;
+    uint16_t e_shnum;
+    uint16_t e_shstrndx;
   } ElfEhdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Ehdr, ElfEhdr);
   typedef struct {
-    uint32_t  sh_name;
-    uint32_t  sh_type;
-    uint32_t  sh_flags;
-    uint32_t  sh_addr;
-    uint32_t  sh_offset;
-    uint32_t  sh_size;
-    uint32_t  sh_link;
-    uint32_t  sh_info;
-    uint32_t  sh_addralign;
-    uint32_t  sh_entsize;
+    uint32_t sh_name;
+    uint32_t sh_type;
+    uint32_t sh_flags;
+    uint32_t sh_addr;
+    uint32_t sh_offset;
+    uint32_t sh_size;
+    uint32_t sh_link;
+    uint32_t sh_info;
+    uint32_t sh_addralign;
+    uint32_t sh_entsize;
   } ElfShdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Shdr, ElfShdr);
   typedef struct {
@@ -208,20 +202,20 @@ struct WordSize64Defs {
 
   static const size_t elfclass = ELFCLASS::CLASS64;
   typedef struct {
-    uint8_t   e_ident[16];
-    uint16_t  e_type;
-    uint16_t  e_machine;
-    uint32_t  e_version;
-    uint64_t  e_entry;
-    uint64_t  e_phoff;
-    uint64_t  e_shoff;
-    uint32_t  e_flags;
-    uint16_t  e_ehsize;
-    uint16_t  e_phentsize;
-    uint16_t  e_phnum;
-    uint16_t  e_shentsize;
-    uint16_t  e_shnum;
-    uint16_t  e_shstrndx;
+    uint8_t e_ident[16];
+    uint16_t e_type;
+    uint16_t e_machine;
+    uint32_t e_version;
+    uint64_t e_entry;
+    uint64_t e_phoff;
+    uint64_t e_shoff;
+    uint32_t e_flags;
+    uint16_t e_ehsize;
+    uint16_t e_phentsize;
+    uint16_t e_phnum;
+    uint16_t e_shentsize;
+    uint16_t e_shnum;
+    uint16_t e_shstrndx;
   } ElfEhdr;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Ehdr, ElfEhdr);
   typedef struct {
@@ -239,8 +233,8 @@ struct WordSize64Defs {
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Shdr, ElfShdr);
   typedef struct {
     uint32_t st_name;
-    uint8_t  st_info;
-    uint8_t  st_other;
+    uint8_t st_info;
+    uint8_t st_other;
     uint16_t st_shndx;
     uint64_t st_value;
     uint64_t st_size;
@@ -254,7 +248,9 @@ struct WordSize64Defs {
  * the tracee.
  */
 template <SupportedArch arch_, typename wordsize>
-struct BaseArch : public wordsize, public FcntlConstants, public KernelConstants {
+struct BaseArch : public wordsize,
+                  public FcntlConstants,
+                  public KernelConstants {
   static SupportedArch arch() { return arch_; }
 
   typedef typename wordsize::syscall_slong_t syscall_slong_t;

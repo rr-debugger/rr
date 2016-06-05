@@ -45,16 +45,16 @@
 
 // Used to verify definitions in kernel_abi.h
 namespace rr {
-  #define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)                     \
-    static_assert(Verifier<arch_, system_type_, rr_type_>::same_size,            \
-                  "type " #system_type_ " not correctly defined");
+#define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)                     \
+  static_assert(Verifier<arch_, system_type_, rr_type_>::same_size,            \
+                "type " #system_type_ " not correctly defined");
 
-  // For instances where the system type and the rr type are named differently.
-  #define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)                        \
-    RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)
+// For instances where the system type and the rr type are named differently.
+#define RR_VERIFY_TYPE_EXPLICIT(system_type_, rr_type_)                        \
+  RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)
 
-  // For instances where the system type and the rr type are named identically.
-  #define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
+// For instances where the system type and the rr type are named identically.
+#define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
 }
 
 #include "kernel_abi.h"
@@ -67,7 +67,8 @@ using namespace std;
 
 namespace rr {
 
-#define CHECK_ELF(cond) static_assert(cond, "ELF constant defined incorrectly" #cond)
+#define CHECK_ELF(cond)                                                        \
+  static_assert(cond, "ELF constant defined incorrectly" #cond)
 
 CHECK_ELF(ELFCLASSNONE == ELFCLASS::CLASSNONE);
 CHECK_ELF(ELFCLASS32 == ELFCLASS::CLASS32);
