@@ -607,6 +607,7 @@ set(BASIC_TESTS
   switch_read
   symlink
   sync
+  syscall_bp
   syscallbuf_signal_reset
   syscallbuf_timeslice
   syscallbuf_timeslice2
