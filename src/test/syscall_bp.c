@@ -32,6 +32,11 @@ int main(void) {
   int memfd = open("/proc/self/mem", O_RDWR);
   uint8_t bp = 0xcc;
   int nwritten = pwrite(memfd, &bp, 1, (uintptr_t)syscall_addr);
+  if (nwritten == -1 && errno == EIO) {
+    atomic_puts("Not running under rr");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(nwritten == 1);
   // Now make a syscall that we know rr will want to use a remote syscall
   // for. Don't use the glibc wrapper to make absolutely sure we don't hit
