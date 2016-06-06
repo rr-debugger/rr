@@ -74,7 +74,19 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
   } else {
     initial_regs.set_sp(remote_ptr<void>());
   }
-  t->vm()->suspend_breakpoint_at(initial_regs.ip());
+  // We need to make sure to clear any breakpoints or other alterations of
+  // the syscall instruction we're using. Note that the tracee may have set its
+  // own breakpoints or otherwise modified the instruction, so suspending our
+  // own breakpoint is insufficient.
+  std::vector<uint8_t> syscall = rr::syscall_instruction(t->arch());
+  replaced_bytes =
+      t->read_mem(initial_regs.ip().to_data_ptr<uint8_t>(), syscall.size());
+  if (replaced_bytes == syscall) {
+    replaced_bytes.clear();
+  } else {
+    t->write_mem(initial_regs.ip().to_data_ptr<uint8_t>(), syscall.data(),
+                 syscall.size());
+  }
 }
 
 static bool is_usable_area(const KernelMapping& km) {
@@ -112,7 +124,11 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
 AutoRemoteSyscalls::~AutoRemoteSyscalls() { restore_state_to(t); }
 
 void AutoRemoteSyscalls::restore_state_to(Task* t) {
-  t->vm()->restore_breakpoint_at(initial_regs.ip());
+  if (!replaced_bytes.empty()) {
+    t->write_mem(remote_ptr<uint8_t>(
+                     t->vm()->traced_syscall_ip().to_data_ptr<uint8_t>()),
+                 replaced_bytes.data(), replaced_bytes.size());
+  }
   initial_regs.set_ip(initial_ip);
   initial_regs.set_sp(initial_sp);
   // Restore stomped registers.
