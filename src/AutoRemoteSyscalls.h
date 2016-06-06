@@ -241,6 +241,7 @@ private:
   remote_code_ptr initial_ip;
   remote_ptr<void> initial_sp;
   int pending_syscallno;
+  std::vector<uint8_t> replaced_bytes;
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
