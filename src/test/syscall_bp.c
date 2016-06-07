@@ -45,4 +45,5 @@ int main(void) {
   my_syscall(SYS_write, STDOUT_FILENO, (uintptr_t) "EXIT-SUCCESS", 14);
   // Exit directly.
   my_syscall(SYS_exit, 0x0, 0, 0);
+  return 1;
 }
