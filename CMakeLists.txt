@@ -470,6 +470,7 @@ set(BASIC_TESTS
   legacy_ugid
   madvise
   map_fixed
+  membarrier
   memfd_create
   mincore
   mknod
