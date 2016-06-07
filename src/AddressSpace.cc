@@ -563,6 +563,11 @@ const AddressSpace::Mapping& AddressSpace::mapping_of(
   assert(it->second.map.contains(range));
   return it->second;
 }
+uint32_t& AddressSpace::mapping_flags_of(remote_ptr<void> addr) {
+  return const_cast<AddressSpace::Mapping&>(
+             static_cast<const AddressSpace*>(this)->mapping_of(addr))
+      .flags;
+}
 
 bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
   if (addr + page_size() < addr) {
@@ -1372,6 +1377,7 @@ bool AddressSpace::allocate_watchpoints() {
 static inline void assert_coalesceable(const AddressSpace::Mapping& lower,
                                        const AddressSpace::Mapping& higher) {
   assert(lower.emu_file == higher.emu_file);
+  assert(lower.flags == higher.flags);
   assert((lower.local_addr == 0 && higher.local_addr == 0) ||
          lower.local_addr + lower.map.size() == higher.local_addr);
 }
@@ -1409,6 +1415,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   Mapping new_m(first_kv->second.map.extend(last_kv->first.end()),
                 first_kv->second.recorded_map.extend(last_kv->first.end()),
                 first_kv->second.emu_file, first_kv->second.local_addr);
+  new_m.flags = first_kv->second.flags;
   LOG(debug) << "  coalescing " << new_m.map;
 
   mem.erase(first_kv, ++last_kv);

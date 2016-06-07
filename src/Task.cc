@@ -1697,6 +1697,8 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   KernelMapping km =
       Session::create_shared_mmap(remote, syscallbuf_size, map_hint);
   auto& m = remote.task()->vm()->mapping_of(km.start());
+  remote.task()->vm()->mapping_flags_of(km.start()) |=
+      AddressSpace::Mapping::IS_SYSCALLBUF;
 
   ASSERT(this, !syscallbuf_child)
       << "Should not already have syscallbuf initialized!";
