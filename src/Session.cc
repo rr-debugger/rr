@@ -504,8 +504,6 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
 void Session::recreate_shared_mmap(AutoRemoteSyscalls& remote,
                                    const AddressSpace::Mapping& m) {
   assert(m.local_addr != nullptr);
-  remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
-                            m.map.start(), m.map.size());
   char name[PATH_MAX];
   strncpy(name, m.map.fsname().c_str(), sizeof(name));
   const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
