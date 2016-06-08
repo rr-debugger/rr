@@ -229,7 +229,8 @@ public:
 
   static KernelMapping create_shared_mmap(
       AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
-      const char* name, int tracee_prot = PROT_READ | PROT_WRITE);
+      const char* name, int tracee_prot = PROT_READ | PROT_WRITE,
+      int trace_flags = 0);
 
   static bool make_private_shared(AutoRemoteSyscalls& remote,
                                   const AddressSpace::Mapping m);
