@@ -43,18 +43,14 @@ static const char* trim_leading_blanks(const char* str) {
  */
 class KernelMapIterator {
 public:
-  KernelMapIterator(Task* t) : t(t) {
-    char maps_path[PATH_MAX];
-    sprintf(maps_path, "/proc/%d/maps", t->tid);
-    ASSERT(t, (maps_file = fopen(maps_path, "r"))) << "Failed to open "
-                                                   << maps_path;
-    ++*this;
-  }
+  KernelMapIterator(Task* t) : tid(t->tid) { init(); }
+  KernelMapIterator(pid_t tid) : tid(tid) { init(); }
   ~KernelMapIterator() {
     if (maps_file) {
       fclose(maps_file);
     }
   }
+
   // It's very important to keep in mind that btrfs files can have the wrong
   // device number!
   const KernelMapping& current(string* raw_line = nullptr) {
@@ -67,7 +63,15 @@ public:
   void operator++();
 
 private:
-  Task* t;
+  void init() {
+    char maps_path[PATH_MAX];
+    sprintf(maps_path, "/proc/%d/maps", tid);
+    if (!(maps_file = fopen(maps_path, "r")))
+      FATAL() << "Failed to open " << maps_path;
+    ++*this;
+  }
+
+  pid_t tid;
   FILE* maps_file;
   string raw_line;
   KernelMapping km;
@@ -89,8 +93,8 @@ void KernelMapIterator::operator++() {
                              " %x:%x %" SCNu64 " %n",
                        &start, &end, flags, &offset, &dev_major, &dev_minor,
                        &inode, &chars_scanned);
-  ASSERT(t, 8 /*number of info fields*/ == nparsed ||
-                7 /*num fields if name is blank*/ == nparsed);
+  assert(8 /*number of info fields*/ == nparsed ||
+         7 /*num fields if name is blank*/ == nparsed);
 
   // trim trailing newline, if any
   int last_char = strlen(line) - 1;
@@ -110,9 +114,9 @@ void KernelMapIterator::operator++() {
     // that being correct yet.
     char proc_exe[PATH_MAX];
     char exe[PATH_MAX];
-    snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", t->tid);
+    snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", tid);
     readlink(proc_exe, exe, sizeof(exe));
-    FATAL() << "Sorry, tracee " << t->tid << " has x86-64 image " << exe
+    FATAL() << "Sorry, tracee " << tid << " has x86-64 image " << exe
             << " and that's not supported with a 32-bit rr.";
   }
 #endif
@@ -126,16 +130,24 @@ void KernelMapIterator::operator++() {
                      f, offset);
 }
 
-KernelMapping AddressSpace::read_kernel_mapping(Task* t,
-                                                remote_ptr<void> addr) {
+static KernelMapping read_kernel_mapping(pid_t tid, remote_ptr<void> addr) {
   MemoryRange range(addr, 1);
-  for (KernelMapIterator it(t); !it.at_end(); ++it) {
+  for (KernelMapIterator it(tid); !it.at_end(); ++it) {
     const KernelMapping& km = it.current();
     if (km.contains(range)) {
       return km;
     }
   }
   return KernelMapping();
+}
+
+KernelMapping AddressSpace::read_kernel_mapping(Task* t,
+                                                remote_ptr<void> addr) {
+  return rr::read_kernel_mapping(t->tid, addr);
+}
+
+KernelMapping AddressSpace::read_local_kernel_mapping(uint8_t* addr) {
+  return rr::read_kernel_mapping(getpid(), remote_ptr<void>((uintptr_t)addr));
 }
 
 /**
@@ -195,7 +207,7 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
 }
 
 static string find_rr_page_file(Task* t) {
-  string path = exe_directory() + "rr_page_";
+  string path = exe_directory() + "../bin/rr_page_";
   switch (t->arch()) {
     case x86:
       path += "32";

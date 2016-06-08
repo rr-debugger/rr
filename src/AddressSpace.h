@@ -645,6 +645,11 @@ public:
    */
   KernelMapping read_kernel_mapping(Task* t, remote_ptr<void> addr);
 
+  /**
+   * Same as read_kernel_mapping, but reads rr's own memory map.
+   */
+  static KernelMapping read_local_kernel_mapping(uint8_t* addr);
+
   static uint32_t chaos_mode_min_stack_size() { return 8 * 1024 * 1024; }
 
   remote_ptr<void> chaos_mode_find_free_memory(Task* t, size_t len);

@@ -724,14 +724,21 @@ string real_path(const string& path) {
   return path;
 }
 
-string exe_directory() {
-  string exe_path = real_path("/proc/self/exe");
+static string read_exe_dir() {
+  KernelMapping km =
+      AddressSpace::read_local_kernel_mapping((uint8_t*)&read_exe_dir);
+  string exe_path = km.fsname();
   int end = exe_path.length();
   // Chop off the filename
   while (end > 0 && exe_path[end - 1] != '/') {
     --end;
   }
   exe_path.erase(end);
+  return exe_path;
+}
+
+string exe_directory() {
+  static string exe_path = read_exe_dir();
   return exe_path;
 }
 
