@@ -27,7 +27,7 @@ public:
   remote_ptr(uintptr_t ptr) : ptr(ptr) {}
   remote_ptr(std::nullptr_t) : ptr(0) {}
   template <typename U> remote_ptr(remote_ptr<U> p) : ptr(p.as_int()) {
-    consume_dummy(static_cast<U*>(nullptr));
+    consume_dummy(static_cast<typename std::remove_cv<U>::type*>(nullptr));
   }
 
   uintptr_t as_int() const { return ptr; }
@@ -83,10 +83,13 @@ public:
 
   bool is_null() const { return !ptr; }
 
-  template <typename U> remote_ptr<U> field(U& dummy) {
-    return remote_ptr<U>(ptr + reinterpret_cast<uintptr_t>(&dummy));
+  template <typename U>
+  remote_ptr<typename std::remove_cv<U>::type> field(U* dummy) const {
+    return remote_ptr<typename std::remove_cv<U>::type>(
+        ptr + reinterpret_cast<uintptr_t>(dummy));
   }
   T* dummy() { return nullptr; }
+  const T* dummy() const { return nullptr; }
 
   size_t referent_size() { return sizeof(T); }
 
@@ -101,7 +104,7 @@ private:
  * returns a remote_ptr pointing to field f of the struct pointed to by
  * remote_ptr p
  */
-#define REMOTE_PTR_FIELD(p, f) (p).field((p).dummy()->f)
+#define REMOTE_PTR_FIELD(p, f) (p).field(&(p).dummy()->f)
 
 template <typename T>
 std::ostream& operator<<(std::ostream& stream, remote_ptr<T> p) {

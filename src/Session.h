@@ -24,6 +24,7 @@ class ReplaySession;
 class ReplayTask;
 class Task;
 class TaskGroup;
+class AutoRemoteSyscalls;
 
 // The following types are used by step() APIs in Session subclasses.
 
@@ -226,6 +227,14 @@ public:
 
   std::string read_spawned_task_error() const;
 
+  static KernelMapping create_shared_mmap(
+      AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
+      const char* name, int tracee_prot = PROT_READ | PROT_WRITE,
+      int trace_flags = 0);
+
+  static bool make_private_shared(AutoRemoteSyscalls& remote,
+                                  const AddressSpace::Mapping m);
+
 protected:
   Session();
   virtual ~Session();
@@ -247,6 +256,9 @@ protected:
   // of tasks (i.e., almost anything!). Not really const!
   void finish_initializing() const;
   void assert_fully_initialized() const;
+
+  void recreate_shared_mmap(AutoRemoteSyscalls& remote,
+                            const AddressSpace::Mapping& m);
 
   AddressSpaceMap vm_map;
   TaskMap task_map;

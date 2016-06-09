@@ -70,7 +70,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       hpc(_tid),
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
-      syscallbuf_hdr(),
       syscallbuf_size(0),
       num_syscallbuf_bytes(0),
       stopping_breakpoint_table_entry_size(0),
@@ -117,8 +116,6 @@ Task::~Task() {
       }
     }
   }
-
-  destroy_local_buffers();
 
   session().on_destroy(this);
   tg->erase_task(this);
@@ -227,9 +224,12 @@ void Task::destroy_buffers() {
                             scratch_size);
   vm()->unmap(scratch_ptr, scratch_size);
   if (!syscallbuf_child.is_null()) {
+    uint8_t *local_mapping = vm()->mapping_of(syscallbuf_child).local_addr;
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               syscallbuf_child, num_syscallbuf_bytes);
     vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
+    munmap(local_mapping, num_syscallbuf_bytes);
+    syscallbuf_child = nullptr;
     if (desched_fd_child >= 0) {
       if (session().is_recording()) {
         remote.infallible_syscall(syscall_number_for_close(arch()),
@@ -1575,18 +1575,6 @@ Task::CapturedState Task::capture_state() {
           : 0;
   state.syscallbuf_child = syscallbuf_child;
   state.syscallbuf_size = syscallbuf_size;
-  if (syscallbuf_hdr) {
-    size_t data_size = syscallbuf_data_size();
-    if (syscallbuf_hdr->locked) {
-      // There may be an incomplete syscall record after num_rec_bytes that
-      // we need to capture here. We don't know how big that record is,
-      // so just record the entire buffer. This should not be common.
-      data_size = num_syscallbuf_bytes;
-    }
-    state.syscallbuf_hdr.resize(data_size);
-    memcpy(state.syscallbuf_hdr.data(), syscallbuf_hdr,
-           state.syscallbuf_hdr.size());
-  }
   state.preload_globals = preload_globals;
   state.scratch_ptr = scratch_ptr;
   state.scratch_size = scratch_size;
@@ -1628,17 +1616,7 @@ void Task::copy_state(const CapturedState& state) {
         remote.infallible_lseek_syscall(
             cloned_file_data_fd_child, state.cloned_file_data_offset, SEEK_SET);
       }
-
-      // The syscallbuf is mapped as a shared
-      // segment between rr and the tracee.  So we
-      // have to unmap it, create a copy, and then
-      // re-map the copy in rr and the tracee.
-      init_syscall_buffer(remote, state.syscallbuf_child);
-      ASSERT(this, state.syscallbuf_child == syscallbuf_child);
-      // Ensure the copied syscallbuf has the same contents
-      // as the old one, for consistency checking.
-      memcpy(syscallbuf_hdr, state.syscallbuf_hdr.data(),
-             state.syscallbuf_hdr.size());
+      syscallbuf_child = state.syscallbuf_child;
     }
   }
   preload_globals = state.preload_globals;
@@ -1658,8 +1636,15 @@ void Task::copy_state(const CapturedState& state) {
   thread_locals_initialized = state.thread_locals_initialized;
 }
 
-void Task::destroy_local_buffers() {
-  munmap(syscallbuf_hdr, num_syscallbuf_bytes);
+remote_ptr<const struct syscallbuf_record> Task::next_syscallbuf_record() {
+  return ((syscallbuf_child + 1).cast<uint8_t>() +
+          read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes)))
+      .cast<const struct syscallbuf_record>();
+}
+
+long Task::stored_record_size(
+    remote_ptr<const struct syscallbuf_record> record) {
+  return ::stored_record_size(read_mem(REMOTE_PTR_FIELD(record, size)));
 }
 
 long Task::fallible_ptrace(int request, remote_ptr<void> addr, void* data) {
@@ -1709,72 +1694,39 @@ void Task::open_mem_fd_if_needed() {
 
 KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
                                         remote_ptr<void> map_hint) {
-  static int nonce = 0;
-  // Create the segment we'll share with the tracee.
-  char path[PATH_MAX];
-  snprintf(path, sizeof(path) - 1, SYSCALLBUF_SHMEM_PATH_PREFIX "%d-%d", tid,
-           nonce++);
-
-  // Let the child create the shmem block and then send the fd back to us.
-  // This lets us avoid having to make the file world-writeable so that
-  // the child can read it when it's in a different user namespace (which
-  // would be a security hole, letting other users abuse rr users).
-  int child_shmem_fd;
-  {
-    AutoRestoreMem child_path(remote, path);
-    // skip leading '/' since we want the path to be relative to the root fd
-    child_shmem_fd = remote.infallible_syscall(
-        syscall_number_for_openat(arch()), RR_RESERVED_ROOT_DIR_FD,
-        child_path.get() + 1, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
-  }
-
-  /* Remove the fs name so that we don't have to worry about
-   * cleaning up this segment in error conditions. */
-  unlink(path);
-
-  ScopedFd shmem_fd = remote.retrieve_fd(child_shmem_fd);
-  resize_shmem_segment(shmem_fd, syscallbuf_size);
-  LOG(debug) << "created shmem segment " << path;
-
-  // Map the segment in ours and the tracee's address spaces.
-  void* map_addr;
-  num_syscallbuf_bytes = syscallbuf_size;
-  int prot = PROT_READ | PROT_WRITE;
-  int flags = MAP_SHARED;
-  if ((void*)-1 == (map_addr = mmap(nullptr, num_syscallbuf_bytes, prot, flags,
-                                    shmem_fd, 0))) {
-    FATAL() << "Failed to mmap shmem region";
-  }
-  if (!map_hint.is_null()) {
-    flags |= MAP_FIXED;
-  }
-  remote_ptr<void> child_map_addr = remote.infallible_mmap_syscall(
-      map_hint, num_syscallbuf_bytes, prot, flags, child_shmem_fd, 0);
+  KernelMapping km = Session::create_shared_mmap(remote, syscallbuf_size,
+                                                 map_hint, "syscallbuf");
+  auto& m = remote.task()->vm()->mapping_of(km.start());
+  remote.task()->vm()->mapping_flags_of(km.start()) |=
+      AddressSpace::Mapping::IS_SYSCALLBUF;
 
   ASSERT(this, !syscallbuf_child)
       << "Should not already have syscallbuf initialized!";
-  syscallbuf_child = child_map_addr.cast<struct syscallbuf_hdr>();
-  syscallbuf_hdr = (struct syscallbuf_hdr*)map_addr;
-  // No entries to begin with.
-  memset(syscallbuf_hdr, 0, sizeof(*syscallbuf_hdr));
 
-  struct stat st;
-  ASSERT(this, 0 == ::fstat(shmem_fd, &st));
-  KernelMapping km =
-      vm()->map(child_map_addr, num_syscallbuf_bytes, prot, flags, 0, path,
-                st.st_dev, st.st_ino, nullptr, nullptr, map_addr);
-  shmem_fd.close();
-  remote.infallible_syscall(syscall_number_for_close(arch()), child_shmem_fd);
+  num_syscallbuf_bytes = syscallbuf_size;
+  syscallbuf_child = km.start().cast<struct syscallbuf_hdr>();
+
+  // No entries to begin with.
+  memset(m.local_addr, 0, sizeof(struct syscallbuf_hdr));
 
   return km;
 }
 
 void Task::reset_syscallbuf() {
-  uint8_t* ptr = (uint8_t*)(syscallbuf_hdr + 1);
-  memset(ptr, 0, syscallbuf_hdr->num_rec_bytes);
-  syscallbuf_hdr->num_rec_bytes = 0;
-  syscallbuf_hdr->mprotect_record_count = 0;
-  syscallbuf_hdr->mprotect_record_count_completed = 0;
+  if (!syscallbuf_child)
+    return;
+  // Memset is easiest to do by using the local mapping which should always
+  // exist for the syscallbuf
+  uint32_t num_rec =
+      read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes));
+  uint8_t* ptr = local_mapping(syscallbuf_child + 1, num_rec);
+  assert(ptr != nullptr);
+  memset(ptr, 0, num_rec);
+  write_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes), (uint32_t)0);
+  write_mem(REMOTE_PTR_FIELD(syscallbuf_child, mprotect_record_count),
+            (uint32_t)0);
+  write_mem(REMOTE_PTR_FIELD(syscallbuf_child, mprotect_record_count_completed),
+            (uint32_t)0);
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
@@ -1853,7 +1805,7 @@ uint8_t* Task::local_mapping(remote_ptr<void> addr, size_t size) {
 
 ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
                                   void* buf) {
-  ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
+  ASSERT_ACTIONS(this, buf_size >= 0, << "Invalid buf_size " << buf_size);
   if (0 == buf_size) {
     return 0;
   }

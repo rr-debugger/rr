@@ -372,7 +372,9 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
       // invocation of this function for the same event (once the event
       // completes, the breakpoint is cleared).
       assert(!syscall_bp_vm || (syscall_bp_vm == t->vm() &&
-                                syscall_instruction == syscall_bp_addr));
+                                syscall_instruction == syscall_bp_addr &&
+                                t->vm()->get_breakpoint_type_at_addr(
+                                    syscall_instruction) != BKPT_NONE));
       // Skip this optimization if we can't set the breakpoint, or if it's
       // in writeable or shared memory, since in those cases it could be
       // overwritten by the tracee. It could even be dynamically generated and
@@ -906,10 +908,11 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
 
   struct syscallbuf_hdr recorded_hdr;
   memcpy(&recorded_hdr, buf.data.data(), sizeof(struct syscallbuf_hdr));
-  // Don't overwrite t->syscallbuf_hdr. That needs to keep tracking the current
+  // Don't overwrite syscallbuf_hdr. That needs to keep tracking the current
   // syscallbuf state.
-  memcpy(t->syscallbuf_hdr + 1, buf.data.data() + sizeof(struct syscallbuf_hdr),
-         buf.data.size() - sizeof(struct syscallbuf_hdr));
+  t->write_bytes_helper(t->syscallbuf_child + 1,
+                        buf.data.size() - sizeof(struct syscallbuf_hdr),
+                        buf.data.data() + sizeof(struct syscallbuf_hdr));
 
   ASSERT(t, recorded_hdr.num_rec_bytes + sizeof(struct syscallbuf_hdr) <=
                 t->syscallbuf_size);
@@ -926,7 +929,7 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
 static void apply_mprotect_records(ReplayTask* t,
                                    uint32_t skip_mprotect_records) {
   uint32_t final_mprotect_record_count =
-      t->syscallbuf_hdr->mprotect_record_count;
+      t->read_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, mprotect_record_count));
   if (skip_mprotect_records < final_mprotect_record_count) {
     auto records =
         t->read_mem(REMOTE_PTR_FIELD(t->preload_globals, mprotect_records[0]) +
@@ -934,7 +937,9 @@ static void apply_mprotect_records(ReplayTask* t,
                     final_mprotect_record_count - skip_mprotect_records);
     for (size_t i = 0; i < records.size(); ++i) {
       auto& r = records[i];
-      if (i >= t->syscallbuf_hdr->mprotect_record_count_completed) {
+      uint32_t completed_count = t->read_mem(REMOTE_PTR_FIELD(
+          t->syscallbuf_child, mprotect_record_count_completed));
+      if (i >= completed_count) {
         auto km = t->vm()->read_kernel_mapping(t, r.start);
         if (km.prot() != r.prot) {
           // mprotect didn't happen yet.
@@ -954,9 +959,9 @@ static void apply_mprotect_records(ReplayTask* t,
  */
 Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                            const StepConstraints& constraints) {
-  struct syscallbuf_record* next_rec = next_record(t->syscallbuf_hdr);
-  uint32_t skip_mprotect_records =
-      t->syscallbuf_hdr->mprotect_record_count_completed;
+  auto next_rec = t->next_syscallbuf_record();
+  uint32_t skip_mprotect_records = t->read_mem(
+      REMOTE_PTR_FIELD(t->syscallbuf_child, mprotect_record_count_completed));
 
   TicksRequest ticks_request;
   if (!compute_ticks_request(t, constraints, &ticks_request)) {
@@ -974,11 +979,10 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                              BKPT_INTERNAL);
 
   // Account for buffered syscalls just completed
-  struct syscallbuf_record* end_rec = next_record(t->syscallbuf_hdr);
+  auto end_rec = t->next_syscallbuf_record();
   while (next_rec != end_rec) {
     accumulate_syscall_performed();
-    next_rec = (struct syscallbuf_record*)((uint8_t*)next_rec +
-                                           stored_record_size(next_rec->size));
+    next_rec = next_rec.as_int() + t->stored_record_size(next_rec);
   }
 
   // Apply the mprotect records we just completed.
@@ -1175,11 +1179,15 @@ void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
              << ": replaying " << Event(ev) << "; state "
              << (ev.is_syscall_event() ? state_name(ev.Syscall().state)
                                        : " (none)");
-  if (t->syscallbuf_hdr) {
+  if (t->syscallbuf_child) {
     LOG(debug) << "    (syscllbufsz:"
-               << (uint32_t)t->syscallbuf_hdr->num_rec_bytes
-               << ", abrtcmt:" << bool(t->syscallbuf_hdr->abort_commit)
-               << ", locked:" << bool(t->syscallbuf_hdr->locked) << ")";
+               << (uint32_t)t->read_mem(
+                      REMOTE_PTR_FIELD(t->syscallbuf_child, num_rec_bytes))
+               << ", abrtcmt:" << bool(t->read_mem(REMOTE_PTR_FIELD(
+                                      t->syscallbuf_child, abort_commit)))
+               << ", locked:" << bool(t->read_mem(REMOTE_PTR_FIELD(
+                                     t->syscallbuf_child, locked)))
+               << ")";
   }
 
   /* Ask the trace-interpretation code what to do next in order
@@ -1192,7 +1200,8 @@ void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.action = TSTEP_EXIT_TASK;
       break;
     case EV_SYSCALLBUF_ABORT_COMMIT:
-      t->syscallbuf_hdr->abort_commit = 1;
+      t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, abort_commit),
+                   (uint8_t)1);
       t->apply_all_data_records_from_trace();
       current_step.action = TSTEP_RETIRE;
       break;

@@ -88,12 +88,29 @@ const EmergencyDebugOstream& operator<<(const EmergencyDebugOstream& stream,
 /** A fatal error has occurred.  Log the error and exit. */
 #define FATAL() FatalOstream(__FILE__, __LINE__, __FUNCTION__)
 
+#ifndef __has_builtin
+#define __has_builtin(x) 0
+#endif
+#if __has_builtin(__builtin_expect) || __GNUC_PREREQ(4, 0)
+#define RR_UNLIKELY(EXPR) __builtin_expect((bool)(EXPR), false)
+#else
+#define RR_UNLIKELY(EXPR) (EXPR)
+#endif
+
 /**
  * Assert a condition related to a Task.  If the condition fails, an
  * emergency debugger for the task is launched.
  */
 #define ASSERT(_t, _cond)                                                      \
   EmergencyDebugOstream(_cond, _t, __FILE__, __LINE__, __FUNCTION__, #_cond)
+#define ASSERT_ACTIONS(_t, _cond, _actions)                                    \
+  do {                                                                         \
+    bool _ASSERT_cond = _cond;                                                 \
+    if (RR_UNLIKELY(!_ASSERT_cond)) {                                          \
+      EmergencyDebugOstream(_ASSERT_cond, _t, __FILE__, __LINE__,              \
+                            __FUNCTION__, #_cond) _actions;                    \
+    }                                                                          \
+  } while (0)
 
 /**
  * Ensure that |_v| is streamed in hex format.

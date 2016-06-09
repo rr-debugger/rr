@@ -9,6 +9,7 @@
 #include <syscall.h>
 
 #include <algorithm>
+#include <limits>
 
 #include "rr/rr.h"
 
@@ -429,6 +430,138 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
 
+#define RR_MAPPING_PREFIX "/tmp/rr-shared-"
+KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
+                                          size_t size,
+                                          remote_ptr<void> map_hint,
+                                          const char* name, int tracee_prot,
+                                          int tracee_flags) {
+  static int nonce = 0;
+  // Create the segment we'll share with the tracee.
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, RR_MAPPING_PREFIX "%s-%d-%d", name,
+           remote.task()->real_tgid(), nonce++);
+
+  // Let the child create the shmem block and then send the fd back to us.
+  // This lets us avoid having to make the file world-writeable so that
+  // the child can read it when it's in a different user namespace (which
+  // would be a security hole, letting other users abuse rr users).
+  int child_shmem_fd;
+  {
+    AutoRestoreMem child_path(remote, path);
+    // skip leading '/' since we want the path to be relative to the root fd
+    child_shmem_fd = remote.infallible_syscall(
+        syscall_number_for_openat(remote.arch()),
+        RR_RESERVED_ROOT_DIR_FD, child_path.get() + 1,
+        O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
+  }
+
+  /* Remove the fs name so that we don't have to worry about
+   * cleaning up this segment in error conditions. */
+  unlink(path);
+
+  ScopedFd shmem_fd = remote.retrieve_fd(child_shmem_fd);
+  resize_shmem_segment(shmem_fd, size);
+  LOG(debug) << "created shmem segment " << path;
+
+  // Map the segment in ours and the tracee's address spaces.
+  void* map_addr;
+  int flags = MAP_SHARED;
+  if ((void*)-1 == (map_addr = mmap(nullptr, size, PROT_READ | PROT_WRITE,
+                                    flags, shmem_fd, 0))) {
+    FATAL() << "Failed to mmap shmem region";
+  }
+  if (!map_hint.is_null()) {
+    flags |= MAP_FIXED;
+  }
+  remote_ptr<void> child_map_addr = remote.infallible_mmap_syscall(
+      map_hint, size, tracee_prot, flags, child_shmem_fd, 0);
+
+  struct stat st;
+  ASSERT(remote.task(), 0 == ::fstat(shmem_fd, &st));
+  KernelMapping km = remote.task()->vm()->map(
+      child_map_addr, size, tracee_prot, flags | tracee_flags, 0, path,
+      st.st_dev, st.st_ino, nullptr, nullptr, map_addr);
+
+  shmem_fd.close();
+  remote.infallible_syscall(syscall_number_for_close(remote.arch()),
+                            child_shmem_fd);
+  return km;
+}
+
+static char* extract_name(char* name_buffer, size_t buffer_size) {
+  // Recover the name that was originally chosen by finding the part of the
+  // name between RR_MAPPING_PREFIX and the -%d-%d at the end.
+  char* name_end = name_buffer + strnlen(name_buffer, buffer_size);
+  char* name_start = name_buffer + strlen(RR_MAPPING_PREFIX);
+  for (int i = 0; i < 2; ++i) {
+    while (name_end > name_start+(1-i) && *(name_end--) != '-');
+  }
+  *name_end = '\0';
+  return name_start;
+}
+
+// Recreate an mmap region that is shared between rr and the tracee
+void Session::recreate_shared_mmap(AutoRemoteSyscalls& remote,
+                                   const AddressSpace::Mapping& m) {
+  assert(m.local_addr != nullptr);
+  char name[PATH_MAX];
+  strncpy(name, m.map.fsname().c_str(), sizeof(name));
+  const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
+      create_shared_mmap(remote, m.map.size(), m.map.start(),
+                         extract_name(name, sizeof(name)), m.map.prot())
+          .start());
+  memcpy(new_m.local_addr, m.local_addr, m.map.size());
+}
+
+// Replace a MAP_PRIVATE segment by one that is shared between rr and the
+// tracee. Returns true on success
+bool Session::make_private_shared(AutoRemoteSyscalls& remote,
+                                  const AddressSpace::Mapping m) {
+  if (!(m.map.flags() & MAP_PRIVATE)) {
+    return false;
+  }
+  // Find a place to map the current segment to temporarily
+  remote_ptr<void> start = m.map.start();
+  size_t sz = m.map.size();
+  remote_ptr<void> free_mem = remote.task()->vm()->find_free_memory(sz);
+  remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), start, sz,
+                            sz, MREMAP_MAYMOVE | MREMAP_FIXED, free_mem);
+  remote.task()->vm()->remap(start, sz, free_mem, sz);
+
+  // AutoRemoteSyscalls may have gotten unlucky and picked the old stack
+  // segment as it's scratch space, reevaluate that choice
+  AutoRemoteSyscalls remote2(remote.task());
+
+  // We will include the name of the full path of the original mapping in the
+  // name of the shared mapping, replacing slashes by dashes.
+  char name[PATH_MAX - 40];
+  strncpy(name, m.map.fsname().c_str(), sizeof(name));
+  name[sizeof(name) - 1] = '\0';
+  for (char* ptr = name; *ptr != '\0'; ++ptr) {
+    if (*ptr == '/')
+      *ptr = '-';
+  }
+
+  // Now create the new mapping in its place
+  const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
+      create_shared_mmap(remote2, sz, start, name, m.map.prot(),
+                         m.map.flags() & (MAP_GROWSDOWN | MAP_STACK)).start());
+
+  // And copy over the contents. Since we can't just call memcpy in the
+  // inferior, just copy directly from the remote private into the local
+  // reference of the shared mapping. We use the fallible read method to
+  // handle the case where the mapping is larger than the backing file, which
+  // would otherwise cause a short read.
+  remote2.task()->read_bytes_fallible(free_mem, sz, new_m.local_addr);
+
+  // Finally unmap the original segment
+  remote2.infallible_syscall(syscall_number_for_munmap(remote.arch()), free_mem,
+                             sz);
+  remote.task()->vm()->unmap(free_mem, sz);
+  return true;
+}
+
 void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   assert_fully_initialized();
   assert(!dest.clone_completion);
@@ -452,8 +585,10 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
     {
       AutoRemoteSyscalls remote(group.clone_leader);
       for (auto m : group.clone_leader->vm()->maps()) {
-        if ((m.recorded_map.flags() & MAP_SHARED) &&
-            emu_fs.has_file_for(m.recorded_map)) {
+        if (m.local_addr != nullptr) {
+          recreate_shared_mmap(remote, m);
+        } else if ((m.recorded_map.flags() & MAP_SHARED) &&
+                   emu_fs.has_file_for(m.recorded_map)) {
           remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);
         }
       }
