@@ -30,6 +30,7 @@ struct Session::CloneCompletion {
     Task* clone_leader;
     Task::CapturedState clone_leader_state;
     vector<Task::CapturedState> member_states;
+    vector<pair<remote_ptr<uint8_t>, vector<uint8_t> > > captured_memory;
   };
   vector<TaskGroup> task_groups;
 };
@@ -363,6 +364,16 @@ void Session::finish_initializing() const {
   Session* self = const_cast<Session*>(this);
   for (auto& tgleader : clone_completion->task_groups) {
     AutoRemoteSyscalls remote(tgleader.clone_leader);
+    for (auto m : tgleader.clone_leader->vm()->maps()) {
+      // Creating this mapping was delayed in capture_state for performance
+      if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
+        self->recreate_shared_mmap(remote, m);
+      }
+    }
+    for (auto& mem : tgleader.captured_memory) {
+      tgleader.clone_leader->write_mem(mem.first, mem.second.data(),
+                                       mem.second.size());
+    }
     for (auto& tgmember : tgleader.member_states) {
       Task* t_clone =
           Task::os_clone_into(tgmember, tgleader.clone_leader, remote);
@@ -501,17 +512,19 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
   return name_start;
 }
 
-// Recreate an mmap region that is shared between rr and the tracee
-void Session::recreate_shared_mmap(AutoRemoteSyscalls& remote,
-                                   const AddressSpace::Mapping& m) {
+// Recreate an mmap region that is shared between rr and the tracee. The caller
+// is responsible for recreating the data in the new mmap.
+const AddressSpace::Mapping& Session::recreate_shared_mmap(
+    AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m) {
   assert(m.local_addr != nullptr);
   char name[PATH_MAX];
   strncpy(name, m.map.fsname().c_str(), sizeof(name));
-  const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
+  remote_ptr<void> new_addr =
       create_shared_mmap(remote, m.map.size(), m.map.start(),
                          extract_name(name, sizeof(name)), m.map.prot())
-          .start());
-  memcpy(new_m.local_addr, m.local_addr, m.map.size());
+          .start();
+  remote.task()->vm()->mapping_flags_of(new_addr) = m.flags;
+  return remote.task()->vm()->mapping_of(new_addr);
 }
 
 // Replace a MAP_PRIVATE segment by one that is shared between rr and the
@@ -562,6 +575,21 @@ bool Session::make_private_shared(AutoRemoteSyscalls& remote,
   return true;
 }
 
+static vector<uint8_t> capture_syscallbuf(const AddressSpace::Mapping& m,
+                                          Task* clone_leader) {
+  remote_ptr<uint8_t> start = m.map.start().cast<uint8_t>();
+  auto syscallbuf_hdr = start.cast<struct syscallbuf_hdr>();
+  size_t data_size = sizeof(struct syscallbuf_hdr);
+  clone_leader->read_mem(REMOTE_PTR_FIELD(syscallbuf_hdr, num_rec_bytes));
+  if (clone_leader->read_mem(REMOTE_PTR_FIELD(syscallbuf_hdr, locked))) {
+    // There may be an incomplete syscall record after num_rec_bytes that
+    // we need to capture here. We don't know how big that record is,
+    // so just record the entire buffer. This should not be common.
+    data_size = m.map.size();
+  }
+  return clone_leader->read_mem(start, data_size);
+}
+
 void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   assert_fully_initialized();
   assert(!dest.clone_completion);
@@ -585,8 +613,17 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
     {
       AutoRemoteSyscalls remote(group.clone_leader);
       for (auto m : group.clone_leader->vm()->maps()) {
-        if (m.local_addr != nullptr) {
-          recreate_shared_mmap(remote, m);
+        // Special case the syscallbuf as a performance optimization. The amount
+        // of data we need to capture is usually significantly smaller than the
+        // size of the mapping, so allocating the whole mapping here would be
+        // wasteful.
+        if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
+          group.captured_memory.push_back(
+              make_pair(m.map.start().cast<uint8_t>(),
+                        capture_syscallbuf(m, group.clone_leader)));
+        } else if (m.local_addr != nullptr) {
+          memcpy(recreate_shared_mmap(remote, m).local_addr, m.local_addr,
+                 m.map.size());
         } else if ((m.recorded_map.flags() & MAP_SHARED) &&
                    emu_fs.has_file_for(m.recorded_map)) {
           remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);

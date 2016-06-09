@@ -234,6 +234,8 @@ public:
 
   static bool make_private_shared(AutoRemoteSyscalls& remote,
                                   const AddressSpace::Mapping m);
+  static const AddressSpace::Mapping& recreate_shared_mmap(
+      AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m);
 
 protected:
   Session();
@@ -256,9 +258,6 @@ protected:
   // of tasks (i.e., almost anything!). Not really const!
   void finish_initializing() const;
   void assert_fully_initialized() const;
-
-  void recreate_shared_mmap(AutoRemoteSyscalls& remote,
-                            const AddressSpace::Mapping& m);
 
   AddressSpaceMap vm_map;
   TaskMap task_map;
