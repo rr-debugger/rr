@@ -95,10 +95,6 @@ struct ReplayFlags {
   /* When true, echo tracee stdout/stderr writes to console. */
   bool redirect;
 
-  // When true make all private mappings shared with the tracee by default
-  // to test the corresponding code.
-  bool share_private_mappings;
-
   ReplayFlags()
       : goto_event(0),
         singlestep_to_event(0),
@@ -107,8 +103,7 @@ struct ReplayFlags {
         dont_launch_debugger(false),
         dbg_port(-1),
         gdb_binary_file_path("gdb"),
-        redirect(true),
-        share_private_mappings(false) {}
+        redirect(true) {}
 };
 
 static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
@@ -125,8 +120,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 'q', "no-redirect-output", NO_PARAMETER },
     { 'f', "onfork", HAS_PARAMETER },
     { 'p', "onprocess", HAS_PARAMETER },
-    { 'x', "gdb-x", HAS_PARAMETER },
-    { 0, "share-private-mappings", NO_PARAMETER }
+    { 'x', "gdb-x", HAS_PARAMETER }
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -183,9 +177,6 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       break;
     case 'x':
       flags.gdb_command_file_path = opt.value;
-      break;
-    case 0:
-      flags.share_private_mappings = true;
       break;
     default:
       assert(0 && "Unknown option");
@@ -248,7 +239,6 @@ static pid_t waiting_for_child;
 static ReplaySession::Flags session_flags(const ReplayFlags& flags) {
   ReplaySession::Flags result;
   result.redirect_stdio = flags.redirect;
-  result.share_private_mappings = flags.share_private_mappings;
   return result;
 }
 

@@ -563,11 +563,6 @@ const AddressSpace::Mapping& AddressSpace::mapping_of(
   assert(it->second.map.contains(range));
   return it->second;
 }
-uint32_t& AddressSpace::mapping_flags_of(remote_ptr<void> addr) {
-  return const_cast<AddressSpace::Mapping&>(
-             static_cast<const AddressSpace*>(this)->mapping_of(addr))
-      .flags;
-}
 
 bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
   if (addr + page_size() < addr) {
@@ -693,7 +688,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   remote_ptr<void> new_end = new_addr + new_num_bytes;
   map_and_coalesce(m.set_range(new_addr, new_end),
                    mr.recorded_map.set_range(new_addr, new_end), mr.emu_file,
-                   nullptr);
+                   mr.local_addr);
 }
 
 void AddressSpace::remove_breakpoint(remote_code_ptr addr,
@@ -901,6 +896,15 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
 
     Mapping m = move(mm);
     mem.erase(m.map);
+
+    // Also unmap any corresponding mapping from the local address space
+    if (m.local_addr) {
+      uint8_t* start_addr =
+          m.local_addr + (max(m.map.start(), rem.start()) - m.map.start());
+      uint8_t* stop_addr =
+          m.local_addr + (min(m.map.end(), rem.end()) - m.map.end());
+      munmap(start_addr, stop_addr - start_addr);
+    }
 
     LOG(debug) << "  erased (" << m.map << ") ...";
 
@@ -1377,7 +1381,6 @@ bool AddressSpace::allocate_watchpoints() {
 static inline void assert_coalesceable(const AddressSpace::Mapping& lower,
                                        const AddressSpace::Mapping& higher) {
   assert(lower.emu_file == higher.emu_file);
-  assert(lower.flags == higher.flags);
   assert((lower.local_addr == 0 && higher.local_addr == 0) ||
          lower.local_addr + lower.map.size() == higher.local_addr);
 }
@@ -1415,7 +1418,6 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
   Mapping new_m(first_kv->second.map.extend(last_kv->first.end()),
                 first_kv->second.recorded_map.extend(last_kv->first.end()),
                 first_kv->second.emu_file, first_kv->second.local_addr);
-  new_m.flags = first_kv->second.flags;
   LOG(debug) << "  coalescing " << new_m.map;
 
   mem.erase(first_kv, ++last_kv);
@@ -1606,27 +1608,6 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
       addr = range.end();
     }
   }
-}
-
-remote_ptr<void> AddressSpace::find_free_memory(size_t required_space,
-                                                remote_ptr<void> after) {
-  auto maps = maps_starting_at(after);
-  auto current = maps.begin();
-  while (current != maps.end()) {
-    auto next = current;
-    ++next;
-    if (next == maps.end()) {
-      if (current->map.end() + required_space >= current->map.end()) {
-        break;
-      }
-    } else {
-      if (current->map.end() + required_space <= next->map.start()) {
-        break;
-      }
-    }
-    current = next;
-  }
-  return current->map.end();
 }
 
 } // namespace rr

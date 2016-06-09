@@ -286,7 +286,7 @@ public:
    * Exists just so that clients don't need to dig around in the
    * event stack to find this record.
    */
-  remote_ptr<const struct syscallbuf_record> desched_rec() const;
+  const struct syscallbuf_record* desched_rec() const;
   /**
    * Returns true when the task is in a signal handler in an interrupted
    * system call being handled by syscall buffering.

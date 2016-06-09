@@ -142,15 +142,14 @@ struct BaseEvent {
  */
 struct DeschedEvent : public BaseEvent {
   /** Desched of |rec|. */
-  DeschedEvent(remote_ptr<const struct syscallbuf_record> rec,
-               SupportedArch arch)
+  DeschedEvent(const struct syscallbuf_record* rec, SupportedArch arch)
       : BaseEvent(NO_EXEC_INFO, arch), rec(rec) {}
   // Record of the syscall that was interrupted by a desched
   // notification.  It's legal to reference this memory /while
   // the desched is being processed only/, because |t| is in the
   // middle of a desched, which means it's successfully
   // allocated (but not yet committed) this syscall record.
-  remote_ptr<const struct syscallbuf_record> rec;
+  const struct syscallbuf_record* rec;
 };
 
 /**
@@ -271,7 +270,7 @@ struct SyscallEvent : public BaseEvent {
   Registers regs;
   // If this is a descheduled buffered syscall, points at the
   // record for that syscall.
-  remote_ptr<const struct syscallbuf_record> desched_rec;
+  const struct syscallbuf_record* desched_rec;
 
   SyscallState state;
   // Syscall number.

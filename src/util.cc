@@ -340,7 +340,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     ASSERT(t, valid_mem_len >= 0);
     mem.resize(valid_mem_len);
 
-    if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
+    if (m.map.fsname().find(SYSCALLBUF_SHMEM_PATH_PREFIX) == 0) {
       /* The syscallbuf consists of a region that's written
       * deterministically wrt the trace events, and a
       * region that's written nondeterministically in the

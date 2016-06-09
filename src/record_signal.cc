@@ -213,8 +213,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
    * the desched_signal_may_be_relevant was set by the outermost syscallbuf
    * invocation.
    */
-  if (!t->read_mem(REMOTE_PTR_FIELD(t->syscallbuf_child,
-                                    desched_signal_may_be_relevant)) ||
+  if (!t->syscallbuf_hdr->desched_signal_may_be_relevant ||
       t->running_inside_desched()) {
     LOG(debug) << "  (not entering may-block syscall; resuming)";
     /* We have to disarm the event just in case the tracee
@@ -351,10 +350,10 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
      * away this breadcrumb so that we can figure out what syscall
      * the tracee was in, and how much "scratch" space it carved
      * off the syscallbuf, if needed. */
-    remote_ptr<const struct syscallbuf_record> desched_rec =
-        t->next_syscallbuf_record();
+    const struct syscallbuf_record* desched_rec =
+        next_record(t->syscallbuf_hdr);
     t->push_event(DeschedEvent(desched_rec, t->arch()));
-    int call = t->read_mem(REMOTE_PTR_FIELD(t->desched_rec(), syscallno));
+    int call = t->desched_rec()->syscallno;
 
     /* The descheduled syscall was interrupted by a signal, like
      * all other may-restart syscalls, with the exception that
@@ -373,7 +372,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
    * otherwise we'll get a divergence during replay, which will not
    * encounter this problem.
    */
-  int call = t->read_mem(REMOTE_PTR_FIELD(t->desched_rec(), syscallno));
+  int call = t->desched_rec()->syscallno;
   ev.regs.set_original_syscallno(call);
   t->set_regs(ev.regs);
   // runnable_state_changed will observe us entering this syscall and change
@@ -384,7 +383,9 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
 }
 
 static bool is_safe_to_deliver_signal(RecordTask* t) {
-  if (!t->syscallbuf_child) {
+  struct syscallbuf_hdr* hdr = t->syscallbuf_hdr;
+
+  if (!hdr) {
     /* Can't be in critical section because the lock
      * doesn't exist yet! */
     return true;
@@ -406,15 +407,12 @@ static bool is_safe_to_deliver_signal(RecordTask* t) {
 
   if (t->is_in_untraced_syscall() && t->desched_rec()) {
     LOG(debug) << "  tracee interrupted by desched of "
-               << t->syscall_name(t->read_mem(
-                      REMOTE_PTR_FIELD(t->desched_rec(), syscallno)));
+               << t->syscall_name(t->desched_rec()->syscallno);
     return true;
   }
 
   // Our emulation of SYS_rrcall_notify_syscall_hook_exit clears this flag.
-  t->write_mem(
-      REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
-      (uint8_t)1);
+  hdr->notify_on_syscall_hook_exit = true;
   return false;
 }
 

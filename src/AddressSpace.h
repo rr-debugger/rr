@@ -233,8 +233,7 @@ public:
         : map(map),
           recorded_map(recorded_map),
           emu_file(emu_file),
-          local_addr(static_cast<uint8_t*>(local_addr)),
-          flags(FLAG_NONE) {}
+          local_addr(static_cast<uint8_t*>(local_addr)) {}
     Mapping(const Mapping&) = default;
     Mapping() = default;
     const Mapping& operator=(const Mapping& other) {
@@ -255,16 +254,6 @@ public:
     // responsibility to keep this alive at least as long as this mapping is
     // present in the address space.
     uint8_t* local_addr;
-    // Flags indicate mappings that require special handling. Adjacent mappings
-    // may only be merged if their `flags` value agree.
-    enum : uint32_t {
-      FLAG_NONE = 0x0,
-      // This mapping represents a syscallbuf. It needs to handled specially
-      // during checksumming since its contents are not fully restored by the
-      // replay.
-      IS_SYSCALLBUF = 0x1
-    };
-    uint32_t flags;
   };
 
   typedef std::map<MemoryRange, Mapping, MappingComparator> MemoryMap;
@@ -390,12 +379,6 @@ public:
    * There must be such a mapping.
    */
   const Mapping& mapping_of(remote_ptr<void> addr) const;
-
-  /**
-   * Return a reference to the flags of the mapping at this address, allowing
-   * manipulation. There must exist a mapping at `addr`.
-   */
-  uint32_t& mapping_flags_of(remote_ptr<void> addr);
 
   /**
    * Return true if there is some mapping for the byte at 'addr'.
@@ -681,8 +664,6 @@ public:
   static uint32_t chaos_mode_min_stack_size() { return 8 * 1024 * 1024; }
 
   remote_ptr<void> chaos_mode_find_free_memory(Task* t, size_t len);
-  remote_ptr<void> find_free_memory(
-      size_t len, remote_ptr<void> after = remote_ptr<void>());
 
   PropertyTable& properties() { return properties_; }
 

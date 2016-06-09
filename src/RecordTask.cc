@@ -1071,7 +1071,7 @@ bool RecordTask::maybe_in_spinlock() {
          regs().matches(registers_at_start_of_last_timeslice);
 }
 
-remote_ptr<const struct syscallbuf_record> RecordTask::desched_rec() const {
+const struct syscallbuf_record* RecordTask::desched_rec() const {
   return (ev().is_syscall_event()
               ? ev().Syscall().desched_rec
               : (EV_DESCHED == ev().type()) ? ev().Desched().rec : nullptr);
@@ -1196,7 +1196,7 @@ void RecordTask::maybe_flush_syscallbuf() {
     // Already flushing.
     return;
   }
-  if (!syscallbuf_child) {
+  if (!syscallbuf_hdr) {
     return;
   }
 
@@ -1205,7 +1205,7 @@ void RecordTask::maybe_flush_syscallbuf() {
   // modifying the header. We'll take a snapshot of the header now.
   // The syscallbuf code ensures that writes to syscallbuf records
   // complete before num_rec_bytes is incremented.
-  struct syscallbuf_hdr hdr = read_mem(syscallbuf_child);
+  struct syscallbuf_hdr hdr = *syscallbuf_hdr;
 
   ASSERT(this,
          !flushed_syscallbuf || flushed_num_rec_bytes == hdr.num_rec_bytes);
@@ -1232,11 +1232,10 @@ void RecordTask::maybe_flush_syscallbuf() {
     vector<uint8_t> buf;
     buf.resize(sizeof(hdr) + hdr.num_rec_bytes);
     memcpy(buf.data(), &hdr, sizeof(hdr));
-    read_bytes_helper(syscallbuf_child + 1, hdr.num_rec_bytes,
-                      buf.data() + sizeof(hdr));
+    memcpy(buf.data() + sizeof(hdr), syscallbuf_hdr + 1, hdr.num_rec_bytes);
     record_local(syscallbuf_child, buf.size(), buf.data());
   } else {
-    record_remote(syscallbuf_child, syscallbuf_data_size());
+    record_local(syscallbuf_child, syscallbuf_data_size(), syscallbuf_hdr);
   }
   record_current_event();
   pop_event(EV_SYSCALLBUF_FLUSH);

@@ -3829,14 +3829,10 @@ static void rec_process_syscall_arch(RecordTask* t,
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();
 
-  if (remote_ptr<const struct syscallbuf_record> rec = t->desched_rec()) {
-    // If the syscallbuf has already been unmapped, there's no need to record
-    // the entry.
-    if (t->syscallbuf_child) {
-      t->record_remote(REMOTE_PTR_FIELD(rec, extra_data),
-                       t->read_mem(REMOTE_PTR_FIELD(rec, size)) -
-                           sizeof(struct syscallbuf_record));
-    }
+  if (const struct syscallbuf_record* rec = t->desched_rec()) {
+    t->record_local(t->syscallbuf_child.cast<void>() +
+                        (rec->extra_data - (uint8_t*)t->syscallbuf_hdr),
+                    rec->size - sizeof(*rec), (uint8_t*)rec->extra_data);
     return;
   }
 
@@ -4241,10 +4237,10 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case SYS_rrcall_notify_syscall_hook_exit: {
-      remote_ptr<uint8_t> child_addr =
-          REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit);
-      t->write_mem(child_addr, (uint8_t)0);
-      t->record_remote(child_addr);
+      t->syscallbuf_hdr->notify_on_syscall_hook_exit = false;
+      t->record_local(
+          REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
+          &t->syscallbuf_hdr->notify_on_syscall_hook_exit);
 
       struct rrcall_params {
         typename Arch::unsigned_word result;

@@ -484,6 +484,7 @@ set(BASIC_TESTS
   mmap_short_file
   mmap_tmpfs
   mprotect
+  mprotect_growsdown
   mprotect_heterogenous
   mprotect_none
   mprotect_stack
@@ -699,7 +700,6 @@ set(TESTS_WITH_PROGRAM
   main_thread_exit
   mmap_shared_prot
   mmap_write
-  mprotect_growsdown
   mprotect_syscallbuf_overflow
   mutex_pi_stress
   priority

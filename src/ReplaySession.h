@@ -270,13 +270,11 @@ public:
   static bool is_ignored_signal(int sig);
 
   struct Flags {
-    Flags() : redirect_stdio(false), share_private_mappings(false) {}
+    Flags() : redirect_stdio(false) {}
     Flags(const Flags& other) = default;
     bool redirect_stdio;
-    bool share_private_mappings;
   };
   bool redirect_stdio() { return flags.redirect_stdio; }
-  bool share_private_mappings() { return flags.share_private_mappings; }
 
   void set_flags(const Flags& flags) { this->flags = flags; }
 

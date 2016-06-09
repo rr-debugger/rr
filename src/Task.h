@@ -144,9 +144,8 @@ public:
    */
   void finish_emulated_syscall();
 
-  size_t syscallbuf_data_size() {
-    return read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes)) +
-           sizeof(struct syscallbuf_hdr);
+  size_t syscallbuf_data_size() const {
+    return syscallbuf_hdr->num_rec_bytes + sizeof(*syscallbuf_hdr);
   }
 
   /**
@@ -227,9 +226,6 @@ public:
    * executed; if it's not, results are undefined.
    */
   void destroy_buffers();
-
-  remote_ptr<const struct syscallbuf_record> next_syscallbuf_record();
-  long stored_record_size(remote_ptr<const struct syscallbuf_record> record);
 
   /** Return the current $ip of this. */
   remote_code_ptr ip() { return regs().ip(); }
@@ -378,7 +374,7 @@ public:
    */
   template <typename T>
   T read_mem(remote_ptr<T> child_addr, bool* ok = nullptr) {
-    typename std::remove_cv<T>::type val;
+    T val;
     read_bytes_helper(child_addr, sizeof(val), &val, ok);
     return val;
   }
@@ -688,6 +684,8 @@ public:
    * it's the tid that was recorded. */
   pid_t rec_tid;
 
+  /* Points at rr's mapping of the (shared) syscall buffer. */
+  struct syscallbuf_hdr* syscallbuf_hdr;
   size_t syscallbuf_size;
   size_t num_syscallbuf_bytes;
   /* Points at the tracee's mapping of the buffer. */
@@ -706,6 +704,7 @@ public:
     std::string prname;
     std::vector<struct user_desc> thread_areas;
     remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
+    std::vector<uint8_t> syscallbuf_hdr;
     size_t syscallbuf_size;
     size_t num_syscallbuf_bytes;
     remote_ptr<struct preload_globals> preload_globals;
@@ -766,6 +765,12 @@ protected:
    * that can simply be copied over in local memory.
    */
   void copy_state(const CapturedState& state);
+
+  /**
+   * Destroy tracer-side state of this (as opposed to remote,
+   * tracee-side state).
+   */
+  void destroy_local_buffers();
 
   /**
    * Make the ptrace |request| with |addr| and |data|, return
