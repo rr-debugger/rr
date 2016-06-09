@@ -1163,6 +1163,7 @@ static uint32_t get_cpu_features(SupportedArch arch) {
       break;
     default:
       FATAL() << "Unknown architecture";
+      return 0;
   }
 
   unsigned int AVX_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
