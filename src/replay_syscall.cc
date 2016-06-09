@@ -243,13 +243,23 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_r.set_arg1(trace_frame.regs().arg1());
   new_task->emulate_syscall_entry(new_r);
 
-  if (!(CLONE_VM & r.arg1())) {
+  if (Arch::clone != sys || !(CLONE_VM & r.arg1())) {
     // It's hard to imagine a scenario in which it would
     // be useful to inherit breakpoints (along with their
     // refcounts) across a non-VM-sharing clone, but for
     // now we never want to do this.
     new_task->vm()->remove_all_breakpoints();
     new_task->vm()->remove_all_watchpoints();
+
+    AutoRemoteSyscalls remote(new_task);
+    for (auto m : new_task->vm()->maps()) {
+      // Recreate any tracee-shared mappings
+      if (m.local_addr &&
+          !(m.flags & AddressSpace::Mapping::IS_SYSCALLBUF)) {
+        memcpy(Session::recreate_shared_mmap(remote, m).local_addr,
+               m.local_addr, m.map.size());
+      }
+    }
   }
 
   TraceReader::MappedData data;
