@@ -7,6 +7,7 @@
         .globl  cpuid_call
         .type   cpuid_call, @function
 cpuid_call:
+_cpuid_call:
         .cfi_startproc
         pushl   %edi
         .cfi_def_cfa_offset 8
@@ -80,7 +81,7 @@ cpuid_loop:
         movl    %ebx, (%esp)
         movl    %ebp, 8(%esp)
         movl    %edi, 4(%esp)
-        call    cpuid_call
+        call    _cpuid_call
         addl    %eax, %ebx
         mov     $201, %eax
         int     $0x80
@@ -110,6 +111,7 @@ cpuid_loop:
         .globl cpuid_call
         .type  cpuid_call, @function
 cpuid_call:
+_cpuid_call:
         pushq %rbx
         /* Call CPUID twice, once under a conditional.  */
         xorl %eax, %eax
@@ -131,7 +133,7 @@ cpuid_loop:
         mov %rdi, %rbx
         xor %r11d, %r11d
 1:
-        call cpuid_call
+        call _cpuid_call
         addq %rax, %r11
         mov $107, %rax
         syscall
