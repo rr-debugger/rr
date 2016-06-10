@@ -471,9 +471,8 @@ KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
     AutoRestoreMem child_path(remote, path);
     // skip leading '/' since we want the path to be relative to the root fd
     child_shmem_fd = remote.infallible_syscall(
-        syscall_number_for_openat(remote.arch()),
-        RR_RESERVED_ROOT_DIR_FD, child_path.get() + 1,
-        O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
+        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
+        child_path.get() + 1, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
   }
 
   /* Remove the fs name so that we don't have to worry about
@@ -515,7 +514,8 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
   char* name_end = name_buffer + strnlen(name_buffer, buffer_size);
   char* name_start = name_buffer + strlen(RR_MAPPING_PREFIX);
   for (int i = 0; i < 2; ++i) {
-    while (name_end > name_start+(1-i) && *(name_end--) != '-');
+    while (name_end > name_start + (1 - i) && *(name_end--) != '-')
+      ;
   }
   *name_end = '\0';
   return name_start;
@@ -568,7 +568,8 @@ bool Session::make_private_shared(AutoRemoteSyscalls& remote,
   // Now create the new mapping in its place
   const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
       create_shared_mmap(remote2, sz, start, name, m.map.prot(),
-                         m.map.flags() & (MAP_GROWSDOWN | MAP_STACK)).start());
+                         m.map.flags() & (MAP_GROWSDOWN | MAP_STACK))
+          .start());
 
   // And copy over the contents. Since we can't just call memcpy in the
   // inferior, just copy directly from the remote private into the local
