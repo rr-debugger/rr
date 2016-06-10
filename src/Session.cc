@@ -7,6 +7,10 @@
 #include <asm/ptrace.h>
 #include <sys/prctl.h>
 #include <syscall.h>
+#include <sys/syscall.h>
+#ifdef __NR_memfd_create
+# include <linux/memfd.h>
+#endif
 
 #include <algorithm>
 #include <limits>
@@ -441,6 +445,21 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
 
+static bool is_memfd_available()
+{
+#ifdef __NR_memfd_create
+    int fd = syscall(__NR_memfd_create, "test-memfd-available", MFD_CLOEXEC);
+    if (fd < 0 && errno == ENOSYS)
+      return false;
+    assert(fd >= 0 &&
+           "memfd_create failed, even though the system call is available");
+    close(fd);
+    return true;
+#else
+    return false;
+#endif
+}
+
 #define RR_MAPPING_PREFIX "/tmp/rr-shared-"
 KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
                                           size_t size,
@@ -448,32 +467,45 @@ KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
                                           const char* name, int tracee_prot,
                                           int tracee_flags) {
   static int nonce = 0;
-  // Create the segment we'll share with the tracee.
+  int child_shmem_fd = -1;
+  static bool memfd_available = is_memfd_available();
+  
   char path[PATH_MAX];
-  snprintf(path, sizeof(path) - 1, RR_MAPPING_PREFIX "%s-%d-%d", name,
-           remote.task()->real_tgid(), nonce++);
+  if (!memfd_available) {
+    // Create the segment we'll share with the tracee.
+    snprintf(path, sizeof(path) - 1, RR_MAPPING_PREFIX "%s-%d-%d", name,
+             remote.task()->real_tgid(), nonce++);
 
-  // Let the child create the shmem block and then send the fd back to us.
-  // This lets us avoid having to make the file world-writeable so that
-  // the child can read it when it's in a different user namespace (which
-  // would be a security hole, letting other users abuse rr users).
-  int child_shmem_fd;
-  {
-    AutoRestoreMem child_path(remote, path);
-    // skip leading '/' since we want the path to be relative to the root fd
+    // Let the child create the shmem block and then send the fd back to us.
+    // This lets us avoid having to make the file world-writeable so that
+    // the child can read it when it's in a different user namespace (which
+    // would be a security hole, letting other users abuse rr users).
+    {
+      AutoRestoreMem child_path(remote, path);
+      // skip leading '/' since we want the path to be relative to the root fd
+      child_shmem_fd = remote.infallible_syscall(
+          syscall_number_for_openat(remote.arch()),
+          RR_RESERVED_ROOT_DIR_FD, child_path.get() + 1,
+          O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
+    }
+    name = path;
+
+    /* Remove the fs name so that we don't have to worry about
+     * cleaning up this segment in error conditions. */
+    unlink(path);
+  } else {
+#ifdef __NR_memfd_create
     child_shmem_fd = remote.infallible_syscall(
-        syscall_number_for_openat(remote.arch()),
-        RR_RESERVED_ROOT_DIR_FD, child_path.get() + 1,
-        O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
+        syscall_number_for_memfd_create(remote.arch()),
+        name, MFD_CLOEXEC);
+#else
+    assert(false && "Should not have reached this branch");
+#endif
   }
-
-  /* Remove the fs name so that we don't have to worry about
-   * cleaning up this segment in error conditions. */
-  unlink(path);
 
   ScopedFd shmem_fd = remote.retrieve_fd(child_shmem_fd);
   resize_shmem_segment(shmem_fd, size);
-  LOG(debug) << "created shmem segment " << path;
+  LOG(debug) << "created shmem segment " << name;
 
   // Map the segment in ours and the tracee's address spaces.
   void* map_addr;
@@ -491,7 +523,7 @@ KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
   struct stat st;
   ASSERT(remote.task(), 0 == ::fstat(shmem_fd, &st));
   KernelMapping km = remote.task()->vm()->map(
-      child_map_addr, size, tracee_prot, flags | tracee_flags, 0, path,
+      child_map_addr, size, tracee_prot, flags | tracee_flags, 0, name,
       st.st_dev, st.st_ino, nullptr, nullptr, map_addr);
 
   shmem_fd.close();
