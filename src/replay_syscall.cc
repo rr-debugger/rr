@@ -243,13 +243,23 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_r.set_arg1(trace_frame.regs().arg1());
   new_task->emulate_syscall_entry(new_r);
 
-  if (!(CLONE_VM & r.arg1())) {
+  if (Arch::clone != sys || !(CLONE_VM & r.arg1())) {
     // It's hard to imagine a scenario in which it would
     // be useful to inherit breakpoints (along with their
     // refcounts) across a non-VM-sharing clone, but for
     // now we never want to do this.
     new_task->vm()->remove_all_breakpoints();
     new_task->vm()->remove_all_watchpoints();
+
+    AutoRemoteSyscalls remote(new_task);
+    for (auto m : new_task->vm()->maps()) {
+      // Recreate any tracee-shared mappings
+      if (m.local_addr != 0 &&
+          !(m.flags & AddressSpace::Mapping::IS_SYSCALLBUF)) {
+        memcpy(Session::recreate_shared_mmap(remote, m).local_addr,
+               m.local_addr, m.map.size());
+      }
+    }
   }
 
   TraceReader::MappedData data;
@@ -728,6 +738,18 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         }
       }
     }
+
+    // This code is used to test the sharing functionality. It is in
+    // general a bad idea to indiscriminately share mappings between the
+    // tracer and the tracee. Instead, only mappings that have
+    // sufficiently many memory access from the tracer to require
+    // acceleration should be shared.
+    if ((MAP_PRIVATE & flags) && t->session().share_private_mappings() &&
+        !trace_frame.regs().syscall_failed()) {
+      Session::make_private_shared(
+          remote, t->vm()->mapping_of(trace_frame.regs().syscall_result()));
+    }
+
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }
@@ -873,8 +895,10 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
    * exist in this architecture.
    */
   if (is_rrcall_notify_syscall_hook_exit_syscall(sys, t->arch())) {
-    ASSERT(t, t->syscallbuf_hdr);
-    t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
+    ASSERT(t, t->syscallbuf_child != nullptr);
+    t->write_mem(
+        REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
+        (uint8_t)1);
   }
 }
 

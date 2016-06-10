@@ -115,9 +115,9 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
     return result;
   }
 
-  if (t->syscallbuf_hdr) {
+  if (t->syscallbuf_child) {
     // Disable syscall buffering during diversions
-    t->syscallbuf_hdr->locked = 1;
+    t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, locked), (uint8_t)1);
   }
 
   switch (command) {

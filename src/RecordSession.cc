@@ -505,7 +505,7 @@ void RecordSession::desched_state_changed(RecordTask* t) {
    * try to commit the current record; we've already
    * recorded that syscall.  The following event sets
    * the abort-commit bit. */
-  t->syscallbuf_hdr->abort_commit = 1;
+  t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, abort_commit), (uint8_t)1);
   t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO, t->arch()));
 
   advance_to_disarm_desched_syscall(t);
@@ -517,10 +517,11 @@ void RecordSession::desched_state_changed(RecordTask* t) {
    * during this (aborted) transaction again.  So now
    * is a good time for us to reset the record counter. */
   t->delay_syscallbuf_reset = false;
-  ASSERT(t, t->syscallbuf_hdr);
   // Run the syscallbuf exit hook. This ensures we'll be able to reset
   // the syscallbuf before trying to buffer another syscall.
-  t->syscallbuf_hdr->notify_on_syscall_hook_exit = true;
+  t->write_mem(
+      REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
+      (uint8_t)1);
 }
 
 static void syscall_not_restarted(RecordTask* t) {
@@ -615,9 +616,7 @@ static void save_interrupted_syscall_ret_in_syscallbuf(RecordTask* t,
                                                        intptr_t retval) {
   // Record storing the return value in the syscallbuf record, where
   // we expect to find it during replay.
-  auto child_rec = ((t->syscallbuf_child + 1).cast<uint8_t>() +
-                    t->syscallbuf_hdr->num_rec_bytes)
-                       .cast<struct syscallbuf_record>();
+  auto child_rec = t->next_syscallbuf_record();
   int64_t ret = retval;
   t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
 }

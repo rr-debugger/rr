@@ -173,34 +173,15 @@ static remote_ptr<uint8_t> allocate_extended_jump(
   }
 
   if (!page) {
-    // Find free space after the patch site.
-    auto maps =
-        t->vm()->maps_starting_at(t->vm()->mapping_of(from_end).map.start());
-    auto current = maps.begin();
     // We're looking for a gap of three pages --- one page to allocate and
     // a page on each side as a guard page.
     uint32_t required_space = 3 * page_size();
-    while (current != maps.end()) {
-      auto next = current;
-      ++next;
-      if (next == maps.end()) {
-        if (current->map.end() + required_space >= current->map.end()) {
-          break;
-        }
-      } else {
-        if (current->map.end() + required_space <= next->map.start()) {
-          break;
-        }
-      }
-      current = next;
-    }
-    if (current == maps.end()) {
-      LOG(debug) << "Can't find space for our jump page";
-      return nullptr;
-    }
+    remote_ptr<void> free_mem =
+        t->vm()->find_free_memory(required_space,
+                                  // Find free space after the patch site.
+                                  t->vm()->mapping_of(from_end).map.start());
 
-    remote_ptr<uint8_t> addr =
-        (current->map.end() + page_size()).cast<uint8_t>();
+    remote_ptr<uint8_t> addr = (free_mem + page_size()).cast<uint8_t>();
     int64_t offset = addr - from_end;
     if ((int32_t)offset != offset) {
       LOG(debug) << "Can't find space close enough for the jump";
