@@ -42,7 +42,7 @@ int main(void) {
   args.src_length = FILE_SIZE;
   args.dest_offset = 0;
   ret = ioctl(fd2, BTRFS_IOC_CLONE_RANGE, &args);
-  if (ret < 0 && errno == ENOTTY) {
+  if (ret < 0 && (errno == EOPNOTSUPP || errno == ENOTTY)) {
     atomic_puts("range cloning not supported");
     atomic_puts("EXIT-SUCCESS");
     return 0;

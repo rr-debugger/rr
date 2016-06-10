@@ -40,6 +40,8 @@ int main(void) {
 
     test_assert(0 == ioctl(fd, TIOCSCTTY, 0));
     ioctl(fd, TIOCNOTTY);
+    // The above ioctl can legitimately fail. If so, fake it.
+    kill(getpid(), SIGHUP);
   }
 
   test_assert(child == waitpid(child, &status, 0));
