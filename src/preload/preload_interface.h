@@ -336,8 +336,8 @@ inline static int is_blacklisted_filename(const char* filename) {
          !strcmp("/usr/share/alsa/alsa.conf", filename);
 }
 
-inline static int is_dev_tty(const char* filename) {
-  return !strcmp("/dev/tty", filename);
+inline static int is_terminal(const char* filename) {
+  return !strncmp("/dev/tty", filename, 8) || !strncmp("/dev/pts", filename, 8);
 }
 
 inline static int is_proc_mem_file(const char* filename) {
@@ -356,7 +356,7 @@ inline static int is_proc_mem_file(const char* filename) {
  * common cases) is a problem. Maybe we could afford fstat after every open...
  */
 inline static int allow_buffered_open(const char* filename) {
-  return !is_blacklisted_filename(filename) && !is_dev_tty(filename) &&
+  return !is_blacklisted_filename(filename) && !is_terminal(filename) &&
          !is_proc_mem_file(filename);
 }
 

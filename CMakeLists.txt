@@ -622,6 +622,7 @@ set(BASIC_TESTS
   timerfd
   times
   truncate
+  ttyname
   uname
   unjoined_thread
   unshare

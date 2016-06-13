@@ -1,0 +1,12 @@
+source `dirname $0`/util.sh
+record $TESTNAME
+replay
+token=EXIT-SUCCESS
+if [[ "replay.err" != $(grep -l $token replay.err) ]]; then
+    failed ": token '$token' not in replay.err:"
+    echo "--------------------------------------------------"
+    cat replay.err
+    echo "--------------------------------------------------"
+else
+    passed
+fi

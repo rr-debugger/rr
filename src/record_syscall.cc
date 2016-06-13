@@ -3747,6 +3747,29 @@ static string extra_expected_errno_info(RecordTask* t,
   return ss.str();
 }
 
+static bool is_rr_fd_terminal(int fd, const string& pathname) {
+  char buf[PATH_MAX];
+  if (ttyname_r(fd, buf, sizeof(buf))) {
+    return false;
+  }
+  buf[sizeof(buf) - 1] = 0;
+  return pathname == buf;
+}
+
+static bool is_rr_terminal(const string& pathname) {
+  if (pathname == "/dev/tty") {
+    // XXX the tracee's /dev/tty could refer to a tty other than
+    // the recording tty, in which case output should not be
+    // redirected. That's not too bad, replay will still work, just
+    // with some spurious echoes.
+    return true;
+  }
+
+  return is_rr_fd_terminal(STDIN_FILENO, pathname) ||
+         is_rr_fd_terminal(STDOUT_FILENO, pathname) ||
+         is_rr_fd_terminal(STDERR_FILENO, pathname);
+}
+
 static int dev_tty_fd() {
   static int fd = -1;
   if (fd < 0) {
@@ -3772,14 +3795,11 @@ static void handle_opened_file(RecordTask* t, int fd) {
 
   bool do_write = false;
   // This must be kept in sync with replay_syscall's handle_opened_files.
-  if (is_dev_tty(pathname.c_str())) {
-    // This will let rr event annotations echo to /dev/tty. It will also
+  if (is_rr_terminal(pathname)) {
+    // This will let rr event annotations echo to the terminal. It will also
     // ensure writes to this fd are not syscall-buffered.
-    // XXX the tracee's /dev/tty could refer to a tty other than
-    // the recording tty, in which case output should not be
-    // redirected. That's not too bad, replay will still work, just
-    // with some spurious echoes.
     t->fd_table()->add_monitor(fd, new StdioMonitor(dev_tty_fd()));
+    pathname = "terminal";
     do_write = true;
   } else if (is_proc_mem_file(pathname.c_str())) {
     t->fd_table()->add_monitor(fd, new ProcMemMonitor(t, pathname));
