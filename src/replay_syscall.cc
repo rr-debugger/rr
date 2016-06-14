@@ -368,10 +368,6 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
 
 static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
                            ReplayTraceStep* step) {
-  if (trace_frame.regs().syscall_failed()) {
-    return;
-  }
-
   step->action = TSTEP_RETIRE;
 
   /* First, exec a stub program */
@@ -695,10 +691,6 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                          size_t length, int prot, int flags,
                          off64_t offset_pages, ReplayTraceStep* step) {
-  if (trace_frame.regs().syscall_failed()) {
-    return;
-  }
-
   step->action = TSTEP_RETIRE;
 
   /* Successful mmap calls are much more interesting to process. */
@@ -743,8 +735,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     // tracer and the tracee. Instead, only mappings that have
     // sufficiently many memory access from the tracer to require
     // acceleration should be shared.
-    if ((MAP_PRIVATE & flags) && t->session().share_private_mappings() &&
-        !trace_frame.regs().syscall_failed()) {
+    if ((MAP_PRIVATE & flags) && t->session().share_private_mappings()) {
       Session::make_private_shared(
           remote, t->vm()->mapping_of(trace_frame.regs().syscall_result()));
     }
@@ -767,10 +758,6 @@ void process_grow_map(ReplayTask* t) {
 
 static void process_shmat(ReplayTask* t, const TraceFrame& trace_frame,
                           int shm_flags, ReplayTraceStep* step) {
-  if (trace_frame.regs().syscall_failed()) {
-    return;
-  }
-
   step->action = TSTEP_RETIRE;
 
   {
@@ -792,10 +779,6 @@ static void process_shmat(ReplayTask* t, const TraceFrame& trace_frame,
 
 static void process_shmdt(ReplayTask* t, const TraceFrame& trace_frame,
                           remote_ptr<void> addr, ReplayTraceStep* step) {
-  if (trace_frame.regs().syscall_failed()) {
-    return;
-  }
-
   step->action = TSTEP_RETIRE;
 
   {
@@ -951,6 +934,17 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
 
   step->syscall.number = sys;
   step->action = TSTEP_EXIT_SYSCALL;
+
+  if (trace_regs.syscall_failed()) {
+    switch (non_negative_syscall(sys)) {
+      case Arch::mprotect:
+      case Arch::sigreturn:
+      case Arch::rt_sigreturn:
+        break;
+      default:
+        return;
+    }
+  }
 
   /* Manual implementations of irregular syscalls that need to do more during
    * replay than just modify register and memory state.
@@ -1111,8 +1105,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
     }
 
     case Arch::read: {
-      int fd = (int)t->regs().arg1();
-      if (!trace_regs.syscall_failed() && t->cloned_file_data_fd_child >= 0) {
+      if (t->cloned_file_data_fd_child >= 0) {
+        int fd = (int)t->regs().arg1();
         string file_name = t->file_name_of_fd(fd);
         if (!file_name.empty() &&
             file_name == t->file_name_of_fd(t->cloned_file_data_fd_child)) {
