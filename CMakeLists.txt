@@ -622,7 +622,6 @@ set(BASIC_TESTS
   timerfd
   times
   truncate
-  ttyname
   uname
   unjoined_thread
   unshare
@@ -733,6 +732,7 @@ set(TESTS_WITH_PROGRAM
   thread_exit_signal
   threaded_syscall_spam
   threads
+  ttyname
   unexpected_stack_growth
   user_ignore_sig
   vfork
