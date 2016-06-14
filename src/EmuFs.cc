@@ -38,14 +38,21 @@ EmuFile::shr_ptr EmuFile::clone(EmuFs& owner) {
   while (offset < size_) {
     ssize_t amount = min<uint64_t>(size_ - offset, sizeof(data));
     ssize_t ret = pread64(fd(), data, amount, offset);
-    if (ret != amount) {
+    if (ret <= 0) {
       FATAL() << "Couldn't read all the data";
     }
-    ret = pwrite64(f->fd(), data, amount, offset);
-    if (ret != amount) {
-      FATAL() << "Couldn't write all the data";
+    // There could have been a short read
+    amount = ret;
+    uint8_t* data_ptr = reinterpret_cast<uint8_t*>(data);
+    while (amount > 0) {
+      ret = pwrite64(f->fd(), data_ptr, amount, offset);
+      if (ret <= 0) {
+        FATAL() << "Couldn't write all the data";
+      }
+      amount -= ret;
+      data_ptr += ret;
+      offset += ret;
     }
-    offset += amount;
   }
 
   return f;
