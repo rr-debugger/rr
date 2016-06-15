@@ -673,8 +673,17 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // For full generality, we also need to emulate direct file
   // modifications through write/splice/etc.
   off64_t offset_bytes = page_size() * offset_pages;
-  if (ssize_t(buf.data.size()) !=
-      pwrite64(emufile->fd(), buf.data.data(), buf.data.size(), offset_bytes)) {
+  ssize_t res = 0;
+  do
+  {
+    ssize_t c = pwrite64(emufile->fd(), buf.data.data() + res, buf.data.size() - res, offset_bytes + res);
+    if (c == -1)
+    break;
+    res += c;
+  }
+  while (res != ssize_t(buf.data.size()));
+
+  if (ssize_t(buf.data.size()) != res) {
     FATAL() << "Failed to write " << buf.data.size() << " bytes at "
             << HEX(offset_bytes) << " to " << emufile->real_path() << " for "
             << emufile->emu_path();
