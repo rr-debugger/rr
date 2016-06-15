@@ -72,6 +72,22 @@ void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
   size_ = size;
 }
 
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0x0001u
+#endif
+#ifndef MFD_ALLOW_SEALING
+#define MFD_ALLOW_SEALING 0x0002u
+#endif
+
+#ifndef __NR_memfd_create
+#define __NR_memfd_create 319
+#endif
+
+static int memfd_create(const char *__name, unsigned int __flags)
+{
+  return syscall(__NR_memfd_create, __name, __flags);
+}
+
 /*static*/ EmuFile::shr_ptr EmuFile::create(EmuFs& owner,
                                             const string& orig_path,
                                             dev_t orig_device, ino_t orig_inode,
@@ -86,14 +102,21 @@ void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
        << "-inode-" << orig_inode << "-" << path_tag;
   string real_name = name.str().substr(0, 255);
 
-  ScopedFd fd =
-      open(real_name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
+  int res = memfd_create(real_name.c_str(), MFD_CLOEXEC);
+
+  if (res == -1 && errno == ENOSYS) {
+    res = open(real_name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
+	if (res != -1) {
+      /* Remove the fs name so that we don't have to worry about
+	   * cleaning up this segment in error conditions. */
+      unlink(real_name.c_str());
+    }
+  }
+
+  ScopedFd fd = res;
   if (!fd.is_open()) {
     FATAL() << "Failed to create shmem segment " << real_name;
   }
-  /* Remove the fs name so that we don't have to worry about
-   * cleaning up this segment in error conditions. */
-  unlink(real_name.c_str());
   resize_shmem_segment(fd, orig_file_size);
 
   shr_ptr f(new EmuFile(owner, std::move(fd), orig_path, real_name, orig_device,
