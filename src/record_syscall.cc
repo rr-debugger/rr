@@ -2476,6 +2476,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case Arch::SETFL:
         case Arch::SETLK:
         case Arch::SETLK64:
+        case Arch::OFD_SETLK:
         case Arch::SETOWN:
         case Arch::SETOWN_EX:
         case Arch::GETSIG:
@@ -2499,6 +2500,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
 
         case Arch::GETLK64:
+        case Arch::OFD_GETLK:
           // flock and flock64 better be different on 32-bit architectures,
           // but on 64-bit architectures, it's OK if they're the same.
           static_assert(
@@ -2514,6 +2516,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
         case Arch::SETLKW:
         case Arch::SETLKW64:
+        case Arch::OFD_SETLKW:
           // SETLKW blocks, but doesn't write any
           // outparam data to the |struct flock|
           // argument, so no need for scratch.

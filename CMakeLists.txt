@@ -434,6 +434,7 @@ set(BASIC_TESTS
   fds_clean
   flock
   flock2
+  flock_ofd
   fork_brk
   fork_child_crash
   fork_stress
