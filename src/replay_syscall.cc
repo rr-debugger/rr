@@ -941,6 +941,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
 
   if (trace_regs.syscall_failed()) {
     switch (non_negative_syscall(sys)) {
+      case Arch::madvise:
       case Arch::mprotect:
       case Arch::sigreturn:
       case Arch::rt_sigreturn:
