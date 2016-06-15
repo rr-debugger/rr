@@ -50,7 +50,8 @@ int main(void) {
   old_wpage = wpage;
 
   /* Test invalid mremap */
-  test_assert(MAP_FAILED == mremap(old_wpage, num_bytes, 2 * num_bytes - 1, 0xFFFFFFFF));
+  test_assert(MAP_FAILED ==
+              mremap(old_wpage, num_bytes, 2 * num_bytes - 1, 0xFFFFFFFF));
   test_assert(EINVAL == errno);
 
   /* Test remapping a non-page-sized range */

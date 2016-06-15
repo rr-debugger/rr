@@ -3472,6 +3472,12 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
   t->post_exec_syscall(*syscall_state.exec_saved_event);
 
+  KernelMapping rr_page_mapping =
+      t->vm()->mapping_of(AddressSpace::rr_page_start()).map;
+  auto mode = t->trace_writer().write_mapped_region(
+      t, rr_page_mapping, rr_page_mapping.fake_stat(),
+      TraceWriter::RR_BUFFER_MAPPING);
+  ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
   t->session().trace_writer().write_task_event(*syscall_state.exec_saved_event);
 
   KernelMapping vvar;
@@ -3504,8 +3510,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     }
 
     for (auto& km : stacks) {
-      auto mode = t->trace_writer().write_mapped_region(
-          t, km, km.fake_stat(), TraceWriter::EXEC_MAPPING);
+      mode = t->trace_writer().write_mapped_region(t, km, km.fake_stat(),
+                                                   TraceWriter::EXEC_MAPPING);
       ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
       auto buf = t->read_mem(km.start().cast<uint8_t>(), km.size());
       t->trace_writer().write_raw(buf.data(), km.size(), km.start());

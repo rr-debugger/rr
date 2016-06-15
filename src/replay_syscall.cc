@@ -424,6 +424,10 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     if (!found) {
       break;
     }
+    if (km.start() == AddressSpace::rr_page_start()) {
+      // Skip rr-page mapping record, that gets mapped automatically
+      continue;
+    }
     const string& file_name = km.fsname();
     if ((km.prot() & PROT_EXEC) && file_name.size() > 0 &&
         file_name[0] == '/' && file_name.rfind(".so") != file_name.size() - 3) {
