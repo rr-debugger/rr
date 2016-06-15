@@ -426,8 +426,9 @@ set(BASIC_TESTS
   fadvise
   fanotify
   fault_in_code_page
-  fcntl_owner_ex
   fcntl_dupfd
+  fcntl_owner_ex
+  fcntl_pipe_sz
   fcntl_seals
   fcntl_sig
   fd_tracking_across_threads
