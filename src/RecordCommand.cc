@@ -13,6 +13,7 @@
 #include "main.h"
 #include "RecordSession.h"
 #include "util.h"
+#include "StringVectorToCharArray.h"
 
 using namespace std;
 
@@ -52,7 +53,10 @@ RecordCommand RecordCommand::singleton(
     "  -v, --env=NAME=VALUE       value to add to the environment of the\n"
     "                             tracee. There can be any number of these.\n"
     "  -w, --wait                 Wait for all child processes to exit, not\n"
-    "                             just the initial process\n");
+    "                             just the initial process.\n"
+    "  --ignore-nested            Directly start child process when running\n"
+    "                             under nested rr recording, instead of\n"
+    "                             raising an error.\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -95,6 +99,9 @@ struct RecordFlags {
    * recording. */
   bool wait_for_all;
 
+  /* Start child process directly if run under nested rr recording */
+  bool ignore_nested;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -106,7 +113,8 @@ struct RecordFlags {
         bind_cpu(RecordSession::BIND_CPU),
         always_switch(false),
         chaos(false),
-        wait_for_all(false) {}
+        wait_for_all(false),
+        ignore_nested(false) {}
 };
 
 static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
@@ -118,6 +126,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 0, "no-read-cloning", NO_PARAMETER },
     { 1, "no-file-cloning", NO_PARAMETER },
     { 2, "syscall-buffer-size", HAS_PARAMETER },
+    { 3, "ignore-nested", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -170,6 +179,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
         return false;
       }
       flags.syscall_buffer_size = opt.int_value * 1024;
+      break;
+    case 3:
+      flags.ignore_nested = true;
       break;
     case 's':
       flags.always_switch = true;
@@ -284,14 +296,37 @@ static int record(const vector<string>& args, const RecordFlags& flags) {
   }
 }
 
-int RecordCommand::run(vector<string>& args) {
-  if (running_under_rr()) {
-    fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n");
-    return 1;
+static void exec_child(vector<string>& args)
+{
+  execvp(args[0].c_str(), StringVectorToCharArray(args).get());
+  // That failed. Try executing the file directly.
+  execv(args[0].c_str(), StringVectorToCharArray(args).get());
+  switch (errno) {
+    case ENOENT:
+      fprintf(stderr, "execv failed: '%s' (or interpreter) not found (%s)",
+              args[0].c_str(), errno_name(errno).c_str());
+      break;
+    default:
+      fprintf(stderr, "execv of '%s' failed (%s)", args[0].c_str(),
+              errno_name(errno).c_str());
+      break;
   }
+  _exit(1);
+  // Never returns!
+}
 
+int RecordCommand::run(vector<string>& args) {
   RecordFlags flags;
   while (parse_record_arg(args, flags)) {
+  }
+
+  if (running_under_rr()) {
+    if (flags.ignore_nested) {
+      exec_child(args);
+    }
+    fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
+            "Use `rr record --ignore-nested` to start the child process directly.\n");
+    return 1;
   }
 
   if (!verify_not_option(args) || args.size() == 0) {
