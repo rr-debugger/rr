@@ -398,6 +398,7 @@ set(BASIC_TESTS
   big_buffers
   block
   blocked_sigsegv
+  block_open
   brk
   brk2
   capget

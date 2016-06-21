@@ -1388,7 +1388,7 @@ migrate_pages = UnsupportedSyscall(x86=294, x64=256)
 #
 # The openat() system call operates in exactly the same way as
 # open(2), except for the differences described in this manual page.
-openat = EmulatedSyscall(x86=295, x64=257)
+openat = IrregularEmulatedSyscall(x86=295, x64=257)
 
 #  int mkdirat(int dirfd, const char *pathname, mode_t mode);
 #

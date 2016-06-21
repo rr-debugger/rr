@@ -1728,7 +1728,7 @@ static long sys_open(const struct syscall_info* call) {
   }
 
   ptr = prep_syscall();
-  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
     return traced_raw_syscall(call);
   }
 

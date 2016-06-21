@@ -2984,7 +2984,12 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         r.set_arg1(remote_ptr<char>(r.arg1()) + pathname.size());
         t->set_regs(r);
       }
-      return PREVENT_SWITCH;
+      return ALLOW_SWITCH;
+    }
+
+    case Arch::openat: {
+      // XXX we really should support blacklisting here
+      return ALLOW_SWITCH;
     }
 
     case Arch::close:
