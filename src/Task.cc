@@ -2037,7 +2037,8 @@ bool Task::ptrace_if_alive(int request, remote_ptr<void> addr, void* data) {
 
 bool Task::clone_syscall_is_complete() {
   int event = ptrace_event();
-  if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event) {
+  if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event ||
+      PTRACE_EVENT_VFORK == event) {
     return true;
   }
   ASSERT(this, !event) << "Unexpected ptrace event "
@@ -2365,7 +2366,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
                      PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXIT;
   if (session.is_recording()) {
-    options |= PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
+    options |= PTRACE_O_TRACEVFORK | PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
   }
 
   long ret =

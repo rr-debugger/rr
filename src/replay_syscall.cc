@@ -163,18 +163,32 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // If we allow CLONE_UNTRACED then the child would escape from rr control
     // and we can't allow that.
     // Block CLONE_CHILD_CLEARTID because we'll emulate that ourselves.
-    // Filter CLONE_VFORK too.
-    flags = r.arg1();
-    r.set_arg1(flags & ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK));
+    flags = r.arg1() & ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK);
+    if (r.arg1() & CLONE_VFORK) {
+      flags |= CLONE_VM;
+    }
+    r.set_arg1(flags);
   } else if (Arch::vfork == sys) {
-    sys = Arch::fork;
+    // We can't perform a real vfork, because the kernel won't let the vfork
+    // parent return from the syscall until the vfork child has execed or
+    // exited, and it is an invariant of replay that tasks are not in the kernel
+    // except when we need them to execute a specific syscall on rr's behalf.
+    // So instead we do a regular fork but use the CLONE_VM flag to share
+    // address spaces between the parent and child. That's just like a vfork
+    // except the parent is immediately runnable. This is no problem for replay
+    // since we follow the recorded schedule in which the vfork parent did not
+    // run until the vfork child exited.
+    sys = Arch::clone;
+    flags = CLONE_VM;
+    r.set_arg1(flags);
+    r.set_arg2(0);
   }
   r.set_syscallno(sys);
   r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
   t->set_regs(r);
   Registers entry_regs = r;
 
-  // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK.
+  // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK/VFORK.
   __ptrace_cont(t, RESUME_CONT, sys);
 
   while (!t->clone_syscall_is_complete()) {
@@ -194,13 +208,14 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
       << ptrace_event_name(t->ptrace_event());
 
   r = t->regs();
-  // Restore original_syscallno if vfork set it to fork
-  r.set_original_syscallno(trace_frame.regs().original_syscallno());
   // Restore the saved flags, to hide the fact that we may have
-  // masked out CLONE_UNTRACED/CLONE_CHILD_CLEARTID.
+  // masked out CLONE_UNTRACED/CLONE_CHILD_CLEARTID or changed from vfork to
+  // clone.
   r.set_arg1(trace_frame.regs().arg1());
+  r.set_arg2(trace_frame.regs().arg2());
   // Pretend we're still in the system call
   r.set_syscall_result(-ENOSYS);
+  r.set_original_syscallno(trace_frame.regs().original_syscallno());
   t->set_regs(r);
   // Get out of the kernel
   t->finish_emulated_syscall();
@@ -209,7 +224,8 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // the recorded registers could be in a different pid namespace from rr's,
   // so we can't use it directly.
   TraceTaskEvent tte = read_task_trace_event(
-      t, Arch::clone == sys ? TraceTaskEvent::CLONE : TraceTaskEvent::FORK);
+      t, Arch::clone == t->regs().original_syscallno() ? TraceTaskEvent::CLONE
+                                                       : TraceTaskEvent::FORK);
   ASSERT(t, tte.parent_tid() == t->rec_tid);
   long rec_tid = tte.tid();
   pid_t new_tid = t->get_ptrace_eventmsg<pid_t>();
@@ -222,7 +238,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
                          params.tls, params.ctid, new_tid, rec_tid));
 
-  if (Arch::clone == sys) {
+  if (Arch::clone == t->regs().original_syscallno()) {
     /* FIXME: what if registers are non-null and contain an
      * invalid address? */
     t->set_data_from_trace();
@@ -241,9 +257,10 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   Registers new_r = new_task->regs();
   new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
   new_r.set_arg1(trace_frame.regs().arg1());
+  new_r.set_arg2(trace_frame.regs().arg2());
   new_task->emulate_syscall_entry(new_r);
 
-  if (Arch::clone != sys || !(CLONE_VM & r.arg1())) {
+  if (Arch::clone != t->regs().original_syscallno() || !(CLONE_VM & r.arg1())) {
     // It's hard to imagine a scenario in which it would
     // be useful to inherit breakpoints (along with their
     // refcounts) across a non-VM-sharing clone, but for

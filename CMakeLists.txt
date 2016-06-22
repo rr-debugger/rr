@@ -628,6 +628,7 @@ set(BASIC_TESTS
   unshare
   utimes
   vfork_flush
+  vfork_shared
   video_capture
   vm_readv_writev
   wait

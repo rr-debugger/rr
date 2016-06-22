@@ -296,8 +296,7 @@ static int record(const vector<string>& args, const RecordFlags& flags) {
   }
 }
 
-static void exec_child(vector<string>& args)
-{
+static void exec_child(vector<string>& args) {
   execvp(args[0].c_str(), StringVectorToCharArray(args).get());
   // That failed. Try executing the file directly.
   execv(args[0].c_str(), StringVectorToCharArray(args).get());
@@ -325,7 +324,8 @@ int RecordCommand::run(vector<string>& args) {
       exec_child(args);
     }
     fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
-            "Use `rr record --ignore-nested` to start the child process directly.\n");
+                    "Use `rr record --ignore-nested` to start the child "
+                    "process directly.\n");
     return 1;
   }
 

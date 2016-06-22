@@ -1353,6 +1353,7 @@ pid_t RecordTask::find_newborn_thread() {
 pid_t RecordTask::find_newborn_child_process() {
   ASSERT(this, session().is_recording());
   ASSERT(this, ptrace_event() == PTRACE_EVENT_CLONE ||
+                   ptrace_event() == PTRACE_EVENT_VFORK ||
                    ptrace_event() == PTRACE_EVENT_FORK);
 
   pid_t hint = get_ptrace_eventmsg<pid_t>();

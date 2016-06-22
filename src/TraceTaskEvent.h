@@ -23,7 +23,7 @@ public:
   enum Type {
     NONE,
     CLONE, // created by clone(2) syscall
-    FORK,  // created by fork(2) syscall
+    FORK,  // created by fork(2) or vfork(2) syscalls
     EXEC,
     EXIT
   };

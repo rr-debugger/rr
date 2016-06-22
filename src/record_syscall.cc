@@ -2195,7 +2195,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   if (is_clone_syscall(original_syscall, r.arch())) {
     params = extract_clone_parameters(t);
     flags = r.arg1();
-    r.set_arg1(flags & ~uintptr_t(CLONE_VFORK | CLONE_UNTRACED));
+    r.set_arg1(flags & ~uintptr_t(CLONE_UNTRACED));
     t->set_regs(r);
     termination_signal = flags & 0xff;
     if (flags & CLONE_VFORK) {
@@ -2206,9 +2206,8 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       ptrace_event = PTRACE_EVENT_CLONE;
     }
   } else if (is_vfork_syscall(original_syscall, r.arch())) {
-    r.set_original_syscallno(Arch::fork);
-    t->set_regs(r);
     ptrace_event = PTRACE_EVENT_VFORK;
+    flags = CLONE_VM;
   } else {
     ptrace_event = PTRACE_EVENT_FORK;
   }
@@ -2244,8 +2243,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     t->advance_syscall();
   }
 
-  ASSERT(t, t->ptrace_event() == PTRACE_EVENT_CLONE ||
-                t->ptrace_event() == PTRACE_EVENT_FORK);
+  ASSERT(t, t->ptrace_event() == ptrace_event);
 
   // Ideally we'd just use t->get_ptrace_eventmsg_pid() here, but
   // kernels failed to translate that value from other pid namespaces to
@@ -2271,7 +2269,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   new_task->set_termination_signal(termination_signal);
 
   /* record child id here */
-  if (is_clone_syscall(r.original_syscallno(), r.arch())) {
+  if (is_clone_syscall(original_syscall, r.arch())) {
     CloneParameters child_params = extract_clone_parameters(new_task);
     t->record_remote_even_if_null(params.ptid);
 
@@ -2316,8 +2314,8 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       syscall_state.syscall_entry_registers.original_syscallno());
   t->set_regs(r);
 
-  // We're in a PTRACE_EVENT_FORK/CLONE so the next PTRACE_SYSCALL for |t| will
-  // go to the exit of the syscall, as expected.
+  // We're in a PTRACE_EVENT_FORK/VFORK/CLONE so the next PTRACE_SYSCALL for
+  // |t| will go to the exit of the syscall, as expected.
 }
 
 static void record_ranges(RecordTask* t,
