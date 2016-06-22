@@ -163,11 +163,9 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // If we allow CLONE_UNTRACED then the child would escape from rr control
     // and we can't allow that.
     // Block CLONE_CHILD_CLEARTID because we'll emulate that ourselves.
-    flags = r.arg1() & ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK);
-    if (r.arg1() & CLONE_VFORK) {
-      flags |= CLONE_VM;
-    }
-    r.set_arg1(flags);
+    // Block CLONE_VFORK for the reasons below.
+    r.set_arg1(r.arg1() &
+               ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK));
   } else if (Arch::vfork == sys) {
     // We can't perform a real vfork, because the kernel won't let the vfork
     // parent return from the syscall until the vfork child has execed or
