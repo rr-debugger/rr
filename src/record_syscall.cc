@@ -2493,14 +2493,14 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
 
         case Arch::GETLK:
-          syscall_state.reg_parameter<struct Arch::flock>(3, IN_OUT);
+          syscall_state.reg_parameter<typename Arch::flock>(3, IN_OUT);
           break;
 
         case Arch::GETLK64:
           // flock and flock64 better be different on 32-bit architectures,
           // but on 64-bit architectures, it's OK if they're the same.
           static_assert(
-              sizeof(struct Arch::flock) < sizeof(typename Arch::flock64) ||
+              sizeof(typename Arch::flock) < sizeof(typename Arch::flock64) ||
                   Arch::elfclass == ELFCLASS64,
               "struct flock64 not declared differently from struct flock");
           syscall_state.reg_parameter<typename Arch::flock64>(3, IN_OUT);
