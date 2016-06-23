@@ -22,15 +22,22 @@ hit_bps = { 'A': 0, 'B': 0, 'C': 0 }
 events = [ re.compile(r'Breakpoint 1, hit_barrier'),
            re.compile(r'Breakpoint \d, ([ABC])'),
            re.compile(r'Remote connection closed'),
+           re.compile(r'Cannot find bounds of current function'),
            re.compile(r'\(rr\)') ]
+next_cmd = 's'
 while 1:
-    send_gdb('s')
+    send_gdb(next_cmd)
+    next_cmd = 's'
     i = expect_list(events)
     if 0 == i:
         break
     if 2 == i:
         assert False, 'Program stopped unexpectedly, review gdb_rr.log'
     if 3 == i:
+        expect_gdb(r'\(rr\)')
+        next_cmd = 'stepi'
+        continue
+    if 4 == i:
         continue
 
     bp = last_match().group(1)
