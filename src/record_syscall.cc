@@ -2961,12 +2961,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
             t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().arg1()));
         if (VirtualPerfCounterMonitor::should_virtualize(attr)) {
           Registers r = t->regs();
-          // Turn this into a socket() syscall. This just gives us an allocated
-          // fd. Syscalls using this fd will be emulated (except for close()).
-          r.set_original_syscallno(Arch::socket);
-          r.set_arg1(AF_UNIX);
-          r.set_arg2(SOCK_STREAM);
-          r.set_arg3(0);
+          // Turn this into an inotify_init() syscall. This just gives us an
+          // allocated fd. Syscalls using this fd will be emulated (except for
+          // close()).
+          r.set_original_syscallno(Arch::inotify_init);
           t->set_regs(r);
         }
       }
@@ -4012,15 +4010,12 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::perf_event_open:
-      if (t->regs().original_syscallno() == Arch::socket) {
+      if (t->regs().original_syscallno() == Arch::inotify_init) {
         ASSERT(t, !t->regs().syscall_failed());
         int fd = t->regs().syscall_result_signed();
         Registers r = t->regs();
         r.set_original_syscallno(
             syscall_state.syscall_entry_registers.original_syscallno());
-        r.set_arg1(syscall_state.syscall_entry_registers.arg1());
-        r.set_arg2(syscall_state.syscall_entry_registers.arg2());
-        r.set_arg3(syscall_state.syscall_entry_registers.arg3());
         t->set_regs(r);
         auto attr =
             t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().arg1()));
