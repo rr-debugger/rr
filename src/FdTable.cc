@@ -68,7 +68,7 @@ Switchable FdTable::will_write(Task* t, int fd) {
 
 void FdTable::did_write(Task* t, int fd,
                         const std::vector<FileMonitor::Range>& ranges,
-                        off_t offset) {
+                        int64_t offset) {
   auto it = fds.find(fd);
   if (it != fds.end()) {
     it->second->did_write(t, ranges, offset);

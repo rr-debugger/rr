@@ -273,7 +273,7 @@ static int64_t get_io_offset_arch(int syscallno, const Registers& regs) {
     case Arch::pread64:
     case Arch::preadv:
       if (sizeof(typename Arch::unsigned_word) == 4) {
-        return regs.arg4_signed() | (uint64_t(regs.arg5_signed()) << 32);
+        return regs.arg4() | (uint64_t(regs.arg5_signed()) << 32);
       }
       return regs.arg4_signed();
     default:

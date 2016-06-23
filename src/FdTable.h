@@ -26,7 +26,7 @@ public:
   bool allow_close(int fd);
   Switchable will_write(Task* t, int fd);
   void did_write(Task* t, int fd, const std::vector<FileMonitor::Range>& ranges,
-                 off_t offset = -1);
+                 int64_t offset = -1);
   void did_dup(int from, int to);
   void did_close(int fd);
 
