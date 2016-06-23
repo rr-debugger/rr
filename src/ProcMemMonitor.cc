@@ -31,7 +31,7 @@ ProcMemMonitor::ProcMemMonitor(Task* t, const string& pathname) {
 }
 
 void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
-                               off_t offset) {
+                               int64_t offset) {
   if (!t->session().is_replaying() || ranges.empty()) {
     return;
   }
@@ -45,7 +45,8 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
   // have a way to store file offset in the trace
   for (auto& r : ranges) {
     auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
-    target->write_mem(remote_ptr<uint8_t>(offset), bytes.data(), bytes.size());
+    target->write_mem(remote_ptr<uint8_t>(uintptr_t(offset)), bytes.data(),
+                      bytes.size());
     offset += bytes.size();
   }
 }

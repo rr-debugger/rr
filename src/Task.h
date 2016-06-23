@@ -508,7 +508,7 @@ public:
    * Compute the offset used by a read/write syscall. Returns -1 if the
    * syscall doesn't pass an offset.
    */
-  off_t get_io_offset(int syscallno, const Registers& regs);
+  int64_t get_io_offset(int syscallno, const Registers& regs);
 
   /**
    * Return the virtual memory mapping (address space) of this

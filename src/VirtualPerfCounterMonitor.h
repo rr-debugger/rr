@@ -23,7 +23,7 @@ public:
   virtual bool emulate_ioctl(RecordTask* t, uint64_t* result);
   virtual bool emulate_fcntl(RecordTask* t, uint64_t* result);
   virtual bool emulate_read(RecordTask* t, const std::vector<Range>& ranges,
-                            off_t offset, uint64_t* result);
+                            int64_t offset, uint64_t* result);
 
 private:
   Ticks initial_ticks;

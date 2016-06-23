@@ -578,8 +578,8 @@ template <> void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher&) {
         // Absolutely-addressed symbols in the VDSO claim to start here.
         static const uint64_t vdso_static_base = 0xffffffffff700000LL;
         static const uintptr_t vdso_max_size = 0xffffLL;
-        uintptr_t sym_address = syms.file_offset(i);
-        uintptr_t sym_offset = sym_address & vdso_max_size;
+        uint64_t sym_address = syms.file_offset(i);
+        uint64_t sym_offset = sym_address & vdso_max_size;
 
         // In 4.4.6-301.fc23.x86_64 we occasionally see a grossly invalid
         // address, se.g. 0x11c6970 for __vdso_getcpu. :-(

@@ -50,7 +50,7 @@ bool FdTable::emulate_fcntl(int fd, RecordTask* t, uint64_t* result) {
 
 bool FdTable::emulate_read(int fd, RecordTask* t,
                            const std::vector<FileMonitor::Range>& ranges,
-                           off_t offset, uint64_t* result) {
+                           int64_t offset, uint64_t* result) {
   auto it = fds.find(fd);
   if (it == fds.end()) {
     return false;

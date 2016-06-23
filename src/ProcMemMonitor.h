@@ -20,7 +20,7 @@ public:
    * During replay, copy writes to tracee |tid|'s memory.
    */
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
-                         off_t offset);
+                         int64_t offset);
 
 private:
   // 0 if this doesn't object doesn't refer to a tracee's proc-mem.

@@ -52,7 +52,7 @@ public:
     size_t length;
     Range(remote_ptr<void> data, size_t length) : data(data), length(length) {}
   };
-  virtual void did_write(Task*, const std::vector<Range>&, off_t) {}
+  virtual void did_write(Task*, const std::vector<Range>&, int64_t) {}
 
   /**
    * Return true if the ioctl should be fully emulated. If so the result
@@ -74,7 +74,7 @@ public:
    * task's memory ranges.
    * Only called during recording.
    */
-  virtual bool emulate_read(RecordTask*, const std::vector<Range>&, off_t,
+  virtual bool emulate_read(RecordTask*, const std::vector<Range>&, int64_t,
                             uint64_t*) {
     return false;
   }

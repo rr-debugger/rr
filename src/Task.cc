@@ -266,14 +266,14 @@ static vector<uint8_t> ptrace_get_regs_set(Task* t, const Registers& regs,
 }
 
 template <typename Arch>
-static off_t get_io_offset_arch(int syscallno, const Registers& regs) {
+static int64_t get_io_offset_arch(int syscallno, const Registers& regs) {
   switch (syscallno) {
     case Arch::pwrite64:
     case Arch::pwritev:
     case Arch::pread64:
     case Arch::preadv:
       if (sizeof(typename Arch::unsigned_word) == 4) {
-        return regs.arg4_signed() | (off_t(regs.arg5_signed()) << 32);
+        return regs.arg4_signed() | (uint64_t(regs.arg5_signed()) << 32);
       }
       return regs.arg4_signed();
     default:
@@ -281,7 +281,7 @@ static off_t get_io_offset_arch(int syscallno, const Registers& regs) {
   }
 }
 
-off_t Task::get_io_offset(int syscallno, const Registers& regs) {
+int64_t Task::get_io_offset(int syscallno, const Registers& regs) {
   RR_ARCH_FUNCTION(get_io_offset_arch, arch(), syscallno, regs);
 }
 
