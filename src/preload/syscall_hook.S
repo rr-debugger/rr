@@ -236,7 +236,6 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_3c_24)
          movq _syscall_stack_adjust(%rsp),%rdi
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_3c_24)
 
-
 SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
         callq _syscall_hook_trampoline
         /* The original instructions after the syscall are
@@ -251,7 +250,6 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
         .cfi_endproc
         .size _syscall_hook_trampoline_5a_5e_c3, .-_syscall_hook_trampoline_5a_5e_c3
 
-
 SYSCALLHOOK_START(_syscall_hook_trampoline_89_c2_f7_da)
         call _syscall_hook_trampoline
         mov %eax,%edx
@@ -261,6 +259,11 @@ SYSCALLHOOK_END(_syscall_hook_trampoline_89_c2_f7_da)
 SYSCALLHOOK_START(_syscall_hook_trampoline_90_90_90)
         call _syscall_hook_trampoline
 SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
+
+SYSCALLHOOK_START(_syscall_hook_trampoline_ba_01_00_00_00)
+        call _syscall_hook_trampoline
+        mov $1,%edx
+SYSCALLHOOK_END(_syscall_hook_trampoline_ba_01_00_00_00)
 
 _syscall_hook_end:
 

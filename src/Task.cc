@@ -1934,8 +1934,8 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   }
   if (errno == EPERM) {
     FATAL() << "Can't write to /proc/" << tid << "/mem\n"
-        << "Maybe you need to disable grsecurity MPROTECT with:\n"
-        << "  setfattr -n user.pax.flags -v 'emr' <executable>";
+            << "Maybe you need to disable grsecurity MPROTECT with:\n"
+            << "  setfattr -n user.pax.flags -v 'emr' <executable>";
   }
   if (ok) {
     if (nwritten < buf_size) {

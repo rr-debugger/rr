@@ -626,6 +626,8 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_5a_5e_c3(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_89_c2_f7_da(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_ba_01_00_00_00(void);
+
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
      * cmp $-4095,%rax (in glibc-2.18-16.fc20.x86_64) */
@@ -651,7 +653,15 @@ static void __attribute__((constructor)) init_process(void) {
       { 0x89, 0xc2, 0xf7, 0xda },
       (uintptr_t)_syscall_hook_trampoline_89_c2_f7_da },
     /* Our VDSO vsyscall patches have 'syscall' followed by "nop; nop; nop" */
-    { 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
+    { 3,
+      { 0x90, 0x90, 0x90 },
+      (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 },
+    /* glibc-2.22-17.fc23.x86_64 has 'syscall' followed by 'mov $1,%rdx' in
+     * pthread_barrier_wait.
+     */
+    { 5,
+      { 0xba, 0x01, 0x00, 0x00, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 }
   };
 
   real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");

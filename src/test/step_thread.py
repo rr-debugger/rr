@@ -61,8 +61,15 @@ stopped_locations = {
 location_regex = '|'.join(stopped_locations[arch])
 
 send_gdb('info threads')
-expect_gdb(r'3\s+Thread.+?(?:%s)' % location_regex)
-expect_gdb(r'2\s+Thread.+?(?:%s)' % location_regex)
 expect_gdb(r'1\s+Thread.+hit_barrier')
+expect_gdb(r'\(rr\)')
+
+send_gdb('info threads')
+expect_gdb(r'2\s+Thread.+?(?:%s)' % location_regex)
+expect_gdb(r'\(rr\)')
+
+send_gdb('info threads')
+expect_gdb(r'3\s+Thread.+?(?:%s)' % location_regex)
+expect_gdb(r'\(rr\)')
 
 ok()
