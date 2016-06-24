@@ -56,7 +56,11 @@ public:
     arch_ = a;
     format_ = format;
     std::swap(data_, consume_data);
-    static const size_t min_xsave_size = 576;
+
+    // The actual XSAVE minimum size is 576 bytes (512 followed by a 64-byte
+    // XSAVE header) but sometimes we're storing an FXSAVE(64) which is only
+    // 512 bytes.
+    static const size_t min_xsave_size = 512;
     assert(format == NONE || data_.size() >= min_xsave_size);
   }
 

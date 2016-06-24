@@ -63,6 +63,7 @@ static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
 static const int AVX_FEATURE = 2;
 
 static const size_t xsave_header_offset = 512;
+static const size_t xsave_header_size = 64;
 // This is always at 576 since AVX is always the first optional feature,
 // if present.
 static const size_t AVX_xsave_offset = 576;
@@ -145,8 +146,13 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   }
 
   assert(reg_data.size > 0);
+  // If this is just FXSAVE(64) data then we we have no XSAVE header and no
+  // XSAVE(64) features enabled.
   uint64_t xsave_features =
-      *reinterpret_cast<const uint64_t*>(data_.data() + xsave_header_offset);
+      data_.size() < xsave_header_offset + xsave_header_size
+          ? 0
+          : *reinterpret_cast<const uint64_t*>(data_.data() +
+                                               xsave_header_offset);
 
   *defined = true;
 
