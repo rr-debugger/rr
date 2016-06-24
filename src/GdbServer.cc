@@ -107,11 +107,13 @@ static const string& gdb_rr_macros() {
        // that changed recently.
        << "python-interactive\n"
        << "import re\n"
-       << "ver = re.compile('.* "
-          "([0-9]+)\\.([0-9]+)\\.([0-9]+).*').match(gdb.execute('show "
-          "version', False, True))\n"
-       << "ver = int(ver.group(1))*10000 + int(ver.group(2))*100 + "
-          "int(ver.group(3))\n"
+       << "m = re.compile("
+       << "'.* ([0-9]+)\\.([0-9]+)(\\.([0-9]+))?.*'"
+       << ").match(gdb.execute('show version', False, True))\n"
+       << "ver = int(m.group(1))*10000 + int(m.group(2))*100\n"
+       << "if m.group(4):\n"
+       << "    ver = ver + int(m.group(4))\n"
+       << "\n"
        << "if ver < 71101:\n"
        << "    gdb.execute('set target-async 0')\n"
        << "    gdb.execute('maint set target-async 0')\n";
