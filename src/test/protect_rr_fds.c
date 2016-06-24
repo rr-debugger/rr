@@ -2,6 +2,8 @@
 
 #include "rrutil.h"
 
+#define MAX_FDS 2048
+
 int main(int argc, char* argv[]) {
   pid_t child;
   int status;
@@ -9,6 +11,7 @@ int main(int argc, char* argv[]) {
   int fd;
   int pipe_fds[2];
   struct rlimit nofile;
+  int fd_limit;
 
   if (argc == 2) {
     atomic_puts("EXIT-SUCCESS");
@@ -20,7 +23,12 @@ int main(int argc, char* argv[]) {
      those don't interfere with rr by closing RR_RESERVED_ROOT_DIR_FD
      or some other essential file descriptor. */
   test_assert(0 == getrlimit(RLIMIT_NOFILE, &nofile));
-  for (fd = STDERR_FILENO + 1; fd < (int)nofile.rlim_cur; ++fd) {
+  if (nofile.rlim_cur == RLIM_INFINITY || nofile.rlim_cur > MAX_FDS) {
+    fd_limit = MAX_FDS;
+  } else {
+    fd_limit = nofile.rlim_cur;
+  }
+  for (fd = STDERR_FILENO + 1; fd < fd_limit; ++fd) {
     ret = fcntl(fd, F_SETFD, FD_CLOEXEC);
     test_assert(ret == 0 || (ret == -1 && errno == EBADF));
     ret = dup2(STDERR_FILENO, fd);
