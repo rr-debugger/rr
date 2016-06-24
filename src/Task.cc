@@ -1865,60 +1865,6 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
   }
 }
 
-bool Task::try_replace_pages(remote_ptr<void> addr, ssize_t buf_size,
-                             const void* buf) {
-  // Check that there are private-mapping pages covering the destination area.
-  // The pages must all have the same prot and flags.
-  uintptr_t page_start = floor_page_size(addr).as_int();
-  uintptr_t page_end = ceil_page_size(addr + buf_size).as_int();
-  if (page_start == page_end) {
-    return true;
-  }
-
-  const KernelMapping& m_start = as->mapping_of(page_start).map;
-  int all_prot = m_start.prot();
-  int all_flags = m_start.flags();
-  if (!(all_flags & MAP_PRIVATE)) {
-    return false;
-  }
-  for (uintptr_t p = page_start + page_size(); p < page_end; p += page_size()) {
-    const KernelMapping& m = as->mapping_of(p).map;
-    if (all_prot != m.prot() || all_flags != m.flags()) {
-      return false;
-    }
-  }
-
-  auto cur = read_mem(remote_ptr<uint8_t>(page_start), page_end - page_start);
-
-  // XXX share this with AddressSpace.cc
-  char path[] = "/tmp/rr-replaced-pages-XXXXXX";
-  ScopedFd fd(mkstemp(path));
-  ASSERT(this, fd.is_open());
-  ssize_t nwritten = write(fd, cur.data(), cur.size());
-  ASSERT(this, nwritten == (ssize_t)cur.size());
-  nwritten = pwrite(fd, buf, buf_size, addr.as_int() - page_start);
-  ASSERT(this, nwritten == buf_size);
-
-  AutoRemoteSyscalls remote(this);
-  SupportedArch a = arch();
-  AutoRestoreMem child_path(remote, reinterpret_cast<uint8_t*>(path),
-                            sizeof(path));
-  // skip leading '/' since we want the path to be relative to the root fd
-  int child_fd = remote.infallible_syscall(syscall_number_for_openat(a),
-                                           RR_RESERVED_ROOT_DIR_FD,
-                                           child_path.get() + 1, O_RDWR);
-  ASSERT(this, child_fd >= 0);
-
-  // Just map the new file right over the top of existing pages
-  remote.infallible_mmap_syscall(page_start, cur.size(), all_prot,
-                                 all_flags | MAP_FIXED, child_fd, 0);
-
-  remote.infallible_syscall(syscall_number_for_close(a), child_fd);
-
-  unlink(path);
-  return true;
-}
-
 /**
  * This function exists to work around
  * https://bugzilla.kernel.org/show_bug.cgi?id=99101.
@@ -1986,10 +1932,10 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
     open_mem_fd();
     return write_bytes_helper(addr, buf_size, buf, ok);
   }
-  if (errno == EPERM && try_replace_pages(addr, buf_size, buf)) {
-    // Maybe a PaX kernel and we're trying to write to an executable page.
-    vm()->notify_written(addr, buf_size);
-    return;
+  if (errno == EPERM) {
+    FATAL() << "Can't write to /proc/" << tid << "/mem\n"
+        << "Maybe you need to disable grsecurity MPROTECT with:\n"
+        << "  setfattr -n user.pax.flags -v 'emr' <executable>";
   }
   if (ok) {
     if (nwritten < buf_size) {
