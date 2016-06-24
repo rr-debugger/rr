@@ -4,19 +4,19 @@
 
 #include "ReplaySession.h"
 
-#include <syscall.h>
-#include <sys/prctl.h>
 #include <linux/futex.h>
+#include <sys/prctl.h>
+#include <syscall.h>
 
 #include <algorithm>
 
 #include "AutoRemoteSyscalls.h"
-#include "fast_forward.h"
 #include "Flags.h"
+#include "ReplayTask.h"
+#include "fast_forward.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "replay_syscall.h"
-#include "ReplayTask.h"
 #include "util.h"
 
 using namespace std;

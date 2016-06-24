@@ -44,8 +44,7 @@ unique_ptr<ElfReaderImplBase> elf_reader_impl(ElfReader& r,
 }
 
 template <typename Arch>
-ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r)
-    : ElfReaderImplBase(r) {
+ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {
   if (!r.read(0, elfheader) || memcmp(&elfheader, ELFMAG, SELFMAG) != 0 ||
       elfheader.e_ident[EI_CLASS] != Arch::elfclass ||
       elfheader.e_ident[EI_DATA] != Arch::elfendian ||

@@ -5,12 +5,12 @@
 #include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
 #include "ElfReader.h"
-#include "kernel_abi.h"
-#include "kernel_metadata.h"
-#include "log.h"
 #include "RecordTask.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "kernel_abi.h"
+#include "kernel_metadata.h"
+#include "log.h"
 
 using namespace std;
 
@@ -26,7 +26,7 @@ static void write_and_record_bytes(RecordTask* t, remote_ptr<void> child_addr,
 
 template <size_t N>
 static void write_and_record_bytes(RecordTask* t, remote_ptr<void> child_addr,
-                                   const uint8_t(&buf)[N]) {
+                                   const uint8_t (&buf)[N]) {
   write_and_record_bytes(t, child_addr, N, buf);
 }
 

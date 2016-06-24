@@ -3,9 +3,9 @@
 #include "ReplayTask.h"
 
 #include "AutoRemoteSyscalls.h"
-#include "log.h"
 #include "PreserveFileMonitor.h"
 #include "ReplaySession.h"
+#include "log.h"
 #include "rr/rr.h"
 
 using namespace std;

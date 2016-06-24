@@ -9,9 +9,9 @@
 
 #include "AddressSpace.h"
 #include "Command.h"
+#include "TraceStream.h"
 #include "kernel_metadata.h"
 #include "main.h"
-#include "TraceStream.h"
 #include "util.h"
 
 using namespace std;

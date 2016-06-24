@@ -9,11 +9,11 @@
 
 #include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
+#include "Registers.h"
+#include "Task.h"
 #include "kernel_abi.h"
 #include "log.h"
-#include "Registers.h"
 #include "seccomp-bpf.h"
-#include "Task.h"
 
 using namespace std;
 

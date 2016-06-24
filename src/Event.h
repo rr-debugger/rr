@@ -9,8 +9,8 @@
 #include <stack>
 #include <string>
 
-#include "kernel_abi.h"
 #include "Registers.h"
+#include "kernel_abi.h"
 
 struct syscallbuf_record;
 

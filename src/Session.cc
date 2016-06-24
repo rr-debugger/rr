@@ -2,9 +2,9 @@
 
 #include "Session.h"
 
+#include <asm/ptrace.h>
 #include <linux/limits.h>
 #include <linux/unistd.h>
-#include <asm/ptrace.h>
 #include <sys/prctl.h>
 #include <syscall.h>
 
@@ -15,10 +15,10 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
-#include "kernel_metadata.h"
-#include "log.h"
 #include "Task.h"
 #include "TaskGroup.h"
+#include "kernel_metadata.h"
+#include "log.h"
 #include "util.h"
 
 using namespace std;

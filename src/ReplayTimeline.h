@@ -460,9 +460,11 @@ private:
   std::map<MarkKey, uint32_t> marks_with_checkpoints;
 
   std::set<std::tuple<AddressSpaceUid, remote_code_ptr,
-                      std::unique_ptr<BreakpointCondition> > > breakpoints;
+                      std::unique_ptr<BreakpointCondition> > >
+      breakpoints;
   std::set<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t, WatchType,
-                      std::unique_ptr<BreakpointCondition> > > watchpoints;
+                      std::unique_ptr<BreakpointCondition> > >
+      watchpoints;
   bool breakpoints_applied;
 
   TraceFrame::Time reverse_execution_barrier_event;

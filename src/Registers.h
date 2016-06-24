@@ -14,8 +14,8 @@
 #include "GdbRegister.h"
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
-#include "remote_ptr.h"
 #include "remote_code_ptr.h"
+#include "remote_ptr.h"
 
 namespace rr {
 
@@ -233,9 +233,7 @@ public:
    * Set the register containing syscall argument |Index| to
    * |value|.
    */
-  template <int Index> void set_arg(std::nullptr_t) {
-    set_arg(Index, 0);
-  }
+  template <int Index> void set_arg(std::nullptr_t) { set_arg(Index, 0); }
   template <int Index, typename T> void set_arg(remote_ptr<T> value) {
     set_arg(Index, value.as_int());
   }

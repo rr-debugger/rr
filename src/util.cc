@@ -14,8 +14,8 @@
 #include <limits.h>
 #include <linux/magic.h>
 #include <linux/prctl.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/vfs.h>
 #include <unistd.h>
 
@@ -24,13 +24,13 @@
 #include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
+#include "ReplaySession.h"
+#include "ReplayTask.h"
+#include "TraceStream.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
-#include "ReplaySession.h"
 #include "seccomp-bpf.h"
-#include "ReplayTask.h"
-#include "TraceStream.h"
 
 using namespace std;
 

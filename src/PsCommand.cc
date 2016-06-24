@@ -3,9 +3,9 @@
 #include <map>
 
 #include "Command.h"
-#include "main.h"
 #include "TraceStream.h"
 #include "TraceTaskEvent.h"
+#include "main.h"
 
 using namespace std;
 

@@ -27,11 +27,11 @@
 #include <sstream>
 #include <vector>
 
-#include "log.h"
 #include "GdbCommandHandler.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "StringVectorToCharArray.h"
+#include "log.h"
 
 using namespace std;
 

@@ -3,10 +3,10 @@
 #include "StdioMonitor.h"
 
 #include "Flags.h"
-#include "log.h"
 #include "ReplaySession.h"
-#include "Session.h"
 #include "ReplayTask.h"
+#include "Session.h"
+#include "log.h"
 
 namespace rr {
 

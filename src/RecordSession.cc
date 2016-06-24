@@ -2,20 +2,20 @@
 
 #include "RecordSession.h"
 
-#include <linux/futex.h>
 #include <limits.h>
+#include <linux/futex.h>
 
 #include <algorithm>
 #include <sstream>
 
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
+#include "RecordTask.h"
 #include "ftrace.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "record_signal.h"
 #include "record_syscall.h"
-#include "RecordTask.h"
 #include "seccomp-bpf.h"
 
 namespace rr {

@@ -25,22 +25,22 @@
 #include <linux/wireless.h>
 #include <poll.h>
 #include <signal.h>
+#include <sound/asound.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <sound/asound.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/times.h>
 #include <sys/un.h>
 #include <sys/user.h>
 #include <sys/utsname.h>
 #include <sys/vfs.h>
-#include <sys/sysinfo.h>
 #include <termios.h>
 
 // Used to verify definitions in kernel_abi.h

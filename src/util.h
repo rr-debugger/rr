@@ -9,9 +9,9 @@
 #include <string>
 
 #include "Event.h"
-#include "remote_ptr.h"
 #include "ScopedFd.h"
 #include "TraceFrame.h"
+#include "remote_ptr.h"
 
 namespace rr {
 
@@ -27,7 +27,7 @@ class KernelMapping;
 class Task;
 class TraceFrame;
 
-template <typename T, size_t N> constexpr size_t array_length(T(&)[N]) {
+template <typename T, size_t N> constexpr size_t array_length(T (&)[N]) {
   return N;
 }
 

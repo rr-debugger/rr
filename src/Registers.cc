@@ -9,8 +9,8 @@
 #include <assert.h>
 #include <string.h>
 
-#include "log.h"
 #include "ReplayTask.h"
+#include "log.h"
 
 using namespace std;
 

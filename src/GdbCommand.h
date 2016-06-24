@@ -3,8 +3,8 @@
 #ifndef RR_GDB_COMMAND_H_
 #define RR_GDB_COMMAND_H_
 
-#include "GdbServer.h"
 #include "GdbCommandHandler.h"
+#include "GdbServer.h"
 
 #include <sstream>
 #include <string>
@@ -67,7 +67,8 @@ public:
   }
 
   std::function<std::string(GdbServer&, Task* t,
-                            const std::vector<std::string>&)> invoker;
+                            const std::vector<std::string>&)>
+      invoker;
 };
 
 } // namespace rr

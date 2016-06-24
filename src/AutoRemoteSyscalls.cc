@@ -2,18 +2,18 @@
 
 #include "AutoRemoteSyscalls.h"
 
+#include <limits.h>
+#include <linux/net.h>
 #include <sys/socket.h>
 #include <sys/un.h>
-#include <linux/net.h>
-#include <limits.h>
 
 #include "rr/rr.h"
 
-#include "kernel_metadata.h"
-#include "log.h"
 #include "ReplaySession.h"
 #include "Session.h"
 #include "Task.h"
+#include "kernel_metadata.h"
+#include "log.h"
 #include "util.h"
 
 using namespace std;

@@ -18,13 +18,13 @@
 
 #include "EmuFs.h"
 #include "HasTaskSet.h"
-#include "kernel_abi.h"
 #include "MemoryRange.h"
 #include "Monkeypatcher.h"
 #include "PropertyTable.h"
-#include "remote_code_ptr.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
+#include "kernel_abi.h"
+#include "remote_code_ptr.h"
 #include "util.h"
 
 namespace rr {

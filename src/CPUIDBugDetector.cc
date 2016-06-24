@@ -3,9 +3,9 @@
 #include "CPUIDBugDetector.h"
 #include "Event.h"
 #include "Flags.h"
-#include "kernel_abi.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
+#include "kernel_abi.h"
 
 extern "C" int cpuid_loop(int iterations);
 

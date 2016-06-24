@@ -7,21 +7,21 @@
 #include <elf.h>
 #include <errno.h>
 #include <limits.h>
+#include <linux/ipc.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
 #include <linux/unistd.h>
-#include <linux/ipc.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syscall.h>
 #include <sys/personality.h>
 #include <sys/prctl.h>
-#include <sys/types.h>
 #include <sys/time.h>
-#include <sys/wait.h>
+#include <sys/types.h>
 #include <sys/user.h>
+#include <sys/wait.h>
+#include <syscall.h>
 
 #include <limits>
 #include <set>
@@ -33,20 +33,20 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "CPUIDBugDetector.h"
+#include "MagicSaveDataMonitor.h"
+#include "PreserveFileMonitor.h"
+#include "RecordSession.h"
+#include "RecordTask.h"
+#include "ReplaySession.h"
+#include "ScopedFd.h"
+#include "StdioMonitor.h"
+#include "StringVectorToCharArray.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
 #include "log.h"
-#include "MagicSaveDataMonitor.h"
-#include "PreserveFileMonitor.h"
-#include "RecordSession.h"
 #include "record_signal.h"
-#include "RecordTask.h"
-#include "ReplaySession.h"
-#include "ScopedFd.h"
 #include "seccomp-bpf.h"
-#include "StdioMonitor.h"
-#include "StringVectorToCharArray.h"
 #include "util.h"
 
 using namespace std;

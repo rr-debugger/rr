@@ -6,10 +6,10 @@
 
 #include <rr/rr.h>
 
-#include "log.h"
 #include "RecordTask.h"
-#include "Session.h"
 #include "ReplayTask.h"
+#include "Session.h"
+#include "log.h"
 #include "util.h"
 
 namespace rr {
@@ -59,8 +59,8 @@ void MagicSaveDataMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                      int64_t) {
   for (auto& r : ranges) {
     if (t->session().is_recording()) {
-      static_cast<RecordTask*>(t)
-          ->record_remote(r.data.cast<uint8_t>(), r.length);
+      static_cast<RecordTask*>(t)->record_remote(r.data.cast<uint8_t>(),
+                                                 r.length);
     } else if (t->session().is_replaying()) {
       auto rt = static_cast<ReplayTask*>(t);
       auto bytes = rt->read_mem(r.data.cast<uint8_t>(), r.length);

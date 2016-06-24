@@ -2,8 +2,8 @@
 
 #include "HasTaskSet.h"
 
-#include "log.h"
 #include "Task.h"
+#include "log.h"
 
 namespace rr {
 

@@ -3,8 +3,8 @@
 #ifndef RR_KERNEL_ABI_H
 #define RR_KERNEL_ABI_H
 
-#include <signal.h>
 #include <assert.h>
+#include <signal.h>
 
 #include <vector>
 

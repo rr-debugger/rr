@@ -6,10 +6,10 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include "RecordTask.h"
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
 #include "log.h"
-#include "RecordTask.h"
 
 using namespace std;
 

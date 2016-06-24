@@ -45,12 +45,10 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <syscall.h>
-#include <sys/file.h>
-#include <sys/xattr.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/fanotify.h>
+#include <sys/file.h>
 #include <sys/fsuid.h>
 #include <sys/inotify.h>
 #include <sys/ioctl.h>
@@ -71,8 +69,8 @@
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
 #include <sys/time.h>
-#include <sys/times.h>
 #include <sys/timerfd.h>
+#include <sys/times.h>
 #include <sys/types.h>
 #include <sys/ucontext.h>
 #include <sys/uio.h>
@@ -81,6 +79,8 @@
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
+#include <syscall.h>
 #include <termios.h>
 #include <time.h>
 #include <ucontext.h>

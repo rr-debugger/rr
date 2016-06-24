@@ -7,21 +7,21 @@
 #include <assert.h>
 #include <math.h>
 #include <signal.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/time.h>
 
 #include <algorithm>
 
 #include "Flags.h"
-#include "log.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "log.h"
 
 using namespace std;
 

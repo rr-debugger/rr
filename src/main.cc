@@ -12,8 +12,8 @@
 
 #include "Command.h"
 #include "Flags.h"
-#include "log.h"
 #include "RecordCommand.h"
+#include "log.h"
 
 using namespace std;
 

@@ -14,11 +14,11 @@
 #include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
-#include "log.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "Session.h"
 #include "Task.h"
+#include "log.h"
 
 using namespace std;
 

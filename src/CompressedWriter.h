@@ -7,8 +7,8 @@
 #include <stdint.h>
 
 #include <memory>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "ScopedFd.h"
 

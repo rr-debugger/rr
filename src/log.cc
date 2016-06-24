@@ -9,10 +9,10 @@
 #include <unordered_map>
 
 #include "Flags.h"
-#include "ftrace.h"
 #include "GdbServer.h"
-#include "kernel_metadata.h"
 #include "RecordSession.h"
+#include "ftrace.h"
+#include "kernel_metadata.h"
 #include "util.h"
 
 using namespace std;

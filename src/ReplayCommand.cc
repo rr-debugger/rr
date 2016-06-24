@@ -1,8 +1,8 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include <assert.h>
-#include <sys/wait.h>
 #include <sys/time.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <limits>
@@ -10,11 +10,11 @@
 #include "Command.h"
 #include "Flags.h"
 #include "GdbServer.h"
+#include "ReplaySession.h"
+#include "ScopedFd.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "main.h"
-#include "ReplaySession.h"
-#include "ScopedFd.h"
 
 using namespace std;
 

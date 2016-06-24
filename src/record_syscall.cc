@@ -2,18 +2,21 @@
 
 #include "record_syscall.h"
 
-#include <asm/prctl.h>
 #include <arpa/inet.h>
 #include <asm/ldt.h>
+#include <asm/prctl.h>
 #include <assert.h>
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <limits>
+#include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/futex.h>
 #include <linux/if.h>
 #include <linux/ipc.h>
+#include <linux/msdos_fs.h>
 #include <linux/msg.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -25,11 +28,10 @@
 #include <linux/sockios.h>
 #include <linux/videodev2.h>
 #include <linux/wireless.h>
-#include <linux/msdos_fs.h>
-#include <linux/capability.h>
 #include <poll.h>
 #include <sched.h>
 #include <sound/asound.h>
+#include <sstream>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -45,8 +47,6 @@
 #include <sys/vfs.h>
 #include <sys/wait.h>
 #include <termios.h>
-#include <limits>
-#include <sstream>
 #include <utility>
 
 #include <rr/rr.h>
@@ -54,21 +54,21 @@
 #include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
-#include "drm.h"
 #include "Flags.h"
-#include "ftrace.h"
-#include "kernel_abi.h"
-#include "kernel_metadata.h"
-#include "kernel_supplement.h"
-#include "log.h"
 #include "ProcMemMonitor.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "Scheduler.h"
 #include "StdioMonitor.h"
 #include "TraceStream.h"
-#include "util.h"
 #include "VirtualPerfCounterMonitor.h"
+#include "drm.h"
+#include "ftrace.h"
+#include "kernel_abi.h"
+#include "kernel_metadata.h"
+#include "kernel_supplement.h"
+#include "log.h"
+#include "util.h"
 
 using namespace std;
 
@@ -2687,8 +2687,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::recvmmsg: {
       auto vlen = (unsigned int)t->regs().arg3();
       auto mmsgp =
-          syscall_state.reg_parameter(2, sizeof(typename Arch::mmsghdr) * vlen,
-                                      IN_OUT)
+          syscall_state
+              .reg_parameter(2, sizeof(typename Arch::mmsghdr) * vlen, IN_OUT)
               .cast<typename Arch::mmsghdr>();
       prepare_recvmmsg<Arch>(t, syscall_state, mmsgp, vlen);
       if (!((unsigned int)t->regs().arg4() & MSG_DONTWAIT)) {

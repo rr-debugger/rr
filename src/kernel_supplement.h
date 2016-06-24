@@ -6,9 +6,9 @@
 #include <linux/mman.h>
 #include <linux/seccomp.h>
 #include <linux/usbdevice_fs.h>
+#include <signal.h>
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
-#include <signal.h>
 
 namespace rr {
 

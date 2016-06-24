@@ -8,12 +8,12 @@
 #include "preload/preload_interface.h"
 
 #include "Flags.h"
+#include "RecordSession.h"
+#include "StringVectorToCharArray.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "main.h"
-#include "RecordSession.h"
 #include "util.h"
-#include "StringVectorToCharArray.h"
 
 using namespace std;
 

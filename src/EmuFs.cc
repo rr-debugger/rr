@@ -9,10 +9,10 @@
 #include <string>
 
 #include "AddressSpace.h"
+#include "ReplaySession.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
-#include "ReplaySession.h"
 
 using namespace std;
 

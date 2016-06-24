@@ -11,12 +11,12 @@
 #include <linux/shm.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <syscall.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
+#include <syscall.h>
 
 #include <array>
 #include <initializer_list>
@@ -29,16 +29,16 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
-#include "kernel_abi.h"
-#include "kernel_metadata.h"
-#include "log.h"
 #include "ProcMemMonitor.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "StdioMonitor.h"
 #include "TraceStream.h"
-#include "util.h"
 #include "VirtualPerfCounterMonitor.h"
+#include "kernel_abi.h"
+#include "kernel_metadata.h"
+#include "log.h"
+#include "util.h"
 
 /* Uncomment this to check syscall names and numbers defined in syscalls.py
    against the definitions in unistd.h. This may cause the build to fail

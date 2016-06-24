@@ -13,10 +13,10 @@
 #include "CompressedReader.h"
 #include "CompressedWriter.h"
 #include "Event.h"
-#include "remote_ptr.h"
 #include "TaskishUid.h"
 #include "TraceFrame.h"
 #include "TraceTaskEvent.h"
+#include "remote_ptr.h"
 
 namespace rr {
 

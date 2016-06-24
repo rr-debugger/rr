@@ -6,9 +6,9 @@
 #include <stdlib.h>
 
 #include "AutoRemoteSyscalls.h"
-#include "log.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "log.h"
 
 using namespace std;
 

@@ -2,9 +2,9 @@
 
 #include "TaskGroup.h"
 
-#include "log.h"
 #include "Session.h"
 #include "Task.h"
+#include "log.h"
 
 namespace rr {
 

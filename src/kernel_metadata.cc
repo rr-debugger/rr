@@ -4,9 +4,9 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <sys/ptrace.h>
 #include <linux/shm.h>
 #include <signal.h>
+#include <sys/ptrace.h>
 #include <syscall.h>
 
 #include "kernel_abi.h"

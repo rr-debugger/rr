@@ -7,15 +7,15 @@
 #include <sysexits.h>
 
 #include <fstream>
-#include <string>
 #include <sstream>
+#include <string>
 
 #include "AddressSpace.h"
-#include "kernel_supplement.h"
-#include "log.h"
 #include "RecordSession.h"
 #include "Task.h"
 #include "TaskishUid.h"
+#include "kernel_supplement.h"
+#include "log.h"
 #include "util.h"
 
 using namespace std;

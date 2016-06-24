@@ -53,7 +53,7 @@ public:
                            ParsedOption* out);
   template <size_t N>
   static bool parse_option(std::vector<std::string>& args,
-                           const OptionSpec(&option_specs)[N],
+                           const OptionSpec (&option_specs)[N],
                            ParsedOption* out) {
     return parse_option(args, option_specs, N, out);
   }

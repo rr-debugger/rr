@@ -3,8 +3,8 @@
 #ifndef RR_FD_TABLE_H_
 #define RR_FD_TABLE_H_
 
-#include <unordered_map>
 #include <memory>
+#include <unordered_map>
 
 #include "FileMonitor.h"
 #include "HasTaskSet.h"

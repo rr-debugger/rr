@@ -10,19 +10,19 @@
 
 #include <limits>
 #include <map>
-#include <string>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "BreakpointCondition.h"
 #include "GdbCommandHandler.h"
 #include "GdbExpression.h"
-#include "kernel_metadata.h"
-#include "log.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "Task.h"
 #include "TaskGroup.h"
+#include "kernel_metadata.h"
+#include "log.h"
 #include "util.h"
 
 using namespace std;
@@ -101,7 +101,8 @@ static const string& gdb_rr_macros() {
        << "end\n"
        << "set unwindonsignal on\n"
        << "handle SIGURG stop\n"
-       << "set prompt (rr) \n" << GdbCommandHandler::gdb_macros()
+       << "set prompt (rr) \n"
+       << GdbCommandHandler::gdb_macros()
        // Try both "set target-async" and "maint set target-async" since
        // that changed recently.
        << "python-interactive\n"

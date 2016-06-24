@@ -102,7 +102,7 @@
  */
 #ifdef RR_IMPLEMENT_PRELOAD
 #define TEMPLATE_ARCH
-#define PTR(T) T *
+#define PTR(T) T*
 #define VOLATILE volatile
 #else
 #define TEMPLATE_ARCH template <typename Arch>

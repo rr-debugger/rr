@@ -8,23 +8,23 @@
 #include <sched.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syscall.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
-#include <sys/user.h>
 #include <sys/resource.h>
+#include <sys/user.h>
+#include <syscall.h>
 #include <x86intrin.h>
 
 #include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
-#include "kernel_metadata.h"
-#include "log.h"
 #include "PerfCounters.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "TraceStream.h"
+#include "kernel_metadata.h"
+#include "log.h"
 #include "util.h"
 
 using namespace std;

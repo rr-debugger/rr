@@ -9,8 +9,8 @@
 
 #include <algorithm>
 
-#include "main.h"
 #include "TraceStream.h"
+#include "main.h"
 
 using namespace std;
 

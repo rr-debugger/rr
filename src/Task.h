@@ -14,16 +14,16 @@
 #include "Event.h"
 #include "ExtraRegisters.h"
 #include "FdTable.h"
-#include "kernel_abi.h"
-#include "kernel_supplement.h"
 #include "PerfCounters.h"
 #include "PropertyTable.h"
 #include "Registers.h"
-#include "remote_code_ptr.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
-#include "util.h"
 #include "WaitStatus.h"
+#include "kernel_abi.h"
+#include "kernel_supplement.h"
+#include "remote_code_ptr.h"
+#include "util.h"
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
@@ -337,7 +337,7 @@ public:
    * return.
    */
   template <size_t N>
-  void read_bytes(remote_ptr<void> child_addr, uint8_t(&buf)[N]) {
+  void read_bytes(remote_ptr<void> child_addr, uint8_t (&buf)[N]) {
     return read_bytes_helper(child_addr, N, buf);
   }
 
@@ -540,7 +540,7 @@ public:
    * Write |N| bytes from |buf| to |child_addr|, or don't return.
    */
   template <size_t N>
-  void write_bytes(remote_ptr<void> child_addr, const uint8_t(&buf)[N]) {
+  void write_bytes(remote_ptr<void> child_addr, const uint8_t (&buf)[N]) {
     write_bytes_helper(child_addr, N, buf);
   }
 

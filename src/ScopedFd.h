@@ -4,8 +4,8 @@
 #define RR_SCOPED_FD_H_
 
 #include <fcntl.h>
-#include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 namespace rr {

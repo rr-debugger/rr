@@ -3,18 +3,18 @@
 #include "RecordTask.h"
 
 #include <dirent.h>
+#include <elf.h>
 #include <limits.h>
 #include <linux/perf_event.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
-#include <elf.h>
 
 #include "AutoRemoteSyscalls.h"
+#include "PreserveFileMonitor.h"
+#include "RecordSession.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
-#include "PreserveFileMonitor.h"
-#include "RecordSession.h"
 #include "record_signal.h"
 #include "rr/rr.h"
 #include "util.h"
