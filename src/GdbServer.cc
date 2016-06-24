@@ -114,6 +114,11 @@ static const string& gdb_rr_macros() {
        << "if m.group(4):\n"
        << "    ver = ver + int(m.group(4))\n"
        << "\n"
+       << "if ver == 71100:\n"
+       << "    gdb.write("
+       << "'This version of gdb (7.11.0) has known bugs that break rr. "
+       << "Install 7.11.1 or later.\\n', gdb.STDERR)\n"
+       << "\n"
        << "if ver < 71101:\n"
        << "    gdb.execute('set target-async 0')\n"
        << "    gdb.execute('maint set target-async 0')\n";
