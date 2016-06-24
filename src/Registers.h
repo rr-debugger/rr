@@ -316,11 +316,6 @@ public:
                                   EXPECT_MISMATCHES);
   }
 
-  /**
-   * Return the total number of registers for this target.
-   */
-  size_t total_registers() const;
-
   // TODO: refactor me to use the GdbRegisterValue helper from
   // GdbConnection.h.
 

@@ -432,9 +432,10 @@ template <>
 template <typename Arch>
 size_t Registers::read_register_arch(uint8_t* buf, GdbRegister regno,
                                      bool* defined) const {
-  assert(regno < total_registers());
-  // Make sure these two definitions don't get out of sync.
-  assert(array_length(RegisterInfo<Arch>::registers) == total_registers());
+  if (regno >= array_length(RegisterInfo<Arch>::registers)) {
+    *defined = false;
+    return 0;
+  }
 
   RegisterValue& rv = RegisterInfo<Arch>::registers[regno];
   if (rv.nbytes == 0) {
@@ -511,14 +512,6 @@ void Registers::write_register_by_user_offset_arch(uintptr_t offset,
 void Registers::write_register_by_user_offset(uintptr_t offset,
                                               uintptr_t value) {
   RR_ARCH_FUNCTION(write_register_by_user_offset_arch, arch(), offset, value);
-}
-
-template <typename Arch> size_t Registers::total_registers_arch() const {
-  return RegisterInfo<Arch>::num_registers;
-}
-
-size_t Registers::total_registers() const {
-  RR_ARCH_FUNCTION(total_registers_arch, arch());
 }
 
 // In theory it doesn't matter how 32-bit register values are sign extended

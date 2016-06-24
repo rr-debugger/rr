@@ -220,12 +220,26 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
 
 void GdbServer::dispatch_regs_request(const Registers& regs,
                                       const ExtraRegisters& extra_regs) {
-  size_t n_regs = regs.total_registers();
-  GdbRegisterFile file(n_regs);
-  for (size_t i = 0; i < n_regs; ++i) {
-    file.regs[i] = get_reg(regs, extra_regs, GdbRegister(i));
+  GdbRegister end;
+  // Send values for all the registers we sent XML register descriptions for.
+  // Those descriptions are controlled by GdbConnection::cpu_features().
+  bool have_AVX = dbg->cpu_features() & GdbConnection::CPU_AVX;
+  switch (regs.arch()) {
+    case x86:
+      end = have_AVX ? DREG_YMM7H : DREG_ORIG_EAX;
+      break;
+    case x86_64:
+      end = have_AVX ? DREG_64_YMM15H : DREG_ORIG_RAX;
+      break;
+    default:
+      FATAL() << "Unknown architecture";
+      break;
   }
-  dbg->reply_get_regs(file);
+  vector<GdbRegisterValue> rs;
+  for (GdbRegister r = GdbRegister(0); r < end; r = GdbRegister(r + 1)) {
+    rs.push_back(get_reg(regs, extra_regs, r));
+  }
+  dbg->reply_get_regs(rs);
 }
 
 class GdbBreakpointCondition : public BreakpointCondition {

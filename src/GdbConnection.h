@@ -60,18 +60,6 @@ struct GdbRegisterValue {
   bool defined;
 };
 
-/**
- * Represents the register file, indexed by |DbgRegister| values
- * above.
- */
-struct GdbRegisterFile {
-  std::vector<GdbRegisterValue> regs;
-
-  GdbRegisterFile(size_t n_regs) : regs(n_regs){};
-
-  size_t total_registers() const { return regs.size(); }
-};
-
 enum GdbRequestType {
   DREQ_NONE = 0,
 
@@ -414,7 +402,7 @@ public:
    * Send |file| back to the debugger host.  |file| may contain
    * undefined register values.
    */
-  void reply_get_regs(const GdbRegisterFile& file);
+  void reply_get_regs(const std::vector<GdbRegisterValue>& file);
 
   /**
    * Pass |ok = true| iff the requested register was successfully set.
@@ -494,7 +482,8 @@ public:
     CPU_64BIT = 0x1,
     CPU_AVX = 0x2,
   };
-  void set_cpu_features(uint32_t features) { cpu_features = features; }
+  void set_cpu_features(uint32_t features) { cpu_features_ = features; }
+  uint32_t cpu_features() const { return cpu_features_; }
 
 private:
   GdbConnection(pid_t tgid, const Features& features);
@@ -581,7 +570,7 @@ private:
   // multi-exe-image debugging scenarios, so we pretend only
   // this task group exists when interfacing with gdb
   pid_t tgid;
-  uint32_t cpu_features;
+  uint32_t cpu_features_;
   // true when "no-ack mode" enabled, in which we don't have
   // to send ack packets back to gdb.  This is a huge perf win.
   bool no_ack;

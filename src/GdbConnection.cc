@@ -61,7 +61,7 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 
 GdbConnection::GdbConnection(pid_t tgid, const Features& features)
-    : tgid(tgid), cpu_features(0), no_ack(false), features_(features) {
+    : tgid(tgid), cpu_features_(0), no_ack(false), features_(features) {
 #ifndef REVERSE_EXECUTION
   features_.reverse_execution = false;
 #endif
@@ -632,7 +632,7 @@ bool GdbConnection::xfer(const char* name, char* args) {
     string target_desc =
         read_target_desc((strcmp(annex, "") && strcmp(annex, "target.xml"))
                              ? annex
-                             : target_description_name(cpu_features));
+                             : target_description_name(cpu_features_));
     write_xfer_response(target_desc.c_str(), target_desc.size(), offset, len);
     return false;
   }
@@ -1590,15 +1590,14 @@ void GdbConnection::reply_get_reg(const GdbRegisterValue& reg) {
   consume_request();
 }
 
-void GdbConnection::reply_get_regs(const GdbRegisterFile& file) {
-  size_t n_regs = file.total_registers();
-  char buf[n_regs * 2 * GdbRegisterValue::MAX_SIZE + 1];
+void GdbConnection::reply_get_regs(const vector<GdbRegisterValue>& file) {
+  char buf[file.size() * 2 * GdbRegisterValue::MAX_SIZE + 1];
 
   assert(DREQ_GET_REGS == req.type);
 
   size_t offset = 0;
-  for (auto it = file.regs.begin(), end = file.regs.end(); it != end; ++it) {
-    offset += print_reg_value(*it, &buf[offset]);
+  for (auto& reg : file) {
+    offset += print_reg_value(reg, &buf[offset]);
   }
   write_packet(buf);
 
