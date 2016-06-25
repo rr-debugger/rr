@@ -253,12 +253,6 @@ public:
       TimeConstraint time_constraint = CURRENT_TIME_ONLY);
 
   /**
-   * Peek at the next mapping. Returns an empty region if there isn't one for
-   * the current event.
-   */
-  KernelMapping peek_mapped_region();
-
-  /**
    * Read a task event (clone or exec record) from the trace.
    * Returns a record of type NONE at the end of the trace.
    */
