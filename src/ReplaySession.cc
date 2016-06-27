@@ -223,15 +223,13 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
   // It doesn't really matter what we use for argv/env here, since
   // replay_syscall's process_execve is going to follow the recording and
   // ignore the parameters.
+  string exe_path;
   vector<string> argv;
-  // We do have to pass an empty string for the filename so that we don't
-  // crash before reaching execve().
-  argv.push_back(string());
   vector<string> env;
 
   ScopedFd error_fd = session->create_spawn_task_error_pipe();
   ReplayTask* t = static_cast<ReplayTask*>(
-      Task::spawn(*session, error_fd, session->trace_in, argv, env,
+      Task::spawn(*session, error_fd, session->trace_in, exe_path, argv, env,
                   session->trace_reader().peek_frame().tid()));
   session->on_create(t);
 

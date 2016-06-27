@@ -872,6 +872,7 @@ protected:
    */
   static Task* spawn(Session& session, const ScopedFd& error_fd,
                      const TraceStream& trace,
+                     const std::string& exe_path,
                      const std::vector<std::string>& argv,
                      const std::vector<std::string>& envp, pid_t rec_tid = -1);
 

@@ -2219,8 +2219,9 @@ static void set_up_seccomp_filter(Session& session, int err_fd) {
 }
 
 static void run_initial_child(Session& session, const ScopedFd& error_fd,
-                              const std::vector<std::string>& argv,
-                              const std::vector<std::string>& envp) {
+                              const string& exe_path,
+                              const vector<string>& argv,
+                              const vector<string>& envp) {
   set_up_process(session, error_fd);
   // The preceding code must run before sending SIGSTOP here,
   // since after SIGSTOP replay emulates almost all syscalls, but
@@ -2247,20 +2248,18 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
   CPUIDBugDetector::run_detection_code();
 
-  const char* exe = argv[0].c_str();
-  execvpe(exe, StringVectorToCharArray(argv).get(),
-          StringVectorToCharArray(envp).get());
-  // That failed. Try executing the file directly.
-  execve(exe, StringVectorToCharArray(argv).get(),
+  execve(exe_path.c_str(), StringVectorToCharArray(argv).get(),
          StringVectorToCharArray(envp).get());
 
   switch (errno) {
     case ENOENT:
       spawned_child_fatal_error(
-          error_fd, "execve failed: '%s' (or interpreter) not found", exe);
+          error_fd, "execve failed: '%s' (or interpreter) not found",
+          exe_path.c_str());
       break;
     default:
-      spawned_child_fatal_error(error_fd, "execve of '%s' failed", exe);
+      spawned_child_fatal_error(error_fd, "execve of '%s' failed",
+          exe_path.c_str());
       break;
   }
   // Never returns!
@@ -2268,6 +2267,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
 /*static*/ Task* Task::spawn(Session& session, const ScopedFd& error_fd,
                              const TraceStream& trace,
+                             const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              pid_t rec_tid) {
@@ -2290,7 +2290,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   } while (0 > tid && errno == EAGAIN);
 
   if (0 == tid) {
-    run_initial_child(session, error_fd, argv, envp);
+    run_initial_child(session, error_fd, exe_path, argv, envp);
     // run_initial_child never returns
   }
 

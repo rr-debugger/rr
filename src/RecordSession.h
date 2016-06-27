@@ -116,7 +116,8 @@ public:
   RecordTask* find_task(const TaskUid& tuid) const;
 
 private:
-  RecordSession(const std::vector<std::string>& argv,
+  RecordSession(const std::string& exe_path,
+                const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp,
                 SyscallBuffering syscallbuf, BindCPU bind_cpu);
 

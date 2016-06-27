@@ -1407,11 +1407,12 @@ static string lookup_by_path(const string& name) {
   }
   env.insert(env.end(), extra_env.begin(), extra_env.end());
 
+  string full_path = lookup_by_path(argv[0]);
+
   // LD_PRELOAD the syscall interception lib
   string syscall_buffer_lib_path = find_syscall_buffer_library();
   if (!syscall_buffer_lib_path.empty()) {
     string ld_preload = "LD_PRELOAD=";
-    string full_path = lookup_by_path(argv[0]);
     string libasan = find_needed_library_starting_with(full_path, "libasan");
     if (!libasan.empty()) {
       LOG(debug) << "Prepending " << libasan << " to LD_PRELOAD";
@@ -1455,11 +1456,12 @@ static string lookup_by_path(const string& name) {
   // it is useless when running under rr.
   env.push_back("MOZ_GDB_SLEEP=0");
 
-  shr_ptr session(new RecordSession(argv, env, syscallbuf, bind_cpu));
+  shr_ptr session(new RecordSession(full_path, argv, env, syscallbuf, bind_cpu));
   return session;
 }
 
-RecordSession::RecordSession(const std::vector<std::string>& argv,
+RecordSession::RecordSession(const std::string& exe_path,
+    const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              SyscallBuffering syscallbuf, BindCPU bind_cpu)
     : trace_out(argv[0], choose_cpu(bind_cpu)),
@@ -1475,7 +1477,7 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       wait_for_all_(false) {
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
-      Task::spawn(*this, error_fd, trace_out, argv, envp));
+      Task::spawn(*this, error_fd, trace_out, exe_path, argv, envp));
   initial_task_group = t->task_group();
   on_create(t);
 }
