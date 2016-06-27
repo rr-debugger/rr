@@ -117,7 +117,7 @@ public:
 
 private:
   RecordSession(const std::vector<std::string>& argv,
-                const std::vector<std::string>& envp, const std::string& cwd,
+                const std::vector<std::string>& envp,
                 SyscallBuffering syscallbuf, BindCPU bind_cpu);
 
   virtual void on_create(Task* t);

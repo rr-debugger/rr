@@ -1352,9 +1352,6 @@ static string find_syscall_buffer_library() {
   }
   env.insert(env.end(), extra_env.begin(), extra_env.end());
 
-  char cwd[PATH_MAX] = "";
-  getcwd(cwd, sizeof(cwd));
-
   // LD_PRELOAD the syscall interception lib
   string syscall_buffer_lib_path = find_syscall_buffer_library();
   if (!syscall_buffer_lib_path.empty()) {
@@ -1393,15 +1390,14 @@ static string find_syscall_buffer_library() {
   // it is useless when running under rr.
   env.push_back("MOZ_GDB_SLEEP=0");
 
-  shr_ptr session(new RecordSession(argv, env, cwd, syscallbuf, bind_cpu));
+  shr_ptr session(new RecordSession(argv, env, syscallbuf, bind_cpu));
   return session;
 }
 
 RecordSession::RecordSession(const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
-                             const string& cwd, SyscallBuffering syscallbuf,
-                             BindCPU bind_cpu)
-    : trace_out(argv, envp, cwd, choose_cpu(bind_cpu)),
+                             SyscallBuffering syscallbuf, BindCPU bind_cpu)
+    : trace_out(argv[0], choose_cpu(bind_cpu)),
       scheduler_(*this),
       ignore_sig(0),
       continue_through_sig(0),
@@ -1413,8 +1409,8 @@ RecordSession::RecordSession(const std::vector<std::string>& argv,
       enable_chaos_(false),
       wait_for_all_(false) {
   ScopedFd error_fd = create_spawn_task_error_pipe();
-  RecordTask* t =
-      static_cast<RecordTask*>(Task::spawn(*this, error_fd, trace_out));
+  RecordTask* t = static_cast<RecordTask*>(
+      Task::spawn(*this, error_fd, trace_out, argv, envp));
   initial_task_group = t->task_group();
   on_create(t);
 }

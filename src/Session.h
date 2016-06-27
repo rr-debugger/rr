@@ -124,10 +124,12 @@ public:
 
   /**
    * Create and return a new address space that's constructed
-   * from |t|'s actual OS address space.
+   * from |t|'s actual OS address space. When spawning, |exe| is the empty
+   * string; it will be replaced during the first execve(), when we first
+   * start running real tracee code.
    */
-  std::shared_ptr<AddressSpace> create_vm(Task* t, const std::string& exe,
-                                          uint32_t exec_count = 0);
+  std::shared_ptr<AddressSpace> create_vm(
+      Task* t, const std::string& exe = std::string(), uint32_t exec_count = 0);
   /**
    * Return a copy of |vm| with the same mappings.  If any
    * mapping is changed, only the |clone()|d copy is updated,

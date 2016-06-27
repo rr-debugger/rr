@@ -783,6 +783,7 @@ set(TESTS_WITHOUT_PROGRAM
   desched_ticks
   deliver_async_signal_during_syscalls
   env_newline
+  exec_deleted
   exec_stop
   execp
   explicit_checkpoint_clone

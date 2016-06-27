@@ -871,7 +871,9 @@ protected:
    * readable from the other end of the pipe whose write end is error_fd.
    */
   static Task* spawn(Session& session, const ScopedFd& error_fd,
-                     const TraceStream& trace, pid_t rec_tid = -1);
+                     const TraceStream& trace,
+                     const std::vector<std::string>& argv,
+                     const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
   uint32_t serial;
   // The address space of this task.

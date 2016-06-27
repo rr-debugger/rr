@@ -220,24 +220,18 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
 /*static*/ ReplaySession::shr_ptr ReplaySession::create(const string& dir) {
   shr_ptr session(new ReplaySession(dir));
 
-  // Because we execvpe() the tracee, we must ensure that $PATH
-  // is the same as in recording so that libc searches paths in
-  // the same order.  So copy that over now.
-  //
-  // And because we use execvpe(), the exec'd tracee will start
-  // with a fresh environment guaranteed to be the same as in
-  // replay, so we don't have to worry about any mutation here
-  // affecting post-exec execution.
-  for (auto& e : session->trace_in.initial_envp()) {
-    if (e.find("PATH=") == 0) {
-      // NB: intentionally leaking this string.
-      putenv(strdup(e.c_str()));
-    }
-  }
+  // It doesn't really matter what we use for argv/env here, since
+  // replay_syscall's process_execve is going to follow the recording and
+  // ignore the parameters.
+  vector<string> argv;
+  // We do have to pass an empty string for the filename so that we don't
+  // crash before reaching execve().
+  argv.push_back(string());
+  vector<string> env;
 
   ScopedFd error_fd = session->create_spawn_task_error_pipe();
   ReplayTask* t = static_cast<ReplayTask*>(
-      Task::spawn(*session, error_fd, session->trace_in,
+      Task::spawn(*session, error_fd, session->trace_in, argv, env,
                   session->trace_reader().peek_frame().tid()));
   session->on_create(t);
 

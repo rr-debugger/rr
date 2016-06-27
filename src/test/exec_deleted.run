@@ -1,0 +1,8 @@
+source `dirname $0`/util.sh
+
+file=simple$bitness
+cp ${OBJDIR}/bin/$file $file-$nonce
+just_record ./$file-$nonce
+rm $file-$nonce
+replay
+check 'EXIT-SUCCESS'

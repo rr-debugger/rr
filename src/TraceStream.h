@@ -60,10 +60,6 @@ public:
   /** Return the directory storing this trace's files. */
   const string& dir() const { return trace_dir; }
 
-  const string& initial_exe() const { return argv[0]; }
-  const std::vector<string>& initial_argv() const { return argv; }
-  const std::vector<string>& initial_envp() const { return envp; }
-  const string& initial_cwd() const { return cwd; }
   int bound_to_cpu() const { return bind_to_cpu; }
 
   /**
@@ -84,11 +80,6 @@ protected:
   string path(Substream s);
 
   /**
-   * Return the path of the "args_env" file, into which the
-   * initial tracee argv and envp are recorded.
-   */
-  string args_env_path() const { return trace_dir + "/args_env"; }
-  /**
    * Return the path of "version" file, into which the current
    * trace format version of rr is stored upon creation of the
    * trace.
@@ -102,13 +93,8 @@ protected:
 
   // Directory into which we're saving the trace files.
   string trace_dir;
-  // The initial argv and envp for a tracee.
-  std::vector<string> argv;
-  std::vector<string> envp;
-  // Current working directory at start of record/replay.
-  string cwd;
   // CPU core# that the tracees are bound to
-  int bind_to_cpu;
+  int32_t bind_to_cpu;
 
   // Arbitrary notion of trace time, ticked on the recording of
   // each event (trace frame).
@@ -173,15 +159,11 @@ public:
   void close();
 
   /**
-   * Create a trace that will record the initial exe
-   * image |argv[0]| with initial args |argv|, initial environment |envp|,
-   * current working directory |cwd| and bound to cpu |bind_to_cpu|. This
-   * data is recored in the trace.
-   * The trace name is determined by the global rr args and environment.
+   * Create a trace where the tracess are bound to cpu |bind_to_cpu|. This
+   * data is recorded in the trace.
+   * The trace name is determined by |file_name| and _RR_TRACE_DIR (if set).
    */
-  TraceWriter(const std::vector<std::string>& argv,
-              const std::vector<std::string>& envp, const string& cwd,
-              int bind_to_cpu);
+  TraceWriter(const std::string& file_name, int bind_to_cpu);
 
   /**
    * We got far enough into recording that we should set this as the latest

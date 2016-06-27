@@ -2219,11 +2219,8 @@ static void set_up_seccomp_filter(Session& session, int err_fd) {
 }
 
 static void run_initial_child(Session& session, const ScopedFd& error_fd,
-                              const TraceStream& trace) {
-  // Set current working directory to the cwd used during
-  // recording. The main effect of this is to resolve relative
-  // paths in the following execvpe correctly during replay.
-  chdir(trace.initial_cwd().c_str());
+                              const std::vector<std::string>& argv,
+                              const std::vector<std::string>& envp) {
   set_up_process(session, error_fd);
   // The preceding code must run before sending SIGSTOP here,
   // since after SIGSTOP replay emulates almost all syscalls, but
@@ -2250,12 +2247,12 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
   CPUIDBugDetector::run_detection_code();
 
-  const char* exe = trace.initial_exe().c_str();
-  execvpe(exe, StringVectorToCharArray(trace.initial_argv()).get(),
-          StringVectorToCharArray(trace.initial_envp()).get());
+  const char* exe = argv[0].c_str();
+  execvpe(exe, StringVectorToCharArray(argv).get(),
+          StringVectorToCharArray(envp).get());
   // That failed. Try executing the file directly.
-  execve(exe, StringVectorToCharArray(trace.initial_argv()).get(),
-         StringVectorToCharArray(trace.initial_envp()).get());
+  execve(exe, StringVectorToCharArray(argv).get(),
+         StringVectorToCharArray(envp).get());
 
   switch (errno) {
     case ENOENT:
@@ -2270,7 +2267,10 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 }
 
 /*static*/ Task* Task::spawn(Session& session, const ScopedFd& error_fd,
-                             const TraceStream& trace, pid_t rec_tid) {
+                             const TraceStream& trace,
+                             const std::vector<std::string>& argv,
+                             const std::vector<std::string>& envp,
+                             pid_t rec_tid) {
   assert(session.tasks().size() == 0);
 
   if (trace.bound_to_cpu() >= 0) {
@@ -2290,7 +2290,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   } while (0 > tid && errno == EAGAIN);
 
   if (0 == tid) {
-    run_initial_child(session, error_fd, trace);
+    run_initial_child(session, error_fd, argv, envp);
     // run_initial_child never returns
   }
 
@@ -2343,7 +2343,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
                              NativeArch::arch());
   auto tg = session.create_tg(t);
   t->tg.swap(tg);
-  auto as = session.create_vm(t, trace.initial_exe());
+  auto as = session.create_vm(t);
   t->as.swap(as);
   t->fds = FdTable::create(t);
   setup_fd_table(*t->fds);

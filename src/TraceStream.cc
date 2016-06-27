@@ -31,7 +31,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 57
+#define TRACE_VERSION 58
 
 struct SubstreamData {
   const char* name;
@@ -473,26 +473,6 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
                        flags, file_offset_bytes);
 }
 
-static ostream& operator<<(ostream& out, const vector<string>& vs) {
-  out << vs.size() << endl;
-  for (auto& v : vs) {
-    out << v << '\0';
-  }
-  return out;
-}
-
-static istream& operator>>(istream& in, vector<string>& vs) {
-  size_t len;
-  in >> len;
-  in.ignore(1);
-  for (size_t i = 0; i < len; ++i) {
-    char buf[PATH_MAX];
-    in.getline(buf, sizeof(buf), '\0');
-    vs.push_back(buf);
-  }
-  return in;
-}
-
 void TraceWriter::write_raw(const void* d, size_t len, remote_ptr<void> addr) {
   auto& data = writer(RAW_DATA);
   auto& data_header = writer(RAW_DATA_HEADER);
@@ -592,17 +572,13 @@ static string make_trace_dir(const string& exe_path) {
   return dir;
 }
 
-TraceWriter::TraceWriter(const vector<string>& argv, const vector<string>& envp,
-                         const string& cwd, int bind_to_cpu)
-    : TraceStream(make_trace_dir(argv[0]),
+TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu)
+    : TraceStream(make_trace_dir(file_name),
                   // Somewhat arbitrarily start the
                   // global time from 1.
                   1),
       mmap_count(0),
       supports_file_data_cloning_(false) {
-  this->argv = argv;
-  this->envp = envp;
-  this->cwd = cwd;
   this->bind_to_cpu = bind_to_cpu;
 
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
@@ -640,16 +616,11 @@ TraceWriter::TraceWriter(const vector<string>& argv, const vector<string>& envp,
   unlink(version_clone_path.c_str());
 
   if (!probably_not_interactive(STDOUT_FILENO)) {
-    printf("rr: Saving the execution of `%s' to trace directory `%s'.\n",
-           argv[0].c_str(), trace_dir.c_str());
+    printf("rr: Saving execution to trace directory `%s'.\n",
+           trace_dir.c_str());
   }
 
-  ofstream out(args_env_path());
-  out << cwd << '\0';
-  out << argv;
-  out << envp;
-  out << bind_to_cpu;
-  assert(out.good());
+  write_generic(&bind_to_cpu, sizeof(bind_to_cpu));
 }
 
 void TraceWriter::make_latest_trace() {
@@ -689,12 +660,7 @@ void TraceReader::rewind() {
 }
 
 TraceReader::TraceReader(const string& dir)
-    : TraceStream(dir.empty() ? latest_trace_symlink() : dir,
-                  // Initialize the global time at 0, so
-                  // that when we tick it when reading
-                  // the first trace, it matches the
-                  // initial global time at recording, 1.
-                  0) {
+    : TraceStream(dir.empty() ? latest_trace_symlink() : dir, 1) {
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
     readers[s] = unique_ptr<CompressedReader>(new CompressedReader(path(s)));
   }
@@ -731,14 +697,14 @@ TraceReader::TraceReader(const string& dir)
     exit(EX_DATAERR);
   }
 
-  ifstream in(args_env_path());
-  assert(in.good());
-  char buf[PATH_MAX];
-  in.getline(buf, sizeof(buf), '\0');
-  cwd = buf;
-  in >> argv;
-  in >> envp;
-  in >> bind_to_cpu;
+  vector<uint8_t> bind_to_cpu_bytes;
+  read_generic(bind_to_cpu_bytes);
+  assert(bind_to_cpu_bytes.size() == sizeof(bind_to_cpu));
+  memcpy(&bind_to_cpu, bind_to_cpu_bytes.data(), sizeof(bind_to_cpu));
+
+  // Set the global time at 0, so that when we tick it for the first
+  // event, it matches the initial global time at recording, 1.
+  global_time = 0;
 }
 
 /**
@@ -753,9 +719,6 @@ TraceReader::TraceReader(const TraceReader& other)
         unique_ptr<CompressedReader>(new CompressedReader(other.reader(s)));
   }
 
-  argv = other.argv;
-  envp = other.envp;
-  cwd = other.cwd;
   bind_to_cpu = other.bind_to_cpu;
 }
 
