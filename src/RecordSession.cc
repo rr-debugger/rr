@@ -1456,12 +1456,13 @@ static string lookup_by_path(const string& name) {
   // it is useless when running under rr.
   env.push_back("MOZ_GDB_SLEEP=0");
 
-  shr_ptr session(new RecordSession(full_path, argv, env, syscallbuf, bind_cpu));
+  shr_ptr session(
+      new RecordSession(full_path, argv, env, syscallbuf, bind_cpu));
   return session;
 }
 
 RecordSession::RecordSession(const std::string& exe_path,
-    const std::vector<std::string>& argv,
+                             const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              SyscallBuffering syscallbuf, BindCPU bind_cpu)
     : trace_out(argv[0], choose_cpu(bind_cpu)),

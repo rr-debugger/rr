@@ -871,8 +871,7 @@ protected:
    * readable from the other end of the pipe whose write end is error_fd.
    */
   static Task* spawn(Session& session, const ScopedFd& error_fd,
-                     const TraceStream& trace,
-                     const std::string& exe_path,
+                     const TraceStream& trace, const std::string& exe_path,
                      const std::vector<std::string>& argv,
                      const std::vector<std::string>& envp, pid_t rec_tid = -1);
 

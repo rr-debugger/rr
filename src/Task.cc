@@ -2259,7 +2259,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
       break;
     default:
       spawned_child_fatal_error(error_fd, "execve of '%s' failed",
-          exe_path.c_str());
+                                exe_path.c_str());
       break;
   }
   // Never returns!
