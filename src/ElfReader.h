@@ -77,22 +77,14 @@ private:
   SupportedArch arch;
 };
 
-class FileReader : public ElfReader {
+class ElfFileReader : public ElfReader {
 public:
-  FileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch), fd(fd) {}
-  virtual bool read(size_t offset, size_t size, void* buf) {
-    while (size) {
-      ssize_t ret = pread(fd.get(), buf, size, offset);
-      if (ret <= 0) {
-        return false;
-      }
-      offset += ret;
-      size -= ret;
-      buf = static_cast<uint8_t*>(buf) + ret;
-    }
-    return true;
-  }
+  ElfFileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch), fd(fd) {}
+  ElfFileReader(ScopedFd& fd) : ElfReader(identify_arch(fd)), fd(fd) {}
+  virtual bool read(size_t offset, size_t size, void* buf);
   ScopedFd& fd;
+
+  static SupportedArch identify_arch(ScopedFd& fd);
 };
 
 } // namespace rr

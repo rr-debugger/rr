@@ -2,6 +2,7 @@
 
 #include "RecordSession.h"
 
+#include <elf.h>
 #include <limits.h>
 #include <linux/futex.h>
 
@@ -9,6 +10,7 @@
 #include <sstream>
 
 #include "AutoRemoteSyscalls.h"
+#include "ElfReader.h"
 #include "Flags.h"
 #include "RecordTask.h"
 #include "ftrace.h"
@@ -1317,6 +1319,59 @@ static string find_syscall_buffer_library() {
   return lib_path;
 }
 
+/**
+ * Returns the name of the first dynamic library that |exe_file| depends on
+ * that starts with |prefix|, or an empty string if there isn't one or
+ * anything fails.
+ */
+static string find_needed_library_starting_with(const string& exe_file,
+                                                const string& prefix) {
+  ScopedFd fd(exe_file.c_str(), O_RDONLY);
+  if (!fd.is_open()) {
+    return string();
+  }
+  ElfFileReader reader(fd);
+  DynamicSection dynamic = reader.read_dynamic();
+  for (auto& entry : dynamic.entries) {
+    if (entry.tag == DT_NEEDED && entry.val < dynamic.strtab.size()) {
+      const char* name = &dynamic.strtab[entry.val];
+      if (!strncmp(name, prefix.c_str(), prefix.size())) {
+        return string(name);
+      }
+    }
+  }
+  return string();
+}
+
+static string lookup_by_path(const string& name) {
+  if (name.find('/') != string::npos) {
+    return name;
+  }
+  const char* env = getenv("PATH");
+  if (!env) {
+    return name;
+  }
+  char* p = strdup(env);
+  char* s = p;
+  while (*s) {
+    char* next = strchr(s, ':');
+    if (next) {
+      *next = 0;
+    }
+    string file = string(s) + "/" + name;
+    if (!access(file.c_str(), X_OK)) {
+      free(p);
+      return file;
+    }
+    if (!next) {
+      break;
+    }
+    s = next + 1;
+  }
+  free(p);
+  return name;
+}
+
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const vector<string>& argv, const vector<string>& extra_env,
     SyscallBuffering syscallbuf, BindCPU bind_cpu) {
@@ -1356,8 +1411,18 @@ static string find_syscall_buffer_library() {
   string syscall_buffer_lib_path = find_syscall_buffer_library();
   if (!syscall_buffer_lib_path.empty()) {
     string ld_preload = "LD_PRELOAD=";
-    // Our preload lib *must* come first. We supply a placeholder which is
-    // then mutated to the correct filename in Monkeypatcher::patch_after_exec.
+    string full_path = lookup_by_path(argv[0]);
+    string libasan = find_needed_library_starting_with(full_path, "libasan");
+    if (!libasan.empty()) {
+      LOG(debug) << "Prepending " << libasan << " to LD_PRELOAD";
+      // Put an LD_PRELOAD entry for it before our preload library, because
+      // it checks that it's loaded first
+      ld_preload += libasan + ":";
+    }
+    // Our preload lib should come first if possible, because that will
+    // speed up the loading of the other libraries. We supply a placeholder
+    // which is then mutated to the correct filename in
+    // Monkeypatcher::patch_after_exec.
     ld_preload += syscall_buffer_lib_path + SYSCALLBUF_LIB_FILENAME_PADDED;
     auto it = env.begin();
     for (; it != env.end(); ++it) {

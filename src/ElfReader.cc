@@ -231,4 +231,42 @@ DynamicSection ElfReader::read_dynamic() { return impl().read_dynamic(); }
 
 bool ElfReader::ok() { return impl().ok(); }
 
+static bool read_all(ScopedFd& fd, size_t offset, size_t size, void* buf) {
+  while (size) {
+    ssize_t ret = pread(fd.get(), buf, size, offset);
+    if (ret <= 0) {
+      return false;
+    }
+    offset += ret;
+    size -= ret;
+    buf = static_cast<uint8_t*>(buf) + ret;
+  }
+  return true;
+}
+
+bool ElfFileReader::read(size_t offset, size_t size, void* buf) {
+  return read_all(fd, offset, size, buf);
+}
+
+SupportedArch ElfFileReader::identify_arch(ScopedFd& fd) {
+  /**
+   * This code is quite lax. That's OK because this is only used to create
+   * a specific ElfReaderImpl, which does much more thorough checking of the
+   * header.
+   */
+  static const int header_prefix_size = 20;
+  char buf[header_prefix_size];
+  if (!read_all(fd, 0, sizeof(buf), buf) || buf[5] != 1) {
+    return NativeArch::arch();
+  }
+  switch (buf[18] | (buf[19] << 8)) {
+    case 0x03:
+      return x86;
+    case 0x3e:
+      return x86_64;
+    default:
+      return NativeArch::arch();
+  }
+}
+
 } // namespace rr

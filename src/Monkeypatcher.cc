@@ -670,7 +670,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
     ScopedFd open_fd = t->open_fd(child_fd, O_RDONLY);
     ASSERT(t, open_fd.is_open()) << "Failed to open child fd " << child_fd;
     auto syms =
-        FileReader(open_fd, t->arch()).read_symbols(".symtab", ".strtab");
+        ElfFileReader(open_fd, t->arch()).read_symbols(".symtab", ".strtab");
     for (size_t i = 0; i < syms.size(); ++i) {
       if (syms.is_name(i, "__elision_aconf")) {
         static const int zero = 0;
