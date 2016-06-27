@@ -1,6 +1,8 @@
 import re
 from rrutil import *
 
+send_gdb('set scheduler-locking off')
+
 send_gdb('b hit_barrier')
 expect_gdb('Breakpoint 1')
 
