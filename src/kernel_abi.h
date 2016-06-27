@@ -172,6 +172,11 @@ struct WordSize32Defs {
     uint16_t st_shndx;
   } ElfSym;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Sym, ElfSym);
+  typedef struct {
+    int32_t d_tag;
+    uint32_t d_val;
+  } ElfDyn;
+  RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf32_Dyn, ElfDyn);
 };
 
 struct WordSize64Defs {
@@ -240,6 +245,11 @@ struct WordSize64Defs {
     uint64_t st_size;
   } ElfSym;
   RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Sym, ElfSym);
+  typedef struct {
+    uint64_t d_tag;
+    uint64_t d_val;
+  } ElfDyn;
+  RR_VERIFY_TYPE_ARCH(RR_NATIVE_ARCH, ::Elf64_Dyn, ElfDyn);
 };
 
 /**

@@ -640,15 +640,6 @@ void Monkeypatcher::patch_at_preload_init(RecordTask* t) {
   RR_ARCH_FUNCTION(patch_at_preload_init_arch, t->arch(), t, *this);
 }
 
-class FileReader : public ElfReader {
-public:
-  FileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch), fd(fd) {}
-  virtual bool read(size_t offset, size_t size, void* buf) {
-    return pread(fd.get(), buf, size, offset) == ssize_t(size);
-  }
-  ScopedFd& fd;
-};
-
 static void set_and_record_bytes(RecordTask* t, uint64_t file_offset,
                                  const void* bytes, size_t size,
                                  remote_ptr<void> map_start, size_t map_size,

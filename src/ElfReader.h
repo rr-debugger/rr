@@ -8,6 +8,7 @@
 #include <memory>
 #include <vector>
 
+#include "ScopedFd.h"
 #include "kernel_abi.h"
 
 namespace rr {
@@ -31,6 +32,22 @@ public:
     size_t name_index;
   };
   std::vector<Symbol> symbols;
+  // Last character is always null
+  std::vector<char> strtab;
+};
+
+class DynamicSection {
+public:
+  struct Entry {
+  public:
+    Entry(uint64_t tag, uint64_t val) : tag(tag), val(val) {}
+    Entry() {}
+    uint64_t tag;
+    uint64_t val;
+  };
+
+  std::vector<Entry> entries;
+  // Last character is always null
   std::vector<char> strtab;
 };
 
@@ -52,11 +69,30 @@ public:
   }
   bool ok();
   SymbolTable read_symbols(const char* symtab, const char* strtab);
+  DynamicSection read_dynamic();
 
 private:
   ElfReaderImplBase& impl();
   std::unique_ptr<ElfReaderImplBase> impl_;
   SupportedArch arch;
+};
+
+class FileReader : public ElfReader {
+public:
+  FileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch), fd(fd) {}
+  virtual bool read(size_t offset, size_t size, void* buf) {
+    while (size) {
+      ssize_t ret = pread(fd.get(), buf, size, offset);
+      if (ret <= 0) {
+        return false;
+      }
+      offset += ret;
+      size -= ret;
+      buf = static_cast<uint8_t*>(buf) + ret;
+    }
+    return true;
+  }
+  ScopedFd& fd;
 };
 
 } // namespace rr
