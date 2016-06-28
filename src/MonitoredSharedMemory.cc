@@ -22,8 +22,9 @@ void MonitoredSharedMemory::maybe_monitor(RecordTask* t,
                                           const string& file_name,
                                           const AddressSpace::Mapping& m,
                                           int tracee_fd, uint64_t offset) {
-  if (file_name.substr(file_name.size() - (sizeof(dconf_suffix) - 1)) !=
-      dconf_suffix) {
+  size_t dconf_suffix_len = sizeof(dconf_suffix) - 1;
+  if (file_name.size() < dconf_suffix_len ||
+      file_name.substr(file_name.size() - dconf_suffix_len) != dconf_suffix) {
     return;
   }
 
