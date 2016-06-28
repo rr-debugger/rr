@@ -117,6 +117,25 @@ struct RecordFlags {
         ignore_nested(false) {}
 };
 
+static void parse_signal_name(ParsedOption& opt) {
+  if (opt.int_value != INT64_MIN) {
+    return;
+  }
+
+  for (int i = 1; i < _NSIG; i++) {
+    std::string signame = signal_name(i);
+    if (signame == opt.value) {
+      opt.int_value = i;
+      return;
+    }
+    assert(signame[0] == 'S' && signame[1] == 'I' && signame[2] == 'G');
+    if (signame.substr(3) == opt.value) {
+      opt.int_value = i;
+      return;
+    }
+  }
+}
+
 static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
   if (parse_global_option(args)) {
     return true;
@@ -159,6 +178,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.chaos = true;
       break;
     case 'i':
+      parse_signal_name(opt);
       if (!opt.verify_valid_int(1, _NSIG - 1)) {
         return false;
       }
@@ -187,6 +207,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.always_switch = true;
       break;
     case 't':
+      parse_signal_name(opt);
       if (!opt.verify_valid_int(1, _NSIG - 1)) {
         return false;
       }
