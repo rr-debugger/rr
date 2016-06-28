@@ -1127,15 +1127,6 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
   }
 }
 
-KernelMapping AddressSpace::fix_stack_segment_start(
-    const MemoryRange& mapping, remote_ptr<void> new_start) {
-  auto it = mem.find(mapping);
-  it->first.update_start(new_start);
-  it->second.map.update_start(new_start);
-  it->second.recorded_map.update_start(new_start);
-  return it->second.map;
-}
-
 KernelMapping AddressSpace::vdso() const {
   assert(!vdso_start_addr.is_null());
   return mapping_of(vdso_start_addr).map;

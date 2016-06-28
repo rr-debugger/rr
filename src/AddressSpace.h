@@ -471,13 +471,6 @@ public:
              remote_ptr<void> new_addr, size_t new_num_bytes);
 
   /**
-   * Notify that the stack segment 'mapping' has grown down to a new start
-   * address.
-   */
-  KernelMapping fix_stack_segment_start(const MemoryRange& mapping,
-                                        remote_ptr<void> new_start);
-
-  /**
    * Notify that data was written to this address space by rr or
    * by the kernel.
    */
