@@ -14,6 +14,7 @@
 #include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
+#include "MonitoredSharedMemory.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "Session.h"
@@ -160,6 +161,19 @@ static void print_process_mmap(Task* t) {
     cerr << line << '\n';
   }
 }
+
+AddressSpace::Mapping::Mapping(const KernelMapping& map,
+                               const KernelMapping& recorded_map,
+                               EmuFile::shr_ptr emu_file, void* local_addr,
+                               shared_ptr<MonitoredSharedMemory>&& monitored)
+    : map(map),
+      recorded_map(recorded_map),
+      emu_file(emu_file),
+      local_addr(static_cast<uint8_t*>(local_addr)),
+      monitored_shared_memory(move(monitored)),
+      flags(FLAG_NONE) {}
+
+AddressSpace::Mapping::~Mapping() {}
 
 AddressSpace::~AddressSpace() { session_->on_destroy(this); }
 
@@ -485,7 +499,8 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
                                 int prot, int flags, off64_t offset_bytes,
                                 const string& fsname, dev_t device, ino_t inode,
                                 const KernelMapping* recorded_map,
-                                EmuFile::shr_ptr emu_file, void* local_addr) {
+                                EmuFile::shr_ptr emu_file, void* local_addr,
+                                shared_ptr<MonitoredSharedMemory>&& monitored) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ", " << HEX(flags) << ", " << HEX(offset_bytes);
   num_bytes = ceil_page_size(num_bytes);
@@ -506,7 +521,8 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
   unmap_internal(addr, num_bytes);
 
   const KernelMapping& actual_recorded_map = recorded_map ? *recorded_map : m;
-  map_and_coalesce(m, actual_recorded_map, emu_file, local_addr);
+  map_and_coalesce(m, actual_recorded_map, emu_file, local_addr,
+                   move(monitored));
 
   if ((prot & PROT_EXEC) &&
       (fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
@@ -609,11 +625,12 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
     // If the first segment we protect underflows the
     // region, remap the underflow region with previous
     // prot.
+    auto monitored = m.monitored_shared_memory;
     if (m.map.start() < new_start) {
       Mapping underflow(
           m.map.subrange(m.map.start(), rem.start()),
           m.recorded_map.subrange(m.recorded_map.start(), rem.start()),
-          m.emu_file, m.local_addr);
+          m.emu_file, m.local_addr, move(monitored));
       mem[underflow.map] = underflow;
     }
     // Remap the overlapping region with the new prot.
@@ -624,7 +641,11 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
         m.map.subrange(new_start, new_end).set_prot(new_prot),
         m.recorded_map.subrange(new_start, new_end).set_prot(new_prot),
         m.emu_file,
-        m.local_addr ? m.local_addr + (new_start - m.map.start()) : 0);
+        m.local_addr ? m.local_addr + (new_start - m.map.start()) : 0,
+        m.monitored_shared_memory
+            ? m.monitored_shared_memory->subrange(new_start - m.map.start(),
+                                                  new_end - new_start)
+            : nullptr);
     mem[overlap.map] = overlap;
     last_overlap = overlap.map;
 
@@ -635,7 +656,11 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
       Mapping overflow(
           m.map.subrange(rem.end(), m.map.end()),
           m.recorded_map.subrange(rem.end(), m.map.end()), m.emu_file,
-          m.local_addr ? m.local_addr + (rem.end() - m.map.start()) : 0);
+          m.local_addr ? m.local_addr + (rem.end() - m.map.start()) : 0,
+          m.monitored_shared_memory
+              ? m.monitored_shared_memory->subrange(rem.end() - m.map.start(),
+                                                    m.map.end() - rem.end())
+              : nullptr);
       mem[overflow.map] = overflow;
     }
   };
@@ -670,6 +695,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
              << new_addr << ", " << new_num_bytes << ")";
 
   auto mr = mapping_of(old_addr);
+  assert(!mr.monitored_shared_memory);
   const KernelMapping& m = mr.map;
 
   old_num_bytes = ceil_page_size(old_num_bytes);
@@ -693,7 +719,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   remote_ptr<void> new_end = new_addr + new_num_bytes;
   map_and_coalesce(m.set_range(new_addr, new_end),
                    mr.recorded_map.set_range(new_addr, new_end), mr.emu_file,
-                   nullptr);
+                   nullptr, nullptr);
 }
 
 void AddressSpace::remove_breakpoint(remote_code_ptr addr,
@@ -906,10 +932,11 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
 
     // If the first segment we unmap underflows the unmap
     // region, remap the underflow region.
+    auto monitored = m.monitored_shared_memory;
     if (m.map.start() < rem.start()) {
       Mapping underflow(m.map.subrange(m.map.start(), rem.start()),
                         m.recorded_map.subrange(m.map.start(), rem.start()),
-                        m.emu_file, m.local_addr);
+                        m.emu_file, m.local_addr, move(monitored));
       mem[underflow.map] = underflow;
     }
     // If the last segment we unmap overflows the unmap
@@ -918,7 +945,11 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
       Mapping overflow(
           m.map.subrange(rem.end(), m.map.end()),
           m.recorded_map.subrange(rem.end(), m.map.end()), m.emu_file,
-          m.local_addr ? m.local_addr + (rem.end() - m.map.start()) : 0);
+          m.local_addr ? m.local_addr + (rem.end() - m.map.start()) : 0,
+          m.monitored_shared_memory
+              ? m.monitored_shared_memory->subrange(rem.end() - m.map.start(),
+                                                    m.map.end() - rem.end())
+              : nullptr);
       mem[overflow.map] = overflow;
     }
   };
@@ -1380,6 +1411,7 @@ static inline void assert_coalesceable(const AddressSpace::Mapping& lower,
   assert(lower.flags == higher.flags);
   assert((lower.local_addr == 0 && higher.local_addr == 0) ||
          lower.local_addr + lower.map.size() == higher.local_addr);
+  assert(!lower.monitored_shared_memory && !higher.monitored_shared_memory);
 }
 
 void AddressSpace::coalesce_around(MemoryMap::iterator it) {
@@ -1471,14 +1503,14 @@ void AddressSpace::for_each_in_range(
   }
 }
 
-void AddressSpace::map_and_coalesce(const KernelMapping& m,
-                                    const KernelMapping& recorded_map,
-                                    EmuFile::shr_ptr emu_file,
-                                    void* local_addr) {
+void AddressSpace::map_and_coalesce(
+    const KernelMapping& m, const KernelMapping& recorded_map,
+    EmuFile::shr_ptr emu_file, void* local_addr,
+    shared_ptr<MonitoredSharedMemory>&& monitored) {
   LOG(debug) << "  mapping " << m;
 
-  auto ins = mem.insert(
-      MemoryMap::value_type(m, Mapping(m, recorded_map, emu_file, local_addr)));
+  auto ins = mem.insert(MemoryMap::value_type(
+      m, Mapping(m, recorded_map, emu_file, local_addr, move(monitored))));
   coalesce_around(ins.first);
 
   update_watchpoint_values(m.start(), m.end());

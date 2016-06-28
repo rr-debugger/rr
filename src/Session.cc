@@ -451,11 +451,10 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 }
 
 #define RR_MAPPING_PREFIX "/tmp/rr-shared-"
-KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
-                                          size_t size,
-                                          remote_ptr<void> map_hint,
-                                          const char* name, int tracee_prot,
-                                          int tracee_flags) {
+KernelMapping Session::create_shared_mmap(
+    AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
+    const char* name, int tracee_prot, int tracee_flags,
+    MonitoredSharedMemory::shr_ptr&& monitored) {
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
@@ -500,7 +499,7 @@ KernelMapping Session::create_shared_mmap(AutoRemoteSyscalls& remote,
   ASSERT(remote.task(), 0 == ::fstat(shmem_fd, &st));
   KernelMapping km = remote.task()->vm()->map(
       child_map_addr, size, tracee_prot, flags | tracee_flags, 0, path,
-      st.st_dev, st.st_ino, nullptr, nullptr, map_addr);
+      st.st_dev, st.st_ino, nullptr, nullptr, map_addr, std::move(monitored));
 
   shmem_fd.close();
   remote.infallible_syscall(syscall_number_for_close(remote.arch()),
@@ -524,13 +523,14 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
 // Recreate an mmap region that is shared between rr and the tracee. The caller
 // is responsible for recreating the data in the new mmap.
 const AddressSpace::Mapping& Session::recreate_shared_mmap(
-    AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m) {
-  assert(m.local_addr != nullptr);
+    AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
+    MonitoredSharedMemory::shr_ptr&& monitored) {
   char name[PATH_MAX];
   strncpy(name, m.map.fsname().c_str(), sizeof(name));
   remote_ptr<void> new_addr =
       create_shared_mmap(remote, m.map.size(), m.map.start(),
-                         extract_name(name, sizeof(name)), m.map.prot())
+                         extract_name(name, sizeof(name)), m.map.prot(), 0,
+                         std::move(monitored))
           .start();
   remote.task()->vm()->mapping_flags_of(new_addr) = m.flags;
   return remote.task()->vm()->mapping_of(new_addr);

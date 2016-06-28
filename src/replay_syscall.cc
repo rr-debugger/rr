@@ -297,6 +297,7 @@ static void finish_direct_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                remote_ptr<void> rec_addr, size_t length,
                                int prot, int flags,
                                const string& backing_file_name,
+                               int backing_file_open_flags,
                                off64_t backing_offset_pages,
                                struct stat& real_file, string& real_file_name) {
   int fd;
@@ -311,16 +312,9 @@ static void finish_direct_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
    * recording. */
   {
     AutoRestoreMem child_str(remote, backing_file_name.c_str());
-    /* We only need RDWR for shared writeable mappings.
-     * Private mappings will happily COW from the mapped
-     * RDONLY file.
-     *
-     * TODO: should never map any files writable */
-    int oflags =
-        (MAP_SHARED & flags) && (PROT_WRITE & prot) ? O_RDWR : O_RDONLY;
-    /* TODO: unclear if O_NOATIME is relevant for mmaps */
     fd = remote.infallible_syscall(syscall_number_for_open(remote.arch()),
-                                   child_str.get().as_int(), oflags);
+                                   child_str.get().as_int(),
+                                   backing_file_open_flags);
   }
   /* And mmap that file. */
   remote.infallible_mmap_syscall(rec_addr, length,
@@ -355,8 +349,9 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
     case TraceReader::SOURCE_FILE: {
       struct stat real_file;
       offset_bytes = km.file_offset_bytes();
+      // Private mapping, so O_RDONLY is always OK.
       finish_direct_mmap(t, remote, km.start(), km.size(), km.prot(),
-                         km.flags(), data.file_name,
+                         km.flags(), data.file_name, O_RDONLY,
                          data.data_offset_bytes / page_size(), real_file,
                          real_file_name);
       device = real_file.st_dev;
@@ -579,8 +574,10 @@ static remote_ptr<void> finish_anonymous_mmap(
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
     emu_file = t->session().emufs().get_or_create(recorded_km, length);
     struct stat real_file;
+    // Emufs file, so open it read-write in case we need to write to it
+    // through the task's memfd.
     finish_direct_mmap(t, remote, rec_addr, length, prot,
-                       flags & ~MAP_ANONYMOUS, emu_file->proc_path(), 0,
+                       flags & ~MAP_ANONYMOUS, emu_file->proc_path(), O_RDWR, 0,
                        real_file, file_name);
     device = real_file.st_dev;
     inode = real_file.st_ino;
@@ -667,7 +664,7 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 
 static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                int prot, int flags, off64_t offset_pages,
-                               size_t file_size, const KernelMapping& km) {
+                               uint64_t file_size, const KernelMapping& km) {
   auto buf = t->trace_reader().read_raw_data();
   size_t rec_num_bytes = ceil_page_size(buf.data.size());
 
@@ -681,30 +678,25 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // we exit/crash the kernel will clean up for us.
   struct stat real_file;
   string real_file_name;
+  // Emufs file, so open it read-write in case we want to write to it through
+  // the task's mem fd.
   finish_direct_mmap(t, remote, buf.addr, rec_num_bytes, prot, flags,
-                     emufile->proc_path(), offset_pages, real_file,
+                     emufile->proc_path(), O_RDWR, offset_pages, real_file,
                      real_file_name);
   // Write back the snapshot of the segment that we recorded.
-  // We have to write directly to the underlying file, because
-  // the tracee may have mapped its segment read-only.
   //
   // TODO: this is a poor man's shared segment synchronization.
   // For full generality, we also need to emulate direct file
   // modifications through write/splice/etc.
-  off64_t offset_bytes = page_size() * offset_pages;
-  if (ssize_t(buf.data.size()) !=
-      pwrite64(emufile->fd(), buf.data.data(), buf.data.size(), offset_bytes)) {
-    FATAL() << "Failed to write " << buf.data.size() << " bytes at "
-            << HEX(offset_bytes) << " to " << emufile->real_path() << " for "
-            << emufile->emu_path();
-  }
-  LOG(debug) << "  restored " << buf.data.size() << " bytes at "
-             << HEX(offset_bytes) << " to " << emufile->real_path() << " for "
-             << emufile->emu_path();
-
+  uint64_t offset_bytes = page_size() * offset_pages;
   t->vm()->map(buf.addr, buf.data.size(), prot, flags, offset_bytes,
                real_file_name, real_file.st_dev, real_file.st_ino, &km,
                emufile);
+
+  t->write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
+  LOG(debug) << "  restored " << buf.data.size() << " bytes at "
+             << HEX(offset_bytes) << " to " << emufile->real_path() << " for "
+             << emufile->emu_path();
 }
 
 static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
@@ -731,7 +723,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         struct stat real_file;
         string real_file_name;
         finish_direct_mmap(t, remote, trace_frame.regs().syscall_result(),
-                           length, prot, flags, data.file_name,
+                           length, prot, flags, data.file_name, O_RDONLY,
                            data.data_offset_bytes / page_size(), real_file,
                            real_file_name);
         t->vm()->map(km.start(), length, prot, flags,

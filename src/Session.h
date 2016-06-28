@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "AddressSpace.h"
+#include "MonitoredSharedMemory.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
 
@@ -232,12 +233,14 @@ public:
   static KernelMapping create_shared_mmap(
       AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
       const char* name, int tracee_prot = PROT_READ | PROT_WRITE,
-      int trace_flags = 0);
+      int trace_flags = 0,
+      MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
 
   static bool make_private_shared(AutoRemoteSyscalls& remote,
                                   const AddressSpace::Mapping m);
   static const AddressSpace::Mapping& recreate_shared_mmap(
-      AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m);
+      AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
+      MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
 
 protected:
   Session();

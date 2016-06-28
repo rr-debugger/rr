@@ -29,6 +29,7 @@
 
 namespace rr {
 
+class MonitoredSharedMemory;
 class RecordTask;
 class Session;
 class Task;
@@ -229,12 +230,9 @@ public:
   class Mapping {
   public:
     Mapping(const KernelMapping& map, const KernelMapping& recorded_map,
-            EmuFile::shr_ptr emu_file, void* local_addr = nullptr)
-        : map(map),
-          recorded_map(recorded_map),
-          emu_file(emu_file),
-          local_addr(static_cast<uint8_t*>(local_addr)),
-          flags(FLAG_NONE) {}
+            EmuFile::shr_ptr emu_file, void* local_addr = nullptr,
+            std::shared_ptr<MonitoredSharedMemory>&& monitored = nullptr);
+    ~Mapping();
     Mapping(const Mapping&) = default;
     Mapping() = default;
     const Mapping& operator=(const Mapping& other) {
@@ -255,6 +253,7 @@ public:
     // responsibility to keep this alive at least as long as this mapping is
     // present in the address space.
     uint8_t* local_addr;
+    const std::shared_ptr<MonitoredSharedMemory> monitored_shared_memory;
     // Flags indicate mappings that require special handling. Adjacent mappings
     // may only be merged if their `flags` value agree.
     enum : uint32_t {
@@ -378,12 +377,12 @@ public:
    * during recording is known to be the same as the new map (e.g. because
    * we are recording!).
    */
-  KernelMapping map(remote_ptr<void> addr, size_t num_bytes, int prot,
-                    int flags, off64_t offset_bytes, const std::string& fsname,
-                    dev_t device, ino_t inode,
-                    const KernelMapping* recorded_map = nullptr,
-                    EmuFile::shr_ptr emu_file = nullptr,
-                    void* local_addr = nullptr);
+  KernelMapping map(
+      remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
+      off64_t offset_bytes, const std::string& fsname, dev_t device,
+      ino_t inode, const KernelMapping* recorded_map = nullptr,
+      EmuFile::shr_ptr emu_file = nullptr, void* local_addr = nullptr,
+      std::shared_ptr<MonitoredSharedMemory>&& monitored = nullptr);
 
   /**
    * Return the mapping and mapped resource for the byte at address 'addr'.
@@ -758,7 +757,8 @@ private:
    */
   void map_and_coalesce(const KernelMapping& m,
                         const KernelMapping& recorded_map,
-                        EmuFile::shr_ptr emu_file, void* local_addr);
+                        EmuFile::shr_ptr emu_file, void* local_addr,
+                        std::shared_ptr<MonitoredSharedMemory>&& monitored);
 
   /**
    * Call this only during recording.

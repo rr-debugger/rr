@@ -1870,6 +1870,8 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
  * https://bugzilla.kernel.org/show_bug.cgi?id=99101.
  * On some kernels pwrite() to /proc/.../mem fails when writing to a region
  * that's PROT_NONE.
+ * Also, writing through MAP_SHARED readonly mappings fails (even if the
+ * file was opened read-write originally), so we handle that here too.
  */
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
@@ -1878,7 +1880,10 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
     if (m.map.start() >= ceil_page_size(addr + buf_size)) {
       break;
     }
-    if (!(m.map.prot() & (PROT_READ | PROT_WRITE))) {
+    if (m.map.prot() & PROT_WRITE) {
+      continue;
+    }
+    if (!(m.map.prot() & PROT_READ) || (m.map.flags() & MAP_SHARED)) {
       mappings_to_fix.push_back(m.map);
     }
   };

@@ -1,0 +1,18 @@
+source `dirname $0`/util.sh
+
+record $TESTNAME &
+
+until grep -q ready record.out; do
+  sleep 0
+done
+
+${OBJDIR}/bin/$TESTNAME mock_dconf_update
+
+# Wait for 'record' to actually terminate. Otherwise we might start
+# replaying before the trace file has been completely written.
+wait %1
+
+echo "Replaying ..."
+replay
+check 'EXIT-SUCCESS'
+

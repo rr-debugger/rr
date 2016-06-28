@@ -3628,20 +3628,19 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   // for the resource.
   auto result = t->stat_fd(fd);
   string file_name = t->file_name_of_fd(fd);
+  if (!result.st_size) {
+    // Some device files are mmappable but have zero size. Increasing the
+    // size here is safe even if the mapped size is greater than the real size.
+    result.st_size = offset + size;
+  }
 
   KernelMapping km = t->vm()->map(addr, size, prot, flags, offset, file_name,
                                   result.st_dev, result.st_ino);
 
   if (t->trace_writer().write_mapped_region(t, km, result) ==
       TraceWriter::RECORD_IN_TRACE) {
-    if (result.st_size > 0) {
-      off64_t end = (off64_t)result.st_size - offset;
-      t->record_remote(addr, min(end, (off64_t)size));
-    } else {
-      // st_size is not valid. Some device files are mmappable but have zero
-      // size.
-      t->record_remote(addr, size);
-    }
+    off64_t end = (off64_t)result.st_size - offset;
+    t->record_remote(addr, min(end, (off64_t)size));
   }
 
   if ((prot & PROT_WRITE) && (flags & MAP_SHARED)) {
@@ -3652,6 +3651,12 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   }
 
   t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages, fd);
+
+  if ((prot & (PROT_WRITE | PROT_READ)) == PROT_READ && (flags & MAP_SHARED) &&
+      !(flags & MAP_ANONYMOUS)) {
+    MonitoredSharedMemory::maybe_monitor(t, file_name,
+                                         t->vm()->mapping_of(addr), fd, offset);
+  }
 }
 
 static void process_shmat(RecordTask* t, int shmid, int shm_flags,
@@ -4296,6 +4301,8 @@ void rec_process_syscall(RecordTask* t) {
   syscall_state.process_syscall_results();
   t->on_syscall_exit(t->ev().Syscall().number, t->regs());
   syscall_state_property.remove(*t);
+
+  MonitoredSharedMemory::check_all(t);
 }
 
 } // namespace rr

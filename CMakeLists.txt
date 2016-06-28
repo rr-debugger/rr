@@ -230,6 +230,7 @@ set(RR_SOURCES
   src/kernel_metadata.cc
   src/log.cc
   src/MagicSaveDataMonitor.cc
+  src/MonitoredSharedMemory.cc
   src/Monkeypatcher.cc
   src/PerfCounters.cc
   src/ProcMemMonitor.cc
@@ -680,6 +681,7 @@ set(TESTS_WITH_PROGRAM
   condvar_stress
   crash
   crash_in_function
+  dconf_mock
   dev_tty
   dlopen
   execve_loop
