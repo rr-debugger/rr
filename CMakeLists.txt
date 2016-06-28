@@ -276,9 +276,12 @@ set(RR_SOURCES
   src/WaitStatus.cc)
 
 function(post_build_executable target)
-  add_custom_command(TARGET ${target}
-                     POST_BUILD
-                     COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:${target}>)
+# grsecurity needs these. But if we add them ourselves, they may conflict
+# with other flags added in other ways, and they all have to match :-(. So
+# don't do this until a better solution presents itself
+#  add_custom_command(TARGET ${target}
+#                     POST_BUILD
+#                     COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:${target}>)
 endfunction(post_build_executable)
 
 option(RR_BUILD_SHARED "Build the rr shared library as well as the binary (experimental).")
