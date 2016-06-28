@@ -2,6 +2,8 @@
 
 #include "rrutil.h"
 
+#define MAX_FDS 2048
+
 extern int capset(cap_user_header_t header, const cap_user_data_t data);
 
 static char tmp_name[] = "/tmp/rr-unshare-tmp-XXXXXX";
@@ -196,10 +198,16 @@ static int run_test(void) {
   int ret;
   int fd;
   struct rlimit nofile;
+  int fd_limit;
 
-  /* Emulate what sandboxes trying to close all open file descriptors */
   test_assert(0 == getrlimit(RLIMIT_NOFILE, &nofile));
-  for (fd = STDERR_FILENO + 1; fd < (int)nofile.rlim_cur; ++fd) {
+  if (nofile.rlim_cur == RLIM_INFINITY || nofile.rlim_cur > MAX_FDS) {
+    fd_limit = MAX_FDS;
+  } else {
+    fd_limit = nofile.rlim_cur;
+  }
+
+  for (fd = STDERR_FILENO + 1; fd < fd_limit; ++fd) {
     ret = close(fd);
     test_assert(ret == 0 || (ret == -1 && errno == EBADF));
   }
