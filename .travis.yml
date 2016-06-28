@@ -1,3 +1,5 @@
+sudo: required
+dist: trusty
 language: c
 compiler: gcc
 # XXX tests are disabled for the moment because the travis VM's CPU
