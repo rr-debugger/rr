@@ -1508,7 +1508,7 @@ void AddressSpace::map_and_coalesce(
 }
 
 static bool could_be_stack(const KernelMapping& km) {
-  // On 4.1.6-200.fc22.x86_64 we observe that during exec of the exec_stub
+  // On 4.1.6-200.fc22.x86_64 we observe that during exec of the rr_exec_stub
   // during replay, when the process switches from 32-bit to 64-bit, the 64-bit
   // registers seem truncated to 32 bits during the initial PTRACE_GETREGS so
   // our sp looks wrong and /proc/<pid>/maps doesn't identify the region as

@@ -286,9 +286,9 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
 static string find_exec_stub(SupportedArch arch) {
   string exe_path = exe_directory() + "../bin/";
   if (arch == x86 && NativeArch::arch() == x86_64) {
-    exe_path += "exec_stub_32";
+    exe_path += "rr_exec_stub_32";
   } else {
-    exe_path += "exec_stub";
+    exe_path += "rr_exec_stub";
   }
   return exe_path;
 }

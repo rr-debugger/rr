@@ -289,8 +289,8 @@ target_link_libraries(rrpreload
   ${CMAKE_DL_LIBS}
 )
 
-add_executable(exec_stub src/exec_stub.c)
-set_target_properties(exec_stub PROPERTIES LINK_FLAGS -nostdlib)
+add_executable(rr_exec_stub src/exec_stub.c)
+set_target_properties(rr_exec_stub PROPERTIES LINK_FLAGS -nostdlib)
 set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
 
@@ -323,7 +323,7 @@ install(PROGRAMS scripts/signal-rr-recording.sh
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay
   DESTINATION bin)
 
-install(TARGETS rr ${RR_BIN} rrpreload exec_stub
+install(TARGETS rr ${RR_BIN} rrpreload rr_exec_stub
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
@@ -367,10 +367,10 @@ if(rr_32BIT AND rr_64BIT)
                                 PROPERTIES COMPILE_FLAGS "-m32 -fno-stack-protector")
   endforeach(file)
 
-  add_executable(exec_stub_32 32/exec_stub.c)
-  set_target_properties(exec_stub_32 PROPERTIES LINK_FLAGS "-nostdlib -m32")
+  add_executable(rr_exec_stub_32 32/exec_stub.c)
+  set_target_properties(rr_exec_stub_32 PROPERTIES LINK_FLAGS "-nostdlib -m32")
 
-  install(TARGETS rrpreload_32 exec_stub_32
+  install(TARGETS rrpreload_32 rr_exec_stub_32
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
