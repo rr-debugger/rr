@@ -116,6 +116,12 @@ if(PYTHON_VERSION_MAJOR GREATER 2)
   message(FATAL_ERROR "Python 3 is not supported, please use Python 2.7.")
 endif()
 
+execute_process(COMMAND "${PYTHON_EXECUTABLE}" "-c" "# nothing"
+                RESULT_VARIABLE python_status)
+if(python_status)
+  message(FATAL_ERROR "Couldn't run python interpreter ${PYTHON_EXECUTABLE}.")
+endif()
+
 # Check for required Python modules
 set(REQUIRED_PYTHON_MODULES
   pexpect
