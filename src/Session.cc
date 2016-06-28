@@ -527,12 +527,14 @@ const AddressSpace::Mapping& Session::recreate_shared_mmap(
     MonitoredSharedMemory::shr_ptr&& monitored) {
   char name[PATH_MAX];
   strncpy(name, m.map.fsname().c_str(), sizeof(name));
+  uint32_t flags = m.flags;
   remote_ptr<void> new_addr =
       create_shared_mmap(remote, m.map.size(), m.map.start(),
                          extract_name(name, sizeof(name)), m.map.prot(), 0,
                          std::move(monitored))
           .start();
-  remote.task()->vm()->mapping_flags_of(new_addr) = m.flags;
+  // m may be invalid now
+  remote.task()->vm()->mapping_flags_of(new_addr) = flags;
   return remote.task()->vm()->mapping_of(new_addr);
 }
 

@@ -40,7 +40,8 @@ void MonitoredSharedMemory::maybe_monitor(RecordTask* t,
 
   const AddressSpace::Mapping& shared =
       Session::recreate_shared_mmap(remote, m, move(result));
-  memcpy(shared.local_addr, real_mem, m.map.size());
+  // m may be invalid now
+  memcpy(shared.local_addr, real_mem, shared.map.size());
 }
 
 MonitoredSharedMemory::shr_ptr MonitoredSharedMemory::subrange(uintptr_t,
