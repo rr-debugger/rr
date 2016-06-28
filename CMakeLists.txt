@@ -16,6 +16,8 @@ set(BUILD_SHARED_LIBS ON)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
 
+set(WILL_RUN_TESTS ON CACHE BOOL "Run tests")
+
 # CAREFUL!  "-" is an invalid character in RPM package names, while
 # debian is happy with it.  However, "_" is illegal in debs, while RPM
 # is cool with it.  Sigh.
@@ -123,9 +125,14 @@ if(python_status)
 endif()
 
 # Check for required Python modules
-set(REQUIRED_PYTHON_MODULES
-  pexpect
-)
+if(WILL_RUN_TESTS)
+  set(REQUIRED_PYTHON_MODULES
+    pexpect
+  )
+else()
+  set(REQUIRED_PYTHON_MODULES)
+endif()
+
 foreach(py_module ${REQUIRED_PYTHON_MODULES})
   execute_process(COMMAND "${PYTHON_EXECUTABLE}" "-c"
 			"import ${py_module}"
@@ -135,10 +142,12 @@ foreach(py_module ${REQUIRED_PYTHON_MODULES})
   endif()
 endforeach(py_module)
 
-# Check for gdb
-execute_process(COMMAND "gdb" "--version" RESULT_VARIABLE module_status OUTPUT_QUIET)
-if(module_status)
-  message(FATAL_ERROR "Couldn't find gdb.")
+if(WILL_RUN_TESTS)
+  # Check for gdb
+  execute_process(COMMAND "gdb" "--version" RESULT_VARIABLE module_status OUTPUT_QUIET)
+  if(module_status)
+    message(FATAL_ERROR "Couldn't find gdb.")
+  endif()
 endif()
 
 set_source_files_properties(src/preload/preload.c
