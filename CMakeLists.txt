@@ -271,12 +271,17 @@ if(RR_BUILD_SHARED)
   add_library(rr ${RR_SOURCES})
   add_executable(rrbin src/main.cc)
   set(RR_BIN rrbin)
+  set(RR_EXECUTABLE rrbin)
   set_target_properties(rrbin PROPERTIES OUTPUT_NAME rr)
   target_link_libraries(rrbin rr)
 else()
   add_executable(rr ${RR_SOURCES} src/main.cc)
   set(RR_BIN)
+  set(RR_EXECUTABLE rr)
 endif()
+add_custom_command(TARGET ${RR_EXECUTABLE}
+                   POST_BUILD
+                   COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:${RR_EXECUTABLE}>)
 add_dependencies(rr Generated Pages)
 
 target_link_libraries(rr
@@ -290,6 +295,9 @@ target_link_libraries(rrpreload
 )
 
 add_executable(rr_exec_stub src/exec_stub.c)
+add_custom_command(TARGET rr_exec_stub
+                   POST_BUILD
+                   COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:rr_exec_stub>)
 set_target_properties(rr_exec_stub PROPERTIES LINK_FLAGS -nostdlib)
 set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
@@ -368,6 +376,9 @@ if(rr_32BIT AND rr_64BIT)
   endforeach(file)
 
   add_executable(rr_exec_stub_32 32/exec_stub.c)
+  add_custom_command(TARGET rr_exec_stub_32
+                     POST_BUILD
+                     COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:rr_exec_stub_32>)
   set_target_properties(rr_exec_stub_32 PROPERTIES LINK_FLAGS "-nostdlib -m32")
 
   install(TARGETS rrpreload_32 rr_exec_stub_32
