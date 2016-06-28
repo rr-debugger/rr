@@ -266,22 +266,25 @@ set(RR_SOURCES
   src/util.cc
   src/WaitStatus.cc)
 
+function(post_build_executable target)
+  add_custom_command(TARGET ${target}
+                     POST_BUILD
+                     COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:${target}>)
+endfunction(post_build_executable)
+
 option(RR_BUILD_SHARED "Build the rr shared library as well as the binary (experimental).")
 if(RR_BUILD_SHARED)
   add_library(rr ${RR_SOURCES})
   add_executable(rrbin src/main.cc)
   set(RR_BIN rrbin)
-  set(RR_EXECUTABLE rrbin)
+  post_build_executable(rrbin)
   set_target_properties(rrbin PROPERTIES OUTPUT_NAME rr)
   target_link_libraries(rrbin rr)
 else()
   add_executable(rr ${RR_SOURCES} src/main.cc)
+  post_build_executable(rr)
   set(RR_BIN)
-  set(RR_EXECUTABLE rr)
 endif()
-add_custom_command(TARGET ${RR_EXECUTABLE}
-                   POST_BUILD
-                   COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:${RR_EXECUTABLE}>)
 add_dependencies(rr Generated Pages)
 
 target_link_libraries(rr
@@ -295,9 +298,7 @@ target_link_libraries(rrpreload
 )
 
 add_executable(rr_exec_stub src/exec_stub.c)
-add_custom_command(TARGET rr_exec_stub
-                   POST_BUILD
-                   COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:rr_exec_stub>)
+post_build_executable(rr_exec_stub)
 set_target_properties(rr_exec_stub PROPERTIES LINK_FLAGS -nostdlib)
 set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
@@ -376,9 +377,7 @@ if(rr_32BIT AND rr_64BIT)
   endforeach(file)
 
   add_executable(rr_exec_stub_32 32/exec_stub.c)
-  add_custom_command(TARGET rr_exec_stub_32
-                     POST_BUILD
-                     COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:rr_exec_stub_32>)
+  post_build_executable(rr_exec_stub_32)
   set_target_properties(rr_exec_stub_32 PROPERTIES LINK_FLAGS "-nostdlib -m32")
 
   install(TARGETS rrpreload_32 rr_exec_stub_32
@@ -856,6 +855,7 @@ set(TESTS_WITHOUT_PROGRAM
 
 foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
   add_executable(${test} src/test/${test}.c)
+  post_build_executable(${test})
   set_source_files_properties(src/test/${test}.c
                               PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
   add_dependencies(${test} Generated)
@@ -865,11 +865,13 @@ endforeach(test)
 # Test disabled because it requires libuvc to be built and installed, and a
 # working USB camera
 # add_executable(usb src/test/usb.c)
+# post_build_executable(usb)
 # add_dependencies(usb Generated)
 # target_link_libraries(usb -lrt -L/usr/local/lib -luvc -lusb-1.0)
 
 foreach(test ${BASIC_CPP_TESTS})
   add_executable(${test} src/test/${test}.cc)
+  post_build_executable(${test})
   set_source_files_properties(src/test/${test}.cc
                               PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS_DEBUG})
   add_dependencies(${test} Generated)
@@ -884,6 +886,7 @@ target_link_libraries(constructor -lrt test_lib)
 
 # cpuid test needs to link with cpuid_loop.S
 add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
+post_build_executable(cpuid)
 add_dependencies(cpuid Generated)
 target_link_libraries(cpuid -lrt)
 
@@ -953,6 +956,7 @@ if(rr_32BIT AND rr_64BIT)
 
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
     add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
+    post_build_executable(${test}_32)
     add_dependencies(${test}_32 Generated)
     set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
     target_link_libraries(${test}_32 -lrt -ldl)
@@ -960,6 +964,7 @@ if(rr_32BIT AND rr_64BIT)
 
   foreach(test ${BASIC_CPP_TESTS})
     add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc")
+    post_build_executable(${test}_32)
     add_dependencies(${test}_32 Generated)
     set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
     target_link_libraries(${test}_32 -lrt)
@@ -975,6 +980,7 @@ if(rr_32BIT AND rr_64BIT)
 
   # cpuid test needs to link with cpuid_loop.S
   add_executable(cpuid_32 32/cpuid.c 32/cpuid_loop.S)
+  post_build_executable(cpuid_32)
   add_dependencies(cpuid_32 Generated)
   set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
   target_link_libraries(cpuid_32 -lrt)
@@ -1008,6 +1014,7 @@ set(CHAOS_TESTS
 
 foreach(test ${CHAOS_TESTS})
   add_executable(${test} src/chaos-test/${test}.c)
+  post_build_executable(${test})
   target_link_libraries(${test} -lrt)
 endforeach(test)
 
