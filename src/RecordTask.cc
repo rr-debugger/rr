@@ -767,7 +767,7 @@ siginfo_t RecordTask::take_ptrace_signal_siginfo(int sig) {
 }
 
 static pid_t get_ppid(pid_t pid) {
-  auto ppid_str = Task::read_status_fields(pid, "PPid");
+  auto ppid_str = read_proc_status_fields(pid, "PPid");
   if (ppid_str.empty()) {
     return -1;
   }
@@ -794,7 +794,7 @@ void RecordTask::apply_group_stop(int sig) {
 }
 
 bool RecordTask::is_signal_pending(int sig) {
-  auto pending_strs = Task::read_status_fields(tid, "SigPnd", "ShdPnd");
+  auto pending_strs = read_proc_status_fields(tid, "SigPnd", "ShdPnd");
   if (pending_strs.size() < 2) {
     return false;
   }

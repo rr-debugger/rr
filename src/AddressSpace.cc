@@ -1549,11 +1549,13 @@ void AddressSpace::populate_address_space(Task* t) {
     if (is_stack) {
       ++found_stacks;
       flags |= MAP_GROWSDOWN;
-      // MAP_GROWSDOWN segments really occupy one additional page before
-      // the start address shown by /proc/<pid>/maps --- unless that page
-      // is already occupied by another mapping.
-      if (!has_mapping(start - page_size())) {
-        start -= page_size();
+      if (uses_invisible_guard_page()) {
+        // MAP_GROWSDOWN segments really occupy one additional page before
+        // the start address shown by /proc/<pid>/maps --- unless that page
+        // is already occupied by another mapping.
+        if (!has_mapping(start - page_size())) {
+          start -= page_size();
+        }
       }
     }
 

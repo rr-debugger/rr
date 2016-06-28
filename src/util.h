@@ -7,6 +7,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "Event.h"
 #include "ScopedFd.h"
@@ -251,6 +252,15 @@ std::string exe_directory();
 double monotonic_now_sec();
 
 bool running_under_rr();
+
+std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
+                                                 const char* name2 = nullptr);
+
+/**
+ * Mainline Linux kernels use an invisible (to /proc/<pid>/maps) guard page
+ * for stacks. grsecurity kernels don't.
+ */
+bool uses_invisible_guard_page();
 
 } // namespace rr
 

@@ -1026,45 +1026,8 @@ void Task::update_prname(remote_ptr<void> child_addr) {
   prname = name.chars;
 }
 
-vector<string> Task::read_status_fields(pid_t tid, const char* name,
-                                        const char* name2) {
-  vector<string> result;
-  char buf[1000];
-  sprintf(buf, "/proc/%d/status", tid);
-  FILE* f = fopen(buf, "r");
-  if (!f) {
-    return result;
-  }
-  vector<string> matches;
-  matches.push_back(string(name) + ":");
-  if (name2) {
-    matches.push_back(string(name2) + ":");
-  }
-  for (auto& m : matches) {
-    while (true) {
-      if (!fgets(buf, sizeof(buf), f)) {
-        break;
-      }
-      if (strncmp(buf, m.c_str(), m.size()) == 0) {
-        char* b = buf + m.size();
-        while (*b == ' ' || *b == '\t') {
-          ++b;
-        }
-        char* e = b;
-        while (*e && *e != '\n') {
-          ++e;
-        }
-        result.push_back(string(b, e - b));
-        break;
-      }
-    }
-  }
-  fclose(f);
-  return result;
-}
-
 static bool is_zombie_process(pid_t pid) {
-  auto state = Task::read_status_fields(pid, "State");
+  auto state = read_proc_status_fields(pid, "State");
   return state.empty() || state[0] == "Z";
 }
 

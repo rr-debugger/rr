@@ -754,4 +754,51 @@ double monotonic_now_sec() {
 
 bool running_under_rr() { return getenv("RUNNING_UNDER_RR") != NULL; }
 
+vector<string> read_proc_status_fields(pid_t tid, const char* name,
+                                       const char* name2) {
+  vector<string> result;
+  char buf[1000];
+  sprintf(buf, "/proc/%d/status", tid);
+  FILE* f = fopen(buf, "r");
+  if (!f) {
+    return result;
+  }
+  vector<string> matches;
+  matches.push_back(string(name) + ":");
+  if (name2) {
+    matches.push_back(string(name2) + ":");
+  }
+  for (auto& m : matches) {
+    while (true) {
+      if (!fgets(buf, sizeof(buf), f)) {
+        break;
+      }
+      if (strncmp(buf, m.c_str(), m.size()) == 0) {
+        char* b = buf + m.size();
+        while (*b == ' ' || *b == '\t') {
+          ++b;
+        }
+        char* e = b;
+        while (*e && *e != '\n') {
+          ++e;
+        }
+        result.push_back(string(b, e - b));
+        break;
+      }
+    }
+  }
+  fclose(f);
+  return result;
+}
+
+static bool check_for_pax_kernel() {
+  auto results = read_proc_status_fields(getpid(), "PaX");
+  return !results.empty();
+}
+
+bool uses_invisible_guard_page() {
+  static bool is_pax_kernel = check_for_pax_kernel();
+  return !is_pax_kernel;
+}
+
 } // namespace rr
