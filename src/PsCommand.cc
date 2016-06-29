@@ -82,12 +82,12 @@ static int find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
     const TraceTaskEvent& e = events[i];
     if (e.type() == TraceTaskEvent::EXIT && tid_to_pid[e.tid()] == pid &&
         count_tids_for_pid(tid_to_pid, pid) == 1) {
-      int status = e.exit_status();
-      if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
+      WaitStatus status = e.exit_status();
+      if (status.type() == WaitStatus::EXIT) {
+        return status.exit_code();
       }
-      assert(WIFSIGNALED(status));
-      return -WTERMSIG(status);
+      assert(status.type() == WaitStatus::FATAL_SIGNAL);
+      return -status.fatal_sig();
     }
     update_tid_to_pid_map(tid_to_pid, e);
   }

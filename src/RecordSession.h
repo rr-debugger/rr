@@ -11,6 +11,7 @@
 #include "Session.h"
 #include "TaskGroup.h"
 #include "TraceFrame.h"
+#include "WaitStatus.h"
 
 namespace rr {
 
@@ -53,7 +54,7 @@ public:
   struct RecordResult {
     RecordStatus status;
     // When status == STEP_EXITED
-    int exit_code;
+    WaitStatus exit_status;
     // When status == STEP_SPAWN_FAILED
     std::string failure_message;
   };

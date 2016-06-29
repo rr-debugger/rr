@@ -1,0 +1,12 @@
+source `dirname $0`/util.sh
+
+record $TESTNAME 3
+if [[ $? != 3 ]]; then
+    failed "Expected exit code 3"
+fi
+
+( record $TESTNAME -5 )
+if [[ $? != 133 ]]; then
+    failed "Expected exit signal 5"
+fi
+

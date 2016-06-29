@@ -211,7 +211,7 @@ public:
     // precisely timed between the generation of a PTRACE_EVENT_FORK/CLONE/
     // SYS_clone event, and us fetching the event message here.
     xptrace(PTRACE_GETEVENTMSG, nullptr, &msg);
-    return (T)msg;
+    return T(msg);
   }
 
   /**

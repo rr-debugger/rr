@@ -11,6 +11,7 @@
 
 #include "HasTaskSet.h"
 #include "TaskishUid.h"
+#include "WaitStatus.h"
 
 namespace rr {
 
@@ -99,7 +100,7 @@ public:
   const pid_t tgid;
   const pid_t real_tgid;
 
-  int exit_code;
+  WaitStatus exit_status;
 
   Session* session() const { return session_; }
   void forget_session() { session_ = nullptr; }

@@ -714,6 +714,7 @@ set(TESTS_WITH_PROGRAM
   dev_tty
   dlopen
   execve_loop
+  exit_codes
   exit_group
   exit_status
   explicit_checkpoints

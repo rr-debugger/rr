@@ -2421,14 +2421,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
 
     case Arch::exit:
-      if (t->task_group()->task_set().size() == 1) {
-        t->task_group()->exit_code = (int)t->regs().arg1();
-      }
       prepare_exit(t, (int)t->regs().arg1());
       return ALLOW_SWITCH;
 
     case Arch::exit_group:
-      t->task_group()->exit_code = (int)t->regs().arg1();
       if (t->task_group()->task_set().size() == 1) {
         prepare_exit(t, (int)t->regs().arg1());
         return ALLOW_SWITCH;

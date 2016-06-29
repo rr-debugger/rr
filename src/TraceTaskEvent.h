@@ -12,6 +12,7 @@
 #include "ExtraRegisters.h"
 #include "PerfCounters.h"
 #include "TraceFrame.h"
+#include "WaitStatus.h"
 
 namespace rr {
 
@@ -49,7 +50,7 @@ public:
     result.cmd_line_ = cmd_line;
     return result;
   }
-  static TraceTaskEvent for_exit(pid_t tid, int exit_status) {
+  static TraceTaskEvent for_exit(pid_t tid, WaitStatus exit_status) {
     TraceTaskEvent result(EXIT, tid);
     result.exit_status_ = exit_status;
     return result;
@@ -77,7 +78,7 @@ public:
     assert(type() == EXEC);
     return fds_to_close_;
   }
-  int exit_status() const {
+  WaitStatus exit_status() const {
     assert(type() == EXIT);
     return exit_status_;
   }
@@ -102,7 +103,7 @@ private:
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only
   std::vector<int> fds_to_close_;     // EXEC only
-  int exit_status_;                   // EXIT only
+  WaitStatus exit_status_;            // EXIT only
 };
 
 } // namespace rr
