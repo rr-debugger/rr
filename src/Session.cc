@@ -179,7 +179,7 @@ void Session::kill_all_tasks() {
       // During recording we might be aborting the recording, in which case
       // one or more tasks might not be stopped. We haven't got any really
       // good options here so we'll just skip detaching and try killing
-      // it with SIGKILL below. rr will usually exit immediatley after this
+      // it with SIGKILL below. rr will usually exit immediately after this
       // so the likelihood that we'll leak a zombie task isn't too bad.
       continue;
     }

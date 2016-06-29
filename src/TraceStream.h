@@ -52,7 +52,7 @@ public:
     MMAPS,
     // Substream that stores task creation and exec events
     TASKS,
-    // Substream that stores arbitary per-event records
+    // Substream that stores arbitrary per-event records
     GENERIC,
     SUBSTREAM_COUNT
   };

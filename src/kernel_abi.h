@@ -539,7 +539,7 @@ struct BaseArch : public wordsize,
   struct msqid64_ds {
     ipc64_perm msg_perm;
     // These msg*time fields are really __kernel_time_t plus
-    // appropiate padding.  We don't touch the fields, though.
+    // appropriate padding.  We don't touch the fields, though.
     //
     // We do, however, suffix them with _only_little_endian to
     // urge anybody who does touch them to make sure the right

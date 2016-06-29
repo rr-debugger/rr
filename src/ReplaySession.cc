@@ -450,7 +450,7 @@ void ReplaySession::check_pending_sig(ReplayTask* t) {
  * Default |resume_how| is RESUME_SYSEMU for error checking:
  * since the next event is supposed to be a signal, entering a syscall here
  * means divergence.  There shouldn't be any straight-line execution overhead
- * for SYSEMU vs. CONT, so the difference in cost should be neglible.
+ * for SYSEMU vs. CONT, so the difference in cost should be negligible.
  *
  * Some callers pass RESUME_CONT because they want to execute any syscalls
  * encountered.
