@@ -2029,11 +2029,13 @@ static void check_signals_while_exiting(RecordTask* t) {
  * re-entered) SYS_exit/SYS_exit_group.
  */
 static void prepare_exit(RecordTask* t, int exit_code) {
+  // RecordSession is responsible for ensuring we don't get here with
+  // pending signals. See interrupt_syscall_to_handle_signals.
+  ASSERT(t, !t->has_stashed_sig());
+
   t->stable_exit = true;
   t->exit_code = exit_code;
   t->session().scheduler().in_stable_exit(t);
-
-  check_signals_while_exiting(t);
 
   Registers r = t->regs();
   Registers exit_regs = r;

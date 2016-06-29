@@ -453,6 +453,7 @@ set(BASIC_TESTS
   exec_flags
   exec_no_env
   exec_self
+  exit_with_syscallbuf_signal
   fadvise
   fanotify
   fault_in_code_page

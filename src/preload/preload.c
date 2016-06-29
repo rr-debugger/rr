@@ -2493,6 +2493,21 @@ void* XShmCreateImage(__attribute__((unused)) register void* dpy,
 }
 
 /**
+ * This is for testing purposes only.
+ */
+void very_slow_exit_syscall(void) {
+  int i;
+  int result = 0;
+  struct syscall_info info;
+  for (i = 0; i < 1000000; ++i) {
+    result += i * i;
+  }
+  info.no = SYS_exit;
+  info.args[0] = result;
+  syscall_hook(&info);
+}
+
+/**
  * glibc geteuid() can be compiled to instructions ending in "syscall; ret"
  * which can't be hooked. So override it here and call the hook directly.
  */

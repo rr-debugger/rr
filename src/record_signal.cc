@@ -387,6 +387,8 @@ static bool is_safe_to_deliver_signal(RecordTask* t) {
   if (!t->syscallbuf_child) {
     /* Can't be in critical section because the lock
      * doesn't exist yet! */
+    LOG(debug) << "Safe to deliver signal at " << t->ip()
+               << " because no syscallbuf_child";
     return true;
   }
 
@@ -396,16 +398,20 @@ static bool is_safe_to_deliver_signal(RecordTask* t) {
      * syscallbuf critical sections.  The
      * exception is signal handlers "re-entering"
      * desched'd syscalls, which are OK. */
+    LOG(debug) << "Safe to deliver signal at " << t->ip()
+               << " because not in syscallbuf";
     return true;
   }
 
   if (t->is_in_traced_syscall()) {
-    LOG(debug) << "  tracee at traced syscallbuf syscall";
+    LOG(debug) << "Safe to deliver signal at " << t->ip()
+               << " because in traced syscall";
     return true;
   }
 
   if (t->is_in_untraced_syscall() && t->desched_rec()) {
-    LOG(debug) << "  tracee interrupted by desched of "
+    LOG(debug) << "Safe to deliver signal at " << t->ip()
+               << " because tracee interrupted by desched of "
                << t->syscall_name(t->read_mem(
                       REMOTE_PTR_FIELD(t->desched_rec(), syscallno)));
     return true;
@@ -415,6 +421,7 @@ static bool is_safe_to_deliver_signal(RecordTask* t) {
   t->write_mem(
       REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
       (uint8_t)1);
+  LOG(debug) << "Not safe to deliver signal at " << t->ip();
   return false;
 }
 

@@ -57,8 +57,9 @@ int main(void) {
   const size_t stack_size = 1 << 20;
   void* stack = mmap(NULL, stack_size, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  int pid;
+  int tid;
   sigset_t set;
+  test_assert(stack != MAP_FAILED);
 
   sys_gettid();
   /* NB: no syscalls in between the sys_gettid() above and this
@@ -67,16 +68,16 @@ int main(void) {
 
   /* Warning: strace gets the parameter order wrong and will print
      child_tidptr as 0 here. */
-  pid = clone(child, stack + stack_size,
+  tid = clone(child, stack + stack_size,
               CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_THREAD | CLONE_SIGHAND |
                   CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID,
               NULL, &child_tid, NULL, &child_tid);
 
-  atomic_printf("clone()d pid: %d\n", pid);
-  test_assert(pid > 0);
+  atomic_printf("clone()d pid: %d\n", tid);
+  test_assert(tid > 0);
 
-  futex(&child_tid, FUTEX_WAIT, pid, NULL, NULL, 0);
-  test_assert(child_tid_copy == pid);
+  futex(&child_tid, FUTEX_WAIT, tid, NULL, NULL, 0);
+  test_assert(child_tid_copy == tid);
   /* clone() should have cleared child_tid now */
   test_assert(child_tid == 0);
 
@@ -88,11 +89,11 @@ int main(void) {
   /* NB: no syscalls in between the sys_gettid() above and this
    * clone(). */
   breakpoint();
-  pid = clone(child, stack + stack_size,
+  tid = clone(child, stack + stack_size,
               CLONE_SIGHAND /*must also have CLONE_VM*/, NULL, NULL, NULL);
 
-  atomic_printf("clone(CLONE_SIGHAND)'d pid: %d\n", pid);
-  test_assert(-1 == pid);
+  atomic_printf("clone(CLONE_SIGHAND)'d tid: %d\n", tid);
+  test_assert(-1 == tid);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

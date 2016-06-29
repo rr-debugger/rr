@@ -974,6 +974,15 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si,
   stashed_signals.push_back(StashedSignal(si, deterministic));
 }
 
+bool RecordTask::has_stashed_sig(int sig) const {
+  for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
+    if (it->siginfo.si_signo == sig) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void RecordTask::pop_stash_sig() {
   assert(has_stashed_sig());
   stashed_signals.pop_front();

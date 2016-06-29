@@ -409,8 +409,14 @@ void RecordSession::task_continue(const StepState& step_state) {
     ticks_request = RESUME_NO_TICKS;
     resume = RESUME_SYSCALL;
   } else {
-    ticks_request = (TicksRequest)max<Ticks>(
-        0, scheduler().current_timeslice_end() - t->tick_count());
+    if (t->has_stashed_sig(PerfCounters::TIME_SLICE_SIGNAL)) {
+      // timeslice signal already stashed, no point in generating another one
+      // (and potentially slow)
+      ticks_request = RESUME_UNLIMITED_TICKS;
+    } else {
+      ticks_request = (TicksRequest)max<Ticks>(
+          0, scheduler().current_timeslice_end() - t->tick_count());
+    }
     bool singlestep =
         t->emulated_ptrace_cont_command == PTRACE_SINGLESTEP ||
         t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP;
@@ -1194,6 +1200,89 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
   return true;
 }
 
+template <typename Arch>
+static bool flush_signals_before_syscall_arch(intptr_t syscallno) {
+  switch (syscallno) {
+    case Arch::exit:
+    case Arch::exit_group:
+    case Arch::sigprocmask:
+    case Arch::rt_sigprocmask:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool flush_signals_before_syscall(intptr_t syscallno,
+                                         SupportedArch arch) {
+  RR_ARCH_FUNCTION(flush_signals_before_syscall_arch, arch, syscallno);
+}
+
+/**
+ * We should not do any exit syscall while there are stashed signals, because
+ * they'll just be thrown away, violating normal kernel behavior. So we check
+ * here if there are stashed signals and if there are, we abort the exit
+ * syscall so the signals can be delivered. The exit will be restarted after
+ * signal delivery.
+ *
+ * We treat sigprocmask the same way in case the tracee thread blocks all
+ * signals until it exits.
+ */
+static bool interrupt_syscall_to_handle_signals(RecordTask* t) {
+  if (!t->has_stashed_sig() ||
+      !flush_signals_before_syscall(t->regs().original_syscallno(),
+                                    t->arch())) {
+    return false;
+  }
+
+  LOG(debug) << "interrupting syscall '"
+             << syscall_name(t->regs().original_syscallno(), t->arch())
+             << "' to handle "
+             << signal_name(t->peek_stash_sig().siginfo.si_signo);
+
+  t->ev().Syscall().state = ENTERING_SYSCALL;
+  t->ev().Syscall().regs = t->regs();
+  t->record_current_event();
+
+  Registers r = t->regs();
+  int syscallno = r.original_syscallno();
+  r.set_original_syscallno(syscall_number_for_gettid(r.arch()));
+  t->set_regs(r);
+  // This exits the hijacked SYS_gettid.  Now the tracee is
+  // ready to do our bidding.
+  t->advance_syscall();
+
+  // Set these regs to emulate a syscall interruption.
+  r.set_original_syscallno(syscallno);
+  r.set_syscall_result(-ERESTARTSYS);
+  t->set_regs(r);
+
+  t->ev().Syscall().state = EXITING_SYSCALL;
+  t->record_current_event();
+  t->ev().transform(EV_SYSCALL_INTERRUPTION);
+  t->ev().Syscall().is_restart = true;
+
+  return true;
+}
+
+/**
+ * If interrupt_syscall_to_handle_signals has left an exit/sigprocmask
+ * syscall interrupted that needs to be completed, set up state to
+ * restart the syscall, because the kernel won't!
+ */
+static void maybe_do_fake_syscall_restart(RecordTask* t) {
+  if (!t->is_syscall_restart() || !t->regs().syscall_may_restart() ||
+      !flush_signals_before_syscall(t->ev().Syscall().number, t->arch())) {
+    return;
+  }
+
+  LOG(debug) << "Generating fake syscall restart";
+  Registers r = t->regs();
+  r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+  r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
+  t->set_regs(r);
+}
+
 /**
  * The execution of |t| has just been resumed, and it most likely has
  * a new event that needs to be processed.  Prepare that new event.
@@ -1228,6 +1317,10 @@ void RecordSession::runnable_state_changed(RecordTask* t,
         }
 
         t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
+
+        if (interrupt_syscall_to_handle_signals(t)) {
+          break;
+        }
       }
       check_initial_task_syscalls(t, step_result);
       note_entering_syscall(t);
@@ -1261,10 +1354,10 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
   } si;
   si.linux_api = t->peek_stash_sig().siginfo;
   if (si.linux_api.si_signo == get_ignore_sig()) {
-    LOG(info) << "Declining to deliver " << signal_name(si.linux_api.si_signo)
-              << " by user request";
+    LOG(debug) << "Declining to deliver " << signal_name(si.linux_api.si_signo)
+               << " by user request";
     t->pop_stash_sig();
-    return false;
+    return prepare_to_inject_signal(t, step_state);
   }
 
   if (si.linux_api.si_signo == SIGSYS && si.linux_api.si_code == SYS_SECCOMP) {
@@ -1588,6 +1681,7 @@ RecordSession::RecordResult RecordSession::record_step() {
 
     debug_exec_state("EXEC_START", t);
 
+    maybe_do_fake_syscall_restart(t);
     task_continue(step_state);
   }
 

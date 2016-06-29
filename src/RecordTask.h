@@ -216,6 +216,7 @@ public:
   void stash_synthetic_sig(const siginfo_t& si,
                            SignalDeterministic deterministic);
   bool has_stashed_sig() const { return !stashed_signals.empty(); }
+  bool has_stashed_sig(int sig) const;
   struct StashedSignal {
     StashedSignal(const siginfo_t& siginfo, SignalDeterministic deterministic)
         : siginfo(siginfo), deterministic(deterministic) {}
