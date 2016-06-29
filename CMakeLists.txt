@@ -1076,7 +1076,7 @@ elseif(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm.*")
   set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm")
 endif()
 
-# XXX Cmake 2.8.7 doesn't know how to avoid specifiying /usr,
+# XXX Cmake 2.8.7 doesn't know how to avoid specifying /usr,
 # /usr/bin, etc, as files to be installed, but distros are finicky
 # about their specification.  We want to manually filter those paths
 # out of our install list but 2.8.7 also isn't capable of that.
