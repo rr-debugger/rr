@@ -452,6 +452,10 @@ public:
   Maps maps() const { return Maps(*this, remote_ptr<void>()); }
   Maps maps_starting_at(remote_ptr<void> start) { return Maps(*this, start); }
 
+  const std::set<remote_ptr<void> >& monitored_addrs() const {
+    return monitored_mem;
+  }
+
   /**
    * Change the protection bits of [addr, addr + num_bytes) to
    * |prot|.
@@ -753,6 +757,17 @@ private:
                         EmuFile::shr_ptr emu_file, void* local_addr,
                         std::shared_ptr<MonitoredSharedMemory>&& monitored);
 
+  void remove_from_map(const MemoryRange& range) {
+    mem.erase(range);
+    monitored_mem.erase(range.start());
+  }
+  void add_to_map(const Mapping& m) {
+    mem[m.map] = m;
+    if (m.monitored_shared_memory) {
+      monitored_mem.insert(m.map.start());
+    }
+  }
+
   /**
    * Call this only during recording.
    */
@@ -905,6 +920,7 @@ private:
   bool is_clone;
   /* All segments mapped into this address space. */
   MemoryMap mem;
+  std::set<remote_ptr<void> > monitored_mem;
   /* madvise DONTFORK regions */
   std::set<MemoryRange> dont_fork;
   // The session that created this.  We save a ref to it so that

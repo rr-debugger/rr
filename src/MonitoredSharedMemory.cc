@@ -51,7 +51,8 @@ MonitoredSharedMemory::shr_ptr MonitoredSharedMemory::subrange(uintptr_t,
 }
 
 void MonitoredSharedMemory::check_all(RecordTask* t) {
-  for (const auto& m : t->vm()->maps()) {
+  for (auto a : t->vm()->monitored_addrs()) {
+    const auto& m = t->vm()->mapping_of(a);
     if (m.monitored_shared_memory) {
       m.monitored_shared_memory->check_for_changes(t, m);
     }
