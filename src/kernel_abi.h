@@ -844,7 +844,7 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(ethtool_cmd);
 
-  struct flock {
+  struct _flock {
     signed_short l_type;
     signed_short l_whence;
     char __pad[sizeof(off_t) - 2 * sizeof(short)];
@@ -852,7 +852,7 @@ struct BaseArch : public wordsize,
     off_t l_len;
     pid_t l_pid;
   };
-  RR_VERIFY_TYPE(flock);
+  RR_VERIFY_TYPE_EXPLICIT(struct ::flock, _flock);
 
   struct flock64 {
     signed_short l_type;
