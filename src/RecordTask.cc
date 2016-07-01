@@ -1232,6 +1232,10 @@ void RecordTask::maybe_flush_syscallbuf() {
     for (auto& r : records) {
       as->protect(r.start, r.size, r.prot);
     }
+    // We write these out because some tools might benefit from them, and
+    // this is cheap.
+    trace_writer().write_generic(records.data(),
+                                 records.size() * sizeof(records[0]));
   }
 
   // Write the entire buffer in one shot without parsing it,
