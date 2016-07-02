@@ -1456,7 +1456,9 @@ static string lookup_by_path(const string& name) {
       *next = 0;
     }
     string file = string(s) + "/" + name;
-    if (!access(file.c_str(), X_OK)) {
+    struct stat st;
+    if (!stat(file.c_str(), &st) && S_ISREG(st.st_mode) &&
+        !access(file.c_str(), X_OK)) {
       free(p);
       return file;
     }
