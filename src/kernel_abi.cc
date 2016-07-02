@@ -6,8 +6,8 @@
 
 // Get all the kernel definitions so we can verify our alternative versions.
 #include <arpa/inet.h>
-#include <assert.h>
 #include <asm/ldt.h>
+#include <assert.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <linux/capability.h>
