@@ -141,10 +141,10 @@ int main(void) {
   signal(SIGUSR1, handle_usr1_xmm);
   for (regnum = 0; regnum < 8; ++regnum) {
     int xmm[XMM_SIZE / sizeof(int)] XMM_ALIGNMENT;
+    memcpy(xmm, xmm_bad, sizeof(xmm));
 
     xmm_ops[regnum].set(xmm_good);
     raise(SIGUSR1);
-    memcpy(xmm, xmm_bad, sizeof(xmm));
     xmm_ops[regnum].get(xmm);
 
     test_assert("XMM register should have been preserved" &&
@@ -154,10 +154,10 @@ int main(void) {
   signal(SIGUSR1, handle_usr1_st);
   for (regnum = 0; regnum < 8; ++regnum) {
     char st[ST_SIZE];
+    memcpy(st, &st_bad, sizeof(st));
 
     st_ops[regnum].set(&st_good);
     raise(SIGUSR1);
-    memcpy(st, &st_bad, sizeof(st));
     st_ops[regnum].get(st);
 
     test_assert("ST register should have been preserved" &&
