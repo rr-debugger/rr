@@ -394,11 +394,11 @@ private:
 
   template <typename Arch> size_t total_registers_arch() const;
 
-  union AllRegisters {
+  SupportedArch arch_;
+  union {
     rr::X86Arch::user_regs_struct x86regs;
     rr::X64Arch::user_regs_struct x64regs;
   } u;
-  SupportedArch arch_;
 };
 
 std::ostream& operator<<(std::ostream& stream, const Registers& r);

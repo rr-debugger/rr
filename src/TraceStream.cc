@@ -31,7 +31,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 58
+#define TRACE_VERSION 59
 
 struct SubstreamData {
   const char* name;
@@ -194,10 +194,11 @@ void TraceWriter::write_frame(const TraceFrame& frame) {
     FATAL() << "Tried to save " << sizeof(basic_info)
             << " bytes to the trace, but failed";
   }
-  // TODO: only store exec info for non-async-sig events when
-  // debugging assertions are enabled.
   if (frame.event().has_exec_info() == HAS_EXEC_INFO) {
-    events << frame.regs() << frame.extra_perf_values();
+    events << (char)frame.regs().arch();
+    auto raw_regs = frame.regs().get_ptrace_for_arch(frame.regs().arch());
+    events.write(raw_regs.data(), raw_regs.size());
+    events << frame.extra_perf_values();
     if (!events.good()) {
       FATAL() << "Tried to save registers to the trace, but failed";
     }
@@ -236,7 +237,25 @@ TraceFrame TraceReader::read_frame() {
                    Event(basic_info.ev), basic_info.ticks_,
                    basic_info.monotonic_sec);
   if (frame.event().has_exec_info() == HAS_EXEC_INFO) {
-    events >> frame.recorded_regs >> frame.extra_perf;
+    char a;
+    events >> a;
+    uint8_t buf[sizeof(X64Arch::user_regs_struct)];
+    frame.recorded_regs.set_arch((SupportedArch)a);
+    switch (frame.recorded_regs.arch()) {
+      case x86:
+        events.read(buf, sizeof(X86Arch::user_regs_struct));
+        frame.recorded_regs.set_from_ptrace_for_arch(
+            x86, buf, sizeof(X86Arch::user_regs_struct));
+        break;
+      case x86_64:
+        events.read(buf, sizeof(X64Arch::user_regs_struct));
+        frame.recorded_regs.set_from_ptrace_for_arch(
+            x86_64, buf, sizeof(X64Arch::user_regs_struct));
+        break;
+      default:
+        FATAL() << "Unknown arch";
+    }
+    events >> frame.extra_perf;
 
     int extra_reg_bytes;
     char extra_reg_format;
