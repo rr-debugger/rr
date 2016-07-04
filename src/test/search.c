@@ -2,7 +2,9 @@
 
 #include "rrutil.h"
 
-char buf[1024] = { 99, 1, 2, 2, 3, 0 };
+/* Make buf weird so that when we search the whole address space,
+   we don't find any accidental matches. */
+char buf[1024] = { 99, 1, 2, 2, 3, 0xff, 0xfa, 0xde, 0xbc };
 char* p;
 char* p_end;
 int* argc_ptr;
