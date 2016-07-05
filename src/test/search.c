@@ -3,7 +3,8 @@
 #include "rrutil.h"
 
 /* Make buf weird so that when we search the whole address space,
-   we don't find any accidental matches. */
+   we don't find any accidental matches.
+*/
 char buf[1024] = { 99, 1, 2, 2, 3, 0xff, 0xfa, 0xde, 0xbc };
 char* p;
 char* p_end;
@@ -26,8 +27,13 @@ int main(int argc, __attribute__((unused)) char* argv[]) {
   test_assert(p != MAP_FAILED);
   p_end = p + PAGE_SIZE * 4;
 
-  memcpy(p + PAGE_SIZE, buf, sizeof(buf));
-  memcpy(p + PAGE_SIZE * 2, buf, sizeof(buf));
+  /* Don't copy the whole buf. If we do, we may trigger memcpy routines
+   * that copy state to registers which are later spilled to the stack,
+   * causing false positives. These short memcpys are performed using volatile
+   * registers.
+   */
+  memcpy(p + PAGE_SIZE, buf, 12);
+  memcpy(p + PAGE_SIZE * 2, buf, 12);
 
   test_assert(0 == munmap(p, PAGE_SIZE));
   test_assert(0 == munmap(p + PAGE_SIZE * 3, PAGE_SIZE));
