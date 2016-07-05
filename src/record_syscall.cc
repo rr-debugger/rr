@@ -2187,7 +2187,7 @@ static int ptrace_option_for_event(int ptrace_event) {
 
 template <typename Arch>
 static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
-  uintptr_t flags = 0;
+  uintptr_t flags;
   CloneParameters params;
   Registers r = t->regs();
   int original_syscall = r.original_syscallno();
@@ -2209,9 +2209,10 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     }
   } else if (is_vfork_syscall(original_syscall, r.arch())) {
     ptrace_event = PTRACE_EVENT_VFORK;
-    flags = CLONE_VM;
+    flags = CLONE_VM | CLONE_VFORK | SIGCHLD;
   } else {
     ptrace_event = PTRACE_EVENT_FORK;
+    flags = SIGCHLD;
   }
 
   while (true) {
@@ -2285,13 +2286,9 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     }
     new_task->record_remote_even_if_null(child_params.ptid);
     new_task->record_remote_even_if_null(child_params.ctid);
-
-    t->session().trace_writer().write_task_event(
-        TraceTaskEvent::for_clone(new_task->tid, t->tid, flags));
-  } else {
-    t->session().trace_writer().write_task_event(
-        TraceTaskEvent::for_fork(new_task->tid, t->tid));
   }
+  t->session().trace_writer().write_task_event(
+      TraceTaskEvent::for_clone(new_task->tid, t->tid, flags));
 
   init_scratch_memory(new_task);
 

@@ -221,9 +221,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // Dig the recorded tid out out of the trace. The tid value returned in
   // the recorded registers could be in a different pid namespace from rr's,
   // so we can't use it directly.
-  TraceTaskEvent tte = read_task_trace_event(
-      t, Arch::clone == t->regs().original_syscallno() ? TraceTaskEvent::CLONE
-                                                       : TraceTaskEvent::FORK);
+  TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::CLONE);
   ASSERT(t, tte.parent_tid() == t->rec_tid);
   long rec_tid = tte.tid();
   pid_t new_tid = t->get_ptrace_eventmsg<pid_t>();

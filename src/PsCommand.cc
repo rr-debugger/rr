@@ -34,12 +34,14 @@ static void print_exec_cmd_line(const TraceTaskEvent& event, FILE* out) {
 
 static void update_tid_to_pid_map(map<pid_t, pid_t>& tid_to_pid,
                                   const TraceTaskEvent& e) {
-  if (e.is_fork()) {
-    // Some kind of fork. This task is its own pid.
-    tid_to_pid[e.tid()] = e.tid();
-  } else if (e.type() == TraceTaskEvent::CLONE) {
-    // thread clone. Record thread's pid.
-    tid_to_pid[e.tid()] = tid_to_pid[e.parent_tid()];
+  if (e.type() == TraceTaskEvent::CLONE) {
+    if (e.clone_flags() & CLONE_THREAD) {
+      // thread clone. Record thread's pid.
+      tid_to_pid[e.tid()] = tid_to_pid[e.parent_tid()];
+    } else {
+      // Some kind of fork. This task is its own pid.
+      tid_to_pid[e.tid()] = e.tid();
+    }
   } else if (e.type() == TraceTaskEvent::EXIT) {
     tid_to_pid.erase(e.tid());
   }
@@ -121,7 +123,8 @@ static int ps(const string& trace_dir, FILE* out) {
     auto& e = events[i];
     update_tid_to_pid_map(tid_to_pid, e);
 
-    if (e.is_fork()) {
+    if (e.type() == TraceTaskEvent::CLONE &&
+        !(e.clone_flags() | CLONE_THREAD)) {
       pid_t pid = tid_to_pid[e.tid()];
       fprintf(out, "%d\t%d\t%d\t", e.tid(), tid_to_pid[e.parent_tid()],
               find_exit_code(pid, events, i, tid_to_pid));
