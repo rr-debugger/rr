@@ -31,7 +31,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 61
+#define TRACE_VERSION 62
 
 struct SubstreamData {
   const char* name;
@@ -284,7 +284,7 @@ TraceFrame TraceReader::read_frame() {
 
 void TraceWriter::write_task_event(const TraceTaskEvent& event) {
   auto& tasks = writer(TASKS);
-  tasks << event.type() << event.tid();
+  tasks << global_time << (char)event.type() << event.tid();
   switch (event.type()) {
     case TraceTaskEvent::CLONE:
       tasks << event.parent_tid() << event.clone_flags();
@@ -304,7 +304,10 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
 TraceTaskEvent TraceReader::read_task_event() {
   auto& tasks = reader(TASKS);
   TraceTaskEvent r;
-  tasks >> r.type_ >> r.tid_;
+  TraceFrame::Time time;
+  char type;
+  tasks >> time >> type >> r.tid_;
+  r.type_ = (TraceTaskEvent::Type)type;
   switch (r.type()) {
     case TraceTaskEvent::CLONE:
       tasks >> r.parent_tid_ >> r.clone_flags_;
