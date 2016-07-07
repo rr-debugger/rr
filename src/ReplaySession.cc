@@ -919,8 +919,11 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
              << " bytes of syscall records";
 }
 
-static void apply_mprotect_records(ReplayTask* t,
-                                   uint32_t skip_mprotect_records) {
+/**
+ * Returns mprotect_record_count
+ */
+static uint32_t apply_mprotect_records(ReplayTask* t,
+                                       uint32_t skip_mprotect_records) {
   uint32_t final_mprotect_record_count =
       t->read_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, mprotect_record_count));
   if (skip_mprotect_records < final_mprotect_record_count) {
@@ -941,9 +944,8 @@ static void apply_mprotect_records(ReplayTask* t,
       }
       t->vm()->protect(r.start, r.size, r.prot);
     }
-    vector<uint8_t> ignored;
-    t->trace_reader().read_generic(ignored);
   }
+  return final_mprotect_record_count;
 }
 
 /**
@@ -981,7 +983,8 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
   }
 
   // Apply the mprotect records we just completed.
-  apply_mprotect_records(t, skip_mprotect_records);
+  uint32_t final_mprotect_record_count =
+      apply_mprotect_records(t, skip_mprotect_records);
 
   if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
     // This would normally be triggered by constraints.ticks_target but it's
@@ -1001,6 +1004,16 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
     Registers r = t->regs();
     r.set_ip(current_step.flush.stop_breakpoint_addr);
     t->set_regs(r);
+
+    if (final_mprotect_record_count) {
+      // Skip mprotect records in trace. We don't need them for replay, but
+      // they could be useful for other trace consumers that want a complete
+      // view of VM layout without having to do a full replay.
+      // We delay this skipping to here because we don't want to do it more
+      // than once if a syscallbuf flush is incomplete.
+      vector<uint8_t> ignored;
+      t->trace_reader().read_generic(ignored);
+    }
     return COMPLETE;
   }
 
