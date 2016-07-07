@@ -1,0 +1,14 @@
+source `dirname $0`/util.sh
+compare_test EXIT-SUCCESS
+
+if !(do_ps | grep -q $'\t77'); then
+    failed "Can't find return value 77"
+fi
+
+if !(do_ps | grep -q -- $'\t-11'); then
+    failed "Can't find return value -11"
+fi
+
+if !(do_ps | grep $'\t88' | grep -q token); then
+    failed "Can't find exec parameter 'token'"
+fi

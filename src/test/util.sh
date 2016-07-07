@@ -221,6 +221,10 @@ function replay { replayflags=$1
         rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
 }
 
+function do_ps { psflags=$1
+    _RR_TRACE_DIR="$workdir" rr $GLOBAL_OPTIONS ps $psflags
+}
+
 #  debug <expect-script-name> [replay-args]
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
