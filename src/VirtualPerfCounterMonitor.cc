@@ -40,6 +40,21 @@ bool VirtualPerfCounterMonitor::emulate_ioctl(RecordTask* t, uint64_t* result) {
       *result = 0;
       enabled = true;
       break;
+    case PERF_EVENT_IOC_DISABLE:
+      *result = 0;
+      enabled = false;
+      break;
+    case PERF_EVENT_IOC_RESET: {
+      *result = 0;
+      RecordTask* target = t->session().find_task(target_tuid);
+      initial_ticks = target->tick_count();
+      break;
+    }
+    case PERF_EVENT_IOC_PERIOD:
+      *result = 0;
+      // Nominally we'd reset the interrupt here, but since we don't support
+      // that yet, just ignore it.
+      break;
     default:
       ASSERT(t, false) << "Unsupported perf event ioctl "
                        << HEX((int)t->regs().arg2());
