@@ -60,6 +60,13 @@ public:
   void stop();
 
   /**
+   * Suspend counting until the next reset. This may or may not actually stop
+   * the performance counters, depending on whether or not this is required
+   * for correctness on this kernel version.
+   */
+  void stop_counting();
+
+  /**
    * Read the current value of the ticks counter.
    */
   Ticks read_ticks();
@@ -83,6 +90,7 @@ public:
   Extra read_extra();
 
   static const struct perf_event_attr& ticks_attr();
+  bool counting;
 
 private:
   pid_t tid;
