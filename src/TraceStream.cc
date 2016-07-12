@@ -43,6 +43,7 @@ static SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
   { "events", 1024 * 1024, 1 }, { "data_header", 1024 * 1024, 1 },
   { "data", 1024 * 1024, 0 },   { "mmaps", 64 * 1024, 1 },
   { "tasks", 64 * 1024, 1 },    { "generic", 64 * 1024, 1 },
+  { "perf", 64 * 1024, 1}
 };
 
 static const SubstreamData& substream(TraceStream::Substream s) {
@@ -558,6 +559,22 @@ bool TraceReader::read_generic_for_frame(const TraceFrame& frame,
   }
   read_generic(out);
   return true;
+}
+
+void TraceWriter::write_perf_records(const uint8_t* data, size_t len) {
+  auto& perf = writer(PERF_EVENTS);
+  perf.write(data, len);
+}
+
+uint64_t TraceReader::total_perf_bytes() {
+    return reader(PERF_EVENTS).uncompressed_bytes();
+}
+
+std::vector<uint8_t> TraceReader::read_perf_records(size_t nbytes) {
+    std::vector<uint8_t> data;
+    data.resize(nbytes);
+    reader(PERF_EVENTS).read(data.data(), nbytes);
+    return data;
 }
 
 void TraceWriter::close() {

@@ -426,6 +426,9 @@ public:
 
   enum { SYNTHETIC_TIME_SLICE_SI_CODE = -9999 };
 
+protected:
+  void record_perf_records();
+
 private:
   ~RecordTask();
 

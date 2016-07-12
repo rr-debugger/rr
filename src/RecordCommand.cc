@@ -58,7 +58,9 @@ RecordCommand RecordCommand::singleton(
     "                             just the initial process.\n"
     "  --ignore-nested            Directly start child process when running\n"
     "                             under nested rr recording, instead of\n"
-    "                             raising an error.\n");
+    "                             raising an error.\n"
+    "  --sample                   Record program-state samples at a fixed\n"
+    "                             time interval.");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -103,6 +105,8 @@ struct RecordFlags {
 
   /* Start child process directly if run under nested rr recording */
   bool ignore_nested;
+  
+  bool do_sampling;
 
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
@@ -116,7 +120,8 @@ struct RecordFlags {
         always_switch(false),
         chaos(false),
         wait_for_all(false),
-        ignore_nested(false) {}
+        ignore_nested(false),
+        do_sampling(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -148,6 +153,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 1, "no-file-cloning", NO_PARAMETER },
     { 2, "syscall-buffer-size", HAS_PARAMETER },
     { 3, "ignore-nested", NO_PARAMETER },
+    { 4, "sample", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -204,6 +210,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       break;
     case 3:
       flags.ignore_nested = true;
+      break;
+    case 4:
+      flags.do_sampling = true;
       break;
     case 's':
       flags.always_switch = true;
@@ -283,7 +292,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
   auto session = RecordSession::create(
-      args, flags.extra_env, flags.use_syscall_buffer, flags.bind_cpu);
+      args, flags.extra_env, flags.use_syscall_buffer, flags.bind_cpu,
+      flags.do_sampling);
   setup_session_from_flags(*session, flags);
 
   // Install signal handlers after creating the session, to ensure they're not

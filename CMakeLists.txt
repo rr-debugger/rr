@@ -247,6 +247,7 @@ set(RR_SOURCES
   src/MagicSaveDataMonitor.cc
   src/MonitoredSharedMemory.cc
   src/Monkeypatcher.cc
+  src/PerfCommand.cc
   src/PerfCounters.cc
   src/ProcMemMonitor.cc
   src/PsCommand.cc

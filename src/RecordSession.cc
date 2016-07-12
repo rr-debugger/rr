@@ -1473,7 +1473,8 @@ static string lookup_by_path(const string& name) {
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const vector<string>& argv, const vector<string>& extra_env,
-    SyscallBuffering syscallbuf, BindCPU bind_cpu) {
+    SyscallBuffering syscallbuf, BindCPU bind_cpu,
+    bool do_sampling) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -1556,15 +1557,17 @@ static string lookup_by_path(const string& name) {
   env.push_back("MOZ_GDB_SLEEP=0");
 
   shr_ptr session(
-      new RecordSession(full_path, argv, env, syscallbuf, bind_cpu));
+      new RecordSession(full_path, argv, env, syscallbuf, bind_cpu, do_sampling));
   return session;
 }
 
 RecordSession::RecordSession(const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
-                             SyscallBuffering syscallbuf, BindCPU bind_cpu)
-    : trace_out(argv[0], choose_cpu(bind_cpu)),
+                             SyscallBuffering syscallbuf, BindCPU bind_cpu,
+                             bool do_sampling)
+    : do_sampling_(do_sampling),
+      trace_out(argv[0], choose_cpu(bind_cpu)),
       scheduler_(*this),
       ignore_sig(0),
       continue_through_sig(0),

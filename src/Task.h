@@ -872,6 +872,8 @@ protected:
                      const std::vector<std::string>& argv,
                      const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
+  virtual void record_perf_records() { }
+
   uint32_t serial;
   // The address space of this task.
   AddressSpace::shr_ptr as;
