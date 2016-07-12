@@ -239,11 +239,23 @@ static string find_rr_page_file(Task* t) {
   return path;
 }
 
+static vector<uint8_t> read_all(Task* t, ScopedFd& fd) {
+  char buf[4096];
+  vector<uint8_t> result;
+  while (true) {
+    int ret = read(fd, buf, sizeof(buf));
+    ASSERT(t, ret >= 0);
+    if (ret == 0) {
+      return result;
+    }
+    result.insert(result.end(), buf, buf + ret);
+  }
+}
+
 void AddressSpace::map_rr_page(Task* t) {
   int prot = PROT_EXEC | PROT_READ;
   int flags = MAP_PRIVATE | MAP_FIXED;
 
-  struct stat fstat;
   string file_name;
   {
     AutoRemoteSyscalls remote(t);
@@ -252,17 +264,33 @@ void AddressSpace::map_rr_page(Task* t) {
     string path = find_rr_page_file(t);
     AutoRestoreMem child_path(remote, path.c_str());
     // skip leading '/' since we want the path to be relative to the root fd
-    int child_fd = remote.infallible_syscall(syscall_number_for_openat(arch),
-                                             RR_RESERVED_ROOT_DIR_FD,
-                                             child_path.get() + 1, O_RDONLY);
+    long child_fd =
+        remote.syscall(syscall_number_for_openat(arch), RR_RESERVED_ROOT_DIR_FD,
+                       child_path.get() + 1, O_RDONLY);
+    if (child_fd >= 0) {
+      remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot,
+                                     flags, child_fd, 0);
 
-    remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
-                                   child_fd, 0);
+      struct stat fstat = t->stat_fd(child_fd);
+      file_name = t->file_name_of_fd(child_fd);
 
-    fstat = t->stat_fd(child_fd);
-    file_name = t->file_name_of_fd(child_fd);
+      remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
 
-    remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
+      map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
+          fstat.st_dev, fstat.st_ino);
+    } else {
+      ASSERT(t, child_fd == -EACCES) << "Unexpected error mapping rr_page";
+      flags |= MAP_ANONYMOUS;
+      remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot,
+                                     flags, -1, 0);
+      ScopedFd page(path.c_str(), O_RDONLY);
+      ASSERT(t, page.is_open()) << "Error opening rr_page ourselves";
+      vector<uint8_t> page_data = read_all(t, page);
+      t->write_bytes_helper(rr_page_start(), page_data.size(),
+                            page_data.data());
+
+      map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name, 0, 0);
+    }
 
     if (t->session().is_recording()) {
       // brk() will not have been called yet so the brk area is empty.
@@ -270,9 +298,6 @@ void AddressSpace::map_rr_page(Task* t) {
           remote.infallible_syscall(syscall_number_for_brk(arch), 0);
     }
   }
-
-  map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name, fstat.st_dev,
-      fstat.st_ino);
 
   traced_syscall_ip_ = rr_page_syscall_entry_point(
       TRACED, UNPRIVILEGED, RECORDING_AND_REPLAY, t->arch());

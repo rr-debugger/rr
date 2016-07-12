@@ -17,6 +17,7 @@
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <inttypes.h>
 #include <linux/audit.h>
 #include <linux/capability.h>
