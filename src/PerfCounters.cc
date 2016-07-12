@@ -214,33 +214,37 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
 void PerfCounters::reset(Ticks ticks_period) {
   assert(ticks_period >= 0);
 
-  stop();
+  if (!started) {
+    struct perf_event_attr attr = rr::ticks_attr;
+    attr.sample_period = ticks_period;
+    fd_ticks = start_counter(tid, -1, &attr);
 
-  struct perf_event_attr attr = rr::ticks_attr;
-  attr.sample_period = ticks_period;
-  fd_ticks = start_counter(tid, -1, &attr);
+    struct f_owner_ex own;
+    own.type = F_OWNER_TID;
+    own.pid = tid;
+    if (fcntl(fd_ticks, F_SETOWN_EX, &own)) {
+      FATAL() << "Failed to SETOWN_EX ticks event fd";
+    }
+    if (fcntl(fd_ticks, F_SETFL, O_ASYNC) ||
+        fcntl(fd_ticks, F_SETSIG, PerfCounters::TIME_SLICE_SIGNAL)) {
+      FATAL() << "Failed to make ticks counter ASYNC with sig"
+              << signal_name(PerfCounters::TIME_SLICE_SIGNAL);
+    }
 
-  struct f_owner_ex own;
-  own.type = F_OWNER_TID;
-  own.pid = tid;
-  if (fcntl(fd_ticks, F_SETOWN_EX, &own)) {
-    FATAL() << "Failed to SETOWN_EX ticks event fd";
+    if (extra_perf_counters_enabled()) {
+      int group_leader = fd_ticks;
+      fd_hw_interrupts = start_counter(tid, group_leader, &hw_interrupts_attr);
+      fd_instructions_retired =
+          start_counter(tid, group_leader, &instructions_retired_attr);
+      fd_page_faults = start_counter(tid, group_leader, &page_faults_attr);
+    }
+  } else {
+    ioctl(fd_ticks, PERF_EVENT_IOC_RESET);
+    ioctl(fd_ticks, PERF_EVENT_IOC_PERIOD, &ticks_period);
   }
-  if (fcntl(fd_ticks, F_SETFL, O_ASYNC) ||
-      fcntl(fd_ticks, F_SETSIG, PerfCounters::TIME_SLICE_SIGNAL)) {
-    FATAL() << "Failed to make ticks counter ASYNC with sig"
-            << signal_name(PerfCounters::TIME_SLICE_SIGNAL);
-  }
-
-  if (extra_perf_counters_enabled()) {
-    int group_leader = fd_ticks;
-    fd_hw_interrupts = start_counter(tid, group_leader, &hw_interrupts_attr);
-    fd_instructions_retired =
-        start_counter(tid, group_leader, &instructions_retired_attr);
-    fd_page_faults = start_counter(tid, group_leader, &page_faults_attr);
-  }
-
+    
   started = true;
+  counting = true;
 }
 
 void PerfCounters::stop() {
@@ -263,7 +267,11 @@ static int64_t read_counter(ScopedFd& fd) {
 }
 
 Ticks PerfCounters::read_ticks() {
-  return started ? read_counter(fd_ticks) : 0;
+  uint64_t period = UINT32_MAX;
+  uint64_t val = started ? read_counter(fd_ticks) : 0;
+  ioctl(fd_ticks, PERF_EVENT_IOC_RESET);
+  ioctl(fd_ticks, PERF_EVENT_IOC_PERIOD, &period);
+  return val;
 }
 
 PerfCounters::Extra PerfCounters::read_extra() {

@@ -81,7 +81,7 @@ public:
   Extra read_extra();
 
   static const struct perf_event_attr& ticks_attr();
-
+  bool counting;
 private:
   pid_t tid;
   ScopedFd fd_ticks;

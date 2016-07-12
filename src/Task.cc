@@ -1224,10 +1224,11 @@ void Task::emulate_syscall_entry(const Registers& regs) {
 }
 
 void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
-  Ticks more_ticks = hpc.read_ticks();
+  Ticks more_ticks = hpc.counting ? hpc.read_ticks() : 0;
+  hpc.counting = false;
   // Stop PerfCounters ASAP to reduce the possibility that due to bugs or
   // whatever they pick up something spurious later.
-  hpc.stop();
+  //hpc.stop();
   ticks += more_ticks;
   session().accumulate_ticks_processed(more_ticks);
 
