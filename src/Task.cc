@@ -791,6 +791,12 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     hpc.reset(tick_period == RESUME_UNLIMITED_TICKS
                   ? 0xffffffff
                   : max<Ticks>(1, tick_period));
+  
+    // If recording and sampling, save the perf records
+    if (hpc.enable_sampling()) {
+      record_perf_records();
+    }
+                                
     // Ensure preload_globals.thread_locals_initialized is up to date. Avoid
     // unnecessary writes by caching last written value per-AddressSpace.
     if (preload_globals) {
@@ -1224,11 +1230,6 @@ void Task::emulate_syscall_entry(const Registers& regs) {
 }
 
 void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
-  // If recording and sampling, save the perf records
-  if (hpc.enable_sampling()) {
-    record_perf_records();
-  }
-
   Ticks more_ticks = hpc.counting ? hpc.read_ticks() : 0;
   hpc.counting = false;
   ticks += more_ticks;

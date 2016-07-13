@@ -317,10 +317,10 @@ static int64_t read_counter(ScopedFd& fd) {
 }
 
 Ticks PerfCounters::read_ticks() {
-  uint64_t period = UINT32_MAX;
+  //uint64_t period = UINT32_MAX;
   uint64_t val = started ? read_counter(fd_ticks) : 0;
-  ioctl(fd_ticks, PERF_EVENT_IOC_RESET);
-  ioctl(fd_ticks, PERF_EVENT_IOC_PERIOD, &period);
+  //ioctl(fd_ticks, PERF_EVENT_IOC_RESET);
+  //ioctl(fd_ticks, PERF_EVENT_IOC_PERIOD, &period);
   return val;
 }
 

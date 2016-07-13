@@ -1109,6 +1109,13 @@ uint16_t RecordTask::get_ptrace_eventmsg_seccomp_data() {
 #define ACCESS_ONCE(x) (*(volatile decltype(x) *)&(x))
 #define rmb()	asm volatile("lfence":::"memory")
 
+struct fake_perf_record {
+  uint32_t type;
+  uint16_t misc;
+  uint16_t size;
+  uint64_t base;
+};
+
 void RecordTask::record_perf_records() {
   struct perf_event_mmap_page *header =
     (struct perf_event_mmap_page *)hpc.samples_mmap.get();
@@ -1119,6 +1126,12 @@ void RecordTask::record_perf_records() {
     trace_writer().write_perf_records(
       ((uint8_t*)header) + 0x1000 + header->data_tail,size);
     header->data_tail = head;
+    // Record the base tick count as a special record, so the actual tick count
+    // can be reconstructed.
+    fake_perf_record record {.type = 20, .misc = 0,
+        .size = sizeof(fake_perf_record), .base = 0};
+    record.base = tick_count();
+    trace_writer().write_perf_records((uint8_t*)&record, sizeof(record));
   }
 }
 
