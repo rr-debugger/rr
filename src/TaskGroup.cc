@@ -4,6 +4,7 @@
 
 #include "Session.h"
 #include "Task.h"
+#include "ThreadDb.h"
 #include "log.h"
 
 namespace rr {
@@ -44,6 +45,13 @@ void TaskGroup::destabilize() {
     t->unstable = true;
     LOG(debug) << "  destabilized task " << t->tid;
   }
+}
+
+ThreadDb* TaskGroup::thread_db() {
+  if (!thread_db_) {
+    thread_db_ = std::unique_ptr<ThreadDb>(new ThreadDb(this));
+  }
+  return thread_db_.get();
 }
 
 } // namespace rr

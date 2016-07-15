@@ -78,6 +78,8 @@ enum GdbRequestType {
   DREQ_GET_THREAD_EXTRA_INFO,
   DREQ_SET_CONTINUE_THREAD,
   DREQ_SET_QUERY_THREAD,
+  // TLS lookup, uses params.target and params.tls.
+  DREQ_TLS,
   // gdb wants to write back siginfo_t to a tracee.  More
   // importantly, this packet arrives before an experiment
   // session for a |call foo()| is about to be torn down.
@@ -127,6 +129,9 @@ enum GdbRequestType {
 
   /* Uses params.text. */
   DREQ_RR_CMD,
+
+  // qSymbol packet, uses params.sym.
+  DREQ_QSYMBOL,
 };
 
 enum GdbRestartType {
@@ -163,7 +168,9 @@ struct GdbRequest {
         reg_(other.reg_),
         restart_(other.restart_),
         cont_(other.cont_),
-        text_(other.text_) {}
+        text_(other.text_),
+        tls_(other.tls_),
+        sym_(other.sym_) {}
   GdbRequest& operator=(const GdbRequest& other) {
     this->~GdbRequest();
     new (this) GdbRequest(other);
@@ -197,6 +204,15 @@ struct GdbRequest {
     std::vector<GdbContAction> actions;
   } cont_;
   std::string text_;
+  struct Tls {
+    size_t offset;
+    remote_ptr<void> load_module;
+  } tls_;
+  struct Symbol {
+    bool has_address;
+    remote_ptr<void> address;
+    std::string name;
+  } sym_;
 
   Mem& mem() {
     assert(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
@@ -241,6 +257,22 @@ struct GdbRequest {
   const std::string& text() const {
     assert(type == DREQ_RR_CMD);
     return text_;
+  }
+  Tls& tls() {
+    assert(type == DREQ_TLS);
+    return tls_;
+  }
+  const Tls& tls() const {
+    assert(type == DREQ_TLS);
+    return tls_;
+  }
+  Symbol& sym() {
+    assert(type == DREQ_QSYMBOL);
+    return sym_;
+  }
+  const Symbol& sym() const {
+    assert(type == DREQ_QSYMBOL);
+    return sym_;
   }
 
   /**
@@ -453,6 +485,23 @@ public:
   void reply_rr_cmd(const std::string& text);
 
   /**
+   * Send a qSymbol response to gdb, requesting the address of the
+   * symbol |name|.
+   */
+  void send_qsymbol(const std::string& name);
+
+  /**
+   * The "all done" response to a qSymbol packet from gdb.
+   */
+  void qsymbols_finished();
+
+  /**
+   * Respond to a qGetTLSAddr packet.  If |ok| is true, then respond
+   * with |address|.  If |ok| is false, respond with an error.
+   */
+  void reply_tls_addr(bool ok, remote_ptr<void> address);
+
+  /**
    * Create a checkpoint of the given Session with the given id. Delete the
    * existing checkpoint with that id if there is one.
    */
@@ -508,6 +557,8 @@ private:
   void write_packet(const char* data);
   void write_binary_packet(const char* pfx, const uint8_t* data,
                            ssize_t num_bytes);
+  void write_hex_bytes_packet(const char* prefix, const uint8_t* bytes,
+                              size_t len);
   void write_hex_bytes_packet(const uint8_t* bytes, size_t len);
   void write_xfer_response(const void* data, size_t size, uint64_t offset,
                            uint64_t len);

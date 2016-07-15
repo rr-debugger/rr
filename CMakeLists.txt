@@ -154,6 +154,7 @@ set_source_files_properties(src/preload/preload.c
                             PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_RELEASE})
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
+include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
 # We need to know where our generated files are.
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
@@ -269,6 +270,7 @@ set(RR_SOURCES
   src/StdioMonitor.cc
   src/Task.cc
   src/TaskGroup.cc
+  src/ThreadDb.cc
   src/TraceFrame.cc
   src/TraceStream.cc
   src/VirtualPerfCounterMonitor.cc
@@ -773,6 +775,7 @@ set(TESTS_WITH_PROGRAM
   thread_exit_signal
   threaded_syscall_spam
   threads
+  tls
   ttyname
   unexpected_stack_growth
   user_ignore_sig
