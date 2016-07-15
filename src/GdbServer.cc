@@ -546,6 +546,48 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_rr_cmd(
           GdbCommandHandler::process_command(*this, target, req.text()));
       return;
+    case DREQ_QSYMBOL: {
+      // When gdb sends "qSymbol::", it means that gdb is ready to
+      // respond to symbol requests.  This can be sent multiple times
+      // during the course of a session -- gdb sends it whenever
+      // something in the inferior has changed, making it possible
+      // that previous failed symbol lookups could now succeed.  In
+      // response to a qSymbol request from gdb, we either send back a
+      // qSymbol response, requesting the address of a symbol; or we
+      // send back OK.  We have to do this as an ordinary response and
+      // maintain our own state explicitly, as opposed to simply
+      // reading another packet from gdb, because when gdb looks up a
+      // symbol it might send other requests that must be served.  So,
+      // we keep a copy of the symbol names, and an iterator into this
+      // copy.  When gdb sends a plain "qSymbol::" packet, because gdb
+      // has detected some change in the inferior state that might
+      // enable more symbol lookups, we restart the iterator.
+      const string& name = req.sym().name;
+      if (req.sym().has_address) {
+        // Got a response holding a previously-requested symbol's name
+        // and address.
+        target->register_symbol(name, req.sym().address);
+      } else if (name == "") {
+        // Plain "qSymbol::" request.
+        symbols = target->get_symbols_and_clear_map();
+        symbols_iter = symbols.begin();
+      }
+
+      if (symbols_iter == symbols.end()) {
+        dbg->qsymbols_finished();
+      } else {
+        string symbol = *symbols_iter++;
+        dbg->send_qsymbol(symbol);
+      }
+      return;
+    }
+    case DREQ_TLS: {
+      remote_ptr<void> address;
+      bool ok = target->get_tls_address(req.tls().offset, req.tls().load_module,
+                                        &address);
+      dbg->reply_tls_addr(ok, address);
+      return;
+    }
     default:
       FATAL() << "Unknown debugger request " << req.type;
   }

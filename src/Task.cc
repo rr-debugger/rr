@@ -41,6 +41,7 @@
 #include "ScopedFd.h"
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
+#include "ThreadDb.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
@@ -2336,4 +2337,17 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 string Task::syscall_name(int syscall) const {
   return rr::syscall_name(syscall, arch());
 } // namespace rr
+
+bool Task::get_tls_address(size_t offset, remote_ptr<void> load_module,
+                           remote_ptr<void>* result) {
+  return tg->thread_db()->get_tls_address(rec_tid, offset, load_module, result);
+}
+
+void Task::register_symbol(const std::string& name, remote_ptr<void> address) {
+  tg->thread_db()->register_symbol(name, address);
+}
+
+const std::set<std::string> Task::get_symbols_and_clear_map() {
+  return tg->thread_db()->get_symbols_and_clear_map();
+}
 }

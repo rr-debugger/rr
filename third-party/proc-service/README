@@ -1,0 +1,16 @@
+proc_service.h provides some declarations used when implementing the
+API used by libthread_db to find TLS locations.
+
+This file is included in rr because it currently isn't installed by
+glibc.  There is a glibc bug open to address this:
+
+    https://sourceware.org/bugzilla/show_bug.cgi?id=20311
+
+However, rather than use the glibc version of this file and attempt to
+understand what the LGPL means, we've imported a version from FreeBSD;
+but slightly modified.  In particular, we:
+
+* Removed __BEGIN_DECLS and __END_DECLS uses
+* Renamed ps_pread and ps_pwrite to match glibc's names
+* Added declarations for ps_getpid and ps_get_thread_area
+* Reordered ps_err_e so that enumerators have the correct values

@@ -16,6 +16,7 @@
 namespace rr {
 
 class Session;
+class ThreadDb;
 
 /**
  * Tracks a group of tasks with an associated ID, set from the
@@ -117,6 +118,8 @@ public:
   // Whether this task group has execed
   bool execed;
 
+  ThreadDb* thread_db();
+
 private:
   TaskGroup(const TaskGroup&) = delete;
   TaskGroup operator=(const TaskGroup&) = delete;
@@ -128,6 +131,8 @@ private:
   std::set<TaskGroup*> children_;
 
   uint32_t serial;
+
+  std::unique_ptr<ThreadDb> thread_db_;
 };
 
 } // namespace rr

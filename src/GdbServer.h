@@ -234,6 +234,11 @@ private:
 
   // gdb checkpoints, indexed by ID
   std::map<int, Checkpoint> checkpoints;
+
+  // Set of symbols to look up, for qSymbol.
+  std::set<std::string> symbols;
+  // Iterator into |symbols|.
+  std::set<std::string>::iterator symbols_iter;
 };
 
 } // namespace rr

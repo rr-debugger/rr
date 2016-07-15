@@ -292,6 +292,15 @@ public:
   void clear_singlestep_flag() { set_flags(flags() & ~X86_TF_FLAG); }
   bool df_flag() const { return flags() & X86_DF_FLAG; }
 
+  uintptr_t fs_base() const {
+    assert(arch() == x86_64);
+    return u.x64regs.fs_base;
+  }
+  uintptr_t gs_base() const {
+    assert(arch() == x86_64);
+    return u.x64regs.gs_base;
+  }
+
   // End of X86-specific stuff
 
   void print_register_file(FILE* f) const;

@@ -351,18 +351,25 @@ void GdbConnection::write_binary_packet(const char* pfx, const uint8_t* data,
   return write_packet_bytes(buf, buf_num_bytes);
 }
 
-void GdbConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
-  if (0 == len) {
+void GdbConnection::write_hex_bytes_packet(const char* prefix,
+                                           const uint8_t* bytes, size_t len) {
+  if (prefix[0] == '\0' && 0 == len) {
     write_packet("");
     return;
   }
 
-  char buf[2 * len + 1];
+  ssize_t pfx_num_chars = strlen(prefix);
+  char buf[pfx_num_chars + 2 * len + 1];
+  memcpy(buf, prefix, pfx_num_chars);
   for (size_t i = 0; i < len; ++i) {
     unsigned long b = bytes[i];
-    snprintf(&buf[2 * i], 3, "%02lx", b);
+    snprintf(&buf[pfx_num_chars + 2 * i], 3, "%02lx", b);
   }
   write_packet(buf);
+}
+
+void GdbConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
+  write_hex_bytes_packet("", bytes, len);
 }
 
 static void parser_assert(bool cond) {
@@ -731,9 +738,18 @@ bool GdbConnection::query(char* payload) {
   }
   if (!strcmp(name, "GetTLSAddr")) {
     LOG(debug) << "gdb asks for TLS addr";
-    /* TODO */
-    write_packet("");
-    return false;
+    req = GdbRequest(DREQ_TLS);
+    req.target = parse_threadid(args, &args);
+    parser_assert(*args == ',');
+    ++args;
+    size_t offset = strtoul(args, &args, 16);
+    parser_assert(*args == ',');
+    ++args;
+    remote_ptr<void> load_module = strtoul(args, &args, 16);
+    parser_assert(*args == '\0');
+    req.tls().offset = offset;
+    req.tls().load_module = load_module;
+    return true;
   }
   if (!strcmp(name, "Offsets")) {
     LOG(debug) << "gdb asks for section offsets";
@@ -769,8 +785,19 @@ bool GdbConnection::query(char* payload) {
   }
   if (!strcmp(name, "Symbol")) {
     LOG(debug) << "gdb is ready for symbol lookups";
-    write_packet("OK");
-    return false;
+    const char* colon = strchr(args, ':');
+    parser_assert(colon != nullptr);
+    req = GdbRequest(DREQ_QSYMBOL);
+    if (*args == ':') {
+      req.sym().has_address = false;
+    } else {
+      req.sym().has_address = true;
+      req.sym().address = strtoul(args, &args, 16);
+    }
+    parser_assert(*args == ':');
+    ++args;
+    req.sym().name = decode_ascii_encoded_hex_str(args);
+    return true;
   }
   if (strstr(name, "ThreadExtraInfo") == name) {
     // ThreadExtraInfo is a special snowflake that
@@ -1700,6 +1727,38 @@ void GdbConnection::reply_rr_cmd(const std::string& text) {
   assert(DREQ_RR_CMD == req.type);
 
   write_packet(text.c_str());
+
+  consume_request();
+}
+
+void GdbConnection::send_qsymbol(const std::string& name) {
+  assert(DREQ_QSYMBOL == req.type);
+
+  const void* data = static_cast<const void*>(name.c_str());
+  write_hex_bytes_packet("qSymbol:", static_cast<const uint8_t*>(data),
+                         name.length());
+
+  consume_request();
+}
+
+void GdbConnection::qsymbols_finished() {
+  assert(DREQ_QSYMBOL == req.type);
+
+  write_packet("OK");
+
+  consume_request();
+}
+
+void GdbConnection::reply_tls_addr(bool ok, remote_ptr<void> address) {
+  assert(DREQ_TLS == req.type);
+
+  if (ok) {
+    char buf[256];
+    sprintf(buf, "%llx", (long long)address.as_int());
+    write_packet(buf);
+  } else {
+    write_packet("E01");
+  }
 
   consume_request();
 }
