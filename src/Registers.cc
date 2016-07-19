@@ -657,7 +657,7 @@ void Registers::set_flags(uintptr_t value) {
 
 bool Registers::syscall_failed() const {
   auto result = syscall_result_signed();
-  return -ERANGE <= result && result < 0;
+  return -4096 < result && result < 0;
 }
 
 bool Registers::syscall_may_restart() const {
