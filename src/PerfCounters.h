@@ -10,6 +10,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <sys/types.h>
+#include <memory>
 
 #include "ScopedFd.h"
 #include "Ticks.h"
@@ -41,6 +42,11 @@ public:
   // Change this to 'true' to enable perf counters that may be interesting
   // for experimentation, but aren't necessary for core functionality.
   static bool extra_perf_counters_enabled() { return false; }
+
+  // Change this to 'true' to enable sampling
+  bool enable_sampling() { return sampling_enabled; }
+
+  void set_sampling(bool sampling) { sampling_enabled = sampling; }
 
   /**
    * Reset all counter values to 0 and program the counters to send
@@ -81,14 +87,24 @@ public:
   Extra read_extra();
 
   static const struct perf_event_attr& ticks_attr();
+  
+  struct samples_unmapper {
+   public:
+     void operator()(void *ptr);
+  };
+  std::unique_ptr<void,samples_unmapper> samples_mmap;
+
+  bool counting;
 
 private:
   pid_t tid;
+  ScopedFd fd_samples;
   ScopedFd fd_ticks;
   ScopedFd fd_page_faults;
   ScopedFd fd_hw_interrupts;
   ScopedFd fd_instructions_retired;
   bool started;
+  bool sampling_enabled;
 };
 
 } // namespace rr

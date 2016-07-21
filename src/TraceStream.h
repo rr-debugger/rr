@@ -54,6 +54,8 @@ public:
     TASKS,
     // Substream that stores arbitrary per-event records
     GENERIC,
+    // Substream that records perf_event records
+    PERF_EVENTS,
     SUBSTREAM_COUNT
   };
 
@@ -145,6 +147,11 @@ public:
    * Write a generic data record to the trace.
    */
   void write_generic(const void* data, size_t len);
+
+  /**
+   * Write a perf records to the trace
+   */
+  void write_perf_records(const uint8_t* data, size_t len);
 
   /**
    * Return true iff all trace files are "good".
@@ -255,6 +262,9 @@ public:
   void read_generic(std::vector<uint8_t>& out);
   bool read_generic_for_frame(const TraceFrame& frame,
                               std::vector<uint8_t>& out);
+
+  uint64_t total_perf_bytes();
+  std::vector<uint8_t> read_perf_records(size_t nbytes);
 
   /**
    * Return true iff all trace files are "good".

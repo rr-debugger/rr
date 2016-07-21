@@ -31,7 +31,8 @@ public:
       const std::vector<std::string>& argv,
       const std::vector<std::string>& extra_env = std::vector<std::string>(),
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
-      BindCPU bind_cpu = BIND_CPU);
+      BindCPU bind_cpu = BIND_CPU,
+      bool do_sampling = false);
 
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
   size_t syscall_buffer_size() const { return syscall_buffer_size_; }
@@ -109,18 +110,20 @@ public:
   void set_wait_for_all(bool wait_for_all) {
     this->wait_for_all_ = wait_for_all;
   }
-
+  
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
                          SupportedArch a);
 
   RecordTask* find_task(pid_t rec_tid) const;
   RecordTask* find_task(const TaskUid& tuid) const;
-
+  
+  bool do_sampling_;
 private:
   RecordSession(const std::string& exe_path,
                 const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp,
-                SyscallBuffering syscallbuf, BindCPU bind_cpu);
+                SyscallBuffering syscallbuf, BindCPU bind_cpu,
+                bool do_sampling);
 
   virtual void on_create(Task* t);
 

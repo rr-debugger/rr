@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -26,6 +27,7 @@ using namespace std;
 namespace rr {
 
 static bool attributes_initialized;
+static struct perf_event_attr samples_attr;
 static struct perf_event_attr ticks_attr;
 static struct perf_event_attr page_faults_attr;
 static struct perf_event_attr hw_interrupts_attr;
@@ -150,6 +152,33 @@ static void init_perf_event_attr(struct perf_event_attr* attr,
   attr->exclude_guest = 1;
 }
 
+static void check_sampling_limit() {
+  static bool checked = false;
+  if (checked)
+    return;
+  // Check perf event sample rate and print a helpful error message
+  {
+    char line[64];
+    int fd = open("/proc/sys/kernel/perf_event_max_sample_rate", O_RDONLY);
+    if (read(fd, line, sizeof(line)) > 0) {
+      assert(atoi(line) >= 4000 &&
+        "Make sure /proc/sys/kernel/perf_event_max_sample_rate is set high enough");
+    }
+    close(fd);
+  }
+}
+
+static void init_samples_event() {
+  memset(&rr::samples_attr, 0, sizeof(rr::samples_attr));
+  rr::samples_attr.type = PERF_TYPE_HARDWARE;
+  rr::samples_attr.size = sizeof(rr::samples_attr);
+  rr::samples_attr.config = PERF_COUNT_HW_CPU_CYCLES;
+  rr::samples_attr.sample_freq = 4000;
+  rr::samples_attr.freq = 1;
+  rr::samples_attr.sample_type = PERF_SAMPLE_IP|PERF_SAMPLE_TIME|PERF_SAMPLE_READ|PERF_SAMPLE_TID;
+  rr::samples_attr.read_format = PERF_FORMAT_GROUP;
+}
+
 static void init_attributes() {
   if (attributes_initialized) {
     return;
@@ -175,6 +204,7 @@ static void init_attributes() {
                        pmu->rinsn_cntr_event);
   init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
                        pmu->hw_intr_cntr_event);
+  init_samples_event();
   // libpfm encodes the event with this bit set, so we'll do the
   // same thing.  Unclear if necessary.
   hw_interrupts_attr.exclude_hv = 1;
@@ -187,7 +217,8 @@ const struct perf_event_attr& PerfCounters::ticks_attr() {
   return rr::ticks_attr;
 }
 
-PerfCounters::PerfCounters(pid_t tid) : tid(tid), started(false) {
+PerfCounters::PerfCounters(pid_t tid) : tid(tid), started(false),
+    sampling_enabled(false) {
   init_attributes();
 }
 
@@ -211,36 +242,59 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   return fd;
 }
 
+static const int SAMPLE_MMAP_SIZE = (1+(1<<10))*PAGE_SIZE;
+void PerfCounters::samples_unmapper::operator()(void *ptr)
+{
+ munmap(ptr, SAMPLE_MMAP_SIZE);
+}
+
 void PerfCounters::reset(Ticks ticks_period) {
   assert(ticks_period >= 0);
 
-  stop();
+  if (!started) {
+    int group_fd = -1;
+    if (enable_sampling() && !samples_mmap) {
+      check_sampling_limit();
+      fd_samples = start_counter(tid, -1, &rr::samples_attr);
+      samples_mmap.reset(mmap(NULL, SAMPLE_MMAP_SIZE, PROT_READ|PROT_WRITE,
+        MAP_SHARED, fd_samples, 0));
+      if (samples_mmap.get() == MAP_FAILED) {
+        FATAL() << "Failed to map samples page";
+      }
+      group_fd = fd_samples;
+    }
+    
+    struct perf_event_attr attr = rr::ticks_attr;
+    attr.sample_period = ticks_period;
+    fd_ticks = start_counter(tid, group_fd, &attr);
+    if (group_fd == -1)
+      group_fd = fd_ticks;
 
-  struct perf_event_attr attr = rr::ticks_attr;
-  attr.sample_period = ticks_period;
-  fd_ticks = start_counter(tid, -1, &attr);
+    struct f_owner_ex own;
+    own.type = F_OWNER_TID;
+    own.pid = tid;
+    if (fcntl(fd_ticks, F_SETOWN_EX, &own)) {
+      FATAL() << "Failed to SETOWN_EX ticks event fd";
+    }
+    if (fcntl(fd_ticks, F_SETFL, O_ASYNC) ||
+        fcntl(fd_ticks, F_SETSIG, PerfCounters::TIME_SLICE_SIGNAL)) {
+      FATAL() << "Failed to make ticks counter ASYNC with sig"
+              << signal_name(PerfCounters::TIME_SLICE_SIGNAL);
+    }
 
-  struct f_owner_ex own;
-  own.type = F_OWNER_TID;
-  own.pid = tid;
-  if (fcntl(fd_ticks, F_SETOWN_EX, &own)) {
-    FATAL() << "Failed to SETOWN_EX ticks event fd";
+    if (extra_perf_counters_enabled()) {
+      fd_hw_interrupts = start_counter(tid, group_fd, &hw_interrupts_attr);
+      fd_instructions_retired =
+          start_counter(tid, group_fd, &instructions_retired_attr);
+      fd_page_faults = start_counter(tid, group_fd, &page_faults_attr);
+    }
+  } else {
+    ioctl(fd_ticks, PERF_EVENT_IOC_RESET);
+    ioctl(fd_ticks, PERF_EVENT_IOC_PERIOD, &ticks_period);
   }
-  if (fcntl(fd_ticks, F_SETFL, O_ASYNC) ||
-      fcntl(fd_ticks, F_SETSIG, PerfCounters::TIME_SLICE_SIGNAL)) {
-    FATAL() << "Failed to make ticks counter ASYNC with sig"
-            << signal_name(PerfCounters::TIME_SLICE_SIGNAL);
-  }
-
-  if (extra_perf_counters_enabled()) {
-    int group_leader = fd_ticks;
-    fd_hw_interrupts = start_counter(tid, group_leader, &hw_interrupts_attr);
-    fd_instructions_retired =
-        start_counter(tid, group_leader, &instructions_retired_attr);
-    fd_page_faults = start_counter(tid, group_leader, &page_faults_attr);
-  }
-
+    
   started = true;
+  counting = true;
 }
 
 void PerfCounters::stop() {
@@ -263,7 +317,11 @@ static int64_t read_counter(ScopedFd& fd) {
 }
 
 Ticks PerfCounters::read_ticks() {
-  return started ? read_counter(fd_ticks) : 0;
+  //uint64_t period = UINT32_MAX;
+  uint64_t val = started ? read_counter(fd_ticks) : 0;
+  //ioctl(fd_ticks, PERF_EVENT_IOC_RESET);
+  //ioctl(fd_ticks, PERF_EVENT_IOC_PERIOD, &period);
+  return val;
 }
 
 PerfCounters::Extra PerfCounters::read_extra() {
