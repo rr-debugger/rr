@@ -31,7 +31,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 62
+#define TRACE_VERSION 63
 
 struct SubstreamData {
   const char* name;
@@ -380,7 +380,9 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   auto& mmaps = writer(MMAPS);
   TraceReader::MappedDataSource source;
   string backing_file_name;
-  if (km.fsname().find("/SYSV") == 0) {
+  if (origin == REMAP_MAPPING) {
+    source = TraceReader::SOURCE_ZERO;
+  } else if (km.fsname().find("/SYSV") == 0) {
     source = TraceReader::SOURCE_TRACE;
   } else if (origin == SYSCALL_MAPPING &&
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {

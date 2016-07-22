@@ -116,6 +116,8 @@ public:
   enum RecordInTrace { DONT_RECORD_IN_TRACE, RECORD_IN_TRACE };
   enum MappingOrigin {
     SYSCALL_MAPPING,
+    // Just memory moved from one place to another, so no recording needed.
+    REMAP_MAPPING,
     EXEC_MAPPING,
     PATCH_MAPPING,
     RR_BUFFER_MAPPING
@@ -208,6 +210,10 @@ public:
    */
   TraceFrame read_frame();
 
+  /**
+   * For REMAP_MAPPING maps, the memory contents are preserved so we don't
+   * need a source. We use SOURCE_ZERO for that case and it's ignored.
+   */
   enum MappedDataSource { SOURCE_TRACE, SOURCE_FILE, SOURCE_ZERO };
   /**
    * Where to obtain data for the mapped region.

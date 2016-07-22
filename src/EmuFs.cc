@@ -72,6 +72,13 @@ void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
   size_ = size;
 }
 
+void EmuFile::ensure_size(uint64_t size) {
+  if (size_ < size) {
+    resize_shmem_segment(file, size);
+    size_ = size;
+  }
+}
+
 /*static*/ EmuFile::shr_ptr EmuFile::create(EmuFs& owner,
                                             const string& orig_path,
                                             dev_t orig_device, ino_t orig_inode,

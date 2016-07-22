@@ -445,7 +445,7 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
   remote.task()->vm()->map(m.map.start(), m.map.size(), m.map.prot(),
                            m.map.flags(), m.map.file_offset_bytes(),
                            real_file_name, real_file.st_dev, real_file.st_ino,
-                           &m.recorded_map, emu_file);
+                           nullptr, &m.recorded_map, emu_file);
 
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
@@ -499,7 +499,8 @@ KernelMapping Session::create_shared_mmap(
   ASSERT(remote.task(), 0 == ::fstat(shmem_fd, &st));
   KernelMapping km = remote.task()->vm()->map(
       child_map_addr, size, tracee_prot, flags | tracee_flags, 0, path,
-      st.st_dev, st.st_ino, nullptr, nullptr, map_addr, std::move(monitored));
+      st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
+      std::move(monitored));
 
   shmem_fd.close();
   remote.infallible_syscall(syscall_number_for_close(remote.arch()),

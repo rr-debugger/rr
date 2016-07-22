@@ -230,10 +230,12 @@ public:
   class Mapping {
   public:
     Mapping(const KernelMapping& map, const KernelMapping& recorded_map,
-            EmuFile::shr_ptr emu_file, void* local_addr = nullptr,
+            EmuFile::shr_ptr emu_file,
+            std::unique_ptr<struct stat> mapped_file_stat = nullptr,
+            void* local_addr = nullptr,
             std::shared_ptr<MonitoredSharedMemory>&& monitored = nullptr);
     ~Mapping();
-    Mapping(const Mapping&) = default;
+    Mapping(const Mapping&);
     Mapping() = default;
     const Mapping& operator=(const Mapping& other) {
       this->~Mapping();
@@ -246,6 +248,7 @@ public:
     // equal to 'map'.
     const KernelMapping recorded_map;
     const EmuFile::shr_ptr emu_file;
+    std::unique_ptr<struct stat> mapped_file_stat;
     // If this mapping has been mapped into the local address space,
     // this is the address of the first byte of the equivalent local mapping.
     // This mapping is always mapped as PROT_READ|PROT_WRITE regardless of the
@@ -373,14 +376,19 @@ public:
    * |prot| protection and |flags|.  The pages are (possibly
    * initially) backed starting at |offset| of |res|. |fsname|, |device| and
    * |inode| are values that will appear in the /proc/<pid>/maps entry.
+   * |mapped_file_stat| is a complete copy of the 'stat' data for the mapped
+   * file, or null if this isn't a file mapping or isn't during recording.
    * |*recorded_map| is the mapping during recording, or null if the mapping
    * during recording is known to be the same as the new map (e.g. because
    * we are recording!).
    */
   KernelMapping map(
       remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
-      off64_t offset_bytes, const std::string& fsname, dev_t device,
-      ino_t inode, const KernelMapping* recorded_map = nullptr,
+      off64_t offset_bytes, const std::string& fsname,
+      dev_t device = KernelMapping::NO_DEVICE,
+      ino_t inode = KernelMapping::NO_INODE,
+      std::unique_ptr<struct stat> mapped_file_stat = nullptr,
+      const KernelMapping* recorded_map = nullptr,
       EmuFile::shr_ptr emu_file = nullptr, void* local_addr = nullptr,
       std::shared_ptr<MonitoredSharedMemory>&& monitored = nullptr);
 
@@ -451,6 +459,13 @@ public:
   friend class Maps;
   Maps maps() const { return Maps(*this, remote_ptr<void>()); }
   Maps maps_starting_at(remote_ptr<void> start) { return Maps(*this, start); }
+  Maps maps_containing_or_after(remote_ptr<void> start) {
+    if (has_mapping(start)) {
+      return Maps(*this, mapping_of(start).map.start());
+    } else {
+      return Maps(*this, start);
+    }
+  }
 
   const std::set<remote_ptr<void> >& monitored_addrs() const {
     return monitored_mem;
@@ -754,7 +769,9 @@ private:
    */
   void map_and_coalesce(const KernelMapping& m,
                         const KernelMapping& recorded_map,
-                        EmuFile::shr_ptr emu_file, void* local_addr,
+                        EmuFile::shr_ptr emu_file,
+                        std::unique_ptr<struct stat> mapped_file_stat,
+                        void* local_addr,
                         std::shared_ptr<MonitoredSharedMemory>&& monitored);
 
   void remove_from_map(const MemoryRange& range) {

@@ -1043,7 +1043,8 @@ Completion ReplaySession::patch_next_syscall(
     remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
                                    km.flags() | MAP_FIXED, -1, 0);
     t->vm()->map(km.start(), km.size(), km.prot(), km.flags(), 0, string(),
-                 KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, &km);
+                 KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
+                 &km);
   }
 
   // Now replay all data records.

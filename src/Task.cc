@@ -298,9 +298,10 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   switch (syscallno) {
     case Arch::brk:
     case Arch::mmap:
-    case Arch::mmap2: {
-      LOG(debug)
-          << "(brk/mmap/mmap2 will receive / has received direct processing)";
+    case Arch::mmap2:
+    case Arch::mremap: {
+      LOG(debug) << "(brk/mmap/mmap2/mremap will receive / has received direct "
+                    "processing)";
       return;
     }
     case Arch::mprotect: {
@@ -308,13 +309,6 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       size_t num_bytes = regs.arg2();
       int prot = regs.arg3_signed();
       return vm()->protect(addr, num_bytes, prot);
-    }
-    case Arch::mremap: {
-      remote_ptr<void> old_addr = regs.arg1();
-      size_t old_num_bytes = regs.arg2();
-      remote_ptr<void> new_addr = regs.syscall_result();
-      size_t new_num_bytes = regs.arg3();
-      return vm()->remap(old_addr, old_num_bytes, new_addr, new_num_bytes);
     }
     case Arch::munmap: {
       remote_ptr<void> addr = regs.arg1();
@@ -1411,7 +1405,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       remote.infallible_mmap_syscall(syscallbuf_child, num_syscallbuf_bytes,
                                      prot, flags, -1, 0);
       t->vm()->map(syscallbuf_child, num_syscallbuf_bytes, prot, flags, 0,
-                   string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+                   string());
 
       // Mark the clone's syscallbuf as locked. This will prevent the
       // clone using syscallbuf until the clone reinitializes the
@@ -1839,7 +1833,7 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
   vector<KernelMapping> mappings_to_fix;
-  for (auto m : t->vm()->maps_starting_at(floor_page_size(addr))) {
+  for (auto m : t->vm()->maps_containing_or_after(floor_page_size(addr))) {
     if (m.map.start() >= ceil_page_size(addr + buf_size)) {
       break;
     }

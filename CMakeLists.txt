@@ -519,6 +519,8 @@ set(BASIC_TESTS
   mprotect_none
   mprotect_stack
   mremap
+  mremap_grow
+  mremap_grow_shared
   mremap_shrink
   msg
   msync

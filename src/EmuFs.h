@@ -86,6 +86,8 @@ public:
   dev_t device() const { return device_; }
   ino_t inode() const { return inode_; }
 
+  void ensure_size(uint64_t size);
+
 private:
   friend class EmuFs;
 

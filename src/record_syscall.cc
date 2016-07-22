@@ -2159,9 +2159,7 @@ static void init_scratch_memory(RecordTask* t,
   r.set_syscall_result(t->scratch_ptr);
   t->set_regs(r);
 
-  KernelMapping km =
-      t->vm()->map(t->scratch_ptr, sz, prot, flags, 0, string(),
-                   KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+  KernelMapping km = t->vm()->map(t->scratch_ptr, sz, prot, flags, 0, string());
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
   auto record_in_trace = t->trace_writer().write_mapped_region(t, km, stat);
@@ -3380,6 +3378,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::process_vm_readv:
     case Arch::process_vm_writev:
     case SYS_rrcall_notify_syscall_hook_exit:
+    case Arch::mremap:
     case Arch::shmat:
     case Arch::shmdt:
       return PREVENT_SWITCH;
@@ -3584,13 +3583,13 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
 static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                          int fd, off_t offset_pages) {
-  size_t size = ceil_page_size(length);
-  off64_t offset = offset_pages * 4096;
-
   if (t->regs().syscall_failed()) {
     // We purely emulate failed mmaps.
     return;
   }
+
+  size_t size = ceil_page_size(length);
+  off64_t offset = offset_pages * 4096;
   remote_ptr<void> addr = t->regs().syscall_result();
   if (flags & MAP_ANONYMOUS) {
     KernelMapping km;
@@ -3598,8 +3597,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       // Anonymous mappings are by definition not backed by any file-like
       // object, and are initialized to zero, so there's no nondeterminism to
       // record.
-      km = t->vm()->map(addr, size, prot, flags, 0, string(),
-                        KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
+      km = t->vm()->map(addr, size, prot, flags, 0, string());
     } else {
       ASSERT(t, !(flags & MAP_GROWSDOWN));
       // Read the kernel's mapping. There doesn't seem to be any other way to
@@ -3617,25 +3615,23 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   ASSERT(t, fd >= 0) << "Valid fd required for file mapping";
   ASSERT(t, !(flags & MAP_GROWSDOWN));
 
-  // TODO: save a reflink copy of the resource to the
-  // trace directory as |fs/[st_dev].[st_inode]|.  Then
-  // we wouldn't have to care about looking up a name
-  // for the resource.
-  auto result = t->stat_fd(fd);
+  auto st = t->stat_fd(fd);
   string file_name = t->file_name_of_fd(fd);
-  if (!result.st_size) {
+
+  KernelMapping km =
+      t->vm()->map(addr, size, prot, flags, offset, file_name, st.st_dev,
+                   st.st_ino, unique_ptr<struct stat>(new struct stat(st)));
+
+  if (!st.st_size) {
     // Some device files are mmappable but have zero size. Increasing the
     // size here is safe even if the mapped size is greater than the real size.
-    result.st_size = offset + size;
+    st.st_size = offset + size;
   }
 
-  KernelMapping km = t->vm()->map(addr, size, prot, flags, offset, file_name,
-                                  result.st_dev, result.st_ino);
-
-  if (t->trace_writer().write_mapped_region(t, km, result) ==
+  if (t->trace_writer().write_mapped_region(t, km, st) ==
       TraceWriter::RECORD_IN_TRACE) {
-    off64_t end = (off64_t)result.st_size - offset;
-    t->record_remote(addr, min(end, (off64_t)size));
+    off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
+    t->record_remote(addr, min(end, (off64_t)km.size()));
   }
 
   if ((prot & PROT_WRITE) && (flags & MAP_SHARED)) {
@@ -3652,6 +3648,50 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
     MonitoredSharedMemory::maybe_monitor(t, file_name,
                                          t->vm()->mapping_of(addr), fd, offset);
   }
+}
+
+static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
+                           size_t old_length, size_t new_length) {
+  if (t->regs().syscall_failed()) {
+    // We purely emulate failed mremaps.
+    return;
+  }
+
+  size_t old_size = ceil_page_size(old_length);
+  size_t new_size = ceil_page_size(new_length);
+  remote_ptr<void> new_addr = t->regs().syscall_result();
+
+  t->vm()->remap(old_addr, old_size, new_addr, new_size);
+  AddressSpace::Mapping m = t->vm()->mapping_of(new_addr);
+  KernelMapping km =
+      m.map.subrange(new_addr, new_addr + min(new_size, old_size));
+  struct stat st = m.mapped_file_stat ? *m.mapped_file_stat : km.fake_stat();
+
+  // Make sure that the trace records the mapping at the new location, even
+  // if the mapping didn't grow.
+  auto r = t->trace_writer().write_mapped_region(t, km, st,
+                                                 TraceWriter::REMAP_MAPPING);
+  ASSERT(t, r == TraceWriter::DONT_RECORD_IN_TRACE);
+  if (old_size >= new_size) {
+    return;
+  }
+
+  // Now record the new part of the mapping.
+  km = m.map.subrange(new_addr + old_size, new_addr + new_size);
+  if (!st.st_size) {
+    // Some device files are mmappable but have zero size. Increasing the
+    // size here is safe even if the mapped size is greater than the real size.
+    st.st_size = m.map.file_offset_bytes() + new_size;
+  }
+
+  if (t->trace_writer().write_mapped_region(t, km, st) ==
+      TraceWriter::RECORD_IN_TRACE) {
+    off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
+    t->record_remote(km.start(), min(end, (off64_t)km.size()));
+  }
+
+  // If the original mapping was monitored, we'll continue monitoring it
+  // automatically.
 }
 
 static void process_shmat(RecordTask* t, int shmid, int shm_flags,
@@ -3962,6 +4002,10 @@ static void rec_process_syscall_arch(RecordTask* t,
                    (off_t)r.arg6_signed());
       break;
     }
+
+    case Arch::mremap:
+      process_mremap(t, t->regs().arg1(), t->regs().arg2(), t->regs().arg3());
+      break;
 
     case Arch::shmat:
       process_shmat(t, (int)t->regs().arg1_signed(),
