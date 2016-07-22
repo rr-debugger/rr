@@ -3509,7 +3509,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
                                                    TraceWriter::EXEC_MAPPING);
       ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
       auto buf = t->read_mem(km.start().cast<uint8_t>(), km.size());
-      t->trace_writer().write_raw(buf.data(), km.size(), km.start());
+      t->trace_writer().write_raw(t->rec_tid, buf.data(), km.size(),
+                                  km.start());
 
       // Remove MAP_GROWSDOWN from stacks by remapping the memory and
       // writing the contents back.

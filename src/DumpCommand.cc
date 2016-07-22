@@ -209,8 +209,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       TraceReader::RawData data;
       while (process_raw_data && trace.read_raw_data_for_frame(frame, data)) {
         if (flags.dump_recorded_data_metadata) {
-          fprintf(out, "  { addr:%p, length:%p }\n", (void*)data.addr.as_int(),
-                  (void*)data.data.size());
+          fprintf(out, "  { tid:%d, addr:%p, length:%p }\n", data.rec_tid,
+                  (void*)data.addr.as_int(), (void*)data.data.size());
         }
       }
       vector<uint8_t> buf;

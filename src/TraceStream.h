@@ -136,7 +136,8 @@ public:
    * 'addr' is the address in the tracee where the data came from/will be
    * restored to.
    */
-  void write_raw(const void* data, size_t len, remote_ptr<void> addr);
+  void write_raw(pid_t tid, const void* data, size_t len,
+                 remote_ptr<void> addr);
 
   /**
    * Write a task event (clone or exec record) to the trace.
@@ -199,6 +200,7 @@ public:
   struct RawData {
     std::vector<uint8_t> data;
     remote_ptr<void> addr;
+    pid_t rec_tid;
   };
 
   /**

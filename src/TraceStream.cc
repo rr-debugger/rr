@@ -31,7 +31,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 63
+#define TRACE_VERSION 64
 
 struct SubstreamData {
   const char* name;
@@ -491,10 +491,11 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
                        flags, file_offset_bytes);
 }
 
-void TraceWriter::write_raw(const void* d, size_t len, remote_ptr<void> addr) {
+void TraceWriter::write_raw(pid_t rec_tid, const void* d, size_t len,
+                            remote_ptr<void> addr) {
   auto& data = writer(RAW_DATA);
   auto& data_header = writer(RAW_DATA_HEADER);
-  data_header << global_time << addr.as_int() << len;
+  data_header << global_time << rec_tid << addr.as_int() << len;
   data.write(d, len);
 }
 
@@ -504,7 +505,7 @@ TraceReader::RawData TraceReader::read_raw_data() {
   TraceFrame::Time time;
   RawData d;
   size_t num_bytes;
-  data_header >> time >> d.addr >> num_bytes;
+  data_header >> time >> d.rec_tid >> d.addr >> num_bytes;
   assert(time == global_time);
   d.data.resize(num_bytes);
   data.read((char*)d.data.data(), num_bytes);
