@@ -38,6 +38,8 @@ public:
   PerfCounters(pid_t tid);
   ~PerfCounters() { stop(); }
 
+  void set_tid(pid_t tid);
+
   // Change this to 'true' to enable perf counters that may be interesting
   // for experimentation, but aren't necessary for core functionality.
   static bool extra_perf_counters_enabled() { return false; }

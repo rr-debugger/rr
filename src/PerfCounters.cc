@@ -243,6 +243,11 @@ void PerfCounters::reset(Ticks ticks_period) {
   started = true;
 }
 
+void PerfCounters::set_tid(pid_t tid) {
+  stop();
+  this->tid = tid;
+}
+
 void PerfCounters::stop() {
   if (!started) {
     return;

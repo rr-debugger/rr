@@ -13,7 +13,9 @@
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
 #include "ReplayTask.h"
+#include "TaskGroup.h"
 #include "fast_forward.h"
+#include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "replay_syscall.h"
@@ -1173,6 +1175,38 @@ Completion ReplaySession::exit_task(ReplayTask* t) {
   return COMPLETE;
 }
 
+ReplayTask* ReplaySession::revive_task_for_exec() {
+  const Event& ev = trace_frame.event();
+  if (!ev.is_syscall_event() ||
+      !is_execve_syscall(ev.Syscall().number, ev.arch())) {
+    FATAL() << "Can't find task, but we're not in an execve";
+  }
+
+  TaskGroup* tg = nullptr;
+  for (auto& p : task_group_map) {
+    if (p.second->tgid == trace_frame.tid()) {
+      tg = p.second;
+      break;
+    }
+  }
+  if (!tg) {
+    FATAL()
+        << "Dead task tid should be task-group leader, but we can't find it";
+  }
+  if (tg->task_set().size() != 1) {
+    FATAL() << "Should only be one task left in the taskgroup";
+  }
+
+  ReplayTask* t = static_cast<ReplayTask*>(*tg->task_set().begin());
+  LOG(debug) << "Changing task tid from " << t->rec_tid << " to "
+             << trace_frame.tid();
+  task_map.erase(t->rec_tid);
+  t->rec_tid = trace_frame.tid();
+  task_map.insert(make_pair(t->rec_tid, t));
+  // The real tid is not changing yet. It will, in process_execve.
+  return t;
+}
+
 /**
  * Set up rep_trace_step state in t's Session to start replaying towards
  * the event given by the session's current_trace_frame --- but only if
@@ -1181,8 +1215,12 @@ Completion ReplaySession::exit_task(ReplayTask* t) {
  * requested a restart. If this returns false, t's Session state was not
  * modified.
  */
-void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
+ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   const Event& ev = trace_frame.event();
+
+  if (!t) {
+    t = revive_task_for_exec();
+  }
 
   LOG(debug) << "[event " << trace_frame.time() << "] " << t->rec_tid
              << ": replaying " << Event(ev) << "; state "
@@ -1283,6 +1321,8 @@ void ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
     default:
       FATAL() << "Unexpected event " << ev;
   }
+
+  return t;
 }
 
 bool ReplaySession::next_step_is_syscall_exit(int syscallno) {
@@ -1308,7 +1348,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
    * computed already in which case step.action will not be TSTEP_NONE.
    */
   if (current_step.action == TSTEP_NONE) {
-    setup_replay_one_trace_frame(t);
+    t = setup_replay_one_trace_frame(t);
     if (current_step.action == TSTEP_NONE) {
       // Already at the destination event.
       advance_to_next_trace_frame();

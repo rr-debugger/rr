@@ -487,6 +487,19 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       LOG(debug) << "  " << tid << " changed status to " << status;
 
       next = session.find_task(tid);
+      if (status.ptrace_event() == PTRACE_EVENT_EXEC) {
+        if (next) {
+          // Other threads may have unexpectedly died, in which case this
+          // will be marked as unstable even though it's actually not. There's
+          // no way to know until we see the EXEC event that we weren't really
+          // in an unstable exit.
+          next->unstable = false;
+        } else {
+          // The thread-group-leader died and now the exec'ing thread has
+          // changed its thread ID to be thread-group leader.
+          next = session.revive_task_for_exec(tid);
+        }
+      }
       if (!next) {
         LOG(debug) << "    ... but it's dead";
       }

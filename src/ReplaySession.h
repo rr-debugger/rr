@@ -291,7 +291,8 @@ private:
   ReplaySession(const std::string& dir);
   ReplaySession(const ReplaySession& other);
 
-  void setup_replay_one_trace_frame(ReplayTask* t);
+  ReplayTask* revive_task_for_exec();
+  ReplayTask* setup_replay_one_trace_frame(ReplayTask* t);
   void advance_to_next_trace_frame();
   Completion emulate_signal_delivery(ReplayTask* oldtask, int sig);
   Completion try_one_trace_step(ReplayTask* t,

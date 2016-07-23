@@ -2444,7 +2444,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           unique_ptr<TraceTaskEvent>(new TraceTaskEvent(
               TraceTaskEvent::for_exec(t->tid, raw_filename, cmd_line)));
 
-      return PREVENT_SWITCH;
+      // This can trigger unstable exits of non-main threads, so we have to
+      // allow them to be handled.
+      return ALLOW_SWITCH;
     }
 
     case Arch::fcntl:

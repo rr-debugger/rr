@@ -453,6 +453,8 @@ set(BASIC_TESTS
   exec_flags
   exec_no_env
   exec_self
+  exec_from_main_thread
+  exec_from_other_thread
   exit_with_syscallbuf_signal
   fadvise
   fanotify

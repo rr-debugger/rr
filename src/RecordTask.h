@@ -426,6 +426,13 @@ public:
 
   enum { SYNTHETIC_TIME_SLICE_SI_CODE = -9999 };
 
+  /**
+   * Tasks normally can't change their tid. There is one very special situation
+   * where they can: when a non-main-thread does an execve, its tid changes
+   * to the tid of the thread-group leader.
+   */
+  void set_tid(pid_t tid);
+
 private:
   ~RecordTask();
 

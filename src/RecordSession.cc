@@ -371,6 +371,8 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
     }
 
     case PTRACE_EVENT_EXEC:
+      ASSERT(t, t->task_group()->task_set().size() == 1)
+          << "Found lingering task which is not the task-group leader???";
       t->post_exec();
 
       // Skip past the ptrace event.
@@ -849,6 +851,40 @@ void RecordSession::check_initial_task_syscalls(RecordTask* t,
     step_result->status = RecordSession::STEP_SPAWN_FAILED;
     step_result->failure_message = read_spawned_task_error();
   }
+}
+
+RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
+  unsigned long msg = 0;
+  int ret =
+      ptrace(__ptrace_request(PTRACE_GETEVENTMSG), rec_tid, nullptr, &msg);
+  if (ret < 0) {
+    FATAL() << "Can't get old tid for execve";
+  }
+  RecordTask* t = find_task(msg);
+  if (!t) {
+    FATAL() << "Can't find old task for execve";
+  }
+  ASSERT(t, rec_tid == t->tgid());
+
+  LOG(debug) << "Changing task tid from " << t->tid << " to " << rec_tid;
+
+  // Pretend the old task cloned a new task with the right tid, and then exited
+  trace_writer().write_task_event(TraceTaskEvent::for_clone(
+      rec_tid, t->tid, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
+                           CLONE_THREAD | CLONE_SYSVSEM));
+  trace_writer().write_task_event(
+      TraceTaskEvent::for_exit(t->tid, WaitStatus::for_exit_code(0)));
+
+  // Account for tid change
+  task_map.erase(t->tid);
+  task_map.insert(make_pair(rec_tid, t));
+  t->set_tid(rec_tid);
+
+  // t probably would have been marked for unstable-exit when the old
+  // thread-group leader died.
+  t->unstable = false;
+
+  return t;
 }
 
 /**

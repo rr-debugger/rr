@@ -116,6 +116,17 @@ public:
   RecordTask* find_task(pid_t rec_tid) const;
   RecordTask* find_task(const TaskUid& tuid) const;
 
+  /**
+   * This gets called when we detect that a task has been revived from the
+   * dead with a PTRACE_EVENT_EXEC. See ptrace man page under "execve(2) under
+   * ptrace" for the horrid details.
+   *
+   * The task in the task-group that triggered the successful execve has changed
+   * its tid to |rec_tid|. We mirror that, and emit TraceTaskEvents to make it
+   * look like a new task was spawned and the old task exited.
+   */
+  RecordTask* revive_task_for_exec(pid_t rec_tid);
+
 private:
   RecordSession(const std::string& exe_path,
                 const std::vector<std::string>& argv,

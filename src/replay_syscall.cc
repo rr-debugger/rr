@@ -33,6 +33,7 @@
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "StdioMonitor.h"
+#include "TaskGroup.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
 #include "kernel_abi.h"
@@ -75,9 +76,17 @@ static string maybe_dump_written_string(ReplayTask* t) {
  * Proceeds until the next system call, which is being executed.
  */
 static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
-                          int expect_syscallno, int expect_syscallno2 = -1) {
+                          int expect_syscallno, int expect_syscallno2 = -1,
+                          pid_t new_tid = -1) {
   do {
-    t->resume_execution(resume_how, RESUME_WAIT, RESUME_NO_TICKS);
+    t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
+    if (new_tid > 0) {
+      // Set new tid before we wait, so we wait for the right task.
+      // XXX maybe a signal could arrive and be delivered to the task before
+      // its tid changes, so we hang? Hope not!
+      t->set_real_tid(new_tid);
+    }
+    t->wait();
   } while (ReplaySession::is_ignored_signal(t->status().stop_sig()));
 
   ASSERT(t, !t->stop_sig()) << "Expected no pending signal, but got "
@@ -408,9 +417,12 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   /* Enter our execve syscall. */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
   ASSERT(t, !t->stop_sig()) << "Stub exec failed on entry";
-  /* Complete the syscall */
+  /* Complete the syscall. The tid of the task will be the thread-group-leader
+   * tid, no matter what tid it was before.
+   */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno,
-                syscall_number_for_execve(trace_frame.regs().arch()));
+                syscall_number_for_execve(trace_frame.regs().arch()),
+                t->task_group()->real_tgid);
   if (t->regs().syscall_result()) {
     errno = -t->regs().syscall_result();
     if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
