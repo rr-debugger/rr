@@ -13,6 +13,7 @@ TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
     : tgid(tgid),
       real_tgid(real_tgid),
       dumpable(true),
+      execed(false),
       session_(session),
       parent_(parent),
       serial(serial) {

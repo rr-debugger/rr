@@ -3,8 +3,11 @@ source `dirname $0`/util.sh
 save_exe barrier$bitness
 saved_barrier="barrier$bitness-$nonce"
 
+GLOBAL_OPTIONS="$GLOBAL_OPTIONS -M"
 record target_process$bitness "$saved_barrier"
-TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+TARGET_PID=$(grep 'child ' record.out | awk '{print $4}')
+TARGET_EVENT=$(grep 'thread 2 launched ' record.out | awk '{print substr($3,0,3)}')
 
-echo Targeting recorded pid $TARGET_PID ...
+echo Targeting recorded pid $TARGET_PID at event $TARGET_EVENT ...
 debug get_thread_list "-p $TARGET_PID -g 1"
+debug expect_in_atomic_printf "-p $TARGET_PID -g $TARGET_EVENT"

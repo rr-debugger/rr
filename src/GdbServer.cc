@@ -1069,7 +1069,7 @@ bool GdbServer::at_target() {
   return timeline.current_session().current_trace_frame().time() >
              target.event &&
          (!target.pid || t->tgid() == target.pid) &&
-         (!target.require_exec || t->vm()->execed()) &&
+         (!target.require_exec || t->execed()) &&
          // Ensure we're at the start of processing an event. We don't
          // want to attach while we're finishing an exec() since that's a
          // slightly confusing state for ReplayTimeline's reverse execution.
