@@ -14,6 +14,9 @@ int main(int argc, char* argv[]) {
     execl(exe, exe, NULL);
     test_assert("Not reached" && 0);
   }
+
+  atomic_printf("child %d\n", child);
+
   test_assert(child == waitpid(child, &status, 0));
   test_assert(WIFEXITED(status) && 0 == WEXITSTATUS(status));
 

@@ -591,6 +591,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   desched_fd_child = -1;
   preload_globals = nullptr;
   thread_locals_initialized = false;
+  task_group()->execed = true;
 
   thread_areas_.clear();
 
@@ -603,6 +604,10 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
 void Task::post_exec_syscall(TraceTaskEvent& event) {
   as->post_exec_syscall(this);
   fds->update_for_cloexec(this, event);
+}
+
+bool Task::execed() const {
+   return tg->execed;
 }
 
 void Task::flush_inconsistent_state() { ticks = 0; }

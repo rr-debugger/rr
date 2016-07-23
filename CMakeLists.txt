@@ -870,6 +870,7 @@ set(TESTS_WITHOUT_PROGRAM
   trace_version
   term_trace_cpu
   unwind_on_signal
+  vfork_exec
   when
 )
 
