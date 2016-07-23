@@ -1,0 +1,10 @@
+source `dirname $0`/util.sh
+
+save_exe rr_exec_stub$bitness
+saved_exe="rr_exec_stub$bitness-$nonce"
+
+record vfork$bitness "$saved_exe"
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}')
+
+echo Targeting recorded pid $TARGET_PID ...
+debug first_instruction "-p $TARGET_PID"

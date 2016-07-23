@@ -114,6 +114,9 @@ public:
   // record that here and lie about it if necessary.
   bool dumpable;
 
+  // Whether this task group has execed
+  bool execed;
+
 private:
   TaskGroup(const TaskGroup&) = delete;
   TaskGroup operator=(const TaskGroup&) = delete;

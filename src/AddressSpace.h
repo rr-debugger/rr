@@ -309,12 +309,6 @@ public:
   void dump() const;
 
   /**
-   * Return true if this was created as the result of an exec()
-   * call, instead of cloned from another address space.
-   */
-  bool execed() const { return !is_clone; }
-
-  /**
    * Return tid of the first task for this address space.
    */
   pid_t leader_tid() const { return leader_tid_; }
@@ -933,8 +927,6 @@ private:
   remote_ptr<void> brk_start;
   /* Current brk. Not necessarily page-aligned. */
   remote_ptr<void> brk_end;
-  /* Were we cloned from another address space? */
-  bool is_clone;
   /* All segments mapped into this address space. */
   MemoryMap mem;
   std::set<remote_ptr<void> > monitored_mem;

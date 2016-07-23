@@ -333,6 +333,11 @@ public:
   void post_exec_syscall(TraceTaskEvent& event);
 
   /**
+   * Return true if this task has execed.
+   */
+  bool execed() const;
+
+  /**
    * Read |N| bytes from |child_addr| into |buf|, or don't
    * return.
    */
