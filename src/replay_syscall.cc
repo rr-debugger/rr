@@ -119,7 +119,7 @@ static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
   AutoRemoteSyscalls remote(t);
   remote.infallible_mmap_syscall(t->scratch_ptr, sz, km.prot(),
                                  km.flags() | MAP_FIXED, -1, 0);
-  t->vm()->map(t->scratch_ptr, sz, km.prot(), km.flags(), 0, string(),
+  t->vm()->map(t, t->scratch_ptr, sz, km.prot(), km.flags(), 0, string(),
                KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr, &km);
 }
 
@@ -381,7 +381,7 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
       break;
   }
 
-  t->vm()->map(km.start(), km.size(), km.prot(), flags, offset_bytes,
+  t->vm()->map(t, km.start(), km.size(), km.prot(), flags, offset_bytes,
                real_file_name, device, inode, nullptr, &km);
 }
 
@@ -492,7 +492,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     for (auto& m : unmaps) {
       remote.infallible_syscall(syscall_number_for_munmap(t->arch()), m.start(),
                                 m.size());
-      t->vm()->unmap(m.start(), m.size());
+      t->vm()->unmap(t, m.start(), m.size());
     }
     // We will have unmapped the stack memory that |remote| would have used for
     // memory parameters. Fortunately process_mapped_region below doesn't
@@ -546,14 +546,15 @@ static void process_brk(ReplayTask* t) {
     remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
                                    MAP_ANONYMOUS | MAP_FIXED | km.flags(), -1,
                                    0);
-    t->vm()->map(km.start(), km.size(), km.prot(), MAP_ANONYMOUS | km.flags(),
-                 0, "[heap]", KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
-                 nullptr, &km);
+    t->vm()->map(t, km.start(), km.size(), km.prot(),
+                 MAP_ANONYMOUS | km.flags(), 0, "[heap]",
+                 KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
+                 &km);
   } else if (km.size() > 0) {
     AutoRemoteSyscalls remote(t);
     remote.infallible_syscall(syscall_number_for_munmap(t->arch()), km.start(),
                               km.size());
-    t->vm()->unmap(km.start(), km.size());
+    t->vm()->unmap(t, km.start(), km.size());
   }
 }
 
@@ -592,7 +593,7 @@ static remote_ptr<void> finish_anonymous_mmap(
   }
 
   if (note_task_map) {
-    remote.task()->vm()->map(rec_addr, length, prot, flags, 0, file_name,
+    remote.task()->vm()->map(t, rec_addr, length, prot, flags, 0, file_name,
                              device, inode, nullptr, &recorded_km, emu_file);
   }
   return rec_addr;
@@ -639,9 +640,9 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), child_fd);
 
   KernelMapping km_slice = km.subrange(start, start + length);
-  remote.task()->vm()->map(start, length, prot, MAP_FIXED | MAP_PRIVATE, 0,
-                           file_name, fstat.st_dev, fstat.st_ino, nullptr,
-                           &km_slice);
+  remote.task()->vm()->map(remote.task(), start, length, prot,
+                           MAP_FIXED | MAP_PRIVATE, 0, file_name, fstat.st_dev,
+                           fstat.st_ino, nullptr, &km_slice);
 }
 
 static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
@@ -663,7 +664,7 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   size_t data_pages = ceil_page_size(data_size);
   size_t mapped_pages = ceil_page_size(num_bytes);
 
-  t->vm()->map(mapped_addr, num_bytes, prot, flags | MAP_ANONYMOUS,
+  t->vm()->map(t, mapped_addr, num_bytes, prot, flags | MAP_ANONYMOUS,
                page_size() * offset_pages, string(), KernelMapping::NO_DEVICE,
                KernelMapping::NO_INODE, nullptr, &km);
 
@@ -698,7 +699,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // For full generality, we also need to emulate direct file
   // modifications through write/splice/etc.
   uint64_t offset_bytes = page_size() * offset_pages;
-  t->vm()->map(buf.addr, buf.data.size(), prot, flags, offset_bytes,
+  t->vm()->map(t, buf.addr, buf.data.size(), prot, flags, offset_bytes,
                real_file_name, real_file.st_dev, real_file.st_ino, nullptr, &km,
                emufile);
 
@@ -735,7 +736,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                            length, prot, flags, data.file_name, O_RDONLY,
                            data.data_offset_bytes / page_size(), real_file,
                            real_file_name);
-        t->vm()->map(km.start(), length, prot, flags,
+        t->vm()->map(t, km.start(), length, prot, flags,
                      page_size() * offset_pages, real_file_name,
                      real_file.st_dev, real_file.st_ino, nullptr, &km);
       } else {
@@ -800,7 +801,7 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
     remote.regs().set_syscall_result(new_addr);
   }
 
-  t->vm()->remap(old_addr, old_size, new_addr, new_size);
+  t->vm()->remap(t, old_addr, old_size, new_addr, new_size);
 
   TraceReader::MappedData data;
   t->trace_reader().read_mapped_region(&data);

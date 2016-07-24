@@ -2159,7 +2159,8 @@ static void init_scratch_memory(RecordTask* t,
   r.set_syscall_result(t->scratch_ptr);
   t->set_regs(r);
 
-  KernelMapping km = t->vm()->map(t->scratch_ptr, sz, prot, flags, 0, string());
+  KernelMapping km =
+      t->vm()->map(t, t->scratch_ptr, sz, prot, flags, 0, string());
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
   auto record_in_trace = t->trace_writer().write_mapped_region(t, km, stat);
@@ -3503,7 +3504,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       // can't read the contents of [vvar].
       remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
                                 vvar.start(), vvar.size());
-      t->vm()->unmap(vvar.start(), vvar.size());
+      t->vm()->unmap(t, vvar.start(), vvar.size());
     }
 
     for (auto& km : stacks) {
@@ -3600,14 +3601,14 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       // Anonymous mappings are by definition not backed by any file-like
       // object, and are initialized to zero, so there's no nondeterminism to
       // record.
-      km = t->vm()->map(addr, size, prot, flags, 0, string());
+      km = t->vm()->map(t, addr, size, prot, flags, 0, string());
     } else {
       ASSERT(t, !(flags & MAP_GROWSDOWN));
       // Read the kernel's mapping. There doesn't seem to be any other way to
       // get the correct device/inode numbers. Fortunately anonymous shared
       // mappings are rare.
       KernelMapping kernel_info = t->vm()->read_kernel_mapping(t, addr);
-      km = t->vm()->map(addr, size, prot, flags, 0, kernel_info.fsname(),
+      km = t->vm()->map(t, addr, size, prot, flags, 0, kernel_info.fsname(),
                         kernel_info.device(), kernel_info.inode());
     }
     auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat());
@@ -3622,7 +3623,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   string file_name = t->file_name_of_fd(fd);
 
   KernelMapping km =
-      t->vm()->map(addr, size, prot, flags, offset, file_name, st.st_dev,
+      t->vm()->map(t, addr, size, prot, flags, offset, file_name, st.st_dev,
                    st.st_ino, unique_ptr<struct stat>(new struct stat(st)));
 
   if (!st.st_size) {
@@ -3664,7 +3665,7 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
   size_t new_size = ceil_page_size(new_length);
   remote_ptr<void> new_addr = t->regs().syscall_result();
 
-  t->vm()->remap(old_addr, old_size, new_addr, new_size);
+  t->vm()->remap(t, old_addr, old_size, new_addr, new_size);
   AddressSpace::Mapping m = t->vm()->mapping_of(new_addr);
   KernelMapping km =
       m.map.subrange(new_addr, new_addr + min(new_size, old_size));
@@ -3719,7 +3720,7 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
   // and reading /proc/<pid>/maps should be reasonably cheap.
   KernelMapping kernel_info = t->vm()->read_kernel_mapping(t, addr);
   KernelMapping km =
-      t->vm()->map(addr, size, prot, flags, 0, kernel_info.fsname(),
+      t->vm()->map(t, addr, size, prot, flags, 0, kernel_info.fsname(),
                    kernel_info.device(), kernel_info.inode());
   if (t->trace_writer().write_mapped_region(t, km, km.fake_stat()) ==
       TraceWriter::RECORD_IN_TRACE) {
@@ -3969,7 +3970,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       }
       auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat());
       ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
-      t->vm()->brk(t->regs().syscall_result(), km.prot());
+      t->vm()->brk(t, t->regs().syscall_result(), km.prot());
       break;
     }
 

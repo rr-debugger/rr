@@ -163,7 +163,7 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
   }
 
   KernelMapping km =
-      t->vm()->map(new_start, it->map.start() - new_start, it->map.prot(),
+      t->vm()->map(t, new_start, it->map.start() - new_start, it->map.prot(),
                    it->map.flags() | MAP_ANONYMOUS, 0, string(),
                    KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
   t->trace_writer().write_mapped_region(t, km, km.fake_stat());

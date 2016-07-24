@@ -1230,7 +1230,7 @@ void RecordTask::maybe_flush_syscallbuf() {
         read_mem(REMOTE_PTR_FIELD(preload_globals, mprotect_records[0]),
                  hdr.mprotect_record_count);
     for (auto& r : records) {
-      as->protect(r.start, r.size, r.prot);
+      as->protect(this, r.start, r.size, r.prot);
     }
     // We write these out because some tools might benefit from them, and
     // this is cheap.

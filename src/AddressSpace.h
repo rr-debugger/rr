@@ -290,7 +290,7 @@ public:
    * Change the program data break of this address space to
    * |addr|. Only called during recording!
    */
-  void brk(remote_ptr<void> addr, int prot);
+  void brk(Task* t, remote_ptr<void> addr, int prot);
 
   /**
    * This can only be called during recording.
@@ -377,7 +377,7 @@ public:
    * we are recording!).
    */
   KernelMapping map(
-      remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
+      Task* t, remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
       off64_t offset_bytes, const std::string& fsname,
       dev_t device = KernelMapping::NO_DEVICE,
       ino_t inode = KernelMapping::NO_INODE,
@@ -469,7 +469,7 @@ public:
    * Change the protection bits of [addr, addr + num_bytes) to
    * |prot|.
    */
-  void protect(remote_ptr<void> addr, size_t num_bytes, int prot);
+  void protect(Task* t, remote_ptr<void> addr, size_t num_bytes, int prot);
 
   /**
    * Fix up mprotect registers parameters to take account of PROT_GROWSDOWN.
@@ -480,7 +480,7 @@ public:
    * Move the mapping [old_addr, old_addr + old_num_bytes) to
    * [new_addr, old_addr + new_num_bytes), preserving metadata.
    */
-  void remap(remote_ptr<void> old_addr, size_t old_num_bytes,
+  void remap(Task* t, remote_ptr<void> old_addr, size_t old_num_bytes,
              remote_ptr<void> new_addr, size_t new_num_bytes);
 
   /**
@@ -563,12 +563,12 @@ public:
    * Make [addr, addr + num_bytes) inaccessible within this
    * address space.
    */
-  void unmap(remote_ptr<void> addr, ssize_t num_bytes);
+  void unmap(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
 
   /**
    * Notification of madvise call.
    */
-  void advise(remote_ptr<void> addr, ssize_t num_bytes, int advice);
+  void advise(Task* t, remote_ptr<void> addr, ssize_t num_bytes, int advice);
 
   /** Return the vdso mapping of this. */
   KernelMapping vdso() const;
@@ -705,7 +705,7 @@ private:
    */
   void populate_address_space(Task* t);
 
-  void unmap_internal(remote_ptr<void> addr, ssize_t num_bytes);
+  void unmap_internal(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
 
   // Also sets brk_ptr.
   void map_rr_page(Task* t);
@@ -733,7 +733,7 @@ private:
    * well, for example have adjacent file offsets and the same
    * prot and flags.
    */
-  void coalesce_around(MemoryMap::iterator it);
+  void coalesce_around(Task* t, MemoryMap::iterator it);
 
   /**
    * Erase |it| from |breakpoints| and restore any memory in
@@ -761,7 +761,7 @@ private:
    * Map |m| of |r| into this address space, and coalesce any
    * mappings of |r| that are adjacent to |m|.
    */
-  void map_and_coalesce(const KernelMapping& m,
+  void map_and_coalesce(Task* t, const KernelMapping& m,
                         const KernelMapping& recorded_map,
                         EmuFile::shr_ptr emu_file,
                         std::unique_ptr<struct stat> mapped_file_stat,

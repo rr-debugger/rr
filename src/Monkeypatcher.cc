@@ -198,7 +198,7 @@ static remote_ptr<uint8_t> allocate_extended_jump(
       KernelMapping recorded(addr, addr + page_size(), string(),
                              KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
                              prot, flags);
-      t->vm()->map(addr, page_size(), prot, flags, 0, string(),
+      t->vm()->map(t, addr, page_size(), prot, flags, 0, string(),
                    KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
                    &recorded);
       t->trace_writer().write_mapped_region(t, recorded, recorded.fake_stat(),

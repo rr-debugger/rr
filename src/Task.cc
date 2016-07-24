@@ -222,12 +222,12 @@ void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
   remote.infallible_syscall(syscall_number_for_munmap(arch()), scratch_ptr,
                             scratch_size);
-  vm()->unmap(scratch_ptr, scratch_size);
+  vm()->unmap(this, scratch_ptr, scratch_size);
   if (!syscallbuf_child.is_null()) {
     uint8_t* local_mapping = vm()->mapping_of(syscallbuf_child).local_addr;
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               syscallbuf_child, num_syscallbuf_bytes);
-    vm()->unmap(syscallbuf_child, num_syscallbuf_bytes);
+    vm()->unmap(this, syscallbuf_child, num_syscallbuf_bytes);
     munmap(local_mapping, num_syscallbuf_bytes);
     syscallbuf_child = nullptr;
     if (desched_fd_child >= 0) {
@@ -308,24 +308,24 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       remote_ptr<void> addr = regs.arg1();
       size_t num_bytes = regs.arg2();
       int prot = regs.arg3_signed();
-      return vm()->protect(addr, num_bytes, prot);
+      return vm()->protect(this, addr, num_bytes, prot);
     }
     case Arch::munmap: {
       remote_ptr<void> addr = regs.arg1();
       size_t num_bytes = regs.arg2();
-      return vm()->unmap(addr, num_bytes);
+      return vm()->unmap(this, addr, num_bytes);
     }
     case Arch::shmdt: {
       remote_ptr<void> addr = regs.arg1();
       auto mapping = vm()->mapping_of(addr);
       ASSERT(this, mapping.map.start() == addr);
-      return vm()->unmap(addr, mapping.map.end() - addr);
+      return vm()->unmap(this, addr, mapping.map.end() - addr);
     }
     case Arch::madvise: {
       remote_ptr<void> addr = regs.arg1();
       size_t num_bytes = regs.arg2();
       int advice = regs.arg3();
-      return vm()->advise(addr, num_bytes, advice);
+      return vm()->advise(this, addr, num_bytes, advice);
     }
     case Arch::ipc: {
       switch ((int)regs.arg1_signed()) {
@@ -333,7 +333,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           remote_ptr<void> addr = regs.arg5();
           auto mapping = vm()->mapping_of(addr);
           ASSERT(this, mapping.map.start() == addr);
-          return vm()->unmap(addr, mapping.map.end() - addr);
+          return vm()->unmap(this, addr, mapping.map.end() - addr);
         }
         default:
           break;
@@ -606,9 +606,7 @@ void Task::post_exec_syscall(TraceTaskEvent& event) {
   fds->update_for_cloexec(this, event);
 }
 
-bool Task::execed() const {
-   return tg->execed;
-}
+bool Task::execed() const { return tg->execed; }
 
 void Task::flush_inconsistent_state() { ticks = 0; }
 
@@ -1351,7 +1349,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
         if (!mapping.recorded_map.is_heap()) {
           const KernelMapping& m = mapping.map;
           LOG(debug) << "mapping stack for " << new_tid << " at " << m;
-          t->as->map(m.start(), m.size(), m.prot(), m.flags(),
+          t->as->map(t, m.start(), m.size(), m.prot(), m.flags(),
                      m.file_offset_bytes(), "[stack]", m.device(), m.inode());
         }
       }
@@ -1409,7 +1407,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
       remote.infallible_mmap_syscall(syscallbuf_child, num_syscallbuf_bytes,
                                      prot, flags, -1, 0);
-      t->vm()->map(syscallbuf_child, num_syscallbuf_bytes, prot, flags, 0,
+      t->vm()->map(t, syscallbuf_child, num_syscallbuf_bytes, prot, flags, 0,
                    string());
 
       // Mark the clone's syscallbuf as locked. This will prevent the

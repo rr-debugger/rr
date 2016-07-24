@@ -293,7 +293,7 @@ void AddressSpace::map_rr_page(Task* t) {
 
       remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
 
-      map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
+      map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
           fstat.st_dev, fstat.st_ino);
     } else {
       ASSERT(t, child_fd == -EACCES) << "Unexpected error mapping rr_page";
@@ -306,7 +306,7 @@ void AddressSpace::map_rr_page(Task* t) {
       t->write_bytes_helper(rr_page_start(), page_data.size(),
                             page_data.data());
 
-      map(rr_page_start(), rr_page_size(), prot, flags, 0, file_name, 0, 0);
+      map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name, 0, 0);
     }
 
     if (t->session().is_recording()) {
@@ -437,16 +437,16 @@ void AddressSpace::post_exec_syscall(Task* t) {
   map_rr_page(t);
 }
 
-void AddressSpace::brk(remote_ptr<void> addr, int prot) {
+void AddressSpace::brk(Task* t, remote_ptr<void> addr, int prot) {
   LOG(debug) << "brk(" << addr << ")";
 
   remote_ptr<void> old_brk = ceil_page_size(brk_end);
   remote_ptr<void> new_brk = ceil_page_size(addr);
   if (old_brk < new_brk) {
-    map(old_brk, new_brk - old_brk, prot, MAP_ANONYMOUS | MAP_PRIVATE, 0,
+    map(t, old_brk, new_brk - old_brk, prot, MAP_ANONYMOUS | MAP_PRIVATE, 0,
         "[heap]");
   } else {
-    unmap(new_brk, old_brk - new_brk);
+    unmap(t, new_brk, old_brk - new_brk);
   }
   brk_end = addr;
 }
@@ -537,9 +537,10 @@ static void add_range(set<MemoryRange>& ranges, const MemoryRange& range) {
   // We could coalesce adjacent ranges, but there's probably no need.
 }
 
-KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
-                                int prot, int flags, off64_t offset_bytes,
-                                const string& fsname, dev_t device, ino_t inode,
+KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
+                                size_t num_bytes, int prot, int flags,
+                                off64_t offset_bytes, const string& fsname,
+                                dev_t device, ino_t inode,
                                 unique_ptr<struct stat> mapped_file_stat,
                                 const KernelMapping* recorded_map,
                                 EmuFile::shr_ptr emu_file, void* local_addr,
@@ -561,10 +562,10 @@ KernelMapping AddressSpace::map(remote_ptr<void> addr, size_t num_bytes,
   // In testing, the behavior seems to be as if the
   // overlapping region is unmapped and then remapped
   // per the arguments to the second call.
-  unmap_internal(addr, num_bytes);
+  unmap_internal(t, addr, num_bytes);
 
   const KernelMapping& actual_recorded_map = recorded_map ? *recorded_map : m;
-  map_and_coalesce(m, actual_recorded_map, emu_file, move(mapped_file_stat),
+  map_and_coalesce(t, m, actual_recorded_map, emu_file, move(mapped_file_stat),
                    move(local_addr), move(monitored));
 
   if ((prot & PROT_EXEC) &&
@@ -638,7 +639,8 @@ bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
   return it != mem.end() && it->first.contains(m);
 }
 
-void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
+void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
+                           int prot) {
   LOG(debug) << "mprotect(" << addr << ", " << num_bytes << ", " << HEX(prot)
              << ")";
 
@@ -713,7 +715,7 @@ void AddressSpace::protect(remote_ptr<void> addr, size_t num_bytes, int prot) {
   if (last_overlap.size()) {
     // All mappings that we altered which might need coalescing
     // are adjacent to |last_overlap|.
-    coalesce_around(mem.find(last_overlap));
+    coalesce_around(t, mem.find(last_overlap));
   }
 }
 
@@ -734,8 +736,9 @@ void AddressSpace::fixup_mprotect_growsdown_parameters(Task* t) {
   }
 }
 
-void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
-                         remote_ptr<void> new_addr, size_t new_num_bytes) {
+void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
+                         size_t old_num_bytes, remote_ptr<void> new_addr,
+                         size_t new_num_bytes) {
   LOG(debug) << "mremap(" << old_addr << ", " << old_num_bytes << ", "
              << new_addr << ", " << new_num_bytes << ")";
 
@@ -744,7 +747,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   const KernelMapping& m = mr.map;
 
   old_num_bytes = ceil_page_size(old_num_bytes);
-  unmap_internal(old_addr, old_num_bytes);
+  unmap_internal(t, old_addr, old_num_bytes);
   if (0 == new_num_bytes) {
     return;
   }
@@ -762,7 +765,7 @@ void AddressSpace::remap(remote_ptr<void> old_addr, size_t old_num_bytes,
   }
 
   remote_ptr<void> new_end = new_addr + new_num_bytes;
-  map_and_coalesce(m.set_range(new_addr, new_end),
+  map_and_coalesce(t, m.set_range(new_addr, new_end),
                    mr.recorded_map.set_range(new_addr, new_end), mr.emu_file,
                    clone_stat(mr.mapped_file_stat), nullptr, nullptr);
 }
@@ -952,7 +955,7 @@ void AddressSpace::remove_all_watchpoints() {
   allocate_watchpoints();
 }
 
-void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
+void AddressSpace::unmap(Task* t, remote_ptr<void> addr, ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
   num_bytes = ceil_page_size(num_bytes);
   if (!num_bytes) {
@@ -961,10 +964,11 @@ void AddressSpace::unmap(remote_ptr<void> addr, ssize_t num_bytes) {
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
 
-  return unmap_internal(addr, num_bytes);
+  return unmap_internal(t, addr, num_bytes);
 }
 
-void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
+void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
+                                  ssize_t num_bytes) {
   LOG(debug) << "munmap(" << addr << ", " << num_bytes << ")";
 
   auto unmapper = [this](const Mapping& mm, const MemoryRange& rem) {
@@ -1004,7 +1008,7 @@ void AddressSpace::unmap_internal(remote_ptr<void> addr, ssize_t num_bytes) {
   update_watchpoint_values(addr, addr + num_bytes);
 }
 
-void AddressSpace::advise(remote_ptr<void> addr, ssize_t num_bytes,
+void AddressSpace::advise(Task*, remote_ptr<void> addr, ssize_t num_bytes,
                           int advice) {
   LOG(debug) << "madvise(" << addr << ", " << num_bytes << ", " << advice
              << ")";
@@ -1031,7 +1035,7 @@ void AddressSpace::did_fork_into(Task* t) {
       remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
                                 range.start(), range.size());
     }
-    t->vm()->unmap(range.start(), range.size());
+    t->vm()->unmap(t, range.start(), range.size());
   }
 }
 
@@ -1442,16 +1446,17 @@ bool AddressSpace::allocate_watchpoints() {
   return false;
 }
 
-static inline void assert_coalesceable(const AddressSpace::Mapping& lower,
+static inline void assert_coalesceable(Task* t,
+                                       const AddressSpace::Mapping& lower,
                                        const AddressSpace::Mapping& higher) {
-  assert(lower.emu_file == higher.emu_file);
-  assert(lower.flags == higher.flags);
-  assert((lower.local_addr == 0 && higher.local_addr == 0) ||
-         lower.local_addr + lower.map.size() == higher.local_addr);
-  assert(!lower.monitored_shared_memory && !higher.monitored_shared_memory);
+  ASSERT(t, lower.emu_file == higher.emu_file);
+  ASSERT(t, lower.flags == higher.flags);
+  ASSERT(t, (lower.local_addr == 0 && higher.local_addr == 0) ||
+                lower.local_addr + lower.map.size() == higher.local_addr);
+  ASSERT(t, !lower.monitored_shared_memory && !higher.monitored_shared_memory);
 }
 
-void AddressSpace::coalesce_around(MemoryMap::iterator it) {
+void AddressSpace::coalesce_around(Task* t, MemoryMap::iterator it) {
   auto first_kv = it;
   while (mem.begin() != first_kv) {
     auto next = first_kv;
@@ -1461,7 +1466,7 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
       first_kv = next;
       break;
     }
-    assert_coalesceable(first_kv->second, next->second);
+    assert_coalesceable(t, first_kv->second, next->second);
   }
   auto last_kv = it;
   while (true) {
@@ -1473,9 +1478,9 @@ void AddressSpace::coalesce_around(MemoryMap::iterator it) {
       last_kv = prev;
       break;
     }
-    assert_coalesceable(prev->second, last_kv->second);
+    assert_coalesceable(t, prev->second, last_kv->second);
   }
-  assert(last_kv != mem.end());
+  ASSERT(t, last_kv != mem.end());
   if (first_kv == last_kv) {
     LOG(debug) << "  no mappings to coalesce";
     return;
@@ -1545,7 +1550,7 @@ void AddressSpace::for_each_in_range(
 }
 
 void AddressSpace::map_and_coalesce(
-    const KernelMapping& m, const KernelMapping& recorded_map,
+    Task* t, const KernelMapping& m, const KernelMapping& recorded_map,
     EmuFile::shr_ptr emu_file, unique_ptr<struct stat> mapped_file_stat,
     void* local_addr, shared_ptr<MonitoredSharedMemory>&& monitored) {
   LOG(debug) << "  mapping " << m;
@@ -1556,7 +1561,7 @@ void AddressSpace::map_and_coalesce(
   auto ins = mem.insert(MemoryMap::value_type(
       m, Mapping(m, recorded_map, emu_file, move(mapped_file_stat), local_addr,
                  move(monitored))));
-  coalesce_around(ins.first);
+  coalesce_around(t, ins.first);
 
   update_watchpoint_values(m.start(), m.end());
 }
@@ -1613,7 +1618,7 @@ void AddressSpace::populate_address_space(Task* t) {
       }
     }
 
-    map(start, km.end() - start, km.prot(), flags, km.file_offset_bytes(),
+    map(t, start, km.end() - start, km.prot(), flags, km.file_offset_bytes(),
         km.fsname(), check_device(t, km), km.inode(), nullptr);
   }
   ASSERT(t, found_stacks == 1);

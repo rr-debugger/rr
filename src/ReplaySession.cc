@@ -944,7 +944,7 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
           continue;
         }
       }
-      t->vm()->protect(r.start, r.size, r.prot);
+      t->vm()->protect(t, r.start, r.size, r.prot);
     }
   }
   return final_mprotect_record_count;
@@ -1044,7 +1044,7 @@ Completion ReplaySession::patch_next_syscall(
     ASSERT(t, km.flags() & MAP_ANONYMOUS);
     remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
                                    km.flags() | MAP_FIXED, -1, 0);
-    t->vm()->map(km.start(), km.size(), km.prot(), km.flags(), 0, string(),
+    t->vm()->map(t, km.start(), km.size(), km.prot(), km.flags(), 0, string(),
                  KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
                  &km);
   }

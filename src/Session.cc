@@ -442,10 +442,10 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 
   // We update the AddressSpace mapping too, since that tracks the real file
   // name and we need to update that.
-  remote.task()->vm()->map(m.map.start(), m.map.size(), m.map.prot(),
-                           m.map.flags(), m.map.file_offset_bytes(),
-                           real_file_name, real_file.st_dev, real_file.st_ino,
-                           nullptr, &m.recorded_map, emu_file);
+  remote.task()->vm()->map(
+      remote.task(), m.map.start(), m.map.size(), m.map.prot(), m.map.flags(),
+      m.map.file_offset_bytes(), real_file_name, real_file.st_dev,
+      real_file.st_ino, nullptr, &m.recorded_map, emu_file);
 
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
@@ -498,8 +498,8 @@ KernelMapping Session::create_shared_mmap(
   struct stat st;
   ASSERT(remote.task(), 0 == ::fstat(shmem_fd, &st));
   KernelMapping km = remote.task()->vm()->map(
-      child_map_addr, size, tracee_prot, flags | tracee_flags, 0, path,
-      st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
+      remote.task(), child_map_addr, size, tracee_prot, flags | tracee_flags, 0,
+      path, st.st_dev, st.st_ino, nullptr, nullptr, nullptr, map_addr,
       std::move(monitored));
 
   shmem_fd.close();
@@ -552,7 +552,7 @@ bool Session::make_private_shared(AutoRemoteSyscalls& remote,
   remote_ptr<void> free_mem = remote.task()->vm()->find_free_memory(sz);
   remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), start, sz,
                             sz, MREMAP_MAYMOVE | MREMAP_FIXED, free_mem);
-  remote.task()->vm()->remap(start, sz, free_mem, sz);
+  remote.task()->vm()->remap(remote.task(), start, sz, free_mem, sz);
 
   // AutoRemoteSyscalls may have gotten unlucky and picked the old stack
   // segment as it's scratch space, reevaluate that choice
@@ -584,7 +584,7 @@ bool Session::make_private_shared(AutoRemoteSyscalls& remote,
   // Finally unmap the original segment
   remote2.infallible_syscall(syscall_number_for_munmap(remote.arch()), free_mem,
                              sz);
-  remote.task()->vm()->unmap(free_mem, sz);
+  remote.task()->vm()->unmap(remote.task(), free_mem, sz);
   return true;
 }
 
