@@ -431,7 +431,7 @@ public:
    * where they can: when a non-main-thread does an execve, its tid changes
    * to the tid of the thread-group leader.
    */
-  void set_tid(pid_t tid);
+  void set_tid_and_update_serial(pid_t tid);
 
 private:
   ~RecordTask();

@@ -64,7 +64,7 @@ public:
    * Used when an execve changes the tid of a non-main-thread to the
    * thread-group leader.
    */
-  void set_real_tid(pid_t tid);
+  void set_real_tid_and_update_serial(pid_t tid);
 
 private:
   template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);

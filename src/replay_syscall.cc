@@ -84,7 +84,9 @@ static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
       // Set new tid before we wait, so we wait for the right task.
       // XXX maybe a signal could arrive and be delivered to the task before
       // its tid changes, so we hang? Hope not!
-      t->set_real_tid(new_tid);
+      // Update the serial as if this task was really created by cloning the old
+      // task.
+      t->set_real_tid_and_update_serial(new_tid);
     }
     t->wait();
   } while (ReplaySession::is_ignored_signal(t->status().stop_sig()));
@@ -420,9 +422,10 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   /* Complete the syscall. The tid of the task will be the thread-group-leader
    * tid, no matter what tid it was before.
    */
+  pid_t tgid = t->task_group()->real_tgid;
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno,
                 syscall_number_for_execve(trace_frame.regs().arch()),
-                t->task_group()->real_tgid);
+                tgid == t->tid ? -1 : tgid);
   if (t->regs().syscall_result()) {
     errno = -t->regs().syscall_result();
     if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&

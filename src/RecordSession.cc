@@ -878,7 +878,9 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
   // Account for tid change
   task_map.erase(t->tid);
   task_map.insert(make_pair(rec_tid, t));
-  t->set_tid(rec_tid);
+  // Update the serial as if this task was really created by cloning the old
+  // task.
+  t->set_tid_and_update_serial(rec_tid);
 
   // t probably would have been marked for unstable-exit when the old
   // thread-group leader died.

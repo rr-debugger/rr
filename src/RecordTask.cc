@@ -1404,9 +1404,10 @@ void RecordTask::tgkill(int sig) {
 
 pid_t RecordTask::get_parent_pid() { return get_ppid(tid); }
 
-void RecordTask::set_tid(pid_t tid) {
+void RecordTask::set_tid_and_update_serial(pid_t tid) {
   hpc.set_tid(tid);
   this->tid = rec_tid = tid;
+  serial = session().next_task_serial();
 }
 
 } // namespace rr

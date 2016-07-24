@@ -145,9 +145,10 @@ void ReplayTask::set_return_value_from_trace() {
   set_regs(r);
 }
 
-void ReplayTask::set_real_tid(pid_t tid) {
+void ReplayTask::set_real_tid_and_update_serial(pid_t tid) {
   hpc.set_tid(tid);
   this->tid = tid;
+  serial = session().next_task_serial();
 }
 
 } // namespace rr
