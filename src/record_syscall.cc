@@ -15,6 +15,7 @@
 #include <linux/ethtool.h>
 #include <linux/futex.h>
 #include <linux/if.h>
+#include <linux/if_packet.h>
 #include <linux/ipc.h>
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
@@ -765,6 +766,24 @@ static void prepare_recvmmsg(RecordTask* t, TaskSyscallState& syscall_state,
   }
 }
 
+static bool block_sock_opt(int level, int optname,
+                           TaskSyscallState& syscall_state) {
+  switch (level) {
+    case SOL_PACKET:
+      switch (optname) {
+        case PACKET_RX_RING:
+        case PACKET_TX_RING:
+          syscall_state.emulate_result(-ENOPROTOOPT);
+          return true;
+        default:
+          break;
+      }
+    default:
+      break;
+  }
+  return false;
+}
+
 template <typename Arch>
 static Switchable prepare_socketcall(RecordTask* t,
                                      TaskSyscallState& syscall_state) {
@@ -791,12 +810,23 @@ static Switchable prepare_socketcall(RecordTask* t,
     /* ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const
      * struct sockaddr *dest_addr, socklen_t addrlen); */
     case SYS_SENDTO:
-    /* int setsockopt(int sockfd, int level, int optname, const void *optval,
-     * socklen_t optlen); */
-    case SYS_SETSOCKOPT:
     /* int shutdown(int socket, int how) */
     case SYS_SHUTDOWN:
       break;
+
+    /* int setsockopt(int sockfd, int level, int optname, const void *optval,
+     * socklen_t optlen); */
+    case SYS_SETSOCKOPT: {
+      auto argsp =
+          syscall_state.reg_parameter<typename Arch::setsockopt_args>(2, IN);
+      auto args = t->read_mem(argsp);
+      if (block_sock_opt(args.level, args.optname, syscall_state)) {
+        Registers r = t->regs();
+        r.set_arg1(-1);
+        t->set_regs(r);
+      }
+      break;
+    }
 
     /*  int getsockopt(int sockfd, int level, int optname, const void *optval,
      * socklen_t* optlen);
@@ -2718,6 +2748,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::setsockopt:
+      if (block_sock_opt(t->regs().arg2_signed(), t->regs().arg3_signed(),
+                         syscall_state)) {
+        Registers r = t->regs();
+        r.set_arg1(-1);
+        t->set_regs(r);
+      }
+      return PREVENT_SWITCH;
+
     case Arch::getsockopt: {
       auto optlen_ptr =
           syscall_state.reg_parameter<typename Arch::socklen_t>(5, IN_OUT);
@@ -4117,7 +4156,20 @@ static void rec_process_syscall_arch(RecordTask* t,
       }
       break;
 
-    case Arch::socketcall:
+    case Arch::setsockopt: {
+      // restore possibly-modified regs
+      Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      t->set_regs(r);
+      break;
+    }
+
+    case Arch::socketcall: {
+      // restore possibly-modified regs
+      Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      t->set_regs(r);
+
       if (!t->regs().syscall_failed()) {
         switch ((int)t->regs().arg1_signed()) {
           case SYS_RECVMSG: {
@@ -4140,6 +4192,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         }
       }
       break;
+    }
 
     case Arch::process_vm_readv:
       record_iovec_output<Arch>(t, t, t->regs().arg2(), t->regs().arg3());

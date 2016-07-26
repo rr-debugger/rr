@@ -536,6 +536,7 @@ set(BASIC_TESTS
   numa
   old_fork
   orphan_process
+  packet_mmap_disable
   pause
   perf_event
   personality

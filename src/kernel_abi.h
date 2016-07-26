@@ -901,6 +901,15 @@ struct BaseArch : public wordsize,
     ptr<socklen_t> optlen;
   };
 
+  struct setsockopt_args {
+    signed_int sockfd;
+    signed_int level;
+    signed_int optname;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
+    ptr<void> optval;
+    ptr<socklen_t> optlen;
+  };
+
   struct recv_args {
     signed_int sockfd;
     char __pad[sizeof(ptr<void>) - sizeof(int)];

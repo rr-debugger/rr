@@ -1664,7 +1664,7 @@ listen = EmulatedSyscall(x86=363, x64=50)
 getsockname = IrregularEmulatedSyscall(x86=367, x64=51)
 getpeername = IrregularEmulatedSyscall(x86=368, x64=52)
 socketpair = EmulatedSyscall(x86=360, x64=53, arg4="int[2]")
-setsockopt = EmulatedSyscall(x86=366, x64=54)
+setsockopt = IrregularEmulatedSyscall(x86=366, x64=54)
 getsockopt = IrregularEmulatedSyscall(x86=365, x64=55)
 accept4 = IrregularEmulatedSyscall(x86=364, x64=288)
 
