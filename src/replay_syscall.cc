@@ -392,11 +392,33 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   /* First, exec a stub program */
   string stub_filename = find_exec_stub(trace_frame.regs().arch());
 
-  // Setup memory and registers for the execve call. We don't need to save
-  // the old values since they're going to be wiped out by execve.
+  // Setup memory and registers for the execve call. We may not have to save
+  // the old values since they're going to be wiped out by execve. We can
+  // determine this by checking if this address space has any tasks with a
+  // different tgid.
+  Task* memory_task = t;
+  for (auto task : t->vm()->task_set()) {
+    if (task->tgid() != t->tgid()) {
+      memory_task = task;
+      break;
+    }
+  }
+
+  // Old data if required
+  std::vector<uint8_t> saved_data;
+
+  // Set up everything
   Registers regs = t->regs();
   regs.set_ip(t->vm()->traced_syscall_ip());
   remote_ptr<void> remote_mem = floor_page_size(regs.sp());
+
+  // Determine how much memory we'll need
+  size_t filename_size = stub_filename.size() + 1;
+  size_t total_size = filename_size + sizeof(size_t);
+  if (memory_task != t) {
+    saved_data = t->read_mem(remote_mem.cast<uint8_t>(), total_size);
+  }
+
   // We write a zero word in the host size, not t's size, but that's OK,
   // since the host size must be bigger than t's size.
   // We pass no argv or envp, so exec params 2 and 3 just point to the NULL
@@ -404,10 +426,9 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   t->write_mem(remote_mem.cast<size_t>(), size_t(0));
   regs.set_arg2(remote_mem);
   regs.set_arg3(remote_mem);
-  remote_mem += sizeof(size_t);
-  t->write_bytes_helper(remote_mem, stub_filename.size() + 1,
-                        stub_filename.c_str());
-  regs.set_arg1(remote_mem);
+  remote_ptr<void> filename_addr = remote_mem + sizeof(size_t);
+  t->write_bytes_helper(filename_addr, filename_size, stub_filename.c_str());
+  regs.set_arg1(filename_addr);
   /* The original_syscallno is execve in the old architecture. The kernel does
    * not update the original_syscallno when the architecture changes across
    * an exec.
@@ -531,6 +552,13 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
+
+  // Restore any memory if required. We need to do this through memory_task,
+  // since the new task is now on the new address space.
+  if (memory_task != t) {
+    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
+                           saved_data.size());
+  }
 
   // Notify outer rr if there is one
   syscall(SYS_rrcall_reload_auxv, t->tid);
