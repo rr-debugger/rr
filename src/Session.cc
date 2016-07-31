@@ -37,6 +37,7 @@ struct Session::CloneCompletion {
 
 Session::Session()
     : next_task_serial_(1),
+      syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       done_initial_exec_(false),
       visible_execution_(true) {
   LOG(debug) << "Session " << this << " created";

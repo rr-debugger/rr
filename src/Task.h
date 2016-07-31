@@ -302,11 +302,19 @@ public:
   void exit_syscall_and_prepare_restart();
 
   /**
-   * Resume execution until we get a syscall entry or exit event.
-   * During recording, any signals received are stashed.
-   * seccomp events are ignored; we assume this syscall is under rr's control.
+   * We're currently in user-space with registers set up to perform a system
+   * call. Continue into the kernel and stop where we can modify the syscall
+   * state.
    */
-  void advance_syscall();
+  void enter_syscall();
+
+  /**
+   * We have observed entry to a syscall (either by PTRACE_EVENT_SECCOMP or
+   * a syscall, depending on the value of Session::syscall_seccomp_ordering()).
+   * Continue into the kernel to perform the syscall and stop at the
+   * PTRACE_SYSCALL syscall-exit trap.
+   */
+  void exit_syscall();
 
   /**
    * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or
@@ -914,6 +922,10 @@ protected:
   // True when we know via waitpid() that the task is stopped and we haven't
   // resumed it.
   bool is_stopped;
+  /* True when the seccomp filter has been enabled via prctl(). This happens
+   * in the first system call issued by the initial tracee (after it returns
+   * from kill(SIGSTOP) to synchronize with the tracer). */
+  bool seccomp_bpf_enabled;
   // True when we consumed a PTRACE_EVENT_EXIT that was about to race with
   // a resume_execution, that was issued while stopped (i.e. SIGKILL).
   bool detected_unexpected_exit;

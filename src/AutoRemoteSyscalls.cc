@@ -137,10 +137,12 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
 
 void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
                                         Registers& callregs) {
+  LOG(debug) << "syscall " << syscall_name(syscallno, t->arch());
+
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);
 
-  t->advance_syscall();
+  t->enter_syscall();
 
   ASSERT(t, t->regs().ip() - callregs.ip() ==
                 syscall_instruction_length(t->arch()))
@@ -162,8 +164,11 @@ void AutoRemoteSyscalls::wait_syscall(int syscallno) {
   ASSERT(t, pending_syscallno == syscallno || syscallno < 0);
 
   // Wait for syscall-exit trap (or PTRACE_EVENT_* trap).
+  // XXX we should handle stray signals here!
   t->wait();
   pending_syscallno = -1;
+
+  LOG(debug) << "done, result=" << t->regs().syscall_result();
 
   ASSERT(t, t->regs().original_syscallno() == syscallno || syscallno < 0)
       << "Should be entering " << t->syscall_name(syscallno)

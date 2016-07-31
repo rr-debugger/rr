@@ -230,8 +230,11 @@ static void note_entering_syscall(RecordTask* t) {
   }
 }
 
-static void handle_seccomp_traced_syscall(
-    RecordTask* t, RecordSession::StepState* step_state) {
+void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
+                                                  StepState* step_state,
+                                                  RecordResult* result,
+                                                  bool* did_enter_syscall) {
+  *did_enter_syscall = false;
   int syscallno = t->regs().original_syscallno();
   if (syscallno < 0) {
     // negative syscall numbers after a SECCOMP event
@@ -244,10 +247,20 @@ static void handle_seccomp_traced_syscall(
     // enter syscall_state_changed and that will trigger a continue to
     // the syscall exit.
     step_state->continue_type = RecordSession::DONT_CONTINUE;
-  } else {
+    return;
+  }
+
+  if (syscall_seccomp_ordering_ == SECCOMP_BEFORE_PTRACE_SYSCALL) {
     // The next continue needs to be a PTRACE_SYSCALL to observe
     // the enter-syscall event.
     step_state->continue_type = RecordSession::CONTINUE_SYSCALL;
+  } else {
+    ASSERT(t, syscall_seccomp_ordering_ == PTRACE_SYSCALL_BEFORE_SECCOMP);
+    // We've already passed the PTRACE_SYSCALL trap for syscall entry, so
+    // we need to handle that now.
+    t->emulate_syscall_entry(t->regs());
+    process_syscall_entry(t, step_state, result);
+    *did_enter_syscall = true;
   }
 }
 
@@ -328,7 +341,11 @@ static void handle_seccomp_errno(RecordTask* t,
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
-bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
+bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state,
+                                        RecordResult* result,
+                                        bool* did_enter_syscall) {
+  *did_enter_syscall = false;
+
   if (t->status().group_stop()) {
     last_task_switchable = ALLOW_SWITCH;
     step_state->continue_type = DONT_CONTINUE;
@@ -346,10 +363,15 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
   switch (event) {
     case PTRACE_EVENT_SECCOMP_OBSOLETE:
     case PTRACE_EVENT_SECCOMP: {
-      t->seccomp_bpf_enabled = true;
+      if (syscall_seccomp_ordering_ == PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN) {
+        syscall_seccomp_ordering_ = SECCOMP_BEFORE_PTRACE_SYSCALL;
+      }
+
       uint16_t seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
       if (seccomp_data == SECCOMP_RET_DATA) {
-        handle_seccomp_traced_syscall(t, step_state);
+        LOG(debug) << "  traced syscall entered: "
+                   << syscall_name(t->regs().original_syscallno(), t->arch());
+        handle_seccomp_traced_syscall(t, step_state, result, did_enter_syscall);
       } else {
         uint32_t real_result =
             seccomp_filter_rewriter().map_filter_data_to_real_result(
@@ -357,9 +379,11 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state) {
         uint16_t real_result_data = real_result & SECCOMP_RET_DATA;
         switch (real_result & SECCOMP_RET_ACTION) {
           case SECCOMP_RET_TRAP:
+            LOG(debug) << "  seccomp trap";
             handle_seccomp_trap(t, step_state, real_result_data);
             break;
           case SECCOMP_RET_ERRNO:
+            LOG(debug) << "  seccomp errno";
             handle_seccomp_errno(t, step_state, real_result_data);
             break;
           default:
@@ -437,12 +461,18 @@ void RecordSession::task_continue(const StepState& step_state) {
     if (singlestep) {
       resume = RESUME_SINGLESTEP;
     } else {
-      if (!t->seccomp_bpf_enabled || may_restart) {
-        /* We won't receive PTRACE_EVENT_SECCOMP events until
-         * the seccomp filter is installed by the
-         * syscall_buffer lib in the child, therefore we must
-         * record in the traditional way (with PTRACE_SYSCALL)
-         * until it is installed. */
+      /* We won't receive PTRACE_EVENT_SECCOMP events until
+       * the seccomp filter is installed by the
+       * syscall_buffer lib in the child, therefore we must
+       * record in the traditional way (with PTRACE_SYSCALL)
+       * until it is installed. */
+      /* Kernel commit
+         https://github.com/torvalds/linux/commit/93e35efb8de45393cf61ed07f7b407629bf698ea
+         makes PTRACE_SYSCALL traps be delivered *before* seccomp RET_TRACE
+         traps.
+         Detect and handle this. */
+      if (!t->seccomp_bpf_enabled || may_restart ||
+          syscall_seccomp_ordering_ == PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN) {
         resume = RESUME_SYSCALL;
       } else {
         /* When the seccomp filter is on, instead of capturing
@@ -1295,7 +1325,7 @@ static bool interrupt_syscall_to_handle_signals(RecordTask* t) {
   t->set_regs(r);
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
-  t->advance_syscall();
+  t->exit_syscall();
 
   // Set these regs to emulate a syscall interruption.
   r.set_original_syscallno(syscallno);
@@ -1328,11 +1358,55 @@ static void maybe_do_fake_syscall_restart(RecordTask* t) {
   t->set_regs(r);
 }
 
+void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
+                                          RecordResult* step_result) {
+  // We just entered a syscall.
+  if (!maybe_restart_syscall(t)) {
+    // Emit FLUSH_SYSCALLBUF if necessary before we do any patching work
+    t->maybe_flush_syscallbuf();
+
+    if (syscall_seccomp_ordering_ == PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN &&
+        t->seccomp_bpf_enabled) {
+      // We received a PTRACE_SYSCALL notification before the seccomp
+      // notification. Ignore it and continue to the seccomp notification.
+      syscall_seccomp_ordering_ = PTRACE_SYSCALL_BEFORE_SECCOMP;
+      step_state->continue_type = CONTINUE;
+      return;
+    }
+
+    if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
+      // Syscall was patched. Emit event and continue execution.
+      t->record_event(Event(EV_PATCH_SYSCALL, NO_EXEC_INFO, t->arch()));
+      return;
+    }
+
+    t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
+
+    if (interrupt_syscall_to_handle_signals(t)) {
+      return;
+    }
+  }
+
+  check_initial_task_syscalls(t, step_result);
+  note_entering_syscall(t);
+  if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL ||
+      t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
+      t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) {
+    t->ev().Syscall().state = ENTERING_SYSCALL_PTRACE;
+    t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
+    t->record_current_event();
+
+    t->ev().Syscall().in_sysemu =
+        t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
+        t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP;
+  }
+}
+
 /**
  * The execution of |t| has just been resumed, and it most likely has
  * a new event that needs to be processed.  Prepare that new event.
  */
-void RecordSession::runnable_state_changed(RecordTask* t,
+void RecordSession::runnable_state_changed(RecordTask* t, StepState* step_state,
                                            RecordResult* step_result,
                                            bool can_consume_wait_status) {
   switch (t->ev().type()) {
@@ -1350,36 +1424,8 @@ void RecordSession::runnable_state_changed(RecordTask* t,
       if (!can_consume_wait_status) {
         return;
       }
-      // We just entered a syscall.
-      if (!maybe_restart_syscall(t)) {
-        // Emit FLUSH_SYSCALLBUF if necessary before we do any patching work
-        t->maybe_flush_syscallbuf();
 
-        if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
-          // Syscall was patched. Emit event and continue execution.
-          t->record_event(Event(EV_PATCH_SYSCALL, NO_EXEC_INFO, t->arch()));
-          break;
-        }
-
-        t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
-
-        if (interrupt_syscall_to_handle_signals(t)) {
-          break;
-        }
-      }
-      check_initial_task_syscalls(t, step_result);
-      note_entering_syscall(t);
-      if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL ||
-          t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
-          t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) {
-        t->ev().Syscall().state = ENTERING_SYSCALL_PTRACE;
-        t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
-        t->record_current_event();
-
-        t->ev().Syscall().in_sysemu =
-            t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
-            t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP;
-      }
+      process_syscall_entry(t, step_state, step_result);
       break;
 
     default:
@@ -1691,9 +1737,20 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   StepState step_state(CONTINUE);
 
-  if (!(rescheduled.by_waitpid && handle_ptrace_event(t, &step_state)) &&
-      !(rescheduled.by_waitpid && handle_signal_event(t, &step_state))) {
-    runnable_state_changed(t, &result, rescheduled.by_waitpid);
+  bool did_enter_syscall;
+  if (rescheduled.by_waitpid &&
+      handle_ptrace_event(t, &step_state, &result, &did_enter_syscall)) {
+    if (result.status != STEP_CONTINUE ||
+        step_state.continue_type == DONT_CONTINUE) {
+      return result;
+    }
+
+    if (did_enter_syscall && t->ev().type() == EV_SYSCALL) {
+      syscall_state_changed(t, &step_state);
+    }
+  } else if (rescheduled.by_waitpid && handle_signal_event(t, &step_state)) {
+  } else {
+    runnable_state_changed(t, &step_state, &result, rescheduled.by_waitpid);
 
     if (result.status != STEP_CONTINUE ||
         step_state.continue_type == DONT_CONTINUE) {

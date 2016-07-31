@@ -242,6 +242,15 @@ public:
       AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
       MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
 
+  enum PtraceSyscallBeforeSeccomp {
+    PTRACE_SYSCALL_BEFORE_SECCOMP,
+    SECCOMP_BEFORE_PTRACE_SYSCALL,
+    PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN,
+  };
+  PtraceSyscallBeforeSeccomp syscall_seccomp_ordering() {
+    return syscall_seccomp_ordering_;
+  }
+
 protected:
   Session();
   virtual ~Session();
@@ -276,6 +285,8 @@ protected:
 
   uint32_t next_task_serial_;
   ScopedFd spawned_task_error_fd_;
+
+  PtraceSyscallBeforeSeccomp syscall_seccomp_ordering_;
 
   /**
    * True if we've done an exec so tracees are now in a state that will be

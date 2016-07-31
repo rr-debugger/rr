@@ -80,6 +80,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       registers(a),
       how_last_execution_resumed(RESUME_CONT),
       is_stopped(false),
+      seccomp_bpf_enabled(false),
       detected_unexpected_exit(false),
       extra_registers(a),
       extra_registers_known(false),
@@ -359,6 +360,11 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
     case Arch::prctl:
       switch ((int)regs.arg1_signed()) {
+        case PR_SET_SECCOMP:
+          if (regs.arg2() == SECCOMP_MODE_FILTER && session().is_recording()) {
+            seccomp_bpf_enabled = true;
+          }
+          break;
         case PR_SET_NAME: {
           update_prname(regs.arg2());
           break;
@@ -524,12 +530,37 @@ void Task::move_ip_before_breakpoint() {
   set_regs(r);
 }
 
-void Task::advance_syscall() {
-  while (true) {
-    resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+void Task::enter_syscall() {
+  bool need_ptrace_syscall_event = !seccomp_bpf_enabled ||
+                                   session().syscall_seccomp_ordering() ==
+                                       Session::SECCOMP_BEFORE_PTRACE_SYSCALL;
+  bool need_seccomp_event = seccomp_bpf_enabled;
+  while (need_ptrace_syscall_event || need_seccomp_event) {
+    resume_execution(need_ptrace_syscall_event ? RESUME_SYSCALL : RESUME_CONT,
+                     RESUME_WAIT, RESUME_NO_TICKS);
     if (is_ptrace_seccomp_event()) {
+      ASSERT(this, need_seccomp_event);
+      need_seccomp_event = false;
       continue;
     }
+    ASSERT(this, !ptrace_event());
+    if (!stop_sig()) {
+      ASSERT(this, need_ptrace_syscall_event);
+      need_ptrace_syscall_event = false;
+      continue;
+    }
+    if (ReplaySession::is_ignored_signal(stop_sig()) &&
+        session().is_replaying()) {
+      continue;
+    }
+    ASSERT(this, session().is_recording());
+    static_cast<RecordTask*>(this)->stash_sig();
+  }
+}
+
+void Task::exit_syscall() {
+  while (true) {
+    resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
     ASSERT(this, !ptrace_event());
     if (!stop_sig()) {
       break;
@@ -546,11 +577,14 @@ void Task::advance_syscall() {
 void Task::exit_syscall_and_prepare_restart() {
   Registers r = regs();
   int syscallno = r.original_syscallno();
+  LOG(debug) << "exit_syscall_and_prepare_restart from syscall "
+             << rr::syscall_name(syscallno, r.arch());
   r.set_original_syscallno(syscall_number_for_gettid(r.arch()));
   set_regs(r);
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
-  advance_syscall();
+  exit_syscall();
+  LOG(debug) << "exit_syscall_and_prepare_restart done";
 
   // Restore these regs to what they would have been just before
   // the tracee trapped at the syscall.
@@ -1373,6 +1407,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   t->stopping_breakpoint_table_entry_size =
       stopping_breakpoint_table_entry_size;
   t->preload_globals = preload_globals;
+  t->seccomp_bpf_enabled = seccomp_bpf_enabled;
 
   // FdTable is either shared or copied, so the contents of
   // syscallbuf_fds_disabled_child are still valid.

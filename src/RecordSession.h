@@ -135,10 +135,18 @@ private:
 
   virtual void on_create(Task* t);
 
+  void handle_seccomp_traced_syscall(RecordTask* t,
+                                     RecordSession::StepState* step_state,
+                                     RecordResult* result,
+                                     bool* did_enter_syscall);
+  void process_syscall_entry(RecordTask* t, StepState* step_state,
+                             RecordResult* step_result);
   void check_initial_task_syscalls(RecordTask* t, RecordResult* step_result);
-  bool handle_ptrace_event(RecordTask* t, StepState* step_state);
+  bool handle_ptrace_event(RecordTask* t, StepState* step_state,
+                           RecordResult* result, bool* did_enter_syscall);
   bool handle_signal_event(RecordTask* t, StepState* step_state);
-  void runnable_state_changed(RecordTask* t, RecordResult* step_result,
+  void runnable_state_changed(RecordTask* t, StepState* step_state,
+                              RecordResult* step_result,
                               bool can_consume_wait_status);
   void signal_state_changed(RecordTask* t, StepState* step_state);
   void syscall_state_changed(RecordTask* t, StepState* step_state);

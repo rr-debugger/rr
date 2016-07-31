@@ -2095,7 +2095,7 @@ static void prepare_exit(RecordTask* t, int exit_code) {
   t->set_regs(r);
   // This exits the SYS_rt_sigprocmask.  Now the tracee is ready to do our
   // bidding.
-  t->advance_syscall();
+  t->exit_syscall();
   check_signals_while_exiting(t);
 
   // Do the actual buffer and fd cleanup.
@@ -2112,7 +2112,7 @@ static void prepare_exit(RecordTask* t, int exit_code) {
       << "Tracee should have entered through int $0x80.";
   // Restart the SYS_exit call.
   t->set_regs(exit_regs);
-  t->advance_syscall();
+  t->enter_syscall();
   check_signals_while_exiting(t);
 
   if (t->emulated_ptrace_options & PTRACE_O_TRACEEXIT) {
@@ -2249,12 +2249,14 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
 
   while (true) {
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    // XXX handle stray signals?
     if (t->ptrace_event()) {
       break;
     }
     ASSERT(t, !t->stop_sig());
     ASSERT(t, t->regs().syscall_result_signed() < 0);
     if (!t->regs().syscall_may_restart()) {
+      LOG(debug) << "clone failed, returning " << errno_name(-t->regs().syscall_result_signed());
       syscall_state.emulate_result(t->regs().syscall_result());
       // clone failed and we're existing the syscall with an error. Reenter
       // the syscall so that we're in the same state as the normal execution
@@ -2263,7 +2265,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       r.set_syscallno(Arch::gettid);
       r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
       t->set_regs(r);
-      t->advance_syscall();
+      t->enter_syscall();
       r.set_ip(t->regs().ip());
       r.set_original_syscallno(original_syscall);
       t->set_regs(r);
@@ -2275,7 +2277,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     r.set_syscallno(r.original_syscallno());
     r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
     t->set_regs(r);
-    t->advance_syscall();
+    t->enter_syscall();
   }
 
   ASSERT(t, t->ptrace_event() == ptrace_event);

@@ -313,6 +313,7 @@ void AddressSpace::map_rr_page(Task* t) {
       // brk() will not have been called yet so the brk area is empty.
       brk_start = brk_end =
           remote.infallible_syscall(syscall_number_for_brk(arch), 0);
+      ASSERT(t, !brk_end.is_null());
     }
   }
 

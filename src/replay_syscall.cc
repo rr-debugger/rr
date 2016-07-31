@@ -437,6 +437,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   regs.set_syscallno(expect_syscallno);
   t->set_regs(regs);
 
+  LOG(debug) << "Beginning execve";
   /* Enter our execve syscall. */
   __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
   ASSERT(t, !t->stop_sig()) << "Stub exec failed on entry";

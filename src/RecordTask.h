@@ -575,16 +575,6 @@ public:
    * record buffer from being reset when it normally would be.
    * Currently, the desched'd syscall code uses this. */
   bool delay_syscallbuf_reset;
-  /* True when the tracee has started using the syscallbuf, and
-   * the tracer will start receiving PTRACE_SECCOMP events for
-   * traced syscalls.  We don't make any attempt to guess at the
-   * OS's process/thread semantics; this flag goes on the first
-   * time rr sees a PTRACE_SECCOMP event from the task.
-   *
-   * NB: there must always be at least one traced syscall before
-   * any untraced ones; that's the magic "rrcall" the tracee
-   * uses to initialize its syscallbuf. */
-  bool seccomp_bpf_enabled;
   // Value to return from PR_GET_SECCOMP
   uint8_t prctl_seccomp_status;
 

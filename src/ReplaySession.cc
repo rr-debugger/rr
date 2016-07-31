@@ -317,6 +317,18 @@ Completion ReplaySession::cont_syscall_boundary(
   ASSERT(t, !t->stop_sig()) << "Replay got unrecorded signal " << t->stop_sig()
                             << " (" << signal_name(t->stop_sig()) << ")";
 
+  if (t->seccomp_bpf_enabled &&
+      syscall_seccomp_ordering_ == PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN) {
+    ASSERT(t, !constraints.is_singlestep());
+    if (t->ptrace_event() == PTRACE_EVENT_SECCOMP) {
+      syscall_seccomp_ordering_ = SECCOMP_BEFORE_PTRACE_SYSCALL;
+    } else {
+      syscall_seccomp_ordering_ = PTRACE_SYSCALL_BEFORE_SECCOMP;
+    }
+    // Eat the following event, either a seccomp or syscall notification
+    t->resume_execution(RESUME_SYSEMU, RESUME_WAIT, ticks_request);
+  }
+
   auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
   if (type && type->traced == AddressSpace::UNTRACED &&
       type->enabled == AddressSpace::REPLAY_ONLY) {

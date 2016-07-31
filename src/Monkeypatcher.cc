@@ -379,17 +379,18 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
       }
 
       if (!found_potential_interfering_branch) {
-        // Get out of executing the current syscall before we patch it.
-        t->exit_syscall_and_prepare_restart();
-
-        patch_syscall_with_hook(*this, t, hook);
-
         LOG(debug) << "Patched syscall at " << r.ip() << " syscall "
                    << syscall_name(syscallno, t->arch()) << " tid " << t->tid
                    << " bytes "
                    << bytes_to_string(
                           following_bytes,
                           sizeof(syscall_patch_hook::next_instruction_bytes));
+
+        // Get out of executing the current syscall before we patch it.
+        t->exit_syscall_and_prepare_restart();
+
+        patch_syscall_with_hook(*this, t, hook);
+
         // Return to caller, which resume normal execution.
         return true;
       }
