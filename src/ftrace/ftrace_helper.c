@@ -377,20 +377,27 @@ static void process_control_session(void) {
   char path[PATH_MAX];
   int cpu;
   int ftrace_pid_fd;
+  char buf_out[65536];
+  char* buf_out_ptr = buf_out;
 
   read_control_line(buf);
   cpu = atoi(buf);
 
-  ftrace_pid_fd = open("set_ftrace_pid", O_WRONLY);
-  check(ftrace_pid_fd >= 0);
   while (1) {
     read_control_line(buf);
     if (buf[0] == 0) {
       break;
     }
-    check((ssize_t)strlen(buf) == write(ftrace_pid_fd, buf, strlen(buf)));
-    check(1 == write(ftrace_pid_fd, " ", 1));
+
+    if (buf_out_ptr + strlen(buf) >= buf_out + sizeof(buf_out)) {
+      break;
+    }
+    buf_out_ptr += sprintf(buf_out_ptr, "%s ", buf);
   }
+
+  ftrace_pid_fd = open("set_ftrace_pid", O_WRONLY);
+  check(ftrace_pid_fd >= 0);
+  check(buf_out_ptr - buf_out == write(ftrace_pid_fd, buf_out, buf_out_ptr - buf_out));
   check(0 == close(ftrace_pid_fd));
 
   write_file("current_tracer", "function_graph");
