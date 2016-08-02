@@ -55,11 +55,7 @@ public:
    * by libthread_db.  Also clears the current mapping of symbol names
    * to addresses.
    */
-  const std::set<std::string> get_symbols_and_clear_map() {
-    symbols.clear();
-    load_library();
-    return symbol_names;
-  }
+  const std::set<std::string> get_symbols_and_clear_map();
 
   /**
    * Note that the symbol |name| has the given address.
@@ -88,11 +84,6 @@ private:
   ThreadDb(ThreadDb&) = delete;
   ThreadDb operator=(ThreadDb&) = delete;
 
-  // True if td_ta_new has succeeded.  We need two-phase
-  // initialization because td_ta_new won't work until all the symbols
-  // it needs have been resolved, and this might not be possible until
-  // the thread library has been loaded.
-  bool initialized;
   // True if libthread_db has been successfully initialized, if all
   // the functions exist, and if the list of needed symbol names has
   // been computed.

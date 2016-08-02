@@ -122,8 +122,7 @@ ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
 }
 
 rr::ThreadDb::ThreadDb(TaskGroup* task_group)
-    : initialized(false),
-      internal_handle(nullptr),
+    : internal_handle(nullptr),
       thread_db_library(nullptr),
       td_ta_delete_fn(nullptr),
       td_thr_tls_get_addr_fn(nullptr),
@@ -139,6 +138,19 @@ rr::ThreadDb::~ThreadDb() {
   if (thread_db_library) {
     dlclose(thread_db_library);
   }
+}
+
+const std::set<std::string> rr::ThreadDb::get_symbols_and_clear_map() {
+  // If we think the symbol locations might have changed, then we
+  // probably need to recreate the handle.
+  if (internal_handle) {
+    td_ta_delete_fn(internal_handle);
+    internal_handle = nullptr;
+  }
+
+  symbols.clear();
+  load_library();
+  return symbol_names;
 }
 
 void rr::ThreadDb::register_symbol(const std::string& name,
@@ -178,6 +190,10 @@ bool rr::ThreadDb::get_tls_address(pid_t rec_tid, size_t offset,
 }
 
 bool rr::ThreadDb::initialize() {
+  if (internal_handle) {
+    return true;
+  }
+
   if (!load_library()) {
     return false;
   }
