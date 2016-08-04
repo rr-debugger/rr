@@ -195,6 +195,10 @@ public:
    * Set the siginfo for the signal-stop of this.
    */
   void set_siginfo(const siginfo_t& si);
+  /**
+   * Update this task's sigmask to be new_sigmask
+   */
+  void set_new_sigmask(uint64_t new_sigmask);
 
   /**
    * Stashed-signal API: if a signal becomes pending at an

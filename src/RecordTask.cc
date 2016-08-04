@@ -900,17 +900,18 @@ void RecordTask::update_sigaction_arch(const Registers& regs) {
     // TODO: discard attempts to handle or ignore signals
     // that can't be by POSIX
     typename Arch::kernel_sigaction sa;
-    size_t sigset_size = min(sizeof(typename Arch::sigset_t), regs.arg4());
     memset(&sa, 0, sizeof(sa));
-    read_bytes_helper(
-        new_sigaction,
-        sizeof(sa) - (sizeof(typename Arch::sigset_t) - sigset_size), &sa);
+    read_bytes_helper(new_sigaction, sizeof(sa), &sa);
     sighandlers->get(sig).init_arch<Arch>(sa);
   }
 }
 
 void RecordTask::update_sigaction(const Registers& regs) {
   RR_ARCH_FUNCTION(update_sigaction_arch, regs.arch(), regs);
+}
+
+void RecordTask::set_new_sigmask(uint64_t new_sigmask) {
+  blocked_sigs = new_sigmask;
 }
 
 void RecordTask::update_sigmask(const Registers& regs) {

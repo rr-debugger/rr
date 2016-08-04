@@ -621,6 +621,7 @@ set(BASIC_TESTS
   sigqueueinfo
   sigreturn
   sigreturn_reg
+  sigreturnmask
   sigrt
   sigstop
   sigstop2

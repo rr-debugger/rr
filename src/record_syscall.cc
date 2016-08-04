@@ -2214,6 +2214,8 @@ static int ptrace_option_for_event(int ptrace_event) {
   }
 }
 
+template <typename Arch> static Switchable process_sigreturn(RecordTask* t);
+
 template <typename Arch>
 static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   uintptr_t flags;
@@ -3425,6 +3427,22 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::shmdt:
       return PREVENT_SWITCH;
 
+    case Arch::sigreturn:
+      return process_sigreturn<Arch>(t);
+
+    case Arch::rt_sigreturn: {
+      auto frameptr = (t->regs().sp() - sizeof(typename Arch::unsigned_word))
+                          .cast<typename Arch::rt_sigframe>();
+      auto oldmaskptr =
+          REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(frameptr, uc), uc_sigmask);
+      // User space sigset_t is larger than the kernel one, but since we only
+      // care about what the kernel sees, load that one.
+      uint64_t oldmask = t->read_mem(
+          oldmaskptr.template cast<typename Arch::kernel_sigset_t>());
+      t->set_new_sigmask(oldmask);
+      return PREVENT_SWITCH;
+    }
+
     default:
       // Invalid syscalls return -ENOSYS. Assume any such
       // result means the syscall was completely ignored by the
@@ -3434,6 +3452,22 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.expect_errno = ENOSYS;
       return PREVENT_SWITCH;
   }
+}
+
+template <> Switchable process_sigreturn<X64Arch>(RecordTask* t) {
+  ASSERT(t, "sigreturn should not be callable on x86_64");
+  return PREVENT_SWITCH;
+}
+
+template <> Switchable process_sigreturn<X86Arch>(RecordTask* t) {
+  auto frameptr = (t->regs().sp() - 8).cast<typename X86Arch::sigframe>();
+  auto oldmaskptrlow =
+      REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(frameptr, sc), oldmask);
+  auto oldmaskptrhigh = REMOTE_PTR_FIELD(frameptr, extramask);
+  uint64_t oldmask = t->read_mem(oldmaskptrlow) |
+                     (((uint64_t)t->read_mem(oldmaskptrhigh)) << 32);
+  t->set_new_sigmask(oldmask);
+  return PREVENT_SWITCH;
 }
 
 static Switchable rec_prepare_syscall_internal(
