@@ -173,6 +173,10 @@ public:
    */
   bool signal_handler_takes_siginfo(int sig) const;
   /**
+   * Return true if SA_NODEFER is set for |sig|
+   */
+  bool signal_handler_nodefer(int sig) const;
+  /**
    * Return |sig|'s current sigaction. Returned as raw bytes since the
    * data is architecture-dependent.
    */
