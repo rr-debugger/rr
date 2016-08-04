@@ -384,14 +384,6 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
 }
 
 static bool is_safe_to_deliver_signal(RecordTask* t) {
-  if (!t->syscallbuf_child) {
-    /* Can't be in critical section because the lock
-     * doesn't exist yet! */
-    LOG(debug) << "Safe to deliver signal at " << t->ip()
-               << " because no syscallbuf_child";
-    return true;
-  }
-
   if (!t->is_in_syscallbuf()) {
     /* The tracee is outside the syscallbuf code,
      * so in most cases can't possibly affect
@@ -417,10 +409,16 @@ static bool is_safe_to_deliver_signal(RecordTask* t) {
     return true;
   }
 
-  // Our emulation of SYS_rrcall_notify_syscall_hook_exit clears this flag.
-  t->write_mem(
-      REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
-      (uint8_t)1);
+  // If the syscallbuf buffer hasn't been created yet, just delay the signal
+  // with no need to set notify_on_syscall_hook_exit; the signal will be
+  // delivered when rrcall_init_buffers is called.
+  if (t->syscallbuf_child) {
+    // Our emulation of SYS_rrcall_notify_syscall_hook_exit clears this flag.
+    t->write_mem(
+        REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
+        (uint8_t)1);
+  }
+
   LOG(debug) << "Not safe to deliver signal at " << t->ip();
   return false;
 }
