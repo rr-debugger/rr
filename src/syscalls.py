@@ -612,7 +612,7 @@ fsync = EmulatedSyscall(x86=118, x64=74)
 # When the Linux kernel creates the stack frame for a signal handler,
 # a call to sigreturn() is inserted into the stack frame so that upon
 # return from the signal handler, sigreturn() will be called.
-sigreturn = EmulatedSyscall(x86=119)
+sigreturn = IrregularEmulatedSyscall(x86=119)
 
 #  int clone(int (*fn)(void *), void *child_stack, int flags, void *arg, (pid_t
 #*ptid, struct user_desc *tls, pid_t *ctid));
@@ -894,7 +894,7 @@ getresgid = EmulatedSyscall(x86=171, x64=120, arg1="typename Arch::legacy_gid_t"
 #
 prctl = IrregularEmulatedSyscall(x86=172, x64=157)
 
-rt_sigreturn = EmulatedSyscall(x86=173, x64=15)
+rt_sigreturn = IrregularEmulatedSyscall(x86=173, x64=15)
 rt_sigaction = EmulatedSyscall(x86=174, x64=13, arg3="typename Arch::kernel_sigaction")
 rt_sigprocmask = IrregularEmulatedSyscall(x86=175, x64=14)
 
