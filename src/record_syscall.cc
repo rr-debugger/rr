@@ -3437,8 +3437,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(frameptr, uc), uc_sigmask);
       // User space sigset_t is larger than the kernel one, but since we only
       // care about what the kernel sees, load that one.
-      uint64_t oldmask = t->read_mem(
-          oldmaskptr.template cast<typename Arch::kernel_sigset_t>());
+      static_assert(sizeof(typename Arch::kernel_sigset_t) == sizeof(uint64_t),
+                    "Kernel mask size grew?");
+      uint64_t oldmask = t->read_mem(oldmaskptr.template cast<uint64_t>());
       t->set_new_sigmask(oldmask);
       return PREVENT_SWITCH;
     }
