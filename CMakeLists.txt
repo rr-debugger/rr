@@ -449,6 +449,7 @@ set(BASIC_TESTS
   daemon
   desched_blocking_poll
   dup
+  doublesegv
   epoll_create
   epoll_create1
   eventfd

@@ -29,7 +29,7 @@ namespace rr {
  * the |refcount|s while they still refer to this.
  */
 struct Sighandler {
-  Sighandler() : resethand(false), takes_siginfo(false) {}
+  Sighandler() : resethand(false), takes_siginfo(false), nodefer_set(false) {}
 
   template <typename Arch>
   void init_arch(const typename Arch::kernel_sigaction& ksa) {
@@ -38,6 +38,7 @@ struct Sighandler {
     memcpy(sa.data(), &ksa, sizeof(ksa));
     resethand = (ksa.sa_flags & SA_RESETHAND) != 0;
     takes_siginfo = (ksa.sa_flags & SA_SIGINFO) != 0;
+    nodefer_set = (ksa.sa_flags & SA_NODEFER) != 0;
   }
 
   template <typename Arch> void reset_arch() {
@@ -73,6 +74,7 @@ struct Sighandler {
   vector<uint8_t> sa;
   bool resethand;
   bool takes_siginfo;
+  bool nodefer_set;
 };
 
 static void reset_handler(Sighandler* handler, SupportedArch arch) {
@@ -860,6 +862,10 @@ const vector<uint8_t>& RecordTask::signal_action(int sig) const {
 
 bool RecordTask::signal_handler_takes_siginfo(int sig) const {
   return sighandlers->get(sig).takes_siginfo;
+}
+
+bool RecordTask::signal_handler_nodefer(int sig) const {
+  return sighandlers->get(sig).nodefer_set;
 }
 
 bool RecordTask::is_sig_blocked(int sig) const {
