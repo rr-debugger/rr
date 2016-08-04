@@ -588,6 +588,7 @@ set(BASIC_TESTS
   rlimit
   robust_futex
   rusage
+  samask
   save_data_fd
   # sched_attr ... disabled since suitable headers are not widely available yet
   sched_setaffinity

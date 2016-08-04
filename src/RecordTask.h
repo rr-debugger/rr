@@ -199,6 +199,11 @@ public:
    * Update this task's sigmask to be new_sigmask
    */
   void set_new_sigmask(uint64_t new_sigmask);
+  /**
+   * Update this task's sigmask to block all signals specified in sa_mask of
+   * |sig|'s current sigaction
+   */
+  void apply_sig_sa_mask(int sig);
 
   /**
    * Stashed-signal API: if a signal becomes pending at an
