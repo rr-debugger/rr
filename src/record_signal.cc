@@ -318,7 +318,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
     // happen an unbounded number of consecutive times
     // and the tracee never switched out.
     int sig = t->stop_sig();
-    ASSERT(t, sig);
+    ASSERT(t, sig) << "expected stop-signal, got " << t->status();
     if (SYSCALLBUF_DESCHED_SIGNAL == sig ||
         PerfCounters::TIME_SLICE_SIGNAL == sig || t->is_sig_ignored(sig)) {
       LOG(debug) << "  dropping ignored " << signal_name(sig);
