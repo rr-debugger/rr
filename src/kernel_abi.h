@@ -1034,6 +1034,12 @@ struct BaseArch : public wordsize,
   RR_VERIFY_TYPE(__sysctl_args);
 
   typedef struct {
+    unsigned_long __val[64 / (8 * sizeof(unsigned_long))];
+  } kernel_sigset_t;
+
+  // libc reserves some space in the user facing structures for future
+  // extensibility.
+  typedef struct {
     unsigned_long __val[1024 / (8 * sizeof(unsigned_long))];
   } __sigset_t;
   typedef __sigset_t sigset_t;
@@ -1043,14 +1049,8 @@ struct BaseArch : public wordsize,
     ptr<void> k_sa_handler;
     unsigned_long sa_flags;
     ptr<void> sa_restorer;
-    sigset_t sa_mask;
+    kernel_sigset_t sa_mask;
   };
-
-  // The 'size' parameter to pass to rt_sigaction. Only this value works,
-  // even though sizeof(sigset_t) > 8 (it's actually 128 with kernel 3.16,
-  // as above).
-  enum { sigaction_sigset_size = 8 };
-
   struct tms {
     clock_t tms_utime;
     clock_t tms_stime;
@@ -1376,6 +1376,68 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
                       user_fpxregs_struct);
 #endif
 
+  struct sigcontext {
+    uint16_t gs, __gsh;
+    uint16_t fs, __fsh;
+    uint16_t es, __esh;
+    uint16_t ds, __dsh;
+    uint32_t di;
+    uint32_t si;
+    uint32_t bp;
+    uint32_t sp;
+    uint32_t bx;
+    uint32_t dx;
+    uint32_t cx;
+    uint32_t ax;
+    uint32_t trapno;
+    uint32_t err;
+    uint32_t ip;
+    uint16_t cs, __csh;
+    uint32_t flags;
+    uint32_t sp_at_signal;
+    uint16_t ss, __ssh;
+    uint32_t fpstate;
+    uint32_t oldmask;
+    uint32_t cr2;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::sigcontext, sigcontext);
+
+  struct ucontext {
+    uint32_t uc_flags;
+    uint32_t uc_link;
+    stack_t uc_stack;
+    sigcontext uc_mcontext;
+    kernel_sigset_t uc_sigmask;
+  };
+
+  struct rt_sigframe {
+    uint32_t pretcode;
+    int sig;
+    uint32_t pinfo;
+    uint32_t puc;
+    siginfo_t info;
+    struct ucontext uc;
+  };
+
+  struct _fpstate_32 {
+    uint32_t cw, sw, tag, ipoff, cssel, dataoff, datasel;
+    uint16_t _st[40];
+    uint16_t status, magic;
+    uint32_t _fxsr_env[6], mxcsr, reserved;
+    uint32_t _fxsr_st[32];
+    uint32_t _xmm[32];
+    uint32_t padding[56];
+  };
+
+  struct sigframe {
+    uint32_t pretcode;
+    int sig;
+    sigcontext sc;
+    _fpstate_32 unused;
+    uint32_t extramask;
+    char retcode[8];
+  };
+
   struct user {
     user_regs_struct regs;
     int u_fpvalid;
@@ -1502,6 +1564,38 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_regs_struct,
                       user_regs_struct);
 
+  struct sigcontext {
+    uint64_t r8;
+    uint64_t r9;
+    uint64_t r10;
+    uint64_t r11;
+    uint64_t r12;
+    uint64_t r13;
+    uint64_t r14;
+    uint64_t r15;
+    uint64_t di;
+    uint64_t si;
+    uint64_t bp;
+    uint64_t bx;
+    uint64_t dx;
+    uint64_t ax;
+    uint64_t cx;
+    uint64_t sp;
+    uint64_t ip;
+    uint64_t flags;
+    uint16_t cs;
+    uint16_t gs;
+    uint16_t fs;
+    uint16_t __pad0;
+    uint64_t err;
+    uint64_t trapno;
+    uint64_t oldmask;
+    uint64_t cr2;
+    uint64_t fpstate;
+    uint64_t reserved[8];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::sigcontext, sigcontext);
+
   struct user_fpregs_struct {
     uint16_t cwd;
     uint16_t swd;
@@ -1517,6 +1611,22 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_fpregs_struct,
                       user_fpregs_struct);
+
+  struct ucontext {
+    uint64_t ucflags;
+    ptr<struct ucontext> uc_link;
+    stack_t uc_stack;
+    struct sigcontext uc_mcontext;
+    sigset_t uc_sigmask;
+    user_fpregs_struct uc_fpregs;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::ucontext, ucontext);
+
+  struct rt_sigframe {
+    ptr<char> pretcode;
+    struct ucontext uc;
+    siginfo_t info;
+  };
 
   struct user {
     struct user_regs_struct regs;

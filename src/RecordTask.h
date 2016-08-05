@@ -173,6 +173,10 @@ public:
    */
   bool signal_handler_takes_siginfo(int sig) const;
   /**
+   * Return true if SA_NODEFER is set for |sig|
+   */
+  bool signal_handler_nodefer(int sig) const;
+  /**
    * Return |sig|'s current sigaction. Returned as raw bytes since the
    * data is architecture-dependent.
    */
@@ -191,6 +195,15 @@ public:
    * Set the siginfo for the signal-stop of this.
    */
   void set_siginfo(const siginfo_t& si);
+  /**
+   * Update this task's sigmask to be new_sigmask
+   */
+  void set_new_sigmask(uint64_t new_sigmask);
+  /**
+   * Update this task's sigmask to block all signals specified in sa_mask of
+   * |sig|'s current sigaction
+   */
+  void apply_sig_sa_mask(int sig);
 
   /**
    * Stashed-signal API: if a signal becomes pending at an

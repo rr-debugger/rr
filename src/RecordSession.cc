@@ -996,6 +996,9 @@ static bool inject_handled_signal(RecordTask* t) {
 
   int sig = t->ev().Signal().siginfo.si_signo;
   t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
+  t->apply_sig_sa_mask(sig);
+  if (!t->signal_handler_nodefer(sig))
+    t->set_sig_blocked(sig);
 
   // It's been observed that when tasks enter
   // sighandlers, the singlestep operation above

@@ -29,7 +29,11 @@ namespace rr {
  * the |refcount|s while they still refer to this.
  */
 struct Sighandler {
-  Sighandler() : resethand(false), takes_siginfo(false) {}
+  Sighandler()
+      : resethand(false),
+        takes_siginfo(false),
+        nodefer_set(false),
+        sa_mask(0) {}
 
   template <typename Arch>
   void init_arch(const typename Arch::kernel_sigaction& ksa) {
@@ -38,6 +42,10 @@ struct Sighandler {
     memcpy(sa.data(), &ksa, sizeof(ksa));
     resethand = (ksa.sa_flags & SA_RESETHAND) != 0;
     takes_siginfo = (ksa.sa_flags & SA_SIGINFO) != 0;
+    nodefer_set = (ksa.sa_flags & SA_NODEFER) != 0;
+    static_assert(sizeof(ksa.sa_mask) == sizeof(sa_mask),
+                  "Kernel mask size grew?");
+    memcpy(&sa_mask, &ksa.sa_mask, sizeof(ksa.sa_mask));
   }
 
   template <typename Arch> void reset_arch() {
@@ -73,6 +81,8 @@ struct Sighandler {
   vector<uint8_t> sa;
   bool resethand;
   bool takes_siginfo;
+  bool nodefer_set;
+  uint64_t sa_mask;
 };
 
 static void reset_handler(Sighandler* handler, SupportedArch arch) {
@@ -862,6 +872,10 @@ bool RecordTask::signal_handler_takes_siginfo(int sig) const {
   return sighandlers->get(sig).takes_siginfo;
 }
 
+bool RecordTask::signal_handler_nodefer(int sig) const {
+  return sighandlers->get(sig).nodefer_set;
+}
+
 bool RecordTask::is_sig_blocked(int sig) const {
   int sig_bit = sig - 1;
   if (sigsuspend_blocked_sigs) {
@@ -873,6 +887,10 @@ bool RecordTask::is_sig_blocked(int sig) const {
 void RecordTask::set_sig_blocked(int sig) {
   int sig_bit = sig - 1;
   blocked_sigs |= (sig_set_t)1 << sig_bit;
+}
+
+void RecordTask::apply_sig_sa_mask(int sig) {
+  blocked_sigs |= sighandlers->get(sig).sa_mask;
 }
 
 bool RecordTask::is_sig_ignored(int sig) const {
@@ -894,17 +912,18 @@ void RecordTask::update_sigaction_arch(const Registers& regs) {
     // TODO: discard attempts to handle or ignore signals
     // that can't be by POSIX
     typename Arch::kernel_sigaction sa;
-    size_t sigset_size = min(sizeof(typename Arch::sigset_t), regs.arg4());
     memset(&sa, 0, sizeof(sa));
-    read_bytes_helper(
-        new_sigaction,
-        sizeof(sa) - (sizeof(typename Arch::sigset_t) - sigset_size), &sa);
+    read_bytes_helper(new_sigaction, sizeof(sa), &sa);
     sighandlers->get(sig).init_arch<Arch>(sa);
   }
 }
 
 void RecordTask::update_sigaction(const Registers& regs) {
   RR_ARCH_FUNCTION(update_sigaction_arch, regs.arch(), regs);
+}
+
+void RecordTask::set_new_sigmask(uint64_t new_sigmask) {
+  blocked_sigs = new_sigmask;
 }
 
 void RecordTask::update_sigmask(const Registers& regs) {

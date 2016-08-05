@@ -449,6 +449,7 @@ set(BASIC_TESTS
   daemon
   desched_blocking_poll
   dup
+  doublesegv
   epoll_create
   epoll_create1
   eventfd
@@ -587,6 +588,7 @@ set(BASIC_TESTS
   rlimit
   robust_futex
   rusage
+  samask
   save_data_fd
   # sched_attr ... disabled since suitable headers are not widely available yet
   sched_setaffinity
@@ -620,6 +622,7 @@ set(BASIC_TESTS
   sigqueueinfo
   sigreturn
   sigreturn_reg
+  sigreturnmask
   sigrt
   sigstop
   sigstop2

@@ -1,0 +1,50 @@
+#include "rrutil.h"
+
+static void segv_handler(__attribute__((unused)) int sig,
+                         __attribute__((unused)) siginfo_t* si,
+                         __attribute__((unused)) void* context) {
+  test_assert(0 && "Should not reach here");
+}
+
+static void usr1_handler(__attribute__((unused)) int sig,
+                         __attribute__((unused)) siginfo_t* si,
+                         __attribute__((unused)) void* context) {
+  // Generate SIGSEGV. Can't use raise, because that will be blocked
+  (*(int*)1) = 0;
+  test_assert(0 && "Should not reach here");
+}
+
+static void* do_thread(__attribute__((unused)) void* p) {
+  raise(SIGUSR1);
+  test_assert(0 && "Should not reach here!");
+  return NULL;
+}
+
+int main(void) {
+  pid_t child;
+  int status;
+  pthread_t thread;
+
+  if ((child = fork()) == 0) {
+    struct sigaction act;
+    act.sa_sigaction = segv_handler;
+    act.sa_flags = SA_ONSTACK | SA_SIGINFO;
+    sigemptyset(&act.sa_mask);
+    sigaction(SIGSEGV, &act, NULL);
+
+    act.sa_sigaction = usr1_handler;
+    sigaddset(&act.sa_mask, SIGSEGV);
+    sigaction(SIGUSR1, &act, NULL);
+
+    pthread_create(&thread, NULL, do_thread, NULL);
+    test_assert(0 == sched_yield());
+    sleep(1000);
+    test_assert(0 && "Should not reach here");
+    return 0;
+  }
+
+  test_assert(child == wait(&status));
+  test_assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV);
+  atomic_puts("EXIT-SUCCESS");
+  return 0;
+}
