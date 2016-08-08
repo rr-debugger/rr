@@ -176,35 +176,39 @@ static void set_arch_siginfo_arch(const siginfo_t& src, void* dest,
       assign_sigval<Arch>(si->_sifields._timer.si_sigval_,
                           siginfo._sifields._timer.si_sigval_);
       break;
-  }
-  switch (siginfo.si_signo) {
-    case SIGCHLD:
-      si->_sifields._sigchld.si_pid_ = siginfo._sifields._sigchld.si_pid_;
-      si->_sifields._sigchld.si_uid_ = siginfo._sifields._sigchld.si_uid_;
-      si->_sifields._sigchld.si_status_ = siginfo._sifields._sigchld.si_status_;
-      si->_sifields._sigchld.si_utime_ = siginfo._sifields._sigchld.si_utime_;
-      si->_sifields._sigchld.si_stime_ = siginfo._sifields._sigchld.si_stime_;
-      break;
-    case SIGILL:
-    case SIGBUS:
-    case SIGFPE:
-    case SIGSEGV:
-    case SIGTRAP:
-      si->_sifields._sigfault.si_addr_ =
-          siginfo._sifields._sigfault.si_addr_.rptr();
-      si->_sifields._sigfault.si_addr_lsb_ =
-          siginfo._sifields._sigfault.si_addr_lsb_;
-      break;
-    case SIGIO:
-      si->_sifields._sigpoll.si_band_ = siginfo._sifields._sigpoll.si_band_;
-      si->_sifields._sigpoll.si_fd_ = siginfo._sifields._sigpoll.si_fd_;
-      break;
-    case SIGSYS:
-      si->_sifields._sigsys._call_addr =
-          siginfo._sifields._sigsys._call_addr.rptr();
-      si->_sifields._sigsys._syscall = siginfo._sifields._sigsys._syscall;
-      si->_sifields._sigsys._arch = siginfo._sifields._sigsys._arch;
-      break;
+    default:
+      switch (siginfo.si_signo) {
+        case SIGCHLD:
+          si->_sifields._sigchld.si_pid_ = siginfo._sifields._sigchld.si_pid_;
+          si->_sifields._sigchld.si_uid_ = siginfo._sifields._sigchld.si_uid_;
+          si->_sifields._sigchld.si_status_ =
+              siginfo._sifields._sigchld.si_status_;
+          si->_sifields._sigchld.si_utime_ =
+              siginfo._sifields._sigchld.si_utime_;
+          si->_sifields._sigchld.si_stime_ =
+              siginfo._sifields._sigchld.si_stime_;
+          break;
+        case SIGILL:
+        case SIGBUS:
+        case SIGFPE:
+        case SIGSEGV:
+        case SIGTRAP:
+          si->_sifields._sigfault.si_addr_ =
+              siginfo._sifields._sigfault.si_addr_.rptr();
+          si->_sifields._sigfault.si_addr_lsb_ =
+              siginfo._sifields._sigfault.si_addr_lsb_;
+          break;
+        case SIGIO:
+          si->_sifields._sigpoll.si_band_ = siginfo._sifields._sigpoll.si_band_;
+          si->_sifields._sigpoll.si_fd_ = siginfo._sifields._sigpoll.si_fd_;
+          break;
+        case SIGSYS:
+          si->_sifields._sigsys._call_addr =
+              siginfo._sifields._sigsys._call_addr.rptr();
+          si->_sifields._sigsys._syscall = siginfo._sifields._sigsys._syscall;
+          si->_sifields._sigsys._arch = siginfo._sifields._sigsys._arch;
+          break;
+      }
   }
 }
 
