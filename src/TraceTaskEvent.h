@@ -31,7 +31,7 @@ public:
   TraceTaskEvent(Type type = NONE, pid_t tid = 0) : type_(type), tid_(tid) {}
 
   static TraceTaskEvent for_clone(pid_t tid, pid_t parent_tid,
-                                  uint32_t clone_flags) {
+                                  uint64_t clone_flags) {
     TraceTaskEvent result(CLONE, tid);
     result.parent_tid_ = parent_tid;
     result.clone_flags_ = clone_flags;
@@ -56,7 +56,7 @@ public:
     assert(type() == CLONE);
     return parent_tid_;
   }
-  uintptr_t clone_flags() const {
+  uint64_t clone_flags() const {
     assert(type() == CLONE);
     return clone_flags_;
   }
@@ -89,7 +89,7 @@ private:
   Type type_;
   pid_t tid_;
   pid_t parent_tid_;                  // CLONE only
-  uintptr_t clone_flags_;             // CLONE only
+  uint64_t clone_flags_;              // CLONE only
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only
   std::vector<int> fds_to_close_;     // EXEC only
