@@ -233,7 +233,7 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
       break;
     default:
       FATAL() << "Unknown architecture";
-      break;
+      return;
   }
   vector<GdbRegisterValue> rs;
   for (GdbRegister r = GdbRegister(0); r < end; r = GdbRegister(r + 1)) {
