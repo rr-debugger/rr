@@ -1369,12 +1369,10 @@ pid_t RecordTask::find_newborn_thread() {
   DIR* dir = opendir(path);
   ASSERT(this, dir);
   while (true) {
-    struct dirent* result;
-    struct dirent entry;
-    int ret = readdir_r(dir, &entry, &result);
-    ASSERT(this, !ret && result == &entry);
+    struct dirent* result = readdir(dir);
+    ASSERT(this, result);
     char* end;
-    pid_t thread_tid = strtol(entry.d_name, &end, 10);
+    pid_t thread_tid = strtol(result->d_name, &end, 10);
     if (*end == '\0' && !session().find_task(thread_tid)) {
       closedir(dir);
       return thread_tid;
@@ -1398,12 +1396,10 @@ pid_t RecordTask::find_newborn_child_process() {
   DIR* dir = opendir("/proc");
   ASSERT(this, dir);
   while (true) {
-    struct dirent* result;
-    struct dirent entry;
-    int ret = readdir_r(dir, &entry, &result);
-    ASSERT(this, !ret && result == &entry);
+    struct dirent* result = readdir(dir);
+    ASSERT(this, result);
     char* end;
-    pid_t proc_tid = strtol(entry.d_name, &end, 10);
+    pid_t proc_tid = strtol(result->d_name, &end, 10);
     if (*end == '\0' && !session().find_task(proc_tid) &&
         get_ppid(proc_tid) == real_tgid()) {
       closedir(dir);
