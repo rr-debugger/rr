@@ -85,7 +85,8 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       extra_registers_known(false),
       session_(&session),
       top_of_stack(),
-      seen_ptrace_exit_event(false) {}
+      seen_ptrace_exit_event(false),
+      expecting_ptrace_interrupt_stop(0) {}
 
 void Task::destroy() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
@@ -1102,6 +1103,7 @@ void Task::wait(double interrupt_after_elapsed) {
     if (!sent_wait_interrupt && interrupt_after_elapsed) {
       ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
       sent_wait_interrupt = true;
+      expecting_ptrace_interrupt_stop = 2;
     }
   }
 
@@ -1126,29 +1128,11 @@ void Task::wait(double interrupt_after_elapsed) {
              << status;
   ASSERT(this, tid == ret) << "waitpid(" << tid << ") failed with " << ret;
 
-  // If some other ptrace-stop happened to race with our
-  // PTRACE_INTERRUPT, then let the other event win.  We only
-  // want to interrupt tracees stuck running in userspace.
-  // We convert the ptrace-stop to a reschedule signal.
-  if (sent_wait_interrupt &&
-      is_signal_triggered_by_ptrace_interrupt(status.group_stop())) {
-    LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
-    // Force this timeslice to end
-    if (session().is_recording()) {
-      session().as_record()->scheduler().expire_timeslice();
-    }
-    status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
-    siginfo_t si;
-    memset(&si, 0, sizeof(si));
-    si.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
-    si.si_fd = hpc.ticks_fd();
-    si.si_code = POLL_IN;
-    did_waitpid(status, &si);
-    return;
-  }
-
   if (sent_wait_interrupt) {
-    LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << status;
+    LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
+    if (!is_signal_triggered_by_ptrace_interrupt(status.group_stop())) {
+      LOG(warn) << "  PTRACE_INTERRUPT raced with another event " << status;
+    }
   }
   did_waitpid(status);
 }
@@ -1221,13 +1205,42 @@ void Task::emulate_syscall_entry(const Registers& regs) {
   set_regs(r);
 }
 
-void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
+void Task::did_waitpid(WaitStatus status) {
   Ticks more_ticks = hpc.read_ticks();
   // Stop PerfCounters ASAP to reduce the possibility that due to bugs or
   // whatever they pick up something spurious later.
   hpc.stop();
   ticks += more_ticks;
   session().accumulate_ticks_processed(more_ticks);
+
+  // After PTRACE_INTERRUPT, any next two stops may be a group stop caused by
+  // that PTRACE_INTERRUPT (or neither may be). This is because PTRACE_INTERRUPT
+  // generally lets other stops win (and thus doesn't inject it's own stop), but
+  // if the other stop was already done processing, even we didn't see it yet,
+  // the stop will still be queued, so we could see the other stop and then the
+  // PTRACE_INTERRUPT group stop.
+  // When we issue PTRACE_INTERRUPT, we this set this counter to 2, and here
+  // we decrement it on every stop such that while this counter is positive,
+  // any group-stop could be one induced by PTRACE_INTERRUPT
+  bool siginfo_overriden = false;
+  if (expecting_ptrace_interrupt_stop > 0) {
+    expecting_ptrace_interrupt_stop--;
+    if (is_signal_triggered_by_ptrace_interrupt(status.group_stop())) {
+      // Assume this was PTRACE_INTERRUPT and thus treat this as
+      // TIME_SLICE_SIGNAL instead.
+      if (session().is_recording()) {
+        // Force this timeslice to end
+        session().as_record()->scheduler().expire_timeslice();
+      }
+      status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
+      memset(&pending_siginfo, 0, sizeof(pending_siginfo));
+      pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
+      pending_siginfo.si_fd = hpc.ticks_fd();
+      pending_siginfo.si_code = POLL_IN;
+      siginfo_overriden = true;
+      expecting_ptrace_interrupt_stop = 0;
+    }
+  }
 
   LOG(debug) << "  (refreshing register cache)";
   intptr_t original_syscallno = registers.original_syscallno();
@@ -1244,14 +1257,10 @@ void Task::did_waitpid(WaitStatus status, siginfo_t* override_siginfo) {
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     }
   }
-  if (status.stop_sig()) {
-    if (override_siginfo) {
-      pending_siginfo = *override_siginfo;
-    } else {
-      if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
-        LOG(debug) << "Unexpected process death for " << tid;
-        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-      }
+  if (!siginfo_overriden && status.stop_sig()) {
+    if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
+      LOG(debug) << "Unexpected process death for " << tid;
+      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     }
   }
 
