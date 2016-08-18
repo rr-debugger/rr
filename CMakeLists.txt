@@ -650,6 +650,7 @@ set(BASIC_TESTS
   sync
   syscall_bp
   syscallbuf_signal_reset
+  syscallbuf_sigstop
   syscallbuf_timeslice
   syscallbuf_timeslice2
   sysconf

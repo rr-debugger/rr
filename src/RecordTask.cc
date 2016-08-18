@@ -226,6 +226,7 @@ RecordTask::~RecordTask() {
     ASSERT(this, t->emulated_ptracer == this);
     t->emulated_ptracer = nullptr;
     t->emulated_ptrace_options = 0;
+    t->emulated_stop_pending = false;
     t->emulated_stop_type = NOT_STOPPED;
   }
 
@@ -820,6 +821,7 @@ void RecordTask::emulate_SIGCONT() {
   for (Task* t : task_group()->task_set()) {
     auto rt = static_cast<RecordTask*>(t);
     LOG(debug) << "setting " << tid << " to NOT_STOPPED due to SIGCONT";
+    rt->emulated_stop_pending = false;
     rt->emulated_stop_type = NOT_STOPPED;
   }
 }

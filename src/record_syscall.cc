@@ -1520,6 +1520,7 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   }
 
   tracee->emulated_stop_type = NOT_STOPPED;
+  tracee->emulated_stop_pending = false;
   tracee->emulated_stop_code = WaitStatus();
   tracee->emulated_ptrace_cont_command = command;
 
