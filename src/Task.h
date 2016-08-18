@@ -188,10 +188,8 @@ public:
    * Force the wait status of this to |status|, as if
    * |wait()/try_wait()| had returned it. Call this whenever a waitpid
    * returned activity for this past.
-   * If override_siginfo is non-null and status indicates a pending signal,
-   * use *override_siginfo as the siginfo instead of reading it from the kernel.
    */
-  void did_waitpid(WaitStatus status, siginfo_t* override_siginfo = nullptr);
+  void did_waitpid(WaitStatus status);
 
   /**
    * Syscalls have side effects on registers (e.g. setting the flags register).
@@ -943,6 +941,10 @@ protected:
   bool seen_ptrace_exit_event;
 
   PropertyTable properties_;
+
+  // A counter for the number of stops for which the stop may have been caused
+  // by PTRACE_INTERRUPT. See description in do_waitpid
+  int expecting_ptrace_interrupt_stop;
 
   Task(Task&) = delete;
   Task operator=(Task&) = delete;
