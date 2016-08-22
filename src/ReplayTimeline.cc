@@ -866,12 +866,12 @@ ReplayResult ReplayTimeline::reverse_continue(
           final_result.break_status = BreakStatus();
           return final_result;
         }
-        LOG(debug) << "Seeked backward from " << end << " to " << start;
+        LOG(debug) << "Sought backward from " << end << " to " << start;
       } else {
         Mark seek = restart_points.back();
         restart_points.pop_back();
         seek_to_mark(seek);
-        LOG(debug) << "Seeked directly backward from " << start << " to "
+        LOG(debug) << "Sought directly backward from " << start << " to "
                    << seek;
         start = move(seek);
       }
@@ -1063,7 +1063,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
           result.break_status = BreakStatus();
           return result;
         }
-        LOG(debug) << "Seeked backward from " << current_key << " to "
+        LOG(debug) << "Sought backward from " << current_key << " to "
                    << current_mark_key();
         current_key = current_mark_key();
       }

@@ -88,7 +88,7 @@ public:
 
   /**
    * Return a mark for the current state. A checkpoint need not be retained,
-   * but this mark can be seeked to later.
+   * but this mark can be sought to later.
    * This can be expensive in some (perhaps unusual) situations since we
    * may need to clone the current session and run it a bit, to figure out
    * where we are relative to other Marks. So don't call this unless you
