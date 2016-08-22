@@ -397,7 +397,8 @@ static void process_control_session(void) {
 
   ftrace_pid_fd = open("set_ftrace_pid", O_WRONLY);
   check(ftrace_pid_fd >= 0);
-  check(buf_out_ptr - buf_out == write(ftrace_pid_fd, buf_out, buf_out_ptr - buf_out));
+  check(buf_out_ptr - buf_out ==
+        write(ftrace_pid_fd, buf_out, buf_out_ptr - buf_out));
   check(0 == close(ftrace_pid_fd));
 
   write_file("current_tracer", "function_graph");

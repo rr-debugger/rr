@@ -2256,7 +2256,8 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     ASSERT(t, !t->stop_sig());
     ASSERT(t, t->regs().syscall_result_signed() < 0);
     if (!t->regs().syscall_may_restart()) {
-      LOG(debug) << "clone failed, returning " << errno_name(-t->regs().syscall_result_signed());
+      LOG(debug) << "clone failed, returning "
+                 << errno_name(-t->regs().syscall_result_signed());
       syscall_state.emulate_result(t->regs().syscall_result());
       // clone failed and we're existing the syscall with an error. Reenter
       // the syscall so that we're in the same state as the normal execution

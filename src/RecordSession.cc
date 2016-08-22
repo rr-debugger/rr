@@ -256,11 +256,21 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     step_state->continue_type = RecordSession::CONTINUE_SYSCALL;
   } else {
     ASSERT(t, syscall_seccomp_ordering_ == PTRACE_SYSCALL_BEFORE_SECCOMP);
-    // We've already passed the PTRACE_SYSCALL trap for syscall entry, so
-    // we need to handle that now.
-    t->emulate_syscall_entry(t->regs());
-    process_syscall_entry(t, step_state, result);
-    *did_enter_syscall = true;
+    if (t->ev().is_syscall_event() &&
+        t->ev().Syscall().state == PROCESSING_SYSCALL) {
+      // We did PTRACE_SYSCALL and already saw a syscall trap. Just ignore this.
+      LOG(debug) << "Ignoring SECCOMP syscall trap since we already got a "
+                    "PTRACE_SYSCALL trap";
+      // The next continue needs to be a PTRACE_SYSCALL to observe
+      // the exit-syscall event.
+      step_state->continue_type = RecordSession::CONTINUE_SYSCALL;
+    } else {
+      // We've already passed the PTRACE_SYSCALL trap for syscall entry, so
+      // we need to handle that now.
+      t->emulate_syscall_entry(t->regs());
+      process_syscall_entry(t, step_state, result);
+      *did_enter_syscall = true;
+    }
   }
 }
 
