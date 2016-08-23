@@ -627,6 +627,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_89_c2_f7_da(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_ba_01_00_00_00(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_89_c1_31_d2(void);
 
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed by
@@ -661,7 +662,11 @@ static void __attribute__((constructor)) init_process(void) {
      */
     { 5,
       { 0xba, 0x01, 0x00, 0x00, 0x00 },
-      (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 }
+      (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 },
+    /* pthread_sigmask has 'syscall' followed by 'mov %eax,%ecx; xor %edx,%edx' */
+    { 4,
+      { 0x89, 0xc1, 0x31, 0xd2 },
+      (uintptr_t)_syscall_hook_trampoline_89_c1_31_d2 }
   };
 
   real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
@@ -2302,6 +2307,63 @@ static long sys_getrusage(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+// The alignment of this struct is incorrect, but as long as it's not
+// used inside other structures, defining it this way makes the code below
+// easier.
+typedef uint64_t kernel_sigset_t;
+
+static long sys_rt_sigprocmask(const struct syscall_info* call) {
+  const int syscallno = SYS_rt_sigprocmask;
+  long ret;
+  kernel_sigset_t modified_set;
+  void* oldset2 = NULL;
+
+  void* ptr = prep_syscall();
+
+  int how = (int)call->args[0];
+  const kernel_sigset_t* set = (const kernel_sigset_t*)call->args[1];
+  kernel_sigset_t* oldset = (kernel_sigset_t*)call->args[2];
+
+  if (oldset) {
+    oldset2 = ptr;
+    ptr += sizeof(kernel_sigset_t);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  if (set && (how == SIG_BLOCK || how == SIG_SETMASK)) {
+    local_memcpy(&modified_set, set, sizeof(kernel_sigset_t));
+    // SIGSTKFLT (PerfCounters::TIME_SLICE_SIGNAL) and
+    // SIGPWR(SYSCALLBUF_DESCHED_SIGNAL) are used by rr
+    modified_set &= ~(((uint64_t)1) << (SIGSTKFLT - 1)) &
+                    ~(((uint64_t)1) << (SIGPWR - 1));
+    set = &modified_set;
+  }
+
+  ret = untraced_syscall4(syscallno, how, set, oldset2, call->args[3]);
+  if (ret == 0) {
+    if (oldset2)
+      local_memcpy(oldset, oldset2, sizeof(kernel_sigset_t));
+    if (set) {
+      struct syscallbuf_hdr* hdr = buffer_hdr();
+      switch (how) {
+        case SIG_UNBLOCK:
+          hdr->blocked_sigs &= ~*set;
+          break;
+        case SIG_BLOCK:
+          hdr->blocked_sigs |= *set;
+          break;
+        case SIG_SETMASK:
+          hdr->blocked_sigs = *set;
+          break;
+      }
+    }
+  }
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long syscall_hook_internal(const struct syscall_info* call) {
   switch (call->no) {
 #define CASE(syscallname)                                                      \
@@ -2324,6 +2386,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #else
     CASE(fcntl);
 #endif
+    CASE(rt_sigprocmask);
     CASE(fgetxattr);
     CASE(flistxattr);
     CASE_GENERIC_NONBLOCKING_FD(fsetxattr);
