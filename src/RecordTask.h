@@ -473,8 +473,8 @@ private:
    * copy in this tasks's preload globals such that we can effectively track,
    * changes made to the mask by buffered syscalls.
    */
-   void reload_sigmask();
-   void writeback_sigmask();
+  void reload_sigmask();
+  void writeback_sigmask();
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.

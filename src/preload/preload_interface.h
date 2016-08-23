@@ -299,7 +299,7 @@ struct syscallbuf_hdr {
    * calls may be buffered, that value may be out of date until rr reloads it
    * from here.
    */
-   uint64_t blocked_sigs;
+  uint64_t blocked_sigs;
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));

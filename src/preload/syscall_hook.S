@@ -265,6 +265,12 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_ba_01_00_00_00)
         mov $1,%edx
 SYSCALLHOOK_END(_syscall_hook_trampoline_ba_01_00_00_00)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_89_c1_31_d2)
+        call _syscall_hook_trampoline
+        mov %eax,%ecx
+        xor %edx,%edx
+SYSCALLHOOK_END(_syscall_hook_trampoline_89_c1_31_d2)
+
 _syscall_hook_end:
 
 #endif /* __x86_64__ */
