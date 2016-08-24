@@ -706,9 +706,9 @@ const ExtraRegisters& Task::extra_regs() {
       struct iovec vec = { extra_registers.data_.data(),
                            extra_registers.data_.size() };
       xptrace(PTRACE_GETREGSET, NT_X86_XSTATE, &vec);
-      ASSERT(this, vec.iov_len == xsave_area_size)
-          << "Didn't get enough register data; expected " << xsave_area_size
-          << " but got " << vec.iov_len;
+      extra_registers.data_.resize(vec.iov_len);
+      // The kernel may return less than the full XSTATE
+      extra_registers.validate(this);
     } else {
 #if defined(__i386__)
       LOG(debug) << "  (refreshing extra-register cache using FPXREGS)";

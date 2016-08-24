@@ -132,6 +132,15 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
   return RegData(fxsave_387_ctrl_offsets[regno - DREG_64_FCTRL], 4);
 }
 
+static uint64_t xsave_features(const vector<uint8_t>& data) {
+  // If this is just FXSAVE(64) data then we we have no XSAVE header and no
+  // XSAVE(64) features enabled.
+  return data.size() < xsave_header_offset + xsave_header_size
+             ? 0
+             : *reinterpret_cast<const uint64_t*>(data.data() +
+                                                  xsave_header_offset);
+}
+
 size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
                                      bool* defined) const {
   if (format_ != XSAVE) {
@@ -146,26 +155,36 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   }
 
   assert(reg_data.size > 0);
-  // If this is just FXSAVE(64) data then we we have no XSAVE header and no
-  // XSAVE(64) features enabled.
-  uint64_t xsave_features =
-      data_.size() < xsave_header_offset + xsave_header_size
-          ? 0
-          : *reinterpret_cast<const uint64_t*>(data_.data() +
-                                               xsave_header_offset);
 
   *defined = true;
 
   // Apparently before any AVX registers are used, the feature bit is not set
   // in the XSAVE data, so we'll just return 0 for them here.
   if (reg_data.xsave_feature_bit >= 0 &&
-      !(xsave_features & (1 << reg_data.xsave_feature_bit))) {
+      !(xsave_features(data_) & (1 << reg_data.xsave_feature_bit))) {
     memset(buf, 0, reg_data.size);
   } else {
     assert(size_t(reg_data.offset + reg_data.size) <= data_.size());
     memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
   }
   return reg_data.size;
+}
+
+void ExtraRegisters::validate(Task* t) {
+  if (format_ != XSAVE) {
+    return;
+  }
+
+  ASSERT(t, data_.size() >= 512);
+  uint32_t offset = 512;
+  if (data_.size() > offset) {
+    ASSERT(t, data_.size() >= offset + 64);
+    offset += 64;
+    uint64_t features = xsave_features(data_);
+    if (features & AVX_FEATURE) {
+      ASSERT(t, data_.size() >= offset + 256);
+    }
+  }
 }
 
 static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,

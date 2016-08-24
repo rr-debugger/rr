@@ -99,6 +99,8 @@ public:
 
   void print_register_file_compact(FILE* f) const;
 
+  void validate(Task* t);
+
 private:
   friend class Task;
 
