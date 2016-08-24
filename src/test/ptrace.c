@@ -137,8 +137,8 @@ int main(void) {
     iov.iov_len = xsave_size;
     ret = ptrace(PTRACE_GETREGSET, child, (void*)NT_X86_XSTATE, &iov);
     test_assert(0 == ret);
-    test_assert(iov.iov_len == xsave_size);
-    test_assert(NULL == memchr(xsave_regs, 0xCF, xsave_size));
+    test_assert(iov.iov_len <= xsave_size);
+    test_assert(NULL == memchr(xsave_regs, 0xCF, iov.iov_len));
     verify_guard(xsave_size, xsave_regs);
 
     test_assert(0 ==
