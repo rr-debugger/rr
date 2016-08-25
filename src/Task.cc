@@ -1431,7 +1431,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   t->thread_areas_ = thread_areas_;
   // When cloning a task in the same session, the new task's thread-locals
   // are not initialized ... unless CLONE_SET_TLS is set.
-  if (other_session) {
+  if (other_session || !(CLONE_SHARE_VM & flags)) {
     t->thread_locals_initialized = thread_locals_initialized;
   }
   if (CLONE_SET_TLS & flags) {

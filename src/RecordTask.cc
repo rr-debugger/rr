@@ -426,6 +426,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
   if (as->syscallbuf_enabled()) {
     args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
     KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
+    writeback_sigmask();
     args.syscallbuf_ptr = syscallbuf_child;
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
@@ -877,7 +878,8 @@ bool RecordTask::signal_handler_nodefer(int sig) const {
   return sighandlers->get(sig).nodefer_set;
 }
 
-bool RecordTask::is_sig_blocked(int sig) const {
+bool RecordTask::is_sig_blocked(int sig) {
+  reload_sigmask();
   int sig_bit = sig - 1;
   if (sigsuspend_blocked_sigs) {
     return (*sigsuspend_blocked_sigs >> sig_bit) & 1;
@@ -886,12 +888,16 @@ bool RecordTask::is_sig_blocked(int sig) const {
 }
 
 void RecordTask::set_sig_blocked(int sig) {
+  reload_sigmask();
   int sig_bit = sig - 1;
   blocked_sigs |= (sig_set_t)1 << sig_bit;
+  writeback_sigmask();
 }
 
 void RecordTask::apply_sig_sa_mask(int sig) {
+  reload_sigmask();
   blocked_sigs |= sighandlers->get(sig).sa_mask;
+  writeback_sigmask();
 }
 
 bool RecordTask::is_sig_ignored(int sig) const {
@@ -925,6 +931,7 @@ void RecordTask::update_sigaction(const Registers& regs) {
 
 void RecordTask::set_new_sigmask(uint64_t new_sigmask) {
   blocked_sigs = new_sigmask;
+  writeback_sigmask();
 }
 
 void RecordTask::update_sigmask(const Registers& regs) {
@@ -940,9 +947,11 @@ void RecordTask::update_sigmask(const Registers& regs) {
   // Update the blocked signals per |how|.
   switch (how) {
     case SIG_BLOCK:
+      reload_sigmask();
       blocked_sigs |= set;
       break;
     case SIG_UNBLOCK:
+      reload_sigmask();
       blocked_sigs &= ~set;
       break;
     case SIG_SETMASK:
@@ -950,6 +959,19 @@ void RecordTask::update_sigmask(const Registers& regs) {
       break;
     default:
       FATAL() << "Unknown sigmask manipulator " << how;
+  }
+  writeback_sigmask();
+}
+
+void RecordTask::reload_sigmask() {
+  if (syscallbuf_child) {
+    blocked_sigs = read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs));
+  }
+}
+
+void RecordTask::writeback_sigmask() {
+  if (syscallbuf_child) {
+    write_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs), blocked_sigs);
   }
 }
 
