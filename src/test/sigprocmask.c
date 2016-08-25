@@ -11,14 +11,15 @@ static void handle_usr1(__attribute__((unused)) int sig) {
 
 int main(void) {
   sigset_t mask, oldmask;
-  int i, dummy = 0;
+  int i, err, dummy = 0;
 
   signal(SIGUSR1, handle_usr1);
 
   sigemptyset(&mask);
   sigaddset(&mask, SIGUSR1);
   /* The libc function invokes rt_sigprocmask. */
-  sigprocmask(SIG_BLOCK, &mask, &oldmask);
+  err = sigprocmask(SIG_BLOCK, &mask, &oldmask);
+  test_assert(err == 0);
 
   raise(SIGUSR1);
 

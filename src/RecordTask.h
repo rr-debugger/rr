@@ -182,7 +182,7 @@ public:
    */
   const std::vector<uint8_t>& signal_action(int sig) const;
   /** Return true iff |sig| is blocked for this. */
-  bool is_sig_blocked(int sig) const;
+  bool is_sig_blocked(int sig);
 
   /** Set |sig| to be treated as blocked. */
   void set_sig_blocked(int sig);
@@ -467,6 +467,14 @@ private:
    * May queue signals for specific tasks.
    */
   void send_synthetic_SIGCHLD_if_necessary();
+
+  /**
+   * Reload, resp. write back the current mask of blocked signals to the shadow
+   * copy in this tasks's preload globals such that we can effectively track,
+   * changes made to the mask by buffered syscalls.
+   */
+   void reload_sigmask();
+   void writeback_sigmask();
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.

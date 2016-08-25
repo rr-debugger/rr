@@ -293,6 +293,13 @@ struct syscallbuf_hdr {
    * When it's zero, the desched signal can safely be
    * discarded. */
   uint8_t desched_signal_may_be_relevant;
+  /* A copy of the tasks's signal mask. Updated by both preload and rr in
+   * response to events that change the signal mask. RR stores this in
+   * RecordTask::blocked_sigs, but since some signal mask affecting system
+   * calls may be buffered, that value may be out of date until rr reloads it
+   * from here.
+   */
+   uint64_t blocked_sigs;
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
