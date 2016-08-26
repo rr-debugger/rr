@@ -380,7 +380,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   auto& mmaps = writer(MMAPS);
   TraceReader::MappedDataSource source;
   string backing_file_name;
-  if (origin == REMAP_MAPPING) {
+  if (origin == REMAP_MAPPING || origin == PATCH_MAPPING) {
     source = TraceReader::SOURCE_ZERO;
   } else if (km.fsname().find("/SYSV") == 0) {
     source = TraceReader::SOURCE_TRACE;
