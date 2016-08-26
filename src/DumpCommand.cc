@@ -194,11 +194,16 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           if (km.flags() & MAP_SHARED) {
             prot_flags[3] = 's';
           }
+          const char* fsname = km.fsname().c_str();
+          if (data.source == TraceReader::SOURCE_ZERO) {
+            const char source_zero[] = "<ZERO>";
+            fsname = source_zero;
+          }
           fprintf(out, "  { map_file:\"%s\", addr:%p, length:%p, "
                        "prot_flags:\"%s\", file_offset:0x%llx, "
                        "data_file:\"%s\", data_offset:0x%llx, "
                        "file_size:0x%llx }\n",
-                  km.fsname().c_str(), (void*)km.start().as_int(),
+                  fsname, (void*)km.start().as_int(),
                   (void*)km.size(), prot_flags,
                   (long long)km.file_offset_bytes(), data.file_name.c_str(),
                   (long long)data.data_offset_bytes,
