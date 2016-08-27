@@ -594,9 +594,10 @@ static void process_brk(ReplayTask* t) {
  */
 enum NoteTaskMap { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
 
-static remote_ptr<void> finish_anonymous_mmap(
-    ReplayTask* t, AutoRemoteSyscalls& remote, remote_ptr<void> rec_addr,
-    size_t length, int prot, int flags, NoteTaskMap note_task_map) {
+static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
+                                  remote_ptr<void> rec_addr, size_t length,
+                                  int prot, int flags,
+                                  NoteTaskMap note_task_map) {
   string file_name;
   dev_t device = KernelMapping::NO_DEVICE;
   ino_t inode = KernelMapping::NO_INODE;
@@ -625,7 +626,6 @@ static remote_ptr<void> finish_anonymous_mmap(
     remote.task()->vm()->map(t, rec_addr, length, prot, flags, 0, file_name,
                              device, inode, nullptr, &recorded_km, emu_file);
   }
-  return rec_addr;
 }
 
 /* Ensure that accesses to the memory region given by start/length
@@ -680,24 +680,23 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                 const KernelMapping& km) {
   LOG(debug) << "  finishing private mmap of " << km.fsname();
 
-  size_t num_bytes = length;
-  remote_ptr<void> mapped_addr =
-      finish_anonymous_mmap(t, remote, rec_addr, length, prot,
-                            /* The restored region won't be backed
-                             * by file. */
-                            flags | MAP_ANONYMOUS, DONT_NOTE_TASK_MAP);
+  remote.infallible_mmap_syscall(
+      rec_addr, length, prot,
+      // Tell the kernel to take |rec_addr| seriously.
+      (flags & ~MAP_GROWSDOWN) | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
+
   /* Restore the map region we copied. */
   ssize_t data_size = t->set_data_from_trace();
 
   /* Ensure pages past the end of the file fault on access */
   size_t data_pages = ceil_page_size(data_size);
-  size_t mapped_pages = ceil_page_size(num_bytes);
+  size_t mapped_pages = ceil_page_size(length);
 
-  t->vm()->map(t, mapped_addr, num_bytes, prot, flags | MAP_ANONYMOUS,
+  t->vm()->map(t, rec_addr, length, prot, flags | MAP_ANONYMOUS,
                page_size() * offset_pages, string(), KernelMapping::NO_DEVICE,
                KernelMapping::NO_INODE, nullptr, &km);
 
-  create_sigbus_region(remote, prot, mapped_addr + data_pages,
+  create_sigbus_region(remote, prot, rec_addr + data_pages,
                        mapped_pages - data_pages, km);
 }
 
