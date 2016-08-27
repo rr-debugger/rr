@@ -505,6 +505,7 @@ set(BASIC_TESTS
   kill_newborn
   legacy_ugid
   madvise
+  madvise_free
   map_fixed
   membarrier
   memfd_create

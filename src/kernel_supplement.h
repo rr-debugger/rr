@@ -124,6 +124,9 @@ struct usbdevfs_streams {
 #define TIOCGEXCL _IOR('T', 0x40, int)
 #endif
 
+#ifndef MADV_FREE
+#define MADV_FREE 8
+#endif
 #ifndef MADV_DONTDUMP
 #define MADV_DONTDUMP 16
 #endif

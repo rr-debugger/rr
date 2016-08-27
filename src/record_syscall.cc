@@ -3368,8 +3368,17 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case MADV_DONTDUMP:
         case MADV_DODUMP:
           break;
+        case MADV_FREE: {
+          // MADV_FREE introduces nondeterminism --- the kernel zeroes the
+          // pages when under memory pressure. So we don't allow it.
+          Registers r = t->regs();
+          r.set_arg3(-1);
+          t->set_regs(r);
+          break;
+        }
         default:
           syscall_state.expect_errno = EINVAL;
+          break;
       }
       return PREVENT_SWITCH;
 
@@ -4251,6 +4260,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::fcntl:
     case Arch::fcntl64:
     case Arch::ioctl:
+    case Arch::madvise:
     case Arch::pread64:
     case Arch::preadv:
     case Arch::ptrace:

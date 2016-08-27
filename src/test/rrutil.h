@@ -230,4 +230,8 @@ inline static void crash_null_deref(void) { *(volatile int*)NULL = 0; }
 #define TIOCGEXCL _IOR('T', 0x40, int)
 #endif
 
+#ifndef MADV_FREE
+#define MADV_FREE 8
+#endif
+
 #endif /* RRUTIL_H */

@@ -629,54 +629,51 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_ba_01_00_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_89_c1_31_d2(void);
 
-  struct syscall_patch_hook
-      syscall_patch_hooks[] =
-          { /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
-             * by
-             * cmp $-4095,%rax (in glibc-2.18-16.fc20.x86_64) */
-            { 6,
-              { 0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff },
-              (uintptr_t)_syscall_hook_trampoline_48_3d_01_f0_ff_ff },
-            /* Many glibc syscall wrappers (e.g. __libc_recv) have 'syscall'
-             * followed by
-             * cmp $-4096,%rax (in glibc-2.18-16.fc20.x86_64) */
-            { 6,
-              { 0x48, 0x3d, 0x00, 0xf0, 0xff, 0xff },
-              (uintptr_t)_syscall_hook_trampoline_48_3d_00_f0_ff_ff },
-            /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
-             * by
-             * mov (%rsp),%rdi (in glibc-2.18-16.fc20.x86_64) */
-            { 4,
-              { 0x48, 0x8b, 0x3c, 0x24 },
-              (uintptr_t)_syscall_hook_trampoline_48_8b_3c_24 },
-            /* __lll_unlock_wake has 'syscall' followed by
-             * pop %rdx; pop %rsi; ret */
-            { 3,
-              { 0x5a, 0x5e, 0xc3 },
-              (uintptr_t)_syscall_hook_trampoline_5a_5e_c3 },
-            /* posix_fadvise64 has 'syscall' followed by
-             * mov %eax,%edx; neg %edx (in glibc-2.22-11.fc23.x86_64) */
-            { 4,
-              { 0x89, 0xc2, 0xf7, 0xda },
-              (uintptr_t)_syscall_hook_trampoline_89_c2_f7_da },
-            /* Our VDSO vsyscall patches have 'syscall' followed by "nop; nop;
-               nop" */
-            { 3,
-              { 0x90, 0x90, 0x90 },
-              (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 },
-            /* glibc-2.22-17.fc23.x86_64 has 'syscall' followed by 'mov $1,%rdx'
-             * in
-             * pthread_barrier_wait.
-             */
-            { 5,
-              { 0xba, 0x01, 0x00, 0x00, 0x00 },
-              (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 },
-            /* pthread_sigmask has 'syscall' followed by 'mov %eax,%ecx; xor
-               %edx,%edx' */
-            { 4,
-              { 0x89, 0xc1, 0x31, 0xd2 },
-              (uintptr_t)_syscall_hook_trampoline_89_c1_31_d2 }
-          };
+  struct syscall_patch_hook syscall_patch_hooks[] = {
+    /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
+     * by
+     * cmp $-4095,%rax (in glibc-2.18-16.fc20.x86_64) */
+    { 6,
+      { 0x48, 0x3d, 0x01, 0xf0, 0xff, 0xff },
+      (uintptr_t)_syscall_hook_trampoline_48_3d_01_f0_ff_ff },
+    /* Many glibc syscall wrappers (e.g. __libc_recv) have 'syscall'
+     * followed by
+     * cmp $-4096,%rax (in glibc-2.18-16.fc20.x86_64) */
+    { 6,
+      { 0x48, 0x3d, 0x00, 0xf0, 0xff, 0xff },
+      (uintptr_t)_syscall_hook_trampoline_48_3d_00_f0_ff_ff },
+    /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
+     * by
+     * mov (%rsp),%rdi (in glibc-2.18-16.fc20.x86_64) */
+    { 4,
+      { 0x48, 0x8b, 0x3c, 0x24 },
+      (uintptr_t)_syscall_hook_trampoline_48_8b_3c_24 },
+    /* __lll_unlock_wake has 'syscall' followed by
+     * pop %rdx; pop %rsi; ret */
+    { 3, { 0x5a, 0x5e, 0xc3 }, (uintptr_t)_syscall_hook_trampoline_5a_5e_c3 },
+    /* posix_fadvise64 has 'syscall' followed by
+     * mov %eax,%edx; neg %edx (in glibc-2.22-11.fc23.x86_64) */
+    { 4,
+      { 0x89, 0xc2, 0xf7, 0xda },
+      (uintptr_t)_syscall_hook_trampoline_89_c2_f7_da },
+    /* Our VDSO vsyscall patches have 'syscall' followed by "nop; nop;
+       nop" */
+    { 3,
+      { 0x90, 0x90, 0x90 },
+      (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 },
+    /* glibc-2.22-17.fc23.x86_64 has 'syscall' followed by 'mov $1,%rdx'
+     * in
+     * pthread_barrier_wait.
+     */
+    { 5,
+      { 0xba, 0x01, 0x00, 0x00, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 },
+    /* pthread_sigmask has 'syscall' followed by 'mov %eax,%ecx; xor
+       %edx,%edx' */
+    { 4,
+      { 0x89, 0xc1, 0x31, 0xd2 },
+      (uintptr_t)_syscall_hook_trampoline_89_c1_31_d2 }
+  };
 
   real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
 #else
@@ -1675,9 +1672,21 @@ static long sys_madvise(const struct syscall_info* call) {
   long ret;
 
   switch (advice) {
-    case MADV_DOFORK:
-    case MADV_DONTFORK:
-    case MADV_REMOVE:
+    // Whitelist advice values that we know are OK to pass through to the
+    // kernel directly.
+    case MADV_NORMAL:
+    case MADV_RANDOM:
+    case MADV_SEQUENTIAL:
+    case MADV_WILLNEED:
+    case MADV_DONTNEED:
+    case MADV_MERGEABLE:
+    case MADV_UNMERGEABLE:
+    case MADV_HUGEPAGE:
+    case MADV_NOHUGEPAGE:
+    case MADV_DONTDUMP:
+    case MADV_DODUMP:
+      break;
+    default:
       return traced_raw_syscall(call);
   }
 
