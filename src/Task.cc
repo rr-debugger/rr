@@ -1524,7 +1524,7 @@ template <typename Arch>
 static void copy_tls_arch(const Task::CapturedState& state,
                           AutoRemoteSyscalls& remote) {
   if (Arch::clone_tls_type == Arch::UserDescPointer) {
-    for (const struct user_desc& t : state.thread_areas) {
+    for (const auto& t : state.thread_areas) {
       AutoRestoreMem remote_tls(remote, (const uint8_t*)&t, sizeof(t));
       LOG(debug) << "    setting tls " << remote_tls.get();
       remote.infallible_syscall(
