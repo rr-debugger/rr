@@ -505,9 +505,15 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
   // name between RR_MAPPING_PREFIX and the -%d-%d at the end.
   char* name_end = name_buffer + strnlen(name_buffer, buffer_size);
   char* name_start = name_buffer + strlen(RR_MAPPING_PREFIX);
-  for (int i = 0; i < 2; ++i) {
-    while (name_end > name_start + (1 - i) && *(name_end--) != '-')
-      ;
+  int hyphens_seen = 0;
+  while (name_end > name_start) {
+    --name_end;
+    if (*name_end == '-') {
+      ++hyphens_seen;
+    }
+    if (hyphens_seen == 2) {
+      break;
+    }
   }
   *name_end = '\0';
   return name_start;
