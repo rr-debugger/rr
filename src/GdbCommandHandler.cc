@@ -101,8 +101,14 @@ class RRCmd(gdb.Command):
         response = gdb_unescape(rv_match.group(1))
         gdb.write(response)
 
-end
+def history_push(p):
+    gdb.execute("rr-history-push", to_string=True)
 
+# Automatically push an history entry when the program execution stops
+# (signal, breakpoint). This is fired before an interactive prompt is shown.
+gdb.events.stop.connect(history_push)
+
+end
 )Delimiter");
 
   if (gdb_command_list) {

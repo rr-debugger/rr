@@ -27,6 +27,41 @@ static SimpleGdbCommand when_tid("when-tid", [](GdbServer&, Task* t,
   return string("Current tid: ") + to_string(t->tid);
 });
 
+static std::vector<ReplayTimeline::Mark> back_stack;
+static ReplayTimeline::Mark current_history_cp;
+static std::vector<ReplayTimeline::Mark> forward_stack;
+static SimpleGdbCommand rr_history_push("rr-history-push", [](GdbServer& gdb_server, Task*,
+                                                              const vector<string>&) {
+  if (current_history_cp) {
+    back_stack.push_back(current_history_cp);
+  }
+  current_history_cp = gdb_server.get_timeline().mark();
+  forward_stack.clear();
+  return string();
+});
+static SimpleGdbCommand back("back", [](GdbServer& gdb_server, Task*,
+                                        const vector<string>&) {
+  if (back_stack.size() == 0) {
+    return string("Can't go back. No more history entries.");
+  }
+  forward_stack.push_back(current_history_cp);
+  current_history_cp = back_stack.back();
+  back_stack.pop_back();
+  gdb_server.get_timeline().seek_to_mark(current_history_cp);
+  return string();
+});
+static SimpleGdbCommand forward("forward", [](GdbServer& gdb_server, Task*,
+                                              const vector<string>&) {
+  if (forward_stack.size() == 0) {
+    return string("Can't go forward. No more history entries.");
+  }
+  back_stack.push_back(current_history_cp);
+  current_history_cp = forward_stack.back();
+  forward_stack.pop_back();
+  gdb_server.get_timeline().seek_to_mark(current_history_cp);
+  return string();
+});
+
 static int gNextCheckpointId = 0;
 
 string invoke_checkpoint(GdbServer& gdb_server, Task*,
