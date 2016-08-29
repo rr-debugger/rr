@@ -105,8 +105,18 @@ Task::~Task() {
   if (unstable) {
     LOG(warn) << tid << " is unstable; not blocking on its termination";
     // This will probably leak a zombie process for rr's lifetime.
+
+    // Destroying a Session may result in unstable exits during which
+    // Task::destroy_buffers() will not have been called.
+    if (!syscallbuf_child.is_null()) {
+      uint8_t* local_mapping = vm()->mapping_of(syscallbuf_child).local_addr;
+      vm()->unmap(this, syscallbuf_child, syscallbuf_size);
+      int ret = munmap(local_mapping, syscallbuf_size);
+      ASSERT(this, ret >= 0);
+    }
   } else {
     ASSERT(this, seen_ptrace_exit_event);
+    ASSERT(this, syscallbuf_child.is_null());
 
     if (tg->task_set().empty() && !session().is_recording()) {
       // Reap the zombie.

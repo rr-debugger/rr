@@ -712,6 +712,8 @@ set(TESTS_WITH_PROGRAM
   breakpoint_conditions
   breakpoint_overlap
   call_function
+  # Disabled because it's very slow
+  # check_session_leaks
   checkpoint_dying_threads
   checkpoint_mixed_mode
   checksum_sanity
