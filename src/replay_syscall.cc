@@ -276,7 +276,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     new_task->vm()->remove_all_watchpoints();
 
     AutoRemoteSyscalls remote(new_task);
-    for (auto m : new_task->vm()->maps()) {
+    for (auto m : t->vm()->maps()) {
       // Recreate any tracee-shared mappings
       if (m.local_addr && !(m.flags & AddressSpace::Mapping::IS_SYSCALLBUF)) {
         memcpy(Session::recreate_shared_mmap(remote, m).local_addr,

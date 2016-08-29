@@ -43,7 +43,7 @@ public:
   shr_ptr subrange(uintptr_t start, uintptr_t size);
 
 private:
-  void check_for_changes(RecordTask* t, const AddressSpace::Mapping& m);
+  void check_for_changes(RecordTask* t, AddressSpace::Mapping& m);
 
   MonitoredSharedMemory(uint8_t* real_mem, size_t size)
       : real_mem(real_mem), size(size) {}

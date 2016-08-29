@@ -51,8 +51,12 @@ MonitoredSharedMemory::shr_ptr MonitoredSharedMemory::subrange(uintptr_t,
 }
 
 void MonitoredSharedMemory::check_all(RecordTask* t) {
+  vector<remote_ptr<void>> addrs;
   for (auto a : t->vm()->monitored_addrs()) {
-    const auto& m = t->vm()->mapping_of(a);
+    addrs.push_back(a);
+  }
+  for (auto a : addrs) {
+    auto m = t->vm()->mapping_of(a);
     if (m.monitored_shared_memory) {
       m.monitored_shared_memory->check_for_changes(t, m);
     }
@@ -60,8 +64,14 @@ void MonitoredSharedMemory::check_all(RecordTask* t) {
 }
 
 void MonitoredSharedMemory::check_for_changes(RecordTask* t,
-                                              const AddressSpace::Mapping& m) {
+                                              AddressSpace::Mapping& m) {
   ASSERT(t, m.map.size() == size);
+  if (!m.local_addr) {
+    // reestablish local mapping after a fork or whatever
+    AutoRemoteSyscalls remote(t);
+    auto msm = m.monitored_shared_memory;
+    m = Session::recreate_shared_mmap(remote, m, move(msm));
+  }
   if (!memcmp(m.local_addr, real_mem, size)) {
     return;
   }

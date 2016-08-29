@@ -1273,6 +1273,12 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       syscallbuf_enabled_(o.syscallbuf_enabled_),
       saved_auxv_(o.saved_auxv_),
       first_run_event_(0) {
+  for (auto& m : mem) {
+    // The original address space continues to have exclusive ownership of
+    // all local mappings.
+    m.second.local_addr = nullptr;
+  }
+
   for (auto& it : o.breakpoints) {
     breakpoints.insert(make_pair(it.first, it.second));
   }
