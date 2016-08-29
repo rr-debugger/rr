@@ -230,31 +230,52 @@ const siginfo_t& Task::get_siginfo() {
   return pending_siginfo;
 }
 
+/**
+ * Must be idempotent.
+ */
 void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
-  remote.infallible_syscall(syscall_number_for_munmap(arch()), scratch_ptr,
-                            scratch_size);
-  vm()->unmap(this, scratch_ptr, scratch_size);
-  if (!syscallbuf_child.is_null()) {
-    uint8_t* local_mapping = vm()->mapping_of(syscallbuf_child).local_addr;
+  unmap_buffers_for(remote, this);
+  scratch_ptr = nullptr;
+  syscallbuf_child = nullptr;
+  close_buffers_for(remote, this);
+  desched_fd_child = -1;
+  cloned_file_data_fd_child = -1;
+}
+
+void Task::unmap_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
+  if (other->scratch_ptr) {
+    remote.infallible_syscall(syscall_number_for_munmap(arch()), other->scratch_ptr,
+        other->scratch_size);
+    vm()->unmap(this, other->scratch_ptr, other->scratch_size);
+  }
+  if (!other->syscallbuf_child.is_null()) {
+    uint8_t* local_mapping = vm()->mapping_of(other->syscallbuf_child).local_addr;
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
-                              syscallbuf_child, syscallbuf_size);
-    vm()->unmap(this, syscallbuf_child, syscallbuf_size);
-    int ret = munmap(local_mapping, syscallbuf_size);
-    ASSERT(this, ret >= 0);
-    syscallbuf_child = nullptr;
-    if (desched_fd_child >= 0) {
-      if (session().is_recording()) {
-        remote.infallible_syscall(syscall_number_for_close(arch()),
-                                  desched_fd_child);
-      }
-      fds->did_close(desched_fd_child);
+        other->syscallbuf_child, other->syscallbuf_size);
+    vm()->unmap(this, other->syscallbuf_child, other->syscallbuf_size);
+    if  (local_mapping) {
+      int ret = munmap(local_mapping, other->syscallbuf_size);
+      ASSERT(this, ret >= 0);
     }
-    if (cloned_file_data_fd_child >= 0) {
+  }
+}
+
+/**
+ * Must be idempotent.
+ */
+void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
+  if (other->desched_fd_child >= 0) {
+    if (session().is_recording()) {
       remote.infallible_syscall(syscall_number_for_close(arch()),
-                                cloned_file_data_fd_child);
-      fds->did_close(cloned_file_data_fd_child);
+          other->desched_fd_child);
     }
+    fds->did_close(other->desched_fd_child);
+  }
+  if (other->cloned_file_data_fd_child >= 0) {
+    remote.infallible_syscall(syscall_number_for_close(arch()),
+        other->cloned_file_data_fd_child);
+    fds->did_close(other->cloned_file_data_fd_child);
   }
 }
 
@@ -1388,6 +1409,9 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   auto& sess = other_session ? *other_session : session();
   Task* t = sess.new_task(new_tid, new_rec_tid, new_serial, arch());
 
+  bool unmap_buffers = false;
+  bool close_buffers = false;
+
   if (CLONE_SHARE_TASK_GROUP & flags) {
     t->tg = tg;
   } else {
@@ -1410,6 +1434,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     }
   } else {
     t->as = sess.clone(t, as);
+    unmap_buffers = as->task_set().size() > 1;
   }
 
   t->syscallbuf_size = syscallbuf_size;
@@ -1426,6 +1451,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->fds->insert_task(t);
   } else {
     t->fds = fds->clone(t);
+    close_buffers = fds->task_set().size() > 1;
   }
 
   t->top_of_stack = stack;
@@ -1451,37 +1477,60 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
   t->as->insert_task(t);
 
-  if (!(CLONE_SHARE_VM & flags) && &session() == &t->session()) {
-    as->did_fork_into(t);
-
-    if (!syscallbuf_child.is_null()) {
+  if (&session() == &t->session()) {
+    if (unmap_buffers) {
+      // Unmap syscallbuf and scratch for tasks that were not cloned into
+      // the new address space
       AutoRemoteSyscalls remote(t);
-      // Unshare the syscallbuf memory so when we lock it below, we don't
-      // also lock it in the task we cloned from!
-      int prot = PROT_READ | PROT_WRITE;
-      int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
-      remote.infallible_mmap_syscall(syscallbuf_child, syscallbuf_size, prot,
-                                     flags, -1, 0);
-      t->vm()->map(t, syscallbuf_child, syscallbuf_size, prot, flags, 0,
-                   string());
-
-      // Mark the clone's syscallbuf as locked. This will prevent the
-      // clone using syscallbuf until the clone reinitializes the
-      // the buffer via its pthread_atfork handler. Otherwise the clone may
-      // log syscalls to its copy of the syscallbuf and we won't know about
-      // them since we don't have it mapped.
-      // In some cases (e.g. vfork(), or raw SYS_fork syscall) the
-      // pthread_atfork handler will never run. Syscallbuf will be permanently
-      // disabled but that's OK, those cases are rare (and in the case of vfork,
-      // tracees should immediately exit or exec anyway).
-      t->write_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked), uint8_t(1));
-
-      if (CLONE_SHARE_FILES & flags) {
-        // Clear our desched_fd_child so that we don't try to close it.
-        // It should only be closed in |this|.
-        t->desched_fd_child = -1;
-        t->cloned_file_data_fd_child = -1;
+      for (Task* tt : as->task_set()) {
+        if (tt != this) {
+          t->unmap_buffers_for(remote, tt);
+        }
       }
+    }
+    if (close_buffers) {
+      // Close syscallbuf fds for tasks that were not cloned into
+      // the new fd table
+      AutoRemoteSyscalls remote(t);
+      for (Task* tt : fds->task_set()) {
+        if (tt != this) {
+          t->close_buffers_for(remote, tt);
+        }
+      }
+    }
+
+    if (!(CLONE_SHARE_VM & flags)) {
+      as->did_fork_into(t);
+
+      if (!syscallbuf_child.is_null()) {
+        AutoRemoteSyscalls remote(t);
+        // Unshare the syscallbuf memory so when we lock it below, we don't
+        // also lock it in the task we cloned from!
+        int prot = PROT_READ | PROT_WRITE;
+        int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
+        remote.infallible_mmap_syscall(syscallbuf_child, syscallbuf_size, prot,
+                                       flags, -1, 0);
+        t->vm()->map(t, syscallbuf_child, syscallbuf_size, prot, flags, 0,
+                     string());
+
+        // Mark the clone's syscallbuf as locked. This will prevent the
+        // clone using syscallbuf until the clone reinitializes the
+        // the buffer via its pthread_atfork handler. Otherwise the clone may
+        // log syscalls to its copy of the syscallbuf and we won't know about
+        // them since we don't have it mapped.
+        // In some cases (e.g. vfork(), or raw SYS_fork syscall) the
+        // pthread_atfork handler will never run. Syscallbuf will be permanently
+        // disabled but that's OK, those cases are rare (and in the case of vfork,
+        // tracees should immediately exit or exec anyway).
+        t->write_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked), uint8_t(1));
+      }
+    }
+
+    if (CLONE_SHARE_FILES & flags) {
+      // Clear our desched_fd_child so that we don't try to close it.
+      // It should only be closed in |this|.
+      t->desched_fd_child = -1;
+      t->cloned_file_data_fd_child = -1;
     }
   }
 

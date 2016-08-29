@@ -197,8 +197,7 @@ void arm_desched_event(RecordTask* t) {
 static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
   ASSERT(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo &&
              si->si_code == POLL_IN && si->si_fd == t->desched_fd_child))
-      << "Tracee is using SIGPWR??? (code=" << si->si_code
-      << ", fd=" << si->si_fd << ")";
+      << "Tracee is using SIGPWR??? (siginfo=" << *si << ")";
 
   /* If the tracee isn't in the critical section where a desched
    * event is relevant, we can ignore it.  See the long comments

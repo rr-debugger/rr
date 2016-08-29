@@ -582,6 +582,11 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
   }
   preparation_done = true;
   write_back = WRITE_BACK;
+  switchable = sw;
+
+  if (!t->scratch_ptr) {
+    return switchable;
+  }
 
   ASSERT(t, scratch >= t->scratch_ptr);
 
@@ -592,8 +597,6 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
         << ", but only " << t->scratch_size
         << " was available.  Disabling context switching: deadlock may follow.";
     switchable = PREVENT_SWITCH;
-  } else {
-    switchable = sw;
   }
   if (switchable == PREVENT_SWITCH || param_list.empty()) {
     return switchable;
@@ -2100,6 +2103,7 @@ static void prepare_exit(RecordTask* t, int exit_code) {
 
   // Do the actual buffer and fd cleanup.
   t->destroy_buffers();
+
   check_signals_while_exiting(t);
 
   // Restore these regs to what they would have been just before

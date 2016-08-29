@@ -226,6 +226,9 @@ public:
    */
   void destroy_buffers();
 
+  void unmap_buffers_for(AutoRemoteSyscalls& remote, Task* t);
+  void close_buffers_for(AutoRemoteSyscalls& remote, Task* t);
+
   remote_ptr<const struct syscallbuf_record> next_syscallbuf_record();
   long stored_record_size(remote_ptr<const struct syscallbuf_record> record);
 
