@@ -2580,6 +2580,18 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case FUTEX_WAKE:
           break;
 
+        case FUTEX_LOCK_PI:
+        case FUTEX_UNLOCK_PI:
+        case FUTEX_TRYLOCK_PI:
+        case FUTEX_CMP_REQUEUE_PI:
+        case FUTEX_WAIT_REQUEUE_PI:{
+          Registers r = t->regs();
+          r.set_arg2(-1);
+          t->set_regs(r);
+          syscall_state.emulate_result(-ENOSYS);
+          break;
+        }
+
         default:
           syscall_state.expect_errno = EINVAL;
           break;
@@ -4263,6 +4275,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::dup3:
     case Arch::fcntl:
     case Arch::fcntl64:
+    case Arch::futex:
     case Arch::ioctl:
     case Arch::madvise:
     case Arch::pread64:

@@ -473,6 +473,7 @@ set(BASIC_TESTS
   fork_brk
   fork_child_crash
   fork_stress
+  futex_pi
   futex_priorities
   fxregs
   getcpu
