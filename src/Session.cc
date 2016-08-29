@@ -374,15 +374,6 @@ void Session::finish_initializing() const {
     for (auto& mem : tgleader.captured_memory) {
       tgleader.clone_leader->write_bytes_helper(mem.first, mem.second.size(),
                                                 mem.second.data());
-      auto& m = tgleader.clone_leader->vm()->mapping_of(mem.first);
-      if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
-        // Bytes after the used part of the syscallbuf must be zero.
-        remote_ptr<void> bytes_end = mem.first + mem.second.size();
-        ASSERT(tgleader.clone_leader, m.map.start() == mem.first);
-        ASSERT(tgleader.clone_leader, bytes_end <= m.map.end());
-        ASSERT(tgleader.clone_leader, m.local_addr);
-        memset(m.local_addr + mem.second.size(), 0, m.map.end() - bytes_end);
-      }
     }
     for (auto& tgmember : tgleader.member_states) {
       Task* t_clone =
