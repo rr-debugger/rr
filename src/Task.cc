@@ -72,7 +72,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
       syscallbuf_size(0),
-      num_syscallbuf_bytes(0),
       stopping_breakpoint_table_entry_size(0),
       serial(serial),
       prname("???"),
@@ -229,9 +228,9 @@ void Task::destroy_buffers() {
   if (!syscallbuf_child.is_null()) {
     uint8_t* local_mapping = vm()->mapping_of(syscallbuf_child).local_addr;
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
-                              syscallbuf_child, num_syscallbuf_bytes);
-    vm()->unmap(this, syscallbuf_child, num_syscallbuf_bytes);
-    munmap(local_mapping, num_syscallbuf_bytes);
+                              syscallbuf_child, syscallbuf_size);
+    vm()->unmap(this, syscallbuf_child, syscallbuf_size);
+    munmap(local_mapping, syscallbuf_size);
     syscallbuf_child = nullptr;
     if (desched_fd_child >= 0) {
       if (session().is_recording()) {
@@ -1450,9 +1449,9 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       // also lock it in the task we cloned from!
       int prot = PROT_READ | PROT_WRITE;
       int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
-      remote.infallible_mmap_syscall(syscallbuf_child, num_syscallbuf_bytes,
-                                     prot, flags, -1, 0);
-      t->vm()->map(t, syscallbuf_child, num_syscallbuf_bytes, prot, flags, 0,
+      remote.infallible_mmap_syscall(syscallbuf_child, syscallbuf_size, prot,
+                                     flags, -1, 0);
+      t->vm()->map(t, syscallbuf_child, syscallbuf_size, prot, flags, 0,
                    string());
 
       // Mark the clone's syscallbuf as locked. This will prevent the
@@ -1571,7 +1570,6 @@ Task::CapturedState Task::capture_state() {
   state.extra_regs = extra_regs();
   state.prname = prname;
   state.thread_areas = thread_areas_;
-  state.num_syscallbuf_bytes = num_syscallbuf_bytes;
   state.desched_fd_child = desched_fd_child;
   state.cloned_file_data_fd_child = cloned_file_data_fd_child;
   state.cloned_file_data_offset =
@@ -1614,7 +1612,6 @@ void Task::copy_state(const CapturedState& state) {
         << "Syscallbuf should not already be initialized in clone";
     if (!state.syscallbuf_child.is_null()) {
       // All these fields are preserved by the fork.
-      num_syscallbuf_bytes = state.num_syscallbuf_bytes;
       desched_fd_child = state.desched_fd_child;
       cloned_file_data_fd_child = state.cloned_file_data_fd_child;
       if (cloned_file_data_fd_child >= 0) {
@@ -1708,7 +1705,6 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   ASSERT(this, !syscallbuf_child)
       << "Should not already have syscallbuf initialized!";
 
-  num_syscallbuf_bytes = syscallbuf_size;
   syscallbuf_child = km.start().cast<struct syscallbuf_hdr>();
 
   // No entries to begin with.

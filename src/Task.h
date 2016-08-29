@@ -721,7 +721,6 @@ public:
   pid_t rec_tid;
 
   size_t syscallbuf_size;
-  size_t num_syscallbuf_bytes;
   /* Points at the tracee's mapping of the buffer. */
   remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
   remote_code_ptr stopping_breakpoint_table;
