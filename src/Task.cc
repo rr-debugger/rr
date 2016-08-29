@@ -245,16 +245,17 @@ void Task::destroy_buffers() {
 
 void Task::unmap_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
   if (other->scratch_ptr) {
-    remote.infallible_syscall(syscall_number_for_munmap(arch()), other->scratch_ptr,
-        other->scratch_size);
+    remote.infallible_syscall(syscall_number_for_munmap(arch()),
+                              other->scratch_ptr, other->scratch_size);
     vm()->unmap(this, other->scratch_ptr, other->scratch_size);
   }
   if (!other->syscallbuf_child.is_null()) {
-    uint8_t* local_mapping = vm()->mapping_of(other->syscallbuf_child).local_addr;
+    uint8_t* local_mapping =
+        vm()->mapping_of(other->syscallbuf_child).local_addr;
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
-        other->syscallbuf_child, other->syscallbuf_size);
+                              other->syscallbuf_child, other->syscallbuf_size);
     vm()->unmap(this, other->syscallbuf_child, other->syscallbuf_size);
-    if  (local_mapping) {
+    if (local_mapping) {
       int ret = munmap(local_mapping, other->syscallbuf_size);
       ASSERT(this, ret >= 0);
     }
@@ -268,13 +269,13 @@ void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
   if (other->desched_fd_child >= 0) {
     if (session().is_recording()) {
       remote.infallible_syscall(syscall_number_for_close(arch()),
-          other->desched_fd_child);
+                                other->desched_fd_child);
     }
     fds->did_close(other->desched_fd_child);
   }
   if (other->cloned_file_data_fd_child >= 0) {
     remote.infallible_syscall(syscall_number_for_close(arch()),
-        other->cloned_file_data_fd_child);
+                              other->cloned_file_data_fd_child);
     fds->did_close(other->cloned_file_data_fd_child);
   }
 }
@@ -1520,7 +1521,8 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
         // them since we don't have it mapped.
         // In some cases (e.g. vfork(), or raw SYS_fork syscall) the
         // pthread_atfork handler will never run. Syscallbuf will be permanently
-        // disabled but that's OK, those cases are rare (and in the case of vfork,
+        // disabled but that's OK, those cases are rare (and in the case of
+        // vfork,
         // tracees should immediately exit or exec anyway).
         t->write_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked), uint8_t(1));
       }
@@ -1758,8 +1760,8 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
                                         remote_ptr<void> map_hint) {
   char name[50];
   sprintf(name, "syscallbuf.%d", rec_tid);
-  KernelMapping km = Session::create_shared_mmap(remote, syscallbuf_size,
-                                                 map_hint, name);
+  KernelMapping km =
+      Session::create_shared_mmap(remote, syscallbuf_size, map_hint, name);
   auto& m = remote.task()->vm()->mapping_of(km.start());
   remote.task()->vm()->mapping_flags_of(km.start()) |=
       AddressSpace::Mapping::IS_SYSCALLBUF;
