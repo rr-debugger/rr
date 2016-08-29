@@ -230,7 +230,8 @@ void Task::destroy_buffers() {
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               syscallbuf_child, syscallbuf_size);
     vm()->unmap(this, syscallbuf_child, syscallbuf_size);
-    munmap(local_mapping, syscallbuf_size);
+    int ret = munmap(local_mapping, syscallbuf_size);
+    ASSERT(this, ret >= 0);
     syscallbuf_child = nullptr;
     if (desched_fd_child >= 0) {
       if (session().is_recording()) {
