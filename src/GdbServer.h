@@ -104,6 +104,8 @@ public:
                                   const ExtraRegisters& extra_regs,
                                   GdbRegister which);
 
+  ReplayTimeline& get_timeline() { return timeline; }
+
 private:
   GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t);
 

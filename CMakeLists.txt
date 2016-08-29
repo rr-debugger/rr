@@ -739,6 +739,7 @@ set(TESTS_WITH_PROGRAM
   getcwd
   goto_event
   hello
+  history
   ignored_async_usr1
   immediate_restart
   int3_ok
