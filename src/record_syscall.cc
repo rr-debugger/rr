@@ -2584,7 +2584,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case FUTEX_UNLOCK_PI:
         case FUTEX_TRYLOCK_PI:
         case FUTEX_CMP_REQUEUE_PI:
-        case FUTEX_WAIT_REQUEUE_PI:{
+        case FUTEX_WAIT_REQUEUE_PI: {
           Registers r = t->regs();
           r.set_arg2(-1);
           t->set_regs(r);

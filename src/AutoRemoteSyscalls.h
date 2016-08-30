@@ -86,7 +86,9 @@ private:
 
 /**
  * RAII helper to prepare a Task for remote syscalls and undo any
- * preparation upon going out of scope.
+ * preparation upon going out of scope. Note that this restores register
+ * values when going out of scope, so *all* changes to Task's register
+ * state are lost.
  */
 class AutoRemoteSyscalls {
 public:

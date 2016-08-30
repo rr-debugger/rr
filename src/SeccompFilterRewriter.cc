@@ -25,6 +25,16 @@ static void set_syscall_result(Task* t, long ret) {
   t->set_regs(r);
 }
 
+static void pass_through_seccomp_filter(Task* t) {
+  long ret;
+  {
+    AutoRemoteSyscalls remote(t);
+    ret = remote.syscall(t->regs().original_syscallno(), t->regs().arg1(),
+                         t->regs().arg2(), t->regs().arg3());
+  }
+  set_syscall_result(t, ret);
+}
+
 template <typename Arch>
 static void install_patched_seccomp_filter_arch(
     Task* t, unordered_map<uint32_t, uint16_t>& result_to_index,
@@ -35,12 +45,15 @@ static void install_patched_seccomp_filter_arch(
   auto prog =
       t->read_mem(remote_ptr<typename Arch::sock_fprog>(t->regs().arg3()), &ok);
   if (!ok) {
-    set_syscall_result(t, -EFAULT);
+    // We'll probably return EFAULT but a kernel that doesn't support
+    // seccomp(2) should return ENOSYS instead, so just run the original
+    // system call.
+    pass_through_seccomp_filter(t);
     return;
   }
   auto code = t->read_mem(prog.filter.rptr(), prog.len, &ok);
   if (!ok) {
-    set_syscall_result(t, -EFAULT);
+    pass_through_seccomp_filter(t);
     return;
   }
   // Convert all returns to TRACE returns so that rr can handle them.
