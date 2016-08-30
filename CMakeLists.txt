@@ -600,6 +600,7 @@ set(BASIC_TESTS
   scm_rights
   seccomp
   seccomp_null
+  seccomp_tsync
   self_sigint
   sem
   sendfile
