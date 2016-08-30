@@ -4368,11 +4368,6 @@ static void rec_process_syscall_arch(RecordTask* t,
                 .as_record()
                 ->seccomp_filter_rewriter()
                 .install_patched_seccomp_filter(t);
-            // install_patched_seccomp_filter can set registers to indicate
-            // failure.
-            if (!t->regs().syscall_failed()) {
-              t->prctl_seccomp_status = 2;
-            }
           }
           break;
       }
@@ -4407,17 +4402,12 @@ static void rec_process_syscall_arch(RecordTask* t,
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       t->set_regs(r);
       if (t->regs().arg1() == SECCOMP_SET_MODE_FILTER) {
+        ASSERT(t, t->session().done_initial_exec())
+            << "no seccomp calls during spawn";
         t->session()
             .as_record()
             ->seccomp_filter_rewriter()
             .install_patched_seccomp_filter(t);
-        // install_patched_seccomp_filter can set registers to indicate
-        // failure.
-        ASSERT(t, t->session().done_initial_exec())
-            << "no seccomp calls during spawn";
-        if (!t->regs().syscall_failed()) {
-          t->prctl_seccomp_status = 2;
-        }
       }
       break;
     }

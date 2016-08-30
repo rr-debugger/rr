@@ -9,8 +9,8 @@
 
 #include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
+#include "RecordTask.h"
 #include "Registers.h"
-#include "Task.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "seccomp-bpf.h"
@@ -19,13 +19,13 @@ using namespace std;
 
 namespace rr {
 
-static void set_syscall_result(Task* t, long ret) {
+static void set_syscall_result(RecordTask* t, long ret) {
   Registers r = t->regs();
   r.set_syscall_result(ret);
   t->set_regs(r);
 }
 
-static void pass_through_seccomp_filter(Task* t) {
+static void pass_through_seccomp_filter(RecordTask* t) {
   long ret;
   {
     AutoRemoteSyscalls remote(t);
@@ -33,11 +33,12 @@ static void pass_through_seccomp_filter(Task* t) {
                          t->regs().arg2(), t->regs().arg3());
   }
   set_syscall_result(t, ret);
+  ASSERT(t, t->regs().syscall_failed());
 }
 
 template <typename Arch>
 static void install_patched_seccomp_filter_arch(
-    Task* t, unordered_map<uint32_t, uint16_t>& result_to_index,
+    RecordTask* t, unordered_map<uint32_t, uint16_t>& result_to_index,
     vector<uint32_t>& index_to_result) {
   // Take advantage of the fact that the filter program is arg3() in both
   // prctl and seccomp syscalls.
@@ -47,7 +48,7 @@ static void install_patched_seccomp_filter_arch(
   if (!ok) {
     // We'll probably return EFAULT but a kernel that doesn't support
     // seccomp(2) should return ENOSYS instead, so just run the original
-    // system call.
+    // system call to get the correct error.
     pass_through_seccomp_filter(t);
     return;
   }
@@ -103,9 +104,13 @@ static void install_patched_seccomp_filter_arch(
                          t->regs().arg2(), prog_ptr);
   }
   set_syscall_result(t, ret);
+
+  if (!t->regs().syscall_failed()) {
+    t->prctl_seccomp_status = 2;
+  }
 }
 
-void SeccompFilterRewriter::install_patched_seccomp_filter(Task* t) {
+void SeccompFilterRewriter::install_patched_seccomp_filter(RecordTask* t) {
   RR_ARCH_FUNCTION(install_patched_seccomp_filter_arch, t->arch(), t,
                    result_to_index, index_to_result);
 }

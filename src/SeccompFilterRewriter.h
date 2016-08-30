@@ -11,7 +11,7 @@
 
 namespace rr {
 
-class Task;
+class RecordTask;
 
 /**
  * Object to support install_patched_seccomp_filter.
@@ -23,7 +23,7 @@ public:
    * installs a seccomp-bpf filter, patch the filter to signal the tracer
    * instead of silently delivering an errno, and install it.
    */
-  void install_patched_seccomp_filter(Task* t);
+  void install_patched_seccomp_filter(RecordTask* t);
 
   uint32_t map_filter_data_to_real_result(uint16_t value) {
     assert(value < index_to_result.size());
