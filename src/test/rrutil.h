@@ -214,6 +214,9 @@ inline static void crash_null_deref(void) { *(volatile int*)NULL = 0; }
 #ifndef SECCOMP_SET_MODE_FILTER
 #define SECCOMP_SET_MODE_FILTER 1
 #endif
+#ifndef SECCOMP_FILTER_FLAG_TSYNC
+#define SECCOMP_FILTER_FLAG_TSYNC 1
+#endif
 
 /* Old systems don't have linux/kcmp.h */
 #define RR_KCMP_FILE 0
