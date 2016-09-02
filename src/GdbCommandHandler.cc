@@ -24,7 +24,17 @@ static string gdb_macro_binding(const GdbCommand& cmd) {
     auto_args_str += "'" + cmd.auto_args()[i] + "'";
   }
   auto_args_str += "]";
-  return "python RRCmd('" + cmd.name() + "', " + auto_args_str + ")\n";
+
+  string post_cmds_str = "[";
+  for (size_t i = 0; i < cmd.post_cmds().size(); i++) {
+    if (i > 0) {
+      post_cmds_str += ", ";
+    }
+    post_cmds_str += "'" + cmd.post_cmds()[i] + "'";
+  }
+  post_cmds_str += "]";
+
+  return "python RRCmd('" + cmd.name() + "', " + auto_args_str + ", " + post_cmds_str + ")\n";
 }
 
 /* static */ string GdbCommandHandler::gdb_macros() {
@@ -76,11 +86,12 @@ class RRWhere(gdb.Command):
 RRWhere()
 
 class RRCmd(gdb.Command):
-    def __init__(self, name, auto_args):
+    def __init__(self, name, auto_args, post_cmds):
         gdb.Command.__init__(self, name,
                              gdb.COMMAND_USER, gdb.COMPLETE_NONE, True)
         self.cmd_name = name
         self.auto_args = auto_args
+        self.post_cmds = post_cmds
 
     def invoke(self, arg, from_tty):
         args = gdb.string_to_argv(arg)
@@ -100,6 +111,8 @@ class RRCmd(gdb.Command):
             return
         response = gdb_unescape(rv_match.group(1))
         gdb.write(response)
+        for post_cmd in self.post_cmds:
+            gdb.execute(post_cmd)
 
 def history_push(p):
     gdb.execute("rr-history-push", to_string=True)

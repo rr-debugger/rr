@@ -41,7 +41,16 @@ public:
     cmd_auto_args.push_back(auto_arg);
   }
 
+  /**
+   * Execute a gdb command after this command such as 'frame' to give context
+   * after jumping.
+   */
+  void add_post_cmd(const std::string& post_cmd) {
+    cmd_post_cmds.push_back(post_cmd);
+  }
+
   const std::vector<std::string>& auto_args() const { return cmd_auto_args; }
+  const std::vector<std::string>& post_cmds() const { return cmd_post_cmds; }
 
   /**
    * Setup all the automatic auto_args for our commands.
@@ -51,6 +60,7 @@ public:
 private:
   const std::string cmd_name;
   std::vector<std::string> cmd_auto_args;
+  std::vector<std::string> cmd_post_cmds;
 };
 
 class SimpleGdbCommand : public GdbCommand {

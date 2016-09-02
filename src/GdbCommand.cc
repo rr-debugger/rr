@@ -114,6 +114,9 @@ static SimpleGdbCommand info_checkpoints("info checkpoints",
 
 /*static*/ void GdbCommand::init_auto_args() {
   checkpoint.add_auto_arg("rr-where");
+
+  back.add_post_cmd("frame");
+  forward.add_post_cmd("frame");
 }
 
 } // namespace rr
