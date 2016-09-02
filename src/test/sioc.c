@@ -72,6 +72,7 @@ static void get_ifconfig(int sockfd, struct ifreq* req, struct ifreq* eth_req) {
         eth_index = i;
         non_loop_index = i;
         break;
+      case 't':
       case 'l':
         break;
       default:
