@@ -528,6 +528,7 @@ set(BASIC_TESTS
   mremap
   mremap_grow
   mremap_grow_shared
+  mremap_non_page_size
   mremap_shrink
   msg
   msync

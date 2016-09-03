@@ -1172,7 +1172,7 @@ bool RecordTask::record_remote_by_local_map(remote_ptr<void> addr,
 void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
   maybe_flush_syscallbuf();
 
-  assert(num_bytes >= 0);
+  ASSERT(this, num_bytes >= 0);
 
   if (!addr) {
     return;
