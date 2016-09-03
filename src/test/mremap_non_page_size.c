@@ -34,30 +34,21 @@ int main(void) {
 
   test_assert(fd >= 0);
 
-  overwrite_file(file_name, 2 * num_bytes);
+  overwrite_file(file_name, num_bytes - 4);
 
-  wpage = mmap(NULL, num_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  wpage = mmap(NULL, num_bytes - 8, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   rpage = mmap(NULL, num_bytes, PROT_READ, MAP_SHARED, fd, 0);
-  atomic_printf("wpage:%p rpage:%p\n", wpage, rpage);
+  atomic_printf("wpage:%p\n", wpage);
   test_assert(wpage != (void*)-1 && rpage != (void*)-1 && rpage != wpage);
-
-  check_mapping(rpage, wpage, num_bytes / sizeof(*wpage));
-
-  overwrite_file(file_name, 2 * num_bytes);
 
   old_wpage = wpage;
 
-  /* Test invalid mremap */
-  test_assert(MAP_FAILED ==
-              mremap(old_wpage, num_bytes, 2 * num_bytes - 1, 0xFFFFFFFF));
-  test_assert(EINVAL == errno);
-
-  /* Test remapping a non-page-sized range */
-  wpage = mremap(old_wpage, num_bytes, 2 * num_bytes - 1, MREMAP_MAYMOVE);
+  /* Test a remapping that changes the number of pages */
+  wpage = mremap(old_wpage, num_bytes - 8, num_bytes + 8, MREMAP_MAYMOVE);
   atomic_printf("remapped wpage:%p\n", wpage);
   test_assert(wpage != (void*)-1 && wpage != old_wpage);
 
-  check_mapping(rpage, wpage, num_bytes / sizeof(*wpage));
+  check_mapping(rpage, wpage, (num_bytes - 4) / sizeof(*wpage));
 
   atomic_puts("EXIT-SUCCESS");
 
