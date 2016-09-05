@@ -3793,7 +3793,7 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
 
   if (t->trace_writer().write_mapped_region(t, km, st) ==
       TraceWriter::RECORD_IN_TRACE) {
-    off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
+    off64_t end = max((off64_t)st.st_size - km.file_offset_bytes(), 0UL);
     t->record_remote(km.start(), min(end, (off64_t)km.size()));
   }
 
