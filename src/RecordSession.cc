@@ -1652,6 +1652,11 @@ static string lookup_by_path(const string& name) {
   // it is useless when running under rr.
   env.push_back("MOZ_GDB_SLEEP=0");
 
+  // OpenSSL uses RDRAND, but we can disable it. These bitmasks are inverted
+  // and ANDed with the results of CPUID. The number below is 2^62, which is the
+  // bit for RDRAND support.
+  env.push_back("OPENSSL_ia32cap=~4611686018427387904:~0");
+
   shr_ptr session(
       new RecordSession(full_path, argv, env, syscallbuf, bind_cpu));
   return session;
