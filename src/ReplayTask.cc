@@ -121,7 +121,8 @@ const TraceFrame& ReplayTask::current_trace_frame() {
 ssize_t ReplayTask::set_data_from_trace() {
   auto buf = trace_reader().read_raw_data();
   if (!buf.addr.is_null() && buf.data.size() > 0) {
-    write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
+    auto t = session().find_task(buf.rec_tid);
+    t->write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
   }
   return buf.data.size();
 }
@@ -130,7 +131,8 @@ void ReplayTask::apply_all_data_records_from_trace() {
   TraceReader::RawData buf;
   while (trace_reader().read_raw_data_for_frame(current_trace_frame(), buf)) {
     if (!buf.addr.is_null() && buf.data.size() > 0) {
-      write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
+      auto t = session().find_task(buf.rec_tid);
+      t->write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
     }
   }
 }

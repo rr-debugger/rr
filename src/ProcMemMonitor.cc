@@ -5,8 +5,8 @@
 #include <stdlib.h>
 
 #include "AutoRemoteSyscalls.h"
-#include "ReplaySession.h"
-#include "ReplayTask.h"
+#include "RecordSession.h"
+#include "RecordTask.h"
 #include "log.h"
 
 using namespace std;
@@ -32,22 +32,20 @@ ProcMemMonitor::ProcMemMonitor(Task* t, const string& pathname) {
 
 void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                int64_t offset) {
-  if (!t->session().is_replaying() || ranges.empty()) {
+  if (t->session().is_replaying() || ranges.empty()) {
     return;
   }
-  Task* target = t->session().find_task(tuid);
+  auto* target = static_cast<RecordTask*>(t->session().find_task(tuid));
   if (!target) {
     return;
   }
   ASSERT(t, offset >= 0)
       << "Only pwrite/pwritev supported on /proc/<pid>/mem currently";
-  // XXX to fix that, we'd have to track file offsets during replay or
-  // have a way to store file offset in the trace
+  // XXX to fix that, we'd have to grab the file offset from
+  // /proc/<pid>/fdinfo.
   for (auto& r : ranges) {
-    auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
-    target->write_mem(remote_ptr<uint8_t>(uintptr_t(offset)), bytes.data(),
-                      bytes.size());
-    offset += bytes.size();
+    target->record_remote(remote_ptr<void>(offset), r.length);
+    offset += r.length;
   }
 }
 
