@@ -3036,6 +3036,12 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         // Set path to terminating null byte. This forces ENOENT.
         r.set_arg1(remote_ptr<char>(r.arg1()) + pathname.size());
         t->set_regs(r);
+      } else if (is_gcrypt_deny_file(pathname.c_str())) {
+        // Hijack the syscall.
+        Registers r = t->regs();
+        r.set_original_syscallno(Arch::gettid);
+        t->set_regs(r);
+        return PREVENT_SWITCH;
       }
       return ALLOW_SWITCH;
     }
@@ -4181,6 +4187,39 @@ static void rec_process_syscall_arch(RecordTask* t,
       // Restore the registers that we may have altered.
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      if (r.original_syscallno() == Arch::gettid) {
+        // We hijacked this call to deal with /etc/gcrypt/hwf.deny.
+        char filename[] = "/tmp/rr-gcrypt-hwf-deny-XXXXXX";
+        {
+          ScopedFd fd(mkstemp(filename));
+
+          struct stat dummy;
+          if (!stat("/etc/gcrypt/hwf.deny", &dummy)) {
+            // Copy the contents into our temporary file
+            ScopedFd existing(open("/etc/gcrypt/hwf.deny", O_RDONLY));
+            copy_file(t, fd, existing);
+          }
+
+          const char disable_rdrand[] = "\nintel-rdrand\n";
+          write(fd, disable_rdrand, sizeof(disable_rdrand));
+        }
+
+        // Now open the file in the child.
+        int child_fd;
+        {
+          AutoRemoteSyscalls remote(t);
+          AutoRestoreMem child_str(remote, filename);
+          child_fd = remote.infallible_syscall(syscall_number_for_open(remote.arch()),
+                                               child_str.get(), O_RDONLY);
+        }
+
+        // Unlink it now that the child has opened it.
+        unlink(filename);
+
+        // And hand out our fake file.
+        r.set_original_syscallno(Arch::open);
+        r.set_syscall_result(child_fd);
+      }
       t->set_regs(r);
       if (!t->regs().syscall_failed()) {
         handle_opened_file(t, (int)t->regs().syscall_result_signed());

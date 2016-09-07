@@ -1,0 +1,9 @@
+source `dirname $0`/util.sh
+
+# Override record since there's no program here.
+
+function record { exe=$1;
+    just_record $exe "$2 $3 $4 $5"
+}
+
+compare_test intel-rdrand "" "cat /etc/gcrypt/hwf.deny"

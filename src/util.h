@@ -262,6 +262,8 @@ std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
  */
 bool uses_invisible_guard_page();
 
+void copy_file(Task* t, int dest_fd, int src_fd);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

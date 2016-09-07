@@ -843,6 +843,7 @@ set(TESTS_WITHOUT_PROGRAM
   final_sigkill
   first_instruction
   fork_exec_info_thr
+  gcrypt_rdrand
   get_thread_list
   hardlink_mmapped_files
   mprotect_step

@@ -805,4 +805,17 @@ bool uses_invisible_guard_page() {
   return !is_pax_kernel;
 }
 
+void copy_file(Task* t, int dest_fd, int src_fd) {
+  char buf[1024];
+  while (1) {
+    ssize_t bytes_read = read(src_fd, buf, sizeof(buf));
+    ASSERT(t, bytes_read >= 0);
+    if (!bytes_read) {
+      break;
+    }
+    ssize_t bytes_written = write(dest_fd, buf, bytes_read);
+    ASSERT(t, bytes_written == bytes_read);
+  }
+}
+
 } // namespace rr
