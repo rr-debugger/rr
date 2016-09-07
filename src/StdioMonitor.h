@@ -22,6 +22,8 @@ public:
    */
   StdioMonitor(int original_fd) : original_fd(original_fd) {}
 
+  virtual Type type() { return Stdio; }
+
   /**
    * Make writes to stdout/stderr blocking, to avoid nondeterminism in the
    * order in which the kernel actually performs such writes.

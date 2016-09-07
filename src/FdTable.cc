@@ -85,8 +85,17 @@ void FdTable::did_dup(int from, int to) {
 }
 
 void FdTable::did_close(int fd) {
+  LOG(debug) << "Close fd " << fd;
   fds.erase(fd);
   update_syscallbuf_fds_disabled(fd);
+}
+
+FileMonitor* FdTable::get_monitor(int fd) {
+  auto it = fds.find(fd);
+  if (it == fds.end()) {
+    return NULL;
+  }
+  return it->second.get();
 }
 
 static bool is_fd_monitored_in_any_task(AddressSpace* vm, int fd) {

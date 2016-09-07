@@ -24,6 +24,18 @@ public:
 
   virtual ~FileMonitor() {}
 
+  enum Type {
+    Base,
+    MagicSaveData,
+    Mmapped,
+    Preserve,
+    ProcMem,
+    Stdio,
+    VirtualPerfCounter,
+  };
+
+  virtual Type type() { return Base; }
+
   /**
    * Overriding this to return false will cause close() (and related fd-smashing
    * operations such as dup2) to return EBADF.

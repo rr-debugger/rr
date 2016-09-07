@@ -14,6 +14,8 @@ class MagicSaveDataMonitor : public FileMonitor {
 public:
   MagicSaveDataMonitor() {}
 
+  virtual Type type() { return MagicSaveData; }
+
   /**
    * During recording, record the written data.
    * During replay, check that the written data matches what was recorded.

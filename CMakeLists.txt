@@ -246,6 +246,7 @@ set(RR_SOURCES
   src/kernel_metadata.cc
   src/log.cc
   src/MagicSaveDataMonitor.cc
+  src/MmappedFileMonitor.cc
   src/MonitoredSharedMemory.cc
   src/Monkeypatcher.cc
   src/PerfCounters.cc
@@ -519,6 +520,7 @@ set(BASIC_TESTS
   mmap_shared
   mmap_shared_multiple
   mmap_shared_subpage
+  mmap_shared_write
   mmap_short_file
   mmap_tmpfs
   mprotect

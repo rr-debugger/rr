@@ -43,6 +43,8 @@ public:
 
   bool is_monitoring(int fd) { return fds.count(fd) > 0; }
 
+  FileMonitor* get_monitor(int fd);
+
   /**
    * Regenerate syscallbuf_fds_disabled in task |t|.
    * Called during initialization of the preload library.

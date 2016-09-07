@@ -29,6 +29,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
+#include "MmappedFileMonitor.h"
 #include "ProcMemMonitor.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
@@ -701,8 +702,9 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 }
 
 static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
-                               int prot, int flags, off64_t offset_pages,
-                               uint64_t file_size, const KernelMapping& km) {
+                               int prot, int flags, int fd,
+                               off64_t offset_pages, uint64_t file_size,
+                               const KernelMapping& km) {
   auto buf = t->trace_reader().read_raw_data();
   size_t rec_num_bytes = ceil_page_size(buf.data.size());
 
@@ -735,10 +737,18 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   LOG(debug) << "  restored " << buf.data.size() << " bytes at "
              << HEX(offset_bytes) << " to " << emufile->real_path() << " for "
              << emufile->emu_path();
+
+  if (fd >= 0) {
+    if (t->fd_table()->is_monitoring(fd)) {
+      ASSERT(t, t->fd_table()->get_monitor(fd)->type() == FileMonitor::Type::Mmapped);
+    } else {
+      t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, emufile));
+    }
+  }
 }
 
 static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
-                         size_t length, int prot, int flags,
+                         size_t length, int prot, int flags, int fd,
                          off64_t offset_pages, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
@@ -773,7 +783,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
           finish_private_mmap(t, remote, trace_frame.regs().syscall_result(),
                               length, prot, flags, offset_pages, km);
         } else {
-          finish_shared_mmap(t, remote, prot, flags, offset_pages,
+          finish_shared_mmap(t, remote, prot, flags, fd, offset_pages,
                              data.file_size_bytes, km);
         }
       }
@@ -877,7 +887,7 @@ static void process_shmat(ReplayTask* t, const TraceFrame& trace_frame,
     KernelMapping km = t->trace_reader().read_mapped_region(&data);
     int prot = shm_flags_to_mmap_prot(shm_flags);
     int flags = MAP_SHARED;
-    finish_shared_mmap(t, remote, prot, flags, 0, data.file_size_bytes, km);
+    finish_shared_mmap(t, remote, prot, flags, -1, 0, data.file_size_bytes, km);
 
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
@@ -1079,18 +1089,20 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
           auto args = t->read_mem(
               remote_ptr<typename Arch::mmap_args>(trace_regs.arg1()));
           return process_mmap(t, trace_frame, args.len, args.prot, args.flags,
-                              args.offset / page_size(), step);
+                              args.fd, args.offset / page_size(), step);
         }
         case Arch::RegisterArguments:
           return process_mmap(t, trace_frame, trace_regs.arg2(),
                               trace_regs.arg3(), trace_regs.arg4(),
+                              trace_regs.arg5(),
                               trace_regs.arg6() / page_size(), step);
       }
       break;
     }
     case Arch::mmap2:
       return process_mmap(t, trace_frame, trace_regs.arg2(), trace_regs.arg3(),
-                          trace_regs.arg4(), trace_regs.arg6(), step);
+                          trace_regs.arg4(), trace_regs.arg5(),
+                          trace_regs.arg6(), step);
 
     case Arch::shmat:
       return process_shmat(t, trace_frame, trace_regs.arg3(), step);

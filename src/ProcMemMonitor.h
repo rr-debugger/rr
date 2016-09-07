@@ -16,6 +16,8 @@ class ProcMemMonitor : public FileMonitor {
 public:
   ProcMemMonitor(Task* t, const std::string& pathname);
 
+  virtual Type type() { return ProcMem; }
+
   /**
    * During replay, copy writes to tracee |tid|'s memory.
    */

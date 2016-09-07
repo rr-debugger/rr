@@ -20,6 +20,8 @@ public:
   VirtualPerfCounterMonitor(Task* t, Task* target,
                             const struct perf_event_attr& attr);
 
+  virtual Type type() { return VirtualPerfCounter; }
+
   virtual bool emulate_ioctl(RecordTask* t, uint64_t* result);
   virtual bool emulate_fcntl(RecordTask* t, uint64_t* result);
   virtual bool emulate_read(RecordTask* t, const std::vector<Range>& ranges,

@@ -36,7 +36,7 @@ int main(void) {
   test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
 
   memset(buf, 3, 10);
-  test_assert(10 == write(fd, buf, 10));
+  test_assert(10 == pwrite(fd, buf, 10, 0));
   test_assert(0 == fsync(fd));
   test_assert(0 == close(fd));
   test_assert(0 == unlink("tmp.txt"));

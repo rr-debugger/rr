@@ -56,6 +56,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
+#include "MmappedFileMonitor.h"
 #include "ProcMemMonitor.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
@@ -3745,6 +3746,14 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
     t->record_remote(addr, min(end, (off64_t)km.size()));
+
+    if ((flags & MAP_SHARED)) {
+      if (t->fd_table()->is_monitoring(fd)) {
+        ASSERT(t, t->fd_table()->get_monitor(fd)->type() == FileMonitor::Type::Mmapped);
+      } else {
+        t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, fd));
+      }
+    }
   }
 
   if ((prot & PROT_WRITE) && (flags & MAP_SHARED)) {

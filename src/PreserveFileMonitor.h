@@ -20,6 +20,7 @@ namespace rr {
 class PreserveFileMonitor : public FileMonitor {
 public:
   PreserveFileMonitor() {}
+  virtual Type type() { return Preserve; }
   virtual bool allow_close() { return false; }
 };
 
