@@ -113,7 +113,7 @@ struct Sighandlers {
   }
 
   void init_from_current_process() {
-    for (size_t i = 0; i < array_length(handlers); ++i) {
+    for (size_t i = 1; i < array_length(handlers); ++i) {
       Sighandler& h = handlers[i];
 
       NativeArch::kernel_sigaction sa;
