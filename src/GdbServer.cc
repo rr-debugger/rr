@@ -606,7 +606,6 @@ bool GdbServer::diverter_process_debugger_requests(
     switch (req->type) {
       case DREQ_RESTART:
       case DREQ_DETACH:
-      case DREQ_RR_CMD:
         diversion_refcount = 0;
         return false;
 
@@ -640,6 +639,16 @@ bool GdbServer::diverter_process_debugger_requests(
         }
         dbg->reply_write_siginfo();
         continue;
+
+      case DREQ_RR_CMD:
+        if (req->target.tid) {
+          Task* task = diversion_session.find_task(req->target.tid);
+          if (task) {
+            dbg->reply_rr_cmd(
+                GdbCommandHandler::process_command(*this, task, req->text()));
+          }
+        }
+        break;
 
       default:
         break;
