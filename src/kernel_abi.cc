@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <asm/ldt.h>
 #include <assert.h>
+#include <dirent.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <linux/capability.h>

@@ -358,6 +358,20 @@ inline static int is_proc_mem_file(const char* filename) {
   return !strcmp(filename + strlen(filename) - 4, "/mem");
 }
 
+inline static int is_proc_fd_dir(const char* filename) {
+  if (strncmp("/proc/", filename, 6)) {
+    return 0;
+  }
+
+  int len = strlen(filename);
+  const char* fd_bit = filename + len;
+  if (*fd_bit == '/') {
+    fd_bit--;
+  }
+
+  return !strncmp(fd_bit - 3, "/fd", 3);
+}
+
 /**
  * Returns nonzero if an attempted open() of |filename| can be syscall-buffered.
  * When this returns zero, the open must be forwarded to the rr process.
@@ -370,7 +384,8 @@ inline static int allow_buffered_open(const char* filename) {
   return !is_blacklisted_filename(filename) &&
          !is_gcrypt_deny_file(filename) &&
          !is_terminal(filename) &&
-         !is_proc_mem_file(filename);
+         !is_proc_mem_file(filename) &&
+         !is_proc_fd_dir(filename);
 }
 
 #endif /* RR_PRELOAD_INTERFACE_H_ */

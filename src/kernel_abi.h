@@ -1297,6 +1297,24 @@ struct BaseArch : public wordsize,
     ptr<void> data;
   };
   RR_VERIFY_TYPE(usbdevfs_ctrltransfer);
+
+  struct dirent {
+    ino_t d_ino;
+    off_t d_off;
+    uint16_t d_reclen;
+    //    uint8_t d_type;
+    uint8_t d_name[256];
+  };
+  RR_VERIFY_TYPE(dirent);
+
+  struct dirent64 {
+    ino64_t d_ino;
+    off64_t d_off;
+    uint16_t d_reclen;
+    uint8_t d_type;
+    uint8_t d_name[256];
+  };
+  RR_VERIFY_TYPE(dirent64);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

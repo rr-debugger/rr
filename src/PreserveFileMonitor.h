@@ -10,7 +10,7 @@ namespace rr {
 /**
  * A FileMonitor that does no monitoring of I/O itself, but prevents the file
  * descriptor from being closed (except via privileged syscalls made by
- * preload.c).
+ * preload.c) or seen in /proc/pid/fd/.
  *
  * The mere existence of this monitor disables syscall buffering for the fd, so
  * we get syscall traps for close() etc on the fd. Then
@@ -21,7 +21,7 @@ class PreserveFileMonitor : public FileMonitor {
 public:
   PreserveFileMonitor() {}
   virtual Type type() { return Preserve; }
-  virtual bool allow_close() { return false; }
+  virtual bool is_rr_fd() { return true; }
 };
 
 } // namespace rr

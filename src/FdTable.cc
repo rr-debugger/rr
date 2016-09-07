@@ -24,12 +24,12 @@ void FdTable::add_monitor(int fd, FileMonitor* monitor) {
   update_syscallbuf_fds_disabled(fd);
 }
 
-bool FdTable::allow_close(int fd) {
+bool FdTable::is_rr_fd(int fd) {
   auto it = fds.find(fd);
   if (it == fds.end()) {
-    return true;
+    return false;
   }
-  return it->second->allow_close();
+  return it->second->is_rr_fd();
 }
 
 bool FdTable::emulate_ioctl(int fd, RecordTask* t, uint64_t* result) {
@@ -56,6 +56,14 @@ bool FdTable::emulate_read(int fd, RecordTask* t,
     return false;
   }
   return it->second->emulate_read(t, ranges, offset, result);
+}
+
+void FdTable::filter_getdents(int fd, RecordTask* t) {
+  auto it = fds.find(fd);
+  if (it == fds.end()) {
+    return;
+  }
+  it->second->filter_getdents(t);
 }
 
 Switchable FdTable::will_write(Task* t, int fd) {

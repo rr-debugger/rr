@@ -250,6 +250,7 @@ set(RR_SOURCES
   src/MonitoredSharedMemory.cc
   src/Monkeypatcher.cc
   src/PerfCounters.cc
+  src/ProcFdDirMonitor.cc
   src/ProcMemMonitor.cc
   src/PsCommand.cc
   src/RecordCommand.cc
@@ -554,6 +555,7 @@ set(BASIC_TESTS
   prctl_deathsig
   prctl_name
   prctl_tsc
+  proc_fds
   proc_mem
   protect_rr_fds
   prw

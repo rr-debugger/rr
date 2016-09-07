@@ -57,6 +57,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
 #include "MmappedFileMonitor.h"
+#include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
@@ -2519,7 +2520,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
 
         case Arch::SETFD:
-          if (!t->fd_table()->allow_close(fd)) {
+          if (t->fd_table()->is_rr_fd(fd)) {
             // Don't let tracee set FD_CLOEXEC on this fd. Disable the syscall,
             // but emulate a successful return.
             Registers r = t->regs();
@@ -3053,7 +3054,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     }
 
     case Arch::close:
-      if (!t->fd_table()->allow_close((int)t->regs().arg1())) {
+      if (t->fd_table()->is_rr_fd((int)t->regs().arg1())) {
         // Don't let processes close this fd. Abort with EBADF by setting
         // oldfd to -1, as if the fd is already closed.
         Registers r = t->regs();
@@ -3064,7 +3065,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::dup2:
     case Arch::dup3:
-      if (!t->fd_table()->allow_close((int)t->regs().arg2())) {
+      if (t->fd_table()->is_rr_fd((int)t->regs().arg2())) {
         // Don't let processes dup over this fd. Abort with EBADF by setting
         // oldfd to -1.
         Registers r = t->regs();
@@ -3973,6 +3974,10 @@ static void handle_opened_file(RecordTask* t, int fd) {
   } else if (is_proc_mem_file(pathname.c_str())) {
     t->fd_table()->add_monitor(fd, new ProcMemMonitor(t, pathname));
     do_write = true;
+  } else if (is_proc_fd_dir(pathname.c_str())) {
+    LOG(info) << "Installing proc_fd monitor";
+    t->fd_table()->add_monitor(fd, new ProcFdDirMonitor(t, pathname));
+    do_write = true;
   }
 
   if (do_write) {
@@ -4339,6 +4344,14 @@ static void rec_process_syscall_arch(RecordTask* t,
       r.set_arg2(syscall_state.syscall_entry_registers.arg2());
       r.set_arg3(syscall_state.syscall_entry_registers.arg3());
       t->set_regs(r);
+      break;
+    }
+
+    case Arch::getdents:
+    case Arch::getdents64: {
+      Registers r = t->regs();
+      int fd = r.arg1();
+      t->fd_table()->filter_getdents(fd, t);
       break;
     }
 

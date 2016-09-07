@@ -23,7 +23,8 @@ public:
   bool emulate_read(int fd, RecordTask* t,
                     const std::vector<FileMonitor::Range>& ranges,
                     int64_t offset, uint64_t* result);
-  bool allow_close(int fd);
+  void filter_getdents(int fd, RecordTask* t);
+  bool is_rr_fd(int fd);
   Switchable will_write(Task* t, int fd);
   void did_write(Task* t, int fd, const std::vector<FileMonitor::Range>& ranges,
                  int64_t offset = -1);

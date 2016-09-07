@@ -29,6 +29,7 @@ public:
     MagicSaveData,
     Mmapped,
     Preserve,
+    ProcFd,
     ProcMem,
     Stdio,
     VirtualPerfCounter,
@@ -37,10 +38,11 @@ public:
   virtual Type type() { return Base; }
 
   /**
-   * Overriding this to return false will cause close() (and related fd-smashing
-   * operations such as dup2) to return EBADF.
+   * Overriding this to return true will cause close() (and related fd-smashing
+   * operations such as dup2) to return EBADF, and hide it from the tracee's
+   * /proc/pid/fd/
    */
-  virtual bool allow_close() { return true; }
+  virtual bool is_rr_fd() { return false; }
 
   /**
    * Notification that task |t| is about to write |data| bytes of length
@@ -90,6 +92,12 @@ public:
                             uint64_t*) {
     return false;
   }
+
+  /**
+   * Allows the FileMonitor to rewrite the output of a getdents/getdents64 call
+   * if desired.
+   */
+  virtual void filter_getdents(RecordTask*) { }
 };
 
 } // namespace rr

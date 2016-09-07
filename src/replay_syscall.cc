@@ -30,6 +30,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
 #include "MmappedFileMonitor.h"
+#include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
@@ -1018,6 +1019,8 @@ static void handle_opened_files(ReplayTask* t) {
       t->fd_table()->add_monitor(fd, new StdioMonitor(STDERR_FILENO));
     } else if (is_proc_mem_file(pathname.c_str())) {
       t->fd_table()->add_monitor(fd, new ProcMemMonitor(t, pathname));
+    } else if (is_proc_fd_dir(pathname.c_str())) {
+      t->fd_table()->add_monitor(fd, new ProcFdDirMonitor(t, pathname));
     } else {
       ASSERT(t, false) << "Why did we write filename " << pathname;
     }
