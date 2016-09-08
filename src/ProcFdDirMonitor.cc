@@ -91,7 +91,7 @@ template <typename Arch> static void filter_dirents_arch(RecordTask* t) {
       t->set_regs(regs);
       // Explicitly record what the kernel may have touched and we discarded,
       // because it's userspace modification that will not be caught otherwise.
-      if (len > bytes) {
+      if (len > (size_t)bytes) {
         t->record_remote(ptr + bytes, len - bytes);
       }
       return;
