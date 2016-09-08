@@ -77,7 +77,7 @@ template <typename Arch> static void filter_dirents_arch(RecordTask* t) {
   while (1) {
     vector<uint8_t> buf = t->read_mem(ptr, len);
     int bytes = regs.syscall_result();
-    if (regs.syscallno() == Arch::getdents64) {
+    if (regs.original_syscallno() == Arch::getdents64) {
       bytes =
           filter_dirent_structs<typename Arch::dirent64>(t, buf.data(), bytes);
     } else {

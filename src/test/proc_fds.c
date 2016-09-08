@@ -46,7 +46,7 @@ int main(void) {
   while ((bytes = syscall(SYS_getdents64, fd, &buf, sizeof(buf)))) {
     current = buf;
     while (current != buf + bytes) {
-      struct dirent* ent = (struct dirent*)current;
+      struct dirent64* ent = (struct dirent64*)current;
       char* end;
       int fd = strtol(ent->d_name, &end, 10);
       if (!*end) {
