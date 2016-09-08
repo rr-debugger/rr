@@ -759,7 +759,7 @@ double monotonic_now_sec() {
 bool running_under_rr() { return getenv("RUNNING_UNDER_RR") != NULL; }
 
 vector<string> read_proc_status_fields(pid_t tid, const char* name,
-                                       const char* name2) {
+                                       const char* name2, const char* name3) {
   vector<string> result;
   char buf[1000];
   sprintf(buf, "/proc/%d/status", tid);
@@ -771,6 +771,9 @@ vector<string> read_proc_status_fields(pid_t tid, const char* name,
   matches.push_back(string(name) + ":");
   if (name2) {
     matches.push_back(string(name2) + ":");
+  }
+  if (name3) {
+    matches.push_back(string(name3) + ":");
   }
   for (auto& m : matches) {
     while (true) {

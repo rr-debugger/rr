@@ -206,6 +206,11 @@ public:
   void apply_sig_sa_mask(int sig);
 
   /**
+   * Check that our status for |sig| matches what's in /proc/<pid>/status.
+   */
+  void verify_signal_states();
+
+  /**
    * Stashed-signal API: if a signal becomes pending at an
    * awkward time, but could be handled "soon", call
    * |stash_sig()| to stash the current pending-signal state.

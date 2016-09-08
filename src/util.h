@@ -254,7 +254,8 @@ double monotonic_now_sec();
 bool running_under_rr();
 
 std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
-                                                 const char* name2 = nullptr);
+                                                 const char* name2 = nullptr,
+                                                 const char* name3 = nullptr);
 
 /**
  * Mainline Linux kernels use an invisible (to /proc/<pid>/maps) guard page

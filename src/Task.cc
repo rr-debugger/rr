@@ -2368,12 +2368,6 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
     FATAL() << "Failed to fork";
   }
 
-  struct sigaction sa;
-  sa.sa_handler = handle_alarm_signal;
-  sigemptyset(&sa.sa_mask);
-  sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
-  sigaction(SIGALRM, &sa, nullptr);
-
   // Sync with the child process.
   // We minimize the code we run between fork()ing and PTRACE_SEIZE, because
   // any abnormal exit of the rr process will leave the child paused and
@@ -2417,6 +2411,14 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   t->as.swap(as);
   t->fds = FdTable::create(t);
   setup_fd_table(*t->fds);
+
+  // Install signal handler here, so that when creating the first RecordTask
+  // it sees the exact same signal state in the parent as will be in the child.
+  struct sigaction sa;
+  sa.sa_handler = handle_alarm_signal;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = 0; // No SA_RESTART, so waitpid() will be interrupted
+  sigaction(SIGALRM, &sa, nullptr);
 
   t->wait();
   if (t->ptrace_event() == PTRACE_EVENT_EXIT) {

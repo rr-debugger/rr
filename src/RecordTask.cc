@@ -23,6 +23,8 @@ using namespace std;
 
 namespace rr {
 
+enum SignalDisposition { SIGNAL_DEFAULT, SIGNAL_IGNORE, SIGNAL_HANDLER };
+
 /**
  * Stores the table of signal dispositions and metadata for an
  * arbitrary set of tasks.  Each of those tasks must own one one of
@@ -55,25 +57,23 @@ struct Sighandler {
     init_arch<Arch>(ksa);
   }
 
-  bool ignored(int sig) const {
-    if (sig == SIGSTOP || sig == SIGKILL) {
-      // These can never be ignored
-      return false;
+  SignalDisposition disposition() const {
+    assert(uintptr_t(SIG_DFL) == 0);
+    assert(uintptr_t(SIG_IGN) == 1);
+    switch (k_sa_handler.as_int()) {
+      case 0:
+        return SIGNAL_DEFAULT;
+      case 1:
+        return SIGNAL_IGNORE;
+      default:
+        return SIGNAL_HANDLER;
     }
-    return (uintptr_t)SIG_IGN == k_sa_handler.as_int() ||
-           ((uintptr_t)SIG_DFL == k_sa_handler.as_int() &&
-            IGNORE == default_action(sig));
   }
-  bool is_default() const {
-    return (uintptr_t)SIG_DFL == k_sa_handler.as_int() && !resethand;
-  }
-  bool is_user_handler() const {
-    assert(1 == uintptr_t(SIG_IGN));
-    return k_sa_handler.as_int() & ~(uintptr_t)SIG_IGN;
-  }
+
   remote_code_ptr get_user_handler() const {
-    return is_user_handler() ? remote_code_ptr(k_sa_handler.as_int())
-                             : remote_code_ptr();
+    return disposition() == SIGNAL_HANDLER
+               ? remote_code_ptr(k_sa_handler.as_int())
+               : remote_code_ptr();
   }
 
   remote_ptr<void> k_sa_handler;
@@ -117,11 +117,10 @@ struct Sighandlers {
       Sighandler& h = handlers[i];
 
       NativeArch::kernel_sigaction sa;
-      if (::syscall(SYS_rt_sigaction, i, nullptr, &sa, sizeof(sigset_t))) {
+      if (::syscall(SYS_rt_sigaction, i, nullptr, &sa, sizeof(uint64_t))) {
         /* EINVAL means we're querying an
          * unused signal number. */
         assert(EINVAL == errno);
-        assert(h.is_default());
         continue;
       }
 
@@ -145,7 +144,7 @@ struct Sighandlers {
       // If the handler was a user handler, reset to
       // default.  If it was SIG_IGN or SIG_DFL,
       // leave it alone.
-      if (h.is_user_handler()) {
+      if (h.disposition() == SIGNAL_HANDLER) {
         reset_handler(&h, arch);
       }
     }
@@ -828,17 +827,16 @@ void RecordTask::emulate_SIGCONT() {
 
 void RecordTask::signal_delivered(int sig) {
   Sighandler& h = sighandlers->get(sig);
-  bool is_user_handler = h.is_user_handler();
   if (h.resethand) {
     reset_handler(&h, arch());
   }
 
-  if (!h.ignored(sig)) {
+  if (!is_sig_ignored(sig)) {
     switch (sig) {
       case SIGTSTP:
       case SIGTTIN:
       case SIGTTOU:
-        if (is_user_handler) {
+        if (h.disposition() == SIGNAL_HANDLER) {
           break;
         }
       // Fall through...
@@ -859,7 +857,7 @@ void RecordTask::signal_delivered(int sig) {
 }
 
 bool RecordTask::signal_has_user_handler(int sig) const {
-  return sighandlers->get(sig).is_user_handler();
+  return sighandlers->get(sig).disposition() == SIGNAL_HANDLER;
 }
 
 remote_code_ptr RecordTask::get_signal_user_handler(int sig) const {
@@ -901,7 +899,18 @@ void RecordTask::apply_sig_sa_mask(int sig) {
 }
 
 bool RecordTask::is_sig_ignored(int sig) const {
-  return sighandlers->get(sig).ignored(sig);
+  if (sig == SIGSTOP || sig == SIGKILL) {
+    // These can never be ignored
+    return false;
+  }
+  switch (sighandlers->get(sig).disposition()) {
+    case SIGNAL_IGNORE:
+      return true;
+    case SIGNAL_DEFAULT:
+      return IGNORE == default_action(sig);
+    default:
+      return false;
+  }
 }
 
 void RecordTask::set_siginfo(const siginfo_t& si) {
@@ -972,6 +981,27 @@ void RecordTask::reload_sigmask() {
 void RecordTask::writeback_sigmask() {
   if (syscallbuf_child) {
     write_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs), blocked_sigs);
+  }
+}
+
+void RecordTask::verify_signal_states() {
+#ifndef DEBUG
+  return;
+#endif
+  if (ev().is_syscall_event() && ev().Syscall().state == PROCESSING_SYSCALL) {
+    return;
+  }
+  auto results = read_proc_status_fields(tid, "SigBlk", "SigIgn", "SigCgt");
+  ASSERT(this, results.size() == 3);
+  uint64_t blocked = strtoull(results[0].c_str(), NULL, 16);
+  uint64_t ignored = strtoull(results[1].c_str(), NULL, 16);
+  uint64_t caught = strtoull(results[2].c_str(), NULL, 16);
+  for (int i = 1; i < _NSIG; ++i) {
+    uint64_t mask = uint64_t(1) << (i - 1);
+    auto disposition = sighandlers->get(i).disposition();
+    ASSERT(this, !!(blocked & mask) == is_sig_blocked(i));
+    ASSERT(this, !!(ignored & mask) == (disposition == SIGNAL_IGNORE));
+    ASSERT(this, !!(caught & mask) == (disposition == SIGNAL_HANDLER));
   }
 }
 

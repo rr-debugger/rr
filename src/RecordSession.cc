@@ -1788,6 +1788,8 @@ RecordSession::RecordResult RecordSession::record_step() {
     }
   }
 
+  t->verify_signal_states();
+
   // We try to inject a signal if there's one pending; otherwise we continue
   // task execution.
   if (!prepare_to_inject_signal(t, &step_state) &&
