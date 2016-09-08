@@ -1333,12 +1333,14 @@ vserver = InvalidSyscall(x86=273, x64=236)
 mbind = EmulatedSyscall(x86=274, x64=237)
 get_mempolicy = UnsupportedSyscall(x86=275, x64=239)
 set_mempolicy = UnsupportedSyscall(x86=276, x64=238)
-mq_open = UnsupportedSyscall(x86=277, x64=240)
-mq_unlink = UnsupportedSyscall(x86=278, x64=241)
-mq_timedsend = UnsupportedSyscall(x86=279, x64=242)
-mq_timedreceive = UnsupportedSyscall(x86=280, x64=243)
-mq_notify = UnsupportedSyscall(x86=281, x64=244)
-mq_getsetattr = UnsupportedSyscall(x86=282, x64=245)
+
+mq_open = EmulatedSyscall(x86=277, x64=240)
+mq_unlink = EmulatedSyscall(x86=278, x64=241)
+mq_timedsend = EmulatedSyscall(x86=279, x64=242)
+mq_timedreceive = IrregularEmulatedSyscall(x86=280, x64=243)
+mq_notify = EmulatedSyscall(x86=281, x64=244)
+mq_getsetattr = EmulatedSyscall(x86=282, x64=245, arg3="struct Arch::mq_attr")
+
 kexec_load = UnsupportedSyscall(x86=283, x64=246)
 
 #  int waitid(idtype_t idtype, id_t id, siginfo_t *infop, int options);

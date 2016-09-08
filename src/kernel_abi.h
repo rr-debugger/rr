@@ -1315,6 +1315,15 @@ struct BaseArch : public wordsize,
     uint8_t d_name[256];
   };
   RR_VERIFY_TYPE(dirent64);
+
+  struct mq_attr {
+    signed_long mq_flags;
+    signed_long mq_maxmsg;
+    signed_long mq_msgsize;
+    signed_long mq_curmsgs;
+    signed_long __reserved[4];
+  };
+  RR_VERIFY_TYPE(mq_attr);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

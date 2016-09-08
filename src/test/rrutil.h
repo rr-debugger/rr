@@ -35,6 +35,7 @@
 #include <linux/unistd.h>
 #include <linux/videodev2.h>
 #include <linux/wireless.h>
+#include <mqueue.h>
 #include <poll.h>
 #include <pthread.h>
 #include <pty.h>
