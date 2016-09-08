@@ -736,6 +736,8 @@ static void* thread_trampoline(void* arg) {
 int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
                    void* (*start_routine)(void*), void* arg) {
   struct thread_func_data* data = malloc(sizeof(*data));
+  assert(NULL != data);
+
   void* saved_buffer = buffer;
   int ret;
 
