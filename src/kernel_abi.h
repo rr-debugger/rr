@@ -881,7 +881,11 @@ struct BaseArch : public wordsize,
     ptr<socklen_t> addrlen;
   };
 
-  struct accept4_args : public accept_args {
+  struct accept4_args {
+    signed_int sockfd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
+    ptr<sockaddr> addr;
+    ptr<socklen_t> addrlen;
     signed_long flags;
   };
 
