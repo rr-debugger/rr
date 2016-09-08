@@ -97,7 +97,7 @@ public:
    * Allows the FileMonitor to rewrite the output of a getdents/getdents64 call
    * if desired.
    */
-  virtual void filter_getdents(RecordTask*) { }
+  virtual void filter_getdents(RecordTask*) {}
 };
 
 } // namespace rr

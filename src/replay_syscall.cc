@@ -179,9 +179,10 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // Block CLONE_VFORK for the reasons below.
     // Block CLONE_NEW* from replay, any effects it had were dealt with during
     // recording.
-    uintptr_t disallowed_clone_flags = CLONE_UNTRACED | CLONE_CHILD_CLEARTID |
-      CLONE_VFORK | CLONE_NEWIPC | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID |
-      CLONE_NEWUSER | CLONE_NEWUTS | CLONE_NEWCGROUP;
+    uintptr_t disallowed_clone_flags =
+        CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK | CLONE_NEWIPC |
+        CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUSER |
+        CLONE_NEWUTS | CLONE_NEWCGROUP;
     flags = r.arg1() & ~disallowed_clone_flags;
     r.set_arg1(flags);
   } else if (Arch::vfork == sys) {
@@ -746,7 +747,8 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 
   if (fd >= 0) {
     if (t->fd_table()->is_monitoring(fd)) {
-      ASSERT(t, t->fd_table()->get_monitor(fd)->type() == FileMonitor::Type::Mmapped);
+      ASSERT(t, t->fd_table()->get_monitor(fd)->type() ==
+                    FileMonitor::Type::Mmapped);
     } else {
       t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, emufile));
     }

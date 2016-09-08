@@ -21,7 +21,7 @@ MmappedFileMonitor::MmappedFileMonitor(Task* t, EmuFile::shr_ptr f) {
 }
 
 void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
-				   int64_t offset) {
+                                   int64_t offset) {
   if (ranges.empty()) {
     return;
   }

@@ -19,8 +19,8 @@ ProcFdDirMonitor::ProcFdDirMonitor(Task* t, const string& pathname) {
   // if |t| is not the same pid namespace as rr
   int ends_with_slash = (pathname.back() == '/');
   if (pathname.substr(0, 6) == string("/proc/") &&
-      pathname.substr(pathname.size() - 3 - ends_with_slash,
-		      3) == string("/fd")) {
+      pathname.substr(pathname.size() - 3 - ends_with_slash, 3) ==
+          string("/fd")) {
     string s = pathname.substr(6, pathname.size() - 9 - ends_with_slash);
     char* end;
     int tid = strtol(s.c_str(), &end, 10);
@@ -65,8 +65,7 @@ static int filter_dirent_structs(RecordTask* t, uint8_t* buf, size_t size) {
   return bytes;
 }
 
-template <typename Arch>
-static void filter_dirents_arch(RecordTask* t) {
+template <typename Arch> static void filter_dirents_arch(RecordTask* t) {
   auto regs = t->regs();
   remote_ptr<uint8_t> ptr(regs.arg2());
   size_t len = regs.arg3();
@@ -79,11 +78,11 @@ static void filter_dirents_arch(RecordTask* t) {
     vector<uint8_t> buf = t->read_mem(ptr, len);
     int bytes = regs.syscall_result();
     if (regs.syscallno() == Arch::getdents64) {
-      bytes = filter_dirent_structs<typename Arch::dirent64>(t, buf.data(),
-                                                             bytes);
+      bytes =
+          filter_dirent_structs<typename Arch::dirent64>(t, buf.data(), bytes);
     } else {
-      bytes = filter_dirent_structs<typename Arch::dirent>(t, buf.data(),
-                                                           bytes);
+      bytes =
+          filter_dirent_structs<typename Arch::dirent>(t, buf.data(), bytes);
     }
 
     if (bytes > 0) {

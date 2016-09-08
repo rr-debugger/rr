@@ -17,7 +17,7 @@ int main(void) {
   // Empirically tested to be enough to make ProcFdDirMonitor
   // repeat the getdents call.
   const int NUM_THREADS = 20;
-  
+
   int i;
   for (i = 0; i < 15; i++) {
     dup(2);
@@ -43,7 +43,7 @@ int main(void) {
   char buf[128];
   char* current;
   int bytes;
-  while((bytes = syscall(SYS_getdents64, fd, &buf, sizeof(buf)))) {
+  while ((bytes = syscall(SYS_getdents64, fd, &buf, sizeof(buf)))) {
     current = buf;
     while (current != buf + bytes) {
       struct dirent* ent = (struct dirent*)current;

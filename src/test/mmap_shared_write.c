@@ -59,12 +59,12 @@ int main(void) {
   test_assert(rpage[num_bytes / sizeof(magic) - 1] == (int)0xbeef5a5a);
 
   rpage = mremap(rpage, num_bytes, 5 * num_bytes, MREMAP_MAYMOVE);
-  for (i = 3 * num_bytes / sizeof(magic); i < 5 * num_bytes / sizeof(magic); ++i) {
+  for (i = 3 * num_bytes / sizeof(magic); i < 5 * num_bytes / sizeof(magic);
+       ++i) {
     pwrite64(fd, &magic, sizeof(magic), i * sizeof(magic));
   }
 
   atomic_puts("EXIT-SUCCESS");
 
   return 0;
-
 }

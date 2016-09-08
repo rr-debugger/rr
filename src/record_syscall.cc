@@ -3750,7 +3750,8 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
 
     if ((flags & MAP_SHARED)) {
       if (t->fd_table()->is_monitoring(fd)) {
-        ASSERT(t, t->fd_table()->get_monitor(fd)->type() == FileMonitor::Type::Mmapped);
+        ASSERT(t, t->fd_table()->get_monitor(fd)->type() ==
+                      FileMonitor::Type::Mmapped);
       } else {
         t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, fd));
       }
@@ -4223,8 +4224,9 @@ static void rec_process_syscall_arch(RecordTask* t,
         {
           AutoRemoteSyscalls remote(t);
           AutoRestoreMem child_str(remote, filename);
-          child_fd = remote.infallible_syscall(syscall_number_for_open(remote.arch()),
-                                               child_str.get(), O_RDONLY);
+          child_fd =
+              remote.infallible_syscall(syscall_number_for_open(remote.arch()),
+                                        child_str.get(), O_RDONLY);
         }
 
         // Unlink it now that the child has opened it.
