@@ -444,6 +444,7 @@ set(BASIC_TESTS
   clone_bad_stack
   clone_file_range
   clone_immediate_exit
+  clone_newflags
   clone_untraced
   constructor
   creat_address_not_truncated

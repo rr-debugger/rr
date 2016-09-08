@@ -177,7 +177,12 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // and we can't allow that.
     // Block CLONE_CHILD_CLEARTID because we'll emulate that ourselves.
     // Block CLONE_VFORK for the reasons below.
-    flags = r.arg1() & ~(CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK);
+    // Block CLONE_NEW* from replay, any effects it had were dealt with during
+    // recording.
+    uintptr_t disallowed_clone_flags = CLONE_UNTRACED | CLONE_CHILD_CLEARTID |
+      CLONE_VFORK | CLONE_NEWIPC | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID |
+      CLONE_NEWUSER | CLONE_NEWUTS | CLONE_NEWCGROUP;
+    flags = r.arg1() & ~disallowed_clone_flags;
     r.set_arg1(flags);
   } else if (Arch::vfork == sys) {
     // We can't perform a real vfork, because the kernel won't let the vfork

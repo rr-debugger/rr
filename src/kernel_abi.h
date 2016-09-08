@@ -1752,4 +1752,9 @@ typedef X64Arch NativeArch;
 
 } // namespace rr
 
+// New in the 4.6 kernel.
+#ifndef CLONE_NEWCGROUP
+#define CLONE_NEWCGROUP 0x02000000
+#endif
+
 #endif /* RR_KERNEL_ABI_H */
