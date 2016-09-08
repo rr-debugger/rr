@@ -529,6 +529,7 @@ set(BASIC_TESTS
   mprotect_heterogenous
   mprotect_none
   mprotect_stack
+  mq
   mremap
   mremap_grow
   mremap_grow_shared
