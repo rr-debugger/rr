@@ -310,7 +310,7 @@ TraceTaskEvent TraceReader::read_task_event() {
   auto& tasks = reader(TASKS);
   TraceTaskEvent r;
   TraceFrame::Time time;
-  char type;
+  char type = TraceTaskEvent::NONE;
   tasks >> time >> type >> r.tid_;
   r.type_ = (TraceTaskEvent::Type)type;
   switch (r.type()) {
@@ -327,6 +327,8 @@ TraceTaskEvent TraceReader::read_task_event() {
       // Should be EOF only
       assert(!tasks.good());
       break;
+    default:
+      assert(false && "Corrupt Trace?");
   }
   return r;
 }
