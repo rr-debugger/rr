@@ -182,6 +182,12 @@ static vector<string> parse_cmd(string& str) {
   }
   LOG(debug) << "invoking command: " << cmd->name();
   string resp = cmd->invoke(gdb_server, t, args);
+
+  if (resp == GdbCommandHandler::cmd_end_diversion()) {
+    LOG(debug) << "cmd must run outside of diversion (" << resp << ")";
+    return resp;
+  }
+
   LOG(debug) << "cmd response: " << resp;
   return gdb_escape(resp + "\n");
 }

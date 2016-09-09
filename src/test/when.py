@@ -36,9 +36,10 @@ if ticks2 <= ticks:
 # Ensure 'when' terminates a diversion
 send_gdb('call strlen("abcd")')
 send_gdb('when')
-expect_gdb(re.compile(r'Current event: (\d+)'))
-t3 = eval(last_match().group(1));
-if t2 != t3:
-    failed('ERROR in third "when"')
+expect_gdb(re.compile(r'Current event not known \(diversion\?\)'))
+send_gdb('when-ticks')
+expect_gdb(re.compile(r'Current event not known \(diversion\?\)'))
+send_gdb('when-tid')
+expect_gdb(re.compile(r'Current event not known \(diversion\?\)'))
 
 ok()
