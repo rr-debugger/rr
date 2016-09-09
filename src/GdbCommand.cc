@@ -31,7 +31,8 @@ static std::vector<ReplayTimeline::Mark> back_stack;
 static ReplayTimeline::Mark current_history_cp;
 static std::vector<ReplayTimeline::Mark> forward_stack;
 static SimpleGdbCommand rr_history_push(
-    "rr-history-push", [](GdbServer& gdb_server, Task* t, const vector<string>&) {
+    "rr-history-push",
+    [](GdbServer& gdb_server, Task* t, const vector<string>&) {
       if (!t->session().is_replaying()) {
         // Don't create new history state inside a diversion
         return string();
