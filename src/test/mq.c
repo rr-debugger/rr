@@ -17,10 +17,12 @@ int main(void) {
   mq_attr.mq_maxmsg = 10;
   mq_attr.mq_msgsize = 1024;
   mq_attr.mq_curmsgs = 0;
-  mq_a = mq_open("/test-queue", O_WRONLY | O_CREAT, 0777, &mq_attr);
+  char mq_name[100];
+  snprintf(mq_name, 100, "/rr-test-queue%d", sys_gettid());
+  mq_a = mq_open(mq_name, O_WRONLY | O_CREAT, 0777, &mq_attr);
   test_assert(mq_a != -1);
 
-  mq_b = mq_open("/test-queue", O_RDONLY);
+  mq_b = mq_open(mq_name, O_RDONLY);
   test_assert(mq_b != -1);
 
   test_assert(mq_getattr(mq_a, &mq_attr_test) == 0);
