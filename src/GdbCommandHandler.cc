@@ -116,6 +116,17 @@ end
       ss << gdb_macro_binding(*it);
     }
   }
+
+  ss << string(R"Delimiter(
+define hookpost-back
+frame
+end
+
+define hookpost-forward
+frame
+end
+)Delimiter");
+
   return ss.str();
 }
 
