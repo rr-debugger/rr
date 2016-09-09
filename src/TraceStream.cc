@@ -187,8 +187,13 @@ struct BasicInfo {
 void TraceWriter::write_frame(const TraceFrame& frame) {
   auto& events = writer(EVENTS);
 
-  BasicInfo basic_info = { frame.time(), frame.tid(), frame.event().encode(),
-                           frame.ticks(), frame.monotonic_time() };
+  BasicInfo basic_info;
+  memset(&basic_info, 0, sizeof(BasicInfo));
+  basic_info.global_time = frame.time();
+  basic_info.tid_ = frame.tid();
+  basic_info.ev = frame.event().encode();
+  basic_info.ticks_ = frame.ticks();
+  basic_info.monotonic_sec = frame.monotonic_time();
   events << basic_info;
   if (!events.good()) {
     FATAL() << "Tried to save " << sizeof(basic_info)
