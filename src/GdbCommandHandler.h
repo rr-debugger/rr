@@ -31,6 +31,11 @@ public:
 
   static GdbCommand* command_for_name(const std::string& name);
 
+  /**
+   * Special return value for commands that immediatly end a diversion session
+   */
+  static std::string cmd_end_diversion() { return std::string("RRCmd_EndDiversion"); }
+
 private:
 };
 

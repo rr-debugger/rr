@@ -26,6 +26,10 @@ expect_gdb('i=2')
 send_gdb('back')
 send_gdb('frame')
 expect_gdb('i=1')
+
+# A diversion should not interfere with the history
+send_gdb('call strlen("abcd")')
+
 send_gdb('back')
 send_gdb('frame')
 expect_gdb('i=0')
