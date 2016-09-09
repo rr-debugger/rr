@@ -62,11 +62,24 @@ static string simple_to_lower(const string& s) {
   return string(buf);
 }
 
+#if __has_attribute(require_constant_initialization)
+#define _CONSTANT_STATIC                                                       \
+  __attribute__((__require_constant_initialization__)) static
+#else
+#define _CONSTANT_STATIC static
+#endif
+
 static bool log_globals_initialized = false;
 static LogLevel default_level = LOG_error;
-static unique_ptr<unordered_map<string, LogLevel> > level_map;
-static unique_ptr<unordered_map<const char*, LogModule> > log_modules;
-static unique_ptr<stringstream> logging_stream;
+
+// These need to be available to other static constructors, so we need to be
+// sure that they const constant-initialized. Unfortunately some versions of C++
+// libraries have a bug that causes them not to be. _CONSTANT_STATIC should
+// turn this into a compile error rather than a runtime crash for compilers
+// that support the attribute.
+_CONSTANT_STATIC unique_ptr<unordered_map<string, LogLevel> > level_map;
+_CONSTANT_STATIC unique_ptr<unordered_map<const char*, LogModule> > log_modules;
+_CONSTANT_STATIC std::unique_ptr<stringstream> logging_stream;
 
 static void init_log_globals() {
   if (log_globals_initialized) {
