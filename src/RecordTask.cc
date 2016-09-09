@@ -123,6 +123,7 @@ struct Sighandlers {
         assert(EINVAL == errno);
         continue;
       }
+      msan_unpoison(&sa, sizeof(NativeArch::kernel_sigaction)); 
 
       h.init_arch<NativeArch>(sa);
     }

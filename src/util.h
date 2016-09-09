@@ -265,6 +265,17 @@ bool uses_invisible_guard_page();
 
 void copy_file(Task* t, int dest_fd, int src_fd);
 
+#if defined(__has_feature)
+#  if __has_feature(memory_sanitizer)
+extern "C" void __msan_unpoison(void *, size_t);
+inline void msan_unpoison(void *ptr, size_t n) { __msan_unpoison(ptr, n); };
+#  else
+inline void msan_unpoison(void *ptr, size_t n) { (void)ptr; (void)n; };
+#  endif
+#else
+inline void msan_unpoison(void *ptr, size_t n) { (void)ptr; (void)n; };
+#endif
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
