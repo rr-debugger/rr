@@ -150,8 +150,10 @@ if(WILL_RUN_TESTS)
   endif()
 endif()
 
+if (NOT DEBUG_PRELOAD_LIB)
 set_source_files_properties(src/preload/preload.c
                             PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_RELEASE})
+endif()
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
 include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
