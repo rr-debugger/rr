@@ -877,7 +877,15 @@ bool RecordTask::signal_handler_nodefer(int sig) const {
   return sighandlers->get(sig).nodefer_set;
 }
 
+static bool is_unstoppable_signal(int sig) {
+  return sig == SIGSTOP || sig == SIGKILL;
+}
+
 bool RecordTask::is_sig_blocked(int sig) {
+  if (is_unstoppable_signal(sig)) {
+    // These can never be blocked
+    return false;
+  }
   reload_sigmask();
   int sig_bit = sig - 1;
   if (sigsuspend_blocked_sigs) {
@@ -900,7 +908,7 @@ void RecordTask::apply_sig_sa_mask(int sig) {
 }
 
 bool RecordTask::is_sig_ignored(int sig) const {
-  if (sig == SIGSTOP || sig == SIGKILL) {
+  if (is_unstoppable_signal(sig)) {
     // These can never be ignored
     return false;
   }
@@ -1000,10 +1008,15 @@ void RecordTask::verify_signal_states() {
   uint64_t blocked = strtoull(results[0].c_str(), NULL, 16);
   uint64_t ignored = strtoull(results[1].c_str(), NULL, 16);
   uint64_t caught = strtoull(results[2].c_str(), NULL, 16);
-  for (int i = 1; i < _NSIG; ++i) {
-    uint64_t mask = uint64_t(1) << (i - 1);
-    auto disposition = sighandlers->get(i).disposition();
-    ASSERT(this, !!(blocked & mask) == is_sig_blocked(i));
+  for (int sig = 1; sig < _NSIG; ++sig) {
+    uint64_t mask = uint64_t(1) << (sig - 1);
+    ASSERT(this, !!(blocked & mask) == is_sig_blocked(sig));
+    if (is_unstoppable_signal(sig)) {
+      ASSERT(this, !(ignored & mask));
+      ASSERT(this, !(caught & mask));
+      continue;
+    }
+    auto disposition = sighandlers->get(sig).disposition();
     ASSERT(this, !!(ignored & mask) == (disposition == SIGNAL_IGNORE));
     ASSERT(this, !!(caught & mask) == (disposition == SIGNAL_HANDLER));
   }

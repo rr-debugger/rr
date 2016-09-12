@@ -627,6 +627,7 @@ set(BASIC_TESTS
   sighandler_fork
   sigill
   signal_deferred
+  signal_unstoppable
   signalfd
   sigprocmask
   sigprocmask_in_syscallbuf_sighandler
