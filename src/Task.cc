@@ -652,6 +652,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   registers.set_original_syscallno(syscall_number_for_execve(arch()));
   set_regs(registers);
 
+  extra_registers = ExtraRegisters(a);
   extra_registers_known = false;
   ExtraRegisters e = extra_regs();
   e.reset();
