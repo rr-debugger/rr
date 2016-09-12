@@ -988,7 +988,10 @@ void RecordTask::verify_signal_states() {
 #ifndef DEBUG
   return;
 #endif
-  if (ev().is_syscall_event() && ev().Syscall().state == PROCESSING_SYSCALL) {
+  if (ev().is_syscall_event()) {
+    // If the syscall event is on the event stack with PROCESSING or EXITING
+    // states, we won't have applied the signal-state updates yet while the
+    // kernel may have.
     return;
   }
   auto results = read_proc_status_fields(tid, "SigBlk", "SigIgn", "SigCgt");
