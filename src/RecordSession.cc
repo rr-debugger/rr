@@ -1052,10 +1052,10 @@ static bool inject_handled_signal(RecordTask* t) {
 
   if (t->stop_sig() == SIGSEGV) {
     // Constructing the signal handler frame must have failed. The kernel will
-    // kill the process after this. Stash the signal and mark it as blocked so
+    // kill the process after this. Stash the signal and make sure
     // we know to treat it as fatal when we inject it.
     t->stash_sig();
-    t->set_sig_blocked(SIGSEGV);
+    t->task_group()->received_sigframe_SIGSEGV = true;
     return false;
   }
 
@@ -1076,6 +1076,11 @@ static bool inject_handled_signal(RecordTask* t) {
 
 static bool is_fatal_signal(RecordTask* t, int sig,
                             SignalDeterministic deterministic) {
+  if (t->task_group()->received_sigframe_SIGSEGV) {
+    // Can't be blocked, caught or ignored
+    return true;
+  }
+
   signal_action action = default_action(sig);
   if (action != DUMP_CORE && action != TERMINATE) {
     // If the default action doesn't kill the process, it won't die.
