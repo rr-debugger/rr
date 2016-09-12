@@ -99,6 +99,11 @@ public:
 
   void print_register_file_compact(FILE* f) const;
 
+  /**
+   * Reset to post-exec initial state
+   */
+  void reset();
+
   void validate(Task* t);
 
 private:
