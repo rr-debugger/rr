@@ -32,7 +32,7 @@ set(CMAKE_C_FLAGS_DEBUG "-O0 -Werror")
 set(CMAKE_C_FLAGS_RELEASE "-O2")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++0x -pthread -g3 -Wall -Wextra")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++14 -pthread -g3 -Wall -Wextra")
 set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Werror")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
@@ -317,7 +317,7 @@ target_link_libraries(rrpreload
 
 add_executable(rr_exec_stub src/exec_stub.c)
 post_build_executable(rr_exec_stub)
-set_target_properties(rr_exec_stub PROPERTIES LINK_FLAGS -nostdlib)
+set_target_properties(rr_exec_stub PROPERTIES LINK_FLAGS -nostartfiles)
 set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
 
