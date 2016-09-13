@@ -652,7 +652,11 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   registers.set_original_syscallno(syscall_number_for_execve(arch()));
   set_regs(registers);
 
+  // Reset extra_registers for new architecture
+  extra_registers = ExtraRegisters(a);
   extra_registers_known = false;
+
+  // Work around kernel ptrace bug by manually resetting register values
   ExtraRegisters e = extra_regs();
   e.reset();
   set_extra_regs(e);
