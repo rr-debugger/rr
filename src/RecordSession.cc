@@ -1036,10 +1036,6 @@ static bool inject_handled_signal(RecordTask* t) {
 
   int sig = t->ev().Signal().siginfo.si_signo;
   t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
-  t->apply_sig_sa_mask(sig);
-  if (!t->signal_handler_nodefer(sig)) {
-    t->set_sig_blocked(sig, true);
-  }
 
   // It's been observed that when tasks enter
   // sighandlers, the singlestep operation above
@@ -1054,10 +1050,19 @@ static bool inject_handled_signal(RecordTask* t) {
   if (t->stop_sig() == SIGSEGV) {
     // Constructing the signal handler frame must have failed. The kernel will
     // kill the process after this. Stash the signal and make sure
-    // we know to treat it as fatal when we inject it.
+    // we know to treat it as fatal when we inject it. Also disable the
+    // signal handler to match what the kernel does.
+    t->set_sig_blocked(sig, false);
+    t->set_sig_handler_default(sig);
+
     t->stash_sig();
     t->task_group()->received_sigframe_SIGSEGV = true;
     return false;
+  }
+
+  t->apply_sig_sa_mask(sig);
+  if (!t->signal_handler_nodefer(sig)) {
+    t->set_sig_blocked(sig, true);
   }
 
   // We stepped into a user signal handler.
