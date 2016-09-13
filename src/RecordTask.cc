@@ -184,6 +184,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       in_wait_pid(0),
       emulated_stop_type(NOT_STOPPED),
       blocked_sigs(),
+      handling_deterministic_signal(0),
       flushed_num_rec_bytes(0),
       flushed_syscallbuf(false),
       delay_syscallbuf_reset(false),
@@ -1010,17 +1011,16 @@ void RecordTask::verify_signal_states() {
   uint64_t caught = strtoull(results[2].c_str(), NULL, 16);
   for (int sig = 1; sig < _NSIG; ++sig) {
     uint64_t mask = uint64_t(1) << (sig - 1);
-    if (is_unstoppable_signal(sig) ||
-        (sig == SIGSEGV && task_group()->received_sigframe_SIGSEGV)) {
+    if (is_unstoppable_signal(sig)) {
       ASSERT(this, !(blocked & mask));
       ASSERT(this, !(ignored & mask));
       ASSERT(this, !(caught & mask));
-      continue;
+    } else if (sig != handling_deterministic_signal) {
+      ASSERT(this, !!(blocked & mask) == is_sig_blocked(sig));
+      auto disposition = sighandlers->get(sig).disposition();
+      ASSERT(this, !!(ignored & mask) == (disposition == SIGNAL_IGNORE));
+      ASSERT(this, !!(caught & mask) == (disposition == SIGNAL_HANDLER));
     }
-    ASSERT(this, !!(blocked & mask) == is_sig_blocked(sig));
-    auto disposition = sighandlers->get(sig).disposition();
-    ASSERT(this, !!(ignored & mask) == (disposition == SIGNAL_IGNORE));
-    ASSERT(this, !!(caught & mask) == (disposition == SIGNAL_HANDLER));
   }
 }
 

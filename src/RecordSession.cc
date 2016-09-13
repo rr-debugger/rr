@@ -1808,6 +1808,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     debug_exec_state("EXEC_START", t);
 
     maybe_do_fake_syscall_restart(t);
+    t->handling_deterministic_signal = 0;
     task_continue(step_state);
   }
 

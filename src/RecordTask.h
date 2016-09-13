@@ -575,6 +575,7 @@ public:
   // of stop.
   EmulatedStopType emulated_stop_type;
   sig_set_t blocked_sigs;
+  int handling_deterministic_signal;
 
   // Syscallbuf state
 
