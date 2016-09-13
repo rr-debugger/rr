@@ -895,10 +895,14 @@ bool RecordTask::is_sig_blocked(int sig) {
   return (blocked_sigs >> sig_bit) & 1;
 }
 
-void RecordTask::set_sig_blocked(int sig) {
+void RecordTask::set_sig_blocked(int sig, bool blocked) {
   reload_sigmask();
-  int sig_bit = sig - 1;
-  blocked_sigs |= (sig_set_t)1 << sig_bit;
+  uint64_t mask = uint64_t(1) << (sig - 1);
+  if (blocked) {
+    blocked_sigs |= mask;
+  } else {
+    blocked_sigs &= ~mask;
+  }
   writeback_sigmask();
 }
 
@@ -992,6 +996,11 @@ void RecordTask::writeback_sigmask() {
   if (syscallbuf_child) {
     write_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs), blocked_sigs);
   }
+}
+
+void RecordTask::set_sig_handler_default(int sig) {
+  Sighandler& h = sighandlers->get(sig);
+  reset_handler(&h, arch());
 }
 
 void RecordTask::verify_signal_states() {

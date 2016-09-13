@@ -491,7 +491,6 @@ set(BASIC_TESTS
   grandchild_threads_main_running
   grandchild_threads_thread_running
   grandchild_threads_parent_alive
-  ignored_sigsegv
   inotify
   int3
   intr_futex_wait_restart
@@ -719,6 +718,7 @@ set(TESTS_WITH_PROGRAM
   block_clone_syscallbuf_overflow
   block_intr_sigchld
   blocked_bad_ip
+  blocked_sigill
   blocked_sigsegv
   breakpoint
   breakpoint_conditions
@@ -751,6 +751,7 @@ set(TESTS_WITH_PROGRAM
   hello
   history
   ignored_async_usr1
+  ignored_sigsegv
   immediate_restart
   int3_ok
   interrupt
