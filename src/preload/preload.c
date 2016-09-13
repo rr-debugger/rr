@@ -2335,6 +2335,8 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   long ret;
   kernel_sigset_t modified_set;
   void* oldset2 = NULL;
+  struct syscallbuf_hdr* hdr;
+  kernel_sigset_t previous_set;
 
   void* ptr = prep_syscall();
 
@@ -2359,25 +2361,34 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
     set = &modified_set;
   }
 
+  hdr = buffer_hdr();
+  previous_set = hdr->blocked_sigs;
+
+  /* Update |blocked_sigs| now so that if the syscall succeeds and a blocked
+   * signal is raised before it returns, rr sees the updated signal mask.
+   */
+  if (set) {
+    switch (how) {
+      case SIG_UNBLOCK:
+        hdr->blocked_sigs &= ~*set;
+        break;
+      case SIG_BLOCK:
+        hdr->blocked_sigs |= *set;
+        break;
+      case SIG_SETMASK:
+        hdr->blocked_sigs = *set;
+        break;
+    }
+  }
+
   ret = untraced_syscall4(syscallno, how, set, oldset2, call->args[3]);
   if (ret == 0) {
     if (oldset2) {
       local_memcpy(oldset, oldset2, sizeof(kernel_sigset_t));
     }
-    if (set) {
-      struct syscallbuf_hdr* hdr = buffer_hdr();
-      switch (how) {
-        case SIG_UNBLOCK:
-          hdr->blocked_sigs &= ~*set;
-          break;
-        case SIG_BLOCK:
-          hdr->blocked_sigs |= *set;
-          break;
-        case SIG_SETMASK:
-          hdr->blocked_sigs = *set;
-          break;
-      }
-    }
+  } else {
+    /* Ssyscall failed; don't update |blocked_sigs|! */
+    hdr->blocked_sigs = previous_set;
   }
 
   return commit_raw_syscall(syscallno, ptr, ret);
