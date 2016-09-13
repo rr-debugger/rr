@@ -432,7 +432,6 @@ set(BASIC_TESTS
   barrier
   big_buffers
   block
-  blocked_sigsegv
   block_open
   brk
   brk2
@@ -720,6 +719,7 @@ set(TESTS_WITH_PROGRAM
   block_clone_syscallbuf_overflow
   block_intr_sigchld
   blocked_bad_ip
+  blocked_sigsegv
   breakpoint
   breakpoint_conditions
   breakpoint_overlap
