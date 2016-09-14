@@ -14,6 +14,10 @@
 #include "TraceFrame.h"
 #include "remote_ptr.h"
 
+#ifndef __has_attribute
+#define __has_attribute(x) 0
+#endif
+
 namespace rr {
 
 /*
