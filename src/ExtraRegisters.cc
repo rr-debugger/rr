@@ -207,9 +207,8 @@ static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
     if (!printed_digit && !buf[i] && i > 0) {
       continue;
     }
-    sprintf(p, printed_digit ? "%02x" : "%x", buf[i]);
+    p += sprintf(p, printed_digit ? "%02x" : "%x", buf[i]);
     printed_digit = true;
-    p += 2;
   }
   fprintf(f, "%s:0x%s", name, out);
 }
