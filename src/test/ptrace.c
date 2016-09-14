@@ -57,23 +57,23 @@ int main(void) {
        the real registers, not stale registers. Working around kernel bug.
        Also, puts them in a known state in case they were actually used.
      */
-    asm("mov dummy,%xmm0");
-    asm("mov dummy,%xmm1");
-    asm("mov dummy,%xmm2");
-    asm("mov dummy,%xmm3");
-    asm("mov dummy,%xmm4");
-    asm("mov dummy,%xmm5");
-    asm("mov dummy,%xmm6");
-    asm("mov dummy,%xmm7");
+    asm("movdqu dummy,%xmm0");
+    asm("movdqu dummy,%xmm1");
+    asm("movdqu dummy,%xmm2");
+    asm("movdqu dummy,%xmm3");
+    asm("movdqu dummy,%xmm4");
+    asm("movdqu dummy,%xmm5");
+    asm("movdqu dummy,%xmm6");
+    asm("movdqu dummy,%xmm7");
 #ifdef __x86_64__
-    asm("mov dummy,%xmm8");
-    asm("mov dummy,%xmm9");
-    asm("mov dummy,%xmm10");
-    asm("mov dummy,%xmm11");
-    asm("mov dummy,%xmm12");
-    asm("mov dummy,%xmm13");
-    asm("mov dummy,%xmm14");
-    asm("mov dummy,%xmm15");
+    asm("movdqu dummy,%xmm8");
+    asm("movdqu dummy,%xmm9");
+    asm("movdqu dummy,%xmm10");
+    asm("movdqu dummy,%xmm11");
+    asm("movdqu dummy,%xmm12");
+    asm("movdqu dummy,%xmm13");
+    asm("movdqu dummy,%xmm14");
+    asm("movdqu dummy,%xmm15");
 #endif
 
     kill(getpid(), SIGSTOP);
