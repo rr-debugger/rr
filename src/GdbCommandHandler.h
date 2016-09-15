@@ -34,7 +34,9 @@ public:
   /**
    * Special return value for commands that immediatly end a diversion session
    */
-  static std::string cmd_end_diversion() { return std::string("RRCmd_EndDiversion"); }
+  static std::string cmd_end_diversion() {
+    return std::string("RRCmd_EndDiversion");
+  }
 
 private:
 };

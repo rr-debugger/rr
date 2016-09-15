@@ -644,8 +644,8 @@ bool GdbServer::diverter_process_debugger_requests(
         assert(req->type == DREQ_RR_CMD);
         Task* task = diversion_session.find_task(last_continue_tuid);
         if (task) {
-          std::string reply = GdbCommandHandler::process_command(*this,
-                                task, req->text());
+          std::string reply =
+              GdbCommandHandler::process_command(*this, task, req->text());
           // Certain commands cause the diversion to end immediately
           // while other commands must work within a diversion.
           if (reply == GdbCommandHandler::cmd_end_diversion()) {
