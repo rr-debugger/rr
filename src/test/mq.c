@@ -52,6 +52,8 @@ int main(void) {
   test_assert(mq_timedreceive(mq_b, buffer, sizeof(buffer), &prio, &expiry) ==
               -1);
 
+  mq_unlink(mq_name);
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
