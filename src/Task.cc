@@ -282,6 +282,7 @@ void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
 
 bool Task::is_desched_event_syscall() {
   return is_ioctl_syscall(regs().original_syscallno(), arch()) &&
+         desched_fd_child != -1 &&
          desched_fd_child == (int)regs().arg1_signed();
 }
 
