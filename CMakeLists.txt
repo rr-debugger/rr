@@ -501,6 +501,7 @@ set(BASIC_TESTS
   intr_sleep
   intr_sleep_no_restart
   invalid_fcntl
+  invalid_ioctl
   io
   ioctl
   ioctl_pty
