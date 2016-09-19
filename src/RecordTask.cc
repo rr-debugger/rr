@@ -258,7 +258,14 @@ RecordTask::~RecordTask() {
 
   // Write the exit event here so that the value recorded above is captured.
   EventType e = unstable ? EV_UNSTABLE_EXIT : EV_EXIT;
-  record_event(Event(e, NO_EXEC_INFO, arch()));
+  // Don't flush syscallbuf. Whatever triggered the exit (syscall, signal)
+  // should already have flushed it, if it was running. If it was blocked,
+  // then the syscallbuf would already have been flushed too. The exception
+  // is kill_all_tasks() in which case it's OK to just drop the last chunk of
+  // execution. Trying to flush syscallbuf for an exiting task could be bad,
+  // e.g. it could be in the middle of syscallbuf code that's supposed to be
+  // atomic.
+  record_event(Event(e, NO_EXEC_INFO, arch()), DONT_FLUSH_SYSCALLBUF);
 
   // We expect tasks to usually exit by a call to exit() or
   // exit_group(), so it's not helpful to warn about that.
@@ -1434,7 +1441,8 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
   trace_writer().write_frame(frame);
 
   if (!ev.has_ticks_slop()) {
-    ASSERT(this, flush == FLUSH_SYSCALLBUF);
+    ASSERT(this, flush == FLUSH_SYSCALLBUF || ev.type() == EV_UNSTABLE_EXIT ||
+                     ev.type() == EV_EXIT);
     // After we've output an event, it's safe to reset the syscallbuf (if not
     // explicitly delayed) since we will have exited the syscallbuf code that
     // consumed the syscallbuf data.
