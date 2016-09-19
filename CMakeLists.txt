@@ -451,6 +451,7 @@ set(BASIC_TESTS
   creat_address_not_truncated
   cwd_inaccessible
   daemon
+  daemon_read
   desched_blocking_poll
   dup
   doublesegv
