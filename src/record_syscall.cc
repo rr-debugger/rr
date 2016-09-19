@@ -1082,6 +1082,7 @@ static Switchable prepare_semctl(RecordTask* t, TaskSyscallState& syscall_state,
       _semun un_arg;
       un_arg.buf = &ds;
       int ret = _semctl(semid, 0, IPC_STAT, un_arg);
+      msan_unpoison(&ds, sizeof(semid64_ds));
       ASSERT(t, ret == 0);
 
       ParamSize size = sizeof(unsigned short) * ds.sem_nsems;
@@ -3481,6 +3482,14 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::mq_timedreceive: {
+      syscall_state.reg_parameter(
+          2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
+                 (size_t)t->regs().arg3()));
+      syscall_state.reg_parameter<unsigned>(4);
+      return ALLOW_SWITCH;
+    }
+
     default:
       // Invalid syscalls return -ENOSYS. Assume any such
       // result means the syscall was completely ignored by the
@@ -3827,6 +3836,7 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
 
   struct shmid64_ds ds;
   int ret = _shmctl(shmid, IPC_STAT, &ds);
+  msan_unpoison(&ds, sizeof(semid64_ds));
   ASSERT(t, !ret) << "shmid should be readable by rr since rr has the same "
                      "UID as tracees";
   size_t size = ceil_page_size(ds.shm_segsz);

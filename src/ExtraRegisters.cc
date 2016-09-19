@@ -201,10 +201,16 @@ static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
     }
   }
   char out[257];
+  bool printed_digit = false;
+  char* p = out;
   for (int i = len - 1; i >= 0; --i) {
-    sprintf(out + (len - 1 - i) * 2, "%02x", buf[i]);
+    if (!printed_digit && !buf[i] && i > 0) {
+      continue;
+    }
+    p += sprintf(p, printed_digit ? "%02x" : "%x", buf[i]);
+    printed_digit = true;
   }
-  fprintf(f, "%s:%s ", name, out);
+  fprintf(f, "%s:0x%s", name, out);
 }
 
 static void print_regs(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
@@ -214,6 +220,9 @@ static void print_regs(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
     sprintf(buf, "%s%d", name_base, i);
     print_reg(r, (GdbRegister)(low + i),
               hi == GdbRegister(0) ? hi : (GdbRegister)(hi + i), buf, f);
+    if (i < num_regs - 1) {
+      fputc(' ', f);
+    }
   }
 }
 
@@ -332,6 +341,35 @@ void ExtraRegisters::set_user_fpxregs_struct(
   assert(arch_ == x86);
   assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
   memcpy(data_.data(), &regs, sizeof(regs));
+}
+
+static void set_word(SupportedArch arch, vector<uint8_t>& v, GdbRegister r,
+                     int word) {
+  RegData d = xsave_register_data(arch, r);
+  assert(d.size == 4);
+  assert(d.offset + d.size <= (int)v.size());
+  assert(-1 == d.xsave_feature_bit);
+  *reinterpret_cast<int*>(v.data() + d.offset) = word;
+}
+
+void ExtraRegisters::reset() {
+  assert(format_ == XSAVE);
+  memset(data_.data(), 0, data_.size());
+  switch (arch()) {
+    case x86_64: {
+      set_word(arch(), data_, DREG_64_MXCSR, 0x1f80);
+      set_word(arch(), data_, DREG_64_FCTRL, 0x37f);
+      break;
+    }
+    case x86: {
+      set_word(arch(), data_, DREG_MXCSR, 0x1f80);
+      set_word(arch(), data_, DREG_FCTRL, 0x37f);
+      break;
+    }
+    default:
+      assert(0 && "Unknown arch");
+      break;
+  }
 }
 
 } // namespace rr

@@ -606,7 +606,6 @@ bool GdbServer::diverter_process_debugger_requests(
     switch (req->type) {
       case DREQ_RESTART:
       case DREQ_DETACH:
-      case DREQ_RR_CMD:
         diversion_refcount = 0;
         return false;
 
@@ -641,10 +640,30 @@ bool GdbServer::diverter_process_debugger_requests(
         dbg->reply_write_siginfo();
         continue;
 
+      case DREQ_RR_CMD: {
+        assert(req->type == DREQ_RR_CMD);
+        Task* task = diversion_session.find_task(last_continue_tuid);
+        if (task) {
+          std::string reply =
+              GdbCommandHandler::process_command(*this, task, req->text());
+          // Certain commands cause the diversion to end immediately
+          // while other commands must work within a diversion.
+          if (reply == GdbCommandHandler::cmd_end_diversion()) {
+            diversion_refcount = 0;
+            return false;
+          }
+          dbg->reply_rr_cmd(reply);
+          continue;
+        } else {
+          diversion_refcount = 0;
+          return false;
+        }
+        break;
+      }
+
       default:
         break;
     }
-
     dispatch_debugger_request(diversion_session, *req, REPORT_NORMAL);
   }
 }

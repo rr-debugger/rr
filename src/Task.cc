@@ -642,8 +642,6 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   fds->erase_task(this);
 
   registers.set_arch(a);
-  extra_registers = ExtraRegisters(a);
-  extra_registers_known = false;
   struct user_regs_struct ptrace_regs;
   ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
   registers.set_from_ptrace(ptrace_regs);
@@ -653,6 +651,12 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   // results.
   registers.set_original_syscallno(syscall_number_for_execve(arch()));
   set_regs(registers);
+
+  extra_registers = ExtraRegisters(a);
+  extra_registers_known = false;
+  ExtraRegisters e = extra_regs();
+  e.reset();
+  set_extra_regs(e);
 
   syscallbuf_child = nullptr;
   cloned_file_data_fd_child = -1;

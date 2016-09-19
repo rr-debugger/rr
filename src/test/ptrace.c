@@ -33,6 +33,8 @@ static size_t find_xsave_size(void) {
   return ecx;
 }
 
+int dummy[4] = { 1, 2, 3, 4 };
+
 int main(void) {
   pid_t child;
   int status;
@@ -51,6 +53,29 @@ int main(void) {
   siginfo_t* siginfo;
 
   if (0 == (child = fork())) {
+    /* Ensure XMM registers are modified so that ptrace will read
+       the real registers, not stale registers. Working around kernel bug.
+       Also, puts them in a known state in case they were actually used.
+     */
+    asm("movdqu dummy,%xmm0");
+    asm("movdqu dummy,%xmm1");
+    asm("movdqu dummy,%xmm2");
+    asm("movdqu dummy,%xmm3");
+    asm("movdqu dummy,%xmm4");
+    asm("movdqu dummy,%xmm5");
+    asm("movdqu dummy,%xmm6");
+    asm("movdqu dummy,%xmm7");
+#ifdef __x86_64__
+    asm("movdqu dummy,%xmm8");
+    asm("movdqu dummy,%xmm9");
+    asm("movdqu dummy,%xmm10");
+    asm("movdqu dummy,%xmm11");
+    asm("movdqu dummy,%xmm12");
+    asm("movdqu dummy,%xmm13");
+    asm("movdqu dummy,%xmm14");
+    asm("movdqu dummy,%xmm15");
+#endif
+
     kill(getpid(), SIGSTOP);
     test_assert(static_data == NEW_VALUE);
     return 77;
@@ -101,9 +126,7 @@ int main(void) {
 
   ALLOCATE_GUARD(fpregs, 0xBB);
   test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, fpregs));
-  /* The following assertion actually fires because we sometimes get
-     garbage in the XMM registers after execve! */
-  /* test_assert(NULL == memchr(fpregs, 0xBB, sizeof(*fpregs))); */
+  test_assert(NULL == memchr(fpregs, 0xBB, sizeof(*fpregs)));
   VERIFY_GUARD(fpregs);
   test_assert(0 == ptrace(PTRACE_SETFPREGS, child, NULL, fpregs));
 

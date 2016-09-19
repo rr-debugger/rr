@@ -184,8 +184,8 @@ public:
   /** Return true iff |sig| is blocked for this. */
   bool is_sig_blocked(int sig);
 
-  /** Set |sig| to be treated as blocked. */
-  void set_sig_blocked(int sig);
+  /** Set |sig| to be treated as |blocked|. */
+  void set_sig_blocked(int sig, bool blocked);
   /**
    * Return true iff |sig| is SIG_IGN, or it's SIG_DFL and the
    * default disposition is "ignore".
@@ -204,6 +204,10 @@ public:
    * |sig|'s current sigaction
    */
   void apply_sig_sa_mask(int sig);
+  /**
+   * Reset the signal handler for this signal to the default.
+   */
+  void set_sig_handler_default(int sig);
 
   /**
    * Check that our status for |sig| matches what's in /proc/<pid>/status.
@@ -575,6 +579,7 @@ public:
   // of stop.
   EmulatedStopType emulated_stop_type;
   sig_set_t blocked_sigs;
+  int handling_deterministic_signal;
 
   // Syscallbuf state
 

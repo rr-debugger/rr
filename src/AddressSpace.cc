@@ -196,19 +196,6 @@ AddressSpace::~AddressSpace() { session_->on_destroy(this); }
 
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
-static remote_ptr<void> find_rr_vdso(Task* t, size_t* len) {
-  for (KernelMapIterator it(t); !it.at_end(); ++it) {
-    auto& km = it.current();
-    if (km.fsname() == "[vdso]") {
-      *len = km.size();
-      ASSERT(t, uint32_t(*len) == *len) << "VDSO more than 4GB???";
-      return km.start();
-    }
-  }
-  ASSERT(t, false) << "rr VDSO not found?";
-  return nullptr;
-}
-
 static uint32_t find_offset_of_syscall_instruction_in(SupportedArch arch,
                                                       uint8_t* vdso_data,
                                                       size_t vdso_len) {
@@ -1217,6 +1204,25 @@ void AddressSpace::verify(Task* t) const {
   ASSERT(t, kernel_it.at_end() && mem_it == mem.end());
 }
 
+// Just a place that rr's AutoSyscall functionality can use as a syscall
+// instruction in rr's address space for use before we have exec'd.
+extern "C" {
+extern char rr_syscall_addr;
+}
+static void __attribute__((noinline, used)) fake_syscall() {
+#ifdef __i386__
+  __asm__ __volatile__("rr_syscall_addr: int $0x80\n\t"
+                       "nop\n\t"
+                       "nop\n\t"
+                       "nop\n\t");
+#elif defined(__x86_64__)
+  __asm__ __volatile__("rr_syscall_addr: syscall\n\t"
+                       "nop\n\t"
+                       "nop\n\t"
+                       "nop\n\t");
+#endif
+}
+
 AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
     : exe(exe),
       leader_tid_(t->rec_tid),
@@ -1233,20 +1239,10 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
     populate_address_space(t);
     assert(!vdso_start_addr.is_null());
   } else {
-    // Find the location of the VDSO in the just-spawned process. This will
-    // match the VDSO in rr itself since we haven't execed yet. So, speed
-    // things up by searching rr's own VDSO for a syscall instruction.
-    size_t rr_vdso_len = 0;
-    remote_ptr<void> rr_vdso = find_rr_vdso(t, &rr_vdso_len);
-    // Here we rely on the VDSO location in the spawned tracee being the same
-    // as in rr itself.
-    uint8_t* local_vdso = reinterpret_cast<uint8_t*>(rr_vdso.as_int());
-    auto offset = find_offset_of_syscall_instruction_in(
-        NativeArch::arch(), local_vdso, rr_vdso_len);
-    offset_to_syscall_in_vdso[NativeArch::arch()] = offset;
     // Setup traced_syscall_ip_ now because we need to do AutoRemoteSyscalls
-    // (for open_mem_fd) before the first exec.
-    traced_syscall_ip_ = remote_code_ptr(rr_vdso.as_int() + offset);
+    // (for open_mem_fd) before the first exec. We rely on the fact that we
+    // haven't execed yet, so the address space layout is the same.
+    traced_syscall_ip_ = remote_code_ptr((uintptr_t)&rr_syscall_addr);
   }
 }
 

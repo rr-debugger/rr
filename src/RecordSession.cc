@@ -1036,9 +1036,6 @@ static bool inject_handled_signal(RecordTask* t) {
 
   int sig = t->ev().Signal().siginfo.si_signo;
   t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
-  t->apply_sig_sa_mask(sig);
-  if (!t->signal_handler_nodefer(sig))
-    t->set_sig_blocked(sig);
 
   // It's been observed that when tasks enter
   // sighandlers, the singlestep operation above
@@ -1052,11 +1049,20 @@ static bool inject_handled_signal(RecordTask* t) {
 
   if (t->stop_sig() == SIGSEGV) {
     // Constructing the signal handler frame must have failed. The kernel will
-    // kill the process after this. Stash the signal and mark it as blocked so
-    // we know to treat it as fatal when we inject it.
+    // kill the process after this. Stash the signal and make sure
+    // we know to treat it as fatal when we inject it. Also disable the
+    // signal handler to match what the kernel does.
+    t->set_sig_blocked(sig, false);
+    t->set_sig_handler_default(sig);
+
     t->stash_sig();
-    t->set_sig_blocked(SIGSEGV);
+    t->task_group()->received_sigframe_SIGSEGV = true;
     return false;
+  }
+
+  t->apply_sig_sa_mask(sig);
+  if (!t->signal_handler_nodefer(sig)) {
+    t->set_sig_blocked(sig, true);
   }
 
   // We stepped into a user signal handler.
@@ -1076,6 +1082,11 @@ static bool inject_handled_signal(RecordTask* t) {
 
 static bool is_fatal_signal(RecordTask* t, int sig,
                             SignalDeterministic deterministic) {
+  if (t->task_group()->received_sigframe_SIGSEGV) {
+    // Can't be blocked, caught or ignored
+    return true;
+  }
+
   signal_action action = default_action(sig);
   if (action != DUMP_CORE && action != TERMINATE) {
     // If the default action doesn't kill the process, it won't die.
@@ -1803,6 +1814,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     debug_exec_state("EXEC_START", t);
 
     maybe_do_fake_syscall_restart(t);
+    t->handling_deterministic_signal = 0;
     task_continue(step_state);
   }
 
@@ -1817,14 +1829,18 @@ void RecordSession::terminate_recording() {
 
   LOG(info) << "Processing termination request ...";
 
+  pid_t ttid = t ? t->tid : 0;
+  auto tticks = t ? t->tick_count() : 0;
+
   // This will write unstable exit events for all tasks.
   kill_all_tasks();
+  t = nullptr; // t is now deallocated
 
   LOG(info) << "  recording final TRACE_TERMINATION event ...";
 
-  TraceFrame frame(trace_out.time(), t ? t->tid : 0,
+  TraceFrame frame(trace_out.time(), ttid,
                    Event(EV_TRACE_TERMINATION, NO_EXEC_INFO, RR_NATIVE_ARCH),
-                   t ? t->tick_count() : 0);
+                   tticks);
   trace_out.write_frame(frame);
   trace_out.close();
 }

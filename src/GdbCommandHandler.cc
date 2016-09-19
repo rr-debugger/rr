@@ -116,6 +116,17 @@ end
       ss << gdb_macro_binding(*it);
     }
   }
+
+  ss << string(R"Delimiter(
+define hookpost-back
+frame
+end
+
+define hookpost-forward
+frame
+end
+)Delimiter");
+
   return ss.str();
 }
 
@@ -182,6 +193,12 @@ static vector<string> parse_cmd(string& str) {
   }
   LOG(debug) << "invoking command: " << cmd->name();
   string resp = cmd->invoke(gdb_server, t, args);
+
+  if (resp == GdbCommandHandler::cmd_end_diversion()) {
+    LOG(debug) << "cmd must run outside of diversion (" << resp << ")";
+    return resp;
+  }
+
   LOG(debug) << "cmd response: " << resp;
   return gdb_escape(resp + "\n");
 }

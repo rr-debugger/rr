@@ -113,7 +113,7 @@ struct Sighandlers {
   }
 
   void init_from_current_process() {
-    for (size_t i = 0; i < array_length(handlers); ++i) {
+    for (size_t i = 1; i < array_length(handlers); ++i) {
       Sighandler& h = handlers[i];
 
       NativeArch::kernel_sigaction sa;
@@ -123,6 +123,7 @@ struct Sighandlers {
         assert(EINVAL == errno);
         continue;
       }
+      msan_unpoison(&sa, sizeof(NativeArch::kernel_sigaction));
 
       h.init_arch<NativeArch>(sa);
     }
@@ -183,6 +184,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       in_wait_pid(0),
       emulated_stop_type(NOT_STOPPED),
       blocked_sigs(),
+      handling_deterministic_signal(0),
       flushed_num_rec_bytes(0),
       flushed_syscallbuf(false),
       delay_syscallbuf_reset(false),
@@ -876,7 +878,15 @@ bool RecordTask::signal_handler_nodefer(int sig) const {
   return sighandlers->get(sig).nodefer_set;
 }
 
+static bool is_unstoppable_signal(int sig) {
+  return sig == SIGSTOP || sig == SIGKILL;
+}
+
 bool RecordTask::is_sig_blocked(int sig) {
+  if (is_unstoppable_signal(sig)) {
+    // These can never be blocked
+    return false;
+  }
   reload_sigmask();
   int sig_bit = sig - 1;
   if (sigsuspend_blocked_sigs) {
@@ -885,10 +895,14 @@ bool RecordTask::is_sig_blocked(int sig) {
   return (blocked_sigs >> sig_bit) & 1;
 }
 
-void RecordTask::set_sig_blocked(int sig) {
+void RecordTask::set_sig_blocked(int sig, bool blocked) {
   reload_sigmask();
-  int sig_bit = sig - 1;
-  blocked_sigs |= (sig_set_t)1 << sig_bit;
+  uint64_t mask = uint64_t(1) << (sig - 1);
+  if (blocked) {
+    blocked_sigs |= mask;
+  } else {
+    blocked_sigs &= ~mask;
+  }
   writeback_sigmask();
 }
 
@@ -899,7 +913,7 @@ void RecordTask::apply_sig_sa_mask(int sig) {
 }
 
 bool RecordTask::is_sig_ignored(int sig) const {
-  if (sig == SIGSTOP || sig == SIGKILL) {
+  if (is_unstoppable_signal(sig)) {
     // These can never be ignored
     return false;
   }
@@ -969,6 +983,11 @@ void RecordTask::update_sigmask(const Registers& regs) {
     default:
       FATAL() << "Unknown sigmask manipulator " << how;
   }
+
+  // Our signals are never blocked.
+  uint64_t enabled_sigs = (1 << (PerfCounters::TIME_SLICE_SIGNAL - 1)) |
+                          (1 << (SYSCALLBUF_DESCHED_SIGNAL - 1));
+  blocked_sigs &= ~enabled_sigs;
   writeback_sigmask();
 }
 
@@ -984,11 +1003,19 @@ void RecordTask::writeback_sigmask() {
   }
 }
 
+void RecordTask::set_sig_handler_default(int sig) {
+  Sighandler& h = sighandlers->get(sig);
+  reset_handler(&h, arch());
+}
+
 void RecordTask::verify_signal_states() {
 #ifndef DEBUG
   return;
 #endif
-  if (ev().is_syscall_event() && ev().Syscall().state == PROCESSING_SYSCALL) {
+  if (ev().is_syscall_event()) {
+    // If the syscall event is on the event stack with PROCESSING or EXITING
+    // states, we won't have applied the signal-state updates yet while the
+    // kernel may have.
     return;
   }
   auto results = read_proc_status_fields(tid, "SigBlk", "SigIgn", "SigCgt");
@@ -996,12 +1023,27 @@ void RecordTask::verify_signal_states() {
   uint64_t blocked = strtoull(results[0].c_str(), NULL, 16);
   uint64_t ignored = strtoull(results[1].c_str(), NULL, 16);
   uint64_t caught = strtoull(results[2].c_str(), NULL, 16);
-  for (int i = 1; i < _NSIG; ++i) {
-    uint64_t mask = uint64_t(1) << (i - 1);
-    auto disposition = sighandlers->get(i).disposition();
-    ASSERT(this, !!(blocked & mask) == is_sig_blocked(i));
-    ASSERT(this, !!(ignored & mask) == (disposition == SIGNAL_IGNORE));
-    ASSERT(this, !!(caught & mask) == (disposition == SIGNAL_HANDLER));
+  for (int sig = 1; sig < _NSIG; ++sig) {
+    uint64_t mask = uint64_t(1) << (sig - 1);
+    if (is_unstoppable_signal(sig)) {
+      ASSERT(this, !(blocked & mask)) << "Expected " << signal_name(sig)
+                                      << " to not be blocked, but it is";
+      ASSERT(this, !(ignored & mask)) << "Expected " << signal_name(sig)
+                                      << " to not be ignored, but it is";
+      ASSERT(this, !(caught & mask)) << "Expected " << signal_name(sig)
+                                     << " to not be caught, but it is";
+    } else if (sig != handling_deterministic_signal) {
+      ASSERT(this, !!(blocked & mask) == is_sig_blocked(sig))
+          << signal_name(sig)
+          << ((blocked & mask) ? " is blocked" : " is not blocked");
+      auto disposition = sighandlers->get(sig).disposition();
+      ASSERT(this, !!(ignored & mask) == (disposition == SIGNAL_IGNORE))
+          << signal_name(sig)
+          << ((ignored & mask) ? " is ignored" : " is not ignored");
+      ASSERT(this, !!(caught & mask) == (disposition == SIGNAL_HANDLER))
+          << signal_name(sig)
+          << ((caught & mask) ? " is caught" : " is not caught");
+    }
   }
 }
 

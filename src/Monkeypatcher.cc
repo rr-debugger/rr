@@ -85,10 +85,12 @@ template <typename Arch> static void setup_preload_library_path(RecordTask* t) {
     }
     size_t next_colon = env.find(':', lib_pos);
     if (next_colon != string::npos) {
-      while (env[next_colon + 1] == ':' || env[next_colon + 1] == 0) {
+      while ((next_colon + 1 < env.length()) &&
+             (env[next_colon + 1] == ':' || env[next_colon + 1] == 0)) {
         ++next_colon;
       }
-      if (next_colon < lib_pos + sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1) {
+      if (next_colon + 1 <
+          lib_pos + sizeof(SYSCALLBUF_LIB_FILENAME_PADDED) - 1) {
         LOG(debug) << "Insufficient space for " << lib_name
                    << " in LD_PRELOAD before next ':'";
         return;

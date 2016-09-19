@@ -28,12 +28,12 @@ set(rr_VERSION_PATCH 0)
 add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSION_PATCH}")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g3 -Wall -Wextra -Wstrict-prototypes")
-set(CMAKE_C_FLAGS_DEBUG "-O0 -Werror")
+set(CMAKE_C_FLAGS_DEBUG "-O0 -Werror -DDEBUG")
 set(CMAKE_C_FLAGS_RELEASE "-O2")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++0x -pthread -g3 -Wall -Wextra")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Werror")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Werror -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
@@ -150,8 +150,10 @@ if(WILL_RUN_TESTS)
   endif()
 endif()
 
+if (NOT DEBUG_PRELOAD_LIB)
 set_source_files_properties(src/preload/preload.c
                             PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_RELEASE})
+endif()
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
 include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
@@ -315,7 +317,7 @@ target_link_libraries(rrpreload
 
 add_executable(rr_exec_stub src/exec_stub.c)
 post_build_executable(rr_exec_stub)
-set_target_properties(rr_exec_stub PROPERTIES LINK_FLAGS -nostdlib)
+set_target_properties(rr_exec_stub PROPERTIES LINK_FLAGS -nostartfiles)
 set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
 
@@ -430,7 +432,6 @@ set(BASIC_TESTS
   barrier
   big_buffers
   block
-  blocked_sigsegv
   block_open
   brk
   brk2
@@ -490,7 +491,6 @@ set(BASIC_TESTS
   grandchild_threads_main_running
   grandchild_threads_thread_running
   grandchild_threads_parent_alive
-  ignored_sigsegv
   inotify
   int3
   intr_futex_wait_restart
@@ -529,6 +529,7 @@ set(BASIC_TESTS
   mprotect_heterogenous
   mprotect_none
   mprotect_stack
+  mq
   mremap
   mremap_grow
   mremap_grow_shared
@@ -624,6 +625,7 @@ set(BASIC_TESTS
   sighandler_fork
   sigill
   signal_deferred
+  signal_unstoppable
   signalfd
   sigprocmask
   sigprocmask_in_syscallbuf_sighandler
@@ -716,6 +718,8 @@ set(TESTS_WITH_PROGRAM
   block_clone_syscallbuf_overflow
   block_intr_sigchld
   blocked_bad_ip
+  blocked_sigill
+  blocked_sigsegv
   breakpoint
   breakpoint_conditions
   breakpoint_overlap
@@ -747,6 +751,7 @@ set(TESTS_WITH_PROGRAM
   hello
   history
   ignored_async_usr1
+  ignored_sigsegv
   immediate_restart
   int3_ok
   interrupt
@@ -854,6 +859,7 @@ set(TESTS_WITHOUT_PROGRAM
   mprotect_step
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
+  post_exec_fpu_regs
   read_bad_mem
   record_replay
   remove_watchpoint

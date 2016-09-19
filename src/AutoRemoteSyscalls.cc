@@ -254,6 +254,7 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
                                  remote_ptr<void> buf_end, int child_sock,
                                  const char* path, int* cwd_fd) {
   typename Arch::sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr)); // Make valgrind happy.
   addr.sun_family = AF_UNIX;
   assert(strlen(path) < sizeof(addr.sun_path));
   // Skip leading '/' since we're going to access this relative to the root
@@ -325,6 +326,7 @@ static void child_sendmsg(AutoRemoteSyscalls& remote,
                           remote_ptr<socketcall_args<Arch> > sc_args,
                           remote_ptr<void> buf_end, int child_sock, int fd) {
   char cmsgbuf[Arch::cmsg_space(sizeof(fd))];
+  memset(cmsgbuf, 0, sizeof(cmsgbuf));
   // Pull the puppet strings to have the child send its fd
   // to us.  Similarly to above, we DONT_WAIT on the
   // call to finish, since it's likely not defined whether the

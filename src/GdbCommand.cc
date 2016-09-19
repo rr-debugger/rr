@@ -10,20 +10,26 @@ namespace rr {
 
 static SimpleGdbCommand when("when", [](GdbServer&, Task* t,
                                         const vector<string>&) {
-  if (t->session().is_replaying()) {
-    return string("Current event: ") +
-           to_string(static_cast<ReplayTask*>(t)->current_trace_frame().time());
+  if (!t->session().is_replaying()) {
+    return string("Current event not known (diversion?)");
   }
-  return string("Current event not known (diversion?)");
+  return string("Current event: ") +
+         to_string(static_cast<ReplayTask*>(t)->current_trace_frame().time());
 });
 
 static SimpleGdbCommand when_ticks("when-ticks", [](GdbServer&, Task* t,
                                                     const vector<string>&) {
+  if (!t->session().is_replaying()) {
+    return string("Current event not known (diversion?)");
+  }
   return string("Current tick: ") + to_string(t->tick_count());
 });
 
 static SimpleGdbCommand when_tid("when-tid", [](GdbServer&, Task* t,
                                                 const vector<string>&) {
+  if (!t->session().is_replaying()) {
+    return string("Current event not known (diversion?)");
+  }
   return string("Current tid: ") + to_string(t->tid);
 });
 
@@ -31,7 +37,12 @@ static std::vector<ReplayTimeline::Mark> back_stack;
 static ReplayTimeline::Mark current_history_cp;
 static std::vector<ReplayTimeline::Mark> forward_stack;
 static SimpleGdbCommand rr_history_push(
-    "rr-history-push", [](GdbServer& gdb_server, Task*, const vector<string>&) {
+    "rr-history-push",
+    [](GdbServer& gdb_server, Task* t, const vector<string>&) {
+      if (!t->session().is_replaying()) {
+        // Don't create new history state inside a diversion
+        return string();
+      }
       if (current_history_cp) {
         back_stack.push_back(current_history_cp);
       }
@@ -39,8 +50,11 @@ static SimpleGdbCommand rr_history_push(
       forward_stack.clear();
       return string();
     });
-static SimpleGdbCommand back("back", [](GdbServer& gdb_server, Task*,
+static SimpleGdbCommand back("back", [](GdbServer& gdb_server, Task* t,
                                         const vector<string>&) {
+  if (!t->session().is_replaying()) {
+    return GdbCommandHandler::cmd_end_diversion();
+  }
   if (back_stack.size() == 0) {
     return string("Can't go back. No more history entries.");
   }
@@ -50,8 +64,11 @@ static SimpleGdbCommand back("back", [](GdbServer& gdb_server, Task*,
   gdb_server.get_timeline().seek_to_mark(current_history_cp);
   return string();
 });
-static SimpleGdbCommand forward("forward", [](GdbServer& gdb_server, Task*,
+static SimpleGdbCommand forward("forward", [](GdbServer& gdb_server, Task* t,
                                               const vector<string>&) {
+  if (!t->session().is_replaying()) {
+    return GdbCommandHandler::cmd_end_diversion();
+  }
   if (forward_stack.size() == 0) {
     return string("Can't go forward. No more history entries.");
   }

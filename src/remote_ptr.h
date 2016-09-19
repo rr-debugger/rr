@@ -84,9 +84,9 @@ public:
   bool is_null() const { return !ptr; }
 
   template <typename U>
-  remote_ptr<typename std::remove_cv<U>::type> field(U* dummy) const {
-    return remote_ptr<typename std::remove_cv<U>::type>(
-        ptr + reinterpret_cast<uintptr_t>(dummy));
+  remote_ptr<typename std::remove_cv<U>::type> field(U*,
+                                                     uintptr_t offset) const {
+    return remote_ptr<typename std::remove_cv<U>::type>(ptr + offset);
   }
   T* dummy() { return nullptr; }
   const T* dummy() const { return nullptr; }
@@ -104,7 +104,12 @@ private:
  * returns a remote_ptr pointing to field f of the struct pointed to by
  * remote_ptr p
  */
-#define REMOTE_PTR_FIELD(p, f) (p).field(&(p).dummy()->f)
+#define REMOTE_PTR_FIELD(p, f)                                                 \
+  ((p).field(                                                                  \
+      ((typename std::remove_reference<decltype((p).dummy()->f)>::type*)       \
+           nullptr),                                                           \
+      offsetof(typename std::remove_reference<decltype(*(p).dummy())>::type,   \
+               f)))
 
 template <typename T>
 std::ostream& operator<<(std::ostream& stream, remote_ptr<T> p) {

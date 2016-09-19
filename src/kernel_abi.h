@@ -881,7 +881,11 @@ struct BaseArch : public wordsize,
     ptr<socklen_t> addrlen;
   };
 
-  struct accept4_args : public accept_args {
+  struct accept4_args {
+    signed_int sockfd;
+    char __pad[sizeof(ptr<void>) - sizeof(int)];
+    ptr<sockaddr> addr;
+    ptr<socklen_t> addrlen;
     signed_long flags;
   };
 
@@ -1315,6 +1319,15 @@ struct BaseArch : public wordsize,
     uint8_t d_name[256];
   };
   RR_VERIFY_TYPE(dirent64);
+
+  struct mq_attr {
+    signed_long mq_flags;
+    signed_long mq_maxmsg;
+    signed_long mq_msgsize;
+    signed_long mq_curmsgs;
+    signed_long __reserved[4];
+  };
+  RR_VERIFY_TYPE(mq_attr);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

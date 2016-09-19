@@ -12,14 +12,12 @@ static void* start_thread(__attribute__((unused)) void* p) {
   sigset_t s;
 
   sigemptyset(&s);
-  sigaddset(&s, SIGSEGV);
+  sigaddset(&s, SIGILL);
   sigprocmask(SIG_BLOCK, &s, NULL);
-
-  rdtsc();
 
   atomic_puts("EXIT-SUCCESS");
 
-  crash_null_deref();
+  asm("ud2");
 
   return NULL;
 }
@@ -31,7 +29,7 @@ int main(void) {
   act.sa_sigaction = fault_handler;
   act.sa_flags = SA_SIGINFO | SA_NODEFER;
   sigemptyset(&act.sa_mask);
-  sigaction(SIGSEGV, &act, NULL);
+  sigaction(SIGILL, &act, NULL);
 
   pthread_create(&thread, NULL, start_thread, NULL);
   pthread_join(thread, NULL);

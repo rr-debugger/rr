@@ -50,6 +50,7 @@ void TraceFrame::dump(FILE* out) const {
   }
   regs().print_register_file_compact(out);
   if (recorded_extra_regs.format() != ExtraRegisters::NONE) {
+    fputc(' ', out);
     recorded_extra_regs.print_register_file_compact(out);
   }
   fprintf(out, "\n");

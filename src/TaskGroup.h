@@ -118,6 +118,10 @@ public:
   // Whether this task group has execed
   bool execed;
 
+  // True when a task in the task-group received a SIGSEGV because we
+  // couldn't push a signal handler frame. Only used during recording.
+  bool received_sigframe_SIGSEGV;
+
   ThreadDb* thread_db();
 
 private:

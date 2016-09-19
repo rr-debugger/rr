@@ -151,6 +151,8 @@ SymbolTable ElfReaderImpl<Arch>::read_symbols(const char* symtab,
   for (size_t i = 0; i < symbol_list.size(); ++i) {
     auto& s = symbol_list[i];
     if (s.st_shndx >= sections.size()) {
+      // Don't leave this entry uninitialized
+      result.symbols[i] = SymbolTable::Symbol(0, 0);
       continue;
     }
     auto& section = sections[s.st_shndx];
