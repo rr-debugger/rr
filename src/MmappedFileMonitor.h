@@ -28,8 +28,9 @@ public:
                          int64_t offset);
 
 private:
-  struct stat stat_;
-  EmuFile::shr_ptr emu_file_;
+  bool extant_;
+  dev_t device_;
+  ino_t inode_;
 };
 
 } // namespace rr
