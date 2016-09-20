@@ -259,6 +259,8 @@ size_t ParamSize::eval(RecordTask* t, size_t already_consumed) const {
   return s;
 }
 
+  typedef bool (*ArgMutator)(RecordTask*, remote_ptr<void>, void*);
+
 /**
  * When tasks enter syscalls that may block and so must be
  * prepared for a context-switch, and the syscall params
@@ -314,8 +316,9 @@ struct TaskSyscallState {
    * resuming).
    */
   template <typename T>
-  remote_ptr<T> reg_parameter(int arg, ArgMode mode = OUT) {
-    return reg_parameter(arg, sizeof(T), mode).cast<T>();
+  remote_ptr<T> reg_parameter(int arg, ArgMode mode = OUT,
+                              ArgMutator mutator = nullptr) {
+    return reg_parameter(arg, sizeof(T), mode, mutator).cast<T>();
   }
   /**
    * Identify a syscall memory parameter whose address is in register 'arg'
@@ -325,7 +328,8 @@ struct TaskSyscallState {
    * resuming).
    */
   remote_ptr<void> reg_parameter(int arg, const ParamSize& size,
-                                 ArgMode mode = OUT);
+                                 ArgMode mode = OUT,
+                                 ArgMutator mutator = nullptr);
   /**
    * Identify a syscall memory parameter whose address is in memory at
    * location 'addr_of_buf_ptr' with type T.
@@ -337,8 +341,9 @@ struct TaskSyscallState {
    */
   template <typename T>
   remote_ptr<T> mem_ptr_parameter(remote_ptr<void> addr_of_buf_ptr,
-                                  ArgMode mode = OUT) {
-    return mem_ptr_parameter(addr_of_buf_ptr, sizeof(T), mode).cast<T>();
+                                  ArgMode mode = OUT,
+                                  ArgMutator mutator = nullptr) {
+    return mem_ptr_parameter(addr_of_buf_ptr, sizeof(T), mode, mutator).cast<T>();
   }
   /**
    * Identify a syscall memory parameter whose address is in memory at
@@ -351,9 +356,10 @@ struct TaskSyscallState {
    */
   template <typename Ptr>
   remote_ptr<typename Ptr::Referent> mem_ptr_parameter_inferred(
-      remote_ptr<Ptr> addr_of_buf_ptr, ArgMode mode = OUT) {
+      remote_ptr<Ptr> addr_of_buf_ptr, ArgMode mode = OUT,
+      ArgMutator mutator = nullptr) {
     remote_ptr<void> p =
-        mem_ptr_parameter(addr_of_buf_ptr, Ptr::referent_size(), mode);
+        mem_ptr_parameter(addr_of_buf_ptr, Ptr::referent_size(), mode, mutator);
     return p.cast<typename Ptr::Referent>();
   }
   /**
@@ -366,7 +372,8 @@ struct TaskSyscallState {
    * call.
    */
   remote_ptr<void> mem_ptr_parameter(remote_ptr<void> addr_of_buf_ptr,
-                                     const ParamSize& size, ArgMode mode = OUT);
+                                     const ParamSize& size, ArgMode mode = OUT,
+                                     ArgMutator mutator = nullptr);
 
   typedef void (*AfterSyscallAction)(RecordTask* t);
   void after_syscall_action(AfterSyscallAction action) {
@@ -399,6 +406,7 @@ struct TaskSyscallState {
    * otherwise returns 'sw'.
    */
   Switchable done_preparing(Switchable sw);
+  Switchable done_preparing_internal(Switchable sw);
   enum WriteBack { WRITE_BACK, NO_WRITE_BACK };
   /**
    * Called when a syscall exits to copy results from scratch memory to their
@@ -423,6 +431,7 @@ struct TaskSyscallState {
     remote_ptr<void> ptr_in_memory;
     int ptr_in_reg;
     ArgMode mode;
+    ArgMutator mutator;
   };
 
   RecordTask* t;
@@ -516,7 +525,8 @@ static void align_scratch(remote_ptr<void>* scratch, uintptr_t amount = 8) {
 }
 
 remote_ptr<void> TaskSyscallState::reg_parameter(int arg, const ParamSize& size,
-                                                 ArgMode mode) {
+                                                 ArgMode mode,
+                                                 ArgMutator mutator) {
   if (preparation_done) {
     return remote_ptr<void>();
   }
@@ -528,6 +538,8 @@ remote_ptr<void> TaskSyscallState::reg_parameter(int arg, const ParamSize& size,
   }
   param.num_bytes = size;
   param.mode = mode;
+  param.mutator = mutator;
+  ASSERT(t, !mutator || mode == IN);
   if (mode != IN_OUT_NO_SCRATCH) {
     param.scratch = scratch;
     scratch += param.num_bytes.incoming_size;
@@ -539,7 +551,8 @@ remote_ptr<void> TaskSyscallState::reg_parameter(int arg, const ParamSize& size,
 }
 
 remote_ptr<void> TaskSyscallState::mem_ptr_parameter(
-    remote_ptr<void> addr_of_buf_ptr, const ParamSize& size, ArgMode mode) {
+    remote_ptr<void> addr_of_buf_ptr, const ParamSize& size, ArgMode mode,
+    ArgMutator mutator) {
   if (preparation_done) {
     return remote_ptr<void>();
   }
@@ -551,6 +564,8 @@ remote_ptr<void> TaskSyscallState::mem_ptr_parameter(
   }
   param.num_bytes = size;
   param.mode = mode;
+  param.mutator = mutator;
+  ASSERT(t, !mutator || mode == IN);
   if (mode != IN_OUT_NO_SCRATCH) {
     param.scratch = scratch;
     scratch += param.num_bytes.incoming_size;
@@ -578,10 +593,9 @@ remote_ptr<void> TaskSyscallState::relocate_pointer_to_scratch(
   return result;
 }
 
-Switchable TaskSyscallState::done_preparing(Switchable sw) {
-  if (preparation_done) {
-    return switchable;
-  }
+Switchable TaskSyscallState::done_preparing_internal(Switchable sw) {
+  ASSERT(t, !preparation_done);
+
   preparation_done = true;
   write_back = WRITE_BACK;
   switchable = sw;
@@ -617,29 +631,62 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
     }
   }
   // Step 2: Update pointers in registers/memory to point to scratch areas
-  Registers r = t->regs();
-  for (auto& param : param_list) {
-    if (param.ptr_in_reg) {
-      r.set_arg(param.ptr_in_reg, param.scratch.as_int());
-    }
-    if (!param.ptr_in_memory.is_null()) {
-      // Pointers being relocated must themselves be in scratch memory.
-      // We don't want to modify non-scratch memory. Find the pointer's location
-      // in scratch memory.
-      auto p = relocate_pointer_to_scratch(param.ptr_in_memory);
-      // Update pointer to point to scratch.
-      // Note that this can only happen after step 1 is complete and all
-      // parameter data has been copied to scratch memory.
-      set_remote_ptr(t, p, param.scratch);
-    }
-    // If the number of bytes to record is coming from a memory location,
-    // update that location to scratch.
-    if (!param.num_bytes.mem_ptr.is_null()) {
-      param.num_bytes.mem_ptr =
+  {
+    Registers r = t->regs();
+    for (auto& param : param_list) {
+      if (param.ptr_in_reg) {
+        r.set_arg(param.ptr_in_reg, param.scratch.as_int());
+      }
+      if (!param.ptr_in_memory.is_null()) {
+        // Pointers being relocated must themselves be in scratch memory.
+        // We don't want to modify non-scratch memory. Find the pointer's location
+        // in scratch memory.
+        auto p = relocate_pointer_to_scratch(param.ptr_in_memory);
+        // Update pointer to point to scratch.
+        // Note that this can only happen after step 1 is complete and all
+        // parameter data has been copied to scratch memory.
+        set_remote_ptr(t, p, param.scratch);
+      }
+      // If the number of bytes to record is coming from a memory location,
+      // update that location to scratch.
+      if (!param.num_bytes.mem_ptr.is_null()) {
+        param.num_bytes.mem_ptr =
           relocate_pointer_to_scratch(param.num_bytes.mem_ptr);
+      }
+    }
+    t->set_regs(r);
+  }
+  return switchable;
+}
+
+Switchable TaskSyscallState::done_preparing(Switchable sw) {
+  if (preparation_done) {
+    return switchable;
+  }
+
+  sw = done_preparing_internal(sw);
+  ASSERT(t, sw == switchable);
+
+  // Step 3: Execute mutators. This must run even if the scratch steps do not.
+  for (auto& param : param_list) {
+    if (param.mutator) {
+      // Mutated parameters must be IN. If we have scratch space, we don't need
+      // to save anything.
+      void* saved_data_loc = nullptr;
+      if (!scratch_enabled) {
+        auto prev_size = saved_data.size();
+        saved_data.resize(prev_size + param.num_bytes.incoming_size);
+        saved_data_loc = saved_data.data() + prev_size;
+      }
+      if (!(*param.mutator)(t, param.dest, saved_data_loc)) {
+        // Nothing was modified, no need to clean up when we unwind.
+        param.mutator = nullptr;
+        if (!scratch_enabled) {
+          saved_data.resize(saved_data.size() - param.num_bytes.incoming_size);
+        }
+      }
     }
   }
-  t->set_regs(r);
   return switchable;
 }
 
@@ -716,6 +763,17 @@ void TaskSyscallState::process_syscall_results() {
     }
     t->set_regs(r);
   } else {
+    // Step 1: restore all mutated memory
+    for (auto& param : param_list) {
+      if (param.mutator) {
+        size_t size = param.num_bytes.incoming_size;
+        ASSERT(t, saved_data.size() >= size);
+        t->write_bytes_helper(param.dest, size, saved_data.data());
+        saved_data.erase(saved_data.begin(), saved_data.begin() + size);
+      }
+    }
+    ASSERT(t, saved_data.empty());
+    // Step 2: record all output memory areas
     for (size_t i = 0; i < param_list.size(); ++i) {
       auto& param = param_list[i];
       size_t size = eval_param_size(i, actual_sizes);
@@ -2359,6 +2417,37 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   // |t| will go to the exit of the syscall, as expected.
 }
 
+static bool protect_rr_sigs(RecordTask* t, remote_ptr<void> p, void* save) {
+  remote_ptr<sig_set_t> setp = p.cast<sig_set_t>();
+  if (setp.is_null()) {
+    return false;
+  }
+
+  auto sig_set = t->read_mem(setp);
+  auto new_sig_set = sig_set;
+  // Don't let the tracee block TIME_SLICE_SIGNAL or
+  // SYSCALLBUF_DESCHED_SIGNAL.
+  new_sig_set &= ~(uint64_t(1) << (PerfCounters::TIME_SLICE_SIGNAL - 1)) &
+                 ~(uint64_t(1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
+
+  auto syscallno = t->ev().Syscall().number;
+  if (syscallno == syscall_number_for_ppoll(t->arch()) ||
+      syscallno == syscall_number_for_pselect6(t->arch())) {
+    t->push_sigmask(new_sig_set);
+  }
+
+  if (sig_set == new_sig_set) {
+    return false;
+  }
+
+  t->write_mem(setp, new_sig_set);
+  if (save) {
+    memcpy(save, &sig_set, sizeof(sig_set));
+  }
+
+  return true;
+}
+
 static void record_ranges(RecordTask* t,
                           const vector<FileMonitor::Range>& ranges,
                           size_t size) {
@@ -2706,12 +2795,20 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       return ALLOW_SWITCH;
 
-    case Arch::pselect6:
+    /* int pselect6(int nfds, fd_set *readfds, fd_set *writefds,
+     *              fd_set *exceptfds, const struct timespec *timeout,
+     *              const pselect6_arg6 *sigmask); */
+    case Arch::pselect6: {
       syscall_state.reg_parameter<typename Arch::fd_set>(2, IN_OUT);
       syscall_state.reg_parameter<typename Arch::fd_set>(3, IN_OUT);
       syscall_state.reg_parameter<typename Arch::fd_set>(4, IN_OUT);
       syscall_state.reg_parameter<typename Arch::timespec>(5, IN_OUT);
+      auto arg6p =
+        syscall_state.reg_parameter<typename Arch::pselect6_arg6>(6, IN);
+      syscall_state.mem_ptr_parameter_inferred(
+           REMOTE_PTR_FIELD(arg6p, ss), IN, protect_rr_sigs);
       return ALLOW_SWITCH;
+    }
 
     case Arch::recvfrom: {
       syscall_state.reg_parameter(
@@ -3002,8 +3099,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     /* int ppoll(struct pollfd *fds, nfds_t nfds,
      *           const struct timespec *timeout_ts,
      *           const sigset_t *sigmask); */
-    case Arch::poll:
-    case Arch::ppoll: {
+    case Arch::ppoll:
+      syscall_state.reg_parameter<typename Arch::sigset_t>(4, IN, protect_rr_sigs);
+      /* fall through */
+    case Arch::poll: {
       auto nfds = (nfds_t)t->regs().arg2();
       syscall_state.reg_parameter(1, sizeof(typename Arch::pollfd) * nfds,
                                   IN_OUT);
@@ -3296,17 +3395,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::rt_sigprocmask:
     case Arch::sigprocmask: {
       syscall_state.reg_parameter<typename Arch::sigset_t>(3);
-      remote_ptr<sig_set_t> setp = t->regs().arg2();
-      if (!setp.is_null()) {
-        auto sig_set = t->read_mem(setp);
-        syscall_state.saved_data.resize(sizeof(sig_set));
-        memcpy(syscall_state.saved_data.data(), &sig_set, sizeof(sig_set));
-        // Don't let the tracee block TIME_SLICE_SIGNAL or
-        // SYSCALLBUF_DESCHED_SIGNAL.
-        sig_set &= ~(uint64_t(1) << (PerfCounters::TIME_SLICE_SIGNAL - 1)) &
-                   ~(uint64_t(1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
-        t->write_mem(setp, sig_set);
-      }
+      syscall_state.reg_parameter<typename Arch::sigset_t>(2, IN, protect_rr_sigs);
       return PREVENT_SWITCH;
     }
 
@@ -4179,17 +4268,6 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::sigsuspend:
       t->sigsuspend_blocked_sigs = nullptr;
       break;
-
-    case Arch::rt_sigprocmask:
-    case Arch::sigprocmask: {
-      remote_ptr<sig_set_t> setp = t->regs().arg2();
-      if (!setp.is_null()) {
-        // Restore modified sig_set
-        t->write_bytes_helper(setp, syscall_state.saved_data.size(),
-                              syscall_state.saved_data.data());
-      }
-      break;
-    }
 
     case Arch::perf_event_open:
       if (t->regs().original_syscallno() == Arch::inotify_init) {

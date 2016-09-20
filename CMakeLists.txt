@@ -555,6 +555,7 @@ set(BASIC_TESTS
   personality
   pthread_rwlocks
   poll_sig_race
+  ppoll
   prctl
   prctl_deathsig
   prctl_name
@@ -631,6 +632,7 @@ set(BASIC_TESTS
   signalfd
   sigprocmask
   sigprocmask_in_syscallbuf_sighandler
+  sigprocmask_rr_sigs
   sigprocmask_syscallbuf
   sigqueueinfo
   sigreturn
