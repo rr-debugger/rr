@@ -458,6 +458,15 @@ public:
    */
   void set_tid_and_update_serial(pid_t tid);
 
+  /**
+   * Push or pop the current sigmask (reloading it if necessary) to handle
+   * ppoll/pselect. The stack is only one level deep, and pushing and not
+   * popping is ok if the sigmask gets restored another way (e.g. because
+   * a signal handler was invoked).
+   */
+  void push_sigmask(sig_set_t new_sigs);
+  void pop_sigmask();
+
 private:
   ~RecordTask();
 
@@ -579,6 +588,7 @@ public:
   // of stop.
   EmulatedStopType emulated_stop_type;
   sig_set_t blocked_sigs;
+  sig_set_t previously_blocked_sigs;
   int handling_deterministic_signal;
 
   // Syscallbuf state

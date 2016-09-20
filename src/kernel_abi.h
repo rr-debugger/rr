@@ -1049,6 +1049,11 @@ struct BaseArch : public wordsize,
   typedef __sigset_t sigset_t;
   RR_VERIFY_TYPE(sigset_t);
 
+  typedef struct {
+    ptr<const sigset_t> ss;
+    size_t ss_len;
+  } pselect6_arg6;
+
   struct kernel_sigaction {
     ptr<void> k_sa_handler;
     unsigned_long sa_flags;
