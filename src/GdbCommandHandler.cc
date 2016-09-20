@@ -94,6 +94,7 @@ class RRCmd(gdb.Command):
         for arg in args:
             argStr += ":" + gdb_escape(arg)
         rv = gdb.execute(cmd_prefix + argStr, to_string=True);
+        gdb.execute("flushregs");
         rv_match = re.search('received: "(.*)"', rv, re.MULTILINE);
         if not rv_match:
             gdb.write("Response error: " + rv)
