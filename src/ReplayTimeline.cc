@@ -434,18 +434,24 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
     // We may not have made any progress so we'll need to try another strategy
   }
 
-  remote_code_ptr mark_addr = mark.ptr->proto.regs.ip();
+  remote_code_ptr mark_addr_code = mark.ptr->proto.regs.ip();
+  remote_ptr<void> mark_addr = mark_addr_code.to_data_ptr<void>();
 
   // Try adding a breakpoint at the required IP and running to it.
   // We can't do this if we're currently at the IP, since we'd make no progress.
-  // Setting the breakpoint may fail; the mark address may be in invalid
-  // memory, e.g. because it's at the delivery of a SIGSEGV for a bad IP.
-  if (t->regs().ip() != mark_addr &&
-      t->vm()->add_breakpoint(mark_addr, BKPT_USER)) {
+  // However, we need to be careful, since there are two related situations when
+  // the instruction at the mark ip is never actually executed. The first
+  // happens if the IP is invalid entirely, the second if it is valid, but
+  // not executable. In either case we need to fall back to the (slower, but
+  // more generic) code below.
+  if (t->regs().ip() != mark_addr_code && t->vm()->has_mapping(mark_addr) &&
+      t->vm()->mapping_of(mark_addr).map.prot() & PROT_EXEC) {
+    bool succeeded = t->vm()->add_breakpoint(mark_addr_code, BKPT_USER);
+    ASSERT(t, succeeded);
     ReplaySession::StepConstraints constraints =
         strategy.setup_step_constraints();
     result = current->replay_step(constraints);
-    t->vm()->remove_breakpoint(mark_addr, BKPT_USER);
+    t->vm()->remove_breakpoint(mark_addr_code, BKPT_USER);
     // If we hit our breakpoint and there is no client breakpoint there,
     // pretend we didn't hit it.
     if (result.break_status.breakpoint_hit &&
