@@ -515,6 +515,20 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::set_tid_address:
       set_tid_addr(regs.arg1());
       return;
+    case Arch::ppoll: {
+      remote_ptr<sig_set_t> setp = regs.arg4();
+      if (!setp.is_null()) {
+        pop_sigmask();
+      }
+      return;
+    }
+    case Arch::pselect6: {
+      remote_ptr<sig_set_t> setp = regs.arg6();
+      if (!setp.is_null()) {
+        pop_sigmask();
+      }
+      return;
+    }
   }
 }
 
@@ -1008,6 +1022,18 @@ void RecordTask::writeback_sigmask() {
   if (syscallbuf_child) {
     write_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs), blocked_sigs);
   }
+}
+
+void RecordTask::push_sigmask(sig_set_t newsigs) {
+  reload_sigmask();
+  previously_blocked_sigs = blocked_sigs;
+  blocked_sigs = newsigs;
+  writeback_sigmask();
+}
+
+void RecordTask::pop_sigmask() {
+  blocked_sigs = previously_blocked_sigs;
+  writeback_sigmask();
 }
 
 void RecordTask::set_sig_handler_default(int sig) {
