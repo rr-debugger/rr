@@ -761,6 +761,7 @@ set(TESTS_WITH_PROGRAM
   int3_ok
   interrupt
   intr_ptrace_decline
+  invalid_jump
   link
   madvise_dontfork
   main_thread_exit
