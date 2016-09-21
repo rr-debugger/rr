@@ -3863,7 +3863,11 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                                "tree.";
   }
 
-  t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages, fd);
+  // We don't want to patch MAP_SHARED files. In the best case we'd end crashing
+  // at an assertion, in the worst case, we'd end up modifying the underlying
+  // file.
+  if (!(flags & MAP_SHARED))
+    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages, fd);
 
   if ((prot & (PROT_WRITE | PROT_READ)) == PROT_READ && (flags & MAP_SHARED) &&
       !(flags & MAP_ANONYMOUS)) {
