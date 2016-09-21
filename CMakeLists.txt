@@ -521,6 +521,7 @@ set(BASIC_TESTS
   mmap_discontinuous
   mmap_private
   mmap_ro
+  mmap_self_maps_shared
   mmap_shared
   mmap_shared_multiple
   mmap_shared_subpage
