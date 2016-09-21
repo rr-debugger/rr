@@ -207,6 +207,8 @@ public:
   enum SyscallWaiting { WAIT = 1, DONT_WAIT = 0 };
   void syscall_helper(SyscallWaiting wait, int syscallno, Registers& callregs);
 
+  MemParamsEnabled enable_mem_params() { return enable_mem_params_; }
+
 private:
   /**
    * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
@@ -242,8 +244,14 @@ private:
   Registers initial_regs;
   remote_code_ptr initial_ip;
   remote_ptr<void> initial_sp;
+  remote_ptr<void> fixed_sp;
   int pending_syscallno;
   std::vector<uint8_t> replaced_bytes;
+
+  /* Whether we had to mmap a scratch region because none was found */
+  bool scratch_mem_was_mapped;
+
+  MemParamsEnabled enable_mem_params_;
 
   AutoRemoteSyscalls& operator=(const AutoRemoteSyscalls&) = delete;
   AutoRemoteSyscalls(const AutoRemoteSyscalls&) = delete;
