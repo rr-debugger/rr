@@ -100,6 +100,8 @@ struct btrfs_ioctl_clone_range_args {
 #endif
 #define syscall you_must_use_traced_syscall
 
+void *xmalloc(size_t size); // forward declaration
+
 #define RR_HIDDEN __attribute__((visibility("hidden")))
 
 /**
