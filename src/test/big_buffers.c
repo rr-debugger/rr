@@ -14,7 +14,7 @@ int main(void) {
 
   gettimeofday(&ts, NULL);
 
-  buf = malloc(BUF_SIZE);
+  buf = xmalloc(BUF_SIZE);
   socketpair(AF_LOCAL, SOCK_STREAM, 0, sockfds);
 
   /* Big read() buffer. */

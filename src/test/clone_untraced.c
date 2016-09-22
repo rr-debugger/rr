@@ -10,7 +10,7 @@ static int run_thread(__attribute__((unused)) void* p) {
 }
 
 int main(void) {
-  char* stack = (char*)malloc(65536) + 65536;
+  char* stack = (char*)xmalloc(65536) + 65536;
   int ret;
   char ch;
 

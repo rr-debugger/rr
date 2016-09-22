@@ -1667,7 +1667,7 @@ void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
         1 /*m char*/ +
         threads.size() * (1 /*p*/ + 2 * sizeof(threads[0]) + 1 /*,*/) +
         1 /*\0*/;
-    char* str = (char*)malloc(maxlen);
+    char* str = (char*)xmalloc(maxlen);
     int offset = 0;
 
     str[offset++] = 'm';

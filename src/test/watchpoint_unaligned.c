@@ -9,7 +9,7 @@ static uint64_t* p8;
 static void breakpoint(void) {}
 
 int main(void) {
-  char* m = malloc(0x1000);
+  char* m = xmalloc(0x1000);
   void* unaligned_p = (void*)((uintptr_t)m | 0xff);
 
   p2 = unaligned_p;
