@@ -219,7 +219,7 @@ bool rr::ThreadDb::load_library() {
     return false;
   }
 
-  decltype(td_symbol_list) * td_symbol_list_fn;
+  decltype(td_symbol_list)* td_symbol_list_fn;
 
 #define FIND_FUNCTION(Name)                                                    \
   do {                                                                         \

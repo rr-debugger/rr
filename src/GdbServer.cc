@@ -244,7 +244,7 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
 
 class GdbBreakpointCondition : public BreakpointCondition {
 public:
-  GdbBreakpointCondition(const vector<vector<uint8_t> >& bytecodes) {
+  GdbBreakpointCondition(const vector<vector<uint8_t>>& bytecodes) {
     for (auto& b : bytecodes) {
       expressions.push_back(GdbExpression(b.data(), b.size()));
     }

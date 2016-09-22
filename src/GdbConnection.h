@@ -191,7 +191,7 @@ struct GdbRequest {
   struct Watch {
     uintptr_t addr;
     int kind;
-    std::vector<std::vector<uint8_t> > conditions;
+    std::vector<std::vector<uint8_t>> conditions;
   } watch_;
   GdbRegisterValue reg_;
   struct Restart {

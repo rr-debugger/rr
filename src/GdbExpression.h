@@ -38,7 +38,7 @@ private:
    * To work around gdb bugs, we may generate and evaluate multiple versions of
    * the same expression program.
    */
-  std::vector<std::vector<uint8_t> > bytecode_variants;
+  std::vector<std::vector<uint8_t>> bytecode_variants;
 };
 
 } // namespace rr

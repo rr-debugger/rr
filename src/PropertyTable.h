@@ -38,7 +38,7 @@ private:
     virtual void destroy_property(void* v) const = 0;
   };
 
-  std::vector<std::pair<const PropertyBase*, void*> > values;
+  std::vector<std::pair<const PropertyBase*, void*>> values;
 };
 
 /**

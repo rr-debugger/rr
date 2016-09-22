@@ -177,7 +177,7 @@ private:
     ino_t inode;
   };
 
-  typedef std::map<FileId, std::weak_ptr<EmuFile> > FileMap;
+  typedef std::map<FileId, std::weak_ptr<EmuFile>> FileMap;
 
   FileMap files;
 

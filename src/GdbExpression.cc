@@ -392,7 +392,7 @@ GdbExpression::GdbExpression(const uint8_t* data, size_t size) {
     }
     if ((data[i] == OP_ext || data[i] == OP_zero_ext) && i + 1 < size) {
       uint8_t bits = data[i + 1];
-      vector<vector<uint8_t> > variants;
+      vector<vector<uint8_t>> variants;
       for (auto& b : bytecode_variants) {
         // gdb perhaps should have used a smaller type width here --- 8, 16 or
         // 32 bits.

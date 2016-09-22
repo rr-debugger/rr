@@ -183,7 +183,7 @@ static void write_socketcall_args(Task* t, remote_ptr<void> remote_mem,
                                   typename Arch::signed_long arg2,
                                   typename Arch::signed_long arg3) {
   socketcall_args<Arch> sc_args = { { arg1, arg2, arg3 } };
-  t->write_mem(remote_mem.cast<socketcall_args<Arch> >(), sc_args);
+  t->write_mem(remote_mem.cast<socketcall_args<Arch>>(), sc_args);
 }
 
 static size_t align_size(size_t size) {
@@ -233,7 +233,7 @@ static int create_bind_and_listen_socket(const char* path) {
 
 template <typename Arch>
 static int child_create_socket(AutoRemoteSyscalls& remote,
-                               remote_ptr<socketcall_args<Arch> > sc_args) {
+                               remote_ptr<socketcall_args<Arch>> sc_args) {
   int child_sock;
   if (sc_args.is_null()) {
     child_sock =
@@ -250,7 +250,7 @@ static int child_create_socket(AutoRemoteSyscalls& remote,
 template <typename Arch>
 static void child_connect_socket(AutoRemoteSyscalls& remote,
                                  AutoRestoreMem& remote_buf,
-                                 remote_ptr<socketcall_args<Arch> > sc_args,
+                                 remote_ptr<socketcall_args<Arch>> sc_args,
                                  remote_ptr<void> buf_end, int child_sock,
                                  const char* path, int* cwd_fd) {
   typename Arch::sockaddr_un addr;
@@ -323,7 +323,7 @@ static void restore_cwd(AutoRemoteSyscalls& remote, int cwd_fd) {
 template <typename Arch>
 static void child_sendmsg(AutoRemoteSyscalls& remote,
                           AutoRestoreMem& remote_buf,
-                          remote_ptr<socketcall_args<Arch> > sc_args,
+                          remote_ptr<socketcall_args<Arch>> sc_args,
                           remote_ptr<void> buf_end, int child_sock, int fd) {
   char cmsgbuf[Arch::cmsg_space(sizeof(fd))];
   memset(cmsgbuf, 0, sizeof(cmsgbuf));
@@ -412,14 +412,14 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
                                     align_size(Arch::cmsg_space(sizeof(fd))) +
                                     reserve<typename Arch::iovec>());
   if (has_socketcall_syscall(Arch::arch())) {
-    data_length += reserve<socketcall_args<Arch> >();
+    data_length += reserve<socketcall_args<Arch>>();
   }
   AutoRestoreMem remote_buf(*this, nullptr, data_length);
 
   remote_ptr<void> sc_args_end = remote_buf.get();
-  remote_ptr<socketcall_args<Arch> > sc_args;
+  remote_ptr<socketcall_args<Arch>> sc_args;
   if (has_socketcall_syscall(Arch::arch())) {
-    sc_args = allocate<socketcall_args<Arch> >(&sc_args_end, remote_buf);
+    sc_args = allocate<socketcall_args<Arch>>(&sc_args_end, remote_buf);
   }
 
   char path[PATH_MAX];

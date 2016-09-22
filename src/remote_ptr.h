@@ -106,8 +106,8 @@ private:
  */
 #define REMOTE_PTR_FIELD(p, f)                                                 \
   ((p).field(                                                                  \
-      ((typename std::remove_reference<decltype((p).dummy()->f)>::type*)       \
-           nullptr),                                                           \
+      ((typename std::remove_reference<decltype(                               \
+            (p).dummy()->f)>::type*)nullptr),                                  \
       offsetof(typename std::remove_reference<decltype(*(p).dummy())>::type,   \
                f)))
 

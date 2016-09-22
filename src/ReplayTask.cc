@@ -30,7 +30,7 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
 
   AutoRemoteSyscalls remote(this);
 
-  remote_ptr<rrcall_init_buffers_params<Arch> > child_args = regs().arg1();
+  remote_ptr<rrcall_init_buffers_params<Arch>> child_args = regs().arg1();
   auto args = read_mem(child_args);
 
   if (args.syscallbuf_ptr) {

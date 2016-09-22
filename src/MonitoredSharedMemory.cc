@@ -51,7 +51,7 @@ MonitoredSharedMemory::shr_ptr MonitoredSharedMemory::subrange(uintptr_t,
 }
 
 void MonitoredSharedMemory::check_all(RecordTask* t) {
-  vector<remote_ptr<void> > addrs;
+  vector<remote_ptr<void>> addrs;
   for (auto a : t->vm()->monitored_addrs()) {
     addrs.push_back(a);
   }

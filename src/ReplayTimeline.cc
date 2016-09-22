@@ -136,14 +136,14 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
     // marks.
     unapply_breakpoints_and_watchpoints();
     ReplaySession::shr_ptr tmp_session = current->clone();
-    vector<shared_ptr<InternalMark> >::iterator mark_index = mark_vector.end();
+    vector<shared_ptr<InternalMark>>::iterator mark_index = mark_vector.end();
 
     // We could set breakpoints at the marks and then continue with an
     // interrupt set to fire when our tick-count increases. But that requires
     // new replay functionality (probably a new RunCommand), so for now, do the
     // simplest thing and just single-step until we find where to put the new
     // mark(s).
-    vector<shared_ptr<InternalMark> > new_marks;
+    vector<shared_ptr<InternalMark>> new_marks;
     new_marks.push_back(m);
 
     LOG(debug) << "mark() replaying to find mark location";

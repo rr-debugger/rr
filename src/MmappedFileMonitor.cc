@@ -48,8 +48,7 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
       auto km = m.map;
 
       if (is_replay) {
-        if (!m.emu_file ||
-            m.emu_file->device() != device_ ||
+        if (!m.emu_file || m.emu_file->device() != device_ ||
             m.emu_file->inode() != inode_) {
           continue;
         }

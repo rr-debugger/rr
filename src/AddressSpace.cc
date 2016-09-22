@@ -574,7 +574,7 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
 
 template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
   auto params = t->read_mem(
-      remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
+      remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().arg1()));
 
   if (t->session().is_recording()) {
     ASSERT(t, t->session().as_record()->use_syscall_buffer() ==

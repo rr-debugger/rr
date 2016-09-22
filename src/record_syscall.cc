@@ -259,7 +259,7 @@ size_t ParamSize::eval(RecordTask* t, size_t already_consumed) const {
   return s;
 }
 
-  typedef bool (*ArgMutator)(RecordTask*, remote_ptr<void>, void*);
+typedef bool (*ArgMutator)(RecordTask*, remote_ptr<void>, void*);
 
 /**
  * When tasks enter syscalls that may block and so must be
@@ -343,7 +343,8 @@ struct TaskSyscallState {
   remote_ptr<T> mem_ptr_parameter(remote_ptr<void> addr_of_buf_ptr,
                                   ArgMode mode = OUT,
                                   ArgMutator mutator = nullptr) {
-    return mem_ptr_parameter(addr_of_buf_ptr, sizeof(T), mode, mutator).cast<T>();
+    return mem_ptr_parameter(addr_of_buf_ptr, sizeof(T), mode, mutator)
+        .cast<T>();
   }
   /**
    * Identify a syscall memory parameter whose address is in memory at
@@ -639,7 +640,8 @@ Switchable TaskSyscallState::done_preparing_internal(Switchable sw) {
       }
       if (!param.ptr_in_memory.is_null()) {
         // Pointers being relocated must themselves be in scratch memory.
-        // We don't want to modify non-scratch memory. Find the pointer's location
+        // We don't want to modify non-scratch memory. Find the pointer's
+        // location
         // in scratch memory.
         auto p = relocate_pointer_to_scratch(param.ptr_in_memory);
         // Update pointer to point to scratch.
@@ -651,7 +653,7 @@ Switchable TaskSyscallState::done_preparing_internal(Switchable sw) {
       // update that location to scratch.
       if (!param.num_bytes.mem_ptr.is_null()) {
         param.num_bytes.mem_ptr =
-          relocate_pointer_to_scratch(param.num_bytes.mem_ptr);
+            relocate_pointer_to_scratch(param.num_bytes.mem_ptr);
       }
     }
     t->set_regs(r);
@@ -2804,9 +2806,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::fd_set>(4, IN_OUT);
       syscall_state.reg_parameter<typename Arch::timespec>(5, IN_OUT);
       auto arg6p =
-        syscall_state.reg_parameter<typename Arch::pselect6_arg6>(6, IN);
-      syscall_state.mem_ptr_parameter_inferred(
-           REMOTE_PTR_FIELD(arg6p, ss), IN, protect_rr_sigs);
+          syscall_state.reg_parameter<typename Arch::pselect6_arg6>(6, IN);
+      syscall_state.mem_ptr_parameter_inferred(REMOTE_PTR_FIELD(arg6p, ss), IN,
+                                               protect_rr_sigs);
       return ALLOW_SWITCH;
     }
 
@@ -3100,8 +3102,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
      *           const struct timespec *timeout_ts,
      *           const sigset_t *sigmask); */
     case Arch::ppoll:
-      syscall_state.reg_parameter<typename Arch::sigset_t>(4, IN, protect_rr_sigs);
-      /* fall through */
+      syscall_state.reg_parameter<typename Arch::sigset_t>(4, IN,
+                                                           protect_rr_sigs);
+    /* fall through */
     case Arch::poll: {
       auto nfds = (nfds_t)t->regs().arg2();
       syscall_state.reg_parameter(1, sizeof(typename Arch::pollfd) * nfds,
@@ -3395,7 +3398,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::rt_sigprocmask:
     case Arch::sigprocmask: {
       syscall_state.reg_parameter<typename Arch::sigset_t>(3);
-      syscall_state.reg_parameter<typename Arch::sigset_t>(2, IN, protect_rr_sigs);
+      syscall_state.reg_parameter<typename Arch::sigset_t>(2, IN,
+                                                           protect_rr_sigs);
       return PREVENT_SWITCH;
     }
 
@@ -3541,7 +3545,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
 
     case SYS_rrcall_init_buffers:
-      syscall_state.reg_parameter<rrcall_init_buffers_params<Arch> >(1, IN_OUT);
+      syscall_state.reg_parameter<rrcall_init_buffers_params<Arch>>(1, IN_OUT);
       return PREVENT_SWITCH;
 
     case Arch::brk:
@@ -3745,7 +3749,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   // The kernel may zero part of the last page in each data mapping according
   // to ELF BSS metadata. So we record the last page of each data mapping in
   // the trace.
-  vector<remote_ptr<void> > pages_to_record;
+  vector<remote_ptr<void>> pages_to_record;
 
   for (auto m : t->vm()->maps()) {
     auto& km = m.map;

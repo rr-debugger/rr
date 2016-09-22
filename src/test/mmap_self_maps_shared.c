@@ -12,7 +12,7 @@ static char* trim_leading_blanks(char* str) {
 }
 
 int main(void) {
-  FILE *maps_file = fopen("/proc/self/maps", "r");
+  FILE* maps_file = fopen("/proc/self/maps", "r");
 
   while (!feof(maps_file)) {
     char line[PATH_MAX * 2];
@@ -34,14 +34,14 @@ int main(void) {
     // trim trailing newline, if any
     int last_char = strlen(line) - 1;
     if (line[last_char] == '\n') {
-     line[last_char] = 0;
+      line[last_char] = 0;
     }
 
-    char *name = trim_leading_blanks(line + chars_scanned);
+    char* name = trim_leading_blanks(line + chars_scanned);
     if (name[0] != '/')
       continue;
     int fd = open(name, O_RDONLY);
-    void *addr = mmap(NULL, end - start, PROT_READ, MAP_SHARED, fd, 0);
+    void* addr = mmap(NULL, end - start, PROT_READ, MAP_SHARED, fd, 0);
     munmap(addr, end - start);
     close(fd);
   }

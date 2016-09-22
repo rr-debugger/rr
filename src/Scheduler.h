@@ -136,7 +136,7 @@ public:
 
 private:
   // Tasks sorted by priority.
-  typedef std::set<std::pair<int, RecordTask*> > TaskPrioritySet;
+  typedef std::set<std::pair<int, RecordTask*>> TaskPrioritySet;
   typedef std::deque<RecordTask*> TaskQueue;
 
   /**

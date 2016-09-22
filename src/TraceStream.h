@@ -186,7 +186,7 @@ private:
    * Files that have already been mapped without being copied to the trace,
    * i.e. that we have already assumed to be immutable.
    */
-  std::set<std::pair<dev_t, ino_t> > files_assumed_immutable;
+  std::set<std::pair<dev_t, ino_t>> files_assumed_immutable;
   uint32_t mmap_count;
   bool supports_file_data_cloning_;
 };

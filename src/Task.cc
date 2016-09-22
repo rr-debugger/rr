@@ -2079,7 +2079,7 @@ bool Task::clone_syscall_is_complete() {
 
 template <typename Arch> static void do_preload_init_arch(Task* t) {
   auto params = t->read_mem(
-      remote_ptr<rrcall_init_preload_params<Arch> >(t->regs().arg1()));
+      remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().arg1()));
 
   t->preload_globals = params.globals.rptr();
 

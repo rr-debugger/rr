@@ -30,7 +30,7 @@ struct Session::CloneCompletion {
     Task* clone_leader;
     Task::CapturedState clone_leader_state;
     vector<Task::CapturedState> member_states;
-    vector<pair<remote_ptr<void>, vector<uint8_t> > > captured_memory;
+    vector<pair<remote_ptr<void>, vector<uint8_t>>> captured_memory;
   };
   vector<TaskGroup> task_groups;
 };

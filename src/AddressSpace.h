@@ -461,7 +461,7 @@ public:
     }
   }
 
-  const std::set<remote_ptr<void> >& monitored_addrs() const {
+  const std::set<remote_ptr<void>>& monitored_addrs() const {
     return monitored_mem;
   }
 
@@ -929,7 +929,7 @@ private:
   remote_ptr<void> brk_end;
   /* All segments mapped into this address space. */
   MemoryMap mem;
-  std::set<remote_ptr<void> > monitored_mem;
+  std::set<remote_ptr<void>> monitored_mem;
   /* madvise DONTFORK regions */
   std::set<MemoryRange> dont_fork;
   // The session that created this.  We save a ref to it so that
@@ -943,7 +943,7 @@ private:
   // programmed per Task, but we track them per address space on
   // behalf of debuggers that assume that model.
   std::map<MemoryRange, Watchpoint> watchpoints;
-  std::vector<std::map<MemoryRange, Watchpoint> > saved_watchpoints;
+  std::vector<std::map<MemoryRange, Watchpoint>> saved_watchpoints;
   // Tracee memory is read and written through this fd, which is
   // opened for the tracee's magic /proc/[tid]/mem device.  The
   // advantage of this over ptrace is that we can access it even

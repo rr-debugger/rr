@@ -97,16 +97,16 @@ private:
   void* thread_db_library;
 
   // Functions from libthread_db.
-  decltype(td_ta_delete) * td_ta_delete_fn;
-  decltype(td_thr_tls_get_addr) * td_thr_tls_get_addr_fn;
-  decltype(td_ta_map_lwp2thr) * td_ta_map_lwp2thr_fn;
-  decltype(td_ta_new) * td_ta_new_fn;
+  decltype(td_ta_delete)* td_ta_delete_fn;
+  decltype(td_thr_tls_get_addr)* td_thr_tls_get_addr_fn;
+  decltype(td_ta_map_lwp2thr)* td_ta_map_lwp2thr_fn;
+  decltype(td_ta_new)* td_ta_new_fn;
 
   // Set of all symbol names.
   std::set<std::string> symbol_names;
 
   // Map from symbol names to addresses.
-  std::map<std::string, remote_ptr<void> > symbols;
+  std::map<std::string, remote_ptr<void>> symbols;
 };
 
 } // namespace rr

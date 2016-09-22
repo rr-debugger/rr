@@ -450,7 +450,7 @@ private:
    * frequently during execution. In some cases we see hundreds of elements
    * but that's not too bad.
    */
-  std::map<MarkKey, std::vector<std::shared_ptr<InternalMark> > > marks;
+  std::map<MarkKey, std::vector<std::shared_ptr<InternalMark>>> marks;
 
   /**
    * All mark keys with at least one checkpoint. The value is the number of
@@ -460,10 +460,10 @@ private:
   std::map<MarkKey, uint32_t> marks_with_checkpoints;
 
   std::set<std::tuple<AddressSpaceUid, remote_code_ptr,
-                      std::unique_ptr<BreakpointCondition> > >
+                      std::unique_ptr<BreakpointCondition>>>
       breakpoints;
   std::set<std::tuple<AddressSpaceUid, remote_ptr<void>, size_t, WatchType,
-                      std::unique_ptr<BreakpointCondition> > >
+                      std::unique_ptr<BreakpointCondition>>>
       watchpoints;
   bool breakpoints_applied;
 
