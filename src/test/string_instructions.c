@@ -237,9 +237,9 @@ int main(void) {
   uintptr_t pattern = to_uintptr("aaaaaaaa");
   uintptr_t pattern2 = to_uintptr("bbbbbbbb");
 
-  p = malloc(SIZE);
-  q = malloc(SIZE);
-  r = malloc(SIZE);
+  p = xmalloc(SIZE);
+  q = xmalloc(SIZE);
+  r = xmalloc(SIZE);
 
   for (u = 0; u < (sizeof(void*) == 8 ? 4 : 3); ++u) {
     int unit = 1 << u;

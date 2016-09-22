@@ -104,7 +104,7 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     mmsg.msg_hdr.msg_iov = &data;
     mmsg.msg_hdr.msg_iovlen = 1;
 
-    struct cmsghdr* cmptr = (struct cmsghdr*)malloc(CTRLMSG_LEN);
+    struct cmsghdr* cmptr = (struct cmsghdr*)xmalloc(CTRLMSG_LEN);
     mmsg.msg_hdr.msg_control = cmptr;
     mmsg.msg_hdr.msg_controllen = CTRLMSG_LEN;
 
@@ -291,7 +291,7 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     close(epfd);
   }
   {
-    char* buf = (char*)malloc(num_sockbuf_bytes);
+    char* buf = (char*)xmalloc(num_sockbuf_bytes);
     ssize_t nwritten = 0;
     struct iovec iov;
 
@@ -447,7 +447,7 @@ int main(void) {
     mmsg.msg_hdr.msg_iov = &data;
     mmsg.msg_hdr.msg_iovlen = 1;
 
-    struct cmsghdr* cmptr = (struct cmsghdr*)malloc(CTRLMSG_LEN); // send a fd
+    struct cmsghdr* cmptr = (struct cmsghdr*)xmalloc(CTRLMSG_LEN); // send a fd
     cmptr->cmsg_level = SOL_SOCKET;
     cmptr->cmsg_type = SCM_RIGHTS;
     cmptr->cmsg_len = CTRLMSG_LEN;
@@ -563,7 +563,7 @@ int main(void) {
   atomic_printf("M: reading socket ...\n");
   ++token;
   {
-    char* buf = (char*)malloc(num_sockbuf_bytes);
+    char* buf = (char*)xmalloc(num_sockbuf_bytes);
     int i;
     for (i = 0; i < 2; ++i) {
       read_all_chunks(sock, buf, num_sockbuf_bytes, token);
