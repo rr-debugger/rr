@@ -1677,7 +1677,7 @@ static bool verify_ptrace_options(RecordTask* t,
   // We "support" PTRACE_O_SYSGOOD because we don't support PTRACE_SYSCALL yet
   static const int supported_ptrace_options =
       PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT | PTRACE_O_TRACEFORK |
-      PTRACE_O_TRACECLONE;
+      PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC;
 
   if ((int)t->regs().arg4() & ~supported_ptrace_options) {
     LOG(debug) << "Unsupported ptrace options " << HEX(t->regs().arg4());
@@ -4186,10 +4186,14 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case Arch::execve:
       process_execve(t, syscall_state);
-      if (t->emulated_ptracer && !t->emulated_ptrace_seized &&
-          !(t->emulated_ptrace_options & PTRACE_O_TRACEEXEC)) {
-        // Inject legacy SIGTRAP-after-exec
-        t->tgkill(SIGTRAP);
+      if (t->emulated_ptracer) {
+        if (t->emulated_ptrace_options & PTRACE_O_TRACEEXEC) {
+          t->emulate_ptrace_stop(
+              WaitStatus::for_ptrace_event(PTRACE_EVENT_EXEC));
+        } else if (!t->emulated_ptrace_seized) {
+          // Inject legacy SIGTRAP-after-exec
+          t->tgkill(SIGTRAP);
+        }
       }
       break;
 
