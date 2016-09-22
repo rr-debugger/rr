@@ -106,6 +106,18 @@ typedef unsigned char uint8_t;
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 
 /**
+ * Allocate new memory of |size| in bytes. The pointer returned is never NULL.
+ * This calls aborts the program if the host runs out of memory.
+ */
+void *xmalloc(size_t size) {
+  void *mem_ptr = malloc(size);
+  if (NULL == mem_ptr) {
+    abort();
+  }
+  return mem_ptr;
+}
+
+/**
  * Print the printf-like arguments to stdout as atomic-ly as we can
  * manage.  Async-signal-safe.  Does not flush stdio buffers (doing so
  * isn't signal safe).
