@@ -823,7 +823,7 @@ void copy_file(Task* t, int dest_fd, int src_fd) {
 
 void *xmalloc(size_t size) {
   void *mem_ptr = malloc(size);
-  if (NULL == mem_ptr) {
+  if (!mem_ptr) {
     abort();
   }
   return mem_ptr;
