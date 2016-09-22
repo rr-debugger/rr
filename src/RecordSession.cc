@@ -962,7 +962,7 @@ static void setup_sigframe_siginfo(RecordTask* t, const siginfo_t& siginfo) {
 /**
  * Get t into a state where resume_execution with a signal will actually work.
  */
-static void preinject_signal(RecordTask* t) {
+static bool preinject_signal(RecordTask* t) {
   int sig = t->ev().Signal().siginfo.si_signo;
 
   /* Signal injection is tricky. Per the ptrace(2) man page, injecting
@@ -996,6 +996,10 @@ static void preinject_signal(RecordTask* t) {
          * it would... */
         continue;
       }
+      if (t->status().ptrace_event() == PTRACE_EVENT_EXIT) {
+        /* We raced with an exit (e.g. due to a pending SIGKILL). */
+        return false;
+      }
       ASSERT(t, t->stop_sig());
       if (t->stop_sig() == sig) {
         LOG(debug) << "    stopped with signal " << signal_name(sig);
@@ -1024,6 +1028,7 @@ static void preinject_signal(RecordTask* t) {
    */
   LOG(debug) << "    injecting signal number " << t->ev().Signal().siginfo;
   t->set_siginfo(t->ev().Signal().siginfo);
+  return true;
 }
 
 /**
@@ -1032,7 +1037,9 @@ static void preinject_signal(RecordTask* t) {
  * occurred during delivery.
  */
 static bool inject_handled_signal(RecordTask* t) {
-  preinject_signal(t);
+  if (!preinject_signal(t)) {
+    return false;
+  }
 
   int sig = t->ev().Signal().siginfo.si_signo;
   t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
@@ -1052,8 +1059,8 @@ static bool inject_handled_signal(RecordTask* t) {
     // kill the process after this. Stash the signal and make sure
     // we know to treat it as fatal when we inject it. Also disable the
     // signal handler to match what the kernel does.
-    t->set_sig_blocked(sig, false);
-    t->set_sig_handler_default(sig);
+    t->set_sig_blocked(SIGSEGV, false);
+    t->set_sig_handler_default(SIGSEGV);
 
     t->stash_sig();
     t->task_group()->received_sigframe_SIGSEGV = true;

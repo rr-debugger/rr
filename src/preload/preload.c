@@ -547,9 +547,24 @@ static void init_thread(void) {
   struct rrcall_init_buffers_params args;
 
   assert(process_inited);
-  assert(!thread_inited);
 
-  if (!buffer_enabled) {
+  if (buffer_enabled) {
+    if (buffer) {
+      assert(thread_inited);
+      /**
+       * After a fork(), we retain a CoW mapping of our parent's syscallbuf.
+       * That's bad, because we don't want to use that buffer.  So drop the
+       * parent's copy and reinstall our own.
+       *
+       * FIXME: this "leaks" the parent's old copy in our address space.
+       */
+
+      buffer = NULL;
+      thread_inited = 0;
+    } else {
+      assert(!thread_inited);
+    }
+  } else {
     thread_inited = 1;
     return;
   }
@@ -579,15 +594,18 @@ static void init_thread(void) {
 }
 
 /**
- * After a fork(), we retain a CoW mapping of our parent's syscallbuf.
- * That's bad, because we don't want to use that buffer.  So drop the
- * parent's copy and reinstall our own.
+ * rr generates a SYSCALLBUF_DESCHED_SIGNAL when a qualifying clone(2) or
+ * fork() happens. This is the only SYSCALLBUF_DESCHED_SIGNAL that is
+ * ever actually delivered to the tracee. The others are consumed by rr itself.
  *
- * FIXME: this "leaks" the parent's old copy in our address space.
+ * The 'qualifying' bit above is extremely important. If init_thread is called
+ * after a clone(2) with CLONE_VM but no CLONE_SETTLS to give it a clean TLS,
+ * it's impossible for it to separate itself from the parent's syscallbuf.
+ * This happens with vfork() and can be made to happen with sufficiently strange
+ * clone(2) invocations. rr will not deliver us a signal in those cases.
  */
-static void post_fork_child(void) {
-  buffer = NULL;
-  thread_inited = 0;
+static void sig_init_thread(int sig) {
+  assert(sig == SYSCALLBUF_DESCHED_SIGNAL);
   init_thread();
 }
 
@@ -685,7 +703,12 @@ static void __attribute__((constructor)) init_process(void) {
 
   buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 
-  pthread_atfork(NULL, NULL, post_fork_child);
+  /* We really should call the syscall directly via privileged_traced_syscall,
+   * so that any seccomp filters the tracee has installed cannot interfere with
+   * us. But a seccomp filter that messes with rt_sigaction would be rather
+   * odd, and the glibc wrapper handles the sa_restorer bit for us. For now
+   * we'll just do this. */
+  signal(SYSCALLBUF_DESCHED_SIGNAL, sig_init_thread);
 
   params.syscallbuf_enabled = buffer_enabled;
   params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
@@ -719,8 +742,6 @@ static void* thread_trampoline(void* arg) {
   struct thread_func_data data = *(struct thread_func_data*)arg;
   free(arg);
 
-  init_thread();
-
   return data.start_routine(data.arg);
 }
 
@@ -736,7 +757,6 @@ static void* thread_trampoline(void* arg) {
 int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
                    void* (*start_routine)(void*), void* arg) {
   struct thread_func_data* data = malloc(sizeof(*data));
-  void* saved_buffer = buffer;
   int ret;
 
   /* Init syscallbuf now if we haven't yet (e.g. if pthread_create is called
@@ -746,10 +766,7 @@ int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
 
   data->start_routine = start_routine;
   data->arg = arg;
-  /* Don't let the new thread use our TLS pointer. */
-  buffer = NULL;
   ret = real_pthread_create(thread, attr, thread_trampoline, data);
-  buffer = saved_buffer;
   return ret;
 }
 

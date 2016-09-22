@@ -101,6 +101,7 @@ static const string& gdb_rr_macros() {
        << "end\n"
        << "set unwindonsignal on\n"
        << "handle SIGURG stop\n"
+       << "handle SIGPWR nostop noprint\n"
        << "set prompt (rr) \n"
        << GdbCommandHandler::gdb_macros()
        // Try both "set target-async" and "maint set target-async" since
