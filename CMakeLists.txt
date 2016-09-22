@@ -772,6 +772,7 @@ set(TESTS_WITH_PROGRAM
   mprotect_syscallbuf_overflow
   mutex_pi_stress
   priority
+  ptrace_remote_unmap
   # Not called ps, because that interferes with using real 'ps' in tests
   rr_ps
   read_big_struct
