@@ -451,6 +451,7 @@ set(BASIC_TESTS
   creat_address_not_truncated
   cwd_inaccessible
   daemon
+  daemon_read
   desched_blocking_poll
   dup
   doublesegv
@@ -501,6 +502,7 @@ set(BASIC_TESTS
   intr_sleep
   intr_sleep_no_restart
   invalid_fcntl
+  invalid_ioctl
   io
   ioctl
   ioctl_pty
@@ -519,6 +521,7 @@ set(BASIC_TESTS
   mmap_discontinuous
   mmap_private
   mmap_ro
+  mmap_self_maps_shared
   mmap_shared
   mmap_shared_multiple
   mmap_shared_subpage
@@ -553,6 +556,7 @@ set(BASIC_TESTS
   personality
   pthread_rwlocks
   poll_sig_race
+  ppoll
   prctl
   prctl_deathsig
   prctl_name
@@ -629,6 +633,7 @@ set(BASIC_TESTS
   signalfd
   sigprocmask
   sigprocmask_in_syscallbuf_sighandler
+  sigprocmask_rr_sigs
   sigprocmask_syscallbuf
   sigqueueinfo
   sigreturn
@@ -756,6 +761,7 @@ set(TESTS_WITH_PROGRAM
   int3_ok
   interrupt
   intr_ptrace_decline
+  invalid_jump
   link
   madvise_dontfork
   main_thread_exit

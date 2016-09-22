@@ -282,6 +282,7 @@ void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
 
 bool Task::is_desched_event_syscall() {
   return is_ioctl_syscall(regs().original_syscallno(), arch()) &&
+         desched_fd_child != -1 &&
          desched_fd_child == (int)regs().arg1_signed();
 }
 
@@ -1276,12 +1277,12 @@ void Task::emulate_syscall_entry(const Registers& regs) {
 }
 
 void Task::did_waitpid(WaitStatus status) {
-  Ticks more_ticks = hpc.read_ticks();
-  // Stop PerfCounters ASAP to reduce the possibility that due to bugs or
-  // whatever they pick up something spurious later.
-  hpc.stop();
-  ticks += more_ticks;
+  Ticks more_ticks = hpc.counting ? hpc.read_ticks() : 0;
+  // We stop counting here because there may be things we want to do to the
+  // tracee that would otherwise generate ticks.
+  hpc.stop_counting();
   session().accumulate_ticks_processed(more_ticks);
+  ticks += more_ticks;
 
   // After PTRACE_INTERRUPT, any next two stops may be a group stop caused by
   // that PTRACE_INTERRUPT (or neither may be). This is because PTRACE_INTERRUPT

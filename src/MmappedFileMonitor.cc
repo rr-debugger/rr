@@ -12,17 +12,28 @@ namespace rr {
 
 MmappedFileMonitor::MmappedFileMonitor(Task* t, int fd) {
   ASSERT(t, !t->session().is_replaying());
-  stat_ = t->stat_fd(fd);
+  extant_ = true;
+  auto stat = t->stat_fd(fd);
+  device_ = stat.st_dev;
+  inode_ = stat.st_ino;
 }
 
 MmappedFileMonitor::MmappedFileMonitor(Task* t, EmuFile::shr_ptr f) {
   ASSERT(t, t->session().is_replaying());
-  emu_file_ = f;
+
+  extant_ = !!f;
+  if (!extant_) {
+    // Our only role is to disable syscall buffering for this fd.
+    return;
+  }
+
+  device_ = f->device();
+  inode_ = f->inode();
 }
 
 void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                    int64_t offset) {
-  if (ranges.empty()) {
+  if (!extant_ || ranges.empty()) {
     return;
   }
 
@@ -37,11 +48,13 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
       auto km = m.map;
 
       if (is_replay) {
-        if (!emu_file_ || emu_file_ != m.emu_file) {
+        if (!m.emu_file ||
+            m.emu_file->device() != device_ ||
+            m.emu_file->inode() != inode_) {
           continue;
         }
       } else {
-        if (km.device() != stat_.st_dev || km.inode() != stat_.st_ino) {
+        if (km.device() != device_ || km.inode() != inode_) {
           continue;
         }
       }
@@ -56,7 +69,7 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
         if (km.intersects(mr)) {
           if (is_replay) {
             // If we're writing beyond the EmuFile's end, resize it.
-            emu_file_->ensure_size(local_offset + r.length);
+            m.emu_file->ensure_size(local_offset + r.length);
           } else {
             // We will record multiple writes if the file is mapped multiple
             // times. This is inefficient, but not wrong.
