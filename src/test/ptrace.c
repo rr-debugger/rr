@@ -157,13 +157,20 @@ int main(void) {
   test_assert(0 == ptrace(PTRACE_SETREGSET, child, (void*)NT_FPREGSET, &iov));
 
   if (xsave_size > 0) {
+    int len;
     xsave_regs = allocate_guard(xsave_size, 0xCF);
     iov.iov_base = xsave_regs;
     iov.iov_len = xsave_size;
     ret = ptrace(PTRACE_GETREGSET, child, (void*)NT_X86_XSTATE, &iov);
     test_assert(0 == ret);
     test_assert(iov.iov_len <= xsave_size);
-    test_assert(NULL == memchr(xsave_regs, 0xCF, iov.iov_len));
+    len = iov.iov_len;
+    if (len > 832) {
+      /* Only look at the first 832 bytes since the rest may contain unknown
+         xsave data which may validly contain 0xCF */
+      len = 832;
+    }
+    test_assert(NULL == memchr(xsave_regs, 0xCF, len));
     verify_guard(xsave_size, xsave_regs);
 
     test_assert(0 ==
