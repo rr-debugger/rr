@@ -30,7 +30,8 @@ template <typename Arch> struct socketcall_args {
 } __attribute__((packed));
 
 void AutoRestoreMem::init(const void* mem, ssize_t num_bytes) {
-  ASSERT(remote.task(), !remote.regs().sp().is_null())
+  ASSERT(remote.task(),
+         remote.enable_mem_params() == AutoRemoteSyscalls::ENABLE_MEMORY_PARAMS)
       << "Memory parameters were disabled";
 
   len = num_bytes;
@@ -63,7 +64,9 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       initial_regs(t->regs()),
       initial_ip(t->ip()),
       initial_sp(t->regs().sp()),
-      pending_syscallno(-1) {
+      pending_syscallno(-1),
+      scratch_mem_was_mapped(false),
+      enable_mem_params_(enable_mem_params) {
   // We could use privilged_traced_syscall_ip() here, but we don't actually
   // need privileges because tracee seccomp filters are modified to only
   // produce PTRACE_SECCOMP_EVENTs that we ignore. And before the rr page is
@@ -71,9 +74,8 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
   initial_regs.set_ip(t->vm()->traced_syscall_ip());
   if (enable_mem_params == ENABLE_MEMORY_PARAMS) {
     maybe_fix_stack_pointer();
-  } else {
-    initial_regs.set_sp(remote_ptr<void>());
   }
+
   // We need to make sure to clear any breakpoints or other alterations of
   // the syscall instruction we're using. Note that the tracee may have set its
   // own breakpoints or otherwise modified the instruction, so suspending our
@@ -116,14 +118,31 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
       break;
     }
   };
-  ASSERT(t, !found_stack.start().is_null()) << "No stack area found";
 
-  initial_regs.set_sp(found_stack.end());
+  if (found_stack.start().is_null()) {
+    AutoRemoteSyscalls remote(t, DISABLE_MEMORY_PARAMS);
+    found_stack =
+        MemoryRange(remote.infallible_mmap_syscall(
+                        remote_ptr<void>(), 4096, PROT_READ | PROT_WRITE,
+                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0),
+                    4096);
+    scratch_mem_was_mapped = true;
+  }
+
+  fixed_sp = found_stack.end();
+  assert(!fixed_sp.is_null());
+  initial_regs.set_sp(fixed_sp);
 }
 
 AutoRemoteSyscalls::~AutoRemoteSyscalls() { restore_state_to(t); }
 
 void AutoRemoteSyscalls::restore_state_to(Task* t) {
+  // Unmap our scatch region if required
+  if (scratch_mem_was_mapped) {
+    AutoRemoteSyscalls remote(t, DISABLE_MEMORY_PARAMS);
+    remote.infallible_syscall(syscall_number_for_munmap(arch()), fixed_sp,
+                              4096);
+  }
   if (!replaced_bytes.empty()) {
     t->write_mem(remote_ptr<uint8_t>(
                      t->vm()->traced_syscall_ip().to_data_ptr<uint8_t>()),

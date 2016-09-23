@@ -1545,7 +1545,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 }
 
 Task* Task::os_fork_into(Session* session) {
-  AutoRemoteSyscalls remote(this);
+  AutoRemoteSyscalls remote(this, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
   Task* child = os_clone(this, session, remote, rec_tid, serial,
                          // Most likely, we'll be setting up a
                          // CLEARTID futex.  That's not done
