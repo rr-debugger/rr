@@ -447,6 +447,7 @@ set(BASIC_TESTS
   clone_immediate_exit
   clone_newflags
   clone_untraced
+  cloned_sigmask
   constructor
   creat_address_not_truncated
   cwd_inaccessible

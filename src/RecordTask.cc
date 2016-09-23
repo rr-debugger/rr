@@ -315,7 +315,7 @@ Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   if (t->session().is_recording()) {
     RecordTask* rt = static_cast<RecordTask*>(t);
     rt->priority = priority;
-    rt->blocked_sigs = blocked_sigs;
+    rt->blocked_sigs = get_sigmask();
     rt->prctl_seccomp_status = prctl_seccomp_status;
     rt->robust_futex_list = robust_futex_list;
     rt->robust_futex_list_len = robust_futex_list_len;
@@ -434,7 +434,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
   if (as->syscallbuf_enabled()) {
     args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
     KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
-    writeback_sigmask();
+    set_sigmask(blocked_sigs);
     args.syscallbuf_ptr = syscallbuf_child;
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
@@ -908,29 +908,28 @@ bool RecordTask::is_sig_blocked(int sig) {
     // These can never be blocked
     return false;
   }
-  reload_sigmask();
   int sig_bit = sig - 1;
   if (sigsuspend_blocked_sigs) {
     return (*sigsuspend_blocked_sigs >> sig_bit) & 1;
   }
-  return (blocked_sigs >> sig_bit) & 1;
+  return (get_sigmask() >> sig_bit) & 1;
 }
 
 void RecordTask::set_sig_blocked(int sig, bool blocked) {
-  reload_sigmask();
   uint64_t mask = uint64_t(1) << (sig - 1);
+  sig_set_t sigs = get_sigmask();
   if (blocked) {
-    blocked_sigs |= mask;
+    sigs |= mask;
   } else {
-    blocked_sigs &= ~mask;
+    sigs &= ~mask;
   }
-  writeback_sigmask();
+  set_sigmask(sigs);
 }
 
 void RecordTask::apply_sig_sa_mask(int sig) {
-  reload_sigmask();
-  blocked_sigs |= sighandlers->get(sig).sa_mask;
-  writeback_sigmask();
+  sig_set_t sigs = get_sigmask();
+  sigs |= sighandlers->get(sig).sa_mask;
+  set_sigmask(sigs);
 }
 
 bool RecordTask::is_sig_ignored(int sig) const {
@@ -974,8 +973,7 @@ void RecordTask::update_sigaction(const Registers& regs) {
 }
 
 void RecordTask::set_new_sigmask(uint64_t new_sigmask) {
-  blocked_sigs = new_sigmask;
-  writeback_sigmask();
+  set_sigmask(new_sigmask);
 }
 
 void RecordTask::update_sigmask(const Registers& regs) {
@@ -987,19 +985,18 @@ void RecordTask::update_sigmask(const Registers& regs) {
   }
 
   auto set = read_mem(setp);
+  sig_set_t sigs = get_sigmask();
 
   // Update the blocked signals per |how|.
   switch (how) {
     case SIG_BLOCK:
-      reload_sigmask();
-      blocked_sigs |= set;
+      sigs |= set;
       break;
     case SIG_UNBLOCK:
-      reload_sigmask();
-      blocked_sigs &= ~set;
+      sigs &= ~set;
       break;
     case SIG_SETMASK:
-      blocked_sigs = set;
+      sigs = set;
       break;
     default:
       FATAL() << "Unknown sigmask manipulator " << how;
@@ -1008,33 +1005,30 @@ void RecordTask::update_sigmask(const Registers& regs) {
   // Our signals are never blocked.
   uint64_t enabled_sigs = (1 << (PerfCounters::TIME_SLICE_SIGNAL - 1)) |
                           (1 << (SYSCALLBUF_DESCHED_SIGNAL - 1));
-  blocked_sigs &= ~enabled_sigs;
-  writeback_sigmask();
+  sigs &= ~enabled_sigs;
+  set_sigmask(sigs);
 }
 
-void RecordTask::reload_sigmask() {
+sig_set_t RecordTask::get_sigmask() {
   if (syscallbuf_child) {
     blocked_sigs = read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs));
   }
+  return blocked_sigs;
 }
 
-void RecordTask::writeback_sigmask() {
+void RecordTask::set_sigmask(sig_set_t sigs) {
+  blocked_sigs = sigs;
   if (syscallbuf_child) {
     write_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs), blocked_sigs);
   }
 }
 
 void RecordTask::push_sigmask(sig_set_t newsigs) {
-  reload_sigmask();
-  previously_blocked_sigs = blocked_sigs;
-  blocked_sigs = newsigs;
-  writeback_sigmask();
+  previously_blocked_sigs = get_sigmask();
+  set_sigmask(newsigs);
 }
 
-void RecordTask::pop_sigmask() {
-  blocked_sigs = previously_blocked_sigs;
-  writeback_sigmask();
-}
+void RecordTask::pop_sigmask() { set_sigmask(previously_blocked_sigs); }
 
 void RecordTask::set_sig_handler_default(int sig) {
   Sighandler& h = sighandlers->get(sig);

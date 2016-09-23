@@ -494,8 +494,8 @@ private:
    * copy in this tasks's preload globals such that we can effectively track,
    * changes made to the mask by buffered syscalls.
    */
-  void reload_sigmask();
-  void writeback_sigmask();
+  sig_set_t get_sigmask();
+  void set_sigmask(sig_set_t mask);
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.
@@ -587,6 +587,8 @@ public:
   // If not NOT_STOPPED, then the task is logically stopped and this is the type
   // of stop.
   EmulatedStopType emulated_stop_type;
+  // Most accesses to this should use set_sigmask and get_sigmask to ensure
+  // the mirroring to syscallbuf is correct.
   sig_set_t blocked_sigs;
   sig_set_t previously_blocked_sigs;
   int handling_deterministic_signal;
