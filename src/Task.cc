@@ -86,7 +86,9 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       session_(&session),
       top_of_stack(),
       seen_ptrace_exit_event(false),
-      expecting_ptrace_interrupt_stop(0) {}
+      expecting_ptrace_interrupt_stop(0) {
+  memset(&thread_locals, 0, sizeof(thread_locals));
+}
 
 void Task::destroy() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
@@ -667,6 +669,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   task_group()->execed = true;
 
   thread_areas_.clear();
+  memset(&thread_locals, 0, sizeof(thread_locals));
 
   as = session().create_vm(this, exe_file, as->uid().exec_count() + 1);
   // It's barely-documented, but Linux unshares the fd table on exec
@@ -849,6 +852,22 @@ TrapReasons Task::compute_trap_reasons() {
 
 static const Property<bool, AddressSpace> thread_locals_initialized_property;
 
+const Task::ThreadLocals& Task::fetch_preload_thread_locals() {
+  if (tuid() == as->thread_locals_tuid()) {
+    if (as->has_mapping(AddressSpace::preload_thread_locals_start())) {
+      memcpy(thread_locals,
+             as->mapping_of(AddressSpace::preload_thread_locals_start())
+                 .local_addr,
+             PRELOAD_THREAD_LOCALS_SIZE);
+    } else {
+      // The mapping might have been removed by crazy application code.
+      // That's OK, assuming the preload library was removed too.
+      memset(&thread_locals, 0, sizeof(thread_locals));
+    }
+  }
+  return thread_locals;
+}
+
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
   // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
@@ -882,6 +901,18 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   address_of_last_execution_resume = ip();
   how_last_execution_resumed = how;
   set_debug_status(0);
+
+  // Switch thread-locals to the new task.
+  if (tuid() != as->thread_locals_tuid()) {
+    Task* t = session().find_task(as->thread_locals_tuid());
+    if (t) {
+      t->fetch_preload_thread_locals();
+    }
+    memcpy(
+        as->mapping_of(AddressSpace::preload_thread_locals_start()).local_addr,
+        thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
+    as->set_thread_locals_tuid(tuid());
+  }
 
   pid_t wait_ret = 0;
   if (session().is_recording()) {
@@ -1647,6 +1678,8 @@ Task::CapturedState Task::capture_state() {
       cloned_file_data_fd_child >= 0
           ? get_fd_offset(this, cloned_file_data_fd_child)
           : 0;
+  memcpy(&state.thread_locals, fetch_preload_thread_locals(),
+         PRELOAD_THREAD_LOCALS_SIZE);
   state.syscallbuf_child = syscallbuf_child;
   state.syscallbuf_size = syscallbuf_size;
   state.preload_globals = preload_globals;
@@ -1693,6 +1726,7 @@ void Task::copy_state(const CapturedState& state) {
     }
   }
   preload_globals = state.preload_globals;
+  memcpy(&thread_locals, &state.thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
   // The scratch buffer (for now) is merely a private mapping in
   // the remote task.  The CoW copy made by fork()'ing the
   // address space has the semantics we want.  It's not used in

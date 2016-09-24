@@ -730,6 +730,8 @@ public:
   int stopping_breakpoint_table_entry_size;
 
   remote_ptr<struct preload_globals> preload_globals;
+  typedef uint8_t ThreadLocals[PRELOAD_THREAD_LOCALS_SIZE];
+  ThreadLocals thread_locals;
 
   PropertyTable& properties() { return properties_; }
 
@@ -747,6 +749,7 @@ public:
     ssize_t scratch_size;
     remote_ptr<void> top_of_stack;
     uint64_t cloned_file_data_offset;
+    ThreadLocals thread_locals;
     pid_t rec_tid;
     uint32_t serial;
     int desched_fd_child;
@@ -797,6 +800,8 @@ protected:
    * that can simply be copied over in local memory.
    */
   void copy_state(const CapturedState& state);
+
+  const ThreadLocals& fetch_preload_thread_locals();
 
   /**
    * Make the ptrace |request| with |addr| and |data|, return

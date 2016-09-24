@@ -631,6 +631,9 @@ public:
   static remote_ptr<void> preload_thread_locals_start() {
     return rr_page_start() + PAGE_SIZE;
   }
+  static uint32_t preload_thread_locals_size() {
+    return PRELOAD_THREAD_LOCALS_SIZE;
+  }
 
   enum Traced { TRACED, UNTRACED };
   enum Privileged { PRIVILEGED, UNPRIVILEGED };
@@ -697,6 +700,14 @@ public:
   PropertyTable& properties() { return properties_; }
 
   void post_vm_clone(Task* t);
+  /**
+   * TaskUid for the task whose locals are stored in the preload_thread_locals
+   * area.
+   */
+  const TaskUid& thread_locals_tuid() { return thread_locals_tuid_; }
+  void set_thread_locals_tuid(const TaskUid& tuid) {
+    thread_locals_tuid_ = tuid;
+  }
 
 private:
   struct Breakpoint;
@@ -952,6 +963,8 @@ private:
   // The session that created this.  We save a ref to it so that
   // we can notify it when we die.
   Session* session_;
+  // tid of the task whose thread-locals are in preload_thread_locals
+  TaskUid thread_locals_tuid_;
   /* First mapped byte of the vdso. */
   remote_ptr<void> vdso_start_addr;
   // The monkeypatcher that's handling this address space.

@@ -59,6 +59,8 @@
   RR_PAGE_SYSCALL_ADDR(7)
 #define RR_PAGE_FF_BYTES (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 8)
 
+#define PRELOAD_THREAD_LOCALS_SIZE 64
+
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.
  *
