@@ -557,7 +557,8 @@ static void init_thread(void) {
   if (thread_locals->thread_inited) {
     return;
   }
-  if (!buffer_enabled) {
+  /* Do not do any syscall buffering in a DiversionSession! */
+  if (!buffer_enabled || globals.in_diversion) {
     thread_locals->thread_inited = 1;
     return;
   }

@@ -165,6 +165,9 @@ struct preload_globals {
    * USE WITH CAUTION.
    */
   unsigned char in_replay;
+  /* 0 during recording and replay, 1 during diversion. Set by rr.
+   */
+  unsigned char in_diversion;
   /* Number of cores to pretend we have. 0 means 1. rr sets this when
    * the preload library is initialized. */
   int pretend_num_cores;
