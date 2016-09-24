@@ -61,7 +61,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            SupportedArch a)
     : unstable(false),
       stable_exit(false),
-      thread_locals_initialized(false),
       scratch_ptr(),
       scratch_size(),
       // This will be initialized when the syscall buffer is.
@@ -381,16 +380,6 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
     case Arch::set_thread_area:
       set_thread_area(regs.arg1());
-      // Assume any set_thread_area sets up TLS
-      thread_locals_initialized = true;
-      return;
-
-    case Arch::arch_prctl:
-      switch ((int)regs.arg1_signed()) {
-        case ARCH_SET_FS:
-          thread_locals_initialized = true;
-          break;
-      }
       return;
 
     case Arch::prctl:
@@ -665,7 +654,6 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
   preload_globals = nullptr;
-  thread_locals_initialized = false;
   task_group()->execed = true;
 
   thread_areas_.clear();
@@ -1491,14 +1479,8 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
   t->open_mem_fd_if_needed();
   t->thread_areas_ = thread_areas_;
-  // When cloning a task in the same session, the new task's thread-locals
-  // are not initialized ... unless CLONE_SET_TLS is set.
-  if (other_session || !(CLONE_SHARE_VM & flags)) {
-    t->thread_locals_initialized = thread_locals_initialized;
-  }
   if (CLONE_SET_TLS & flags) {
     set_thread_area_from_clone(t, tls);
-    t->thread_locals_initialized = true;
   }
 
   t->as->insert_task(t);
@@ -1677,7 +1659,6 @@ Task::CapturedState Task::capture_state() {
   state.wait_status = wait_status;
   state.ticks = ticks;
   state.top_of_stack = top_of_stack;
-  state.thread_locals_initialized = thread_locals_initialized;
   return state;
 }
 
@@ -1728,8 +1709,6 @@ void Task::copy_state(const CapturedState& state) {
   wait_status = state.wait_status;
 
   ticks = state.ticks;
-
-  thread_locals_initialized = state.thread_locals_initialized;
 }
 
 remote_ptr<const struct syscallbuf_record> Task::next_syscallbuf_record() {

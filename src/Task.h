@@ -661,11 +661,6 @@ public:
    * the exit can be treated as stable. */
   bool stable_exit;
 
-  /* True when arch_prctl (x86_64) or set_thread_area/CLONE_SETTLS (x86) have
-   * been used to set up thread-local storage for this task.
-   */
-  bool thread_locals_initialized;
-
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
    * task B then writes to |b|.  Then B is switched out for A.
@@ -755,7 +750,6 @@ public:
     int desched_fd_child;
     int cloned_file_data_fd_child;
     WaitStatus wait_status;
-    bool thread_locals_initialized;
   };
 
 protected:
