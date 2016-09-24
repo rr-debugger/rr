@@ -850,8 +850,6 @@ TrapReasons Task::compute_trap_reasons() {
   return reasons;
 }
 
-static const Property<bool, AddressSpace> thread_locals_initialized_property;
-
 const Task::ThreadLocals& Task::fetch_preload_thread_locals() {
   if (tuid() == as->thread_locals_tuid()) {
     if (as->has_mapping(AddressSpace::preload_thread_locals_start())) {
@@ -895,19 +893,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     hpc.reset(tick_period == RESUME_UNLIMITED_TICKS
                   ? 0xffffffff
                   : max<Ticks>(1, tick_period));
-    // Ensure preload_globals.thread_locals_initialized is up to date. Avoid
-    // unnecessary writes by caching last written value per-AddressSpace.
-    if (preload_globals) {
-      bool* prop = thread_locals_initialized_property.get(*as);
-      if (!prop || *prop != thread_locals_initialized) {
-        write_mem(REMOTE_PTR_FIELD(preload_globals, thread_locals_initialized),
-                  (unsigned char)thread_locals_initialized);
-        if (!prop) {
-          prop = &thread_locals_initialized_property.create(*as);
-        }
-        *prop = thread_locals_initialized;
-      }
-    }
+    activate_preload_thread_locals();
   }
 
   LOG(debug) << "resuming execution of " << tid << " with "
@@ -916,8 +902,6 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   address_of_last_execution_resume = ip();
   how_last_execution_resumed = how;
   set_debug_status(0);
-
-  activate_preload_thread_locals();
 
   pid_t wait_ret = 0;
   if (session().is_recording()) {

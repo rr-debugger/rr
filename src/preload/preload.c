@@ -120,8 +120,11 @@ static struct preload_globals globals;
 
 /**
  * Can be architecture dependent. The rr process does not manipulate
- * these except to save and restore the values on task switches.
- * Thread-local variables used by the preload library.
+ * these except to save and restore the values on task switches so that
+ * the values are always effectively local to the current task.
+ * We use this instead of regular libc TLS because sometimes buggy application
+ * code breaks libc TLS for some tasks. With this approach we can be sure
+ * thread-locals are usable for any task in any state.
  */
 struct preload_thread_locals {
   /* Nonzero when thread-local state like the syscallbuf has been
@@ -2521,9 +2524,6 @@ static long syscall_hook_internal(const struct syscall_info* call) {
  * _syscall_hook_trampoline without doing all sorts of special PIC handling.
  */
 RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
-  if (!globals.thread_locals_initialized) {
-    return traced_raw_syscall(call);
-  }
   long result = syscall_hook_internal(call);
   if (buffer_hdr() && buffer_hdr()->notify_on_syscall_hook_exit) {
     // SYS_rrcall_notify_syscall_hook_exit will clear
