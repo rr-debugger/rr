@@ -35,6 +35,47 @@ static size_t find_xsave_size(void) {
 
 int dummy[4] = { 1, 2, 3, 4 };
 
+/*
+ * Let's talk about why this is necessary, because in theory it shouldn't be.
+ *
+ * Intel defines bytes 416-511 of the (FP)XSAVE area as reserved and none of the
+ * xsave instructions touch it. However, bytes 464-511 are used by the linux
+ * kernel to keep metadata about the memory layout of the frame. That leaves
+ * bytes 416-463 to cause trouble. Note that while these bytes do not have any
+ * corresponding register values, the kernel does keep a copy in the fpu
+ * structure. The kernel zeros these bytes on allocation, but ptrace moves them
+ * in and out of the kernel fairly non-discriminantly, so if these bytes end up
+ * non-zero we'll notice in this test, which brings us to how they actually end
+ * up non-zero in this test (spoiler not via ptrace):
+ *
+ * When rr forks a new task, it sends an artificial signal to that new task in
+ * order to force the preload library to set up its required task-local state.
+ * When the kernel delivers a signal, it sets up a signal frame with information
+ * about the signal as well as the full register state of the current thread.
+ * Now, when it comes time to save out the FPU state, the kernel uses the xsave
+ * instruction directly to write out the registers, but as mentioned, those
+ * instructions do not touch the reserved area. Bits 464-511 then get touched
+ * up manually with the required information, but bits 416-463 are not touched
+ * at all, so they end up with whatever happened to be on the stack when the
+ * kernel sets up the signal frame. However, when the kernel restores the
+ * register state from the signal frame, it first copies in the entire area into
+ * its internal data structures, and then restores the actual registers from
+ * there. This means that the bits 416-463 which had invalid stack data in them
+ * are now saved in the kernel fpu data structure and thus observable from
+ * ptrace.
+ *
+ * Lastly, note that this depends on whether or not the current CPU has support
+ * for the XSAVES instruction (and if not whether fpregs are active for the
+ * current thread). If that is not the case, writing out also happens from
+ * the fpu data structure and the reserved area is thus preserved.
+ */
+static void clear_reserved_area(uint8_t *fxregs)
+{
+  for (int i = 416; i < 464; ++i) {
+      fxregs[i] = 0;
+  }
+}
+
 int main(void) {
   pid_t child;
   int status;
@@ -133,6 +174,7 @@ int main(void) {
 #ifdef __i386__
   ALLOCATE_GUARD(fpxregs, 0xCC);
   test_assert(0 == ptrace(PTRACE_GETFPXREGS, child, NULL, fpxregs));
+  clear_reserved_area((uint8_t*)fpxregs);
   test_assert(NULL == memchr(fpxregs, 0xCC, sizeof(*fpxregs)));
   VERIFY_GUARD(fpxregs);
   test_assert(0 == ptrace(PTRACE_SETFPXREGS, child, NULL, fpxregs));
@@ -170,6 +212,7 @@ int main(void) {
          xsave data which may validly contain 0xCF */
       len = 832;
     }
+    clear_reserved_area((uint8_t*)xsave_regs);
     test_assert(NULL == memchr(xsave_regs, 0xCF, len));
     verify_guard(xsave_size, xsave_regs);
 
