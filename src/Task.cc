@@ -1509,18 +1509,6 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
     if (!(CLONE_SHARE_VM & flags)) {
       as->did_fork_into(t);
-
-      if (!syscallbuf_child.is_null()) {
-        AutoRemoteSyscalls remote(t);
-        // Unshare the syscallbuf memory so when we lock it below, we don't
-        // also lock it in the task we cloned from!
-        int prot = PROT_READ | PROT_WRITE;
-        int flags = MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS;
-        remote.infallible_mmap_syscall(syscallbuf_child, syscallbuf_size, prot,
-                                       flags, -1, 0);
-        t->vm()->map(t, syscallbuf_child, syscallbuf_size, prot, flags, 0,
-                     string());
-      }
     }
 
     if (CLONE_SHARE_FILES & flags) {
