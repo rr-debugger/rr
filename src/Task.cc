@@ -868,6 +868,21 @@ const Task::ThreadLocals& Task::fetch_preload_thread_locals() {
   return thread_locals;
 }
 
+void Task::activate_preload_thread_locals() {
+  // Switch thread-locals to the new task.
+  if (tuid() != as->thread_locals_tuid() &&
+      as->has_mapping(AddressSpace::preload_thread_locals_start())) {
+    Task* t = session().find_task(as->thread_locals_tuid());
+    if (t) {
+      t->fetch_preload_thread_locals();
+    }
+    memcpy(
+        as->mapping_of(AddressSpace::preload_thread_locals_start()).local_addr,
+        thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
+    as->set_thread_locals_tuid(tuid());
+  }
+}
+
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
   // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
@@ -902,17 +917,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   how_last_execution_resumed = how;
   set_debug_status(0);
 
-  // Switch thread-locals to the new task.
-  if (tuid() != as->thread_locals_tuid()) {
-    Task* t = session().find_task(as->thread_locals_tuid());
-    if (t) {
-      t->fetch_preload_thread_locals();
-    }
-    memcpy(
-        as->mapping_of(AddressSpace::preload_thread_locals_start()).local_addr,
-        thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
-    as->set_thread_locals_tuid(tuid());
-  }
+  activate_preload_thread_locals();
 
   pid_t wait_ret = 0;
   if (session().is_recording()) {

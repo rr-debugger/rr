@@ -802,6 +802,7 @@ protected:
   void copy_state(const CapturedState& state);
 
   const ThreadLocals& fetch_preload_thread_locals();
+  void activate_preload_thread_locals();
 
   /**
    * Make the ptrace |request| with |addr| and |data|, return

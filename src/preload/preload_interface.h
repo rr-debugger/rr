@@ -6,6 +6,8 @@
 #include <signal.h>
 #include <stdint.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/user.h>
 
 #ifndef RR_IMPLEMENT_PRELOAD
 #include "../remote_ptr.h"
@@ -59,6 +61,7 @@
   RR_PAGE_SYSCALL_ADDR(7)
 #define RR_PAGE_FF_BYTES (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 8)
 
+#define PRELOAD_THREAD_LOCALS_ADDR (RR_PAGE_ADDR + PAGE_SIZE)
 #define PRELOAD_THREAD_LOCALS_SIZE 64
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
@@ -179,12 +182,6 @@ struct preload_globals {
   /* mprotect records. Set by preload. */
   struct mprotect_record mprotect_records[MPROTECT_RECORD_COUNT];
 };
-
-/**
- * Must be arch-independent.
- * Thread-local variables used by the preload library.
- */
-struct preload_thread_locals {};
 
 /**
  * Packs up the parameters passed to |SYS_rrcall_init_preload|.

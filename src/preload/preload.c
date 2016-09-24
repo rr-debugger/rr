@@ -119,64 +119,65 @@ static int process_inited;
 static struct preload_globals globals;
 
 /**
- * Because this library is always loaded via LD_PRELOAD, we can use the
- * initial-exec TLS model (see http://www.akkadia.org/drepper/tls.pdf) which
- * lets the compiler generate better code which, crucially, does not call
- * helper functions outside of our library.
+ * Can be architecture dependent. The rr process does not manipulate
+ * these except to save and restore the values on task switches.
+ * Thread-local variables used by the preload library.
  */
-#define TLS_STORAGE_MODEL __attribute__((tls_model("initial-exec")))
+struct preload_thread_locals {
+  /* Nonzero when thread-local state like the syscallbuf has been
+   * initialized.  */
+  int thread_inited;
+  /* When buffering is enabled, points at the thread's mapped buffer
+   * segment.  At the start of the segment is an object of type |struct
+   * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
+   * header. */
+  uint8_t* buffer;
+  size_t buffer_size;
+  /* This is used to support the buffering of "may-block" system calls.
+   * The problem that needs to be addressed can be introduced with a
+   * simple example; assume that we're buffering the "read" and "write"
+   * syscalls.
+   *
+   *  o (Tasks W and R set up a synchronous-IO pipe open between them; W
+   *    "owns" the write end of the pipe; R owns the read end; the pipe
+   *    buffer is full)
+   *  o Task W invokes the write syscall on the pipe
+   *  o Since write is a buffered syscall, the seccomp filter traps W
+   *    directly to the kernel; there's no trace event for W delivered
+   *    to rr.
+   *  o The pipe is full, so W is descheduled by the kernel because W
+   *    can't make progress.
+   *  o rr thinks W is still running and doesn't schedule R.
+   *
+   * At this point, progress in the recorded application can only be
+   * made by scheduling R, but no one tells rr to do that.  Oops!
+   *
+   * Thus enter the "desched counter".  It's a perf_event for the "sw t
+   * switches" event (which, more precisely, is "sw deschedule"; it
+   * counts schedule-out, not schedule-in).  We program the counter to
+   * deliver a signal to this task when there's new counter data
+   * available.  And we set up the "sample period", how many descheds
+   * are triggered before the signal is delivered, to be "1".  This
+   * means that when the counter is armed, the next desched (i.e., the
+   * next time the desched counter is bumped up) of this task will
+   * deliver the signal to it.  And signal delivery always generates a
+   * ptrace trap, so rr can deduce that this task was descheduled and
+   * schedule another.
+   *
+   * The description above is sort of an idealized view; there are
+   * numerous implementation details that are documented in
+   * handle_signal.c, where they're dealt with. */
+  int desched_counter_fd;
+  int cloned_file_data_fd;
+  off_t cloned_file_data_offset;
+  void* scratch_buf;
+  size_t scratch_size;
 
-/* Nonzero when thread-local state like the syscallbuf has been
- * initialized.  */
-static __thread int thread_inited TLS_STORAGE_MODEL;
-/* When buffering is enabled, points at the thread's mapped buffer
- * segment.  At the start of the segment is an object of type |struct
- * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
- * header. */
-static __thread uint8_t* buffer TLS_STORAGE_MODEL;
-static __thread size_t buffer_size TLS_STORAGE_MODEL;
-/* This is used to support the buffering of "may-block" system calls.
- * The problem that needs to be addressed can be introduced with a
- * simple example; assume that we're buffering the "read" and "write"
- * syscalls.
- *
- *  o (Tasks W and R set up a synchronous-IO pipe open between them; W
- *    "owns" the write end of the pipe; R owns the read end; the pipe
- *    buffer is full)
- *  o Task W invokes the write syscall on the pipe
- *  o Since write is a buffered syscall, the seccomp filter traps W
- *    directly to the kernel; there's no trace event for W delivered
- *    to rr.
- *  o The pipe is full, so W is descheduled by the kernel because W
- *    can't make progress.
- *  o rr thinks W is still running and doesn't schedule R.
- *
- * At this point, progress in the recorded application can only be
- * made by scheduling R, but no one tells rr to do that.  Oops!
- *
- * Thus enter the "desched counter".  It's a perf_event for the "sw t
- * switches" event (which, more precisely, is "sw deschedule"; it
- * counts schedule-out, not schedule-in).  We program the counter to
- * deliver a signal to this task when there's new counter data
- * available.  And we set up the "sample period", how many descheds
- * are triggered before the signal is delivered, to be "1".  This
- * means that when the counter is armed, the next desched (i.e., the
- * next time the desched counter is bumped up) of this task will
- * deliver the signal to it.  And signal delivery always generates a
- * ptrace trap, so rr can deduce that this task was descheduled and
- * schedule another.
- *
- * The description above is sort of an idealized view; there are
- * numerous implementation details that are documented in
- * handle_signal.c, where they're dealt with. */
-static __thread int desched_counter_fd TLS_STORAGE_MODEL;
+  struct msghdr* notify_control_msg;
+};
 
-static __thread int cloned_file_data_fd TLS_STORAGE_MODEL;
-static __thread off_t cloned_file_data_offset TLS_STORAGE_MODEL;
-static __thread void* scratch_buf TLS_STORAGE_MODEL;
-static __thread size_t scratch_size TLS_STORAGE_MODEL;
-
-static __thread struct msghdr* notify_control_msg TLS_STORAGE_MODEL;
+static struct preload_thread_locals* const thread_locals =
+    (struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR;
 
 /* Points at the libc/pthread pthread_create().  We wrap
  * pthread_create, so need to retain this pointer to call out to the
@@ -193,7 +194,7 @@ static int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
  * initial bytes in the mapped region.
  */
 static struct syscallbuf_hdr* buffer_hdr(void) {
-  return (struct syscallbuf_hdr*)buffer;
+  return (struct syscallbuf_hdr*)thread_locals->buffer;
 }
 
 /**
@@ -208,7 +209,9 @@ static uint8_t* buffer_last(void) {
  * Return a pointer to the byte just after the very end of the mapped
  * region.
  */
-static uint8_t* buffer_end(void) { return buffer + buffer_size; }
+static uint8_t* buffer_end(void) {
+  return thread_locals->buffer + thread_locals->buffer_size;
+}
 
 /**
  * Same as libc memcpy(), but usable within syscallbuf transaction
@@ -549,8 +552,8 @@ static void init_thread(void) {
   assert(process_inited);
 
   if (buffer_enabled) {
-    if (buffer) {
-      assert(thread_inited);
+    if (thread_locals->buffer) {
+      assert(thread_locals->thread_inited);
       /**
        * After a fork(), we retain a CoW mapping of our parent's syscallbuf.
        * That's bad, because we don't want to use that buffer.  So drop the
@@ -559,21 +562,21 @@ static void init_thread(void) {
        * FIXME: this "leaks" the parent's old copy in our address space.
        */
 
-      buffer = NULL;
-      thread_inited = 0;
+      thread_locals->buffer = NULL;
+      thread_locals->thread_inited = 0;
     } else {
-      assert(!thread_inited);
+      assert(!thread_locals->thread_inited);
     }
   } else {
-    thread_inited = 1;
+    thread_locals->thread_inited = 1;
     return;
   }
 
   /* NB: we want this setup emulated during replay. */
-  desched_counter_fd =
+  thread_locals->desched_counter_fd =
       open_desched_event_counter(1, privileged_traced_gettid());
 
-  args.desched_counter_fd = desched_counter_fd;
+  args.desched_counter_fd = thread_locals->desched_counter_fd;
 
   /* Trap to rr: let the magic begin!
    *
@@ -583,14 +586,14 @@ static void init_thread(void) {
    * the signal is unblocked. */
   rrcall_init_buffers(&args);
 
-  cloned_file_data_fd = args.cloned_file_data_fd;
+  thread_locals->cloned_file_data_fd = args.cloned_file_data_fd;
   /* rr initializes the buffer header. */
-  buffer = args.syscallbuf_ptr;
-  buffer_size = args.syscallbuf_size;
-  scratch_buf = args.scratch_buf;
-  scratch_size = args.scratch_size;
+  thread_locals->buffer = args.syscallbuf_ptr;
+  thread_locals->buffer_size = args.syscallbuf_size;
+  thread_locals->scratch_buf = args.scratch_buf;
+  thread_locals->scratch_size = args.scratch_size;
 
-  thread_inited = 1;
+  thread_locals->thread_inited = 1;
 }
 
 /**
@@ -697,6 +700,9 @@ static void __attribute__((constructor)) init_process(void) {
 #else
 #error Unknown architecture
 #endif
+
+  assert(sizeof(struct preload_thread_locals) <= PRELOAD_THREAD_LOCALS_SIZE);
+
   if (process_inited) {
     return;
   }
@@ -862,7 +868,7 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex) {
  */
 
 static void* prep_syscall(void) {
-  if (!buffer) {
+  if (!thread_locals->buffer) {
     return NULL;
   }
   if (buffer_hdr()->locked) {
@@ -908,17 +914,19 @@ static void arm_desched_event(void) {
    * avoid! :) Although we don't allocate extra space for these
    * ioctl's, we do record that we called them; the replayer
    * knows how to skip over them. */
-  if ((int)privileged_untraced_syscall3(SYS_ioctl, desched_counter_fd,
+  if ((int)privileged_untraced_syscall3(SYS_ioctl,
+                                        thread_locals->desched_counter_fd,
                                         PERF_EVENT_IOC_ENABLE, 0)) {
-    fatal("Failed to ENABLE counter %d", desched_counter_fd);
+    fatal("Failed to ENABLE counter %d", thread_locals->desched_counter_fd);
   }
 }
 
 static void disarm_desched_event(void) {
   /* See above. */
-  if ((int)privileged_untraced_syscall3(SYS_ioctl, desched_counter_fd,
+  if ((int)privileged_untraced_syscall3(SYS_ioctl,
+                                        thread_locals->desched_counter_fd,
                                         PERF_EVENT_IOC_DISABLE, 0)) {
-    fatal("Failed to DISABLE counter %d", desched_counter_fd);
+    fatal("Failed to DISABLE counter %d", thread_locals->desched_counter_fd);
   }
 }
 
@@ -936,7 +944,7 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
   void* stored_end;
   struct syscallbuf_record* rec;
 
-  if (!buffer) {
+  if (!thread_locals->buffer) {
     return 0;
   }
   record_start = buffer_last();
@@ -1866,8 +1874,9 @@ static long sys_read(const struct syscall_info* call) {
    * race, it's almost certainly a bad bug because Linux can return any
    * interleaving of old+new data for the read even without rr.
    */
-  if (buf && count >= CLONE_SIZE_THRESHOLD && cloned_file_data_fd >= 0 &&
-      is_bufferable_fd(fd) && sizeof(void*) == 8 && !(count & 4095)) {
+  if (buf && count >= CLONE_SIZE_THRESHOLD &&
+      thread_locals->cloned_file_data_fd >= 0 && is_bufferable_fd(fd) &&
+      sizeof(void*) == 8 && !(count & 4095)) {
     struct syscall_info lseek_call = { SYS_lseek,
                                        { fd, 0, SEEK_CUR, 0, 0, 0 } };
     off_t lseek_ret = sys_generic_nonblocking_fd(&lseek_call);
@@ -1878,7 +1887,7 @@ static long sys_read(const struct syscall_info* call) {
       ioctl_args.src_fd = fd;
       ioctl_args.src_offset = lseek_ret;
       ioctl_args.src_length = count;
-      ioctl_args.dest_offset = cloned_file_data_offset;
+      ioctl_args.dest_offset = thread_locals->cloned_file_data_offset;
 
       /* Don't call sys_ioctl here; cloned_file_data_fd has syscall buffering
        * disabled for it so rr can reject attempts to close/dup to it. But
@@ -1886,25 +1895,26 @@ static long sys_read(const struct syscall_info* call) {
        */
       if (!start_commit_buffered_syscall(SYS_ioctl, ioctl_ptr, WONT_BLOCK)) {
         struct syscall_info ioctl_call = { SYS_ioctl,
-                                           { cloned_file_data_fd,
+                                           { thread_locals->cloned_file_data_fd,
                                              BTRFS_IOC_CLONE_RANGE,
                                              (long)&ioctl_args, 0, 0, 0 } };
         ioctl_ret = traced_raw_syscall(&ioctl_call);
       } else {
-        ioctl_ret = untraced_syscall3(SYS_ioctl, cloned_file_data_fd,
-                                      BTRFS_IOC_CLONE_RANGE, &ioctl_args);
+        ioctl_ret =
+            untraced_syscall3(SYS_ioctl, thread_locals->cloned_file_data_fd,
+                              BTRFS_IOC_CLONE_RANGE, &ioctl_args);
         ioctl_ret = commit_raw_syscall(SYS_ioctl, ioctl_ptr, ioctl_ret);
       }
 
       if (ioctl_ret >= 0) {
         struct syscall_info read_call = { SYS_read,
                                           { fd, (long)buf, count, 0, 0, 0 } };
-        cloned_file_data_offset += count;
+        thread_locals->cloned_file_data_offset += count;
 
-        replay_only_syscall2(SYS_dup2, cloned_file_data_fd, fd);
+        replay_only_syscall2(SYS_dup2, thread_locals->cloned_file_data_fd, fd);
 
         ptr = prep_syscall();
-        if (count > scratch_size) {
+        if (count > thread_locals->scratch_size) {
           if (!start_commit_buffered_syscall(SYS_read, ptr, WONT_BLOCK)) {
             return traced_raw_syscall(&read_call);
           }
@@ -1913,8 +1923,9 @@ static long sys_read(const struct syscall_info* call) {
           if (!start_commit_buffered_syscall(SYS_read, ptr, MAY_BLOCK)) {
             return traced_raw_syscall(&read_call);
           }
-          ret = untraced_replayed_syscall3(SYS_read, fd, scratch_buf, count);
-          copy_output_buffer(ret, NULL, buf, scratch_buf);
+          ret = untraced_replayed_syscall3(SYS_read, fd,
+                                           thread_locals->scratch_buf, count);
+          copy_output_buffer(ret, NULL, buf, thread_locals->scratch_buf);
         }
         // Do this now before we finish processing the syscallbuf record.
         // This means the syscall will be executed in
@@ -2168,7 +2179,7 @@ static long sys_recvmsg(const struct syscall_info* call) {
       /* When we reach a safe point, notify rr that the control message was
        * received.
        */
-      notify_control_msg = msg;
+      thread_locals->notify_control_msg = msg;
     }
   } else {
     /* Allocate record space as least to cover the data we overwrote above.
@@ -2554,10 +2565,10 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
                           RR_PAGE_SYSCALL_PRIVILEGED_TRACED, result, call->no);
   }
   // Do work that can only be safely done after syscallbuf can be flushed
-  if (notify_control_msg) {
+  if (thread_locals->notify_control_msg) {
     privileged_traced_syscall1(SYS_rrcall_notify_control_msg,
-                               notify_control_msg);
-    notify_control_msg = NULL;
+                               thread_locals->notify_control_msg);
+    thread_locals->notify_control_msg = NULL;
   }
   return result;
 }

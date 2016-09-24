@@ -424,7 +424,7 @@ void AddressSpace::post_exec_syscall(Task* t) {
   // us traced and untraced syscall instructions at known, fixed addresses.
   map_rr_page(remote);
   // Set up the preload_thread_locals shared area.
-  t->session().create_shared_mmap(remote, PAGE_SIZE,
+  t->session().create_shared_mmap(remote, PRELOAD_THREAD_LOCALS_SIZE,
                                   preload_thread_locals_start(),
                                   "preload_thread_locals");
 }
