@@ -2415,17 +2415,6 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       syscall_state.syscall_entry_registers.original_syscallno());
   t->set_regs(r);
 
-  // Synthesize a SYSCALLBUF_DESCHED_SIGNAL in the tracee. This is the only time
-  // we'll ever actually deliver this signal to the tracee. preload.c has a
-  // handler that will initialize the syscallbuf when it is invoked.
-  //
-  // That signal handler assumes that either it is not sharing memory with the
-  // parent or it has new TLS.
-  if (!(flags & CLONE_VM) || (flags & CLONE_SETTLS)) {
-    new_task->push_event(SignalEvent(SYSCALLBUF_DESCHED_SIGNAL,
-                                     NONDETERMINISTIC_SIG, new_task->arch()));
-  }
-
   // We're in a PTRACE_EVENT_FORK/VFORK/CLONE so the next PTRACE_SYSCALL for
   // |t| will go to the exit of the syscall, as expected.
 }

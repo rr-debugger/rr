@@ -547,20 +547,16 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
 }
 
 /**
- * Initialize thread-local buffering state, if enabled.
+ * Initialize thread-local buffering state, if enabled and not already
+ * initialized.
  */
 static void init_thread(void) {
   struct rrcall_init_buffers_params args;
 
   assert(process_inited);
-  /**
-   * After a fork, this gets called via sig_init_thread. Because our
-   * thread-locals aren't copied by the fork, we will see !thread_inited here.
-   * XXX the parent's syscallbuf(s) will have been copied into our
-   * address space and no-one frees them.
-   */
-  assert(!thread_locals->thread_inited);
-
+  if (thread_locals->thread_inited) {
+    return;
+  }
   if (!buffer_enabled) {
     thread_locals->thread_inited = 1;
     return;
@@ -588,22 +584,6 @@ static void init_thread(void) {
   thread_locals->scratch_size = args.scratch_size;
 
   thread_locals->thread_inited = 1;
-}
-
-/**
- * rr generates a SYSCALLBUF_DESCHED_SIGNAL when a qualifying clone(2) or
- * fork() happens. This is the only SYSCALLBUF_DESCHED_SIGNAL that is
- * ever actually delivered to the tracee. The others are consumed by rr itself.
- *
- * The 'qualifying' bit above is extremely important. If init_thread is called
- * after a clone(2) with CLONE_VM but no CLONE_SETTLS to give it a clean TLS,
- * it's impossible for it to separate itself from the parent's syscallbuf.
- * This happens with vfork() and can be made to happen with sufficiently strange
- * clone(2) invocations. rr will not deliver us a signal in those cases.
- */
-static void sig_init_thread(int sig) {
-  assert(sig == SYSCALLBUF_DESCHED_SIGNAL);
-  init_thread();
 }
 
 extern char _breakpoint_table_entry_start;
@@ -703,13 +683,6 @@ static void __attribute__((constructor)) init_process(void) {
 
   buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 
-  /* We really should call the syscall directly via privileged_traced_syscall,
-   * so that any seccomp filters the tracee has installed cannot interfere with
-   * us. But a seccomp filter that messes with rt_sigaction would be rather
-   * odd, and the glibc wrapper handles the sa_restorer bit for us. For now
-   * we'll just do this. */
-  signal(SYSCALLBUF_DESCHED_SIGNAL, sig_init_thread);
-
   params.syscallbuf_enabled = buffer_enabled;
   params.syscall_hook_trampoline = (void*)_syscall_hook_trampoline;
   params.syscall_hook_end = (void*)_syscall_hook_end;
@@ -724,8 +697,6 @@ static void __attribute__((constructor)) init_process(void) {
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
 
   process_inited = 1;
-
-  init_thread();
 }
 
 /**
@@ -2515,6 +2486,10 @@ static long syscall_hook_internal(const struct syscall_info* call) {
  * _syscall_hook_trampoline without doing all sorts of special PIC handling.
  */
 RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
+  // Initialize thread-local state if this is the first syscall for this
+  // thread.
+  init_thread();
+
   long result = syscall_hook_internal(call);
   if (buffer_hdr() && buffer_hdr()->notify_on_syscall_hook_exit) {
     // SYS_rrcall_notify_syscall_hook_exit will clear
