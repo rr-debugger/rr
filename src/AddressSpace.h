@@ -29,6 +29,7 @@
 
 namespace rr {
 
+class AutoRemoteSyscalls;
 class MonitoredSharedMemory;
 class RecordTask;
 class Session;
@@ -627,6 +628,10 @@ public:
     return rr_page_start() + rr_page_size();
   }
 
+  static remote_ptr<void> preload_thread_locals_start() {
+    return rr_page_start() + PAGE_SIZE;
+  }
+
   enum Traced { TRACED, UNTRACED };
   enum Privileged { PRIVILEGED, UNPRIVILEGED };
   enum Enabled { RECORDING_ONLY, REPLAY_ONLY, RECORDING_AND_REPLAY };
@@ -691,14 +696,26 @@ public:
 
   PropertyTable& properties() { return properties_; }
 
+  void post_vm_clone(Task* t);
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
   class Watchpoint;
 
+  /**
+   * Called after a successful execve to set up the new AddressSpace.
+   * Also called once for the initial spawn.
+   */
   AddressSpace(Task* t, const std::string& exe, uint32_t exec_count);
+  /**
+   * Called when an AddressSpace is cloned due to a fork() or a Session
+   * clone. After this, and the task is properly set up, post_vm_clone will
+   * be called.
+   */
   AddressSpace(Session* session, const AddressSpace& o, pid_t leader_tid,
                uint32_t leader_serial, uint32_t exec_count);
+
   /**
    * After an exec, populate the new address space of |t| with
    * the existing mappings we find in /proc/maps.
@@ -708,7 +725,7 @@ private:
   void unmap_internal(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
 
   // Also sets brk_ptr.
-  void map_rr_page(Task* t);
+  void map_rr_page(AutoRemoteSyscalls& remote);
 
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);

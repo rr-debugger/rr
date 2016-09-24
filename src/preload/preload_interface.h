@@ -179,6 +179,12 @@ struct preload_globals {
 };
 
 /**
+ * Must be arch-independent.
+ * Thread-local variables used by the preload library.
+ */
+struct preload_thread_locals {};
+
+/**
  * Packs up the parameters passed to |SYS_rrcall_init_preload|.
  * We use this struct because it's a little cleaner.
  */

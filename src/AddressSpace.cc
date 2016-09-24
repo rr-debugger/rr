@@ -256,52 +256,49 @@ static vector<uint8_t> read_all(Task* t, ScopedFd& fd) {
   }
 }
 
-void AddressSpace::map_rr_page(Task* t) {
+void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   int prot = PROT_EXEC | PROT_READ;
   int flags = MAP_PRIVATE | MAP_FIXED;
 
   string file_name;
-  {
-    AutoRemoteSyscalls remote(t);
-    SupportedArch arch = t->arch();
+  Task* t = remote.task();
+  SupportedArch arch = t->arch();
 
-    string path = find_rr_page_file(t);
-    AutoRestoreMem child_path(remote, path.c_str());
-    // skip leading '/' since we want the path to be relative to the root fd
-    long child_fd =
-        remote.syscall(syscall_number_for_openat(arch), RR_RESERVED_ROOT_DIR_FD,
-                       child_path.get() + 1, O_RDONLY);
-    if (child_fd >= 0) {
-      remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot,
-                                     flags, child_fd, 0);
+  string path = find_rr_page_file(t);
+  AutoRestoreMem child_path(remote, path.c_str());
+  // skip leading '/' since we want the path to be relative to the root fd
+  long child_fd =
+      remote.syscall(syscall_number_for_openat(arch), RR_RESERVED_ROOT_DIR_FD,
+                     child_path.get() + 1, O_RDONLY);
+  if (child_fd >= 0) {
+    remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
+                                   child_fd, 0);
 
-      struct stat fstat = t->stat_fd(child_fd);
-      file_name = t->file_name_of_fd(child_fd);
+    struct stat fstat = t->stat_fd(child_fd);
+    file_name = t->file_name_of_fd(child_fd);
 
-      remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
+    remote.infallible_syscall(syscall_number_for_close(arch), child_fd);
 
-      map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
-          fstat.st_dev, fstat.st_ino);
-    } else {
-      ASSERT(t, child_fd == -EACCES) << "Unexpected error mapping rr_page";
-      flags |= MAP_ANONYMOUS;
-      remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot,
-                                     flags, -1, 0);
-      ScopedFd page(path.c_str(), O_RDONLY);
-      ASSERT(t, page.is_open()) << "Error opening rr_page ourselves";
-      vector<uint8_t> page_data = read_all(t, page);
-      t->write_bytes_helper(rr_page_start(), page_data.size(),
-                            page_data.data());
+    map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
+        fstat.st_dev, fstat.st_ino);
+  } else {
+    ASSERT(t, child_fd == -EACCES) << "Unexpected error mapping rr_page";
+    flags |= MAP_ANONYMOUS;
+    remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
+                                   -1, 0);
+    ScopedFd page(path.c_str(), O_RDONLY);
+    ASSERT(t, page.is_open()) << "Error opening rr_page ourselves";
+    vector<uint8_t> page_data = read_all(t, page);
+    t->write_bytes_helper(rr_page_start(), page_data.size(), page_data.data());
 
-      map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name, 0, 0);
-    }
+    map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name, 0, 0);
+  }
 
-    if (t->session().is_recording()) {
-      // brk() will not have been called yet so the brk area is empty.
-      brk_start = brk_end =
-          remote.infallible_syscall(syscall_number_for_brk(arch), 0);
-      ASSERT(t, !brk_end.is_null());
-    }
+  if (t->session().is_recording()) {
+    // brk() will not have been called yet so the brk area is empty.
+    brk_start = brk_end =
+        remote.infallible_syscall(syscall_number_for_brk(arch), 0);
+    ASSERT(t, !brk_end.is_null());
   }
 
   traced_syscall_ip_ = rr_page_syscall_entry_point(
@@ -420,9 +417,16 @@ void AddressSpace::post_exec_syscall(Task* t) {
   privileged_traced_syscall_ip_ = nullptr;
   // Now remote syscalls work, we can open_mem_fd.
   t->open_mem_fd();
+
+  // Set up AutoRemoteSyscalls again now that the mem-fd is open.
+  AutoRemoteSyscalls remote(t);
   // Now we can set up the "rr page" at its fixed address. This gives
   // us traced and untraced syscall instructions at known, fixed addresses.
-  map_rr_page(t);
+  map_rr_page(remote);
+  // Set up the preload_thread_locals shared area.
+  t->session().create_shared_mmap(remote, PAGE_SIZE,
+                                  preload_thread_locals_start(),
+                                  "preload_thread_locals");
 }
 
 void AddressSpace::brk(Task* t, remote_ptr<void> addr, int prot) {
@@ -1289,6 +1293,14 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
   // cloned address-space memory, so we don't need to do any more work here.
 }
 
+void AddressSpace::post_vm_clone(Task* t) {
+  // Recreate preload_thread_locals mapping.
+  AutoRemoteSyscalls remote(t);
+  t->session().create_shared_mmap(remote, PRELOAD_THREAD_LOCALS_SIZE,
+                                  preload_thread_locals_start(),
+                                  "preload_thread_locals");
+}
+
 static bool try_split_unaligned_range(MemoryRange& range, size_t bytes,
                                       vector<MemoryRange>& result) {
   if ((range.start().as_int() & (bytes - 1)) || range.size() < bytes) {
@@ -1581,14 +1593,16 @@ static bool could_be_stack(const KernelMapping& km) {
          km.inode() == KernelMapping::NO_INODE;
 }
 
-static dev_t check_device(Task* t, const KernelMapping& km) {
+static dev_t check_device(const KernelMapping& km) {
   if (km.fsname().c_str()[0] != '/') {
     return km.device();
   }
   // btrfs files can return the wrong device number in /proc/<pid>/maps
   struct stat st;
   int ret = stat(km.fsname().c_str(), &st);
-  ASSERT(t, ret == 0);
+  if (ret < 0) {
+    return km.device();
+  }
   return st.st_dev;
 }
 
@@ -1601,12 +1615,19 @@ void AddressSpace::populate_address_space(Task* t) {
     }
   }
 
+  // If we're being recorded by rr, we'll see the outer rr's rr_page and
+  // preload_thread_locals. In post_exec() we'll remap those with our
+  // own mappings. That's OK because a) the rr_page contents are the same
+  // anyway and immutable and b) the preload_thread_locals page is only
+  // used by the preload library, and the preload library only knows about
+  // the inner rr. I.e. as far as the outer rr is concerned, the tracee is
+  // not doing syscall buffering.
+
   int found_stacks = 0;
   for (KernelMapIterator it(t); !it.at_end(); ++it) {
     auto& km = it.current();
     int flags = km.flags();
     remote_ptr<void> start = km.start();
-    ASSERT(t, flags & MAP_PRIVATE);
     bool is_stack = found_proper_stack ? km.is_stack() : could_be_stack(km);
     if (is_stack) {
       ++found_stacks;
@@ -1622,7 +1643,7 @@ void AddressSpace::populate_address_space(Task* t) {
     }
 
     map(t, start, km.end() - start, km.prot(), flags, km.file_offset_bytes(),
-        km.fsname(), check_device(t, km), km.inode(), nullptr);
+        km.fsname(), check_device(km), km.inode(), nullptr);
   }
   ASSERT(t, found_stacks == 1);
 }

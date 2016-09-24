@@ -69,10 +69,9 @@ int dummy[4] = { 1, 2, 3, 4 };
  * current thread). If that is not the case, writing out also happens from
  * the fpu data structure and the reserved area is thus preserved.
  */
-static void clear_reserved_area(uint8_t *fxregs)
-{
+static void clear_reserved_area(uint8_t* fxregs) {
   for (int i = 416; i < 464; ++i) {
-      fxregs[i] = 0;
+    fxregs[i] = 0;
   }
 }
 

@@ -1541,6 +1541,10 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     }
   }
 
+  if (!(CLONE_SHARE_VM & flags)) {
+    t->as->post_vm_clone(t);
+  }
+
   return t;
 }
 

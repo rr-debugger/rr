@@ -477,7 +477,8 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     if (!found) {
       break;
     }
-    if (km.start() == AddressSpace::rr_page_start()) {
+    if (km.start() == AddressSpace::rr_page_start() ||
+        km.start() == AddressSpace::preload_thread_locals_start()) {
       // Skip rr-page mapping record, that gets mapped automatically
       continue;
     }
@@ -515,6 +516,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     for (auto m : t->vm()->maps()) {
       // Do not attempt to unmap [vsyscall] --- it doesn't work.
       if (m.map.start() != AddressSpace::rr_page_start() &&
+          m.map.start() != AddressSpace::preload_thread_locals_start() &&
           !m.map.is_vsyscall()) {
         unmaps.push_back(m.map);
       }

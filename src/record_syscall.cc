@@ -3700,6 +3700,15 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       t, rr_page_mapping, rr_page_mapping.fake_stat(),
       TraceWriter::RR_BUFFER_MAPPING);
   ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
+
+  KernelMapping preload_thread_locals_mapping =
+      t->vm()->mapping_of(AddressSpace::preload_thread_locals_start()).map;
+  mode = t->trace_writer().write_mapped_region(
+      t, preload_thread_locals_mapping,
+      preload_thread_locals_mapping.fake_stat(),
+      TraceWriter::RR_BUFFER_MAPPING);
+  ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
+
   t->session().trace_writer().write_task_event(*syscall_state.exec_saved_event);
 
   KernelMapping vvar;
