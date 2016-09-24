@@ -1520,18 +1520,6 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
                                        flags, -1, 0);
         t->vm()->map(t, syscallbuf_child, syscallbuf_size, prot, flags, 0,
                      string());
-
-        // Mark the clone's syscallbuf as locked. This will prevent the
-        // clone using syscallbuf until the clone reinitializes the
-        // the buffer via its pthread_atfork handler. Otherwise the clone may
-        // log syscalls to its copy of the syscallbuf and we won't know about
-        // them since we don't have it mapped.
-        // In some cases (e.g. vfork(), or raw SYS_fork syscall) the
-        // pthread_atfork handler will never run. Syscallbuf will be permanently
-        // disabled but that's OK, those cases are rare (and in the case of
-        // vfork,
-        // tracees should immediately exit or exec anyway).
-        t->write_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked), uint8_t(1));
       }
     }
 
