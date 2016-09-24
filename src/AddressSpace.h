@@ -709,6 +709,13 @@ public:
     thread_locals_tuid_ = tuid;
   }
 
+  /**
+   * Call this when the memory at [addr,addr+len) was externally overwritten.
+   * This will attempt to update any breakpoints that may be set within the
+   * range (resetting them and storing the new value).
+   */
+  void maybe_update_breakpoints(Task* t, remote_ptr<uint8_t> addr, size_t len);
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;

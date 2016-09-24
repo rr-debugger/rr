@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record jit_proc_mem$bitness
+debug jit_proc_mem

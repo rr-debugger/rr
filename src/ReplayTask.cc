@@ -123,6 +123,8 @@ ssize_t ReplayTask::set_data_from_trace() {
   if (!buf.addr.is_null() && buf.data.size() > 0) {
     auto t = session().find_task(buf.rec_tid);
     t->write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
+    t->vm()->maybe_update_breakpoints(t, buf.addr.cast<uint8_t>(),
+                                      buf.data.size());
   }
   return buf.data.size();
 }
@@ -133,6 +135,8 @@ void ReplayTask::apply_all_data_records_from_trace() {
     if (!buf.addr.is_null() && buf.data.size() > 0) {
       auto t = session().find_task(buf.rec_tid);
       t->write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());
+      t->vm()->maybe_update_breakpoints(t, buf.addr.cast<uint8_t>(),
+                                        buf.data.size());
     }
   }
 }

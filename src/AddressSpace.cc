@@ -1521,8 +1521,24 @@ void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
   if (task_set().empty())
     return;
   Task* t = *task_set().begin();
+  LOG(debug) << "Writing back " << std::hex << (int)it->second.overwritten_data;
   t->write_mem(it->first.to_data_ptr<uint8_t>(), it->second.overwritten_data);
   breakpoints.erase(it);
+}
+
+void AddressSpace::maybe_update_breakpoints(Task* t, remote_ptr<uint8_t> addr,
+                                            size_t len) {
+  for (auto& it : breakpoints) {
+    remote_ptr<uint8_t> bp_addr = it.first.to_data_ptr<uint8_t>();
+    if (addr <= bp_addr && bp_addr < addr + len - 1) {
+      // This breakpoint was overwritten. Note the new data and reset the
+      // breakpoint.
+      bool ok = true;
+      it.second.overwritten_data = t->read_mem(bp_addr, &ok);
+      ASSERT(t, ok);
+      t->write_mem(bp_addr, breakpoint_insn);
+    }
+  }
 }
 
 void AddressSpace::for_each_in_range(
