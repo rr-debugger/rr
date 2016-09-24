@@ -553,24 +553,15 @@ static void init_thread(void) {
   struct rrcall_init_buffers_params args;
 
   assert(process_inited);
+  /**
+   * After a fork, this gets called via sig_init_thread. Because our
+   * thread-locals aren't copied by the fork, we will see !thread_inited here.
+   * XXX the parent's syscallbuf(s) will have been copied into our
+   * address space and no-one frees them.
+   */
+  assert(!thread_locals->thread_inited);
 
-  if (buffer_enabled) {
-    if (thread_locals->buffer) {
-      assert(thread_locals->thread_inited);
-      /**
-       * After a fork(), we retain a CoW mapping of our parent's syscallbuf.
-       * That's bad, because we don't want to use that buffer.  So drop the
-       * parent's copy and reinstall our own.
-       *
-       * FIXME: this "leaks" the parent's old copy in our address space.
-       */
-
-      thread_locals->buffer = NULL;
-      thread_locals->thread_inited = 0;
-    } else {
-      assert(!thread_locals->thread_inited);
-    }
-  } else {
+  if (!buffer_enabled) {
     thread_locals->thread_inited = 1;
     return;
   }
