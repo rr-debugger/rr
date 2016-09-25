@@ -1312,8 +1312,9 @@ static Switchable prepare_ioctl(RecordTask* t,
     // These haven't been observed to write beyond
     // tracees' stacks, but we record a stack page here
     // just in case the behavior is driver-dependent.
-    case SIOCGIWNAME:
     case SIOCGIWFREQ:
+    case SIOCGIWMODE:
+    case SIOCGIWNAME:
     case SIOCGIWRATE:
       syscall_state.reg_parameter<typename Arch::iwreq>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
