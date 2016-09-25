@@ -1312,18 +1312,18 @@ static Switchable prepare_ioctl(RecordTask* t,
     // These haven't been observed to write beyond
     // tracees' stacks, but we record a stack page here
     // just in case the behavior is driver-dependent.
+    case SIOCGIWNAME:
+    case SIOCGIWFREQ:
     case SIOCGIWRATE:
       syscall_state.reg_parameter<typename Arch::iwreq>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
-      return PREVENT_SWITCH;
-    case SIOCGIWNAME:
-      syscall_state.reg_parameter<typename Arch::iwreq>(3);
       return PREVENT_SWITCH;
     case SIOCGIWESSID: {
       auto argsp = syscall_state.reg_parameter<typename Arch::iwreq>(3, IN_OUT);
       auto args = t->read_mem(argsp);
       syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, u.essid.pointer),
                                       args.u.essid.length);
+      syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
     }
 

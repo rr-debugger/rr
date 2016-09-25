@@ -256,7 +256,7 @@ int main(void) {
     atomic_printf("  wireless protocol name:%s\n", wreq->u.name);
   }
 
-  ALLOCATE_GUARD(wreq, 'd');
+  ALLOCATE_GUARD(wreq, 'e');
   strcpy(wreq->ifr_ifrn.ifrn_name, name);
   wreq->u.essid.length = sizeof(buf);
   wreq->u.essid.pointer = buf;
@@ -270,6 +270,20 @@ int main(void) {
     test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
   } else {
     atomic_printf("  wireless ESSID:%s\n", buf);
+  }
+
+  ALLOCATE_GUARD(wreq, 'f');
+  strcpy(wreq->ifr_ifrn.ifrn_name, name);
+  ret = ioctl(sockfd, SIOCGIWFREQ, wreq);
+  VERIFY_GUARD(wreq);
+  err = errno;
+  atomic_printf("SIOCGIWFREQ(ret:%d): %s:\n", ret, wreq->ifr_name);
+  if (-1 == ret) {
+    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
+    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
+  } else {
+    atomic_printf("  wireless freq m:%d e:%d i:%d flags:%d\n", wreq->u.freq.m,
+                  wreq->u.freq.e, wreq->u.freq.i, wreq->u.freq.flags);
   }
 
   atomic_puts("EXIT-SUCCESS");
