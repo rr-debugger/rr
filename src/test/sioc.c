@@ -97,12 +97,29 @@ static void get_ifconfig(int sockfd, struct ifreq* req, struct ifreq* eth_req) {
   }
 }
 
-#define GENERIC_REQUEST_BY_NAME(nr) \
-  memset(&req->ifr_ifru, 0xff, sizeof(req->ifr_ifru)); \
-  ret = ioctl(sockfd, nr, req); \
-  VERIFY_GUARD(req); \
-  atomic_printf(#nr "(ret:%d): %s ", ret, req->ifr_name); \
+#define GENERIC_REQUEST_BY_NAME(nr)                                            \
+  memset(&req->ifr_ifru, 0xff, sizeof(req->ifr_ifru));                         \
+  ret = ioctl(sockfd, nr, req);                                                \
+  VERIFY_GUARD(req);                                                           \
+  atomic_printf(#nr "(ret:%d): %s ", ret, req->ifr_name);                      \
   test_assert(0 == ret)
+
+#define GENERIC_WIRELESS_REQUEST_BY_NAME(nr, args)                             \
+  ALLOCATE_GUARD(wreq, 'd');                                                   \
+  strcpy(wreq->ifr_ifrn.ifrn_name, name);                                      \
+  ret = ioctl(sockfd, nr, wreq);                                               \
+  VERIFY_GUARD(wreq);                                                          \
+  err = errno;                                                                 \
+  atomic_printf(#nr "(ret:%d): %s: ", ret, wreq->ifr_name);                    \
+  if (-1 == ret) {                                                             \
+    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n",       \
+                  name);                                                       \
+    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);           \
+  } else {                                                                     \
+    atomic_printf args;                                                        \
+    atomic_puts("");                                                           \
+  }                                                                            \
+  while (0)
 
 int main(void) {
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -187,45 +204,25 @@ int main(void) {
   VERIFY_GUARD(req);
   VERIFY_GUARD(etc);
   err = errno;
-  atomic_printf("SIOCETHTOOL(ret:%d): %s ethtool data:\n", ret, req->ifr_name);
+  atomic_printf("SIOCETHTOOL(ret:%d): %s ethtool data: ", ret, req->ifr_name);
   if (-1 == ret) {
     atomic_printf("WARNING: %s doesn't appear to support SIOCETHTOOL\n", name);
     test_assert(EOPNOTSUPP == err || EPERM == err);
   } else {
-    atomic_printf("  speed:%#x duplex:%#x port:%#x physaddr:%#x, maxtxpkt:%u "
+    atomic_printf("speed:%#x duplex:%#x port:%#x physaddr:%#x, maxtxpkt:%u "
                   "maxrxpkt:%u ...\n",
                   ethtool_cmd_speed(etc), etc->duplex, etc->port,
                   etc->phy_address, etc->maxtxpkt, etc->maxrxpkt);
   }
 
-  ALLOCATE_GUARD(wreq, 'c');
-  strcpy(wreq->ifr_ifrn.ifrn_name, name);
-  ret = ioctl(sockfd, SIOCGIWRATE, wreq);
-  VERIFY_GUARD(wreq);
-  err = errno;
-  atomic_printf("SIOCGIWRATE(ret:%d): %s:\n", ret, wreq->ifr_name);
-  if (-1 == ret) {
-    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
-    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
-  } else {
-    atomic_printf("  bitrate:%d (fixed? %s; disabled? %s) flags:%#x\n",
-                  wreq->u.bitrate.value, wreq->u.bitrate.fixed ? "yes" : "no",
-                  wreq->u.bitrate.disabled ? "yes" : "no",
-                  wreq->u.bitrate.flags);
-  }
+  GENERIC_WIRELESS_REQUEST_BY_NAME(
+      SIOCGIWRATE,
+      ("bitrate:%d (fixed? %s; disabled? %s) flags:%#x", wreq->u.bitrate.value,
+       wreq->u.bitrate.fixed ? "yes" : "no",
+       wreq->u.bitrate.disabled ? "yes" : "no", wreq->u.bitrate.flags));
 
-  ALLOCATE_GUARD(wreq, 'd');
-  strcpy(wreq->ifr_ifrn.ifrn_name, name);
-  ret = ioctl(sockfd, SIOCGIWNAME, wreq);
-  VERIFY_GUARD(wreq);
-  err = errno;
-  atomic_printf("SIOCGIWNAME(ret:%d): %s:\n", ret, wreq->ifr_name);
-  if (-1 == ret) {
-    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
-    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
-  } else {
-    atomic_printf("  wireless protocol name:%s\n", wreq->u.name);
-  }
+  GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWNAME,
+                                   ("wireless protocol name:%s", wreq->u.name));
 
   ALLOCATE_GUARD(wreq, 'e');
   strcpy(wreq->ifr_ifrn.ifrn_name, name);
@@ -235,40 +232,19 @@ int main(void) {
   ret = ioctl(sockfd, SIOCGIWESSID, wreq);
   VERIFY_GUARD(wreq);
   err = errno;
-  atomic_printf("SIOCGIWESSID(ret:%d): %s:\n", ret, wreq->ifr_name);
+  atomic_printf("SIOCGIWESSID(ret:%d): %s: ", ret, wreq->ifr_name);
   if (-1 == ret) {
     atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
     test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
   } else {
-    atomic_printf("  wireless ESSID:%s\n", buf);
+    atomic_printf("wireless ESSID:%s\n", buf);
   }
 
-  ALLOCATE_GUARD(wreq, 'f');
-  strcpy(wreq->ifr_ifrn.ifrn_name, name);
-  ret = ioctl(sockfd, SIOCGIWFREQ, wreq);
-  VERIFY_GUARD(wreq);
-  err = errno;
-  atomic_printf("SIOCGIWFREQ(ret:%d): %s:\n", ret, wreq->ifr_name);
-  if (-1 == ret) {
-    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
-    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
-  } else {
-    atomic_printf("  wireless freq m:%d e:%d i:%d flags:%d\n", wreq->u.freq.m,
-                  wreq->u.freq.e, wreq->u.freq.i, wreq->u.freq.flags);
-  }
+  GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWNAME,
+                                   ("wireless protocol name:%s", wreq->u.name));
 
-  ALLOCATE_GUARD(wreq, 'g');
-  strcpy(wreq->ifr_ifrn.ifrn_name, name);
-  ret = ioctl(sockfd, SIOCGIWMODE, wreq);
-  VERIFY_GUARD(wreq);
-  err = errno;
-  atomic_printf("SIOCGIWMODE(ret:%d): %s:\n", ret, wreq->ifr_name);
-  if (-1 == ret) {
-    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
-    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
-  } else {
-    atomic_printf("  wireless mode:%d\n", wreq->u.mode);
-  }
+  GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWMODE,
+                                   (" wireless mode:%d", wreq->u.mode));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
