@@ -1309,13 +1309,23 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
 
+    // These haven't been observed to write beyond
+    // tracees' stacks, but we record a stack page here
+    // just in case the behavior is driver-dependent.
     case SIOCGIWRATE:
-      // SIOCGIWRATE hasn't been observed to write beyond
-      // tracees' stacks, but we record a stack page here
-      // just in case the behavior is driver-dependent.
       syscall_state.reg_parameter<typename Arch::iwreq>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
+    case SIOCGIWNAME:
+      syscall_state.reg_parameter<typename Arch::iwreq>(3);
+      return PREVENT_SWITCH;
+    case SIOCGIWESSID: {
+      auto argsp = syscall_state.reg_parameter<typename Arch::iwreq>(3, IN_OUT);
+      auto args = t->read_mem(argsp);
+      syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, u.essid.pointer),
+                                      args.u.essid.length);
+      return PREVENT_SWITCH;
+    }
 
     case TCGETS:
     case TIOCGLCKTRMIOS:
@@ -1406,6 +1416,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     switch (type) {
       case 0x54: // TIO*
       case 0x89: // SIO*
+      case 0x8B: // SIO* wireless interface ioctls
         // These ioctls are known to be irregular and don't usually have the
         // correct |dir| bits. They must be handled above
         syscall_state.expect_errno = EINVAL;

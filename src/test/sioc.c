@@ -106,6 +106,7 @@ int main(void) {
   struct ethtool_cmd* etc;
   int err, ret;
   struct iwreq* wreq;
+  char buf[1024];
 
   ALLOCATE_GUARD(req, 'a');
   ALLOCATE_GUARD(eth_req, 'a');
@@ -216,15 +217,14 @@ int main(void) {
   VERIFY_GUARD(etc);
   err = errno;
   atomic_printf("SIOCETHTOOL(ret:%d): %s ethtool data:\n", ret, req->ifr_name);
-  atomic_printf("  speed:%#x duplex:%#x port:%#x physaddr:%#x, maxtxpkt:%u "
-                "maxrxpkt:%u ...\n",
-                ethtool_cmd_speed(etc), etc->duplex, etc->port,
-                etc->phy_address, etc->maxtxpkt, etc->maxrxpkt);
   if (-1 == ret) {
-    atomic_printf("WARNING: %s doesn't appear to support SIOCETHTOOL; the test "
-                  "may have been meaningless (%s/%d)\n",
-                  name, strerror(err), err);
+    atomic_printf("WARNING: %s doesn't appear to support SIOCETHTOOL\n", name);
     test_assert(EOPNOTSUPP == err || EPERM == err);
+  } else {
+    atomic_printf("  speed:%#x duplex:%#x port:%#x physaddr:%#x, maxtxpkt:%u "
+                  "maxrxpkt:%u ...\n",
+                  ethtool_cmd_speed(etc), etc->duplex, etc->port,
+                  etc->phy_address, etc->maxtxpkt, etc->maxrxpkt);
   }
 
   ALLOCATE_GUARD(wreq, 'c');
@@ -233,14 +233,43 @@ int main(void) {
   VERIFY_GUARD(wreq);
   err = errno;
   atomic_printf("SIOCGIWRATE(ret:%d): %s:\n", ret, wreq->ifr_name);
-  atomic_printf("  bitrate:%d (fixed? %s; disabled? %s) flags:%#x\n",
-                wreq->u.bitrate.value, wreq->u.bitrate.fixed ? "yes" : "no",
-                wreq->u.bitrate.disabled ? "yes" : "no", wreq->u.bitrate.flags);
   if (-1 == ret) {
-    atomic_printf("WARNING: %s doesn't appear to be a wireless iface; "
-                  "SIOCGIWRATE test may have been meaningless (%s/%d)\n",
-                  name, strerror(err), err);
+    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
     test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
+  } else {
+    atomic_printf("  bitrate:%d (fixed? %s; disabled? %s) flags:%#x\n",
+                  wreq->u.bitrate.value, wreq->u.bitrate.fixed ? "yes" : "no",
+                  wreq->u.bitrate.disabled ? "yes" : "no",
+                  wreq->u.bitrate.flags);
+  }
+
+  ALLOCATE_GUARD(wreq, 'd');
+  strcpy(wreq->ifr_ifrn.ifrn_name, name);
+  ret = ioctl(sockfd, SIOCGIWNAME, wreq);
+  VERIFY_GUARD(wreq);
+  err = errno;
+  atomic_printf("SIOCGIWNAME(ret:%d): %s:\n", ret, wreq->ifr_name);
+  if (-1 == ret) {
+    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
+    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
+  } else {
+    atomic_printf("  wireless protocol name:%s\n", wreq->u.name);
+  }
+
+  ALLOCATE_GUARD(wreq, 'd');
+  strcpy(wreq->ifr_ifrn.ifrn_name, name);
+  wreq->u.essid.length = sizeof(buf);
+  wreq->u.essid.pointer = buf;
+  wreq->u.essid.flags = 0;
+  ret = ioctl(sockfd, SIOCGIWESSID, wreq);
+  VERIFY_GUARD(wreq);
+  err = errno;
+  atomic_printf("SIOCGIWESSID(ret:%d): %s:\n", ret, wreq->ifr_name);
+  if (-1 == ret) {
+    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
+    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
+  } else {
+    atomic_printf("  wireless ESSID:%s\n", buf);
   }
 
   atomic_puts("EXIT-SUCCESS");
