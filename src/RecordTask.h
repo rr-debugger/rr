@@ -459,13 +459,14 @@ public:
   void set_tid_and_update_serial(pid_t tid);
 
   /**
-   * Push or pop the current sigmask (reloading it if necessary) to handle
-   * ppoll/pselect. The stack is only one level deep, and pushing and not
-   * popping is ok if the sigmask gets restored another way (e.g. because
-   * a signal handler was invoked).
+   * Save or restore the current sigmask (reloading it if necessary) to handle
+   * ppoll/pselect. If the sigmask is restored another way (e.g. because a
+   * signal handler was invoked) clear_saved_sigmask must be called.
    */
-  void push_sigmask(sig_set_t new_sigs);
-  void pop_sigmask();
+  void save_sigmask();
+  void restore_sigmask();
+  void restore_sigmask_if_saved();
+  void clear_saved_sigmask();
 
 private:
   ~RecordTask();
@@ -591,6 +592,7 @@ public:
   // the mirroring to syscallbuf is correct.
   sig_set_t blocked_sigs;
   sig_set_t previously_blocked_sigs;
+  bool has_previously_blocked_sigs;
   int handling_deterministic_signal;
 
   // Syscallbuf state

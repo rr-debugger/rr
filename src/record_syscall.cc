@@ -2447,7 +2447,8 @@ static bool protect_rr_sigs(RecordTask* t, remote_ptr<void> p, void* save) {
   auto syscallno = t->ev().Syscall().number;
   if (syscallno == syscall_number_for_ppoll(t->arch()) ||
       syscallno == syscall_number_for_pselect6(t->arch())) {
-    t->push_sigmask(new_sig_set);
+    t->save_sigmask();
+    t->set_new_sigmask(new_sig_set);
   }
 
   if (sig_set == new_sig_set) {
@@ -3584,6 +3585,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
                     "Kernel mask size grew?");
       uint64_t oldmask = t->read_mem(oldmaskptr.template cast<uint64_t>());
       t->set_new_sigmask(oldmask);
+      t->clear_saved_sigmask();
       return PREVENT_SWITCH;
     }
 
@@ -3608,6 +3610,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
 template <> Switchable process_sigreturn<X64Arch>(RecordTask* t) {
   ASSERT(t, "sigreturn should not be callable on x86_64");
+  t->clear_saved_sigmask();
   return PREVENT_SWITCH;
 }
 
@@ -3619,6 +3622,7 @@ template <> Switchable process_sigreturn<X86Arch>(RecordTask* t) {
   uint64_t oldmask = t->read_mem(oldmaskptrlow) |
                      (((uint64_t)t->read_mem(oldmaskptrhigh)) << 32);
   t->set_new_sigmask(oldmask);
+  t->clear_saved_sigmask();
   return PREVENT_SWITCH;
 }
 

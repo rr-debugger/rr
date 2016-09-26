@@ -184,6 +184,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       in_wait_pid(0),
       emulated_stop_type(NOT_STOPPED),
       blocked_sigs(),
+      previously_blocked_sigs(),
+      has_previously_blocked_sigs(false),
       handling_deterministic_signal(0),
       flushed_num_rec_bytes(0),
       flushed_syscallbuf(false),
@@ -518,14 +520,14 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::ppoll: {
       remote_ptr<sig_set_t> setp = regs.arg4();
       if (!setp.is_null()) {
-        pop_sigmask();
+        restore_sigmask();
       }
       return;
     }
     case Arch::pselect6: {
       remote_ptr<sig_set_t> setp = regs.arg6();
       if (!setp.is_null()) {
-        pop_sigmask();
+        restore_sigmask();
       }
       return;
     }
@@ -1023,12 +1025,25 @@ void RecordTask::set_sigmask(sig_set_t sigs) {
   }
 }
 
-void RecordTask::push_sigmask(sig_set_t newsigs) {
+void RecordTask::save_sigmask() {
+  ASSERT(this, !has_previously_blocked_sigs);
   previously_blocked_sigs = get_sigmask();
-  set_sigmask(newsigs);
+  has_previously_blocked_sigs = true;
 }
 
-void RecordTask::pop_sigmask() { set_sigmask(previously_blocked_sigs); }
+void RecordTask::restore_sigmask() {
+  ASSERT(this, has_previously_blocked_sigs);
+  set_sigmask(previously_blocked_sigs);
+  clear_saved_sigmask();
+}
+
+void RecordTask::restore_sigmask_if_saved() {
+  if (has_previously_blocked_sigs) {
+    restore_sigmask();
+  }
+}
+
+void RecordTask::clear_saved_sigmask() { has_previously_blocked_sigs = false; }
 
 void RecordTask::set_sig_handler_default(int sig) {
   Sighandler& h = sighandlers->get(sig);

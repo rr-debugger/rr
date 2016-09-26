@@ -1146,7 +1146,8 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
           // Signal delivery isn't happening. Prepare to process the new
           // signal that aborted signal delivery.
           t->signal_delivered(sig);
-          t->pop_event(EV_SIGNAL_DELIVERY);
+          t->restore_sigmask_if_saved();
+          t->pop_signal_delivery();
           step_state->continue_type = DONT_CONTINUE;
           last_task_switchable = PREVENT_SWITCH;
           break;
@@ -1224,6 +1225,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       }
       t->signal_delivered(sig);
       t->pop_signal_delivery();
+      t->restore_sigmask_if_saved();
       // A fatal signal or SIGSTOP requires us to allow switching to another
       // task.
       last_task_switchable = ALLOW_SWITCH;
