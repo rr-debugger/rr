@@ -150,10 +150,14 @@ if(WILL_RUN_TESTS)
   endif()
 endif()
 
+set(PRELOAD_COMPILE_FLAGS "-fno-stack-protector")
+
 if (NOT DEBUG_PRELOAD_LIB)
-set_source_files_properties(src/preload/preload.c
-                            PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_RELEASE})
+set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} ${CMAKE_C_FLAGS_RELEASE}")
 endif()
+
+set_source_files_properties(src/preload/preload.c
+                            PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
 include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
@@ -443,6 +447,7 @@ set(BASIC_TESTS
   clock_nanosleep
   clone
   clone_bad_stack
+  clone_bad_tls
   clone_file_range
   clone_immediate_exit
   clone_newflags
@@ -736,7 +741,6 @@ set(TESTS_WITH_PROGRAM
   checkpoint_dying_threads
   checkpoint_mixed_mode
   checksum_sanity
-  clone_bad_tls
   clone_interruption
   clone_vfork
   conditional_breakpoint_calls
