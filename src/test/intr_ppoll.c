@@ -13,8 +13,8 @@ static void handle_sig(__attribute__((unused)) int sig) {
   test_assert(sigismember(&after_sigset, SIGCHLD));
 
   // Waste time.
-  int j = 0;
-  for (int i = 0; i < 1000000000; i++) {
+  int i = 0, j = 0;
+  for (i = 0; i < 1000000000; i++) {
     j = i + j % 2347;
   }
 }
