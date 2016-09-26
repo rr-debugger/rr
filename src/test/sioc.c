@@ -104,22 +104,30 @@ static void get_ifconfig(int sockfd, struct ifreq* req, struct ifreq* eth_req) {
   atomic_printf(#nr "(ret:%d): %s ", ret, req->ifr_name);                      \
   test_assert(0 == ret)
 
-#define GENERIC_WIRELESS_REQUEST_BY_NAME(nr, args)                             \
+#define GENERIC_WIRELESS_REQUEST_BY_NAME_INTERNAL(nr, nr_str, args)            \
   ALLOCATE_GUARD(wreq, 'd');                                                   \
   strcpy(wreq->ifr_ifrn.ifrn_name, name);                                      \
   ret = ioctl(sockfd, nr, wreq);                                               \
   VERIFY_GUARD(wreq);                                                          \
   err = errno;                                                                 \
-  atomic_printf(#nr "(ret:%d): %s: ", ret, wreq->ifr_name);                    \
+  atomic_printf(nr_str "(ret:%d): %s: ", ret, wreq->ifr_name);                 \
   if (-1 == ret) {                                                             \
-    atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n",       \
-                  name);                                                       \
+    atomic_printf("WARNING: %s doesn't support ioctl\n", name);                \
     test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);           \
   } else {                                                                     \
     atomic_printf args;                                                        \
     atomic_puts("");                                                           \
   }                                                                            \
   while (0)
+
+#define GENERIC_WIRELESS_REQUEST_BY_NAME(nr, args)                             \
+  GENERIC_WIRELESS_REQUEST_BY_NAME_INTERNAL(nr, #nr, args)
+
+#define GENERIC_WIRELESS_PARAM_REQUEST_BY_NAME(nr, name)                       \
+  GENERIC_WIRELESS_REQUEST_BY_NAME_INTERNAL(                                   \
+      nr, #nr, ("wireless %s:%d (fixed? %s; disabled? %s) flags:%#x", #name,   \
+                wreq->u.name.value, wreq->u.name.fixed ? "yes" : "no",         \
+                wreq->u.name.disabled ? "yes" : "no", wreq->u.name.flags));
 
 int main(void) {
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -215,14 +223,13 @@ int main(void) {
                   etc->phy_address, etc->maxtxpkt, etc->maxrxpkt);
   }
 
-  GENERIC_WIRELESS_REQUEST_BY_NAME(
-      SIOCGIWRATE,
-      ("bitrate:%d (fixed? %s; disabled? %s) flags:%#x", wreq->u.bitrate.value,
-       wreq->u.bitrate.fixed ? "yes" : "no",
-       wreq->u.bitrate.disabled ? "yes" : "no", wreq->u.bitrate.flags));
+  GENERIC_WIRELESS_PARAM_REQUEST_BY_NAME(SIOCGIWRATE, bitrate);
 
   GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWNAME,
                                    ("wireless protocol name:%s", wreq->u.name));
+
+  GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWMODE,
+                                   (" wireless mode:%d", wreq->u.mode));
 
   ALLOCATE_GUARD(wreq, 'e');
   strcpy(wreq->ifr_ifrn.ifrn_name, name);
@@ -240,11 +247,7 @@ int main(void) {
     atomic_printf("wireless ESSID:%s\n", buf);
   }
 
-  GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWNAME,
-                                   ("wireless protocol name:%s", wreq->u.name));
-
-  GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWMODE,
-                                   (" wireless mode:%d", wreq->u.mode));
+  GENERIC_WIRELESS_PARAM_REQUEST_BY_NAME(SIOCGIWSENS, sens);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

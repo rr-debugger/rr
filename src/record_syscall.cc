@@ -1316,6 +1316,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case SIOCGIWMODE:
     case SIOCGIWNAME:
     case SIOCGIWRATE:
+    case SIOCGIWSENS:
       syscall_state.reg_parameter<typename Arch::iwreq>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
