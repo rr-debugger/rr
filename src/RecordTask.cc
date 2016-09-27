@@ -849,6 +849,21 @@ bool RecordTask::is_signal_pending(int sig) {
   return !*end1 && !*end2 && ((mask1 | mask2) & (1 << (sig - 1)));
 }
 
+bool RecordTask::has_any_actionable_signal() {
+  auto sig_strs = read_proc_status_fields(tid, "SigPnd", "ShdPnd", "SigBlk");
+  if (sig_strs.size() < 3) {
+    return false;
+  }
+
+  char* end1;
+  uint64_t mask1 = strtoull(sig_strs[0].c_str(), &end1, 16);
+  char* end2;
+  uint64_t mask2 = strtoull(sig_strs[1].c_str(), &end2, 16);
+  char* end3;
+  uint64_t mask_blk = strtoull(sig_strs[2].c_str(), &end3, 16);
+  return !*end1 && !*end2 && !*end3 && ((mask1 | mask2) & ~mask_blk);
+}
+
 void RecordTask::emulate_SIGCONT() {
   // All threads in the process are resumed.
   for (Task* t : task_group()->task_set()) {

@@ -1115,9 +1115,6 @@ static bool is_fatal_signal(RecordTask* t, int sig,
 
 /**
  * |t| is being delivered a signal, and its state changed.
- *
- * Return true if execution was incidentally resumed to a new event,
- * false otherwise.
  */
 void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
   int sig = t->ev().Signal().siginfo.si_signo;
@@ -1138,9 +1135,11 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
       // If a signal is blocked but is still delivered (e.g. a synchronous
       // terminating signal such as SIGSEGV), user handlers do not run.
+      bool has_handler = false;
       if (t->signal_has_user_handler(sig) && !blocked) {
         LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
+        has_handler = true;
 
         if (!inject_handled_signal(t)) {
           // Signal delivery isn't happening. Prepare to process the new
@@ -1199,15 +1198,42 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // are unmapped, write 0 bytes.
       t->record_remote_fallible(t->regs().sp(), sigframe_size);
 
-      // This event is used by the replayer to set up the
-      // signal handler frame, or to record the resulting
-      // state of the stepi if there wasn't a signal
-      // handler.
-      t->record_current_event();
+      // This event is used by the replayer to set up the signal handler frame.
+      // But if we don't have a handler, we don't want to record the event
+      // until we deal with the EV_SIGNAL_DELIVERY.
+      if (has_handler) {
+        t->record_current_event();
+      }
       break;
     }
 
     case EV_SIGNAL_DELIVERY: {
+      // We didn't record this event above, so do that now.
+      // NB: If there is no handler, and we interrupted a syscall, and there are
+      // no more actionable signals, the kernel sets us up for a syscall
+      // restart. But it does that *after* the ptrace trap. To replay this
+      // correctly we need to fake those changes here.
+      // This is essentially copied from do_signal in arch/x86/kernel/signal.c
+      bool has_other_signals = t->has_any_actionable_signal();
+      auto r = t->regs();
+      if (!has_other_signals && r.original_syscallno() >= 0 &&
+          r.syscall_may_restart()) {
+        switch (r.syscall_result_signed()) {
+        case -ERESTARTNOHAND:
+        case -ERESTARTSYS:
+        case -ERESTARTNOINTR:
+          r.set_syscallno(r.original_syscallno());
+          r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+          break;
+        case -ERESTART_RESTARTBLOCK:
+          r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
+          r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+          break;
+        }
+      }
+      t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF, &r);
+      // Don't actually set_regs(r), the kernel does these modifications.
+
       // Only inject fatal signals. Non-fatal signals with signal handlers
       // were taken care of above; for non-fatal signals without signal
       // handlers, there is no need to deliver the signal at all. In fact,
@@ -1223,9 +1249,15 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
                      "CLONE_CHILD_CLEARTID memory race";
         t->task_group()->destabilize();
       }
+
       t->signal_delivered(sig);
       t->pop_signal_delivery();
-      t->restore_sigmask_if_saved();
+      // The mask set by ppoll/pselect6 is restored, but only if there are no
+      // more actionable signals. The ordering is important, because there may
+      // be pending signals that will be unblocked when we restore the sigmask.
+      if (!has_other_signals) {
+        t->restore_sigmask_if_saved();
+      }
       // A fatal signal or SIGSTOP requires us to allow switching to another
       // task.
       last_task_switchable = ALLOW_SWITCH;

@@ -154,6 +154,10 @@ public:
    */
   bool is_signal_pending(int sig);
   /**
+   * Return true if there are any signals pending that are not blocked.
+   */
+  bool has_any_actionable_signal();
+  /**
    * Get all threads out of an emulated GROUP_STOP
    */
   void emulate_SIGCONT();
