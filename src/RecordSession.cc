@@ -1230,6 +1230,11 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
           r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
           break;
         }
+
+        // Now that we've mucked with the registers, we can't switch tasks. That
+        // could allow more signals to be generated, breaking our assumption
+        // that we are the last signal.
+        last_task_switchable = PREVENT_SWITCH;
       }
       t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF, &r);
       // Don't actually set_regs(r), the kernel does these modifications.
