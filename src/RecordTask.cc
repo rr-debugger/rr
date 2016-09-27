@@ -683,9 +683,16 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
   }
 }
 
-void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
+bool RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
   if (si->si_signo != SIGCHLD || si->si_value.sival_int != SIGCHLD_SYNTHETIC) {
-    return;
+    return true;
+  }
+
+  if (is_syscall_restart()) {
+    // ptrace generated signals don't interrupt syscalls such as wait.
+    // Return false to tell the caller to defer the signal and resume
+    // the syscall.
+    return false;
   }
 
   for (RecordTask* tracee : emulated_ptrace_tracees) {
@@ -694,7 +701,7 @@ void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
       tracee->set_siginfo_for_waited_task<NativeArch>(
           reinterpret_cast<NativeArch::siginfo_t*>(si));
       si->si_value.sival_int = 0;
-      return;
+      return true;
     }
   }
 
@@ -706,10 +713,12 @@ void RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
         rchild->set_siginfo_for_waited_task<NativeArch>(
             reinterpret_cast<NativeArch::siginfo_t*>(si));
         si->si_value.sival_int = 0;
-        return;
+        return true;
       }
     }
   }
+
+  return true;
 }
 
 bool RecordTask::is_waiting_for_ptrace(RecordTask* t) {

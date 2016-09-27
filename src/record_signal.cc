@@ -449,7 +449,9 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     return DEFER_SIGNAL;
   }
 
-  t->set_siginfo_for_synthetic_SIGCHLD(si);
+  if (!t->set_siginfo_for_synthetic_SIGCHLD(si)) {
+    return DEFER_SIGNAL;
+  }
 
   int sig = si->si_signo;
   // When a deterministic signal is triggered, but the signal is currently

@@ -97,8 +97,9 @@ public:
    * ptraced task has had its SIGCHLD sent.
    * Note that we can't set the correct siginfo when we send the signal, because
    * it requires us to set information only the kernel has permission to set.
+   * Returns false if this signal should be deferred.
    */
-  void set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
+  bool set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si);
   /**
    * Sets up |si| as if we're delivering a SIGCHLD/waitid for this waited task.
    */
