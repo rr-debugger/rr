@@ -4,13 +4,4 @@ source `dirname $0`/util.sh
 # of tracee concurrency.
 RECORD_ARGS="-s"
 
-# TODO: when the syscallbuf is disabled, this test intermittently fails
-# with an error that looks like
-#
-# -> Failed to waitpid(12282)
-#
-# It's not understood why this happens, and it's not seen anywhere else,
-# so we disable the test for now.
-skip_if_no_syscall_buf
-
 compare_test EXIT-SUCCESS

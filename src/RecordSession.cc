@@ -1208,16 +1208,24 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
     }
 
     case EV_SIGNAL_DELIVERY: {
+      bool is_fatal = is_fatal_signal(t, sig, t->ev().Signal().deterministic);
+
+      // A fatal signal or SIGSTOP requires us to allow switching to another
+      // task.
+      Switchable can_switch = (is_fatal || sig == SIGSTOP) ? ALLOW_SWITCH : PREVENT_SWITCH;
+
       // We didn't record this event above, so do that now.
       // NB: If there is no handler, and we interrupted a syscall, and there are
       // no more actionable signals, the kernel sets us up for a syscall
       // restart. But it does that *after* the ptrace trap. To replay this
-      // correctly we need to fake those changes here.
+      // correctly we need to fake those changes here. But we don't do this
+      // if we're going to switch away at the ptrace trap, and for the moment,
+      // 'can_switch' is actually 'will_switch'.
       // This is essentially copied from do_signal in arch/x86/kernel/signal.c
       bool has_other_signals = t->has_any_actionable_signal();
       auto r = t->regs();
-      if (!has_other_signals && r.original_syscallno() >= 0 &&
-          r.syscall_may_restart()) {
+      if (can_switch == PREVENT_SWITCH && !has_other_signals &&
+          r.original_syscallno() >= 0 && r.syscall_may_restart()) {
         switch (r.syscall_result_signed()) {
         case -ERESTARTNOHAND:
         case -ERESTARTSYS:
@@ -1234,8 +1242,11 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         // Now that we've mucked with the registers, we can't switch tasks. That
         // could allow more signals to be generated, breaking our assumption
         // that we are the last signal.
-        last_task_switchable = PREVENT_SWITCH;
+      } else {
+        // But if we didn't touch the registers switching here is ok.
+        can_switch = ALLOW_SWITCH;
       }
+
       t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF, &r);
       // Don't actually set_regs(r), the kernel does these modifications.
 
@@ -1245,8 +1256,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // there is really no way to inject a non-fatal, non-handled signal
       // without letting the task execute at least one instruction, which
       // we don't want to do here.
-      if (is_fatal_signal(t, sig, t->ev().Signal().deterministic) &&
-          sig != get_continue_through_sig()) {
+      if (is_fatal && sig != get_continue_through_sig()) {
         preinject_signal(t);
         t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, RESUME_NO_TICKS,
                             sig);
@@ -1263,9 +1273,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       if (!has_other_signals) {
         t->restore_sigmask_if_saved();
       }
-      // A fatal signal or SIGSTOP requires us to allow switching to another
-      // task.
-      last_task_switchable = ALLOW_SWITCH;
+      last_task_switchable = can_switch;
       step_state->continue_type = DONT_CONTINUE;
       break;
     }
