@@ -42,7 +42,7 @@ RecordCommand RecordCommand::singleton(
     "                             reads\n"
     "  --syscall-buffer-size=<NUM> desired size of syscall buffer in kB.\n"
     "                             Mainly for tests\n"
-    "  -s, --always-switch        tryto context switch at every rr event\n"
+    "  -s, --always-switch        try to context switch at every rr event\n"
     "  -t, --continue-through-signal=<SIG>\n"
     "                             Unhandled <SIG> signals will be ignored\n"
     "                             instead of terminating the program. The\n"
