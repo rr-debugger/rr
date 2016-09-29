@@ -761,7 +761,8 @@ set(TESTS_WITH_PROGRAM
   getcwd
   goto_event
   hello
-  history
+  # Disabled because issue #1806 makes tests fail on Debian 8.5 at least
+  # history
   ignored_async_usr1
   ignored_sigsegv
   immediate_restart
