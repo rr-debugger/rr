@@ -1212,7 +1212,8 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
       // A fatal signal or SIGSTOP requires us to allow switching to another
       // task.
-      Switchable can_switch = (is_fatal || sig == SIGSTOP) ? ALLOW_SWITCH : PREVENT_SWITCH;
+      Switchable can_switch =
+          (is_fatal || sig == SIGSTOP) ? ALLOW_SWITCH : PREVENT_SWITCH;
 
       // We didn't record this event above, so do that now.
       // NB: If there is no handler, and we interrupted a syscall, and there are
@@ -1227,16 +1228,16 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       if (can_switch == PREVENT_SWITCH && !has_other_signals &&
           r.original_syscallno() >= 0 && r.syscall_may_restart()) {
         switch (r.syscall_result_signed()) {
-        case -ERESTARTNOHAND:
-        case -ERESTARTSYS:
-        case -ERESTARTNOINTR:
-          r.set_syscallno(r.original_syscallno());
-          r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
-          break;
-        case -ERESTART_RESTARTBLOCK:
-          r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
-          r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
-          break;
+          case -ERESTARTNOHAND:
+          case -ERESTARTSYS:
+          case -ERESTARTNOINTR:
+            r.set_syscallno(r.original_syscallno());
+            r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+            break;
+          case -ERESTART_RESTARTBLOCK:
+            r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
+            r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+            break;
         }
 
         // Now that we've mucked with the registers, we can't switch tasks. That
