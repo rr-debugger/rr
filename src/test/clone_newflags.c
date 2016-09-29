@@ -23,6 +23,11 @@ int main(void) {
   overwrite_file(name, 0x1000);
 
   child = syscall(SYS_clone, CLONE_NEWUSER | SIGCHLD, 0, 0, 0, 0);
+  if (child == -1 && (errno == EINVAL || errno == EPERM)) {
+    atomic_puts("CLONE_NEWUSER not supported at this privilege level");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   if (!child) {
     mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     atomic_puts("EXIT-SUCCESS");
