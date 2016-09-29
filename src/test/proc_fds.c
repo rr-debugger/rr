@@ -5,20 +5,39 @@
 #include <dirent.h>
 #include <unistd.h>
 
-pthread_barrier_t bar;
+static pthread_barrier_t bar;
+static const char proc_fd_path[] = "/proc/self/fd";
 
-void* thread_func(__attribute__((unused)) void* name) {
+static void* thread_func(__attribute__((unused)) void* name) {
   pthread_barrier_wait(&bar);
   sleep(1);
   return NULL;
+}
+
+static void close_upper_fds(void) {
+  DIR* dir = opendir(proc_fd_path);
+  struct dirent* ent;
+  int fd;
+
+  test_assert(dir != NULL);
+  while ((ent = readdir(dir)) != NULL) {
+    fd = atoi(ent->d_name);
+    if (fd > 2) {
+      close(fd);
+    }
+  }
+  closedir(dir);
 }
 
 int main(void) {
   // Empirically tested to be enough to make ProcFdDirMonitor
   // repeat the getdents call.
   const int NUM_THREADS = 20;
-
   int i;
+
+  // Close any non-stdio fds inherited from the environment
+  close_upper_fds();
+
   for (i = 0; i < 15; i++) {
     dup(2);
   }
