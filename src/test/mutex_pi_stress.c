@@ -28,7 +28,10 @@ int main(void) {
 
   pthread_mutexattr_init(&attr);
   test_assert(0 == pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT));
-  test_assert(0 == pthread_mutex_init(&lock, &attr));
+  if (pthread_mutex_init(&lock, &attr)) {
+    test_assert(ENOTSUP == errno);
+    test_assert(0 == pthread_mutex_init(&lock, NULL));
+  }
 
   for (i = 0; i < NUM_THREADS; ++i) {
     test_assert(0 ==
