@@ -101,6 +101,82 @@ static void init_device(int fd) {
   test_assert(0 == ioctl(fd, VIDIOC_STREAMON, &type));
 }
 
+static void print_fourcc(int v) {
+  union {
+    int v;
+    char cs[4];
+  } u;
+  u.v = v;
+  atomic_printf("%c%c%c%c", u.cs[0], u.cs[1], u.cs[2], u.cs[3]);
+}
+
+static double fract_to_fps(struct v4l2_fract* f) {
+  return (double)f->denominator / f->numerator;
+}
+
+static void dump_sizes(int fd) {
+  struct v4l2_fmtdesc fmt;
+
+  fmt.index = 0;
+  fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+  while (1) {
+    struct v4l2_frmsizeenum size;
+    int ret = ioctl(fd, VIDIOC_ENUM_FMT, &fmt);
+    if (ret < 0) {
+      test_assert(errno == EINVAL);
+      break;
+    }
+    ++fmt.index;
+
+    atomic_printf("Format %d fourcc ", fmt.index);
+    print_fourcc(fmt.pixelformat);
+    atomic_printf(" name '%s'\n", fmt.description);
+
+    size.index = 0;
+    size.pixel_format = fmt.pixelformat;
+    while (1) {
+      ret = ioctl(fd, VIDIOC_ENUM_FRAMESIZES, &size);
+      if (ret < 0) {
+        test_assert(errno == EINVAL);
+        break;
+      }
+      ++size.index;
+
+      if (size.type == V4L2_FRMSIZE_TYPE_DISCRETE) {
+        struct v4l2_frmivalenum interval;
+        atomic_printf("  Frame size %dx%d\n", size.discrete.width,
+                      size.discrete.height);
+        interval.index = 0;
+        interval.pixel_format = fmt.pixelformat;
+        interval.width = size.discrete.width;
+        interval.height = size.discrete.height;
+        while (1) {
+          ret = ioctl(fd, VIDIOC_ENUM_FRAMEINTERVALS, &interval);
+          if (ret < 0) {
+            test_assert(errno == EINVAL);
+            break;
+          }
+          ++interval.index;
+
+          if (interval.type == V4L2_FRMIVAL_TYPE_DISCRETE) {
+            atomic_printf("    %f fps\n", fract_to_fps(&interval.discrete));
+          } else if (interval.type == V4L2_FRMIVAL_TYPE_CONTINUOUS ||
+                     interval.type == V4L2_FRMIVAL_TYPE_STEPWISE) {
+            atomic_printf("    %f-%f fps\n",
+                          fract_to_fps(&interval.stepwise.min),
+                          fract_to_fps(&interval.stepwise.max));
+          }
+        }
+      } else if (size.type == V4L2_FRMSIZE_TYPE_STEPWISE) {
+        atomic_printf("  Frame size %dx%d to %dx%d step %dx%d\n",
+                      size.stepwise.min_width, size.stepwise.min_height,
+                      size.stepwise.max_width, size.stepwise.max_height,
+                      size.stepwise.step_width, size.stepwise.step_height);
+      }
+    }
+  }
+}
+
 static void read_frames(int fd) {
   size_t i, j;
 
@@ -135,6 +211,7 @@ static void close_device(int fd) {
 int main(void) {
   int fd = open_device();
   init_device(fd);
+  dump_sizes(fd);
   read_frames(fd);
   close_device(fd);
   atomic_puts("EXIT-SUCCESS");
