@@ -102,7 +102,9 @@ template <typename Arch> static void filter_dirents_arch(RecordTask* t) {
       AutoRemoteSyscalls remote(t);
       remote.syscall(regs.original_syscallno(), regs.arg1(), regs.arg2(),
                      regs.arg3());
-      regs = t->regs();
+      // Only copy over the syscall result. In particular, we don't want to
+      // copy the AutoRemoteSyscalls ip().
+      regs.set_syscall_result(t->regs().syscall_result());
     }
 
     if (regs.syscall_failed() || regs.syscall_result() == 0) {
