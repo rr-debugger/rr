@@ -33,8 +33,6 @@ static size_t find_xsave_size(void) {
   return ecx;
 }
 
-int dummy[4] = { 1, 2, 3, 4 };
-
 /*
  * Let's talk about why this is necessary, because in theory it shouldn't be.
  *
@@ -92,29 +90,30 @@ int main(void) {
   size_t xsave_size = find_xsave_size();
   uintptr_t saved_ip;
   siginfo_t* siginfo;
+  int dummy[4] = { 1, 2, 3, 4 };
 
   if (0 == (child = fork())) {
     /* Ensure XMM registers are modified so that ptrace will read
        the real registers, not stale registers. Working around kernel bug.
        Also, puts them in a known state in case they were actually used.
      */
-    asm("movdqu dummy,%xmm0");
-    asm("movdqu dummy,%xmm1");
-    asm("movdqu dummy,%xmm2");
-    asm("movdqu dummy,%xmm3");
-    asm("movdqu dummy,%xmm4");
-    asm("movdqu dummy,%xmm5");
-    asm("movdqu dummy,%xmm6");
-    asm("movdqu dummy,%xmm7");
+    asm("movdqu %0,%%xmm0" ::"m"(dummy));
+    asm("movdqu %0,%%xmm1" ::"m"(dummy));
+    asm("movdqu %0,%%xmm2" ::"m"(dummy));
+    asm("movdqu %0,%%xmm3" ::"m"(dummy));
+    asm("movdqu %0,%%xmm4" ::"m"(dummy));
+    asm("movdqu %0,%%xmm5" ::"m"(dummy));
+    asm("movdqu %0,%%xmm6" ::"m"(dummy));
+    asm("movdqu %0,%%xmm7" ::"m"(dummy));
 #ifdef __x86_64__
-    asm("movdqu dummy,%xmm8");
-    asm("movdqu dummy,%xmm9");
-    asm("movdqu dummy,%xmm10");
-    asm("movdqu dummy,%xmm11");
-    asm("movdqu dummy,%xmm12");
-    asm("movdqu dummy,%xmm13");
-    asm("movdqu dummy,%xmm14");
-    asm("movdqu dummy,%xmm15");
+    asm("movdqu %0,%%xmm8" ::"m"(dummy));
+    asm("movdqu %0,%%xmm9" ::"m"(dummy));
+    asm("movdqu %0,%%xmm10" ::"m"(dummy));
+    asm("movdqu %0,%%xmm11" ::"m"(dummy));
+    asm("movdqu %0,%%xmm12" ::"m"(dummy));
+    asm("movdqu %0,%%xmm13" ::"m"(dummy));
+    asm("movdqu %0,%%xmm14" ::"m"(dummy));
+    asm("movdqu %0,%%xmm15" ::"m"(dummy));
 #endif
 
     kill(getpid(), SIGSTOP);
