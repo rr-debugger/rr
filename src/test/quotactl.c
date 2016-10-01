@@ -50,7 +50,7 @@ int main(void) {
   ret = quotactl(0x12345678, "/", getuid(), (caddr_t)&dq);
   test_assert(ret < 0 && errno == ENOTBLK);
 
-  /* ENOEND returned before checking cmd */
+  /* ENOENT returned before checking cmd */
   ret =
       quotactl(0x12345678, "/asdfjlafdlkk289892389pkj", getuid(), (caddr_t)&dq);
   test_assert(ret < 0 && errno == ENOENT);
@@ -69,6 +69,11 @@ int main(void) {
     atomic_puts("Quotas not enabled on this file system; aborting test");
   } else if (ret < 0 && errno == ENOTBLK) {
     atomic_puts("Home directory device is not a block device; aborting test");
+  } else if (ret < 0 && errno == ENOENT) {
+    /* On Ubuntu 16.06, at least, I'm getting a `/dev/root` which doesn't
+     * actually exist :-(
+     */
+    atomic_puts("Home directory device not found; aborting test");
   } else {
     test_assert(0 == ret);
     atomic_printf("QIF bits=%x\n", dq.dqb_valid);
