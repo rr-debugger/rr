@@ -99,6 +99,7 @@ static void init_log_globals() {
   char* env = getenv(log_env);
   if (env) {
     env = strdup(env);
+    assert(env);
     for (int i = 0; env[i]; ++i) {
       env[i] = simple_to_lower(env[i]);
     }

@@ -537,6 +537,7 @@ static string read_target_desc(const char* file_name) {
   string path = exe_directory() + "../share/rr/" + string(file_name);
   stringstream ss;
   FILE* f = fopen(path.c_str(), "r");
+  assert(f);
   while (true) {
     int ch = getc(f);
     if (ch == EOF) {
