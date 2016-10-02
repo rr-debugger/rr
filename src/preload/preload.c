@@ -100,6 +100,14 @@ struct btrfs_ioctl_clone_range_args {
 #endif
 #define syscall you_must_use_traced_syscall
 
+static void *xmalloc(size_t size) {
+  void *mem_ptr = malloc(size);
+  if (!mem_ptr) {
+    abort();
+  }
+  return mem_ptr;
+}
+
 #define RR_HIDDEN __attribute__((visibility("hidden")))
 
 /**
@@ -728,7 +736,7 @@ static void* thread_trampoline(void* arg) {
  */
 int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
                    void* (*start_routine)(void*), void* arg) {
-  struct thread_func_data* data = malloc(sizeof(*data));
+  struct thread_func_data* data = xmalloc(sizeof(*data));
   int ret;
 
   /* Init syscallbuf now if we haven't yet (e.g. if pthread_create is called
