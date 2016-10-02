@@ -106,6 +106,18 @@ typedef unsigned char uint8_t;
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 
 /**
+ * Allocate new memory of |size| in bytes. The pointer returned is never NULL.
+ * This calls aborts the program if the host runs out of memory.
+ */
+inline static void *xmalloc(size_t size) {
+  void *mem_ptr = malloc(size);
+  if (!mem_ptr) {
+    abort();
+  }
+  return mem_ptr;
+}
+
+/**
  * Print the printf-like arguments to stdout as atomic-ly as we can
  * manage.  Async-signal-safe.  Does not flush stdio buffers (doing so
  * isn't signal safe).
@@ -176,7 +188,7 @@ static uint64_t GUARD_VALUE = 0xdeadbeeff00dbaad;
  */
 inline static void* allocate_guard(size_t size, char value) {
   char* cp =
-      (char*)malloc(size + 2 * sizeof(GUARD_VALUE)) + sizeof(GUARD_VALUE);
+      (char*)xmalloc(size + 2 * sizeof(GUARD_VALUE)) + sizeof(GUARD_VALUE);
   memcpy(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE));
   memcpy(cp + size, &GUARD_VALUE, sizeof(GUARD_VALUE));
   memset(cp, value, size);

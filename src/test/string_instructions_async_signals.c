@@ -35,7 +35,7 @@ int main(void) {
   int v;
   pthread_t thread;
 
-  p = malloc(SIZE);
+  p = xmalloc(SIZE);
 
   pthread_create(&thread, NULL, do_thread, NULL);
 
