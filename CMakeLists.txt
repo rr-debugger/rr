@@ -14,7 +14,7 @@ enable_testing()
 set(BUILD_SHARED_LIBS ON)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
-set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib)
+set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib/rr)
 
 set(WILL_RUN_TESTS ON CACHE BOOL "Run tests")
 
@@ -357,8 +357,8 @@ install(PROGRAMS scripts/signal-rr-recording.sh
 
 install(TARGETS rr ${RR_BIN} rrpreload rr_exec_stub
   RUNTIME DESTINATION bin
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib)
+  LIBRARY DESTINATION lib/rr
+  ARCHIVE DESTINATION lib/rr)
 
 # Build 32-bit librrpreload on 64-bit builds.
 # We copy the source files into '32' subdirectories in the output
@@ -406,8 +406,8 @@ if(rr_32BIT AND rr_64BIT)
 
   install(TARGETS rrpreload_32 rr_exec_stub_32
     RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib)
+    LIBRARY DESTINATION lib/rr
+    ARCHIVE DESTINATION lib/rr)
 endif()
 
 ##--------------------------------------------------
