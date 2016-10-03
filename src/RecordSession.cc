@@ -1570,7 +1570,7 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
 }
 
 static string find_syscall_buffer_library() {
-  string lib_path = exe_directory() + "../lib/";
+  string lib_path = exe_directory() + "../lib/rr/";
   string file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
   if (access(file_name.c_str(), F_OK) != 0) {
     // File does not exist. Assume install put it in LD_LIBRARY_PATH.
