@@ -537,6 +537,7 @@ static string read_target_desc(const char* file_name) {
   string path = exe_directory() + "../share/rr/" + string(file_name);
   stringstream ss;
   FILE* f = fopen(path.c_str(), "r");
+  assert(f);
   while (true) {
     int ch = getc(f);
     if (ch == EOF) {
@@ -1665,7 +1666,7 @@ void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
         1 /*m char*/ +
         threads.size() * (1 /*p*/ + 2 * sizeof(threads[0]) + 1 /*,*/) +
         1 /*\0*/;
-    char* str = (char*)malloc(maxlen);
+    char* str = (char*)xmalloc(maxlen);
     int offset = 0;
 
     str[offset++] = 'm';
