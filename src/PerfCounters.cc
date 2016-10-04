@@ -225,7 +225,7 @@ static bool has_ioc_period_bug() {
   // Start a cycles counter
   struct perf_event_attr attr = rr::cycles_attr;
   attr.sample_period = 0xfffffff;
-  attr.exclude_kernel = 0;
+  attr.exclude_kernel = 1;
   attr.disabled = 0;
   ScopedFd bug_fd = start_counter(0, -1, &attr);
 
