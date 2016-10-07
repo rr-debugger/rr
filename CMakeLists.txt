@@ -14,7 +14,7 @@ enable_testing()
 set(BUILD_SHARED_LIBS ON)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
-set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/lib/rr)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib/rr)
 
 set(WILL_RUN_TESTS ON CACHE BOOL "Run tests")
 
@@ -297,15 +297,20 @@ endfunction(post_build_executable)
 option(RR_BUILD_SHARED "Build the rr shared library as well as the binary (experimental).")
 if(RR_BUILD_SHARED)
   add_library(rr ${RR_SOURCES})
+  set_target_properties(rr PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
   add_executable(rrbin src/main.cc)
   set(RR_BIN rrbin)
   post_build_executable(rrbin)
   set_target_properties(rrbin PROPERTIES OUTPUT_NAME rr)
   target_link_libraries(rrbin rr)
+  install(TARGETS rr
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib)
 else()
   add_executable(rr ${RR_SOURCES} src/main.cc)
   post_build_executable(rr)
-  set(RR_BIN)
+  set(RR_BIN rr)
 endif()
 add_dependencies(rr Generated Pages)
 
@@ -355,7 +360,7 @@ install(PROGRAMS scripts/signal-rr-recording.sh
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay
   DESTINATION bin)
 
-install(TARGETS rr ${RR_BIN} rrpreload rr_exec_stub
+install(TARGETS ${RR_BIN} rrpreload rr_exec_stub
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib/rr
   ARCHIVE DESTINATION lib/rr)
