@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record mmap_replace_most_mappings$bitness
+debug mmap_replace_most_mappings
