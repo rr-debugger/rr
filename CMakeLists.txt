@@ -781,6 +781,7 @@ set(TESTS_WITH_PROGRAM
   link
   madvise_dontfork
   main_thread_exit
+  mmap_replace_most_mappings
   mmap_shared_prot
   mmap_write
   mprotect_growsdown

@@ -110,8 +110,8 @@ typedef unsigned char uint8_t;
  * Allocate new memory of |size| in bytes. The pointer returned is never NULL.
  * This calls aborts the program if the host runs out of memory.
  */
-inline static void *xmalloc(size_t size) {
-  void *mem_ptr = malloc(size);
+inline static void* xmalloc(size_t size) {
+  void* mem_ptr = malloc(size);
   if (!mem_ptr) {
     abort();
   }

@@ -427,6 +427,8 @@ void AddressSpace::post_exec_syscall(Task* t) {
   t->session().create_shared_mmap(remote, PRELOAD_THREAD_LOCALS_SIZE,
                                   preload_thread_locals_start(),
                                   "preload_thread_locals");
+  mapping_flags_of(preload_thread_locals_start()) |=
+      AddressSpace::Mapping::IS_THREAD_LOCALS;
 }
 
 void AddressSpace::brk(Task* t, remote_ptr<void> addr, int prot) {
@@ -1299,6 +1301,8 @@ void AddressSpace::post_vm_clone(Task* t) {
   t->session().create_shared_mmap(remote, PRELOAD_THREAD_LOCALS_SIZE,
                                   preload_thread_locals_start(),
                                   "preload_thread_locals");
+  mapping_flags_of(preload_thread_locals_start()) |=
+      AddressSpace::Mapping::IS_THREAD_LOCALS;
 }
 
 static bool try_split_unaligned_range(MemoryRange& range, size_t bytes,

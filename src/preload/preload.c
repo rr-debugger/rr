@@ -100,8 +100,8 @@ struct btrfs_ioctl_clone_range_args {
 #endif
 #define syscall you_must_use_traced_syscall
 
-static void *xmalloc(size_t size) {
-  void *mem_ptr = malloc(size);
+static void* xmalloc(size_t size) {
+  void* mem_ptr = malloc(size);
   if (!mem_ptr) {
     abort();
   }

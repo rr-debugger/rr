@@ -290,7 +290,7 @@ inline void msan_unpoison(void* ptr, size_t n) {
  * Allocate new memory of |size| in bytes. The pointer returned is never NULL.
  * This calls aborts the program if the host runs out of memory.
  */
-void *xmalloc(size_t size);
+void* xmalloc(size_t size);
 
 } // namespace rr
 
