@@ -841,15 +841,19 @@ TrapReasons Task::compute_trap_reasons() {
 const Task::ThreadLocals& Task::fetch_preload_thread_locals() {
   if (tuid() == as->thread_locals_tuid()) {
     if (as->has_mapping(AddressSpace::preload_thread_locals_start())) {
-      memcpy(thread_locals,
-             as->mapping_of(AddressSpace::preload_thread_locals_start())
-                 .local_addr,
-             PRELOAD_THREAD_LOCALS_SIZE);
-    } else {
-      // The mapping might have been removed by crazy application code.
-      // That's OK, assuming the preload library was removed too.
-      memset(&thread_locals, 0, sizeof(thread_locals));
+      auto &mapping = as->mapping_of(AddressSpace::preload_thread_locals_start());
+      if (mapping.flags & AddressSpace::Mapping::IS_THREAD_LOCALS) {
+        assert(mapping.local_addr);
+        memcpy(thread_locals, mapping.local_addr, PRELOAD_THREAD_LOCALS_SIZE);
+        return thread_locals;
+      }
+      // There might have been a mapping there, but not the one we expect (i.e.
+      // the one shared with us for thread locals). In that case we behave as
+      // if the mapping didn't exist at all.
     }
+    // The mapping might have been removed by crazy application code.
+    // That's OK, assuming the preload library was removed too.
+    memset(&thread_locals, 0, sizeof(thread_locals));
   }
   return thread_locals;
 }

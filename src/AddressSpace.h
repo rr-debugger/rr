@@ -265,7 +265,10 @@ public:
       // This mapping represents a syscallbuf. It needs to handled specially
       // during checksumming since its contents are not fully restored by the
       // replay.
-      IS_SYSCALLBUF = 0x1
+      IS_SYSCALLBUF = 0x1,
+      // This mapping is used as our thread-local variable area for this
+      // address space      
+      IS_THREAD_LOCALS = 0x2
     };
     uint32_t flags;
   };

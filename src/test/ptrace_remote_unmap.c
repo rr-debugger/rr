@@ -5,14 +5,6 @@
 
 #define RR_PAGE_ADDR 0x70000000
 
-static char* trim_leading_blanks(char* str) {
-  char* trimmed = str;
-  while (isblank(*trimmed)) {
-    ++trimmed;
-  }
-  return trimmed;
-}
-
 long checked_ptrace(enum __ptrace_request request, pid_t pid, void* addr,
                     void* data) {
   long ret = ptrace(request, pid, addr, data);
@@ -74,6 +66,16 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
 #endif
 }
 
+static void remote_unmap_callback(uint64_t child, char* name,
+                                  map_properties_t* props) {
+  if ((props->start <= (uintptr_t)&syscall_addr &&
+       (uintptr_t)&syscall_addr < props->end) ||
+      props->start == RR_PAGE_ADDR || strcmp(name, "[vsyscall]") == 0)
+    return;
+
+  munmap_remote(child, props->start, props->end - props->start);
+}
+
 static __attribute__((noinline)) void breakpoint(void) {
   int break_here = 1;
   (void)break_here;
@@ -113,36 +115,7 @@ int main(void) {
   snprintf(path, 200, "/proc/%d/maps", child);
   FILE* maps_file = fopen(path, "r");
 
-  while (!feof(maps_file)) {
-    char line[PATH_MAX * 2];
-    if (!fgets(line, sizeof(line), maps_file)) {
-      break;
-    }
-
-    uint64_t start, end, offset, inode;
-    int dev_major, dev_minor;
-    char flags[32];
-    int chars_scanned;
-    int nparsed = sscanf(line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64
-                               " %x:%x %" SCNu64 " %n",
-                         &start, &end, flags, &offset, &dev_major, &dev_minor,
-                         &inode, &chars_scanned);
-    assert(8 /*number of info fields*/ == nparsed ||
-           7 /*num fields if name is blank*/ == nparsed);
-
-    // trim trailing newline, if any
-    int last_char = strlen(line) - 1;
-    if (line[last_char] == '\n') {
-      line[last_char] = 0;
-    }
-    char* name = trim_leading_blanks(line + chars_scanned);
-
-    if ((start <= (uintptr_t)&syscall_addr && (uintptr_t)&syscall_addr < end) ||
-        start == RR_PAGE_ADDR || strcmp(name, "[vsyscall]") == 0)
-      continue;
-
-    munmap_remote(child, start, end - start);
-  }
+  iterate_maps(child, remote_unmap_callback, maps_file);
   breakpoint();
 
   atomic_printf("EXIT-SUCCESS");

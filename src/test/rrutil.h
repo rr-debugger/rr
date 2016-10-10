@@ -12,6 +12,7 @@
 #include <arpa/inet.h>
 #include <asm/prctl.h>
 #include <assert.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <dlfcn.h>
 #include <elf.h>
@@ -216,6 +217,50 @@ inline static void free_guard(size_t size, void* p) {
 }
 
 inline static void crash_null_deref(void) { *(volatile int*)NULL = 0; }
+
+static char* trim_leading_blanks(char* str) {
+  char* trimmed = str;
+  while (isblank(*trimmed)) {
+    ++trimmed;
+  }
+  return trimmed;
+}
+
+typedef struct map_properties {
+  uint64_t start, end, offset, inode;
+  int dev_major, dev_minor;
+  char flags[32];
+} map_properties_t;
+typedef void (*maps_callback)(uint64_t env, char* name,
+                              map_properties_t* props);
+inline static void iterate_maps(uint64_t env, maps_callback callback,
+                                FILE* maps_file) {
+  while (!feof(maps_file)) {
+    char line[PATH_MAX * 2];
+    if (!fgets(line, sizeof(line), maps_file)) {
+      break;
+    }
+
+    map_properties_t properties;
+    int chars_scanned;
+    int nparsed = sscanf(
+        line, "%" SCNx64 "-%" SCNx64 " %31s %" SCNx64 " %x:%x %" SCNu64 " %n",
+        &properties.start, &properties.end, properties.flags,
+        &properties.offset, &properties.dev_major, &properties.dev_minor,
+        &properties.inode, &chars_scanned);
+    assert(8 /*number of info fields*/ == nparsed ||
+           7 /*num fields if name is blank*/ == nparsed);
+
+    // trim trailing newline, if any
+    int last_char = strlen(line) - 1;
+    if (line[last_char] == '\n') {
+      line[last_char] = 0;
+    }
+    char* name = trim_leading_blanks(line + chars_scanned);
+
+    callback(env, name, &properties);
+  }
+}
 
 #define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
 #define VERIFY_GUARD(p) verify_guard(sizeof(*p), p)
