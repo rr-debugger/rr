@@ -322,8 +322,11 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       // the memory has changed. This assertion should catch such errors.
       ASSERT(t, iterations >= iterations_performed);
       iterations -= iterations_performed;
-      // instructions that don't modify flags should not terminate too early
-      ASSERT(t, decoded.modifies_flags || iterations <= BYTES_COALESCED);
+      // instructions that don't modify flags should not terminate too early.
+      // We can terminate prematurely when the watchpoint we set relative
+      // to DI is triggered by a read via SI.
+      ASSERT(t, decoded.modifies_flags || iterations <= BYTES_COALESCED ||
+                    triggered_watchpoint);
 
       if (!triggered_watchpoint) {
         // watchpoint didn't fire. We must have exited the loop early and
@@ -343,9 +346,8 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
           t->set_debug_status(DS_SINGLESTEP);
           // We fired the watchpoint too early, perhaps because reads through SI
           // triggered it. Let's just bail out now; better for the caller to
-          // retry
-          // fast_forward_through_instruction than for us to try singlestepping
-          // all the rest of the way.
+          // retry fast_forward_through_instruction than for us to try
+          // singlestepping all the rest of the way.
           LOG(debug) << "x86-string fast-forward: " << iterations
                      << " iterations to go, but watchpoint hit early; aborted";
           return did_execute;
