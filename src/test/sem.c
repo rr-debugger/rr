@@ -128,7 +128,8 @@ int main(void) {
   pid_t child;
   int status;
 
-  shmem = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  shmem = mmap(NULL, page_size, PROT_READ | PROT_WRITE,
                MAP_ANONYMOUS | MAP_SHARED, -1, 0);
   test_assert(shmem != (void*)-1);
 

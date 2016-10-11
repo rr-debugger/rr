@@ -53,8 +53,9 @@ void print_time(void) {
 
 static void make_stack_executable(void) {
   int v = 0;
-  void* p = (void*)((uintptr_t)&v & ~((uintptr_t)PAGE_SIZE - 1));
-  int ret = mprotect(p, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC);
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  void* p = (void*)((uintptr_t)&v & ~((uintptr_t)page_size - 1));
+  int ret = mprotect(p, page_size, PROT_READ | PROT_WRITE | PROT_EXEC);
   test_assert(ret == 0 || errno == EACCES);
 }
 

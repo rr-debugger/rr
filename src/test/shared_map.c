@@ -4,7 +4,8 @@
 
 int main(void) {
   int fd = open("tmp.txt", O_RDWR | O_CREAT | O_EXCL, 0700);
-  char buf[PAGE_SIZE];
+  ssize_t page_size = sysconf(_SC_PAGESIZE);
+  char buf[page_size];
   char* p;
   char* q;
   pid_t child;
@@ -12,11 +13,11 @@ int main(void) {
 
   test_assert(fd >= 0);
   memset(buf, 1, sizeof(buf));
-  test_assert(PAGE_SIZE == write(fd, buf, PAGE_SIZE));
+  test_assert(page_size == write(fd, buf, page_size));
   test_assert(0 == close(fd));
 
   fd = open("tmp.txt", O_RDWR);
-  p = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+  p = mmap(NULL, page_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   test_assert(p != MAP_FAILED);
   test_assert(p[0] == 1);
   test_assert(p[9] == 1);
@@ -25,7 +26,7 @@ int main(void) {
 
   child = fork();
   if (!child) {
-    q = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    q = mmap(NULL, page_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     test_assert(q != MAP_FAILED);
     test_assert(q[0] == 2);
     test_assert(q[9] == 2);

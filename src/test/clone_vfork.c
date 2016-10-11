@@ -24,7 +24,8 @@ int main(int argc, char* argv[]) {
   test_assert(2 == argc);
   exe = argv[1];
 
-  shared = (int*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  shared = (int*)mmap(NULL, page_size, PROT_READ | PROT_WRITE,
                       MAP_ANONYMOUS | MAP_SHARED, -1, 0);
 
   child = clone(clonefunc, child_stack + sizeof(child_stack),

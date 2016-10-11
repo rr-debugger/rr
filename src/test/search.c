@@ -22,22 +22,23 @@ int main(int argc, __attribute__((unused)) char* argv[]) {
 
   argc_ptr = &argc;
 
-  p = (char*)mmap(NULL, PAGE_SIZE * 4, PROT_READ | PROT_WRITE,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  p = (char*)mmap(NULL, page_size * 4, PROT_READ | PROT_WRITE,
                   MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   test_assert(p != MAP_FAILED);
-  p_end = p + PAGE_SIZE * 4;
+  p_end = p + page_size * 4;
 
   /* Don't copy the whole buf. If we do, we may trigger memcpy routines
    * that copy state to registers which are later spilled to the stack,
    * causing false positives. These short memcpys are performed using volatile
    * registers.
    */
-  memcpy(p + PAGE_SIZE, buf, 12);
-  memcpy(p + PAGE_SIZE * 2, buf, 12);
+  memcpy(p + page_size, buf, 12);
+  memcpy(p + page_size * 2, buf, 12);
 
-  test_assert(0 == munmap(p, PAGE_SIZE));
-  test_assert(0 == munmap(p + PAGE_SIZE * 3, PAGE_SIZE));
-  test_assert(0 == mprotect(p + PAGE_SIZE, PAGE_SIZE, PROT_NONE));
+  test_assert(0 == munmap(p, page_size));
+  test_assert(0 == munmap(p + page_size * 3, page_size));
+  test_assert(0 == mprotect(p + page_size, page_size, PROT_NONE));
 
   breakpoint();
 

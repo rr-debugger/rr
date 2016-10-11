@@ -13,7 +13,8 @@ int main(void) {
      patching etc */
   waitpid(-2, NULL, 0);
 
-  p = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  p = mmap(NULL, page_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
            -1, 0);
   test_assert(p != MAP_FAILED);
 
@@ -26,11 +27,11 @@ int main(void) {
     return 0;
   }
 
-  test_assert(0 == mprotect(p, PAGE_SIZE, PROT_READ));
+  test_assert(0 == mprotect(p, page_size, PROT_READ));
 
   breakpoint();
 
-  test_assert(0 == mprotect(p, PAGE_SIZE, PROT_READ | PROT_WRITE));
+  test_assert(0 == mprotect(p, page_size, PROT_READ | PROT_WRITE));
 
   *p = *p + 1;
 

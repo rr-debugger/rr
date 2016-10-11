@@ -23,7 +23,8 @@ int main(void) {
 
   test_assert(0 == pipe(pipe_fds));
 
-  mutex = (pthread_mutex_t*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  mutex = (pthread_mutex_t*)mmap(NULL, page_size, PROT_READ | PROT_WRITE,
                                  MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
   pthread_mutexattr_init(&attr);
