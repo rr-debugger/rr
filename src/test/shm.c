@@ -4,7 +4,7 @@
 
 /* Make SIZE not a multiple of the page size, to ensure we handle that case.
    But make sure it's even, since we divide it by two. */
-#define SIZE ((int)(16 * PAGE_SIZE) - 10)
+#define SIZE ((int)(16 * page_size) - 10)
 
 static int shmid;
 
@@ -20,6 +20,8 @@ static int run_child(void) {
   struct shmid_ds* ds;
   struct shminfo* info;
   struct shm_info* info2;
+
+  size_t page_size = sysconf(_SC_PAGESIZE);
 
   ALLOCATE_GUARD(ds, 'd');
   test_assert(0 == shmctl(shmid, IPC_STAT, ds));
@@ -86,6 +88,8 @@ static int run_child(void) {
 int main(void) {
   pid_t child;
   int status;
+
+  size_t page_size = sysconf(_SC_PAGESIZE);
 
   shmid = shmget(IPC_PRIVATE, SIZE, 0666);
   test_assert(shmid >= 0);

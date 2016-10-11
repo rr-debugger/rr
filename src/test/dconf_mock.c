@@ -13,7 +13,8 @@ int main(int argc, __attribute__((unused)) char* argv[]) {
   fd = open("dconf/user", O_CREAT | O_RDWR, 0600);
   test_assert(fd >= 0);
   test_assert(0 == ftruncate(fd, 2));
-  p = (char*)mmap(NULL, PAGE_SIZE, PROT_READ | (argc == 2 ? PROT_WRITE : 0),
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  p = (char*)mmap(NULL, page_size, PROT_READ | (argc == 2 ? PROT_WRITE : 0),
                   MAP_SHARED, fd, 0);
   test_assert(MAP_FAILED != p);
 

@@ -7,9 +7,10 @@ static int* p;
 int main(void) {
   pid_t child;
   int status;
+  size_t page_size = sysconf(_SC_PAGESIZE);
 
   if (0 == (child = vfork())) {
-    p = (int*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+    p = (int*)mmap(NULL, page_size, PROT_READ | PROT_WRITE,
                    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     *p = 88;
     test_assert(p != MAP_FAILED);

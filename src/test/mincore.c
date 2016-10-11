@@ -6,9 +6,10 @@
 
 int main(int argc, __attribute__((unused)) char* argv[]) {
   unsigned char* buf;
-  void* p = (void*)((long)&argc & ~(long)(PAGE_SIZE - 1));
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  void* p = (void*)((long)&argc & ~(long)(page_size - 1));
   ALLOCATE_GUARD(buf, 'q');
-  test_assert(0 == mincore(p, PAGE_SIZE, buf));
+  test_assert(0 == mincore(p, page_size, buf));
   /* I guess we can't actually check mincore's results in any way */
   VERIFY_GUARD(buf);
 

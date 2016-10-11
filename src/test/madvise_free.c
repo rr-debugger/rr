@@ -3,11 +3,12 @@
 #include "rrutil.h"
 
 int main(void) {
+  size_t page_size = sysconf(_SC_PAGESIZE);
   void* p =
-      mmap(NULL, PAGE_SIZE, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+      mmap(NULL, page_size, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   test_assert(p != MAP_FAILED);
 
-  test_assert(-1 == madvise(p, PAGE_SIZE, MADV_FREE));
+  test_assert(-1 == madvise(p, page_size, MADV_FREE));
 
   atomic_puts("EXIT-SUCCESS");
 

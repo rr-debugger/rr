@@ -21,12 +21,12 @@ int main(void) {
   char v;
   char* fix_addr;
   void* p;
+  size_t page_size = sysconf(_SC_PAGESIZE);
 
   breakpoint();
-
   fix_addr =
-      (char*)(((uintptr_t)&v - 256 * 1024) & ~(uintptr_t)(PAGE_SIZE - 1));
-  p = mmap(fix_addr, PAGE_SIZE, PROT_READ | PROT_WRITE,
+      (char*)(((uintptr_t)&v - 256 * 1024) & ~(uintptr_t)(page_size - 1));
+  p = mmap(fix_addr, page_size, PROT_READ | PROT_WRITE,
            MAP_FIXED | MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   test_assert(p == fix_addr);
 

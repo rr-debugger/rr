@@ -7,19 +7,20 @@ int main(void) {
 
   /* map 3 pages since the first page will be made into a guard page by the
      kernel */
-  p = mmap(NULL, PAGE_SIZE * 3, PROT_READ | PROT_WRITE,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  p = mmap(NULL, page_size * 3, PROT_READ | PROT_WRITE,
            MAP_PRIVATE | MAP_ANONYMOUS | MAP_GROWSDOWN, -1, 0);
   test_assert(p != MAP_FAILED);
 
   test_assert(
-      0 == mprotect(p + PAGE_SIZE * 2, PAGE_SIZE, PROT_NONE | PROT_GROWSDOWN));
+      0 == mprotect(p + page_size * 2, page_size, PROT_NONE | PROT_GROWSDOWN));
 
-  test_assert(-1 == mprotect(p + 1, PAGE_SIZE, PROT_NONE | PROT_GROWSDOWN));
+  test_assert(-1 == mprotect(p + 1, page_size, PROT_NONE | PROT_GROWSDOWN));
   test_assert(EINVAL == errno);
 
-  p = (char*)(((uintptr_t)main) & ~((uintptr_t)PAGE_SIZE - 1));
+  p = (char*)(((uintptr_t)main) & ~((uintptr_t)page_size - 1));
   test_assert(-1 ==
-              mprotect(p, PAGE_SIZE, PROT_READ | PROT_EXEC | PROT_GROWSDOWN));
+              mprotect(p, page_size, PROT_READ | PROT_EXEC | PROT_GROWSDOWN));
   test_assert(EINVAL == errno);
 
   atomic_puts("EXIT-SUCCESS");

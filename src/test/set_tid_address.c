@@ -31,9 +31,10 @@ int main(void) {
   test_assert(0 == syscall(SYS_futex, &v, FUTEX_WAIT, 1, NULL, NULL, 0));
   test_assert(0 == v);
 
-  p = mmap(NULL, PAGE_SIZE, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  p = mmap(NULL, page_size, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   test_assert(p != MAP_FAILED);
-  test_assert(0 == munmap(p, PAGE_SIZE));
+  test_assert(0 == munmap(p, page_size));
 
   pthread_create(&thread, NULL, run_thread2, NULL);
   test_assert(1 == read(pipe_fds[0], &ch, 1));

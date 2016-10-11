@@ -27,7 +27,8 @@ int main(int argc, __attribute__((unused)) char* argv[]) {
   pid_t child;
   int status;
 
-  depth = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  depth = mmap(NULL, page_size, PROT_READ | PROT_WRITE,
                MAP_ANONYMOUS | MAP_SHARED, -1, 0);
   test_assert(depth != MAP_FAILED);
 
@@ -43,9 +44,9 @@ int main(int argc, __attribute__((unused)) char* argv[]) {
     test_assert(0 == sigaction(SIGSEGV, &act, NULL));
 
     void* p =
-        (void*)((size_t)(fake_sp - 8 * PAGE_SIZE) & ~(size_t)(PAGE_SIZE - 1));
+        (void*)((size_t)(fake_sp - 8 * page_size) & ~(size_t)(page_size - 1));
 
-    test_assert(mmap(p, PAGE_SIZE, PROT_NONE,
+    test_assert(mmap(p, page_size, PROT_NONE,
                      MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED, -1, 0) == p);
 
     return recurse();
