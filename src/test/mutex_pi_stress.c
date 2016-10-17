@@ -24,12 +24,12 @@ static void* thread(void* idp) {
 int main(void) {
   pthread_mutexattr_t attr;
   pthread_t threads[NUM_THREADS];
-  int i;
+  int i, err;
 
   pthread_mutexattr_init(&attr);
   test_assert(0 == pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT));
-  if (pthread_mutex_init(&lock, &attr)) {
-    test_assert(ENOTSUP == errno);
+  if ((err = pthread_mutex_init(&lock, &attr))) {
+    test_assert(ENOTSUP == err);
     test_assert(0 == pthread_mutex_init(&lock, NULL));
   }
 
