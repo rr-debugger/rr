@@ -135,6 +135,13 @@ static void handle_usr1_st(__attribute__((unused)) int sig) {
   st_ops[regnum].set(&st_bad);
 }
 
+/* Some libcs use the xmm registers for signal mask manipulation in
+   `raise`. Provide a version that doesn't. */
+static void my_raise(int sig) {
+  pid_t tid = sys_gettid();
+  syscall(SYS_tgkill, tid, tid, sig);
+}
+
 int main(void) {
   init();
 
@@ -144,7 +151,7 @@ int main(void) {
     memcpy(xmm, xmm_bad, sizeof(xmm));
 
     xmm_ops[regnum].set(xmm_good);
-    raise(SIGUSR1);
+    my_raise(SIGUSR1);
     xmm_ops[regnum].get(xmm);
 
     test_assert("XMM register should have been preserved" &&
@@ -157,7 +164,7 @@ int main(void) {
     memcpy(st, &st_bad, sizeof(st));
 
     st_ops[regnum].set(&st_good);
-    raise(SIGUSR1);
+    my_raise(SIGUSR1);
     st_ops[regnum].get(st);
 
     test_assert("ST register should have been preserved" &&
