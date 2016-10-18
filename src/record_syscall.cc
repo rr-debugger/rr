@@ -2298,6 +2298,7 @@ static int ptrace_option_for_event(int ptrace_event) {
 }
 
 template <typename Arch> static Switchable process_sigreturn(RecordTask* t);
+template <typename Arch> static Switchable process_rt_sigreturn(RecordTask* t);
 
 template <typename Arch>
 static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
@@ -3577,20 +3578,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::sigreturn:
       return process_sigreturn<Arch>(t);
 
-    case Arch::rt_sigreturn: {
-      auto frameptr = (t->regs().sp() - sizeof(typename Arch::unsigned_word))
-                          .cast<typename Arch::rt_sigframe>();
-      auto oldmaskptr =
-          REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(frameptr, uc), uc_sigmask);
-      // User space sigset_t is larger than the kernel one, but since we only
-      // care about what the kernel sees, load that one.
-      static_assert(sizeof(typename Arch::kernel_sigset_t) == sizeof(uint64_t),
-                    "Kernel mask size grew?");
-      uint64_t oldmask = t->read_mem(oldmaskptr.template cast<uint64_t>());
-      t->set_new_sigmask(oldmask);
-      t->clear_saved_sigmask();
-      return PREVENT_SWITCH;
-    }
+    case Arch::rt_sigreturn:
+      return process_rt_sigreturn<Arch>(t);
 
     case Arch::mq_timedreceive: {
       syscall_state.reg_parameter(
@@ -3624,6 +3613,22 @@ template <> Switchable process_sigreturn<X86Arch>(RecordTask* t) {
   auto oldmaskptrhigh = REMOTE_PTR_FIELD(frameptr, extramask);
   uint64_t oldmask = t->read_mem(oldmaskptrlow) |
                      (((uint64_t)t->read_mem(oldmaskptrhigh)) << 32);
+  t->set_new_sigmask(oldmask);
+  t->clear_saved_sigmask();
+  return PREVENT_SWITCH;
+}
+
+template <typename Arch>
+Switchable process_rt_sigreturn(RecordTask* t) {
+  auto frameptr = (t->regs().sp() - sizeof(typename Arch::unsigned_word))
+                      .cast<typename Arch::rt_sigframe>();
+  auto oldmaskptr =
+      REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(frameptr, uc), uc_sigmask);
+  // User space sigset_t is larger than the kernel one, but since we only
+  // care about what the kernel sees, load that one.
+  static_assert(sizeof(typename Arch::kernel_sigset_t) == sizeof(uint64_t),
+                "Kernel mask size grew?");
+  uint64_t oldmask = t->read_mem(oldmaskptr.template cast<uint64_t>());
   t->set_new_sigmask(oldmask);
   t->clear_saved_sigmask();
   return PREVENT_SWITCH;
