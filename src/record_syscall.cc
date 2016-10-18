@@ -4161,6 +4161,11 @@ static void rec_process_syscall_arch(RecordTask* t,
                                      TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
 
+  if (t->regs().original_syscallno() == SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO) {
+    // rr vetoed this syscall. Don't do any post-processing.
+    return;
+  }
+
   LOG(debug) << t->tid << ": processing: " << t->ev()
              << " -- time: " << t->trace_time();
 
