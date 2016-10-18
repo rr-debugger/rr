@@ -44,6 +44,16 @@ static void handler(int sig, siginfo_t* si, void* p) {
 #endif
 #endif
 
+  if (syscallno == SYS_geteuid) {
+#ifdef __i386__
+    ctx->uc_mcontext.gregs[REG_EAX] = 42;
+#elif defined(__x86_64__)
+    ctx->uc_mcontext.gregs[REG_RAX] = 42;
+#else
+#error define architecture here
+#endif
+  }
+
 #ifdef si_syscall
   test_assert(si->si_syscall == syscallno);
 #endif
@@ -152,7 +162,7 @@ int main(void) {
   test_assert(1 == write(pipe_fds[1], "c", 1));
   test_assert(1 == read(pipe_fds[0], &ch, 1));
 
-  syscall(SYS_geteuid);
+  test_assert(syscall(SYS_geteuid) == 42);
   open("/dev/null", O_RDONLY);
   test_assert(count_SIGSYS == 2);
 

@@ -1777,7 +1777,8 @@ void Task::reset_syscallbuf() {
   if (!syscallbuf_child)
     return;
 
-  ASSERT(this, !read_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked)));
+  ASSERT(this, !is_in_untraced_syscall() ||
+               !read_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked)));
 
   // Memset is easiest to do by using the local mapping which should always
   // exist for the syscallbuf

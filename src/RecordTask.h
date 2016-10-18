@@ -369,6 +369,7 @@ public:
   void pop_event(EventType expected_type);
   void pop_noop() { pop_event(EV_NOOP); }
   void pop_desched() { pop_event(EV_DESCHED); }
+  void pop_seccomp_trap() { pop_event(EV_SECCOMP_TRAP); }
   void pop_signal_delivery() { pop_event(EV_SIGNAL_DELIVERY); }
   void pop_signal_handler() { pop_event(EV_SIGNAL_HANDLER); }
   void pop_syscall() { pop_event(EV_SYSCALL); }

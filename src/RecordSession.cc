@@ -274,6 +274,25 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
   }
 }
 
+static void seccomp_trap_done(RecordTask* t) {
+  // It's safe to reset the syscall buffer now.
+  t->delay_syscallbuf_reset = false;
+
+  // In fact, we need to. Running the syscall exit hook will ensure we
+  // reset the buffer before we try to buffer another a syscall.
+  t->write_mem(
+      REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
+      (uint8_t)1);
+
+  // Abort the current record, which corresponds to the syscall that wasn't
+  // actually executed thanks to seccomp.
+  t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, abort_commit), (uint8_t)1);
+  t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO, t->arch()));
+
+  // And we're done.
+  t->pop_seccomp_trap();
+}
+
 static void handle_seccomp_trap(RecordTask* t,
                                 RecordSession::StepState* step_state,
                                 uint16_t seccomp_data) {
@@ -281,9 +300,26 @@ static void handle_seccomp_trap(RecordTask* t,
 
   t->emulate_syscall_entry(t->regs());
 
-  if (!t->is_in_untraced_syscall()) {
-    t->push_event(SyscallEvent(syscallno, t->arch()));
-    note_entering_syscall(t);
+  if (t->is_in_untraced_syscall()) {
+    ASSERT(t, !t->delay_syscallbuf_reset);
+    // Don't reset the syscallbuf immediately after delivering the trap. We have
+    // to wait until this buffered syscall aborts completely before resetting
+    // the buffer.
+    t->delay_syscallbuf_reset = true;
+
+    t->push_event(Event(EV_SECCOMP_TRAP, NO_EXEC_INFO, t->arch()));
+
+    // desched may be armed but we're not going to execute the syscall, let
+    // alone block. If it fires, ignore it.
+    t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child,
+                                  desched_signal_may_be_relevant), (uint8_t)0);
+  }
+
+  t->push_event(SyscallEvent(syscallno, t->arch()));
+  note_entering_syscall(t);
+
+  if (t->is_in_untraced_syscall()) {
+    t->record_current_event();
   }
 
   Registers r = t->regs();
@@ -310,10 +346,10 @@ static void handle_seccomp_trap(RecordTask* t,
       break;
   }
   si.native_api._sifields._sigsys._syscall = syscallno;
-  // We don't set call_addr here, because the current ip() might not be the
-  // ip() at which we deliver the signal, and they must match. In particular
-  // this event might be triggered during syscallbuf processing but delivery
-  // delayed until we exit the syscallbuf code.
+  // Documentation says that si_call_addr is the address of the syscall
+  // instruction, but in tests it's immediately after the syscall
+  // instruction.
+  si.native_api._sifields._sigsys._call_addr = t->ip().to_data_ptr<void>();
   t->stash_synthetic_sig(si.linux_api, DETERMINISTIC_SIG);
 
   // Tests show that the current registers are preserved (on x86, eax/rax
@@ -322,9 +358,18 @@ static void handle_seccomp_trap(RecordTask* t,
   // Cause kernel processing to skip the syscall
   r.set_original_syscallno(SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO);
   t->set_regs(r);
+
+  if (t->is_in_untraced_syscall()) {
+    // For buffered syscalls, go ahead and record the exit state immediately.
+    t->ev().Syscall().state = EXITING_SYSCALL;
+    t->record_current_event();
+    t->pop_syscall();
+  }
+
   // Don't continue yet. At the next iteration of record_step, if we
   // recorded the syscall-entry we'll enter syscall_state_changed and
-  // that will trigger a continue to the syscall exit.
+  // that will trigger a continue to the syscall exit. If we recorded the
+  // syscall-exit we'll go straight into signal delivery.
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
@@ -794,6 +839,10 @@ void RecordSession::syscall_state_changed(RecordTask* t,
           // replay will pick it up later.
           save_interrupted_syscall_ret_in_syscallbuf(t, retval);
           desched_state_changed(t);
+        } else if (EV_SECCOMP_TRAP == t->ev().type()) {
+          LOG(debug) << "  exiting seccomp trap";
+          save_interrupted_syscall_ret_in_syscallbuf(t, retval);
+          seccomp_trap_done(t);
         }
       } else {
         LOG(debug) << "  original_syscallno:" << t->regs().original_syscallno()
@@ -1004,6 +1053,11 @@ static bool preinject_signal(RecordTask* t) {
       if (t->stop_sig() == sig) {
         LOG(debug) << "    stopped with signal " << signal_name(sig);
         break;
+      }
+      if (t->stop_sig() == SIGTRAP && sig == SIGSYS &&
+          t->ev().Signal().siginfo.si_code == SYS_SECCOMP) {
+        // XXX khuey I have no idea why this signal appears here ...
+        continue;
       }
       /* It's possible for other signals to arrive while we're trying to
        * get to the signal-stop for the signal we just sent. Stash them for
@@ -1525,18 +1579,6 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
                << " by user request";
     t->pop_stash_sig();
     return prepare_to_inject_signal(t, step_state);
-  }
-
-  if (si.linux_api.si_signo == SIGSYS && si.linux_api.si_code == SYS_SECCOMP) {
-    // Set call_addr to the current ip(). We don't do this when synthesizing
-    // the SIGSYS because the SIGSYS might be triggered during syscallbuf
-    // processing but be delivered later at a
-    // SYS_rrcall_notify_syscall_hook_exit.
-    // Documentation says that si_call_addr is the address of the syscall
-    // instruction, but in tests it's immediately after the syscall
-    // instruction.
-    auto& native_si = si.native_api;
-    native_si._sifields._sigsys._call_addr = t->ip().to_data_ptr<void>();
   }
 
   switch (handle_signal(t, &si.linux_api, t->peek_stash_sig().deterministic)) {

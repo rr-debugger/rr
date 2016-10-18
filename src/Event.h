@@ -31,6 +31,7 @@ enum EventType {
   // refactored to not have to do that.
   EV_NOOP,
   EV_DESCHED,
+  EV_SECCOMP_TRAP,
 
   // Events present in traces:
 
