@@ -497,7 +497,8 @@ void RecordTask::init_buffers() { RR_ARCH_FUNCTION(init_buffers_arch, arch()); }
 
 template <typename Arch>
 void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
-  if (regs.syscall_failed()) {
+  if (regs.original_syscallno() == SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO ||
+      regs.syscall_failed()) {
     return;
   }
 

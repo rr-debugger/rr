@@ -320,7 +320,7 @@ static void handle_seccomp_trap(RecordTask* t,
   // retains the syscall number).
   r.set_syscallno(syscallno);
   // Cause kernel processing to skip the syscall
-  r.set_original_syscallno(-1);
+  r.set_original_syscallno(SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO);
   t->set_regs(r);
   // Don't continue yet. At the next iteration of record_step, if we
   // recorded the syscall-entry we'll enter syscall_state_changed and
@@ -342,7 +342,7 @@ static void handle_seccomp_errno(RecordTask* t,
 
   Registers r = t->regs();
   // Cause kernel processing to skip the syscall
-  r.set_original_syscallno(-1);
+  r.set_original_syscallno(SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO);
   r.set_syscall_result(-seccomp_data);
   t->set_regs(r);
   // Don't continue yet. At the next iteration of record_step, if we

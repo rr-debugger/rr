@@ -326,6 +326,10 @@ template <typename Arch>
 void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   session().accumulate_syscall_performed();
 
+  if (regs.original_syscallno() == SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO) {
+    return;
+  }
+
   // mprotect can change the protection status of some mapped regions before
   // failing.
   if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, arch())) {
