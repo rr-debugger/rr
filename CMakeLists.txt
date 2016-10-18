@@ -626,6 +626,7 @@ set(BASIC_TESTS
   seccomp
   seccomp_null
   seccomp_tsync
+  seccomp_veto_exec
   self_sigint
   sem
   sendfile
