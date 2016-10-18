@@ -1152,7 +1152,7 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si,
     }
   }
 
-  stashed_signals.push_back(StashedSignal(si, deterministic));
+  stashed_signals.insert(stashed_signals.begin(), StashedSignal(si, deterministic));
 }
 
 bool RecordTask::has_stashed_sig(int sig) const {

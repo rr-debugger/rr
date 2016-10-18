@@ -352,6 +352,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
      * reset until we've finished guiding the tracee through this
      * interrupted call.  We use the record counter for
      * assertions. */
+    ASSERT(t, !t->delay_syscallbuf_reset);
     t->delay_syscallbuf_reset = true;
 
     /* The tracee is (re-)entering the buffered syscall.  Stash
@@ -390,7 +391,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
              << t->syscall_name(call) << "'";
 }
 
-static bool is_safe_to_deliver_signal(RecordTask* t) {
+static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
   if (!t->is_in_syscallbuf()) {
     /* The tracee is outside the syscallbuf code,
      * so in most cases can't possibly affect
@@ -413,6 +414,13 @@ static bool is_safe_to_deliver_signal(RecordTask* t) {
                << " because tracee interrupted by desched of "
                << t->syscall_name(t->read_mem(
                       REMOTE_PTR_FIELD(t->desched_rec(), syscallno)));
+    return true;
+  }
+
+  if (t->is_in_untraced_syscall() && si->si_signo == SIGSYS &&
+      si->si_code == SYS_SECCOMP) {
+    LOG(debug) << "Safe to deliver signal at " << t->ip()
+               << " because signal is seccomp trap.";
     return true;
   }
 
@@ -445,7 +453,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     return SIGNAL_HANDLED;
   }
 
-  if (!is_safe_to_deliver_signal(t)) {
+  if (!is_safe_to_deliver_signal(t, si)) {
     return DEFER_SIGNAL;
   }
 
