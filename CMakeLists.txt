@@ -532,7 +532,6 @@ set(BASIC_TESTS
   mincore
   mknod
   mlock
-  mmap_discontinuous
   mmap_private
   mmap_ro
   mmap_self_maps_shared
