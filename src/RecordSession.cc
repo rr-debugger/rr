@@ -311,8 +311,9 @@ static void handle_seccomp_trap(RecordTask* t,
 
     // desched may be armed but we're not going to execute the syscall, let
     // alone block. If it fires, ignore it.
-    t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child,
-                                  desched_signal_may_be_relevant), (uint8_t)0);
+    t->write_mem(
+        REMOTE_PTR_FIELD(t->syscallbuf_child, desched_signal_may_be_relevant),
+        (uint8_t)0);
   }
 
   t->push_event(SyscallEvent(syscallno, t->arch()));

@@ -1070,7 +1070,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
   step->syscall.number = sys;
   step->action = TSTEP_EXIT_SYSCALL;
 
-  if (trace_regs.original_syscallno() == SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO) {
+  if (trace_regs.original_syscallno() ==
+      SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO) {
     // rr vetoed this syscall. Don't do any post-processing.
     return;
   }

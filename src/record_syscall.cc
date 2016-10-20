@@ -3618,8 +3618,7 @@ template <> Switchable process_sigreturn<X86Arch>(RecordTask* t) {
   return PREVENT_SWITCH;
 }
 
-template <typename Arch>
-Switchable process_rt_sigreturn(RecordTask* t) {
+template <typename Arch> Switchable process_rt_sigreturn(RecordTask* t) {
   auto frameptr = (t->regs().sp() - sizeof(typename Arch::unsigned_word))
                       .cast<typename Arch::rt_sigframe>();
   auto oldmaskptr =
