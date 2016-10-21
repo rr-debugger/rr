@@ -264,6 +264,9 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       // The next continue needs to be a PTRACE_SYSCALL to observe
       // the exit-syscall event.
       step_state->continue_type = RecordSession::CONTINUE_SYSCALL;
+      // Need to restore last_task_switchable since it will have been
+      // reset to PREVENT_SWITCH
+      last_task_switchable = t->ev().Syscall().switchable;
     } else {
       // We've already passed the PTRACE_SYSCALL trap for syscall entry, so
       // we need to handle that now.
@@ -756,7 +759,8 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       debug_exec_state("EXEC_SYSCALL_ENTRY", t);
       ASSERT(t, !t->emulated_stop_pending);
 
-      last_task_switchable = rec_prepare_syscall(t);
+      last_task_switchable = t->ev().Syscall().switchable =
+          rec_prepare_syscall(t);
       t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF,
                       &t->ev().Syscall().regs);
 

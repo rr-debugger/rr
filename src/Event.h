@@ -17,6 +17,24 @@ struct syscallbuf_record;
 namespace rr {
 
 /**
+ * During recording, sometimes we need to ensure that an iteration of
+ * RecordSession::record_step schedules the same task as in the previous
+ * iteration. The PREVENT_SWITCH value indicates that this is required.
+ * For example, the futex operation FUTEX_WAKE_OP modifies userspace
+ * memory; those changes are only recorded after the system call completes;
+ * and they must be replayed before we allow a context switch to a woken-up
+ * task (because the kernel guarantees those effects are seen by woken-up
+ * tasks).
+ * Entering a potentially blocking system call must use ALLOW_SWITCH, or
+ * we risk deadlock. Most non-blocking system calls could use PREVENT_SWITCH
+ * or ALLOW_SWITCH; for simplicity we use ALLOW_SWITCH to indicate a call could
+ * block and PREVENT_SWITCH otherwise.
+ * Note that even if a system call uses PREVENT_SWITCH, as soon as we've
+ * recorded the completion of the system call, we can switch to another task.
+ */
+enum Switchable { PREVENT_SWITCH, ALLOW_SWITCH };
+
+/**
  * Events serve two purposes: tracking Task state during recording, and
  * being stored in traces to guide replay. Some events are only used during
  * recording and are never actually stored in traces (and are thus irrelevant
@@ -263,6 +281,7 @@ struct SyscallEvent : public BaseEvent {
         desched_rec(nullptr),
         state(NO_SYSCALL),
         number(syscallno),
+        switchable(PREVENT_SWITCH),
         is_restart(false),
         failed_during_preparation(false),
         in_sysemu(false) {}
@@ -277,6 +296,8 @@ struct SyscallEvent : public BaseEvent {
   SyscallState state;
   // Syscall number.
   int number;
+  // Records the switchable state when this syscall was prepared
+  Switchable switchable;
   // True when this syscall was restarted after a signal interruption.
   bool is_restart;
   // True when this syscall failed during preparation.

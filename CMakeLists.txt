@@ -464,7 +464,6 @@ set(BASIC_TESTS
   creat_address_not_truncated
   cwd_inaccessible
   daemon
-  daemon_read
   desched_blocking_poll
   dup
   doublesegv
@@ -755,6 +754,7 @@ set(TESTS_WITH_PROGRAM
   condvar_stress
   crash
   crash_in_function
+  daemon_read
   dconf_mock
   dev_tty
   dlopen
