@@ -51,10 +51,10 @@ static __attribute__((used)) const float xmm15 = 25;
 static int AVX_enabled;
 
 int main(void) {
-  unsigned int eax, ebx, ecx;
+  unsigned int eax, ecx, edx;
   unsigned int required_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
 
-  cpuid(CPUID_GETFEATURES, 0, &eax, &ebx, &ecx);
+  cpuid(CPUID_GETFEATURES, 0, &eax, &ecx, &edx);
   AVX_enabled = (ecx & required_cpuid_flags) == required_cpuid_flags;
 
   if (!AVX_enabled) {
