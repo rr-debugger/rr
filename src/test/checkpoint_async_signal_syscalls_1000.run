@@ -1,5 +1,9 @@
 source `dirname $0`/util.sh
 
+# async_signal_syscalls is really about the syscallbuf and is horribly slow
+# with the syscallbuf, so don't bother with this test in no-syscallbuf.
+skip_if_no_syscall_buf
+
 timeslice=1000
 RECORD_ARGS="-c$timeslice"
 
