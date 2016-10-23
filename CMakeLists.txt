@@ -327,7 +327,7 @@ target_link_libraries(rrpreload
 add_executable(rr_exec_stub src/exec_stub.c)
 post_build_executable(rr_exec_stub)
 set_target_properties(rr_exec_stub
-                      PROPERTIES LINK_FLAGS "-nostartfiles -nodefaultlibs")
+                      PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs")
 set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
 
@@ -407,7 +407,7 @@ if(rr_32BIT AND rr_64BIT)
   add_executable(rr_exec_stub_32 32/exec_stub.c)
   post_build_executable(rr_exec_stub_32)
   set_target_properties(rr_exec_stub_32
-                        PROPERTIES LINK_FLAGS "-nostartfiles -nodefaultlibs -m32")
+                        PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs -m32")
 
   install(TARGETS rrpreload_32 rr_exec_stub_32
     RUNTIME DESTINATION bin
