@@ -587,8 +587,20 @@ void Task::enter_syscall() {
 }
 
 void Task::exit_syscall() {
+  // If PTRACE_SYSCALL_BEFORE_SECCOMP, we are inconsistent about
+  // whether we process the syscall on the syscall entry trap or
+  // on the seccomp trap. Detect if we are on the former and
+  // just bring us forward to the seccomp trap.
+  bool will_see_seccomp = seccomp_bpf_enabled &&
+                          (session().syscall_seccomp_ordering() ==
+                           Session::PTRACE_SYSCALL_BEFORE_SECCOMP) &&
+                          !is_ptrace_seccomp_event();
   while (true) {
     resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    if (will_see_seccomp && is_ptrace_seccomp_event()) {
+      will_see_seccomp = false;
+      continue;
+    }
     ASSERT(this, !ptrace_event());
     if (!stop_sig()) {
       break;
