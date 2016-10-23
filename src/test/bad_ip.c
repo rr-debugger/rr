@@ -18,6 +18,6 @@ int main(void) {
   act.sa_flags = SA_SIGINFO;
   sigaction(SIGSEGV, &act, NULL);
 
-  __asm__ __volatile__("call 0x42");
+  __asm__ __volatile__("call *0x42");
   return 0;
 }
