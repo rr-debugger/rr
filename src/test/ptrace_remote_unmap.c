@@ -13,6 +13,7 @@ long checked_ptrace(enum __ptrace_request request, pid_t pid, void* addr,
 }
 
 extern char syscall_addr;
+uintptr_t child_syscall_addr;
 static __attribute__((noinline, used)) void my_syscall(void) {
 #if defined(__i386)
   __asm__ __volatile__("syscall_addr: int $0x80\n\t");
@@ -30,12 +31,12 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
   iov.iov_len = sizeof(regs);
   checked_ptrace(PTRACE_GETREGSET, child, (void*)NT_PRSTATUS, &iov);
 #ifdef __i386
-  regs.eip = (uintptr_t)&syscall_addr;
+  regs.eip = child_syscall_addr;
   regs.eax = __NR_munmap;
   regs.ebx = start;
   regs.ecx = size;
 #else
-  regs.rip = (uintptr_t)&syscall_addr;
+  regs.rip = child_syscall_addr;
   regs.rax = __NR_munmap;
   regs.rdi = start;
   regs.rsi = size;
@@ -68,8 +69,7 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
 
 static void remote_unmap_callback(uint64_t child, char* name,
                                   map_properties_t* props) {
-  if ((props->start <= (uintptr_t)&syscall_addr &&
-       (uintptr_t)&syscall_addr < props->end) ||
+  if ((props->start <= child_syscall_addr && child_syscall_addr < props->end) ||
       props->start == RR_PAGE_ADDR || strcmp(name, "[vsyscall]") == 0)
     return;
 
@@ -79,6 +79,18 @@ static void remote_unmap_callback(uint64_t child, char* name,
 static __attribute__((noinline)) void breakpoint(void) {
   int break_here = 1;
   (void)break_here;
+}
+
+char exe_path[200];
+uintptr_t my_start = 0, their_start = 0;
+static void find_exe_mapping_start(uint64_t which, char* name,
+                                   map_properties_t* props) {
+  // Find an executable mapping with the given name
+  uintptr_t* start = (which ? &their_start : &my_start);
+  if (*start == 0 && memcmp(props->flags, "r-xp", 4) == 0 &&
+      strcmp(exe_path, name) == 0) {
+    *start = props->start;
+  }
 }
 
 int main(void) {
@@ -110,10 +122,28 @@ int main(void) {
   assert(wret = child);
   assert(status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)));
 
-  // Ok, now start unmapping the remote mappings
+  // On kernels with aggressive ASLR, the executable mapping may
+  // not be in the same place that it is now. Find it again.
+  ssize_t path_size = readlink("/proc/self/exe", exe_path, 200);
+  assert(path_size > 0);
+
+  // First find the correct mapping in our own address space.
+  FILE* own_maps = fopen("/proc/self/maps", "r");
+  iterate_maps(0, find_exe_mapping_start, own_maps);
+  fclose(own_maps);
+
+  // Now find the same mapping in the new process
   char path[200];
   snprintf(path, 200, "/proc/%d/maps", child);
   FILE* maps_file = fopen(path, "r");
+  iterate_maps(1, find_exe_mapping_start, maps_file);
+  fclose(maps_file);
+
+  // Adjust the syscall address by the slide
+  child_syscall_addr = (uintptr_t)&syscall_addr + (their_start - my_start);
+
+  // Ok, now start unmapping the remote mappings
+  maps_file = fopen(path, "r");
 
   iterate_maps(child, remote_unmap_callback, maps_file);
   breakpoint();
