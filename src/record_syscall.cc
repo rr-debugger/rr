@@ -2267,6 +2267,9 @@ static void init_scratch_memory(RecordTask* t,
     }
     t->scratch_size = scratch_size;
   }
+
+  t->setup_preload_thread_locals();
+
   // record this mmap for the replay
   Registers r = t->regs();
   uintptr_t saved_result = r.syscall_result();

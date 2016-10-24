@@ -738,6 +738,11 @@ public:
   size_t usable_scratch_size() {
     return std::max<ssize_t>(0, scratch_size - page_size());
   }
+  remote_ptr<void> syscallbuf_alt_stack() {
+    return scratch_ptr.is_null() ? remote_ptr<void>()
+                                 : scratch_ptr + usable_scratch_size();
+  }
+  void setup_preload_thread_locals();
 
   struct CapturedState {
     Ticks ticks;

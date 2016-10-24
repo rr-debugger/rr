@@ -854,19 +854,44 @@ TrapReasons Task::compute_trap_reasons() {
   return reasons;
 }
 
+static void* preload_thread_locals_local_addr(AddressSpace& as) {
+  if (!as.has_mapping(AddressSpace::preload_thread_locals_start())) {
+    return nullptr;
+  }
+  // There might have been a mapping there, but not the one we expect (i.e.
+  // the one shared with us for thread locals). In that case we behave as
+  // if the mapping didn't exist at all.
+  auto& mapping =
+      as.mapping_of(AddressSpace::preload_thread_locals_start());
+  if (mapping.flags & AddressSpace::Mapping::IS_THREAD_LOCALS) {
+    assert(mapping.local_addr);
+    return mapping.local_addr;
+  }
+  return nullptr;
+}
+
+template <typename Arch> static void setup_preload_thread_locals_arch(Task* t) {
+  void* local_addr = preload_thread_locals_local_addr(*t->vm());
+  if (local_addr) {
+    auto locals =
+        reinterpret_cast<preload_thread_locals<Arch>*>(local_addr);
+    static_assert(sizeof(*locals) <= PRELOAD_THREAD_LOCALS_SIZE,
+                  "bad PRELOAD_THREAD_LOCALS_SIZE");
+    locals->syscallbuf_stub_alt_stack = t->syscallbuf_alt_stack();
+  }
+}
+
+void Task::setup_preload_thread_locals() {
+  activate_preload_thread_locals();
+  RR_ARCH_FUNCTION(setup_preload_thread_locals_arch, arch(), this);
+}
+
 const Task::ThreadLocals& Task::fetch_preload_thread_locals() {
   if (tuid() == as->thread_locals_tuid()) {
-    if (as->has_mapping(AddressSpace::preload_thread_locals_start())) {
-      auto& mapping =
-          as->mapping_of(AddressSpace::preload_thread_locals_start());
-      if (mapping.flags & AddressSpace::Mapping::IS_THREAD_LOCALS) {
-        assert(mapping.local_addr);
-        memcpy(thread_locals, mapping.local_addr, PRELOAD_THREAD_LOCALS_SIZE);
-        return thread_locals;
-      }
-      // There might have been a mapping there, but not the one we expect (i.e.
-      // the one shared with us for thread locals). In that case we behave as
-      // if the mapping didn't exist at all.
+    void* local_addr = preload_thread_locals_local_addr(*as);
+    if (local_addr) {
+      memcpy(thread_locals, local_addr, PRELOAD_THREAD_LOCALS_SIZE);
+      return thread_locals;
     }
     // The mapping might have been removed by crazy application code.
     // That's OK, assuming the preload library was removed too.
@@ -877,16 +902,16 @@ const Task::ThreadLocals& Task::fetch_preload_thread_locals() {
 
 void Task::activate_preload_thread_locals() {
   // Switch thread-locals to the new task.
-  if (tuid() != as->thread_locals_tuid() &&
-      as->has_mapping(AddressSpace::preload_thread_locals_start())) {
-    Task* t = session().find_task(as->thread_locals_tuid());
-    if (t) {
-      t->fetch_preload_thread_locals();
+  if (tuid() != as->thread_locals_tuid()) {
+    void* local_addr = preload_thread_locals_local_addr(*as);
+    if (local_addr) {
+      Task* t = session().find_task(as->thread_locals_tuid());
+      if (t) {
+        t->fetch_preload_thread_locals();
+      }
+      memcpy(local_addr, thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
+      as->set_thread_locals_tuid(tuid());
     }
-    memcpy(
-        as->mapping_of(AddressSpace::preload_thread_locals_start()).local_addr,
-        thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
-    as->set_thread_locals_tuid(tuid());
   }
 }
 

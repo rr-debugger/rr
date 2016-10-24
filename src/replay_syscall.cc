@@ -124,6 +124,7 @@ static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
                                  km.flags() | MAP_FIXED, -1, 0);
   t->vm()->map(t, t->scratch_ptr, sz, km.prot(), km.flags(), 0, string(),
                KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr, &km);
+  t->setup_preload_thread_locals();
 }
 
 /**

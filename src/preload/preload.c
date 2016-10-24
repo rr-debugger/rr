@@ -126,67 +126,6 @@ static int process_inited;
 
 static struct preload_globals globals;
 
-/**
- * Can be architecture dependent. The rr process does not manipulate
- * these except to save and restore the values on task switches so that
- * the values are always effectively local to the current task.
- * We use this instead of regular libc TLS because sometimes buggy application
- * code breaks libc TLS for some tasks. With this approach we can be sure
- * thread-locals are usable for any task in any state.
- */
-struct preload_thread_locals {
-  /* Nonzero when thread-local state like the syscallbuf has been
-   * initialized.  */
-  int thread_inited;
-  /* When buffering is enabled, points at the thread's mapped buffer
-   * segment.  At the start of the segment is an object of type |struct
-   * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
-   * header. */
-  uint8_t* buffer;
-  size_t buffer_size;
-  /* This is used to support the buffering of "may-block" system calls.
-   * The problem that needs to be addressed can be introduced with a
-   * simple example; assume that we're buffering the "read" and "write"
-   * syscalls.
-   *
-   *  o (Tasks W and R set up a synchronous-IO pipe open between them; W
-   *    "owns" the write end of the pipe; R owns the read end; the pipe
-   *    buffer is full)
-   *  o Task W invokes the write syscall on the pipe
-   *  o Since write is a buffered syscall, the seccomp filter traps W
-   *    directly to the kernel; there's no trace event for W delivered
-   *    to rr.
-   *  o The pipe is full, so W is descheduled by the kernel because W
-   *    can't make progress.
-   *  o rr thinks W is still running and doesn't schedule R.
-   *
-   * At this point, progress in the recorded application can only be
-   * made by scheduling R, but no one tells rr to do that.  Oops!
-   *
-   * Thus enter the "desched counter".  It's a perf_event for the "sw t
-   * switches" event (which, more precisely, is "sw deschedule"; it
-   * counts schedule-out, not schedule-in).  We program the counter to
-   * deliver a signal to this task when there's new counter data
-   * available.  And we set up the "sample period", how many descheds
-   * are triggered before the signal is delivered, to be "1".  This
-   * means that when the counter is armed, the next desched (i.e., the
-   * next time the desched counter is bumped up) of this task will
-   * deliver the signal to it.  And signal delivery always generates a
-   * ptrace trap, so rr can deduce that this task was descheduled and
-   * schedule another.
-   *
-   * The description above is sort of an idealized view; there are
-   * numerous implementation details that are documented in
-   * handle_signal.c, where they're dealt with. */
-  int desched_counter_fd;
-  int cloned_file_data_fd;
-  off_t cloned_file_data_offset;
-  void* scratch_buf;
-  size_t scratch_size;
-
-  struct msghdr* notify_control_msg;
-};
-
 static struct preload_thread_locals* const thread_locals =
     (struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR;
 
