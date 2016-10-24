@@ -701,7 +701,12 @@ public:
    *
    * |scratch_ptr| points at the mapped address in the child,
    * and |size| is the total available space. */
-  remote_ptr<void> scratch_ptr;
+  remote_ptr<void> scratch_ptr
+      /* The full size of the scratch buffer.
+   *
+   * The last page of the scratch buffer is used as an alternate stack
+   * for the syscallbuf code. So the usable size is less than this.
+   */;
   ssize_t scratch_size;
 
   /* The child's desched counter event fd number */
@@ -729,6 +734,10 @@ public:
   ThreadLocals thread_locals;
 
   PropertyTable& properties() { return properties_; }
+
+  size_t usable_scratch_size() {
+    return std::max<ssize_t>(0, scratch_size - page_size());
+  }
 
   struct CapturedState {
     Ticks ticks;
