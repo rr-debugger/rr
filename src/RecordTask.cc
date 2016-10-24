@@ -368,6 +368,12 @@ static SupportedArch determine_arch(RecordTask* t, const string& file_name) {
 }
 
 void RecordTask::post_exec() {
+  // We usually only reload this value from the syscallbuf when needed.
+  // However, since we're about to get rid of the syscallbuf hdr, which
+  // holds this value, we need to make sure to update the value here
+  // to avoid seeing it stale after the exec.
+  blocked_sigs = get_sigmask();
+
   string exe_file = exe_path(this);
   SupportedArch a = determine_arch(this, exe_file);
   if (emulated_ptracer) {

@@ -645,6 +645,7 @@ set(BASIC_TESTS
   signal_unstoppable
   signalfd
   sigprocmask
+  sigprocmask_exec
   sigprocmask_in_syscallbuf_sighandler
   sigprocmask_rr_sigs
   sigprocmask_syscallbuf
