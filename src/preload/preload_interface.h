@@ -127,6 +127,7 @@
  * syscall and a hook function to patch with.
  */
 struct syscall_patch_hook {
+  uint8_t is_multi_instruction;
   uint8_t next_instruction_length;
   uint8_t next_instruction_bytes[6];
   uint64_t hook_address;

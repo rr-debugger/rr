@@ -361,7 +361,7 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
   for (auto& hook : syscall_hooks) {
     if (memcmp(following_bytes, hook.next_instruction_bytes,
                hook.next_instruction_length) == 0) {
-      // Search for a following short-jump instruction that targets the zone
+      // Search for a following short-jump instruction that targets an instruction
       // after the syscall. False positives are OK.
       // glibc-2.23.1-8.fc24.x86_64's __clock_nanosleep needs this.
       bool found_potential_interfering_branch = false;
@@ -370,7 +370,7 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
         // Check for short conditional or unconditional jump
         if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
           int offset = i + 2 + (int8_t)following_bytes[i + 1];
-          if (offset >= 0 && offset < hook.next_instruction_length) {
+          if (hook.is_multi_instruction ? (offset >= 0 && offset < hook.next_instruction_length) : offset == 0) {
             LOG(debug) << "Found potential interfering branch at "
                        << r.ip().to_data_ptr<uint8_t>() + i;
             // We can't patch this because it would jump straight back into
