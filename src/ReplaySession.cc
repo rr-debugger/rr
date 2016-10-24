@@ -1059,6 +1059,8 @@ Completion ReplaySession::patch_next_syscall(
     t->vm()->map(t, km.start(), km.size(), km.prot(), km.flags(), 0, string(),
                  KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
                  &km);
+    t->vm()->mapping_flags_of(km.start()) |=
+        AddressSpace::Mapping::IS_PATCH_STUBS;
   }
 
   // Now replay all data records.

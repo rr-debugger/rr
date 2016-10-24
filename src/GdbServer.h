@@ -117,9 +117,10 @@ private:
   void dispatch_regs_request(const Registers& regs,
                              const ExtraRegisters& extra_regs);
   enum ReportState { REPORT_NORMAL, REPORT_THREADS_DEAD };
+  bool intercept_mem_request(Task* target, const GdbRequest& req,
+                             std::vector<uint8_t>* result);
   /**
-   * Process the single debugger request |req|, made by |dbg| targeting
-   * |t|, inside the session |session|.
+   * Process the single debugger request |req| inside the session |session|.
    *
    * Callers should implement any special semantics they want for
    * particular debugger requests before calling this helper, to do

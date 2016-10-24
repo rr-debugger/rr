@@ -493,6 +493,7 @@ set(BASIC_TESTS
   futex_pi
   futex_priorities
   fxregs
+  gdb_bogus_breakpoint
   getcpu
   getgroups
   getpwnam

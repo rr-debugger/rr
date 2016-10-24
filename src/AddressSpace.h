@@ -268,7 +268,9 @@ public:
       IS_SYSCALLBUF = 0x1,
       // This mapping is used as our thread-local variable area for this
       // address space
-      IS_THREAD_LOCALS = 0x2
+      IS_THREAD_LOCALS = 0x2,
+      // This mapping is used for syscallbuf patch stubs
+      IS_PATCH_STUBS = 0x4,
     };
     uint32_t flags;
   };
