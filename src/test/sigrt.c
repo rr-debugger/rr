@@ -15,7 +15,7 @@ static void handle_sigrt(int sig) {
   ++num_signals_caught;
 }
 
-static void __attribute__ ((noinline)) my_raise(int sig) {
+static void __attribute__((noinline)) my_raise(int sig) {
 /* Don't call raise() directly, since that can go through our syscall hooks
    which mess up gdb's reverse-finish slightly. */
 #ifdef __i386__
@@ -40,7 +40,8 @@ static void __attribute__ ((noinline)) my_raise(int sig) {
 
 // Split this out because some aggressive inlining can confuse gdb, but
 // we rely on gdb being able to step properly.
-static sighandler_t __attribute__ ((noinline)) my_signal(int signum, sighandler_t handler) {
+static sighandler_t __attribute__((noinline))
+my_signal(int signum, sighandler_t handler) {
   return signal(signum, handler);
 }
 

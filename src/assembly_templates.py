@@ -71,7 +71,7 @@ templates = {
         RawBytes(0xc3),         # ret
     ),
     'X86SysenterVsyscallSyscallHook': AssemblyTemplate(
-        RawBytes(0xe9),         # jmp $syscall_hook_trampoline
+        RawBytes(0xe9),         # jmp $_syscallhook_vsyscall_entry
         Field('syscall_hook_trampoline', 4),
     ),
     'X86VsyscallMonkeypatch': AssemblyTemplate(
@@ -95,14 +95,16 @@ templates = {
     ),
     'X86SyscallStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
-        # We must adjust the stack pointer without modifying flags,
-        # at least on the return path.
-        RawBytes(0x81, 0xec, 0x00, 0x01, 0x00, 0x00),       # sub $256,%esp
-        RawBytes(0xc7, 0x04, 0x24),                         # movl $fake_return_addr,(%esp)
-        Field('fake_return_addr', 4),
-        RawBytes(0x89, 0x64, 0x24, 0x04),                   # mov %esp,4(%esp)
-        RawBytes(0x81, 0x44, 0x24, 0x04, 0x00, 0x01, 0x00, 0x00), # addl $256,4(%esp)
-        RawBytes(0xe9),                                     # jmp $trampoline_relative_addr
+        RawBytes(0x89, 0x25, 0x04, 0x10, 0x00, 0x70), # movl %esp,(stub_scratch_1)
+        RawBytes(0xFF, 0x05, 0x08, 0x10, 0x00, 0x70), # incl (alt_stack_nesting_level)
+        RawBytes(0x83, 0x3c, 0x25, 0x08, 0x10, 0x00, 0x70, 0x01), # cmpl 1,(alt_stack_nesting_level)
+        RawBytes(0x75, 0x06),                                     # jne dont_switch
+        RawBytes(0x8b, 0x25, 0x00, 0x10, 0x00, 0x70), # movl (syscallbuf_stub_alt_stack),%esp
+        # dont_switch:
+        RawBytes(0xff, 0x35, 0x04, 0x10, 0x00, 0x70), # pushl (stub_scratch_1)
+        RawBytes(0x68),                               # pushl $return_addr
+        Field('return_addr', 4),
+        RawBytes(0xe9),                               # jmp $trampoline_relative_addr
         Field('trampoline_relative_addr', 4)
     ),
 
@@ -124,14 +126,19 @@ templates = {
     ),
     'X64SyscallStubExtendedJump': AssemblyTemplate(
         # This code must match the stubs in syscall_hook.S.
-        RawBytes(0x48, 0x81, 0xec, 0x00, 0x01, 0x00, 0x00), # sub $256,%rsp
+        RawBytes(0x48, 0x89, 0x24, 0x25, 0x08, 0x10, 0x00, 0x70), # movq %rsp,(stub_scratch_1)
+        RawBytes(0xFF, 0x04, 0x25, 0x10, 0x10, 0x00, 0x70),       # incl (alt_stack_nesting_level)
+        RawBytes(0x83, 0x3c, 0x25, 0x10, 0x10, 0x00, 0x70, 0x01), # cmpl 1,(alt_stack_nesting_level)
+        RawBytes(0x75, 0x08),                                     # jne dont_switch
+        RawBytes(0x48, 0x8b, 0x24, 0x25, 0x00, 0x10, 0x00, 0x70), # movq (syscallbuf_stub_alt_stack),%rsp
+        # dont_switch:
+        RawBytes(0xff, 0x34, 0x25, 0x08, 0x10, 0x00, 0x70), # pushq (stub_scratch_1)
+        RawBytes(0x50),                                     # pushq rax
         RawBytes(0xc7, 0x04, 0x24),                         # movl $return_addr_lo,(%rsp)
         Field('return_addr_lo', 4),
-        RawBytes(0xc7, 0x44, 0x24, 0x04),                   # movl $return_addr_hi,4(%rsp)
+        RawBytes(0xc7, 0x44, 0x24, 0x04),                   # movl $return_addr_hi,(%rsp+4)
         Field('return_addr_hi', 4),
-        RawBytes(0x48, 0x89, 0x64, 0x24, 0x08),             # mov %rsp,8(%rsp)
-        RawBytes(0x48, 0x81, 0x44, 0x24, 0x08, 0x00, 0x01, 0x00, 0x00), # addq $256,8(%rsp)
-        RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00), # jmp *0(%rip)
+        RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),       # jmp *0(%rip)
         Field('jump_target', 8),
     ),
 }

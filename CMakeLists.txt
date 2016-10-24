@@ -667,6 +667,7 @@ set(BASIC_TESTS
   stack_growth_after_syscallbuf
   stack_growth_syscallbuf
   stack_growth_with_guard
+  stack_invalid
   stack_overflow
   stack_overflow_altstack
   stack_overflow_with_guard

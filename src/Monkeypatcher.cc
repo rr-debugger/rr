@@ -110,15 +110,10 @@ template <typename Arch> static void setup_preload_library_path(RecordTask* t) {
 
 void Monkeypatcher::init_dynamic_syscall_patching(
     RecordTask* t, int syscall_patch_hook_count,
-    remote_ptr<struct syscall_patch_hook> syscall_patch_hooks,
-    remote_ptr<void> syscall_hook_trampoline,
-    remote_ptr<void> syscall_hook_end) {
+    remote_ptr<struct syscall_patch_hook> syscall_patch_hooks) {
   if (syscall_patch_hook_count) {
     syscall_hooks = t->read_mem(syscall_patch_hooks, syscall_patch_hook_count);
   }
-  this->syscall_hook_trampoline = syscall_hook_trampoline;
-  this->syscall_hook_end = syscall_hook_end;
-  ASSERT(t, syscall_hook_trampoline < syscall_hook_end);
 }
 
 template <typename Arch>
@@ -219,6 +214,16 @@ static remote_ptr<uint8_t> allocate_extended_jump(
   write_and_record_bytes(t, jump_addr, jump_patch);
   page->allocated += sizeof(jump_patch);
   return jump_addr;
+}
+
+bool Monkeypatcher::is_jump_stub_instruction(remote_ptr<void> pp) {
+  for (auto& p : extended_jump_pages) {
+    if (p.addr <= pp.cast<uint8_t>() &&
+        pp.cast<uint8_t>() < p.addr + p.allocated) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -579,21 +584,20 @@ void patch_at_preload_init_arch<X86Arch>(RecordTask* t,
   // Luckily, linux is happy for us to scribble directly over
   // the vdso mapping's bytes without mprotecting the region, so
   // we don't need to prepare remote syscalls here.
-  remote_ptr<void> syscall_hook_trampoline = params.syscall_hook_trampoline;
+  remote_ptr<void> syscallhook_vsyscall_entry = params.syscallhook_vsyscall_entry;
 
   uint8_t patch[X86SysenterVsyscallSyscallHook::size];
   // We're patching in a relative jump, so we need to compute the offset from
   // the end of the jump to our actual destination.
   X86SysenterVsyscallSyscallHook::substitute(
-      patch, syscall_hook_trampoline.as_int() -
+      patch, syscallhook_vsyscall_entry.as_int() -
                  (kernel_vsyscall + sizeof(patch)).as_int());
   write_and_record_bytes(t, kernel_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
-             << HEX(syscall_hook_trampoline.as_int());
+             << HEX(syscallhook_vsyscall_entry.as_int());
 
   patcher.init_dynamic_syscall_patching(
-      t, params.syscall_patch_hook_count, params.syscall_patch_hooks,
-      params.syscall_hook_trampoline, params.syscall_hook_end);
+      t, params.syscall_patch_hook_count, params.syscall_patch_hooks);
 }
 
 // Monkeypatch x86-64 vdso syscalls immediately after exec. The vdso syscalls
@@ -667,8 +671,7 @@ void patch_at_preload_init_arch<X64Arch>(RecordTask* t,
   }
 
   patcher.init_dynamic_syscall_patching(
-      t, params.syscall_patch_hook_count, params.syscall_patch_hooks,
-      params.syscall_hook_trampoline, params.syscall_hook_end);
+      t, params.syscall_patch_hook_count, params.syscall_patch_hooks);
 }
 
 void Monkeypatcher::patch_after_exec(RecordTask* t) {

@@ -199,7 +199,8 @@ struct preload_thread_locals {
    * the scratch buffer */
   PTR(void) syscallbuf_stub_alt_stack;
   /* scratch space used by stub code */
-  PTR(void) stub_scratch;
+  PTR(void) stub_scratch_1;
+  int alt_stack_nesting_level;
   /* Nonzero when thread-local state like the syscallbuf has been
    * initialized.  */
   int thread_inited;
@@ -265,8 +266,7 @@ struct rrcall_init_preload_params {
   int syscallbuf_enabled;
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
-  PTR(void) syscall_hook_trampoline;
-  PTR(void) syscall_hook_end;
+  PTR(void) syscallhook_vsyscall_entry;
   PTR(struct preload_globals) globals;
   /* Address of the first entry of the breakpoint table.
    * After processing a sycallbuf record (and unlocking the syscallbuf),

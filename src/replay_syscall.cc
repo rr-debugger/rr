@@ -119,11 +119,14 @@ static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
   ASSERT(t, (km.flags() & (MAP_PRIVATE | MAP_ANONYMOUS)) ==
                 (MAP_PRIVATE | MAP_ANONYMOUS));
 
-  AutoRemoteSyscalls remote(t);
-  remote.infallible_mmap_syscall(t->scratch_ptr, sz, km.prot(),
-                                 km.flags() | MAP_FIXED, -1, 0);
-  t->vm()->map(t, t->scratch_ptr, sz, km.prot(), km.flags(), 0, string(),
-               KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr, &km);
+  {
+    AutoRemoteSyscalls remote(t);
+    remote.infallible_mmap_syscall(t->scratch_ptr, sz, km.prot(),
+                                   km.flags() | MAP_FIXED, -1, 0);
+    t->vm()->map(t, t->scratch_ptr, sz, km.prot(), km.flags(), 0, string(),
+                 KernelMapping::NO_DEVICE, KernelMapping::NO_INODE, nullptr,
+                 &km);
+  }
   t->setup_preload_thread_locals();
 }
 
@@ -288,7 +291,9 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     AutoRemoteSyscalls remote(new_task);
     for (auto m : t->vm()->maps()) {
       // Recreate any tracee-shared mappings
-      if (m.local_addr && !(m.flags & AddressSpace::Mapping::IS_SYSCALLBUF)) {
+      if (m.local_addr &&
+          !(m.flags & (AddressSpace::Mapping::IS_THREAD_LOCALS |
+                       AddressSpace::Mapping::IS_SYSCALLBUF))) {
         memcpy(Session::recreate_shared_mmap(remote, m).local_addr,
                m.local_addr, m.map.size());
       }

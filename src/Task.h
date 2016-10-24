@@ -740,9 +740,11 @@ public:
   }
   remote_ptr<void> syscallbuf_alt_stack() {
     return scratch_ptr.is_null() ? remote_ptr<void>()
-                                 : scratch_ptr + usable_scratch_size();
+                                 : scratch_ptr + scratch_size;
   }
   void setup_preload_thread_locals();
+  const ThreadLocals& fetch_preload_thread_locals();
+  void activate_preload_thread_locals();
 
   struct CapturedState {
     Ticks ticks;
@@ -771,6 +773,15 @@ protected:
        SupportedArch a);
   virtual ~Task();
 
+  enum CloneReason {
+    // Cloning a task in the same session due to tracee fork()/vfork()/clone()
+    TRACEE_CLONE,
+    // Cloning a task into a new session as the leader for a checkpoint
+    SESSION_CLONE_LEADER,
+    // Cloning a task into the same session to recreate threads while
+    // restoring a checkpoint
+    SESSION_CLONE_NONLEADER,
+  };
   /**
    * Return a new Task cloned from |p|.  |flags| are a set of
    * CloneFlags (see above) that determine which resources are
@@ -779,9 +790,9 @@ protected:
    * only relevant to replay, and is the pid that was assigned
    * to the task during recording.
    */
-  virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
-                      remote_ptr<int> cleartid_addr, pid_t new_tid,
-                      pid_t new_rec_tid, uint32_t new_serial,
+  virtual Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
+                      remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
+                      pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session = nullptr);
 
   template <typename Arch>
@@ -808,9 +819,6 @@ protected:
    * that can simply be copied over in local memory.
    */
   void copy_state(const CapturedState& state);
-
-  const ThreadLocals& fetch_preload_thread_locals();
-  void activate_preload_thread_locals();
 
   /**
    * Make the ptrace |request| with |addr| and |data|, return
@@ -902,7 +910,7 @@ protected:
    * The new clone will be tracked in |session|.  The other
    * arguments are as for |Task::clone()| above.
    */
-  static Task* os_clone(Task* parent, Session* session,
+  static Task* os_clone(CloneReason reason, Task* parent, Session* session,
                         AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                         uint32_t new_serial, unsigned base_flags,
                         remote_ptr<void> stack = nullptr,

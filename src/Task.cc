@@ -861,8 +861,7 @@ static void* preload_thread_locals_local_addr(AddressSpace& as) {
   // There might have been a mapping there, but not the one we expect (i.e.
   // the one shared with us for thread locals). In that case we behave as
   // if the mapping didn't exist at all.
-  auto& mapping =
-      as.mapping_of(AddressSpace::preload_thread_locals_start());
+  auto& mapping = as.mapping_of(AddressSpace::preload_thread_locals_start());
   if (mapping.flags & AddressSpace::Mapping::IS_THREAD_LOCALS) {
     assert(mapping.local_addr);
     return mapping.local_addr;
@@ -873,8 +872,7 @@ static void* preload_thread_locals_local_addr(AddressSpace& as) {
 template <typename Arch> static void setup_preload_thread_locals_arch(Task* t) {
   void* local_addr = preload_thread_locals_local_addr(*t->vm());
   if (local_addr) {
-    auto locals =
-        reinterpret_cast<preload_thread_locals<Arch>*>(local_addr);
+    auto locals = reinterpret_cast<preload_thread_locals<Arch>*>(local_addr);
     static_assert(sizeof(*locals) <= PRELOAD_THREAD_LOCALS_SIZE,
                   "bad PRELOAD_THREAD_LOCALS_SIZE");
     locals->syscallbuf_stub_alt_stack = t->syscallbuf_alt_stack();
@@ -1463,11 +1461,37 @@ static void set_thread_area_from_clone(Task* t, remote_ptr<void> tls) {
   RR_ARCH_FUNCTION(set_thread_area_from_clone_arch, t->arch(), t, tls);
 }
 
-Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
-                  remote_ptr<int>, pid_t new_tid, pid_t new_rec_tid,
-                  uint32_t new_serial, Session* other_session) {
-  auto& sess = other_session ? *other_session : session();
-  Task* t = sess.new_task(new_tid, new_rec_tid, new_serial, arch());
+template <typename Arch>
+static void setup_thread_locals_from_clone_arch(Task* t, Task* origin) {
+  void* local_addr = preload_thread_locals_local_addr(*t->vm());
+  if (local_addr) {
+    t->activate_preload_thread_locals();
+    auto locals = reinterpret_cast<preload_thread_locals<Arch>*>(local_addr);
+    auto origin_locals = reinterpret_cast<const preload_thread_locals<Arch>*>(
+        origin->fetch_preload_thread_locals());
+    locals->alt_stack_nesting_level = origin_locals->alt_stack_nesting_level;
+    // clone() syscalls set the child stack pointer, so the child is no
+    // longer in the syscallbuf code even if the parent was.
+  }
+}
+
+static void setup_thread_locals_from_clone(Task* t, Task* origin) {
+  RR_ARCH_FUNCTION(setup_thread_locals_from_clone_arch, t->arch(), t, origin);
+}
+
+Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
+                  remote_ptr<void> tls, remote_ptr<int>, pid_t new_tid,
+                  pid_t new_rec_tid, uint32_t new_serial,
+                  Session* other_session) {
+  Session* new_task_session = &session();
+  if (other_session) {
+    ASSERT(this, reason != TRACEE_CLONE);
+    new_task_session = other_session;
+  } else {
+    ASSERT(this, reason == TRACEE_CLONE);
+  }
+  Task* t =
+      new_task_session->new_task(new_tid, new_rec_tid, new_serial, arch());
 
   bool unmap_buffers = false;
   bool close_buffers = false;
@@ -1475,7 +1499,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
   if (CLONE_SHARE_TASK_GROUP & flags) {
     t->tg = tg;
   } else {
-    t->tg = sess.clone(t, tg);
+    t->tg = new_task_session->clone(t, tg);
   }
   t->tg->insert_task(t);
   if (CLONE_SHARE_VM & flags) {
@@ -1493,7 +1517,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
       }
     }
   } else {
-    t->as = sess.clone(t, as);
+    t->as = new_task_session->clone(t, as);
     unmap_buffers = as->task_set().size() > 1;
   }
 
@@ -1531,7 +1555,7 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
 
   t->as->insert_task(t);
 
-  if (&session() == &t->session()) {
+  if (reason == TRACEE_CLONE) {
     if (unmap_buffers) {
       // Unmap syscallbuf and scratch for tasks that were not cloned into
       // the new address space
@@ -1569,12 +1593,17 @@ Task* Task::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
     t->as->post_vm_clone(t);
   }
 
+  if (reason == TRACEE_CLONE) {
+    setup_thread_locals_from_clone(t, this);
+  }
+
   return t;
 }
 
 Task* Task::os_fork_into(Session* session) {
   AutoRemoteSyscalls remote(this, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
-  Task* child = os_clone(this, session, remote, rec_tid, serial,
+  Task* child = os_clone(Task::SESSION_CLONE_LEADER, this, session, remote,
+                         rec_tid, serial,
                          // Most likely, we'll be setting up a
                          // CLEARTID futex.  That's not done
                          // here, but rather later in
@@ -1595,8 +1624,8 @@ Task* Task::os_fork_into(Session* session) {
 
 Task* Task::os_clone_into(const CapturedState& state, Task* task_leader,
                           AutoRemoteSyscalls& remote) {
-  return os_clone(task_leader, &task_leader->session(), remote, state.rec_tid,
-                  state.serial,
+  return os_clone(Task::SESSION_CLONE_NONLEADER, task_leader,
+                  &task_leader->session(), remote, state.rec_tid, state.serial,
                   // We don't actually /need/ to specify the
                   // SIGHAND/SYSVMEM flags because those things
                   // are emulated in the tracee.  But we use the
@@ -1718,6 +1747,7 @@ void Task::copy_state(const CapturedState& state) {
     }
   }
   preload_globals = state.preload_globals;
+  ASSERT(this, as->thread_locals_tuid() != tuid());
   memcpy(&thread_locals, &state.thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
   // The scratch buffer (for now) is merely a private mapping in
   // the remote task.  The CoW copy made by fork()'ing the
@@ -2157,11 +2187,12 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                    base_flags, stack, ptid, tls, ctid);
 }
 
-/*static*/ Task* Task::os_clone(Task* parent, Session* session,
-                                AutoRemoteSyscalls& remote, pid_t rec_child_tid,
-                                uint32_t new_serial, unsigned base_flags,
-                                remote_ptr<void> stack, remote_ptr<int> ptid,
-                                remote_ptr<void> tls, remote_ptr<int> ctid) {
+/*static*/ Task* Task::os_clone(CloneReason reason, Task* parent,
+                                Session* session, AutoRemoteSyscalls& remote,
+                                pid_t rec_child_tid, uint32_t new_serial,
+                                unsigned base_flags, remote_ptr<void> stack,
+                                remote_ptr<int> ptid, remote_ptr<void> tls,
+                                remote_ptr<int> ctid) {
   perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {
     // clone syscalls can fail with EAGAIN due to temporary load issues.
@@ -2177,8 +2208,8 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
 
   parent->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
   Task* child =
-      parent->clone(clone_flags_to_task_flags(base_flags), stack, tls, ctid,
-                    new_tid, rec_child_tid, new_serial, session);
+      parent->clone(reason, clone_flags_to_task_flags(base_flags), stack, tls,
+                    ctid, new_tid, rec_child_tid, new_serial, session);
   return child;
 }
 

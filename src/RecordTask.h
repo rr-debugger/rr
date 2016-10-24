@@ -49,9 +49,9 @@ public:
   RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
              SupportedArch a);
 
-  virtual Task* clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
-                      remote_ptr<int> cleartid_addr, pid_t new_tid,
-                      pid_t new_rec_tid, uint32_t new_serial,
+  virtual Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
+                      remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
+                      pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session);
   virtual void on_syscall_exit(int syscallno, const Registers& regs);
 
@@ -304,9 +304,8 @@ public:
       return false;
     }
     remote_ptr<void> p = ip().to_data_ptr<void>();
-    return (as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end() &&
-            !as->monkeypatcher().is_syscallbuf_excluded_instruction(p)) ||
-           is_in_rr_page();
+    return (as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end()) ||
+           as->monkeypatcher().is_jump_stub_instruction(p) || is_in_rr_page();
   }
   /**
    * Shortcut to the most recent |pending_event->desched.rec| when

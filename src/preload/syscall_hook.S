@@ -1,20 +1,4 @@
-        /* This must match the numbers in X86SyscallStubMonkeypatch and
-           X64SyscallStubMonkeypatch */
-        .set _syscall_stack_adjust,256
-        /* This must exceed the maximum stack usage of the syscall hook and
-           its callees */
-        .set _stack_pad_size,2048
-
-        /* _syscall_hook_trampoline must be the first instruction defined
-           in this file, and _syscall_hook_end must be at the end of the last
-           instruction. */
-
-        .global _syscall_hook_trampoline
-        .hidden _syscall_hook_trampoline
-        .type _syscall_hook_trampoline, @function
-
-        .global _syscall_hook_end
-        .hidden _syscall_hook_end
+        .set preload_thread_locals,0x70001000
 
 #if defined(__i386__)
 /**
@@ -26,17 +10,51 @@
  * know that its call to |__kernel_vsyscall()| has been re-routed to
  * us.
  */
+        .global _syscallhook_vsyscall_entry
+        .hidden _syscallhook_vsyscall_entry
+        .type _syscallhook_vsyscall_entry, @function
+
         .text
+
+        .set syscallbuf_stub_alt_stack, preload_thread_locals
+        .set stub_scratch_1, preload_thread_locals + 4
+        .set alt_stack_nesting_level, preload_thread_locals + 8
+
+        .p2align 4
+_syscallhook_vsyscall_entry:
+        .cfi_startproc
+        movl %esp,(stub_scratch_1)
+        incl (alt_stack_nesting_level)
+        cmpl $1,(alt_stack_nesting_level)
+        jne 1f
+        movl (syscallbuf_stub_alt_stack),%esp
+1:
+        /* Set up stack frame so CFI stack walking works.
+           Push before-call ESP.
+         */
+        pushl (stub_scratch_1)
+        add $4,(%esp)
+        /* Push return address EIP. */
+        mov %edi,(stub_scratch_1)
+        mov (%esp),%edi /* EDI == before-call ESP */
+        push -4(%edi)
+        mov (stub_scratch_1),%edi
+
+       .cfi_def_cfa_offset 0
+       .cfi_offset %eip, 0
+       .cfi_offset %esp, 4
+        call _syscall_hook_trampoline
+
+        /* Pop previous EIP */
+        lea 4(%esp),%esp
+        /* Restore previous ESP */
+        sub $4,(%esp)
+        pop %esp
+        ret
+        .cfi_endproc
 
 _syscall_hook_trampoline:
         .cfi_startproc
-
-        /* Force the stack to be extended to at least _stack_pad_size.
-           This forces any MAP_GROWSDOWN emulation to happen before we enter
-           the syscallbuf, which avoids having to reason about system calls
-           being recorded while we're in the middle of syscallbuf processing. */
-        movb $0,-_stack_pad_size(%esp)
-
         /* Build a |struct syscall_info| by pushing all the syscall
          * args and the number onto the stack. */
                           /* struct syscall_info info; */
@@ -94,6 +112,9 @@ _syscall_hook_trampoline:
         popl %edi
         .cfi_adjust_cfa_offset -4
         .cfi_restore %edi
+        mov (alt_stack_nesting_level),%ebp
+        lea -1(%ebp),%ebp
+        mov %ebp,(alt_stack_nesting_level)
         popl %ebp
         .cfi_adjust_cfa_offset -4
         .cfi_restore %ebp
@@ -110,10 +131,13 @@ name:                           \
        .cfi_startproc;          \
        .cfi_def_cfa_offset 0;   \
        .cfi_offset %eip, 0;     \
-       .cfi_offset %esp, 4;
+       .cfi_offset %esp, 4
 
 #define SYSCALLHOOK_END(name)         \
-       ret $_syscall_stack_adjust-4;  \
+        pop (stub_scratch_1);         \
+        .cfi_adjust_cfa_offset -4;    \
+        pop %esp;                     \
+        jmp *(stub_scratch_1);        \
        .cfi_endproc;                  \
        .size name, .-name
 
@@ -126,21 +150,15 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_90_90_90)
         call _syscall_hook_trampoline
 SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
 
-_syscall_hook_end:
-
 #elif defined(__x86_64__)
         .text
+
+        .set stub_scratch_1, preload_thread_locals + 8
+        .set alt_stack_nesting_level, preload_thread_locals + 16
 
         .p2align 4
 _syscall_hook_trampoline:
         .cfi_startproc
-
-        /* Force the stack to be extended to at least _stack_pad_size.
-           This forces any MAP_GROWSDOWN emulation to happen before we enter
-           the syscallbuf, which avoids having to reason about system calls
-           being recorded while we're in the middle of syscallbuf processing. */
-        movb $0,-_stack_pad_size(%rsp)
-
         /* Build a |struct syscall_info| on the stack by pushing the arguments
            and syscall number. */
         pushq %r9
@@ -192,6 +210,9 @@ _syscall_hook_trampoline:
         pop %r8
         .cfi_adjust_cfa_offset -8
         .cfi_restore %r8
+        mov (alt_stack_nesting_level),%r9d
+        lea -1(%r9),%r9
+        mov %r9d,(alt_stack_nesting_level)
         pop %r9
         .cfi_adjust_cfa_offset -8
         .cfi_restore %r9
@@ -201,6 +222,10 @@ _syscall_hook_trampoline:
         .cfi_endproc
         .size _syscall_hook_trampoline, . - _syscall_hook_trampoline
 
+/**
+ * On syscallhook entry, the stack has been switched to the end of per-task
+ * scratch space, then the old RSP and the return address have been pushed.
+ */
 #define SYSCALLHOOK_START(name) \
         .global name;           \
         .hidden name;           \
@@ -212,7 +237,10 @@ name:                           \
         .cfi_offset %rsp, 8;
 
 #define SYSCALLHOOK_END(name)          \
-        ret $_syscall_stack_adjust-8;  \
+        pop (stub_scratch_1);          \
+        .cfi_adjust_cfa_offset -8;     \
+        pop %rsp;                      \
+        jmp *(stub_scratch_1);         \
         .cfi_endproc;                  \
         .size name, .-name
 
@@ -229,11 +257,9 @@ SYSCALLHOOK_END(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_3c_24)
          callq _syscall_hook_trampoline
-         /* The original instruction after the syscall is movq (%rsp),%rdi.
-            Because we pushed a return address and shifted RSP down
-            before reaching this point, to get the equivalent behavior we
-            need to use this offset. */
-         movq _syscall_stack_adjust(%rsp),%rdi
+         /* The original instruction after the syscall is movq (%rsp),%rdi. */
+         movq 8(%rsp),%rdi
+         movq (%rdi),%rdi
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_3c_24)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
@@ -242,7 +268,9 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
            pop %rdx; pop %rsi; retq. */
         /* We're not returning to the dynamically generated stub, so
            we need to fix the stack pointer ourselves. */
-        add $_syscall_stack_adjust,%rsp
+        pop %rdx
+        .cfi_adjust_cfa_offset -8
+        pop %rsp
         pop %rdx
         pop %rsi
         ret
@@ -270,8 +298,6 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_89_c1_31_d2)
         mov %eax,%ecx
         xor %edx,%edx
 SYSCALLHOOK_END(_syscall_hook_trampoline_89_c1_31_d2)
-
-_syscall_hook_end:
 
 #endif /* __x86_64__ */
 

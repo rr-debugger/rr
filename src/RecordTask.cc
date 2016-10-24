@@ -308,12 +308,13 @@ TraceWriter& RecordTask::trace_writer() const {
   return session().trace_writer();
 }
 
-Task* RecordTask::clone(int flags, remote_ptr<void> stack, remote_ptr<void> tls,
-                        remote_ptr<int> cleartid_addr, pid_t new_tid,
-                        pid_t new_rec_tid, uint32_t new_serial,
+Task* RecordTask::clone(CloneReason reason, int flags, remote_ptr<void> stack,
+                        remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
+                        pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
                         Session* other_session) {
-  Task* t = Task::clone(flags, stack, tls, cleartid_addr, new_tid, new_rec_tid,
-                        new_serial, other_session);
+  ASSERT(this, reason == Task::TRACEE_CLONE);
+  Task* t = Task::clone(reason, flags, stack, tls, cleartid_addr, new_tid,
+                        new_rec_tid, new_serial, other_session);
   if (t->session().is_recording()) {
     RecordTask* rt = static_cast<RecordTask*>(t);
     rt->priority = priority;

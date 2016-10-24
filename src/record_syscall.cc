@@ -3789,7 +3789,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
   for (auto m : t->vm()->maps()) {
     auto& km = m.map;
-    if (km.start() == AddressSpace::rr_page_start()) {
+    if (km.start() == AddressSpace::rr_page_start() ||
+        km.start() == AddressSpace::preload_thread_locals_start()) {
       continue;
     }
     if (km.is_stack() || km.is_vsyscall()) {
