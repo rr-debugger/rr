@@ -13,6 +13,7 @@ namespace rr {
 MmappedFileMonitor::MmappedFileMonitor(Task* t, int fd) {
   ASSERT(t, !t->session().is_replaying());
   extant_ = true;
+  dead_ = false;
   auto stat = t->stat_fd(fd);
   device_ = stat.st_dev;
   inode_ = stat.st_ino;
@@ -22,6 +23,7 @@ MmappedFileMonitor::MmappedFileMonitor(Task* t, EmuFile::shr_ptr f) {
   ASSERT(t, t->session().is_replaying());
 
   extant_ = !!f;
+  dead_ = false;
   if (!extant_) {
     // Our only role is to disable syscall buffering for this fd.
     return;
@@ -33,14 +35,19 @@ MmappedFileMonitor::MmappedFileMonitor(Task* t, EmuFile::shr_ptr f) {
 
 void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                    int64_t offset) {
+  // If there are no remaining mappings that we care about, those can't reappear
+  // without going through mmap again, at which point this will be reset to
+  // false.
+  if (dead_) {
+    return;
+  }
+
   if (!extant_ || ranges.empty()) {
     return;
   }
 
-  ASSERT(t, offset >= 0)
-      << "Only pwrite/pwritev supported on /proc/<pid>/mem currently";
-  // XXX to fix that, we'd have to grab the file offset from
-  // /proc/<pid>/fdinfo.
+  // Dead until proven otherwise
+  dead_ = true;
 
   bool is_replay = t->session().is_replaying();
   for (auto v : t->session().vms()) {
@@ -57,6 +64,13 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
           continue;
         }
       }
+
+      dead_ = false;
+
+      ASSERT(t, offset >= 0)
+          << "Only pwrite/pwritev supported on MAP_SHARED file descriptors";
+      // XXX to fix that, we'd have to grab the file offset from
+      // /proc/<pid>/fdinfo.
 
       // stat matches.
       ASSERT(t, km.flags() & MAP_SHARED);

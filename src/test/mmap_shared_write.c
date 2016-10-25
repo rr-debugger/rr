@@ -63,6 +63,14 @@ int main(void) {
        ++i) {
     pwrite64(fd, &magic, sizeof(magic), i * sizeof(magic));
   }
+  check_mapping(&rpage[(3 * num_bytes) / sizeof(magic)], 0xdeadbeef,
+                2 * num_bytes / sizeof(*rpage));
+
+  munmap(rpage, 5 * num_bytes);
+
+  // We don't allow write on a page that is MAP_SHARED. However, we just
+  // unmapped all references, so this should be fine
+  write(fd, &magic, sizeof(magic));
 
   atomic_puts("EXIT-SUCCESS");
 

@@ -758,6 +758,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
     if (t->fd_table()->is_monitoring(fd)) {
       ASSERT(t, t->fd_table()->get_monitor(fd)->type() ==
                     FileMonitor::Type::Mmapped);
+      ((MmappedFileMonitor*)t->fd_table()->get_monitor(fd))->revive();
     } else {
       t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, emufile));
     }
