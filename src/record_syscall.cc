@@ -3891,6 +3891,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       if (t->fd_table()->is_monitoring(fd)) {
         ASSERT(t, t->fd_table()->get_monitor(fd)->type() ==
                       FileMonitor::Type::Mmapped);
+        ((MmappedFileMonitor*)t->fd_table()->get_monitor(fd))->revive();
       } else {
         t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, fd));
       }

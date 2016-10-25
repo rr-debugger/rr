@@ -20,6 +20,7 @@ public:
   MmappedFileMonitor(Task* t, EmuFile::shr_ptr f);
 
   virtual Type type() { return Mmapped; }
+  void revive() { dead_ = false; }
 
   /**
    * During recording, note writes to mapped segments.
@@ -28,6 +29,8 @@ public:
                          int64_t offset);
 
 private:
+  // Whether this monitor is still actively monitoring
+  bool dead_;
   bool extant_;
   dev_t device_;
   ino_t inode_;
