@@ -20,12 +20,12 @@ public:
   VirtualPerfCounterMonitor(Task* t, Task* target,
                             const struct perf_event_attr& attr);
 
-  virtual Type type() { return VirtualPerfCounter; }
+  virtual Type type() override { return VirtualPerfCounter; }
 
-  virtual bool emulate_ioctl(RecordTask* t, uint64_t* result);
-  virtual bool emulate_fcntl(RecordTask* t, uint64_t* result);
+  virtual bool emulate_ioctl(RecordTask* t, uint64_t* result) override;
+  virtual bool emulate_fcntl(RecordTask* t, uint64_t* result) override;
   virtual bool emulate_read(RecordTask* t, const std::vector<Range>& ranges,
-                            int64_t offset, uint64_t* result);
+                            LazyOffset& offset, uint64_t* result) override;
 
 private:
   Ticks initial_ticks;

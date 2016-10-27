@@ -50,7 +50,7 @@ bool FdTable::emulate_fcntl(int fd, RecordTask* t, uint64_t* result) {
 
 bool FdTable::emulate_read(int fd, RecordTask* t,
                            const std::vector<FileMonitor::Range>& ranges,
-                           int64_t offset, uint64_t* result) {
+                           FileMonitor::LazyOffset& offset, uint64_t* result) {
   auto it = fds.find(fd);
   if (it == fds.end()) {
     return false;
@@ -76,7 +76,7 @@ Switchable FdTable::will_write(Task* t, int fd) {
 
 void FdTable::did_write(Task* t, int fd,
                         const std::vector<FileMonitor::Range>& ranges,
-                        int64_t offset) {
+                        FileMonitor::LazyOffset& offset) {
   auto it = fds.find(fd);
   if (it != fds.end()) {
     it->second->did_write(t, ranges, offset);

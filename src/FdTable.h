@@ -22,12 +22,13 @@ public:
   bool emulate_fcntl(int fd, RecordTask* t, uint64_t* result);
   bool emulate_read(int fd, RecordTask* t,
                     const std::vector<FileMonitor::Range>& ranges,
-                    int64_t offset, uint64_t* result);
+                    FileMonitor::LazyOffset& offset, uint64_t* result);
   void filter_getdents(int fd, RecordTask* t);
   bool is_rr_fd(int fd);
   Switchable will_write(Task* t, int fd);
+  bool needs_offset(Task* t, int fd, bool for_write);
   void did_write(Task* t, int fd, const std::vector<FileMonitor::Range>& ranges,
-                 int64_t offset = -1);
+                 FileMonitor::LazyOffset& offset);
   void did_dup(int from, int to);
   void did_close(int fd);
 

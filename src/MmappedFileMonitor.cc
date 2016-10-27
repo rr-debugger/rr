@@ -4,6 +4,7 @@
 
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "ReplayTask.h"
 #include "log.h"
 
 using namespace std;
@@ -34,7 +35,7 @@ MmappedFileMonitor::MmappedFileMonitor(Task* t, EmuFile::shr_ptr f) {
 }
 
 void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
-                                   int64_t offset) {
+                                   LazyOffset& offset) {
   // If there are no remaining mappings that we care about, those can't reappear
   // without going through mmap again, at which point this will be reset to
   // false.
@@ -48,6 +49,7 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
 
   // Dead until proven otherwise
   dead_ = true;
+  int64_t realized_offset = 0;
 
   bool is_replay = t->session().is_replaying();
   for (auto v : t->session().vms()) {
@@ -65,17 +67,16 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
         }
       }
 
-      dead_ = false;
-
-      ASSERT(t, offset >= 0)
-          << "Only pwrite/pwritev supported on MAP_SHARED file descriptors";
-      // XXX to fix that, we'd have to grab the file offset from
-      // /proc/<pid>/fdinfo.
+      // We're discovering a mapping we care about
+      if (dead_) {
+        dead_ = false;
+        realized_offset = offset.retrieve(true);
+      }
 
       // stat matches.
       ASSERT(t, km.flags() & MAP_SHARED);
       uint64_t mapping_offset = km.file_offset_bytes();
-      int64_t local_offset = offset;
+      int64_t local_offset = realized_offset;
       for (auto r : ranges) {
         remote_ptr<void> start = km.start() + local_offset - mapping_offset;
         MemoryRange mr(start, r.length);

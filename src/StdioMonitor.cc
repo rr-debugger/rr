@@ -24,7 +24,7 @@ Switchable StdioMonitor::will_write(Task* t) {
 }
 
 void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges,
-                             int64_t) {
+                             LazyOffset&) {
   if (!t->session().is_replaying()) {
     return;
   }

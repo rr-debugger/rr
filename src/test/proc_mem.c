@@ -4,6 +4,7 @@
 
 static int cookie1;
 static int cookie2;
+static int cookie3;
 
 static int COOKIE = 0x12345678;
 
@@ -86,6 +87,7 @@ static void do_test(int (*opener)(int)) {
     test_assert(1 == read(pipe_fds[0], &ch, 1));
     test_assert(COOKIE == cookie1);
     test_assert(COOKIE == cookie2);
+    test_assert(COOKIE == cookie3);
     exit(77);
   }
 
@@ -99,6 +101,9 @@ static void do_test(int (*opener)(int)) {
   iov[1].iov_base = (char*)&COOKIE + 2;
   iov[1].iov_len = 2;
   test_assert(sizeof(COOKIE) == pwritev(fd, iov, 2, (off_t)&cookie2));
+
+  lseek(fd, (off_t)&cookie3, SEEK_SET);
+  test_assert(sizeof(COOKIE) == write(fd, &COOKIE, sizeof(COOKIE)));
 
   test_assert(1 == write(pipe_fds[1], "x", 1));
   test_assert(child == waitpid(child, &status, 0));

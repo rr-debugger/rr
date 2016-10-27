@@ -30,8 +30,12 @@ ProcMemMonitor::ProcMemMonitor(Task* t, const string& pathname) {
   }
 }
 
+bool ProcMemMonitor::needs_offset(Task* t, bool for_write) {
+  return for_write && t->session().is_recording();
+}
+
 void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
-                               int64_t offset) {
+                               LazyOffset& lazy_offset) {
   if (t->session().is_replaying() || ranges.empty()) {
     return;
   }
@@ -39,10 +43,7 @@ void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
   if (!target) {
     return;
   }
-  ASSERT(t, offset >= 0)
-      << "Only pwrite/pwritev supported on /proc/<pid>/mem currently";
-  // XXX to fix that, we'd have to grab the file offset from
-  // /proc/<pid>/fdinfo.
+  int64_t offset = lazy_offset.retrieve(false);
   for (auto& r : ranges) {
     target->record_remote(remote_ptr<void>(offset), r.length);
     offset += r.length;

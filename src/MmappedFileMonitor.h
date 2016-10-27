@@ -32,7 +32,7 @@ public:
    * During recording, note writes to mapped segments.
    */
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
-                         int64_t offset);
+                         LazyOffset& offset);
 
 private:
   // Whether this monitor is still actively monitoring

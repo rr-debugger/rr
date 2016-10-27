@@ -66,7 +66,26 @@ public:
     size_t length;
     Range(remote_ptr<void> data, size_t length) : data(data), length(length) {}
   };
-  virtual void did_write(Task*, const std::vector<Range>&, int64_t) {}
+
+  /**
+   * Encapsulates the offset at which to read or write. Computing this may be
+   * an expensive operation if the offset is implicit (i.e. is taken from the
+   * file descriptor), so we only do it if we actually need to look at the
+   * offset.
+   */
+  class LazyOffset {
+  public:
+    LazyOffset(Task* t, const Registers& regs, int64_t syscallno)
+        : t(t), regs(regs), syscallno(syscallno) {}
+    int64_t retrieve(bool needed_for_replay);
+
+  private:
+    Task* t;
+    const Registers& regs;
+    int64_t syscallno;
+  };
+
+  virtual void did_write(Task*, const std::vector<Range>&, LazyOffset&) {}
 
   /**
    * Return true if the ioctl should be fully emulated. If so the result
@@ -88,7 +107,7 @@ public:
    * task's memory ranges.
    * Only called during recording.
    */
-  virtual bool emulate_read(RecordTask*, const std::vector<Range>&, int64_t,
+  virtual bool emulate_read(RecordTask*, const std::vector<Range>&, LazyOffset&,
                             uint64_t*) {
     return false;
   }

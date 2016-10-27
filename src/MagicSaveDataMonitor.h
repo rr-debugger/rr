@@ -20,6 +20,7 @@ public:
    * During recording, record the written data.
    * During replay, check that the written data matches what was recorded.
    */
+  virtual bool needs_offset(Task*, bool) { return false; }
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
                          int64_t offset);
 };
