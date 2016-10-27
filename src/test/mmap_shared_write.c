@@ -68,9 +68,23 @@ int main(void) {
 
   munmap(rpage, 5 * num_bytes);
 
-  // We don't allow write on a page that is MAP_SHARED. However, we just
-  // unmapped all references, so this should be fine
+  // The case when all pages have been unmapped is special in the
+  // implementation - make sure it gets sufficient coverage
   write(fd, &magic, sizeof(magic));
+  write(fd, &magic, sizeof(magic));
+
+  rpage = mmap(NULL, num_bytes, PROT_READ, MAP_SHARED, fd, 0);
+  atomic_printf("rpage:%p\n", rpage);
+  test_assert(rpage != (void*)-1);
+
+  // This tests both that the monitor gets activated again if the page is
+  // remapped and that `write` works on a monitored page.
+  lseek(fd, 0, SEEK_SET);
+  magic = 0xb6b6b6b6;
+  for (i = 0; i < num_bytes / sizeof(magic); ++i) {
+    write(fd, &magic, sizeof(magic));
+  }
+  check_mapping(rpage, magic, num_bytes / sizeof(*rpage));
 
   atomic_puts("EXIT-SUCCESS");
 

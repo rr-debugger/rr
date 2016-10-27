@@ -109,7 +109,7 @@ static size_t write_ranges(RecordTask* t,
 
 bool VirtualPerfCounterMonitor::emulate_read(RecordTask* t,
                                              const vector<Range>& ranges,
-                                             int64_t, uint64_t* result) {
+                                             LazyOffset&, uint64_t* result) {
   RecordTask* target = t->session().find_task(target_tuid);
   if (target) {
     int64_t val = target->tick_count() - initial_ticks;

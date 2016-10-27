@@ -25,8 +25,9 @@ public:
   /**
    * During replay, copy writes to tracee |tid|'s memory.
    */
+  virtual bool needs_offset(Task* t, bool);
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
-                         int64_t offset);
+                         LazyOffset& lazy_offset);
 
 private:
   // 0 if this doesn't object doesn't refer to a tracee's proc-mem.

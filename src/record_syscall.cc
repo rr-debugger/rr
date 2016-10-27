@@ -2917,8 +2917,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       uint64_t result;
       vector<FileMonitor::Range> ranges;
       ranges.push_back(FileMonitor::Range(t->regs().arg2(), t->regs().arg3()));
-      if (t->fd_table()->emulate_read(
-              fd, t, ranges, t->get_io_offset(syscallno, t->regs()), &result)) {
+      FileMonitor::LazyOffset offset(t, t->regs(), syscallno);
+      if (t->fd_table()->emulate_read(fd, t, ranges, offset, &result)) {
         // Don't perform this syscall.
         Registers r = t->regs();
         r.set_arg1(-1);
@@ -3011,8 +3011,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         ranges.push_back(
             FileMonitor::Range(iovecs[i].iov_base, iovecs[i].iov_len));
       }
-      if (t->fd_table()->emulate_read(
-              fd, t, ranges, t->get_io_offset(syscallno, t->regs()), &result)) {
+      FileMonitor::LazyOffset offset(t, t->regs(), syscallno);
+      if (t->fd_table()->emulate_read(fd, t, ranges, offset, &result)) {
         // Don't perform this syscall.
         Registers r = t->regs();
         r.set_arg1(-1);

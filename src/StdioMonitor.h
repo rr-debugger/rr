@@ -41,7 +41,7 @@ public:
    * During replay, echo writes to stdout/stderr.
    */
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
-                         int64_t offset);
+                         LazyOffset&) override;
 
 private:
   int original_fd;
