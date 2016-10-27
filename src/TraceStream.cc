@@ -6,6 +6,7 @@
 #include <limits.h>
 #include <sysexits.h>
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -47,7 +48,8 @@ static SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
 
 static const SubstreamData& substream(TraceStream::Substream s) {
   if (!substreams[TraceStream::RAW_DATA].threads) {
-    substreams[TraceStream::RAW_DATA].threads = sysconf(_SC_NPROCESSORS_ONLN);
+    substreams[TraceStream::RAW_DATA].threads =
+        min<int>(8, sysconf(_SC_NPROCESSORS_ONLN));
   }
   return substreams[s];
 }
