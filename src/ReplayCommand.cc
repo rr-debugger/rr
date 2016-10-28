@@ -308,7 +308,7 @@ static void serve_replay_no_debugger(const string& trace_dir,
     assert(cmd == RUN_SINGLESTEP || !result.break_status.singlestep_complete);
   }
 
-  LOG(info) << ("Replayer successfully finished.");
+  LOG(info) << "Replayer successfully finished";
 }
 
 /* Handling ctrl-C during replay:

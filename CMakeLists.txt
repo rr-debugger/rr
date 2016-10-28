@@ -272,6 +272,7 @@ set(RR_SOURCES
   src/replay_syscall.cc
   src/ReplayTask.cc
   src/ReplayTimeline.cc
+  src/RerunCommand.cc
   src/ReturnAddressList.cc
   src/Scheduler.cc
   src/SeccompFilterRewriter.cc

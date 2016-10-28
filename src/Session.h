@@ -104,7 +104,7 @@ public:
 
   /**
    * Call |post_exec()| immediately after a tracee has successfully
-   * |execve()|'d.  After that, |can_validate()| returns true.
+   * |execve()|'d.  After that, |done_initial_exec()| returns true.
    * This is called while we're still in the execve syscall so it's not safe
    * to perform remote syscalls in this method.
    *
