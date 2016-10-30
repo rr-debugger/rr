@@ -170,6 +170,13 @@ struct usbdevfs_streams {
 #define SO_SET_REPLACE 64
 #endif
 
+#ifndef HCIGETDEVLIST
+#define HCIGETDEVLIST _IOR('H', 210, int)
+#endif
+#ifndef HCIGETDEVINFO
+#define HCIGETDEVINFO _IOR('H', 211, int)
+#endif
+
 // Unfortuantely the header that defines these is not C++ safe, we we'll
 // have to redefine them here
 #ifndef KEYCTL_GET_KEYRING_ID

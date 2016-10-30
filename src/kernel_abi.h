@@ -1367,6 +1367,57 @@ struct BaseArch : public wordsize,
     uint32_t permitted;
     uint32_t inheritable;
   };
+
+  struct hci_dev_req {
+    uint16_t dev_id;
+    uint32_t dev_opt;
+  };
+
+  struct hci_dev_list_req {
+    uint16_t dev_num;
+    struct hci_dev_req dev_req[0];
+  };
+
+  typedef struct {
+    uint8_t b[6];
+  } __attribute__((__packed__)) bdaddr_t;
+
+  struct hci_dev_stats {
+    uint32_t err_rx;
+    uint32_t err_tx;
+    uint32_t cmd_tx;
+    uint32_t evt_rx;
+    uint32_t acl_tx;
+    uint32_t acl_rx;
+    uint32_t sco_tx;
+    uint32_t sco_rx;
+    uint32_t byte_rx;
+    uint32_t byte_tx;
+  };
+
+  struct hci_dev_info {
+    uint16_t dev_id;
+    char  name[8];
+
+    bdaddr_t bdaddr;
+
+    uint32_t flags;
+    uint8_t  type;
+
+    uint8_t  features[8];
+
+    uint32_t pkt_type;
+    uint32_t link_policy;
+    uint32_t link_mode;
+
+    uint16_t acl_mtu;
+    uint16_t acl_pkts;
+    uint16_t sco_mtu;
+    uint16_t sco_pkts;
+
+    struct hci_dev_stats stat;
+  };
+
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
