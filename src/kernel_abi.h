@@ -1418,6 +1418,12 @@ struct BaseArch : public wordsize,
     struct hci_dev_stats stat;
   };
 
+  typedef struct ifbond {
+    int32_t bond_mode;
+    int32_t num_slaves;
+    int32_t miimon;
+  } ifbond;
+  RR_VERIFY_TYPE(ifbond);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

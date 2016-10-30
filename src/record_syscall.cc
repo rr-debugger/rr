@@ -1353,6 +1353,14 @@ static Switchable prepare_ioctl(RecordTask* t,
     case SIOCDELRT:
       return PREVENT_SWITCH;
 
+    case SIOCBONDINFOQUERY: {
+      auto ifrp = syscall_state.reg_parameter<typename Arch::ifreq>(3, IN);
+      syscall_state.mem_ptr_parameter<typename Arch::ifbond>(
+          REMOTE_PTR_FIELD(ifrp, ifr_ifru.ifru_data));
+      syscall_state.after_syscall_action(record_page_below_stack_ptr);
+      return PREVENT_SWITCH;
+    }
+
     case SIOCGIFADDR:
     case SIOCGIFDSTADDR:
     case SIOCGIFBRDADDR:

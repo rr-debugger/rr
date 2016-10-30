@@ -16,6 +16,7 @@
 #include <linux/filter.h>
 #include <linux/futex.h>
 #include <linux/ipc.h>
+#include <linux/if_bonding.h>
 #include <linux/mqueue.h>
 #include <linux/msg.h>
 #include <linux/net.h>
