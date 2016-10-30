@@ -1397,6 +1397,14 @@ static Switchable prepare_ioctl(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case SIOCGSTAMP:
+      syscall_state.reg_parameter<typename Arch::timeval>(3);
+      return PREVENT_SWITCH;
+
+    case SIOCGSTAMPNS:
+      syscall_state.reg_parameter<typename Arch::timespec>(3);
+      return PREVENT_SWITCH;
+
     case TCGETS:
     case TIOCGLCKTRMIOS:
       syscall_state.reg_parameter<typename Arch::termios>(3);
