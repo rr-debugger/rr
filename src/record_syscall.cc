@@ -1420,6 +1420,14 @@ static Switchable prepare_ioctl(RecordTask* t,
     case SNDRV_CTL_IOCTL_CARD_INFO:
       syscall_state.reg_parameter<typename Arch::snd_ctl_card_info>(3);
       return PREVENT_SWITCH;
+
+    case HCIGETDEVINFO:
+      syscall_state.reg_parameter<typename Arch::hci_dev_info>(3);
+      return PREVENT_SWITCH;
+
+    case HCIGETDEVLIST:
+      syscall_state.reg_parameter<typename Arch::hci_dev_list_req>(3);
+      return PREVENT_SWITCH;
   }
 
   /* In ioctl language, "_IOC_READ" means "outparam".  Both
