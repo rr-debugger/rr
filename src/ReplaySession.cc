@@ -60,7 +60,7 @@ namespace rr {
  * perhaps pipeline depth and things of that nature are involved.  But
  * those reasons if they exit are currently not understood.
  */
-static const int SKID_SIZE = 70;
+static const int SKID_SIZE = 100;
 
 static void debug_memory(ReplayTask* t) {
   if (should_dump_memory(t->current_trace_frame())) {
