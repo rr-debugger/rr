@@ -1821,8 +1821,9 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
 }
 
 void Task::reset_syscallbuf() {
-  if (!syscallbuf_child)
+  if (!syscallbuf_child) {
     return;
+  }
 
   ASSERT(this, !is_in_untraced_syscall() ||
                    !read_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked)));

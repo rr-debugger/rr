@@ -562,8 +562,9 @@ bool Session::make_private_shared(AutoRemoteSyscalls& remote,
   strncpy(name, m.map.fsname().c_str(), sizeof(name));
   name[sizeof(name) - 1] = '\0';
   for (char* ptr = name; *ptr != '\0'; ++ptr) {
-    if (*ptr == '/')
+    if (*ptr == '/') {
       *ptr = '-';
+    }
   }
 
   // Now create the new mapping in its place

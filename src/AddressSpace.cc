@@ -67,8 +67,9 @@ private:
   void init() {
     char maps_path[PATH_MAX];
     sprintf(maps_path, "/proc/%d/maps", tid);
-    if (!(maps_file = fopen(maps_path, "r")))
+    if (!(maps_file = fopen(maps_path, "r"))) {
       FATAL() << "Failed to open " << maps_path;
+    }
     ++*this;
   }
 
@@ -1522,8 +1523,9 @@ void AddressSpace::coalesce_around(Task* t, MemoryMap::iterator it) {
 }
 
 void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
-  if (task_set().empty())
+  if (task_set().empty()) {
     return;
+  }
   Task* t = *task_set().begin();
   LOG(debug) << "Writing back " << std::hex << (int)it->second.overwritten_data;
   t->write_mem(it->first.to_data_ptr<uint8_t>(), it->second.overwritten_data);

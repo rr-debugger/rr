@@ -1325,8 +1325,9 @@ void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
     return;
   }
 
-  if (record_remote_by_local_map(addr, num_bytes) != 0)
+  if (record_remote_by_local_map(addr, num_bytes) != 0) {
     return;
+  }
 
   auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
   trace_writer().write_raw(rec_tid, buf.data(), num_bytes, addr);
@@ -1338,8 +1339,9 @@ void RecordTask::record_remote_fallible(remote_ptr<void> addr,
 
   ASSERT(this, num_bytes >= 0);
 
-  if (record_remote_by_local_map(addr, num_bytes) != 0)
+  if (record_remote_by_local_map(addr, num_bytes) != 0) {
     return;
+  }
 
   vector<uint8_t> buf;
   if (!addr.is_null()) {
@@ -1361,8 +1363,9 @@ void RecordTask::record_remote_even_if_null(remote_ptr<void> addr,
     return;
   }
 
-  if (record_remote_by_local_map(addr, num_bytes) != 0)
+  if (record_remote_by_local_map(addr, num_bytes) != 0) {
     return;
+  }
 
   auto buf = read_mem(addr.cast<uint8_t>(), num_bytes);
   trace_writer().write_raw(rec_tid, buf.data(), num_bytes, addr);
