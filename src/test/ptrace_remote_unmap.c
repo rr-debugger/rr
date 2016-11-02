@@ -70,8 +70,9 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
 static void remote_unmap_callback(uint64_t child, char* name,
                                   map_properties_t* props) {
   if ((props->start <= child_syscall_addr && child_syscall_addr < props->end) ||
-      props->start == RR_PAGE_ADDR || strcmp(name, "[vsyscall]") == 0)
+      props->start == RR_PAGE_ADDR || strcmp(name, "[vsyscall]") == 0) {
     return;
+  }
 
   munmap_remote(child, props->start, props->end - props->start);
 }

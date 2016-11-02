@@ -26,8 +26,9 @@ int main(void) {
   pthread_sigmask(SIG_BLOCK, &mask, &old);
 
   pthread_barrier_wait(&bar);
-  while (!pseudospinlock)
+  while (!pseudospinlock) {
     ;
+  }
 
   pthread_sigmask(SIG_SETMASK, &old, NULL);
 

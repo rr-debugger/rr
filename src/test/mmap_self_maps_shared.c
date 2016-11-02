@@ -4,8 +4,9 @@
 
 void callback(uint64_t env, char* name, map_properties_t* props) {
   (void)env;
-  if (name[0] != '/')
+  if (name[0] != '/') {
     return;
+  }
   int fd = open(name, O_RDONLY);
   void* addr =
       mmap(NULL, props->end - props->start, PROT_READ, MAP_SHARED, fd, 0);

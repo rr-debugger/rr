@@ -14,8 +14,9 @@ static int contains_symbol(map_properties_t* props, void* symbol) {
 void callback(uint64_t env, char* name, map_properties_t* props) {
   (void)env;
   if (contains_symbol(props, &main) || contains_symbol(props, unmappings) ||
-      props->start == RR_PAGE_ADDR || strcmp(name, "[stack]") == 0)
+      props->start == RR_PAGE_ADDR || strcmp(name, "[stack]") == 0) {
     return;
+  }
 
   unmappings[2 * nunmappings] = (uintptr_t)props->start;
   unmappings[2 * nunmappings + 1] = (uintptr_t)(props->end - props->start);
