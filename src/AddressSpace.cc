@@ -1476,13 +1476,20 @@ static inline void assert_coalesceable(Task* t,
   ASSERT(t, !lower.monitored_shared_memory && !higher.monitored_shared_memory);
 }
 
+static bool is_coalescable(const AddressSpace::Mapping& mleft,
+                           const AddressSpace::Mapping& mright) {
+  if (!is_adjacent_mapping(mleft.map, mright.map, RESPECT_HEAP)) {
+    return false;
+  }
+  return mleft.flags == mright.flags;
+}
+
 void AddressSpace::coalesce_around(Task* t, MemoryMap::iterator it) {
   auto first_kv = it;
   while (mem.begin() != first_kv) {
     auto next = first_kv;
     --first_kv;
-    if (!is_adjacent_mapping(first_kv->second.map, next->second.map,
-                             RESPECT_HEAP)) {
+    if (!is_coalescable(first_kv->second, next->second)) {
       first_kv = next;
       break;
     }
@@ -1493,8 +1500,7 @@ void AddressSpace::coalesce_around(Task* t, MemoryMap::iterator it) {
     auto prev = last_kv;
     ++last_kv;
     if (mem.end() == last_kv ||
-        !is_adjacent_mapping(prev->second.map, last_kv->second.map,
-                             RESPECT_HEAP)) {
+        !is_coalescable(prev->second, last_kv->second)) {
       last_kv = prev;
       break;
     }

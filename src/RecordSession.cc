@@ -1704,7 +1704,8 @@ static string lookup_by_path(const string& name) {
           FATAL() << "rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but "
                      "it is "
                   << val << ".\nChange it to 1, or use 'rr record -n' (slow).\n"
-                  << "Consider putting 'kernel.perf_event_paranoid = 1' in /etc/sysctl.conf";
+                  << "Consider putting 'kernel.perf_event_paranoid = 1' in "
+                     "/etc/sysctl.conf";
         }
       }
     }
