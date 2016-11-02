@@ -18,6 +18,10 @@ public:
 
   virtual Type type() { return ProcMem; }
 
+  // We need to PREVENT_SWITCH, since the timing of the write is otherwise
+  // unpredictable from our perspective.
+  virtual Switchable will_write(Task*) { return PREVENT_SWITCH; }
+
   /**
    * During replay, copy writes to tracee |tid|'s memory.
    */

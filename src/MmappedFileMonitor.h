@@ -21,6 +21,12 @@ public:
 
   virtual Type type() { return Mmapped; }
   void revive() { dead_ = false; }
+  // If this write could potentially affect memory we need to PREVENT_SWITCH,
+  // since the timing of the write is otherwise unpredictable from our
+  // perspective.
+  virtual Switchable will_write(Task*) {
+    return dead_ ? ALLOW_SWITCH : PREVENT_SWITCH;
+  }
 
   /**
    * During recording, note writes to mapped segments.
