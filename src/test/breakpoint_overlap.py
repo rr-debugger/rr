@@ -35,11 +35,18 @@ while True:
 if eip is None:
     failed('%s not found' % regex_info[arch].ip_name)
 
-send_gdb('b *%s'%eip)
+# The SCHED after getgid may land in libc, which might not be loaded yet, in
+# which case setting a breakpoint there will cause gdb to barf. So run to
+# 'main' at which point libc is definitely loaded.
+send_gdb('b main')
 expect_gdb('Breakpoint 1')
-
 send_gdb('c')
 expect_gdb('Breakpoint 1')
+
+send_gdb('b *%s'%eip)
+expect_gdb('Breakpoint 2')
+send_gdb('c')
+expect_gdb('Breakpoint 2')
 expect_gdb('(rr)')
 
 send_gdb('p/x *(char*)$pc')
