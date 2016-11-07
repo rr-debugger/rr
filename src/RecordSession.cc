@@ -1511,7 +1511,7 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
 
     if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
       // Syscall was patched. Emit event and continue execution.
-      t->record_event(Event(EV_PATCH_SYSCALL, NO_EXEC_INFO, t->arch()));
+      t->record_event(Event(EV_PATCH_SYSCALL, HAS_EXEC_INFO, t->arch()));
       return;
     }
 
