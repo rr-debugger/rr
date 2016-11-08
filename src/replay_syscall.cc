@@ -476,7 +476,17 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
   vector<KernelMapping> kms;
   vector<TraceReader::MappedData> datas;
-  ssize_t exe_km = -1;
+
+  // Find the text mapping of the main executable. This is complicated by the
+  // fact that the kernel also loads the dynamic linker (if the main
+  // executable specifies an interpreter). To disambiguate, we use the
+  // following criterion: The dynamic linker (if it exists) is a different file
+  // (identified via fsname) that has an executable segment that contains the
+  // ip. To compute this, we find (up to) two kms that have different fsnames
+  // but do each have an executable segment, as well as the km that contains
+  // the ip. This is slightly complicated, but should handle the case where
+  // either file has more than one exectuable segment.
+  ssize_t exe_km_option1 = -1, exe_km_option2 = -1, rip_km = -1;
   while (true) {
     TraceReader::MappedData data;
     bool found;
@@ -491,14 +501,37 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     }
     const string& file_name = km.fsname();
     if ((km.prot() & PROT_EXEC) && file_name.size() > 0 &&
-        file_name[0] == '/' && file_name.rfind(".so") != file_name.size() - 3) {
-      exe_km = kms.size();
+        // Make sure to exclude [vdso] (and similar) and executable stacks.
+        file_name[0] != '[') {
+      if (exe_km_option1 == -1) {
+        exe_km_option1 = kms.size();
+      } else if (exe_km_option2 == -1 &&
+                 kms[exe_km_option1].fsname() != file_name) {
+        exe_km_option2 = kms.size();
+      } else {
+        ASSERT(t, kms[exe_km_option1].fsname() == file_name ||
+                      kms[exe_km_option2].fsname() == file_name);
+      }
+    }
+    if (km.contains(trace_frame.regs().ip().to_data_ptr<void>())) {
+      rip_km = kms.size();
     }
     kms.push_back(km);
     datas.push_back(data);
   }
 
-  ASSERT(t, exe_km >= 0) << "Can't find exe mapping";
+  ASSERT(t, rip_km >= 0) << "No mapping contains the ip?";
+  ASSERT(t, exe_km_option1 >= 0) << "No executable mapping?";
+
+  ssize_t exe_km = exe_km_option1;
+  if (exe_km_option2 >= 0) {
+    // Ok, we have two options. We choose the one that doesn't have the ip.
+    if (kms[exe_km_option2].fsname() != kms[rip_km].fsname()) {
+      ASSERT(t, kms[exe_km_option1].fsname() == kms[rip_km].fsname());
+      exe_km = exe_km_option2;
+    }
+  }
+
   ASSERT(t, kms[0].is_stack()) << "Can't find stack";
 
   TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::EXEC);
