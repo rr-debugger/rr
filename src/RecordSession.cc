@@ -354,6 +354,7 @@ static void handle_seccomp_trap(RecordTask* t,
   // instruction, but in tests it's immediately after the syscall
   // instruction.
   si.native_api._sifields._sigsys._call_addr = t->ip().to_data_ptr<void>();
+  LOG(debug) << "Synthesizing " << si.linux_api;
   t->stash_synthetic_sig(si.linux_api, DETERMINISTIC_SIG);
 
   // Tests show that the current registers are preserved (on x86, eax/rax
@@ -368,6 +369,11 @@ static void handle_seccomp_trap(RecordTask* t,
     t->ev().Syscall().state = EXITING_SYSCALL;
     t->record_current_event();
     t->pop_syscall();
+
+    // The tracee is currently in the seccomp ptrace-stop. Advance it to the
+    // syscall-exit stop so that when we try to deliver the SIGSYS via
+    // PTRACE_SINGLESTEP, that doesn't trigger a SIGTRAP stop.
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
   }
 
   // Don't continue yet. At the next iteration of record_step, if we
@@ -1033,8 +1039,8 @@ static bool preinject_signal(RecordTask* t) {
     /* We're not in a usable signal-stop. Force a signal-stop by sending
      * a new signal with tgkill (as the ptrace(2) man page recommends).
      */
-    LOG(debug) << "    maybe not in signal-stop; tgkill(" << signal_name(sig)
-               << ")";
+    LOG(debug) << "    maybe not in signal-stop (status " << t->status()
+               << "); doing tgkill(" << signal_name(sig) << ")";
     t->tgkill(sig);
 
     /* Now singlestep the task until we're in a signal-stop for the signal
@@ -1058,11 +1064,6 @@ static bool preinject_signal(RecordTask* t) {
       if (t->stop_sig() == sig) {
         LOG(debug) << "    stopped with signal " << signal_name(sig);
         break;
-      }
-      if (t->stop_sig() == SIGTRAP && sig == SIGSYS &&
-          t->ev().Signal().siginfo.si_code == SYS_SECCOMP) {
-        // XXX khuey I have no idea why this signal appears here ...
-        continue;
       }
       /* It's possible for other signals to arrive while we're trying to
        * get to the signal-stop for the signal we just sent. Stash them for
@@ -1600,6 +1601,8 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
       return false;
     case SIGNAL_HANDLED:
       LOG(debug) << signal_name(si.linux_api.si_signo) << " handled";
+      // Signal is now a pending event on |t|'s event stack
+
       if (t->ev().type() == EV_SCHED) {
         if (t->maybe_in_spinlock()) {
           LOG(debug) << "Detected possible spinlock, forcing one round-robin";
