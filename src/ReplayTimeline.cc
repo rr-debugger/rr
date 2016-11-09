@@ -1270,7 +1270,7 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
   }
 
   for (auto i = result.break_status.watchpoints_hit.begin();
-       i != result.break_status.watchpoints_hit.end(); ++i) {
+       i != result.break_status.watchpoints_hit.end();) {
     auto& w = *i;
     auto it = watchpoints.lower_bound(
         make_tuple(auid, w.addr, w.num_bytes, w.type, nullptr));
@@ -1285,7 +1285,9 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
       }
       ++it;
     }
-    if (!hit) {
+    if (hit) {
+      ++i;
+    } else {
       i = result.break_status.watchpoints_hit.erase(i);
     }
   }

@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+record watchpoint$bitness
+debug watchpoint_cond

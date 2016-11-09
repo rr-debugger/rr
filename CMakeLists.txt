@@ -933,6 +933,7 @@ set(TESTS_WITHOUT_PROGRAM
   term_trace_cpu
   unwind_on_signal
   vfork_exec
+  watchpoint_cond
   when
 )
 
