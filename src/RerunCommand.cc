@@ -290,7 +290,7 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
   }
 
   static const OptionSpec options[] = {
-    { 'e', "trace-end", NO_PARAMETER },
+    { 'e', "trace-end", HAS_PARAMETER },
     { 'r', "singlestep-registers", HAS_PARAMETER },
     { 's', "trace-start", HAS_PARAMETER },
   };
