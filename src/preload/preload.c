@@ -809,7 +809,7 @@ static void* prep_syscall(void) {
    *
    * XXX except for synchronous signals generated in the syscall
    * buffer code, while reading/writing user pointers */
-  buffer_hdr()->locked = 1;
+  buffer_hdr()->locked |= SYSCALLBUF_LOCKED_TRACEE;
   /* "Allocate" space for a new syscall record, not including
    * syscall outparam data. */
   return buffer_last() + sizeof(struct syscallbuf_record);
@@ -887,7 +887,7 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
      * Unlock the buffer and then execute the system call
      * with a trap to rr.  Note that we reserve enough
      * space in the buffer for the next prep_syscall(). */
-    buffer_hdr()->locked = 0;
+    buffer_hdr()->locked &= ~SYSCALLBUF_LOCKED_TRACEE;
     return 0;
   }
   /* Store this breadcrumb so that the tracer can find out what
@@ -1003,7 +1003,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
    * current txn must touch the record counter (at least, must
    * not assume it's unchanged). */
 
-  buffer_hdr()->locked = 0;
+  buffer_hdr()->locked &= ~SYSCALLBUF_LOCKED_TRACEE;
 
   if (breakpoint_function) {
     /* Call the breakpoint function corresponding to the record we just

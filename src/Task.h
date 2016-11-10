@@ -761,6 +761,12 @@ public:
     WaitStatus wait_status;
   };
 
+  /**
+   * Lock or unlock the syscallbuf to prevent the preload library from using it.
+   * Only has an effect if the syscallbuf has been initialized.
+   */
+  void set_syscallbuf_locked(bool locked);
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);

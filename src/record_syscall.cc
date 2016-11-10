@@ -2130,7 +2130,13 @@ static Switchable prepare_ptrace(RecordTask* t,
     case PTRACE_SYSEMU_SINGLESTEP:
     case PTRACE_CONT: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      // If the tracer wants to observe syscall entries, we can't use the
+      // syscallbuf, because the tracer may want to change syscall numbers
+      // which the syscallbuf code is not prepared to handle.
       if (tracee) {
+        tracee->set_syscallbuf_locked(command == PTRACE_SYSCALL ||
+                                      command == PTRACE_SYSEMU ||
+                                      command == PTRACE_SYSEMU_SINGLESTEP);
         prepare_ptrace_cont(tracee, t->regs().arg4(), command);
         syscall_state.emulate_result(0);
       }
@@ -2139,6 +2145,7 @@ static Switchable prepare_ptrace(RecordTask* t,
     case PTRACE_DETACH: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
+        tracee->set_syscallbuf_locked(0);
         tracee->emulated_ptrace_options = 0;
         tracee->emulated_ptrace_cont_command = 0;
         tracee->emulated_stop_pending = false;
