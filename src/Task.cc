@@ -933,7 +933,11 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                                 << wait_ret;
     WaitStatus status(raw_status);
     if (wait_ret == tid) {
-      ASSERT(this, status.ptrace_event() == PTRACE_EVENT_EXIT);
+      // In some (but not all) cases where the child was killed with SIGKILL,
+      // we don't get PTRACE_EVENT_EXIT before it just exits.
+      ASSERT(this, status.ptrace_event() == PTRACE_EVENT_EXIT ||
+                       status.fatal_sig() == SIGKILL)
+          << "got " << status;
     } else {
       ASSERT(this, 0 == wait_ret) << "waitpid(" << tid
                                   << ", NOHANG) failed with " << wait_ret;

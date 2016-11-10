@@ -202,7 +202,16 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
 
   record_robust_futex_changes(t);
 
-  WaitStatus exit_status = t->get_ptrace_eventmsg<WaitStatus>();
+  WaitStatus exit_status;
+  unsigned long msg = 0;
+  // We can get ESRCH here if the child was killed by SIGKILL and
+  // we made a synthetic PTRACE_EVENT_EXIT to handle it.
+  if (t->ptrace_if_alive(PTRACE_GETEVENTMSG, nullptr, &msg)) {
+    exit_status = WaitStatus(msg);
+  } else {
+    exit_status = WaitStatus::for_fatal_sig(SIGKILL);
+  }
+
   t->session().trace_writer().write_task_event(
       TraceTaskEvent::for_exit(t->tid, exit_status));
   if (t->task_group()->tgid == t->tid) {

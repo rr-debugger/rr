@@ -204,10 +204,6 @@ public:
    */
   template <typename T> T get_ptrace_eventmsg() {
     unsigned long msg = 0;
-    // in theory we could hit an assertion failure if the tracee suffers
-    // a SIGKILL before we get here. But the SIGKILL would have to be
-    // precisely timed between the generation of a PTRACE_EVENT_FORK/CLONE/
-    // SYS_clone event, and us fetching the event message here.
     xptrace(PTRACE_GETEVENTMSG, nullptr, &msg);
     return T(msg);
   }
@@ -767,6 +763,14 @@ public:
    */
   void set_syscallbuf_locked(bool locked);
 
+  /**
+   * Like |fallible_ptrace()| but infallible for most purposes.
+   * Errors other than ESRCH are treated as fatal. Returns false if
+   * we got ESRCH. This can happen any time during recording when the
+   * task gets a SIGKILL from outside.
+   */
+  bool ptrace_if_alive(int request, remote_ptr<void> addr, void* data);
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);
@@ -824,14 +828,6 @@ protected:
    * the ptrace return value.
    */
   long fallible_ptrace(int request, remote_ptr<void> addr, void* data);
-
-  /**
-   * Like |fallible_ptrace()| but infallible for most purposes.
-   * Errors other than ESRCH are treated as fatal. Returns false if
-   * we got ESRCH. This can happen any time during recording when the
-   * task gets a SIGKILL from outside.
-   */
-  bool ptrace_if_alive(int request, remote_ptr<void> addr, void* data);
 
   /**
    * Like |fallible_ptrace()| but completely infallible.
