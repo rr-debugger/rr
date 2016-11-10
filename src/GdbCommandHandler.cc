@@ -106,7 +106,8 @@ def history_push(p):
 
 #Automatically push an history entry when the program execution stops
 #(signal, breakpoint).This is fired before an interactive prompt is shown.
-gdb.events.stop.connect(history_push)
+#Disabled for now since it's not fully working.
+#gdb.events.stop.connect(history_push)
 
 end
 )Delimiter");

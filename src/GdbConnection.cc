@@ -124,7 +124,7 @@ struct DebuggerParams {
 
 static void push_default_gdb_options(vector<string>& vec) {
   vec.push_back("-l");
-  vec.push_back("-1");
+  vec.push_back("10000");
 }
 
 static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
