@@ -1013,13 +1013,31 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
     case Arch::ptrace:
       switch ((int)t->regs().arg1_signed()) {
         case PTRACE_POKETEXT:
-        case PTRACE_POKEDATA:
+        case PTRACE_POKEDATA: {
           ReplayTask* target =
               t->session().find_task((pid_t)t->regs().arg2_signed());
           if (target) {
             target->apply_all_data_records_from_trace();
           }
           break;
+        }
+        case PTRACE_SYSCALL:
+        case PTRACE_SINGLESTEP:
+        case PTRACE_SYSEMU:
+        case PTRACE_SYSEMU_SINGLESTEP:
+        case PTRACE_CONT:
+        case PTRACE_DETACH: {
+          ReplayTask* target =
+              t->session().find_task((pid_t)t->regs().arg2_signed());
+          if (target) {
+            // We did this during record. Do the same now.
+            int command = (int)t->regs().arg1_signed();
+            target->set_syscallbuf_locked(command == PTRACE_SYSCALL ||
+                                          command == PTRACE_SYSEMU ||
+                                          command == PTRACE_SYSEMU_SINGLESTEP);
+          }
+          break;
+        }
       }
       break;
   }

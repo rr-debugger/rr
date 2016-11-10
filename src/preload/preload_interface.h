@@ -360,9 +360,13 @@ struct syscallbuf_hdr {
    * deliver a signal and/or reset the syscallbuf. */
   uint8_t notify_on_syscall_hook_exit;
   /* This tracks whether the buffer is currently in use for a
-   * system call. This is helpful when a signal handler runs
-   * during a wrapped system call; we don't want it to use the
-   * buffer for its system calls. */
+   * system call or otherwise unavailable. This is helpful when
+   * a signal handler runs during a wrapped system call; we don't want
+   * it to use the buffer for its system calls. The different reasons why the
+   * buffer could be locked, use different bits of this field and the buffer
+   * may be used only if all are clear. See enum syscallbuf_locked_why for
+   * used bits.
+   */
   uint8_t locked;
   /* Nonzero when rr needs to worry about the desched signal.
    * When it's zero, the desched signal can safely be
@@ -380,6 +384,18 @@ struct syscallbuf_hdr {
 } __attribute__((__packed__));
 /* TODO: static_assert(sizeof(uint32_t) ==
  *                     sizeof(struct syscallbuf_hdr)) */
+
+/**
+ * Each bit of of syscallbuf_hdr->locked indicates a reason why the syscallbuf
+ * is locked. These are all the bits that are currently defined.
+ */
+enum syscallbuf_locked_why {
+  /* Used by the tracee, during interruptible syscalls to avoid recursion */
+  SYSCALLBUF_LOCKED_TRACEE = 0x1,
+  /* Used by the tracer to prevent syscall buffering when necessary to preserve
+     semantics (e.g. for ptracees whose syscalls are being observed) */
+  SYSCALLBUF_LOCKED_TRACER = 0x2
+};
 
 /**
  * Return a pointer to what may be the next syscall record.

@@ -1820,13 +1820,27 @@ KernelMapping Task::init_syscall_buffer(AutoRemoteSyscalls& remote,
   return km;
 }
 
+void Task::set_syscallbuf_locked(bool locked) {
+  if (!syscallbuf_child) {
+    return;
+  }
+  remote_ptr<uint8_t> remote_addr = REMOTE_PTR_FIELD(syscallbuf_child, locked);
+  uint8_t locked_before = read_mem(remote_addr);
+  uint8_t new_locked = locked ? (locked_before | SYSCALLBUF_LOCKED_TRACER)
+                              : (locked_before & ~SYSCALLBUF_LOCKED_TRACER);
+  if (new_locked != locked_before) {
+    write_mem(remote_addr, new_locked);
+  }
+}
+
 void Task::reset_syscallbuf() {
   if (!syscallbuf_child) {
     return;
   }
 
   ASSERT(this, !is_in_untraced_syscall() ||
-                   !read_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked)));
+                   0 == (SYSCALLBUF_LOCKED_TRACEE &
+                         read_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked))));
 
   // Memset is easiest to do by using the local mapping which should always
   // exist for the syscallbuf
