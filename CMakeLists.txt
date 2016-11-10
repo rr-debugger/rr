@@ -600,6 +600,7 @@ set(BASIC_TESTS
   ptrace_sysemu
   ptrace_trace_clone
   ptrace_trace_exit
+  ptrace_traceme
   ptracer_death
   ptracer_death_multithread
   ptracer_death_multithread_peer
