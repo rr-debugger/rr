@@ -428,6 +428,12 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
   // with no need to set notify_on_syscall_hook_exit; the signal will be
   // delivered when rrcall_init_buffers is called.
   if (t->syscallbuf_child) {
+    if (t->read_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, locked)) & 2) {
+      LOG(debug) << "Safe to deliver signal at " << t->ip()
+                 << " because the syscallbuf is locked";
+      return true;
+    }
+
     // Our emulation of SYS_rrcall_notify_syscall_hook_exit clears this flag.
     t->write_mem(
         REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
