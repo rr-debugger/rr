@@ -1830,6 +1830,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       syscall_state.emulate_result(0);
       break;
     }
+    case PTRACE_OLDSETOPTIONS:
     case PTRACE_SETOPTIONS: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {

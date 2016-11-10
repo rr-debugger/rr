@@ -25,6 +25,10 @@ namespace rr {
 #define PTRACE_EVENT_STOP 128
 #endif
 
+#ifndef PTRACE_OLDSETOPTIONS
+#define PTRACE_OLDSETOPTIONS 21
+#endif
+
 #ifndef PTRACE_SYSEMU
 #define PTRACE_SYSEMU 31
 #endif
