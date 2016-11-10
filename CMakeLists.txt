@@ -596,6 +596,7 @@ set(BASIC_TESTS
   ptrace_seize
   ptrace_sigchld_blocked
   ptrace_signals
+  ptrace_singlestep
   ptrace_syscall
   ptrace_syscall_clone_untraced
   ptrace_sysemu

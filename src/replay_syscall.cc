@@ -1032,9 +1032,8 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
           if (target) {
             // We did this during record. Do the same now.
             int command = (int)t->regs().arg1_signed();
-            target->set_syscallbuf_locked(command == PTRACE_SYSCALL ||
-                                          command == PTRACE_SYSEMU ||
-                                          command == PTRACE_SYSEMU_SINGLESTEP);
+            target->set_syscallbuf_locked(command != PTRACE_CONT &&
+                                          command != PTRACE_DETACH);
           }
           break;
         }
