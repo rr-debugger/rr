@@ -314,12 +314,11 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
   uint64_t instruction_count_within_event = 0;
 
-  while (true) {
+  while (replay_session->trace_reader().time() < flags.trace_end) {
     RunCommand cmd = RUN_CONTINUE;
     if (replay_session->done_initial_exec() &&
         !flags.singlestep_trace.empty() &&
-        replay_session->trace_reader().time() >= flags.trace_start &&
-        replay_session->trace_reader().time() < flags.trace_end) {
+        replay_session->trace_reader().time() >= flags.trace_start) {
       cmd = RUN_SINGLESTEP_FAST_FORWARD;
     }
 
