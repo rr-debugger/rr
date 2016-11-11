@@ -556,6 +556,7 @@ set(BASIC_TESTS
   mmap_short_file
   mmap_tmpfs
   mmap_zero_size_fd
+  modify_ldt
   mprotect
   mprotect_heterogenous
   mprotect_none
