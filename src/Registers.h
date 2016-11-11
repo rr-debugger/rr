@@ -301,6 +301,15 @@ public:
     return u.x64regs.gs_base;
   }
 
+  void set_fs_base(uintptr_t fs_base) {
+    assert(arch() == x86_64);
+    u.x64regs.fs_base = fs_base;
+  }
+  void set_gs_base(uintptr_t gs_base) {
+    assert(arch() == x86_64);
+    u.x64regs.gs_base = gs_base;
+  }
+
   // End of X86-specific stuff
 
   void print_register_file(FILE* f) const;

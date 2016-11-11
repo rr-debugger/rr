@@ -487,6 +487,33 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           }
           break;
         }
+        case PTRACE_ARCH_PRCTL: {
+          int code = (int)regs.arg4();
+          switch (code) {
+            case ARCH_GET_FS:
+            case ARCH_GET_GS:
+              break;
+            case ARCH_SET_FS:
+            case ARCH_SET_GS: {
+              Registers r = tracee->regs();
+              if (regs.arg3() == 0) {
+                // Work around a kernel bug in pre-4.7 kernels, where setting
+                // the gs/fs base to 0 via PTRACE_REGSET did not work correctly.
+                tracee->ptrace_if_alive(PTRACE_ARCH_PRCTL, regs.arg3(),
+                                        (void*)(uintptr_t)regs.arg4());
+              }
+              if (code == ARCH_SET_FS) {
+                r.set_fs_base(regs.arg3());
+              } else {
+                r.set_gs_base(regs.arg3());
+              }
+              tracee->set_regs(r);
+              break;
+            }
+            default:
+              ASSERT(tracee, 0) << "Should have detected this earlier";
+          }
+        }
       }
       return;
     }
@@ -1062,9 +1089,8 @@ void Task::set_debug_reg(size_t regno, uintptr_t value) {
   fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(regno), (void*)value);
 }
 
-void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
-  // We rely on the fact that user_desc is word-size-independent.
-  auto desc = read_mem(tls);
+static void set_thread_area(std::vector<struct user_desc>& thread_areas_,
+                            user_desc desc) {
   for (auto& t : thread_areas_) {
     if (t.entry_number == desc.entry_number) {
       t = desc;
@@ -1072,6 +1098,30 @@ void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
     }
   }
   thread_areas_.push_back(desc);
+}
+
+void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
+  // We rely on the fact that user_desc is word-size-independent.
+  auto desc = read_mem(tls);
+  rr::set_thread_area(thread_areas_, desc);
+}
+
+int Task::emulate_set_thread_area(int idx, struct ::user_desc desc) {
+  errno = 0;
+  fallible_ptrace(PTRACE_SET_THREAD_AREA, idx, &desc);
+  if (errno != 0) {
+    return errno;
+  }
+  desc.entry_number = idx;
+  rr::set_thread_area(thread_areas_, desc);
+  return 0;
+}
+
+int Task::emulate_get_thread_area(int idx, struct ::user_desc& desc) {
+  LOG(debug) << "Emulating PTRACE_GET_THREAD_AREA";
+  errno = 0;
+  fallible_ptrace(PTRACE_GET_THREAD_AREA, idx, &desc);
+  return errno;
 }
 
 pid_t Task::tgid() const { return tg->tgid; }

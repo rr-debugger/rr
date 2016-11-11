@@ -2164,6 +2164,82 @@ static Switchable prepare_ptrace(RecordTask* t,
       }
       break;
     }
+    case PTRACE_GET_THREAD_AREA:
+    case PTRACE_SET_THREAD_AREA: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        if (tracee->arch() != SupportedArch::x86) {
+          // This syscall should fail if the tracee is not x86
+          syscall_state.expect_errno = EIO;
+          emulate = false;
+          break;
+        }
+        remote_ptr<struct ::user_desc> remote_addr(t->regs().arg4());
+        bool ok = true;
+        struct ::user_desc desc;
+        memset(&desc, 0, sizeof(struct ::user_desc));
+        // Do the ptrace request ourselves
+        if (command == PTRACE_GET_THREAD_AREA) {
+          int ret = -tracee->emulate_get_thread_area(t->regs().arg3(), desc);
+          if (ret == 0) {
+            t->write_mem(remote_addr, desc, &ok);
+            if (!ok) {
+              syscall_state.emulate_result(-EFAULT);
+              break;
+            }
+            t->record_local(remote_addr, &desc);
+          }
+          syscall_state.emulate_result(ret);
+        } else {
+          desc = t->read_mem(remote_addr, &ok);
+          if (!ok) {
+            syscall_state.emulate_result(EFAULT);
+            break;
+          }
+          syscall_state.emulate_result(
+              -tracee->emulate_set_thread_area((int)t->regs().arg3(), desc));
+        }
+      }
+      break;
+    }
+    case PTRACE_ARCH_PRCTL: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        if (tracee->arch() != SupportedArch::x86_64) {
+          // This syscall should fail if the tracee is not
+          // x86_64
+          syscall_state.expect_errno = EIO;
+          emulate = false;
+          break;
+        }
+        int code = (int)t->regs().arg4();
+        switch (code) {
+          case ARCH_GET_FS:
+          case ARCH_GET_GS: {
+            bool ok = true;
+            remote_ptr<uint64_t> addr(t->regs().arg3());
+            uint64_t data = code == ARCH_GET_FS ? tracee->regs().fs_base()
+                                                : tracee->regs().gs_base();
+            t->write_mem(addr, data, &ok);
+            if (ok) {
+              t->record_local(addr, &data);
+              syscall_state.emulate_result(0);
+            } else {
+              syscall_state.emulate_result(-EIO);
+            }
+            break;
+          }
+          case ARCH_SET_FS:
+          case ARCH_SET_GS:
+            syscall_state.emulate_result(0);
+            break;
+          default:
+            syscall_state.emulate_result(-EINVAL);
+            break;
+        }
+      }
+      break;
+    }
     default:
       syscall_state.expect_errno = EIO;
       emulate = false;
@@ -2776,6 +2852,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           1, ParamSize::from_syscall_result<int>((size_t)t->regs().arg2()));
       return (GRND_NONBLOCK & t->regs().arg3()) ? PREVENT_SWITCH : ALLOW_SWITCH;
 
+    case Arch::get_thread_area:
     case Arch::set_thread_area:
       syscall_state.reg_parameter<typename Arch::user_desc>(1, IN_OUT);
       return PREVENT_SWITCH;

@@ -451,6 +451,16 @@ public:
   /** Update the thread area to |addr|. */
   void set_thread_area(remote_ptr<struct ::user_desc> tls);
 
+  /** Set the thread area at index `idx` to desc and reflect this
+    * into the OS task. Returns 0 on success, errno otherwise.
+    */
+  int emulate_set_thread_area(int idx, struct ::user_desc desc);
+
+  /** Get the thread area from the remote process.
+    * Returns 0 on success, errno otherwise.
+    */
+  int emulate_get_thread_area(int idx, struct ::user_desc& desc);
+
   const std::vector<struct ::user_desc>& thread_areas() {
     return thread_areas_;
   }

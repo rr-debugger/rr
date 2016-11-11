@@ -1008,35 +1008,40 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
       prepare_clone<Arch>(t);
       break;
 
-    case Arch::ptrace:
+    case Arch::ptrace: {
+      ReplayTask* target =
+          t->session().find_task((pid_t)t->regs().arg2_signed());
+      if (!target) {
+        break;
+      }
       switch ((int)t->regs().arg1_signed()) {
         case PTRACE_POKETEXT:
-        case PTRACE_POKEDATA: {
-          ReplayTask* target =
-              t->session().find_task((pid_t)t->regs().arg2_signed());
-          if (target) {
-            target->apply_all_data_records_from_trace();
-          }
+        case PTRACE_POKEDATA:
+          target->apply_all_data_records_from_trace();
           break;
-        }
         case PTRACE_SYSCALL:
         case PTRACE_SINGLESTEP:
         case PTRACE_SYSEMU:
         case PTRACE_SYSEMU_SINGLESTEP:
         case PTRACE_CONT:
         case PTRACE_DETACH: {
-          ReplayTask* target =
-              t->session().find_task((pid_t)t->regs().arg2_signed());
-          if (target) {
-            // We did this during record. Do the same now.
-            int command = (int)t->regs().arg1_signed();
-            target->set_syscallbuf_locked(command != PTRACE_CONT &&
-                                          command != PTRACE_DETACH);
+          int command = (int)t->regs().arg1_signed();
+          target->set_syscallbuf_locked(command != PTRACE_CONT &&
+                                        command != PTRACE_DETACH);
+          break;
+        }
+        case PTRACE_SET_THREAD_AREA: {
+          bool ok = true;
+          struct ::user_desc desc = t->read_mem(
+              remote_ptr<struct ::user_desc>(t->regs().arg4()), &ok);
+          if (ok) {
+            target->emulate_set_thread_area((int)t->regs().arg3(), desc);
           }
           break;
         }
       }
       break;
+    }
   }
   t->apply_all_data_records_from_trace();
 }

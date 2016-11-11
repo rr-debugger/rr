@@ -1205,7 +1205,7 @@ sched_getaffinity = IrregularEmulatedSyscall(x86=242, x64=204)
 # changed.
 set_thread_area = IrregularEmulatedSyscall(x86=243, x64=205)
 
-get_thread_area = UnsupportedSyscall(x86=244, x64=211)
+get_thread_area = IrregularEmulatedSyscall(x86=244, x64=211)
 io_setup = UnsupportedSyscall(x86=245, x64=206)
 io_destroy = UnsupportedSyscall(x86=246, x64=207)
 io_getevents = UnsupportedSyscall(x86=247, x64=208)
