@@ -29,6 +29,18 @@ namespace rr {
 #define PTRACE_OLDSETOPTIONS 21
 #endif
 
+#ifndef PTRACE_GET_THREAD_AREA
+#define PTRACE_GET_THREAD_AREA 25
+#endif
+
+#ifndef PTRACE_SET_THREAD_AREA
+#define PTRACE_SET_THREAD_AREA 26
+#endif
+
+#ifndef PTRACE_ARCH_PRCTL
+#define PTRACE_ARCH_PRCTL 30
+#endif
+
 #ifndef PTRACE_SYSEMU
 #define PTRACE_SYSEMU 31
 #endif
