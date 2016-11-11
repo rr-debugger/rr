@@ -310,6 +310,17 @@ static bool treat_event_completion_as_singlestep_complete(const Event& ev) {
   }
 }
 
+static bool ignore_singlestep_for_event(const Event& ev) {
+  switch (ev.type()) {
+    // These don't actually change user-visible state, so we skip them.
+    case EV_SIGNAL:
+    case EV_SIGNAL_DELIVERY:
+      return true;
+    default:
+      return false;
+  }
+}
+
 static int rerun(const string& trace_dir, const RerunFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
   uint64_t instruction_count_within_event = 0;
@@ -344,6 +355,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     // was not interrupted) as not really singlestepping.
     bool singlestep_really_complete =
         result.break_status.singlestep_complete &&
+        !ignore_singlestep_for_event(replayed_event) &&
         (!result.did_fast_forward || old_ip != after_ip ||
          before_time < after_time);
     if (!flags.singlestep_trace.empty() && cmd == RUN_SINGLESTEP_FAST_FORWARD &&
