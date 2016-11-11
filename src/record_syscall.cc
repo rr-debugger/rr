@@ -3749,6 +3749,17 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
     }
 
+    case Arch::modify_ldt: {
+      int func = regs.arg1();
+      if (func == 0 || func == 2) {
+        syscall_state.reg_parameter(
+            2, ParamSize::from_syscall_result<int>((size_t)regs.arg3()));
+      }
+      // N.B. Unlike set_thread_area, the entry number is not written
+      // for (func == 1 || func == 0x11)
+      return ALLOW_SWITCH;
+    }
+
     default:
       // Invalid syscalls return -ENOSYS. Assume any such
       // result means the syscall was completely ignored by the

@@ -1206,6 +1206,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     case Arch::munmap:
     case Arch::mprotect:
     case Arch::arch_prctl:
+    case Arch::modify_ldt:
     case Arch::set_thread_area: {
       // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
       Registers r = t->regs();

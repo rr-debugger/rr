@@ -638,7 +638,7 @@ setdomainname = EmulatedSyscall(x86=121, x64=171)
 # buf. The utsname struct is defined in <sys/utsname.h>:
 uname = EmulatedSyscall(x86=122, x64=63, arg1="typename Arch::utsname")
 
-modify_ldt = UnsupportedSyscall(x86=123, x64=154)
+modify_ldt = IrregularEmulatedSyscall(x86=123, x64=154)
 adjtimex = UnsupportedSyscall(x86=124, x64=159)
 
 #  int mprotect(const void *addr, size_t len, int prot)
