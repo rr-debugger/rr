@@ -250,8 +250,23 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     // are treated as "skip this syscall". There will be one syscall event
     // reported instead of two. So fake an enter-syscall event now.
     t->emulate_syscall_entry(t->regs());
-    t->push_event(SyscallEvent(syscallno, t->arch()));
-    note_entering_syscall(t);
+    if (syscall_seccomp_ordering_ == SECCOMP_BEFORE_PTRACE_SYSCALL) {
+      // If the ptrace entry stop hasn't happened yet, we're at a weird
+      // intermediate state where the behavior of the next PTRACE_SYSCALL
+      // will depend on the register state (i.e. whether we see an entry
+      // trap or proceed right to the exit trap). To make things easier
+      // on the rest of the system, do a fake syscall entry, then reset
+      // the register state.
+      Registers orig_regs = t->regs();
+      Registers r = orig_regs;
+      r.set_original_syscallno(syscall_number_for_gettid(t->arch()));
+      t->set_regs(r);
+      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+      t->set_regs(orig_regs);
+    }
+
+    process_syscall_entry(t, step_state, result);
+    *did_enter_syscall = true;
     // Don't continue yet. At the next iteration of record_step, we'll
     // enter syscall_state_changed and that will trigger a continue to
     // the syscall exit.
