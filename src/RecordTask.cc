@@ -1588,7 +1588,14 @@ void RecordTask::set_tid_addr(remote_ptr<int> tid_addr) {
 }
 
 void RecordTask::tgkill(int sig) {
+  LOG(debug) << "Sending " << sig << " to tid " << tid;
   ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
+}
+
+void RecordTask::kill_if_alive() {
+  if (!is_dying()) {
+    tgkill(SIGKILL);
+  }
 }
 
 pid_t RecordTask::get_parent_pid() { return get_ppid(tid); }
