@@ -1244,10 +1244,9 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
     case Arch::perf_event_open: {
       Task* target = t->session().find_task((pid_t)trace_regs.arg2_signed());
       int cpu = trace_regs.arg3_signed();
-      int group_fd = trace_regs.arg4_signed();
       unsigned long flags = trace_regs.arg5();
       int fd = trace_regs.syscall_result_signed();
-      if (target && cpu == -1 && group_fd == -1 && !flags) {
+      if (target && cpu == -1 && !flags) {
         auto attr =
             t->read_mem(remote_ptr<struct perf_event_attr>(trace_regs.arg1()));
         if (VirtualPerfCounterMonitor::should_virtualize(attr)) {

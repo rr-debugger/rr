@@ -47,7 +47,8 @@ public:
   /**
    * Reset all counter values to 0 and program the counters to send
    * TIME_SLICE_SIGNAL when 'ticks_period' tick events have elapsed. (In reality
-   * the hardware triggers its interrupt some time after that.)
+   * the hardware triggers its interrupt some time after that. We also allow
+   * the interrupt to fire early.)
    * This must be called while the task is stopped, and it must be called
    * before the task is allowed to run again.
    */
@@ -72,9 +73,9 @@ public:
   Ticks read_ticks();
 
   /**
-   * Return the fd we last used to monitor the ticks counter.
+   * Return the fd we last used to generate the ticks-counter signal.
    */
-  int ticks_fd() const { return fd_ticks.get(); }
+  int ticks_interrupt_fd() const { return fd_ticks_interrupt.get(); }
 
   /* This choice is fairly arbitrary; linux doesn't use SIGSTKFLT so we
    * hope that tracees don't either. */
@@ -89,12 +90,18 @@ public:
   };
   Extra read_extra();
 
-  static const struct perf_event_attr& ticks_attr();
+  static bool is_ticks_attr(const perf_event_attr& attr);
+
   bool counting;
 
 private:
   pid_t tid;
-  ScopedFd fd_ticks;
+  // We use separate fds for counting ticks and for generating interrupts. The
+  // former ignores ticks in aborted transactions, and does not support
+  // sample_period; the latter does not ignore ticks in aborted transactions,
+  // but does support sample_period.
+  ScopedFd fd_ticks_measure;
+  ScopedFd fd_ticks_interrupt;
   ScopedFd fd_page_faults;
   ScopedFd fd_hw_interrupts;
   ScopedFd fd_instructions_retired;

@@ -186,18 +186,41 @@ static void init_attributes() {
                        PERF_COUNT_SW_PAGE_FAULTS);
 }
 
-const struct perf_event_attr& PerfCounters::ticks_attr() {
+static const uint64_t IN_TXCP = 1ULL << 33;
+
+bool PerfCounters::is_ticks_attr(const perf_event_attr& attr) {
   init_attributes();
-  return rr::ticks_attr;
+  perf_event_attr tmp_attr = attr;
+  tmp_attr.sample_period = 0;
+  tmp_attr.config &= ~IN_TXCP;
+  return memcmp(&ticks_attr, &tmp_attr, sizeof(attr)) == 0;
 }
 
-PerfCounters::PerfCounters(pid_t tid) : tid(tid), started(false) {
+PerfCounters::PerfCounters(pid_t tid)
+    : counting(false), tid(tid), started(false) {
   init_attributes();
 }
 
 static ScopedFd start_counter(pid_t tid, int group_fd,
                               struct perf_event_attr* attr) {
   int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, 0);
+  if (0 > fd && errno == EINVAL && attr->type == PERF_TYPE_RAW &&
+      (attr->config & IN_TXCP)) {
+    // The kernel might not support IN_TXCP, so try again without it.
+    struct perf_event_attr tmp_attr = *attr;
+    tmp_attr.config &= ~IN_TXCP;
+    fd = syscall(__NR_perf_event_open, &tmp_attr, tid, -1, group_fd, 0);
+    if (fd >= 0 &&
+        (cpuid(CPUID_GETEXTENDEDFEATURES, 0).ebx & HLE_FEATURE_FLAG)) {
+      if (!Flags::get().suppress_environment_warnings) {
+        fprintf(
+            stderr,
+            "Your CPU supports Hardware Lock Elision but your kernel does not\n"
+            "support setting the IN_TXCP PMU flag. Record and replay of code\n"
+            "that uses HLE will fail unless you update your kernel.\n");
+      }
+    }
+  }
   if (0 > fd) {
     if (errno == EACCES) {
       FATAL() << "Permission denied to use 'perf_event_open'; are perf events "
@@ -223,8 +246,8 @@ static bool has_ioc_period_bug() {
   }
 
   // Start a cycles counter
-  struct perf_event_attr attr = rr::cycles_attr;
-  attr.sample_period = 0xfffffff;
+  struct perf_event_attr attr = rr::ticks_attr;
+  attr.sample_period = 0xffffffff;
   attr.exclude_kernel = 1;
   attr.disabled = 0;
   ScopedFd bug_fd = start_counter(0, -1, &attr);
@@ -256,31 +279,44 @@ void PerfCounters::reset(Ticks ticks_period) {
   if (!started) {
     struct perf_event_attr attr = rr::ticks_attr;
     attr.sample_period = ticks_period;
-    fd_ticks = start_counter(tid, -1, &attr);
+    fd_ticks_interrupt = start_counter(tid, -1, &attr);
+    // Set up a separate counter for measuring ticks, which does not have
+    // a sample period and does not count events during aborted transactions.
+    // Note that the sample_period should *never* be set to zero. That should
+    // work but under KVM it doesn't.
+    attr.sample_period = 0xffffffff;
+    attr.config |= IN_TXCP;
+    fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
 
     struct f_owner_ex own;
     own.type = F_OWNER_TID;
     own.pid = tid;
-    if (fcntl(fd_ticks, F_SETOWN_EX, &own)) {
+    if (fcntl(fd_ticks_interrupt, F_SETOWN_EX, &own)) {
       FATAL() << "Failed to SETOWN_EX ticks event fd";
     }
-    make_counter_async(fd_ticks, PerfCounters::TIME_SLICE_SIGNAL);
+    make_counter_async(fd_ticks_interrupt, PerfCounters::TIME_SLICE_SIGNAL);
 
     if (extra_perf_counters_enabled()) {
-      int group_leader = fd_ticks;
+      int group_leader = fd_ticks_interrupt;
       fd_hw_interrupts = start_counter(tid, group_leader, &hw_interrupts_attr);
       fd_instructions_retired =
           start_counter(tid, group_leader, &instructions_retired_attr);
       fd_page_faults = start_counter(tid, group_leader, &page_faults_attr);
     }
   } else {
-    if (ioctl(fd_ticks, PERF_EVENT_IOC_RESET, 0)) {
+    if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_RESET, 0)) {
       FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
     }
-    if (ioctl(fd_ticks, PERF_EVENT_IOC_PERIOD, &ticks_period)) {
+    if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_PERIOD, &ticks_period)) {
       FATAL() << "ioctl(PERF_EVENT_IOC_PERIOD) failed";
     }
-    if (ioctl(fd_ticks, PERF_EVENT_IOC_ENABLE, 0)) {
+    if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_ENABLE, 0)) {
+      FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
+    }
+    if (ioctl(fd_ticks_measure, PERF_EVENT_IOC_RESET, 0)) {
+      FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
+    }
+    if (ioctl(fd_ticks_measure, PERF_EVENT_IOC_ENABLE, 0)) {
       FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
     }
   }
@@ -300,7 +336,8 @@ void PerfCounters::stop() {
   }
   started = false;
 
-  fd_ticks.close();
+  fd_ticks_interrupt.close();
+  fd_ticks_measure.close();
   fd_page_faults.close();
   fd_hw_interrupts.close();
   fd_instructions_retired.close();
@@ -311,7 +348,8 @@ void PerfCounters::stop_counting() {
   if (has_ioc_period_bug()) {
     stop();
   } else {
-    ioctl(fd_ticks, PERF_EVENT_IOC_DISABLE, 0);
+    ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_DISABLE, 0);
+    ioctl(fd_ticks_measure, PERF_EVENT_IOC_DISABLE, 0);
   }
 }
 
@@ -323,8 +361,23 @@ static int64_t read_counter(ScopedFd& fd) {
 }
 
 Ticks PerfCounters::read_ticks() {
-  uint64_t val = started && counting ? read_counter(fd_ticks) : 0;
-  return val;
+  if (!started || !counting) {
+    return 0;
+  }
+  uint64_t measure_val = read_counter(fd_ticks_measure);
+  uint64_t interrupt_val = read_counter(fd_ticks_interrupt);
+  if (measure_val > interrupt_val) {
+    // There is some kind of kernel or hardware bug that means we sometimes
+    // see more events with IN_TXCP set than without. These are clearly
+    // spurious events :-(. For now, work around it by returning the
+    // interrupt_val. That will work if HLE hasn't been used in this interval.
+    // Note that interrupt_val > measure_val is valid behavior (when HLE is
+    // being used).
+    LOG(debug) << "Measured too many ticks; measure=" << measure_val
+               << ", interrupt=" << interrupt_val;
+    return interrupt_val;
+  }
+  return measure_val;
 }
 
 PerfCounters::Extra PerfCounters::read_extra() {

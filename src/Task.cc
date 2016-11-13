@@ -1342,7 +1342,7 @@ void Task::did_waitpid(WaitStatus status) {
       status = WaitStatus::for_stop_sig(PerfCounters::TIME_SLICE_SIGNAL);
       memset(&pending_siginfo, 0, sizeof(pending_siginfo));
       pending_siginfo.si_signo = PerfCounters::TIME_SLICE_SIGNAL;
-      pending_siginfo.si_fd = hpc.ticks_fd();
+      pending_siginfo.si_fd = hpc.ticks_interrupt_fd();
       pending_siginfo.si_code = POLL_IN;
       siginfo_overriden = true;
       expecting_ptrace_interrupt_stop = 0;

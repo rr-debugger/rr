@@ -507,6 +507,7 @@ set(BASIC_TESTS
   grandchild_threads_main_running
   grandchild_threads_thread_running
   grandchild_threads_parent_alive
+  hle
   inotify
   int3
   intr_futex_wait_restart

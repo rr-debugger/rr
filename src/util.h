@@ -179,6 +179,7 @@ enum cpuid_requests {
   CPUID_GETFEATURES,
   CPUID_GETTLB,
   CPUID_GETSERIAL,
+  CPUID_GETEXTENDEDFEATURES = 0x07,
   CPUID_GETXSAVE = 0x0D,
   CPUID_INTELEXTENDED = 0x80000000,
   CPUID_INTELFEATURES,
@@ -189,6 +190,7 @@ enum cpuid_requests {
 
 const int OSXSAVE_FEATURE_FLAG = 1 << 27;
 const int AVX_FEATURE_FLAG = 1 << 28;
+const int HLE_FEATURE_FLAG = 1 << 4;
 
 /** issue a single request to CPUID. Fits 'intel features', for instance
  *  note that even if only "eax" and "edx" are of interest, other registers
