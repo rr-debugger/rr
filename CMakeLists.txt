@@ -603,6 +603,7 @@ set(BASIC_TESTS
   ptrace_syscall
   ptrace_syscall_clone_untraced
   ptrace_sysemu
+  ptrace_sysemu_syscall
   ptrace_trace_clone
   ptrace_trace_exit
   ptrace_traceme
