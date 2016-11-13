@@ -239,8 +239,6 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   r.set_syscall_result(-ENOSYS);
   r.set_original_syscallno(trace_frame.regs().original_syscallno());
   t->set_regs(r);
-  // Get out of the kernel
-  t->finish_emulated_syscall();
 
   // Dig the recorded tid out out of the trace. The tid value returned in
   // the recorded registers could be in a different pid namespace from rr's,
