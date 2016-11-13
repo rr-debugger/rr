@@ -532,6 +532,7 @@ set(BASIC_TESTS
   madvise
   madvise_free
   map_fixed
+  map_shared_syscall
   membarrier
   memfd_create
   mincore

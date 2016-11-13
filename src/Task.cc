@@ -139,48 +139,14 @@ Task::~Task() {
 }
 
 void Task::finish_emulated_syscall() {
-  // We need to execute something to get us out of a SYSEMU syscall-stop into a
-  // signal-stop. SINGLESTEP/SYSEMU_SINGLESTEP works, but sometimes executes
-  // instruction after the syscall as well, so we need to be able to undo that.
-
   // XXX verify that this can't be interrupted by a breakpoint trap
   Registers r = regs();
-  remote_code_ptr ip = r.ip();
-  bool known_idempotent_insn_after_syscall =
-      (is_in_traced_syscall() || is_in_untraced_syscall());
 
-  // We're about to single-step the tracee at its $ip just past
-  // the syscall insn, then back up the $ip to where it started.
-  // This is problematic because it will execute the insn at the
-  // current $ip twice.  If that insns isn't idempotent, then
-  // replay will create side effects that diverge from
-  // recording.
-  //
-  // To prevent that, we insert a breakpoint trap at the current
-  // $ip.  We can execute that without creating side effects.
-  // After the single-step, we remove the breakpoint, which
-  // restores the original insn at the $ip.
-  //
-  // Syscalls made from the syscallbuf are known to execute an
-  // idempotent insn after the syscall trap (restore register
-  // from stack), so we don't have to pay this expense.
-  if (!known_idempotent_insn_after_syscall) {
-    bool ok = vm()->add_breakpoint(ip, BKPT_INTERNAL);
-    ASSERT(this, ok) << "Can't add breakpoint???";
-  }
   // Passing RESUME_NO_TICKS here is not only a small performance optimization,
   // but also avoids counting an event if the instruction immediately following
   // a syscall instruction is a conditional branch.
-  resume_execution(RESUME_SYSEMU_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
+  resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
 
-  if (!known_idempotent_insn_after_syscall) {
-    // The breakpoint should raise SIGTRAP, but we can also see
-    // any of the host of replay-ignored signals.
-    ASSERT(this, (stop_sig() == SIGTRAP ||
-                  ReplaySession::is_ignored_signal(stop_sig())))
-        << "PENDING SIG IS " << signal_name(stop_sig());
-    vm()->remove_breakpoint(ip, BKPT_INTERNAL);
-  }
   set_regs(r);
   wait_status = WaitStatus();
 }
