@@ -1596,6 +1596,7 @@ static void do_ptrace_exit_stop(RecordTask* t) {
 static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   if (sig) {
     siginfo_t si = tracee->take_ptrace_signal_siginfo(sig);
+    LOG(debug) << "Doing ptrace resume with signal " << signal_name(sig);
     // Treat signal as nondeterministic; it won't happen just by
     // replaying the tracee.
     tracee->push_event(SignalEvent(si, NONDETERMINISTIC_SIG, tracee));
@@ -2138,6 +2139,11 @@ static Switchable prepare_ptrace(RecordTask* t,
       // inside syscallbuf code. However, if the syscallbuf if locked, doing
       // so should be safe.
       if (tracee) {
+        if (!((unsigned int)t->regs().arg4() < _NSIG)) {
+          // Invalid signals in ptrace resume cause EIO
+          syscall_state.emulate_result(-EIO);
+          break;
+        }
         tracee->set_syscallbuf_locked(command != PTRACE_CONT);
         prepare_ptrace_cont(tracee, t->regs().arg4(), command);
         syscall_state.emulate_result(0);

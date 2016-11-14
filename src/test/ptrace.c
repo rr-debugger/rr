@@ -249,6 +249,11 @@ int main(void) {
                           (void*)offsetof(struct user, u_debugreg[0]),
                           (void*)0));
 
+  /* Test invalid signal in continue */
+  test_assert(-1 == ptrace(PTRACE_CONT, child, NULL, -1) && errno == EIO);
+  test_assert(-1 == ptrace(PTRACE_CONT, child, NULL, _NSIG + 1) &&
+              errno == EIO);
+
   test_assert(0 == ptrace(PTRACE_DETACH, child, NULL, NULL));
 
   test_assert(child == waitpid(child, &status, 0));
