@@ -142,8 +142,14 @@ RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
   RV_X86(ESP, esp), RV_X86(EBP, ebp), RV_X86(ESI, esi), RV_X86(EDI, edi),
   RV_X86(EIP, eip), RV_X86_WITH_MASK(EFLAGS, eflags, deterministic_eflags_mask),
   RV_X86_WITH_MASK(CS, xcs, 0), RV_X86_WITH_MASK(SS, xss, 0),
-  RV_X86_WITH_MASK(DS, xds, 0), RV_X86_WITH_MASK(ES, xes, 0), RV_X86(FS, xfs),
-  RV_X86(GS, xgs),
+  RV_X86_WITH_MASK(DS, xds, 0), RV_X86_WITH_MASK(ES, xes, 0),
+  // Mask out the RPL from the fs and gs segment selectors. The kernel
+  // unconditionally sets RPL=3 on sigreturn, but if the segment index is 0,
+  // the RPL doesn't matter, and the CPU resets the entire register to 0,
+  // so whether or not we see this depends on whether the value round-tripped
+  // to the CPU yet.
+  RV_X86_WITH_MASK(FS, xfs, (uint16_t)~3),
+  RV_X86_WITH_MASK(GS, xgs, (uint16_t)~3),
   // The comparison for this is handled specially elsewhere.
   RV_X86_WITH_MASK(ORIG_EAX, orig_eax, 0),
 };
@@ -363,12 +369,12 @@ template <>
     const Registers& reg2, MismatchBehavior mismatch_behavior) {
   bool match = compare_registers_core<rr::X86Arch>(name1, reg1, name2, reg2,
                                                    mismatch_behavior);
-  /* Negative orig_eax values, observed at SCHED events and signals,
-     seemingly can vary between recording and replay on some kernels
-     (e.g. Linux ubuntu 3.13.0-24-generic). They probably reflect
-     signals sent or something like that.
+  /* When the kernel is entered via an interrupt, orig_rax is set to -IRQ.
+     We observe negative orig_eax values at SCHED events and signals and other
+     timer interrupts. These values are only really meaningful to compare when
+     they reflect original syscall numbers, in which case both will be positive.
   */
-  if (reg1.u.x86regs.orig_eax >= 0 || reg2.u.x86regs.orig_eax >= 0) {
+  if (reg1.u.x86regs.orig_eax >= 0 && reg2.u.x86regs.orig_eax >= 0) {
     X86_REGCMP(orig_eax);
   }
   return match;
@@ -380,9 +386,8 @@ template <>
     const Registers& reg2, MismatchBehavior mismatch_behavior) {
   bool match = compare_registers_core<rr::X64Arch>(name1, reg1, name2, reg2,
                                                    mismatch_behavior);
-  // XXX haven't actually observed this to be true on x86-64 yet, but
-  // assuming that it follows the x86 behavior.
-  if ((intptr_t)reg1.u.x64regs.orig_rax >= 0 ||
+  // See comment in the x86 case
+  if ((intptr_t)reg1.u.x64regs.orig_rax >= 0 &&
       (intptr_t)reg2.u.x64regs.orig_rax >= 0) {
     X64_REGCMP(orig_rax);
   }
