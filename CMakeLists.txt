@@ -460,6 +460,7 @@ set(BASIC_TESTS
   clone_file_range
   clone_immediate_exit
   clone_newflags
+  clone_parent
   clone_untraced
   cloned_sigmask
   constructor

@@ -2428,7 +2428,8 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   if (flags & CLONE_THREAD) {
     new_tid = t->find_newborn_thread();
   } else {
-    new_tid = t->find_newborn_child_process();
+    new_tid = t->find_newborn_process(flags & CLONE_PARENT ? t->get_parent_pid()
+                                                           : t->real_tgid());
   }
   RecordTask* new_task = static_cast<RecordTask*>(
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
