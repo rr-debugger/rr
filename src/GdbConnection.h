@@ -315,8 +315,8 @@ public:
   };
   static std::unique_ptr<GdbConnection> await_client_connection(
       unsigned short desired_port, ProbePort probe, pid_t tgid,
-      const std::string& exe_image, const Features& features,
-      ScopedFd* client_params_fd = nullptr);
+      const std::string& debugger_name, const std::string& exe_image,
+      const Features& features, ScopedFd* client_params_fd = nullptr);
 
   /**
    * Exec gdb using the params that were written to

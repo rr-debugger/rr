@@ -44,6 +44,9 @@ public:
     // parameters through this pipe. GdbServer::launch_gdb is passed the
     // other end of this pipe to exec gdb with the parameters.
     ScopedFd* debugger_params_write_pipe;
+    // Name of the debugger to suggest. Only used if debugger_params_write_pipe
+    // is null.
+    std::string debugger_name;
 
     ConnectionFlags() : dbg_port(-1), debugger_params_write_pipe(nullptr) {}
   };

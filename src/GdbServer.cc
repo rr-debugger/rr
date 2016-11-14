@@ -1304,10 +1304,11 @@ static uint32_t get_cpu_features(SupportedArch arch) {
 
 static unique_ptr<GdbConnection> await_connection(
     Task* t, unsigned short port, GdbConnection::ProbePort probe,
-    const GdbConnection::Features& features,
+    const GdbConnection::Features& features, const string& debugger_name,
     ScopedFd* client_params_fd = nullptr) {
   auto result = GdbConnection::await_client_connection(
-      port, probe, t->tgid(), t->vm()->exe_image(), features, client_params_fd);
+      port, probe, t->tgid(), debugger_name, t->vm()->exe_image(), features,
+      client_params_fd);
 
   result->set_cpu_features(get_cpu_features(t->arch()));
 
@@ -1334,7 +1335,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
                                   : GdbConnection::PROBE_PORT;
   Task* t = timeline.current_session().current_task();
   dbg = await_connection(t, port, probe, GdbConnection::Features(),
-                         flags.debugger_params_write_pipe);
+                         flags.debugger_name, flags.debugger_params_write_pipe);
   if (flags.debugger_params_write_pipe) {
     flags.debugger_params_write_pipe->close();
   }
@@ -1402,7 +1403,7 @@ void GdbServer::emergency_debug(Task* t) {
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
   unique_ptr<GdbConnection> dbg =
-      await_connection(t, t->tid, GdbConnection::PROBE_PORT, features);
+      await_connection(t, t->tid, GdbConnection::PROBE_PORT, features, "gdb");
 
   GdbServer(dbg, t).process_debugger_requests();
 }

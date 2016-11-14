@@ -137,8 +137,8 @@ static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
 
 unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     unsigned short desired_port, ProbePort probe, pid_t tgid,
-    const string& exe_image, const Features& features,
-    ScopedFd* client_params_fd) {
+    const string& debugger_name, const string& exe_image,
+    const Features& features, ScopedFd* client_params_fd) {
   auto dbg = unique_ptr<GdbConnection>(new GdbConnection(tgid, features));
   unsigned short port = desired_port;
   ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
@@ -155,7 +155,7 @@ unique_ptr<GdbConnection> GdbConnection::await_client_connection(
     push_default_gdb_options(options);
     push_target_remote_cmd(options, port);
     cerr << "Launch gdb with \n"
-         << "  gdb ";
+         << "  " << debugger_name << " ";
     for (auto& opt : options) {
       cerr << "'" << opt << "' ";
     }

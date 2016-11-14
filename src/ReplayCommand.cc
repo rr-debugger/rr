@@ -364,6 +364,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       auto session = ReplaySession::create(trace_dir);
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
+      conn_flags.debugger_name = flags.gdb_binary_file_path;
       GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
     }
     return 0;
