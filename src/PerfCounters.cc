@@ -284,6 +284,16 @@ void PerfCounters::reset(Ticks ticks_period) {
     // a sample period and does not count events during aborted transactions.
     // Note that the sample_period should *never* be set to zero. That should
     // work but under KVM it doesn't.
+    // We have to use two separate counters here because the kernel does
+    // not support setting a sample_period with IN_TXCP, apparently for
+    // reasons related to this Intel note on IA32_PERFEVTSEL2:
+    // ``When IN_TXCP=1 & IN_TX=1 and in sampling, spurious PMI may
+    // occur and transactions may continuously abort near overflow
+    // conditions. Software should favor using IN_TXCP for counting over
+    // sampling. If sampling, software should use large “sample-after“
+    // value after clearing the counter configured to use IN_TXCP and
+    // also always reset the counter even when no overflow condition
+    // was reported.''
     attr.sample_period = 0xffffffff;
     attr.config |= IN_TXCP;
     fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
