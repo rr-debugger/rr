@@ -1554,7 +1554,7 @@ pid_t RecordTask::find_newborn_thread() {
   }
 }
 
-pid_t RecordTask::find_newborn_child_process() {
+pid_t RecordTask::find_newborn_process(pid_t child_parent) {
   ASSERT(this, session().is_recording());
   ASSERT(this, ptrace_event() == PTRACE_EVENT_CLONE ||
                    ptrace_event() == PTRACE_EVENT_VFORK ||
@@ -1563,7 +1563,7 @@ pid_t RecordTask::find_newborn_child_process() {
   pid_t hint = get_ptrace_eventmsg<pid_t>();
   // This should always succeed, but may fail in old kernels due to
   // a kernel bug. See RecordSession::handle_ptrace_event.
-  if (!session().find_task(hint) && get_ppid(hint) == real_tgid()) {
+  if (!session().find_task(hint) && get_ppid(hint) == child_parent) {
     return hint;
   }
 
@@ -1575,7 +1575,7 @@ pid_t RecordTask::find_newborn_child_process() {
     char* end;
     pid_t proc_tid = strtol(result->d_name, &end, 10);
     if (*end == '\0' && !session().find_task(proc_tid) &&
-        get_ppid(proc_tid) == real_tgid()) {
+        get_ppid(proc_tid) == child_parent) {
       closedir(dir);
       return proc_tid;
     }

@@ -423,11 +423,12 @@ public:
    */
   pid_t find_newborn_thread();
   /**
-   * Return the pid of the newborn process created by this task.
-   * Called when this task has a PTRACE_CLONE_EVENT without CLONE_THREAD,
-   * or PTRACE_FORK_EVENT.
+   * Return the pid of the newborn process (whose parent has pid `parent_pid`,
+   * which need not be the same as the current task's pid, due to CLONE_PARENT)
+   * created by this task. Called when this task has a PTRACE_CLONE_EVENT
+   * without CLONE_THREAD, or PTRACE_FORK_EVENT.
    */
-  pid_t find_newborn_child_process();
+  pid_t find_newborn_process(pid_t child_parent);
 
   /**
    * Do a tgkill to send a specific signal to this task.
