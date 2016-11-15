@@ -615,6 +615,7 @@ set(BASIC_TESTS
   readlink
   readlinkat
   readv
+  redzone_integrity
   recvfrom
   rename
   rlimit
