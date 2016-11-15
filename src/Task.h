@@ -771,6 +771,10 @@ public:
    */
   bool ptrace_if_alive(int request, remote_ptr<void> addr, void* data);
 
+  bool is_dying() const {
+    return seen_ptrace_exit_event || detected_unexpected_exit;
+  }
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);

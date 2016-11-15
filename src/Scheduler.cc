@@ -173,7 +173,11 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
       // We have no way to detect a SIGCONT coming from outside the tracees.
       // We just have to poll SigPnd in /proc/<pid>/status.
       enable_poll = true;
-      return false;
+      // We also need to check if the task got killed.
+      t->try_wait();
+      // N.B.: If we supported ptrace exit notifications for killed tracee's
+      // that would need handling here, but we don't at the moment.
+      return t->is_dying();
     }
   }
 

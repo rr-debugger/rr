@@ -525,6 +525,7 @@ set(BASIC_TESTS
   ioctl_tty
   kcmp
   kill_newborn
+  kill_ptracee
   legacy_ugid
   madvise
   madvise_free
