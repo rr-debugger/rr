@@ -45,7 +45,7 @@ RerunCommand RerunCommand::singleton(
     "  -s, --trace-start=<EVENT>  start tracing at <EVENT>\n"
     "\n"
     "<REGS> is a comma-separated sequence of 'event','icount','ip','flags',\n"
-    "'gp_x16','xmm_x16','ymm_x16'. For the '166' cases, we always output 16,\n"
+    "'gp_x16','xmm_x16','ymm_x16'. For the 'x16' cases, we always output 16,\n"
     "values, the latter 8 of which are zero for x86-32. GP registers are in\n"
     "architectural order (AX,CX,DX,BX,SP,BP,SI,DI,R8-R15). All data is output\n"
     "in little-endian binary format; records are separated by \\n. String\n"
@@ -321,6 +321,28 @@ static bool ignore_singlestep_for_event(const Event& ev) {
   }
 }
 
+/**
+ * In KVM virtual machines (and maybe others), singlestepping over CPUID
+ * executes the following instruction as well. Work around that.
+ */
+static bool maybe_set_breakpoint_after_cpuid(Task* t) {
+  if (!t) {
+    return false;
+  }
+  uint8_t bytes[2];
+  if (t->read_bytes_fallible(t->ip().to_data_ptr<void>(), 2, bytes) != 2) {
+    return false;
+  }
+  if (bytes[0] != 0x0f || bytes[1] != 0xa2) {
+    return false;
+  }
+  return t->vm()->add_breakpoint(t->ip() + 2, BKPT_USER);
+}
+
+static void clear_breakpoint_after_cpuid(Task* t) {
+  t->vm()->remove_breakpoint(t->ip(), BKPT_USER);
+}
+
 static int rerun(const string& trace_dir, const RerunFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
   uint64_t instruction_count_within_event = 0;
@@ -337,7 +359,19 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     Event replayed_event = replay_session->current_trace_frame().event();
     Task* old_task = replay_session->current_task();
     remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
+
+    bool set_breakpoint = maybe_set_breakpoint_after_cpuid(old_task);
     auto result = replay_session->replay_step(cmd);
+    if (set_breakpoint) {
+      clear_breakpoint_after_cpuid(old_task);
+      if (result.break_status.breakpoint_hit ||
+          result.break_status.singlestep_complete) {
+        ASSERT(old_task, old_task->ip() == old_ip + 2);
+        result.break_status.breakpoint_hit = false;
+        result.break_status.singlestep_complete = true;
+      }
+    }
+
     TraceFrame::Time after_time = replay_session->trace_reader().time();
     remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
     assert(after_time >= before_time && after_time <= before_time + 1);
