@@ -204,13 +204,20 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
 
 void ReplayTimeline::mark_after_singlestep(const Mark& from,
                                            const ReplayResult& result) {
+  assert(result.break_status.singlestep_complete);
   Mark m = mark();
   if (!result.did_fast_forward && m.ptr->proto.key == from.ptr->proto.key &&
       !result.break_status.signal) {
     auto& mark_vector = marks[m.ptr->proto.key];
     for (size_t i = 0; i < mark_vector.size(); ++i) {
       if (mark_vector[i] == from.ptr) {
-        assert(i + 1 < mark_vector.size() && mark_vector[i + 1] == m.ptr);
+        if (i + 1 >= mark_vector.size() || mark_vector[i + 1] != m.ptr) {
+          for (size_t j = 0; j < mark_vector.size(); ++j) {
+            LOG(debug) << "  mark_vector[" << j << "] " << *mark_vector[j];
+          }
+          ASSERT(result.break_status.task, false) << " expected to find " << m
+                                                  << " at index " << i + 1;
+        }
         break;
       }
     }
