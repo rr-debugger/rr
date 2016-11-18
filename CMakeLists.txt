@@ -523,6 +523,7 @@ set(BASIC_TESTS
   invalid_ioctl
   io
   ioctl
+  ioctl_fs
   ioctl_pty
   ioctl_tty
   kcmp

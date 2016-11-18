@@ -8,6 +8,8 @@
 
 /* btrfs needs NULL but doesn't #include it */
 #include <stdlib.h>
+/* need to include sys/mount.h before linux/fs.h */
+#include <sys/mount.h>
 
 #include <arpa/inet.h>
 #include <asm/prctl.h>
@@ -24,6 +26,7 @@
 #include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>
+#include <linux/fs.h>
 #include <linux/futex.h>
 #include <linux/if.h>
 #include <linux/if_packet.h>

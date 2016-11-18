@@ -17,6 +17,7 @@
 #include <linux/if.h>
 #include <linux/if_packet.h>
 #include <linux/ipc.h>
+#include <linux/fs.h>
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
 #include <linux/net.h>
@@ -1467,6 +1468,10 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(TIOCGPTLCK):
     case IOCTL_MASK_SIZE(TIOCGEXCL):
     case IOCTL_MASK_SIZE(USBDEVFS_GET_CAPABILITIES):
+    // FS_IOC_GETVERSION has the same number as VIDIOCGCAP (but different size)
+    // but the same treatment works for both.
+    case IOCTL_MASK_SIZE(FS_IOC_GETVERSION):
+    case IOCTL_MASK_SIZE(FS_IOC_GETFLAGS):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
