@@ -56,7 +56,7 @@ static void notify_save_data_error(ReplayTask* t, remote_ptr<void> addr,
 }
 
 void MagicSaveDataMonitor::did_write(Task* t, const std::vector<Range>& ranges,
-                                     int64_t) {
+                                     LazyOffset&) {
   for (auto& r : ranges) {
     if (t->session().is_recording()) {
       static_cast<RecordTask*>(t)->record_remote(r.data.cast<uint8_t>(),

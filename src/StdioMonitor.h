@@ -22,7 +22,7 @@ public:
    */
   StdioMonitor(int original_fd) : original_fd(original_fd) {}
 
-  virtual Type type() { return Stdio; }
+  virtual Type type() override { return Stdio; }
 
   /**
    * Make writes to stdout/stderr blocking, to avoid nondeterminism in the
@@ -35,7 +35,7 @@ public:
    * "[rr <pid> <global-time>]".  This allows users to more easily correlate
    * stdio with trace event numbers.
    */
-  virtual Switchable will_write(Task* t);
+  virtual Switchable will_write(Task* t) override;
 
   /**
    * During replay, echo writes to stdout/stderr.

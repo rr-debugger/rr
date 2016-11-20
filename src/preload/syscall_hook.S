@@ -33,7 +33,7 @@ _syscallhook_vsyscall_entry:
            Push before-call ESP.
          */
         pushl (stub_scratch_1)
-        add $4,(%esp)
+        addl $4,(%esp)
         /* Push return address EIP. */
         mov %edi,(stub_scratch_1)
         mov (%esp),%edi /* EDI == before-call ESP */
@@ -48,7 +48,7 @@ _syscallhook_vsyscall_entry:
         /* Pop previous EIP */
         lea 4(%esp),%esp
         /* Restore previous ESP */
-        sub $4,(%esp)
+        subl $4,(%esp)
         pop %esp
         ret
         .cfi_endproc

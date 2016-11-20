@@ -20,7 +20,7 @@ int main(void) {
 
   child = fork();
   if (!child) {
-    *(int*)NULL = 0;
+    crash_null_deref();
     return 77;
   }
   test_assert(child == waitpid(child, &status, 0));

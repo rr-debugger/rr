@@ -8,7 +8,7 @@ static int accumulator = 9999;
 static void hle_abort(void) {
   int j;
 #if defined(__x86_64__) || defined(__i386__)
-  asm("xacquire lock add $1,%0\n\t" : : "m"(lock));
+  asm("xacquire; lock addl $1,%0\n\t" : : "m"(lock));
 #else
 #error Unknown architecture
 #endif
@@ -23,7 +23,7 @@ static void hle_abort(void) {
   /* Force abort */
   sched_yield();
 #if defined(__x86_64__) || defined(__i386__)
-  asm("xrelease lock sub $1,%0\n\t" : : "m"(lock));
+  asm("xrelease; lock subl $1,%0\n\t" : : "m"(lock));
 #else
 #error Unknown architecture
 #endif

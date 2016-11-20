@@ -22,7 +22,7 @@ public:
    */
   virtual bool needs_offset(Task*, bool) { return false; }
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
-                         int64_t offset);
+                         LazyOffset& offset);
 };
 
 } // namespace rr

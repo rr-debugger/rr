@@ -20,7 +20,6 @@ static struct itimerspec its = { { 100000, 0 }, { 0, 100000000 } };
 static struct itimerspec its2 = { { 100000, 0 }, { 100000, 0 } };
 static struct itimerspec its3 = { { 0, 1000000 }, { 0, 1000000 } };
 
-
 void usr1_catcher(int signum, __attribute__((unused)) siginfo_t* siginfo_ptr,
                   __attribute__((unused)) void* ucontext_ptr) {
   caught_sig = caught_limit_sig = signum;

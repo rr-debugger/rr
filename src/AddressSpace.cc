@@ -1533,7 +1533,8 @@ void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
     return;
   }
   Task* t = *task_set().begin();
-  LOG(debug) << "Writing back " << std::hex << (int)it->second.overwritten_data << std::dec;
+  LOG(debug) << "Writing back " << std::hex << (int)it->second.overwritten_data
+             << std::dec;
   t->write_mem(it->first.to_data_ptr<uint8_t>(), it->second.overwritten_data);
   breakpoints.erase(it);
 }
