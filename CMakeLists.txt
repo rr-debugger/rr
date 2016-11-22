@@ -643,6 +643,7 @@ set(BASIC_TESTS
   seccomp_veto_exec
   self_sigint
   sem
+  send_block
   sendfile
   set_ptracer
   set_tid_address

@@ -872,14 +872,17 @@ static Switchable prepare_socketcall(RecordTask* t,
     case SYS_BIND:
     /* int listen(int sockfd, int backlog) */
     case SYS_LISTEN:
+    /* int shutdown(int socket, int how) */
+    case SYS_SHUTDOWN:
+      break;
+
     /* ssize_t send(int sockfd, const void *buf, size_t len, int flags) */
     case SYS_SEND:
     /* ssize_t sendto(int sockfd, const void *buf, size_t len, int flags, const
      * struct sockaddr *dest_addr, socklen_t addrlen); */
     case SYS_SENDTO:
-    /* int shutdown(int socket, int how) */
-    case SYS_SHUTDOWN:
-      break;
+      // These can block when socket buffers are full.
+      return ALLOW_SWITCH;
 
     /* int setsockopt(int sockfd, int level, int optname, const void *optval,
      * socklen_t optlen); */
@@ -3018,6 +3021,12 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       return PREVENT_SWITCH;
     }
+
+    case Arch::sendto:
+      if (!((unsigned int)t->regs().arg4() & MSG_DONTWAIT)) {
+        return ALLOW_SWITCH;
+      }
+      return PREVENT_SWITCH;
 
     case Arch::sendmsg:
       if (!((unsigned int)t->regs().arg3() & MSG_DONTWAIT)) {
