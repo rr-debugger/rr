@@ -173,4 +173,5 @@ int main(void) {
   test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
 
   atomic_puts("EXIT-SUCCESS");
+  return 0;
 }
