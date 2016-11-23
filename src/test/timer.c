@@ -52,8 +52,7 @@ int main(void) {
   ALLOCATE_GUARD(id, 'a');
   ALLOCATE_GUARD(timeout_id, 'b');
   clockid_t clocks[2] = { CLOCK_REALTIME, CLOCK_MONOTONIC };
-  unsigned int i;
-  for (i = 0; i < sizeof(clocks) / sizeof(clockid_t); ++i) {
+  for (unsigned int i = 0; i < sizeof(clocks) / sizeof(clockid_t); ++i) {
     test_assert(0 == timer_create(clocks[i], NULL, id));
     VERIFY_GUARD(id);
 
@@ -75,8 +74,7 @@ int main(void) {
      * between test runtime and reproducability.
      */
     test_assert(0 == timer_settime(*id, 0, &its3, NULL));
-    int j;
-    for (j = 0; j < 5000 && !caught_limit_sig; ++j) {
+    for (int i = 0; i < 5000 && !caught_limit_sig; ++i) {
       caught_sig = 0;
       for (counter = 0; counter >= 0 && !caught_sig; counter++) {
         (void)sys_gettid();
