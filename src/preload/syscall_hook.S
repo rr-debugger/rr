@@ -141,12 +141,22 @@ name:                           \
        .cfi_offset %eip, 0;     \
        .cfi_offset %esp, 4
 
-#define SYSCALLHOOK_END(name)         \
-        pop (stub_scratch_1);         \
-        .cfi_adjust_cfa_offset -4;    \
-        pop %esp;                     \
-        jmp *(stub_scratch_1);        \
-       .cfi_endproc;                  \
+#define SYSCALLHOOK_END(name)                                   \
+        pop (stub_scratch_1);                                   \
+        .cfi_adjust_cfa_offset -4;                              \
+        pop %esp;                                               \
+        .cfi_same_value %esp;                                   \
+        .cfi_escape 0x10, /* DW_CFA_expression */               \
+                    0x08, /* %eip */                            \
+                    0x05, /* 5 byte expression follows */       \
+                    0x03, /* DW_OP_addr */                      \
+                    /* Individually place bytes */              \
+                    stub_scratch_1 & 0xFF,                      \
+                    (stub_scratch_1 & (0xFF <<  0x8)) >>  0x8,  \
+                    (stub_scratch_1 & (0xFF << 0x10)) >> 0x10,  \
+                    (stub_scratch_1 & (0xFF << 0x18)) >> 0x18;  \
+        jmp *(stub_scratch_1);                                  \
+       .cfi_endproc;                                            \
        .size name, .-name
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_3d_01_f0_ff_ff)
@@ -261,12 +271,26 @@ name:                           \
         .cfi_offset %rip, 0;    \
         .cfi_offset %rsp, 8;
 
-#define SYSCALLHOOK_END(name)          \
-        pop (stub_scratch_1);          \
-        .cfi_adjust_cfa_offset -8;     \
-        pop %rsp;                      \
-        jmp *(stub_scratch_1);         \
-        .cfi_endproc;                  \
+#define SYSCALLHOOK_END(name)                                   \
+        pop (stub_scratch_1);                                   \
+        .cfi_adjust_cfa_offset -8;                              \
+        pop %rsp;                                               \
+        .cfi_same_value %rsp;                                   \
+        .cfi_escape 0x10, /* DW_CFA_expression */               \
+                    0x10, /* %rip */                            \
+                    0x09, /* 9 byte expression follows */       \
+                    0x03, /* DW_OP_addr */                      \
+                    /* Individually place bytes */              \
+                    stub_scratch_1 & 0xFF,                      \
+                    (stub_scratch_1 & (0xFF <<  0x8)) >>  0x8,  \
+                    (stub_scratch_1 & (0xFF << 0x10)) >> 0x10,  \
+                    (stub_scratch_1 & (0xFF << 0x18)) >> 0x18,  \
+                    (stub_scratch_1 & (0xFF << 0x20)) >> 0x20,  \
+                    (stub_scratch_1 & (0xFF << 0x28)) >> 0x28,  \
+                    (stub_scratch_1 & (0xFF << 0x30)) >> 0x30,  \
+                    (stub_scratch_1 & (0xFF << 0x38)) >> 0x38;  \
+        jmp *(stub_scratch_1);                                  \
+        .cfi_endproc;                                           \
         .size name, .-name
 
 
