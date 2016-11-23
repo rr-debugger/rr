@@ -318,21 +318,23 @@ static bool is_in_patch_stubs(Task* t, remote_code_ptr ip) {
          (t->vm()->mapping_flags_of(p) & AddressSpace::Mapping::IS_PATCH_STUBS);
 }
 
-bool GdbServer::intercept_mem_request(Task* target, const GdbRequest& req,
-                                      vector<uint8_t>* result) {
+void GdbServer::maybe_intercept_mem_request(Task* target, const GdbRequest& req,
+                                            vector<uint8_t>* result) {
   /* Crazy hack!
    * When gdb tries to read the word at the top of the stack, and we're in our
    * dynamically-generated stub code, tell it the value is zero, so that gdb's
    * stack-walking code doesn't find a bogus value that it treats as a return
    * address and sets a breakpoint there, potentially corrupting program data.
+   * gdb sometimes reads a whole block of memory around the stack pointer so
+   * handle cases where the top-of-stack word is contained in a larger range.
    */
-  if (target->regs().sp().as_int() == req.mem_.addr &&
-      req.mem_.len == word_size(target->arch()) &&
+  size_t size = word_size(target->arch());
+  if (target->regs().sp().as_int() >= req.mem_.addr &&
+      target->regs().sp().as_int() + size <= req.mem_.addr + req.mem_.len &&
       is_in_patch_stubs(target, target->ip())) {
-    memset(result->data(), 0, result->size());
-    return true;
+    memset(result->data() + target->regs().sp().as_int() - req.mem_.addr, 0,
+           size);
   }
-  return false;
 }
 
 void GdbServer::dispatch_debugger_request(Session& session,
@@ -426,13 +428,12 @@ void GdbServer::dispatch_debugger_request(Session& session,
     case DREQ_GET_MEM: {
       vector<uint8_t> mem;
       mem.resize(req.mem().len);
-      if (!intercept_mem_request(target, req, &mem)) {
-        ssize_t nread = target->read_bytes_fallible(req.mem().addr,
-                                                    req.mem().len, mem.data());
-        mem.resize(max(ssize_t(0), nread));
-        target->vm()->replace_breakpoints_with_original_values(
-            mem.data(), mem.size(), req.mem().addr);
-      }
+      ssize_t nread = target->read_bytes_fallible(req.mem().addr, req.mem().len,
+                                                  mem.data());
+      mem.resize(max(ssize_t(0), nread));
+      target->vm()->replace_breakpoints_with_original_values(
+          mem.data(), mem.size(), req.mem().addr);
+      maybe_intercept_mem_request(target, req, &mem);
       dbg->reply_get_mem(mem);
       return;
     }

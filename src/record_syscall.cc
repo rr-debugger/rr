@@ -13,11 +13,11 @@
 #include <limits>
 #include <linux/capability.h>
 #include <linux/ethtool.h>
+#include <linux/fs.h>
 #include <linux/futex.h>
 #include <linux/if.h>
 #include <linux/if_packet.h>
 #include <linux/ipc.h>
-#include <linux/fs.h>
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
 #include <linux/net.h>

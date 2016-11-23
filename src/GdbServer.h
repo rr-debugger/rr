@@ -120,8 +120,8 @@ private:
   void dispatch_regs_request(const Registers& regs,
                              const ExtraRegisters& extra_regs);
   enum ReportState { REPORT_NORMAL, REPORT_THREADS_DEAD };
-  bool intercept_mem_request(Task* target, const GdbRequest& req,
-                             std::vector<uint8_t>* result);
+  void maybe_intercept_mem_request(Task* target, const GdbRequest& req,
+                                   std::vector<uint8_t>* result);
   /**
    * Process the single debugger request |req| inside the session |session|.
    *

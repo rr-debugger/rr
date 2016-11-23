@@ -77,9 +77,11 @@ int main(void) {
     test_assert(0 == syscall(SYS_arch_prctl, ARCH_SET_GS, gs_base + 0x10));
 
     pid_t pid = getpid();
-    // Avoid entering libc for anything too complex, until we're back from the SIGSTOP.
-    // The TLS is invalid, so anything that looks at it may cause strange behavior
-    int err =  syscall(SYS_arch_prctl, ARCH_SET_FS, fs_base - 0x10);
+    // Avoid entering libc for anything too complex, until we're back from the
+    // SIGSTOP.
+    // The TLS is invalid, so anything that looks at it may cause strange
+    // behavior
+    int err = syscall(SYS_arch_prctl, ARCH_SET_FS, fs_base - 0x10);
     syscall(SYS_tgkill, pid, sys_gettid(), SIGSTOP);
     test_assert(err == 0);
 

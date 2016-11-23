@@ -81,18 +81,26 @@ _syscall_hook_trampoline:
 
         /* $esp points at &info.  Push that pointer on the stack as
          * our arg for vsyscall_hook(). */
-        movl %esp, %ecx
-        pushl %ecx
-        .cfi_adjust_cfa_offset 4
+        movl %esp, %ebx
+        .cfi_def_cfa_register %ebx
+
+        /* Align stack to 16 bytes */
+        and $0xfffffff0,%esp
+
+        sub $12,%esp
+        pushl %ebx
 
         call syscall_hook
         /* $eax = vsyscall_hook(&info); */
 
-        /* $eax is now the syscall return value.  Erase the |&info|
-         * arg and |info.no| from the stack so that we can restore the
-         * other registers we saved. */
-        addl $8, %esp
-        .cfi_adjust_cfa_offset -8
+        /* Restore ESP */
+        mov %ebx,%esp
+        .cfi_def_cfa_register %esp
+
+        /* $eax is now the syscall return value.  Erase |info.no| from the
+         * stack so that we can restore the other registers we saved. */
+        addl $4,%esp
+        .cfi_adjust_cfa_offset -4
 
         /* Contract of __kernel_vsyscall() and real syscalls is that even
          * callee-save registers aren't touched, so we restore everything
@@ -159,6 +167,11 @@ SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
         .p2align 4
 _syscall_hook_trampoline:
         .cfi_startproc
+        /* Save RBX because we need a callee-saves register */
+        pushq %rbx
+        .cfi_adjust_cfa_offset 8
+        .cfi_rel_offset %rbx, 0
+
         /* Build a |struct syscall_info| on the stack by pushing the arguments
            and syscall number. */
         pushq %r9
@@ -183,9 +196,17 @@ _syscall_hook_trampoline:
         .cfi_adjust_cfa_offset 8
         .cfi_rel_offset %rax, 0
 
+        /* Align stack */
+        mov %rsp,%rbx
+        .cfi_def_cfa_register %rbx
+        and $0xfffffffffffffff0,%rsp
+
         /* Call our hook. */
-        mov %rsp, %rdi
+        mov %rbx,%rdi
         callq syscall_hook
+
+        mov %rbx,%rsp
+        .cfi_def_cfa_register %rsp
 
         /* On entrance, we pushed the %rax, the syscall number. But we don't
            want to |pop %rax|, as that will overwrite our return value. Pop
@@ -216,6 +237,10 @@ _syscall_hook_trampoline:
         pop %r9
         .cfi_adjust_cfa_offset -8
         .cfi_restore %r9
+
+        pop %rbx
+        .cfi_adjust_cfa_offset -8
+        .cfi_restore %rbx
 
         /* ...and we're done. */
         ret
