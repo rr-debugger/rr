@@ -360,8 +360,10 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
 
     // Singlestep through the remaining iterations.
     while (iterations > 0 && t->ip() == ip) {
-      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT,
-                          RESUME_UNLIMITED_TICKS);
+      // Don't count ticks here. Reactivating the performance counter can be
+      // expensive and since we know we're just executing the string instruction
+      // we shouldn't miss any ticks here.
+      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
       did_execute = true;
       ASSERT(t, t->stop_sig() == SIGTRAP);
       // Watchpoints can fire spuriously because configure_watch_registers
@@ -440,7 +442,7 @@ static int fallible_read_byte(Task* t, remote_ptr<uint8_t> ip) {
   return byte;
 }
 
-static bool is_string_instruction_at(Task* t, remote_code_ptr ip) {
+bool is_string_instruction_at(Task* t, remote_code_ptr ip) {
   bool found_rep = false;
   remote_ptr<uint8_t> bare_ip = ip.to_data_ptr<uint8_t>();
   while (true) {
@@ -485,6 +487,14 @@ bool maybe_at_or_after_x86_string_instruction(Task* t) {
 
   return is_string_instruction_at(t, t->ip()) ||
          is_string_instruction_before(t, t->ip());
+}
+
+bool at_x86_string_instruction(Task* t) {
+  if (!is_x86ish(t)) {
+    return false;
+  }
+
+  return is_string_instruction_at(t, t->ip());
 }
 
 } // namespace rr

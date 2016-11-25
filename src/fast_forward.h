@@ -44,6 +44,9 @@ bool fast_forward_through_instruction(
  */
 bool maybe_at_or_after_x86_string_instruction(Task* t);
 
+/* Return true if the instruction at t->ip() is a string instruction */
+bool at_x86_string_instruction(Task* t);
+
 } // namespace rr
 
 #endif // RR_FAST_FORWARD_H_

@@ -42,6 +42,7 @@
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
 #include "ThreadDb.h"
+#include "fast_forward.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
@@ -77,6 +78,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       ticks(0),
       registers(a),
       how_last_execution_resumed(RESUME_CONT),
+      last_resume_orig_cx(0),
       is_stopped(false),
       seccomp_bpf_enabled(false),
       detected_unexpected_exit(false),
@@ -886,6 +888,42 @@ void Task::activate_preload_thread_locals() {
   }
 }
 
+static bool cpu_has_singlestep_quirk() {
+  static bool has_quirk = ((cpuid(CPUID_GETFEATURES, 0).eax & 0xF0FF0) == 0x50670);
+  return has_quirk;
+}
+
+/*
+ * The value of rcx above which the CPU doesn't properly handle singlestep for
+ * string instructions. Right now, since only once CPU has this quirk, this
+ * value is hardcoded, but could depend on the CPU architecture in the future.
+ */
+static int single_step_coalesce_cutoff() { return 32; }
+
+void Task::maybe_workaround_singlestep_bug() {
+  uintptr_t cx = regs().cx();
+  uintptr_t cutoff = single_step_coalesce_cutoff();
+  /* The extra cx >= cutoff check is just an optimization, to avoid the
+     moderately expensive load from ip() if we can */
+  if (cpu_has_singlestep_quirk() &&
+      cx >= cutoff && at_x86_string_instruction(this)) {
+    /* KNL has a quirk where single-stepping a string instruction can step up
+       to 64 iterations (empirically, this only happens if cx > 32).
+       Work around this by fudging registers to force the
+       processor to execute one iteration and one interation only. */
+    LOG(debug) << "Working around KNL single-step hardware bug (cx=" << cx
+               << ")";
+    if (cx >= cutoff) {
+      last_resume_orig_cx = cx;
+      Registers r = regs();
+      /* An arbitrary value < cutoff would work fine here, except 1, since
+         the last iteration of the loop behaves differently */
+      r.set_cx(cutoff - 1);
+      set_regs(r);
+    }
+  }
+}
+
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
   // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
@@ -907,6 +945,10 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   address_of_last_execution_resume = ip();
   how_last_execution_resumed = how;
   set_debug_status(0);
+
+  if (RESUME_SINGLESTEP == how || RESUME_SYSEMU_SINGLESTEP == how) {
+    maybe_workaround_singlestep_bug();
+  }
 
   pid_t wait_ret = 0;
   if (session().is_recording()) {
@@ -1398,6 +1440,18 @@ void Task::did_waitpid(WaitStatus status) {
     registers.clear_singlestep_flag();
     need_to_set_regs = true;
   }
+
+  if (last_resume_orig_cx != 0) {
+    ASSERT(this, did_read_regs);
+    uintptr_t new_cx = registers.cx();
+    /* Un-fudge registers, if we fudged them to work around the KNL hardware
+       quirk */
+    unsigned cutoff = single_step_coalesce_cutoff();
+    ASSERT(this, new_cx == cutoff - 1 || new_cx == cutoff);
+    registers.set_cx(last_resume_orig_cx - cutoff + new_cx);
+    need_to_set_regs = true;
+  }
+  last_resume_orig_cx = 0;
 
   // We might have singlestepped at the resumption address and just exited
   // the kernel without executing the breakpoint at that address.
