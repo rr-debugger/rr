@@ -105,6 +105,7 @@ private:
   ScopedFd fd_page_faults;
   ScopedFd fd_hw_interrupts;
   ScopedFd fd_instructions_retired;
+  ScopedFd fd_useless_counter;
   bool started;
 };
 
