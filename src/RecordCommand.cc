@@ -40,6 +40,8 @@ RecordCommand RecordCommand::singleton(
     "  --no-file-cloning          disable file cloning for mmapped files\n"
     "  --no-read-cloning          disable file-block cloning for syscallbuf\n"
     "                             reads\n"
+    "  -p --print-trace-dir=<NUM> print trace directory followed by a newline\n"
+    "                             to given file descriptor\n"
     "  --syscall-buffer-size=<NUM> desired size of syscall buffer in kB.\n"
     "                             Mainly for tests\n"
     "  -s, --always-switch        try to context switch at every rr event\n"
@@ -81,6 +83,8 @@ struct RecordFlags {
    */
   size_t syscall_buffer_size;
 
+  int print_trace_dir;
+
   /* Whether to use file-cloning optimization during recording. */
   bool use_file_cloning;
 
@@ -110,6 +114,7 @@ struct RecordFlags {
         continue_through_sig(0),
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
         syscall_buffer_size(0),
+        print_trace_dir(-1),
         use_file_cloning(true),
         use_read_cloning(true),
         bind_cpu(RecordSession::BIND_CPU),
@@ -153,6 +158,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
     { 'n', "no-syscall-buffer", NO_PARAMETER },
+    { 'p', "print-trace-dir", HAS_PARAMETER },
     { 's', "always-switch", NO_PARAMETER },
     { 't', "continue-through-signal", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
@@ -188,6 +194,12 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       break;
     case 'n':
       flags.use_syscall_buffer = RecordSession::DISABLE_SYSCALL_BUF;
+      break;
+    case 'p':
+      if (!opt.verify_valid_int(0, INT32_MAX)) {
+        return false;
+      }
+      flags.print_trace_dir = opt.int_value;
       break;
     case 0:
       flags.use_read_cloning = false;
@@ -285,6 +297,12 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   auto session = RecordSession::create(
       args, flags.extra_env, flags.use_syscall_buffer, flags.bind_cpu);
   setup_session_from_flags(*session, flags);
+
+  if (flags.print_trace_dir >= 0) {
+    const string& dir = session->trace_writer().dir();
+    write(flags.print_trace_dir, dir.c_str(), dir.size());
+    write(flags.print_trace_dir, "\n", 1);
+  }
 
   // Install signal handlers after creating the session, to ensure they're not
   // inherited by the tracee.
