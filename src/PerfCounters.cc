@@ -60,21 +60,35 @@ struct PmuConfig {
   unsigned rinsn_cntr_event;
   unsigned hw_intr_cntr_event;
   bool supported;
+  /*
+   * Some CPUs turn off the whole PMU when there are no remaining events
+   * scheduled (perhaps as a power consumption optimization). This can be a
+   * very expensive operation, and is thus best avoided. For cpus, where this
+   * is a problem, we keep a cycles counter (which corresponds to one of the
+   * fixed function counters, so we don't use up a programmable PMC) that we
+   * don't otherwise use, but keeps the PMU active, greatly increasing
+   * performance.
+   */
+  bool benefits_from_useless_counter;
 };
 
 // XXX please only edit this if you really know what you're doing.
 static const PmuConfig pmu_configs[] = {
-  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0x5100c0, 0x5301cb, true },
-  { IntelSkylake, "Intel Skylake", 0x5101c4, 0x5100c0, 0x5301cb, true },
-  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0x5100c0, 0x5301cb, true },
-  { IntelHaswell, "Intel Haswell", 0x5101c4, 0x5100c0, 0x5301cb, true },
-  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, true },
-  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0x5100c0, 0x5301cb,
+  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0x5100c0, 0x5301cb, true,
     true },
-  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0x5100c0, 0x50011d, true },
-  { IntelWestmere, "Intel Westmere", 0x5101c4, 0x5100c0, 0x50011d, true },
-  { IntelPenryn, "Intel Penryn", 0, 0, 0, false },
-  { IntelMerom, "Intel Merom", 0, 0, 0, false },
+  { IntelSkylake, "Intel Skylake", 0x5101c4, 0x5100c0, 0x5301cb, true, false },
+  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0x5100c0, 0x5301cb, true,
+    false },
+  { IntelHaswell, "Intel Haswell", 0x5101c4, 0x5100c0, 0x5301cb, true, false },
+  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, true,
+    false },
+  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, true,
+    false },
+  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0x5100c0, 0x50011d, true, false },
+  { IntelWestmere, "Intel Westmere", 0x5101c4, 0x5100c0, 0x50011d, true,
+    false },
+  { IntelPenryn, "Intel Penryn", 0, 0, 0, false, false },
+  { IntelMerom, "Intel Merom", 0, 0, 0, false, false },
 };
 
 static string lowercase(const string& s) {
@@ -156,6 +170,7 @@ static void init_perf_event_attr(struct perf_event_attr* attr,
   attr->exclude_guest = 1;
 }
 
+static bool activate_useless_counter;
 static void init_attributes() {
   if (attributes_initialized) {
     return;
@@ -175,6 +190,18 @@ static void init_attributes() {
   if (!pmu->supported) {
     FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
   }
+
+  /*
+   * For maintainability, and since it doesn't impact performance when not
+   * needed, we always activate this. If it ever turns out to be a problem,
+   * this can be set to pmu->benefits_from_useless_counter, instead.
+   *
+   * We also disable this counter when running under rr. Even though it's the
+   * same event for the same task as the outer rr, the linux kernel does not
+   * coalesce them and tries to schedule the new one on a general purpose PMC.
+   * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
+   */
+  activate_useless_counter = !running_under_rr();
 
   init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
   init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
@@ -301,6 +328,12 @@ void PerfCounters::reset(Ticks ticks_period) {
     attr.sample_period = 0xffffffff;
     attr.config |= IN_TXCP;
     fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
+
+    if (activate_useless_counter && !fd_useless_counter.is_open()) {
+      // N.B.: This is deliberately not in the same group as the other counters
+      // since we want to keep it scheduled at all times.
+      fd_useless_counter = start_counter(tid, -1, &cycles_attr);
+    }
 
     struct f_owner_ex own;
     own.type = F_OWNER_TID;
