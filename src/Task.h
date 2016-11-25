@@ -937,6 +937,8 @@ protected:
                      const std::vector<std::string>& argv,
                      const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
+  void maybe_workaround_singlestep_bug();
+
   uint32_t serial;
   // The address space of this task.
   AddressSpace::shr_ptr as;
@@ -952,6 +954,10 @@ protected:
   // Where we last resumed execution
   remote_code_ptr address_of_last_execution_resume;
   ResumeRequest how_last_execution_resumed;
+  // In certain circumstances, due to hardware bugs, we need to fudge the
+  // cx register. If so, we record the orginal value here. See comments in
+  // Task.cc
+  uint64_t last_resume_orig_cx;
   // True when we know via waitpid() that the task is stopped and we haven't
   // resumed it.
   bool is_stopped;
