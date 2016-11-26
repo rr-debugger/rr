@@ -258,24 +258,52 @@ _syscall_hook_trampoline:
         .size _syscall_hook_trampoline, . - _syscall_hook_trampoline
 
 /**
+ * Ok, bear with me here. When gdb sees our stack switch, it gets suspicious and if
+ * we're unlucky may decide that our unwind info is broken and abort the unwind. However,
+ * it decides to allow the unwind to proceed anyway if we happen to be in a function called
+ * __morestack (because that's what gcc calls its stack switching mechanism). Now,
+ * GDB does the stack switching comparison based on the CFA. What we thus need to do is keep the
+ * CFA pointing to the old stack until we get to a function named __morestack. We set the CFA for every
+ * syscallhook to what it will be at the end of the function (which, well, is an ok definition
+ * of the CFA). Then, we insert a __morestack function (still with the old CFA) that just jumps
+ * through to the trampoline. This way, we can force gdb's stack switch detection to think the
+ * stack switch happens between the hook and the common trampoline code (and add a __morestack
+ * local symbol to the trampoline code to avoid GDB messing with out stack trace).
+ */
+#define CFA_AT_RSP_OFFSET(offset) \
+.cfi_escape 0x0f, /* DW_CFA_def_cfa_expression */\
+        0x03, /* 3 bytes follow */\
+        0x77, offset, /* DW_OP_breg7, offset */\
+        0x06; /* DW_OP_deref */
+
+#define RSP_IS_CFA \
+.cfi_escape 0x16, /* DW_CFA_val_expression */\
+            0x7,  /* %rsp */\
+            0;     /* 0 bytes follow */
+
+#define RIP_IS_DEREF_RSP \
+.cfi_escape 0x10, /* DW_CFA_expression */\
+            0x10, /* %rip */\
+            0x02, /* 2 bytes follow */\
+            0x77, 0; /* DW_OP_breg7, 0 */
+
+/**
  * On syscallhook entry, the stack has been switched to the end of per-task
  * scratch space, then the old RSP and the return address have been pushed.
  */
-#define SYSCALLHOOK_START(name) \
-        .global name;           \
-        .hidden name;           \
-        .type name, @function;  \
-name:                           \
-        .cfi_startproc;         \
-        .cfi_def_cfa_offset 0;  \
-        .cfi_offset %rip, 0;    \
-        .cfi_offset %rsp, 8;
+#define SYSCALLHOOK_START(name)    \
+        .global name;              \
+        .hidden name;              \
+        .type name, @function;     \
+name:                              \
+        .cfi_startproc;            \
+        CFA_AT_RSP_OFFSET(8)      \
+        RSP_IS_CFA                 \
+        RIP_IS_DEREF_RSP
 
 #define SYSCALLHOOK_END(name)                                   \
         pop (stub_scratch_1);                                   \
-        .cfi_adjust_cfa_offset -8;                              \
-        pop %rsp;                                               \
-        .cfi_same_value %rsp;                                   \
+        CFA_AT_RSP_OFFSET(0)                                    \
         .cfi_escape 0x10, /* DW_CFA_expression */               \
                     0x10, /* %rip */                            \
                     0x09, /* 9 byte expression follows */       \
@@ -289,30 +317,48 @@ name:                           \
                     (stub_scratch_1 & (0xFF << 0x28)) >> 0x28,  \
                     (stub_scratch_1 & (0xFF << 0x30)) >> 0x30,  \
                     (stub_scratch_1 & (0xFF << 0x38)) >> 0x38;  \
+        pop %rsp;                                               \
+        .cfi_def_cfa %rsp, 0;                                   \
         jmp *(stub_scratch_1);                                  \
         .cfi_endproc;                                           \
         .size name, .-name
 
+/* See note above on what __morestack is for */
+.global __morestack
+.hidden __morestack
+.type __morestack, @function
+__morestack:
+.cfi_startproc
+CFA_AT_RSP_OFFSET(16)
+.cfi_escape 0x16, /* DW_CFA_val_expression */\
+            0x07, /* %rsp */\
+            0x02, /* 2 bytes follow */\
+            0x77, 8; /* DW_OP_breg7, 8 */
+RIP_IS_DEREF_RSP
+callq _syscall_hook_trampoline
+retq
+.cfi_endproc
+.size __morestack, .-__morestack
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_48_3d_01_f0_ff_ff)
-        callq _syscall_hook_trampoline
+        callq __morestack
         cmpq $0xfffffffffffff001,%rax
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_3d_01_f0_ff_ff)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
-        callq _syscall_hook_trampoline
+        callq __morestack
         cmpq $0xfffffffffffff000,%rax
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_3d_00_f0_ff_ff)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_3c_24)
-         callq _syscall_hook_trampoline
+         callq __morestack
          /* The original instruction after the syscall is movq (%rsp),%rdi. */
          movq 8(%rsp),%rdi
          movq (%rdi),%rdi
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_3c_24)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
-        callq _syscall_hook_trampoline
+        callq __morestack
         /* The original instructions after the syscall are
            pop %rdx; pop %rsi; retq. */
         /* We're not returning to the dynamically generated stub, so
@@ -328,22 +374,22 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
         .size _syscall_hook_trampoline_5a_5e_c3, .-_syscall_hook_trampoline_5a_5e_c3
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_89_c2_f7_da)
-        call _syscall_hook_trampoline
+        call __morestack
         mov %eax,%edx
         neg %edx
 SYSCALLHOOK_END(_syscall_hook_trampoline_89_c2_f7_da)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_90_90_90)
-        call _syscall_hook_trampoline
+        call __morestack
 SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_ba_01_00_00_00)
-        call _syscall_hook_trampoline
+        call __morestack
         mov $1,%edx
 SYSCALLHOOK_END(_syscall_hook_trampoline_ba_01_00_00_00)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_89_c1_31_d2)
-        call _syscall_hook_trampoline
+        call __morestack
         mov %eax,%ecx
         xor %edx,%edx
 SYSCALLHOOK_END(_syscall_hook_trampoline_89_c1_31_d2)
