@@ -611,7 +611,7 @@ static void __attribute__((constructor)) init_process(void) {
     { 1,
       3,
       { 0x90, 0x90, 0x90 },
-      (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 },
+      (uintptr_t)_syscall_hook_trampoline_90_90_90 },
     /* glibc-2.22-17.fc23.x86_64 has 'syscall' followed by 'mov $1,%rdx'
      * in
      * pthread_barrier_wait.
