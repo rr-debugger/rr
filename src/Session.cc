@@ -510,11 +510,15 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
     --name_end;
     if (*name_end == '-') {
       ++hyphens_seen;
+    } else if (*name_end == '/') {
+      assert(false && "Passed something to create_shared_mmap that"
+                      " wasn't a mapping shared between rr and the tracee?");
     }
     if (hyphens_seen == 2) {
       break;
     }
   }
+  assert(hyphens_seen == 2);
   *name_end = '\0';
   return name_start;
 }
@@ -537,6 +541,31 @@ const AddressSpace::Mapping& Session::recreate_shared_mmap(
   return remote.task()->vm()->mapping_of(new_addr);
 }
 
+const AddressSpace::Mapping& Session::steal_mapping(
+    AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
+    MonitoredSharedMemory::shr_ptr&& monitored) {
+  // We will include the name of the full path of the original mapping in the
+  // name of the shared mapping, replacing slashes by dashes.
+  char name[PATH_MAX - 40];
+  strncpy(name, m.map.fsname().c_str(), sizeof(name));
+  name[sizeof(name) - 1] = '\0';
+  for (char* ptr = name; *ptr != '\0'; ++ptr) {
+    if (*ptr == '/') {
+      *ptr = '-';
+    }
+  }
+
+  // Now create the new mapping in its place
+  remote_ptr<void> start = m.map.start();
+  size_t sz = m.map.size();
+  const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
+      create_shared_mmap(remote, sz, start, name, m.map.prot(),
+                         m.map.flags() & (MAP_GROWSDOWN | MAP_STACK),
+                         std::move(monitored))
+          .start());
+  return new_m;
+}
+
 // Replace a MAP_PRIVATE segment by one that is shared between rr and the
 // tracee. Returns true on success
 bool Session::make_private_shared(AutoRemoteSyscalls& remote,
@@ -556,22 +585,7 @@ bool Session::make_private_shared(AutoRemoteSyscalls& remote,
   // segment as it's scratch space, reevaluate that choice
   AutoRemoteSyscalls remote2(remote.task());
 
-  // We will include the name of the full path of the original mapping in the
-  // name of the shared mapping, replacing slashes by dashes.
-  char name[PATH_MAX - 40];
-  strncpy(name, m.map.fsname().c_str(), sizeof(name));
-  name[sizeof(name) - 1] = '\0';
-  for (char* ptr = name; *ptr != '\0'; ++ptr) {
-    if (*ptr == '/') {
-      *ptr = '-';
-    }
-  }
-
-  // Now create the new mapping in its place
-  const AddressSpace::Mapping& new_m = remote.task()->vm()->mapping_of(
-      create_shared_mmap(remote2, sz, start, name, m.map.prot(),
-                         m.map.flags() & (MAP_GROWSDOWN | MAP_STACK))
-          .start());
+  const AddressSpace::Mapping& new_m = steal_mapping(remote2, m);
 
   // And copy over the contents. Since we can't just call memcpy in the
   // inferior, just copy directly from the remote private into the local

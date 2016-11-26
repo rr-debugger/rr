@@ -242,6 +242,13 @@ public:
       AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
       MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
 
+  /* Takes a mapping and replaces it by one that is shared between rr and
+     the tracee. The caller is responsible for filling the contents of the
+      new mapping. */
+  static const AddressSpace::Mapping& steal_mapping(
+      AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
+      MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
+
   enum PtraceSyscallBeforeSeccomp {
     PTRACE_SYSCALL_BEFORE_SECCOMP,
     SECCOMP_BEFORE_PTRACE_SYSCALL,
