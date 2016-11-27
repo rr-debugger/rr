@@ -1501,7 +1501,9 @@ static inline void assert_coalesceable(Task* t,
 
 static bool is_coalescable(const AddressSpace::Mapping& mleft,
                            const AddressSpace::Mapping& mright) {
-  if (!is_adjacent_mapping(mleft.map, mright.map, RESPECT_HEAP)) {
+  if (!is_adjacent_mapping(mleft.map, mright.map, RESPECT_HEAP) ||
+      !is_adjacent_mapping(mleft.recorded_map, mright.recorded_map,
+                           RESPECT_HEAP)) {
     return false;
   }
   return mleft.flags == mright.flags;

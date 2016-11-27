@@ -52,6 +52,27 @@ int main(int argc, char** argv) {
   test_assert(0 == munmap(map_addr + page_size, 2 * page_size));
   test_assert(0 == unlink(name2));
 
+  /* Now map two temporary files right next to each other to make sure they're
+     not getting coralesced, causing trouble for the checksumming */
+  char name3[] = "/tmp/rr-checksum-XXXXXX";
+  fd = mkstemp(name3);
+  char name4[] = "/tmp/rr-checksum-XXXXXX";
+  int fd2 = mkstemp(name4);
+  ftruncate(fd, page_size);
+  ftruncate(fd2, page_size);
+
+  // Alloc a 2 page region first, then overwrite it.
+  map_addr =
+      mmap(NULL, 2 * page_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
+  test_assert(MAP_FAILED != map_addr);
+  test_assert(MAP_FAILED != mmap(map_addr, page_size, PROT_NONE,
+                                 MAP_PRIVATE | MAP_FIXED, fd, 0));
+  test_assert(MAP_FAILED != mmap(map_addr + page_size, page_size, PROT_NONE,
+                                 MAP_PRIVATE | MAP_FIXED, fd2, 0));
+  (void)geteuid();
+  test_assert(0 == unlink(name3));
+  test_assert(0 == unlink(name4));
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
