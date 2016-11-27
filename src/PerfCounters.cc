@@ -276,6 +276,17 @@ static bool has_ioc_period_bug() {
     return bug_detected;
   }
 
+  if (running_under_rr()) {
+    // Under rr we emulate an idealized performance counter, so the result of
+    // this test doesn't matter. Further, since this is not exactly the same as
+    // our ticks_attr, it can take up an extra PMC when recording rr replay,
+    // which we don't have available on some architectures. Just say we don't
+    // have the bug.
+    did_test = true;
+    bug_detected = false;
+    return bug_detected;
+  }
+
   // Start a cycles counter
   struct perf_event_attr attr = rr::ticks_attr;
   attr.sample_period = 0xffffffff;
