@@ -297,6 +297,12 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     string raw_map_line = m.map.str();
     uint32_t rec_checksum = 0;
 
+    if (m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION) {
+      ASSERT(t, VALIDATE_CHECKSUMS == mode);
+      // These mappings didn't exist during recording. Skip them.
+      continue;
+    }
+
     if (VALIDATE_CHECKSUMS == mode) {
       char line[1024];
       fgets(line, sizeof(line), c.checksums_file);
@@ -309,7 +315,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       remote_ptr<void> rec_start_addr = rec_start;
       remote_ptr<void> rec_end_addr = rec_end;
       ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
-      ASSERT(t, rec_start_addr == m.map.start() && rec_end_addr == m.map.end())
+      // If the backing file is too short, we cut mappings short, to make sure
+      // have the same behavior as during recording. Tolerate this.
+      ASSERT(t, rec_start_addr == m.map.start() && m.map.end() <= rec_end_addr)
           << "Segment " << rec_start_addr << "-" << rec_end_addr
           << " changed to " << m.map << "??";
       if (is_start_of_scratch_region(t, rec_start_addr)) {
@@ -337,7 +345,14 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     mem.resize(m.map.size());
     ssize_t valid_mem_len =
         t->read_bytes_fallible(m.map.start(), m.map.size(), mem.data());
-    ASSERT(t, valid_mem_len >= 0);
+    if (valid_mem_len < 0) {
+      /* It is possible for whole mappings to be beyond the extent of the
+       * backing file, in which case read_bytes_fallible will return -1.
+       * During replay this will be a SIGBUS region, so skip it now.
+       */
+      ASSERT(t, valid_mem_len == -1 && errno == EIO);
+      continue;
+    }
     mem.resize(valid_mem_len);
 
     if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {

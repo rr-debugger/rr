@@ -720,6 +720,8 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   remote.task()->vm()->map(remote.task(), start, length, prot,
                            MAP_FIXED | MAP_PRIVATE, 0, file_name, fstat.st_dev,
                            fstat.st_ino, nullptr, &km_slice);
+  remote.task()->vm()->mapping_flags_of(start) |=
+      AddressSpace::Mapping::IS_SIGBUS_REGION;
 }
 
 static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,

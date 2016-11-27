@@ -271,6 +271,9 @@ public:
       IS_THREAD_LOCALS = 0x2,
       // This mapping is used for syscallbuf patch stubs
       IS_PATCH_STUBS = 0x4,
+      // This mapping has been created by the replayer to guarantee SIGBUS
+      // in a region whose backing file was too short during recording.
+      IS_SIGBUS_REGION = 0x8
     };
     uint32_t flags;
   };

@@ -446,12 +446,30 @@ void AddressSpace::brk(Task* t, remote_ptr<void> addr, int prot) {
   brk_end = addr;
 }
 
+static const char* stringify_flags(int flags) {
+  switch (flags) {
+    case AddressSpace::Mapping::FLAG_NONE:
+      return "";
+    case AddressSpace::Mapping::IS_SYSCALLBUF:
+      return " [syscallbuf]";
+    case AddressSpace::Mapping::IS_THREAD_LOCALS:
+      return " [thread_locals]";
+    case AddressSpace::Mapping::IS_PATCH_STUBS:
+      return " [patch_stubs]";
+    case AddressSpace::Mapping::IS_SIGBUS_REGION:
+      return " [sigbus_region]";
+    default:
+      return "[unknown_flags]";
+  }
+}
+
 void AddressSpace::dump() const {
   fprintf(stderr, "  (heap: %p-%p)\n", (void*)brk_start.as_int(),
           (void*)brk_end.as_int());
   for (auto it = mem.begin(); it != mem.end(); ++it) {
     const KernelMapping& m = it->second.map;
-    fprintf(stderr, "%s\n", m.str().c_str());
+    fprintf(stderr, "%s%s\n", m.str().c_str(),
+            stringify_flags(it->second.flags));
   }
 }
 
@@ -672,6 +690,7 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
           m.recorded_map.subrange(m.recorded_map.start(), rem.start()),
           m.emu_file, clone_stat(m.mapped_file_stat), m.local_addr,
           move(monitored));
+      underflow.flags = m.flags;
       add_to_map(underflow);
     }
     // Remap the overlapping region with the new prot.
@@ -687,6 +706,7 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
             ? m.monitored_shared_memory->subrange(new_start - m.map.start(),
                                                   new_end - new_start)
             : nullptr);
+    overlap.flags = m.flags;
     add_to_map(overlap);
     last_overlap = overlap.map;
 
@@ -703,6 +723,7 @@ void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
               ? m.monitored_shared_memory->subrange(rem.end() - m.map.start(),
                                                     m.map.end() - rem.end())
               : nullptr);
+      overflow.flags = m.flags;
       add_to_map(overflow);
     }
   };
@@ -982,6 +1003,7 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
                         m.recorded_map.subrange(m.map.start(), rem.start()),
                         m.emu_file, clone_stat(m.mapped_file_stat),
                         m.local_addr, move(monitored));
+      underflow.flags = m.flags;
       add_to_map(underflow);
     }
     // If the last segment we unmap overflows the unmap
@@ -996,6 +1018,7 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
               ? m.monitored_shared_memory->subrange(rem.end() - m.map.start(),
                                                     m.map.end() - rem.end())
               : nullptr);
+      overflow.flags = m.flags;
       add_to_map(overflow);
     }
   };

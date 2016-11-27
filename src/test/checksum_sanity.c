@@ -25,6 +25,33 @@ int main(int argc, char** argv) {
   test_assert(child == wait(&status));
   test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
 
+  /* Test that checksumming doesn't care if we have a mmap
+   * that is not backed by a sufficiently long file */
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  char name[] = "/tmp/rr-checksum-XXXXXX";
+  int fd = mkstemp(name);
+  /* Have it extend a couple of bytes into the second page */
+  test_assert(0 == ftruncate(fd, page_size + 200));
+  void* map_addr =
+      mmap(NULL, 4 * page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  test_assert(MAP_FAILED != map_addr);
+  /* Make the second and third page PROT_NONE */
+  test_assert(0 == mprotect(map_addr + page_size, 2 * page_size, PROT_NONE));
+  /* Just some syscall to get some additional checksums in */
+  (void)geteuid();
+  test_assert(0 == unlink(name));
+
+  /* The same again, but this time unmap the two pages in the middle */
+  char name2[] = "/tmp/rr-checksum-XXXXXX";
+  fd = mkstemp(name2);
+  /* Have it extend a couple of bytes into the second page */
+  test_assert(0 == ftruncate(fd, page_size + 200));
+  map_addr =
+      mmap(NULL, 4 * page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+  test_assert(MAP_FAILED != map_addr);
+  test_assert(0 == munmap(map_addr + page_size, 2 * page_size));
+  test_assert(0 == unlink(name2));
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
