@@ -983,11 +983,20 @@ post_build_executable(cpuid)
 add_dependencies(cpuid Generated)
 target_link_libraries(cpuid -lrt)
 
+# Check if we're running on KNL. If so, we allot more time to tests, due to
+# reduced single-core performance.
+exec_program(cat ARGS "/proc/cpuinfo" OUTPUT_VARIABLE CPUINFO)
+string(REGEX MATCH "^.*(Xeon Phi).*$" CPU_MODEL_PHI ${CPUINFO})
+
 function(configure_test test)
   if("${test}" MATCHES "^checkpoint_")
     set(TIMEOUT 600)
   elseif("${test}" MATCHES "stress")
     set(TIMEOUT 600)
+  elseif("${test}" MATCHES "string_instructions")
+    set(TIMEOUT 600)
+  elseif(NOT "${CPU_MODEL_PHI}" STREQUAL "")
+    set(TIMEOUT 480)
   else()
     set(TIMEOUT 120)
   endif()
