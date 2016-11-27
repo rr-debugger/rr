@@ -549,6 +549,7 @@ set(BASIC_TESTS
   mmap_shared_write
   mmap_short_file
   mmap_tmpfs
+  mmap_zero_size_fd
   mprotect
   mprotect_heterogenous
   mprotect_none

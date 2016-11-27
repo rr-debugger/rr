@@ -4035,16 +4035,26 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       t->vm()->map(t, addr, size, prot, flags, offset, file_name, st.st_dev,
                    st.st_ino, unique_ptr<struct stat>(new struct stat(st)));
 
+  bool adjusted_size = false;
   if (!st.st_size) {
     // Some device files are mmappable but have zero size. Increasing the
     // size here is safe even if the mapped size is greater than the real size.
     st.st_size = offset + size;
+    adjusted_size = true;
   }
 
   if (t->trace_writer().write_mapped_region(t, km, st) ==
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
-    t->record_remote(addr, min(end, (off64_t)km.size()));
+    off64_t nbytes = min(end, (off64_t)km.size());
+    if (adjusted_size) {
+      // If we adjusted the size, we're not guaranteed that the bytes we're
+      // reading are actually valid (it could actually have been a zero-sized
+      // file), so use the fallible variant.
+      t->record_remote_fallible(addr, nbytes);
+    } else {
+      t->record_remote(addr, nbytes);
+    }
 
     if ((flags & MAP_SHARED)) {
       if (t->fd_table()->is_monitoring(fd)) {
