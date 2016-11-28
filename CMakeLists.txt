@@ -587,6 +587,7 @@ set(BASIC_TESTS
   proc_mem
   protect_rr_fds
   prw
+  pselect
   pthread_condvar_locking
   ptrace
   ptrace_attach_null_status
