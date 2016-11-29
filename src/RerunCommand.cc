@@ -302,7 +302,7 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
 static bool treat_event_completion_as_singlestep_complete(const Event& ev) {
   switch (ev.type()) {
     case EV_PATCH_SYSCALL:
-    case EV_SEGV_RDTSC:
+    case EV_SEGV_DISABLED_INSN:
     case EV_SYSCALL:
       return true;
     default:

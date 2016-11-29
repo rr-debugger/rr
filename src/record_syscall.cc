@@ -3488,6 +3488,36 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           syscall_state.reg_parameter<typename Arch::unsigned_long>(2);
           break;
 
+        case ARCH_SET_CPUID: {
+          // Prevent the actual SET_CPUID call.
+          Registers r = t->regs();
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          int val = (int)t->regs().arg2();
+          if (t->cpuid_mode == -1) {
+            // Not supported on this kernel/hardware.
+            syscall_state.emulate_result(-EINVAL);
+          } else {
+            syscall_state.emulate_result(0);
+            t->cpuid_mode = !!val;
+          }
+          break;
+        }
+
+        case ARCH_GET_CPUID: {
+          // Prevent the actual GET_CPUID call and return our emulated state.
+          Registers r = t->regs();
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          if (t->cpuid_mode == -1) {
+            // Not supported on this kernel/hardware.
+            syscall_state.emulate_result(-EINVAL);
+          } else {
+            syscall_state.emulate_result(t->cpuid_mode);
+          }
+          break;
+        }
+
         default:
           syscall_state.expect_errno = EINVAL;
           break;

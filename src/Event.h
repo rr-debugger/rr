@@ -65,7 +65,8 @@ enum EventType {
   EV_INTERRUPTED_SYSCALL_NOT_RESTARTED,
   // Scheduling signal interrupted the trace.
   EV_SCHED,
-  EV_SEGV_RDTSC,
+  // A disabled RDTSC or CPUID instruction.
+  EV_SEGV_DISABLED_INSN,
   // Recorded syscallbuf data for one or more buffered syscalls.
   EV_SYSCALLBUF_FLUSH,
   EV_SYSCALLBUF_ABORT_COMMIT,

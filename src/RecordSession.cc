@@ -1575,7 +1575,7 @@ void RecordSession::runnable_state_changed(RecordTask* t, StepState* step_state,
     case EV_NOOP:
       t->pop_noop();
       break;
-    case EV_SEGV_RDTSC:
+    case EV_SEGV_DISABLED_INSN:
       t->record_current_event();
       t->pop_event(t->ev().type());
       break;

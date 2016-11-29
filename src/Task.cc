@@ -659,6 +659,22 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
 void Task::post_exec_syscall(TraceTaskEvent& event) {
   as->post_exec_syscall(this);
   fds->update_for_cloexec(this, event);
+
+  AutoRemoteSyscalls remote(this);
+  if (remote.syscall(syscall_number_for_arch_prctl(arch()),
+                     ARCH_SET_CPUID, 0) < 0) {
+    static bool warn_once_no_cpuid_fault = false;
+    if (!warn_once_no_cpuid_fault) {
+      warn_once_no_cpuid_fault = true;
+      LOG(warn) << "CPUID faulting not supported on this kernel or CPU\n"
+                << "Replay trace portability will be impaired";
+    }
+
+    if (this->session().is_recording()) {
+      auto rt = static_cast<RecordTask*>(this);
+      rt->cpuid_mode = -1;
+    }
+  }
 }
 
 bool Task::execed() const { return tg->execed; }

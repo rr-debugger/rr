@@ -195,7 +195,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       own_namespace_rec_tid(0),
       exit_code(0),
       termination_signal(0),
-      tsc_mode(PR_TSC_ENABLE) {
+      tsc_mode(PR_TSC_ENABLE),
+      cpuid_mode(1) {
   push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
