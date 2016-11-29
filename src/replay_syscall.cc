@@ -1203,9 +1203,16 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
           return;
       }
     /* fall through */
+    case Arch::arch_prctl: {
+      auto arg1 = t->regs().arg1();
+      if (sys == Arch::arch_prctl &&
+          (arg1 == ARCH_GET_CPUID || arg1 == ARCH_SET_CPUID)) {
+        return;
+      }
+    }
+    /* fall through */
     case Arch::munmap:
     case Arch::mprotect:
-    case Arch::arch_prctl:
     case Arch::set_thread_area: {
       // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
       Registers r = t->regs();

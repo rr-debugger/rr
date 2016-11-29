@@ -41,6 +41,15 @@ Session::Session()
       done_initial_exec_(false),
       visible_execution_(true) {
   LOG(debug) << "Session " << this << " created";
+
+  // Test to see if CPUID faulting works.
+  if (syscall(SYS_arch_prctl, ARCH_SET_CPUID, 0) != 0) {
+    has_cpuid_faulting_ = false;
+  } else {
+    has_cpuid_faulting_ = true;
+    auto ret = syscall(SYS_arch_prctl, ARCH_SET_CPUID, 1);
+    assert(ret == 0);
+  }
 }
 
 Session::~Session() {
@@ -57,6 +66,7 @@ Session::Session(const Session& other) {
   next_task_serial_ = other.next_task_serial_;
   done_initial_exec_ = other.done_initial_exec_;
   visible_execution_ = other.visible_execution_;
+  has_cpuid_faulting_ = other.has_cpuid_faulting_;
 }
 
 void Session::on_create(TaskGroup* tg) { task_group_map[tg->tguid()] = tg; }
