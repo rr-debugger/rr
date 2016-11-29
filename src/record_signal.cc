@@ -80,37 +80,96 @@ static void restore_signal_state(RecordTask* t, int sig,
   }
 }
 
-/** Return true iff |t->ip()| points at a RDTSC instruction. */
 static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
-static bool is_ip_rdtsc(RecordTask* t) {
+static const uint8_t cpuid_insn[] = { 0x0f, 0xa2 };
+
+enum DisabledInsn {
+  NONE = 0,
+  RDTSC = 1,
+  CPUID = 2,
+};
+
+/** Determine if |t->ip()| points at a RDTSC or CPUID instruction. */
+static DisabledInsn is_ip_disabled_insn(RecordTask* t) {
   uint8_t insn[sizeof(rdtsc_insn)];
+
+  static_assert(sizeof(insn) >= sizeof(cpuid_insn), "buffer not large enough!");
+
   if (sizeof(insn) !=
       t->read_bytes_fallible(t->ip().to_data_ptr<uint8_t>(), sizeof(insn),
                              insn)) {
-    return false;
+    return NONE;
   }
-  return !memcmp(insn, rdtsc_insn, sizeof(insn));
+
+  if (!memcmp(insn, rdtsc_insn, sizeof(rdtsc_insn))) {
+    return RDTSC;
+  }
+  if (!memcmp(insn, cpuid_insn, sizeof(cpuid_insn))) {
+    return CPUID;
+  }
+
+  return NONE;
 }
 
 /**
  * Return true if |t| was stopped because of a SIGSEGV resulting
- * from a rdtsc and |t| was updated appropriately, false otherwise.
+ * from a disabled instruction and |t| was updated appropriately, false
+ * otherwise.
  */
-static bool try_handle_rdtsc(RecordTask* t, siginfo_t* si) {
+static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
   ASSERT(t, si->si_signo == SIGSEGV);
 
-  if (!is_ip_rdtsc(t) || t->tsc_mode == PR_TSC_SIGSEGV) {
+  auto disabled_insn = is_ip_disabled_insn(t);
+  switch (disabled_insn) {
+  case NONE:
     return false;
+  case RDTSC: {
+    if (t->tsc_mode == PR_TSC_SIGSEGV) {
+      return false;
+    }
+
+    unsigned long long current_time = rdtsc();
+    Registers r = t->regs();
+    r.set_rdtsc_output(current_time);
+    r.set_ip(r.ip() + sizeof(rdtsc_insn));
+    t->set_regs(r);
+
+    LOG(debug) << "  trapped for rdtsc: returning " << current_time;
+    break;
+  }
+  case CPUID: {
+    LOG(debug) << "CPUID";
+    if (!t->cpuid_mode) {
+      return false;
+    }
+
+    Registers r = t->regs();
+    auto eax = r.syscallno();
+    auto ecx = r.cx();
+    auto cpuid_data = cpuid(eax, ecx);
+    switch (eax) {
+    case 0x01:
+      cpuid_data.ecx &= ~CPUID_RDRAND_FLAG;
+      break;
+    case 0x07:
+      if (ecx == 0) {
+        cpuid_data.ebx &= ~CPUID_RDSEED_FLAG;
+      }
+      break;
+    default:
+      break;
+    }
+    r.set_cpuid_output(cpuid_data.eax, cpuid_data.ebx,
+                       cpuid_data.ecx, cpuid_data.edx);
+    r.set_ip(r.ip() + sizeof(cpuid_insn));
+    t->set_regs(r);
+
+    LOG(debug) << "  trapped for cpuid: " << HEX(eax) << ":" << HEX(ecx);
+    break;
+  }
   }
 
-  unsigned long long current_time = rdtsc();
-  Registers r = t->regs();
-  r.set_rdtsc_output(current_time);
-  r.set_ip(r.ip() + sizeof(rdtsc_insn));
-  t->set_regs(r);
-
-  t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO, t->arch()));
-  LOG(debug) << "  trapped for rdtsc: returning " << current_time;
+  t->push_event(Event(EV_SEGV_DISABLED_INSN, HAS_EXEC_INFO, t->arch()));
   return true;
 }
 
@@ -575,7 +634,8 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     // unless a ptracer intercepts the signal as we do). Therefore, if the
     // signal was generated for rr's purposes, we need to restore the signal
     // state ourselves.
-    if (sig == SIGSEGV && (try_handle_rdtsc(t, si) || try_grow_map(t, si))) {
+    if (sig == SIGSEGV &&
+        (try_handle_disabled_insn(t, si) || try_grow_map(t, si))) {
       if (signal_was_blocked || t->is_sig_ignored(sig)) {
         restore_signal_state(t, sig, signal_was_blocked);
       }

@@ -1634,6 +1634,7 @@ renameat2 = EmulatedSyscall(x86=353, x64=316)
 seccomp = IrregularEmulatedSyscall(x86=354, x64=317)
 getrandom = IrregularEmulatedSyscall(x86=355, x64=318)
 memfd_create = EmulatedSyscall(x86=356, x64=319)
+arch_prctl = IrregularEmulatedSyscall(x86=384, x64=158)
 
 bpf = UnsupportedSyscall(x86=357, x64=321)
 execveat = UnsupportedSyscall(x86=358, x64=322)
@@ -1687,7 +1688,6 @@ msgctl = IrregularEmulatedSyscall(x64=71)
 semtimedop = IrregularEmulatedSyscall(x64=220)
 
 # These syscalls simply don't exist on x86.
-arch_prctl = IrregularEmulatedSyscall(x64=158)
 tuxcall = InvalidSyscall(x64=184)
 security = InvalidSyscall(x64=185)
 epoll_ctl_old = UnsupportedSyscall(x64=214)

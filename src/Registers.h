@@ -34,6 +34,9 @@ const uintptr_t X86_DF_FLAG = 1 << 10;
 const uintptr_t X86_RF_FLAG = 1 << 16;
 const uintptr_t X86_ID_FLAG = 1 << 21;
 
+const uintptr_t CPUID_RDRAND_FLAG = 1 << 30;
+const uintptr_t CPUID_RDSEED_FLAG = 1 << 18;
+
 /**
  * A Registers object contains values for all general-purpose registers.
  * These must include all registers used to pass syscall parameters and return
@@ -268,6 +271,14 @@ public:
   void set_rdtsc_output(uint64_t value) {
     RR_SET_REG(eax, rax, value & 0xffffffff);
     RR_SET_REG(edx, rdx, value >> 32);
+  }
+
+  void set_cpuid_output(uint32_t eax, uint32_t ebx,
+                        uint32_t ecx, uint32_t edx) {
+    RR_SET_REG(eax, rax, eax);
+    RR_SET_REG(ebx, rbx, ebx);
+    RR_SET_REG(ecx, rcx, ecx);
+    RR_SET_REG(edx, rdx, edx);
   }
 
   void set_r8(uintptr_t value) {

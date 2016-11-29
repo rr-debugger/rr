@@ -199,7 +199,7 @@ const int HLE_FEATURE_FLAG = 1 << 4;
  *  *a, *c and *d receive EAX, ECX and EDX respectively.
  */
 struct CPUIDData {
-  unsigned int eax, ebx, ecx, edx;
+  uint32_t eax, ebx, ecx, edx;
 };
 CPUIDData cpuid(int code, int subrequest);
 

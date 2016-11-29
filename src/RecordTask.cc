@@ -182,6 +182,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       exit_code(0),
       termination_signal(0),
       tsc_mode(PR_TSC_ENABLE),
+      cpuid_mode(1),
       stashed_signals_blocking_more_signals(false),
       break_at_syscallbuf_syscalls(false),
       break_at_syscallbuf_final_instruction(false) {
