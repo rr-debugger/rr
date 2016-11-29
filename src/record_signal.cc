@@ -133,8 +133,8 @@ static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
     }
 
     Registers r = t->regs();
-    auto eax = r.syscallno();
-    auto ecx = r.cx();
+    uint32_t eax = r.syscallno();
+    uint32_t ecx = r.cx();
     auto cpuid_data = cpuid(eax, ecx);
     switch (eax) {
     case 0x01:
