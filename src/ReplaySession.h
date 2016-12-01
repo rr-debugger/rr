@@ -331,6 +331,7 @@ private:
   ReplayTraceStep current_step;
   Ticks ticks_at_start_of_event;
   CPUIDBugDetector cpuid_bug_detector;
+  siginfo_t last_siginfo_;
   Flags flags;
   bool did_fast_forward;
 

@@ -1173,32 +1173,6 @@ static bool inject_handled_signal(RecordTask* t) {
   return true;
 }
 
-static bool is_fatal_signal(RecordTask* t, int sig,
-                            SignalDeterministic deterministic) {
-  if (t->task_group()->received_sigframe_SIGSEGV) {
-    // Can't be blocked, caught or ignored
-    return true;
-  }
-
-  signal_action action = default_action(sig);
-  if (action != DUMP_CORE && action != TERMINATE) {
-    // If the default action doesn't kill the process, it won't die.
-    return false;
-  }
-
-  if (t->is_sig_ignored(sig)) {
-    // Deterministic fatal signals can't be ignored.
-    return deterministic == DETERMINISTIC_SIG;
-  }
-  if (!t->signal_has_user_handler(sig)) {
-    // The default action is going to happen: killing the process.
-    return true;
-  }
-  // If the signal's blocked, user handlers aren't going to run and the process
-  // will die.
-  return t->is_sig_blocked(sig);
-}
-
 /**
  * |t| is being delivered a signal, and its state changed.
  */
@@ -1219,13 +1193,12 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // being delivered by sigsuspend.
       t->sigsuspend_blocked_sigs = nullptr;
 
+      bool has_handler = t->signal_has_user_handler(sig) && !blocked;
       // If a signal is blocked but is still delivered (e.g. a synchronous
       // terminating signal such as SIGSEGV), user handlers do not run.
-      bool has_handler = false;
-      if (t->signal_has_user_handler(sig) && !blocked) {
+      if (has_handler) {
         LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
-        has_handler = true;
 
         if (!inject_handled_signal(t)) {
           // Signal delivery isn't happening. Prepare to process the new
@@ -1294,10 +1267,9 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
     }
 
     case EV_SIGNAL_DELIVERY: {
-      bool is_fatal = is_fatal_signal(t, sig, t->ev().Signal().deterministic);
-
       // A fatal signal or SIGSTOP requires us to allow switching to another
       // task.
+      bool is_fatal = t->is_fatal_signal(sig, t->ev().Signal().deterministic);
       Switchable can_switch =
           (is_fatal || sig == SIGSTOP) ? ALLOW_SWITCH : PREVENT_SWITCH;
 

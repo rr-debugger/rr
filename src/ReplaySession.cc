@@ -126,6 +126,7 @@ ReplaySession::ReplaySession(const std::string& dir)
       trace_frame(),
       current_step(),
       ticks_at_start_of_event(0) {
+  memset(&last_siginfo_, 0, sizeof(last_siginfo_));
   advance_to_next_trace_frame();
 }
 
@@ -137,6 +138,7 @@ ReplaySession::ReplaySession(const ReplaySession& other)
       current_step(other.current_step),
       ticks_at_start_of_event(other.ticks_at_start_of_event),
       cpuid_bug_detector(other.cpuid_bug_detector),
+      last_siginfo_(other.last_siginfo_),
       flags(other.flags) {}
 
 ReplaySession::~ReplaySession() {
@@ -1307,7 +1309,12 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       LOG(debug) << "<-- sigreturn";
       current_step.action = TSTEP_RETIRE;
       break;
-    case EV_SIGNAL:
+    case EV_SIGNAL: {
+      vector<uint8_t> data;
+      trace_reader().read_generic(data);
+      ASSERT(t, data.size() == sizeof(last_siginfo_) + 1);
+      memcpy(&last_siginfo_, data.data() + 1, data.size() - 1);
+
       if (treat_signal_event_as_deterministic(ev.Signal())) {
         current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
         current_step.target.signo = ev.Signal().siginfo.si_signo;
@@ -1318,6 +1325,7 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
         current_step.target.ticks = trace_frame.ticks();
       }
       break;
+    }
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
       current_step.action = TSTEP_DELIVER_SIGNAL;
@@ -1411,8 +1419,11 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   switch (current_step.action) {
     case TSTEP_DETERMINISTIC_SIGNAL:
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      if (trace_frame.event().type() != EV_SEGV_RDTSC) {
-        result.break_status.signal = current_step.target.signo;
+      if (trace_frame.event().type() != EV_SEGV_RDTSC &&
+          current_step.target.signo) {
+        ASSERT(t, current_step.target.signo == last_siginfo_.si_signo);
+        result.break_status.signal =
+            unique_ptr<siginfo_t>(new siginfo_t(last_siginfo_));
       }
       if (constraints.is_singlestep()) {
         result.break_status.singlestep_complete = true;

@@ -417,6 +417,8 @@ public:
   void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF,
                     const Registers* registers = nullptr);
 
+  bool is_fatal_signal(int sig, SignalDeterministic deterministic);
+
   /**
    * Return the pid of the newborn thread created by this task.
    * Called when this task has a PTRACE_CLONE_EVENT with CLONE_THREAD.
@@ -510,6 +512,8 @@ private:
    */
   sig_set_t get_sigmask();
   void set_sigmask(sig_set_t mask);
+
+  void record_siginfo();
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.

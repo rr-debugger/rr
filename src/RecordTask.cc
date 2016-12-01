@@ -1489,6 +1489,10 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     maybe_flush_syscallbuf();
   }
 
+  if (ev.type() == EV_SIGNAL) {
+    record_siginfo();
+  }
+
   TraceFrame frame(trace_writer().time(), tid, ev, tick_count());
   if (ev.record_exec_info() == HAS_EXEC_INFO) {
     PerfCounters::Extra extra_perf_values;
@@ -1521,6 +1525,51 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     // reach it, we're done.
     maybe_reset_syscallbuf();
   }
+}
+
+bool RecordTask::is_fatal_signal(int sig, SignalDeterministic deterministic) {
+  if (task_group()->received_sigframe_SIGSEGV) {
+    // Can't be blocked, caught or ignored
+    return true;
+  }
+
+  auto action = default_action(sig);
+  if (action != DUMP_CORE && action != TERMINATE) {
+    // If the default action doesn't kill the process, it won't die.
+    return false;
+  }
+
+  if (is_sig_ignored(sig)) {
+    // Deterministic fatal signals can't be ignored.
+    return deterministic == DETERMINISTIC_SIG;
+  }
+  if (!signal_has_user_handler(sig)) {
+    // The default action is going to happen: killing the process.
+    return true;
+  }
+  // If the signal's blocked, user handlers aren't going to run and the process
+  // will die.
+  return is_sig_blocked(sig);
+}
+
+void RecordTask::record_siginfo() {
+  int sig = ev().Signal().siginfo.si_signo;
+  bool is_fatal = is_fatal_signal(sig, ev().Signal().deterministic);
+  bool blocked = is_sig_blocked(sig);
+  bool has_handler = signal_has_user_handler(sig) && !blocked;
+  uint8_t buf[sizeof(siginfo_t) + 1];
+  if (is_fatal) {
+    buf[0] = DISPOSITION_FATAL;
+  } else if (has_handler) {
+    buf[0] = DISPOSITION_USER_HANDLER;
+  } else {
+    buf[0] = DISPOSITION_IGNORED;
+  }
+  // We don't currently use the disposition byte during replay or debugging but
+  // it might be useful to other trace consumers.
+  memcpy(buf + 1, &ev().Signal().siginfo, sizeof(siginfo_t));
+
+  trace_writer().write_generic(buf, sizeof(buf));
 }
 
 void RecordTask::record_current_event() { record_event(ev()); }

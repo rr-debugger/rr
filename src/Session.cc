@@ -316,7 +316,11 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
                  << t->get_siginfo();
       break_status.breakpoint_hit = true;
     } else if (stop_sig && stop_sig != PerfCounters::TIME_SLICE_SIGNAL) {
-      break_status.signal = stop_sig;
+      break_status.signal =
+          unique_ptr<siginfo_t>(new siginfo_t(t->get_siginfo()));
+      LOG(debug) << "Got signal " << *break_status.signal << " (expected sig "
+                 << stop_sig << ")";
+      break_status.signal->si_signo = stop_sig;
     }
   } else {
     TrapReasons trap_reasons = t->compute_trap_reasons();

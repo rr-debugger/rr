@@ -35,11 +35,32 @@ class AutoRemoteSyscalls;
 struct BreakStatus {
   BreakStatus()
       : task(nullptr),
-        signal(0),
         breakpoint_hit(false),
         singlestep_complete(false),
         approaching_ticks_target(false),
         task_exit(false) {}
+  BreakStatus(const BreakStatus& other)
+      : task(other.task),
+        watchpoints_hit(other.watchpoints_hit),
+        signal(other.signal
+                   ? std::unique_ptr<siginfo_t>(new siginfo_t(*other.signal))
+                   : nullptr),
+        breakpoint_hit(other.breakpoint_hit),
+        singlestep_complete(other.singlestep_complete),
+        approaching_ticks_target(other.approaching_ticks_target),
+        task_exit(other.task_exit) {}
+  const BreakStatus& operator=(const BreakStatus& other) {
+    task = other.task;
+    watchpoints_hit = other.watchpoints_hit;
+    signal = other.signal
+                 ? std::unique_ptr<siginfo_t>(new siginfo_t(*other.signal))
+                 : nullptr;
+    breakpoint_hit = other.breakpoint_hit;
+    singlestep_complete = other.singlestep_complete;
+    approaching_ticks_target = other.approaching_ticks_target;
+    task_exit = other.task_exit;
+    return *this;
+  }
 
   // The triggering Task. This may be different from session->current_task()
   // when replay switches to a new task when ReplaySession::replay_step() ends.
@@ -47,8 +68,8 @@ struct BreakStatus {
   // List of watchpoints hit; any watchpoint hit causes a stop after the
   // instruction that triggered the watchpoint has completed.
   std::vector<WatchConfig> watchpoints_hit;
-  // When nonzero, we stopped because a signal was delivered to |task|.
-  int signal;
+  // When non-null, we stopped because a signal was delivered to |task|.
+  std::unique_ptr<siginfo_t> signal;
   // True when we stopped because we hit a breakpoint at |task|'s current
   // ip().
   bool breakpoint_hit;
