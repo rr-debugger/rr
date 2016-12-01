@@ -1199,21 +1199,42 @@ static bool is_fatal_signal(RecordTask* t, int sig,
   return t->is_sig_blocked(sig);
 }
 
+static void record_trace_siginfo(RecordTask* t, bool is_fatal,
+                                 bool has_user_handler) {
+  uint8_t buf[sizeof(siginfo_t) + 1];
+  if (is_fatal) {
+    buf[0] = DISPOSITION_FATAL;
+  } else if (has_user_handler) {
+    buf[0] = DISPOSITION_USER_HANDLER;
+  } else {
+    buf[0] = DISPOSITION_IGNORED;
+  }
+  // We don't currently use the disposition byte during replay or debugging but
+  // it might be useful to other trace consumers.
+  memcpy(buf + 1, &t->ev().Signal().siginfo, sizeof(siginfo_t));
+
+  t->trace_writer().write_generic(buf, sizeof(buf));
+}
+
 /**
  * |t| is being delivered a signal, and its state changed.
  */
 void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
   int sig = t->ev().Signal().siginfo.si_signo;
+  bool is_fatal = is_fatal_signal(t, sig, t->ev().Signal().deterministic);
 
   switch (t->ev().type()) {
     case EV_SIGNAL: {
+      bool blocked = t->is_sig_blocked(sig);
+      bool has_handler = t->signal_has_user_handler(sig) && !blocked;
+      record_trace_siginfo(t, is_fatal, has_handler);
+
       // This event is used by the replayer to advance to
       // the point of signal delivery.
       t->record_current_event();
       t->ev().transform(EV_SIGNAL_DELIVERY);
       ssize_t sigframe_size = 0;
 
-      bool blocked = t->is_sig_blocked(sig);
       // If this is the signal delivered by a sigsuspend, then clear
       // sigsuspend_blocked_sigs to indicate that future signals are not
       // being delivered by sigsuspend.
@@ -1221,11 +1242,9 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
       // If a signal is blocked but is still delivered (e.g. a synchronous
       // terminating signal such as SIGSEGV), user handlers do not run.
-      bool has_handler = false;
-      if (t->signal_has_user_handler(sig) && !blocked) {
+      if (has_handler) {
         LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
-        has_handler = true;
 
         if (!inject_handled_signal(t)) {
           // Signal delivery isn't happening. Prepare to process the new
@@ -1294,8 +1313,6 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
     }
 
     case EV_SIGNAL_DELIVERY: {
-      bool is_fatal = is_fatal_signal(t, sig, t->ev().Signal().deterministic);
-
       // A fatal signal or SIGSTOP requires us to allow switching to another
       // task.
       Switchable can_switch =

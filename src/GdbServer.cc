@@ -35,10 +35,11 @@ GdbServer::GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
       last_continue_tuid(t->tuid()),
       last_query_tuid(t->tuid()),
       final_event(UINT32_MAX),
-      stop_reason(0),
       stop_replaying_to_target(false),
       interrupt_pending(false),
-      emergency_debug_session(&t->session()) {}
+      emergency_debug_session(&t->session()) {
+  memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+}
 
 // Special-sauce macros defined by rr when launching the gdb client,
 // which implement functionality outside of the gdb remote protocol.
@@ -370,7 +371,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
           << "Replay interrupts should be handled at a higher level";
       assert(!t || t->task_group()->tguid() == debuggee_tguid);
       dbg->notify_stop(t ? get_threadid(t) : GdbThreadId(), 0);
-      stop_reason = 0;
+      memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       if (t) {
         last_query_tuid = last_continue_tuid = t->tuid();
       }
@@ -506,7 +507,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
     }
     case DREQ_GET_STOP_REASON: {
       dbg->reply_get_stop_reason(get_threadid(session, last_continue_tuid),
-                                 stop_reason);
+                                 stop_siginfo.si_signo);
       return;
     }
     case DREQ_SET_SW_BREAK: {
@@ -568,10 +569,15 @@ void GdbServer::dispatch_debugger_request(Session& session,
       dbg->reply_watchpoint_request(true);
       return;
     }
-    case DREQ_READ_SIGINFO:
-      LOG(warn) << "READ_SIGINFO request outside of diversion session";
-      dbg->reply_read_siginfo(vector<uint8_t>());
+    case DREQ_READ_SIGINFO: {
+      vector<uint8_t> si_bytes;
+      si_bytes.resize(req.mem().len);
+      memset(si_bytes.data(), 0, si_bytes.size());
+      memcpy(si_bytes.data(), &stop_siginfo,
+             min(si_bytes.size(), sizeof(stop_siginfo)));
+      dbg->reply_read_siginfo(si_bytes);
       return;
+    }
     case DREQ_WRITE_SIGINFO:
       LOG(warn) << "WRITE_SIGINFO request outside of diversion session";
       dbg->reply_write_siginfo();
@@ -717,41 +723,55 @@ static Task* is_in_exec(ReplayTimeline& timeline) {
 }
 
 void GdbServer::maybe_notify_stop(const GdbRequest& req,
-                                  const BreakStatus& break_status) {
-  int sig = -1;
+                                  const BreakStatus& break_status,
+                                  Session& session) {
+  bool do_stop = false;
   remote_ptr<void> watch_addr;
   if (!break_status.watchpoints_hit.empty()) {
-    sig = SIGTRAP;
+    do_stop = true;
+    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+    stop_siginfo.si_signo = SIGTRAP;
     watch_addr = break_status.watchpoints_hit[0].addr;
   }
   if (break_status.breakpoint_hit || break_status.singlestep_complete) {
-    sig = SIGTRAP;
+    do_stop = true;
+    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+    stop_siginfo.si_signo = SIGTRAP;
   }
   if (break_status.signal) {
-    sig = break_status.signal;
+    do_stop = true;
+    if (session.is_replaying()) {
+      stop_siginfo = session.as_replay()->last_siginfo();
+    } else {
+      memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+      stop_siginfo.si_signo = break_status.signal;
+    }
   }
   if (is_last_thread_exit(break_status) && dbg->features().reverse_execution) {
+    do_stop = true;
+    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     if (req.cont().run_direction == RUN_FORWARD) {
       // The exit of the last task in a task group generates a fake SIGKILL,
       // when reverse-execution is enabled, because users often want to run
       // backwards from the end of the task.
-      sig = SIGKILL;
+      stop_siginfo.si_signo = SIGKILL;
     } else {
       // The start of the debuggee task-group should trigger a silent stop.
-      sig = 0;
+      stop_siginfo.si_signo = 0;
     }
   }
   Task* t = break_status.task;
   Task* in_exec_task = is_in_exec(timeline);
   if (in_exec_task) {
-    sig = 0;
+    do_stop = true;
+    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     t = in_exec_task;
   }
-  if (sig >= 0 && t->task_group()->tguid() == debuggee_tguid) {
+  if (do_stop && t->task_group()->tguid() == debuggee_tguid) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    dbg->notify_stop(get_threadid(t), sig, watch_addr.as_int());
-    stop_reason = sig;
+    dbg->notify_stop(get_threadid(t), stop_siginfo.si_signo,
+                     watch_addr.as_int());
     last_query_tuid = last_continue_tuid = t->tuid();
   }
 }
@@ -838,7 +858,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
       // We don't support reverse execution in a diversion. Just issue
       // an immediate stop.
       dbg->notify_stop(get_threadid(*diversion_session, last_continue_tuid), 0);
-      stop_reason = 0;
+      memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       last_query_tuid = last_continue_tuid;
       continue;
     }
@@ -864,7 +884,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
     assert(result.status == DiversionSession::DIVERSION_CONTINUE);
 
-    maybe_notify_stop(req, result.break_status);
+    maybe_notify_stop(req, result.break_status, *diversion_session);
   }
 
   LOG(debug) << "... ending debugging diversion";
@@ -887,18 +907,19 @@ GdbRequest GdbServer::process_debugger_requests(ReportState state) {
     try_lazy_reverse_singlesteps(req);
 
     if (req.type == DREQ_READ_SIGINFO) {
-      // TODO: we send back a dummy siginfo_t to gdb
-      // so that it thinks the request succeeded.
-      // If we don't, then it thinks the
-      // READ_SIGINFO failed and won't attempt to
-      // send WRITE_SIGINFO.  For |call foo()|
-      // frames, that means we don't know when the
-      // diversion session is ending.
       vector<uint8_t> si_bytes;
       si_bytes.resize(req.mem().len);
       memset(si_bytes.data(), 0, si_bytes.size());
+      memcpy(si_bytes.data(), &stop_siginfo,
+             min(si_bytes.size(), sizeof(stop_siginfo)));
       dbg->reply_read_siginfo(si_bytes);
 
+      // READ_SIGINFO is usually the start of a diversion. It can also be
+      // triggered by "print $_siginfo" but that is rare so we just assume it's
+      // a diversion start; if "print $_siginfo" happens we'll print the correct
+      // siginfo and then incorrectly start a diversion and go haywire :-(.
+      // Ideally we'd come up with a better way to detect diversions so that
+      // "print $_siginfo" works.
       req = divert(timeline.current_session());
       if (req.type == DREQ_NONE) {
         continue;
@@ -965,7 +986,7 @@ void GdbServer::try_lazy_reverse_singlesteps(GdbRequest& req) {
     break_status.task = t;
     break_status.singlestep_complete = true;
     LOG(debug) << "  using lazy reverse-singlestep";
-    maybe_notify_stop(req, break_status);
+    maybe_notify_stop(req, break_status, timeline.current_session());
 
     while (true) {
       req = dbg->get_request();
@@ -1058,7 +1079,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     if (t->task_group()->tguid() == debuggee_tguid) {
       interrupt_pending = false;
       dbg->notify_stop(get_threadid(t), in_debuggee_end_state ? SIGKILL : 0);
-      stop_reason = 0;
+      memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       return CONTINUE_DEBUGGING;
     }
   }
@@ -1122,7 +1143,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     }
   }
   if (!req.suppress_debugger_stop) {
-    maybe_notify_stop(req, result.break_status);
+    maybe_notify_stop(req, result.break_status, timeline.current_session());
   }
   if (req.cont().run_direction == RUN_FORWARD &&
       is_last_thread_exit(result.break_status) &&
