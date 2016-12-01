@@ -925,7 +925,6 @@ set(TESTS_WITHOUT_PROGRAM
   run_in_function
   sanity
   shm_checkpoint
-  siginfo
   signal_stop
   signal_checkpoint
   simple_script

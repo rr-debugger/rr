@@ -256,11 +256,6 @@ public:
     return replay_step(StepConstraints(command));
   }
 
-  /**
-   * Return full siginfo for last EV_SIGNAL.
-   */
-  siginfo_t last_siginfo() { return last_siginfo_; }
-
   virtual ReplaySession* as_replay() { return this; }
 
   /**
@@ -336,7 +331,6 @@ private:
   ReplayTraceStep current_step;
   Ticks ticks_at_start_of_event;
   CPUIDBugDetector cpuid_bug_detector;
-  siginfo_t last_siginfo_;
   Flags flags;
   bool did_fast_forward;
 

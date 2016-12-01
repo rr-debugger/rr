@@ -177,11 +177,6 @@ struct DeschedEvent : public BaseEvent {
  * signal finds a sighandler, on to the end of the handling face.
  */
 enum SignalDeterministic { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
-enum SignalOutcome {
-  DISPOSITION_FATAL = 0,
-  DISPOSITION_USER_HANDLER = 1,
-  DISPOSITION_IGNORED = 2,
-};
 struct SignalEvent : public BaseEvent {
   /**
    * Signal |signo| is the signum, and |deterministic| is true

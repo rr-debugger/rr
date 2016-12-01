@@ -58,13 +58,12 @@ public:
             const ReplaySession::Flags& flags, const Target& target)
       : target(target),
         final_event(UINT32_MAX),
+        stop_reason(0),
         in_debuggee_end_state(false),
         stop_replaying_to_target(false),
         interrupt_pending(false),
         timeline(std::move(session), flags),
-        emergency_debug_session(nullptr) {
-    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
-  }
+        emergency_debug_session(nullptr) {}
 
   /**
    * Actually run the server. Returns only when the debugger disconnects.
@@ -179,8 +178,8 @@ private:
    * If |break_status| indicates a stop that we should report to gdb,
    * report it. |req| is the resume request that generated the stop.
    */
-  void maybe_notify_stop(const GdbRequest& req, const BreakStatus& break_status,
-                         Session& session);
+  void maybe_notify_stop(const GdbRequest& req,
+                         const BreakStatus& break_status);
 
   /**
    * Return the checkpoint stored as |checkpoint_id| or nullptr if there
@@ -206,8 +205,8 @@ private:
   // The TaskUid of the last queried task.
   TaskUid last_query_tuid;
   TraceFrame::Time final_event;
-  // siginfo for last notified stop.
-  siginfo_t stop_siginfo;
+  // Stop reason for last notified stop.
+  int stop_reason;
   bool in_debuggee_end_state;
   // True when the user has interrupted replaying to a target event.
   volatile bool stop_replaying_to_target;
