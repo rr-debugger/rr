@@ -777,6 +777,7 @@ set(TESTS_WITH_PROGRAM
   daemon_read
   dconf_mock
   dev_tty
+  diversion_syscall
   dlopen
   execve_loop
   exit_codes
