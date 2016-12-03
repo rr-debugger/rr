@@ -1,0 +1,9 @@
+source `dirname $0`/util.sh
+record $TESTNAME
+debug_test
+token=DIVERSION-SUCCESS
+if [[ "diversion_print.out" != $(grep -l $token diversion_print.out) ]]; then
+  failed ": token '$token' not written to file by diversion"
+else
+  passed
+fi
