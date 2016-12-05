@@ -93,9 +93,11 @@ enum TicksRequest {
   // bugs on some systems that report performance counter advances while
   // in the kernel...
   RESUME_NO_TICKS = -2,
-  RESUME_UNLIMITED_TICKS = -1
+  RESUME_UNLIMITED_TICKS = -1,
   // Positive values are a request for an interrupt
   // after that number of ticks
+  // Don't request more than this!
+  MAX_TICKS_REQUEST = 2000000000,
 };
 
 /** Reasons why a SIGTRAP might have been delivered. Multiple reasons can

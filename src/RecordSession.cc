@@ -1829,11 +1829,9 @@ RecordSession::RecordResult RecordSession::record_step() {
   }
   RecordTask* t = scheduler().current();
   if (prev_task && prev_task->ev().type() == EV_SCHED) {
-    // Record the SCHED event if we did a context switch or if the next
-    // timeslice could potentially overflow 2^31 ticks. Otherwise the SCHED
-    // will be discarded since it's a no-op.
-    if (prev_task != t ||
-        (t->tick_count() + scheduler().max_ticks() > 2000000000)) {
+    if (prev_task != t) {
+      // We did do a context switch, so record the SCHED event. Otherwise
+      // we'll just discard it.
       prev_task->record_current_event();
     }
     prev_task->pop_event(EV_SCHED);

@@ -934,9 +934,12 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   // replay.
   // Accumulate any unknown stuff in tick_count().
   if (tick_period != RESUME_NO_TICKS) {
-    hpc.reset(tick_period == RESUME_UNLIMITED_TICKS
-                  ? 0xffffffff
-                  : max<Ticks>(1, tick_period));
+    if (tick_period == RESUME_UNLIMITED_TICKS) {
+      hpc.reset(0xffffffff);
+    } else {
+      ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
+      hpc.reset(max<Ticks>(1, tick_period));
+    }
     activate_preload_thread_locals();
   }
 

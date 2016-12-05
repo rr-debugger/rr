@@ -270,7 +270,13 @@ static bool compute_ticks_request(
       t->clear_wait_status();
       return false;
     }
-    *ticks_request = (TicksRequest)ticks_period;
+    if (ticks_period > MAX_TICKS_REQUEST) {
+      // Avoid overflow. The execution will stop early but we'll treat that
+      // just like a stray TIME_SLICE_SIGNAL and continue as needed.
+      *ticks_request = MAX_TICKS_REQUEST;
+    } else {
+      *ticks_request = (TicksRequest)ticks_period;
+    }
   }
   return true;
 }
@@ -590,7 +596,12 @@ Completion ReplaySession::emulate_async_signal(
     LOG(debug) << "  programming interrupt for " << (ticks_left - SKID_SIZE)
                << " ticks";
 
-    continue_or_step(t, constraints, (TicksRequest)(ticks_left - SKID_SIZE));
+    // Avoid overflow. If ticks_left > MAX_TICKS_REQUEST, execution will stop
+    // early but we'll treat that just like a stray TIME_SLICE_SIGNAL and
+    // continue as needed.
+    continue_or_step(
+        t, constraints,
+        (TicksRequest)(min<Ticks>(MAX_TICKS_REQUEST, ticks_left) - SKID_SIZE));
     guard_unexpected_signal(t);
 
     ticks_left = ticks - t->tick_count();
