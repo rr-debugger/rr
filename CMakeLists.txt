@@ -808,6 +808,7 @@ set(TESTS_WITH_PROGRAM
   mprotect_growsdown
   mprotect_syscallbuf_overflow
   mutex_pi_stress
+  overflow_branch_counter
   priority
   ptrace_remote_unmap
   # Not called ps, because that interferes with using real 'ps' in tests

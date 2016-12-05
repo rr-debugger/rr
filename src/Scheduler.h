@@ -75,10 +75,18 @@ public:
    * 10ms timeslices, i.e. 500,000 ticks.
    */
   enum { DEFAULT_MAX_TICKS = 500000 };
+  /**
+   * Don't allow max_ticks to get above this value.
+   */
+  enum { MAX_MAX_TICKS = 1000000000 };
 
   Scheduler(RecordSession& session);
 
-  void set_max_ticks(Ticks max_ticks) { max_ticks_ = max_ticks; }
+  void set_max_ticks(Ticks max_ticks) {
+    assert(max_ticks <= MAX_MAX_TICKS);
+    max_ticks_ = max_ticks;
+  }
+  Ticks max_ticks() { return max_ticks_; }
   void set_always_switch(bool always_switch) {
     this->always_switch = always_switch;
   }

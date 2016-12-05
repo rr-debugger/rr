@@ -176,7 +176,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.use_syscall_buffer = RecordSession::ENABLE_SYSCALL_BUF;
       break;
     case 'c':
-      if (!opt.verify_valid_int(1, INT64_MAX)) {
+      if (!opt.verify_valid_int(1, Scheduler::MAX_MAX_TICKS)) {
         return false;
       }
       flags.max_ticks = opt.int_value;
