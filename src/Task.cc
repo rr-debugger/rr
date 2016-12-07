@@ -38,6 +38,7 @@
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "ReplaySession.h"
+#include "ReplayTask.h"
 #include "ScopedFd.h"
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
@@ -280,7 +281,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
   // mprotect can change the protection status of some mapped regions before
   // failing.
-  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, arch())) {
+  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch())) {
     return;
   }
 
@@ -522,8 +523,11 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   }
 }
 
-void Task::on_syscall_exit(int syscallno, const Registers& regs) {
-  RR_ARCH_FUNCTION(on_syscall_exit_arch, arch(), syscallno, regs)
+void Task::on_syscall_exit(int syscallno, SupportedArch arch,
+                           const Registers& regs) {
+  with_converted_registers<void>(regs, arch, [&](const Registers& regs) {
+    RR_ARCH_FUNCTION(on_syscall_exit_arch, arch, syscallno, regs);
+  });
 }
 
 void Task::move_ip_before_breakpoint() {
@@ -578,6 +582,7 @@ void Task::exit_syscall() {
     }
     ASSERT(this, !ptrace_event());
     if (!stop_sig()) {
+      canonicalize_and_set_regs(regs(), arch());
       break;
     }
     if (ReplaySession::is_ignored_signal(stop_sig()) &&
@@ -657,6 +662,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
 }
 
 void Task::post_exec_syscall(TraceTaskEvent& event) {
+  canonicalize_and_set_regs(regs(), arch());
   as->post_exec_syscall(this);
   fds->update_for_cloexec(this, event);
 }
@@ -1303,49 +1309,51 @@ void Task::wait(double interrupt_after_elapsed) {
   did_waitpid(status);
 }
 
-static bool is_in_non_sigreturn_exit_syscall(Task* t) {
-  if (!t->status().is_syscall()) {
-    return false;
-  }
-  if (t->session().is_recording()) {
-    auto rt = static_cast<RecordTask*>(t);
-    return !rt->ev().is_syscall_event() ||
-           !is_sigreturn(rt->ev().Syscall().number, t->arch());
-  }
-  return true;
-}
-
 /**
  * Call this when we've trapped in a syscall (entry or exit) in the kernel,
  * to normalize registers.
  */
-static void fixup_syscall_registers(Registers& registers) {
+void fixup_syscall_registers(Registers& registers, SupportedArch syscall_arch) {
   if (registers.arch() == x86_64) {
-    // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
-    // If we single-stepped into the syscall instruction, the TF flag will be
-    // set in R11. We don't want the value in R11 to depend on whether we
-    // were single-stepping during record or replay, possibly causing
-    // divergence.
-    // This doesn't matter when exiting a sigreturn syscall, since it
-    // restores the original flags.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
-    // We tried just clearing %r11, but that caused hangs in
-    // Ubuntu/Debian kernels.
-    // Making this match the flags makes this operation idempotent, which is
-    // helpful.
-    registers.set_r11(0x246);
-    // x86-64 'syscall' instruction copies return address to RCX on syscall
-    // entry. rr-related kernel activity normally sets RCX to -1 at some point
-    // during syscall execution, but apparently in some (unknown) situations
-    // probably involving untraced syscalls, that doesn't happen. To avoid
-    // potential issues, forcibly replace RCX with -1 always.
-    // This doesn't matter (and we should not do this) when exiting a
-    // sigreturn syscall, since it will restore the original RCX and we don't
-    // want to clobber that.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
-    registers.set_cx((intptr_t)-1);
+    if (syscall_arch == x86) {
+      // The int $0x80 compatibility handling clears r8-r11
+      // (see arch/x86/entry/entry_64_compat.S). The sysenter compatibility
+      // handling also clears r12-r15. However, to actually make such a syscall,
+      // the user process would have to switch itself into compatibility mode,
+      // which, though possible, does not appear to actually be done by any
+      // real application (contrary to int $0x80, which is accessible from 64bit
+      // mode as well).
+      registers.set_r8(0x0);
+      registers.set_r9(0x0);
+      registers.set_r10(0x0);
+      registers.set_r11(0x0);
+    } else {
+      // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
+      // If we single-stepped into the syscall instruction, the TF flag will be
+      // set in R11. We don't want the value in R11 to depend on whether we
+      // were single-stepping during record or replay, possibly causing
+      // divergence.
+      // This doesn't matter when exiting a sigreturn syscall, since it
+      // restores the original flags.
+      // For untraced syscalls, the untraced-syscall entry point code (see
+      // write_rr_page) does this itself.
+      // We tried just clearing %r11, but that caused hangs in
+      // Ubuntu/Debian kernels.
+      // Making this match the flags makes this operation idempotent, which is
+      // helpful.
+      registers.set_r11(0x246);
+      // x86-64 'syscall' instruction copies return address to RCX on syscall
+      // entry. rr-related kernel activity normally sets RCX to -1 at some point
+      // during syscall execution, but apparently in some (unknown) situations
+      // probably involving untraced syscalls, that doesn't happen. To avoid
+      // potential issues, forcibly replace RCX with -1 always.
+      // This doesn't matter (and we should not do this) when exiting a
+      // sigreturn syscall, since it will restore the original RCX and we don't
+      // want to clobber that.
+      // For untraced syscalls, the untraced-syscall entry point code (see
+      // write_rr_page) does this itself.
+      registers.set_cx((intptr_t)-1);
+    }
     // On kernel 3.13.0-68-generic #111-Ubuntu SMP we have observed a failed
     // execve() clearing all flags during recording. During replay we emulate
     // the exec so this wouldn't happen. Just reset all flags so everything's
@@ -1365,9 +1373,10 @@ static void fixup_syscall_registers(Registers& registers) {
   }
 }
 
-void Task::emulate_syscall_entry(const Registers& regs) {
+void Task::canonicalize_and_set_regs(const Registers& regs,
+                                     SupportedArch syscall_arch) {
   Registers r = regs;
-  fixup_syscall_registers(r);
+  fixup_syscall_registers(r, syscall_arch);
   set_regs(r);
 }
 
@@ -1474,15 +1483,16 @@ void Task::did_waitpid(WaitStatus status) {
     need_to_set_regs = true;
   }
 
-  // When exiting a syscall, we need to normalize nondeterministic registers.
-  // We also need to do this when we receive a signal in the rr page, since
-  // we may have just returned from an untraced syscall there and while in the
-  // rr page registers need to be consistent between record and replay.
-  // During replay most untraced syscalls are replaced with "xor eax,eax" so
+  // If we're in the rr page,  we may have just returned from an untraced
+  // syscall there and while in the rr page registers need to be consistent
+  // between record and replay. During replay most untraced syscalls are
+  // replaced with "xor eax,eax" (right after a "movq -1, %rcx") so
   // rcx is always -1, but during recording it sometimes isn't after we've
   // done a real syscall.
-  if (is_in_non_sigreturn_exit_syscall(this) || is_in_rr_page()) {
-    fixup_syscall_registers(registers);
+  if (is_in_rr_page()) {
+    // N.B.: Cross architecture syscalls don't go through the rr page, so we
+    // know what the architecture is.
+    fixup_syscall_registers(registers, arch());
     need_to_set_regs = true;
   }
   if (need_to_set_regs && did_read_regs) {

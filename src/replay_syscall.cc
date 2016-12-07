@@ -238,7 +238,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // Pretend we're still in the system call
   r.set_syscall_result(-ENOSYS);
   r.set_original_syscallno(trace_frame.regs().original_syscallno());
-  t->set_regs(r);
+  t->canonicalize_and_set_regs(r, trace_frame.event().Syscall().arch());
 
   // Dig the recorded tid out out of the trace. The tid value returned in
   // the recorded registers could be in a different pid namespace from rr's,
@@ -276,7 +276,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
   new_r.set_arg1(trace_frame.regs().arg1());
   new_r.set_arg2(trace_frame.regs().arg2());
-  new_task->emulate_syscall_entry(new_r);
+  new_task->canonicalize_and_set_regs(new_r, new_task->arch());
 
   if (Arch::clone != t->regs().original_syscallno() || !(CLONE_VM & r.arg1())) {
     // It's hard to imagine a scenario in which it would
@@ -1100,10 +1100,10 @@ static void handle_opened_files(ReplayTask* t) {
 }
 
 template <typename Arch>
-static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
+static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
+                                     const Registers& trace_regs) {
   int sys = t->current_trace_frame().event().Syscall().number;
   const TraceFrame& trace_frame = t->session().current_trace_frame();
-  const Registers& trace_regs = trace_frame.regs();
 
   LOG(debug) << "processing " << t->syscall_name(sys) << " (exit)";
 
@@ -1225,6 +1225,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
         r2.set_arg3(r.arg3());
         t->set_regs(r2);
       }
+      // The syscall modified registers. Re-emulate the syscall entry.
+      t->canonicalize_and_set_regs(t->regs(), step->syscall.arch);
       return;
     }
 
@@ -1329,10 +1331,14 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
 }
 
 void rep_process_syscall(ReplayTask* t, ReplayTraceStep* step) {
-  // Use the event's arch, not the task's, because the task's arch may
-  // be out of date immediately after an exec.
-  RR_ARCH_FUNCTION(rep_process_syscall_arch,
-                   t->current_trace_frame().event().arch(), t, step)
+  step->syscall.arch = t->current_trace_frame().event().arch();
+  const TraceFrame& trace_frame = t->current_trace_frame();
+  const Registers& trace_regs = trace_frame.regs();
+  with_converted_registers<void>(
+      trace_regs, step->syscall.arch, [&](const Registers& trace_regs) {
+        RR_ARCH_FUNCTION(rep_process_syscall_arch, step->syscall.arch, t, step,
+                         trace_regs)
+      });
 }
 
 } // namespace rr

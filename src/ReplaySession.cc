@@ -410,7 +410,8 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
             syscall_instruction.increment_by_syscall_insn_length(t->arch()));
         r.set_original_syscallno(r.syscallno());
         r.set_syscall_result(-ENOSYS);
-        t->emulate_syscall_entry(r);
+        t->canonicalize_and_set_regs(
+            r, current_trace_frame().event().Syscall().arch());
         t->validate_regs();
         clear_syscall_bp();
       } else {
@@ -420,6 +421,8 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
       // If we use the breakpoint optimization, we must get a SIGTRAP before
       // reaching a syscall, so cont_syscall_boundary must return INCOMPLETE.
       ASSERT(t, !syscall_bp_vm);
+      t->canonicalize_and_set_regs(
+          t->regs(), current_trace_frame().event().Syscall().arch());
       t->validate_regs();
       t->finish_emulated_syscall();
     }
@@ -436,7 +439,8 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
  * Return COMPLETE if successful, or INCOMPLETE if an unhandled trap occurred.
  */
 Completion ReplaySession::exit_syscall(ReplayTask* t) {
-  t->on_syscall_exit(current_step.syscall.number, current_trace_frame().regs());
+  t->on_syscall_exit(current_step.syscall.number, current_step.syscall.arch,
+                     current_trace_frame().regs());
 
   t->apply_all_data_records_from_trace();
   t->set_return_value_from_trace();
@@ -1042,6 +1046,7 @@ Completion ReplaySession::patch_next_syscall(
     return INCOMPLETE;
   }
 
+  t->canonicalize_and_set_regs(t->regs(), t->arch());
   t->exit_syscall_and_prepare_restart();
 
   // All patching effects have been recorded to the trace.
@@ -1338,7 +1343,8 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       } else {
         rep_process_syscall(t, &current_step);
         if (current_step.action == TSTEP_RETIRE) {
-          t->on_syscall_exit(current_step.syscall.number, trace_frame.regs());
+          t->on_syscall_exit(current_step.syscall.number,
+                             current_step.syscall.arch, trace_frame.regs());
         }
       }
       break;

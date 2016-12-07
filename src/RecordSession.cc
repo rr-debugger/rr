@@ -249,7 +249,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     // negative syscall numbers after a SECCOMP event
     // are treated as "skip this syscall". There will be one syscall event
     // reported instead of two. So fake an enter-syscall event now.
-    t->emulate_syscall_entry(t->regs());
+    t->canonicalize_and_set_regs(t->regs(), t->arch());
     if (syscall_seccomp_ordering_ == SECCOMP_BEFORE_PTRACE_SYSCALL) {
       // If the ptrace entry stop hasn't happened yet, we're at a weird
       // intermediate state where the behavior of the next PTRACE_SYSCALL
@@ -294,7 +294,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     } else {
       // We've already passed the PTRACE_SYSCALL trap for syscall entry, so
       // we need to handle that now.
-      t->emulate_syscall_entry(t->regs());
+      t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
       process_syscall_entry(t, step_state, result);
       *did_enter_syscall = true;
     }
@@ -325,7 +325,10 @@ static void handle_seccomp_trap(RecordTask* t,
                                 uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
-  t->emulate_syscall_entry(t->regs());
+  // The architecture may be wrong, but that's ok, because an actual syscall
+  // entry did happen, so the registers are already updated according to the
+  // architecture of the system call.
+  t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
 
   if (t->is_in_untraced_syscall()) {
     ASSERT(t, !t->delay_syscallbuf_reset);
@@ -343,7 +346,7 @@ static void handle_seccomp_trap(RecordTask* t,
         (uint8_t)0);
   }
 
-  t->push_event(SyscallEvent(syscallno, t->arch()));
+  t->push_syscall_event(syscallno);
   note_entering_syscall(t);
 
   if (t->is_in_untraced_syscall()) {
@@ -412,10 +415,10 @@ static void handle_seccomp_errno(RecordTask* t,
                                  uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
-  t->emulate_syscall_entry(t->regs());
+  t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
 
   if (!t->is_in_untraced_syscall()) {
-    t->push_event(SyscallEvent(syscallno, t->arch()));
+    t->push_syscall_event(syscallno);
     note_entering_syscall(t);
   }
 
@@ -685,7 +688,7 @@ static bool maybe_restart_syscall(RecordTask* t) {
     t->ev().transform(EV_SYSCALL);
     Registers regs = t->regs();
     regs.set_original_syscallno(t->ev().Syscall().regs.original_syscallno());
-    t->set_regs(regs);
+    t->canonicalize_and_set_regs(regs, t->arch());
     return true;
   }
   if (EV_SYSCALL_INTERRUPTION == t->ev().type()) {
@@ -839,6 +842,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
       assert(t->stop_sig() == 0);
 
+      SupportedArch syscall_arch = t->ev().Syscall().arch();
       int syscallno = t->ev().Syscall().number;
       intptr_t retval = t->regs().syscall_result_signed();
 
@@ -858,7 +862,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       // preparing the tracee for a restart-syscall.  So we
       // take this opportunity to possibly pop an
       // interrupted-syscall event.
-      if (is_sigreturn(syscallno, t->arch())) {
+      if (is_sigreturn(syscallno, syscall_arch)) {
         ASSERT(t, t->regs().original_syscallno() == -1);
         t->record_current_event();
         t->pop_syscall();
@@ -939,6 +943,8 @@ void RecordSession::syscall_state_changed(RecordTask* t,
           t->ev().transform(EV_SYSCALL_INTERRUPTION);
           t->ev().Syscall().is_restart = true;
         }
+
+        t->canonicalize_and_set_regs(t->regs(), syscall_arch);
       }
 
       last_task_switchable = ALLOW_SWITCH;
@@ -1464,7 +1470,7 @@ static bool interrupt_syscall_to_handle_signals(RecordTask* t) {
   // Set these regs to emulate a syscall interruption.
   r.set_original_syscallno(syscallno);
   r.set_syscall_result(-ERESTARTSYS);
-  t->set_regs(r);
+  t->canonicalize_and_set_regs(r, t->arch());
 
   t->ev().Syscall().state = EXITING_SYSCALL;
   t->record_current_event();
@@ -1489,7 +1495,7 @@ static void maybe_do_fake_syscall_restart(RecordTask* t) {
   Registers r = t->regs();
   r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
   r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
-  t->set_regs(r);
+  t->canonicalize_and_set_regs(r, t->arch());
 }
 
 void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
@@ -1508,13 +1514,16 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
       return;
     }
 
+    SupportedArch syscall_arch = t->detect_syscall_arch();
+    t->canonicalize_and_set_regs(t->regs(), syscall_arch);
+
     if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
       // Syscall was patched. Emit event and continue execution.
       t->record_event(Event(EV_PATCH_SYSCALL, HAS_EXEC_INFO, t->arch()));
       return;
     }
 
-    t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
+    t->push_event(SyscallEvent(t->regs().original_syscallno(), syscall_arch));
 
     if (interrupt_syscall_to_handle_signals(t)) {
       return;

@@ -270,6 +270,21 @@ public:
     RR_SET_REG(edx, rdx, value >> 32);
   }
 
+  void set_r8(uintptr_t value) {
+    assert(arch() == x86_64);
+    u.x64regs.r8 = value;
+  }
+
+  void set_r9(uintptr_t value) {
+    assert(arch() == x86_64);
+    u.x64regs.r9 = value;
+  }
+
+  void set_r10(uintptr_t value) {
+    assert(arch() == x86_64);
+    u.x64regs.r10 = value;
+  }
+
   void set_r11(uintptr_t value) {
     assert(arch() == x86_64);
     u.x64regs.r11 = value;
@@ -418,6 +433,19 @@ private:
     rr::X64Arch::user_regs_struct x64regs;
   } u;
 };
+
+template <typename ret, typename callback>
+ret with_converted_registers(const Registers& regs, SupportedArch arch,
+                             callback f) {
+  if (regs.arch() != arch) {
+    // If this is a cross architecture syscall, first convert the registers.
+    Registers converted_regs(arch);
+    std::vector<uint8_t> data = regs.get_ptrace_for_arch(arch);
+    converted_regs.set_from_ptrace_for_arch(arch, data.data(), data.size());
+    return f(converted_regs);
+  }
+  return f(regs);
+}
 
 std::ostream& operator<<(std::ostream& stream, const Registers& r);
 

@@ -358,6 +358,8 @@ public:
     record_remote_even_if_null(addr, sizeof(T));
   }
 
+  SupportedArch detect_syscall_arch();
+
   /**
    * Manage pending events.  |push_event()| pushes the given
    * event onto the top of the event stack.  The |pop_*()|
@@ -365,6 +367,7 @@ public:
    * the specified type.
    */
   void push_event(const Event& ev) { pending_events.push_back(ev); }
+  void push_syscall_event(int syscallno);
   void pop_event(EventType expected_type);
   void pop_noop() { pop_event(EV_NOOP); }
   void pop_desched() { pop_event(EV_DESCHED); }
