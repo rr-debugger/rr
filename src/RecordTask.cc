@@ -404,6 +404,19 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   t->record_local(cores_ptr, &cores);
 }
 
+SupportedArch RecordTask::detect_syscall_arch() {
+  SupportedArch syscall_arch;
+  bool ok = get_syscall_instruction_arch(
+      this, regs().ip().decrement_by_syscall_insn_length(arch()),
+      &syscall_arch);
+  ASSERT(this, ok);
+  return syscall_arch;
+}
+
+void RecordTask::push_syscall_event(int syscallno) {
+  push_event(SyscallEvent(syscallno, detect_syscall_arch()));
+}
+
 static void do_preload_init(RecordTask* t) {
   RR_ARCH_FUNCTION(do_preload_init_arch, t->arch(), t);
 }
@@ -543,8 +556,11 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 }
 
 void RecordTask::on_syscall_exit(int syscallno, const Registers& regs) {
-  Task::on_syscall_exit(syscallno, regs);
-  RR_ARCH_FUNCTION(on_syscall_exit_arch, arch(), syscallno, regs)
+  SupportedArch arch = ev().arch();
+  with_converted_registers<void>(regs, arch, [&](const Registers& regs) {
+    Task::on_syscall_exit(syscallno, arch, regs);
+    RR_ARCH_FUNCTION(on_syscall_exit_arch, arch, syscallno, regs)
+  });
 }
 
 void RecordTask::set_emulated_ptracer(RecordTask* tracer) {

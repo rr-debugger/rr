@@ -192,6 +192,8 @@ void AutoRemoteSyscalls::wait_syscall(int syscallno) {
   ASSERT(t, t->regs().original_syscallno() == syscallno || syscallno < 0)
       << "Should be entering " << t->syscall_name(syscallno)
       << ", but instead at " << t->syscall_name(t->regs().original_syscallno());
+
+  t->canonicalize_and_set_regs(t->regs(), t->arch());
 }
 
 SupportedArch AutoRemoteSyscalls::arch() const { return t->arch(); }

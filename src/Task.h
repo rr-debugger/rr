@@ -114,6 +114,8 @@ struct TrapReasons {
   bool breakpoint;
 };
 
+void fixup_syscall_registers(Registers& registers, SupportedArch arch);
+
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -198,7 +200,8 @@ public:
    * Perform those side effects on |regs| and do set_regs() on that to make it
    * look like a syscall happened.
    */
-  void emulate_syscall_entry(const Registers& regs);
+  void canonicalize_and_set_regs(const Registers& regs,
+                                 SupportedArch syscall_arch);
 
   /**
    * Return the ptrace message pid associated with the current ptrace
@@ -288,7 +291,8 @@ public:
    * Use 'regs' instead of this->regs() because some registers may not be
    * set properly in the task yet.
    */
-  virtual void on_syscall_exit(int syscallno, const Registers& regs);
+  virtual void on_syscall_exit(int syscallno, SupportedArch arch,
+                               const Registers& regs);
 
   /**
    * Assuming ip() is just past a breakpoint instruction, adjust

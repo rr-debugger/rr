@@ -1741,6 +1741,13 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 #include "SyscallHelperFunctions.generated"
 
 /**
+ * Return true if |ptr| in task |t| points to an invoke-syscall instruction,
+ * and if so, return the architecture for which this is a syscall in *arch.
+ */
+bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
+                                  SupportedArch* arch);
+
+/**
  * Return true if |ptr| in task |t| points to an invoke-syscall instruction.
  */
 bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr);

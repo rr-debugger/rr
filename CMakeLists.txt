@@ -470,6 +470,7 @@ set(BASIC_TESTS
   cloned_sigmask
   constructor
   creat_address_not_truncated
+  cross_arch
   cwd_inaccessible
   daemon
   desched_blocking_poll

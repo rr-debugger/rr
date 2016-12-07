@@ -74,6 +74,8 @@ struct ReplayTraceStep {
 
   union {
     struct {
+      /* The architecture of the syscall */
+      SupportedArch arch;
       /* The syscall number we expect to
        * enter/exit. */
       int number;

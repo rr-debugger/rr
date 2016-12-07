@@ -355,6 +355,14 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
 
   tried_to_patch_syscall_addresses.insert(r.ip());
 
+  SupportedArch arch;
+  if (!get_syscall_instruction_arch(
+          t, r.ip().decrement_by_syscall_insn_length(t->arch()), &arch) ||
+      arch != t->arch()) {
+    LOG(debug) << "Declining to patch cross-architecture syscall at " << r.ip();
+    return false;
+  }
+
   uint8_t following_bytes[256];
   size_t bytes_count = t->read_bytes_fallible(
       r.ip().to_data_ptr<uint8_t>(), sizeof(following_bytes), following_bytes);
