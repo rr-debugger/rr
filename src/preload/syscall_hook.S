@@ -281,11 +281,24 @@ _syscall_hook_trampoline:
             0x7,  /* %rsp */\
             0;     /* 0 bytes follow */
 
-#define RIP_IS_DEREF_RSP \
+#define RSP_IS_CFA_PLUS_OFFSET(offset) \
+.cfi_escape 0x16, /* DW_CFA_val_expression */\
+            0x7,  /* %rsp */\
+            2,     /* 2 bytes follow */\
+            0x23, /* DW_OP_plus_uconst */\
+            offset;
+
+#define RSP_IS_RSP_PLUS_OFFSET(offset) \
+.cfi_escape 0x16, /* DW_CFA_val_expression */\
+            0x07, /* %rsp */\
+            0x02, /* 2 bytes follow */\
+            0x77, offset; /* DW_OP_breg7, offset */
+
+#define RIP_IS_DEREF_RSP(offset) \
 .cfi_escape 0x10, /* DW_CFA_expression */\
             0x10, /* %rip */\
             0x02, /* 2 bytes follow */\
-            0x77, 0; /* DW_OP_breg7, 0 */
+            0x77, offset; /* DW_OP_breg7, 0 */
 
 /**
  * On syscallhook entry, the stack has been switched to the end of per-task
@@ -297,9 +310,9 @@ _syscall_hook_trampoline:
         .type name, @function;     \
 name:                              \
         .cfi_startproc;            \
-        CFA_AT_RSP_OFFSET(8)      \
+        CFA_AT_RSP_OFFSET(8)       \
         RSP_IS_CFA                 \
-        RIP_IS_DEREF_RSP
+        RIP_IS_DEREF_RSP(0)
 
 #define SYSCALLHOOK_END(name)                                   \
         pop (stub_scratch_1);                                   \
@@ -330,11 +343,8 @@ name:                              \
 __morestack:
 .cfi_startproc
 CFA_AT_RSP_OFFSET(16)
-.cfi_escape 0x16, /* DW_CFA_val_expression */\
-            0x07, /* %rsp */\
-            0x02, /* 2 bytes follow */\
-            0x77, 8; /* DW_OP_breg7, 8 */
-RIP_IS_DEREF_RSP
+RSP_IS_RSP_PLUS_OFFSET(8)
+RIP_IS_DEREF_RSP(0)
 callq _syscall_hook_trampoline
 retq
 .cfi_endproc
@@ -358,16 +368,21 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_3c_24)
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_3c_24)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
+        .cfi_offset %rip, 16
+        RSP_IS_CFA_PLUS_OFFSET(24)
         callq __morestack
         /* The original instructions after the syscall are
            pop %rdx; pop %rsi; retq. */
         /* We're not returning to the dynamically generated stub, so
            we need to fix the stack pointer ourselves. */
         pop %rdx
-        .cfi_adjust_cfa_offset -8
+        CFA_AT_RSP_OFFSET(0)
         pop %rsp
+        .cfi_def_cfa %rsp, 0;
         pop %rdx
+        .cfi_adjust_cfa_offset -8
         pop %rsi
+        .cfi_adjust_cfa_offset -8
         ret
 
         .cfi_endproc
