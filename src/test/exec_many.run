@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+
+ulimit -n 1024
+RECORD_ARGS="--scarce-fds"
+compare_test EXIT-SUCCESS

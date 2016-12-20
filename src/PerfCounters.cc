@@ -404,6 +404,7 @@ void PerfCounters::stop() {
   fd_page_faults.close();
   fd_hw_interrupts.close();
   fd_instructions_retired.close();
+  fd_useless_counter.close();
 }
 
 void PerfCounters::stop_counting() {

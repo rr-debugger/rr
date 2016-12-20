@@ -60,7 +60,9 @@ RecordCommand RecordCommand::singleton(
     "                             just the initial process.\n"
     "  --ignore-nested            Directly start child process when running\n"
     "                             under nested rr recording, instead of\n"
-    "                             raising an error.\n");
+    "                             raising an error.\n"
+    "  --scarce-fds               Consume 950 fds before recording\n"
+    "                             (for testing purposes)\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -108,6 +110,8 @@ struct RecordFlags {
   /* Start child process directly if run under nested rr recording */
   bool ignore_nested;
 
+  bool scarce_fds;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -121,7 +125,8 @@ struct RecordFlags {
         always_switch(false),
         chaos(false),
         wait_for_all(false),
-        ignore_nested(false) {}
+        ignore_nested(false),
+        scarce_fds(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -153,6 +158,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 1, "no-file-cloning", NO_PARAMETER },
     { 2, "syscall-buffer-size", HAS_PARAMETER },
     { 3, "ignore-nested", NO_PARAMETER },
+    { 4, "scarce-fds", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -216,6 +222,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       break;
     case 3:
       flags.ignore_nested = true;
+      break;
+    case 4:
+      flags.scarce_fds = true;
       break;
     case 's':
       flags.always_switch = true;
@@ -288,6 +297,12 @@ static void setup_session_from_flags(RecordSession& session,
   session.set_wait_for_all(flags.wait_for_all);
   if (flags.syscall_buffer_size > 0) {
     session.set_syscall_buffer_size(flags.syscall_buffer_size);
+  }
+
+  if (flags.scarce_fds) {
+    for (int i = 0; i < 950; ++i) {
+      open("/dev/null", O_RDONLY);
+    }
   }
 }
 
