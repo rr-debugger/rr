@@ -75,7 +75,8 @@ struct PmuConfig {
 
 // XXX please only edit this if you really know what you're doing.
 static const PmuConfig pmu_configs[] = {
-  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0x5100c0, 0x5301cb, true, false },
+  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0x5100c0, 0x5301cb, true,
+    false },
   { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0x5100c0, 0x5301cb, true,
     true },
   { IntelSkylake, "Intel Skylake", 0x5101c4, 0x5100c0, 0x5301cb, true, false },
