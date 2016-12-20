@@ -113,6 +113,11 @@ foreach(required_lib ${REQUIRED_LIBS})
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${${PKG}_CFLAGS}")
 endforeach(required_lib)
 
+find_path(SECCOMP NAMES "linux/seccomp.h")
+if(NOT SECCOMP)
+  message(FATAL_ERROR "Couldn't find linux/seccomp.h. You may need to upgrade your kernel.")
+endif()
+
 # Check for Python >=2.7 but not Python 3.
 find_package(PythonInterp 2.7 REQUIRED)
 if(PYTHON_VERSION_MAJOR GREATER 2)
