@@ -4852,7 +4852,7 @@ void rec_process_syscall(RecordTask* t) {
   }
   rec_process_syscall_internal(t, arch, syscall_state);
   syscall_state.process_syscall_results();
-  t->on_syscall_exit(t->ev().Syscall().number, t->regs());
+  t->on_syscall_exit(t->ev().Syscall().number, t->ev().arch(), t->regs());
   syscall_state_property.remove(*t);
 
   MonitoredSharedMemory::check_all(t);

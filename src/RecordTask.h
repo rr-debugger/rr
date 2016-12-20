@@ -53,7 +53,8 @@ public:
                       remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                       pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session);
-  virtual void on_syscall_exit(int syscallno, const Registers& regs);
+  virtual void on_syscall_exit(int syscallno, SupportedArch arch,
+                               const Registers& regs);
 
   /**
    * Initialize tracee buffers in this, i.e., implement

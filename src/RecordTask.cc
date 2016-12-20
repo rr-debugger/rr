@@ -555,8 +555,8 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   }
 }
 
-void RecordTask::on_syscall_exit(int syscallno, const Registers& regs) {
-  SupportedArch arch = ev().arch();
+void RecordTask::on_syscall_exit(int syscallno, SupportedArch arch,
+                                 const Registers& regs) {
   with_converted_registers<void>(regs, arch, [&](const Registers& regs) {
     Task::on_syscall_exit(syscallno, arch, regs);
     RR_ARCH_FUNCTION(on_syscall_exit_arch, arch, syscallno, regs)
