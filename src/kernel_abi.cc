@@ -100,7 +100,7 @@ bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
     case x86:
     case x86_64:
       if (memcmp(code.data(), int80_insn, sizeof(int80_insn)) == 0 ||
-          memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn) == 0)) {
+          memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn)) == 0) {
         *arch = x86;
       } else if (memcmp(code.data(), syscall_insn, sizeof(syscall_insn)) == 0) {
         *arch = x86_64;
