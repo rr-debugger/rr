@@ -1054,7 +1054,7 @@ struct BaseArch : public wordsize,
   RR_VERIFY_TYPE(sigset_t);
 
   typedef struct {
-    ptr<const sigset_t> ss;
+    ptr<const kernel_sigset_t> ss;
     size_t ss_len;
   } pselect6_arg6;
 
