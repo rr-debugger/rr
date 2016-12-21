@@ -35,6 +35,21 @@ int main(void) {
   sigprocmask(SIG_SETMASK, &oldmask, NULL);
 #endif
 
+  /* Make sure that rt_sigprocmask (the syscall) does not clobber stack memory
+     beyond what it's supposed to */
+  uint64_t set1[10];
+  uint64_t set2[10];
+  set1[0] = set2[0] = 0;
+  memset(&set1[1], 0xab, 9 * sizeof(uint64_t));
+  memset(&set2[1], 0xcd, 9 * sizeof(uint64_t));
+  set1[0] = ((uint64_t)1) << (SIGPWR - 1);
+  test_assert(0 == syscall(SYS_rt_sigprocmask, SIG_SETMASK, set1, NULL,
+                           sizeof(uint64_t)));
+  for (size_t i = 0; i < 9 * sizeof(uint64_t); ++i) {
+    test_assert(((uint8_t*)(&set1[1]))[i] == 0xab);
+    test_assert(((uint8_t*)(&set2[1]))[i] == 0xcd);
+  }
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

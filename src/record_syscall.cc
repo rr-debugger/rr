@@ -682,7 +682,8 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
         saved_data.resize(prev_size + param.num_bytes.incoming_size);
         saved_data_loc = saved_data.data() + prev_size;
       }
-      if (!(*param.mutator)(t, param.dest, saved_data_loc)) {
+      if (!(*param.mutator)(t, scratch_enabled ? param.scratch : param.dest,
+                            saved_data_loc)) {
         // Nothing was modified, no need to clean up when we unwind.
         param.mutator = nullptr;
         if (!scratch_enabled) {
@@ -3579,9 +3580,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::rt_sigprocmask:
     case Arch::sigprocmask: {
-      syscall_state.reg_parameter<typename Arch::sigset_t>(3);
-      syscall_state.reg_parameter<typename Arch::sigset_t>(2, IN,
-                                                           protect_rr_sigs);
+      syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(3);
+      syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(
+          2, IN, protect_rr_sigs);
       return PREVENT_SWITCH;
     }
 
