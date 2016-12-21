@@ -43,6 +43,8 @@ ReplayCommand ReplayCommand::singleton(
     "<EVENT-NUM>\n"
     "                             in the trace.  See -M in the general "
     "options.\n"
+    "  -o, --debugger-option=<OPTION>\n"
+    "                             pass <OPTION> to debugger\n"
     "  -p, --onprocess=<PID>|<COMMAND>\n"
     "                             start a debug server when <PID> or "
     "<COMMAND>\n"
@@ -86,8 +88,8 @@ struct ReplayFlags {
   // IP port to listen on for debug connections.
   int dbg_port;
 
-  // Pass this file name to debugger with -x
-  string gdb_command_file_path;
+  // Pass these options to gdb
+  vector<string> gdb_options;
 
   // Specify a custom gdb binary with -d
   string gdb_binary_file_path;
@@ -119,12 +121,13 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
   static const OptionSpec options[] = {
     { 'a', "autopilot", NO_PARAMETER },
     { 'd', "debugger", HAS_PARAMETER },
-    { 's', "dbgport", HAS_PARAMETER },
-    { 'g', "goto", HAS_PARAMETER },
-    { 't', "trace", HAS_PARAMETER },
-    { 'q', "no-redirect-output", NO_PARAMETER },
     { 'f', "onfork", HAS_PARAMETER },
+    { 'g', "goto", HAS_PARAMETER },
+    { 'o', "debugger-option", HAS_PARAMETER },
     { 'p', "onprocess", HAS_PARAMETER },
+    { 'q', "no-redirect-output", NO_PARAMETER },
+    { 's', "dbgport", HAS_PARAMETER },
+    { 't', "trace", HAS_PARAMETER },
     { 'x', "gdb-x", HAS_PARAMETER },
     { 0, "share-private-mappings", NO_PARAMETER }
   };
@@ -154,6 +157,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       }
       flags.goto_event = opt.int_value;
       break;
+    case 'o':
+      flags.gdb_options.push_back(opt.value);
+      break;
     case 'p':
       if (opt.int_value > 0) {
         if (!opt.verify_valid_int(1, INT32_MAX)) {
@@ -182,7 +188,8 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       flags.singlestep_to_event = opt.int_value;
       break;
     case 'x':
-      flags.gdb_command_file_path = opt.value;
+      flags.gdb_options.push_back("-x");
+      flags.gdb_options.push_back(opt.value);
       break;
     case 0:
       flags.share_private_mappings = true;
@@ -413,13 +420,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
-    vector<string> options;
-    if (!flags.gdb_command_file_path.empty()) {
-      options.push_back("-x");
-      options.push_back(flags.gdb_command_file_path);
-    }
     GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_binary_file_path,
-                          options);
+                          flags.gdb_options);
   }
 
   // Child must have died before we were able to get debugger parameters
