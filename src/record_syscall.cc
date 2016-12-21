@@ -3287,8 +3287,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
      *           const struct timespec *timeout_ts,
      *           const sigset_t *sigmask); */
     case Arch::ppoll:
-      syscall_state.reg_parameter<typename Arch::sigset_t>(4, IN,
-                                                           protect_rr_sigs);
+      /* The raw syscall modifies this with the time remaining. The libc
+         does not expose this functionality however */
+      syscall_state.reg_parameter<typename Arch::timespec>(3, IN_OUT);
+      syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(
+          4, IN, protect_rr_sigs);
     /* fall through */
     case Arch::poll: {
       auto nfds = (nfds_t)regs.arg2();
