@@ -21,6 +21,11 @@ int main(void) {
 
   test_assert(2 == num_signals_caught);
 
+  syscall(SYS_tkill, sys_gettid(), SIGUSR1);
+  syscall(SYS_tkill, sys_gettid(), SIGUSR2);
+
+  test_assert(4 == num_signals_caught);
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
