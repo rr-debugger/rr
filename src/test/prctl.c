@@ -53,6 +53,11 @@ int main(void) {
 
   test_assert(0 == prctl(PR_GET_SECCOMP));
 
+  int reaper;
+  test_assert(0 == prctl(PR_SET_CHILD_SUBREAPER, 1));
+  test_assert(0 == prctl(PR_GET_CHILD_SUBREAPER, &reaper));
+  test_assert(reaper == 1);
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }

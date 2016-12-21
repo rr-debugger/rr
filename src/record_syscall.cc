@@ -3367,6 +3367,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
      * long arg4, unsigned long arg5); */
     case Arch::prctl:
       switch ((int)regs.arg1_signed()) {
+        case PR_GET_CHILD_SUBREAPER:
         case PR_GET_ENDIAN:
         case PR_GET_FPEMU:
         case PR_GET_FPEXC:
@@ -3380,6 +3381,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case PR_GET_TIMERSLACK:
         case PR_MCE_KILL:
         case PR_MCE_KILL_GET:
+        case PR_SET_CHILD_SUBREAPER:
         case PR_SET_KEEPCAPS:
         case PR_SET_NAME:
         case PR_SET_PDEATHSIG:
