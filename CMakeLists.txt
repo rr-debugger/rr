@@ -500,6 +500,7 @@ set(BASIC_TESTS
   fd_tracking_across_threads
   fds_clean
   flock
+  flock_ofd
   flock2
   fork_brk
   fork_child_crash

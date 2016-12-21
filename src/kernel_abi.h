@@ -91,7 +91,11 @@ struct FcntlConstants {
     SETLKW64 = 14,
     SETOWN_EX = 15,
     GETOWN_EX = 16,
-    // Linux-specific operations
+    // Open File descriptor locks (Linux specific)
+    OFD_GETLK = 36,
+    OFD_SETLK = 37,
+    OFD_SETLKW = 38,
+    // Other Linux-specific operations
     DUPFD_CLOEXEC = 0x400 + 6,
     ADD_SEALS = 0x400 + 9
   };
