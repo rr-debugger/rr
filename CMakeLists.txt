@@ -581,6 +581,7 @@ set(BASIC_TESTS
   munmap_segv
   munmap_discontinuous
   nanosleep
+  netfilter
   no_mask_timeslice
   numa
   old_fork
