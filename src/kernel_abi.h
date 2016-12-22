@@ -910,12 +910,11 @@ struct BaseArch : public wordsize,
   };
 
   struct setsockopt_args {
-    signed_int sockfd;
-    signed_int level;
-    signed_int optname;
-    char __pad[sizeof(ptr<void>) - sizeof(int)];
+    signed_long sockfd;
+    signed_long level;
+    signed_long optname;
     ptr<void> optval;
-    ptr<socklen_t> optlen;
+    signed_long optlen;
   };
 
   struct recv_args {
@@ -1337,6 +1336,26 @@ struct BaseArch : public wordsize,
     signed_long __reserved[4];
   };
   RR_VERIFY_TYPE(mq_attr);
+
+  struct xt_counters {
+    uint64_t pcnt, bcnt;
+  };
+  RR_VERIFY_TYPE(xt_counters);
+
+  struct ipt_replace {
+    uint8_t name[32];
+    uint32_t valid_hook;
+    uint32_t num_entries;
+    uint32_t size;
+    uint32_t hook_entry[5];
+    uint32_t underflow[5];
+    uint32_t num_counters;
+    ptr<xt_counters> counters; // ptr<xt_counters>
+    // Plus hangoff here
+  };
+  // The corresponding header requires -fpermissive, which we don't pass. Skip
+  // this check.
+  // RR_VERIFY_TYPE(ipt_replace);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

@@ -164,6 +164,12 @@ struct usbdevfs_streams {
 #define BUS_MCEERR_AO 5
 #endif
 
+// Defined in the ip_tables header for each protocol, but always to the same,
+// value, so it should be fine to set this here
+#ifndef SO_SET_REPLACE
+#define SO_SET_REPLACE 64
+#endif
+
 } // namespace rr
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */

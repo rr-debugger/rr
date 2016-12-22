@@ -19,6 +19,7 @@
 #include <linux/mqueue.h>
 #include <linux/msg.h>
 #include <linux/net.h>
+#include <linux/netfilter/x_tables.h>
 #include <linux/sem.h>
 #include <linux/shm.h>
 #include <linux/sockios.h>

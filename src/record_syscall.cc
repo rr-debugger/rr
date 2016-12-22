@@ -853,6 +853,42 @@ static bool block_sock_opt(int level, int optname,
 }
 
 template <typename Arch>
+static Switchable prepare_setsockopt(RecordTask* t,
+                                     TaskSyscallState& syscall_state,
+                                     typename Arch::setsockopt_args& args) {
+  if (block_sock_opt(args.level, args.optname, syscall_state)) {
+    Registers r = t->regs();
+    r.set_arg1(-1);
+    t->set_regs(r);
+  } else {
+    switch (args.level) {
+      case IPPROTO_IP:
+      case IPPROTO_IPV6:
+        switch (args.optname) {
+          case SO_SET_REPLACE: {
+            if (args.optlen < (ssize_t)sizeof(typename Arch::ipt_replace)) {
+              break;
+            }
+            auto repl_ptr =
+                args.optval.rptr().template cast<typename Arch::ipt_replace>();
+            syscall_state.mem_ptr_parameter(
+                REMOTE_PTR_FIELD(repl_ptr, counters),
+                t->read_mem(REMOTE_PTR_FIELD(repl_ptr, num_counters)) *
+                    sizeof(typename Arch::xt_counters));
+            break;
+          }
+          default:
+            break;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  return PREVENT_SWITCH;
+}
+
+template <typename Arch>
 static Switchable prepare_socketcall(RecordTask* t,
                                      TaskSyscallState& syscall_state) {
   /* int socketcall(int call, unsigned long *args) {
@@ -891,12 +927,7 @@ static Switchable prepare_socketcall(RecordTask* t,
       auto argsp =
           syscall_state.reg_parameter<typename Arch::setsockopt_args>(2, IN);
       auto args = t->read_mem(argsp);
-      if (block_sock_opt(args.level, args.optname, syscall_state)) {
-        Registers r = t->regs();
-        r.set_arg1(-1);
-        t->set_regs(r);
-      }
-      break;
+      return prepare_setsockopt<Arch>(t, syscall_state, args);
     }
 
     /*  int getsockopt(int sockfd, int level, int optname, const void *optval,
@@ -3057,14 +3088,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
-    case Arch::setsockopt:
-      if (block_sock_opt(regs.arg2_signed(), regs.arg3_signed(),
-                         syscall_state)) {
-        Registers r = regs;
-        r.set_arg1(-1);
-        t->set_regs(r);
-      }
-      return PREVENT_SWITCH;
+    case Arch::setsockopt: {
+      typename Arch::setsockopt_args args;
+      args.sockfd = regs.arg1();
+      args.level = regs.arg2();
+      args.optname = regs.arg3();
+      args.optval = remote_ptr<void>(regs.arg4());
+      args.optlen = regs.arg5();
+      return prepare_setsockopt<Arch>(t, syscall_state, args);
+    }
 
     case Arch::getsockopt: {
       auto optlen_ptr =
