@@ -88,10 +88,13 @@ int main(void) {
     // tests that no overruns occur, so we delete and recreate the timer.
     test_assert(0 == timer_delete(*id));
 
+    // Reset this before restarting the counter, to avoid causing a race
+    // condition.
+    caught_sig = 0;
+
     test_assert(0 == timer_create(clocks[i], NULL, id));
     test_assert(0 == timer_settime(*id, 0, &its, NULL));
 
-    caught_sig = 0;
     for (counter = 0; counter >= 0 && !caught_sig; counter++) {
       if (counter % 100000 == 0) {
         write(STDOUT_FILENO, ".", 1);
