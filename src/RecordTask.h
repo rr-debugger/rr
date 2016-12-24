@@ -487,6 +487,9 @@ public:
   void restore_sigmask_if_saved();
   void clear_saved_sigmask();
 
+  /* Retrieve the tid of this task from the tracee and store it */
+  void update_own_namespace_tid();
+
 private:
   ~RecordTask();
 

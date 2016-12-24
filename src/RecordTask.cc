@@ -1652,6 +1652,12 @@ void RecordTask::set_tid_addr(remote_ptr<int> tid_addr) {
   tid_futex = tid_addr;
 }
 
+void RecordTask::update_own_namespace_tid() {
+  AutoRemoteSyscalls remote(this);
+  own_namespace_rec_tid =
+      remote.infallible_syscall(syscall_number_for_gettid(arch()));
+}
+
 void RecordTask::tgkill(int sig) {
   LOG(debug) << "Sending " << sig << " to tid " << tid;
   ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
