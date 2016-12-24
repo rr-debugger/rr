@@ -546,9 +546,12 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       return;
     }
     case Arch::pselect6: {
-      remote_ptr<sig_set_t> setp = regs.arg6();
-      if (!setp.is_null()) {
-        restore_sigmask();
+      remote_ptr<typename Arch::pselect6_arg6> arg6 = regs.arg6();
+      if (!arg6.is_null()) {
+        auto setpp = REMOTE_PTR_FIELD(arg6, ss);
+        if (read_mem(setpp)) {
+          restore_sigmask();
+        }
       }
       return;
     }
