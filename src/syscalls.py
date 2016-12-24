@@ -1353,9 +1353,9 @@ kexec_load = UnsupportedSyscall(x86=283, x64=246)
 # nonzero value in this field after the call returns.
 waitid = IrregularEmulatedSyscall(x86=284, x64=247)
 
-add_key = UnsupportedSyscall(x86=286, x64=248)
+add_key = EmulatedSyscall(x86=286, x64=248)
 request_key = UnsupportedSyscall(x86=287, x64=249)
-keyctl = UnsupportedSyscall(x86=288, x64=250)
+keyctl = IrregularEmulatedSyscall(x86=288, x64=250)
 ioprio_set = UnsupportedSyscall(x86=289, x64=251)
 ioprio_get = UnsupportedSyscall(x86=290, x64=252)
 
