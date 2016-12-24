@@ -539,6 +539,7 @@ set(BASIC_TESTS
   ioctl_pty
   ioctl_tty
   kcmp
+  keyctl
   kill_newborn
   kill_ptracee
   legacy_ugid

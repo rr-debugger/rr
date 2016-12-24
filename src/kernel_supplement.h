@@ -170,6 +170,81 @@ struct usbdevfs_streams {
 #define SO_SET_REPLACE 64
 #endif
 
+// Unfortuantely the header that defines these is not C++ safe, we we'll
+// have to redefine them here
+#ifndef KEYCTL_GET_KEYRING_ID
+#define KEYCTL_GET_KEYRING_ID 0
+#endif
+#ifndef KEYCTL_JOIN_SESSION_KEYRING
+#define KEYCTL_JOIN_SESSION_KEYRING 1
+#endif
+#ifndef KEYCTL_UPDATE
+#define KEYCTL_UPDATE 2
+#endif
+#ifndef KEYCTL_REVOKE
+#define KEYCTL_REVOKE 3
+#endif
+#ifndef KEYCTL_CHOWN
+#define KEYCTL_CHOWN 4
+#endif
+#ifndef KEYCTL_SETPERM
+#define KEYCTL_SETPERM 5
+#endif
+#ifndef KEYCTL_DESCRIBE
+#define KEYCTL_DESCRIBE 6
+#endif
+#ifndef KEYCTL_CLEAR
+#define KEYCTL_CLEAR 7
+#endif
+#ifndef KEYCTL_LINK
+#define KEYCTL_LINK 8
+#endif
+#ifndef KEYCTL_UNLINK
+#define KEYCTL_UNLINK 9
+#endif
+#ifndef KEYCTL_SEARCH
+#define KEYCTL_SEARCH 10
+#endif
+#ifndef KEYCTL_READ
+#define KEYCTL_READ 11
+#endif
+#ifndef KEYCTL_INSTANTIATE
+#define KEYCTL_INSTANTIATE 12
+#endif
+#ifndef KEYCTL_NEGATE
+#define KEYCTL_NEGATE 13
+#endif
+#ifndef KEYCTL_SET_REQKEY_KEYRING
+#define KEYCTL_SET_REQKEY_KEYRING 14
+#endif
+#ifndef KEYCTL_SET_TIMEOUT
+#define KEYCTL_SET_TIMEOUT 15
+#endif
+#ifndef KEYCTL_ASSUME_AUTHORITY
+#define KEYCTL_ASSUME_AUTHORITY 16
+#endif
+#ifndef KEYCTL_GET_SECURITY
+#define KEYCTL_GET_SECURITY 17
+#endif
+#ifndef KEYCTL_SESSION_TO_PARENT
+#define KEYCTL_SESSION_TO_PARENT 18
+#endif
+#ifndef KEYCTL_REJECT
+#define KEYCTL_REJECT 19
+#endif
+#ifndef KEYCTL_INSTANTIATE_IOV
+#define KEYCTL_INSTANTIATE_IOV 20
+#endif
+#ifndef KEYCTL_INVALIDATE
+#define KEYCTL_INVALIDATE 21
+#endif
+#ifndef KEYCTL_GET_PERSISTENT
+#define KEYCTL_GET_PERSISTENT 22
+#endif
+#ifndef KEYCTL_DH_COMPUTE
+#define KEYCTL_DH_COMPUTE 23
+#endif
+
 } // namespace rr
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */

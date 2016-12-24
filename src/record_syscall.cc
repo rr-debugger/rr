@@ -3570,6 +3570,44 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       return PREVENT_SWITCH;
 
+    case Arch::keyctl:
+      switch ((int)regs.arg1_signed()) {
+        case KEYCTL_GET_KEYRING_ID:
+        case KEYCTL_JOIN_SESSION_KEYRING:
+        case KEYCTL_UPDATE:
+        case KEYCTL_REVOKE:
+        case KEYCTL_CHOWN:
+        case KEYCTL_SETPERM:
+        case KEYCTL_CLEAR:
+        case KEYCTL_LINK:
+        case KEYCTL_UNLINK:
+        case KEYCTL_SEARCH:
+        case KEYCTL_INSTANTIATE:
+        case KEYCTL_INSTANTIATE_IOV:
+        case KEYCTL_NEGATE:
+        case KEYCTL_REJECT:
+        case KEYCTL_SET_REQKEY_KEYRING:
+        case KEYCTL_SET_TIMEOUT:
+        case KEYCTL_ASSUME_AUTHORITY:
+        case KEYCTL_SESSION_TO_PARENT:
+        case KEYCTL_INVALIDATE:
+          break;
+
+        case KEYCTL_DESCRIBE:
+        case KEYCTL_READ:
+        case KEYCTL_GET_SECURITY:
+        case KEYCTL_DH_COMPUTE:
+          syscall_state.reg_parameter(
+              3, ParamSize::from_syscall_result<typename Arch::signed_long>(
+                     regs.arg4()));
+          break;
+
+        default:
+          syscall_state.expect_errno = EINVAL;
+          break;
+      }
+      return PREVENT_SWITCH;
+
     /* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
      * timeout); */
     case Arch::epoll_wait:
@@ -4293,6 +4331,9 @@ static string extra_expected_errno_info(RecordTask* t,
         case Arch::arch_prctl:
           ss << "; unknown arch_prctl(" << HEX((int)t->regs().arg1_signed())
              << ")";
+          break;
+        case Arch::keyctl:
+          ss << "; unknown keyctl(" << HEX((int)t->regs().arg1_signed()) << ")";
           break;
         case Arch::socketcall:
           ss << "; unknown socketcall(" << HEX((int)t->regs().arg1_signed())
