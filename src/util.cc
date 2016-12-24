@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <linux/capability.h>
 #include <linux/magic.h>
 #include <linux/prctl.h>
 #include <stdlib.h>
@@ -842,6 +843,23 @@ void* xmalloc(size_t size) {
     abort();
   }
   return mem_ptr;
+}
+
+bool has_effective_caps(uint64_t caps) {
+  struct NativeArch::cap_header header = {.version =
+                                              _LINUX_CAPABILITY_VERSION_3,
+                                          .pid = 0 };
+  struct NativeArch::cap_data data[_LINUX_CAPABILITY_U32S_3];
+  if (syscall(NativeArch::capget, &header, data) != 0) {
+    FATAL() << "FAILED to read capabilities";
+  }
+  for (int i = 0; i < _LINUX_CAPABILITY_U32S_3; ++i) {
+    if ((data[i].effective & (uint32_t)caps) != (uint32_t)caps) {
+      return false;
+    }
+    caps >>= 32;
+  }
+  return true;
 }
 
 } // namespace rr

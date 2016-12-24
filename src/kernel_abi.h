@@ -1356,6 +1356,17 @@ struct BaseArch : public wordsize,
   // The corresponding header requires -fpermissive, which we don't pass. Skip
   // this check.
   // RR_VERIFY_TYPE(ipt_replace);
+
+  struct cap_header {
+    uint32_t version;
+    int pid;
+  };
+
+  struct cap_data {
+    uint32_t effective;
+    uint32_t permitted;
+    uint32_t inheritable;
+  };
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

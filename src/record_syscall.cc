@@ -48,6 +48,7 @@
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
 #include <termios.h>
 #include <utility>
 
@@ -3909,6 +3910,52 @@ void rec_prepare_restart_syscall(RecordTask* t) {
   syscall_state_property.remove(*t);
 }
 
+static const char* dropped_privs_warning =
+    "[WARNING] rr: Executed file with setuid or file capabilities set.\n"
+    "          Capabilities did not take effect. Errors may follow.\n"
+    "          To record this execution faithfully, re-run rr as:\n"
+    "\n"
+    "             sudo -EP rr record --setuid-sudo\n"
+    "\n";
+
+static bool is_privileged_executable(const string& path) {
+  struct vfs_cap_data actual, empty;
+  memset(actual.data, 0, sizeof(actual.data));
+  memset(empty.data, 0, sizeof(empty.data));
+  if (-1 != getxattr(path.c_str(), "security.capability", &actual,
+                     sizeof(vfs_cap_data))) {
+    if (memcmp(&actual, &empty, sizeof(actual.data)) != 0) {
+      return true;
+    }
+  } else {
+    assert(errno == ENODATA);
+    struct stat buf;
+    stat(path.c_str(), &buf);
+    if (buf.st_mode & (S_ISUID | S_ISGID)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static void check_privileged_exe(RecordTask* t) {
+  // Check if the executable we just execed has setuid bits or file capabilities
+  // If so (and rr doesn't have CAP_SYS_ADMIN, which would have let us avoid,
+  // no_new privs), they may have been ignored, due to our no_new_privs setting
+  // in the tracee. That's most likely not what the user intended (and setuid
+  // applications may not handle not being root particularly gracefully - after
+  // all under usual circumstances, it would be an exec-time error). Give a loud
+  // warning to tell the user what happened, but continue anyway.
+  static bool gave_stern_warning = false;
+  // Only issue the warning once. If it's a problem, the user will likely
+  // find out soon enough. If not, no need to keep bothering them.
+  if (!gave_stern_warning && !has_effective_caps(1 << CAP_SYS_ADMIN) &&
+      is_privileged_executable(t->vm()->exe_image())) {
+    fputs(dropped_privs_warning, stderr);
+    gave_stern_warning = true;
+  }
+}
+
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
@@ -3916,6 +3963,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   }
 
   t->post_exec_syscall(*syscall_state.exec_saved_event);
+  check_privileged_exe(t);
 
   KernelMapping rr_page_mapping =
       t->vm()->mapping_of(AddressSpace::rr_page_start()).map;
