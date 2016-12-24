@@ -7,6 +7,7 @@
 #include <elf.h>
 #include <errno.h>
 #include <limits.h>
+#include <linux/capability.h>
 #include <linux/ipc.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -2393,11 +2394,17 @@ static void set_up_process(Session& session, const ScopedFd& err_fd) {
     spawned_child_fatal_error(err_fd, "error setting up prctl");
   }
 
-  if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-    spawned_child_fatal_error(
-        err_fd,
-        "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
-        "kernel is too old. Use `record -n` to disable the filter.");
+  /* If we're in setuid_sudo mode, we have CAP_SYS_ADMIN, so we don't need to
+     set NO_NEW_PRIVS here in order to install the seccomp filter later. In,
+     emulate any potentially privileged, operations, so we might as well set
+     no_new_privs */
+  if (!session.is_recording() || !has_effective_caps(1 << CAP_SYS_ADMIN)) {
+    if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+      spawned_child_fatal_error(
+          err_fd,
+          "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
+          "kernel is too old. Use `record -n` to disable the filter.");
+    }
   }
 }
 

@@ -276,6 +276,12 @@ inline void msan_unpoison(void* ptr, size_t n) {
  */
 void* xmalloc(size_t size);
 
+/**
+ * Determine if the given capabilities are a subset of the process' current
+ * active capabilities.
+ */
+bool has_effective_caps(uint64_t caps);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
