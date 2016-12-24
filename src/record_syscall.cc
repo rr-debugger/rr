@@ -2416,12 +2416,6 @@ static void prepare_mmap_register_params(RecordTask* t) {
   t->set_regs(r);
 }
 
-static void set_own_namespace_tid(RecordTask* t) {
-  AutoRemoteSyscalls remote(t);
-  t->own_namespace_rec_tid =
-      remote.infallible_syscall(syscall_number_for_gettid(t->arch()));
-}
-
 enum ScratchAddrType { FIXED_ADDRESS, DYNAMIC_ADDRESS };
 /* Pointer used when running RR in WINE. Memory below this address is
    unmapped by WINE immediately after exec, so start the scratch buffer
@@ -2569,7 +2563,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   RecordTask* new_task = static_cast<RecordTask*>(
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
                          params.tls, params.ctid, new_tid));
-  set_own_namespace_tid(new_task);
+  new_task->update_own_namespace_tid();
 
   // Restore modified registers in cloned task
   Registers new_r = new_task->regs();
@@ -2595,8 +2589,8 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
     new_task->record_remote_even_if_null(child_params.ptid);
     new_task->record_remote_even_if_null(child_params.ctid);
   }
-  t->session().trace_writer().write_task_event(
-      TraceTaskEvent::for_clone(new_task->tid, t->tid, flags));
+  t->session().trace_writer().write_task_event(TraceTaskEvent::for_clone(
+      new_task->tid, t->tid, new_task->own_namespace_rec_tid, flags));
 
   init_scratch_memory(new_task);
 

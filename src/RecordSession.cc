@@ -1002,8 +1002,9 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
 
   // Pretend the old task cloned a new task with the right tid, and then exited
   trace_writer().write_task_event(TraceTaskEvent::for_clone(
-      rec_tid, t->tid, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
-                           CLONE_THREAD | CLONE_SYSVSEM));
+      rec_tid, t->tid, t->own_namespace_rec_tid,
+      CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD |
+          CLONE_SYSVSEM));
   trace_writer().write_task_event(
       TraceTaskEvent::for_exit(t->tid, WaitStatus::for_exit_code(0)));
 

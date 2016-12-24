@@ -828,6 +828,7 @@ set(TESTS_WITH_PROGRAM
   ptrace_remote_unmap
   # Not called ps, because that interferes with using real 'ps' in tests
   rr_ps
+  rr_ps_ns
   read_big_struct
   restart_abnormal_exit
   reverse_continue_breakpoint
@@ -1048,9 +1049,11 @@ if(BUILD_TESTS)
   # This sucks but I can't find a better way to get CMake to build
   # the same source file in two different ways.
   if(rr_32BIT AND rr_64BIT)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/rrutil.h"
-                   "${CMAKE_CURRENT_BINARY_DIR}/32/rrutil.h"
-                   COPYONLY)
+    foreach(header rrutil.h nsutils.h)
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${header}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/32/${header}"
+                    COPYONLY)
+    endforeach(header)
 
     foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} cpuid test_lib)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
