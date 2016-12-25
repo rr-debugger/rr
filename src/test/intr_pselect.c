@@ -31,6 +31,10 @@ int main(void) {
   atomic_puts("ignoring SIGALRM, going into pselect ...");
   test_assert(0 == pselect_pipe(2, &sigmask) && 0 == errno);
 
+  alarm(1);
+  atomic_puts("ignoring SIGALRM (sigmask=NULL), going into pselect ...");
+  test_assert(0 == pselect_pipe(2, NULL) && 0 == errno);
+
   /* Test that the signal mask is correct in rr when the SIGALRM is delivered */
   sigaddset(&sigmask, SIGCHLD);
 
