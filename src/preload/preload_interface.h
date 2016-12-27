@@ -354,11 +354,11 @@ struct syscallbuf_hdr {
   /* True if the current syscall should not be committed to the
    * buffer, for whatever reason; likely interrupted by
    * desched. Set by rr. */
-  uint8_t abort_commit;
+  volatile uint8_t abort_commit;
   /* True if, next time we exit the syscall buffer hook, libpreload should
    * execute SYS_rrcall_notify_syscall_hook_exit to give rr the opportunity to
    * deliver a signal and/or reset the syscallbuf. */
-  uint8_t notify_on_syscall_hook_exit;
+  volatile uint8_t notify_on_syscall_hook_exit;
   /* This tracks whether the buffer is currently in use for a
    * system call or otherwise unavailable. This is helpful when
    * a signal handler runs during a wrapped system call; we don't want
@@ -367,18 +367,22 @@ struct syscallbuf_hdr {
    * may be used only if all are clear. See enum syscallbuf_locked_why for
    * used bits.
    */
-  uint8_t locked;
+  volatile uint8_t locked;
   /* Nonzero when rr needs to worry about the desched signal.
    * When it's zero, the desched signal can safely be
    * discarded. */
-  uint8_t desched_signal_may_be_relevant;
+  volatile uint8_t desched_signal_may_be_relevant;
+  /* Nonzero when preload is in the process of calling an untraced
+   * sigprocmask; the real sigprocmask may or may not match blocked_sigs.
+   */
+  volatile uint8_t in_sigprocmask_critical_section;
   /* A copy of the tasks's signal mask. Updated by both preload and rr in
    * response to events that change the signal mask. RR stores this in
    * RecordTask::blocked_sigs, but since some signal mask affecting system
    * calls may be buffered, that value may be out of date until rr reloads it
    * from here.
    */
-  uint64_t blocked_sigs;
+  volatile uint64_t blocked_sigs;
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));

@@ -2316,6 +2316,7 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   }
 
   hdr = buffer_hdr();
+  hdr->in_sigprocmask_critical_section = 1;
   previous_set = hdr->blocked_sigs;
 
   /* Update |blocked_sigs| now so that if the syscall succeeds and a blocked
@@ -2344,6 +2345,7 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
     /* Ssyscall failed; don't update |blocked_sigs|! */
     hdr->blocked_sigs = previous_set;
   }
+  hdr->in_sigprocmask_critical_section = 0;
 
   return commit_raw_syscall(syscallno, ptr, ret);
 }

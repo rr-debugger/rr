@@ -1063,6 +1063,17 @@ void RecordTask::update_sigmask(const Registers& regs) {
 sig_set_t RecordTask::get_sigmask() {
   if (syscallbuf_child) {
     blocked_sigs = read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs));
+    if (read_mem(REMOTE_PTR_FIELD(syscallbuf_child,
+                                  in_sigprocmask_critical_section))) {
+      // |blocked_sigs| may have been updated but the syscall not yet issued.
+      // Get the current sigmask from /proc.
+      // We minimize reading from the kernel's mask because the kernel sometimes
+      // forcibly unblocks signals (see restore_signal_state) and we don't want
+      // to think the application did it.
+      auto results = read_proc_status_fields(tid, "SigBlk");
+      ASSERT(this, results.size() == 1);
+      return strtoull(results[0].c_str(), NULL, 16);
+    }
   }
   return blocked_sigs;
 }

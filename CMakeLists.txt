@@ -843,6 +843,7 @@ set(TESTS_WITH_PROGRAM
   shared_map
   shared_persistent_file
   signal_numbers
+  sigprocmask_race
   stack_growth
   step_thread
   string_instructions

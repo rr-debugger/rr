@@ -1,0 +1,8 @@
+source `dirname $0`/util.sh
+
+RECORD_ARGS="-c100"
+# This test tests the interaction of the syscallbuf with frequent ticks
+# interrupts, so without the syscallbuf it doesn't matter. Also,
+# without the syscallbuf it's rather slow.
+skip_if_no_syscall_buf
+compare_test EXIT-SUCCESS
