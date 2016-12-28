@@ -61,8 +61,10 @@
   RR_PAGE_SYSCALL_ADDR(7)
 #define RR_PAGE_FF_BYTES (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 8)
 
+/* PRELOAD_THREAD_LOCALS_ADDR should not change.
+ * Tools depend on this address. */
 #define PRELOAD_THREAD_LOCALS_ADDR (RR_PAGE_ADDR + PAGE_SIZE)
-#define PRELOAD_THREAD_LOCALS_SIZE 80
+#define PRELOAD_THREAD_LOCALS_SIZE 88
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.
@@ -199,6 +201,10 @@ struct preload_thread_locals {
   /* Pointer to alt-stack used by syscallbuf stubs (allocated at the end of
    * the scratch buffer */
   PTR(void) syscallbuf_stub_alt_stack;
+  /* Where syscall result will be (or during replay, has been) saved.
+   * The offset of this field MUST NOT CHANGE, it is part of the preload ABI
+   * tools can depend on. */
+  PTR(int64_t) pending_untraced_syscall_result;
   /* scratch space used by stub code */
   PTR(void) stub_scratch_1;
   int alt_stack_nesting_level;
