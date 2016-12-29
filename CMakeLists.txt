@@ -595,6 +595,7 @@ set(BASIC_TESTS
   poll_sig_race
   ppoll
   prctl
+  prctl_caps
   prctl_deathsig
   prctl_name
   prctl_tsc
