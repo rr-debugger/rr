@@ -598,6 +598,7 @@ set(BASIC_TESTS
   prctl_deathsig
   prctl_name
   prctl_tsc
+  privileged_net_ioctl
   proc_fds
   proc_mem
   protect_rr_fds

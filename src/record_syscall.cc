@@ -1331,6 +1331,28 @@ static Switchable prepare_ioctl(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    /* Privileged ioctls */
+    case SIOCSIFADDR:
+    case SIOCSIFDSTADDR:
+    case SIOCSIFBRDADDR:
+    case SIOCSIFHWADDR:
+    case SIOCSIFFLAGS:
+    case SIOCSIFPFLAGS:
+    case SIOCSIFTXQLEN:
+    case SIOCSIFMTU:
+    case SIOCSIFNAME:
+    case SIOCSIFNETMASK:
+    case SIOCSIFMETRIC:
+    /* Bridge ioctls */
+    case SIOCBRADDBR:
+    case SIOCBRDELBR:
+    case SIOCBRADDIF:
+    case SIOCBRDELIF:
+    /* Routing table ioctls */
+    case SIOCADDRT:
+    case SIOCDELRT:
+      return PREVENT_SWITCH;
+
     case SIOCGIFADDR:
     case SIOCGIFDSTADDR:
     case SIOCGIFBRDADDR:
