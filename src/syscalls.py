@@ -1077,7 +1077,7 @@ setuid32 = EmulatedSyscall(x86=213)
 setgid32 = EmulatedSyscall(x86=214)
 setfsuid32 = EmulatedSyscall(x86=215)
 setfsgid32 = EmulatedSyscall(x86=216)
-pivot_root = UnsupportedSyscall(x86=217, x64=155)
+pivot_root = EmulatedSyscall(x86=217, x64=155)
 mincore = IrregularEmulatedSyscall(x86=218, x64=27)
 
 #  int madvise(void *addr, size_t length, int advice);

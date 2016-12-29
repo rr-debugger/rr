@@ -629,6 +629,7 @@ set(BASIC_TESTS
   ptracer_death
   ptracer_death_multithread
   ptracer_death_multithread_peer
+  pivot_root
   quotactl
   rdtsc
   read_nothing
