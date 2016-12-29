@@ -3435,6 +3435,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case PR_SET_NAME:
         case PR_SET_PDEATHSIG:
         case PR_SET_TIMERSLACK:
+        case PR_CAP_AMBIENT:
+        case PR_CAPBSET_DROP:
+        case PR_CAPBSET_READ:
           break;
 
         case PR_SET_DUMPABLE:
