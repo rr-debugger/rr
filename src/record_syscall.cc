@@ -4007,12 +4007,20 @@ static void check_privileged_exe(RecordTask* t) {
   // all under usual circumstances, it would be an exec-time error). Give a loud
   // warning to tell the user what happened, but continue anyway.
   static bool gave_stern_warning = false;
-  // Only issue the warning once. If it's a problem, the user will likely
-  // find out soon enough. If not, no need to keep bothering them.
-  if (!gave_stern_warning && !has_effective_caps(1 << CAP_SYS_ADMIN) &&
-      is_privileged_executable(t->vm()->exe_image())) {
-    fputs(dropped_privs_warning, stderr);
-    gave_stern_warning = true;
+  if (is_privileged_executable(t->vm()->exe_image())) {
+    if (has_effective_caps(1 << CAP_SYS_ADMIN)) {
+      // perf_events may have decided to stop counting for security reasons.
+      // To be safe, close all perf counters now, to force re-opening the
+      // perf file descriptors the next time we resume the task.
+      t->hpc.stop();
+    } else {
+      // Only issue the warning once. If it's a problem, the user will likely
+      // find out soon enough. If not, no need to keep bothering them.
+      if (!gave_stern_warning) {
+        fputs(dropped_privs_warning, stderr);
+        gave_stern_warning = true;
+      }
+    }
   }
 }
 
