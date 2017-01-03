@@ -564,6 +564,7 @@ set(BASIC_TESTS
   mmap_tmpfs
   mmap_zero_size_fd
   modify_ldt
+  mount_ns_exec
   mprotect
   mprotect_heterogenous
   mprotect_none
@@ -660,6 +661,7 @@ set(BASIC_TESTS
   seccomp_sigsys_sigtrap
   seccomp_tsync
   seccomp_veto_exec
+  self_shebang
   self_sigint
   sem
   send_block

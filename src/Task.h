@@ -331,9 +331,8 @@ public:
    * Call this method when this task has just performed an |execve()|
    * (so we're in the new address space), but before the system call has
    * returned.
-   * |arch| is the architecture of the new address space.
    */
-  void post_exec(SupportedArch arch, const std::string& exe_file);
+  void post_exec(const std::string& exe_file);
 
   /**
    * Call this method when this task has exited a successful execve() syscall.

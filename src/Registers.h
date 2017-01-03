@@ -325,6 +325,8 @@ public:
     u.x64regs.gs_base = gs_base;
   }
 
+  uint32_t cs() const { return RR_GET_REG(xcs, cs); }
+
   // End of X86-specific stuff
 
   void print_register_file(FILE* f) const;

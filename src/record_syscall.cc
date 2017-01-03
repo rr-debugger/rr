@@ -4002,6 +4002,15 @@ static bool is_privileged_executable(const string& path) {
   return false;
 }
 
+static bool in_same_mount_namespace_as(RecordTask* t) {
+  char proc_ns_mount[PATH_MAX];
+  snprintf(proc_ns_mount, sizeof(proc_ns_mount), "/proc/%d/ns/mnt", t->tid);
+  struct stat my_buf, their_buf;
+  ASSERT(t, stat("/proc/self/ns/mnt", &my_buf) == 0);
+  ASSERT(t, stat(proc_ns_mount, &their_buf) == 0);
+  return my_buf.st_ino == their_buf.st_ino;
+}
+
 static void check_privileged_exe(RecordTask* t) {
   // Check if the executable we just execed has setuid bits or file capabilities
   // If so (and rr doesn't have CAP_SYS_ADMIN, which would have let us avoid,
@@ -4011,7 +4020,17 @@ static void check_privileged_exe(RecordTask* t) {
   // all under usual circumstances, it would be an exec-time error). Give a loud
   // warning to tell the user what happened, but continue anyway.
   static bool gave_stern_warning = false;
-  if (is_privileged_executable(t->vm()->exe_image())) {
+  if (!in_same_mount_namespace_as(t)) {
+    // We could try to enter the mount namespace and perform the below check
+    // there, but don't bother. We know we must have privileges over the mount
+    // namespaces (either because it's an unprivileged user namespace, in which
+    // case we have full privileges, or because at some point one of our
+    // tracees had to have CAP_SYS_ADMIN/CAP_SETUID to create the mount
+    // namespace - as a result we must have at least as much privilege).
+    // Nevertheless, we still need to stop the hpc counters, since
+    // the executable may be privileged with respect to its namespace.
+    t->hpc.stop();
+  } else if (is_privileged_executable(t->vm()->exe_image())) {
     if (has_effective_caps(1 << CAP_SYS_ADMIN)) {
       // perf_events may have decided to stop counting for security reasons.
       // To be safe, close all perf counters now, to force re-opening the
@@ -4130,6 +4149,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     struct stat st;
     if (stat(km.fsname().c_str(), &st) != 0) {
       st = km.fake_stat();
+      // Size is not real. Don't confuse the logic below
+      st.st_size = 0;
     }
     if (t->trace_writer().write_mapped_region(t, km, st,
                                               TraceWriter::EXEC_MAPPING) ==
