@@ -3778,6 +3778,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::personality:
       switch ((int)regs.arg1()) {
+        case PER_LINUX32:
         case PER_LINUX:
           // The default personality requires no handling.
           break;
