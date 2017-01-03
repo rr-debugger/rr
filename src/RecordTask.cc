@@ -350,24 +350,6 @@ static string exe_path(RecordTask* t) {
   return exe;
 }
 
-static SupportedArch determine_arch(RecordTask* t, const string& file_name) {
-  ASSERT(t, file_name.size() > 0);
-  switch (read_elf_class(file_name)) {
-    case ELFCLASS32:
-      return x86;
-    case ELFCLASS64:
-      ASSERT(t, NativeArch::arch() == x86_64) << "64-bit tracees not supported";
-      return x86_64;
-    case NOT_ELF:
-      // Probably a script. Optimistically assume the same architecture as
-      // the rr binary.
-      return NativeArch::arch();
-    default:
-      ASSERT(t, false) << "Unknown ELF class";
-      return x86;
-  }
-}
-
 void RecordTask::post_exec() {
   // We usually only reload this value from the syscallbuf when needed.
   // However, since we're about to get rid of the syscallbuf hdr, which
@@ -376,12 +358,11 @@ void RecordTask::post_exec() {
   blocked_sigs = get_sigmask();
 
   string exe_file = exe_path(this);
-  SupportedArch a = determine_arch(this, exe_file);
+  Task::post_exec(exe_file);
   if (emulated_ptracer) {
-    ASSERT(this, !(emulated_ptracer->arch() == x86 && a == x86_64))
+    ASSERT(this, !(emulated_ptracer->arch() == x86 && arch() == x86_64))
         << "We don't support a 32-bit process tracing a 64-bit process";
   }
-  Task::post_exec(a, exe_file);
 
   ev().set_arch(arch());
   ev().Syscall().number = registers.original_syscallno();

@@ -620,7 +620,16 @@ static string prname_from_exe_image(const string& e) {
   return e.substr(last_slash == e.npos ? 0 : last_slash + 1);
 }
 
-void Task::post_exec(SupportedArch a, const string& exe_file) {
+#if defined(__i386__) || defined(__x86_64__)
+#define AR_L (1 << 21)
+static bool is_long_mode_segment(uint32_t segment) {
+  uint32_t ar = 0;
+  asm("lar %[segment], %[ar]" : [ar] "=r"(ar) : [segment] "r"(segment));
+  return ar & AR_L;
+}
+#endif
+
+void Task::post_exec(const string& exe_file) {
   /* We just saw a successful exec(), so from now on we know
    * that the address space layout for the replay tasks will
    * (should!) be the same as for the recorded tasks.  So we can
@@ -630,10 +639,23 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   as->erase_task(this);
   fds->erase_task(this);
 
-  registers.set_arch(a);
+  registers.set_arch(NativeArch::arch());
   struct user_regs_struct ptrace_regs;
   ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
   registers.set_from_ptrace(ptrace_regs);
+
+#if defined(__i386__) || defined(__x86_64__)
+  // Check the architecture of the newly executed task by looking at the
+  // cs segment register and checking if that segment is a long mode segment
+  // (Linux always uses GDT entries for this, which are globally the same).
+  SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
+  if (a != NativeArch::arch()) {
+    // One again with the correct architecture
+    registers.set_arch(a);
+    registers.set_from_ptrace(ptrace_regs);
+  }
+#endif
+
   // Change syscall number to execve *for the new arch*. If we don't do this,
   // and the arch changes, then the syscall number for execve in the old arch/
   // is treated as the syscall we're executing in the new arch, with hilarious
@@ -641,7 +663,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   registers.set_original_syscallno(syscall_number_for_execve(arch()));
   set_regs(registers);
 
-  extra_registers = ExtraRegisters(a);
+  extra_registers = ExtraRegisters(registers.arch());
   extra_registers_known = false;
   ExtraRegisters e = extra_regs();
   e.reset();
