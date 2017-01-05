@@ -51,7 +51,7 @@ static int64_t retrieve_offset_arch(Task* t, int syscallno,
         FATAL() << "Failed to open " << fdinfo_path;
       }
       int64_t offset = -1;
-      if (fscanf(fdinfo_file, "pos:\t%ld", &offset) != 1) {
+      if (fscanf(fdinfo_file, "pos:\t%" PRId64, &offset) != 1) {
         FATAL() << "Failed to read position";
       }
       fclose(fdinfo_file);
