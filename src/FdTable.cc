@@ -8,6 +8,7 @@
 
 #include "rr/rr.h"
 
+#include "RecordTask.h"
 #include "Session.h"
 #include "Task.h"
 #include "log.h"
@@ -123,25 +124,36 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
   // It's possible for tasks with different VMs to share this fd table.
   // But tasks with the same VM might have different fd tables...
   for (Task* t : task_set()) {
-    AddressSpace* vm = t->vm().get();
+    if (!t->session().is_recording()) {
+      return;
+    }
+    RecordTask* rt = static_cast<RecordTask*>(t);
+
+    AddressSpace* vm = rt->vm().get();
     if (vms_updated.find(vm) != vms_updated.end()) {
       continue;
     }
     vms_updated.insert(vm);
 
-    if (!t->preload_globals.is_null() && fd < SYSCALLBUF_FDS_DISABLED_SIZE) {
-      bool disable = is_fd_monitored_in_any_task(vm, fd);
-      t->write_mem(
-          REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fds_disabled[0]) + fd,
-          (char)disable);
+    if (!rt->preload_globals.is_null() && fd < SYSCALLBUF_FDS_DISABLED_SIZE) {
+      char disable = (char)is_fd_monitored_in_any_task(vm, fd);
+      auto addr =
+          REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fds_disabled[0]) + fd;
+      rt->write_mem(addr, disable);
+      rt->record_local(addr, &disable);
     }
   }
 }
 
 void FdTable::init_syscallbuf_fds_disabled(Task* t) {
-  ASSERT(t, has_task(t));
+  if (!t->session().is_recording()) {
+    return;
+  }
+  RecordTask* rt = static_cast<RecordTask*>(t);
 
-  if (t->preload_globals.is_null()) {
+  ASSERT(rt, has_task(rt));
+
+  if (rt->preload_globals.is_null()) {
     return;
   }
 
@@ -151,7 +163,7 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
   // It's possible that some tasks in this address space have a different
   // FdTable. We need to disable syscallbuf for an fd if any tasks for this
   // address space are monitoring the fd.
-  for (Task* vm_t : t->vm()->task_set()) {
+  for (Task* vm_t : rt->vm()->task_set()) {
     for (auto& it : vm_t->fd_table()->fds) {
       int fd = it.first;
       assert(fd >= 0);
@@ -161,8 +173,9 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
     }
   }
 
-  t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fds_disabled[0]),
-               disabled, SYSCALLBUF_FDS_DISABLED_SIZE);
+  auto addr = REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fds_disabled[0]);
+  rt->write_mem(addr, disabled, SYSCALLBUF_FDS_DISABLED_SIZE);
+  rt->record_local(addr, disabled, SYSCALLBUF_FDS_DISABLED_SIZE);
 }
 
 static bool is_fd_open(Task* t, int fd) {
