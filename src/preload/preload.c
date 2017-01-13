@@ -1883,6 +1883,39 @@ static long sys_read(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+/* On x86-32, pread/pwrite take the offset in two registers. We don't bother
+ * handling that.
+ */
+#if defined(__x86_64__)
+static long sys_pread64(const struct syscall_info* call) {
+  const int syscallno = SYS_pread64;
+  int fd = call->args[0];
+  void* buf = (void*)call->args[1];
+  size_t count = call->args[2];
+  off_t offset = call->args[3];
+
+  void* ptr;
+  void* buf2 = NULL;
+  long ret;
+
+  ptr = prep_syscall_for_fd(fd);
+
+  assert(syscallno == call->no);
+
+  if (buf && count > 0) {
+    buf2 = ptr;
+    ptr += count;
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall4(syscallno, fd, buf2, count, offset);
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 static long sys_readlink(const struct syscall_info* call) {
   const int syscallno = SYS_readlink;
   const char* path = (const char*)call->args[0];
@@ -2236,6 +2269,32 @@ static long sys_write(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+/* On x86-32, pread/pwrite take the offset in two registers. We don't bother
+ * handling that.
+ */
+#if defined(__x86_64__)
+static long sys_pwrite64(const struct syscall_info* call) {
+  const int syscallno = SYS_pwrite64;
+  int fd = call->args[0];
+  const void* buf = (const void*)call->args[1];
+  size_t count = call->args[2];
+  off_t offset = call->args[3];
+
+  void* ptr = prep_syscall_for_fd(fd);
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall4(syscallno, fd, buf, count, offset);
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 static long sys_writev(const struct syscall_info* call) {
   int syscallno = SYS_writev;
   int fd = call->args[0];
@@ -2402,6 +2461,10 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(mprotect);
     CASE(open);
     CASE(poll);
+#if defined(__x86_64__)
+    CASE(pread64);
+    CASE(pwrite64);
+#endif
     CASE(read);
     CASE(readlink);
 #if defined(SYS_recvfrom)
