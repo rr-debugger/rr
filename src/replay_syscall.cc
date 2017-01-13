@@ -1060,6 +1060,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   if (is_restart_syscall_syscall(sys, t->arch())) {
     ASSERT(t, t->tick_count() == t->current_trace_frame().ticks());
     t->set_regs(t->current_trace_frame().regs());
+    t->apply_all_data_records_from_trace();
     step->action = TSTEP_RETIRE;
     return;
   }
