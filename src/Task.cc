@@ -2125,7 +2125,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
       continue;
     }
     if (!(m.map.prot() & PROT_READ) || (m.map.flags() & MAP_SHARED) ||
-          m.map.size() >= 2*1024*1024 /* Could be backed by thp */) {
+        m.map.size() >= 2 * 1024 * 1024 /* Could be backed by thp */) {
       mappings_to_fix.push_back(m.map);
     }
   };

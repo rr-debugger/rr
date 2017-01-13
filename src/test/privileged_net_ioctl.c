@@ -29,8 +29,8 @@ void buf_put_attr(char** cur_buf_pos, uint16_t opt, void* data, size_t size) {
 
 int main(void) {
   if (-1 == try_setup_ns(CLONE_NEWNET)) {
-      atomic_printf("EXIT-SUCCESS");
-      return 0;
+    atomic_printf("EXIT-SUCCESS");
+    return 0;
   }
 
   int fd = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
