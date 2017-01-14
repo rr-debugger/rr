@@ -3776,19 +3776,39 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       return PREVENT_SWITCH;
 
-    case Arch::personality:
-      switch ((int)regs.arg1()) {
+    case Arch::personality: {
+      int p = regs.arg1();
+      if (p == -1) {
+        // A special argument that only returns the existing personality.
+        return PREVENT_SWITCH;
+      }
+      switch ((uint8_t)p) {
         case PER_LINUX32:
         case PER_LINUX:
           // The default personality requires no handling.
           break;
-        case -1:
-          // A special argument that only returns the existing personality.
-          break;
         default:
           syscall_state.expect_errno = EINVAL;
+          break;
+      }
+
+      if (t->session().enable_chaos()) {
+        // XXX fix this to actually disable chaos mode ASLR?
+        ASSERT(t, !(p & (ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE |
+                         ADDR_LIMIT_32BIT | ADDR_LIMIT_3GB)))
+            << "Personality value " << HEX(p)
+            << " not compatible with chaos mode addres-space randomization";
+      }
+      // XXX READ_IMPLIES_EXEC not handled. We would need to audit rr to see
+      // if we're relying on it.
+      if (p & 0xffffff00 &
+          ~(ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE | ADDR_LIMIT_32BIT |
+            ADDR_LIMIT_3GB | FDPIC_FUNCPTRS | MMAP_PAGE_ZERO | SHORT_INODE |
+            STICKY_TIMEOUTS | UNAME26 | WHOLE_SECONDS)) {
+        syscall_state.expect_errno = EINVAL;
       }
       return PREVENT_SWITCH;
+    }
 
     case Arch::mmap:
       switch (Arch::mmap_semantics) {
