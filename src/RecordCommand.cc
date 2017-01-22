@@ -412,7 +412,7 @@ static void reset_uid_sudo() {
     FATAL() << "FAILED to set capabilities";
   }
   // Just make sure the ambient set is cleared, to avoid polluting the tracee
-  prctl(PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0, 0);
+  prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0);
 }
 
 int RecordCommand::run(vector<string>& args) {

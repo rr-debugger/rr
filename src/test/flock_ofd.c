@@ -40,6 +40,11 @@ int main(void) {
 
   /* It should currently be unlocked. */
   err = fcntl(fd2, F_OFD_GETLK, &lock);
+  if (err < 0 && errno == EINVAL) {
+    atomic_puts("F_OFD_GETLK not supported");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(0 == err);
 
   test_assert(F_UNLCK == lock.l_type);

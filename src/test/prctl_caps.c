@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
   }
 
   if (-1 == try_setup_ns_no_root(CLONE_NEWUSER)) {
-    atomic_printf("EXIT-SUCCESS");
+    atomic_puts("EXIT-SUCCESS");
     return 0;
   }
 
