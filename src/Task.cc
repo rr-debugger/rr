@@ -312,8 +312,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       int prot = regs.arg4_signed();
       Task* t = session().find_task(tid);
       ASSERT(this, t);
-      return t->vm()->protect(t, addr, num_bytes, prot,
-                              AddressSpace::MPROTECT_SYSCALL);
+      return t->vm()->protect(t, addr, num_bytes, prot);
     }
 
     case Arch::mprotect: {
