@@ -642,8 +642,9 @@ set(BASIC_TESTS
   readlink
   readlinkat
   readv
-  redzone_integrity
+  record_replay_subject
   recvfrom
+  redzone_integrity
   rename
   rlimit
   robust_futex

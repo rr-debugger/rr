@@ -10,7 +10,7 @@ int main(void) {
   uint8_t* map2;
   uint8_t* map2_end;
 
-  test_assert(map1 != (void*)-1);
+  test_assert(map1 != MAP_FAILED);
 
   atomic_printf("map1 = [%p, %p)\n", map1, map1_end);
 

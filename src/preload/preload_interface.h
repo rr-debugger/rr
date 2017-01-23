@@ -103,6 +103,13 @@
  * of the task that it has restored auxv vectors for.
  */
 #define SYS_rrcall_reload_auxv 446
+/**
+ * When rr replay has flushed a syscallbuf 'mprotect' record, notify any outer
+ * rr of that flush. The first parameter is the tid of the task, the second
+ * parameter is the address, the third parameter is the length, and the
+ * fourth parameter is the prot.
+ */
+#define SYS_rrcall_mprotect_record 447
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.

@@ -281,6 +281,15 @@ static bool compute_ticks_request(
   return true;
 }
 
+static void perform_interrupted_syscall(ReplayTask* t) {
+  t->finish_emulated_syscall();
+  AutoRemoteSyscalls remote(t);
+  const Registers& r = t->regs();
+  long ret = remote.syscall(r.original_syscallno(), r.arg1(), r.arg2(),
+                            r.arg3(), r.arg4(), r.arg5(), r.arg6());
+  remote.regs().set_syscall_result(ret);
+}
+
 /**
  * Continue until reaching either the "entry" of an emulated syscall,
  * or the entry or exit of an executed syscall.  |emu| is nonzero when
@@ -340,16 +349,9 @@ Completion ReplaySession::cont_syscall_boundary(
   auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
   if (type && type->traced == AddressSpace::UNTRACED &&
       type->enabled == AddressSpace::REPLAY_ONLY) {
-    t->finish_emulated_syscall();
     // Actually perform it. We can hit these when replaying through syscallbuf
     // code that was interrupted.
-    {
-      AutoRemoteSyscalls remote(t);
-      const Registers& r = t->regs();
-      long ret = remote.syscall(r.original_syscallno(), r.arg1(), r.arg2(),
-                                r.arg3(), r.arg4(), r.arg5(), r.arg6());
-      remote.regs().set_syscall_result(ret);
-    }
+    perform_interrupted_syscall(t);
     return cont_syscall_boundary(t, constraints);
   }
 
@@ -491,7 +493,31 @@ void ReplaySession::continue_or_step(ReplayTask* t,
     did_fast_forward |= fast_forward_through_instruction(
         t, RESUME_SINGLESTEP, constraints.stop_before_states);
   } else {
-    t->resume_execution(resume_how, RESUME_WAIT, tick_request);
+    while (true) {
+      t->resume_execution(resume_how, RESUME_WAIT, tick_request);
+      if (t->stop_sig() == 0) {
+        auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
+        if (type && type->traced == AddressSpace::UNTRACED) {
+          // If we recorded an rr replay of an application doing a
+          // syscall-buffered 'mprotect', the replay's `flush_syscallbuf`
+          // PTRACE_CONT'ed to execute the mprotect syscall and nothing was
+          // recorded for that until we hit the replay's breakpoint, when we
+          // record a SIGTRAP. However, when we replay that SIGTRAP via
+          // `emulate_deterministic_signal`, we call `continue_or_step`
+          // with `RESUME_SYSEMU` (to detect bugs when we reach a stray
+          // syscall instead of the SIGTRAP). So, we'll stop for the
+          // `mprotect` syscall here. We need to execute it and continue
+          // as if it wasn't hit.
+          // (Alternatively we could just replay with RESUME_CONT, but that
+          // would make it harder to track down bugs. There is a performance hit
+          // to stopping for each mprotect, but replaying recordings of replays
+          // is not fast anyway.)
+          perform_interrupted_syscall(t);
+        }
+      } else {
+        break;
+      }
+    }
   }
   check_pending_sig(t);
 }
@@ -974,6 +1000,9 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
         }
       }
       t->vm()->protect(t, r.start, r.size, r.prot);
+      if (running_under_rr()) {
+        syscall(SYS_rrcall_mprotect_record, t->tid, r.start, r.size, r.prot);
+      }
     }
   }
   return final_mprotect_record_count;

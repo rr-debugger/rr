@@ -282,7 +282,10 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
   // mprotect can change the protection status of some mapped regions before
   // failing.
-  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch())) {
+  // SYS_rrcall_mprotect_record always fails with ENOSYS, though we want to
+  // note its usage here.
+  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch()) &&
+      syscallno != SYS_rrcall_mprotect_record) {
     return;
   }
 
@@ -295,6 +298,24 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
                     "processing)";
       return;
     }
+
+    case SYS_rrcall_mprotect_record: {
+      // When we record an rr replay of a tracee which does a syscallbuf'ed
+      // `mprotect`, neither the replay nor its recording see the mprotect
+      // syscall, since it's untraced during both recording and replay. rr
+      // replay is notified of the syscall via the `mprotect_records`
+      // mechanism; if it's being recorded, it forwards that notification to
+      // the recorder by calling this syscall.
+      pid_t tid = regs.arg1();
+      remote_ptr<void> addr = regs.arg2();
+      size_t num_bytes = regs.arg3();
+      int prot = regs.arg4_signed();
+      Task* t = session().find_task(tid);
+      ASSERT(this, t);
+      return t->vm()->protect(t, addr, num_bytes, prot,
+                              AddressSpace::MPROTECT_SYSCALL);
+    }
+
     case Arch::mprotect: {
       remote_ptr<void> addr = regs.arg1();
       size_t num_bytes = regs.arg2();
@@ -2463,7 +2484,7 @@ static void set_up_seccomp_filter(Session& session, int err_fd) {
                              f.filters.data() };
 
   /* Note: the filter is installed only for record. This call
-   * will be emulated in the replay */
+   * will be emulated (not passed to the kernel) in the replay. */
   if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {
     spawned_child_fatal_error(
         err_fd, "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "
