@@ -33,6 +33,7 @@
 #include <linux/limits.h>
 #include <linux/mtio.h>
 #include <linux/perf_event.h>
+#include <linux/personality.h>
 #include <linux/random.h>
 #include <linux/seccomp.h>
 #include <linux/sockios.h>
