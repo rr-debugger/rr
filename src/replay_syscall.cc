@@ -735,16 +735,19 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
       // Tell the kernel to take |rec_addr| seriously.
       (flags & ~MAP_GROWSDOWN) | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
 
+  // Update AddressSpace before loading data from the trace. This ensures our
+  // kernel-bug-workarounds when writing to tracee memory see the up-to-date
+  // virtual map.
+  t->vm()->map(t, rec_addr, length, prot, flags | MAP_ANONYMOUS,
+               page_size() * offset_pages, string(), KernelMapping::NO_DEVICE,
+               KernelMapping::NO_INODE, nullptr, &km);
+
   /* Restore the map region we copied. */
   ssize_t data_size = t->set_data_from_trace();
 
   /* Ensure pages past the end of the file fault on access */
   size_t data_pages = ceil_page_size(data_size);
   size_t mapped_pages = ceil_page_size(length);
-
-  t->vm()->map(t, rec_addr, length, prot, flags | MAP_ANONYMOUS,
-               page_size() * offset_pages, string(), KernelMapping::NO_DEVICE,
-               KernelMapping::NO_INODE, nullptr, &km);
 
   create_sigbus_region(remote, prot, rec_addr + data_pages,
                        mapped_pages - data_pages, km);
@@ -777,6 +780,10 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // TODO: this is a poor man's shared segment synchronization.
   // For full generality, we also need to emulate direct file
   // modifications through write/splice/etc.
+  //
+  // Update AddressSpace before loading data from the trace. This ensures our
+  // kernel-bug-workarounds when writing to tracee memory see the up-to-date
+  // virtual map.
   uint64_t offset_bytes = page_size() * offset_pages;
   t->vm()->map(t, buf.addr, buf.data.size(), prot, flags, offset_bytes,
                real_file_name, real_file.st_dev, real_file.st_ino, nullptr, &km,
