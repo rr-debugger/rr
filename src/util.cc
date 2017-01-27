@@ -862,4 +862,26 @@ bool has_effective_caps(uint64_t caps) {
   return true;
 }
 
+unsigned int xsave_area_size() {
+  // 0 means XSAVE not detected
+  static unsigned int detected_xsave_area_size = 0;
+  static bool xsave_initialized = false;
+  if (xsave_initialized) {
+    return detected_xsave_area_size;
+  }
+  xsave_initialized = true;
+
+  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
+  if (!(cpuid_data.ecx & (1 << 26))) {
+    // XSAVE not present
+    return detected_xsave_area_size;
+  }
+
+  // We'll use the largest possible area all the time
+  // even when it might not be needed. Simpler that way.
+  cpuid_data = cpuid(CPUID_GETXSAVE, 0);
+  detected_xsave_area_size = cpuid_data.ecx;
+  return detected_xsave_area_size;
+}
+
 } // namespace rr

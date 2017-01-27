@@ -741,36 +741,13 @@ const Registers& Task::regs() const {
   return registers;
 }
 
-// 0 means XSAVE not detected
-static unsigned int xsave_area_size = 0;
-static bool xsave_initialized = false;
-
-static void init_xsave() {
-  if (xsave_initialized) {
-    return;
-  }
-  xsave_initialized = true;
-
-  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
-  if (!(cpuid_data.ecx & (1 << 26))) {
-    // XSAVE not present
-    return;
-  }
-
-  // We'll use the largest possible area all the time
-  // even when it might not be needed. Simpler that way.
-  cpuid_data = cpuid(CPUID_GETXSAVE, 0);
-  xsave_area_size = cpuid_data.ecx;
-}
-
 const ExtraRegisters& Task::extra_regs() {
   if (!extra_registers_known) {
-    init_xsave();
-    if (xsave_area_size) {
+    if (xsave_area_size()) {
       LOG(debug) << "  (refreshing extra-register cache using XSAVE)";
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
-      extra_registers.data_.resize(xsave_area_size);
+      extra_registers.data_.resize(xsave_area_size());
       struct iovec vec = { extra_registers.data_.data(),
                            extra_registers.data_.size() };
       xptrace(PTRACE_GETREGSET, NT_X86_XSTATE, &vec);
@@ -1057,11 +1034,9 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
   extra_registers = regs;
   extra_registers_known = true;
 
-  init_xsave();
-
   switch (extra_registers.format()) {
     case ExtraRegisters::XSAVE: {
-      if (xsave_area_size) {
+      if (xsave_area_size()) {
         struct iovec vec = { extra_registers.data_.data(),
                              extra_registers.data_.size() };
         ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);

@@ -1,0 +1,5 @@
+source `dirname $0`/util.sh
+GLOBAL_OPTIONS="$GLOBAL_OPTIONS --checksum=on-all-events"
+record sigreturn$bitness
+replay
+check EXIT-SUCCESS
