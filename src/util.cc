@@ -263,6 +263,7 @@ static uint32_t compute_checksum(void* data, size_t len) {
 }
 
 static const uint32_t ignored_checksum = 0x98765432;
+static const uint32_t sigbus_checksum = 0x23456789;
 
 /**
  * Either create and store checksums for each segment mapped in |t|'s
@@ -294,15 +295,10 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   }
 
   const AddressSpace& as = *t->vm();
-  for (auto m : as.maps()) {
+  for (auto it = as.maps().begin(); it != as.maps().end(); ++it) {
+    auto m = *it;
     string raw_map_line = m.map.str();
     uint32_t rec_checksum = 0;
-
-    if (m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION) {
-      ASSERT(t, VALIDATE_CHECKSUMS == mode);
-      // These mappings didn't exist during recording. Skip them.
-      continue;
-    }
 
     if (VALIDATE_CHECKSUMS == mode) {
       char line[1024];
@@ -316,9 +312,20 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       remote_ptr<void> rec_start_addr = rec_start;
       remote_ptr<void> rec_end_addr = rec_end;
       ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
+      // If we have artifical SIGBUS regions, those may (if the entire region
+      // was SIGBUS), but need not have existed during recording, so fast
+      // forward to the next real region.
+      while (m.map.start() != rec_start_addr) {
+        ASSERT(t, m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION)
+          << "Segment " << rec_start_addr << "-" << rec_end_addr
+          << " changed to " << m.map << "??";
+        ASSERT(t, it != as.maps().end());
+        m = *(++it);
+        continue;
+      }
       // If the backing file is too short, we cut mappings short, to make sure
       // have the same behavior as during recording. Tolerate this.
-      ASSERT(t, rec_start_addr == m.map.start() && m.map.end() <= rec_end_addr)
+      ASSERT(t, m.map.end() <= rec_end_addr)
           << "Segment " << rec_start_addr << "-" << rec_end_addr
           << " changed to " << m.map << "??";
       if (is_start_of_scratch_region(t, rec_start_addr)) {
@@ -333,6 +340,14 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       if (rec_checksum == ignored_checksum) {
         LOG(debug) << "Checksum not computed during recording";
         continue;
+      } else if (rec_checksum == sigbus_checksum) {        
+        // This was a SIGBUS equivalent region. During replay, this is either
+        // an explicit SIGBUS region, indicated by the IS_SIGBUS_REGION flag
+        // if the data came from the trace, or an implicit one (which we will
+        // catch below) if the data came from a cloned file.
+        if (m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION) {
+          continue;
+        }
       }
     } else {
       if (!checksum_segment_filter(m)) {
@@ -349,9 +364,15 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     if (valid_mem_len < 0) {
       /* It is possible for whole mappings to be beyond the extent of the
        * backing file, in which case read_bytes_fallible will return -1.
-       * During replay this will be a SIGBUS region, so skip it now.
+       * During replay this will be a SIGBUS region (or, if the file was cloned,
+       * we will end up here again), so skip it now.
        */
       ASSERT(t, valid_mem_len == -1 && errno == EIO);
+      if (VALIDATE_CHECKSUMS == mode) {
+        ASSERT(t, rec_checksum == sigbus_checksum);
+      } else {
+        fprintf(c.checksums_file, "(%x) %s\n", sigbus_checksum, raw_map_line.c_str());
+      }
       continue;
     }
     mem.resize(valid_mem_len);
