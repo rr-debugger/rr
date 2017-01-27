@@ -282,6 +282,11 @@ void* xmalloc(size_t size);
  */
 bool has_effective_caps(uint64_t caps);
 
+/**
+ * Determine the size of the xsave area
+ */
+unsigned int xsave_area_size();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

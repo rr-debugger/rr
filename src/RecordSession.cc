@@ -1286,23 +1286,20 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
         // It's somewhat difficult engineering-wise to
         // compute the sigframe size at compile time,
-        // and it can vary across kernel versions.  So
-        // this size is an overestimate of the real
-        // size(s).  The estimate was made by
-        // comparing $sp before and after entering the
-        // sighandler, for a sighandler that used the
-        // main task stack.  On linux 3.11.2, that
-        // computed size was 1736 bytes, which is an
-        // upper bound on the sigframe size.  We don't
-        // want to mess with this code much, so we
-        // overapproximate the overapproximation and
-        // round off to 2048.
+        // and it can vary across kernel versions and CPU
+        // microarchitectures. So this size is an overestimate
+        // of the real size(s).
         //
         // If this size becomes too small in the
         // future, and unit tests that use sighandlers
         // are run with checksumming enabled, then
         // they can catch errors here.
-        sigframe_size = 2048;
+        sigframe_size = 1152 /* Overestimate of kernel sigframe */ +
+                         128 /* Redzone */ +
+                        /* If xsave is available, the kernel uses it for the
+                           sigframe, otherwise it falls back to legacy methods,
+                           for which 512 should be sufficient */
+                        (xsave_area_size() ? xsave_area_size() : 512);
 
         t->ev().transform(EV_SIGNAL_HANDLER);
         t->signal_delivered(sig);
