@@ -948,27 +948,26 @@ static bool cpu_has_singlestep_quirk() {
  * string instructions. Right now, since only once CPU has this quirk, this
  * value is hardcoded, but could depend on the CPU architecture in the future.
  */
-static int single_step_coalesce_cutoff() { return 32; }
+static int single_step_coalesce_cutoff() { return 16; }
 
 void Task::maybe_workaround_singlestep_bug() {
   uintptr_t cx = regs().cx();
   uintptr_t cutoff = single_step_coalesce_cutoff();
   /* The extra cx >= cutoff check is just an optimization, to avoid the
      moderately expensive load from ip() if we can */
-  if (cpu_has_singlestep_quirk() && cx >= cutoff &&
+  if (cpu_has_singlestep_quirk() && cx > cutoff &&
       at_x86_string_instruction(this)) {
     /* KNL has a quirk where single-stepping a string instruction can step up
-       to 64 iterations (empirically, this only happens if cx > 32).
-       Work around this by fudging registers to force the
+       to 64 iterations. Work around this by fudging registers to force the
        processor to execute one iteration and one interation only. */
     LOG(debug) << "Working around KNL single-step hardware bug (cx=" << cx
                << ")";
-    if (cx >= cutoff) {
+    if (cx > cutoff) {
       last_resume_orig_cx = cx;
       Registers r = regs();
       /* An arbitrary value < cutoff would work fine here, except 1, since
          the last iteration of the loop behaves differently */
-      r.set_cx(cutoff - 1);
+      r.set_cx(cutoff);
       set_regs(r);
     }
   }
