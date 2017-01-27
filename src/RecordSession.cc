@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <sstream>
+#include <fstream>
+#include <string>
 
 #include "AutoRemoteSyscalls.h"
 #include "ElfReader.h"
@@ -86,6 +88,62 @@ static string create_pulseaudio_config() {
   return envpair.str();
 }
 
+/**
+ * Read and parse the available CPU list then select a random CPU from the list.
+ */
+static int get_random_cpu_cgroup()
+{
+  std::ifstream self_cpuset("/proc/self/cpuset");
+  if (!self_cpuset.is_open()) {
+    return -1;
+  }
+  std::string cpuset_path;
+  std::getline(self_cpuset, cpuset_path);
+  self_cpuset.close();
+  if (cpuset_path.empty()) {
+    return -1;
+  }
+  std::ifstream cpuset("/sys/fs/cgroup/cpuset" + cpuset_path + "/cpuset.cpus");
+  if (!cpuset.good()) {
+    return -1;
+  }
+  std::vector<int> cpus;
+  while (true) {
+    int cpu1;
+    cpuset >> cpu1;
+    if (cpuset.fail()) {
+      return -1;
+    }
+    cpus.push_back(cpu1);
+    char c = cpuset.get();
+    if (cpuset.eof() || c == '\n') {
+      break;
+    }
+    else if (c == ',') {
+      continue;
+    }
+    else if (c != '-') {
+      return -1;
+    }
+    int cpu2;
+    cpuset >> cpu2;
+    if (cpuset.fail()) {
+      return -1;
+    }
+    for (int cpu = cpu1 + 1; cpu <= cpu2; cpu++) {
+      cpus.push_back(cpu);
+    }
+    c = cpuset.get();
+    if (cpuset.eof() || c == '\n') {
+      break;
+    }
+    else if (c != ',') {
+      return -1;
+    }
+  }
+  return cpus[random() % cpus.size()];
+}
+
 static int get_num_cpus() {
   int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
   return cpus > 0 ? cpus : 1;
@@ -95,12 +153,12 @@ static int get_num_cpus() {
  * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
  * in which case we return -1.
  */
-static int choose_cpu(RecordSession::BindCPU bind_cpu) {
+static int choose_cpu(int bind_cpu) {
   if (bind_cpu == RecordSession::UNBOUND_CPU) {
     return -1;
   }
 
-  // Pin tracee tasks to logical CPU 0, both in
+  // Pin tracee tasks to a random logical CPU, both in
   // recording and replay.  Tracees can see which HW
   // thread they're running on by asking CPUID, and we
   // don't have a way to emulate it yet.  So if a tracee
@@ -114,6 +172,14 @@ static int choose_cpu(RecordSession::BindCPU bind_cpu) {
   // performance win in certain circumstances,
   // presumably due to cheaper context switching and/or
   // better interaction with CPU frequency scaling.
+  if (bind_cpu >= 0) {
+    return bind_cpu;
+  }
+
+  int cpu = get_random_cpu_cgroup();
+  if (cpu >= 0) {
+    return cpu;
+  }
   return random() % get_num_cpus();
 }
 
@@ -1694,7 +1760,7 @@ static string lookup_by_path(const string& name) {
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const vector<string>& argv, const vector<string>& extra_env,
-    SyscallBuffering syscallbuf, BindCPU bind_cpu) {
+    SyscallBuffering syscallbuf, int bind_cpu) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -1791,7 +1857,7 @@ static string lookup_by_path(const string& name) {
 RecordSession::RecordSession(const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
-                             SyscallBuffering syscallbuf, BindCPU bind_cpu)
+                             SyscallBuffering syscallbuf, int bind_cpu)
     : trace_out(argv[0], choose_cpu(bind_cpu)),
       scheduler_(*this),
       ignore_sig(0),
