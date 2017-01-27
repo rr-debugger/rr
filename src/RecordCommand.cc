@@ -52,9 +52,11 @@ RecordCommand RecordCommand::singleton(
     "                             signal will still be delivered for user\n"
     "                             handlers and debugging.\n"
     "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
-    "                             Default is to bind to CPU 0.  This option\n"
+    "                             Default is to bind to a random CPU.  This option\n"
     "                             can cause replay divergence: use with\n"
     "                             caution.\n"
+    "  --bind-to-cpu=<NUM>        Bind to a particular CPU\n"
+    "                             instead of a randomly chosen one.\n"
     "  -v, --env=NAME=VALUE       value to add to the environment of the\n"
     "                             tracee. There can be any number of these.\n"
     "  -w, --wait                 Wait for all child processes to exit, not\n"
@@ -99,7 +101,7 @@ struct RecordFlags {
 
   /* Whether tracee processes in record and replay are allowed
    * to run on any logical CPU. */
-  RecordSession::BindCPU bind_cpu;
+  int bind_cpu;
 
   /* True if we should context switch after every rr event */
   bool always_switch;
@@ -167,6 +169,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 3, "ignore-nested", NO_PARAMETER },
     { 4, "scarce-fds", NO_PARAMETER },
     { 5, "setuid-sudo", NO_PARAMETER },
+    { 6, "bind-to-cpu", HAS_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -246,6 +249,12 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
         return false;
       }
       flags.continue_through_sig = opt.int_value;
+      break;
+    case 6:
+      if (!opt.verify_valid_int(0, INT32_MAX)) {
+        return false;
+      }
+      flags.bind_cpu = opt.int_value;
       break;
     case 'u':
       flags.bind_cpu = RecordSession::UNBOUND_CPU;
