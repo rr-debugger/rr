@@ -7,8 +7,8 @@
 #include <linux/futex.h>
 
 #include <algorithm>
-#include <sstream>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 #include "AutoRemoteSyscalls.h"
@@ -91,8 +91,7 @@ static string create_pulseaudio_config() {
 /**
  * Read and parse the available CPU list then select a random CPU from the list.
  */
-static int get_random_cpu_cgroup()
-{
+static int get_random_cpu_cgroup() {
   std::ifstream self_cpuset("/proc/self/cpuset");
   if (!self_cpuset.is_open()) {
     return -1;
@@ -118,11 +117,9 @@ static int get_random_cpu_cgroup()
     char c = cpuset.get();
     if (cpuset.eof() || c == '\n') {
       break;
-    }
-    else if (c == ',') {
+    } else if (c == ',') {
       continue;
-    }
-    else if (c != '-') {
+    } else if (c != '-') {
       return -1;
     }
     int cpu2;
@@ -136,8 +133,7 @@ static int get_random_cpu_cgroup()
     c = cpuset.get();
     if (cpuset.eof() || c == '\n') {
       break;
-    }
-    else if (c != ',') {
+    } else if (c != ',') {
       return -1;
     }
   }
@@ -1295,7 +1291,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         // are run with checksumming enabled, then
         // they can catch errors here.
         sigframe_size = 1152 /* Overestimate of kernel sigframe */ +
-                         128 /* Redzone */ +
+                        128 /* Redzone */ +
                         /* If xsave is available, the kernel uses it for the
                            sigframe, otherwise it falls back to legacy methods,
                            for which 512 should be sufficient */

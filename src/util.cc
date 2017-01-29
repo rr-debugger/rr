@@ -317,17 +317,17 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       // forward to the next real region.
       while (m.map.start() != rec_start_addr) {
         ASSERT(t, m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION)
-          << "Segment " << rec_start_addr << "-" << rec_end_addr
-          << " changed to " << m.map << "??";
+            << "Segment " << rec_start_addr << "-" << rec_end_addr
+            << " changed to " << m.map << "??";
         ASSERT(t, it != as.maps().end());
         m = *(++it);
         continue;
       }
       // If the backing file is too short, we cut mappings short, to make sure
       // have the same behavior as during recording. Tolerate this.
-      ASSERT(t, m.map.end() <= rec_end_addr)
-          << "Segment " << rec_start_addr << "-" << rec_end_addr
-          << " changed to " << m.map << "??";
+      ASSERT(t, m.map.end() <= rec_end_addr) << "Segment " << rec_start_addr
+                                             << "-" << rec_end_addr
+                                             << " changed to " << m.map << "??";
       if (is_start_of_scratch_region(t, rec_start_addr)) {
         /* Replay doesn't touch scratch regions, so
          * their contents are allowed to diverge.
@@ -340,7 +340,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       if (rec_checksum == ignored_checksum) {
         LOG(debug) << "Checksum not computed during recording";
         continue;
-      } else if (rec_checksum == sigbus_checksum) {        
+      } else if (rec_checksum == sigbus_checksum) {
         // This was a SIGBUS equivalent region. During replay, this is either
         // an explicit SIGBUS region, indicated by the IS_SIGBUS_REGION flag
         // if the data came from the trace, or an implicit one (which we will
@@ -371,7 +371,8 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       if (VALIDATE_CHECKSUMS == mode) {
         ASSERT(t, rec_checksum == sigbus_checksum);
       } else {
-        fprintf(c.checksums_file, "(%x) %s\n", sigbus_checksum, raw_map_line.c_str());
+        fprintf(c.checksums_file, "(%x) %s\n", sigbus_checksum,
+                raw_map_line.c_str());
       }
       continue;
     }
