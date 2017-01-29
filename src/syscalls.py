@@ -1609,8 +1609,8 @@ fanotify_mark = EmulatedSyscall(x86=339, x64=301)
 # during replay.
 prlimit64 = EmulatedSyscall(x86=340, x64=302, arg4="typename Arch::rlimit64")
 
-name_to_handle_at = UnsupportedSyscall(x86=341, x64=303)
-open_by_handle_at = UnsupportedSyscall(x86=342, x64=304)
+name_to_handle_at = IrregularEmulatedSyscall(x86=341, x64=303)
+open_by_handle_at = EmulatedSyscall(x86=342, x64=304)
 clock_adjtime = UnsupportedSyscall(x86=343, x64=305)
 syncfs = EmulatedSyscall(x86=344, x64=306)
 

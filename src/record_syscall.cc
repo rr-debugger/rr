@@ -3880,6 +3880,12 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
     }
 
+    case Arch::name_to_handle_at: {
+      syscall_state.reg_parameter(3, sizeof(struct file_handle) + MAX_HANDLE_SZ);
+      syscall_state.reg_parameter(4, sizeof(int));
+      return ALLOW_SWITCH;
+    }
+
     default:
       // Invalid syscalls return -ENOSYS. Assume any such
       // result means the syscall was completely ignored by the
