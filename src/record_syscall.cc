@@ -2674,6 +2674,41 @@ static bool protect_rr_sigs(RecordTask* t, remote_ptr<void> p, void* save) {
   return true;
 }
 
+template <typename Arch>
+static bool protect_rr_sigs_sa_mask_arch(RecordTask* t, remote_ptr<void> p,
+                                         void* save) {
+  remote_ptr<typename Arch::kernel_sigaction> sap =
+      p.cast<typename Arch::kernel_sigaction>();
+  if (sap.is_null()) {
+    return false;
+  }
+
+  auto sa = t->read_mem(sap);
+  auto new_sig_set = sa.sa_mask;
+  // Don't let the tracee block TIME_SLICE_SIGNAL or
+  // SYSCALLBUF_DESCHED_SIGNAL.
+  new_sig_set.__val[0] &=
+      ~(uint64_t(1) << (PerfCounters::TIME_SLICE_SIGNAL - 1)) &
+      ~(uint64_t(1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
+
+  if (!memcmp(&sa.sa_mask, &new_sig_set, sizeof(new_sig_set))) {
+    return false;
+  }
+
+  sa.sa_mask = new_sig_set;
+  t->write_mem(sap, sa);
+  if (save) {
+    memcpy(save, &sa, sizeof(sa));
+  }
+
+  return true;
+}
+
+static bool protect_rr_sigs_sa_mask(RecordTask* t, remote_ptr<void> p,
+                                    void* save) {
+  RR_ARCH_FUNCTION(protect_rr_sigs_sa_mask_arch, t->arch(), t, p, save);
+}
+
 static void record_ranges(RecordTask* t,
                           const vector<FileMonitor::Range>& ranges,
                           size_t size) {
@@ -3678,6 +3713,14 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(3);
       syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(
           2, IN, protect_rr_sigs);
+      return PREVENT_SWITCH;
+    }
+
+    case Arch::sigaction:
+    case Arch::rt_sigaction: {
+      syscall_state.reg_parameter<typename Arch::kernel_sigaction>(
+          2, IN, protect_rr_sigs_sa_mask);
+      syscall_state.reg_parameter<typename Arch::kernel_sigaction>(3, OUT);
       return PREVENT_SWITCH;
     }
 

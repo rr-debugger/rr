@@ -414,7 +414,7 @@ setsid = EmulatedSyscall(x86=66, x64=112)
 # If act is non-NULL, the new action for signal signum is installed
 # from act.  If oldact is non-NULL, the previous action is saved in
 # oldact.
-sigaction = EmulatedSyscall(x86=67, arg3="typename Arch::kernel_sigaction")
+sigaction = IrregularEmulatedSyscall(x86=67)
 
 sgetmask = UnsupportedSyscall(x86=68)
 ssetmask = UnsupportedSyscall(x86=69)
@@ -895,7 +895,7 @@ getresgid = EmulatedSyscall(x86=171, x64=120, arg1="typename Arch::legacy_gid_t"
 prctl = IrregularEmulatedSyscall(x86=172, x64=157)
 
 rt_sigreturn = IrregularEmulatedSyscall(x86=173, x64=15)
-rt_sigaction = EmulatedSyscall(x86=174, x64=13, arg3="typename Arch::kernel_sigaction")
+rt_sigaction = IrregularEmulatedSyscall(x86=174, x64=13)
 rt_sigprocmask = IrregularEmulatedSyscall(x86=175, x64=14)
 
 #  int sigpending(sigset_t *set);

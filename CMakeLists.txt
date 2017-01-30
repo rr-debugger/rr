@@ -679,6 +679,7 @@ set(BASIC_TESTS
   sigchld_interrupt_signal
   sigcont
   sighandler_fork
+  sighandler_mask
   sigill
   signal_deferred
   signal_unstoppable
