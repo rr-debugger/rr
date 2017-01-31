@@ -778,59 +778,65 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
   }
 
   ReplayTask* t = current->current_task();
-  if (t) {
-    Ticks start_ticks = t->tick_count();
-    Ticks end_ticks = current->current_trace_frame().ticks();
-    if (end.ptr->proto.key.trace_time == current->trace_reader().time()) {
-      end_ticks = min(end_ticks, end.ptr->proto.key.ticks);
-    }
-    ASSERT(t, start_ticks <= end_ticks);
-    Ticks target = min(end_ticks, (start_ticks + end_ticks) / 2);
+  if (!t) {
+    LOG(debug) << "Made no progress";
+    return false;
+  }
+  
+  Ticks start_ticks = t->tick_count();
+  Ticks end_ticks = current->current_trace_frame().ticks();
+  if (end.ptr->proto.key.trace_time == current->trace_reader().time()) {
+    end_ticks = min(end_ticks, end.ptr->proto.key.ticks);
+  }
+  ASSERT(t, start_ticks <= end_ticks);
+  Ticks target = min(end_ticks, (start_ticks + end_ticks) / 2);
+  ProtoMark m = proto_mark();
+  if (target != end_ticks) {
+    // We can only try stepping if we won't end up at `end`
     ReplaySession::StepConstraints constraints(RUN_CONTINUE);
     constraints.ticks_target = target;
-    ProtoMark m = proto_mark();
     ReplayResult result = current->replay_step(constraints);
-    if (m.equal_states(*current)) {
-      assert(result.break_status.approaching_ticks_target);
-      assert(t->tick_count() == start_ticks);
-      // We didn't make any progress that way.
-      // Normally we should just give up now and let reverse_continue keep
-      // running and hitting breakpoints etc since we're pretty close to the
-      // target already and the overhead of what we have to do here otherwise
-      // can be high. But there's a pathological case where reverse_continue
-      // is hitting a breakpoint on each iteration of a string instruction.
-      // If that's happening then we will be told to force progress.
-      if (force == FORCE_PROGRESS) {
-        // Let's try a fast-forward singlestep to jump over an x86 string
-        // instruction that may be triggering a lot of breakpoint hits. Make
-        // sure
-        // we stop before |end|.
-        ReplaySession::shr_ptr tmp_session;
-        if (start_ticks + 1 >= end_ticks) {
-          // This singlestep operation might leave us at |end|, which is not
-          // allowed. So make a backup of the current state.
-          tmp_session = current->clone();
-          LOG(debug) << "Created backup tmp_session";
-        }
-        constraints =
-            ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
-        constraints.stop_before_states.push_back(&end.ptr->proto.regs);
-        result = current->replay_step(constraints);
-        if (at_mark(end)) {
-          assert(tmp_session);
-          current = move(tmp_session);
-          LOG(debug) << "Singlestepping arrived at |end|, restoring session";
-        } else if (!m.equal_states(*current)) {
-          LOG(debug) << "Did fast-singlestep forward to " << current_mark_key();
-          return true;
-        }
-      }
-    } else {
+    if (!m.equal_states(*current)) {
       while (t->tick_count() < target &&
              !result.break_status.approaching_ticks_target) {
         result = current->replay_step(constraints);
       }
       LOG(debug) << "Ran forward to " << current_mark_key();
+      return true;
+    }
+    assert(result.break_status.approaching_ticks_target);
+    assert(t->tick_count() == start_ticks);
+  }
+
+  // We didn't make any progress that way.
+  // Normally we should just give up now and let reverse_continue keep
+  // running and hitting breakpoints etc since we're pretty close to the
+  // target already and the overhead of what we have to do here otherwise
+  // can be high. But there's a pathological case where reverse_continue
+  // is hitting a breakpoint on each iteration of a string instruction.
+  // If that's happening then we will be told to force progress.
+  if (force == FORCE_PROGRESS) {
+    // Let's try a fast-forward singlestep to jump over an x86 string
+    // instruction that may be triggering a lot of breakpoint hits. Make
+    // sure
+    // we stop before |end|.
+    ReplaySession::shr_ptr tmp_session;
+    if (start_ticks + 1 >= end_ticks) {
+      // This singlestep operation might leave us at |end|, which is not
+      // allowed. So make a backup of the current state.
+      tmp_session = current->clone();
+      LOG(debug) << "Created backup tmp_session";
+    }
+    ReplaySession::StepConstraints constraints =
+        ReplaySession::StepConstraints(RUN_SINGLESTEP_FAST_FORWARD);
+    constraints.stop_before_states.push_back(&end.ptr->proto.regs);
+    ReplayResult result = current->replay_step(constraints);
+    if (at_mark(end)) {
+      assert(tmp_session);
+      current = move(tmp_session);
+      LOG(debug) << "Singlestepping arrived at |end|, restoring session";
+    } else if (!m.equal_states(*current)) {
+      LOG(debug) << "Did fast-singlestep forward to " << current_mark_key();
       return true;
     }
   }
