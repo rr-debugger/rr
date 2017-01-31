@@ -102,9 +102,16 @@ static int get_random_cpu_cgroup() {
   if (cpuset_path.empty()) {
     return -1;
   }
-  std::ifstream cpuset("/sys/fs/cgroup/cpuset" + cpuset_path + "/cpuset.cpus");
+  std::string base_path = "/sys/fs/cgroup/cpuset" + cpuset_path;
+  // effective.cpus was added as a later addition and is gated behind a mount
+  // option, so it doesn't necessarily exist. If it doesn't, try to find
+  // cpuset.cpus instead.
+  std::ifstream cpuset(base_path + "/cpuset.effective_cpus");
   if (!cpuset.good()) {
-    return -1;
+    cpuset = std::ifstream{base_path + "/cpuset.cpus"};
+    if (!cpuset.good()) {
+      return -1;
+    }
   }
   std::vector<int> cpus;
   while (true) {
