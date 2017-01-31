@@ -952,15 +952,9 @@ void Task::maybe_workaround_singlestep_bug() {
 
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
-  // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
-  // Always resetting here, and always to a nonzero number, improves
-  // consistency between recording and replay and hopefully
-  // makes counting bugs behave similarly between recording and
-  // replay.
-  // Accumulate any unknown stuff in tick_count().
   if (tick_period != RESUME_NO_TICKS) {
     if (tick_period == RESUME_UNLIMITED_TICKS) {
-      hpc.reset(0xffffffff);
+      hpc.reset(0);
     } else {
       ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
       hpc.reset(max<Ticks>(1, tick_period));
@@ -970,7 +964,8 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 
   LOG(debug) << "resuming execution of " << tid << " with "
              << ptrace_req_name(how)
-             << (sig ? string(", signal ") + signal_name(sig) : string());
+             << (sig ? string(", signal ") + signal_name(sig) : string())
+             << " tick_period " << tick_period;
   address_of_last_execution_resume = ip();
   how_last_execution_resumed = how;
   set_debug_status(0);
@@ -1401,13 +1396,6 @@ void Task::canonicalize_and_set_regs(const Registers& regs,
 }
 
 void Task::did_waitpid(WaitStatus status) {
-  Ticks more_ticks = hpc.counting ? hpc.read_ticks() : 0;
-  // We stop counting here because there may be things we want to do to the
-  // tracee that would otherwise generate ticks.
-  hpc.stop_counting();
-  session().accumulate_ticks_processed(more_ticks);
-  ticks += more_ticks;
-
   // After PTRACE_INTERRUPT, any next two stops may be a group stop caused by
   // that PTRACE_INTERRUPT (or neither may be). This is because PTRACE_INTERRUPT
   // generally lets other stops win (and thus doesn't inject it's own stop), but
@@ -1464,6 +1452,13 @@ void Task::did_waitpid(WaitStatus status) {
   if (ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
   }
+
+  Ticks more_ticks = hpc.counting ? hpc.read_ticks(this) : 0;
+  // We stop counting here because there may be things we want to do to the
+  // tracee that would otherwise generate ticks.
+  hpc.stop_counting();
+  session().accumulate_ticks_processed(more_ticks);
+  ticks += more_ticks;
 
   bool need_to_set_regs = false;
   if (registers.singlestep_flag()) {

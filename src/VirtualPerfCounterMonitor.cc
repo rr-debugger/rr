@@ -29,7 +29,7 @@ VirtualPerfCounterMonitor::VirtualPerfCounterMonitor(
       enabled(false) {
   ASSERT(t, should_virtualize(attr));
   // XXX When we support interrupts, we need to add code for signal dispatching
-  ASSERT(t, attr.sample_period == 0xffffffff || attr.sample_period == 0)
+  ASSERT(t, attr.sample_period >= 0xffffffff || attr.sample_period == 0)
       << "Don't support interrupts yet";
 }
 

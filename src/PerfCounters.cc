@@ -12,6 +12,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -223,6 +224,7 @@ static void init_attributes() {
                        PERF_COUNT_SW_PAGE_FAULTS);
 }
 
+static const uint64_t IN_TX = 1ULL << 32;
 static const uint64_t IN_TXCP = 1ULL << 33;
 
 bool PerfCounters::is_ticks_attr(const perf_event_attr& attr) {
@@ -269,10 +271,54 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
     }
     FATAL() << "Failed to initialize counter";
   }
-  if (ioctl(fd, PERF_EVENT_IOC_ENABLE, 0)) {
-    FATAL() << "Failed to start counter";
-  }
   return fd;
+}
+
+static int64_t read_counter(ScopedFd& fd) {
+  int64_t val;
+  ssize_t nread = read(fd, &val, sizeof(val));
+  assert(nread == sizeof(val));
+  return val;
+}
+
+static const int NUM_BRANCHES = 500;
+
+static bool has_kvm_in_txcp_bug() {
+  static bool did_test = false;
+  static bool bug_detected = true;
+  if (did_test) {
+    return bug_detected;
+  }
+
+  did_test = true;
+  if (running_under_rr()) {
+    // Under rr we emulate an idealized performance counter, so the result of
+    // this test doesn't matter. Just say we don't have the bug.
+    bug_detected = false;
+    return bug_detected;
+  }
+
+  init_attributes();
+
+  struct perf_event_attr attr = rr::ticks_attr;
+  attr.config |= IN_TXCP;
+  attr.sample_period = 0;
+  ScopedFd fd = syscall(__NR_perf_event_open, &attr, 0, -1, -1, 0);
+  ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
+  ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+  // Do NUM_BRANCHES conditional branches that can't be optimized out.
+  // 'accumulator' is always odd and can't be zero
+  int accumulator = rand() * 2 + 1;
+  for (int i = 0; i < 500 && accumulator; ++i) {
+    accumulator = ((accumulator * 7) + 2) & 0xffffff;
+  }
+  srand(accumulator);
+  int64_t count = read_counter(fd);
+
+  bug_detected = count < NUM_BRANCHES;
+  LOG(debug) << "has_kvm_in_txcp_bug count=" << count
+             << " detected=" << bug_detected;
+  return bug_detected;
 }
 
 static bool has_ioc_period_bug() {
@@ -282,22 +328,23 @@ static bool has_ioc_period_bug() {
     return bug_detected;
   }
 
+  did_test = true;
   if (running_under_rr()) {
     // Under rr we emulate an idealized performance counter, so the result of
     // this test doesn't matter. Further, since this is not exactly the same as
     // our ticks_attr, it can take up an extra PMC when recording rr replay,
     // which we don't have available on some architectures. Just say we don't
     // have the bug.
-    did_test = true;
     bug_detected = false;
     return bug_detected;
   }
+
+  init_attributes();
 
   // Start a cycles counter
   struct perf_event_attr attr = rr::ticks_attr;
   attr.sample_period = 0xffffffff;
   attr.exclude_kernel = 1;
-  attr.disabled = 0;
   ScopedFd bug_fd = start_counter(0, -1, &attr);
 
   uint64_t new_period = 1;
@@ -309,8 +356,7 @@ static bool has_ioc_period_bug() {
   poll(&poll_bug_fd, 1, 0);
 
   bug_detected = poll_bug_fd.revents == 0;
-
-  did_test = true;
+  LOG(debug) << "has_ioc_period_bug detected=" << bug_detected;
   return bug_detected;
 }
 
@@ -321,30 +367,51 @@ static void make_counter_async(ScopedFd& fd, int signal) {
   }
 }
 
+static bool always_recreate_counters() {
+  // When we have the KVM IN_TXCP bug, reenabling the TXCP counter after
+  // disabling it does not work.
+  return has_ioc_period_bug() || has_kvm_in_txcp_bug();
+}
+
 void PerfCounters::reset(Ticks ticks_period) {
   assert(ticks_period >= 0);
 
+  if (ticks_period == 0 && !always_recreate_counters()) {
+    // We can't switch a counter between sampling and non-sampling via
+    // PERF_EVENT_IOC_PERIOD so just turn 0 into a very big number.
+    ticks_period = uint64_t(1) << 60;
+  }
+
   if (!started) {
+    LOG(debug) << "Recreating counters with period " << ticks_period;
+
     struct perf_event_attr attr = rr::ticks_attr;
     attr.sample_period = ticks_period;
     fd_ticks_interrupt = start_counter(tid, -1, &attr);
-    // Set up a separate counter for measuring ticks, which does not have
-    // a sample period and does not count events during aborted transactions.
-    // Note that the sample_period should *never* be set to zero. That should
-    // work but under KVM it doesn't.
-    // We have to use two separate counters here because the kernel does
-    // not support setting a sample_period with IN_TXCP, apparently for
-    // reasons related to this Intel note on IA32_PERFEVTSEL2:
-    // ``When IN_TXCP=1 & IN_TX=1 and in sampling, spurious PMI may
-    // occur and transactions may continuously abort near overflow
-    // conditions. Software should favor using IN_TXCP for counting over
-    // sampling. If sampling, software should use large “sample-after“
-    // value after clearing the counter configured to use IN_TXCP and
-    // also always reset the counter even when no overflow condition
-    // was reported.''
-    attr.sample_period = 0xffffffff;
-    attr.config |= IN_TXCP;
-    fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
+
+    if (has_kvm_in_txcp_bug()) {
+      // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not used,
+      // and check that.
+      attr.sample_period = 0;
+      attr.config |= IN_TX;
+      fd_ticks_in_transaction = start_counter(tid, fd_ticks_interrupt, &attr);
+    } else {
+      // Set up a separate counter for measuring ticks, which does not have
+      // a sample period and does not count events during aborted transactions.
+      // We have to use two separate counters here because the kernel does
+      // not support setting a sample_period with IN_TXCP, apparently for
+      // reasons related to this Intel note on IA32_PERFEVTSEL2:
+      // ``When IN_TXCP=1 & IN_TX=1 and in sampling, spurious PMI may
+      // occur and transactions may continuously abort near overflow
+      // conditions. Software should favor using IN_TXCP for counting over
+      // sampling. If sampling, software should use large “sample-after“
+      // value after clearing the counter configured to use IN_TXCP and
+      // also always reset the counter even when no overflow condition
+      // was reported.''
+      attr.sample_period = 0;
+      attr.config |= IN_TXCP;
+      fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
+    }
 
     if (activate_useless_counter && !fd_useless_counter.is_open()) {
       // N.B.: This is deliberately not in the same group as the other counters
@@ -368,20 +435,33 @@ void PerfCounters::reset(Ticks ticks_period) {
       fd_page_faults = start_counter(tid, group_leader, &page_faults_attr);
     }
   } else {
+    LOG(debug) << "Resetting counters with period " << ticks_period;
+
     if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_RESET, 0)) {
       FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
     }
     if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_PERIOD, &ticks_period)) {
-      FATAL() << "ioctl(PERF_EVENT_IOC_PERIOD) failed";
+      FATAL() << "ioctl(PERF_EVENT_IOC_PERIOD) failed with period "
+              << ticks_period;
     }
     if (ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_ENABLE, 0)) {
       FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
     }
-    if (ioctl(fd_ticks_measure, PERF_EVENT_IOC_RESET, 0)) {
-      FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
+    if (fd_ticks_measure.is_open()) {
+      if (ioctl(fd_ticks_measure, PERF_EVENT_IOC_RESET, 0)) {
+        FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
+      }
+      if (ioctl(fd_ticks_measure, PERF_EVENT_IOC_ENABLE, 0)) {
+        FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
+      }
     }
-    if (ioctl(fd_ticks_measure, PERF_EVENT_IOC_ENABLE, 0)) {
-      FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
+    if (fd_ticks_in_transaction.is_open()) {
+      if (ioctl(fd_ticks_in_transaction, PERF_EVENT_IOC_RESET, 0)) {
+        FATAL() << "ioctl(PERF_EVENT_IOC_RESET) failed";
+      }
+      if (ioctl(fd_ticks_in_transaction, PERF_EVENT_IOC_ENABLE, 0)) {
+        FATAL() << "ioctl(PERF_EVENT_IOC_ENABLE) failed";
+      }
     }
   }
 
@@ -406,31 +486,51 @@ void PerfCounters::stop() {
   fd_hw_interrupts.close();
   fd_instructions_retired.close();
   fd_useless_counter.close();
+  fd_ticks_in_transaction.close();
 }
 
 void PerfCounters::stop_counting() {
   counting = false;
-  if (has_ioc_period_bug()) {
+  if (always_recreate_counters()) {
     stop();
   } else {
     ioctl(fd_ticks_interrupt, PERF_EVENT_IOC_DISABLE, 0);
-    ioctl(fd_ticks_measure, PERF_EVENT_IOC_DISABLE, 0);
+    if (fd_ticks_measure.is_open()) {
+      ioctl(fd_ticks_measure, PERF_EVENT_IOC_DISABLE, 0);
+    }
+    if (fd_ticks_in_transaction.is_open()) {
+      ioctl(fd_ticks_in_transaction, PERF_EVENT_IOC_DISABLE, 0);
+    }
   }
 }
 
-static int64_t read_counter(ScopedFd& fd) {
-  int64_t val;
-  ssize_t nread = read(fd, &val, sizeof(val));
-  assert(nread == sizeof(val));
-  return val;
-}
-
-Ticks PerfCounters::read_ticks() {
+Ticks PerfCounters::read_ticks(Task* t) {
   if (!started || !counting) {
     return 0;
   }
-  uint64_t measure_val = read_counter(fd_ticks_measure);
+
+  if (fd_ticks_in_transaction.is_open()) {
+    uint64_t transaction_ticks = read_counter(fd_ticks_in_transaction);
+    if (transaction_ticks > 0) {
+      LOG(debug) << transaction_ticks << " IN_TX ticks detected";
+      if (!Flags::get().force_things) {
+        ASSERT(t, false)
+            << transaction_ticks
+            << " IN_TX ticks detected while HLE not supported due to KVM PMU\n"
+               "virtualization bug. See "
+               "http://marc.info/?l=linux-kernel&m=148582794808419&w=2\n"
+               "Aborting. Retry with -F to override, but it will probably\n"
+               "fail.";
+      }
+    }
+  }
+
   uint64_t interrupt_val = read_counter(fd_ticks_interrupt);
+  if (!fd_ticks_measure.is_open()) {
+    return interrupt_val;
+  }
+
+  uint64_t measure_val = read_counter(fd_ticks_measure);
   if (measure_val > interrupt_val) {
     // There is some kind of kernel or hardware bug that means we sometimes
     // see more events with IN_TXCP set than without. These are clearly
