@@ -1,4 +1,3 @@
-If you find rr useful, please [add a testimonial](https://github.com/mozilla/rr/wiki/Testimonials).
 
 # System requirements
 
