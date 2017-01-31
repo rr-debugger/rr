@@ -176,6 +176,7 @@ static void init_perf_event_attr(struct perf_event_attr* attr,
 }
 
 static bool activate_useless_counter;
+static bool has_ioc_period_bug();
 static void init_attributes() {
   if (attributes_initialized) {
     return;
@@ -206,7 +207,7 @@ static void init_attributes() {
    * coalesce them and tries to schedule the new one on a general purpose PMC.
    * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
    */
-  activate_useless_counter = !running_under_rr();
+  activate_useless_counter = has_ioc_period_bug() && !running_under_rr();
 
   init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
   init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
