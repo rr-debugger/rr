@@ -1,4 +1,3 @@
-
 # System requirements
 
 * Linux kernel ≥ 3.5 is required (for [seccomp-bpf](https://en.wikipedia.org/wiki/Seccomp)).
