@@ -1,4 +1,3 @@
-# System requirements
 
 * Linux kernel ≥ 3.5 is required (for [seccomp-bpf](https://en.wikipedia.org/wiki/Seccomp)).
 * rr currently requires an Intel CPU with [Nehalem](https://en.wikipedia.org/wiki/Nehalem_%28microarchitecture%29) (2010) or later microarchitecture.
