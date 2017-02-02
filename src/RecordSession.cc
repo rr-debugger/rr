@@ -1587,10 +1587,10 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
     }
 
     t->push_event(SyscallEvent(t->regs().original_syscallno(), syscall_arch));
+  }
 
-    if (interrupt_syscall_to_handle_signals(t)) {
-      return;
-    }
+  if (interrupt_syscall_to_handle_signals(t)) {
+    return;
   }
 
   check_initial_task_syscalls(t, step_result);
