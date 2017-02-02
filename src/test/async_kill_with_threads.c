@@ -3,6 +3,7 @@
 #include "rrutil.h"
 
 static void* start_thread(__attribute__((unused)) void* p) {
+  atomic_puts("ready");
   sleep(1000);
   return NULL;
 }

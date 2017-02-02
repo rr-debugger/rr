@@ -20,6 +20,8 @@ int main(void) {
 
   signal(SIGUSR1, handle_usr1);
 
+  atomic_puts("ready");
+
   breakpoint();
   /* NO SYSCALLS AFTER HERE!  (Up to the assert.) */
   for (i = 1; !caught_usr1 && i < (1 << 30); ++i) {

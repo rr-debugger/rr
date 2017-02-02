@@ -10,6 +10,8 @@ static void* start_thread(__attribute__((unused)) void* p) {
 int main(void) {
   pthread_t thread;
 
+  atomic_puts("ready");
+
   pthread_create(&thread, NULL, start_thread, NULL);
   atomic_puts("EXIT-SUCCESS");
   while (1) {
