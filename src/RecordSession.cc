@@ -1145,7 +1145,10 @@ static bool preinject_signal(RecordTask* t) {
     while (true) {
       auto old_ip = t->ip();
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-      ASSERT(t, old_ip == t->ip());
+      ASSERT(t, old_ip == t->ip()) << "Singlestep actually advanced when we "
+                                   << "just expected a signal; was at "
+                                   << old_ip << " now at " << t->ip()
+                                   << " with status " << t->status();
       if (t->status().group_stop()) {
         /* Sending SIGCONT (4.4.3-300.fc23.x86_64) triggers this. Unclear why
          * it would... */
