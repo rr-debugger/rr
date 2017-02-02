@@ -175,6 +175,7 @@ private:
   bool in_high_priority_only_interval(double now);
   bool treat_as_high_priority(RecordTask* t);
   bool is_task_runnable(RecordTask* t, bool* by_waitpid);
+  void validate_scheduled_task();
 
   RecordSession& session;
 

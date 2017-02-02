@@ -782,7 +782,7 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
     LOG(debug) << "Made no progress";
     return false;
   }
-  
+
   Ticks start_ticks = t->tick_count();
   Ticks end_ticks = current->current_trace_frame().ticks();
   if (end.ptr->proto.key.trace_time == current->trace_reader().time()) {
