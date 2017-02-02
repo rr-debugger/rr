@@ -1001,7 +1001,8 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
       }
       t->vm()->protect(t, r.start, r.size, r.prot);
       if (running_under_rr()) {
-        syscall(SYS_rrcall_mprotect_record, t->tid, r.start, r.size, r.prot);
+        syscall(SYS_rrcall_mprotect_record, t->tid, (uintptr_t)r.start,
+                (uintptr_t)r.size, r.prot);
       }
     }
   }
