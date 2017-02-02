@@ -36,6 +36,8 @@ int main(int argc, char* argv[]) {
 
   signal(SIGUSR1, handle_usr1);
 
+  atomic_puts("ready\n");
+
   /* Driver scripts choose the number of iterations based on
    * their needs. */
   for (i = 0; i < 1 << num_its; ++i) {

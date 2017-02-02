@@ -49,6 +49,12 @@ function delay_kill { sig=$1; delay_secs=$2; proc=$3
         exit 1
     fi
 
+    # Wait for the test to print "ready", indicating it has completed
+    # any required setup.
+    until grep -q ready record.out; do
+        sleep 0
+    done
+
     kill -s $sig $pid
     if [[ $? != 0 ]]; then
         # Sometimes we fail to deliver a signal to a process because
