@@ -398,13 +398,18 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         in_high_priority_only_interval(now);
 
     if (current_) {
-      next = get_round_robin_task()
-                 ? nullptr
-                 : find_next_runnable_task(current_, &result.by_waitpid,
-                                           current_->priority - 1);
-      if (next) {
-        break;
+      // Determine if we should run current_ again
+      if (!get_round_robin_task()) {
+        next = find_next_runnable_task(current_, &result.by_waitpid,
+                                       current_->priority - 1);
+        if (next) {
+          // There is a runnable higher-priority task. Run it.
+          break;
+        }
       }
+      // To run current_ again, its timeslice must not have expired, it must be
+      // high priority if we're in a high-priority-only interval, it must be
+      // runnable, and not in an unstable exit.
       if (!current_->unstable && !always_switch &&
           (treat_as_high_priority(current_) ||
            !last_reschedule_in_high_priority_only_interval) &&
@@ -627,7 +632,7 @@ void Scheduler::update_task_priority_internal(RecordTask* t, int value) {
 }
 
 void Scheduler::schedule_one_round_robin(RecordTask* t) {
-  LOG(debug) << "Scheduling round-robin because of task " << t;
+  LOG(debug) << "Scheduling round-robin because of task " << t->tid;
 
   ASSERT(t, t == current_);
   maybe_pop_round_robin_task(t);
