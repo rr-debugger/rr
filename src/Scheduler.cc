@@ -399,7 +399,8 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
 
     if (current_) {
       // Determine if we should run current_ again
-      if (!get_round_robin_task()) {
+      RecordTask* round_robin_task = get_round_robin_task();
+      if (!round_robin_task) {
         next = find_next_runnable_task(current_, &result.by_waitpid,
                                        current_->priority - 1);
         if (next) {
@@ -407,10 +408,15 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
           break;
         }
       }
-      // To run current_ again, its timeslice must not have expired, it must be
-      // high priority if we're in a high-priority-only interval, it must be
-      // runnable, and not in an unstable exit.
+      // To run current_ again:
+      // -- its timeslice must not have expired
+      // -- it must be high priority if we're in a high-priority-only interval
+      // -- it must be the head of the round-robin queue or the queue is empty
+      // (this might not hold if it was at the head of the queue but we
+      // rejected current_ and popped it in a previous iteration of this loop)
+      // -- it must be runnable, and not in an unstable exit.
       if (!current_->unstable && !always_switch &&
+          (!round_robin_task || round_robin_task == current_) &&
           (treat_as_high_priority(current_) ||
            !last_reschedule_in_high_priority_only_interval) &&
           current_->tick_count() < current_timeslice_end() &&
@@ -419,6 +425,8 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         validate_scheduled_task();
         return result;
       }
+      // Having rejected current_, be prepared to run the next task in the
+      // round-robin queue.
       maybe_pop_round_robin_task(current_);
     }
 
