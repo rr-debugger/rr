@@ -38,8 +38,10 @@ set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Werror -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-command-line-argument")
+endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-command-line-argument")
 endif()
 
