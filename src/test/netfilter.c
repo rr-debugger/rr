@@ -6,7 +6,7 @@
 #include "nsutils.h"
 
 int main(void) {
-  if (!try_setup_ns(CLONE_NEWNET)) {
+  if (-1 == try_setup_ns(CLONE_NEWNET)) {
     atomic_printf("EXIT-SUCCESS");
     return 0;
   }

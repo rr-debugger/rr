@@ -5,7 +5,7 @@
 
 int main(void) {
   pid_t pid;
-  if (try_setup_ns(CLONE_NEWPID)) {
+  if (-1 == try_setup_ns(CLONE_NEWPID)) {
     atomic_printf("EXIT-SUCCESS");
     // 77 will indicate to driver script that this test was skipped
     return 77;
