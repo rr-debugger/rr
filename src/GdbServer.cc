@@ -106,7 +106,7 @@ static const string& gdb_rr_macros() {
        << GdbCommandHandler::gdb_macros()
        // Try both "set target-async" and "maint set target-async" since
        // that changed recently.
-       << "python-interactive\n"
+       << "python\n"
        << "import re\n"
        << "m = re.compile("
        << "'.* ([0-9]+)\\.([0-9]+)(\\.([0-9]+))?.*'"
@@ -122,7 +122,8 @@ static const string& gdb_rr_macros() {
        << "\n"
        << "if ver < 71101:\n"
        << "    gdb.execute('set target-async 0')\n"
-       << "    gdb.execute('maint set target-async 0')\n";
+       << "    gdb.execute('maint set target-async 0')\n"
+       << "end\n";
     s = ss.str();
   }
   return s;
