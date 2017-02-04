@@ -249,14 +249,16 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
     struct perf_event_attr tmp_attr = *attr;
     tmp_attr.config &= ~IN_TXCP;
     fd = syscall(__NR_perf_event_open, &tmp_attr, tid, -1, group_fd, 0);
-    if (fd >= 0 &&
-        (cpuid(CPUID_GETEXTENDEDFEATURES, 0).ebx & HLE_FEATURE_FLAG)) {
-      if (!Flags::get().suppress_environment_warnings) {
-        fprintf(
-            stderr,
-            "Your CPU supports Hardware Lock Elision but your kernel does not\n"
-            "support setting the IN_TXCP PMU flag. Record and replay of code\n"
-            "that uses HLE will fail unless you update your kernel.\n");
+    if (fd >= 0) {
+      LOG(warn) << "kernel does not support IN_TXCP";
+      if (cpuid(CPUID_GETEXTENDEDFEATURES, 0).ebx & HLE_FEATURE_FLAG) {
+        if (!Flags::get().suppress_environment_warnings) {
+          fprintf(
+              stderr,
+              "Your CPU supports Hardware Lock Elision but your kernel does not\n"
+              "support setting the IN_TXCP PMU flag. Record and replay of code\n"
+              "that uses HLE will fail unless you update your kernel.\n");
+        }
       }
     }
   }
