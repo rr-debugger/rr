@@ -7,7 +7,7 @@
 
 int main(void) {
   if (-1 == try_setup_ns(CLONE_NEWNET)) {
-    atomic_printf("EXIT-SUCCESS");
+    atomic_puts("EXIT-SUCCESS");
     return 0;
   }
 
@@ -21,8 +21,13 @@ int main(void) {
   memset(&info, 0, sizeof(info));
   strcpy(info.name, "nat");
   uint32_t getinfo_size = sizeof(info);
-  test_assert(
-      0 == getsockopt(sock_fd, SOL_IP, IPT_SO_GET_INFO, &info, &getinfo_size));
+  int ret = getsockopt(sock_fd, SOL_IP, IPT_SO_GET_INFO, &info, &getinfo_size);
+  if (ret < 0) {
+    test_assert(errno == ENOPROTOOPT);
+    atomic_puts("IPT_SO_GET_INFO not available");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(getinfo_size == sizeof(info));
 
   atomic_printf("%d existing entries in nat table\n", info.num_entries);
