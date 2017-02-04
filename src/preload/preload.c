@@ -2175,6 +2175,31 @@ static long sys_sendmsg(const struct syscall_info* call) {
 }
 #endif
 
+#ifdef SYS_sendto
+static long sys_sendto(const struct syscall_info* call) {
+  const int syscallno = SYS_sendto;
+  int sockfd = call->args[0];
+  void* buf = (void*)call->args[1];
+  size_t len = call->args[2];
+  int flags = call->args[3];
+  const struct sockaddr* dest_addr = (const struct sockaddr*)call->args[4];
+  socklen_t addrlen = call->args[5];
+
+  void* ptr = prep_syscall_for_fd(sockfd);
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall6(syscallno, sockfd, buf, len, flags, dest_addr, addrlen);
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 #ifdef SYS_socketpair
 typedef int two_ints[2];
 static long sys_socketpair(const struct syscall_info* call) {
@@ -2475,6 +2500,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #endif
 #if defined(SYS_sendmsg)
     CASE(sendmsg);
+#endif
+#if defined(SYS_sendto)
+    CASE(sendto);
 #endif
     CASE_GENERIC_NONBLOCKING(setxattr);
 #if defined(SYS_socketcall)
