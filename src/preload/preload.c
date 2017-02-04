@@ -546,7 +546,7 @@ static void __attribute__((constructor)) init_process(void) {
   struct rrcall_init_preload_params params;
 
 #if defined(__i386__)
-  extern RR_HIDDEN void _syscallhook_vsyscall_entry(void);
+  extern RR_HIDDEN void __morestack(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
   struct syscall_patch_hook syscall_patch_hooks[] = {
@@ -645,7 +645,7 @@ static void __attribute__((constructor)) init_process(void) {
 
   params.syscallbuf_enabled = buffer_enabled;
 #ifdef __i386__
-  params.syscallhook_vsyscall_entry = (void*)_syscallhook_vsyscall_entry;
+  params.syscallhook_vsyscall_entry = (void*)__morestack;
 #else
   params.syscallhook_vsyscall_entry = 0;
 #endif

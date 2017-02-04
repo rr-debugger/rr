@@ -71,7 +71,7 @@ templates = {
         RawBytes(0xc3),         # ret
     ),
     'X86SysenterVsyscallSyscallHook': AssemblyTemplate(
-        RawBytes(0xe9),         # jmp $_syscallhook_vsyscall_entry
+        RawBytes(0xe9),         # jmp $syscall_hook_trampoline
         Field('syscall_hook_trampoline', 4),
     ),
     'X86VsyscallMonkeypatch': AssemblyTemplate(

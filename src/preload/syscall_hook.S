@@ -10,9 +10,9 @@
  * know that its call to |__kernel_vsyscall()| has been re-routed to
  * us.
  */
-        .global _syscallhook_vsyscall_entry
-        .hidden _syscallhook_vsyscall_entry
-        .type _syscallhook_vsyscall_entry, @function
+        .global __morestack
+        .hidden __morestack
+        .type __morestack, @function
 
         .text
 
@@ -21,7 +21,18 @@
         .set alt_stack_nesting_level, preload_thread_locals + 8
 
         .p2align 4
-_syscallhook_vsyscall_entry:
+/* See comments about morestack below. For x86-32 our setup doesn't need to be
+   as elaborate since we really only care about one entry function. */
+__morestack:
+        .cfi_startproc
+        call _switch_stack_vsyscall
+        ret
+        .cfi_endproc
+
+        .global _switch_stack_vsyscall
+        .hidden _switch_stack_vsyscall
+        .type _switch_stack_vsyscall, @function
+_switch_stack_vsyscall:
         .cfi_startproc
         movl %esp,(stub_scratch_1)
         incl (alt_stack_nesting_level)
@@ -268,7 +279,7 @@ _syscall_hook_trampoline:
  * of the CFA). Then, we insert a __morestack function (still with the old CFA) that just jumps
  * through to the trampoline. This way, we can force gdb's stack switch detection to think the
  * stack switch happens between the hook and the common trampoline code (and add a __morestack
- * local symbol to the trampoline code to avoid GDB messing with out stack trace).
+ * local symbol to the trampoline code to avoid GDB messing with our stack trace).
  */
 #define CFA_AT_RSP_OFFSET(offset) \
 .cfi_escape 0x0f, /* DW_CFA_def_cfa_expression */\
