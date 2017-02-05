@@ -11,7 +11,7 @@ namespace rr {
 static SimpleGdbCommand when("when", [](GdbServer&, Task* t,
                                         const vector<string>&) {
   if (!t->session().is_replaying()) {
-    return string("Current event not known (diversion?)");
+    return GdbCommandHandler::cmd_end_diversion();
   }
   return string("Current event: ") +
          to_string(static_cast<ReplayTask*>(t)->current_trace_frame().time());
@@ -20,7 +20,7 @@ static SimpleGdbCommand when("when", [](GdbServer&, Task* t,
 static SimpleGdbCommand when_ticks("when-ticks", [](GdbServer&, Task* t,
                                                     const vector<string>&) {
   if (!t->session().is_replaying()) {
-    return string("Current event not known (diversion?)");
+    return GdbCommandHandler::cmd_end_diversion();
   }
   return string("Current tick: ") + to_string(t->tick_count());
 });
@@ -28,7 +28,7 @@ static SimpleGdbCommand when_ticks("when-ticks", [](GdbServer&, Task* t,
 static SimpleGdbCommand when_tid("when-tid", [](GdbServer&, Task* t,
                                                 const vector<string>&) {
   if (!t->session().is_replaying()) {
-    return string("Current event not known (diversion?)");
+    return GdbCommandHandler::cmd_end_diversion();
   }
   return string("Current tid: ") + to_string(t->tid);
 });
