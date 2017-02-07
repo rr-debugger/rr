@@ -1919,9 +1919,9 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   LOG(debug) << "trace time " << t->trace_time() << ": Active task is "
              << t->tid << ". Events:";
-#ifdef DEBUGTAG
-  t->log_pending_events();
-#endif
+  if (IS_LOGGING(debug)) {
+    t->log_pending_events();
+  }
   if (handle_ptrace_exit_event(t)) {
     // t is dead and has been deleted.
     return result;

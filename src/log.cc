@@ -229,6 +229,11 @@ static void write_prefix(T& stream, LogLevel level, const char* file, int line,
   stream << "] ";
 }
 
+bool is_logging_enabled(LogLevel level, const char* file) {
+  LogModule& m = get_log_module(file);
+  return level <= m.level;
+}
+
 NewlineTerminatingOstream::NewlineTerminatingOstream(LogLevel level,
                                                      const char* file, int line,
                                                      const char* function)

@@ -34,6 +34,8 @@ std::ostream& operator<<(std::ostream& stream,
 std::ostream& operator<<(std::ostream& stream,
                          const std::vector<uint8_t>& bytes);
 
+bool is_logging_enabled(LogLevel level, const char* file);
+
 struct NewlineTerminatingOstream {
   NewlineTerminatingOstream(LogLevel level, const char* file, int line,
                             const char* function);
@@ -84,6 +86,8 @@ const EmergencyDebugOstream& operator<<(const EmergencyDebugOstream& stream,
  */
 #define LOG(_level)                                                            \
   NewlineTerminatingOstream(LOG_##_level, __FILE__, __LINE__, __FUNCTION__)
+
+#define IS_LOGGING(_level) is_logging_enabled(LOG_##_level, __FILE__)
 
 /** A fatal error has occurred.  Log the error and exit. */
 #define FATAL() FatalOstream(__FILE__, __LINE__, __FUNCTION__)

@@ -572,19 +572,15 @@ static bool is_same_execution_point(ReplayTask* t, const Registers& rec_regs,
                                     Registers* mismatched_regs,
                                     const Registers** mismatched_regs_ptr) {
   MismatchBehavior behavior =
-#ifdef DEBUGTAG
-      LOG_MISMATCHES
-#else
-      EXPECT_MISMATCHES
-#endif
-      ;
+      IS_LOGGING(debug) ? LOG_MISMATCHES : EXPECT_MISMATCHES;
+
   if (ticks_left != 0) {
     LOG(debug) << "  not same execution point: " << ticks_left
                << " ticks left (@" << rec_regs.ip() << ")";
-#ifdef DEBUGTAG
-    Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)", rec_regs,
-                                      LOG_MISMATCHES);
-#endif
+    if (IS_LOGGING(debug)) {
+      Registers::compare_register_files(t, "(rep)", t->regs(), "(rec)",
+                                        rec_regs, LOG_MISMATCHES);
+    }
     return false;
   }
   if (!Registers::compare_register_files(t, "rep", t->regs(), "rec", rec_regs,
