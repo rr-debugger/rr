@@ -411,6 +411,11 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
                << " because in traced syscall";
     return true;
   }
+  if (t->is_at_traced_syscall_entry()) {
+    LOG(debug) << "Safe to deliver signal at " << t->ip()
+               << " because at entry to traced syscall";
+    return true;
+  }
 
   if (t->is_in_untraced_syscall() && t->desched_rec()) {
     LOG(debug) << "Safe to deliver signal at " << t->ip()

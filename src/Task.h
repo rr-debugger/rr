@@ -258,6 +258,10 @@ public:
                as->privileged_traced_syscall_ip()
                    .increment_by_syscall_insn_length(arch());
   }
+  bool is_at_traced_syscall_entry() {
+    return ip() == as->traced_syscall_ip() ||
+           ip() == as->privileged_traced_syscall_ip();
+  }
 
   /**
    * Return true when this task is in an untraced syscall, i.e. one
