@@ -2639,16 +2639,15 @@ void* XShmCreateImage(__attribute__((unused)) register void* dpy,
 /**
  * This is for testing purposes only.
  */
-void very_slow_exit_syscall(void) {
+void delayed_syscall(struct syscall_info* info) {
   int i;
   int result = 0;
-  struct syscall_info info;
-  for (i = 0; i < 1000000; ++i) {
+  for (i = 0; i < 10000000; ++i) {
     result += i * i;
   }
-  info.no = SYS_exit;
-  info.args[0] = result;
-  syscall_hook(&info);
+  /* Make sure 'result' is used so it's not optimized out! */
+  info->args[5] = result;
+  syscall_hook(info);
 }
 
 /**

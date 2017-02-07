@@ -266,6 +266,24 @@ inline static void iterate_maps(uint64_t env, maps_callback callback,
   }
 }
 
+/**
+ * Represents syscall params.  Makes it simpler to pass them around,
+ * and avoids pushing/popping all the data for calls.
+ */
+struct syscall_info {
+  long no;
+  long args[6];
+};
+
+typedef void (*DelayedSyscall)(struct syscall_info* info);
+/**
+ * Returns a function which will execute a syscall after spending a long time
+ * stuck in syscallbuf code doing nothing. Returns NULL
+ */
+inline static DelayedSyscall get_delayed_syscall(void) {
+  return (DelayedSyscall)dlsym(RTLD_DEFAULT, "delayed_syscall");
+}
+
 #define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
 #define VERIFY_GUARD(p) verify_guard(sizeof(*p), p)
 #define FREE_GUARD(p) free_guard(sizeof(*p), p)
