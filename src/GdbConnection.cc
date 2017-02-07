@@ -39,13 +39,9 @@ namespace rr {
 
 static const char INTERRUPT_CHAR = '\x03';
 
-#ifdef DEBUGTAG
-#define UNHANDLED_REQ() FATAL()
-#else
 #define UNHANDLED_REQ()                                                        \
   write_packet("");                                                            \
   LOG(info)
-#endif
 
 const GdbThreadId GdbThreadId::ANY(0, 0);
 const GdbThreadId GdbThreadId::ALL(-1, -1);
