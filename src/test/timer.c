@@ -53,14 +53,15 @@ int main(void) {
   ALLOCATE_GUARD(timeout_id, 'b');
   clockid_t clocks[2] = { CLOCK_REALTIME, CLOCK_MONOTONIC };
   for (unsigned int i = 0; i < sizeof(clocks) / sizeof(clockid_t); ++i) {
+    struct sigevent sevp;
+
     test_assert(0 == timer_create(clocks[i], NULL, id));
     VERIFY_GUARD(id);
 
     // Set up timeout timer
-    struct sigevent sevp;
     sevp.sigev_notify = SIGEV_SIGNAL;
     sevp.sigev_signo = SIGUSR1;
-    timer_create(CLOCK_MONOTONIC, &sevp, timeout_id);
+    test_assert(0 == timer_create(CLOCK_MONOTONIC, &sevp, timeout_id));
     caught_limit_sig = 0;
     test_assert(0 == timer_settime(*timeout_id, 0, &timeout, NULL));
 
