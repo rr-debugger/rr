@@ -1378,9 +1378,7 @@ struct BaseArch : public wordsize,
     struct hci_dev_req dev_req[0];
   };
 
-  typedef struct {
-    uint8_t b[6];
-  } __attribute__((__packed__)) bdaddr_t;
+  typedef struct { uint8_t b[6]; } __attribute__((__packed__)) bdaddr_t;
 
   struct hci_dev_stats {
     uint32_t err_rx;
@@ -1397,14 +1395,14 @@ struct BaseArch : public wordsize,
 
   struct hci_dev_info {
     uint16_t dev_id;
-    char  name[8];
+    char name[8];
 
     bdaddr_t bdaddr;
 
     uint32_t flags;
-    uint8_t  type;
+    uint8_t type;
 
-    uint8_t  features[8];
+    uint8_t features[8];
 
     uint32_t pkt_type;
     uint32_t link_policy;

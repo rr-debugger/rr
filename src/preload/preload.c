@@ -2194,7 +2194,8 @@ static long sys_sendto(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
 
-  ret = untraced_syscall6(syscallno, sockfd, buf, len, flags, dest_addr, addrlen);
+  ret =
+      untraced_syscall6(syscallno, sockfd, buf, len, flags, dest_addr, addrlen);
 
   return commit_raw_syscall(syscallno, ptr, ret);
 }
