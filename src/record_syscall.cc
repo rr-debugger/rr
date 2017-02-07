@@ -4071,7 +4071,7 @@ static const char* dropped_privs_warning =
     "             sudo -EP rr record --setuid-sudo\n"
     "\n";
 
-static bool is_privileged_executable(const string& path) {
+static bool is_privileged_executable(RecordTask* t, const string& path) {
   struct vfs_cap_data actual, empty;
   memset(actual.data, 0, sizeof(actual.data));
   memset(empty.data, 0, sizeof(empty.data));
@@ -4081,7 +4081,7 @@ static bool is_privileged_executable(const string& path) {
       return true;
     }
   } else {
-    assert(errno == ENODATA);
+    ASSERT(t, errno == ENODATA || errno == ENOTSUP);
     struct stat buf;
     stat(path.c_str(), &buf);
     if (buf.st_mode & (S_ISUID | S_ISGID)) {
@@ -4119,7 +4119,7 @@ static void check_privileged_exe(RecordTask* t) {
     // Nevertheless, we still need to stop the hpc counters, since
     // the executable may be privileged with respect to its namespace.
     t->hpc.stop();
-  } else if (is_privileged_executable(t->vm()->exe_image())) {
+  } else if (is_privileged_executable(t, t->vm()->exe_image())) {
     if (has_effective_caps(1 << CAP_SYS_ADMIN)) {
       // perf_events may have decided to stop counting for security reasons.
       // To be safe, close all perf counters now, to force re-opening the
