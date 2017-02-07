@@ -295,6 +295,16 @@ public:
                                const Registers& regs);
 
   /**
+   * Hook called by `resume_execution`.
+   */
+  virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
+                                     int /*sig*/) {}
+  /**
+   * Hook called by `did_waitpid`.
+   */
+  virtual void did_wait() {}
+
+  /**
    * Assuming ip() is just past a breakpoint instruction, adjust
    * ip() backwards to point at that breakpoint insn.
    */

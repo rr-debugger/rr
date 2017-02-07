@@ -952,6 +952,8 @@ void Task::maybe_workaround_singlestep_bug() {
 
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
+  will_resume_execution(how, wait_how, tick_period, sig);
+
   if (tick_period != RESUME_NO_TICKS) {
     if (tick_period == RESUME_UNLIMITED_TICKS) {
       hpc.reset(0);
@@ -1514,6 +1516,8 @@ void Task::did_waitpid(WaitStatus status) {
     // If we couldn't read registers, don't fix them up!
     set_regs(registers);
   }
+
+  did_wait();
 }
 
 bool Task::try_wait() {
