@@ -1149,7 +1149,8 @@ bool RecordTask::is_syscall_restart() {
           old_regs.arg5() == regs().arg5() &&
           old_regs.arg6() == regs().arg6())) {
       LOG(debug) << "  regs different at interrupted "
-                 << syscall_name(syscallno);
+                 << syscall_name(syscallno) << ": " << old_regs << " vs "
+                 << regs();
       goto done;
     }
   }
@@ -1437,6 +1438,7 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
   }
 
   trace_writer().write_frame(frame);
+  LOG(debug) << "Wrote event " << ev << " for time " << frame.time();
 
   if (!ev.has_ticks_slop()) {
     ASSERT(this, flush == FLUSH_SYSCALLBUF || ev.type() == EV_UNSTABLE_EXIT ||
