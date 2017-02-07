@@ -1035,9 +1035,7 @@ void RecordTask::update_sigmask(const Registers& regs) {
   }
 
   // Our signals are never blocked.
-  uint64_t enabled_sigs = (1 << (PerfCounters::TIME_SLICE_SIGNAL - 1)) |
-                          (1 << (SYSCALLBUF_DESCHED_SIGNAL - 1));
-  sigs &= ~enabled_sigs;
+  sigs &= ~rr_signal_mask();
   set_sigmask(sigs);
 }
 

@@ -287,6 +287,8 @@ bool has_effective_caps(uint64_t caps);
  */
 unsigned int xsave_area_size();
 
+uint64_t rr_signal_mask();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

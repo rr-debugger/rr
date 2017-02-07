@@ -25,6 +25,7 @@
 #include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
+#include "PerfCounters.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "TraceStream.h"
@@ -904,6 +905,11 @@ unsigned int xsave_area_size() {
   cpuid_data = cpuid(CPUID_GETXSAVE, 0);
   detected_xsave_area_size = cpuid_data.ecx;
   return detected_xsave_area_size;
+}
+
+uint64_t rr_signal_mask() {
+  return (uint64_t(1) << (PerfCounters::TIME_SLICE_SIGNAL - 1)) |
+         (uint64_t(1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
 }
 
 } // namespace rr
