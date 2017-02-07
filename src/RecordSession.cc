@@ -725,9 +725,9 @@ void RecordSession::desched_state_changed(RecordTask* t) {
 static void syscall_not_restarted(RecordTask* t) {
   LOG(debug) << "  " << t->tid << ": popping abandoned interrupted " << t->ev()
              << "; pending events:";
-#ifdef DEBUGTAG
-  t->log_pending_events();
-#endif
+  if (IS_LOGGING(debug)) {
+    t->log_pending_events();
+  }
   t->pop_syscall_interruption();
 
   t->record_event(
