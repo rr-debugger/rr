@@ -295,6 +295,7 @@ protected:
 
   void copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs);
 
+  // XXX Move CloneCompletion/CaptureState etc to ReplayTask/ReplaySession
   struct CloneCompletion;
   // Call this before doing anything that requires access to the full set
   // of tasks (i.e., almost anything!). Not really const!

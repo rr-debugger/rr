@@ -612,13 +612,6 @@ public:
   remote_code_ptr privileged_traced_syscall_ip() const {
     return privileged_traced_syscall_ip_;
   }
-  /* Start and end of the mapping of the syscallbuf code
-   * section, used to determine whether a tracee's $ip is in the
-   * lib. */
-  remote_ptr<void> syscallbuf_lib_start() const {
-    return syscallbuf_lib_start_;
-  }
-  remote_ptr<void> syscallbuf_lib_end() const { return syscallbuf_lib_end_; }
 
   bool syscallbuf_enabled() const { return syscallbuf_enabled_; }
 
@@ -1001,8 +994,6 @@ private:
   ScopedFd child_mem_fd;
   remote_code_ptr traced_syscall_ip_;
   remote_code_ptr privileged_traced_syscall_ip_;
-  remote_ptr<void> syscallbuf_lib_start_;
-  remote_ptr<void> syscallbuf_lib_end_;
   bool syscallbuf_enabled_;
 
   std::vector<uint8_t> saved_auxv_;

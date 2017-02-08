@@ -29,11 +29,6 @@ int main(void) {
     SYS_rt_sigprocmask, { SIG_BLOCK, (long)&sigset, 0, 8, 0, 0 }
   };
   DelayedSyscall delayed_syscall = get_delayed_syscall();
-  if (!delayed_syscall) {
-    atomic_puts("syscallbuf not loaded");
-    atomic_puts("EXIT-SUCCESS");
-    return 0;
-  }
 
   sa.sa_flags = SA_SIGINFO;
   sa.sa_sigaction = handle_sig;

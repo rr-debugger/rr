@@ -19,7 +19,7 @@ int main(void) {
   pthread_t thread;
 
   delayed_syscall = get_delayed_syscall();
-  if (!delayed_syscall) {
+  if (delayed_syscall == default_delayed_syscall) {
     atomic_puts("syscallbuf not loaded");
     atomic_puts("EXIT-SUCCESS");
     return 0;

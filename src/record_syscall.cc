@@ -2353,14 +2353,15 @@ static Switchable prepare_ptrace(RecordTask* t,
 }
 
 static void check_signals_while_exiting(RecordTask* t) {
-  if (t->has_stashed_sig()) {
+  const RecordTask::StashedSignal* s = t->peek_stashed_sig_to_deliver();
+  if (s) {
     // An unblockable signal (SIGKILL, SIGSTOP) might be received
     // and stashed. Since these signals are unblockable they take
     // effect no matter what and we don't need to deliver them to an exiting
     // thread.
-    int sig = t->peek_stash_sig().siginfo.si_signo;
+    int sig = s->siginfo.si_signo;
     ASSERT(t, sig == SIGKILL || sig == SIGSTOP)
-        << "Got unexpected signal " << t->peek_stash_sig().siginfo
+        << "Got unexpected signal " << s->siginfo
         << " (should have been blocked)";
   }
 }
@@ -2374,7 +2375,7 @@ static void check_signals_while_exiting(RecordTask* t) {
  */
 static void prepare_exit(RecordTask* t, int exit_code) {
   // RecordSession is responsible for ensuring we don't get here with
-  // pending signals. See interrupt_syscall_to_handle_signals.
+  // pending signals.
   ASSERT(t, !t->has_stashed_sig());
 
   t->stable_exit = true;

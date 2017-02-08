@@ -695,6 +695,7 @@ set(BASIC_TESTS
   signal_unstoppable
   signalfd
   sigprocmask
+  sigprocmask_ensure_delivery
   sigprocmask_exec
   sigprocmask_in_syscallbuf_sighandler
   sigprocmask_rr_sigs
@@ -731,6 +732,7 @@ set(BASIC_TESTS
   sync
   syscall_bp
   syscallbuf_signal_reset
+  syscallbuf_signal_blocking
   syscallbuf_sigstop
   syscallbuf_timeslice
   syscallbuf_timeslice2
@@ -745,6 +747,7 @@ set(BASIC_TESTS
   timerfd
   times
   truncate
+  two_signals_with_mask
   uname
   unjoined_thread
   unshare

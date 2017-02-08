@@ -39,6 +39,7 @@
  *   through libc wrappers (which this file may itself indirectly override)
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <link.h>
@@ -477,9 +478,15 @@ extern char _breakpoint_table_entry_end;
 
 /**
  * Initialize process-global buffering state, if enabled.
+ * NOTE: constructors go into a special section by default so this won't
+ * be counted as syscall-buffering code!
  */
 static void __attribute__((constructor)) init_process(void) {
   struct rrcall_init_preload_params params;
+
+  extern char _syscallbuf_final_exit_instruction;
+  extern char _syscallbuf_code_start;
+  extern char _syscallbuf_code_end;
 
 #if defined(__i386__)
   extern RR_HIDDEN void __morestack(void);
@@ -495,6 +502,8 @@ static void __attribute__((constructor)) init_process(void) {
     /* Our vdso syscall patch has 'int 80' followed by onp; nop; nop */
     { 0, 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };
+  extern char _get_pc_thunks_start;
+  extern char _get_pc_thunks_end;
 #elif defined(__x86_64__)
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_00_f0_ff_ff(void);
@@ -575,9 +584,17 @@ static void __attribute__((constructor)) init_process(void) {
   params.syscallbuf_enabled = buffer_enabled;
 #ifdef __i386__
   params.syscallhook_vsyscall_entry = (void*)__morestack;
+  params.get_pc_thunks_start = &_get_pc_thunks_start;
+  params.get_pc_thunks_end = &_get_pc_thunks_end;
 #else
-  params.syscallhook_vsyscall_entry = 0;
+  params.syscallhook_vsyscall_entry = NULL;
+  params.get_pc_thunks_start = NULL;
+  params.get_pc_thunks_end = NULL;
 #endif
+  params.syscallbuf_code_start = &_syscallbuf_code_start;
+  params.syscallbuf_code_end = &_syscallbuf_code_end;
+  params.syscallbuf_final_exit_instruction =
+      &_syscallbuf_final_exit_instruction;
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
@@ -1563,7 +1580,8 @@ static long sys_open(const struct syscall_info* call) {
  * directly and doesn't go through a PLT thunk (which would mean temporarily
  * leaving syscallbuf code).
  */
-__attribute__ ((visibility ("protected"))) void __before_poll_syscall_breakpoint(void) {}
+__attribute__((visibility("protected"))) void __before_poll_syscall_breakpoint(
+    void) {}
 
 static long sys_poll(const struct syscall_info* call) {
   const int syscallno = SYS_poll;
@@ -2274,7 +2292,14 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   }
   hdr->in_sigprocmask_critical_section = 0;
 
-  return commit_raw_syscall(syscallno, ptr, ret);
+  commit_raw_syscall(syscallno, ptr, ret);
+
+  if (ret == -EAGAIN) {
+    // The rr supervisor emulated EAGAIN because there was a pending signal.
+    // Retry using a traced syscall so the pending signal(s) can be delivered.
+    return traced_raw_syscall(call);
+  }
+  return ret;
 }
 
 static long syscall_hook_internal(const struct syscall_info* call) {
@@ -2409,6 +2434,14 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
 
   long result = syscall_hook_internal(call);
   if (buffer_hdr() && buffer_hdr()->notify_on_syscall_hook_exit) {
+    // Sometimes a signal is delivered to interrupt an untraced syscall in
+    // a non-restartable way (e.g. seccomp SIGSYS). Those signals must be
+    // handled outside any syscallbuf transactions. We defer them until
+    // this SYS_rrcall_notify_syscall_hook_exit, which is triggered by rr
+    // setting notify_on_syscall_hook_exit. The parameters to the
+    // SYS_rrcall_notify_syscall_hook_exit are magical and fully control
+    // the syscall parameters and result seen by the signal handler.
+    //
     // SYS_rrcall_notify_syscall_hook_exit will clear
     // notify_on_syscall_hook_exit. Clearing it ourselves is tricky to get
     // right without races.
@@ -2439,9 +2472,6 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     // syscall_hook_internal generates either a traced syscall or a syscallbuf
     // record that would be flushed by SYSCALLBUF_FLUSH, so that can't
     // happen.
-    //
-    // Another crazy thing is going on here: it's possible that a signal
-    // intended to be delivered
     result = _raw_syscall(SYS_rrcall_notify_syscall_hook_exit, call->args[0],
                           call->args[1], call->args[2], call->args[3],
                           call->args[4], call->args[5],

@@ -91,7 +91,7 @@ public:
   };
   std::vector<ExtendedJumpPage> extended_jump_pages;
 
-  bool is_jump_stub_instruction(remote_ptr<void> p);
+  bool is_jump_stub_instruction(remote_code_ptr p);
 
 private:
   /**

@@ -40,6 +40,18 @@ enum EmulatedStopType {
  */
 enum AddSysgoodFlag { IGNORE_SYSGOOD, USE_SYSGOOD };
 
+struct SyscallbufSyscallEntryPoints {
+  remote_code_ptr ptrs[3];
+};
+
+struct SyscallbufCodeLayout {
+  remote_code_ptr syscallbuf_code_start;
+  remote_code_ptr syscallbuf_code_end;
+  remote_code_ptr get_pc_thunks_start;
+  remote_code_ptr get_pc_thunks_end;
+  remote_code_ptr syscallbuf_final_exit_instruction;
+};
+
 /**
  * Every Task owned by a RecordSession is a RecordTask. Functionality that
  * only applies during recording belongs here.
@@ -58,6 +70,10 @@ public:
   virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
                                      int /*sig*/);
   virtual void did_wait();
+
+  SyscallbufSyscallEntryPoints syscallbuf_syscall_entry_points();
+  bool is_at_syscallbuf_syscall_entry_breakpoint();
+  bool is_at_syscallbuf_final_instruction_breakpoint();
 
   /**
    * Initialize tracee buffers in this, i.e., implement
@@ -234,6 +250,7 @@ public:
   void stash_synthetic_sig(const siginfo_t& si,
                            SignalDeterministic deterministic);
   bool has_stashed_sig() const { return !stashed_signals.empty(); }
+  bool has_stashed_sig_not_synthetic_SIGCHLD() const;
   bool has_stashed_sig(int sig) const;
   struct StashedSignal {
     StashedSignal(const siginfo_t& siginfo, SignalDeterministic deterministic)
@@ -241,8 +258,9 @@ public:
     siginfo_t siginfo;
     SignalDeterministic deterministic;
   };
-  const StashedSignal& peek_stash_sig();
-  void pop_stash_sig();
+  const StashedSignal* peek_stashed_sig_to_deliver() const;
+  void pop_stash_sig(const StashedSignal* stashed);
+  void stashed_signal_processed();
 
   /**
    * Return true if the current state of this looks like the
@@ -285,19 +303,9 @@ public:
   bool maybe_in_spinlock();
   /**
    * Return true if this is within the syscallbuf library.  This
-   * *does not* imply that $ip is at a buffered syscall; see
-   * below.
+   * *does not* imply that $ip is at a buffered syscall.
    */
-  bool is_in_syscallbuf() {
-    if (!as->syscallbuf_enabled()) {
-      // Even if we're in the rr page, if syscallbuf isn't enabled then the
-      // rr page is not being used by syscallbuf.
-      return false;
-    }
-    remote_ptr<void> p = ip().to_data_ptr<void>();
-    return (as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end()) ||
-           as->monkeypatcher().is_jump_stub_instruction(p) || is_in_rr_page();
-  }
+  bool is_in_syscallbuf();
   /**
    * Shortcut to the most recent |pending_event->desched.rec| when
    * there's a desched event on the stack, and nullptr otherwise.
@@ -470,6 +478,15 @@ public:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();
 
+  /**
+   * Return our cached copy of the signal mask, updating it if necessary.
+   */
+  sig_set_t get_sigmask();
+  /**
+   * Just get the signal mask of the process.
+   */
+  sig_set_t read_sigmask_from_process();
+
 private:
   ~RecordTask();
 
@@ -491,15 +508,6 @@ private:
    * May queue signals for specific tasks.
    */
   void send_synthetic_SIGCHLD_if_necessary();
-
-  /**
-   * Reload, resp. write back the current mask of blocked signals to the shadow
-   * copy in this tasks's preload globals such that we can effectively track,
-   * changes made to the mask by buffered syscalls.
-   */
-  sig_set_t get_sigmask();
-  void update_sigmask_from_syscallbuf();
-  sig_set_t read_sigmask_from_process();
 
   void record_siginfo();
 
@@ -594,6 +602,7 @@ public:
 
   // Syscallbuf state
 
+  SyscallbufCodeLayout syscallbuf_code_layout;
   ScopedFd desched_fd;
   /* Value of hdr->num_rec_bytes when the buffer was flushed */
   uint32_t flushed_num_rec_bytes;
@@ -637,6 +646,9 @@ public:
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
   std::deque<StashedSignal> stashed_signals;
+  bool stashed_signals_blocking_more_signals;
+  bool break_at_syscallbuf_syscalls;
+  bool break_at_syscallbuf_final_instruction;
 };
 
 } // namespace rr

@@ -276,12 +276,19 @@ struct syscall_info {
 };
 
 typedef void (*DelayedSyscall)(struct syscall_info* info);
+
+inline static void default_delayed_syscall(struct syscall_info* info) {
+  syscall(info->no, info->args[0], info->args[1], info->args[2], info->args[3],
+          info->args[4], info->args[5]);
+}
+
 /**
  * Returns a function which will execute a syscall after spending a long time
  * stuck in syscallbuf code doing nothing. Returns NULL
  */
 inline static DelayedSyscall get_delayed_syscall(void) {
-  return (DelayedSyscall)dlsym(RTLD_DEFAULT, "delayed_syscall");
+  DelayedSyscall ret = (DelayedSyscall)dlsym(RTLD_DEFAULT, "delayed_syscall");
+  return ret ? ret : default_delayed_syscall;
 }
 
 #define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)

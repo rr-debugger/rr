@@ -3,6 +3,10 @@
         .global _syscallbuf_code_start
         .hidden _syscallbuf_code_start
 
+        .global _syscallbuf_final_exit_instruction
+        .hidden _syscallbuf_final_exit_instruction
+        .type _syscallbuf_final_exit_instruction, @function
+
 #if defined(__i386__)
 /**
  * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
@@ -31,7 +35,8 @@ _syscallbuf_code_start:
 __morestack:
         .cfi_startproc
         call _switch_stack_vsyscall
-        ret
+        popl (stub_scratch_1)
+        jmp _syscallbuf_final_exit_instruction
         .cfi_endproc
 
         .global _switch_stack_vsyscall
@@ -68,6 +73,9 @@ _switch_stack_vsyscall:
         pop %esp
         ret
         .cfi_endproc
+
+_syscallbuf_final_exit_instruction:
+        jmp *(stub_scratch_1)
 
 _syscall_hook_trampoline:
         .cfi_startproc
@@ -171,7 +179,7 @@ name:                           \
                     (stub_scratch_1 & (0xFF <<  0x8)) >>  0x8,  \
                     (stub_scratch_1 & (0xFF << 0x10)) >> 0x10,  \
                     (stub_scratch_1 & (0xFF << 0x18)) >> 0x18;  \
-        jmp *(stub_scratch_1);                                  \
+        jmp _syscallbuf_final_exit_instruction;                 \
        .cfi_endproc;                                            \
        .size name, .-name
 
@@ -304,6 +312,9 @@ _syscall_hook_trampoline:
         .cfi_endproc
         .size _syscall_hook_trampoline, . - _syscall_hook_trampoline
 
+_syscallbuf_final_exit_instruction:
+        jmp *(stub_scratch_1)
+
 /**
  * Ok, bear with me here. When gdb sees our stack switch, it gets suspicious and if
  * we're unlucky may decide that our unwind info is broken and abort the unwind. However,
@@ -379,7 +390,7 @@ name:                              \
                     (stub_scratch_1 & (0xFF << 0x38)) >> 0x38;  \
         pop %rsp;                                               \
         .cfi_def_cfa %rsp, 0;                                   \
-        jmp *(stub_scratch_1);                                  \
+        jmp _syscallbuf_final_exit_instruction;                 \
         .cfi_endproc;                                           \
         .size name, .-name
 

@@ -47,7 +47,7 @@ namespace rr {
 #ifndef PTRACE_SYSEMU_SINGLESTEP
 #define PTRACE_SYSEMU_SINGLESTEP 32
 #endif
-  
+
 #ifndef PTRACE_GETSIGMASK
 #define PTRACE_GETSIGMASK 0x420a
 #endif

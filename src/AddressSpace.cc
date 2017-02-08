@@ -581,13 +581,6 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
   map_and_coalesce(t, m, actual_recorded_map, emu_file, move(mapped_file_stat),
                    move(local_addr), move(monitored));
 
-  if ((prot & PROT_EXEC) &&
-      (fsname.find(SYSCALLBUF_LIB_FILENAME) != string::npos ||
-       fsname.find(SYSCALLBUF_LIB_FILENAME_32) != string::npos)) {
-    syscallbuf_lib_start_ = addr;
-    syscallbuf_lib_end_ = addr + num_bytes;
-  }
-
   // During an emulated exec, we will explicitly map in a (copy of) the VDSO
   // at the recorded address.
   if (actual_recorded_map.is_vdso()) {
@@ -623,8 +616,6 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
 }
 
 void AddressSpace::at_preload_init(Task* t) {
-  ASSERT(t, !syscallbuf_lib_start_.is_null())
-      << "should have found preload library already";
   RR_ARCH_FUNCTION(at_preload_init_arch, t->arch(), t);
 }
 
@@ -1294,8 +1285,6 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
                             : nullptr),
       traced_syscall_ip_(o.traced_syscall_ip_),
       privileged_traced_syscall_ip_(o.privileged_traced_syscall_ip_),
-      syscallbuf_lib_start_(o.syscallbuf_lib_start_),
-      syscallbuf_lib_end_(o.syscallbuf_lib_end_),
       syscallbuf_enabled_(o.syscallbuf_enabled_),
       saved_auxv_(o.saved_auxv_),
       first_run_event_(0) {

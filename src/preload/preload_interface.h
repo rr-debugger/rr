@@ -325,6 +325,11 @@ struct rrcall_init_preload_params {
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
   PTR(void) syscallhook_vsyscall_entry;
+  PTR(void) syscallbuf_code_start;
+  PTR(void) syscallbuf_code_end;
+  PTR(void) get_pc_thunks_start;
+  PTR(void) get_pc_thunks_end;
+  PTR(void) syscallbuf_final_exit_instruction;
   PTR(struct preload_globals) globals;
   /* Address of the first entry of the breakpoint table.
    * After processing a sycallbuf record (and unlocking the syscallbuf),
