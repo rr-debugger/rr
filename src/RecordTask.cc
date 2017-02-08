@@ -185,6 +185,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       emulated_stop_type(NOT_STOPPED),
       blocked_sigs(),
       previously_blocked_sigs(),
+      syscallbuf_blocked_sigs_generation(0),
       has_previously_blocked_sigs(false),
       handling_deterministic_signal(0),
       flushed_num_rec_bytes(0),
@@ -543,6 +544,10 @@ void RecordTask::on_syscall_exit(int syscallno, SupportedArch arch,
     Task::on_syscall_exit(syscallno, arch, regs);
     RR_ARCH_FUNCTION(on_syscall_exit_arch, arch, syscallno, regs)
   });
+}
+
+void RecordTask::did_wait() {
+  update_sigmask_from_syscallbuf();
 }
 
 void RecordTask::set_emulated_ptracer(RecordTask* tracer) {
@@ -1039,9 +1044,19 @@ void RecordTask::update_sigmask(const Registers& regs) {
   set_sigmask(sigs);
 }
 
+void RecordTask::update_sigmask_from_syscallbuf() {
+  if (syscallbuf_child) {
+    uint32_t syscallbuf_generation =
+        read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs_generation));
+    if (syscallbuf_generation > syscallbuf_blocked_sigs_generation) {
+      syscallbuf_blocked_sigs_generation = syscallbuf_generation;
+      blocked_sigs = read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs));
+    }
+  }
+}
+
 sig_set_t RecordTask::get_sigmask() {
   if (syscallbuf_child) {
-    blocked_sigs = read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs));
     if (read_mem(REMOTE_PTR_FIELD(syscallbuf_child,
                                   in_sigprocmask_critical_section))) {
       // |blocked_sigs| may have been updated but the syscall not yet issued.
@@ -1059,9 +1074,6 @@ sig_set_t RecordTask::get_sigmask() {
 
 void RecordTask::set_sigmask(sig_set_t sigs) {
   blocked_sigs = sigs;
-  if (syscallbuf_child) {
-    write_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs), blocked_sigs);
-  }
 }
 
 void RecordTask::save_sigmask() {
@@ -1470,6 +1482,7 @@ void RecordTask::maybe_reset_syscallbuf() {
     flushed_syscallbuf = false;
     LOG(debug) << "Syscallbuf reset";
     reset_syscallbuf();
+    syscallbuf_blocked_sigs_generation = 0;
     record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO, arch()));
   }
 }

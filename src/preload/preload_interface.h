@@ -385,17 +385,18 @@ struct syscallbuf_hdr {
    * When it's zero, the desched signal can safely be
    * discarded. */
   volatile uint8_t desched_signal_may_be_relevant;
+  /* A copy of the tasks's signal mask. Updated by preload when a buffered
+   * rt_sigprocmask executes.
+   */
+  volatile uint64_t blocked_sigs;
+  /* Incremented by preload every time a buffered rt_sigprocmask executes.
+   * Cleared during syscallbuf reset.
+   */
+  volatile uint32_t blocked_sigs_generation;
   /* Nonzero when preload is in the process of calling an untraced
    * sigprocmask; the real sigprocmask may or may not match blocked_sigs.
    */
   volatile uint8_t in_sigprocmask_critical_section;
-  /* A copy of the tasks's signal mask. Updated by both preload and rr in
-   * response to events that change the signal mask. RR stores this in
-   * RecordTask::blocked_sigs, but since some signal mask affecting system
-   * calls may be buffered, that value may be out of date until rr reloads it
-   * from here.
-   */
-  volatile uint64_t blocked_sigs;
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));

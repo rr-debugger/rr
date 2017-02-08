@@ -55,6 +55,7 @@ public:
                       Session* other_session);
   virtual void on_syscall_exit(int syscallno, SupportedArch arch,
                                const Registers& regs);
+  virtual void did_wait();
 
   /**
    * Initialize tracee buffers in this, i.e., implement
@@ -519,6 +520,7 @@ private:
    */
   sig_set_t get_sigmask();
   void set_sigmask(sig_set_t mask);
+  void update_sigmask_from_syscallbuf();
 
   void record_siginfo();
 
@@ -616,6 +618,7 @@ public:
   // the mirroring to syscallbuf is correct.
   sig_set_t blocked_sigs;
   sig_set_t previously_blocked_sigs;
+  uint32_t syscallbuf_blocked_sigs_generation;
   bool has_previously_blocked_sigs;
   int handling_deterministic_signal;
 

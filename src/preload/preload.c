@@ -2375,9 +2375,13 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   const int syscallno = SYS_rt_sigprocmask;
   long ret;
   kernel_sigset_t modified_set;
-  void* oldset2 = NULL;
+  void* oldset2;
   struct syscallbuf_hdr* hdr;
-  kernel_sigset_t previous_set;
+
+  if (call->args[3] != sizeof(kernel_sigset_t)) {
+    // Unusual sigset size. Bail.
+    return traced_raw_syscall(call);
+  }
 
   void* ptr = prep_syscall();
 
@@ -2385,10 +2389,9 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   const kernel_sigset_t* set = (const kernel_sigset_t*)call->args[1];
   kernel_sigset_t* oldset = (kernel_sigset_t*)call->args[2];
 
-  if (oldset) {
-    oldset2 = ptr;
-    ptr += sizeof(kernel_sigset_t);
-  }
+  oldset2 = ptr;
+  ptr += sizeof(kernel_sigset_t);
+
   if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
@@ -2404,33 +2407,32 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
 
   hdr = buffer_hdr();
   hdr->in_sigprocmask_critical_section = 1;
-  previous_set = hdr->blocked_sigs;
 
-  /* Update |blocked_sigs| now so that if the syscall succeeds and a blocked
-   * signal is raised before it returns, rr sees the updated signal mask.
-   */
-  if (set) {
-    switch (how) {
-      case SIG_UNBLOCK:
-        hdr->blocked_sigs &= ~*set;
-        break;
-      case SIG_BLOCK:
-        hdr->blocked_sigs |= *set;
-        break;
-      case SIG_SETMASK:
-        hdr->blocked_sigs = *set;
-        break;
-    }
-  }
-
-  ret = untraced_syscall4(syscallno, how, set, oldset2, call->args[3]);
+  ret =
+      untraced_syscall4(syscallno, how, set, oldset2, sizeof(kernel_sigset_t));
   if (ret == 0) {
-    if (oldset2) {
+    if (oldset) {
       local_memcpy(oldset, oldset2, sizeof(kernel_sigset_t));
     }
-  } else {
-    /* Ssyscall failed; don't update |blocked_sigs|! */
-    hdr->blocked_sigs = previous_set;
+    if (set) {
+      kernel_sigset_t previous_set;
+      local_memcpy(&previous_set, oldset2, sizeof(kernel_sigset_t));
+      switch (how) {
+        case SIG_UNBLOCK:
+          previous_set &= ~*set;
+          break;
+        case SIG_BLOCK:
+          previous_set |= *set;
+          break;
+        case SIG_SETMASK:
+          previous_set = *set;
+          break;
+      }
+      hdr->blocked_sigs = previous_set;
+      // We must update the generation last to ensure that an update is not
+      // lost.
+      ++hdr->blocked_sigs_generation;
+    }
   }
   hdr->in_sigprocmask_critical_section = 0;
 

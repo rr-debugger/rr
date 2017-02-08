@@ -1958,6 +1958,8 @@ void Task::reset_syscallbuf() {
             (uint32_t)0);
   write_mem(REMOTE_PTR_FIELD(syscallbuf_child, mprotect_record_count_completed),
             (uint32_t)0);
+  write_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs_generation),
+            (uint32_t)0);
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,

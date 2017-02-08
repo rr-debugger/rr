@@ -396,10 +396,6 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       auto hdr = t->read_mem(child_hdr);
       mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
                  sizeof(struct syscallbuf_record));
-      /* Zero out the shadow copy of blocked_sigs, we don't keep track of it
-      * during replay, so this makes sure we don't run into problems because
-      * of it. */
-      ((struct syscallbuf_hdr*)mem.data())->blocked_sigs = 0;
     }
 
     uint32_t checksum = compute_checksum(mem.data(), mem.size());
