@@ -187,7 +187,6 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       previously_blocked_sigs(),
       syscallbuf_blocked_sigs_generation(0),
       has_previously_blocked_sigs(false),
-      handling_deterministic_signal(0),
       flushed_num_rec_bytes(0),
       flushed_syscallbuf(false),
       delay_syscallbuf_reset(false),
@@ -1125,7 +1124,7 @@ void RecordTask::verify_signal_states() {
                                       << " to not be ignored, but it is";
       ASSERT(this, !(caught & mask)) << "Expected " << signal_name(sig)
                                      << " to not be caught, but it is";
-    } else if (sig != handling_deterministic_signal) {
+    } else {
       ASSERT(this, !!(blocked & mask) == is_sig_blocked(sig))
           << signal_name(sig)
           << ((blocked & mask) ? " is blocked" : " is not blocked");

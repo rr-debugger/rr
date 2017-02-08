@@ -620,7 +620,6 @@ public:
   sig_set_t previously_blocked_sigs;
   uint32_t syscallbuf_blocked_sigs_generation;
   bool has_previously_blocked_sigs;
-  int handling_deterministic_signal;
 
   // Syscallbuf state
 
