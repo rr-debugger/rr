@@ -17,8 +17,8 @@
         .text
 
         .set syscallbuf_stub_alt_stack, preload_thread_locals
-        .set stub_scratch_1, preload_thread_locals + 4
-        .set alt_stack_nesting_level, preload_thread_locals + 8
+        .set stub_scratch_1, preload_thread_locals + 8
+        .set alt_stack_nesting_level, preload_thread_locals + 12
 
         .p2align 4
 /* See comments about morestack below. For x86-32 our setup doesn't need to be
@@ -182,8 +182,8 @@ SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
 #elif defined(__x86_64__)
         .text
 
-        .set stub_scratch_1, preload_thread_locals + 8
-        .set alt_stack_nesting_level, preload_thread_locals + 16
+        .set stub_scratch_1, preload_thread_locals + 16
+        .set alt_stack_nesting_level, preload_thread_locals + 24
 
         .p2align 4
 _syscall_hook_trampoline:

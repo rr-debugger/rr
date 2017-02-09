@@ -205,6 +205,8 @@ struct preload_globals {
  */
 TEMPLATE_ARCH
 struct preload_thread_locals {
+  /* The offsets of these fields are hardcoded in syscall_hook.S and
+   * assembly_templates.py. Try to avoid changing them! */
   /* Pointer to alt-stack used by syscallbuf stubs (allocated at the end of
    * the scratch buffer */
   PTR(void) syscallbuf_stub_alt_stack;
@@ -215,6 +217,7 @@ struct preload_thread_locals {
   /* scratch space used by stub code */
   PTR(void) stub_scratch_1;
   int alt_stack_nesting_level;
+
   /* Nonzero when thread-local state like the syscallbuf has been
    * initialized.  */
   int thread_inited;
