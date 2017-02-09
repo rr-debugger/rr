@@ -1201,6 +1201,9 @@ static bool inject_handled_signal(RecordTask* t) {
 
   int sig = t->ev().Signal().siginfo.si_signo;
   t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
+  // Signal injection can change the sigmask due to sa_mask effects, lack of
+  // SA_NODEFER, and signal frame construction triggering a synchronous SIGSEGV.
+  t->invalidate_sigmask();
 
   // It's been observed that when tasks enter
   // sighandlers, the singlestep operation above
@@ -1217,17 +1220,10 @@ static bool inject_handled_signal(RecordTask* t) {
     // kill the process after this. Stash the signal and make sure
     // we know to treat it as fatal when we inject it. Also disable the
     // signal handler to match what the kernel does.
-    t->set_sig_blocked(SIGSEGV, false);
     t->set_sig_handler_default(SIGSEGV);
-
     t->stash_sig();
     t->task_group()->received_sigframe_SIGSEGV = true;
     return false;
-  }
-
-  t->apply_sig_sa_mask(sig);
-  if (!t->signal_handler_nodefer(sig)) {
-    t->set_sig_blocked(sig, true);
   }
 
   // We stepped into a user signal handler.
@@ -1259,15 +1255,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       t->ev().transform(EV_SIGNAL_DELIVERY);
       ssize_t sigframe_size = 0;
 
-      bool blocked = t->is_sig_blocked(sig);
-      // If this is the signal delivered by a sigsuspend, then clear
-      // sigsuspend_blocked_sigs to indicate that future signals are not
-      // being delivered by sigsuspend.
-      t->sigsuspend_blocked_sigs = nullptr;
-
-      bool has_handler = t->signal_has_user_handler(sig) && !blocked;
-      // If a signal is blocked but is still delivered (e.g. a synchronous
-      // terminating signal such as SIGSEGV), user handlers do not run.
+      bool has_handler = t->signal_has_user_handler(sig);
       if (has_handler) {
         LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
@@ -1276,7 +1264,6 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
           // Signal delivery isn't happening. Prepare to process the new
           // signal that aborted signal delivery.
           t->signal_delivered(sig);
-          t->restore_sigmask_if_saved();
           t->pop_signal_delivery();
           step_state->continue_type = DONT_CONTINUE;
           last_task_switchable = PREVENT_SWITCH;
@@ -1395,12 +1382,6 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
       t->signal_delivered(sig);
       t->pop_signal_delivery();
-      // The mask set by ppoll/pselect6 is restored, but only if there are no
-      // more actionable signals. The ordering is important, because there may
-      // be pending signals that will be unblocked when we restore the sigmask.
-      if (!has_other_signals) {
-        t->restore_sigmask_if_saved();
-      }
       last_task_switchable = can_switch;
       step_state->continue_type = DONT_CONTINUE;
       break;
@@ -1427,16 +1408,23 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
     // tests that force a degenerately low time slice.
     LOG(warn) << "Dropping " << signal_name(sig)
               << " because it can't be delivered yet";
+    // These signals might have effects on the sigmask.
+    t->invalidate_sigmask();
     // No events to be recorded, so no syscallbuf updates
     // needed.
     return true;
   }
   SignalDeterministic deterministic = is_deterministic_signal(t);
+  // The kernel might have forcibly unblocked the signal. Check whether it
+  // was blocked now, before we update our cached sigmask.
+  SignalBlocked signal_was_blocked =
+      t->is_sig_blocked(sig) ? SIG_BLOCKED : SIG_UNBLOCKED;
   if (deterministic || sig == SYSCALLBUF_DESCHED_SIGNAL) {
     // Don't stash these signals; deliver them immediately.
     // We don't want them to be reordered around other signals.
+    // invalidate_sigmask() must not be called before we reach handle_signal!
     siginfo_t siginfo = t->get_siginfo();
-    switch (handle_signal(t, &siginfo, deterministic)) {
+    switch (handle_signal(t, &siginfo, deterministic, signal_was_blocked)) {
       case SIGNAL_PTRACE_STOP:
         // Emulated ptrace-stop. Don't run the task again yet.
         last_task_switchable = ALLOW_SWITCH;
@@ -1451,6 +1439,9 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
     }
     return false;
   }
+  // Conservatively invalidate the sigmask in case just accepting a signal has
+  // sigmask effects.
+  t->invalidate_sigmask();
   if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
     auto& si = t->get_siginfo();
     /* This implementation will of course fall over if rr tries to
@@ -1657,7 +1648,8 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
     return prepare_to_inject_signal(t, step_state);
   }
 
-  switch (handle_signal(t, &si.linux_api, t->peek_stash_sig().deterministic)) {
+  switch (handle_signal(t, &si.linux_api, t->peek_stash_sig().deterministic,
+                        SIG_UNBLOCKED)) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;

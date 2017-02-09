@@ -55,6 +55,8 @@ public:
                       Session* other_session);
   virtual void on_syscall_exit(int syscallno, SupportedArch arch,
                                const Registers& regs);
+  virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
+                                     int /*sig*/);
   virtual void did_wait();
 
   /**
@@ -180,10 +182,6 @@ public:
    */
   bool signal_handler_takes_siginfo(int sig) const;
   /**
-   * Return true if SA_NODEFER is set for |sig|
-   */
-  bool signal_handler_nodefer(int sig) const;
-  /**
    * Return |sig|'s current sigaction. Returned as raw bytes since the
    * data is architecture-dependent.
    */
@@ -191,8 +189,6 @@ public:
   /** Return true iff |sig| is blocked for this. */
   bool is_sig_blocked(int sig);
 
-  /** Set |sig| to be treated as |blocked|. */
-  void set_sig_blocked(int sig, bool blocked);
   /**
    * Return true iff |sig| is SIG_IGN, or it's SIG_DFL and the
    * default disposition is "ignore".
@@ -202,15 +198,8 @@ public:
    * Set the siginfo for the signal-stop of this.
    */
   void set_siginfo(const siginfo_t& si);
-  /**
-   * Update this task's sigmask to be new_sigmask
-   */
-  void set_new_sigmask(uint64_t new_sigmask);
-  /**
-   * Update this task's sigmask to block all signals specified in sa_mask of
-   * |sig|'s current sigaction
-   */
-  void apply_sig_sa_mask(int sig);
+  /** Note that the task sigmask needs to be refetched. */
+  void invalidate_sigmask() { blocked_sigs_dirty = true; }
   /**
    * Reset the signal handler for this signal to the default.
    */
@@ -478,16 +467,6 @@ public:
    */
   void set_tid_and_update_serial(pid_t tid);
 
-  /**
-   * Save or restore the current sigmask (reloading it if necessary) to handle
-   * ppoll/pselect. If the sigmask is restored another way (e.g. because a
-   * signal handler was invoked) clear_saved_sigmask must be called.
-   */
-  void save_sigmask();
-  void restore_sigmask();
-  void restore_sigmask_if_saved();
-  void clear_saved_sigmask();
-
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();
 
@@ -519,8 +498,8 @@ private:
    * changes made to the mask by buffered syscalls.
    */
   sig_set_t get_sigmask();
-  void set_sigmask(sig_set_t mask);
   void update_sigmask_from_syscallbuf();
+  sig_set_t read_sigmask_from_process();
 
   void record_siginfo();
 
@@ -528,11 +507,6 @@ private:
    * Call this when SYS_sigaction is finishing with |regs|.
    */
   void update_sigaction(const Registers& regs);
-  /**
-   * Call this when the tracee is about to complete a
-   * SYS_rt_sigprocmask syscall with |regs|.
-   */
-  void update_sigmask(const Registers& regs);
   /**
    * Update the futex robust list head pointer to |list| (which
    * is of size |len|).
@@ -608,18 +582,15 @@ public:
   // And if this task exec()s, the table is copied and stripped
   // of user sighandlers (see below). */
   std::shared_ptr<Sighandlers> sighandlers;
-  // The set of signals that were blocked during a sigsuspend. Only present
-  // during the first EV_SIGNAL during an interrupted sigsuspend.
-  std::unique_ptr<sig_set_t> sigsuspend_blocked_sigs;
   // If not NOT_STOPPED, then the task is logically stopped and this is the type
   // of stop.
   EmulatedStopType emulated_stop_type;
+  // True if the task sigmask may have changed and we need to refetch it.
+  bool blocked_sigs_dirty;
   // Most accesses to this should use set_sigmask and get_sigmask to ensure
   // the mirroring to syscallbuf is correct.
   sig_set_t blocked_sigs;
-  sig_set_t previously_blocked_sigs;
   uint32_t syscallbuf_blocked_sigs_generation;
-  bool has_previously_blocked_sigs;
 
   // Syscallbuf state
 

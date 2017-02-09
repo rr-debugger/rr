@@ -2675,14 +2675,6 @@ static bool protect_rr_sigs(RecordTask* t, remote_ptr<void> p, void* save) {
   auto sig_set = t->read_mem(setp);
   auto new_sig_set = sig_set;
   new_sig_set &= ~rr_signal_mask();
-
-  auto syscallno = t->ev().Syscall().number;
-  if (syscallno == syscall_number_for_ppoll(t->arch()) ||
-      syscallno == syscall_number_for_pselect6(t->arch())) {
-    t->save_sigmask();
-    t->set_new_sigmask(new_sig_set);
-  }
-
   if (sig_set == new_sig_set) {
     return false;
   }
@@ -3090,6 +3082,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           syscall_state.reg_parameter<typename Arch::pselect6_arg6>(6, IN);
       syscall_state.mem_ptr_parameter_inferred(REMOTE_PTR_FIELD(arg6p, ss), IN,
                                                protect_rr_sigs);
+      t->invalidate_sigmask();
       return ALLOW_SWITCH;
     }
 
@@ -3395,6 +3388,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::timespec>(3, IN_OUT);
       syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(
           4, IN, protect_rr_sigs);
+      t->invalidate_sigmask();
     /* fall through */
     case Arch::poll: {
       auto nfds = (nfds_t)regs.arg2();
@@ -3721,12 +3715,6 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::siginfo_t>(2);
       return ALLOW_SWITCH;
 
-    case Arch::rt_sigsuspend:
-    case Arch::sigsuspend:
-      t->sigsuspend_blocked_sigs = unique_ptr<sig_set_t>(
-          new sig_set_t(t->read_mem(remote_ptr<sig_set_t>(regs.arg1()))));
-      return ALLOW_SWITCH;
-
     case Arch::rt_sigprocmask:
     case Arch::sigprocmask: {
       syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(3);
@@ -3917,11 +3905,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::shmdt:
       return PREVENT_SWITCH;
 
-    case Arch::sigreturn:
-      return process_sigreturn<Arch>(t);
+    case Arch::sigsuspend:
+    case Arch::rt_sigsuspend:
+      t->invalidate_sigmask();
+      return ALLOW_SWITCH;
 
+    case Arch::sigreturn:
     case Arch::rt_sigreturn:
-      return process_rt_sigreturn<Arch>(t);
+      t->invalidate_sigmask();
+      return PREVENT_SWITCH;
 
     case Arch::mq_timedreceive: {
       syscall_state.reg_parameter(
@@ -3958,39 +3950,6 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.expect_errno = ENOSYS;
       return PREVENT_SWITCH;
   }
-}
-
-template <> Switchable process_sigreturn<X64Arch>(RecordTask* t) {
-  ASSERT(t, "sigreturn should not be callable on x86_64");
-  t->clear_saved_sigmask();
-  return PREVENT_SWITCH;
-}
-
-template <> Switchable process_sigreturn<X86Arch>(RecordTask* t) {
-  auto frameptr = (t->regs().sp() - 8).cast<typename X86Arch::sigframe>();
-  auto oldmaskptrlow =
-      REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(frameptr, sc), oldmask);
-  auto oldmaskptrhigh = REMOTE_PTR_FIELD(frameptr, extramask);
-  uint64_t oldmask = t->read_mem(oldmaskptrlow) |
-                     (((uint64_t)t->read_mem(oldmaskptrhigh)) << 32);
-  t->set_new_sigmask(oldmask);
-  t->clear_saved_sigmask();
-  return PREVENT_SWITCH;
-}
-
-template <typename Arch> Switchable process_rt_sigreturn(RecordTask* t) {
-  auto frameptr = (t->regs().sp() - sizeof(typename Arch::unsigned_word))
-                      .cast<typename Arch::rt_sigframe>();
-  auto oldmaskptr =
-      REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(frameptr, uc), uc_sigmask);
-  // User space sigset_t is larger than the kernel one, but since we only
-  // care about what the kernel sees, load that one.
-  static_assert(sizeof(typename Arch::kernel_sigset_t) == sizeof(uint64_t),
-                "Kernel mask size grew?");
-  uint64_t oldmask = t->read_mem(oldmaskptr.template cast<uint64_t>());
-  t->set_new_sigmask(oldmask);
-  t->clear_saved_sigmask();
-  return PREVENT_SWITCH;
 }
 
 static Switchable rec_prepare_syscall_internal(
@@ -4037,6 +3996,12 @@ static void rec_prepare_restart_syscall_arch(RecordTask* t,
        * outparam at the -ERESTART_RESTART interruption
        * regardless. */
       syscall_state.process_syscall_results();
+      break;
+    case Arch::ppoll:
+    case Arch::pselect6:
+    case Arch::sigsuspend:
+    case Arch::rt_sigsuspend:
+      t->invalidate_sigmask();
       break;
     case Arch::wait4:
     case Arch::waitid:
@@ -4769,11 +4734,6 @@ static void rec_process_syscall_arch(RecordTask* t,
       }
       break;
     }
-
-    case Arch::rt_sigsuspend:
-    case Arch::sigsuspend:
-      t->sigsuspend_blocked_sigs = nullptr;
-      break;
 
     case Arch::perf_event_open:
       if (t->regs().original_syscallno() == Arch::inotify_init) {

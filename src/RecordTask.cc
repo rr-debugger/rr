@@ -31,11 +31,7 @@ enum SignalDisposition { SIGNAL_DEFAULT, SIGNAL_IGNORE, SIGNAL_HANDLER };
  * the |refcount|s while they still refer to this.
  */
 struct Sighandler {
-  Sighandler()
-      : resethand(false),
-        takes_siginfo(false),
-        nodefer_set(false),
-        sa_mask(0) {}
+  Sighandler() : resethand(false), takes_siginfo(false) {}
 
   template <typename Arch>
   void init_arch(const typename Arch::kernel_sigaction& ksa) {
@@ -44,10 +40,6 @@ struct Sighandler {
     memcpy(sa.data(), &ksa, sizeof(ksa));
     resethand = (ksa.sa_flags & SA_RESETHAND) != 0;
     takes_siginfo = (ksa.sa_flags & SA_SIGINFO) != 0;
-    nodefer_set = (ksa.sa_flags & SA_NODEFER) != 0;
-    static_assert(sizeof(ksa.sa_mask) == sizeof(sa_mask),
-                  "Kernel mask size grew?");
-    memcpy(&sa_mask, &ksa.sa_mask, sizeof(ksa.sa_mask));
   }
 
   template <typename Arch> void reset_arch() {
@@ -81,8 +73,6 @@ struct Sighandler {
   vector<uint8_t> sa;
   bool resethand;
   bool takes_siginfo;
-  bool nodefer_set;
-  uint64_t sa_mask;
 };
 
 static void reset_handler(Sighandler* handler, SupportedArch arch) {
@@ -183,10 +173,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       in_wait_type(WAIT_TYPE_NONE),
       in_wait_pid(0),
       emulated_stop_type(NOT_STOPPED),
-      blocked_sigs(),
-      previously_blocked_sigs(),
+      blocked_sigs_dirty(true),
       syscallbuf_blocked_sigs_generation(0),
-      has_previously_blocked_sigs(false),
       flushed_num_rec_bytes(0),
       flushed_syscallbuf(false),
       delay_syscallbuf_reset(false),
@@ -206,12 +194,6 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
     auto sh = Sighandlers::create();
     sh->init_from_current_process();
     sighandlers.swap(sh);
-    // Don't use the POSIX wrapper, because it doesn't necessarily
-    // read the entire sigset tracked by the kernel.
-    if (::syscall(SYS_rt_sigprocmask, SIG_SETMASK, nullptr, &blocked_sigs,
-                  sizeof(blocked_sigs))) {
-      FATAL() << "Failed to read blocked signals";
-    }
   }
 }
 
@@ -318,7 +300,6 @@ Task* RecordTask::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   if (t->session().is_recording()) {
     RecordTask* rt = static_cast<RecordTask*>(t);
     rt->priority = priority;
-    rt->blocked_sigs = get_sigmask();
     rt->prctl_seccomp_status = prctl_seccomp_status;
     rt->robust_futex_list = robust_futex_list;
     rt->robust_futex_list_len = robust_futex_list_len;
@@ -351,11 +332,7 @@ static string exe_path(RecordTask* t) {
 }
 
 void RecordTask::post_exec() {
-  // We usually only reload this value from the syscallbuf when needed.
-  // However, since we're about to get rid of the syscallbuf hdr, which
-  // holds this value, we need to make sure to update the value here
-  // to avoid seeing it stale after the exec.
-  blocked_sigs = get_sigmask();
+  // The signal mask is inherited across execve so we don't need to invalidate.
 
   string exe_file = exe_path(this);
   Task::post_exec(exe_file);
@@ -437,7 +414,6 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
   if (as->syscallbuf_enabled()) {
     args.syscallbuf_size = syscallbuf_size = session().syscall_buffer_size();
     KernelMapping syscallbuf_km = init_syscall_buffer(remote, nullptr);
-    set_sigmask(blocked_sigs);
     args.syscallbuf_ptr = syscallbuf_child;
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
@@ -512,28 +488,17 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       // TODO: SYS_signal
       update_sigaction(regs);
       return;
-    case Arch::sigprocmask:
-    case Arch::rt_sigprocmask:
-      update_sigmask(regs);
-      return;
     case Arch::set_tid_address:
       set_tid_addr(regs.arg1());
       return;
-    case Arch::ppoll: {
-      remote_ptr<sig_set_t> setp = regs.arg4();
-      if (!setp.is_null()) {
-        restore_sigmask();
-      }
+    case Arch::sigsuspend:
+    case Arch::rt_sigsuspend:
+    case Arch::sigprocmask:
+    case Arch::rt_sigprocmask:
+    case Arch::pselect6:
+    case Arch::ppoll:
+      invalidate_sigmask();
       return;
-    }
-    case Arch::pselect6: {
-      remote_ptr<typename Arch::pselect6_arg6> setp = regs.arg6();
-      auto ss = REMOTE_PTR_FIELD(setp, ss);
-      if (!setp.is_null() && read_mem(ss)) {
-        restore_sigmask();
-      }
-      return;
-    }
   }
 }
 
@@ -545,9 +510,7 @@ void RecordTask::on_syscall_exit(int syscallno, SupportedArch arch,
   });
 }
 
-void RecordTask::did_wait() {
-  update_sigmask_from_syscallbuf();
-}
+void RecordTask::did_wait() { update_sigmask_from_syscallbuf(); }
 
 void RecordTask::set_emulated_ptracer(RecordTask* tracer) {
   if (tracer) {
@@ -931,10 +894,6 @@ bool RecordTask::signal_handler_takes_siginfo(int sig) const {
   return sighandlers->get(sig).takes_siginfo;
 }
 
-bool RecordTask::signal_handler_nodefer(int sig) const {
-  return sighandlers->get(sig).nodefer_set;
-}
-
 static bool is_unstoppable_signal(int sig) {
   return sig == SIGSTOP || sig == SIGKILL;
 }
@@ -945,27 +904,7 @@ bool RecordTask::is_sig_blocked(int sig) {
     return false;
   }
   int sig_bit = sig - 1;
-  if (sigsuspend_blocked_sigs) {
-    return (*sigsuspend_blocked_sigs >> sig_bit) & 1;
-  }
   return (get_sigmask() >> sig_bit) & 1;
-}
-
-void RecordTask::set_sig_blocked(int sig, bool blocked) {
-  uint64_t mask = uint64_t(1) << (sig - 1);
-  sig_set_t sigs = get_sigmask();
-  if (blocked) {
-    sigs |= mask;
-  } else {
-    sigs &= ~mask;
-  }
-  set_sigmask(sigs);
-}
-
-void RecordTask::apply_sig_sa_mask(int sig) {
-  sig_set_t sigs = get_sigmask();
-  sigs |= sighandlers->get(sig).sa_mask;
-  set_sigmask(sigs);
 }
 
 bool RecordTask::is_sig_ignored(int sig) const {
@@ -1008,92 +947,57 @@ void RecordTask::update_sigaction(const Registers& regs) {
   RR_ARCH_FUNCTION(update_sigaction_arch, regs.arch(), regs);
 }
 
-void RecordTask::set_new_sigmask(uint64_t new_sigmask) {
-  set_sigmask(new_sigmask);
-}
-
-void RecordTask::update_sigmask(const Registers& regs) {
-  int how = regs.arg1_signed();
-  remote_ptr<sig_set_t> setp = regs.arg2();
-
-  if (regs.syscall_failed() || !setp) {
-    return;
+void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
+                                       TicksRequest ticks_request,
+                                       int /*sig*/) {
+  if (ticks_request != RESUME_NO_TICKS) {
+    // We will execute user code, which could lead to an RDTSC or grow-map
+    // operation which unblocks SIGSEGV, and we'll need to know whether to
+    // re-block it. So we need our cached sigmask to be up to date.
+    get_sigmask();
   }
-
-  auto set = read_mem(setp);
-  sig_set_t sigs = get_sigmask();
-
-  // Update the blocked signals per |how|.
-  switch (how) {
-    case SIG_BLOCK:
-      sigs |= set;
-      break;
-    case SIG_UNBLOCK:
-      sigs &= ~set;
-      break;
-    case SIG_SETMASK:
-      sigs = set;
-      break;
-    default:
-      FATAL() << "Unknown sigmask manipulator " << how;
-  }
-
-  // Our signals are never blocked.
-  sigs &= ~rr_signal_mask();
-  set_sigmask(sigs);
 }
 
 void RecordTask::update_sigmask_from_syscallbuf() {
   if (syscallbuf_child) {
-    uint32_t syscallbuf_generation =
-        read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs_generation));
-    if (syscallbuf_generation > syscallbuf_blocked_sigs_generation) {
-      syscallbuf_blocked_sigs_generation = syscallbuf_generation;
-      blocked_sigs = read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs));
-    }
-  }
-}
-
-sig_set_t RecordTask::get_sigmask() {
-  if (syscallbuf_child) {
     if (read_mem(REMOTE_PTR_FIELD(syscallbuf_child,
                                   in_sigprocmask_critical_section))) {
       // |blocked_sigs| may have been updated but the syscall not yet issued.
-      // Get the current sigmask from /proc.
-      // We minimize reading from the kernel's mask because the kernel sometimes
-      // forcibly unblocks signals (see restore_signal_state) and we don't want
-      // to think the application did it.
-      auto results = read_proc_status_fields(tid, "SigBlk");
-      ASSERT(this, results.size() == 1);
-      return strtoull(results[0].c_str(), NULL, 16);
+      // Use the kernel's value.
+      invalidate_sigmask();
+    } else {
+      uint32_t syscallbuf_generation =
+          read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs_generation));
+      if (syscallbuf_generation > syscallbuf_blocked_sigs_generation) {
+        syscallbuf_blocked_sigs_generation = syscallbuf_generation;
+        blocked_sigs =
+            read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs));
+      }
     }
+  }
+}
+
+sig_set_t RecordTask::read_sigmask_from_process() {
+  sig_set_t mask;
+  long ret = fallible_ptrace(PTRACE_GETSIGMASK,
+                             remote_ptr<void>(sizeof(sig_set_t)), &mask);
+  if (ret >= 0) {
+    return mask;
+  }
+
+  auto results = read_proc_status_fields(tid, "SigBlk");
+  ASSERT(this, results.size() == 1);
+  return strtoull(results[0].c_str(), NULL, 16);
+}
+
+sig_set_t RecordTask::get_sigmask() {
+  if (blocked_sigs_dirty) {
+    blocked_sigs = read_sigmask_from_process();
+    LOG(debug) << "Refreshed sigmask, now " << HEX(blocked_sigs);
+    blocked_sigs_dirty = false;
   }
   return blocked_sigs;
 }
-
-void RecordTask::set_sigmask(sig_set_t sigs) {
-  blocked_sigs = sigs;
-}
-
-void RecordTask::save_sigmask() {
-  ASSERT(this, !has_previously_blocked_sigs);
-  previously_blocked_sigs = get_sigmask();
-  has_previously_blocked_sigs = true;
-}
-
-void RecordTask::restore_sigmask() {
-  ASSERT(this, has_previously_blocked_sigs);
-  set_sigmask(previously_blocked_sigs);
-  clear_saved_sigmask();
-}
-
-void RecordTask::restore_sigmask_if_saved() {
-  if (has_previously_blocked_sigs) {
-    restore_sigmask();
-  }
-}
-
-void RecordTask::clear_saved_sigmask() { has_previously_blocked_sigs = false; }
 
 void RecordTask::set_sig_handler_default(int sig) {
   Sighandler& h = sighandlers->get(sig);
@@ -1562,13 +1466,8 @@ bool RecordTask::is_fatal_signal(int sig, SignalDeterministic deterministic) {
     // Deterministic fatal signals can't be ignored.
     return deterministic == DETERMINISTIC_SIG;
   }
-  if (!signal_has_user_handler(sig)) {
-    // The default action is going to happen: killing the process.
-    return true;
-  }
-  // If the signal's blocked, user handlers aren't going to run and the process
-  // will die.
-  return is_sig_blocked(sig);
+  // If there's a signal handler, the signal won't be fatal.
+  return !signal_has_user_handler(sig);
 }
 
 void RecordTask::record_siginfo() {

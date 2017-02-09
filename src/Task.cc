@@ -206,26 +206,31 @@ const siginfo_t& Task::get_siginfo() {
  */
 void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
-  unmap_buffers_for(remote, this);
-  scratch_ptr = nullptr;
+  auto saved_syscallbuf_child = syscallbuf_child;
+  // Clear syscallbuf_child now so nothing tries to use it while tearing
+  // down buffers.
   syscallbuf_child = nullptr;
+  unmap_buffers_for(remote, this, saved_syscallbuf_child);
+  scratch_ptr = nullptr;
   close_buffers_for(remote, this);
   desched_fd_child = -1;
   cloned_file_data_fd_child = -1;
 }
 
-void Task::unmap_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
+void Task::unmap_buffers_for(
+    AutoRemoteSyscalls& remote, Task* other,
+    remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child) {
   if (other->scratch_ptr) {
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               other->scratch_ptr, other->scratch_size);
     vm()->unmap(this, other->scratch_ptr, other->scratch_size);
   }
-  if (!other->syscallbuf_child.is_null()) {
+  if (!saved_syscallbuf_child.is_null()) {
     uint8_t* local_mapping =
-        vm()->mapping_of(other->syscallbuf_child).local_addr;
+        vm()->mapping_of(saved_syscallbuf_child).local_addr;
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
-                              other->syscallbuf_child, other->syscallbuf_size);
-    vm()->unmap(this, other->syscallbuf_child, other->syscallbuf_size);
+                              saved_syscallbuf_child, other->syscallbuf_size);
+    vm()->unmap(this, saved_syscallbuf_child, other->syscallbuf_size);
     if (local_mapping) {
       int ret = munmap(local_mapping, other->syscallbuf_size);
       ASSERT(this, ret >= 0);
@@ -1646,7 +1651,7 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
       AutoRemoteSyscalls remote(t);
       for (Task* tt : as->task_set()) {
         if (tt != this) {
-          t->unmap_buffers_for(remote, tt);
+          t->unmap_buffers_for(remote, tt, tt->syscallbuf_child);
         }
       }
     }
