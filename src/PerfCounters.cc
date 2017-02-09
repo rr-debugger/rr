@@ -157,6 +157,7 @@ static CpuMicroarch get_cpu_microarch() {
     case 0x50670:
       return IntelSilvermont;
     case 0x806e0:
+    case 0x906e0:
       return IntelKabylake;
     default:
       FATAL() << "CPU " << HEX(cpu_type) << " unknown.";
