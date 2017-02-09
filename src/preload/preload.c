@@ -796,14 +796,6 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex) {
  */
 
 static void* prep_syscall(void) {
-  if (!thread_locals->buffer) {
-    return NULL;
-  }
-  if (buffer_hdr()->locked) {
-    /* We may be reentering via a signal handler. Return
-     * an invalid pointer. */
-    return NULL;
-  }
   /* We don't need to worry about a race between testing
    * |locked| and setting it here. rr recording is responsible
    * for ensuring signals are not delivered during
@@ -2548,6 +2540,11 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
   // Initialize thread-local state if this is the first syscall for this
   // thread.
   init_thread();
+
+  if (!thread_locals->buffer || buffer_hdr()->locked) {
+    /* We may be reentering via a signal handler. Bail. */
+    return traced_raw_syscall(call);
+  }
 
   long result = syscall_hook_internal(call);
   if (buffer_hdr() && buffer_hdr()->notify_on_syscall_hook_exit) {
