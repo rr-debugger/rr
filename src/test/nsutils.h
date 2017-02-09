@@ -89,7 +89,8 @@ static int try_setup_ns_internal(int ns_kind, int expect_to_be_root) {
     err = unshare(ns_kind | CLONE_NEWUSER);
 
     if (err == -1) {
-      test_assert(errno == EPERM);
+      // `EINVAL` is returned if the namespace is not supported/enabled.
+      test_assert(errno == EPERM || errno == EINVAL);
       atomic_puts("Skipping test because namespaces are\n"
                   "not available at this privilege level");
       return -1;
