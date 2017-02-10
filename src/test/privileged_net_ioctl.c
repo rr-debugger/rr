@@ -95,8 +95,15 @@ int main(void) {
     test_assert(msg_len == sendmsg(fd, &hdr, 0));
     test_assert(-1 != recvmsg(fd, &hdr, 0));
     errno = -((struct nlmsgerr*)&(((struct nlmsghdr*)buf)[1]))->error;
-    test_assert(((struct nlmsghdr*)buf)->nlmsg_type != NLMSG_ERROR ||
-                errno == 0);
+    if (((struct nlmsghdr*)buf)->nlmsg_type == NLMSG_ERROR) {
+      if (errno == ENOTSUP) {
+        atomic_puts("Skipping test because veth device creation\n"
+                    "is not supported by this kernel.");
+        atomic_puts("EXIT-SUCCESS");
+        return 0;
+      }
+      test_assert(errno == 0);
+    }
     free(buf);
   }
 
