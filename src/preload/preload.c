@@ -663,91 +663,6 @@ static void __attribute__((constructor)) init_process(void) {
 }
 
 /**
- * In a thread newly created by |pthread_create()|, first initialize
- * thread-local internal rr data, then trampoline into the user's
- * thread function.
- */
-struct thread_func_data {
-  void* (*start_routine)(void*);
-  void* arg;
-};
-
-static void* thread_trampoline(void* arg) {
-  struct thread_func_data data = *(struct thread_func_data*)arg;
-  free(arg);
-
-  return data.start_routine(data.arg);
-}
-
-/**
- * Interpose |pthread_create()| so that we can use a custom trampoline
- * function (see above) that initializes rr thread-local data for new
- * threads.
- *
- * This is a wrapper of |pthread_create()|, but not like the ones
- * below: we don't wrap |pthread_create()| in order to buffer its
- * syscalls, rather in order to initialize rr thread data.
- */
-int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
-                   void* (*start_routine)(void*), void* arg) {
-  struct thread_func_data* data = xmalloc(sizeof(*data));
-  int ret;
-
-  /* Init syscallbuf now if we haven't yet (e.g. if pthread_create is called
-   * during library initialization before our preload library).
-   * This also fetches real_pthread_create which we'll need below. */
-  init_process();
-
-  data->start_routine = start_routine;
-  data->arg = arg;
-  ret = real_pthread_create(thread, attr, thread_trampoline, data);
-  return ret;
-}
-
-#define PTHREAD_MUTEX_TYPE_MASK 3
-#define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
-
-static void fix_mutex_kind(pthread_mutex_t* mutex) {
-  /* Disable priority inheritance. */
-  mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
-}
-
-/*
- * We bind directly to __pthread_mutex_lock and __pthread_mutex_trylock
- * because setting up indirect function pointers in init_process requires
- * calls to dlsym which itself can call pthread_mutex_lock (e.g. via
- * application code overriding malloc/calloc to use a pthreads-based
- * implementation).
- */
-extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
-extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
-
-/* Prevent use of lock elision; Haswell's TSX/RTM features used by
-   lock elision increment the rbc perf counter for instructions which
-   are later rolled back if the transaction fails. */
-int pthread_mutex_lock(pthread_mutex_t* mutex) {
-  fix_mutex_kind(mutex);
-  return __pthread_mutex_lock(mutex);
-}
-
-int pthread_mutex_timedlock(pthread_mutex_t* mutex,
-                            const struct timespec* abstime) {
-  fix_mutex_kind(mutex);
-  /* No __pthread_mutex_timedlock stub exists, so we have to use the
-   * indirect call.
-   */
-  if (!real_pthread_mutex_timedlock) {
-    real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
-  }
-  return real_pthread_mutex_timedlock(mutex, abstime);
-}
-
-int pthread_mutex_trylock(pthread_mutex_t* mutex) {
-  fix_mutex_kind(mutex);
-  return __pthread_mutex_trylock(mutex);
-}
-
-/**
  * syscall hooks start here.
  *
  * !!! NBB !!!: from here on, all code that executes within the
@@ -2593,6 +2508,93 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     thread_locals->notify_control_msg = NULL;
   }
   return result;
+}
+
+/* Non-syscallbuf function overrides start here */
+
+/**
+ * In a thread newly created by |pthread_create()|, first initialize
+ * thread-local internal rr data, then trampoline into the user's
+ * thread function.
+ */
+struct thread_func_data {
+  void* (*start_routine)(void*);
+  void* arg;
+};
+
+static void* thread_trampoline(void* arg) {
+  struct thread_func_data data = *(struct thread_func_data*)arg;
+  free(arg);
+
+  return data.start_routine(data.arg);
+}
+
+/**
+ * Interpose |pthread_create()| so that we can use a custom trampoline
+ * function (see above) that initializes rr thread-local data for new
+ * threads.
+ *
+ * This is a wrapper of |pthread_create()|, but not like the ones
+ * below: we don't wrap |pthread_create()| in order to buffer its
+ * syscalls, rather in order to initialize rr thread data.
+ */
+int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
+                   void* (*start_routine)(void*), void* arg) {
+  struct thread_func_data* data = xmalloc(sizeof(*data));
+  int ret;
+
+  /* Init syscallbuf now if we haven't yet (e.g. if pthread_create is called
+   * during library initialization before our preload library).
+   * This also fetches real_pthread_create which we'll need below. */
+  init_process();
+
+  data->start_routine = start_routine;
+  data->arg = arg;
+  ret = real_pthread_create(thread, attr, thread_trampoline, data);
+  return ret;
+}
+
+#define PTHREAD_MUTEX_TYPE_MASK 3
+#define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
+
+static void fix_mutex_kind(pthread_mutex_t* mutex) {
+  /* Disable priority inheritance. */
+  mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
+}
+
+/*
+ * We bind directly to __pthread_mutex_lock and __pthread_mutex_trylock
+ * because setting up indirect function pointers in init_process requires
+ * calls to dlsym which itself can call pthread_mutex_lock (e.g. via
+ * application code overriding malloc/calloc to use a pthreads-based
+ * implementation).
+ */
+extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
+extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
+
+/* Prevent use of lock elision; Haswell's TSX/RTM features used by
+   lock elision increment the rbc perf counter for instructions which
+   are later rolled back if the transaction fails. */
+int pthread_mutex_lock(pthread_mutex_t* mutex) {
+  fix_mutex_kind(mutex);
+  return __pthread_mutex_lock(mutex);
+}
+
+int pthread_mutex_timedlock(pthread_mutex_t* mutex,
+                            const struct timespec* abstime) {
+  fix_mutex_kind(mutex);
+  /* No __pthread_mutex_timedlock stub exists, so we have to use the
+   * indirect call.
+   */
+  if (!real_pthread_mutex_timedlock) {
+    real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
+  }
+  return real_pthread_mutex_timedlock(mutex, abstime);
+}
+
+int pthread_mutex_trylock(pthread_mutex_t* mutex) {
+  fix_mutex_kind(mutex);
+  return __pthread_mutex_trylock(mutex);
 }
 
 /**
