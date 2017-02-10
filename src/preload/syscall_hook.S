@@ -1,5 +1,8 @@
         .set preload_thread_locals,0x70001000
 
+        .global _syscallbuf_code_start
+        .hidden _syscallbuf_code_start
+
 #if defined(__i386__)
 /**
  * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
@@ -21,6 +24,8 @@
         .set alt_stack_nesting_level, preload_thread_locals + 12
 
         .p2align 4
+_syscallbuf_code_start:
+
 /* See comments about morestack below. For x86-32 our setup doesn't need to be
    as elaborate since we really only care about one entry function. */
 __morestack:
@@ -179,6 +184,35 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_90_90_90)
         call _syscall_hook_trampoline
 SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
 
+/* Declare gcc get_pc thunks here so they're in a known region of code */
+
+        .global _get_pc_thunks_start
+        .hidden _get_pc_thunks_start
+_get_pc_thunks_start:
+
+#define THUNK(name, reg) \
+        .section        .text.__x86.get_pc_thunk.name,"axG",@progbits,__x86.get_pc_thunk.name,comdat; \
+        .global  __x86.get_pc_thunk.name; \
+        .hidden __x86.get_pc_thunk.name; \
+        .type   __x86.get_pc_thunk.name, @function; \
+__x86.get_pc_thunk.name: \
+        .cfi_startproc; \
+        movl    (%esp), %reg; \
+        ret; \
+        .cfi_endproc
+
+THUNK(ax, eax)
+THUNK(bx, ebx)
+THUNK(cx, ecx)
+THUNK(dx, edx)
+THUNK(si, esi)
+THUNK(di, edi)
+THUNK(bp, ebp)
+
+        .global _get_pc_thunks_end
+        .hidden _get_pc_thunks_end
+_get_pc_thunks_end:
+
 #elif defined(__x86_64__)
         .text
 
@@ -186,6 +220,8 @@ SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
         .set alt_stack_nesting_level, preload_thread_locals + 24
 
         .p2align 4
+_syscallbuf_code_start:
+
 _syscall_hook_trampoline:
         .cfi_startproc
         /* Save RBX because we need a callee-saves register */

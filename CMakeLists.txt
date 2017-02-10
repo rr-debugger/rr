@@ -177,11 +177,12 @@ include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 add_library(rrpreload
+  src/preload/syscall_hook.S
   src/preload/preload.c
   src/preload/raw_syscall.S
-  src/preload/syscall_hook.S
   src/preload/breakpoint_table.S
 )
+set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles")
 
 # Ensure that CMake knows about our generated files.
 #
@@ -400,12 +401,12 @@ if(rr_32BIT AND rr_64BIT)
   endforeach(file)
 
   add_library(rrpreload_32
+    32/syscall_hook.S
     32/preload.c
     32/raw_syscall.S
-    32/syscall_hook.S
     32/breakpoint_table.S
   )
-  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS -m32)
+  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles")
   target_link_libraries(rrpreload_32
     ${CMAKE_DL_LIBS}
   )
