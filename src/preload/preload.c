@@ -100,14 +100,6 @@ struct btrfs_ioctl_clone_range_args {
 #endif
 #define syscall you_must_use_traced_syscall
 
-static void* xmalloc(size_t size) {
-  void* mem_ptr = malloc(size);
-  if (!mem_ptr) {
-    abort();
-  }
-  return mem_ptr;
-}
-
 #define RR_HIDDEN __attribute__((visibility("hidden")))
 
 /**
@@ -129,13 +121,10 @@ static struct preload_globals globals;
 static struct preload_thread_locals* const thread_locals =
     (struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR;
 
-/* Points at the libc/pthread pthread_create().  We wrap
- * pthread_create, so need to retain this pointer to call out to the
- * libc version. There is no __pthread_create stub to call. There are
- * some explicitly-versioned stubs but let's not use those. */
-static int (*real_pthread_create)(pthread_t* thread, const pthread_attr_t* attr,
-                                  void* (*start_routine)(void*), void* arg);
-
+/* Points at the libc/pthread real_pthread_mutex_timedlock().  We wrap
+ * real_pthread_mutex_timedlock(), so need to retain this pointer to call
+ * out to the libc version. There is no __pthread_mutex_timedlock stub to call.
+ * There are some explicitly-versioned stubs but let's not use those. */
 static int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
                                            const struct timespec* abstime);
 
@@ -559,11 +548,6 @@ static void __attribute__((constructor)) init_process(void) {
     /* Our vdso syscall patch has 'int 80' followed by onp; nop; nop */
     { 0, 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };
-
-  /* Load GLIBC 2.1 version of pthread_create. Otherwise we may get the 2.0
-     version, which cannot handle the pthread_attr values passed by callers
-     expecting to call the glibc 2.1 version. */
-  real_pthread_create = dlvsym(RTLD_NEXT, "pthread_create", "GLIBC_2.1");
 #elif defined(__x86_64__)
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_00_f0_ff_ff(void);
@@ -629,8 +613,6 @@ static void __attribute__((constructor)) init_process(void) {
       { 0x89, 0xc1, 0x31, 0xd2 },
       (uintptr_t)_syscall_hook_trampoline_89_c1_31_d2 }
   };
-
-  real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
 #else
 #error Unknown architecture
 #endif
@@ -2511,48 +2493,6 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
 }
 
 /* Non-syscallbuf function overrides start here */
-
-/**
- * In a thread newly created by |pthread_create()|, first initialize
- * thread-local internal rr data, then trampoline into the user's
- * thread function.
- */
-struct thread_func_data {
-  void* (*start_routine)(void*);
-  void* arg;
-};
-
-static void* thread_trampoline(void* arg) {
-  struct thread_func_data data = *(struct thread_func_data*)arg;
-  free(arg);
-
-  return data.start_routine(data.arg);
-}
-
-/**
- * Interpose |pthread_create()| so that we can use a custom trampoline
- * function (see above) that initializes rr thread-local data for new
- * threads.
- *
- * This is a wrapper of |pthread_create()|, but not like the ones
- * below: we don't wrap |pthread_create()| in order to buffer its
- * syscalls, rather in order to initialize rr thread data.
- */
-int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
-                   void* (*start_routine)(void*), void* arg) {
-  struct thread_func_data* data = xmalloc(sizeof(*data));
-  int ret;
-
-  /* Init syscallbuf now if we haven't yet (e.g. if pthread_create is called
-   * during library initialization before our preload library).
-   * This also fetches real_pthread_create which we'll need below. */
-  init_process();
-
-  data->start_routine = start_routine;
-  data->arg = arg;
-  ret = real_pthread_create(thread, attr, thread_trampoline, data);
-  return ret;
-}
 
 #define PTHREAD_MUTEX_TYPE_MASK 3
 #define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
