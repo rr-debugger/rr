@@ -115,6 +115,10 @@ bool Command::parse_option(std::vector<std::string>& args,
           }
           return false;
         case HAS_PARAMETER:
+          if (args[0][2] == '=') {
+            assign_param(out, args[0].c_str() + 3);
+            return consume_args(args, 1);
+          }
           if (args[0][2] != 0) {
             assign_param(out, args[0].c_str() + 2);
             return consume_args(args, 1);
