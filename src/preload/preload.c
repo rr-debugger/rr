@@ -102,6 +102,7 @@ static int buffer_enabled;
 static int process_inited;
 
 RR_HIDDEN struct preload_globals globals;
+RR_HIDDEN int impose_syscall_delay;
 
 static struct preload_thread_locals* const thread_locals =
     (struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR;
@@ -1562,8 +1563,7 @@ static long sys_open(const struct syscall_info* call) {
  * directly and doesn't go through a PLT thunk (which would mean temporarily
  * leaving syscallbuf code).
  */
-__attribute__((visibility("protected"))) void __before_poll_syscall_breakpoint(
-    void) {}
+__attribute__ ((visibility ("protected"))) void __before_poll_syscall_breakpoint(void) {}
 
 static long sys_poll(const struct syscall_info* call) {
   const int syscallno = SYS_poll;
@@ -2379,6 +2379,17 @@ static long syscall_hook_internal(const struct syscall_info* call) {
   }
 }
 
+/* Delay for testing purposes */
+static void do_delay(void) {
+  int i;
+  int result = 0;
+  for (i = 0; i < 10000000; ++i) {
+    result += i * i;
+  }
+  // Make sure result is used so this doesn't get optimized away
+  impose_syscall_delay = result | 1;
+}
+
 /* Explicitly declare this as hidden so we can call it from
  * _syscall_hook_trampoline without doing all sorts of special PIC handling.
  */
@@ -2390,6 +2401,10 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
   if (!thread_locals->buffer || buffer_hdr()->locked) {
     /* We may be reentering via a signal handler. Bail. */
     return traced_raw_syscall(call);
+  }
+
+  if (impose_syscall_delay) {
+    do_delay();
   }
 
   long result = syscall_hook_internal(call);

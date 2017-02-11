@@ -16,6 +16,6 @@ struct syscall_info {
 
 RR_HIDDEN extern struct preload_globals globals;
 
-RR_HIDDEN long syscall_hook(const struct syscall_info* call);
+RR_HIDDEN extern int impose_syscall_delay;
 
 #endif /* RR_SYSCALLBUF_H_ */

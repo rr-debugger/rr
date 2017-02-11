@@ -110,23 +110,19 @@ void* XShmCreateImage(__attribute__((unused)) register void* dpy,
  * This is for testing purposes only.
  */
 void delayed_syscall(struct syscall_info* info) {
-  int i;
-  int result = 0;
-  for (i = 0; i < 10000000; ++i) {
-    result += i * i;
-  }
+  impose_syscall_delay = 1;
   /* Make sure 'result' is used so it's not optimized out! */
-  info->args[5] = result;
-  syscall_hook(info);
+  syscall(info->no, info->args[0], info->args[1], info->args[2],
+          info->args[3], info->args[4], info->args[5]);
+  impose_syscall_delay = 0;
 }
 
 /**
  * glibc geteuid() can be compiled to instructions ending in "syscall; ret"
- * which can't be hooked. So override it here and call the hook directly.
+ * which can't be hooked. So override it here with something that can be hooked.
  */
 uid_t geteuid(void) {
-  struct syscall_info call = { SYS_geteuid, { 0, 0, 0, 0, 0, 0 } };
-  return syscall_hook(&call);
+  return syscall(SYS_geteuid);
 }
 
 typedef void* (*fopen_ptr)(const char* filename, const char* mode);
