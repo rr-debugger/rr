@@ -51,6 +51,11 @@ ReplayCommand ReplayCommand::singleton(
     "                             has been exec()d, AND the target event has "
     "been\n"
     "                             reached.\n"
+    "  --fullname\n"
+    "  -i=<X>\n"
+    "  --interpreter=<X>          These are passed directly to gdb. They are\n"
+    "                             here for convenience to support 'gdb -i=mi'\n"
+    "                             and 'gdb --fullname' as suggested by GNU Emacs\n"
     "  -d, --debugger=<FILE>      use <FILE> as the gdb command\n"
     "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
     "  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
@@ -129,7 +134,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 's', "dbgport", HAS_PARAMETER },
     { 't', "trace", HAS_PARAMETER },
     { 'x', "gdb-x", HAS_PARAMETER },
-    { 0, "share-private-mappings", NO_PARAMETER }
+    { 0, "share-private-mappings", NO_PARAMETER },
+    { 1, "fullname", NO_PARAMETER },
+    { 'i', "interpreter", HAS_PARAMETER }
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -193,6 +200,13 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       break;
     case 0:
       flags.share_private_mappings = true;
+      break;
+    case 1:
+      flags.gdb_options.push_back("--fullname");
+      break;
+    case 'i':
+      flags.gdb_options.push_back("-i");
+      flags.gdb_options.push_back(opt.value);
       break;
     default:
       assert(0 && "Unknown option");
