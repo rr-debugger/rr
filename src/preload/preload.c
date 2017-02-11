@@ -1558,8 +1558,12 @@ static long sys_open(const struct syscall_info* call) {
 
 /**
  * Make this function external so desched_ticks.py can set a breakpoint on it.
+ * Make it visiblity-"protected" so that our local definition binds to it
+ * directly and doesn't go through a PLT thunk (which would mean temporarily
+ * leaving syscallbuf code).
  */
-void __before_poll_syscall_breakpoint(void) {}
+__attribute__((visibility("protected"))) void __before_poll_syscall_breakpoint(
+    void) {}
 
 static long sys_poll(const struct syscall_info* call) {
   const int syscallno = SYS_poll;

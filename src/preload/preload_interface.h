@@ -31,9 +31,7 @@ static inline size_t rrstrlen(const char* s) {
 static inline int streq(const char* s1, const char* s2) {
   return !strcmp(s1, s2);
 }
-static inline size_t rrstrlen(const char* s) {
-  return strlen(s);
-}
+static inline size_t rrstrlen(const char* s) { return strlen(s); }
 #include "../remote_ptr.h"
 #endif
 
