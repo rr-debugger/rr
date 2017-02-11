@@ -232,28 +232,17 @@ static ssize_t privileged_traced_write(int fd, const void* buf, size_t count) {
   return privileged_traced_syscall3(SYS_write, fd, buf, count);
 }
 
-/* We can't use the rr logging helpers because they rely on libc
- * syscall-invoking functions, so roll our own here.
- *
- * XXX just use these for all logging? */
-
-__attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
-  va_list args;
-  char buf[1024];
-  int len;
-
-  va_start(args, msg);
-  len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
-  va_end(args);
-
-  privileged_traced_write(STDERR_FILENO, buf, len);
+static void logmsg(const char* msg) {
+  privileged_traced_write(STDERR_FILENO, msg, rrstrlen(msg));
 }
 
 #ifndef NDEBUG
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
 #define assert(cond)                                                           \
   do {                                                                         \
     if (!(cond)) {                                                             \
-      logmsg("%s:%d: Assertion `" #cond "' failed.\n", __FILE__, __LINE__);    \
+      logmsg(__FILE__ ":" STR(__LINE__) ": Assertion `" #cond "' failed.\n");  \
       privileged_traced_raise(SIGABRT);                                        \
     }                                                                          \
   } while (0)
@@ -261,18 +250,11 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
 #define assert(cond) ((void)0)
 #endif
 
-#define fatal(msg, ...)                                                        \
+#define fatal(msg)                                                             \
   do {                                                                         \
-    logmsg("[FATAL] (%s:%d: tid: %d) " msg "\n", __FILE__, __LINE__,           \
-           privileged_traced_gettid(), ##__VA_ARGS__);                         \
-    privileged_traced_syscall1(SYS_exit_group, EX_OSERR);                      \
+    logmsg(__FILE__ ":" STR(__LINE__) ": Fatal error: " #msg "\n");            \
+    privileged_traced_raise(SIGABRT);                                          \
   } while (0)
-
-#ifdef DEBUGTAG
-#define debug(msg, ...) logmsg("[" DEBUGTAG "] " msg "\n", ##__VA_ARGS__)
-#else
-#define debug(msg, ...) ((void)0)
-#endif
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
@@ -423,7 +405,7 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   tmp_fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/,
                                              -1, 0);
   if (0 > tmp_fd) {
-    fatal("Failed to perf_event_open(cs, period=%zu)", nr_descheds);
+    fatal("Failed to perf_event_open");
   }
   fd = privileged_traced_fcntl(tmp_fd, F_DUPFD_CLOEXEC,
                                RR_DESCHED_EVENT_FLOOR_FD);
@@ -442,8 +424,7 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
     fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
   }
   if (privileged_untraced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
-    fatal("Failed to fcntl(SETSIG, %d) the desched counter",
-          SYSCALLBUF_DESCHED_SIGNAL);
+    fatal("Failed to fcntl(SETSIG) the desched counter");
   }
 
   return fd;
@@ -699,7 +680,7 @@ static void arm_desched_event(void) {
   if ((int)privileged_untraced_syscall3(SYS_ioctl,
                                         thread_locals->desched_counter_fd,
                                         PERF_EVENT_IOC_ENABLE, 0)) {
-    fatal("Failed to ENABLE counter %d", thread_locals->desched_counter_fd);
+    fatal("Failed to ENABLE counter");
   }
 }
 
@@ -708,7 +689,7 @@ static void disarm_desched_event(void) {
   if ((int)privileged_untraced_syscall3(SYS_ioctl,
                                         thread_locals->desched_counter_fd,
                                         PERF_EVENT_IOC_DISABLE, 0)) {
-    fatal("Failed to DISABLE counter %d", thread_locals->desched_counter_fd);
+    fatal("Failed to DISABLE counter");
   }
 }
 
@@ -824,8 +805,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   hdr->desched_signal_may_be_relevant = 0;
 
   if (rec->syscallno != syscallno) {
-    fatal("Record is for %d but trying to commit %d", rec->syscallno,
-          syscallno);
+    fatal("Record syscall number mismatch");
   }
 
   if (hdr->abort_commit) {
