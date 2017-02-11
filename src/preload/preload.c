@@ -39,7 +39,6 @@
  *   through libc wrappers (which this file may itself indirectly override)
  */
 
-#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <link.h>
@@ -68,8 +67,8 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "rr/rr.h"
 #include "preload_interface.h"
+#include "rr/rr.h"
 
 #ifndef BTRFS_IOCTL_MAGIC
 #define BTRFS_IOCTL_MAGIC 0x94
@@ -163,20 +162,10 @@ extern RR_HIDDEN long _raw_syscall(int syscallno, long a0, long a1, long a2,
                                    void* syscall_instruction,
                                    long stack_param_1, long stack_param_2);
 
-static int update_errno_ret(long ret) {
-  /* EHWPOISON is the last known errno as of linux 3.9.5. */
-  if (0 > ret && ret >= -EHWPOISON) {
-    errno = -ret;
-    ret = -1;
-  }
-  return ret;
-}
-
 static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
                                      long a3, long a4, long a5) {
-  long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                          RR_PAGE_SYSCALL_PRIVILEGED_TRACED, 0, 0);
-  return update_errno_ret(ret);
+  return _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
+                      RR_PAGE_SYSCALL_PRIVILEGED_TRACED, 0, 0);
 }
 #define privileged_traced_syscall6(no, a0, a1, a2, a3, a4, a5)                 \
   privileged_traced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,   \
@@ -193,9 +182,7 @@ static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
 #define privileged_traced_syscall0(no) privileged_traced_syscall1(no, 0)
 
 /**
- * Make a raw traced syscall using the params in |call|.  "Raw" traced
- * syscalls return the raw kernel return value, and don't transform it
- * to -1/errno per POSIX semantics.
+ * Make a raw traced syscall using the params in |call|.
  */
 static long traced_raw_syscall(const struct syscall_info* call) {
   /* FIXME: pass |call| to avoid pushing these on the stack
@@ -276,9 +263,8 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
 
 #define fatal(msg, ...)                                                        \
   do {                                                                         \
-    logmsg("[FATAL] (%s:%d: errno: %s: tid: %d) " msg "\n", __FILE__,          \
-           __LINE__, strerror(errno), privileged_traced_gettid(),              \
-           ##__VA_ARGS__);                                                     \
+    logmsg("[FATAL] (%s:%d: tid: %d) " msg "\n", __FILE__, __LINE__,           \
+           privileged_traced_gettid(), ##__VA_ARGS__);                         \
     privileged_traced_syscall1(SYS_exit_group, EX_OSERR);                      \
   } while (0)
 
