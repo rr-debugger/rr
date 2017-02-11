@@ -3,15 +3,58 @@
 #ifndef RR_PRELOAD_INTERFACE_H_
 #define RR_PRELOAD_INTERFACE_H_
 
+#ifdef RR_IMPLEMENT_PRELOAD
+/* Avoid using <string.h> library functions */
+static inline int streq(const char* s1, const char* s2) {
+  while (1) {
+    if (*s1 != *s2) {
+      return 0;
+    }
+    if (!*s1) {
+      return 1;
+    }
+    ++s1;
+    ++s2;
+  }
+  return 1;
+}
+static inline size_t rrstrlen(const char* s) {
+  size_t ret = 0;
+  while (*s) {
+    ++s;
+    ++ret;
+  }
+  return ret;
+}
+#else
+#include <string.h>
+static inline int streq(const char* s1, const char* s2) {
+  return !strcmp(s1, s2);
+}
+static inline size_t rrstrlen(const char* s) {
+  return strlen(s);
+}
+#include "../remote_ptr.h"
+#endif
+
 #include <signal.h>
 #include <stdint.h>
-#include <string.h>
 #include <sys/types.h>
 #include <sys/user.h>
 
-#ifndef RR_IMPLEMENT_PRELOAD
-#include "../remote_ptr.h"
-#endif
+static inline int strprefix(const char* s1, const char* s2) {
+  while (1) {
+    if (!*s1) {
+      return 1;
+    }
+    if (*s1 != *s2) {
+      return 0;
+    }
+    ++s1;
+    ++s2;
+  }
+  return 1;
+}
 
 /* This header file is included by preload.c and various rr .cc files. It
  * defines the interface between the preload library and rr. preload.c
@@ -450,38 +493,38 @@ inline static long stored_record_size(size_t length) {
  * too much by piling on.
  */
 inline static int is_blacklisted_filename(const char* filename) {
-  return !strncmp("/dev/dri/", filename, 9) ||
-         !strcmp("/dev/nvidiactl", filename) ||
-         !strcmp("/usr/share/alsa/alsa.conf", filename);
+  return strprefix("/dev/dri/", filename) ||
+         streq("/dev/nvidiactl", filename) ||
+         streq("/usr/share/alsa/alsa.conf", filename);
 }
 
 inline static int is_gcrypt_deny_file(const char* filename) {
-  return !strcmp("/etc/gcrypt/hwf.deny", filename);
+  return streq("/etc/gcrypt/hwf.deny", filename);
 }
 
 inline static int is_terminal(const char* filename) {
-  return !strncmp("/dev/tty", filename, 8) || !strncmp("/dev/pts", filename, 8);
+  return strprefix("/dev/tty", filename) || strprefix("/dev/pts", filename);
 }
 
 inline static int is_proc_mem_file(const char* filename) {
-  if (strncmp("/proc/", filename, 6)) {
+  if (!strprefix("/proc/", filename)) {
     return 0;
   }
-  return !strcmp(filename + strlen(filename) - 4, "/mem");
+  return streq(filename + rrstrlen(filename) - 4, "/mem");
 }
 
 inline static int is_proc_fd_dir(const char* filename) {
-  if (strncmp("/proc/", filename, 6)) {
+  if (!strprefix("/proc/", filename)) {
     return 0;
   }
 
-  int len = strlen(filename);
+  int len = rrstrlen(filename);
   const char* fd_bit = filename + len;
   if (*fd_bit == '/') {
     fd_bit--;
   }
 
-  return !strncmp(fd_bit - 3, "/fd", 3);
+  return strprefix("/fd", fd_bit - 3);
 }
 
 /**
