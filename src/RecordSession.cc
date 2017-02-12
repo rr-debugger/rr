@@ -819,6 +819,11 @@ static void save_interrupted_syscall_ret_in_syscallbuf(RecordTask* t,
   t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
 }
 
+static bool is_in_privileged_syscall(RecordTask* t) {
+  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
+  return type && type->privileged == AddressSpace::PRIVILEGED;
+}
+
 void RecordSession::syscall_state_changed(RecordTask* t,
                                           StepState* step_state) {
   switch (t->ev().Syscall().state) {
@@ -831,7 +836,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         return;
       }
       if (t->ev().Syscall().in_sysemu) {
-        // We'll have recorded just the ENTERING_SYSCAL_PTRACE event and
+        // We'll have recorded just the ENTERING_SYSCALL_PTRACE event and
         // nothing else. Resume with an invalid syscall to ensure no real
         // syscall runs.
         t->pop_syscall();
@@ -1012,7 +1017,9 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       last_task_switchable = ALLOW_SWITCH;
       step_state->continue_type = DONT_CONTINUE;
 
-      maybe_trigger_emulated_ptrace_syscall_exit_stop(t);
+      if (!is_in_privileged_syscall(t)) {
+        maybe_trigger_emulated_ptrace_syscall_exit_stop(t);
+      }
       return;
     }
 
@@ -1586,9 +1593,10 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
 
   check_initial_task_syscalls(t, step_result);
   note_entering_syscall(t);
-  if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL ||
-      t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
-      t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) {
+  if ((t->emulated_ptrace_cont_command == PTRACE_SYSCALL ||
+       t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
+       t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) &&
+      !is_in_privileged_syscall(t)) {
     t->ev().Syscall().state = ENTERING_SYSCALL_PTRACE;
     t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
     t->record_current_event();
