@@ -441,7 +441,9 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
         .cfi_adjust_cfa_offset -8
         pop %rsi
         .cfi_adjust_cfa_offset -8
-        ret
+        pop (stub_scratch_1)
+        .cfi_adjust_cfa_offset -8
+        jmp _syscallbuf_final_exit_instruction
 
         .cfi_endproc
         .size _syscall_hook_trampoline_5a_5e_c3, .-_syscall_hook_trampoline_5a_5e_c3
