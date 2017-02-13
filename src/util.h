@@ -287,6 +287,8 @@ bool has_effective_caps(uint64_t caps);
  */
 unsigned int xsave_area_size();
 
+inline uint64_t signal_bit(int sig) { return uint64_t(1) << (sig - 1); }
+
 uint64_t rr_signal_mask();
 
 } // namespace rr

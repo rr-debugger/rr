@@ -573,10 +573,10 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
     // untraced syscall. Blocking rr's signals helps test we get that right.
     // However, we don't block SYSCALLBUF_DESCHED_SIGNAL because we need one
     // signal unblocked for signal injection to work.
-    uint64_t sigset = ~(uint64_t(1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
+    uint64_t sigset = ~signal_bit(SYSCALLBUF_DESCHED_SIGNAL);
     if (sig) {
       // We're injecting a signal, so make sure that signal is unblocked.
-      sigset &= ~(uint64_t(1) << (sig - 1));
+      sigset &= ~signal_bit(sig);
     }
     int ret = fallible_ptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &sigset);
     if (ret < 0) {
@@ -1161,7 +1161,7 @@ void RecordTask::verify_signal_states() {
   uint64_t ignored = strtoull(results[1].c_str(), NULL, 16);
   uint64_t caught = strtoull(results[2].c_str(), NULL, 16);
   for (int sig = 1; sig < _NSIG; ++sig) {
-    uint64_t mask = uint64_t(1) << (sig - 1);
+    uint64_t mask = signal_bit(sig);
     if (is_unstoppable_signal(sig)) {
       ASSERT(this, !(blocked & mask)) << "Expected " << signal_name(sig)
                                       << " to not be blocked, but it is";

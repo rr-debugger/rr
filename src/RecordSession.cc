@@ -1232,7 +1232,8 @@ static bool inject_handled_signal(RecordTask* t) {
                                       << t->status();
   ASSERT(t, t->get_signal_user_handler(sig) == t->ip())
       << "Expected handler IP " << t->get_signal_user_handler(sig) << ", got "
-      << t->ip() << "; actual signal mask=" << HEX(t->read_sigmask_from_process())
+      << t->ip()
+      << "; actual signal mask=" << HEX(t->read_sigmask_from_process())
       << " (cached " << HEX(t->get_sigmask()) << ")";
 
   if (t->signal_handler_takes_siginfo(sig)) {

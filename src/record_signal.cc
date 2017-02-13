@@ -60,7 +60,7 @@ static void restore_signal_state(RecordTask* t, int sig,
     vector<uint8_t> bytes;
     bytes.resize(sigset_size);
     memset(bytes.data(), 0, sigset_size);
-    uint64_t mask = uint64_t(1) << (sig - 1);
+    uint64_t mask = signal_bit(sig);
     ASSERT(t, sigset_size >= sizeof(mask));
     memcpy(bytes.data(), &mask, sizeof(mask));
     AutoRestoreMem child_block(remote, bytes.data(), bytes.size());

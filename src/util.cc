@@ -904,8 +904,8 @@ unsigned int xsave_area_size() {
 }
 
 uint64_t rr_signal_mask() {
-  return (uint64_t(1) << (PerfCounters::TIME_SLICE_SIGNAL - 1)) |
-         (uint64_t(1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
+  return signal_bit(PerfCounters::TIME_SLICE_SIGNAL) |
+         signal_bit(SYSCALLBUF_DESCHED_SIGNAL);
 }
 
 } // namespace rr
