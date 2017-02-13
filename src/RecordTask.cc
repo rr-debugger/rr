@@ -659,6 +659,7 @@ void RecordTask::did_wait() {
     // Saved 'blocked_sigs' must still be correct regardless of syscallbuf
     // state, because we do not allow stashed_signals_blocking_more_signals to
     // hold across syscalls (traced or untraced) that change the signal mask.
+    ASSERT(this, !blocked_sigs_dirty);
     xptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &blocked_sigs);
   } else if (syscallbuf_child) {
     if (read_mem(REMOTE_PTR_FIELD(syscallbuf_child,
