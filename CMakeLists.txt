@@ -168,7 +168,7 @@ if (NOT DEBUG_PRELOAD_LIB)
 set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} ${CMAKE_C_FLAGS_RELEASE}")
 endif()
 
-set_source_files_properties(src/preload/preload.c
+set_source_files_properties(src/preload/syscallbuf.c
                             src/preload/overrides.c
                             PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 
@@ -177,11 +177,11 @@ include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
 # We need to know where our generated files are.
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
-# Order matters here! syscall_hook.S must be immediately before preload.c,
+# Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
 # breakpoint_table.S must be before overrides.c, which must be last.
 add_library(rrpreload
   src/preload/syscall_hook.S
-  src/preload/preload.c
+  src/preload/syscallbuf.c
   src/preload/raw_syscall.S
   src/preload/breakpoint_table.S
   src/preload/overrides.c
@@ -396,7 +396,7 @@ if(rr_32BIT AND rr_64BIT)
                    COPYONLY)
   endforeach(file)
 
-  foreach(file preload.c overrides.c raw_syscall.S syscall_hook.S breakpoint_table.S)
+  foreach(file syscallbuf.c overrides.c raw_syscall.S syscall_hook.S breakpoint_table.S)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                    COPYONLY)
@@ -404,11 +404,11 @@ if(rr_32BIT AND rr_64BIT)
                                 PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_C_FLAGS_RELEASE}")
   endforeach(file)
 
-  # Order matters here! syscall_hook.S must be immediately before preload.c.
+  # Order matters here! syscall_hook.S must be immediately before syscallbuf.c.
   # breakpoint_table.S must be before overrides.c, which must be last.
   add_library(rrpreload_32
     32/syscall_hook.S
-    32/preload.c
+    32/syscallbuf.c
     32/raw_syscall.S
     32/breakpoint_table.S
     32/overrides.c
