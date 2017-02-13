@@ -76,6 +76,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
+#include <sys/sysmacros.h>
 #include <sys/time.h>
 #include <sys/timerfd.h>
 #include <sys/times.h>
