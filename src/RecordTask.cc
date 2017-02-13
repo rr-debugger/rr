@@ -568,12 +568,12 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
     // We assume the kernel can't report a new signal of the same number
     // in response to us injecting a signal. XXX is this true??? We don't
     // have much choice, signal injection won't work if we block the signal.
-    // We block all signals including the rr signals. This is OK because we're
-    // going to process all stashed signals before we perform any traced or
-    // untraced syscall. Blocking rr's signals helps test we get that right.
-    // However, we don't block SYSCALLBUF_DESCHED_SIGNAL because we need one
-    // signal unblocked for signal injection to work.
-    uint64_t sigset = ~signal_bit(SYSCALLBUF_DESCHED_SIGNAL);
+    // We leave rr signals unblocked. TIME_SLICE_SIGNAL has to be unblocked
+    // because blocking it seems to cause problems for some hardware/kernel
+    // configurations (see https://github.com/mozilla/rr/issues/1979),
+    // causing them to stop counting events.
+    uint64_t sigset = ~(signal_bit(SYSCALLBUF_DESCHED_SIGNAL) |
+                        signal_bit(PerfCounters::TIME_SLICE_SIGNAL));
     if (sig) {
       // We're injecting a signal, so make sure that signal is unblocked.
       sigset &= ~signal_bit(sig);
