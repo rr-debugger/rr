@@ -944,6 +944,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         // We've finished processing this signal now.
         t->pop_signal_handler();
         t->record_event(Event(EV_EXIT_SIGHANDLER, NO_EXEC_INFO, t->arch()));
+        t->invalidate_sigmask();
 
         maybe_discard_syscall_interruption(t, retval);
 
@@ -1231,8 +1232,8 @@ static bool inject_handled_signal(RecordTask* t) {
                                       << t->status();
   ASSERT(t, t->get_signal_user_handler(sig) == t->ip())
       << "Expected handler IP " << t->get_signal_user_handler(sig) << ", got "
-      << t->ip() << "; actual signal mask=" << t->read_sigmask_from_process()
-      << " (cached " << t->get_sigmask() << ")";
+      << t->ip() << "; actual signal mask=" << HEX(t->read_sigmask_from_process())
+      << " (cached " << HEX(t->get_sigmask()) << ")";
 
   if (t->signal_handler_takes_siginfo(sig)) {
     // The kernel copied siginfo into userspace so it can pass a pointer to

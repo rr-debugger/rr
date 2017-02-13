@@ -548,12 +548,14 @@ bool RecordTask::is_at_syscallbuf_final_instruction_breakpoint() {
 
 void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
                                        TicksRequest ticks_request, int sig) {
-  if (ticks_request != RESUME_NO_TICKS) {
-    // We will execute user code, which could lead to an RDTSC or grow-map
-    // operation which unblocks SIGSEGV, and we'll need to know whether to
-    // re-block it. So we need our cached sigmask to be up to date.
-    get_sigmask();
-  }
+  // We may execute user code, which could lead to an RDTSC or grow-map
+  // operation which unblocks SIGSEGV, and we'll need to know whether to
+  // re-block it. So we need our cached sigmask to be up to date.
+  // We don't need to this if we're not going to execute user code
+  // (i.e. ticks_request == RESUME_NO_TICKS) except that did_wait can't
+  // easily check for that and may restore blocked_sigs so it had better be
+  // accurate.
+  get_sigmask();
 
   if (stashed_signals_blocking_more_signals) {
     // A stashed signal we have already accepted for this task may
