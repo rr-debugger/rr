@@ -990,7 +990,7 @@ bool RecordTask::is_signal_pending(int sig) {
   uint64_t mask1 = strtoull(pending_strs[0].c_str(), &end1, 16);
   char* end2;
   uint64_t mask2 = strtoull(pending_strs[1].c_str(), &end2, 16);
-  return !*end1 && !*end2 && ((mask1 | mask2) & (1 << (sig - 1)));
+  return !*end1 && !*end2 && ((mask1 | mask2) & signal_bit(sig));
 }
 
 bool RecordTask::has_any_actionable_signal() {
