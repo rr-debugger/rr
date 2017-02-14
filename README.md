@@ -1,5 +1,3 @@
-[![Build Status (travis)](https://travis-ci.org/mozilla/rr.svg?branch=master "Travis")](https://travis-ci.org/mozilla/rr)
-
 # Overview
 
 rr is a lightweight tool for recording and replaying execution of applications (trees of processes and threads).  More information about the project, including instructions on how to install, run, and build rr, is at [http://rr-project.org](http://rr-project.org).
