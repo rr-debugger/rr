@@ -63,5 +63,7 @@ int main(void) {
 
   atomic_puts("EXIT-SUCCESS");
 
+  unlink(file_name);
+
   return 0;
 }
