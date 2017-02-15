@@ -23,8 +23,6 @@ using namespace std;
 
 namespace rr {
 
-enum SignalDisposition { SIGNAL_DEFAULT, SIGNAL_IGNORE, SIGNAL_HANDLER };
-
 /**
  * Stores the table of signal dispositions and metadata for an
  * arbitrary set of tasks.  Each of those tasks must own one one of
@@ -595,13 +593,9 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       // If the tracee has SIGTRAP blocked or ignored and we hit one of these
       // breakpoints, the kernel will automatically unblock the signal and set
       // its disposition to DFL, effects which we ought to undo to keep these
-      // SIGTRAPs invisible to tracees. Fixing the sigmask is OK; that happens
-      // automatically in did_wait(). Restoring the signal-ignored status is a
-      // bit of a pain so bail on that for now.
-      // (Ignoring SIGTRAP is probably rare since it would only affect async
-      // SIGTRAPs, which must be extremely rare.)
-      ASSERT(this, !is_sig_ignored(SIGTRAP))
-          << "We don't handle ignored SIGTRAP yet";
+      // SIGTRAPs invisible to tracees. Fixing the sigmask happens
+      // automatically in did_wait(). Restoring the signal-ignored status is
+      // handled in `handle_syscallbuf_breakpoint`.
 
       // Set breakpoints at untraced syscalls to catch us entering an untraced
       // syscall. We don't need to do this (and shouldn't do this) if the
@@ -619,8 +613,6 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       }
     }
     if (break_at_syscallbuf_final_instruction) {
-      ASSERT(this, !is_sig_ignored(SIGTRAP))
-          << "We don't handle ignored SIGTRAP yet";
       vm()->add_breakpoint(
           syscallbuf_code_layout.syscallbuf_final_exit_instruction,
           BKPT_INTERNAL);
@@ -1091,6 +1083,10 @@ bool RecordTask::is_sig_ignored(int sig) const {
     default:
       return false;
   }
+}
+
+SignalDisposition RecordTask::sig_disposition(int sig) const {
+  return sighandlers->get(sig).disposition();
 }
 
 void RecordTask::set_siginfo(const siginfo_t& si) {

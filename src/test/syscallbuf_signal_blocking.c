@@ -28,6 +28,10 @@ int main(void) {
   sigemptyset(&sa.sa_mask);
   sigaction(SIGUSR1, &sa, NULL);
 
+  sa.sa_flags = SA_RESTART;
+  sa.sa_handler = SIG_IGN;
+  sigaction(SIGTRAP, &sa, NULL);
+
   sevp.sigev_notify = SIGEV_SIGNAL;
   sevp.sigev_signo = SIGUSR1;
   test_assert(0 == timer_create(CLOCK_MONOTONIC, &sevp, &id));
@@ -40,6 +44,9 @@ int main(void) {
   delayed_syscall(&read_syscall);
 
   test_assert(got_sigs == 1);
+
+  /* Should be ignored */
+  raise(SIGTRAP);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

@@ -52,6 +52,8 @@ struct SyscallbufCodeLayout {
   remote_code_ptr syscallbuf_final_exit_instruction;
 };
 
+enum SignalDisposition { SIGNAL_DEFAULT, SIGNAL_IGNORE, SIGNAL_HANDLER };
+
 /**
  * Every Task owned by a RecordSession is a RecordTask. Functionality that
  * only applies during recording belongs here.
@@ -210,6 +212,10 @@ public:
    * default disposition is "ignore".
    */
   bool is_sig_ignored(int sig) const;
+  /**
+   * Return the applications current dispositiong of |sig|.
+   */
+  SignalDisposition sig_disposition(int sig) const;
   /**
    * Set the siginfo for the signal-stop of this.
    */

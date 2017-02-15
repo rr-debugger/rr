@@ -587,6 +587,9 @@ void Task::enter_syscall() {
       continue;
     }
     ASSERT(this, session().is_recording());
+    if (stop_sig() == SYSCALLBUF_DESCHED_SIGNAL) {
+      continue;
+    }
     static_cast<RecordTask*>(this)->stash_sig();
   }
 }

@@ -41,22 +41,30 @@ static size_t sigaction_sigset_size(SupportedArch arch) {
   RR_ARCH_FUNCTION(sigaction_sigset_size_arch, arch);
 }
 
-/**
- * Restore the blocked-ness and sigaction for |sig| from |t|'s local
- * copy.
- */
-static void restore_signal_state(RecordTask* t, int sig,
-                                 SignalBlocked signal_was_blocked) {
-  AutoRemoteSyscalls remote(t);
-  size_t sigset_size = sigaction_sigset_size(remote.arch());
-  {
+static void restore_sighandler_if_not_default(RecordTask* t, int sig) {
+  if (t->sig_disposition(sig) != SIGNAL_DEFAULT) {
+    LOG(debug) << "Restoring signal handler for " << signal_name(sig);
+    AutoRemoteSyscalls remote(t);
+    size_t sigset_size = sigaction_sigset_size(remote.arch());
     const vector<uint8_t>& sa = t->signal_action(sig);
     AutoRestoreMem child_sa(remote, sa.data(), sa.size());
     remote.infallible_syscall(syscall_number_for_rt_sigaction(remote.arch()),
                               sig, child_sa.get().as_int(), nullptr,
                               sigset_size);
   }
+}
+
+/**
+ * Restore the blocked-ness and sigaction for |sig| from |t|'s local
+ * copy.
+ */
+static void restore_signal_state(RecordTask* t, int sig,
+                                 SignalBlocked signal_was_blocked) {
+  restore_sighandler_if_not_default(t, sig);
   if (signal_was_blocked) {
+    LOG(debug) << "Restoring signal blocked-ness for " << signal_name(sig);
+    AutoRemoteSyscalls remote(t);
+    size_t sigset_size = sigaction_sigset_size(remote.arch());
     vector<uint8_t> bytes;
     bytes.resize(sigset_size);
     memset(bytes.data(), 0, sigset_size);
@@ -67,9 +75,9 @@ static void restore_signal_state(RecordTask* t, int sig,
     remote.infallible_syscall(syscall_number_for_rt_sigprocmask(remote.arch()),
                               SIG_BLOCK, child_block.get().as_int(), nullptr,
                               sigset_size);
+    // We just changed the sigmask ourselves.
+    t->invalidate_sigmask();
   }
-  // We just changed the sigmask ourselves.
-  t->invalidate_sigmask();
 }
 
 /** Return true iff |t->ip()| points at a RDTSC instruction. */
@@ -211,6 +219,15 @@ static remote_code_ptr get_stub_scratch_1(RecordTask* t) {
   RR_ARCH_FUNCTION(get_stub_scratch_1_arch, t->arch(), t);
 }
 
+/**
+ * This function is responsible for handling breakpoints we set in syscallbuf
+ * code to detect sigprocmask calls and syscallbuf exit. It's called when we
+ * get a SIGTRAP. Returns true if the SIGTRAP was called by one of our
+ * breakpoints and should be hidden from the application.
+ * If it was triggered by one of our breakpoints, we have to call
+ * restore_sighandler_if_not_default(t, SIGTRAP) to make sure the SIGTRAP
+ * handler is properly restored if the kernel cleared it.
+ */
 bool handle_syscallbuf_breakpoint(RecordTask* t) {
   if (t->is_at_syscallbuf_final_instruction_breakpoint()) {
     LOG(debug) << "Reached final syscallbuf instruction, singlestepping to "
@@ -220,6 +237,8 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
     Registers r = t->regs();
     r.set_ip(get_stub_scratch_1(t));
     t->set_regs(r);
+
+    restore_sighandler_if_not_default(t, SIGTRAP);
     // Now we're back in application code so any pending stashed signals
     // will be handled.
     return true;
@@ -237,11 +256,24 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
     // We will automatically dispatch stashed signals now since this is an
     // allowed place to dispatch signals.
     LOG(debug) << "Allowing signal dispatch at traced-syscall breakpoint";
+    restore_sighandler_if_not_default(t, SIGTRAP);
     return true;
   }
 
-  // We're at an untraced-syscall entry point. This is definitely a native-arch
-  // syscall.
+  // We're at an untraced-syscall entry point.
+  // To allow an AutoRemoteSyscall, we need to make sure desched signals are
+  // disarmed (and rearmed afterward).
+  bool armed_desched_event = t->read_mem(
+      REMOTE_PTR_FIELD(t->syscallbuf_child, desched_signal_may_be_relevant));
+  if (armed_desched_event) {
+    disarm_desched_event(t);
+  }
+  restore_sighandler_if_not_default(t, SIGTRAP);
+  if (armed_desched_event) {
+    arm_desched_event(t);
+  }
+
+  // This is definitely a native-arch syscall.
   if (is_rt_sigprocmask_syscall(r.syscallno(), t->arch())) {
     // Don't proceed with this syscall. Emulate it returning EAGAIN.
     // Syscallbuf logic will retry using a traced syscall instead.
