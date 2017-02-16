@@ -1375,7 +1375,7 @@ static void print_debugger_launch_command(Task* t, unsigned short port,
   vector<string> options;
   push_default_gdb_options(options);
   push_target_remote_cmd(options, port);
-  fprintf(out, "Launch gdb with \n  %s ", debugger_name);
+  fprintf(out, "%s ", debugger_name);
   for (auto& opt : options) {
     fprintf(out, "'%s' ", opt.c_str());
   }
@@ -1412,6 +1412,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
         write(*flags.debugger_params_write_pipe, &params, sizeof(params));
     assert(nwritten == sizeof(params));
   } else {
+    fputs("Launch gdb with\n  ", stderr);
     print_debugger_launch_command(t, port, flags.debugger_name.c_str(), stderr);
   }
   dbg = await_connection(t, listen_fd, GdbConnection::Features());
@@ -1537,7 +1538,22 @@ void GdbServer::emergency_debug(Task* t) {
   features.reverse_execution = false;
   unsigned short port = t->tid;
   ScopedFd listen_fd = open_socket(connection_addr, &port, PROBE_PORT);
-  print_debugger_launch_command(t, port, "gdb", stderr);
+
+  char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
+  if (test_monitor_pid) {
+    pid_t pid = atoi(test_monitor_pid);
+    // Tell test-monitor to wake up and take a snapshot. It will also
+    // connect the emergency debugger so let that happen.
+    FILE* gdb_cmd = fopen("gdb_cmd", "w");
+    if (gdb_cmd) {
+      print_debugger_launch_command(t, port, "gdb", gdb_cmd);
+      fclose(gdb_cmd);
+    }
+    kill(pid, SIGURG);
+  } else {
+    fputs("Launch gdb with\n  ", stderr);
+    print_debugger_launch_command(t, port, "gdb", stderr);
+  }
   unique_ptr<GdbConnection> dbg = await_connection(t, listen_fd, features);
 
   GdbServer(dbg, t).process_debugger_requests();

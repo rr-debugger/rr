@@ -122,7 +122,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());
   if (flush_hdr->num_rec_bytes > bytes_remaining) {
     fprintf(stderr, "Malformed trace file (bad recorded-bytes count)\n");
-    abort();
+    notifying_abort();
   }
   bytes_remaining = flush_hdr->num_rec_bytes;
 
@@ -135,7 +135,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
             (long)record->ret, (long)record->size);
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
-      abort();
+      notifying_abort();
     }
     record_ptr += stored_record_size(record->size);
   }

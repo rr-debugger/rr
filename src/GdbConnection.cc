@@ -101,12 +101,9 @@ void GdbConnection::read_data_once() {
   poll_incoming(sock_fd, -1 /* wait forever */);
   uint8_t buf[4096];
   nread = read(sock_fd, buf, sizeof(buf));
-  if (0 == nread) {
+  if (nread <= 0) {
     LOG(info) << "(gdb closed debugging socket, exiting)";
     exit(0);
-  }
-  if (nread <= 0) {
-    FATAL() << "Error reading from gdb";
   }
   inbuf.insert(inbuf.end(), buf, buf + nread);
 }

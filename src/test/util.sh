@@ -131,6 +131,10 @@ fi
 if [[ ! -d "$OBJDIR" ]]; then
     fatal "FAILED: objdir missing"
 fi
+TIMEOUT=$4
+if [[ "$TIMEOUT" == "" ]]; then
+    TIMEOUT=120
+fi
 
 # The temporary directory we create for this test run.
 workdir=
@@ -202,7 +206,7 @@ function skip_if_syscall_buf {
 }
 
 function just_record { exe=$1; exeargs=$2;
-    _RR_TRACE_DIR="$workdir" \
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT record.err \
         rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out 2> record.err
 }
 
@@ -228,25 +232,33 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 }
 
 function replay { replayflags=$1
-    _RR_TRACE_DIR="$workdir" \
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT replay.err \
         rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
 }
 
 function do_ps { psflags=$1
-    _RR_TRACE_DIR="$workdir" rr $GLOBAL_OPTIONS ps $psflags
+    _RR_TRACE_DIR="$workdir" \
+        rr $GLOBAL_OPTIONS ps $psflags
 }
 
 #  debug <expect-script-name> [replay-args]
 #
 # Load the "expect" script to drive replay of the recording of |exe|.
 function debug { expectscript=$1; replayargs=$2
-    _RR_TRACE_DIR="$workdir" \
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
         python2 $TESTDIR/$expectscript.py \
         rr $GLOBAL_OPTIONS replay -o-n -x $TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
         passed
     else
         failed "debug script failed"
+        echo "--------------------------------------------------"
+        echo "gdb_rr.log:"
+        cat gdb_rr.log
+        echo "--------------------------------------------------"
+        echo "debug.err:"
+        cat debug.err
+        echo "--------------------------------------------------"
     fi
 }
 

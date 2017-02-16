@@ -296,6 +296,11 @@ enum ProbePort { DONT_PROBE = 0, PROBE_PORT };
 ScopedFd open_socket(const char* address, unsigned short* port,
                      ProbePort probe);
 
+/**
+ * Like `abort`, but tries to wake up test-monitor for a snapshot if possible.
+ */
+void notifying_abort();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

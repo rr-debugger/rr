@@ -291,7 +291,7 @@ static void handle_SIGTERM(__attribute__((unused)) int sig) {
         "Received SIGTERM while an earlier one was pending.  We're "
         "probably wedged.\n";
     write(STDERR_FILENO, msg, sizeof(msg) - 1);
-    abort();
+    notifying_abort();
   }
   term_request = true;
 }

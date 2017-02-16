@@ -58,7 +58,8 @@ def ok():
     clean_up()
 
 # Internal helpers
-TIMEOUT_SEC = 100
+# Don't use python timeout. Use test-monitor timeout instead.
+TIMEOUT_SEC = 10000
 # gdb and rr are part of the same process tree, so they share
 # stdin/stdout.
 gdb_rr = None

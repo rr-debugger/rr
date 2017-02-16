@@ -514,7 +514,6 @@ set(BASIC_TESTS
   flock2
   fork_brk
   fork_child_crash
-  fork_stress
   futex_pi
   futex_priorities
   fxregs
@@ -741,7 +740,6 @@ set(BASIC_TESTS
   sysemu_singlestep
   sysinfo
   tgkill
-  thread_stress
   thread_yield
   timer
   timerfd
@@ -820,6 +818,7 @@ set(TESTS_WITH_PROGRAM
   exit_group
   exit_status
   explicit_checkpoints
+  fork_stress
   fork_syscalls
   function_calls
   getcwd
@@ -879,6 +878,7 @@ set(TESTS_WITH_PROGRAM
   term_rr
   term_trace_syscall
   thread_exit_signal
+  thread_stress
   threaded_syscall_spam
   threads
   tls
@@ -1032,38 +1032,33 @@ if(BUILD_TESTS)
   # reduced single-core performance.
   exec_program(cat ARGS "/proc/cpuinfo" OUTPUT_VARIABLE CPUINFO)
   string(REGEX MATCH "^.*(Xeon Phi).*$" CPU_MODEL_PHI ${CPUINFO})
+  if(NOT "${CPU_MODEL_PHI}" STREQUAL "")
+    set(TEST_MONITOR_DEFAULT_TIMEOUT 480)
+  else()
+    set(TEST_MONITOR_DEFAULT_TIMEOUT 120)
+  endif()
 
   function(configure_test test)
-    if("${test}" MATCHES "^checkpoint_")
-      set(TIMEOUT 600)
-    elseif("${test}" MATCHES "stress")
-      set(TIMEOUT 600)
-    elseif("${test}" MATCHES "string_instructions")
-      set(TIMEOUT 600)
-    elseif(NOT "${CPU_MODEL_PHI}" STREQUAL "")
-      set(TIMEOUT 480)
-    else()
-      set(TIMEOUT 120)
-    endif()
+    # The real timeouts are handled by test-monitor
     set_tests_properties(${test}
-      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED" TIMEOUT ${TIMEOUT})
+      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED" TIMEOUT 1000)
   endfunction(configure_test)
 
   foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
     add_test(${test}
-      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test} -b ${PROJECT_BINARY_DIR})
+      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test} -b ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test})
     add_test(${test}-no-syscallbuf
-      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test} -n ${PROJECT_BINARY_DIR})
+      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test} -n ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
     add_test(${test}
-      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test} -b ${PROJECT_BINARY_DIR})
+      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test} -b ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test})
     add_test(${test}-no-syscallbuf
-      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test} -n ${PROJECT_BINARY_DIR})
+      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test} -n ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
@@ -1169,6 +1164,8 @@ if(BUILD_TESTS)
 endif()
 
 add_executable(ftrace_helper src/ftrace/ftrace_helper.c)
+
+add_executable(test-monitor src/test-monitor/test-monitor.cc)
 
 include(ProcessorCount)
 ProcessorCount(N)

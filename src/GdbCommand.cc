@@ -3,6 +3,7 @@
 #include "GdbCommand.h"
 
 #include "ReplayTask.h"
+#include "log.h"
 
 using namespace std;
 

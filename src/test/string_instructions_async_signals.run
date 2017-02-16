@@ -1,7 +1,6 @@
 source `dirname $0`/util.sh
 
 RECORD_ARGS="-c1000"
-record $TESTNAME
-replay
-check EXIT-SUCCESS
+TIMEOUT=600
+compare_test EXIT-SUCCESS
 

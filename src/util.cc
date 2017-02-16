@@ -862,7 +862,7 @@ void copy_file(Task* t, int dest_fd, int src_fd) {
 void* xmalloc(size_t size) {
   void* mem_ptr = malloc(size);
   if (!mem_ptr) {
-    abort();
+    notifying_abort();
   }
   return mem_ptr;
 }
@@ -948,6 +948,19 @@ ScopedFd open_socket(const char* address, unsigned short* port,
     break;
   } while (++(*port), probe == PROBE_PORT);
   return listen_fd;
+}
+
+void notifying_abort() {
+  char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
+  if (test_monitor_pid) {
+    pid_t pid = atoi(test_monitor_pid);
+    // Tell test-monitor to wake up and take a snapshot, and wait for it to
+    // do so.
+    kill(pid, SIGURG);
+    sleep(10000);
+  }
+
+  abort();
 }
 
 } // namespace rr
