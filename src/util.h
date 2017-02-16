@@ -291,6 +291,11 @@ inline uint64_t signal_bit(int sig) { return uint64_t(1) << (sig - 1); }
 
 uint64_t rr_signal_mask();
 
+enum ProbePort { DONT_PROBE = 0, PROBE_PORT };
+
+ScopedFd open_socket(const char* address, unsigned short* port,
+                     ProbePort probe);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

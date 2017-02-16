@@ -3,6 +3,7 @@
 #include "GdbServer.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/wait.h>
@@ -19,6 +20,7 @@
 #include "GdbExpression.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "StringVectorToCharArray.h"
 #include "Task.h"
 #include "TaskGroup.h"
 #include "kernel_metadata.h"
@@ -1319,17 +1321,78 @@ static uint32_t get_cpu_features(SupportedArch arch) {
   return cpu_features;
 }
 
+static const char connection_addr[] = "127.0.0.1";
+
+struct DebuggerParams {
+  char exe_image[PATH_MAX];
+  short port;
+};
+
+static void push_default_gdb_options(vector<string>& vec) {
+  vec.push_back("-l");
+  vec.push_back("10000");
+}
+
+static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
+  vec.push_back("-ex");
+  stringstream ss;
+  ss << "target extended-remote :";
+  ss << port;
+  vec.push_back(ss.str());
+}
+
+/**
+ * Wait for exactly one gdb host to connect to this remote target on
+ * IP address 127.0.0.1, port |port|.  If |probe| is nonzero, a unique
+ * port based on |start_port| will be searched for.  Otherwise, if
+ * |port| is already bound, this function will fail.
+ *
+ * Pass the |tgid| of the task on which this debug-connection request
+ * is being made.  The remaining debugging session will be limited to
+ * traffic regarding |tgid|, but clients don't need to and shouldn't
+ * need to assume that.
+ *
+ * If we're opening this connection on behalf of a known client, pass
+ * an fd in |client_params_fd|; we'll write the allocated port and |exe_image|
+ * through the fd before waiting for a connection. |exe_image| is the
+ * process that will be debugged by client, or null ptr if there isn't
+ * a client.
+ *
+ * This function is infallible: either it will return a valid
+ * debugging context, or it won't return.
+ */
 static unique_ptr<GdbConnection> await_connection(
-    Task* t, unsigned short port, GdbConnection::ProbePort probe,
+    Task* t, unsigned short port, ProbePort probe,
     const GdbConnection::Features& features, const string& debugger_name,
     ScopedFd* client_params_fd = nullptr) {
-  auto result = GdbConnection::await_client_connection(
-      port, probe, t->tgid(), debugger_name, t->vm()->exe_image(), features,
-      client_params_fd);
+  auto dbg = unique_ptr<GdbConnection>(new GdbConnection(t->tgid(), features));
+  ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
+  if (client_params_fd) {
+    DebuggerParams params;
+    memset(&params, 0, sizeof(params));
+    strncpy(params.exe_image, t->vm()->exe_image().c_str(),
+            sizeof(params.exe_image) - 1);
+    params.port = port;
 
-  result->set_cpu_features(get_cpu_features(t->arch()));
+    ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
+    assert(nwritten == sizeof(params));
+  } else {
+    vector<string> options;
+    push_default_gdb_options(options);
+    push_target_remote_cmd(options, port);
+    cerr << "Launch gdb with \n"
+         << "  " << debugger_name << " ";
+    for (auto& opt : options) {
+      cerr << "'" << opt << "' ";
+    }
+    cerr << t->vm()->exe_image() << "\n";
+  }
+  LOG(debug) << "limiting debugger traffic to tgid " << t->tgid();
+  dbg->await_debugger(listen_fd);
 
-  return result;
+  dbg->set_cpu_features(get_cpu_features(t->arch()));
+
+  return move(dbg);
 }
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
@@ -1348,8 +1411,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   // presumably break if a different port were to be selected by
   // rr (otherwise why would they specify a port in the first
   // place).  So fail with a clearer error message.
-  auto probe = flags.dbg_port > 0 ? GdbConnection::DONT_PROBE
-                                  : GdbConnection::PROBE_PORT;
+  auto probe = flags.dbg_port > 0 ? DONT_PROBE : PROBE_PORT;
   Task* t = timeline.current_session().current_task();
   dbg = await_connection(t, port, probe, GdbConnection::Features(),
                          flags.debugger_name, flags.debugger_params_write_pipe);
@@ -1390,15 +1452,69 @@ static string create_gdb_command_file(const string& macros) {
   return procfile.str();
 }
 
+static string to_string(const vector<string>& args) {
+  stringstream ss;
+  for (auto& a : args) {
+    ss << "'" << a << "' ";
+  }
+  return ss.str();
+}
+
+/**
+ * Exec gdb using the params that were written to
+ * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
+ * of macros defined in |macros| if nonnull.
+ */
 void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
                            const string& gdb_binary_file_path,
                            const vector<string>& gdb_options) {
   auto macros = gdb_rr_macros();
   string gdb_command_file = create_gdb_command_file(macros);
-  vector<string> options = gdb_options;
-  options.push_back("-x");
-  options.push_back(gdb_command_file);
-  GdbConnection::launch_gdb(params_pipe_fd, gdb_binary_file_path, options);
+
+  DebuggerParams params;
+  ssize_t nread;
+  while (true) {
+    nread = read(params_pipe_fd, &params, sizeof(params));
+    if (nread == 0) {
+      // pipe was closed. Probably rr failed/died.
+      return;
+    }
+    if (nread != -1 || errno != EINTR) {
+      break;
+    }
+  }
+  assert(nread == sizeof(params));
+
+  vector<string> args;
+  args.push_back(gdb_binary_file_path);
+  // The gdb protocol uses the "vRun" packet to reload
+  // remote targets.  The packet is specified to be like
+  // "vCont", in which gdb waits infinitely long for a
+  // stop reply packet.  But in practice, gdb client
+  // expects the vRun to complete within the remote-reply
+  // timeout, after which it issues vCont.  The timeout
+  // causes gdb<-->rr communication to go haywire.
+  //
+  // rr can take a very long time indeed to send the
+  // stop-reply to gdb after restarting replay; the time
+  // to reach a specified execution target is
+  // theoretically unbounded.  Timing out on vRun is
+  // technically a gdb bug, but because the rr replay and
+  // the gdb reload models don't quite match up, we'll
+  // work around it on the rr side by disabling the
+  // remote-reply timeout.
+  push_default_gdb_options(args);
+  args.insert(args.end(), gdb_options.begin(), gdb_options.end());
+  args.push_back("-x");
+  args.push_back(gdb_command_file);
+  push_target_remote_cmd(args, params.port);
+  args.push_back(params.exe_image);
+
+  LOG(debug) << "launching " << to_string(args);
+
+  StringVectorToCharArray c_args(args);
+  execvp(gdb_binary_file_path.c_str(), c_args.get());
+  FATAL() << "Failed to exec gdb.";
 }
 
 void GdbServer::emergency_debug(Task* t) {
@@ -1420,7 +1536,7 @@ void GdbServer::emergency_debug(Task* t) {
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
   unique_ptr<GdbConnection> dbg =
-      await_connection(t, t->tid, GdbConnection::PROBE_PORT, features, "gdb");
+      await_connection(t, t->tid, PROBE_PORT, features, "gdb");
 
   GdbServer(dbg, t).process_debugger_requests();
 }

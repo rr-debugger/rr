@@ -5,8 +5,7 @@
 
 #include "util.h"
 
-#include <algorithm>
-
+#include <arpa/inet.h>
 #include <assert.h>
 #include <elf.h>
 #include <fcntl.h>
@@ -15,10 +14,14 @@
 #include <linux/capability.h>
 #include <linux/magic.h>
 #include <linux/prctl.h>
+#include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/vfs.h>
 #include <unistd.h>
+
+#include <algorithm>
 
 #include "preload/preload_interface.h"
 
@@ -906,6 +909,45 @@ unsigned int xsave_area_size() {
 uint64_t rr_signal_mask() {
   return signal_bit(PerfCounters::TIME_SLICE_SIGNAL) |
          signal_bit(SYSCALLBUF_DESCHED_SIGNAL);
+}
+
+ScopedFd open_socket(const char* address, unsigned short* port,
+                     ProbePort probe) {
+  ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+  if (!listen_fd.is_open()) {
+    FATAL() << "Couldn't create socket";
+  }
+
+  struct sockaddr_in addr;
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr(address);
+  int reuseaddr = 1;
+  int ret = setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
+                       sizeof(reuseaddr));
+  if (ret < 0) {
+    FATAL() << "Couldn't set SO_REUSEADDR";
+  }
+
+  do {
+    addr.sin_port = htons(*port);
+    ret = ::bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (ret && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
+      continue;
+    }
+    if (ret) {
+      FATAL() << "Couldn't bind to port " << *port;
+    }
+
+    ret = listen(listen_fd, 1 /*backlogged connection*/);
+    if (ret && EADDRINUSE == errno) {
+      continue;
+    }
+    if (ret) {
+      FATAL() << "Couldn't listen on port " << *port;
+    }
+    break;
+  } while (++(*port), probe == PROBE_PORT);
+  return listen_fd;
 }
 
 } // namespace rr
