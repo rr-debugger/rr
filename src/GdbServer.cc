@@ -1362,37 +1362,24 @@ static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
  * debugging context, or it won't return.
  */
 static unique_ptr<GdbConnection> await_connection(
-    Task* t, unsigned short port, ProbePort probe,
-    const GdbConnection::Features& features, const string& debugger_name,
-    ScopedFd* client_params_fd = nullptr) {
+    Task* t, ScopedFd& listen_fd, const GdbConnection::Features& features) {
   auto dbg = unique_ptr<GdbConnection>(new GdbConnection(t->tgid(), features));
-  ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
-  if (client_params_fd) {
-    DebuggerParams params;
-    memset(&params, 0, sizeof(params));
-    strncpy(params.exe_image, t->vm()->exe_image().c_str(),
-            sizeof(params.exe_image) - 1);
-    params.port = port;
-
-    ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
-    assert(nwritten == sizeof(params));
-  } else {
-    vector<string> options;
-    push_default_gdb_options(options);
-    push_target_remote_cmd(options, port);
-    cerr << "Launch gdb with \n"
-         << "  " << debugger_name << " ";
-    for (auto& opt : options) {
-      cerr << "'" << opt << "' ";
-    }
-    cerr << t->vm()->exe_image() << "\n";
-  }
-  LOG(debug) << "limiting debugger traffic to tgid " << t->tgid();
-  dbg->await_debugger(listen_fd);
-
   dbg->set_cpu_features(get_cpu_features(t->arch()));
-
+  dbg->await_debugger(listen_fd);
   return move(dbg);
+}
+
+static void print_debugger_launch_command(Task* t, unsigned short port,
+                                          const char* debugger_name,
+                                          FILE* out) {
+  vector<string> options;
+  push_default_gdb_options(options);
+  push_target_remote_cmd(options, port);
+  fprintf(out, "Launch gdb with \n  %s ", debugger_name);
+  for (auto& opt : options) {
+    fprintf(out, "'%s' ", opt.c_str());
+  }
+  fprintf(out, "%s\n", t->vm()->exe_image().c_str());
 }
 
 void GdbServer::serve_replay(const ConnectionFlags& flags) {
@@ -1413,8 +1400,21 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   // place).  So fail with a clearer error message.
   auto probe = flags.dbg_port > 0 ? DONT_PROBE : PROBE_PORT;
   Task* t = timeline.current_session().current_task();
-  dbg = await_connection(t, port, probe, GdbConnection::Features(),
-                         flags.debugger_name, flags.debugger_params_write_pipe);
+  ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
+  if (flags.debugger_params_write_pipe) {
+    DebuggerParams params;
+    memset(&params, 0, sizeof(params));
+    strncpy(params.exe_image, t->vm()->exe_image().c_str(),
+            sizeof(params.exe_image) - 1);
+    params.port = port;
+
+    ssize_t nwritten =
+        write(*flags.debugger_params_write_pipe, &params, sizeof(params));
+    assert(nwritten == sizeof(params));
+  } else {
+    print_debugger_launch_command(t, port, flags.debugger_name.c_str(), stderr);
+  }
+  dbg = await_connection(t, listen_fd, GdbConnection::Features());
   if (flags.debugger_params_write_pipe) {
     flags.debugger_params_write_pipe->close();
   }
@@ -1535,8 +1535,10 @@ void GdbServer::emergency_debug(Task* t) {
   // b) some gdb versions will fail if the user doesn't turn off async
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
-  unique_ptr<GdbConnection> dbg =
-      await_connection(t, t->tid, PROBE_PORT, features, "gdb");
+  unsigned short port = t->tid;
+  ScopedFd listen_fd = open_socket(connection_addr, &port, PROBE_PORT);
+  print_debugger_launch_command(t, port, "gdb", stderr);
+  unique_ptr<GdbConnection> dbg = await_connection(t, listen_fd, features);
 
   GdbServer(dbg, t).process_debugger_requests();
 }
