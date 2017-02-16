@@ -104,18 +104,9 @@ GLOBAL_OPTIONS="$DEFAULT_FLAGS"
 # just after sourcing this file.
 GLOBAL_OPTIONS_BIND_CPU="$DEFAULT_FLAGS"
 
-LIB_ARG=$1
-SRCDIR=$2
-if [[ ! -d "$SRCDIR" ]]; then
-    fatal "FAILED: srcdir missing"
-fi
-OBJDIR=$3
-if [[ "$OBJDIR" == "" ]]; then
-    # Default to assuming that the user's working directory is the
-    # src/test/ directory within the rr clone.
-    OBJDIR=`realpath ../../../obj`
-fi
-TESTNAME=$4
+SRCDIR=`dirname $0`/../..
+
+TESTNAME=$1
 if [[ "$TESTNAME" == "" ]]; then
     [[ $0 =~ ([A-Za-z0-9_]+)\.run$ ]] || fatal "FAILED: bad test script name"
     TESTNAME=${BASH_REMATCH[1]}
@@ -125,6 +116,19 @@ if [[ $TESTNAME =~ ([A-Za-z0-9_]+)_32$ ]]; then
     TESTNAME_NO_BITNESS=${BASH_REMATCH[1]}
 else
     TESTNAME_NO_BITNESS=$TESTNAME
+fi
+LIB_ARG=$2
+if [[ "$LIB_ARG" == "" ]]; then
+    LIB_ARG=-b
+fi
+OBJDIR=$3
+if [[ "$OBJDIR" == "" ]]; then
+    # Default to assuming that the user's working directory is the
+    # src/test/ directory within the rr clone.
+    OBJDIR=`realpath $SRCDIR/../obj`
+fi
+if [[ ! -d "$OBJDIR" ]]; then
+    fatal "FAILED: objdir missing"
 fi
 
 # The temporary directory we create for this test run.
