@@ -1148,7 +1148,7 @@ if(BUILD_TESTS)
         bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test}_32 -b ${PROJECT_BINARY_DIR})
       configure_test(${test}-32)
       add_test(${test}-32-no-syscallbuf
-	bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test}_32 -n ${PROJECT_BINARY_DIR})
+	    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test}_32 -n ${PROJECT_BINARY_DIR})
       configure_test(${test}-32-no-syscallbuf)
     endforeach(test)
   endif()
