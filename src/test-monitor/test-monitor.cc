@@ -71,8 +71,16 @@ ProcessMap::ProcessMap(FILE* out) {
           if (!fgets(buf, sizeof(buf), status)) {
             break;
           }
+          ssize_t len = strlen(buf);
+          if (len > 0 && buf[len - 1] == '\n') {
+            buf[len - 1] = 0;
+          }
           if (strncmp(buf, "Name:", 5) == 0) {
-            map[pid].name = string(buf + 5);
+            char* s = buf + 5;
+            while (*s == ' ' || *s == '\t')  {
+              ++s;
+            }
+            map[pid].name = string(s);
           }
           if (strncmp(buf, "PPid:", 5) == 0) {
             pid_t ppid = atoi(buf + 5);
