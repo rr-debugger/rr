@@ -38,7 +38,9 @@ static int try_setup_ns_internal(int ns_kind, int expect_to_be_root) {
     pipe(parent_block);
 
     pid_t pid = getpid();
-    if (fork() == 0) {
+    pid_t child = fork();
+    test_assert(child >= 0);
+    if (!child) {
       close(child_block[1]);
       close(parent_block[0]);
 
@@ -57,12 +59,13 @@ static int try_setup_ns_internal(int ns_kind, int expect_to_be_root) {
       int uidmap_fd = open_proc_file(pid, "uid_map", O_WRONLY);
       test_assert(uidmap_fd != -1);
       char uidmap[100];
-      if (expect_to_be_root)
+      if (expect_to_be_root) {
         nbytes =
             snprintf(uidmap, (ssize_t)sizeof(uidmap), "0\t%d\t1", getuid());
-      else
+      } else {
         nbytes =
             snprintf(uidmap, (ssize_t)sizeof(uidmap), "1000\t%d\t1", getuid());
+      }
       test_assert(nbytes > 0 && nbytes <= (ssize_t)sizeof(uidmap));
       test_assert(write(uidmap_fd, uidmap, nbytes) == nbytes);
       test_assert(uidmap_fd);
@@ -70,12 +73,13 @@ static int try_setup_ns_internal(int ns_kind, int expect_to_be_root) {
       int gidmap_fd = open_proc_file(pid, "gid_map", O_WRONLY);
       test_assert(gidmap_fd != -1);
       char gidmap[100];
-      if (expect_to_be_root)
+      if (expect_to_be_root) {
         nbytes =
             snprintf(gidmap, (ssize_t)sizeof(gidmap), "0\t%d\t1", getgid());
-      else
+      } else {
         nbytes =
             snprintf(gidmap, (ssize_t)sizeof(gidmap), "1000\t%d\t1", getgid());
+      }
       test_assert(nbytes > 0 && nbytes <= (ssize_t)sizeof(gidmap));
       test_assert(write(gidmap_fd, gidmap, nbytes) == nbytes);
 
