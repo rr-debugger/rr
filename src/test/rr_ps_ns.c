@@ -12,7 +12,9 @@ int main(void) {
   }
 
   // This is the first child, therefore PID 1 in it's PID namespace
-  if ((pid = fork()) == 0) {
+  pid = fork();
+  test_assert(pid >= 0);
+  if (pid == 0) {
     // We will check that rr ps includes `(1)` here
     return 78;
   }
