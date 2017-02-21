@@ -33,16 +33,14 @@ static int try_setup_ns_internal(int ns_kind, int expect_to_be_root) {
     // Try again using user namespace functionality
     test_assert(errno == 0 || errno == EPERM);
 
-    int child_block[2], parent_block[2];
+    int child_block[2];
     pipe(child_block);
-    pipe(parent_block);
 
     pid_t pid = getpid();
     pid_t child = fork();
     test_assert(child >= 0);
     if (!child) {
       close(child_block[1]);
-      close(parent_block[0]);
 
       // This will block until the parent closes fds[1]
       test_assert(0 == read(child_block[0], NULL, 1));
@@ -83,12 +81,9 @@ static int try_setup_ns_internal(int ns_kind, int expect_to_be_root) {
       test_assert(nbytes > 0 && nbytes <= (ssize_t)sizeof(gidmap));
       test_assert(write(gidmap_fd, gidmap, nbytes) == nbytes);
 
-      close(parent_block[1]);
-
       _exit(0);
     }
     close(child_block[0]);
-    close(parent_block[1]);
 
     err = unshare(ns_kind | CLONE_NEWUSER);
 
@@ -100,10 +95,13 @@ static int try_setup_ns_internal(int ns_kind, int expect_to_be_root) {
       return -1;
     }
 
+    // Allow the child to configure this user namespace
     close(child_block[1]);
-    // Wait until our child has made us root in this namespace;
-    test_assert(0 == read(parent_block[0], NULL, 1));
-    close(parent_block[0]);
+
+    // Wait until our child has configured this namespace and has exited
+    int status = 0;
+    waitpid(child, &status, 0);
+    test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
   }
 
   return 0;
