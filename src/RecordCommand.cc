@@ -440,7 +440,7 @@ int RecordCommand::run(vector<string>& args) {
     return 1;
   }
 
-  if (!verify_not_option(args) || args.size() == 0) {
+  if (check_if_option(args) || args.size() == 0) {
     print_help(stderr);
     return 1;
   }
