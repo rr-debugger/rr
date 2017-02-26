@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "GdbCommand.h"
 #include "GdbCommandHandler.h"
+#include "GdbCommand.h"
 #include "log.h"
 
 #include <sstream>

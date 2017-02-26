@@ -77,7 +77,7 @@ ProcessMap::ProcessMap(FILE* out) {
           }
           if (strncmp(buf, "Name:", 5) == 0) {
             char* s = buf + 5;
-            while (*s == ' ' || *s == '\t')  {
+            while (*s == ' ' || *s == '\t') {
               ++s;
             }
             map[pid].name = string(s);
