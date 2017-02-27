@@ -514,6 +514,7 @@ set(BASIC_TESTS
   flock2
   fork_brk
   fork_child_crash
+  fork_many
   futex_pi
   futex_priorities
   fxregs

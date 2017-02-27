@@ -301,6 +301,11 @@ ScopedFd open_socket(const char* address, unsigned short* port,
  */
 void notifying_abort();
 
+/**
+ * Check for leaked mappings etc
+ */
+void check_for_leaks();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

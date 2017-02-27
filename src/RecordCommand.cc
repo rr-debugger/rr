@@ -460,6 +460,10 @@ int RecordCommand::run(vector<string>& args) {
   }
 
   WaitStatus status = record(args, flags);
+
+  // Everything should have been cleaned up by now.
+  check_for_leaks();
+
   switch (status.type()) {
     case WaitStatus::EXIT:
       return status.exit_code();

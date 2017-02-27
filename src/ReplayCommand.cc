@@ -389,6 +389,9 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.debugger_name = flags.gdb_binary_file_path;
       GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
     }
+
+    // Everything should have been cleaned up by now.
+    check_for_leaks();
     return 0;
   }
 
@@ -401,23 +404,27 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     // the parent dies, our writes to the pipe will error out.
     close(debugger_params_pipe[0]);
 
-    ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
-    auto session = ReplaySession::create(trace_dir);
-    GdbServer::ConnectionFlags conn_flags;
-    conn_flags.dbg_port = flags.dbg_port;
-    conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
-    GdbServer server(session, session_flags(flags), target);
+    {
+      ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
+      auto session = ReplaySession::create(trace_dir);
+      GdbServer::ConnectionFlags conn_flags;
+      conn_flags.dbg_port = flags.dbg_port;
+      conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
+      GdbServer server(session, session_flags(flags), target);
 
-    server_ptr = &server;
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_flags = SA_RESTART;
-    sa.sa_handler = handle_SIGINT_in_child;
-    if (sigaction(SIGINT, &sa, nullptr)) {
-      FATAL() << "Couldn't set sigaction for SIGINT.";
+      server_ptr = &server;
+      struct sigaction sa;
+      memset(&sa, 0, sizeof(sa));
+      sa.sa_flags = SA_RESTART;
+      sa.sa_handler = handle_SIGINT_in_child;
+      if (sigaction(SIGINT, &sa, nullptr)) {
+        FATAL() << "Couldn't set sigaction for SIGINT.";
+      }
+
+      server.serve_replay(conn_flags);
     }
-
-    server.serve_replay(conn_flags);
+    // Everything should have been cleaned up by now.
+    check_for_leaks();
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if

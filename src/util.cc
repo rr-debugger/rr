@@ -963,4 +963,18 @@ void notifying_abort() {
   abort();
 }
 
+void check_for_leaks() {
+  if (getenv("RUNNING_UNDER_RR")) {
+    // Don't do leak checking. The outer rr may have injected maps into our
+    // address space that look like leaks to us.
+    return;
+  }
+  for (KernelMapIterator it(getpid()); !it.at_end(); ++it) {
+    auto km = it.current();
+    if (km.fsname().find(RR_MAPPING_PREFIX) == 0) {
+      FATAL() << "Leaked " << km;
+    }
+  }
+}
+
 } // namespace rr

@@ -292,8 +292,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
       if (m.local_addr &&
           !(m.flags & (AddressSpace::Mapping::IS_THREAD_LOCALS |
                        AddressSpace::Mapping::IS_SYSCALLBUF))) {
-        memcpy(Session::recreate_shared_mmap(remote, m).local_addr,
-               m.local_addr, m.map.size());
+        Session::recreate_shared_mmap(remote, m, Session::PRESERVE_CONTENTS);
       }
     }
   }
@@ -472,6 +471,14 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     ASSERT(t, false) << "Exec of stub " << stub_filename << " failed";
   }
 
+  // Restore any memory if required. We need to do this through memory_task,
+  // since the new task is now on the new address space. Do it now because
+  // later we may try to unmap this task's syscallbuf.
+  if (memory_task != t) {
+    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
+                           saved_data.size());
+  }
+
   vector<KernelMapping> kms;
   vector<TraceReader::MappedData> datas;
 
@@ -601,13 +608,6 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
-
-  // Restore any memory if required. We need to do this through memory_task,
-  // since the new task is now on the new address space.
-  if (memory_task != t) {
-    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
-                           saved_data.size());
-  }
 
   // Notify outer rr if there is one
   syscall(SYS_rrcall_reload_auxv, t->tid);

@@ -114,10 +114,7 @@ Task::~Task() {
     // Destroying a Session may result in unstable exits during which
     // Task::destroy_buffers() will not have been called.
     if (!syscallbuf_child.is_null()) {
-      uint8_t* local_mapping = vm()->mapping_of(syscallbuf_child).local_addr;
       vm()->unmap(this, syscallbuf_child, syscallbuf_size);
-      int ret = munmap(local_mapping, syscallbuf_size);
-      ASSERT(this, ret >= 0);
     }
   } else {
     ASSERT(this, seen_ptrace_exit_event);
@@ -226,15 +223,9 @@ void Task::unmap_buffers_for(
     vm()->unmap(this, other->scratch_ptr, other->scratch_size);
   }
   if (!saved_syscallbuf_child.is_null()) {
-    uint8_t* local_mapping =
-        vm()->mapping_of(saved_syscallbuf_child).local_addr;
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               saved_syscallbuf_child, other->syscallbuf_size);
     vm()->unmap(this, saved_syscallbuf_child, other->syscallbuf_size);
-    if (local_mapping) {
-      int ret = munmap(local_mapping, other->syscallbuf_size);
-      ASSERT(this, ret >= 0);
-    }
   }
 }
 
@@ -658,10 +649,29 @@ static bool is_long_mode_segment(uint32_t segment) {
 #endif
 
 void Task::post_exec(const string& exe_file) {
-  /* We just saw a successful exec(), so from now on we know
-   * that the address space layout for the replay tasks will
-   * (should!) be the same as for the recorded tasks.  So we can
-   * start validating registers at events. */
+  Task* stopped_task_in_address_space = nullptr;
+  bool other_task_in_address_space = false;
+  for (Task* t : as->task_set()) {
+    if (t != this) {
+      if (t->is_stopped) {
+        stopped_task_in_address_space = t;
+      }
+      other_task_in_address_space = true;
+    }
+  }
+  if (stopped_task_in_address_space) {
+    AutoRemoteSyscalls remote(stopped_task_in_address_space);
+    unmap_buffers_for(remote, this, syscallbuf_child);
+  } else if (other_task_in_address_space) {
+    // We should clean up our syscallbuf/scratch but that's too hard since we
+    // have no stopped task to use for that :-(.
+    // (We can't clean up those buffers *before* the exec completes, because it
+    // might fail in which case we shouldn't have cleaned them up.)
+    // Just let the buffers leak. The AddressSpace will clean up our local
+    // shared buffer when it's destroyed.
+    LOG(warn) << "Intentionally leaking syscallbuf after exec for task " << tid;
+  }
+
   session().post_exec();
 
   as->erase_task(this);
@@ -698,6 +708,7 @@ void Task::post_exec(const string& exe_file) {
   set_extra_regs(e);
 
   syscallbuf_child = nullptr;
+  scratch_ptr = nullptr;
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
   preload_globals = nullptr;

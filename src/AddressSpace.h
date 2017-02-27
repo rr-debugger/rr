@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "preload/preload_interface.h"
@@ -384,6 +385,9 @@ public:
    * |*recorded_map| is the mapping during recording, or null if the mapping
    * during recording is known to be the same as the new map (e.g. because
    * we are recording!).
+   * |local_addr| is the local address of the memory shared with the tracee,
+   * or null if it's not shared with the tracee. AddressSpace takes ownership
+   * of the shared memory and is responsible for unmapping it.
    */
   KernelMapping map(
       Task* t, remote_ptr<void> addr, size_t num_bytes, int prot, int flags,
@@ -400,6 +404,11 @@ public:
    * There must be such a mapping.
    */
   const Mapping& mapping_of(remote_ptr<void> addr) const;
+
+  /**
+   * Detach local mapping and return it.
+   */
+  void* detach_local_mapping(remote_ptr<void> addr);
 
   /**
    * Return a reference to the flags of the mapping at this address, allowing
@@ -1019,6 +1028,36 @@ private:
                                      const struct map_iterator_data* data);
 
   AddressSpace operator=(const AddressSpace&) = delete;
+};
+
+/**
+ * The following helper is used to iterate over a tracee's memory
+ * map.
+ */
+class KernelMapIterator {
+public:
+  KernelMapIterator(Task* t);
+  KernelMapIterator(pid_t tid) : tid(tid) { init(); }
+  ~KernelMapIterator();
+
+  // It's very important to keep in mind that btrfs files can have the wrong
+  // device number!
+  const KernelMapping& current(std::string* raw_line = nullptr) {
+    if (raw_line) {
+      *raw_line = this->raw_line;
+    }
+    return km;
+  }
+  bool at_end() { return !maps_file; }
+  void operator++();
+
+private:
+  void init();
+
+  pid_t tid;
+  FILE* maps_file;
+  std::string raw_line;
+  KernelMapping km;
 };
 
 } // namespace rr

@@ -15,6 +15,8 @@
 #include "TaskishUid.h"
 #include "TraceStream.h"
 
+#define RR_MAPPING_PREFIX "/tmp/rr-shared-"
+
 namespace rr {
 
 class AddressSpace;
@@ -259,8 +261,13 @@ public:
 
   static bool make_private_shared(AutoRemoteSyscalls& remote,
                                   const AddressSpace::Mapping m);
+  enum PreserveContents {
+    PRESERVE_CONTENTS,
+    DISCARD_CONTENTS,
+  };
   static const AddressSpace::Mapping& recreate_shared_mmap(
       AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
+      PreserveContents preserve = DISCARD_CONTENTS,
       MonitoredSharedMemory::shr_ptr&& monitored = nullptr);
 
   /* Takes a mapping and replaces it by one that is shared between rr and

@@ -38,46 +38,22 @@ static const char* trim_leading_blanks(const char* str) {
   return trimmed;
 }
 
-/**
- * The following helper is used to iterate over a tracee's memory
- * map.
- */
-class KernelMapIterator {
-public:
-  KernelMapIterator(Task* t) : tid(t->tid) { init(); }
-  KernelMapIterator(pid_t tid) : tid(tid) { init(); }
-  ~KernelMapIterator() {
-    if (maps_file) {
-      fclose(maps_file);
-    }
-  }
+KernelMapIterator::KernelMapIterator(Task* t) : tid(t->tid) { init(); }
 
-  // It's very important to keep in mind that btrfs files can have the wrong
-  // device number!
-  const KernelMapping& current(string* raw_line = nullptr) {
-    if (raw_line) {
-      *raw_line = this->raw_line;
-    }
-    return km;
+KernelMapIterator::~KernelMapIterator() {
+  if (maps_file) {
+    fclose(maps_file);
   }
-  bool at_end() { return !maps_file; }
-  void operator++();
+}
 
-private:
-  void init() {
-    char maps_path[PATH_MAX];
-    sprintf(maps_path, "/proc/%d/maps", tid);
-    if (!(maps_file = fopen(maps_path, "r"))) {
-      FATAL() << "Failed to open " << maps_path;
-    }
-    ++*this;
+void KernelMapIterator::init() {
+  char maps_path[PATH_MAX];
+  sprintf(maps_path, "/proc/%d/maps", tid);
+  if (!(maps_file = fopen(maps_path, "r"))) {
+    FATAL() << "Failed to open " << maps_path;
   }
-
-  pid_t tid;
-  FILE* maps_file;
-  string raw_line;
-  KernelMapping km;
-};
+  ++*this;
+}
 
 void KernelMapIterator::operator++() {
   char line[PATH_MAX * 2];
@@ -193,7 +169,17 @@ AddressSpace::Mapping::Mapping(const Mapping& other)
 
 AddressSpace::Mapping::~Mapping() {}
 
-AddressSpace::~AddressSpace() { session_->on_destroy(this); }
+AddressSpace::~AddressSpace() {
+  for (auto& m : mem) {
+    if (m.second.local_addr) {
+      int ret = munmap(m.second.local_addr, m.second.map.size());
+      if (ret < 0) {
+        FATAL() << "Can't munmap";
+      }
+    }
+  }
+  session_->on_destroy(this);
+}
 
 void AddressSpace::after_clone() { allocate_watchpoints(); }
 
@@ -559,7 +545,7 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
                                 EmuFile::shr_ptr emu_file, void* local_addr,
                                 shared_ptr<MonitoredSharedMemory>&& monitored) {
   LOG(debug) << "mmap(" << addr << ", " << num_bytes << ", " << HEX(prot)
-             << ", " << HEX(flags) << ", " << HEX(offset_bytes);
+             << ", " << HEX(flags) << ", " << HEX(offset_bytes) << ")";
   num_bytes = ceil_page_size(num_bytes);
   KernelMapping m(addr, addr + num_bytes, fsname, device, inode, prot, flags,
                   offset_bytes);
@@ -631,6 +617,13 @@ uint32_t& AddressSpace::mapping_flags_of(remote_ptr<void> addr) {
   return const_cast<AddressSpace::Mapping&>(
              static_cast<const AddressSpace*>(this)->mapping_of(addr))
       .flags;
+}
+
+void* AddressSpace::detach_local_mapping(remote_ptr<void> addr) {
+  auto m = const_cast<AddressSpace::Mapping&>(mapping_of(addr));
+  void* p = m.local_addr;
+  m.local_addr = nullptr;
+  return p;
 }
 
 bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
@@ -1011,6 +1004,14 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
               : nullptr);
       overflow.flags = m.flags;
       add_to_map(overflow);
+    }
+
+    if (m.local_addr) {
+      int ret = munmap(m.local_addr + (rem.start() - m.map.start()),
+          rem.size());
+      if (ret < 0) {
+        FATAL() << "Can't munmap";
+      }
     }
   };
   for_each_in_range(addr, num_bytes, unmapper);
