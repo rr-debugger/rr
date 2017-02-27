@@ -1366,7 +1366,7 @@ static unique_ptr<GdbConnection> await_connection(
   auto dbg = unique_ptr<GdbConnection>(new GdbConnection(t->tgid(), features));
   dbg->set_cpu_features(get_cpu_features(t->arch()));
   dbg->await_debugger(listen_fd);
-  return move(dbg);
+  return dbg;
 }
 
 static void print_debugger_launch_command(Task* t, unsigned short port,
