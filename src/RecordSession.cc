@@ -1169,7 +1169,8 @@ static bool preinject_signal(RecordTask* t) {
       /* We raced with an exit (e.g. due to a pending SIGKILL). */
       return false;
     }
-    ASSERT(t, t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL);
+    ASSERT(t, t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL) <<
+        "Expected SYSCALLBUF_DESCHED_SIGNAL, got " << t->status();
     /* We're now in a signal-stop */
   }
 
