@@ -54,7 +54,11 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 
 GdbConnection::GdbConnection(pid_t tgid, const Features& features)
-    : tgid(tgid), cpu_features_(0), no_ack(false), features_(features) {
+    : tgid(tgid),
+      cpu_features_(0),
+      no_ack(false),
+      features_(features),
+      connection_alive_(true) {
 #ifndef REVERSE_EXECUTION
   features_.reverse_execution = false;
 #endif
@@ -78,7 +82,7 @@ static bool poll_socket(const ScopedFd& sock_fd, short events, int timeoutMs) {
 
   int ret = poll(&pfd, 1, timeoutMs);
   if (ret < 0 && errno != EINTR) {
-    FATAL() << "Polling gdb socket failed";
+    LOG(info) << "gdb socket has been closed";
   }
   return ret > 0;
 }
@@ -102,10 +106,12 @@ void GdbConnection::read_data_once() {
   uint8_t buf[4096];
   nread = read(sock_fd, buf, sizeof(buf));
   if (nread <= 0) {
-    LOG(info) << "(gdb closed debugging socket, exiting)";
-    exit(0);
+    LOG(info) << "Could not read data from gdb socket, "
+                 "marking connection as closed";
+    connection_alive_ = false;
+  } else {
+    inbuf.insert(inbuf.end(), buf, buf + nread);
   }
-  inbuf.insert(inbuf.end(), buf, buf + nread);
 }
 
 void GdbConnection::write_flush() {
@@ -122,9 +128,14 @@ void GdbConnection::write_flush() {
     nwritten = write(sock_fd, outbuf.data() + write_index,
                      outbuf.size() - write_index);
     if (nwritten < 0) {
-      FATAL() << "Error writing to gdb";
+      LOG(info) << "Could not write data to gdb socket, "
+                   "marking connection as closed";
+      connection_alive_ = false;
+      outbuf.clear();
+      return;
+    } else {
+      write_index += nwritten;
     }
-    write_index += nwritten;
   }
   outbuf.clear();
 }
@@ -279,8 +290,12 @@ void GdbConnection::read_packet() {
    * somehow magically fix our bug that led to the malformed
    * packet in the first place.
    */
-  while (!skip_to_packet_start()) {
+  while (!skip_to_packet_start() && connection_alive_) {
     read_data_once();
+  }
+
+  if (!connection_alive_) {
+    return;
   }
 
   if (inbuf[0] == INTERRUPT_CHAR) {
@@ -301,6 +316,9 @@ void GdbConnection::read_packet() {
     }
     checkedlen = inbuf.size();
     read_data_once();
+    if (connection_alive_) {
+      return;
+    }
   }
 
   /* NB: we're ignoring the gdb packet checksums here too.  If
@@ -1179,6 +1197,10 @@ GdbRequest GdbConnection::get_request() {
      * packet from gdb. */
     read_packet();
 
+    if (!connection_alive_) {
+      return req = GdbRequest(DREQ_DETACH);
+    }
+
     if (process_packet()) {
       /* We couldn't process the packet internally,
        * so the target has to do something. */
@@ -1604,6 +1626,10 @@ void GdbConnection::reply_tls_addr(bool ok, remote_ptr<void> address) {
   }
 
   consume_request();
+}
+
+bool GdbConnection::is_connection_alive() {
+  return connection_alive_;
 }
 
 } // namespace rr

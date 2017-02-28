@@ -508,6 +508,11 @@ public:
    */
   void await_debugger(ScopedFd& listen_fd);
 
+  /**
+   *  Returns false if the connection has been closed
+  */
+  bool is_connection_alive();
+
 private:
   /**
    * read() incoming data exactly one time, successfully.  May block.
@@ -596,6 +601,7 @@ private:
   size_t packetend;            /* index of '#' character */
   std::vector<uint8_t> outbuf; /* buffered output for gdb */
   Features features_;
+  bool connection_alive_;
 };
 
 } // namespace rr
