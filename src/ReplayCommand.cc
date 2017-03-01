@@ -62,6 +62,8 @@ ReplayCommand ReplayCommand::singleton(
     "  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
     "                             don't automatically launch the debugger\n"
     "                             client too.\n"
+    "  -k, --keep-listening       keep listening after detaching when using \n"
+    "                             --dbgport (-s) mode\n"
     "  -t, --trace=<EVENT>        singlestep instructions and dump register\n"
     "                             states when replaying towards <EVENT> or\n"
     "                             later\n"
@@ -94,6 +96,9 @@ struct ReplayFlags {
   // IP port to listen on for debug connections.
   int dbg_port;
 
+  // Whether to keep listening with a new server after the existing server detaches
+  bool keep_listening;
+
   // Pass these options to gdb
   vector<string> gdb_options;
 
@@ -114,6 +119,7 @@ struct ReplayFlags {
         process_created_how(CREATED_NONE),
         dont_launch_debugger(false),
         dbg_port(-1),
+        keep_listening(false),
         gdb_binary_file_path("gdb"),
         redirect(true),
         share_private_mappings(false) {}
@@ -127,6 +133,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
   static const OptionSpec options[] = {
     { 'a', "autopilot", NO_PARAMETER },
     { 'd', "debugger", HAS_PARAMETER },
+    { 'k', "keep-listening", NO_PARAMETER },
     { 'f', "onfork", HAS_PARAMETER },
     { 'g', "goto", HAS_PARAMETER },
     { 'o', "debugger-option", HAS_PARAMETER },
@@ -164,6 +171,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
         return false;
       }
       flags.goto_event = opt.int_value;
+      break;
+    case 'k':
+      flags.keep_listening = true;
       break;
     case 'o':
       flags.gdb_options.push_back(opt.value);
@@ -387,6 +397,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.debugger_name = flags.gdb_binary_file_path;
+      conn_flags.keep_listening = flags.keep_listening;
       GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
     }
 
@@ -524,6 +535,11 @@ int ReplayCommand::run(vector<string>& args) {
               "recording of this rr and have a bad time. Bailing out.\n");
       return 3;
     }
+  }
+
+  if (flags.keep_listening && flags.dbg_port == -1) {
+    fprintf(stderr, "Cannot use --keep-listening (-k) without --dbgport (-s).\n");
+    return 4;
   }
 
   return replay(trace_dir, flags);

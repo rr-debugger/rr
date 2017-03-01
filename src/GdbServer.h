@@ -38,8 +38,10 @@ public:
 
   struct ConnectionFlags {
     // -1 to let GdbServer choose the port, a positive integer to select a
-    // specific port to listen on.
+    // specific port to listen on. If keep_listening is on, wait for another
+    // debugger connection after the first one is terminated.
     int dbg_port;
+    bool keep_listening;
     // If non-null, then when the gdbserver is set up, we write its connection
     // parameters through this pipe. GdbServer::launch_gdb is passed the
     // other end of this pipe to exec gdb with the parameters.
@@ -48,7 +50,10 @@ public:
     // is null.
     std::string debugger_name;
 
-    ConnectionFlags() : dbg_port(-1), debugger_params_write_pipe(nullptr) {}
+    ConnectionFlags()
+        : dbg_port(-1),
+          keep_listening(false),
+          debugger_params_write_pipe(nullptr) {}
   };
 
   /**
