@@ -99,7 +99,11 @@ bool ReplayTimeline::ProtoMark::equal_states(ReplaySession& session) const {
 }
 
 ReplayTimeline::ProtoMark ReplayTimeline::proto_mark() const {
-  return ProtoMark(current_mark_key(), current->current_task());
+  ReplayTask* t = current->current_task();
+  if (t) {
+    return ProtoMark(current_mark_key(), t);
+  }
+  return ProtoMark(current_mark_key());
 }
 
 shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {

@@ -950,6 +950,7 @@ set(TESTS_WITHOUT_PROGRAM
   read_bad_mem
   record_replay
   remove_watchpoint
+  replay_overlarge_event_number
   restart_invalid_checkpoint
   restart_unstable
   restart_diversion

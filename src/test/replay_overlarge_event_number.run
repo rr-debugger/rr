@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+record simple$bitness
+_RR_TRACE_DIR="$workdir" rr $GLOBAL_OPTIONS replay -s 9999 -g 3000 1> replay.out 2> replay.err
+if [[ $? != 0 ]]; then
+    failed "should exit normally"
+fi
+passed
