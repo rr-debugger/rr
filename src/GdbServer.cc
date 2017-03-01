@@ -1415,7 +1415,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     fputs("Launch gdb with\n  ", stderr);
     print_debugger_launch_command(t, port, flags.debugger_name.c_str(), stderr);
   }
-  dbg = await_connection(t, listen_fd, GdbConnection::Features());
+
   if (flags.debugger_params_write_pipe) {
     flags.debugger_params_write_pipe->close();
   }
@@ -1426,11 +1426,15 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     timeline.set_reverse_execution_barrier_event(first_run_event);
   }
 
-  activate_debugger();
+  do {
+    LOG(debug) << "initializing debugger connection";
+    dbg = await_connection(t, listen_fd, GdbConnection::Features());
+    activate_debugger();
 
-  GdbRequest last_resume_request;
-  while (debug_one_step(last_resume_request) == CONTINUE_DEBUGGING) {
-  }
+    GdbRequest last_resume_request;
+    while (debug_one_step(last_resume_request) == CONTINUE_DEBUGGING) {
+    }
+  } while (flags.keep_listening);
 
   LOG(debug) << "debugger server exiting ...";
 }
