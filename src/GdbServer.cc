@@ -1434,6 +1434,8 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     GdbRequest last_resume_request;
     while (debug_one_step(last_resume_request) == CONTINUE_DEBUGGING) {
     }
+
+    timeline.remove_breakpoints_and_watchpoints();
   } while (flags.keep_listening);
 
   LOG(debug) << "debugger server exiting ...";
