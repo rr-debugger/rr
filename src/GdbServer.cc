@@ -1046,7 +1046,9 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
         return handle_exited_state(last_resume_request);
       }
     } else {
-      in_debuggee_end_state = false;
+      if (req.type != DREQ_DETACH) {
+        in_debuggee_end_state = false;
+      }
     }
     // Otherwise (e.g. detach, restart, interrupt or reverse-exec) process
     // the request as normal.
