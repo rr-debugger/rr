@@ -59,9 +59,10 @@ ReplayCommand ReplayCommand::singleton(
     "Emacs\n"
     "  -d, --debugger=<FILE>      use <FILE> as the gdb command\n"
     "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
-    "  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
+    "  -s, --dbgport=<PORT>       only start a debug server on <PORT>,\n"
     "                             don't automatically launch the debugger\n"
-    "                             client too.\n"
+    "                             client; set PORT to 0 to automatically\n"
+    "                             probe a port\n"
     "  -k, --keep-listening       keep listening after detaching when using \n"
     "                             --dbgport (-s) mode\n"
     "  -t, --trace=<EVENT>        singlestep instructions and dump register\n"
@@ -193,7 +194,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       flags.redirect = false;
       break;
     case 's':
-      if (!opt.verify_valid_int(1, INT32_MAX)) {
+      if (!opt.verify_valid_int(0, INT32_MAX)) {
         return false;
       }
       flags.dbg_port = opt.int_value;
