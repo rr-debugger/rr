@@ -84,6 +84,9 @@ struct btrfs_ioctl_clone_range_args {
 #define BTRFS_IOC_CLONE_RANGE                                                  \
   _IOW(BTRFS_IOCTL_MAGIC, 13, struct btrfs_ioctl_clone_range_args)
 #endif
+#ifndef MADV_FREE
+#define MADV_FREE 8
+#endif
 
 /* NB: don't include any other local headers here. */
 
@@ -1490,6 +1493,11 @@ static long sys_madvise(const struct syscall_info* call) {
     case MADV_NOHUGEPAGE:
     case MADV_DONTDUMP:
     case MADV_DODUMP:
+      break;
+    case MADV_FREE:
+      // See record_syscall. We disallow MADV_FREE because it creates
+      // nondeterminism.
+      advice = -1;
       break;
     default:
       return traced_raw_syscall(call);
