@@ -56,6 +56,7 @@
 #include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/ptrace.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -2205,6 +2206,55 @@ static long sys_writev(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_ptrace(const struct syscall_info* call) {
+  int syscallno = SYS_ptrace;
+  enum __ptrace_request request = call->args[0];
+  pid_t pid = call->args[1];
+  void* addr = (void*)call->args[2];
+  void* data = (void*)call->args[3];
+
+  if (request != PTRACE_PEEKDATA || !data) {
+    return traced_raw_syscall(call);
+  }
+
+  /* We try to emulate PTRACE_PEEKDATA using process_vm_readv. That might not
+   * work for permissions reasons; if it fails for any reason, we retry with
+   * a traced syscall.
+   * This does mean that if a process issues a PTRACE_PEEKDATA while not
+   * actually ptracing the target, it might succeed under rr whereas normally
+   * it would have failed. That's hard to avoid and unlikely to be a real
+   * problem in practice (typically it would fail on some other ptrace call like
+   * PTRACE_GETREGS before or after the PEEKDATA).
+   */
+  void* ptr = prep_syscall();
+  long ret;
+  void* data2;
+
+  assert(syscallno == call->no);
+  syscallno = SYS_process_vm_readv;
+
+  data2 = ptr;
+  ptr += sizeof(long);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  struct iovec local_iov = { data2, sizeof(long) };
+  struct iovec remote_iov = { addr, sizeof(long) };
+  ret = untraced_syscall6(syscallno, pid, &local_iov, 1, &remote_iov,
+                          1, 0);
+  if (ret > 0) {
+    local_memcpy(data, data2, ret);
+  }
+  commit_raw_syscall(syscallno, ptr, ret);
+
+  if (ret != sizeof(long)) {
+    return traced_raw_syscall(call);
+  }
+  return ret;
+}
+
 static long sys_getrusage(const struct syscall_info* call) {
   const int syscallno = SYS_getrusage;
   int who = (int)call->args[0];
@@ -2364,6 +2414,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(pread64);
     CASE(pwrite64);
 #endif
+    CASE(ptrace);
     CASE(read);
     CASE(readlink);
 #if defined(SYS_recvfrom)
