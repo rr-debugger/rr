@@ -1007,8 +1007,8 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
     }
 
     if (m.local_addr) {
-      int ret = munmap(m.local_addr + (rem.start() - m.map.start()),
-          rem.size());
+      int ret =
+          munmap(m.local_addr + (rem.start() - m.map.start()), rem.size());
       if (ret < 0) {
         FATAL() << "Can't munmap";
       }

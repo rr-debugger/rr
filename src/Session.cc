@@ -535,8 +535,7 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
 // DISCARD_CONTENTS.
 const AddressSpace::Mapping& Session::recreate_shared_mmap(
     AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
-    PreserveContents preserve,
-    MonitoredSharedMemory::shr_ptr&& monitored) {
+    PreserveContents preserve, MonitoredSharedMemory::shr_ptr&& monitored) {
   char name[PATH_MAX];
   strncpy(name, m.map.fsname().c_str(), sizeof(name));
   uint32_t flags = m.flags;
@@ -669,7 +668,8 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
           group.captured_memory.push_back(make_pair(
               m.map.start(), capture_syscallbuf(m, group.clone_leader)));
         } else if (m.local_addr != nullptr) {
-          ASSERT(group.clone_leader, m.map.start() == AddressSpace::preload_thread_locals_start());
+          ASSERT(group.clone_leader,
+                 m.map.start() == AddressSpace::preload_thread_locals_start());
         } else if ((m.recorded_map.flags() & MAP_SHARED) &&
                    emu_fs.has_file_for(m.recorded_map)) {
           remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);
