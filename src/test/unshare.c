@@ -93,7 +93,7 @@ static void test_setns(void) {
     test_assert(0 == setns(uts_ns, CLONE_NEWUTS));
     exit(76);
   }
-  test_assert(child = wait(&status));
+  test_assert(child == wait(&status));
   test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 76);
   test_assert(0 == close(uts_ns));
 }

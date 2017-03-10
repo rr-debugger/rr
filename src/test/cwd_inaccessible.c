@@ -35,11 +35,11 @@ int main(void) {
       test_assert(ret == -1 && errno == EACCES);
       exit(77);
     }
-    test_assert(grandchild = waitpid(grandchild, &status, 0));
+    test_assert(grandchild == waitpid(grandchild, &status, 0));
     test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
     exit(78);
   }
-  test_assert(child = waitpid(child, &status, 0));
+  test_assert(child == waitpid(child, &status, 0));
   test_assert(0 == rmdir("private"));
   test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 78);
   atomic_puts("EXIT-SUCCESS");
