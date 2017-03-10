@@ -13,5 +13,5 @@ int main(void) {
   // Just for clean exit to not worry people running the test manually ;).
   signal(SIGSEGV, sighandler);
   ((void (*)(void))invalid_jump_here)();
-  assert(0 && "Shouldn't reach here");
+  test_assert(0 && "Shouldn't reach here");
 }
