@@ -50,13 +50,13 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
   checked_ptrace(PTRACE_SYSCALL, child, 0, 0);
   // Wait until entry trap
   wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret = child);
+  assert(wret == child);
   assert(WSTOPSIG(status) == (SIGTRAP | 0x80));
 
   checked_ptrace(PTRACE_SYSCALL, child, 0, 0);
   // Wait until exit trap
   wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret = child);
+  assert(wret == child);
   assert(WSTOPSIG(status) == (SIGTRAP | 0x80));
   // Verify that the syscall didn't fail
   checked_ptrace(PTRACE_GETREGSET, child, (void*)NT_PRSTATUS, &iov);
@@ -114,13 +114,13 @@ int main(void) {
 
   // That caused another stop
   wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret = child);
+  assert(wret == child);
 
   // Continue until the exec
   checked_ptrace(PTRACE_CONT, child, 0, 0);
   // This should be the exec stop
   wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret = child);
+  assert(wret == child);
   assert(status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)));
 
   // On kernels with aggressive ASLR, the executable mapping may
