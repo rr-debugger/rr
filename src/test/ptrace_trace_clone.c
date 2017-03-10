@@ -29,7 +29,7 @@ int main(void) {
     if (!grandchild) {
       return 66;
     }
-    test_assert(grandchild = waitpid(grandchild, &status, 0));
+    test_assert(grandchild == waitpid(grandchild, &status, 0));
     test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 66);
 
     pthread_create(&thread, NULL, do_thread, NULL);
