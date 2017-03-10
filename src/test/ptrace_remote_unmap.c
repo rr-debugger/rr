@@ -8,7 +8,7 @@
 long checked_ptrace(enum __ptrace_request request, pid_t pid, void* addr,
                     void* data) {
   long ret = ptrace(request, pid, addr, data);
-  assert(ret != -1);
+  test_assert(ret != -1);
   return ret;
 }
 
@@ -50,20 +50,20 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
   checked_ptrace(PTRACE_SYSCALL, child, 0, 0);
   // Wait until entry trap
   wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret == child);
-  assert(WSTOPSIG(status) == (SIGTRAP | 0x80));
+  test_assert(wret == child);
+  test_assert(WSTOPSIG(status) == (SIGTRAP | 0x80));
 
   checked_ptrace(PTRACE_SYSCALL, child, 0, 0);
   // Wait until exit trap
   wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret == child);
-  assert(WSTOPSIG(status) == (SIGTRAP | 0x80));
+  test_assert(wret == child);
+  test_assert(WSTOPSIG(status) == (SIGTRAP | 0x80));
   // Verify that the syscall didn't fail
   checked_ptrace(PTRACE_GETREGSET, child, (void*)NT_PRSTATUS, &iov);
 #ifdef __i386
-  assert(regs.eax != -1);
+  test_assert(regs.eax != -1);
 #else
-  assert(regs.rax != (uintptr_t)-1);
+  test_assert(regs.rax != (uintptr_t)-1);
 #endif
 }
 
@@ -105,8 +105,8 @@ int main(void) {
   // Wait until stopped
   int status;
   pid_t wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret == child);
-  assert(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP);
+  test_assert(wret == child);
+  test_assert(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP);
 
   // Now PTRACE_SEIZE the child
   checked_ptrace(PTRACE_SEIZE, child, NULL,
@@ -114,19 +114,19 @@ int main(void) {
 
   // That caused another stop
   wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret == child);
+  test_assert(wret == child);
 
   // Continue until the exec
   checked_ptrace(PTRACE_CONT, child, 0, 0);
   // This should be the exec stop
   wret = waitpid(child, &status, __WALL | WSTOPPED);
-  assert(wret == child);
-  assert(status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)));
+  test_assert(wret == child);
+  test_assert(status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)));
 
   // On kernels with aggressive ASLR, the executable mapping may
   // not be in the same place that it is now. Find it again.
   ssize_t path_size = readlink("/proc/self/exe", exe_path, 200);
-  assert(path_size > 0);
+  test_assert(path_size > 0);
 
   // First find the correct mapping in our own address space.
   FILE* own_maps = fopen("/proc/self/maps", "r");

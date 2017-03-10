@@ -9,7 +9,7 @@ int main(void) {
 
   if (0 == (child = fork())) {
     kill(getpid(), SIGSTOP);
-    assert(0 && "child should not resume");
+    test_assert(0 && "child should not resume");
     return 77;
   }
 

@@ -71,7 +71,7 @@ int main(void) {
     {
       pthread_mutex_lock(&lock);
 
-      assert(i == trial);
+      test_assert(i == trial);
       test_assert(last_written == trial);
       ++trial;
       if (i % 2) {

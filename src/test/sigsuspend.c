@@ -26,7 +26,7 @@ static void handle_signal(int sig, __attribute__((unused)) siginfo_t* si,
   } else if (SIGUSR2 == sig) {
     ++usr2_hit;
   } else {
-    assert("Unexpected signal" && 0);
+    test_assert("Unexpected signal" && 0);
   }
 }
 
