@@ -93,9 +93,11 @@ enum TicksRequest {
   // bugs on some systems that report performance counter advances while
   // in the kernel...
   RESUME_NO_TICKS = -2,
-  RESUME_UNLIMITED_TICKS = -1
+  RESUME_UNLIMITED_TICKS = -1,
   // Positive values are a request for an interrupt
   // after that number of ticks
+  // Don't request more than this!
+  MAX_TICKS_REQUEST = 2000000000,
 };
 
 /** Reasons why a SIGTRAP might have been delivered. Multiple reasons can
@@ -111,6 +113,8 @@ struct TrapReasons {
   /* Breakpoint instruction was executed. */
   bool breakpoint;
 };
+
+void fixup_syscall_registers(Registers& registers, SupportedArch arch);
 
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
@@ -196,7 +200,8 @@ public:
    * Perform those side effects on |regs| and do set_regs() on that to make it
    * look like a syscall happened.
    */
-  void emulate_syscall_entry(const Registers& regs);
+  void canonicalize_and_set_regs(const Registers& regs,
+                                 SupportedArch syscall_arch);
 
   /**
    * Return the ptrace message pid associated with the current ptrace
@@ -222,7 +227,9 @@ public:
    */
   void destroy_buffers();
 
-  void unmap_buffers_for(AutoRemoteSyscalls& remote, Task* t);
+  void unmap_buffers_for(
+      AutoRemoteSyscalls& remote, Task* t,
+      remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child);
   void close_buffers_for(AutoRemoteSyscalls& remote, Task* t);
 
   remote_ptr<const struct syscallbuf_record> next_syscallbuf_record();
@@ -250,6 +257,10 @@ public:
            ip() ==
                as->privileged_traced_syscall_ip()
                    .increment_by_syscall_insn_length(arch());
+  }
+  bool is_at_traced_syscall_entry() {
+    return ip() == as->traced_syscall_ip() ||
+           ip() == as->privileged_traced_syscall_ip();
   }
 
   /**
@@ -286,7 +297,18 @@ public:
    * Use 'regs' instead of this->regs() because some registers may not be
    * set properly in the task yet.
    */
-  virtual void on_syscall_exit(int syscallno, const Registers& regs);
+  virtual void on_syscall_exit(int syscallno, SupportedArch arch,
+                               const Registers& regs);
+
+  /**
+   * Hook called by `resume_execution`.
+   */
+  virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
+                                     int /*sig*/) {}
+  /**
+   * Hook called by `did_waitpid`.
+   */
+  virtual void did_wait() {}
 
   /**
    * Assuming ip() is just past a breakpoint instruction, adjust
@@ -325,9 +347,8 @@ public:
    * Call this method when this task has just performed an |execve()|
    * (so we're in the new address space), but before the system call has
    * returned.
-   * |arch| is the architecture of the new address space.
    */
-  void post_exec(SupportedArch arch, const std::string& exe_file);
+  void post_exec(const std::string& exe_file);
 
   /**
    * Call this method when this task has exited a successful execve() syscall.
@@ -725,6 +746,7 @@ public:
   size_t syscallbuf_size;
   /* Points at the tracee's mapping of the buffer. */
   remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
+  // XXX Move these fields to ReplayTask
   remote_code_ptr stopping_breakpoint_table;
   int stopping_breakpoint_table_entry_size;
 

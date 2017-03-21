@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+
+TIMEOUT=600
+compare_test EXIT-SUCCESS

@@ -348,6 +348,12 @@ bool Scheduler::treat_as_high_priority(RecordTask* t) {
   return task_priority_set.size() > 1 && t->priority == 0;
 }
 
+void Scheduler::validate_scheduled_task() {
+  ASSERT(current_, !must_run_task || must_run_task == current_);
+  ASSERT(current_, task_round_robin_queue.empty() ||
+                       current_ == task_round_robin_queue.front());
+}
+
 Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   Rescheduled result;
   result.interrupted_by_signal = false;
@@ -381,6 +387,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       result.by_waitpid = true;
       LOG(debug) << "  new status is " << current_->status();
     }
+    validate_scheduled_task();
     return result;
   }
 
@@ -391,22 +398,35 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         in_high_priority_only_interval(now);
 
     if (current_) {
-      next = get_round_robin_task()
-                 ? nullptr
-                 : find_next_runnable_task(current_, &result.by_waitpid,
-                                           current_->priority - 1);
-      if (next) {
-        break;
+      // Determine if we should run current_ again
+      RecordTask* round_robin_task = get_round_robin_task();
+      if (!round_robin_task) {
+        next = find_next_runnable_task(current_, &result.by_waitpid,
+                                       current_->priority - 1);
+        if (next) {
+          // There is a runnable higher-priority task. Run it.
+          break;
+        }
       }
+      // To run current_ again:
+      // -- its timeslice must not have expired
+      // -- it must be high priority if we're in a high-priority-only interval
+      // -- it must be the head of the round-robin queue or the queue is empty
+      // (this might not hold if it was at the head of the queue but we
+      // rejected current_ and popped it in a previous iteration of this loop)
+      // -- it must be runnable, and not in an unstable exit.
       if (!current_->unstable && !always_switch &&
+          (!round_robin_task || round_robin_task == current_) &&
           (treat_as_high_priority(current_) ||
            !last_reschedule_in_high_priority_only_interval) &&
           current_->tick_count() < current_timeslice_end() &&
           is_task_runnable(current_, &result.by_waitpid)) {
         LOG(debug) << "  Carrying on with task " << current_->tid;
-        ASSERT(current_, !must_run_task || must_run_task == current_);
+        validate_scheduled_task();
         return result;
       }
+      // Having rejected current_, be prepared to run the next task in the
+      // round-robin queue.
       maybe_pop_round_robin_task(current_);
     }
 
@@ -455,11 +475,17 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   } else {
     // All the tasks are blocked (or we found an unstable-exit task).
     // Wait for the next one to change state.
-    WaitStatus status;
-    pid_t tid;
+
+    // Clear the round-robin queue since we will no longer be able to service
+    // those tasks in-order.
+    while (RecordTask* t = get_round_robin_task()) {
+      maybe_pop_round_robin_task(t);
+    }
 
     LOG(debug) << "  all tasks blocked or some unstable, waiting for runnable ("
                << task_priority_set.size() << " total)";
+
+    WaitStatus status;
     do {
       int raw_status;
       if (enable_poll) {
@@ -469,7 +495,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         }
         LOG(debug) << "  Arming one-second timer for polling";
       }
-      tid = waitpid(-1, &raw_status, __WALL | WSTOPPED | WUNTRACED);
+      pid_t tid = waitpid(-1, &raw_status, __WALL | WSTOPPED | WUNTRACED);
       if (enable_poll) {
         struct itimerval timer = { { 0, 0 }, { 0, 0 } };
         if (setitimer(ITIMER_REAL, &timer, nullptr) < 0) {
@@ -525,7 +551,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
 
   maybe_reset_high_priority_only_intervals(now);
   current_ = next;
-  ASSERT(current_, !must_run_task || must_run_task == current_);
+  validate_scheduled_task();
   setup_new_timeslice();
   result.started_new_timeslice = true;
   return result;
@@ -614,8 +640,10 @@ void Scheduler::update_task_priority_internal(RecordTask* t, int value) {
 }
 
 void Scheduler::schedule_one_round_robin(RecordTask* t) {
-  maybe_pop_round_robin_task(t);
+  LOG(debug) << "Scheduling round-robin because of task " << t->tid;
 
+  ASSERT(t, t == current_);
+  maybe_pop_round_robin_task(t);
   ASSERT(t, !t->in_round_robin_queue);
 
   for (auto iter : task_priority_set) {

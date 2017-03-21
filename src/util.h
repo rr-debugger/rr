@@ -276,6 +276,36 @@ inline void msan_unpoison(void* ptr, size_t n) {
  */
 void* xmalloc(size_t size);
 
+/**
+ * Determine if the given capabilities are a subset of the process' current
+ * active capabilities.
+ */
+bool has_effective_caps(uint64_t caps);
+
+/**
+ * Determine the size of the xsave area
+ */
+unsigned int xsave_area_size();
+
+inline uint64_t signal_bit(int sig) { return uint64_t(1) << (sig - 1); }
+
+uint64_t rr_signal_mask();
+
+enum ProbePort { DONT_PROBE = 0, PROBE_PORT };
+
+ScopedFd open_socket(const char* address, unsigned short* port,
+                     ProbePort probe);
+
+/**
+ * Like `abort`, but tries to wake up test-monitor for a snapshot if possible.
+ */
+void notifying_abort();
+
+/**
+ * Check for leaked mappings etc
+ */
+void check_for_leaks();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

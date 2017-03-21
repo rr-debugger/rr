@@ -7,7 +7,9 @@
 #include <linux/futex.h>
 
 #include <algorithm>
+#include <fstream>
 #include <sstream>
+#include <string>
 
 #include "AutoRemoteSyscalls.h"
 #include "ElfReader.h"
@@ -86,6 +88,58 @@ static string create_pulseaudio_config() {
   return envpair.str();
 }
 
+/**
+ * Read and parse the available CPU list then select a random CPU from the list.
+ */
+static int get_random_cpu_cgroup() {
+  std::ifstream self_cpuset("/proc/self/cpuset");
+  if (!self_cpuset.is_open()) {
+    return -1;
+  }
+  std::string cpuset_path;
+  std::getline(self_cpuset, cpuset_path);
+  self_cpuset.close();
+  if (cpuset_path.empty()) {
+    return -1;
+  }
+  std::ifstream cpuset("/sys/fs/cgroup/cpuset" + cpuset_path + "/cpuset.cpus");
+  if (!cpuset.good()) {
+    return -1;
+  }
+  std::vector<int> cpus;
+  while (true) {
+    int cpu1;
+    cpuset >> cpu1;
+    if (cpuset.fail()) {
+      return -1;
+    }
+    cpus.push_back(cpu1);
+    char c = cpuset.get();
+    if (cpuset.eof() || c == '\n') {
+      break;
+    } else if (c == ',') {
+      continue;
+    } else if (c != '-') {
+      return -1;
+    }
+    int cpu2;
+    cpuset >> cpu2;
+    if (cpuset.fail()) {
+      return -1;
+    }
+    for (int cpu = cpu1 + 1; cpu <= cpu2; cpu++) {
+      cpus.push_back(cpu);
+    }
+    c = cpuset.get();
+    if (cpuset.eof() || c == '\n') {
+      break;
+    } else if (c != ',') {
+      return -1;
+    }
+  }
+  return cpus[random() % cpus.size()];
+}
+
 static int get_num_cpus() {
   int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
   return cpus > 0 ? cpus : 1;
@@ -95,12 +149,12 @@ static int get_num_cpus() {
  * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
  * in which case we return -1.
  */
-static int choose_cpu(RecordSession::BindCPU bind_cpu) {
+static int choose_cpu(int bind_cpu) {
   if (bind_cpu == RecordSession::UNBOUND_CPU) {
     return -1;
   }
 
-  // Pin tracee tasks to logical CPU 0, both in
+  // Pin tracee tasks to a random logical CPU, both in
   // recording and replay.  Tracees can see which HW
   // thread they're running on by asking CPUID, and we
   // don't have a way to emulate it yet.  So if a tracee
@@ -114,6 +168,14 @@ static int choose_cpu(RecordSession::BindCPU bind_cpu) {
   // performance win in certain circumstances,
   // presumably due to cheaper context switching and/or
   // better interaction with CPU frequency scaling.
+  if (bind_cpu >= 0) {
+    return bind_cpu;
+  }
+
+  int cpu = get_random_cpu_cgroup();
+  if (cpu >= 0) {
+    return cpu;
+  }
   return random() % get_num_cpus();
 }
 
@@ -249,7 +311,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     // negative syscall numbers after a SECCOMP event
     // are treated as "skip this syscall". There will be one syscall event
     // reported instead of two. So fake an enter-syscall event now.
-    t->emulate_syscall_entry(t->regs());
+    t->canonicalize_and_set_regs(t->regs(), t->arch());
     if (syscall_seccomp_ordering_ == SECCOMP_BEFORE_PTRACE_SYSCALL) {
       // If the ptrace entry stop hasn't happened yet, we're at a weird
       // intermediate state where the behavior of the next PTRACE_SYSCALL
@@ -294,7 +356,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     } else {
       // We've already passed the PTRACE_SYSCALL trap for syscall entry, so
       // we need to handle that now.
-      t->emulate_syscall_entry(t->regs());
+      t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
       process_syscall_entry(t, step_state, result);
       *did_enter_syscall = true;
     }
@@ -325,7 +387,10 @@ static void handle_seccomp_trap(RecordTask* t,
                                 uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
-  t->emulate_syscall_entry(t->regs());
+  // The architecture may be wrong, but that's ok, because an actual syscall
+  // entry did happen, so the registers are already updated according to the
+  // architecture of the system call.
+  t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
 
   if (t->is_in_untraced_syscall()) {
     ASSERT(t, !t->delay_syscallbuf_reset);
@@ -343,7 +408,7 @@ static void handle_seccomp_trap(RecordTask* t,
         (uint8_t)0);
   }
 
-  t->push_event(SyscallEvent(syscallno, t->arch()));
+  t->push_syscall_event(syscallno);
   note_entering_syscall(t);
 
   if (t->is_in_untraced_syscall()) {
@@ -412,10 +477,10 @@ static void handle_seccomp_errno(RecordTask* t,
                                  uint16_t seccomp_data) {
   int syscallno = t->regs().original_syscallno();
 
-  t->emulate_syscall_entry(t->regs());
+  t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
 
   if (!t->is_in_untraced_syscall()) {
-    t->push_event(SyscallEvent(syscallno, t->arch()));
+    t->push_syscall_event(syscallno);
     note_entering_syscall(t);
   }
 
@@ -611,8 +676,13 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
       continue;
     }
     // We should not receive SYSCALLBUF_DESCHED_SIGNAL since it should already
-    // have been disarmed.
-    ASSERT(t, SYSCALLBUF_DESCHED_SIGNAL != sig);
+    // have been disarmed. However, we observe these being received here when
+    // we arm the desched signal before we restart a blocking syscall, which
+    // completes successfully, then we disarm, then we see a desched signal
+    // here.
+    if (SYSCALLBUF_DESCHED_SIGNAL == sig) {
+      continue;
+    }
     if (sig && sig == old_sig) {
       LOG(debug) << "  coalescing pending " << signal_name(sig);
       continue;
@@ -660,9 +730,9 @@ void RecordSession::desched_state_changed(RecordTask* t) {
 static void syscall_not_restarted(RecordTask* t) {
   LOG(debug) << "  " << t->tid << ": popping abandoned interrupted " << t->ev()
              << "; pending events:";
-#ifdef DEBUGTAG
-  t->log_pending_events();
-#endif
+  if (IS_LOGGING(debug)) {
+    t->log_pending_events();
+  }
   t->pop_syscall_interruption();
 
   t->record_event(
@@ -685,7 +755,7 @@ static bool maybe_restart_syscall(RecordTask* t) {
     t->ev().transform(EV_SYSCALL);
     Registers regs = t->regs();
     regs.set_original_syscallno(t->ev().Syscall().regs.original_syscallno());
-    t->set_regs(regs);
+    t->canonicalize_and_set_regs(regs, t->arch());
     return true;
   }
   if (EV_SYSCALL_INTERRUPTION == t->ev().type()) {
@@ -754,6 +824,11 @@ static void save_interrupted_syscall_ret_in_syscallbuf(RecordTask* t,
   t->record_local(REMOTE_PTR_FIELD(child_rec, ret), &ret);
 }
 
+static bool is_in_privileged_syscall(RecordTask* t) {
+  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
+  return type && type->privileged == AddressSpace::PRIVILEGED;
+}
+
 void RecordSession::syscall_state_changed(RecordTask* t,
                                           StepState* step_state) {
   switch (t->ev().Syscall().state) {
@@ -766,7 +841,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         return;
       }
       if (t->ev().Syscall().in_sysemu) {
-        // We'll have recorded just the ENTERING_SYSCAL_PTRACE event and
+        // We'll have recorded just the ENTERING_SYSCALL_PTRACE event and
         // nothing else. Resume with an invalid syscall to ensure no real
         // syscall runs.
         t->pop_syscall();
@@ -811,11 +886,13 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       }
 
       if (t->desched_rec() && t->is_in_untraced_syscall() &&
-          t->ev().Syscall().is_restart && t->has_stashed_sig()) {
-        // We have a signal to deliver but we're about to restart an untraced
+          t->has_stashed_sig()) {
+        // We have a signal to deliver but we're about to (re?)enter an untraced
         // syscall that may block and the desched event has been disarmed.
         // Rearm the desched event so if the syscall blocks, it will be
         // interrupted and we'll have a chance to deliver our signal.
+        LOG(debug) << "Rearming desched event so we'll get a chance to deliver "
+                      "stashed signal";
         arm_desched_event(t);
       }
 
@@ -839,6 +916,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
       assert(t->stop_sig() == 0);
 
+      SupportedArch syscall_arch = t->ev().Syscall().arch();
       int syscallno = t->ev().Syscall().number;
       intptr_t retval = t->regs().syscall_result_signed();
 
@@ -858,7 +936,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       // preparing the tracee for a restart-syscall.  So we
       // take this opportunity to possibly pop an
       // interrupted-syscall event.
-      if (is_sigreturn(syscallno, t->arch())) {
+      if (is_sigreturn(syscallno, syscall_arch)) {
         ASSERT(t, t->regs().original_syscallno() == -1);
         t->record_current_event();
         t->pop_syscall();
@@ -866,6 +944,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         // We've finished processing this signal now.
         t->pop_signal_handler();
         t->record_event(Event(EV_EXIT_SIGHANDLER, NO_EXEC_INFO, t->arch()));
+        t->invalidate_sigmask();
 
         maybe_discard_syscall_interruption(t, retval);
 
@@ -939,12 +1018,16 @@ void RecordSession::syscall_state_changed(RecordTask* t,
           t->ev().transform(EV_SYSCALL_INTERRUPTION);
           t->ev().Syscall().is_restart = true;
         }
+
+        t->canonicalize_and_set_regs(t->regs(), syscall_arch);
       }
 
       last_task_switchable = ALLOW_SWITCH;
       step_state->continue_type = DONT_CONTINUE;
 
-      maybe_trigger_emulated_ptrace_syscall_exit_stop(t);
+      if (!is_in_privileged_syscall(t)) {
+        maybe_trigger_emulated_ptrace_syscall_exit_stop(t);
+      }
       return;
     }
 
@@ -996,8 +1079,9 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
 
   // Pretend the old task cloned a new task with the right tid, and then exited
   trace_writer().write_task_event(TraceTaskEvent::for_clone(
-      rec_tid, t->tid, CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
-                           CLONE_THREAD | CLONE_SYSVSEM));
+      rec_tid, t->tid, t->own_namespace_rec_tid,
+      CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD |
+          CLONE_SYSVSEM));
   trace_writer().write_task_event(
       TraceTaskEvent::for_exit(t->tid, WaitStatus::for_exit_code(0)));
 
@@ -1066,53 +1150,34 @@ static bool preinject_signal(RecordTask* t) {
      * a new signal with tgkill (as the ptrace(2) man page recommends).
      */
     LOG(debug) << "    maybe not in signal-stop (status " << t->status()
-               << "); doing tgkill(" << signal_name(sig) << ")";
-    t->tgkill(sig);
+               << "); doing tgkill(SYSCALLBUF_DESCHED_SIGNAL)";
+    // Always send SYSCALLBUF_DESCHED_SIGNAL because other signals will be
+    // blocked by RecordTask::will_resume_execution().
+    t->tgkill(SYSCALLBUF_DESCHED_SIGNAL);
 
     /* Now singlestep the task until we're in a signal-stop for the signal
      * we've just sent. We must absorb and forget that signal here since we
      * don't want it delivered to the task for real.
      */
-    while (true) {
-      auto old_ip = t->ip();
-      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-      ASSERT(t, old_ip == t->ip());
-      if (t->status().group_stop()) {
-        /* Sending SIGCONT (4.4.3-300.fc23.x86_64) triggers this. Unclear why
-         * it would... */
-        continue;
-      }
-      if (t->status().ptrace_event() == PTRACE_EVENT_EXIT) {
-        /* We raced with an exit (e.g. due to a pending SIGKILL). */
-        return false;
-      }
-      ASSERT(t, t->stop_sig());
-      if (t->stop_sig() == sig) {
-        LOG(debug) << "    stopped with signal " << signal_name(sig);
-        break;
-      }
-      /* It's possible for other signals to arrive while we're trying to
-       * get to the signal-stop for the signal we just sent. Stash them for
-       * later delivery.
-       */
-      if (t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL) {
-        LOG(debug) << "    stopped with signal " << signal_name(sig)
-                   << "; ignoring it and carrying on";
-      } else {
-        LOG(debug) << "    stopped with signal " << signal_name(sig)
-                   << "; stashing it and carrying on";
-        t->stash_sig();
-      }
+    auto old_ip = t->ip();
+    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
+    ASSERT(t, old_ip == t->ip()) << "Singlestep actually advanced when we "
+                                 << "just expected a signal; was at " << old_ip
+                                 << " now at " << t->ip() << " with status "
+                                 << t->status();
+    if (t->status().ptrace_event() == PTRACE_EVENT_EXIT) {
+      /* We raced with an exit (e.g. due to a pending SIGKILL). */
+      return false;
     }
-    /* We're now in a signal-stop (and for the right signal too, though that
-     * doesn't really matter).
-     */
+    ASSERT(t, t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL)
+        << "Expected SYSCALLBUF_DESCHED_SIGNAL, got " << t->status();
+    /* We're now in a signal-stop */
   }
 
   /* Now that we're in a signal-stop, we can inject our signal and advance
    * to the signal handler with one single-step.
    */
-  LOG(debug) << "    injecting signal number " << t->ev().Signal().siginfo;
+  LOG(debug) << "    injecting signal " << signal_name(sig);
   t->set_siginfo(t->ev().Signal().siginfo);
   return true;
 }
@@ -1121,14 +1186,26 @@ static bool preinject_signal(RecordTask* t) {
  * Returns true if the signal should be delivered.
  * Returns false if this signal should not be delivered because another signal
  * occurred during delivery.
+ * Must call t->stashed_signal_processed() once we're ready to unmask signals.
  */
 static bool inject_handled_signal(RecordTask* t) {
   if (!preinject_signal(t)) {
+    // Task prematurely exited.
     return false;
   }
+  // If there aren't any more stashed signals, it's OK to stop blocking all
+  // signals.
+  t->stashed_signal_processed();
 
   int sig = t->ev().Signal().siginfo.si_signo;
+  // We are ready to inject our signal.
+  // XXX we assume the kernel won't respond by notifying us of a different
+  // signal. We don't want to do this with signals blocked because that will
+  // save a bogus signal mask in the signal frame.
   t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
+  // Signal injection can change the sigmask due to sa_mask effects, lack of
+  // SA_NODEFER, and signal frame construction triggering a synchronous SIGSEGV.
+  t->invalidate_sigmask();
 
   // It's been observed that when tasks enter
   // sighandlers, the singlestep operation above
@@ -1145,22 +1222,20 @@ static bool inject_handled_signal(RecordTask* t) {
     // kill the process after this. Stash the signal and make sure
     // we know to treat it as fatal when we inject it. Also disable the
     // signal handler to match what the kernel does.
-    t->set_sig_blocked(SIGSEGV, false);
     t->set_sig_handler_default(SIGSEGV);
-
     t->stash_sig();
     t->task_group()->received_sigframe_SIGSEGV = true;
     return false;
   }
 
-  t->apply_sig_sa_mask(sig);
-  if (!t->signal_handler_nodefer(sig)) {
-    t->set_sig_blocked(sig, true);
-  }
-
   // We stepped into a user signal handler.
-  ASSERT(t, t->stop_sig() == SIGTRAP);
-  ASSERT(t, t->get_signal_user_handler(sig) == t->ip());
+  ASSERT(t, t->stop_sig() == SIGTRAP) << "Got unexpected status "
+                                      << t->status();
+  ASSERT(t, t->get_signal_user_handler(sig) == t->ip())
+      << "Expected handler IP " << t->get_signal_user_handler(sig) << ", got "
+      << t->ip()
+      << "; actual signal mask=" << HEX(t->read_sigmask_from_process())
+      << " (cached " << HEX(t->get_sigmask()) << ")";
 
   if (t->signal_handler_takes_siginfo(sig)) {
     // The kernel copied siginfo into userspace so it can pass a pointer to
@@ -1173,34 +1248,9 @@ static bool inject_handled_signal(RecordTask* t) {
   return true;
 }
 
-static bool is_fatal_signal(RecordTask* t, int sig,
-                            SignalDeterministic deterministic) {
-  if (t->task_group()->received_sigframe_SIGSEGV) {
-    // Can't be blocked, caught or ignored
-    return true;
-  }
-
-  signal_action action = default_action(sig);
-  if (action != DUMP_CORE && action != TERMINATE) {
-    // If the default action doesn't kill the process, it won't die.
-    return false;
-  }
-
-  if (t->is_sig_ignored(sig)) {
-    // Deterministic fatal signals can't be ignored.
-    return deterministic == DETERMINISTIC_SIG;
-  }
-  if (!t->signal_has_user_handler(sig)) {
-    // The default action is going to happen: killing the process.
-    return true;
-  }
-  // If the signal's blocked, user handlers aren't going to run and the process
-  // will die.
-  return t->is_sig_blocked(sig);
-}
-
 /**
  * |t| is being delivered a signal, and its state changed.
+ * Must call t->stashed_signal_processed() once we're ready to unmask signals.
  */
 void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
   int sig = t->ev().Signal().siginfo.si_signo;
@@ -1213,25 +1263,15 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       t->ev().transform(EV_SIGNAL_DELIVERY);
       ssize_t sigframe_size = 0;
 
-      bool blocked = t->is_sig_blocked(sig);
-      // If this is the signal delivered by a sigsuspend, then clear
-      // sigsuspend_blocked_sigs to indicate that future signals are not
-      // being delivered by sigsuspend.
-      t->sigsuspend_blocked_sigs = nullptr;
-
-      // If a signal is blocked but is still delivered (e.g. a synchronous
-      // terminating signal such as SIGSEGV), user handlers do not run.
-      bool has_handler = false;
-      if (t->signal_has_user_handler(sig) && !blocked) {
+      bool has_handler = t->signal_has_user_handler(sig);
+      if (has_handler) {
         LOG(debug) << "  " << t->tid << ": " << signal_name(sig)
                    << " has user handler";
-        has_handler = true;
 
         if (!inject_handled_signal(t)) {
           // Signal delivery isn't happening. Prepare to process the new
           // signal that aborted signal delivery.
           t->signal_delivered(sig);
-          t->restore_sigmask_if_saved();
           t->pop_signal_delivery();
           step_state->continue_type = DONT_CONTINUE;
           last_task_switchable = PREVENT_SWITCH;
@@ -1240,23 +1280,20 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
         // It's somewhat difficult engineering-wise to
         // compute the sigframe size at compile time,
-        // and it can vary across kernel versions.  So
-        // this size is an overestimate of the real
-        // size(s).  The estimate was made by
-        // comparing $sp before and after entering the
-        // sighandler, for a sighandler that used the
-        // main task stack.  On linux 3.11.2, that
-        // computed size was 1736 bytes, which is an
-        // upper bound on the sigframe size.  We don't
-        // want to mess with this code much, so we
-        // overapproximate the overapproximation and
-        // round off to 2048.
+        // and it can vary across kernel versions and CPU
+        // microarchitectures. So this size is an overestimate
+        // of the real size(s).
         //
         // If this size becomes too small in the
         // future, and unit tests that use sighandlers
         // are run with checksumming enabled, then
         // they can catch errors here.
-        sigframe_size = 2048;
+        sigframe_size = 1152 /* Overestimate of kernel sigframe */ +
+                        128 /* Redzone */ +
+                        /* If xsave is available, the kernel uses it for the
+                           sigframe, otherwise it falls back to legacy methods,
+                           for which 512 should be sufficient */
+                        (xsave_area_size() ? xsave_area_size() : 512);
 
         t->ev().transform(EV_SIGNAL_HANDLER);
         t->signal_delivered(sig);
@@ -1264,6 +1301,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         step_state->continue_type = DONT_CONTINUE;
         last_task_switchable = ALLOW_SWITCH;
       } else {
+        t->stashed_signal_processed();
         LOG(debug) << "  " << t->tid << ": no user handler for "
                    << signal_name(sig);
         // Don't do another task continue. We want to deliver the signal
@@ -1294,10 +1332,9 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
     }
 
     case EV_SIGNAL_DELIVERY: {
-      bool is_fatal = is_fatal_signal(t, sig, t->ev().Signal().deterministic);
-
       // A fatal signal or SIGSTOP requires us to allow switching to another
       // task.
+      bool is_fatal = t->is_fatal_signal(sig, t->ev().Signal().deterministic);
       Switchable can_switch =
           (is_fatal || sig == SIGSTOP) ? ALLOW_SWITCH : PREVENT_SWITCH;
 
@@ -1354,12 +1391,6 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
       t->signal_delivered(sig);
       t->pop_signal_delivery();
-      // The mask set by ppoll/pselect6 is restored, but only if there are no
-      // more actionable signals. The ordering is important, because there may
-      // be pending signals that will be unblocked when we restore the sigmask.
-      if (!has_other_signals) {
-        t->restore_sigmask_if_saved();
-      }
       last_task_switchable = can_switch;
       step_state->continue_type = DONT_CONTINUE;
       break;
@@ -1386,16 +1417,28 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
     // tests that force a degenerately low time slice.
     LOG(warn) << "Dropping " << signal_name(sig)
               << " because it can't be delivered yet";
+    // These signals might have effects on the sigmask.
+    t->invalidate_sigmask();
     // No events to be recorded, so no syscallbuf updates
     // needed.
     return true;
   }
+
+  if (sig == SIGTRAP && handle_syscallbuf_breakpoint(t)) {
+    return true;
+  }
+
   SignalDeterministic deterministic = is_deterministic_signal(t);
+  // The kernel might have forcibly unblocked the signal. Check whether it
+  // was blocked now, before we update our cached sigmask.
+  SignalBlocked signal_was_blocked =
+      t->is_sig_blocked(sig) ? SIG_BLOCKED : SIG_UNBLOCKED;
   if (deterministic || sig == SYSCALLBUF_DESCHED_SIGNAL) {
     // Don't stash these signals; deliver them immediately.
     // We don't want them to be reordered around other signals.
+    // invalidate_sigmask() must not be called before we reach handle_signal!
     siginfo_t siginfo = t->get_siginfo();
-    switch (handle_signal(t, &siginfo, deterministic)) {
+    switch (handle_signal(t, &siginfo, deterministic, signal_was_blocked)) {
       case SIGNAL_PTRACE_STOP:
         // Emulated ptrace-stop. Don't run the task again yet.
         last_task_switchable = ALLOW_SWITCH;
@@ -1410,6 +1453,9 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
     }
     return false;
   }
+  // Conservatively invalidate the sigmask in case just accepting a signal has
+  // sigmask effects.
+  t->invalidate_sigmask();
   if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
     auto& si = t->get_siginfo();
     /* This implementation will of course fall over if rr tries to
@@ -1437,91 +1483,32 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
   return true;
 }
 
-template <typename Arch>
-static bool flush_signals_before_syscall_arch(intptr_t syscallno) {
-  switch (syscallno) {
-    case Arch::exit:
-    case Arch::exit_group:
-    case Arch::sigprocmask:
-    case Arch::rt_sigprocmask:
-      return true;
-    default:
-      return false;
-  }
-}
-
-static bool flush_signals_before_syscall(intptr_t syscallno,
-                                         SupportedArch arch) {
-  RR_ARCH_FUNCTION(flush_signals_before_syscall_arch, arch, syscallno);
-}
-
-/**
- * We should not do any exit syscall while there are stashed signals, because
- * they'll just be thrown away, violating normal kernel behavior. So we check
- * here if there are stashed signals and if there are, we abort the exit
- * syscall so the signals can be delivered. The exit will be restarted after
- * signal delivery.
- *
- * We treat sigprocmask the same way in case the tracee thread blocks all
- * signals until it exits.
- */
-static bool interrupt_syscall_to_handle_signals(RecordTask* t) {
-  if (!t->has_stashed_sig() ||
-      !flush_signals_before_syscall(t->regs().original_syscallno(),
-                                    t->arch())) {
-    return false;
-  }
-
-  LOG(debug) << "interrupting syscall '"
-             << syscall_name(t->regs().original_syscallno(), t->arch())
-             << "' to handle "
-             << signal_name(t->peek_stash_sig().siginfo.si_signo);
-
-  t->ev().Syscall().state = ENTERING_SYSCALL;
-  t->ev().Syscall().regs = t->regs();
-  t->record_current_event();
-
-  Registers r = t->regs();
-  int syscallno = r.original_syscallno();
-  r.set_original_syscallno(syscall_number_for_gettid(r.arch()));
-  t->set_regs(r);
-  // This exits the hijacked SYS_gettid.  Now the tracee is
-  // ready to do our bidding.
-  t->exit_syscall();
-
-  // Set these regs to emulate a syscall interruption.
-  r.set_original_syscallno(syscallno);
-  r.set_syscall_result(-ERESTARTSYS);
-  t->set_regs(r);
-
-  t->ev().Syscall().state = EXITING_SYSCALL;
-  t->record_current_event();
-  t->ev().transform(EV_SYSCALL_INTERRUPTION);
-  t->ev().Syscall().is_restart = true;
-
-  return true;
-}
-
-/**
- * If interrupt_syscall_to_handle_signals has left an exit/sigprocmask
- * syscall interrupted that needs to be completed, set up state to
- * restart the syscall, because the kernel won't!
- */
-static void maybe_do_fake_syscall_restart(RecordTask* t) {
-  if (!t->is_syscall_restart() || !t->regs().syscall_may_restart() ||
-      !flush_signals_before_syscall(t->ev().Syscall().number, t->arch())) {
-    return;
-  }
-
-  LOG(debug) << "Generating fake syscall restart";
-  Registers r = t->regs();
-  r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
-  r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
-  t->set_regs(r);
-}
-
 void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
                                           RecordResult* step_result) {
+  if (t->has_stashed_sig_not_synthetic_SIGCHLD()) {
+    // The only four cases where we allow a stashed signal to be pending on
+    // syscall entry are:
+    // -- the signal is a ptrace-related signal, in which case if it's generated
+    // during a blocking syscall, it does not interrupt the syscall
+    // -- rrcall_notify_syscall_hook_exit, which is effectively a noop and
+    // lets us dispatch signals afterward
+    // -- when we're entering a blocking untraced syscall. If it really blocks,
+    // we'll get the desched-signal notification and dispatch our stashed
+    // signal.
+    // -- when we're doing a privileged syscall that's internal to the preload
+    // logic
+    // We do not generally want to have stashed signals pending when we enter
+    // a syscall, because that will execute with a hacked signal mask
+    // (see RecordTask::will_resume_execution) which could make things go wrong.
+    ASSERT(t, t->desched_rec() ||
+                  is_rrcall_notify_syscall_hook_exit_syscall(
+                      t->regs().original_syscallno(), t->arch()) ||
+                  t->ip() ==
+                      t->vm()
+                          ->privileged_traced_syscall_ip()
+                          .increment_by_syscall_insn_length(t->arch()));
+  }
+
   // We just entered a syscall.
   if (!maybe_restart_syscall(t)) {
     // Emit FLUSH_SYSCALLBUF if necessary before we do any patching work
@@ -1536,24 +1523,24 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
       return;
     }
 
+    SupportedArch syscall_arch = t->detect_syscall_arch();
+    t->canonicalize_and_set_regs(t->regs(), syscall_arch);
+
     if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
       // Syscall was patched. Emit event and continue execution.
       t->record_event(Event(EV_PATCH_SYSCALL, HAS_EXEC_INFO, t->arch()));
       return;
     }
 
-    t->push_event(SyscallEvent(t->regs().original_syscallno(), t->arch()));
-
-    if (interrupt_syscall_to_handle_signals(t)) {
-      return;
-    }
+    t->push_event(SyscallEvent(t->regs().original_syscallno(), syscall_arch));
   }
 
   check_initial_task_syscalls(t, step_result);
   note_entering_syscall(t);
-  if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL ||
-      t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
-      t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) {
+  if ((t->emulated_ptrace_cont_command == PTRACE_SYSCALL ||
+       t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
+       t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) &&
+      !is_in_privileged_syscall(t)) {
     t->ev().Syscall().state = ENTERING_SYSCALL_PTRACE;
     t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
     t->record_current_event();
@@ -1597,23 +1584,33 @@ void RecordSession::runnable_state_changed(RecordTask* t, StepState* step_state,
 
 bool RecordSession::prepare_to_inject_signal(RecordTask* t,
                                              StepState* step_state) {
-  if (!t->has_stashed_sig() || !done_initial_exec() ||
-      step_state->continue_type != CONTINUE) {
+  if (!done_initial_exec() || step_state->continue_type != CONTINUE) {
     return false;
   }
+
   union {
     NativeArch::siginfo_t native_api;
     siginfo_t linux_api;
   } si;
-  si.linux_api = t->peek_stash_sig().siginfo;
-  if (si.linux_api.si_signo == get_ignore_sig()) {
-    LOG(debug) << "Declining to deliver " << signal_name(si.linux_api.si_signo)
-               << " by user request";
-    t->pop_stash_sig();
-    return prepare_to_inject_signal(t, step_state);
+  const RecordTask::StashedSignal* sig;
+
+  while (true) {
+    sig = t->peek_stashed_sig_to_deliver();
+    if (!sig) {
+      return false;
+    }
+    si.linux_api = sig->siginfo;
+    if (si.linux_api.si_signo == get_ignore_sig()) {
+      LOG(debug) << "Declining to deliver "
+                 << signal_name(si.linux_api.si_signo) << " by user request";
+      t->pop_stash_sig(sig);
+      t->stashed_signal_processed();
+    } else {
+      break;
+    }
   }
 
-  switch (handle_signal(t, &si.linux_api, t->peek_stash_sig().deterministic)) {
+  switch (handle_signal(t, &si.linux_api, sig->deterministic, SIG_UNBLOCKED)) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.
       last_task_switchable = ALLOW_SWITCH;
@@ -1641,7 +1638,10 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
       break;
   }
   step_state->continue_type = DONT_CONTINUE;
-  t->pop_stash_sig();
+  t->pop_stash_sig(sig);
+  if (t->ev().type() != EV_SIGNAL) {
+    t->stashed_signal_processed();
+  }
   return true;
 }
 
@@ -1712,7 +1712,7 @@ static string lookup_by_path(const string& name) {
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const vector<string>& argv, const vector<string>& extra_env,
-    SyscallBuffering syscallbuf, BindCPU bind_cpu) {
+    SyscallBuffering syscallbuf, int bind_cpu) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -1809,7 +1809,7 @@ static string lookup_by_path(const string& name) {
 RecordSession::RecordSession(const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
-                             SyscallBuffering syscallbuf, BindCPU bind_cpu)
+                             SyscallBuffering syscallbuf, int bind_cpu)
     : trace_out(argv[0], choose_cpu(bind_cpu)),
       scheduler_(*this),
       ignore_sig(0),
@@ -1875,9 +1875,9 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   LOG(debug) << "trace time " << t->trace_time() << ": Active task is "
              << t->tid << ". Events:";
-#ifdef DEBUGTAG
-  t->log_pending_events();
-#endif
+  if (IS_LOGGING(debug)) {
+    t->log_pending_events();
+  }
   if (handle_ptrace_exit_event(t)) {
     // t is dead and has been deleted.
     return result;
@@ -1946,8 +1946,6 @@ RecordSession::RecordResult RecordSession::record_step() {
 
     debug_exec_state("EXEC_START", t);
 
-    maybe_do_fake_syscall_restart(t);
-    t->handling_deterministic_signal = 0;
     task_continue(step_state);
   }
 

@@ -126,7 +126,11 @@ static int ps(const string& trace_dir, FILE* out) {
     if (e.type() == TraceTaskEvent::CLONE &&
         !(e.clone_flags() & CLONE_THREAD)) {
       pid_t pid = tid_to_pid[e.tid()];
-      fprintf(out, "%d\t%d\t%d\t", e.tid(), tid_to_pid[e.parent_tid()],
+      fprintf(out, "%d", e.tid());
+      if (e.own_ns_tid() != e.tid()) {
+        fprintf(out, " (%d)", e.own_ns_tid());
+      }
+      fprintf(out, "\t%d\t%d\t", tid_to_pid[e.parent_tid()],
               find_exit_code(pid, events, i, tid_to_pid));
 
       ssize_t cmd_line_index = find_cmd_line(pid, events, i, tid_to_pid);

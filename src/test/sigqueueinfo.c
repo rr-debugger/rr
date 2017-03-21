@@ -35,7 +35,7 @@ static void handle_signal(int sig, siginfo_t* si,
   } else if (SIGUSR2 == sig) {
     usr2_val = val;
   } else {
-    assert("Unexpected signal" && 0);
+    test_assert("Unexpected signal" && 0);
   }
 }
 

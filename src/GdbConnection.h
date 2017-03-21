@@ -288,44 +288,10 @@ struct GdbRequest {
  */
 class GdbConnection {
 public:
-  /**
-   * Wait for exactly one gdb host to connect to this remote target on
-   * IP address 127.0.0.1, port |port|.  If |probe| is nonzero, a unique
-   * port based on |start_port| will be searched for.  Otherwise, if
-   * |port| is already bound, this function will fail.
-   *
-   * Pass the |tgid| of the task on which this debug-connection request
-   * is being made.  The remaining debugging session will be limited to
-   * traffic regarding |tgid|, but clients don't need to and shouldn't
-   * need to assume that.
-   *
-   * If we're opening this connection on behalf of a known client, pass
-   * an fd in |client_params_fd|; we'll write the allocated port and |exe_image|
-   * through the fd before waiting for a connection. |exe_image| is the
-   * process that will be debugged by client, or null ptr if there isn't
-   * a client.
-   *
-   * This function is infallible: either it will return a valid
-   * debugging context, or it won't return.
-   */
-  enum ProbePort { DONT_PROBE = 0, PROBE_PORT };
   struct Features {
     Features() : reverse_execution(true) {}
     bool reverse_execution;
   };
-  static std::unique_ptr<GdbConnection> await_client_connection(
-      unsigned short desired_port, ProbePort probe, pid_t tgid,
-      const std::string& debugger_name, const std::string& exe_image,
-      const Features& features, ScopedFd* client_params_fd = nullptr);
-
-  /**
-   * Exec gdb using the params that were written to
-   * |params_pipe_fd|.  Optionally, pre-define in the gdb client the set
-   * of macros defined in |macros| if nonnull.
-   */
-  static void launch_gdb(ScopedFd& params_pipe_fd,
-                         const std::string& gdb_binary_file_path,
-                         const std::vector<std::string>& gdb_options);
 
   /**
    * Call this when the target of |req| is needed to fulfill the
@@ -534,7 +500,6 @@ public:
   void set_cpu_features(uint32_t features) { cpu_features_ = features; }
   uint32_t cpu_features() const { return cpu_features_; }
 
-private:
   GdbConnection(pid_t tgid, const Features& features);
 
   /**
@@ -543,6 +508,7 @@ private:
    */
   void await_debugger(ScopedFd& listen_fd);
 
+private:
   /**
    * read() incoming data exactly one time, successfully.  May block.
    */

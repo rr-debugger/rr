@@ -238,7 +238,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // Pretend we're still in the system call
   r.set_syscall_result(-ENOSYS);
   r.set_original_syscallno(trace_frame.regs().original_syscallno());
-  t->set_regs(r);
+  t->canonicalize_and_set_regs(r, trace_frame.event().Syscall().arch());
 
   // Dig the recorded tid out out of the trace. The tid value returned in
   // the recorded registers could be in a different pid namespace from rr's,
@@ -276,7 +276,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
   new_r.set_arg1(trace_frame.regs().arg1());
   new_r.set_arg2(trace_frame.regs().arg2());
-  new_task->emulate_syscall_entry(new_r);
+  new_task->canonicalize_and_set_regs(new_r, new_task->arch());
 
   if (Arch::clone != t->regs().original_syscallno() || !(CLONE_VM & r.arg1())) {
     // It's hard to imagine a scenario in which it would
@@ -292,8 +292,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
       if (m.local_addr &&
           !(m.flags & (AddressSpace::Mapping::IS_THREAD_LOCALS |
                        AddressSpace::Mapping::IS_SYSCALLBUF))) {
-        memcpy(Session::recreate_shared_mmap(remote, m).local_addr,
-               m.local_addr, m.map.size());
+        Session::recreate_shared_mmap(remote, m, Session::PRESERVE_CONTENTS);
       }
     }
   }
@@ -472,6 +471,14 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     ASSERT(t, false) << "Exec of stub " << stub_filename << " failed";
   }
 
+  // Restore any memory if required. We need to do this through memory_task,
+  // since the new task is now on the new address space. Do it now because
+  // later we may try to unmap this task's syscallbuf.
+  if (memory_task != t) {
+    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
+                           saved_data.size());
+  }
+
   vector<KernelMapping> kms;
   vector<TraceReader::MappedData> datas;
 
@@ -602,13 +609,6 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
 
-  // Restore any memory if required. We need to do this through memory_task,
-  // since the new task is now on the new address space.
-  if (memory_task != t) {
-    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
-                           saved_data.size());
-  }
-
   // Notify outer rr if there is one
   syscall(SYS_rrcall_reload_auxv, t->tid);
 }
@@ -735,16 +735,19 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
       // Tell the kernel to take |rec_addr| seriously.
       (flags & ~MAP_GROWSDOWN) | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
 
+  // Update AddressSpace before loading data from the trace. This ensures our
+  // kernel-bug-workarounds when writing to tracee memory see the up-to-date
+  // virtual map.
+  t->vm()->map(t, rec_addr, length, prot, flags | MAP_ANONYMOUS,
+               page_size() * offset_pages, string(), KernelMapping::NO_DEVICE,
+               KernelMapping::NO_INODE, nullptr, &km);
+
   /* Restore the map region we copied. */
   ssize_t data_size = t->set_data_from_trace();
 
   /* Ensure pages past the end of the file fault on access */
   size_t data_pages = ceil_page_size(data_size);
   size_t mapped_pages = ceil_page_size(length);
-
-  t->vm()->map(t, rec_addr, length, prot, flags | MAP_ANONYMOUS,
-               page_size() * offset_pages, string(), KernelMapping::NO_DEVICE,
-               KernelMapping::NO_INODE, nullptr, &km);
 
   create_sigbus_region(remote, prot, rec_addr + data_pages,
                        mapped_pages - data_pages, km);
@@ -777,6 +780,10 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // TODO: this is a poor man's shared segment synchronization.
   // For full generality, we also need to emulate direct file
   // modifications through write/splice/etc.
+  //
+  // Update AddressSpace before loading data from the trace. This ensures our
+  // kernel-bug-workarounds when writing to tracee memory see the up-to-date
+  // virtual map.
   uint64_t offset_bytes = page_size() * offset_pages;
   t->vm()->map(t, buf.addr, buf.data.size(), prot, flags, offset_bytes,
                real_file_name, real_file.st_dev, real_file.st_ino, nullptr, &km,
@@ -1060,6 +1067,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   if (is_restart_syscall_syscall(sys, t->arch())) {
     ASSERT(t, t->tick_count() == t->current_trace_frame().ticks());
     t->set_regs(t->current_trace_frame().regs());
+    t->apply_all_data_records_from_trace();
     step->action = TSTEP_RETIRE;
     return;
   }
@@ -1100,10 +1108,10 @@ static void handle_opened_files(ReplayTask* t) {
 }
 
 template <typename Arch>
-static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
+static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
+                                     const Registers& trace_regs) {
   int sys = t->current_trace_frame().event().Syscall().number;
   const TraceFrame& trace_frame = t->session().current_trace_frame();
-  const Registers& trace_regs = trace_frame.regs();
 
   LOG(debug) << "processing " << t->syscall_name(sys) << " (exit)";
 
@@ -1213,6 +1221,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
     /* fall through */
     case Arch::munmap:
     case Arch::mprotect:
+    case Arch::modify_ldt:
     case Arch::set_thread_area: {
       // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
       Registers r = t->regs();
@@ -1232,6 +1241,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
         r2.set_arg3(r.arg3());
         t->set_regs(r2);
       }
+      // The syscall modified registers. Re-emulate the syscall entry.
+      t->canonicalize_and_set_regs(t->regs(), step->syscall.arch);
       return;
     }
 
@@ -1336,10 +1347,14 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step) {
 }
 
 void rep_process_syscall(ReplayTask* t, ReplayTraceStep* step) {
-  // Use the event's arch, not the task's, because the task's arch may
-  // be out of date immediately after an exec.
-  RR_ARCH_FUNCTION(rep_process_syscall_arch,
-                   t->current_trace_frame().event().arch(), t, step)
+  step->syscall.arch = t->current_trace_frame().event().arch();
+  const TraceFrame& trace_frame = t->current_trace_frame();
+  const Registers& trace_regs = trace_frame.regs();
+  with_converted_registers<void>(
+      trace_regs, step->syscall.arch, [&](const Registers& trace_regs) {
+        RR_ARCH_FUNCTION(rep_process_syscall_arch, step->syscall.arch, t, step,
+                         trace_regs)
+      });
 }
 
 } // namespace rr

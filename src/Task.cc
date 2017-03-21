@@ -7,6 +7,7 @@
 #include <elf.h>
 #include <errno.h>
 #include <limits.h>
+#include <linux/capability.h>
 #include <linux/ipc.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -38,6 +39,7 @@
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "ReplaySession.h"
+#include "ReplayTask.h"
 #include "ScopedFd.h"
 #include "StdioMonitor.h"
 #include "StringVectorToCharArray.h"
@@ -112,10 +114,7 @@ Task::~Task() {
     // Destroying a Session may result in unstable exits during which
     // Task::destroy_buffers() will not have been called.
     if (!syscallbuf_child.is_null()) {
-      uint8_t* local_mapping = vm()->mapping_of(syscallbuf_child).local_addr;
       vm()->unmap(this, syscallbuf_child, syscallbuf_size);
-      int ret = munmap(local_mapping, syscallbuf_size);
-      ASSERT(this, ret >= 0);
     }
   } else {
     ASSERT(this, seen_ptrace_exit_event);
@@ -204,30 +203,29 @@ const siginfo_t& Task::get_siginfo() {
  */
 void Task::destroy_buffers() {
   AutoRemoteSyscalls remote(this);
-  unmap_buffers_for(remote, this);
-  scratch_ptr = nullptr;
+  auto saved_syscallbuf_child = syscallbuf_child;
+  // Clear syscallbuf_child now so nothing tries to use it while tearing
+  // down buffers.
   syscallbuf_child = nullptr;
+  unmap_buffers_for(remote, this, saved_syscallbuf_child);
+  scratch_ptr = nullptr;
   close_buffers_for(remote, this);
   desched_fd_child = -1;
   cloned_file_data_fd_child = -1;
 }
 
-void Task::unmap_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
+void Task::unmap_buffers_for(
+    AutoRemoteSyscalls& remote, Task* other,
+    remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child) {
   if (other->scratch_ptr) {
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
                               other->scratch_ptr, other->scratch_size);
     vm()->unmap(this, other->scratch_ptr, other->scratch_size);
   }
-  if (!other->syscallbuf_child.is_null()) {
-    uint8_t* local_mapping =
-        vm()->mapping_of(other->syscallbuf_child).local_addr;
+  if (!saved_syscallbuf_child.is_null()) {
     remote.infallible_syscall(syscall_number_for_munmap(arch()),
-                              other->syscallbuf_child, other->syscallbuf_size);
-    vm()->unmap(this, other->syscallbuf_child, other->syscallbuf_size);
-    if (local_mapping) {
-      int ret = munmap(local_mapping, other->syscallbuf_size);
-      ASSERT(this, ret >= 0);
-    }
+                              saved_syscallbuf_child, other->syscallbuf_size);
+    vm()->unmap(this, saved_syscallbuf_child, other->syscallbuf_size);
   }
 }
 
@@ -280,7 +278,10 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
   // mprotect can change the protection status of some mapped regions before
   // failing.
-  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, arch())) {
+  // SYS_rrcall_mprotect_record always fails with ENOSYS, though we want to
+  // note its usage here.
+  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch()) &&
+      syscallno != SYS_rrcall_mprotect_record) {
     return;
   }
 
@@ -293,6 +294,23 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
                     "processing)";
       return;
     }
+
+    case SYS_rrcall_mprotect_record: {
+      // When we record an rr replay of a tracee which does a syscallbuf'ed
+      // `mprotect`, neither the replay nor its recording see the mprotect
+      // syscall, since it's untraced during both recording and replay. rr
+      // replay is notified of the syscall via the `mprotect_records`
+      // mechanism; if it's being recorded, it forwards that notification to
+      // the recorder by calling this syscall.
+      pid_t tid = regs.arg1();
+      remote_ptr<void> addr = regs.arg2();
+      size_t num_bytes = regs.arg3();
+      int prot = regs.arg4_signed();
+      Task* t = session().find_task(tid);
+      ASSERT(this, t);
+      return t->vm()->protect(t, addr, num_bytes, prot);
+    }
+
     case Arch::mprotect: {
       remote_ptr<void> addr = regs.arg1();
       size_t num_bytes = regs.arg2();
@@ -522,8 +540,11 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   }
 }
 
-void Task::on_syscall_exit(int syscallno, const Registers& regs) {
-  RR_ARCH_FUNCTION(on_syscall_exit_arch, arch(), syscallno, regs)
+void Task::on_syscall_exit(int syscallno, SupportedArch arch,
+                           const Registers& regs) {
+  with_converted_registers<void>(regs, arch, [&](const Registers& regs) {
+    RR_ARCH_FUNCTION(on_syscall_exit_arch, arch, syscallno, regs);
+  });
 }
 
 void Task::move_ip_before_breakpoint() {
@@ -557,6 +578,9 @@ void Task::enter_syscall() {
       continue;
     }
     ASSERT(this, session().is_recording());
+    if (stop_sig() == SYSCALLBUF_DESCHED_SIGNAL) {
+      continue;
+    }
     static_cast<RecordTask*>(this)->stash_sig();
   }
 }
@@ -578,6 +602,7 @@ void Task::exit_syscall() {
     }
     ASSERT(this, !ptrace_event());
     if (!stop_sig()) {
+      canonicalize_and_set_regs(regs(), arch());
       break;
     }
     if (ReplaySession::is_ignored_signal(stop_sig()) &&
@@ -614,20 +639,61 @@ static string prname_from_exe_image(const string& e) {
   return e.substr(last_slash == e.npos ? 0 : last_slash + 1);
 }
 
-void Task::post_exec(SupportedArch a, const string& exe_file) {
-  /* We just saw a successful exec(), so from now on we know
-   * that the address space layout for the replay tasks will
-   * (should!) be the same as for the recorded tasks.  So we can
-   * start validating registers at events. */
+#if defined(__i386__) || defined(__x86_64__)
+#define AR_L (1 << 21)
+static bool is_long_mode_segment(uint32_t segment) {
+  uint32_t ar = 0;
+  asm("lar %[segment], %[ar]" : [ar] "=r"(ar) : [segment] "r"(segment));
+  return ar & AR_L;
+}
+#endif
+
+void Task::post_exec(const string& exe_file) {
+  Task* stopped_task_in_address_space = nullptr;
+  bool other_task_in_address_space = false;
+  for (Task* t : as->task_set()) {
+    if (t != this) {
+      if (t->is_stopped) {
+        stopped_task_in_address_space = t;
+      }
+      other_task_in_address_space = true;
+    }
+  }
+  if (stopped_task_in_address_space) {
+    AutoRemoteSyscalls remote(stopped_task_in_address_space);
+    unmap_buffers_for(remote, this, syscallbuf_child);
+  } else if (other_task_in_address_space) {
+    // We should clean up our syscallbuf/scratch but that's too hard since we
+    // have no stopped task to use for that :-(.
+    // (We can't clean up those buffers *before* the exec completes, because it
+    // might fail in which case we shouldn't have cleaned them up.)
+    // Just let the buffers leak. The AddressSpace will clean up our local
+    // shared buffer when it's destroyed.
+    LOG(warn) << "Intentionally leaking syscallbuf after exec for task " << tid;
+  }
+
   session().post_exec();
 
   as->erase_task(this);
   fds->erase_task(this);
 
-  registers.set_arch(a);
+  registers.set_arch(NativeArch::arch());
   struct user_regs_struct ptrace_regs;
   ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
   registers.set_from_ptrace(ptrace_regs);
+
+#if defined(__i386__) || defined(__x86_64__)
+  // Check the architecture of the newly executed task by looking at the
+  // cs segment register and checking if that segment is a long mode segment
+  // (Linux always uses GDT entries for this, which are globally the same).
+  SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
+  if (a != NativeArch::arch()) {
+    // One again with the correct architecture
+    registers.set_arch(a);
+    registers.set_from_ptrace(ptrace_regs);
+  }
+#endif
+
   // Change syscall number to execve *for the new arch*. If we don't do this,
   // and the arch changes, then the syscall number for execve in the old arch/
   // is treated as the syscall we're executing in the new arch, with hilarious
@@ -635,13 +701,14 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
   registers.set_original_syscallno(syscall_number_for_execve(arch()));
   set_regs(registers);
 
-  extra_registers = ExtraRegisters(a);
+  extra_registers = ExtraRegisters(registers.arch());
   extra_registers_known = false;
   ExtraRegisters e = extra_regs();
   e.reset();
   set_extra_regs(e);
 
   syscallbuf_child = nullptr;
+  scratch_ptr = nullptr;
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
   preload_globals = nullptr;
@@ -657,6 +724,7 @@ void Task::post_exec(SupportedArch a, const string& exe_file) {
 }
 
 void Task::post_exec_syscall(TraceTaskEvent& event) {
+  canonicalize_and_set_regs(regs(), arch());
   as->post_exec_syscall(this);
   fds->update_for_cloexec(this, event);
 
@@ -701,36 +769,13 @@ const Registers& Task::regs() const {
   return registers;
 }
 
-// 0 means XSAVE not detected
-static unsigned int xsave_area_size = 0;
-static bool xsave_initialized = false;
-
-static void init_xsave() {
-  if (xsave_initialized) {
-    return;
-  }
-  xsave_initialized = true;
-
-  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
-  if (!(cpuid_data.ecx & (1 << 26))) {
-    // XSAVE not present
-    return;
-  }
-
-  // We'll use the largest possible area all the time
-  // even when it might not be needed. Simpler that way.
-  cpuid_data = cpuid(CPUID_GETXSAVE, 0);
-  xsave_area_size = cpuid_data.ecx;
-}
-
 const ExtraRegisters& Task::extra_regs() {
   if (!extra_registers_known) {
-    init_xsave();
-    if (xsave_area_size) {
+    if (xsave_area_size()) {
       LOG(debug) << "  (refreshing extra-register cache using XSAVE)";
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
-      extra_registers.data_.resize(xsave_area_size);
+      extra_registers.data_.resize(xsave_area_size());
       struct iovec vec = { extra_registers.data_.data(),
                            extra_registers.data_.size() };
       xptrace(PTRACE_GETREGSET, NT_X86_XSTATE, &vec);
@@ -898,7 +943,8 @@ void Task::activate_preload_thread_locals() {
 }
 
 static bool cpu_has_singlestep_quirk() {
-  static bool has_quirk = ((cpuid(CPUID_GETFEATURES, 0).eax & 0xF0FF0) == 0x50670);
+  static bool has_quirk =
+      ((cpuid(CPUID_GETFEATURES, 0).eax & 0xF0FF0) == 0x50670);
   return has_quirk;
 }
 
@@ -907,27 +953,26 @@ static bool cpu_has_singlestep_quirk() {
  * string instructions. Right now, since only once CPU has this quirk, this
  * value is hardcoded, but could depend on the CPU architecture in the future.
  */
-static int single_step_coalesce_cutoff() { return 32; }
+static int single_step_coalesce_cutoff() { return 16; }
 
 void Task::maybe_workaround_singlestep_bug() {
   uintptr_t cx = regs().cx();
   uintptr_t cutoff = single_step_coalesce_cutoff();
   /* The extra cx >= cutoff check is just an optimization, to avoid the
      moderately expensive load from ip() if we can */
-  if (cpu_has_singlestep_quirk() &&
-      cx >= cutoff && at_x86_string_instruction(this)) {
+  if (cpu_has_singlestep_quirk() && cx > cutoff &&
+      at_x86_string_instruction(this)) {
     /* KNL has a quirk where single-stepping a string instruction can step up
-       to 64 iterations (empirically, this only happens if cx > 32).
-       Work around this by fudging registers to force the
+       to 64 iterations. Work around this by fudging registers to force the
        processor to execute one iteration and one interation only. */
     LOG(debug) << "Working around KNL single-step hardware bug (cx=" << cx
                << ")";
-    if (cx >= cutoff) {
+    if (cx > cutoff) {
       last_resume_orig_cx = cx;
       Registers r = regs();
       /* An arbitrary value < cutoff would work fine here, except 1, since
          the last iteration of the loop behaves differently */
-      r.set_cx(cutoff - 1);
+      r.set_cx(cutoff);
       set_regs(r);
     }
   }
@@ -935,22 +980,22 @@ void Task::maybe_workaround_singlestep_bug() {
 
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
-  // Treat a RESUME_NO_TICKS tick_period as a very large but finite number.
-  // Always resetting here, and always to a nonzero number, improves
-  // consistency between recording and replay and hopefully
-  // makes counting bugs behave similarly between recording and
-  // replay.
-  // Accumulate any unknown stuff in tick_count().
+  will_resume_execution(how, wait_how, tick_period, sig);
+
   if (tick_period != RESUME_NO_TICKS) {
-    hpc.reset(tick_period == RESUME_UNLIMITED_TICKS
-                  ? 0xffffffff
-                  : max<Ticks>(1, tick_period));
+    if (tick_period == RESUME_UNLIMITED_TICKS) {
+      hpc.reset(0);
+    } else {
+      ASSERT(this, tick_period >= 0 && tick_period <= MAX_TICKS_REQUEST);
+      hpc.reset(max<Ticks>(1, tick_period));
+    }
     activate_preload_thread_locals();
   }
 
   LOG(debug) << "resuming execution of " << tid << " with "
              << ptrace_req_name(how)
-             << (sig ? string(", signal ") + signal_name(sig) : string());
+             << (sig ? string(", signal ") + signal_name(sig) : string())
+             << " tick_period " << tick_period;
   address_of_last_execution_resume = ip();
   how_last_execution_resumed = how;
   set_debug_status(0);
@@ -1013,11 +1058,9 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
   extra_registers = regs;
   extra_registers_known = true;
 
-  init_xsave();
-
   switch (extra_registers.format()) {
     case ExtraRegisters::XSAVE: {
-      if (xsave_area_size) {
+      if (xsave_area_size()) {
         struct iovec vec = { extra_registers.data_.data(),
                              extra_registers.data_.size() };
         ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
@@ -1311,49 +1354,51 @@ void Task::wait(double interrupt_after_elapsed) {
   did_waitpid(status);
 }
 
-static bool is_in_non_sigreturn_exit_syscall(Task* t) {
-  if (!t->status().is_syscall()) {
-    return false;
-  }
-  if (t->session().is_recording()) {
-    auto rt = static_cast<RecordTask*>(t);
-    return !rt->ev().is_syscall_event() ||
-           !is_sigreturn(rt->ev().Syscall().number, t->arch());
-  }
-  return true;
-}
-
 /**
  * Call this when we've trapped in a syscall (entry or exit) in the kernel,
  * to normalize registers.
  */
-static void fixup_syscall_registers(Registers& registers) {
+void fixup_syscall_registers(Registers& registers, SupportedArch syscall_arch) {
   if (registers.arch() == x86_64) {
-    // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
-    // If we single-stepped into the syscall instruction, the TF flag will be
-    // set in R11. We don't want the value in R11 to depend on whether we
-    // were single-stepping during record or replay, possibly causing
-    // divergence.
-    // This doesn't matter when exiting a sigreturn syscall, since it
-    // restores the original flags.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
-    // We tried just clearing %r11, but that caused hangs in
-    // Ubuntu/Debian kernels.
-    // Making this match the flags makes this operation idempotent, which is
-    // helpful.
-    registers.set_r11(0x246);
-    // x86-64 'syscall' instruction copies return address to RCX on syscall
-    // entry. rr-related kernel activity normally sets RCX to -1 at some point
-    // during syscall execution, but apparently in some (unknown) situations
-    // probably involving untraced syscalls, that doesn't happen. To avoid
-    // potential issues, forcibly replace RCX with -1 always.
-    // This doesn't matter (and we should not do this) when exiting a
-    // sigreturn syscall, since it will restore the original RCX and we don't
-    // want to clobber that.
-    // For untraced syscalls, the untraced-syscall entry point code (see
-    // write_rr_page) does this itself.
-    registers.set_cx((intptr_t)-1);
+    if (syscall_arch == x86) {
+      // The int $0x80 compatibility handling clears r8-r11
+      // (see arch/x86/entry/entry_64_compat.S). The sysenter compatibility
+      // handling also clears r12-r15. However, to actually make such a syscall,
+      // the user process would have to switch itself into compatibility mode,
+      // which, though possible, does not appear to actually be done by any
+      // real application (contrary to int $0x80, which is accessible from 64bit
+      // mode as well).
+      registers.set_r8(0x0);
+      registers.set_r9(0x0);
+      registers.set_r10(0x0);
+      registers.set_r11(0x0);
+    } else {
+      // x86-64 'syscall' instruction copies RFLAGS to R11 on syscall entry.
+      // If we single-stepped into the syscall instruction, the TF flag will be
+      // set in R11. We don't want the value in R11 to depend on whether we
+      // were single-stepping during record or replay, possibly causing
+      // divergence.
+      // This doesn't matter when exiting a sigreturn syscall, since it
+      // restores the original flags.
+      // For untraced syscalls, the untraced-syscall entry point code (see
+      // write_rr_page) does this itself.
+      // We tried just clearing %r11, but that caused hangs in
+      // Ubuntu/Debian kernels.
+      // Making this match the flags makes this operation idempotent, which is
+      // helpful.
+      registers.set_r11(0x246);
+      // x86-64 'syscall' instruction copies return address to RCX on syscall
+      // entry. rr-related kernel activity normally sets RCX to -1 at some point
+      // during syscall execution, but apparently in some (unknown) situations
+      // probably involving untraced syscalls, that doesn't happen. To avoid
+      // potential issues, forcibly replace RCX with -1 always.
+      // This doesn't matter (and we should not do this) when exiting a
+      // sigreturn syscall, since it will restore the original RCX and we don't
+      // want to clobber that.
+      // For untraced syscalls, the untraced-syscall entry point code (see
+      // write_rr_page) does this itself.
+      registers.set_cx((intptr_t)-1);
+    }
     // On kernel 3.13.0-68-generic #111-Ubuntu SMP we have observed a failed
     // execve() clearing all flags during recording. During replay we emulate
     // the exec so this wouldn't happen. Just reset all flags so everything's
@@ -1373,20 +1418,14 @@ static void fixup_syscall_registers(Registers& registers) {
   }
 }
 
-void Task::emulate_syscall_entry(const Registers& regs) {
+void Task::canonicalize_and_set_regs(const Registers& regs,
+                                     SupportedArch syscall_arch) {
   Registers r = regs;
-  fixup_syscall_registers(r);
+  fixup_syscall_registers(r, syscall_arch);
   set_regs(r);
 }
 
 void Task::did_waitpid(WaitStatus status) {
-  Ticks more_ticks = hpc.counting ? hpc.read_ticks() : 0;
-  // We stop counting here because there may be things we want to do to the
-  // tracee that would otherwise generate ticks.
-  hpc.stop_counting();
-  session().accumulate_ticks_processed(more_ticks);
-  ticks += more_ticks;
-
   // After PTRACE_INTERRUPT, any next two stops may be a group stop caused by
   // that PTRACE_INTERRUPT (or neither may be). This is because PTRACE_INTERRUPT
   // generally lets other stops win (and thus doesn't inject it's own stop), but
@@ -1444,6 +1483,13 @@ void Task::did_waitpid(WaitStatus status) {
     seen_ptrace_exit_event = true;
   }
 
+  Ticks more_ticks = hpc.counting ? hpc.read_ticks(this) : 0;
+  // We stop counting here because there may be things we want to do to the
+  // tracee that would otherwise generate ticks.
+  hpc.stop_counting();
+  session().accumulate_ticks_processed(more_ticks);
+  ticks += more_ticks;
+
   bool need_to_set_regs = false;
   if (registers.singlestep_flag()) {
     registers.clear_singlestep_flag();
@@ -1482,21 +1528,24 @@ void Task::did_waitpid(WaitStatus status) {
     need_to_set_regs = true;
   }
 
-  // When exiting a syscall, we need to normalize nondeterministic registers.
-  // We also need to do this when we receive a signal in the rr page, since
-  // we may have just returned from an untraced syscall there and while in the
-  // rr page registers need to be consistent between record and replay.
-  // During replay most untraced syscalls are replaced with "xor eax,eax" so
+  // If we're in the rr page,  we may have just returned from an untraced
+  // syscall there and while in the rr page registers need to be consistent
+  // between record and replay. During replay most untraced syscalls are
+  // replaced with "xor eax,eax" (right after a "movq -1, %rcx") so
   // rcx is always -1, but during recording it sometimes isn't after we've
   // done a real syscall.
-  if (is_in_non_sigreturn_exit_syscall(this) || is_in_rr_page()) {
-    fixup_syscall_registers(registers);
+  if (is_in_rr_page()) {
+    // N.B.: Cross architecture syscalls don't go through the rr page, so we
+    // know what the architecture is.
+    fixup_syscall_registers(registers, arch());
     need_to_set_regs = true;
   }
   if (need_to_set_regs && did_read_regs) {
     // If we couldn't read registers, don't fix them up!
     set_regs(registers);
   }
+
+  did_wait();
 }
 
 bool Task::try_wait() {
@@ -1625,7 +1674,7 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
       AutoRemoteSyscalls remote(t);
       for (Task* tt : as->task_set()) {
         if (tt != this) {
-          t->unmap_buffers_for(remote, tt);
+          t->unmap_buffers_for(remote, tt, tt->syscallbuf_child);
         }
       }
     }
@@ -1937,6 +1986,8 @@ void Task::reset_syscallbuf() {
             (uint32_t)0);
   write_mem(REMOTE_PTR_FIELD(syscallbuf_child, mprotect_record_count_completed),
             (uint32_t)0);
+  write_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs_generation),
+            (uint32_t)0);
 }
 
 ssize_t Task::read_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
@@ -2082,6 +2133,9 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
  * that's PROT_NONE.
  * Also, writing through MAP_SHARED readonly mappings fails (even if the
  * file was opened read-write originally), so we handle that here too.
+ * Lastly, on kernels that have the DirtyCOW exploit mitigation patch,
+ * writes to PROT_READ, MAP_PRIVATE that cause COW hang the kernel, if backed by
+ * transparent huge pages, so handle that as well.
  */
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
@@ -2093,7 +2147,8 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
     if (m.map.prot() & PROT_WRITE) {
       continue;
     }
-    if (!(m.map.prot() & PROT_READ) || (m.map.flags() & MAP_SHARED)) {
+    if (!(m.map.prot() & PROT_READ) || (m.map.flags() & MAP_SHARED) ||
+        m.map.size() >= 2 * 1024 * 1024 /* Could be backed by thp */) {
       mappings_to_fix.push_back(m.map);
     }
   };
@@ -2388,11 +2443,17 @@ static void set_up_process(Session& session, const ScopedFd& err_fd) {
     spawned_child_fatal_error(err_fd, "error setting up prctl");
   }
 
-  if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
-    spawned_child_fatal_error(
-        err_fd,
-        "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
-        "kernel is too old. Use `record -n` to disable the filter.");
+  /* If we're in setuid_sudo mode, we have CAP_SYS_ADMIN, so we don't need to
+     set NO_NEW_PRIVS here in order to install the seccomp filter later. In,
+     emulate any potentially privileged, operations, so we might as well set
+     no_new_privs */
+  if (!session.is_recording() || !has_effective_caps(1 << CAP_SYS_ADMIN)) {
+    if (0 > prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)) {
+      spawned_child_fatal_error(
+          err_fd,
+          "prctl(NO_NEW_PRIVS) failed, SECCOMP_FILTER is not available: your "
+          "kernel is too old. Use `record -n` to disable the filter.");
+    }
   }
 }
 
@@ -2425,7 +2486,7 @@ static void set_up_seccomp_filter(Session& session, int err_fd) {
                              f.filters.data() };
 
   /* Note: the filter is installed only for record. This call
-   * will be emulated in the replay */
+   * will be emulated (not passed to the kernel) in the replay. */
   if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {
     spawned_child_fatal_error(
         err_fd, "prctl(SECCOMP) failed, SECCOMP_FILTER is not available: your "

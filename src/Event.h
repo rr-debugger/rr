@@ -173,11 +173,13 @@ struct DeschedEvent : public BaseEvent {
   remote_ptr<const struct syscallbuf_record> rec;
 };
 
-/**
- * Signal events track signals through the delivery phase, and if the
- * signal finds a sighandler, on to the end of the handling face.
- */
 enum SignalDeterministic { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
+enum SignalBlocked { SIG_UNBLOCKED = 0, SIG_BLOCKED = 1 };
+enum SignalOutcome {
+  DISPOSITION_FATAL = 0,
+  DISPOSITION_USER_HANDLER = 1,
+  DISPOSITION_IGNORED = 2,
+};
 struct SignalEvent : public BaseEvent {
   /**
    * Signal |signo| is the signum, and |deterministic| is true

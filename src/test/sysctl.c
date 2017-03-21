@@ -15,9 +15,9 @@ int main(void) {
     atomic_printf("sysctl KERN_RTSIGMAX returned errno %d\n", errno);
     atomic_puts("EXIT-SUCCESS");
   } else {
-    assert(len == sizeof(sig_max));
+    test_assert(len == sizeof(sig_max));
     atomic_printf("sysctl KERN_RTSIGMAX returned %d\n", sig_max);
-    assert(sig_max > 0);
+    test_assert(sig_max > 0);
     atomic_puts("EXIT-SUCCESS");
   }
   return 0;

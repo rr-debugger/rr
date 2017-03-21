@@ -40,7 +40,8 @@ DumpCommand DumpCommand::singleton(
     "  -r, --raw                  dump trace frames in a more easily\n"
     "                             machine-parseable format instead of the\n"
     "                             default human-readable format\n"
-    "  -s, --statistics           dump statistics about the trace\n");
+    "  -s, --statistics           dump statistics about the trace\n"
+    "  -t, --tid=<pid>            dump events only for the specified tid\n");
 
 struct DumpFlags {
   bool dump_syscallbuf;
@@ -49,6 +50,7 @@ struct DumpFlags {
   bool dump_mmaps;
   bool raw_dump;
   bool dump_statistics;
+  int only_tid;
 
   DumpFlags()
       : dump_syscallbuf(false),
@@ -56,7 +58,8 @@ struct DumpFlags {
         dump_recorded_data_metadata(false),
         dump_mmaps(false),
         raw_dump(false),
-        dump_statistics(false) {}
+        dump_statistics(false),
+        only_tid(0) {}
 };
 
 static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
@@ -70,7 +73,8 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
     { 'm', "recorded-metadata", NO_PARAMETER },
     { 'p', "mmaps", NO_PARAMETER },
     { 'r', "raw", NO_PARAMETER },
-    { 's', "statistics", NO_PARAMETER }
+    { 's', "statistics", NO_PARAMETER },
+    { 't', "tid", HAS_PARAMETER },
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -96,6 +100,12 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
     case 's':
       flags.dump_statistics = true;
       break;
+    case 't':
+      if (!opt.verify_valid_int(1, INT32_MAX)) {
+        return false;
+      }
+      flags.only_tid = opt.int_value;
+      break;
     default:
       assert(0 && "Unknown option");
   }
@@ -112,7 +122,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   auto flush_hdr = reinterpret_cast<const syscallbuf_hdr*>(buf.data.data());
   if (flush_hdr->num_rec_bytes > bytes_remaining) {
     fprintf(stderr, "Malformed trace file (bad recorded-bytes count)\n");
-    abort();
+    notifying_abort();
   }
   bytes_remaining = flush_hdr->num_rec_bytes;
 
@@ -125,7 +135,7 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
             (long)record->ret, (long)record->size);
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
-      abort();
+      notifying_abort();
     }
     record_ptr += stored_record_size(record->size);
   }
@@ -162,7 +172,8 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
     if (end < frame.time()) {
       return;
     }
-    if (start <= frame.time() && frame.time() <= end) {
+    if (start <= frame.time() && frame.time() <= end &&
+        (!flags.only_tid || flags.only_tid == frame.tid())) {
       if (flags.raw_dump) {
         frame.dump_raw(out);
       } else {

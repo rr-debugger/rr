@@ -115,11 +115,12 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
     return result;
   }
 
+  // Disable syscall buffering during diversions
   if (t->preload_globals) {
-    // Disable syscall buffering during diversions
     t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, in_diversion),
                  (unsigned char)1);
   }
+  t->set_syscallbuf_locked(1);
 
   switch (command) {
     case RUN_CONTINUE:

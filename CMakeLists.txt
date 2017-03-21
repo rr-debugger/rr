@@ -16,13 +16,14 @@ set(BUILD_SHARED_LIBS ON)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib/rr)
 
-set(WILL_RUN_TESTS ON CACHE BOOL "Run tests")
+set(BUILD_TESTS ON CACHE BOOL "Build tests")
+set(WILL_RUN_TESTS ${BUILD_TESTS} CACHE BOOL "Run tests")
 
 # CAREFUL!  "-" is an invalid character in RPM package names, while
 # debian is happy with it.  However, "_" is illegal in debs, while RPM
 # is cool with it.  Sigh.
 set(rr_VERSION_MAJOR 4)
-set(rr_VERSION_MINOR 4)
+set(rr_VERSION_MINOR 5)
 set(rr_VERSION_PATCH 0)
 
 add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSION_PATCH}")
@@ -37,8 +38,10 @@ set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Werror -DDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-command-line-argument")
+endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-command-line-argument")
 endif()
 
@@ -112,6 +115,11 @@ foreach(required_lib ${REQUIRED_LIBS})
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${${PKG}_CFLAGS}")
 endforeach(required_lib)
 
+find_path(SECCOMP NAMES "linux/seccomp.h")
+if(NOT SECCOMP)
+  message(FATAL_ERROR "Couldn't find linux/seccomp.h. You may need to upgrade your kernel.")
+endif()
+
 # Check for Python >=2.7 but not Python 3.
 find_package(PythonInterp 2.7 REQUIRED)
 if(PYTHON_VERSION_MAJOR GREATER 2)
@@ -126,6 +134,10 @@ endif()
 
 # Check for required Python modules
 if(WILL_RUN_TESTS)
+  if(NOT BUILD_TESTS)
+    message(FATAL_ERROR "Running tests requires building them")
+  endif()
+
   set(REQUIRED_PYTHON_MODULES
     pexpect
   )
@@ -156,7 +168,8 @@ if (NOT DEBUG_PRELOAD_LIB)
 set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} ${CMAKE_C_FLAGS_RELEASE}")
 endif()
 
-set_source_files_properties(src/preload/preload.c
+set_source_files_properties(src/preload/syscallbuf.c
+                            src/preload/overrides.c
                             PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
@@ -164,12 +177,16 @@ include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
 # We need to know where our generated files are.
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
+# Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
+# breakpoint_table.S must be before overrides.c, which must be last.
 add_library(rrpreload
-  src/preload/preload.c
-  src/preload/raw_syscall.S
   src/preload/syscall_hook.S
+  src/preload/syscallbuf.c
+  src/preload/raw_syscall.S
   src/preload/breakpoint_table.S
+  src/preload/overrides.c
 )
+set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles")
 
 # Ensure that CMake knows about our generated files.
 #
@@ -373,13 +390,13 @@ install(TARGETS ${RR_BIN} rrpreload rr_exec_stub
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
 if(rr_32BIT AND rr_64BIT)
-  foreach(file preload_interface.h)
+  foreach(file preload_interface.h syscallbuf.h)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                    COPYONLY)
   endforeach(file)
 
-  foreach(file preload.c raw_syscall.S syscall_hook.S breakpoint_table.S)
+  foreach(file syscallbuf.c overrides.c raw_syscall.S syscall_hook.S breakpoint_table.S)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                    COPYONLY)
@@ -387,13 +404,16 @@ if(rr_32BIT AND rr_64BIT)
                                 PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_C_FLAGS_RELEASE}")
   endforeach(file)
 
+  # Order matters here! syscall_hook.S must be immediately before syscallbuf.c.
+  # breakpoint_table.S must be before overrides.c, which must be last.
   add_library(rrpreload_32
-    32/preload.c
-    32/raw_syscall.S
     32/syscall_hook.S
+    32/syscallbuf.c
+    32/raw_syscall.S
     32/breakpoint_table.S
+    32/overrides.c
   )
-  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS -m32)
+  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles")
   target_link_libraries(rrpreload_32
     ${CMAKE_DL_LIBS}
   )
@@ -465,6 +485,7 @@ set(BASIC_TESTS
   cloned_sigmask
   constructor
   creat_address_not_truncated
+  cross_arch
   cwd_inaccessible
   daemon
   desched_blocking_poll
@@ -489,10 +510,11 @@ set(BASIC_TESTS
   fd_tracking_across_threads
   fds_clean
   flock
+  flock_ofd
   flock2
   fork_brk
   fork_child_crash
-  fork_stress
+  fork_many
   futex_pi
   futex_priorities
   fxregs
@@ -527,6 +549,7 @@ set(BASIC_TESTS
   ioctl_pty
   ioctl_tty
   kcmp
+  keyctl
   kill_newborn
   kill_ptracee
   legacy_ugid
@@ -550,6 +573,8 @@ set(BASIC_TESTS
   mmap_short_file
   mmap_tmpfs
   mmap_zero_size_fd
+  modify_ldt
+  mount_ns_exec
   mprotect
   mprotect_heterogenous
   mprotect_none
@@ -568,6 +593,7 @@ set(BASIC_TESTS
   munmap_segv
   munmap_discontinuous
   nanosleep
+  netfilter
   no_mask_timeslice
   numa
   old_fork
@@ -580,9 +606,11 @@ set(BASIC_TESTS
   poll_sig_race
   ppoll
   prctl
+  prctl_caps
   prctl_deathsig
   prctl_name
   prctl_tsc
+  privileged_net_ioctl
   proc_fds
   proc_mem
   protect_rr_fds
@@ -614,6 +642,7 @@ set(BASIC_TESTS
   ptracer_death
   ptracer_death_multithread
   ptracer_death_multithread_peer
+  pivot_root
   quotactl
   rdtsc
   read_nothing
@@ -623,8 +652,9 @@ set(BASIC_TESTS
   readlink
   readlinkat
   readv
-  redzone_integrity
+  record_replay_subject
   recvfrom
+  redzone_integrity
   rename
   rlimit
   robust_futex
@@ -642,6 +672,7 @@ set(BASIC_TESTS
   seccomp_sigsys_sigtrap
   seccomp_tsync
   seccomp_veto_exec
+  self_shebang
   self_sigint
   sem
   send_block
@@ -658,11 +689,13 @@ set(BASIC_TESTS
   sigchld_interrupt_signal
   sigcont
   sighandler_fork
+  sighandler_mask
   sigill
   signal_deferred
   signal_unstoppable
   signalfd
   sigprocmask
+  sigprocmask_ensure_delivery
   sigprocmask_exec
   sigprocmask_in_syscallbuf_sighandler
   sigprocmask_rr_sigs
@@ -699,6 +732,7 @@ set(BASIC_TESTS
   sync
   syscall_bp
   syscallbuf_signal_reset
+  syscallbuf_signal_blocking
   syscallbuf_sigstop
   syscallbuf_timeslice
   syscallbuf_timeslice2
@@ -707,12 +741,12 @@ set(BASIC_TESTS
   sysemu_singlestep
   sysinfo
   tgkill
-  thread_stress
   thread_yield
   timer
   timerfd
   times
   truncate
+  two_signals_with_mask
   uname
   unjoined_thread
   unshare
@@ -777,12 +811,15 @@ set(TESTS_WITH_PROGRAM
   daemon_read
   dconf_mock
   dev_tty
+  diversion_syscall
   dlopen
+  exec_many
   execve_loop
   exit_codes
   exit_group
   exit_status
   explicit_checkpoints
+  fork_stress
   fork_syscalls
   function_calls
   getcwd
@@ -807,10 +844,12 @@ set(TESTS_WITH_PROGRAM
   mprotect_growsdown
   mprotect_syscallbuf_overflow
   mutex_pi_stress
+  overflow_branch_counter
   priority
   ptrace_remote_unmap
   # Not called ps, because that interferes with using real 'ps' in tests
   rr_ps
+  rr_ps_ns
   read_big_struct
   restart_abnormal_exit
   reverse_continue_breakpoint
@@ -825,6 +864,7 @@ set(TESTS_WITH_PROGRAM
   shared_map
   shared_persistent_file
   signal_numbers
+  sigprocmask_race
   stack_growth
   step_thread
   string_instructions
@@ -839,6 +879,7 @@ set(TESTS_WITH_PROGRAM
   term_rr
   term_trace_syscall
   thread_exit_signal
+  thread_stress
   threaded_syscall_spam
   threads
   tls
@@ -885,6 +926,7 @@ set(TESTS_WITHOUT_PROGRAM
   checkpoint_mmap_shared
   checkpoint_prctl_name
   checkpoint_simple
+  checksum_sanity_noclone
   cont_signal
   cpuid
   dead_thread_target
@@ -908,6 +950,7 @@ set(TESTS_WITHOUT_PROGRAM
   read_bad_mem
   record_replay
   remove_watchpoint
+  replay_overlarge_event_number
   restart_invalid_checkpoint
   restart_unstable
   restart_diversion
@@ -925,6 +968,8 @@ set(TESTS_WITHOUT_PROGRAM
   run_in_function
   sanity
   shm_checkpoint
+  siginfo
+  sigreturn_checksum
   signal_stop
   signal_checkpoint
   simple_script
@@ -947,181 +992,182 @@ set(TESTS_WITHOUT_PROGRAM
   when
 )
 
-foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
-  add_executable(${test} src/test/${test}.c)
-  post_build_executable(${test})
-  set_source_files_properties(src/test/${test}.c
-                              PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
-  add_dependencies(${test} Generated)
-  target_link_libraries(${test} -lrt -ldl)
-endforeach(test)
-
-# Test disabled because it requires libuvc to be built and installed, and a
-# working USB camera
-# add_executable(usb src/test/usb.c)
-# post_build_executable(usb)
-# add_dependencies(usb Generated)
-# target_link_libraries(usb -lrt -L/usr/local/lib -luvc -lusb-1.0)
-
-foreach(test ${BASIC_CPP_TESTS})
-  add_executable(${test} src/test/${test}.cc)
-  post_build_executable(${test})
-  set_source_files_properties(src/test/${test}.cc
-                              PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS_DEBUG})
-  add_dependencies(${test} Generated)
-  target_link_libraries(${test} -lrt)
-endforeach(test)
-
-add_library(test_lib
-  src/test/test_lib.c
-)
-add_dependencies(test_lib Generated)
-target_link_libraries(constructor -lrt test_lib)
-
-# cpuid test needs to link with cpuid_loop.S
-add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
-post_build_executable(cpuid)
-add_dependencies(cpuid Generated)
-target_link_libraries(cpuid -lrt)
-
-# Check if we're running on KNL. If so, we allot more time to tests, due to
-# reduced single-core performance.
-exec_program(cat ARGS "/proc/cpuinfo" OUTPUT_VARIABLE CPUINFO)
-string(REGEX MATCH "^.*(Xeon Phi).*$" CPU_MODEL_PHI ${CPUINFO})
-
-function(configure_test test)
-  if("${test}" MATCHES "^checkpoint_")
-    set(TIMEOUT 600)
-  elseif("${test}" MATCHES "stress")
-    set(TIMEOUT 600)
-  elseif("${test}" MATCHES "string_instructions")
-    set(TIMEOUT 600)
-  elseif(NOT "${CPU_MODEL_PHI}" STREQUAL "")
-    set(TIMEOUT 480)
-  else()
-    set(TIMEOUT 120)
-  endif()
-  set_tests_properties(${test}
-    PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED" TIMEOUT ${TIMEOUT})
-endfunction(configure_test)
-
-foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
-  add_test(${test}
-    bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
-  configure_test(${test})
-  add_test(${test}-no-syscallbuf
-    bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
-  configure_test(${test}-no-syscallbuf)
-endforeach(test)
-
-foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
-  add_test(${test}
-    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
-  configure_test(${test})
-  add_test(${test}-no-syscallbuf
-    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test})
-  configure_test(${test}-no-syscallbuf)
-endforeach(test)
-
-# Run 32-bit tests on 64-bit builds.
-# We copy the test files into '32' subdirectories in the output
-# directory, so we can set different compile options on them.
-# This sucks but I can't find a better way to get CMake to build
-# the same source file in two different ways.
-if(rr_32BIT AND rr_64BIT)
-  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/rrutil.h"
-                 "${CMAKE_CURRENT_BINARY_DIR}/32/rrutil.h"
-                 COPYONLY)
-
-  foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} cpuid test_lib)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
-                   "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
-                   COPYONLY)
-    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
-                                PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
-  endforeach(test)
-
-  foreach(test ${BASIC_CPP_TESTS})
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.cc"
-                   "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
-                   COPYONLY)
-    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
-                                PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
-  endforeach(test)
-
-  foreach(file cpuid_loop.S)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
-                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-                   COPYONLY)
-    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-                                PROPERTIES COMPILE_FLAGS -m32)
-  endforeach(file)
-
+if(BUILD_TESTS)
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
-    add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
-    post_build_executable(${test}_32)
-    add_dependencies(${test}_32 Generated)
-    set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
-    target_link_libraries(${test}_32 -lrt -ldl)
+    add_executable(${test} src/test/${test}.c)
+    post_build_executable(${test})
+    set_source_files_properties(src/test/${test}.c
+                                PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
+    add_dependencies(${test} Generated)
+    target_link_libraries(${test} -lrt -ldl)
   endforeach(test)
+
+  # Test disabled because it requires libuvc to be built and installed, and a
+  # working USB camera
+  # add_executable(usb src/test/usb.c)
+  # post_build_executable(usb)
+  # add_dependencies(usb Generated)
+  # target_link_libraries(usb -lrt -L/usr/local/lib -luvc -lusb-1.0)
 
   foreach(test ${BASIC_CPP_TESTS})
-    add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc")
-    post_build_executable(${test}_32)
-    add_dependencies(${test}_32 Generated)
-    set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
-    target_link_libraries(${test}_32 -lrt)
+    add_executable(${test} src/test/${test}.cc)
+    post_build_executable(${test})
+    set_source_files_properties(src/test/${test}.cc
+                                PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS_DEBUG})
+    add_dependencies(${test} Generated)
+    target_link_libraries(${test} -lrt)
   endforeach(test)
 
-  add_library(test_lib_32
-    "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"
-  )
-  add_dependencies(test_lib_32 Generated)
-  set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS -m32)
-
-  target_link_libraries(constructor_32 -lrt test_lib_32)
+  add_library(test_lib
+    src/test/test_lib.c
+    )
+  add_dependencies(test_lib Generated)
+  target_link_libraries(constructor -lrt test_lib)
 
   # cpuid test needs to link with cpuid_loop.S
-  add_executable(cpuid_32 32/cpuid.c 32/cpuid_loop.S)
-  post_build_executable(cpuid_32)
-  add_dependencies(cpuid_32 Generated)
-  set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
-  target_link_libraries(cpuid_32 -lrt)
+  add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
+  post_build_executable(cpuid)
+  add_dependencies(cpuid Generated)
+  target_link_libraries(cpuid -lrt)
+
+  # Check if we're running on KNL. If so, we allot more time to tests, due to
+  # reduced single-core performance.
+  exec_program(cat ARGS "/proc/cpuinfo" OUTPUT_VARIABLE CPUINFO)
+  string(REGEX MATCH "^.*(Xeon Phi).*$" CPU_MODEL_PHI ${CPUINFO})
+  if(NOT "${CPU_MODEL_PHI}" STREQUAL "")
+    set(TEST_MONITOR_DEFAULT_TIMEOUT 480)
+  else()
+    set(TEST_MONITOR_DEFAULT_TIMEOUT 120)
+  endif()
+
+  function(configure_test test)
+    # The real timeouts are handled by test-monitor
+    set_tests_properties(${test}
+      PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED" TIMEOUT 1000)
+  endfunction(configure_test)
 
   foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
-    add_test(${test}-32
-      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
-    configure_test(${test}-32)
-    add_test(${test}-32-no-syscallbuf
-      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
-    configure_test(${test}-32-no-syscallbuf)
+    add_test(${test}
+      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test} -b ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+    configure_test(${test})
+    add_test(${test}-no-syscallbuf
+      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test} -n ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+    configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
-    add_test(${test}-32
-      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -b ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
-    configure_test(${test}-32)
-    add_test(${test}-32-no-syscallbuf
-      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run -n ${CMAKE_SOURCE_DIR} ${PROJECT_BINARY_DIR} ${test}_32)
-    configure_test(${test}-32-no-syscallbuf)
+    add_test(${test}
+      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test} -b ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+    configure_test(${test})
+    add_test(${test}-no-syscallbuf
+      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test} -n ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+    configure_test(${test}-no-syscallbuf)
+  endforeach(test)
+
+  # Run 32-bit tests on 64-bit builds.
+  # We copy the test files into '32' subdirectories in the output
+  # directory, so we can set different compile options on them.
+  # This sucks but I can't find a better way to get CMake to build
+  # the same source file in two different ways.
+  if(rr_32BIT AND rr_64BIT)
+    foreach(header rrutil.h nsutils.h)
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${header}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/32/${header}"
+                    COPYONLY)
+    endforeach(header)
+
+    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} cpuid test_lib)
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
+                     "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
+                     COPYONLY)
+      set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
+                                  PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
+    endforeach(test)
+
+    foreach(test ${BASIC_CPP_TESTS})
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.cc"
+                     "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
+                     COPYONLY)
+      set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
+                                  PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
+    endforeach(test)
+
+    foreach(file cpuid_loop.S)
+      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
+                     "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                     COPYONLY)
+      set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                                  PROPERTIES COMPILE_FLAGS -m32)
+    endforeach(file)
+
+    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
+      add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
+      post_build_executable(${test}_32)
+      add_dependencies(${test}_32 Generated)
+      set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
+      target_link_libraries(${test}_32 -lrt -ldl)
+    endforeach(test)
+
+    foreach(test ${BASIC_CPP_TESTS})
+      add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc")
+      post_build_executable(${test}_32)
+      add_dependencies(${test}_32 Generated)
+      set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
+      target_link_libraries(${test}_32 -lrt)
+    endforeach(test)
+
+    add_library(test_lib_32
+      "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"
+    )
+    add_dependencies(test_lib_32 Generated)
+    set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS -m32)
+
+    target_link_libraries(constructor_32 -lrt test_lib_32)
+
+    # cpuid test needs to link with cpuid_loop.S
+    add_executable(cpuid_32 32/cpuid.c 32/cpuid_loop.S)
+    post_build_executable(cpuid_32)
+    add_dependencies(cpuid_32 Generated)
+    set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
+    target_link_libraries(cpuid_32 -lrt)
+
+    foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
+      add_test(${test}-32
+        bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test}_32 -b ${PROJECT_BINARY_DIR})
+      configure_test(${test}-32)
+      add_test(${test}-32-no-syscallbuf
+        bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test}_32 -n ${PROJECT_BINARY_DIR})
+      configure_test(${test}-32-no-syscallbuf)
+    endforeach(test)
+
+    foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
+      add_test(${test}-32
+        bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test}_32 -b ${PROJECT_BINARY_DIR})
+      configure_test(${test}-32)
+      add_test(${test}-32-no-syscallbuf
+	    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test}_32 -n ${PROJECT_BINARY_DIR})
+      configure_test(${test}-32-no-syscallbuf)
+    endforeach(test)
+  endif()
+
+  set(CHAOS_TESTS
+    core_count
+    mmap_adjacent
+    mmap_bits
+    starvation_multithreaded
+    starvation_singlethreaded
+  )
+
+  foreach(test ${CHAOS_TESTS})
+    add_executable(${test} src/chaos-test/${test}.c)
+    post_build_executable(${test})
+    target_link_libraries(${test} -lrt)
   endforeach(test)
 endif()
 
-set(CHAOS_TESTS
-  core_count
-  mmap_adjacent
-  mmap_bits
-  starvation_multithreaded
-  starvation_singlethreaded
-)
-
-foreach(test ${CHAOS_TESTS})
-  add_executable(${test} src/chaos-test/${test}.c)
-  post_build_executable(${test})
-  target_link_libraries(${test} -lrt)
-endforeach(test)
-
 add_executable(ftrace_helper src/ftrace/ftrace_helper.c)
+
+add_executable(test-monitor src/test-monitor/test-monitor.cc)
 
 include(ProcessorCount)
 ProcessorCount(N)

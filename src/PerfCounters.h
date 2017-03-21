@@ -18,6 +18,8 @@ struct perf_event_attr;
 
 namespace rr {
 
+class Task;
+
 /**
  * A class encapsulating the performance counters we use to monitor
  * each task during recording and replay.
@@ -51,6 +53,7 @@ public:
    * the interrupt to fire early.)
    * This must be called while the task is stopped, and it must be called
    * before the task is allowed to run again.
+   * `ticks_period` of zero means don't interrupt at all.
    */
   void reset(Ticks ticks_period);
 
@@ -69,8 +72,9 @@ public:
 
   /**
    * Read the current value of the ticks counter.
+   * `t` is used for debugging purposes.
    */
-  Ticks read_ticks();
+  Ticks read_ticks(Task* t);
 
   /**
    * Return the fd we last used to generate the ticks-counter signal.
@@ -102,6 +106,7 @@ private:
   // but does support sample_period.
   ScopedFd fd_ticks_measure;
   ScopedFd fd_ticks_interrupt;
+  ScopedFd fd_ticks_in_transaction;
   ScopedFd fd_page_faults;
   ScopedFd fd_hw_interrupts;
   ScopedFd fd_instructions_retired;

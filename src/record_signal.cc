@@ -41,31 +41,42 @@ static size_t sigaction_sigset_size(SupportedArch arch) {
   RR_ARCH_FUNCTION(sigaction_sigset_size_arch, arch);
 }
 
-/**
- * Restore the blocked-ness and sigaction for |sig| from |t|'s local
- * copy.
- */
-static void restore_signal_state(RecordTask* t, int sig) {
-  AutoRemoteSyscalls remote(t);
-  size_t sigset_size = sigaction_sigset_size(remote.arch());
-  {
+static void restore_sighandler_if_not_default(RecordTask* t, int sig) {
+  if (t->sig_disposition(sig) != SIGNAL_DEFAULT) {
+    LOG(debug) << "Restoring signal handler for " << signal_name(sig);
+    AutoRemoteSyscalls remote(t);
+    size_t sigset_size = sigaction_sigset_size(remote.arch());
     const vector<uint8_t>& sa = t->signal_action(sig);
     AutoRestoreMem child_sa(remote, sa.data(), sa.size());
     remote.infallible_syscall(syscall_number_for_rt_sigaction(remote.arch()),
                               sig, child_sa.get().as_int(), nullptr,
                               sigset_size);
   }
-  if (t->is_sig_blocked(sig)) {
+}
+
+/**
+ * Restore the blocked-ness and sigaction for |sig| from |t|'s local
+ * copy.
+ */
+static void restore_signal_state(RecordTask* t, int sig,
+                                 SignalBlocked signal_was_blocked) {
+  restore_sighandler_if_not_default(t, sig);
+  if (signal_was_blocked) {
+    LOG(debug) << "Restoring signal blocked-ness for " << signal_name(sig);
+    AutoRemoteSyscalls remote(t);
+    size_t sigset_size = sigaction_sigset_size(remote.arch());
     vector<uint8_t> bytes;
     bytes.resize(sigset_size);
     memset(bytes.data(), 0, sigset_size);
-    uint64_t mask = uint64_t(1) << (sig - 1);
+    uint64_t mask = signal_bit(sig);
     ASSERT(t, sigset_size >= sizeof(mask));
     memcpy(bytes.data(), &mask, sizeof(mask));
     AutoRestoreMem child_block(remote, bytes.data(), bytes.size());
     remote.infallible_syscall(syscall_number_for_rt_sigprocmask(remote.arch()),
                               SIG_BLOCK, child_block.get().as_int(), nullptr,
                               sigset_size);
+    // We just changed the sigmask ourselves.
+    t->invalidate_sigmask();
   }
 }
 
@@ -256,6 +267,91 @@ void arm_desched_event(RecordTask* t) {
   }
 }
 
+template <typename Arch>
+static remote_code_ptr get_stub_scratch_1_arch(RecordTask* t) {
+  auto locals = t->read_mem(AddressSpace::preload_thread_locals_start()
+                                .cast<preload_thread_locals<Arch>>());
+  return locals.stub_scratch_1.rptr().as_int();
+}
+
+static remote_code_ptr get_stub_scratch_1(RecordTask* t) {
+  RR_ARCH_FUNCTION(get_stub_scratch_1_arch, t->arch(), t);
+}
+
+/**
+ * This function is responsible for handling breakpoints we set in syscallbuf
+ * code to detect sigprocmask calls and syscallbuf exit. It's called when we
+ * get a SIGTRAP. Returns true if the SIGTRAP was called by one of our
+ * breakpoints and should be hidden from the application.
+ * If it was triggered by one of our breakpoints, we have to call
+ * restore_sighandler_if_not_default(t, SIGTRAP) to make sure the SIGTRAP
+ * handler is properly restored if the kernel cleared it.
+ */
+bool handle_syscallbuf_breakpoint(RecordTask* t) {
+  if (t->is_at_syscallbuf_final_instruction_breakpoint()) {
+    LOG(debug) << "Reached final syscallbuf instruction, singlestepping to "
+                  "enable signal dispatch";
+    // This is a single instruction that jumps to the location stored in
+    // preload_thread_locals::stub_scratch_1. Emulate it.
+    Registers r = t->regs();
+    r.set_ip(get_stub_scratch_1(t));
+    t->set_regs(r);
+
+    restore_sighandler_if_not_default(t, SIGTRAP);
+    // Now we're back in application code so any pending stashed signals
+    // will be handled.
+    return true;
+  }
+
+  if (!t->is_at_syscallbuf_syscall_entry_breakpoint()) {
+    return false;
+  }
+
+  Registers r = t->regs();
+  r.set_ip(r.ip().decrement_by_bkpt_insn_length(t->arch()));
+  t->set_regs(r);
+
+  if (t->is_at_traced_syscall_entry()) {
+    // We will automatically dispatch stashed signals now since this is an
+    // allowed place to dispatch signals.
+    LOG(debug) << "Allowing signal dispatch at traced-syscall breakpoint";
+    restore_sighandler_if_not_default(t, SIGTRAP);
+    return true;
+  }
+
+  // We're at an untraced-syscall entry point.
+  // To allow an AutoRemoteSyscall, we need to make sure desched signals are
+  // disarmed (and rearmed afterward).
+  bool armed_desched_event = t->read_mem(
+      REMOTE_PTR_FIELD(t->syscallbuf_child, desched_signal_may_be_relevant));
+  if (armed_desched_event) {
+    disarm_desched_event(t);
+  }
+  restore_sighandler_if_not_default(t, SIGTRAP);
+  if (armed_desched_event) {
+    arm_desched_event(t);
+  }
+
+  // This is definitely a native-arch syscall.
+  if (is_rt_sigprocmask_syscall(r.syscallno(), t->arch())) {
+    // Don't proceed with this syscall. Emulate it returning EAGAIN.
+    // Syscallbuf logic will retry using a traced syscall instead.
+    r.set_syscall_result(-EAGAIN);
+    r.set_ip(r.ip().increment_by_syscall_insn_length(t->arch()));
+    t->canonicalize_and_set_regs(r, t->arch());
+    LOG(debug) << "Emulated EAGAIN to avoid untraced sigprocmask with pending "
+                  "stashed signal";
+    // Leave breakpoints enabled since we want to break at the traced-syscall
+    // fallback for rt_sigprocmask.
+    return true;
+  }
+
+  // We can proceed with the untraced syscall.
+  LOG(debug) << "Disabling breakpoints at traced/untraced syscalls";
+  t->break_at_syscallbuf_syscalls = false;
+  return true;
+}
+
 /**
  * Return the event needing to be processed after this desched of |t|.
  * The tracee's execution may be advanced, and if so |regs| is updated
@@ -385,6 +481,12 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
     // and the tracee never switched out.
     int sig = t->stop_sig();
     ASSERT(t, sig) << "expected stop-signal, got " << t->status();
+    if (SIGTRAP == sig && handle_syscallbuf_breakpoint(t)) {
+      // We stopped at a breakpoint on an untraced may-block syscall.
+      // This can't be relevant to us since sigprocmask isn't may-block.
+      LOG(debug) << " disabling breakpoints on untraced syscalls";
+      continue;
+    }
     if (SYSCALLBUF_DESCHED_SIGNAL == sig ||
         PerfCounters::TIME_SLICE_SIGNAL == sig || t->is_sig_ignored(sig)) {
       LOG(debug) << "  dropping ignored " << signal_name(sig);
@@ -467,6 +569,11 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
                << " because in traced syscall";
     return true;
   }
+  if (t->is_at_traced_syscall_entry()) {
+    LOG(debug) << "Safe to deliver signal at " << t->ip()
+               << " because at entry to traced syscall";
+    return true;
+  }
 
   if (t->is_in_untraced_syscall() && t->desched_rec()) {
     LOG(debug) << "Safe to deliver signal at " << t->ip()
@@ -493,10 +600,14 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
       return true;
     }
 
-    // Our emulation of SYS_rrcall_notify_syscall_hook_exit clears this flag.
-    t->write_mem(
-        REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
-        (uint8_t)1);
+    // A signal (e.g. seccomp SIGSYS) interrupted a untraced syscall in a
+    // non-restartable way. Defer it until SYS_rrcall_notify_syscall_hook_exit.
+    if (t->is_in_untraced_syscall()) {
+      // Our emulation of SYS_rrcall_notify_syscall_hook_exit clears this flag.
+      t->write_mem(
+          REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
+          (uint8_t)1);
+    }
   }
 
   LOG(debug) << "Not safe to deliver signal at " << t->ip();
@@ -504,10 +615,39 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
 }
 
 SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
-                            SignalDeterministic deterministic) {
-  LOG(debug) << t->tid << ": handling signal " << signal_name(si->si_signo)
+                            SignalDeterministic deterministic,
+                            SignalBlocked signal_was_blocked) {
+  int sig = si->si_signo;
+  LOG(debug) << t->tid << ": handling signal " << signal_name(sig)
              << " (pevent: " << ptrace_event_name(t->ptrace_event())
              << ", event: " << t->ev();
+
+  // Conservatively invalidate the sigmask in case just accepting a signal has
+  // sigmask effects.
+  t->invalidate_sigmask();
+
+  if (deterministic == DETERMINISTIC_SIG) {
+    // When a deterministic signal is triggered, but the signal is currently
+    // blocked or ignored, the kernel (in |force_sig_info|) unblocks it and
+    // sets its disposition to SIG_DFL. It never undoes this (probably
+    // because it expects the signal to be fatal, which it always would be
+    // unless a ptracer intercepts the signal as we do). Therefore, if the
+    // signal was generated for rr's purposes, we need to restore the signal
+    // state ourselves.
+    if (sig == SIGSEGV &&
+        (try_handle_disabled_insn(t, si) || try_grow_map(t, si))) {
+      if (signal_was_blocked || t->is_sig_ignored(sig)) {
+        restore_signal_state(t, sig, signal_was_blocked);
+      }
+      return SIGNAL_HANDLED;
+    }
+
+    // Since we're not undoing the kernel's changes, update our signal handler
+    // state to match the kernel's.
+    if (signal_was_blocked || t->is_sig_ignored(sig)) {
+      t->set_sig_handler_default(sig);
+    }
+  }
 
   /* We have to check for a desched event first, because for
    * those we *do not* want to (and cannot, most of the time)
@@ -526,38 +666,9 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     return DEFER_SIGNAL;
   }
 
-  int sig = si->si_signo;
-  // When a deterministic signal is triggered, but the signal is currently
-  // blocked or ignored, the kernel (in |force_sig_info|) unblocks it and
-  // sets its disposition to SIG_DFL. It never undoes this (probably
-  // because it expects the signal to be fatal, which it always would be
-  // unless a ptracer intercepts the signal as we do). Therefore, if the signal
-  // was generated for rr's purposes, we need to restore the signal state
-  // ourselves. If the signal was not generated for rr's purposes, we'll
-  // modify our copy of the signal state to match what the kernel did.
-
-  /* See if this signal occurred because of an rr implementation detail,
-   * and fudge t appropriately. */
-  switch (sig) {
-    case SIGSEGV:
-      if (deterministic == DETERMINISTIC_SIG &&
-          (try_handle_disabled_insn(t, si) || try_grow_map(t, si))) {
-        if (t->is_sig_blocked(sig) || t->is_sig_ignored(sig)) {
-          restore_signal_state(t, sig);
-        }
-        return SIGNAL_HANDLED;
-      }
-      break;
-
-    case PerfCounters::TIME_SLICE_SIGNAL:
-      t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
-      return SIGNAL_HANDLED;
-  }
-
-  if (deterministic == DETERMINISTIC_SIG &&
-      (t->is_sig_blocked(sig) || t->is_sig_ignored(sig))) {
-    t->set_sig_blocked(sig, false);
-    t->set_sig_handler_default(sig);
+  if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
+    t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
+    return SIGNAL_HANDLED;
   }
 
   /* This signal was generated by the program or an external

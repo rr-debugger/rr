@@ -73,6 +73,10 @@ void Session::on_create(TaskGroup* tg) { task_group_map[tg->tguid()] = tg; }
 void Session::on_destroy(TaskGroup* tg) { task_group_map.erase(tg->tguid()); }
 
 void Session::post_exec() {
+  /* We just saw a successful exec(), so from now on we know
+   * that the address space layout for the replay tasks will
+   * (should!) be the same as for the recorded tasks.  So we can
+   * start validating registers at events. */
   assert_fully_initialized();
   if (done_initial_exec_) {
     return;
@@ -326,7 +330,11 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
                  << t->get_siginfo();
       break_status.breakpoint_hit = true;
     } else if (stop_sig && stop_sig != PerfCounters::TIME_SLICE_SIGNAL) {
-      break_status.signal = stop_sig;
+      break_status.signal =
+          unique_ptr<siginfo_t>(new siginfo_t(t->get_siginfo()));
+      LOG(debug) << "Got signal " << *break_status.signal << " (expected sig "
+                 << stop_sig << ")";
+      break_status.signal->si_signo = stop_sig;
     }
   } else {
     TrapReasons trap_reasons = t->compute_trap_reasons();
@@ -452,7 +460,6 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
 
-#define RR_MAPPING_PREFIX "/tmp/rr-shared-"
 KernelMapping Session::create_shared_mmap(
     AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
     const char* name, int tracee_prot, int tracee_flags,
@@ -534,13 +541,19 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
 }
 
 // Recreate an mmap region that is shared between rr and the tracee. The caller
-// is responsible for recreating the data in the new mmap.
+// is responsible for recreating the data in the new mmap, if `preserve` is
+// DISCARD_CONTENTS.
 const AddressSpace::Mapping& Session::recreate_shared_mmap(
     AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
-    MonitoredSharedMemory::shr_ptr&& monitored) {
+    PreserveContents preserve, MonitoredSharedMemory::shr_ptr&& monitored) {
   char name[PATH_MAX];
   strncpy(name, m.map.fsname().c_str(), sizeof(name));
   uint32_t flags = m.flags;
+  size_t size = m.map.size();
+  void* preserved_data = preserve == PRESERVE_CONTENTS ? m.local_addr : nullptr;
+  if (preserved_data) {
+    remote.task()->vm()->detach_local_mapping(m.map.start());
+  }
   remote_ptr<void> new_addr =
       create_shared_mmap(remote, m.map.size(), m.map.start(),
                          extract_name(name, sizeof(name)), m.map.prot(), 0,
@@ -548,7 +561,12 @@ const AddressSpace::Mapping& Session::recreate_shared_mmap(
           .start();
   // m may be invalid now
   remote.task()->vm()->mapping_flags_of(new_addr) = flags;
-  return remote.task()->vm()->mapping_of(new_addr);
+  auto& new_map = remote.task()->vm()->mapping_of(new_addr);
+  if (preserved_data) {
+    memcpy(new_map.local_addr, preserved_data, size);
+    munmap(preserved_data, size);
+  }
+  return new_map;
 }
 
 const AddressSpace::Mapping& Session::steal_mapping(
@@ -660,8 +678,8 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
           group.captured_memory.push_back(make_pair(
               m.map.start(), capture_syscallbuf(m, group.clone_leader)));
         } else if (m.local_addr != nullptr) {
-          memcpy(recreate_shared_mmap(remote, m).local_addr, m.local_addr,
-                 m.map.size());
+          ASSERT(group.clone_leader,
+                 m.map.start() == AddressSpace::preload_thread_locals_start());
         } else if ((m.recorded_map.flags() & MAP_SHARED) &&
                    emu_fs.has_file_for(m.recorded_map)) {
           remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);

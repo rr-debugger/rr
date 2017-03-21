@@ -43,12 +43,20 @@ ReplayCommand ReplayCommand::singleton(
     "<EVENT-NUM>\n"
     "                             in the trace.  See -M in the general "
     "options.\n"
+    "  -o, --debugger-option=<OPTION>\n"
+    "                             pass <OPTION> to debugger\n"
     "  -p, --onprocess=<PID>|<COMMAND>\n"
     "                             start a debug server when <PID> or "
     "<COMMAND>\n"
     "                             has been exec()d, AND the target event has "
     "been\n"
     "                             reached.\n"
+    "  --fullname\n"
+    "  -i=<X>\n"
+    "  --interpreter=<X>          These are passed directly to gdb. They are\n"
+    "                             here for convenience to support 'gdb -i=mi'\n"
+    "                             and 'gdb --fullname' as suggested by GNU "
+    "Emacs\n"
     "  -d, --debugger=<FILE>      use <FILE> as the gdb command\n"
     "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
     "  -s, --dbgport=<PORT>       only start a debug server on <PORT>;\n"
@@ -86,8 +94,8 @@ struct ReplayFlags {
   // IP port to listen on for debug connections.
   int dbg_port;
 
-  // Pass this file name to debugger with -x
-  string gdb_command_file_path;
+  // Pass these options to gdb
+  vector<string> gdb_options;
 
   // Specify a custom gdb binary with -d
   string gdb_binary_file_path;
@@ -119,14 +127,17 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
   static const OptionSpec options[] = {
     { 'a', "autopilot", NO_PARAMETER },
     { 'd', "debugger", HAS_PARAMETER },
-    { 's', "dbgport", HAS_PARAMETER },
-    { 'g', "goto", HAS_PARAMETER },
-    { 't', "trace", HAS_PARAMETER },
-    { 'q', "no-redirect-output", NO_PARAMETER },
     { 'f', "onfork", HAS_PARAMETER },
+    { 'g', "goto", HAS_PARAMETER },
+    { 'o', "debugger-option", HAS_PARAMETER },
     { 'p', "onprocess", HAS_PARAMETER },
+    { 'q', "no-redirect-output", NO_PARAMETER },
+    { 's', "dbgport", HAS_PARAMETER },
+    { 't', "trace", HAS_PARAMETER },
     { 'x', "gdb-x", HAS_PARAMETER },
-    { 0, "share-private-mappings", NO_PARAMETER }
+    { 0, "share-private-mappings", NO_PARAMETER },
+    { 1, "fullname", NO_PARAMETER },
+    { 'i', "interpreter", HAS_PARAMETER }
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -153,6 +164,9 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
         return false;
       }
       flags.goto_event = opt.int_value;
+      break;
+    case 'o':
+      flags.gdb_options.push_back(opt.value);
       break;
     case 'p':
       if (opt.int_value > 0) {
@@ -182,10 +196,18 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       flags.singlestep_to_event = opt.int_value;
       break;
     case 'x':
-      flags.gdb_command_file_path = opt.value;
+      flags.gdb_options.push_back("-x");
+      flags.gdb_options.push_back(opt.value);
       break;
     case 0:
       flags.share_private_mappings = true;
+      break;
+    case 1:
+      flags.gdb_options.push_back("--fullname");
+      break;
+    case 'i':
+      flags.gdb_options.push_back("-i");
+      flags.gdb_options.push_back(opt.value);
       break;
     default:
       assert(0 && "Unknown option");
@@ -367,6 +389,9 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.debugger_name = flags.gdb_binary_file_path;
       GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
     }
+
+    // Everything should have been cleaned up by now.
+    check_for_leaks();
     return 0;
   }
 
@@ -379,23 +404,27 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     // the parent dies, our writes to the pipe will error out.
     close(debugger_params_pipe[0]);
 
-    ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
-    auto session = ReplaySession::create(trace_dir);
-    GdbServer::ConnectionFlags conn_flags;
-    conn_flags.dbg_port = flags.dbg_port;
-    conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
-    GdbServer server(session, session_flags(flags), target);
+    {
+      ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
+      auto session = ReplaySession::create(trace_dir);
+      GdbServer::ConnectionFlags conn_flags;
+      conn_flags.dbg_port = flags.dbg_port;
+      conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
+      GdbServer server(session, session_flags(flags), target);
 
-    server_ptr = &server;
-    struct sigaction sa;
-    memset(&sa, 0, sizeof(sa));
-    sa.sa_flags = SA_RESTART;
-    sa.sa_handler = handle_SIGINT_in_child;
-    if (sigaction(SIGINT, &sa, nullptr)) {
-      FATAL() << "Couldn't set sigaction for SIGINT.";
+      server_ptr = &server;
+      struct sigaction sa;
+      memset(&sa, 0, sizeof(sa));
+      sa.sa_flags = SA_RESTART;
+      sa.sa_handler = handle_SIGINT_in_child;
+      if (sigaction(SIGINT, &sa, nullptr)) {
+        FATAL() << "Couldn't set sigaction for SIGINT.";
+      }
+
+      server.serve_replay(conn_flags);
     }
-
-    server.serve_replay(conn_flags);
+    // Everything should have been cleaned up by now.
+    check_for_leaks();
     return 0;
   }
   // Ensure only the child has the write end of the pipe open. Then if
@@ -413,13 +442,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 
   {
     ScopedFd params_pipe_read_fd(debugger_params_pipe[0]);
-    vector<string> options;
-    if (!flags.gdb_command_file_path.empty()) {
-      options.push_back("-x");
-      options.push_back(flags.gdb_command_file_path);
-    }
     GdbServer::launch_gdb(params_pipe_read_fd, flags.gdb_binary_file_path,
-                          options);
+                          flags.gdb_options);
   }
 
   // Child must have died before we were able to get debugger parameters

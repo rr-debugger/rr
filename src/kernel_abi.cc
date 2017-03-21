@@ -15,10 +15,12 @@
 #include <linux/ethtool.h>
 #include <linux/filter.h>
 #include <linux/futex.h>
+#include <linux/if_bonding.h>
 #include <linux/ipc.h>
 #include <linux/mqueue.h>
 #include <linux/msg.h>
 #include <linux/net.h>
+#include <linux/netfilter/x_tables.h>
 #include <linux/sem.h>
 #include <linux/shm.h>
 #include <linux/sockios.h>
@@ -86,23 +88,36 @@ static const uint8_t int80_insn[] = { 0xcd, 0x80 };
 static const uint8_t sysenter_insn[] = { 0x0f, 0x34 };
 static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
 
-bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr) {
+bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
+                                  SupportedArch* arch) {
   bool ok = true;
   vector<uint8_t> code = t->read_mem(ptr.to_data_ptr<uint8_t>(), 2, &ok);
   if (!ok) {
     return false;
   }
   switch (t->arch()) {
+    // Compatibility mode switch can happen in user space (but even without
+    // such tricks, int80, which uses the 32bit syscall table, can be invoked
+    // from 64bit processes).
     case x86:
-      return memcmp(code.data(), int80_insn, sizeof(int80_insn)) == 0 ||
-             memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn)) == 0;
     case x86_64:
-      return memcmp(code.data(), syscall_insn, sizeof(syscall_insn)) == 0 ||
-             memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn)) == 0;
+      if (memcmp(code.data(), int80_insn, sizeof(int80_insn)) == 0 ||
+          memcmp(code.data(), sysenter_insn, sizeof(sysenter_insn)) == 0) {
+        *arch = x86;
+      } else if (memcmp(code.data(), syscall_insn, sizeof(syscall_insn)) == 0) {
+        *arch = x86_64;
+      } else {
+        return false;
+      }
+      return true;
     default:
-      assert(0 && "Need to define syscall instructions");
       return false;
   }
+}
+
+bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr) {
+  SupportedArch arch;
+  return get_syscall_instruction_arch(t, ptr, &arch);
 }
 
 vector<uint8_t> syscall_instruction(SupportedArch arch) {

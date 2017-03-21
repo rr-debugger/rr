@@ -85,7 +85,7 @@ _raw_syscall:
            to hide these effects when we get a ptrace trap from system calls
            in the kernel: it clears TF from %r11, forces %rcx to -1, and sets
            flags to fixed values (ZF+PF+IF+reserved, same as for "xor reg,reg").
-           Task::emulate_syscall_entry is responsible for fixing up registers
+           Task::canonicalize_and_set_regs is responsible for fixing up registers
            when we emulate a system call that was traced during recording (by
            running to a breakpoint at that system call). It does the above
            effects after setting %r11 to %rflags.

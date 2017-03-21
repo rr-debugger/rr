@@ -3,6 +3,7 @@
 #include "RecordCommand.h"
 
 #include <assert.h>
+#include <linux/capability.h>
 #include <sys/prctl.h>
 #include <sysexits.h>
 
@@ -51,16 +52,24 @@ RecordCommand RecordCommand::singleton(
     "                             signal will still be delivered for user\n"
     "                             handlers and debugging.\n"
     "  -u, --cpu-unbound          allow tracees to run on any virtual CPU.\n"
-    "                             Default is to bind to CPU 0.  This option\n"
+    "                             Default is to bind to a random CPU.  This "
+    "option\n"
     "                             can cause replay divergence: use with\n"
     "                             caution.\n"
+    "  --bind-to-cpu=<NUM>        Bind to a particular CPU\n"
+    "                             instead of a randomly chosen one.\n"
     "  -v, --env=NAME=VALUE       value to add to the environment of the\n"
     "                             tracee. There can be any number of these.\n"
     "  -w, --wait                 Wait for all child processes to exit, not\n"
     "                             just the initial process.\n"
     "  --ignore-nested            Directly start child process when running\n"
     "                             under nested rr recording, instead of\n"
-    "                             raising an error.\n");
+    "                             raising an error.\n"
+    "  --scarce-fds               Consume 950 fds before recording\n"
+    "                             (for testing purposes)\n"
+    "  --setuid-sudo              If running under sudo, pretend to be the\n"
+    "                             user that ran sudo rather than root. This\n"
+    "                             allows recording setuid/setcap binaries.\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -93,7 +102,7 @@ struct RecordFlags {
 
   /* Whether tracee processes in record and replay are allowed
    * to run on any logical CPU. */
-  RecordSession::BindCPU bind_cpu;
+  int bind_cpu;
 
   /* True if we should context switch after every rr event */
   bool always_switch;
@@ -108,6 +117,10 @@ struct RecordFlags {
   /* Start child process directly if run under nested rr recording */
   bool ignore_nested;
 
+  bool scarce_fds;
+
+  bool setuid_sudo;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -121,7 +134,9 @@ struct RecordFlags {
         always_switch(false),
         chaos(false),
         wait_for_all(false),
-        ignore_nested(false) {}
+        ignore_nested(false),
+        scarce_fds(false),
+        setuid_sudo(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -153,6 +168,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 1, "no-file-cloning", NO_PARAMETER },
     { 2, "syscall-buffer-size", HAS_PARAMETER },
     { 3, "ignore-nested", NO_PARAMETER },
+    { 4, "scarce-fds", NO_PARAMETER },
+    { 5, "setuid-sudo", NO_PARAMETER },
+    { 6, "bind-to-cpu", HAS_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -176,7 +194,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.use_syscall_buffer = RecordSession::ENABLE_SYSCALL_BUF;
       break;
     case 'c':
-      if (!opt.verify_valid_int(1, INT64_MAX)) {
+      if (!opt.verify_valid_int(1, Scheduler::MAX_MAX_TICKS)) {
         return false;
       }
       flags.max_ticks = opt.int_value;
@@ -217,6 +235,12 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 3:
       flags.ignore_nested = true;
       break;
+    case 4:
+      flags.scarce_fds = true;
+      break;
+    case 5:
+      flags.setuid_sudo = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -226,6 +250,12 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
         return false;
       }
       flags.continue_through_sig = opt.int_value;
+      break;
+    case 6:
+      if (!opt.verify_valid_int(0, INT32_MAX)) {
+        return false;
+      }
+      flags.bind_cpu = opt.int_value;
       break;
     case 'u':
       flags.bind_cpu = RecordSession::UNBOUND_CPU;
@@ -261,7 +291,7 @@ static void handle_SIGTERM(__attribute__((unused)) int sig) {
         "Received SIGTERM while an earlier one was pending.  We're "
         "probably wedged.\n";
     write(STDERR_FILENO, msg, sizeof(msg) - 1);
-    abort();
+    notifying_abort();
   }
   term_request = true;
 }
@@ -288,6 +318,12 @@ static void setup_session_from_flags(RecordSession& session,
   session.set_wait_for_all(flags.wait_for_all);
   if (flags.syscall_buffer_size > 0) {
     session.set_syscall_buffer_size(flags.syscall_buffer_size);
+  }
+
+  if (flags.scarce_fds) {
+    for (int i = 0; i < 950; ++i) {
+      open("/dev/null", O_RDONLY);
+    }
   }
 }
 
@@ -355,6 +391,40 @@ static void exec_child(vector<string>& args) {
   // Never returns!
 }
 
+static void reset_uid_sudo() {
+  // Let's change our uids now. We do keep capabilities though, since that's
+  // the point of the exercise. The first exec will reset both the keepcaps,
+  // and the capabilities in the child
+  std::string sudo_uid = getenv("SUDO_UID");
+  std::string sudo_gid = getenv("SUDO_GID");
+  assert(!sudo_uid.empty() && !sudo_gid.empty());
+  uid_t tracee_uid = stoi(sudo_uid);
+  gid_t tracee_gid = stoi(sudo_gid);
+  // Setuid will drop effective capabilities. Save them now and set them
+  // back after
+  struct NativeArch::cap_header header = {.version =
+                                              _LINUX_CAPABILITY_VERSION_3,
+                                          .pid = 0 };
+  struct NativeArch::cap_data data[2];
+  if (syscall(NativeArch::capget, &header, data) != 0) {
+    FATAL() << "FAILED to read capabilities";
+  }
+  if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0)) {
+    FATAL() << "FAILED to set keepcaps";
+  }
+  if (setgid(tracee_gid) != 0) {
+    FATAL() << "FAILED to setgid to sudo group";
+  }
+  if (setuid(tracee_uid) != 0) {
+    FATAL() << "FAILED to setuid to sudo user";
+  }
+  if (syscall(NativeArch::capset, &header, data) != 0) {
+    FATAL() << "FAILED to set capabilities";
+  }
+  // Just make sure the ambient set is cleared, to avoid polluting the tracee
+  prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0);
+}
+
 int RecordCommand::run(vector<string>& args) {
   RecordFlags flags;
   while (parse_record_arg(args, flags)) {
@@ -378,7 +448,22 @@ int RecordCommand::run(vector<string>& args) {
   assert_prerequisites(flags.use_syscall_buffer);
   check_performance_settings();
 
+  if (flags.setuid_sudo) {
+    if (geteuid() != 0 || getenv("SUDO_UID") == NULL) {
+      fprintf(stderr, "rr: --setuid-sudo option may only be used under sudo.\n"
+                      "Re-run as `sudo -EP rr record --setuid-sudo` to"
+                      "record privileged executables.\n");
+      return 1;
+    }
+
+    reset_uid_sudo();
+  }
+
   WaitStatus status = record(args, flags);
+
+  // Everything should have been cleaned up by now.
+  check_for_leaks();
+
   switch (status.type()) {
     case WaitStatus::EXIT:
       return status.exit_code();

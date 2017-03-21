@@ -9,6 +9,7 @@
 #include <unordered_map>
 
 #include "Flags.h"
+#include "GdbConnection.h"
 #include "GdbServer.h"
 #include "RecordSession.h"
 #include "ftrace.h"
@@ -229,6 +230,11 @@ static void write_prefix(T& stream, LogLevel level, const char* file, int line,
   stream << "] ";
 }
 
+bool is_logging_enabled(LogLevel level, const char* file) {
+  LogModule& m = get_log_module(file);
+  return level <= m.level;
+}
+
 NewlineTerminatingOstream::NewlineTerminatingOstream(LogLevel level,
                                                      const char* file, int line,
                                                      const char* function)
@@ -249,7 +255,7 @@ NewlineTerminatingOstream::~NewlineTerminatingOstream() {
     log_stream() << std::endl;
     flush_log_stream();
     if (Flags::get().fatal_errors_and_warnings && level <= LOG_warn) {
-      abort();
+      notifying_abort();
     }
   }
 }
@@ -261,7 +267,7 @@ FatalOstream::FatalOstream(const char* file, int line, const char* function) {
 FatalOstream::~FatalOstream() {
   log_stream() << std::endl;
   flush_log_stream();
-  abort();
+  notifying_abort();
 }
 
 static void emergency_debug(Task* t) {
@@ -279,7 +285,8 @@ static void emergency_debug(Task* t) {
     record_session->trace_writer().close();
   }
 
-  if (probably_not_interactive() && !Flags::get().force_things) {
+  if (probably_not_interactive() && !Flags::get().force_things &&
+      !getenv("RUNNING_UNDER_TEST_MONITOR")) {
     errno = 0;
     FATAL()
         << "(session doesn't look interactive, aborting emergency debugging)";

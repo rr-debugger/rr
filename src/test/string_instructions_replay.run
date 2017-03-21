@@ -1,5 +1,7 @@
 source `dirname $0`/util.sh
 
+TIMEOUT=600
+
 record $TESTNAME &
 
 for i in $(seq 1 30); do

@@ -24,7 +24,14 @@ public:
   bool operator!=(const remote_code_ptr& other) const {
     return ptr != other.ptr;
   }
-
+  bool operator<=(const remote_code_ptr& other) const {
+    return ptr <= other.ptr;
+  }
+  bool operator>=(const remote_code_ptr& other) const {
+    return ptr >= other.ptr;
+  }
+  bool operator<(const remote_code_ptr& other) const { return ptr < other.ptr; }
+  bool operator>(const remote_code_ptr& other) const { return ptr > other.ptr; }
   // XXXkhuey this will have to get smarter once we have ARM.
   remote_code_ptr operator+(intptr_t delta) const {
     return remote_code_ptr(ptr + delta);
@@ -33,9 +40,6 @@ public:
     return remote_code_ptr(ptr - delta);
   }
   intptr_t operator-(remote_code_ptr other) const { return ptr - other.ptr; }
-
-  // XXXkhuey this is somewhat arbitrary
-  bool operator<(const remote_code_ptr& other) const { return ptr < other.ptr; }
 
   remote_code_ptr decrement_by_syscall_insn_length(SupportedArch arch) const {
     return remote_code_ptr(ptr - rr::syscall_instruction_length(arch));

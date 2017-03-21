@@ -33,6 +33,7 @@
 #include <linux/limits.h>
 #include <linux/mtio.h>
 #include <linux/perf_event.h>
+#include <linux/personality.h>
 #include <linux/random.h>
 #include <linux/seccomp.h>
 #include <linux/sockios.h>
@@ -75,6 +76,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
+#include <sys/sysmacros.h>
 #include <sys/time.h>
 #include <sys/timerfd.h>
 #include <sys/times.h>
@@ -265,6 +267,31 @@ inline static void iterate_maps(uint64_t env, maps_callback callback,
   }
 }
 
+/**
+ * Represents syscall params.  Makes it simpler to pass them around,
+ * and avoids pushing/popping all the data for calls.
+ */
+struct syscall_info {
+  long no;
+  long args[6];
+};
+
+typedef void (*DelayedSyscall)(struct syscall_info* info);
+
+inline static void default_delayed_syscall(struct syscall_info* info) {
+  syscall(info->no, info->args[0], info->args[1], info->args[2], info->args[3],
+          info->args[4], info->args[5]);
+}
+
+/**
+ * Returns a function which will execute a syscall after spending a long time
+ * stuck in syscallbuf code doing nothing. Returns NULL
+ */
+inline static DelayedSyscall get_delayed_syscall(void) {
+  DelayedSyscall ret = (DelayedSyscall)dlsym(RTLD_DEFAULT, "delayed_syscall");
+  return ret ? ret : default_delayed_syscall;
+}
+
 #define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)
 #define VERIFY_GUARD(p) verify_guard(sizeof(*p), p)
 #define FREE_GUARD(p) free_guard(sizeof(*p), p)
@@ -296,6 +323,29 @@ inline static void iterate_maps(uint64_t env, maps_callback callback,
 
 #ifndef MADV_FREE
 #define MADV_FREE 8
+#endif
+
+#ifndef F_OFD_GETLK
+#define F_OFD_GETLK 36
+#endif
+#ifndef F_OFD_SETLK
+#define F_OFD_SETLK 37
+#endif
+
+#ifndef PR_CAP_AMBIENT
+#define PR_CAP_AMBIENT 47
+#endif
+#ifndef PR_CAP_AMBIENT_IS_SET
+#define PR_CAP_AMBIENT_IS_SET 1
+#endif
+#ifndef PR_CAP_AMBIENT_RAISE
+#define PR_CAP_AMBIENT_RAISE 2
+#endif
+#ifndef PR_CAP_AMBIENT_LOWER
+#define PR_CAP_AMBIENT_LOWER 3
+#endif
+#ifndef PR_CAP_AMBIENT_CLEAR_ALL
+#define PR_CAP_AMBIENT_CLEAR_ALL 4
 #endif
 
 #endif /* RRUTIL_H */

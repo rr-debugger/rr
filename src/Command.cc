@@ -5,6 +5,7 @@
 #include "Command.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <algorithm>
@@ -18,6 +19,10 @@ namespace rr {
 
 bool ParsedOption::verify_valid_int(int64_t min, int64_t max) const {
   if (int_value < min || int_value > max) {
+    fprintf(
+        stderr,
+        "Value %s for parameter %s was not valid (allowed range %lld-%lld)\n",
+        value.c_str(), arg.c_str(), (long long)min, (long long)max);
     return false;
   }
   return true;
@@ -98,6 +103,8 @@ bool Command::parse_option(std::vector<std::string>& args,
     return false;
   }
 
+  out->arg = args[0];
+
   for (size_t i = 0; i < count; ++i) {
     if (args[0][1] == option_specs[i].short_name && args[0][1] >= 32) {
       out->short_name = option_specs[i].short_name;
@@ -108,6 +115,10 @@ bool Command::parse_option(std::vector<std::string>& args,
           }
           return false;
         case HAS_PARAMETER:
+          if (args[0][2] == '=') {
+            assign_param(out, args[0].c_str() + 3);
+            return consume_args(args, 1);
+          }
           if (args[0][2] != 0) {
             assign_param(out, args[0].c_str() + 2);
             return consume_args(args, 1);

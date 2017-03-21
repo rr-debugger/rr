@@ -10,7 +10,7 @@ int main(void) {
   if (0 == (child = fork())) {
     nanosleep(&ts, NULL);
     kill(getpid(), SIGSTOP);
-    assert(0 && "child should not resume");
+    test_assert(0 && "child should not resume");
     return 77;
   }
 

@@ -414,7 +414,7 @@ setsid = EmulatedSyscall(x86=66, x64=112)
 # If act is non-NULL, the new action for signal signum is installed
 # from act.  If oldact is non-NULL, the previous action is saved in
 # oldact.
-sigaction = EmulatedSyscall(x86=67, arg3="typename Arch::kernel_sigaction")
+sigaction = IrregularEmulatedSyscall(x86=67)
 
 sgetmask = UnsupportedSyscall(x86=68)
 ssetmask = UnsupportedSyscall(x86=69)
@@ -638,7 +638,7 @@ setdomainname = EmulatedSyscall(x86=121, x64=171)
 # buf. The utsname struct is defined in <sys/utsname.h>:
 uname = EmulatedSyscall(x86=122, x64=63, arg1="typename Arch::utsname")
 
-modify_ldt = UnsupportedSyscall(x86=123, x64=154)
+modify_ldt = IrregularEmulatedSyscall(x86=123, x64=154)
 adjtimex = UnsupportedSyscall(x86=124, x64=159)
 
 #  int mprotect(const void *addr, size_t len, int prot)
@@ -895,7 +895,7 @@ getresgid = EmulatedSyscall(x86=171, x64=120, arg1="typename Arch::legacy_gid_t"
 prctl = IrregularEmulatedSyscall(x86=172, x64=157)
 
 rt_sigreturn = IrregularEmulatedSyscall(x86=173, x64=15)
-rt_sigaction = EmulatedSyscall(x86=174, x64=13, arg3="typename Arch::kernel_sigaction")
+rt_sigaction = IrregularEmulatedSyscall(x86=174, x64=13)
 rt_sigprocmask = IrregularEmulatedSyscall(x86=175, x64=14)
 
 #  int sigpending(sigset_t *set);
@@ -1077,7 +1077,7 @@ setuid32 = EmulatedSyscall(x86=213)
 setgid32 = EmulatedSyscall(x86=214)
 setfsuid32 = EmulatedSyscall(x86=215)
 setfsgid32 = EmulatedSyscall(x86=216)
-pivot_root = UnsupportedSyscall(x86=217, x64=155)
+pivot_root = EmulatedSyscall(x86=217, x64=155)
 mincore = IrregularEmulatedSyscall(x86=218, x64=27)
 
 #  int madvise(void *addr, size_t length, int advice);
@@ -1149,7 +1149,7 @@ flistxattr = IrregularEmulatedSyscall(x86=234, x64=196)
 removexattr = EmulatedSyscall(x86=235, x64=197)
 lremovexattr = EmulatedSyscall(x86=236, x64=198)
 fremovexattr = EmulatedSyscall(x86=237, x64=199)
-tkill = UnsupportedSyscall(x86=238, x64=200)
+tkill = EmulatedSyscall(x86=238, x64=200)
 
 # ssize_t sendfile64 (int __out_fd, int __in_fd, __off64_t *__offset, size_t
 #__count);
@@ -1353,9 +1353,9 @@ kexec_load = UnsupportedSyscall(x86=283, x64=246)
 # nonzero value in this field after the call returns.
 waitid = IrregularEmulatedSyscall(x86=284, x64=247)
 
-add_key = UnsupportedSyscall(x86=286, x64=248)
+add_key = EmulatedSyscall(x86=286, x64=248)
 request_key = UnsupportedSyscall(x86=287, x64=249)
-keyctl = UnsupportedSyscall(x86=288, x64=250)
+keyctl = IrregularEmulatedSyscall(x86=288, x64=250)
 ioprio_set = UnsupportedSyscall(x86=289, x64=251)
 ioprio_get = UnsupportedSyscall(x86=290, x64=252)
 
@@ -1609,8 +1609,8 @@ fanotify_mark = EmulatedSyscall(x86=339, x64=301)
 # during replay.
 prlimit64 = EmulatedSyscall(x86=340, x64=302, arg4="typename Arch::rlimit64")
 
-name_to_handle_at = UnsupportedSyscall(x86=341, x64=303)
-open_by_handle_at = UnsupportedSyscall(x86=342, x64=304)
+name_to_handle_at = IrregularEmulatedSyscall(x86=341, x64=303)
+open_by_handle_at = EmulatedSyscall(x86=342, x64=304)
 clock_adjtime = UnsupportedSyscall(x86=343, x64=305)
 syncfs = EmulatedSyscall(x86=344, x64=306)
 
@@ -1634,7 +1634,7 @@ renameat2 = EmulatedSyscall(x86=353, x64=316)
 seccomp = IrregularEmulatedSyscall(x86=354, x64=317)
 getrandom = IrregularEmulatedSyscall(x86=355, x64=318)
 memfd_create = EmulatedSyscall(x86=356, x64=319)
-arch_prctl = IrregularEmulatedSyscall(x86=385, x64=158)
+arch_prctl = IrregularEmulatedSyscall(x86=384, x64=158)
 
 bpf = UnsupportedSyscall(x86=357, x64=321)
 execveat = UnsupportedSyscall(x86=358, x64=322)
@@ -1652,6 +1652,8 @@ rrcall_init_preload = IrregularEmulatedSyscall(x86=442, x64=442)
 rrcall_init_buffers = IrregularEmulatedSyscall(x86=443, x64=443)
 rrcall_notify_syscall_hook_exit = IrregularEmulatedSyscall(x86=444, x64=444)
 rrcall_notify_control_msg = IrregularEmulatedSyscall(x86=445, x64=445)
+rrcall_reload_auxv = IrregularEmulatedSyscall(x86=446, x64=446)
+rrcall_mprotect_record = IrregularEmulatedSyscall(x86=447, x64=447)
 
 # These syscalls are also subsumed under socketcall on x86.
 socket = EmulatedSyscall(x86=359, x64=41)

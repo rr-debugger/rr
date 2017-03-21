@@ -15,6 +15,7 @@ const int SIGCHLD_SYNTHETIC = 0xbeadf00d;
 
 void disarm_desched_event(RecordTask* t);
 void arm_desched_event(RecordTask* t);
+bool handle_syscallbuf_breakpoint(RecordTask* t);
 
 enum SignalHandled { SIGNAL_HANDLED, SIGNAL_PTRACE_STOP, DEFER_SIGNAL };
 /**
@@ -27,7 +28,8 @@ enum SignalHandled { SIGNAL_HANDLED, SIGNAL_PTRACE_STOP, DEFER_SIGNAL };
  * desched + syscall-interruption events, or no-op.
  */
 SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
-                            SignalDeterministic deterministic);
+                            SignalDeterministic deterministic,
+                            SignalBlocked signal_was_blocked);
 
 } // namespace rr
 

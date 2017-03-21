@@ -6,7 +6,7 @@
 #define _GNU_SOURCE 1
 #endif
 
-#include "preload_interface.h"
+#include "syscallbuf.h"
 
 /**
  * Buffer syscalls, so that rr can process the entire buffer with one
@@ -39,12 +39,6 @@
  *   through libc wrappers (which this file may itself indirectly override)
  */
 
-/**
- * We also use this preload library to disable XShm by overriding
- * XShmQueryExtension.
- */
-
-#include "rr/rr.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -62,6 +56,7 @@
 #include <sys/file.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/ptrace.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -73,6 +68,9 @@
 #include <sysexits.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "preload_interface.h"
+#include "rr/rr.h"
 
 #ifndef BTRFS_IOCTL_MAGIC
 #define BTRFS_IOCTL_MAGIC 0x94
@@ -87,6 +85,9 @@ struct btrfs_ioctl_clone_range_args {
 #define BTRFS_IOC_CLONE_RANGE                                                  \
   _IOW(BTRFS_IOCTL_MAGIC, 13, struct btrfs_ioctl_clone_range_args)
 #endif
+#ifndef MADV_FREE
+#define MADV_FREE 8
+#endif
 
 /* NB: don't include any other local headers here. */
 
@@ -100,44 +101,16 @@ struct btrfs_ioctl_clone_range_args {
 #endif
 #define syscall you_must_use_traced_syscall
 
-static void* xmalloc(size_t size) {
-  void* mem_ptr = malloc(size);
-  if (!mem_ptr) {
-    abort();
-  }
-  return mem_ptr;
-}
-
-#define RR_HIDDEN __attribute__((visibility("hidden")))
-
-/**
- * Represents syscall params.  Makes it simpler to pass them around,
- * and avoids pushing/popping all the data for calls.
- */
-struct syscall_info {
-  long no;
-  long args[6];
-};
-
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
 /* Nonzero after process-global state has been initialized. */
 static int process_inited;
 
-static struct preload_globals globals;
+RR_HIDDEN struct preload_globals globals;
+RR_HIDDEN int impose_syscall_delay;
 
 static struct preload_thread_locals* const thread_locals =
     (struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR;
-
-/* Points at the libc/pthread pthread_create().  We wrap
- * pthread_create, so need to retain this pointer to call out to the
- * libc version. There is no __pthread_create stub to call. There are
- * some explicitly-versioned stubs but let's not use those. */
-static int (*real_pthread_create)(pthread_t* thread, const pthread_attr_t* attr,
-                                  void* (*start_routine)(void*), void* arg);
-
-static int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
-                                           const struct timespec* abstime);
 
 /**
  * Return a pointer to the buffer header, which happens to occupy the
@@ -195,20 +168,10 @@ extern RR_HIDDEN long _raw_syscall(int syscallno, long a0, long a1, long a2,
                                    void* syscall_instruction,
                                    long stack_param_1, long stack_param_2);
 
-static int update_errno_ret(long ret) {
-  /* EHWPOISON is the last known errno as of linux 3.9.5. */
-  if (0 > ret && ret >= -EHWPOISON) {
-    errno = -ret;
-    ret = -1;
-  }
-  return ret;
-}
-
 static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
                                      long a3, long a4, long a5) {
-  long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
-                          RR_PAGE_SYSCALL_PRIVILEGED_TRACED, 0, 0);
-  return update_errno_ret(ret);
+  return _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
+                      RR_PAGE_SYSCALL_PRIVILEGED_TRACED, 0, 0);
 }
 #define privileged_traced_syscall6(no, a0, a1, a2, a3, a4, a5)                 \
   privileged_traced_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,   \
@@ -225,9 +188,7 @@ static int privileged_traced_syscall(int syscallno, long a0, long a1, long a2,
 #define privileged_traced_syscall0(no) privileged_traced_syscall1(no, 0)
 
 /**
- * Make a raw traced syscall using the params in |call|.  "Raw" traced
- * syscalls return the raw kernel return value, and don't transform it
- * to -1/errno per POSIX semantics.
+ * Make a raw traced syscall using the params in |call|.
  */
 static long traced_raw_syscall(const struct syscall_info* call) {
   /* FIXME: pass |call| to avoid pushing these on the stack
@@ -277,28 +238,17 @@ static ssize_t privileged_traced_write(int fd, const void* buf, size_t count) {
   return privileged_traced_syscall3(SYS_write, fd, buf, count);
 }
 
-/* We can't use the rr logging helpers because they rely on libc
- * syscall-invoking functions, so roll our own here.
- *
- * XXX just use these for all logging? */
-
-__attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
-  va_list args;
-  char buf[1024];
-  int len;
-
-  va_start(args, msg);
-  len = vsnprintf(buf, sizeof(buf) - 1, msg, args);
-  va_end(args);
-
-  privileged_traced_write(STDERR_FILENO, buf, len);
+static void logmsg(const char* msg) {
+  privileged_traced_write(STDERR_FILENO, msg, rrstrlen(msg));
 }
 
 #ifndef NDEBUG
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
 #define assert(cond)                                                           \
   do {                                                                         \
     if (!(cond)) {                                                             \
-      logmsg("%s:%d: Assertion `" #cond "' failed.\n", __FILE__, __LINE__);    \
+      logmsg(__FILE__ ":" STR(__LINE__) ": Assertion `" #cond "' failed.\n");  \
       privileged_traced_raise(SIGABRT);                                        \
     }                                                                          \
   } while (0)
@@ -306,19 +256,11 @@ __attribute__((format(printf, 1, 2))) static void logmsg(const char* msg, ...) {
 #define assert(cond) ((void)0)
 #endif
 
-#define fatal(msg, ...)                                                        \
+#define fatal(msg)                                                             \
   do {                                                                         \
-    logmsg("[FATAL] (%s:%d: errno: %s: tid: %d) " msg "\n", __FILE__,          \
-           __LINE__, strerror(errno), privileged_traced_gettid(),              \
-           ##__VA_ARGS__);                                                     \
-    privileged_traced_syscall1(SYS_exit_group, EX_OSERR);                      \
+    logmsg(__FILE__ ":" STR(__LINE__) ": Fatal error: " #msg "\n");            \
+    privileged_traced_raise(SIGABRT);                                          \
   } while (0)
-
-#ifdef DEBUGTAG
-#define debug(msg, ...) logmsg("[" DEBUGTAG "] " msg "\n", ##__VA_ARGS__)
-#else
-#define debug(msg, ...) ((void)0)
-#endif
 
 /**
  * Unlike |traced_syscall()|, this helper is implicitly "raw" (returns
@@ -331,6 +273,8 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
                                   long a3, long a4, long a5,
                                   void* syscall_instruction) {
   struct syscallbuf_record* rec = (struct syscallbuf_record*)buffer_last();
+  /* Ensure tools analyzing the replay can find the pending syscall result */
+  thread_locals->pending_untraced_syscall_result = &rec->ret;
   long ret = _raw_syscall(syscallno, a0, a1, a2, a3, a4, a5,
                           syscall_instruction, 0, 0);
   unsigned char tmp_in_replay = globals.in_replay;
@@ -467,7 +411,7 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   tmp_fd = privileged_traced_perf_event_open(&attr, 0 /*self*/, -1 /*any cpu*/,
                                              -1, 0);
   if (0 > tmp_fd) {
-    fatal("Failed to perf_event_open(cs, period=%zu)", nr_descheds);
+    fatal("Failed to perf_event_open");
   }
   fd = privileged_traced_fcntl(tmp_fd, F_DUPFD_CLOEXEC,
                                RR_DESCHED_EVENT_FLOOR_FD);
@@ -486,8 +430,7 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
     fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
   }
   if (privileged_untraced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
-    fatal("Failed to fcntl(SETSIG, %d) the desched counter",
-          SYSCALLBUF_DESCHED_SIGNAL);
+    fatal("Failed to fcntl(SETSIG) the desched counter");
   }
 
   return fd;
@@ -539,12 +482,18 @@ extern char _breakpoint_table_entry_end;
 
 /**
  * Initialize process-global buffering state, if enabled.
+ * NOTE: constructors go into a special section by default so this won't
+ * be counted as syscall-buffering code!
  */
 static void __attribute__((constructor)) init_process(void) {
   struct rrcall_init_preload_params params;
 
+  extern char _syscallbuf_final_exit_instruction;
+  extern char _syscallbuf_code_start;
+  extern char _syscallbuf_code_end;
+
 #if defined(__i386__)
-  extern RR_HIDDEN void _syscallhook_vsyscall_entry(void);
+  extern RR_HIDDEN void __morestack(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
   struct syscall_patch_hook syscall_patch_hooks[] = {
@@ -557,11 +506,8 @@ static void __attribute__((constructor)) init_process(void) {
     /* Our vdso syscall patch has 'int 80' followed by onp; nop; nop */
     { 0, 3, { 0x90, 0x90, 0x90 }, (uintptr_t)_syscall_hook_trampoline_90_90_90 }
   };
-
-  /* Load GLIBC 2.1 version of pthread_create. Otherwise we may get the 2.0
-     version, which cannot handle the pthread_attr values passed by callers
-     expecting to call the glibc 2.1 version. */
-  real_pthread_create = dlvsym(RTLD_NEXT, "pthread_create", "GLIBC_2.1");
+  extern char _get_pc_thunks_start;
+  extern char _get_pc_thunks_end;
 #elif defined(__x86_64__)
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_01_f0_ff_ff(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_48_3d_00_f0_ff_ff(void);
@@ -627,8 +573,6 @@ static void __attribute__((constructor)) init_process(void) {
       { 0x89, 0xc1, 0x31, 0xd2 },
       (uintptr_t)_syscall_hook_trampoline_89_c1_31_d2 }
   };
-
-  real_pthread_create = dlsym(RTLD_NEXT, "pthread_create");
 #else
 #error Unknown architecture
 #endif
@@ -643,10 +587,18 @@ static void __attribute__((constructor)) init_process(void) {
 
   params.syscallbuf_enabled = buffer_enabled;
 #ifdef __i386__
-  params.syscallhook_vsyscall_entry = (void*)_syscallhook_vsyscall_entry;
+  params.syscallhook_vsyscall_entry = (void*)__morestack;
+  params.get_pc_thunks_start = &_get_pc_thunks_start;
+  params.get_pc_thunks_end = &_get_pc_thunks_end;
 #else
-  params.syscallhook_vsyscall_entry = 0;
+  params.syscallhook_vsyscall_entry = NULL;
+  params.get_pc_thunks_start = NULL;
+  params.get_pc_thunks_end = NULL;
 #endif
+  params.syscallbuf_code_start = &_syscallbuf_code_start;
+  params.syscallbuf_code_end = &_syscallbuf_code_end;
+  params.syscallbuf_final_exit_instruction =
+      &_syscallbuf_final_exit_instruction;
   params.syscall_patch_hook_count =
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
@@ -658,91 +610,6 @@ static void __attribute__((constructor)) init_process(void) {
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
 
   process_inited = 1;
-}
-
-/**
- * In a thread newly created by |pthread_create()|, first initialize
- * thread-local internal rr data, then trampoline into the user's
- * thread function.
- */
-struct thread_func_data {
-  void* (*start_routine)(void*);
-  void* arg;
-};
-
-static void* thread_trampoline(void* arg) {
-  struct thread_func_data data = *(struct thread_func_data*)arg;
-  free(arg);
-
-  return data.start_routine(data.arg);
-}
-
-/**
- * Interpose |pthread_create()| so that we can use a custom trampoline
- * function (see above) that initializes rr thread-local data for new
- * threads.
- *
- * This is a wrapper of |pthread_create()|, but not like the ones
- * below: we don't wrap |pthread_create()| in order to buffer its
- * syscalls, rather in order to initialize rr thread data.
- */
-int pthread_create(pthread_t* thread, const pthread_attr_t* attr,
-                   void* (*start_routine)(void*), void* arg) {
-  struct thread_func_data* data = xmalloc(sizeof(*data));
-  int ret;
-
-  /* Init syscallbuf now if we haven't yet (e.g. if pthread_create is called
-   * during library initialization before our preload library).
-   * This also fetches real_pthread_create which we'll need below. */
-  init_process();
-
-  data->start_routine = start_routine;
-  data->arg = arg;
-  ret = real_pthread_create(thread, attr, thread_trampoline, data);
-  return ret;
-}
-
-#define PTHREAD_MUTEX_TYPE_MASK 3
-#define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
-
-static void fix_mutex_kind(pthread_mutex_t* mutex) {
-  /* Disable priority inheritance. */
-  mutex->__data.__kind &= ~PTHREAD_MUTEX_PRIO_INHERIT_NP;
-}
-
-/*
- * We bind directly to __pthread_mutex_lock and __pthread_mutex_trylock
- * because setting up indirect function pointers in init_process requires
- * calls to dlsym which itself can call pthread_mutex_lock (e.g. via
- * application code overriding malloc/calloc to use a pthreads-based
- * implementation).
- */
-extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
-extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
-
-/* Prevent use of lock elision; Haswell's TSX/RTM features used by
-   lock elision increment the rbc perf counter for instructions which
-   are later rolled back if the transaction fails. */
-int pthread_mutex_lock(pthread_mutex_t* mutex) {
-  fix_mutex_kind(mutex);
-  return __pthread_mutex_lock(mutex);
-}
-
-int pthread_mutex_timedlock(pthread_mutex_t* mutex,
-                            const struct timespec* abstime) {
-  fix_mutex_kind(mutex);
-  /* No __pthread_mutex_timedlock stub exists, so we have to use the
-   * indirect call.
-   */
-  if (!real_pthread_mutex_timedlock) {
-    real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
-  }
-  return real_pthread_mutex_timedlock(mutex, abstime);
-}
-
-int pthread_mutex_trylock(pthread_mutex_t* mutex) {
-  fix_mutex_kind(mutex);
-  return __pthread_mutex_trylock(mutex);
 }
 
 /**
@@ -794,14 +661,6 @@ int pthread_mutex_trylock(pthread_mutex_t* mutex) {
  */
 
 static void* prep_syscall(void) {
-  if (!thread_locals->buffer) {
-    return NULL;
-  }
-  if (buffer_hdr()->locked) {
-    /* We may be reentering via a signal handler. Return
-     * an invalid pointer. */
-    return NULL;
-  }
   /* We don't need to worry about a race between testing
    * |locked| and setting it here. rr recording is responsible
    * for ensuring signals are not delivered during
@@ -843,7 +702,7 @@ static void arm_desched_event(void) {
   if ((int)privileged_untraced_syscall3(SYS_ioctl,
                                         thread_locals->desched_counter_fd,
                                         PERF_EVENT_IOC_ENABLE, 0)) {
-    fatal("Failed to ENABLE counter %d", thread_locals->desched_counter_fd);
+    fatal("Failed to ENABLE counter");
   }
 }
 
@@ -852,7 +711,7 @@ static void disarm_desched_event(void) {
   if ((int)privileged_untraced_syscall3(SYS_ioctl,
                                         thread_locals->desched_counter_fd,
                                         PERF_EVENT_IOC_DISABLE, 0)) {
-    fatal("Failed to DISABLE counter %d", thread_locals->desched_counter_fd);
+    fatal("Failed to DISABLE counter");
   }
 }
 
@@ -968,8 +827,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   hdr->desched_signal_may_be_relevant = 0;
 
   if (rec->syscallno != syscallno) {
-    fatal("Record is for %d but trying to commit %d", rec->syscallno,
-          syscallno);
+    fatal("Record syscall number mismatch");
   }
 
   if (hdr->abort_commit) {
@@ -1637,6 +1495,11 @@ static long sys_madvise(const struct syscall_info* call) {
     case MADV_DONTDUMP:
     case MADV_DODUMP:
       break;
+    case MADV_FREE:
+      // See record_syscall. We disallow MADV_FREE because it creates
+      // nondeterminism.
+      advice = -1;
+      break;
     default:
       return traced_raw_syscall(call);
   }
@@ -1722,8 +1585,12 @@ static long sys_open(const struct syscall_info* call) {
 
 /**
  * Make this function external so desched_ticks.py can set a breakpoint on it.
+ * Make it visiblity-"protected" so that our local definition binds to it
+ * directly and doesn't go through a PLT thunk (which would mean temporarily
+ * leaving syscallbuf code).
  */
-void __before_poll_syscall_breakpoint(void) {}
+__attribute__((visibility("protected"))) void __before_poll_syscall_breakpoint(
+    void) {}
 
 static long sys_poll(const struct syscall_info* call) {
   const int syscallno = SYS_poll;
@@ -1880,6 +1747,39 @@ static long sys_read(const struct syscall_info* call) {
   ptr = copy_output_buffer(ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
+
+/* On x86-32, pread/pwrite take the offset in two registers. We don't bother
+ * handling that.
+ */
+#if defined(__x86_64__)
+static long sys_pread64(const struct syscall_info* call) {
+  const int syscallno = SYS_pread64;
+  int fd = call->args[0];
+  void* buf = (void*)call->args[1];
+  size_t count = call->args[2];
+  off_t offset = call->args[3];
+
+  void* ptr;
+  void* buf2 = NULL;
+  long ret;
+
+  ptr = prep_syscall_for_fd(fd);
+
+  assert(syscallno == call->no);
+
+  if (buf && count > 0) {
+    buf2 = ptr;
+    ptr += count;
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall4(syscallno, fd, buf2, count, offset);
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
 
 static long sys_readlink(const struct syscall_info* call) {
   const int syscallno = SYS_readlink;
@@ -2140,6 +2040,32 @@ static long sys_sendmsg(const struct syscall_info* call) {
 }
 #endif
 
+#ifdef SYS_sendto
+static long sys_sendto(const struct syscall_info* call) {
+  const int syscallno = SYS_sendto;
+  int sockfd = call->args[0];
+  void* buf = (void*)call->args[1];
+  size_t len = call->args[2];
+  int flags = call->args[3];
+  const struct sockaddr* dest_addr = (const struct sockaddr*)call->args[4];
+  socklen_t addrlen = call->args[5];
+
+  void* ptr = prep_syscall_for_fd(sockfd);
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret =
+      untraced_syscall6(syscallno, sockfd, buf, len, flags, dest_addr, addrlen);
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 #ifdef SYS_socketpair
 typedef int two_ints[2];
 static long sys_socketpair(const struct syscall_info* call) {
@@ -2234,6 +2160,32 @@ static long sys_write(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+/* On x86-32, pread/pwrite take the offset in two registers. We don't bother
+ * handling that.
+ */
+#if defined(__x86_64__)
+static long sys_pwrite64(const struct syscall_info* call) {
+  const int syscallno = SYS_pwrite64;
+  int fd = call->args[0];
+  const void* buf = (const void*)call->args[1];
+  size_t count = call->args[2];
+  off_t offset = call->args[3];
+
+  void* ptr = prep_syscall_for_fd(fd);
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall4(syscallno, fd, buf, count, offset);
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 static long sys_writev(const struct syscall_info* call) {
   int syscallno = SYS_writev;
   int fd = call->args[0];
@@ -2252,6 +2204,55 @@ static long sys_writev(const struct syscall_info* call) {
   ret = untraced_syscall3(syscallno, fd, iov, iovcnt);
 
   return commit_raw_syscall(syscallno, ptr, ret);
+}
+
+static long sys_ptrace(const struct syscall_info* call) {
+  int syscallno = SYS_ptrace;
+  enum __ptrace_request request = call->args[0];
+  pid_t pid = call->args[1];
+  void* addr = (void*)call->args[2];
+  void* data = (void*)call->args[3];
+
+  if (request != PTRACE_PEEKDATA || !data) {
+    return traced_raw_syscall(call);
+  }
+
+  /* We try to emulate PTRACE_PEEKDATA using process_vm_readv. That might not
+   * work for permissions reasons; if it fails for any reason, we retry with
+   * a traced syscall.
+   * This does mean that if a process issues a PTRACE_PEEKDATA while not
+   * actually ptracing the target, it might succeed under rr whereas normally
+   * it would have failed. That's hard to avoid and unlikely to be a real
+   * problem in practice (typically it would fail on some other ptrace call like
+   * PTRACE_GETREGS before or after the PEEKDATA).
+   */
+  void* ptr = prep_syscall();
+  long ret;
+  void* data2;
+
+  assert(syscallno == call->no);
+  syscallno = SYS_process_vm_readv;
+
+  data2 = ptr;
+  ptr += sizeof(long);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  struct iovec local_iov = { data2, sizeof(long) };
+  struct iovec remote_iov = { addr, sizeof(long) };
+  ret = untraced_syscall6(syscallno, pid, &local_iov, 1, &remote_iov,
+                          1, 0);
+  if (ret > 0) {
+    local_memcpy(data, data2, ret);
+  }
+  commit_raw_syscall(syscallno, ptr, ret);
+
+  if (ret != sizeof(long)) {
+    return traced_raw_syscall(call);
+  }
+  return ret;
 }
 
 static long sys_getrusage(const struct syscall_info* call) {
@@ -2288,9 +2289,13 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   const int syscallno = SYS_rt_sigprocmask;
   long ret;
   kernel_sigset_t modified_set;
-  void* oldset2 = NULL;
+  void* oldset2;
   struct syscallbuf_hdr* hdr;
-  kernel_sigset_t previous_set;
+
+  if (call->args[3] != sizeof(kernel_sigset_t)) {
+    // Unusual sigset size. Bail.
+    return traced_raw_syscall(call);
+  }
 
   void* ptr = prep_syscall();
 
@@ -2298,10 +2303,9 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   const kernel_sigset_t* set = (const kernel_sigset_t*)call->args[1];
   kernel_sigset_t* oldset = (kernel_sigset_t*)call->args[2];
 
-  if (oldset) {
-    oldset2 = ptr;
-    ptr += sizeof(kernel_sigset_t);
-  }
+  oldset2 = ptr;
+  ptr += sizeof(kernel_sigset_t);
+
   if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
@@ -2316,36 +2320,44 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
   }
 
   hdr = buffer_hdr();
-  previous_set = hdr->blocked_sigs;
+  hdr->in_sigprocmask_critical_section = 1;
 
-  /* Update |blocked_sigs| now so that if the syscall succeeds and a blocked
-   * signal is raised before it returns, rr sees the updated signal mask.
-   */
-  if (set) {
-    switch (how) {
-      case SIG_UNBLOCK:
-        hdr->blocked_sigs &= ~*set;
-        break;
-      case SIG_BLOCK:
-        hdr->blocked_sigs |= *set;
-        break;
-      case SIG_SETMASK:
-        hdr->blocked_sigs = *set;
-        break;
-    }
-  }
-
-  ret = untraced_syscall4(syscallno, how, set, oldset2, call->args[3]);
+  ret =
+      untraced_syscall4(syscallno, how, set, oldset2, sizeof(kernel_sigset_t));
   if (ret == 0) {
-    if (oldset2) {
+    if (oldset) {
       local_memcpy(oldset, oldset2, sizeof(kernel_sigset_t));
     }
-  } else {
-    /* Ssyscall failed; don't update |blocked_sigs|! */
-    hdr->blocked_sigs = previous_set;
+    if (set) {
+      kernel_sigset_t previous_set;
+      local_memcpy(&previous_set, oldset2, sizeof(kernel_sigset_t));
+      switch (how) {
+        case SIG_UNBLOCK:
+          previous_set &= ~*set;
+          break;
+        case SIG_BLOCK:
+          previous_set |= *set;
+          break;
+        case SIG_SETMASK:
+          previous_set = *set;
+          break;
+      }
+      hdr->blocked_sigs = previous_set;
+      // We must update the generation last to ensure that an update is not
+      // lost.
+      ++hdr->blocked_sigs_generation;
+    }
   }
+  hdr->in_sigprocmask_critical_section = 0;
 
-  return commit_raw_syscall(syscallno, ptr, ret);
+  commit_raw_syscall(syscallno, ptr, ret);
+
+  if (ret == -EAGAIN) {
+    // The rr supervisor emulated EAGAIN because there was a pending signal.
+    // Retry using a traced syscall so the pending signal(s) can be delivered.
+    return traced_raw_syscall(call);
+  }
+  return ret;
 }
 
 static long syscall_hook_internal(const struct syscall_info* call) {
@@ -2398,6 +2410,11 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(mprotect);
     CASE(open);
     CASE(poll);
+#if defined(__x86_64__)
+    CASE(pread64);
+    CASE(pwrite64);
+#endif
+    CASE(ptrace);
     CASE(read);
     CASE(readlink);
 #if defined(SYS_recvfrom)
@@ -2408,6 +2425,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #endif
 #if defined(SYS_sendmsg)
     CASE(sendmsg);
+#endif
+#if defined(SYS_sendto)
+    CASE(sendto);
 #endif
     CASE_GENERIC_NONBLOCKING(setxattr);
 #if defined(SYS_socketcall)
@@ -2443,6 +2463,17 @@ static long syscall_hook_internal(const struct syscall_info* call) {
   }
 }
 
+/* Delay for testing purposes */
+static void do_delay(void) {
+  int i;
+  int result = 0;
+  for (i = 0; i < 10000000; ++i) {
+    result += i * i;
+  }
+  // Make sure result is used so this doesn't get optimized away
+  impose_syscall_delay = result | 1;
+}
+
 /* Explicitly declare this as hidden so we can call it from
  * _syscall_hook_trampoline without doing all sorts of special PIC handling.
  */
@@ -2451,8 +2482,25 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
   // thread.
   init_thread();
 
+  if (!thread_locals->buffer || buffer_hdr()->locked) {
+    /* We may be reentering via a signal handler. Bail. */
+    return traced_raw_syscall(call);
+  }
+
+  if (impose_syscall_delay) {
+    do_delay();
+  }
+
   long result = syscall_hook_internal(call);
   if (buffer_hdr() && buffer_hdr()->notify_on_syscall_hook_exit) {
+    // Sometimes a signal is delivered to interrupt an untraced syscall in
+    // a non-restartable way (e.g. seccomp SIGSYS). Those signals must be
+    // handled outside any syscallbuf transactions. We defer them until
+    // this SYS_rrcall_notify_syscall_hook_exit, which is triggered by rr
+    // setting notify_on_syscall_hook_exit. The parameters to the
+    // SYS_rrcall_notify_syscall_hook_exit are magical and fully control
+    // the syscall parameters and result seen by the signal handler.
+    //
     // SYS_rrcall_notify_syscall_hook_exit will clear
     // notify_on_syscall_hook_exit. Clearing it ourselves is tricky to get
     // right without races.
@@ -2483,9 +2531,6 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     // syscall_hook_internal generates either a traced syscall or a syscallbuf
     // record that would be flushed by SYSCALLBUF_FLUSH, so that can't
     // happen.
-    //
-    // Another crazy thing is going on here: it's possible that a signal
-    // intended to be delivered
     result = _raw_syscall(SYS_rrcall_notify_syscall_hook_exit, call->args[0],
                           call->args[1], call->args[2], call->args[3],
                           call->args[4], call->args[5],
@@ -2498,93 +2543,4 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     thread_locals->notify_control_msg = NULL;
   }
   return result;
-}
-
-/**
- * Exported glibc synonym for |sysconf()|.  We can't use |dlsym()| to
- * resolve the next "sysconf" symbol, because
- *  - dlysym usually calls malloc()
- *  - custom allocators like jemalloc may use sysconf()
- *  - if our sysconf wrapper is re-entered during initialization, it
- *    has nothing to fall back on to get the conf name, and chaos will
- *    likely ensue if we return something random.
- */
-long __sysconf(int name);
-
-/**
- *  Pretend that only 1 processor is configured/online, because rr
- *  binds all tracees to one logical CPU.
- */
-long sysconf(int name) {
-  switch (name) {
-    case _SC_NPROCESSORS_ONLN:
-    case _SC_NPROCESSORS_CONF:
-      return globals.pretend_num_cores ? globals.pretend_num_cores : 1;
-  }
-  return __sysconf(name);
-}
-
-/** Disable XShm since rr doesn't work with it */
-int XShmQueryExtension(__attribute__((unused)) void* dpy) { return 0; }
-
-/** Make sure XShmCreateImage returns null in case an application doesn't do
-    extension checks first. */
-void* XShmCreateImage(__attribute__((unused)) register void* dpy,
-                      __attribute__((unused)) register void* visual,
-                      __attribute__((unused)) unsigned int depth,
-                      __attribute__((unused)) int format,
-                      __attribute__((unused)) char* data,
-                      __attribute__((unused)) void* shminfo,
-                      __attribute__((unused)) unsigned int width,
-                      __attribute__((unused)) unsigned int height) {
-  return 0;
-}
-
-/**
- * This is for testing purposes only.
- */
-void very_slow_exit_syscall(void) {
-  int i;
-  int result = 0;
-  struct syscall_info info;
-  for (i = 0; i < 1000000; ++i) {
-    result += i * i;
-  }
-  info.no = SYS_exit;
-  info.args[0] = result;
-  syscall_hook(&info);
-}
-
-/**
- * glibc geteuid() can be compiled to instructions ending in "syscall; ret"
- * which can't be hooked. So override it here and call the hook directly.
- */
-uid_t geteuid(void) {
-  struct syscall_info call = { SYS_geteuid, { 0, 0, 0, 0, 0, 0 } };
-  return syscall_hook(&call);
-}
-
-typedef void* (*fopen_ptr)(const char* filename, const char* mode);
-
-static void random_device_init_helper(void* this) {
-  void** file_ptr = (void**)this;
-  void* f_ptr = dlsym(RTLD_DEFAULT, "fopen");
-  fopen_ptr fopen = (fopen_ptr)f_ptr;
-  *file_ptr = fopen("/dev/urandom", "rb");
-}
-
-/**
- * libstdc++3 uses RDRAND. Bypass that with this incredible hack.
- */
-void _ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE(
-    void* this, __attribute__((unused)) void* token) {
-  random_device_init_helper(this);
-}
-
-/**
- * gcc 4.8.4 in Ubuntu 14.04-32
- */
-void _ZNSt13random_device7_M_initERKSs(void* this,
-                                       __attribute__((unused)) void* token) {
-  random_device_init_helper(this);
 }

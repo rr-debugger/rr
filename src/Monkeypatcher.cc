@@ -217,7 +217,8 @@ static remote_ptr<uint8_t> allocate_extended_jump(
   return jump_addr;
 }
 
-bool Monkeypatcher::is_jump_stub_instruction(remote_ptr<void> pp) {
+bool Monkeypatcher::is_jump_stub_instruction(remote_code_ptr ip) {
+  remote_ptr<void> pp = ip.to_data_ptr<void>();
   for (auto& p : extended_jump_pages) {
     if (p.addr <= pp.cast<uint8_t>() &&
         pp.cast<uint8_t>() < p.addr + p.allocated) {
@@ -354,6 +355,14 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
   // list in sync with the preload code, which is unnecessary complexity.
 
   tried_to_patch_syscall_addresses.insert(r.ip());
+
+  SupportedArch arch;
+  if (!get_syscall_instruction_arch(
+          t, r.ip().decrement_by_syscall_insn_length(t->arch()), &arch) ||
+      arch != t->arch()) {
+    LOG(debug) << "Declining to patch cross-architecture syscall at " << r.ip();
+    return false;
+  }
 
   uint8_t following_bytes[256];
   size_t bytes_count = t->read_bytes_fallible(

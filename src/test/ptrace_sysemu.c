@@ -101,9 +101,18 @@ static void check_dr6(pid_t child) {
 int main(int argc, char** argv) {
   pid_t child;
   int status;
+  int pipe_fds[2];
   struct user_regs_struct regs;
   uid_t uid = geteuid();
+  char ch;
   int strict = !(argc == 2 && !strcmp(argv[1], "relaxed"));
+
+  test_assert(0 == pipe(pipe_fds));
+  test_assert(1 == write(pipe_fds[1], "x", 1));
+  /* Make sure 'read' path is patched properly, because we won't patch it
+   * once ptrace has attached.
+   */
+  test_assert(1 == read(pipe_fds[0], &ch, 1));
 
   if (0 == (child = fork())) {
     uid_t ret;
@@ -118,6 +127,8 @@ int main(int argc, char** argv) {
     test_assert(ret == uid);
     ret = my_geteuid();
     test_assert(ret == uid);
+    /* This 'read' is skipped by the ptracer. */
+    read(pipe_fds[0], &ch, 1);
     return 77;
   }
 
@@ -269,6 +280,19 @@ int main(int argc, char** argv) {
   test_assert(&syscall_addr + 2 == (char*)regs.IP);
   test_assert(SYSCALLNO == regs.ORIG_SYSCALLNO);
   test_assert((uid_t)regs.SYSCALL_RESULT == uid);
+
+  /* Test PTRACE_SYSCALL entering buffered 'read' syscall.
+     This tests that privileged syscalls for arming/disarming
+     desched events are ignored. */
+  test_assert(0 == ptrace(PTRACE_SYSCALL, child, NULL, (void*)0));
+  wait_for_syscall_enter(child);
+  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
+  /* We allow syscallbuf patching of 'read' so don't check the IP. */
+  test_assert(SYS_read == regs.ORIG_SYSCALLNO);
+  test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
+  /* force syscall to be invalid/skipped */
+  regs.ORIG_SYSCALLNO = -1;
+  test_assert(0 == ptrace(PTRACE_SETREGS, child, NULL, &regs));
 
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, (void*)0));
   test_assert(child == waitpid(child, &status, 0));

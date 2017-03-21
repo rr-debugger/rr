@@ -26,6 +26,7 @@ struct OptionSpec {
 };
 struct ParsedOption {
   char short_name;
+  std::string arg;
   std::string value;
   int64_t int_value;
   bool verify_valid_int(int64_t min = INT64_MIN + 1,

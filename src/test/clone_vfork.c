@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
                 CLONE_VFORK | SIGCHLD, (void*)exe);
 
   /* This should not execute until after the vfork child has execed */
-  test_assert(*shared = 1);
+  test_assert(*shared == 1);
 
   test_assert(child == waitpid(child, &status, 0));
   test_assert(WIFEXITED(status) && 0 == WEXITSTATUS(status));

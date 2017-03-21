@@ -1,5 +1,12 @@
         .set preload_thread_locals,0x70001000
 
+        .global _syscallbuf_code_start
+        .hidden _syscallbuf_code_start
+
+        .global _syscallbuf_final_exit_instruction
+        .hidden _syscallbuf_final_exit_instruction
+        .type _syscallbuf_final_exit_instruction, @function
+
 #if defined(__i386__)
 /**
  * Jump to this hook from |__kernel_vsyscall()|, to buffer syscalls that
@@ -10,18 +17,32 @@
  * know that its call to |__kernel_vsyscall()| has been re-routed to
  * us.
  */
-        .global _syscallhook_vsyscall_entry
-        .hidden _syscallhook_vsyscall_entry
-        .type _syscallhook_vsyscall_entry, @function
+        .global __morestack
+        .hidden __morestack
+        .type __morestack, @function
 
         .text
 
         .set syscallbuf_stub_alt_stack, preload_thread_locals
-        .set stub_scratch_1, preload_thread_locals + 4
-        .set alt_stack_nesting_level, preload_thread_locals + 8
+        .set stub_scratch_1, preload_thread_locals + 8
+        .set alt_stack_nesting_level, preload_thread_locals + 12
 
         .p2align 4
-_syscallhook_vsyscall_entry:
+_syscallbuf_code_start:
+
+/* See comments about morestack below. For x86-32 our setup doesn't need to be
+   as elaborate since we really only care about one entry function. */
+__morestack:
+        .cfi_startproc
+        call _switch_stack_vsyscall
+        popl (stub_scratch_1)
+        jmp _syscallbuf_final_exit_instruction
+        .cfi_endproc
+
+        .global _switch_stack_vsyscall
+        .hidden _switch_stack_vsyscall
+        .type _switch_stack_vsyscall, @function
+_switch_stack_vsyscall:
         .cfi_startproc
         movl %esp,(stub_scratch_1)
         incl (alt_stack_nesting_level)
@@ -52,6 +73,9 @@ _syscallhook_vsyscall_entry:
         pop %esp
         ret
         .cfi_endproc
+
+_syscallbuf_final_exit_instruction:
+        jmp *(stub_scratch_1)
 
 _syscall_hook_trampoline:
         .cfi_startproc
@@ -155,7 +179,7 @@ name:                           \
                     (stub_scratch_1 & (0xFF <<  0x8)) >>  0x8,  \
                     (stub_scratch_1 & (0xFF << 0x10)) >> 0x10,  \
                     (stub_scratch_1 & (0xFF << 0x18)) >> 0x18;  \
-        jmp *(stub_scratch_1);                                  \
+        jmp _syscallbuf_final_exit_instruction;                 \
        .cfi_endproc;                                            \
        .size name, .-name
 
@@ -168,13 +192,44 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_90_90_90)
         call _syscall_hook_trampoline
 SYSCALLHOOK_END(_syscall_hook_trampoline_90_90_90)
 
+/* Declare gcc get_pc thunks here so they're in a known region of code */
+
+        .global _get_pc_thunks_start
+        .hidden _get_pc_thunks_start
+_get_pc_thunks_start:
+
+#define THUNK(name, reg) \
+        .section        .text.__x86.get_pc_thunk.name,"axG",@progbits,__x86.get_pc_thunk.name,comdat; \
+        .global  __x86.get_pc_thunk.name; \
+        .hidden __x86.get_pc_thunk.name; \
+        .type   __x86.get_pc_thunk.name, @function; \
+__x86.get_pc_thunk.name: \
+        .cfi_startproc; \
+        movl    (%esp), %reg; \
+        ret; \
+        .cfi_endproc
+
+THUNK(ax, eax)
+THUNK(bx, ebx)
+THUNK(cx, ecx)
+THUNK(dx, edx)
+THUNK(si, esi)
+THUNK(di, edi)
+THUNK(bp, ebp)
+
+        .global _get_pc_thunks_end
+        .hidden _get_pc_thunks_end
+_get_pc_thunks_end:
+
 #elif defined(__x86_64__)
         .text
 
-        .set stub_scratch_1, preload_thread_locals + 8
-        .set alt_stack_nesting_level, preload_thread_locals + 16
+        .set stub_scratch_1, preload_thread_locals + 16
+        .set alt_stack_nesting_level, preload_thread_locals + 24
 
         .p2align 4
+_syscallbuf_code_start:
+
 _syscall_hook_trampoline:
         .cfi_startproc
         /* Save RBX because we need a callee-saves register */
@@ -257,6 +312,9 @@ _syscall_hook_trampoline:
         .cfi_endproc
         .size _syscall_hook_trampoline, . - _syscall_hook_trampoline
 
+_syscallbuf_final_exit_instruction:
+        jmp *(stub_scratch_1)
+
 /**
  * Ok, bear with me here. When gdb sees our stack switch, it gets suspicious and if
  * we're unlucky may decide that our unwind info is broken and abort the unwind. However,
@@ -268,7 +326,7 @@ _syscall_hook_trampoline:
  * of the CFA). Then, we insert a __morestack function (still with the old CFA) that just jumps
  * through to the trampoline. This way, we can force gdb's stack switch detection to think the
  * stack switch happens between the hook and the common trampoline code (and add a __morestack
- * local symbol to the trampoline code to avoid GDB messing with out stack trace).
+ * local symbol to the trampoline code to avoid GDB messing with our stack trace).
  */
 #define CFA_AT_RSP_OFFSET(offset) \
 .cfi_escape 0x0f, /* DW_CFA_def_cfa_expression */\
@@ -281,11 +339,24 @@ _syscall_hook_trampoline:
             0x7,  /* %rsp */\
             0;     /* 0 bytes follow */
 
-#define RIP_IS_DEREF_RSP \
+#define RSP_IS_CFA_PLUS_OFFSET(offset) \
+.cfi_escape 0x16, /* DW_CFA_val_expression */\
+            0x7,  /* %rsp */\
+            2,     /* 2 bytes follow */\
+            0x23, /* DW_OP_plus_uconst */\
+            offset;
+
+#define RSP_IS_RSP_PLUS_OFFSET(offset) \
+.cfi_escape 0x16, /* DW_CFA_val_expression */\
+            0x07, /* %rsp */\
+            0x02, /* 2 bytes follow */\
+            0x77, offset; /* DW_OP_breg7, offset */
+
+#define RIP_IS_DEREF_RSP(offset) \
 .cfi_escape 0x10, /* DW_CFA_expression */\
             0x10, /* %rip */\
             0x02, /* 2 bytes follow */\
-            0x77, 0; /* DW_OP_breg7, 0 */
+            0x77, offset; /* DW_OP_breg7, 0 */
 
 /**
  * On syscallhook entry, the stack has been switched to the end of per-task
@@ -297,9 +368,9 @@ _syscall_hook_trampoline:
         .type name, @function;     \
 name:                              \
         .cfi_startproc;            \
-        CFA_AT_RSP_OFFSET(8)      \
+        CFA_AT_RSP_OFFSET(8)       \
         RSP_IS_CFA                 \
-        RIP_IS_DEREF_RSP
+        RIP_IS_DEREF_RSP(0)
 
 #define SYSCALLHOOK_END(name)                                   \
         pop (stub_scratch_1);                                   \
@@ -319,7 +390,7 @@ name:                              \
                     (stub_scratch_1 & (0xFF << 0x38)) >> 0x38;  \
         pop %rsp;                                               \
         .cfi_def_cfa %rsp, 0;                                   \
-        jmp *(stub_scratch_1);                                  \
+        jmp _syscallbuf_final_exit_instruction;                 \
         .cfi_endproc;                                           \
         .size name, .-name
 
@@ -330,11 +401,8 @@ name:                              \
 __morestack:
 .cfi_startproc
 CFA_AT_RSP_OFFSET(16)
-.cfi_escape 0x16, /* DW_CFA_val_expression */\
-            0x07, /* %rsp */\
-            0x02, /* 2 bytes follow */\
-            0x77, 8; /* DW_OP_breg7, 8 */
-RIP_IS_DEREF_RSP
+RSP_IS_RSP_PLUS_OFFSET(8)
+RIP_IS_DEREF_RSP(0)
 callq _syscall_hook_trampoline
 retq
 .cfi_endproc
@@ -358,17 +426,24 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_48_8b_3c_24)
 SYSCALLHOOK_END(_syscall_hook_trampoline_48_8b_3c_24)
 
 SYSCALLHOOK_START(_syscall_hook_trampoline_5a_5e_c3)
+        .cfi_offset %rip, 16
+        RSP_IS_CFA_PLUS_OFFSET(24)
         callq __morestack
         /* The original instructions after the syscall are
            pop %rdx; pop %rsi; retq. */
         /* We're not returning to the dynamically generated stub, so
            we need to fix the stack pointer ourselves. */
         pop %rdx
-        .cfi_adjust_cfa_offset -8
+        CFA_AT_RSP_OFFSET(0)
         pop %rsp
+        .cfi_def_cfa %rsp, 0;
         pop %rdx
+        .cfi_adjust_cfa_offset -8
         pop %rsi
-        ret
+        .cfi_adjust_cfa_offset -8
+        pop (stub_scratch_1)
+        .cfi_adjust_cfa_offset -8
+        jmp _syscallbuf_final_exit_instruction
 
         .cfi_endproc
         .size _syscall_hook_trampoline_5a_5e_c3, .-_syscall_hook_trampoline_5a_5e_c3

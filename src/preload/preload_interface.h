@@ -3,15 +3,56 @@
 #ifndef RR_PRELOAD_INTERFACE_H_
 #define RR_PRELOAD_INTERFACE_H_
 
+#ifdef RR_IMPLEMENT_PRELOAD
+/* Avoid using <string.h> library functions */
+static inline int streq(const char* s1, const char* s2) {
+  while (1) {
+    if (*s1 != *s2) {
+      return 0;
+    }
+    if (!*s1) {
+      return 1;
+    }
+    ++s1;
+    ++s2;
+  }
+  return 1;
+}
+static inline size_t rrstrlen(const char* s) {
+  size_t ret = 0;
+  while (*s) {
+    ++s;
+    ++ret;
+  }
+  return ret;
+}
+#else
+#include <string.h>
+static inline int streq(const char* s1, const char* s2) {
+  return !strcmp(s1, s2);
+}
+static inline size_t rrstrlen(const char* s) { return strlen(s); }
+#include "../remote_ptr.h"
+#endif
+
 #include <signal.h>
 #include <stdint.h>
-#include <string.h>
 #include <sys/types.h>
 #include <sys/user.h>
 
-#ifndef RR_IMPLEMENT_PRELOAD
-#include "../remote_ptr.h"
-#endif
+static inline int strprefix(const char* s1, const char* s2) {
+  while (1) {
+    if (!*s1) {
+      return 1;
+    }
+    if (*s1 != *s2) {
+      return 0;
+    }
+    ++s1;
+    ++s2;
+  }
+  return 1;
+}
 
 /* This header file is included by preload.c and various rr .cc files. It
  * defines the interface between the preload library and rr. preload.c
@@ -61,8 +102,10 @@
   RR_PAGE_SYSCALL_ADDR(7)
 #define RR_PAGE_FF_BYTES (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 8)
 
+/* PRELOAD_THREAD_LOCALS_ADDR should not change.
+ * Tools depend on this address. */
 #define PRELOAD_THREAD_LOCALS_ADDR (RR_PAGE_ADDR + PAGE_SIZE)
-#define PRELOAD_THREAD_LOCALS_SIZE 80
+#define PRELOAD_THREAD_LOCALS_SIZE 88
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.
@@ -101,6 +144,13 @@
  * of the task that it has restored auxv vectors for.
  */
 #define SYS_rrcall_reload_auxv 446
+/**
+ * When rr replay has flushed a syscallbuf 'mprotect' record, notify any outer
+ * rr of that flush. The first parameter is the tid of the task, the second
+ * parameter is the address, the third parameter is the length, and the
+ * fourth parameter is the prot.
+ */
+#define SYS_rrcall_mprotect_record 447
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.
@@ -196,12 +246,19 @@ struct preload_globals {
  */
 TEMPLATE_ARCH
 struct preload_thread_locals {
+  /* The offsets of these fields are hardcoded in syscall_hook.S and
+   * assembly_templates.py. Try to avoid changing them! */
   /* Pointer to alt-stack used by syscallbuf stubs (allocated at the end of
    * the scratch buffer */
   PTR(void) syscallbuf_stub_alt_stack;
+  /* Where syscall result will be (or during replay, has been) saved.
+   * The offset of this field MUST NOT CHANGE, it is part of the preload ABI
+   * tools can depend on. */
+  PTR(int64_t) pending_untraced_syscall_result;
   /* scratch space used by stub code */
   PTR(void) stub_scratch_1;
   int alt_stack_nesting_level;
+
   /* Nonzero when thread-local state like the syscallbuf has been
    * initialized.  */
   int thread_inited;
@@ -268,6 +325,11 @@ struct rrcall_init_preload_params {
   int syscall_patch_hook_count;
   PTR(struct syscall_patch_hook) syscall_patch_hooks;
   PTR(void) syscallhook_vsyscall_entry;
+  PTR(void) syscallbuf_code_start;
+  PTR(void) syscallbuf_code_end;
+  PTR(void) get_pc_thunks_start;
+  PTR(void) get_pc_thunks_end;
+  PTR(void) syscallbuf_final_exit_instruction;
   PTR(struct preload_globals) globals;
   /* Address of the first entry of the breakpoint table.
    * After processing a sycallbuf record (and unlocking the syscallbuf),
@@ -354,11 +416,11 @@ struct syscallbuf_hdr {
   /* True if the current syscall should not be committed to the
    * buffer, for whatever reason; likely interrupted by
    * desched. Set by rr. */
-  uint8_t abort_commit;
+  volatile uint8_t abort_commit;
   /* True if, next time we exit the syscall buffer hook, libpreload should
    * execute SYS_rrcall_notify_syscall_hook_exit to give rr the opportunity to
    * deliver a signal and/or reset the syscallbuf. */
-  uint8_t notify_on_syscall_hook_exit;
+  volatile uint8_t notify_on_syscall_hook_exit;
   /* This tracks whether the buffer is currently in use for a
    * system call or otherwise unavailable. This is helpful when
    * a signal handler runs during a wrapped system call; we don't want
@@ -367,18 +429,23 @@ struct syscallbuf_hdr {
    * may be used only if all are clear. See enum syscallbuf_locked_why for
    * used bits.
    */
-  uint8_t locked;
+  volatile uint8_t locked;
   /* Nonzero when rr needs to worry about the desched signal.
    * When it's zero, the desched signal can safely be
    * discarded. */
-  uint8_t desched_signal_may_be_relevant;
-  /* A copy of the tasks's signal mask. Updated by both preload and rr in
-   * response to events that change the signal mask. RR stores this in
-   * RecordTask::blocked_sigs, but since some signal mask affecting system
-   * calls may be buffered, that value may be out of date until rr reloads it
-   * from here.
+  volatile uint8_t desched_signal_may_be_relevant;
+  /* A copy of the tasks's signal mask. Updated by preload when a buffered
+   * rt_sigprocmask executes.
    */
-  uint64_t blocked_sigs;
+  volatile uint64_t blocked_sigs;
+  /* Incremented by preload every time a buffered rt_sigprocmask executes.
+   * Cleared during syscallbuf reset.
+   */
+  volatile uint32_t blocked_sigs_generation;
+  /* Nonzero when preload is in the process of calling an untraced
+   * sigprocmask; the real sigprocmask may or may not match blocked_sigs.
+   */
+  volatile uint8_t in_sigprocmask_critical_section;
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));
@@ -429,38 +496,38 @@ inline static long stored_record_size(size_t length) {
  * too much by piling on.
  */
 inline static int is_blacklisted_filename(const char* filename) {
-  return !strncmp("/dev/dri/", filename, 9) ||
-         !strcmp("/dev/nvidiactl", filename) ||
-         !strcmp("/usr/share/alsa/alsa.conf", filename);
+  return strprefix("/dev/dri/", filename) ||
+         streq("/dev/nvidiactl", filename) ||
+         streq("/usr/share/alsa/alsa.conf", filename);
 }
 
 inline static int is_gcrypt_deny_file(const char* filename) {
-  return !strcmp("/etc/gcrypt/hwf.deny", filename);
+  return streq("/etc/gcrypt/hwf.deny", filename);
 }
 
 inline static int is_terminal(const char* filename) {
-  return !strncmp("/dev/tty", filename, 8) || !strncmp("/dev/pts", filename, 8);
+  return strprefix("/dev/tty", filename) || strprefix("/dev/pts", filename);
 }
 
 inline static int is_proc_mem_file(const char* filename) {
-  if (strncmp("/proc/", filename, 6)) {
+  if (!strprefix("/proc/", filename)) {
     return 0;
   }
-  return !strcmp(filename + strlen(filename) - 4, "/mem");
+  return streq(filename + rrstrlen(filename) - 4, "/mem");
 }
 
 inline static int is_proc_fd_dir(const char* filename) {
-  if (strncmp("/proc/", filename, 6)) {
+  if (!strprefix("/proc/", filename)) {
     return 0;
   }
 
-  int len = strlen(filename);
+  int len = rrstrlen(filename);
   const char* fd_bit = filename + len;
   if (*fd_bit == '/') {
     fd_bit--;
   }
 
-  return !strncmp(fd_bit - 3, "/fd", 3);
+  return strprefix("/fd", fd_bit - 3);
 }
 
 /**

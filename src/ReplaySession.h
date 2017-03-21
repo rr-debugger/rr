@@ -74,6 +74,8 @@ struct ReplayTraceStep {
 
   union {
     struct {
+      /* The architecture of the syscall */
+      SupportedArch arch;
       /* The syscall number we expect to
        * enter/exit. */
       int number;
@@ -331,6 +333,7 @@ private:
   ReplayTraceStep current_step;
   Ticks ticks_at_start_of_event;
   CPUIDBugDetector cpuid_bug_detector;
+  siginfo_t last_siginfo_;
   Flags flags;
   bool did_fast_forward;
 

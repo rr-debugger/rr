@@ -91,7 +91,11 @@ struct FcntlConstants {
     SETLKW64 = 14,
     SETOWN_EX = 15,
     GETOWN_EX = 16,
-    // Linux-specific operations
+    // Open File descriptor locks (Linux specific)
+    OFD_GETLK = 36,
+    OFD_SETLK = 37,
+    OFD_SETLKW = 38,
+    // Other Linux-specific operations
     DUPFD_CLOEXEC = 0x400 + 6,
     ADD_SEALS = 0x400 + 9
   };
@@ -906,12 +910,11 @@ struct BaseArch : public wordsize,
   };
 
   struct setsockopt_args {
-    signed_int sockfd;
-    signed_int level;
-    signed_int optname;
-    char __pad[sizeof(ptr<void>) - sizeof(int)];
+    signed_long sockfd;
+    signed_long level;
+    signed_long optname;
     ptr<void> optval;
-    ptr<socklen_t> optlen;
+    signed_long optlen;
   };
 
   struct recv_args {
@@ -1050,7 +1053,7 @@ struct BaseArch : public wordsize,
   RR_VERIFY_TYPE(sigset_t);
 
   typedef struct {
-    ptr<const sigset_t> ss;
+    ptr<const kernel_sigset_t> ss;
     size_t ss_len;
   } pselect6_arg6;
 
@@ -1333,6 +1336,92 @@ struct BaseArch : public wordsize,
     signed_long __reserved[4];
   };
   RR_VERIFY_TYPE(mq_attr);
+
+  struct xt_counters {
+    uint64_t pcnt, bcnt;
+  };
+  RR_VERIFY_TYPE(xt_counters);
+
+  struct ipt_replace {
+    uint8_t name[32];
+    uint32_t valid_hook;
+    uint32_t num_entries;
+    uint32_t size;
+    uint32_t hook_entry[5];
+    uint32_t underflow[5];
+    uint32_t num_counters;
+    ptr<xt_counters> counters; // ptr<xt_counters>
+    // Plus hangoff here
+  };
+  // The corresponding header requires -fpermissive, which we don't pass. Skip
+  // this check.
+  // RR_VERIFY_TYPE(ipt_replace);
+
+  struct cap_header {
+    uint32_t version;
+    int pid;
+  };
+
+  struct cap_data {
+    uint32_t effective;
+    uint32_t permitted;
+    uint32_t inheritable;
+  };
+
+  struct hci_dev_req {
+    uint16_t dev_id;
+    uint32_t dev_opt;
+  };
+
+  struct hci_dev_list_req {
+    uint16_t dev_num;
+    struct hci_dev_req dev_req[0];
+  };
+
+  typedef struct { uint8_t b[6]; } __attribute__((__packed__)) bdaddr_t;
+
+  struct hci_dev_stats {
+    uint32_t err_rx;
+    uint32_t err_tx;
+    uint32_t cmd_tx;
+    uint32_t evt_rx;
+    uint32_t acl_tx;
+    uint32_t acl_rx;
+    uint32_t sco_tx;
+    uint32_t sco_rx;
+    uint32_t byte_rx;
+    uint32_t byte_tx;
+  };
+
+  struct hci_dev_info {
+    uint16_t dev_id;
+    char name[8];
+
+    bdaddr_t bdaddr;
+
+    uint32_t flags;
+    uint8_t type;
+
+    uint8_t features[8];
+
+    uint32_t pkt_type;
+    uint32_t link_policy;
+    uint32_t link_mode;
+
+    uint16_t acl_mtu;
+    uint16_t acl_pkts;
+    uint16_t sco_mtu;
+    uint16_t sco_pkts;
+
+    struct hci_dev_stats stat;
+  };
+
+  typedef struct ifbond {
+    int32_t bond_mode;
+    int32_t num_slaves;
+    int32_t miimon;
+  } ifbond;
+  RR_VERIFY_TYPE(ifbond);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
@@ -1739,6 +1828,13 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   }
 
 #include "SyscallHelperFunctions.generated"
+
+/**
+ * Return true if |ptr| in task |t| points to an invoke-syscall instruction,
+ * and if so, return the architecture for which this is a syscall in *arch.
+ */
+bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
+                                  SupportedArch* arch);
 
 /**
  * Return true if |ptr| in task |t| points to an invoke-syscall instruction.

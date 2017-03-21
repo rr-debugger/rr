@@ -24,6 +24,7 @@ public:
   ~ScopedFd() { close(); }
 
   ScopedFd& operator=(ScopedFd&& other) {
+    close();
     fd = other.fd;
     other.fd = -1;
     return *this;

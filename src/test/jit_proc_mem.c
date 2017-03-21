@@ -29,7 +29,7 @@ int main(void) {
   ssize_t to_write = nbytes > 4096 ? 4096 : nbytes;
   int nwritten =
       pwrite(memfd, (void*)template_function, to_write, (uintptr_t)space);
-  assert(to_write == nwritten);
+  test_assert(to_write == nwritten);
 
   int ret = ((int (*)(printf_func, char*))space)(atomic_printf, "EXIT-SUCCESS");
   breakpoint();

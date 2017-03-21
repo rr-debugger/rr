@@ -12,9 +12,11 @@ static int contains_symbol(map_properties_t* props, void* symbol) {
   return (props->start <= (uintptr_t)symbol && (uintptr_t)symbol < props->end);
 }
 void callback(uint64_t env, char* name, map_properties_t* props) {
-  (void)env;
   if (contains_symbol(props, &main) || contains_symbol(props, unmappings) ||
-      props->start == RR_PAGE_ADDR || strcmp(name, "[stack]") == 0) {
+      /* env is on the stack - this prevents it from being unmapped if
+         the kernel gets confused by syscallbuf's stack switching */
+      contains_symbol(props, &env) || props->start == RR_PAGE_ADDR ||
+      strcmp(name, "[stack]") == 0) {
     return;
   }
 

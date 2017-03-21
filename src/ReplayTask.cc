@@ -71,7 +71,7 @@ void ReplayTask::init_buffers(remote_ptr<void> map_hint) {
 
 void ReplayTask::post_exec_syscall(const string& replay_exe,
                                    TraceTaskEvent& tte) {
-  Task::post_exec(current_trace_frame().regs().arch(), replay_exe);
+  Task::post_exec(replay_exe);
 
   // Perform post-exec-syscall tasks now (e.g. opening mem_fd) before we
   // switch registers. This lets us perform AutoRemoteSyscalls using the

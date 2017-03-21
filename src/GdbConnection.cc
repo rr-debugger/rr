@@ -10,12 +10,10 @@
 
 #include "GdbConnection.h"
 
-#include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <limits.h>
-#include <netinet/in.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +28,6 @@
 #include "GdbCommandHandler.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
-#include "StringVectorToCharArray.h"
 #include "log.h"
 
 using namespace std;
@@ -39,13 +36,9 @@ namespace rr {
 
 static const char INTERRUPT_CHAR = '\x03';
 
-#ifdef DEBUGTAG
-#define UNHANDLED_REQ() FATAL()
-#else
 #define UNHANDLED_REQ()                                                        \
   write_packet("");                                                            \
   LOG(info)
-#endif
 
 const GdbThreadId GdbThreadId::ANY(0, 0);
 const GdbThreadId GdbThreadId::ALL(-1, -1);
@@ -67,158 +60,10 @@ GdbConnection::GdbConnection(pid_t tgid, const Features& features)
 #endif
 }
 
-static ScopedFd open_socket(const char* address, unsigned short* port,
-                            GdbConnection::ProbePort probe) {
-  ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
-  if (!listen_fd.is_open()) {
-    FATAL() << "Couldn't create socket";
-  }
-
-  struct sockaddr_in addr;
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = inet_addr(address);
-  int reuseaddr = 1;
-  int ret = setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
-                       sizeof(reuseaddr));
-  if (ret < 0) {
-    FATAL() << "Couldn't set SO_REUSEADDR";
-  }
-
-  do {
-    addr.sin_port = htons(*port);
-    ret = ::bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
-    if (ret && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
-      continue;
-    }
-    if (ret) {
-      FATAL() << "Couldn't bind to port " << *port;
-    }
-
-    ret = listen(listen_fd, 1 /*backlogged connection*/);
-    if (ret && EADDRINUSE == errno) {
-      continue;
-    }
-    if (ret) {
-      FATAL() << "Couldn't listen on port " << *port;
-    }
-    break;
-  } while (++(*port), probe == GdbConnection::PROBE_PORT);
-  return listen_fd;
-}
-
 void GdbConnection::await_debugger(ScopedFd& listen_fd) {
-  struct sockaddr_in client_addr;
-  socklen_t len = sizeof(client_addr);
-
-  sock_fd = ScopedFd(accept(listen_fd, (struct sockaddr*)&client_addr, &len));
+  sock_fd = ScopedFd(accept(listen_fd, nullptr, nullptr));
   // We might restart this debugging session, so don't set the
   // socket fd CLOEXEC.
-}
-
-static const char connection_addr[] = "127.0.0.1";
-
-struct DebuggerParams {
-  char exe_image[PATH_MAX];
-  short port;
-};
-
-static void push_default_gdb_options(vector<string>& vec) {
-  vec.push_back("-l");
-  vec.push_back("10000");
-}
-
-static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
-  vec.push_back("-ex");
-  stringstream ss;
-  ss << "target extended-remote :";
-  ss << port;
-  vec.push_back(ss.str());
-}
-
-unique_ptr<GdbConnection> GdbConnection::await_client_connection(
-    unsigned short desired_port, ProbePort probe, pid_t tgid,
-    const string& debugger_name, const string& exe_image,
-    const Features& features, ScopedFd* client_params_fd) {
-  auto dbg = unique_ptr<GdbConnection>(new GdbConnection(tgid, features));
-  unsigned short port = desired_port;
-  ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
-  if (client_params_fd) {
-    DebuggerParams params;
-    memset(&params, 0, sizeof(params));
-    strncpy(params.exe_image, exe_image.c_str(), sizeof(params.exe_image) - 1);
-    params.port = port;
-
-    ssize_t nwritten = write(*client_params_fd, &params, sizeof(params));
-    assert(nwritten == sizeof(params));
-  } else {
-    vector<string> options;
-    push_default_gdb_options(options);
-    push_target_remote_cmd(options, port);
-    cerr << "Launch gdb with \n"
-         << "  " << debugger_name << " ";
-    for (auto& opt : options) {
-      cerr << "'" << opt << "' ";
-    }
-    cerr << exe_image << "\n";
-  }
-  LOG(debug) << "limiting debugger traffic to tgid " << tgid;
-  dbg->await_debugger(listen_fd);
-  return dbg;
-}
-
-static string to_string(const vector<string>& args) {
-  stringstream ss;
-  for (auto& a : args) {
-    ss << "'" << a << "' ";
-  }
-  return ss.str();
-}
-
-void GdbConnection::launch_gdb(ScopedFd& params_pipe_fd,
-                               const string& gdb_binary_file_path,
-                               const vector<string>& gdb_options) {
-  DebuggerParams params;
-  ssize_t nread;
-  while (true) {
-    nread = read(params_pipe_fd, &params, sizeof(params));
-    if (nread == 0) {
-      // pipe was closed. Probably rr failed/died.
-      return;
-    }
-    if (nread != -1 || errno != EINTR) {
-      break;
-    }
-  }
-  assert(nread == sizeof(params));
-
-  vector<string> args;
-  args.push_back(gdb_binary_file_path);
-  // The gdb protocol uses the "vRun" packet to reload
-  // remote targets.  The packet is specified to be like
-  // "vCont", in which gdb waits infinitely long for a
-  // stop reply packet.  But in practice, gdb client
-  // expects the vRun to complete within the remote-reply
-  // timeout, after which it issues vCont.  The timeout
-  // causes gdb<-->rr communication to go haywire.
-  //
-  // rr can take a very long time indeed to send the
-  // stop-reply to gdb after restarting replay; the time
-  // to reach a specified execution target is
-  // theoretically unbounded.  Timing out on vRun is
-  // technically a gdb bug, but because the rr replay and
-  // the gdb reload models don't quite match up, we'll
-  // work around it on the rr side by disabling the
-  // remote-reply timeout.
-  push_default_gdb_options(args);
-  args.insert(args.end(), gdb_options.begin(), gdb_options.end());
-  push_target_remote_cmd(args, params.port);
-  args.push_back(params.exe_image);
-
-  LOG(debug) << "launching " << to_string(args);
-
-  StringVectorToCharArray c_args(args);
-  execvp(gdb_binary_file_path.c_str(), c_args.get());
-  FATAL() << "Failed to exec gdb.";
 }
 
 /**
@@ -256,12 +101,9 @@ void GdbConnection::read_data_once() {
   poll_incoming(sock_fd, -1 /* wait forever */);
   uint8_t buf[4096];
   nread = read(sock_fd, buf, sizeof(buf));
-  if (0 == nread) {
+  if (nread <= 0) {
     LOG(info) << "(gdb closed debugging socket, exiting)";
     exit(0);
-  }
-  if (nread <= 0) {
-    FATAL() << "Error reading from gdb";
   }
   inbuf.insert(inbuf.end(), buf, buf + nread);
 }

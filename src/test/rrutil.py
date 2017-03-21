@@ -34,6 +34,7 @@ def iterlines_both():
 def last_match():
     return gdb_rr.match
 
+# Restarts and continues execution
 def restart_replay(event=0):
     if event:
         send_gdb('r %d'%(event))
@@ -42,6 +43,10 @@ def restart_replay(event=0):
     # gdb may not prompt here. It's ok to send an unnecessary 'y'
     # since there is no such command.
     send_gdb('y')
+    # Wait to see 'stopped'. We don't want this to get buffered up
+    # so callers expecting a 'stopped' *after* replay has resumed
+    # get confused.
+    expect_rr('stopped')
     send_gdb('c')
 
 def send_gdb(what):
@@ -53,7 +58,8 @@ def ok():
     clean_up()
 
 # Internal helpers
-TIMEOUT_SEC = 100
+# Don't use python timeout. Use test-monitor timeout instead.
+TIMEOUT_SEC = 10000
 # gdb and rr are part of the same process tree, so they share
 # stdin/stdout.
 gdb_rr = None

@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+
+# This test executes LOTS of conditional branches so speed things up by
+# not interrupting too often.
+RECORD_ARGS="-c20000000"
+compare_test EXIT-SUCCESS

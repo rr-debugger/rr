@@ -5,25 +5,30 @@
 
 #include "util.h"
 
-#include <algorithm>
-
+#include <arpa/inet.h>
 #include <assert.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <linux/capability.h>
 #include <linux/magic.h>
 #include <linux/prctl.h>
+#include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/vfs.h>
 #include <unistd.h>
+
+#include <algorithm>
 
 #include "preload/preload_interface.h"
 
 #include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
+#include "PerfCounters.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "TraceStream.h"
@@ -262,6 +267,7 @@ static uint32_t compute_checksum(void* data, size_t len) {
 }
 
 static const uint32_t ignored_checksum = 0x98765432;
+static const uint32_t sigbus_checksum = 0x23456789;
 
 /**
  * Either create and store checksums for each segment mapped in |t|'s
@@ -293,15 +299,10 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   }
 
   const AddressSpace& as = *t->vm();
-  for (auto m : as.maps()) {
+  for (auto it = as.maps().begin(); it != as.maps().end(); ++it) {
+    auto m = *it;
     string raw_map_line = m.map.str();
     uint32_t rec_checksum = 0;
-
-    if (m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION) {
-      ASSERT(t, VALIDATE_CHECKSUMS == mode);
-      // These mappings didn't exist during recording. Skip them.
-      continue;
-    }
 
     if (VALIDATE_CHECKSUMS == mode) {
       char line[1024];
@@ -315,11 +316,22 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       remote_ptr<void> rec_start_addr = rec_start;
       remote_ptr<void> rec_end_addr = rec_end;
       ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
+      // If we have artifical SIGBUS regions, those may (if the entire region
+      // was SIGBUS), but need not have existed during recording, so fast
+      // forward to the next real region.
+      while (m.map.start() != rec_start_addr) {
+        ASSERT(t, m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION)
+            << "Segment " << rec_start_addr << "-" << rec_end_addr
+            << " changed to " << m.map << "??";
+        ASSERT(t, it != as.maps().end());
+        m = *(++it);
+        continue;
+      }
       // If the backing file is too short, we cut mappings short, to make sure
       // have the same behavior as during recording. Tolerate this.
-      ASSERT(t, rec_start_addr == m.map.start() && m.map.end() <= rec_end_addr)
-          << "Segment " << rec_start_addr << "-" << rec_end_addr
-          << " changed to " << m.map << "??";
+      ASSERT(t, m.map.end() <= rec_end_addr) << "Segment " << rec_start_addr
+                                             << "-" << rec_end_addr
+                                             << " changed to " << m.map << "??";
       if (is_start_of_scratch_region(t, rec_start_addr)) {
         /* Replay doesn't touch scratch regions, so
          * their contents are allowed to diverge.
@@ -332,6 +344,14 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       if (rec_checksum == ignored_checksum) {
         LOG(debug) << "Checksum not computed during recording";
         continue;
+      } else if (rec_checksum == sigbus_checksum) {
+        // This was a SIGBUS equivalent region. During replay, this is either
+        // an explicit SIGBUS region, indicated by the IS_SIGBUS_REGION flag
+        // if the data came from the trace, or an implicit one (which we will
+        // catch below) if the data came from a cloned file.
+        if (m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION) {
+          continue;
+        }
       }
     } else {
       if (!checksum_segment_filter(m)) {
@@ -348,9 +368,16 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     if (valid_mem_len < 0) {
       /* It is possible for whole mappings to be beyond the extent of the
        * backing file, in which case read_bytes_fallible will return -1.
-       * During replay this will be a SIGBUS region, so skip it now.
+       * During replay this will be a SIGBUS region (or, if the file was cloned,
+       * we will end up here again), so skip it now.
        */
       ASSERT(t, valid_mem_len == -1 && errno == EIO);
+      if (VALIDATE_CHECKSUMS == mode) {
+        ASSERT(t, rec_checksum == sigbus_checksum);
+      } else {
+        fprintf(c.checksums_file, "(%x) %s\n", sigbus_checksum,
+                raw_map_line.c_str());
+      }
       continue;
     }
     mem.resize(valid_mem_len);
@@ -372,10 +399,6 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       auto hdr = t->read_mem(child_hdr);
       mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
                  sizeof(struct syscallbuf_record));
-      /* Zero out the shadow copy of blocked_sigs, we don't keep track of it
-      * during replay, so this makes sure we don't run into problems because
-      * of it. */
-      ((struct syscallbuf_hdr*)mem.data())->blocked_sigs = 0;
     }
 
     uint32_t checksum = compute_checksum(mem.data(), mem.size());
@@ -839,9 +862,119 @@ void copy_file(Task* t, int dest_fd, int src_fd) {
 void* xmalloc(size_t size) {
   void* mem_ptr = malloc(size);
   if (!mem_ptr) {
-    abort();
+    notifying_abort();
   }
   return mem_ptr;
+}
+
+bool has_effective_caps(uint64_t caps) {
+  struct NativeArch::cap_header header = {.version =
+                                              _LINUX_CAPABILITY_VERSION_3,
+                                          .pid = 0 };
+  struct NativeArch::cap_data data[_LINUX_CAPABILITY_U32S_3];
+  if (syscall(NativeArch::capget, &header, data) != 0) {
+    FATAL() << "FAILED to read capabilities";
+  }
+  for (int i = 0; i < _LINUX_CAPABILITY_U32S_3; ++i) {
+    if ((data[i].effective & (uint32_t)caps) != (uint32_t)caps) {
+      return false;
+    }
+    caps >>= 32;
+  }
+  return true;
+}
+
+unsigned int xsave_area_size() {
+  // 0 means XSAVE not detected
+  static unsigned int detected_xsave_area_size = 0;
+  static bool xsave_initialized = false;
+  if (xsave_initialized) {
+    return detected_xsave_area_size;
+  }
+  xsave_initialized = true;
+
+  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
+  if (!(cpuid_data.ecx & (1 << 26))) {
+    // XSAVE not present
+    return detected_xsave_area_size;
+  }
+
+  // We'll use the largest possible area all the time
+  // even when it might not be needed. Simpler that way.
+  cpuid_data = cpuid(CPUID_GETXSAVE, 0);
+  detected_xsave_area_size = cpuid_data.ecx;
+  return detected_xsave_area_size;
+}
+
+uint64_t rr_signal_mask() {
+  return signal_bit(PerfCounters::TIME_SLICE_SIGNAL) |
+         signal_bit(SYSCALLBUF_DESCHED_SIGNAL);
+}
+
+ScopedFd open_socket(const char* address, unsigned short* port,
+                     ProbePort probe) {
+  ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+  if (!listen_fd.is_open()) {
+    FATAL() << "Couldn't create socket";
+  }
+
+  struct sockaddr_in addr;
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr(address);
+  int reuseaddr = 1;
+  int ret = setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &reuseaddr,
+                       sizeof(reuseaddr));
+  if (ret < 0) {
+    FATAL() << "Couldn't set SO_REUSEADDR";
+  }
+
+  do {
+    addr.sin_port = htons(*port);
+    ret = ::bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (ret && (EADDRINUSE == errno || EACCES == errno || EINVAL == errno)) {
+      continue;
+    }
+    if (ret) {
+      FATAL() << "Couldn't bind to port " << *port;
+    }
+
+    ret = listen(listen_fd, 1 /*backlogged connection*/);
+    if (ret && EADDRINUSE == errno) {
+      continue;
+    }
+    if (ret) {
+      FATAL() << "Couldn't listen on port " << *port;
+    }
+    break;
+  } while (++(*port), probe == PROBE_PORT);
+  return listen_fd;
+}
+
+void notifying_abort() {
+  char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
+  if (test_monitor_pid) {
+    pid_t pid = atoi(test_monitor_pid);
+    // Tell test-monitor to wake up and take a snapshot, and wait for it to
+    // do so.
+    kill(pid, SIGURG);
+    sleep(10000);
+  }
+
+  abort();
+}
+
+void check_for_leaks() {
+  if (getenv("RUNNING_UNDER_RR")) {
+    // Don't do leak checking. The outer rr may have injected maps into our
+    // address space that look like leaks to us.
+    return;
+  }
+  for (KernelMapIterator it(getpid()); !it.at_end(); ++it) {
+    auto km = it.current();
+    if (km.fsname().find(RR_MAPPING_PREFIX) == 0) {
+      FATAL() << "Leaked " << km;
+    }
+  }
 }
 
 } // namespace rr

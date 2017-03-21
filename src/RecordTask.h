@@ -40,6 +40,20 @@ enum EmulatedStopType {
  */
 enum AddSysgoodFlag { IGNORE_SYSGOOD, USE_SYSGOOD };
 
+struct SyscallbufSyscallEntryPoints {
+  remote_code_ptr ptrs[3];
+};
+
+struct SyscallbufCodeLayout {
+  remote_code_ptr syscallbuf_code_start;
+  remote_code_ptr syscallbuf_code_end;
+  remote_code_ptr get_pc_thunks_start;
+  remote_code_ptr get_pc_thunks_end;
+  remote_code_ptr syscallbuf_final_exit_instruction;
+};
+
+enum SignalDisposition { SIGNAL_DEFAULT, SIGNAL_IGNORE, SIGNAL_HANDLER };
+
 /**
  * Every Task owned by a RecordSession is a RecordTask. Functionality that
  * only applies during recording belongs here.
@@ -53,7 +67,15 @@ public:
                       remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                       pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session);
-  virtual void on_syscall_exit(int syscallno, const Registers& regs);
+  virtual void on_syscall_exit(int syscallno, SupportedArch arch,
+                               const Registers& regs);
+  virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
+                                     int /*sig*/);
+  virtual void did_wait();
+
+  SyscallbufSyscallEntryPoints syscallbuf_syscall_entry_points();
+  bool is_at_syscallbuf_syscall_entry_breakpoint();
+  bool is_at_syscallbuf_final_instruction_breakpoint();
 
   /**
    * Initialize tracee buffers in this, i.e., implement
@@ -178,10 +200,6 @@ public:
    */
   bool signal_handler_takes_siginfo(int sig) const;
   /**
-   * Return true if SA_NODEFER is set for |sig|
-   */
-  bool signal_handler_nodefer(int sig) const;
-  /**
    * Return |sig|'s current sigaction. Returned as raw bytes since the
    * data is architecture-dependent.
    */
@@ -189,26 +207,21 @@ public:
   /** Return true iff |sig| is blocked for this. */
   bool is_sig_blocked(int sig);
 
-  /** Set |sig| to be treated as |blocked|. */
-  void set_sig_blocked(int sig, bool blocked);
   /**
    * Return true iff |sig| is SIG_IGN, or it's SIG_DFL and the
    * default disposition is "ignore".
    */
   bool is_sig_ignored(int sig) const;
   /**
+   * Return the applications current dispositiong of |sig|.
+   */
+  SignalDisposition sig_disposition(int sig) const;
+  /**
    * Set the siginfo for the signal-stop of this.
    */
   void set_siginfo(const siginfo_t& si);
-  /**
-   * Update this task's sigmask to be new_sigmask
-   */
-  void set_new_sigmask(uint64_t new_sigmask);
-  /**
-   * Update this task's sigmask to block all signals specified in sa_mask of
-   * |sig|'s current sigaction
-   */
-  void apply_sig_sa_mask(int sig);
+  /** Note that the task sigmask needs to be refetched. */
+  void invalidate_sigmask() { blocked_sigs_dirty = true; }
   /**
    * Reset the signal handler for this signal to the default.
    */
@@ -243,6 +256,7 @@ public:
   void stash_synthetic_sig(const siginfo_t& si,
                            SignalDeterministic deterministic);
   bool has_stashed_sig() const { return !stashed_signals.empty(); }
+  bool has_stashed_sig_not_synthetic_SIGCHLD() const;
   bool has_stashed_sig(int sig) const;
   struct StashedSignal {
     StashedSignal(const siginfo_t& siginfo, SignalDeterministic deterministic)
@@ -250,8 +264,9 @@ public:
     siginfo_t siginfo;
     SignalDeterministic deterministic;
   };
-  const StashedSignal& peek_stash_sig();
-  void pop_stash_sig();
+  const StashedSignal* peek_stashed_sig_to_deliver() const;
+  void pop_stash_sig(const StashedSignal* stashed);
+  void stashed_signal_processed();
 
   /**
    * Return true if the current state of this looks like the
@@ -294,19 +309,9 @@ public:
   bool maybe_in_spinlock();
   /**
    * Return true if this is within the syscallbuf library.  This
-   * *does not* imply that $ip is at a buffered syscall; see
-   * below.
+   * *does not* imply that $ip is at a buffered syscall.
    */
-  bool is_in_syscallbuf() {
-    if (!as->syscallbuf_enabled()) {
-      // Even if we're in the rr page, if syscallbuf isn't enabled then the
-      // rr page is not being used by syscallbuf.
-      return false;
-    }
-    remote_ptr<void> p = ip().to_data_ptr<void>();
-    return (as->syscallbuf_lib_start() <= p && p < as->syscallbuf_lib_end()) ||
-           as->monkeypatcher().is_jump_stub_instruction(p) || is_in_rr_page();
-  }
+  bool is_in_syscallbuf();
   /**
    * Shortcut to the most recent |pending_event->desched.rec| when
    * there's a desched event on the stack, and nullptr otherwise.
@@ -358,6 +363,8 @@ public:
     record_remote_even_if_null(addr, sizeof(T));
   }
 
+  SupportedArch detect_syscall_arch();
+
   /**
    * Manage pending events.  |push_event()| pushes the given
    * event onto the top of the event stack.  The |pop_*()|
@@ -365,6 +372,7 @@ public:
    * the specified type.
    */
   void push_event(const Event& ev) { pending_events.push_back(ev); }
+  void push_syscall_event(int syscallno);
   void pop_event(EventType expected_type);
   void pop_noop() { pop_event(EV_NOOP); }
   void pop_desched() { pop_event(EV_DESCHED); }
@@ -416,6 +424,8 @@ public:
   };
   void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF,
                     const Registers* registers = nullptr);
+
+  bool is_fatal_signal(int sig, SignalDeterministic deterministic);
 
   /**
    * Return the pid of the newborn thread created by this task.
@@ -471,15 +481,17 @@ public:
    */
   void set_tid_and_update_serial(pid_t tid);
 
+  /* Retrieve the tid of this task from the tracee and store it */
+  void update_own_namespace_tid();
+
   /**
-   * Save or restore the current sigmask (reloading it if necessary) to handle
-   * ppoll/pselect. If the sigmask is restored another way (e.g. because a
-   * signal handler was invoked) clear_saved_sigmask must be called.
+   * Return our cached copy of the signal mask, updating it if necessary.
    */
-  void save_sigmask();
-  void restore_sigmask();
-  void restore_sigmask_if_saved();
-  void clear_saved_sigmask();
+  sig_set_t get_sigmask();
+  /**
+   * Just get the signal mask of the process.
+   */
+  sig_set_t read_sigmask_from_process();
 
 private:
   ~RecordTask();
@@ -503,23 +515,12 @@ private:
    */
   void send_synthetic_SIGCHLD_if_necessary();
 
-  /**
-   * Reload, resp. write back the current mask of blocked signals to the shadow
-   * copy in this tasks's preload globals such that we can effectively track,
-   * changes made to the mask by buffered syscalls.
-   */
-  sig_set_t get_sigmask();
-  void set_sigmask(sig_set_t mask);
+  void record_siginfo();
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.
    */
   void update_sigaction(const Registers& regs);
-  /**
-   * Call this when the tracee is about to complete a
-   * SYS_rt_sigprocmask syscall with |regs|.
-   */
-  void update_sigmask(const Registers& regs);
   /**
    * Update the futex robust list head pointer to |list| (which
    * is of size |len|).
@@ -595,21 +596,19 @@ public:
   // And if this task exec()s, the table is copied and stripped
   // of user sighandlers (see below). */
   std::shared_ptr<Sighandlers> sighandlers;
-  // The set of signals that were blocked during a sigsuspend. Only present
-  // during the first EV_SIGNAL during an interrupted sigsuspend.
-  std::unique_ptr<sig_set_t> sigsuspend_blocked_sigs;
   // If not NOT_STOPPED, then the task is logically stopped and this is the type
   // of stop.
   EmulatedStopType emulated_stop_type;
+  // True if the task sigmask may have changed and we need to refetch it.
+  bool blocked_sigs_dirty;
   // Most accesses to this should use set_sigmask and get_sigmask to ensure
   // the mirroring to syscallbuf is correct.
   sig_set_t blocked_sigs;
-  sig_set_t previously_blocked_sigs;
-  bool has_previously_blocked_sigs;
-  int handling_deterministic_signal;
+  uint32_t syscallbuf_blocked_sigs_generation;
 
   // Syscallbuf state
 
+  SyscallbufCodeLayout syscallbuf_code_layout;
   ScopedFd desched_fd;
   /* Value of hdr->num_rec_bytes when the buffer was flushed */
   uint32_t flushed_num_rec_bytes;
@@ -656,6 +655,9 @@ public:
   // Stashed signal-delivery state, ready to be delivered at
   // next opportunity.
   std::deque<StashedSignal> stashed_signals;
+  bool stashed_signals_blocking_more_signals;
+  bool break_at_syscallbuf_syscalls;
+  bool break_at_syscallbuf_final_instruction;
 };
 
 } // namespace rr

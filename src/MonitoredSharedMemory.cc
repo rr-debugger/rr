@@ -70,7 +70,8 @@ void MonitoredSharedMemory::check_for_changes(RecordTask* t,
     // reestablish local mapping after a fork or whatever
     AutoRemoteSyscalls remote(t);
     auto msm = m.monitored_shared_memory;
-    m = Session::recreate_shared_mmap(remote, m, move(msm));
+    m = Session::recreate_shared_mmap(remote, m, Session::DISCARD_CONTENTS,
+                                      move(msm));
   }
   if (!memcmp(m.local_addr, real_mem, size)) {
     return;

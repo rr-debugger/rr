@@ -13,6 +13,8 @@ int main(void) {
 
   signal(SIGSEGV, handle_segv);
 
+  atomic_puts("ready");
+
   /* No syscalls after here!  (Up to the assert.) */
   for (i = 1; i < (1 << 30); ++i) {
     dummy += (dummy + i) % 9735;
