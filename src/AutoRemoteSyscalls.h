@@ -242,6 +242,7 @@ private:
 
   Task* t;
   Registers initial_regs;
+  WaitStatus initial_wait_status;
   remote_code_ptr initial_ip;
   remote_ptr<void> initial_sp;
   remote_ptr<void> fixed_sp;

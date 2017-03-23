@@ -486,6 +486,8 @@ public:
     return thread_areas_;
   }
 
+  void set_status(WaitStatus status) { wait_status = status; }
+
   /**
    * Return true when the task is running, false if it's stopped.
    */
