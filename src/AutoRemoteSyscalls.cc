@@ -62,6 +62,7 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
                                        MemParamsEnabled enable_mem_params)
     : t(t),
       initial_regs(t->regs()),
+      initial_wait_status(t->status()),
       initial_ip(t->ip()),
       initial_sp(t->regs().sp()),
       pending_syscallno(-1),
@@ -152,6 +153,12 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   initial_regs.set_sp(initial_sp);
   // Restore stomped registers.
   t->set_regs(initial_regs);
+
+  // If the task's current status is ours, discard it. But if the syscall
+  // triggered side effects (e.g. an exit_group), leave it.
+  if (t->status().is_syscall()) {
+    t->set_status(initial_wait_status);
+  }
 }
 
 void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
