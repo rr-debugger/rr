@@ -1912,6 +1912,16 @@ static long sys_recvfrom(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_recvmsg
+static int msg_received_file_descriptors(struct msghdr* msg) {
+  struct cmsghdr* cmh;
+  for (cmh = CMSG_FIRSTHDR(msg); cmh; cmh = CMSG_NXTHDR(msg, cmh)) {
+    if (cmh->cmsg_level == SOL_SOCKET && cmh->cmsg_type == SCM_RIGHTS) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 static long sys_recvmsg(const struct syscall_info* call) {
   const int syscallno = SYS_recvmsg;
   int sockfd = call->args[0];
@@ -2001,9 +2011,9 @@ static long sys_recvmsg(const struct syscall_info* call) {
     }
     msg->msg_flags = msg2->msg_flags;
 
-    if (msg->msg_controllen) {
-      /* When we reach a safe point, notify rr that the control message was
-       * received.
+    if (msg_received_file_descriptors(msg)) {
+      /* When we reach a safe point, notify rr that the control message with
+       * file descriptors was received.
        */
       thread_locals->notify_control_msg = msg;
     }
