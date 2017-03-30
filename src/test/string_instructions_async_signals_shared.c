@@ -37,8 +37,8 @@ int main(void) {
   int v;
   pthread_t thread;
 
-  mapping = mmap(NULL, 4096, PROT_READ | PROT_WRITE,
-		 MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+  mapping = mmap(NULL, 4096, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
+                 -1, 0);
   test_assert(mapping != NULL);
 
   memcpy(mapping, string_code, sizeof(string_code));

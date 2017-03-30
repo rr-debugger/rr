@@ -2252,8 +2252,7 @@ static long sys_ptrace(const struct syscall_info* call) {
 
   struct iovec local_iov = { data2, sizeof(long) };
   struct iovec remote_iov = { addr, sizeof(long) };
-  ret = untraced_syscall6(syscallno, pid, &local_iov, 1, &remote_iov,
-                          1, 0);
+  ret = untraced_syscall6(syscallno, pid, &local_iov, 1, &remote_iov, 1, 0);
   if (ret > 0) {
     local_memcpy(data, data2, ret);
   }

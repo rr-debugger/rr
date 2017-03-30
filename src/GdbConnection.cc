@@ -1628,8 +1628,6 @@ void GdbConnection::reply_tls_addr(bool ok, remote_ptr<void> address) {
   consume_request();
 }
 
-bool GdbConnection::is_connection_alive() {
-  return connection_alive_;
-}
+bool GdbConnection::is_connection_alive() { return connection_alive_; }
 
 } // namespace rr

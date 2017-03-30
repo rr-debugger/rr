@@ -97,7 +97,8 @@ struct ReplayFlags {
   // IP port to listen on for debug connections.
   int dbg_port;
 
-  // Whether to keep listening with a new server after the existing server detaches
+  // Whether to keep listening with a new server after the existing server
+  // detaches
   bool keep_listening;
 
   // Pass these options to gdb
@@ -539,7 +540,8 @@ int ReplayCommand::run(vector<string>& args) {
   }
 
   if (flags.keep_listening && flags.dbg_port == -1) {
-    fprintf(stderr, "Cannot use --keep-listening (-k) without --dbgport (-s).\n");
+    fprintf(stderr,
+            "Cannot use --keep-listening (-k) without --dbgport (-s).\n");
     return 4;
   }
 
