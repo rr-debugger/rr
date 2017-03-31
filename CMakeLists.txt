@@ -570,6 +570,7 @@ set(BASIC_TESTS
   mmap_shared_multiple
   mmap_shared_subpage
   mmap_shared_write
+  mmap_shared_write_fork
   mmap_short_file
   mmap_tmpfs
   mmap_zero_size_fd

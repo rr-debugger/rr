@@ -12,9 +12,10 @@ static void check_mapping(int* page, int magic, ssize_t nr_ints) {
 
 int main(void) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
-  char file_name[] = "/tmp/rr-test-mremap-XXXXXX";
-  int fd = mkstemp(file_name);
+  int fd = open("temp", O_CREAT | O_EXCL | O_RDWR);
   int* rpage;
+
+  unlink("temp");
 
   test_assert(fd >= 0);
 
@@ -26,7 +27,7 @@ int main(void) {
 
   rpage = mmap(NULL, num_bytes, PROT_READ, MAP_SHARED, fd, 0);
   atomic_printf("rpage:%p\n", rpage);
-  test_assert(rpage != (void*)-1);
+  test_assert(rpage != MAP_FAILED);
 
   magic = 0xa5a5a5a5;
   for (i = 0; i < num_bytes / sizeof(magic); ++i) {
@@ -75,7 +76,7 @@ int main(void) {
 
   rpage = mmap(NULL, num_bytes, PROT_READ, MAP_SHARED, fd, 0);
   atomic_printf("rpage:%p\n", rpage);
-  test_assert(rpage != (void*)-1);
+  test_assert(rpage != MAP_FAILED);
 
   // This tests both that the monitor gets activated again if the page is
   // remapped and that `write` works on a monitored page.
