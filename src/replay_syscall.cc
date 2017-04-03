@@ -758,7 +758,6 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                off64_t offset_pages, uint64_t file_size,
                                const KernelMapping& km) {
   auto buf = t->trace_reader().read_raw_data();
-  size_t rec_num_bytes = ceil_page_size(buf.data.size());
 
   // Ensure there's a virtual file for the file that was mapped
   // during recording.
@@ -772,7 +771,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   string real_file_name;
   // Emufs file, so open it read-write in case we want to write to it through
   // the task's mem fd.
-  finish_direct_mmap(t, remote, buf.addr, rec_num_bytes, prot, flags,
+  finish_direct_mmap(t, remote, buf.addr, km.size(), prot, flags,
                      emufile->proc_path(), O_RDWR, offset_pages, real_file,
                      real_file_name);
   // Write back the snapshot of the segment that we recorded.
@@ -785,7 +784,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   // kernel-bug-workarounds when writing to tracee memory see the up-to-date
   // virtual map.
   uint64_t offset_bytes = page_size() * offset_pages;
-  t->vm()->map(t, buf.addr, buf.data.size(), prot, flags, offset_bytes,
+  t->vm()->map(t, buf.addr, km.size(), prot, flags, offset_bytes,
                real_file_name, real_file.st_dev, real_file.st_ino, nullptr, &km,
                emufile);
 

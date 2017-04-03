@@ -567,6 +567,7 @@ set(BASIC_TESTS
   mmap_ro
   mmap_self_maps_shared
   mmap_shared
+  mmap_shared_grow
   mmap_shared_multiple
   mmap_shared_subpage
   mmap_shared_write
