@@ -875,6 +875,36 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(f_owner_ex);
 
+
+  // FS_QSTAT_VERSION 1
+
+  struct fs_qfilestat {
+    uint64_t qfs_ino;       /* Inode number */
+    uint64_t qfs_nblks;     /* Number of BBs
+                               512-byte-blocks */
+    uint32_t qfs_nextents;  /* Number of extents */
+  };
+  RR_VERIFY_TYPE(fs_qfilestat);
+
+  struct fs_quota_stat {
+    int8_t   qs_version; /* Version number for
+                            future changes */
+    uint16_t qs_flags; /* XFS_QUOTA_{U,P,G}DQ_{ACCT,ENFD} */
+    int8_t   qs_pad;   /* Unused */
+    struct fs_qfilestat qs_uquota;  /* User quota storage
+                                       information */
+    struct fs_qfilestat qs_gquota;  /* Group quota storage
+                                       information */
+    uint32_t qs_incoredqs;   /* Number of dquots in core */
+    int32_t  qs_btimelimit;  /* Limit for blocks timer */
+    int32_t  qs_itimelimit;  /* Limit for inodes timer */
+    int32_t  qs_rtbtimelimit;/* Limit for RT
+                                blocks timer */
+    uint16_t qs_bwarnlimit;  /* Limit for # of warnings */
+    uint16_t qs_iwarnlimit;  /* Limit for # of warnings */
+  };
+  RR_VERIFY_TYPE(fs_quota_stat);
+
   // Define various structures that package up syscall arguments.
   // The types of their members are part of the ABI, and defining
   // them here makes their definitions more concise.

@@ -12,6 +12,7 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <linux/capability.h>
+#include <linux/dqblk_xfs.h>
 #include <linux/ethtool.h>
 #include <linux/filter.h>
 #include <linux/futex.h>
