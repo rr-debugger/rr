@@ -306,6 +306,8 @@ void notifying_abort();
  */
 void check_for_leaks();
 
+const char* tmp_dir();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

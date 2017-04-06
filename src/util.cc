@@ -971,10 +971,15 @@ void check_for_leaks() {
   }
   for (KernelMapIterator it(getpid()); !it.at_end(); ++it) {
     auto km = it.current();
-    if (km.fsname().find(RR_MAPPING_PREFIX) == 0) {
+    if (km.fsname().find(Session::rr_mapping_prefix()) == 0) {
       FATAL() << "Leaked " << km;
     }
   }
+}
+
+const char* tmp_dir() {
+  const char* dir = getenv("TMPDIR");
+  return dir ? dir : "/tmp";
 }
 
 } // namespace rr

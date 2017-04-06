@@ -15,8 +15,6 @@
 #include "TaskishUid.h"
 #include "TraceStream.h"
 
-#define RR_MAPPING_PREFIX "/tmp/rr-shared-"
-
 namespace rr {
 
 class AddressSpace;
@@ -285,6 +283,8 @@ public:
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering() {
     return syscall_seccomp_ordering_;
   }
+
+  static const char* rr_mapping_prefix();
 
 protected:
   Session();

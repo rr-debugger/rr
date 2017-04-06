@@ -450,6 +450,8 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
   remote.infallible_syscall(syscall_number_for_close(remote.arch()), remote_fd);
 }
 
+/*static*/ const char* Session::rr_mapping_prefix() { return "/rr-shared-"; }
+
 KernelMapping Session::create_shared_mmap(
     AutoRemoteSyscalls& remote, size_t size, remote_ptr<void> map_hint,
     const char* name, int tracee_prot, int tracee_flags,
@@ -457,8 +459,8 @@ KernelMapping Session::create_shared_mmap(
   static int nonce = 0;
   // Create the segment we'll share with the tracee.
   char path[PATH_MAX];
-  snprintf(path, sizeof(path) - 1, RR_MAPPING_PREFIX "%s-%d-%d", name,
-           remote.task()->real_tgid(), nonce++);
+  snprintf(path, sizeof(path) - 1, "%s%s%s-%d-%d", tmp_dir(),
+           rr_mapping_prefix(), name, remote.task()->real_tgid(), nonce++);
 
   // Let the child create the shmem block and then send the fd back to us.
   // This lets us avoid having to make the file world-writeable so that
@@ -509,9 +511,16 @@ KernelMapping Session::create_shared_mmap(
 
 static char* extract_name(char* name_buffer, size_t buffer_size) {
   // Recover the name that was originally chosen by finding the part of the
-  // name between RR_MAPPING_PREFIX and the -%d-%d at the end.
+  // name between rr_mapping_prefix and the -%d-%d at the end.
+  char* path_start = strstr(name_buffer, Session::rr_mapping_prefix());
+  assert(path_start && "Passed something to create_shared_mmap that"
+                       " wasn't a mapping shared between rr and the tracee?");
+  size_t prefix_len = path_start - name_buffer;
+  buffer_size -= prefix_len;
+  name_buffer += prefix_len;
+
   char* name_end = name_buffer + strnlen(name_buffer, buffer_size);
-  char* name_start = name_buffer + strlen(RR_MAPPING_PREFIX);
+  char* name_start = name_buffer + strlen(Session::rr_mapping_prefix());
   int hyphens_seen = 0;
   while (name_end > name_start) {
     --name_end;
