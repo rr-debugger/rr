@@ -4759,33 +4759,30 @@ static void rec_process_syscall_arch(RecordTask* t,
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       if (r.original_syscallno() == Arch::gettid) {
         // We hijacked this call to deal with /etc/gcrypt/hwf.deny.
-        char filename[] = "/tmp/rr-gcrypt-hwf-deny-XXXXXX";
-        {
-          ScopedFd fd(mkstemp(filename));
+        TempFile file = create_temporary_file("rr-gcrypt-hwf-deny-XXXXXX");
 
-          struct stat dummy;
-          if (!stat("/etc/gcrypt/hwf.deny", &dummy)) {
-            // Copy the contents into our temporary file
-            ScopedFd existing(open("/etc/gcrypt/hwf.deny", O_RDONLY));
-            copy_file(t, fd, existing);
-          }
-
-          const char disable_rdrand[] = "\nintel-rdrand\n";
-          write(fd, disable_rdrand, sizeof(disable_rdrand));
+        struct stat dummy;
+        if (!stat("/etc/gcrypt/hwf.deny", &dummy)) {
+          // Copy the contents into our temporary file
+          ScopedFd existing("/etc/gcrypt/hwf.deny", O_RDONLY);
+          copy_file(t, file.fd, existing);
         }
+
+        static const char disable_rdrand[] = "\nintel-rdrand\n";
+        write(file.fd, disable_rdrand, sizeof(disable_rdrand) - 1);
 
         // Now open the file in the child.
         int child_fd;
         {
           AutoRemoteSyscalls remote(t);
-          AutoRestoreMem child_str(remote, filename);
-          child_fd =
-              remote.infallible_syscall(syscall_number_for_open(remote.arch()),
-                                        child_str.get(), O_RDONLY);
+          AutoRestoreMem child_str(remote, file.name.c_str());
+          child_fd = remote.infallible_syscall(
+              syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
+              child_str.get(), O_RDONLY);
         }
 
         // Unlink it now that the child has opened it.
-        unlink(filename);
+        unlink(file.name.c_str());
 
         // And hand out our fake file.
         r.set_original_syscallno(Arch::open);

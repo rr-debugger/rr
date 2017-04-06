@@ -27,6 +27,8 @@
 
 #include "preload/preload_interface.h"
 
+#include "rr/rr.h"
+
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
 #include "MmappedFileMonitor.h"
@@ -686,22 +688,19 @@ static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
   }
 
   /* Open an empty file in the tracee */
-  char filename[] = PREFIX_FOR_EMPTY_MMAPED_REGIONS "XXXXXX";
-
-  {
-    /* Close our side immediately */
-    ScopedFd fd(mkstemp(filename));
-  }
+  TempFile file = create_temporary_file("rr-emptyfile-XXXXXX");
+  file.fd.close();
 
   int child_fd;
   {
-    AutoRestoreMem child_str(remote, filename);
-    child_fd = remote.infallible_syscall(syscall_number_for_open(remote.arch()),
-                                         child_str.get(), O_RDONLY);
+    AutoRestoreMem child_str(remote, file.name.c_str());
+    child_fd = remote.infallible_syscall(
+        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
+        child_str.get(), O_RDONLY);
   }
 
   /* Unlink it now that the child has opened it */
-  unlink(filename);
+  unlink(file.name.c_str());
 
   struct stat fstat = remote.task()->stat_fd(child_fd);
   string file_name = remote.task()->file_name_of_fd(child_fd);

@@ -45,12 +45,12 @@ static string create_pulseaudio_config() {
     // Assume pulseaudio isn't installed
     return "";
   }
-  char tmp[] = "/tmp/rr-pulseaudio-client-conf-XXXXXX";
-  int fd = mkstemp(tmp);
-  fcntl(fd, F_SETFD, FD_CLOEXEC);
-  unlink(tmp);
+  TempFile file = create_temporary_file("rr-pulseaudio-client-conf-XXXXXX");
+  unlink(file.name.c_str());
+  int fd = file.fd.extract();
   // The fd is deliberately leaked so that the /proc/fd link below works
   // indefinitely. But we stop it leaking into tracee processes.
+  fcntl(fd, F_SETFD, FD_CLOEXEC);
 
   stringstream procfile;
   procfile << "/proc/" << getpid() << "/fd/" << fd;

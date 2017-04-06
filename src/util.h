@@ -65,8 +65,6 @@ template <typename T> bool type_has_no_holes() {
 
 #define SHMEM_FS "/dev/shm"
 
-#define PREFIX_FOR_EMPTY_MMAPED_REGIONS "/tmp/rr-emptyfile-"
-
 enum Completion { COMPLETE, INCOMPLETE };
 
 /**
@@ -306,7 +304,22 @@ void notifying_abort();
  */
 void check_for_leaks();
 
+/**
+ * Returns $TMPDIR or "/tmp".
+ */
 const char* tmp_dir();
+
+struct TempFile {
+  std::string name;
+  ScopedFd fd;
+};
+
+/**
+ * `pattern is an mkstemp pattern minus any leading path. We'll choose the
+ * temp directory ourselves. The file is not automatically deleted, the caller
+ * must take care of that.
+ */
+TempFile create_temporary_file(const char* pattern);
 
 } // namespace rr
 

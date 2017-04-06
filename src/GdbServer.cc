@@ -1444,11 +1444,11 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 }
 
 static string create_gdb_command_file(const string& macros) {
-  char tmp[] = "/tmp/rr-gdb-commands-XXXXXX";
+  TempFile file = create_temporary_file("rr-gdb-commands-XXXXXX");
   // This fd is just leaked. That's fine since we only call this once
   // per rr invocation at the moment.
-  int fd = mkstemp(tmp);
-  unlink(tmp);
+  int fd = file.fd.extract();
+  unlink(file.name.c_str());
 
   ssize_t len = macros.size();
   int written = write(fd, macros.c_str(), len);

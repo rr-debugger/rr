@@ -982,4 +982,13 @@ const char* tmp_dir() {
   return dir ? dir : "/tmp";
 }
 
+TempFile create_temporary_file(const char* pattern) {
+  char buf[PATH_MAX];
+  snprintf(buf, sizeof(buf) - 1, "%s/%s", tmp_dir(), pattern);
+  TempFile result;
+  result.fd = mkstemp(buf);
+  result.name = buf;
+  return result;
+}
+
 } // namespace rr

@@ -32,6 +32,11 @@ public:
 
   operator int() const { return get(); }
   int get() const { return fd; }
+  int extract() {
+    int result = fd;
+    fd = -1;
+    return result;
+  }
 
   bool is_open() { return fd >= 0; }
   void close() {
