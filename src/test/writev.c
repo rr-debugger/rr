@@ -5,8 +5,8 @@
 static char data[10] = "0123456789";
 
 static void test(int use_pwritev) {
-  char name[] = "/tmp/rr-readv-XXXXXX";
-  int fd = mkstemp(name);
+  static const char name[] = "temp";
+  int fd = open(name, O_CREAT | O_EXCL | O_RDWR, 0600);
   struct {
     char ch[50];
   } * buf;

@@ -28,8 +28,8 @@ int main(int argc, char** argv) {
   /* Test that checksumming doesn't care if we have a mmap
    * that is not backed by a sufficiently long file */
   size_t page_size = sysconf(_SC_PAGESIZE);
-  char name[] = "/tmp/rr-checksum-XXXXXX";
-  int fd = mkstemp(name);
+  static const char name[] = "temp";
+  int fd = open(name, O_CREAT | O_RDWR | O_EXCL, 0600);
   /* Have it extend a couple of bytes into the second page */
   test_assert(0 == ftruncate(fd, page_size + 200));
   void* map_addr =
@@ -42,8 +42,8 @@ int main(int argc, char** argv) {
   test_assert(0 == unlink(name));
 
   /* The same again, but this time unmap the two pages in the middle */
-  char name2[] = "/tmp/rr-checksum-XXXXXX";
-  fd = mkstemp(name2);
+  static const char name2[] = "temp2";
+  fd = open(name2, O_CREAT | O_RDWR | O_EXCL, 0600);
   /* Have it extend a couple of bytes into the second page */
   test_assert(0 == ftruncate(fd, page_size + 200));
   map_addr =
@@ -54,10 +54,10 @@ int main(int argc, char** argv) {
 
   /* Now map two temporary files right next to each other to make sure they're
      not getting coralesced, causing trouble for the checksumming */
-  char name3[] = "/tmp/rr-checksum-XXXXXX";
-  fd = mkstemp(name3);
-  char name4[] = "/tmp/rr-checksum-XXXXXX";
-  int fd2 = mkstemp(name4);
+  static const char name3[] = "temp3";
+  fd = open(name3, O_CREAT | O_RDWR | O_EXCL, 0600);
+  static const char name4[] = "temp4";
+  int fd2 = open(name4, O_CREAT | O_RDWR | O_EXCL, 0600);
   ftruncate(fd, page_size);
   ftruncate(fd2, page_size);
 

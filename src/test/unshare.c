@@ -6,7 +6,7 @@
 
 extern int capset(cap_user_header_t header, const cap_user_data_t data);
 
-static char tmp_name[] = "/tmp/rr-unshare-tmp-XXXXXX";
+static char tmp_name[] = "temp";
 static uid_t uid;
 static uid_t gid;
 
@@ -245,7 +245,7 @@ int main(void) {
   uid = getuid();
   gid = getgid();
 
-  test_assert(tmp_name == mkdtemp(tmp_name));
+  test_assert(0 == mkdir(tmp_name, 0700));
 
   child = fork();
   if (!child) {

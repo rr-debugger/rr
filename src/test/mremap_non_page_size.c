@@ -26,8 +26,8 @@ static void overwrite_file(const char* path, ssize_t num_bytes) {
 
 int main(void) {
   size_t num_bytes = sysconf(_SC_PAGESIZE);
-  char file_name[] = "/tmp/rr-test-mremap-XXXXXX";
-  int fd = mkstemp(file_name);
+  static const char file_name[] = "temp";
+  int fd = open(file_name, O_CREAT | O_EXCL | O_RDWR, 0600);
   int* wpage;
   int* rpage;
   int* old_wpage;
@@ -35,6 +35,8 @@ int main(void) {
   test_assert(fd >= 0);
 
   overwrite_file(file_name, num_bytes - 4);
+
+  unlink(file_name);
 
   wpage = mmap(NULL, num_bytes - 8, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   rpage = mmap(NULL, num_bytes, PROT_READ, MAP_SHARED, fd, 0);

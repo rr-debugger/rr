@@ -17,8 +17,8 @@ int main(void) {
   int ret;
   int status;
 
-  char name[] = "/tmp/rr-clone-newflags-XXXXXX";
-  int fd = mkstemp(name);
+  static const char name[] = "temp";
+  int fd = open(name, O_CREAT | O_RDWR | O_EXCL, 0600);
 
   overwrite_file(name, 0x1000);
 
