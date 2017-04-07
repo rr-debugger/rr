@@ -453,7 +453,9 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   }
 
   char path[PATH_MAX];
-  sprintf(path, "/tmp/rr-tracee-fd-transfer-%d-%ld", t->tid, random());
+  snprintf(path, sizeof(path) - 1, "%s/rr-tracee-fd-transfer-%d-%ld", tmp_dir(),
+           t->tid, random());
+  path[sizeof(path) - 1] = 0;
 
   int listen_sock = create_bind_and_listen_socket(path);
   int child_sock = child_create_socket(*this, sc_args);
