@@ -323,6 +323,7 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
                         callregs);
 }
 
+// Restore tracee CWD. Its CWD is currently rr's root.
 template <typename Arch>
 static void restore_cwd(AutoRemoteSyscalls& remote, int cwd_fd) {
   if (cwd_fd >= 0) {
@@ -335,8 +336,9 @@ static void restore_cwd(AutoRemoteSyscalls& remote, int cwd_fd) {
     // Fake it by making a world-accessible directory, chdir the tracee into it,
     // then make it inaccessible.
     char path[PATH_MAX];
-    sprintf(path, "/tmp/rr-tracee-fd-inaccessible-dir-%d-%ld",
-            remote.task()->tid, random());
+    snprintf(path, sizeof(path) - 1, "%s/rr-tracee-fd-inaccessible-dir-%d-%ld",
+             tmp_dir(), remote.task()->tid, random());
+    path[sizeof(path) - 1] = 0;
     int ret = mkdir(path, 0777);
     ASSERT(remote.task(), ret >= 0);
     AutoRestoreMem mem(remote, path);
@@ -456,6 +458,9 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   int listen_sock = create_bind_and_listen_socket(path);
   int child_sock = child_create_socket(*this, sc_args);
   int cwd_fd;
+  // This changes the CWD of the tracee to rr's root (via RR_RESERVED_ROOT_FD).
+  // The old cwd is available in cwd_fd except in bizarre situations where the
+  // child cannot open its own CWD, in which case cwd_fd is -1.
   child_connect_socket(*this, remote_buf, sc_args, sc_args_end, child_sock,
                        path, &cwd_fd);
   // Now the child is waiting for us to accept it.
@@ -484,6 +489,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     FATAL() << "Failed to connect() in tracee; err="
             << errno_name(-child_syscall_result);
   }
+  // Restore the child's CWD to what it used to be.
   restore_cwd<Arch>(*this, cwd_fd);
 
   // Listening socket not needed anymore
