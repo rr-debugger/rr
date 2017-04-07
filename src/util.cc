@@ -985,6 +985,7 @@ const char* tmp_dir() {
 TempFile create_temporary_file(const char* pattern) {
   char buf[PATH_MAX];
   snprintf(buf, sizeof(buf) - 1, "%s/%s", tmp_dir(), pattern);
+  buf[sizeof(buf) - 1] = 0;
   TempFile result;
   result.fd = mkstemp(buf);
   result.name = buf;
