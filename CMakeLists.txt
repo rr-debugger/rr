@@ -3,6 +3,15 @@
 cmake_minimum_required(VERSION 2.8.5)
 project(rr C CXX ASM)
 
+# "Do not add flags to export symbols from executables without the ENABLE_EXPORTS target property."
+# This avoids linking executables with -rdynamic. -rdynamic has been observed
+# to cause rr_exec_stub to be linked with the dynamic linker with some
+# version(s) of clang (but linked to an incorrect file name, causing
+# exec of rr_exec_stub to fail).
+if(POLICY CMP0065)
+  cmake_policy(SET CMP0065 NEW)
+endif()
+
 # On single configuration generators, make Debug the default configuration
 if(NOT CMAKE_CONFIGURATION_TYPES)
   if(NOT CMAKE_BUILD_TYPE)
