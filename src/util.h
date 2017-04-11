@@ -63,8 +63,6 @@ template <typename T> bool type_has_no_holes() {
   return check;
 }
 
-#define SHMEM_FS "/dev/shm"
-
 enum Completion { COMPLETE, INCOMPLETE };
 
 /**

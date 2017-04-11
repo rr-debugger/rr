@@ -89,7 +89,7 @@ void EmuFile::ensure_size(uint64_t size) {
   replace_char(path_tag, '/', '\\');
 
   stringstream name;
-  name << SHMEM_FS << "/rr-emufs-" << getpid() << "-dev-" << orig_device
+  name << tmp_dir() << "/rr-emufs-" << getpid() << "-dev-" << orig_device
        << "-inode-" << orig_inode << "-" << path_tag;
   string real_name = name.str().substr(0, 255);
 
