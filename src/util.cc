@@ -978,8 +978,15 @@ void check_for_leaks() {
 }
 
 const char* tmp_dir() {
-  const char* dir = getenv("TMPDIR");
-  return dir ? dir : "/tmp";
+  const char* dir = getenv("RR_TMPDIR");
+  if (dir) {
+    return dir;
+  }
+  dir = getenv("TMPDIR");
+  if (dir) {
+    return dir;
+  }
+  return "/tmp";
 }
 
 TempFile create_temporary_file(const char* pattern) {
