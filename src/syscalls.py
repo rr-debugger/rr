@@ -1693,6 +1693,32 @@ security = InvalidSyscall(x64=185)
 epoll_ctl_old = UnsupportedSyscall(x64=214)
 epoll_wait_old = UnsupportedSyscall(x64=215)
 
+# These syscalls are subsumed under socketcall on x86.
+socket = ExecutedSyscall(x64=41)
+connect = ExecutedSyscall(x64=42)
+accept = IrregularEmulatedSyscall(x64=43)
+sendto = ExecutedSyscall(x64=44)
+recvfrom = IrregularEmulatedSyscall(x64=45)
+sendmsg = ExecutedSyscall(x64=46)
+recvmsg = IrregularEmulatedSyscall(x64=47)
+shutdown = ExecutedSyscall(x64=48)
+bind = ExecutedSyscall(x64=49)
+listen = ExecutedSyscall(x64=50)
+getsockname = IrregularEmulatedSyscall(x64=51)
+getpeername = IrregularEmulatedSyscall(x64=52)
+socketpair = IrregularEmulatedSyscall(x64=53)
+setsockopt = ExecutedSyscall(x64=54)
+getsockopt = IrregularEmulatedSyscall(x64=55)
+accept4 = IrregularEmulatedSyscall(x64=288)
+recvmmsg = IrregularEmulatedSyscall(x64=299)
+sendmmsg = IrregularEmulatedSyscall(x64=307)
+
+# These syscalls are subsumed under ipc on x86.
+msgget = ExecutedSyscall(x64=68)
+msgsnd = ExecutedSyscall(x64=69)
+msgrcv = IrregularEmulatedSyscall(x64=70)
+msgctl = IrregularEmulatedSyscall(x64=71)
+
 def _syscalls():
     for name, obj in globals().iteritems():
         if isinstance(obj, BaseSyscall):
