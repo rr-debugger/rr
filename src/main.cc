@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
-
+#error oops
 #include "main.h"
 
 #include <limits.h>
