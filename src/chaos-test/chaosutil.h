@@ -65,7 +65,9 @@ __attribute__((format(printf, 1, 2))) inline static void caught_test_failure(
   len = vsnprintf(buf, sizeof(buf) - 2, fmt, args);
   va_end(args);
   buf[len] = '\n';
-  write(STDOUT_FILENO, buf, len + 1);
+  if (len + 1 != write(STDOUT_FILENO, buf, len + 1)) {
+    abort();
+  }
   exit(77);
 }
 

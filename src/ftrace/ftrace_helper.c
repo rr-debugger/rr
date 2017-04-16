@@ -171,8 +171,8 @@ static int iterate_events(int final_fd, const char* dir, int write) {
     if (!e) {
       break;
     }
-    asprintf(&buf, "%s/%s/format", dir, e->d_name);
-    if (access(buf, F_OK) == 0) {
+    int ret = asprintf(&buf, "%s/%s/format", dir, e->d_name);
+    if (ret >= 0 && access(buf, F_OK) == 0) {
       if (write) {
         copy_trace_file(final_fd, buf, 8);
       }
@@ -423,8 +423,10 @@ static void process_control_session(void) {
 int main(int argc, const char** argv) {
   if (argc == 1) {
     char* control_path;
-    asprintf(&control_path, "%s/.local/share/rr/ftrace", getenv("HOME"));
-    execlp("sudo", "sudo", argv[0], control_path, NULL);
+    int ret = asprintf(&control_path, "%s/.local/share/rr/ftrace", getenv("HOME"));
+    if (ret >= 0) {
+      execlp("sudo", "sudo", argv[1], control_path, NULL);
+    }
     fprintf(stderr, "Can't exec 'sudo'\n");
     return 1;
   }
