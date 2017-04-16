@@ -1,5 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+#define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 
 #include "Command.h"
