@@ -576,9 +576,18 @@ struct BaseArch : public wordsize,
   struct shmid64_ds {
     ipc64_perm shm_perm;
     size_t shm_segsz;
-    uint64_t shm_atime_only_little_endian;
-    uint64_t shm_dtime_only_little_endian;
-    uint64_t shm_ctime_only_little_endian;
+    __kernel_time_t shm_atime;
+#if __BITS_PER_LONG != 64
+    unsigned long unused1;
+#endif
+    __kernel_time_t shm_dtime;
+#if __BITS_PER_LONG != 64
+    unsigned long unused2;
+#endif
+    __kernel_time_t shm_ctime;
+#if __BITS_PER_LONG != 64
+    unsigned long unused3;
+#endif
     __kernel_pid_t shm_cpid;
     __kernel_pid_t shm_lpid;
     __kernel_ulong_t shm_nattch;
