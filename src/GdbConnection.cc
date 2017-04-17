@@ -316,7 +316,7 @@ void GdbConnection::read_packet() {
     }
     checkedlen = inbuf.size();
     read_data_once();
-    if (connection_alive_) {
+    if (!connection_alive_) {
       return;
     }
   }
