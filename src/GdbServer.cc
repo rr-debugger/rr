@@ -649,6 +649,7 @@ bool GdbServer::diverter_process_debugger_requests(
     switch (req->type) {
       case DREQ_RESTART:
       case DREQ_DETACH:
+      case DREQ_RR_CMD:
         diversion_refcount = 0;
         return false;
 
