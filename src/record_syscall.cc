@@ -2740,6 +2740,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            const Registers& regs) {
   int syscallno = t->ev().Syscall().number;
 
+  if (t->regs().original_syscallno() == SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO) {
+    // rr vetoed this syscall. Don't do any pre-processing.
+    return PREVENT_SWITCH;
+  }
+
   syscall_state.syscall_entry_registers = regs;
 
   if (t->desched_rec()) {

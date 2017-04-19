@@ -681,6 +681,7 @@ set(BASIC_TESTS
   scm_rights
   seccomp
   seccomp_null
+  seccomp_sigsys_args
   seccomp_sigsys_sigtrap
   seccomp_tsync
   seccomp_veto_exec

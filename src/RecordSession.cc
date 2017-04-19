@@ -385,12 +385,16 @@ static void seccomp_trap_done(RecordTask* t) {
 static void handle_seccomp_trap(RecordTask* t,
                                 RecordSession::StepState* step_state,
                                 uint16_t seccomp_data) {
-  int syscallno = t->regs().original_syscallno();
-
   // The architecture may be wrong, but that's ok, because an actual syscall
   // entry did happen, so the registers are already updated according to the
   // architecture of the system call.
   t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
+
+  Registers r = t->regs();
+  int syscallno = r.original_syscallno();
+  // Cause kernel processing to skip the syscall
+  r.set_original_syscallno(SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO);
+  t->set_regs(r);
 
   if (t->is_in_untraced_syscall()) {
     ASSERT(t, !t->delay_syscallbuf_reset);
@@ -414,8 +418,6 @@ static void handle_seccomp_trap(RecordTask* t,
   if (t->is_in_untraced_syscall()) {
     t->record_current_event();
   }
-
-  Registers r = t->regs();
 
   // Use NativeArch here because different versions of system headers
   // have inconsistent field naming.
@@ -449,8 +451,6 @@ static void handle_seccomp_trap(RecordTask* t,
   // Tests show that the current registers are preserved (on x86, eax/rax
   // retains the syscall number).
   r.set_syscallno(syscallno);
-  // Cause kernel processing to skip the syscall
-  r.set_original_syscallno(SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO);
   t->set_regs(r);
 
   if (t->is_in_untraced_syscall()) {
@@ -475,18 +475,19 @@ static void handle_seccomp_trap(RecordTask* t,
 static void handle_seccomp_errno(RecordTask* t,
                                  RecordSession::StepState* step_state,
                                  uint16_t seccomp_data) {
-  int syscallno = t->regs().original_syscallno();
-
   t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
+
+  Registers r = t->regs();
+  int syscallno = r.original_syscallno();
+  // Cause kernel processing to skip the syscall
+  r.set_original_syscallno(SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO);
+  t->set_regs(r);
 
   if (!t->is_in_untraced_syscall()) {
     t->push_syscall_event(syscallno);
     note_entering_syscall(t);
   }
 
-  Registers r = t->regs();
-  // Cause kernel processing to skip the syscall
-  r.set_original_syscallno(SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO);
   r.set_syscall_result(-seccomp_data);
   t->set_regs(r);
   // Don't continue yet. At the next iteration of record_step, if we
