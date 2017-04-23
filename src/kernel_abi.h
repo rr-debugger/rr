@@ -1424,25 +1424,25 @@ struct BaseArch : public wordsize,
   RR_VERIFY_TYPE(ifbond);
 
   typedef struct timex {
-    int modes;
-    long offset;
-    long freq;
-    long maxerror;
-    long esterror;
+    unsigned int modes;
+    signed_long offset;
+    signed_long freq;
+    signed_long maxerror;
+    signed_long esterror;
     int status;
-    long constant;
-    long precision;
-    long tolerance;
+    signed_long constant;
+    signed_long precision;
+    signed_long tolerance;
     timeval time;
-    long tick;
-    long ppsfreq;
-    long jitter;
+    signed_long tick;
+    signed_long ppsfreq;
+    signed_long jitter;
     int shift;
-    long stabil;
-    long jitcnt;
-    long calcnt;
-    long errcnt;
-    long stbcnt;
+    signed_long stabil;
+    signed_long jitcnt;
+    signed_long calcnt;
+    signed_long errcnt;
+    signed_long stbcnt;
     int tai;
 
     // Further padding bytes to allow for future expansion.
