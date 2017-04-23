@@ -42,6 +42,7 @@
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/times.h>
+#include <sys/timex.h>
 #include <sys/un.h>
 #include <sys/user.h>
 #include <sys/utsname.h>

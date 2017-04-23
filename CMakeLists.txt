@@ -464,6 +464,7 @@ set(BASIC_TESTS
   64bit_child
   _llseek
   accept
+  adjtimex
   alarm
   alarm2
   alsa_ioctl

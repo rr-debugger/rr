@@ -1422,6 +1422,43 @@ struct BaseArch : public wordsize,
     int32_t miimon;
   } ifbond;
   RR_VERIFY_TYPE(ifbond);
+
+  typedef struct timex {
+    unsigned int modes;
+    __kernel_long_t offset;
+    __kernel_long_t freq;
+    __kernel_long_t maxerror;
+    __kernel_long_t esterror;
+    int status;
+    __kernel_long_t constant;
+    __kernel_long_t precision;
+    __kernel_long_t tolerance;
+    timeval time;
+    __kernel_long_t tick;
+    __kernel_long_t ppsfreq;
+    __kernel_long_t jitter;
+    int shift;
+    __kernel_long_t stabil;
+    __kernel_long_t jitcnt;
+    __kernel_long_t calcnt;
+    __kernel_long_t errcnt;
+    __kernel_long_t stbcnt;
+    int tai;
+
+    // Further padding bytes to allow for future expansion.
+    int : 32;
+    int : 32;
+    int : 32;
+    int : 32;
+    int : 32;
+    int : 32;
+    int : 32;
+    int : 32;
+    int : 32;
+    int : 32;
+    int : 32;
+  } timex;
+  RR_VERIFY_TYPE(timex);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
