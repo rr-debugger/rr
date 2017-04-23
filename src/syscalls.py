@@ -639,7 +639,12 @@ setdomainname = EmulatedSyscall(x86=121, x64=171)
 uname = EmulatedSyscall(x86=122, x64=63, arg1="typename Arch::utsname")
 
 modify_ldt = IrregularEmulatedSyscall(x86=123, x64=154)
-adjtimex = UnsupportedSyscall(x86=124, x64=159)
+
+#  int adjtimex(struct timex *buf);
+#
+# adjtimex() takes a pointer to a timex structure, reads it, and returns
+# the same structure updated with the current kernel values.
+adjtimex = EmulatedSyscall(x86=124, x64=159, arg1="typename Arch::timex")
 
 #  int mprotect(const void *addr, size_t len, int prot)
 #
