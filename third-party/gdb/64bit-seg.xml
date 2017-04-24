@@ -1,0 +1,5 @@
+<!DOCTYPE feature SYSTEM "gdb-target.dtd">
+<feature name="org.gnu.gdb.i386.seg">
+  <reg name="fs_base" bitsize="64" type="data_ptr"/>
+  <reg name="gs_base" bitsize="64" type="data_ptr"/>
+</feature>

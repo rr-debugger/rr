@@ -1,6 +1,12 @@
-These files are taken verbatim from binutils-gdb/gdb/features, git
-tag gdb-7.7-release. Using the latest gdb files we get errors
-with gdb 10.1 and probably earlier versions, which require flags to have
-both "start" and "end" attributes.
+These files, with the exception of 64bit-seg.xml, are taken from
+binutils-gdb/gdb/features, git tag gdb-7.7-release, with the
+following change:
+
+* A reference to 64bit-seg.xml was added to amd64-avx-linux.xml
+and amd64-linux.xml
+
+Using the latest gdb files we get errors with gdb 10.1 and probably
+earlier versions, which require flags to have both "start" and
+"end" attributes.
 
 These files all have the same BSD-ish license (thanks FSF!).

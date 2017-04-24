@@ -368,6 +368,7 @@ set(RR_GDB_RESOURCES
   64bit-avx.xml
   64bit-core.xml
   64bit-linux.xml
+  64bit-seg.xml
   64bit-sse.xml
   amd64-avx-linux.xml
   amd64-linux.xml
