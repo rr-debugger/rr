@@ -14,4 +14,5 @@
   <xi:include href="64bit-core.xml"/>
   <xi:include href="64bit-sse.xml"/>
   <xi:include href="64bit-linux.xml"/>
+  <xi:include href="64bit-seg.xml"/>
 </target>

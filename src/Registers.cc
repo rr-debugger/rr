@@ -81,7 +81,6 @@ template <> struct RegisterInfo<rr::X86Arch> {
   static const size_t num_registers = DREG_NUM_LINUX_I386;
   typedef RegisterTable<num_registers> Table;
   static Table registers;
-  static RegisterValue non_gdb_registers[0];
 };
 
 template <> struct RegisterInfo<rr::X64Arch> {
@@ -91,7 +90,6 @@ template <> struct RegisterInfo<rr::X64Arch> {
   static const size_t num_registers = DREG_NUM_LINUX_X86_64;
   typedef RegisterTable<num_registers> Table;
   static Table registers;
-  static RegisterValue non_gdb_registers[2];
 };
 
 #define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)                       \
@@ -154,8 +152,6 @@ RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
   RV_X86_WITH_MASK(ORIG_EAX, orig_eax, 0),
 };
 
-RegisterValue RegisterInfo<rr::X86Arch>::non_gdb_registers[0] = {};
-
 RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
   RV_X64(RAX, rax), RV_X64(RCX, rcx), RV_X64(RDX, rdx), RV_X64(RBX, rbx),
   RV_X64_WITH_MASK(RSP, rsp, 0), RV_X64(RBP, rbp), RV_X64(RSI, rsi),
@@ -169,13 +165,8 @@ RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
   // The comparison for this is handled specially
   // elsewhere.
   RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0),
-};
-
-RegisterValue RegisterInfo<rr::X64Arch>::non_gdb_registers[2] = {
-  { "fs_base", offsetof(rr::X64Arch::user_regs_struct, fs_base), 8,
-    RegisterValue::mask_for_nbytes(8) },
-  { "gs_base", offsetof(rr::X64Arch::user_regs_struct, gs_base), 8,
-    RegisterValue::mask_for_nbytes(8) }
+  RV_X64(FS_BASE, fs_base),
+  RV_X64(GS_BASE, gs_base),
 };
 
 #undef RV_X64
@@ -250,22 +241,6 @@ void Registers::print_register_file_for_trace_arch(
       continue;
     }
 
-    fprintf(f, " ");
-    const char* name = (style == Annotated ? rv.name : nullptr);
-
-    switch (rv.nbytes) {
-      case 8:
-        print_single_register<8>(f, name, rv.pointer_into(user_regs), formats);
-        break;
-      case 4:
-        print_single_register<4>(f, name, rv.pointer_into(user_regs), formats);
-        break;
-      default:
-        assert(0 && "bad register size");
-    }
-  }
-
-  for (auto& rv : RegisterInfo<Arch>::non_gdb_registers) {
     fprintf(f, " ");
     const char* name = (style == Annotated ? rv.name : nullptr);
 
