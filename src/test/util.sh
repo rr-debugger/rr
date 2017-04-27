@@ -147,8 +147,10 @@ nonce=
 # Set up the environment and working directory.
 TESTDIR="${SRCDIR}/src/test"
 
+# Make rr treat temp files as durable. This saves copying all test
+# binaries into the trace.
+export RR_TRUST_TEMP_FILES=1
 export PATH="${OBJDIR}/bin:${PATH}"
-export LD_LIBRARY_PATH="${OBJDIR}/lib:/usr/local/lib:${LD_LIBRARY_PATH}"
 
 which rr >/dev/null 2>&1
 if [[ "$?" != "0" ]]; then

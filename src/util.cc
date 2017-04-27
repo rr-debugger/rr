@@ -560,6 +560,9 @@ static bool has_fs_name(const string& path) {
 }
 
 static bool is_tmp_file(const string& path) {
+  if (getenv("RR_TRUST_TEMP_FILES")) {
+    return false;
+  }
   struct statfs sfs;
   statfs(path.c_str(), &sfs);
   return (TMPFS_MAGIC == sfs.f_type
