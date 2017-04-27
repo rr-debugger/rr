@@ -581,7 +581,8 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       ASSERT(this, errno == EINVAL);
     } else {
       LOG(debug) << "Set signal mask to block all signals (bar "
-                 << "SYSCALLBUF_DESCHED_SIGNAL) while we have a stashed signal";
+                 << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
+                 << " have a stashed signal";
     }
   }
 
