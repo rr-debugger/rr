@@ -423,7 +423,8 @@ static void process_control_session(void) {
 int main(int argc, const char** argv) {
   if (argc == 1) {
     char* control_path;
-    int ret = asprintf(&control_path, "%s/.local/share/rr/ftrace", getenv("HOME"));
+    int ret =
+        asprintf(&control_path, "%s/.local/share/rr/ftrace", getenv("HOME"));
     if (ret >= 0) {
       execlp("sudo", "sudo", argv[1], control_path, NULL);
     }

@@ -954,6 +954,8 @@ ScopedFd open_socket(const char* address, unsigned short* port,
 }
 
 void notifying_abort() {
+  flush_log_buffer();
+
   char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
   if (test_monitor_pid) {
     pid_t pid = atoi(test_monitor_pid);

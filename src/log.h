@@ -36,6 +36,8 @@ std::ostream& operator<<(std::ostream& stream,
 
 bool is_logging_enabled(LogLevel level, const char* file);
 
+void flush_log_buffer();
+
 struct NewlineTerminatingOstream {
   NewlineTerminatingOstream(LogLevel level, const char* file, int line,
                             const char* function);

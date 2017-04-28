@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 
+#include <deque>
 #include <memory>
 #include <sstream>
 #include <unordered_map>
@@ -74,13 +75,15 @@ static bool log_globals_initialized = false;
 static LogLevel default_level = LOG_error;
 
 // These need to be available to other static constructors, so we need to be
-// sure that they const constant-initialized. Unfortunately some versions of C++
-// libraries have a bug that causes them not to be. _CONSTANT_STATIC should
+// sure that they can be constant-initialized. Unfortunately some versions of
+// C++ libraries have a bug that causes them not to be. _CONSTANT_STATIC should
 // turn this into a compile error rather than a runtime crash for compilers
 // that support the attribute.
 _CONSTANT_STATIC unique_ptr<unordered_map<string, LogLevel>> level_map;
 _CONSTANT_STATIC unique_ptr<unordered_map<const char*, LogModule>> log_modules;
 _CONSTANT_STATIC std::unique_ptr<stringstream> logging_stream;
+_CONSTANT_STATIC deque<char>* log_buffer;
+size_t log_buffer_size;
 
 static void init_log_globals() {
   if (log_globals_initialized) {
@@ -92,6 +95,15 @@ static void init_log_globals() {
   log_modules = unique_ptr<unordered_map<const char*, LogModule>>(
       new unordered_map<const char*, LogModule>());
   logging_stream = unique_ptr<stringstream>(new stringstream());
+
+  const char* buffer = getenv("RR_LOG_BUFFER");
+  if (buffer) {
+    log_buffer_size = atoi(buffer);
+    if (log_buffer_size) {
+      log_buffer = new deque<char>();
+      atexit(flush_log_buffer);
+    }
+  }
 
   const char* log_env = "RR_LOG";
   if (running_under_rr()) {
@@ -210,9 +222,38 @@ ostream& log_stream() {
 }
 
 static void flush_log_stream() {
-  cerr << logging_stream->str();
-  ftrace::write(logging_stream->str());
+  string s = logging_stream->str();
+  ftrace::write(s);
+  if (log_buffer) {
+    size_t len = s.size();
+    if (len >= log_buffer_size) {
+      log_buffer->clear();
+      log_buffer->insert(log_buffer->end(), s.c_str() + (len - log_buffer_size),
+                         s.c_str() + len);
+    } else {
+      if (log_buffer->size() + len > log_buffer_size) {
+        log_buffer->erase(log_buffer->begin(),
+                          log_buffer->begin() +
+                              (log_buffer->size() + len - log_buffer_size));
+      }
+      log_buffer->insert(log_buffer->end(), s.c_str(), s.c_str() + len);
+    }
+  } else {
+    cerr << s;
+  }
+
   logging_stream->str(string());
+}
+
+void flush_log_buffer() {
+  if (log_buffer) {
+    for (char c : *log_buffer) {
+      // We could accumulate in a string to speed things up, but this could get
+      // called in low-memory situations so be safe.
+      cerr << c;
+    }
+    log_buffer->clear();
+  }
 }
 
 template <typename T>
@@ -291,6 +332,8 @@ static void emergency_debug(Task* t) {
     FATAL()
         << "(session doesn't look interactive, aborting emergency debugging)";
   }
+
+  flush_log_buffer();
 
   GdbServer::emergency_debug(t);
   FATAL() << "Can't resume execution from invalid state";

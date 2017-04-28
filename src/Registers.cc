@@ -164,8 +164,7 @@ RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
   RV_X64(64_FS, fs), RV_X64(64_GS, gs),
   // The comparison for this is handled specially
   // elsewhere.
-  RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0),
-  RV_X64(FS_BASE, fs_base),
+  RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0), RV_X64(FS_BASE, fs_base),
   RV_X64(GS_BASE, gs_base),
 };
 
