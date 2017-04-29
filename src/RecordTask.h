@@ -40,10 +40,6 @@ enum EmulatedStopType {
  */
 enum AddSysgoodFlag { IGNORE_SYSGOOD, USE_SYSGOOD };
 
-struct SyscallbufSyscallEntryPoints {
-  remote_code_ptr ptrs[3];
-};
-
 struct SyscallbufCodeLayout {
   remote_code_ptr syscallbuf_code_start;
   remote_code_ptr syscallbuf_code_end;
@@ -73,7 +69,7 @@ public:
                                      int /*sig*/);
   virtual void did_wait();
 
-  SyscallbufSyscallEntryPoints syscallbuf_syscall_entry_points();
+  std::vector<remote_code_ptr> syscallbuf_syscall_entry_breakpoints();
   bool is_at_syscallbuf_syscall_entry_breakpoint();
   bool is_at_syscallbuf_final_instruction_breakpoint();
 
@@ -653,7 +649,8 @@ public:
   // next opportunity.
   std::deque<StashedSignal> stashed_signals;
   bool stashed_signals_blocking_more_signals;
-  bool break_at_syscallbuf_syscalls;
+  bool break_at_syscallbuf_traced_syscalls;
+  bool break_at_syscallbuf_untraced_syscalls;
   bool break_at_syscallbuf_final_instruction;
 };
 

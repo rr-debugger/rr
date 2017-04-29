@@ -183,7 +183,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       termination_signal(0),
       tsc_mode(PR_TSC_ENABLE),
       stashed_signals_blocking_more_signals(false),
-      break_at_syscallbuf_syscalls(false),
+      break_at_syscallbuf_traced_syscalls(false),
+      break_at_syscallbuf_untraced_syscalls(false),
       break_at_syscallbuf_final_instruction(false) {
   push_event(Event(EV_SENTINEL, NO_EXEC_INFO, RR_NATIVE_ARCH));
   if (session.tasks().empty()) {
@@ -523,12 +524,8 @@ void RecordTask::on_syscall_exit(int syscallno, SupportedArch arch,
 }
 
 bool RecordTask::is_at_syscallbuf_syscall_entry_breakpoint() {
-  if (!break_at_syscallbuf_syscalls) {
-    return false;
-  }
-  auto entry_points = syscallbuf_syscall_entry_points();
   auto i = ip().decrement_by_bkpt_insn_length(arch());
-  for (auto p : entry_points.ptrs) {
+  for (auto p : syscallbuf_syscall_entry_breakpoints()) {
     if (i == p) {
       return true;
     }
@@ -590,7 +587,7 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
   // need to set breakpoints and in fact they might interfere with rr
   // processing.
   if (ticks_request != RESUME_NO_TICKS) {
-    if (break_at_syscallbuf_syscalls) {
+    if (!at_may_restart_syscall()) {
       // If the tracee has SIGTRAP blocked or ignored and we hit one of these
       // breakpoints, the kernel will automatically unblock the signal and set
       // its disposition to DFL, effects which we ought to undo to keep these
@@ -606,11 +603,8 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
       // of breaking and delivering signals. The syscallbuf code doesn't
       // (and must not) perform more than one blocking syscall for any given
       // buffered syscall.
-      if (!at_may_restart_syscall()) {
-        auto entry_points = syscallbuf_syscall_entry_points();
-        for (auto p : entry_points.ptrs) {
-          vm()->add_breakpoint(p, BKPT_INTERNAL);
-        }
+      for (auto p : syscallbuf_syscall_entry_breakpoints()) {
+        vm()->add_breakpoint(p, BKPT_INTERNAL);
       }
     }
     if (break_at_syscallbuf_final_instruction) {
@@ -621,26 +615,27 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
   }
 }
 
-SyscallbufSyscallEntryPoints RecordTask::syscallbuf_syscall_entry_points() {
-  SyscallbufSyscallEntryPoints result;
-  result.ptrs[0] = AddressSpace::rr_page_syscall_entry_point(
-      AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
-      AddressSpace::RECORDING_ONLY, arch());
-  result.ptrs[1] = AddressSpace::rr_page_syscall_entry_point(
-      AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
-      AddressSpace::RECORDING_AND_REPLAY, arch());
-  result.ptrs[2] = AddressSpace::rr_page_syscall_entry_point(
-      AddressSpace::TRACED, AddressSpace::UNPRIVILEGED,
-      AddressSpace::RECORDING_AND_REPLAY, arch());
+vector<remote_code_ptr> RecordTask::syscallbuf_syscall_entry_breakpoints() {
+  vector<remote_code_ptr> result;
+  if (break_at_syscallbuf_untraced_syscalls) {
+    result.push_back(AddressSpace::rr_page_syscall_entry_point(
+        AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
+        AddressSpace::RECORDING_ONLY, arch()));
+    result.push_back(AddressSpace::rr_page_syscall_entry_point(
+        AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
+        AddressSpace::RECORDING_AND_REPLAY, arch()));
+  }
+  if (break_at_syscallbuf_traced_syscalls) {
+    result.push_back(AddressSpace::rr_page_syscall_entry_point(
+        AddressSpace::TRACED, AddressSpace::UNPRIVILEGED,
+        AddressSpace::RECORDING_AND_REPLAY, arch()));
+  }
   return result;
 }
 
 void RecordTask::did_wait() {
-  if (break_at_syscallbuf_syscalls) {
-    auto entry_points = syscallbuf_syscall_entry_points();
-    for (auto p : entry_points.ptrs) {
-      vm()->remove_breakpoint(p, BKPT_INTERNAL);
-    }
+  for (auto p : syscallbuf_syscall_entry_breakpoints()) {
+    vm()->remove_breakpoint(p, BKPT_INTERNAL);
   }
   if (break_at_syscallbuf_final_instruction) {
     vm()->remove_breakpoint(
@@ -1202,8 +1197,10 @@ void RecordTask::stash_sig() {
   wait_status = WaitStatus();
   // Once we've stashed a signal, stop at the next traced/untraced syscall to
   // check whether we need to process the signal before it runs.
-  stashed_signals_blocking_more_signals = true;
-  break_at_syscallbuf_final_instruction = break_at_syscallbuf_syscalls = true;
+  stashed_signals_blocking_more_signals =
+      break_at_syscallbuf_final_instruction =
+          break_at_syscallbuf_traced_syscalls =
+              break_at_syscallbuf_untraced_syscalls = true;
 }
 
 void RecordTask::stash_synthetic_sig(const siginfo_t& si,
@@ -1225,8 +1222,10 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si,
 
   stashed_signals.insert(stashed_signals.begin(),
                          StashedSignal(si, deterministic));
-  stashed_signals_blocking_more_signals = true;
-  break_at_syscallbuf_final_instruction = break_at_syscallbuf_syscalls = true;
+  stashed_signals_blocking_more_signals =
+      break_at_syscallbuf_final_instruction =
+          break_at_syscallbuf_traced_syscalls =
+              break_at_syscallbuf_untraced_syscalls = true;
 }
 
 bool RecordTask::has_stashed_sig(int sig) const {
@@ -1258,8 +1257,9 @@ void RecordTask::pop_stash_sig(const StashedSignal* stashed) {
 }
 
 void RecordTask::stashed_signal_processed() {
-  break_at_syscallbuf_final_instruction = break_at_syscallbuf_syscalls =
-      stashed_signals_blocking_more_signals = has_stashed_sig();
+  break_at_syscallbuf_final_instruction = break_at_syscallbuf_traced_syscalls =
+      break_at_syscallbuf_untraced_syscalls =
+          stashed_signals_blocking_more_signals = has_stashed_sig();
 }
 
 const RecordTask::StashedSignal* RecordTask::peek_stashed_sig_to_deliver()

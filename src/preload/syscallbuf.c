@@ -37,6 +37,13 @@
  * o No rr headers (other than seccomp-bpf.h and rr.h) may be included
  * o All syscalls invoked by this code must be called directly, not
  *   through libc wrappers (which this file may itself indirectly override)
+ *
+ * The wrapper functions are named sys_xxxx. Each wrapper normally makes one
+ * untraced syscall or one traced syscall of the same type, but there are
+ * exceptions. For example sys_read can make a number of untraced syscalls
+ * instead of a single untraced syscall. A critical rule is that any traced
+ * or MAY_BLOCK untraced syscall *must* be the last syscall performed by the
+ * wrapper.
  */
 
 #include <errno.h>

@@ -287,9 +287,12 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
     return true;
   }
 
-  // We can proceed with the untraced syscall.
-  LOG(debug) << "Disabling breakpoints at traced/untraced syscalls";
-  t->break_at_syscallbuf_syscalls = false;
+  // We can proceed with the untraced syscall. Either it will complete and
+  // execution will continue until we reach some point where we can deliver our
+  // signal, or it will block at which point we'll be able to deliver our
+  // signal.
+  LOG(debug) << "Disabling breakpoints at untraced syscalls";
+  t->break_at_syscallbuf_untraced_syscalls = false;
   return true;
 }
 

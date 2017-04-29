@@ -889,6 +889,7 @@ set(TESTS_WITH_PROGRAM
   string_instructions_replay
   string_instructions_watch
   syscallbuf_fd_disabling
+  syscallbuf_signal_blocking_read
   target_fork
   target_process
   term_nonmain
