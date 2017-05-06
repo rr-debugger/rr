@@ -96,13 +96,8 @@ void check_performance_settings() {
 
 void print_version(FILE* out) { fprintf(out, "rr version %s\n", RR_VERSION); }
 
-void print_usage(FILE* out) {
-  print_version(out);
-  fputs("Usage:\n", out);
-  Command::print_help_all(out);
-  fputs(
-      "\n"
-      "Common options:\n"
+void print_global_options(FILE* out) {
+  fputs("Common options:\n"
       "  -A, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
       "                             with microarch NAME even if runtime "
       "detection\n"
@@ -150,6 +145,14 @@ void print_usage(FILE* out) {
       "\n"
       "Use RR_LOG to control logging; e.g. RR_LOG=all:warn,Task:debug\n",
       out);
+}
+
+void print_usage(FILE* out) {
+  print_version(out);
+  fputs("Usage:\n", out);
+  Command::print_help_all(out);
+  fputc('\n', out);
+  print_global_options(out);
 }
 
 static void init_random() {

@@ -74,6 +74,7 @@ void Command::print_help_all(FILE* out) {
 void Command::print_help(FILE* out) {
   if (help) {
     fputs(help, out);
+    print_global_options(out);
   } else {
     print_usage(out);
   }
