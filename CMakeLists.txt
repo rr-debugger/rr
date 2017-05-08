@@ -746,6 +746,7 @@ set(BASIC_TESTS
   symlink
   sync
   syscall_bp
+  syscall_in_writable_mem
   syscallbuf_signal_reset
   syscallbuf_signal_blocking
   syscallbuf_sigstop
