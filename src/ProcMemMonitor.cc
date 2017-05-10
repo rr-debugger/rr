@@ -30,10 +30,6 @@ ProcMemMonitor::ProcMemMonitor(Task* t, const string& pathname) {
   }
 }
 
-bool ProcMemMonitor::needs_offset(Task* t, bool for_write) {
-  return for_write && t->session().is_recording();
-}
-
 void ProcMemMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                LazyOffset& lazy_offset) {
   if (t->session().is_replaying() || ranges.empty()) {

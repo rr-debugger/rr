@@ -22,10 +22,6 @@ public:
   // unpredictable from our perspective.
   virtual Switchable will_write(Task*) override { return PREVENT_SWITCH; }
 
-  /**
-   * During replay, copy writes to tracee |tid|'s memory.
-   */
-  virtual bool needs_offset(Task* t, bool);
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
                          LazyOffset& lazy_offset) override;
 

@@ -26,7 +26,6 @@ public:
   void filter_getdents(int fd, RecordTask* t);
   bool is_rr_fd(int fd);
   Switchable will_write(Task* t, int fd);
-  bool needs_offset(Task* t, int fd, bool for_write);
   void did_write(Task* t, int fd, const std::vector<FileMonitor::Range>& ranges,
                  FileMonitor::LazyOffset& offset);
   void did_dup(int from, int to);
