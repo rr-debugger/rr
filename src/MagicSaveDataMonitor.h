@@ -14,7 +14,7 @@ class MagicSaveDataMonitor : public FileMonitor {
 public:
   MagicSaveDataMonitor() {}
 
-  virtual Type type() { return MagicSaveData; }
+  virtual Type type() override { return MagicSaveData; }
 
   /**
    * During recording, record the written data.
@@ -22,7 +22,7 @@ public:
    */
   virtual bool needs_offset(Task*, bool) { return false; }
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
-                         LazyOffset& offset);
+                         LazyOffset& offset) override;
 };
 
 } // namespace rr

@@ -51,7 +51,7 @@ public:
   DiversionResult diversion_step(Task* t, RunCommand command = RUN_CONTINUE,
                                  int signal_to_deliver = 0);
 
-  virtual DiversionSession* as_diversion() { return this; }
+  virtual DiversionSession* as_diversion() override { return this; }
 
 private:
   friend class ReplaySession;

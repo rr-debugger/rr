@@ -20,8 +20,8 @@ namespace rr {
 class PreserveFileMonitor : public FileMonitor {
 public:
   PreserveFileMonitor() {}
-  virtual Type type() { return Preserve; }
-  virtual bool is_rr_fd() { return true; }
+  virtual Type type() override { return Preserve; }
+  virtual bool is_rr_fd() override { return true; }
 };
 
 } // namespace rr

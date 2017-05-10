@@ -28,7 +28,7 @@ namespace rr {
  */
 class RerunCommand : public Command {
 public:
-  virtual int run(vector<string>& args);
+  virtual int run(vector<string>& args) override;
 
 protected:
   RerunCommand(const char* name, const char* help) : Command(name, help) {}

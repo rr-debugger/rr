@@ -97,7 +97,8 @@ void check_performance_settings() {
 void print_version(FILE* out) { fprintf(out, "rr version %s\n", RR_VERSION); }
 
 void print_global_options(FILE* out) {
-  fputs("Common options:\n"
+  fputs(
+      "Common options:\n"
       "  -A, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
       "                             with microarch NAME even if runtime "
       "detection\n"

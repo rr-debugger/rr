@@ -9,7 +9,7 @@ namespace rr {
 
 class HelpCommand : public Command {
 public:
-  virtual int run(std::vector<std::string>& args);
+  virtual int run(std::vector<std::string>& args) override;
 
 protected:
   HelpCommand(const char* name, const char* help) : Command(name, help) {}

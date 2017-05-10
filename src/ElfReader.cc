@@ -26,8 +26,9 @@ protected:
 template <typename Arch> class ElfReaderImpl : public ElfReaderImplBase {
 public:
   ElfReaderImpl(ElfReader& r);
-  virtual SymbolTable read_symbols(const char* symtab, const char* strtab);
-  virtual DynamicSection read_dynamic();
+  virtual SymbolTable read_symbols(const char* symtab,
+                                   const char* strtab) override;
+  virtual DynamicSection read_dynamic() override;
 
 private:
   const typename Arch::ElfShdr* find_section(const char* n);

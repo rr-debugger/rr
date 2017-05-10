@@ -9,7 +9,7 @@ namespace rr {
 
 class RecordCommand : public Command {
 public:
-  virtual int run(std::vector<std::string>& args);
+  virtual int run(std::vector<std::string>& args) override;
 
   static RecordCommand* get() { return &singleton; }
 

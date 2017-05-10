@@ -16,18 +16,18 @@ class ProcMemMonitor : public FileMonitor {
 public:
   ProcMemMonitor(Task* t, const std::string& pathname);
 
-  virtual Type type() { return ProcMem; }
+  virtual Type type() override { return ProcMem; }
 
   // We need to PREVENT_SWITCH, since the timing of the write is otherwise
   // unpredictable from our perspective.
-  virtual Switchable will_write(Task*) { return PREVENT_SWITCH; }
+  virtual Switchable will_write(Task*) override { return PREVENT_SWITCH; }
 
   /**
    * During replay, copy writes to tracee |tid|'s memory.
    */
   virtual bool needs_offset(Task* t, bool);
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
-                         LazyOffset& lazy_offset);
+                         LazyOffset& lazy_offset) override;
 
 private:
   // 0 if this doesn't object doesn't refer to a tracee's proc-mem.

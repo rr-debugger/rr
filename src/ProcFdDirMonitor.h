@@ -16,9 +16,9 @@ class ProcFdDirMonitor : public FileMonitor {
 public:
   ProcFdDirMonitor(Task* t, const std::string& pathname);
 
-  virtual Type type() { return ProcFd; }
+  virtual Type type() override { return ProcFd; }
 
-  virtual void filter_getdents(RecordTask* t);
+  virtual void filter_getdents(RecordTask* t) override;
 
 private:
   // 0 if this doesn't object doesn't refer to a tracee's proc-mem.

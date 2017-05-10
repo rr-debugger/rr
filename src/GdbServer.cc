@@ -253,7 +253,7 @@ public:
       expressions.push_back(GdbExpression(b.data(), b.size()));
     }
   }
-  virtual bool evaluate(Task* t) const {
+  virtual bool evaluate(Task* t) const override {
     for (auto& e : expressions) {
       GdbExpression::Value v;
       // Break if evaluation fails or the result is nonzero

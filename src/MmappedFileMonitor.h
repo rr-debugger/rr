@@ -19,12 +19,12 @@ public:
   MmappedFileMonitor(Task* t, int fd);
   MmappedFileMonitor(Task* t, EmuFile::shr_ptr f);
 
-  virtual Type type() { return Mmapped; }
+  virtual Type type() override { return Mmapped; }
   void revive() { dead_ = false; }
   // If this write could potentially affect memory we need to PREVENT_SWITCH,
   // since the timing of the write is otherwise unpredictable from our
   // perspective.
-  virtual Switchable will_write(Task*) {
+  virtual Switchable will_write(Task*) override {
     return dead_ ? ALLOW_SWITCH : PREVENT_SWITCH;
   }
 
@@ -32,7 +32,7 @@ public:
    * During recording, note writes to mapped segments.
    */
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
-                         LazyOffset& offset);
+                         LazyOffset& offset) override;
 
 private:
   // Whether this monitor is still actively monitoring

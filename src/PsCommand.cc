@@ -13,7 +13,7 @@ namespace rr {
 
 class PsCommand : public Command {
 public:
-  virtual int run(vector<string>& args);
+  virtual int run(vector<string>& args) override;
 
 protected:
   PsCommand(const char* name, const char* help) : Command(name, help) {}

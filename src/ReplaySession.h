@@ -145,7 +145,7 @@ public:
   ~ReplaySession();
 
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
-                         SupportedArch a);
+                         SupportedArch a) override;
 
   using Session::clone;
   /**
@@ -258,7 +258,7 @@ public:
     return replay_step(StepConstraints(command));
   }
 
-  virtual ReplaySession* as_replay() { return this; }
+  virtual ReplaySession* as_replay() override { return this; }
 
   /**
    * Return true if |sig| is a signal that may be generated during

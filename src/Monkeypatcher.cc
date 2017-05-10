@@ -428,7 +428,7 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
 class VdsoReader : public ElfReader {
 public:
   VdsoReader(RecordTask* t) : ElfReader(t->arch()), t(t) {}
-  virtual bool read(size_t offset, size_t size, void* buf) {
+  virtual bool read(size_t offset, size_t size, void* buf) override {
     bool ok = true;
     t->read_bytes_helper(t->vm()->vdso().start() + offset, size, buf, &ok);
     return ok;

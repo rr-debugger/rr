@@ -87,7 +87,9 @@ public:
   }
 
 protected:
-  virtual void destroy_property(void* v) const { delete static_cast<T*>(v); }
+  virtual void destroy_property(void* v) const override {
+    delete static_cast<T*>(v);
+  }
 };
 
 } // namespace rr

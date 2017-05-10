@@ -62,7 +62,7 @@ public:
       : GdbCommand(cmd_name), invoker(invoker) {}
 
   virtual std::string invoke(GdbServer& gdb_server, Task* t,
-                             const std::vector<std::string>& args) {
+                             const std::vector<std::string>& args) override {
     return invoker(gdb_server, t, args);
   }
 

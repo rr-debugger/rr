@@ -62,12 +62,12 @@ public:
   virtual Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
                       remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                       pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
-                      Session* other_session);
+                      Session* other_session) override;
   virtual void on_syscall_exit(int syscallno, SupportedArch arch,
-                               const Registers& regs);
+                               const Registers& regs) override;
   virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
-                                     int /*sig*/);
-  virtual void did_wait();
+                                     int /*sig*/) override;
+  virtual void did_wait() override;
 
   std::vector<remote_code_ptr> syscallbuf_syscall_entry_breakpoints();
   bool is_at_syscallbuf_syscall_entry_breakpoint();
@@ -85,7 +85,7 @@ public:
   /**
    * Called when SYS_rrcall_init_preload has happened.
    */
-  virtual void at_preload_init();
+  virtual void at_preload_init() override;
 
   RecordSession& session() const;
   TraceWriter& trace_writer() const;
@@ -377,7 +377,7 @@ public:
   void pop_signal_handler() { pop_event(EV_SIGNAL_HANDLER); }
   void pop_syscall() { pop_event(EV_SYSCALL); }
   void pop_syscall_interruption() { pop_event(EV_SYSCALL_INTERRUPTION); }
-  virtual void log_pending_events() const;
+  virtual void log_pending_events() const override;
   /** Return the event at the top of this's stack. */
   Event& ev() { return pending_events.back(); }
   const Event& ev() const { return pending_events.back(); }

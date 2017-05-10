@@ -81,11 +81,11 @@ public:
    */
   void terminate_recording();
 
-  virtual RecordSession* as_record() { return this; }
+  virtual RecordSession* as_record() override { return this; }
 
   TraceWriter& trace_writer() { return trace_out; }
 
-  virtual void on_destroy(Task* t);
+  virtual void on_destroy(Task* t) override;
 
   Scheduler& scheduler() { return scheduler_; }
 
@@ -116,7 +116,7 @@ public:
   }
 
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
-                         SupportedArch a);
+                         SupportedArch a) override;
 
   RecordTask* find_task(pid_t rec_tid) const;
   RecordTask* find_task(const TaskUid& tuid) const;
@@ -138,7 +138,7 @@ private:
                 const std::vector<std::string>& envp,
                 SyscallBuffering syscallbuf, int bind_cpu);
 
-  virtual void on_create(Task* t);
+  virtual void on_create(Task* t) override;
 
   void handle_seccomp_traced_syscall(RecordTask* t,
                                      RecordSession::StepState* step_state,

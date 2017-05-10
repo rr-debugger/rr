@@ -10,7 +10,7 @@ namespace rr {
 
 class GdbInitCommand : public Command {
 public:
-  virtual int run(vector<string>& args);
+  virtual int run(vector<string>& args) override;
 
 protected:
   GdbInitCommand(const char* name, const char* help) : Command(name, help) {}
