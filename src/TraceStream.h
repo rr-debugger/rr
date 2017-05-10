@@ -71,8 +71,7 @@ public:
   std::string file_data_clone_file_name(const TaskUid& tuid);
 
 protected:
-  TraceStream(const string& trace_dir, TraceFrame::Time initial_time)
-      : trace_dir(trace_dir), global_time(initial_time) {}
+  TraceStream(const string& trace_dir, TraceFrame::Time initial_time);
 
   /**
    * Return the path of the file for the given substream.

@@ -863,6 +863,7 @@ set(TESTS_WITH_PROGRAM
   overflow_branch_counter
   priority
   ptrace_remote_unmap
+  remove_latest_trace
   # Not called ps, because that interferes with using real 'ps' in tests
   rr_ps
   rr_ps_ns

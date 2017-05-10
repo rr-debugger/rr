@@ -150,6 +150,9 @@ static void ensure_default_rr_trace_dir() {
   ensure_dir(default_rr_trace_dir(), S_IRWXU);
 }
 
+TraceStream::TraceStream(const string& trace_dir, TraceFrame::Time initial_time)
+    : trace_dir(real_path(trace_dir)), global_time(initial_time) {}
+
 string TraceStream::file_data_clone_file_name(const TaskUid& tuid) {
   stringstream ss;
   ss << trace_dir << "/cloned_data_" << tuid.tid() << "_" << tuid.serial();

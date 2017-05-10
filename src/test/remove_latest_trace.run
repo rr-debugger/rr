@@ -1,0 +1,14 @@
+source `dirname $0`/util.sh
+record $TESTNAME
+
+replay &
+
+until grep -q ready replay.out; do
+  sleep 0
+done
+
+rm -f latest-trace
+
+wait
+check 'EXIT-SUCCESS'
+
