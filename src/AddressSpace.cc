@@ -838,9 +838,24 @@ int AddressSpace::access_bits_of(WatchType type) {
   }
 }
 
+/**
+ * We do not allow a watchpoint to watch the last byte of memory addressable
+ * by rr. This avoids constructing a MemoryRange that wraps around.
+ * For 64-bit builds this is no problem because addresses at the top of memory
+ * are in kernel space. For 32-bit builds it seems impossible to map the last
+ * page of memory in Linux so we should be OK there too.
+ * Note that zero-length watchpoints are OK. configure_watch_registers just
+ * ignores them.
+ */
+static MemoryRange range_for_watchpoint(remote_ptr<void> addr, size_t num_bytes) {
+  uintptr_t p = addr.as_int();
+  uintptr_t max_len = UINTPTR_MAX - p;
+  return MemoryRange(addr, min<uintptr_t>(num_bytes, max_len));
+}
+
 void AddressSpace::remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                                      WatchType type) {
-  auto it = watchpoints.find(MemoryRange(addr, num_bytes));
+  auto it = watchpoints.find(range_for_watchpoint(addr, num_bytes));
   if (it != watchpoints.end() &&
       0 == it->second.unwatch(access_bits_of(type))) {
     watchpoints.erase(it);
@@ -850,7 +865,7 @@ void AddressSpace::remove_watchpoint(remote_ptr<void> addr, size_t num_bytes,
 
 bool AddressSpace::add_watchpoint(remote_ptr<void> addr, size_t num_bytes,
                                   WatchType type) {
-  MemoryRange key(addr, num_bytes);
+  MemoryRange key = range_for_watchpoint(addr, num_bytes);
   auto it = watchpoints.find(key);
   if (it == watchpoints.end()) {
     auto it_and_is_new =

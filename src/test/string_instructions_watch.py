@@ -13,6 +13,9 @@ buf = eval(last_match().group(1));
 send_gdb('watch -l *(uint16_t*)%d'%(buf + 13))
 expect_gdb('atchpoint 2')
 
+send_gdb('watch -l *(char*)-1')
+expect_gdb('atchpoint 3')
+
 send_gdb('c')
 expect_gdb('atchpoint 2')
 

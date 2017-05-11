@@ -105,8 +105,8 @@ static bool decode_x86_string_instruction(const InstructionBuf& code,
 
 static bool mem_intersect(remote_ptr<void> a1, int s1, remote_ptr<void> a2,
                           int s2) {
-  assert(a1 + s1 > a1);
-  assert(a2 + s2 > a2);
+  assert(a1 + s1 >= a1);
+  assert(a2 + s2 >= a2);
   return max(a1, a2) < min(a1 + s1, a2 + s2);
 }
 
