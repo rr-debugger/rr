@@ -847,7 +847,8 @@ int AddressSpace::access_bits_of(WatchType type) {
  * Note that zero-length watchpoints are OK. configure_watch_registers just
  * ignores them.
  */
-static MemoryRange range_for_watchpoint(remote_ptr<void> addr, size_t num_bytes) {
+static MemoryRange range_for_watchpoint(remote_ptr<void> addr,
+                                        size_t num_bytes) {
   uintptr_t p = addr.as_int();
   uintptr_t max_len = UINTPTR_MAX - p;
   return MemoryRange(addr, min<uintptr_t>(num_bytes, max_len));

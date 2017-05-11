@@ -35,6 +35,7 @@ static struct perf_event_attr hw_interrupts_attr;
 static struct perf_event_attr instructions_retired_attr;
 static bool has_ioc_period_bug;
 static bool has_kvm_in_txcp_bug;
+static bool only_one_counter;
 static bool activate_useless_counter;
 
 /*
@@ -241,18 +242,12 @@ static void check_for_ioc_period_bug() {
   poll(&poll_bug_fd, 1, 0);
 
   has_ioc_period_bug = poll_bug_fd.revents == 0;
-  LOG(debug) << "has_ioc_period_bug detected=" << has_ioc_period_bug;
+  LOG(debug) << "has_ioc_period_bug=" << has_ioc_period_bug;
 }
 
 static const int NUM_BRANCHES = 500;
 
-static void check_for_kvm_in_txcp_bug() {
-  struct perf_event_attr attr = rr::ticks_attr;
-  attr.config |= IN_TXCP;
-  attr.sample_period = 0;
-  ScopedFd fd = syscall(__NR_perf_event_open, &attr, 0, -1, -1, 0);
-  ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-  ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+static void do_branches() {
   // Do NUM_BRANCHES conditional branches that can't be optimized out.
   // 'accumulator' is always odd and can't be zero
   int accumulator = rand() * 2 + 1;
@@ -260,11 +255,66 @@ static void check_for_kvm_in_txcp_bug() {
     accumulator = ((accumulator * 7) + 2) & 0xffffff;
   }
   srand(accumulator);
+}
+
+static void check_for_kvm_in_txcp_bug() {
+  struct perf_event_attr attr = rr::ticks_attr;
+  attr.config |= IN_TXCP;
+  attr.sample_period = 0;
+  ScopedFd fd = start_counter(0, -1, &attr);
+  ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
+  ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+  do_branches();
   int64_t count = read_counter(fd);
 
   has_kvm_in_txcp_bug = count < NUM_BRANCHES;
-  LOG(debug) << "has_kvm_in_txcp_bug count=" << count
-             << " detected=" << has_kvm_in_txcp_bug;
+  LOG(debug) << "has_kvm_in_txcp_bug=" << has_kvm_in_txcp_bug
+             << " count=" << count;
+}
+
+static void check_working_counters() {
+  struct perf_event_attr attr = rr::ticks_attr;
+  attr.sample_period = 0;
+  struct perf_event_attr attr2 = rr::cycles_attr;
+  attr.sample_period = 0;
+  ScopedFd fd = start_counter(0, -1, &attr);
+  ScopedFd fd2 = start_counter(0, -1, &attr2);
+  do_branches();
+  int64_t events = read_counter(fd);
+  int64_t events2 = read_counter(fd2);
+
+  if (events < NUM_BRANCHES) {
+    char config[100];
+    sprintf(config, "%llx", (long long)ticks_attr.config);
+    FATAL()
+        << "\nGot " << events << " branch events, expected at least "
+        << NUM_BRANCHES
+        << ".\n"
+           "\nThe hardware performance counter seems to not be working. Check\n"
+           "that hardware performance counters are working by running\n"
+           "  perf stat -e r"
+        << config
+        << " true\n"
+           "and checking that it reports a nonzero number of events.\n"
+           "If performance counters seem to be working with 'perf', file an\n"
+           "rr issue, otherwise check your hardware/OS/VM configuration. Also\n"
+           "check that other software is not using performance counters on\n"
+           "this CPU.";
+  }
+
+  only_one_counter = events2 == 0;
+  LOG(debug) << "only_one_counter=" << only_one_counter;
+
+  if (only_one_counter &&
+      (cpuid(CPUID_GETEXTENDEDFEATURES, 0).ebx & HLE_FEATURE_FLAG) &&
+      !Flags::get().suppress_environment_warnings) {
+    fprintf(stderr,
+            "Your CPU supports Hardware Lock Elision but you only have one\n"
+            "hardware performance counter available. Record and replay\n"
+            "of code that uses HLE will fail unless you alter your\n"
+            "configuration to make more than one hardware performance counter\n"
+            "available.\n");
+  }
 }
 
 static void check_for_bugs() {
@@ -276,6 +326,7 @@ static void check_for_bugs() {
 
   check_for_ioc_period_bug();
   check_for_kvm_in_txcp_bug();
+  check_working_counters();
 }
 
 static void init_attributes() {
@@ -367,28 +418,32 @@ void PerfCounters::reset(Ticks ticks_period) {
     attr.sample_period = ticks_period;
     fd_ticks_interrupt = start_counter(tid, -1, &attr);
 
-    if (has_kvm_in_txcp_bug) {
-      // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not used,
-      // and check that.
-      attr.sample_period = 0;
-      attr.config |= IN_TX;
-      fd_ticks_in_transaction = start_counter(tid, fd_ticks_interrupt, &attr);
-    } else {
-      // Set up a separate counter for measuring ticks, which does not have
-      // a sample period and does not count events during aborted transactions.
-      // We have to use two separate counters here because the kernel does
-      // not support setting a sample_period with IN_TXCP, apparently for
-      // reasons related to this Intel note on IA32_PERFEVTSEL2:
-      // ``When IN_TXCP=1 & IN_TX=1 and in sampling, spurious PMI may
-      // occur and transactions may continuously abort near overflow
-      // conditions. Software should favor using IN_TXCP for counting over
-      // sampling. If sampling, software should use large “sample-after“
-      // value after clearing the counter configured to use IN_TXCP and
-      // also always reset the counter even when no overflow condition
-      // was reported.''
-      attr.sample_period = 0;
-      attr.config |= IN_TXCP;
-      fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
+    if (!only_one_counter) {
+      if (has_kvm_in_txcp_bug) {
+        // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not
+        // used,
+        // and check that.
+        attr.sample_period = 0;
+        attr.config |= IN_TX;
+        fd_ticks_in_transaction = start_counter(tid, fd_ticks_interrupt, &attr);
+      } else {
+        // Set up a separate counter for measuring ticks, which does not have
+        // a sample period and does not count events during aborted
+        // transactions.
+        // We have to use two separate counters here because the kernel does
+        // not support setting a sample_period with IN_TXCP, apparently for
+        // reasons related to this Intel note on IA32_PERFEVTSEL2:
+        // ``When IN_TXCP=1 & IN_TX=1 and in sampling, spurious PMI may
+        // occur and transactions may continuously abort near overflow
+        // conditions. Software should favor using IN_TXCP for counting over
+        // sampling. If sampling, software should use large “sample-after“
+        // value after clearing the counter configured to use IN_TXCP and
+        // also always reset the counter even when no overflow condition
+        // was reported.''
+        attr.sample_period = 0;
+        attr.config |= IN_TXCP;
+        fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
+      }
     }
 
     if (activate_useless_counter && !fd_useless_counter.is_open()) {

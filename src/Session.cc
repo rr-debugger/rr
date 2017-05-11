@@ -73,7 +73,8 @@ void Session::post_exec() {
   }
   done_initial_exec_ = true;
   assert(tasks().size() == 1);
-  tasks().begin()->second->flush_inconsistent_state();
+  Task* t = tasks().begin()->second;
+  t->flush_inconsistent_state();
   spawned_task_error_fd_.close();
 }
 
