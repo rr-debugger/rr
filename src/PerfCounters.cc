@@ -33,6 +33,9 @@ static struct perf_event_attr cycles_attr;
 static struct perf_event_attr page_faults_attr;
 static struct perf_event_attr hw_interrupts_attr;
 static struct perf_event_attr instructions_retired_attr;
+static bool has_ioc_period_bug;
+static bool has_kvm_in_txcp_bug;
+static bool activate_useless_counter;
 
 /*
  * Find out the cpu model using the cpuid instruction.
@@ -177,68 +180,14 @@ static void init_perf_event_attr(struct perf_event_attr* attr,
   attr->exclude_guest = 1;
 }
 
-static bool activate_useless_counter;
-static bool has_ioc_period_bug();
-static void init_attributes() {
-  if (attributes_initialized) {
-    return;
-  }
-  attributes_initialized = true;
-
-  CpuMicroarch uarch = get_cpu_microarch();
-  const PmuConfig* pmu = nullptr;
-  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
-    if (uarch == pmu_configs[i].uarch) {
-      pmu = &pmu_configs[i];
-      break;
-    }
-  }
-  assert(pmu);
-
-  if (!pmu->supported) {
-    FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
-  }
-
-  /*
-   * For maintainability, and since it doesn't impact performance when not
-   * needed, we always activate this. If it ever turns out to be a problem,
-   * this can be set to pmu->benefits_from_useless_counter, instead.
-   *
-   * We also disable this counter when running under rr. Even though it's the
-   * same event for the same task as the outer rr, the linux kernel does not
-   * coalesce them and tries to schedule the new one on a general purpose PMC.
-   * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
-   */
-  activate_useless_counter = has_ioc_period_bug() && !running_under_rr();
-
-  init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
-  init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
-                       PERF_COUNT_HW_CPU_CYCLES);
-  init_perf_event_attr(&instructions_retired_attr, PERF_TYPE_RAW,
-                       pmu->rinsn_cntr_event);
-  init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
-                       pmu->hw_intr_cntr_event);
-  // libpfm encodes the event with this bit set, so we'll do the
-  // same thing.  Unclear if necessary.
-  hw_interrupts_attr.exclude_hv = 1;
-  init_perf_event_attr(&page_faults_attr, PERF_TYPE_SOFTWARE,
-                       PERF_COUNT_SW_PAGE_FAULTS);
-}
-
 static const uint64_t IN_TX = 1ULL << 32;
 static const uint64_t IN_TXCP = 1ULL << 33;
 
-bool PerfCounters::is_ticks_attr(const perf_event_attr& attr) {
-  init_attributes();
-  perf_event_attr tmp_attr = attr;
-  tmp_attr.sample_period = 0;
-  tmp_attr.config &= ~IN_TXCP;
-  return memcmp(&ticks_attr, &tmp_attr, sizeof(attr)) == 0;
-}
-
-PerfCounters::PerfCounters(pid_t tid)
-    : counting(false), tid(tid), started(false) {
-  init_attributes();
+static int64_t read_counter(ScopedFd& fd) {
+  int64_t val;
+  ssize_t nread = read(fd, &val, sizeof(val));
+  assert(nread == sizeof(val));
+  return val;
 }
 
 static ScopedFd start_counter(pid_t tid, int group_fd,
@@ -276,32 +225,28 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   return fd;
 }
 
-static int64_t read_counter(ScopedFd& fd) {
-  int64_t val;
-  ssize_t nread = read(fd, &val, sizeof(val));
-  assert(nread == sizeof(val));
-  return val;
+static void check_for_ioc_period_bug() {
+  // Start a cycles counter
+  struct perf_event_attr attr = rr::ticks_attr;
+  attr.sample_period = 0xffffffff;
+  attr.exclude_kernel = 1;
+  ScopedFd bug_fd = start_counter(0, -1, &attr);
+
+  uint64_t new_period = 1;
+  if (ioctl(bug_fd, PERF_EVENT_IOC_PERIOD, &new_period)) {
+    FATAL() << "ioctl(PERF_EVENT_IOC_PERIOD) failed";
+  }
+
+  struct pollfd poll_bug_fd = {.fd = bug_fd, .events = POLL_IN, .revents = 0 };
+  poll(&poll_bug_fd, 1, 0);
+
+  has_ioc_period_bug = poll_bug_fd.revents == 0;
+  LOG(debug) << "has_ioc_period_bug detected=" << has_ioc_period_bug;
 }
 
 static const int NUM_BRANCHES = 500;
 
-static bool has_kvm_in_txcp_bug() {
-  static bool did_test = false;
-  static bool bug_detected = true;
-  if (did_test) {
-    return bug_detected;
-  }
-
-  did_test = true;
-  if (running_under_rr()) {
-    // Under rr we emulate an idealized performance counter, so the result of
-    // this test doesn't matter. Just say we don't have the bug.
-    bug_detected = false;
-    return bug_detected;
-  }
-
-  init_attributes();
-
+static void check_for_kvm_in_txcp_bug() {
   struct perf_event_attr attr = rr::ticks_attr;
   attr.config |= IN_TXCP;
   attr.sample_period = 0;
@@ -317,49 +262,80 @@ static bool has_kvm_in_txcp_bug() {
   srand(accumulator);
   int64_t count = read_counter(fd);
 
-  bug_detected = count < NUM_BRANCHES;
+  has_kvm_in_txcp_bug = count < NUM_BRANCHES;
   LOG(debug) << "has_kvm_in_txcp_bug count=" << count
-             << " detected=" << bug_detected;
-  return bug_detected;
+             << " detected=" << has_kvm_in_txcp_bug;
 }
 
-static bool has_ioc_period_bug() {
-  static bool did_test = false;
-  static bool bug_detected = true;
-  if (did_test) {
-    return bug_detected;
-  }
-
-  did_test = true;
+static void check_for_bugs() {
   if (running_under_rr()) {
-    // Under rr we emulate an idealized performance counter, so the result of
-    // this test doesn't matter. Further, since this is not exactly the same as
-    // our ticks_attr, it can take up an extra PMC when recording rr replay,
-    // which we don't have available on some architectures. Just say we don't
-    // have the bug.
-    bug_detected = false;
-    return bug_detected;
+    // Under rr we emulate idealized performance counters, so we can assume
+    // none of the bugs apply.
+    return;
   }
 
+  check_for_ioc_period_bug();
+  check_for_kvm_in_txcp_bug();
+}
+
+static void init_attributes() {
+  if (attributes_initialized) {
+    return;
+  }
+  attributes_initialized = true;
+
+  CpuMicroarch uarch = get_cpu_microarch();
+  const PmuConfig* pmu = nullptr;
+  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
+    if (uarch == pmu_configs[i].uarch) {
+      pmu = &pmu_configs[i];
+      break;
+    }
+  }
+  assert(pmu);
+
+  if (!pmu->supported) {
+    FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
+  }
+
+  init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
+  init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
+                       PERF_COUNT_HW_CPU_CYCLES);
+  init_perf_event_attr(&instructions_retired_attr, PERF_TYPE_RAW,
+                       pmu->rinsn_cntr_event);
+  init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
+                       pmu->hw_intr_cntr_event);
+  // libpfm encodes the event with this bit set, so we'll do the
+  // same thing.  Unclear if necessary.
+  hw_interrupts_attr.exclude_hv = 1;
+  init_perf_event_attr(&page_faults_attr, PERF_TYPE_SOFTWARE,
+                       PERF_COUNT_SW_PAGE_FAULTS);
+
+  check_for_bugs();
+  /*
+   * For maintainability, and since it doesn't impact performance when not
+   * needed, we always activate this. If it ever turns out to be a problem,
+   * this can be set to pmu->benefits_from_useless_counter, instead.
+   *
+   * We also disable this counter when running under rr. Even though it's the
+   * same event for the same task as the outer rr, the linux kernel does not
+   * coalesce them and tries to schedule the new one on a general purpose PMC.
+   * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
+   */
+  activate_useless_counter = has_ioc_period_bug && !running_under_rr();
+}
+
+bool PerfCounters::is_ticks_attr(const perf_event_attr& attr) {
   init_attributes();
+  perf_event_attr tmp_attr = attr;
+  tmp_attr.sample_period = 0;
+  tmp_attr.config &= ~IN_TXCP;
+  return memcmp(&ticks_attr, &tmp_attr, sizeof(attr)) == 0;
+}
 
-  // Start a cycles counter
-  struct perf_event_attr attr = rr::ticks_attr;
-  attr.sample_period = 0xffffffff;
-  attr.exclude_kernel = 1;
-  ScopedFd bug_fd = start_counter(0, -1, &attr);
-
-  uint64_t new_period = 1;
-  if (ioctl(bug_fd, PERF_EVENT_IOC_PERIOD, &new_period)) {
-    FATAL() << "ioctl(PERF_EVENT_IOC_PERIOD) failed";
-  }
-
-  struct pollfd poll_bug_fd = {.fd = bug_fd, .events = POLL_IN, .revents = 0 };
-  poll(&poll_bug_fd, 1, 0);
-
-  bug_detected = poll_bug_fd.revents == 0;
-  LOG(debug) << "has_ioc_period_bug detected=" << bug_detected;
-  return bug_detected;
+PerfCounters::PerfCounters(pid_t tid)
+    : counting(false), tid(tid), started(false) {
+  init_attributes();
 }
 
 static void make_counter_async(ScopedFd& fd, int signal) {
@@ -372,7 +348,7 @@ static void make_counter_async(ScopedFd& fd, int signal) {
 static bool always_recreate_counters() {
   // When we have the KVM IN_TXCP bug, reenabling the TXCP counter after
   // disabling it does not work.
-  return has_ioc_period_bug() || has_kvm_in_txcp_bug();
+  return has_ioc_period_bug || has_kvm_in_txcp_bug;
 }
 
 void PerfCounters::reset(Ticks ticks_period) {
@@ -391,7 +367,7 @@ void PerfCounters::reset(Ticks ticks_period) {
     attr.sample_period = ticks_period;
     fd_ticks_interrupt = start_counter(tid, -1, &attr);
 
-    if (has_kvm_in_txcp_bug()) {
+    if (has_kvm_in_txcp_bug) {
       // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not used,
       // and check that.
       attr.sample_period = 0;
