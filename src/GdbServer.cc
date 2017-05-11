@@ -718,9 +718,11 @@ static bool is_last_thread_exit(const BreakStatus& break_status) {
 
 static Task* is_in_exec(ReplayTimeline& timeline) {
   Task* t = timeline.current_session().current_task();
-  return t &&
-                 timeline.current_session().next_step_is_syscall_exit(
-                     syscall_number_for_execve(t->arch()))
+  if (!t) {
+    return nullptr;
+  }
+  return timeline.current_session().next_step_is_syscall_exit(
+             syscall_number_for_execve(t->arch()))
              ? t
              : nullptr;
 }
@@ -734,15 +736,22 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     stop_siginfo.si_signo = SIGTRAP;
     watch_addr = break_status.watchpoints_hit[0].addr;
+    LOG(debug) << "Stopping for watchpoint at " << watch_addr;
   }
   if (break_status.breakpoint_hit || break_status.singlestep_complete) {
     do_stop = true;
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     stop_siginfo.si_signo = SIGTRAP;
+    if (break_status.breakpoint_hit) {
+      LOG(debug) << "Stopping for breakpoint";
+    } else {
+      LOG(debug) << "Stopping for singlestep";
+    }
   }
   if (break_status.signal) {
     do_stop = true;
     stop_siginfo = *break_status.signal;
+    LOG(debug) << "Stopping for signal " << stop_siginfo;
   }
   if (is_last_thread_exit(break_status) && dbg->features().reverse_execution) {
     do_stop = true;
@@ -752,9 +761,11 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
       // when reverse-execution is enabled, because users often want to run
       // backwards from the end of the task.
       stop_siginfo.si_signo = SIGKILL;
+      LOG(debug) << "Stopping for synthetic SIGKILL";
     } else {
       // The start of the debuggee task-group should trigger a silent stop.
       stop_siginfo.si_signo = 0;
+      LOG(debug) << "Stopping at start of execution while running backwards";
     }
   }
   Task* t = break_status.task;
@@ -763,6 +774,7 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     do_stop = true;
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     t = in_exec_task;
+    LOG(debug) << "Stopping at exec";
   }
   if (do_stop && t->task_group()->tguid() == debuggee_tguid) {
     /* Notify the debugger and process any new requests
