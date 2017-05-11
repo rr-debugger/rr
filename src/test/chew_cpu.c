@@ -11,8 +11,12 @@ static void breakpoint(void) {
 
 int spin(void) {
   int i, dummy = 0;
+  struct timespec ts;
 
   atomic_puts("spinning");
+
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+
   /* NO SYSCALLS AFTER HERE: the point of this test is to hit
    * hpc interrupts to exercise the nonvoluntary interrupt
    * scheduler. */

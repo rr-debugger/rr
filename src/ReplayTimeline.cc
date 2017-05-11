@@ -1195,6 +1195,8 @@ ReplayResult ReplayTimeline::reverse_singlestep(
               break;
             }
             destination_candidate = step_start;
+            LOG(debug) << "Setting candidate after step: "
+                       << destination_candidate;
             destination_candidate_result = result;
             destination_candidate_tuid = result.break_status.task->tuid();
             seen_other_task_break = false;
@@ -1224,6 +1226,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
 
       if (is_start_of_reverse_execution_barrier_event()) {
         destination_candidate = mark();
+        LOG(debug) << "Setting candidate to barrier " << destination_candidate;
         destination_candidate_result = result;
         destination_candidate_result.break_status.task_exit = true;
         destination_candidate_tuid = current->current_task()->tuid();
@@ -1231,6 +1234,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       }
 
       if (now >= end) {
+        LOG(debug) << "Stepped to " << now << " (>= " << end << "), stopping";
         break;
       }
       maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
