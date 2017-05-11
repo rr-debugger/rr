@@ -105,8 +105,8 @@ static bool decode_x86_string_instruction(const InstructionBuf& code,
 
 static bool mem_intersect(remote_ptr<void> a1, int s1, remote_ptr<void> a2,
                           int s2) {
-  assert(a1 + s1 >= a1);
-  assert(a2 + s2 >= a2);
+  assert(a1 + s1 > a1);
+  assert(a2 + s2 > a2);
   return max(a1, a2) < min(a1 + s1, a2 + s2);
 }
 
@@ -114,6 +114,11 @@ static void bound_iterations_for_watchpoint(Task* t, remote_ptr<void> reg,
                                             const DecodedInstruction& decoded,
                                             const WatchConfig& watch,
                                             uintptr_t* iterations) {
+  if (watch.num_bytes == 0) {
+    // Ignore zero-sized watch. It can't ever trigger.
+    return;
+  }
+
   // Compute how many iterations it will take before we hit the watchpoint.
   // 0 means the first iteration will hit the watchpoint.
   int size = decoded.operand_size;

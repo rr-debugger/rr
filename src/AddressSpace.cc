@@ -1361,6 +1361,7 @@ static vector<MemoryRange> split_range(const MemoryRange& range) {
 static void configure_watch_registers(vector<WatchConfig>& regs,
                                       const MemoryRange& range, WatchType type,
                                       vector<int8_t>* assigned_regs) {
+  // Zero-sized WatchConfigs return no ranges here, so are ignored.
   auto split_ranges = split_range(range);
 
   if (type == WATCH_WRITE && range.size() > 1) {
