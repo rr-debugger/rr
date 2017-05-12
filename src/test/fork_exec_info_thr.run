@@ -6,7 +6,7 @@ saved_barrier="barrier$bitness-$nonce"
 GLOBAL_OPTIONS="$GLOBAL_OPTIONS -M"
 record target_process$bitness "$saved_barrier"
 TARGET_PID=$(grep 'child ' record.out | awk '{print $4}')
-TARGET_EVENT=$(grep 'thread 2 launched ' record.out | awk '{print substr($3,1,3)}')
+TARGET_EVENT=$(grep 'thread 2 launched ' record.out | tr ']' ' ' | awk '{print $3}')
 
 echo Targeting recorded pid $TARGET_PID at event $TARGET_EVENT ...
 debug get_thread_list "-p $TARGET_PID -g 1"
