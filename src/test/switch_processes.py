@@ -5,6 +5,7 @@ import re
 # process! We should stay focused on the child process, instead of
 # trying to switch to that process. At least we shouldn't crash.
 restart_replay(1)
-expect_gdb('exited normally')
+expect_gdb('(rr)')
+expect_list([re.compile('Program stopped'), re.compile('exited normally')])
 
 ok()
