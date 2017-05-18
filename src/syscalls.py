@@ -1336,8 +1336,8 @@ fadvise64_64 = EmulatedSyscall(x86=272)
 
 vserver = InvalidSyscall(x86=273, x64=236)
 mbind = EmulatedSyscall(x86=274, x64=237)
-get_mempolicy = UnsupportedSyscall(x86=275, x64=239)
-set_mempolicy = UnsupportedSyscall(x86=276, x64=238)
+get_mempolicy = EmulatedSyscall(x86=275, x64=239)
+set_mempolicy = EmulatedSyscall(x86=276, x64=238)
 
 mq_open = EmulatedSyscall(x86=277, x64=240)
 mq_unlink = EmulatedSyscall(x86=278, x64=241)
