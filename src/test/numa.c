@@ -39,11 +39,21 @@ int main(void) {
   ret = mbind(p, 16 * page_size, MPOL_PREFERRED, NULL, 0, MPOL_MF_MOVE);
   test_assert(ret == 0 || (ret == -1 && errno == ENOSYS));
 
+  // sanity check
   ret = set_mempolicy(0, NULL, 0);
   test_assert(ret == 0);
-
   ret = get_mempolicy(NULL, NULL, 0, NULL, 0);
   test_assert(ret == 0);
+
+  // test in and out params
+  unsigned long nodemask = 0x1;
+  ret = set_mempolicy(MPOL_BIND, &nodemask, 8 * sizeof(nodemask));
+  test_assert(ret == 0);
+  int mode;
+  nodemask = 0xABCD;
+  ret = get_mempolicy(&mode, &nodemask, 8 * sizeof(nodemask), NULL, 0);
+  test_assert(mode == MPOL_BIND);
+  test_assert(nodemask == 0x1);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
