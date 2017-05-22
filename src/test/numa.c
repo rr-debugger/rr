@@ -20,12 +20,14 @@ static long mbind(void* start, unsigned long len, int mode,
   return syscall(SYS_mbind, start, len, mode, nmask, maxnode, flags);
 }
 
-static long set_mempolicy(int mode, const unsigned long *nodemask, unsigned long maxnode) {
+static long set_mempolicy(int mode, const unsigned long* nodemask,
+                          unsigned long maxnode) {
   return syscall(SYS_set_mempolicy, mode, nodemask, maxnode);
 }
 
-static int get_mempolicy(int *mode, unsigned long *nodemask,
-                         unsigned long maxnode, void *addr, unsigned long flags) {
+static int get_mempolicy(int* mode, unsigned long* nodemask,
+                         unsigned long maxnode, void* addr,
+                         unsigned long flags) {
   return syscall(SYS_get_mempolicy, mode, nodemask, maxnode, addr, flags);
 }
 
@@ -46,14 +48,23 @@ int main(void) {
   test_assert(ret == 0);
 
   // test in and out params
-  unsigned long nodemask = 0x1;
-  ret = set_mempolicy(MPOL_BIND, &nodemask, 8 * sizeof(nodemask));
+  // Make `nodemask` big in case we run on a kernel that has MAX_NUMNODES set
+  // to a large value; we get EINVAL if we pass a maxnodes value that's too
+  // small. And there's no way to determine what MAX_NUMNODES is AFAIK. What
+  // a terrible API!
+  unsigned long nodemask[64] = { 0x1 };
+  ret = set_mempolicy(MPOL_BIND, nodemask, 8 * sizeof(unsigned long));
   test_assert(ret == 0);
   int mode;
-  nodemask = 0xABCD;
-  ret = get_mempolicy(&mode, &nodemask, 8 * sizeof(nodemask), NULL, 0);
-  test_assert(mode == MPOL_BIND);
-  test_assert(nodemask == 0x1);
+  memset(nodemask, 0xff, sizeof(nodemask));
+  ret = get_mempolicy(&mode, nodemask, 8 * sizeof(nodemask), NULL, 0);
+  if (ret < 0) {
+    test_assert(errno == EINVAL);
+  } else {
+    test_assert(mode == MPOL_BIND);
+    test_assert(nodemask[0] == 0x1);
+    test_assert(nodemask[1] == 0);
+  }
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
