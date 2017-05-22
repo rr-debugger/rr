@@ -17,6 +17,7 @@
 #include <linux/if.h>
 #include <linux/if_packet.h>
 #include <linux/if_tun.h>
+#include <linux/input.h>
 #include <linux/ipc.h>
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
@@ -1570,6 +1571,12 @@ static Switchable prepare_ioctl(RecordTask* t,
     return PREVENT_SWITCH;
   }
 
+  /* There are lots of ioctl values for EVIOCGBIT */
+  if (type == 'E' && nr >= 0x20 && nr <= 0x7f) {
+    syscall_state.reg_parameter(3, size);
+    return PREVENT_SWITCH;
+  }
+
   /* The following are thought to be "regular" ioctls, the
    * processing of which is only known to (observably) write to
    * the bytes in the structure passed to the kernel.  So all we
@@ -1609,6 +1616,21 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(TUNGETVNETHDRSZ):
     case IOCTL_MASK_SIZE(TUNGETVNETLE):
     case IOCTL_MASK_SIZE(TUNGETVNETBE):
+    case IOCTL_MASK_SIZE(EVIOCGVERSION):
+    case IOCTL_MASK_SIZE(EVIOCGID):
+    case IOCTL_MASK_SIZE(EVIOCGREP):
+    case IOCTL_MASK_SIZE(EVIOCGKEYCODE): /* also covers EVIOCGKEYCODE_V2 */
+    case IOCTL_MASK_SIZE(EVIOCGNAME(0)):
+    case IOCTL_MASK_SIZE(EVIOCGPHYS(0)):
+    case IOCTL_MASK_SIZE(EVIOCGUNIQ(0)):
+    case IOCTL_MASK_SIZE(EVIOCGPROP(0)):
+    case IOCTL_MASK_SIZE(EVIOCGMTSLOTS(0)):
+    case IOCTL_MASK_SIZE(EVIOCGKEY(0)):
+    case IOCTL_MASK_SIZE(EVIOCGLED(0)):
+    case IOCTL_MASK_SIZE(EVIOCGSND(0)):
+    case IOCTL_MASK_SIZE(EVIOCGSW(0)):
+    case IOCTL_MASK_SIZE(EVIOCGEFFECTS):
+    case IOCTL_MASK_SIZE(EVIOCGMASK):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
