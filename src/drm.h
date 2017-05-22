@@ -42,6 +42,11 @@ struct drm_auth {
   drm_magic_t magic;
 };
 
+struct drm_get_cap {
+  __u64 capability;
+  __u64 value;
+};
+
 struct drm_gem_open {
   __u32 name;
   __u32 handle;
@@ -59,6 +64,7 @@ struct drm_gem_open {
 #define DRM_IOCTL_VERSION DRM_IOWR(0x00, struct drm_version)
 #define DRM_IOCTL_GET_MAGIC DRM_IOR(0x02, struct drm_auth)
 #define DRM_IOCTL_GEM_OPEN DRM_IOWR(0x0b, struct drm_gem_open)
+#define DRM_IOCTL_GET_CAP DRM_IOWR(0x0c, struct drm_get_cap)
 
 /*---------------------------------------------------------------------------*/
 struct drm_i915_gem_pwrite {
