@@ -188,37 +188,53 @@ inline static void event_syscall(void) { syscall(-1); }
 
 static uint64_t GUARD_VALUE = 0xdeadbeeff00dbaad;
 
+inline static size_t ceil_page_size(size_t size) {
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  return (size + page_size - 1) & ~(page_size - 1);
+}
+
 /**
- * Allocate 'size' bytes, fill with 'value', and place canary values before
- * and after the allocated block.
+ * Allocate 'size' bytes, fill with 'value', place canary value before
+ * the allocated block, and put guard pages before and after. Ensure
+ * there's a guard page immediately after `size`.
+ * This lets us catch cases where too much data is being recorded --- which can
+ * cause errors if the recorder tries to read invalid memory.
  */
 inline static void* allocate_guard(size_t size, char value) {
-  char* cp =
-      (char*)xmalloc(size + 2 * sizeof(GUARD_VALUE)) + sizeof(GUARD_VALUE);
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  size_t map_size = ceil_page_size(size + sizeof(GUARD_VALUE)) + 2 * page_size;
+  char* cp = (char*)mmap(NULL, map_size, PROT_READ | PROT_WRITE,
+                         MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  test_assert(cp != MAP_FAILED);
+  /* create guard pages */
+  test_assert(munmap(cp, page_size) == 0);
+  test_assert(munmap(cp + map_size - page_size, page_size) == 0);
+  cp = cp + map_size - page_size - size;
   memcpy(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE));
-  memcpy(cp + size, &GUARD_VALUE, sizeof(GUARD_VALUE));
   memset(cp, value, size);
   return cp;
 }
 
 /**
- * Verify that canary values before and after the block allocated at 'p'
- * (of size 'size') are still valid.
+ * Verify that canary value before the block allocated at 'p'
+ * (of size 'size') is still valid.
  */
-inline static void verify_guard(size_t size, void* p) {
+inline static void verify_guard(__attribute__((unused)) size_t size, void* p) {
   char* cp = (char*)p;
   test_assert(
       memcmp(cp - sizeof(GUARD_VALUE), &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
-  test_assert(memcmp(cp + size, &GUARD_VALUE, sizeof(GUARD_VALUE)) == 0);
 }
 
 /**
- * Verify that canary values before and after the block allocated at 'p'
- * (of size 'size') are still valid, and free the block.
+ * Verify that canary value before the block allocated at 'p'
+ * (of size 'size') is still valid, and free the block.
  */
 inline static void free_guard(size_t size, void* p) {
   verify_guard(size, p);
-  free((char*)p - sizeof(GUARD_VALUE));
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  size_t map_size = ceil_page_size(size + sizeof(GUARD_VALUE)) + 2 * page_size;
+  char* cp = (char*)p + size + page_size - map_size;
+  test_assert(0 == munmap(cp, map_size - 2 * page_size));
 }
 
 inline static void crash_null_deref(void) { *(volatile int*)NULL = 0; }
