@@ -3799,14 +3799,14 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       return PREVENT_SWITCH;
 
-      case Arch::get_mempolicy: {
-        syscall_state.reg_parameter(1, sizeof(int));
-        unsigned long maxnode = t->regs().arg3();
-        unsigned long align_mask = sizeof(typename Arch::unsigned_long) - 1;
-        unsigned long aligned_maxnode = (maxnode + align_mask) & ~align_mask;
-        syscall_state.reg_parameter(2, aligned_maxnode);
-        return PREVENT_SWITCH;
-      }
+    case Arch::get_mempolicy: {
+      syscall_state.reg_parameter(1, sizeof(int));
+      unsigned long maxnode = t->regs().arg3();
+      unsigned long align_mask = sizeof(typename Arch::unsigned_long) - 1;
+      unsigned long aligned_maxnode = (maxnode + align_mask) & ~align_mask;
+      syscall_state.reg_parameter(2, aligned_maxnode);
+      return PREVENT_SWITCH;
+    }
 
     case Arch::madvise:
       switch ((int)regs.arg3()) {
