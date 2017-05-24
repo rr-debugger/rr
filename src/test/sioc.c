@@ -97,24 +97,41 @@ static void get_ifconfig(int sockfd, struct ifreq* req, struct ifreq* eth_req) {
   }
 }
 
+static void generic_request_by_name(int sockfd, struct ifreq* req, int nr,
+                                    const char* nr_str) {
+  int ret;
+  memset(&req->ifr_ifru, 0xff, sizeof(req->ifr_ifru));
+  ret = ioctl(sockfd, nr, req);
+  VERIFY_GUARD(req);
+  atomic_printf("%s(ret:%d): %s ", nr_str, ret, req->ifr_name);
+  test_assert(0 == ret);
+}
+
 #define GENERIC_REQUEST_BY_NAME(nr)                                            \
-  memset(&req->ifr_ifru, 0xff, sizeof(req->ifr_ifru));                         \
-  ret = ioctl(sockfd, nr, req);                                                \
-  VERIFY_GUARD(req);                                                           \
-  atomic_printf(#nr "(ret:%d): %s ", ret, req->ifr_name);                      \
-  test_assert(0 == ret)
+  generic_request_by_name(sockfd, req, nr, #nr)
+
+static int generic_wireless_request_by_name_internal(int sockfd,
+                                                     struct iwreq** wreq,
+                                                     const char* name, int nr,
+                                                     const char* nr_str) {
+  int err;
+  int ret;
+  ALLOCATE_GUARD(*wreq, 'd');
+  strcpy((*wreq)->ifr_ifrn.ifrn_name, name);
+  ret = ioctl(sockfd, nr, *wreq);
+  VERIFY_GUARD(*wreq);
+  err = errno;
+  atomic_printf("%s(ret:%d): %s: ", nr_str, ret, (*wreq)->ifr_name);
+  if (-1 == ret) {
+    atomic_printf("WARNING: %s doesn't support ioctl %s\n", name, nr_str);
+    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);
+  }
+  return ret;
+}
 
 #define GENERIC_WIRELESS_REQUEST_BY_NAME_INTERNAL(nr, nr_str, args)            \
-  ALLOCATE_GUARD(wreq, 'd');                                                   \
-  strcpy(wreq->ifr_ifrn.ifrn_name, name);                                      \
-  ret = ioctl(sockfd, nr, wreq);                                               \
-  VERIFY_GUARD(wreq);                                                          \
-  err = errno;                                                                 \
-  atomic_printf(nr_str "(ret:%d): %s: ", ret, wreq->ifr_name);                 \
-  if (-1 == ret) {                                                             \
-    atomic_printf("WARNING: %s doesn't support ioctl\n", name);                \
-    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err);           \
-  } else {                                                                     \
+  if (generic_wireless_request_by_name_internal(sockfd, &wreq, name, nr,       \
+                                                nr_str) == 0) {                \
     atomic_printf args;                                                        \
     atomic_puts("");                                                           \
   }                                                                            \
