@@ -556,7 +556,7 @@ remote_ptr<void> TaskSyscallState::reg_parameter(int arg, const ParamSize& size,
 remote_ptr<void> TaskSyscallState::mem_ptr_parameter(
     remote_ptr<void> addr_of_buf_ptr, const ParamSize& size, ArgMode mode,
     ArgMutator mutator) {
-  if (preparation_done) {
+  if (preparation_done || addr_of_buf_ptr.is_null()) {
     return remote_ptr<void>();
   }
 
