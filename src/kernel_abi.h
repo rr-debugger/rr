@@ -573,7 +573,8 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(msginfo);
 
-  struct shmid64_ds {
+  /* Don't align for the 64-bit values on 32-bit x86 */
+  struct __attribute__((packed)) shmid64_ds {
     ipc64_perm shm_perm;
     size_t shm_segsz;
     uint64_t shm_atime_only_little_endian;
@@ -1640,7 +1641,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat, struct stat);
 
-  struct stat64 {
+  struct __attribute__((packed)) stat64 {
     dev_t st_dev;
     unsigned_int __pad1;
     ino_t __st_ino;
