@@ -116,7 +116,10 @@ static int generic_wireless_request_by_name_internal(int sockfd,
                                                      const char* nr_str) {
   int err;
   int ret;
-  ALLOCATE_GUARD(*wreq, 'd');
+  /* Note that we use sizeof(struct ifreq) here, not iwreq, because of
+   * https://bugzilla.kernel.org/show_bug.cgi?id=195869
+   */
+  *wreq = allocate_guard(sizeof(struct ifreq), 'd');
   strcpy((*wreq)->ifr_ifrn.ifrn_name, name);
   ret = ioctl(sockfd, nr, *wreq);
   VERIFY_GUARD(*wreq);
@@ -240,15 +243,20 @@ int main(void) {
                   etc->phy_address, etc->maxtxpkt, etc->maxrxpkt);
   }
 
-  GENERIC_WIRELESS_PARAM_REQUEST_BY_NAME(SIOCGIWRATE, bitrate);
-
   GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWNAME,
                                    ("wireless protocol name:%s", wreq->u.name));
 
   GENERIC_WIRELESS_REQUEST_BY_NAME(SIOCGIWMODE,
                                    (" wireless mode:%d", wreq->u.mode));
 
-  ALLOCATE_GUARD(wreq, 'e');
+  GENERIC_WIRELESS_PARAM_REQUEST_BY_NAME(SIOCGIWSENS, sens);
+
+  GENERIC_WIRELESS_PARAM_REQUEST_BY_NAME(SIOCGIWRATE, bitrate);
+
+  /* Note that we use sizeof(struct ifreq) here, not iwreq, because of
+   * https://bugzilla.kernel.org/show_bug.cgi?id=195869
+   */
+  wreq = allocate_guard(sizeof(struct ifreq), 'e');
   strcpy(wreq->ifr_ifrn.ifrn_name, name);
   wreq->u.essid.length = sizeof(buf);
   wreq->u.essid.pointer = buf;
@@ -263,8 +271,6 @@ int main(void) {
   } else {
     atomic_printf("wireless ESSID:%s\n", buf);
   }
-
-  GENERIC_WIRELESS_PARAM_REQUEST_BY_NAME(SIOCGIWSENS, sens);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
