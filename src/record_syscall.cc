@@ -3802,9 +3802,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::get_mempolicy: {
       syscall_state.reg_parameter(1, sizeof(int));
       unsigned long maxnode = t->regs().arg3();
-      unsigned long align_mask = sizeof(typename Arch::unsigned_long) - 1;
+      unsigned long align_mask = 8*sizeof(typename Arch::unsigned_long) - 1;
       unsigned long aligned_maxnode = (maxnode + align_mask) & ~align_mask;
-      syscall_state.reg_parameter(2, aligned_maxnode);
+      syscall_state.reg_parameter(2, aligned_maxnode/8);
       return PREVENT_SWITCH;
     }
 
