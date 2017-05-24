@@ -31,11 +31,16 @@ static int get_mempolicy(int* mode, unsigned long* nodemask,
   return syscall(SYS_get_mempolicy, mode, nodemask, maxnode, addr, flags);
 }
 
+typedef struct { unsigned long m[64]; } Nodemask;
+
 int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   void* p = mmap(NULL, 16 * page_size, PROT_READ | PROT_WRITE,
                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   int ret;
+  Nodemask* nodemask;
+  unsigned long mask = 0x1;
+  int mode;
 
   test_assert(p != MAP_FAILED);
   ret = mbind(p, 16 * page_size, MPOL_PREFERRED, NULL, 0, MPOL_MF_MOVE);
@@ -52,19 +57,18 @@ int main(void) {
   // to a large value; we get EINVAL if we pass a maxnodes value that's too
   // small. And there's no way to determine what MAX_NUMNODES is AFAIK. What
   // a terrible API!
-  unsigned long nodemask[64] = { 0x1 };
-  ret = set_mempolicy(MPOL_BIND, nodemask, 8 * sizeof(unsigned long));
+  ret = set_mempolicy(MPOL_BIND, &mask, 8 * sizeof(mask));
   test_assert(ret == 0);
-  int mode;
-  memset(nodemask, 0xff, sizeof(nodemask));
-  ret = get_mempolicy(&mode, nodemask, 8 * sizeof(nodemask), NULL, 0);
+  ALLOCATE_GUARD(nodemask, 'a');
+  ret = get_mempolicy(&mode, nodemask->m, 8 * sizeof(nodemask->m), NULL, 0);
   if (ret < 0) {
     test_assert(errno == EINVAL);
   } else {
     test_assert(mode == MPOL_BIND);
-    test_assert(nodemask[0] == 0x1);
-    test_assert(nodemask[1] == 0);
+    test_assert(nodemask->m[0] == 0x1);
+    test_assert(nodemask->m[1] == 0);
   }
+  VERIFY_GUARD(nodemask);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
