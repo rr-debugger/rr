@@ -36,6 +36,7 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "seccomp-bpf.h"
+void good_random(uint8_t* out, size_t out_len);
 
 using namespace std;
 
@@ -1002,6 +1003,24 @@ TempFile create_temporary_file(const char* pattern) {
   result.fd = mkstemp(buf);
   result.name = buf;
   return result;
+}
+
+void good_random(void* out, size_t out_len) {
+  ScopedFd fd("/dev/urandom", O_RDONLY);
+  uint8_t* o = static_cast<uint8_t*>(out);
+  if (fd.is_open()) {
+    while (out_len > 0) {
+      ssize_t ret = read(fd, o, out_len);
+      if (ret <= 0) {
+        break;
+      }
+      o += ret;
+      out_len -= ret;
+    }
+  }
+  for (size_t i = 0; i < out_len; ++i) {
+    o[i] = random();
+  }
 }
 
 } // namespace rr

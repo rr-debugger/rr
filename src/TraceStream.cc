@@ -617,13 +617,19 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu)
         path(s), substream(s).block_size, substream(s).threads));
   }
 
+  // Add a random UUID to the trace metadata. This lets tools identify a trace
+  // easily.
+  uint32_t uuid[4];
+  good_random(uuid, sizeof(uuid));
+
   string ver_path = version_path();
   ScopedFd version_fd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
   if (!version_fd.is_open()) {
     FATAL() << "Unable to create " << ver_path;
   }
-  char buf[10];
-  sprintf(buf, "%d\n", TRACE_VERSION);
+  char buf[100];
+  sprintf(buf, "%d\n%08x%08x%08x%08x\n", TRACE_VERSION, uuid[0], uuid[1],
+          uuid[2], uuid[3]);
   ssize_t buf_len = strlen(buf);
   if (write(version_fd, buf, buf_len) != buf_len) {
     FATAL() << "Unable to write " << ver_path;
