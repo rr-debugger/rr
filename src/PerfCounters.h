@@ -96,6 +96,11 @@ public:
 
   static bool is_ticks_attr(const perf_event_attr& attr);
 
+  /* When an interrupt is requested, at most this many ticks may elapse before
+   * the interrupt is delivered.
+   */
+  static uint32_t skid_size();
+
   bool counting;
 
 private:

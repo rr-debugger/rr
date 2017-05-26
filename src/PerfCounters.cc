@@ -33,6 +33,7 @@ static struct perf_event_attr cycles_attr;
 static struct perf_event_attr page_faults_attr;
 static struct perf_event_attr hw_interrupts_attr;
 static struct perf_event_attr instructions_retired_attr;
+static uint32_t skid_size;
 static bool has_ioc_period_bug;
 static bool has_kvm_in_txcp_bug;
 static bool only_one_counter;
@@ -66,6 +67,7 @@ struct PmuConfig {
   unsigned rcb_cntr_event;
   unsigned rinsn_cntr_event;
   unsigned hw_intr_cntr_event;
+  uint32_t skid_size;
   bool supported;
   /*
    * Some CPUs turn off the whole PMU when there are no remaining events
@@ -81,24 +83,27 @@ struct PmuConfig {
 
 // XXX please only edit this if you really know what you're doing.
 static const PmuConfig pmu_configs[] = {
-  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0x5100c0, 0x5301cb, true,
+  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
     false },
-  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0x5100c0, 0x5301cb, true,
-    true },
-  { IntelSkylake, "Intel Skylake", 0x5101c4, 0x5100c0, 0x5301cb, true, false },
-  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0x5100c0, 0x5301cb, true,
+  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0x5100c0, 0x5301cb, 100,
+    true, true },
+  { IntelSkylake, "Intel Skylake", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
     false },
-  { IntelHaswell, "Intel Haswell", 0x5101c4, 0x5100c0, 0x5301cb, true, false },
-  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, true,
+  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
     false },
-  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, true,
+  { IntelHaswell, "Intel Haswell", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
     false },
-  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0x5100c0, 0x50011d, true, false },
-  { IntelWestmere, "Intel Westmere", 0x5101c4, 0x5100c0, 0x50011d, true,
+  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
     false },
-  { IntelPenryn, "Intel Penryn", 0, 0, 0, false, false },
-  { IntelMerom, "Intel Merom", 0, 0, 0, false, false },
-  { AMDRyzen, "AMD Ryzen", 0x5101d1, 0x5100c0, 0, true, false },
+  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, 100,
+    true, false },
+  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0x5100c0, 0x50011d, 100, true,
+    false },
+  { IntelWestmere, "Intel Westmere", 0x5101c4, 0x5100c0, 0x50011d, 100, true,
+    false },
+  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, false, false },
+  { IntelMerom, "Intel Merom", 0, 0, 0, 100, false, false },
+  { AMDRyzen, "AMD Ryzen", 0x5101d1, 0x5100c0, 0, 1000, true, false },
 };
 
 static string lowercase(const string& s) {
@@ -358,6 +363,7 @@ static void init_attributes() {
     FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
   }
 
+  skid_size = pmu->skid_size;
   init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
   init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
                        PERF_COUNT_HW_CPU_CYCLES);
@@ -391,6 +397,11 @@ bool PerfCounters::is_ticks_attr(const perf_event_attr& attr) {
   tmp_attr.sample_period = 0;
   tmp_attr.config &= ~IN_TXCP;
   return memcmp(&ticks_attr, &tmp_attr, sizeof(attr)) == 0;
+}
+
+uint32_t PerfCounters::skid_size() {
+  init_attributes();
+  return rr::skid_size;
 }
 
 PerfCounters::PerfCounters(pid_t tid)
