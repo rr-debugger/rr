@@ -56,7 +56,8 @@ enum CpuMicroarch {
   IntelBroadwell,
   IntelSkylake,
   IntelSilvermont,
-  IntelKabylake
+  IntelKabylake,
+  AMDRyzen,
 };
 
 struct PmuConfig {
@@ -97,6 +98,7 @@ static const PmuConfig pmu_configs[] = {
     false },
   { IntelPenryn, "Intel Penryn", 0, 0, 0, false, false },
   { IntelMerom, "Intel Merom", 0, 0, 0, false, false },
+  { AMDRyzen, "AMD Ryzen", 0x5101d1, 0x5100c0, 0, true, false },
 };
 
 static string lowercase(const string& s) {
@@ -125,6 +127,7 @@ static CpuMicroarch get_cpu_microarch() {
 
   auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
   unsigned int cpu_type = (cpuid_data.eax & 0xF0FF0);
+  unsigned int ext_family = (cpuid_data.eax >> 20) & 0xff;
   switch (cpu_type) {
     case 0x006F0:
     case 0x10660:
@@ -163,10 +166,16 @@ static CpuMicroarch get_cpu_microarch() {
     case 0x806e0:
     case 0x906e0:
       return IntelKabylake;
+    case 0x00f10:
+      if (ext_family == 8) {
+        return AMDRyzen;
+      }
+      break;
     default:
-      FATAL() << "CPU " << HEX(cpu_type) << " unknown.";
-      return UnknownCpu; // not reached
+      break;
   }
+  FATAL() << "CPU " << HEX(cpu_type) << " unknown.";
+  return UnknownCpu; // not reached
 }
 
 static void init_perf_event_attr(struct perf_event_attr* attr,
