@@ -66,6 +66,14 @@ templates = {
         RawBytes(0x89, 0xe5),   # mov %esp,%ebp
         RawBytes(0x0f, 0x34),   # sysenter
     ),
+    'X86SysenterVsyscallImplementationAMD': AssemblyTemplate(
+        RawBytes(0x51),         # push %ecx
+        RawBytes(0x52),         # push %edx
+        RawBytes(0x55),         # push %ebp
+        RawBytes(0x89, 0xcd),   # mov %ecx,%ebp
+        RawBytes(0x0f, 0x05),   # syscall
+        RawBytes(0xcd, 0x80),   # int $0x80
+    ),
     'X86SysenterVsyscallUseInt80': AssemblyTemplate(
         RawBytes(0xcd, 0x80),   # int $0x80
         RawBytes(0xc3),         # ret

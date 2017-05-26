@@ -80,7 +80,7 @@ public:
   void patch_after_mmap(RecordTask* t, remote_ptr<void> start, size_t size,
                         size_t offset_pages, int child_fd);
 
-  remote_ptr<void> x86_sysenter_vsyscall;
+  remote_ptr<void> x86_vsyscall;
   /**
    * The list of pages we've allocated to hold our extended jumps.
    */

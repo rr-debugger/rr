@@ -445,9 +445,10 @@ static SymbolTable read_vdso_symbols(RecordTask* t) {
  * implementation.
  */
 static bool is_kernel_vsyscall(RecordTask* t, remote_ptr<void> addr) {
-  uint8_t impl[X86SysenterVsyscallImplementation::size];
+  uint8_t impl[X86SysenterVsyscallImplementationAMD::size];
   t->read_bytes(addr, impl);
-  return X86SysenterVsyscallImplementation::match(impl);
+  return X86SysenterVsyscallImplementation::match(impl) ||
+         X86SysenterVsyscallImplementationAMD::match(impl);
 }
 
 /**
@@ -522,8 +523,8 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X86Arch>(t);
 
   auto syms = read_vdso_symbols(t);
-  patcher.x86_sysenter_vsyscall = locate_and_verify_kernel_vsyscall(t, syms);
-  if (!patcher.x86_sysenter_vsyscall) {
+  patcher.x86_vsyscall = locate_and_verify_kernel_vsyscall(t, syms);
+  if (!patcher.x86_vsyscall) {
     FATAL() << "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't "
                "recognized.\n"
                "    Syscall buffering is now effectively disabled.  If you're "
@@ -540,7 +541,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   // is never used.
   uint8_t patch[X86SysenterVsyscallUseInt80::size];
   X86SysenterVsyscallUseInt80::substitute(patch);
-  write_and_record_bytes(t, patcher.x86_sysenter_vsyscall, patch);
+  write_and_record_bytes(t, patcher.x86_vsyscall, patch);
   LOG(debug) << "monkeypatched __kernel_vsyscall to use int $80";
 
   auto vdso_start = t->vm()->vdso().start();
@@ -592,7 +593,7 @@ void patch_at_preload_init_arch<X86Arch>(RecordTask* t,
     return;
   }
 
-  auto kernel_vsyscall = patcher.x86_sysenter_vsyscall;
+  auto kernel_vsyscall = patcher.x86_vsyscall;
 
   // Luckily, linux is happy for us to scribble directly over
   // the vdso mapping's bytes without mprotecting the region, so
