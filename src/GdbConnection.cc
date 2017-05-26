@@ -172,17 +172,18 @@ void GdbConnection::write_packet(const char* data) {
 void GdbConnection::write_binary_packet(const char* pfx, const uint8_t* data,
                                         ssize_t num_bytes) {
   ssize_t pfx_num_chars = strlen(pfx);
-  uint8_t buf[2 * num_bytes + pfx_num_chars];
+  vector<uint8_t> buf;
+  buf.resize(2 * num_bytes + pfx_num_chars);
   ssize_t buf_num_bytes = 0;
   int i;
 
-  strncpy((char*)buf, pfx, sizeof(buf) - 1);
+  strncpy((char*)buf.data(), pfx, buf.size() - 1);
   buf_num_bytes += pfx_num_chars;
 
   for (i = 0; i < num_bytes; ++i) {
     uint8_t b = data[i];
 
-    if (buf_num_bytes + 2 > ssize_t(sizeof(buf))) {
+    if (buf_num_bytes + 2 > ssize_t(buf.size())) {
       break;
     }
     switch (b) {
@@ -190,18 +191,18 @@ void GdbConnection::write_binary_packet(const char* pfx, const uint8_t* data,
       case '$':
       case '}':
       case '*':
-        buf[buf_num_bytes++] = '}';
-        buf[buf_num_bytes++] = b ^ 0x20;
+        buf.data()[buf_num_bytes++] = '}';
+        buf.data()[buf_num_bytes++] = b ^ 0x20;
         break;
       default:
-        buf[buf_num_bytes++] = b;
+        buf.data()[buf_num_bytes++] = b;
         break;
     }
   }
 
   LOG(debug) << " ***** NOTE: writing binary data, upcoming debug output may "
                 "be truncated";
-  return write_packet_bytes(buf, buf_num_bytes);
+  return write_packet_bytes(buf.data(), buf_num_bytes);
 }
 
 void GdbConnection::write_hex_bytes_packet(const char* prefix,
@@ -212,13 +213,14 @@ void GdbConnection::write_hex_bytes_packet(const char* prefix,
   }
 
   ssize_t pfx_num_chars = strlen(prefix);
-  char buf[pfx_num_chars + 2 * len + 1];
-  memcpy(buf, prefix, pfx_num_chars);
+  vector<char> buf;
+  buf.resize(pfx_num_chars + 2 * len + 1);
+  memcpy(buf.data(), prefix, pfx_num_chars);
   for (size_t i = 0; i < len; ++i) {
     unsigned long b = bytes[i];
-    snprintf(&buf[pfx_num_chars + 2 * i], 3, "%02lx", b);
+    snprintf(&buf.data()[pfx_num_chars + 2 * i], 3, "%02lx", b);
   }
-  write_packet(buf);
+  write_packet(buf.data());
 }
 
 void GdbConnection::write_hex_bytes_packet(const uint8_t* bytes, size_t len) {
