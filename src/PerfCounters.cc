@@ -104,7 +104,7 @@ static const PmuConfig pmu_configs[] = {
     false },
   { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, false, false },
   { IntelMerom, "Intel Merom", 0, 0, 0, 100, false, false },
-  { AMDRyzen, "AMD Ryzen", 0x5101d1, 0x5100c0, 0, 1000, true, false },
+  { AMDRyzen, "AMD Ryzen", 0x5100d1, 0x5100c0, 0, 1000, true, false },
 };
 
 static string lowercase(const string& s) {
