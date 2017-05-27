@@ -725,6 +725,7 @@ set(BASIC_TESTS
   sigsuspend
   sigtrap
   simple
+  simple_threads_stress
   sioc
   sock_names_opts
   spinlock_priorities
