@@ -174,6 +174,13 @@ static CpuMicroarch get_cpu_microarch() {
       return IntelKabylake;
     case 0x00f10:
       if (ext_family == 8) {
+        if (!Flags::get().suppress_environment_warnings) {
+          fprintf(stderr, "You have a Ryzen CPU. The Ryzen "
+                          "retired-conditional-branches hardware\n"
+                          "performance counter is not accurate enough; rr will "
+                          "be unreliable.\n"
+                          "See https://github.com/mozilla/rr/issues/2034.\n");
+        }
         return AMDRyzen;
       }
       break;
