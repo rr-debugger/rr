@@ -36,6 +36,7 @@ static struct perf_event_attr instructions_retired_attr;
 static uint32_t skid_size;
 static bool has_ioc_period_bug;
 static bool has_kvm_in_txcp_bug;
+static bool supports_txcp;
 static bool only_one_counter;
 static bool activate_useless_counter;
 
@@ -206,7 +207,11 @@ static int64_t read_counter(ScopedFd& fd) {
 }
 
 static ScopedFd start_counter(pid_t tid, int group_fd,
-                              struct perf_event_attr* attr) {
+                              struct perf_event_attr* attr,
+                              bool* disabled_txcp = nullptr) {
+  if (disabled_txcp) {
+    *disabled_txcp = false;
+  }
   int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, 0);
   if (0 > fd && errno == EINVAL && attr->type == PERF_TYPE_RAW &&
       (attr->config & IN_TXCP)) {
@@ -215,6 +220,9 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
     tmp_attr.config &= ~IN_TXCP;
     fd = syscall(__NR_perf_event_open, &tmp_attr, tid, -1, group_fd, 0);
     if (fd >= 0) {
+      if (disabled_txcp) {
+        *disabled_txcp = true;
+      }
       LOG(warn) << "kernel does not support IN_TXCP";
       if ((cpuid(CPUID_GETEXTENDEDFEATURES, 0).ebx & HLE_FEATURE_FLAG) &&
           !Flags::get().suppress_environment_warnings) {
@@ -272,16 +280,22 @@ static void do_branches() {
 }
 
 static void check_for_kvm_in_txcp_bug() {
+  int64_t count = 0;
   struct perf_event_attr attr = rr::ticks_attr;
   attr.config |= IN_TXCP;
   attr.sample_period = 0;
-  ScopedFd fd = start_counter(0, -1, &attr);
-  ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-  ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
-  do_branches();
-  int64_t count = read_counter(fd);
+  bool disabled_txcp;
+  ScopedFd fd = start_counter(0, -1, &attr, &disabled_txcp);
+  if (fd.is_open() && !disabled_txcp) {
+    ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
+    ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+    do_branches();
+    count = read_counter(fd);
+  }
 
-  has_kvm_in_txcp_bug = count < NUM_BRANCHES;
+  supports_txcp = count > 0;
+  has_kvm_in_txcp_bug = supports_txcp && count < NUM_BRANCHES;
+  LOG(debug) << "supports txcp=" << supports_txcp;
   LOG(debug) << "has_kvm_in_txcp_bug=" << has_kvm_in_txcp_bug
              << " count=" << count;
 }
@@ -438,7 +452,7 @@ void PerfCounters::reset(Ticks ticks_period) {
     attr.sample_period = ticks_period;
     fd_ticks_interrupt = start_counter(tid, -1, &attr);
 
-    if (!only_one_counter) {
+    if (!only_one_counter && supports_txcp) {
       if (has_kvm_in_txcp_bug) {
         // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not
         // used,
