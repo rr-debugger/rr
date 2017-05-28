@@ -1531,10 +1531,14 @@ void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
   push_target_remote_cmd(args, params.port);
   args.push_back(params.exe_image);
 
+  vector<string> env = current_env();
+  env.push_back("GDB_UNDER_RR=1");
+
   LOG(debug) << "launching " << to_string(args);
 
   StringVectorToCharArray c_args(args);
-  execvp(gdb_binary_file_path.c_str(), c_args.get());
+  StringVectorToCharArray c_env(env);
+  execvpe(gdb_binary_file_path.c_str(), c_args.get(), c_env.get());
   FATAL() << "Failed to exec gdb.";
 }
 

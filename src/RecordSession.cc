@@ -1741,11 +1741,7 @@ static string lookup_by_path(const string& name) {
     }
   }
 
-  vector<string> env;
-  char** envp = environ;
-  for (; *envp; ++envp) {
-    env.push_back(*envp);
-  }
+  vector<string> env = current_env();
   env.insert(env.end(), extra_env.begin(), extra_env.end());
 
   string full_path = lookup_by_path(argv[0]);

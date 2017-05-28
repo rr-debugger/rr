@@ -321,6 +321,8 @@ TempFile create_temporary_file(const char* pattern);
 
 void good_random(void* out, size_t out_len);
 
+std::vector<std::string> current_env();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

@@ -1023,4 +1023,13 @@ void good_random(void* out, size_t out_len) {
   }
 }
 
+vector<string> current_env() {
+  vector<string> env;
+  char** envp = environ;
+  for (; *envp; ++envp) {
+    env.push_back(*envp);
+  }
+  return env;
+}
+
 } // namespace rr
