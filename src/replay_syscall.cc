@@ -1269,6 +1269,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
         }
       }
     }
+      RR_FALLTHROUGH;
 
     case Arch::recvmsg:
     case Arch::recvmmsg:

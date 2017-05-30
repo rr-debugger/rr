@@ -14,8 +14,8 @@ void catcher(__attribute__((unused)) int signum,
 
 int main(void) {
   struct sigaction sact;
-  long long counter = 0;
-  long long counter2 = 0;
+  long counter = 0;
+  long counter2 = 0;
 
   sigemptyset(&sact.sa_mask);
   sact.sa_flags = SA_SIGINFO;
@@ -45,7 +45,7 @@ int main(void) {
 #endif
 
   atomic_printf("Signal %d caught, Counter is %lld\n", caught_sig,
-                counter + (counter2 << 32));
+                counter + (((long long)counter2) << 32));
   test_assert(SIGALRM == caught_sig);
 
   breakpoint();

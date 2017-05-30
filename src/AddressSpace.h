@@ -14,6 +14,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <functional>
 
 #include "preload/preload_interface.h"
 
