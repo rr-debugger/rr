@@ -15,7 +15,7 @@ int main(void) {
   test_assert(0 == clock_gettime(CLOCK_REALTIME, &ts));
 
   // Verify that adjtimex() and clock_gettime() return roughly the same time.
-  test_assert(abs(tx.time.tv_sec - ts.tv_sec) <= 1);
+  test_assert(labs(tx.time.tv_sec - ts.tv_sec) <= 1);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
