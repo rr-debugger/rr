@@ -264,7 +264,7 @@ int main(int argc, char* argv[]) {
   if (command) {
     args.erase(args.begin());
   } else {
-    if (!Command::verify_not_option(args)) {
+    if (Command::check_if_option(args)) {
       print_usage(stderr);
       return 1;
     }

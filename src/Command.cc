@@ -161,16 +161,16 @@ bool Command::parse_option(std::vector<std::string>& args,
   return false;
 }
 
-bool Command::verify_not_option(std::vector<std::string>& args) {
+bool Command::check_if_option(std::vector<std::string>& args) {
   if (args.size() > 0 && args[0][0] == '-') {
-    fprintf(stderr, "Invalid option %s\n", args[0].c_str());
-    return false;
+    return true;
   }
-  return true;
+  fprintf(stderr, "Invalid option %s\n", args[0].c_str());
+  return false;
 }
 
 bool Command::parse_optional_trace_dir(vector<string>& args, string* out) {
-  if (!verify_not_option(args)) {
+  if (check_if_option(args)) {
     return false;
   }
   if (args.size() > 0) {
