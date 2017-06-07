@@ -574,6 +574,10 @@ static bool is_tmp_file(const string& path) {
 
 bool should_copy_mmap_region(const KernelMapping& mapping,
                              const struct stat& stat) {
+  if (getenv("RR_COPY_ALL_FILES")) {
+    return true;
+  }
+
   int flags = mapping.flags();
   int prot = mapping.prot();
   const string& file_name = mapping.fsname();
