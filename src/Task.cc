@@ -1052,9 +1052,15 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
 
   switch (extra_registers.format()) {
     case ExtraRegisters::XSAVE: {
-      if (xsave_area_size()) {
-        struct iovec vec = { extra_registers.data_.data(),
-                             extra_registers.data_.size() };
+      size_t xsave_size = xsave_area_size();
+      if (xsave_size) {
+        if (extra_registers.data_.size() < xsave_size) {
+          size_t old_size = extra_registers.data_.size();
+          extra_registers.data_.resize(xsave_size);
+          memset(extra_registers.data_.data() + old_size, 0,
+                 xsave_size - old_size);
+        }
+        struct iovec vec = { extra_registers.data_.data(), xsave_size };
         ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
       } else {
 #if defined(__i386__)
