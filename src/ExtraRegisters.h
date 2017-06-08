@@ -72,6 +72,11 @@ public:
   bool empty() const { return data_.empty(); }
 
   /**
+   * Read XSAVE `xinuse` field
+   */
+  uint64_t read_xinuse(bool* defined) const;
+
+  /**
    * Like |Registers::read_register()|, except attempts to read
    * the value of an "extra register" (floating point / vector).
    */

@@ -59,6 +59,7 @@ enum TraceFieldKind {
   TRACE_INSTRUCTION_COUNT, // outputs 64-bit value
   TRACE_IP,                // outputs 64-bit value
   TRACE_FLAGS,             // outputs 64-bit value
+  TRACE_XINUSE,            // outputs 64-bit value
   TRACE_GP_REG,            // outputs 64-bit value
   TRACE_XMM_REG,           // outputs 128-bit value
   TRACE_YMM_REG,           // outputs 256-bit value
@@ -116,6 +117,12 @@ static void print_regs_raw(Task* t, TraceFrame::Time event,
       }
       case TRACE_FLAGS: {
         uint64_t value = t->regs().flags();
+        fwrite(&value, sizeof(value), 1, out);
+        break;
+      }
+      case TRACE_XINUSE: {
+        bool defined;
+        uint64_t value = t->extra_regs().read_xinuse(&defined);
         fwrite(&value, sizeof(value), 1, out);
         break;
       }
@@ -252,6 +259,8 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
       }
     } else if (find_gp_reg(reg) >= 0) {
       out->push_back({ TRACE_GP_REG, (uint8_t)find_gp_reg(reg) });
+    } else if (reg == "xinuse") {
+      out->push_back({ TRACE_XINUSE, 0 });
     } else {
       fprintf(stderr, "Unknown register '%s'\n", reg.c_str());
       return false;

@@ -170,6 +170,17 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   return reg_data.size;
 }
 
+uint64_t ExtraRegisters::read_xinuse(bool* defined) const {
+  if (format_ != XSAVE || data_.size() < 512 + 8) {
+    *defined = false;
+    return 0;
+  }
+
+  uint64_t ret;
+  memcpy(&ret, data_.data() + 512, 8);
+  return ret;
+}
+
 void ExtraRegisters::validate(Task* t) {
   if (format_ != XSAVE) {
     return;
