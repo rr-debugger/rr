@@ -22,7 +22,8 @@
 #endif
 
 /// RR_FALLTHROUGH - Mark fallthrough cases in switch statements.
-#if defined(__cplusplus) && __cplusplus > 201402L && __has_cpp_attribute(fallthrough)
+#if defined(__cplusplus) && __cplusplus > 201402L &&                           \
+    __has_cpp_attribute(fallthrough)
 #define RR_FALLTHROUGH [[fallthrough]]
 #elif !__cplusplus
 // Workaround for llvm.org/PR23435, since clang 3.6 and below emit a spurious

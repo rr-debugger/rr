@@ -1,8 +1,6 @@
 #include "rrutil.h"
 
-static void* do_thread(__attribute__((unused)) void* p) {
-  return 0;
-}
+static void* do_thread(__attribute__((unused)) void* p) { return 0; }
 
 int main(void) {
   int i;

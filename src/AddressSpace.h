@@ -9,12 +9,12 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
-#include <functional>
 
 #include "preload/preload_interface.h"
 

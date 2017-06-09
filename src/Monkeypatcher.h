@@ -93,6 +93,12 @@ public:
 
   bool is_jump_stub_instruction(remote_code_ptr p);
 
+  /**
+   * Syscalls in the VDSO that we patched to be direct syscalls. These can
+   * always be safely patched to jump to the syscallbuf.
+   */
+  std::unordered_set<remote_code_ptr> patched_vdso_syscalls;
+
 private:
   /**
    * The list of supported syscall patches obtained from the preload

@@ -381,19 +381,26 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
       // after the syscall. False positives are OK.
       // glibc-2.23.1-8.fc24.x86_64's __clock_nanosleep needs this.
       bool found_potential_interfering_branch = false;
-      for (size_t i = 0; i + 2 <= bytes_count; ++i) {
-        uint8_t b = following_bytes[i];
-        // Check for short conditional or unconditional jump
-        if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
-          int offset = i + 2 + (int8_t)following_bytes[i + 1];
-          if (hook.is_multi_instruction
-                  ? (offset >= 0 && offset < hook.next_instruction_length)
-                  : offset == 0) {
-            LOG(debug) << "Found potential interfering branch at "
-                       << r.ip().to_data_ptr<uint8_t>() + i;
-            // We can't patch this because it would jump straight back into
-            // the middle of our patch code.
-            found_potential_interfering_branch = true;
+      // If this was a VDSO syscall we patched, we don't have to worry about
+      // this check since the function doesn't do anything except execute our
+      // syscall and return.
+      // Otherwise the Linux 4.12 VDSO triggers the interfering-branch check.
+      if (!patched_vdso_syscalls.count(
+              r.ip().decrement_by_syscall_insn_length(arch))) {
+        for (size_t i = 0; i + 2 <= bytes_count; ++i) {
+          uint8_t b = following_bytes[i];
+          // Check for short conditional or unconditional jump
+          if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
+            int offset = i + 2 + (int8_t)following_bytes[i + 1];
+            if (hook.is_multi_instruction
+                    ? (offset >= 0 && offset < hook.next_instruction_length)
+                    : offset == 0) {
+              LOG(debug) << "Found potential interfering branch at "
+                         << r.ip().to_data_ptr<uint8_t>() + i;
+              // We can't patch this because it would jump straight back into
+              // the middle of our patch code.
+              found_potential_interfering_branch = true;
+            }
           }
         }
       }
@@ -572,6 +579,10 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
         X86VsyscallMonkeypatch::substitute(patch, syscall_number);
 
         write_and_record_bytes(t, absolute_address, patch);
+        // Record the location of the syscall instruction, skipping the
+        // "push %ebx; mov $syscall_number,%eax".
+        patcher.patched_vdso_syscalls.insert(
+            remote_code_ptr(absolute_address + 6));
         LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
                    << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
@@ -620,7 +631,8 @@ void patch_at_preload_init_arch<X86Arch>(RecordTask* t,
 // static constructors, so we can't wait for our preload library to be
 // initialized. Fortunately we're just replacing the vdso code with real
 // syscalls so there is no dependency on the preload library at all.
-template <> void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher&) {
+template <>
+void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X64Arch>(t);
 
   auto vdso_start = t->vm()->vdso().start();
@@ -660,6 +672,10 @@ template <> void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher&) {
           X64VsyscallMonkeypatch::substitute(patch, syscall_number);
 
           write_and_record_bytes(t, absolute_address, patch);
+          // Record the location of the syscall instruction, skipping the
+          // "mov $syscall_number,%eax".
+          patcher.patched_vdso_syscalls.insert(
+              remote_code_ptr(absolute_address + 5));
           LOG(debug) << "monkeypatched " << syscall.name << " to syscall "
                      << syscall.syscall_number << " at "
                      << HEX(absolute_address) << " (" << HEX(sym_address)
