@@ -170,14 +170,16 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
   return reg_data.size;
 }
 
+static const int xinuse_offset = 512;
+
 uint64_t ExtraRegisters::read_xinuse(bool* defined) const {
-  if (format_ != XSAVE || data_.size() < 512 + 8) {
+  uint64_t ret;
+  if (format_ != XSAVE || data_.size() < 512 + sizeof(ret)) {
     *defined = false;
     return 0;
   }
 
-  uint64_t ret;
-  memcpy(&ret, data_.data() + 512, 8);
+  memcpy(&ret, data_.data() + xinuse_offset, sizeof(ret));
   return ret;
 }
 
@@ -380,6 +382,16 @@ void ExtraRegisters::reset() {
     default:
       assert(0 && "Unknown arch");
       break;
+  }
+  uint64_t xinuse;
+  if (data_.size() >= xinuse_offset + sizeof(xinuse)) {
+    /* We have observed (Skylake, Linux 4.10) the system setting XINUSE's 0 bit
+     * to indicate x87-in-use, at times unrelated to x87 actually being used.
+     * Work around this by setting the bit unconditionally after exec.
+     */
+    memcpy(&xinuse, data_.data() + xinuse_offset, sizeof(xinuse));
+    xinuse |= 1;
+    memcpy(data_.data() + xinuse_offset, &xinuse, sizeof(xinuse));
   }
 }
 
