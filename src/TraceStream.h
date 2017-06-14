@@ -70,6 +70,27 @@ public:
 
   std::string file_data_clone_file_name(const TaskUid& tuid);
 
+  static size_t mmaps_block_size();
+
+  /**
+   * For REMAP_MAPPING maps, the memory contents are preserved so we don't
+   * need a source. We use SOURCE_ZERO for that case and it's ignored.
+   */
+  enum MappedDataSource { SOURCE_TRACE, SOURCE_FILE, SOURCE_ZERO };
+  /**
+   * Where to obtain data for the mapped region.
+   */
+  struct MappedData {
+    TraceFrame::Time time;
+    MappedDataSource source;
+    /** Name of file to map the data from. */
+    string file_name;
+    /** Data offset within |file_name|. */
+    uint64_t data_offset_bytes;
+    /** Original size of mapped file. */
+    uint64_t file_size_bytes;
+  };
+
 protected:
   TraceStream(const string& trace_dir, TraceFrame::Time initial_time);
 
@@ -129,6 +150,9 @@ public:
   RecordInTrace write_mapped_region(Task* t, const KernelMapping& map,
                                     const struct stat& stat,
                                     MappingOrigin origin = SYSCALL_MAPPING);
+
+  static void write_mapped_region_to_alternative_stream(
+      CompressedWriter& mmaps, const MappedData& data, const KernelMapping& km);
 
   /**
    * Write a raw-data record to the trace.
@@ -211,23 +235,6 @@ public:
    */
   TraceFrame read_frame();
 
-  /**
-   * For REMAP_MAPPING maps, the memory contents are preserved so we don't
-   * need a source. We use SOURCE_ZERO for that case and it's ignored.
-   */
-  enum MappedDataSource { SOURCE_TRACE, SOURCE_FILE, SOURCE_ZERO };
-  /**
-   * Where to obtain data for the mapped region.
-   */
-  struct MappedData {
-    MappedDataSource source;
-    /** Name of file to map the data from. */
-    string file_name;
-    /** Data offset within |file_name|. */
-    uint64_t data_offset_bytes;
-    /** Original size of mapped file. */
-    uint64_t file_size_bytes;
-  };
   /**
    * Read the next mapped region descriptor and return it.
    * Also returns where to get the mapped data in |*data|, if it's non-null.

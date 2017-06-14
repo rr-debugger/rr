@@ -38,8 +38,9 @@ public:
   bool good() const { return !error; }
   // Call only on producer thread.
   void write(const void* data, size_t size);
+  enum Sync { DONT_SYNC, SYNC };
   // Call only on producer thread
-  void close();
+  void close(Sync sync = DONT_SYNC);
 
   struct BlockHeader {
     uint32_t compressed_length;

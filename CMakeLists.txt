@@ -282,6 +282,7 @@ set(RR_SOURCES
   src/MmappedFileMonitor.cc
   src/MonitoredSharedMemory.cc
   src/Monkeypatcher.cc
+  src/PackCommand.cc
   src/PerfCounters.cc
   src/ProcFdDirMonitor.cc
   src/ProcMemMonitor.cc
@@ -311,7 +312,9 @@ set(RR_SOURCES
   src/TraceStream.cc
   src/VirtualPerfCounterMonitor.cc
   src/util.cc
-  src/WaitStatus.cc)
+  src/WaitStatus.cc
+  third-party/blake2/blake2b.c
+)
 
 function(post_build_executable target)
 # grsecurity needs these. But if we add them ourselves, they may conflict

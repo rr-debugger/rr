@@ -342,6 +342,8 @@ void good_random(void* out, size_t out_len);
 
 std::vector<std::string> current_env();
 
+int get_num_cpus();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

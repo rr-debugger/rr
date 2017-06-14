@@ -48,8 +48,7 @@ static SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
 
 static const SubstreamData& substream(TraceStream::Substream s) {
   if (!substreams[TraceStream::RAW_DATA].threads) {
-    substreams[TraceStream::RAW_DATA].threads =
-        min<int>(8, sysconf(_SC_NPROCESSORS_ONLN));
+    substreams[TraceStream::RAW_DATA].threads = min(8, get_num_cpus());
   }
   return substreams[s];
 }
@@ -162,6 +161,8 @@ string TraceStream::file_data_clone_file_name(const TaskUid& tuid) {
 string TraceStream::path(Substream s) {
   return trace_dir + "/" + substream(s).name;
 }
+
+size_t TraceStream::mmaps_block_size() { return substreams[MMAPS].block_size; }
 
 bool TraceWriter::good() const {
   for (auto& w : writers) {
@@ -429,6 +430,16 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
                                              : DONT_RECORD_IN_TRACE;
 }
 
+void TraceWriter::write_mapped_region_to_alternative_stream(
+    CompressedWriter& mmaps, const MappedData& data, const KernelMapping& km) {
+  mmaps << data.time << data.source << km.start() << km.end() << km.fsname()
+        << km.device() << km.inode() << km.prot() << km.flags()
+        << km.file_offset_bytes() << data.file_name
+        // Indicate that we have no statbuf-data
+        << (uint32_t)0 << (uint32_t)0 << (uint32_t)0 << data.file_size_bytes
+        << (int64_t)0;
+}
+
 KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
                                               ValidateSourceFile validate,
                                               TimeConstraint time_constraint) {
@@ -464,8 +475,10 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
   mmaps >> time >> source >> start >> end >> original_file_name >> device >>
       inode >> prot >> flags >> file_offset_bytes >> backing_file_name >>
       mode >> uid >> gid >> file_size >> mtime;
+  bool has_stat_buf = mode != 0 || uid != 0 || gid != 0 || mtime != 0;
   assert(time_constraint == ANY_TIME || time == global_time);
   if (data) {
+    data->time = time;
     data->source = source;
     if (data->source == SOURCE_FILE) {
       static const string clone_prefix("mmap_clone_");
@@ -474,7 +487,7 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
       if (backing_file_name[0] != '/') {
         backing_file_name = dir() + "/" + backing_file_name;
       }
-      if (!is_clone && validate == VALIDATE) {
+      if (!is_clone && validate == VALIDATE && has_stat_buf) {
         struct stat backing_stat;
         if (stat(backing_file_name.c_str(), &backing_stat)) {
           FATAL() << "Failed to stat " << backing_file_name

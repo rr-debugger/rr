@@ -199,7 +199,7 @@ void CompressedWriter::compression_thread() {
   pthread_mutex_unlock(&mutex);
 }
 
-void CompressedWriter::close() {
+void CompressedWriter::close(Sync sync) {
   if (!fd.is_open()) {
     return;
   }
@@ -213,6 +213,16 @@ void CompressedWriter::close() {
 
   for (auto i = threads.begin(); i != threads.end(); ++i) {
     pthread_join(*i, nullptr);
+  }
+
+  if (sync == SYNC) {
+    if (fsync(fd) < 0) {
+      error = true;
+    }
+  }
+
+  if (write_error) {
+    error = true;
   }
 
   fd.close();

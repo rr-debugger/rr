@@ -1036,4 +1036,9 @@ vector<string> current_env() {
   return env;
 }
 
+int get_num_cpus() {
+  int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
+  return cpus > 0 ? cpus : 1;
+}
+
 } // namespace rr
