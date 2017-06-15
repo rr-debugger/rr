@@ -1016,6 +1016,11 @@ set(TESTS_WITHOUT_PROGRAM
 )
 
 if(BUILD_TESTS)
+  add_test(check_environment
+      bash ${CMAKE_SOURCE_DIR}/src/test/check_environment_test.run)
+  set_tests_properties(check_environment
+      PROPERTIES FAIL_REGULAR_EXPRESSION "rr needs /proc/sys/kernel/perf_event_paranoid <= 1")
+
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
     add_executable(${test} src/test/${test}.c)
     post_build_executable(${test})
