@@ -1,0 +1,5 @@
+paranoid=`cat /proc/sys/kernel/perf_event_paranoid`
+if [ $paranoid -gt 1 ]; then
+	echo "rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is $paranoid."
+	exit 1
+fi
