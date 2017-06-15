@@ -1241,6 +1241,15 @@ static bool inject_handled_signal(RecordTask* t) {
     // which wipes out certain fields; e.g. we can't set SI_KERNEL in si_code.)
     setup_sigframe_siginfo(t, t->ev().Signal().siginfo);
   }
+
+  // The kernel clears the FPU state on entering the signal handler, but prior
+  // to 4.7 or thereabouts ptrace can still return stale values. Fix that here.
+  // This also sets bit 0 of the XINUSE register to 1 to avoid issues where it
+  // get set to 1 nondeterministically.
+  ExtraRegisters e = t->extra_regs();
+  e.reset();
+  t->set_extra_regs(e);
+
   return true;
 }
 
