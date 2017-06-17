@@ -207,7 +207,7 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           }
           const char* fsname = km.fsname().c_str();
           if (data.source == TraceReader::SOURCE_ZERO) {
-            const char source_zero[] = "<ZERO>";
+            static const char source_zero[] = "<ZERO>";
             fsname = source_zero;
           }
           fprintf(out, "  { map_file:\"%s\", addr:%p, length:%p, "
