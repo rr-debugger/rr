@@ -8,6 +8,7 @@
 #include <arpa/inet.h>
 #include <assert.h>
 #include <elf.h>
+#include <execinfo.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
@@ -968,9 +969,21 @@ void notifying_abort() {
     // do so.
     kill(pid, SIGURG);
     sleep(10000);
+  } else {
+    dump_rr_stack();
   }
 
   abort();
+}
+
+void dump_rr_stack() {
+  static const char msg[] = "=== Start rr backtrace:\n";
+  write(STDERR_FILENO, msg, sizeof(msg) - 1);
+  void* buffer[1024];
+  int count = backtrace(buffer, 1024);
+  backtrace_symbols_fd(buffer, count, STDERR_FILENO);
+  static const char msg2[] = "=== End rr backtrace\n";
+  write(STDERR_FILENO, msg2, sizeof(msg2) - 1);
 }
 
 void check_for_leaks() {

@@ -1575,6 +1575,7 @@ void GdbServer::emergency_debug(Task* t) {
     }
     kill(pid, SIGURG);
   } else {
+    dump_rr_stack();
     fputs("Launch gdb with\n  ", stderr);
     print_debugger_launch_command(t, port, "gdb", stderr);
   }

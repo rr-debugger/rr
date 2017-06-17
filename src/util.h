@@ -317,6 +317,11 @@ ScopedFd open_socket(const char* address, unsigned short* port,
 void notifying_abort();
 
 /**
+ * Dump the current rr stack
+ */
+void dump_rr_stack();
+
+/**
  * Check for leaked mappings etc
  */
 void check_for_leaks();
