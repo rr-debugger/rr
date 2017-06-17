@@ -881,6 +881,7 @@ set(TESTS_WITH_PROGRAM
   reverse_step_threads
   reverse_step_threads_break
   search
+  seccomp_signals
   segfault
   shared_map
   shared_persistent_file

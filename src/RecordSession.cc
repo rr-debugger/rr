@@ -1147,8 +1147,9 @@ static bool preinject_signal(RecordTask* t) {
      */
     LOG(debug) << "    maybe not in signal-stop (status " << t->status()
                << "); doing tgkill(SYSCALLBUF_DESCHED_SIGNAL)";
-    // Always send SYSCALLBUF_DESCHED_SIGNAL because other signals will be
-    // blocked by RecordTask::will_resume_execution().
+    // Always send SYSCALLBUF_DESCHED_SIGNAL because other signals (except
+    // TIME_SLICE_SIGNAL) will be blocked by
+    // RecordTask::will_resume_execution().
     t->tgkill(SYSCALLBUF_DESCHED_SIGNAL);
 
     /* Now singlestep the task until we're in a signal-stop for the signal
@@ -1156,15 +1157,21 @@ static bool preinject_signal(RecordTask* t) {
      * don't want it delivered to the task for real.
      */
     auto old_ip = t->ip();
-    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-    ASSERT(t, old_ip == t->ip()) << "Singlestep actually advanced when we "
-                                 << "just expected a signal; was at " << old_ip
-                                 << " now at " << t->ip() << " with status "
-                                 << t->status();
+    do {
+      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
+      ASSERT(t, old_ip == t->ip()) << "Singlestep actually advanced when we "
+                                   << "just expected a signal; was at "
+                                   << old_ip << " now at " << t->ip()
+                                   << " with status " << t->status();
+      // Ignore any pending TIME_SLICE_SIGNALs and continue until we get our
+      // SYSCALLBUF_DESCHED_SIGNAL.
+    } while (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL);
+
     if (t->status().ptrace_event() == PTRACE_EVENT_EXIT) {
       /* We raced with an exit (e.g. due to a pending SIGKILL). */
       return false;
     }
+
     ASSERT(t, t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL)
         << "Expected SYSCALLBUF_DESCHED_SIGNAL, got " << t->status();
     /* We're now in a signal-stop */
