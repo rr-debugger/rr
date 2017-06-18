@@ -217,7 +217,7 @@ static void dump_subtree(ProcessMap& child_processes,
 }
 
 static void dump_state_and_kill(pid_t child, const char* out_file_name) {
-  FILE* out = fopen(out_file_name, "w");
+  FILE* out = fopen(out_file_name, "a");
   if (!out) {
     fprintf(stderr, "Couldn't open %s for writing\n", out_file_name);
     return;
