@@ -2,7 +2,7 @@
 
 #include "rrutil.h"
 
-static DelayedSyscall delayed_syscall;
+static SyscallWrapper delayed_syscall;
 
 static void* run_child(__attribute__((unused)) void* arg) {
   /* context-switch events will happen during our long delay in the syscallbuf.
@@ -19,7 +19,7 @@ int main(void) {
   pthread_t thread;
 
   delayed_syscall = get_delayed_syscall();
-  if (delayed_syscall == default_delayed_syscall) {
+  if (delayed_syscall == default_syscall_wrapper) {
     atomic_puts("syscallbuf not loaded");
     atomic_puts("EXIT-SUCCESS");
     return 0;

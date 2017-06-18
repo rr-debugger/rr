@@ -175,7 +175,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       syscallbuf_blocked_sigs_generation(0),
       flushed_num_rec_bytes(0),
       flushed_syscallbuf(false),
-      delay_syscallbuf_reset(false),
+      delay_syscallbuf_reset_for_desched(false),
+      delay_syscallbuf_reset_for_seccomp_trap(false),
       prctl_seccomp_status(0),
       robust_futex_list_len(0),
       own_namespace_rec_tid(0),
@@ -1585,7 +1586,8 @@ void RecordTask::maybe_flush_syscallbuf() {
  * replay.
  */
 void RecordTask::maybe_reset_syscallbuf() {
-  if (flushed_syscallbuf && !delay_syscallbuf_reset) {
+  if (flushed_syscallbuf && !delay_syscallbuf_reset_for_desched &&
+      !delay_syscallbuf_reset_for_seccomp_trap) {
     flushed_syscallbuf = false;
     LOG(debug) << "Syscallbuf reset";
     reset_syscallbuf();

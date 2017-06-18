@@ -28,7 +28,7 @@ int main(void) {
   struct syscall_info sigprocmask_syscall = {
     SYS_rt_sigprocmask, { SIG_BLOCK, (long)&sigset, 0, 8, 0, 0 }
   };
-  DelayedSyscall delayed_syscall = get_delayed_syscall();
+  SyscallWrapper delayed_syscall = get_delayed_syscall();
 
   sa.sa_flags = SA_SIGINFO;
   sa.sa_sigaction = handle_sig;

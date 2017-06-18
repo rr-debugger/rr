@@ -118,6 +118,17 @@ void delayed_syscall(struct syscall_info* info) {
 }
 
 /**
+ * This is for testing purposes only.
+ */
+void spurious_desched_syscall(struct syscall_info* info) {
+  impose_spurious_desched = 1;
+  /* Make sure 'result' is used so it's not optimized out! */
+  syscall(info->no, info->args[0], info->args[1], info->args[2], info->args[3],
+          info->args[4], info->args[5]);
+  impose_spurious_desched = 0;
+}
+
+/**
  * glibc geteuid() can be compiled to instructions ending in "syscall; ret"
  * which can't be hooked. So override it here with something that can be hooked.
  */

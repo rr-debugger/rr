@@ -280,6 +280,7 @@ std::string Event::type_name() const {
       CASE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
       CASE(NOOP);
       CASE(SCHED);
+      CASE(SECCOMP_TRAP);
       CASE(SEGV_RDTSC);
       CASE(SYSCALLBUF_FLUSH);
       CASE(SYSCALLBUF_ABORT_COMMIT);

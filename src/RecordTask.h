@@ -616,8 +616,12 @@ public:
   bool flushed_syscallbuf;
   /* This bit is set when code wants to prevent the syscall
    * record buffer from being reset when it normally would be.
-   * Currently, the desched'd syscall code uses this. */
-  bool delay_syscallbuf_reset;
+   * This bit is set by the desched code. */
+  bool delay_syscallbuf_reset_for_desched;
+  /* This is set when code wants to prevent the syscall
+   * record buffer from being reset when it normally would be.
+   * This is set by the code for handling seccomp SIGSYS signals. */
+  bool delay_syscallbuf_reset_for_seccomp_trap;
   // Value to return from PR_GET_SECCOMP
   uint8_t prctl_seccomp_status;
 

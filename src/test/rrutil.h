@@ -292,9 +292,9 @@ struct syscall_info {
   long args[6];
 };
 
-typedef void (*DelayedSyscall)(struct syscall_info* info);
+typedef void (*SyscallWrapper)(struct syscall_info* info);
 
-inline static void default_delayed_syscall(struct syscall_info* info) {
+inline static void default_syscall_wrapper(struct syscall_info* info) {
   syscall(info->no, info->args[0], info->args[1], info->args[2], info->args[3],
           info->args[4], info->args[5]);
 }
@@ -303,9 +303,19 @@ inline static void default_delayed_syscall(struct syscall_info* info) {
  * Returns a function which will execute a syscall after spending a long time
  * stuck in syscallbuf code doing nothing. Returns NULL
  */
-inline static DelayedSyscall get_delayed_syscall(void) {
-  DelayedSyscall ret = (DelayedSyscall)dlsym(RTLD_DEFAULT, "delayed_syscall");
-  return ret ? ret : default_delayed_syscall;
+inline static SyscallWrapper get_delayed_syscall(void) {
+  SyscallWrapper ret = (SyscallWrapper)dlsym(RTLD_DEFAULT, "delayed_syscall");
+  return ret ? ret : default_syscall_wrapper;
+}
+
+/**
+ * Returns a function which will execute a syscall after spending a long time
+ * stuck in syscallbuf code doing nothing. Returns NULL
+ */
+inline static SyscallWrapper get_spurious_desched_syscall(void) {
+  SyscallWrapper ret =
+      (SyscallWrapper)dlsym(RTLD_DEFAULT, "spurious_desched_syscall");
+  return ret ? ret : default_syscall_wrapper;
 }
 
 #define ALLOCATE_GUARD(p, v) p = allocate_guard(sizeof(*p), v)

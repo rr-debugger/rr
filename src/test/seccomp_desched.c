@@ -9,12 +9,14 @@ static void handler(__attribute__((unused)) int sig,
                     __attribute__((unused)) void* p) {}
 
 static void install_filter(void) {
+  prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+
   struct sock_filter filter[] = {
     /* Load system call number from 'seccomp_data' buffer into
        accumulator */
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
     /* Jump forward 1 instruction if system call number
-       is not SYS_pipe */
+       is not SYS_read */
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_read, 0, 1),
     /* Trigger SIGSYS */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
@@ -38,6 +40,7 @@ static void install_filter(void) {
 int main(void) {
   struct sigaction sa;
   int i;
+  SyscallWrapper spurious_desched_syscall = get_spurious_desched_syscall();
 
   test_assert(0 == pipe(pipe_fds));
 
@@ -48,9 +51,12 @@ int main(void) {
   sa.sa_flags = SA_SIGINFO;
   sigaction(SIGSYS, &sa, NULL);
 
-  for (i = 0; i < 1000; ++i) {
+  for (i = 0; i < 2; ++i) {
     char ch;
-    read(pipe_fds[0], &ch, 1);
+    struct syscall_info read_syscall = {
+      SYS_read, { pipe_fds[0], (long)&ch, 1, 0, 0, 0 }
+    };
+    spurious_desched_syscall(&read_syscall);
   }
 
   atomic_puts("EXIT-SUCCESS");

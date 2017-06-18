@@ -16,6 +16,7 @@ struct syscall_info {
 
 RR_HIDDEN extern struct preload_globals globals;
 
-RR_HIDDEN extern int impose_syscall_delay;
+RR_HIDDEN extern char impose_syscall_delay;
+RR_HIDDEN extern char impose_spurious_desched;
 
 #endif /* RR_SYSCALLBUF_H_ */

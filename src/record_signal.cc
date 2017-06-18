@@ -302,8 +302,7 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
  * to the tracee's latest state.
  */
 static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
-  ASSERT(t, (SYSCALLBUF_DESCHED_SIGNAL == si->si_signo &&
-             si->si_code == POLL_IN && si->si_fd == t->desched_fd_child))
+  ASSERT(t, SYSCALLBUF_DESCHED_SIGNAL == si->si_signo && si->si_code == POLL_IN)
       << "Tracee is using SIGPWR??? (siginfo=" << *si << ")";
 
   /* If the tracee isn't in the critical section where a desched
@@ -403,7 +402,9 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
 
     if (t->status().is_syscall()) {
-      if (t->is_arm_desched_event_syscall()) {
+      if (t->is_arm_desched_event_syscall() ||
+          is_rt_sigqueueinfo_syscall(t->regs().original_syscallno(),
+                                     t->arch())) {
         continue;
       }
       break;
@@ -457,8 +458,9 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
      * reset until we've finished guiding the tracee through this
      * interrupted call.  We use the record counter for
      * assertions. */
-    ASSERT(t, !t->delay_syscallbuf_reset);
-    t->delay_syscallbuf_reset = true;
+    ASSERT(t, !t->delay_syscallbuf_reset_for_desched);
+    t->delay_syscallbuf_reset_for_desched = true;
+    LOG(debug) << "Desched initiated";
 
     /* The tracee is (re-)entering the buffered syscall.  Stash
      * away this breadcrumb so that we can figure out what syscall

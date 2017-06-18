@@ -359,22 +359,26 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
 }
 
 static void seccomp_trap_done(RecordTask* t) {
+  t->pop_seccomp_trap();
+
   // It's safe to reset the syscall buffer now.
-  t->delay_syscallbuf_reset = false;
+  t->delay_syscallbuf_reset_for_seccomp_trap = false;
+
+  if (EV_DESCHED == t->ev().type()) {
+    // Desched processing will do the rest for us
+    return;
+  }
+
+  // Abort the current syscallbuf record, which corresponds to the syscall that
+  // wasn't actually executed due to seccomp.
+  t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, abort_commit), (uint8_t)1);
+  t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO, t->arch()));
 
   // In fact, we need to. Running the syscall exit hook will ensure we
   // reset the buffer before we try to buffer another a syscall.
   t->write_mem(
       REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
       (uint8_t)1);
-
-  // Abort the current record, which corresponds to the syscall that wasn't
-  // actually executed thanks to seccomp.
-  t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, abort_commit), (uint8_t)1);
-  t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT, NO_EXEC_INFO, t->arch()));
-
-  // And we're done.
-  t->pop_seccomp_trap();
 }
 
 static void handle_seccomp_trap(RecordTask* t,
@@ -391,12 +395,22 @@ static void handle_seccomp_trap(RecordTask* t,
   r.set_original_syscallno(SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO);
   t->set_regs(r);
 
+  bool syscall_entry_already_recorded = false;
+  if (t->ev().is_syscall_event()) {
+    // A syscall event was already pushed, probably because we did a
+    // PTRACE_SYSCALL to enter the syscall during handle_desched_event. Cancel
+    // that event now since the seccomp SIGSYS aborts it completely.
+    ASSERT(t, t->ev().Syscall().number == syscallno);
+    t->pop_syscall();
+    syscall_entry_already_recorded = true;
+  }
+
   if (t->is_in_untraced_syscall()) {
-    ASSERT(t, !t->delay_syscallbuf_reset);
+    ASSERT(t, !t->delay_syscallbuf_reset_for_seccomp_trap);
     // Don't reset the syscallbuf immediately after delivering the trap. We have
     // to wait until this buffered syscall aborts completely before resetting
     // the buffer.
-    t->delay_syscallbuf_reset = true;
+    t->delay_syscallbuf_reset_for_seccomp_trap = true;
 
     t->push_event(Event(EV_SECCOMP_TRAP, NO_EXEC_INFO, t->arch()));
 
@@ -410,7 +424,7 @@ static void handle_seccomp_trap(RecordTask* t,
   t->push_syscall_event(syscallno);
   note_entering_syscall(t);
 
-  if (t->is_in_untraced_syscall()) {
+  if (t->is_in_untraced_syscall() && !syscall_entry_already_recorded) {
     t->record_current_event();
   }
 
@@ -715,7 +729,7 @@ void RecordSession::desched_state_changed(RecordTask* t) {
    * aborted record, and won't touch the syscallbuf
    * during this (aborted) transaction again.  So now
    * is a good time for us to reset the record counter. */
-  t->delay_syscallbuf_reset = false;
+  t->delay_syscallbuf_reset_for_desched = false;
   // Run the syscallbuf exit hook. This ensures we'll be able to reset
   // the syscallbuf before trying to buffer another syscall.
   t->write_mem(
@@ -944,6 +958,11 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
         maybe_discard_syscall_interruption(t, retval);
 
+        if (EV_SECCOMP_TRAP == t->ev().type()) {
+          LOG(debug) << "  exiting seccomp trap";
+          save_interrupted_syscall_ret_in_syscallbuf(t, retval);
+          seccomp_trap_done(t);
+        }
         if (EV_DESCHED == t->ev().type()) {
           LOG(debug) << "  exiting desched critical section";
           // The signal handler could have modified the apparent syscall
@@ -951,10 +970,6 @@ void RecordSession::syscall_state_changed(RecordTask* t,
           // replay will pick it up later.
           save_interrupted_syscall_ret_in_syscallbuf(t, retval);
           desched_state_changed(t);
-        } else if (EV_SECCOMP_TRAP == t->ev().type()) {
-          LOG(debug) << "  exiting seccomp trap";
-          save_interrupted_syscall_ret_in_syscallbuf(t, retval);
-          seccomp_trap_done(t);
         }
       } else {
         LOG(debug) << "  original_syscallno:" << t->regs().original_syscallno()

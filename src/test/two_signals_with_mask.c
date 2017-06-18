@@ -22,7 +22,7 @@ int main(void) {
   timer_t id2;
   struct itimerspec timeout = { { 0, 0 }, { 0, 1000000 } };
   struct syscall_info read_syscall = { SYS_read, { 0, 0, 0, 0, 0, 0 } };
-  DelayedSyscall delayed_syscall = get_delayed_syscall();
+  SyscallWrapper delayed_syscall = get_delayed_syscall();
 
   test_assert(0 == pipe(pipe_fds));
 

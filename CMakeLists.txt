@@ -685,6 +685,7 @@ set(BASIC_TESTS
   sched_yield_to_lower_priority
   scm_rights
   seccomp
+  seccomp_desched
   seccomp_null
   seccomp_sigsys_args
   seccomp_sigsys_sigtrap

@@ -5,7 +5,6 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
 #endif
-
 #include "syscallbuf.h"
 
 /**
@@ -114,7 +113,8 @@ static int buffer_enabled;
 static int process_inited;
 
 RR_HIDDEN struct preload_globals globals;
-RR_HIDDEN int impose_syscall_delay;
+RR_HIDDEN char impose_syscall_delay;
+RR_HIDDEN char impose_spurious_desched;
 
 static struct preload_thread_locals* const thread_locals =
     (struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR;
@@ -766,7 +766,17 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
   rec->syscallno = syscallno;
   rec->desched = MAY_BLOCK == blockness;
   rec->size = record_end - record_start;
+
   if (rec->desched) {
+    pid_t pid = 0;
+    pid_t tid = 0;
+    uid_t uid = 0;
+    if (impose_spurious_desched) {
+      pid = privileged_untraced_syscall0(SYS_getpid);
+      tid = privileged_untraced_syscall0(SYS_gettid);
+      uid = privileged_untraced_syscall0(SYS_getuid);
+    }
+
     /* NB: the ordering of the next two statements is
      * important.
      *
@@ -791,6 +801,15 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
      * session would deadlock.) */
     buffer_hdr()->desched_signal_may_be_relevant = 1;
     arm_desched_event();
+    if (impose_spurious_desched) {
+      siginfo_t si;
+      si.si_code = POLL_IN;
+      si.si_fd = thread_locals->desched_counter_fd;
+      si.si_pid = pid;
+      si.si_uid = uid;
+      privileged_untraced_syscall4(SYS_rt_tgsigqueueinfo, pid, tid, SIGPWR,
+                                   &si);
+    }
   }
   return 1;
 }
