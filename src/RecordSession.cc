@@ -401,8 +401,14 @@ static void handle_seccomp_trap(RecordTask* t,
     // PTRACE_SYSCALL to enter the syscall during handle_desched_event. Cancel
     // that event now since the seccomp SIGSYS aborts it completely.
     ASSERT(t, t->ev().Syscall().number == syscallno);
-    t->pop_syscall();
-    syscall_entry_already_recorded = true;
+    if (t->ev().type() == EV_SYSCALL_INTERRUPTION) {
+      // The event could be a syscall-interruption if it was pushed by
+      // `handle_desched_event`. In that case, it has not been recorded yet.
+      t->pop_syscall_interruption();
+    } else {
+      t->pop_syscall();
+      syscall_entry_already_recorded = true;
+    }
   }
 
   if (t->is_in_untraced_syscall()) {
@@ -1476,6 +1482,14 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
                          << siginfo << " at ip " << t->ip();
         break;
       case SIGNAL_HANDLED:
+        if (t->ptrace_event() == PTRACE_EVENT_SECCOMP) {
+          // `handle_desched_event` detected a spurious desched followed
+          // by a SECCOMP event, which it left pending. Handle that SECCOMP
+          // event now.
+          bool dummy_did_enter_syscall;
+          handle_ptrace_event(t, step_state, nullptr, &dummy_did_enter_syscall);
+          ASSERT(t, !dummy_did_enter_syscall);
+        }
         break;
     }
     return false;
