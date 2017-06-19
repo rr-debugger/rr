@@ -80,16 +80,24 @@ static void restore_signal_state(RecordTask* t, int sig,
   }
 }
 
-/** Return true iff |t->ip()| points at a RDTSC instruction. */
-static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
-static bool is_ip_rdtsc(RecordTask* t) {
-  uint8_t insn[sizeof(rdtsc_insn)];
-  if (sizeof(insn) !=
-      t->read_bytes_fallible(t->ip().to_data_ptr<uint8_t>(), sizeof(insn),
-                             insn)) {
-    return false;
+/** If |t->ip()| points at a RDTSC(P) instruction, return the length of the
+ * instruction */
+static size_t ip_rdtsc(RecordTask* t) {
+  static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
+  static const uint8_t rdtscp_insn[] = { 0x0f, 0x01, 0xf9 };
+
+  uint8_t insn[sizeof(rdtscp_insn)];
+  ssize_t len = t->read_bytes_fallible(t->ip().to_data_ptr<uint8_t>(),
+                                       sizeof(insn), insn);
+  if ((size_t)len >= sizeof(rdtsc_insn) &&
+      !memcmp(insn, rdtsc_insn, sizeof(rdtsc_insn))) {
+    return sizeof(rdtsc_insn);
   }
-  return !memcmp(insn, rdtsc_insn, sizeof(insn));
+  if ((size_t)len >= sizeof(rdtscp_insn) &&
+      !memcmp(insn, rdtscp_insn, sizeof(rdtscp_insn))) {
+    return sizeof(rdtscp_insn);
+  }
+  return 0;
 }
 
 /**
@@ -99,14 +107,18 @@ static bool is_ip_rdtsc(RecordTask* t) {
 static bool try_handle_rdtsc(RecordTask* t, siginfo_t* si) {
   ASSERT(t, si->si_signo == SIGSEGV);
 
-  if (!is_ip_rdtsc(t) || t->tsc_mode == PR_TSC_SIGSEGV) {
+  if (t->tsc_mode == PR_TSC_SIGSEGV) {
+    return false;
+  }
+  size_t len = ip_rdtsc(t);
+  if (!len) {
     return false;
   }
 
   unsigned long long current_time = rdtsc();
   Registers r = t->regs();
   r.set_rdtsc_output(current_time);
-  r.set_ip(r.ip() + sizeof(rdtsc_insn));
+  r.set_ip(r.ip() + len);
   t->set_regs(r);
 
   t->push_event(Event(EV_SEGV_RDTSC, HAS_EXEC_INFO, t->arch()));

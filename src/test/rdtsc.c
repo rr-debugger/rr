@@ -9,6 +9,7 @@ static void breakpoint(void) {
 
 int main(void) {
   int i;
+  unsigned int u;
   uint64_t last_tsc = 0;
 
   for (i = 0; i < 100; ++i) {
@@ -22,6 +23,9 @@ int main(void) {
     atomic_printf("%" PRIu64 ",", tsc);
     last_tsc = tsc;
   }
+  atomic_puts("");
+
+  __rdtscp(&u);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
