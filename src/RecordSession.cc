@@ -428,6 +428,7 @@ static void handle_seccomp_trap(RecordTask* t,
   }
 
   t->push_syscall_event(syscallno);
+  t->ev().Syscall().failed_during_preparation = true;
   note_entering_syscall(t);
 
   if (t->is_in_untraced_syscall() && !syscall_entry_already_recorded) {
