@@ -5,6 +5,21 @@
 /* Test that PTRACE_ATTACH produces a raw SIGTRAP after exiting exec, when
    PTRACE_O_TRACEEXEC is not used. */
 
+static size_t read_all(int fd, char* buf, size_t size) {
+  size_t total = 0;
+  while (size > 0) {
+    ssize_t ret = read(fd, buf, size);
+    test_assert(ret >= 0);
+    if (ret == 0) {
+      return total;
+    }
+    size -= ret;
+    buf += ret;
+    total += ret;
+  }
+  return total;
+}
+
 static int proc_num_args(pid_t pid) {
   char buf[4096];
   int fd;
@@ -14,11 +29,11 @@ static int proc_num_args(pid_t pid) {
   sprintf(buf, "/proc/%d/cmdline", pid);
   fd = open(buf, O_RDONLY);
   test_assert(fd >= 0);
-  test_assert(0 <= read(fd, buf, sizeof(buf)));
-  while (1) {
-    if (!buf[i]) {
-      break;
-    }
+
+  size_t bytes = read_all(fd, buf, sizeof(buf));
+  // The kernel is supposed to append a zero-length string after all other
+  // command-line parameters, but it doesn't.
+  while ((size_t)i < bytes) {
     ++count;
     i += strlen(buf + i) + 1;
   }
