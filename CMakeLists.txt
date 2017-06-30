@@ -902,6 +902,7 @@ set(TESTS_WITH_PROGRAM
   target_process
   term_nonmain
   term_rr
+  term_trace_reset
   term_trace_syscall
   thread_exit_signal
   thread_stress

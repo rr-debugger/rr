@@ -1,0 +1,19 @@
+source `dirname $0`/util.sh
+
+record $TESTNAME &
+
+until grep -q ready record.out; do
+  sleep 0
+done
+
+sleep 0.01
+rrpid=$(parent_pid_of $(pidof $TESTNAME-$nonce))
+kill -TERM $rrpid >& /dev/null
+
+# Wait for 'record' to actually terminate. Otherwise we might start
+# replaying before the trace file has been completely written.
+wait
+
+echo "Replaying ..."
+replay
+check 'EXIT-SUCCESS'

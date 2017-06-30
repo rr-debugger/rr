@@ -1645,9 +1645,9 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
   trace_writer().write_frame(frame);
   LOG(debug) << "Wrote event " << ev << " for time " << frame.time();
 
-  if (!ev.has_ticks_slop()) {
-    ASSERT(this, flush == FLUSH_SYSCALLBUF || ev.type() == EV_UNSTABLE_EXIT ||
-                     ev.type() == EV_EXIT);
+  if (!ev.has_ticks_slop() && ev.type() != EV_UNSTABLE_EXIT &&
+      ev.type() != EV_EXIT) {
+    ASSERT(this, flush == FLUSH_SYSCALLBUF);
     // After we've output an event, it's safe to reset the syscallbuf (if not
     // explicitly delayed) since we will have exited the syscallbuf code that
     // consumed the syscallbuf data.

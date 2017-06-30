@@ -400,8 +400,8 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
     const Mark& mark, ReplayStepToMarkStrategy& strategy) {
   ReplayTask* t = current->current_task();
   ProtoMark before = proto_mark();
-  ASSERT(t, before.key <= mark.ptr->proto.key) <<
-      "Current mark " << before << " is already after target " << mark;
+  ASSERT(t, before.key <= mark.ptr->proto.key)
+      << "Current mark " << before << " is already after target " << mark;
   ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->proto.key.trace_time) {
     // Easy case: each RUN_CONTINUE can only advance by at most one
@@ -903,7 +903,8 @@ ReplayResult ReplayTimeline::reverse_continue(
     }
     maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
 
-    LOG(debug) << "reverse-continue continuing forward from " << start << " up to " << end;
+    LOG(debug) << "reverse-continue continuing forward from " << start
+               << " up to " << end;
 
     bool at_breakpoint = false;
     ReplayStepToMarkStrategy strategy;
