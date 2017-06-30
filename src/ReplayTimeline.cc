@@ -150,7 +150,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
     vector<shared_ptr<InternalMark>> new_marks;
     new_marks.push_back(m);
 
-    LOG(debug) << "mark() replaying to find mark location";
+    LOG(debug) << "mark() replaying to find mark location for " << m;
 
     // Allow coalescing of multiple repetitions of a single x86 string
     // instruction (as long as we don't reach one of our mark_vector states).
@@ -194,8 +194,6 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
       }
       new_marks.push_back(make_shared<InternalMark>(this, *tmp_session, key));
     }
-
-    LOG(debug) << "Mark location found";
 
     // mark_index is the current index of the next mark after 'current'. So
     // insert our new marks at mark_index.
@@ -400,7 +398,10 @@ void ReplayTimeline::update_strategy_and_fix_watchpoint_quirk(
 
 ReplayResult ReplayTimeline::replay_step_to_mark(
     const Mark& mark, ReplayStepToMarkStrategy& strategy) {
+  ReplayTask* t = current->current_task();
   ProtoMark before = proto_mark();
+  ASSERT(t, before.key <= mark.ptr->proto.key) <<
+      "Current mark " << before << " is already after target " << mark;
   ReplayResult result;
   if (current->trace_reader().time() < mark.ptr->proto.key.trace_time) {
     // Easy case: each RUN_CONTINUE can only advance by at most one
@@ -415,7 +416,6 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
     return result;
   }
 
-  ReplayTask* t = current->current_task();
   ASSERT(t, current->trace_reader().time() == mark.ptr->proto.key.trace_time);
   // t must remain valid through here since t can only die when we complete
   // an event, and we're not going to complete another event before
@@ -902,6 +902,8 @@ ReplayResult ReplayTimeline::reverse_continue(
       checkpoint_at_first_break = false;
     }
     maybe_add_reverse_exec_checkpoint(EXPECT_SHORT_REVERSE_EXECUTION);
+
+    LOG(debug) << "reverse-continue continuing forward from " << start << " up to " << end;
 
     bool at_breakpoint = false;
     ReplayStepToMarkStrategy strategy;

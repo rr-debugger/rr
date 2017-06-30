@@ -274,9 +274,9 @@ private:
       }
       return step_key < other.step_key;
     }
+    bool operator<=(const MarkKey& other) const { return !(other < *this); }
     bool operator>(const MarkKey& other) const { return other < *this; }
     bool operator>=(const MarkKey& other) const { return !(*this < other); }
-    bool operator<=(const MarkKey& other) const { return !(other < *this); }
     bool operator==(const MarkKey& other) const {
       return trace_time == other.trace_time && ticks == other.ticks &&
              step_key == other.step_key;
