@@ -150,7 +150,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
     vector<shared_ptr<InternalMark>> new_marks;
     new_marks.push_back(m);
 
-    LOG(debug) << "mark() replaying to find mark location for " << m;
+    LOG(debug) << "mark() replaying to find mark location for " << *m;
 
     // Allow coalescing of multiple repetitions of a single x86 string
     // instruction (as long as we don't reach one of our mark_vector states).
