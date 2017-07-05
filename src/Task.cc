@@ -1475,7 +1475,7 @@ void Task::did_waitpid(WaitStatus status) {
     seen_ptrace_exit_event = true;
   }
 
-  Ticks more_ticks = hpc.counting ? hpc.read_ticks(this) : 0;
+  Ticks more_ticks = hpc.read_ticks(this);
   // We stop counting here because there may be things we want to do to the
   // tracee that would otherwise generate ticks.
   hpc.stop_counting();

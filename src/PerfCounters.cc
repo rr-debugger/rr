@@ -19,6 +19,8 @@
 #include <string>
 
 #include "Flags.h"
+#include "Session.h"
+#include "Task.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"
@@ -426,7 +428,7 @@ uint32_t PerfCounters::skid_size() {
 }
 
 PerfCounters::PerfCounters(pid_t tid)
-    : counting(false), tid(tid), started(false) {
+    : tid(tid), started(false), counting(false) {
   init_attributes();
 }
 
@@ -541,6 +543,7 @@ void PerfCounters::reset(Ticks ticks_period) {
 
   started = true;
   counting = true;
+  counting_period = ticks_period;
 }
 
 void PerfCounters::set_tid(pid_t tid) {
@@ -599,12 +602,21 @@ Ticks PerfCounters::read_ticks(Task* t) {
     }
   }
 
+  uint64_t adjusted_counting_period =
+      counting_period +
+      (t->session().is_recording() ? recording_skid_size() : skid_size());
   uint64_t interrupt_val = read_counter(fd_ticks_interrupt);
   if (!fd_ticks_measure.is_open()) {
+    ASSERT(t, !counting_period || interrupt_val <= adjusted_counting_period)
+        << "Detected " << interrupt_val << " ticks, expected no more than "
+        << adjusted_counting_period;
     return interrupt_val;
   }
 
   uint64_t measure_val = read_counter(fd_ticks_measure);
+  ASSERT(t, !counting_period || measure_val <= adjusted_counting_period)
+      << "Detected " << measure_val << " ticks, expected no more than "
+      << adjusted_counting_period;
   if (measure_val > interrupt_val) {
     // There is some kind of kernel or hardware bug that means we sometimes
     // see more events with IN_TXCP set than without. These are clearly

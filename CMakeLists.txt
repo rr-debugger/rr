@@ -822,6 +822,7 @@ set(TESTS_WITH_PROGRAM
   checkpoint_dying_threads
   checkpoint_mixed_mode
   checksum_sanity
+  check_lost_interrupts
   clone_interruption
   clone_vfork
   conditional_breakpoint_calls
