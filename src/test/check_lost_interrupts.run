@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+
+skip_if_no_syscall_buf
+
+RECORD_ARGS="-c10000"
+compare_test EXIT-SUCCESS
+
