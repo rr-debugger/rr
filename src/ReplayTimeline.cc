@@ -953,9 +953,12 @@ ReplayResult ReplayTimeline::reverse_continue(
       if (!result.break_status.watchpoints_hit.empty() ||
           result.break_status.signal) {
         dest = mark();
-        LOG(debug) << "Found "
-                   << (result.break_status.signal ? "signal" : "watch")
-                   << " break at " << dest;
+        if (result.break_status.signal) {
+          LOG(debug) << "Found signal break at " << dest;
+        } else {
+          LOG(debug) << "Found watch break at " << dest << ", addr="
+                     << result.break_status.watchpoints_hit[0].addr;
+        }
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()
                                               : TaskUid();
