@@ -844,6 +844,7 @@ set(TESTS_WITH_PROGRAM
   fork_stress
   fork_syscalls
   function_calls
+  function_rwatch
   getcwd
   goto_event
   hello
