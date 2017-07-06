@@ -791,7 +791,8 @@ bool AddressSpace::add_breakpoint(remote_code_ptr addr, BreakpointType type) {
                                sizeof(overwritten_data), &overwritten_data)) {
       return false;
     }
-    t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn);
+    t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn, nullptr,
+                 Task::IS_BREAKPOINT_RELATED);
 
     auto it_and_is_new = breakpoints.insert(make_pair(addr, Breakpoint()));
     assert(it_and_is_new.second);
@@ -961,8 +962,11 @@ bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status) {
   return triggered;
 }
 
-void AddressSpace::notify_written(remote_ptr<void> addr, size_t num_bytes) {
-  update_watchpoint_values(addr, addr + num_bytes);
+void AddressSpace::notify_written(remote_ptr<void> addr, size_t num_bytes,
+                                  uint32_t flags) {
+  if (!(flags & Task::IS_BREAKPOINT_RELATED)) {
+    update_watchpoint_values(addr, addr + num_bytes);
+  }
   session()->accumulate_bytes_written(num_bytes);
 }
 
@@ -1568,7 +1572,7 @@ void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
   auto ptr = it->first.to_data_ptr<uint8_t>();
   auto data = it->second.overwritten_data;
   LOG(debug) << "Writing back " << HEX(data) << " at " << ptr;
-  t->write_mem(ptr, data);
+  t->write_mem(ptr, data, nullptr, Task::IS_BREAKPOINT_RELATED);
   breakpoints.erase(it);
 }
 

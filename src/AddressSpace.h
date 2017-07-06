@@ -505,8 +505,9 @@ public:
   /**
    * Notify that data was written to this address space by rr or
    * by the kernel.
+   * |flags| can contain values from Task::WriteFlags.
    */
-  void notify_written(remote_ptr<void> addr, size_t num_bytes);
+  void notify_written(remote_ptr<void> addr, size_t num_bytes, uint32_t flags);
 
   /** Ensure a breakpoint of |type| is set at |addr|. */
   bool add_breakpoint(remote_code_ptr addr, BreakpointType type);

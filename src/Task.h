@@ -568,8 +568,8 @@ public:
   bool try_wait();
 
   /**
-   * Currently we don't allow recording across uid changes, so we can just
-   * return rr's uid.
+   * Currently we don't allow recording across uid changwrite_memes, so we can
+   * just return rr's uid.
    */
   uid_t getuid() { return ::getuid(); }
 
@@ -581,14 +581,18 @@ public:
     write_bytes_helper(child_addr, N, buf);
   }
 
+  enum WriteFlags {
+    IS_BREAKPOINT_RELATED = 0x1,
+  };
   /**
    * Write |val| to |child_addr|.
    */
   template <typename T>
-  void write_mem(remote_ptr<T> child_addr, const T& val, bool* ok = nullptr) {
+  void write_mem(remote_ptr<T> child_addr, const T& val, bool* ok = nullptr,
+                 uint32_t flags = 0) {
     assert(type_has_no_holes<T>());
     write_bytes_helper(child_addr, sizeof(val), static_cast<const void*>(&val),
-                       ok);
+                       ok, flags);
   }
   /**
    * This is not the helper you're looking for.  See above: you
@@ -620,8 +624,12 @@ public:
    */
   void read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
                          bool* ok = nullptr);
+  /**
+   * |flags| is bits from WriteFlags.
+   */
   void write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
-                          const void* buf, bool* ok = nullptr);
+                          const void* buf, bool* ok = nullptr,
+                          uint32_t flags = 0);
 
   /**
    * Call this when performing a clone syscall in this task. Returns

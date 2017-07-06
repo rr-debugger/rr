@@ -2164,7 +2164,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
 }
 
 void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
-                              const void* buf, bool* ok) {
+                              const void* buf, bool* ok, uint32_t flags) {
   ASSERT(this, buf_size >= 0) << "Invalid buf_size " << buf_size;
   if (0 == buf_size) {
     return;
@@ -2179,7 +2179,7 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
     ssize_t nwritten =
         write_bytes_ptrace(addr, buf_size, static_cast<const uint8_t*>(buf));
     if (nwritten > 0) {
-      vm()->notify_written(addr, nwritten);
+      vm()->notify_written(addr, nwritten, flags);
     }
     if (ok && nwritten < buf_size) {
       *ok = false;
@@ -2192,7 +2192,7 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   // See comment in read_bytes_helper().
   if (0 == nwritten && 0 == errno) {
     open_mem_fd();
-    return write_bytes_helper(addr, buf_size, buf, ok);
+    return write_bytes_helper(addr, buf_size, buf, ok, flags);
   }
   if (errno == EPERM) {
     FATAL() << "Can't write to /proc/" << tid << "/mem\n"
@@ -2209,7 +2209,7 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
                                        << ", but only wrote " << nwritten;
   }
   if (nwritten > 0) {
-    vm()->notify_written(addr, nwritten);
+    vm()->notify_written(addr, nwritten, flags);
   }
 }
 
