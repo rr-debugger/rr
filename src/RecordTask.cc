@@ -355,6 +355,10 @@ void RecordTask::post_exec() {
   set_robust_list(nullptr, 0);
   sighandlers = sighandlers->clone();
   sighandlers->reset_user_handlers(arch());
+
+  // Newly execed tasks always have non-faulting mode (from their point of
+  // view, even if rr is secretly causing faults).
+  cpuid_mode = 1;
 }
 
 template <typename Arch> static void do_preload_init_arch(RecordTask* t) {

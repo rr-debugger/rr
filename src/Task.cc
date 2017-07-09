@@ -733,9 +733,6 @@ void Task::post_exec_syscall(TraceTaskEvent& event) {
     AutoRemoteSyscalls remote(this);
     remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
                               ARCH_SET_CPUID, 0);
-  } else if (session().is_recording()) {
-    auto rt = static_cast<RecordTask*>(this);
-    rt->cpuid_mode = -1;
   }
 }
 

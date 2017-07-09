@@ -3633,9 +3633,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
 
         case ARCH_SET_CPUID: {
-          if (t->cpuid_mode == -1) {
-            // Not supported on this kernel/hardware. Allow the call to go
-            // through to get the right errno.
+          if (!t->session().has_cpuid_faulting()) {
+            // Not supported or not working. Allow the call to go
+            // through to get the right result.
             break;
           }
 
@@ -3650,9 +3650,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         }
 
         case ARCH_GET_CPUID: {
-          if (t->cpuid_mode == -1) {
-            // Not supported on this kernel/hardware. Allow the call to go
-            // through to get the right errno.
+          if (!t->session().has_cpuid_faulting()) {
+            // Not supported or not working. Allow the call to go
+            // through to get the right result.
             break;
           }
 
