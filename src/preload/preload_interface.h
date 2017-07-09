@@ -501,6 +501,13 @@ inline static int is_blacklisted_filename(const char* filename) {
          streq("/usr/share/alsa/alsa.conf", filename);
 }
 
+inline static int is_blacklisted_socket(const char* filename) {
+  /* Blacklist the nscd socket because glibc communicates with the daemon over
+   * shared memory rr can't handle.
+   */
+  return streq("/var/run/nscd/socket", filename);
+}
+
 inline static int is_gcrypt_deny_file(const char* filename) {
   return streq("/etc/gcrypt/hwf.deny", filename);
 }

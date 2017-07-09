@@ -612,6 +612,7 @@ set(BASIC_TESTS
   nanosleep
   netfilter
   no_mask_timeslice
+  nscd
   numa
   old_fork
   orphan_process

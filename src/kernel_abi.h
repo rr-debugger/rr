@@ -918,6 +918,12 @@ struct BaseArch : public wordsize,
     signed_long optlen;
   };
 
+  struct connect_args {
+    signed_long sockfd;
+    ptr<void> addr;
+    socklen_t addrlen;
+  };
+
   struct recv_args {
     signed_int sockfd;
     char __pad[sizeof(ptr<void>) - sizeof(int)];

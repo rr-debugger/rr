@@ -45,6 +45,7 @@
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include <sys/times.h>
+#include <sys/un.h>
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 #include <sys/wait.h>
@@ -890,6 +891,26 @@ static Switchable prepare_setsockopt(RecordTask* t,
 }
 
 template <typename Arch>
+static Switchable maybe_blacklist_connect(RecordTask* t,
+                                          remote_ptr<void> addr_ptr,
+                                          socklen_t addrlen) {
+  struct sockaddr_un addr;
+  memset(&addr, 0, sizeof(addr));
+  t->read_bytes_fallible(addr_ptr, min<socklen_t>(sizeof(addr), addrlen),
+                         &addr);
+  // Ensure null termination;
+  addr.sun_path[sizeof(addr.sun_path) - 1] = 0;
+  if (addr.sun_family == AF_UNIX && is_blacklisted_socket(addr.sun_path)) {
+    LOG(warn) << "Cowardly refusing to connect to " << addr.sun_path;
+    // Hijack the syscall.
+    Registers r = t->regs();
+    r.set_original_syscallno(Arch::gettid);
+    t->set_regs(r);
+  }
+  return PREVENT_SWITCH;
+}
+
+template <typename Arch>
 static Switchable prepare_socketcall(RecordTask* t,
                                      TaskSyscallState& syscall_state) {
   /* int socketcall(int call, unsigned long *args) {
@@ -903,9 +924,6 @@ static Switchable prepare_socketcall(RecordTask* t,
   switch ((int)t->regs().arg1_signed()) {
     /* int socket(int domain, int type, int protocol); */
     case SYS_SOCKET:
-    /* int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
-     */
-    case SYS_CONNECT:
     /* int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen); */
     case SYS_BIND:
     /* int listen(int sockfd, int backlog) */
@@ -913,6 +931,15 @@ static Switchable prepare_socketcall(RecordTask* t,
     /* int shutdown(int socket, int how) */
     case SYS_SHUTDOWN:
       break;
+
+    /* int connect(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
+     */
+    case SYS_CONNECT: {
+      auto argsp =
+          syscall_state.reg_parameter<typename Arch::connect_args>(2, IN);
+      auto args = t->read_mem(argsp);
+      return maybe_blacklist_connect<Arch>(t, args.addr.rptr(), args.addrlen);
+    }
 
     /* ssize_t send(int sockfd, const void *buf, size_t len, int flags) */
     case SYS_SEND:
@@ -3422,6 +3449,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::connect:
+      return maybe_blacklist_connect<Arch>(t, regs.arg2(), regs.arg3());
+
     case Arch::open: {
       string pathname = t->read_c_str(remote_ptr<char>(regs.arg1()));
       if (is_blacklisted_filename(pathname.c_str())) {
@@ -4767,6 +4797,18 @@ static void rec_process_syscall_arch(RecordTask* t,
       }
       break;
 
+    case Arch::connect: {
+      // Restore the registers that we may have altered.
+      Registers r = t->regs();
+      if (r.original_syscallno() == Arch::gettid) {
+        // We hijacked this call to deal with blacklisted sockets
+        r.set_original_syscallno(Arch::connect);
+        r.set_syscall_result(-EACCES);
+        t->set_regs(r);
+      }
+      break;
+    }
+
     case Arch::open: {
       // Restore the registers that we may have altered.
       Registers r = t->regs();
@@ -4852,7 +4894,13 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::socketcall: {
       // restore possibly-modified regs
       Registers r = t->regs();
+      if (r.original_syscallno() == Arch::gettid) {
+        // `connect` was suppressed
+        r.set_syscall_result(-EACCES);
+      }
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      r.set_original_syscallno(
+          syscall_state.syscall_entry_registers.original_syscallno());
       t->set_regs(r);
 
       if (!t->regs().syscall_failed()) {

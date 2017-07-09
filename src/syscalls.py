@@ -1661,7 +1661,7 @@ rrcall_mprotect_record = IrregularEmulatedSyscall(x86=447, x64=447)
 
 # These syscalls are also subsumed under socketcall on x86.
 socket = EmulatedSyscall(x86=359, x64=41)
-connect = EmulatedSyscall(x86=362, x64=42)
+connect = IrregularEmulatedSyscall(x86=362, x64=42)
 accept = IrregularEmulatedSyscall(x64=43)
 sendto = IrregularEmulatedSyscall(x86=369, x64=44)
 recvfrom = IrregularEmulatedSyscall(x86=371, x64=45)
