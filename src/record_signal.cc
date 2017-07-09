@@ -124,6 +124,10 @@ static size_t disabled_insn_len(DisabledInsn insn) {
   }
 }
 
+static const uintptr_t CPUID_RDRAND_FLAG = 1 << 30;
+static const uintptr_t CPUID_RTM_FLAG = 1 << 11;
+static const uintptr_t CPUID_RDSEED_FLAG = 1 << 18;
+
 /**
  * Return true if |t| was stopped because of a SIGSEGV resulting
  * from a disabled instruction and |t| was updated appropriately, false
@@ -158,12 +162,12 @@ static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
     auto ecx = r.cx();
     auto cpuid_data = cpuid(eax, ecx);
     switch (eax) {
-    case 0x01:
+    case CPUID_GETFEATURES:
       cpuid_data.ecx &= ~CPUID_RDRAND_FLAG;
       break;
-    case 0x07:
+    case CPUID_GETEXTENDEDFEATURES:
       if (ecx == 0) {
-        cpuid_data.ebx &= ~CPUID_RDSEED_FLAG;
+        cpuid_data.ebx &= ~(CPUID_RDSEED_FLAG | CPUID_RTM_FLAG);
       }
       break;
     default:

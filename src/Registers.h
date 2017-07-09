@@ -34,9 +34,6 @@ const uintptr_t X86_DF_FLAG = 1 << 10;
 const uintptr_t X86_RF_FLAG = 1 << 16;
 const uintptr_t X86_ID_FLAG = 1 << 21;
 
-const uintptr_t CPUID_RDRAND_FLAG = 1 << 30;
-const uintptr_t CPUID_RDSEED_FLAG = 1 << 18;
-
 /**
  * A Registers object contains values for all general-purpose registers.
  * These must include all registers used to pass syscall parameters and return
