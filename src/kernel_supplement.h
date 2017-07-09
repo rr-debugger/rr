@@ -267,6 +267,18 @@ struct usbdevfs_streams {
 #define PR_CAP_AMBIENT_CLEAR_ALL 4
 #endif
 
+// New in the 4.6 kernel.
+#ifndef CLONE_NEWCGROUP
+#define CLONE_NEWCGROUP 0x02000000
+#endif
+// New in the 4.12 kernel
+#ifndef ARCH_GET_CPUID
+#define ARCH_GET_CPUID 0x1005
+#endif
+#ifndef ARCH_SET_CPUID
+#define ARCH_SET_CPUID 0x1006
+#endif
+
 } // namespace rr
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */
