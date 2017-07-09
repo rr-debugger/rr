@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/syscall.h>
 #include <sys/vfs.h>
 #include <unistd.h>
 
@@ -690,6 +691,65 @@ CPUIDData cpuid(int code, int subrequest) {
                  "=d"(result.edx)
                : "a"(code), "c"(subrequest));
   return result;
+}
+
+#define SEGV_HANDLER_MAGIC 0x98765432
+
+static void cpuid_segv_handler(__attribute__((unused)) int sig,
+                               __attribute__((unused)) siginfo_t* si, void* user) {
+  ucontext_t* ctx = (ucontext_t*)user;
+#if defined(__i386__)
+  ctx->uc_mcontext.gregs[REG_EIP] += 2;
+  ctx->uc_mcontext.gregs(REG_EAX] = SEGV_HANDLER_MAGIC;
+#elif defined(__x86_64__)
+  ctx->uc_mcontext.gregs[REG_RIP] += 2;
+  ctx->uc_mcontext.gregs[REG_RAX] = SEGV_HANDLER_MAGIC;
+#else
+#error unknown architecture
+#endif
+}
+
+bool cpuid_faulting_works() {
+  static bool did_check_cpuid_faulting = false;
+  static bool cpuid_faulting_ok = false;
+
+  if (did_check_cpuid_faulting) {
+    return cpuid_faulting_ok;
+  }
+  did_check_cpuid_faulting = true;
+
+  // Test to see if CPUID faulting works.
+  if (syscall(SYS_arch_prctl, ARCH_SET_CPUID, 0) != 0) {
+    LOG(debug) << "CPUID faulting not supported by kernel/hardware";
+    return false;
+  }
+
+  // Some versions of Xen seem to set the feature bit but the feature doesn't
+  // actually work, so we need to test it.
+  struct sigaction sa;
+  struct sigaction old_sa;
+  sa.sa_sigaction = cpuid_segv_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_SIGINFO;
+  if (sigaction(SIGSEGV, &sa, &old_sa) < 0) {
+    FATAL() << "Can't set sighandler";
+  }
+
+  CPUIDData data = cpuid(CPUID_GETVENDORSTRING, 0);
+  if (data.eax == SEGV_HANDLER_MAGIC) {
+    LOG(debug) << "CPUID faulting works";
+    cpuid_faulting_ok = true;
+  } else {
+    LOG(debug) << "CPUID faulting advertised but does not work";
+  }
+
+  if (sigaction(SIGSEGV, &old_sa, NULL) < 0) {
+    FATAL() << "Can't restore sighandler";
+  }
+  if (syscall(SYS_arch_prctl, ARCH_SET_CPUID, 1) < 0) {
+    FATAL() << "Can't restore ARCH_SET_CPUID";
+  }
+  return cpuid_faulting_ok;
 }
 
 template <typename Arch>

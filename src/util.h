@@ -218,6 +218,8 @@ struct CPUIDData {
 };
 CPUIDData cpuid(int code, int subrequest);
 
+bool cpuid_faulting_works();
+
 struct CloneParameters {
   remote_ptr<void> stack;
   remote_ptr<int> ptid;

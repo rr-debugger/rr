@@ -39,17 +39,9 @@ Session::Session()
     : next_task_serial_(1),
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       done_initial_exec_(false),
-      visible_execution_(true) {
+      visible_execution_(true),
+      has_cpuid_faulting_(cpuid_faulting_works()) {
   LOG(debug) << "Session " << this << " created";
-
-  // Test to see if CPUID faulting works.
-  if (syscall(SYS_arch_prctl, ARCH_SET_CPUID, 0) != 0) {
-    has_cpuid_faulting_ = false;
-  } else {
-    has_cpuid_faulting_ = true;
-    auto ret = syscall(SYS_arch_prctl, ARCH_SET_CPUID, 1);
-    assert(ret == 0);
-  }
 }
 
 Session::~Session() {
