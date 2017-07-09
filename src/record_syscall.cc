@@ -3632,6 +3632,38 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           syscall_state.reg_parameter<typename Arch::unsigned_long>(2);
           break;
 
+        case ARCH_SET_CPUID: {
+          if (t->cpuid_mode == -1) {
+            // Not supported on this kernel/hardware. Allow the call to go
+            // through to get the right errno.
+            break;
+          }
+
+          // Prevent the actual SET_CPUID call.
+          Registers r = t->regs();
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          int val = (int)t->regs().arg2();
+          t->cpuid_mode = !!val;
+          syscall_state.emulate_result(0);
+          break;
+        }
+
+        case ARCH_GET_CPUID: {
+          if (t->cpuid_mode == -1) {
+            // Not supported on this kernel/hardware. Allow the call to go
+            // through to get the right errno.
+            break;
+          }
+
+          // Prevent the actual GET_CPUID call and return our emulated state.
+          Registers r = t->regs();
+          r.set_arg1(intptr_t(-1));
+          t->set_regs(r);
+          syscall_state.emulate_result(t->cpuid_mode);
+          break;
+        }
+
         default:
           syscall_state.expect_errno = EINVAL;
           break;
@@ -5048,6 +5080,14 @@ static void rec_process_syscall_arch(RecordTask* t,
           }
           break;
       }
+      break;
+    }
+
+    case Arch::arch_prctl: {
+      // Restore arg1 in case we modified it to disable the syscall
+      Registers r = t->regs();
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      t->set_regs(r);
       break;
     }
 

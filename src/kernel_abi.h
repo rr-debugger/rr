@@ -1914,5 +1914,10 @@ typedef X64Arch NativeArch;
 #ifndef CLONE_NEWCGROUP
 #define CLONE_NEWCGROUP 0x02000000
 #endif
+// New in the 4.something kernel, whenever the Linux people bless my patches.
+#ifndef ARCH_GET_CPUID
+#define ARCH_GET_CPUID 0x1005
+#define ARCH_SET_CPUID 0x1006
+#endif
 
 #endif /* RR_KERNEL_ABI_H */

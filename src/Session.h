@@ -283,6 +283,9 @@ public:
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering() {
     return syscall_seccomp_ordering_;
   }
+  bool has_cpuid_faulting() const {
+    return has_cpuid_faulting_;
+  }
 
   static const char* rr_mapping_prefix();
 
@@ -334,6 +337,11 @@ protected:
    * True while the execution of this session is visible to users.
    */
   bool visible_execution_;
+
+  /**
+   * True if ARCH_GET/SET_CPUID are supported on this system.
+   */
+  bool has_cpuid_faulting_;
 };
 
 } // namespace rr

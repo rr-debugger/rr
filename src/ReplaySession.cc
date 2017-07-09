@@ -937,7 +937,7 @@ Completion ReplaySession::emulate_deterministic_signal(
   const Event& ev = trace_frame.event();
   check_ticks_consistency(t, ev);
 
-  if (EV_SEGV_RDTSC == ev.type()) {
+  if (EV_SEGV_DISABLED_INSN == ev.type()) {
     t->set_regs(trace_frame.regs());
   }
 
@@ -1338,7 +1338,7 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.target.ticks = trace_frame.ticks();
       current_step.target.signo = 0;
       break;
-    case EV_SEGV_RDTSC:
+    case EV_SEGV_DISABLED_INSN:
       current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
       current_step.target.ticks = -1;
       current_step.target.signo = SIGSEGV;
@@ -1466,7 +1466,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   switch (current_step.action) {
     case TSTEP_DETERMINISTIC_SIGNAL:
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      if (trace_frame.event().type() != EV_SEGV_RDTSC &&
+      if (trace_frame.event().type() != EV_SEGV_DISABLED_INSN &&
           current_step.target.signo) {
         ASSERT(t, current_step.target.signo == last_siginfo_.si_signo);
         result.break_status.signal =
