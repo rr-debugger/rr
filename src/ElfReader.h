@@ -51,6 +51,12 @@ public:
   std::vector<char> strtab;
 };
 
+class Debuglink {
+public:
+  std::string filename;
+  uint32_t crc;
+};
+
 class ElfReader {
 public:
   ElfReader(SupportedArch arch);
@@ -70,6 +76,7 @@ public:
   bool ok();
   SymbolTable read_symbols(const char* symtab, const char* strtab);
   DynamicSection read_dynamic();
+  Debuglink read_debuglink();
   // Returns true and sets file |offset| if ELF address |addr| is mapped from
   // a section in the ELF file.  Returns false if no section maps to
   // |addr|.  |addr| is an address indicated by the ELF file, not its
@@ -87,6 +94,9 @@ public:
   ElfFileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch), fd(fd) {}
   ElfFileReader(ScopedFd& fd) : ElfReader(identify_arch(fd)), fd(fd) {}
   virtual bool read(size_t offset, size_t size, void* buf);
+  // Finds and opens the debug file corresponding to this reader.
+  // |elf_file_name| is the name of the file already opened by this reader.
+  ScopedFd open_debug_file(const std::string& elf_file_name);
   ScopedFd& fd;
 
   static SupportedArch identify_arch(ScopedFd& fd);

@@ -817,7 +817,18 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
     ScopedFd open_fd = t->open_fd(child_fd, O_RDONLY);
     ASSERT(t, open_fd.is_open()) << "Failed to open child fd " << child_fd;
     ElfFileReader reader(open_fd, t->arch());
-    auto syms = reader.read_symbols(".symtab", ".strtab");
+    // Check for symbols first in the library itself, regardless of whether
+    // there is a debuglink.  For example, on Fedora 26, the .symtab and
+    // .strtab sections are stripped from the debuginfo file for
+    // libpthread.so.
+    SymbolTable syms = reader.read_symbols(".symtab", ".strtab");
+    if (syms.size() == 0) {
+      ScopedFd debug_fd = reader.open_debug_file(map.map.fsname());
+      if (debug_fd.is_open()) {
+        ElfFileReader debug_reader(debug_fd, t->arch());
+        syms = debug_reader.read_symbols(".symtab", ".strtab");
+      }
+    }
     for (size_t i = 0; i < syms.size(); ++i) {
       if (syms.is_name(i, "__elision_aconf")) {
         static const int zero = 0;
