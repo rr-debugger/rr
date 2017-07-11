@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 #include <deque>
+#include <fstream>
 #include <memory>
 #include <sstream>
 #include <unordered_map>
@@ -83,6 +84,7 @@ _CONSTANT_STATIC unique_ptr<unordered_map<string, LogLevel>> level_map;
 _CONSTANT_STATIC unique_ptr<unordered_map<const char*, LogModule>> log_modules;
 _CONSTANT_STATIC std::unique_ptr<stringstream> logging_stream;
 _CONSTANT_STATIC deque<char>* log_buffer;
+_CONSTANT_STATIC std::ostream* log_file;
 size_t log_buffer_size;
 
 static void init_log_globals() {
@@ -103,6 +105,20 @@ static void init_log_globals() {
       log_buffer = new deque<char>();
       atexit(flush_log_buffer);
     }
+  }
+
+  const char* filename = getenv("RR_LOG_FILE");
+  if (filename) {
+    auto file = new ofstream(filename);
+    if (!file->good()) {
+      delete file;
+    } else {
+      log_file = file;
+    }
+  }
+
+  if (!log_file) {
+    log_file = &cerr;
   }
 
   const char* log_env = "RR_LOG";
@@ -239,7 +255,7 @@ static void flush_log_stream() {
       log_buffer->insert(log_buffer->end(), s.c_str(), s.c_str() + len);
     }
   } else {
-    cerr << s;
+    *log_file << s;
   }
 
   logging_stream->str(string());
@@ -250,7 +266,7 @@ void flush_log_buffer() {
     for (char c : *log_buffer) {
       // We could accumulate in a string to speed things up, but this could get
       // called in low-memory situations so be safe.
-      cerr << c;
+      *log_file << c;
     }
     log_buffer->clear();
   }
