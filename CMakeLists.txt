@@ -829,6 +829,7 @@ set(TESTS_WITH_PROGRAM
   conditional_breakpoint_calls
   conditional_breakpoint_offload
   condvar_stress
+  cpuid_singlestep
   crash
   crash_in_function
   daemon_read

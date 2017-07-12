@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+# Try recording without CPUID fauilting and then replaying with it
+GLOBAL_OPTIONS=--disable-cpuid-faulting
+record $TESTNAME
+GLOBAL_OPTIONS=
+debug cpuid_singlestep
