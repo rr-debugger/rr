@@ -352,7 +352,7 @@ Completion ReplaySession::cont_syscall_boundary(
     // Actually perform it. We can hit these when replaying through syscallbuf
     // code that was interrupted.
     perform_interrupted_syscall(t);
-    return cont_syscall_boundary(t, constraints);
+    return INCOMPLETE;
   }
 
   return COMPLETE;
