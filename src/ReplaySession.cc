@@ -96,6 +96,13 @@ ReplaySession::ReplaySession(const std::string& dir)
     FATAL() << "Trace was recorded with CPUID faulting enabled, but this\n"
             << "system does not support CPUID faulting";
   }
+  if (has_cpuid_faulting() && trace_in.bound_to_cpu() >= 0) {
+    // The recorded trace was bound to a CPU, but we have CPUID faulting so
+    // we can bind to a different CPU and preserve CPUID values, so let's do
+    // that. This avoids problems if the tracees were bound to a CPU number
+    // that doesn't exist on this machine.
+    trace_in.set_bound_cpu(choose_cpu(BIND_CPU));
+  }
 }
 
 ReplaySession::ReplaySession(const ReplaySession& other)

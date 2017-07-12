@@ -62,6 +62,7 @@ public:
   const string& dir() const { return trace_dir; }
 
   int bound_to_cpu() const { return bind_to_cpu; }
+  void set_bound_cpu(int bound) { bind_to_cpu = bound; }
 
   /**
    * Return the current "global time" (event count) for this
@@ -187,7 +188,8 @@ public:
 
   /**
    * Create a trace where the tracess are bound to cpu |bind_to_cpu|. This
-   * data is recorded in the trace.
+   * data is recorded in the trace. If |bind_to_cpu| is -1 then the tracees
+   * were not bound.
    * The trace name is determined by |file_name| and _RR_TRACE_DIR (if set).
    */
   TraceWriter(const std::string& file_name, int bind_to_cpu,
