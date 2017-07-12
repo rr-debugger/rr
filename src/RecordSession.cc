@@ -1848,7 +1848,7 @@ RecordSession::RecordSession(const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              SyscallBuffering syscallbuf, int bind_cpu)
-    : trace_out(argv[0], choose_cpu(bind_cpu)),
+    : trace_out(argv[0], choose_cpu(bind_cpu), has_cpuid_faulting_),
       scheduler_(*this),
       ignore_sig(0),
       continue_through_sig(0),
@@ -1862,6 +1862,12 @@ RecordSession::RecordSession(const std::string& exe_path,
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
       Task::spawn(*this, error_fd, trace_out, exe_path, argv, envp));
+  // We are now bound to the selected CPU (if any), so collect CPUID records
+  // (which depend on the bound CPU number).
+  vector<CPUIDRecord> cpuid_records = all_cpuid_records();
+  trace_out.write_generic(cpuid_records.data(),
+                          cpuid_records.size() * sizeof(CPUIDRecord));
+
   initial_task_group = t->task_group();
   on_create(t);
 }

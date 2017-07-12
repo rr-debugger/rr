@@ -194,8 +194,15 @@ enum cpuid_requests {
   CPUID_GETFEATURES,
   CPUID_GETTLB,
   CPUID_GETSERIAL,
+  CPUID_GETCACHEPARAMS = 0x04,
   CPUID_GETEXTENDEDFEATURES = 0x07,
+  CPUID_GETEXTENDEDTOPOLOGY = 0x0B,
   CPUID_GETXSAVE = 0x0D,
+  CPUID_GETRDTMONITORING = 0x0F,
+  CPUID_GETRDTALLOCATION = 0x10,
+  CPUID_GETSGX = 0x12,
+  CPUID_GETPT = 0x14,
+  CPUID_GETSOC = 0x17,
   CPUID_INTELEXTENDED = 0x80000000,
   CPUID_INTELFEATURES,
   CPUID_INTELBRANDSTRING,
@@ -216,7 +223,15 @@ const int HLE_FEATURE_FLAG = 1 << 4;
 struct CPUIDData {
   uint32_t eax, ebx, ecx, edx;
 };
-CPUIDData cpuid(int code, int subrequest);
+CPUIDData cpuid(uint32_t code, uint32_t subrequest);
+
+struct CPUIDRecord {
+  uint32_t eax_in;
+  // UINT32_MAX means ECX not relevant
+  uint32_t ecx_in;
+  CPUIDData out;
+};
+std::vector<CPUIDRecord> all_cpuid_records();
 
 bool cpuid_faulting_works();
 
@@ -350,6 +365,19 @@ void good_random(void* out, size_t out_len);
 std::vector<std::string> current_env();
 
 int get_num_cpus();
+
+enum class DisabledInsn {
+  NONE = 0,
+  RDTSC = 1,
+  RDTSCP = 2,
+  CPUID = 3,
+};
+
+/* If |t->ip()| points at a disabled instruction, return the instruction */
+DisabledInsn disabled_insn_at(Task* t, remote_code_ptr ip);
+
+/* Return the length of the DisabledInsn */
+size_t disabled_insn_len(DisabledInsn insn);
 
 } // namespace rr
 

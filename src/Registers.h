@@ -270,8 +270,8 @@ public:
     RR_SET_REG(edx, rdx, value >> 32);
   }
 
-  void set_cpuid_output(uint32_t eax, uint32_t ebx,
-                        uint32_t ecx, uint32_t edx) {
+  void set_cpuid_output(uint32_t eax, uint32_t ebx, uint32_t ecx,
+                        uint32_t edx) {
     RR_SET_REG(eax, rax, eax);
     RR_SET_REG(ebx, rbx, ebx);
     RR_SET_REG(ecx, rcx, ecx);
@@ -307,6 +307,7 @@ public:
   uintptr_t cx() const { return RR_GET_REG(ecx, rcx); }
   void set_cx(uintptr_t value) { RR_SET_REG(ecx, rcx, value); }
 
+  uintptr_t ax() const { return RR_GET_REG(eax, rax); }
   uintptr_t bp() const { return RR_GET_REG(ebp, rbp); }
 
   uintptr_t flags() const;

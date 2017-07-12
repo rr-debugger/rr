@@ -91,6 +91,11 @@ ReplaySession::ReplaySession(const std::string& dir)
       ticks_at_start_of_event(0) {
   memset(&last_siginfo_, 0, sizeof(last_siginfo_));
   advance_to_next_trace_frame();
+
+  if (trace_in.uses_cpuid_faulting() && !has_cpuid_faulting()) {
+    FATAL() << "Trace was recorded with CPUID faulting enabled, but this\n"
+            << "system does not support CPUID faulting";
+  }
 }
 
 ReplaySession::ReplaySession(const ReplaySession& other)
@@ -294,6 +299,43 @@ static void perform_interrupted_syscall(ReplayTask* t) {
   remote.regs().set_syscall_result(ret);
 }
 
+static const CPUIDRecord* find_cpuid_record(
+    const Registers& r, const vector<CPUIDRecord>& records) {
+  uint32_t eax = r.ax();
+  uint32_t ecx = r.cx();
+  for (const auto& rec : records) {
+    if (rec.eax_in == eax && (rec.ecx_in == ecx || rec.ecx_in == UINT32_MAX)) {
+      return &rec;
+    }
+  }
+  return nullptr;
+}
+
+bool ReplaySession::handle_unrecorded_cpuid_fault(
+    ReplayTask* t, const StepConstraints& constraints) {
+  if (t->stop_sig() != SIGSEGV || !has_cpuid_faulting() ||
+      trace_in.uses_cpuid_faulting() ||
+      disabled_insn_at(t, t->ip()) != DisabledInsn::CPUID) {
+    return false;
+  }
+  // OK, this is a case where we did not record using CPUID faulting but we are
+  // replaying with CPUID faulting and the tracee just executed a CPUID.
+  // We try to find the results in the "all CPUID leaves" we saved.
+
+  const vector<CPUIDRecord>& records = trace_in.cpuid_records();
+  Registers r = t->regs();
+  const CPUIDRecord* rec = find_cpuid_record(r, records);
+  ASSERT(t, rec) << "Can't find CPUID record for request AX=" << HEX(r.ax())
+                 << " CX=" << HEX(r.cx());
+  r.set_cpuid_output(rec->out.eax, rec->out.ebx, rec->out.ecx, rec->out.edx);
+  r.set_ip(r.ip() + disabled_insn_len(DisabledInsn::CPUID));
+  t->set_regs(r);
+  // Clear SIGSEGV status since we're handling it
+  t->set_status(constraints.is_singlestep() ? WaitStatus::for_stop_sig(SIGTRAP)
+                                            : WaitStatus());
+  return true;
+}
+
 /**
  * Continue until reaching either the "entry" of an emulated syscall,
  * or the entry or exit of an executed syscall.  |emu| is nonzero when
@@ -322,14 +364,22 @@ Completion ReplaySession::cont_syscall_boundary(
     t->resume_execution(resume_how, RESUME_WAIT, ticks_request);
   }
 
-  if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
-    // This would normally be triggered by constraints.ticks_target but it's
-    // also possible to get stray signals here.
-    return INCOMPLETE;
-  }
-
-  if (SIGTRAP == t->stop_sig()) {
-    return INCOMPLETE;
+  switch (t->stop_sig()) {
+    case 0:
+      break;
+    case PerfCounters::TIME_SLICE_SIGNAL:
+      // This would normally be triggered by constraints.ticks_target but it's
+      // also possible to get stray signals here.
+      return INCOMPLETE;
+    case SIGSEGV:
+      if (handle_unrecorded_cpuid_fault(t, constraints)) {
+        return INCOMPLETE;
+      }
+      break;
+    case SIGTRAP:
+      return INCOMPLETE;
+    default:
+      break;
   }
   ASSERT(t, !t->stop_sig()) << "Replay got unrecorded signal " << t->stop_sig()
                             << " (" << signal_name(t->stop_sig()) << ")";
@@ -489,9 +539,11 @@ void ReplaySession::continue_or_step(ReplayTask* t,
                                      ResumeRequest resume_how) {
   if (constraints.command == RUN_SINGLESTEP) {
     t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, tick_request);
+    handle_unrecorded_cpuid_fault(t, constraints);
   } else if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD) {
     did_fast_forward |= fast_forward_through_instruction(
         t, RESUME_SINGLESTEP, constraints.stop_before_states);
+    handle_unrecorded_cpuid_fault(t, constraints);
   } else {
     while (true) {
       t->resume_execution(resume_how, RESUME_WAIT, tick_request);
@@ -514,6 +566,8 @@ void ReplaySession::continue_or_step(ReplayTask* t,
           // is not fast anyway.)
           perform_interrupted_syscall(t);
         }
+      } else if (handle_unrecorded_cpuid_fault(t, constraints)) {
+        // Just continue
       } else {
         break;
       }

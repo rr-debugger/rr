@@ -304,6 +304,8 @@ private:
   Completion enter_syscall(ReplayTask* t, const StepConstraints& constraints);
   Completion exit_syscall(ReplayTask* t);
   Completion exit_task(ReplayTask* t);
+  bool handle_unrecorded_cpuid_fault(ReplayTask* t,
+                                     const StepConstraints& constraints);
   void check_ticks_consistency(ReplayTask* t, const Event& ev);
   void check_pending_sig(ReplayTask* t);
   void continue_or_step(ReplayTask* t, const StepConstraints& constraints,

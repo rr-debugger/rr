@@ -684,7 +684,7 @@ void resize_shmem_segment(ScopedFd& fd, uint64_t num_bytes) {
   }
 }
 
-CPUIDData cpuid(int code, int subrequest) {
+CPUIDData cpuid(uint32_t code, uint32_t subrequest) {
   CPUIDData result;
   asm volatile("cpuid"
                : "=a"(result.eax), "=b"(result.ebx), "=c"(result.ecx),
@@ -696,7 +696,8 @@ CPUIDData cpuid(int code, int subrequest) {
 #define SEGV_HANDLER_MAGIC 0x98765432
 
 static void cpuid_segv_handler(__attribute__((unused)) int sig,
-                               __attribute__((unused)) siginfo_t* si, void* user) {
+                               __attribute__((unused)) siginfo_t* si,
+                               void* user) {
   ucontext_t* ctx = (ucontext_t*)user;
 #if defined(__i386__)
   ctx->uc_mcontext.gregs[REG_EIP] += 2;
@@ -707,6 +708,117 @@ static void cpuid_segv_handler(__attribute__((unused)) int sig,
 #else
 #error unknown architecture
 #endif
+}
+
+static CPUIDRecord cpuid_record(uint32_t eax, uint32_t ecx) {
+  CPUIDRecord result = { eax, ecx, cpuid(eax, ecx) };
+  return result;
+}
+
+vector<CPUIDRecord> all_cpuid_records() {
+  vector<CPUIDRecord> results;
+  CPUIDRecord vendor_string = cpuid_record(CPUID_GETVENDORSTRING, UINT32_MAX);
+  results.push_back(vendor_string);
+  int basic_info_max = vendor_string.out.eax;
+  bool has_SGX = false;
+
+  for (int base = 1; base <= basic_info_max; ++base) {
+    switch (base) {
+      case CPUID_GETCACHEPARAMS:
+        for (int level = 0;; ++level) {
+          CPUIDRecord rec = cpuid_record(base, level);
+          results.push_back(rec);
+          if (!(rec.out.eax & 0x1f)) {
+            // Cache Type Field == no more caches
+            break;
+          }
+        }
+        break;
+      case CPUID_GETEXTENDEDFEATURES: {
+        CPUIDRecord rec = cpuid_record(base, 0);
+        results.push_back(rec);
+        if (rec.out.ebx & 0x4) {
+          has_SGX = true;
+        }
+        for (uint32_t level = 1; level <= rec.out.eax; ++level) {
+          results.push_back(cpuid_record(base, level));
+        }
+        break;
+      }
+      case CPUID_GETEXTENDEDTOPOLOGY: {
+        for (int level = 0;; ++level) {
+          CPUIDRecord rec = cpuid_record(base, level);
+          results.push_back(rec);
+          if (!(rec.out.ecx & 0xff00)) {
+            // Level Type == 0
+            break;
+          }
+        }
+        break;
+      }
+      case CPUID_GETXSAVE:
+        for (uint32_t level = 0; level < 64; ++level) {
+          results.push_back(cpuid_record(base, level));
+        }
+        break;
+      case CPUID_GETRDTMONITORING: {
+        CPUIDRecord rec = cpuid_record(base, 0);
+        results.push_back(rec);
+        for (uint32_t level = 1; level < 64; ++level) {
+          if (rec.out.edx & (1LL << level)) {
+            results.push_back(cpuid_record(base, level));
+          }
+        }
+        break;
+      }
+      case CPUID_GETRDTALLOCATION: {
+        CPUIDRecord rec = cpuid_record(base, 0);
+        results.push_back(rec);
+        for (uint32_t level = 1; level < 64; ++level) {
+          if (rec.out.ebx & (1LL << level)) {
+            results.push_back(cpuid_record(base, level));
+          }
+        }
+        break;
+      }
+      case CPUID_GETSGX:
+        results.push_back(cpuid_record(base, 0));
+        if (has_SGX) {
+          results.push_back(cpuid_record(base, 1));
+          for (int level = 2;; ++level) {
+            CPUIDRecord rec = cpuid_record(base, level);
+            results.push_back(rec);
+            if (!(rec.out.eax & 0x0f)) {
+              // Sub-leaf Type == 0
+              break;
+            }
+          }
+        }
+        break;
+      case CPUID_GETPT:
+      case CPUID_GETSOC: {
+        CPUIDRecord rec = cpuid_record(base, 0);
+        results.push_back(rec);
+        for (uint32_t level = 1; level <= rec.out.eax; ++level) {
+          results.push_back(cpuid_record(base, level));
+        }
+        break;
+      }
+      default:
+        results.push_back(cpuid_record(base, UINT32_MAX));
+        break;
+    }
+  }
+
+  CPUIDRecord extended_info = cpuid_record(CPUID_INTELEXTENDED, 0);
+  results.push_back(extended_info);
+  int extended_info_max = extended_info.out.eax;
+  for (int extended = CPUID_INTELEXTENDED + 1; extended <= extended_info_max;
+       ++extended) {
+    results.push_back(cpuid_record(extended, UINT32_MAX));
+  }
+
+  return results;
 }
 
 bool cpuid_faulting_works() {
@@ -1112,6 +1224,41 @@ vector<string> current_env() {
 int get_num_cpus() {
   int cpus = (int)sysconf(_SC_NPROCESSORS_ONLN);
   return cpus > 0 ? cpus : 1;
+}
+
+static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
+static const uint8_t rdtscp_insn[] = { 0x0f, 0x01, 0xf9 };
+static const uint8_t cpuid_insn[] = { 0x0f, 0xa2 };
+
+DisabledInsn disabled_insn_at(Task* t, remote_code_ptr ip) {
+  uint8_t insn[sizeof(rdtscp_insn)];
+  ssize_t len =
+      t->read_bytes_fallible(ip.to_data_ptr<uint8_t>(), sizeof(insn), insn);
+  if ((size_t)len >= sizeof(rdtsc_insn) &&
+      !memcmp(insn, rdtsc_insn, sizeof(rdtsc_insn))) {
+    return DisabledInsn::RDTSC;
+  }
+  if ((size_t)len >= sizeof(rdtscp_insn) &&
+      !memcmp(insn, rdtscp_insn, sizeof(rdtscp_insn))) {
+    return DisabledInsn::RDTSCP;
+  }
+  if ((size_t)len >= sizeof(cpuid_insn) &&
+      !memcmp(insn, cpuid_insn, sizeof(cpuid_insn))) {
+    return DisabledInsn::CPUID;
+  }
+  return DisabledInsn::NONE;
+}
+
+size_t disabled_insn_len(DisabledInsn insn) {
+  if (insn == DisabledInsn::RDTSC) {
+    return sizeof(rdtsc_insn);
+  } else if (insn == DisabledInsn::RDTSCP) {
+    return sizeof(rdtscp_insn);
+  } else if (insn == DisabledInsn::CPUID) {
+    return sizeof(cpuid_insn);
+  } else {
+    return 0;
+  }
 }
 
 } // namespace rr

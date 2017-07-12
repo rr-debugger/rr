@@ -32,7 +32,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 71
+#define TRACE_VERSION 72
 
 struct SubstreamData {
   const char* name;
@@ -616,7 +616,8 @@ static string make_trace_dir(const string& exe_path) {
   return dir;
 }
 
-TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu)
+TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
+                         bool has_cpuid_faulting)
     : TraceStream(make_trace_dir(file_name),
                   // Somewhat arbitrarily start the
                   // global time from 1.
@@ -671,6 +672,7 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu)
   }
 
   write_generic(&bind_to_cpu, sizeof(bind_to_cpu));
+  write_generic(&has_cpuid_faulting, sizeof(has_cpuid_faulting));
 }
 
 void TraceWriter::make_latest_trace() {
@@ -752,6 +754,20 @@ TraceReader::TraceReader(const string& dir)
   assert(bind_to_cpu_bytes.size() == sizeof(bind_to_cpu));
   memcpy(&bind_to_cpu, bind_to_cpu_bytes.data(), sizeof(bind_to_cpu));
 
+  vector<uint8_t> uses_cpuid_faulting_bytes;
+  read_generic(uses_cpuid_faulting_bytes);
+  assert(uses_cpuid_faulting_bytes.size() == sizeof(trace_uses_cpuid_faulting));
+  memcpy(&trace_uses_cpuid_faulting, uses_cpuid_faulting_bytes.data(),
+         sizeof(trace_uses_cpuid_faulting));
+
+  vector<uint8_t> cpuid_records_bytes;
+  read_generic(cpuid_records_bytes);
+  size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
+  assert(cpuid_records_bytes.size() == len * sizeof(CPUIDRecord));
+  cpuid_records_.resize(len);
+  memcpy(cpuid_records_.data(), cpuid_records_bytes.data(),
+         cpuid_records_bytes.size());
+
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.
   global_time = 0;
@@ -770,7 +786,11 @@ TraceReader::TraceReader(const TraceReader& other)
   }
 
   bind_to_cpu = other.bind_to_cpu;
+  trace_uses_cpuid_faulting = other.trace_uses_cpuid_faulting;
+  cpuid_records_ = other.cpuid_records_;
 }
+
+TraceReader::~TraceReader() {}
 
 uint64_t TraceReader::uncompressed_bytes() const {
   uint64_t total = 0;

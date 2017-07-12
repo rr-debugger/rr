@@ -283,9 +283,7 @@ public:
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering() {
     return syscall_seccomp_ordering_;
   }
-  bool has_cpuid_faulting() const {
-    return has_cpuid_faulting_;
-  }
+  bool has_cpuid_faulting() const { return has_cpuid_faulting_; }
 
   static const char* rr_mapping_prefix();
 

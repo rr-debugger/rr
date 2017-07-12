@@ -80,50 +80,6 @@ static void restore_signal_state(RecordTask* t, int sig,
   }
 }
 
-enum class DisabledInsn {
-  NONE = 0,
-  RDTSC = 1,
-  RDTSCP = 2,
-  CPUID = 3,
-};
-
-static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
-static const uint8_t rdtscp_insn[] = { 0x0f, 0x01, 0xf9 };
-static const uint8_t cpuid_insn[] = { 0x0f, 0xa2 };
-
-/* If |t->ip()| points at a disabled instruction, return the instruction */
-static DisabledInsn ip_disabled_insn(RecordTask* t) {
-  uint8_t insn[sizeof(rdtscp_insn)];
-  ssize_t len = t->read_bytes_fallible(t->ip().to_data_ptr<uint8_t>(),
-                                       sizeof(insn), insn);
-  if ((size_t)len >= sizeof(rdtsc_insn) &&
-      !memcmp(insn, rdtsc_insn, sizeof(rdtsc_insn))) {
-    return DisabledInsn::RDTSC;
-  }
-  if ((size_t)len >= sizeof(rdtscp_insn) &&
-      !memcmp(insn, rdtscp_insn, sizeof(rdtscp_insn))) {
-    return DisabledInsn::RDTSCP;
-  }
-  if ((size_t)len >= sizeof(cpuid_insn) &&
-      !memcmp(insn, cpuid_insn, sizeof(cpuid_insn))) {
-    return DisabledInsn::CPUID;
-  }
-  return DisabledInsn::NONE;
-}
-
-/* Return the length of the DisabledInsn */
-static size_t disabled_insn_len(DisabledInsn insn) {
-  if (insn == DisabledInsn::RDTSC) {
-    return sizeof(rdtsc_insn);
-  } else if (insn == DisabledInsn::RDTSCP) {
-    return sizeof(rdtscp_insn);
-  } else if (insn == DisabledInsn::CPUID) {
-    return sizeof(cpuid_insn);
-  } else {
-    return 0;
-  }
-}
-
 static const uintptr_t CPUID_RDRAND_FLAG = 1 << 30;
 static const uintptr_t CPUID_RTM_FLAG = 1 << 11;
 static const uintptr_t CPUID_RDSEED_FLAG = 1 << 18;
@@ -136,15 +92,21 @@ static const uintptr_t CPUID_RDSEED_FLAG = 1 << 18;
 static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
   ASSERT(t, si->si_signo == SIGSEGV);
 
-  auto disabled_insn = ip_disabled_insn(t);
-  if (disabled_insn == DisabledInsn::NONE) {
-    return false;
-  }
-
-  if (t->tsc_mode == PR_TSC_SIGSEGV &&
-      (disabled_insn == DisabledInsn::RDTSC ||
-       disabled_insn == DisabledInsn::RDTSCP)) {
-    return false;
+  auto disabled_insn = disabled_insn_at(t, t->ip());
+  switch (disabled_insn) {
+    case DisabledInsn::RDTSC:
+    case DisabledInsn::RDTSCP:
+      if (t->tsc_mode == PR_TSC_SIGSEGV) {
+        return false;
+      }
+      break;
+    case DisabledInsn::CPUID:
+      if (t->cpuid_mode == 0) {
+        return false;
+      }
+      break;
+    default:
+      return false;
   }
 
   size_t len = disabled_insn_len(disabled_insn);
@@ -162,19 +124,19 @@ static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
     auto ecx = r.cx();
     auto cpuid_data = cpuid(eax, ecx);
     switch (eax) {
-    case CPUID_GETFEATURES:
-      cpuid_data.ecx &= ~CPUID_RDRAND_FLAG;
-      break;
-    case CPUID_GETEXTENDEDFEATURES:
-      if (ecx == 0) {
-        cpuid_data.ebx &= ~(CPUID_RDSEED_FLAG | CPUID_RTM_FLAG);
-      }
-      break;
-    default:
-      break;
+      case CPUID_GETFEATURES:
+        cpuid_data.ecx &= ~CPUID_RDRAND_FLAG;
+        break;
+      case CPUID_GETEXTENDEDFEATURES:
+        if (ecx == 0) {
+          cpuid_data.ebx &= ~(CPUID_RDSEED_FLAG | CPUID_RTM_FLAG);
+        }
+        break;
+      default:
+        break;
     }
-    r.set_cpuid_output(cpuid_data.eax, cpuid_data.ebx,
-                       cpuid_data.ecx, cpuid_data.edx);
+    r.set_cpuid_output(cpuid_data.eax, cpuid_data.ebx, cpuid_data.ecx,
+                       cpuid_data.edx);
     LOG(debug) << " trapped for cpuid: " << HEX(eax) << ":" << HEX(ecx);
   }
 

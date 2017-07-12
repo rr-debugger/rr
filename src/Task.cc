@@ -818,19 +818,32 @@ void Task::set_debug_status(uintptr_t status) {
   fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(6), (void*)status);
 }
 
+static bool is_singlestep_resume(ResumeRequest request) {
+  return request == RESUME_SINGLESTEP || request == RESUME_SYSEMU_SINGLESTEP;
+}
+
 TrapReasons Task::compute_trap_reasons() {
   ASSERT(this, stop_sig() == SIGTRAP);
   TrapReasons reasons;
   uintptr_t status = debug_status();
 
-  // During replay we execute syscall instructions in certain cases, e.g.
-  // mprotect with syscallbuf. The kernel does not set DS_SINGLESTEP when we
-  // step over those instructions so we need to detect that here.
-  if (how_last_execution_resumed == RESUME_SINGLESTEP &&
+  if (is_singlestep_resume(how_last_execution_resumed) &&
       is_at_syscall_instruction(this, address_of_last_execution_resume) &&
       ip() ==
           address_of_last_execution_resume +
               syscall_instruction_length(arch())) {
+    // During replay we execute syscall instructions in certain cases, e.g.
+    // mprotect with syscallbuf. The kernel does not set DS_SINGLESTEP when we
+    // step over those instructions so we need to detect that here.
+    reasons.singlestep = true;
+  } else if (is_singlestep_resume(how_last_execution_resumed) &&
+             disabled_insn_at(this, address_of_last_execution_resume) ==
+                 DisabledInsn::CPUID &&
+             ip() ==
+                 address_of_last_execution_resume +
+                     disabled_insn_len(DisabledInsn::CPUID)) {
+    // Likewise we emulate CPUID instructions and must forcibly detect that
+    // here.
     reasons.singlestep = true;
   } else {
     reasons.singlestep = (status & DS_SINGLESTEP) != 0;
