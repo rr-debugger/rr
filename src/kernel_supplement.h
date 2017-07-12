@@ -273,10 +273,10 @@ struct usbdevfs_streams {
 #endif
 // New in the 4.12 kernel
 #ifndef ARCH_GET_CPUID
-#define ARCH_GET_CPUID 0x1005
+#define ARCH_GET_CPUID 0x1011
 #endif
 #ifndef ARCH_SET_CPUID
-#define ARCH_SET_CPUID 0x1006
+#define ARCH_SET_CPUID 0x1012
 #endif
 
 } // namespace rr
