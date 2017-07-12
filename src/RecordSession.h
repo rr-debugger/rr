@@ -26,17 +26,11 @@ public:
    * Create a recording session for the initial command line |argv|.
    */
   enum SyscallBuffering { ENABLE_SYSCALL_BUF, DISABLE_SYSCALL_BUF };
-  /**
-   * BIND_CPU means binding to a randomly chosen CPU.
-   * UNBOUND_CPU means not binding to a particular CPU.
-   * A non-negative value means binding to the specific CPU number.
-   */
-  enum BindCPU { BIND_CPU = -2, UNBOUND_CPU = -1 };
   static shr_ptr create(
       const std::vector<std::string>& argv,
       const std::vector<std::string>& extra_env = std::vector<std::string>(),
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
-      int bind_cpu = BIND_CPU);
+      BindCPU bind_cpu = BIND_CPU);
 
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
   size_t syscall_buffer_size() const { return syscall_buffer_size_; }
@@ -136,7 +130,7 @@ private:
   RecordSession(const std::string& exe_path,
                 const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp,
-                SyscallBuffering syscallbuf, int bind_cpu);
+                SyscallBuffering syscallbuf, BindCPU bind_cpu);
 
   virtual void on_create(Task* t) override;
 

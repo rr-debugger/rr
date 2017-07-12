@@ -24,6 +24,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <fstream>
+#include <string>
 
 #include "preload/preload_interface.h"
 
@@ -1259,6 +1261,92 @@ size_t disabled_insn_len(DisabledInsn insn) {
   } else {
     return 0;
   }
+}
+
+/**
+ * Read and parse the available CPU list then select a random CPU from the list.
+ */
+static int get_random_cpu_cgroup() {
+  ifstream self_cpuset("/proc/self/cpuset");
+  if (!self_cpuset.is_open()) {
+    return -1;
+  }
+  string cpuset_path;
+  getline(self_cpuset, cpuset_path);
+  self_cpuset.close();
+  if (cpuset_path.empty()) {
+    return -1;
+  }
+  ifstream cpuset("/sys/fs/cgroup/cpuset" + cpuset_path + "/cpuset.cpus");
+  if (!cpuset.good()) {
+    return -1;
+  }
+  vector<int> cpus;
+  while (true) {
+    int cpu1;
+    cpuset >> cpu1;
+    if (cpuset.fail()) {
+      return -1;
+    }
+    cpus.push_back(cpu1);
+    char c = cpuset.get();
+    if (cpuset.eof() || c == '\n') {
+      break;
+    } else if (c == ',') {
+      continue;
+    } else if (c != '-') {
+      return -1;
+    }
+    int cpu2;
+    cpuset >> cpu2;
+    if (cpuset.fail()) {
+      return -1;
+    }
+    for (int cpu = cpu1 + 1; cpu <= cpu2; cpu++) {
+      cpus.push_back(cpu);
+    }
+    c = cpuset.get();
+    if (cpuset.eof() || c == '\n') {
+      break;
+    } else if (c != ',') {
+      return -1;
+    }
+  }
+  return cpus[random() % cpus.size()];
+}
+
+/**
+ * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
+ * in which case we return -1.
+ */
+int choose_cpu(BindCPU bind_cpu) {
+  if (bind_cpu == UNBOUND_CPU) {
+    return -1;
+  }
+
+  // Pin tracee tasks to a random logical CPU, both in
+  // recording and replay.  Tracees can see which HW
+  // thread they're running on by asking CPUID, and we
+  // don't have a way to emulate it yet.  So if a tracee
+  // happens to be scheduled on a different core in
+  // recording than replay, it can diverge.  (And
+  // indeed, has been observed to diverge in practice,
+  // in glibc.)
+  //
+  // Note that we will pin both the tracee processes *and*
+  // the tracer process.  This ends up being a tidy
+  // performance win in certain circumstances,
+  // presumably due to cheaper context switching and/or
+  // better interaction with CPU frequency scaling.
+  if (bind_cpu >= 0) {
+    return bind_cpu;
+  }
+
+  int cpu = get_random_cpu_cgroup();
+  if (cpu >= 0) {
+    return cpu;
+  }
+  return random() % get_num_cpus();
 }
 
 } // namespace rr

@@ -379,6 +379,16 @@ DisabledInsn disabled_insn_at(Task* t, remote_code_ptr ip);
 /* Return the length of the DisabledInsn */
 size_t disabled_insn_len(DisabledInsn insn);
 
+/**
+ * BIND_CPU means binding to a randomly chosen CPU.
+ * UNBOUND_CPU means not binding to a particular CPU.
+ * A non-negative value means binding to the specific CPU number.
+ */
+enum BindCPU { BIND_CPU = -2, UNBOUND_CPU = -1 };
+
+/* Convert a BindCPU to a specific CPU number */
+int choose_cpu(BindCPU bind_cpu);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

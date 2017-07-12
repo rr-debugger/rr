@@ -102,7 +102,7 @@ struct RecordFlags {
 
   /* Whether tracee processes in record and replay are allowed
    * to run on any logical CPU. */
-  int bind_cpu;
+  BindCPU bind_cpu;
 
   /* True if we should context switch after every rr event */
   bool always_switch;
@@ -130,7 +130,7 @@ struct RecordFlags {
         print_trace_dir(-1),
         use_file_cloning(true),
         use_read_cloning(true),
-        bind_cpu(RecordSession::BIND_CPU),
+        bind_cpu(BIND_CPU),
         always_switch(false),
         chaos(false),
         wait_for_all(false),
@@ -255,10 +255,10 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       if (!opt.verify_valid_int(0, INT32_MAX)) {
         return false;
       }
-      flags.bind_cpu = opt.int_value;
+      flags.bind_cpu = BindCPU(opt.int_value);
       break;
     case 'u':
-      flags.bind_cpu = RecordSession::UNBOUND_CPU;
+      flags.bind_cpu = UNBOUND_CPU;
       break;
     case 'v':
       flags.extra_env.push_back(opt.value);
