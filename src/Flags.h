@@ -54,6 +54,9 @@ struct Flags {
   // Any warning or error that would be printed is treated as fatal
   bool fatal_errors_and_warnings;
 
+  // Pretend CPUID faulting support doesn't exist
+  bool disable_cpuid_faulting;
+
   // User override for architecture detection, e.g. when running
   // under valgrind.
   std::string forced_uarch;
@@ -65,7 +68,9 @@ struct Flags {
         force_things(false),
         mark_stdio(false),
         check_cached_mmaps(false),
-        suppress_environment_warnings(false) {}
+        suppress_environment_warnings(false),
+        fatal_errors_and_warnings(false),
+        disable_cpuid_faulting(false) {}
 
   static const Flags& get() { return singleton; }
 

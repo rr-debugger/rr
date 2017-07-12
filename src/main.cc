@@ -99,6 +99,7 @@ void print_version(FILE* out) { fprintf(out, "rr version %s\n", RR_VERSION); }
 void print_global_options(FILE* out) {
   fputs(
       "Common options:\n"
+      "  --disable-cpuid-faulting   disable use of CPUID faulting\n"
       "  -A, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
       "                             with microarch NAME even if runtime "
       "detection\n"
@@ -165,18 +166,19 @@ static void init_random() {
 
 bool parse_global_option(std::vector<std::string>& args) {
   static const OptionSpec options[] = {
-    { 'C', "checksum", HAS_PARAMETER },
-    { 'K', "check-cached-mmaps", NO_PARAMETER },
-    { 'U', "cpu-unbound", NO_PARAMETER },
-    { 'T', "dump-at", HAS_PARAMETER },
-    { 'D', "dump-on", HAS_PARAMETER },
-    { 'F', "force-things", NO_PARAMETER },
+    { 0, "disable-cpuid-faulting", NO_PARAMETER },
     { 'A', "microarch", HAS_PARAMETER },
-    { 'M', "mark-stdio", NO_PARAMETER },
-    { 'S', "suppress-environment-warnings", NO_PARAMETER },
+    { 'C', "checksum", HAS_PARAMETER },
+    { 'D', "dump-on", HAS_PARAMETER },
     { 'E', "fatal-errors", NO_PARAMETER },
+    { 'F', "force-things", NO_PARAMETER },
+    { 'K', "check-cached-mmaps", NO_PARAMETER },
+    { 'M', "mark-stdio", NO_PARAMETER },
+    { 'N', "version", NO_PARAMETER },
+    { 'S', "suppress-environment-warnings", NO_PARAMETER },
+    { 'T', "dump-at", HAS_PARAMETER },
+    { 'U', "cpu-unbound", NO_PARAMETER },
     { 'V', "verbose", NO_PARAMETER },
-    { 'N', "version", NO_PARAMETER }
   };
 
   ParsedOption opt;
@@ -186,6 +188,9 @@ bool parse_global_option(std::vector<std::string>& args) {
 
   Flags& flags = Flags::get_for_init();
   switch (opt.short_name) {
+    case 0:
+      flags.disable_cpuid_faulting = true;
+      break;
     case 'A':
       flags.forced_uarch = opt.value;
       break;

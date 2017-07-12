@@ -15,6 +15,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
+#include "Flags.h"
 #include "Task.h"
 #include "TaskGroup.h"
 #include "kernel_metadata.h"
@@ -40,7 +41,8 @@ Session::Session()
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       done_initial_exec_(false),
       visible_execution_(true),
-      has_cpuid_faulting_(cpuid_faulting_works()) {
+      has_cpuid_faulting_(!Flags::get().disable_cpuid_faulting &&
+                          cpuid_faulting_works()) {
   LOG(debug) << "Session " << this << " created";
 }
 
