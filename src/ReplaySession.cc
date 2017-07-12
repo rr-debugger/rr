@@ -328,10 +328,6 @@ Completion ReplaySession::cont_syscall_boundary(
     return INCOMPLETE;
   }
 
-  if (is_ignored_signal(t->stop_sig())) {
-    return cont_syscall_boundary(t, constraints);
-  }
-
   if (SIGTRAP == t->stop_sig()) {
     return INCOMPLETE;
   }
