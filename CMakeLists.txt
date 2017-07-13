@@ -469,6 +469,7 @@ set(BASIC_TESTS
   _llseek
   accept
   adjtimex
+  aio
   alarm
   alarm2
   alsa_ioctl

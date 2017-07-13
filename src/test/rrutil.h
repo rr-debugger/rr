@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <grp.h>
 #include <inttypes.h>
+#include <linux/aio_abi.h>
 #include <linux/audit.h>
 #include <linux/capability.h>
 #include <linux/ethtool.h>

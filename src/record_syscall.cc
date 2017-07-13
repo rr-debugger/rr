@@ -3236,51 +3236,56 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
     }
 
-    case Arch::getcwd: {
+    case Arch::getcwd:
       syscall_state.reg_parameter(
           1, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                  (size_t)regs.arg2()));
       return PREVENT_SWITCH;
-    }
 
     case Arch::getdents:
-    case Arch::getdents64: {
+    case Arch::getdents64:
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<int>((unsigned int)regs.arg3()));
       return PREVENT_SWITCH;
-    }
 
-    case Arch::readlink: {
+    case Arch::readlink:
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                  (size_t)regs.arg3()));
       return PREVENT_SWITCH;
-    }
 
-    case Arch::readlinkat: {
+    case Arch::readlinkat:
       syscall_state.reg_parameter(
           3, ParamSize::from_syscall_result<typename Arch::ssize_t>(
                  (size_t)regs.arg4()));
       return PREVENT_SWITCH;
+
+    case Arch::io_setup: {
+      // Prevent the io_setup from running and fake an ENOSYS return. We want
+      // to discourage applications from using this API because the async
+      // reads are writes by the kernel that can race with userspace execution.
+      Registers r = regs;
+      r.set_arg2(0);
+      t->set_regs(r);
+      syscall_state.emulate_result(-ENOSYS);
+      return PREVENT_SWITCH;
     }
 
-    case Arch::getgroups: {
+    case Arch::getgroups:
       // We could record a little less data by restricting the recorded data
       // to the syscall result * sizeof(Arch::legacy_gid_t), but that would
       // require more infrastructure and it's not worth worrying about.
       syscall_state.reg_parameter(2, (int)regs.arg1_signed() *
                                          sizeof(typename Arch::legacy_gid_t));
       return PREVENT_SWITCH;
-    }
 
-    case Arch::getgroups32: {
+    case Arch::getgroups32:
       // We could record a little less data by restricting the recorded data
       // to the syscall result * sizeof(Arch::gid_t), but that would
       // require more infrastructure and it's not worth worrying about.
       syscall_state.reg_parameter(2, (int)regs.arg1_signed() *
                                          sizeof(typename Arch::gid_t));
       return PREVENT_SWITCH;
-    }
 
     case Arch::write:
     case Arch::writev: {
@@ -4979,6 +4984,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::fcntl64:
     case Arch::futex:
     case Arch::ioctl:
+    case Arch::io_setup:
     case Arch::madvise:
     case Arch::pread64:
     case Arch::preadv:
