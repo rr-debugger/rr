@@ -16,6 +16,7 @@ public:
   virtual ~ElfReaderImplBase() {}
   virtual SymbolTable read_symbols(const char* symtab, const char* strtab) = 0;
   virtual DynamicSection read_dynamic() = 0;
+  virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) = 0;
   bool ok() { return ok_; }
 
 protected:
@@ -29,6 +30,7 @@ public:
   virtual SymbolTable read_symbols(const char* symtab,
                                    const char* strtab) override;
   virtual DynamicSection read_dynamic() override;
+  virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) override;
 
 private:
   const typename Arch::ElfShdr* find_section(const char* n);
@@ -215,6 +217,24 @@ template <typename Arch> DynamicSection ElfReaderImpl<Arch>::read_dynamic() {
   return result;
 }
 
+template <typename Arch>
+bool ElfReaderImpl<Arch>::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
+  for (size_t i = 0; i < sections.size(); ++i) {
+    const auto& section = sections[i];
+    // Skip the section if it either "occupies no space in the file" or
+    // doesn't have a valid address because it does not "occupy memory
+    // during process execution".
+    if (section.sh_type == SHT_NOBITS || !(section.sh_flags & SHF_ALLOC)) {
+      continue;
+    }
+    if (addr > section.sh_addr && addr - section.sh_addr < section.sh_size) {
+      offset = addr - section.sh_addr + section.sh_offset;
+      return true;
+    }
+  }
+  return false;
+}
+
 ElfReader::ElfReader(SupportedArch arch) : arch(arch) {}
 
 ElfReader::~ElfReader() {}
@@ -231,6 +251,10 @@ SymbolTable ElfReader::read_symbols(const char* symtab, const char* strtab) {
 }
 
 DynamicSection ElfReader::read_dynamic() { return impl().read_dynamic(); }
+
+bool ElfReader::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
+  return impl().addr_to_offset(addr, offset);
+}
 
 bool ElfReader::ok() { return impl().ok(); }
 
