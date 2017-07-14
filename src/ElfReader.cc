@@ -153,14 +153,7 @@ SymbolTable ElfReaderImpl<Arch>::read_symbols(const char* symtab,
   result.symbols.resize(symbol_list.size());
   for (size_t i = 0; i < symbol_list.size(); ++i) {
     auto& s = symbol_list[i];
-    if (s.st_shndx >= sections.size()) {
-      // Don't leave this entry uninitialized
-      result.symbols[i] = SymbolTable::Symbol(0, 0);
-      continue;
-    }
-    auto& section = sections[s.st_shndx];
-    result.symbols[i] = SymbolTable::Symbol(
-        s.st_value - section.sh_addr + section.sh_offset, s.st_name);
+    result.symbols[i] = SymbolTable::Symbol(s.st_value, s.st_name);
   }
   return result;
 }

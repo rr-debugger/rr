@@ -488,10 +488,6 @@ public:
   RecordTask* t;
 };
 
-static SymbolTable read_vdso_symbols(RecordTask* t) {
-  return VdsoReader(t).read_symbols(".dynsym", ".dynstr");
-}
-
 /**
  * Return true iff |addr| points to a known |__kernel_vsyscall()|
  * implementation.
@@ -508,7 +504,7 @@ static bool is_kernel_vsyscall(RecordTask* t, remote_ptr<void> addr) {
  * implementation in |t|'s address space.
  */
 static remote_ptr<void> locate_and_verify_kernel_vsyscall(
-    RecordTask* t, const SymbolTable& syms) {
+    RecordTask* t, ElfReader& reader, const SymbolTable& syms) {
   remote_ptr<void> kernel_vsyscall = nullptr;
   // It is unlikely but possible that multiple, versioned __kernel_vsyscall
   // symbols will exist.  But we can't rely on setting |kernel_vsyscall| to
@@ -520,12 +516,15 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
 
   for (size_t i = 0; i < syms.size(); ++i) {
     if (syms.is_name(i, "__kernel_vsyscall")) {
-      remote_ptr<void> candidate = syms.file_offset(i);
+      uintptr_t file_offset;
+      if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
+        continue;
+      }
       // The symbol values can be absolute or relative addresses.
       // The first part of the assertion is for absolute
       // addresses, and the second part is for relative.
-      if ((candidate.as_int() & ~uintptr_t(0xfff)) != 0xffffe000 &&
-          (candidate.as_int() & ~uintptr_t(0xfff)) != 0) {
+      if ((file_offset & ~uintptr_t(0xfff)) != 0xffffe000 &&
+          (file_offset & ~uintptr_t(0xfff)) != 0) {
         // With 4.2.8-300.fc23.x86_64, execve_loop_32 seems to once in a while
         // see a VDSO with a crazy file offset in it which is a duplicate
         // __kernel_vsyscall. Bizzarro. Ignore it.
@@ -538,8 +537,8 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
       // however, subjects the VDSO to ASLR, which means that
       // we have to adjust the offsets properly.
       auto vdso_start = t->vm()->vdso().start();
-      uintptr_t candidate_offset = candidate.as_int() & uintptr_t(0xfff);
-      candidate = vdso_start + candidate_offset;
+      uintptr_t candidate_offset = file_offset & uintptr_t(0xfff);
+      remote_ptr<void> candidate = vdso_start + candidate_offset;
 
       if (is_kernel_vsyscall(t, candidate)) {
         kernel_vsyscall = candidate;
@@ -574,8 +573,9 @@ template <>
 void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X86Arch>(t);
 
-  auto syms = read_vdso_symbols(t);
-  patcher.x86_vsyscall = locate_and_verify_kernel_vsyscall(t, syms);
+  VdsoReader reader(t);
+  auto syms = reader.read_symbols(".dynsym", ".dynstr");
+  patcher.x86_vsyscall = locate_and_verify_kernel_vsyscall(t, reader, syms);
   if (!patcher.x86_vsyscall) {
     FATAL() << "Failed to monkeypatch vdso: your __kernel_vsyscall() wasn't "
                "recognized.\n"
@@ -608,16 +608,19 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   for (size_t i = 0; i < syms.size(); ++i) {
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
       if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
+        uintptr_t file_offset;
+        if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
+          continue;
+        }
         static const uintptr_t vdso_max_size = 0xffffLL;
-        uintptr_t sym_address = syms.file_offset(i);
-        if ((sym_address & ~vdso_max_size) != 0) {
+        if ((file_offset & ~vdso_max_size) != 0) {
           // With 4.3.3-301.fc23.x86_64, once in a while we
           // see a VDSO symbol with a crazy file offset in it which is a
           // duplicate of another symbol. Bizzarro. Ignore it.
           continue;
         }
 
-        uintptr_t absolute_address = vdso_start.as_int() + sym_address;
+        uintptr_t absolute_address = vdso_start.as_int() + file_offset;
 
         uint8_t patch[X86VsyscallMonkeypatch::size];
         uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
@@ -694,7 +697,8 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   auto vdso_start = t->vm()->vdso().start();
   size_t vdso_size = t->vm()->vdso().size();
 
-  auto syms = read_vdso_symbols(t);
+  VdsoReader reader(t);
+  auto syms = reader.read_symbols(".dynsym", ".dynstr");
 
   static const named_syscall syscalls_to_monkeypatch[] = {
 #define S(n)                                                                   \
@@ -710,17 +714,20 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   for (auto& syscall : syscalls_to_monkeypatch) {
     for (size_t i = 0; i < syms.size(); ++i) {
       if (syms.is_name(i, syscall.name)) {
+        uintptr_t file_offset;
+        if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
+          continue;
+        }
         // Absolutely-addressed symbols in the VDSO claim to start here.
         static const uint64_t vdso_static_base = 0xffffffffff700000LL;
         static const uintptr_t vdso_max_size = 0xffffLL;
-        uint64_t sym_address = syms.file_offset(i);
-        uint64_t sym_offset = sym_address & vdso_max_size;
+        uint64_t sym_offset = file_offset & vdso_max_size;
 
         // In 4.4.6-301.fc23.x86_64 we occasionally see a grossly invalid
         // address, se.g. 0x11c6970 for __vdso_getcpu. :-(
-        if ((sym_address >= vdso_static_base &&
-             sym_address < vdso_static_base + vdso_size) ||
-            sym_address < vdso_size) {
+        if ((file_offset >= vdso_static_base &&
+             file_offset < vdso_static_base + vdso_size) ||
+            file_offset < vdso_size) {
           uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
 
           uint8_t patch[X64VsyscallMonkeypatch::size];
@@ -734,7 +741,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
               remote_code_ptr(absolute_address + 5));
           LOG(debug) << "monkeypatched " << syscall.name << " to syscall "
                      << syscall.syscall_number << " at "
-                     << HEX(absolute_address) << " (" << HEX(sym_address)
+                     << HEX(absolute_address) << " (" << HEX(file_offset)
                      << ")";
 
           // With 4.4.6-301.fc23.x86_64, once in a while we see a VDSO symbol
@@ -775,11 +782,16 @@ void Monkeypatcher::patch_at_preload_init(RecordTask* t) {
   RR_ARCH_FUNCTION(patch_at_preload_init_arch, t->arch(), t, *this);
 }
 
-static void set_and_record_bytes(RecordTask* t, uint64_t file_offset,
+static void set_and_record_bytes(RecordTask* t,
+                                 ElfReader& reader, uintptr_t elf_addr,
                                  const void* bytes, size_t size,
                                  remote_ptr<void> map_start, size_t map_size,
                                  size_t map_offset_pages) {
-  uint64_t map_offset = uint64_t(map_offset_pages) * page_size();
+  uintptr_t file_offset;
+  if (!reader.addr_to_offset(elf_addr, file_offset)) {
+    LOG(warn) << "ELF address " << HEX(elf_addr) << " not in file";
+  }
+  uintptr_t map_offset = uintptr_t(map_offset_pages) * page_size();
   if (file_offset < map_offset || file_offset + size > map_offset + map_size) {
     // The value(s) to be set are outside the mapped range. This happens
     // because code and data can be mapped in separate, partial mmaps in which
@@ -804,15 +816,15 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
       (t->arch() == x86 || t->arch() == x86_64)) {
     ScopedFd open_fd = t->open_fd(child_fd, O_RDONLY);
     ASSERT(t, open_fd.is_open()) << "Failed to open child fd " << child_fd;
-    auto syms =
-        ElfFileReader(open_fd, t->arch()).read_symbols(".symtab", ".strtab");
+    ElfFileReader reader(open_fd, t->arch());
+    auto syms = reader.read_symbols(".symtab", ".strtab");
     for (size_t i = 0; i < syms.size(); ++i) {
       if (syms.is_name(i, "__elision_aconf")) {
         static const int zero = 0;
         // Setting __elision_aconf.retry_try_xbegin to zero means that
         // pthread rwlocks don't try to use elision at all. See ELIDE_LOCK
         // in glibc's elide.h.
-        set_and_record_bytes(t, syms.file_offset(i) + 8, &zero, sizeof(zero),
+        set_and_record_bytes(t, reader, syms.addr(i) + 8, &zero, sizeof(zero),
                              start, size, offset_pages);
       }
       if (syms.is_name(i, "elision_init")) {
@@ -821,7 +833,7 @@ void Monkeypatcher::patch_after_mmap(RecordTask* t, remote_ptr<void> start,
         // remain zero, disabling elision for mutexes. See glibc's
         // elision-conf.c.
         static const uint8_t ret = 0xC3;
-        set_and_record_bytes(t, syms.file_offset(i), &ret, sizeof(ret), start,
+        set_and_record_bytes(t, reader, syms.addr(i), &ret, sizeof(ret), start,
                              size, offset_pages);
       }
     }
