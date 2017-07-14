@@ -21,14 +21,14 @@ public:
     size_t offset = symbols[i].name_index;
     return offset < strtab.size() && strcmp(&strtab[offset], name) == 0;
   }
-  uintptr_t file_offset(size_t i) const { return symbols[i].file_offset; }
+  uintptr_t addr(size_t i) const { return symbols[i].addr; }
   size_t size() const { return symbols.size(); }
 
   struct Symbol {
-    Symbol(uintptr_t file_offset, size_t name_index)
-        : file_offset(file_offset), name_index(name_index) {}
+    Symbol(uintptr_t addr, size_t name_index)
+        : addr(addr), name_index(name_index) {}
     Symbol() {}
-    uintptr_t file_offset;
+    uintptr_t addr;
     size_t name_index;
   };
   std::vector<Symbol> symbols;
