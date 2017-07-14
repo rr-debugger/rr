@@ -70,6 +70,11 @@ public:
   bool ok();
   SymbolTable read_symbols(const char* symtab, const char* strtab);
   DynamicSection read_dynamic();
+  // Returns true and sets file |offset| if ELF address |addr| is mapped from
+  // a section in the ELF file.  Returns false if no section maps to
+  // |addr|.  |addr| is an address indicated by the ELF file, not its
+  // relocated address in memory.
+  bool addr_to_offset(uintptr_t addr, uintptr_t& offset);
 
 private:
   ElfReaderImplBase& impl();
