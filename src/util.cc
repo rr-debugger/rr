@@ -723,6 +723,7 @@ static vector<CPUIDRecord> gather_cpuid_records(uint32_t up_to) {
   results.push_back(vendor_string);
   uint32_t basic_info_max = min(up_to, vendor_string.out.eax);
   bool has_SGX = false;
+  bool has_hypervisor = false;
 
   for (uint32_t base = 1; base <= basic_info_max; ++base) {
     switch (base) {
@@ -806,9 +807,31 @@ static vector<CPUIDRecord> gather_cpuid_records(uint32_t up_to) {
         }
         break;
       }
+      case CPUID_GETFEATURES: {
+        CPUIDRecord rec = cpuid_record(base, UINT32_MAX);
+        results.push_back(rec);
+        if (rec.out.ecx & (1 << 31)) {
+          has_hypervisor = true;
+        }
+        break;
+      }
       default:
         results.push_back(cpuid_record(base, UINT32_MAX));
         break;
+    }
+  }
+
+  if (up_to < CPUID_HYPERVISOR) {
+    return results;
+  }
+
+  if (has_hypervisor) {
+    CPUIDRecord hv_info = cpuid_record(CPUID_HYPERVISOR, UINT32_MAX);
+    results.push_back(hv_info);
+    int hv_info_max = min(up_to, hv_info.out.eax);
+    for (int extended = CPUID_HYPERVISOR + 1; extended <= hv_info_max;
+         ++extended) {
+      results.push_back(cpuid_record(extended, UINT32_MAX));
     }
   }
 
@@ -816,7 +839,7 @@ static vector<CPUIDRecord> gather_cpuid_records(uint32_t up_to) {
     return results;
   }
 
-  CPUIDRecord extended_info = cpuid_record(CPUID_INTELEXTENDED, 0);
+  CPUIDRecord extended_info = cpuid_record(CPUID_INTELEXTENDED, UINT32_MAX);
   results.push_back(extended_info);
   int extended_info_max = min(up_to, extended_info.out.eax);
   for (int extended = CPUID_INTELEXTENDED + 1; extended <= extended_info_max;
