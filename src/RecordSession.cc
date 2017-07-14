@@ -1237,10 +1237,8 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         // they can catch errors here.
         sigframe_size = 1152 /* Overestimate of kernel sigframe */ +
                         128 /* Redzone */ +
-                        /* If xsave is available, the kernel uses it for the
-                           sigframe, otherwise it falls back to legacy methods,
-                           for which 512 should be sufficient */
-                        (xsave_area_size() ? xsave_area_size() : 512);
+                        /* this returns 512 when XSAVE unsupported */
+                        xsave_area_size();
 
         t->ev().transform(EV_SIGNAL_HANDLER);
         t->signal_delivered(sig);

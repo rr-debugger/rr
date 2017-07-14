@@ -473,7 +473,17 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
                   auto set = ptrace_get_regs_set<Arch>(
                       this, regs, tracee->extra_regs().data_size());
                   ExtraRegisters r;
-                  r.set_to_raw_data(tracee->arch(), ExtraRegisters::XSAVE, set);
+                  XSaveLayout layout;
+                  ReplaySession* replay = session().as_replay();
+                  if (replay) {
+                    layout = xsave_layout_from_trace(
+                        replay->trace_reader().cpuid_records());
+                  } else {
+                    layout = xsave_native_layout();
+                  }
+                  bool ok = r.set_to_raw_data(
+                      tracee->arch(), ExtraRegisters::XSAVE, set, layout);
+                  ASSERT(this, ok) << "Invalid XSAVE data";
                   tracee->set_extra_regs(r);
                   break;
                 }
@@ -769,7 +779,7 @@ const Registers& Task::regs() const {
 
 const ExtraRegisters& Task::extra_regs() {
   if (!extra_registers_known) {
-    if (xsave_area_size()) {
+    if (xsave_area_size() > 512) {
       LOG(debug) << "  (refreshing extra-register cache using XSAVE)";
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
@@ -1066,20 +1076,26 @@ void Task::set_regs(const Registers& regs) {
 
 void Task::set_extra_regs(const ExtraRegisters& regs) {
   ASSERT(this, !regs.empty()) << "Trying to set empty ExtraRegisters";
+  ASSERT(this, regs.arch() == arch())
+      << "Trying to set wrong arch ExtraRegisters";
   extra_registers = regs;
   extra_registers_known = true;
 
   switch (extra_registers.format()) {
     case ExtraRegisters::XSAVE: {
-      if (xsave_area_size()) {
+      if (xsave_area_size() > 512) {
         struct iovec vec = { extra_registers.data_.data(),
                              extra_registers.data_.size() };
         ptrace_if_alive(PTRACE_SETREGSET, NT_X86_XSTATE, &vec);
       } else {
 #if defined(__i386__)
+        ASSERT(this,
+               extra_registers.data_.size() == sizeof(user_fpxregs_struct));
         ptrace_if_alive(PTRACE_SETFPXREGS, nullptr,
                         extra_registers.data_.data());
 #elif defined(__x86_64__)
+        ASSERT(this,
+               extra_registers.data_.size() == sizeof(user_fpregs_struct));
         ptrace_if_alive(PTRACE_SETFPREGS, nullptr,
                         extra_registers.data_.data());
 #else

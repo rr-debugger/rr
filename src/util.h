@@ -314,10 +314,31 @@ void* xmalloc(size_t size);
  */
 bool has_effective_caps(uint64_t caps);
 
+struct XSaveFeatureLayout {
+  uint32_t offset;
+  uint32_t size;
+};
+
+struct XSaveLayout {
+  size_t full_size;
+  uint64_t supported_feature_bits;
+  std::vector<XSaveFeatureLayout> feature_layouts;
+};
+
 /**
- * Determine the size of the xsave area
+ * Determine the layout of the native XSAVE area
  */
-unsigned int xsave_area_size();
+const XSaveLayout& xsave_native_layout();
+
+/**
+ * Determine the layout of the XSAVE area from a trace
+ */
+XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records);
+
+/**
+ * 0 means XSAVE not detected
+ */
+inline size_t xsave_area_size() { return xsave_native_layout().full_size; }
 
 inline uint64_t signal_bit(int sig) { return uint64_t(1) << (sig - 1); }
 

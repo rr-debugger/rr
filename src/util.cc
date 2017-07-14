@@ -717,14 +717,14 @@ static CPUIDRecord cpuid_record(uint32_t eax, uint32_t ecx) {
   return result;
 }
 
-vector<CPUIDRecord> all_cpuid_records() {
+static vector<CPUIDRecord> gather_cpuid_records(uint32_t up_to) {
   vector<CPUIDRecord> results;
   CPUIDRecord vendor_string = cpuid_record(CPUID_GETVENDORSTRING, UINT32_MAX);
   results.push_back(vendor_string);
-  int basic_info_max = vendor_string.out.eax;
+  uint32_t basic_info_max = min(up_to, vendor_string.out.eax);
   bool has_SGX = false;
 
-  for (int base = 1; base <= basic_info_max; ++base) {
+  for (uint32_t base = 1; base <= basic_info_max; ++base) {
     switch (base) {
       case CPUID_GETCACHEPARAMS:
         for (int level = 0;; ++level) {
@@ -812,15 +812,23 @@ vector<CPUIDRecord> all_cpuid_records() {
     }
   }
 
+  if (up_to < CPUID_INTELEXTENDED) {
+    return results;
+  }
+
   CPUIDRecord extended_info = cpuid_record(CPUID_INTELEXTENDED, 0);
   results.push_back(extended_info);
-  int extended_info_max = extended_info.out.eax;
+  int extended_info_max = min(up_to, extended_info.out.eax);
   for (int extended = CPUID_INTELEXTENDED + 1; extended <= extended_info_max;
        ++extended) {
     results.push_back(cpuid_record(extended, UINT32_MAX));
   }
 
   return results;
+}
+
+vector<CPUIDRecord> all_cpuid_records() {
+  return gather_cpuid_records(UINT32_MAX);
 }
 
 bool cpuid_faulting_works() {
@@ -1067,26 +1075,53 @@ bool has_effective_caps(uint64_t caps) {
   return true;
 }
 
-unsigned int xsave_area_size() {
-  // 0 means XSAVE not detected
-  static unsigned int detected_xsave_area_size = 0;
-  static bool xsave_initialized = false;
-  if (xsave_initialized) {
-    return detected_xsave_area_size;
-  }
-  xsave_initialized = true;
+const XSaveLayout& xsave_native_layout() {
+  static XSaveLayout layout =
+      xsave_layout_from_trace(gather_cpuid_records(CPUID_GETXSAVE));
+  return layout;
+}
 
-  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
-  if (!(cpuid_data.ecx & (1 << 26))) {
+XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records) {
+  XSaveLayout layout;
+
+  size_t record_index;
+  for (record_index = 0; record_index < records.size(); ++record_index) {
+    if (records[record_index].eax_in == CPUID_GETXSAVE) {
+      break;
+    }
+  }
+  if (record_index >= records.size()) {
     // XSAVE not present
-    return detected_xsave_area_size;
+    layout.full_size = 512;
+    // x87/XMM always supported
+    layout.supported_feature_bits = 0x3;
+    return layout;
   }
 
-  // We'll use the largest possible area all the time
-  // even when it might not be needed. Simpler that way.
-  cpuid_data = cpuid(CPUID_GETXSAVE, 0);
-  detected_xsave_area_size = cpuid_data.ecx;
-  return detected_xsave_area_size;
+  CPUIDRecord cpuid_data = records[record_index];
+  assert(cpuid_data.ecx_in == 0);
+  layout.full_size = cpuid_data.out.ecx;
+  layout.supported_feature_bits =
+      cpuid_data.out.eax | (uint64_t(cpuid_data.out.edx) << 32);
+
+  for (size_t i = 2; i < 64; ++i) {
+    if (layout.supported_feature_bits & (uint64_t(1) << i)) {
+      do {
+        ++record_index;
+        if (record_index >= records.size() ||
+            records[record_index].eax_in != CPUID_GETXSAVE) {
+          FATAL() << "Missing CPUID record for feature " << i;
+        }
+      } while (records[record_index].ecx_in != i);
+      cpuid_data = records[record_index];
+      while (layout.feature_layouts.size() < i) {
+        layout.feature_layouts.push_back({ 0, 0 });
+      }
+      layout.feature_layouts.push_back(
+          { cpuid_data.out.ebx, cpuid_data.out.eax });
+    }
+  }
+  return layout;
 }
 
 uint64_t rr_signal_mask() {

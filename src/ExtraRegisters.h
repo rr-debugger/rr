@@ -13,6 +13,8 @@
 
 namespace rr {
 
+struct XSaveLayout;
+
 /**
  * An ExtraRegisters object contains values for all user-space-visible
  * registers other than those in Registers.
@@ -47,23 +49,17 @@ public:
    * currently save and restore but do not otherwise use. If the data record
    * has more than 512 bytes then it's an XSAVE(64) area, otherwise it's just
    * the FXSAVE(64) area.
+   *
+   * The data always uses our CPU's native XSAVE layout. When reading a trace,
+   * we need to convert from the trace's CPU's XSAVE layout to our layout.
    */
   enum Format { NONE, XSAVE };
 
-  // Set values from raw data
-  void set_to_raw_data(SupportedArch a, Format format,
-                       std::vector<uint8_t>& consume_data) {
-    arch_ = a;
-    format_ = format;
-    std::swap(data_, consume_data);
-
-    // The actual XSAVE minimum size is 576 bytes (512 followed by a 64-byte
-    // XSAVE header) but sometimes we're storing an FXSAVE(64) which is only
-    // 512 bytes.
-    static const size_t min_xsave_size = 512;
-    assert(format == NONE || data_.size() >= min_xsave_size);
-  }
-
+  // Set values from raw data, with the given XSAVE layout. Returns false
+  // if this could not be done.
+  bool set_to_raw_data(SupportedArch a, Format format,
+                       std::vector<uint8_t>& consume_data,
+                       const XSaveLayout& layout);
   Format format() const { return format_; }
   SupportedArch arch() const { return arch_; }
   const std::vector<uint8_t> data() const { return data_; }

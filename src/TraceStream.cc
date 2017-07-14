@@ -275,8 +275,12 @@ TraceFrame TraceReader::read_frame() {
       vector<uint8_t> data;
       data.resize(extra_reg_bytes);
       events.read((char*)data.data(), extra_reg_bytes);
-      frame.recorded_extra_regs.set_to_raw_data(
-          frame.event().arch(), (ExtraRegisters::Format)extra_reg_format, data);
+      bool ok = frame.recorded_extra_regs.set_to_raw_data(
+          frame.event().arch(), (ExtraRegisters::Format)extra_reg_format, data,
+          xsave_layout_from_trace(cpuid_records()));
+      if (!ok) {
+        FATAL() << "Invalid XSAVE data in trace";
+      }
     } else {
       assert(extra_reg_format == ExtraRegisters::NONE);
       frame.recorded_extra_regs = ExtraRegisters(frame.event().arch());
