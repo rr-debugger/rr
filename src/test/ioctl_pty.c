@@ -39,7 +39,7 @@ int main(void) {
     test_assert(getpid() == setsid());
 
     test_assert(0 == ioctl(fd, TIOCSCTTY, 0));
-    ioctl(fd, TIOCNOTTY);
+    ioctl(fd, TIOCNOTTY, 0);
     // The above ioctl can legitimately fail. If so, fake it.
     kill(getpid(), SIGHUP);
   }
@@ -50,12 +50,12 @@ int main(void) {
   ret = ioctl(fd, TIOCSTI, "x");
   test_assert(ret >= 0 || errno == EPERM);
 
-  test_assert(0 == ioctl(fd, TIOCEXCL));
+  test_assert(0 == ioctl(fd, TIOCEXCL, 0));
   ALLOCATE_GUARD(arg, 'd');
   test_assert(0 == ioctl(fd, TIOCGEXCL, arg));
   VERIFY_GUARD(arg);
   test_assert(*arg == 1);
-  test_assert(0 == ioctl(fd, TIOCNXCL));
+  test_assert(0 == ioctl(fd, TIOCNXCL, 0));
 
   ALLOCATE_GUARD(arg, 'e');
   test_assert(0 == ioctl(fd, TIOCGETD, arg));

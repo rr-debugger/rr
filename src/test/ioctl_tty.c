@@ -50,8 +50,8 @@ int main(void) {
 
   test_assert(0 == ioctl(fd, TCSBRK, 0));
   test_assert(0 == ioctl(fd, TCSBRKP, 0));
-  test_assert(0 == ioctl(fd, TIOCSBRK));
-  test_assert(0 == ioctl(fd, TIOCCBRK));
+  test_assert(0 == ioctl(fd, TIOCSBRK, 0));
+  test_assert(0 == ioctl(fd, TIOCCBRK, 0));
 
   ALLOCATE_GUARD(pgrp, 'c');
   test_assert(0 == ioctl(fd, TIOCGPGRP, pgrp));
