@@ -614,9 +614,6 @@ Ticks PerfCounters::read_ticks(Task* t) {
   }
 
   uint64_t measure_val = read_counter(fd_ticks_measure);
-  ASSERT(t, !counting_period || measure_val <= adjusted_counting_period)
-      << "Detected " << measure_val << " ticks, expected no more than "
-      << adjusted_counting_period;
   if (measure_val > interrupt_val) {
     // There is some kind of kernel or hardware bug that means we sometimes
     // see more events with IN_TXCP set than without. These are clearly
@@ -626,8 +623,14 @@ Ticks PerfCounters::read_ticks(Task* t) {
     // being used).
     LOG(debug) << "Measured too many ticks; measure=" << measure_val
                << ", interrupt=" << interrupt_val;
+    ASSERT(t, !counting_period || interrupt_val <= adjusted_counting_period)
+        << "Detected " << interrupt_val << " ticks, expected no more than "
+        << adjusted_counting_period;
     return interrupt_val;
   }
+  ASSERT(t, !counting_period || measure_val <= adjusted_counting_period)
+      << "Detected " << measure_val << " ticks, expected no more than "
+      << adjusted_counting_period;
   return measure_val;
 }
 
