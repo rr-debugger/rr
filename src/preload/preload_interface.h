@@ -446,6 +446,9 @@ struct syscallbuf_hdr {
    * sigprocmask; the real sigprocmask may or may not match blocked_sigs.
    */
   volatile uint8_t in_sigprocmask_critical_section;
+  /* Nonzero when the syscall was aborted during preparation without doing
+   * anything */
+  volatile uint8_t failed_during_preparation;
 
   struct syscallbuf_record recs[0];
 } __attribute__((__packed__));

@@ -277,6 +277,12 @@ static void seccomp_trap_done(RecordTask* t) {
   // It's safe to reset the syscall buffer now.
   t->delay_syscallbuf_reset_for_seccomp_trap = false;
 
+  t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, failed_during_preparation),
+               (uint8_t)1);
+  uint8_t one = 1;
+  t->record_local(
+      REMOTE_PTR_FIELD(t->syscallbuf_child, failed_during_preparation), &one);
+
   if (EV_DESCHED == t->ev().type()) {
     // Desched processing will do the rest for us
     return;

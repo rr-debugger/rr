@@ -52,11 +52,13 @@ int main(void) {
   sigaction(SIGSYS, &sa, NULL);
 
   for (i = 0; i < 2; ++i) {
-    char ch;
+    char chs[3] = { 9, 9, 9 };
     struct syscall_info read_syscall = {
-      SYS_read, { pipe_fds[0], (long)&ch, 1, 0, 0, 0 }
+      SYS_read, { pipe_fds[0], (long)chs, 1, 0, 0, 0 }
     };
     spurious_desched_syscall(&read_syscall);
+    /* This should not have been altered! */
+    test_assert(chs[1] == 9);
   }
 
   atomic_puts("EXIT-SUCCESS");

@@ -862,6 +862,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
      * pair.  So don't record the syscall in the buffer or
      * replay will go haywire. */
     hdr->abort_commit = 0;
+    hdr->failed_during_preparation = 0;
     /* Clear the return value that rr puts there during replay */
     rec->ret = 0;
   } else {
@@ -912,7 +913,7 @@ static void* copy_output_buffer(int ret_size, void* ptr, void* buf,
   if (!buf2) {
     return ptr;
   }
-  if (ret_size <= 0) {
+  if (ret_size <= 0 || buffer_hdr()->failed_during_preparation) {
     return buf2;
   }
   local_memcpy(buf, buf2, ret_size);
@@ -1025,7 +1026,7 @@ static long sys_clock_gettime(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
   ret = untraced_syscall2(syscallno, clk_id, tp2);
-  if (tp) {
+  if (tp && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     local_memcpy(tp, tp2, sizeof(*tp));
   }
   return commit_raw_syscall(syscallno, ptr, ret);
@@ -1091,7 +1092,7 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call) {
     memcpy_input_parameter(owner2, owner, sizeof(*owner2));
   }
   ret = untraced_syscall3(syscallno, fd, cmd, owner2);
-  if (owner2) {
+  if (owner2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     local_memcpy(owner, owner2, sizeof(*owner));
   }
   return commit_raw_syscall(syscallno, ptr, ret);
@@ -1120,7 +1121,7 @@ static int sys_fcntl64_setlk64(const struct syscall_info* call) {
     memcpy_input_parameter(lock2, lock, sizeof(*lock2));
   }
   ret = untraced_syscall3(syscallno, fd, cmd, lock2);
-  if (lock2) {
+  if (lock2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     local_memcpy(lock, lock2, sizeof(*lock));
   }
   return commit_raw_syscall(syscallno, ptr, ret);
@@ -1367,11 +1368,13 @@ static long sys_gettimeofday(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
   ret = untraced_syscall2(syscallno, tp2, tzp2);
-  if (tp) {
-    local_memcpy(tp, tp2, sizeof(*tp));
-  }
-  if (tzp) {
-    local_memcpy(tzp, tzp2, sizeof(*tzp));
+  if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    if (tp) {
+      local_memcpy(tp, tp2, sizeof(*tp));
+    }
+    if (tzp) {
+      local_memcpy(tzp, tzp2, sizeof(*tzp));
+    }
   }
   return commit_raw_syscall(syscallno, ptr, ret);
 }
@@ -1645,7 +1648,7 @@ static long sys_poll(const struct syscall_info* call) {
 
   ret = untraced_syscall3(syscallno, fds2, nfds, timeout);
 
-  if (fds2 && ret >= 0) {
+  if (fds2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     /* NB: even when poll returns 0 indicating no pending
      * fds, it still sets each .revent outparam to 0.
      * (Reasonably.)  So we always need to copy on return
@@ -1920,7 +1923,7 @@ static long sys_recvfrom(const struct syscall_info* call) {
   ret = untraced_syscall6(syscallno, sockfd, buf2, len, flags, src_addr2,
                           addrlen2);
 
-  if (ret >= 0) {
+  if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     if (src_addr2) {
       socklen_t actual_size = *addrlen2;
       if (actual_size > *addrlen) {
@@ -2016,7 +2019,7 @@ static long sys_recvmsg(const struct syscall_info* call) {
 
   ret = untraced_syscall3(syscallno, sockfd, msg2, flags);
 
-  if (ret >= 0) {
+  if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     size_t bytes = ret;
     size_t i;
     if (msg->msg_name) {
@@ -2123,7 +2126,9 @@ static long sys_socketpair(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
   ret = untraced_syscall4(syscallno, domain, type, protocol, sv2);
-  local_memcpy(sv, sv2, sizeof(*sv));
+  if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    local_memcpy(sv, sv2, sizeof(*sv));
+  }
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 #endif
@@ -2170,7 +2175,7 @@ static long sys_xstat64(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
   ret = untraced_syscall2(syscallno, what, buf2);
-  if (buf2) {
+  if (buf2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     local_memcpy(buf, buf2, sizeof(*buf));
   }
   return commit_raw_syscall(syscallno, ptr, ret);
@@ -2279,7 +2284,7 @@ static long sys_ptrace(const struct syscall_info* call) {
   struct iovec local_iov = { data2, sizeof(long) };
   struct iovec remote_iov = { addr, sizeof(long) };
   ret = untraced_syscall6(syscallno, pid, &local_iov, 1, &remote_iov, 1, 0);
-  if (ret > 0) {
+  if (ret > 0 && !buffer_hdr()->failed_during_preparation) {
     local_memcpy(data, data2, ret);
   }
   commit_raw_syscall(syscallno, ptr, ret);
@@ -2309,7 +2314,7 @@ static long sys_getrusage(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall2(syscallno, who, buf2);
-  if (buf2 && ret >= 0) {
+  if (buf2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     local_memcpy(buf, buf2, sizeof(*buf));
   }
   return commit_raw_syscall(syscallno, ptr, ret);
@@ -2359,7 +2364,7 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
 
   ret =
       untraced_syscall4(syscallno, how, set, oldset2, sizeof(kernel_sigset_t));
-  if (ret == 0) {
+  if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     if (oldset) {
       local_memcpy(oldset, oldset2, sizeof(kernel_sigset_t));
     }
