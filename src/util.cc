@@ -631,7 +631,8 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
   // set*[gu]id(), the real answer may be different.
   bool can_write_file = (0 == access(file_name.c_str(), W_OK));
 
-  if (!can_write_file && 0 == stat.st_uid) {
+  // Inside a user namespace, the real root user may be mapped to UID 65534.
+  if (!can_write_file && (0 == stat.st_uid || 65534 == stat.st_uid)) {
     // We would like to assert this, but on Ubuntu 13.10,
     // the file /lib/i386-linux-gnu/libdl-2.17.so is
     // writeable by root for unknown reasons.
