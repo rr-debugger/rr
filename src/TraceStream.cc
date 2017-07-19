@@ -503,7 +503,13 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
             backing_stat.st_mtime != mtime) {
           LOG(error) << "Metadata of " << original_file_name
                      << " changed: replay divergence likely, but continuing "
-                        "anyway ...";
+                        "anyway. inode: "
+                     << backing_stat.st_ino << "/" << inode
+                     << "; mode: " << backing_stat.st_mode << "/" << mode
+                     << "; uid: " << backing_stat.st_uid << "/" << uid
+                     << "; gid: " << backing_stat.st_gid << "/" << gid
+                     << "; size: " << backing_stat.st_size << "/" << file_size
+                     << "; mtime: " << backing_stat.st_mtime << "/" << mtime;
         }
       }
       data->file_name = backing_file_name;
