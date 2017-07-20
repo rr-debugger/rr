@@ -9,10 +9,7 @@ Vendor:         @CPACK_PACKAGE_VENDOR@
 Prefix:         @CPACK_PACKAGING_INSTALL_PREFIX@
 @CPACK_RPM_PACKAGE_REQUIRES@
 
-%define _rpmdir @CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM
-%define _rpmfilename @CPACK_PACKAGE_FILE_NAME@.rpm
 %define _unpackaged_files_terminate_build 0
-%define _topdir @CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM
  
 %description
 rr is a lightweight tool for recording and replaying execution of applications (trees of processes and threads).  For more information, please visit
