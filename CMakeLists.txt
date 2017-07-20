@@ -1232,7 +1232,10 @@ set(CPACK_OUTPUT_FILE_PREFIX dist)
 set(CPACK_GENERATOR "TGZ;RPM;DEB")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_BINARY_DIR "${PROJECT_BINARY_DIR}")
-set(CPACK_STRIP_FILES TRUE)
+# Don't strip binaries. It's important/useful for librrpreload at least to
+# have debug symbols. I can't figure out an easy way to strip the rr binary
+# without stripping librrpreload.
+set(CPACK_STRIP_FILES FALSE)
 
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
@@ -1258,6 +1261,8 @@ set(CPACK_RPM_USER_BINARY_SPECFILE "${CMAKE_SOURCE_DIR}/rr.spec")
 set(CPACK_RPM_PACKAGE_RELEASE 1)
 set(CPACK_RPM_PACKAGE_GROUP "Development/Debuggers")
 set(CPACK_RPM_PACKAGE_LICENSE "MIT and BSD")
+# Prevent binaries from being stripped
+set(CPACK_RPM_SPEC_INSTALL_POST "/bin/true")
 
 include (CPack)
 
