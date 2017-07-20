@@ -333,6 +333,8 @@ if(RR_BUILD_SHARED)
   set(RR_BIN rrbin)
   post_build_executable(rrbin)
   set_target_properties(rrbin PROPERTIES ENABLE_EXPORTS true OUTPUT_NAME rr)
+  set_target_properties(rrbin PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+  set_target_properties(rrbin PROPERTIES INSTALL_RPATH_USE_LINK_PATH true)
   target_link_libraries(rrbin rr)
   install(TARGETS rr
     RUNTIME DESTINATION bin
