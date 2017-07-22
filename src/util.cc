@@ -704,7 +704,7 @@ static void cpuid_segv_handler(__attribute__((unused)) int sig,
   ucontext_t* ctx = (ucontext_t*)user;
 #if defined(__i386__)
   ctx->uc_mcontext.gregs[REG_EIP] += 2;
-  ctx->uc_mcontext.gregs(REG_EAX] = SEGV_HANDLER_MAGIC;
+  ctx->uc_mcontext.gregs[REG_EAX] = SEGV_HANDLER_MAGIC;
 #elif defined(__x86_64__)
   ctx->uc_mcontext.gregs[REG_RIP] += 2;
   ctx->uc_mcontext.gregs[REG_RAX] = SEGV_HANDLER_MAGIC;
