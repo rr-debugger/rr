@@ -2484,13 +2484,8 @@ static void set_up_process(Session& session, const ScopedFd& err_fd) {
   }
 }
 
-/**
- * This is called (and must be called) in the tracee after rr has taken
- * ptrace control. Otherwise, once we've installed the seccomp filter,
- * things go wrong because we have no ptracer and the seccomp filter demands
- * one.
- */
-static void set_up_seccomp_filter(Session& session, int err_fd) {
+static SeccompFilter<struct sock_filter> create_seccomp_filter(
+    Session& session) {
   SeccompFilter<struct sock_filter> f;
   if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
     for (auto& e : AddressSpace::rr_page_syscalls()) {
@@ -2508,7 +2503,17 @@ static void set_up_seccomp_filter(Session& session, int err_fd) {
     // or not the tracee installs its own seccomp filter.
     f.trace();
   }
+  return f;
+}
 
+/**
+ * This is called (and must be called) in the tracee after rr has taken
+ * ptrace control. Otherwise, once we've installed the seccomp filter,
+ * things go wrong because we have no ptracer and the seccomp filter demands
+ * one.
+ */
+static void set_up_seccomp_filter(SeccompFilter<struct sock_filter>& f,
+                                  int err_fd) {
   struct sock_fprog prog = { (unsigned short)f.filters.size(),
                              f.filters.data() };
 
@@ -2526,16 +2531,25 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
                               const string& exe_path,
                               const vector<string>& argv,
                               const vector<string>& envp) {
+  // Move all allocations here, before we signal the ptracer and start
+  // checking system calls. We don't want stray system calls performed by
+  // the allocator to show up in the trace.
+  const char* exe_path_cstr = exe_path.c_str();
+  StringVectorToCharArray argv_array(argv);
+  StringVectorToCharArray envp_array(envp);
+  SeccompFilter<struct sock_filter> filter = create_seccomp_filter(session);
+  pid_t pid = getpid();
+
   set_up_process(session, error_fd);
   // The preceding code must run before sending SIGSTOP here,
   // since after SIGSTOP replay emulates almost all syscalls, but
   // we need the above syscalls to run "for real".
 
   // Signal to tracer that we're configured.
-  ::kill(getpid(), SIGSTOP);
+  ::kill(pid, SIGSTOP);
 
   // This code must run after rr has taken ptrace control.
-  set_up_seccomp_filter(session, error_fd);
+  set_up_seccomp_filter(filter, error_fd);
 
   // We do a small amount of dummy work here to retire
   // some branches in order to ensure that the ticks value is
@@ -2552,18 +2566,17 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
   CPUIDBugDetector::run_detection_code();
 
-  execve(exe_path.c_str(), StringVectorToCharArray(argv).get(),
-         StringVectorToCharArray(envp).get());
+  execve(exe_path_cstr, argv_array.get(), envp_array.get());
 
   switch (errno) {
     case ENOENT:
       spawned_child_fatal_error(
           error_fd, "execve failed: '%s' (or interpreter) not found",
-          exe_path.c_str());
+          exe_path_cstr);
       break;
     default:
       spawned_child_fatal_error(error_fd, "execve of '%s' failed",
-                                exe_path.c_str());
+                                exe_path_cstr);
       break;
   }
   // Never returns!
