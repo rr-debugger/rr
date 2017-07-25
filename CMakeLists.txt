@@ -630,6 +630,7 @@ set(BASIC_TESTS
   prctl_caps
   prctl_deathsig
   prctl_name
+  prctl_short_name
   prctl_tsc
   privileged_net_ioctl
   proc_fds

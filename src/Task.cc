@@ -1261,12 +1261,15 @@ uint32_t Task::trace_time() const {
 }
 
 void Task::update_prname(remote_ptr<void> child_addr) {
-  struct prname_buf {
-    char chars[16];
-  };
-  auto name = read_mem(child_addr.cast<prname_buf>());
-  name.chars[sizeof(name.chars) - 1] = '\0';
-  prname = name.chars;
+  char buf[16];
+  // The null-terminated name might start within the last 16 bytes of a memory
+  // mapping.
+  ssize_t bytes = read_bytes_fallible(child_addr, sizeof(buf), buf);
+  // If there was no readable data then this shouldn't be called
+  ASSERT(this, bytes > 0);
+  // Make sure the final byte is null if the string needed to be truncated
+  buf[bytes - 1] = 0;
+  prname = buf;
 }
 
 static bool is_zombie_process(pid_t pid) {

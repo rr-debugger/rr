@@ -7,7 +7,8 @@
 
 int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
-  char* p = (char*)mmap(NULL, 2*page_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+  char* p = (char*)mmap(NULL, 2 * page_size, PROT_READ | PROT_WRITE,
+                        MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   char prname[PRNAME_NUM_BYTES] = "";
 
   test_assert(p != MAP_FAILED);
