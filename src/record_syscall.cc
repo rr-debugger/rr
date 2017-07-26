@@ -3271,6 +3271,18 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::memfd_create: {
+      string name = t->read_c_str(remote_ptr<char>(regs.arg1()));
+      if (is_blacklisted_memfd(name.c_str())) {
+        LOG(warn) << "Cowardly refusing to memfd_create " << name;
+        Registers r = regs;
+        r.set_arg1(0);
+        t->set_regs(r);
+        syscall_state.emulate_result(-ENOSYS);
+      }
+      return PREVENT_SWITCH;
+    }
+
     case Arch::getgroups:
       // We could record a little less data by restricting the recorded data
       // to the syscall result * sizeof(Arch::legacy_gid_t), but that would
@@ -4986,6 +4998,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::ioctl:
     case Arch::io_setup:
     case Arch::madvise:
+    case Arch::memfd_create:
     case Arch::pread64:
     case Arch::preadv:
     case Arch::ptrace:

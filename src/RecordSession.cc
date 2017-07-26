@@ -32,61 +32,6 @@ namespace rr {
 using namespace rr;
 using namespace std;
 
-/**
- * Create a pulseaudio client config file with shm disabled.  That may
- * be the cause of a mysterious divergence.  Return an envpair to set
- * in the tracee environment.
- */
-static string create_pulseaudio_config() {
-  // TODO let PULSE_CLIENTCONFIG env var take precedence.
-  static const char pulseaudio_config_path[] = "/etc/pulse/client.conf";
-  if (access(pulseaudio_config_path, R_OK)) {
-    // Assume pulseaudio isn't installed
-    return "";
-  }
-  TempFile file = create_temporary_file("rr-pulseaudio-client-conf-XXXXXX");
-  unlink(file.name.c_str());
-  int fd = file.fd.extract();
-  // The fd is deliberately leaked so that the /proc/fd link below works
-  // indefinitely. But we stop it leaking into tracee processes.
-  fcntl(fd, F_SETFD, FD_CLOEXEC);
-
-  stringstream procfile;
-  procfile << "/proc/" << getpid() << "/fd/" << fd;
-
-  // Running cp passing the procfile path under Docker fails for some
-  // odd filesystem-related reason, so just read/write the contents.
-  int pulse_config_fd = open(pulseaudio_config_path, O_RDONLY, 0);
-  if (pulse_config_fd < 0) {
-    FATAL() << "Failed to open pulseaudio config file: '"
-            << pulseaudio_config_path << "'";
-  }
-
-  char buf[BUFSIZ];
-  while (true) {
-    ssize_t size = read(pulse_config_fd, buf, BUFSIZ);
-    if (size == 0) {
-      break;
-    } else if (size < 0) {
-      FATAL() << "Failed to read pulseaudio config file";
-    }
-    if (write(fd, buf, size) != size) {
-      FATAL() << "Failed to write temp pulseaudio config file to "
-              << procfile.str();
-    }
-  }
-  close(pulse_config_fd);
-
-  char disable_shm[] = "disable-shm = true\n";
-  ssize_t nwritten = write(fd, disable_shm, sizeof(disable_shm) - 1);
-  if (nwritten != sizeof(disable_shm) - 1) {
-    FATAL() << "Failed to append '" << disable_shm << "' to " << procfile.str();
-  }
-  stringstream envpair;
-  envpair << "PULSE_CLIENTCONFIG=" << procfile.str();
-  return envpair.str();
-}
-
 template <typename T> static remote_ptr<T> mask_low_bit(remote_ptr<T> p) {
   return p.as_int() & ~uintptr_t(1);
 }
@@ -1737,11 +1682,6 @@ static string lookup_by_path(const string& name) {
     } else {
       *it = ld_preload;
     }
-  }
-
-  string env_pair = create_pulseaudio_config();
-  if (!env_pair.empty()) {
-    env.push_back(env_pair);
   }
 
   env.push_back("RUNNING_UNDER_RR=1");

@@ -1638,7 +1638,7 @@ sched_getattr = UnsupportedSyscall(x86=352, x64=315)
 renameat2 = EmulatedSyscall(x86=353, x64=316)
 seccomp = IrregularEmulatedSyscall(x86=354, x64=317)
 getrandom = IrregularEmulatedSyscall(x86=355, x64=318)
-memfd_create = EmulatedSyscall(x86=356, x64=319)
+memfd_create = IrregularEmulatedSyscall(x86=356, x64=319)
 arch_prctl = IrregularEmulatedSyscall(x86=384, x64=158)
 
 bpf = UnsupportedSyscall(x86=357, x64=321)

@@ -54,6 +54,17 @@ static inline int strprefix(const char* s1, const char* s2) {
   return 1;
 }
 
+static inline const char* extract_file_name(const char* s) {
+  const char* ret = s;
+  while (*s) {
+    if (*s == '/') {
+      ret = s + 1;
+    }
+    ++s;
+  }
+  return ret;
+}
+
 /* This header file is included by preload.c and various rr .cc files. It
  * defines the interface between the preload library and rr. preload.c
  * #defines RR_IMPLEMENT_PRELOAD to let us handle situations where rr and
@@ -501,7 +512,12 @@ inline static long stored_record_size(size_t length) {
 inline static int is_blacklisted_filename(const char* filename) {
   return strprefix("/dev/dri/", filename) ||
          streq("/dev/nvidiactl", filename) ||
-         streq("/usr/share/alsa/alsa.conf", filename);
+         streq("/usr/share/alsa/alsa.conf", filename) ||
+         strprefix("pulse-shm-", extract_file_name(filename));
+}
+
+inline static int is_blacklisted_memfd(const char* name) {
+  return streq("pulseaudio", name);
 }
 
 inline static int is_blacklisted_socket(const char* filename) {
