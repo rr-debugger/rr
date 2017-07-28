@@ -68,7 +68,6 @@
 #include "StdioMonitor.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
-#include "drm.h"
 #include "ftrace.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
