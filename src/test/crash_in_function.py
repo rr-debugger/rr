@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 send_gdb('handle SIGKILL stop')
 send_gdb('set unwindonsignal off')

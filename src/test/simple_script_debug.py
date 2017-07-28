@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 send_gdb('b write')
 # "Make breakpoint pending on future shared library load?"

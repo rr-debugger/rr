@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 # Test conditional hardware breakpoint. For some reason
 # gdb doesn't seem to use agent conditions for hardware

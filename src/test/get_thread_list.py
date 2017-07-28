@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 import re
 
 NUM_THREADS = 10

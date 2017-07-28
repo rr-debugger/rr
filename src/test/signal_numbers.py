@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 gdb_signals = [
   '',

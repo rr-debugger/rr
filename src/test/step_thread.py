@@ -1,5 +1,5 @@
 import re
-from rrutil import *
+from util import *
 
 send_gdb('set scheduler-locking off')
 

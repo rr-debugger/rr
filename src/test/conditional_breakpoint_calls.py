@@ -1,5 +1,5 @@
 import re
-from rrutil import *
+from util import *
 
 send_gdb('b print_dot if checker()')
 expect_gdb('Breakpoint 1')

@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 send_gdb('break atomic_puts')
 expect_gdb('Breakpoint 1')

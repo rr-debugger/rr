@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 restart_replay()
 # A single EXIT-SUCCESS is expected since the child process to which we have

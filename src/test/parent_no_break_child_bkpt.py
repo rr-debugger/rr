@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 def observe_normal_parent_exit():
     expect_rr('EXIT-SUCCESS')

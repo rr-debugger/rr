@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 def do_tests():
     expect_gdb('Breakpoint 1, breakpoint')

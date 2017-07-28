@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 # Signal all processes in the process group
 send_gdb('!kill -WINCH 0')

@@ -1,6 +1,6 @@
 import re
 
-from rrutil import *
+from util import *
 
 BAD_TOKEN = r'EXIT-SUCCESS'
 GOOD_TOKEN = r'Inferior 1 \(process \d+\) exited normally'

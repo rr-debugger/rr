@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 send_gdb('break my_write')
 expect_gdb('Breakpoint 1')

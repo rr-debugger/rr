@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 def test_cond(c):
     send_gdb('cond 1 %s'%c)

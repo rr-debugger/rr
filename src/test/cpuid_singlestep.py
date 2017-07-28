@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 import re
 
 send_gdb('break *cpuid_instruction_label')

@@ -1,7 +1,7 @@
 import collections
 import sys
 import re
-from rrutil import *
+from util import *
 
 send_gdb('checkpoint')
 expect_gdb('Checkpoint 1 at')

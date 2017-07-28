@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 send_gdb('b before_writing')
 expect_gdb('Breakpoint 1')

@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 send_gdb('watch -l x')
 expect_gdb('Hardware[()/a-z ]+watchpoint 1')

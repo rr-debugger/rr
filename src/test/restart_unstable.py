@@ -1,4 +1,4 @@
-from rrutil import *
+from util import *
 
 send_gdb('c')
 expect_gdb('exited normally')

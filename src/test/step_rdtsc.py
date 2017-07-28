@@ -1,5 +1,5 @@
 import re
-from rrutil import *
+from util import *
 
 send_gdb('b rdtsc')
 expect_gdb('Breakpoint 1')

@@ -1,7 +1,7 @@
 import collections
 import sys
 import re
-from rrutil import *
+from util import *
 
 arch = get_exe_arch()
 
