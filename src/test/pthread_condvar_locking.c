@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 static pthread_cond_t condvar = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t mutex;

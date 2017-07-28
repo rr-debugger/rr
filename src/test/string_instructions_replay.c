@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 #define SIZE 10 * 1024 * 1024
 #define DIFF 2 * 1024 * 1024

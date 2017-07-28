@@ -39,7 +39,7 @@ POSSIBILITY OF SUCH DAMAGE.
    https://github.com/ktossell/libuvc
    Therefore this test is not built/run by default. */
 
-#include "rrutil.h"
+#include "util.h"
 
 #include "libuvc/libuvc.h"
 

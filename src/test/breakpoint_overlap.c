@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* This is a difficult bug to trigger because we need to set a breakpoint
    where a SCHED event will stop, and the breakpoint has to fire exactly at the

@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 static int parent_to_child_fds[2];
 static int child_to_parent_fds[2];

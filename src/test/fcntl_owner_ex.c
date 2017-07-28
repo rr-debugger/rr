@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 static void dump_owner(const char* tag, int fd) {
   struct f_owner_ex own;

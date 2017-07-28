@@ -5,7 +5,7 @@ static void breakpoint(void) {
    * Tests rely on that. */
 }
 
-#include "rrutil.h"
+#include "util.h"
 
 int main(void) {
   atomic_puts("doing int3 ...");

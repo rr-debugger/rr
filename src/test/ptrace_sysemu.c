@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* This tests PTRACE_SYSEMU, PTRACE_SINGLESTEP and PTRACE_SYSEMU_SINGLESTEP */
 

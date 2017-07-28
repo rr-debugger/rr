@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 static void overwrite_file(const char* path, ssize_t num_bytes) {
   const int magic = 0x5a5a5a5a;

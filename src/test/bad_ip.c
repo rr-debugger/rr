@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 static void sighandler(int sig, siginfo_t* si,
                        __attribute__((unused)) void* utp) {

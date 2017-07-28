@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* Chosen so that |3MB * THREAD_GROUPS * THREADS_PER_GROUP| exhausts a
  * 32-bit address space. */

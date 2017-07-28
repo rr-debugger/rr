@@ -1,7 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "nsutils.h"
-#include "rrutil.h"
+#include "util.h"
 
 int main(void) {
   if (-1 == try_setup_ns(CLONE_NEWNS)) {

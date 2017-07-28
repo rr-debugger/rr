@@ -1,7 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "nsutils.h"
-#include "rrutil.h"
+#include "util.h"
 
 int main(int argc, char* argv[]) {
   if ((argc > 1 && strcmp(argv[1], "in_copy") == 0) ||

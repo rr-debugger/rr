@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 #define RR_MEMBARRIER_CMD_QUERY 0
 #define RR_MEMBARRIER_CMD_SHARED 1

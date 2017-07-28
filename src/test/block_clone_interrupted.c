@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 #define BUF_COUNT (int)(0x20000 / sizeof(int))
 #define FILE_BUFS 10

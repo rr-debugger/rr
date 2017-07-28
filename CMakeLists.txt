@@ -1109,7 +1109,7 @@ if(BUILD_TESTS)
   # This sucks but I can't find a better way to get CMake to build
   # the same source file in two different ways.
   if(rr_32BIT AND rr_64BIT)
-    foreach(header rrutil.h nsutils.h)
+    foreach(header util.h nsutils.h)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${header}"
                     "${CMAKE_CURRENT_BINARY_DIR}/32/${header}"
                     COPYONLY)

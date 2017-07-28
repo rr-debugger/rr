@@ -1,7 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 #define _FILE_OFFSET_BITS 64
 
-#include "rrutil.h"
+#include "util.h"
 #include <stdlib.h>
 
 typedef int (*printf_func)(const char* fmt, ...);

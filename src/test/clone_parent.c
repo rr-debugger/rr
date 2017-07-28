@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 int main(void) {
   volatile pid_t* child_sibling = (pid_t*)malloc(sizeof(pid_t));

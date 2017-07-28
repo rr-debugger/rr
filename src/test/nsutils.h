@@ -3,7 +3,7 @@
 #ifndef NSUTILS_H
 #define NSUTILS_H
 
-#include "rrutil.h"
+#include "util.h"
 
 static int try_setup_ns_internal(int ns_kind, int expect_to_be_root);
 static inline int try_setup_ns_no_root(int ns_kind) {

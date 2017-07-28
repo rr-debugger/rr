@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 static void my_memmove(char* dest, char* src, uintptr_t size) {
 #if defined(__i386__) || defined(__x86_64__)

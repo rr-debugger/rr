@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 int main(void) {
   int ret = syscall(RR_seccomp, SECCOMP_SET_MODE_FILTER, 0, NULL);

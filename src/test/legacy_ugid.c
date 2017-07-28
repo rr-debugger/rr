@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* We use this structure to verify that, on architectures supporting UID16
  * syscalls, rr properly records and replays only 16-bit values.

@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 static void futex(int* uaddr, int op, int val) {
 /* Avoid using the rr-page syscall entrypoints, so we don't trigger any

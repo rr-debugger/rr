@@ -2,7 +2,7 @@
 
 #define _FILE_OFFSET_BITS 64
 
-#include "rrutil.h"
+#include "util.h"
 
 #define TEST_FILE "foo.txt"
 

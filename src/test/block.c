@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 #include <linux/net.h>
 
 #define CTRLMSG_LEN CMSG_LEN(sizeof(int))

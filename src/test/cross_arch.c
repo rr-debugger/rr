@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 #if !defined(__i386__) && !defined(__x86_64__)
 #error "Adjust or disable this test for your architecture"

@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 int main(void) {
   int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));

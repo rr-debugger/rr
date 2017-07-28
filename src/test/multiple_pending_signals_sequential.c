@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* In this test, usually SIGUSR1 will be delivered,
    the SIGUSR1 handler will run, and when the handler

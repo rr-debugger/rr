@@ -1,4 +1,4 @@
-#include "rrutil.h"
+#include "util.h"
 
 static void* do_thread(__attribute__((unused)) void* p) { return 0; }
 

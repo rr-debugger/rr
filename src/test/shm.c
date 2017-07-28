@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* Make SIZE not a multiple of the page size, to ensure we handle that case.
    But make sure it's even, since we divide it by two. */

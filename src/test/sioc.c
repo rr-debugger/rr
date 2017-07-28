@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 const char* sockaddr_name(const struct sockaddr* addr) {
   const struct sockaddr_in* sin = (const struct sockaddr_in*)addr;

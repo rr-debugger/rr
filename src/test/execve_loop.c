@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* The runner script bombards us with SIGCHLDs. It's quite likely that one
    of these will be received during an AutoRemoteSyscalls sycall, which is

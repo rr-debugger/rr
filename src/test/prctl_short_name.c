@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* Max name length is 16 bytes, *without* null terminator. */
 #define PRNAME_NUM_BYTES 16

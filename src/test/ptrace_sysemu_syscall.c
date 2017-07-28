@@ -1,6 +1,6 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "rrutil.h"
+#include "util.h"
 
 /* This test tests the interaction between PTRACE_SYSEMU and PTRACE_SYSCALL.
  * In addition, it also tests the behavior of PTRACE_SYSEMU when the entering
