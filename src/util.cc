@@ -130,8 +130,8 @@ void dump_binary_data(const char* filename, const char* label,
 void format_dump_filename(Task* t, TraceFrame::Time global_time,
                           const char* tag, char* filename,
                           size_t filename_size) {
-  snprintf(filename, filename_size - 1, "%s/%d_%d_%s", t->trace_dir().c_str(),
-           t->rec_tid, global_time, tag);
+  snprintf(filename, filename_size - 1, "%s/%d_%lld_%s", t->trace_dir().c_str(),
+           t->rec_tid, (long long)global_time, tag);
 }
 
 bool should_dump_memory(const TraceFrame& f) {
@@ -287,8 +287,8 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   const char* fmode = (STORE_CHECKSUMS == mode) ? "w" : "r";
 
   c.mode = mode;
-  snprintf(filename, sizeof(filename) - 1, "%s/%d_%d", t->trace_dir().c_str(),
-           global_time, t->rec_tid);
+  snprintf(filename, sizeof(filename) - 1, "%s/%lld_%d", t->trace_dir().c_str(),
+           (long long)global_time, t->rec_tid);
   c.checksums_file = fopen64(filename, fmode);
   c.global_time = global_time;
   if (!c.checksums_file) {

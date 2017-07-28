@@ -1213,9 +1213,9 @@ void GdbServer::activate_debugger() {
   if (!stop_replaying_to_target && (target.event > 0 || target.pid)) {
     fprintf(stderr, "\a\n"
                     "--------------------------------------------------\n"
-                    " ---> Reached target process %d at event %u.\n"
+                    " ---> Reached target process %d at event %llu.\n"
                     "--------------------------------------------------\n",
-            target.pid, event_now);
+            target.pid, (long long)event_now);
   }
 
   Task* t = timeline.current_session().current_task();

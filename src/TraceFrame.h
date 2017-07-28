@@ -28,7 +28,7 @@ class TraceWriter;
  */
 class TraceFrame {
 public:
-  typedef uint32_t Time;
+  typedef int64_t Time;
 
   TraceFrame(Time global_time, pid_t tid, const Event& event, Ticks tick_count,
              double monotonic_time = 0);

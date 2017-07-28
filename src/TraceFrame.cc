@@ -33,8 +33,8 @@ void TraceFrame::set_exec_info(const Registers& regs,
 void TraceFrame::dump(FILE* out) const {
   out = out ? out : stdout;
 
-  fprintf(out, "{\n  real_time:%f global_time:%u, event:`%s' ",
-          monotonic_time(), time(), event().str().c_str());
+  fprintf(out, "{\n  real_time:%f global_time:%llu, event:`%s' ",
+          monotonic_time(), (long long)time(), event().str().c_str());
   if (event().is_syscall_event()) {
     fprintf(out, "(state:%s) ", state_name(event().Syscall().state));
   }
@@ -59,8 +59,8 @@ void TraceFrame::dump(FILE* out) const {
 void TraceFrame::dump_raw(FILE* out) const {
   out = out ? out : stdout;
 
-  fprintf(out, " %d %d %d %" PRId64, time(), tid(), event().encode().encoded,
-          ticks());
+  fprintf(out, " %lld %d %d %" PRId64, (long long)time(), tid(),
+          event().encode().encoded, ticks());
   if (event().has_exec_info() != HAS_EXEC_INFO) {
     fprintf(out, "\n");
     return;
