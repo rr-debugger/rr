@@ -69,6 +69,43 @@ static bool do_decompress(std::vector<uint8_t>& compressed,
          out_size == uncompressed.size();
 }
 
+bool CompressedReader::get_buffer(const uint8_t** data, size_t* size) {
+  if (error) {
+    return false;
+  }
+
+  if (buffer_read_pos >= buffer.size() && !eof) {
+    if (!refill_buffer()) {
+      return false;
+    }
+    assert(buffer_read_pos < buffer.size());
+  }
+
+  *data = &buffer[buffer_read_pos];
+  *size = buffer.size() - buffer_read_pos;
+  return true;
+}
+
+bool CompressedReader::skip(size_t size) {
+  while (size > 0) {
+    if (error) {
+      return false;
+    }
+
+    if (buffer_read_pos < buffer.size()) {
+      size_t amount = std::min(size, buffer.size() - buffer_read_pos);
+      size -= amount;
+      buffer_read_pos += amount;
+      continue;
+    }
+
+    if (!refill_buffer()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool CompressedReader::read(void* data, size_t size) {
   while (size > 0) {
     if (error) {
@@ -84,36 +121,44 @@ bool CompressedReader::read(void* data, size_t size) {
       continue;
     }
 
-    if (have_saved_state && !have_saved_buffer) {
-      std::swap(buffer, saved_buffer);
-      have_saved_buffer = true;
-    }
-
-    CompressedWriter::BlockHeader header;
-    if (!read_all(*fd, sizeof(header), &header, &fd_offset)) {
-      error = true;
-      return false;
-    }
-
-    std::vector<uint8_t> compressed_buf;
-    compressed_buf.resize(header.compressed_length);
-    if (!read_all(*fd, compressed_buf.size(), &compressed_buf[0], &fd_offset)) {
-      error = true;
-      return false;
-    }
-
-    char ch;
-    if (pread(*fd, &ch, 1, fd_offset) == 0) {
-      eof = true;
-    }
-
-    buffer.resize(header.uncompressed_length);
-    buffer_read_pos = 0;
-    if (!do_decompress(compressed_buf, buffer)) {
-      error = true;
+    if (!refill_buffer()) {
       return false;
     }
   }
+  return true;
+}
+
+bool CompressedReader::refill_buffer() {
+  if (have_saved_state && !have_saved_buffer) {
+    std::swap(buffer, saved_buffer);
+    have_saved_buffer = true;
+  }
+
+  CompressedWriter::BlockHeader header;
+  if (!read_all(*fd, sizeof(header), &header, &fd_offset)) {
+    error = true;
+    return false;
+  }
+
+  std::vector<uint8_t> compressed_buf;
+  compressed_buf.resize(header.compressed_length);
+  if (!read_all(*fd, compressed_buf.size(), &compressed_buf[0], &fd_offset)) {
+    error = true;
+    return false;
+  }
+
+  char ch;
+  if (pread(*fd, &ch, 1, fd_offset) == 0) {
+    eof = true;
+  }
+
+  buffer.resize(header.uncompressed_length);
+  buffer_read_pos = 0;
+  if (!do_decompress(compressed_buf, buffer)) {
+    error = true;
+    return false;
+  }
+
   return true;
 }
 
@@ -147,6 +192,14 @@ void CompressedReader::restore_state() {
     saved_buffer.clear();
   }
   buffer_read_pos = saved_buffer_read_pos;
+}
+
+void CompressedReader::discard_state() {
+  assert(have_saved_state);
+  have_saved_state = false;
+  if (have_saved_buffer) {
+    saved_buffer.clear();
+  }
 }
 
 uint64_t CompressedReader::uncompressed_bytes() const {

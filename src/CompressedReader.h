@@ -29,6 +29,11 @@ public:
   // Returns true if successful. Otherwise there's an error and good()
   // will be false.
   bool read(void* data, size_t size);
+  // Returns pointer/size of some buffered data. Does not change the state.
+  // Returns zero size if at EOF.
+  bool get_buffer(const uint8_t** data, size_t* size);
+  // Advances the read position by the given size.
+  bool skip(size_t size);
   void rewind();
   void close();
 
@@ -40,6 +45,10 @@ public:
    * Restore previously saved position.
    */
   void restore_state();
+  /**
+   * Discard saved position
+   */
+  void discard_state();
 
   /**
    * Gathers stats on the file stream. These are independent of what's
@@ -79,6 +88,8 @@ public:
   }
 
 protected:
+  bool refill_buffer();
+
   /* Our fd might be the dup of another fd, so we can't rely on its current file
      position.
      Instead track the current position in fd_offset and use pread. */

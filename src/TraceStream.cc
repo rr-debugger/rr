@@ -36,7 +36,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 83
+#define TRACE_VERSION 84
 
 struct SubstreamData {
   const char* name;
@@ -152,6 +152,50 @@ static void ensure_dir(const string& dir, mode_t mode) {
 static void ensure_default_rr_trace_dir() {
   ensure_dir(default_rr_trace_dir(), S_IRWXU);
 }
+
+class CompressedWriterOutputStream : public kj::OutputStream {
+public:
+  CompressedWriterOutputStream(CompressedWriter& writer) : writer(writer) {}
+  virtual ~CompressedWriterOutputStream() {}
+
+  virtual void write(const void* buffer, size_t size) {
+    writer.write(buffer, size);
+  }
+
+private:
+  CompressedWriter& writer;
+};
+
+struct IOException {};
+
+class CompressedReaderInputStream : public kj::BufferedInputStream {
+public:
+  CompressedReaderInputStream(CompressedReader& reader) : reader(reader) {}
+  virtual ~CompressedReaderInputStream() {}
+
+  virtual size_t tryRead(void* buffer, size_t, size_t maxBytes) {
+    if (!reader.read(buffer, maxBytes)) {
+      throw IOException();
+    }
+    return maxBytes;
+  }
+  virtual void skip(size_t bytes) {
+    if (!reader.skip(bytes)) {
+      throw IOException();
+    }
+  }
+  virtual kj::ArrayPtr<const byte> tryGetReadBuffer() {
+    const uint8_t* p;
+    size_t size;
+    if (!reader.get_buffer(&p, &size)) {
+      throw IOException();
+    }
+    return kj::ArrayPtr<const byte>(p, size);
+  }
+
+private:
+  CompressedReader& reader;
+};
 
 TraceStream::TraceStream(const string& trace_dir, FrameTime initial_time)
     : trace_dir(real_path(trace_dir)), global_time(initial_time) {}
@@ -391,30 +435,53 @@ bool TraceWriter::try_clone_file(RecordTask* t, const string& file_name,
   return true;
 }
 
+static kj::ArrayPtr<const byte> str_to_data(const string& str) {
+  return kj::ArrayPtr<const byte>(reinterpret_cast<const byte*>(str.data()), str.size());
+}
+
+static string data_to_str(const kj::ArrayPtr<const byte>& data) {
+  return string(reinterpret_cast<const char*>(data.begin()), data.size());
+}
+
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     RecordTask* t, const KernelMapping& km, const struct stat& stat,
     MappingOrigin origin) {
-  auto& mmaps = writer(MMAPS);
-  TraceReader::MappedDataSource source;
+  MallocMessageBuilder map_msg;
+  trace::MMap::Builder map = map_msg.initRoot<trace::MMap>();
+  map.setFrameTime(global_time);
+  map.setStart(km.start().as_int());
+  map.setEnd(km.end().as_int());
+  map.setFsname(str_to_data(km.fsname()));
+  map.setDevice(km.device());
+  map.setInode(km.inode());
+  map.setProt(km.prot());
+  map.setFlags(km.flags());
+  map.setFileOffsetBytes(km.file_offset_bytes());
+  map.setStatMode(stat.st_mode);
+  map.setStatUid(stat.st_uid);
+  map.setStatGid(stat.st_gid);
+  map.setStatSize(stat.st_size);
+  map.setStatMTime(stat.st_mtime);
+  auto src = map.getSource();
   string backing_file_name;
+
   if (origin == REMAP_MAPPING || origin == PATCH_MAPPING) {
-    source = TraceReader::SOURCE_ZERO;
+    src.setZero();
   } else if (km.fsname().find("/SYSV") == 0) {
-    source = TraceReader::SOURCE_TRACE;
+    src.setTrace();
   } else if (origin == SYSCALL_MAPPING &&
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
-    source = TraceReader::SOURCE_ZERO;
+    src.setZero();
   } else if (origin == RR_BUFFER_MAPPING) {
-    source = TraceReader::SOURCE_ZERO;
+    src.setZero();
   } else if ((km.flags() & MAP_PRIVATE) &&
              try_clone_file(t, km.fsname(), &backing_file_name)) {
-    source = TraceReader::SOURCE_FILE;
+    src.initFile().setBackingFileName(str_to_data(backing_file_name));
   } else if (should_copy_mmap_region(km, stat) &&
              files_assumed_immutable.find(make_pair(
                  stat.st_dev, stat.st_ino)) == files_assumed_immutable.end()) {
-    source = TraceReader::SOURCE_TRACE;
+    src.setTrace();
   } else {
-    source = TraceReader::SOURCE_FILE;
     // should_copy_mmap_region's heuristics determined it was OK to just map
     // the file here even if it's MAP_SHARED. So try cloning again to avoid
     // the possibility of the file changing between recording and replay.
@@ -427,25 +494,58 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
       backing_file_name = try_hardlink_file(km.fsname());
       files_assumed_immutable.insert(make_pair(stat.st_dev, stat.st_ino));
     }
+    src.initFile().setBackingFileName(str_to_data(backing_file_name));
   }
-  mmaps << global_time << source << km.start() << km.end() << km.fsname()
-        << km.device() << km.inode() << km.prot() << km.flags()
-        << km.file_offset_bytes() << backing_file_name << (uint32_t)stat.st_mode
-        << (uint32_t)stat.st_uid << (uint32_t)stat.st_gid
-        << (int64_t)stat.st_size << (int64_t)stat.st_mtime;
+
+  try {
+    auto& mmaps = writer(MMAPS);
+    CompressedWriterOutputStream stream(mmaps);
+    writePackedMessage(stream, map_msg);
+  } catch (...) {
+    FATAL() << "Unable to write mmaps";
+  }
+
   ++mmap_count;
-  return source == TraceReader::SOURCE_TRACE ? RECORD_IN_TRACE
-                                             : DONT_RECORD_IN_TRACE;
+  return src.isTrace() ? RECORD_IN_TRACE : DONT_RECORD_IN_TRACE;
 }
 
 void TraceWriter::write_mapped_region_to_alternative_stream(
     CompressedWriter& mmaps, const MappedData& data, const KernelMapping& km) {
-  mmaps << data.time << data.source << km.start() << km.end() << km.fsname()
-        << km.device() << km.inode() << km.prot() << km.flags()
-        << km.file_offset_bytes() << data.file_name
-        // Indicate that we have no statbuf-data
-        << (uint32_t)0 << (uint32_t)0 << (uint32_t)0 << data.file_size_bytes
-        << (int64_t)0;
+  MallocMessageBuilder map_msg;
+  trace::MMap::Builder map = map_msg.initRoot<trace::MMap>();
+
+  map.setFrameTime(data.time);
+  map.setStart(km.start().as_int());
+  map.setEnd(km.end().as_int());
+  map.setFsname(str_to_data(km.fsname()));
+  map.setDevice(km.device());
+  map.setInode(km.inode());
+  map.setProt(km.prot());
+  map.setFlags(km.flags());
+  map.setFileOffsetBytes(km.file_offset_bytes());
+  map.setStatSize(data.file_size_bytes);
+  auto src = map.getSource();
+  switch (data.source) {
+    case TraceReader::SOURCE_ZERO:
+      src.setZero();
+      break;
+    case TraceReader::SOURCE_TRACE:
+      src.setTrace();
+      break;
+    case TraceReader::SOURCE_FILE:
+      src.initFile().setBackingFileName(str_to_data(data.file_name));
+      break;
+    default:
+      FATAL() << "Unknown source type";
+      break;
+  }
+
+  try {
+    CompressedWriterOutputStream stream(mmaps);
+    writePackedMessage(stream, map_msg);
+  } catch (...) {
+    FATAL() << "Unable to write mmaps";
+  }
 }
 
 KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
@@ -460,74 +560,94 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
     return KernelMapping();
   }
 
-  FrameTime time;
   if (time_constraint == CURRENT_TIME_ONLY) {
     mmaps.save_state();
-    mmaps >> time;
-    mmaps.restore_state();
-    if (time != global_time) {
+  }
+  CompressedReaderInputStream stream(mmaps);
+  PackedMessageReader map_msg(stream);
+  trace::MMap::Reader map = map_msg.getRoot<trace::MMap>();
+  if (time_constraint == CURRENT_TIME_ONLY) {
+    if (map.getFrameTime() != global_time) {
+      mmaps.restore_state();
       return KernelMapping();
     }
+    mmaps.discard_state();
   }
 
-  string original_file_name;
-  string backing_file_name;
-  MappedDataSource source;
-  remote_ptr<void> start, end;
-  dev_t device;
-  ino_t inode;
-  int prot, flags;
-  uint32_t uid, gid, mode;
-  uint64_t file_offset_bytes;
-  int64_t mtime, file_size;
-  mmaps >> time >> source >> start >> end >> original_file_name >> device >>
-      inode >> prot >> flags >> file_offset_bytes >> backing_file_name >>
-      mode >> uid >> gid >> file_size >> mtime;
-  bool has_stat_buf = mode != 0 || uid != 0 || gid != 0 || mtime != 0;
-  assert(time_constraint == ANY_TIME || time == global_time);
   if (data) {
-    data->time = time;
-    data->source = source;
-    if (data->source == SOURCE_FILE) {
-      static const string clone_prefix("mmap_clone_");
-      bool is_clone =
-          backing_file_name.substr(0, clone_prefix.size()) == clone_prefix;
-      if (backing_file_name[0] != '/') {
-        backing_file_name = dir() + "/" + backing_file_name;
-      }
-      if (!is_clone && validate == VALIDATE && has_stat_buf) {
-        struct stat backing_stat;
-        if (stat(backing_file_name.c_str(), &backing_stat)) {
-          FATAL() << "Failed to stat " << backing_file_name
-                  << ": replay is impossible";
-        }
-        if (backing_stat.st_ino != inode || backing_stat.st_mode != mode ||
-            backing_stat.st_uid != uid || backing_stat.st_gid != gid ||
-            backing_stat.st_size != file_size ||
-            backing_stat.st_mtime != mtime) {
-          LOG(error) << "Metadata of " << original_file_name
-                     << " changed: replay divergence likely, but continuing "
-                        "anyway. inode: "
-                     << backing_stat.st_ino << "/" << inode
-                     << "; mode: " << backing_stat.st_mode << "/" << mode
-                     << "; uid: " << backing_stat.st_uid << "/" << uid
-                     << "; gid: " << backing_stat.st_gid << "/" << gid
-                     << "; size: " << backing_stat.st_size << "/" << file_size
-                     << "; mtime: " << backing_stat.st_mtime << "/" << mtime;
-        }
-      }
-      data->file_name = backing_file_name;
-      data->data_offset_bytes = file_offset_bytes;
-    } else {
-      data->data_offset_bytes = 0;
+    data->time = map.getFrameTime();
+    if (data->time <= 0) {
+      FATAL() << "Invalid frameTime";
     }
-    data->file_size_bytes = file_size;
+    data->data_offset_bytes = 0;
+    data->file_size_bytes = map.getStatSize();
+    auto src = map.getSource();
+    switch (src.which()) {
+      case trace::MMap::Source::Which::ZERO:
+        data->source = SOURCE_ZERO;
+        break;
+      case trace::MMap::Source::Which::TRACE:
+        data->source = SOURCE_TRACE;
+        break;
+      case trace::MMap::Source::Which::FILE: {
+        data->source = SOURCE_FILE;
+        static const string clone_prefix("mmap_clone_");
+        string backing_file_name = data_to_str(src.getFile().getBackingFileName());
+        bool is_clone =
+            backing_file_name.substr(0, clone_prefix.size()) == clone_prefix;
+        if (backing_file_name[0] != '/') {
+          backing_file_name = dir() + "/" + backing_file_name;
+        }
+        uint32_t uid = map.getStatUid();
+        uint32_t gid = map.getStatGid();
+        uint32_t mode = map.getStatMode();
+        int64_t mtime = map.getStatMTime();
+        int64_t size = map.getStatSize();
+        if (size < 0) {
+          FATAL() << "Invalid statSize";
+        }
+        bool has_stat_buf = mode != 0 || uid != 0 || gid != 0 || mtime != 0;
+        if (!is_clone && validate == VALIDATE && has_stat_buf) {
+          struct stat backing_stat;
+          if (stat(backing_file_name.c_str(), &backing_stat)) {
+            FATAL() << "Failed to stat " << backing_file_name
+                    << ": replay is impossible";
+          }
+          if (backing_stat.st_ino != map.getInode() ||
+              backing_stat.st_mode != mode || backing_stat.st_uid != uid ||
+              backing_stat.st_gid != gid ||
+              backing_stat.st_size != size ||
+              backing_stat.st_mtime != mtime) {
+            LOG(error) << "Metadata of " << data_to_str(map.getFsname())
+                       << " changed: replay divergence likely, but continuing "
+                          "anyway. inode: "
+                       << backing_stat.st_ino << "/" << map.getInode()
+                       << "; mode: " << backing_stat.st_mode << "/" << mode
+                       << "; uid: " << backing_stat.st_uid << "/" << uid
+                       << "; gid: " << backing_stat.st_gid << "/" << gid
+                       << "; size: " << backing_stat.st_size << "/" << size
+                       << "; mtime: " << backing_stat.st_mtime << "/" << mtime;
+          }
+        }
+        data->file_name = backing_file_name;
+        int64_t file_offset_bytes = map.getFileOffsetBytes();
+        if (file_offset_bytes < 0) {
+          FATAL() << "Invalid fileOffsetBytes";
+        }
+        data->data_offset_bytes = file_offset_bytes;
+        break;
+      }
+      default:
+        FATAL() << "Unknown mapping source";
+        break;
+    }
   }
   if (found) {
     *found = true;
   }
-  return KernelMapping(start, end, original_file_name, device, inode, prot,
-                       flags, file_offset_bytes);
+  return KernelMapping(map.getStart(), map.getEnd(), data_to_str(map.getFsname()),
+                       map.getDevice(), map.getInode(), map.getProt(),
+                       map.getFlags(), map.getFileOffsetBytes());
 }
 
 void TraceWriter::write_raw(pid_t rec_tid, const void* d, size_t len,
@@ -753,19 +873,16 @@ TraceReader::TraceReader(const string& dir)
   ScopedFd version_fd(path.c_str(), O_RDONLY);
   if (!version_fd.is_open()) {
     if (errno == ENOENT) {
-      fprintf(
-          stderr,
-          "\n"
-          "rr: error: Trace version file `%s' not found. There is probably no trace there.\n"
-          "\n",
-          path.c_str());
+      fprintf(stderr, "\n"
+                      "rr: error: Trace version file `%s' not found. There is "
+                      "probably no trace there.\n"
+                      "\n",
+              path.c_str());
     } else {
-      fprintf(
-          stderr,
-          "\n"
-          "rr: error: Trace version file `%s' not readable.\n"
-          "\n",
-          path.c_str());
+      fprintf(stderr, "\n"
+                      "rr: error: Trace version file `%s' not readable.\n"
+                      "\n",
+              path.c_str());
     }
     exit(EX_DATAERR);
   }
