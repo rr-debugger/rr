@@ -1,0 +1,10 @@
+Taken verbatim from https://github.com/google/brotli/commit/46c1a881b41bb638c76247558aa04b1591af3aa7
+
+Sources are under an MIT-style license. Also, Google has made a RF commitment here:
+https://datatracker.ietf.org/ipr/2396
+Excerpt:
+"In addition, to facilitate the use of the Brotli Compression Algorithm in
+other applications, Google hereby provides a W3C RF commitment (that is not
+limited to font data) to the Brotli Compression Algorithm specification
+linked above and, if that specification leads to a final IETF RFC for
+Brotli, then to the specification in that RFC."
