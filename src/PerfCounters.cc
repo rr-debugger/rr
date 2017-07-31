@@ -323,7 +323,7 @@ static void check_for_xen_pmi_bug() {
     asm volatile(
 #if defined(__x86_64__)
         "mov %[_SYS_ioctl], %%rax;"
-        "mov %[raw_fd], %%rdi;"
+        "mov %[raw_fd], %%edi;"
         "xor %%rdx, %%rdx;"
         "mov %[_PERF_EVENT_IOC_ENABLE], %%rsi;"
         "syscall;"
