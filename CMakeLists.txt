@@ -113,16 +113,75 @@ if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND NOT rr_64BIT)
    endif()
 endif()
 
-# Check for required libraries
-set(REQUIRED_LIBS
-  zlib
+# ==== brotli ====
+set(BROTLI_FILES
+  third-party/brotli/common/dictionary.c
+  third-party/brotli/dec/bit_reader.c
+  third-party/brotli/dec/decode.c
+  third-party/brotli/dec/huffman.c
+  third-party/brotli/dec/state.c
+  third-party/brotli/enc/backward_references.c
+  third-party/brotli/enc/backward_references.h
+  third-party/brotli/enc/backward_references_hq.c
+  third-party/brotli/enc/backward_references_hq.h
+  third-party/brotli/enc/backward_references_inc.h
+  third-party/brotli/enc/bit_cost.c
+  third-party/brotli/enc/bit_cost.h
+  third-party/brotli/enc/bit_cost_inc.h
+  third-party/brotli/enc/block_encoder_inc.h
+  third-party/brotli/enc/block_splitter.c
+  third-party/brotli/enc/block_splitter.h
+  third-party/brotli/enc/block_splitter_inc.h
+  third-party/brotli/enc/brotli_bit_stream.c
+  third-party/brotli/enc/brotli_bit_stream.h
+  third-party/brotli/enc/cluster.c
+  third-party/brotli/enc/cluster.h
+  third-party/brotli/enc/cluster_inc.h
+  third-party/brotli/enc/command.h
+  third-party/brotli/enc/compress_fragment.c
+  third-party/brotli/enc/compress_fragment.h
+  third-party/brotli/enc/compress_fragment_two_pass.c
+  third-party/brotli/enc/compress_fragment_two_pass.h
+  third-party/brotli/enc/context.h
+  third-party/brotli/enc/dictionary_hash.c
+  third-party/brotli/enc/dictionary_hash.h
+  third-party/brotli/enc/encode.c
+  third-party/brotli/enc/entropy_encode.c
+  third-party/brotli/enc/entropy_encode.h
+  third-party/brotli/enc/entropy_encode_static.h
+  third-party/brotli/enc/fast_log.h
+  third-party/brotli/enc/find_match_length.h
+  third-party/brotli/enc/hash_forgetful_chain_inc.h
+  third-party/brotli/enc/hash.h
+  third-party/brotli/enc/hash_longest_match64_inc.h
+  third-party/brotli/enc/hash_longest_match_inc.h
+  third-party/brotli/enc/hash_longest_match_quickly_inc.h
+  third-party/brotli/enc/hash_to_binary_tree_inc.h
+  third-party/brotli/enc/histogram.c
+  third-party/brotli/enc/histogram.h
+  third-party/brotli/enc/histogram_inc.h
+  third-party/brotli/enc/literal_cost.c
+  third-party/brotli/enc/literal_cost.h
+  third-party/brotli/enc/memory.c
+  third-party/brotli/enc/memory.h
+  third-party/brotli/enc/metablock.c
+  third-party/brotli/enc/metablock.h
+  third-party/brotli/enc/metablock_inc.h
+  third-party/brotli/enc/port.h
+  third-party/brotli/enc/prefix.h
+  third-party/brotli/enc/quality.h
+  third-party/brotli/enc/ringbuffer.h
+  third-party/brotli/enc/static_dict.c
+  third-party/brotli/enc/static_dict.h
+  third-party/brotli/enc/static_dict_lut.h
+  third-party/brotli/enc/utf8_util.c
+  third-party/brotli/enc/utf8_util.h
+  third-party/brotli/enc/write_bits.h
 )
-foreach(required_lib ${REQUIRED_LIBS})
-  string(TOUPPER ${required_lib} PKG)
-  pkg_check_modules(${PKG} REQUIRED ${required_lib})
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${${PKG}_CFLAGS}")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${${PKG}_CFLAGS}")
-endforeach(required_lib)
+add_library(brotli STATIC ${BROTLI_FILES})
+set_source_files_properties(${BROTLI_FILES}
+                            PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_RELEASE})
+# ==== brotli ====
 
 find_path(SECCOMP NAMES "linux/seccomp.h")
 if(NOT SECCOMP)
@@ -351,7 +410,7 @@ add_dependencies(rr Generated Pages)
 target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   -lrt
-  ${ZLIB_LDFLAGS}
+  brotli
 )
 
 target_link_libraries(rrpreload

@@ -5,17 +5,22 @@
 #include "CompressedWriter.h"
 
 #include <assert.h>
+#include <brotli/encode.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <zlib.h>
 
 using namespace std;
 
 namespace rr {
+
+/* See
+ * http://robert.ocallahan.org/2017/07/selecting-compression-algorithm-for-rr.html
+ */
+static const int BROTLI_LEVEL = 5;
 
 void* CompressedWriter::compression_thread_callback(void* p) {
   static_cast<CompressedWriter*>(p)->compression_thread();
@@ -230,44 +235,35 @@ void CompressedWriter::close(Sync sync) {
 
 size_t CompressedWriter::do_compress(uint64_t offset, size_t length,
                                      uint8_t* outputbuf, size_t outputbuf_len) {
-  z_stream stream;
-  memset(&stream, 0, sizeof(stream));
-  int result = deflateInit(&stream, Z_DEFAULT_COMPRESSION);
-  if (result != Z_OK) {
-    assert(0 && "deflateInit failed!");
-    return 0;
+  BrotliEncoderState* state = BrotliEncoderCreateInstance(NULL, NULL, NULL);
+  if (!state) {
+    assert(0 && "BrotliEncoderCreateInstance failed");
+  }
+  if (!BrotliEncoderSetParameter(state, BROTLI_PARAM_QUALITY, BROTLI_LEVEL)) {
+    assert(0 && "Brotli initialization failed");
   }
 
-  stream.next_out = outputbuf;
-  stream.avail_out = outputbuf_len;
-
-  while (length > 0 || stream.avail_in > 0) {
-    if (stream.avail_in == 0) {
-      size_t buf_offset = (size_t)(offset % buffer.size());
-      size_t amount = min(length, buffer.size() - buf_offset);
-      stream.next_in = &buffer[buf_offset];
-      stream.avail_in = amount;
-      length -= amount;
-      offset += amount;
+  size_t ret = 0;
+  while (length > 0) {
+    size_t buf_offset = (size_t)(offset % buffer.size());
+    size_t amount = min(length, buffer.size() - buf_offset);
+    const uint8_t* in = &buffer[buf_offset];
+    if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_PROCESS, &amount,
+                                     &in, &outputbuf_len, &outputbuf, &ret)) {
+      assert(0 && "Brotli compression failed");
     }
-    if (stream.avail_out == 0) {
-      assert(0 && "outputbuf exhausted!");
-      return 0;
-    }
-    result = deflate(&stream, length == 0 ? Z_FINISH : Z_NO_FLUSH);
-    if (result != (length == 0 ? Z_STREAM_END : Z_OK)) {
-      assert(0 && "deflate failed!");
-      return 0;
-    }
+    size_t consumed = in - &buffer[buf_offset];
+    offset += consumed;
+    length -= consumed;
+  }
+  size_t zero = 0;
+  if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_FINISH, &zero, NULL,
+                                   &outputbuf_len, &outputbuf, &ret)) {
+    assert(0 && "Brotli compression failed");
   }
 
-  result = deflateEnd(&stream);
-  if (result != Z_OK) {
-    assert(0 && "deflateEnd failed!");
-    return 0;
-  }
-
-  return stream.total_out;
+  BrotliEncoderDestroyInstance(state);
+  return ret;
 }
 
 } // namespace rr
