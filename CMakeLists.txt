@@ -113,6 +113,17 @@ if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND NOT rr_64BIT)
    endif()
 endif()
 
+set(REQUIRED_LIBS
+  capnp
+)
+
+foreach(required_lib ${REQUIRED_LIBS})
+  string(TOUPPER ${required_lib} PKG)
+  pkg_check_modules(${PKG} REQUIRED ${required_lib})
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${${PKG}_CFLAGS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${${PKG}_CFLAGS}")
+endforeach(required_lib)
+
 # ==== brotli ====
 set(BROTLI_FILES
   third-party/brotli/common/dictionary.c
@@ -308,6 +319,18 @@ add_custom_target(Pages DEPENDS
                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay"
                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay")
 
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++"
+                          "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.h"
+                   COMMAND capnp compile
+                           "--src-prefix=${CMAKE_CURRENT_SOURCE_DIR}/src"
+                           "-oc++:${CMAKE_CURRENT_BINARY_DIR}"
+                           "${CMAKE_CURRENT_SOURCE_DIR}/src/rr_trace.capnp"
+                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/rr_trace.capnp")
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++"
+                            PROPERTIES GENERATED true)
+set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.h"
+                            PROPERTIES GENERATED true HEADER_FILE_ONLY true)
+
 set(RR_SOURCES
   src/test/cpuid_loop.S
   src/AddressSpace.cc
@@ -373,6 +396,7 @@ set(RR_SOURCES
   src/VirtualPerfCounterMonitor.cc
   src/util.cc
   src/WaitStatus.cc
+  ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
   third-party/blake2/blake2b.c
 )
 
@@ -412,6 +436,7 @@ target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   -lrt
   brotli
+  ${CAPNP_LDFLAGS}
 )
 
 target_link_libraries(rrpreload

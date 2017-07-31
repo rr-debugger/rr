@@ -2,6 +2,8 @@
 
 #include "TraceStream.h"
 
+#include <capnp/message.h>
+#include <capnp/serialize-packed.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <sysexits.h>
@@ -17,9 +19,11 @@
 #include "TaskishUid.h"
 #include "kernel_supplement.h"
 #include "log.h"
+#include "rr_trace.capnp.h"
 #include "util.h"
 
 using namespace std;
+using namespace capnp;
 
 namespace rr {
 
@@ -32,7 +36,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 82
+#define TRACE_VERSION 83
 
 struct SubstreamData {
   const char* name;
@@ -626,6 +630,9 @@ static string make_trace_dir(const string& exe_path) {
   return dir;
 }
 
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
 TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
                          bool has_cpuid_faulting)
     : TraceStream(make_trace_dir(file_name),
@@ -641,21 +648,35 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
         path(s), substream(s).block_size, substream(s).threads));
   }
 
-  // Add a random UUID to the trace metadata. This lets tools identify a trace
-  // easily.
-  uint32_t uuid[4];
-  good_random(uuid, sizeof(uuid));
-
   string ver_path = version_path();
   ScopedFd version_fd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
   if (!version_fd.is_open()) {
     FATAL() << "Unable to create " << ver_path;
   }
-  char buf[100];
-  sprintf(buf, "%d\n%08x%08x%08x%08x\n", TRACE_VERSION, uuid[0], uuid[1],
-          uuid[2], uuid[3]);
-  ssize_t buf_len = strlen(buf);
-  if (write(version_fd, buf, buf_len) != buf_len) {
+  static const char buf[] = STR(TRACE_VERSION) "\n";
+  if (write(version_fd, buf, sizeof(buf) - 1) != (ssize_t)sizeof(buf) - 1) {
+    FATAL() << "Unable to write " << ver_path;
+  }
+
+  // We are now bound to the selected CPU (if any), so collect CPUID records
+  // (which depend on the bound CPU number).
+  vector<CPUIDRecord> cpuid_records = all_cpuid_records();
+
+  MallocMessageBuilder header_msg;
+  trace::Header::Builder header = header_msg.initRoot<trace::Header>();
+  header.setBindToCpu(bind_to_cpu);
+  header.setHasCpuidFaulting(has_cpuid_faulting);
+  header.setCpuidRecords(
+      Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
+                   cpuid_records.size() * sizeof(CPUIDRecord)));
+  // Add a random UUID to the trace metadata. This lets tools identify a trace
+  // easily.
+  uint8_t uuid[16];
+  good_random(uuid, sizeof(uuid));
+  header.setUuid(Data::Reader(uuid, sizeof(uuid)));
+  try {
+    writePackedMessageToFd(version_fd, header_msg);
+  } catch (...) {
     FATAL() << "Unable to write " << ver_path;
   }
 
@@ -669,7 +690,11 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
   btrfs_ioctl_clone_range_args clone_args;
   clone_args.src_fd = version_fd;
   clone_args.src_offset = 0;
-  clone_args.src_length = buf_len;
+  off_t offset = lseek(version_fd, 0, SEEK_END);
+  if (offset <= 0) {
+    FATAL() << "Unable to lseek " << ver_path;
+  }
+  clone_args.src_length = offset;
   clone_args.dest_offset = 0;
   if (ioctl(version_clone_fd, BTRFS_IOC_CLONE_RANGE, &clone_args) == 0) {
     supports_file_data_cloning_ = true;
@@ -680,9 +705,6 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
     printf("rr: Saving execution to trace directory `%s'.\n",
            trace_dir.c_str());
   }
-
-  write_generic(&bind_to_cpu, sizeof(bind_to_cpu));
-  write_generic(&has_cpuid_faulting, sizeof(has_cpuid_faulting));
 }
 
 void TraceWriter::make_latest_trace() {
@@ -728,27 +750,46 @@ TraceReader::TraceReader(const string& dir)
   }
 
   string path = version_path();
-  fstream vfile(path.c_str(), fstream::in);
-  if (!vfile.good()) {
-    fprintf(
-        stderr,
-        "\n"
-        "rr: error: Version file for recorded trace `%s' not found.  Did you "
-        "record\n"
-        "           `%s' with an older version of rr?  If so, you'll need to "
-        "replay\n"
-        "           `%s' with that older version.  Otherwise, your trace is\n"
-        "           likely corrupted.\n"
-        "\n",
-        path.c_str(), path.c_str(), path.c_str());
+  ScopedFd version_fd(path.c_str(), O_RDONLY);
+  if (!version_fd.is_open()) {
+    if (errno == ENOENT) {
+      fprintf(
+          stderr,
+          "\n"
+          "rr: error: Trace version file `%s' not found. There is probably no trace there.\n"
+          "\n",
+          path.c_str());
+    } else {
+      fprintf(
+          stderr,
+          "\n"
+          "rr: error: Trace version file `%s' not readable.\n"
+          "\n",
+          path.c_str());
+    }
     exit(EX_DATAERR);
   }
-  int version = 0;
-  vfile >> version;
-  if (vfile.fail() || TRACE_VERSION != version) {
+  string version_str;
+  while (true) {
+    char ch;
+    ssize_t ret = read(version_fd, &ch, 1);
+    if (ret <= 0) {
+      FATAL() << "Can't read version file " << path;
+    }
+    if (ch == '\n') {
+      break;
+    }
+    version_str += ch;
+  }
+  char* end_ptr;
+  long int version = strtol(version_str.c_str(), &end_ptr, 10);
+  if (*end_ptr != 0) {
+    FATAL() << "Invalid version: " << version_str;
+  }
+  if (TRACE_VERSION != version) {
     fprintf(stderr, "\n"
                     "rr: error: Recorded trace `%s' has an incompatible "
-                    "version %d; expected\n"
+                    "version %ld; expected\n"
                     "           %d.  Did you record `%s' with an older version "
                     "of rr?  If so,\n"
                     "           you'll need to replay `%s' with that older "
@@ -759,24 +800,17 @@ TraceReader::TraceReader(const string& dir)
     exit(EX_DATAERR);
   }
 
-  vector<uint8_t> bind_to_cpu_bytes;
-  read_generic(bind_to_cpu_bytes);
-  assert(bind_to_cpu_bytes.size() == sizeof(bind_to_cpu));
-  memcpy(&bind_to_cpu, bind_to_cpu_bytes.data(), sizeof(bind_to_cpu));
+  PackedFdMessageReader header_msg(version_fd);
 
-  vector<uint8_t> uses_cpuid_faulting_bytes;
-  read_generic(uses_cpuid_faulting_bytes);
-  assert(uses_cpuid_faulting_bytes.size() == sizeof(trace_uses_cpuid_faulting));
-  memcpy(&trace_uses_cpuid_faulting, uses_cpuid_faulting_bytes.data(),
-         sizeof(trace_uses_cpuid_faulting));
-
-  vector<uint8_t> cpuid_records_bytes;
-  read_generic(cpuid_records_bytes);
+  trace::Header::Reader header = header_msg.getRoot<trace::Header>();
+  bind_to_cpu = header.getBindToCpu();
+  trace_uses_cpuid_faulting = header.getHasCpuidFaulting();
+  Data::Reader cpuid_records_bytes = header.getCpuidRecords();
   size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
   assert(cpuid_records_bytes.size() == len * sizeof(CPUIDRecord));
   cpuid_records_.resize(len);
-  memcpy(cpuid_records_.data(), cpuid_records_bytes.data(),
-         cpuid_records_bytes.size());
+  memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
+         len * sizeof(CPUIDRecord));
 
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.
