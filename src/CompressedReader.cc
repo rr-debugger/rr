@@ -5,13 +5,13 @@
 #include "CompressedReader.h"
 
 #include <assert.h>
+#include <brotli/decode.h>
 #include <fcntl.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <zlib.h>
 
 #include "CompressedWriter.h"
 
@@ -62,31 +62,11 @@ static bool read_all(const ScopedFd& fd, size_t size, void* data,
 
 static bool do_decompress(std::vector<uint8_t>& compressed,
                           std::vector<uint8_t>& uncompressed) {
-  z_stream stream;
-  memset(&stream, 0, sizeof(stream));
-  int result = inflateInit(&stream);
-  if (result != Z_OK) {
-    assert(0 && "inflateInit failed!");
-    return false;
-  }
-
-  stream.next_in = &compressed[0];
-  stream.avail_in = compressed.size();
-  stream.next_out = &uncompressed[0];
-  stream.avail_out = uncompressed.size();
-  result = inflate(&stream, Z_FINISH);
-  if (result != Z_STREAM_END) {
-    assert(0 && "inflate failed!");
-    return false;
-  }
-
-  result = inflateEnd(&stream);
-  if (result != Z_OK) {
-    assert(0 && "inflateEnd failed!");
-    return false;
-  }
-
-  return true;
+  size_t out_size = uncompressed.size();
+  return BrotliDecoderDecompress(compressed.size(), compressed.data(),
+                                 &out_size, uncompressed.data()) ==
+             BROTLI_DECODER_RESULT_SUCCESS &&
+         out_size == uncompressed.size();
 }
 
 bool CompressedReader::read(void* data, size_t size) {
