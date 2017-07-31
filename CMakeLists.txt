@@ -56,7 +56,6 @@ endif()
 
 option(force32bit "Force a 32-bit rr build, rather than both 64 and 32-bit. rr will only be able to record and replay 32-bit processes.")
 option(disable32bit "On a 64-bit platform, avoid requiring a 32-bit cross-compilation toolchain by not building 32-bit components. rr will be able to record 32-bit processes but not replay them.")
-option(staticlibs, "Statically link non-standard libraries (brotli).")
 
 if(force32bit)
   set(rr_32BIT true)
@@ -116,7 +115,7 @@ endif()
 
 # Check for required libraries
 set(REQUIRED_LIBS
-  libbrotlidec libbrotlienc
+  zlib
 )
 foreach(required_lib ${REQUIRED_LIBS})
   string(TOUPPER ${required_lib} PKG)
@@ -352,19 +351,8 @@ add_dependencies(rr Generated Pages)
 target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   -lrt
+  ${ZLIB_LDFLAGS}
 )
-
-if(staticlibs)
-  target_link_libraries(rr
-    ${LIBBROTLIENC_STATIC_LDFLAGS}
-    ${LIBBROTLIDEC_STATIC_LDFLAGS}
-  )
-else()
-  target_link_libraries(rr
-    ${LIBBROTLIENC_LDFLAGS}
-    ${LIBBROTLIDEC_LDFLAGS}
-  )
-endif()
 
 target_link_libraries(rrpreload
   ${CMAKE_DL_LIBS}
