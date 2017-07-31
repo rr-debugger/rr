@@ -38,13 +38,13 @@ set(rr_VERSION_PATCH 0)
 add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSION_PATCH}")
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -g3 -Wall -Wextra -Wstrict-prototypes -std=gnu11")
-set(CMAKE_C_FLAGS_DEBUG "-O0 -Werror -DDEBUG")
-set(CMAKE_C_FLAGS_RELEASE "-O2")
+set(CMAKE_C_FLAGS_DEBUG "-O0 -Werror -DDEBUG -UNDEBUG")
+set(CMAKE_C_FLAGS_RELEASE "-O2 -UDEBUG -DNDEBUG")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__USE_LARGEFILE64 -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++11 -pthread -g3 -Wall -Wextra")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Werror -DDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Werror -DDEBUG -UNDEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -UDEBUG -DNDEBUG")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
@@ -242,6 +242,7 @@ set_source_files_properties(src/preload/syscallbuf.c
 
 include_directories("${PROJECT_SOURCE_DIR}/include")
 include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
+include_directories("${PROJECT_SOURCE_DIR}/third-party/brotli/include")
 # We need to know where our generated files are.
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 

@@ -249,9 +249,10 @@ static void logmsg(const char* msg) {
   privileged_traced_write(STDERR_FILENO, msg, rrstrlen(msg));
 }
 
-#ifndef NDEBUG
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
+
+#ifndef NDEBUG
 #define assert(cond)                                                           \
   do {                                                                         \
     if (!(cond)) {                                                             \
