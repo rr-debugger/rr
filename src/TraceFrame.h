@@ -18,6 +18,8 @@ namespace rr {
 class TraceReader;
 class TraceWriter;
 
+typedef int64_t FrameTime;
+
 /**
  * A trace_frame is one "trace event" from a complete trace.  During
  * recording, a trace_frame is recorded upon each significant event,
@@ -28,16 +30,13 @@ class TraceWriter;
  */
 class TraceFrame {
 public:
-  typedef int64_t Time;
-
-  TraceFrame(Time global_time, pid_t tid, const Event& event, Ticks tick_count,
-             double monotonic_time = 0);
+  TraceFrame(FrameTime global_time, pid_t tid, const Event& event,
+             Ticks tick_count, double monotonic_time = 0);
   TraceFrame() : global_time(0), tid_(0), ticks_(0), monotonic_time_(0) {}
 
-  void set_exec_info(const Registers& regs,
-                     const ExtraRegisters* extra_regs);
+  void set_exec_info(const Registers& regs, const ExtraRegisters* extra_regs);
 
-  Time time() const { return global_time; }
+  FrameTime time() const { return global_time; }
   pid_t tid() const { return tid_; }
   const Event& event() const { return ev; }
   Ticks ticks() const { return ticks_; }
@@ -64,7 +63,7 @@ private:
   friend class TraceReader;
   friend class TraceWriter;
 
-  Time global_time;
+  FrameTime global_time;
   pid_t tid_;
   Event ev;
   Ticks ticks_;

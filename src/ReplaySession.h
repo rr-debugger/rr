@@ -110,7 +110,7 @@ struct ReplayResult {
 
 /**
  * An indicator of how much progress the ReplaySession has made within a given
- * (TraceFrame::Time, Ticks) pair. These can only be used for comparisons, to
+ * (FrameTime, Ticks) pair. These can only be used for comparisons, to
  * check whether two ReplaySessions are in the same state and to help
  * order their states temporally.
  */
@@ -226,7 +226,7 @@ public:
     explicit StepConstraints(RunCommand command)
         : command(command), stop_at_time(0), ticks_target(0) {}
     RunCommand command;
-    TraceFrame::Time stop_at_time;
+    FrameTime stop_at_time;
     Ticks ticks_target;
     // When the RunCommand is RUN_SINGLESTEP_FAST_FORWARD, stop if the next
     // singlestep would enter one of the register states in this list.

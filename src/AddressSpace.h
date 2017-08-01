@@ -684,8 +684,8 @@ public:
    */
   void did_fork_into(Task* t);
 
-  void set_first_run_event(TraceFrame::Time event) { first_run_event_ = event; }
-  TraceFrame::Time first_run_event() { return first_run_event_; }
+  void set_first_run_event(FrameTime event) { first_run_event_ = event; }
+  FrameTime first_run_event() { return first_run_event_; }
 
   const std::vector<uint8_t>& saved_auxv() { return saved_auxv_; }
   void save_auxv(Task* t);
@@ -1013,7 +1013,7 @@ private:
    * The time of the first event that ran code for a task in this address space.
    * 0 if no such event has occurred.
    */
-  TraceFrame::Time first_run_event_;
+  FrameTime first_run_event_;
 
   /**
    * For each architecture, the offset of a syscall instruction with that

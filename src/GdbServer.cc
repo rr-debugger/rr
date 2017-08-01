@@ -1209,7 +1209,7 @@ bool GdbServer::at_target() {
  */
 void GdbServer::activate_debugger() {
   TraceFrame next_frame = timeline.current_session().current_trace_frame();
-  TraceFrame::Time event_now = next_frame.time();
+  FrameTime event_now = next_frame.time();
   if (!stop_replaying_to_target && (target.event > 0 || target.pid)) {
     fprintf(stderr, "\a\n"
                     "--------------------------------------------------\n"
@@ -1435,7 +1435,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   }
   debuggee_tguid = t->task_group()->tguid();
 
-  TraceFrame::Time first_run_event = t->vm()->first_run_event();
+  FrameTime first_run_event = t->vm()->first_run_event();
   if (first_run_event) {
     timeline.set_reverse_execution_barrier_event(first_run_event);
   }

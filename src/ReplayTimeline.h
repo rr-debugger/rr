@@ -68,7 +68,7 @@ public:
     const Registers& regs() const { return ptr->proto.regs; }
     const ExtraRegisters& extra_regs() const { return ptr->extra_regs; }
 
-    TraceFrame::Time time() const { return ptr->proto.key.trace_time; }
+    FrameTime time() const { return ptr->proto.key.trace_time; }
 
   private:
     friend class ReplayTimeline;
@@ -154,7 +154,7 @@ public:
    * |event|. Reverse execution will stop with a |task_exit| break status when
    * at the beginning of this event.
    */
-  void set_reverse_execution_barrier_event(TraceFrame::Time event) {
+  void set_reverse_execution_barrier_event(FrameTime event) {
     reverse_execution_barrier_event = event;
   }
 
@@ -165,7 +165,7 @@ public:
    * Reset the current session to the last available session before event
    * 'time'. Useful if you want to run up to that event.
    */
-  void seek_to_before_event(TraceFrame::Time time) {
+  void seek_to_before_event(FrameTime time) {
     return seek_to_before_key(MarkKey(time, 0, ReplayStepKey()));
   }
 
@@ -196,8 +196,7 @@ public:
    * replay_step_forward only does one replay step. That means we'll only
    * execute code in current_session().current_task().
    */
-  ReplayResult replay_step_forward(RunCommand command,
-                                   TraceFrame::Time stop_at_time);
+  ReplayResult replay_step_forward(RunCommand command, FrameTime stop_at_time);
 
   ReplayResult reverse_continue(
       const std::function<bool(ReplayTask* t)>& stop_filter,
@@ -249,14 +248,14 @@ public:
 
 private:
   /**
-   * TraceFrame::Time + Ticks + ReplayStepKey does not uniquely identify
+   * FrameTime + Ticks + ReplayStepKey does not uniquely identify
    * a program state, but they're intrinsically totally ordered.
    */
   struct MarkKey {
-    MarkKey(TraceFrame::Time trace_time, Ticks ticks, ReplayStepKey step_key)
+    MarkKey(FrameTime trace_time, Ticks ticks, ReplayStepKey step_key)
         : trace_time(trace_time), ticks(ticks), step_key(step_key) {}
     MarkKey(const MarkKey& other) = default;
-    TraceFrame::Time trace_time;
+    FrameTime trace_time;
     Ticks ticks;
     ReplayStepKey step_key;
     bool operator<(const MarkKey& other) const {
@@ -467,7 +466,7 @@ private:
       watchpoints;
   bool breakpoints_applied;
 
-  TraceFrame::Time reverse_execution_barrier_event;
+  FrameTime reverse_execution_barrier_event;
 
   /**
    * Checkpoints used to accelerate reverse execution.

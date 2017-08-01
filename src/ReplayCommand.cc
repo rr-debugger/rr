@@ -74,9 +74,9 @@ struct ReplayFlags {
   // Start a debug server for the task scheduled at the first
   // event at which reached this event AND target_process has
   // been "created".
-  TraceFrame::Time goto_event;
+  FrameTime goto_event;
 
-  TraceFrame::Time singlestep_to_event;
+  FrameTime singlestep_to_event;
 
   pid_t target_process;
 
@@ -312,9 +312,9 @@ static void serve_replay_no_debugger(const string& trace_dir,
       fprintf(stderr, " ticks:%" PRId64 "\n", t->tick_count());
     }
 
-    TraceFrame::Time before_time = replay_session->trace_reader().time();
+    FrameTime before_time = replay_session->trace_reader().time();
     auto result = replay_session->replay_step(cmd);
-    TraceFrame::Time after_time = replay_session->trace_reader().time();
+    FrameTime after_time = replay_session->trace_reader().time();
     assert(after_time >= before_time && after_time <= before_time + 1);
 
     ++step_count;

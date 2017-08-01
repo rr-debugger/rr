@@ -539,7 +539,7 @@ public:
   // Scheduler state
 
   Registers registers_at_start_of_last_timeslice;
-  TraceFrame::Time time_at_start_of_last_timeslice;
+  FrameTime time_at_start_of_last_timeslice;
   /* Task 'nice' value set by setpriority(2).
      We use this to drive scheduling decisions. rr's scheduler is
      deliberately simple and unfair; a task never runs as long as there's

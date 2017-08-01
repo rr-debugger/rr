@@ -14,10 +14,10 @@
 
 namespace rr {
 
-static void dump_path_data(Task* t, TraceFrame::Time global_time,
-                           const char* tag, char* filename,
-                           size_t filename_size, const void* buf,
-                           size_t buf_len, remote_ptr<void> addr) {
+static void dump_path_data(Task* t, FrameTime global_time, const char* tag,
+                           char* filename, size_t filename_size,
+                           const void* buf, size_t buf_len,
+                           remote_ptr<void> addr) {
   format_dump_filename(t, global_time, tag, filename, filename_size);
   dump_binary_data(filename, tag, (const uint32_t*)buf, buf_len / 4, addr);
 }
@@ -27,7 +27,7 @@ static void notify_save_data_error(ReplayTask* t, remote_ptr<void> addr,
                                    const void* rep_buf, size_t rep_buf_len) {
   char rec_dump[PATH_MAX];
   char rep_dump[PATH_MAX];
-  TraceFrame::Time global_time = t->current_trace_frame().time();
+  FrameTime global_time = t->current_trace_frame().time();
 
   dump_path_data(t, global_time, "rec_save_data", rec_dump, sizeof(rec_dump),
                  rec_buf, rec_buf_len, addr);

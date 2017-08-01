@@ -91,8 +91,7 @@ static uint8_t user_regs_fields[16] = {
 #error Unsupported architecture
 #endif
 
-static void print_regs_raw(Task* t, TraceFrame::Time event,
-                           uint64_t instruction_count,
+static void print_regs_raw(Task* t, FrameTime event, uint64_t instruction_count,
                            const vector<TraceField>& fields, FILE* out) {
   union {
     struct user_regs_struct gp_regs;
@@ -200,8 +199,8 @@ static void print_regs_raw(Task* t, TraceFrame::Time event,
 }
 
 struct RerunFlags {
-  TraceFrame::Time trace_start;
-  TraceFrame::Time trace_end;
+  FrameTime trace_start;
+  FrameTime trace_end;
 
   vector<TraceField> singlestep_trace;
 
@@ -364,7 +363,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
       cmd = RUN_SINGLESTEP_FAST_FORWARD;
     }
 
-    TraceFrame::Time before_time = replay_session->trace_reader().time();
+    FrameTime before_time = replay_session->trace_reader().time();
     Event replayed_event = replay_session->current_trace_frame().event();
     Task* old_task = replay_session->current_task();
     remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
@@ -381,7 +380,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
       }
     }
 
-    TraceFrame::Time after_time = replay_session->trace_reader().time();
+    FrameTime after_time = replay_session->trace_reader().time();
     remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
     assert(after_time >= before_time && after_time <= before_time + 1);
 

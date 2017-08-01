@@ -33,7 +33,7 @@ public:
     // If true, wait for the target process to exec() before attaching debugger
     bool require_exec;
     // Wait until at least 'event' has elapsed before attaching
-    TraceFrame::Time event;
+    FrameTime event;
   };
 
   struct ConnectionFlags {
@@ -210,7 +210,7 @@ private:
   TaskUid last_continue_tuid;
   // The TaskUid of the last queried task.
   TaskUid last_query_tuid;
-  TraceFrame::Time final_event;
+  FrameTime final_event;
   // siginfo for last notified stop.
   siginfo_t stop_siginfo;
   bool in_debuggee_end_state;

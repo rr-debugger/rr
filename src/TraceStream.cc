@@ -149,7 +149,7 @@ static void ensure_default_rr_trace_dir() {
   ensure_dir(default_rr_trace_dir(), S_IRWXU);
 }
 
-TraceStream::TraceStream(const string& trace_dir, TraceFrame::Time initial_time)
+TraceStream::TraceStream(const string& trace_dir, FrameTime initial_time)
     : trace_dir(real_path(trace_dir)), global_time(initial_time) {}
 
 string TraceStream::file_data_clone_file_name(const TaskUid& tuid) {
@@ -183,7 +183,7 @@ bool TraceReader::good() const {
 }
 
 struct BasicInfo {
-  TraceFrame::Time global_time;
+  FrameTime global_time;
   pid_t tid_;
   EncodedEvent ev;
   Ticks ticks_;
@@ -309,7 +309,7 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
 TraceTaskEvent TraceReader::read_task_event() {
   auto& tasks = reader(TASKS);
   TraceTaskEvent r;
-  TraceFrame::Time time;
+  FrameTime time;
   char type = TraceTaskEvent::NONE;
   tasks >> time >> type >> r.tid_;
   r.type_ = (TraceTaskEvent::Type)type;
@@ -446,7 +446,7 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
     return KernelMapping();
   }
 
-  TraceFrame::Time time;
+  FrameTime time;
   if (time_constraint == CURRENT_TIME_ONLY) {
     mmaps.save_state();
     mmaps >> time;
@@ -527,7 +527,7 @@ void TraceWriter::write_raw(pid_t rec_tid, const void* d, size_t len,
 TraceReader::RawData TraceReader::read_raw_data() {
   auto& data = reader(RAW_DATA);
   auto& data_header = reader(RAW_DATA_HEADER);
-  TraceFrame::Time time;
+  FrameTime time;
   RawData d;
   size_t num_bytes;
   data_header >> time >> d.rec_tid >> d.addr >> num_bytes;
@@ -542,7 +542,7 @@ bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame, RawData& d) {
   if (data_header.at_end()) {
     return false;
   }
-  TraceFrame::Time time;
+  FrameTime time;
   data_header.save_state();
   data_header >> time;
   data_header.restore_state();
@@ -562,7 +562,7 @@ void TraceWriter::write_generic(const void* d, size_t len) {
 
 void TraceReader::read_generic(vector<uint8_t>& out) {
   auto& generic = reader(GENERIC);
-  TraceFrame::Time time;
+  FrameTime time;
   size_t num_bytes;
   generic >> time >> num_bytes;
   assert(time == global_time);
@@ -576,7 +576,7 @@ bool TraceReader::read_generic_for_frame(const TraceFrame& frame,
   if (generic.at_end()) {
     return false;
   }
-  TraceFrame::Time time;
+  FrameTime time;
   generic.save_state();
   generic >> time;
   generic.restore_state();

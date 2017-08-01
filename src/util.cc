@@ -127,9 +127,8 @@ void dump_binary_data(const char* filename, const char* label,
   fclose(out);
 }
 
-void format_dump_filename(Task* t, TraceFrame::Time global_time,
-                          const char* tag, char* filename,
-                          size_t filename_size) {
+void format_dump_filename(Task* t, FrameTime global_time, const char* tag,
+                          char* filename, size_t filename_size) {
   snprintf(filename, filename_size - 1, "%s/%d_%lld_%s", t->trace_dir().c_str(),
            t->rec_tid, (long long)global_time, tag);
 }
@@ -158,8 +157,7 @@ bool should_dump_memory(const TraceFrame& f) {
          flags->dump_at == int(f.time());
 }
 
-void dump_process_memory(Task* t, TraceFrame::Time global_time,
-                         const char* tag) {
+void dump_process_memory(Task* t, FrameTime global_time, const char* tag) {
   char filename[PATH_MAX];
   FILE* dump_file;
 
@@ -184,7 +182,7 @@ void dump_process_memory(Task* t, TraceFrame::Time global_time,
   fclose(dump_file);
 }
 
-static void notify_checksum_error(ReplayTask* t, TraceFrame::Time global_time,
+static void notify_checksum_error(ReplayTask* t, FrameTime global_time,
                                   unsigned checksum, unsigned rec_checksum,
                                   const string& raw_map_line) {
   char cur_dump[PATH_MAX];
@@ -231,7 +229,7 @@ enum ChecksumMode { STORE_CHECKSUMS, VALIDATE_CHECKSUMS };
 struct checksum_iterator_data {
   ChecksumMode mode;
   FILE* checksums_file;
-  TraceFrame::Time global_time;
+  FrameTime global_time;
 };
 
 static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
@@ -280,7 +278,7 @@ static const uint32_t sigbus_checksum = 0x23456789;
  * is selected by |mode|.
  */
 static void iterate_checksums(Task* t, ChecksumMode mode,
-                              TraceFrame::Time global_time) {
+                              FrameTime global_time) {
   struct checksum_iterator_data c;
   memset(&c, 0, sizeof(c));
   char filename[PATH_MAX];
@@ -466,11 +464,11 @@ bool should_checksum(const TraceFrame& f) {
   return checksum <= int(f.time());
 }
 
-void checksum_process_memory(Task* t, TraceFrame::Time global_time) {
+void checksum_process_memory(Task* t, FrameTime global_time) {
   iterate_checksums(t, STORE_CHECKSUMS, global_time);
 }
 
-void validate_process_memory(Task* t, TraceFrame::Time global_time) {
+void validate_process_memory(Task* t, FrameTime global_time) {
   iterate_checksums(t, VALIDATE_CHECKSUMS, global_time);
 }
 
@@ -949,10 +947,10 @@ int read_elf_class(const string& filename) {
 // Setting these causes us to trace instructions after
 // instruction_trace_at_event_start up to and including
 // instruction_trace_at_event_last
-static TraceFrame::Time instruction_trace_at_event_start = 0;
-static TraceFrame::Time instruction_trace_at_event_last = 0;
+static FrameTime instruction_trace_at_event_start = 0;
+static FrameTime instruction_trace_at_event_last = 0;
 
-bool trace_instructions_up_to_event(TraceFrame::Time event) {
+bool trace_instructions_up_to_event(FrameTime event) {
   return event > instruction_trace_at_event_start &&
          event <= instruction_trace_at_event_last;
 }

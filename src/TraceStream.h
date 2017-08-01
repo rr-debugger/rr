@@ -68,7 +68,7 @@ public:
    * Return the current "global time" (event count) for this
    * trace.
    */
-  TraceFrame::Time time() const { return global_time; }
+  FrameTime time() const { return global_time; }
 
   std::string file_data_clone_file_name(const TaskUid& tuid);
 
@@ -83,7 +83,7 @@ public:
    * Where to obtain data for the mapped region.
    */
   struct MappedData {
-    TraceFrame::Time time;
+    FrameTime time;
     MappedDataSource source;
     /** Name of file to map the data from. */
     string file_name;
@@ -94,7 +94,7 @@ public:
   };
 
 protected:
-  TraceStream(const string& trace_dir, TraceFrame::Time initial_time);
+  TraceStream(const string& trace_dir, FrameTime initial_time);
 
   /**
    * Return the path of the file for the given substream.
@@ -120,7 +120,7 @@ protected:
 
   // Arbitrary notion of trace time, ticked on the recording of
   // each event (trace frame).
-  TraceFrame::Time global_time;
+  FrameTime global_time;
 };
 
 class TraceWriter : public TraceStream {

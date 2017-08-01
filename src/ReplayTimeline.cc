@@ -756,8 +756,8 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
              << current_mark_key() << " and " << end
              << (force == FORCE_PROGRESS ? " (forced)" : "");
 
-  TraceFrame::Time now = current->trace_reader().time();
-  TraceFrame::Time mid = (now + end.ptr->proto.key.trace_time) / 2;
+  FrameTime now = current->trace_reader().time();
+  FrameTime mid = (now + end.ptr->proto.key.trace_time) / 2;
   if (now < mid && mid < end.ptr->proto.key.trace_time) {
     ReplaySession::StepConstraints constraints(RUN_CONTINUE);
     constraints.stop_at_time = mid;
@@ -1320,8 +1320,8 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
   }
 }
 
-ReplayResult ReplayTimeline::replay_step_forward(
-    RunCommand command, TraceFrame::Time stop_at_time) {
+ReplayResult ReplayTimeline::replay_step_forward(RunCommand command,
+                                                 FrameTime stop_at_time) {
   assert(command != RUN_SINGLESTEP_FAST_FORWARD);
 
   ReplayResult result;

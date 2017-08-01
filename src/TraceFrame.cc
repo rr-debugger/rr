@@ -9,7 +9,7 @@
 
 namespace rr {
 
-TraceFrame::TraceFrame(Time global_time, pid_t tid, const Event& event,
+TraceFrame::TraceFrame(FrameTime global_time, pid_t tid, const Event& event,
                        Ticks tick_count, double monotonic_time)
     : global_time(global_time),
       tid_(tid),

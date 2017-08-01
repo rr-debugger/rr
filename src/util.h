@@ -104,9 +104,8 @@ void dump_binary_data(const char* filename, const char* label,
  * "trace_0/12345_111_foo".  The returned name is not guaranteed to be
  * unique, caveat emptor.
  */
-void format_dump_filename(Task* t, TraceFrame::Time global_time,
-                          const char* tag, char* filename,
-                          size_t filename_size);
+void format_dump_filename(Task* t, FrameTime global_time, const char* tag,
+                          char* filename, size_t filename_size);
 
 /**
  * Return true if the user requested memory be dumped at |f|.
@@ -116,8 +115,7 @@ bool should_dump_memory(const TraceFrame& f);
  * Dump all of the memory in |t|'s address to the file
  * "[trace_dir]/[t->tid]_[global_time]_[tag]".
  */
-void dump_process_memory(Task* t, TraceFrame::Time global_time,
-                         const char* tag);
+void dump_process_memory(Task* t, FrameTime global_time, const char* tag);
 
 /**
  * Return true if the user has requested |t|'s memory be
@@ -129,12 +127,12 @@ bool should_checksum(const TraceFrame& f);
  * special log, where it can be read by |validate_process_memory()|
  * during replay.
  */
-void checksum_process_memory(Task* t, TraceFrame::Time global_time);
+void checksum_process_memory(Task* t, FrameTime global_time);
 /**
  * Validate the checksum of |t|'s address space that was written
  * during recording.
  */
-void validate_process_memory(Task* t, TraceFrame::Time global_time);
+void validate_process_memory(Task* t, FrameTime global_time);
 
 /**
  * Return nonzero if the rr session is probably not interactive (that
@@ -254,7 +252,7 @@ CloneParameters extract_clone_parameters(Task* t);
 const int NOT_ELF = 0x10000;
 int read_elf_class(const std::string& filename);
 
-bool trace_instructions_up_to_event(TraceFrame::Time event);
+bool trace_instructions_up_to_event(FrameTime event);
 
 /* Helpful for broken debuggers */
 
