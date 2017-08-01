@@ -21,7 +21,7 @@ namespace rr {
 
 Event::Event(EncodedEvent e) {
   switch (event_type = e.type) {
-    case EV_SEGV_DISABLED_INSN:
+    case EV_INSTRUCTION_TRAP:
     case EV_EXIT:
     case EV_SCHED:
     case EV_SYSCALLBUF_FLUSH:
@@ -137,7 +137,7 @@ EncodedEvent Event::encode() const {
   e.arch_ = arch();
 
   switch (event_type) {
-    case EV_SEGV_DISABLED_INSN:
+    case EV_INSTRUCTION_TRAP:
     case EV_EXIT:
     case EV_SCHED:
     case EV_SYSCALLBUF_FLUSH:
@@ -281,7 +281,7 @@ std::string Event::type_name() const {
       CASE(NOOP);
       CASE(SCHED);
       CASE(SECCOMP_TRAP);
-      CASE(SEGV_DISABLED_INSN);
+      CASE(INSTRUCTION_TRAP);
       CASE(SYSCALLBUF_FLUSH);
       CASE(SYSCALLBUF_ABORT_COMMIT);
       CASE(SYSCALLBUF_RESET);

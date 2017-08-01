@@ -143,7 +143,7 @@ static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
   r.set_ip(r.ip() + len);
   t->set_regs(r);
 
-  t->push_event(Event(EV_SEGV_DISABLED_INSN, HAS_EXEC_INFO, t->arch()));
+  t->push_event(Event(EV_INSTRUCTION_TRAP, HAS_EXEC_INFO, t->arch()));
   return true;
 }
 

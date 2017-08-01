@@ -154,7 +154,7 @@ bool should_dump_memory(const TraceFrame& f) {
          (f.event().is_signal_event() &&
           f.event().Signal().siginfo.si_signo == -flags->dump_on) ||
          (flags->dump_on == Flags::DUMP_ON_RDTSC &&
-          f.event().type() == EV_SEGV_DISABLED_INSN) ||
+          f.event().type() == EV_INSTRUCTION_TRAP) ||
          flags->dump_at == int(f.time());
 }
 
