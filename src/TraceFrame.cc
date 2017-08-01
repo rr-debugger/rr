@@ -50,8 +50,8 @@ void TraceFrame::dump(FILE* out) const {
 void TraceFrame::dump_raw(FILE* out) const {
   out = out ? out : stdout;
 
-  fprintf(out, " %lld %d %d %" PRId64, (long long)time(), tid(),
-          event().encode().encoded, ticks());
+  fprintf(out, " %lld %d %d %" PRId64, (long long)time(), tid(), event().type(),
+          ticks());
   if (event().has_exec_info() != HAS_EXEC_INFO) {
     fprintf(out, "\n");
     return;

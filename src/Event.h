@@ -8,13 +8,18 @@
 #include <ostream>
 #include <stack>
 #include <string>
+#include <vector>
 
 #include "Registers.h"
 #include "kernel_abi.h"
+#include "preload/preload_interface.h"
 
 struct syscallbuf_record;
 
 namespace rr {
+
+class RecordTask;
+class Task;
 
 /**
  * During recording, sometimes we need to ensure that an iteration of
@@ -89,30 +94,6 @@ enum EventType {
 enum HasExecInfo { NO_EXEC_INFO, HAS_EXEC_INFO };
 
 /**
- * An encoding of the relevant bits of |struct event| that can be
- * cheaply and easily serialized.
- */
-union EncodedEvent {
-  struct {
-    EventType type : 5;
-    HasExecInfo has_exec_info : 1;
-    SupportedArch arch_ : 1;
-    int data : 25;
-  };
-  int encoded;
-
-  bool operator==(const EncodedEvent& other) const {
-    return encoded == other.encoded;
-  }
-  bool operator!=(const EncodedEvent& other) const { return !(*this == other); }
-
-  SupportedArch arch() const { return arch_; }
-};
-
-static_assert(sizeof(int) == sizeof(EncodedEvent), "Bit fields are messed up");
-static_assert(EV_LAST < (1 << 5), "Allocate more bits to the |type| field");
-
-/**
  * Events are interesting occurrences during tracee execution which
  * are relevant for replay.  Most events correspond to tracee
  * execution, but some (a subset of "pseudosigs") save actions that
@@ -158,6 +139,11 @@ struct DeschedEvent : public BaseEvent {
   remote_ptr<const struct syscallbuf_record> rec;
 };
 
+struct SyscallbufFlushEvent : public BaseEvent {
+  SyscallbufFlushEvent(SupportedArch arch) : BaseEvent(NO_EXEC_INFO, arch) {}
+  std::vector<mprotect_record> mprotect_records;
+};
+
 enum SignalDeterministic { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
 enum SignalBlocked { SIG_UNBLOCKED = 0, SIG_BLOCKED = 1 };
 enum SignalOutcome {
@@ -172,11 +158,12 @@ struct SignalEvent : public BaseEvent {
    * record_signal.cc).
    */
   SignalEvent(const siginfo_t& siginfo, SignalDeterministic deterministic,
-              Task* t);
-  SignalEvent(int signo, SignalDeterministic deterministic, SupportedArch arch)
-      : BaseEvent(HAS_EXEC_INFO, arch), deterministic(deterministic) {
+              RecordTask* t);
+  SignalEvent(SupportedArch arch)
+      : BaseEvent(HAS_EXEC_INFO, arch),
+        deterministic(DETERMINISTIC_SIG),
+        disposition(DISPOSITION_FATAL) {
     memset(&siginfo, 0, sizeof(siginfo));
-    siginfo.si_signo = signo;
   }
 
   // Signal info
@@ -185,6 +172,7 @@ struct SignalEvent : public BaseEvent {
   // side effect of retiring an instruction during replay, for
   // example |load $r 0x0| deterministically raises SIGSEGV.
   SignalDeterministic deterministic;
+  SignalOutcome disposition;
 };
 
 /**
@@ -232,12 +220,19 @@ enum SyscallState {
   // with the recorded system call result.
   EXITING_SYSCALL
 };
+
+struct OpenedFd {
+  std::string path;
+  int fd;
+};
+
 struct SyscallEvent : public BaseEvent {
   /** Syscall |syscallno| is the syscall number. */
   SyscallEvent(int syscallno, SupportedArch arch)
       : BaseEvent(HAS_EXEC_INFO, arch),
         regs(arch),
         desched_rec(nullptr),
+        write_offset(-1),
         state(NO_SYSCALL),
         number(syscallno),
         switchable(PREVENT_SWITCH),
@@ -251,6 +246,12 @@ struct SyscallEvent : public BaseEvent {
   // If this is a descheduled buffered syscall, points at the
   // record for that syscall.
   remote_ptr<const struct syscallbuf_record> desched_rec;
+
+  // Extra data for specific syscalls. Only used for exit events currently.
+  // -1 to indicate there isn't one
+  int64_t write_offset;
+  std::vector<int> exec_fds_to_close;
+  std::vector<OpenedFd> opened;
 
   SyscallState state;
   // Syscall number.
@@ -280,19 +281,12 @@ static const syscall_interruption_t interrupted;
  */
 struct Event {
   Event() : event_type(EV_UNASSIGNED) {}
-  Event(EventType type, HasExecInfo info, SupportedArch arch)
-      : event_type(type), base(info, arch) {}
+  Event(EventType type, HasExecInfo info, SupportedArch arch);
   Event(const DeschedEvent& ev) : event_type(EV_DESCHED), desched(ev) {}
   Event(const SignalEvent& ev) : event_type(EV_SIGNAL), signal(ev) {}
   Event(const SyscallEvent& ev) : event_type(EV_SYSCALL), syscall(ev) {}
   Event(const syscall_interruption_t&, const SyscallEvent& ev)
       : event_type(EV_SYSCALL_INTERRUPTION), syscall(ev) {}
-  /**
-   * Re-construct this from an encoding created by
-   * |Event::encode()|.
-   */
-  Event(EncodedEvent e);
-
   Event(const Event& o);
   ~Event();
   Event& operator=(const Event& o);
@@ -312,6 +306,15 @@ struct Event {
     return desched;
   }
 
+  SyscallbufFlushEvent& SyscallbufFlush() {
+    assert(EV_SYSCALLBUF_FLUSH == event_type);
+    return syscallbuf_flush;
+  }
+  const SyscallbufFlushEvent& SyscallbufFlush() const {
+    assert(EV_SYSCALLBUF_FLUSH == event_type);
+    return syscallbuf_flush;
+  }
+
   SignalEvent& Signal() {
     assert(is_signal_event());
     return signal;
@@ -329,17 +332,6 @@ struct Event {
     assert(is_syscall_event());
     return syscall;
   }
-
-  enum {
-    // Deterministic signals are encoded as (signum | DET_SIGNAL_BIT).
-    DET_SIGNAL_BIT = 0x80
-  };
-
-  /**
-   * Return an encoding of this event that can be cheaply
-   * serialized.  The encoding is lossy.
-   */
-  EncodedEvent encode() const;
 
   /**
    * Return true if a tracee at this event has meaningful
@@ -399,16 +391,12 @@ private:
     DeschedEvent desched;
     SignalEvent signal;
     SyscallEvent syscall;
+    SyscallbufFlushEvent syscallbuf_flush;
   };
 };
 
 inline static std::ostream& operator<<(std::ostream& o, const Event& ev) {
   return o << ev.str();
-}
-
-inline static std::ostream& operator<<(std::ostream& o,
-                                       const EncodedEvent& ev) {
-  return o << Event(ev);
 }
 
 const char* state_name(SyscallState state);

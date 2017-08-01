@@ -1099,8 +1099,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
   }
 
   // Apply the mprotect records we just completed.
-  uint32_t final_mprotect_record_count =
-      apply_mprotect_records(t, skip_mprotect_records);
+  apply_mprotect_records(t, skip_mprotect_records);
 
   if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
     // This would normally be triggered by constraints.ticks_target but it's
@@ -1121,15 +1120,6 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
     r.set_ip(current_step.flush.stop_breakpoint_addr);
     t->set_regs(r);
 
-    if (final_mprotect_record_count) {
-      // Skip mprotect records in trace. We don't need them for replay, but
-      // they could be useful for other trace consumers that want a complete
-      // view of VM layout without having to do a full replay.
-      // We delay this skipping to here because we don't want to do it more
-      // than once if a syscallbuf flush is incomplete.
-      vector<uint8_t> ignored;
-      t->trace_reader().read_generic(ignored);
-    }
     return COMPLETE;
   }
 
@@ -1402,11 +1392,7 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_SIGNAL: {
-      vector<uint8_t> data;
-      trace_reader().read_generic(data);
-      ASSERT(t, data.size() == sizeof(last_siginfo_) + 1);
-      memcpy(&last_siginfo_, data.data() + 1, data.size() - 1);
-
+      last_siginfo_ = ev.Signal().siginfo;
       if (treat_signal_event_as_deterministic(ev.Signal())) {
         current_step.action = TSTEP_DETERMINISTIC_SIGNAL;
         current_step.target.signo = ev.Signal().siginfo.si_signo;

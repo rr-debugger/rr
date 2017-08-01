@@ -305,7 +305,7 @@ template <typename T> static vector<uint8_t> to_vector(const T& v) {
 }
 
 bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
-                                     std::vector<uint8_t>& consume_data,
+                                     const uint8_t* data, size_t data_size,
                                      const XSaveLayout& layout) {
   arch_ = a;
   format_ = NONE;
@@ -323,9 +323,9 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
   // native XSAVE format. Be careful to handle possibly-corrupt input data.
 
   const XSaveLayout& native_layout = xsave_native_layout();
-  if (consume_data.size() != layout.full_size) {
-    LOG(error) << "Invalid XSAVE data length: " << consume_data.size()
-               << ", expected " << layout.full_size;
+  if (data_size != layout.full_size) {
+    LOG(error) << "Invalid XSAVE data length: " << data_size << ", expected "
+               << layout.full_size;
     return false;
   }
   data_.resize(native_layout.full_size);
@@ -334,15 +334,14 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
     LOG(error) << "Invalid XSAVE layout size: " << layout.full_size;
     return false;
   }
-  memcpy(data_.data(), consume_data.data(), xsave_header_offset);
+  memcpy(data_.data(), data, xsave_header_offset);
   memset(data_.data() + xsave_header_offset, 0,
          data_.size() - xsave_header_offset);
 
   // Check for unsupported features being used
   if (layout.full_size >= xsave_header_end) {
     uint64_t features_used;
-    memcpy(&features_used, consume_data.data() + xsave_header_offset,
-           sizeof(features_used));
+    memcpy(&features_used, data + xsave_header_offset, sizeof(features_used));
     if (features_used & ~native_layout.supported_feature_bits) {
       LOG(error) << "Unsupported CPU features found: got " << HEX(features_used)
                  << ", supported: "
@@ -366,12 +365,12 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
   // OK, now both our native layout and the input layout are using the full
   // XSAVE header. Copy the header.
-  memcpy(data_.data() + xsave_header_offset,
-         consume_data.data() + xsave_header_offset, xsave_header_size);
+  memcpy(data_.data() + xsave_header_offset, data + xsave_header_offset,
+         xsave_header_size);
 
   // Now copy each optional and present area into the right place in our struct
   uint64_t features_present;
-  memcpy(&features_present, consume_data.data() + xsave_header_offset,
+  memcpy(&features_present, data + xsave_header_offset,
          sizeof(features_present));
   for (size_t i = 2; i < 64; ++i) {
     if (features_present & (uint64_t(1) << i)) {
@@ -392,8 +391,8 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
       assert(native_feature.offset > 0);
       assert(native_feature.offset + native_feature.size <=
              native_layout.full_size);
-      memcpy(data_.data() + native_feature.offset,
-             consume_data.data() + feature.offset, feature.size);
+      memcpy(data_.data() + native_feature.offset, data + feature.offset,
+             feature.size);
     }
   }
 

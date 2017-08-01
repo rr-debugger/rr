@@ -9,6 +9,7 @@
 
 #include "preload/preload_interface.h"
 
+#include "RecordTask.h"
 #include "Task.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
@@ -19,39 +20,40 @@ using namespace std;
 
 namespace rr {
 
-Event::Event(EncodedEvent e) {
-  switch (event_type = e.type) {
+Event::Event(EventType type, HasExecInfo has_exec_info, SupportedArch arch)
+    : event_type(type), base(has_exec_info, arch) {
+  switch (event_type) {
+    case EV_NOOP:
+    case EV_SECCOMP_TRAP:
+    case EV_SENTINEL:
     case EV_INSTRUCTION_TRAP:
     case EV_EXIT:
     case EV_SCHED:
-    case EV_SYSCALLBUF_FLUSH:
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_RESET:
+    case EV_SYSCALL_INTERRUPTION:
     case EV_PATCH_SYSCALL:
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
-      new (&Base()) BaseEvent(e.has_exec_info, e.arch());
-      // No auxiliary data.
-      assert(0 == e.data);
+      new (&Base()) BaseEvent(has_exec_info, arch);
       return;
 
     case EV_DESCHED:
-      new (&Desched()) DeschedEvent(nullptr, e.arch());
+      new (&Desched()) DeschedEvent(nullptr, arch);
+      return;
+
+    case EV_SYSCALLBUF_FLUSH:
+      new (&SyscallbufFlush()) SyscallbufFlushEvent(arch);
       return;
 
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
-      new (&Signal()) SignalEvent(
-          ~DET_SIGNAL_BIT & e.data,
-          (DET_SIGNAL_BIT & e.data) ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG,
-          e.arch());
+      new (&Signal()) SignalEvent(arch);
       return;
 
     case EV_SYSCALL:
-      new (&Syscall()) SyscallEvent(e.data >> 3, e.arch());
-      Syscall().state = SyscallState((e.data & 0x3) + 1);
-      Syscall().failed_during_preparation = (e.data & 0x4) != 0;
+      new (&Syscall()) SyscallEvent(0, arch);
       return;
 
     default:
@@ -73,6 +75,9 @@ Event::Event(const Event& o) : event_type(o.event_type) {
     case EV_SYSCALL_INTERRUPTION:
       new (&Syscall()) SyscallEvent(o.Syscall());
       return;
+    case EV_SYSCALLBUF_FLUSH:
+      new (&SyscallbufFlush()) SyscallbufFlushEvent(o.SyscallbufFlush());
+      return;
     default:
       new (&Base()) BaseEvent(o.Base());
       return;
@@ -93,6 +98,9 @@ Event::~Event() {
     case EV_SYSCALL_INTERRUPTION:
       Syscall().~SyscallEvent();
       return;
+    case EV_SYSCALLBUF_FLUSH:
+      SyscallbufFlush().~SyscallbufFlushEvent();
+      return;
     default:
       Base().~BaseEvent();
       return;
@@ -100,84 +108,12 @@ Event::~Event() {
 }
 
 Event& Event::operator=(const Event& o) {
-  event_type = o.event_type;
-  switch (event_type) {
-    case EV_DESCHED:
-      Desched().operator=(o.Desched());
-      break;
-    case EV_SIGNAL:
-    case EV_SIGNAL_DELIVERY:
-    case EV_SIGNAL_HANDLER:
-      Signal().operator=(o.Signal());
-      break;
-    case EV_SYSCALL:
-    case EV_SYSCALL_INTERRUPTION:
-      Syscall().operator=(o.Syscall());
-      break;
-    default:
-      Base().operator=(o.Base());
-      break;
+  if (this == &o) {
+    return *this;
   }
+  this->~Event();
+  new (this) Event(o);
   return *this;
-}
-
-static void set_encoded_event_data(EncodedEvent* e, int data) {
-  e->data = data;
-  // Ensure that e->data is wide enough for the data
-  assert(e->data == data);
-}
-
-EncodedEvent Event::encode() const {
-  EncodedEvent e;
-  e.type = event_type;
-  e.has_exec_info = has_exec_info();
-  e.arch_ = arch();
-
-  switch (event_type) {
-    case EV_INSTRUCTION_TRAP:
-    case EV_EXIT:
-    case EV_SCHED:
-    case EV_SYSCALLBUF_FLUSH:
-    case EV_SYSCALLBUF_ABORT_COMMIT:
-    case EV_SYSCALLBUF_RESET:
-    case EV_PATCH_SYSCALL:
-    case EV_GROW_MAP:
-    case EV_TRACE_TERMINATION:
-      // No auxiliary data.
-      set_encoded_event_data(&e, 0);
-      return e;
-
-    case EV_SIGNAL:
-    case EV_SIGNAL_DELIVERY:
-    case EV_SIGNAL_HANDLER: {
-      set_encoded_event_data(
-          &e, Signal().siginfo.si_signo |
-                  (Signal().deterministic == DETERMINISTIC_SIG ? DET_SIGNAL_BIT
-                                                               : 0));
-      return e;
-    }
-
-    case EV_SYSCALL: {
-      // PROCESSING_SYSCALL is a transient state that we
-      // should never attempt to record.
-      assert(Syscall().state != PROCESSING_SYSCALL &&
-             Syscall().state != NO_SYSCALL);
-      int data =
-          (Syscall().is_restart ? syscall_number_for_restart_syscall(e.arch_)
-                                : Syscall().number)
-          << 3;
-      data |= (int)Syscall().state - 1;
-      if (Syscall().failed_during_preparation) {
-        data |= 0x4;
-      }
-      set_encoded_event_data(&e, data);
-      return e;
-    }
-
-    default:
-      FATAL() << "Unknown event type " << event_type;
-      return e; // not reached
-  }
 }
 
 HasExecInfo Event::record_exec_info() const { return Base().has_exec_info; }
@@ -293,10 +229,19 @@ std::string Event::type_name() const {
 }
 
 SignalEvent::SignalEvent(const siginfo_t& siginfo,
-                         SignalDeterministic deterministic, Task* t)
+                         SignalDeterministic deterministic, RecordTask* t)
     : BaseEvent(HAS_EXEC_INFO, t->arch()),
       siginfo(siginfo),
-      deterministic(deterministic) {}
+      deterministic(deterministic) {
+  int sig = siginfo.si_signo;
+  if (t->is_fatal_signal(sig, deterministic)) {
+    disposition = DISPOSITION_FATAL;
+  } else if (t->signal_has_user_handler(sig) && !t->is_sig_blocked(sig)) {
+    disposition = DISPOSITION_USER_HANDLER;
+  } else {
+    disposition = DISPOSITION_IGNORED;
+  }
+}
 
 const char* state_name(SyscallState state) {
   switch (state) {

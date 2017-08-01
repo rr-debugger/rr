@@ -14,6 +14,7 @@
 #include <string>
 
 #include "AddressSpace.h"
+#include "Event.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "TaskishUid.h"
@@ -45,9 +46,10 @@ struct SubstreamData {
 };
 
 static SubstreamData substreams[TraceStream::SUBSTREAM_COUNT] = {
-  { "events", 1024 * 1024, 1 }, { "data_header", 1024 * 1024, 1 },
-  { "data", 1024 * 1024, 0 },   { "mmaps", 64 * 1024, 1 },
-  { "tasks", 64 * 1024, 1 },    { "generic", 64 * 1024, 1 },
+  { "events", 1024 * 1024, 1 },
+  { "data", 1024 * 1024, 0 },
+  { "mmaps", 64 * 1024, 1 },
+  { "tasks", 64 * 1024, 1 },
 };
 
 static const SubstreamData& substream(TraceStream::Substream s) {
@@ -238,110 +240,376 @@ static string data_to_str(const kj::ArrayPtr<const byte>& data) {
   return string(reinterpret_cast<const char*>(data.begin()), data.size());
 }
 
-struct BasicInfo {
-  FrameTime global_time;
-  pid_t tid_;
-  EncodedEvent ev;
-  Ticks ticks_;
-  double monotonic_sec;
-};
-
-void TraceWriter::write_frame(const TraceFrame& frame) {
-  auto& events = writer(EVENTS);
-
-  BasicInfo basic_info;
-  memset(&basic_info, 0, sizeof(BasicInfo));
-  basic_info.global_time = frame.time();
-  basic_info.tid_ = frame.tid();
-  basic_info.ev = frame.event().encode();
-  basic_info.ticks_ = frame.ticks();
-  basic_info.monotonic_sec = frame.monotonic_time();
-  events << basic_info;
-  if (!events.good()) {
-    FATAL() << "Tried to save " << sizeof(basic_info)
-            << " bytes to the trace, but failed";
+static trace::Arch to_trace_arch(SupportedArch arch) {
+  switch (arch) {
+    case x86:
+      return trace::Arch::X86;
+    case x86_64:
+      return trace::Arch::X8664;
+    default:
+      FATAL() << "Unknown arch";
+      return trace::Arch::X86;
   }
-  if (frame.event().has_exec_info() == HAS_EXEC_INFO) {
-    events << (char)frame.regs().arch();
-    // Avoid dynamic allocation and copy
-    auto raw_regs = frame.regs().get_ptrace_for_self_arch();
-    events.write(raw_regs.data, raw_regs.size);
-    if (!events.good()) {
-      FATAL() << "Tried to save registers to the trace, but failed";
-    }
+}
 
-    int extra_reg_bytes = frame.extra_regs().data_size();
-    char extra_reg_format = (char)frame.extra_regs().format();
-    events << extra_reg_format << extra_reg_bytes;
-    if (!events.good()) {
-      FATAL() << "Tried to save "
-              << sizeof(extra_reg_bytes) + sizeof(extra_reg_format)
-              << " bytes to the trace, but failed";
+static SupportedArch from_trace_arch(trace::Arch arch) {
+  switch (arch) {
+    case trace::Arch::X86:
+      return x86;
+    case trace::Arch::X8664:
+      return x86_64;
+    default:
+      FATAL() << "Unknown arch";
+      return x86;
+  }
+}
+
+static trace::SignalDisposition to_trace_disposition(
+    SignalOutcome disposition) {
+  switch (disposition) {
+    case DISPOSITION_FATAL:
+      return trace::SignalDisposition::FATAL;
+    case DISPOSITION_IGNORED:
+      return trace::SignalDisposition::IGNORED;
+    case DISPOSITION_USER_HANDLER:
+      return trace::SignalDisposition::USER_HANDLER;
+    default:
+      FATAL() << "Unknown disposition";
+      return trace::SignalDisposition::FATAL;
+  }
+}
+
+static SignalOutcome from_trace_disposition(
+    trace::SignalDisposition disposition) {
+  switch (disposition) {
+    case trace::SignalDisposition::FATAL:
+      return DISPOSITION_FATAL;
+    case trace::SignalDisposition::IGNORED:
+      return DISPOSITION_IGNORED;
+    case trace::SignalDisposition::USER_HANDLER:
+      return DISPOSITION_USER_HANDLER;
+    default:
+      FATAL() << "Unknown disposition";
+      return DISPOSITION_FATAL;
+  }
+}
+
+static trace::SyscallState to_trace_syscall_state(SyscallState state) {
+  switch (state) {
+    case ENTERING_SYSCALL_PTRACE:
+      return trace::SyscallState::ENTERING_PTRACE;
+    case ENTERING_SYSCALL:
+      return trace::SyscallState::ENTERING;
+    case EXITING_SYSCALL:
+      return trace::SyscallState::EXITING;
+    default:
+      FATAL() << "Unknown syscall state";
+      return trace::SyscallState::ENTERING;
+  }
+}
+
+static SyscallState from_trace_syscall_state(trace::SyscallState state) {
+  switch (state) {
+    case trace::SyscallState::ENTERING_PTRACE:
+      return ENTERING_SYSCALL_PTRACE;
+    case trace::SyscallState::ENTERING:
+      return ENTERING_SYSCALL;
+    case trace::SyscallState::EXITING:
+      return EXITING_SYSCALL;
+    default:
+      FATAL() << "Unknown syscall state";
+      return ENTERING_SYSCALL;
+  }
+}
+
+static void to_trace_signal(trace::Signal::Builder signal, const Event& ev) {
+  const SignalEvent& sig_ev = ev.Signal();
+  signal.setSiginfoArch(to_trace_arch(NativeArch::arch()));
+  signal.setSiginfo(
+      Data::Reader(reinterpret_cast<const uint8_t*>(&sig_ev.siginfo),
+                   sizeof(sig_ev.siginfo)));
+  signal.setDeterministic(sig_ev.deterministic == DETERMINISTIC_SIG);
+  signal.setDisposition(to_trace_disposition(sig_ev.disposition));
+}
+
+static void from_trace_signal(trace::Signal::Reader signal, Event& ev) {
+  SignalEvent& sig_ev = ev.Signal();
+  if (signal.getSiginfoArch() != to_trace_arch(NativeArch::arch())) {
+    // XXX if we want to handle consumption of rr traces created on a different
+    // architecture rr build than we're running now, we should convert siginfo
+    // formats here.
+    FATAL() << "Unsupported siginfo arch";
+  }
+  auto siginfo = signal.getSiginfo();
+  if (siginfo.size() != sizeof(sig_ev.siginfo)) {
+    FATAL() << "Bad siginfo";
+  }
+  memcpy(&sig_ev.siginfo, siginfo.begin(), sizeof(sig_ev.siginfo));
+  sig_ev.deterministic =
+      signal.getDeterministic() ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
+  sig_ev.disposition = from_trace_disposition(signal.getDisposition());
+}
+
+static pid_t i32_to_tid(int tid) {
+  if (tid <= 0) {
+    FATAL() << "Invalid tid";
+  }
+  return tid;
+}
+
+static int check_fd(int fd) {
+  if (fd < 0) {
+    FATAL() << "Invalid fd";
+  }
+  return fd;
+}
+
+void TraceWriter::write_frame(pid_t tid, SupportedArch arch, const Event& ev,
+                              Ticks tick_count, const Registers* registers,
+                              const ExtraRegisters* extra_registers) {
+  MallocMessageBuilder frame_msg;
+  trace::Frame::Builder frame = frame_msg.initRoot<trace::Frame>();
+
+  frame.setTid(tid);
+  frame.setTicks(tick_count);
+  frame.setMonotonicSec(monotonic_now_sec());
+  auto mem_writes = frame.initMemWrites(raw_recs.size());
+  for (size_t i = 0; i < raw_recs.size(); ++i) {
+    auto w = mem_writes[i];
+    auto& r = raw_recs[i];
+    w.setTid(r.rec_tid);
+    w.setAddr(r.addr.as_int());
+    w.setSize(r.size);
+  }
+  raw_recs.clear();
+  frame.setArch(to_trace_arch(arch));
+  if (registers) {
+    // Avoid dynamic allocation and copy
+    auto raw_regs = registers->get_ptrace_for_self_arch();
+    frame.initRegisters().setRaw(Data::Reader(raw_regs.data, raw_regs.size));
+  }
+  if (extra_registers) {
+    frame.initExtraRegisters().setRaw(Data::Reader(
+        extra_registers->data_bytes(), extra_registers->data_size()));
+  }
+
+  auto event = frame.initEvent();
+  switch (ev.type()) {
+    case EV_INSTRUCTION_TRAP:
+      event.setInstructionTrap(Void());
+      break;
+    case EV_PATCH_SYSCALL:
+      event.setPatchSyscall(Void());
+      break;
+    case EV_SYSCALLBUF_ABORT_COMMIT:
+      event.setSyscallbufAbortCommit(Void());
+      break;
+    case EV_SYSCALLBUF_RESET:
+      event.setSyscallbufReset(Void());
+      break;
+    case EV_SCHED:
+      event.setSched(Void());
+      break;
+    case EV_GROW_MAP:
+      event.setGrowMap(Void());
+      break;
+    case EV_SIGNAL:
+      to_trace_signal(event.initSignal(), ev);
+      break;
+    case EV_SIGNAL_DELIVERY:
+      to_trace_signal(event.initSignalDelivery(), ev);
+      break;
+    case EV_SIGNAL_HANDLER:
+      to_trace_signal(event.initSignalHandler(), ev);
+      break;
+    case EV_EXIT:
+      event.setExit(Void());
+      break;
+    case EV_SYSCALLBUF_FLUSH: {
+      const SyscallbufFlushEvent& e = ev.SyscallbufFlush();
+      event.initSyscallbufFlush().setMprotectRecords(Data::Reader(
+          reinterpret_cast<const uint8_t*>(e.mprotect_records.data()),
+          e.mprotect_records.size() * sizeof(mprotect_record)));
+      break;
     }
-    if (extra_reg_bytes > 0) {
-      events.write((const char*)frame.extra_regs().data_bytes(),
-                   extra_reg_bytes);
-      if (!events.good()) {
-        FATAL() << "Tried to save " << extra_reg_bytes
-                << " bytes to the trace, but failed";
+    case EV_SYSCALL: {
+      const SyscallEvent& e = ev.Syscall();
+      auto syscall = event.initSyscall();
+      syscall.setArch(to_trace_arch(e.arch()));
+      syscall.setNumber(e.is_restart ? syscall_number_for_restart_syscall(arch)
+                                     : e.number);
+      syscall.setState(to_trace_syscall_state(e.state));
+      syscall.setFailedDuringPreparation(e.failed_during_preparation);
+      auto data = syscall.initExtra();
+      if (e.write_offset >= 0) {
+        data.setWriteOffset(e.write_offset);
+      } else if (e.exec_fds_to_close.size()) {
+        data.setExecFdsToClose(kj::ArrayPtr<const int>(
+            e.exec_fds_to_close.data(), e.exec_fds_to_close.size()));
+      } else if (e.opened.size()) {
+        auto open = data.initOpenedFds(e.opened.size());
+        for (size_t i = 0; i < e.opened.size(); ++i) {
+          auto o = open[i];
+          auto opened = e.opened[i];
+          o.setFd(opened.fd);
+          o.setPath(str_to_data(opened.path));
+        }
       }
+      break;
     }
+    default:
+      FATAL() << "Event type not recordable";
+      break;
+  }
+
+  try {
+    auto& events = writer(EVENTS);
+    CompressedWriterOutputStream stream(events);
+    writePackedMessage(stream, frame_msg);
+  } catch (...) {
+    FATAL() << "Unable to write tasks";
   }
 
   tick_time();
 }
 
 TraceFrame TraceReader::read_frame() {
-  // Read the common event info first, to see if we also have
-  // exec info to read.
   auto& events = reader(EVENTS);
-  BasicInfo basic_info;
-  events >> basic_info;
-  TraceFrame frame(basic_info.global_time, basic_info.tid_,
-                   Event(basic_info.ev), basic_info.ticks_,
-                   basic_info.monotonic_sec);
-  if (frame.event().has_exec_info() == HAS_EXEC_INFO) {
-    char a;
-    events >> a;
-    uint8_t buf[sizeof(X64Arch::user_regs_struct)];
-    frame.recorded_regs.set_arch((SupportedArch)a);
-    switch (frame.recorded_regs.arch()) {
-      case x86:
-        events.read(buf, sizeof(X86Arch::user_regs_struct));
-        frame.recorded_regs.set_from_ptrace_for_arch(
-            x86, buf, sizeof(X86Arch::user_regs_struct));
-        break;
-      case x86_64:
-        events.read(buf, sizeof(X64Arch::user_regs_struct));
-        frame.recorded_regs.set_from_ptrace_for_arch(
-            x86_64, buf, sizeof(X64Arch::user_regs_struct));
-        break;
-      default:
-        FATAL() << "Unknown arch";
-    }
-
-    int extra_reg_bytes;
-    char extra_reg_format;
-    events >> extra_reg_format >> extra_reg_bytes;
-    if (extra_reg_bytes > 0) {
-      vector<uint8_t> data;
-      data.resize(extra_reg_bytes);
-      events.read((char*)data.data(), extra_reg_bytes);
-      bool ok = frame.recorded_extra_regs.set_to_raw_data(
-          frame.event().arch(), (ExtraRegisters::Format)extra_reg_format, data,
-          xsave_layout_from_trace(cpuid_records()));
-      if (!ok) {
-        FATAL() << "Invalid XSAVE data in trace";
-      }
-    } else {
-      assert(extra_reg_format == ExtraRegisters::NONE);
-      frame.recorded_extra_regs = ExtraRegisters(frame.event().arch());
-    }
-  }
+  CompressedReaderInputStream stream(events);
+  PackedMessageReader frame_msg(stream);
+  trace::Frame::Reader frame = frame_msg.getRoot<trace::Frame>();
 
   tick_time();
-  assert(time() == frame.time());
-  return frame;
+
+  auto mem_writes = frame.getMemWrites();
+  raw_recs.resize(mem_writes.size());
+  for (size_t i = 0; i < raw_recs.size(); ++i) {
+    // Build list in reverse order so we can efficiently pull records from it
+    auto w = mem_writes[raw_recs.size() - 1 - i];
+    raw_recs[i] = { w.getAddr(), w.getSize(), i32_to_tid(w.getTid()) };
+  }
+
+  TraceFrame ret;
+  ret.global_time = time();
+  ret.tid_ = i32_to_tid(frame.getTid());
+  ret.ticks_ = frame.getTicks();
+  if (ret.ticks_ < 0) {
+    FATAL() << "Invalid ticks value";
+  }
+  ret.monotonic_time_ = frame.getMonotonicSec();
+
+  SupportedArch arch = from_trace_arch(frame.getArch());
+  ret.recorded_regs.set_arch(arch);
+  auto reg_data = frame.getRegisters().getRaw();
+  HasExecInfo exec_info = NO_EXEC_INFO;
+  if (reg_data.size()) {
+    exec_info = HAS_EXEC_INFO;
+    ret.recorded_regs.set_from_ptrace_for_arch(arch, reg_data.begin(),
+                                               reg_data.size());
+  }
+  auto extra_reg_data = frame.getExtraRegisters().getRaw();
+  if (extra_reg_data.size()) {
+    bool ok = ret.recorded_extra_regs.set_to_raw_data(
+        arch, ExtraRegisters::XSAVE, extra_reg_data.begin(),
+        extra_reg_data.size(), xsave_layout_from_trace(cpuid_records()));
+    if (!ok) {
+      FATAL() << "Invalid XSAVE data in trace";
+    }
+  } else {
+    ret.recorded_extra_regs = ExtraRegisters(arch);
+  }
+
+  auto event = frame.getEvent();
+  switch (event.which()) {
+    case trace::Frame::Event::INSTRUCTION_TRAP:
+      ret.ev = Event(EV_INSTRUCTION_TRAP, exec_info, arch);
+      break;
+    case trace::Frame::Event::PATCH_SYSCALL:
+      ret.ev = Event(EV_PATCH_SYSCALL, exec_info, arch);
+      break;
+    case trace::Frame::Event::SYSCALLBUF_ABORT_COMMIT:
+      ret.ev = Event(EV_SYSCALLBUF_ABORT_COMMIT, exec_info, arch);
+      break;
+    case trace::Frame::Event::SYSCALLBUF_RESET:
+      ret.ev = Event(EV_SYSCALLBUF_RESET, exec_info, arch);
+      break;
+    case trace::Frame::Event::SCHED:
+      ret.ev = Event(EV_SCHED, exec_info, arch);
+      break;
+    case trace::Frame::Event::GROW_MAP:
+      ret.ev = Event(EV_GROW_MAP, exec_info, arch);
+      break;
+    case trace::Frame::Event::SIGNAL:
+      ret.ev = Event(EV_SIGNAL, exec_info, arch);
+      from_trace_signal(event.getSignal(), ret.ev);
+      break;
+    case trace::Frame::Event::SIGNAL_DELIVERY:
+      ret.ev = Event(EV_SIGNAL_DELIVERY, exec_info, arch);
+      from_trace_signal(event.getSignalDelivery(), ret.ev);
+      break;
+    case trace::Frame::Event::SIGNAL_HANDLER:
+      ret.ev = Event(EV_SIGNAL_HANDLER, exec_info, arch);
+      from_trace_signal(event.getSignalHandler(), ret.ev);
+      break;
+    case trace::Frame::Event::EXIT:
+      ret.ev = Event(EV_EXIT, exec_info, arch);
+      break;
+    case trace::Frame::Event::SYSCALLBUF_FLUSH: {
+      ret.ev = Event(EV_SYSCALLBUF_FLUSH, exec_info, arch);
+      auto mprotect_records = event.getSyscallbufFlush().getMprotectRecords();
+      auto& records = ret.ev.SyscallbufFlush().mprotect_records;
+      records.resize(mprotect_records.size() / sizeof(mprotect_record));
+      memcpy(records.data(), mprotect_records.begin(),
+             records.size() * sizeof(mprotect_record));
+      break;
+    }
+    case trace::Frame::Event::SYSCALL: {
+      auto syscall = event.getSyscall();
+      ret.ev = Event(EV_SYSCALL, exec_info, from_trace_arch(syscall.getArch()));
+      auto& syscall_ev = ret.ev.Syscall();
+      syscall_ev.number = syscall.getNumber();
+      syscall_ev.state = from_trace_syscall_state(syscall.getState());
+      syscall_ev.failed_during_preparation =
+          syscall.getFailedDuringPreparation();
+      auto data = syscall.getExtra();
+      switch (data.which()) {
+        case trace::Frame::Event::Syscall::Extra::NONE:
+          break;
+        case trace::Frame::Event::Syscall::Extra::WRITE_OFFSET:
+          syscall_ev.write_offset = data.getWriteOffset();
+          if (syscall_ev.write_offset < 0) {
+            FATAL() << "Write offset out of range";
+          }
+          break;
+        case trace::Frame::Event::Syscall::Extra::EXEC_FDS_TO_CLOSE: {
+          auto exec_fds = data.getExecFdsToClose();
+          syscall_ev.exec_fds_to_close.resize(exec_fds.size());
+          for (size_t i = 0; i < exec_fds.size(); ++i) {
+            syscall_ev.exec_fds_to_close[i] = check_fd(exec_fds[i]);
+          }
+          break;
+        }
+        case trace::Frame::Event::Syscall::Extra::OPENED_FDS: {
+          auto open = data.getOpenedFds();
+          syscall_ev.opened.resize(open.size());
+          for (size_t i = 0; i < open.size(); ++i) {
+            syscall_ev.opened[i].fd = check_fd(open[i].getFd());
+            syscall_ev.opened[i].path = data_to_str(open[i].getPath());
+          }
+          break;
+        }
+        default:
+          FATAL() << "Unknown syscall type";
+          break;
+      }
+      break;
+    }
+    default:
+      FATAL() << "Event type not supported";
+      break;
+  }
+
+  return ret;
 }
 
 void TraceWriter::write_task_event(const TraceTaskEvent& event) {
@@ -383,13 +651,6 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
   } catch (...) {
     FATAL() << "Unable to write tasks";
   }
-}
-
-static pid_t i32_to_tid(int tid) {
-  if (tid <= 0) {
-    FATAL() << "Invalid tid";
-  }
-  return tid;
 }
 
 TraceTaskEvent TraceReader::read_task_event() {
@@ -697,72 +958,37 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
 void TraceWriter::write_raw(pid_t rec_tid, const void* d, size_t len,
                             remote_ptr<void> addr) {
   auto& data = writer(RAW_DATA);
-  auto& data_header = writer(RAW_DATA_HEADER);
-  data_header << global_time << rec_tid << addr.as_int() << len;
+  raw_recs.push_back({ addr, len, rec_tid });
   data.write(d, len);
 }
 
 TraceReader::RawData TraceReader::read_raw_data() {
-  auto& data = reader(RAW_DATA);
-  auto& data_header = reader(RAW_DATA_HEADER);
-  FrameTime time;
   RawData d;
-  size_t num_bytes;
-  data_header >> time >> d.rec_tid >> d.addr >> num_bytes;
-  assert(time == global_time);
-  d.data.resize(num_bytes);
-  data.read((char*)d.data.data(), num_bytes);
+  if (!read_raw_data_for_frame(d)) {
+    FATAL() << "Expected raw data, found none";
+  }
   return d;
 }
 
-bool TraceReader::read_raw_data_for_frame(const TraceFrame& frame, RawData& d) {
-  auto& data_header = reader(RAW_DATA_HEADER);
-  if (data_header.at_end()) {
+bool TraceReader::read_raw_data_for_frame(RawData& d) {
+  if (raw_recs.empty()) {
     return false;
   }
-  FrameTime time;
-  data_header.save_state();
-  data_header >> time;
-  data_header.restore_state();
-  assert(time >= frame.time());
-  if (time > frame.time()) {
-    return false;
-  }
-  d = read_raw_data();
+  auto& rec = raw_recs[raw_recs.size() - 1];
+  d.rec_tid = rec.rec_tid;
+  d.addr = rec.addr;
+  d.data.resize(rec.size);
+  reader(RAW_DATA).read((char*)d.data.data(), rec.size);
+  raw_recs.pop_back();
   return true;
 }
 
-void TraceWriter::write_generic(const void* d, size_t len) {
-  auto& generic = writer(GENERIC);
-  generic << global_time << len;
-  generic.write(d, len);
-}
-
-void TraceReader::read_generic(vector<uint8_t>& out) {
-  auto& generic = reader(GENERIC);
-  FrameTime time;
-  size_t num_bytes;
-  generic >> time >> num_bytes;
-  assert(time == global_time);
-  out.resize(num_bytes);
-  generic.read((char*)out.data(), num_bytes);
-}
-
-bool TraceReader::read_generic_for_frame(const TraceFrame& frame,
-                                         vector<uint8_t>& out) {
-  auto& generic = reader(GENERIC);
-  if (generic.at_end()) {
+bool TraceReader::read_raw_data_metadata_for_frame(RawDataMetadata& d) {
+  if (raw_recs.empty()) {
     return false;
   }
-  FrameTime time;
-  generic.save_state();
-  generic >> time;
-  generic.restore_state();
-  assert(time >= frame.time());
-  if (time > frame.time()) {
-    return false;
-  }
-  read_generic(out);
+  d = raw_recs[raw_recs.size() - 1];
+  raw_recs.pop_back();
   return true;
 }
 
@@ -993,6 +1219,7 @@ TraceReader::TraceReader(const TraceReader& other)
   bind_to_cpu = other.bind_to_cpu;
   trace_uses_cpuid_faulting = other.trace_uses_cpuid_faulting;
   cpuid_records_ = other.cpuid_records_;
+  raw_recs = other.raw_recs;
 }
 
 TraceReader::~TraceReader() {}

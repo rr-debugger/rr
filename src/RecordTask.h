@@ -511,8 +511,6 @@ private:
    */
   void send_synthetic_SIGCHLD_if_necessary();
 
-  void record_siginfo();
-
   /**
    * Call this when SYS_sigaction is finishing with |regs|.
    */

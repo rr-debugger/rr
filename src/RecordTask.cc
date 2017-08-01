@@ -1549,23 +1549,20 @@ void RecordTask::maybe_flush_syscallbuf() {
     return;
   }
 
+  push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));
+
   // Apply buffered mprotect operations and flush the buffer in the tracee.
   if (hdr.mprotect_record_count) {
-    auto records =
-        read_mem(REMOTE_PTR_FIELD(preload_globals, mprotect_records[0]),
-                 hdr.mprotect_record_count);
+    auto& records = ev().SyscallbufFlush().mprotect_records;
+    records = read_mem(REMOTE_PTR_FIELD(preload_globals, mprotect_records[0]),
+                       hdr.mprotect_record_count);
     for (auto& r : records) {
       as->protect(this, r.start, r.size, r.prot);
     }
-    // We write these out because some tools might benefit from them, and
-    // this is cheap.
-    trace_writer().write_generic(records.data(),
-                                 records.size() * sizeof(records[0]));
   }
 
   // Write the entire buffer in one shot without parsing it,
   // because replay will take care of that.
-  push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO, arch()));
   if (is_running()) {
     vector<uint8_t> buf;
     buf.resize(sizeof(hdr) + hdr.num_rec_bytes);
@@ -1624,17 +1621,7 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     maybe_flush_syscallbuf();
   }
 
-  if (ev.type() == EV_SIGNAL) {
-    record_siginfo();
-  }
-
   FrameTime current_time = trace_writer().time();
-  TraceFrame frame(current_time, tid, ev, tick_count());
-  if (ev.record_exec_info() == HAS_EXEC_INFO) {
-    frame.set_exec_info(registers ? *registers : regs(),
-                        record_extra_regs(ev) ? &extra_regs() : nullptr);
-  }
-
   if (should_dump_memory(ev, current_time)) {
     dump_process_memory(this, current_time, "rec");
   }
@@ -1642,7 +1629,18 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     checksum_process_memory(this, current_time);
   }
 
-  trace_writer().write_frame(frame);
+  const ExtraRegisters* extra_registers = nullptr;
+  if (ev.record_exec_info() == HAS_EXEC_INFO) {
+    if (!registers) {
+      registers = &regs();
+    }
+    if (record_extra_regs(ev)) {
+      extra_registers = &extra_regs();
+    }
+  }
+
+  trace_writer().write_frame(tid, arch(), ev, tick_count(), registers,
+                             extra_registers);
   LOG(debug) << "Wrote event " << ev << " for time " << current_time;
 
   if (!ev.has_ticks_slop() && ev.type() != EV_EXIT) {
@@ -1674,26 +1672,6 @@ bool RecordTask::is_fatal_signal(int sig, SignalDeterministic deterministic) {
   }
   // If there's a signal handler, the signal won't be fatal.
   return !signal_has_user_handler(sig);
-}
-
-void RecordTask::record_siginfo() {
-  int sig = ev().Signal().siginfo.si_signo;
-  bool is_fatal = is_fatal_signal(sig, ev().Signal().deterministic);
-  bool blocked = is_sig_blocked(sig);
-  bool has_handler = signal_has_user_handler(sig) && !blocked;
-  uint8_t buf[sizeof(siginfo_t) + 1];
-  if (is_fatal) {
-    buf[0] = DISPOSITION_FATAL;
-  } else if (has_handler) {
-    buf[0] = DISPOSITION_USER_HANDLER;
-  } else {
-    buf[0] = DISPOSITION_IGNORED;
-  }
-  // We don't currently use the disposition byte during replay or debugging but
-  // it might be useful to other trace consumers.
-  memcpy(buf + 1, &ev().Signal().siginfo, sizeof(siginfo_t));
-
-  trace_writer().write_generic(buf, sizeof(buf));
 }
 
 void RecordTask::record_current_event() { record_event(ev()); }

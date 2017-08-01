@@ -134,7 +134,7 @@ ssize_t ReplayTask::set_data_from_trace() {
 
 void ReplayTask::apply_all_data_records_from_trace() {
   TraceReader::RawData buf;
-  while (trace_reader().read_raw_data_for_frame(current_trace_frame(), buf)) {
+  while (trace_reader().read_raw_data_for_frame(buf)) {
     if (!buf.addr.is_null() && buf.data.size() > 0) {
       auto t = session().find_task(buf.rec_tid);
       t->write_bytes_helper(buf.addr, buf.data.size(), buf.data.data());

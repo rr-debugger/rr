@@ -181,7 +181,7 @@ static void set_arch_siginfo_arch(const siginfo_t& src, void* dest,
                                   size_t dest_size) {
   // Copying this structure field-by-field instead of just memcpy'ing
   // siginfo into si serves two purposes: performs 64->32 conversion if
-  // necessary, and ensures garbage in any holes in signfo isn't copied to the
+  // necessary, and ensures garbage in any holes in siginfo isn't copied to the
   // tracee.
   auto si = static_cast<typename Arch::siginfo_t*>(dest);
   assert(dest_size == sizeof(*si));

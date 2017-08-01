@@ -481,8 +481,9 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
                   } else {
                     layout = xsave_native_layout();
                   }
-                  bool ok = r.set_to_raw_data(
-                      tracee->arch(), ExtraRegisters::XSAVE, set, layout);
+                  bool ok =
+                      r.set_to_raw_data(tracee->arch(), ExtraRegisters::XSAVE,
+                                        set.data(), set.size(), layout);
                   ASSERT(this, ok) << "Invalid XSAVE data";
                   tracee->set_extra_regs(r);
                   break;

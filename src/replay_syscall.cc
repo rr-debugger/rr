@@ -548,12 +548,8 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
                                : datas[exe_km].file_name;
   t->post_exec_syscall(exe_name);
 
-  vector<uint8_t> buf;
-  t->trace_reader().read_generic(buf);
-  vector<int> fds_to_close;
-  fds_to_close.resize(buf.size() / sizeof(int));
-  memcpy(fds_to_close.data(), buf.data(), fds_to_close.size() * sizeof(int));
-  t->fd_table()->close_after_exec(t, fds_to_close);
+  t->fd_table()->close_after_exec(
+      t, t->current_trace_frame().event().Syscall().exec_fds_to_close);
 
   {
     // Tell AutoRemoteSyscalls that we don't need memory parameters. This will
@@ -915,7 +911,7 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
   // is still the case.)
   if (found && data.source == TraceReader::SOURCE_TRACE) {
     TraceReader::RawData buf;
-    if (t->trace_reader().read_raw_data_for_frame(trace_frame, buf)) {
+    if (t->trace_reader().read_raw_data_for_frame(buf)) {
       auto& mapping = t->vm()->mapping_of(new_addr);
       auto f = mapping.emu_file;
       if (f) {
@@ -1090,21 +1086,17 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
 }
 
 static void handle_opened_files(ReplayTask* t) {
-  vector<uint8_t> buf;
-  while (
-      t->trace_reader().read_generic_for_frame(t->current_trace_frame(), buf)) {
-    int fd = *reinterpret_cast<int*>(buf.data());
-    t->trace_reader().read_generic(buf);
-    string pathname(reinterpret_cast<const char*>(buf.data()), buf.size());
+  const auto& opened = t->current_trace_frame().event().Syscall().opened;
+  for (const auto& o : opened) {
     // This must be kept in sync with replay_syscall's handle_opened_file.
-    if (pathname == "terminal") {
-      t->fd_table()->add_monitor(fd, new StdioMonitor(STDERR_FILENO));
-    } else if (is_proc_mem_file(pathname.c_str())) {
-      t->fd_table()->add_monitor(fd, new ProcMemMonitor(t, pathname));
-    } else if (is_proc_fd_dir(pathname.c_str())) {
-      t->fd_table()->add_monitor(fd, new ProcFdDirMonitor(t, pathname));
+    if (o.path == "terminal") {
+      t->fd_table()->add_monitor(o.fd, new StdioMonitor(STDERR_FILENO));
+    } else if (is_proc_mem_file(o.path.c_str())) {
+      t->fd_table()->add_monitor(o.fd, new ProcMemMonitor(t, o.path));
+    } else if (is_proc_fd_dir(o.path.c_str())) {
+      t->fd_table()->add_monitor(o.fd, new ProcFdDirMonitor(t, o.path));
     } else {
-      ASSERT(t, false) << "Why did we write filename " << pathname;
+      ASSERT(t, false) << "Why did we write filename " << o.path;
     }
   }
 }

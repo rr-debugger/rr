@@ -57,9 +57,8 @@ public:
 
   // Set values from raw data, with the given XSAVE layout. Returns false
   // if this could not be done.
-  bool set_to_raw_data(SupportedArch a, Format format,
-                       std::vector<uint8_t>& consume_data,
-                       const XSaveLayout& layout);
+  bool set_to_raw_data(SupportedArch a, Format format, const uint8_t* data,
+                       size_t data_size, const XSaveLayout& layout);
   Format format() const { return format_; }
   SupportedArch arch() const { return arch_; }
   const std::vector<uint8_t> data() const { return data_; }

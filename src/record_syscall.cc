@@ -4202,9 +4202,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   }
 
   t->post_exec_syscall();
-  vector<int> fds_to_close = t->fd_table()->fds_to_close_after_exec(t);
-  t->trace_writer().write_generic(fds_to_close.data(),
-                                  fds_to_close.size() * sizeof(int));
+  t->ev().Syscall().exec_fds_to_close =
+      t->fd_table()->fds_to_close_after_exec(t);
 
   check_privileged_exe(t);
 
@@ -4642,8 +4641,8 @@ static void handle_opened_file(RecordTask* t, int fd) {
 
   if (do_write) {
     // Write absolute file name
-    t->trace_writer().write_generic(&fd, sizeof(fd));
-    t->trace_writer().write_generic(pathname.c_str(), pathname.size());
+    auto& syscall = t->ev().Syscall();
+    syscall.opened.push_back({ pathname, fd });
   }
 }
 

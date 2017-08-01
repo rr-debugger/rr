@@ -1,7 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#ifndef RR_TRACE_H_
-#define RR_TRACE_H_
+#ifndef RR_TRACE_STREAM_H_
+#define RR_TRACE_STREAM_H_
 
 #include <unistd.h>
 
@@ -37,6 +37,12 @@ protected:
   typedef std::string string;
 
 public:
+  struct RawDataMetadata {
+    remote_ptr<void> addr;
+    size_t size;
+    pid_t rec_tid;
+  };
+
   /**
    * Update |substreams| and TRACE_VERSION when you update this list.
    */
@@ -44,17 +50,12 @@ public:
     SUBSTREAM_FIRST,
     // Substream that stores events (trace frames).
     EVENTS = SUBSTREAM_FIRST,
-    // Substreams that store raw data saved from tracees (|RAW_DATA|), and
-    // metadata about the stored data (|RAW_DATA_HEADER|).
-    RAW_DATA_HEADER,
     RAW_DATA,
     // Substream that stores metadata about files mmap'd during
     // recording.
     MMAPS,
     // Substream that stores task creation and exec events
     TASKS,
-    // Substream that stores arbitrary per-event records
-    GENERIC,
     SUBSTREAM_COUNT
   };
 
@@ -133,7 +134,9 @@ public:
    * Recording a trace frame has the side effect of ticking
    * the global time.
    */
-  void write_frame(const TraceFrame& frame);
+  void write_frame(pid_t tid, SupportedArch arch, const Event& ev,
+                   Ticks tick_count, const Registers* registers,
+                   const ExtraRegisters* extra_registers);
 
   enum RecordInTrace { DONT_RECORD_IN_TRACE, RECORD_IN_TRACE };
   enum MappingOrigin {
@@ -168,11 +171,6 @@ public:
    * Write a task event (clone or exec record) to the trace.
    */
   void write_task_event(const TraceTaskEvent& event);
-
-  /**
-   * Write a generic data record to the trace.
-   */
-  void write_generic(const void* data, size_t len);
 
   /**
    * Return true iff all trace files are "good".
@@ -215,6 +213,7 @@ private:
    * i.e. that we have already assumed to be immutable.
    */
   std::set<std::pair<dev_t, ino_t>> files_assumed_immutable;
+  std::vector<RawDataMetadata> raw_recs;
   uint32_t mmap_count;
   bool supports_file_data_cloning_;
 };
@@ -260,20 +259,22 @@ public:
   TraceTaskEvent read_task_event();
 
   /**
-   * Read the next raw data record and return it.
+   * Read the next raw data record for this frame and return it. Aborts if
+   * there are no more raw data records for this frame.
    */
   RawData read_raw_data();
 
   /**
-   * Reads the next raw data record for 'frame' from the current point in
-   * the trace. If there are no more raw data records for 'frame', returns
-   * false.
+   * Reads the next raw data record for last-read frame. If there are no more
+   * raw data records for this frame, return false.
    */
-  bool read_raw_data_for_frame(const TraceFrame& frame, RawData& d);
+  bool read_raw_data_for_frame(RawData& d);
 
-  void read_generic(std::vector<uint8_t>& out);
-  bool read_generic_for_frame(const TraceFrame& frame,
-                              std::vector<uint8_t>& out);
+  /**
+   * Like read_raw_data_for_frame, but doesn't actually read the data bytes.
+   * The array is resized but the data is not filled in.
+   */
+  bool read_raw_data_metadata_for_frame(RawDataMetadata& d);
 
   /**
    * Return true iff all trace files are "good".
@@ -327,9 +328,10 @@ private:
 
   std::unique_ptr<CompressedReader> readers[SUBSTREAM_COUNT];
   std::vector<CPUIDRecord> cpuid_records_;
+  std::vector<RawDataMetadata> raw_recs;
   bool trace_uses_cpuid_faulting;
 };
 
 } // namespace rr
 
-#endif /* RR_TRACE_H_ */
+#endif /* RR_TRACE_STREAM_H_ */

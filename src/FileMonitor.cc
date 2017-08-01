@@ -77,14 +77,15 @@ int64_t FileMonitor::LazyOffset::retrieve(bool needed_for_replay) {
   // There is no way we can figure out this information now, so retrieve it
   // from the trace (we record it below under the same circumstance).
   if (is_replay && is_implicit_offset) {
-    vector<uint8_t> buf;
-    static_cast<ReplayTask*>(t)->trace_reader().read_generic(buf);
-    return *reinterpret_cast<int64_t*>(buf.data());
+    return static_cast<ReplayTask*>(t)
+        ->current_trace_frame()
+        .event()
+        .Syscall()
+        .write_offset;
   }
   int64_t offset = retrieve_offset(t, syscallno, regs);
   if (needed_for_replay && is_implicit_offset) {
-    static_cast<RecordTask*>(t)->trace_writer().write_generic(&offset,
-                                                              sizeof(offset));
+    static_cast<RecordTask*>(t)->ev().Syscall().write_offset = offset;
   }
   return offset;
 }
