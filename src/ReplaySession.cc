@@ -152,7 +152,6 @@ static bool can_checkpoint_at(const TraceFrame& frame) {
   }
   switch (ev.type()) {
     case EV_EXIT:
-    case EV_UNSTABLE_EXIT:
     // At exits, we can't clone the exiting tasks, so
     // don't event bother trying to checkpoint.
     case EV_SYSCALLBUF_RESET:
@@ -1361,7 +1360,6 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   memset(&current_step, 0, sizeof(current_step));
 
   switch (ev.type()) {
-    case EV_UNSTABLE_EXIT:
     case EV_EXIT:
       current_step.action = TSTEP_EXIT_TASK;
       break;

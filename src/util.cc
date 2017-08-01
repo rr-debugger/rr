@@ -430,7 +430,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 }
 
 bool should_checksum(const TraceFrame& f) {
-  if (f.event().type() == EV_EXIT || f.event().type() == EV_UNSTABLE_EXIT) {
+  if (f.event().type() == EV_EXIT) {
     // Task is dead, or at least detached, and we can't read its memory safely.
     return false;
   }

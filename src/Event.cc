@@ -30,7 +30,6 @@ Event::Event(EncodedEvent e) {
     case EV_PATCH_SYSCALL:
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
-    case EV_UNSTABLE_EXIT:
       new (&Base()) BaseEvent(e.has_exec_info, e.arch());
       // No auxiliary data.
       assert(0 == e.data);
@@ -144,7 +143,6 @@ EncodedEvent Event::encode() const {
     case EV_PATCH_SYSCALL:
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
-    case EV_UNSTABLE_EXIT:
       // No auxiliary data.
       set_encoded_event_data(&e, 0);
       return e;
@@ -280,7 +278,6 @@ std::string Event::type_name() const {
       CASE(SYSCALLBUF_RESET);
       CASE(PATCH_SYSCALL);
       CASE(GROW_MAP);
-      CASE(UNSTABLE_EXIT);
       CASE(DESCHED);
       CASE(SIGNAL);
       CASE(SIGNAL_DELIVERY);

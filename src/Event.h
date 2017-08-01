@@ -76,10 +76,6 @@ enum EventType {
   // Map memory pages due to a (future) memory access. This is associated
   // with a mmap entry for the new pages.
   EV_GROW_MAP,
-  // Like EV_EXIT, but recorded when the task is in an
-  // "unstable" state in which we're not sure we can
-  // synchronously wait for it to "really finish".
-  EV_UNSTABLE_EXIT,
   // Use .signal.
   EV_SIGNAL,
   EV_SIGNAL_DELIVERY,
