@@ -1861,19 +1861,10 @@ void RecordSession::terminate_recording() {
 
   LOG(info) << "Processing termination request ...";
 
-  pid_t ttid = t ? t->tid : 0;
-  auto tticks = t ? t->tick_count() : 0;
-
   // This will write unstable exit events for all tasks.
   kill_all_tasks();
   t = nullptr; // t is now deallocated
 
-  LOG(info) << "  recording final TRACE_TERMINATION event ...";
-
-  TraceFrame frame(trace_out.time(), ttid,
-                   Event(EV_TRACE_TERMINATION, NO_EXEC_INFO, RR_NATIVE_ARCH),
-                   tticks);
-  trace_out.write_frame(frame);
   trace_out.close();
 }
 

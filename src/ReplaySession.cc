@@ -160,8 +160,7 @@ static bool can_checkpoint_at(const TraceFrame& frame) {
     // entry/exit.  Do not attempting to checkpoint at
     // RESETs.  Users would never want to do that anyway.
     case EV_TRACE_TERMINATION:
-      // There's nothing to checkpoint at the end of an
-      // early-terminated trace.
+      // There's nothing to checkpoint at the end of a trace.
       return false;
     default:
       return true;
@@ -217,7 +216,6 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
 
 void ReplaySession::advance_to_next_trace_frame() {
   if (trace_in.at_end()) {
-    // Synthesize final frame if the trace was abruptly terminated
     trace_frame =
         TraceFrame(trace_frame.time(), 0,
                    Event(EV_TRACE_TERMINATION, NO_EXEC_INFO, RR_NATIVE_ARCH),

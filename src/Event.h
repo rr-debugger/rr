@@ -50,6 +50,8 @@ enum EventType {
   EV_NOOP,
   EV_DESCHED,
   EV_SECCOMP_TRAP,
+  // Not stored in trace, but synthesized when we reach the end of the trace.
+  EV_TRACE_TERMINATION,
 
   // Events present in traces:
 
@@ -81,11 +83,6 @@ enum EventType {
   // Map memory pages due to a (future) memory access. This is associated
   // with a mmap entry for the new pages.
   EV_GROW_MAP,
-  // The trace was terminated before all tasks exited, most
-  // likely because the recorder was sent a terminating signal.
-  // There are no more trace frames coming, so the best thing to
-  // do is probably to shut down.
-  EV_TRACE_TERMINATION,
   // Like USR_EXIT, but recorded when the task is in an
   // "unstable" state in which we're not sure we can
   // synchronously wait for it to "really finish".
