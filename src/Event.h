@@ -57,10 +57,6 @@ enum EventType {
 
   // No associated data.
   EV_EXIT,
-  // Tracee exited its sighandler.  We leave this breadcrumb so
-  // that the popping of not-restarted syscall interruptions and
-  // sigreturns is replayed in the same order.
-  EV_EXIT_SIGHANDLER,
   // Scheduling signal interrupted the trace.
   EV_SCHED,
   // A disabled RDTSC or CPUID instruction.
@@ -79,7 +75,7 @@ enum EventType {
   // Map memory pages due to a (future) memory access. This is associated
   // with a mmap entry for the new pages.
   EV_GROW_MAP,
-  // Like USR_EXIT, but recorded when the task is in an
+  // Like EV_EXIT, but recorded when the task is in an
   // "unstable" state in which we're not sure we can
   // synchronously wait for it to "really finish".
   EV_UNSTABLE_EXIT,

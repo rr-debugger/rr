@@ -1402,10 +1402,6 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       process_grow_map(t);
       current_step.action = TSTEP_RETIRE;
       break;
-    case EV_EXIT_SIGHANDLER:
-      LOG(debug) << "<-- sigreturn";
-      current_step.action = TSTEP_RETIRE;
-      break;
     case EV_SIGNAL: {
       vector<uint8_t> data;
       trace_reader().read_generic(data);

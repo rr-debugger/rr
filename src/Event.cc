@@ -31,7 +31,6 @@ Event::Event(EncodedEvent e) {
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
     case EV_UNSTABLE_EXIT:
-    case EV_EXIT_SIGHANDLER:
       new (&Base()) BaseEvent(e.has_exec_info, e.arch());
       // No auxiliary data.
       assert(0 == e.data);
@@ -146,7 +145,6 @@ EncodedEvent Event::encode() const {
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
     case EV_UNSTABLE_EXIT:
-    case EV_EXIT_SIGHANDLER:
       // No auxiliary data.
       set_encoded_event_data(&e, 0);
       return e;
@@ -273,7 +271,6 @@ std::string Event::type_name() const {
   case EV_##_t:                                                                \
     return #_t
       CASE(EXIT);
-      CASE(EXIT_SIGHANDLER);
       CASE(NOOP);
       CASE(SCHED);
       CASE(SECCOMP_TRAP);

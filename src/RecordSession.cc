@@ -821,7 +821,6 @@ void RecordSession::syscall_state_changed(RecordTask* t,
 
         // We've finished processing this signal now.
         t->pop_signal_handler();
-        t->record_event(Event(EV_EXIT_SIGHANDLER, NO_EXEC_INFO, t->arch()));
         t->invalidate_sigmask();
 
         maybe_discard_syscall_interruption(t, retval);
