@@ -61,10 +61,6 @@ enum EventType {
   // that the popping of not-restarted syscall interruptions and
   // sigreturns is replayed in the same order.
   EV_EXIT_SIGHANDLER,
-  // Pretty self-explanatory: recording detected that an
-  // interrupted syscall wasn't restarted, so the interruption
-  // record can be popped off the tracee's event stack.
-  EV_INTERRUPTED_SYSCALL_NOT_RESTARTED,
   // Scheduling signal interrupted the trace.
   EV_SCHED,
   // A disabled RDTSC or CPUID instruction.

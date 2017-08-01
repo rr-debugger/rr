@@ -31,7 +31,6 @@ Event::Event(EncodedEvent e) {
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
     case EV_UNSTABLE_EXIT:
-    case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
     case EV_EXIT_SIGHANDLER:
       new (&Base()) BaseEvent(e.has_exec_info, e.arch());
       // No auxiliary data.
@@ -147,7 +146,6 @@ EncodedEvent Event::encode() const {
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
     case EV_UNSTABLE_EXIT:
-    case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
     case EV_EXIT_SIGHANDLER:
       // No auxiliary data.
       set_encoded_event_data(&e, 0);
@@ -193,7 +191,6 @@ bool Event::has_ticks_slop() const {
     case EV_SYSCALLBUF_ABORT_COMMIT:
     case EV_SYSCALLBUF_FLUSH:
     case EV_SYSCALLBUF_RESET:
-    case EV_INTERRUPTED_SYSCALL_NOT_RESTARTED:
     case EV_DESCHED:
     case EV_GROW_MAP:
       return true;
@@ -277,7 +274,6 @@ std::string Event::type_name() const {
     return #_t
       CASE(EXIT);
       CASE(EXIT_SIGHANDLER);
-      CASE(INTERRUPTED_SYSCALL_NOT_RESTARTED);
       CASE(NOOP);
       CASE(SCHED);
       CASE(SECCOMP_TRAP);

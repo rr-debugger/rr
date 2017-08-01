@@ -615,9 +615,6 @@ static void syscall_not_restarted(RecordTask* t) {
     t->log_pending_events();
   }
   t->pop_syscall_interruption();
-
-  t->record_event(
-      Event(EV_INTERRUPTED_SYSCALL_NOT_RESTARTED, NO_EXEC_INFO, t->arch()));
 }
 
 /**
