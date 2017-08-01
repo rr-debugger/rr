@@ -156,15 +156,13 @@ static void maybe_noop_restore_syscallbuf_scratch(ReplayTask* t) {
 static TraceTaskEvent read_task_trace_event(ReplayTask* t,
                                             TraceTaskEvent::Type type) {
   TraceTaskEvent tte;
-  while (true) {
-    ASSERT(t, t->trace_reader().good()) << "Unable to find TraceTaskEvent; "
-                                           "trace is corrupt (did you kill -9 "
-                                           "rr?)";
+  do {
     tte = t->trace_reader().read_task_event();
-    if (tte.type() == type) {
-      break;
-    }
-  }
+    ASSERT(t, tte.type() != TraceTaskEvent::NONE)
+        << "Unable to find TraceTaskEvent; "
+           "trace is corrupt (did you kill -9 "
+           "rr?)";
+  } while (tte.type() != type);
   return tte;
 }
 

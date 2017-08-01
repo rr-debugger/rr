@@ -231,8 +231,11 @@ static int find_pid_for_command(const string& trace_dir,
                                 const string& command) {
   TraceReader trace(trace_dir);
 
-  while (trace.good()) {
-    auto e = trace.read_task_event();
+  while (true) {
+    TraceTaskEvent e = trace.read_task_event();
+    if (e.type() == TraceTaskEvent::NONE) {
+      return -1;
+    }
     if (e.type() != TraceTaskEvent::EXEC) {
       continue;
     }
@@ -246,31 +249,34 @@ static int find_pid_for_command(const string& trace_dir,
       return e.tid();
     }
   }
-  return -1;
 }
 
 static bool pid_exists(const string& trace_dir, pid_t pid) {
   TraceReader trace(trace_dir);
 
-  while (trace.good()) {
+  while (true) {
     auto e = trace.read_task_event();
+    if (e.type() == TraceTaskEvent::NONE) {
+      return false;
+    }
     if (e.tid() == pid) {
       return true;
     }
   }
-  return false;
 }
 
 static bool pid_execs(const string& trace_dir, pid_t pid) {
   TraceReader trace(trace_dir);
 
-  while (trace.good()) {
+  while (true) {
     auto e = trace.read_task_event();
+    if (e.type() == TraceTaskEvent::NONE) {
+      return false;
+    }
     if (e.tid() == pid && e.type() == TraceTaskEvent::EXEC) {
       return true;
     }
   }
-  return false;
 }
 
 // The parent process waits until the server, |waiting_for_child|, creates a

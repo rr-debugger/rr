@@ -102,8 +102,12 @@ static int ps(const string& trace_dir, FILE* out) {
   fprintf(out, "PID\tPPID\tEXIT\tCMD\n");
 
   vector<TraceTaskEvent> events;
-  while (trace.good()) {
-    events.push_back(trace.read_task_event());
+  while (true) {
+    TraceTaskEvent r = trace.read_task_event();
+    if (r.type() == TraceTaskEvent::NONE) {
+      break;
+    }
+    events.push_back(r);
   }
 
   if (events.empty() || events[0].type() != TraceTaskEvent::EXEC) {

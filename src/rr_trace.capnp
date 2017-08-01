@@ -62,3 +62,22 @@ struct MMap {
     }
   }
 }
+
+struct TaskEvent {
+  frameTime @0 :FrameTime;
+  tid @1 :Tid;
+  union {
+    clone :group {
+      parentTid @2 :Tid;
+      flags @3 :Int32;    # Kernel's CLONE_ flags
+      ownNsTid @4 :Tid;
+    }
+    exec :group {
+      fileName @5 :Data;
+      cmdLine @6 :List(Data);
+    }
+    exit :group {
+      exitStatus @7 :Int32;
+    }
+  }
+}

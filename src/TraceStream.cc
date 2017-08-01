@@ -36,7 +36,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 84
+#define TRACE_VERSION 85
 
 struct SubstreamData {
   const char* name;
@@ -230,6 +230,14 @@ bool TraceReader::good() const {
   return true;
 }
 
+static kj::ArrayPtr<const byte> str_to_data(const string& str) {
+  return kj::ArrayPtr<const byte>(reinterpret_cast<const byte*>(str.data()), str.size());
+}
+
+static string data_to_str(const kj::ArrayPtr<const byte>& data) {
+  return string(reinterpret_cast<const char*>(data.begin()), data.size());
+}
+
 struct BasicInfo {
   FrameTime global_time;
   pid_t tid_;
@@ -337,47 +345,91 @@ TraceFrame TraceReader::read_frame() {
 }
 
 void TraceWriter::write_task_event(const TraceTaskEvent& event) {
-  auto& tasks = writer(TASKS);
-  tasks << global_time << (char)event.type() << event.tid();
+  MallocMessageBuilder task_msg;
+  trace::TaskEvent::Builder task = task_msg.initRoot<trace::TaskEvent>();
+  task.setFrameTime(global_time);
+  task.setTid(event.tid());
+
   switch (event.type()) {
-    case TraceTaskEvent::CLONE:
-      tasks << event.parent_tid() << event.own_ns_tid() << event.clone_flags();
+    case TraceTaskEvent::CLONE: {
+      auto clone = task.initClone();
+      clone.setParentTid(event.parent_tid());
+      clone.setOwnNsTid(event.own_ns_tid());
+      clone.setFlags(event.clone_flags());
       break;
-    case TraceTaskEvent::EXEC:
-      tasks << event.file_name() << event.cmd_line();
+    }
+    case TraceTaskEvent::EXEC: {
+      auto exec = task.initExec();
+      exec.setFileName(str_to_data(event.file_name()));
+      const auto& event_cmd_line = event.cmd_line();
+      auto cmd_line = exec.initCmdLine(event_cmd_line.size());
+      for (size_t i = 0; i < event_cmd_line.size(); ++i) {
+        cmd_line.set(i, str_to_data(event_cmd_line[i]));
+      }
       break;
+    }
     case TraceTaskEvent::EXIT:
-      tasks << event.exit_status_;
+      task.initExit().setExitStatus(event.exit_status().get());
       break;
     case TraceTaskEvent::NONE:
       assert(0 && "Writing NONE TraceTaskEvent");
       break;
   }
+
+  try {
+    auto& tasks = writer(TASKS);
+    CompressedWriterOutputStream stream(tasks);
+    writePackedMessage(stream, task_msg);
+  } catch (...) {
+    FATAL() << "Unable to write tasks";
+  }
+}
+
+static pid_t i32_to_tid(int tid) {
+  if (tid <= 0) {
+    FATAL() << "Invalid tid";
+  }
+  return tid;
 }
 
 TraceTaskEvent TraceReader::read_task_event() {
-  auto& tasks = reader(TASKS);
   TraceTaskEvent r;
-  FrameTime time;
-  char type = TraceTaskEvent::NONE;
-  tasks >> time >> type >> r.tid_;
-  r.type_ = (TraceTaskEvent::Type)type;
-  switch (r.type()) {
-    case TraceTaskEvent::CLONE:
-      tasks >> r.parent_tid_ >> r.own_ns_tid_ >> r.clone_flags_;
+  auto& tasks = reader(TASKS);
+  if (tasks.at_end()) {
+    return r;
+  }
+
+  CompressedReaderInputStream stream(tasks);
+  PackedMessageReader task_msg(stream);
+  trace::TaskEvent::Reader task = task_msg.getRoot<trace::TaskEvent>();
+  r.tid_ = i32_to_tid(task.getTid());
+  switch (task.which()) {
+    case trace::TaskEvent::Which::CLONE: {
+      r.type_ = TraceTaskEvent::CLONE;
+      auto clone = task.getClone();
+      r.parent_tid_ = i32_to_tid(clone.getParentTid());
+      r.own_ns_tid_ = i32_to_tid(clone.getOwnNsTid());
+      r.clone_flags_ = clone.getFlags();
       break;
-    case TraceTaskEvent::EXEC:
-      tasks >> r.file_name_ >> r.cmd_line_;
+    }
+    case trace::TaskEvent::Which::EXEC: {
+      r.type_ = TraceTaskEvent::EXEC;
+      auto exec = task.getExec();
+      r.file_name_ = data_to_str(exec.getFileName());
+      auto cmd_line = exec.getCmdLine();
+      r.cmd_line_.resize(cmd_line.size());
+      for (size_t i = 0; i < cmd_line.size(); ++i) {
+        r.cmd_line_[i] = data_to_str(cmd_line[i]);
+      }
       break;
-    case TraceTaskEvent::EXIT:
-      tasks >> r.exit_status_;
-      break;
-    case TraceTaskEvent::NONE:
-      // Should be EOF only
-      assert(!tasks.good());
+    }
+    case trace::TaskEvent::Which::EXIT:
+      r.type_ = TraceTaskEvent::EXIT;
+      r.exit_status_ = WaitStatus(task.getExit().getExitStatus());
       break;
     default:
-      assert(false && "Corrupt Trace?");
+      assert(0 && "Unknown TraceEvent type");
+      break;
   }
   return r;
 }
@@ -433,14 +485,6 @@ bool TraceWriter::try_clone_file(RecordTask* t, const string& file_name,
 
   *new_name = path;
   return true;
-}
-
-static kj::ArrayPtr<const byte> str_to_data(const string& str) {
-  return kj::ArrayPtr<const byte>(reinterpret_cast<const byte*>(str.data()), str.size());
-}
-
-static string data_to_str(const kj::ArrayPtr<const byte>& data) {
-  return string(reinterpret_cast<const char*>(data.begin()), data.size());
 }
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
