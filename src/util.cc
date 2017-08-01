@@ -140,17 +140,6 @@ void format_dump_filename(Task* t, FrameTime global_time, const char* tag,
 bool should_dump_memory(const Event& event, FrameTime time) {
   const Flags* flags = &Flags::get();
 
-#if defined(FIRST_INTERESTING_EVENT)
-  int is_syscall_exit = event >= 0 && state == STATE_SYSCALL_EXIT;
-  if (is_syscall_exit && RECORD == Flags->option &&
-      FIRST_INTERESTING_EVENT <= global_time &&
-      global_time <= LAST_INTERESTING_EVENT) {
-    return true;
-  }
-  if (global_time > LAST_INTERESTING_EVENT) {
-    return false;
-  }
-#endif
   return flags->dump_on == Flags::DUMP_ON_ALL ||
          (event.is_syscall_event() &&
           event.Syscall().number == flags->dump_on) ||
@@ -446,15 +435,6 @@ bool should_checksum(const Event& event, FrameTime time) {
   bool is_syscall_exit =
       EV_SYSCALL == event.type() && EXITING_SYSCALL == event.Syscall().state;
 
-#if defined(FIRST_INTERESTING_EVENT)
-  if (is_syscall_exit && FIRST_INTERESTING_EVENT <= global_time &&
-      global_time <= LAST_INTERESTING_EVENT) {
-    return true;
-  }
-  if (global_time > LAST_INTERESTING_EVENT) {
-    return false;
-  }
-#endif
   if (Flags::CHECKSUM_NONE == checksum) {
     return false;
   }
