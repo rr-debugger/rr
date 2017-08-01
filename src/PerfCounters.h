@@ -42,10 +42,6 @@ public:
 
   void set_tid(pid_t tid);
 
-  // Change this to 'true' to enable perf counters that may be interesting
-  // for experimentation, but aren't necessary for core functionality.
-  static bool extra_perf_counters_enabled() { return false; }
-
   /**
    * Reset all counter values to 0 and program the counters to send
    * TIME_SLICE_SIGNAL when 'ticks_period' tick events have elapsed. (In reality
@@ -85,15 +81,6 @@ public:
    * hope that tracees don't either. */
   enum { TIME_SLICE_SIGNAL = SIGSTKFLT };
 
-  struct Extra {
-    Extra() : page_faults(0), hw_interrupts(0), instructions_retired(0) {}
-
-    int64_t page_faults;
-    int64_t hw_interrupts;
-    int64_t instructions_retired;
-  };
-  Extra read_extra();
-
   static bool is_ticks_attr(const perf_event_attr& attr);
 
   /**
@@ -120,9 +107,6 @@ private:
   ScopedFd fd_ticks_measure;
   ScopedFd fd_ticks_interrupt;
   ScopedFd fd_ticks_in_transaction;
-  ScopedFd fd_page_faults;
-  ScopedFd fd_hw_interrupts;
-  ScopedFd fd_instructions_retired;
   ScopedFd fd_useless_counter;
   bool started;
   bool counting;

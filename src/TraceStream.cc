@@ -32,7 +32,7 @@ namespace rr {
 // MUST increment this version number.  Otherwise users' old traces
 // will become unreplayable and they won't know why.
 //
-#define TRACE_VERSION 80
+#define TRACE_VERSION 81
 
 struct SubstreamData {
   const char* name;
@@ -209,7 +209,6 @@ void TraceWriter::write_frame(const TraceFrame& frame) {
     events << (char)frame.regs().arch();
     auto raw_regs = frame.regs().get_ptrace_for_arch(frame.regs().arch());
     events.write(raw_regs.data(), raw_regs.size());
-    events << frame.extra_perf_values();
     if (!events.good()) {
       FATAL() << "Tried to save registers to the trace, but failed";
     }
@@ -266,7 +265,6 @@ TraceFrame TraceReader::read_frame() {
       default:
         FATAL() << "Unknown arch";
     }
-    events >> frame.extra_perf;
 
     int extra_reg_bytes;
     char extra_reg_format;

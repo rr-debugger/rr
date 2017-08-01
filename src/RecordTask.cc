@@ -1628,14 +1628,7 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
 
   TraceFrame frame(trace_writer().time(), tid, ev, tick_count());
   if (ev.record_exec_info() == HAS_EXEC_INFO) {
-    PerfCounters::Extra extra_perf_values;
-    if (PerfCounters::extra_perf_counters_enabled()) {
-      extra_perf_values = hpc.read_extra();
-    }
     frame.set_exec_info(registers ? *registers : regs(),
-                        PerfCounters::extra_perf_counters_enabled()
-                            ? &extra_perf_values
-                            : nullptr,
                         record_extra_regs(ev) ? &extra_regs() : nullptr);
   }
 

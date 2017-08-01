@@ -643,14 +643,6 @@ void PerfCounters::reset(Ticks ticks_period) {
       FATAL() << "Failed to SETOWN_EX ticks event fd";
     }
     make_counter_async(fd_ticks_interrupt, PerfCounters::TIME_SLICE_SIGNAL);
-
-    if (extra_perf_counters_enabled()) {
-      int group_leader = fd_ticks_interrupt;
-      fd_hw_interrupts = start_counter(tid, group_leader, &hw_interrupts_attr);
-      fd_instructions_retired =
-          start_counter(tid, group_leader, &instructions_retired_attr);
-      fd_page_faults = start_counter(tid, group_leader, &page_faults_attr);
-    }
   } else {
     LOG(debug) << "Resetting counters with period " << ticks_period;
 
@@ -700,9 +692,6 @@ void PerfCounters::stop() {
 
   fd_ticks_interrupt.close();
   fd_ticks_measure.close();
-  fd_page_faults.close();
-  fd_hw_interrupts.close();
-  fd_instructions_retired.close();
   fd_useless_counter.close();
   fd_ticks_in_transaction.close();
 }
@@ -773,20 +762,6 @@ Ticks PerfCounters::read_ticks(Task* t) {
       << "Detected " << measure_val << " ticks, expected no more than "
       << adjusted_counting_period;
   return measure_val;
-}
-
-PerfCounters::Extra PerfCounters::read_extra() {
-  assert(extra_perf_counters_enabled());
-
-  Extra extra;
-  if (started) {
-    extra.page_faults = read_counter(fd_page_faults);
-    extra.hw_interrupts = read_counter(fd_hw_interrupts);
-    extra.instructions_retired = read_counter(fd_instructions_retired);
-  } else {
-    memset(&extra, 0, sizeof(extra));
-  }
-  return extra;
 }
 
 } // namespace rr

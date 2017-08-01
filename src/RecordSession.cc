@@ -1092,16 +1092,6 @@ static bool inject_handled_signal(RecordTask* t) {
   // SA_NODEFER, and signal frame construction triggering a synchronous SIGSEGV.
   t->invalidate_sigmask();
 
-  // It's been observed that when tasks enter
-  // sighandlers, the singlestep operation above
-  // doesn't retire any instructions; and
-  // indeed, if an instruction could be retired,
-  // this code wouldn't work.  This also
-  // cross-checks the sighandler information we
-  // maintain in |t->sighandlers|.
-  assert(!PerfCounters::extra_perf_counters_enabled() ||
-         0 == t->hpc.read_extra().instructions_retired);
-
   if (t->stop_sig() == SIGSEGV) {
     // Constructing the signal handler frame must have failed. The kernel will
     // kill the process after this. Stash the signal and make sure

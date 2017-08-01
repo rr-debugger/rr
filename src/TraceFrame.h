@@ -35,7 +35,6 @@ public:
   TraceFrame() : global_time(0), tid_(0), ticks_(0), monotonic_time_(0) {}
 
   void set_exec_info(const Registers& regs,
-                     const PerfCounters::Extra* extra_perf_values,
                      const ExtraRegisters* extra_regs);
 
   Time time() const { return global_time; }
@@ -46,7 +45,6 @@ public:
 
   const Registers& regs() const { return recorded_regs; }
   const ExtraRegisters& extra_regs() const { return recorded_extra_regs; }
-  const PerfCounters::Extra& extra_perf_values() const { return extra_perf; }
 
   /**
    * Log a human-readable representation of this to |out|
@@ -72,7 +70,6 @@ private:
   Ticks ticks_;
   double monotonic_time_;
 
-  PerfCounters::Extra extra_perf;
   Registers recorded_regs;
 
   // Only used when has_exec_info, but variable length (and usually not
