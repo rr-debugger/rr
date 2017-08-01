@@ -50,6 +50,7 @@ enum EventType {
   EV_NOOP,
   EV_DESCHED,
   EV_SECCOMP_TRAP,
+  EV_SYSCALL_INTERRUPTION,
   // Not stored in trace, but synthesized when we reach the end of the trace.
   EV_TRACE_TERMINATION,
 
@@ -85,7 +86,6 @@ enum EventType {
   EV_SIGNAL_HANDLER,
   // Use .syscall.
   EV_SYSCALL,
-  EV_SYSCALL_INTERRUPTION,
 
   EV_LAST
 };
