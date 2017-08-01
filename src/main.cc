@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <linux/version.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/utsname.h>
 
@@ -202,7 +203,7 @@ bool parse_global_option(std::vector<std::string>& args) {
         LOG(info) << "checksumming on all events";
         flags.checksum = Flags::CHECKSUM_ALL;
       } else {
-        flags.checksum = atoi(opt.value.c_str());
+        flags.checksum = strtoll(opt.value.c_str(), NULL, 10);
         LOG(info) << "checksumming on at event " << flags.checksum;
       }
       break;
@@ -210,7 +211,7 @@ bool parse_global_option(std::vector<std::string>& args) {
       if (opt.value == "RDTSC") {
         flags.dump_on = Flags::DUMP_ON_RDTSC;
       } else {
-        flags.dump_on = atoi(opt.value.c_str());
+        flags.dump_on = strtoll(opt.value.c_str(), NULL, 10);
       }
       break;
     case 'E':
@@ -229,7 +230,7 @@ bool parse_global_option(std::vector<std::string>& args) {
       flags.suppress_environment_warnings = true;
       break;
     case 'T':
-      flags.dump_at = atoi(opt.value.c_str());
+      flags.dump_at = strtoll(opt.value.c_str(), NULL, 10);
       break;
     case 'N':
       show_version = true;

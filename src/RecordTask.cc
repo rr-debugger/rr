@@ -1628,21 +1628,22 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     record_siginfo();
   }
 
-  TraceFrame frame(trace_writer().time(), tid, ev, tick_count());
+  FrameTime current_time = trace_writer().time();
+  TraceFrame frame(current_time, tid, ev, tick_count());
   if (ev.record_exec_info() == HAS_EXEC_INFO) {
     frame.set_exec_info(registers ? *registers : regs(),
                         record_extra_regs(ev) ? &extra_regs() : nullptr);
   }
 
-  if (should_dump_memory(frame)) {
-    dump_process_memory(this, frame.time(), "rec");
+  if (should_dump_memory(ev, current_time)) {
+    dump_process_memory(this, current_time, "rec");
   }
-  if (should_checksum(frame)) {
-    checksum_process_memory(this, frame.time());
+  if (should_checksum(ev, current_time)) {
+    checksum_process_memory(this, current_time);
   }
 
   trace_writer().write_frame(frame);
-  LOG(debug) << "Wrote event " << ev << " for time " << frame.time();
+  LOG(debug) << "Wrote event " << ev << " for time " << current_time;
 
   if (!ev.has_ticks_slop() && ev.type() != EV_EXIT) {
     ASSERT(this, flush == FLUSH_SYSCALLBUF);

@@ -108,9 +108,9 @@ void format_dump_filename(Task* t, FrameTime global_time, const char* tag,
                           char* filename, size_t filename_size);
 
 /**
- * Return true if the user requested memory be dumped at |f|.
+ * Return true if the user requested memory be dumped at this event/time.
  */
-bool should_dump_memory(const TraceFrame& f);
+bool should_dump_memory(const Event& event, FrameTime time);
 /**
  * Dump all of the memory in |t|'s address to the file
  * "[trace_dir]/[t->tid]_[global_time]_[tag]".
@@ -119,9 +119,9 @@ void dump_process_memory(Task* t, FrameTime global_time, const char* tag);
 
 /**
  * Return true if the user has requested |t|'s memory be
- * checksummed at |f|.
+ * checksummed at this event/time.
  */
-bool should_checksum(const TraceFrame& f);
+bool should_checksum(const Event& event, FrameTime time);
 /**
  * Write a checksum of each mapped region in |t|'s address space to a
  * special log, where it can be read by |validate_process_memory()|

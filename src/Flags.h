@@ -22,7 +22,7 @@ struct Flags {
    * CHECKSUM_SYSCALL or CHECKSUM_ALL, or a positive integer representing the
    * event time at which to start checksumming.
    */
-  int checksum;
+  FrameTime checksum;
 
   enum {
     DUMP_ON_ALL = 10000,
@@ -33,7 +33,7 @@ struct Flags {
 
   enum { DUMP_AT_NONE = -1 };
   /* time at which to create memory dump */
-  int dump_at; // global time
+  FrameTime dump_at; // global time
 
   // Force rr to do some things that it otherwise wouldn't, for
   // example launching an emergency debugger when the output

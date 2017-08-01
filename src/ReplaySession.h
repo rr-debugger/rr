@@ -187,6 +187,10 @@ public:
    * for replay to reach.
    */
   const TraceFrame& current_trace_frame() const { return trace_frame; }
+  /**
+   * Time of the current frame
+   */
+  FrameTime current_frame_time() const { return trace_frame.time(); }
 
   /**
    * The Task for the current trace record.

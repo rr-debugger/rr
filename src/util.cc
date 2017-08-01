@@ -137,7 +137,7 @@ void format_dump_filename(Task* t, FrameTime global_time, const char* tag,
            t->rec_tid, (long long)global_time, tag);
 }
 
-bool should_dump_memory(const TraceFrame& f) {
+bool should_dump_memory(const Event& event, FrameTime time) {
   const Flags* flags = &Flags::get();
 
 #if defined(FIRST_INTERESTING_EVENT)
@@ -152,13 +152,13 @@ bool should_dump_memory(const TraceFrame& f) {
   }
 #endif
   return flags->dump_on == Flags::DUMP_ON_ALL ||
-         (f.event().is_syscall_event() &&
-          f.event().Syscall().number == flags->dump_on) ||
-         (f.event().is_signal_event() &&
-          f.event().Signal().siginfo.si_signo == -flags->dump_on) ||
+         (event.is_syscall_event() &&
+          event.Syscall().number == flags->dump_on) ||
+         (event.is_signal_event() &&
+          event.Signal().siginfo.si_signo == -flags->dump_on) ||
          (flags->dump_on == Flags::DUMP_ON_RDTSC &&
-          f.event().type() == EV_INSTRUCTION_TRAP) ||
-         flags->dump_at == int(f.time());
+          event.type() == EV_INSTRUCTION_TRAP) ||
+         flags->dump_at == time;
 }
 
 void dump_process_memory(Task* t, FrameTime global_time, const char* tag) {
@@ -431,20 +431,20 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
   fclose(c.checksums_file);
 }
 
-bool should_checksum(const TraceFrame& f) {
-  if (f.event().type() == EV_EXIT) {
+bool should_checksum(const Event& event, FrameTime time) {
+  if (event.type() == EV_EXIT) {
     // Task is dead, or at least detached, and we can't read its memory safely.
     return false;
   }
-  if (f.event().has_ticks_slop()) {
+  if (event.has_ticks_slop()) {
     // We may not be at the same point during recording and replay, so don't
     // compute checksums.
     return false;
   }
 
-  int checksum = Flags::get().checksum;
-  bool is_syscall_exit = EV_SYSCALL == f.event().type() &&
-                         EXITING_SYSCALL == f.event().Syscall().state;
+  FrameTime checksum = Flags::get().checksum;
+  bool is_syscall_exit =
+      EV_SYSCALL == event.type() && EXITING_SYSCALL == event.Syscall().state;
 
 #if defined(FIRST_INTERESTING_EVENT)
   if (is_syscall_exit && FIRST_INTERESTING_EVENT <= global_time &&
@@ -465,7 +465,7 @@ bool should_checksum(const TraceFrame& f) {
     return is_syscall_exit;
   }
   /* |checksum| is a global time point. */
-  return checksum <= int(f.time());
+  return checksum <= time;
 }
 
 void checksum_process_memory(Task* t, FrameTime global_time) {

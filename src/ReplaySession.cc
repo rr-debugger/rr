@@ -26,14 +26,15 @@ using namespace std;
 namespace rr {
 
 static void debug_memory(ReplayTask* t) {
-  if (should_dump_memory(t->current_trace_frame())) {
-    dump_process_memory(t, t->current_trace_frame().time(), "rep");
+  FrameTime current_time = t->current_frame_time();
+  if (should_dump_memory(t->current_trace_frame().event(), current_time)) {
+    dump_process_memory(t, current_time, "rep");
   }
   if (t->session().done_initial_exec() &&
-      should_checksum(t->current_trace_frame())) {
+      should_checksum(t->current_trace_frame().event(), current_time)) {
     /* Validate the checksum we computed during the
      * recording phase. */
-    validate_process_memory(t, t->current_trace_frame().time());
+    validate_process_memory(t, current_time);
   }
 }
 

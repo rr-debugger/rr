@@ -117,6 +117,10 @@ const TraceFrame& ReplayTask::current_trace_frame() {
   return session().current_trace_frame();
 }
 
+FrameTime ReplayTask::current_frame_time() {
+  return current_trace_frame().time();
+}
+
 ssize_t ReplayTask::set_data_from_trace() {
   auto buf = trace_reader().read_raw_data();
   if (!buf.addr.is_null() && buf.data.size() > 0) {
