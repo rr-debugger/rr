@@ -541,7 +541,6 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
   ASSERT(t, kms[0].is_stack()) << "Can't find stack";
 
-  TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::EXEC);
   // The exe name we pass in here will be passed to gdb. Pass the backing file
   // name if there is one, otherwise pass the original file name (which means
   // we declined to copy it to the trace file during recording for whatever
@@ -549,7 +548,14 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   const string& exe_name = datas[exe_km].file_name.empty()
                                ? kms[exe_km].fsname()
                                : datas[exe_km].file_name;
-  t->post_exec_syscall(exe_name, tte);
+  t->post_exec_syscall(exe_name);
+
+  vector<uint8_t> buf;
+  t->trace_reader().read_generic(buf);
+  vector<int> fds_to_close;
+  fds_to_close.resize(buf.size() / sizeof(int));
+  memcpy(fds_to_close.data(), buf.data(), fds_to_close.size() * sizeof(int));
+  t->fd_table()->close_after_exec(t, fds_to_close);
 
   {
     // Tell AutoRemoteSyscalls that we don't need memory parameters. This will

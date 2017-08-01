@@ -353,10 +353,8 @@ public:
   /**
    * Call this method when this task has exited a successful execve() syscall.
    * At this point it is safe to make remote syscalls.
-   * |event| is the TraceTaskEvent (EXEC) that will be recorded or is being
-   * replayed.
    */
-  void post_exec_syscall(TraceTaskEvent& event);
+  void post_exec_syscall();
 
   /**
    * Return true if this task has execed.

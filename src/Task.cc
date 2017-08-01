@@ -734,10 +734,9 @@ void Task::post_exec(const string& exe_file) {
   prname = prname_from_exe_image(as->exe_image());
 }
 
-void Task::post_exec_syscall(TraceTaskEvent& event) {
+void Task::post_exec_syscall() {
   canonicalize_and_set_regs(regs(), arch());
   as->post_exec_syscall(this);
-  fds->update_for_cloexec(this, event);
 
   if (session().has_cpuid_faulting()) {
     AutoRemoteSyscalls remote(this);

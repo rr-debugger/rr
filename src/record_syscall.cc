@@ -4201,7 +4201,11 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     return;
   }
 
-  t->post_exec_syscall(*syscall_state.exec_saved_event);
+  t->post_exec_syscall();
+  vector<int> fds_to_close = t->fd_table()->fds_to_close_after_exec(t);
+  t->trace_writer().write_generic(fds_to_close.data(),
+                                  fds_to_close.size() * sizeof(int));
+
   check_privileged_exe(t);
 
   KernelMapping rr_page_mapping =

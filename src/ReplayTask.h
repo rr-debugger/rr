@@ -33,7 +33,7 @@ public:
   /**
    * Call this method when the exec has completed.
    */
-  void post_exec_syscall(const std::string& replay_exe, TraceTaskEvent& tte);
+  void post_exec_syscall(const std::string& replay_exe);
 
   enum {
     /* The x86 linux 3.5.0-36 kernel packaged with Ubuntu

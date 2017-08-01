@@ -8,9 +8,10 @@
 
 #include "rr/rr.h"
 
+#include "AddressSpace.h"
 #include "RecordTask.h"
+#include "ReplayTask.h"
 #include "Session.h"
-#include "Task.h"
 #include "log.h"
 
 using namespace std;
@@ -178,6 +179,14 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
   rt->record_local(addr, disabled, SYSCALLBUF_FDS_DISABLED_SIZE);
 }
 
+void FdTable::close_after_exec(ReplayTask* t, const vector<int>& fds_to_close) {
+  ASSERT(t, has_task(t));
+
+  for (auto fd : fds_to_close) {
+    did_close(fd);
+  }
+}
+
 static bool is_fd_open(Task* t, int fd) {
   char path[PATH_MAX];
   sprintf(path, "/proc/%d/fd/%d", t->tid, fd);
@@ -185,25 +194,19 @@ static bool is_fd_open(Task* t, int fd) {
   return 0 == lstat(path, &st);
 }
 
-void FdTable::update_for_cloexec(Task* t, TraceTaskEvent& event) {
+vector<int> FdTable::fds_to_close_after_exec(RecordTask* t) {
   ASSERT(t, has_task(t));
 
   vector<int> fds_to_close;
-
-  if (t->session().is_recording()) {
-    for (auto& it : fds) {
-      if (!is_fd_open(t, it.first)) {
-        fds_to_close.push_back(it.first);
-      }
+  for (auto& it : fds) {
+    if (!is_fd_open(t, it.first)) {
+      fds_to_close.push_back(it.first);
     }
-    event.set_fds_to_close(fds_to_close);
-  } else {
-    fds_to_close = event.fds_to_close();
   }
-
   for (auto fd : fds_to_close) {
     did_close(fd);
   }
+  return fds_to_close;
 }
 
 } // namespace rr

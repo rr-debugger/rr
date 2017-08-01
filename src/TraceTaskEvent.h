@@ -73,18 +73,9 @@ public:
     assert(type() == EXEC);
     return cmd_line_;
   }
-  const std::vector<int>& fds_to_close() const {
-    assert(type() == EXEC);
-    return fds_to_close_;
-  }
   WaitStatus exit_status() const {
     assert(type() == EXIT);
     return exit_status_;
-  }
-
-  void set_fds_to_close(const std::vector<int> fds) {
-    assert(type() == EXEC);
-    fds_to_close_ = fds;
   }
 
 private:
@@ -98,7 +89,6 @@ private:
   uint64_t clone_flags_;              // CLONE only
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only
-  std::vector<int> fds_to_close_;     // EXEC only
   WaitStatus exit_status_;            // EXIT only
 };
 

@@ -5,13 +5,16 @@
 
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "FileMonitor.h"
 #include "HasTaskSet.h"
 
 namespace rr {
 
-class TraceTaskEvent;
+class RecordTask;
+class ReplayTask;
+class Task;
 
 class FdTable : public HasTaskSet {
 public:
@@ -53,13 +56,18 @@ public:
   void init_syscallbuf_fds_disabled(Task* t);
 
   /**
-   * Called after task |t| for this FdTable has execed. Update for any fds
-   * that were closed via CLOEXEC.
+   * Get list of fds that have been closed after |t| has done an execve.
    * Rather than tracking CLOEXEC flags (which would be complicated), we just
    * scan /proc/<pid>/fd during recording and note any monitored fds that have
-   * been closed, and record these in the TraceTaskEvent.
+   * been closed.
+   * This also updates our table to match reality.
    */
-  void update_for_cloexec(Task* t, TraceTaskEvent& event);
+  std::vector<int> fds_to_close_after_exec(RecordTask* t);
+
+  /**
+   * Close fds in list after an exec.
+   */
+  void close_after_exec(ReplayTask* t, const std::vector<int>& fds_to_close);
 
 private:
   FdTable() {}

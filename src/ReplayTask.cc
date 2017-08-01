@@ -69,8 +69,7 @@ void ReplayTask::init_buffers(remote_ptr<void> map_hint) {
   RR_ARCH_FUNCTION(init_buffers_arch, arch(), map_hint);
 }
 
-void ReplayTask::post_exec_syscall(const string& replay_exe,
-                                   TraceTaskEvent& tte) {
+void ReplayTask::post_exec_syscall(const string& replay_exe) {
   Task::post_exec(replay_exe);
 
   // Perform post-exec-syscall tasks now (e.g. opening mem_fd) before we
@@ -78,7 +77,7 @@ void ReplayTask::post_exec_syscall(const string& replay_exe,
   // regular stack instead of having to search the address space for usable
   // pages (which is error prone, e.g. if we happen to find the scratch space
   // allocated by an rr recorder under which we're running).
-  Task::post_exec_syscall(tte);
+  Task::post_exec_syscall();
 
   // Delay setting the replay_regs until here so the original registers
   // are set while we populate AddressSpace. We need that for the kernel
