@@ -79,7 +79,11 @@ int clone_flags_to_task_flags(int flags_arg) {
   return flags;
 }
 
-size_t page_size() { return sysconf(_SC_PAGE_SIZE); }
+size_t page_size() {
+  /* This sometimes appears in profiles */
+  static size_t size = sysconf(_SC_PAGE_SIZE);
+  return size;
+}
 
 size_t ceil_page_size(size_t sz) {
   size_t page_mask = ~(page_size() - 1);
