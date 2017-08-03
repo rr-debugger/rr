@@ -130,6 +130,12 @@ string signal_name(int sig) {
     CASE(SIGIO);
     CASE(SIGPWR);
     CASE(SIGSYS);
+    /* Special-case this so we don't need to sprintf in this common case.
+     * This case is common because we often pass signal_name(sig) to assertions
+     * when sig is 0.
+     */
+    case 0:
+      return "signal(0)";
     default: {
       char buf[100];
       sprintf(buf, "signal(%d)", sig);
