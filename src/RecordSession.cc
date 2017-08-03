@@ -164,6 +164,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     // negative syscall numbers after a SECCOMP event
     // are treated as "skip this syscall". There will be one syscall event
     // reported instead of two. So fake an enter-syscall event now.
+    // It doesn't really matter what the syscall-arch is.
     t->canonicalize_and_set_regs(t->regs(), t->arch());
     if (syscall_seccomp_ordering_ == SECCOMP_BEFORE_PTRACE_SYSCALL) {
       // If the ptrace entry stop hasn't happened yet, we're at a weird
@@ -180,7 +181,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       t->set_regs(orig_regs);
     }
 
-    process_syscall_entry(t, step_state, result);
+    process_syscall_entry(t, step_state, result, t->arch());
     *did_enter_syscall = true;
     // Don't continue yet. At the next iteration of record_step, we'll
     // enter syscall_state_changed and that will trigger a continue to
@@ -209,8 +210,9 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     } else {
       // We've already passed the PTRACE_SYSCALL trap for syscall entry, so
       // we need to handle that now.
-      t->canonicalize_and_set_regs(t->regs(), t->detect_syscall_arch());
-      process_syscall_entry(t, step_state, result);
+      SupportedArch syscall_arch = t->detect_syscall_arch();
+      t->canonicalize_and_set_regs(t->regs(), syscall_arch);
+      process_syscall_entry(t, step_state, result, syscall_arch);
       *did_enter_syscall = true;
     }
   }
@@ -1374,7 +1376,8 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
 }
 
 void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
-                                          RecordResult* step_result) {
+                                          RecordResult* step_result,
+                                          SupportedArch syscall_arch) {
   if (t->has_stashed_sig_not_synthetic_SIGCHLD()) {
     // The only four cases where we allow a stashed signal to be pending on
     // syscall entry are:
@@ -1413,16 +1416,14 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
       return;
     }
 
-    SupportedArch syscall_arch = t->detect_syscall_arch();
-    t->canonicalize_and_set_regs(t->regs(), syscall_arch);
-
     if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
       // Syscall was patched. Emit event and continue execution.
       t->record_event(Event(EV_PATCH_SYSCALL, HAS_EXEC_INFO, t->arch()));
       return;
     }
 
-    t->push_event(SyscallEvent(t->regs().original_syscallno(), syscall_arch));
+    t->push_event(SyscallEvent(t->regs().original_syscallno(),
+        syscall_arch));
   }
 
   check_initial_task_syscalls(t, step_result);
@@ -1459,13 +1460,16 @@ void RecordSession::runnable_state_changed(RecordTask* t, StepState* step_state,
 
     case EV_SENTINEL:
     case EV_SIGNAL_HANDLER:
-    case EV_SYSCALL_INTERRUPTION:
+    case EV_SYSCALL_INTERRUPTION: {
       if (!can_consume_wait_status) {
         return;
       }
 
-      process_syscall_entry(t, step_state, step_result);
+      SupportedArch syscall_arch = t->detect_syscall_arch();
+      t->canonicalize_and_set_regs(t->regs(), syscall_arch);
+      process_syscall_entry(t, step_state, step_result, syscall_arch);
       break;
+    }
 
     default:
       return;
