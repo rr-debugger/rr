@@ -2007,7 +2007,7 @@ void Task::reset_syscallbuf() {
   // exist for the syscallbuf
   uint32_t num_rec =
       read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes));
-  uint8_t* ptr = local_mapping(syscallbuf_child + 1, num_rec);
+  uint8_t* ptr = as->local_mapping(syscallbuf_child + 1, num_rec);
   assert(ptr != nullptr);
   memset(ptr, 0, num_rec);
   write_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes), (uint32_t)0);
@@ -2078,21 +2078,6 @@ ssize_t Task::write_bytes_ptrace(remote_ptr<void> addr, ssize_t buf_size,
   return nwritten;
 }
 
-uint8_t* Task::local_mapping(remote_ptr<void> addr, size_t size) {
-  if (vm()->has_mapping(addr)) {
-    const AddressSpace::Mapping& map = vm()->mapping_of(addr);
-    // Fall back to the slow path if we can't get the entire region
-    if (size > static_cast<size_t>(map.map.end() - addr)) {
-      return nullptr;
-    }
-    if (map.local_addr != nullptr) {
-      size_t offset = addr - map.map.start();
-      return static_cast<uint8_t*>(map.local_addr) + offset;
-    }
-  }
-  return nullptr;
-}
-
 ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
                                   void* buf) {
   ASSERT_ACTIONS(this, buf_size >= 0, << "Invalid buf_size " << buf_size);
@@ -2100,7 +2085,7 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
     return 0;
   }
 
-  if (uint8_t* local_addr = local_mapping(addr, buf_size)) {
+  if (uint8_t* local_addr = as->local_mapping(addr, buf_size)) {
     memcpy(buf, local_addr, buf_size);
     return buf_size;
   }
@@ -2207,7 +2192,7 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
     return;
   }
 
-  if (uint8_t* local_addr = local_mapping(addr, buf_size)) {
+  if (uint8_t* local_addr = as->local_mapping(addr, buf_size)) {
     memcpy(local_addr, buf, buf_size);
     return;
   }

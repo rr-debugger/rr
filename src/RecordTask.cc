@@ -1440,7 +1440,7 @@ void RecordTask::record_local(remote_ptr<void> addr, ssize_t num_bytes,
 
 bool RecordTask::record_remote_by_local_map(remote_ptr<void> addr,
                                             size_t num_bytes) {
-  if (uint8_t* local_addr = local_mapping(addr, num_bytes)) {
+  if (uint8_t* local_addr = as->local_mapping(addr, num_bytes)) {
     record_local(addr, num_bytes, local_addr);
     return true;
   }

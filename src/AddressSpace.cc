@@ -626,7 +626,7 @@ void AddressSpace::at_preload_init(Task* t) {
 
 const AddressSpace::Mapping& AddressSpace::mapping_of(
     remote_ptr<void> addr) const {
-  MemoryRange range(floor_page_size(addr), page_size());
+  MemoryRange range(floor_page_size(addr), 1);
   auto it = mem.find(range);
   assert(it != mem.end());
   assert(it->second.map.contains(range));
@@ -636,6 +636,25 @@ uint32_t& AddressSpace::mapping_flags_of(remote_ptr<void> addr) {
   return const_cast<AddressSpace::Mapping&>(
              static_cast<const AddressSpace*>(this)->mapping_of(addr))
       .flags;
+}
+
+uint8_t* AddressSpace::local_mapping(remote_ptr<void> addr, size_t size) {
+  MemoryRange range(floor_page_size(addr), 1);
+  auto it = mem.find(range);
+  if (it == mem.end()) {
+    return nullptr;
+  }
+  assert(it->second.map.contains(range));
+  const Mapping& map = it->second;
+  // Fall back to the slow path if we can't get the entire region
+  if (size > static_cast<size_t>(map.map.end() - addr)) {
+    return nullptr;
+  }
+  if (map.local_addr != nullptr) {
+    size_t offset = addr - map.map.start();
+    return static_cast<uint8_t*>(map.local_addr) + offset;
+  }
+  return nullptr;
 }
 
 void* AddressSpace::detach_local_mapping(remote_ptr<void> addr) {
@@ -650,7 +669,7 @@ bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
     // Assume the last byte in the address space is never mapped; avoid overflow
     return false;
   }
-  MemoryRange m(floor_page_size(addr), page_size());
+  MemoryRange m(floor_page_size(addr), 1);
   auto it = mem.find(m);
   return it != mem.end() && it->first.contains(m);
 }

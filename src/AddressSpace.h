@@ -425,6 +425,12 @@ public:
   bool has_mapping(remote_ptr<void> addr) const;
 
   /**
+   * If the given memory region is mapped into the local address space, obtain
+   * the local address from which the `size` bytes at `addr` can be accessed.
+   */
+  uint8_t* local_mapping(remote_ptr<void> addr, size_t size);
+
+  /**
    * Return true if the rr page is mapped at its expected address.
    */
   bool has_rr_page() const;

@@ -880,12 +880,6 @@ protected:
   void xptrace(int request, remote_ptr<void> addr, void* data);
 
   /**
-   * If the given memory region is mapped into the local address space, obtain
-   * the local address from which the `size` bytes at `addr` can be accessed.
-   */
-  uint8_t* local_mapping(remote_ptr<void> addr, size_t size);
-
-  /**
    * Read tracee memory using PTRACE_PEEKDATA calls. Slow, only use
    * as fallback. Returns number of bytes actually read.
    */
