@@ -341,7 +341,7 @@ remote_code_ptr AddressSpace::rr_page_syscall_exit_point(Traced traced,
 remote_code_ptr AddressSpace::rr_page_syscall_entry_point(Traced traced,
                                                           Privileged privileged,
                                                           Enabled enabled,
-                                                          SupportedArch arch) {
+                                                          SupportedArch) {
   for (auto& e : entry_points) {
     if (e.traced == traced && e.privileged == privileged &&
         e.enabled == enabled) {
