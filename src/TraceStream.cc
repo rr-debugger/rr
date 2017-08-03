@@ -207,8 +207,9 @@ void TraceWriter::write_frame(const TraceFrame& frame) {
   }
   if (frame.event().has_exec_info() == HAS_EXEC_INFO) {
     events << (char)frame.regs().arch();
-    auto raw_regs = frame.regs().get_ptrace_for_arch(frame.regs().arch());
-    events.write(raw_regs.data(), raw_regs.size());
+    // Avoid dynamic allocation and copy
+    auto raw_regs = frame.regs().get_ptrace_for_self_arch();
+    events.write(raw_regs.data, raw_regs.size);
     if (!events.good()) {
       FATAL() << "Tried to save registers to the trace, but failed";
     }

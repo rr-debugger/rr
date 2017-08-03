@@ -542,24 +542,28 @@ struct user_regs_struct Registers::get_ptrace() const {
   return result.linux_api;
 }
 
+Registers::InternalData Registers::get_ptrace_for_self_arch() const {
+  switch (arch_) {
+    case x86:
+      return { reinterpret_cast<const uint8_t*>(&u.x86regs),
+               sizeof(u.x86regs) };
+    case x86_64:
+      return { reinterpret_cast<const uint8_t*>(&u.x64regs),
+               sizeof(u.x64regs) };
+    default:
+      assert(0 && "Unknown arch");
+      return { nullptr, 0 };
+  }
+}
+
 vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {
   Registers tmp_regs(arch);
   tmp_regs.set_from_ptrace(get_ptrace());
 
+  InternalData tmp_data = tmp_regs.get_ptrace_for_self_arch();
   vector<uint8_t> result;
-  switch (arch) {
-    case x86:
-      result.resize(sizeof(tmp_regs.u.x86regs));
-      memcpy(result.data(), &tmp_regs.u.x86regs, result.size());
-      break;
-    case x86_64:
-      result.resize(sizeof(tmp_regs.u.x64regs));
-      memcpy(result.data(), &tmp_regs.u.x64regs, result.size());
-      break;
-    default:
-      assert(0 && "Unknown arch");
-      break;
-  }
+  result.resize(tmp_data.size);
+  memcpy(result.data(), tmp_data.data, tmp_data.size);
   return result;
 }
 

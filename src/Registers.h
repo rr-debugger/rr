@@ -91,6 +91,14 @@ public:
    * to the rr build (e.g. ARM vs x86).
    */
   std::vector<uint8_t> get_ptrace_for_arch(SupportedArch arch) const;
+  struct InternalData {
+    const uint8_t* data;
+    size_t size;
+  };
+  /**
+   * Equivalent to get_ptrace_for_arch(arch()) but doesn't copy.
+   */
+  InternalData get_ptrace_for_self_arch() const;
   /**
    * Copy an arch-specific user_regs_struct into these Registers.
    * It's invalid to call this when 'arch' is 64-bit and the
