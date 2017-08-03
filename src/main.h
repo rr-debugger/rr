@@ -10,8 +10,6 @@ namespace rr {
 
 void assert_prerequisites(bool use_syscall_buffer = false);
 
-void check_performance_settings();
-
 void print_global_options(FILE*);
 void print_usage(FILE*);
 

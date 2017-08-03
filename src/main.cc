@@ -44,57 +44,6 @@ void assert_prerequisites(bool use_syscall_buffer) {
   }
 }
 
-void check_performance_settings() {
-  if (Flags::get().suppress_environment_warnings) {
-    return;
-  }
-
-  // NB: we hard-code "cpu0" here because rr pins itself and all
-  // tracees to cpu 0.  We don't care about the other CPUs.
-  ScopedFd fd("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor",
-              O_RDONLY);
-  if (0 > fd) {
-    // If the file doesn't exist, the system probably
-    // doesn't have the ability to frequency-scale, for
-    // example a VM.
-    LOG(info) << "Unable to check CPU-frequency governor.";
-    return;
-  }
-  char governor[PATH_MAX];
-  ssize_t nread = read(fd, governor, sizeof(governor) - 1);
-  if (0 > nread) {
-    FATAL() << "Unable to read cpu0's frequency governor.";
-  }
-  governor[nread] = '\0';
-  ssize_t len = strlen(governor);
-  if (len > 0) {
-    // Eat the '\n'.
-    governor[len - 1] = '\0';
-  }
-  LOG(info) << "cpu0's frequency governor is '" << governor << "'";
-  if (strcmp("performance", governor)) {
-    fprintf(stderr,
-            "\n"
-            "rr: Warning: Your CPU frequency governor is '%s'.  rr strongly\n"
-            "    recommends that you use the 'performance' governor.  Not "
-            "using the\n"
-            "    'performance' governor can cause rr to be at least 2x slower\n"
-            "    on laptops.\n"
-            "\n"
-            "    On Fedora-based systems, you can enable the 'performance' "
-            "governor\n"
-            "    by running the following commands:\n"
-            "\n"
-            "    $ sudo dnf install kernel-tools\n"
-            "    $ sudo cpupower frequency-set -g performance\n"
-            "\n",
-            governor);
-    // TODO: It would be nice to bail here or do something
-    // clever to enable the 'performance' just for rr, but
-    // that seems too hard at the moment.
-  }
-}
-
 void print_version(FILE* out) { fprintf(out, "rr version %s\n", RR_VERSION); }
 
 void print_global_options(FILE* out) {

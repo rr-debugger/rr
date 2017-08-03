@@ -446,7 +446,6 @@ int RecordCommand::run(vector<string>& args) {
   }
 
   assert_prerequisites(flags.use_syscall_buffer);
-  check_performance_settings();
 
   if (flags.setuid_sudo) {
     if (geteuid() != 0 || getenv("SUDO_UID") == NULL) {

@@ -524,7 +524,6 @@ int ReplayCommand::run(vector<string>& args) {
   }
 
   assert_prerequisites();
-  check_performance_settings();
 
   if (running_under_rr()) {
     if (!Flags::get().suppress_environment_warnings) {
