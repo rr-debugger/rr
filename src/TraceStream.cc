@@ -367,7 +367,12 @@ static int check_fd(int fd) {
 void TraceWriter::write_frame(pid_t tid, SupportedArch arch, const Event& ev,
                               Ticks tick_count, const Registers* registers,
                               const ExtraRegisters* extra_registers) {
-  MallocMessageBuilder frame_msg;
+  // Use an on-stack first segment that should be adequate for most cases. A
+  // simple syscall event takes 320 bytes currently. The default Capnproto
+  // implementation does a calloc(8192) for the first segment.
+  word buf[64];
+  memset(buf, 0, sizeof(buf));
+  MallocMessageBuilder frame_msg(buf);
   trace::Frame::Builder frame = frame_msg.initRoot<trace::Frame>();
 
   frame.setTid(tid);
