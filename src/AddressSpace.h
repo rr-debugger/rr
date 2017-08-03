@@ -275,7 +275,9 @@ public:
       IS_PATCH_STUBS = 0x4,
       // This mapping has been created by the replayer to guarantee SIGBUS
       // in a region whose backing file was too short during recording.
-      IS_SIGBUS_REGION = 0x8
+      IS_SIGBUS_REGION = 0x8,
+      // This mapping is the rr page
+      IS_RR_PAGE = 0x10
     };
     uint32_t flags;
   };
@@ -421,6 +423,11 @@ public:
    * Return true if there is some mapping for the byte at 'addr'.
    */
   bool has_mapping(remote_ptr<void> addr) const;
+
+  /**
+   * Return true if the rr page is mapped at its expected address.
+   */
+  bool has_rr_page() const;
 
   /**
    * Object that generates robust iterators through the memory map. The
@@ -665,6 +672,8 @@ public:
   };
   static std::vector<SyscallType> rr_page_syscalls();
   static const SyscallType* rr_page_syscall_from_exit_point(remote_code_ptr ip);
+  static const SyscallType* rr_page_syscall_from_entry_point(
+      remote_code_ptr ip);
 
   /**
    * Return a pointer to 8 bytes of 0xFF

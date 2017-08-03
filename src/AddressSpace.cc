@@ -280,6 +280,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
 
     map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name, 0, 0);
   }
+  mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
 
   if (t->session().is_recording()) {
     // brk() will not have been called yet so the brk area is empty.
@@ -316,7 +317,11 @@ static const AddressSpace::SyscallType entry_points[] = {
     AddressSpace::RECORDING_ONLY },
 };
 
-static remote_code_ptr ip_from_index(size_t i) {
+static remote_code_ptr entry_ip_from_index(size_t i) {
+  return remote_code_ptr(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * i);
+}
+
+static remote_code_ptr exit_ip_from_index(size_t i) {
   return remote_code_ptr(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * i +
                          RR_PAGE_SYSCALL_INSTRUCTION_END);
 }
@@ -327,17 +332,7 @@ remote_code_ptr AddressSpace::rr_page_syscall_exit_point(Traced traced,
   for (auto& e : entry_points) {
     if (e.traced == traced && e.privileged == privileged &&
         e.enabled == enabled) {
-      return ip_from_index(&e - entry_points);
-    }
-  }
-  return nullptr;
-}
-
-const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_exit_point(
-    remote_code_ptr ip) {
-  for (size_t i = 0; i < array_length(entry_points); ++i) {
-    if (ip_from_index(i) == ip) {
-      return &entry_points[i];
+      return exit_ip_from_index(&e - entry_points);
     }
   }
   return nullptr;
@@ -347,9 +342,33 @@ remote_code_ptr AddressSpace::rr_page_syscall_entry_point(Traced traced,
                                                           Privileged privileged,
                                                           Enabled enabled,
                                                           SupportedArch arch) {
-  remote_code_ptr ip = rr_page_syscall_exit_point(traced, privileged, enabled);
-  return ip.is_null() ? remote_code_ptr()
-                      : ip.decrement_by_syscall_insn_length(arch);
+  for (auto& e : entry_points) {
+    if (e.traced == traced && e.privileged == privileged &&
+        e.enabled == enabled) {
+      return entry_ip_from_index(&e - entry_points);
+    }
+  }
+  return nullptr;
+}
+
+const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_exit_point(
+    remote_code_ptr ip) {
+  for (size_t i = 0; i < array_length(entry_points); ++i) {
+    if (exit_ip_from_index(i) == ip) {
+      return &entry_points[i];
+    }
+  }
+  return nullptr;
+}
+
+const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_entry_point(
+    remote_code_ptr ip) {
+  for (size_t i = 0; i < array_length(entry_points); ++i) {
+    if (entry_ip_from_index(i) == ip) {
+      return &entry_points[i];
+    }
+  }
+  return nullptr;
 }
 
 vector<AddressSpace::SyscallType> AddressSpace::rr_page_syscalls() {
@@ -634,6 +653,12 @@ bool AddressSpace::has_mapping(remote_ptr<void> addr) const {
   MemoryRange m(floor_page_size(addr), page_size());
   auto it = mem.find(m);
   return it != mem.end() && it->first.contains(m);
+}
+
+bool AddressSpace::has_rr_page() const {
+  MemoryRange m(RR_PAGE_ADDR, 1);
+  auto it = mem.find(m);
+  return it != mem.end() && (it->second.flags & Mapping::IS_RR_PAGE);
 }
 
 void AddressSpace::protect(Task* t, remote_ptr<void> addr, size_t num_bytes,
