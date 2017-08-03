@@ -364,13 +364,16 @@ static int check_fd(int fd) {
   return fd;
 }
 
+// 8-byte words
+static const size_t reasonable_frame_message_words = 64;
+
 void TraceWriter::write_frame(pid_t tid, SupportedArch arch, const Event& ev,
                               Ticks tick_count, const Registers* registers,
                               const ExtraRegisters* extra_registers) {
   // Use an on-stack first segment that should be adequate for most cases. A
   // simple syscall event takes 320 bytes currently. The default Capnproto
   // implementation does a calloc(8192) for the first segment.
-  word buf[64];
+  word buf[reasonable_frame_message_words];
   memset(buf, 0, sizeof(buf));
   MallocMessageBuilder frame_msg(buf);
   trace::Frame::Builder frame = frame_msg.initRoot<trace::Frame>();
@@ -480,8 +483,9 @@ void TraceWriter::write_frame(pid_t tid, SupportedArch arch, const Event& ev,
 
 TraceFrame TraceReader::read_frame() {
   auto& events = reader(EVENTS);
+  word buf[reasonable_frame_message_words];
   CompressedReaderInputStream stream(events);
-  PackedMessageReader frame_msg(stream);
+  PackedMessageReader frame_msg(stream, ReaderOptions(), buf);
   trace::Frame::Reader frame = frame_msg.getRoot<trace::Frame>();
 
   tick_time();
