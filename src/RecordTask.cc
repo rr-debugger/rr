@@ -655,18 +655,20 @@ void RecordTask::did_wait() {
     ASSERT(this, !blocked_sigs_dirty);
     xptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &blocked_sigs);
   } else if (syscallbuf_child) {
-    if (read_mem(REMOTE_PTR_FIELD(syscallbuf_child,
-                                  in_sigprocmask_critical_section))) {
+    // The syscallbuf struct is only 32 bytes currently so read the whole thing
+    // at once to avoid multiple calls to read_mem. Even though this shouldn't
+    // need a syscall because we use a local-mapping, apparently that lookup
+    // is still noticeably expensive.
+    auto syscallbuf = read_mem(syscallbuf_child);
+    if (syscallbuf.in_sigprocmask_critical_section) {
       // |blocked_sigs| may have been updated but the syscall not yet issued.
       // Use the kernel's value.
       invalidate_sigmask();
     } else {
-      uint32_t syscallbuf_generation =
-          read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs_generation));
+      uint32_t syscallbuf_generation = syscallbuf.blocked_sigs_generation;
       if (syscallbuf_generation > syscallbuf_blocked_sigs_generation) {
         syscallbuf_blocked_sigs_generation = syscallbuf_generation;
-        blocked_sigs =
-            read_mem(REMOTE_PTR_FIELD(syscallbuf_child, blocked_sigs));
+        blocked_sigs = syscallbuf.blocked_sigs;
       }
     }
   }
