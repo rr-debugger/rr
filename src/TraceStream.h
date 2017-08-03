@@ -108,6 +108,12 @@ protected:
    * trace.
    */
   string version_path() const { return trace_dir + "/version"; }
+  /**
+   * While the trace is being built, the version file is stored under this name.
+   * When the trace is closed we rename it to the correct name. This lets us
+   * detect incomplete traces.
+   */
+  string incomplete_version_path() const { return trace_dir + "/incomplete"; }
 
   /**
    * Increment the global time and return the incremented value.

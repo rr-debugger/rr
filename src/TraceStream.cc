@@ -996,6 +996,12 @@ void TraceWriter::close() {
   for (auto& w : writers) {
     w->close();
   }
+
+  string incomplete_path = incomplete_version_path();
+  string path = version_path();
+  if (rename(incomplete_path.c_str(), path.c_str()) < 0) {
+    FATAL() << "Unable to create version file " << path;
+  }
 }
 
 static string make_trace_dir(const string& exe_path) {
@@ -1038,7 +1044,7 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
         path(s), substream(s).block_size, substream(s).threads));
   }
 
-  string ver_path = version_path();
+  string ver_path = incomplete_version_path();
   ScopedFd version_fd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
   if (!version_fd.is_open()) {
     FATAL() << "Unable to create " << ver_path;
@@ -1143,14 +1149,25 @@ TraceReader::TraceReader(const string& dir)
   ScopedFd version_fd(path.c_str(), O_RDONLY);
   if (!version_fd.is_open()) {
     if (errno == ENOENT) {
-      fprintf(stderr, "\n"
-                      "rr: error: Trace version file `%s' not found. There is "
-                      "probably no trace there.\n"
-                      "\n",
-              path.c_str());
+      string incomplete_path = incomplete_version_path();
+      if (access(incomplete_path.c_str(), F_OK) == 0) {
+        fprintf(
+            stderr,
+            "\n"
+            "rr: Trace file `%s' found.\n"
+            "rr recording terminated abnormally and the trace is incomplete.\n"
+            "\n",
+            incomplete_path.c_str());
+      } else {
+        fprintf(stderr,
+                "\n"
+                "rr: Trace file `%s' not found. There is no trace there.\n"
+                "\n",
+                path.c_str());
+      }
     } else {
       fprintf(stderr, "\n"
-                      "rr: error: Trace version file `%s' not readable.\n"
+                      "rr: Trace file `%s' not readable.\n"
                       "\n",
               path.c_str());
     }
