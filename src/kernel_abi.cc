@@ -49,12 +49,6 @@
 #include <sys/vfs.h>
 #include <termios.h>
 
-#include "AddressSpace.h"
-#include "Session.h"
-#include "Task.h"
-
-#include "preload/preload_interface.h"
-
 // Used to verify definitions in kernel_abi.h
 namespace rr {
 #define RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)                     \
@@ -73,7 +67,11 @@ namespace rr {
 
 #include <stdlib.h>
 
+#include "AddressSpace.h"
+#include "Session.h"
 #include "Task.h"
+
+#include "preload/preload_interface.h"
 
 using namespace std;
 
