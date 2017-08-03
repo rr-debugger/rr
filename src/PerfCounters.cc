@@ -423,6 +423,8 @@ static void check_for_xen_pmi_bug() {
         :
 #if defined(__x86_64__)
         "rax", "rdx", "rdi", "rsi"
+        // `syscall` clobbers rcx and r11.
+        , "rcx", "r11"
 #elif defined(__i386__)
         "eax", "ebx", "ecx", "edx"
 #else
