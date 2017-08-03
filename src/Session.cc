@@ -378,7 +378,7 @@ void Session::finish_initializing() const {
   Session* self = const_cast<Session*>(this);
   for (auto& tgleader : clone_completion->task_groups) {
     AutoRemoteSyscalls remote(tgleader.clone_leader);
-    for (auto m : tgleader.clone_leader->vm()->maps()) {
+    for (const auto& m : tgleader.clone_leader->vm()->maps()) {
       // Creating this mapping was delayed in capture_state for performance
       if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
         self->recreate_shared_mmap(remote, m);
@@ -544,9 +544,6 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
   return name_start;
 }
 
-// Recreate an mmap region that is shared between rr and the tracee. The caller
-// is responsible for recreating the data in the new mmap, if `preserve` is
-// DISCARD_CONTENTS.
 const AddressSpace::Mapping& Session::recreate_shared_mmap(
     AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
     PreserveContents preserve, MonitoredSharedMemory::shr_ptr&& monitored) {
@@ -673,7 +670,8 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
 
     {
       AutoRemoteSyscalls remote(group.clone_leader);
-      for (auto m : group.clone_leader->vm()->maps()) {
+      vector<AddressSpace::Mapping> shared_maps_to_clone;
+      for (const auto& m : group.clone_leader->vm()->maps()) {
         // Special case the syscallbuf as a performance optimization. The amount
         // of data we need to capture is usually significantly smaller than the
         // size of the mapping, so allocating the whole mapping here would be
@@ -686,8 +684,12 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
                  m.map.start() == AddressSpace::preload_thread_locals_start());
         } else if ((m.recorded_map.flags() & MAP_SHARED) &&
                    emu_fs.has_file_for(m.recorded_map)) {
-          remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);
+          shared_maps_to_clone.push_back(m);
         }
+      }
+      // Do this in a separate loop to avoid iteration invalidation issues
+      for (const auto& m : shared_maps_to_clone) {
+        remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);
       }
 
       for (auto t : group_leader->task_group()->task_set()) {

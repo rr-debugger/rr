@@ -158,7 +158,7 @@ void dump_process_memory(Task* t, FrameTime global_time, const char* tag) {
   dump_file = fopen64(filename, "w");
 
   const AddressSpace& as = *(t->vm());
-  for (auto m : as.maps()) {
+  for (const auto& m : as.maps()) {
     vector<uint8_t> mem;
     mem.resize(m.map.size());
 

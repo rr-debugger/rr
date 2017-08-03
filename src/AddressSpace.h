@@ -456,7 +456,7 @@ public:
       }
       bool operator!=(const iterator& other) const { return !(*this == other); }
       const Mapping* operator->() const { return &to_it()->second; }
-      Mapping operator*() const { return to_it()->second; }
+      const Mapping& operator*() const { return to_it()->second; }
       iterator& operator=(const iterator& other) {
         this->~iterator();
         new (this) iterator(other);

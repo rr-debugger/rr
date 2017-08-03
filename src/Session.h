@@ -263,6 +263,12 @@ public:
     PRESERVE_CONTENTS,
     DISCARD_CONTENTS,
   };
+  // Recreate an mmap region that is shared between rr and the tracee. The
+  // caller
+  // is responsible for recreating the data in the new mmap, if `preserve` is
+  // DISCARD_CONTENTS.
+  // OK to call this while 'm' references one of the mappings in remote's
+  // AddressSpace
   static const AddressSpace::Mapping& recreate_shared_mmap(
       AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
       PreserveContents preserve = DISCARD_CONTENTS,

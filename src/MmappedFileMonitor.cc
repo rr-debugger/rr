@@ -53,7 +53,7 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
 
   bool is_replay = t->session().is_replaying();
   for (auto v : t->session().vms()) {
-    for (auto m : v->maps()) {
+    for (const auto& m : v->maps()) {
       auto km = m.map;
 
       if (is_replay) {

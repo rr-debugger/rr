@@ -113,7 +113,7 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   }
 
   MemoryRange found_stack;
-  for (auto m : t->vm()->maps()) {
+  for (const auto& m : t->vm()->maps()) {
     if (is_usable_area(m.map)) {
       found_stack = m.map;
       break;

@@ -1422,8 +1422,7 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
       return;
     }
 
-    t->push_event(SyscallEvent(t->regs().original_syscallno(),
-        syscall_arch));
+    t->push_event(SyscallEvent(t->regs().original_syscallno(), syscall_arch));
   }
 
   check_initial_task_syscalls(t, step_result);

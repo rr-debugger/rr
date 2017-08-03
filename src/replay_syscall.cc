@@ -289,7 +289,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     new_task->vm()->remove_all_watchpoints();
 
     AutoRemoteSyscalls remote(new_task);
-    for (auto m : t->vm()->maps()) {
+    for (const auto& m : t->vm()->maps()) {
       // Recreate any tracee-shared mappings
       if (m.local_addr &&
           !(m.flags & (AddressSpace::Mapping::IS_THREAD_LOCALS |
@@ -566,7 +566,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
     // Now fix up the address space. First unmap all the mappings other than
     // our rr page.
     vector<MemoryRange> unmaps;
-    for (auto m : t->vm()->maps()) {
+    for (const auto& m : t->vm()->maps()) {
       // Do not attempt to unmap [vsyscall] --- it doesn't work.
       if (m.map.start() != AddressSpace::rr_page_start() &&
           m.map.start() != AddressSpace::preload_thread_locals_start() &&

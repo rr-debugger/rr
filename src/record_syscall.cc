@@ -1240,7 +1240,7 @@ static void record_file_change(RecordTask* t, int fd, uint64_t offset,
                                uint64_t length) {
   string file_name = t->file_name_of_fd(fd);
 
-  for (auto m : t->vm()->maps()) {
+  for (const auto& m : t->vm()->maps()) {
     if (m.map.fsname() == file_name) {
       uint64_t start = max(offset, uint64_t(m.map.file_offset_bytes()));
       uint64_t end = min(offset + length,
@@ -4230,7 +4230,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   // Write out stack mappings first since during replay we need to set up the
   // stack before any files get mapped.
   vector<KernelMapping> stacks;
-  for (auto m : t->vm()->maps()) {
+  for (const auto& m : t->vm()->maps()) {
     auto& km = m.map;
     if (km.is_stack()) {
       stacks.push_back(km);
@@ -4285,7 +4285,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   // the trace.
   vector<remote_ptr<void>> pages_to_record;
 
-  for (auto m : t->vm()->maps()) {
+  for (const auto& m : t->vm()->maps()) {
     auto& km = m.map;
     if (km.start() == AddressSpace::rr_page_start() ||
         km.start() == AddressSpace::preload_thread_locals_start()) {

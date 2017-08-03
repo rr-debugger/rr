@@ -2154,7 +2154,8 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
   vector<KernelMapping> mappings_to_fix;
-  for (auto m : t->vm()->maps_containing_or_after(floor_page_size(addr))) {
+  for (const auto& m :
+       t->vm()->maps_containing_or_after(floor_page_size(addr))) {
     if (m.map.start() >= ceil_page_size(addr + buf_size)) {
       break;
     }
