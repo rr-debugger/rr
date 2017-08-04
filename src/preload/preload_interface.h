@@ -3,6 +3,11 @@
 #ifndef RR_PRELOAD_INTERFACE_H_
 #define RR_PRELOAD_INTERFACE_H_
 
+/* Bump this whenever the interface between syscallbuf and rr changes in a way
+ * that would require changes to replay.
+ */
+#define SYSCALLBUF_PROTOCOL_VERSION 0
+
 #ifdef RR_IMPLEMENT_PRELOAD
 /* Avoid using <string.h> library functions */
 static inline int streq(const char* s1, const char* s2) {

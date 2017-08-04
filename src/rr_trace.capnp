@@ -34,6 +34,7 @@ struct Header {
   hasCpuidFaulting @2 :Bool;
   # A series of 24-byte records. See CPUIDRecord in util.h
   cpuidRecords @3 :Data;
+  syscallbufProtocolVersion @4 :UInt16;
 }
 
 struct MMap {
