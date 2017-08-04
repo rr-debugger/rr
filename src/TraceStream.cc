@@ -58,9 +58,16 @@ static TraceStream::Substream operator++(TraceStream::Substream& s) {
   return s;
 }
 
+static bool file_exists(const string& file) {
+  struct stat dummy;
+  return !file.empty() && stat(file.c_str(), &dummy) == 0
+      && S_ISREG(dummy.st_mode);
+}
+
 static bool dir_exists(const string& dir) {
   struct stat dummy;
-  return !dir.empty() && stat(dir.c_str(), &dummy) == 0;
+  return !dir.empty() && stat(dir.c_str(), &dummy) == 0
+      && S_ISDIR(dummy.st_mode);
 }
 
 static string default_rr_trace_dir() {
@@ -728,6 +735,14 @@ TraceReader::TraceReader(const string& dir)
   }
 
   string path = version_path();
+  if (!file_exists(path)) {
+    fprintf(
+        stderr,
+        "rr: warning: No traces have been recorded so far.\n"
+        "\n");
+    exit(EX_DATAERR);
+  }
+
   fstream vfile(path.c_str(), fstream::in);
   if (!vfile.good()) {
     fprintf(
