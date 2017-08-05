@@ -237,6 +237,9 @@ static kj::ArrayPtr<const byte> str_to_data(const string& str) {
 }
 
 static string data_to_str(const kj::ArrayPtr<const byte>& data) {
+  if (memchr(data.begin(), 0, data.size())) {
+    FATAL() << "Invalid string: contains null character";
+  }
   return string(reinterpret_cast<const char*>(data.begin()), data.size());
 }
 

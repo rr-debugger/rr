@@ -11,8 +11,12 @@ $Cxx.namespace("rr::trace");
 # the range of the type where it is actually used.
 # "Must" constraints noted below should be checked by consumers.
 
+# A path that could be used during replay.
 # Must not contain any null bytes
 using Path = Data;
+
+# Must not contain any null bytes
+using CString = Data;
 
 using Device = UInt64;
 using Inode = UInt64;
@@ -42,7 +46,9 @@ struct MMap {
   # kernel memory mapping data
   start @1 :RemotePtr;
   end @2 :RemotePtr;
-  fsname @3 :Data;
+  # Not a Path because it is only meaningful during recording
+  # Must not contain any null bytes
+  fsname @3 :CString;
   device @4 :Device;
   inode @5 :Inode;
   prot @6 :Int32;
@@ -62,7 +68,7 @@ struct MMap {
     zero @14 :Void;
     trace @15 :Void;
     file :group {
-      backingFileName @16 :Data;
+      backingFileName @16 :Path;
     }
   }
 }
@@ -77,8 +83,9 @@ struct TaskEvent {
       ownNsTid @4 :Tid;
     }
     exec :group {
-      fileName @5 :Data;
-      cmdLine @6 :List(Data);
+      # Not a Path since it is only meaningful during recording
+      fileName @5 :CString;
+      cmdLine @6 :List(CString);
     }
     exit :group {
       exitStatus @7 :Int32;
@@ -134,7 +141,8 @@ struct Signal {
 struct OpenedFd {
   fd @0 :Fd;
   # Absolute pathname, or "terminal" if we opened the terminal in some way
-  path @1 :Data;
+  # Not a Path since it is only meaningful during recording
+  path @1 :CString;
 }
 
 struct Frame {
