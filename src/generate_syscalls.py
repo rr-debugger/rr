@@ -79,7 +79,8 @@ has_${syscall}_syscall(SupportedArch arch) {
       return X64Arch::${syscall} >= 0;
     default:
       assert(0 && "unsupported architecture");
-  }  
+      return false;
+  }
 }
 """)
 
@@ -92,7 +93,8 @@ is_${syscall}_syscall(int syscallno, SupportedArch arch) {
       return syscallno >= 0 && syscallno == X64Arch::${syscall};
     default:
       assert(0 && "unsupported architecture");
- }
+      return false;
+  }
 }
 """)
 
@@ -107,6 +109,7 @@ syscall_number_for_${syscall}(SupportedArch arch) {
       return X64Arch::${syscall};
     default:
       assert(0 && "unsupported architecture");
+      return -1;
   }
 }
 """)
