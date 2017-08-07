@@ -1,3 +1,5 @@
+# rr trace file schema
+
 @0xcaa0b1486c12c629;
 
 using Cxx = import "/capnp/c++.capnp";
