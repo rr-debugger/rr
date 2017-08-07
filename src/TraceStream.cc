@@ -233,7 +233,8 @@ bool TraceReader::good() const {
 }
 
 static kj::ArrayPtr<const byte> str_to_data(const string& str) {
-  return kj::ArrayPtr<const byte>(reinterpret_cast<const byte*>(str.data()), str.size());
+  return kj::ArrayPtr<const byte>(reinterpret_cast<const byte*>(str.data()),
+                                  str.size());
 }
 
 static string data_to_str(const kj::ArrayPtr<const byte>& data) {
@@ -909,7 +910,8 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
       case trace::MMap::Source::Which::FILE: {
         data->source = SOURCE_FILE;
         static const string clone_prefix("mmap_clone_");
-        string backing_file_name = data_to_str(src.getFile().getBackingFileName());
+        string backing_file_name =
+            data_to_str(src.getFile().getBackingFileName());
         bool is_clone =
             backing_file_name.substr(0, clone_prefix.size()) == clone_prefix;
         if (backing_file_name[0] != '/') {
@@ -932,8 +934,7 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
           }
           if (backing_stat.st_ino != map.getInode() ||
               backing_stat.st_mode != mode || backing_stat.st_uid != uid ||
-              backing_stat.st_gid != gid ||
-              backing_stat.st_size != size ||
+              backing_stat.st_gid != gid || backing_stat.st_size != size ||
               backing_stat.st_mtime != mtime) {
             LOG(error) << "Metadata of " << data_to_str(map.getFsname())
                        << " changed: replay divergence likely, but continuing "
@@ -962,9 +963,10 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
   if (found) {
     *found = true;
   }
-  return KernelMapping(map.getStart(), map.getEnd(), data_to_str(map.getFsname()),
-                       map.getDevice(), map.getInode(), map.getProt(),
-                       map.getFlags(), map.getFileOffsetBytes());
+  return KernelMapping(map.getStart(), map.getEnd(),
+                       data_to_str(map.getFsname()), map.getDevice(),
+                       map.getInode(), map.getProt(), map.getFlags(),
+                       map.getFileOffsetBytes());
 }
 
 void TraceWriter::write_raw(pid_t rec_tid, const void* d, size_t len,

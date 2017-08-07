@@ -85,7 +85,8 @@ public:
   /**
    * Update registers from a user_fpregs_struct.
    */
-  void set_user_fpregs_struct(SupportedArch arch, void* data, size_t size);
+  void set_user_fpregs_struct(Task* t, SupportedArch arch, void* data,
+                              size_t size);
 
   /**
    * Get a user_fpxregs_struct for from these ExtraRegisters.
@@ -95,7 +96,8 @@ public:
   /**
    * Update registers from a user_fpxregs_struct.
    */
-  void set_user_fpxregs_struct(const X86Arch::user_fpxregs_struct& regs);
+  void set_user_fpxregs_struct(Task* t,
+                               const X86Arch::user_fpxregs_struct& regs);
 
   void print_register_file_compact(FILE* f) const;
 

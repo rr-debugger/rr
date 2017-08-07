@@ -437,7 +437,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           auto data = read_mem(
               remote_ptr<typename Arch::user_fpregs_struct>(regs.arg4()));
           auto r = extra_regs();
-          r.set_user_fpregs_struct(Arch::arch(), &data, sizeof(data));
+          r.set_user_fpregs_struct(this, Arch::arch(), &data, sizeof(data));
           set_extra_regs(r);
           break;
         }
@@ -445,7 +445,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           auto data =
               read_mem(remote_ptr<X86Arch::user_fpxregs_struct>(regs.arg4()));
           auto r = extra_regs();
-          r.set_user_fpxregs_struct(data);
+          r.set_user_fpxregs_struct(this, data);
           set_extra_regs(r);
           break;
         }

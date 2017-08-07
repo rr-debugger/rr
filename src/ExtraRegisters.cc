@@ -418,20 +418,20 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
   }
 }
 
-void ExtraRegisters::set_user_fpregs_struct(SupportedArch arch, void* data,
-                                            size_t size) {
+void ExtraRegisters::set_user_fpregs_struct(Task* t, SupportedArch arch,
+                                            void* data, size_t size) {
   assert(format_ == XSAVE);
   switch (arch) {
     case x86:
-      assert(size >= sizeof(X86Arch::user_fpregs_struct));
-      assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
+      ASSERT(t, size >= sizeof(X86Arch::user_fpregs_struct));
+      ASSERT(t, data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
       convert_x86_fpregs_to_fxsave(
           *static_cast<X86Arch::user_fpregs_struct*>(data),
           reinterpret_cast<X86Arch::user_fpxregs_struct*>(data_.data()));
       return;
     case x86_64:
-      assert(data_.size() >= sizeof(X64Arch::user_fpregs_struct));
-      assert(size >= sizeof(X64Arch::user_fpregs_struct));
+      ASSERT(t, data_.size() >= sizeof(X64Arch::user_fpregs_struct));
+      ASSERT(t, size >= sizeof(X64Arch::user_fpregs_struct));
       memcpy(data_.data(), data, sizeof(X64Arch::user_fpregs_struct));
       return;
     default:
@@ -447,10 +447,10 @@ X86Arch::user_fpxregs_struct ExtraRegisters::get_user_fpxregs_struct() const {
 }
 
 void ExtraRegisters::set_user_fpxregs_struct(
-    const X86Arch::user_fpxregs_struct& regs) {
-  assert(format_ == XSAVE);
-  assert(arch_ == x86);
-  assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
+    Task* t, const X86Arch::user_fpxregs_struct& regs) {
+  ASSERT(t, format_ == XSAVE);
+  ASSERT(t, arch_ == x86);
+  ASSERT(t, data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
   memcpy(data_.data(), &regs, sizeof(regs));
 }
 
