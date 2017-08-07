@@ -224,7 +224,9 @@ static remote_ptr<void> allocate(remote_ptr<void>* buf_end,
                                  size_t size) {
   remote_ptr<void> r = *buf_end;
   *buf_end += align_size(size);
-  assert(size_t(*buf_end - remote_buf.get()) <= remote_buf.size());
+  if (size_t(*buf_end - remote_buf.get()) > remote_buf.size()) {
+    FATAL() << "overflow";
+  }
   return r;
 }
 
