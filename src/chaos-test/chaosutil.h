@@ -52,7 +52,7 @@ inline static int atomic_puts(const char* str) {
   return atomic_printf("%s\n", str);
 }
 
-#define test_assert(cond) assert("FAILED: !" && check_cond(cond))
+#define test_assert(cond) do { if (!check_cond(cond)) abort(); } while (0)
 
 __attribute__((format(printf, 1, 2))) inline static void caught_test_failure(
     const char* fmt, ...) {
