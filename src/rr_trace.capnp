@@ -31,16 +31,34 @@ using Ticks = Int64;
 # Must be >= 0
 using Fd = Int32;
 
+# The 'version' file contains an ASCII version number followed by a newline.
+# The version number is currently 85 and increments only when there's a
+# backwards-incompatible change. See TRACE_VERSION.
+# After that, there is a Capnproto Header message.
+
 struct Header {
+  # A random, unique ID for the trace
   # Always 16 bytes
   uuid @0 :Data;
+  # The CPU number the trace was bound to during recording, or -1 if it
+  # wasn't bound.
   bindToCpu @1 :Int32;
+  # True if the trace used CPUID faulting during recording (so CPUIDs
+  # were recorded as InstructionTraps).
   hasCpuidFaulting @2 :Bool;
-  # A series of 24-byte records. See CPUIDRecord in util.h
+  # A list of captured CPUID values.
+  # A series of 24-byte records. See CPUIDRecord in util.h.
   cpuidRecords @3 :Data;
+  # The syscallbuf protocol version. See SYSCALLBUF_PROTOCOL_VERSION.
   syscallbufProtocolVersion @4 :UInt16;
 }
 
+# The 'mmaps', 'tasks' and 'events' files consist of a series of chunks.
+# Each chunk starts with a header of two 32-bit words: the size of the
+# uncompressed data, and the size of the Brotli-compressed data. The
+# compressed data follows.
+
+# The 'mmaps' file is a sequence of these.
 struct MMap {
   frameTime @0 :FrameTime;
   # kernel memory mapping data
@@ -68,11 +86,13 @@ struct MMap {
     zero @14 :Void;
     trace @15 :Void;
     file :group {
+      # Either an absolute path, or relative to the trace directory
       backingFileName @16 :Path;
     }
   }
 }
 
+# The 'tasks' file is a sequence of these.
 struct TaskEvent {
   frameTime @0 :FrameTime;
   tid @1 :Tid;
@@ -145,11 +165,17 @@ struct OpenedFd {
   path @1 :CString;
 }
 
+# The 'events' file is a sequence of these.
 struct Frame {
   tid @0 :Tid;
+  # Per-task total tick count.
   ticks @1 :Ticks;
+  # The baseline is unspecified, so only the differences between frames'
+  # values are meaningful
   monotonicSec @2 :Float64;
+  # Userspace writes performed by this event
   memWrites @3 :List(MemWrite);
+  # Architecture of this task at this event
   # Determines the format of 'registers' and 'extraRegisters'
   arch @4 :Arch;
   registers @5 :Registers;
