@@ -76,6 +76,7 @@ else()
   set(rr_MBITNESS_OPTION)
 endif()
 
+option(staticlibs "Force usage of static linkage for non-standard libraries like capnproto")
 
 # Check that compiling 32-bit code on a 64-bit target works, if required.
 if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND rr_32BIT)
@@ -120,8 +121,15 @@ set(REQUIRED_LIBS
 foreach(required_lib ${REQUIRED_LIBS})
   string(TOUPPER ${required_lib} PKG)
   pkg_check_modules(${PKG} REQUIRED ${required_lib})
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${${PKG}_CFLAGS}")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${${PKG}_CFLAGS}")
+  if(staticlibs)
+    string(REPLACE ";" " " ${PKG}_STATIC_CFLAGS "${${PKG}_STATIC_CFLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${${PKG}_STATIC_CFLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${${PKG}_STATIC_CFLAGS}")
+  else()
+    string(REPLACE ";" " " ${PKG}_CFLAGS "${${PKG}_CFLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${${PKG}_CFLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${${PKG}_CFLAGS}")
+  endif()
 endforeach(required_lib)
 
 # ==== brotli ====
@@ -436,8 +444,15 @@ target_link_libraries(rr
   ${CMAKE_DL_LIBS}
   -lrt
   brotli
-  ${CAPNP_LDFLAGS}
 )
+
+if(staticlibs)
+  # Urgh ... this might not work for everyone, but there doesn't seem to be
+  # a way to persuade pkg-confing/pkg_check_modules to produce the right flags
+  target_link_libraries(rr -l:libcapnp.a -l:libkj.a)
+else()
+  target_link_libraries(rr ${CAPNP_LDFLAGS})
+endif()
 
 target_link_libraries(rrpreload
   ${CMAKE_DL_LIBS}
