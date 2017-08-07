@@ -1146,11 +1146,15 @@ if(BUILD_TESTS)
     src/test/test_lib.c
     )
   add_dependencies(test_lib Generated)
+  set_source_files_properties(src/test/test_lib.c
+                              PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
   target_link_libraries(constructor -lrt test_lib)
 
   # cpuid test needs to link with cpuid_loop.S
   add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
   post_build_executable(cpuid)
+  set_source_files_properties(src/test/cpuid.c
+                              PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
   add_dependencies(cpuid Generated)
   target_link_libraries(cpuid -lrt)
 
@@ -1221,7 +1225,7 @@ if(BUILD_TESTS)
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                      COPYONLY)
       set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-                                  PROPERTIES COMPILE_FLAGS -m32)
+                                  PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
     endforeach(file)
 
     foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
