@@ -2,8 +2,6 @@
 
 #include "Flags.h"
 
-#include <assert.h>
-
 namespace rr {
 
 Flags& Flags::get_for_init() { return singleton; }

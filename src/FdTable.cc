@@ -12,6 +12,7 @@
 #include "RecordTask.h"
 #include "ReplayTask.h"
 #include "Session.h"
+#include "core.h"
 #include "log.h"
 
 using namespace std;
@@ -21,7 +22,7 @@ namespace rr {
 void FdTable::add_monitor(int fd, FileMonitor* monitor) {
   // In the future we could support multiple monitors on an fd, but we don't
   // need to yet.
-  assert(!is_monitoring(fd));
+  DEBUG_ASSERT(!is_monitoring(fd));
   fds[fd] = FileMonitor::shr_ptr(monitor);
   update_syscallbuf_fds_disabled(fd);
 }
@@ -118,8 +119,8 @@ static bool is_fd_monitored_in_any_task(AddressSpace* vm, int fd) {
 }
 
 void FdTable::update_syscallbuf_fds_disabled(int fd) {
-  assert(fd >= 0);
-  assert(task_set().size() > 0);
+  DEBUG_ASSERT(fd >= 0);
+  DEBUG_ASSERT(task_set().size() > 0);
 
   unordered_set<AddressSpace*> vms_updated;
   // It's possible for tasks with different VMs to share this fd table.
@@ -167,7 +168,7 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
   for (Task* vm_t : rt->vm()->task_set()) {
     for (auto& it : vm_t->fd_table()->fds) {
       int fd = it.first;
-      assert(fd >= 0);
+      DEBUG_ASSERT(fd >= 0);
       if (fd < SYSCALLBUF_FDS_DISABLED_SIZE) {
         disabled[fd] = 1;
       }

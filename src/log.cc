@@ -14,6 +14,7 @@
 #include "GdbConnection.h"
 #include "GdbServer.h"
 #include "RecordSession.h"
+#include "core.h"
 #include "ftrace.h"
 #include "kernel_metadata.h"
 #include "util.h"
@@ -128,7 +129,7 @@ static void init_log_globals() {
   char* env = getenv(log_env);
   if (env) {
     env = strdup(env);
-    assert(env);
+    DEBUG_ASSERT(env);
     for (int i = 0; env[i]; ++i) {
       env[i] = simple_to_lower(env[i]);
     }

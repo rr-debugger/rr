@@ -4,6 +4,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "ReplaySession.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 
@@ -19,8 +20,8 @@ DiversionSession::~DiversionSession() {
   // destroyed many times, and we don't want to temporarily hog
   // resources.
   kill_all_tasks();
-  assert(tasks().size() == 0 && vms().size() == 0);
-  assert(emu_fs->size() == 0);
+  DEBUG_ASSERT(tasks().size() == 0 && vms().size() == 0);
+  DEBUG_ASSERT(emu_fs->size() == 0);
 }
 
 static void finish_emulated_syscall_with_ret(Task* t, long ret) {
@@ -104,7 +105,7 @@ static void process_syscall(Task* t, int syscallno) {
  */
 DiversionSession::DiversionResult DiversionSession::diversion_step(
     Task* t, RunCommand command, int signal_to_deliver) {
-  assert(command != RUN_SINGLESTEP_FAST_FORWARD);
+  DEBUG_ASSERT(command != RUN_SINGLESTEP_FAST_FORWARD);
   assert_fully_initialized();
 
   DiversionResult result;

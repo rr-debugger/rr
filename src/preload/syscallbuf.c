@@ -261,7 +261,10 @@ static void logmsg(const char* msg) {
     }                                                                          \
   } while (0)
 #else
-#define assert(cond) ((void)0)
+#define assert(cond)                                                           \
+  do {                                                                         \
+    __attribute__((unused)) size_t s = sizeof(cond);                           \
+  } while (0)
 #endif
 
 #define fatal(msg)                                                             \

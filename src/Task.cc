@@ -194,7 +194,7 @@ string Task::file_name_of_fd(int fd) {
 }
 
 const siginfo_t& Task::get_siginfo() {
-  assert(stop_sig());
+  DEBUG_ASSERT(stop_sig());
   return pending_siginfo;
 }
 
@@ -463,7 +463,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
               auto set = ptrace_get_regs_set<Arch>(
                   this, regs, sizeof(typename Arch::user_fpregs_struct));
               ExtraRegisters r = tracee->extra_regs();
-              r.set_user_fpregs_struct(Arch::arch(), set.data(), set.size());
+              r.set_user_fpregs_struct(this, Arch::arch(), set.data(),
+                                       set.size());
               tracee->set_extra_regs(r);
               break;
             }
@@ -816,7 +817,7 @@ const ExtraRegisters& Task::extra_regs() {
 }
 
 static ssize_t dr_user_word_offset(size_t i) {
-  assert(i < NUM_X86_DEBUG_REGS);
+  DEBUG_ASSERT(i < NUM_X86_DEBUG_REGS);
   return offsetof(struct user, u_debugreg[0]) + sizeof(void*) * i;
 }
 
@@ -913,7 +914,7 @@ static void* preload_thread_locals_local_addr(AddressSpace& as) {
   // if the mapping didn't exist at all.
   auto& mapping = as.mapping_of(AddressSpace::preload_thread_locals_start());
   if (mapping.flags & AddressSpace::Mapping::IS_THREAD_LOCALS) {
-    assert(mapping.local_addr);
+    DEBUG_ASSERT(mapping.local_addr);
     return mapping.local_addr;
   }
   return nullptr;
@@ -2009,7 +2010,7 @@ void Task::reset_syscallbuf() {
   uint32_t num_rec =
       read_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes));
   uint8_t* ptr = as->local_mapping(syscallbuf_child + 1, num_rec);
-  assert(ptr != nullptr);
+  DEBUG_ASSERT(ptr != nullptr);
   memset(ptr, 0, num_rec);
   write_mem(REMOTE_PTR_FIELD(syscallbuf_child, num_rec_bytes), (uint32_t)0);
   write_mem(REMOTE_PTR_FIELD(syscallbuf_child, mprotect_record_count),
@@ -2370,7 +2371,7 @@ static void setup_fd_table(FdTable& fds) {
 }
 
 static void set_cpu_affinity(int cpu) {
-  assert(cpu >= 0);
+  DEBUG_ASSERT(cpu >= 0);
 
   cpu_set_t mask;
   CPU_ZERO(&mask);
@@ -2577,7 +2578,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              pid_t rec_tid) {
-  assert(session.tasks().size() == 0);
+  DEBUG_ASSERT(session.tasks().size() == 0);
 
   if (trace.bound_to_cpu() >= 0) {
     // Set CPU affinity now, after we've created any helper threads

@@ -13,6 +13,7 @@
 #include "ScopedFd.h"
 #include "Session.h"
 #include "Task.h"
+#include "core.h"
 #include "log.h"
 
 using namespace std;
@@ -30,7 +31,7 @@ static void open_socket() {
   if (control_fd < 0) {
     FATAL() << "Cannot create socket";
   }
-  assert(control_fd >= 0);
+  DEBUG_ASSERT(control_fd >= 0);
   struct sockaddr_un addr;
   addr.sun_family = AF_UNIX;
   if (s.size() + 1 > sizeof(addr.sun_path)) {
@@ -77,13 +78,13 @@ static void receive_marker_fd() {
   if (0 > recvmsg(control_fd, &msg, 0)) {
     FATAL() << "Failed to receive fd";
   }
-  assert(received_data == 'F');
+  DEBUG_ASSERT(received_data == 'F');
 
   struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-  assert(cmsg && cmsg->cmsg_level == SOL_SOCKET &&
-         cmsg->cmsg_type == SCM_RIGHTS);
+  DEBUG_ASSERT(cmsg && cmsg->cmsg_level == SOL_SOCKET &&
+               cmsg->cmsg_type == SCM_RIGHTS);
   marker_fd = ScopedFd(*(int*)CMSG_DATA(cmsg));
-  assert(marker_fd.is_open());
+  DEBUG_ASSERT(marker_fd.is_open());
 }
 
 void start_function_graph(const Session& session, const TraceStream& trace) {

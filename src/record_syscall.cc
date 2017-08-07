@@ -5,7 +5,6 @@
 #include <arpa/inet.h>
 #include <asm/ldt.h>
 #include <asm/prctl.h>
-#include <assert.h>
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -589,10 +588,11 @@ remote_ptr<void> TaskSyscallState::relocate_pointer_to_scratch(
       ++num_relocations;
     }
   }
-  assert(num_relocations > 0 &&
-         "Pointer in non-scratch memory being updated to point to scratch?");
-  assert(num_relocations <= 1 &&
-         "Overlapping buffers containing relocated pointer?");
+  DEBUG_ASSERT(
+      num_relocations > 0 &&
+      "Pointer in non-scratch memory being updated to point to scratch?");
+  DEBUG_ASSERT(num_relocations <= 1 &&
+               "Overlapping buffers containing relocated pointer?");
   return result;
 }
 
@@ -698,7 +698,7 @@ Switchable TaskSyscallState::done_preparing(Switchable sw) {
 
 size_t TaskSyscallState::eval_param_size(size_t i,
                                          vector<size_t>& actual_sizes) {
-  assert(actual_sizes.size() == i);
+  DEBUG_ASSERT(actual_sizes.size() == i);
 
   size_t already_consumed = 0;
   for (size_t j = 0; j < i; ++j) {
@@ -1744,7 +1744,7 @@ static uint64_t widen_buffer_unsigned(const void* buf, size_t size) {
     case 8:
       return *reinterpret_cast<const uint64_t*>(buf);
     default:
-      assert(0 && "Unsupported size");
+      DEBUG_ASSERT(0 && "Unsupported size");
       return 0;
   }
 }
@@ -1760,7 +1760,7 @@ static int64_t widen_buffer_signed(const void* buf, size_t size) {
     case 8:
       return *reinterpret_cast<const int64_t*>(buf);
     default:
-      assert(0 && "Unsupported size");
+      DEBUG_ASSERT(0 && "Unsupported size");
       return 0;
   }
 }
@@ -1768,7 +1768,7 @@ static int64_t widen_buffer_signed(const void* buf, size_t size) {
 static uint64_t path_inode_number(const char* path) {
   struct stat st;
   int ret = stat(path, &st);
-  assert(ret == 0);
+  DEBUG_ASSERT(ret == 0);
   return st.st_ino;
 }
 
@@ -2659,7 +2659,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       new_task->record_remote_even_if_null(
           child_params.tls.cast<typename Arch::user_desc>());
     } else {
-      assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
+      DEBUG_ASSERT(Arch::clone_tls_type == Arch::PthreadStructurePointer);
     }
     new_task->record_remote_even_if_null(child_params.ptid);
     new_task->record_remote_even_if_null(child_params.ctid);

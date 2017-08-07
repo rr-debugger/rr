@@ -2,7 +2,6 @@
 
 #include "PerfCounters.h"
 
-#include <assert.h>
 #include <err.h>
 #include <fcntl.h>
 #include <linux/perf_event.h>
@@ -21,6 +20,7 @@
 #include "Flags.h"
 #include "Session.h"
 #include "Task.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"
@@ -212,7 +212,7 @@ static const uint64_t IN_TXCP = 1ULL << 33;
 static int64_t read_counter(ScopedFd& fd) {
   int64_t val;
   ssize_t nread = read(fd, &val, sizeof(val));
-  assert(nread == sizeof(val));
+  DEBUG_ASSERT(nread == sizeof(val));
   return val;
 }
 
@@ -524,7 +524,7 @@ static void init_attributes() {
       break;
     }
   }
-  assert(pmu);
+  DEBUG_ASSERT(pmu);
 
   if (!pmu->supported) {
     FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
@@ -590,7 +590,7 @@ static bool always_recreate_counters() {
 }
 
 void PerfCounters::reset(Ticks ticks_period) {
-  assert(ticks_period >= 0);
+  DEBUG_ASSERT(ticks_period >= 0);
 
   if (ticks_period == 0 && !always_recreate_counters()) {
     // We can't switch a counter between sampling and non-sampling via

@@ -6,7 +6,6 @@
 #include "util.h"
 
 #include <arpa/inet.h>
-#include <assert.h>
 #include <elf.h>
 #include <execinfo.h>
 #include <fcntl.h>
@@ -36,10 +35,12 @@
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "TraceStream.h"
+#include "core.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "seccomp-bpf.h"
+
 void good_random(uint8_t* out, size_t out_len);
 
 using namespace std;
@@ -615,10 +616,10 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
 
   // Inside a user namespace, the real root user may be mapped to UID 65534.
   if (!can_write_file && (0 == stat.st_uid || 65534 == stat.st_uid)) {
-    // We would like to assert this, but on Ubuntu 13.10,
+    // We would like to DEBUG_ASSERT this, but on Ubuntu 13.10,
     // the file /lib/i386-linux-gnu/libdl-2.17.so is
     // writeable by root for unknown reasons.
-    // assert(!(prot & PROT_WRITE));
+    // DEBUG_ASSERT(!(prot & PROT_WRITE));
     /* Mapping a file owned by root: we don't care if this
      * was a PRIVATE or SHARED mapping, because unless the
      * program is disastrously buggy or unlucky, the
@@ -1105,7 +1106,7 @@ XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records) {
   }
 
   CPUIDRecord cpuid_data = records[record_index];
-  assert(cpuid_data.ecx_in == 0);
+  DEBUG_ASSERT(cpuid_data.ecx_in == 0);
   layout.full_size = cpuid_data.out.ecx;
   layout.supported_feature_bits =
       cpuid_data.out.eax | (uint64_t(cpuid_data.out.edx) << 32);

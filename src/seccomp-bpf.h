@@ -27,6 +27,7 @@
 
 #include <vector>
 
+#include "core.h"
 #include "remote_code_ptr.h"
 
 #include <sys/prctl.h>
@@ -76,7 +77,7 @@ public:
   }
   void allow_syscalls_from_callsite(remote_code_ptr ip) {
     uint32_t v(ip.register_value());
-    assert(ip.register_value() == v);
+    DEBUG_ASSERT(ip.register_value() == v);
     filters.push_back(BPF_STMT(BPF_LD + BPF_W + BPF_ABS, inst_ptr));
     filters.push_back(BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, v, 0, 1));
     allow();

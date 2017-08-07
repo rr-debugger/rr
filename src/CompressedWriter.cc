@@ -4,7 +4,6 @@
 
 #include "CompressedWriter.h"
 
-#include <assert.h>
 #include <brotli/encode.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -12,6 +11,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include "core.h"
 
 using namespace std;
 
@@ -237,10 +238,10 @@ size_t CompressedWriter::do_compress(uint64_t offset, size_t length,
                                      uint8_t* outputbuf, size_t outputbuf_len) {
   BrotliEncoderState* state = BrotliEncoderCreateInstance(NULL, NULL, NULL);
   if (!state) {
-    assert(0 && "BrotliEncoderCreateInstance failed");
+    DEBUG_ASSERT(0 && "BrotliEncoderCreateInstance failed");
   }
   if (!BrotliEncoderSetParameter(state, BROTLI_PARAM_QUALITY, BROTLI_LEVEL)) {
-    assert(0 && "Brotli initialization failed");
+    DEBUG_ASSERT(0 && "Brotli initialization failed");
   }
 
   size_t ret = 0;
@@ -250,7 +251,7 @@ size_t CompressedWriter::do_compress(uint64_t offset, size_t length,
     const uint8_t* in = &buffer[buf_offset];
     if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_PROCESS, &amount,
                                      &in, &outputbuf_len, &outputbuf, &ret)) {
-      assert(0 && "Brotli compression failed");
+      DEBUG_ASSERT(0 && "Brotli compression failed");
     }
     size_t consumed = in - &buffer[buf_offset];
     offset += consumed;
@@ -259,7 +260,7 @@ size_t CompressedWriter::do_compress(uint64_t offset, size_t length,
   size_t zero = 0;
   if (!BrotliEncoderCompressStream(state, BROTLI_OPERATION_FINISH, &zero, NULL,
                                    &outputbuf_len, &outputbuf, &ret)) {
-    assert(0 && "Brotli compression failed");
+    DEBUG_ASSERT(0 && "Brotli compression failed");
   }
 
   BrotliEncoderDestroyInstance(state);

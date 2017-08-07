@@ -4,6 +4,7 @@
 #include "GdbServer.h"
 #include "Task.h"
 #include "TaskGroup.h"
+#include "core.h"
 #include "log.h"
 
 extern "C" {
@@ -58,7 +59,7 @@ ps_err_e ps_pdwrite(struct ps_prochandle*, psaddr_t, const void*, size_t) {
 ps_err_e ps_lgetregs(struct ps_prochandle* h, lwpid_t rec_tid,
                      prgregset_t result) {
   rr::Task* task = h->task_group->session()->find_task(rec_tid);
-  assert(task != nullptr);
+  DEBUG_ASSERT(task != nullptr);
 
   struct ::user_regs_struct regs = task->regs().get_ptrace();
   memcpy(result, static_cast<void*>(&regs), sizeof(regs));
@@ -89,7 +90,7 @@ pid_t ps_getpid(struct ps_prochandle* h) {
 ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
                             int val, psaddr_t* base) {
   rr::Task* task = h->task_group->session()->find_task(rec_tid);
-  assert(task != nullptr);
+  DEBUG_ASSERT(task != nullptr);
 
   if (task->arch() == rr::x86) {
     unsigned int uval = static_cast<unsigned int>(val);

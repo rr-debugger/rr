@@ -20,6 +20,7 @@
 #include "TaskishUid.h"
 #include "TraceStream.h"
 #include "WaitStatus.h"
+#include "core.h"
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "remote_code_ptr.h"
@@ -588,7 +589,7 @@ public:
   template <typename T>
   void write_mem(remote_ptr<T> child_addr, const T& val, bool* ok = nullptr,
                  uint32_t flags = 0) {
-    assert(type_has_no_holes<T>());
+    DEBUG_ASSERT(type_has_no_holes<T>());
     write_bytes_helper(child_addr, sizeof(val), static_cast<const void*>(&val),
                        ok, flags);
   }
@@ -602,7 +603,7 @@ public:
 
   template <typename T>
   void write_mem(remote_ptr<T> child_addr, const T* val, int count) {
-    assert(type_has_no_holes<T>());
+    DEBUG_ASSERT(type_has_no_holes<T>());
     write_bytes_helper(child_addr, sizeof(*val) * count,
                        static_cast<const void*>(val));
   }

@@ -10,6 +10,7 @@
 
 #include "AddressSpace.h"
 #include "ReplaySession.h"
+#include "core.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -65,7 +66,7 @@ string EmuFile::proc_path() const {
 }
 
 void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
-  assert(device_ == device && inode_ == inode);
+  DEBUG_ASSERT(device_ == device && inode_ == inode);
   if (size_ != size) {
     resize_shmem_segment(file, size);
   }
@@ -131,7 +132,7 @@ bool EmuFs::has_file_for(const KernelMapping& recorded_map) const {
 }
 
 EmuFile::shr_ptr EmuFs::clone_file(EmuFile::shr_ptr file) {
-  assert(file);
+  DEBUG_ASSERT(file);
   auto c = file->clone(*this);
   files[FileId(*file)] = c;
   return c;

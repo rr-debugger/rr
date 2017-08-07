@@ -4,7 +4,6 @@
 
 #include "Scheduler.h"
 
-#include <assert.h>
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -21,6 +20,7 @@
 #include "Flags.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "core.h"
 #include "log.h"
 
 using namespace std;
@@ -112,7 +112,7 @@ RecordTask* Scheduler::get_next_task_with_same_priority(RecordTask* t) {
   }
 
   auto it = task_priority_set.find(make_pair(t->priority, t));
-  assert(it != task_priority_set.end());
+  DEBUG_ASSERT(it != task_priority_set.end());
   ++it;
   if (it == task_priority_set.end() || it->first != t->priority) {
     it = task_priority_set.lower_bound(make_pair(t->priority, nullptr));
@@ -588,7 +588,7 @@ double Scheduler::interrupt_after_elapsed_time() const {
 }
 
 void Scheduler::on_create(RecordTask* t) {
-  assert(!t->in_round_robin_queue);
+  DEBUG_ASSERT(!t->in_round_robin_queue);
   if (enable_chaos) {
     // new tasks get a random priority
     t->priority = choose_random_priority(t);

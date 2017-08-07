@@ -4,6 +4,7 @@
 
 #include <math.h>
 
+#include "core.h"
 #include "fast_forward.h"
 #include "log.h"
 
@@ -38,7 +39,7 @@ ostream& operator<<(ostream& s, const ReplayTimeline::ProtoMark& o) {
 }
 
 bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
-  assert(m1.ptr->owner == m2.ptr->owner);
+  DEBUG_ASSERT(m1.ptr->owner == m2.ptr->owner);
   if (m1.ptr->proto.key < m2.ptr->proto.key) {
     return true;
   }
@@ -56,7 +57,7 @@ bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
       return true;
     }
   }
-  assert(0 && "Marks missing from vector, invariants broken!");
+  DEBUG_ASSERT(0 && "Marks missing from vector, invariants broken!");
   return false;
 }
 
@@ -206,7 +207,7 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
 
 void ReplayTimeline::mark_after_singlestep(const Mark& from,
                                            const ReplayResult& result) {
-  assert(result.break_status.singlestep_complete);
+  DEBUG_ASSERT(result.break_status.singlestep_complete);
   Mark m = mark();
   if (!result.did_fast_forward && m.ptr->proto.key == from.ptr->proto.key &&
       !result.break_status.signal) {
@@ -235,7 +236,7 @@ ReplayTimeline::Mark ReplayTimeline::find_singlestep_before(const Mark& mark) {
       break;
     }
   }
-  assert(i >= 0 && "Mark not in vector???");
+  DEBUG_ASSERT(i >= 0 && "Mark not in vector???");
 
   Mark m;
   if (i == 0) {
@@ -263,7 +264,7 @@ ReplayTimeline::Mark ReplayTimeline::lazy_reverse_singlestep(const Mark& from,
 }
 
 ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
-  assert(current->can_clone());
+  DEBUG_ASSERT(current->can_clone());
 
   Mark m = mark();
   if (!m.ptr->checkpoint) {
@@ -281,14 +282,14 @@ ReplayTimeline::Mark ReplayTimeline::add_explicit_checkpoint() {
 }
 
 void ReplayTimeline::remove_mark_with_checkpoint(const MarkKey& key) {
-  assert(marks_with_checkpoints[key] > 0);
+  DEBUG_ASSERT(marks_with_checkpoints[key] > 0);
   if (--marks_with_checkpoints[key] == 0) {
     marks_with_checkpoints.erase(key);
   }
 }
 
 void ReplayTimeline::remove_explicit_checkpoint(const Mark& mark) {
-  assert(mark.ptr->checkpoint_refcount > 0);
+  DEBUG_ASSERT(mark.ptr->checkpoint_refcount > 0);
   if (--mark.ptr->checkpoint_refcount == 0) {
     mark.ptr->checkpoint = nullptr;
     remove_mark_with_checkpoint(mark.ptr->proto.key);
@@ -329,7 +330,7 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
           break;
         }
       }
-      assert(current);
+      DEBUG_ASSERT(current);
       breakpoints_applied = false;
       current_at_or_after_mark = nullptr;
     }
@@ -764,7 +765,7 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
     while (current->trace_reader().time() < mid) {
       current->replay_step(constraints);
     }
-    assert(current->trace_reader().time() == mid);
+    DEBUG_ASSERT(current->trace_reader().time() == mid);
     LOG(debug) << "Ran forward to mid event " << current_mark_key();
     return true;
   }
@@ -776,7 +777,8 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
     while (current->trace_reader().time() < end.ptr->proto.key.trace_time) {
       current->replay_step(constraints);
     }
-    assert(current->trace_reader().time() == end.ptr->proto.key.trace_time);
+    DEBUG_ASSERT(current->trace_reader().time() ==
+                 end.ptr->proto.key.trace_time);
     LOG(debug) << "Ran forward to event " << current_mark_key();
     return true;
   }
@@ -808,8 +810,8 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
       LOG(debug) << "Ran forward to " << current_mark_key();
       return true;
     }
-    assert(result.break_status.approaching_ticks_target);
-    assert(t->tick_count() == start_ticks);
+    DEBUG_ASSERT(result.break_status.approaching_ticks_target);
+    DEBUG_ASSERT(t->tick_count() == start_ticks);
   }
 
   // We didn't make any progress that way.
@@ -836,7 +838,7 @@ bool ReplayTimeline::run_forward_to_intermediate_point(const Mark& end,
     constraints.stop_before_states.push_back(&end.ptr->proto.regs);
     ReplayResult result = current->replay_step(constraints);
     if (at_mark(end)) {
-      assert(tmp_session);
+      DEBUG_ASSERT(tmp_session);
       current = move(tmp_session);
       LOG(debug) << "Singlestepping arrived at |end|, restoring session";
     } else if (!m.equal_states(*current)) {
@@ -967,7 +969,7 @@ ReplayResult ReplayTimeline::reverse_continue(
                           : 0;
         last_stop_is_watch_or_signal = true;
       }
-      assert(result.status == REPLAY_CONTINUE);
+      DEBUG_ASSERT(result.status == REPLAY_CONTINUE);
 
       if (is_start_of_reverse_execution_barrier_event()) {
         dest = mark();
@@ -1014,7 +1016,7 @@ ReplayResult ReplayTimeline::reverse_continue(
           if (run_forward_to_intermediate_point(end, made_progress_between_stops
                                                          ? DONT_FORCE_PROGRESS
                                                          : FORCE_PROGRESS)) {
-            assert(!at_mark(end));
+            DEBUG_ASSERT(!at_mark(end));
             // We made some progress towards |end| with breakpoints/watchpoints
             // disabled, without reaching |end|. Continuing running forward from
             // here with breakpoints/watchpoints enabled. If we need to seek
@@ -1159,7 +1161,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       }
       end = start;
     }
-    assert(stop_filter(current->current_task()) || seen_barrier);
+    DEBUG_ASSERT(stop_filter(current->current_task()) || seen_barrier);
 
     Mark destination_candidate;
     Mark step_start = set_short_checkpoint();
@@ -1260,7 +1262,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
       seek_to_mark(destination_candidate);
       destination_candidate_result.break_status.task =
           current->find_task(destination_candidate_tuid);
-      assert(destination_candidate_result.break_status.task);
+      DEBUG_ASSERT(destination_candidate_result.break_status.task);
       evaluate_conditions(destination_candidate_result);
       return destination_candidate_result;
     }
@@ -1322,7 +1324,7 @@ void ReplayTimeline::evaluate_conditions(ReplayResult& result) {
 
 ReplayResult ReplayTimeline::replay_step_forward(RunCommand command,
                                                  FrameTime stop_at_time) {
-  assert(command != RUN_SINGLESTEP_FAST_FORWARD);
+  DEBUG_ASSERT(command != RUN_SINGLESTEP_FAST_FORWARD);
 
   ReplayResult result;
   apply_breakpoints_and_watchpoints();

@@ -12,6 +12,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "PreserveFileMonitor.h"
 #include "RecordSession.h"
+#include "core.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -43,13 +44,13 @@ struct Sighandler {
   template <typename Arch> void reset_arch() {
     typename Arch::kernel_sigaction ksa;
     memset(&ksa, 0, sizeof(ksa));
-    assert(uintptr_t(SIG_DFL) == 0);
+    DEBUG_ASSERT(uintptr_t(SIG_DFL) == 0);
     init_arch<Arch>(ksa);
   }
 
   SignalDisposition disposition() const {
-    assert(uintptr_t(SIG_DFL) == 0);
-    assert(uintptr_t(SIG_IGN) == 1);
+    DEBUG_ASSERT(uintptr_t(SIG_DFL) == 0);
+    DEBUG_ASSERT(uintptr_t(SIG_IGN) == 1);
     switch (k_sa_handler.as_int()) {
       case 0:
         return SIGNAL_DEFAULT;
@@ -108,7 +109,7 @@ struct Sighandlers {
       if (::syscall(SYS_rt_sigaction, i, nullptr, &sa, sizeof(uint64_t))) {
         /* EINVAL means we're querying an
          * unused signal number. */
-        assert(EINVAL == errno);
+        DEBUG_ASSERT(EINVAL == errno);
         continue;
       }
       msan_unpoison(&sa, sizeof(NativeArch::kernel_sigaction));
@@ -140,7 +141,7 @@ struct Sighandlers {
   }
 
   void assert_valid(int sig) const {
-    assert(0 < sig && sig < ssize_t(array_length(handlers)));
+    DEBUG_ASSERT(0 < sig && sig < ssize_t(array_length(handlers)));
   }
 
   static shr_ptr create() { return shr_ptr(new Sighandlers()); }
@@ -1213,9 +1214,9 @@ void RecordTask::stash_sig() {
 void RecordTask::stash_synthetic_sig(const siginfo_t& si,
                                      SignalDeterministic deterministic) {
   int sig = si.si_signo;
-  assert(sig);
+  DEBUG_ASSERT(sig);
   // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
-  assert(sig != SYSCALLBUF_DESCHED_SIGNAL);
+  DEBUG_ASSERT(sig != SYSCALLBUF_DESCHED_SIGNAL);
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
@@ -1489,7 +1490,7 @@ void RecordTask::record_remote_even_if_null(remote_ptr<void> addr,
                                             ssize_t num_bytes) {
   maybe_flush_syscallbuf();
 
-  assert(num_bytes >= 0);
+  DEBUG_ASSERT(num_bytes >= 0);
 
   if (!addr) {
     trace_writer().write_raw(rec_tid, nullptr, 0, addr);
@@ -1512,7 +1513,7 @@ void RecordTask::pop_event(EventType expected_type) {
 void RecordTask::log_pending_events() const {
   ssize_t depth = pending_events.size();
 
-  assert(depth > 0);
+  DEBUG_ASSERT(depth > 0);
   if (1 == depth) {
     LOG(info) << "(no pending events)";
     return;

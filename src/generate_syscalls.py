@@ -78,7 +78,7 @@ has_${syscall}_syscall(SupportedArch arch) {
     case x86_64:
       return X64Arch::${syscall} >= 0;
     default:
-      assert(0 && "unsupported architecture");
+      DEBUG_ASSERT(0 && "unsupported architecture");
       return false;
   }
 }
@@ -92,7 +92,7 @@ is_${syscall}_syscall(int syscallno, SupportedArch arch) {
     case x86_64:
       return syscallno >= 0 && syscallno == X64Arch::${syscall};
     default:
-      assert(0 && "unsupported architecture");
+      DEBUG_ASSERT(0 && "unsupported architecture");
       return false;
   }
 }
@@ -102,13 +102,13 @@ syscall_number = string.Template("""inline int
 syscall_number_for_${syscall}(SupportedArch arch) {
   switch (arch) {
     case x86:
-      assert(X86Arch::${syscall} >= 0);
+      DEBUG_ASSERT(X86Arch::${syscall} >= 0);
       return X86Arch::${syscall};
     case x86_64:
-      assert(X64Arch::${syscall} >= 0);
+      DEBUG_ASSERT(X64Arch::${syscall} >= 0);
       return X64Arch::${syscall};
     default:
-      assert(0 && "unsupported architecture");
+      DEBUG_ASSERT(0 && "unsupported architecture");
       return -1;
   }
 }

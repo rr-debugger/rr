@@ -4,6 +4,7 @@
 
 #include "GdbServer.h"
 #include "Task.h"
+#include "core.h"
 
 using namespace std;
 
@@ -139,7 +140,7 @@ struct ExpressionState {
   }
 
   void step(Task* t) {
-    assert(!error);
+    DEBUG_ASSERT(!error);
     BinaryOperands operands;
     switch (fetch<uint8_t>()) {
       case OP_add:

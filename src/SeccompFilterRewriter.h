@@ -3,11 +3,11 @@
 #ifndef RR_SECCOMP_FILTER_REWRITER_H_
 #define RR_SECCOMP_FILTER_REWRITER_H_
 
-#include <assert.h>
-
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
+
+#include "core.h"
 
 /**
  * When seccomp decides not to execute a syscall the kernel returns to userspace
@@ -45,7 +45,7 @@ public:
   void install_patched_seccomp_filter(RecordTask* t);
 
   uint32_t map_filter_data_to_real_result(uint16_t value) {
-    assert(value < index_to_result.size());
+    DEBUG_ASSERT(value < index_to_result.size());
     return index_to_result[value];
   }
 

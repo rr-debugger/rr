@@ -18,6 +18,7 @@
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "TaskishUid.h"
+#include "core.h"
 #include "kernel_supplement.h"
 #include "log.h"
 #include "rr_trace.capnp.h"
@@ -653,7 +654,7 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
       task.initExit().setExitStatus(event.exit_status().get());
       break;
     case TraceTaskEvent::NONE:
-      assert(0 && "Writing NONE TraceTaskEvent");
+      DEBUG_ASSERT(0 && "Writing NONE TraceTaskEvent");
       break;
   }
 
@@ -702,7 +703,7 @@ TraceTaskEvent TraceReader::read_task_event() {
       r.exit_status_ = WaitStatus(task.getExit().getExitStatus());
       break;
     default:
-      assert(0 && "Unknown TraceEvent type");
+      DEBUG_ASSERT(0 && "Unknown TraceEvent type");
       break;
   }
   return r;
@@ -1151,7 +1152,7 @@ void TraceReader::rewind() {
     reader(s).rewind();
   }
   global_time = 0;
-  assert(good());
+  DEBUG_ASSERT(good());
 }
 
 TraceReader::TraceReader(const string& dir)
@@ -1226,7 +1227,7 @@ TraceReader::TraceReader(const string& dir)
   trace_uses_cpuid_faulting = header.getHasCpuidFaulting();
   Data::Reader cpuid_records_bytes = header.getCpuidRecords();
   size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
-  assert(cpuid_records_bytes.size() == len * sizeof(CPUIDRecord));
+  DEBUG_ASSERT(cpuid_records_bytes.size() == len * sizeof(CPUIDRecord));
   cpuid_records_.resize(len);
   memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
          len * sizeof(CPUIDRecord));

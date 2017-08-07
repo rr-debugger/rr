@@ -1,6 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include <assert.h>
 #include <inttypes.h>
 
 #include <limits>
@@ -10,6 +9,7 @@
 #include "AddressSpace.h"
 #include "Command.h"
 #include "TraceStream.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "main.h"
 #include "util.h"
@@ -100,7 +100,7 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
       flags.only_tid = opt.int_value;
       break;
     default:
-      assert(0 && "Unknown option");
+      DEBUG_ASSERT(0 && "Unknown option");
   }
   return true;
 }

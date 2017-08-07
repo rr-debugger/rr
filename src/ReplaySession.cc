@@ -14,6 +14,7 @@
 #include "Flags.h"
 #include "ReplayTask.h"
 #include "TaskGroup.h"
+#include "core.h"
 #include "fast_forward.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
@@ -124,8 +125,8 @@ ReplaySession::~ReplaySession() {
   // resources.
   kill_all_tasks();
   syscall_bp_vm = nullptr;
-  assert(task_map.empty() && vm_map.empty());
-  assert(emufs().size() == 0);
+  DEBUG_ASSERT(task_map.empty() && vm_map.empty());
+  DEBUG_ASSERT(emufs().size() == 0);
 }
 
 ReplaySession::shr_ptr ReplaySession::clone() {
@@ -443,7 +444,7 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
       // If the breakpoint already exists, it must have been from a previous
       // invocation of this function for the same event (once the event
       // completes, the breakpoint is cleared).
-      assert(!syscall_bp_vm || (syscall_bp_vm == t->vm() &&
+      DEBUG_ASSERT(!syscall_bp_vm || (syscall_bp_vm == t->vm() &&
                                 syscall_instruction == syscall_bp_addr &&
                                 t->vm()->get_breakpoint_type_at_addr(
                                     syscall_instruction) != BKPT_NONE));
@@ -778,7 +779,7 @@ Completion ReplaySession::emulate_async_signal(
         /* (The breakpoint would have trapped
          * at the $ip one byte beyond the
          * target.) */
-        assert(!at_target);
+        DEBUG_ASSERT(!at_target);
 
         pending_SIGTRAP = false;
         t->move_ip_before_breakpoint();
@@ -1520,7 +1521,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     case TSTEP_EXIT_TASK:
       result.break_status.task = nullptr;
       t = nullptr;
-      assert(!result.break_status.any_break());
+      DEBUG_ASSERT(!result.break_status.any_break());
       break;
     case TSTEP_ENTER_SYSCALL:
       cpuid_bug_detector.notify_reached_syscall_during_replay(t);

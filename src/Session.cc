@@ -18,6 +18,7 @@
 #include "Flags.h"
 #include "Task.h"
 #include "TaskGroup.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"
@@ -76,7 +77,7 @@ void Session::post_exec() {
     return;
   }
   done_initial_exec_ = true;
-  assert(tasks().size() == 1);
+  DEBUG_ASSERT(tasks().size() == 1);
   Task* t = tasks().begin()->second;
   t->flush_inconsistent_state();
   spawned_task_error_fd_.close();
@@ -261,13 +262,13 @@ void Session::kill_all_tasks() {
 }
 
 void Session::on_destroy(AddressSpace* vm) {
-  assert(vm->task_set().size() == 0);
-  assert(vm_map.count(vm->uid()) == 1);
+  DEBUG_ASSERT(vm->task_set().size() == 0);
+  DEBUG_ASSERT(vm_map.count(vm->uid()) == 1);
   vm_map.erase(vm->uid());
 }
 
 void Session::on_destroy(Task* t) {
-  assert(task_map.count(t->rec_tid) == 1);
+  DEBUG_ASSERT(task_map.count(t->rec_tid) == 1);
   task_map.erase(t->rec_tid);
 }
 
@@ -367,7 +368,7 @@ void Session::check_for_watchpoint_changes(Task* t, BreakStatus& break_status) {
 }
 
 void Session::assert_fully_initialized() const {
-  assert(!clone_completion && "Session not fully initialized");
+  DEBUG_ASSERT(!clone_completion && "Session not fully initialized");
 }
 
 void Session::finish_initializing() const {
@@ -518,8 +519,9 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
   // Recover the name that was originally chosen by finding the part of the
   // name between rr_mapping_prefix and the -%d-%d at the end.
   char* path_start = strstr(name_buffer, Session::rr_mapping_prefix());
-  assert(path_start && "Passed something to create_shared_mmap that"
-                       " wasn't a mapping shared between rr and the tracee?");
+  DEBUG_ASSERT(path_start &&
+               "Passed something to create_shared_mmap that"
+               " wasn't a mapping shared between rr and the tracee?");
   size_t prefix_len = path_start - name_buffer;
   buffer_size -= prefix_len;
   name_buffer += prefix_len;
@@ -532,14 +534,15 @@ static char* extract_name(char* name_buffer, size_t buffer_size) {
     if (*name_end == '-') {
       ++hyphens_seen;
     } else if (*name_end == '/') {
-      assert(false && "Passed something to create_shared_mmap that"
-                      " wasn't a mapping shared between rr and the tracee?");
+      DEBUG_ASSERT(false &&
+                   "Passed something to create_shared_mmap that"
+                   " wasn't a mapping shared between rr and the tracee?");
     }
     if (hyphens_seen == 2) {
       break;
     }
   }
-  assert(hyphens_seen == 2);
+  DEBUG_ASSERT(hyphens_seen == 2);
   *name_end = '\0';
   return name_start;
 }
@@ -650,7 +653,7 @@ static vector<uint8_t> capture_syscallbuf(const AddressSpace::Mapping& m,
 
 void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   assert_fully_initialized();
-  assert(!dest.clone_completion);
+  DEBUG_ASSERT(!dest.clone_completion);
 
   auto completion = unique_ptr<CloneCompletion>(new CloneCompletion());
 
@@ -706,7 +709,7 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   }
   dest.clone_completion = move(completion);
 
-  assert(dest.vms().size() > 0);
+  DEBUG_ASSERT(dest.vms().size() > 0);
 }
 
 } // namespace rr

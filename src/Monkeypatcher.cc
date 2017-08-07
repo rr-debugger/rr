@@ -10,6 +10,7 @@
 #include "RecordTask.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "core.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -278,7 +279,8 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
 
   // pad with NOPs to the next instruction
   static const uint8_t NOP = 0x90;
-  assert(syscall_instruction_length(x86_64) == syscall_instruction_length(x86));
+  DEBUG_ASSERT(syscall_instruction_length(x86_64) ==
+               syscall_instruction_length(x86));
   uint8_t nops[syscall_instruction_length(x86_64) +
                hook.next_instruction_length - sizeof(jump_patch)];
   memset(nops, NOP, sizeof(nops));

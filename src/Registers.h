@@ -3,7 +3,6 @@
 #ifndef RR_REGISTERS_H_
 #define RR_REGISTERS_H_
 
-#include <assert.h>
 #include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -12,6 +11,7 @@
 #include <sys/user.h>
 
 #include "GdbRegister.h"
+#include "core.h"
 #include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "remote_code_ptr.h"
@@ -110,14 +110,10 @@ public:
 
 #define RR_GET_REG(x86case, x64case)                                           \
   (arch() == x86 ? (uint32_t)u.x86regs.x86case                                 \
-                 : arch() == x86_64                                            \
-                       ? u.x64regs.x64case                                     \
-                       : (assert(0 && "unknown architecture"), uintptr_t(-1)))
+                 : arch() == x86_64 ? u.x64regs.x64case : -1)
 #define RR_GET_REG_SIGNED(x86case, x64case)                                    \
   (arch() == x86 ? u.x86regs.x86case                                           \
-                 : arch() == x86_64                                            \
-                       ? u.x64regs.x64case                                     \
-                       : (assert(0 && "unknown architecture"), uintptr_t(-1)))
+                 : arch() == x86_64 ? u.x64regs.x64case : -1)
 #define RR_SET_REG(x86case, x64case, value)                                    \
   switch (arch()) {                                                            \
     case x86:                                                                  \
@@ -127,7 +123,7 @@ public:
       u.x64regs.x64case = (value);                                             \
       break;                                                                   \
     default:                                                                   \
-      assert(0 && "unknown architecture");                                     \
+      DEBUG_ASSERT(0 && "unknown architecture");                               \
   }
 
   remote_code_ptr ip() const { return RR_GET_REG(eip, rip); }
@@ -232,7 +228,7 @@ public:
       case 6:
         return arg6();
       default:
-        assert(0 && "Argument index out of range");
+        DEBUG_ASSERT(0 && "Argument index out of range");
         return 0;
     }
   }
@@ -264,7 +260,7 @@ public:
       case 6:
         return set_arg6(value);
       default:
-        assert(0 && "Argument index out of range");
+        DEBUG_ASSERT(0 && "Argument index out of range");
     }
   }
 
@@ -287,22 +283,22 @@ public:
   }
 
   void set_r8(uintptr_t value) {
-    assert(arch() == x86_64);
+    DEBUG_ASSERT(arch() == x86_64);
     u.x64regs.r8 = value;
   }
 
   void set_r9(uintptr_t value) {
-    assert(arch() == x86_64);
+    DEBUG_ASSERT(arch() == x86_64);
     u.x64regs.r9 = value;
   }
 
   void set_r10(uintptr_t value) {
-    assert(arch() == x86_64);
+    DEBUG_ASSERT(arch() == x86_64);
     u.x64regs.r10 = value;
   }
 
   void set_r11(uintptr_t value) {
-    assert(arch() == x86_64);
+    DEBUG_ASSERT(arch() == x86_64);
     u.x64regs.r11 = value;
   }
 
@@ -325,20 +321,20 @@ public:
   bool df_flag() const { return flags() & X86_DF_FLAG; }
 
   uintptr_t fs_base() const {
-    assert(arch() == x86_64);
+    DEBUG_ASSERT(arch() == x86_64);
     return u.x64regs.fs_base;
   }
   uintptr_t gs_base() const {
-    assert(arch() == x86_64);
+    DEBUG_ASSERT(arch() == x86_64);
     return u.x64regs.gs_base;
   }
 
   void set_fs_base(uintptr_t fs_base) {
-    assert(arch() == x86_64);
+    DEBUG_ASSERT(arch() == x86_64);
     u.x64regs.fs_base = fs_base;
   }
   void set_gs_base(uintptr_t gs_base) {
-    assert(arch() == x86_64);
+    DEBUG_ASSERT(arch() == x86_64);
     u.x64regs.gs_base = gs_base;
   }
 

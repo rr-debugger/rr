@@ -14,6 +14,7 @@
 #include "Command.h"
 #include "Flags.h"
 #include "RecordCommand.h"
+#include "core.h"
 #include "log.h"
 
 using namespace std;
@@ -185,7 +186,7 @@ bool parse_global_option(std::vector<std::string>& args) {
       show_version = true;
       break;
     default:
-      assert(0 && "Invalid flag");
+      DEBUG_ASSERT(0 && "Invalid flag");
   }
   return true;
 }

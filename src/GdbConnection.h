@@ -15,6 +15,7 @@
 #include "Registers.h"
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
+#include "core.h"
 
 namespace rr {
 
@@ -215,63 +216,63 @@ struct GdbRequest {
   } sym_;
 
   Mem& mem() {
-    assert(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
+    DEBUG_ASSERT(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
     return mem_;
   }
   const Mem& mem() const {
-    assert(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
+    DEBUG_ASSERT(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
     return mem_;
   }
   Watch& watch() {
-    assert(type >= DREQ_WATCH_FIRST && type <= DREQ_WATCH_LAST);
+    DEBUG_ASSERT(type >= DREQ_WATCH_FIRST && type <= DREQ_WATCH_LAST);
     return watch_;
   }
   const Watch& watch() const {
-    assert(type >= DREQ_WATCH_FIRST && type <= DREQ_WATCH_LAST);
+    DEBUG_ASSERT(type >= DREQ_WATCH_FIRST && type <= DREQ_WATCH_LAST);
     return watch_;
   }
   GdbRegisterValue& reg() {
-    assert(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
+    DEBUG_ASSERT(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
     return reg_;
   }
   const GdbRegisterValue& reg() const {
-    assert(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
+    DEBUG_ASSERT(type >= DREQ_REG_FIRST && type <= DREQ_REG_LAST);
     return reg_;
   }
   Restart& restart() {
-    assert(type == DREQ_RESTART);
+    DEBUG_ASSERT(type == DREQ_RESTART);
     return restart_;
   }
   const Restart& restart() const {
-    assert(type == DREQ_RESTART);
+    DEBUG_ASSERT(type == DREQ_RESTART);
     return restart_;
   }
   Cont& cont() {
-    assert(type == DREQ_CONT);
+    DEBUG_ASSERT(type == DREQ_CONT);
     return cont_;
   }
   const Cont& cont() const {
-    assert(type == DREQ_CONT);
+    DEBUG_ASSERT(type == DREQ_CONT);
     return cont_;
   }
   const std::string& text() const {
-    assert(type == DREQ_RR_CMD);
+    DEBUG_ASSERT(type == DREQ_RR_CMD);
     return text_;
   }
   Tls& tls() {
-    assert(type == DREQ_TLS);
+    DEBUG_ASSERT(type == DREQ_TLS);
     return tls_;
   }
   const Tls& tls() const {
-    assert(type == DREQ_TLS);
+    DEBUG_ASSERT(type == DREQ_TLS);
     return tls_;
   }
   Symbol& sym() {
-    assert(type == DREQ_QSYMBOL);
+    DEBUG_ASSERT(type == DREQ_QSYMBOL);
     return sym_;
   }
   const Symbol& sym() const {
-    assert(type == DREQ_QSYMBOL);
+    DEBUG_ASSERT(type == DREQ_QSYMBOL);
     return sym_;
   }
 

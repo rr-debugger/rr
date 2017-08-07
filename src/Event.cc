@@ -180,16 +180,16 @@ string Event::str() const {
 void Event::transform(EventType new_type) {
   switch (event_type) {
     case EV_SIGNAL:
-      assert(EV_SIGNAL_DELIVERY == new_type);
+      DEBUG_ASSERT(EV_SIGNAL_DELIVERY == new_type);
       break;
     case EV_SIGNAL_DELIVERY:
-      assert(EV_SIGNAL_HANDLER == new_type);
+      DEBUG_ASSERT(EV_SIGNAL_HANDLER == new_type);
       break;
     case EV_SYSCALL:
-      assert(EV_SYSCALL_INTERRUPTION == new_type);
+      DEBUG_ASSERT(EV_SYSCALL_INTERRUPTION == new_type);
       break;
     case EV_SYSCALL_INTERRUPTION:
-      assert(EV_SYSCALL == new_type);
+      DEBUG_ASSERT(EV_SYSCALL == new_type);
       break;
     default:
       FATAL() << "Can't transform immutable " << *this << " into " << new_type;

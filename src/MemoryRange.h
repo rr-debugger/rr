@@ -3,8 +3,7 @@
 #ifndef RR_MEMORY_RANGE_H_
 #define RR_MEMORY_RANGE_H_
 
-#include <assert.h>
-
+#include "core.h"
 #include "remote_ptr.h"
 
 namespace rr {
@@ -17,11 +16,11 @@ public:
   MemoryRange() {}
   MemoryRange(remote_ptr<void> addr, size_t num_bytes)
       : start_(addr), end_(addr + num_bytes) {
-    assert(start_ <= end_);
+    DEBUG_ASSERT(start_ <= end_);
   }
   MemoryRange(remote_ptr<void> addr, remote_ptr<void> end)
       : start_(addr), end_(end) {
-    assert(start_ <= end);
+    DEBUG_ASSERT(start_ <= end);
   }
   MemoryRange(const MemoryRange&) = default;
   MemoryRange& operator=(const MemoryRange&) = default;

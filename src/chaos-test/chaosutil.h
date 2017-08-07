@@ -6,7 +6,6 @@
 #define _GNU_SOURCE 1
 #define _POSIX_C_SOURCE 2
 
-#include <assert.h>
 #include <errno.h>
 #include <pthread.h>
 #include <stdarg.h>

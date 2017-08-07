@@ -3,8 +3,6 @@
 #ifndef RR_PROPERTY_TABLE_H_
 #define RR_PROPERTY_TABLE_H_
 
-#include <assert.h>
-
 #include <memory>
 #include <utility>
 #include <vector>
@@ -52,7 +50,7 @@ public:
   Property() {}
 
   T& create(Object& o) const {
-    assert(!get(o));
+    DEBUG_ASSERT(!get(o));
     T* t = new T();
     o.properties().values.push_back(std::make_pair(
         static_cast<const PropertyTable::PropertyBase*>(this), t));

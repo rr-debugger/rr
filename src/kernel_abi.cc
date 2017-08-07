@@ -7,7 +7,6 @@
 // Get all the kernel definitions so we can verify our alternative versions.
 #include <arpa/inet.h>
 #include <asm/ldt.h>
-#include <assert.h>
 #include <dirent.h>
 #include <elf.h>
 #include <fcntl.h>
@@ -149,7 +148,7 @@ vector<uint8_t> syscall_instruction(SupportedArch arch) {
     case x86_64:
       return vector<uint8_t>(syscall_insn, syscall_insn + sizeof(syscall_insn));
     default:
-      assert(0 && "Need to define syscall instruction");
+      DEBUG_ASSERT(0 && "Need to define syscall instruction");
       return vector<uint8_t>();
   }
 }
@@ -160,7 +159,7 @@ ssize_t syscall_instruction_length(SupportedArch arch) {
     case x86_64:
       return 2;
     default:
-      assert(0 && "Need to define syscall instruction length");
+      DEBUG_ASSERT(0 && "Need to define syscall instruction length");
       return 0;
   }
 }
@@ -184,7 +183,7 @@ static void set_arch_siginfo_arch(const siginfo_t& src, void* dest,
   // necessary, and ensures garbage in any holes in siginfo isn't copied to the
   // tracee.
   auto si = static_cast<typename Arch::siginfo_t*>(dest);
-  assert(dest_size == sizeof(*si));
+  DEBUG_ASSERT(dest_size == sizeof(*si));
 
   union {
     NativeArch::siginfo_t native_api;

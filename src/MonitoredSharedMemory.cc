@@ -8,6 +8,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "RecordTask.h"
 #include "Session.h"
+#include "core.h"
 #include "log.h"
 
 using namespace std;
@@ -46,7 +47,7 @@ void MonitoredSharedMemory::maybe_monitor(RecordTask* t,
 
 MonitoredSharedMemory::shr_ptr MonitoredSharedMemory::subrange(uintptr_t,
                                                                uintptr_t) {
-  assert(false && "Subranges not supported yet!");
+  DEBUG_ASSERT(false && "Subranges not supported yet!");
   return nullptr;
 }
 

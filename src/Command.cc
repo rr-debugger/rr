@@ -4,13 +4,13 @@
 
 #include "Command.h"
 
-#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
 #include <algorithm>
 
 #include "TraceStream.h"
+#include "core.h"
 #include "main.h"
 
 using namespace std;
@@ -130,7 +130,7 @@ bool Command::parse_option(std::vector<std::string>& args,
           }
           return false;
         default:
-          assert(0 && "Unknown parameter type");
+          DEBUG_ASSERT(0 && "Unknown parameter type");
       }
     } else if (args[0][1] == '-') {
       size_t equals = args[0].find('=');
@@ -152,7 +152,7 @@ bool Command::parse_option(std::vector<std::string>& args,
             assign_param(out, args[0].c_str() + equals + 1);
             return consume_args(args, 1);
           default:
-            assert(0 && "Unknown parameter type");
+            DEBUG_ASSERT(0 && "Unknown parameter type");
         }
       }
     }

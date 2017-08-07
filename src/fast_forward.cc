@@ -2,6 +2,7 @@
 
 #include "fast_forward.h"
 
+#include "core.h"
 #include "log.h"
 
 using namespace std;
@@ -105,8 +106,8 @@ static bool decode_x86_string_instruction(const InstructionBuf& code,
 
 static bool mem_intersect(remote_ptr<void> a1, int s1, remote_ptr<void> a2,
                           int s2) {
-  assert(a1 + s1 > a1);
-  assert(a2 + s2 > a2);
+  DEBUG_ASSERT(a1 + s1 > a1);
+  DEBUG_ASSERT(a2 + s2 > a2);
   return max(a1, a2) < min(a1 + s1, a2 + s2);
 }
 
@@ -156,7 +157,7 @@ static bool is_x86ish(Task* t) {
 
 bool fast_forward_through_instruction(Task* t, ResumeRequest how,
                                       const vector<const Registers*>& states) {
-  assert(how == RESUME_SINGLESTEP || how == RESUME_SYSEMU_SINGLESTEP);
+  DEBUG_ASSERT(how == RESUME_SINGLESTEP || how == RESUME_SYSEMU_SINGLESTEP);
 
   remote_code_ptr ip = t->ip();
 

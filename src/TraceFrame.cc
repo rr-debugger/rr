@@ -2,9 +2,9 @@
 
 #include "TraceFrame.h"
 
-#include <assert.h>
 #include <inttypes.h>
 
+#include "core.h"
 #include "util.h"
 
 namespace rr {
@@ -19,7 +19,7 @@ TraceFrame::TraceFrame(FrameTime global_time, pid_t tid, const Event& event,
 
 void TraceFrame::set_exec_info(const Registers& regs,
                                const ExtraRegisters* extra_regs) {
-  assert(event().record_exec_info() == HAS_EXEC_INFO);
+  DEBUG_ASSERT(event().record_exec_info() == HAS_EXEC_INFO);
   recorded_regs = regs;
   if (extra_regs) {
     recorded_extra_regs = *extra_regs;

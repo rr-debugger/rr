@@ -14,6 +14,7 @@
 #include "ElfReader.h"
 #include "Flags.h"
 #include "RecordTask.h"
+#include "core.h"
 #include "ftrace.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -319,7 +320,7 @@ static void handle_seccomp_trap(RecordTask* t,
       si.native_api._sifields._sigsys._arch = AUDIT_ARCH_X86_64;
       break;
     default:
-      assert(0 && "Unknown architecture");
+      DEBUG_ASSERT(0 && "Unknown architecture");
       break;
   }
   si.native_api._sifields._sigsys._syscall = syscallno;
@@ -794,7 +795,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
     case EXITING_SYSCALL: {
       debug_exec_state("EXEC_SYSCALL_DONE", t);
 
-      assert(t->stop_sig() == 0);
+      DEBUG_ASSERT(t->stop_sig() == 0);
 
       SupportedArch syscall_arch = t->ev().Syscall().arch();
       int syscallno = t->ev().Syscall().number;
@@ -997,7 +998,7 @@ static void setup_sigframe_siginfo_arch(RecordTask* t,
       dest = t->regs().si();
       break;
     default:
-      assert(0 && "Unknown architecture");
+      DEBUG_ASSERT(0 && "Unknown architecture");
       break;
   }
   typename Arch::siginfo_t si = t->read_mem(dest);

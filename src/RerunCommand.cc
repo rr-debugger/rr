@@ -1,6 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include <assert.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -12,6 +11,7 @@
 #include "GdbServer.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "main.h"
@@ -302,7 +302,7 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
       flags.trace_start = opt.int_value;
       break;
     default:
-      assert(0 && "Unknown option");
+      DEBUG_ASSERT(0 && "Unknown option");
   }
   return true;
 }
@@ -382,16 +382,16 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
 
     FrameTime after_time = replay_session->trace_reader().time();
     remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
-    assert(after_time >= before_time && after_time <= before_time + 1);
+    DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
 
     if (result.status == REPLAY_EXITED) {
       break;
     }
-    assert(result.status == REPLAY_CONTINUE);
-    assert(result.break_status.watchpoints_hit.empty());
-    assert(!result.break_status.breakpoint_hit);
-    assert(cmd == RUN_SINGLESTEP_FAST_FORWARD ||
-           !result.break_status.singlestep_complete);
+    DEBUG_ASSERT(result.status == REPLAY_CONTINUE);
+    DEBUG_ASSERT(result.break_status.watchpoints_hit.empty());
+    DEBUG_ASSERT(!result.break_status.breakpoint_hit);
+    DEBUG_ASSERT(cmd == RUN_SINGLESTEP_FAST_FORWARD ||
+                 !result.break_status.singlestep_complete);
 
     // Treat singlesteps that partially executed a string instruction (that
     // was not interrupted) as not really singlestepping.

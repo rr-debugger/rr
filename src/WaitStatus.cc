@@ -2,11 +2,11 @@
 
 #include "WaitStatus.h"
 
-#include <assert.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
 #include "RecordTask.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "kernel_supplement.h"
 #include "log.h"
@@ -84,22 +84,22 @@ int WaitStatus::ptrace_signal() const {
 }
 
 WaitStatus WaitStatus::for_exit_code(int code) {
-  assert(code >= 0 && code < 0x100);
+  DEBUG_ASSERT(code >= 0 && code < 0x100);
   return WaitStatus(code << 8);
 }
 
 WaitStatus WaitStatus::for_fatal_sig(int sig) {
-  assert(sig >= 1 && sig < 0x80);
+  DEBUG_ASSERT(sig >= 1 && sig < 0x80);
   return WaitStatus(sig);
 }
 
 WaitStatus WaitStatus::for_stop_sig(int sig) {
-  assert(sig >= 1 && sig < 0x80);
+  DEBUG_ASSERT(sig >= 1 && sig < 0x80);
   return WaitStatus((sig << 8) | 0x7f);
 }
 
 WaitStatus WaitStatus::for_group_sig(int sig, RecordTask* t) {
-  assert(sig >= 1 && sig < 0x80);
+  DEBUG_ASSERT(sig >= 1 && sig < 0x80);
   int code = (sig << 8) | 0x7f;
   if (t->emulated_ptrace_seized) {
     code |= PTRACE_EVENT_STOP << 16;
@@ -116,7 +116,7 @@ WaitStatus WaitStatus::for_syscall(RecordTask* t) {
 }
 
 WaitStatus WaitStatus::for_ptrace_event(int ptrace_event) {
-  assert(ptrace_event >= 1 && ptrace_event < 0x100);
+  DEBUG_ASSERT(ptrace_event >= 1 && ptrace_event < 0x100);
   return WaitStatus((ptrace_event << 16) | (SIGTRAP << 8) | 0x7f);
 }
 

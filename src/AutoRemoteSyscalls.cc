@@ -12,6 +12,7 @@
 #include "ReplaySession.h"
 #include "Session.h"
 #include "Task.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"
@@ -50,7 +51,7 @@ void AutoRestoreMem::init(const void* mem, ssize_t num_bytes) {
 }
 
 AutoRestoreMem::~AutoRestoreMem() {
-  assert(saved_sp == remote.regs().sp() + len);
+  DEBUG_ASSERT(saved_sp == remote.regs().sp() + len);
 
   remote.task()->write_bytes_helper(addr, len, data.data());
 
@@ -131,7 +132,7 @@ void AutoRemoteSyscalls::maybe_fix_stack_pointer() {
   }
 
   fixed_sp = found_stack.end();
-  assert(!fixed_sp.is_null());
+  DEBUG_ASSERT(!fixed_sp.is_null());
   initial_regs.set_sp(fixed_sp);
 }
 
@@ -286,9 +287,9 @@ static void child_connect_socket(AutoRemoteSyscalls& remote,
   typename Arch::sockaddr_un addr;
   memset(&addr, 0, sizeof(addr)); // Make valgrind happy.
   addr.sun_family = AF_UNIX;
-  assert(strlen(path) < sizeof(addr.sun_path));
+  DEBUG_ASSERT(strlen(path) < sizeof(addr.sun_path));
   // Skip leading '/' since we're going to access this relative to the root
-  assert(path[0] == '/');
+  DEBUG_ASSERT(path[0] == '/');
   strcpy(addr.sun_path, path + 1);
 
   auto tmp_buf_end = buf_end;
@@ -429,10 +430,10 @@ static int recvmsg_socket(int sock) {
   }
 
   struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
-  assert(cmsg && cmsg->cmsg_level == SOL_SOCKET &&
-         cmsg->cmsg_type == SCM_RIGHTS);
+  DEBUG_ASSERT(cmsg && cmsg->cmsg_level == SOL_SOCKET &&
+               cmsg->cmsg_type == SCM_RIGHTS);
   int our_fd = *(int*)CMSG_DATA(cmsg);
-  assert(our_fd >= 0);
+  DEBUG_ASSERT(our_fd >= 0);
   return our_fd;
 }
 

@@ -2,9 +2,9 @@
 
 #include "ExtraRegisters.h"
 
-#include <assert.h>
 #include <string.h>
 
+#include "core.h"
 #include "log.h"
 #include "util.h"
 
@@ -99,7 +99,7 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
     case x86_64:
       break;
     default:
-      assert(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "Unknown arch");
       return RegData();
   }
 
@@ -125,7 +125,7 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
   if (regno == DREG_64_MXCSR) {
     return RegData(24, 4);
   }
-  assert(regno >= DREG_64_FCTRL && regno <= DREG_64_FOP);
+  DEBUG_ASSERT(regno >= DREG_64_FCTRL && regno <= DREG_64_FOP);
   // NB: most of these registers only occupy 2 bytes of space in
   // the (f)xsave region, but gdb's default x86 target
   // config expects us to send back 4 bytes of data for
@@ -155,7 +155,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
     return reg_data.size;
   }
 
-  assert(reg_data.size > 0);
+  DEBUG_ASSERT(reg_data.size > 0);
 
   *defined = true;
 
@@ -165,7 +165,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
       !(xsave_features(data_) & (1 << reg_data.xsave_feature_bit))) {
     memset(buf, 0, reg_data.size);
   } else {
-    assert(size_t(reg_data.offset + reg_data.size) <= data_.size());
+    DEBUG_ASSERT(size_t(reg_data.offset + reg_data.size) <= data_.size());
     memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
   }
   return reg_data.size;
@@ -206,11 +206,11 @@ static void print_reg(const ExtraRegisters& r, GdbRegister low, GdbRegister hi,
   uint8_t buf[128];
   bool defined = false;
   size_t len = r.read_register(buf, low, &defined);
-  assert(defined && len <= 64);
+  DEBUG_ASSERT(defined && len <= 64);
   if (hi != GdbRegister(0)) {
     size_t len2 = r.read_register(buf + len, hi, &defined);
     if (defined) {
-      assert(len == len2);
+      DEBUG_ASSERT(len == len2);
       len += len2;
     }
   }
@@ -253,7 +253,7 @@ void ExtraRegisters::print_register_file_compact(FILE* f) const {
       print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, 16, "ymm", f);
       break;
     default:
-      assert(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "Unknown arch");
       break;
   }
 }
@@ -329,7 +329,7 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
     return false;
   }
   data_.resize(native_layout.full_size);
-  assert(data_.size() >= xsave_header_offset);
+  DEBUG_ASSERT(data_.size() >= xsave_header_offset);
   if (layout.full_size < xsave_header_offset) {
     LOG(error) << "Invalid XSAVE layout size: " << layout.full_size;
     return false;
@@ -388,9 +388,9 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
         return false;
       }
       // The CPU should guarantee these
-      assert(native_feature.offset > 0);
-      assert(native_feature.offset + native_feature.size <=
-             native_layout.full_size);
+      DEBUG_ASSERT(native_feature.offset > 0);
+      DEBUG_ASSERT(native_feature.offset + native_feature.size <=
+                   native_layout.full_size);
       memcpy(data_.data() + native_feature.offset, data + feature.offset,
              feature.size);
     }
@@ -401,26 +401,26 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
 vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
     SupportedArch arch) const {
-  assert(format_ == XSAVE);
+  DEBUG_ASSERT(format_ == XSAVE);
   switch (arch) {
     case x86:
-      assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
+      DEBUG_ASSERT(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
       return to_vector(convert_fxsave_to_x86_fpregs(
           *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(
               data_.data())));
     case x86_64:
-      assert(data_.size() >= sizeof(X64Arch::user_fpregs_struct));
+      DEBUG_ASSERT(data_.size() >= sizeof(X64Arch::user_fpregs_struct));
       return to_vector(
           *reinterpret_cast<const X64Arch::user_fpregs_struct*>(data_.data()));
     default:
-      assert(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "Unknown arch");
       return vector<uint8_t>();
   }
 }
 
 void ExtraRegisters::set_user_fpregs_struct(Task* t, SupportedArch arch,
                                             void* data, size_t size) {
-  assert(format_ == XSAVE);
+  DEBUG_ASSERT(format_ == XSAVE);
   switch (arch) {
     case x86:
       ASSERT(t, size >= sizeof(X86Arch::user_fpregs_struct));
@@ -435,14 +435,14 @@ void ExtraRegisters::set_user_fpregs_struct(Task* t, SupportedArch arch,
       memcpy(data_.data(), data, sizeof(X64Arch::user_fpregs_struct));
       return;
     default:
-      assert(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "Unknown arch");
   }
 }
 
 X86Arch::user_fpxregs_struct ExtraRegisters::get_user_fpxregs_struct() const {
-  assert(format_ == XSAVE);
-  assert(arch_ == x86);
-  assert(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
+  DEBUG_ASSERT(format_ == XSAVE);
+  DEBUG_ASSERT(arch_ == x86);
+  DEBUG_ASSERT(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
   return *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(data_.data());
 }
 
@@ -457,14 +457,14 @@ void ExtraRegisters::set_user_fpxregs_struct(
 static void set_word(SupportedArch arch, vector<uint8_t>& v, GdbRegister r,
                      int word) {
   RegData d = xsave_register_data(arch, r);
-  assert(d.size == 4);
-  assert(d.offset + d.size <= (int)v.size());
-  assert(-1 == d.xsave_feature_bit);
+  DEBUG_ASSERT(d.size == 4);
+  DEBUG_ASSERT(d.offset + d.size <= (int)v.size());
+  DEBUG_ASSERT(-1 == d.xsave_feature_bit);
   *reinterpret_cast<int*>(v.data() + d.offset) = word;
 }
 
 void ExtraRegisters::reset() {
-  assert(format_ == XSAVE);
+  DEBUG_ASSERT(format_ == XSAVE);
   memset(data_.data(), 0, data_.size());
   switch (arch()) {
     case x86_64: {
@@ -478,7 +478,7 @@ void ExtraRegisters::reset() {
       break;
     }
     default:
-      assert(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "Unknown arch");
       break;
   }
   uint64_t xinuse;

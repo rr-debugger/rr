@@ -2,7 +2,6 @@
 
 #include "RecordCommand.h"
 
-#include <assert.h>
 #include <linux/capability.h>
 #include <sys/prctl.h>
 #include <sysexits.h>
@@ -13,6 +12,7 @@
 #include "RecordSession.h"
 #include "StringVectorToCharArray.h"
 #include "WaitStatus.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "main.h"
@@ -150,7 +150,7 @@ static void parse_signal_name(ParsedOption& opt) {
       opt.int_value = i;
       return;
     }
-    assert(signame[0] == 'S' && signame[1] == 'I' && signame[2] == 'G');
+    DEBUG_ASSERT(signame[0] == 'S' && signame[1] == 'I' && signame[2] == 'G');
     if (signame.substr(3) == opt.value) {
       opt.int_value = i;
       return;
@@ -267,7 +267,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.wait_for_all = true;
       break;
     default:
-      assert(0 && "Unknown option");
+      DEBUG_ASSERT(0 && "Unknown option");
   }
 
   args = args_copy;
@@ -368,7 +368,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       return WaitStatus::for_exit_code(EX_UNAVAILABLE);
 
     default:
-      assert(0 && "Unknown exit status");
+      DEBUG_ASSERT(0 && "Unknown exit status");
       return WaitStatus();
   }
 }
@@ -397,7 +397,7 @@ static void reset_uid_sudo() {
   // and the capabilities in the child
   std::string sudo_uid = getenv("SUDO_UID");
   std::string sudo_gid = getenv("SUDO_GID");
-  assert(!sudo_uid.empty() && !sudo_gid.empty());
+  DEBUG_ASSERT(!sudo_uid.empty() && !sudo_gid.empty());
   uid_t tracee_uid = stoi(sudo_uid);
   gid_t tracee_gid = stoi(sudo_gid);
   // Setuid will drop effective capabilities. Save them now and set them

@@ -3,7 +3,6 @@
 #include "replay_syscall.h"
 
 #include <asm/prctl.h>
-#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/futex.h>
@@ -41,6 +40,7 @@
 #include "TaskGroup.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
+#include "core.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -265,7 +265,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
       t->set_data_from_trace();
       new_task->set_data_from_trace();
     } else {
-      assert(Arch::clone_tls_type == Arch::PthreadStructurePointer);
+      DEBUG_ASSERT(Arch::clone_tls_type == Arch::PthreadStructurePointer);
     }
     new_task->set_data_from_trace();
     new_task->set_data_from_trace();

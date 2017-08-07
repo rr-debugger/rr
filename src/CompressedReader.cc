@@ -4,7 +4,6 @@
 
 #include "CompressedReader.h"
 
-#include <assert.h>
 #include <brotli/decode.h>
 #include <fcntl.h>
 #include <stdint.h>
@@ -14,6 +13,7 @@
 #include <unistd.h>
 
 #include "CompressedWriter.h"
+#include "core.h"
 
 using namespace std;
 
@@ -41,7 +41,7 @@ CompressedReader::CompressedReader(const CompressedReader& other) {
   buffer_read_pos = other.buffer_read_pos;
   buffer = other.buffer;
   have_saved_state = false;
-  assert(!other.have_saved_state);
+  DEBUG_ASSERT(!other.have_saved_state);
 }
 
 CompressedReader::~CompressedReader() { close(); }
@@ -78,7 +78,7 @@ bool CompressedReader::get_buffer(const uint8_t** data, size_t* size) {
     if (!refill_buffer()) {
       return false;
     }
-    assert(buffer_read_pos < buffer.size());
+    DEBUG_ASSERT(buffer_read_pos < buffer.size());
   }
 
   *data = &buffer[buffer_read_pos];
@@ -163,7 +163,7 @@ bool CompressedReader::refill_buffer() {
 }
 
 void CompressedReader::rewind() {
-  assert(!have_saved_state);
+  DEBUG_ASSERT(!have_saved_state);
   fd_offset = 0;
   buffer_read_pos = 0;
   buffer.clear();
@@ -173,7 +173,7 @@ void CompressedReader::rewind() {
 void CompressedReader::close() { fd = nullptr; }
 
 void CompressedReader::save_state() {
-  assert(!have_saved_state);
+  DEBUG_ASSERT(!have_saved_state);
   have_saved_state = true;
   have_saved_buffer = false;
   saved_fd_offset = fd_offset;
@@ -181,7 +181,7 @@ void CompressedReader::save_state() {
 }
 
 void CompressedReader::restore_state() {
-  assert(have_saved_state);
+  DEBUG_ASSERT(have_saved_state);
   have_saved_state = false;
   if (saved_fd_offset < fd_offset) {
     eof = false;
@@ -195,7 +195,7 @@ void CompressedReader::restore_state() {
 }
 
 void CompressedReader::discard_state() {
-  assert(have_saved_state);
+  DEBUG_ASSERT(have_saved_state);
   have_saved_state = false;
   if (have_saved_buffer) {
     saved_buffer.clear();

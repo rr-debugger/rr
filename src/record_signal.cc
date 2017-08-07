@@ -2,7 +2,6 @@
 
 #include "record_signal.h"
 
-#include <assert.h>
 #include <fcntl.h>
 #include <linux/perf_event.h>
 #include <sched.h>
@@ -23,6 +22,7 @@
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "TraceStream.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"

@@ -3,8 +3,6 @@
 #ifndef RR_TRACE_TASK_EVENT_H_
 #define RR_TRACE_TASK_EVENT_H_
 
-#include <assert.h>
-
 #include <string>
 #include <vector>
 
@@ -13,6 +11,7 @@
 #include "PerfCounters.h"
 #include "TraceFrame.h"
 #include "WaitStatus.h"
+#include "core.h"
 
 namespace rr {
 
@@ -54,27 +53,27 @@ public:
   Type type() const { return type_; }
   pid_t tid() const { return tid_; }
   pid_t parent_tid() const {
-    assert(type() == CLONE);
+    DEBUG_ASSERT(type() == CLONE);
     return parent_tid_;
   }
   pid_t own_ns_tid() const {
-    assert(type() == CLONE);
+    DEBUG_ASSERT(type() == CLONE);
     return own_ns_tid_;
   }
   int clone_flags() const {
-    assert(type() == CLONE);
+    DEBUG_ASSERT(type() == CLONE);
     return clone_flags_;
   }
   const std::string& file_name() const {
-    assert(type() == EXEC);
+    DEBUG_ASSERT(type() == EXEC);
     return file_name_;
   }
   const std::vector<std::string>& cmd_line() const {
-    assert(type() == EXEC);
+    DEBUG_ASSERT(type() == EXEC);
     return cmd_line_;
   }
   WaitStatus exit_status() const {
-    assert(type() == EXIT);
+    DEBUG_ASSERT(type() == EXIT);
     return exit_status_;
   }
 

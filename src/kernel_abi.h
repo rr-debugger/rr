@@ -3,11 +3,11 @@
 #ifndef RR_KERNEL_ABI_H
 #define RR_KERNEL_ABI_H
 
-#include <assert.h>
 #include <signal.h>
 
 #include <vector>
 
+#include "core.h"
 #include "remote_ptr.h"
 
 namespace rr {
@@ -322,7 +322,7 @@ struct BaseArch : public wordsize,
     template <typename U> ptr<T>& operator=(remote_ptr<U> p) {
       remote_ptr<T> pt = p;
       val = pt.as_int();
-      assert(val == pt.as_int());
+      DEBUG_ASSERT(val == pt.as_int());
       return *this;
     }
     operator bool() const { return val; }
@@ -1864,7 +1864,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 #define RR_ARCH_FUNCTION(f, arch, args...)                                     \
   switch (arch) {                                                              \
     default:                                                                   \
-      assert(0 && "Unknown architecture");                                     \
+      DEBUG_ASSERT(0 && "Unknown architecture");                               \
     case x86:                                                                  \
       return f<rr::X86Arch>(args);                                             \
     case x86_64:                                                               \

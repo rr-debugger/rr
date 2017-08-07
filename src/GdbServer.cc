@@ -2,7 +2,6 @@
 
 #include "GdbServer.h"
 
-#include <assert.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +22,7 @@
 #include "StringVectorToCharArray.h"
 #include "Task.h"
 #include "TaskGroup.h"
+#include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"
@@ -344,12 +344,12 @@ void GdbServer::maybe_intercept_mem_request(Task* target, const GdbRequest& req,
 void GdbServer::dispatch_debugger_request(Session& session,
                                           const GdbRequest& req,
                                           ReportState state) {
-  assert(!req.is_resume_request());
+  DEBUG_ASSERT(!req.is_resume_request());
 
   // These requests don't require a target task.
   switch (req.type) {
     case DREQ_RESTART:
-      assert(false);
+      DEBUG_ASSERT(false);
       return; // unreached
     case DREQ_GET_CURRENT_THREAD:
       dbg->reply_get_current_thread(get_threadid(session, last_continue_tuid));
@@ -372,7 +372,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       Task* t = session.find_task(last_continue_tuid);
       ASSERT(t, session.is_diversion())
           << "Replay interrupts should be handled at a higher level";
-      assert(!t || t->task_group()->tguid() == debuggee_tguid);
+      DEBUG_ASSERT(!t || t->task_group()->tguid() == debuggee_tguid);
       dbg->notify_stop(t ? get_threadid(t) : GdbThreadId(), 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       if (t) {
@@ -675,7 +675,7 @@ bool GdbServer::diverter_process_debugger_requests(
 
       case DREQ_WRITE_SIGINFO:
         LOG(debug) << "Removing reference to diversion session ...";
-        assert(diversion_refcount > 0);
+        DEBUG_ASSERT(diversion_refcount > 0);
         --diversion_refcount;
         if (diversion_refcount == 0) {
           LOG(debug) << "  ... dying at next continue request";
@@ -684,7 +684,7 @@ bool GdbServer::diverter_process_debugger_requests(
         continue;
 
       case DREQ_RR_CMD: {
-        assert(req->type == DREQ_RR_CMD);
+        DEBUG_ASSERT(req->type == DREQ_RR_CMD);
         Task* task = diversion_session.find_task(last_continue_tuid);
         if (task) {
           std::string reply =
@@ -861,7 +861,7 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
 
   while (diverter_process_debugger_requests(*diversion_session,
                                             diversion_refcount, &req)) {
-    assert(req.is_resume_request());
+    DEBUG_ASSERT(req.is_resume_request());
 
     if (req.cont().run_direction == RUN_BACKWARD) {
       // We don't support reverse execution in a diversion. Just issue
@@ -891,13 +891,13 @@ GdbRequest GdbServer::divert(ReplaySession& replay) {
       break;
     }
 
-    assert(result.status == DiversionSession::DIVERSION_CONTINUE);
+    DEBUG_ASSERT(result.status == DiversionSession::DIVERSION_CONTINUE);
 
     maybe_notify_stop(req, result.break_status);
   }
 
   LOG(debug) << "... ending debugging diversion";
-  assert(diversion_refcount == 0);
+  DEBUG_ASSERT(diversion_refcount == 0);
 
   diversion_session->kill_all_tasks();
 
@@ -1079,10 +1079,10 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
   if (req.is_resume_request()) {
     last_resume_request = req;
   } else {
-    assert(req.type == DREQ_INTERRUPT);
+    DEBUG_ASSERT(req.type == DREQ_INTERRUPT);
     interrupt_pending = true;
     req = last_resume_request;
-    assert(req.is_resume_request());
+    DEBUG_ASSERT(req.is_resume_request());
   }
 
   if (interrupt_pending) {
@@ -1140,13 +1140,13 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
         break;
       case RUN_SINGLESTEP: {
         Task* t = timeline.current_session().find_task(last_continue_tuid);
-        assert(t);
+        DEBUG_ASSERT(t);
         result = timeline.reverse_singlestep(
             last_continue_tuid, t->tick_count(), stop_filter, interrupt_check);
         break;
       }
       default:
-        assert(0 && "Unknown RunCommand");
+        DEBUG_ASSERT(0 && "Unknown RunCommand");
     }
 
     if (result.status == REPLAY_EXITED) {
@@ -1245,8 +1245,8 @@ void GdbServer::activate_debugger() {
 }
 
 void GdbServer::restart_session(const GdbRequest& req) {
-  assert(req.type == DREQ_RESTART);
-  assert(dbg);
+  DEBUG_ASSERT(req.type == DREQ_RESTART);
+  DEBUG_ASSERT(dbg);
 
   in_debuggee_end_state = false;
   timeline.remove_breakpoints_and_watchpoints();
@@ -1287,7 +1287,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
 
   stop_replaying_to_target = false;
 
-  assert(req.restart().type == RESTART_FROM_EVENT);
+  DEBUG_ASSERT(req.restart().type == RESTART_FROM_EVENT);
   // Note that we don't reset the target pid; we intentionally keep targeting
   // the same process no matter what is running when we hit the event.
   target.event = req.restart().param;
@@ -1298,7 +1298,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
         timeline.replay_step_forward(RUN_CONTINUE, target.event);
     // We should never reach the end of the trace without hitting the stop
     // condition below.
-    assert(result.status != REPLAY_EXITED);
+    DEBUG_ASSERT(result.status != REPLAY_EXITED);
     if (is_last_thread_exit(result.break_status) &&
         result.break_status.task->task_group()->tgid == target.pid) {
       // Debuggee task is about to exit. Stop here.
@@ -1424,7 +1424,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
 
     ssize_t nwritten =
         write(*flags.debugger_params_write_pipe, &params, sizeof(params));
-    assert(nwritten == sizeof(params));
+    DEBUG_ASSERT(nwritten == sizeof(params));
   } else {
     fputs("Launch gdb with\n  ", stderr);
     print_debugger_launch_command(t, port, flags.debugger_name.c_str(), stderr);
@@ -1504,7 +1504,7 @@ void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
       break;
     }
   }
-  assert(nread == sizeof(params));
+  DEBUG_ASSERT(nread == sizeof(params));
 
   vector<string> args;
   args.push_back(gdb_binary_file_path);

@@ -2,7 +2,6 @@
 
 #include "kernel_metadata.h"
 
-#include <assert.h>
 #include <errno.h>
 #include <linux/shm.h>
 #include <signal.h>

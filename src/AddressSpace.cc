@@ -19,6 +19,7 @@
 #include "RecordTask.h"
 #include "Session.h"
 #include "Task.h"
+#include "core.h"
 #include "log.h"
 
 using namespace std;
@@ -71,8 +72,8 @@ void KernelMapIterator::operator++() {
                              " %x:%x %" SCNu64 " %n",
                        &start, &end, flags, &offset, &dev_major, &dev_minor,
                        &inode, &chars_scanned);
-  assert(8 /*number of info fields*/ == nparsed ||
-         7 /*num fields if name is blank*/ == nparsed);
+  DEBUG_ASSERT(8 /*number of info fields*/ == nparsed ||
+               7 /*num fields if name is blank*/ == nparsed);
 
   // trim trailing newline, if any
   int last_char = strlen(line) - 1;
@@ -628,8 +629,8 @@ const AddressSpace::Mapping& AddressSpace::mapping_of(
     remote_ptr<void> addr) const {
   MemoryRange range(floor_page_size(addr), 1);
   auto it = mem.find(range);
-  assert(it != mem.end());
-  assert(it->second.map.contains(range));
+  DEBUG_ASSERT(it != mem.end());
+  DEBUG_ASSERT(it->second.map.contains(range));
   return it->second;
 }
 uint32_t& AddressSpace::mapping_flags_of(remote_ptr<void> addr) {
@@ -644,7 +645,7 @@ uint8_t* AddressSpace::local_mapping(remote_ptr<void> addr, size_t size) {
   if (it == mem.end()) {
     return nullptr;
   }
-  assert(it->second.map.contains(range));
+  DEBUG_ASSERT(it->second.map.contains(range));
   const Mapping& map = it->second;
   // Fall back to the slow path if we can't get the entire region
   if (size > static_cast<size_t>(map.map.end() - addr)) {
@@ -787,7 +788,7 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
              << new_addr << ", " << new_num_bytes << ")";
 
   Mapping mr = mapping_of(old_addr);
-  assert(!mr.monitored_shared_memory);
+  DEBUG_ASSERT(!mr.monitored_shared_memory);
   const KernelMapping& m = mr.map;
 
   old_num_bytes = ceil_page_size(old_num_bytes);
@@ -800,7 +801,7 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
   auto it = dont_fork.lower_bound(MemoryRange(old_addr, old_num_bytes));
   if (it != dont_fork.end() && it->start() < old_addr + old_num_bytes) {
     // mremap fails if some but not all pages are marked DONTFORK
-    assert(*it == MemoryRange(old_addr, old_num_bytes));
+    DEBUG_ASSERT(*it == MemoryRange(old_addr, old_num_bytes));
     remove_range(dont_fork, MemoryRange(old_addr, old_num_bytes));
     add_range(dont_fork, MemoryRange(new_addr, new_num_bytes));
   } else {
@@ -839,7 +840,7 @@ bool AddressSpace::add_breakpoint(remote_code_ptr addr, BreakpointType type) {
                  Task::IS_BREAKPOINT_RELATED);
 
     auto it_and_is_new = breakpoints.insert(make_pair(addr, Breakpoint()));
-    assert(it_and_is_new.second);
+    DEBUG_ASSERT(it_and_is_new.second);
     it_and_is_new.first->second.overwritten_data = overwritten_data;
     it = it_and_is_new.first;
   }
@@ -916,7 +917,7 @@ bool AddressSpace::add_watchpoint(remote_ptr<void> addr, size_t num_bytes,
   if (it == watchpoints.end()) {
     auto it_and_is_new =
         watchpoints.insert(make_pair(key, Watchpoint(num_bytes)));
-    assert(it_and_is_new.second);
+    DEBUG_ASSERT(it_and_is_new.second);
     it = it_and_is_new.first;
     update_watchpoint_value(it->first, it->second);
   }
@@ -929,7 +930,7 @@ void AddressSpace::save_watchpoints() {
 }
 
 bool AddressSpace::restore_watchpoints() {
-  assert(!saved_watchpoints.empty());
+  DEBUG_ASSERT(!saved_watchpoints.empty());
   watchpoints = saved_watchpoints[saved_watchpoints.size() - 1];
   saved_watchpoints.pop_back();
   return allocate_watchpoints();
@@ -1253,7 +1254,7 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
 }
 
 KernelMapping AddressSpace::vdso() const {
-  assert(!vdso_start_addr.is_null());
+  DEBUG_ASSERT(!vdso_start_addr.is_null());
   return mapping_of(vdso_start_addr).map;
 }
 
@@ -1323,7 +1324,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
   // https://github.com/mozilla/rr/issues/1113 .
   if (session_->done_initial_exec()) {
     populate_address_space(t);
-    assert(!vdso_start_addr.is_null());
+    DEBUG_ASSERT(!vdso_start_addr.is_null());
   } else {
     // Setup traced_syscall_ip_ now because we need to do AutoRemoteSyscalls
     // (for open_mem_fd) before the first exec. We rely on the fact that we
@@ -1401,7 +1402,7 @@ static vector<MemoryRange> split_range(const MemoryRange& range) {
         !try_split_unaligned_range(r, 4, result) &&
         !try_split_unaligned_range(r, 2, result)) {
       bool ret = try_split_unaligned_range(r, 1, result);
-      assert(ret);
+      DEBUG_ASSERT(ret);
     }
   }
   return result;
@@ -1605,7 +1606,7 @@ void AddressSpace::coalesce_around(Task* t, MemoryMap::iterator it) {
   mem.erase(first_kv, ++last_kv);
 
   auto ins = mem.insert(MemoryMap::value_type(new_m.map, new_m));
-  assert(ins.second); // key didn't already exist
+  DEBUG_ASSERT(ins.second); // key didn't already exist
 }
 
 void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
@@ -1761,7 +1762,7 @@ void AddressSpace::populate_address_space(Task* t) {
 static int random_addr_bits(SupportedArch arch) {
   switch (arch) {
     default:
-      assert(0 && "Unknown architecture");
+      DEBUG_ASSERT(0 && "Unknown architecture");
     case x86:
       return 32;
     // Current x86-64 systems have only 48 bits of virtual address space,

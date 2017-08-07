@@ -3,14 +3,13 @@
 #ifndef RR_EVENT_H_
 #define RR_EVENT_H_
 
-#include <assert.h>
-
 #include <ostream>
 #include <stack>
 #include <string>
 #include <vector>
 
 #include "Registers.h"
+#include "core.h"
 #include "kernel_abi.h"
 #include "preload/preload_interface.h"
 
@@ -298,38 +297,38 @@ struct Event {
   const BaseEvent& Base() const { return base; }
 
   DeschedEvent& Desched() {
-    assert(EV_DESCHED == event_type);
+    DEBUG_ASSERT(EV_DESCHED == event_type);
     return desched;
   }
   const DeschedEvent& Desched() const {
-    assert(EV_DESCHED == event_type);
+    DEBUG_ASSERT(EV_DESCHED == event_type);
     return desched;
   }
 
   SyscallbufFlushEvent& SyscallbufFlush() {
-    assert(EV_SYSCALLBUF_FLUSH == event_type);
+    DEBUG_ASSERT(EV_SYSCALLBUF_FLUSH == event_type);
     return syscallbuf_flush;
   }
   const SyscallbufFlushEvent& SyscallbufFlush() const {
-    assert(EV_SYSCALLBUF_FLUSH == event_type);
+    DEBUG_ASSERT(EV_SYSCALLBUF_FLUSH == event_type);
     return syscallbuf_flush;
   }
 
   SignalEvent& Signal() {
-    assert(is_signal_event());
+    DEBUG_ASSERT(is_signal_event());
     return signal;
   }
   const SignalEvent& Signal() const {
-    assert(is_signal_event());
+    DEBUG_ASSERT(is_signal_event());
     return signal;
   }
 
   SyscallEvent& Syscall() {
-    assert(is_syscall_event());
+    DEBUG_ASSERT(is_syscall_event());
     return syscall;
   }
   const SyscallEvent& Syscall() const {
-    assert(is_syscall_event());
+    DEBUG_ASSERT(is_syscall_event());
     return syscall;
   }
 
