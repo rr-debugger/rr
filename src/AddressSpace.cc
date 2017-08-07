@@ -387,7 +387,7 @@ template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
 
   // Check final NULL in argv
   auto null_ptr = t->read_mem(stack_ptr);
-  assert(null_ptr == 0);
+  ASSERT(t, null_ptr == 0);
   stack_ptr++;
 
   // Should now point to envp
