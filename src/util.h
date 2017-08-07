@@ -9,7 +9,6 @@
 #include <string>
 #include <vector>
 
-#include "Event.h"
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 #include "remote_ptr.h"
@@ -47,6 +46,7 @@ namespace rr {
  * place can move out of this file.
  */
 
+class Event;
 class KernelMapping;
 class Task;
 class TraceFrame;
