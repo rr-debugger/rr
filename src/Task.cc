@@ -2474,25 +2474,16 @@ static void set_up_process(Session& session, const ScopedFd& err_fd) {
   }
 }
 
-static SeccompFilter<struct sock_filter> create_seccomp_filter(
-    Session& session) {
+static SeccompFilter<struct sock_filter> create_seccomp_filter() {
   SeccompFilter<struct sock_filter> f;
-  if (session.is_recording() && session.as_record()->use_syscall_buffer()) {
-    for (auto& e : AddressSpace::rr_page_syscalls()) {
-      if (e.traced == AddressSpace::UNTRACED) {
-        auto ip = AddressSpace::rr_page_syscall_exit_point(
-            e.traced, e.privileged, e.enabled);
-        f.allow_syscalls_from_callsite(ip);
-      }
+  for (auto& e : AddressSpace::rr_page_syscalls()) {
+    if (e.traced == AddressSpace::UNTRACED) {
+      auto ip = AddressSpace::rr_page_syscall_exit_point(e.traced, e.privileged,
+                                                         e.enabled);
+      f.allow_syscalls_from_callsite(ip);
     }
-    f.trace();
-  } else {
-    // Use a dummy filter that always generates ptrace traps. Supplying this
-    // dummy filter makes ptrace-event behavior consistent whether or not
-    // we enable syscall buffering, and more importantly, consistent whether
-    // or not the tracee installs its own seccomp filter.
-    f.trace();
   }
+  f.trace();
   return f;
 }
 
@@ -2527,7 +2518,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   const char* exe_path_cstr = exe_path.c_str();
   StringVectorToCharArray argv_array(argv);
   StringVectorToCharArray envp_array(envp);
-  SeccompFilter<struct sock_filter> filter = create_seccomp_filter(session);
+  SeccompFilter<struct sock_filter> filter = create_seccomp_filter();
   pid_t pid = getpid();
 
   set_up_process(session, error_fd);
