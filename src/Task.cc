@@ -2329,12 +2329,12 @@ static void perform_remote_clone_arch(
   }
 }
 
-static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
+static void perform_remote_clone(AutoRemoteSyscalls& remote,
                                  unsigned base_flags, remote_ptr<void> stack,
                                  remote_ptr<int> ptid, remote_ptr<void> tls,
                                  remote_ptr<int> ctid) {
-  RR_ARCH_FUNCTION(perform_remote_clone_arch, parent->arch(), remote,
-                   base_flags, stack, ptid, tls, ctid);
+  RR_ARCH_FUNCTION(perform_remote_clone_arch, remote.arch(), remote, base_flags,
+                   stack, ptid, tls, ctid);
 }
 
 /*static*/ Task* Task::os_clone(CloneReason reason, Session* session,
@@ -2343,12 +2343,12 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                                 remote_ptr<void> stack, remote_ptr<int> ptid,
                                 remote_ptr<void> tls, remote_ptr<int> ctid) {
   Task* parent = remote.task();
-  perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
+  perform_remote_clone(remote, base_flags, stack, ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {
     // clone syscalls can fail with EAGAIN due to temporary load issues.
     // Just retry the system call until it succeeds.
     if (parent->regs().syscall_result_signed() == -EAGAIN) {
-      perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
+      perform_remote_clone(remote, base_flags, stack, ptid, tls, ctid);
     } else {
       // XXX account for ReplaySession::is_ignored_signal?
       parent->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
