@@ -1745,18 +1745,18 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
 
 Task* Task::os_fork_into(Session* session) {
   AutoRemoteSyscalls remote(this, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
-  Task* child = os_clone(Task::SESSION_CLONE_LEADER, this, session, remote,
-                         rec_tid, serial,
-                         // Most likely, we'll be setting up a
-                         // CLEARTID futex.  That's not done
-                         // here, but rather later in
-                         // |copy_state()|.
-                         //
-                         // We also don't use any of the SETTID
-                         // flags because that earlier work will
-                         // be copied by fork()ing the address
-                         // space.
-                         SIGCHLD);
+  Task* child =
+      os_clone(Task::SESSION_CLONE_LEADER, session, remote, rec_tid, serial,
+               // Most likely, we'll be setting up a
+               // CLEARTID futex.  That's not done
+               // here, but rather later in
+               // |copy_state()|.
+               //
+               // We also don't use any of the SETTID
+               // flags because that earlier work will
+               // be copied by fork()ing the address
+               // space.
+               SIGCHLD);
   // When we forked ourselves, the child inherited the setup we
   // did to make the clone() call.  So we have to "finish" the
   // remote calls (i.e. undo fudged state) in the child too,
@@ -1765,10 +1765,10 @@ Task* Task::os_fork_into(Session* session) {
   return child;
 }
 
-Task* Task::os_clone_into(const CapturedState& state, Task* task_leader,
+Task* Task::os_clone_into(const CapturedState& state,
                           AutoRemoteSyscalls& remote) {
-  return os_clone(Task::SESSION_CLONE_NONLEADER, task_leader,
-                  &task_leader->session(), remote, state.rec_tid, state.serial,
+  return os_clone(Task::SESSION_CLONE_NONLEADER, &remote.task()->session(),
+                  remote, state.rec_tid, state.serial,
                   // We don't actually /need/ to specify the
                   // SIGHAND/SYSVMEM flags because those things
                   // are emulated in the tracee.  But we use the
@@ -2337,12 +2337,12 @@ static void perform_remote_clone(Task* parent, AutoRemoteSyscalls& remote,
                    base_flags, stack, ptid, tls, ctid);
 }
 
-/*static*/ Task* Task::os_clone(CloneReason reason, Task* parent,
-                                Session* session, AutoRemoteSyscalls& remote,
-                                pid_t rec_child_tid, uint32_t new_serial,
-                                unsigned base_flags, remote_ptr<void> stack,
-                                remote_ptr<int> ptid, remote_ptr<void> tls,
-                                remote_ptr<int> ctid) {
+/*static*/ Task* Task::os_clone(CloneReason reason, Session* session,
+                                AutoRemoteSyscalls& remote, pid_t rec_child_tid,
+                                uint32_t new_serial, unsigned base_flags,
+                                remote_ptr<void> stack, remote_ptr<int> ptid,
+                                remote_ptr<void> tls, remote_ptr<int> ctid) {
+  Task* parent = remote.task();
   perform_remote_clone(parent, remote, base_flags, stack, ptid, tls, ctid);
   while (!parent->clone_syscall_is_complete()) {
     // clone syscalls can fail with EAGAIN due to temporary load issues.

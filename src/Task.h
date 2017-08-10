@@ -926,7 +926,7 @@ protected:
    * create the new child.
    */
   Task* os_fork_into(Session* session);
-  static Task* os_clone_into(const CapturedState& state, Task* task_leader,
+  static Task* os_clone_into(const CapturedState& state,
                              AutoRemoteSyscalls& remote);
 
   /**
@@ -944,7 +944,7 @@ protected:
    * The new clone will be tracked in |session|.  The other
    * arguments are as for |Task::clone()| above.
    */
-  static Task* os_clone(CloneReason reason, Task* parent, Session* session,
+  static Task* os_clone(CloneReason reason, Session* session,
                         AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                         uint32_t new_serial, unsigned base_flags,
                         remote_ptr<void> stack = nullptr,

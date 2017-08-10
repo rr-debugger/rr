@@ -390,8 +390,7 @@ void Session::finish_initializing() const {
                                                 mem.second.data());
     }
     for (auto& tgmember : tgleader.member_states) {
-      Task* t_clone =
-          Task::os_clone_into(tgmember, tgleader.clone_leader, remote);
+      Task* t_clone = Task::os_clone_into(tgmember, remote);
       self->on_create(t_clone);
       t_clone->copy_state(tgmember);
     }
