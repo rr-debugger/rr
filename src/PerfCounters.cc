@@ -700,6 +700,9 @@ void PerfCounters::stop() {
 }
 
 void PerfCounters::stop_counting() {
+  if (!counting) {
+    return;
+  }
   counting = false;
   if (always_recreate_counters()) {
     stop();
