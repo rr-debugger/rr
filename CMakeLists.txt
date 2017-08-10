@@ -1070,6 +1070,7 @@ set(TESTS_WITHOUT_PROGRAM
   exec_stop
   execp
   explicit_checkpoint_clone
+  file_name_newline
   final_sigkill
   first_instruction
   fork_exec_info_thr

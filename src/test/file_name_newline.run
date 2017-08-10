@@ -1,0 +1,10 @@
+source `dirname $0`/util.sh
+
+exe=simple$bitness
+cp ${OBJDIR}/bin/$exe "foo
+bar"
+just_record "foo
+bar"
+replay
+check 'EXIT-SUCCESS'
+(rr --suppress-environment-warnings dump -b -m -p ./latest-trace|grep -q ^bar) || failed "Can't find proper name"

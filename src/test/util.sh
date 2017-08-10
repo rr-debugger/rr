@@ -207,19 +207,19 @@ function skip_if_syscall_buf {
     fi
 }
 
-function just_record { exe=$1; exeargs=$2;
+function just_record { exe="$1"; exeargs=$2;
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT record.err \
-        rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS $exe $exeargs 1> record.out 2> record.err
+        rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS "$exe" $exeargs 1> record.out 2> record.err
 }
 
 function save_exe { exe=$1;
-    cp ${OBJDIR}/bin/$exe $exe-$nonce
+    cp "${OBJDIR}/bin/$exe" "$exe-$nonce"
 }
 
 # Record $exe with $exeargs.
 function record { exe=$1;
-    save_exe $exe
-    just_record ./$exe-$nonce "$2 $3 $4 $5"
+    save_exe "$exe"
+    just_record "./$exe-$nonce" "$2 $3 $4 $5"
 }
 
 #  record_async_signal <signal> <delay-secs> <test>

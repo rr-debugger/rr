@@ -105,6 +105,21 @@ void KernelMapIterator::operator++() {
   int f = (strchr(flags, 'p') ? MAP_PRIVATE : 0) |
           (strchr(flags, 's') ? MAP_SHARED : 0);
 
+  string tmp_name;
+  if (strchr(name, '\\')) {
+    // Unescape any '\012' sequences
+    while (*name) {
+      if (strncmp(name, "\\012", 4) == 0) {
+        tmp_name.push_back('\n');
+        name += 4;
+      } else {
+        tmp_name.push_back(*name);
+        ++name;
+      }
+    }
+    name = tmp_name.c_str();
+  }
+
   km = KernelMapping(start, end, name, MKDEV(dev_major, dev_minor), inode, prot,
                      f, offset);
 }
