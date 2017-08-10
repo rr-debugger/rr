@@ -2268,10 +2268,11 @@ bool Task::ptrace_if_alive(int request, remote_ptr<void> addr, void* data) {
   return true;
 }
 
-bool Task::clone_syscall_is_complete() {
+bool Task::clone_syscall_is_complete(pid_t* new_pid) {
   int event = ptrace_event();
   if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event ||
       PTRACE_EVENT_VFORK == event) {
+    *new_pid = get_ptrace_eventmsg<pid_t>();
     return true;
   }
   ASSERT(this, !event) << "Unexpected ptrace event "
@@ -2314,22 +2315,20 @@ void Task::at_preload_init() {
 }
 
 template <typename Arch>
-static void perform_remote_clone_arch(
+static long perform_remote_clone_arch(
     AutoRemoteSyscalls& remote, unsigned base_flags, remote_ptr<void> stack,
     remote_ptr<int> ptid, remote_ptr<void> tls, remote_ptr<int> ctid) {
   switch (Arch::clone_parameter_ordering) {
     case Arch::FlagsStackParentTLSChild:
-      remote.syscall(Arch::clone, base_flags, stack, ptid.as_int(),
-                     tls.as_int(), ctid.as_int());
-      break;
+      return remote.syscall(Arch::clone, base_flags, stack, ptid.as_int(),
+                            tls.as_int(), ctid.as_int());
     case Arch::FlagsStackParentChildTLS:
-      remote.syscall(Arch::clone, base_flags, stack, ptid.as_int(),
-                     ctid.as_int(), tls.as_int());
-      break;
+      return remote.syscall(Arch::clone, base_flags, stack, ptid.as_int(),
+                            ctid.as_int(), tls.as_int());
   }
 }
 
-static void perform_remote_clone(AutoRemoteSyscalls& remote,
+static long perform_remote_clone(AutoRemoteSyscalls& remote,
                                  unsigned base_flags, remote_ptr<void> stack,
                                  remote_ptr<int> ptid, remote_ptr<void> tls,
                                  remote_ptr<int> ctid) {
@@ -2342,24 +2341,16 @@ static void perform_remote_clone(AutoRemoteSyscalls& remote,
                                 uint32_t new_serial, unsigned base_flags,
                                 remote_ptr<void> stack, remote_ptr<int> ptid,
                                 remote_ptr<void> tls, remote_ptr<int> ctid) {
-  Task* parent = remote.task();
-  perform_remote_clone(remote, base_flags, stack, ptid, tls, ctid);
-  while (!parent->clone_syscall_is_complete()) {
-    // clone syscalls can fail with EAGAIN due to temporary load issues.
-    // Just retry the system call until it succeeds.
-    if (parent->regs().syscall_result_signed() == -EAGAIN) {
-      perform_remote_clone(remote, base_flags, stack, ptid, tls, ctid);
-    } else {
-      // XXX account for ReplaySession::is_ignored_signal?
-      parent->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-    }
-  }
-  pid_t new_tid = parent->get_ptrace_eventmsg<pid_t>();
+  long ret;
+  do {
+    ret = perform_remote_clone(remote, base_flags, stack, ptid, tls, ctid);
+  } while (ret == -EAGAIN);
+  ASSERT(remote.task(), ret >= 0) << "remote clone failed with errno "
+                                  << errno_name(-ret);
 
-  parent->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
-  Task* child =
-      parent->clone(reason, clone_flags_to_task_flags(base_flags), stack, tls,
-                    ctid, new_tid, rec_child_tid, new_serial, session);
+  Task* child = remote.task()->clone(
+      reason, clone_flags_to_task_flags(base_flags), stack, tls, ctid,
+      remote.new_tid(), rec_child_tid, new_serial, session);
   return child;
 }
 

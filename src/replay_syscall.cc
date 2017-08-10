@@ -213,7 +213,8 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK/VFORK.
   __ptrace_cont(t, RESUME_CONT, sys);
 
-  while (!t->clone_syscall_is_complete()) {
+  pid_t new_tid;
+  while (!t->clone_syscall_is_complete(&new_tid)) {
     // clone() calls sometimes fail with -EAGAIN due to load issues or
     // whatever. We need to retry the system call until it succeeds. Reset
     // state to try the syscall again.
@@ -246,7 +247,6 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::CLONE);
   ASSERT(t, tte.parent_tid() == t->rec_tid);
   long rec_tid = tte.tid();
-  pid_t new_tid = t->get_ptrace_eventmsg<pid_t>();
 
   CloneParameters params;
   if (Arch::clone == t->regs().original_syscallno()) {

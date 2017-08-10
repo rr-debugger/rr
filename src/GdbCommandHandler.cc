@@ -21,7 +21,7 @@ static string gdb_macro_binding(const GdbCommand& cmd) {
     if (i > 0) {
       auto_args_str += ", ";
     }
-    auto_args_str += "'" + cmd.auto_args()[i] + "'"     ;
+    auto_args_str += "'" + cmd.auto_args()[i] + "'";
   }
   auto_args_str += "]";
   return "python RRCmd('" + cmd.name() + "', " + auto_args_str + ")\n";

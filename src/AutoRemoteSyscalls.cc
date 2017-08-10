@@ -9,6 +9,7 @@
 
 #include "rr/rr.h"
 
+#include "RecordTask.h"
 #include "ReplaySession.h"
 #include "Session.h"
 #include "Task.h"
@@ -66,14 +67,25 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       initial_wait_status(t->status()),
       initial_ip(t->ip()),
       initial_sp(t->regs().sp()),
-      pending_syscallno(-1),
+      new_tid_(-1),
       scratch_mem_was_mapped(false),
+      untraced_syscall(false),
       enable_mem_params_(enable_mem_params) {
-  // We could use privilged_traced_syscall_ip() here, but we don't actually
-  // need privileges because tracee seccomp filters are modified to only
-  // produce PTRACE_SECCOMP_EVENTs that we ignore. And before the rr page is
-  // loaded, the privileged_traced_syscall_ip is not available.
-  initial_regs.set_ip(t->vm()->traced_syscall_ip());
+  // Use privileged untraced syscalls if available because they won't produce
+  // ptrace SECCOMP events, which we ignore but cause unnecessary round trips.
+  // But don't use them when running under rr, because the rr recording us
+  // needs to see and trace these tracee syscalls, and if they're untraced by
+  // us they're also untraced by the outer rr.
+  remote_code_ptr syscall_ip;
+  if (t->vm()->has_rr_page() && !running_under_rr()) {
+    syscall_ip = AddressSpace::rr_page_syscall_entry_point(
+        AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
+        AddressSpace::RECORDING_AND_REPLAY, t->arch());
+    untraced_syscall = true;
+  } else {
+    syscall_ip = t->vm()->traced_syscall_ip();
+  }
+  initial_regs.set_ip(syscall_ip);
   if (enable_mem_params == ENABLE_MEMORY_PARAMS) {
     maybe_fix_stack_pointer();
   }
@@ -162,6 +174,25 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   }
 }
 
+static bool ignore_signal(Task* t) {
+  int sig = t->stop_sig();
+  if (!sig) {
+    return false;
+  }
+  if (t->session().is_replaying()) {
+    if (ReplaySession::is_ignored_signal(sig)) {
+      return true;
+    }
+  } else if (t->session().is_recording()) {
+    if (sig != SYSCALLBUF_DESCHED_SIGNAL) {
+      static_cast<RecordTask*>(t)->stash_sig();
+    }
+    return true;
+  }
+  ASSERT(t, false) << "Unexpected signal " << signal_name(sig);
+  return false;
+}
+
 void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
                                         Registers& callregs) {
   LOG(debug) << "syscall " << syscall_name(syscallno, t->arch());
@@ -169,37 +200,50 @@ void AutoRemoteSyscalls::syscall_helper(SyscallWaiting wait, int syscallno,
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);
 
-  t->enter_syscall();
-
-  ASSERT(t, t->regs().ip() - callregs.ip() ==
-                syscall_instruction_length(t->arch()))
-      << "Should have advanced ip by one syscall_insn";
-
-  ASSERT(t, t->regs().original_syscallno() == syscallno)
-      << "Should be entering " << t->syscall_name(syscallno)
-      << ", but instead at " << t->syscall_name(t->regs().original_syscallno());
+  while (true) {
+    t->resume_execution(RESUME_SINGLESTEP, RESUME_NONBLOCKING, RESUME_NO_TICKS);
+    bool expect_seccomp_event = t->session().is_recording() &&
+                                !untraced_syscall &&
+                                t->session().done_initial_exec();
+    if (!expect_seccomp_event) {
+      break;
+    }
+    t->wait();
+    if (t->is_ptrace_seccomp_event()) {
+      t->resume_execution(RESUME_SINGLESTEP, RESUME_NONBLOCKING,
+                          RESUME_NO_TICKS);
+      break;
+    }
+    if (!ignore_signal(t)) {
+      ASSERT(t, false) << "Unexpected status " << t->status();
+    }
+  }
 
   // Start running the syscall.
-  pending_syscallno = syscallno;
-  t->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING, RESUME_NO_TICKS);
   if (WAIT == wait) {
-    wait_syscall(syscallno);
+    wait_syscall();
   }
 }
 
-void AutoRemoteSyscalls::wait_syscall(int syscallno) {
-  ASSERT(t, pending_syscallno == syscallno || syscallno < 0);
-
-  // Wait for syscall-exit trap (or PTRACE_EVENT_* trap).
-  // XXX we should handle stray signals here!
-  t->wait();
-  pending_syscallno = -1;
+void AutoRemoteSyscalls::wait_syscall() {
+  while (true) {
+    t->wait();
+    // If the syscall caused the task to exit, just stop now with that status
+    // extant.
+    if (t->stop_sig() == SIGTRAP || t->ptrace_event() == PTRACE_EVENT_EXIT) {
+      break;
+    }
+    if (ignore_signal(t) ||
+        (is_clone_syscall(t->regs().original_syscallno(), t->arch()) &&
+         t->clone_syscall_is_complete(&new_tid_))) {
+      t->resume_execution(RESUME_SINGLESTEP, RESUME_NONBLOCKING,
+                          RESUME_NO_TICKS);
+      continue;
+    }
+    ASSERT(t, false) << "Unexpected status " << t->status();
+  }
 
   LOG(debug) << "done, result=" << t->regs().syscall_result();
-
-  ASSERT(t, t->regs().original_syscallno() == syscallno || syscallno < 0)
-      << "Should be entering " << t->syscall_name(syscallno)
-      << ", but instead at " << t->syscall_name(t->regs().original_syscallno());
 
   t->canonicalize_and_set_regs(t->regs(), t->arch());
 }

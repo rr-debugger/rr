@@ -209,6 +209,12 @@ public:
 
   MemParamsEnabled enable_mem_params() { return enable_mem_params_; }
 
+  /**
+   * When the syscall is 'clone', this will be recovered from the
+   * PTRACE_EVENT_FORK/VFORK/CLONE.
+   */
+  pid_t new_tid() { return new_tid_; }
+
 private:
   /**
    * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
@@ -216,7 +222,7 @@ private:
    * |syscallno| is only for assertion checking. If no value is passed in,
    * everything should work without the assertion checking.
    */
-  void wait_syscall(int syscallno = -1);
+  void wait_syscall();
 
   void check_syscall_result(int syscallno);
 
@@ -246,11 +252,13 @@ private:
   remote_code_ptr initial_ip;
   remote_ptr<void> initial_sp;
   remote_ptr<void> fixed_sp;
-  int pending_syscallno;
   std::vector<uint8_t> replaced_bytes;
 
+  pid_t new_tid_;
   /* Whether we had to mmap a scratch region because none was found */
   bool scratch_mem_was_mapped;
+  /* Whether we are able to use an untraced syscall */
+  bool untraced_syscall;
 
   MemParamsEnabled enable_mem_params_;
 

@@ -636,7 +636,7 @@ public:
    * needs to be resumed. When the call returns true, the task is
    * stopped at a PTRACE_EVENT_CLONE or PTRACE_EVENT_FORK.
    */
-  bool clone_syscall_is_complete();
+  bool clone_syscall_is_complete(pid_t* new_pid);
 
   /**
    * Called when SYS_rrcall_init_preload has happened.
