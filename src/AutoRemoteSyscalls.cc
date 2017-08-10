@@ -244,8 +244,6 @@ void AutoRemoteSyscalls::wait_syscall() {
   }
 
   LOG(debug) << "done, result=" << t->regs().syscall_result();
-
-  t->canonicalize_and_set_regs(t->regs(), t->arch());
 }
 
 SupportedArch AutoRemoteSyscalls::arch() const { return t->arch(); }
