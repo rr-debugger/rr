@@ -145,8 +145,7 @@ public:
     // The first syscall argument is called "arg 1", so
     // our syscall-arg-index template parameter starts
     // with "1".
-    syscall_helper<1>(syscallno, callregs, args...);
-    return t->regs().syscall_result_signed();
+    return syscall_helper<1>(syscallno, callregs, args...);
   }
 
   template <typename... Rest>
@@ -155,17 +154,17 @@ public:
     // The first syscall argument is called "arg 1", so
     // our syscall-arg-index template parameter starts
     // with "1".
-    syscall_helper<1>(syscallno, callregs, args...);
-    check_syscall_result(syscallno);
-    return t->regs().syscall_result_signed();
+    long ret = syscall_helper<1>(syscallno, callregs, args...);
+    check_syscall_result(ret, syscallno);
+    return ret;
   }
 
   template <typename... Rest>
   remote_ptr<void> infallible_syscall_ptr(int syscallno, Rest... args) {
     Registers callregs = regs();
-    syscall_helper<1>(syscallno, callregs, args...);
-    check_syscall_result(syscallno);
-    return t->regs().syscall_result();
+    long ret = syscall_helper<1>(syscallno, callregs, args...);
+    check_syscall_result(ret, syscallno);
+    return ret;
   }
 
   /**
@@ -198,14 +197,9 @@ public:
    * arguments.  The arguments must of course be valid in |t|,
    * and no checking of that is done by this function.
    *
-   * If |wait| is |WAIT|, the syscall is finished in |t| and the
-   * result is returned.  Otherwise if it's |DONT_WAIT|, the
-   * syscall is initiated but *not* finished in |t|, and the
-   * return value is undefined.  Call |wait_remote_syscall()| to
-   * finish the syscall and get the return value.
+   * The syscall is finished in |t| and the result is returned.
    */
-  enum SyscallWaiting { WAIT = 1, DONT_WAIT = 0 };
-  void syscall_helper(SyscallWaiting wait, int syscallno, Registers& callregs);
+  long syscall_base(int syscallno, Registers& callregs);
 
   MemParamsEnabled enable_mem_params() { return enable_mem_params_; }
 
@@ -216,15 +210,7 @@ public:
   pid_t new_tid() { return new_tid_; }
 
 private:
-  /**
-   * Wait for the |DONT_WAIT| syscall |syscallno| initiated by
-   * |remote_syscall()| to finish, returning the result.
-   * |syscallno| is only for assertion checking. If no value is passed in,
-   * everything should work without the assertion checking.
-   */
-  void wait_syscall();
-
-  void check_syscall_result(int syscallno);
+  void check_syscall_result(long ret, int syscallno);
 
   /**
    * "Recursively" build the set of syscall registers in
@@ -232,16 +218,16 @@ private:
    * |arg|, and |args| are the remaining arguments.
    */
   template <int Index, typename T, typename... Rest>
-  void syscall_helper(int syscallno, Registers& callregs, T arg, Rest... args) {
+  long syscall_helper(int syscallno, Registers& callregs, T arg, Rest... args) {
     callregs.set_arg<Index>(arg);
-    syscall_helper<Index + 1>(syscallno, callregs, args...);
+    return syscall_helper<Index + 1>(syscallno, callregs, args...);
   }
   /**
    * "Recursion" "base case": no more arguments to build, so
    * just make the syscall and return the kernel return value.
    */
-  template <int Index> void syscall_helper(int syscallno, Registers& callregs) {
-    syscall_helper(WAIT, syscallno, callregs);
+  template <int Index> long syscall_helper(int syscallno, Registers& callregs) {
+    return syscall_base(syscallno, callregs);
   }
 
   template <typename Arch> ScopedFd retrieve_fd_arch(int fd);
@@ -257,8 +243,6 @@ private:
   pid_t new_tid_;
   /* Whether we had to mmap a scratch region because none was found */
   bool scratch_mem_was_mapped;
-  /* Whether we are able to use an untraced syscall */
-  bool untraced_syscall;
 
   MemParamsEnabled enable_mem_params_;
 

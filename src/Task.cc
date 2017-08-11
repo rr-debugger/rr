@@ -892,10 +892,7 @@ TrapReasons Task::compute_trap_reasons() {
   } else {
     const siginfo_t& si = get_siginfo();
     ASSERT(this, SIGTRAP == si.si_signo) << " expected SIGTRAP, got " << si;
-    /* XXX unable to find docs on which of these "should" be
-     * right.  The SI_KERNEL code is seen in the int3 test, so we
-     * at least need to handle that. */
-    reasons.breakpoint = SI_KERNEL == si.si_code || TRAP_BRKPT == si.si_code;
+    reasons.breakpoint = is_kernel_trap(si.si_code);
     if (reasons.breakpoint) {
       ASSERT(this, as->is_breakpoint_instruction(this, ip_at_breakpoint))
           << " expected breakpoint at " << ip_at_breakpoint << ", got siginfo "

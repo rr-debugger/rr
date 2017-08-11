@@ -3,6 +3,8 @@
 #ifndef RR_UTIL_H_
 #define RR_UTIL_H_
 
+#include "signal.h"
+
 #include <array>
 #include <map>
 #include <set>
@@ -288,6 +290,13 @@ inline size_t xsave_area_size() { return xsave_native_layout().full_size; }
 inline sig_set_t signal_bit(int sig) { return sig_set_t(1) << (sig - 1); }
 
 uint64_t rr_signal_mask();
+
+inline bool is_kernel_trap(int si_code) {
+  /* XXX unable to find docs on which of these "should" be
+   * right.  The SI_KERNEL code is seen in the int3 test, so we
+   * at least need to handle that. */
+  return si_code == TRAP_BRKPT || si_code == SI_KERNEL;
+}
 
 enum ProbePort { DONT_PROBE = 0, PROBE_PORT };
 
