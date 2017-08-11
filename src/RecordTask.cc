@@ -573,8 +573,8 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
     // because blocking it seems to cause problems for some hardware/kernel
     // configurations (see https://github.com/mozilla/rr/issues/1979),
     // causing them to stop counting events.
-    uint64_t sigset = ~(signal_bit(SYSCALLBUF_DESCHED_SIGNAL) |
-                        signal_bit(PerfCounters::TIME_SLICE_SIGNAL));
+    sig_set_t sigset = ~(signal_bit(SYSCALLBUF_DESCHED_SIGNAL) |
+                         signal_bit(PerfCounters::TIME_SLICE_SIGNAL));
     if (sig) {
       // We're injecting a signal, so make sure that signal is unblocked.
       sigset &= ~signal_bit(sig);
@@ -983,9 +983,9 @@ bool RecordTask::is_signal_pending(int sig) {
     return false;
   }
   char* end1;
-  uint64_t mask1 = strtoull(pending_strs[0].c_str(), &end1, 16);
+  sig_set_t mask1 = strtoull(pending_strs[0].c_str(), &end1, 16);
   char* end2;
-  uint64_t mask2 = strtoull(pending_strs[1].c_str(), &end2, 16);
+  sig_set_t mask2 = strtoull(pending_strs[1].c_str(), &end2, 16);
   return !*end1 && !*end2 && ((mask1 | mask2) & signal_bit(sig));
 }
 
@@ -1157,11 +1157,11 @@ void RecordTask::verify_signal_states() {
   }
   auto results = read_proc_status_fields(tid, "SigBlk", "SigIgn", "SigCgt");
   ASSERT(this, results.size() == 3);
-  uint64_t blocked = strtoull(results[0].c_str(), NULL, 16);
-  uint64_t ignored = strtoull(results[1].c_str(), NULL, 16);
-  uint64_t caught = strtoull(results[2].c_str(), NULL, 16);
+  sig_set_t blocked = strtoull(results[0].c_str(), NULL, 16);
+  sig_set_t ignored = strtoull(results[1].c_str(), NULL, 16);
+  sig_set_t caught = strtoull(results[2].c_str(), NULL, 16);
   for (int sig = 1; sig < _NSIG; ++sig) {
-    uint64_t mask = signal_bit(sig);
+    sig_set_t mask = signal_bit(sig);
     if (is_unstoppable_signal(sig)) {
       ASSERT(this, !(blocked & mask)) << "Expected " << signal_name(sig)
                                       << " to not be blocked, but it is";

@@ -285,7 +285,7 @@ XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records);
  */
 inline size_t xsave_area_size() { return xsave_native_layout().full_size; }
 
-inline uint64_t signal_bit(int sig) { return uint64_t(1) << (sig - 1); }
+inline sig_set_t signal_bit(int sig) { return sig_set_t(1) << (sig - 1); }
 
 uint64_t rr_signal_mask();
 
