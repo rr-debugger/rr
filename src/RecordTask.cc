@@ -337,8 +337,13 @@ static string exe_path(RecordTask* t) {
 }
 
 void RecordTask::post_exec() {
-  // The signal mask is inherited across execve so we don't need to invalidate.
+  // Change syscall number to execve *for the new arch*. If we don't do this,
+  // and the arch changes, then the syscall number for execve in the old arch/
+  // is treated as the syscall we're executing in the new arch, with hilarious
+  // results.
+  registers.set_original_syscallno(syscall_number_for_execve(arch()));
 
+  // The signal mask is inherited across execve so we don't need to invalidate.
   string exe_file = exe_path(this);
   Task::post_exec(exe_file);
   if (emulated_ptracer) {
@@ -347,7 +352,7 @@ void RecordTask::post_exec() {
   }
 
   ev().set_arch(arch());
-  ev().Syscall().number = registers.original_syscallno();
+  ev().Syscall().number = regs().original_syscallno();
 
   // Clear robust_list state to match kernel state. If this task is cloned
   // soon after exec, we must not do a bogus set_robust_list syscall for

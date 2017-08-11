@@ -82,10 +82,9 @@ void ReplayTask::post_exec_syscall(const string& replay_exe) {
   // Delay setting the replay_regs until here so the original registers
   // are set while we populate AddressSpace. We need that for the kernel
   // to identify the original stack region correctly.
-  registers = current_trace_frame().regs();
+  set_regs(current_trace_frame().regs());
   extra_registers = current_trace_frame().extra_regs();
   ASSERT(this, !extra_registers.empty());
-  set_regs(registers);
   set_extra_regs(extra_registers);
 }
 

@@ -84,6 +84,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       is_stopped(false),
       seccomp_bpf_enabled(false),
       detected_unexpected_exit(false),
+      registers_dirty(false),
       extra_registers(a),
       extra_registers_known(false),
       session_(&session),
@@ -690,30 +691,6 @@ void Task::post_exec(const string& exe_file) {
   as->erase_task(this);
   fds->erase_task(this);
 
-  registers.set_arch(NativeArch::arch());
-  struct user_regs_struct ptrace_regs;
-  ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs);
-  registers.set_from_ptrace(ptrace_regs);
-
-#if defined(__i386__) || defined(__x86_64__)
-  // Check the architecture of the newly executed task by looking at the
-  // cs segment register and checking if that segment is a long mode segment
-  // (Linux always uses GDT entries for this, which are globally the same).
-  SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
-  if (a != NativeArch::arch()) {
-    // One again with the correct architecture
-    registers.set_arch(a);
-    registers.set_from_ptrace(ptrace_regs);
-  }
-#endif
-
-  // Change syscall number to execve *for the new arch*. If we don't do this,
-  // and the arch changes, then the syscall number for execve in the old arch/
-  // is treated as the syscall we're executing in the new arch, with hilarious
-  // results.
-  registers.set_original_syscallno(syscall_number_for_execve(arch()));
-  set_regs(registers);
-
   extra_registers = ExtraRegisters(registers.arch());
   extra_registers_known = false;
   ExtraRegisters e = extra_regs();
@@ -1026,6 +1003,8 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     maybe_workaround_singlestep_bug();
   }
 
+  flush_regs();
+
   pid_t wait_ret = 0;
   if (session().is_recording()) {
     /* There's a nasty race where a stopped task gets woken up by a SIGKILL
@@ -1071,8 +1050,15 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 void Task::set_regs(const Registers& regs) {
   ASSERT(this, is_stopped);
   registers = regs;
-  auto ptrace_regs = registers.get_ptrace();
-  ptrace_if_alive(PTRACE_SETREGS, nullptr, &ptrace_regs);
+  registers_dirty = true;
+}
+
+void Task::flush_regs() {
+  if (registers_dirty) {
+    auto ptrace_regs = registers.get_ptrace();
+    ptrace_if_alive(PTRACE_SETREGS, nullptr, &ptrace_regs);
+    registers_dirty = false;
+  }
 }
 
 void Task::set_extra_regs(const ExtraRegisters& regs) {
@@ -1486,21 +1472,6 @@ void Task::did_waitpid(WaitStatus status) {
     }
   }
 
-  LOG(debug) << "  (refreshing register cache)";
-  intptr_t original_syscallno = registers.original_syscallno();
-  // Skip reading registers in a PTRACE_EVENT_EXEC, since
-  // we may not know the correct architecture.
-  bool did_read_regs = false;
-  if (status.ptrace_event() != PTRACE_EVENT_EXEC) {
-    struct user_regs_struct ptrace_regs;
-    if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
-      registers.set_from_ptrace(ptrace_regs);
-      did_read_regs = true;
-    } else {
-      LOG(debug) << "Unexpected process death for " << tid;
-      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-    }
-  }
   if (!siginfo_overriden && status.stop_sig()) {
     if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
       LOG(debug) << "Unexpected process death for " << tid;
@@ -1508,12 +1479,37 @@ void Task::did_waitpid(WaitStatus status) {
     }
   }
 
-  is_stopped = true;
-  wait_status = status;
-  if (ptrace_event() == PTRACE_EVENT_EXIT) {
-    seen_ptrace_exit_event = true;
+  intptr_t original_syscallno = registers.original_syscallno();
+  LOG(debug) << "  (refreshing register cache)";
+  // An unstable exit can cause a task to exit without us having run it, in
+  // which case we might have pending register changes for it that are now
+  // irrelevant. In that case we just throw away our register changes and use
+  // whatever the kernel now has.
+  if (status.ptrace_event() != PTRACE_EVENT_EXIT) {
+    ASSERT(this, !registers_dirty) << "Registers shouldn't already be dirty";
+  }
+  struct user_regs_struct ptrace_regs;
+  if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
+    registers.set_from_ptrace(ptrace_regs);
+#if defined(__i386__) || defined(__x86_64__)
+    // Check the architecture of the task by looking at the
+    // cs segment register and checking if that segment is a long mode segment
+    // (Linux always uses GDT entries for this, which are globally the same).
+    SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
+    if (a != registers.arch()) {
+      registers.set_arch(a);
+      registers.set_from_ptrace(ptrace_regs);
+    }
+#else
+#error detect architecture here
+#endif
+  } else {
+    LOG(debug) << "Unexpected process death for " << tid;
+    status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
   }
 
+  is_stopped = true;
+  wait_status = status;
   Ticks more_ticks = hpc.read_ticks(this);
   // We stop counting here because there may be things we want to do to the
   // tracee that would otherwise generate ticks.
@@ -1521,59 +1517,57 @@ void Task::did_waitpid(WaitStatus status) {
   session().accumulate_ticks_processed(more_ticks);
   ticks += more_ticks;
 
-  bool need_to_set_regs = false;
-  if (registers.singlestep_flag()) {
-    registers.clear_singlestep_flag();
-    need_to_set_regs = true;
-  }
+  if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
+    seen_ptrace_exit_event = true;
+  } else {
+    if (registers.singlestep_flag()) {
+      registers.clear_singlestep_flag();
+      registers_dirty = true;
+    }
 
-  if (last_resume_orig_cx != 0) {
-    ASSERT(this, did_read_regs);
-    uintptr_t new_cx = registers.cx();
-    /* Un-fudge registers, if we fudged them to work around the KNL hardware
-       quirk */
-    unsigned cutoff = single_step_coalesce_cutoff();
-    ASSERT(this, new_cx == cutoff - 1 || new_cx == cutoff);
-    registers.set_cx(last_resume_orig_cx - cutoff + new_cx);
-    need_to_set_regs = true;
-  }
-  last_resume_orig_cx = 0;
+    if (last_resume_orig_cx != 0) {
+      uintptr_t new_cx = registers.cx();
+      /* Un-fudge registers, if we fudged them to work around the KNL hardware
+         quirk */
+      unsigned cutoff = single_step_coalesce_cutoff();
+      ASSERT(this, new_cx == cutoff - 1 || new_cx == cutoff);
+      registers.set_cx(last_resume_orig_cx - cutoff + new_cx);
+      registers_dirty = true;
+    }
+    last_resume_orig_cx = 0;
 
-  // We might have singlestepped at the resumption address and just exited
-  // the kernel without executing the breakpoint at that address.
-  // The kernel usually (always?) singlesteps an extra instruction when
-  // we do this with PTRACE_SYSEMU_SINGLESTEP, but rr's ptrace emulation doesn't
-  // and it's kind of a kernel bug.
-  if (as->get_breakpoint_type_at_addr(address_of_last_execution_resume) !=
-          BKPT_NONE &&
-      stop_sig() == SIGTRAP && !ptrace_event() &&
-      ip() ==
-          address_of_last_execution_resume.increment_by_bkpt_insn_length(
-              arch())) {
-    ASSERT(this, more_ticks == 0);
-    // When we resume execution and immediately hit a breakpoint, the original
-    // syscall number can be reset to -1. Undo that, so that the register
-    // state matches the state we'd be in if we hadn't resumed. ReplayTimeline
-    // depends on resume-at-a-breakpoint being a noop.
-    registers.set_original_syscallno(original_syscallno);
-    need_to_set_regs = true;
-  }
+    // We might have singlestepped at the resumption address and just exited
+    // the kernel without executing the breakpoint at that address.
+    // The kernel usually (always?) singlesteps an extra instruction when
+    // we do this with PTRACE_SYSEMU_SINGLESTEP, but rr's ptrace emulation doesn't
+    // and it's kind of a kernel bug.
+    if (as->get_breakpoint_type_at_addr(address_of_last_execution_resume) !=
+            BKPT_NONE &&
+        stop_sig() == SIGTRAP && !ptrace_event() &&
+        ip() ==
+            address_of_last_execution_resume.increment_by_bkpt_insn_length(
+                arch())) {
+      ASSERT(this, more_ticks == 0);
+      // When we resume execution and immediately hit a breakpoint, the original
+      // syscall number can be reset to -1. Undo that, so that the register
+      // state matches the state we'd be in if we hadn't resumed. ReplayTimeline
+      // depends on resume-at-a-breakpoint being a noop.
+      registers.set_original_syscallno(original_syscallno);
+      registers_dirty = true;
+    }
 
-  // If we're in the rr page,  we may have just returned from an untraced
-  // syscall there and while in the rr page registers need to be consistent
-  // between record and replay. During replay most untraced syscalls are
-  // replaced with "xor eax,eax" (right after a "movq -1, %rcx") so
-  // rcx is always -1, but during recording it sometimes isn't after we've
-  // done a real syscall.
-  if (is_in_rr_page()) {
-    // N.B.: Cross architecture syscalls don't go through the rr page, so we
-    // know what the architecture is.
-    fixup_syscall_registers(registers, arch());
-    need_to_set_regs = true;
-  }
-  if (need_to_set_regs && did_read_regs) {
-    // If we couldn't read registers, don't fix them up!
-    set_regs(registers);
+    // If we're in the rr page,  we may have just returned from an untraced
+    // syscall there and while in the rr page registers need to be consistent
+    // between record and replay. During replay most untraced syscalls are
+    // replaced with "xor eax,eax" (right after a "movq -1, %rcx") so
+    // rcx is always -1, but during recording it sometimes isn't after we've
+    // done a real syscall.
+    if (is_in_rr_page()) {
+      // N.B.: Cross architecture syscalls don't go through the rr page, so we
+      // know what the architecture is.
+      fixup_syscall_registers(registers, arch());
+      registers_dirty = true;
+    }
   }
 
   did_wait();

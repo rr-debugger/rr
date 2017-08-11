@@ -439,8 +439,7 @@ public:
    * If interrupt_after_elapsed is nonzero, we interrupt the task
    * after that many seconds have elapsed.
    *
-   * You probably want to use one of the cont*() helpers above,
-   * and not this.
+   * All tracee execution goes through here.
    */
   void resume_execution(ResumeRequest how, WaitRequest wait_how,
                         TicksRequest tick_period, int sig = 0);
@@ -448,8 +447,11 @@ public:
   /** Return the session this is part of. */
   Session& session() const { return *session_; }
 
-  /** Set the tracee's registers to |regs|. */
+  /** Set the tracee's registers to |regs|. Lazy. */
   void set_regs(const Registers& regs);
+
+  /** Ensure registers are flushed back to the underlying task. */
+  void flush_regs();
 
   /** Set the tracee's extra registers to |regs|. */
   void set_extra_regs(const ExtraRegisters& regs);
@@ -997,6 +999,9 @@ protected:
   // True when we consumed a PTRACE_EVENT_EXIT that was about to race with
   // a resume_execution, that was issued while stopped (i.e. SIGKILL).
   bool detected_unexpected_exit;
+  // True when 'registers' has changes that haven't been flushed back to the
+  // task yet.
+  bool registers_dirty;
   // When |extra_registers_known|, we have saved our extra registers.
   ExtraRegisters extra_registers;
   bool extra_registers_known;

@@ -225,6 +225,7 @@ void Session::kill_all_tasks() {
     r.set_syscallno(syscall_number_for_exit(r.arch()));
     r.set_arg1(0);
     t->set_regs(r);
+    t->flush_regs();
     long result;
     do {
       // We have observed this failing with an ESRCH when the thread clearly

@@ -1107,12 +1107,12 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
   int sys = t->current_trace_frame().event().Syscall().number;
   const TraceFrame& trace_frame = t->session().current_trace_frame();
 
-  LOG(debug) << "processing " << t->syscall_name(sys) << " (exit)";
+  LOG(debug) << "processing " << syscall_name(sys, Arch::arch()) << " (exit)";
 
   // sigreturns are never restartable, and the value of the
   // syscall-result register after a sigreturn is not actually the
   // syscall result.
-  if (trace_regs.syscall_may_restart() && !is_sigreturn(sys, t->arch())) {
+  if (trace_regs.syscall_may_restart() && !is_sigreturn(sys, Arch::arch())) {
     // During recording, when a sys exits with a
     // restart "error", the kernel sometimes restarts the
     // tracee by resetting its $ip to the syscall entry
@@ -1121,7 +1121,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     t->apply_all_data_records_from_trace();
     t->set_return_value_from_trace();
     step->action = TSTEP_RETIRE;
-    LOG(debug) << "  " << t->syscall_name(sys) << " interrupted by "
+    LOG(debug) << "  " << syscall_name(sys, Arch::arch()) << " interrupted by "
                << trace_regs.syscall_result() << " at " << trace_regs.ip()
                << ", may restart";
     return;

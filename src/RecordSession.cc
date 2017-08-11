@@ -134,7 +134,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     t->task_group()->exit_status = exit_status;
   }
 
-  // Delete t. t's destructor writes the final EV_(UNSTABLE_)EXIT.
+  // Delete t. t's destructor writes the final EV_EXIT.
   t->destroy();
   return true;
 }

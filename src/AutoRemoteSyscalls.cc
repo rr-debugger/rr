@@ -213,6 +213,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     while (true) {
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
       LOG(debug) << "Used singlestep path; status=" << t->status();
+      // When a PTRACE_EVENT_EXIT is returned we don't update registers
       if (t->ip() != callregs.ip()) {
         // We entered the syscall, so stop now
         break;
