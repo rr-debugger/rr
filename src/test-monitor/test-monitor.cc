@@ -136,7 +136,7 @@ static void dump_popen_cmdline(const char* cmdline, FILE* out) {
 static void dump_gdb_stacktrace(pid_t child, FILE* out) {
   char cmdline[1024 * 10];
   sprintf(cmdline, "gdb -p %d -ex 'set confirm off' -ex 'set height 0' -ex "
-                   "'thread apply all bt' -ex q 2>&1",
+                   "'thread apply all bt' -ex q </dev/null 2>&1",
           child);
   dump_popen_cmdline(cmdline, out);
 }
@@ -157,7 +157,7 @@ static void dump_emergency_debugger(char* gdb_cmd, FILE* out) {
   }
   sprintf(cmdline, "%s -ex 'set confirm off' -ex 'set height 0' "
                    "-ex 'info registers' -ex "
-                   "'thread apply all bt' -ex q %s 2>&1",
+                   "'thread apply all bt' -ex q %s </dev/null 2>&1",
           gdb_cmd, file_name);
   dump_popen_cmdline(cmdline, out);
 }
