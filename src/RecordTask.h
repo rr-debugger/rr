@@ -200,9 +200,14 @@ public:
    * data is architecture-dependent.
    */
   const std::vector<uint8_t>& signal_action(int sig) const;
+  /** Return true if |sig| may be blocked or ignored for this. Can be called
+   * before this is fully initialized.
+   */
+  bool sig_maybe_blocked_or_ignored(int sig) {
+    return !sighandlers || is_sig_blocked(sig) || is_sig_ignored(sig);
+  }
   /** Return true iff |sig| is blocked for this. */
   bool is_sig_blocked(int sig);
-
   /**
    * Return true iff |sig| is SIG_IGN, or it's SIG_DFL and the
    * default disposition is "ignore".

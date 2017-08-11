@@ -60,6 +60,13 @@ AutoRestoreMem::~AutoRestoreMem() {
   remote.task()->set_regs(remote.regs());
 }
 
+static bool is_SIGTRAP_blocked_or_ignored(Task* t) {
+  if (!t->session().is_recording()) {
+    return false;
+  }
+  return static_cast<RecordTask*>(t)->sig_maybe_blocked_or_ignored(SIGTRAP);
+}
+
 AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
                                        MemParamsEnabled enable_mem_params)
     : t(t),
@@ -69,17 +76,27 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
       initial_sp(t->regs().sp()),
       new_tid_(-1),
       scratch_mem_was_mapped(false),
+      use_singlestep_path(false),
       enable_mem_params_(enable_mem_params) {
-  // Use privileged untraced syscalls if available because they won't produce
-  // ptrace SECCOMP events, which we ignore but cause unnecessary round trips.
-  // But don't use them when running under rr, because the rr recording us
+  // We support two paths for syscalls:
+  // -- a fast path using a privileged untraced syscall and PTRACE_SINGLESTEP.
+  // This only requires a single task-wait.
+  // -- a slower path using a privileged traced syscall and PTRACE_SYSCALL/
+  // PTRACE_CONT via Task::enter_syscall(). This requires 2 or 3 task-waits
+  // depending on whether the seccomp event fires before the syscall-entry
+  // event.
+  // Use the slow path when running under rr, because the rr recording us
   // needs to see and trace these tracee syscalls, and if they're untraced by
   // us they're also untraced by the outer rr.
+  // Use the slow path if SIGTRAP is blocked or ignored because otherwise
+  // the PTRACE_SINGLESTEP will cause the kernel to unblock it.
   remote_code_ptr syscall_ip;
-  if (t->vm()->has_rr_page() && !running_under_rr()) {
+  if (t->vm()->has_rr_page() && !running_under_rr() &&
+      !is_SIGTRAP_blocked_or_ignored(t)) {
     syscall_ip = AddressSpace::rr_page_syscall_entry_point(
         AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
         AddressSpace::RECORDING_AND_REPLAY, t->arch());
+    use_singlestep_path = true;
   } else {
     syscall_ip = t->vm()->traced_syscall_ip();
   }
@@ -197,21 +214,54 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);
 
-  t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-
+  if (use_singlestep_path) {
+    while (true) {
+      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
+      LOG(debug) << "Used singlestep path; status=" << t->status();
+      if (t->ip() != callregs.ip()) {
+        // We entered the syscall, so stop now
+        break;
+      }
+      if (ignore_signal(t)) {
+        // We were interrupted by a signal before we even entered the syscall
+        continue;
+      }
+      ASSERT(t, false) << "Unexpected status " << t->status();
+    }
+  } else {
+    t->enter_syscall();
+    LOG(debug) << "Used enter_syscall; status=" << t->status();
+    // proceed to syscall exit
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    LOG(debug) << "syscall exit status=" << t->status();
+  }
   while (true) {
-    // If we got a SIGTRAP then we assume that's our singlestep and we're done.
-    // If the syscall caused the task to exit, just stop now with that status
-    // extant.
-    if ((t->stop_sig() == SIGTRAP && is_kernel_trap(t->get_siginfo().si_code)) ||
-        t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    if (t->status().is_syscall() || t->ptrace_event() == PTRACE_EVENT_EXIT ||
+        (t->stop_sig() == SIGTRAP &&
+         is_kernel_trap(t->get_siginfo().si_code))) {
+      // If we got a SIGTRAP then we assume that's our singlestep and we're
+      // done.
+      // If the syscall caused the task to exit, just stop now with that status.
       break;
     }
-    if (t->is_ptrace_seccomp_event() || ignore_signal(t) ||
-        (is_clone_syscall(t->regs().original_syscallno(), t->arch()) &&
-         t->clone_syscall_is_complete(&new_tid_))) {
-      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
+    if (is_clone_syscall(syscallno, t->arch()) &&
+        t->clone_syscall_is_complete(&new_tid_)) {
+      t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+      LOG(debug) << "got clone event; new status=" << t->status();
       continue;
+    }
+    if (ignore_signal(t)) {
+      if (t->regs().syscall_may_restart()) {
+        t->enter_syscall();
+        LOG(debug) << "signal ignored; restarting syscall, status=" << t->status();
+        t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+        LOG(debug) << "syscall exit status=" << t->status();
+        continue;
+      }
+      LOG(debug) << "signal ignored";
+      // We have been notified of a signal after a non-interruptible syscall
+      // completed. Don't continue, we're done here.
+      break;
     }
     ASSERT(t, false) << "Unexpected status " << t->status();
     break;

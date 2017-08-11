@@ -243,6 +243,7 @@ private:
   pid_t new_tid_;
   /* Whether we had to mmap a scratch region because none was found */
   bool scratch_mem_was_mapped;
+  bool use_singlestep_path;
 
   MemParamsEnabled enable_mem_params_;
 
