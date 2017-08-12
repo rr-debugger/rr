@@ -234,11 +234,11 @@ private:
 
   Task* t;
   Registers initial_regs;
-  WaitStatus initial_wait_status;
   remote_code_ptr initial_ip;
   remote_ptr<void> initial_sp;
   remote_ptr<void> fixed_sp;
   std::vector<uint8_t> replaced_bytes;
+  WaitStatus restore_wait_status;
 
   pid_t new_tid_;
   /* Whether we had to mmap a scratch region because none was found */

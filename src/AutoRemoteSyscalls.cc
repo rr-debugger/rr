@@ -71,9 +71,9 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
                                        MemParamsEnabled enable_mem_params)
     : t(t),
       initial_regs(t->regs()),
-      initial_wait_status(t->status()),
       initial_ip(t->ip()),
       initial_sp(t->regs().sp()),
+      restore_wait_status(t->status()),
       new_tid_(-1),
       scratch_mem_was_mapped(false),
       use_singlestep_path(false),
@@ -181,12 +181,7 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   initial_regs.set_sp(initial_sp);
   // Restore stomped registers.
   t->set_regs(initial_regs);
-
-  // If the task's current status is ours, discard it. But if the syscall
-  // triggered side effects (e.g. an exit_group), leave it.
-  if (t->status().is_syscall()) {
-    t->set_status(initial_wait_status);
-  }
+  t->set_status(restore_wait_status);
 }
 
 static bool ignore_signal(Task* t) {
@@ -236,12 +231,16 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     LOG(debug) << "syscall exit status=" << t->status();
   }
   while (true) {
-    if (t->status().is_syscall() || t->ptrace_event() == PTRACE_EVENT_EXIT ||
+    // If the syscall caused the task to exit, just stop now with that status.
+    if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+      restore_wait_status = t->status();
+      break;
+    }
+    if (t->status().is_syscall() ||
         (t->stop_sig() == SIGTRAP &&
          is_kernel_trap(t->get_siginfo().si_code))) {
       // If we got a SIGTRAP then we assume that's our singlestep and we're
       // done.
-      // If the syscall caused the task to exit, just stop now with that status.
       break;
     }
     if (is_clone_syscall(syscallno, t->arch()) &&
@@ -253,7 +252,8 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     if (ignore_signal(t)) {
       if (t->regs().syscall_may_restart()) {
         t->enter_syscall();
-        LOG(debug) << "signal ignored; restarting syscall, status=" << t->status();
+        LOG(debug) << "signal ignored; restarting syscall, status="
+                   << t->status();
         t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
         LOG(debug) << "syscall exit status=" << t->status();
         continue;
