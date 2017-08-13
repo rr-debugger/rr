@@ -1,6 +1,6 @@
 source `dirname $0`/util.sh
 
-cp $OBJDIR/lib/libtest_lib$bitness.so .
+cp $OBJDIR/lib/rr/libtest_lib$bitness.so .
 
 RECORD_ARGS="--env=LD_PRELOAD=libtest_lib$bitness.so"
 record constructor$bitness
