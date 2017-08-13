@@ -816,6 +816,10 @@ public:
     return seen_ptrace_exit_event || detected_unexpected_exit;
   }
 
+  remote_code_ptr last_execution_resume() const {
+    return address_of_last_execution_resume;
+  }
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);

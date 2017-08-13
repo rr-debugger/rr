@@ -208,7 +208,7 @@ public:
   void on_create(TaskGroup* tg);
   void on_destroy(TaskGroup* tg);
 
-  /** Return the set of Tasks being tracekd in this session. */
+  /** Return the set of Tasks being traced in this session. */
   const TaskMap& tasks() const {
     finish_initializing();
     return task_map;

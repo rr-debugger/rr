@@ -721,9 +721,12 @@ void Task::post_exec(const string& exe_file) {
   set_extra_regs(e);
 
   syscallbuf_child = nullptr;
+  syscallbuf_size = 0;
   scratch_ptr = nullptr;
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
+  stopping_breakpoint_table = nullptr;
+  stopping_breakpoint_table_entry_size = 0;
   preload_globals = nullptr;
   task_group()->execed = true;
 
@@ -2291,10 +2294,13 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
   auto params = t->read_mem(
       remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().arg1()));
 
-  t->preload_globals = params.globals.rptr();
+  for (Task* tt : t->vm()->task_set()) {
+    tt->preload_globals = params.globals.rptr();
 
-  t->stopping_breakpoint_table = params.breakpoint_table.rptr().as_int();
-  t->stopping_breakpoint_table_entry_size = params.breakpoint_table_entry_size;
+    tt->stopping_breakpoint_table = params.breakpoint_table.rptr().as_int();
+    tt->stopping_breakpoint_table_entry_size =
+        params.breakpoint_table_entry_size;
+  }
 
   t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, in_replay),
                (unsigned char)t->session().is_replaying());

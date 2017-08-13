@@ -7,6 +7,8 @@
 #include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
 #include "ElfReader.h"
+#include "Flags.h"
+#include "RecordSession.h"
 #include "RecordTask.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
@@ -324,6 +326,37 @@ static string bytes_to_string(uint8_t* bytes, size_t size) {
   return ss.str();
 }
 
+static bool task_safe_for_syscall_patching(RecordTask* t, remote_code_ptr start,
+                                           remote_code_ptr end) {
+  if (!t->is_running()) {
+    remote_code_ptr ip = t->ip();
+    if (start <= ip && ip < end) {
+      return false;
+    }
+  }
+  for (auto& e : t->pending_events) {
+    if (e.is_syscall_event()) {
+      remote_code_ptr ip = e.Syscall().regs.ip();
+      if (start <= ip && ip < end) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static bool safe_for_syscall_patching(remote_code_ptr start,
+                                      remote_code_ptr end,
+                                      RecordTask* exclude) {
+  for (auto& p : exclude->session().tasks()) {
+    RecordTask* rt = static_cast<RecordTask*>(p.second);
+    if (rt != exclude && !task_safe_for_syscall_patching(rt, start, end)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
   if (syscall_hooks.empty()) {
     // Syscall hooks not set up yet. Don't spew warnings, and don't
@@ -343,34 +376,35 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
   }
 
   Registers r = t->regs();
-  if (tried_to_patch_syscall_addresses.count(r.ip())) {
+  remote_code_ptr ip = r.ip();
+  if (tried_to_patch_syscall_addresses.count(ip)) {
     return false;
   }
+
   // We could examine the current syscall number and if it's not one that
   // we support syscall buffering for, refuse to patch the syscall instruction.
   // This would, on the face of it, reduce overhead since patching the
   // instruction just means a useless trip through the syscall buffering logic.
-  // However, it actually wouldn't help much since we'd still to a switch
+  // However, it actually wouldn't help much since we'd still do a switch
   // on the syscall number in this function instead, and due to context
   // switching costs any overhead saved would be insignificant.
   // Also, implementing that would require keeping a buffered-syscalls
   // list in sync with the preload code, which is unnecessary complexity.
 
-  tried_to_patch_syscall_addresses.insert(r.ip());
-
   SupportedArch arch;
   if (!get_syscall_instruction_arch(
-          t, r.ip().decrement_by_syscall_insn_length(t->arch()), &arch) ||
+          t, ip.decrement_by_syscall_insn_length(t->arch()), &arch) ||
       arch != t->arch()) {
-    LOG(debug) << "Declining to patch cross-architecture syscall at " << r.ip();
+    LOG(debug) << "Declining to patch cross-architecture syscall at " << ip;
+    tried_to_patch_syscall_addresses.insert(ip);
     return false;
   }
 
   uint8_t following_bytes[256];
   size_t bytes_count = t->read_bytes_fallible(
-      r.ip().to_data_ptr<uint8_t>(), sizeof(following_bytes), following_bytes);
-
+      ip.to_data_ptr<uint8_t>(), sizeof(following_bytes), following_bytes);
   if (bytes_count < sizeof(syscall_patch_hook::next_instruction_bytes)) {
+    tried_to_patch_syscall_addresses.insert(ip);
     return false;
   }
 
@@ -388,7 +422,7 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
       // syscall and return.
       // Otherwise the Linux 4.12 VDSO triggers the interfering-branch check.
       if (!patched_vdso_syscalls.count(
-              r.ip().decrement_by_syscall_insn_length(arch))) {
+              ip.decrement_by_syscall_insn_length(arch))) {
         for (size_t i = 0; i + 2 <= bytes_count; ++i) {
           uint8_t b = following_bytes[i];
           // Check for short conditional or unconditional jump
@@ -398,7 +432,7 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
                     ? (offset >= 0 && offset < hook.next_instruction_length)
                     : offset == 0) {
               LOG(debug) << "Found potential interfering branch at "
-                         << r.ip().to_data_ptr<uint8_t>() + i;
+                         << ip.to_data_ptr<uint8_t>() + i;
               // We can't patch this because it would jump straight back into
               // the middle of our patch code.
               found_potential_interfering_branch = true;
@@ -408,7 +442,15 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
       }
 
       if (!found_potential_interfering_branch) {
-        LOG(debug) << "Patched syscall at " << r.ip() << " syscall "
+        if (!safe_for_syscall_patching(ip, ip + hook.next_instruction_length,
+                                       t)) {
+          LOG(debug)
+              << "Temporarily declining to patch syscall at " << ip
+              << " because a different task has its ip in the patched range";
+          return false;
+        }
+
+        LOG(debug) << "Patched syscall at " << ip << " syscall "
                    << syscall_name(syscallno, t->arch()) << " tid " << t->tid
                    << " bytes "
                    << bytes_to_string(
@@ -425,12 +467,13 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
       }
     }
   }
-  LOG(debug) << "Failed to patch syscall at " << r.ip() << " syscall "
+  LOG(debug) << "Failed to patch syscall at " << ip << " syscall "
              << syscall_name(syscallno, t->arch()) << " tid " << t->tid
              << " bytes "
              << bytes_to_string(
                     following_bytes,
                     sizeof(syscall_patch_hook::next_instruction_bytes));
+  tried_to_patch_syscall_addresses.insert(ip);
   return false;
 }
 
@@ -615,14 +658,25 @@ void patch_at_preload_init_arch<X86Arch>(RecordTask* t,
       params.syscallhook_vsyscall_entry;
 
   uint8_t patch[X86SysenterVsyscallSyscallHook::size];
-  // We're patching in a relative jump, so we need to compute the offset from
-  // the end of the jump to our actual destination.
-  X86SysenterVsyscallSyscallHook::substitute(
-      patch, syscallhook_vsyscall_entry.as_int() -
-                 (kernel_vsyscall + sizeof(patch)).as_int());
-  write_and_record_bytes(t, kernel_vsyscall, patch);
-  LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
-             << HEX(syscallhook_vsyscall_entry.as_int());
+
+  if (safe_for_syscall_patching(kernel_vsyscall.as_int(),
+                                kernel_vsyscall.as_int() + sizeof(patch), t)) {
+    // We're patching in a relative jump, so we need to compute the offset from
+    // the end of the jump to our actual destination.
+    X86SysenterVsyscallSyscallHook::substitute(
+        patch, syscallhook_vsyscall_entry.as_int() -
+                   (kernel_vsyscall + sizeof(patch)).as_int());
+    write_and_record_bytes(t, kernel_vsyscall, patch);
+    LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
+               << HEX(syscallhook_vsyscall_entry.as_int());
+  } else {
+    if (!Flags::get().suppress_environment_warnings) {
+      fprintf(stderr, "Unable to patch __kernel_vsyscall because a LD_PRELOAD "
+                      "thread is blocked in it; recording will be slow\n");
+    }
+    LOG(debug) << "Unable to patch __kernel_vsyscall because a LD_PRELOAD "
+                  "thread is blocked in it";
+  }
 
   patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
                                         params.syscall_patch_hooks);
@@ -715,9 +769,6 @@ void Monkeypatcher::patch_after_exec(RecordTask* t) {
 }
 
 void Monkeypatcher::patch_at_preload_init(RecordTask* t) {
-  ASSERT(t, 1 == t->vm()->task_set().size())
-      << "TODO: monkeypatch multithreaded process";
-
   // NB: the tracee can't be interrupted with a signal while
   // we're processing the rrcall, because it's masked off all
   // signals.
