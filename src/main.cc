@@ -93,8 +93,6 @@ void print_global_options(FILE* out) {
       "                             suppress warnings about issues in the\n"
       "                             environment that rr has no control over\n"
       "  -T, --dump-at=TIME         dump memory at global timepoint TIME\n"
-      "  -V, --verbose              log messages that may not be urgently \n"
-      "                             critical to the user\n"
       "\n"
       "Use RR_LOG to control logging; e.g. RR_LOG=all:warn,Task:debug\n",
       out);
@@ -129,7 +127,6 @@ bool parse_global_option(std::vector<std::string>& args) {
     { 'S', "suppress-environment-warnings", NO_PARAMETER },
     { 'T', "dump-at", HAS_PARAMETER },
     { 'U', "cpu-unbound", NO_PARAMETER },
-    { 'V', "verbose", NO_PARAMETER },
   };
 
   ParsedOption opt;
