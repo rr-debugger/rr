@@ -1335,7 +1335,7 @@ static uint32_t get_cpu_features(SupportedArch arch) {
   return cpu_features;
 }
 
-static const char connection_addr[] = "127.0.0.1";
+static const char localhost_addr[] = "127.0.0.1";
 
 struct DebuggerParams {
   char exe_image[PATH_MAX];
@@ -1350,8 +1350,9 @@ static void push_default_gdb_options(vector<string>& vec) {
 static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
   vec.push_back("-ex");
   stringstream ss;
-  ss << "target extended-remote :";
-  ss << port;
+  // If we omit the address, then gdb can try to resolve "localhost" which
+  // in some broken environments may not actually resolve to the local host
+  ss << "target extended-remote " << localhost_addr << ":" << port;
   vec.push_back(ss.str());
 }
 
@@ -1414,7 +1415,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   // place).  So fail with a clearer error message.
   auto probe = flags.dbg_port > 0 ? DONT_PROBE : PROBE_PORT;
   Task* t = timeline.current_session().current_task();
-  ScopedFd listen_fd = open_socket(connection_addr, &port, probe);
+  ScopedFd listen_fd = open_socket(localhost_addr, &port, probe);
   if (flags.debugger_params_write_pipe) {
     DebuggerParams params;
     memset(&params, 0, sizeof(params));
@@ -1561,7 +1562,7 @@ void GdbServer::emergency_debug(Task* t) {
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
   unsigned short port = t->tid;
-  ScopedFd listen_fd = open_socket(connection_addr, &port, PROBE_PORT);
+  ScopedFd listen_fd = open_socket(localhost_addr, &port, PROBE_PORT);
 
   char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
   if (test_monitor_pid) {
