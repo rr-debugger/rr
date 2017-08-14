@@ -1003,6 +1003,7 @@ bool TraceReader::read_raw_data_metadata_for_frame(RawDataMetadata& d) {
     return false;
   }
   d = raw_recs[raw_recs.size() - 1];
+  reader(RAW_DATA).skip(d.size);
   raw_recs.pop_back();
   return true;
 }
