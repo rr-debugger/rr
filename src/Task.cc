@@ -616,7 +616,7 @@ void Task::exit_syscall() {
     }
     ASSERT(this, !ptrace_event());
     if (!stop_sig()) {
-      canonicalize_and_set_regs(regs(), arch());
+      canonicalize_regs(arch());
       break;
     }
     if (ReplaySession::is_ignored_signal(stop_sig()) &&
@@ -717,7 +717,7 @@ void Task::post_exec(const string& exe_file) {
 }
 
 void Task::post_exec_syscall() {
-  canonicalize_and_set_regs(regs(), arch());
+  canonicalize_regs(arch());
   as->post_exec_syscall(this);
 
   if (session().has_cpuid_faulting()) {
@@ -1371,11 +1371,9 @@ void Task::wait(double interrupt_after_elapsed) {
   did_waitpid(status);
 }
 
-/**
- * Call this when we've trapped in a syscall (entry or exit) in the kernel,
- * to normalize registers.
- */
-void fixup_syscall_registers(Registers& registers, SupportedArch syscall_arch) {
+void Task::canonicalize_regs(SupportedArch syscall_arch) {
+  ASSERT(this, is_stopped);
+
   if (registers.arch() == x86_64) {
     if (syscall_arch == x86) {
       // The int $0x80 compatibility handling clears r8-r11
@@ -1433,13 +1431,8 @@ void fixup_syscall_registers(Registers& registers, SupportedArch syscall_arch) {
     // now.
     registers.set_flags(0x246);
   }
-}
 
-void Task::canonicalize_and_set_regs(const Registers& regs,
-                                     SupportedArch syscall_arch) {
-  Registers r = regs;
-  fixup_syscall_registers(r, syscall_arch);
-  set_regs(r);
+  registers_dirty = true;
 }
 
 void Task::did_waitpid(WaitStatus status) {
@@ -1566,8 +1559,7 @@ void Task::did_waitpid(WaitStatus status) {
     if (is_in_rr_page()) {
       // N.B.: Cross architecture syscalls don't go through the rr page, so we
       // know what the architecture is.
-      fixup_syscall_registers(registers, arch());
-      registers_dirty = true;
+      canonicalize_regs(arch());
     }
   }
 

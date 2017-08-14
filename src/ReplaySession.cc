@@ -474,8 +474,8 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
             syscall_instruction.increment_by_syscall_insn_length(t->arch()));
         r.set_original_syscallno(r.syscallno());
         r.set_syscall_result(-ENOSYS);
-        t->canonicalize_and_set_regs(
-            r, current_trace_frame().event().Syscall().arch());
+        t->set_regs(r);
+        t->canonicalize_regs(current_trace_frame().event().Syscall().arch());
         t->validate_regs();
         clear_syscall_bp();
       } else {
@@ -485,8 +485,7 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
       // If we use the breakpoint optimization, we must get a SIGTRAP before
       // reaching a syscall, so cont_syscall_boundary must return INCOMPLETE.
       ASSERT(t, !syscall_bp_vm);
-      t->canonicalize_and_set_regs(
-          t->regs(), current_trace_frame().event().Syscall().arch());
+      t->canonicalize_regs(current_trace_frame().event().Syscall().arch());
       t->validate_regs();
       t->finish_emulated_syscall();
     }
@@ -1133,7 +1132,7 @@ Completion ReplaySession::patch_next_syscall(
     return INCOMPLETE;
   }
 
-  t->canonicalize_and_set_regs(t->regs(), t->arch());
+  t->canonicalize_regs(t->arch());
   t->exit_syscall_and_prepare_restart();
 
   // All patching effects have been recorded to the trace.

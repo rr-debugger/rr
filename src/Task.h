@@ -115,8 +115,6 @@ struct TrapReasons {
   bool breakpoint;
 };
 
-void fixup_syscall_registers(Registers& registers, SupportedArch arch);
-
 /**
  * A "task" is a task in the linux usage: the unit of scheduling.  (OS
  * people sometimes call this a "thread control block".)  Multiple
@@ -198,11 +196,10 @@ public:
 
   /**
    * Syscalls have side effects on registers (e.g. setting the flags register).
-   * Perform those side effects on |regs| and do set_regs() on that to make it
-   * look like a syscall happened.
+   * Perform those side effects on |registers| to make it look like a syscall
+   * happened.
    */
-  void canonicalize_and_set_regs(const Registers& regs,
-                                 SupportedArch syscall_arch);
+  void canonicalize_regs(SupportedArch syscall_arch);
 
   /**
    * Return the ptrace message pid associated with the current ptrace

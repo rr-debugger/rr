@@ -312,7 +312,8 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
     // Syscallbuf logic will retry using a traced syscall instead.
     r.set_syscall_result(-EAGAIN);
     r.set_ip(r.ip().increment_by_syscall_insn_length(t->arch()));
-    t->canonicalize_and_set_regs(r, t->arch());
+    t->set_regs(r);
+    t->canonicalize_regs(t->arch());
     LOG(debug) << "Emulated EAGAIN to avoid untraced sigprocmask with pending "
                   "stashed signal";
     // Leave breakpoints enabled since we want to break at the traced-syscall

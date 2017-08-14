@@ -239,7 +239,8 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // Pretend we're still in the system call
   r.set_syscall_result(-ENOSYS);
   r.set_original_syscallno(trace_frame.regs().original_syscallno());
-  t->canonicalize_and_set_regs(r, trace_frame.event().Syscall().arch());
+  t->set_regs(r);
+  t->canonicalize_regs(trace_frame.event().Syscall().arch());
 
   // Dig the recorded tid out out of the trace. The tid value returned in
   // the recorded registers could be in a different pid namespace from rr's,
@@ -276,7 +277,8 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
   new_r.set_arg1(trace_frame.regs().arg1());
   new_r.set_arg2(trace_frame.regs().arg2());
-  new_task->canonicalize_and_set_regs(new_r, new_task->arch());
+  new_task->set_regs(new_r);
+  new_task->canonicalize_regs(new_task->arch());
 
   if (Arch::clone != t->regs().original_syscallno() || !(CLONE_VM & r.arg1())) {
     // It's hard to imagine a scenario in which it would
@@ -1236,7 +1238,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
         t->set_regs(r2);
       }
       // The syscall modified registers. Re-emulate the syscall entry.
-      t->canonicalize_and_set_regs(t->regs(), step->syscall.arch);
+      t->canonicalize_regs(step->syscall.arch);
       return;
     }
 
