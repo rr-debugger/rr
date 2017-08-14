@@ -378,21 +378,23 @@ void Session::finish_initializing() const {
 
   Session* self = const_cast<Session*>(this);
   for (auto& tgleader : clone_completion->task_groups) {
-    AutoRemoteSyscalls remote(tgleader.clone_leader);
-    for (const auto& m : tgleader.clone_leader->vm()->maps()) {
-      // Creating this mapping was delayed in capture_state for performance
-      if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
-        self->recreate_shared_mmap(remote, m);
+    {
+      AutoRemoteSyscalls remote(tgleader.clone_leader);
+      for (const auto& m : tgleader.clone_leader->vm()->maps()) {
+        // Creating this mapping was delayed in capture_state for performance
+        if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
+          self->recreate_shared_mmap(remote, m);
+        }
       }
-    }
-    for (auto& mem : tgleader.captured_memory) {
-      tgleader.clone_leader->write_bytes_helper(mem.first, mem.second.size(),
-                                                mem.second.data());
-    }
-    for (auto& tgmember : tgleader.member_states) {
-      Task* t_clone = Task::os_clone_into(tgmember, remote);
-      self->on_create(t_clone);
-      t_clone->copy_state(tgmember);
+      for (auto& mem : tgleader.captured_memory) {
+        tgleader.clone_leader->write_bytes_helper(mem.first, mem.second.size(),
+                                                  mem.second.data());
+      }
+      for (auto& tgmember : tgleader.member_states) {
+        Task* t_clone = Task::os_clone_into(tgmember, remote);
+        self->on_create(t_clone);
+        t_clone->copy_state(tgmember);
+      }
     }
     tgleader.clone_leader->copy_state(tgleader.clone_leader_state);
   }
