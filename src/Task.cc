@@ -1539,7 +1539,8 @@ void Task::did_waitpid(WaitStatus status) {
     // We might have singlestepped at the resumption address and just exited
     // the kernel without executing the breakpoint at that address.
     // The kernel usually (always?) singlesteps an extra instruction when
-    // we do this with PTRACE_SYSEMU_SINGLESTEP, but rr's ptrace emulation doesn't
+    // we do this with PTRACE_SYSEMU_SINGLESTEP, but rr's ptrace emulation
+    // doesn't
     // and it's kind of a kernel bug.
     if (as->get_breakpoint_type_at_addr(address_of_last_execution_resume) !=
             BKPT_NONE &&

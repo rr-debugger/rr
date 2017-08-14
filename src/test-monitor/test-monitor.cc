@@ -141,6 +141,14 @@ static void dump_gdb_stacktrace(pid_t child, FILE* out) {
   dump_popen_cmdline(cmdline, out);
 }
 
+static void force_trace_closure(pid_t child, FILE* out) {
+  char cmdline[1024 * 10];
+  sprintf(cmdline, "gdb -p %d -ex 'set confirm off' -ex 'set height 0' -ex "
+                   "'p rr::force_close_record_session()' -ex q </dev/null 2>&1",
+          child);
+  dump_popen_cmdline(cmdline, out);
+}
+
 static void dump_emergency_debugger(char* gdb_cmd, FILE* out) {
   char cmdline[1024 * 10];
   char* file_name = nullptr;
@@ -249,18 +257,20 @@ static void dump_state_and_kill(pid_t child, const char* out_file_name) {
               sig_pid, rr_pid);
     }
     dump_gdb_stacktrace(sig_pid ? sig_pid : rr_pid, out);
-  }
 
-  if (sig_pid) {
-    // Try to connect to the emergency debugger and get stack/regs.
-    // If rr is in a broken state this might hang, so we do this last.
-    FILE* gdb_cmd = fopen("gdb_cmd", "r");
-    if (gdb_cmd) {
-      char buf[1024 * 10];
-      if (fgets(buf, sizeof(buf), gdb_cmd)) {
-        dump_emergency_debugger(buf, out);
+    if (sig_pid) {
+      // Try to connect to the emergency debugger and get stack/regs.
+      // If rr is in a broken state this might hang, so we do this last.
+      FILE* gdb_cmd = fopen("gdb_cmd", "r");
+      if (gdb_cmd) {
+        char buf[1024 * 10];
+        if (fgets(buf, sizeof(buf), gdb_cmd)) {
+          dump_emergency_debugger(buf, out);
+        }
+        fclose(gdb_cmd);
       }
-      fclose(gdb_cmd);
+    } else {
+      force_trace_closure(rr_pid, out);
     }
   }
 

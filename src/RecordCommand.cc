@@ -327,12 +327,24 @@ static void setup_session_from_flags(RecordSession& session,
   }
 }
 
+static RecordSession* static_session;
+
+// This can be called during debugging to close the trace so it can be used
+// later.
+void force_close_record_session() {
+  if (static_session) {
+    static_session->terminate_recording();
+  }
+}
+
 static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
   auto session = RecordSession::create(
       args, flags.extra_env, flags.use_syscall_buffer, flags.bind_cpu);
   setup_session_from_flags(*session, flags);
+
+  static_session = session.get();
 
   if (flags.print_trace_dir >= 0) {
     const string& dir = session->trace_writer().dir();
@@ -354,6 +366,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   } while (step_result.status == RecordSession::STEP_CONTINUE && !term_request);
 
   session->terminate_recording();
+  static_session = nullptr;
 
   switch (step_result.status) {
     case RecordSession::STEP_CONTINUE:
