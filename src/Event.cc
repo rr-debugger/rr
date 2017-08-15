@@ -20,45 +20,6 @@ using namespace std;
 
 namespace rr {
 
-Event::Event(EventType type, SupportedArch syscall_arch) : event_type(type) {
-  switch (event_type) {
-    case EV_NOOP:
-    case EV_SECCOMP_TRAP:
-    case EV_SENTINEL:
-    case EV_INSTRUCTION_TRAP:
-    case EV_EXIT:
-    case EV_SCHED:
-    case EV_SYSCALLBUF_ABORT_COMMIT:
-    case EV_SYSCALLBUF_RESET:
-    case EV_SYSCALL_INTERRUPTION:
-    case EV_PATCH_SYSCALL:
-    case EV_GROW_MAP:
-    case EV_TRACE_TERMINATION:
-      return;
-
-    case EV_DESCHED:
-      new (&Desched()) DeschedEvent(nullptr);
-      return;
-
-    case EV_SYSCALLBUF_FLUSH:
-      new (&SyscallbufFlush()) SyscallbufFlushEvent();
-      return;
-
-    case EV_SIGNAL:
-    case EV_SIGNAL_DELIVERY:
-    case EV_SIGNAL_HANDLER:
-      new (&Signal()) SignalEvent();
-      return;
-
-    case EV_SYSCALL:
-      new (&Syscall()) SyscallEvent(0, syscall_arch);
-      return;
-
-    default:
-      FATAL() << "Unexpected event " << *this;
-  }
-}
-
 Event::Event(const Event& o) : event_type(o.event_type) {
   switch (event_type) {
     case EV_DESCHED:

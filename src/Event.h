@@ -353,7 +353,7 @@ struct Event {
   static Event sentinel() { return Event(EV_SENTINEL); }
 
 private:
-  Event(EventType type, SupportedArch syscall_arch = SupportedArch_MAX);
+  Event(EventType type) : event_type(type) {}
 
   EventType event_type;
   union {
