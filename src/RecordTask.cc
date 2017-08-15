@@ -303,18 +303,6 @@ Task* RecordTask::clone(CloneReason reason, int flags, remote_ptr<void> stack,
                         new_rec_tid, new_serial, other_session);
   if (t->session().is_recording()) {
     RecordTask* rt = static_cast<RecordTask*>(t);
-    rt->priority = priority;
-    rt->syscallbuf_code_layout = syscallbuf_code_layout;
-    rt->prctl_seccomp_status = prctl_seccomp_status;
-    rt->robust_futex_list = robust_futex_list;
-    rt->robust_futex_list_len = robust_futex_list_len;
-    rt->tsc_mode = tsc_mode;
-    if (CLONE_SHARE_SIGHANDLERS & flags) {
-      rt->sighandlers = sighandlers;
-    } else {
-      auto sh = sighandlers->clone();
-      rt->sighandlers.swap(sh);
-    }
     if (CLONE_CLEARTID & flags) {
       LOG(debug) << "cleartid futex is " << cleartid_addr;
       ASSERT(this, !cleartid_addr.is_null());
@@ -324,6 +312,25 @@ Task* RecordTask::clone(CloneReason reason, int flags, remote_ptr<void> stack,
     }
   }
   return t;
+}
+
+void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
+  ASSERT(cloned_from, cloned_from->session().is_recording());
+  Task::post_wait_clone(cloned_from, flags);
+
+  RecordTask* rt = static_cast<RecordTask*>(cloned_from);
+  priority = rt->priority;
+  syscallbuf_code_layout = rt->syscallbuf_code_layout;
+  prctl_seccomp_status = rt->prctl_seccomp_status;
+  robust_futex_list = rt->robust_futex_list;
+  robust_futex_list_len = rt->robust_futex_list_len;
+  tsc_mode = rt->tsc_mode;
+  if (CLONE_SHARE_SIGHANDLERS & flags) {
+    sighandlers = rt->sighandlers;
+  } else {
+    auto sh = rt->sighandlers->clone();
+    sighandlers.swap(sh);
+  }
 }
 
 static string exe_path(RecordTask* t) {

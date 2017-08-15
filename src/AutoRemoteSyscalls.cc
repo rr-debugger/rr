@@ -60,11 +60,13 @@ AutoRestoreMem::~AutoRestoreMem() {
   remote.task()->set_regs(remote.regs());
 }
 
-static bool is_SIGTRAP_blocked_or_ignored(Task* t) {
+static bool is_SIGTRAP_default_and_unblocked(Task* t) {
   if (!t->session().is_recording()) {
-    return false;
+    return true;
   }
-  return static_cast<RecordTask*>(t)->sig_maybe_blocked_or_ignored(SIGTRAP);
+  RecordTask* rt = static_cast<RecordTask*>(t);
+  return rt->sig_disposition(SIGTRAP) == SIGNAL_DEFAULT &&
+         !rt->is_sig_blocked(SIGTRAP);
 }
 
 AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
@@ -90,9 +92,22 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
   // us they're also untraced by the outer rr.
   // Use the slow path if SIGTRAP is blocked or ignored because otherwise
   // the PTRACE_SINGLESTEP will cause the kernel to unblock it.
+  setup_path(t->vm()->has_rr_page() && !running_under_rr() &&
+             is_SIGTRAP_default_and_unblocked(t));
+  if (enable_mem_params == ENABLE_MEMORY_PARAMS) {
+    maybe_fix_stack_pointer();
+  }
+}
+
+void AutoRemoteSyscalls::setup_path(bool enable_singlestep_path) {
+  if (!replaced_bytes.empty()) {
+    t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
+                 replaced_bytes.data(), replaced_bytes.size());
+  }
+
   remote_code_ptr syscall_ip;
-  if (t->vm()->has_rr_page() && !running_under_rr() &&
-      !is_SIGTRAP_blocked_or_ignored(t)) {
+  use_singlestep_path = enable_singlestep_path;
+  if (enable_singlestep_path) {
     syscall_ip = AddressSpace::rr_page_syscall_entry_point(
         AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
         AddressSpace::RECORDING_AND_REPLAY, t->arch());
@@ -101,9 +116,6 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
     syscall_ip = t->vm()->traced_syscall_ip();
   }
   initial_regs.set_ip(syscall_ip);
-  if (enable_mem_params == ENABLE_MEMORY_PARAMS) {
-    maybe_fix_stack_pointer();
-  }
 
   // We need to make sure to clear any breakpoints or other alterations of
   // the syscall instruction we're using. Note that the tracee may have set its
@@ -173,8 +185,7 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
                               4096);
   }
   if (!replaced_bytes.empty()) {
-    t->write_mem(remote_ptr<uint8_t>(
-                     t->vm()->traced_syscall_ip().to_data_ptr<uint8_t>()),
+    t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
                  replaced_bytes.data(), replaced_bytes.size());
   }
   initial_regs.set_ip(initial_ip);
@@ -205,6 +216,17 @@ static bool ignore_signal(Task* t) {
 
 long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   LOG(debug) << "syscall " << syscall_name(syscallno, t->arch());
+
+  if ((int)callregs.arg1() == SIGTRAP && use_singlestep_path &&
+      (is_sigaction_syscall(syscallno, t->arch()) ||
+       is_rt_sigaction_syscall(syscallno, t->arch()) ||
+       is_signal_syscall(syscallno, t->arch()))) {
+    // Don't use the fast path if we're about to set up a signal handler
+    // for SIGTRAP!
+    LOG(debug) << "Disabling singlestep path due to SIGTRAP sigaction";
+    setup_path(false);
+    callregs.set_ip(initial_regs.ip());
+  }
 
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);

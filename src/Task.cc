@@ -1677,6 +1677,8 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   // use ptrace to access memory
   t->wait();
 
+  t->post_wait_clone(this, flags);
+
   t->open_mem_fd_if_needed();
   t->thread_areas_ = thread_areas_;
   if (CLONE_SET_TLS & flags) {

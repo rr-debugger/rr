@@ -843,6 +843,11 @@ protected:
                       pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session = nullptr);
 
+  /**
+   * Internal method called after the first wait() during a clone().
+   */
+  virtual void post_wait_clone(Task*, int) {}
+
   template <typename Arch>
   void on_syscall_exit_arch(int syscallno, const Registers& regs);
 

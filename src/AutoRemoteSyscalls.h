@@ -210,6 +210,8 @@ public:
   pid_t new_tid() { return new_tid_; }
 
 private:
+  void setup_path(bool enable_singlestep_path);
+
   void check_syscall_result(long ret, int syscallno);
 
   /**

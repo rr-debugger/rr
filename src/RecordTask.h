@@ -59,10 +59,11 @@ public:
   RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
              SupportedArch a);
 
-  virtual Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
-                      remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
-                      pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
-                      Session* other_session) override;
+  Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
+              remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
+              pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
+              Session* other_session = nullptr) override;
+  virtual void post_wait_clone(Task* cloned_from, int flags) override;
   virtual void on_syscall_exit(int syscallno, SupportedArch arch,
                                const Registers& regs) override;
   virtual void will_resume_execution(ResumeRequest, WaitRequest, TicksRequest,
@@ -200,12 +201,6 @@ public:
    * data is architecture-dependent.
    */
   const std::vector<uint8_t>& signal_action(int sig) const;
-  /** Return true if |sig| may be blocked or ignored for this. Can be called
-   * before this is fully initialized.
-   */
-  bool sig_maybe_blocked_or_ignored(int sig) {
-    return !sighandlers || is_sig_blocked(sig) || is_sig_ignored(sig);
-  }
   /** Return true iff |sig| is blocked for this. */
   bool is_sig_blocked(int sig);
   /**
