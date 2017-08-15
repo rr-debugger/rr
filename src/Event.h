@@ -19,7 +19,6 @@ struct syscallbuf_record;
 namespace rr {
 
 class RecordTask;
-class Task;
 
 /**
  * During recording, sometimes we need to ensure that an iteration of
