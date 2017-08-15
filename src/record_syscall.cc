@@ -1607,7 +1607,6 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(TUNGETFEATURES):
     case IOCTL_MASK_SIZE(TUNGETSNDBUF):
     case IOCTL_MASK_SIZE(TUNGETVNETHDRSZ):
-    case IOCTL_MASK_SIZE(TUNGETFILTER):
     case IOCTL_MASK_SIZE(TUNGETVNETLE):
     case IOCTL_MASK_SIZE(TUNGETVNETBE):
       syscall_state.reg_parameter(3, size);
@@ -1629,6 +1628,19 @@ static Switchable prepare_ioctl(RecordTask* t,
       // The ioctl definition says "unsigned int" but it's actually a
       // struct ifreq!
       syscall_state.reg_parameter<typename Arch::ifreq>(3);
+      return PREVENT_SWITCH;
+    case IOCTL_MASK_SIZE(TUNGETFILTER):
+      // The ioctl definition says "struct sock_fprog" but there is no kernel
+      // compat code so a 32-bit task on a 64-bit kernel needs to use the
+      // 64-bit type.
+      if (sizeof(void*) == 8) {
+        // 64-bit rr build. We must be on a 64-bit kernel so use the 64-bit
+        // sock_fprog type.
+        syscall_state.reg_parameter<typename NativeArch::sock_fprog>(3);
+      } else {
+        FATAL() << "TUNGETFILTER not supported on 32-bit since its behavior "
+            "depends on 32-bit vs 64-bit kernel";
+      }
       return PREVENT_SWITCH;
 
     case IOCTL_MASK_SIZE(USBDEVFS_IOCTL): {
