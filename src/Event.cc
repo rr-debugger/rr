@@ -34,7 +34,6 @@ Event::Event(EventType type, SupportedArch syscall_arch) : event_type(type) {
     case EV_PATCH_SYSCALL:
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
-      new (&Base()) BaseEvent();
       return;
 
     case EV_DESCHED:
@@ -78,7 +77,6 @@ Event::Event(const Event& o) : event_type(o.event_type) {
       new (&SyscallbufFlush()) SyscallbufFlushEvent(o.SyscallbufFlush());
       return;
     default:
-      new (&Base()) BaseEvent(o.Base());
       return;
   }
 }
@@ -101,7 +99,6 @@ Event::~Event() {
       SyscallbufFlush().~SyscallbufFlushEvent();
       return;
     default:
-      Base().~BaseEvent();
       return;
   }
 }

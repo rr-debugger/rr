@@ -92,24 +92,16 @@ enum EventType {
 };
 
 /**
- * Events are interesting occurrences during tracee execution which
- * are relevant for replay.  Most events correspond to tracee
- * execution, but some (a subset of "pseudosigs") save actions that
- * the *recorder* took on behalf of the tracee.
- */
-struct BaseEvent {};
-
-/**
  * Desched events track the fact that a tracee's desched-event
  * notification fired during a may-block buffered syscall, which rr
  * interprets as the syscall actually blocking (for a potentially
  * unbounded amount of time).  After the syscall exits, rr advances
  * the tracee to where the desched is "disarmed" by the tracee.
  */
-struct DeschedEvent : public BaseEvent {
+struct DeschedEvent {
   /** Desched of |rec|. */
   DeschedEvent(remote_ptr<const struct syscallbuf_record> rec)
-      : BaseEvent(), rec(rec) {}
+      : rec(rec) {}
   // Record of the syscall that was interrupted by a desched
   // notification.  It's legal to reference this memory /while
   // the desched is being processed only/, because |t| is in the
@@ -118,8 +110,8 @@ struct DeschedEvent : public BaseEvent {
   remote_ptr<const struct syscallbuf_record> rec;
 };
 
-struct SyscallbufFlushEvent : public BaseEvent {
-  SyscallbufFlushEvent() : BaseEvent() {}
+struct SyscallbufFlushEvent {
+  SyscallbufFlushEvent() {}
   std::vector<mprotect_record> mprotect_records;
 };
 
@@ -130,7 +122,7 @@ enum SignalOutcome {
   DISPOSITION_USER_HANDLER = 1,
   DISPOSITION_IGNORED = 2,
 };
-struct SignalEvent : public BaseEvent {
+struct SignalEvent {
   /**
    * Signal |signo| is the signum, and |deterministic| is true
    * for deterministically-delivered signals (see
@@ -139,8 +131,7 @@ struct SignalEvent : public BaseEvent {
   SignalEvent(const siginfo_t& siginfo, SignalDeterministic deterministic,
               RecordTask* t);
   SignalEvent()
-      : BaseEvent(),
-        deterministic(DETERMINISTIC_SIG),
+      : deterministic(DETERMINISTIC_SIG),
         disposition(DISPOSITION_FATAL) {
     memset(&siginfo, 0, sizeof(siginfo));
   }
@@ -205,11 +196,10 @@ struct OpenedFd {
   int fd;
 };
 
-struct SyscallEvent : public BaseEvent {
+struct SyscallEvent {
   /** Syscall |syscallno| is the syscall number. */
   SyscallEvent(int syscallno, SupportedArch arch)
-      : BaseEvent(),
-        arch_(arch),
+      : arch_(arch),
         regs(arch),
         desched_rec(nullptr),
         write_offset(-1),
@@ -278,12 +268,6 @@ struct Event {
   Event(const Event& o);
   ~Event();
   Event& operator=(const Event& o);
-
-  // Events can always be cased to BaseEvent regardless of the
-  // current concrete type, because all constituent types
-  // inherit from BaseEvent.
-  BaseEvent& Base() { return base; }
-  const BaseEvent& Base() const { return base; }
 
   DeschedEvent& Desched() {
     DEBUG_ASSERT(EV_DESCHED == event_type);
@@ -361,7 +345,6 @@ struct Event {
 private:
   EventType event_type;
   union {
-    BaseEvent base;
     DeschedEvent desched;
     SignalEvent signal;
     SyscallEvent syscall;
