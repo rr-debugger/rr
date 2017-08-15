@@ -351,8 +351,8 @@ void RecordTask::post_exec() {
         << "We don't support a 32-bit process tracing a 64-bit process";
   }
 
-  ev().set_arch(arch());
   ev().Syscall().number = regs().original_syscallno();
+  ev().Syscall().set_arch(arch());
 
   // Clear robust_list state to match kernel state. If this task is cloned
   // soon after exec, we must not do a bogus set_robust_list syscall for
@@ -1598,11 +1598,13 @@ void RecordTask::maybe_reset_syscallbuf() {
 
 static bool record_extra_regs(const Event& ev) {
   switch (ev.type()) {
-    case EV_SYSCALL:
+    case EV_SYSCALL: {
+      const SyscallEvent& sys_ev = ev.Syscall();
       // sigreturn/rt_sigreturn restores register state
-      return ev.Syscall().state == EXITING_SYSCALL &&
-             (is_sigreturn(ev.Syscall().number, ev.arch()) ||
-              is_execve_syscall(ev.Syscall().number, ev.arch()));
+      return sys_ev.state == EXITING_SYSCALL &&
+             (is_sigreturn(sys_ev.number, sys_ev.arch()) ||
+              is_execve_syscall(sys_ev.number, sys_ev.arch()));
+    }
     case EV_SIGNAL_HANDLER:
       // entering a signal handler seems to clear FP/SSE regs,
       // so record these effects.

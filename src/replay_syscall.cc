@@ -1347,8 +1347,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
 }
 
 void rep_process_syscall(ReplayTask* t, ReplayTraceStep* step) {
-  step->syscall.arch = t->current_trace_frame().event().arch();
   const TraceFrame& trace_frame = t->current_trace_frame();
+  step->syscall.arch = trace_frame.event().Syscall().arch();
   const Registers& trace_regs = trace_frame.regs();
   with_converted_registers<void>(
       trace_regs, step->syscall.arch, [&](const Registers& trace_regs) {

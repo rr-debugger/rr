@@ -1289,7 +1289,7 @@ Completion ReplaySession::exit_task(ReplayTask* t) {
 ReplayTask* ReplaySession::revive_task_for_exec() {
   const Event& ev = trace_frame.event();
   if (!ev.is_syscall_event() ||
-      !is_execve_syscall(ev.Syscall().number, ev.arch())) {
+      !is_execve_syscall(ev.Syscall().number, ev.Syscall().arch())) {
     FATAL() << "Can't find task, but we're not in an execve";
   }
 

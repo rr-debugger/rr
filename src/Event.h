@@ -104,10 +104,8 @@ struct BaseEvent {
    * Pass |HAS_EXEC_INFO| if the event is at a stable execution
    * point that we'll reach during replay too.
    */
-  BaseEvent(HasExecInfo has_exec_info, SupportedArch arch)
-      : has_exec_info(has_exec_info), arch_(arch) {}
-
-  SupportedArch arch() const { return arch_; }
+  BaseEvent(HasExecInfo has_exec_info, SupportedArch)
+      : has_exec_info(has_exec_info) {}
 
   // When replaying an event is expected to leave the tracee in
   // the same execution state as during replay, the event has
@@ -116,7 +114,6 @@ struct BaseEvent {
   // tracee state they'll be replayed, so the tracee exeuction
   // state isn't meaningful.
   HasExecInfo has_exec_info;
-  SupportedArch arch_;
 };
 
 /**
@@ -230,6 +227,7 @@ struct SyscallEvent : public BaseEvent {
   /** Syscall |syscallno| is the syscall number. */
   SyscallEvent(int syscallno, SupportedArch arch)
       : BaseEvent(HAS_EXEC_INFO, arch),
+        arch_(arch),
         regs(arch),
         desched_rec(nullptr),
         write_offset(-1),
@@ -242,6 +240,11 @@ struct SyscallEvent : public BaseEvent {
 
   std::string syscall_name() const { return rr::syscall_name(number, arch()); }
 
+  SupportedArch arch() const { return arch_; }
+  /** Change the architecture for this event. */
+  void set_arch(SupportedArch a) { arch_ = a; }
+
+  SupportedArch arch_;
   // The original (before scratch is set up) arguments to the
   // syscall passed by the tracee.  These are used to detect
   // restarted syscalls.
@@ -372,12 +375,6 @@ struct Event {
 
   /** Return the current type of this. */
   EventType type() const { return event_type; }
-
-  /** Return the architecture associated with this. */
-  SupportedArch arch() const { return base.arch(); }
-
-  /** Change the architecture for this event. */
-  void set_arch(SupportedArch a) { base.arch_ = a; }
 
   /** Return a string naming |ev|'s type. */
   std::string type_name() const;

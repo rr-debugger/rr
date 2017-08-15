@@ -5195,8 +5195,8 @@ static void rec_process_syscall_internal(RecordTask* t, SupportedArch arch,
 
 void rec_process_syscall(RecordTask* t) {
   auto& syscall_state = *syscall_state_property.get(*t);
-  SupportedArch arch = t->ev().arch();
-  if (arch != t->arch()) {
+  const SyscallEvent& sys_ev = t->ev().Syscall();
+  if (sys_ev.arch() != t->arch()) {
     static bool did_warn = false;
     if (!did_warn) {
       LOG(warn)
@@ -5204,9 +5204,9 @@ void rec_process_syscall(RecordTask* t) {
       did_warn = true;
     }
   }
-  rec_process_syscall_internal(t, arch, syscall_state);
+  rec_process_syscall_internal(t, sys_ev.arch(), syscall_state);
   syscall_state.process_syscall_results();
-  t->on_syscall_exit(t->ev().Syscall().number, t->ev().arch(), t->regs());
+  t->on_syscall_exit(sys_ev.number, sys_ev.arch(), t->regs());
   syscall_state_property.remove(*t);
 
   MonitoredSharedMemory::check_all(t);
