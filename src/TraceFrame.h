@@ -34,8 +34,6 @@ public:
              Ticks tick_count, double monotonic_time = 0);
   TraceFrame() : global_time(0), tid_(0), ticks_(0), monotonic_time_(0) {}
 
-  void set_exec_info(const Registers& regs, const ExtraRegisters* extra_regs);
-
   FrameTime time() const { return global_time; }
   pid_t tid() const { return tid_; }
   const Event& event() const { return ev; }
