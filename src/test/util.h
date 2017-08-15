@@ -31,6 +31,7 @@
 #include <linux/futex.h>
 #include <linux/if.h>
 #include <linux/if_packet.h>
+#include <linux/if_tun.h>
 #include <linux/limits.h>
 #include <linux/mtio.h>
 #include <linux/perf_event.h>

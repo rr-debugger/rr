@@ -872,6 +872,7 @@ set(BASIC_TESTS
   timerfd
   times
   truncate
+  tun
   two_signals_with_mask
   uname
   unjoined_thread

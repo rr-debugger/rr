@@ -16,6 +16,7 @@
 #include <linux/futex.h>
 #include <linux/if.h>
 #include <linux/if_packet.h>
+#include <linux/if_tun.h>
 #include <linux/ipc.h>
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
@@ -1514,6 +1515,22 @@ static Switchable prepare_ioctl(RecordTask* t,
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE_RANGE):
       case IOCTL_MASK_SIZE(USBDEVFS_DISCARDURB):
       case IOCTL_MASK_SIZE(USBDEVFS_RESET):
+      case IOCTL_MASK_SIZE(TUNSETNOCSUM):
+      case IOCTL_MASK_SIZE(TUNSETDEBUG):
+      case IOCTL_MASK_SIZE(TUNSETPERSIST):
+      case IOCTL_MASK_SIZE(TUNSETOWNER):
+      case IOCTL_MASK_SIZE(TUNSETLINK):
+      case IOCTL_MASK_SIZE(TUNSETGROUP):
+      case IOCTL_MASK_SIZE(TUNSETOFFLOAD):
+      case IOCTL_MASK_SIZE(TUNSETTXFILTER):
+      case IOCTL_MASK_SIZE(TUNSETSNDBUF):
+      case IOCTL_MASK_SIZE(TUNATTACHFILTER):
+      case IOCTL_MASK_SIZE(TUNDETACHFILTER):
+      case IOCTL_MASK_SIZE(TUNSETVNETHDRSZ):
+      case IOCTL_MASK_SIZE(TUNSETQUEUE):
+      case IOCTL_MASK_SIZE(TUNSETIFINDEX):
+      case IOCTL_MASK_SIZE(TUNSETVNETLE):
+      case IOCTL_MASK_SIZE(TUNSETVNETBE):
         return PREVENT_SWITCH;
       case IOCTL_MASK_SIZE(USBDEVFS_GETDRIVER):
         // Reads and writes its parameter despite not having the _IOC_READ bit.
@@ -1524,6 +1541,12 @@ static Switchable prepare_ioctl(RecordTask* t,
         syscall_state.reg_parameter(3, size);
         syscall_state.after_syscall_action(record_usbdevfs_reaped_urb<Arch>);
         return ALLOW_SWITCH;
+      case IOCTL_MASK_SIZE(TUNSETIFF):
+        // Reads and writes its parameter despite not having the _IOC_READ
+        // bit...
+        // And the parameter is an ifreq, not an int as in the ioctl definition!
+        syscall_state.reg_parameter<typename Arch::ifreq>(3);
+        return PREVENT_SWITCH;
     }
 
     switch (type) {
@@ -1581,6 +1604,12 @@ static Switchable prepare_ioctl(RecordTask* t,
     // but the same treatment works for both.
     case IOCTL_MASK_SIZE(FS_IOC_GETVERSION):
     case IOCTL_MASK_SIZE(FS_IOC_GETFLAGS):
+    case IOCTL_MASK_SIZE(TUNGETFEATURES):
+    case IOCTL_MASK_SIZE(TUNGETSNDBUF):
+    case IOCTL_MASK_SIZE(TUNGETVNETHDRSZ):
+    case IOCTL_MASK_SIZE(TUNGETFILTER):
+    case IOCTL_MASK_SIZE(TUNGETVNETLE):
+    case IOCTL_MASK_SIZE(TUNGETVNETBE):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
@@ -1594,6 +1623,12 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(USBDEVFS_SETINTERFACE):
     case IOCTL_MASK_SIZE(USBDEVFS_SUBMITURB):
       // Doesn't actually seem to write to userspace
+      return PREVENT_SWITCH;
+
+    case IOCTL_MASK_SIZE(TUNGETIFF):
+      // The ioctl definition says "unsigned int" but it's actually a
+      // struct ifreq!
+      syscall_state.reg_parameter<typename Arch::ifreq>(3);
       return PREVENT_SWITCH;
 
     case IOCTL_MASK_SIZE(USBDEVFS_IOCTL): {
