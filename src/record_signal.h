@@ -17,6 +17,7 @@ void disarm_desched_event(RecordTask* t);
 void arm_desched_event(RecordTask* t);
 bool handle_syscallbuf_breakpoint(RecordTask* t);
 
+enum SignalBlocked { SIG_UNBLOCKED = 0, SIG_BLOCKED = 1 };
 enum SignalHandled { SIGNAL_HANDLED, SIGNAL_PTRACE_STOP, DEFER_SIGNAL };
 /**
  * Handle the given signal for |t|.

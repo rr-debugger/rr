@@ -114,7 +114,6 @@ struct SyscallbufFlushEvent {
 };
 
 enum SignalDeterministic { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
-enum SignalBlocked { SIG_UNBLOCKED = 0, SIG_BLOCKED = 1 };
 enum SignalOutcome {
   DISPOSITION_FATAL = 0,
   DISPOSITION_USER_HANDLER = 1,
