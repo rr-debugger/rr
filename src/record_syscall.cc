@@ -1713,7 +1713,8 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
     LOG(debug) << "Doing ptrace resume with signal " << signal_name(sig);
     // Treat signal as nondeterministic; it won't happen just by
     // replaying the tracee.
-    tracee->push_event(SignalEvent(si, NONDETERMINISTIC_SIG, tracee));
+    tracee->push_event(
+        Event(EV_SIGNAL, SignalEvent(si, NONDETERMINISTIC_SIG, tracee)));
   }
 
   tracee->emulated_stop_type = NOT_STOPPED;

@@ -239,7 +239,7 @@ static void seccomp_trap_done(RecordTask* t) {
   // Abort the current syscallbuf record, which corresponds to the syscall that
   // wasn't actually executed due to seccomp.
   t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, abort_commit), (uint8_t)1);
-  t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT));
+  t->record_event(Event::syscallbuf_abort_commit());
 
   // In fact, we need to. Running the syscall exit hook will ensure we
   // reset the buffer before we try to buffer another a syscall.
@@ -285,7 +285,7 @@ static void handle_seccomp_trap(RecordTask* t,
     // the buffer.
     t->delay_syscallbuf_reset_for_seccomp_trap = true;
 
-    t->push_event(Event(EV_SECCOMP_TRAP));
+    t->push_event(Event::seccomp_trap());
 
     // desched may be armed but we're not going to execute the syscall, let
     // alone block. If it fires, ignore it.
@@ -593,7 +593,7 @@ void RecordSession::desched_state_changed(RecordTask* t) {
    * recorded that syscall.  The following event sets
    * the abort-commit bit. */
   t->write_mem(REMOTE_PTR_FIELD(t->syscallbuf_child, abort_commit), (uint8_t)1);
-  t->record_event(Event(EV_SYSCALLBUF_ABORT_COMMIT));
+  t->record_event(Event::syscallbuf_abort_commit());
 
   advance_to_disarm_desched_syscall(t);
 
@@ -1423,7 +1423,7 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
 
     if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
       // Syscall was patched. Emit event and continue execution.
-      t->record_event(Event(EV_PATCH_SYSCALL));
+      t->record_event(Event::patch_syscall());
       return;
     }
 

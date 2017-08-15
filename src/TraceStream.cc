@@ -337,8 +337,7 @@ static void to_trace_signal(trace::Signal::Builder signal, const Event& ev) {
   signal.setDisposition(to_trace_disposition(sig_ev.disposition));
 }
 
-static void from_trace_signal(trace::Signal::Reader signal, Event& ev) {
-  SignalEvent& sig_ev = ev.Signal();
+static Event from_trace_signal(EventType type, trace::Signal::Reader signal) {
   if (signal.getSiginfoArch() != to_trace_arch(NativeArch::arch())) {
     // XXX if we want to handle consumption of rr traces created on a different
     // architecture rr build than we're running now, we should convert siginfo
@@ -346,6 +345,7 @@ static void from_trace_signal(trace::Signal::Reader signal, Event& ev) {
     FATAL() << "Unsupported siginfo arch";
   }
   auto siginfo = signal.getSiginfo();
+  SignalEvent sig_ev;
   if (siginfo.size() != sizeof(sig_ev.siginfo)) {
     FATAL() << "Bad siginfo";
   }
@@ -353,6 +353,7 @@ static void from_trace_signal(trace::Signal::Reader signal, Event& ev) {
   sig_ev.deterministic =
       signal.getDeterministic() ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
   sig_ev.disposition = from_trace_disposition(signal.getDisposition());
+  return Event(type, sig_ev);
 }
 
 static pid_t i32_to_tid(int tid) {
@@ -534,40 +535,37 @@ TraceFrame TraceReader::read_frame() {
   auto event = frame.getEvent();
   switch (event.which()) {
     case trace::Frame::Event::INSTRUCTION_TRAP:
-      ret.ev = Event(EV_INSTRUCTION_TRAP);
+      ret.ev = Event::instruction_trap();
       break;
     case trace::Frame::Event::PATCH_SYSCALL:
-      ret.ev = Event(EV_PATCH_SYSCALL);
+      ret.ev = Event::patch_syscall();
       break;
     case trace::Frame::Event::SYSCALLBUF_ABORT_COMMIT:
-      ret.ev = Event(EV_SYSCALLBUF_ABORT_COMMIT);
+      ret.ev = Event::syscallbuf_abort_commit();
       break;
     case trace::Frame::Event::SYSCALLBUF_RESET:
-      ret.ev = Event(EV_SYSCALLBUF_RESET);
+      ret.ev = Event::syscallbuf_reset();
       break;
     case trace::Frame::Event::SCHED:
-      ret.ev = Event(EV_SCHED);
+      ret.ev = Event::sched();
       break;
     case trace::Frame::Event::GROW_MAP:
-      ret.ev = Event(EV_GROW_MAP);
+      ret.ev = Event::grow_map();
       break;
     case trace::Frame::Event::SIGNAL:
-      ret.ev = Event(EV_SIGNAL);
-      from_trace_signal(event.getSignal(), ret.ev);
+      ret.ev = from_trace_signal(EV_SIGNAL, event.getSignal());
       break;
     case trace::Frame::Event::SIGNAL_DELIVERY:
-      ret.ev = Event(EV_SIGNAL_DELIVERY);
-      from_trace_signal(event.getSignalDelivery(), ret.ev);
+      ret.ev = from_trace_signal(EV_SIGNAL_DELIVERY, event.getSignalDelivery());
       break;
     case trace::Frame::Event::SIGNAL_HANDLER:
-      ret.ev = Event(EV_SIGNAL_HANDLER);
-      from_trace_signal(event.getSignalHandler(), ret.ev);
+      ret.ev = from_trace_signal(EV_SIGNAL_HANDLER, event.getSignalHandler());
       break;
     case trace::Frame::Event::EXIT:
-      ret.ev = Event(EV_EXIT);
+      ret.ev = Event::exit();
       break;
     case trace::Frame::Event::SYSCALLBUF_FLUSH: {
-      ret.ev = Event(EV_SYSCALLBUF_FLUSH);
+      ret.ev = Event(SyscallbufFlushEvent());
       auto mprotect_records = event.getSyscallbufFlush().getMprotectRecords();
       auto& records = ret.ev.SyscallbufFlush().mprotect_records;
       records.resize(mprotect_records.size() / sizeof(mprotect_record));
@@ -577,9 +575,9 @@ TraceFrame TraceReader::read_frame() {
     }
     case trace::Frame::Event::SYSCALL: {
       auto syscall = event.getSyscall();
-      ret.ev = Event(EV_SYSCALL, from_trace_arch(syscall.getArch()));
+      ret.ev = Event(SyscallEvent(syscall.getNumber(),
+                                  from_trace_arch(syscall.getArch())));
       auto& syscall_ev = ret.ev.Syscall();
-      syscall_ev.number = syscall.getNumber();
       syscall_ev.state = from_trace_syscall_state(syscall.getState());
       syscall_ev.failed_during_preparation =
           syscall.getFailedDuringPreparation();

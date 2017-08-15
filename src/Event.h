@@ -100,8 +100,7 @@ enum EventType {
  */
 struct DeschedEvent {
   /** Desched of |rec|. */
-  DeschedEvent(remote_ptr<const struct syscallbuf_record> rec)
-      : rec(rec) {}
+  DeschedEvent(remote_ptr<const struct syscallbuf_record> rec) : rec(rec) {}
   // Record of the syscall that was interrupted by a desched
   // notification.  It's legal to reference this memory /while
   // the desched is being processed only/, because |t| is in the
@@ -131,8 +130,7 @@ struct SignalEvent {
   SignalEvent(const siginfo_t& siginfo, SignalDeterministic deterministic,
               RecordTask* t);
   SignalEvent()
-      : deterministic(DETERMINISTIC_SIG),
-        disposition(DISPOSITION_FATAL) {
+      : deterministic(DETERMINISTIC_SIG), disposition(DISPOSITION_FATAL) {
     memset(&siginfo, 0, sizeof(siginfo));
   }
 
@@ -259,9 +257,10 @@ static const syscall_interruption_t interrupted;
  */
 struct Event {
   Event() : event_type(EV_UNASSIGNED) {}
-  Event(EventType type, SupportedArch syscall_arch = SupportedArch_MAX);
   Event(const DeschedEvent& ev) : event_type(EV_DESCHED), desched(ev) {}
-  Event(const SignalEvent& ev) : event_type(EV_SIGNAL), signal(ev) {}
+  Event(EventType type, const SignalEvent& ev) : event_type(type), signal(ev) {}
+  Event(const SyscallbufFlushEvent& ev)
+      : event_type(EV_SYSCALLBUF_FLUSH), syscallbuf_flush(ev) {}
   Event(const SyscallEvent& ev) : event_type(EV_SYSCALL), syscall(ev) {}
   Event(const syscall_interruption_t&, const SyscallEvent& ev)
       : event_type(EV_SYSCALL_INTERRUPTION), syscall(ev) {}
@@ -339,10 +338,23 @@ struct Event {
   /** Return a string naming |ev|'s type. */
   std::string type_name() const;
 
-  /** Return an event of type EV_NOOP. */
   static Event noop() { return Event(EV_NOOP); }
+  static Event trace_termination() { return Event(EV_TRACE_TERMINATION); }
+  static Event instruction_trap() { return Event(EV_INSTRUCTION_TRAP); }
+  static Event patch_syscall() { return Event(EV_PATCH_SYSCALL); }
+  static Event sched() { return Event(EV_SCHED); }
+  static Event seccomp_trap() { return Event(EV_SECCOMP_TRAP); }
+  static Event syscallbuf_abort_commit() {
+    return Event(EV_SYSCALLBUF_ABORT_COMMIT);
+  }
+  static Event syscallbuf_reset() { return Event(EV_SYSCALLBUF_RESET); }
+  static Event grow_map() { return Event(EV_GROW_MAP); }
+  static Event exit() { return Event(EV_EXIT); }
+  static Event sentinel() { return Event(EV_SENTINEL); }
 
 private:
+  Event(EventType type, SupportedArch syscall_arch = SupportedArch_MAX);
+
   EventType event_type;
   union {
     DeschedEvent desched;

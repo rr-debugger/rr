@@ -143,7 +143,7 @@ static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
   r.set_ip(r.ip() + len);
   t->set_regs(r);
 
-  t->push_event(Event(EV_INSTRUCTION_TRAP));
+  t->push_event(Event::instruction_trap());
   return true;
 }
 
@@ -221,7 +221,7 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
   t->trace_writer().write_mapped_region(t, km, km.fake_stat());
   // No need to flush syscallbuf here. It's safe to map these pages "early"
   // before they're really needed.
-  t->record_event(Event(EV_GROW_MAP), RecordTask::DONT_FLUSH_SYSCALLBUF);
+  t->record_event(Event::grow_map(), RecordTask::DONT_FLUSH_SYSCALLBUF);
   t->push_event(Event::noop());
   LOG(debug) << "try_grow_map " << addr << ": extended map "
              << t->vm()->mapping_of(addr).map;
@@ -655,7 +655,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
   }
 
   if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
-    t->push_event(Event(EV_SCHED));
+    t->push_event(Event::sched());
     return SIGNAL_HANDLED;
   }
 
@@ -671,11 +671,11 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     // currently assumes it won't encounter a deterministic SIGTRAP (due to
     // a hardcoded breakpoint in the tracee).
     if (deterministic == DETERMINISTIC_SIG) {
-      t->push_event(SignalEvent(*si, deterministic, t));
+      t->push_event(Event(EV_SIGNAL, SignalEvent(*si, deterministic, t)));
       t->record_current_event();
       t->pop_event(EV_SIGNAL);
     } else {
-      t->push_event(Event(EV_SCHED));
+      t->push_event(Event::sched());
       t->record_current_event();
       t->pop_event(EV_SCHED);
     }
@@ -685,7 +685,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     return SIGNAL_PTRACE_STOP;
   }
 
-  t->push_event(SignalEvent(*si, deterministic, t));
+  t->push_event(Event(EV_SIGNAL, SignalEvent(*si, deterministic, t)));
   return SIGNAL_HANDLED;
 }
 
