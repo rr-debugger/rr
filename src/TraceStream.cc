@@ -515,9 +515,7 @@ TraceFrame TraceReader::read_frame() {
   SupportedArch arch = from_trace_arch(frame.getArch());
   ret.recorded_regs.set_arch(arch);
   auto reg_data = frame.getRegisters().getRaw();
-  HasExecInfo exec_info = NO_EXEC_INFO;
   if (reg_data.size()) {
-    exec_info = HAS_EXEC_INFO;
     ret.recorded_regs.set_from_ptrace_for_arch(arch, reg_data.begin(),
                                                reg_data.size());
   }
@@ -536,40 +534,40 @@ TraceFrame TraceReader::read_frame() {
   auto event = frame.getEvent();
   switch (event.which()) {
     case trace::Frame::Event::INSTRUCTION_TRAP:
-      ret.ev = Event(EV_INSTRUCTION_TRAP, exec_info);
+      ret.ev = Event(EV_INSTRUCTION_TRAP);
       break;
     case trace::Frame::Event::PATCH_SYSCALL:
-      ret.ev = Event(EV_PATCH_SYSCALL, exec_info);
+      ret.ev = Event(EV_PATCH_SYSCALL);
       break;
     case trace::Frame::Event::SYSCALLBUF_ABORT_COMMIT:
-      ret.ev = Event(EV_SYSCALLBUF_ABORT_COMMIT, exec_info);
+      ret.ev = Event(EV_SYSCALLBUF_ABORT_COMMIT);
       break;
     case trace::Frame::Event::SYSCALLBUF_RESET:
-      ret.ev = Event(EV_SYSCALLBUF_RESET, exec_info);
+      ret.ev = Event(EV_SYSCALLBUF_RESET);
       break;
     case trace::Frame::Event::SCHED:
-      ret.ev = Event(EV_SCHED, exec_info);
+      ret.ev = Event(EV_SCHED);
       break;
     case trace::Frame::Event::GROW_MAP:
-      ret.ev = Event(EV_GROW_MAP, exec_info);
+      ret.ev = Event(EV_GROW_MAP);
       break;
     case trace::Frame::Event::SIGNAL:
-      ret.ev = Event(EV_SIGNAL, exec_info);
+      ret.ev = Event(EV_SIGNAL);
       from_trace_signal(event.getSignal(), ret.ev);
       break;
     case trace::Frame::Event::SIGNAL_DELIVERY:
-      ret.ev = Event(EV_SIGNAL_DELIVERY, exec_info);
+      ret.ev = Event(EV_SIGNAL_DELIVERY);
       from_trace_signal(event.getSignalDelivery(), ret.ev);
       break;
     case trace::Frame::Event::SIGNAL_HANDLER:
-      ret.ev = Event(EV_SIGNAL_HANDLER, exec_info);
+      ret.ev = Event(EV_SIGNAL_HANDLER);
       from_trace_signal(event.getSignalHandler(), ret.ev);
       break;
     case trace::Frame::Event::EXIT:
-      ret.ev = Event(EV_EXIT, exec_info);
+      ret.ev = Event(EV_EXIT);
       break;
     case trace::Frame::Event::SYSCALLBUF_FLUSH: {
-      ret.ev = Event(EV_SYSCALLBUF_FLUSH, exec_info);
+      ret.ev = Event(EV_SYSCALLBUF_FLUSH);
       auto mprotect_records = event.getSyscallbufFlush().getMprotectRecords();
       auto& records = ret.ev.SyscallbufFlush().mprotect_records;
       records.resize(mprotect_records.size() / sizeof(mprotect_record));
@@ -579,7 +577,7 @@ TraceFrame TraceReader::read_frame() {
     }
     case trace::Frame::Event::SYSCALL: {
       auto syscall = event.getSyscall();
-      ret.ev = Event(EV_SYSCALL, exec_info, from_trace_arch(syscall.getArch()));
+      ret.ev = Event(EV_SYSCALL, from_trace_arch(syscall.getArch()));
       auto& syscall_ev = ret.ev.Syscall();
       syscall_ev.number = syscall.getNumber();
       syscall_ev.state = from_trace_syscall_state(syscall.getState());

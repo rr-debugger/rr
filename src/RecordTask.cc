@@ -189,7 +189,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       break_at_syscallbuf_traced_syscalls(false),
       break_at_syscallbuf_untraced_syscalls(false),
       break_at_syscallbuf_final_instruction(false) {
-  push_event(Event(EV_SENTINEL, NO_EXEC_INFO));
+  push_event(Event(EV_SENTINEL));
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
     // The very first task we fork inherits the signal
@@ -253,7 +253,7 @@ RecordTask::~RecordTask() {
   // execution. Trying to flush syscallbuf for an exiting task could be bad,
   // e.g. it could be in the middle of syscallbuf code that's supposed to be
   // atomic.
-  record_event(Event(EV_EXIT, NO_EXEC_INFO), DONT_FLUSH_SYSCALLBUF);
+  record_event(Event(EV_EXIT), DONT_FLUSH_SYSCALLBUF);
 
   // We expect tasks to usually exit by a call to exit() or
   // exit_group(), so it's not helpful to warn about that.
@@ -1546,7 +1546,7 @@ void RecordTask::maybe_flush_syscallbuf() {
     return;
   }
 
-  push_event(Event(EV_SYSCALLBUF_FLUSH, NO_EXEC_INFO));
+  push_event(Event(EV_SYSCALLBUF_FLUSH));
 
   // Apply buffered mprotect operations and flush the buffer in the tracee.
   if (hdr.mprotect_record_count) {
@@ -1592,7 +1592,7 @@ void RecordTask::maybe_reset_syscallbuf() {
     LOG(debug) << "Syscallbuf reset";
     reset_syscallbuf();
     syscallbuf_blocked_sigs_generation = 0;
-    record_event(Event(EV_SYSCALLBUF_RESET, NO_EXEC_INFO));
+    record_event(Event(EV_SYSCALLBUF_RESET));
   }
 }
 

@@ -91,29 +91,13 @@ enum EventType {
   EV_LAST
 };
 
-enum HasExecInfo { NO_EXEC_INFO, HAS_EXEC_INFO };
-
 /**
  * Events are interesting occurrences during tracee execution which
  * are relevant for replay.  Most events correspond to tracee
  * execution, but some (a subset of "pseudosigs") save actions that
  * the *recorder* took on behalf of the tracee.
  */
-struct BaseEvent {
-  /**
-   * Pass |HAS_EXEC_INFO| if the event is at a stable execution
-   * point that we'll reach during replay too.
-   */
-  BaseEvent(HasExecInfo has_exec_info) : has_exec_info(has_exec_info) {}
-
-  // When replaying an event is expected to leave the tracee in
-  // the same execution state as during replay, the event has
-  // meaningful execution info, and it should be recorded for
-  // checking.  But some pseudosigs aren't recorded in the same
-  // tracee state they'll be replayed, so the tracee exeuction
-  // state isn't meaningful.
-  HasExecInfo has_exec_info;
-};
+struct BaseEvent {};
 
 /**
  * Desched events track the fact that a tracee's desched-event
@@ -125,7 +109,7 @@ struct BaseEvent {
 struct DeschedEvent : public BaseEvent {
   /** Desched of |rec|. */
   DeschedEvent(remote_ptr<const struct syscallbuf_record> rec)
-      : BaseEvent(NO_EXEC_INFO), rec(rec) {}
+      : BaseEvent(), rec(rec) {}
   // Record of the syscall that was interrupted by a desched
   // notification.  It's legal to reference this memory /while
   // the desched is being processed only/, because |t| is in the
@@ -135,7 +119,7 @@ struct DeschedEvent : public BaseEvent {
 };
 
 struct SyscallbufFlushEvent : public BaseEvent {
-  SyscallbufFlushEvent() : BaseEvent(NO_EXEC_INFO) {}
+  SyscallbufFlushEvent() : BaseEvent() {}
   std::vector<mprotect_record> mprotect_records;
 };
 
@@ -155,7 +139,7 @@ struct SignalEvent : public BaseEvent {
   SignalEvent(const siginfo_t& siginfo, SignalDeterministic deterministic,
               RecordTask* t);
   SignalEvent()
-      : BaseEvent(HAS_EXEC_INFO),
+      : BaseEvent(),
         deterministic(DETERMINISTIC_SIG),
         disposition(DISPOSITION_FATAL) {
     memset(&siginfo, 0, sizeof(siginfo));
@@ -224,7 +208,7 @@ struct OpenedFd {
 struct SyscallEvent : public BaseEvent {
   /** Syscall |syscallno| is the syscall number. */
   SyscallEvent(int syscallno, SupportedArch arch)
-      : BaseEvent(HAS_EXEC_INFO),
+      : BaseEvent(),
         arch_(arch),
         regs(arch),
         desched_rec(nullptr),
@@ -285,8 +269,7 @@ static const syscall_interruption_t interrupted;
  */
 struct Event {
   Event() : event_type(EV_UNASSIGNED) {}
-  Event(EventType type, HasExecInfo info,
-        SupportedArch syscall_arch = SupportedArch_MAX);
+  Event(EventType type, SupportedArch syscall_arch = SupportedArch_MAX);
   Event(const DeschedEvent& ev) : event_type(EV_DESCHED), desched(ev) {}
   Event(const SignalEvent& ev) : event_type(EV_SIGNAL), signal(ev) {}
   Event(const SyscallEvent& ev) : event_type(EV_SYSCALL), syscall(ev) {}
@@ -338,16 +321,6 @@ struct Event {
     return syscall;
   }
 
-  /**
-   * Return true if a tracee at this event has meaningful
-   * execution info (registers etc.)  that rr should record.
-   * "Meaningful" means that the same state will be seen when
-   * reaching this event during replay.
-   */
-  HasExecInfo record_exec_info() const;
-
-  HasExecInfo has_exec_info() const { return base.has_exec_info; }
-
   bool record_regs() const;
 
   bool record_extra_regs() const;
@@ -383,7 +356,7 @@ struct Event {
   std::string type_name() const;
 
   /** Return an event of type EV_NOOP. */
-  static Event noop() { return Event(EV_NOOP, NO_EXEC_INFO); }
+  static Event noop() { return Event(EV_NOOP); }
 
 private:
   EventType event_type;

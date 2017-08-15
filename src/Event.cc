@@ -20,9 +20,7 @@ using namespace std;
 
 namespace rr {
 
-Event::Event(EventType type, HasExecInfo has_exec_info,
-             SupportedArch syscall_arch)
-    : event_type(type), base(has_exec_info) {
+Event::Event(EventType type, SupportedArch syscall_arch) : event_type(type) {
   switch (event_type) {
     case EV_NOOP:
     case EV_SECCOMP_TRAP:
@@ -36,7 +34,7 @@ Event::Event(EventType type, HasExecInfo has_exec_info,
     case EV_PATCH_SYSCALL:
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
-      new (&Base()) BaseEvent(has_exec_info);
+      new (&Base()) BaseEvent();
       return;
 
     case EV_DESCHED:
@@ -116,8 +114,6 @@ Event& Event::operator=(const Event& o) {
   new (this) Event(o);
   return *this;
 }
-
-HasExecInfo Event::record_exec_info() const { return Base().has_exec_info; }
 
 bool Event::record_regs() const {
   switch (type()) {
@@ -264,7 +260,7 @@ std::string Event::type_name() const {
 
 SignalEvent::SignalEvent(const siginfo_t& siginfo,
                          SignalDeterministic deterministic, RecordTask* t)
-    : BaseEvent(HAS_EXEC_INFO), siginfo(siginfo), deterministic(deterministic) {
+    : siginfo(siginfo), deterministic(deterministic) {
   int sig = siginfo.si_signo;
   if (t->is_fatal_signal(sig, deterministic)) {
     disposition = DISPOSITION_FATAL;
