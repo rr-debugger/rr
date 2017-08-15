@@ -270,7 +270,7 @@ static SupportedArch from_trace_arch(trace::Arch arch) {
 }
 
 static trace::SignalDisposition to_trace_disposition(
-    SignalOutcome disposition) {
+    SignalResolvedDisposition disposition) {
   switch (disposition) {
     case DISPOSITION_FATAL:
       return trace::SignalDisposition::FATAL;
@@ -284,7 +284,7 @@ static trace::SignalDisposition to_trace_disposition(
   }
 }
 
-static SignalOutcome from_trace_disposition(
+static SignalResolvedDisposition from_trace_disposition(
     trace::SignalDisposition disposition) {
   switch (disposition) {
     case trace::SignalDisposition::FATAL:
@@ -345,15 +345,14 @@ static Event from_trace_signal(EventType type, trace::Signal::Reader signal) {
     FATAL() << "Unsupported siginfo arch";
   }
   auto siginfo = signal.getSiginfo();
-  SignalEvent sig_ev;
-  if (siginfo.size() != sizeof(sig_ev.siginfo)) {
+  if (siginfo.size() != sizeof(siginfo_t)) {
     FATAL() << "Bad siginfo";
   }
-  memcpy(&sig_ev.siginfo, siginfo.begin(), sizeof(sig_ev.siginfo));
-  sig_ev.deterministic =
-      signal.getDeterministic() ? DETERMINISTIC_SIG : NONDETERMINISTIC_SIG;
-  sig_ev.disposition = from_trace_disposition(signal.getDisposition());
-  return Event(type, sig_ev);
+  return Event(type,
+               SignalEvent(*reinterpret_cast<const siginfo_t*>(siginfo.begin()),
+                           signal.getDeterministic() ? DETERMINISTIC_SIG
+                                                     : NONDETERMINISTIC_SIG,
+                           from_trace_disposition(signal.getDisposition())));
 }
 
 static pid_t i32_to_tid(int tid) {

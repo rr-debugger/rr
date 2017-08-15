@@ -214,9 +214,15 @@ public:
    */
   bool is_sig_ignored(int sig) const;
   /**
-   * Return the applications current dispositiong of |sig|.
+   * Return the applications current disposition of |sig|.
    */
   SignalDisposition sig_disposition(int sig) const;
+  /**
+   * Return the resolved disposition --- what this signal will actually do,
+   * taking into account the default behavior.
+   */
+  SignalResolvedDisposition sig_resolved_disposition(
+      int sig, SignalDeterministic deterministic);
   /**
    * Set the siginfo for the signal-stop of this.
    */
@@ -424,7 +430,7 @@ public:
   void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF,
                     const Registers* registers = nullptr);
 
-  bool is_fatal_signal(int sig, SignalDeterministic deterministic);
+  bool is_fatal_signal(int sig, SignalDeterministic deterministic) const;
 
   /**
    * Return the pid of the newborn thread created by this task.

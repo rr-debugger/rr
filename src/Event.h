@@ -18,8 +18,6 @@ struct syscallbuf_record;
 
 namespace rr {
 
-class RecordTask;
-
 /**
  * During recording, sometimes we need to ensure that an iteration of
  * RecordSession::record_step schedules the same task as in the previous
@@ -114,7 +112,7 @@ struct SyscallbufFlushEvent {
 };
 
 enum SignalDeterministic { NONDETERMINISTIC_SIG = 0, DETERMINISTIC_SIG = 1 };
-enum SignalOutcome {
+enum SignalResolvedDisposition {
   DISPOSITION_FATAL = 0,
   DISPOSITION_USER_HANDLER = 1,
   DISPOSITION_IGNORED = 2,
@@ -126,11 +124,10 @@ struct SignalEvent {
    * record_signal.cc).
    */
   SignalEvent(const siginfo_t& siginfo, SignalDeterministic deterministic,
-              RecordTask* t);
-  SignalEvent()
-      : deterministic(DETERMINISTIC_SIG), disposition(DISPOSITION_FATAL) {
-    memset(&siginfo, 0, sizeof(siginfo));
-  }
+              SignalResolvedDisposition disposition)
+      : siginfo(siginfo),
+        deterministic(deterministic),
+        disposition(disposition) {}
 
   // Signal info
   siginfo_t siginfo;
@@ -138,7 +135,7 @@ struct SignalEvent {
   // side effect of retiring an instruction during replay, for
   // example |load $r 0x0| deterministically raises SIGSEGV.
   SignalDeterministic deterministic;
-  SignalOutcome disposition;
+  SignalResolvedDisposition disposition;
 };
 
 /**

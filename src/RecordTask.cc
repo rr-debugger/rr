@@ -1089,6 +1089,17 @@ SignalDisposition RecordTask::sig_disposition(int sig) const {
   return sighandlers->get(sig).disposition();
 }
 
+SignalResolvedDisposition RecordTask::sig_resolved_disposition(
+    int sig, SignalDeterministic deterministic) {
+  if (is_fatal_signal(sig, deterministic)) {
+    return DISPOSITION_FATAL;
+  }
+  if (signal_has_user_handler(sig) && !is_sig_blocked(sig)) {
+    return DISPOSITION_USER_HANDLER;
+  }
+  return DISPOSITION_IGNORED;
+}
+
 void RecordTask::set_siginfo(const siginfo_t& si) {
   pending_siginfo = si;
   ptrace_if_alive(PTRACE_SETSIGINFO, nullptr, (void*)&si);
@@ -1635,7 +1646,8 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
   }
 }
 
-bool RecordTask::is_fatal_signal(int sig, SignalDeterministic deterministic) {
+bool RecordTask::is_fatal_signal(int sig,
+                                 SignalDeterministic deterministic) const {
   if (task_group()->received_sigframe_SIGSEGV) {
     // Can't be blocked, caught or ignored
     return true;

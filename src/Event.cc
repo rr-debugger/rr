@@ -216,19 +216,6 @@ std::string Event::type_name() const {
   }
 }
 
-SignalEvent::SignalEvent(const siginfo_t& siginfo,
-                         SignalDeterministic deterministic, RecordTask* t)
-    : siginfo(siginfo), deterministic(deterministic) {
-  int sig = siginfo.si_signo;
-  if (t->is_fatal_signal(sig, deterministic)) {
-    disposition = DISPOSITION_FATAL;
-  } else if (t->signal_has_user_handler(sig) && !t->is_sig_blocked(sig)) {
-    disposition = DISPOSITION_USER_HANDLER;
-  } else {
-    disposition = DISPOSITION_IGNORED;
-  }
-}
-
 const char* state_name(SyscallState state) {
   switch (state) {
 #define CASE(_id)                                                              \
