@@ -612,7 +612,7 @@ Switchable TaskSyscallState::done_preparing_internal(Switchable sw) {
   if (sw == ALLOW_SWITCH &&
       scratch > t->scratch_ptr + t->usable_scratch_size()) {
     LOG(warn)
-        << "`" << t->syscall_name(t->ev().Syscall().number)
+        << "`" << t->ev().Syscall().syscall_name()
         << "' needed a scratch buffer of size " << scratch - t->scratch_ptr
         << ", but only " << t->usable_scratch_size()
         << " was available.  Disabling context switching: deadlock may follow.";
@@ -2416,7 +2416,7 @@ static void prepare_exit(RecordTask* t, int exit_code) {
                 is_exit_group_syscall(exit_regs.original_syscallno(),
                                       t->ev().Syscall().arch()))
       << "Tracee should have been at exit/exit_group, but instead at "
-      << t->syscall_name(exit_regs.original_syscallno());
+      << t->ev().Syscall().syscall_name();
 
   // The first thing we need to do is to block all signals to prevent
   // a signal being delivered to the thread (since it's going to exit and
@@ -4711,7 +4711,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
     ASSERT(t, t->regs().syscall_result_signed() == -syscall_state.expect_errno)
         << "Expected " << errno_name(syscall_state.expect_errno) << " for '"
-        << t->syscall_name(syscallno) << "' but got result "
+        << syscall_name(syscallno, Arch::arch()) << "' but got result "
         << t->regs().syscall_result_signed() << " (errno "
         << errno_name(-t->regs().syscall_result_signed()) << ")"
         << extra_expected_errno_info<Arch>(t, syscall_state);

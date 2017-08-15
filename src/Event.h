@@ -11,6 +11,7 @@
 #include "Registers.h"
 #include "core.h"
 #include "kernel_abi.h"
+#include "kernel_metadata.h"
 #include "preload/preload_interface.h"
 
 struct syscallbuf_record;
@@ -238,6 +239,9 @@ struct SyscallEvent : public BaseEvent {
         is_restart(false),
         failed_during_preparation(false),
         in_sysemu(false) {}
+
+  std::string syscall_name() const { return rr::syscall_name(number, arch()); }
+
   // The original (before scratch is set up) arguments to the
   // syscall passed by the tracee.  These are used to detect
   // restarted syscalls.

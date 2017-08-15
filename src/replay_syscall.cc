@@ -81,8 +81,8 @@ static string maybe_dump_written_string(ReplayTask* t) {
  * Proceeds until the next system call, which is being executed.
  */
 static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
-                          int expect_syscallno, int expect_syscallno2 = -1,
-                          pid_t new_tid = -1) {
+                          SupportedArch syscall_arch, int expect_syscallno,
+                          int expect_syscallno2 = -1, pid_t new_tid = -1) {
   do {
     t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
     if (new_tid > 0) {
@@ -103,8 +103,8 @@ static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
   int current_syscall = t->regs().original_syscallno();
   ASSERT(t, current_syscall == expect_syscallno ||
                 current_syscall == expect_syscallno2)
-      << "Should be at " << t->syscall_name(expect_syscallno)
-      << ", but instead at " << t->syscall_name(current_syscall)
+      << "Should be at " << syscall_name(expect_syscallno, syscall_arch)
+      << ", but instead at " << syscall_name(current_syscall, syscall_arch)
       << maybe_dump_written_string(t);
 }
 
@@ -147,8 +147,9 @@ static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
  */
 static void maybe_noop_restore_syscallbuf_scratch(ReplayTask* t) {
   if (t->is_in_untraced_syscall()) {
+    // Untraced syscalls always have t's arch
     LOG(debug) << "  noop-restoring scratch for write-only desched'd "
-               << t->syscall_name(t->regs().original_syscallno());
+               << syscall_name(t->regs().original_syscallno(), t->arch());
     t->set_data_from_trace();
   }
 }
@@ -211,20 +212,20 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   Registers entry_regs = r;
 
   // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK/VFORK.
-  __ptrace_cont(t, RESUME_CONT, sys);
+  __ptrace_cont(t, RESUME_CONT, Arch::arch(), sys);
 
   pid_t new_tid;
-  while (!t->clone_syscall_is_complete(&new_tid)) {
+  while (!t->clone_syscall_is_complete(&new_tid, Arch::arch())) {
     // clone() calls sometimes fail with -EAGAIN due to load issues or
     // whatever. We need to retry the system call until it succeeds. Reset
     // state to try the syscall again.
     ASSERT(t, t->regs().syscall_result_signed() == -EAGAIN);
     t->set_regs(entry_regs);
-    __ptrace_cont(t, RESUME_CONT, sys);
+    __ptrace_cont(t, RESUME_CONT, Arch::arch(), sys);
   }
 
   // Get out of the syscall
-  __ptrace_cont(t, RESUME_SYSCALL, sys);
+  __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
 
   ASSERT(t, !t->ptrace_event())
       << "Unexpected ptrace event while waiting for syscall exit; got "
@@ -446,6 +447,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   /* The original_syscallno is execve in the old architecture. The kernel does
    * not update the original_syscallno when the architecture changes across
    * an exec.
+   * We're using the dedicated traced-syscall IP so its arch is t's arch.
    */
   int expect_syscallno = syscall_number_for_execve(t->arch());
   regs.set_syscallno(expect_syscallno);
@@ -453,13 +455,13 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
   LOG(debug) << "Beginning execve";
   /* Enter our execve syscall. */
-  __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno);
+  __ptrace_cont(t, RESUME_SYSCALL, t->arch(), expect_syscallno);
   ASSERT(t, !t->stop_sig()) << "Stub exec failed on entry";
   /* Complete the syscall. The tid of the task will be the thread-group-leader
    * tid, no matter what tid it was before.
    */
   pid_t tgid = t->task_group()->real_tgid;
-  __ptrace_cont(t, RESUME_SYSCALL, expect_syscallno,
+  __ptrace_cont(t, RESUME_SYSCALL, t->arch(), expect_syscallno,
                 syscall_number_for_execve(trace_frame.regs().arch()),
                 tgid == t->tid ? -1 : tgid);
   if (t->regs().syscall_result()) {
@@ -1060,11 +1062,12 @@ void rep_after_enter_syscall(ReplayTask* t) {
 }
 
 void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
-  int sys = t->current_trace_frame().event().Syscall().number;
+  const SyscallEvent& sys_ev = t->current_trace_frame().event().Syscall();
+  int sys = sys_ev.number;
 
-  LOG(debug) << "processing " << t->syscall_name(sys) << " (entry)";
+  LOG(debug) << "processing " << sys_ev.syscall_name() << " (entry)";
 
-  if (is_restart_syscall_syscall(sys, t->arch())) {
+  if (is_restart_syscall_syscall(sys, sys_ev.arch())) {
     ASSERT(t, t->tick_count() == t->current_trace_frame().ticks());
     t->set_regs(t->current_trace_frame().regs());
     t->apply_all_data_records_from_trace();
@@ -1079,7 +1082,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
    * system call that we assigned a negative number because it doesn't
    * exist in this architecture.
    */
-  if (is_rrcall_notify_syscall_hook_exit_syscall(sys, t->arch())) {
+  if (is_rrcall_notify_syscall_hook_exit_syscall(sys, sys_ev.arch())) {
     ASSERT(t, t->syscallbuf_child != nullptr);
     t->write_mem(
         REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
@@ -1227,8 +1230,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       if (sys == Arch::mprotect) {
         t->vm()->fixup_mprotect_growsdown_parameters(t);
       }
-      __ptrace_cont(t, RESUME_SYSCALL, sys);
-      __ptrace_cont(t, RESUME_SYSCALL, sys);
+      __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
+      __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
       ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
       if (sys == Arch::mprotect) {
         Registers r2 = t->regs();

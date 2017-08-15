@@ -666,9 +666,10 @@ static void maybe_discard_syscall_interruption(RecordTask* t, intptr_t ret) {
   if (0 > ret) {
     syscall_not_restarted(t);
   } else {
-    ASSERT(t, syscallno == ret)
-        << "Interrupted call was " << t->syscall_name(syscallno)
-        << " and sigreturn claims to be restarting " << t->syscall_name(ret);
+    ASSERT(t, syscallno == ret) << "Interrupted call was "
+                                << t->ev().Syscall().syscall_name()
+                                << " and sigreturn claims to be restarting "
+                                << syscall_name(ret, t->ev().Syscall().arch());
   }
 }
 
@@ -844,13 +845,14 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         }
       } else {
         LOG(debug) << "  original_syscallno:" << t->regs().original_syscallno()
-                   << " (" << t->syscall_name(syscallno)
+                   << " (" << syscall_name(syscallno, syscall_arch)
                    << "); return val:" << HEX(t->regs().syscall_result());
 
         /* a syscall_restart ending is equivalent to the
          * restarted syscall ending */
         if (t->ev().Syscall().is_restart) {
-          LOG(debug) << "  exiting restarted " << t->syscall_name(syscallno);
+          LOG(debug) << "  exiting restarted "
+                     << syscall_name(syscallno, syscall_arch);
         }
 
         /* TODO: is there any reason a restart_syscall can't
@@ -870,7 +872,8 @@ void RecordSession::syscall_state_changed(RecordTask* t,
             t->vm()->verify(t);
           }
         } else {
-          LOG(debug) << "  may restart " << t->syscall_name(syscallno)
+          LOG(debug) << "  may restart "
+                     << syscall_name(syscallno, syscall_arch)
                      << " (from retval " << HEX(retval) << ")";
 
           rec_prepare_restart_syscall(t);

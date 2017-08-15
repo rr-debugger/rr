@@ -629,13 +629,15 @@ public:
                           const void* buf, bool* ok = nullptr,
                           uint32_t flags = 0);
 
+  SupportedArch detect_syscall_arch();
+
   /**
    * Call this when performing a clone syscall in this task. Returns
    * true if the call completed, false if it was interrupted and
    * needs to be resumed. When the call returns true, the task is
    * stopped at a PTRACE_EVENT_CLONE or PTRACE_EVENT_FORK.
    */
-  bool clone_syscall_is_complete(pid_t* new_pid);
+  bool clone_syscall_is_complete(pid_t* new_pid, SupportedArch syscall_arch);
 
   /**
    * Called when SYS_rrcall_init_preload has happened.
@@ -654,11 +656,6 @@ public:
    * Calls open_mem_fd if this task's AddressSpace doesn't already have one.
    */
   void open_mem_fd_if_needed();
-
-  /**
-   * Return the name of the given syscall.
-   */
-  std::string syscall_name(int syscallno) const;
 
   /**
    * Look up a TLS address for this thread.  |offset| and

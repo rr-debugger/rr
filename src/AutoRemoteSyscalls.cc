@@ -245,7 +245,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       break;
     }
     if (is_clone_syscall(syscallno, t->arch()) &&
-        t->clone_syscall_is_complete(&new_tid_)) {
+        t->clone_syscall_is_complete(&new_tid_, t->arch())) {
       t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
       LOG(debug) << "got clone event; new status=" << t->status();
       continue;

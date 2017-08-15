@@ -520,11 +520,13 @@ Completion ReplaySession::exit_syscall(ReplayTask* t) {
 }
 
 void ReplaySession::check_pending_sig(ReplayTask* t) {
-  ASSERT(t, 0 < t->stop_sig())
-      << "Replaying `" << trace_frame.event()
-      << "': expecting tracee signal or trap, but instead at `"
-      << t->syscall_name(t->regs().original_syscallno())
-      << "' (ticks: " << t->tick_count() << ")";
+  if (!t->stop_sig()) {
+    ASSERT(t, false) << "Replaying `" << trace_frame.event()
+                     << "': expecting tracee signal or trap, but instead at `"
+                     << syscall_name(t->regs().original_syscallno(),
+                                     t->detect_syscall_arch())
+                     << "' (ticks: " << t->tick_count() << ")";
+  }
 }
 
 /**

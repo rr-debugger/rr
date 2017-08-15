@@ -2255,7 +2255,17 @@ bool Task::ptrace_if_alive(int request, remote_ptr<void> addr, void* data) {
   return true;
 }
 
-bool Task::clone_syscall_is_complete(pid_t* new_pid) {
+SupportedArch Task::detect_syscall_arch() {
+  SupportedArch syscall_arch;
+  bool ok = get_syscall_instruction_arch(
+      this, regs().ip().decrement_by_syscall_insn_length(arch()),
+      &syscall_arch);
+  ASSERT(this, ok);
+  return syscall_arch;
+}
+
+bool Task::clone_syscall_is_complete(pid_t* new_pid,
+                                     SupportedArch syscall_arch) {
   int event = ptrace_event();
   if (PTRACE_EVENT_CLONE == event || PTRACE_EVENT_FORK == event ||
       PTRACE_EVENT_VFORK == event) {
@@ -2272,7 +2282,7 @@ bool Task::clone_syscall_is_complete(pid_t* new_pid) {
   ASSERT(this, regs().syscall_may_restart() || -ENOSYS == result ||
                    -EAGAIN == result || -ENOMEM == result)
       << "Unexpected task status " << status() << " ("
-      << syscall_name(regs().original_syscallno())
+      << syscall_name(regs().original_syscallno(), syscall_arch)
       << " syscall errno: " << errno_name(-result) << ")";
   return false;
 }
@@ -2648,10 +2658,6 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   t->open_mem_fd();
   return t;
 }
-
-string Task::syscall_name(int syscall) const {
-  return rr::syscall_name(syscall, arch());
-} // namespace rr
 
 bool Task::get_tls_address(size_t offset, remote_ptr<void> load_module,
                            remote_ptr<void>* result) {

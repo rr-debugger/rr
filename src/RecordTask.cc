@@ -386,15 +386,6 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   t->record_local(cores_ptr, &cores);
 }
 
-SupportedArch RecordTask::detect_syscall_arch() {
-  SupportedArch syscall_arch;
-  bool ok = get_syscall_instruction_arch(
-      this, regs().ip().decrement_by_syscall_insn_length(arch()),
-      &syscall_arch);
-  ASSERT(this, ok);
-  return syscall_arch;
-}
-
 void RecordTask::push_syscall_event(int syscallno) {
   push_event(SyscallEvent(syscallno, detect_syscall_arch()));
 }
@@ -1291,15 +1282,16 @@ const RecordTask::StashedSignal* RecordTask::peek_stashed_sig_to_deliver()
 }
 
 bool RecordTask::is_syscall_restart() {
-  int syscallno = regs().original_syscallno();
-  bool is_restart = false;
-
-  LOG(debug) << "  is syscall interruption of recorded " << ev() << "? (now "
-             << syscall_name(syscallno) << ")";
-
   if (EV_SYSCALL_INTERRUPTION != ev().type()) {
-    goto done;
+    return false;
   }
+
+  int syscallno = regs().original_syscallno();
+  SupportedArch syscall_arch = ev().Syscall().arch();
+  string call_name = syscall_name(syscallno, syscall_arch);
+  bool is_restart = false;
+  LOG(debug) << "  is syscall interruption of recorded " << ev() << "? (now "
+             << call_name << ")";
 
   /* It's possible for the tracee to resume after a sighandler
    * with a fresh syscall that happens to be the same as the one
@@ -1316,13 +1308,13 @@ bool RecordTask::is_syscall_restart() {
    * TODO: it's possible for arg structures to be mutated
    * between the original call and restarted call in such a way
    * that it might change the scratch allocation decisions. */
-  if (is_restart_syscall_syscall(syscallno, arch())) {
+  if (is_restart_syscall_syscall(syscallno, syscall_arch)) {
     is_restart = true;
     syscallno = ev().Syscall().number;
     LOG(debug) << "  (SYS_restart_syscall)";
   }
   if (ev().Syscall().number != syscallno) {
-    LOG(debug) << "  interrupted " << ev() << " != " << syscall_name(syscallno);
+    LOG(debug) << "  interrupted " << ev() << " != " << call_name;
     goto done;
   }
 
@@ -1334,9 +1326,8 @@ bool RecordTask::is_syscall_restart() {
           old_regs.arg4() == regs().arg4() &&
           old_regs.arg5() == regs().arg5() &&
           old_regs.arg6() == regs().arg6())) {
-      LOG(debug) << "  regs different at interrupted "
-                 << syscall_name(syscallno) << ": " << old_regs << " vs "
-                 << regs();
+      LOG(debug) << "  regs different at interrupted " << call_name << ": "
+                 << old_regs << " vs " << regs();
       goto done;
     }
   }
@@ -1345,7 +1336,7 @@ bool RecordTask::is_syscall_restart() {
 
 done:
   if (is_restart) {
-    LOG(debug) << "  restart of " << syscall_name(syscallno);
+    LOG(debug) << "  restart of " << call_name;
   }
   return is_restart;
 }

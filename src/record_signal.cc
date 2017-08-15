@@ -536,7 +536,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
   // state to ENTERING_SYSCALL
 
   LOG(debug) << "  resuming (and probably switching out) blocked `"
-             << t->syscall_name(call) << "'";
+             << syscall_name(call, ev.arch()) << "'";
 }
 
 static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
@@ -563,10 +563,12 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
   }
 
   if (t->is_in_untraced_syscall() && t->desched_rec()) {
+    // Untraced syscalls always use the architecture of the process
     LOG(debug) << "Safe to deliver signal at " << t->ip()
                << " because tracee interrupted by desched of "
-               << t->syscall_name(t->read_mem(
-                      REMOTE_PTR_FIELD(t->desched_rec(), syscallno)));
+               << syscall_name(t->read_mem(REMOTE_PTR_FIELD(t->desched_rec(),
+                                                            syscallno)),
+                               t->arch());
     return true;
   }
 
