@@ -143,7 +143,7 @@ static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
   r.set_ip(r.ip() + len);
   t->set_regs(r);
 
-  t->push_event(Event(EV_INSTRUCTION_TRAP, HAS_EXEC_INFO, t->arch()));
+  t->push_event(Event(EV_INSTRUCTION_TRAP, HAS_EXEC_INFO));
   return true;
 }
 
@@ -221,9 +221,9 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
   t->trace_writer().write_mapped_region(t, km, km.fake_stat());
   // No need to flush syscallbuf here. It's safe to map these pages "early"
   // before they're really needed.
-  t->record_event(Event(EV_GROW_MAP, NO_EXEC_INFO, t->arch()),
+  t->record_event(Event(EV_GROW_MAP, NO_EXEC_INFO),
                   RecordTask::DONT_FLUSH_SYSCALLBUF);
-  t->push_event(Event::noop(t->arch()));
+  t->push_event(Event::noop());
   LOG(debug) << "try_grow_map " << addr << ": extended map "
              << t->vm()->mapping_of(addr).map;
   return true;
@@ -360,7 +360,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
      * has cleared the relevancy flag, but not yet
      * disarmed the event itself. */
     disarm_desched_event(t);
-    t->push_event(Event::noop(t->arch()));
+    t->push_event(Event::noop());
     return;
   }
 
@@ -486,7 +486,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
   if (t->is_disarm_desched_event_syscall()) {
     LOG(debug)
         << "  (at disarm-desched, so finished buffered syscall; resuming)";
-    t->push_event(Event::noop(t->arch()));
+    t->push_event(Event::noop());
     return;
   }
 
@@ -509,7 +509,7 @@ static void handle_desched_event(RecordTask* t, const siginfo_t* si) {
      * off the syscallbuf, if needed. */
     remote_ptr<const struct syscallbuf_record> desched_rec =
         t->next_syscallbuf_record();
-    t->push_event(DeschedEvent(desched_rec, t->arch()));
+    t->push_event(DeschedEvent(desched_rec));
     int call = t->read_mem(REMOTE_PTR_FIELD(t->desched_rec(), syscallno));
 
     /* The descheduled syscall was interrupted by a signal, like
@@ -656,7 +656,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
   }
 
   if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
-    t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
+    t->push_event(Event(EV_SCHED, HAS_EXEC_INFO));
     return SIGNAL_HANDLED;
   }
 
@@ -676,7 +676,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
       t->record_current_event();
       t->pop_event(EV_SIGNAL);
     } else {
-      t->push_event(Event(EV_SCHED, HAS_EXEC_INFO, t->arch()));
+      t->push_event(Event(EV_SCHED, HAS_EXEC_INFO));
       t->record_current_event();
       t->pop_event(EV_SCHED);
     }

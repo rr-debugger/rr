@@ -104,8 +104,7 @@ struct BaseEvent {
    * Pass |HAS_EXEC_INFO| if the event is at a stable execution
    * point that we'll reach during replay too.
    */
-  BaseEvent(HasExecInfo has_exec_info, SupportedArch)
-      : has_exec_info(has_exec_info) {}
+  BaseEvent(HasExecInfo has_exec_info) : has_exec_info(has_exec_info) {}
 
   // When replaying an event is expected to leave the tracee in
   // the same execution state as during replay, the event has
@@ -125,9 +124,8 @@ struct BaseEvent {
  */
 struct DeschedEvent : public BaseEvent {
   /** Desched of |rec|. */
-  DeschedEvent(remote_ptr<const struct syscallbuf_record> rec,
-               SupportedArch arch)
-      : BaseEvent(NO_EXEC_INFO, arch), rec(rec) {}
+  DeschedEvent(remote_ptr<const struct syscallbuf_record> rec)
+      : BaseEvent(NO_EXEC_INFO), rec(rec) {}
   // Record of the syscall that was interrupted by a desched
   // notification.  It's legal to reference this memory /while
   // the desched is being processed only/, because |t| is in the
@@ -137,7 +135,7 @@ struct DeschedEvent : public BaseEvent {
 };
 
 struct SyscallbufFlushEvent : public BaseEvent {
-  SyscallbufFlushEvent(SupportedArch arch) : BaseEvent(NO_EXEC_INFO, arch) {}
+  SyscallbufFlushEvent() : BaseEvent(NO_EXEC_INFO) {}
   std::vector<mprotect_record> mprotect_records;
 };
 
@@ -156,8 +154,8 @@ struct SignalEvent : public BaseEvent {
    */
   SignalEvent(const siginfo_t& siginfo, SignalDeterministic deterministic,
               RecordTask* t);
-  SignalEvent(SupportedArch arch)
-      : BaseEvent(HAS_EXEC_INFO, arch),
+  SignalEvent()
+      : BaseEvent(HAS_EXEC_INFO),
         deterministic(DETERMINISTIC_SIG),
         disposition(DISPOSITION_FATAL) {
     memset(&siginfo, 0, sizeof(siginfo));
@@ -226,7 +224,7 @@ struct OpenedFd {
 struct SyscallEvent : public BaseEvent {
   /** Syscall |syscallno| is the syscall number. */
   SyscallEvent(int syscallno, SupportedArch arch)
-      : BaseEvent(HAS_EXEC_INFO, arch),
+      : BaseEvent(HAS_EXEC_INFO),
         arch_(arch),
         regs(arch),
         desched_rec(nullptr),
@@ -287,7 +285,8 @@ static const syscall_interruption_t interrupted;
  */
 struct Event {
   Event() : event_type(EV_UNASSIGNED) {}
-  Event(EventType type, HasExecInfo info, SupportedArch arch);
+  Event(EventType type, HasExecInfo info,
+        SupportedArch syscall_arch = SupportedArch_MAX);
   Event(const DeschedEvent& ev) : event_type(EV_DESCHED), desched(ev) {}
   Event(const SignalEvent& ev) : event_type(EV_SIGNAL), signal(ev) {}
   Event(const SyscallEvent& ev) : event_type(EV_SYSCALL), syscall(ev) {}
@@ -380,9 +379,7 @@ struct Event {
   std::string type_name() const;
 
   /** Return an event of type EV_NOOP. */
-  static Event noop(SupportedArch arch) {
-    return Event(EV_NOOP, NO_EXEC_INFO, arch);
-  }
+  static Event noop() { return Event(EV_NOOP, NO_EXEC_INFO); }
 
 private:
   EventType event_type;

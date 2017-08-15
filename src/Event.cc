@@ -20,8 +20,9 @@ using namespace std;
 
 namespace rr {
 
-Event::Event(EventType type, HasExecInfo has_exec_info, SupportedArch arch)
-    : event_type(type), base(has_exec_info, arch) {
+Event::Event(EventType type, HasExecInfo has_exec_info,
+             SupportedArch syscall_arch)
+    : event_type(type), base(has_exec_info) {
   switch (event_type) {
     case EV_NOOP:
     case EV_SECCOMP_TRAP:
@@ -35,25 +36,25 @@ Event::Event(EventType type, HasExecInfo has_exec_info, SupportedArch arch)
     case EV_PATCH_SYSCALL:
     case EV_GROW_MAP:
     case EV_TRACE_TERMINATION:
-      new (&Base()) BaseEvent(has_exec_info, arch);
+      new (&Base()) BaseEvent(has_exec_info);
       return;
 
     case EV_DESCHED:
-      new (&Desched()) DeschedEvent(nullptr, arch);
+      new (&Desched()) DeschedEvent(nullptr);
       return;
 
     case EV_SYSCALLBUF_FLUSH:
-      new (&SyscallbufFlush()) SyscallbufFlushEvent(arch);
+      new (&SyscallbufFlush()) SyscallbufFlushEvent();
       return;
 
     case EV_SIGNAL:
     case EV_SIGNAL_DELIVERY:
     case EV_SIGNAL_HANDLER:
-      new (&Signal()) SignalEvent(arch);
+      new (&Signal()) SignalEvent();
       return;
 
     case EV_SYSCALL:
-      new (&Syscall()) SyscallEvent(0, arch);
+      new (&Syscall()) SyscallEvent(0, syscall_arch);
       return;
 
     default:
@@ -230,9 +231,7 @@ std::string Event::type_name() const {
 
 SignalEvent::SignalEvent(const siginfo_t& siginfo,
                          SignalDeterministic deterministic, RecordTask* t)
-    : BaseEvent(HAS_EXEC_INFO, t->arch()),
-      siginfo(siginfo),
-      deterministic(deterministic) {
+    : BaseEvent(HAS_EXEC_INFO), siginfo(siginfo), deterministic(deterministic) {
   int sig = siginfo.si_signo;
   if (t->is_fatal_signal(sig, deterministic)) {
     disposition = DISPOSITION_FATAL;

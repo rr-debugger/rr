@@ -536,40 +536,40 @@ TraceFrame TraceReader::read_frame() {
   auto event = frame.getEvent();
   switch (event.which()) {
     case trace::Frame::Event::INSTRUCTION_TRAP:
-      ret.ev = Event(EV_INSTRUCTION_TRAP, exec_info, arch);
+      ret.ev = Event(EV_INSTRUCTION_TRAP, exec_info);
       break;
     case trace::Frame::Event::PATCH_SYSCALL:
-      ret.ev = Event(EV_PATCH_SYSCALL, exec_info, arch);
+      ret.ev = Event(EV_PATCH_SYSCALL, exec_info);
       break;
     case trace::Frame::Event::SYSCALLBUF_ABORT_COMMIT:
-      ret.ev = Event(EV_SYSCALLBUF_ABORT_COMMIT, exec_info, arch);
+      ret.ev = Event(EV_SYSCALLBUF_ABORT_COMMIT, exec_info);
       break;
     case trace::Frame::Event::SYSCALLBUF_RESET:
-      ret.ev = Event(EV_SYSCALLBUF_RESET, exec_info, arch);
+      ret.ev = Event(EV_SYSCALLBUF_RESET, exec_info);
       break;
     case trace::Frame::Event::SCHED:
-      ret.ev = Event(EV_SCHED, exec_info, arch);
+      ret.ev = Event(EV_SCHED, exec_info);
       break;
     case trace::Frame::Event::GROW_MAP:
-      ret.ev = Event(EV_GROW_MAP, exec_info, arch);
+      ret.ev = Event(EV_GROW_MAP, exec_info);
       break;
     case trace::Frame::Event::SIGNAL:
-      ret.ev = Event(EV_SIGNAL, exec_info, arch);
+      ret.ev = Event(EV_SIGNAL, exec_info);
       from_trace_signal(event.getSignal(), ret.ev);
       break;
     case trace::Frame::Event::SIGNAL_DELIVERY:
-      ret.ev = Event(EV_SIGNAL_DELIVERY, exec_info, arch);
+      ret.ev = Event(EV_SIGNAL_DELIVERY, exec_info);
       from_trace_signal(event.getSignalDelivery(), ret.ev);
       break;
     case trace::Frame::Event::SIGNAL_HANDLER:
-      ret.ev = Event(EV_SIGNAL_HANDLER, exec_info, arch);
+      ret.ev = Event(EV_SIGNAL_HANDLER, exec_info);
       from_trace_signal(event.getSignalHandler(), ret.ev);
       break;
     case trace::Frame::Event::EXIT:
-      ret.ev = Event(EV_EXIT, exec_info, arch);
+      ret.ev = Event(EV_EXIT, exec_info);
       break;
     case trace::Frame::Event::SYSCALLBUF_FLUSH: {
-      ret.ev = Event(EV_SYSCALLBUF_FLUSH, exec_info, arch);
+      ret.ev = Event(EV_SYSCALLBUF_FLUSH, exec_info);
       auto mprotect_records = event.getSyscallbufFlush().getMprotectRecords();
       auto& records = ret.ev.SyscallbufFlush().mprotect_records;
       records.resize(mprotect_records.size() / sizeof(mprotect_record));
