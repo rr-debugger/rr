@@ -3,12 +3,6 @@
 #include "nsutils.h"
 #include "util.h"
 
-struct Fprog64 {
-  uint16_t len;
-  char _padding[6];
-  uint64_t ptr;
-};
-
 static void test_tun(void) {
   struct ifreq* ifr;
   int* features;
@@ -52,20 +46,22 @@ static void test_tun(void) {
   VERIFY_GUARD(hdrsz);
   test_assert(*hdrsz > 0);
 
+#ifdef __x86_64__
   /* TUNDETACHFILTER/TUNGETFILTER (and probably TUNATTACHFILTER) are
      incorrectly implemented (as of 4.12 at least). The ioctl values are
      defined with a size field of 8 bytes (struct sock_fprog) on x86-32,
      but an x86-64 kernel expects the x86-64 size (16 bytes) and the
      64-bit sock_fprog layout. */
-  test_assert(ioctl(fd, _IOW('T', 214, struct Fprog64), NULL) == 0);
+  /* The actual ioctl numbers will depend on whether the kernel is 32-bit
+     or 64-bit so testing this on 32-bit is not worth the hassle. */
+  test_assert(ioctl(fd, TUNDETACHFILTER, NULL) == 0);
 
   /* The actual results will depend on whether we're running on a 32-bit
      or 64-bit kernel, which we don't want to try to detect, so only run
      this test on 64-bit kernels. */
-#ifdef __x86_64__
-  struct Fprog64* fprog;
+  struct sock_fprog* fprog;
   ALLOCATE_GUARD(fprog, 'x');
-  test_assert(ioctl(fd, _IOR('T', 219, struct Fprog64), (void*)fprog) == 0);
+  test_assert(ioctl(fd, TUNGETFILTER, (void*)fprog) == 0);
   VERIFY_GUARD(fprog);
   test_assert(fprog->len == 0);
 #endif
