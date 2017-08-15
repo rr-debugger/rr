@@ -1596,24 +1596,6 @@ void RecordTask::maybe_reset_syscallbuf() {
   }
 }
 
-static bool record_extra_regs(const Event& ev) {
-  switch (ev.type()) {
-    case EV_SYSCALL: {
-      const SyscallEvent& sys_ev = ev.Syscall();
-      // sigreturn/rt_sigreturn restores register state
-      return sys_ev.state == EXITING_SYSCALL &&
-             (is_sigreturn(sys_ev.number, sys_ev.arch()) ||
-              is_execve_syscall(sys_ev.number, sys_ev.arch()));
-    }
-    case EV_SIGNAL_HANDLER:
-      // entering a signal handler seems to clear FP/SSE regs,
-      // so record these effects.
-      return true;
-    default:
-      return false;
-  }
-}
-
 void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
                               const Registers* registers) {
   if (flush == FLUSH_SYSCALLBUF) {
@@ -1629,11 +1611,11 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
   }
 
   const ExtraRegisters* extra_registers = nullptr;
-  if (ev.record_exec_info() == HAS_EXEC_INFO) {
+  if (ev.record_regs()) {
     if (!registers) {
       registers = &regs();
     }
-    if (record_extra_regs(ev)) {
+    if (ev.record_extra_regs()) {
       extra_registers = &extra_regs();
     }
   }

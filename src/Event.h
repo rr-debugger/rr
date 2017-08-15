@@ -348,6 +348,10 @@ struct Event {
 
   HasExecInfo has_exec_info() const { return base.has_exec_info; }
 
+  bool record_regs() const;
+
+  bool record_extra_regs() const;
+
   bool has_ticks_slop() const;
 
   /**

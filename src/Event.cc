@@ -119,6 +119,39 @@ Event& Event::operator=(const Event& o) {
 
 HasExecInfo Event::record_exec_info() const { return Base().has_exec_info; }
 
+bool Event::record_regs() const {
+  switch (type()) {
+    case EV_INSTRUCTION_TRAP:
+    case EV_PATCH_SYSCALL:
+    case EV_SCHED:
+    case EV_SYSCALL:
+    case EV_SIGNAL:
+    case EV_SIGNAL_DELIVERY:
+    case EV_SIGNAL_HANDLER:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool Event::record_extra_regs() const {
+  switch (type()) {
+    case EV_SYSCALL: {
+      const SyscallEvent& sys_ev = Syscall();
+      // sigreturn/rt_sigreturn restores register state
+      return sys_ev.state == EXITING_SYSCALL &&
+             (is_sigreturn(sys_ev.number, sys_ev.arch()) ||
+              is_execve_syscall(sys_ev.number, sys_ev.arch()));
+    }
+    case EV_SIGNAL_HANDLER:
+      // entering a signal handler seems to clear FP/SSE regs,
+      // so record these effects.
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool Event::has_ticks_slop() const {
   switch (type()) {
     case EV_SYSCALLBUF_ABORT_COMMIT:

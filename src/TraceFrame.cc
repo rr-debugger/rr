@@ -26,7 +26,7 @@ void TraceFrame::dump(FILE* out) const {
     fprintf(out, "(state:%s) ", state_name(event().Syscall().state));
   }
   fprintf(out, "tid:%d, ticks:%" PRId64 "\n", tid(), ticks());
-  if (event().has_exec_info() != HAS_EXEC_INFO) {
+  if (!event().record_regs()) {
     return;
   }
 
@@ -43,7 +43,7 @@ void TraceFrame::dump_raw(FILE* out) const {
 
   fprintf(out, " %lld %d %d %" PRId64, (long long)time(), tid(), event().type(),
           ticks());
-  if (event().has_exec_info() != HAS_EXEC_INFO) {
+  if (!event().record_regs()) {
     fprintf(out, "\n");
     return;
   }
