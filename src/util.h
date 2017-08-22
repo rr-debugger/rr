@@ -364,6 +364,10 @@ enum BindCPU { BIND_CPU = -2, UNBOUND_CPU = -1 };
 /* Convert a BindCPU to a specific CPU number */
 int choose_cpu(BindCPU bind_cpu);
 
+/* Updates an IEEE 802.3 CRC-32 least significant bit first from each byte in
+ * |buf|.  Pre- and post-conditioning is not performed in this function and so
+ * should be performed by the caller, as required. */
+uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len);
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
