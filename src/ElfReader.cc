@@ -5,6 +5,7 @@
 #include <elf.h>
 
 #include "log.h"
+#include "util.h"
 
 using namespace std;
 
@@ -317,7 +318,33 @@ ScopedFd ElfFileReader::open_debug_file(const std::string& elf_file_name) {
   size_t last_slash = elf_file_name.find_last_of('/');
   string debug_path = "/usr/lib/debug/";
   debug_path += elf_file_name.substr(0, last_slash) + '/' + debuglink.filename;
-  return ScopedFd(debug_path.c_str(), O_RDONLY);
+  ScopedFd debug_fd(debug_path.c_str(), O_RDONLY);
+  if (!debug_fd.is_open()) {
+    return ScopedFd();
+  }
+
+  // Verify that the CRC checksum matches, in case the debuginfo and text file
+  // are in separate packages that are out of sync.
+  uint32_t crc = 0xffffffff;
+  while (true) {
+    unsigned char buf[4096];
+    ssize_t ret = ::read(debug_fd.get(), buf, sizeof(buf));
+    if (ret < 0) {
+      if (errno != EINTR) {
+        LOG(debug) << "Error reading " << debug_path;
+        return ScopedFd();
+      }
+    } else if (ret == 0) {
+      break;
+    } else {
+      crc = crc32(crc, buf, ret);
+    }
+  }
+
+  if ((crc ^ 0xffffffff) == debuglink.crc) {
+    return debug_fd;
+  }
+  return ScopedFd();
 }
 
 SupportedArch ElfFileReader::identify_arch(ScopedFd& fd) {
