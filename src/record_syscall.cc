@@ -1639,7 +1639,7 @@ static Switchable prepare_ioctl(RecordTask* t,
         syscall_state.reg_parameter<typename NativeArch::sock_fprog>(3);
       } else {
         FATAL() << "TUNGETFILTER not supported on 32-bit since its behavior "
-            "depends on 32-bit vs 64-bit kernel";
+                   "depends on 32-bit vs 64-bit kernel";
       }
       return PREVENT_SWITCH;
 

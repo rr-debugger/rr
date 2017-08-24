@@ -1,5 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+#include <sys/prctl.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -34,7 +35,7 @@ protected:
 
 ReplayCommand ReplayCommand::singleton(
     "replay",
-    " rr replay [OPTION]... [<trace-dir>]\n"
+    " rr replay [OPTION]... [<trace-dir>] [-- <debugger-options>]\n"
     "  -a, --autopilot            replay without debugger server\n"
     "  -f, --onfork=<PID>         start a debug server when <PID> has been\n"
     "                             fork()d, AND the target event has been\n"
@@ -425,6 +426,8 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
     close(debugger_params_pipe[0]);
 
     {
+      prctl(PR_SET_PDEATHSIG, SIGTERM, 0, 0, 0);
+
       ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
       auto session = ReplaySession::create(trace_dir);
       GdbServer::ConnectionFlags conn_flags;
@@ -497,6 +500,11 @@ int ReplayCommand::run(vector<string>& args) {
   while (!args.empty()) {
     if (parse_replay_arg(args, flags)) {
       continue;
+    }
+    if (parse_literal(args, "--")) {
+      flags.gdb_options.insert(flags.gdb_options.end(), args.begin(),
+                               args.end());
+      break;
     }
     if (!found_dir && parse_optional_trace_dir(args, &trace_dir)) {
       found_dir = true;

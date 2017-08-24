@@ -58,6 +58,7 @@ public:
                            ParsedOption* out) {
     return parse_option(args, option_specs, N, out);
   }
+  static bool parse_literal(std::vector<std::string>& args, const char* lit);
 
 protected:
   Command(const char* name, const char* help);

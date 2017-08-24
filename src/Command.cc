@@ -135,8 +135,7 @@ bool Command::parse_option(std::vector<std::string>& args,
     } else if (args[0][1] == '-') {
       size_t equals = args[0].find('=');
       if (strncmp(args[0].c_str() + 2, option_specs[i].long_name,
-                  (equals == string::npos ? args[0].length() : equals) - 2) ==
-          0) {
+                  (equals == string::npos ? 9999 : equals) - 2) == 0) {
         out->short_name = option_specs[i].short_name;
         switch (option_specs[i].param) {
           case NO_PARAMETER:
@@ -180,6 +179,15 @@ bool Command::parse_optional_trace_dir(vector<string>& args, string* out) {
     *out = string();
   }
   return true;
+}
+
+bool Command::parse_literal(std::vector<std::string>& args, const char* lit) {
+  if (args.size() > 0 && args[0] == lit) {
+    args.erase(args.begin());
+    return true;
+  } else {
+    return false;
+  }
 }
 
 } // namespace rr
