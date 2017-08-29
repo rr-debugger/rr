@@ -255,7 +255,7 @@ bool ElfReaderImpl<Arch>::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
     if (section.sh_type == SHT_NOBITS || !(section.sh_flags & SHF_ALLOC)) {
       continue;
     }
-    if (addr > section.sh_addr && addr - section.sh_addr < section.sh_size) {
+    if (addr >= section.sh_addr && addr - section.sh_addr < section.sh_size) {
       offset = addr - section.sh_addr + section.sh_offset;
       return true;
     }
