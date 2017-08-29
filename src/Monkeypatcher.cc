@@ -716,6 +716,8 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
       if (syms.is_name(i, syscall.name)) {
         uintptr_t file_offset;
         if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
+          LOG(debug) << "Can't convert address " << HEX(syms.addr(i))
+                     << " to offset";
           continue;
         }
         // Absolutely-addressed symbols in the VDSO claim to start here.
@@ -749,6 +751,10 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
           // which is a duplicate of a previous symbol. Bizzarro. So, stop once
           // we see a valid value for the symbol.
           break;
+        } else {
+          LOG(debug) << "Ignoring odd file offset " << HEX(file_offset)
+                     << "; vdso_static_base=" << HEX(vdso_static_base)
+                     << ", size=" << vdso_size;
         }
       }
     }
@@ -782,11 +788,10 @@ void Monkeypatcher::patch_at_preload_init(RecordTask* t) {
   RR_ARCH_FUNCTION(patch_at_preload_init_arch, t->arch(), t, *this);
 }
 
-static void set_and_record_bytes(RecordTask* t,
-                                 ElfReader& reader, uintptr_t elf_addr,
-                                 const void* bytes, size_t size,
-                                 remote_ptr<void> map_start, size_t map_size,
-                                 size_t map_offset_pages) {
+static void set_and_record_bytes(RecordTask* t, ElfReader& reader,
+                                 uintptr_t elf_addr, const void* bytes,
+                                 size_t size, remote_ptr<void> map_start,
+                                 size_t map_size, size_t map_offset_pages) {
   uintptr_t file_offset;
   if (!reader.addr_to_offset(elf_addr, file_offset)) {
     LOG(warn) << "ELF address " << HEX(elf_addr) << " not in file";
