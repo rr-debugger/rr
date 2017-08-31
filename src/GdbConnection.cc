@@ -43,6 +43,7 @@ static const char INTERRUPT_CHAR = '\x03';
 const GdbThreadId GdbThreadId::ANY(0, 0);
 const GdbThreadId GdbThreadId::ALL(-1, -1);
 
+#ifdef DEBUG
 static bool request_needs_immediate_response(const GdbRequest* req) {
   switch (req->type) {
     case DREQ_NONE:
@@ -52,6 +53,7 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
       return true;
   }
 }
+#endif
 
 GdbConnection::GdbConnection(pid_t tgid, const Features& features)
     : tgid(tgid),
@@ -1184,7 +1186,9 @@ GdbRequest GdbConnection::get_request() {
   /* Can't ask for the next request until you've satisfied the
    * current one, for requests that need an immediate
    * response. */
+#ifdef DEBUG
   DEBUG_ASSERT(!request_needs_immediate_response(&req));
+#endif
 
   if (!sniff_packet() && req.is_resume_request()) {
     /* There's no new request data available and gdb has
