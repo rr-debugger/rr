@@ -28,7 +28,7 @@ int main(void) {
   test_assert(0 == syscall(SYS_keyctl, KEYCTL_INVALIDATE, key));
 
 #ifdef KEYCTL_DH_COMPUTE
-  uint8_t base[192] = {0};
+  uint8_t base[192] = {1};
   // 'prime' must be at least 1536 bits or we get EINVAL.
   uint8_t prime[192] = {7};   // Not prime but we should be OK
   uint8_t private = 1;        // The world's worst private key
