@@ -688,6 +688,7 @@ private:
   std::vector<uint8_t> outbuf; /* buffered output for gdb */
   Features features_;
   bool connection_alive_;
+  bool multiprocess_supported_; // client supports multiprocess extension
 };
 
 } // namespace rr
