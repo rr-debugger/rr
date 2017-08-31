@@ -25,7 +25,7 @@ namespace rr {
  * place can move out of this file.
  */
 
-class Event;
+struct Event;
 class KernelMapping;
 class Task;
 class TraceFrame;
