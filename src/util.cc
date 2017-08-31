@@ -266,6 +266,21 @@ static uint32_t compute_checksum(void* data, size_t len) {
 static const uint32_t ignored_checksum = 0x98765432;
 static const uint32_t sigbus_checksum = 0x23456789;
 
+static bool is_task_buffer(const AddressSpace& as,
+                           const AddressSpace::Mapping& m) {
+  for (Task* t : as.task_set()) {
+    if (t->syscallbuf_child.cast<void>() == m.map.start() &&
+        t->syscallbuf_size == m.map.size()) {
+      return true;
+    }
+    if (t->scratch_ptr == m.map.start() &&
+        t->scratch_size == (ssize_t)m.map.size()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Either create and store checksums for each segment mapped in |t|'s
  * address space, or validate an existing computed checksum.  Behavior
@@ -313,16 +328,20 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       remote_ptr<void> rec_start_addr = rec_start;
       remote_ptr<void> rec_end_addr = rec_end;
       ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
-      // If we have artifical SIGBUS regions, those may (if the entire region
-      // was SIGBUS), but need not have existed during recording, so fast
-      // forward to the next real region.
-      while (m.map.start() != rec_start_addr) {
-        ASSERT(t, m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION)
-            << "Segment " << rec_start_addr << "-" << rec_end_addr
-            << " changed to " << m.map << "??";
-        ASSERT(t, it != as.maps().end());
-        m = *(++it);
-        continue;
+      for (; m.map.start() != rec_start_addr; m = *(++it)) {
+        if (is_task_buffer(as, m)) {
+          // This region corresponds to a task scratch or syscall buffer. We
+          // tear these down a little later during replay so just skip it for
+          // now.
+          continue;
+        }
+        if (m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION) {
+          // If we have artifical SIGBUS regions, those may (if the entire
+          // region was SIGBUS), but need not, have existed during recording.
+          continue;
+        }
+        FATAL() << "Segment " << rec_start_addr << "-" << rec_end_addr
+                << " changed to " << m.map << "??";
       }
       // If the backing file is too short, we cut mappings short, to make sure
       // have the same behavior as during recording. Tolerate this.
