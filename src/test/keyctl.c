@@ -6,7 +6,7 @@
 typedef uint32_t key_serial_t;
 
 int main(void) {
-  char buffer[500];
+  char buffer[192];
 
   char* data = "Test Data";
   key_serial_t key = syscall(SYS_add_key, "user", "RR Test key", data,
@@ -28,13 +28,15 @@ int main(void) {
   test_assert(0 == syscall(SYS_keyctl, KEYCTL_INVALIDATE, key));
 
 #ifdef KEYCTL_DH_COMPUTE
-  char base[] = "Hi!";
-  uint64_t prime = ((uint64_t)0) - 59; // 2^64-59
-  uint8_t private = 1;                 // The world's worst private key
+  uint8_t base[192] = {0};
+  // 'prime' must be at least 1536 bits or we get EINVAL.
+  uint8_t prime[192] = {7};   // Not prime but we should be OK
+  uint8_t private = 1;        // The world's worst private key
+  base[191] = 'x';
 
   key_serial_t base_key = syscall(SYS_add_key, "user", "base", base,
-                                  strlen(base) + 1, KEY_SPEC_PROCESS_KEYRING);
-  key_serial_t prime_key = syscall(SYS_add_key, "user", "prime", &prime,
+                                  sizeof(base), KEY_SPEC_PROCESS_KEYRING);
+  key_serial_t prime_key = syscall(SYS_add_key, "user", "prime", prime,
                                    sizeof(prime), KEY_SPEC_PROCESS_KEYRING);
   key_serial_t private_key = syscall(SYS_add_key, "user", "private", &private,
                                      sizeof(private), KEY_SPEC_PROCESS_KEYRING);
@@ -50,10 +52,10 @@ int main(void) {
     test_assert(errno == EOPNOTSUPP);
   } else {
     check_data(buffer, result);
-    test_assert(0 == memcmp(buffer, base, strlen(base) + 1));
+    test_assert(0 == memcmp(buffer, base, sizeof(base)));
   }
 #endif
 
-  atomic_printf("EXIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }
