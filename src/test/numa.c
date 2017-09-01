@@ -48,9 +48,9 @@ int main(void) {
 
   // sanity check
   ret = set_mempolicy(0, NULL, 0);
-  test_assert(ret == 0);
+  test_assert(ret == 0 || (ret == -1 && errno == ENOSYS));
   ret = get_mempolicy(NULL, NULL, 0, NULL, 0);
-  test_assert(ret == 0);
+  test_assert(ret == 0 || (ret == -1 && errno == ENOSYS));
 
   // test in and out params
   // Make `nodemask` big in case we run on a kernel that has MAX_NUMNODES set
@@ -58,11 +58,11 @@ int main(void) {
   // small. And there's no way to determine what MAX_NUMNODES is AFAIK. What
   // a terrible API!
   ret = set_mempolicy(MPOL_BIND, &mask, 8 * sizeof(mask));
-  test_assert(ret == 0);
+  test_assert(ret == 0 || (ret == -1 && errno == ENOSYS));
   ALLOCATE_GUARD(nodemask, 'a');
   ret = get_mempolicy(&mode, nodemask->m, 8 * sizeof(nodemask->m), NULL, 0);
   if (ret < 0) {
-    test_assert(errno == EINVAL);
+    test_assert(errno == EINVAL || errno == ENOSYS);
   } else {
     test_assert(mode == MPOL_BIND);
     test_assert(nodemask->m[0] == 0x1);
