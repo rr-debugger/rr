@@ -37,16 +37,21 @@ set(rr_VERSION_PATCH 0)
 
 add_definitions(-DRR_VERSION="${rr_VERSION_MAJOR}.${rr_VERSION_MINOR}.${rr_VERSION_PATCH}")
 
-set(CMAKE_C_FLAGS_COMMON "-msse2 -D__MMX__ -D__SSE__ -D__SSE2__ -D__USE_LARGEFILE64 -pthread -g3 -Wall -Wextra")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
-set(CMAKE_C_FLAGS_DEBUG "-O0 -Werror -DDEBUG -UNDEBUG")
-set(CMAKE_C_FLAGS_RELEASE "-O2 -UDEBUG -DNDEBUG")
+set(FLAGS_COMMON "-msse2 -D__MMX__ -D__SSE__ -D__SSE2__ -D__USE_LARGEFILE64 -pthread -g3")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CMAKE_C_FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++11")
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Werror -DDEBUG -UNDEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2 -UDEBUG -DNDEBUG")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++11")
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
+
+set(RR_FLAGS_DEBUG "-Wall -Wextra -Werror -O0 -DDEBUG -UNDEBUG")
+set(RR_FLAGS_RELEASE "-Wall -Wextra -O2 -UDEBUG -DNDEBUG")
+set(RR_TEST_FLAGS "${RR_FLAGS_DEBUG}")
+if(CMAKE_BUILD_TYPE MATCHES "DEBUG")
+  set(RR_FLAGS ${RR_FLAGS_DEBUG})
+else()
+  set(RR_FLAGS ${RR_FLAGS_RELEASE})
+endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-command-line-argument")
@@ -200,7 +205,7 @@ set(BROTLI_FILES
 )
 add_library(brotli STATIC ${BROTLI_FILES})
 set_source_files_properties(${BROTLI_FILES}
-                            PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_RELEASE})
+                            PROPERTIES COMPILE_FLAGS ${RR_FLAGS_RELEASE})
 # ==== brotli ====
 
 find_path(SECCOMP NAMES "linux/seccomp.h")
@@ -252,8 +257,10 @@ endif()
 
 set(PRELOAD_COMPILE_FLAGS "-fno-stack-protector")
 
-if (NOT DEBUG_PRELOAD_LIB)
-set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} ${CMAKE_C_FLAGS_RELEASE}")
+if (DEBUG_PRELOAD_LIB)
+  set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} ${RR_FLAGS_DEBUG}")
+else()
+  set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} ${RR_FLAGS_RELEASE}")
 endif()
 
 set_source_files_properties(src/preload/syscallbuf.c
@@ -409,6 +416,9 @@ set(RR_SOURCES
   third-party/blake2/blake2b.c
 )
 
+set_source_files_properties(${RR_SOURCES}
+                            PROPERTIES COMPILE_FLAGS ${RR_FLAGS})
+
 function(post_build_executable target)
 # grsecurity needs these. But if we add them ourselves, they may conflict
 # with other flags added in other ways, and they all have to match :-(. So
@@ -518,7 +528,7 @@ if(rr_32BIT AND rr_64BIT)
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                    COPYONLY)
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-                                PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_C_FLAGS_RELEASE}")
+                                PROPERTIES COMPILE_FLAGS "-m32 ${RR_FLAGS_RELEASE}")
   endforeach(file)
 
   # Order matters here! syscall_hook.S must be immediately before syscallbuf.c.
@@ -1139,7 +1149,7 @@ if(BUILD_TESTS)
     add_executable(${test} src/test/${test}.c)
     post_build_executable(${test})
     set_source_files_properties(src/test/${test}.c
-                                PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
+                                PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
     add_dependencies(${test} Generated)
     target_link_libraries(${test} -lrt -ldl)
   endforeach(test)
@@ -1155,7 +1165,7 @@ if(BUILD_TESTS)
     add_executable(${test} src/test/${test}.cc)
     post_build_executable(${test})
     set_source_files_properties(src/test/${test}.cc
-                                PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS_DEBUG})
+                                PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
     add_dependencies(${test} Generated)
     target_link_libraries(${test} -lrt)
   endforeach(test)
@@ -1165,14 +1175,14 @@ if(BUILD_TESTS)
     )
   add_dependencies(test_lib Generated)
   set_source_files_properties(src/test/test_lib.c
-                              PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
+                              PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
   target_link_libraries(constructor -lrt test_lib)
 
   # cpuid test needs to link with cpuid_loop.S
   add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
   post_build_executable(cpuid)
   set_source_files_properties(src/test/cpuid.c
-                              PROPERTIES COMPILE_FLAGS ${CMAKE_C_FLAGS_DEBUG})
+                              PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
   add_dependencies(cpuid Generated)
   target_link_libraries(cpuid -lrt)
 
@@ -1227,7 +1237,7 @@ if(BUILD_TESTS)
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
                      COPYONLY)
       set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
-                                  PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
+                                  PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(test)
 
     foreach(test ${BASIC_CPP_TESTS})
@@ -1235,7 +1245,7 @@ if(BUILD_TESTS)
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
                      COPYONLY)
       set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
-                                  PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
+                                  PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(test)
 
     foreach(file cpuid_loop.S)
@@ -1243,14 +1253,14 @@ if(BUILD_TESTS)
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                      COPYONLY)
       set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-                                  PROPERTIES COMPILE_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
+                                  PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(file)
 
     foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
       add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
       post_build_executable(${test}_32)
       add_dependencies(${test}_32 Generated)
-      set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_C_FLAGS_DEBUG}")
+      set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS}")
       target_link_libraries(${test}_32 -lrt -ldl)
     endforeach(test)
 
@@ -1258,7 +1268,7 @@ if(BUILD_TESTS)
       add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc")
       post_build_executable(${test}_32)
       add_dependencies(${test}_32 Generated)
-      set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${CMAKE_CXX_FLAGS_DEBUG}")
+      set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS}")
       target_link_libraries(${test}_32 -lrt)
     endforeach(test)
 

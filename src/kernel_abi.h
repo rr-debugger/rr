@@ -1865,6 +1865,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   switch (arch) {                                                              \
     default:                                                                   \
       DEBUG_ASSERT(0 && "Unknown architecture");                               \
+      RR_FALLTHROUGH;                                                          \
     case x86:                                                                  \
       return f<rr::X86Arch>(args);                                             \
     case x86_64:                                                               \

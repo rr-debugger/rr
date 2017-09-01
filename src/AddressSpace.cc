@@ -1781,6 +1781,7 @@ static int random_addr_bits(SupportedArch arch) {
   switch (arch) {
     default:
       DEBUG_ASSERT(0 && "Unknown architecture");
+      RR_FALLTHROUGH;
     case x86:
       return 32;
     // Current x86-64 systems have only 48 bits of virtual address space,
