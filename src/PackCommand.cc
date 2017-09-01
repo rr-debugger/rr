@@ -397,7 +397,10 @@ static void delete_unnecessary_files(const map<string, string>& file_map,
 
 static int pack(const string& trace_dir) {
   char buf[PATH_MAX];
-  realpath(trace_dir.c_str(), buf);
+  char* ret = realpath(trace_dir.c_str(), buf);
+  if (!ret) {
+    FATAL() << "realpath failed";
+  }
   string abspath(buf);
   map<string, string> canonical_mmapped_files =
       compute_canonical_mmapped_files(abspath);

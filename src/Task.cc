@@ -2379,11 +2379,15 @@ static void spawned_child_fatal_error(const ScopedFd& err_fd,
   va_list args;
   va_start(args, format);
   char* buf;
-  vasprintf(&buf, format, args);
+  if (vasprintf(&buf, format, args) < 0) {
+    exit(1);
+  }
 
   char* buf2;
-  asprintf(&buf2, "%s (%s)", buf, errno_name(errno).c_str());
-  write(err_fd, buf2, strlen(buf2));
+  if (asprintf(&buf2, "%s (%s)", buf, errno_name(errno).c_str()) < 0) {
+    exit(1);
+  }
+  write_all(err_fd, buf2, strlen(buf2));
   _exit(1);
 }
 

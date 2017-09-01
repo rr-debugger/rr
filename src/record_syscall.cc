@@ -4931,7 +4931,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         }
 
         static const char disable_rdrand[] = "\nintel-rdrand\n";
-        write(file.fd, disable_rdrand, sizeof(disable_rdrand) - 1);
+        write_all(file.fd, disable_rdrand, sizeof(disable_rdrand) - 1);
 
         // Now open the file in the child.
         int child_fd;

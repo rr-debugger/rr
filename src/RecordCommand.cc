@@ -290,7 +290,7 @@ static void handle_SIGTERM(__attribute__((unused)) int sig) {
     static const char msg[] =
         "Received SIGTERM while an earlier one was pending.  We're "
         "probably wedged.\n";
-    write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
     notifying_abort();
   }
   term_request = true;
@@ -348,8 +348,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
 
   if (flags.print_trace_dir >= 0) {
     const string& dir = session->trace_writer().dir();
-    write(flags.print_trace_dir, dir.c_str(), dir.size());
-    write(flags.print_trace_dir, "\n", 1);
+    write_all(flags.print_trace_dir, dir.c_str(), dir.size());
+    write_all(flags.print_trace_dir, "\n", 1);
   }
 
   // Install signal handlers after creating the session, to ensure they're not

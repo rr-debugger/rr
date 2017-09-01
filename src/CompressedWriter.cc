@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "core.h"
+#include "util.h"
 
 using namespace std;
 
@@ -182,7 +183,7 @@ void CompressedWriter::compression_thread() {
 
       if (!write_error) {
         pthread_mutex_unlock(&mutex);
-        ::write(fd, &outputbuf[0],
+        write_all(fd, &outputbuf[0],
                 sizeof(BlockHeader) + header->compressed_length);
         pthread_mutex_lock(&mutex);
       }

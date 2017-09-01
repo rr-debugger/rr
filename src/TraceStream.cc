@@ -500,7 +500,7 @@ TraceFrame TraceReader::read_frame() {
   for (size_t i = 0; i < raw_recs.size(); ++i) {
     // Build list in reverse order so we can efficiently pull records from it
     auto w = mem_writes[raw_recs.size() - 1 - i];
-    raw_recs[i] = { w.getAddr(), w.getSize(), i32_to_tid(w.getTid()) };
+    raw_recs[i] = { w.getAddr(), (size_t)w.getSize(), i32_to_tid(w.getTid()) };
   }
 
   TraceFrame ret;

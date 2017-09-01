@@ -368,6 +368,11 @@ int choose_cpu(BindCPU bind_cpu);
  * |buf|.  Pre- and post-conditioning is not performed in this function and so
  * should be performed by the caller, as required. */
 uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len);
+
+/* Like write(2) but any error or "device full" is treated as fatal. We also
+ * ensure that all bytes are written by looping on short writes. */
+void write_all(int fd, const void* buf, size_t size);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

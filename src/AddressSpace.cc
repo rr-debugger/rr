@@ -94,7 +94,10 @@ void KernelMapIterator::operator++() {
     char proc_exe[PATH_MAX];
     char exe[PATH_MAX];
     snprintf(proc_exe, sizeof(proc_exe), "/proc/%d/exe", tid);
-    readlink(proc_exe, exe, sizeof(exe));
+    ssize_t size = readlink(proc_exe, exe, sizeof(exe));
+    if (size < 0) {
+      FATAL() << "readlink failed";
+    }
     FATAL() << "Sorry, tracee " << tid << " has x86-64 image " << exe
             << " and that's not supported with a 32-bit rr.";
   }

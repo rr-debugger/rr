@@ -318,7 +318,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 
     if (VALIDATE_CHECKSUMS == mode) {
       char line[1024];
-      fgets(line, sizeof(line), c.checksums_file);
+      if (!fgets(line, sizeof(line), c.checksums_file)) {
+        FATAL() << "Can't read checksum file";
+      }
       unsigned long rec_start;
       unsigned long rec_end;
       unsigned tmp_checksum;
@@ -857,6 +859,12 @@ vector<CPUIDRecord> all_cpuid_records() {
   return gather_cpuid_records(UINT32_MAX);
 }
 
+#ifdef SYS_arch_prctl
+#define RR_ARCH_PRCTL(a, b) syscall(SYS_arch_prctl, a, b)
+#else
+#define RR_ARCH_PRCTL(a, b) -1
+#endif
+
 bool cpuid_faulting_works() {
   static bool did_check_cpuid_faulting = false;
   static bool cpuid_faulting_ok = false;
@@ -867,7 +875,7 @@ bool cpuid_faulting_works() {
   did_check_cpuid_faulting = true;
 
   // Test to see if CPUID faulting works.
-  if (syscall(SYS_arch_prctl, ARCH_SET_CPUID, 0) != 0) {
+  if (RR_ARCH_PRCTL(ARCH_SET_CPUID, 0) != 0) {
     LOG(debug) << "CPUID faulting not supported by kernel/hardware";
     return false;
   }
@@ -894,7 +902,7 @@ bool cpuid_faulting_works() {
   if (sigaction(SIGSEGV, &old_sa, NULL) < 0) {
     FATAL() << "Can't restore sighandler";
   }
-  if (syscall(SYS_arch_prctl, ARCH_SET_CPUID, 1) < 0) {
+  if (RR_ARCH_PRCTL(ARCH_SET_CPUID, 1) < 0) {
     FATAL() << "Can't restore ARCH_SET_CPUID";
   }
   return cpuid_faulting_ok;
@@ -1071,8 +1079,7 @@ void copy_file(Task* t, int dest_fd, int src_fd) {
     if (!bytes_read) {
       break;
     }
-    ssize_t bytes_written = write(dest_fd, buf, bytes_read);
-    ASSERT(t, bytes_written == bytes_read);
+    write_all(dest_fd, buf, bytes_read);
   }
 }
 
@@ -1213,12 +1220,12 @@ void notifying_abort() {
 
 void dump_rr_stack() {
   static const char msg[] = "=== Start rr backtrace:\n";
-  write(STDERR_FILENO, msg, sizeof(msg) - 1);
+  write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
   void* buffer[1024];
   int count = backtrace(buffer, 1024);
   backtrace_symbols_fd(buffer, count, STDERR_FILENO);
   static const char msg2[] = "=== End rr backtrace\n";
-  write(STDERR_FILENO, msg2, sizeof(msg2) - 1);
+  write_all(STDERR_FILENO, msg2, sizeof(msg2) - 1);
 }
 
 void check_for_leaks() {
@@ -1461,6 +1468,17 @@ uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len) {
     crc = crc32_table[(crc ^ *buf) & 0xff] ^ (crc >> 8);
   }
   return crc;
+}
+
+void write_all(int fd, const void* buf, size_t size) {
+  while (size > 0) {
+    ssize_t ret = ::write(fd, buf, size);
+    if (ret <= 0) {
+      FATAL() << "Can't write " << size << " bytes";
+    }
+    buf = static_cast<const char*>(buf) + ret;
+    size -= ret;
+  }
 }
 
 } // namespace rr

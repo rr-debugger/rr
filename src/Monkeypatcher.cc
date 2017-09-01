@@ -720,16 +720,17 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
                      << " to offset";
           continue;
         }
+        uint64_t file_offset_64 = file_offset;
         // Absolutely-addressed symbols in the VDSO claim to start here.
         static const uint64_t vdso_static_base = 0xffffffffff700000LL;
-        static const uintptr_t vdso_max_size = 0xffffLL;
-        uint64_t sym_offset = file_offset & vdso_max_size;
+        static const uint64_t vdso_max_size = 0xffffLL;
+        uint64_t sym_offset = file_offset_64 & vdso_max_size;
 
         // In 4.4.6-301.fc23.x86_64 we occasionally see a grossly invalid
         // address, se.g. 0x11c6970 for __vdso_getcpu. :-(
-        if ((file_offset >= vdso_static_base &&
-             file_offset < vdso_static_base + vdso_size) ||
-            file_offset < vdso_size) {
+        if ((file_offset_64 >= vdso_static_base &&
+            file_offset_64 < vdso_static_base + vdso_size) ||
+            file_offset_64 < vdso_size) {
           uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
 
           uint8_t patch[X64VsyscallMonkeypatch::size];
