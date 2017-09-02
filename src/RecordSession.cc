@@ -382,7 +382,8 @@ static void handle_seccomp_errno(RecordTask* t,
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
-bool RecordSession::handle_ptrace_event(RecordTask** t_ptr, StepState* step_state,
+bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
+                                        StepState* step_state,
                                         RecordResult* result,
                                         bool* did_enter_syscall) {
   *did_enter_syscall = false;
@@ -704,10 +705,10 @@ static void maybe_discard_syscall_interruption(RecordTask* t, intptr_t ret) {
   if (0 > ret) {
     syscall_not_restarted(t);
   } else {
-    ASSERT(t, syscallno == ret) << "Interrupted call was "
-                                << t->ev().Syscall().syscall_name()
-                                << " and sigreturn claims to be restarting "
-                                << syscall_name(ret, t->ev().Syscall().arch());
+    ASSERT(t, syscallno == ret)
+        << "Interrupted call was " << t->ev().Syscall().syscall_name()
+        << " and sigreturn claims to be restarting "
+        << syscall_name(ret, t->ev().Syscall().arch());
   }
 }
 
@@ -1086,10 +1087,10 @@ static bool preinject_signal(RecordTask* t) {
     auto old_ip = t->ip();
     do {
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-      ASSERT(t, old_ip == t->ip()) << "Singlestep actually advanced when we "
-                                   << "just expected a signal; was at "
-                                   << old_ip << " now at " << t->ip()
-                                   << " with status " << t->status();
+      ASSERT(t, old_ip == t->ip())
+          << "Singlestep actually advanced when we "
+          << "just expected a signal; was at " << old_ip << " now at "
+          << t->ip() << " with status " << t->status();
       // Ignore any pending TIME_SLICE_SIGNALs and continue until we get our
       // SYSCALLBUF_DESCHED_SIGNAL.
     } while (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL);
@@ -1149,8 +1150,8 @@ static bool inject_handled_signal(RecordTask* t) {
   }
 
   // We stepped into a user signal handler.
-  ASSERT(t, t->stop_sig() == SIGTRAP) << "Got unexpected status "
-                                      << t->status();
+  ASSERT(t, t->stop_sig() == SIGTRAP)
+      << "Got unexpected status " << t->status();
   ASSERT(t, t->get_signal_user_handler(sig) == t->ip())
       << "Expected handler IP " << t->get_signal_user_handler(sig) << ", got "
       << t->ip()
@@ -1381,7 +1382,8 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
           // by a SECCOMP event, which it left pending. Handle that SECCOMP
           // event now.
           bool dummy_did_enter_syscall;
-          handle_ptrace_event(&t, step_state, nullptr, &dummy_did_enter_syscall);
+          handle_ptrace_event(&t, step_state, nullptr,
+                              &dummy_did_enter_syscall);
           ASSERT(t, !dummy_did_enter_syscall);
         }
         break;
@@ -1408,9 +1410,10 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
      * against all fds the PerfCounters have ever used, but that seems like
      * overkill.
      */
-    ASSERT(t, PerfCounters::TIME_SLICE_SIGNAL == si.si_signo &&
-                  (RecordTask::SYNTHETIC_TIME_SLICE_SI_CODE == si.si_code ||
-                   POLL_IN == si.si_code))
+    ASSERT(t,
+           PerfCounters::TIME_SLICE_SIGNAL == si.si_signo &&
+               (RecordTask::SYNTHETIC_TIME_SLICE_SI_CODE == si.si_code ||
+                POLL_IN == si.si_code))
         << "Tracee is using SIGSTKFLT??? (code=" << si.si_code
         << ", fd=" << si.si_fd << ")";
   }
@@ -1436,13 +1439,13 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
     // We do not generally want to have stashed signals pending when we enter
     // a syscall, because that will execute with a hacked signal mask
     // (see RecordTask::will_resume_execution) which could make things go wrong.
-    ASSERT(t, t->desched_rec() ||
-                  is_rrcall_notify_syscall_hook_exit_syscall(
-                      t->regs().original_syscallno(), t->arch()) ||
-                  t->ip() ==
-                      t->vm()
-                          ->privileged_traced_syscall_ip()
-                          .increment_by_syscall_insn_length(t->arch()));
+    ASSERT(t,
+           t->desched_rec() || is_rrcall_notify_syscall_hook_exit_syscall(
+                                   t->regs().original_syscallno(), t->arch()) ||
+               t->ip() ==
+                   t->vm()
+                       ->privileged_traced_syscall_ip()
+                       .increment_by_syscall_insn_length(t->arch()));
   }
 
   // We just entered a syscall.
@@ -1869,8 +1872,9 @@ RecordSession::RecordResult RecordSession::record_step() {
     // Ensure that we aren't allowing switches away from a running task.
     // Only tasks blocked in a syscall can be switched away from, otherwise
     // we have races.
-    ASSERT(t, last_task_switchable == PREVENT_SWITCH || t->unstable ||
-                  t->may_be_blocked());
+    ASSERT(t,
+           last_task_switchable == PREVENT_SWITCH || t->unstable ||
+               t->may_be_blocked());
 
     debug_exec_state("EXEC_START", t);
 

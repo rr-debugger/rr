@@ -599,8 +599,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   auto vdso_start = t->vm()->vdso().start();
 
   static const named_syscall syscalls_to_monkeypatch[] = {
-#define S(n)                                                                   \
-  { "__vdso_" #n, X86Arch::n }
+#define S(n) { "__vdso_" #n, X86Arch::n }
     S(clock_gettime), S(gettimeofday), S(time),
 #undef S
   };
@@ -667,8 +666,9 @@ void patch_at_preload_init_arch<X86Arch>(RecordTask* t,
     // We're patching in a relative jump, so we need to compute the offset from
     // the end of the jump to our actual destination.
     X86SysenterVsyscallSyscallHook::substitute(
-        patch, syscallhook_vsyscall_entry.as_int() -
-                   (kernel_vsyscall + sizeof(patch)).as_int());
+        patch,
+        syscallhook_vsyscall_entry.as_int() -
+            (kernel_vsyscall + sizeof(patch)).as_int());
     write_and_record_bytes(t, kernel_vsyscall, patch);
     LOG(debug) << "monkeypatched __kernel_vsyscall to jump to "
                << HEX(syscallhook_vsyscall_entry.as_int());
@@ -701,8 +701,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   auto syms = reader.read_symbols(".dynsym", ".dynstr");
 
   static const named_syscall syscalls_to_monkeypatch[] = {
-#define S(n)                                                                   \
-  { "__vdso_" #n, X64Arch::n }
+#define S(n) { "__vdso_" #n, X64Arch::n }
     S(clock_gettime), S(gettimeofday), S(time),
     // getcpu isn't supported by rr, so any changes to this monkeypatching
     // scheme for efficiency's sake will have to ensure that getcpu gets
@@ -729,7 +728,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
         // In 4.4.6-301.fc23.x86_64 we occasionally see a grossly invalid
         // address, se.g. 0x11c6970 for __vdso_getcpu. :-(
         if ((file_offset_64 >= vdso_static_base &&
-            file_offset_64 < vdso_static_base + vdso_size) ||
+             file_offset_64 < vdso_static_base + vdso_size) ||
             file_offset_64 < vdso_size) {
           uintptr_t absolute_address = vdso_start.as_int() + sym_offset;
 

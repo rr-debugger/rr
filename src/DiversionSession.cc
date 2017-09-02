@@ -95,7 +95,7 @@ static void process_syscall_arch(Task* t, int syscallno) {
   return execute_syscall(t);
 }
 
-static void process_syscall(Task* t, int syscallno) {
+static void process_syscall(Task* t, int syscallno){
   RR_ARCH_FUNCTION(process_syscall_arch, t->arch(), t, syscallno)
 }
 
@@ -151,8 +151,9 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
                << "; break=" << result.break_status.breakpoint_hit
                << ", watch=" << !result.break_status.watchpoints_hit.empty()
                << ", singlestep=" << result.break_status.singlestep_complete;
-    ASSERT(t, !result.break_status.singlestep_complete ||
-                  command == RUN_SINGLESTEP);
+    ASSERT(t,
+           !result.break_status.singlestep_complete ||
+               command == RUN_SINGLESTEP);
     return result;
   }
 

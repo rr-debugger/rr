@@ -1183,9 +1183,9 @@ GdbRequest GdbConnection::get_request() {
     return req;
   }
 
-  /* Can't ask for the next request until you've satisfied the
-   * current one, for requests that need an immediate
-   * response. */
+/* Can't ask for the next request until you've satisfied the
+ * current one, for requests that need an immediate
+ * response. */
 #ifdef DEBUG
   DEBUG_ASSERT(!request_needs_immediate_response(&req));
 #endif

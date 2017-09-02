@@ -331,8 +331,9 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       // instructions that don't modify flags should not terminate too early.
       // We can terminate prematurely when the watchpoint we set relative
       // to DI is triggered by a read via SI.
-      ASSERT(t, decoded.modifies_flags || iterations <= BYTES_COALESCED ||
-                    triggered_watchpoint);
+      ASSERT(t,
+             decoded.modifies_flags || iterations <= BYTES_COALESCED ||
+                 triggered_watchpoint);
 
       if (!triggered_watchpoint) {
         // watchpoint didn't fire. We must have exited the loop early and

@@ -686,8 +686,9 @@ void RecordTask::set_emulated_ptracer(RecordTask* tracer) {
     emulated_ptracer->emulated_ptrace_tracees.insert(this);
   } else {
     ASSERT(this, emulated_ptracer);
-    ASSERT(this, emulated_stop_type == NOT_STOPPED ||
-                     emulated_stop_type == GROUP_STOP);
+    ASSERT(this,
+           emulated_stop_type == NOT_STOPPED ||
+               emulated_stop_type == GROUP_STOP);
     emulated_ptracer->emulated_ptrace_tracees.erase(this);
     emulated_ptracer = nullptr;
   }
@@ -1178,12 +1179,12 @@ void RecordTask::verify_signal_states() {
   for (int sig = 1; sig < _NSIG; ++sig) {
     sig_set_t mask = signal_bit(sig);
     if (is_unstoppable_signal(sig)) {
-      ASSERT(this, !(blocked & mask)) << "Expected " << signal_name(sig)
-                                      << " to not be blocked, but it is";
-      ASSERT(this, !(ignored & mask)) << "Expected " << signal_name(sig)
-                                      << " to not be ignored, but it is";
-      ASSERT(this, !(caught & mask)) << "Expected " << signal_name(sig)
-                                     << " to not be caught, but it is";
+      ASSERT(this, !(blocked & mask))
+          << "Expected " << signal_name(sig) << " to not be blocked, but it is";
+      ASSERT(this, !(ignored & mask))
+          << "Expected " << signal_name(sig) << " to not be ignored, but it is";
+      ASSERT(this, !(caught & mask))
+          << "Expected " << signal_name(sig) << " to not be caught, but it is";
     } else {
       ASSERT(this, !!(blocked & mask) == is_sig_blocked(sig))
           << signal_name(sig)
@@ -1708,9 +1709,10 @@ pid_t RecordTask::find_newborn_thread() {
 
 pid_t RecordTask::find_newborn_process(pid_t child_parent) {
   ASSERT(this, session().is_recording());
-  ASSERT(this, ptrace_event() == PTRACE_EVENT_CLONE ||
-                   ptrace_event() == PTRACE_EVENT_VFORK ||
-                   ptrace_event() == PTRACE_EVENT_FORK);
+  ASSERT(this,
+         ptrace_event() == PTRACE_EVENT_CLONE ||
+             ptrace_event() == PTRACE_EVENT_VFORK ||
+             ptrace_event() == PTRACE_EVENT_FORK);
 
   pid_t hint = get_ptrace_eventmsg<pid_t>();
   // This should always succeed, but may fail in old kernels due to

@@ -519,8 +519,9 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
 
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
   convert_x86<to_x86_narrow, to_x86_narrow, to_x86_same>(
-      u.x86regs, *reinterpret_cast<X64Arch::user_regs_struct*>(
-                     const_cast<struct user_regs_struct*>(&ptrace_regs)));
+      u.x86regs,
+      *reinterpret_cast<X64Arch::user_regs_struct*>(
+          const_cast<struct user_regs_struct*>(&ptrace_regs)));
 }
 
 /**

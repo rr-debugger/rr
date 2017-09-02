@@ -184,7 +184,7 @@ void CompressedWriter::compression_thread() {
       if (!write_error) {
         pthread_mutex_unlock(&mutex);
         write_all(fd, &outputbuf[0],
-                sizeof(BlockHeader) + header->compressed_length);
+                  sizeof(BlockHeader) + header->compressed_length);
         pthread_mutex_lock(&mutex);
       }
 

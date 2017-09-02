@@ -96,13 +96,14 @@ static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
     t->wait();
   } while (ReplaySession::is_ignored_signal(t->status().stop_sig()));
 
-  ASSERT(t, !t->stop_sig()) << "Expected no pending signal, but got "
-                            << t->stop_sig();
+  ASSERT(t, !t->stop_sig())
+      << "Expected no pending signal, but got " << t->stop_sig();
 
   /* check if we are synchronized with the trace -- should never fail */
   int current_syscall = t->regs().original_syscallno();
-  ASSERT(t, current_syscall == expect_syscallno ||
-                current_syscall == expect_syscallno2)
+  ASSERT(t,
+         current_syscall == expect_syscallno ||
+             current_syscall == expect_syscallno2)
       << "Should be at " << syscall_name(expect_syscallno, syscall_arch)
       << ", but instead at " << syscall_name(current_syscall, syscall_arch)
       << maybe_dump_written_string(t);
@@ -118,8 +119,9 @@ static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
   // Make the scratch buffer read/write during replay so that
   // preload's sys_read can use it to buffer cloned data.
   ASSERT(t, (km.prot() & (PROT_READ | PROT_WRITE)) == (PROT_READ | PROT_WRITE));
-  ASSERT(t, (km.flags() & (MAP_PRIVATE | MAP_ANONYMOUS)) ==
-                (MAP_PRIVATE | MAP_ANONYMOUS));
+  ASSERT(t,
+         (km.flags() & (MAP_PRIVATE | MAP_ANONYMOUS)) ==
+             (MAP_PRIVATE | MAP_ANONYMOUS));
 
   {
     AutoRemoteSyscalls remote(t);
@@ -518,8 +520,9 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
                  kms[exe_km_option1].fsname() != file_name) {
         exe_km_option2 = kms.size();
       } else {
-        ASSERT(t, kms[exe_km_option1].fsname() == file_name ||
-                      kms[exe_km_option2].fsname() == file_name);
+        ASSERT(t,
+               kms[exe_km_option1].fsname() == file_name ||
+                   kms[exe_km_option2].fsname() == file_name);
       }
     }
     if (km.contains(trace_frame.regs().ip().to_data_ptr<void>())) {
@@ -798,8 +801,9 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 
   if (fd >= 0) {
     if (t->fd_table()->is_monitoring(fd)) {
-      ASSERT(t, t->fd_table()->get_monitor(fd)->type() ==
-                    FileMonitor::Type::Mmapped);
+      ASSERT(t,
+             t->fd_table()->get_monitor(fd)->type() ==
+                 FileMonitor::Type::Mmapped);
       ((MmappedFileMonitor*)t->fd_table()->get_monitor(fd))->revive();
     } else {
       t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, emufile));

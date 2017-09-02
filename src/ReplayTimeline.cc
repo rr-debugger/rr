@@ -218,8 +218,8 @@ void ReplayTimeline::mark_after_singlestep(const Mark& from,
           for (size_t j = 0; j < mark_vector.size(); ++j) {
             LOG(debug) << "  mark_vector[" << j << "] " << *mark_vector[j];
           }
-          ASSERT(result.break_status.task, false) << " expected to find " << m
-                                                  << " at index " << i + 1;
+          ASSERT(result.break_status.task, false)
+              << " expected to find " << m << " at index " << i + 1;
         }
         break;
       }
@@ -1013,9 +1013,10 @@ ReplayResult ReplayTimeline::reverse_continue(
         ++stop_count;
         if (stop_count > stop_count_limit) {
           Mark before_running = mark();
-          if (run_forward_to_intermediate_point(end, made_progress_between_stops
-                                                         ? DONT_FORCE_PROGRESS
-                                                         : FORCE_PROGRESS)) {
+          if (run_forward_to_intermediate_point(end,
+                                                made_progress_between_stops
+                                                    ? DONT_FORCE_PROGRESS
+                                                    : FORCE_PROGRESS)) {
             DEBUG_ASSERT(!at_mark(end));
             // We made some progress towards |end| with breakpoints/watchpoints
             // disabled, without reaching |end|. Continuing running forward from

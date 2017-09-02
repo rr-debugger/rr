@@ -350,8 +350,9 @@ bool Scheduler::treat_as_high_priority(RecordTask* t) {
 
 void Scheduler::validate_scheduled_task() {
   ASSERT(current_, !must_run_task || must_run_task == current_);
-  ASSERT(current_, task_round_robin_queue.empty() ||
-                       current_ == task_round_robin_queue.front());
+  ASSERT(current_,
+         task_round_robin_queue.empty() ||
+             current_ == task_round_robin_queue.front());
 }
 
 Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
@@ -534,8 +535,9 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         LOG(debug) << "    ... but it's dead";
       }
     } while (!next);
-    ASSERT(next, next->unstable || next->may_be_blocked() ||
-                     status.ptrace_event() == PTRACE_EVENT_EXIT)
+    ASSERT(next,
+           next->unstable || next->may_be_blocked() ||
+               status.ptrace_event() == PTRACE_EVENT_EXIT)
         << "Scheduled task should have been blocked or unstable";
     next->did_waitpid(status);
     result.by_waitpid = true;

@@ -590,8 +590,8 @@ void Task::enter_syscall() {
         session().is_replaying()) {
       continue;
     }
-    ASSERT(this, session().is_recording()) << " got unexpected signal "
-                                           << signal_name(stop_sig());
+    ASSERT(this, session().is_recording())
+        << " got unexpected signal " << signal_name(stop_sig());
     if (stop_sig() == SYSCALLBUF_DESCHED_SIGNAL) {
       continue;
     }
@@ -1019,18 +1019,19 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
      */
     int raw_status = 0;
     wait_ret = waitpid(tid, &raw_status, WNOHANG | __WALL | WSTOPPED);
-    ASSERT(this, 0 <= wait_ret) << "waitpid(" << tid << ", NOHANG) failed with "
-                                << wait_ret;
+    ASSERT(this, 0 <= wait_ret)
+        << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
     WaitStatus status(raw_status);
     if (wait_ret == tid) {
       // In some (but not all) cases where the child was killed with SIGKILL,
       // we don't get PTRACE_EVENT_EXIT before it just exits.
-      ASSERT(this, status.ptrace_event() == PTRACE_EVENT_EXIT ||
-                       status.fatal_sig() == SIGKILL)
+      ASSERT(this,
+             status.ptrace_event() == PTRACE_EVENT_EXIT ||
+                 status.fatal_sig() == SIGKILL)
           << "got " << status;
     } else {
-      ASSERT(this, 0 == wait_ret) << "waitpid(" << tid
-                                  << ", NOHANG) failed with " << wait_ret;
+      ASSERT(this, 0 == wait_ret)
+          << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
     }
   }
   if (wait_ret == tid) {
@@ -1990,9 +1991,10 @@ void Task::reset_syscallbuf() {
     return;
   }
 
-  ASSERT(this, !is_in_untraced_syscall() ||
-                   0 == (SYSCALLBUF_LOCKED_TRACEE &
-                         read_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked))));
+  ASSERT(this,
+         !is_in_untraced_syscall() ||
+             0 == (SYSCALLBUF_LOCKED_TRACEE &
+                   read_mem(REMOTE_PTR_FIELD(syscallbuf_child, locked))));
 
   // Memset is easiest to do by using the local mapping which should always
   // exist for the syscallbuf
@@ -2218,9 +2220,9 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
       *ok = false;
     }
   } else {
-    ASSERT(this, nwritten == buf_size) << "Should have written " << buf_size
-                                       << " bytes to " << addr
-                                       << ", but only wrote " << nwritten;
+    ASSERT(this, nwritten == buf_size)
+        << "Should have written " << buf_size << " bytes to " << addr
+        << ", but only wrote " << nwritten;
   }
   if (nwritten > 0) {
     vm()->notify_written(addr, nwritten, flags);
@@ -2281,8 +2283,9 @@ bool Task::clone_syscall_is_complete(pid_t* new_pid,
   // handle this.
   // XXX ENOSYS shouldn't happen here.
   intptr_t result = regs().syscall_result_signed();
-  ASSERT(this, regs().syscall_may_restart() || -ENOSYS == result ||
-                   -EAGAIN == result || -ENOMEM == result)
+  ASSERT(this,
+         regs().syscall_may_restart() || -ENOSYS == result ||
+             -EAGAIN == result || -ENOMEM == result)
       << "Unexpected task status " << status() << " ("
       << syscall_name(regs().original_syscallno(), syscall_arch)
       << " syscall errno: " << errno_name(-result) << ")";
@@ -2347,8 +2350,8 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
   do {
     ret = perform_remote_clone(remote, base_flags, stack, ptid, tls, ctid);
   } while (ret == -EAGAIN);
-  ASSERT(remote.task(), ret >= 0) << "remote clone failed with errno "
-                                  << errno_name(-ret);
+  ASSERT(remote.task(), ret >= 0)
+      << "remote clone failed with errno " << errno_name(-ret);
 
   Task* child = remote.task()->clone(
       reason, clone_flags_to_task_flags(base_flags), stack, tls, ctid,

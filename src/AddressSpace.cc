@@ -619,8 +619,9 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
       remote_ptr<rrcall_init_preload_params<Arch>>(t->regs().arg1()));
 
   if (t->session().is_recording()) {
-    ASSERT(t, t->session().as_record()->use_syscall_buffer() ==
-                  params.syscallbuf_enabled)
+    ASSERT(t,
+           t->session().as_record()->use_syscall_buffer() ==
+               params.syscallbuf_enabled)
         << "Tracee thinks syscallbuf is "
         << (params.syscallbuf_enabled ? "en" : "dis")
         << "abled, but tracer thinks "
@@ -1568,8 +1569,9 @@ static inline void assert_coalesceable(Task* t,
                                        const AddressSpace::Mapping& higher) {
   ASSERT(t, lower.emu_file == higher.emu_file);
   ASSERT(t, lower.flags == higher.flags);
-  ASSERT(t, (lower.local_addr == 0 && higher.local_addr == 0) ||
-                lower.local_addr + lower.map.size() == higher.local_addr);
+  ASSERT(t,
+         (lower.local_addr == 0 && higher.local_addr == 0) ||
+             lower.local_addr + lower.map.size() == higher.local_addr);
   ASSERT(t, !lower.monitored_shared_memory && !higher.monitored_shared_memory);
 }
 

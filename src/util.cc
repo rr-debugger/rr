@@ -347,9 +347,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
       }
       // If the backing file is too short, we cut mappings short, to make sure
       // have the same behavior as during recording. Tolerate this.
-      ASSERT(t, m.map.end() <= rec_end_addr) << "Segment " << rec_start_addr
-                                             << "-" << rec_end_addr
-                                             << " changed to " << m.map << "??";
+      ASSERT(t, m.map.end() <= rec_end_addr)
+          << "Segment " << rec_start_addr << "-" << rec_end_addr
+          << " changed to " << m.map << "??";
       if (is_start_of_scratch_region(t, rec_start_addr)) {
         /* Replay doesn't touch scratch regions, so
          * their contents are allowed to diverge.

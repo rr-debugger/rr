@@ -942,9 +942,9 @@ void ReplaySession::check_ticks_consistency(ReplayTask* t, const Event& ev) {
   Ticks ticks_now = t->tick_count();
   Ticks trace_ticks = trace_frame.ticks();
 
-  ASSERT(t, ticks_now == trace_ticks) << "ticks mismatch for '" << ev
-                                      << "'; expected " << trace_ticks
-                                      << ", got " << ticks_now << "";
+  ASSERT(t, ticks_now == trace_ticks)
+      << "ticks mismatch for '" << ev << "'; expected " << trace_ticks
+      << ", got " << ticks_now << "";
 }
 
 static bool treat_signal_event_as_deterministic(const SignalEvent& ev) {
@@ -986,9 +986,9 @@ Completion ReplaySession::emulate_deterministic_signal(
       }
     }
   }
-  ASSERT(t, t->stop_sig() == sig) << "Replay got unrecorded signal "
-                                  << signal_name(t->stop_sig())
-                                  << " (expecting " << signal_name(sig) << ")";
+  ASSERT(t, t->stop_sig() == sig)
+      << "Replay got unrecorded signal " << signal_name(t->stop_sig())
+      << " (expecting " << signal_name(sig) << ")";
   const Event& ev = trace_frame.event();
   check_ticks_consistency(t, ev);
 
@@ -1019,8 +1019,9 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
                         buf.data.size() - sizeof(struct syscallbuf_hdr),
                         buf.data.data() + sizeof(struct syscallbuf_hdr));
 
-  ASSERT(t, recorded_hdr.num_rec_bytes + sizeof(struct syscallbuf_hdr) <=
-                t->syscallbuf_size);
+  ASSERT(t,
+         recorded_hdr.num_rec_bytes + sizeof(struct syscallbuf_hdr) <=
+             t->syscallbuf_size);
 
   current_step.flush.stop_breakpoint_addr =
       t->stopping_breakpoint_table.to_data_ptr<void>().as_int() +
@@ -1485,8 +1486,9 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     ASSERT(t, !result.break_status.signal)
         << "Expected either SIGTRAP at $ip " << t->ip()
         << " or USER breakpoint just after it";
-    ASSERT(t, !result.break_status.singlestep_complete ||
-                  constraints.is_singlestep());
+    ASSERT(t,
+           !result.break_status.singlestep_complete ||
+               constraints.is_singlestep());
 
     check_approaching_ticks_target(t, constraints, result.break_status);
     result.did_fast_forward = did_fast_forward;

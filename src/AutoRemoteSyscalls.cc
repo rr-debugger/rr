@@ -566,8 +566,8 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   int cwd_fd;
   int child_connect = child_connect_socket(
       *this, remote_buf, sc_args, sc_args_end, child_sock, path, &cwd_fd);
-  ASSERT(t, child_connect == 0) << "Failed to connect child socket, err="
-                                << errno_name(-child_connect);
+  ASSERT(t, child_connect == 0)
+      << "Failed to connect child socket, err=" << errno_name(-child_connect);
 
   void* thread_ret;
   ret = pthread_join(accept_thread, &thread_ret);

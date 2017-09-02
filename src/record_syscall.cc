@@ -2461,10 +2461,11 @@ static void prepare_exit(RecordTask* t, int exit_code) {
 
   Registers r = t->regs();
   Registers exit_regs = r;
-  ASSERT(t, is_exit_syscall(exit_regs.original_syscallno(),
-                            t->ev().Syscall().arch()) ||
-                is_exit_group_syscall(exit_regs.original_syscallno(),
-                                      t->ev().Syscall().arch()))
+  ASSERT(t,
+         is_exit_syscall(exit_regs.original_syscallno(),
+                         t->ev().Syscall().arch()) ||
+             is_exit_group_syscall(exit_regs.original_syscallno(),
+                                   t->ev().Syscall().arch()))
       << "Tracee should have been at exit/exit_group, but instead at "
       << t->ev().Syscall().syscall_name();
 
@@ -3339,16 +3340,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       // We could record a little less data by restricting the recorded data
       // to the syscall result * sizeof(Arch::legacy_gid_t), but that would
       // require more infrastructure and it's not worth worrying about.
-      syscall_state.reg_parameter(2, (int)regs.arg1_signed() *
-                                         sizeof(typename Arch::legacy_gid_t));
+      syscall_state.reg_parameter(
+          2, (int)regs.arg1_signed() * sizeof(typename Arch::legacy_gid_t));
       return PREVENT_SWITCH;
 
     case Arch::getgroups32:
       // We could record a little less data by restricting the recorded data
       // to the syscall result * sizeof(Arch::gid_t), but that would
       // require more infrastructure and it's not worth worrying about.
-      syscall_state.reg_parameter(2, (int)regs.arg1_signed() *
-                                         sizeof(typename Arch::gid_t));
+      syscall_state.reg_parameter(
+          2, (int)regs.arg1_signed() * sizeof(typename Arch::gid_t));
       return PREVENT_SWITCH;
 
     case Arch::write:
@@ -3822,8 +3823,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     /* int epoll_wait(int epfd, struct epoll_event *events, int maxevents, int
      * timeout); */
     case Arch::epoll_wait:
-      syscall_state.reg_parameter(2, sizeof(typename Arch::epoll_event) *
-                                         regs.arg3_signed());
+      syscall_state.reg_parameter(
+          2, sizeof(typename Arch::epoll_event) * regs.arg3_signed());
       return ALLOW_SWITCH;
 
     /* The following two syscalls enable context switching not for
@@ -3903,8 +3904,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return prepare_ptrace<Arch>(t, syscall_state);
 
     case Arch::mincore:
-      syscall_state.reg_parameter(3, (regs.arg2() + page_size() - 1) /
-                                         page_size());
+      syscall_state.reg_parameter(
+          3, (regs.arg2() + page_size() - 1) / page_size());
       return PREVENT_SWITCH;
 
     case Arch::shmctl:
@@ -3991,8 +3992,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
       if (t->session().enable_chaos()) {
         // XXX fix this to actually disable chaos mode ASLR?
-        ASSERT(t, !(p & (ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE |
-                         ADDR_LIMIT_32BIT | ADDR_LIMIT_3GB)))
+        ASSERT(t,
+               !(p & (ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE |
+                      ADDR_LIMIT_32BIT | ADDR_LIMIT_3GB)))
             << "Personality value " << HEX(p)
             << " not compatible with chaos mode addres-space randomization";
       }
@@ -4452,8 +4454,9 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
 
     if ((flags & MAP_SHARED)) {
       if (t->fd_table()->is_monitoring(fd)) {
-        ASSERT(t, t->fd_table()->get_monitor(fd)->type() ==
-                      FileMonitor::Type::Mmapped);
+        ASSERT(t,
+               t->fd_table()->get_monitor(fd)->type() ==
+                   FileMonitor::Type::Mmapped);
         ((MmappedFileMonitor*)t->fd_table()->get_monitor(fd))->revive();
       } else {
         t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, fd));
@@ -5121,9 +5124,10 @@ static void rec_process_syscall_arch(RecordTask* t,
             // If we stopped the tracee to deliver this notification,
             // now allow it to continue to exit properly and notify its
             // real parent.
-            ASSERT(t, tracee->ev().is_syscall_event() &&
-                          PROCESSING_SYSCALL == tracee->ev().Syscall().state &&
-                          tracee->stable_exit);
+            ASSERT(t,
+                   tracee->ev().is_syscall_event() &&
+                       PROCESSING_SYSCALL == tracee->ev().Syscall().state &&
+                       tracee->stable_exit);
             // Continue the task since we didn't in enter_syscall
             tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
                                      RESUME_NO_TICKS);
@@ -5180,8 +5184,9 @@ static void rec_process_syscall_arch(RecordTask* t,
           break;
         default: {
           auto ret = t->regs().syscall_result_signed();
-          ASSERT(t, ret == -ENOENT || ret == -ENODEV || ret == -ENOTBLK ||
-                        ret == -EINVAL)
+          ASSERT(t,
+                 ret == -ENOENT || ret == -ENODEV || ret == -ENOTBLK ||
+                     ret == -EINVAL)
               << " unknown quotactl(" << HEX(t->regs().arg1() >> SUBCMDSHIFT)
               << ")";
           break;
