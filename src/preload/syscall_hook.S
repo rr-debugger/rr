@@ -104,21 +104,27 @@ _syscall_hook_trampoline:
         .cfi_adjust_cfa_offset 4
 
         /* $esp points at &info.  Push that pointer on the stack as
-         * our arg for vsyscall_hook(). */
-        movl %esp, %ebx
-        .cfi_def_cfa_register %ebx
+         * our arg for vsyscall_hook().
+         * Use %ebp as our temporary CFA register here. Don't use %ebx or
+         * any other GP register, since x86-64 gdb 7.7 (at least) treats all GP
+         * regs other than %esp/%ebp as *signed* and sign-extends their values.
+         * Having some CFA values sign-extended and others not breaks gdb
+         * stack walking.
+         */
+        movl %esp, %ebp
+        .cfi_def_cfa_register %ebp
 
         /* Align stack to 16 bytes */
         and $0xfffffff0,%esp
 
         sub $12,%esp
-        pushl %ebx
+        pushl %ebp
 
         call syscall_hook
         /* $eax = vsyscall_hook(&info); */
 
         /* Restore ESP */
-        mov %ebx,%esp
+        mov %ebp, %esp
         .cfi_def_cfa_register %esp
 
         /* $eax is now the syscall return value.  Erase |info.no| from the
