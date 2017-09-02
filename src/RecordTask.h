@@ -493,9 +493,9 @@ public:
    */
   sig_set_t read_sigmask_from_process();
 
-private:
   ~RecordTask();
 
+private:
   /**
    * Wait for |futex| in this address space to have the value
    * |val|.

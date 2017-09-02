@@ -99,6 +99,14 @@ static void record_robust_futex_changes(RecordTask* t) {
   RR_ARCH_FUNCTION(record_robust_futex_changes_arch, t->arch(), t);
 }
 
+static void record_exit(RecordTask* t, WaitStatus exit_status) {
+  t->session().trace_writer().write_task_event(
+      TraceTaskEvent::for_exit(t->tid, exit_status));
+  if (t->task_group()->tgid == t->tid) {
+    t->task_group()->exit_status = exit_status;
+  }
+}
+
 /**
  * Return true if we handle a ptrace exit event for task t. When this returns
  * true, t has been deleted and cannot be referenced again.
@@ -128,12 +136,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     exit_status = WaitStatus::for_fatal_sig(SIGKILL);
   }
 
-  t->session().trace_writer().write_task_event(
-      TraceTaskEvent::for_exit(t->tid, exit_status));
-  if (t->task_group()->tgid == t->tid) {
-    t->task_group()->exit_status = exit_status;
-  }
-
+  record_exit(t, exit_status);
   // Delete t. t's destructor writes the final EV_EXIT.
   t->destroy();
   return true;
@@ -379,11 +382,12 @@ static void handle_seccomp_errno(RecordTask* t,
   step_state->continue_type = RecordSession::DONT_CONTINUE;
 }
 
-bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state,
+bool RecordSession::handle_ptrace_event(RecordTask** t_ptr, StepState* step_state,
                                         RecordResult* result,
                                         bool* did_enter_syscall) {
   *did_enter_syscall = false;
 
+  RecordTask* t = *t_ptr;
   if (t->status().group_stop()) {
     last_task_switchable = ALLOW_SWITCH;
     step_state->continue_type = DONT_CONTINUE;
@@ -432,14 +436,48 @@ bool RecordSession::handle_ptrace_event(RecordTask* t, StepState* step_state,
       break;
     }
 
-    case PTRACE_EVENT_EXEC:
-      ASSERT(t, t->task_group()->task_set().size() == 1)
-          << "Found lingering task which is not the task-group leader???";
+    case PTRACE_EVENT_EXEC: {
+      if (t->task_group()->task_set().size() > 1) {
+        // All tasks but the task that did the execve should have exited by
+        // now and notified us of their exits. However, it's possible that
+        // while running the thread-group leader, our PTRACE_CONT raced with its
+        // PTRACE_EVENT_EXIT and it exited, and the next event we got is this
+        // PTRACE_EVENT_EXEC after the exec'ing task changed its tid to the
+        // leader's tid. Or maybe there are kernel bugs; on
+        // 4.2.0-42-generic running exec_from_other_thread, we reproducibly
+        // enter PTRACE_EVENT_EXEC for the thread-group leader without seeing
+        // its PTRACE_EVENT_EXIT.
+
+        // So, record this task's exit and destroy it.
+        // XXX We can't do record_robust_futex_changes here because the address
+        // space has already gone. That would only matter if some of them were
+        // in memory accessible to another process even after exec, i.e. a
+        // shared-memory mapping or two different thread-groups sharing the same
+        // address space.
+        pid_t tid = t->rec_tid;
+        WaitStatus status = t->status();
+        // Mark task as unstable so we don't wait on its futex. This matches
+        // what the kernel would do.
+        t->unstable = true;
+        record_exit(t, WaitStatus(0));
+        // Don't call RecordTask::destroy() because we don't want to
+        // PTRACE_DETACH.
+        delete t;
+        // Steal the exec'ing task and make it the thread-group leader, and
+        // carry on!
+        t = revive_task_for_exec(tid);
+        scheduler().set_current(t);
+        *t_ptr = t;
+        // Tell t that it is actually stopped, because the stop we got is really
+        // for this task, not the old dead task.
+        t->did_waitpid(status);
+      }
       t->post_exec();
 
       // Skip past the ptrace event.
       step_state->continue_type = CONTINUE_SYSCALL;
       break;
+    }
 
     default:
       ASSERT(t, false) << "Unhandled ptrace event " << ptrace_event_name(event)
@@ -952,7 +990,7 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
   int ret =
       ptrace(__ptrace_request(PTRACE_GETEVENTMSG), rec_tid, nullptr, &msg);
   if (ret < 0) {
-    FATAL() << "Can't get old tid for execve";
+    FATAL() << "Can't get old tid for execve (leader=" << rec_tid << ")";
   }
   RecordTask* t = find_task(msg);
   if (!t) {
@@ -1343,7 +1381,7 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
           // by a SECCOMP event, which it left pending. Handle that SECCOMP
           // event now.
           bool dummy_did_enter_syscall;
-          handle_ptrace_event(t, step_state, nullptr, &dummy_did_enter_syscall);
+          handle_ptrace_event(&t, step_state, nullptr, &dummy_did_enter_syscall);
           ASSERT(t, !dummy_did_enter_syscall);
         }
         break;
@@ -1788,7 +1826,7 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   bool did_enter_syscall;
   if (rescheduled.by_waitpid &&
-      handle_ptrace_event(t, &step_state, &result, &did_enter_syscall)) {
+      handle_ptrace_event(&t, &step_state, &result, &did_enter_syscall)) {
     if (result.status != STEP_CONTINUE ||
         step_state.continue_type == DONT_CONTINUE) {
       return result;

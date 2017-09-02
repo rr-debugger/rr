@@ -142,7 +142,7 @@ private:
                              RecordResult* step_result,
                              SupportedArch syscall_arch);
   void check_initial_task_syscalls(RecordTask* t, RecordResult* step_result);
-  bool handle_ptrace_event(RecordTask* t, StepState* step_state,
+  bool handle_ptrace_event(RecordTask** t_ptr, StepState* step_state,
                            RecordResult* result, bool* did_enter_syscall);
   bool handle_signal_event(RecordTask* t, StepState* step_state);
   void runnable_state_changed(RecordTask* t, StepState* step_state,

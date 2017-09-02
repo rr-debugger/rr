@@ -129,6 +129,7 @@ public:
   void on_destroy(RecordTask* t);
 
   RecordTask* current() const { return current_; }
+  void set_current(RecordTask* t) { current_ = t; }
 
   Ticks current_timeslice_end() const { return current_timeslice_end_; }
 
