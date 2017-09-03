@@ -4,7 +4,7 @@
 
 static void* do_thread(__attribute__((unused)) void* p) {
   char* argv[] = { "/proc/self/exe", "dummy", NULL };
-  atomic_puts("About to exec");
+  write(STDOUT_FILENO, ".", 1);
   execve("/proc/self/exe", argv, environ);
   test_assert(0 && "Failed exec!");
   return NULL;
@@ -12,15 +12,26 @@ static void* do_thread(__attribute__((unused)) void* p) {
 
 int main(int argc, __attribute__((unused)) char** argv) {
   pthread_t thread;
+  int i;
+  pid_t child;
+  int status;
 
   if (argc > 1) {
-    atomic_puts("EXIT-SUCCESS");
-    return 0;
+    return 77;
   }
 
-  pthread_create(&thread, NULL, do_thread, NULL);
-  sleep(1000);
-  test_assert(0 && "Failed something!");
+  for (i = 0; i < 100; ++i) {
+    child = fork();
+    if (child == 0) {
+      pthread_create(&thread, NULL, do_thread, NULL);
+      sleep(1000);
+      test_assert(0 && "Failed something!");
+      return 1;
+    }
+    test_assert(child == waitpid(child, &status, 0));
+    test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
+  }
 
-  return 1;
+  atomic_puts("\nEXIT-SUCCESS");
+  return 0;
 }
