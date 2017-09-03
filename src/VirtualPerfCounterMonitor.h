@@ -11,7 +11,9 @@ struct perf_event_attr;
 namespace rr {
 
 /**
- * A FileMonitor to
+ * A FileMonitor to virtualize the performance counter that rr uses to count
+ * ticks. Note that this doesn't support interrupts yet so recording rr replays
+ * that involve async signals will not work!
  */
 class VirtualPerfCounterMonitor : public FileMonitor {
 public:
