@@ -317,8 +317,9 @@ public:
   /**
    * Assuming we've just entered a syscall, exit that syscall and reset
    * state to reenter the syscall just as it was called the first time.
+   * Returns false if we see the process exit instead.
    */
-  void exit_syscall_and_prepare_restart();
+  bool exit_syscall_and_prepare_restart();
 
   /**
    * We're currently in user-space with registers set up to perform a system
@@ -331,9 +332,10 @@ public:
    * We have observed entry to a syscall (either by PTRACE_EVENT_SECCOMP or
    * a syscall, depending on the value of Session::syscall_seccomp_ordering()).
    * Continue into the kernel to perform the syscall and stop at the
-   * PTRACE_SYSCALL syscall-exit trap.
+   * PTRACE_SYSCALL syscall-exit trap. Returns false if we see the process exit
+   * before that.
    */
-  void exit_syscall();
+  bool exit_syscall();
 
   /**
    * Return the "task name"; i.e. what |prctl(PR_GET_NAME)| or

@@ -599,7 +599,7 @@ void Task::enter_syscall() {
   }
 }
 
-void Task::exit_syscall() {
+bool Task::exit_syscall() {
   // If PTRACE_SYSCALL_BEFORE_SECCOMP, we are inconsistent about
   // whether we process the syscall on the syscall entry trap or
   // on the seccomp trap. Detect if we are on the former and
@@ -614,6 +614,9 @@ void Task::exit_syscall() {
       will_see_seccomp = false;
       continue;
     }
+    if (ptrace_event() == PTRACE_EVENT_EXIT) {
+      return false;
+    }
     ASSERT(this, !ptrace_event());
     if (!stop_sig()) {
       canonicalize_regs(arch());
@@ -626,9 +629,10 @@ void Task::exit_syscall() {
     ASSERT(this, session().is_recording());
     static_cast<RecordTask*>(this)->stash_sig();
   }
+  return true;
 }
 
-void Task::exit_syscall_and_prepare_restart() {
+bool Task::exit_syscall_and_prepare_restart() {
   Registers r = regs();
   int syscallno = r.original_syscallno();
   LOG(debug) << "exit_syscall_and_prepare_restart from syscall "
@@ -637,7 +641,9 @@ void Task::exit_syscall_and_prepare_restart() {
   set_regs(r);
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
-  exit_syscall();
+  if (!exit_syscall()) {
+    return false;
+  }
   LOG(debug) << "exit_syscall_and_prepare_restart done";
 
   // Restore these regs to what they would have been just before
@@ -646,6 +652,7 @@ void Task::exit_syscall_and_prepare_restart() {
   r.set_syscallno(syscallno);
   r.set_ip(r.ip() - syscall_instruction_length(r.arch()));
   set_regs(r);
+  return true;
 }
 
 static string prname_from_exe_image(const string& e) {

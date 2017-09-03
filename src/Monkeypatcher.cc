@@ -458,7 +458,9 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
                           sizeof(syscall_patch_hook::next_instruction_bytes));
 
         // Get out of executing the current syscall before we patch it.
-        t->exit_syscall_and_prepare_restart();
+        if (!t->exit_syscall_and_prepare_restart()) {
+          return false;
+        }
 
         patch_syscall_with_hook(*this, t, hook);
 

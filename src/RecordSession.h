@@ -138,7 +138,8 @@ private:
                                      RecordSession::StepState* step_state,
                                      RecordResult* result,
                                      bool* did_enter_syscall);
-  void process_syscall_entry(RecordTask* t, StepState* step_state,
+  // Returns false if the task exits during processing
+  bool process_syscall_entry(RecordTask* t, StepState* step_state,
                              RecordResult* step_result,
                              SupportedArch syscall_arch);
   void check_initial_task_syscalls(RecordTask* t, RecordResult* step_result);

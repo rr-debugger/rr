@@ -185,12 +185,14 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       t->set_regs(orig_regs);
     }
 
-    process_syscall_entry(t, step_state, result, t->arch());
-    *did_enter_syscall = true;
     // Don't continue yet. At the next iteration of record_step, we'll
     // enter syscall_state_changed and that will trigger a continue to
     // the syscall exit.
     step_state->continue_type = RecordSession::DONT_CONTINUE;
+    if (!process_syscall_entry(t, step_state, result, t->arch())) {
+      return;
+    }
+    *did_enter_syscall = true;
     return;
   }
 
@@ -216,7 +218,10 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
       // we need to handle that now.
       SupportedArch syscall_arch = t->detect_syscall_arch();
       t->canonicalize_regs(syscall_arch);
-      process_syscall_entry(t, step_state, result, syscall_arch);
+      if (!process_syscall_entry(t, step_state, result, syscall_arch)) {
+        step_state->continue_type = RecordSession::DONT_CONTINUE;
+        return;
+      }
       *did_enter_syscall = true;
     }
   }
@@ -1421,7 +1426,7 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
   return true;
 }
 
-void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
+bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
                                           RecordResult* step_result,
                                           SupportedArch syscall_arch) {
   if (t->has_stashed_sig_not_synthetic_SIGCHLD()) {
@@ -1459,13 +1464,20 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
       // notification. Ignore it and continue to the seccomp notification.
       syscall_seccomp_ordering_ = PTRACE_SYSCALL_BEFORE_SECCOMP;
       step_state->continue_type = CONTINUE;
-      return;
+      return true;
     }
 
     if (t->vm()->monkeypatcher().try_patch_syscall(t)) {
       // Syscall was patched. Emit event and continue execution.
       t->record_event(Event::patch_syscall());
-      return;
+      return true;
+    }
+
+    if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+      // task exited while we were trying to patch it.
+      // Make sure that this exit event gets processed
+      step_state->continue_type = DONT_CONTINUE;
+      return false;
     }
 
     t->push_event(SyscallEvent(t->regs().original_syscallno(), syscall_arch));
@@ -1485,11 +1497,13 @@ void RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
         t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
         t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP;
   }
+  return true;
 }
 
 /**
  * The execution of |t| has just been resumed, and it most likely has
  * a new event that needs to be processed.  Prepare that new event.
+ * Returns false if the task exits during processing
  */
 void RecordSession::runnable_state_changed(RecordTask* t, StepState* step_state,
                                            RecordResult* step_result,
@@ -1497,12 +1511,11 @@ void RecordSession::runnable_state_changed(RecordTask* t, StepState* step_state,
   switch (t->ev().type()) {
     case EV_NOOP:
       t->pop_noop();
-      break;
+      return;
     case EV_INSTRUCTION_TRAP:
       t->record_current_event();
       t->pop_event(t->ev().type());
-      break;
-
+      return;
     case EV_SENTINEL:
     case EV_SIGNAL_HANDLER:
     case EV_SYSCALL_INTERRUPTION: {
@@ -1513,7 +1526,7 @@ void RecordSession::runnable_state_changed(RecordTask* t, StepState* step_state,
       SupportedArch syscall_arch = t->detect_syscall_arch();
       t->canonicalize_regs(syscall_arch);
       process_syscall_entry(t, step_state, step_result, syscall_arch);
-      break;
+      return;
     }
 
     default:
