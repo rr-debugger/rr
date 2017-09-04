@@ -2473,6 +2473,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #if defined(SYS_sendto)
     CASE(sendto);
 #endif
+    CASE_GENERIC_NONBLOCKING(setsockopt);
     CASE_GENERIC_NONBLOCKING(setxattr);
 #if defined(SYS_socketcall)
     CASE(socketcall);
