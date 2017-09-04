@@ -29,6 +29,11 @@
 
         .p2align 4
 _syscallbuf_code_start:
+/* Insert a NOP here so no symbol has the same address as __morestack. Otherwise
+   in some configurations (gdb 7.7.1, Ubuntu 14.04) gdb sometimes maps the
+   __morestack address to _syscallbuf_code_start which defeats the morestack
+   hack. */
+        nop
 
 /* See comments about morestack below. For x86-32 our setup doesn't need to be
    as elaborate since we really only care about one entry function. */
