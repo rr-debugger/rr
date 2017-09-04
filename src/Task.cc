@@ -1296,15 +1296,22 @@ static struct timeval to_timeval(double t) {
   return v;
 }
 
+bool Task::wait_unexpected_exit() {
+  if (detected_unexpected_exit) {
+    LOG(debug) << "Unexpected (SIGKILL) exit was detected; reporting it now";
+    did_waitpid(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
+    detected_unexpected_exit = false;
+    return true;
+  }
+  return false;
+}
+
 void Task::wait(double interrupt_after_elapsed) {
   LOG(debug) << "going into blocking waitpid(" << tid << ") ...";
   ASSERT(this, !unstable) << "Don't wait for unstable tasks";
   ASSERT(this, session().is_recording() || interrupt_after_elapsed == 0);
 
-  if (detected_unexpected_exit) {
-    LOG(debug) << "Unexpected (SIGKILL) exit was detected; reporting it now";
-    did_waitpid(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
-    detected_unexpected_exit = false;
+  if (wait_unexpected_exit()) {
     return;
   }
 
@@ -1576,6 +1583,10 @@ void Task::did_waitpid(WaitStatus status) {
 }
 
 bool Task::try_wait() {
+  if (wait_unexpected_exit()) {
+    return true;
+  }
+
   int raw_status = 0;
   pid_t ret = waitpid(tid, &raw_status, WNOHANG | __WALL);
   ASSERT(this, 0 <= ret) << "waitpid(" << tid << ", NOHANG) failed with "

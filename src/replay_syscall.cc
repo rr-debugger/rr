@@ -86,6 +86,9 @@ static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
                           int expect_syscallno2 = -1, pid_t new_tid = -1) {
   t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
   while (true) {
+    if (t->wait_unexpected_exit()) {
+      break;
+    }
     int raw_status;
     // Do our own waitpid instead of calling Task::wait() so we can detect and
     // handle tid changes due to off-main-thread execve.

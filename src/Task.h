@@ -566,6 +566,11 @@ public:
    * block.
    */
   bool try_wait();
+  /**
+   * Return true if an unexpected exit was already detected for this task and
+   * it is ready to be reported.
+   */
+  bool wait_unexpected_exit();
 
   /**
    * Currently we don't allow recording across uid changes, so we can
