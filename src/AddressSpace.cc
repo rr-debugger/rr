@@ -39,7 +39,34 @@ static const char* trim_leading_blanks(const char* str) {
   return trimmed;
 }
 
-KernelMapIterator::KernelMapIterator(Task* t) : tid(t->tid) { init(); }
+/**
+ * Returns true if a task in t's task-group other than t is doing an exec.
+ */
+static bool task_group_in_exec(Task* t) {
+  if (!t->session().is_recording()) {
+    return false;
+  }
+  for (Task* tt : t->task_group()->task_set()) {
+    if (tt == t) {
+      continue;
+    }
+    RecordTask* rt = static_cast<RecordTask*>(tt);
+    Event& ev = rt->ev();
+    if (ev.is_syscall_event() &&
+        is_execve_syscall(ev.Syscall().number, ev.Syscall().arch())) {
+      return true;
+    }
+  }
+  return false;
+}
+
+KernelMapIterator::KernelMapIterator(Task* t) : tid(t->tid) {
+  // See https://lkml.org/lkml/2016/9/21/423
+  ASSERT(t, !task_group_in_exec(t)) << "Task-group in execve, so reading "
+                                       "/proc/.../maps may trigger kernel "
+                                       "deadlock!";
+  init();
+}
 
 KernelMapIterator::~KernelMapIterator() {
   if (maps_file) {
@@ -1284,6 +1311,10 @@ KernelMapping AddressSpace::vdso() const {
  */
 void AddressSpace::verify(Task* t) const {
   ASSERT(t, task_set().end() != task_set().find(t));
+
+  if (task_group_in_exec(t)) {
+    return;
+  }
 
   MemoryMap::const_iterator mem_it = mem.begin();
   KernelMapIterator kernel_it(t);
