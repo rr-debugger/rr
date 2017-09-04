@@ -475,6 +475,25 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_89_c1_31_d2)
         xor %edx,%edx
 SYSCALLHOOK_END(_syscall_hook_trampoline_89_c1_31_d2)
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00)
+        .cfi_offset %rip, 16
+        RSP_IS_CFA_PLUS_OFFSET(24)
+        callq __morestack
+        /* The original instructions after the syscall are
+           retq; nopl 0x0(%rax,%rax,1) */
+        /* We're not returning to the dynamically generated stub, so
+           we need to fix the stack pointer ourselves. */
+        pop %rdx
+        CFA_AT_RSP_OFFSET(0)
+        pop %rsp
+        .cfi_def_cfa %rsp, 0;
+        pop (stub_scratch_1)
+        .cfi_adjust_cfa_offset -8
+        jmp _syscallbuf_final_exit_instruction
+
+        .cfi_endproc
+        .size _syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00, .-_syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00
+
 #endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits

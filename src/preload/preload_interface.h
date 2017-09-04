@@ -4,7 +4,15 @@
 #define RR_PRELOAD_INTERFACE_H_
 
 /* Bump this whenever the interface between syscallbuf and rr changes in a way
- * that would require changes to replay.
+ * that would require changes to replay. So be very careful making changes to
+ * this file! Many changes would require a bump in this value, and support
+ * code in rr to handle old protocol versions. And when we bump it we'll need
+ * to figure out a way to test the old protocol versions.
+ * To be clear, changes that only affect recording and not replay, such as
+ * changes to the layout of syscall_patch_hook, do not need to bump this.
+ * Note also that SYSCALLBUF_PROTOCOL_VERSION is stored in the trace header, so
+ * replay always has access to the SYSCALLBUF_PROTOCOL_VERSION used during
+ * recording, even before the preload library is ever loaded.
  */
 #define SYSCALLBUF_PROTOCOL_VERSION 0
 
@@ -191,11 +199,15 @@ static inline const char* extract_file_name(const char* s) {
  * instruction that follows a syscall instruction.
  * Each instance of this struct describes an instruction that can follow a
  * syscall and a hook function to patch with.
+ *
+ * This is not (and must not ever be) used during replay so we can change it
+ * without bumping SYSCALLBUF_PROTOCOL_VERSION.
  */
 struct syscall_patch_hook {
   uint8_t is_multi_instruction;
   uint8_t next_instruction_length;
-  uint8_t next_instruction_bytes[6];
+  /* Avoid any padding or anything that would make the layout arch-specific. */
+  uint8_t next_instruction_bytes[14];
   uint64_t hook_address;
 };
 
