@@ -15,6 +15,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
+#include <sys/wait.h>
 #include <syscall.h>
 
 #include <array>
@@ -83,18 +84,33 @@ static string maybe_dump_written_string(ReplayTask* t) {
 static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
                           SupportedArch syscall_arch, int expect_syscallno,
                           int expect_syscallno2 = -1, pid_t new_tid = -1) {
-  do {
-    t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
-    if (new_tid > 0) {
-      // Set new tid before we wait, so we wait for the right task.
-      // XXX maybe a signal could arrive and be delivered to the task before
-      // its tid changes, so we hang? Hope not!
+  t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
+  while (true) {
+    int raw_status;
+    // Do our own waitpid instead of calling Task::wait() so we can detect and
+    // handle tid changes due to off-main-thread execve.
+    // When we're expecting a tid change, we can't pass a tid here because we
+    // don't know which tid to wait for.
+    // Passing the original tid seems to cause a hang in some kernels
+    // (e.g. 4.10.0-19-generic) if the tid change races with our waitpid
+    int ret = waitpid(new_tid >= 0 ? -1 : t->tid, &raw_status, __WALL);
+    ASSERT(t, ret >= 0);
+    if (ret == new_tid) {
+      // Check that we only do this once
+      ASSERT(t, t->tid != new_tid);
       // Update the serial as if this task was really created by cloning the old
       // task.
       t->set_real_tid_and_update_serial(new_tid);
     }
-    t->wait();
-  } while (ReplaySession::is_ignored_signal(t->status().stop_sig()));
+    ASSERT(t, ret == t->tid);
+    t->did_waitpid(WaitStatus(raw_status));
+
+    if (ReplaySession::is_ignored_signal(t->status().stop_sig())) {
+      t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
+    } else {
+      break;
+    }
+  }
 
   ASSERT(t, !t->stop_sig())
       << "Expected no pending signal, but got " << t->stop_sig();
