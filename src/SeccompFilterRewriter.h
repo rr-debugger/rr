@@ -44,10 +44,19 @@ public:
    */
   void install_patched_seccomp_filter(RecordTask* t);
 
-  uint32_t map_filter_data_to_real_result(uint16_t value) {
-    DEBUG_ASSERT(value < index_to_result.size());
-    return index_to_result[value];
-  }
+  /**
+   * Returns false if the input value is not valid. In this case a
+   * PTRACE_EVENT_EXIT probably got in the way.
+   */
+  bool map_filter_data_to_real_result(RecordTask* t, uint16_t value,
+                                      uint32_t* result);
+
+  /**
+   * Start numbering custom data values from here. This avoids overlapping
+   * values that might be returned from a PTRACE_EVENT_EXIT, so we can
+   * distinguish unexpected exits from real results of PTRACE_GETEVENTMSG.
+   */
+  enum { BASE_CUSTOM_DATA = 0x100 };
 
 private:
   /**

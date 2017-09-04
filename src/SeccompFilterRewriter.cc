@@ -67,12 +67,16 @@ static void install_patched_seccomp_filter_arch(
              "supported";
       if (u.k != SECCOMP_RET_ALLOW) {
         if (result_to_index.find(u.k) == result_to_index.end()) {
-          ASSERT(t, index_to_result.size() < SECCOMP_RET_DATA)
+          ASSERT(t,
+                 SeccompFilterRewriter::BASE_CUSTOM_DATA +
+                         index_to_result.size() <
+                     SECCOMP_RET_DATA)
               << "Too many distinct constants used in seccomp-bpf programs";
           result_to_index[u.k] = index_to_result.size();
           index_to_result.push_back(u.k);
         }
-        u.k = result_to_index[u.k] | SECCOMP_RET_TRACE;
+        u.k = (SeccompFilterRewriter::BASE_CUSTOM_DATA + result_to_index[u.k]) |
+              SECCOMP_RET_TRACE;
       }
     }
   }
@@ -121,6 +125,17 @@ static void install_patched_seccomp_filter_arch(
 void SeccompFilterRewriter::install_patched_seccomp_filter(RecordTask* t) {
   RR_ARCH_FUNCTION(install_patched_seccomp_filter_arch, t->arch(), t,
                    result_to_index, index_to_result);
+}
+
+bool SeccompFilterRewriter::map_filter_data_to_real_result(RecordTask* t,
+                                                           uint16_t value,
+                                                           uint32_t* result) {
+  if (value < BASE_CUSTOM_DATA) {
+    return false;
+  }
+  ASSERT(t, value < BASE_CUSTOM_DATA + index_to_result.size());
+  *result = index_to_result[value - BASE_CUSTOM_DATA];
+  return true;
 }
 
 } // namespace rr

@@ -421,9 +421,14 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
                    << syscall_name(t->regs().original_syscallno(), t->arch());
         handle_seccomp_traced_syscall(t, step_state, result, did_enter_syscall);
       } else {
-        uint32_t real_result =
-            seccomp_filter_rewriter().map_filter_data_to_real_result(
-                seccomp_data);
+        uint32_t real_result;
+        if (!seccomp_filter_rewriter().map_filter_data_to_real_result(
+                t, seccomp_data, &real_result)) {
+          LOG(debug)
+              << "Process terminated unexpectedly during PTRACE_GETEVENTMSG";
+          step_state->continue_type = RecordSession::CONTINUE;
+          break;
+        }
         uint16_t real_result_data = real_result & SECCOMP_RET_DATA;
         switch (real_result & SECCOMP_RET_ACTION) {
           case SECCOMP_RET_TRAP:
