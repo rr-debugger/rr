@@ -1025,7 +1025,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
      * or just letting the tracee be scheduled to process its pending SIGKILL.
      */
     int raw_status = 0;
-    wait_ret = waitpid(tid, &raw_status, WNOHANG | __WALL | WSTOPPED);
+    wait_ret = waitpid(tid, &raw_status, WNOHANG | __WALL);
     ASSERT(this, 0 <= wait_ret)
         << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
     WaitStatus status(raw_status);
@@ -1041,7 +1041,8 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
           << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
     }
   }
-  if (wait_ret == tid) {
+  if (wait_ret > 0) {
+    LOG(debug) << "Task " << tid << " exited unexpectedly";
     // wait() will see this and report the ptrace-exit event.
     detected_unexpected_exit = true;
   } else {
@@ -1576,7 +1577,7 @@ void Task::did_waitpid(WaitStatus status) {
 
 bool Task::try_wait() {
   int raw_status = 0;
-  pid_t ret = waitpid(tid, &raw_status, WNOHANG | __WALL | WSTOPPED);
+  pid_t ret = waitpid(tid, &raw_status, WNOHANG | __WALL);
   ASSERT(this, 0 <= ret) << "waitpid(" << tid << ", NOHANG) failed with "
                          << ret;
   LOG(debug) << "waitpid(" << tid << ", NOHANG) returns " << ret << ", status "

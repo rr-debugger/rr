@@ -496,7 +496,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
         }
         LOG(debug) << "  Arming one-second timer for polling";
       }
-      pid_t tid = waitpid(-1, &raw_status, __WALL | WSTOPPED | WUNTRACED);
+      pid_t tid = waitpid(-1, &raw_status, __WALL | WUNTRACED);
       if (enable_poll) {
         struct itimerval timer = { { 0, 0 }, { 0, 0 } };
         if (setitimer(ITIMER_REAL, &timer, nullptr) < 0) {
