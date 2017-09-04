@@ -261,8 +261,9 @@ public:
   /**
    * Read a task event (clone or exec record) from the trace.
    * Returns a record of type NONE at the end of the trace.
+   * Sets |*time| (if non-null) to the global time of the event.
    */
-  TraceTaskEvent read_task_event();
+  TraceTaskEvent read_task_event(FrameTime* time = nullptr);
 
   /**
    * Read the next raw data record for this frame and return it. Aborts if

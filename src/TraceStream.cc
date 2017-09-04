@@ -662,7 +662,7 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
   }
 }
 
-TraceTaskEvent TraceReader::read_task_event() {
+TraceTaskEvent TraceReader::read_task_event(FrameTime* time) {
   TraceTaskEvent r;
   auto& tasks = reader(TASKS);
   if (tasks.at_end()) {
@@ -673,6 +673,9 @@ TraceTaskEvent TraceReader::read_task_event() {
   PackedMessageReader task_msg(stream);
   trace::TaskEvent::Reader task = task_msg.getRoot<trace::TaskEvent>();
   r.tid_ = i32_to_tid(task.getTid());
+  if (time) {
+    *time = task.getFrameTime();
+  }
   switch (task.which()) {
     case trace::TaskEvent::Which::CLONE: {
       r.type_ = TraceTaskEvent::CLONE;
@@ -680,6 +683,8 @@ TraceTaskEvent TraceReader::read_task_event() {
       r.parent_tid_ = i32_to_tid(clone.getParentTid());
       r.own_ns_tid_ = i32_to_tid(clone.getOwnNsTid());
       r.clone_flags_ = clone.getFlags();
+      LOG(debug) << "Reading event for " << task.getFrameTime()
+                 << ": parent=" << r.parent_tid_ << " tid=" << r.tid_;
       break;
     }
     case trace::TaskEvent::Which::EXEC: {

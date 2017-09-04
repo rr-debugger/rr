@@ -159,13 +159,15 @@ static void maybe_noop_restore_syscallbuf_scratch(ReplayTask* t) {
 static TraceTaskEvent read_task_trace_event(ReplayTask* t,
                                             TraceTaskEvent::Type type) {
   TraceTaskEvent tte;
+  FrameTime time;
   do {
-    tte = t->trace_reader().read_task_event();
+    tte = t->trace_reader().read_task_event(&time);
     ASSERT(t, tte.type() != TraceTaskEvent::NONE)
         << "Unable to find TraceTaskEvent; "
            "trace is corrupt (did you kill -9 "
            "rr?)";
-  } while (tte.type() != type);
+  } while (tte.type() != type || time < t->current_frame_time());
+  ASSERT(t, time == t->current_frame_time());
   return tte;
 }
 
@@ -249,7 +251,8 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // the recorded registers could be in a different pid namespace from rr's,
   // so we can't use it directly.
   TraceTaskEvent tte = read_task_trace_event(t, TraceTaskEvent::CLONE);
-  ASSERT(t, tte.parent_tid() == t->rec_tid);
+  ASSERT(t, tte.parent_tid() == t->rec_tid)
+      << "Expected tid " << t->rec_tid << ", got " << tte.parent_tid();
   long rec_tid = tte.tid();
 
   CloneParameters params;
