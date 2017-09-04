@@ -403,14 +403,11 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
   uint8_t following_bytes[256];
   size_t bytes_count = t->read_bytes_fallible(
       ip.to_data_ptr<uint8_t>(), sizeof(following_bytes), following_bytes);
-  if (bytes_count < sizeof(syscall_patch_hook::next_instruction_bytes)) {
-    tried_to_patch_syscall_addresses.insert(ip);
-    return false;
-  }
 
   intptr_t syscallno = r.original_syscallno();
   for (auto& hook : syscall_hooks) {
-    if (memcmp(following_bytes, hook.next_instruction_bytes,
+    if (bytes_count >= hook.next_instruction_length &&
+        memcmp(following_bytes, hook.next_instruction_bytes,
                hook.next_instruction_length) == 0) {
       // Search for a following short-jump instruction that targets an
       // instruction
@@ -455,7 +452,9 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
                    << " bytes "
                    << bytes_to_string(
                           following_bytes,
-                          sizeof(syscall_patch_hook::next_instruction_bytes));
+                          min(bytes_count,
+                              sizeof(
+                                  syscall_patch_hook::next_instruction_bytes)));
 
         // Get out of executing the current syscall before we patch it.
         if (!t->exit_syscall_and_prepare_restart()) {
@@ -474,7 +473,8 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
              << " bytes "
              << bytes_to_string(
                     following_bytes,
-                    sizeof(syscall_patch_hook::next_instruction_bytes));
+                    min(bytes_count,
+                        sizeof(syscall_patch_hook::next_instruction_bytes)));
   tried_to_patch_syscall_addresses.insert(ip);
   return false;
 }

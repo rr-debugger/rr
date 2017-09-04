@@ -985,6 +985,7 @@ set(TESTS_WITH_PROGRAM
   mprotect_syscallbuf_overflow
   mutex_pi_stress
   overflow_branch_counter
+  patch_page_end
   priority
   ptrace_remote_unmap
   remove_latest_trace
