@@ -41,6 +41,6 @@ int main(void) {
 
   spin();
 
-  atomic_printf("EXIT-SUCCESS\n");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }

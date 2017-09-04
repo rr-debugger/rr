@@ -4,9 +4,9 @@
 #include "util.h"
 #include <stdlib.h>
 
-typedef int (*printf_func)(const char* fmt, ...);
+typedef int (*puts_func)(const char* fmt);
 
-int template_function(printf_func f, char* text) {
+int template_function(puts_func f, char* text) {
   f(text);
   return 0;
 }
@@ -23,7 +23,7 @@ int main(void) {
   int memfd = open("/proc/self/mem", O_RDWR);
   breakpoint();
 
-  // It doesn't matter if we copy more than template_function, we jus
+  // It doesn't matter if we copy more than template_function, we just
   // shouldn't fall off the end of the text section.
   size_t nbytes = (uintptr_t)&__etext - (uintptr_t)template_function;
   ssize_t to_write = nbytes > 4096 ? 4096 : nbytes;
@@ -31,7 +31,7 @@ int main(void) {
       pwrite(memfd, (void*)template_function, to_write, (uintptr_t)space);
   test_assert(to_write == nwritten);
 
-  int ret = ((int (*)(printf_func, char*))space)(atomic_printf, "EXIT-SUCCESS");
+  int ret = ((int (*)(puts_func, char*))space)(atomic_puts, "EXIT-SUCCESS");
   breakpoint();
   return ret;
 }

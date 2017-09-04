@@ -29,7 +29,7 @@ void buf_put_attr(char** cur_buf_pos, uint16_t opt, void* data, size_t size) {
 
 int main(void) {
   if (-1 == try_setup_ns(CLONE_NEWNET)) {
-    atomic_printf("EXIT-SUCCESS");
+    atomic_puts("EXIT-SUCCESS");
     return 0;
   }
 
@@ -192,6 +192,6 @@ int main(void) {
     test_assert(0 == ioctl(inetfd, SIOCBRDELBR, buf));
   }
 
-  atomic_printf("EXIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }

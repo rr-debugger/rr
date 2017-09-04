@@ -111,5 +111,5 @@ int main(void) {
   }
 
   test_assert(any_changed);
-  atomic_printf("EXIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
 }

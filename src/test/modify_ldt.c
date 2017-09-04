@@ -21,6 +21,6 @@ int main(void) {
       : [the_limit] "=r"(new_limit), [has_limit] "+rm"(has_limit)
       : [selector] "r"(selector));
   test_assert(has_limit && new_limit == limit);
-  atomic_printf("EXIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }

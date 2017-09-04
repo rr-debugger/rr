@@ -90,6 +90,6 @@ int main(int argc, char* argv[]) {
 
   test_assert(1 == prctl(PR_CAPBSET_READ, CAP_SYS_ADMIN));
 
-  atomic_printf("EXIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }

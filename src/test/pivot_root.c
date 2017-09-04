@@ -5,7 +5,7 @@
 
 int main(void) {
   if (-1 == try_setup_ns(CLONE_NEWNS)) {
-    atomic_printf("EXIT-SUCCESS");
+    atomic_puts("EXIT-SUCCESS");
     return 0;
   }
 
@@ -39,6 +39,6 @@ int main(void) {
   test_assert(0 == stat("new_root.txt", &buf));
   test_assert(0 == stat("new_old_root/old_root.txt", &buf));
 
-  atomic_printf("EXIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }

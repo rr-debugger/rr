@@ -149,6 +149,6 @@ int main(void) {
   iterate_maps(child, remote_unmap_callback, maps_file);
   breakpoint();
 
-  atomic_printf("EXIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }
