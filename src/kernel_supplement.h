@@ -165,6 +165,16 @@ struct usbdevfs_streams {
 #define TIOCGEXCL _IOR('T', 0x40, int)
 #endif
 
+struct rr_input_mask {
+  uint32_t type;
+  uint32_t codes_size;
+  uint64_t codes_ptr;
+};
+
+#ifndef EVIOCGMASK
+#define EVIOCGMASK _IOR('E', 0x92, struct rr_input_mask)
+#endif
+
 #ifndef MADV_FREE
 #define MADV_FREE 8
 #endif
