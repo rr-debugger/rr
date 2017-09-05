@@ -14,8 +14,10 @@
 #include "Command.h"
 #include "Flags.h"
 #include "RecordCommand.h"
+#include "ReplayCommand.h"
 #include "core.h"
 #include "log.h"
+#include "util.h"
 
 using namespace std;
 
@@ -221,7 +223,11 @@ int main(int argc, char* argv[]) {
       print_usage(stderr);
       return 1;
     }
-    command = RecordCommand::get();
+    if (is_directory(args[0].c_str())) {
+      command = ReplayCommand::get();
+    } else {
+      command = RecordCommand::get();
+    }
   }
 
   return command->run(args);

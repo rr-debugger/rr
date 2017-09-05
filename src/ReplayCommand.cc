@@ -1,5 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+#include "ReplayCommand.h"
+
 #include <sys/prctl.h>
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -22,16 +24,6 @@ using namespace std;
 namespace rr {
 
 static int DUMP_STATS_PERIOD = 0;
-
-class ReplayCommand : public Command {
-public:
-  virtual int run(vector<string>& args) override;
-
-protected:
-  ReplayCommand(const char* name, const char* help) : Command(name, help) {}
-
-  static ReplayCommand singleton;
-};
 
 ReplayCommand ReplayCommand::singleton(
     "replay",

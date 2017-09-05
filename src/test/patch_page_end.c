@@ -23,7 +23,7 @@ static void check_patch(uint8_t* p) { test_assert(p[0] == 0xe9); }
 int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
   uint8_t* p = mmap(NULL, page_size * 2, PROT_READ | PROT_WRITE,
-                 MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   uint8_t* d = p + page_size - sizeof(code);
   pid_t pid;
   test_assert(p != MAP_FAILED);

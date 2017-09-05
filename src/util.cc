@@ -1481,4 +1481,12 @@ void write_all(int fd, const void* buf, size_t size) {
   }
 }
 
+bool is_directory(const char* path) {
+  struct stat buf;
+  if (stat(path, &buf) < 0) {
+    return false;
+  }
+  return (buf.st_mode & S_IFDIR) != 0;
+}
+
 } // namespace rr

@@ -373,6 +373,11 @@ uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len);
  * ensure that all bytes are written by looping on short writes. */
 void write_all(int fd, const void* buf, size_t size);
 
+/* Returns true if |path| is an accessible directory. Returns false if there
+ * was an error.
+ */
+bool is_directory(const char* path);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
