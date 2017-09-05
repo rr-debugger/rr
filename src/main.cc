@@ -51,7 +51,7 @@ void print_version(FILE* out) { fprintf(out, "rr version %s\n", RR_VERSION); }
 
 void print_global_options(FILE* out) {
   fputs(
-      "Common options:\n"
+      "Global options:\n"
       "  --disable-cpuid-faulting   disable use of CPUID faulting\n"
       "  -A, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
       "                             with microarch NAME even if runtime "
@@ -102,9 +102,11 @@ void print_global_options(FILE* out) {
 
 void print_usage(FILE* out) {
   print_version(out);
-  fputs("Usage:\n", out);
+  fputs("\nUsage:\n", out);
   Command::print_help_all(out);
-  fputc('\n', out);
+  fputs("\nIf no subcommand is provided, we check if the first non-option\n"
+        "argument is a directory. If it is, we assume the 'replay' subcommand\n"
+        "otherwise we assume the 'record' subcommand.\n\n", out);
   print_global_options(out);
 }
 
