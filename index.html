@@ -175,6 +175,18 @@
   <h3>rr works on real applications such as Firefox, with low overhead.
   It is being used <a href="https://github.com/mozilla/rr/wiki/Testimonials">by many developers</a>
   inside and outside Mozilla to fix real bugs.</h3>
+  <h3>rr features:
+  <ul>
+  <li>Low overhead compared to other similar tools, especially on mostly-single-threaded workloads
+  <li>Supports recording and replay of all kinds of applications: Firefox, Chrome, QEMU, LibreOffice,
+  Go programs, ...
+  <li>Record, replay and debug multiple-process workloads, including entire containers
+  <li><a href="http://robert.ocallahan.org/2017/06/new-rr-pack-command.html">Durable</a>,
+  <a href="http://robert.ocallahan.org/2017/07/selecting-compression-algorithm-for-rr.html">compact</a> traces that
+  can be <a href="http://robert.ocallahan.org/2017/09/rr-trace-portability.html">ported</a> between machines
+  <li><a href="http://robert.ocallahan.org/2016/02/introducing-rr-chaos-mode.html"><em>Chaos mode</em></a> to
+  make intermittent bugs more reproducible
+  </ul>
 
   <h2>the rr debugging experience</h2>
   <section>
