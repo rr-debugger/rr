@@ -20,15 +20,6 @@ http://rr-project.org
 # we skip _install step because CPack does that for us.
 # We do only save CPack installed tree in _prepr
 # and then restore it in build.
-%prep
-mv $RPM_BUILD_ROOT @CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM/tmpBBroot
- 
-%install
-if [ -e $RPM_BUILD_ROOT ];
-then
-  rm -Rf $RPM_BUILD_ROOT
-fi
-mv "@CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM/tmpBBroot" $RPM_BUILD_ROOT
  
 %files
 %defattr(-,root,root,-)
