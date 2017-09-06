@@ -9,6 +9,7 @@ Vendor:         @CPACK_PACKAGE_VENDOR@
 Prefix:         @CPACK_PACKAGING_INSTALL_PREFIX@
 @CPACK_RPM_PACKAGE_REQUIRES@
 
+%define _rpmfilename @CPACK_PACKAGE_FILE_NAME@.rpm
 %define _unpackaged_files_terminate_build 0
  
 %description
