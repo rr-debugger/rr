@@ -429,6 +429,7 @@ function(post_build_executable target)
 endfunction(post_build_executable)
 
 option(RR_BUILD_SHARED "Build the rr shared library as well as the binary (experimental).")
+
 if(RR_BUILD_SHARED)
   add_library(rr ${RR_SOURCES})
   set_target_properties(rr PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
@@ -450,6 +451,12 @@ else()
   set(RR_BIN rr)
 endif()
 add_dependencies(rr Generated Pages)
+
+option(strip "Strip debug info from rr binary")
+
+if(strip)
+  set_target_properties(rr PROPERTIES LINK_FLAGS "-s")
+endif()
 
 target_link_libraries(rr
   ${CMAKE_DL_LIBS}
@@ -1352,8 +1359,8 @@ set(CPACK_GENERATOR "TGZ;RPM;DEB")
 set(CPACK_SOURCE_GENERATOR "TGZ")
 set(CPACK_BINARY_DIR "${PROJECT_BINARY_DIR}")
 # Don't strip binaries. It's important/useful for librrpreload at least to
-# have debug symbols. I can't figure out an easy way to strip the rr binary
-# without stripping librrpreload.
+# have debug symbols. For package releases, pass -Dstrip=TRUE to strip symbols
+# from the rr binary at build time.
 set(CPACK_STRIP_FILES FALSE)
 
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
