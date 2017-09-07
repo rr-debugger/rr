@@ -2159,9 +2159,6 @@ void Task::read_bytes_helper(remote_ptr<void> addr, ssize_t buf_size, void* buf,
  * that's PROT_NONE.
  * Also, writing through MAP_SHARED readonly mappings fails (even if the
  * file was opened read-write originally), so we handle that here too.
- * Lastly, on kernels that have the DirtyCOW exploit mitigation patch,
- * writes to PROT_READ, MAP_PRIVATE that cause COW hang the kernel, if backed by
- * transparent huge pages, so handle that as well.
  */
 static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
                              remote_ptr<void> addr) {
@@ -2174,8 +2171,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
     if (m.map.prot() & PROT_WRITE) {
       continue;
     }
-    if (!(m.map.prot() & PROT_READ) || (m.map.flags() & MAP_SHARED) ||
-        m.map.size() >= 2 * 1024 * 1024 /* Could be backed by thp */) {
+    if (!(m.map.prot() & PROT_READ) || (m.map.flags() & MAP_SHARED)) {
       mappings_to_fix.push_back(m.map);
     }
   };
