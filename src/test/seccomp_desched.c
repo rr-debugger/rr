@@ -6,7 +6,13 @@ static int pipe_fds[2];
 
 static void handler(__attribute__((unused)) int sig,
                     __attribute__((unused)) siginfo_t* si,
-                    __attribute__((unused)) void* p) {}
+                    __attribute__((unused)) void* p) {
+  /* Make a non-buffered syscall to check that it gets recorded OK */
+  struct statfs fs;
+  memset(&fs, 0, sizeof(fs));
+  test_assert(0 == statfs("/", &fs));
+  test_assert(fs.f_bsize > 0);
+}
 
 static void install_filter(void) {
   prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);

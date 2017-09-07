@@ -276,6 +276,9 @@ static void handle_seccomp_trap(RecordTask* t,
     // PTRACE_SYSCALL to enter the syscall during handle_desched_event. Cancel
     // that event now since the seccomp SIGSYS aborts it completely.
     ASSERT(t, t->ev().Syscall().number == syscallno);
+    // Make sure any prepared syscall state is discarded and any temporary
+    // effects (e.g. redirecting pointers to scratch) undone.
+    rec_abort_prepared_syscall(t);
     if (t->ev().type() == EV_SYSCALL_INTERRUPTION) {
       // The event could be a syscall-interruption if it was pushed by
       // `handle_desched_event`. In that case, it has not been recorded yet.

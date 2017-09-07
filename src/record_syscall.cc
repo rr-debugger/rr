@@ -417,6 +417,11 @@ struct TaskSyscallState {
    * original destinations, update registers, etc.
    */
   void process_syscall_results();
+  /**
+   * Called when a syscall has been completely aborted to undo any changes we
+   * made.
+   */
+  void abort_syscall_results();
 
   /**
    * Upon successful syscall completion, each RestoreAndRecordScratch record
@@ -797,6 +802,34 @@ void TaskSyscallState::process_syscall_results() {
 
   for (auto& action : after_syscall_actions) {
     action(t);
+  }
+}
+
+void TaskSyscallState::abort_syscall_results() {
+  ASSERT(t, preparation_done);
+
+  if (scratch_enabled) {
+    Registers r = t->regs();
+    // restore modified in-memory pointers and registers
+    for (size_t i = 0; i < param_list.size(); ++i) {
+      auto& param = param_list[i];
+      if (param.ptr_in_reg) {
+        r.set_arg(param.ptr_in_reg, param.dest.as_int());
+      }
+      if (!param.ptr_in_memory.is_null()) {
+        set_remote_ptr(t, param.ptr_in_memory, param.dest);
+      }
+    }
+    t->set_regs(r);
+  } else {
+    for (auto& param : param_list) {
+      if (param.mutator) {
+        size_t size = param.num_bytes.incoming_size;
+        ASSERT(t, saved_data.size() >= size);
+        t->write_bytes_helper(param.dest, size, saved_data.data());
+        saved_data.erase(saved_data.begin(), saved_data.begin() + size);
+      }
+    }
   }
 }
 
@@ -4146,6 +4179,14 @@ Switchable rec_prepare_syscall(RecordTask* t) {
     return s;
   }
   return syscall_state.done_preparing(s);
+}
+
+void rec_abort_prepared_syscall(RecordTask* t) {
+  auto syscall_state = syscall_state_property.get(*t);
+  if (syscall_state) {
+    syscall_state->abort_syscall_results();
+    syscall_state_property.remove(*t);
+  }
 }
 
 template <typename Arch>

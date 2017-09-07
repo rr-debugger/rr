@@ -16,6 +16,12 @@ class RecordTask;
 Switchable rec_prepare_syscall(RecordTask* t);
 
 /**
+ * Any prepared syscall is not going to happen (because it was aborted by
+ * tracee seccomp filter). Cancel any preparation work.
+ */
+void rec_abort_prepared_syscall(RecordTask* t);
+
+/**
  * Prepare |t| for its current syscall event to be interrupted and
  * possibly restarted.
  */
