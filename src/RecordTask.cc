@@ -1640,8 +1640,7 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     }
   }
 
-  trace_writer().write_frame(tid, arch(), ev, tick_count(), registers,
-                             extra_registers);
+  trace_writer().write_frame(this, ev, registers, extra_registers);
   LOG(debug) << "Wrote event " << ev << " for time " << current_time;
 
   if (!ev.has_ticks_slop() && ev.type() != EV_EXIT) {

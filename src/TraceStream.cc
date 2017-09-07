@@ -372,8 +372,8 @@ static int check_fd(int fd) {
 // 8-byte words
 static const size_t reasonable_frame_message_words = 64;
 
-void TraceWriter::write_frame(pid_t tid, SupportedArch arch, const Event& ev,
-                              Ticks tick_count, const Registers* registers,
+void TraceWriter::write_frame(RecordTask* t, const Event& ev,
+                              const Registers* registers,
                               const ExtraRegisters* extra_registers) {
   // Use an on-stack first segment that should be adequate for most cases. A
   // simple syscall event takes 320 bytes currently. The default Capnproto
@@ -383,8 +383,8 @@ void TraceWriter::write_frame(pid_t tid, SupportedArch arch, const Event& ev,
   MallocMessageBuilder frame_msg(buf);
   trace::Frame::Builder frame = frame_msg.initRoot<trace::Frame>();
 
-  frame.setTid(tid);
-  frame.setTicks(tick_count);
+  frame.setTid(t->tid);
+  frame.setTicks(t->tick_count());
   frame.setMonotonicSec(monotonic_now_sec());
   auto mem_writes = frame.initMemWrites(raw_recs.size());
   for (size_t i = 0; i < raw_recs.size(); ++i) {
@@ -395,7 +395,7 @@ void TraceWriter::write_frame(pid_t tid, SupportedArch arch, const Event& ev,
     w.setSize(r.size);
   }
   raw_recs.clear();
-  frame.setArch(to_trace_arch(arch));
+  frame.setArch(to_trace_arch(t->arch()));
   if (registers) {
     // Avoid dynamic allocation and copy
     auto raw_regs = registers->get_ptrace_for_self_arch();
@@ -449,8 +449,9 @@ void TraceWriter::write_frame(pid_t tid, SupportedArch arch, const Event& ev,
       const SyscallEvent& e = ev.Syscall();
       auto syscall = event.initSyscall();
       syscall.setArch(to_trace_arch(e.arch()));
-      syscall.setNumber(e.is_restart ? syscall_number_for_restart_syscall(arch)
-                                     : e.number);
+      syscall.setNumber(e.is_restart
+                            ? syscall_number_for_restart_syscall(t->arch())
+                            : e.number);
       syscall.setState(to_trace_syscall_state(e.state));
       syscall.setFailedDuringPreparation(e.failed_during_preparation);
       auto data = syscall.initExtra();

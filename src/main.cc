@@ -106,7 +106,8 @@ void print_usage(FILE* out) {
   Command::print_help_all(out);
   fputs("\nIf no subcommand is provided, we check if the first non-option\n"
         "argument is a directory. If it is, we assume the 'replay' subcommand\n"
-        "otherwise we assume the 'record' subcommand.\n\n", out);
+        "otherwise we assume the 'record' subcommand.\n\n",
+        out);
   print_global_options(out);
 }
 

@@ -7,6 +7,8 @@
 
 namespace rr {
 
+void force_close_record_session();
+
 class RecordCommand : public Command {
 public:
   virtual int run(std::vector<std::string>& args) override;

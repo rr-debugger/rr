@@ -140,8 +140,7 @@ public:
    * Recording a trace frame has the side effect of ticking
    * the global time.
    */
-  void write_frame(pid_t tid, SupportedArch arch, const Event& ev,
-                   Ticks tick_count, const Registers* registers,
+  void write_frame(RecordTask* t, const Event& ev, const Registers* registers,
                    const ExtraRegisters* extra_registers);
 
   enum RecordInTrace { DONT_RECORD_IN_TRACE, RECORD_IN_TRACE };
