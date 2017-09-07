@@ -120,6 +120,11 @@ if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86_64" AND NOT rr_64BIT)
    endif()
 endif()
 
+find_program(CAPNP capnp)
+if(${CAPNP} STREQUAL "CAPNP-NOTFOUND")
+  message(FATAL_ERROR "Can't find 'capnp' command; install 'capnproto' package?")
+endif()
+
 set(REQUIRED_LIBS
   capnp
 )
