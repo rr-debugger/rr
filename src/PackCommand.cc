@@ -396,8 +396,15 @@ static void delete_unnecessary_files(const map<string, string>& file_map,
 }
 
 static int pack(const string& trace_dir) {
+  string dir;
+  {
+    // validate trace and produce default trace directory if trace_dir is empty
+    TraceReader reader(trace_dir);
+    dir = reader.dir();
+  }
+
   char buf[PATH_MAX];
-  char* ret = realpath(trace_dir.c_str(), buf);
+  char* ret = realpath(dir.c_str(), buf);
   if (!ret) {
     FATAL() << "realpath failed";
   }
