@@ -413,6 +413,11 @@ static int pack(const string& trace_dir) {
       compute_canonical_mmapped_files(abspath);
   rewrite_mmaps(canonical_mmapped_files, abspath);
   delete_unnecessary_files(canonical_mmapped_files, abspath);
+
+  if (!probably_not_interactive(STDOUT_FILENO)) {
+    printf("rr: Packed trace directory `%s'.\n", dir.c_str());
+  }
+
   return 0;
 }
 
