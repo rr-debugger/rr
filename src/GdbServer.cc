@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/sysmacros.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -39,7 +40,8 @@ GdbServer::GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
       final_event(UINT32_MAX),
       stop_replaying_to_target(false),
       interrupt_pending(false),
-      emergency_debug_session(&t->session()) {
+      emergency_debug_session(&t->session()),
+      file_scope_pid(0) {
   memset(&stop_siginfo, 0, sizeof(stop_siginfo));
 }
 
@@ -377,6 +379,44 @@ void GdbServer::dispatch_debugger_request(Session& session,
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       if (t) {
         last_query_tuid = last_continue_tuid = t->tuid();
+      }
+      return;
+    }
+    case DREQ_FILE_SETFS:
+      // Only the filesystem as seen by the remote stub is supported currently
+      file_scope_pid = req.file_setfs().pid;
+      dbg->reply_setfs(0);
+      return;
+    case DREQ_FILE_OPEN:
+      // We only support reading files
+      if (req.file_open().flags == O_RDONLY) {
+        int fd = open_file(session, req.file_open().file_name);
+        dbg->reply_open(fd, fd >= 0 ? 0 : ENOENT);
+      } else {
+        dbg->reply_open(-1, EACCES);
+      }
+      return;
+    case DREQ_FILE_PREAD: {
+      auto it = files.find(req.file_pread().fd);
+      if (it != files.end()) {
+        size_t size = min<uint64_t>(req.file_pread().size, 1024 * 1024);
+        vector<uint8_t> data;
+        data.resize(size);
+        ssize_t bytes =
+            read_to_end(it->second, req.file_pread().offset, data.data(), size);
+        dbg->reply_pread(data.data(), bytes, bytes >= 0 ? 0 : errno);
+      } else {
+        dbg->reply_pread(nullptr, 0, EBADF);
+      }
+      return;
+    }
+    case DREQ_FILE_CLOSE: {
+      auto it = files.find(req.file_close().fd);
+      if (it != files.end()) {
+        files.erase(it);
+        dbg->reply_close(0);
+      } else {
+        dbg->reply_close(EBADF);
       }
       return;
     }
@@ -1345,6 +1385,13 @@ struct DebuggerParams {
 static void push_default_gdb_options(vector<string>& vec) {
   vec.push_back("-l");
   vec.push_back("10000");
+  // For now, avoid requesting binary files through vFile. That is slow and
+  // hard to make work correctly, because gdb requests files based on the
+  // names it sees in memory and in ELF, and those names may be symlinks to
+  // the filenames in the trace, so it's hard to match those names to files in
+  // the trace.
+  vec.push_back("-ex");
+  vec.push_back("set sysroot /");
 }
 
 static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
@@ -1586,5 +1633,93 @@ void GdbServer::emergency_debug(Task* t) {
 }
 
 string GdbServer::init_script() { return gdb_rr_macros(); }
+
+static ScopedFd generate_fake_proc_maps(Task* t) {
+  TempFile file = create_temporary_file("rr-fake-proc-maps-XXXXXX");
+  unlink(file.name.c_str());
+
+  int fd = dup(file.fd);
+  if (fd < 0) {
+    FATAL() << "Cannot dup";
+  }
+  FILE* f = fdopen(fd, "w");
+
+  int addr_min_width = word_size(t->arch()) == 8 ? 10 : 8;
+  for (auto& m : t->vm()->maps()) {
+    int len =
+        fprintf(f, "%0*llx-%0*llx %s%s%s%s %08llx %02x:%02x %lld",
+                addr_min_width, (long long)m.recorded_map.start().as_int(),
+                addr_min_width, (long long)m.recorded_map.end().as_int(),
+                (m.recorded_map.prot() & PROT_READ) ? "r" : "-",
+                (m.recorded_map.prot() & PROT_WRITE) ? "w" : "-",
+                (m.recorded_map.prot() & PROT_EXEC) ? "x" : "-",
+                (m.recorded_map.flags() & MAP_SHARED) ? "s" : "p",
+                (long long)m.recorded_map.file_offset_bytes(),
+                major(m.recorded_map.device()), minor(m.recorded_map.device()),
+                (long long)m.recorded_map.inode());
+    while (len < 72) {
+      fputc(' ', f);
+      ++len;
+    }
+    fputc(' ', f);
+
+    string name;
+    const string& fsname = m.recorded_map.fsname();
+    for (size_t i = 0; i < fsname.size(); ++i) {
+      if (fsname[i] == '\n') {
+        name.append("\\012");
+      } else {
+        name.push_back(fsname[i]);
+      }
+    }
+    fputs(name.c_str(), f);
+    fputc('\n', f);
+  }
+  if (ferror(f) || fclose(f)) {
+    FATAL() << "Can't write";
+  }
+
+  return move(file.fd);
+}
+
+int GdbServer::open_file(Session& session, const std::string& file_name) {
+  // XXX should we require file_scope_pid == 0 here?
+  ScopedFd contents;
+
+  LOG(debug) << "Trying to open " << file_name;
+
+  if (file_name.substr(0, 6) == "/proc/") {
+    char* tid_end;
+    long tid = strtol(file_name.c_str() + 6, &tid_end, 10);
+    if (*tid_end != '/') {
+      return -1;
+    }
+    if (!strncmp(tid_end, "/task/", 6)) {
+      tid = strtol(tid_end + 6, &tid_end, 10);
+      if (*tid_end != '/') {
+        return -1;
+      }
+    }
+    if (tid != (pid_t)tid) {
+      return -1;
+    }
+    Task* t = session.find_task(tid);
+    if (!t) {
+      return -1;
+    }
+    if (!strcmp(tid_end, "/maps")) {
+      contents = generate_fake_proc_maps(t);
+    } else {
+      return -1;
+    }
+  }
+
+  int ret_fd = 0;
+  while (files.find(ret_fd) != files.end()) {
+    ++ret_fd;
+  }
+  files.insert(make_pair(ret_fd, move(contents)));
+  return ret_fd;
+}
 
 } // namespace rr

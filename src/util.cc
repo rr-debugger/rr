@@ -1489,4 +1489,22 @@ bool is_directory(const char* path) {
   return (buf.st_mode & S_IFDIR) != 0;
 }
 
+ssize_t read_to_end(const ScopedFd& fd, size_t offset, void* buf, size_t size) {
+  ssize_t ret = 0;
+  while (size) {
+    ssize_t r = pread(fd.get(), buf, size, offset);
+    if (r < 0) {
+      return -1;
+    }
+    if (r == 0) {
+      return ret;
+    }
+    offset += r;
+    ret += r;
+    size -= r;
+    buf = static_cast<uint8_t*>(buf) + r;
+  }
+  return ret;
+}
+
 } // namespace rr

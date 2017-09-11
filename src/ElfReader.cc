@@ -288,21 +288,9 @@ bool ElfReader::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
 
 bool ElfReader::ok() { return impl().ok(); }
 
-static bool read_all(ScopedFd& fd, size_t offset, size_t size, void* buf) {
-  while (size) {
-    ssize_t ret = pread(fd.get(), buf, size, offset);
-    if (ret <= 0) {
-      return false;
-    }
-    offset += ret;
-    size -= ret;
-    buf = static_cast<uint8_t*>(buf) + ret;
-  }
-  return true;
-}
-
 bool ElfFileReader::read(size_t offset, size_t size, void* buf) {
-  return read_all(fd, offset, size, buf);
+  ssize_t ret = read_to_end(fd, offset, buf, size);
+  return ret == (ssize_t)size;
 }
 
 ScopedFd ElfFileReader::open_debug_file(const std::string& elf_file_name) {
@@ -355,7 +343,8 @@ SupportedArch ElfFileReader::identify_arch(ScopedFd& fd) {
    */
   static const int header_prefix_size = 20;
   char buf[header_prefix_size];
-  if (!read_all(fd, 0, sizeof(buf), buf) || buf[5] != 1) {
+  ssize_t ret = read_to_end(fd, 0, buf, sizeof(buf));
+  if (ret != (ssize_t)sizeof(buf) || buf[5] != 1) {
     return NativeArch::arch();
   }
   switch (buf[18] | (buf[19] << 8)) {

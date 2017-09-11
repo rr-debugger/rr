@@ -1045,6 +1045,7 @@ set(TESTS_WITH_PROGRAM
   unexpected_stack_growth
   user_ignore_sig
   vfork
+  vsyscall_reverse_next
   wait_for_all
   watchpoint
   watchpoint_at_sched
@@ -1106,6 +1107,7 @@ set(TESTS_WITHOUT_PROGRAM
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   post_exec_fpu_regs
+  proc_maps
   read_bad_mem
   record_replay
   remove_watchpoint

@@ -179,7 +179,7 @@ void GdbConnection::write_binary_packet(const char* pfx, const uint8_t* data,
   ssize_t buf_num_bytes = 0;
   int i;
 
-  strncpy((char*)buf.data(), pfx, buf.size() - 1);
+  memcpy((char*)buf.data(), pfx, pfx_num_chars);
   buf_num_bytes += pfx_num_chars;
 
   for (i = 0; i < num_bytes; ++i) {
@@ -763,6 +763,38 @@ bool GdbConnection::process_bpacket(char* payload) {
   }
 }
 
+static int gdb_open_flags_to_system_flags(int64_t flags) {
+  int ret;
+  switch (flags & 3) {
+    case 0:
+      ret = O_RDONLY;
+      break;
+    case 1:
+      ret = O_WRONLY;
+      break;
+    case 2:
+      ret = O_RDWR;
+      break;
+    default:
+      parser_assert(false);
+      break;
+  }
+  parser_assert(!(flags & ~int64_t(3 | 0x8 | 0x200 | 0x400 | 0x800)));
+  if (flags & 0x8) {
+    ret |= O_APPEND;
+  }
+  if (flags & 0x200) {
+    ret |= O_CREAT;
+  }
+  if (flags & 0x400) {
+    ret |= O_TRUNC;
+  }
+  if (flags & 0x800) {
+    ret |= O_EXCL;
+  }
+  return ret;
+}
+
 bool GdbConnection::process_vpacket(char* payload) {
   const char* name;
   char* args;
@@ -914,8 +946,61 @@ bool GdbConnection::process_vpacket(char* payload) {
   }
 
   if (name == strstr(name, "File:")) {
-    write_packet("");
-    return false;
+    char* operation = payload + 5;
+    if (operation == strstr(operation, "open:")) {
+      char* file_name_end = strchr(operation + 5, ',');
+      parser_assert(file_name_end != NULL);
+      *file_name_end = 0;
+      req = GdbRequest(DREQ_FILE_OPEN);
+      req.file_open().file_name = decode_ascii_encoded_hex_str(operation + 5);
+      char* flags_end;
+      int64_t flags = strtol(file_name_end + 1, &flags_end, 16);
+      parser_assert(*flags_end == ',');
+      req.file_open().flags = gdb_open_flags_to_system_flags(flags);
+      char* mode_end;
+      int64_t mode = strtol(flags_end + 1, &mode_end, 16);
+      parser_assert(*mode_end == 0);
+      parser_assert((mode & ~(int64_t)0777) == 0);
+      req.file_open().mode = mode;
+      return true;
+    } else if (operation == strstr(operation, "close:")) {
+      char* endptr;
+      int64_t fd = strtol(operation + 6, &endptr, 16);
+      parser_assert(*endptr == 0);
+      req = GdbRequest(DREQ_FILE_CLOSE);
+      req.file_close().fd = fd;
+      parser_assert(req.file_close().fd == fd);
+      return true;
+    } else if (operation == strstr(operation, "pread:")) {
+      char* fd_end;
+      int64_t fd = strtol(operation + 6, &fd_end, 16);
+      parser_assert(*fd_end == ',');
+      req = GdbRequest(DREQ_FILE_PREAD);
+      req.file_pread().fd = fd;
+      parser_assert(req.file_pread().fd == fd);
+      char* size_end;
+      int64_t size = strtol(fd_end + 1, &size_end, 16);
+      parser_assert(*size_end == ',');
+      parser_assert(size >= 0);
+      req.file_pread().size = size;
+      char* offset_end;
+      int64_t offset = strtol(size_end + 1, &offset_end, 16);
+      parser_assert(*offset_end == 0);
+      parser_assert(offset >= 0);
+      req.file_pread().offset = offset;
+      return true;
+    } else if (operation == strstr(operation, "setfs:")) {
+      char* endptr;
+      int64_t pid = strtol(operation + 6, &endptr, 16);
+      parser_assert(*endptr == 0);
+      req = GdbRequest(DREQ_FILE_SETFS);
+      req.file_setfs().pid = pid;
+      parser_assert(req.file_setfs().pid == pid);
+      return true;
+    } else {
+      write_packet("");
+      return false;
+    }
   }
 
   UNHANDLED_REQ() << "Unhandled gdb vpacket: v" << name;
@@ -1632,6 +1717,123 @@ void GdbConnection::reply_tls_addr(bool ok, remote_ptr<void> address) {
   }
 
   consume_request();
+}
+
+void GdbConnection::reply_setfs(int err) {
+  DEBUG_ASSERT(DREQ_FILE_SETFS == req.type);
+  if (err) {
+    send_file_error_reply(err);
+  } else {
+    write_packet("F0");
+  }
+
+  consume_request();
+}
+
+void GdbConnection::reply_open(int fd, int err) {
+  DEBUG_ASSERT(DREQ_FILE_OPEN == req.type);
+  if (err) {
+    send_file_error_reply(err);
+  } else {
+    char buf[32];
+    sprintf(buf, "F%x", fd);
+    write_packet(buf);
+  }
+
+  consume_request();
+}
+
+void GdbConnection::reply_pread(const uint8_t* bytes, ssize_t len, int err) {
+  DEBUG_ASSERT(DREQ_FILE_PREAD == req.type);
+  if (err) {
+    send_file_error_reply(err);
+  } else {
+    char buf[32];
+    sprintf(buf, "F%llx;", (long long)len);
+    write_binary_packet(buf, bytes, len);
+  }
+
+  consume_request();
+}
+
+void GdbConnection::reply_close(int err) {
+  DEBUG_ASSERT(DREQ_FILE_CLOSE == req.type);
+  if (err) {
+    send_file_error_reply(err);
+  } else {
+    write_packet("F0");
+  }
+
+  consume_request();
+}
+
+void GdbConnection::send_file_error_reply(int system_errno) {
+  int gdb_err;
+  switch (system_errno) {
+    case EPERM:
+      gdb_err = 1;
+      break;
+    case ENOENT:
+      gdb_err = 2;
+      break;
+    case EINTR:
+      gdb_err = 4;
+      break;
+    case EBADF:
+      gdb_err = 9;
+      break;
+    case EACCES:
+      gdb_err = 13;
+      break;
+    case EFAULT:
+      gdb_err = 14;
+      break;
+    case EBUSY:
+      gdb_err = 16;
+      break;
+    case EEXIST:
+      gdb_err = 17;
+      break;
+    case ENODEV:
+      gdb_err = 19;
+      break;
+    case ENOTDIR:
+      gdb_err = 20;
+      break;
+    case EISDIR:
+      gdb_err = 21;
+      break;
+    case EINVAL:
+      gdb_err = 22;
+      break;
+    case ENFILE:
+      gdb_err = 23;
+      break;
+    case EMFILE:
+      gdb_err = 24;
+      break;
+    case EFBIG:
+      gdb_err = 27;
+      break;
+    case ENOSPC:
+      gdb_err = 28;
+      break;
+    case ESPIPE:
+      gdb_err = 29;
+      break;
+    case EROFS:
+      gdb_err = 30;
+      break;
+    case ENAMETOOLONG:
+      gdb_err = 91;
+      break;
+    default:
+      gdb_err = 9999;
+      break;
+  }
+  char buf[32];
+  sprintf(buf, "F-01,%x", gdb_err);
+  write_packet(buf);
 }
 
 bool GdbConnection::is_connection_alive() { return connection_alive_; }

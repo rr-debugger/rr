@@ -198,6 +198,13 @@ private:
    */
   void delete_checkpoint(int checkpoint_id);
 
+  /**
+   * Handle GDB file open requests. If we can serve this read request, add
+   * an entry to `files` with the file contents and return our internal
+   * file descriptor.
+   */
+  int open_file(Session& session, const std::string& file_name);
+
   Target target;
   // dbg is initially null. Once the debugger connection is established, it
   // never changes.
@@ -251,6 +258,13 @@ private:
   std::set<std::string> symbols;
   // Iterator into |symbols|.
   std::set<std::string>::iterator symbols_iter;
+
+  // Contents of opened files. Maps our internal file descriptor to a real
+  // file descriptor. Exposing our real file descriptor values is probably a
+  // bad idea.
+  std::map<int, ScopedFd> files;
+  // The pid for gdb's last vFile:setfs
+  pid_t file_scope_pid;
 };
 
 } // namespace rr

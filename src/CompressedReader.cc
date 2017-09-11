@@ -14,6 +14,7 @@
 
 #include "CompressedWriter.h"
 #include "core.h"
+#include "util.h"
 
 using namespace std;
 
@@ -48,16 +49,12 @@ CompressedReader::~CompressedReader() { close(); }
 
 static bool read_all(const ScopedFd& fd, size_t size, void* data,
                      uint64_t* offset) {
-  while (size > 0) {
-    ssize_t result = pread(fd, data, size, *offset);
-    if (result <= 0) {
-      return false;
-    }
-    size -= result;
-    data = static_cast<uint8_t*>(data) + result;
-    *offset += result;
+  ssize_t ret = read_to_end(fd, *offset, data, size);
+  if (ret == (ssize_t)size) {
+    *offset += size;
+    return true;
   }
-  return true;
+  return false;
 }
 
 static bool do_decompress(std::vector<uint8_t>& compressed,

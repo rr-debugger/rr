@@ -133,6 +133,15 @@ enum GdbRequestType {
 
   // qSymbol packet, uses params.sym.
   DREQ_QSYMBOL,
+
+  // vFile:setfs packet, uses params.file_setfs.
+  DREQ_FILE_SETFS,
+  // vFile:open packet, uses params.file_open.
+  DREQ_FILE_OPEN,
+  // vFile:pread packet, uses params.file_pread.
+  DREQ_FILE_PREAD,
+  // vFile:close packet, uses params.file_close.
+  DREQ_FILE_CLOSE,
 };
 
 enum GdbRestartType {
@@ -171,7 +180,11 @@ struct GdbRequest {
         cont_(other.cont_),
         text_(other.text_),
         tls_(other.tls_),
-        sym_(other.sym_) {}
+        sym_(other.sym_),
+        file_setfs_(other.file_setfs_),
+        file_open_(other.file_open_),
+        file_pread_(other.file_pread_),
+        file_close_(other.file_close_) {}
   GdbRequest& operator=(const GdbRequest& other) {
     this->~GdbRequest();
     new (this) GdbRequest(other);
@@ -214,6 +227,23 @@ struct GdbRequest {
     remote_ptr<void> address;
     std::string name;
   } sym_;
+  struct FileSetfs {
+    pid_t pid;
+  } file_setfs_;
+  struct FileOpen {
+    std::string file_name;
+    // In system format, not gdb's format
+    int flags;
+    int mode;
+  } file_open_;
+  struct FilePread {
+    int fd;
+    size_t size;
+    uint64_t offset;
+  } file_pread_;
+  struct FileClose {
+    int fd;
+  } file_close_;
 
   Mem& mem() {
     DEBUG_ASSERT(type >= DREQ_MEM_FIRST && type <= DREQ_MEM_LAST);
@@ -274,6 +304,38 @@ struct GdbRequest {
   const Symbol& sym() const {
     DEBUG_ASSERT(type == DREQ_QSYMBOL);
     return sym_;
+  }
+  FileSetfs& file_setfs() {
+    DEBUG_ASSERT(type == DREQ_FILE_SETFS);
+    return file_setfs_;
+  }
+  const FileSetfs& file_setfs() const {
+    DEBUG_ASSERT(type == DREQ_FILE_SETFS);
+    return file_setfs_;
+  }
+  FileOpen& file_open() {
+    DEBUG_ASSERT(type == DREQ_FILE_OPEN);
+    return file_open_;
+  }
+  const FileOpen& file_open() const {
+    DEBUG_ASSERT(type == DREQ_FILE_OPEN);
+    return file_open_;
+  }
+  FilePread& file_pread() {
+    DEBUG_ASSERT(type == DREQ_FILE_PREAD);
+    return file_pread_;
+  }
+  const FilePread& file_pread() const {
+    DEBUG_ASSERT(type == DREQ_FILE_PREAD);
+    return file_pread_;
+  }
+  FileClose& file_close() {
+    DEBUG_ASSERT(type == DREQ_FILE_CLOSE);
+    return file_close_;
+  }
+  const FileClose& file_close() const {
+    DEBUG_ASSERT(type == DREQ_FILE_CLOSE);
+    return file_close_;
   }
 
   /**
@@ -469,6 +531,23 @@ public:
   void reply_tls_addr(bool ok, remote_ptr<void> address);
 
   /**
+   * Respond to a vFile:setfs
+   */
+  void reply_setfs(int err);
+  /**
+   * Respond to a vFile:open
+   */
+  void reply_open(int fd, int err);
+  /**
+   * Respond to a vFile:pread
+   */
+  void reply_pread(const uint8_t* bytes, ssize_t len, int err);
+  /**
+   * Respond to a vFile:close
+   */
+  void reply_close(int err);
+
+  /**
    * Create a checkpoint of the given Session with the given id. Delete the
    * existing checkpoint with that id if there is one.
    */
@@ -582,6 +661,7 @@ private:
   void consume_request();
   void send_stop_reply_packet(GdbThreadId thread, int sig,
                               uintptr_t watch_addr = 0);
+  void send_file_error_reply(int system_errno);
 
   // Current request to be processed.
   GdbRequest req;

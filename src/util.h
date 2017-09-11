@@ -378,6 +378,12 @@ void write_all(int fd, const void* buf, size_t size);
  */
 bool is_directory(const char* path);
 
+/**
+ * Read bytes from `fd` into `buf` from `offset` until the read returns an
+ * error or 0 or the buffer is full. Returns total bytes read or -1 for error.
+ */
+ssize_t read_to_end(const ScopedFd& fd, size_t offset, void* buf, size_t size);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
