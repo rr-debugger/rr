@@ -777,7 +777,7 @@ static int gdb_open_flags_to_system_flags(int64_t flags) {
       break;
     default:
       parser_assert(false);
-      break;
+      return 0;
   }
   parser_assert(!(flags & ~int64_t(3 | 0x8 | 0x200 | 0x400 | 0x800)));
   if (flags & 0x8) {
