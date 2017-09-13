@@ -122,7 +122,7 @@ endif()
 
 find_program(CAPNP capnp)
 if(${CAPNP} STREQUAL "CAPNP-NOTFOUND")
-  message(FATAL_ERROR "Can't find 'capnp' command; install 'capnproto' package?")
+  message(FATAL_ERROR "Can't find 'capnp' command; install Capnproto packages? https://github.com/mozilla/rr/wiki/Building-And-Installing#tldr")
 endif()
 
 set(REQUIRED_LIBS
