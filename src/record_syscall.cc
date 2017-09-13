@@ -1404,6 +1404,10 @@ static Switchable prepare_ioctl(RecordTask* t,
     case SIOCSIFNAME:
     case SIOCSIFNETMASK:
     case SIOCSIFMETRIC:
+    case SIOCSIFHWBROADCAST:
+    case SIOCSIFMAP:
+    case SIOCADDMULTI:
+    case SIOCDELMULTI:
     /* Bridge ioctls */
     case SIOCBRADDBR:
     case SIOCBRDELBR:
@@ -1457,6 +1461,10 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
     }
+
+    case SIOCGIFMAP:
+      syscall_state.reg_parameter<typename Arch::ifmap>(3);
+      return PREVENT_SWITCH;
 
     case SIOCGSTAMP:
       syscall_state.reg_parameter<typename Arch::timeval>(3);
