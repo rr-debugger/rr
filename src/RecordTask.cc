@@ -1218,7 +1218,6 @@ void RecordTask::stash_sig() {
 
   const siginfo_t& si = get_siginfo();
   stashed_signals.push_back(StashedSignal(si, is_deterministic_signal(this)));
-  wait_status = WaitStatus();
   // Once we've stashed a signal, stop at the next traced/untraced syscall to
   // check whether we need to process the signal before it runs.
   stashed_signals_blocking_more_signals =
