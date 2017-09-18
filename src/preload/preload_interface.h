@@ -13,6 +13,8 @@
  * Note also that SYSCALLBUF_PROTOCOL_VERSION is stored in the trace header, so
  * replay always has access to the SYSCALLBUF_PROTOCOL_VERSION used during
  * recording, even before the preload library is ever loaded.
+ *
+ * Version 0: initial rr 5.0.0 release
  */
 #define SYSCALLBUF_PROTOCOL_VERSION 0
 
@@ -129,7 +131,7 @@ static inline const char* extract_file_name(const char* s) {
 /* PRELOAD_THREAD_LOCALS_ADDR should not change.
  * Tools depend on this address. */
 #define PRELOAD_THREAD_LOCALS_ADDR (RR_PAGE_ADDR + PAGE_SIZE)
-#define PRELOAD_THREAD_LOCALS_SIZE 88
+#define PRELOAD_THREAD_LOCALS_SIZE 104
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the
  * syscallbuf.
@@ -182,11 +184,15 @@ static inline const char* extract_file_name(const char* s) {
 #ifdef RR_IMPLEMENT_PRELOAD
 #define TEMPLATE_ARCH
 #define PTR(T) T*
+#define PTR_ARCH(T) T*
 #define VOLATILE volatile
+#define SIGNED_LONG long
 #else
 #define TEMPLATE_ARCH template <typename Arch>
 #define PTR(T) typename Arch::template ptr<T>
+#define PTR_ARCH(T) typename Arch::template ptr<T<Arch>>
 #define VOLATILE
+#define SIGNED_LONG typename Arch::signed_long
 #endif
 
 /**
@@ -264,6 +270,16 @@ struct preload_globals {
 };
 
 /**
+ * Represents syscall params.  Makes it simpler to pass them around,
+ * and avoids pushing/popping all the data for calls.
+ */
+TEMPLATE_ARCH
+struct syscall_info {
+  SIGNED_LONG no;
+  SIGNED_LONG args[6];
+};
+
+/**
  * Can be architecture dependent. The rr process does not manipulate
  * these except to save and restore the values on task switches so that
  * the values are always effectively local to the current task. rr also
@@ -274,18 +290,39 @@ struct preload_globals {
  */
 TEMPLATE_ARCH
 struct preload_thread_locals {
-  /* The offsets of these fields are hardcoded in syscall_hook.S and
-   * assembly_templates.py. Try to avoid changing them! */
-  /* Pointer to alt-stack used by syscallbuf stubs (allocated at the end of
-   * the scratch buffer */
+  /* The offset of this field MUST NOT CHANGE, it is part of the preload ABI
+   * rr depends on.
+   * Offset of this field is hardcoded in syscall_hook.S and
+   * assembly_templates.py.
+   * Pointer to alt-stack used by syscallbuf stubs (allocated at the end of
+   * the scratch buffer.
+   */
   PTR(void) syscallbuf_stub_alt_stack;
-  /* Where syscall result will be (or during replay, has been) saved.
-   * The offset of this field MUST NOT CHANGE, it is part of the preload ABI
-   * tools can depend on. */
+  /* The offset of this field MUST NOT CHANGE, it is part of the preload ABI
+   * tools can depend on.
+   * Where syscall result will be (or during replay, has been) saved.
+   */
   PTR(int64_t) pending_untraced_syscall_result;
-  /* scratch space used by stub code */
+  /* The offset of this field MUST NOT CHANGE, it is part of the preload ABI
+   * rr depends on.
+   * Scratch space used by stub code.
+   */
   PTR(void) stub_scratch_1;
+  /* The offset of this field MUST NOT CHANGE, it is part of the preload ABI
+   * rr depends on.
+   */
   int alt_stack_nesting_level;
+  /**
+   * We could use this later.
+   */
+  int unused_padding;
+  /* The offset of this field MUST NOT CHANGE, it is part of the preload ABI
+   * rr depends on. It contains the parameters to the patched syscall, or
+   * zero if we're not processing a buffered syscall. Do not depend on this
+   * existing during replay, some traces with SYSCALLBUF_PROTOCOL_VERSION 0
+   * don't have it.
+   */
+  PTR_ARCH(const struct syscall_info) original_syscall_parameters;
 
   /* Nonzero when thread-local state like the syscallbuf has been
    * initialized.  */

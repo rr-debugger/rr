@@ -346,6 +346,7 @@ static void handle_seccomp_trap(RecordTask* t,
   // retains the syscall number).
   r.set_syscallno(syscallno);
   t->set_regs(r);
+  t->maybe_restore_original_syscall_registers();
 
   if (t->is_in_untraced_syscall()) {
     // For buffered syscalls, go ahead and record the exit state immediately.
@@ -424,6 +425,9 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
                    << syscall_name(t->regs().original_syscallno(), t->arch());
         handle_seccomp_traced_syscall(t, step_state, result, did_enter_syscall);
       } else {
+        // Note that we make no attempt to patch the syscall site when the
+        // user handle does not return ALLOW. Apart from the ERRNO case,
+        // handling these syscalls is necessarily slow anyway.
         uint32_t real_result;
         if (!seccomp_filter_rewriter().map_filter_data_to_real_result(
                 t, seccomp_data, &real_result)) {

@@ -1764,4 +1764,36 @@ void RecordTask::set_tid_and_update_serial(pid_t tid) {
   serial = session().next_task_serial();
 }
 
+template <typename Arch>
+static void maybe_restore_original_syscall_registers_arch(RecordTask* t,
+                                                          void* local_addr) {
+  if (!local_addr) {
+    return;
+  }
+  auto locals = reinterpret_cast<preload_thread_locals<Arch>*>(local_addr);
+  static_assert(sizeof(*locals) <= PRELOAD_THREAD_LOCALS_SIZE,
+                "bad PRELOAD_THREAD_LOCALS_SIZE");
+  if (!locals->original_syscall_parameters) {
+    return;
+  }
+  auto args = t->read_mem(locals->original_syscall_parameters.rptr());
+  Registers r = t->regs();
+  if (args.no != r.syscallno()) {
+    // Maybe a preparatory syscall before the real syscall (e.g. sys_read)
+    return;
+  }
+  r.set_arg1(args.args[0]);
+  r.set_arg2(args.args[1]);
+  r.set_arg3(args.args[2]);
+  r.set_arg4(args.args[3]);
+  r.set_arg5(args.args[4]);
+  r.set_arg6(args.args[5]);
+  t->set_regs(r);
+}
+
+void RecordTask::maybe_restore_original_syscall_registers() {
+  RR_ARCH_FUNCTION(maybe_restore_original_syscall_registers_arch, arch(), this,
+                   preload_thread_locals());
+}
+
 } // namespace rr

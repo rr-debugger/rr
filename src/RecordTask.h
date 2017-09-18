@@ -495,6 +495,8 @@ public:
 
   ~RecordTask();
 
+  void maybe_restore_original_syscall_registers();
+
 private:
   /**
    * Wait for |futex| in this address space to have the value

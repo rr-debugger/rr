@@ -2695,4 +2695,8 @@ void Task::register_symbol(const std::string& name, remote_ptr<void> address) {
 const std::set<std::string> Task::get_symbols_and_clear_map() {
   return tg->thread_db()->get_symbols_and_clear_map();
 }
+
+void* Task::preload_thread_locals() {
+  return preload_thread_locals_local_addr(*as);
+}
 }

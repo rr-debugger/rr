@@ -5,15 +5,6 @@
 
 #define RR_HIDDEN __attribute__((visibility("hidden")))
 
-/**
- * Represents syscall params.  Makes it simpler to pass them around,
- * and avoids pushing/popping all the data for calls.
- */
-struct syscall_info {
-  long no;
-  long args[6];
-};
-
 RR_HIDDEN extern struct preload_globals globals;
 
 RR_HIDDEN extern char impose_syscall_delay;

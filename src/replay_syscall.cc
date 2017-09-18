@@ -1158,7 +1158,9 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
 
   if (trace_regs.original_syscallno() ==
       SECCOMP_MAGIC_SKIP_ORIGINAL_SYSCALLNO) {
-    // rr vetoed this syscall. Don't do any post-processing.
+    // rr vetoed this syscall. Don't do any post-processing. Do set registers
+    // to match any registers rr modified to fool the signal handler.
+    t->set_regs(trace_regs);
     return;
   }
 

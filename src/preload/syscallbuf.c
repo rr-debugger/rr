@@ -2541,6 +2541,8 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
     return traced_raw_syscall(call);
   }
 
+  thread_locals->original_syscall_parameters = call;
+
   if (impose_syscall_delay) {
     do_delay();
   }
@@ -2596,5 +2598,6 @@ RR_HIDDEN long syscall_hook(const struct syscall_info* call) {
                                thread_locals->notify_control_msg);
     thread_locals->notify_control_msg = NULL;
   }
+  thread_locals->original_syscall_parameters = NULL;
   return result;
 }

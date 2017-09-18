@@ -976,6 +976,8 @@ protected:
 
   void maybe_workaround_singlestep_bug();
 
+  void* preload_thread_locals();
+
   uint32_t serial;
   // The address space of this task.
   AddressSpace::shr_ptr as;
