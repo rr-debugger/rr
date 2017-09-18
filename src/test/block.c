@@ -272,6 +272,8 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
   {
     int epfd;
     struct epoll_event ev;
+    sigset_t all_sigs;
+    sigfillset(&all_sigs);
 
     atomic_puts("r: epolling socket ...");
     test_assert(0 <= (epfd = epoll_create(1 /*num events*/)));
@@ -282,7 +284,7 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     test_assert(1 == epoll_wait(epfd, &ev, 1, -1));
     atomic_puts("r:   ... done, doing nonblocking read ...");
     test_assert(sock == ev.data.fd);
-    test_assert(1 == epoll_wait(epfd, &ev, 1, -1));
+    test_assert(1 == epoll_pwait(epfd, &ev, 1, -1, &all_sigs));
     test_assert(1 == read(sock, &c, sizeof(c)));
     atomic_printf("r:   ... read '%c'\n", c);
     test_assert(c == token);

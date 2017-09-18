@@ -3890,6 +3890,13 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           2, sizeof(typename Arch::epoll_event) * regs.arg3_signed());
       return ALLOW_SWITCH;
 
+    case Arch::epoll_pwait: {
+      syscall_state.reg_parameter(
+          2, sizeof(typename Arch::epoll_event) * regs.arg3_signed());
+      t->invalidate_sigmask();
+      return ALLOW_SWITCH;
+    }
+
     /* The following two syscalls enable context switching not for
      * liveness/correctness reasons, but rather because if we
      * didn't context-switch away, rr might end up busy-waiting
