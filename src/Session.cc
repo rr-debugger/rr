@@ -28,13 +28,13 @@ using namespace std;
 namespace rr {
 
 struct Session::CloneCompletion {
-  struct ThreadGroup {
+  struct AddressSpaceClone {
     Task* clone_leader;
     Task::CapturedState clone_leader_state;
     vector<Task::CapturedState> member_states;
     vector<pair<remote_ptr<void>, vector<uint8_t>>> captured_memory;
   };
-  vector<ThreadGroup> thread_groups;
+  vector<AddressSpaceClone> address_spaces;
 };
 
 Session::Session()
@@ -380,7 +380,7 @@ void Session::finish_initializing() const {
   }
 
   Session* self = const_cast<Session*>(this);
-  for (auto& tgleader : clone_completion->thread_groups) {
+  for (auto& tgleader : clone_completion->address_spaces) {
     {
       AutoRemoteSyscalls remote(tgleader.clone_leader);
       for (const auto& m : tgleader.clone_leader->vm()->maps()) {
@@ -668,8 +668,8 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
     LOG(debug) << "  forking tg " << group_leader->tgid()
                << " (real: " << group_leader->real_tgid() << ")";
 
-    completion->thread_groups.push_back(CloneCompletion::ThreadGroup());
-    auto& group = completion->thread_groups.back();
+    completion->address_spaces.push_back(CloneCompletion::AddressSpaceClone());
+    auto& group = completion->address_spaces.back();
 
     group.clone_leader = group_leader->os_fork_into(&dest);
     dest.on_create(group.clone_leader);
