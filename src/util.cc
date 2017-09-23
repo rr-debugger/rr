@@ -74,7 +74,7 @@ int clone_flags_to_task_flags(int flags_arg) {
   flags |= (CLONE_CHILD_CLEARTID & flags_arg) ? CLONE_CLEARTID : 0;
   flags |= (CLONE_SETTLS & flags_arg) ? CLONE_SET_TLS : 0;
   flags |= (CLONE_SIGHAND & flags_arg) ? CLONE_SHARE_SIGHANDLERS : 0;
-  flags |= (CLONE_THREAD & flags_arg) ? CLONE_SHARE_TASK_GROUP : 0;
+  flags |= (CLONE_THREAD & flags_arg) ? CLONE_SHARE_THREAD_GROUP : 0;
   flags |= (CLONE_VM & flags_arg) ? CLONE_SHARE_VM : 0;
   flags |= (CLONE_FILES & flags_arg) ? CLONE_SHARE_FILES : 0;
   return flags;

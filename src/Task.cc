@@ -1646,7 +1646,7 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   bool unmap_buffers = false;
   bool close_buffers = false;
 
-  if (CLONE_SHARE_TASK_GROUP & flags) {
+  if (CLONE_SHARE_THREAD_GROUP & flags) {
     t->tg = tg;
   } else {
     t->tg = new_task_session->clone(t, tg);

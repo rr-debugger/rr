@@ -53,7 +53,7 @@ enum CloneFlags {
    */
   CLONE_SHARE_SIGHANDLERS = 1 << 0,
   /** Child will join its parent's task group. */
-  CLONE_SHARE_TASK_GROUP = 1 << 1,
+  CLONE_SHARE_THREAD_GROUP = 1 << 1,
   /** Child will share its parent's address space. */
   CLONE_SHARE_VM = 1 << 2,
   /** Child will share its parent's file descriptor table. */
