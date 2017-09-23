@@ -699,7 +699,7 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
         remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);
       }
 
-      for (auto t : group_leader->thread_group()->task_set()) {
+      for (auto t : vm.second->task_set()) {
         if (group_leader == t) {
           continue;
         }
