@@ -43,7 +43,7 @@ class ThreadGroup;
 enum CloneFlags {
   /**
    * The child gets a semantic copy of all parent resources (and
-   * becomes a new task group).  This is the semantics of the
+   * becomes a new thread group).  This is the semantics of the
    * fork() syscall.
    */
   CLONE_SHARE_NOTHING = 0,
@@ -52,7 +52,7 @@ enum CloneFlags {
    * parent.
    */
   CLONE_SHARE_SIGHANDLERS = 1 << 0,
-  /** Child will join its parent's task group. */
+  /** Child will join its parent's thread group. */
   CLONE_SHARE_THREAD_GROUP = 1 << 1,
   /** Child will share its parent's address space. */
   CLONE_SHARE_VM = 1 << 2,
@@ -511,12 +511,12 @@ public:
 
   void clear_wait_status() { wait_status = WaitStatus(); }
 
-  /** Return the task group this belongs to. */
+  /** Return the thread group this belongs to. */
   std::shared_ptr<ThreadGroup> thread_group() const { return tg; }
 
   /** Return the id of this task's recorded thread group. */
   pid_t tgid() const;
-  /** Return id of real OS task group. */
+  /** Return id of real OS thread group. */
   pid_t real_tgid() const;
 
   TaskUid tuid() const { return TaskUid(rec_tid, serial); }
@@ -688,7 +688,7 @@ public:
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
    * with a waitpid() call. Only applies to tasks which are dying, usually
-   * due to a signal sent to the entire task group. */
+   * due to a signal sent to the entire thread group. */
   bool unstable;
   /* exit(), or exit_group() with one task, has been called, so
    * the exit can be treated as stable. */
@@ -1015,7 +1015,7 @@ protected:
   bool extra_registers_known;
   // The session we're part of.
   Session* session_;
-  // The task group this belongs to.
+  // The thread group this belongs to.
   std::shared_ptr<ThreadGroup> tg;
   // Entries set by |set_thread_area()| or the |tls| argument to |clone()|
   // (when that's a user_desc). May be more than one due to different

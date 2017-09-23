@@ -1256,7 +1256,7 @@ Completion ReplaySession::try_one_trace_step(
  * object exists, which simplifies code like Session cloning.
  *
  * Killing tasks with fatal signals doesn't work because a fatal signal will
- * try to kill all the tasks in the task group. Instead we inject an |exit|
+ * try to kill all the tasks in the thread group. Instead we inject an |exit|
  * syscall, which is apparently the only way to kill one specific thread.
  */
 static void end_task(ReplayTask* t) {

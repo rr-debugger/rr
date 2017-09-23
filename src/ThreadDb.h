@@ -19,7 +19,7 @@ class ThreadDb;
 
 // This is declared as incomplete by the libthread_db API and is
 // expected to be defined by the API user.  We define it to hold just
-// pointers back to the task group and to the ThreadDb object.
+// pointers back to the thread group and to the ThreadDb object.
 struct ps_prochandle {
   rr::ThreadGroup* thread_group;
   rr::ThreadDb* db;

@@ -121,7 +121,7 @@ public:
   // two Tasks with the same tid at the same time.
   typedef std::map<AddressSpaceUid, AddressSpace*> AddressSpaceMap;
   typedef std::map<pid_t, Task*> TaskMap;
-  typedef std::map<TaskGroupUid, ThreadGroup*> TaskGroupMap;
+  typedef std::map<ThreadGroupUid, ThreadGroup*> TaskGroupMap;
 
   /**
    * Call |post_exec()| immediately after a tracee has successfully
@@ -182,10 +182,10 @@ public:
   Task* find_task(const TaskUid& tuid) const;
 
   /**
-   * Return the task group whose unique ID is |tguid|, or nullptr if no such
-   * task group exists.
+   * Return the thread group whose unique ID is |tguid|, or nullptr if no such
+   * thread group exists.
    */
-  ThreadGroup* find_thread_group(const TaskGroupUid& tguid) const;
+  ThreadGroup* find_thread_group(const ThreadGroupUid& tguid) const;
 
   /**
    * Return the AddressSpace whose unique ID is |vmuid|, or nullptr if no such

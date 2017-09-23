@@ -42,8 +42,8 @@ ps_err_e ps_pdread(struct ps_prochandle* h, psaddr_t addr, void* buffer,
                    size_t len) {
   bool ok = true;
   uintptr_t uaddr = reinterpret_cast<uintptr_t>(addr);
-  // We need any task associated with the task group.  Here we assume
-  // that all the tasks in the task group share VM, which is enforced
+  // We need any task associated with the thread group.  Here we assume
+  // that all the tasks in the thread group share VM, which is enforced
   // by clone(2).
   rr::Task* task = *h->thread_group->task_set().begin();
   task->read_bytes_helper(uaddr, len, buffer, &ok);

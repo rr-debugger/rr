@@ -20,9 +20,8 @@
 namespace rr {
 
 /**
- * Descriptor for task within a task group.  Note: on linux, we can
- * uniquely identify any thread by its |tid| (ignoring pid
- * namespaces).
+ * Descriptor for task.  Note: on linux, we can uniquely identify any thread
+ * by its |tid| (in rr's pid namespace).
  */
 struct GdbThreadId {
   GdbThreadId(pid_t pid = -1, pid_t tid = -1) : pid(pid), tid(tid) {}
@@ -671,7 +670,7 @@ private:
   GdbThreadId query_thread;
   // gdb and rr don't work well together in multi-process and
   // multi-exe-image debugging scenarios, so we pretend only
-  // this task group exists when interfacing with gdb
+  // this thread group exists when interfacing with gdb
   pid_t tgid;
   uint32_t cpu_features_;
   // true when "no-ack mode" enabled, in which we don't have

@@ -19,7 +19,7 @@ ThreadGroup::ThreadGroup(Session* session, ThreadGroup* parent, pid_t tgid,
       session_(session),
       parent_(parent),
       serial(serial) {
-  LOG(debug) << "creating new task group " << tgid
+  LOG(debug) << "creating new thread group " << tgid
              << " (real tgid:" << real_tgid << ")";
   if (parent) {
     parent->children_.insert(this);
@@ -40,7 +40,7 @@ ThreadGroup::~ThreadGroup() {
 }
 
 void ThreadGroup::destabilize() {
-  LOG(debug) << "destabilizing task group " << tgid;
+  LOG(debug) << "destabilizing thread group " << tgid;
   for (auto it = task_set().begin(); it != task_set().end(); ++it) {
     Task* t = *it;
     t->unstable = true;

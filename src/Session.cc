@@ -166,7 +166,7 @@ Task* Session::find_task(const TaskUid& tuid) const {
   return t && t->tuid() == tuid ? t : nullptr;
 }
 
-ThreadGroup* Session::find_thread_group(const TaskGroupUid& tguid) const {
+ThreadGroup* Session::find_thread_group(const ThreadGroupUid& tguid) const {
   finish_initializing();
   auto it = thread_group_map.find(tguid);
   if (thread_group_map.end() == it) {
@@ -249,7 +249,7 @@ void Session::kill_all_tasks() {
        */
       LOG(debug) << "sending SIGKILL to " << t->tid << " ...";
       // If we haven't already done a stable exit via syscall,
-      // kill the task and note that the entire task group is unstable.
+      // kill the task and note that the entire thread group is unstable.
       // The task may already have exited due to the preparation above,
       // so we might accidentally shoot down the wrong task :-(, but we
       // have to do this because the task might be in a state where it's not

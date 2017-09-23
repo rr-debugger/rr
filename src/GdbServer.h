@@ -209,10 +209,10 @@ private:
   // dbg is initially null. Once the debugger connection is established, it
   // never changes.
   std::unique_ptr<GdbConnection> dbg;
-  // When dbg is non-null, the TaskGroupUid of the task being debugged. Never
+  // When dbg is non-null, the ThreadGroupUid of the task being debugged. Never
   // changes once the connection is established --- we don't currently
   // support switching gdb between debuggee processes.
-  TaskGroupUid debuggee_tguid;
+  ThreadGroupUid debuggee_tguid;
   // The TaskUid of the last continued task.
   TaskUid last_continue_tuid;
   // The TaskUid of the last queried task.

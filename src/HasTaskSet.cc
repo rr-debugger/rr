@@ -13,7 +13,7 @@ void HasTaskSet::insert_task(Task* t) {
 }
 
 void HasTaskSet::erase_task(Task* t) {
-  LOG(debug) << "removing " << t->tid << " from task group " << this;
+  LOG(debug) << "removing " << t->tid << " from task set " << this;
   tasks.erase(t);
 }
 

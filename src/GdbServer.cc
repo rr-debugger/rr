@@ -797,7 +797,7 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     do_stop = true;
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     if (req.cont().run_direction == RUN_FORWARD) {
-      // The exit of the last task in a task group generates a fake SIGKILL,
+      // The exit of the last task in a thread group generates a fake SIGKILL,
       // when reverse-execution is enabled, because users often want to run
       // backwards from the end of the task.
       stop_siginfo.si_signo = SIGKILL;
@@ -850,8 +850,8 @@ struct AllowedTasks {
   RunCommand command;
 };
 static RunCommand compute_run_command_for_reverse_exec(
-    Session& session, const TaskGroupUid& debuggee_tguid, const GdbRequest& req,
-    vector<AllowedTasks>& allowed_tasks) {
+    Session& session, const ThreadGroupUid& debuggee_tguid,
+    const GdbRequest& req, vector<AllowedTasks>& allowed_tasks) {
   // Singlestep if any of the actions request singlestepping.
   RunCommand result = RUN_CONTINUE;
   for (auto& action : req.cont().actions) {

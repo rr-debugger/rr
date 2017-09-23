@@ -47,7 +47,7 @@ private:
 };
 
 typedef TaskishUid<Task> TaskUid;
-typedef TaskishUid<ThreadGroup> TaskGroupUid;
+typedef TaskishUid<ThreadGroup> ThreadGroupUid;
 
 class AddressSpaceUid : public TaskishUid<AddressSpace> {
 public:
