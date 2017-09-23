@@ -158,7 +158,7 @@ private:
 
   TraceWriter trace_out;
   Scheduler scheduler_;
-  ThreadGroup::shr_ptr initial_task_group;
+  ThreadGroup::shr_ptr initial_thread_group;
   SeccompFilterRewriter seccomp_filter_rewriter_;
 
   int ignore_sig;

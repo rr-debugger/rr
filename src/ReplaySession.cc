@@ -1293,7 +1293,7 @@ ReplayTask* ReplaySession::revive_task_for_exec() {
   }
 
   ThreadGroup* tg = nullptr;
-  for (auto& p : task_group_map) {
+  for (auto& p : thread_group_map) {
     if (p.second->tgid == trace_frame.tid()) {
       tg = p.second;
       break;

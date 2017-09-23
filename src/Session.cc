@@ -34,7 +34,7 @@ struct Session::CloneCompletion {
     vector<Task::CapturedState> member_states;
     vector<pair<remote_ptr<void>, vector<uint8_t>>> captured_memory;
   };
-  vector<ThreadGroup> task_groups;
+  vector<ThreadGroup> thread_groups;
 };
 
 Session::Session()
@@ -51,7 +51,7 @@ Session::~Session() {
   kill_all_tasks();
   LOG(debug) << "Session " << this << " destroyed";
 
-  for (auto tg : task_group_map) {
+  for (auto tg : thread_group_map) {
     tg.second->forget_session();
   }
 }
@@ -64,8 +64,10 @@ Session::Session(const Session& other) {
   has_cpuid_faulting_ = other.has_cpuid_faulting_;
 }
 
-void Session::on_create(ThreadGroup* tg) { task_group_map[tg->tguid()] = tg; }
-void Session::on_destroy(ThreadGroup* tg) { task_group_map.erase(tg->tguid()); }
+void Session::on_create(ThreadGroup* tg) { thread_group_map[tg->tguid()] = tg; }
+void Session::on_destroy(ThreadGroup* tg) {
+  thread_group_map.erase(tg->tguid());
+}
 
 void Session::post_exec() {
   /* We just saw a successful exec(), so from now on we know
@@ -125,7 +127,7 @@ ThreadGroup::shr_ptr Session::clone(Task* t, ThreadGroup::shr_ptr tg) {
                                                 t->tid, t->tuid().serial()));
   }
   ThreadGroup* parent =
-      tg->parent() ? find_task_group(tg->parent()->tguid()) : nullptr;
+      tg->parent() ? find_thread_group(tg->parent()->tguid()) : nullptr;
   return ThreadGroup::shr_ptr(
       new ThreadGroup(this, parent, tg->tgid, t->tid, tg->tguid().serial()));
 }
@@ -164,10 +166,10 @@ Task* Session::find_task(const TaskUid& tuid) const {
   return t && t->tuid() == tuid ? t : nullptr;
 }
 
-ThreadGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
+ThreadGroup* Session::find_thread_group(const TaskGroupUid& tguid) const {
   finish_initializing();
-  auto it = task_group_map.find(tguid);
-  if (task_group_map.end() == it) {
+  auto it = thread_group_map.find(tguid);
+  if (thread_group_map.end() == it) {
     return nullptr;
   }
   return it->second;
@@ -378,7 +380,7 @@ void Session::finish_initializing() const {
   }
 
   Session* self = const_cast<Session*>(this);
-  for (auto& tgleader : clone_completion->task_groups) {
+  for (auto& tgleader : clone_completion->thread_groups) {
     {
       AutoRemoteSyscalls remote(tgleader.clone_leader);
       for (const auto& m : tgleader.clone_leader->vm()->maps()) {
@@ -666,8 +668,8 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
     LOG(debug) << "  forking tg " << group_leader->tgid()
                << " (real: " << group_leader->real_tgid() << ")";
 
-    completion->task_groups.push_back(CloneCompletion::ThreadGroup());
-    auto& group = completion->task_groups.back();
+    completion->thread_groups.push_back(CloneCompletion::ThreadGroup());
+    auto& group = completion->thread_groups.back();
 
     group.clone_leader = group_leader->os_fork_into(&dest);
     dest.on_create(group.clone_leader);

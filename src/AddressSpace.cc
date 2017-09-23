@@ -42,7 +42,7 @@ static const char* trim_leading_blanks(const char* str) {
 /**
  * Returns true if a task in t's task-group other than t is doing an exec.
  */
-static bool task_group_in_exec(Task* t) {
+static bool thread_group_in_exec(Task* t) {
   if (!t->session().is_recording()) {
     return false;
   }
@@ -62,9 +62,9 @@ static bool task_group_in_exec(Task* t) {
 
 KernelMapIterator::KernelMapIterator(Task* t) : tid(t->tid) {
   // See https://lkml.org/lkml/2016/9/21/423
-  ASSERT(t, !task_group_in_exec(t)) << "Task-group in execve, so reading "
-                                       "/proc/.../maps may trigger kernel "
-                                       "deadlock!";
+  ASSERT(t, !thread_group_in_exec(t)) << "Task-group in execve, so reading "
+                                         "/proc/.../maps may trigger kernel "
+                                         "deadlock!";
   init();
 }
 
@@ -1312,7 +1312,7 @@ KernelMapping AddressSpace::vdso() const {
 void AddressSpace::verify(Task* t) const {
   ASSERT(t, task_set().end() != task_set().find(t));
 
-  if (task_group_in_exec(t)) {
+  if (thread_group_in_exec(t)) {
     return;
   }
 

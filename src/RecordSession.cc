@@ -1780,7 +1780,7 @@ RecordSession::RecordSession(const std::string& exe_path,
   RecordTask* t = static_cast<RecordTask*>(
       Task::spawn(*this, error_fd, trace_out, exe_path, argv, envp));
 
-  initial_task_group = t->thread_group();
+  initial_thread_group = t->thread_group();
   on_create(t);
 }
 
@@ -1788,7 +1788,7 @@ bool RecordSession::can_end() {
   if (wait_for_all_) {
     return task_map.empty();
   }
-  return initial_task_group->task_set().empty();
+  return initial_thread_group->task_set().empty();
 }
 
 RecordSession::RecordResult RecordSession::record_step() {
@@ -1796,7 +1796,7 @@ RecordSession::RecordResult RecordSession::record_step() {
 
   if (can_end()) {
     result.status = STEP_EXITED;
-    result.exit_status = initial_task_group->exit_status;
+    result.exit_status = initial_thread_group->exit_status;
     return result;
   }
 

@@ -185,7 +185,7 @@ public:
    * Return the task group whose unique ID is |tguid|, or nullptr if no such
    * task group exists.
    */
-  ThreadGroup* find_task_group(const TaskGroupUid& tguid) const;
+  ThreadGroup* find_thread_group(const TaskGroupUid& tguid) const;
 
   /**
    * Return the AddressSpace whose unique ID is |vmuid|, or nullptr if no such
@@ -318,7 +318,7 @@ protected:
 
   AddressSpaceMap vm_map;
   TaskMap task_map;
-  TaskGroupMap task_group_map;
+  TaskGroupMap thread_group_map;
 
   // If non-null, data required to finish initializing the tasks of this
   // session.
