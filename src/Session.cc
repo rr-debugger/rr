@@ -255,7 +255,7 @@ void Session::kill_all_tasks() {
       // Linux doesn't seem to give us a reliable way to detach and kill
       // the tracee without races.
       syscall(SYS_tgkill, t->real_tgid(), t->tid, SIGKILL);
-      t->task_group()->destabilize();
+      t->thread_group()->destabilize();
     }
 
     t->destroy();
@@ -697,7 +697,7 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
         remap_shared_mmap(remote, emu_fs, dest_emu_fs, m);
       }
 
-      for (auto t : group_leader->task_group()->task_set()) {
+      for (auto t : group_leader->thread_group()->task_set()) {
         if (group_leader == t) {
           continue;
         }

@@ -34,7 +34,7 @@ namespace rr {
 
 GdbServer::GdbServer(std::unique_ptr<GdbConnection>& dbg, Task* t)
     : dbg(std::move(dbg)),
-      debuggee_tguid(t->task_group()->tguid()),
+      debuggee_tguid(t->thread_group()->tguid()),
       last_continue_tuid(t->tuid()),
       last_query_tuid(t->tuid()),
       final_event(UINT32_MAX),
@@ -374,7 +374,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       Task* t = session.find_task(last_continue_tuid);
       ASSERT(t, session.is_diversion())
           << "Replay interrupts should be handled at a higher level";
-      DEBUG_ASSERT(!t || t->task_group()->tguid() == debuggee_tguid);
+      DEBUG_ASSERT(!t || t->thread_group()->tguid() == debuggee_tguid);
       dbg->notify_stop(t ? get_threadid(t) : GdbThreadId(), 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       if (t) {
@@ -753,7 +753,7 @@ bool GdbServer::diverter_process_debugger_requests(
 
 static bool is_last_thread_exit(const BreakStatus& break_status) {
   return break_status.task_exit &&
-         break_status.task->task_group()->task_set().size() == 1;
+         break_status.task->thread_group()->task_set().size() == 1;
 }
 
 static Task* is_in_exec(ReplayTimeline& timeline) {
@@ -816,7 +816,7 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     t = in_exec_task;
     LOG(debug) << "Stopping at exec";
   }
-  if (do_stop && t->task_group()->tguid() == debuggee_tguid) {
+  if (do_stop && t->thread_group()->tguid() == debuggee_tguid) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
     dbg->notify_stop(get_threadid(t), stop_siginfo.si_signo,
@@ -1127,7 +1127,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
 
   if (interrupt_pending) {
     Task* t = timeline.current_session().current_task();
-    if (t->task_group()->tguid() == debuggee_tguid) {
+    if (t->thread_group()->tguid() == debuggee_tguid) {
       interrupt_pending = false;
       dbg->notify_stop(get_threadid(t), in_debuggee_end_state ? SIGKILL : 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
@@ -1137,7 +1137,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
 
   if (req.cont().run_direction == RUN_FORWARD) {
     if (is_in_exec(timeline) &&
-        timeline.current_session().current_task()->task_group()->tguid() ==
+        timeline.current_session().current_task()->thread_group()->tguid() ==
             debuggee_tguid) {
       // Don't go any further forward. maybe_notify_stop will generate a
       // stop.
@@ -1159,7 +1159,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     RunCommand command = compute_run_command_for_reverse_exec(
         timeline.current_session(), debuggee_tguid, req, allowed_tasks);
     auto stop_filter = [&](Task* t) -> bool {
-      if (t->task_group()->tguid() != debuggee_tguid) {
+      if (t->thread_group()->tguid() != debuggee_tguid) {
         return false;
       }
       // If gdb's requested actions don't allow the task to run, we still
@@ -1198,7 +1198,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
   }
   if (req.cont().run_direction == RUN_FORWARD &&
       is_last_thread_exit(result.break_status) &&
-      result.break_status.task->task_group()->tguid() == debuggee_tguid) {
+      result.break_status.task->thread_group()->tguid() == debuggee_tguid) {
     in_debuggee_end_state = true;
   }
   return CONTINUE_DEBUGGING;
@@ -1340,7 +1340,7 @@ void GdbServer::restart_session(const GdbRequest& req) {
     // condition below.
     DEBUG_ASSERT(result.status != REPLAY_EXITED);
     if (is_last_thread_exit(result.break_status) &&
-        result.break_status.task->task_group()->tgid == target.pid) {
+        result.break_status.task->thread_group()->tgid == target.pid) {
       // Debuggee task is about to exit. Stop here.
       in_debuggee_end_state = true;
       break;
@@ -1481,7 +1481,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   if (flags.debugger_params_write_pipe) {
     flags.debugger_params_write_pipe->close();
   }
-  debuggee_tguid = t->task_group()->tguid();
+  debuggee_tguid = t->thread_group()->tguid();
 
   FrameTime first_run_event = t->vm()->first_run_event();
   if (first_run_event) {

@@ -45,7 +45,7 @@ ps_err_e ps_pdread(struct ps_prochandle* h, psaddr_t addr, void* buffer,
   // We need any task associated with the task group.  Here we assume
   // that all the tasks in the task group share VM, which is enforced
   // by clone(2).
-  rr::Task* task = *h->task_group->task_set().begin();
+  rr::Task* task = *h->thread_group->task_set().begin();
   task->read_bytes_helper(uaddr, len, buffer, &ok);
   LOG(debug) << "ps_pdread " << ok;
   return ok ? PS_OK : PS_ERR;
@@ -58,7 +58,7 @@ ps_err_e ps_pdwrite(struct ps_prochandle*, psaddr_t, const void*, size_t) {
 
 ps_err_e ps_lgetregs(struct ps_prochandle* h, lwpid_t rec_tid,
                      prgregset_t result) {
-  rr::Task* task = h->task_group->session()->find_task(rec_tid);
+  rr::Task* task = h->thread_group->session()->find_task(rec_tid);
   DEBUG_ASSERT(task != nullptr);
 
   struct ::user_regs_struct regs = task->regs().get_ptrace();
@@ -83,13 +83,13 @@ ps_err_e ps_lsetfpregs(struct ps_prochandle*, lwpid_t, const prfpregset_t*) {
 }
 
 pid_t ps_getpid(struct ps_prochandle* h) {
-  LOG(debug) << "ps_getpid " << h->task_group->tgid;
-  return h->task_group->tgid;
+  LOG(debug) << "ps_getpid " << h->thread_group->tgid;
+  return h->thread_group->tgid;
 }
 
 ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
                             int val, psaddr_t* base) {
-  rr::Task* task = h->task_group->session()->find_task(rec_tid);
+  rr::Task* task = h->thread_group->session()->find_task(rec_tid);
   DEBUG_ASSERT(task != nullptr);
 
   if (task->arch() == rr::x86) {
@@ -122,13 +122,13 @@ ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
   return PS_OK;
 }
 
-rr::ThreadDb::ThreadDb(ThreadGroup* task_group)
+rr::ThreadDb::ThreadDb(ThreadGroup* thread_group)
     : internal_handle(nullptr),
       thread_db_library(nullptr),
       td_ta_delete_fn(nullptr),
       td_thr_tls_get_addr_fn(nullptr),
       td_ta_map_lwp2thr_fn(nullptr) {
-  prochandle.task_group = task_group;
+  prochandle.thread_group = thread_group;
   prochandle.db = this;
 }
 

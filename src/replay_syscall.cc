@@ -484,7 +484,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   /* Complete the syscall. The tid of the task will be the thread-group-leader
    * tid, no matter what tid it was before.
    */
-  pid_t tgid = t->task_group()->real_tgid;
+  pid_t tgid = t->thread_group()->real_tgid;
   __ptrace_cont(t, RESUME_SYSCALL, t->arch(), expect_syscallno,
                 syscall_number_for_execve(trace_frame.regs().arch()),
                 tgid == t->tid ? -1 : tgid);

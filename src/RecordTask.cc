@@ -744,7 +744,7 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
       // check to see if any thread in the ptracer process is in a waitpid that
       // could read the status of 'tracee'. If it is, we should wake up that
       // thread. Otherwise we send SIGCHLD to the ptracer thread.
-      for (Task* t : task_group()->task_set()) {
+      for (Task* t : thread_group()->task_set()) {
         auto rt = static_cast<RecordTask*>(t);
         if (rt->is_waiting_for_ptrace(tracee)) {
           wake_task = rt;
@@ -757,7 +757,7 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
     }
   }
   if (!need_signal) {
-    for (ThreadGroup* child_tg : task_group()->children()) {
+    for (ThreadGroup* child_tg : thread_group()->children()) {
       for (Task* child : child_tg->task_set()) {
         RecordTask* rchild = static_cast<RecordTask*>(child);
         if (rchild->emulated_SIGCHLD_pending) {
@@ -766,7 +766,7 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
           // that
           // could read the status of 'tracee'. If it is, we should wake up that
           // thread. Otherwise we send SIGCHLD to the ptracer thread.
-          for (Task* t : task_group()->task_set()) {
+          for (Task* t : thread_group()->task_set()) {
             auto rt = static_cast<RecordTask*>(t);
             if (rt->is_waiting_for(rchild)) {
               wake_task = rt;
@@ -850,7 +850,7 @@ bool RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
     }
   }
 
-  for (ThreadGroup* child_tg : task_group()->children()) {
+  for (ThreadGroup* child_tg : thread_group()->children()) {
     for (Task* child : child_tg->task_set()) {
       auto rchild = static_cast<RecordTask*>(child);
       if (rchild->emulated_SIGCHLD_pending) {
@@ -869,7 +869,7 @@ bool RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
 bool RecordTask::is_waiting_for_ptrace(RecordTask* t) {
   // This task's process must be a ptracer of t.
   if (!t->emulated_ptracer ||
-      t->emulated_ptracer->task_group() != task_group()) {
+      t->emulated_ptracer->thread_group() != thread_group()) {
     return false;
   }
   // XXX need to check |options| to make sure this task is eligible!!
@@ -894,7 +894,7 @@ bool RecordTask::is_waiting_for_ptrace(RecordTask* t) {
 
 bool RecordTask::is_waiting_for(RecordTask* t) {
   // t must be a child of this task.
-  if (t->task_group()->parent() != task_group().get()) {
+  if (t->thread_group()->parent() != thread_group().get()) {
     return false;
   }
   switch (in_wait_type) {
@@ -1011,7 +1011,7 @@ bool RecordTask::has_any_actionable_signal() {
 
 void RecordTask::emulate_SIGCONT() {
   // All threads in the process are resumed.
-  for (Task* t : task_group()->task_set()) {
+  for (Task* t : thread_group()->task_set()) {
     auto rt = static_cast<RecordTask*>(t);
     LOG(debug) << "setting " << tid << " to NOT_STOPPED due to SIGCONT";
     rt->emulated_stop_pending = false;
@@ -1036,7 +1036,7 @@ void RecordTask::signal_delivered(int sig) {
       // Fall through...
       case SIGSTOP:
         // All threads in the process are stopped.
-        for (Task* t : task_group()->task_set()) {
+        for (Task* t : thread_group()->task_set()) {
           auto rt = static_cast<RecordTask*>(t);
           rt->apply_group_stop(sig);
         }
@@ -1655,7 +1655,7 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
 
 bool RecordTask::is_fatal_signal(int sig,
                                  SignalDeterministic deterministic) const {
-  if (task_group()->received_sigframe_SIGSEGV) {
+  if (thread_group()->received_sigframe_SIGSEGV) {
     // Can't be blocked, caught or ignored
     return true;
   }

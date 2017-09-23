@@ -512,7 +512,7 @@ public:
   void clear_wait_status() { wait_status = WaitStatus(); }
 
   /** Return the task group this belongs to. */
-  std::shared_ptr<ThreadGroup> task_group() const { return tg; }
+  std::shared_ptr<ThreadGroup> thread_group() const { return tg; }
 
   /** Return the id of this task's recorded thread group. */
   pid_t tgid() const;

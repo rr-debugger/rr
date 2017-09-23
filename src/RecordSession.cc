@@ -102,8 +102,8 @@ static void record_robust_futex_changes(RecordTask* t) {
 static void record_exit(RecordTask* t, WaitStatus exit_status) {
   t->session().trace_writer().write_task_event(
       TraceTaskEvent::for_exit(t->tid, exit_status));
-  if (t->task_group()->tgid == t->tid) {
-    t->task_group()->exit_status = exit_status;
+  if (t->thread_group()->tgid == t->tid) {
+    t->thread_group()->exit_status = exit_status;
   }
 }
 
@@ -121,7 +121,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   } else {
     LOG(warn)
         << "unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";
-    t->task_group()->destabilize();
+    t->thread_group()->destabilize();
   }
 
   record_robust_futex_changes(t);
@@ -455,7 +455,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
     }
 
     case PTRACE_EVENT_EXEC: {
-      if (t->task_group()->task_set().size() > 1) {
+      if (t->thread_group()->task_set().size() > 1) {
         // All tasks but the task that did the execve should have exited by
         // now and notified us of their exits. However, it's possible that
         // while running the thread-group leader, our PTRACE_CONT raced with its
@@ -1162,7 +1162,7 @@ static bool inject_handled_signal(RecordTask* t) {
     // signal handler to match what the kernel does.
     t->set_sig_handler_default(SIGSEGV);
     t->stash_sig();
-    t->task_group()->received_sigframe_SIGSEGV = true;
+    t->thread_group()->received_sigframe_SIGSEGV = true;
     return false;
   }
 
@@ -1331,7 +1331,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
                             sig);
         LOG(warn) << "Delivered core-dumping signal; may misrecord "
                      "CLONE_CHILD_CLEARTID memory race";
-        t->task_group()->destabilize();
+        t->thread_group()->destabilize();
       }
 
       t->signal_delivered(sig);
@@ -1780,7 +1780,7 @@ RecordSession::RecordSession(const std::string& exe_path,
   RecordTask* t = static_cast<RecordTask*>(
       Task::spawn(*this, error_fd, trace_out, exe_path, argv, envp));
 
-  initial_task_group = t->task_group();
+  initial_task_group = t->thread_group();
   on_create(t);
 }
 

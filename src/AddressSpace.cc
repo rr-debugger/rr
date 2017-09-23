@@ -46,7 +46,7 @@ static bool task_group_in_exec(Task* t) {
   if (!t->session().is_recording()) {
     return false;
   }
-  for (Task* tt : t->task_group()->task_set()) {
+  for (Task* tt : t->thread_group()->task_set()) {
     if (tt == t) {
       continue;
     }

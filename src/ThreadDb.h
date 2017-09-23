@@ -21,7 +21,7 @@ class ThreadDb;
 // expected to be defined by the API user.  We define it to hold just
 // pointers back to the task group and to the ThreadDb object.
 struct ps_prochandle {
-  rr::ThreadGroup* task_group;
+  rr::ThreadGroup* thread_group;
   rr::ThreadDb* db;
 };
 

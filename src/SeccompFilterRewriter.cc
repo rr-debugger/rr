@@ -113,7 +113,7 @@ static void install_patched_seccomp_filter_arch(
   if (!t->regs().syscall_failed()) {
     if (is_seccomp_syscall(t->regs().original_syscallno(), t->arch()) &&
         (t->regs().arg2() & SECCOMP_FILTER_FLAG_TSYNC)) {
-      for (Task* tt : t->task_group()->task_set()) {
+      for (Task* tt : t->thread_group()->task_set()) {
         static_cast<RecordTask*>(tt)->prctl_seccomp_status = 2;
       }
     } else {

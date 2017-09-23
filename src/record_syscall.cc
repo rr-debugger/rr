@@ -1757,7 +1757,7 @@ static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
     }
   }
   if (options & WUNTRACED) {
-    for (ThreadGroup* child_process : t->task_group()->children()) {
+    for (ThreadGroup* child_process : t->thread_group()->children()) {
       for (Task* child : child_process->task_set()) {
         auto rchild = static_cast<RecordTask*>(child);
         if (rchild->emulated_stop_type == GROUP_STOP &&
@@ -2976,7 +2976,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
 
     case Arch::exit_group:
-      if (t->task_group()->task_set().size() == 1) {
+      if (t->thread_group()->task_set().size() == 1) {
         prepare_exit(t, (int)regs.arg1());
         return ALLOW_SWITCH;
       }
@@ -3666,14 +3666,14 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
             r.set_arg1(intptr_t(-1));
             t->set_regs(r);
             syscall_state.emulate_result(0);
-            t->task_group()->dumpable = false;
+            t->thread_group()->dumpable = false;
           } else if (regs.arg2() == 1) {
-            t->task_group()->dumpable = true;
+            t->thread_group()->dumpable = true;
           }
           break;
 
         case PR_GET_DUMPABLE:
-          syscall_state.emulate_result(t->task_group()->dumpable);
+          syscall_state.emulate_result(t->thread_group()->dumpable);
           break;
 
         case PR_GET_SECCOMP:
@@ -5213,7 +5213,7 @@ static void rec_process_syscall_arch(RecordTask* t,
           if (tracee->emulated_ptracer == t) {
             tracee->emulated_stop_pending = false;
           } else {
-            for (Task* thread : tracee->task_group()->task_set()) {
+            for (Task* thread : tracee->thread_group()->task_set()) {
               auto rt = static_cast<RecordTask*>(thread);
               rt->emulated_stop_pending = false;
             }

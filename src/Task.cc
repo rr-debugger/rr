@@ -712,7 +712,7 @@ void Task::post_exec(const string& exe_file) {
   stopping_breakpoint_table = nullptr;
   stopping_breakpoint_table_entry_size = 0;
   preload_globals = nullptr;
-  task_group()->execed = true;
+  thread_group()->execed = true;
 
   thread_areas_.clear();
   memset(&thread_locals, 0, sizeof(thread_locals));
