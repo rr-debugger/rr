@@ -38,7 +38,7 @@
 #include "ReplayTask.h"
 #include "SeccompFilterRewriter.h"
 #include "StdioMonitor.h"
-#include "TaskGroup.h"
+#include "ThreadGroup.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
 #include "core.h"

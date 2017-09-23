@@ -13,7 +13,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "Flags.h"
 #include "ReplayTask.h"
-#include "TaskGroup.h"
+#include "ThreadGroup.h"
 #include "core.h"
 #include "fast_forward.h"
 #include "kernel_abi.h"
@@ -1292,7 +1292,7 @@ ReplayTask* ReplaySession::revive_task_for_exec() {
     FATAL() << "Can't find task, but we're not in an execve";
   }
 
-  TaskGroup* tg = nullptr;
+  ThreadGroup* tg = nullptr;
   for (auto& p : task_group_map) {
     if (p.second->tgid == trace_frame.tid()) {
       tg = p.second;

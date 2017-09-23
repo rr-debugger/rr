@@ -410,7 +410,7 @@ set(RR_SOURCES
   src/Session.cc
   src/StdioMonitor.cc
   src/Task.cc
-  src/TaskGroup.cc
+  src/ThreadGroup.cc
   src/ThreadDb.cc
   src/TraceFrame.cc
   src/TraceStream.cc

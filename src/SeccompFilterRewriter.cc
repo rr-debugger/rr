@@ -11,7 +11,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "RecordTask.h"
 #include "Registers.h"
-#include "TaskGroup.h"
+#include "ThreadGroup.h"
 #include "kernel_abi.h"
 #include "log.h"
 #include "seccomp-bpf.h"

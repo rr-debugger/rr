@@ -3,7 +3,7 @@
 #include "ThreadDb.h"
 #include "GdbServer.h"
 #include "Task.h"
-#include "TaskGroup.h"
+#include "ThreadGroup.h"
 #include "core.h"
 #include "log.h"
 
@@ -122,7 +122,7 @@ ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
   return PS_OK;
 }
 
-rr::ThreadDb::ThreadDb(TaskGroup* task_group)
+rr::ThreadDb::ThreadDb(ThreadGroup* task_group)
     : internal_handle(nullptr),
       thread_db_library(nullptr),
       td_ta_delete_fn(nullptr),

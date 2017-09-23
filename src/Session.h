@@ -24,7 +24,7 @@ class RecordSession;
 class ReplaySession;
 class ReplayTask;
 class Task;
-class TaskGroup;
+class ThreadGroup;
 class AutoRemoteSyscalls;
 
 // The following types are used by step() APIs in Session subclasses.
@@ -121,7 +121,7 @@ public:
   // two Tasks with the same tid at the same time.
   typedef std::map<AddressSpaceUid, AddressSpace*> AddressSpaceMap;
   typedef std::map<pid_t, Task*> TaskMap;
-  typedef std::map<TaskGroupUid, TaskGroup*> TaskGroupMap;
+  typedef std::map<TaskGroupUid, ThreadGroup*> TaskGroupMap;
 
   /**
    * Call |post_exec()| immediately after a tracee has successfully
@@ -160,11 +160,11 @@ public:
   std::shared_ptr<AddressSpace> clone(Task* t,
                                       std::shared_ptr<AddressSpace> vm);
 
-  std::shared_ptr<TaskGroup> create_tg(Task* t);
+  std::shared_ptr<ThreadGroup> create_tg(Task* t);
   /**
    * Return a copy of |tg| with the same mappings.
    */
-  std::shared_ptr<TaskGroup> clone(Task* t, std::shared_ptr<TaskGroup> tg);
+  std::shared_ptr<ThreadGroup> clone(Task* t, std::shared_ptr<ThreadGroup> tg);
 
   /** See Task::clone(). */
   Task* clone(Task* p, int flags, remote_ptr<void> stack, remote_ptr<void> tls,
@@ -185,7 +185,7 @@ public:
    * Return the task group whose unique ID is |tguid|, or nullptr if no such
    * task group exists.
    */
-  TaskGroup* find_task_group(const TaskGroupUid& tguid) const;
+  ThreadGroup* find_task_group(const TaskGroupUid& tguid) const;
 
   /**
    * Return the AddressSpace whose unique ID is |vmuid|, or nullptr if no such
@@ -205,8 +205,8 @@ public:
    */
   void on_destroy(AddressSpace* vm);
   virtual void on_destroy(Task* t);
-  void on_create(TaskGroup* tg);
-  void on_destroy(TaskGroup* tg);
+  void on_create(ThreadGroup* tg);
+  void on_destroy(ThreadGroup* tg);
 
   /** Return the set of Tasks being traced in this session. */
   const TaskMap& tasks() const {

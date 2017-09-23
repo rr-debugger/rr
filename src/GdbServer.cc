@@ -22,7 +22,7 @@
 #include "ScopedFd.h"
 #include "StringVectorToCharArray.h"
 #include "Task.h"
-#include "TaskGroup.h"
+#include "ThreadGroup.h"
 #include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"

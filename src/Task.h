@@ -38,7 +38,7 @@ class RecordTask;
 class ReplaySession;
 class ScopedFd;
 class Session;
-class TaskGroup;
+class ThreadGroup;
 
 enum CloneFlags {
   /**
@@ -512,7 +512,7 @@ public:
   void clear_wait_status() { wait_status = WaitStatus(); }
 
   /** Return the task group this belongs to. */
-  std::shared_ptr<TaskGroup> task_group() const { return tg; }
+  std::shared_ptr<ThreadGroup> task_group() const { return tg; }
 
   /** Return the id of this task's recorded thread group. */
   pid_t tgid() const;
@@ -1016,7 +1016,7 @@ protected:
   // The session we're part of.
   Session* session_;
   // The task group this belongs to.
-  std::shared_ptr<TaskGroup> tg;
+  std::shared_ptr<ThreadGroup> tg;
   // Entries set by |set_thread_area()| or the |tls| argument to |clone()|
   // (when that's a user_desc). May be more than one due to different
   // entry_numbers.

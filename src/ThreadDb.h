@@ -13,7 +13,7 @@ extern "C" {
 }
 
 namespace rr {
-class TaskGroup;
+class ThreadGroup;
 class ThreadDb;
 }
 
@@ -21,7 +21,7 @@ class ThreadDb;
 // expected to be defined by the API user.  We define it to hold just
 // pointers back to the task group and to the ThreadDb object.
 struct ps_prochandle {
-  rr::TaskGroup* task_group;
+  rr::ThreadGroup* task_group;
   rr::ThreadDb* db;
 };
 
@@ -30,7 +30,7 @@ namespace rr {
 /**
  * This provides an interface to libthread_db.so to help with TLS
  * lookup.  There is one instance per process, attached to the
- * TaskGroup.
+ * ThreadGroup.
  *
  * The overall approach is that a libthread_db.so is loaded into rr
  * when this class is initialized (see |load_library|).  This provides
@@ -47,7 +47,7 @@ namespace rr {
  */
 class ThreadDb {
 public:
-  explicit ThreadDb(TaskGroup*);
+  explicit ThreadDb(ThreadGroup*);
   ~ThreadDb();
 
   /**

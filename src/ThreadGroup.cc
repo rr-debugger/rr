@@ -1,6 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "TaskGroup.h"
+#include "ThreadGroup.h"
 
 #include "Session.h"
 #include "Task.h"
@@ -9,8 +9,8 @@
 
 namespace rr {
 
-TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
-                     pid_t real_tgid, uint32_t serial)
+ThreadGroup::ThreadGroup(Session* session, ThreadGroup* parent, pid_t tgid,
+                         pid_t real_tgid, uint32_t serial)
     : tgid(tgid),
       real_tgid(real_tgid),
       dumpable(true),
@@ -27,11 +27,11 @@ TaskGroup::TaskGroup(Session* session, TaskGroup* parent, pid_t tgid,
   session->on_create(this);
 }
 
-TaskGroup::~TaskGroup() {
+ThreadGroup::~ThreadGroup() {
   if (session_) {
     session_->on_destroy(this);
   }
-  for (TaskGroup* tg : children()) {
+  for (ThreadGroup* tg : children()) {
     tg->parent_ = nullptr;
   }
   if (parent_) {
@@ -39,7 +39,7 @@ TaskGroup::~TaskGroup() {
   }
 }
 
-void TaskGroup::destabilize() {
+void ThreadGroup::destabilize() {
   LOG(debug) << "destabilizing task group " << tgid;
   for (auto it = task_set().begin(); it != task_set().end(); ++it) {
     Task* t = *it;
@@ -48,7 +48,7 @@ void TaskGroup::destabilize() {
   }
 }
 
-ThreadDb* TaskGroup::thread_db() {
+ThreadDb* ThreadGroup::thread_db() {
   if (!thread_db_) {
     thread_db_ = std::unique_ptr<ThreadDb>(new ThreadDb(this));
   }

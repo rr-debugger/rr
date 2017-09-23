@@ -9,7 +9,7 @@
 #include "Scheduler.h"
 #include "SeccompFilterRewriter.h"
 #include "Session.h"
-#include "TaskGroup.h"
+#include "ThreadGroup.h"
 #include "TraceFrame.h"
 #include "WaitStatus.h"
 
@@ -158,7 +158,7 @@ private:
 
   TraceWriter trace_out;
   Scheduler scheduler_;
-  TaskGroup::shr_ptr initial_task_group;
+  ThreadGroup::shr_ptr initial_task_group;
   SeccompFilterRewriter seccomp_filter_rewriter_;
 
   int ignore_sig;

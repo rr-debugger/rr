@@ -10,7 +10,7 @@ namespace rr {
 
 class AddressSpace;
 class Task;
-class TaskGroup;
+class ThreadGroup;
 
 /**
  * An ID that's unique within a Session (but consistent across
@@ -47,7 +47,7 @@ private:
 };
 
 typedef TaskishUid<Task> TaskUid;
-typedef TaskishUid<TaskGroup> TaskGroupUid;
+typedef TaskishUid<ThreadGroup> TaskGroupUid;
 
 class AddressSpaceUid : public TaskishUid<AddressSpace> {
 public:

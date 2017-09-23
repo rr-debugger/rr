@@ -757,7 +757,7 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
     }
   }
   if (!need_signal) {
-    for (TaskGroup* child_tg : task_group()->children()) {
+    for (ThreadGroup* child_tg : task_group()->children()) {
       for (Task* child : child_tg->task_set()) {
         RecordTask* rchild = static_cast<RecordTask*>(child);
         if (rchild->emulated_SIGCHLD_pending) {
@@ -850,7 +850,7 @@ bool RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
     }
   }
 
-  for (TaskGroup* child_tg : task_group()->children()) {
+  for (ThreadGroup* child_tg : task_group()->children()) {
     for (Task* child : child_tg->task_set()) {
       auto rchild = static_cast<RecordTask*>(child);
       if (rchild->emulated_SIGCHLD_pending) {

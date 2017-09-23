@@ -17,7 +17,7 @@
 #include "EmuFs.h"
 #include "Flags.h"
 #include "Task.h"
-#include "TaskGroup.h"
+#include "ThreadGroup.h"
 #include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
@@ -28,13 +28,13 @@ using namespace std;
 namespace rr {
 
 struct Session::CloneCompletion {
-  struct TaskGroup {
+  struct ThreadGroup {
     Task* clone_leader;
     Task::CapturedState clone_leader_state;
     vector<Task::CapturedState> member_states;
     vector<pair<remote_ptr<void>, vector<uint8_t>>> captured_memory;
   };
-  vector<TaskGroup> task_groups;
+  vector<ThreadGroup> task_groups;
 };
 
 Session::Session()
@@ -64,8 +64,8 @@ Session::Session(const Session& other) {
   has_cpuid_faulting_ = other.has_cpuid_faulting_;
 }
 
-void Session::on_create(TaskGroup* tg) { task_group_map[tg->tguid()] = tg; }
-void Session::on_destroy(TaskGroup* tg) { task_group_map.erase(tg->tguid()); }
+void Session::on_create(ThreadGroup* tg) { task_group_map[tg->tguid()] = tg; }
+void Session::on_destroy(ThreadGroup* tg) { task_group_map.erase(tg->tguid()); }
 
 void Session::post_exec() {
   /* We just saw a successful exec(), so from now on we know
@@ -109,25 +109,25 @@ AddressSpace::shr_ptr Session::clone(Task* t, AddressSpace::shr_ptr vm) {
   return as;
 }
 
-TaskGroup::shr_ptr Session::create_tg(Task* t) {
-  TaskGroup::shr_ptr tg(
-      new TaskGroup(this, nullptr, t->rec_tid, t->tid, t->tuid().serial()));
+ThreadGroup::shr_ptr Session::create_tg(Task* t) {
+  ThreadGroup::shr_ptr tg(
+      new ThreadGroup(this, nullptr, t->rec_tid, t->tid, t->tuid().serial()));
   tg->insert_task(t);
   return tg;
 }
 
-TaskGroup::shr_ptr Session::clone(Task* t, TaskGroup::shr_ptr tg) {
+ThreadGroup::shr_ptr Session::clone(Task* t, ThreadGroup::shr_ptr tg) {
   assert_fully_initialized();
   // If tg already belongs to our session this is a fork to create a new
   // taskgroup, otherwise it's a session-clone of an existing taskgroup
   if (this == tg->session()) {
-    return TaskGroup::shr_ptr(
-        new TaskGroup(this, tg.get(), t->rec_tid, t->tid, t->tuid().serial()));
+    return ThreadGroup::shr_ptr(new ThreadGroup(this, tg.get(), t->rec_tid,
+                                                t->tid, t->tuid().serial()));
   }
-  TaskGroup* parent =
+  ThreadGroup* parent =
       tg->parent() ? find_task_group(tg->parent()->tguid()) : nullptr;
-  return TaskGroup::shr_ptr(
-      new TaskGroup(this, parent, tg->tgid, t->tid, tg->tguid().serial()));
+  return ThreadGroup::shr_ptr(
+      new ThreadGroup(this, parent, tg->tgid, t->tid, tg->tguid().serial()));
 }
 
 Task* Session::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
@@ -164,7 +164,7 @@ Task* Session::find_task(const TaskUid& tuid) const {
   return t && t->tuid() == tuid ? t : nullptr;
 }
 
-TaskGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
+ThreadGroup* Session::find_task_group(const TaskGroupUid& tguid) const {
   finish_initializing();
   auto it = task_group_map.find(tguid);
   if (task_group_map.end() == it) {
@@ -666,7 +666,7 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
     LOG(debug) << "  forking tg " << group_leader->tgid()
                << " (real: " << group_leader->real_tgid() << ")";
 
-    completion->task_groups.push_back(CloneCompletion::TaskGroup());
+    completion->task_groups.push_back(CloneCompletion::ThreadGroup());
     auto& group = completion->task_groups.back();
 
     group.clone_leader = group_leader->os_fork_into(&dest);

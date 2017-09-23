@@ -1757,7 +1757,7 @@ static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
     }
   }
   if (options & WUNTRACED) {
-    for (TaskGroup* child_process : t->task_group()->children()) {
+    for (ThreadGroup* child_process : t->task_group()->children()) {
       for (Task* child : child_process->task_set()) {
         auto rchild = static_cast<RecordTask*>(child);
         if (rchild->emulated_stop_type == GROUP_STOP &&

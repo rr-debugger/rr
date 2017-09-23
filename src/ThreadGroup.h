@@ -24,13 +24,13 @@ class ThreadDb;
  * the ancestor of all other threads in the group.  Each constituent
  * task must own a reference to this.
  */
-class TaskGroup : public HasTaskSet {
+class ThreadGroup : public HasTaskSet {
 public:
-  TaskGroup(Session* session, TaskGroup* parent, pid_t tgid, pid_t real_tgid,
-            uint32_t serial);
-  ~TaskGroup();
+  ThreadGroup(Session* session, ThreadGroup* parent, pid_t tgid,
+              pid_t real_tgid, uint32_t serial);
+  ~ThreadGroup();
 
-  typedef std::shared_ptr<TaskGroup> shr_ptr;
+  typedef std::shared_ptr<ThreadGroup> shr_ptr;
 
   /**
    * Mark the members of this task group as "unstable",
@@ -106,8 +106,8 @@ public:
   Session* session() const { return session_; }
   void forget_session() { session_ = nullptr; }
 
-  TaskGroup* parent() { return parent_; }
-  const std::set<TaskGroup*>& children() { return children_; }
+  ThreadGroup* parent() { return parent_; }
+  const std::set<ThreadGroup*>& children() { return children_; }
 
   TaskGroupUid tguid() const { return TaskGroupUid(tgid, serial); }
 
@@ -125,14 +125,14 @@ public:
   ThreadDb* thread_db();
 
 private:
-  TaskGroup(const TaskGroup&) = delete;
-  TaskGroup operator=(const TaskGroup&) = delete;
+  ThreadGroup(const ThreadGroup&) = delete;
+  ThreadGroup operator=(const ThreadGroup&) = delete;
 
   Session* session_;
-  /** Parent TaskGroup, or nullptr if it's not a tracee (rr or init). */
-  TaskGroup* parent_;
+  /** Parent ThreadGroup, or nullptr if it's not a tracee (rr or init). */
+  ThreadGroup* parent_;
 
-  std::set<TaskGroup*> children_;
+  std::set<ThreadGroup*> children_;
 
   uint32_t serial;
 
