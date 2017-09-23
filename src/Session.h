@@ -115,13 +115,13 @@ class Session {
   friend class ReplaySession;
 
 public:
-  // AddressSpaces and TaskGroups are indexed by their first task's TaskUid
+  // AddressSpaces and ThreadGroups are indexed by their first task's TaskUid
   // (effectively), so that if the first task dies and its tid is recycled,
   // we don't get confused. TaskMap is indexed by tid since there can never be
   // two Tasks with the same tid at the same time.
   typedef std::map<AddressSpaceUid, AddressSpace*> AddressSpaceMap;
   typedef std::map<pid_t, Task*> TaskMap;
-  typedef std::map<ThreadGroupUid, ThreadGroup*> TaskGroupMap;
+  typedef std::map<ThreadGroupUid, ThreadGroup*> ThreadGroupMap;
 
   /**
    * Call |post_exec()| immediately after a tracee has successfully
@@ -318,7 +318,7 @@ protected:
 
   AddressSpaceMap vm_map;
   TaskMap task_map;
-  TaskGroupMap thread_group_map;
+  ThreadGroupMap thread_group_map;
 
   // If non-null, data required to finish initializing the tasks of this
   // session.

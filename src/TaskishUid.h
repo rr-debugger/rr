@@ -14,7 +14,7 @@ class ThreadGroup;
 
 /**
  * An ID that's unique within a Session (but consistent across
- * multiple ReplaySessions for the same trace), used by Tasks, TaskGroups
+ * multiple ReplaySessions for the same trace), used by Tasks, ThreadGroups
  * and AddressSpaces.
  * This is needed because tids can be recycled during a long-running session.
  */
