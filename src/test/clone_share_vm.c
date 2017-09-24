@@ -23,9 +23,8 @@ int main(void) {
 
   /* Warning: strace gets the parameter order wrong and will print
      child_tidptr as 0 here. */
-  tid = clone(child, stack + stack_size,
-              CLONE_VM | SIGCHLD,
-              NULL, NULL, NULL, NULL);
+  tid = clone(child, stack + stack_size, CLONE_VM | SIGCHLD, NULL, NULL, NULL,
+              NULL);
 
   break_function();
 
