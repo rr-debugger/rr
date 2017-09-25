@@ -1581,8 +1581,8 @@ void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
   args.push_back(gdb_command_file);
   bool did_set_remote = false;
   for (size_t i = 0; i < gdb_options.size(); ++i) {
-    if (gdb_options[i] == "-ex" && i + 1 < gdb_options.size() &&
-        needs_target(gdb_options[i + 1])) {
+    if (!did_set_remote && gdb_options[i] == "-ex" &&
+        i + 1 < gdb_options.size() && needs_target(gdb_options[i + 1])) {
       push_target_remote_cmd(args, params.port);
       did_set_remote = true;
     }
