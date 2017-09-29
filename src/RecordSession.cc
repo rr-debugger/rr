@@ -420,9 +420,10 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
       }
 
       uint16_t seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
+      int syscallno = t->regs().original_syscallno();
       if (seccomp_data == SECCOMP_RET_DATA) {
         LOG(debug) << "  traced syscall entered: "
-                   << syscall_name(t->regs().original_syscallno(), t->arch());
+                   << syscall_name(syscallno, t->arch());
         handle_seccomp_traced_syscall(t, step_state, result, did_enter_syscall);
       } else {
         // Note that we make no attempt to patch the syscall site when the
@@ -439,15 +440,19 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
         uint16_t real_result_data = real_result & SECCOMP_RET_DATA;
         switch (real_result & SECCOMP_RET_ACTION) {
           case SECCOMP_RET_TRAP:
-            LOG(debug) << "  seccomp trap";
+            LOG(debug) << "  seccomp trap for syscall: "
+                       << syscall_name(syscallno, t->arch());
             handle_seccomp_trap(t, step_state, real_result_data);
             break;
           case SECCOMP_RET_ERRNO:
-            LOG(debug) << "  seccomp errno";
+            LOG(debug) << "  seccomp errno " << errno_name(real_result_data)
+                       << " for syscall: "
+                       << syscall_name(syscallno, t->arch());
             handle_seccomp_errno(t, step_state, real_result_data);
             break;
           case SECCOMP_RET_KILL:
-            LOG(debug) << "  seccomp kill";
+            LOG(debug) << "  seccomp kill for syscall: "
+                       << syscall_name(syscallno, t->arch());
             kill(t->tid, SIGKILL);
             step_state->continue_type = RecordSession::CONTINUE;
             break;
