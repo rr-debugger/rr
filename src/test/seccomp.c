@@ -90,6 +90,11 @@ static void install_filter(void) {
     BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_ioctl, 0, 1),
     /* Trigger SIGSYS */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
+    /* Jump forward 1 instruction if system call number
+       is not SYS_sched_yield */
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_sched_yield, 0, 1),
+    /* Kill process */
+    BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_KILL),
     /* Destination of system call number mismatch: allow other
        system calls */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ALLOW)
@@ -168,5 +173,7 @@ int main(void) {
 
   atomic_puts("SUCCESS");
 
+  sched_yield();
+  abort();
   return 0;
 }

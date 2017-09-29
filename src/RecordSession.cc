@@ -446,6 +446,11 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
             LOG(debug) << "  seccomp errno";
             handle_seccomp_errno(t, step_state, real_result_data);
             break;
+          case SECCOMP_RET_KILL:
+            LOG(debug) << "  seccomp kill";
+            kill(t->tid, SIGKILL);
+            step_state->continue_type = RecordSession::CONTINUE;
+            break;
           default:
             ASSERT(t, false) << "Seccomp result not handled";
             break;
