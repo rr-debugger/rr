@@ -436,7 +436,7 @@ sethostname = EmulatedSyscall(x86=74, x64=170)
 # by other means.
 setrlimit = EmulatedSyscall(x86=75, x64=160)
 
-getrlimit = EmulatedSyscall(x64=97, arg2="typename Arch::rlimit")
+getrlimit = EmulatedSyscall(x86=76, x64=97, arg2="typename Arch::rlimit")
 
 #  int getrusage(int who, struct rusage *usage)
 #
