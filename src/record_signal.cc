@@ -672,15 +672,11 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     // currently assumes it won't encounter a deterministic SIGTRAP (due to
     // a hardcoded breakpoint in the tracee).
     if (deterministic == DETERMINISTIC_SIG) {
-      t->push_event(Event(EV_SIGNAL, SignalEvent(*si, deterministic,
-                                                 t->sig_resolved_disposition(
-                                                     sig, deterministic))));
-      t->record_current_event();
-      t->pop_event(EV_SIGNAL);
+      t->record_event(Event(EV_SIGNAL, SignalEvent(*si, deterministic,
+                                                   t->sig_resolved_disposition(
+                                                       sig, deterministic))));
     } else {
-      t->push_event(Event::sched());
-      t->record_current_event();
-      t->pop_event(EV_SCHED);
+      t->record_event(Event::sched());
     }
     // ptracer has been notified, so don't deliver the signal now.
     // The signal won't be delivered for real until the ptracer calls
