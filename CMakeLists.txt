@@ -968,6 +968,7 @@ set(TESTS_WITH_PROGRAM
   dev_tty
   diversion_syscall
   dlopen
+  exec_failed
   exec_many
   execve_loop
   exit_codes

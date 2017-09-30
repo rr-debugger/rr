@@ -1,5 +1,4 @@
 from util import *
-import re
 
 send_gdb('c')
 expect_gdb('stopped')

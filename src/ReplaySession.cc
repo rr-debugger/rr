@@ -1429,11 +1429,12 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   return t;
 }
 
-bool ReplaySession::next_step_is_syscall_exit(int syscallno) {
+bool ReplaySession::next_step_is_successful_syscall_exit(int syscallno) {
   return current_step.action == TSTEP_NONE &&
          trace_frame.event().is_syscall_event() &&
          trace_frame.event().Syscall().number == syscallno &&
-         trace_frame.event().Syscall().state == EXITING_SYSCALL;
+         trace_frame.event().Syscall().state == EXITING_SYSCALL &&
+         !trace_frame.regs().syscall_failed();
 }
 
 ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
