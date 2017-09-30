@@ -1501,14 +1501,15 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   switch (current_step.action) {
     case TSTEP_DETERMINISTIC_SIGNAL:
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:
-      if (trace_frame.event().type() != EV_INSTRUCTION_TRAP &&
-          current_step.target.signo) {
-        ASSERT(t, current_step.target.signo == last_siginfo_.si_signo);
-        result.break_status.signal =
-            unique_ptr<siginfo_t>(new siginfo_t(last_siginfo_));
-      }
-      if (constraints.is_singlestep()) {
-        result.break_status.singlestep_complete = true;
+      if (current_step.target.signo) {
+        if (trace_frame.event().type() != EV_INSTRUCTION_TRAP) {
+          ASSERT(t, current_step.target.signo == last_siginfo_.si_signo);
+          result.break_status.signal =
+              unique_ptr<siginfo_t>(new siginfo_t(last_siginfo_));
+        }
+        if (constraints.is_singlestep()) {
+          result.break_status.singlestep_complete = true;
+        }
       }
       break;
     case TSTEP_DELIVER_SIGNAL:

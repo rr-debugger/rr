@@ -1497,24 +1497,30 @@ void Task::did_waitpid(WaitStatus status) {
   if (status.ptrace_event() != PTRACE_EVENT_EXIT) {
     ASSERT(this, !registers_dirty) << "Registers shouldn't already be dirty";
   }
-  struct user_regs_struct ptrace_regs;
-  if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
-    registers.set_from_ptrace(ptrace_regs);
-#if defined(__i386__) || defined(__x86_64__)
-    // Check the architecture of the task by looking at the
-    // cs segment register and checking if that segment is a long mode segment
-    // (Linux always uses GDT entries for this, which are globally the same).
-    SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
-    if (a != registers.arch()) {
-      registers.set_arch(a);
+  // If the task was not stopped, we don't need to read the registers.
+  // In fact if we didn't start the thread, we may not have flushed dirty
+  // registers but still received a PTRACE_EVENT_EXIT, in which case the
+  // task's register values are not what they should be.
+  if (!is_stopped) {
+    struct user_regs_struct ptrace_regs;
+    if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
       registers.set_from_ptrace(ptrace_regs);
-    }
+#if defined(__i386__) || defined(__x86_64__)
+      // Check the architecture of the task by looking at the
+      // cs segment register and checking if that segment is a long mode segment
+      // (Linux always uses GDT entries for this, which are globally the same).
+      SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
+      if (a != registers.arch()) {
+        registers.set_arch(a);
+        registers.set_from_ptrace(ptrace_regs);
+      }
 #else
 #error detect architecture here
 #endif
-  } else {
-    LOG(debug) << "Unexpected process death for " << tid;
-    status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+    } else {
+      LOG(debug) << "Unexpected process death for " << tid;
+      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+    }
   }
 
   is_stopped = true;

@@ -119,6 +119,13 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   if (t->stable_exit) {
     LOG(debug) << "stable exit";
   } else {
+    if (!t->may_be_blocked()) {
+      // Record any progress this task made before it died. A running task
+      // might have been hit by a SIGKILL or a SECCOMP_RET_KILL, in which case
+      // there might be some execution since its last recorded event that we
+      // need to replay.
+      t->record_event(Event::sched());
+    }
     LOG(warn)
         << "unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";
     t->thread_group()->destabilize();
