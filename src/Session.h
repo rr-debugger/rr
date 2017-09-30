@@ -188,6 +188,11 @@ public:
   ThreadGroup* find_thread_group(const ThreadGroupUid& tguid) const;
 
   /**
+   * Find the thread group for a specific pid
+   */
+  ThreadGroup* find_thread_group(pid_t pid) const;
+
+  /**
    * Return the AddressSpace whose unique ID is |vmuid|, or nullptr if no such
    * address space exists.
    */

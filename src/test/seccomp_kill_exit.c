@@ -30,7 +30,8 @@ static void install_filter(void) {
 }
 
 int main(void) {
-  char* p = mmap(0, 1, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0);
+  char* p =
+      mmap(0, 1, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0);
   pid_t child;
   int status;
   test_assert(p != MAP_FAILED);

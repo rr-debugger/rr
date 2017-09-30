@@ -382,6 +382,27 @@ void GdbServer::dispatch_debugger_request(Session& session,
       }
       return;
     }
+    case DREQ_GET_EXEC_FILE: {
+      // We shouldn't normally receive this since we try to pass the exe file
+      // name on gdb's command line, but the user might start gdb manually
+      // and this is easy to support in case some other debugger or
+      // configuration needs it.
+      Task* t = nullptr;
+      if (req.target.tid) {
+        ThreadGroup* tg = session.find_thread_group(req.target.tid);
+        if (tg) {
+          t = *tg->task_set().begin();
+        }
+      } else {
+        t = session.find_task(last_continue_tuid);
+      }
+      if (t) {
+        dbg->reply_get_exec_file(t->vm()->exe_image());
+      } else {
+        dbg->reply_get_exec_file(string());
+      }
+      return;
+    }
     case DREQ_FILE_SETFS:
       // Only the filesystem as seen by the remote stub is supported currently
       file_scope_pid = req.file_setfs().pid;

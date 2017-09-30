@@ -477,6 +477,18 @@ bool GdbConnection::xfer(const char* name, char* args) {
     return true;
   }
 
+  if (!strcmp(name, "exec-file")) {
+    if (strcmp(mode, "read")) {
+      write_packet("");
+      return false;
+    }
+
+    req = GdbRequest(DREQ_GET_EXEC_FILE);
+    req.target.pid = req.target.tid = strtoul(annex, nullptr, 16);
+    // XXX handle offset/len here!
+    return true;
+  }
+
   if (!strcmp(name, "siginfo")) {
     if (strcmp(annex, "")) {
       write_packet("E00");
@@ -637,6 +649,7 @@ bool GdbConnection::query(char* payload) {
                  ";QStartNoAckMode+"
                  ";qXfer:features:read+"
                  ";qXfer:auxv:read+"
+                 ";qXfer:exec-file:read+"
                  ";qXfer:siginfo:read+"
                  ";qXfer:siginfo:write+"
                  ";multiprocess+"
@@ -1480,6 +1493,20 @@ void GdbConnection::reply_get_auxv(const vector<uint8_t>& auxv) {
 
   if (!auxv.empty()) {
     write_binary_packet("l", auxv.data(), auxv.size());
+  } else {
+    write_packet("E01");
+  }
+
+  consume_request();
+}
+
+void GdbConnection::reply_get_exec_file(const string& exec_file) {
+  DEBUG_ASSERT(DREQ_GET_EXEC_FILE == req.type);
+
+  if (!exec_file.empty()) {
+    write_binary_packet("l",
+                        reinterpret_cast<const uint8_t*>(exec_file.c_str()),
+                        exec_file.size());
   } else {
     write_packet("E01");
   }

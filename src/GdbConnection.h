@@ -74,6 +74,7 @@ enum GdbRequestType {
 
   /* These use params.target. */
   DREQ_GET_AUXV,
+  DREQ_GET_EXEC_FILE,
   DREQ_GET_IS_THREAD_ALIVE,
   DREQ_GET_THREAD_EXTRA_INFO,
   DREQ_SET_CONTINUE_THREAD,
@@ -411,6 +412,11 @@ public:
    * if there was an error reading the auxiliary vector.
    */
   void reply_get_auxv(const std::vector<uint8_t>& auxv);
+
+  /**
+   * Reply with the target thread's executable file name
+   */
+  void reply_get_exec_file(const std::string& exec_file);
 
   /**
    * |alive| is true if the requested thread is alive, false if dead.

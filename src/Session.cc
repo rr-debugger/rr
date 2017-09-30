@@ -175,6 +175,16 @@ ThreadGroup* Session::find_thread_group(const ThreadGroupUid& tguid) const {
   return it->second;
 }
 
+ThreadGroup* Session::find_thread_group(pid_t pid) const {
+  finish_initializing();
+  for (auto& tg : thread_group_map) {
+    if (tg.first.tid() == pid) {
+      return tg.second;
+    }
+  }
+  return nullptr;
+}
+
 AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
   finish_initializing();
   auto it = vm_map.find(vmuid);
