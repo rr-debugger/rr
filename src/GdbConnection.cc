@@ -631,6 +631,23 @@ bool GdbConnection::query(char* payload) {
     /* TODO process these */
     LOG(debug) << "gdb supports " << args;
 
+    this->gdb_features_ = GdbFeatures();
+    while (*args != '\0') {
+      char *next = strchr(args, ';');
+      if (next == NULL) {
+        break;
+      }
+      *next = '\0';
+      if (!strcmp(args, "multiprocess")) {
+        this->gdb_features_.multiprocess = true;
+      }
+      if (*args == '\0') {
+        break;
+      } else {
+        args = next + 1;
+      }
+    }
+
     stringstream supported;
     // Encourage gdb to use very large packets since we support any packet size
     supported << "PacketSize=1048576"
@@ -1425,8 +1442,13 @@ void GdbConnection::send_stop_reply_packet(GdbThreadId thread, int sig,
     watch[0] = '\0';
   }
   char buf[PATH_MAX];
-  snprintf(buf, sizeof(buf) - 1, "T%02xthread:p%02x.%02x;%s",
-           to_gdb_signum(sig), thread.pid, thread.tid, watch);
+  if (this->gdb_features_.multiprocess) {
+    snprintf(buf, sizeof(buf) - 1, "T%02xthread:p%02x.%02x;%s",
+             to_gdb_signum(sig), thread.pid, thread.tid, watch);
+  } else {
+    snprintf(buf, sizeof(buf) - 1, "T%02xthread:%02x;%s",
+             to_gdb_signum(sig), thread.tid, watch);
+  }
   write_packet(buf);
 }
 
@@ -1469,7 +1491,12 @@ void GdbConnection::reply_get_current_thread(GdbThreadId thread) {
   DEBUG_ASSERT(DREQ_GET_CURRENT_THREAD == req.type);
 
   char buf[1024];
-  snprintf(buf, sizeof(buf), "QCp%02x.%02x", thread.pid, thread.tid);
+  if (this->gdb_features_.multiprocess) {
+    snprintf(buf, sizeof(buf), "QCp%02x.%02x", thread.pid, thread.tid);
+  } else {
+    snprintf(buf, sizeof(buf), "QC%02x", thread.tid);
+  }
+
   write_packet(buf);
 
   consume_request();
@@ -1630,8 +1657,13 @@ void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
       if (tgid != t.pid) {
         continue;
       }
-      offset +=
+      if (this->gdb_features_.multiprocess) {
+        offset +=
           snprintf(&str[offset], maxlen - offset, "p%02x.%02x,", t.pid, t.tid);
+      } else {
+        offset +=
+          snprintf(&str[offset], maxlen - offset, "%02x,", t.tid);
+      }
     }
     /* Overwrite the trailing ',' */
     str[offset - 1] = '\0';

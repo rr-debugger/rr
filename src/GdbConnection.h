@@ -355,6 +355,11 @@ public:
     bool reverse_execution;
   };
 
+  struct GdbFeatures {
+    GdbFeatures() : multiprocess(false) {}
+    bool multiprocess;
+  };
+
   /**
    * Call this when the target of |req| is needed to fulfill the
    * request, but the target is dead.  This situation is a symptom of a
@@ -681,6 +686,7 @@ private:
   size_t packetend;            /* index of '#' character */
   std::vector<uint8_t> outbuf; /* buffered output for gdb */
   Features features_;
+  GdbFeatures gdb_features_;
   bool connection_alive_;
 };
 
