@@ -989,14 +989,10 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
         break;
       case trace::MMap::Source::Which::FILE: {
         data->source = SOURCE_FILE;
-        static const string clone_prefix("mmap_clone_");
-        static const string copy_prefix("mmap_copy_");
         string backing_file_name =
             data_to_str(src.getFile().getBackingFileName());
-        bool is_clone =
-            backing_file_name.substr(0, clone_prefix.size()) == clone_prefix;
-        bool is_copy =
-            backing_file_name.substr(0, copy_prefix.size()) == copy_prefix;
+        bool is_clone = starts_with(backing_file_name, "mmap_clone_");
+        bool is_copy = starts_with(backing_file_name, "mmap_copy_");
         if (backing_file_name[0] != '/') {
           backing_file_name = dir() + "/" + backing_file_name;
         }
