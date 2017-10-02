@@ -592,9 +592,11 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
   bool private_mapping = (flags & MAP_PRIVATE);
 
   // TODO: handle mmap'd files that are unlinked during
-  // recording.
+  // recording or otherwise not available.
   if (!has_fs_name(file_name)) {
-    LOG(debug) << "  copying unlinked file";
+    // This includes files inaccessible because the tracee is using a different
+    // mount namespace with its own mounts
+    LOG(debug) << "  copying unlinked/inaccessible file";
     return true;
   }
   if (is_tmp_file(file_name)) {
@@ -1071,16 +1073,19 @@ bool uses_invisible_guard_page() {
   return !is_pax_kernel;
 }
 
-void copy_file(Task* t, int dest_fd, int src_fd) {
-  char buf[1024];
+bool copy_file(int dest_fd, int src_fd) {
+  char buf[32 * 1024];
   while (1) {
     ssize_t bytes_read = read(src_fd, buf, sizeof(buf));
-    ASSERT(t, bytes_read >= 0);
+    if (bytes_read < 0) {
+      return false;
+    }
     if (!bytes_read) {
       break;
     }
     write_all(dest_fd, buf, bytes_read);
   }
+  return true;
 }
 
 void* xmalloc(size_t size) {

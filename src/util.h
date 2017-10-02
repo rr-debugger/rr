@@ -119,8 +119,7 @@ signal_action default_action(int sig);
 SignalDeterministic is_deterministic_signal(Task* t);
 
 /**
- * Return nonzero if a mapping of |filename| with metadata |stat|,
- * using |flags| and |prot|, should almost certainly be copied to
+ * Return nonzero if a mapping of |mapping| should almost certainly be copied to
  * trace; i.e., the file contents are likely to change in the interval
  * between recording and replay.  Zero is returned /if we think we can
  * get away/ with not copying the region.  That doesn't mean it's
@@ -230,7 +229,7 @@ std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
  */
 bool uses_invisible_guard_page();
 
-void copy_file(Task* t, int dest_fd, int src_fd);
+bool copy_file(int dest_fd, int src_fd);
 
 #if defined(__has_feature)
 #if __has_feature(memory_sanitizer)

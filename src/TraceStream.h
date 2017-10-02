@@ -205,9 +205,10 @@ public:
   void make_latest_trace();
 
 private:
-  std::string try_hardlink_file(const std::string& file_name);
+  bool try_hardlink_file(const std::string& file_name, std::string* new_name);
   bool try_clone_file(RecordTask* t, const std::string& file_name,
                       std::string* new_name);
+  bool copy_file(const std::string& file_name, std::string* new_name);
 
   CompressedWriter& writer(Substream s) { return *writers[s]; }
   const CompressedWriter& writer(Substream s) const { return *writers[s]; }

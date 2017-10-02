@@ -5008,7 +5008,9 @@ static void rec_process_syscall_arch(RecordTask* t,
         if (!stat("/etc/gcrypt/hwf.deny", &dummy)) {
           // Copy the contents into our temporary file
           ScopedFd existing("/etc/gcrypt/hwf.deny", O_RDONLY);
-          copy_file(t, file.fd, existing);
+          if (!copy_file(file.fd, existing)) {
+            FATAL() << "Can't copy file";
+          }
         }
 
         static const char disable_rdrand[] = "\nintel-rdrand\n";
