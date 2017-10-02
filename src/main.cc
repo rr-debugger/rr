@@ -199,6 +199,7 @@ using namespace rr;
 
 int main(int argc, char* argv[]) {
   init_random();
+  raise_resource_limits();
 
   vector<string> args;
   for (int i = 1; i < argc; ++i) {

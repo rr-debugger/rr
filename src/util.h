@@ -383,6 +383,16 @@ bool is_directory(const char* path);
  */
 ssize_t read_to_end(const ScopedFd& fd, size_t offset, void* buf, size_t size);
 
+/**
+ * Raise resource limits, in particular the open file descriptor count.
+ */
+void raise_resource_limits();
+
+/**
+ * Restore the initial resource limits for this process.
+ */
+void restore_initial_resource_limits();
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

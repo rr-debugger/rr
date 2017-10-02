@@ -17,8 +17,10 @@
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
+#include <sys/time.h>
 #include <sys/vfs.h>
 #include <unistd.h>
 
@@ -1510,6 +1512,32 @@ ssize_t read_to_end(const ScopedFd& fd, size_t offset, void* buf, size_t size) {
     buf = static_cast<uint8_t*>(buf) + r;
   }
   return ret;
+}
+
+static struct rlimit initial_fd_limit;
+
+void raise_resource_limits() {
+  if (getrlimit(RLIMIT_NOFILE, &initial_fd_limit) < 0) {
+    FATAL() << "Can't get RLIMIT_NOFILE";
+  }
+
+  struct rlimit new_limit = initial_fd_limit;
+  // Try raising fd limit to 65536
+  new_limit.rlim_cur = max<rlim_t>(new_limit.rlim_cur, 65536);
+  if (new_limit.rlim_max != RLIM_INFINITY) {
+    new_limit.rlim_cur = min<rlim_t>(new_limit.rlim_cur, new_limit.rlim_max);
+  }
+  if (new_limit.rlim_cur != initial_fd_limit.rlim_cur) {
+    if (setrlimit(RLIMIT_NOFILE, &new_limit) < 0) {
+      LOG(warn) << "Failed to raise file descriptor limit";
+    }
+  }
+}
+
+void restore_initial_resource_limits() {
+  if (setrlimit(RLIMIT_NOFILE, &initial_fd_limit) < 0) {
+    LOG(warn) << "Failed to reset file descriptor limit";
+  }
 }
 
 } // namespace rr

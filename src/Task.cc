@@ -2424,6 +2424,8 @@ static void set_up_process(Session& session, const ScopedFd& err_fd) {
   /* TODO tracees can probably undo some of the setup below
    * ... */
 
+  restore_initial_resource_limits();
+
   /* CLOEXEC so that the original fd here will be closed by the exec that's
    * about to happen.
    */

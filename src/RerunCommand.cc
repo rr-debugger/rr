@@ -355,6 +355,10 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
   uint64_t instruction_count_within_event = 0;
 
+  // Now that we've spawned the replay, raise our resource limits if
+  // possible.
+  raise_resource_limits();
+
   while (replay_session->trace_reader().time() < flags.trace_end) {
     RunCommand cmd = RUN_CONTINUE;
     if (replay_session->done_initial_exec() &&
