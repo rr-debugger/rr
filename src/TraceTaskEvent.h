@@ -42,6 +42,7 @@ public:
     TraceTaskEvent result(EXEC, tid);
     result.file_name_ = file_name;
     result.cmd_line_ = cmd_line;
+    result.exe_base_ = nullptr;
     return result;
   }
   static TraceTaskEvent for_exit(pid_t tid, WaitStatus exit_status) {
@@ -72,6 +73,15 @@ public:
     DEBUG_ASSERT(type() == EXEC);
     return cmd_line_;
   }
+  // May be zero when not present in older trace versions
+  remote_ptr<void> exe_base() const {
+    DEBUG_ASSERT(type() == EXEC);
+    return exe_base_;
+  }
+  void set_exe_base(remote_ptr<void> ptr) {
+    DEBUG_ASSERT(type() == EXEC);
+    exe_base_ = ptr;
+  }
   WaitStatus exit_status() const {
     DEBUG_ASSERT(type() == EXIT);
     return exit_status_;
@@ -88,6 +98,7 @@ private:
   int clone_flags_;                   // CLONE only
   std::string file_name_;             // EXEC only
   std::vector<std::string> cmd_line_; // EXEC only
+  remote_ptr<void> exe_base_;         // EXEC only
   WaitStatus exit_status_;            // EXIT only
 };
 

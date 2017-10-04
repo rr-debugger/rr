@@ -649,6 +649,7 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
       for (size_t i = 0; i < event_cmd_line.size(); ++i) {
         cmd_line.set(i, str_to_data(event_cmd_line[i]));
       }
+      exec.setExeBase(event.exe_base().as_int());
       break;
     }
     case TraceTaskEvent::EXIT:
@@ -702,6 +703,7 @@ TraceTaskEvent TraceReader::read_task_event(FrameTime* time) {
       for (size_t i = 0; i < cmd_line.size(); ++i) {
         r.cmd_line_[i] = data_to_str(cmd_line[i]);
       }
+      r.exe_base_ = exec.getExeBase();
       break;
     }
     case trace::TaskEvent::Which::EXIT:

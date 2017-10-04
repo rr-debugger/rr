@@ -108,6 +108,10 @@ struct TaskEvent {
       # Not a Path since it is only meaningful during recording
       fileName @5 :CString;
       cmdLine @6 :List(CString);
+      # Start address of executable mapping from /proc/.../exe
+      # Never null (in traces that support the field)
+      # Added after 5.0.0
+      exeBase @8 :RemotePtr;
     }
     exit :group {
       exitStatus @7 :Int32;

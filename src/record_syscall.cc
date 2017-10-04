@@ -4356,8 +4356,6 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       TraceWriter::RR_BUFFER_MAPPING);
   ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
 
-  t->session().trace_writer().write_task_event(*syscall_state.exec_saved_event);
-
   KernelMapping vvar;
 
   // Write out stack mappings first since during replay we need to set up the
@@ -4370,7 +4368,13 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     } else if (km.is_vvar()) {
       vvar = km;
     }
+    if (km.fsname() == t->vm()->exe_image() && (km.prot() & PROT_EXEC)) {
+      syscall_state.exec_saved_event->set_exe_base(km.start());
+    }
   }
+  ASSERT(t, !syscall_state.exec_saved_event->exe_base().is_null());
+
+  t->session().trace_writer().write_task_event(*syscall_state.exec_saved_event);
 
   {
     AutoRemoteSyscalls remote(t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
