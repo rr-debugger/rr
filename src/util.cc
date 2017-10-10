@@ -1249,14 +1249,55 @@ void check_for_leaks() {
   }
 }
 
+void ensure_dir(const string& dir, const char* dir_type, mode_t mode) {
+  string d = dir;
+  while (!d.empty() && d[d.length() - 1] == '/') {
+    d = d.substr(0, d.length() - 1);
+  }
+
+  struct stat st;
+  if (0 > stat(d.c_str(), &st)) {
+    if (errno != ENOENT) {
+      FATAL() << "Error accessing " << dir_type << " " << dir << "'";
+    }
+
+    size_t last_slash = d.find_last_of('/');
+    if (last_slash == string::npos || last_slash == 0) {
+      FATAL() << "Can't find directory `" << dir << "'";
+    }
+    ensure_dir(d.substr(0, last_slash), dir_type, mode);
+
+    // Allow for a race condition where someone else creates the directory
+    if (0 > mkdir(d.c_str(), mode) && errno != EEXIST) {
+      FATAL() << "Can't create " << dir_type << " `" << dir << "'";
+    }
+    if (0 > stat(d.c_str(), &st)) {
+      FATAL() << "Can't stat " << dir_type << " `" << dir << "'";
+    }
+  }
+
+  if (!(S_IFDIR & st.st_mode)) {
+    FATAL() << "`" << dir << "' exists but isn't a directory.";
+  }
+  if (access(d.c_str(), W_OK)) {
+    FATAL() << "Can't write to " << dir_type << " `" << dir << "'.";
+  }
+}
+
 const char* tmp_dir() {
   const char* dir = getenv("RR_TMPDIR");
   if (dir) {
+    ensure_dir(string(dir), "temporary file directory (RR_TMPDIR)", S_IRWXU);
     return dir;
   }
   dir = getenv("TMPDIR");
   if (dir) {
+    ensure_dir(string(dir), "temporary file directory (TMPDIR)", S_IRWXU);
     return dir;
+  }
+  // Don't try to create "/tmp", that probably won't work well.
+  if (access("/tmp", W_OK)) {
+    FATAL() << "Can't write to temporary file directory /tmp.";
   }
   return "/tmp";
 }

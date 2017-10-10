@@ -535,13 +535,13 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
         exe_km_option1 = kms.size();
       }
     } else {
-      // To disambiguate, we use the
-      // following criterion: The dynamic linker (if it exists) is a different file
-      // (identified via fsname) that has an executable segment that contains the
-      // ip. To compute this, we find (up to) two kms that have different fsnames
-      // but do each have an executable segment, as well as the km that contains
-      // the ip. This is slightly complicated, but should handle the case where
-      // either file has more than one exectuable segment.
+      // To disambiguate, we use the following criterion: The dynamic linker
+      // (if it exists) is a different file (identified via fsname) that has
+      // an executable segment that contains the ip. To compute this, we find
+      // (up to) two kms that have different fsnames but do each have an
+      // executable segment, as well as the km that contains the ip. This is
+      // slightly complicated, but should handle the case where either file has
+      // more than one exectuable segment.
       const string& file_name = km.fsname();
       if ((km.prot() & PROT_EXEC) && file_name.size() > 0 &&
           // Make sure to exclude [vdso] (and similar) and executable stacks.

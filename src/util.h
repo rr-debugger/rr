@@ -318,7 +318,15 @@ void dump_rr_stack();
 void check_for_leaks();
 
 /**
- * Returns $TMPDIR or "/tmp".
+ * Create directory `str`, creating parent directories as needed.
+ * `dir_type` is printed in error messages. Fails if the resulting directory
+ * is not writeable.
+ */
+void ensure_dir(const std::string& dir, const char* dir_type, mode_t mode);
+
+/**
+ * Returns $TMPDIR or "/tmp". We call ensure_dir to make sure the directory
+ * exists and is writeable.
  */
 const char* tmp_dir();
 
