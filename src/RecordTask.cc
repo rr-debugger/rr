@@ -325,6 +325,7 @@ void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
   robust_futex_list = rt->robust_futex_list;
   robust_futex_list_len = rt->robust_futex_list_len;
   tsc_mode = rt->tsc_mode;
+  cpuid_mode = rt->cpuid_mode;
   if (CLONE_SHARE_SIGHANDLERS & flags) {
     sighandlers = rt->sighandlers;
   } else {
