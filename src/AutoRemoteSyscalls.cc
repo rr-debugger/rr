@@ -188,10 +188,11 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
     t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
                  replaced_bytes.data(), replaced_bytes.size());
   }
-  initial_regs.set_ip(initial_ip);
-  initial_regs.set_sp(initial_sp);
+  auto regs = initial_regs;
+  regs.set_ip(initial_ip);
+  regs.set_sp(initial_sp);
   // Restore stomped registers.
-  t->set_regs(initial_regs);
+  t->set_regs(regs);
   t->set_status(restore_wait_status);
 }
 
