@@ -34,7 +34,6 @@ static struct perf_event_attr ticks_attr;
 static struct perf_event_attr cycles_attr;
 static struct perf_event_attr page_faults_attr;
 static struct perf_event_attr hw_interrupts_attr;
-static struct perf_event_attr instructions_retired_attr;
 static uint32_t skid_size;
 static bool has_ioc_period_bug;
 static bool has_kvm_in_txcp_bug;
@@ -69,7 +68,6 @@ struct PmuConfig {
   CpuMicroarch uarch;
   const char* name;
   unsigned rcb_cntr_event;
-  unsigned rinsn_cntr_event;
   unsigned hw_intr_cntr_event;
   uint32_t skid_size;
   bool supported;
@@ -87,27 +85,19 @@ struct PmuConfig {
 
 // XXX please only edit this if you really know what you're doing.
 static const PmuConfig pmu_configs[] = {
-  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
+  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0x5301cb, 100, true, false },
+  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0x5301cb, 100, true, true },
+  { IntelSkylake, "Intel Skylake", 0x5101c4, 0x5301cb, 100, true, false },
+  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0x5301cb, 100, true, false },
+  { IntelHaswell, "Intel Haswell", 0x5101c4, 0x5301cb, 100, true, false },
+  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0x5301cb, 100, true, false },
+  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0x5301cb, 100, true,
     false },
-  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0x5100c0, 0x5301cb, 100,
-    true, true },
-  { IntelSkylake, "Intel Skylake", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
-    false },
-  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
-    false },
-  { IntelHaswell, "Intel Haswell", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
-    false },
-  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, 100, true,
-    false },
-  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0x5100c0, 0x5301cb, 100,
-    true, false },
-  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0x5100c0, 0x50011d, 100, true,
-    false },
-  { IntelWestmere, "Intel Westmere", 0x5101c4, 0x5100c0, 0x50011d, 100, true,
-    false },
-  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, false, false },
-  { IntelMerom, "Intel Merom", 0, 0, 0, 100, false, false },
-  { AMDRyzen, "AMD Ryzen", 0x5100d1, 0x5100c0, 0, 1000, true, false },
+  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0x50011d, 100, true, false },
+  { IntelWestmere, "Intel Westmere", 0x5101c4, 0x50011d, 100, true, false },
+  { IntelPenryn, "Intel Penryn", 0, 0, 100, false, false },
+  { IntelMerom, "Intel Merom", 0, 0, 100, false, false },
+  { AMDRyzen, "AMD Ryzen", 0x5100d1, 0, 1000, true, false },
 };
 
 static string lowercase(const string& s) {
@@ -534,8 +524,6 @@ static void init_attributes() {
   init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
   init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
                        PERF_COUNT_HW_CPU_CYCLES);
-  init_perf_event_attr(&instructions_retired_attr, PERF_TYPE_RAW,
-                       pmu->rinsn_cntr_event);
   init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
                        pmu->hw_intr_cntr_event);
   // libpfm encodes the event with this bit set, so we'll do the
