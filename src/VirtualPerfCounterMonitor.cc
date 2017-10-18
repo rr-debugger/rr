@@ -14,6 +14,9 @@ using namespace std;
 
 namespace rr {
 
+std::map<TaskUid, VirtualPerfCounterMonitor*> VirtualPerfCounterMonitor::tasks_with_interrupts =
+  std::map<TaskUid, VirtualPerfCounterMonitor*>();
+
 bool VirtualPerfCounterMonitor::should_virtualize(
     const struct perf_event_attr& attr) {
   return PerfCounters::is_ticks_attr(attr);
@@ -22,15 +25,19 @@ bool VirtualPerfCounterMonitor::should_virtualize(
 VirtualPerfCounterMonitor::VirtualPerfCounterMonitor(
     Task* t, Task* target, const struct perf_event_attr& attr)
     : initial_ticks(target->tick_count()),
-      target_tuid(target->tuid()),
+      target_tuid_(target->tuid()),
       owner_tid(0),
       flags(0),
       sig(0),
       enabled(false) {
   ASSERT(t, should_virtualize(attr));
-  // XXX When we support interrupts, we need to add code for signal dispatching
-  ASSERT(t, attr.sample_period >= 0xffffffff || attr.sample_period == 0)
-      << "Don't support interrupts yet";
+  if (t->session().is_recording()) {
+    maybe_enable_interrupt(t, attr.sample_period);
+  }
+}
+
+VirtualPerfCounterMonitor::~VirtualPerfCounterMonitor() {
+  disable_interrupt();
 }
 
 bool VirtualPerfCounterMonitor::emulate_ioctl(RecordTask* t, uint64_t* result) {
@@ -45,16 +52,16 @@ bool VirtualPerfCounterMonitor::emulate_ioctl(RecordTask* t, uint64_t* result) {
       break;
     case PERF_EVENT_IOC_RESET: {
       *result = 0;
-      RecordTask* target = t->session().find_task(target_tuid);
+      RecordTask* target = t->session().find_task(target_tuid());
       initial_ticks = target->tick_count();
       break;
     }
-    case PERF_EVENT_IOC_PERIOD:
+    case PERF_EVENT_IOC_PERIOD: {
       *result = 0;
-      // Nominally we'd reset the interrupt here, but since we don't support
-      // that yet, just ignore it.
+      maybe_enable_interrupt(t, t->read_mem(remote_ptr<uint64_t>(t->regs().arg3())));
       break;
-    default:
+    }
+  default:
       ASSERT(t, false) << "Unsupported perf event ioctl "
                        << HEX((int)t->regs().arg2());
       break;
@@ -69,6 +76,8 @@ bool VirtualPerfCounterMonitor::emulate_fcntl(RecordTask* t, uint64_t* result) {
       auto owner = t->read_mem(remote_ptr<struct f_owner_ex>(t->regs().arg3()));
       ASSERT(t, owner.type == F_OWNER_TID)
           << "Unsupported perf event F_SETOWN_EX type " << owner.type;
+      ASSERT(t, owner.pid == target_tuid().tid())
+          << "Perf event F_SETOWN_EX is only supported to the target tid";
       owner_tid = owner.pid;
       *result = 0;
       break;
@@ -109,7 +118,7 @@ static size_t write_ranges(RecordTask* t,
 bool VirtualPerfCounterMonitor::emulate_read(RecordTask* t,
                                              const vector<Range>& ranges,
                                              LazyOffset&, uint64_t* result) {
-  RecordTask* target = t->session().find_task(target_tuid);
+  RecordTask* target = t->session().find_task(target_tuid());
   if (target) {
     int64_t val = target->tick_count() - initial_ticks;
     *result = write_ranges(t, ranges, &val, sizeof(val));
@@ -117,6 +126,56 @@ bool VirtualPerfCounterMonitor::emulate_read(RecordTask* t,
     *result = 0;
   }
   return true;
+}
+
+void VirtualPerfCounterMonitor::maybe_enable_interrupt(Task* t, uint64_t after) {
+  Task* target = t->session().find_task(target_tuid());
+  if (after == 0 || after > 0xffffffff) {
+    return;
+  }
+
+  auto previous = tasks_with_interrupts.insert(std::make_pair(target_tuid(), this));
+  ASSERT(t, previous.second || previous.first->second == this)
+    << "Multiple virtualized performance counters with interrupts\n\tFirst at "
+    << previous.first->second << "\tSecond at " << this;
+
+  target_ticks_ = target->tick_count() + after;
+}
+
+void VirtualPerfCounterMonitor::disable_interrupt() const {
+  auto found = tasks_with_interrupts.find(target_tuid());
+  if (found == tasks_with_interrupts.end()) {
+    return;
+  }
+
+  if (found->second == this) {
+    tasks_with_interrupts.erase(found);
+  }
+}
+
+void VirtualPerfCounterMonitor::synthesize_signal(RecordTask* t) const {
+  // Use NativeArch here because different versions of system headers
+  // have inconsistent field naming.
+  union {
+    NativeArch::siginfo_t native_api;
+    siginfo_t linux_api;
+  } si;
+  memset(&si, 0, sizeof(si));
+  si.native_api.si_signo = sig;
+  si.native_api.si_errno = VIRTUAL_PERF_COUNTER_SIGNAL_SI_ERRNO;
+  LOG(debug) << "Synthesizing vpmc signal " << si.linux_api;
+  t->stash_synthetic_sig(si.linux_api, NONDETERMINISTIC_SIG);
+  disable_interrupt();
+}
+
+/* static */
+VirtualPerfCounterMonitor* VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(Task* t) {
+  auto found = tasks_with_interrupts.find(t->tuid());
+  if (found == tasks_with_interrupts.end()) {
+    return nullptr;
+  }
+
+  return found->second;
 }
 
 } // namespace rr

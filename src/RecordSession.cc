@@ -14,6 +14,7 @@
 #include "ElfReader.h"
 #include "Flags.h"
 #include "RecordTask.h"
+#include "VirtualPerfCounterMonitor.h"
 #include "core.h"
 #include "ftrace.h"
 #include "kernel_metadata.h"
@@ -558,6 +559,22 @@ void RecordSession::task_continue(const StepState& step_state) {
       ticks_request = (TicksRequest)max<Ticks>(
           0, scheduler().current_timeslice_end() - t->tick_count());
     }
+
+    // Clear any lingering state, then see if we need to stop earlier for a
+    // tracee-requested pmc interrupt on the virtualized performance counter.
+    t->next_pmc_interrupt_is_for_user = false;
+    if (auto vpmc = VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(t)) {
+      ASSERT(t, vpmc->target_tuid() == t->tuid());
+
+      Ticks after = max<Ticks>(vpmc->target_ticks() - t->tick_count(), 0);
+      if ((uint64_t)after < (uint64_t)ticks_request) {
+        LOG(debug) << "ticks_request constrained from " << ticks_request
+                   << " to " << after << " for vpmc";
+        ticks_request = (TicksRequest)after;
+        t->next_pmc_interrupt_is_for_user = true;
+      }
+    }
+
     bool singlestep =
         t->emulated_ptrace_cont_command == PTRACE_SINGLESTEP ||
         t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP;
@@ -1428,6 +1445,17 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
   // sigmask effects.
   t->invalidate_sigmask();
   if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
+    if (t->next_pmc_interrupt_is_for_user) {
+      auto vpmc = VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(t);
+      ASSERT(t, vpmc);
+
+      // Synthesize the requested signal.
+      vpmc->synthesize_signal(t);
+
+      t->next_pmc_interrupt_is_for_user = false;
+      return true;
+    }
+
     auto& si = t->get_siginfo();
     /* This implementation will of course fall over if rr tries to
      * record itself.

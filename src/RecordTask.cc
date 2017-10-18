@@ -188,7 +188,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       stashed_signals_blocking_more_signals(false),
       break_at_syscallbuf_traced_syscalls(false),
       break_at_syscallbuf_untraced_syscalls(false),
-      break_at_syscallbuf_final_instruction(false) {
+      break_at_syscallbuf_final_instruction(false),
+      next_pmc_interrupt_is_for_user(false) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.

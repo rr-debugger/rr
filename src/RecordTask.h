@@ -663,6 +663,10 @@ public:
   bool break_at_syscallbuf_traced_syscalls;
   bool break_at_syscallbuf_untraced_syscalls;
   bool break_at_syscallbuf_final_instruction;
+
+  // The pmc is programmed to interrupt at a value requested by the tracee, not
+  // by rr.
+  bool next_pmc_interrupt_is_for_user;
 };
 
 } // namespace rr
