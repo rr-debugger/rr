@@ -1790,7 +1790,10 @@ static string lookup_by_path(const string& name) {
   }
 
   env.push_back("RUNNING_UNDER_RR=1");
+  // Stop Mesa using the GPU
   env.push_back("LIBGL_ALWAYS_SOFTWARE=1");
+  // Stop sssd from using shared-memory with its daemon
+  env.push_back("SSS_NSS_USE_MEMCACHE=NO");
 
   // Disable Gecko's "wait for gdb to attach on process crash" behavior, since
   // it is useless when running under rr.
