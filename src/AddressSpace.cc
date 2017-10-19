@@ -1425,7 +1425,16 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
 }
 
 void AddressSpace::post_vm_clone(Task* t) {
-  // Recreate preload_thread_locals mapping.
+  if (has_mapping(preload_thread_locals_start()) &&
+      (mapping_flags_of(preload_thread_locals_start()) &
+       AddressSpace::Mapping::IS_THREAD_LOCALS) == 0) {
+    // The tracee already has a mapping at this address that doesn't belong to
+    // us. Don't touch it.
+    return;
+  }
+
+  // Otherwise, the preload_thread_locals mapping is non-existent or ours.
+  // Recreate it.
   AutoRemoteSyscalls remote(t);
   t->session().create_shared_mmap(remote, PRELOAD_THREAD_LOCALS_SIZE,
                                   preload_thread_locals_start(),
