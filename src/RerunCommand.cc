@@ -389,8 +389,8 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     FrameTime before_time = replay_session->trace_reader().time();
     if (replay_session->done_initial_exec() &&
         !flags.singlestep_trace.empty() &&
-        replay_session->trace_reader().time() >= flags.trace_start) {
-      if (!done_first_step) {
+        before_time >= flags.trace_start) {
+      if (!done_first_step && before_time > flags.trace_start) {
         done_first_step = true;
         print_regs_raw(old_task, before_time - 1,
                        instruction_count_within_event, flags.singlestep_trace,
