@@ -58,6 +58,8 @@ enum TraceFieldKind {
   TRACE_EVENT_NUMBER,      // outputs 64-bit value
   TRACE_INSTRUCTION_COUNT, // outputs 64-bit value
   TRACE_IP,                // outputs 64-bit value
+  TRACE_FSBASE,            // outputs 64-bit value
+  TRACE_GSBASE,            // outputs 64-bit value
   TRACE_FLAGS,             // outputs 64-bit value
   TRACE_XINUSE,            // outputs 64-bit value
   TRACE_GP_REG,            // outputs 64-bit value
@@ -111,6 +113,16 @@ static void print_regs_raw(Task* t, FrameTime event, uint64_t instruction_count,
         break;
       case TRACE_IP: {
         uint64_t value = t->regs().ip().register_value();
+        fwrite(&value, sizeof(value), 1, out);
+        break;
+      }
+      case TRACE_FSBASE: {
+        uint64_t value = t->regs().fs_base();
+        fwrite(&value, sizeof(value), 1, out);
+        break;
+      }
+      case TRACE_GSBASE: {
+        uint64_t value = t->regs().gs_base();
         fwrite(&value, sizeof(value), 1, out);
         break;
       }
@@ -242,6 +254,10 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
       out->push_back({ TRACE_INSTRUCTION_COUNT, 0 });
     } else if (reg == "ip" || reg == "rip") {
       out->push_back({ TRACE_IP, 0 });
+    } else if (reg == "fsbase") {
+      out->push_back({ TRACE_FSBASE, 0 });
+    } else if (reg == "gsbase") {
+      out->push_back({ TRACE_GSBASE, 0 });
     } else if (reg == "flags" || reg == "rflags") {
       out->push_back({ TRACE_FLAGS, 0 });
     } else if (reg == "gp_x16") {
