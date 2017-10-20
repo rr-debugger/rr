@@ -2879,6 +2879,25 @@ static void record_ranges(RecordTask* t,
 }
 
 template <typename Arch>
+static Switchable rec_prepare_open(const std::string& pathname, RecordTask* t,
+                                   const Registers& regs) {
+  if (is_blacklisted_filename(pathname.c_str())) {
+    LOG(warn) << "Cowardly refusing to open " << pathname;
+    Registers r = regs;
+    // Set path to terminating null byte. This forces ENOENT.
+    r.set_arg1(remote_ptr<char>(r.arg1()) + pathname.size());
+    t->set_regs(r);
+  } else if (is_gcrypt_deny_file(pathname.c_str())) {
+    // Hijack the syscall.
+    Registers r = regs;
+    r.set_original_syscallno(Arch::gettid);
+    t->set_regs(r);
+    return PREVENT_SWITCH;
+  }
+  return ALLOW_SWITCH;
+}
+
+template <typename Arch>
 static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state,
                                            const Registers& regs) {
@@ -3588,25 +3607,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::open: {
       string pathname = t->read_c_str(remote_ptr<char>(regs.arg1()));
-      if (is_blacklisted_filename(pathname.c_str())) {
-        LOG(warn) << "Cowardly refusing to open " << pathname;
-        Registers r = regs;
-        // Set path to terminating null byte. This forces ENOENT.
-        r.set_arg1(remote_ptr<char>(r.arg1()) + pathname.size());
-        t->set_regs(r);
-      } else if (is_gcrypt_deny_file(pathname.c_str())) {
-        // Hijack the syscall.
-        Registers r = regs;
-        r.set_original_syscallno(Arch::gettid);
-        t->set_regs(r);
-        return PREVENT_SWITCH;
-      }
-      return ALLOW_SWITCH;
+      return rec_prepare_open<Arch>(pathname, t, regs);
     }
 
     case Arch::openat: {
-      // XXX we really should support blacklisting here
-      return ALLOW_SWITCH;
+      int dirfd = regs.arg1_signed();
+      if (dirfd != AT_FDCWD)
+        return ALLOW_SWITCH;
+      // With AT_FDCWD openat is just open.
+      string pathname = t->read_c_str(remote_ptr<char>(regs.arg2()));
+      return rec_prepare_open<Arch>(pathname, t, regs);
     }
 
     case Arch::close:
@@ -5000,7 +5010,8 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
     }
 
-    case Arch::open: {
+    case Arch::open:
+    case Arch::openat: {
       // Restore the registers that we may have altered.
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
@@ -5034,7 +5045,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         unlink(file.name.c_str());
 
         // And hand out our fake file.
-        r.set_original_syscallno(Arch::open);
+        r.set_original_syscallno(syscallno);
         r.set_syscall_result(child_fd);
       }
       t->set_regs(r);
@@ -5043,12 +5054,6 @@ static void rec_process_syscall_arch(RecordTask* t,
       }
       break;
     }
-
-    case Arch::openat:
-      if (!t->regs().syscall_failed()) {
-        handle_opened_file(t, (int)t->regs().syscall_result_signed());
-      }
-      break;
 
     case SYS_rrcall_notify_control_msg: {
       auto msg =
