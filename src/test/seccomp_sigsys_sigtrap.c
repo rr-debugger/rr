@@ -61,7 +61,8 @@ int main(void) {
   install_filter();
 
   /* Test SIGSYS for a buffered syscall */
-  test_assert(open("/dev/null", O_RDONLY) == 42);
+  /* Use syscall directly since glibc 2.26 uses SYS_openat to implement open. */
+  test_assert(syscall(SYS_open, "/dev/null", O_RDONLY) == 42);
 
   atomic_puts("EXIT-SUCCESS");
 
