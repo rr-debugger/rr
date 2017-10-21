@@ -69,6 +69,9 @@ def clean_up():
     iterations = 0
     while gdb_rr:
         try:
+            # FIXME: without this sleep python freezes instead of exiting.
+            # The sleep has to be before BufferedRWPair.close()
+            time.sleep(0.1)
             gdb_rr.close(force=1)
             gdb_rr = None
         except Exception, e:
