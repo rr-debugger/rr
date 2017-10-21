@@ -4,6 +4,11 @@ import io
 import os
 import sys
 
+# Currently the rr page is not copied into the trace. If you want to change
+# the contents of the rr page, think carefully about trace compatibility.
+# One option would be to save the (replay) rr page into the trace and have
+# replay default to the old rr page if the saved page is not present.
+
 def write_rr_page(f, is_64, is_replay):
     # The length of each code sequence must be RR_PAGE_SYSCALL_STUB_SIZE.
     # The end of each syscall instruction must be at offset
