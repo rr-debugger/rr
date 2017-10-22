@@ -16,7 +16,7 @@
 
 namespace rr {
 
-static const char localhost_addr[] = "127.0.0.1";
+static std::string localhost_addr = "127.0.0.1";
 
 class GdbServer {
   // Not ideal but we can't inherit friend from GdbCommand
