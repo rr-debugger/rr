@@ -52,6 +52,8 @@ ReplayCommand ReplayCommand::singleton(
     "Emacs\n"
     "  -d, --debugger=<FILE>      use <FILE> as the gdb command\n"
     "  -q, --no-redirect-output   don't replay writes to stdout/stderr\n"
+    "  -h, --dbghost=<HOST>       listen address for the debug server.\n"
+    "                             default listen address is set to localhost.\n"
     "  -s, --dbgport=<PORT>       only start a debug server on <PORT>,\n"
     "                             don't automatically launch the debugger\n"
     "                             client; set PORT to 0 to automatically\n"
@@ -90,6 +92,9 @@ struct ReplayFlags {
   // IP port to listen on for debug connections.
   int dbg_port;
 
+  // IP host to listen on for debug connections.
+  string dbg_host;
+
   // Whether to keep listening with a new server after the existing server
   // detaches
   bool keep_listening;
@@ -114,6 +119,7 @@ struct ReplayFlags {
         process_created_how(CREATED_NONE),
         dont_launch_debugger(false),
         dbg_port(-1),
+        dbg_host(localhost_addr),
         keep_listening(false),
         gdb_binary_file_path("gdb"),
         redirect(true),
@@ -134,6 +140,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 'o', "debugger-option", HAS_PARAMETER },
     { 'p', "onprocess", HAS_PARAMETER },
     { 'q', "no-redirect-output", NO_PARAMETER },
+    { 'h', "dbghost", HAS_PARAMETER },
     { 's', "dbgport", HAS_PARAMETER },
     { 't', "trace", HAS_PARAMETER },
     { 'x', "gdb-x", HAS_PARAMETER },
@@ -186,6 +193,10 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       break;
     case 'q':
       flags.redirect = false;
+      break;
+    case 'h':
+      flags.dbg_host = opt.value;
+      flags.dont_launch_debugger = true;
       break;
     case 's':
       if (!opt.verify_valid_int(0, INT32_MAX)) {
@@ -398,6 +409,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       auto session = ReplaySession::create(trace_dir);
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
+      conn_flags.dbg_host = flags.dbg_host;
       conn_flags.debugger_name = flags.gdb_binary_file_path;
       conn_flags.keep_listening = flags.keep_listening;
       GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
@@ -424,6 +436,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       auto session = ReplaySession::create(trace_dir);
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
+      conn_flags.dbg_host = flags.dbg_host;
       conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
       GdbServer server(session, session_flags(flags), target);
 

@@ -16,6 +16,8 @@
 
 namespace rr {
 
+static const char localhost_addr[] = "127.0.0.1";
+
 class GdbServer {
   // Not ideal but we can't inherit friend from GdbCommand
   friend std::string invoke_checkpoint(GdbServer&, Task*,
@@ -41,6 +43,7 @@ public:
     // specific port to listen on. If keep_listening is on, wait for another
     // debugger connection after the first one is terminated.
     int dbg_port;
+    std::string dbg_host;
     bool keep_listening;
     // If non-null, then when the gdbserver is set up, we write its connection
     // parameters through this pipe. GdbServer::launch_gdb is passed the
@@ -52,6 +55,7 @@ public:
 
     ConnectionFlags()
         : dbg_port(-1),
+          dbg_host(localhost_addr),
           keep_listening(false),
           debugger_params_write_pipe(nullptr) {}
   };
