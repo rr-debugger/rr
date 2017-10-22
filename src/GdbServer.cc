@@ -1430,7 +1430,7 @@ static void push_default_gdb_options(vector<string>& vec) {
   vec.push_back("set sysroot /");
 }
 
-static void push_target_remote_cmd(vector<string>& vec, const char* host,
+static void push_target_remote_cmd(vector<string>& vec, const string& host,
                                    unsigned short port) {
   vec.push_back("-ex");
   stringstream ss;
@@ -1468,7 +1468,7 @@ static unique_ptr<GdbConnection> await_connection(
   return dbg;
 }
 
-static void print_debugger_launch_command(Task* t, const char* host,
+static void print_debugger_launch_command(Task* t, const string& host,
                                           unsigned short port,
                                           const char* debugger_name,
                                           FILE* out) {
@@ -1514,7 +1514,7 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     DEBUG_ASSERT(nwritten == sizeof(params));
   } else {
     fputs("Launch gdb with\n  ", stderr);
-    print_debugger_launch_command(t, flags.dbg_host.c_str(), port,
+    print_debugger_launch_command(t, flags.dbg_host, port,
                                   flags.debugger_name.c_str(), stderr);
   }
 
@@ -1607,13 +1607,13 @@ void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
   for (size_t i = 0; i < gdb_options.size(); ++i) {
     if (!did_set_remote && gdb_options[i] == "-ex" &&
         i + 1 < gdb_options.size() && needs_target(gdb_options[i + 1])) {
-      push_target_remote_cmd(args, params.host, params.port);
+      push_target_remote_cmd(args, string(params.host), params.port);
       did_set_remote = true;
     }
     args.push_back(gdb_options[i]);
   }
   if (!did_set_remote) {
-    push_target_remote_cmd(args, params.host, params.port);
+    push_target_remote_cmd(args, string(params.host), params.port);
   }
   args.push_back(params.exe_image);
 
@@ -1647,7 +1647,7 @@ void GdbServer::emergency_debug(Task* t) {
   // mode (and we don't want to require users to do that)
   features.reverse_execution = false;
   unsigned short port = t->tid;
-  ScopedFd listen_fd = open_socket(localhost_addr, &port, PROBE_PORT);
+  ScopedFd listen_fd = open_socket(localhost_addr.c_str(), &port, PROBE_PORT);
 
   char* test_monitor_pid = getenv("RUNNING_UNDER_TEST_MONITOR");
   if (test_monitor_pid) {
