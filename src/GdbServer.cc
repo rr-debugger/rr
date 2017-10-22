@@ -1396,10 +1396,9 @@ static uint32_t get_cpu_features(SupportedArch arch) {
   return cpu_features;
 }
 
-static const char localhost_addr[] = "127.0.0.1";
-
 struct DebuggerParams {
   char exe_image[PATH_MAX];
+  char host[16]; // INET_ADDRSTRLEN, omitted for header churn
   short port;
 };
 
@@ -1431,20 +1430,21 @@ static void push_default_gdb_options(vector<string>& vec) {
   vec.push_back("set sysroot /");
 }
 
-static void push_target_remote_cmd(vector<string>& vec, unsigned short port) {
+static void push_target_remote_cmd(vector<string>& vec, const char* host,
+                                   unsigned short port) {
   vec.push_back("-ex");
   stringstream ss;
   // If we omit the address, then gdb can try to resolve "localhost" which
   // in some broken environments may not actually resolve to the local host
-  ss << "target extended-remote " << localhost_addr << ":" << port;
+  ss << "target extended-remote " << host << ":" << port;
   vec.push_back(ss.str());
 }
 
 /**
  * Wait for exactly one gdb host to connect to this remote target on
- * IP address 127.0.0.1, port |port|.  If |probe| is nonzero, a unique
- * port based on |start_port| will be searched for.  Otherwise, if
- * |port| is already bound, this function will fail.
+ * the specified IP address |host|, port |port|.  If |probe| is nonzero,
+ * a unique port based on |start_port| will be searched for.  Otherwise,
+ * if |port| is already bound, this function will fail.
  *
  * Pass the |tgid| of the task on which this debug-connection request
  * is being made.  The remaining debugging session will be limited to
@@ -1468,12 +1468,13 @@ static unique_ptr<GdbConnection> await_connection(
   return dbg;
 }
 
-static void print_debugger_launch_command(Task* t, unsigned short port,
+static void print_debugger_launch_command(Task* t, const char* host,
+                                          unsigned short port,
                                           const char* debugger_name,
                                           FILE* out) {
   vector<string> options;
   push_default_gdb_options(options);
-  push_target_remote_cmd(options, port);
+  push_target_remote_cmd(options, host, port);
   fprintf(out, "%s ", debugger_name);
   for (auto& opt : options) {
     fprintf(out, "'%s' ", opt.c_str());
@@ -1499,12 +1500,13 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   // place).  So fail with a clearer error message.
   auto probe = flags.dbg_port > 0 ? DONT_PROBE : PROBE_PORT;
   Task* t = timeline.current_session().current_task();
-  ScopedFd listen_fd = open_socket(localhost_addr, &port, probe);
+  ScopedFd listen_fd = open_socket(flags.dbg_host.c_str(), &port, probe);
   if (flags.debugger_params_write_pipe) {
     DebuggerParams params;
     memset(&params, 0, sizeof(params));
     strncpy(params.exe_image, t->vm()->exe_image().c_str(),
             sizeof(params.exe_image) - 1);
+    strncpy(params.host, flags.dbg_host.c_str(), sizeof(params.host) - 1);
     params.port = port;
 
     ssize_t nwritten =
@@ -1512,7 +1514,8 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
     DEBUG_ASSERT(nwritten == sizeof(params));
   } else {
     fputs("Launch gdb with\n  ", stderr);
-    print_debugger_launch_command(t, port, flags.debugger_name.c_str(), stderr);
+    print_debugger_launch_command(t, flags.dbg_host.c_str(), port,
+                                  flags.debugger_name.c_str(), stderr);
   }
 
   if (flags.debugger_params_write_pipe) {
@@ -1604,13 +1607,13 @@ void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
   for (size_t i = 0; i < gdb_options.size(); ++i) {
     if (!did_set_remote && gdb_options[i] == "-ex" &&
         i + 1 < gdb_options.size() && needs_target(gdb_options[i + 1])) {
-      push_target_remote_cmd(args, params.port);
+      push_target_remote_cmd(args, params.host, params.port);
       did_set_remote = true;
     }
     args.push_back(gdb_options[i]);
   }
   if (!did_set_remote) {
-    push_target_remote_cmd(args, params.port);
+    push_target_remote_cmd(args, params.host, params.port);
   }
   args.push_back(params.exe_image);
 
@@ -1653,14 +1656,14 @@ void GdbServer::emergency_debug(Task* t) {
     // connect the emergency debugger so let that happen.
     FILE* gdb_cmd = fopen("gdb_cmd", "w");
     if (gdb_cmd) {
-      print_debugger_launch_command(t, port, "gdb", gdb_cmd);
+      print_debugger_launch_command(t, localhost_addr, port, "gdb", gdb_cmd);
       fclose(gdb_cmd);
     }
     kill(pid, SIGURG);
   } else {
     dump_rr_stack();
     fputs("Launch gdb with\n  ", stderr);
-    print_debugger_launch_command(t, port, "gdb", stderr);
+    print_debugger_launch_command(t, localhost_addr, port, "gdb", stderr);
   }
   unique_ptr<GdbConnection> dbg = await_connection(t, listen_fd, features);
 
