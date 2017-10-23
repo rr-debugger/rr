@@ -282,7 +282,7 @@ static void write_prefix(T& stream, LogLevel level, const char* file, int line,
     stream << file << ":" << line << ":";
   }
   stream << function << "()";
-  if (level <= LOG_warn) {
+  if (level <= LOG_warn && err) {
     stream << " errno: " << errno_name(err);
   }
   stream << "] ";
