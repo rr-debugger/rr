@@ -318,6 +318,17 @@ NewlineTerminatingOstream::~NewlineTerminatingOstream() {
   }
 }
 
+CleanFatalOstream::CleanFatalOstream(const char* file, int line, const char* function) {
+  errno = 0;
+  write_prefix(*this, LOG_fatal, file, line, function);
+}
+
+CleanFatalOstream::~CleanFatalOstream() {
+  cerr << std::endl;
+  flush_log_stream();
+  exit(1);
+}
+
 FatalOstream::FatalOstream(const char* file, int line, const char* function) {
   write_prefix(*this, LOG_fatal, file, line, function);
 }

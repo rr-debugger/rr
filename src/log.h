@@ -56,6 +56,25 @@ const NewlineTerminatingOstream& operator<<(
 }
 // TODO: support stream modifiers.
 
+/**
+ * Print clean fatal errors. These include the file, line and function name
+ * but not errno or a stack trace. They go to stderr instead of the log file.
+ */
+struct CleanFatalOstream {
+  CleanFatalOstream(const char* file, int line, const char* function);
+  ~CleanFatalOstream();
+};
+template <typename T>
+const CleanFatalOstream& operator<<(const CleanFatalOstream& stream, const T& v) {
+  std::cerr << v;
+  return stream;
+}
+
+/**
+ * Print detailed fatal errors. These include the file, line and function name
+ * plus errno and a stack trace. Used for fatal errors where detailed
+ * diagnostics may be required.
+ */
 struct FatalOstream {
   FatalOstream(const char* file, int line, const char* function);
   ~FatalOstream();
@@ -93,6 +112,8 @@ const EmergencyDebugOstream& operator<<(const EmergencyDebugOstream& stream,
 
 /** A fatal error has occurred.  Log the error and exit. */
 #define FATAL() FatalOstream(__FILE__, __LINE__, __FUNCTION__)
+
+#define CLEAN_FATAL() CleanFatalOstream(__FILE__, __LINE__, __FUNCTION__)
 
 #ifndef __has_builtin
 #define __has_builtin(x) 0
