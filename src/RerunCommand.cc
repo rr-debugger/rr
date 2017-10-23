@@ -370,6 +370,7 @@ static void clear_breakpoint_after_cpuid(Task* t) {
 static int rerun(const string& trace_dir, const RerunFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
   uint64_t instruction_count_within_event = 0;
+  bool done_first_step = false;
 
   // Now that we've spawned the replay, raise our resource limits if
   // possible.
@@ -377,16 +378,25 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
 
   while (replay_session->trace_reader().time() < flags.trace_end) {
     RunCommand cmd = RUN_CONTINUE;
+
+    Task* old_task = replay_session->current_task();
+    remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
+    FrameTime before_time = replay_session->trace_reader().time();
     if (replay_session->done_initial_exec() &&
         !flags.singlestep_trace.empty() &&
         replay_session->trace_reader().time() >= flags.trace_start) {
+      if (!done_first_step) {
+        done_first_step = true;
+        print_regs_raw(old_task, before_time - 1,
+                       instruction_count_within_event, flags.singlestep_trace,
+                       stdout);
+        fputc('\n', stdout);
+      }
+
       cmd = RUN_SINGLESTEP_FAST_FORWARD;
     }
 
-    FrameTime before_time = replay_session->trace_reader().time();
     Event replayed_event = replay_session->current_trace_frame().event();
-    Task* old_task = replay_session->current_task();
-    remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
 
     bool set_breakpoint = maybe_set_breakpoint_after_cpuid(old_task);
     auto result = replay_session->replay_step(cmd);
