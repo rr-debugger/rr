@@ -124,6 +124,16 @@ static CpuMicroarch get_cpu_microarch() {
     FATAL() << "Forced uarch " << Flags::get().forced_uarch << " isn't known.";
   }
 
+  auto cpuid_vendor = cpuid(CPUID_GETVENDORSTRING, 0);
+  char vendor[13];
+  memcpy(&vendor[0], &cpuid_vendor.ebx, 4);
+  memcpy(&vendor[4], &cpuid_vendor.edx, 4);
+  memcpy(&vendor[8], &cpuid_vendor.ecx, 4);
+  vendor[12] = 0;
+  if (strcmp(vendor, "GenuineIntel") && strcmp(vendor, "AuthenticAMD")) {
+    FATAL() << "Unknown CPU vendor '" << vendor << "'";
+  }
+
   auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
   unsigned int cpu_type = (cpuid_data.eax & 0xF0FF0);
   unsigned int ext_family = (cpuid_data.eax >> 20) & 0xff;
@@ -180,7 +190,14 @@ static CpuMicroarch get_cpu_microarch() {
     default:
       break;
   }
-  FATAL() << "CPU " << HEX(cpu_type) << " unknown.";
+
+  if (strcmp(vendor, "AuthenticAMD")) {
+    FATAL() << "AMD CPUs not supported.\n"
+      << "For Ryzen, see https://github.com/mozilla/rr/issues/2034.\n"
+      << "For post-Ryzen CPUs, please file a Github issue.";
+  } else {
+    FATAL() << "Intel CPU type " << HEX(cpu_type) << " unknown";
+  }
   return UnknownCpu; // not reached
 }
 
