@@ -647,6 +647,7 @@ bool Task::exit_syscall_and_prepare_restart() {
     // handle_ptrace_exit_event will record something appropriate.
     r.set_original_syscallno(syscallno);
     r.set_syscall_result(-ENOSYS);
+    set_regs(r);
     return false;
   }
   LOG(debug) << "exit_syscall_and_prepare_restart done";
