@@ -125,7 +125,34 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
       // might have been hit by a SIGKILL or a SECCOMP_RET_KILL, in which case
       // there might be some execution since its last recorded event that we
       // need to replay.
-      t->record_event(Event::sched());
+      // There's a weird case (in 4.13.5-200.fc26.x86_64 at least) where the
+      // task can enter the kernel but instead of receiving a syscall ptrace
+      // event, we receive a PTRACE_EXIT_EVENT due to a concurrent execve
+      // (and probably a concurrent SIGKILL could do the same). The task state
+      // has been updated to reflect syscall entry. If we record a SCHED in
+      // that state replay of the SCHED will fail. So detect that state and fix
+      // it up.
+      if (t->regs().original_syscallno() >= 0 &&
+          t->regs().syscall_result_signed() == -ENOSYS) {
+        // Either we're in a syscall, or we're immediately after a syscall
+        // and it exited with ENOSYS.
+        if (t->ticks_at_last_recorded_syscall_exit == t->tick_count()) {
+          LOG(debug) << "Nothing to record after PTRACE_EVENT_EXIT";
+          // It's the latter case; do nothing.
+        } else {
+          // It's the former case ... probably. Theoretically we could have
+          // re-executed a syscall without any ticks in between, but that seems
+          // highly improbable.
+          // Record the syscall-entry event that we otherwise failed to record.
+          t->canonicalize_regs(t->arch());
+          SyscallEvent event(t->regs().original_syscallno(),
+              t->detect_syscall_arch());
+          event.state = ENTERING_SYSCALL;
+          t->record_event(event);
+        }
+      } else {
+        t->record_event(Event::sched());
+      }
     }
     LOG(warn)
         << "unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";

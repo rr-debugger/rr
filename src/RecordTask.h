@@ -540,6 +540,8 @@ private:
   void set_tid_addr(remote_ptr<int> tid_addr);
 
 public:
+  Ticks ticks_at_last_recorded_syscall_exit;
+
   // Scheduler state
 
   Registers registers_at_start_of_last_timeslice;

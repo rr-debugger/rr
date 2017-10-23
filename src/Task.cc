@@ -642,6 +642,11 @@ bool Task::exit_syscall_and_prepare_restart() {
   // This exits the hijacked SYS_gettid.  Now the tracee is
   // ready to do our bidding.
   if (!exit_syscall()) {
+    // The tracee suddenly exited. To get this to replay correctly, we need to
+    // make it look like we really entered the syscall. Then
+    // handle_ptrace_exit_event will record something appropriate.
+    r.set_original_syscallno(syscallno);
+    r.set_syscall_result(-ENOSYS);
     return false;
   }
   LOG(debug) << "exit_syscall_and_prepare_restart done";
