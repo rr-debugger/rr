@@ -334,6 +334,11 @@ static bool treat_event_completion_as_singlestep_complete(const Event& ev) {
   }
 }
 
+/**
+ * Return true if the final "event" state change doesn't really change any
+ * user-visible state and is therefore not to be considered a singlestep for
+ * our purposes.
+ */
 static bool ignore_singlestep_for_event(const Event& ev) {
   switch (ev.type()) {
     // These don't actually change user-visible state, so we skip them.
@@ -427,7 +432,10 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     // was not interrupted) as not really singlestepping.
     bool singlestep_really_complete =
         result.break_status.singlestep_complete &&
-        !ignore_singlestep_for_event(replayed_event) &&
+        // ignore_singlestep_for_event only matters if we really completed the
+        // event
+        (!ignore_singlestep_for_event(replayed_event) ||
+         before_time == after_time) &&
         (!result.did_fast_forward || old_ip != after_ip ||
          before_time < after_time);
     if (!flags.singlestep_trace.empty() && cmd == RUN_SINGLESTEP_FAST_FORWARD &&
@@ -443,6 +451,8 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
       instruction_count_within_event += 1;
     }
     if (before_time < after_time) {
+      LOG(debug) << "Completed event " << before_time
+                 << " instruction_count=" << instruction_count_within_event;
       instruction_count_within_event = 1;
     }
   }
