@@ -32,7 +32,6 @@ namespace rr {
 static bool attributes_initialized;
 static struct perf_event_attr ticks_attr;
 static struct perf_event_attr cycles_attr;
-static struct perf_event_attr page_faults_attr;
 static struct perf_event_attr hw_interrupts_attr;
 static uint32_t skid_size;
 static bool has_ioc_period_bug;
@@ -546,8 +545,6 @@ static void init_attributes() {
   // libpfm encodes the event with this bit set, so we'll do the
   // same thing.  Unclear if necessary.
   hw_interrupts_attr.exclude_hv = 1;
-  init_perf_event_attr(&page_faults_attr, PERF_TYPE_SOFTWARE,
-                       PERF_COUNT_SW_PAGE_FAULTS);
 
   check_for_bugs();
   /*
