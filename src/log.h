@@ -65,7 +65,8 @@ struct CleanFatalOstream {
   ~CleanFatalOstream();
 };
 template <typename T>
-const CleanFatalOstream& operator<<(const CleanFatalOstream& stream, const T& v) {
+const CleanFatalOstream& operator<<(const CleanFatalOstream& stream,
+                                    const T& v) {
   std::cerr << v;
   return stream;
 }

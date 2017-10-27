@@ -388,8 +388,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
     FrameTime before_time = replay_session->trace_reader().time();
     if (replay_session->done_initial_exec() &&
-        !flags.singlestep_trace.empty() &&
-        before_time >= flags.trace_start) {
+        !flags.singlestep_trace.empty() && before_time >= flags.trace_start) {
       if (!done_first_step && before_time > flags.trace_start) {
         done_first_step = true;
         print_regs_raw(old_task, before_time - 1,

@@ -146,7 +146,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
           // Record the syscall-entry event that we otherwise failed to record.
           t->canonicalize_regs(t->arch());
           SyscallEvent event(t->regs().original_syscallno(),
-              t->detect_syscall_arch());
+                             t->detect_syscall_arch());
           event.state = ENTERING_SYSCALL;
           t->record_event(event);
         }
@@ -590,7 +590,8 @@ void RecordSession::task_continue(const StepState& step_state) {
     // Clear any lingering state, then see if we need to stop earlier for a
     // tracee-requested pmc interrupt on the virtualized performance counter.
     t->next_pmc_interrupt_is_for_user = false;
-    if (auto vpmc = VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(t)) {
+    if (auto vpmc =
+            VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(t)) {
       ASSERT(t, vpmc->target_tuid() == t->tuid());
 
       Ticks after = max<Ticks>(vpmc->target_ticks() - t->tick_count(), 0);
@@ -1473,7 +1474,8 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
   t->invalidate_sigmask();
   if (sig == PerfCounters::TIME_SLICE_SIGNAL) {
     if (t->next_pmc_interrupt_is_for_user) {
-      auto vpmc = VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(t);
+      auto vpmc =
+          VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(t);
       ASSERT(t, vpmc);
 
       // Synthesize the requested signal.

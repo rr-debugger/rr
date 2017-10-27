@@ -14,8 +14,9 @@ using namespace std;
 
 namespace rr {
 
-std::map<TaskUid, VirtualPerfCounterMonitor*> VirtualPerfCounterMonitor::tasks_with_interrupts =
-  std::map<TaskUid, VirtualPerfCounterMonitor*>();
+std::map<TaskUid, VirtualPerfCounterMonitor*>
+    VirtualPerfCounterMonitor::tasks_with_interrupts =
+        std::map<TaskUid, VirtualPerfCounterMonitor*>();
 
 bool VirtualPerfCounterMonitor::should_virtualize(
     const struct perf_event_attr& attr) {
@@ -36,9 +37,7 @@ VirtualPerfCounterMonitor::VirtualPerfCounterMonitor(
   }
 }
 
-VirtualPerfCounterMonitor::~VirtualPerfCounterMonitor() {
-  disable_interrupt();
-}
+VirtualPerfCounterMonitor::~VirtualPerfCounterMonitor() { disable_interrupt(); }
 
 bool VirtualPerfCounterMonitor::emulate_ioctl(RecordTask* t, uint64_t* result) {
   switch ((int)t->regs().arg2()) {
@@ -58,10 +57,11 @@ bool VirtualPerfCounterMonitor::emulate_ioctl(RecordTask* t, uint64_t* result) {
     }
     case PERF_EVENT_IOC_PERIOD: {
       *result = 0;
-      maybe_enable_interrupt(t, t->read_mem(remote_ptr<uint64_t>(t->regs().arg3())));
+      maybe_enable_interrupt(
+          t, t->read_mem(remote_ptr<uint64_t>(t->regs().arg3())));
       break;
     }
-  default:
+    default:
       ASSERT(t, false) << "Unsupported perf event ioctl "
                        << HEX((int)t->regs().arg2());
       break;
@@ -128,16 +128,19 @@ bool VirtualPerfCounterMonitor::emulate_read(RecordTask* t,
   return true;
 }
 
-void VirtualPerfCounterMonitor::maybe_enable_interrupt(Task* t, uint64_t after) {
+void VirtualPerfCounterMonitor::maybe_enable_interrupt(Task* t,
+                                                       uint64_t after) {
   Task* target = t->session().find_task(target_tuid());
   if (after == 0 || after > 0xffffffff) {
     return;
   }
 
-  auto previous = tasks_with_interrupts.insert(std::make_pair(target_tuid(), this));
+  auto previous =
+      tasks_with_interrupts.insert(std::make_pair(target_tuid(), this));
   ASSERT(t, previous.second || previous.first->second == this)
-    << "Multiple virtualized performance counters with interrupts\n\tFirst at "
-    << previous.first->second << "\tSecond at " << this;
+      << "Multiple virtualized performance counters with interrupts\n\tFirst "
+         "at "
+      << previous.first->second << "\tSecond at " << this;
 
   target_ticks_ = target->tick_count() + after;
 }
@@ -169,7 +172,8 @@ void VirtualPerfCounterMonitor::synthesize_signal(RecordTask* t) const {
 }
 
 /* static */
-VirtualPerfCounterMonitor* VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(Task* t) {
+VirtualPerfCounterMonitor*
+VirtualPerfCounterMonitor::interrupting_virtual_pmc_for_task(Task* t) {
   auto found = tasks_with_interrupts.find(t->tuid());
   if (found == tasks_with_interrupts.end()) {
     return nullptr;
