@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+touch rr-test-blacklist-file_name
+compare_test EXIT-SUCCESS

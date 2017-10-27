@@ -2885,7 +2885,17 @@ static Switchable rec_prepare_open(const std::string& pathname, RecordTask* t,
     LOG(warn) << "Cowardly refusing to open " << pathname;
     Registers r = regs;
     // Set path to terminating null byte. This forces ENOENT.
-    r.set_arg1(remote_ptr<char>(r.arg1()) + pathname.size());
+    switch (t->ev().Syscall().number) {
+      case Arch::open:
+        r.set_arg1(remote_ptr<char>(r.arg1()) + pathname.size());
+        break;
+      case Arch::openat:
+        r.set_arg2(remote_ptr<char>(r.arg2()) + pathname.size());
+        break;
+      default:
+        FATAL() << "Unsupported open syscall";
+        break;
+    }
     t->set_regs(r);
   } else if (is_gcrypt_deny_file(pathname.c_str())) {
     // Hijack the syscall.
@@ -5015,6 +5025,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       // Restore the registers that we may have altered.
       Registers r = t->regs();
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
+      r.set_arg2(syscall_state.syscall_entry_registers.arg2());
       if (r.original_syscallno() == Arch::gettid) {
         // We hijacked this call to deal with /etc/gcrypt/hwf.deny.
         TempFile file = create_temporary_file("rr-gcrypt-hwf-deny-XXXXXX");

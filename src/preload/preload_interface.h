@@ -564,10 +564,14 @@ inline static long stored_record_size(size_t length) {
  * too much by piling on.
  */
 inline static int is_blacklisted_filename(const char* filename) {
-  return strprefix("/dev/dri/", filename) ||
-         streq("/dev/nvidiactl", filename) ||
-         streq("/usr/share/alsa/alsa.conf", filename) ||
-         strprefix("pulse-shm-", extract_file_name(filename));
+  const char* f;
+  if (strprefix("/dev/dri/", filename) || streq("/dev/nvidiactl", filename) ||
+      streq("/usr/share/alsa/alsa.conf", filename)) {
+    return 1;
+  }
+  f = extract_file_name(filename);
+  return strprefix("rr-test-blacklist-file_name", f) ||
+         strprefix("pulse-shm-", f);
 }
 
 inline static int is_blacklisted_memfd(const char* name) {
