@@ -5,6 +5,7 @@
 #define MAX_ERRNO 4095
 
 #define RR_PAGE_ADDR 0x70000000
+#define RR_THREAD_LOCALS_PAGE_ADDR 0x70001000
 
 uintptr_t unmappings[1000];
 ssize_t nunmappings;
@@ -73,8 +74,17 @@ int main(void) {
       my_syscall(RR_exit, ret, 0, 0, 0);
     }
   }
+
+  my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096, PROT_READ | PROT_WRITE, 0);
+  *((uint64_t*)RR_THREAD_LOCALS_PAGE_ADDR) = RR_PAGE_ADDR;
+  my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096, PROT_NONE, 0);
+
   breakpoint();
-  my_syscall(RR_exit, 0, 0, 0, 0);
+
+  my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096, PROT_READ, 0);
+  int ret = (*((uint64_t*)RR_THREAD_LOCALS_PAGE_ADDR) == RR_PAGE_ADDR) ? 0 : -42;
+
+  my_syscall(RR_exit, ret, 0, 0, 0);
   // Never reached, but make compiler happy.
   return 1;
 }
