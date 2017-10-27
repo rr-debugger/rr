@@ -3622,10 +3622,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::openat: {
       int dirfd = regs.arg1_signed();
-      if (dirfd != AT_FDCWD)
-        return ALLOW_SWITCH;
-      // With AT_FDCWD openat is just open.
+      // With AT_FDCWD, or an absolute path, openat is just open.
       string pathname = t->read_c_str(remote_ptr<char>(regs.arg2()));
+      if (dirfd != AT_FDCWD && pathname.c_str()[0] != '/') {
+        // Not sure what we should do here. If we need to do something, we
+        // will need to somehow figure out what dirfd refers to, or else let
+        // the tracee do an openat and then look at what it opened and undo
+        // the open if we don't like it.
+        return ALLOW_SWITCH;
+      }
       return rec_prepare_open<Arch>(pathname, t, regs);
     }
 

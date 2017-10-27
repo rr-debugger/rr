@@ -1630,10 +1630,12 @@ static long sys_openat(const struct syscall_info* call) {
 
   /* The strcmp()s done here are OK because we're not in the
    * critical section yet.
-   * Make non-AT_FDCWD calls take the rr path so we can handle things
-   * correctly. New glibc open() implementation uses openat with AT_FDCWD.
+   * Make non-AT_FDCWD calls with relative paths take the rr path so we can
+   * handle things correctly. New glibc open() implementation uses openat with
+   * AT_FDCWD.
    */
-  if (dirfd != AT_FDCWD || !allow_buffered_open(pathname)) {
+  int treat_as_open = dirfd == AT_FDCWD || pathname[0] == '/';
+  if (!treat_as_open || !allow_buffered_open(pathname)) {
     return traced_raw_syscall(call);
   }
 
