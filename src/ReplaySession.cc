@@ -552,6 +552,7 @@ void ReplaySession::continue_or_step(ReplayTask* t,
   } else {
     while (true) {
       t->resume_execution(resume_how, RESUME_WAIT, tick_request);
+      Ticks ticks_left = constraints.ticks_target - t->tick_count();
       if (t->stop_sig() == 0) {
         auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
         if (type && type->traced == AddressSpace::UNTRACED) {
@@ -571,6 +572,8 @@ void ReplaySession::continue_or_step(ReplayTask* t,
           // is not fast anyway.)
           perform_interrupted_syscall(t);
         }
+      } else if (ticks_left <= PerfCounters::skid_size()) {
+        break;
       } else if (handle_unrecorded_cpuid_fault(t, constraints)) {
         // Just continue
       } else {
