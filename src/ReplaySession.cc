@@ -537,11 +537,14 @@ void ReplaySession::check_pending_sig(ReplayTask* t) {
  *
  * Some callers pass RESUME_CONT because they want to execute any syscalls
  * encountered.
+ *
+ * If we return INCOMPLETE, callers need to recalculate the constraints and
+ * tick_request and try again.
  */
-void ReplaySession::continue_or_step(ReplayTask* t,
-                                     const StepConstraints& constraints,
-                                     TicksRequest tick_request,
-                                     ResumeRequest resume_how) {
+Completion ReplaySession::continue_or_step(ReplayTask* t,
+                                           const StepConstraints& constraints,
+                                           TicksRequest tick_request,
+                                           ResumeRequest resume_how) {
   if (constraints.command == RUN_SINGLESTEP) {
     t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, tick_request);
     handle_unrecorded_cpuid_fault(t, constraints);
@@ -550,35 +553,33 @@ void ReplaySession::continue_or_step(ReplayTask* t,
         t, RESUME_SINGLESTEP, constraints.stop_before_states);
     handle_unrecorded_cpuid_fault(t, constraints);
   } else {
-    while (true) {
-      t->resume_execution(resume_how, RESUME_WAIT, tick_request);
-      if (t->stop_sig() == 0) {
-        auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
-        if (type && type->traced == AddressSpace::UNTRACED) {
-          // If we recorded an rr replay of an application doing a
-          // syscall-buffered 'mprotect', the replay's `flush_syscallbuf`
-          // PTRACE_CONT'ed to execute the mprotect syscall and nothing was
-          // recorded for that until we hit the replay's breakpoint, when we
-          // record a SIGTRAP. However, when we replay that SIGTRAP via
-          // `emulate_deterministic_signal`, we call `continue_or_step`
-          // with `RESUME_SYSEMU` (to detect bugs when we reach a stray
-          // syscall instead of the SIGTRAP). So, we'll stop for the
-          // `mprotect` syscall here. We need to execute it and continue
-          // as if it wasn't hit.
-          // (Alternatively we could just replay with RESUME_CONT, but that
-          // would make it harder to track down bugs. There is a performance hit
-          // to stopping for each mprotect, but replaying recordings of replays
-          // is not fast anyway.)
-          perform_interrupted_syscall(t);
-        }
-      } else if (handle_unrecorded_cpuid_fault(t, constraints)) {
-        // Just continue
-      } else {
-        break;
+    t->resume_execution(resume_how, RESUME_WAIT, tick_request);
+    if (t->stop_sig() == 0) {
+      auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
+      if (type && type->traced == AddressSpace::UNTRACED) {
+        // If we recorded an rr replay of an application doing a
+        // syscall-buffered 'mprotect', the replay's `flush_syscallbuf`
+        // PTRACE_CONT'ed to execute the mprotect syscall and nothing was
+        // recorded for that until we hit the replay's breakpoint, when we
+        // record a SIGTRAP. However, when we replay that SIGTRAP via
+        // `emulate_deterministic_signal`, we call `continue_or_step`
+        // with `RESUME_SYSEMU` (to detect bugs when we reach a stray
+        // syscall instead of the SIGTRAP). So, we'll stop for the
+        // `mprotect` syscall here. We need to execute it and continue
+        // as if it wasn't hit.
+        // (Alternatively we could just replay with RESUME_CONT, but that
+        // would make it harder to track down bugs. There is a performance hit
+        // to stopping for each mprotect, but replaying recordings of replays
+        // is not fast anyway.)
+        perform_interrupted_syscall(t);
+        return INCOMPLETE;
       }
+    } else if (handle_unrecorded_cpuid_fault(t, constraints)) {
+      return INCOMPLETE;
     }
   }
   check_pending_sig(t);
+  return COMPLETE;
 }
 
 static void guard_overshoot(ReplayTask* t, const Registers& target_regs,
@@ -786,7 +787,7 @@ Completion ReplaySession::emulate_async_signal(
          * rewound it over an |int $3|
          * instruction, which couldn't have
          * retired a branch.  So we don't need
-         * to adjust |ticks_count()|. */
+         * to adjust |tick_count()|. */
         continue;
       }
 
@@ -958,17 +959,20 @@ static bool treat_signal_event_as_deterministic(const SignalEvent& ev) {
  */
 Completion ReplaySession::emulate_deterministic_signal(
     ReplayTask* t, int sig, const StepConstraints& constraints) {
-  if (t->regs().matches(trace_frame.regs()) &&
-      t->tick_count() == trace_frame.ticks()) {
-    // We're already at the target. This can happen when multiple signals
-    // are delivered with no intervening execution.
-    return COMPLETE;
+  while (true) {
+    if (t->regs().matches(trace_frame.regs()) &&
+        t->tick_count() == trace_frame.ticks()) {
+      // We're already at the target. This can happen when multiple signals
+      // are delivered with no intervening execution.
+      return COMPLETE;
+    }
+
+    auto complete = continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
+    if (complete == COMPLETE && !is_ignored_signal(t->stop_sig())) {
+      break;
+    }
   }
 
-  continue_or_step(t, constraints, RESUME_UNLIMITED_TICKS);
-  if (is_ignored_signal(t->stop_sig())) {
-    return emulate_deterministic_signal(t, sig, constraints);
-  }
   if (SIGTRAP == t->stop_sig()) {
     TrapReasons trap_reasons = t->compute_trap_reasons();
     if (trap_reasons.singlestep || trap_reasons.watchpoint) {
@@ -1073,43 +1077,47 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
  */
 Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                            const StepConstraints& constraints) {
-  auto next_rec = t->next_syscallbuf_record();
-  uint32_t skip_mprotect_records = t->read_mem(
-      REMOTE_PTR_FIELD(t->syscallbuf_child, mprotect_record_count_completed));
+  bool user_breakpoint_at_addr = false;
 
-  TicksRequest ticks_request;
-  if (!compute_ticks_request(t, constraints, &ticks_request)) {
-    return INCOMPLETE;
-  }
+  while(true) {
+    auto next_rec = t->next_syscallbuf_record();
+    uint32_t skip_mprotect_records = t->read_mem(
+        REMOTE_PTR_FIELD(t->syscallbuf_child, mprotect_record_count_completed));
 
-  bool added = t->vm()->add_breakpoint(current_step.flush.stop_breakpoint_addr,
-                                       BKPT_INTERNAL);
-  ASSERT(t, added);
-  continue_or_step(t, constraints, ticks_request, RESUME_CONT);
-  bool user_breakpoint_at_addr =
-      t->vm()->get_breakpoint_type_at_addr(
-          current_step.flush.stop_breakpoint_addr) != BKPT_INTERNAL;
-  t->vm()->remove_breakpoint(current_step.flush.stop_breakpoint_addr,
-                             BKPT_INTERNAL);
+    TicksRequest ticks_request;
+    if (!compute_ticks_request(t, constraints, &ticks_request)) {
+      return INCOMPLETE;
+    }
 
-  // Account for buffered syscalls just completed
-  auto end_rec = t->next_syscallbuf_record();
-  while (next_rec != end_rec) {
-    accumulate_syscall_performed();
-    next_rec = next_rec.as_int() + t->stored_record_size(next_rec);
-  }
+    bool added = t->vm()->add_breakpoint(current_step.flush.stop_breakpoint_addr,
+                                         BKPT_INTERNAL);
+    ASSERT(t, added);
+    auto complete = continue_or_step(t, constraints, ticks_request, RESUME_CONT);
+    user_breakpoint_at_addr =
+        t->vm()->get_breakpoint_type_at_addr(
+                                             current_step.flush.stop_breakpoint_addr) != BKPT_INTERNAL;
+    t->vm()->remove_breakpoint(current_step.flush.stop_breakpoint_addr,
+                               BKPT_INTERNAL);
 
-  // Apply the mprotect records we just completed.
-  apply_mprotect_records(t, skip_mprotect_records);
+    // Account for buffered syscalls just completed
+    auto end_rec = t->next_syscallbuf_record();
+    while (next_rec != end_rec) {
+      accumulate_syscall_performed();
+      next_rec = next_rec.as_int() + t->stored_record_size(next_rec);
+    }
 
-  if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
-    // This would normally be triggered by constraints.ticks_target but it's
-    // also possible to get stray signals here.
-    return INCOMPLETE;
-  }
+    // Apply the mprotect records we just completed.
+    apply_mprotect_records(t, skip_mprotect_records);
 
-  if (is_ignored_signal(t->stop_sig())) {
-    return flush_syscallbuf(t, constraints);
+    if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
+      // This would normally be triggered by constraints.ticks_target but it's
+      // also possible to get stray signals here.
+      return INCOMPLETE;
+    }
+
+    if (complete == COMPLETE && !is_ignored_signal(t->stop_sig())) {
+      break;
+    }
   }
 
   ASSERT(t, t->stop_sig() == SIGTRAP)
