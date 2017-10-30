@@ -406,7 +406,7 @@ static int pack(const string& trace_dir) {
   char buf[PATH_MAX];
   char* ret = realpath(dir.c_str(), buf);
   if (!ret) {
-    FATAL() << "realpath failed";
+    FATAL() << "realpath failed on " << dir;
   }
   string abspath(buf);
   map<string, string> canonical_mmapped_files =
