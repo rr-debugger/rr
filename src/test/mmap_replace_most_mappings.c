@@ -37,12 +37,16 @@ static int my_syscall(uintptr_t syscallno, uintptr_t arg1, uintptr_t arg2,
                       uintptr_t arg3, uintptr_t arg4) {
   int ret;
 #ifdef __i386__
-  __asm__ __volatile__("int $0x80\n\t" : "=a"(ret) :"a"(syscallno), "b"(arg1),
-                       "c"(arg2), "d"(arg3), "S"(arg4));
+  __asm__ __volatile__("int $0x80\n\t"
+                       : "=a"(ret)
+                       : "a"(syscallno), "b"(arg1), "c"(arg2), "d"(arg3),
+                         "S"(arg4));
 #elif defined(__x86_64__)
   register long r10 asm("r10") = arg4;
-  __asm__ __volatile__("syscall\n\t" : "=a"(ret) :"a"(syscallno), "D"(arg1),
-                       "S"(arg2), "d"(arg3), "r"(r10));
+  __asm__ __volatile__("syscall\n\t"
+                       : "=a"(ret)
+                       : "a"(syscallno), "D"(arg1), "S"(arg2), "d"(arg3),
+                         "r"(r10));
 #else
 #error Fill in syscall here
 #endif
@@ -58,31 +62,35 @@ int main(void) {
   for (i = 0; i < nunmappings; ++i) {
     const int mmap_syscall =
 #ifdef __i386__
-      RR_mmap2
+        RR_mmap2
 #elif defined(__x86_64__)
-      RR_mmap
+        RR_mmap
 #else
 #error Fill in syscall here
 #endif
-      ;
-    int ret = my_syscall(mmap_syscall, unmappings[2 * i], unmappings[2 * i + 1], PROT_NONE,
-                         MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS);
-    // We can't even use test_assert here, because it'll call strerror to printf the failure
+        ;
+    int ret = my_syscall(mmap_syscall, unmappings[2 * i], unmappings[2 * i + 1],
+                         PROT_NONE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS);
+    // We can't even use test_assert here, because it'll call strerror to printf
+    // the failure
     // and we're unmapping libc).
-    // NB: Trying to mess with the highest pages on x86-64 gets us an ENOMEM error.
-    if (ret <=0 && ret >= -MAX_ERRNO && ret != -ENOMEM) {
+    // NB: Trying to mess with the highest pages on x86-64 gets us an ENOMEM
+    // error.
+    if (ret <= 0 && ret >= -MAX_ERRNO && ret != -ENOMEM) {
       my_syscall(RR_exit, ret, 0, 0, 0);
     }
   }
 
-  my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096, PROT_READ | PROT_WRITE, 0);
+  my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096,
+             PROT_READ | PROT_WRITE, 0);
   *((uint64_t*)RR_THREAD_LOCALS_PAGE_ADDR) = RR_PAGE_ADDR;
   my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096, PROT_NONE, 0);
 
   breakpoint();
 
   my_syscall(RR_mprotect, RR_THREAD_LOCALS_PAGE_ADDR, 4096, PROT_READ, 0);
-  int ret = (*((uint64_t*)RR_THREAD_LOCALS_PAGE_ADDR) == RR_PAGE_ADDR) ? 0 : -42;
+  int ret =
+      (*((uint64_t*)RR_THREAD_LOCALS_PAGE_ADDR) == RR_PAGE_ADDR) ? 0 : -42;
 
   my_syscall(RR_exit, ret, 0, 0, 0);
   // Never reached, but make compiler happy.

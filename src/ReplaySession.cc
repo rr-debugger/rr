@@ -1079,7 +1079,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                            const StepConstraints& constraints) {
   bool user_breakpoint_at_addr = false;
 
-  while(true) {
+  while (true) {
     auto next_rec = t->next_syscallbuf_record();
     uint32_t skip_mprotect_records = t->read_mem(
         REMOTE_PTR_FIELD(t->syscallbuf_child, mprotect_record_count_completed));
@@ -1089,13 +1089,14 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
       return INCOMPLETE;
     }
 
-    bool added = t->vm()->add_breakpoint(current_step.flush.stop_breakpoint_addr,
-                                         BKPT_INTERNAL);
+    bool added = t->vm()->add_breakpoint(
+        current_step.flush.stop_breakpoint_addr, BKPT_INTERNAL);
     ASSERT(t, added);
-    auto complete = continue_or_step(t, constraints, ticks_request, RESUME_CONT);
+    auto complete =
+        continue_or_step(t, constraints, ticks_request, RESUME_CONT);
     user_breakpoint_at_addr =
         t->vm()->get_breakpoint_type_at_addr(
-                                             current_step.flush.stop_breakpoint_addr) != BKPT_INTERNAL;
+            current_step.flush.stop_breakpoint_addr) != BKPT_INTERNAL;
     t->vm()->remove_breakpoint(current_step.flush.stop_breakpoint_addr,
                                BKPT_INTERNAL);
 
