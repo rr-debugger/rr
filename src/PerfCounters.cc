@@ -135,7 +135,7 @@ static CpuMicroarch get_cpu_microarch() {
   }
 
   auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
-  unsigned int cpu_type = (cpuid_data.eax & 0xF0FF0);
+  unsigned int cpu_type = cpuid_data.eax & 0xF0FF0;
   unsigned int ext_family = (cpuid_data.eax >> 20) & 0xff;
   switch (cpu_type) {
     case 0x006F0:

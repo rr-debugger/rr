@@ -912,6 +912,31 @@ bool cpuid_faulting_works() {
   return cpuid_faulting_ok;
 }
 
+const CPUIDRecord* find_cpuid_record(const vector<CPUIDRecord>& records,
+                                     uint32_t eax, uint32_t ecx) {
+  for (const auto& rec : records) {
+    if (rec.eax_in == eax && (rec.ecx_in == ecx || rec.ecx_in == UINT32_MAX)) {
+      return &rec;
+    }
+  }
+  return nullptr;
+}
+
+bool cpuid_compatible(const vector<CPUIDRecord>& trace_records) {
+  // We could compare all CPUID records but that might be fragile (it's hard to
+  // be sure the values don't change in ways applications don't care about).
+  // Let's just check the microarch for now.
+  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
+  unsigned int cpu_type = cpuid_data.eax & 0xF0FF0;
+  auto trace_cpuid_data =
+      find_cpuid_record(trace_records, CPUID_GETFEATURES, 0);
+  if (!trace_cpuid_data) {
+    FATAL() << "GETFEATURES missing???";
+  }
+  unsigned int trace_cpu_type = trace_cpuid_data->out.eax & 0xF0FF0;
+  return cpu_type == trace_cpu_type;
+}
+
 template <typename Arch>
 static CloneParameters extract_clone_parameters_arch(const Registers& regs) {
   CloneParameters result;

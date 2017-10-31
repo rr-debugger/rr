@@ -171,6 +171,9 @@ struct CPUIDData {
 };
 CPUIDData cpuid(uint32_t code, uint32_t subrequest);
 
+/**
+ * Return all CPUID values supported by this CPU.
+ */
 struct CPUIDRecord {
   uint32_t eax_in;
   // UINT32_MAX means ECX not relevant
@@ -179,7 +182,24 @@ struct CPUIDRecord {
 };
 std::vector<CPUIDRecord> all_cpuid_records();
 
+/**
+ * Returns true if CPUID faulting is supported by the kernel and hardware and
+ * is actually working.
+ */
 bool cpuid_faulting_works();
+
+/**
+ * Locate a CPUID record for the give parameters, or return nullptr if there
+ * isn't one.
+ */
+const CPUIDRecord* find_cpuid_record(const std::vector<CPUIDRecord>& records,
+                                     uint32_t eax, uint32_t ecx);
+
+/**
+ * Return true if the trace's CPUID values are "compatible enough" with our
+ * CPU's CPUID values.
+ */
+bool cpuid_compatible(const std::vector<CPUIDRecord>& trace_records);
 
 struct CloneParameters {
   remote_ptr<void> stack;

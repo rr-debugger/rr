@@ -95,8 +95,14 @@ ReplaySession::ReplaySession(const std::string& dir)
   advance_to_next_trace_frame();
 
   if (trace_in.uses_cpuid_faulting() && !has_cpuid_faulting()) {
-    FATAL() << "Trace was recorded with CPUID faulting enabled, but this\n"
-            << "system does not support CPUID faulting";
+    CLEAN_FATAL()
+        << "Trace was recorded with CPUID faulting enabled, but this\n"
+           "system does not support CPUID faulting.";
+  }
+  if (!has_cpuid_faulting() && !cpuid_compatible(trace_in.cpuid_records())) {
+    CLEAN_FATAL()
+        << "Trace was recorded on a machine with different CPUID values\n"
+           "and CPUID faulting is not enabled; replay will not work.";
   }
   if (has_cpuid_faulting() && trace_in.bound_to_cpu() >= 0) {
     // The recorded trace was bound to a CPU, but we have CPUID faulting so
@@ -303,18 +309,6 @@ static void perform_interrupted_syscall(ReplayTask* t) {
   remote.regs().set_syscall_result(ret);
 }
 
-static const CPUIDRecord* find_cpuid_record(
-    const Registers& r, const vector<CPUIDRecord>& records) {
-  uint32_t eax = r.ax();
-  uint32_t ecx = r.cx();
-  for (const auto& rec : records) {
-    if (rec.eax_in == eax && (rec.ecx_in == ecx || rec.ecx_in == UINT32_MAX)) {
-      return &rec;
-    }
-  }
-  return nullptr;
-}
-
 bool ReplaySession::handle_unrecorded_cpuid_fault(
     ReplayTask* t, const StepConstraints& constraints) {
   if (t->stop_sig() != SIGSEGV || !has_cpuid_faulting() ||
@@ -328,7 +322,7 @@ bool ReplaySession::handle_unrecorded_cpuid_fault(
 
   const vector<CPUIDRecord>& records = trace_in.cpuid_records();
   Registers r = t->regs();
-  const CPUIDRecord* rec = find_cpuid_record(r, records);
+  const CPUIDRecord* rec = find_cpuid_record(records, r.ax(), r.cx());
   ASSERT(t, rec) << "Can't find CPUID record for request AX=" << HEX(r.ax())
                  << " CX=" << HEX(r.cx());
   r.set_cpuid_output(rec->out.eax, rec->out.ebx, rec->out.ecx, rec->out.edx);
