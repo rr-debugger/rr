@@ -488,7 +488,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
           case SECCOMP_RET_KILL:
             LOG(debug) << "  seccomp kill for syscall: "
                        << syscall_name(syscallno, t->arch());
-            kill(t->tid, SIGKILL);
+            t->tgkill(SIGKILL);
             step_state->continue_type = RecordSession::CONTINUE;
             break;
           default:
