@@ -1050,6 +1050,9 @@ set(TESTS_WITH_PROGRAM
   ttyname
   unexpected_stack_growth
   user_ignore_sig
+  vdso_gettimeofday_stack
+  vdso_clock_gettime_stack
+  vdso_time_stack
   vfork
   vsyscall_reverse_next
   wait_for_all

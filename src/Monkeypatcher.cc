@@ -761,6 +761,23 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
       }
     }
   }
+
+  // Nuke .eh_frame/.eh_frame_hdr so gdb doesn't try to use CFA to unwind the
+  // stack ... which won't work given our patches altering the code.
+  auto vdso_bytes = t->read_mem(vdso_start.cast<uint8_t>(), vdso_size);
+  uint8_t* start = vdso_bytes.data();
+  uint8_t* end = vdso_bytes.data() + vdso_size;
+  uint8_t eh_frame[] = ".eh_frame";
+  while (start < end) {
+    uint8_t* p = static_cast<uint8_t*>(
+        memmem(start, end - start, eh_frame, sizeof(eh_frame) - 1));
+    if (!p) {
+      break;
+    }
+    uint8_t x[1] = { 'x' };
+    write_and_record_bytes(t, vdso_start + (p - start) + 1, x);
+    start = p + sizeof(eh_frame) - 1;
+  }
 }
 
 template <>

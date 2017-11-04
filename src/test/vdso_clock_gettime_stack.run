@@ -1,0 +1,10 @@
+source `dirname $0`/util.sh
+
+# This test is only relevant for syscallbuf and relies on setting a breakpoint
+# inside syscallbuf.
+skip_if_no_syscall_buf
+
+# Use 4K syscallbuf size to force frequent overflows
+RECORD_ARGS=--syscall-buffer-size=4
+record $TESTNAME
+debug vdso_stack
