@@ -775,7 +775,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
       break;
     }
     uint8_t x[1] = { 'x' };
-    write_and_record_bytes(t, vdso_start + (p - start) + 1, x);
+    write_and_record_bytes(t, vdso_start + (p - vdso_bytes.data()) + 1, x);
     start = p + sizeof(eh_frame) - 1;
   }
 }
