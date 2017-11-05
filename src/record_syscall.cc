@@ -3581,6 +3581,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case FUTEX_WAIT_BITSET:
           return ALLOW_SWITCH;
 
+        case FUTEX_REQUEUE:
         case FUTEX_CMP_REQUEUE:
         case FUTEX_WAKE_OP:
           syscall_state.reg_parameter<int>(5, IN_OUT_NO_SCRATCH);
