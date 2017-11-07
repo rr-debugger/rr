@@ -444,6 +444,7 @@ if(RR_BUILD_SHARED)
   set_target_properties(rrbin PROPERTIES ENABLE_EXPORTS true OUTPUT_NAME rr)
   set_target_properties(rrbin PROPERTIES INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
   set_target_properties(rrbin PROPERTIES INSTALL_RPATH_USE_LINK_PATH true)
+  set_target_properties(brotli PROPERTIES POSITION_INDEPENDENT_CODE ON)
   target_link_libraries(rrbin rr)
   install(TARGETS rr
     RUNTIME DESTINATION bin
