@@ -984,6 +984,7 @@ static void process_shmat(ReplayTask* t, const TraceFrame& trace_frame,
     int prot = shm_flags_to_mmap_prot(shm_flags);
     int flags = MAP_SHARED;
     finish_shared_mmap(t, remote, prot, flags, -1, 0, data.file_size_bytes, km);
+    t->vm()->set_shm_size(km.start(), km.size());
 
     // Finally, we finish by emulating the return value.
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
@@ -1000,10 +1001,8 @@ static void process_shmdt(ReplayTask* t, const TraceFrame& trace_frame,
 
   {
     AutoRemoteSyscalls remote(t);
-    auto mapping = t->vm()->mapping_of(addr);
-    ASSERT(t, mapping.map.start() == addr);
-    remote.infallible_syscall(syscall_number_for_munmap(t->arch()), addr,
-                              mapping.map.end() - addr);
+    size_t size = t->vm()->get_shm_size(addr);
+    remote.infallible_syscall(syscall_number_for_munmap(t->arch()), addr, size);
     remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }
   t->validate_regs();

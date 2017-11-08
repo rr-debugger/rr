@@ -269,6 +269,12 @@ static vector<uint8_t> ptrace_get_regs_set(Task* t, const Registers& regs,
   return t->read_mem(iov.iov_base.rptr().template cast<uint8_t>(), iov.iov_len);
 }
 
+static void process_shmdt(Task* t, remote_ptr<void> addr) {
+  size_t size = t->vm()->get_shm_size(addr);
+  t->vm()->remove_shm_size(addr);
+  t->vm()->unmap(t, addr, size);
+}
+
 template <typename Arch>
 void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   session().accumulate_syscall_performed();
@@ -323,12 +329,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       size_t num_bytes = regs.arg2();
       return vm()->unmap(this, addr, num_bytes);
     }
-    case Arch::shmdt: {
-      remote_ptr<void> addr = regs.arg1();
-      auto mapping = vm()->mapping_of(addr);
-      ASSERT(this, mapping.map.start() == addr);
-      return vm()->unmap(this, addr, mapping.map.end() - addr);
-    }
+    case Arch::shmdt:
+      return process_shmdt(this, regs.arg1());
     case Arch::madvise: {
       remote_ptr<void> addr = regs.arg1();
       size_t num_bytes = regs.arg2();
@@ -337,12 +339,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     }
     case Arch::ipc: {
       switch ((int)regs.arg1_signed()) {
-        case SHMDT: {
-          remote_ptr<void> addr = regs.arg5();
-          auto mapping = vm()->mapping_of(addr);
-          ASSERT(this, mapping.map.start() == addr);
-          return vm()->unmap(this, addr, mapping.map.end() - addr);
-        }
+        case SHMDT:
+          return process_shmdt(this, regs.arg5());
         default:
           break;
       }

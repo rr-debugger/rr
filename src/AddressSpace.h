@@ -592,6 +592,15 @@ public:
    */
   std::vector<WatchConfig> consume_watchpoint_changes();
 
+  void set_shm_size(remote_ptr<void> addr, size_t bytes) {
+    shm_sizes[addr] = bytes;
+  }
+  /**
+   * Dies if no shm size is registered for the address.
+   */
+  size_t get_shm_size(remote_ptr<void> addr) { return shm_sizes[addr]; }
+  void remove_shm_size(remote_ptr<void> addr) { shm_sizes.erase(addr); }
+
   /**
    * Make [addr, addr + num_bytes) inaccessible within this
    * address space.
@@ -991,6 +1000,9 @@ private:
   remote_ptr<void> brk_end;
   /* All segments mapped into this address space. */
   MemoryMap mem;
+  /* Sizes of SYSV shm segments, by address. We use this to determine the size
+   * of memory regions unmapped via shmdt(). */
+  std::map<remote_ptr<void>, size_t> shm_sizes;
   std::set<remote_ptr<void>> monitored_mem;
   /* madvise DONTFORK regions */
   std::set<MemoryRange> dont_fork;

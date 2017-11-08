@@ -834,6 +834,7 @@ set(BASIC_TESTS
   setsid
   setuid
   shm
+  shm_unmap
   sigaction_old
   sigaltstack
   sigchld_interrupt_signal
