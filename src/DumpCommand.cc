@@ -206,10 +206,12 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           }
           fprintf(out, "  { map_file:\"%s\", addr:%p, length:%p, "
                        "prot_flags:\"%s\", file_offset:0x%llx, "
+                       "device:%lld, inode:%lld, "
                        "data_file:\"%s\", data_offset:0x%llx, "
                        "file_size:0x%llx }\n",
                   fsname, (void*)km.start().as_int(), (void*)km.size(),
                   prot_flags, (long long)km.file_offset_bytes(),
+                  (long long)km.device(), (long long)km.inode(),
                   data.file_name.c_str(), (long long)data.data_offset_bytes,
                   (long long)data.file_size_bytes);
         }
