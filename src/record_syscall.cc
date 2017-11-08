@@ -4662,10 +4662,10 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
       t->vm()->map(t, addr, size, prot, flags, 0, kernel_info.fsname(),
                    kernel_info.device(), kernel_info.inode());
   t->vm()->set_shm_size(km.start(), km.size());
-  if (t->trace_writer().write_mapped_region(t, km, km.fake_stat()) ==
-      TraceWriter::RECORD_IN_TRACE) {
-    t->record_remote(addr, size);
-  }
+  auto disposition =
+      t->trace_writer().write_mapped_region(t, km, km.fake_stat());
+  ASSERT(t, disposition == TraceWriter::RECORD_IN_TRACE);
+  t->record_remote(addr, size);
 
   LOG(debug) << "Optimistically hoping that SysV segment is not used outside "
                 "of tracees";

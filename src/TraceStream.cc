@@ -813,11 +813,12 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   if (origin == REMAP_MAPPING || origin == PATCH_MAPPING ||
       origin == RR_BUFFER_MAPPING) {
     src.setZero();
+  } else if (starts_with(km.fsname(), "/SYSV")) {
+    src.setTrace();
   } else if (origin == SYSCALL_MAPPING &&
              (km.inode() == 0 || km.fsname() == "/dev/zero (deleted)")) {
     src.setZero();
-  } else if (starts_with(km.fsname(), "/SYSV") ||
-             !starts_with(km.fsname(), "/")) {
+  } else if (!starts_with(km.fsname(), "/")) {
     src.setTrace();
   } else {
     string file_name = try_make_process_file_name(t, km.fsname());
