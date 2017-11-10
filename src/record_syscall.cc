@@ -4539,7 +4539,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                    st.st_ino, unique_ptr<struct stat>(new struct stat(st)));
 
   bool adjusted_size = false;
-  if (!st.st_size) {
+  if (!st.st_size && !S_ISREG(st.st_mode)) {
     // Some device files are mmappable but have zero size. Increasing the
     // size here is safe even if the mapped size is greater than the real size.
     st.st_size = offset + size;

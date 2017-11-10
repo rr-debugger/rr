@@ -601,6 +601,10 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
     LOG(debug) << "  copying unlinked/inaccessible file";
     return true;
   }
+  if (!S_ISREG(stat.st_mode)) {
+    LOG(debug) << "  copying non-regular-file";
+    return true;
+  }
   if (is_tmp_file(file_name)) {
     LOG(debug) << "  copying file on tmpfs";
     return true;
