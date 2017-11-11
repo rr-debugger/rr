@@ -1653,9 +1653,6 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   Task* t =
       new_task_session->new_task(new_tid, new_rec_tid, new_serial, arch());
 
-  bool unmap_buffers = false;
-  bool close_buffers = false;
-
   if (CLONE_SHARE_THREAD_GROUP & flags) {
     t->tg = tg;
   } else {
@@ -1678,7 +1675,6 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
     }
   } else {
     t->as = new_task_session->clone(t, as);
-    unmap_buffers = as->task_set().size() > 1;
   }
 
   t->syscallbuf_size = syscallbuf_size;
@@ -1695,7 +1691,6 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
     t->fds->insert_task(t);
   } else {
     t->fds = fds->clone(t);
-    close_buffers = fds->task_set().size() > 1;
   }
 
   t->top_of_stack = stack;
@@ -1718,24 +1713,24 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   t->as->insert_task(t);
 
   if (reason == TRACEE_CLONE) {
-    if (unmap_buffers) {
-      // Unmap syscallbuf and scratch for tasks that were not cloned into
-      // the new address space
+    if (!(CLONE_SHARE_VM & flags)) {
+      // Unmap syscallbuf and scratch for tasks running the original address
+      // space.
       AutoRemoteSyscalls remote(t);
       for (Task* tt : as->task_set()) {
+        // Leak the syscallbuf for the task we cloned from. We need to do this
+        // because we may be using part of it for the syscallbuf stack and
+        // unmapping it now will cause a crash in the new task.
         if (tt != this) {
           t->unmap_buffers_for(remote, tt, tt->syscallbuf_child);
         }
       }
     }
-    if (close_buffers) {
-      // Close syscallbuf fds for tasks that were not cloned into
-      // the new fd table
+    if (!(CLONE_SHARE_FILES & flags)) {
+      // Close syscallbuf fds for tasks using the original fd table.
       AutoRemoteSyscalls remote(t);
       for (Task* tt : fds->task_set()) {
-        if (tt != this) {
-          t->close_buffers_for(remote, tt);
-        }
+        t->close_buffers_for(remote, tt);
       }
     }
 
