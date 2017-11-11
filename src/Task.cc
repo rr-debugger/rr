@@ -1718,23 +1718,13 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
       // space.
       AutoRemoteSyscalls remote(t);
       for (Task* tt : as->task_set()) {
-        // Leak the syscallbuf for the task we cloned from. We need to do this
-        // because we may be using part of it for the syscallbuf stack and
-        // unmapping it now will cause a crash in the new task.
+        // Leak the scratch buffer for the task we cloned from. We need to do
+        // this because we may be using part of it for the syscallbuf stack
+        // and unmapping it now would cause a crash in the new task.
         if (tt != this) {
           t->unmap_buffers_for(remote, tt, tt->syscallbuf_child);
         }
       }
-    }
-    if (!(CLONE_SHARE_FILES & flags)) {
-      // Close syscallbuf fds for tasks using the original fd table.
-      AutoRemoteSyscalls remote(t);
-      for (Task* tt : fds->task_set()) {
-        t->close_buffers_for(remote, tt);
-      }
-    }
-
-    if (!(CLONE_SHARE_VM & flags)) {
       as->did_fork_into(t);
     }
 
@@ -1743,6 +1733,12 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
       // It should only be closed in |this|.
       t->desched_fd_child = -1;
       t->cloned_file_data_fd_child = -1;
+    } else {
+      // Close syscallbuf fds for tasks using the original fd table.
+      AutoRemoteSyscalls remote(t);
+      for (Task* tt : fds->task_set()) {
+        t->close_buffers_for(remote, tt);
+      }
     }
   }
 
