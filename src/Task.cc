@@ -1272,11 +1272,6 @@ void Task::update_prname(remote_ptr<void> child_addr) {
   prname = buf;
 }
 
-static bool is_zombie_process(pid_t pid) {
-  auto state = read_proc_status_fields(pid, "State");
-  return state.empty() || state[0] == "Z";
-}
-
 static bool is_signal_triggered_by_ptrace_interrupt(int group_stop_sig) {
   switch (group_stop_sig) {
     case SIGTRAP:
@@ -2267,6 +2262,7 @@ bool Task::ptrace_if_alive(int request, remote_ptr<void> addr, void* data) {
   errno = 0;
   fallible_ptrace(request, addr, data);
   if (errno == ESRCH) {
+    LOG(debug) << "ptrace_if_alive tid " << tid << " was not alive";
     return false;
   }
   ASSERT(this, !errno) << "ptrace(" << ptrace_req_name(request) << ", " << tid

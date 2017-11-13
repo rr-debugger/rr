@@ -1094,6 +1094,11 @@ vector<string> read_proc_status_fields(pid_t tid, const char* name,
   return result;
 }
 
+bool is_zombie_process(pid_t pid) {
+  auto state = read_proc_status_fields(pid, "State");
+  return state.empty() || state[0].empty() || state[0][0] == 'Z';
+}
+
 static bool check_for_pax_kernel() {
   auto results = read_proc_status_fields(getpid(), "PaX");
   return !results.empty();

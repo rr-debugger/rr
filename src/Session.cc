@@ -245,6 +245,10 @@ void Session::kill_all_tasks() {
       // work around it.
       result = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
       ASSERT(t, result >= 0 || errno == ESRCH);
+      // But we it might get ESRCH because it really doesn't exist.
+      if (errno == ESRCH && is_zombie_process(t->tid)) {
+        break;
+      }
     } while (result < 0);
   }
 
