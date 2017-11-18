@@ -414,13 +414,18 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
       }
     }
 
+    if (result.status == REPLAY_EXITED) {
+      break;
+    }
+
+    if (cmd == RUN_CONTINUE) {
+      continue;
+    }
+
     FrameTime after_time = replay_session->trace_reader().time();
     remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
     DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
 
-    if (result.status == REPLAY_EXITED) {
-      break;
-    }
     DEBUG_ASSERT(result.status == REPLAY_CONTINUE);
     DEBUG_ASSERT(result.break_status.watchpoints_hit.empty());
     DEBUG_ASSERT(!result.break_status.breakpoint_hit);
