@@ -418,41 +418,39 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
       break;
     }
 
-    if (cmd == RUN_CONTINUE) {
-      continue;
-    }
-
     FrameTime after_time = replay_session->trace_reader().time();
-    remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
-    DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
+    if (cmd != RUN_CONTINUE) {
+      remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
+      DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
 
-    DEBUG_ASSERT(result.status == REPLAY_CONTINUE);
-    DEBUG_ASSERT(result.break_status.watchpoints_hit.empty());
-    DEBUG_ASSERT(!result.break_status.breakpoint_hit);
-    DEBUG_ASSERT(cmd == RUN_SINGLESTEP_FAST_FORWARD ||
-                 !result.break_status.singlestep_complete);
+      DEBUG_ASSERT(result.status == REPLAY_CONTINUE);
+      DEBUG_ASSERT(result.break_status.watchpoints_hit.empty());
+      DEBUG_ASSERT(!result.break_status.breakpoint_hit);
+      DEBUG_ASSERT(cmd == RUN_SINGLESTEP_FAST_FORWARD ||
+                   !result.break_status.singlestep_complete);
 
-    // Treat singlesteps that partially executed a string instruction (that
-    // was not interrupted) as not really singlestepping.
-    bool singlestep_really_complete =
-        result.break_status.singlestep_complete &&
-        // ignore_singlestep_for_event only matters if we really completed the
-        // event
-        (!ignore_singlestep_for_event(replayed_event) ||
-         before_time == after_time) &&
-        (!result.did_fast_forward || old_ip != after_ip ||
-         before_time < after_time);
-    if (!flags.singlestep_trace.empty() && cmd == RUN_SINGLESTEP_FAST_FORWARD &&
-        (singlestep_really_complete ||
-         (before_time < after_time &&
-          treat_event_completion_as_singlestep_complete(replayed_event)))) {
-      print_regs_raw(old_task, before_time, instruction_count_within_event,
-                     flags.singlestep_trace, stdout);
-      fputc('\n', stdout);
-    }
+      // Treat singlesteps that partially executed a string instruction (that
+      // was not interrupted) as not really singlestepping.
+      bool singlestep_really_complete =
+          result.break_status.singlestep_complete &&
+          // ignore_singlestep_for_event only matters if we really completed the
+          // event
+          (!ignore_singlestep_for_event(replayed_event) ||
+           before_time == after_time) &&
+          (!result.did_fast_forward || old_ip != after_ip ||
+           before_time < after_time);
+      if (!flags.singlestep_trace.empty() && cmd == RUN_SINGLESTEP_FAST_FORWARD &&
+          (singlestep_really_complete ||
+           (before_time < after_time &&
+            treat_event_completion_as_singlestep_complete(replayed_event)))) {
+        print_regs_raw(old_task, before_time, instruction_count_within_event,
+                       flags.singlestep_trace, stdout);
+        fputc('\n', stdout);
+      }
 
-    if (singlestep_really_complete) {
-      instruction_count_within_event += 1;
+      if (singlestep_really_complete) {
+        instruction_count_within_event += 1;
+      }
     }
     if (before_time < after_time) {
       LOG(debug) << "Completed event " << before_time
