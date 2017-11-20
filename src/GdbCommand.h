@@ -14,7 +14,8 @@ namespace rr {
 
 class GdbCommand {
 protected:
-  GdbCommand(const std::string& cmd_name) : cmd_name(cmd_name) {
+  GdbCommand(const std::string& cmd_name, const std::string& documentation)
+      : cmd_name(cmd_name), documentation(documentation) {
     GdbCommandHandler::register_command(*this);
   }
 
@@ -22,6 +23,7 @@ public:
   virtual ~GdbCommand() {}
 
   const std::string& name() const { return cmd_name; }
+  const std::string& docs() const { return documentation; }
 
   /**
    * Handle the RR Cmd and return a string response to be echo'd
@@ -50,16 +52,17 @@ public:
 
 private:
   const std::string cmd_name;
+  const std::string documentation;
   std::vector<std::string> cmd_auto_args;
 };
 
 class SimpleGdbCommand : public GdbCommand {
 public:
   SimpleGdbCommand(
-      const std::string& cmd_name,
+      const std::string& cmd_name, const std::string& documentation,
       const std::function<std::string(
           GdbServer&, Task* t, const std::vector<std::string>&)>& invoker)
-      : GdbCommand(cmd_name), invoker(invoker) {}
+      : GdbCommand(cmd_name, documentation), invoker(invoker) {}
 
   virtual std::string invoke(GdbServer& gdb_server, Task* t,
                              const std::vector<std::string>& args) override {

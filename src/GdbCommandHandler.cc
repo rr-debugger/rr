@@ -24,7 +24,11 @@ static string gdb_macro_binding(const GdbCommand& cmd) {
     auto_args_str += "'" + cmd.auto_args()[i] + "'";
   }
   auto_args_str += "]";
-  return "python RRCmd('" + cmd.name() + "', " + auto_args_str + ")\n";
+  string ret = "python RRCmd('" + cmd.name() + "', " + auto_args_str + ")\n";
+  if (!cmd.docs().empty()) {
+    ret += "document " + cmd.name() + "\n" + cmd.docs() + "\nend\n";
+  }
+  return ret;
 }
 
 /* static */ string GdbCommandHandler::gdb_macros() {
@@ -56,7 +60,7 @@ class RRWhere(gdb.Command):
     """Helper to get the location for checkpoints/history. Used by auto-args"""
     def __init__(self):
         gdb.Command.__init__(self, 'rr-where',
-                             gdb.COMMAND_USER, gdb.COMPLETE_NONE, True)
+                             gdb.COMMAND_USER, gdb.COMPLETE_NONE, False)
 
     def invoke(self, arg, from_tty):
 #Get the symbol name from 'frame 0' in the format:
@@ -78,7 +82,7 @@ RRWhere()
 class RRCmd(gdb.Command):
     def __init__(self, name, auto_args):
         gdb.Command.__init__(self, name,
-                             gdb.COMMAND_USER, gdb.COMPLETE_NONE, True)
+                             gdb.COMMAND_USER, gdb.COMPLETE_NONE, False)
         self.cmd_name = name
         self.auto_args = auto_args
 
