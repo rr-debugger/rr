@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Helper to make |./configure && make| do what you expect.
 cmake .
