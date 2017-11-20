@@ -1327,7 +1327,13 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
 
       // We record this data regardless to simplify replay. If the addresses
       // are unmapped, write 0 bytes.
-      t->record_remote_fallible(t->regs().sp(), sigframe_size);
+      // But be careful not to run off the end of our mapping.
+      auto sp = t->regs().sp();
+      auto mapping_end = t->vm()->mapping_of(sp).map.end();
+      if (mapping_end > sp + sigframe_size) {
+        sigframe_size = mapping_end - sp;
+      }
+      t->record_remote_fallible(sp, sigframe_size);
 
       // This event is used by the replayer to set up the signal handler frame.
       // But if we don't have a handler, we don't want to record the event
