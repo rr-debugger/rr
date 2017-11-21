@@ -14,7 +14,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+
+#ifdef __linux__
 #include <sys/user.h>
+#endif
+
 #include <time.h>
 #include <unistd.h>
 
