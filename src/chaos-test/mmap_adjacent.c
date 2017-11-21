@@ -7,21 +7,21 @@
 
 int main(__attribute__((unused)) int argc, char** argv) {
   int page_count = atoi(argv[1]);
-  char* p1 = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+  char* p1 = mmap(NULL, get_page_size(), PROT_READ | PROT_WRITE,
                   MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   char* p2;
   int i;
 
   for (i = 0; i < page_count - 2; ++i) {
-    char* p = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+    char* p = mmap(NULL, get_page_size(), PROT_READ | PROT_WRITE,
                    MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     test_assert(p != MAP_FAILED);
   }
 
-  p2 = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+  p2 = mmap(NULL, get_page_size(), PROT_READ | PROT_WRITE,
             MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
-  if (p2 + PAGE_SIZE == p1) {
+  if (p2 + get_page_size() == p1) {
     caught_test_failure("maps are adjacent: %p %p", p2, p1);
   }
 
