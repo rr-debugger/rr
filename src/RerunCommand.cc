@@ -493,6 +493,8 @@ static void run_diversion_function(ReplaySession& replay, Task* task,
   t->write_mem(sp.cast<uint64_t>(), sentinel_ret_address);
   regs.set_sp(sp);
   regs.set_ip(flags.function);
+  regs.set_di(0);
+  regs.set_si(0);
   t->set_regs(regs);
   RunCommand cmd =
       flags.singlestep_trace.empty() ? RUN_CONTINUE : RUN_SINGLESTEP;
