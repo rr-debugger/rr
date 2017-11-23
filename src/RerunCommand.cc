@@ -488,7 +488,8 @@ static void run_diversion_function(ReplaySession& replay, Task* task,
   DiversionSession::shr_ptr diversion_session = replay.clone_diversion();
   Task* t = diversion_session->find_task(task->tuid());
   Registers regs = t->regs();
-  auto sp = regs.sp() - 8;
+  // align stack
+  auto sp = remote_ptr<uint64_t>(regs.sp().as_int() & ~uintptr_t(0xf)) - 1;
   t->write_mem(sp.cast<uint64_t>(), sentinel_ret_address);
   regs.set_sp(sp);
   regs.set_ip(flags.function);
