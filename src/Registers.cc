@@ -37,13 +37,16 @@ struct RegisterValue {
   }
 
   RegisterValue(const char* name_, size_t offset_, size_t nbytes_,
-                uint64_t comparison_mask_)
+                uint64_t comparison_mask_, size_t size_override = 0)
       : name(name_),
         offset(offset_),
         nbytes(nbytes_),
         comparison_mask(comparison_mask_) {
     // Ensure no bits are set outside of the register's bitwidth.
     DEBUG_ASSERT((comparison_mask_ & ~mask_for_nbytes(nbytes_)) == 0);
+    if (size_override > 0) {
+      nbytes = size_override;
+    }
   }
   // Returns a pointer to the register in |regs| represented by |offset|.
   // |regs| is assumed to be a pointer to the user_struct_regs for the
@@ -104,8 +107,8 @@ template <> struct RegisterInfo<rr::X64Arch> {
 #define COMMA ,
 #define RV_X86_WITH_MASK(gdb_suffix, name, comparison_mask)                    \
   RV_ARCH(gdb_suffix, name, rr::X86Arch, COMMA comparison_mask)
-#define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask)                    \
-  RV_ARCH(gdb_suffix, name, rr::X64Arch, COMMA comparison_mask)
+#define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask, size)              \
+  RV_ARCH(gdb_suffix, name, rr::X64Arch, COMMA comparison_mask COMMA size)
 
 RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
   RV_X86(EAX, eax), RV_X86(ECX, ecx), RV_X86(EDX, edx), RV_X86(EBX, ebx),
@@ -126,16 +129,17 @@ RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
 
 RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
   RV_X64(RAX, rax), RV_X64(RCX, rcx), RV_X64(RDX, rdx), RV_X64(RBX, rbx),
-  RV_X64_WITH_MASK(RSP, rsp, 0), RV_X64(RBP, rbp), RV_X64(RSI, rsi),
+  RV_X64_WITH_MASK(RSP, rsp, 0, 8), RV_X64(RBP, rbp), RV_X64(RSI, rsi),
   RV_X64(RDI, rdi), RV_X64(R8, r8), RV_X64(R9, r9), RV_X64(R10, r10),
   RV_X64(R11, r11), RV_X64(R12, r12), RV_X64(R13, r13), RV_X64(R14, r14),
-  RV_X64(R15, r15), RV_X64(RIP, rip), RV_X64_WITH_MASK(64_EFLAGS, eflags, 0),
-  RV_X64_WITH_MASK(64_CS, cs, 0), RV_X64_WITH_MASK(64_SS, ss, 0),
-  RV_X64_WITH_MASK(64_DS, ds, 0), RV_X64_WITH_MASK(64_ES, es, 0),
-  RV_X64(64_FS, fs), RV_X64(64_GS, gs),
+  RV_X64(R15, r15), RV_X64(RIP, rip), RV_X64_WITH_MASK(64_EFLAGS, eflags, 0, 4),
+  RV_X64_WITH_MASK(64_CS, cs, 0, 4), RV_X64_WITH_MASK(64_SS, ss, 0, 4),
+  RV_X64_WITH_MASK(64_DS, ds, 0, 4), RV_X64_WITH_MASK(64_ES, es, 0, 4),
+  RV_X64_WITH_MASK(64_FS, fs, 0xffffffffLL, 4),
+  RV_X64_WITH_MASK(64_GS, gs, 0xffffffffLL, 4),
   // The comparison for this is handled specially
   // elsewhere.
-  RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0), RV_X64(FS_BASE, fs_base),
+  RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0, 8), RV_X64(FS_BASE, fs_base),
   RV_X64(GS_BASE, gs_base),
 };
 
@@ -340,15 +344,6 @@ template <>
       (intptr_t)reg2.u.x64regs.orig_rax >= 0) {
     X64_REGCMP(orig_rax);
   }
-  // Check the _upper bits of various registers we defined more conveniently
-  // for our gdb support.
-  X64_REGCMP(cs_upper);
-  X64_REGCMP(ds_upper);
-  X64_REGCMP(es_upper);
-  X64_REGCMP(fs_upper);
-  X64_REGCMP(gs_upper);
-  X64_REGCMP(ss_upper);
-  X64_REGCMP(eflags_upper);
   return match;
 }
 
@@ -481,9 +476,7 @@ void Registers::write_register_by_user_offset(uintptr_t offset,
 // well sign-extend %eax in all cases.
 
 typedef void (*NarrowConversion)(int32_t& r32, uint64_t& r64);
-typedef void (*SameConversion)(int32_t& r32, uint32_t& r64);
-template <NarrowConversion narrow, NarrowConversion narrow_signed,
-          SameConversion same>
+template <NarrowConversion narrow, NarrowConversion narrow_signed>
 void convert_x86(X86Arch::user_regs_struct& x86,
                  X64Arch::user_regs_struct& x64) {
   narrow_signed(x86.eax, x64.rax);
@@ -496,20 +489,18 @@ void convert_x86(X86Arch::user_regs_struct& x86,
   narrow(x86.ebp, x64.rbp);
   narrow(x86.eip, x64.rip);
   narrow(x86.orig_eax, x64.orig_rax);
-  same(x86.eflags, x64.eflags);
-  same(x86.xcs, x64.cs);
-  same(x86.xds, x64.ds);
-  same(x86.xes, x64.es);
-  same(x86.xfs, x64.fs);
-  same(x86.xgs, x64.gs);
-  same(x86.xss, x64.ss);
+  narrow(x86.eflags, x64.eflags);
+  narrow(x86.xcs, x64.cs);
+  narrow(x86.xds, x64.ds);
+  narrow(x86.xes, x64.es);
+  narrow(x86.xfs, x64.fs);
+  narrow(x86.xgs, x64.gs);
+  narrow(x86.xss, x64.ss);
 }
 
 void to_x86_narrow(int32_t& r32, uint64_t& r64) { r32 = r64; }
-void to_x86_same(int32_t& r32, uint32_t& r64) { r32 = r64; }
 void from_x86_narrow(int32_t& r32, uint64_t& r64) { r64 = (uint32_t)r32; }
 void from_x86_narrow_signed(int32_t& r32, uint64_t& r64) { r64 = (int64_t)r32; }
-void from_x86_same(int32_t& r32, uint32_t& r64) { r64 = r32; }
 
 void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
   if (arch() == NativeArch::arch()) {
@@ -518,7 +509,7 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
   }
 
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
-  convert_x86<to_x86_narrow, to_x86_narrow, to_x86_same>(
+  convert_x86<to_x86_narrow, to_x86_narrow>(
       u.x86regs,
       *reinterpret_cast<X64Arch::user_regs_struct*>(
           const_cast<struct user_regs_struct*>(&ptrace_regs)));
@@ -541,8 +532,7 @@ struct user_regs_struct Registers::get_ptrace() const {
   }
 
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
-  memset(&result, 0, sizeof(result));
-  convert_x86<from_x86_narrow, from_x86_narrow_signed, from_x86_same>(
+  convert_x86<from_x86_narrow, from_x86_narrow_signed>(
       const_cast<Registers*>(this)->u.x86regs, result.x64arch_api);
   return result.linux_api;
 }
@@ -592,7 +582,7 @@ uintptr_t Registers::flags() const {
     case x86:
       return u.x86regs.eflags;
     case x86_64:
-      return u.x64regs.eflags | (uint64_t(u.x64regs.eflags_upper) << 32);
+      return u.x64regs.eflags;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
       return false;
@@ -606,7 +596,6 @@ void Registers::set_flags(uintptr_t value) {
       break;
     case x86_64:
       u.x64regs.eflags = value;
-      u.x64regs.eflags_upper = uint64_t(value) >> 32;
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");

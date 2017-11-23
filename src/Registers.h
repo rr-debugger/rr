@@ -338,7 +338,12 @@ public:
     u.x64regs.gs_base = gs_base;
   }
 
-  uint32_t cs() const { return RR_GET_REG(xcs, cs); }
+  uint64_t cs() const { return RR_GET_REG(xcs, cs); }
+  uint64_t ss() const { return RR_GET_REG(xss, ss); }
+  uint64_t ds() const { return RR_GET_REG(xds, ds); }
+  uint64_t es() const { return RR_GET_REG(xes, es); }
+  uint64_t fs() const { return RR_GET_REG(xfs, fs); }
+  uint64_t gs() const { return RR_GET_REG(xgs, gs); }
 
   // End of X86-specific stuff
 

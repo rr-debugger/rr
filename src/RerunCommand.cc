@@ -63,6 +63,8 @@ enum TraceFieldKind {
   TRACE_FSBASE,            // outputs 64-bit value
   TRACE_GSBASE,            // outputs 64-bit value
   TRACE_FLAGS,             // outputs 64-bit value
+  TRACE_ORIG_AX,           // outputs 64-bit value
+  TRACE_SEG_REG,           // outputs 64-bit value
   TRACE_XINUSE,            // outputs 64-bit value
   TRACE_GP_REG,            // outputs 64-bit value
   TRACE_XMM_REG,           // outputs 128-bit value
@@ -135,6 +137,28 @@ static const char gp_reg_names[16][4] = { "rax", "rcx", "rdx", "rbx",
 static const char gp_reg_names_32[8][4] = { "eax", "ecx", "edx", "ebx",
                                             "esp", "ebp", "esi", "edi" };
 
+static const char seg_reg_names[6][3] = { "es", "cs", "ss", "ds", "fs", "gs" };
+
+static uint64_t seg_reg(const Registers& regs, uint8_t index) {
+  switch (index) {
+    case 0:
+      return regs.es();
+    case 1:
+      return regs.cs();
+    case 2:
+      return regs.ss();
+    case 3:
+      return regs.ds();
+    case 4:
+      return regs.fs();
+    case 5:
+      return regs.gs();
+    default:
+      FATAL() << "Unknown seg reg";
+      return 0;
+  }
+}
+
 static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
                        const RerunFlags& flags, FILE* out) {
   union {
@@ -181,6 +205,18 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
         uint64_t value = t->regs().flags();
         print_value(t->arch() == x86 ? "eflags" : "rflags", &value,
                     sizeof(value), flags, out);
+        break;
+      }
+      case TRACE_ORIG_AX: {
+        uint64_t value = t->regs().original_syscallno();
+        print_value(t->arch() == x86 ? "orig_eax" : "orig_rax", &value,
+                    sizeof(value), flags, out);
+        break;
+      }
+      case TRACE_SEG_REG: {
+        uint64_t value = seg_reg(t->regs(), field.reg_num);
+        print_value(seg_reg_names[field.reg_num], &value, sizeof(value), flags,
+                    out);
         break;
       }
       case TRACE_XINUSE: {
@@ -268,14 +304,21 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
     }
   }
 
-  if (!flags.raw) {
-    fputc('\n', out);
-  }
+  fputc('\n', out);
 }
 
 static int find_gp_reg(const string& reg) {
   for (int i = 0; i < 16; ++i) {
     if (reg == gp_reg_names[i] || (i < 8 && reg == gp_reg_names_32[i])) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+static int find_seg_reg(const string& reg) {
+  for (int i = 0; i < 6; ++i) {
+    if (reg == seg_reg_names[i]) {
       return i;
     }
   }
@@ -310,6 +353,8 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
       out->push_back({ TRACE_GSBASE, 0 });
     } else if (reg == "flags" || reg == "rflags") {
       out->push_back({ TRACE_FLAGS, 0 });
+    } else if (reg == "orig_rax" || reg == "orig_eax") {
+      out->push_back({ TRACE_ORIG_AX, 0 });
     } else if (reg == "gp_x16") {
       for (uint8_t i = 0; i < 16; ++i) {
         out->push_back({ TRACE_GP_REG, i });
@@ -324,6 +369,8 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
       }
     } else if (find_gp_reg(reg) >= 0) {
       out->push_back({ TRACE_GP_REG, (uint8_t)find_gp_reg(reg) });
+    } else if (find_seg_reg(reg) >= 0) {
+      out->push_back({ TRACE_SEG_REG, (uint8_t)find_seg_reg(reg) });
     } else if (reg == "xinuse") {
       out->push_back({ TRACE_XINUSE, 0 });
     } else {
@@ -491,7 +538,6 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
           done_first_step = true;
           print_regs(old_task, before_time - 1, instruction_count_within_event,
                      flags, stdout);
-          fputc('\n', stdout);
         }
       }
 
@@ -544,7 +590,6 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
             treat_event_completion_as_singlestep_complete(replayed_event)))) {
         print_regs(old_task, before_time, instruction_count_within_event, flags,
                    stdout);
-        fputc('\n', stdout);
       }
 
       if (singlestep_really_complete) {
