@@ -531,7 +531,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     FrameTime before_time = replay_session->trace_reader().time();
     if (replay_session->done_initial_exec() &&
         before_time >= flags.trace_start) {
-      if (!done_first_step && before_time > flags.trace_start) {
+      if (!done_first_step) {
         if (!flags.function.is_null()) {
           run_diversion_function(*replay_session, old_task, flags);
           return 0;
