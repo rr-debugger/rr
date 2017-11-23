@@ -40,8 +40,10 @@ RerunCommand RerunCommand::singleton(
     "rerun",
     " rr rerun [OPTION]... [<trace-dir>]\n"
     "  -e, --trace-end=<EVENT>    end tracing at <EVENT>\n"
-    "  -r, --singlestep-registers=<REGS>\n"
-    "                             dump registers <REGS> after each singlestep\n"
+    "  -f, --function=<ADDR>      when starting tracing, push sentinel return\n"
+    "                             address and jump to <ADDR> to fake call\n"
+    "  --singlestep=<REGS>        dump <REGS> after each singlestep\n"
+    "  -r, --raw                  dump registers in raw format\n"
     "  -s, --trace-start=<EVENT>  start tracing at <EVENT>\n"
     "\n"
     "<REGS> is a comma-separated sequence of 'event','icount','ip','flags',\n"
@@ -71,6 +73,19 @@ struct TraceField {
   uint8_t reg_num;
 };
 
+struct RerunFlags {
+  FrameTime trace_start;
+  FrameTime trace_end;
+  remote_code_ptr function;
+  vector<TraceField> singlestep_trace;
+  bool raw;
+
+  RerunFlags()
+      : trace_start(0),
+        trace_end(numeric_limits<decltype(trace_end)>::max()),
+        raw(false) {}
+};
+
 #ifdef __x86_64__
 static uint8_t user_regs_fields[16] = {
   offsetof(user_regs_struct, rax), offsetof(user_regs_struct, rcx),
@@ -93,48 +108,85 @@ static uint8_t user_regs_fields[16] = {
 #error Unsupported architecture
 #endif
 
-static void print_regs_raw(Task* t, FrameTime event, uint64_t instruction_count,
-                           const vector<TraceField>& fields, FILE* out) {
+static void print_hex(uint8_t* value, size_t size, FILE* out) {
+  bool any_printed = false;
+  for (ssize_t i = size - 1; i >= 0; --i) {
+    if (value[i] || any_printed || i == 0) {
+      fprintf(out, any_printed ? "%02x" : "%x", value[i]);
+      any_printed = true;
+    }
+  }
+}
+
+static void print_value(const char* name, void* value, size_t size,
+                        const RerunFlags& flags, FILE* out) {
+  if (flags.raw) {
+    fwrite(value, size, 1, out);
+  } else {
+    fprintf(out, "%s:0x", name);
+    print_hex(static_cast<uint8_t*>(value), size, out);
+  }
+}
+
+static const char gp_reg_names[16][4] = { "rax", "rcx", "rdx", "rbx",
+                                          "rsp", "rbp", "rsi", "rdi",
+                                          "r8",  "r9",  "r10", "r11",
+                                          "r12", "r13", "r14", "r15" };
+static const char gp_reg_names_32[8][4] = { "eax", "ecx", "edx", "ebx",
+                                            "esp", "ebp", "esi", "edi" };
+
+static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
+                       const RerunFlags& flags, FILE* out) {
   union {
     struct user_regs_struct gp_regs;
     uintptr_t regs_values[sizeof(struct user_regs_struct) / sizeof(uintptr_t)];
   };
   bool got_gp_regs = false;
+  const vector<TraceField>& fields = flags.singlestep_trace;
+  bool first = true;
 
   for (auto& field : fields) {
+    if (first) {
+      first = false;
+    } else if (!flags.raw) {
+      fputc(' ', out);
+    }
     switch (field.kind) {
       case TRACE_EVENT_NUMBER: {
         uint64_t value = event;
-        fwrite(&value, sizeof(value), 1, out);
+        print_value("event", &value, sizeof(value), flags, out);
         break;
       }
       case TRACE_INSTRUCTION_COUNT:
-        fwrite(&instruction_count, sizeof(instruction_count), 1, out);
+        print_value("icount", &instruction_count, sizeof(instruction_count),
+                    flags, out);
         break;
       case TRACE_IP: {
         uint64_t value = t->regs().ip().register_value();
-        fwrite(&value, sizeof(value), 1, out);
+        print_value(t->arch() == x86 ? "eip" : "rip", &value, sizeof(value),
+                    flags, out);
         break;
       }
       case TRACE_FSBASE: {
         uint64_t value = t->regs().fs_base();
-        fwrite(&value, sizeof(value), 1, out);
+        print_value("fsbase", &value, sizeof(value), flags, out);
         break;
       }
       case TRACE_GSBASE: {
         uint64_t value = t->regs().gs_base();
-        fwrite(&value, sizeof(value), 1, out);
+        print_value("gsbase", &value, sizeof(value), flags, out);
         break;
       }
       case TRACE_FLAGS: {
         uint64_t value = t->regs().flags();
-        fwrite(&value, sizeof(value), 1, out);
+        print_value(t->arch() == x86 ? "eflags" : "rflags", &value,
+                    sizeof(value), flags, out);
         break;
       }
       case TRACE_XINUSE: {
         bool defined;
         uint64_t value = t->extra_regs().read_xinuse(&defined);
-        fwrite(&value, sizeof(value), 1, out);
+        print_value("xinuse", &value, sizeof(value), flags, out);
         break;
       }
       case TRACE_GP_REG: {
@@ -149,7 +201,10 @@ static void print_regs_raw(Task* t, FrameTime event, uint64_t instruction_count,
           // EAX->RAX is sign-extended, so undo that.
           value = (uint32_t)value;
         }
-        fwrite(&value, sizeof(value), 1, out);
+        const char* name = (t->arch() == x86 && field.reg_num < 8)
+                               ? gp_reg_names_32[field.reg_num]
+                               : gp_reg_names[field.reg_num];
+        print_value(name, &value, sizeof(value), flags, out);
         break;
       }
       case TRACE_XMM_REG: {
@@ -173,7 +228,9 @@ static void print_regs_raw(Task* t, FrameTime event, uint64_t instruction_count,
             }
             break;
         }
-        fwrite(&value, sizeof(value), 1, out);
+        char buf[8];
+        sprintf(buf, "xmm%d", field.reg_num);
+        print_value(buf, value, sizeof(value), flags, out);
         break;
       }
       case TRACE_YMM_REG: {
@@ -203,29 +260,22 @@ static void print_regs_raw(Task* t, FrameTime event, uint64_t instruction_count,
             }
             break;
         }
-        fwrite(&value, sizeof(value), 1, out);
+        char buf[8];
+        sprintf(buf, "ymm%d", field.reg_num);
+        print_value(buf, value, sizeof(value), flags, out);
         break;
       }
     }
   }
+
+  if (!flags.raw) {
+    fputc('\n', out);
+  }
 }
 
-struct RerunFlags {
-  FrameTime trace_start;
-  FrameTime trace_end;
-
-  vector<TraceField> singlestep_trace;
-
-  RerunFlags()
-      : trace_start(0), trace_end(numeric_limits<decltype(trace_end)>::max()) {}
-};
-
 static int find_gp_reg(const string& reg) {
-  static const char regs[16][4] = { "rax", "rcx", "rdx", "rbx", "rsp", "rbp",
-                                    "rsi", "rdi", "r8",  "r9",  "r10", "r11",
-                                    "r12", "r13", "r14", "r15" };
   for (int i = 0; i < 16; ++i) {
-    if (reg == regs[i]) {
+    if (reg == gp_reg_names[i] || (i < 8 && reg == gp_reg_names_32[i])) {
       return i;
     }
   }
@@ -290,8 +340,8 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
   }
 
   static const OptionSpec options[] = {
-    { 'e', "trace-end", HAS_PARAMETER },
-    { 'r', "singlestep-registers", HAS_PARAMETER },
+    { 1, "singlestep", HAS_PARAMETER },    { 'e', "trace-end", HAS_PARAMETER },
+    { 'f', "function", HAS_PARAMETER },    { 'r', "raw", NO_PARAMETER },
     { 's', "trace-start", HAS_PARAMETER },
   };
   ParsedOption opt;
@@ -300,16 +350,28 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
   }
 
   switch (opt.short_name) {
+    case 1:
+      if (!parse_regs(opt.value, &flags.singlestep_trace)) {
+        return false;
+      }
+      break;
     case 'e':
       if (!opt.verify_valid_int(1, UINT32_MAX)) {
         return false;
       }
       flags.trace_end = opt.int_value;
       break;
-    case 'r':
-      if (!parse_regs(opt.value, &flags.singlestep_trace)) {
+    case 'f': {
+      char* endptr;
+      flags.function = strtoul(opt.value.c_str(), &endptr, 0);
+      if (*endptr) {
+        fprintf(stderr, "Invalid function address %s\n", opt.value.c_str());
         return false;
       }
+      break;
+    }
+    case 'r':
+      flags.raw = true;
       break;
     case 's':
       if (!opt.verify_valid_int(1, UINT32_MAX)) {
@@ -372,6 +434,36 @@ static void clear_breakpoint_after_cpuid(Task* t) {
   t->vm()->remove_breakpoint(t->ip(), BKPT_USER);
 }
 
+static const uint64_t sentinel_ret_address = 9;
+
+static void run_diversion_function(ReplaySession& replay, Task* task,
+                                   const RerunFlags& flags) {
+  DiversionSession::shr_ptr diversion_session = replay.clone_diversion();
+  Task* t = diversion_session->find_task(task->tuid());
+  Registers regs = t->regs();
+  auto sp = regs.sp() - 8;
+  t->write_mem(sp.cast<uint64_t>(), sentinel_ret_address);
+  regs.set_sp(sp);
+  regs.set_ip(flags.function);
+  t->set_regs(regs);
+  RunCommand cmd =
+      flags.singlestep_trace.empty() ? RUN_CONTINUE : RUN_SINGLESTEP;
+
+  while (true) {
+    DiversionSession::DiversionResult result =
+        diversion_session->diversion_step(t, cmd);
+    print_regs(t, 0, 0, flags, stdout);
+    if (result.break_status.signal) {
+      if (result.break_status.signal->si_signo == SIGSEGV &&
+          result.break_status.signal->si_addr == (void*)sentinel_ret_address) {
+        return;
+      }
+      ASSERT(task, false) << "Unexpected signal "
+                          << *result.break_status.signal;
+    }
+  }
+}
+
 static int rerun(const string& trace_dir, const RerunFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
   uint64_t instruction_count_within_event = 0;
@@ -388,13 +480,19 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
     FrameTime before_time = replay_session->trace_reader().time();
     if (replay_session->done_initial_exec() &&
-        !flags.singlestep_trace.empty() && before_time >= flags.trace_start) {
+        before_time >= flags.trace_start) {
       if (!done_first_step && before_time > flags.trace_start) {
-        done_first_step = true;
-        print_regs_raw(old_task, before_time - 1,
-                       instruction_count_within_event, flags.singlestep_trace,
-                       stdout);
-        fputc('\n', stdout);
+        if (!flags.function.is_null()) {
+          run_diversion_function(*replay_session, old_task, flags);
+          return 0;
+        }
+
+        if (!flags.singlestep_trace.empty()) {
+          done_first_step = true;
+          print_regs(old_task, before_time - 1, instruction_count_within_event,
+                     flags, stdout);
+          fputc('\n', stdout);
+        }
       }
 
       cmd = RUN_SINGLESTEP_FAST_FORWARD;
@@ -439,12 +537,13 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
            before_time == after_time) &&
           (!result.did_fast_forward || old_ip != after_ip ||
            before_time < after_time);
-      if (!flags.singlestep_trace.empty() && cmd == RUN_SINGLESTEP_FAST_FORWARD &&
+      if (!flags.singlestep_trace.empty() &&
+          cmd == RUN_SINGLESTEP_FAST_FORWARD &&
           (singlestep_really_complete ||
            (before_time < after_time &&
             treat_event_completion_as_singlestep_complete(replayed_event)))) {
-        print_regs_raw(old_task, before_time, instruction_count_within_event,
-                       flags.singlestep_trace, stdout);
+        print_regs(old_task, before_time, instruction_count_within_event, flags,
+                   stdout);
         fputc('\n', stdout);
       }
 
