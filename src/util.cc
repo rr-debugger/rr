@@ -686,9 +686,9 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
   if (!can_write_file) {
     /* mmap'ing another user's (non-system) files?  Highly
      * irregular ... */
-    FATAL() << "Unhandled mmap " << file_name << "(prot:" << HEX(prot)
-            << ((flags & MAP_SHARED) ? ";SHARED" : "")
-            << "); uid:" << stat.st_uid << " mode:" << stat.st_mode;
+    LOG(warn) << "Scary mmap " << file_name << "(prot:" << HEX(prot)
+              << ((flags & MAP_SHARED) ? ";SHARED" : "")
+              << "); uid:" << stat.st_uid << " mode:" << stat.st_mode;
   }
   return true;
 }
