@@ -1043,7 +1043,7 @@ struct BaseArch : public wordsize,
     ptr<size_t> oldlenp;
     ptr<void> newval;
     ptr<size_t> newlen;
-    unsigned_long __unused[4];
+    unsigned_long __rr_unused[4];
   };
   RR_VERIFY_TYPE(__sysctl_args);
 
@@ -1837,7 +1837,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     struct timespec st_atim;
     struct timespec st_mtim;
     struct timespec st_ctim;
-    syscall_slong_t __unused[3];
+    syscall_slong_t __rr_unused[3];
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat, struct stat);
 
@@ -1856,7 +1856,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     struct timespec st_atim;
     struct timespec st_mtim;
     struct timespec st_ctim;
-    syscall_slong_t __unused[3];
+    syscall_slong_t __rr_unused[3];
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat64, struct stat64);
 };
