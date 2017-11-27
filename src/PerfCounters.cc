@@ -168,6 +168,7 @@ static CpuMicroarch get_cpu_microarch() {
     case 0x50660:
       return IntelBroadwell;
     case 0x406e0:
+    case 0x50650:
     case 0x506e0:
       return IntelSkylake;
     case 0x50670:
