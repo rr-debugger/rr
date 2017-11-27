@@ -1,4 +1,5 @@
 #include <dirent.h>
+#include <errno.h>
 #include <limits.h>
 #include <signal.h>
 #include <stdint.h>
@@ -9,6 +10,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
