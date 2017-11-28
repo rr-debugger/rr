@@ -80,8 +80,6 @@ inline static double now_double(void) {
   return ts.tv_sec + ts.tv_nsec / 1000000000.0;
 }
 
-inline static long get_page_size(void) {
-  return sysconf(_SC_PAGE_SIZE);
-}
+inline static long get_page_size(void) { return sysconf(_SC_PAGE_SIZE); }
 
 #endif
