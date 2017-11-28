@@ -5,6 +5,7 @@
 
 #include <unistd.h>
 
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -217,8 +218,11 @@ private:
   /**
    * Files that have already been mapped without being copied to the trace,
    * i.e. that we have already assumed to be immutable.
+   * We store the file name under which we assumed it to be immutable, since
+   * a file may be accessed through multiple names, only some of which
+   * are immutable.
    */
-  std::set<std::pair<dev_t, ino_t>> files_assumed_immutable;
+  std::map<std::pair<dev_t, ino_t>, std::string> files_assumed_immutable;
   std::vector<RawDataMetadata> raw_recs;
   uint32_t mmap_count;
   bool supports_file_data_cloning_;

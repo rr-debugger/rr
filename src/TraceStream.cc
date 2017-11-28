@@ -822,20 +822,19 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     src.setTrace();
   } else {
     string file_name = try_make_process_file_name(t, km.fsname());
+    auto assumed_immutable =
+        files_assumed_immutable.find(make_pair(stat.st_dev, stat.st_ino));
 
-    if ((km.flags() & MAP_PRIVATE) &&
-        try_clone_file(t, file_name, &backing_file_name)) {
+    if (assumed_immutable != files_assumed_immutable.end()) {
+      src.initFile().setBackingFileName(str_to_data(assumed_immutable->second));
+    } else if ((km.flags() & MAP_PRIVATE) &&
+               try_clone_file(t, file_name, &backing_file_name)) {
       src.initFile().setBackingFileName(str_to_data(backing_file_name));
-    } else if (should_copy_mmap_region(km, stat) &&
-               files_assumed_immutable.find(
-                   make_pair(stat.st_dev, stat.st_ino)) ==
-                   files_assumed_immutable.end()) {
+    } else if (should_copy_mmap_region(km, stat)) {
       // Make executable files accessible to debuggers by copying the whole
-      // thing
-      // into the trace directory. We don't get to compress the data and the
-      // entire file is copied, not just the used region, which is why we don't
-      // do
-      // this for all files.
+      // thing into the trace directory. We don't get to compress the data and
+      // the entire file is copied, not just the used region, which is why we
+      // don't do this for all files.
       // Don't bother trying to copy [vdso].
       if ((km.prot() & PROT_EXEC) && copy_file(file_name, &backing_file_name)) {
         src.initFile().setBackingFileName(str_to_data(backing_file_name));
@@ -857,7 +856,8 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
           // contains the pid of a recorded process and will not work!
           backing_file_name = km.fsname();
         }
-        files_assumed_immutable.insert(make_pair(stat.st_dev, stat.st_ino));
+        files_assumed_immutable.insert(
+            make_pair(make_pair(stat.st_dev, stat.st_ino), backing_file_name));
       }
       src.initFile().setBackingFileName(str_to_data(backing_file_name));
     }
