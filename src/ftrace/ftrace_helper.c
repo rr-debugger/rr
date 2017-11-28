@@ -82,16 +82,17 @@ static void* do_echo(void* arg) {
     ssize_t ret2;
     ssize_t ret = splice(fd, NULL, pipe_fds[1], NULL, size, SPLICE_F_MOVE);
     if (ret == -1 && (errno == EBADF || errno == EINTR)) {
-      return NULL;
+      break;
     }
     check(ret >= 0);
     ret2 = splice(pipe_fds[0], NULL, out_fd, NULL, ret,
                   SPLICE_F_MOVE | SPLICE_F_NONBLOCK);
     if (ret2 == -1 && (errno == EBADF || errno == EINTR)) {
-      return NULL;
+      break;
     }
     check(ret2 == ret);
   }
+  return NULL;
 }
 
 static void chdir_to_tracing(void) {
