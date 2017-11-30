@@ -1329,9 +1329,13 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // are unmapped, write 0 bytes.
       // But be careful not to run off the end of our mapping.
       auto sp = t->regs().sp();
-      auto mapping_end = t->vm()->mapping_of(sp).map.end();
-      if (mapping_end > sp + sigframe_size) {
-        sigframe_size = mapping_end - sp;
+      if (t->vm()->has_mapping(sp)) {
+        auto mapping_end = t->vm()->mapping_of(sp).map.end();
+        if (mapping_end > sp + sigframe_size) {
+          sigframe_size = mapping_end - sp;
+        }
+      } else {
+        sigframe_size = 0;
       }
       t->record_remote_fallible(sp, sigframe_size);
 
