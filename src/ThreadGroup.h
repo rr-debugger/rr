@@ -122,8 +122,6 @@ public:
   // couldn't push a signal handler frame. Only used during recording.
   bool received_sigframe_SIGSEGV;
 
-  ThreadDb* thread_db();
-
 private:
   ThreadGroup(const ThreadGroup&) = delete;
   ThreadGroup operator=(const ThreadGroup&) = delete;
@@ -135,8 +133,6 @@ private:
   std::set<ThreadGroup*> children_;
 
   uint32_t serial;
-
-  std::unique_ptr<ThreadDb> thread_db_;
 };
 
 } // namespace rr

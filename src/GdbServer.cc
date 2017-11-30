@@ -666,14 +666,20 @@ void GdbServer::dispatch_debugger_request(Session& session,
       // copy.  When gdb sends a plain "qSymbol::" packet, because gdb
       // has detected some change in the inferior state that might
       // enable more symbol lookups, we restart the iterator.
+      if (!thread_db) {
+        thread_db =
+            std::unique_ptr<ThreadDb>(new ThreadDb(debuggee_tguid.tid()));
+      }
+
       const string& name = req.sym().name;
       if (req.sym().has_address) {
         // Got a response holding a previously-requested symbol's name
         // and address.
-        target->register_symbol(name, req.sym().address);
+        thread_db->register_symbol(name, req.sym().address);
       } else if (name == "") {
         // Plain "qSymbol::" request.
-        symbols = target->get_symbols_and_clear_map();
+        symbols =
+            thread_db->get_symbols_and_clear_map(target->thread_group().get());
         symbols_iter = symbols.begin();
       }
 
@@ -686,9 +692,14 @@ void GdbServer::dispatch_debugger_request(Session& session,
       return;
     }
     case DREQ_TLS: {
+      if (!thread_db) {
+        thread_db =
+            std::unique_ptr<ThreadDb>(new ThreadDb(debuggee_tguid.tid()));
+      }
       remote_ptr<void> address;
-      bool ok = target->get_tls_address(req.tls().offset, req.tls().load_module,
-                                        &address);
+      bool ok = thread_db->get_tls_address(target->thread_group().get(),
+                                           target->rec_tid, req.tls().offset,
+                                           req.tls().load_module, &address);
       dbg->reply_tls_addr(ok, address);
       return;
     }

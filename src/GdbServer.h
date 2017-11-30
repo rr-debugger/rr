@@ -12,6 +12,7 @@
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
 #include "ScopedFd.h"
+#include "ThreadDb.h"
 #include "TraceFrame.h"
 
 namespace rr {
@@ -217,6 +218,8 @@ private:
   // changes once the connection is established --- we don't currently
   // support switching gdb between debuggee processes.
   ThreadGroupUid debuggee_tguid;
+  // ThreadDb for debuggee ThreadGroup
+  std::unique_ptr<ThreadDb> thread_db;
   // The TaskUid of the last continued task.
   TaskUid last_continue_tuid;
   // The TaskUid of the last queried task.

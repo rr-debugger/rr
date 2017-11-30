@@ -2682,19 +2682,6 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   return t;
 }
 
-bool Task::get_tls_address(size_t offset, remote_ptr<void> load_module,
-                           remote_ptr<void>* result) {
-  return tg->thread_db()->get_tls_address(rec_tid, offset, load_module, result);
-}
-
-void Task::register_symbol(const std::string& name, remote_ptr<void> address) {
-  tg->thread_db()->register_symbol(name, address);
-}
-
-const std::set<std::string> Task::get_symbols_and_clear_map() {
-  return tg->thread_db()->get_symbols_and_clear_map();
-}
-
 void* Task::preload_thread_locals() {
   return preload_thread_locals_local_addr(*as);
 }

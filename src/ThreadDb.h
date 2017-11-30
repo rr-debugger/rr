@@ -23,14 +23,15 @@ class ThreadDb;
 struct ps_prochandle {
   rr::ThreadGroup* thread_group;
   rr::ThreadDb* db;
+  pid_t tgid;
 };
 
 namespace rr {
 
 /**
  * This provides an interface to libthread_db.so to help with TLS
- * lookup.  There is one instance per process, attached to the
- * ThreadGroup.
+ * lookup. In principle there could be one instance per process, but we only
+ * support one instance for the GdbServer's target process.
  *
  * The overall approach is that a libthread_db.so is loaded into rr
  * when this class is initialized (see |load_library|).  This provides
@@ -47,7 +48,7 @@ namespace rr {
  */
 class ThreadDb {
 public:
-  explicit ThreadDb(ThreadGroup*);
+  explicit ThreadDb(pid_t tgid);
   ~ThreadDb();
 
   /**
@@ -55,7 +56,8 @@ public:
    * by libthread_db.  Also clears the current mapping of symbol names
    * to addresses.
    */
-  const std::set<std::string> get_symbols_and_clear_map();
+  const std::set<std::string> get_symbols_and_clear_map(
+      ThreadGroup* thread_group);
 
   /**
    * Note that the symbol |name| has the given address.
@@ -74,7 +76,7 @@ public:
    * address is found, set |*result| and return true.  Otherwise,
    * return false.
    */
-  bool get_tls_address(pid_t rec_tid, size_t offset,
+  bool get_tls_address(ThreadGroup* thread_group, pid_t rec_tid, size_t offset,
                        remote_ptr<void> load_module, remote_ptr<void>* result);
 
 private:

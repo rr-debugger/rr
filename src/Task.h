@@ -664,27 +664,6 @@ public:
    */
   void open_mem_fd_if_needed();
 
-  /**
-   * Look up a TLS address for this thread.  |offset| and
-   * |load_module| are as specified in the qGetTLSAddr packet.  If the
-   * address is found, set |*result| and return true.  Otherwise,
-   * return false.
-   */
-  bool get_tls_address(size_t offset, remote_ptr<void> load_module,
-                       remote_ptr<void>* result);
-
-  /**
-   * Indicate that the symbol |name| has the given address.
-   */
-  void register_symbol(const std::string& name, remote_ptr<void> address);
-
-  /**
-   * Return a set of the names of all the symbols that might be needed
-   * by libthread_db.  Also clears the current mapping of symbol names
-   * to addresses.
-   */
-  const std::set<std::string> get_symbols_and_clear_map();
-
   /* True when any assumptions made about the status of this
    * process have been invalidated, and must be re-established
    * with a waitpid() call. Only applies to tasks which are dying, usually
