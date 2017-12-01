@@ -88,6 +88,10 @@ _CONSTANT_STATIC deque<char>* log_buffer;
 _CONSTANT_STATIC std::ostream* log_file;
 size_t log_buffer_size;
 
+static void flush_log_file() {
+  log_file->flush();
+}
+
 static void init_log_globals() {
   if (log_globals_initialized) {
     return;
@@ -115,6 +119,7 @@ static void init_log_globals() {
       delete file;
     } else {
       log_file = file;
+      atexit(flush_log_file);
     }
   }
 
