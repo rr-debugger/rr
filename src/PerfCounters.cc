@@ -192,7 +192,7 @@ static CpuMicroarch get_cpu_microarch() {
       break;
   }
 
-  if (strcmp(vendor, "AuthenticAMD")) {
+  if (!strcmp(vendor, "AuthenticAMD")) {
     CLEAN_FATAL()
         << "AMD CPUs not supported.\n"
         << "For Ryzen, see https://github.com/mozilla/rr/issues/2034.\n"
