@@ -532,6 +532,7 @@ struct user_regs_struct Registers::get_ptrace() const {
   }
 
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
+  memset(&result, 0, sizeof(result));
   convert_x86<from_x86_narrow, from_x86_narrow_signed>(
       const_cast<Registers*>(this)->u.x86regs, result.x64arch_api);
   return result.linux_api;
