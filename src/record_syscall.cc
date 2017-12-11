@@ -1438,6 +1438,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     case SIOCGIFNAME:
     case SIOCGIFNETMASK:
     case SIOCGIFMETRIC:
+    case SIOCGIFMAP:
       syscall_state.reg_parameter<typename Arch::ifreq>(3);
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
@@ -1461,10 +1462,6 @@ static Switchable prepare_ioctl(RecordTask* t,
       syscall_state.after_syscall_action(record_page_below_stack_ptr);
       return PREVENT_SWITCH;
     }
-
-    case SIOCGIFMAP:
-      syscall_state.reg_parameter<typename Arch::ifmap>(3);
-      return PREVENT_SWITCH;
 
     case SIOCGSTAMP:
       syscall_state.reg_parameter<typename Arch::timeval>(3);

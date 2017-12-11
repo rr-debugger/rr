@@ -202,6 +202,13 @@ int main(void) {
   GENERIC_REQUEST_BY_NAME(SIOCGIFMETRIC);
   atomic_printf("metric is %d\n", req->ifr_metric);
 
+  GENERIC_REQUEST_BY_NAME(SIOCGIFMAP);
+  atomic_printf("map is %llu,%llu,%u,%d,%d,%d\n",
+                (unsigned long long)req->ifr_map.mem_start,
+                (unsigned long long)req->ifr_map.mem_end,
+                req->ifr_map.base_addr, req->ifr_map.irq, req->ifr_map.dma,
+                req->ifr_map.port);
+
   memset(&req->ifr_metric, 0xff, sizeof(req->ifr_metric));
   ret = ioctl(sockfd, SIOCGIFMEM, req);
   VERIFY_GUARD(req);
