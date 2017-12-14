@@ -150,8 +150,12 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
           // highly improbable.
           // Record the syscall-entry event that we otherwise failed to record.
           t->canonicalize_regs(t->arch());
-          SyscallEvent event(t->regs().original_syscallno(),
-                             t->detect_syscall_arch());
+          // Assume it's a native-arch syscall. If it isn't, it doesn't matter
+          // all that much since we aren't actually going to do anything with it
+          // in this task.
+          // Avoid calling detect_syscall_arch here since it could fail if the
+          // task is already completely dead and gone.
+          SyscallEvent event(t->regs().original_syscallno(), t->arch());
           event.state = ENTERING_SYSCALL;
           t->record_event(event);
         }
