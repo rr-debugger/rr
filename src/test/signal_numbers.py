@@ -42,7 +42,9 @@ for sig in xrange(1,65):
     if not gdb_sig.startswith('#'):
         send_gdb('handle %s stop'%gdb_sig)
         if gdb_sig == 'SIGINT' or gdb_sig == 'SIGTRAP':
+            expect_gdb('used by the debugger')
             send_gdb('y')
+        expect_gdb('(rr)')
         send_gdb('c')
         expect_gdb('received signal %s'%gdb_sig)
 
