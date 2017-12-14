@@ -669,6 +669,8 @@ public:
   // The pmc is programmed to interrupt at a value requested by the tracee, not
   // by rr.
   bool next_pmc_interrupt_is_for_user;
+
+  bool did_record_robust_futex_changes;
 };
 
 } // namespace rr

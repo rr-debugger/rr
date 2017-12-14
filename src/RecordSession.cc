@@ -73,6 +73,11 @@ static void record_robust_futex_change(
  */
 template <typename Arch>
 static void record_robust_futex_changes_arch(RecordTask* t) {
+  if (t->did_record_robust_futex_changes) {
+    return;
+  }
+  t->did_record_robust_futex_changes = true;
+
   auto head_ptr = t->robust_list().cast<typename Arch::robust_list_head>();
   if (head_ptr.is_null()) {
     return;
@@ -488,6 +493,13 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
           case SECCOMP_RET_KILL:
             LOG(debug) << "  seccomp kill for syscall: "
                        << syscall_name(syscallno, t->arch());
+            for (Task* tt : t->thread_group()->task_set()) {
+              // Record robust futex changes now in case the taskgroup dies
+              // synchronously without a regular PTRACE_EVENT_EXIT (as seems
+              // to happen on Ubuntu 4.2.0-42-generic)
+              RecordTask* rt = static_cast<RecordTask*>(tt);
+              record_robust_futex_changes(rt);
+            }
             t->tgkill(SIGKILL);
             step_state->continue_type = RecordSession::CONTINUE;
             break;
