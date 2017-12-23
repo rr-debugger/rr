@@ -1174,7 +1174,7 @@ XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records) {
 
   CPUIDRecord cpuid_data = records[record_index];
   DEBUG_ASSERT(cpuid_data.ecx_in == 0);
-  layout.full_size = cpuid_data.out.ecx;
+  layout.full_size = cpuid_data.out.ebx;
   layout.supported_feature_bits =
       cpuid_data.out.eax | (uint64_t(cpuid_data.out.edx) << 32);
 
