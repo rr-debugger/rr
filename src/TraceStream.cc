@@ -121,13 +121,6 @@ static string latest_trace_symlink() {
   return trace_save_dir() + "/latest-trace";
 }
 
-/**
- * Create the default ~/.rr directory if it doesn't already exist.
- */
-static void ensure_default_rr_trace_dir() {
-  ensure_dir(default_rr_trace_dir(), "trace directory", S_IRWXU);
-}
-
 class CompressedWriterOutputStream : public kj::OutputStream {
 public:
   CompressedWriterOutputStream(CompressedWriter& writer) : writer(writer) {}
@@ -1089,10 +1082,9 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
     } else {
       FATAL() << "Unable to create trace directory `" << output_trace_dir << "'";
     }
-
   } else {	  
     // save trace dir set in _RR_TRACE_DIR or in the default trace dir
-    ensure_default_rr_trace_dir();
+    ensure_dir(trace_save_dir(), "trace directory", S_IRWXU);
 
     // Find a unique trace directory name.
     int nonce = 0;
