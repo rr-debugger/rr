@@ -327,7 +327,8 @@ struct preload_thread_locals {
   /* Nonzero when thread-local state like the syscallbuf has been
    * initialized.  */
   int thread_inited;
-  /* When buffering is enabled, points at the thread's mapped buffer
+  /* The offset of this field MUST NOT CHANGE, it is part of the ABI tools
+   * depend on. When buffering is enabled, points at the thread's mapped buffer
    * segment.  At the start of the segment is an object of type |struct
    * syscallbuf_hdr|, so |buffer| is also a pointer to the buffer
    * header. */
