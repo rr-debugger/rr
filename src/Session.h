@@ -70,8 +70,8 @@ struct BreakStatus {
   std::vector<WatchConfig> watchpoints_hit;
   // When non-null, we stopped because a signal was delivered to |task|.
   std::unique_ptr<siginfo_t> signal;
-  // True when we stopped because we hit a breakpoint at |task|'s current
-  // ip().
+  // True when we stopped because we hit a software breakpoint at |task|'s
+  // current ip().
   bool breakpoint_hit;
   // True when we stopped because a singlestep completed in |task|.
   bool singlestep_complete;
@@ -80,6 +80,29 @@ struct BreakStatus {
   bool approaching_ticks_target;
   // True when we stopped because |task| is about to exit.
   bool task_exit;
+
+  // True when we stopped because we hit a software or hardware breakpoint at
+  // |task|'s current ip().
+  bool hardware_or_software_breakpoint_hit() {
+    for (const auto& w : watchpoints_hit) {
+      // Hardware execution watchpoints behave like breakpoints: the CPU
+      // stops before the instruction is executed.
+      if (w.type == WATCH_EXEC) {
+        return true;
+      }
+    }
+    return breakpoint_hit;
+  }
+  // Returns just the data watchpoints hit.
+  std::vector<WatchConfig> data_watchpoints_hit() {
+    std::vector<WatchConfig> result;
+    for (const auto& w : watchpoints_hit) {
+      if (w.type != WATCH_EXEC) {
+        result.push_back(w);
+      }
+    }
+    return result;
+  }
 
   bool any_break() {
     return !watchpoints_hit.empty() || signal || breakpoint_hit ||

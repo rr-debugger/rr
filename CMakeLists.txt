@@ -1063,6 +1063,7 @@ set(TESTS_WITH_PROGRAM
   watchpoint
   watchpoint_at_sched
   watchpoint_before_signal
+  watchpoint_no_progress
   watchpoint_syscall
   watchpoint_unaligned
 )
