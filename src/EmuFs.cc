@@ -67,10 +67,7 @@ string EmuFile::proc_path() const {
 
 void EmuFile::update(dev_t device, ino_t inode, uint64_t size) {
   DEBUG_ASSERT(device_ == device && inode_ == inode);
-  if (size_ != size) {
-    resize_shmem_segment(file, size);
-  }
-  size_ = size;
+  ensure_size(size);
 }
 
 void EmuFile::ensure_size(uint64_t size) {
