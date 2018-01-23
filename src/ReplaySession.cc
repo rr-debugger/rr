@@ -1532,6 +1532,11 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
     case TSTEP_ENTER_SYSCALL:
       cpuid_bug_detector.notify_reached_syscall_during_replay(t);
       break;
+    case TSTEP_EXIT_SYSCALL:
+      if (constraints.is_singlestep()) {
+        result.break_status.singlestep_complete = true;
+      }
+      break;
     default:
       break;
   }
