@@ -1867,10 +1867,10 @@ void Task::copy_state(const CapturedState& state) {
   {
     AutoRemoteSyscalls remote(this);
     {
-      char prname[16];
+      char prname[17];
       strncpy(prname, state.prname.c_str(), sizeof(prname));
-      AutoRestoreMem remote_prname(remote, (const uint8_t*)prname,
-                                   sizeof(prname));
+      prname[16] = 0;
+      AutoRestoreMem remote_prname(remote, (const uint8_t*)prname, 16);
       LOG(debug) << "    setting name to " << prname;
       remote.infallible_syscall(syscall_number_for_prctl(arch()), PR_SET_NAME,
                                 remote_prname.get().as_int());
