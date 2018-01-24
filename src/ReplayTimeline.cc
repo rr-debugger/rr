@@ -1168,6 +1168,9 @@ ReplayResult ReplayTimeline::reverse_singlestep(
     Mark step_start = set_short_checkpoint();
     ReplayResult destination_candidate_result;
     TaskUid destination_candidate_tuid;
+    // True when the singlestep starting at the destination candidate saw
+    // another task break.
+    bool destination_candidate_saw_other_task_break = false;
 
     if (is_start_of_reverse_execution_barrier_event()) {
       destination_candidate = mark();
@@ -1208,6 +1211,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
                        << destination_candidate;
             destination_candidate_result = result;
             destination_candidate_tuid = result.break_status.task->tuid();
+            destination_candidate_saw_other_task_break = seen_other_task_break;
             seen_other_task_break = false;
             step_start = now;
           }
@@ -1239,6 +1243,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
         destination_candidate_result = result;
         destination_candidate_result.break_status.task_exit = true;
         destination_candidate_tuid = current->current_task()->tuid();
+        destination_candidate_saw_other_task_break = false;
         seen_other_task_break = false;
       }
 
@@ -1251,7 +1256,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
     no_watchpoints_hit_interval_end =
         no_watchpoints_hit_interval_start ? end : Mark();
 
-    if (seen_other_task_break) {
+    if (seen_other_task_break || destination_candidate_saw_other_task_break) {
       // We saw a break in another task that the debugger cares about, but
       // that's not the stepping task. Report that break instead of the
       // singlestep.
