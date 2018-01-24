@@ -181,8 +181,8 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
   // Unmap our scatch region if required
   if (scratch_mem_was_mapped) {
     AutoRemoteSyscalls remote(t, DISABLE_MEMORY_PARAMS);
-    remote.infallible_syscall(syscall_number_for_munmap(arch()), fixed_sp,
-                              4096);
+    remote.infallible_syscall(syscall_number_for_munmap(arch()),
+                              fixed_sp - 4096, 4096);
   }
   if (!replaced_bytes.empty()) {
     t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
