@@ -1038,14 +1038,28 @@ static bool watchpoint_triggered(uintptr_t debug_status,
   return false;
 }
 
-bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status) {
+bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status,
+    remote_code_ptr address_of_singlestep_start) {
   bool triggered = false;
   for (auto& it : watchpoints) {
-    if (((it.second.watched_bits() & WRITE_BIT) &&
-         update_watchpoint_value(it.first, it.second)) ||
-        ((it.second.watched_bits() & (READ_BIT | EXEC_BIT)) &&
+    // On Skylake/4.14.13-300.fc27.x86_64 at least, we have observed a
+    // situation where singlestepping through the instruction before a hardware
+    // execution watchpoint causes singlestep completion *and* also reports the
+    // hardware execution watchpoint being triggered. The latter is incorrect.
+    // This could be a HW issue or a kernel issue. Work around it by ignoring
+    // triggered watchpoints that aren't on the instruction we just tried to
+    // execute.
+    bool write_triggered = (it.second.watched_bits() & WRITE_BIT) &&
+        update_watchpoint_value(it.first, it.second);
+    bool read_triggered = (it.second.watched_bits() & READ_BIT) &&
+        watchpoint_triggered(debug_status,
+                             it.second.debug_regs_for_exec_read);
+    bool exec_triggered = (it.second.watched_bits() & EXEC_BIT) &&
+        (address_of_singlestep_start.is_null() ||
+         it.first.start() == address_of_singlestep_start.to_data_ptr<void>()) &&
          watchpoint_triggered(debug_status,
-                              it.second.debug_regs_for_exec_read))) {
+                              it.second.debug_regs_for_exec_read);
+    if (write_triggered || read_triggered || exec_triggered) {
       it.second.changed = true;
       triggered = true;
     }

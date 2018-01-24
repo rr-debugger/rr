@@ -858,7 +858,9 @@ TrapReasons Task::compute_trap_reasons() {
   // XXX Read/exec watchpoints can't be detected this way so they're still
   // broken in the above configuration :-(.
   if ((DS_WATCHPOINT_ANY | DS_SINGLESTEP) & status) {
-    as->notify_watchpoint_fired(status);
+    as->notify_watchpoint_fired(status,
+        is_singlestep_resume(how_last_execution_resumed)
+            ? address_of_last_execution_resume : nullptr);
   }
   reasons.watchpoint =
       as->has_any_watchpoint_changes() || (DS_WATCHPOINT_ANY & status);

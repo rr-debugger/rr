@@ -575,7 +575,8 @@ public:
    * hypervisor with 32-bit x86 guest, debug_status watchpoint bits
    * are known to not be set on singlestep).
    */
-  bool notify_watchpoint_fired(uintptr_t debug_status);
+  bool notify_watchpoint_fired(uintptr_t debug_status,
+      remote_code_ptr address_of_singlestep_start);
   /**
    * Return true if any watchpoint has fired. Will keep returning true until
    * consume_watchpoint_changes() is called.
