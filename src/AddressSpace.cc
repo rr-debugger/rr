@@ -1204,31 +1204,23 @@ static bool is_adjacent_mapping(const KernelMapping& mleft,
                                 HandleHeap handle_heap,
                                 int32_t flags_to_check = 0xFFFFFFFF) {
   if (mleft.end() != mright.start()) {
-    LOG(debug) << "    (not adjacent in memory)";
     return false;
   }
   if (((mleft.flags() ^ mright.flags()) & flags_to_check) ||
       mleft.prot() != mright.prot()) {
-    LOG(debug) << "    (flags or prot differ)";
     return false;
   }
   if (!normalized_file_names_equal(mleft, mright, handle_heap)) {
-    LOG(debug) << "    (not the same filename)";
     return false;
   }
   if (mleft.device() != mright.device() || mleft.inode() != mright.inode()) {
-    LOG(debug) << "    (not the same device/inode)";
     return false;
   }
   if (mleft.is_real_device() &&
       mleft.file_offset_bytes() + off64_t(mleft.size()) !=
           mright.file_offset_bytes()) {
-    LOG(debug) << "    (" << mleft.file_offset_bytes() << " + " << mleft.size()
-               << " != " << mright.file_offset_bytes()
-               << ": offsets into real device aren't adjacent)";
     return false;
   }
-  LOG(debug) << "    adjacent!";
   return true;
 }
 
@@ -1315,6 +1307,8 @@ void AddressSpace::verify(Task* t) const {
   if (thread_group_in_exec(t)) {
     return;
   }
+
+  LOG(debug) << "Verifying address space for task " << t->tid;
 
   MemoryMap::const_iterator mem_it = mem.begin();
   KernelMapIterator kernel_it(t);
