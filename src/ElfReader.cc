@@ -19,6 +19,7 @@ public:
   virtual DynamicSection read_dynamic() = 0;
   virtual Debuglink read_debuglink() = 0;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) = 0;
+  virtual SectionOffsets find_section_file_offsets(const char* name) = 0;
   bool ok() { return ok_; }
 
 protected:
@@ -34,6 +35,7 @@ public:
   virtual DynamicSection read_dynamic() override;
   virtual Debuglink read_debuglink() override;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) override;
+  virtual SectionOffsets find_section_file_offsets(const char* name) override;
 
 private:
   const typename Arch::ElfShdr* find_section(const char* n);
@@ -108,6 +110,19 @@ const typename Arch::ElfShdr* ElfReaderImpl<Arch>::find_section(const char* n) {
     LOG(debug) << "Missing section " << n;
   }
   return section;
+}
+
+template <typename Arch>
+SectionOffsets ElfReaderImpl<Arch>::find_section_file_offsets(
+    const char* name) {
+  SectionOffsets offsets = { 0, 0 };
+  const typename Arch::ElfShdr* section = find_section(name);
+  if (!section) {
+    return offsets;
+  }
+  offsets.start = section->sh_offset;
+  offsets.end = section->sh_offset + section->sh_size;
+  return offsets;
 }
 
 template <typename Arch>
@@ -281,6 +296,10 @@ SymbolTable ElfReader::read_symbols(const char* symtab, const char* strtab) {
 DynamicSection ElfReader::read_dynamic() { return impl().read_dynamic(); }
 
 Debuglink ElfReader::read_debuglink() { return impl().read_debuglink(); }
+
+SectionOffsets ElfReader::find_section_file_offsets(const char* name) {
+  return impl().find_section_file_offsets(name);
+}
 
 bool ElfReader::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
   return impl().addr_to_offset(addr, offset);

@@ -566,6 +566,24 @@ struct named_syscall {
   int syscall_number;
 };
 
+static void erase_section(VdsoReader& reader, const char* name) {
+  SectionOffsets offsets = reader.find_section_file_offsets(name);
+  if (offsets.end > offsets.start) {
+    vector<uint8_t> zeroes;
+    zeroes.resize(offsets.end - offsets.start);
+    memset(zeroes.data(), 0, zeroes.size());
+    write_and_record_bytes(reader.t,
+        reader.t->vm()->vdso().start() + offsets.start,
+        offsets.end - offsets.start, zeroes.data());
+  }
+}
+
+static void obliterate_debug_info(VdsoReader& reader) {
+  erase_section(reader, ".eh_frame");
+  erase_section(reader, ".eh_frame_hdr");
+  erase_section(reader, ".note");
+}
+
 // Monkeypatch x86-32 vdso syscalls immediately after exec. The vdso syscalls
 // will cause replay to fail if called by the dynamic loader or some library's
 // static constructors, so we can't wait for our preload library to be
@@ -638,6 +656,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
       }
     }
   }
+  obliterate_debug_info(reader);
 }
 
 // Monkeypatch x86 vsyscall hook only after the preload library
@@ -762,22 +781,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
     }
   }
 
-  // Nuke .eh_frame/.eh_frame_hdr so gdb doesn't try to use CFA to unwind the
-  // stack ... which won't work given our patches altering the code.
-  auto vdso_bytes = t->read_mem(vdso_start.cast<uint8_t>(), vdso_size);
-  uint8_t* start = vdso_bytes.data();
-  uint8_t* end = vdso_bytes.data() + vdso_size;
-  uint8_t eh_frame[] = ".eh_frame";
-  while (start < end) {
-    uint8_t* p = static_cast<uint8_t*>(
-        memmem(start, end - start, eh_frame, sizeof(eh_frame) - 1));
-    if (!p) {
-      break;
-    }
-    uint8_t x[1] = { 'x' };
-    write_and_record_bytes(t, vdso_start + (p - vdso_bytes.data()) + 1, x);
-    start = p + sizeof(eh_frame) - 1;
-  }
+  obliterate_debug_info(reader);
 }
 
 template <>

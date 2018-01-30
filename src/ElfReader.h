@@ -57,6 +57,11 @@ public:
   uint32_t crc;
 };
 
+struct SectionOffsets {
+  uint64_t start;
+  uint64_t end;
+};
+
 class ElfReader {
 public:
   ElfReader(SupportedArch arch);
@@ -82,6 +87,7 @@ public:
   // |addr|.  |addr| is an address indicated by the ELF file, not its
   // relocated address in memory.
   bool addr_to_offset(uintptr_t addr, uintptr_t& offset);
+  SectionOffsets find_section_file_offsets(const char* name);
 
 private:
   ElfReaderImplBase& impl();
