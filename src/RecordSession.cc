@@ -1224,14 +1224,19 @@ static bool inject_handled_signal(RecordTask* t) {
   t->stashed_signal_processed();
 
   int sig = t->ev().Signal().siginfo.si_signo;
-  // We are ready to inject our signal.
-  // XXX we assume the kernel won't respond by notifying us of a different
-  // signal. We don't want to do this with signals blocked because that will
-  // save a bogus signal mask in the signal frame.
-  t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
-  // Signal injection can change the sigmask due to sa_mask effects, lack of
-  // SA_NODEFER, and signal frame construction triggering a synchronous SIGSEGV.
-  t->invalidate_sigmask();
+  do {
+    // We are ready to inject our signal.
+    // XXX we assume the kernel won't respond by notifying us of a different
+    // signal. We don't want to do this with signals blocked because that will
+    // save a bogus signal mask in the signal frame.
+    t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS, sig);
+    // Signal injection can change the sigmask due to sa_mask effects, lack of
+    // SA_NODEFER, and signal frame construction triggering a synchronous
+    // SIGSEGV.
+    t->invalidate_sigmask();
+    // Repeat injection if we got a desched signal. We observe in Linux 4.14.12
+    // that we get SYSCALLBUF_DESCHED_SIGNAL here once in a while.
+  } while (t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL);
 
   if (t->stop_sig() == SIGSEGV) {
     // Constructing the signal handler frame must have failed. The kernel will
