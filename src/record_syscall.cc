@@ -2503,6 +2503,11 @@ static void check_signals_while_exiting(RecordTask* t) {
   }
 }
 
+static bool send_signal_during_init_buffers() {
+  static bool send = getenv("RR_INIT_BUFFERS_SEND_SIGNAL") != nullptr;
+  return send;
+}
+
 /**
  * At thread exit time, undo the work that init_buffers() did.
  *
@@ -4133,6 +4138,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
 
     case SYS_rrcall_init_buffers:
+      // This is purely for testing purposes. See signal_during_preload_init.
+      if (send_signal_during_init_buffers()) {
+        syscall(SYS_tgkill, t->tgid(), t->tid, SIGCHLD);
+      }
       syscall_state.reg_parameter<rrcall_init_buffers_params<Arch>>(1, IN_OUT);
       return PREVENT_SWITCH;
 

@@ -845,6 +845,7 @@ set(BASIC_TESTS
   sighandler_mask
   sigill
   signal_deferred
+  signal_during_preload_init
   signal_unstoppable
   signalfd
   sigprocmask

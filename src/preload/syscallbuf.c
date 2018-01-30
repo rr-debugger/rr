@@ -458,9 +458,10 @@ static void init_thread(void) {
   if (thread_locals->thread_inited) {
     return;
   }
+  thread_locals->thread_inited = 1;
+
   /* Do not do any syscall buffering in a DiversionSession! */
   if (!buffer_enabled || globals.in_diversion) {
-    thread_locals->thread_inited = 1;
     return;
   }
 
@@ -484,8 +485,6 @@ static void init_thread(void) {
   thread_locals->buffer_size = args.syscallbuf_size;
   thread_locals->scratch_buf = args.scratch_buf;
   thread_locals->scratch_size = args.scratch_size;
-
-  thread_locals->thread_inited = 1;
 }
 
 extern char _breakpoint_table_entry_start;
