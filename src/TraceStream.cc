@@ -1174,7 +1174,14 @@ void TraceWriter::make_latest_trace() {
   // and it "won".  The link is then valid and points at some
   // very-recent trace, so that's good enough.
   unlink(link_name.c_str());
-  int ret = symlink(trace_dir.c_str(), link_name.c_str());
+  // Link only the trace name, not the full path, so moving a directory full
+  // of traces around doesn't break the latest-trace link.
+  const char* trace_name = trace_dir.c_str();
+  const char* last = strrchr(trace_name, '/');
+  if (last) {
+    trace_name = last + 1;
+  }
+  int ret = symlink(trace_name, link_name.c_str());
   if (ret < 0 && errno != EEXIST) {
     FATAL() << "Failed to update symlink `" << link_name << "' to `"
             << trace_dir << "'.";
