@@ -1850,49 +1850,75 @@ static MemoryRange adjust_range_for_stack_growth(const KernelMapping& km) {
   return MemoryRange(start, km.end());
 }
 
-remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
-                                                           size_t len) {
-  remote_ptr<void> addr;
-  // Half the time, try to allocate at a completely random address. The other
-  // half of the time, we'll try to allocate immediately before or after a
-  // randomly chosen existing mapping.
-  if (random() % 2) {
-    int bits = random_addr_bits(t->arch());
-    // Some of these addresses will not be mappable. That's fine, the
-    // kernel will fall back to a valid address if the hint is not valid.
-    uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-    addr = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << bits) - 1)));
-  } else {
-    ASSERT(t, !mem.empty());
-    int map_index = random() % mem.size();
-    int map_count = 0;
-    for (const auto& m : maps()) {
-      if (map_count == map_index) {
-        addr = m.map.start();
-        break;
-      }
-      ++map_count;
-    }
+// Choose a 4TB range to exclude from random mappings. This makes room for
+// advanced trace analysis tools that require a large address range in tracees
+// that is never mapped.
+static MemoryRange choose_global_exclusion_range() {
+  if (sizeof(uintptr_t) < 8) {
+    return MemoryRange(nullptr, 0);
   }
 
-  // If there's a collision (which there always will be in the second case
-  // above), either move the mapping forwards or backwards in memory until it
-  // fits. Choose the direction randomly.
-  int direction = (random() % 2) ? 1 : -1;
+  const uint64_t range_size = uint64_t(4)*1024*1024*1024*1024;
+  int bits = random_addr_bits(x86_64);
+  uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
+  uint64_t r_addr = r & ((uint64_t(1) << bits) - 1);
+  r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
+  remote_ptr<void> addr = floor_page_size(remote_ptr<void>(r_addr));
+  return MemoryRange(addr, range_size);
+}
+
+remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
+                                                           size_t len) {
+  static MemoryRange global_exclusion_range = choose_global_exclusion_range();
+
   while (true) {
-    Maps m = maps_starting_at(addr);
-    if (m.begin() == m.end()) {
-      return addr;
-    }
-    MemoryRange range = adjust_range_for_stack_growth(m.begin()->map);
-    if (range.start() >= addr + len) {
-      // No overlap with an existing mapping; we're good!
-      return addr;
-    }
-    if (direction == -1) {
-      addr = range.start() - len;
+    remote_ptr<void> addr;
+    // Half the time, try to allocate at a completely random address. The other
+    // half of the time, we'll try to allocate immediately before or after a
+    // randomly chosen existing mapping.
+    if (random() % 2) {
+      int bits = random_addr_bits(t->arch());
+      // Some of these addresses will not be mappable. That's fine, the
+      // kernel will fall back to a valid address if the hint is not valid.
+      uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
+      addr = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << bits) - 1)));
     } else {
-      addr = range.end();
+      ASSERT(t, !mem.empty());
+      int map_index = random() % mem.size();
+      int map_count = 0;
+      for (const auto& m : maps()) {
+        if (map_count == map_index) {
+          addr = m.map.start();
+          break;
+        }
+        ++map_count;
+      }
+    }
+
+    // If there's a collision (which there always will be in the second case
+    // above), either move the mapping forwards or backwards in memory until it
+    // fits. Choose the direction randomly.
+    int direction = (random() % 2) ? 1 : -1;
+    while (true) {
+      Maps m = maps_starting_at(addr);
+      if (m.begin() == m.end()) {
+        break;
+      }
+      MemoryRange range = adjust_range_for_stack_growth(m.begin()->map);
+      if (range.start() >= addr + len) {
+        // No overlap with an existing mapping; we're good!
+        break;
+      }
+      if (direction == -1) {
+        addr = range.start() - len;
+      } else {
+        addr = range.end();
+      }
+    }
+
+    MemoryRange r(addr, ceil_page_size(len));
+    if (!r.intersects(global_exclusion_range)) {
+      return addr;
     }
   }
 }
