@@ -3,6 +3,7 @@
 #include <inttypes.h>
 
 #include <limits>
+#include <unordered_map>
 
 #include "preload/preload_interface.h"
 
@@ -11,6 +12,7 @@
 #include "TraceStream.h"
 #include "core.h"
 #include "kernel_metadata.h"
+#include "log.h"
 #include "main.h"
 #include "util.h"
 
@@ -34,6 +36,7 @@ DumpCommand DumpCommand::singleton(
     "  Event specs can be either an event number like `127', or a range\n"
     "  like `1000-5000'.  By default, all events are dumped.\n"
     "  -b, --syscallbuf           dump syscallbuf contents\n"
+    "  -e, --task-events          dump task events\n"
     "  -m, --recorded-metadata    dump recorded data metadata\n"
     "  -p, --mmaps                dump mmap data\n"
     "  -r, --raw                  dump trace frames in a more easily\n"
@@ -46,6 +49,7 @@ struct DumpFlags {
   bool dump_syscallbuf;
   bool dump_recorded_data_metadata;
   bool dump_mmaps;
+  bool dump_task_events;
   bool raw_dump;
   bool dump_statistics;
   int only_tid;
@@ -54,6 +58,7 @@ struct DumpFlags {
       : dump_syscallbuf(false),
         dump_recorded_data_metadata(false),
         dump_mmaps(false),
+        dump_task_events(false),
         raw_dump(false),
         dump_statistics(false),
         only_tid(0) {}
@@ -66,6 +71,7 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
 
   static const OptionSpec options[] = {
     { 'b', "syscallbuf", NO_PARAMETER },
+    { 'e', "task-events", NO_PARAMETER },
     { 'm', "recorded-metadata", NO_PARAMETER },
     { 'p', "mmaps", NO_PARAMETER },
     { 'r', "raw", NO_PARAMETER },
@@ -80,6 +86,9 @@ static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
   switch (opt.short_name) {
     case 'b':
       flags.dump_syscallbuf = true;
+      break;
+    case 'e':
+      flags.dump_task_events = true;
       break;
     case 'm':
       flags.dump_recorded_data_metadata = true;
@@ -135,6 +144,26 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   }
 }
 
+static void dump_task_event(FILE* out, const TraceTaskEvent& event) {
+  switch (event.type()) {
+    case TraceTaskEvent::CLONE:
+      fprintf(out, "  TraceTaskEvent::CLONE tid=%d parent=%d clone_flags=0x%x\n",
+          event.tid(), event.parent_tid(), event.clone_flags());
+      break;
+    case TraceTaskEvent::EXEC:
+      fprintf(out, "  TraceTaskEvent::EXEC tid=%d file=%s\n", event.tid(),
+          event.file_name().c_str());
+      break;
+    case TraceTaskEvent::EXIT:
+      fprintf(out, "  TraceTaskEvent::EXIT tid=%d status=%d\n", event.tid(),
+          event.exit_status().get());
+      break;
+    default:
+      FATAL() << "Unknown TraceTaskEvent";
+      break;
+  }
+}
+
 /**
  * Dump all events from the current to trace that match |spec| to
  * |out|.  |spec| has the following syntax: /\d+(-\d+)?/, expressing
@@ -159,6 +188,20 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
     start = end = atoi(spec->c_str());
   }
 
+  unordered_map<FrameTime, TraceTaskEvent> task_events;
+  FrameTime last_time = 0;
+  while (true) {
+    FrameTime time;
+    if (time <= last_time) {
+      FATAL() << "TraceTaskEvent times non-increasing";
+    }
+    TraceTaskEvent r = trace.read_task_event(&time);
+    if (r.type() == TraceTaskEvent::NONE) {
+      break;
+    }
+    task_events.insert(make_pair(time, r));
+  }
+
   bool process_raw_data =
       flags.dump_syscallbuf || flags.dump_recorded_data_metadata;
   while (!trace.at_end()) {
@@ -175,6 +218,12 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
       }
       if (flags.dump_syscallbuf) {
         dump_syscallbuf_data(trace, out, frame);
+      }
+      if (flags.dump_task_events) {
+        auto it = task_events.find(frame.time());
+        if (it != task_events.end()) {
+          dump_task_event(out, it->second);
+        }
       }
 
       while (true) {
