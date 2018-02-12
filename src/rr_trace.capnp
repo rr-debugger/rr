@@ -113,6 +113,9 @@ struct TaskEvent {
       # Added after 5.0.0
       exeBase @8 :RemotePtr;
     }
+    # Most frame 'exit' events generate one of these, but these are not
+    # generated if rr ends abnormally so the tasks did not in fact exit during
+    # recording.
     exit :group {
       exitStatus @7 :Int32;
     }
