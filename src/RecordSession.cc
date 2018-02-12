@@ -1352,9 +1352,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       auto sp = t->regs().sp();
       if (t->vm()->has_mapping(sp)) {
         auto mapping_end = t->vm()->mapping_of(sp).map.end();
-        if (mapping_end > sp + sigframe_size) {
-          sigframe_size = mapping_end - sp;
-        }
+        sigframe_size = min(sigframe_size, mapping_end - sp);
       } else {
         sigframe_size = 0;
       }
