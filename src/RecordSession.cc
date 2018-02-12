@@ -1346,17 +1346,10 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         last_task_switchable = PREVENT_SWITCH;
       }
 
-      // We record this data regardless to simplify replay. If the addresses
-      // are unmapped, write 0 bytes.
-      // But be careful not to run off the end of our mapping.
-      auto sp = t->regs().sp();
-      if (t->vm()->has_mapping(sp)) {
-        auto mapping_end = t->vm()->mapping_of(sp).map.end();
-        sigframe_size = min(sigframe_size, mapping_end - sp);
-      } else {
-        sigframe_size = 0;
-      }
-      t->record_remote_fallible(sp, sigframe_size);
+      // We record this data even if sigframe_size is zero to simplify replay.
+      // Stop recording data if we run off the end of a writeable mapping.
+      // Our sigframe size is conservative so we need to do this.
+      t->record_remote_writeable(t->regs().sp(), sigframe_size);
 
       // This event is used by the replayer to set up the signal handler frame.
       // But if we don't have a handler, we don't want to record the event

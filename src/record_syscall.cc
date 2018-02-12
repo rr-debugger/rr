@@ -4786,7 +4786,7 @@ static void record_iovec_output(RecordTask* t, RecordTask* dest,
   // See https://bugzilla.kernel.org/show_bug.cgi?id=113541
   auto iovs = t->read_mem(piov, iov_cnt);
   for (auto& iov : iovs) {
-    dest->record_remote_fallible(iov.iov_base, iov.iov_len);
+    dest->record_remote_writeable(iov.iov_base, iov.iov_len);
   }
 }
 

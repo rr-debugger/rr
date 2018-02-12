@@ -1486,10 +1486,28 @@ void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
   trace_writer().write_raw(rec_tid, buf.data(), num_bytes, addr);
 }
 
+void RecordTask::record_remote_writeable(remote_ptr<void> addr,
+                                         ssize_t num_bytes) {
+  ASSERT(this, num_bytes >= 0);
+
+  remote_ptr<void> p = addr;
+  while (p < addr + num_bytes) {
+    if (!as->has_mapping(p)) {
+      break;
+    }
+    auto m = as->mapping_of(p);
+    if (!(m.map.prot() & PROT_WRITE)) {
+      break;
+    }
+    p = m.map.end();
+  }
+  num_bytes = min(num_bytes, p - addr);
+
+  record_remote(addr, num_bytes);
+}
+
 void RecordTask::record_remote_fallible(remote_ptr<void> addr,
                                         ssize_t num_bytes) {
-  maybe_flush_syscallbuf();
-
   ASSERT(this, num_bytes >= 0);
 
   if (record_remote_by_local_map(addr, num_bytes) != 0) {
