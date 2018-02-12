@@ -77,9 +77,9 @@ static ssize_t find_cmd_line(pid_t pid, const vector<TraceTaskEvent>& events,
   return -1;
 }
 
-static int find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
-                          size_t current_event,
-                          const map<pid_t, pid_t> current_tid_to_pid) {
+static string find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
+                             size_t current_event,
+                             const map<pid_t, pid_t> current_tid_to_pid) {
   map<pid_t, pid_t> tid_to_pid = current_tid_to_pid;
   for (size_t i = current_event; i < events.size(); ++i) {
     const TraceTaskEvent& e = events[i];
@@ -87,14 +87,14 @@ static int find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
         count_tids_for_pid(tid_to_pid, pid) == 1) {
       WaitStatus status = e.exit_status();
       if (status.type() == WaitStatus::EXIT) {
-        return status.exit_code();
+        return to_string(status.exit_code());
       }
       DEBUG_ASSERT(status.type() == WaitStatus::FATAL_SIGNAL);
-      return -status.fatal_sig();
+      return to_string(-status.fatal_sig());
     }
     update_tid_to_pid_map(tid_to_pid, e);
   }
-  return -SIGKILL;
+  return string("none");
 }
 
 static int ps(const string& trace_dir, FILE* out) {
@@ -120,8 +120,8 @@ static int ps(const string& trace_dir, FILE* out) {
 
   pid_t initial_tid = events[0].tid();
   tid_to_pid[initial_tid] = initial_tid;
-  fprintf(out, "%d\t--\t%d\t", initial_tid,
-          find_exit_code(initial_tid, events, 0, tid_to_pid));
+  fprintf(out, "%d\t--\t%s\t", initial_tid,
+          find_exit_code(initial_tid, events, 0, tid_to_pid).c_str());
   print_exec_cmd_line(events[0], out);
 
   for (size_t i = 1; i < events.size(); ++i) {
@@ -135,8 +135,8 @@ static int ps(const string& trace_dir, FILE* out) {
       if (e.own_ns_tid() != e.tid()) {
         fprintf(out, " (%d)", e.own_ns_tid());
       }
-      fprintf(out, "\t%d\t%d\t", tid_to_pid[e.parent_tid()],
-              find_exit_code(pid, events, i, tid_to_pid));
+      fprintf(out, "\t%d\t%s\t", tid_to_pid[e.parent_tid()],
+              find_exit_code(pid, events, i, tid_to_pid).c_str());
 
       ssize_t cmd_line_index = find_cmd_line(pid, events, i, tid_to_pid);
       if (cmd_line_index < 0) {
