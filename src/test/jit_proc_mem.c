@@ -6,32 +6,46 @@
 
 typedef int (*puts_func)(const char* fmt);
 
-int template_function(puts_func f, char* text) {
-  f(text);
-  return 0;
-}
+#if defined(__x86_64__)
+asm("template_function:\n\t"
+    "sub $8,%rsp\n\t"
+    "call *%rsi\n\t"
+    "add $8,%rsp\n\t"
+    "xor %eax,%eax\n\t"
+    "ret\n\t"
+    "template_function_end:\n");
+#elif defined(__i386__)
+asm("template_function:\n\t"
+    "push 4(%esp)\n\t"
+    "call *12(%esp)\n\t"
+    "add $4,%esp\n\t"
+    "xor %eax,%eax\n\t"
+    "ret\n\t"
+    "template_function_end:\n");
+#else
+#error Unknown architecture
+#endif
 
 static __attribute__((noinline)) void breakpoint(void) {
   int break_here = 1;
   (void)break_here;
 }
 
-extern char __etext; // end of text section
+extern char template_function;
+extern char template_function_end;
+
 int main(void) {
   void* space = mmap(NULL, 4096, PROT_EXEC | PROT_READ,
                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   int memfd = open("/proc/self/mem", O_RDWR);
   breakpoint();
 
-  // It doesn't matter if we copy more than template_function, we just
-  // shouldn't fall off the end of the text section.
-  size_t nbytes = (uintptr_t)&__etext - (uintptr_t)template_function;
-  ssize_t to_write = nbytes > 4096 ? 4096 : nbytes;
+  ssize_t to_write = &template_function_end - &template_function;
   int nwritten =
-      pwrite(memfd, (void*)template_function, to_write, (uintptr_t)space);
+      pwrite(memfd, &template_function, to_write, (uintptr_t)space);
   test_assert(to_write == nwritten);
 
-  int ret = ((int (*)(puts_func, char*))space)(atomic_puts, "EXIT-SUCCESS");
+  int ret = ((int (*)(char*, puts_func))space)("EXIT-SUCCESS", atomic_puts);
   breakpoint();
   return ret;
 }
