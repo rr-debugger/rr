@@ -192,10 +192,10 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
   FrameTime last_time = 0;
   while (true) {
     FrameTime time;
+    TraceTaskEvent r = trace.read_task_event(&time);
     if (time <= last_time) {
       FATAL() << "TraceTaskEvent times non-increasing";
     }
-    TraceTaskEvent r = trace.read_task_event(&time);
     if (r.type() == TraceTaskEvent::NONE) {
       break;
     }
