@@ -12,7 +12,7 @@ static int do_thread(__attribute__((unused)) void* p) {
      rr's estimate of the sighandler frame size will spill beyond the
      thread stack. */
   signal(SIGSEGV, handler);
-  *(char*)0 = 0;
+  *(volatile char*)0 = 0;
   test_assert(0 && "Should not be reached");
   return 0;
 }
