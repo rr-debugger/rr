@@ -9,6 +9,22 @@ using namespace std;
 
 namespace rr {
 
+static SimpleGdbCommand elapsed_time(
+    "elapsed-time", 
+    "Print elapsed time (in seconds) since the start of the trace, in the"
+    " 'record' timeline.",
+    [](GdbServer&, Task* t, const vector<string>&) {
+      if (!t->session().is_replaying()) {
+        return GdbCommandHandler::cmd_end_diversion();
+      }
+
+      ReplayTask* replay_t = static_cast<ReplayTask*>(t);
+      double elapsed_time = replay_t->current_trace_frame().monotonic_time() -
+                            replay_t->session().get_trace_start_time();
+
+      return string("Elapsed Time (s): ") + to_string(elapsed_time);
+    });
+
 static SimpleGdbCommand when(
     "when", "Print the current rr event number.",
     [](GdbServer&, Task* t, const vector<string>&) {
