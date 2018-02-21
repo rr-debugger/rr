@@ -90,9 +90,12 @@ ReplaySession::ReplaySession(const std::string& dir)
       trace_in(dir),
       trace_frame(),
       current_step(),
-      ticks_at_start_of_event(0) {
+      ticks_at_start_of_event(0),
+      trace_start_time(0) {
   memset(&last_siginfo_, 0, sizeof(last_siginfo_));
   advance_to_next_trace_frame();
+
+  trace_start_time = trace_frame.monotonic_time();
 
   if (trace_in.uses_cpuid_faulting() && !has_cpuid_faulting()) {
     CLEAN_FATAL()
@@ -122,7 +125,8 @@ ReplaySession::ReplaySession(const ReplaySession& other)
       ticks_at_start_of_event(other.ticks_at_start_of_event),
       cpuid_bug_detector(other.cpuid_bug_detector),
       last_siginfo_(other.last_siginfo_),
-      flags(other.flags) {}
+      flags(other.flags),
+      trace_start_time(other.trace_start_time) {}
 
 ReplaySession::~ReplaySession() {
   // We won't permanently leak any OS resources by not ensuring
@@ -1579,6 +1583,10 @@ ReplayTask* ReplaySession::find_task(pid_t rec_tid) const {
 
 ReplayTask* ReplaySession::find_task(const TaskUid& tuid) const {
   return static_cast<ReplayTask*>(Session::find_task(tuid));
+}
+
+double ReplaySession::get_trace_start_time(){
+  return trace_start_time;
 }
 
 } // namespace rr

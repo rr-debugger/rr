@@ -293,6 +293,8 @@ public:
    */
   static MemoryRanges always_free_address_space(const TraceReader& reader);
 
+  double get_trace_start_time();
+
 private:
   ReplaySession(const std::string& dir);
   ReplaySession(const ReplaySession& other);
@@ -342,6 +344,11 @@ private:
   siginfo_t last_siginfo_;
   Flags flags;
   bool did_fast_forward;
+
+  // The clock_gettime(CLOCK_MONOTONIC) timestamp of the first trace event, used
+  // during 'replay' to calculate the elapsed time between the first event and 
+  // all other recorded events in the timeline during the 'record' phase.
+  double trace_start_time;
 
   std::shared_ptr<AddressSpace> syscall_bp_vm;
   remote_code_ptr syscall_bp_addr;
