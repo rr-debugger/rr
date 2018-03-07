@@ -1282,15 +1282,23 @@ bool GdbServer::at_target() {
 void GdbServer::activate_debugger() {
   TraceFrame next_frame = timeline.current_session().current_trace_frame();
   FrameTime event_now = next_frame.time();
-  if (!stop_replaying_to_target && (target.event > 0 || target.pid)) {
-    fprintf(stderr, "\a\n"
-                    "--------------------------------------------------\n"
-                    " ---> Reached target process %d at event %llu.\n"
-                    "--------------------------------------------------\n",
-            target.pid, (long long)event_now);
+  Task* t = timeline.current_session().current_task();
+  if (target.event > 0 || target.pid) {
+    if (stop_replaying_to_target) {
+      fprintf(stderr, "\a\n"
+                      "--------------------------------------------------\n"
+                      " ---> Interrupted; attached to NON-TARGET process %d at event %llu.\n"
+                      "--------------------------------------------------\n",
+              t->tgid(), (long long)event_now);
+    } else {
+      fprintf(stderr, "\a\n"
+                      "--------------------------------------------------\n"
+                      " ---> Reached target process %d at event %llu.\n"
+                      "--------------------------------------------------\n",
+              t->tgid(), (long long)event_now);
+    }
   }
 
-  Task* t = timeline.current_session().current_task();
   // Store the current tgid and event as the "execution target"
   // for the next replay session, if we end up restarting.  This
   // allows us to determine if a later session has reached this
