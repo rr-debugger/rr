@@ -164,6 +164,7 @@ static CpuMicroarch get_cpu_microarch() {
     case 0x40660:
       return IntelHaswell;
     case 0x306D0:
+    case 0x40670:
     case 0x406F0:
     case 0x50660:
       return IntelBroadwell;
