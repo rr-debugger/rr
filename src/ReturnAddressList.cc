@@ -6,6 +6,16 @@
 
 namespace rr {
 
+static bool read_bytes_no_breakpoints(Task* t, remote_ptr<void> p, ssize_t size,
+                                      void* out) {
+  if (t->read_bytes_fallible(p, size, out) != size) {
+    return false;
+  }
+  t->vm()->replace_breakpoints_with_original_values(static_cast<uint8_t*>(out),
+      size, p.cast<uint8_t>());
+  return true;
+}
+
 template <typename Arch>
 static void return_addresses_x86ish(ReturnAddressList* result, Task* t) {
   // Immediately after a function call the return address is on the stack at
@@ -18,8 +28,11 @@ static void return_addresses_x86ish(ReturnAddressList* result, Task* t) {
   // words unconditionally.
   typename Arch::size_t frame[2];
   int next_address = 0;
-  if (t->read_bytes_fallible(t->regs().sp(), sizeof(frame), frame) ==
-      sizeof(frame)) {
+  // Make sure the data we fetch here does not depend on where breakpoints have
+  // been set. We don't want these results to vary because we call this in
+  // some contexts with internal breakpoints set and in other contexts without
+  // them set.
+  if (read_bytes_no_breakpoints(t, t->regs().sp(), sizeof(frame), frame)) {
     result->addresses[0] = frame[0];
     result->addresses[1] = frame[1];
     next_address = 2;
@@ -27,7 +40,7 @@ static void return_addresses_x86ish(ReturnAddressList* result, Task* t) {
 
   remote_ptr<void> bp = t->regs().bp();
   for (int i = next_address; i < ReturnAddressList::COUNT; ++i) {
-    if (t->read_bytes_fallible(bp, sizeof(frame), frame) != sizeof(frame)) {
+    if (!read_bytes_no_breakpoints(t, bp, sizeof(frame), frame)) {
       break;
     }
     result->addresses[i] = frame[1];

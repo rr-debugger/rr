@@ -383,8 +383,9 @@ Completion ReplaySession::cont_syscall_boundary(
     default:
       break;
   }
-  ASSERT(t, !t->stop_sig()) << "Replay got unrecorded signal " << t->stop_sig()
-                            << " (" << signal_name(t->stop_sig()) << ")";
+  if (t->stop_sig()) {
+      ASSERT(t, false) << "Replay got unrecorded signal " << t->get_siginfo();
+  }
 
   if (t->seccomp_bpf_enabled &&
       syscall_seccomp_ordering_ == PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN) {
