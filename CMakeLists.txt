@@ -407,6 +407,7 @@ set(RR_SOURCES
   src/fast_forward.cc
   src/FdTable.cc
   src/FileMonitor.cc
+  src/FileNameCommand.cc
   src/Flags.cc
   src/ftrace.cc
   src/GdbCommand.cc
