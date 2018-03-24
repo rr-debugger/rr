@@ -1871,17 +1871,18 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
                                                            size_t len) {
   static MemoryRange global_exclusion_range = choose_global_exclusion_range();
 
+  int bits = random_addr_bits(t->arch());
+  uint64_t addr_space_limit = uint64_t(1) << bits;
   while (true) {
     remote_ptr<void> addr;
     // Half the time, try to allocate at a completely random address. The other
     // half of the time, we'll try to allocate immediately before or after a
     // randomly chosen existing mapping.
     if (random() % 2) {
-      int bits = random_addr_bits(t->arch());
       // Some of these addresses will not be mappable. That's fine, the
       // kernel will fall back to a valid address if the hint is not valid.
       uint64_t r = ((uint64_t)(uint32_t)random() << 32) | (uint32_t)random();
-      addr = floor_page_size(remote_ptr<void>(r & ((uint64_t(1) << bits) - 1)));
+      addr = floor_page_size(remote_ptr<void>(r & (addr_space_limit - 1)));
     } else {
       ASSERT(t, !mem.empty());
       int map_index = random() % mem.size();
@@ -1914,6 +1915,12 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
       } else {
         addr = range.end();
       }
+    }
+
+    if (uint64_t(addr.as_int()) >= addr_space_limit ||
+        uint64_t(addr.as_int()) + ceil_page_size(len) >= addr_space_limit) {
+      // We fell off one end of the address space. Try everything again.
+      continue;
     }
 
     MemoryRange r(addr, ceil_page_size(len));
