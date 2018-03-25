@@ -274,7 +274,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
   return true;
 }
 
-static bool term_request;
+static volatile bool term_request;
 
 /**
  * A terminating signal was received.  Set the |term_request| bit to
@@ -282,6 +282,9 @@ static bool term_request;
  *
  * If there's already a term request pending, then assume rr is wedged
  * and abort().
+ *
+ * Note that this is not only called in a signal handler but it could
+ * be called off the main thread.
  */
 static void handle_SIGTERM(__attribute__((unused)) int sig) {
   // Don't use LOG() here because we're in a signal handler. If we do anything
