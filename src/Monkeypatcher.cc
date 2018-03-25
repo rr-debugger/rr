@@ -501,6 +501,9 @@ static bool is_kernel_vsyscall(RecordTask* t, remote_ptr<void> addr) {
          X86SysenterVsyscallImplementationAMD::match(impl);
 }
 
+static const uintptr_t MAX_VDSO_SIZE = 16384;
+static const uintptr_t VDSO_ABSOLUTE_ADDRESS = 0xffffe000;
+
 /**
  * Return the address of a recognized |__kernel_vsyscall()|
  * implementation in |t|'s address space.
@@ -523,10 +526,10 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
         continue;
       }
       // The symbol values can be absolute or relative addresses.
-      // The first part of the assertion is for absolute
-      // addresses, and the second part is for relative.
-      if ((file_offset & ~uintptr_t(0xfff)) != 0xffffe000 &&
-          (file_offset & ~uintptr_t(0xfff)) != 0) {
+      if (file_offset >= VDSO_ABSOLUTE_ADDRESS) {
+        file_offset -= VDSO_ABSOLUTE_ADDRESS;
+      }
+      if (file_offset > MAX_VDSO_SIZE) {
         // With 4.2.8-300.fc23.x86_64, execve_loop_32 seems to once in a while
         // see a VDSO with a crazy file offset in it which is a duplicate
         // __kernel_vsyscall. Bizzarro. Ignore it.
@@ -539,8 +542,7 @@ static remote_ptr<void> locate_and_verify_kernel_vsyscall(
       // however, subjects the VDSO to ASLR, which means that
       // we have to adjust the offsets properly.
       auto vdso_start = t->vm()->vdso().start();
-      uintptr_t candidate_offset = file_offset & uintptr_t(0xfff);
-      remote_ptr<void> candidate = vdso_start + candidate_offset;
+      remote_ptr<void> candidate = vdso_start + file_offset;
 
       if (is_kernel_vsyscall(t, candidate)) {
         kernel_vsyscall = candidate;
@@ -631,8 +633,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
         if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
           continue;
         }
-        static const uintptr_t vdso_max_size = 0xffffLL;
-        if ((file_offset & ~vdso_max_size) != 0) {
+        if (file_offset > MAX_VDSO_SIZE) {
           // With 4.3.3-301.fc23.x86_64, once in a while we
           // see a VDSO symbol with a crazy file offset in it which is a
           // duplicate of another symbol. Bizzarro. Ignore it.
