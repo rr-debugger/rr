@@ -14,6 +14,7 @@ Makefile
 Profile
 obj/
 .project
+.vscode/
 *.log
 *.orig
 *.rej
