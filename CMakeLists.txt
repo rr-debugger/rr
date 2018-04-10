@@ -1121,6 +1121,7 @@ set(TESTS_WITHOUT_PROGRAM
   gcrypt_rdrand
   get_thread_list
   hardlink_mmapped_files
+  hbreak
   mprotect_step
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
