@@ -1649,6 +1649,10 @@ mlock2 = UnsupportedSyscall(x86=376, x64=325)
 copy_file_range = UnsupportedSyscall(x86=377, x64=326)
 preadv2 = UnsupportedSyscall(x86=378, x64=327)
 pwritev2 = UnsupportedSyscall(x86=379, x64=328)
+pkey_mprotect = UnsupportedSyscall(x86=380, x64=329)
+pkey_alloc = UnsupportedSyscall(x86=381, x64=330)
+pkey_free = UnsupportedSyscall(x86=382, x64=331)
+statx = UnsupportedSyscall(x86=383, x64=332)
 
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219)
