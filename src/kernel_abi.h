@@ -1466,6 +1466,40 @@ struct BaseArch : public wordsize,
     int : 32;
   } timex;
   RR_VERIFY_TYPE(timex);
+
+  typedef struct statx_timestamp {
+    int64_t tv_sec;
+    uint32_t tv_nsec;
+    int32_t __reserved;
+  } statx_timestamp;
+  // statx_timestamp not yet widely available in system headers
+  // RR_VERIFY_TYPE(statx_timestamp);
+
+  typedef struct statx {
+    uint32_t stx_mask;
+    uint32_t stx_blksize;
+    uint64_t stx_attributes;
+    uint32_t stx_nlink;
+    uint32_t stx_uid;
+    uint32_t stx_gid;
+    uint16_t stx_mode;
+    uint16_t __spare0;
+    uint64_t stx_ino;
+    uint64_t stx_size;
+    uint64_t stx_blocks;
+    uint64_t stx_attributes_mask;
+    statx_timestamp stx_atime;
+    statx_timestamp stx_btime;
+    statx_timestamp stx_ctime;
+    statx_timestamp stx_mtime;
+    uint32_t stx_rdev_major;
+    uint32_t stx_rdev_minor;
+    uint32_t stx_dev_major;
+    uint32_t stx_dev_minor;
+    uint64_t __spare2[14];
+  } statx;
+  // statx not yet widely available in system headers
+  // RR_VERIFY_TYPE(statx);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
