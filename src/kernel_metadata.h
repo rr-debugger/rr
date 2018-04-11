@@ -58,6 +58,11 @@ std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo);
 
 int shm_flags_to_mmap_prot(int flags);
 
+/**
+ * Print string explaining xsave feature bits
+ */
+std::string xsave_feature_string(uint64_t xsave_features);
+
 } // namespace rr
 
 #endif

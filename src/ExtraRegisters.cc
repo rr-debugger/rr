@@ -344,8 +344,12 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
     memcpy(&features_used, data + xsave_header_offset, sizeof(features_used));
     if (features_used & ~native_layout.supported_feature_bits) {
       LOG(error) << "Unsupported CPU features found: got " << HEX(features_used)
-                 << ", supported: "
-                 << HEX(native_layout.supported_feature_bits);
+                 << " (" << xsave_feature_string(features_used)
+                 << "), supported: "
+                 << HEX(native_layout.supported_feature_bits)
+                 << " ("
+                 << xsave_feature_string(native_layout.supported_feature_bits)
+                 << ")";
       return false;
     }
   }

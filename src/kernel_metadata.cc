@@ -383,7 +383,7 @@ string sicode_name(int code, int sig) {
   return string(buf);
 }
 
-std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo) {
+ostream& operator<<(ostream& stream, const siginfo_t& siginfo) {
   stream << "{signo:" << signal_name(siginfo.si_signo)
          << ",errno:" << errno_name(siginfo.si_errno)
          << ",code:" << sicode_name(siginfo.si_code, siginfo.si_signo);
@@ -403,6 +403,47 @@ std::ostream& operator<<(std::ostream& stream, const siginfo_t& siginfo) {
 int shm_flags_to_mmap_prot(int flags) {
   return PROT_READ | ((flags & SHM_RDONLY) ? 0 : PROT_WRITE) |
          ((flags & SHM_EXEC) ? PROT_EXEC : 0);
+}
+
+string xsave_feature_string(uint64_t xsave_features) {
+  string ret;
+  if (xsave_features & 0x01) {
+    ret += "x87 ";
+  }
+  if (xsave_features & 0x02) {
+    ret += "SSE ";
+  }
+  if (xsave_features & 0x04) {
+    ret += "AVX ";
+  }
+  if (xsave_features & 0x08) {
+    ret += "MPX-BNDREGS ";
+  }
+  if (xsave_features & 0x10) {
+    ret += "MPX-BNDCSR ";
+  }
+  if (xsave_features & 0x20) {
+    ret += "AVX512-opmask ";
+  }
+  if (xsave_features & 0x40) {
+    ret += "AVX512-ZMM_Hi256 ";
+  }
+  if (xsave_features & 0x80) {
+    ret += "AVX512-Hi16_ZMM ";
+  }
+  if (xsave_features & 0x100) {
+    ret += "PT ";
+  }
+  if (xsave_features & 0x200) {
+    ret += "PKRU ";
+  }
+  if (xsave_features & 0x2000) {
+    ret += "HDC ";
+  }
+  if (ret.size() > 0) {
+    ret = ret.substr(0, ret.size() - 1);
+  }
+  return ret;
 }
 
 } // namespace rr
