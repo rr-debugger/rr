@@ -31,6 +31,15 @@ RecordCommand RecordCommand::singleton(
     "  -c, --num-cpu-ticks=<NUM>  maximum number of 'CPU ticks' (currently \n"
     "                             retired conditional branches) to allow a \n"
     "                             task to run before interrupting it\n"
+    "  --disable-cpuid-features <CCC>[,<DDD>]\n"
+    "                             Mask out CPUID EAX=1 feature bits\n"
+    "                             <CCC>: Bitmask of bits to clear from ECX\n"
+    "                             <DDD>: Bitmask of bits to clear from EDX\n"
+    "  --disable-cpuid-features-ext <BBB>[,<CCC>[,<DDD>]]\n"
+    "                             Mask out CPUID EAX=7,ECX=0 feature bits\n"
+    "                             <BBB>: Bitmask of bits to clear from EBX\n"
+    "                             <CCC>: Bitmask of bits to clear from ECX\n"
+    "                             <DDD>: Bitmask of bits to clear from EDX\n"
     "  -h, --chaos                randomize scheduling decisions to try to \n"
     "                             reproduce bugs\n"
     "  -i, --ignore-signal=<SIG>  block <SIG> from being delivered to \n"
@@ -91,6 +100,9 @@ struct RecordFlags {
    * size.
    */
   size_t syscall_buffer_size;
+
+  /* CPUID features to disable */
+  DisableCPUIDFeatures disable_cpuid_features;
 
   int print_trace_dir;
 
@@ -158,6 +170,21 @@ static void parse_signal_name(ParsedOption& opt) {
   }
 }
 
+static vector<uint32_t> parse_feature_bits(ParsedOption& opt) {
+  vector<uint32_t> ret;
+  const char* p = opt.value.c_str();
+  while (*p) {
+    char* endptr;
+    unsigned long long v = strtoull(p, &endptr, 0);
+    if (v > UINT32_MAX || (*endptr && *endptr != ',')) {
+      return vector<uint32_t>();
+    }
+    ret.push_back(v);
+    p = *endptr == ',' ? endptr + 1 : endptr;
+  }
+  return ret;
+}
+
 static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
   if (parse_global_option(args)) {
     return true;
@@ -171,6 +198,8 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 4, "scarce-fds", NO_PARAMETER },
     { 5, "setuid-sudo", NO_PARAMETER },
     { 6, "bind-to-cpu", HAS_PARAMETER },
+    { 7, "disable-cpuid-features", HAS_PARAMETER },
+    { 8, "disable-cpuid-features-ext", HAS_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -241,6 +270,37 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 5:
       flags.setuid_sudo = true;
       break;
+    case 6:
+      if (!opt.verify_valid_int(0, INT32_MAX)) {
+        return false;
+      }
+      flags.bind_cpu = BindCPU(opt.int_value);
+      break;
+    case 7: {
+      vector<uint32_t> bits = parse_feature_bits(opt);
+      if (bits.empty() || bits.size() > 2) {
+        return false;
+      }
+      flags.disable_cpuid_features.features_ecx = bits[0];
+      if (bits.size() > 1) {
+        flags.disable_cpuid_features.features_edx = bits[1];
+      }
+      break;
+    }
+    case 8: {
+      vector<uint32_t> bits = parse_feature_bits(opt);
+      if (bits.empty() || bits.size() > 3) {
+        return false;
+      }
+      flags.disable_cpuid_features.extended_features_ebx = bits[0];
+      if (bits.size() > 1) {
+        flags.disable_cpuid_features.extended_features_ecx = bits[1];
+        if (bits.size() > 2) {
+          flags.disable_cpuid_features.extended_features_edx = bits[2];
+        }
+      }
+      break;
+    }
     case 's':
       flags.always_switch = true;
       break;
@@ -250,12 +310,6 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
         return false;
       }
       flags.continue_through_sig = opt.int_value;
-      break;
-    case 6:
-      if (!opt.verify_valid_int(0, INT32_MAX)) {
-        return false;
-      }
-      flags.bind_cpu = BindCPU(opt.int_value);
       break;
     case 'u':
       flags.bind_cpu = UNBOUND_CPU;
@@ -319,6 +373,7 @@ static void setup_session_from_flags(RecordSession& session,
   session.set_ignore_sig(flags.ignore_sig);
   session.set_continue_through_sig(flags.continue_through_sig);
   session.set_wait_for_all(flags.wait_for_all);
+  session.set_disable_cpuid_features(flags.disable_cpuid_features);
   if (flags.syscall_buffer_size > 0) {
     session.set_syscall_buffer_size(flags.syscall_buffer_size);
   }

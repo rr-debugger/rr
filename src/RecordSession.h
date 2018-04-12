@@ -17,6 +17,20 @@ namespace rr {
 
 class RecordTask;
 
+struct DisableCPUIDFeatures {
+  DisableCPUIDFeatures()
+    : features_ecx(0)
+    , features_edx(0)
+    , extended_features_ebx(0)
+    , extended_features_ecx(0)
+  {}
+  uint32_t features_ecx;
+  uint32_t features_edx;
+  uint32_t extended_features_ebx;
+  uint32_t extended_features_ecx;
+  uint32_t extended_features_edx;
+};
+
 /** Encapsulates additional session state related to recording. */
 class RecordSession : public Session {
 public:
@@ -32,6 +46,10 @@ public:
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
       BindCPU bind_cpu = BIND_CPU);
 
+  void set_disable_cpuid_features(const DisableCPUIDFeatures& features);
+  const DisableCPUIDFeatures& disable_cpuid_features() const {
+    return disable_cpuid_features_;
+  }
   bool use_syscall_buffer() const { return use_syscall_buffer_; }
   size_t syscall_buffer_size() const { return syscall_buffer_size_; }
   bool use_read_cloning() const { return use_read_cloning_; }
@@ -161,6 +179,7 @@ private:
   ThreadGroup::shr_ptr initial_thread_group;
   SeccompFilterRewriter seccomp_filter_rewriter_;
 
+  DisableCPUIDFeatures disable_cpuid_features_;
   int ignore_sig;
   int continue_through_sig;
   Switchable last_task_switchable;

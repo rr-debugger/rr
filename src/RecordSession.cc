@@ -1883,6 +1883,17 @@ RecordSession::RecordSession(const std::string& exe_path,
   on_create(t);
 }
 
+void RecordSession::set_disable_cpuid_features(
+    const DisableCPUIDFeatures& features) {
+  if (!has_cpuid_faulting() &&
+      (features.features_ecx || features.features_edx ||
+       features.extended_features_ebx || features.extended_features_ecx ||
+       features.extended_features_edx)) {
+    FATAL() << "CPUID faulting required to disable CPUID features";
+  }
+  disable_cpuid_features_ = features;
+}
+
 bool RecordSession::can_end() {
   if (wait_for_all_) {
     return task_map.empty();

@@ -124,13 +124,19 @@ static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
     auto eax = r.syscallno();
     auto ecx = r.cx();
     auto cpuid_data = cpuid(eax, ecx);
+    const DisableCPUIDFeatures& disable =
+      t->session().disable_cpuid_features();
     switch (eax) {
       case CPUID_GETFEATURES:
-        cpuid_data.ecx &= ~CPUID_RDRAND_FLAG;
+        cpuid_data.ecx &= ~(CPUID_RDRAND_FLAG | disable.features_ecx);
+        cpuid_data.edx &= ~disable.features_edx;
         break;
       case CPUID_GETEXTENDEDFEATURES:
         if (ecx == 0) {
-          cpuid_data.ebx &= ~(CPUID_RDSEED_FLAG | CPUID_RTM_FLAG);
+          cpuid_data.ebx &= ~(CPUID_RDSEED_FLAG | CPUID_RTM_FLAG
+              | disable.extended_features_ebx);
+          cpuid_data.ecx &= ~disable.extended_features_ecx;
+          cpuid_data.edx &= ~disable.extended_features_edx;
         }
         break;
       default:
