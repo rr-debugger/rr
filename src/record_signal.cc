@@ -90,18 +90,18 @@ static const uintptr_t CPUID_RDSEED_FLAG = 1 << 18;
  * from a disabled instruction and |t| was updated appropriately, false
  * otherwise.
  */
-static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
+static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
   ASSERT(t, si->si_signo == SIGSEGV);
 
-  auto disabled_insn = disabled_insn_at(t, t->ip());
-  switch (disabled_insn) {
-    case DisabledInsn::RDTSC:
-    case DisabledInsn::RDTSCP:
+  auto trapped_instruction = trapped_instruction_at(t, t->ip());
+  switch (trapped_instruction) {
+    case TrappedInstruction::RDTSC:
+    case TrappedInstruction::RDTSCP:
       if (t->tsc_mode == PR_TSC_SIGSEGV) {
         return false;
       }
       break;
-    case DisabledInsn::CPUID:
+    case TrappedInstruction::CPUID:
       if (t->cpuid_mode == 0) {
         return false;
       }
@@ -110,17 +110,17 @@ static bool try_handle_disabled_insn(RecordTask* t, siginfo_t* si) {
       return false;
   }
 
-  size_t len = disabled_insn_len(disabled_insn);
+  size_t len = trapped_instruction_len(trapped_instruction);
   ASSERT(t, len > 0);
 
   Registers r = t->regs();
-  if (disabled_insn == DisabledInsn::RDTSC ||
-      disabled_insn == DisabledInsn::RDTSCP) {
+  if (trapped_instruction == TrappedInstruction::RDTSC ||
+      trapped_instruction == TrappedInstruction::RDTSCP) {
     unsigned long long current_time = rdtsc();
     r.set_rdtsc_output(current_time);
 
     LOG(debug) << " trapped for rdtsc: returning " << current_time;
-  } else if (disabled_insn == DisabledInsn::CPUID) {
+  } else if (trapped_instruction == TrappedInstruction::CPUID) {
     auto eax = r.syscallno();
     auto ecx = r.cx();
     auto cpuid_data = cpuid(eax, ecx);
@@ -631,7 +631,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     // signal was generated for rr's purposes, we need to restore the signal
     // state ourselves.
     if (sig == SIGSEGV &&
-        (try_handle_disabled_insn(t, si) || try_grow_map(t, si))) {
+        (try_handle_trapped_instruction(t, si) || try_grow_map(t, si))) {
       if (signal_was_blocked || t->is_sig_ignored(sig)) {
         restore_signal_state(t, sig, signal_was_blocked);
       }

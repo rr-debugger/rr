@@ -839,11 +839,11 @@ TrapReasons Task::compute_trap_reasons() {
     // step over those instructions so we need to detect that here.
     reasons.singlestep = true;
   } else if (is_singlestep_resume(how_last_execution_resumed) &&
-             disabled_insn_at(this, address_of_last_execution_resume) ==
-                 DisabledInsn::CPUID &&
+             trapped_instruction_at(this, address_of_last_execution_resume) ==
+                 TrappedInstruction::CPUID &&
              ip() ==
                  address_of_last_execution_resume +
-                     disabled_insn_len(DisabledInsn::CPUID)) {
+                     trapped_instruction_len(TrappedInstruction::CPUID)) {
     // Likewise we emulate CPUID instructions and must forcibly detect that
     // here.
     reasons.singlestep = true;

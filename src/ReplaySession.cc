@@ -317,7 +317,7 @@ bool ReplaySession::handle_unrecorded_cpuid_fault(
     ReplayTask* t, const StepConstraints& constraints) {
   if (t->stop_sig() != SIGSEGV || !has_cpuid_faulting() ||
       trace_in.uses_cpuid_faulting() ||
-      disabled_insn_at(t, t->ip()) != DisabledInsn::CPUID) {
+      trapped_instruction_at(t, t->ip()) != TrappedInstruction::CPUID) {
     return false;
   }
   // OK, this is a case where we did not record using CPUID faulting but we are
@@ -330,7 +330,7 @@ bool ReplaySession::handle_unrecorded_cpuid_fault(
   ASSERT(t, rec) << "Can't find CPUID record for request AX=" << HEX(r.ax())
                  << " CX=" << HEX(r.cx());
   r.set_cpuid_output(rec->out.eax, rec->out.ebx, rec->out.ecx, rec->out.edx);
-  r.set_ip(r.ip() + disabled_insn_len(DisabledInsn::CPUID));
+  r.set_ip(r.ip() + trapped_instruction_len(TrappedInstruction::CPUID));
   t->set_regs(r);
   // Clear SIGSEGV status since we're handling it
   t->set_status(constraints.is_singlestep() ? WaitStatus::for_stop_sig(SIGTRAP)

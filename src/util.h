@@ -370,7 +370,7 @@ std::vector<std::string> current_env();
 
 int get_num_cpus();
 
-enum class DisabledInsn {
+enum class TrappedInstruction {
   NONE = 0,
   RDTSC = 1,
   RDTSCP = 2,
@@ -378,10 +378,10 @@ enum class DisabledInsn {
 };
 
 /* If |t->ip()| points at a disabled instruction, return the instruction */
-DisabledInsn disabled_insn_at(Task* t, remote_code_ptr ip);
+TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip);
 
-/* Return the length of the DisabledInsn */
-size_t disabled_insn_len(DisabledInsn insn);
+/* Return the length of the TrappedInstruction */
+size_t trapped_instruction_len(TrappedInstruction insn);
 
 /**
  * BIND_CPU means binding to a randomly chosen CPU.
