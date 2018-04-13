@@ -349,7 +349,8 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
                  << HEX(native_layout.supported_feature_bits)
                  << " ("
                  << xsave_feature_string(native_layout.supported_feature_bits)
-                 << ")";
+                 << "); Consider using `rr cpufeatures` and "
+                 << "`rr record --disable-cpuid-features-(ext)`";
       return false;
     }
   }
