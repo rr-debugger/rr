@@ -880,6 +880,7 @@ set(BASIC_TESTS
   stack_overflow_altstack
   stack_overflow_with_guard
   statfs
+  statx
   stdout_child
   stdout_cloexec
   stdout_dup
@@ -1036,7 +1037,6 @@ set(TESTS_WITH_PROGRAM
   signal_numbers
   sigprocmask_race
   stack_growth
-  statx
   step_thread
   string_instructions
   string_instructions_async_signals
