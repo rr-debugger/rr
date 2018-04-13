@@ -23,6 +23,7 @@ struct DisableCPUIDFeatures {
     , features_edx(0)
     , extended_features_ebx(0)
     , extended_features_ecx(0)
+    , extended_features_edx(0)
   {}
   uint32_t features_ecx;
   uint32_t features_edx;
