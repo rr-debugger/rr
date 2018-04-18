@@ -1475,7 +1475,7 @@ struct BaseArch : public wordsize,
   // statx_timestamp not yet widely available in system headers
   // RR_VERIFY_TYPE(statx_timestamp);
 
-  typedef struct statx {
+  typedef struct statx_struct {
     uint32_t stx_mask;
     uint32_t stx_blksize;
     uint64_t stx_attributes;
