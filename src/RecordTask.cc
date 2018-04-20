@@ -589,6 +589,9 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
     }
     int ret = fallible_ptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &sigset);
     if (ret < 0) {
+      if (errno == EIO) {
+        FATAL() << "PTRACE_SETSIGMASK not supported; rr requires Linux kernel >= 3.11";
+      }
       ASSERT(this, errno == EINVAL);
     } else {
       LOG(debug) << "Set signal mask to block all signals (bar "
