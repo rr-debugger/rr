@@ -6,7 +6,7 @@ expect_gdb('Breakpoint 1')
 send_gdb('c')
 expect_gdb('Breakpoint 1, main')
 
-send_gdb('call exit(0)')
+send_gdb('call (int)exit(0)')
 expect_gdb('while in a function called from GDB')
 
 restart_replay()
