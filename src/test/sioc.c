@@ -171,6 +171,12 @@ int main(void) {
   VERIFY_GUARD(req);
   atomic_printf("SIOCGIFINDEX(ret:%d): %s index is %d\n", ret, req->ifr_name,
                 req->ifr_ifindex);
+  if (ret < 0 && errno == EFAULT) {
+    /* Work around https://bugzilla.kernel.org/show_bug.cgi?id=199469 */
+    atomic_puts("Buggy kernel detected; aborting test");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(0 == ret);
   test_assert(req->ifr_ifindex != -1);
   index = req->ifr_ifindex;
