@@ -27,7 +27,8 @@ class ThreadDb;
 class ThreadGroup : public HasTaskSet {
 public:
   ThreadGroup(Session* session, ThreadGroup* parent, pid_t tgid,
-              pid_t real_tgid, uint32_t serial);
+              pid_t real_tgid, pid_t real_tgid_own_namespace,
+              uint32_t serial);
   ~ThreadGroup();
 
   typedef std::shared_ptr<ThreadGroup> shr_ptr;
@@ -100,6 +101,7 @@ public:
 
   const pid_t tgid;
   const pid_t real_tgid;
+  const pid_t real_tgid_own_namespace;
 
   WaitStatus exit_status;
 

@@ -1053,6 +1053,7 @@ set(TESTS_WITH_PROGRAM
   term_trace_reset
   term_trace_syscall
   thread_exit_signal
+  thread_open_race
   thread_stress
   threaded_syscall_spam
   threads

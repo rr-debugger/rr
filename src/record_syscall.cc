@@ -2755,7 +2755,6 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   RecordTask* new_task = static_cast<RecordTask*>(
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
                          params.tls, params.ctid, new_tid));
-  new_task->update_own_namespace_tid();
 
   // Restore modified registers in cloned task
   Registers new_r = new_task->regs();

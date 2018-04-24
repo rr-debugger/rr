@@ -307,6 +307,11 @@ public:
    * Hook called by `did_waitpid`.
    */
   virtual void did_wait() {}
+  /**
+   * Return the pid of the task in its own pid namespace.
+   * Only RecordTasks actually change pid namespaces.
+   */
+  virtual pid_t own_namespace_tid() { return tid; }
 
   /**
    * Assuming ip() is just past a breakpoint instruction, adjust

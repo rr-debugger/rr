@@ -10,9 +10,11 @@
 namespace rr {
 
 ThreadGroup::ThreadGroup(Session* session, ThreadGroup* parent, pid_t tgid,
-                         pid_t real_tgid, uint32_t serial)
+                         pid_t real_tgid, pid_t real_tgid_own_namespace,
+                         uint32_t serial)
     : tgid(tgid),
       real_tgid(real_tgid),
+      real_tgid_own_namespace(real_tgid_own_namespace),
       dumpable(true),
       execed(false),
       received_sigframe_SIGSEGV(false),

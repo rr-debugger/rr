@@ -182,8 +182,10 @@ public:
    */
   std::shared_ptr<AddressSpace> clone(Task* t,
                                       std::shared_ptr<AddressSpace> vm);
-
-  std::shared_ptr<ThreadGroup> create_tg(Task* t);
+  /**
+   * Create the initial thread group.
+   */
+  std::shared_ptr<ThreadGroup> create_initial_tg(Task* t);
   /**
    * Return a copy of |tg| with the same mappings.
    */

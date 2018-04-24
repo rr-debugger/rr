@@ -139,7 +139,7 @@ public:
    * dead with a PTRACE_EVENT_EXEC. See ptrace man page under "execve(2) under
    * ptrace" for the horrid details.
    *
-   * The task in the task-group that triggered the successful execve has changed
+   * The task in the thread-group that triggered the successful execve has changed
    * its tid to |rec_tid|. We mirror that, and emit TraceTaskEvents to make it
    * look like a new task was spawned and the old task exited.
    */

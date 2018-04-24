@@ -1651,12 +1651,6 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   Task* t =
       new_task_session->new_task(new_tid, new_rec_tid, new_serial, arch());
 
-  if (CLONE_SHARE_THREAD_GROUP & flags) {
-    t->tg = tg;
-  } else {
-    t->tg = new_task_session->clone(t, tg);
-  }
-  t->tg->insert_task(t);
   if (CLONE_SHARE_VM & flags) {
     t->as = as;
     if (!stack.is_null()) {
@@ -1701,6 +1695,12 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   t->wait();
 
   t->post_wait_clone(this, flags);
+  if (CLONE_SHARE_THREAD_GROUP & flags) {
+    t->tg = tg;
+  } else {
+    t->tg = new_task_session->clone(t, tg);
+  }
+  t->tg->insert_task(t);
 
   t->open_mem_fd_if_needed();
   t->thread_areas_ = thread_areas_;
@@ -2650,7 +2650,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
   Task* t = session.new_task(tid, rec_tid, session.next_task_serial(),
                              NativeArch::arch());
-  auto tg = session.create_tg(t);
+  auto tg = session.create_initial_tg(t);
   t->tg.swap(tg);
   auto as = session.create_vm(t);
   t->as.swap(as);

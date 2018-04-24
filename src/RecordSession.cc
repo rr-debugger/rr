@@ -1093,12 +1093,13 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
     FATAL() << "Can't find old task for execve";
   }
   ASSERT(t, rec_tid == t->tgid());
+  pid_t own_namespace_tid = t->thread_group()->real_tgid_own_namespace;
 
   LOG(debug) << "Changing task tid from " << t->tid << " to " << rec_tid;
 
   // Pretend the old task cloned a new task with the right tid, and then exited
   trace_writer().write_task_event(TraceTaskEvent::for_clone(
-      rec_tid, t->tid, t->own_namespace_rec_tid,
+      rec_tid, t->tid, own_namespace_tid,
       CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD |
           CLONE_SYSVSEM));
   trace_writer().write_task_event(
@@ -1107,13 +1108,12 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
   // Account for tid change
   task_map.erase(t->tid);
   task_map.insert(make_pair(rec_tid, t));
-  // Update the serial as if this task was really created by cloning the old
-  // task.
-  t->set_tid_and_update_serial(rec_tid);
-
   // t probably would have been marked for unstable-exit when the old
   // thread-group leader died.
   t->unstable = false;
+  // Update the serial as if this task was really created by cloning the old
+  // task.
+  t->set_tid_and_update_serial(rec_tid, own_namespace_tid);
 
   return t;
 }

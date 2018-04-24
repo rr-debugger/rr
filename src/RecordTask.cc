@@ -202,6 +202,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
     auto sh = Sighandlers::create();
     sh->init_from_current_process();
     sighandlers.swap(sh);
+    own_namespace_rec_tid = _tid;
   }
 }
 
@@ -335,6 +336,8 @@ void RecordTask::post_wait_clone(Task* cloned_from, int flags) {
     auto sh = rt->sighandlers->clone();
     sighandlers.swap(sh);
   }
+
+  update_own_namespace_tid();
 }
 
 static string exe_path(RecordTask* t) {
@@ -1787,10 +1790,12 @@ void RecordTask::kill_if_alive() {
 
 pid_t RecordTask::get_parent_pid() { return get_ppid(tid); }
 
-void RecordTask::set_tid_and_update_serial(pid_t tid) {
+void RecordTask::set_tid_and_update_serial(pid_t tid,
+                                           pid_t own_namespace_tid) {
   hpc.set_tid(tid);
   this->tid = rec_tid = tid;
   serial = session().next_task_serial();
+  own_namespace_rec_tid = own_namespace_tid;
 }
 
 template <typename Arch>
