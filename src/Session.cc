@@ -38,7 +38,9 @@ struct Session::CloneCompletion {
 };
 
 Session::Session()
-    : next_task_serial_(1),
+    : tracee_socket(shared_ptr<ScopedFd>(new ScopedFd())),
+      tracee_socket_fd_number(0),
+      next_task_serial_(1),
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       done_initial_exec_(false),
       visible_execution_(true),
@@ -62,6 +64,8 @@ Session::Session(const Session& other) {
   done_initial_exec_ = other.done_initial_exec_;
   visible_execution_ = other.visible_execution_;
   has_cpuid_faulting_ = other.has_cpuid_faulting_;
+  tracee_socket = other.tracee_socket;
+  tracee_socket_fd_number = other.tracee_socket_fd_number;
 }
 
 void Session::on_create(ThreadGroup* tg) { thread_group_map[tg->tguid()] = tg; }

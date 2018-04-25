@@ -193,6 +193,8 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
              << " to DiversionSession...";
 
   DiversionSession::shr_ptr session(new DiversionSession());
+  session->tracee_socket = tracee_socket;
+  session->tracee_socket_fd_number = tracee_socket_fd_number;
   LOG(debug) << "  deepfork session is " << session.get();
 
   copy_state_to(*session, emufs(), session->emufs());
@@ -218,7 +220,9 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
 
   ScopedFd error_fd = session->create_spawn_task_error_pipe();
   ReplayTask* t = static_cast<ReplayTask*>(
-      Task::spawn(*session, error_fd, session->trace_in, exe_path, argv, env,
+      Task::spawn(*session, error_fd, &session->tracee_socket_fd(),
+                  &session->tracee_socket_fd_number,
+                  session->trace_in, exe_path, argv, env,
                   session->trace_reader().peek_frame().tid()));
   session->on_create(t);
 

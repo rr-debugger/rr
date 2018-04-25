@@ -5,6 +5,8 @@
 #include <elf.h>
 #include <limits.h>
 #include <linux/futex.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 #include <algorithm>
 #include <sstream>
@@ -1877,7 +1879,9 @@ RecordSession::RecordSession(const std::string& exe_path,
       wait_for_all_(false) {
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
-      Task::spawn(*this, error_fd, trace_out, exe_path, argv, envp));
+      Task::spawn(*this, error_fd, &tracee_socket_fd(), 
+                  &tracee_socket_fd_number, trace_out,
+                  exe_path, argv, envp));
 
   initial_thread_group = t->thread_group();
   on_create(t);
