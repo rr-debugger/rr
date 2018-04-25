@@ -197,19 +197,22 @@ static void notify_checksum_error(ReplayTask* t, FrameTime global_time,
 
   const Event& ev = t->current_trace_frame().event();
   ASSERT(t, checksum == rec_checksum)
-      << "Divergence in contents of memory segment after '" << ev << "':\n"
-                                                                     "\n"
+      << "Divergence in contents of memory segment after '" << ev
+      << "':\n"
+         "\n"
       << raw_map_line << "    (recorded checksum:" << HEX(rec_checksum)
-      << "; replaying checksum:" << HEX(checksum) << ")\n"
-                                                     "\n"
+      << "; replaying checksum:" << HEX(checksum)
+      << ")\n"
+         "\n"
       << "Dumped current memory contents to " << cur_dump
       << ". If you've created a memory dump for\n"
       << "the '" << ev << "' event (line " << t->trace_time()
       << ") during recording by using, for example with\n"
       << "the args\n"
          "\n"
-      << "$ rr --dump-at=" << t->trace_time() << " record ...\n"
-                                                 "\n"
+      << "$ rr --dump-at=" << t->trace_time()
+      << " record ...\n"
+         "\n"
       << "then you can use the following to determine which memory cells "
          "differ:\n"
          "\n"
@@ -404,17 +407,17 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 
     if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
       /* The syscallbuf consists of a region that's written
-      * deterministically wrt the trace events, and a
-      * region that's written nondeterministically in the
-      * same way as trace scratch buffers.  The
-      * deterministic region comprises committed syscallbuf
-      * records, and possibly the one pending record
-      * metadata.  The nondeterministic region starts at
-      * the "extra data" for the possibly one pending
-      * record.
-      *
-      * So here, we set things up so that we only checksum
-      * the deterministic region. */
+       * deterministically wrt the trace events, and a
+       * region that's written nondeterministically in the
+       * same way as trace scratch buffers.  The
+       * deterministic region comprises committed syscallbuf
+       * records, and possibly the one pending record
+       * metadata.  The nondeterministic region starts at
+       * the "extra data" for the possibly one pending
+       * record.
+       *
+       * So here, we set things up so that we only checksum
+       * the deterministic region. */
       auto child_hdr = m.map.start().cast<struct syscallbuf_hdr>();
       auto hdr = t->read_mem(child_hdr);
       mem.resize(sizeof(hdr) + hdr.num_rec_bytes +
@@ -1124,18 +1127,10 @@ bool copy_file(int dest_fd, int src_fd) {
   return true;
 }
 
-void* xmalloc(size_t size) {
-  void* mem_ptr = malloc(size);
-  if (!mem_ptr) {
-    notifying_abort();
-  }
-  return mem_ptr;
-}
-
 bool has_effective_caps(uint64_t caps) {
-  struct NativeArch::cap_header header = {.version =
-                                              _LINUX_CAPABILITY_VERSION_3,
-                                          .pid = 0 };
+  struct NativeArch::cap_header header = { .version =
+                                               _LINUX_CAPABILITY_VERSION_3,
+                                           .pid = 0 };
   struct NativeArch::cap_data data[_LINUX_CAPABILITY_U32S_3];
   if (syscall(NativeArch::capget, &header, data) != 0) {
     FATAL() << "FAILED to read capabilities";

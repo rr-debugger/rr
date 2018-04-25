@@ -1035,10 +1035,10 @@ static string to_string(const vector<uint8_t>& bytes, size_t max_len) {
 }
 
 bool GdbConnection::process_packet() {
-  parser_assert(INTERRUPT_CHAR == inbuf[0] ||
-                ('$' == inbuf[0] &&
-                 (uint8_t*)memchr(inbuf.data(), '#', inbuf.size()) ==
-                     inbuf.data() + packetend));
+  parser_assert(
+      INTERRUPT_CHAR == inbuf[0] ||
+      ('$' == inbuf[0] && (uint8_t*)memchr(inbuf.data(), '#', inbuf.size()) ==
+                              inbuf.data() + packetend));
 
   if (INTERRUPT_CHAR == inbuf[0]) {
     LOG(debug) << "gdb requests interrupt";
@@ -1654,7 +1654,7 @@ void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
         1 /*m char*/ +
         threads.size() * (1 /*p*/ + 2 * sizeof(threads[0]) + 1 /*,*/) +
         1 /*\0*/;
-    char* str = (char*)xmalloc(maxlen);
+    char* str = new char[maxlen];
     int offset = 0;
 
     str[offset++] = 'm';
@@ -1670,7 +1670,7 @@ void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
     str[offset - 1] = '\0';
 
     write_packet(str);
-    free(str);
+    delete[] str;
   }
 
   consume_request();
