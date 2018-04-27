@@ -34,11 +34,13 @@ int CPUFeaturesCommand::run(vector<string>& args) {
 
   CPUIDData features = cpuid(CPUID_GETFEATURES, 0);
   CPUIDData extended_features = cpuid(CPUID_GETEXTENDEDFEATURES, 0);
+  CPUIDData features_xsave = cpuid(CPUID_GETXSAVE, 1);
   fprintf(stdout, "--disable-cpuid-features 0x%x,0x%x "
-          "--disable-cpuid-features-ext 0x%x,0x%x,0x%x\n",
+          "--disable-cpuid-features-ext 0x%x,0x%x,0x%x "
+          "--disable-cpuid-features-xsave 0x%x\n",
           ~features.ecx, ~features.edx,
           ~extended_features.ebx, ~extended_features.ecx,
-          ~extended_features.edx);
+          ~extended_features.edx, ~features_xsave.eax);
   return 0;
 }
 
