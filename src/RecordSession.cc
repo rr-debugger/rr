@@ -1889,10 +1889,7 @@ RecordSession::RecordSession(const std::string& exe_path,
 
 void RecordSession::set_disable_cpuid_features(
     const DisableCPUIDFeatures& features) {
-  if (!has_cpuid_faulting() &&
-      (features.features_ecx || features.features_edx ||
-       features.extended_features_ebx || features.extended_features_ecx ||
-       features.extended_features_edx)) {
+  if (!has_cpuid_faulting() && features.any_features_disabled()) {
     FATAL() << "CPUID faulting required to disable CPUID features";
   }
   disable_cpuid_features_ = features;

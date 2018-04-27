@@ -81,9 +81,10 @@ static void restore_signal_state(RecordTask* t, int sig,
   }
 }
 
-static const uintptr_t CPUID_RDRAND_FLAG = 1 << 30;
-static const uintptr_t CPUID_RTM_FLAG = 1 << 11;
-static const uintptr_t CPUID_RDSEED_FLAG = 1 << 18;
+static const uint32_t CPUID_RDRAND_FLAG = 1 << 30;
+static const uint32_t CPUID_RTM_FLAG = 1 << 11;
+static const uint32_t CPUID_RDSEED_FLAG = 1 << 18;
+static const uint32_t CPUID_XSAVEOPT_FLAG = 1 << 0;
 
 /**
  * Return true if |t| was stopped because of a SIGSEGV resulting
@@ -137,6 +138,15 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
               | disable.extended_features_ebx);
           cpuid_data.ecx &= ~disable.extended_features_ecx;
           cpuid_data.edx &= ~disable.extended_features_edx;
+        }
+        break;
+      case CPUID_GETXSAVE:
+        if (ecx == 1) {
+          // Always disable XSAVEOPT because it's nondeterministic,
+          // possible depending on context switching behavior. Intel
+          // recommends not using it from user space.
+          cpuid_data.eax &= ~(CPUID_XSAVEOPT_FLAG |
+              disable.xsave_features_eax);
         }
         break;
       default:

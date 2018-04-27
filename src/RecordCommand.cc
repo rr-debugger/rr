@@ -40,6 +40,9 @@ RecordCommand RecordCommand::singleton(
     "                             <BBB>: Bitmask of bits to clear from EBX\n"
     "                             <CCC>: Bitmask of bits to clear from ECX\n"
     "                             <DDD>: Bitmask of bits to clear from EDX\n"
+    "  --disable-cpuid-features-xsave <AAA>\n"
+    "                             Mask out CPUID EAX=0xD,ECX=1 feature bits\n"
+    "                             <AAA>: Bitmask of bits to clear from EAX\n"
     "  -h, --chaos                randomize scheduling decisions to try to \n"
     "                             reproduce bugs\n"
     "  -i, --ignore-signal=<SIG>  block <SIG> from being delivered to \n"
@@ -200,6 +203,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 6, "bind-to-cpu", HAS_PARAMETER },
     { 7, "disable-cpuid-features", HAS_PARAMETER },
     { 8, "disable-cpuid-features-ext", HAS_PARAMETER },
+    { 9, "disable-cpuid-features-xsave", HAS_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -299,6 +303,14 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
           flags.disable_cpuid_features.extended_features_edx = bits[2];
         }
       }
+      break;
+    }
+    case 9: {
+      vector<uint32_t> bits = parse_feature_bits(opt);
+      if (bits.size() != 1) {
+        return false;
+      }
+      flags.disable_cpuid_features.xsave_features_eax = bits[0];
       break;
     }
     case 's':

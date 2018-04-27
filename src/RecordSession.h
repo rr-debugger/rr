@@ -24,12 +24,21 @@ struct DisableCPUIDFeatures {
     , extended_features_ebx(0)
     , extended_features_ecx(0)
     , extended_features_edx(0)
+    , xsave_features_eax(0)
   {}
+  bool any_features_disabled() const {
+    return features_ecx || features_edx || extended_features_ebx
+      || extended_features_ecx || extended_features_edx || xsave_features_eax;
+  }
+  /* in: EAX=0x01 */
   uint32_t features_ecx;
   uint32_t features_edx;
+  /* in: EAX=0x07 ECX=0 */
   uint32_t extended_features_ebx;
   uint32_t extended_features_ecx;
   uint32_t extended_features_edx;
+  /* in: EAX=0x0D ECX=1 */
+  uint32_t xsave_features_eax;
 };
 
 /** Encapsulates additional session state related to recording. */
