@@ -51,6 +51,9 @@ struct Header {
   # A list of captured CPUID values.
   # A series of 24-byte records. See CPUIDRecord in util.h.
   cpuidRecords @3 :Data;
+  # Captured XCR0 value defining XSAVE features enabled by OS.
+  # 0 means "unknown"; default to everything supporteed by CPUID EAX=0xd ECX=0
+  xcr0 @5 :UInt64;
   # The syscallbuf protocol version. See SYSCALLBUF_PROTOCOL_VERSION.
   syscallbufProtocolVersion @4 :UInt16;
 }

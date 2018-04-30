@@ -172,6 +172,11 @@ struct CPUIDData {
 CPUIDData cpuid(uint32_t code, uint32_t subrequest);
 
 /**
+ * Fetch current XCR0 value using XGETBV instruction.
+ */
+uint64_t xcr0();
+
+/**
  * Return all CPUID values supported by this CPU.
  */
 struct CPUIDRecord {

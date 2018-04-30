@@ -699,6 +699,23 @@ void resize_shmem_segment(ScopedFd& fd, uint64_t num_bytes) {
   }
 }
 
+static bool xsave_enabled() {
+  CPUIDData features = cpuid(CPUID_GETFEATURES, 0);
+  return (features.ecx & OSXSAVE_FEATURE_FLAG) != 0;
+}
+
+uint64_t xcr0() {
+  if (!xsave_enabled()) {
+    // Assume x87/SSE enabled.
+    return 3;
+  }
+  uint32_t eax, edx;
+  asm volatile("xgetbv"
+               : "=a"(eax), "=d"(edx)
+               : "c"(0));
+  return (uint64_t(edx) << 32) | eax;
+}
+
 CPUIDData cpuid(uint32_t code, uint32_t subrequest) {
   CPUIDData result;
   asm volatile("cpuid"

@@ -1127,6 +1127,7 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
   header.setCpuidRecords(
       Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
                    cpuid_records.size() * sizeof(CPUIDRecord)));
+  header.setXcr0(xcr0());
   header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
