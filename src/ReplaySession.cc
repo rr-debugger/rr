@@ -93,28 +93,50 @@ static bool tracee_xsave_enabled(const TraceReader& trace_in) {
 
 static void check_xsave_compatibility(const TraceReader& trace_in) {
   if (!tracee_xsave_enabled(trace_in)) {
+    // Tracee couldn't use XSAVE so everything should be fine.
+    // If it didn't detect absence of XSAVE and actually executed an XSAVE
+    // and got a fault then replay will probably diverge :-(
     return;
   }
   if (!xsave_enabled()) {
-    CLEAN_FATAL()
-        << "Tracee trace had XSAVE enabled, but XSAVE is not enabled now";
+    // Replaying on a super old CPU that doesn't even support XSAVE!
+    if (!Flags::get().suppress_environment_warnings) {
+      fprintf(stderr, "rr: Tracees had XSAVE but XSAVE is not available "
+              "now; Replay will probably fail because glibc dynamic loader "
+              "uses XSAVE");
+    }
+    return;
   }
 
   uint64_t tracee_xcr0 = trace_in.xcr0();
   uint64_t our_xcr0 = xcr0();
-  if (tracee_xcr0 != our_xcr0) {
-    // Tracee may have used XSAVE instructions which write different components
-    // to XSAVE instructions executed on our CPU. This will cause divergence.
-    CLEAN_FATAL()
-        << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 value "
-        << HEX(our_xcr0) << "; XSAVE instructions will write different "
-        << "components, so replay not possible";
-  }
-
   const CPUIDRecord* record =
     find_cpuid_record(trace_in.cpuid_records(), CPUID_GETXSAVE, 1);
-  bool check_alignment = record && (record->out.eax & XSAVEC_FEATURE_FLAG);
+  bool tracee_xsavec = record && (record->out.eax & XSAVEC_FEATURE_FLAG);
+  CPUIDData data = cpuid(CPUID_GETXSAVE, 1);
+  bool our_xsavec = (data.eax & XSAVEC_FEATURE_FLAG) != 0;
+  if (tracee_xsavec && !our_xsavec &&
+      !Flags::get().suppress_environment_warnings) {
+    fprintf(stderr, "rr: Tracees had XSAVEC but XSAVEC is not available "
+            "now; Replay will probably fail because glibc dynamic loader "
+            "uses XSAVEC");
+  }
 
+  if (tracee_xcr0 != our_xcr0) {
+    if (tracee_xsavec) {
+      LOG(warn) << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 "
+          << "value " << HEX(our_xcr0) << "; Replay will fail if the tracee "
+          << "used plain XSAVE";
+    } else if (!Flags::get().suppress_environment_warnings) {
+      // Tracee may have used XSAVE instructions which write different components
+      // to XSAVE instructions executed on our CPU. This will cause divergence.
+      cerr << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 "
+          << "value " << HEX(our_xcr0) << "; Replay will probably fail "
+          << "because glibc dynamic loader uses XSAVE";
+    }
+  }
+
+  bool check_alignment = tracee_xsavec && our_xsavec;
   // Check that sizes and offsets of supported XSAVE areas area all identical.
   // An Intel employee promised this on a mailing list...
   // https://lists.xen.org/archives/html/xen-devel/2013-09/msg00484.html
