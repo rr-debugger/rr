@@ -85,6 +85,12 @@ ReplaySession::MemoryRanges ReplaySession::always_free_address_space(
   return result;
 }
 
+static bool tracee_xsave_enabled(const TraceReader& trace_in) {
+  const CPUIDRecord* record =
+    find_cpuid_record(trace_in.cpuid_records(), CPUID_GETFEATURES, 0);
+  return (record->out.ecx & OSXSAVE_FEATURE_FLAG) != 0;
+}
+
 ReplaySession::ReplaySession(const std::string& dir)
     : emu_fs(EmuFs::create()),
       trace_in(dir),
@@ -113,6 +119,17 @@ ReplaySession::ReplaySession(const std::string& dir)
     // that. This avoids problems if the tracees were bound to a CPU number
     // that doesn't exist on this machine.
     trace_in.set_bound_cpu(choose_cpu(BIND_CPU));
+  }
+
+  uint64_t tracee_xcr0 = trace_in.xcr0();
+  uint64_t our_xcr0 = xcr0();
+  if (tracee_xcr0 != our_xcr0 && tracee_xsave_enabled(trace_in)) {
+    // Tracee may have used XSAVE instructions which write different components
+    // to XSAVE instructions executed on our CPU. This will cause divergence.
+    CLEAN_FATAL()
+        << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 value "
+        << HEX(our_xcr0) << "; XSAVE instructions will write different "
+        << "components, so replay not possible";
   }
 }
 

@@ -1286,6 +1286,7 @@ TraceReader::TraceReader(const string& dir)
   cpuid_records_.resize(len);
   memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
          len * sizeof(CPUIDRecord));
+  xcr0_ = header.getXcr0();
 
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.
@@ -1308,6 +1309,7 @@ TraceReader::TraceReader(const TraceReader& other)
   trace_uses_cpuid_faulting = other.trace_uses_cpuid_faulting;
   cpuid_records_ = other.cpuid_records_;
   raw_recs = other.raw_recs;
+  xcr0_ = other.xcr0_;
 }
 
 TraceReader::~TraceReader() {}
@@ -1326,6 +1328,23 @@ uint64_t TraceReader::compressed_bytes() const {
     total += reader(s).compressed_bytes();
   }
   return total;
+}
+
+uint64_t TraceReader::xcr0() const {
+  if (xcr0_) {
+    return xcr0_;
+  }
+  // All valid XCR0 values have bit 0 (x87) == 1. So this is the default
+  // value for traces that didn't store XCR0. Assume that the OS enabled
+  // all CPU-supported XCR0 bits.
+  const CPUIDRecord* record =
+    find_cpuid_record(cpuid_records_, CPUID_GETXSAVE, 0);
+  if (!record) {
+    // No XSAVE support at all on the recording CPU??? Assume just
+    // x87/SSE enabled.
+    return 3;
+  }
+  return (uint64_t(record->out.edx) << 32) | record->out.eax;
 }
 
 } // namespace rr
