@@ -81,11 +81,6 @@ static void restore_signal_state(RecordTask* t, int sig,
   }
 }
 
-static const uint32_t CPUID_RDRAND_FLAG = 1 << 30;
-static const uint32_t CPUID_RTM_FLAG = 1 << 11;
-static const uint32_t CPUID_RDSEED_FLAG = 1 << 18;
-static const uint32_t CPUID_XSAVEOPT_FLAG = 1 << 0;
-
 /**
  * Return true if |t| was stopped because of a SIGSEGV resulting
  * from a disabled instruction and |t| was updated appropriately, false
@@ -125,33 +120,8 @@ static bool try_handle_trapped_instruction(RecordTask* t, siginfo_t* si) {
     auto eax = r.syscallno();
     auto ecx = r.cx();
     auto cpuid_data = cpuid(eax, ecx);
-    const DisableCPUIDFeatures& disable =
-      t->session().disable_cpuid_features();
-    switch (eax) {
-      case CPUID_GETFEATURES:
-        cpuid_data.ecx &= ~(CPUID_RDRAND_FLAG | disable.features_ecx);
-        cpuid_data.edx &= ~disable.features_edx;
-        break;
-      case CPUID_GETEXTENDEDFEATURES:
-        if (ecx == 0) {
-          cpuid_data.ebx &= ~(CPUID_RDSEED_FLAG | CPUID_RTM_FLAG
-              | disable.extended_features_ebx);
-          cpuid_data.ecx &= ~disable.extended_features_ecx;
-          cpuid_data.edx &= ~disable.extended_features_edx;
-        }
-        break;
-      case CPUID_GETXSAVE:
-        if (ecx == 1) {
-          // Always disable XSAVEOPT because it's nondeterministic,
-          // possible depending on context switching behavior. Intel
-          // recommends not using it from user space.
-          cpuid_data.eax &= ~(CPUID_XSAVEOPT_FLAG |
-              disable.xsave_features_eax);
-        }
-        break;
-      default:
-        break;
-    }
+    t->session().disable_cpuid_features()
+        .amend_cpuid_data(eax, ecx, &cpuid_data);
     r.set_cpuid_output(cpuid_data.eax, cpuid_data.ebx, cpuid_data.ecx,
                        cpuid_data.edx);
     LOG(debug) << " trapped for cpuid: " << HEX(eax) << ":" << HEX(ecx);

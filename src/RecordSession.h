@@ -30,6 +30,11 @@ struct DisableCPUIDFeatures {
     return features_ecx || features_edx || extended_features_ebx
       || extended_features_ecx || extended_features_edx || xsave_features_eax;
   }
+  /**
+   * Includes disabling TSX and other rr-incompatible features */
+  void amend_cpuid_data(uint32_t eax_in, uint32_t ecx_in,
+                        CPUIDData* cpuid_data) const;
+
   /* in: EAX=0x01 */
   uint32_t features_ecx;
   uint32_t features_edx;
@@ -52,11 +57,11 @@ public:
   enum SyscallBuffering { ENABLE_SYSCALL_BUF, DISABLE_SYSCALL_BUF };
   static shr_ptr create(
       const std::vector<std::string>& argv,
-      const std::vector<std::string>& extra_env = std::vector<std::string>(),
+      const std::vector<std::string>& extra_env,
+      const DisableCPUIDFeatures& features,
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
       BindCPU bind_cpu = BIND_CPU);
 
-  void set_disable_cpuid_features(const DisableCPUIDFeatures& features);
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
   }
@@ -158,6 +163,7 @@ private:
   RecordSession(const std::string& exe_path,
                 const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp,
+                const DisableCPUIDFeatures& features,
                 SyscallBuffering syscallbuf, BindCPU bind_cpu);
 
   virtual void on_create(Task* t) override;

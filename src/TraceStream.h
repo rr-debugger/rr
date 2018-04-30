@@ -22,6 +22,7 @@
 namespace rr {
 
 struct CPUIDRecord;
+struct DisableCPUIDFeatures;
 class KernelMapping;
 class RecordTask;
 
@@ -197,7 +198,8 @@ public:
    * The trace name is determined by |file_name| and _RR_TRACE_DIR (if set).
    */
   TraceWriter(const std::string& file_name, int bind_to_cpu,
-              bool has_cpuid_faulting);
+              bool has_cpuid_faulting,
+              const DisableCPUIDFeatures& disable_cpuid_features);
 
   /**
    * We got far enough into recording that we should set this as the latest

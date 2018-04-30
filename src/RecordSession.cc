@@ -1774,6 +1774,7 @@ static string lookup_by_path(const string& name) {
 
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const vector<string>& argv, const vector<string>& extra_env,
+    const DisableCPUIDFeatures& disable_cpuid_features,
     SyscallBuffering syscallbuf, BindCPU bind_cpu) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
@@ -1858,16 +1859,20 @@ static string lookup_by_path(const string& name) {
   env.push_back("OPENSSL_ia32cap=~4611686018427387904:~0");
 
   shr_ptr session(
-      new RecordSession(full_path, argv, env, syscallbuf, bind_cpu));
+      new RecordSession(full_path, argv, env, disable_cpuid_features,
+                        syscallbuf, bind_cpu));
   return session;
 }
 
 RecordSession::RecordSession(const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
+                             const DisableCPUIDFeatures& disable_cpuid_features,
                              SyscallBuffering syscallbuf, BindCPU bind_cpu)
-    : trace_out(argv[0], choose_cpu(bind_cpu), has_cpuid_faulting_),
+    : trace_out(argv[0], choose_cpu(bind_cpu), has_cpuid_faulting_,
+                disable_cpuid_features),
       scheduler_(*this),
+      disable_cpuid_features_(disable_cpuid_features),
       ignore_sig(0),
       continue_through_sig(0),
       last_task_switchable(PREVENT_SWITCH),
@@ -1877,6 +1882,11 @@ RecordSession::RecordSession(const std::string& exe_path,
       use_read_cloning_(true),
       enable_chaos_(false),
       wait_for_all_(false) {
+  if (!has_cpuid_faulting() &&
+      disable_cpuid_features.any_features_disabled()) {
+    FATAL() << "CPUID faulting required to disable CPUID features";
+  }
+
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
       Task::spawn(*this, error_fd, &tracee_socket_fd(), 
@@ -1885,14 +1895,6 @@ RecordSession::RecordSession(const std::string& exe_path,
 
   initial_thread_group = t->thread_group();
   on_create(t);
-}
-
-void RecordSession::set_disable_cpuid_features(
-    const DisableCPUIDFeatures& features) {
-  if (!has_cpuid_faulting() && features.any_features_disabled()) {
-    FATAL() << "CPUID faulting required to disable CPUID features";
-  }
-  disable_cpuid_features_ = features;
 }
 
 bool RecordSession::can_end() {
@@ -2056,6 +2058,39 @@ RecordTask* RecordSession::find_task(pid_t rec_tid) const {
 
 RecordTask* RecordSession::find_task(const TaskUid& tuid) const {
   return static_cast<RecordTask*>(Session::find_task(tuid));
+}
+
+static const uint32_t CPUID_RDRAND_FLAG = 1 << 30;
+static const uint32_t CPUID_RTM_FLAG = 1 << 11;
+static const uint32_t CPUID_RDSEED_FLAG = 1 << 18;
+static const uint32_t CPUID_XSAVEOPT_FLAG = 1 << 0;
+
+void DisableCPUIDFeatures::amend_cpuid_data(uint32_t eax_in, uint32_t ecx_in,
+                                            CPUIDData* cpuid_data) const {
+  switch (eax_in) {
+    case CPUID_GETFEATURES:
+      cpuid_data->ecx &= ~(CPUID_RDRAND_FLAG | features_ecx);
+      cpuid_data->edx &= ~features_edx;
+      break;
+    case CPUID_GETEXTENDEDFEATURES:
+      if (ecx_in == 0) {
+        cpuid_data->ebx &= ~(CPUID_RDSEED_FLAG | CPUID_RTM_FLAG
+            | extended_features_ebx);
+        cpuid_data->ecx &= ~extended_features_ecx;
+        cpuid_data->edx &= ~extended_features_edx;
+      }
+      break;
+    case CPUID_GETXSAVE:
+      if (ecx_in == 1) {
+        // Always disable XSAVEOPT because it's nondeterministic,
+        // possibly depending on context switching behavior. Intel
+        // recommends not using it from user space.
+        cpuid_data->eax &= ~(CPUID_XSAVEOPT_FLAG | xsave_features_eax);
+      }
+      break;
+    default:
+      break;
+  }
 }
 
 } // namespace rr

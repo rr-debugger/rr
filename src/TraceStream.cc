@@ -1092,7 +1092,8 @@ static string make_trace_dir(const string& exe_path) {
 #define STR(x) STR_HELPER(x)
 
 TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
-                         bool has_cpuid_faulting)
+                         bool has_cpuid_faulting,
+                         const DisableCPUIDFeatures& disable_cpuid_features)
     : TraceStream(make_trace_dir(file_name),
                   // Somewhat arbitrarily start the
                   // global time from 1.
@@ -1119,6 +1120,9 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
   // We are now bound to the selected CPU (if any), so collect CPUID records
   // (which depend on the bound CPU number).
   vector<CPUIDRecord> cpuid_records = all_cpuid_records();
+  for (auto& r : cpuid_records) {
+    disable_cpuid_features.amend_cpuid_data(r.eax_in, r.ecx_in, &r.out);
+  }
 
   MallocMessageBuilder header_msg;
   trace::Header::Builder header = header_msg.initRoot<trace::Header>();

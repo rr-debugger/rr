@@ -385,7 +385,6 @@ static void setup_session_from_flags(RecordSession& session,
   session.set_ignore_sig(flags.ignore_sig);
   session.set_continue_through_sig(flags.continue_through_sig);
   session.set_wait_for_all(flags.wait_for_all);
-  session.set_disable_cpuid_features(flags.disable_cpuid_features);
   if (flags.syscall_buffer_size > 0) {
     session.set_syscall_buffer_size(flags.syscall_buffer_size);
   }
@@ -411,7 +410,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
   auto session = RecordSession::create(
-      args, flags.extra_env, flags.use_syscall_buffer, flags.bind_cpu);
+      args, flags.extra_env, flags.disable_cpuid_features,
+      flags.use_syscall_buffer, flags.bind_cpu);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();
