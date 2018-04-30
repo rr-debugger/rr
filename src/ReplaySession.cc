@@ -103,7 +103,7 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
     if (!Flags::get().suppress_environment_warnings) {
       fprintf(stderr, "rr: Tracees had XSAVE but XSAVE is not available "
               "now; Replay will probably fail because glibc dynamic loader "
-              "uses XSAVE");
+              "uses XSAVE\n\n");
     }
     return;
   }
@@ -119,7 +119,7 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
       !Flags::get().suppress_environment_warnings) {
     fprintf(stderr, "rr: Tracees had XSAVEC but XSAVEC is not available "
             "now; Replay will probably fail because glibc dynamic loader "
-            "uses XSAVEC");
+            "uses XSAVEC\n\n");
   }
 
   if (tracee_xcr0 != our_xcr0) {
@@ -132,7 +132,7 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
       // to XSAVE instructions executed on our CPU. This will cause divergence.
       cerr << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 "
           << "value " << HEX(our_xcr0) << "; Replay will probably fail "
-          << "because glibc dynamic loader uses XSAVE";
+          << "because glibc dynamic loader uses XSAVE\n\n";
     }
   }
 
