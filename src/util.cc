@@ -699,7 +699,7 @@ void resize_shmem_segment(ScopedFd& fd, uint64_t num_bytes) {
   }
 }
 
-static bool xsave_enabled() {
+bool xsave_enabled() {
   CPUIDData features = cpuid(CPUID_GETFEATURES, 0);
   return (features.ecx & OSXSAVE_FEATURE_FLAG) != 0;
 }

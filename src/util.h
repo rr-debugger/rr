@@ -159,6 +159,7 @@ enum cpuid_requests {
 const int OSXSAVE_FEATURE_FLAG = 1 << 27;
 const int AVX_FEATURE_FLAG = 1 << 28;
 const int HLE_FEATURE_FLAG = 1 << 4;
+const int XSAVEC_FEATURE_FLAG = 1 << 1;
 
 /** issue a single request to CPUID. Fits 'intel features', for instance
  *  note that even if only "eax" and "edx" are of interest, other registers
@@ -171,6 +172,10 @@ struct CPUIDData {
 };
 CPUIDData cpuid(uint32_t code, uint32_t subrequest);
 
+/**
+ * Check OSXSAVE flag.
+ */
+bool xsave_enabled();
 /**
  * Fetch current XCR0 value using XGETBV instruction.
  */

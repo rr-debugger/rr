@@ -91,6 +91,50 @@ static bool tracee_xsave_enabled(const TraceReader& trace_in) {
   return (record->out.ecx & OSXSAVE_FEATURE_FLAG) != 0;
 }
 
+static void check_xsave_compatibility(const TraceReader& trace_in) {
+  if (!tracee_xsave_enabled(trace_in)) {
+    return;
+  }
+  if (!xsave_enabled()) {
+    CLEAN_FATAL()
+        << "Tracee trace had XSAVE enabled, but XSAVE is not enabled now";
+  }
+
+  uint64_t tracee_xcr0 = trace_in.xcr0();
+  uint64_t our_xcr0 = xcr0();
+  if (tracee_xcr0 != our_xcr0) {
+    // Tracee may have used XSAVE instructions which write different components
+    // to XSAVE instructions executed on our CPU. This will cause divergence.
+    CLEAN_FATAL()
+        << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 value "
+        << HEX(our_xcr0) << "; XSAVE instructions will write different "
+        << "components, so replay not possible";
+  }
+
+  const CPUIDRecord* record =
+    find_cpuid_record(trace_in.cpuid_records(), CPUID_GETXSAVE, 1);
+  bool check_alignment = record && (record->out.eax & XSAVEC_FEATURE_FLAG);
+
+  // Check that sizes and offsets of supported XSAVE areas area all identical.
+  // An Intel employee promised this on a mailing list...
+  // https://lists.xen.org/archives/html/xen-devel/2013-09/msg00484.html
+  for (int feature = 2; feature <= 63; ++feature) {
+    if (!(tracee_xcr0 & our_xcr0 & (uint64_t(1) << feature))) {
+      continue;
+    }
+    record =
+      find_cpuid_record(trace_in.cpuid_records(), CPUID_GETXSAVE, feature);
+    CPUIDData data = cpuid(CPUID_GETXSAVE, feature);
+    if (!record || record->out.eax != data.eax ||
+        record->out.ebx != data.ebx ||
+        (check_alignment && (record->out.ecx & 2) != (data.ecx & 2))) {
+      CLEAN_FATAL()
+          << "XSAVE offset/size/alignment differs for feature " << feature
+          << "; H. Peter Anvin said this would never happen!";
+    }
+  }
+}
+
 ReplaySession::ReplaySession(const std::string& dir)
     : emu_fs(EmuFs::create()),
       trace_in(dir),
@@ -121,16 +165,7 @@ ReplaySession::ReplaySession(const std::string& dir)
     trace_in.set_bound_cpu(choose_cpu(BIND_CPU));
   }
 
-  uint64_t tracee_xcr0 = trace_in.xcr0();
-  uint64_t our_xcr0 = xcr0();
-  if (tracee_xcr0 != our_xcr0 && tracee_xsave_enabled(trace_in)) {
-    // Tracee may have used XSAVE instructions which write different components
-    // to XSAVE instructions executed on our CPU. This will cause divergence.
-    CLEAN_FATAL()
-        << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 value "
-        << HEX(our_xcr0) << "; XSAVE instructions will write different "
-        << "components, so replay not possible";
-  }
+  check_xsave_compatibility(trace_in);
 }
 
 ReplaySession::ReplaySession(const ReplaySession& other)
