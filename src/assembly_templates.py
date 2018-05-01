@@ -152,6 +152,26 @@ templates = {
         RawBytes(0xff, 0x25, 0x00, 0x00, 0x00, 0x00),       # jmp *0(%rip)
         Field('jump_target', 8),
     ),
+    'X64DLRuntimeResolve': AssemblyTemplate(
+        RawBytes(0x53),                   # push %rbx
+        RawBytes(0x48, 0x89, 0xe3),       # mov %rsp,%rbx
+        RawBytes(0x48, 0x83, 0xe4, 0xf0), # and $0xfffffffffffffff0,%rsp
+    ),
+    'X64DLRuntimeResolve2': AssemblyTemplate(
+        RawBytes(0x53),                   # push %rbx
+        RawBytes(0x48, 0x89, 0xe3),       # mov %rsp,%rbx
+        RawBytes(0x48, 0x83, 0xe4, 0xc0), # and $0xffffffffffffffc0,%rsp
+    ),
+    'X64DLRuntimeResolvePrelude': AssemblyTemplate(
+        RawBytes(0xd9, 0x74, 0x24, 0xe0),                               # fstenv -32(%rsp)
+        RawBytes(0x48, 0xc7, 0x44, 0x24, 0xf4, 0x00, 0x00, 0x00, 0x00), # movq $0,-12(%rsp)
+        RawBytes(0xd9, 0x64, 0x24, 0xe0),                               # fldenv -32(%rsp)
+        RawBytes(0x53),                   # push %rbx
+        RawBytes(0x48, 0x89, 0xe3),       # mov %rsp,%rbx
+        RawBytes(0x48, 0x83, 0xe4, 0xc0), # and $0xffffffffffffffc0,%rsp
+        RawBytes(0xe9),                   # jmp $relative_addr
+        Field('relative_addr', 4),
+    ),
 }
 
 def byte_array_name(name):

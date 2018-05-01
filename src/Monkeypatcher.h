@@ -3,6 +3,7 @@
 #ifndef RR_MONKEYPATCHER_H_
 #define RR_MONKEYPATCHER_H_
 
+#include <map>
 #include <unordered_set>
 #include <vector>
 
@@ -73,12 +74,16 @@ public:
    */
   remote_ptr<uint8_t> allocate_stub(RecordTask* t, size_t bytes);
 
+  enum MmapMode {
+    MMAP_EXEC,
+    MMAP_SYSCALL,
+  };
   /**
    * Apply any necessary patching immediately after an mmap. We use this to
    * patch libpthread.so.
    */
   void patch_after_mmap(RecordTask* t, remote_ptr<void> start, size_t size,
-                        size_t offset_pages, int child_fd);
+                        size_t offset_pages, int child_fd, MmapMode mode);
 
   remote_ptr<void> x86_vsyscall;
   /**
@@ -98,6 +103,11 @@ public:
    * always be safely patched to jump to the syscallbuf.
    */
   std::unordered_set<remote_code_ptr> patched_vdso_syscalls;
+
+  /**
+   * Addresses/lengths of syscallbuf stubs.
+   */
+  std::map<remote_ptr<uint8_t>, size_t> syscallbuf_stubs;
 
 private:
   /**

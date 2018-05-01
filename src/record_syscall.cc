@@ -4491,8 +4491,6 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     }
   }
 
-  init_scratch_memory(t, FIXED_ADDRESS);
-
   for (auto& p : pages_to_record) {
     t->record_remote(p, page_size());
   }
@@ -4500,6 +4498,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   // Patch LD_PRELOAD and VDSO after saving the mappings. Replay will apply
   // patches to the saved mappings.
   t->vm()->monkeypatcher().patch_after_exec(t);
+
+  init_scratch_memory(t, FIXED_ADDRESS);
 }
 
 static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
@@ -4587,7 +4587,8 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   // at an assertion, in the worst case, we'd end up modifying the underlying
   // file.
   if (!(flags & MAP_SHARED)) {
-    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages, fd);
+    t->vm()->monkeypatcher().patch_after_mmap(t, addr, size, offset_pages, fd,
+                                              Monkeypatcher::MMAP_SYSCALL);
   }
 
   if ((prot & (PROT_WRITE | PROT_READ)) == PROT_READ && (flags & MAP_SHARED) &&
