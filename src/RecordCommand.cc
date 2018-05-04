@@ -541,6 +541,17 @@ int RecordCommand::run(vector<string>& args) {
     reset_uid_sudo();
   }
 
+  if (flags.chaos) {
+    // Add up to one page worth of random padding to the environment to induce
+    // a variety of possible stack pointer offsets
+    vector<char> chars;
+    chars.resize(random() % page_size());
+    memset(chars.data(), '0', chars.size());
+    chars.push_back(0);
+    string padding = string("RR_CHAOS_PADDING=") + chars.data();
+    flags.extra_env.push_back(padding);
+  }
+
   WaitStatus status = record(args, flags);
 
   // Everything should have been cleaned up by now.
