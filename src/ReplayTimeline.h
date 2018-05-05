@@ -46,7 +46,12 @@ public:
 
   /**
    * A Mark references a precise point in time during the replay.
-   * It may or may not have an associated ReplaySession checkpoint.
+   * It can have an associated ReplaySession checkpoint.
+   * It's mainly just a wrapper around InternalMark, but
+   * InternalMark does not contain enough state to determine the
+   * relative ordering of two Marks. So ReplayTimeline maintains
+   * a database of Marks stored in time order to let us do such
+   * comparisons.
    */
   class Mark {
   public:
@@ -248,8 +253,11 @@ public:
 
 private:
   /**
-   * FrameTime + Ticks + ReplayStepKey does not uniquely identify
-   * a program state, but they're intrinsically totally ordered.
+   * A MarkKey consists of FrameTime + Ticks + ReplayStepKey. These values
+   * do not uniquely identify a program state, but they are intrinsically
+   * totally ordered. The ReplayTimeline::marks database is an ordered
+   * map from MarkKeys to a time-ordered list of Marks associated with each
+   * MarkKey.
    */
   struct MarkKey {
     MarkKey(FrameTime trace_time, Ticks ticks, ReplayStepKey step_key)
@@ -286,6 +294,15 @@ private:
 
   /**
    * All the information we'll need to construct a mark lazily.
+   * Marks are expensive to create since we may have to restore
+   * a previous session state so we can replay forward to find out
+   * how the Mark should be ordered relative to other Marks with the same
+   * MarkKey. So instead of creating a Mark for the current moment
+   * whenever we *might* need to return to that moment, create a ProtoMark
+   * instead. This contains a snapshot of enough state to create a full
+   * Mark later.
+   * MarkKey + Registers + ReturnAddressList are assumed to identify a unique
+   * program state.
    */
   struct ProtoMark {
     ProtoMark(const MarkKey& key, ReplayTask* t)
@@ -300,9 +317,9 @@ private:
   };
 
   /**
-   * MarkKey + Registers are assumed to identify a unique program state.
-   * We can't order these states directly based on this data, so we have to
-   * record the ordering in the ReplayTimeline.
+   * Everything we know about the tracee state for a particular Mark.
+   * This data alone does not allow us to determine the time ordering
+   * of two Marks.
    */
   struct InternalMark {
     InternalMark(ReplayTimeline* owner, ReplaySession& session,
@@ -325,13 +342,17 @@ private:
     bool equal_states(ReplaySession& session) const;
 
     ReplayTimeline* owner;
+    // Reuse ProtoMark to contain the MarkKey + Registers + ReturnAddressList.
     ProtoMark proto;
     ExtraRegisters extra_regs;
+    // Optional checkpoint for this Mark.
     ReplaySession::shr_ptr checkpoint;
     Ticks ticks_at_event_start;
+    // Number of users of `checkpoint`.
     uint32_t checkpoint_refcount;
-    // The next InternalMark in the mark vector is the result of singlestepping
-    // from this mark *and* no signal is reported in the break_status.
+    // The next InternalMark in the ReplayTimeline's Mark vector is the result
+    // of singlestepping from this mark *and* no signal is reported in the
+    // break_status when doing such a singlestep.
     bool singlestep_to_next_mark_no_signal;
   };
   friend struct InternalMark;
@@ -443,6 +464,19 @@ private:
    * destructor clears the 'owner' of all marks in the map.
    *
    * For each MarkKey, the InternalMarks are stored in execution order.
+   *
+   * The key problem we're dealing with here is that we don't have any state
+   * that we can use to compute a total time order on Marks. MarkKeys are
+   * totally ordered, but different program states can have the same MarkKey
+   * (i.e. same retired conditional branch count). The only way to determine
+   * the time ordering of two Marks m1 and m2 is to actually replay the
+   * execution until we see m1 and m2 and observe which one happened first.
+   * We record that ordering for all Marks by storing all the Marks for a given
+   * MarkKey in vector ordered by time.
+   * Determining this order is expensive so we avoid creating Marks unless we
+   * really need to! If we're at a specific point in time and we *may* need to
+   * create a Mark for this point later, create a ProtoMark instead to
+   * capture enough state so that a Mark can later be created if needed.
    *
    * We assume there will be a limited number of InternalMarks per MarkKey.
    * This should be true because ReplayTask::tick_count() should increment
