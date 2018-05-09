@@ -1,0 +1,4 @@
+source `dirname $0`/util.sh
+
+RECORD_ARGS="--chaos -c100"
+compare_test EXIT-SUCCESS

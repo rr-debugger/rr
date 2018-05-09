@@ -985,6 +985,7 @@ set(TESTS_WITH_PROGRAM
   execve_loop
   exit_codes
   exit_group
+  exit_race
   exit_status
   explicit_checkpoints
   fork_stress

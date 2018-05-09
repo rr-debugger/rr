@@ -128,6 +128,13 @@ static struct syscallbuf_hdr* buffer_hdr(void) {
 }
 
 /**
+ * This is for testing purposes only.
+ */
+void* syscallbuf_ptr(void) {
+  return thread_locals->buffer;
+}
+
+/**
  * Return a pointer to the byte just after the last valid syscall record in
  * the buffer.
  */

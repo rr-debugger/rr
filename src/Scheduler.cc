@@ -623,7 +623,7 @@ void Scheduler::in_stable_exit(RecordTask* t) {
 }
 
 void Scheduler::update_task_priority_internal(RecordTask* t, int value) {
-  if (t->stable_exit) {
+  if (t->stable_exit && !enable_chaos) {
     // Tasks in a stable exit have the highest priority. We should force them
     // to complete exiting ASAP to clean up resources. They may not be runnable
     // due to waiting for PTRACE_EVENT_EXIT to complete.

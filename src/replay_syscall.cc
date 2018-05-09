@@ -1079,6 +1079,20 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
       }
       break;
     }
+
+    case Arch::exit:
+      /* Destroy buffers now to match when we destroyed them during recording.
+         It's possible for another mapping to be created overlapping our
+         buffers before this task truly exits, and we don't want to trash
+         that mapping by destroying our buffers then. */
+      t->destroy_buffers();
+      break;
+    case Arch::exit_group:
+      if (t->thread_group()->task_set().size() == 1) {
+        /* See above. */
+        t->destroy_buffers();
+      }
+      break;
   }
   t->apply_all_data_records_from_trace();
 }
