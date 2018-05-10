@@ -4094,12 +4094,10 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
             << "Personality value " << HEX(p)
             << " not compatible with chaos mode addres-space randomization";
       }
-      // XXX READ_IMPLIES_EXEC not handled. We would need to audit rr to see
-      // if we're relying on it.
       if (p & 0xffffff00 &
           ~(ADDR_COMPAT_LAYOUT | ADDR_NO_RANDOMIZE | ADDR_LIMIT_32BIT |
             ADDR_LIMIT_3GB | FDPIC_FUNCPTRS | MMAP_PAGE_ZERO | SHORT_INODE |
-            STICKY_TIMEOUTS | UNAME26 | WHOLE_SECONDS)) {
+            STICKY_TIMEOUTS | UNAME26 | WHOLE_SECONDS | READ_IMPLIES_EXEC)) {
         syscall_state.expect_errno = EINVAL;
       }
       return PREVENT_SWITCH;
