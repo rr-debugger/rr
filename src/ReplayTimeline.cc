@@ -319,20 +319,19 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
     } else {
       // Return one of the checkpoints at *it.
       current = nullptr;
-      for (auto mark_it : marks[it->first]) {
-        shared_ptr<InternalMark> m(mark_it);
-        if (m->checkpoint) {
-          current = m->checkpoint->clone();
-          // At this point, m->checkpoint is fully initialized but current
-          // is not. Swap them so that m->checkpoint is not fully
+      for (const auto& mark_it : marks[it->first]) {
+        if (mark_it->checkpoint) {
+          current = mark_it->checkpoint->clone();
+          // At this point, mark_it->checkpoint is fully initialized but current
+          // is not. Swap them so that mark_it->checkpoint is not fully
           // initialized, to reduce resource usage.
-          swap(current, m->checkpoint);
+          swap(current, mark_it->checkpoint);
+          breakpoints_applied = false;
+          current_at_or_after_mark = mark_it;
           break;
         }
       }
       DEBUG_ASSERT(current);
-      breakpoints_applied = false;
-      current_at_or_after_mark = nullptr;
     }
   }
 }
