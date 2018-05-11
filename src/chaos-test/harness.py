@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 import sys
 import multiprocessing
 import tempfile
@@ -82,3 +84,4 @@ if float(failed)/runs < 3*float(sanity_failed)/sanity_runs:
     safe_exit(3)
 
 safe_exit(0)
+print

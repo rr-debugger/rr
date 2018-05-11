@@ -1257,6 +1257,14 @@ static long sys_futex(const struct syscall_info* call) {
     FUTEX_USES_UADDR2 = 1 << 0,
   };
 
+  /* This can make wakeups a lot more expensive. We assume
+     that wakeups are only used when some thread is actually waiting,
+     in which case we're at most doubling the overhead of the combined
+     wait + wakeup. */
+  if (globals.in_chaos) {
+    return traced_raw_syscall(call);
+  }
+
   int op = call->args[1];
   int flags = 0;
   switch (FUTEX_CMD_MASK & op) {

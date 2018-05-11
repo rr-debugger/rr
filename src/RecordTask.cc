@@ -395,6 +395,12 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
       params.get_pc_thunks_start.rptr().as_int();
   t->syscallbuf_code_layout.get_pc_thunks_end =
       params.get_pc_thunks_end.rptr().as_int();
+
+  unsigned char in_chaos = t->session().enable_chaos();
+  auto in_chaos_ptr REMOTE_PTR_FIELD(params.globals.rptr(), in_chaos);
+  t->write_mem(in_chaos_ptr, in_chaos);
+  t->record_local(in_chaos_ptr, &in_chaos);
+
   int cores = t->session().scheduler().pretend_num_cores();
   auto cores_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), pretend_num_cores);
   t->write_mem(cores_ptr, cores);

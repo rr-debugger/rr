@@ -113,7 +113,8 @@ void print_usage(FILE* out) {
 
 static void init_random() {
   // Not very good, but good enough for our non-security-sensitive needs.
-  int key = time(nullptr) ^ getpid();
+  int key;
+  good_random(&key, sizeof(key));
   srandom(key);
   srand(key);
 }
