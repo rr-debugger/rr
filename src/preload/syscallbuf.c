@@ -168,6 +168,18 @@ static void local_memcpy(void* dest, const void* source, int n) {
 #endif
 }
 
+/**
+ * Xorshift* RNG
+ */
+static int64_t local_random(void) {
+  uint64_t x = globals.random_seed;
+  x ^= x >> 12;
+  x ^= x << 25;
+  x ^= x >> 27;
+  globals.random_seed = x;
+  return x * 0x2545F4914F6CDD1D;
+}
+
 /* The following are wrappers for the syscalls invoked by this library
  * itself.  These syscalls will generate ptrace traps.
  * stack_param_1 and stack_param_2 are pushed onto the stack just before
@@ -989,6 +1001,31 @@ static void copy_futex_int(uint32_t* buf, uint32_t* real) {
 #endif
 }
 
+static int trace_chaos_mode_syscalls = 0;
+static int buffer_chaos_mode_syscalls = 0;
+
+static int force_traced_syscall_for_chaos_mode(void) {
+  if (!globals.in_chaos) {
+    return 0;
+  }
+  while (1) {
+    if (buffer_chaos_mode_syscalls) {
+      --buffer_chaos_mode_syscalls;
+      return 0;
+    }
+    if (trace_chaos_mode_syscalls) {
+      --trace_chaos_mode_syscalls;
+      return 1;
+    }
+    /* force a run of up to 50 syscalls to be traced */
+    trace_chaos_mode_syscalls = (local_random() % 50) + 1;
+    buffer_chaos_mode_syscalls = (trace_chaos_mode_syscalls - 5) * 10;
+    if (buffer_chaos_mode_syscalls < 0) {
+      buffer_chaos_mode_syscalls = 0;
+    }
+  }
+}
+
 /* Keep syscalls in alphabetical order, please. */
 
 /**
@@ -1116,6 +1153,11 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call) {
 }
 
 static int sys_fcntl64_setlk64(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Releasing a lock could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
@@ -1145,6 +1187,11 @@ static int sys_fcntl64_setlk64(const struct syscall_info* call) {
 }
 
 static int sys_fcntl64_setlkw64(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Releasing a lock could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
@@ -1607,6 +1654,11 @@ static long sys_mprotect(const struct syscall_info* call) {
 }
 
 static long sys_open(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Opening a FIFO could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_open;
   const char* pathname = (const char*)call->args[0];
   int flags = call->args[1];
@@ -1632,6 +1684,11 @@ static long sys_open(const struct syscall_info* call) {
 }
 
 static long sys_openat(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Opening a FIFO could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_openat;
   int dirfd = call->args[0];
   const char* pathname = (const char*)call->args[1];
@@ -1715,6 +1772,11 @@ static long sys_poll(const struct syscall_info* call) {
 #define CLONE_SIZE_THRESHOLD 0x10000
 
 static long sys_read(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Reading from a pipe could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_read;
   int fd = call->args[0];
   void* buf = (void*)call->args[1];
@@ -1887,6 +1949,11 @@ static long sys_readlink(const struct syscall_info* call) {
 
 #if defined(SYS_socketcall)
 static long sys_socketcall_recv(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Reading from a socket could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_socketcall;
   long* args = (long*)call->args[1];
   int sockfd = args[0];
@@ -1930,6 +1997,11 @@ static long sys_socketcall(const struct syscall_info* call) {
 
 #ifdef SYS_recvfrom
 static long sys_recvfrom(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Reading from a socket could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_recvfrom;
   int sockfd = call->args[0];
   void* buf = (void*)call->args[1];
@@ -2002,6 +2074,11 @@ static int msg_received_file_descriptors(struct msghdr* msg) {
 }
 
 static long sys_recvmsg(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Reading from a socket could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_recvmsg;
   int sockfd = call->args[0];
   struct msghdr* msg = (struct msghdr*)call->args[1];
@@ -2109,6 +2186,11 @@ static long sys_recvmsg(const struct syscall_info* call) {
 
 #ifdef SYS_sendmsg
 static long sys_sendmsg(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Sending to a socket could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_sendmsg;
   int sockfd = call->args[0];
   struct msghdr* msg = (struct msghdr*)call->args[1];
@@ -2131,6 +2213,11 @@ static long sys_sendmsg(const struct syscall_info* call) {
 
 #ifdef SYS_sendto
 static long sys_sendto(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Sending to a socket could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_sendto;
   int sockfd = call->args[0];
   void* buf = (void*)call->args[1];
@@ -2232,6 +2319,11 @@ static long sys_xstat64(const struct syscall_info* call) {
 }
 
 static long sys_write(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Writing to a pipe or FIFO could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   const int syscallno = SYS_write;
   int fd = call->args[0];
   const void* buf = (const void*)call->args[1];
@@ -2278,6 +2370,11 @@ static long sys_pwrite64(const struct syscall_info* call) {
 #endif
 
 static long sys_writev(const struct syscall_info* call) {
+  if (force_traced_syscall_for_chaos_mode()) {
+    /* Writing to a pipe or FIFO could unblock a higher priority task */
+    return traced_raw_syscall(call);
+  }
+
   int syscallno = SYS_writev;
   int fd = call->args[0];
   const struct iovec* iov = (const struct iovec*)call->args[1];

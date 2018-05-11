@@ -405,6 +405,14 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   auto cores_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), pretend_num_cores);
   t->write_mem(cores_ptr, cores);
   t->record_local(cores_ptr, &cores);
+
+  uint64_t random_seed;
+  do {
+    random_seed = rand() | (uint64_t(rand()) << 32);
+  } while (!random_seed);
+  auto random_seed_ptr REMOTE_PTR_FIELD(params.globals.rptr(), random_seed);
+  t->write_mem(random_seed_ptr, random_seed);
+  t->record_local(random_seed_ptr, &random_seed);
 }
 
 void RecordTask::push_syscall_event(int syscallno) {

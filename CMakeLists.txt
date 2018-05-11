@@ -1347,6 +1347,7 @@ if(BUILD_TESTS)
   set(CHAOS_TESTS
     core_count
     futex_wakeup
+    pipe_wakeup
     mmap_adjacent
     mmap_bits
     starvation_multithreaded

@@ -276,6 +276,9 @@ struct preload_globals {
   VOLATILE char syscallbuf_fds_disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
   /* mprotect records. Set by preload. */
   struct mprotect_record mprotect_records[MPROTECT_RECORD_COUNT];
+  /* Random seed that can be used for various purposes. DO NOT READ from rr
+     during replay, because this field does not exist in old traces. */
+  uint64_t random_seed;
 };
 
 /**

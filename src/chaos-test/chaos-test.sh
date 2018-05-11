@@ -11,6 +11,7 @@ cd `dirname $0`
 
 ./harness.py $1 40 40 core_count 3
 ./harness.py $1 200 200 futex_wakeup
+./harness.py $1 200 200 pipe_wakeup
 ./harness.py $1 500 500 mmap_bits 7
 ./harness.py $1 500 500 mmap_adjacent 10
 ./harness.py $1 100 200 starvation_singlethreaded 200000 202000 2000 1000000
