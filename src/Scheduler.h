@@ -3,6 +3,8 @@
 #ifndef RR_REC_SCHED_H_
 #define RR_REC_SCHED_H_
 
+#include <sched.h>
+
 #include <deque>
 #include <set>
 
@@ -141,6 +143,12 @@ public:
    * Return the number of cores we should report to applications.
    */
   int pretend_num_cores() const { return pretend_num_cores_; }
+  /**
+   * Return the processor affinity masks we should report to applications.
+   */
+  const cpu_set_t& pretend_affinity_mask() const {
+    return pretend_affinity_mask_;
+  }
 
   void in_stable_exit(RecordTask* t);
 
@@ -178,6 +186,7 @@ private:
   bool treat_as_high_priority(RecordTask* t);
   bool is_task_runnable(RecordTask* t, bool* by_waitpid);
   void validate_scheduled_task();
+  void regenerate_affinity_mask();
 
   RecordSession& session;
 
@@ -213,9 +222,12 @@ private:
    */
   double priorities_refresh_time;
 
-  int pretend_num_cores_;
-
   Ticks max_ticks_;
+
+  RecordTask* must_run_task;
+
+  cpu_set_t pretend_affinity_mask_;
+  int pretend_num_cores_;
 
   /**
    * When true, context switch at every possible point.
@@ -229,8 +241,6 @@ private:
 
   bool enable_poll;
   bool last_reschedule_in_high_priority_only_interval;
-
-  RecordTask* must_run_task;
 };
 
 } // namespace rr

@@ -5102,6 +5102,19 @@ static void rec_process_syscall_arch(RecordTask* t,
       }
       break;
 
+    case Arch::sched_getaffinity: {
+      pid_t pid = (pid_t)t->regs().arg1();
+      if (!t->regs().syscall_failed() && (pid == 0 || pid == t->rec_tid)) {
+        if (t->regs().syscall_result() > sizeof(cpu_set_t)) {
+          LOG(warn) << "Don't understand kernel's sched_getaffinity result";
+        } else {
+          t->write_bytes_helper(t->regs().arg3(), t->regs().syscall_result(),
+              &t->session().scheduler().pretend_affinity_mask());
+        }
+      }
+      break;
+    }
+
     case Arch::setsockopt: {
       // restore possibly-modified regs
       Registers r = t->regs();

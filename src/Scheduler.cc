@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <algorithm>
 
@@ -88,13 +89,66 @@ Scheduler::Scheduler(RecordSession& session)
       high_priority_only_intervals_duration(0),
       high_priority_only_intervals_period(0),
       priorities_refresh_time(0),
-      pretend_num_cores_(1),
       max_ticks_(DEFAULT_MAX_TICKS),
+      must_run_task(nullptr),
+      pretend_num_cores_(1),
       always_switch(false),
       enable_chaos(false),
       enable_poll(false),
-      last_reschedule_in_high_priority_only_interval(false),
-      must_run_task(nullptr) {}
+      last_reschedule_in_high_priority_only_interval(false) {
+  regenerate_affinity_mask();
+}
+
+/**
+ * Compute an affinity mask to report via sched_getaffinity.
+ * This mask should include whatever CPU number the task is
+ * actually running on, otherwise we may confuse applications.
+ * The mask should also match the number of CPUs we're pretending
+ * to have.
+ */
+void Scheduler::regenerate_affinity_mask() {
+  int ret = sched_getaffinity(0, sizeof(pretend_affinity_mask_),
+                              &pretend_affinity_mask_);
+  if (ret) {
+    FATAL() << "Failed sched_getaffinity";
+  }
+
+  int cpu = session.trace_writer().bound_to_cpu();
+  if (cpu < 0) {
+    // We only run one thread at a time but we're not limiting
+    // where that thread can run, so report all available CPUs
+    // in the affinity mask even though that doesn't match
+    // pretend_num_cores. We only run unbound during tests or
+    // when explicitly requested by the user.
+    return;
+  }
+  if (!CPU_ISSET(cpu, &pretend_affinity_mask_)) {
+    LOG(warn) << "Bound CPU " << cpu << " not in affinity mask";
+    // Use the original affinity mask since something strange is
+    // going on.
+    return;
+  }
+  // Try to limit the CPU numbers we generate to the ones that
+  // actually exist on this system, but generate fake ones if there
+  // aren't enough.
+  int faked_num_cpus = sysconf(_SC_NPROCESSORS_CONF);
+  if (faked_num_cpus < pretend_num_cores_) {
+    faked_num_cpus = pretend_num_cores_;
+  }
+  // generate random CPU numbers that fit into the CPU mask
+  vector<int> other_cpus;
+  for (int i = 0; i < faked_num_cpus; ++i) {
+    if (i != cpu) {
+      other_cpus.push_back(i);
+    }
+  }
+  random_shuffle(other_cpus.begin(), other_cpus.end());
+  CPU_ZERO(&pretend_affinity_mask_);
+  CPU_SET(cpu, &pretend_affinity_mask_);
+  for (int i = 0; i < pretend_num_cores_ - 1; ++i) {
+    CPU_SET(other_cpus[i], &pretend_affinity_mask_);
+  }
+}
 
 void Scheduler::set_enable_chaos(bool enable_chaos) {
   this->enable_chaos = enable_chaos;
@@ -104,6 +158,7 @@ void Scheduler::set_enable_chaos(bool enable_chaos) {
    * one core).
    */
   pretend_num_cores_ = enable_chaos ? (random() % 8 + 1) : 1;
+  regenerate_affinity_mask();
 }
 
 RecordTask* Scheduler::get_next_task_with_same_priority(RecordTask* t) {
