@@ -475,7 +475,9 @@ target_link_libraries(rr
 )
 
 if(staticlibs)
-  target_link_libraries(rr ${CAPNP_STATIC_LDFLAGS})
+  # Urgh ... this might not work for everyone, but there doesn't seem to be
+  # a way to persuade pkg-confing/pkg_check_modules to produce the right flags
+  target_link_libraries(rr -L/home/roc/lib -l:libcapnp.a -l:libkj.a)
 else()
   target_link_libraries(rr ${CAPNP_LDFLAGS})
 endif()
