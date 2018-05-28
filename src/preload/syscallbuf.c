@@ -1081,7 +1081,9 @@ static long sys_clock_gettime(const struct syscall_info* call) {
   }
   ret = untraced_syscall2(syscallno, clk_id, tp2);
   if (tp && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
-    local_memcpy(tp, tp2, sizeof(*tp));
+    /* This is small and won't get optimized to a memcpy call outside
+       our library. */
+    *tp = *tp2;
   }
   return commit_raw_syscall(syscallno, ptr, ret);
 }
@@ -1442,10 +1444,14 @@ static long sys_gettimeofday(const struct syscall_info* call) {
   ret = untraced_syscall2(syscallno, tp2, tzp2);
   if (ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     if (tp) {
-      local_memcpy(tp, tp2, sizeof(*tp));
+      /* This is small and won't get optimized to a memcpy call outside
+         our library. */
+      *tp = *tp2;
     }
     if (tzp) {
-      local_memcpy(tzp, tzp2, sizeof(*tzp));
+      /* This is small and won't get optimized to a memcpy call outside
+         our library. */
+      *tzp = *tzp2;
     }
   }
   return commit_raw_syscall(syscallno, ptr, ret);
