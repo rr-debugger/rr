@@ -1654,6 +1654,10 @@ static long sys_mprotect(const struct syscall_info* call) {
   mrec->size = length;
   mrec->prot = prot;
   ret = untraced_replayed_syscall3(syscallno, addr, length, prot);
+  if (ret < 0 && ret != -ENOMEM) {
+    /* indicate that nothing was mprotected */
+    mrec->size = 0;
+  }
   buffer_hdr()->mprotect_record_count_completed++;
 
   return commit_raw_syscall(syscallno, ptr, ret);
