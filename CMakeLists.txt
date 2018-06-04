@@ -699,6 +699,7 @@ set(BASIC_TESTS
   kill_newborn
   kill_ptracee
   legacy_ugid
+  lsl
   madvise
   madvise_free
   map_fixed

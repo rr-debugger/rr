@@ -2384,15 +2384,21 @@ static void setup_fd_table(FdTable& fds, int tracee_socket_fd_number) {
   fds.add_monitor(tracee_socket_fd_number, new PreserveFileMonitor());
 }
 
-static void set_cpu_affinity(int cpu) {
+// Returns true if we succeeded, false if we failed because the
+// requested CPU does not exist/is not available.
+static bool set_cpu_affinity(int cpu) {
   DEBUG_ASSERT(cpu >= 0);
 
   cpu_set_t mask;
   CPU_ZERO(&mask);
   CPU_SET(cpu, &mask);
   if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
+    if (errno == EINVAL) {
+      return false;
+    }
     FATAL() << "Couldn't bind to CPU " << cpu;
   }
+  return true;
 }
 
 static void spawned_child_fatal_error(const ScopedFd& err_fd,
@@ -2594,7 +2600,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 /*static*/ Task* Task::spawn(Session& session, const ScopedFd& error_fd,
                              ScopedFd* sock_fd_out,
                              int* tracee_socket_fd_number_out,
-                             const TraceStream& trace,
+                             TraceStream& trace,
                              const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
@@ -2625,13 +2631,30 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   }
   *tracee_socket_fd_number_out = fd_number;
 
-  if (trace.bound_to_cpu() >= 0) {
+  int cpu_index = trace.bound_to_cpu();
+  if (cpu_index >= 0) {
     // Set CPU affinity now, after we've created any helper threads
     // (so they aren't affected), but before we create any
     // tracees (so they are all affected).
     // Note that we're binding rr itself to the same CPU as the
     // tracees, since this seems to help performance.
-    set_cpu_affinity(trace.bound_to_cpu());
+    if (!set_cpu_affinity(cpu_index)) {
+      if (session.has_cpuid_faulting() && !session.is_recording()) {
+        cpu_index = choose_cpu(BIND_CPU);
+        if (!set_cpu_affinity(cpu_index)) {
+          FATAL() << "Can't bind to requested CPU " << cpu_index
+                  << " even after we re-selected it";
+        }
+        LOG(warn) << "Bound to CPU " << cpu_index
+                  << "instead of selected " << trace.bound_to_cpu()
+                  << "because the latter is not available;\n"
+                  << "Hoping tracee doesn't use LSL instruction!";
+        trace.set_bound_cpu(cpu_index);
+      } else {
+        FATAL() << "Can't bind to requested CPU " << cpu_index
+                << ", and CPUID faulting not available";
+      }
+    }
   }
 
   pid_t tid;
