@@ -576,7 +576,8 @@ const AddressSpace::Mapping& Session::recreate_shared_mmap(
     AutoRemoteSyscalls& remote, const AddressSpace::Mapping& m,
     PreserveContents preserve, MonitoredSharedMemory::shr_ptr&& monitored) {
   char name[PATH_MAX];
-  strncpy(name, m.map.fsname().c_str(), sizeof(name));
+  strncpy(name, m.map.fsname().c_str(), sizeof(name) - 1);
+  name[sizeof(name) - 1] = 0;
   uint32_t flags = m.flags;
   size_t size = m.map.size();
   void* preserved_data = preserve == PRESERVE_CONTENTS ? m.local_addr : nullptr;
