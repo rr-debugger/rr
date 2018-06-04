@@ -729,11 +729,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
 
   static const named_syscall syscalls_to_monkeypatch[] = {
 #define S(n) { "__vdso_" #n, X64Arch::n }
-    S(clock_gettime), S(gettimeofday), S(time),
-    // getcpu isn't supported by rr, so any changes to this monkeypatching
-    // scheme for efficiency's sake will have to ensure that getcpu gets
-    // converted to an actual syscall so rr will complain appropriately.
-    S(getcpu),
+    S(clock_gettime), S(gettimeofday), S(time), S(getcpu),
 #undef S
   };
 
