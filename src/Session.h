@@ -326,6 +326,8 @@ public:
   ScopedFd& tracee_socket_fd() { return *tracee_socket; }
   int tracee_fd_number() const { return tracee_socket_fd_number; }
 
+  virtual TraceStream* trace_stream() { return nullptr; }
+
 protected:
   Session();
   virtual ~Session();

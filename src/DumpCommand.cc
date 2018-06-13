@@ -1,5 +1,7 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+#include "DumpCommand.h"
+
 #include <inttypes.h>
 
 #include <limits>
@@ -44,25 +46,6 @@ DumpCommand DumpCommand::singleton(
     "                             default human-readable format\n"
     "  -s, --statistics           dump statistics about the trace\n"
     "  -t, --tid=<pid>            dump events only for the specified tid\n");
-
-struct DumpFlags {
-  bool dump_syscallbuf;
-  bool dump_recorded_data_metadata;
-  bool dump_mmaps;
-  bool dump_task_events;
-  bool raw_dump;
-  bool dump_statistics;
-  int only_tid;
-
-  DumpFlags()
-      : dump_syscallbuf(false),
-        dump_recorded_data_metadata(false),
-        dump_mmaps(false),
-        dump_task_events(false),
-        raw_dump(false),
-        dump_statistics(false),
-        only_tid(0) {}
-};
 
 static bool parse_dump_arg(vector<string>& args, DumpFlags& flags) {
   if (parse_global_option(args)) {
@@ -297,8 +280,8 @@ static void dump_statistics(const TraceReader& trace, FILE* out) {
           uncompressed, compressed, double(uncompressed) / compressed);
 }
 
-static void dump(const string& trace_dir, const DumpFlags& flags,
-                 const vector<string>& specs, FILE* out) {
+void dump(const string& trace_dir, const DumpFlags& flags,
+          const vector<string>& specs, FILE* out) {
   TraceReader trace(trace_dir);
 
   if (flags.raw_dump) {

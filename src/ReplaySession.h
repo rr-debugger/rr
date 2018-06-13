@@ -295,6 +295,8 @@ public:
 
   double get_trace_start_time();
 
+  virtual TraceStream* trace_stream() { return &trace_in; }
+
 private:
   ReplaySession(const std::string& dir);
   ReplaySession(const ReplaySession& other);

@@ -159,6 +159,8 @@ public:
    */
   RecordTask* revive_task_for_exec(pid_t rec_tid);
 
+  virtual TraceStream* trace_stream() { return &trace_out; }
+
 private:
   RecordSession(const std::string& exe_path,
                 const std::vector<std::string>& argv,

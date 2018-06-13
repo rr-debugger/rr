@@ -10,6 +10,7 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "DumpCommand.h"
 #include "Flags.h"
 #include "GdbConnection.h"
 #include "GdbServer.h"
@@ -343,6 +344,23 @@ FatalOstream::~FatalOstream() {
   notifying_abort();
 }
 
+static const int LAST_EVENT_COUNT = 20;
+
+static void dump_last_events(const TraceStream& trace) {
+  fputs("Tail of trace dump:\n", stderr);
+
+  DumpFlags flags;
+  flags.dump_syscallbuf = true;
+  flags.dump_recorded_data_metadata = true;
+  flags.dump_mmaps = true;
+  FrameTime end = trace.time();
+  vector<string> specs;
+  char buf[100];
+  sprintf(buf, "%lld-%lld", (long long)(end - LAST_EVENT_COUNT), (long long)(end + 1));
+  specs.push_back(string(buf));
+  dump(trace.dir(), flags, specs, stderr);
+}
+
 static void emergency_debug(Task* t) {
   ftrace::stop();
 
@@ -356,6 +374,10 @@ static void emergency_debug(Task* t) {
   RecordSession* record_session = t->session().as_record();
   if (record_session) {
     record_session->trace_writer().close();
+  }
+  TraceStream* trace_stream = t->session().trace_stream();
+  if (trace_stream) {
+    dump_last_events(*trace_stream);
   }
 
   if (probably_not_interactive() && !Flags::get().force_things &&
