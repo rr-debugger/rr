@@ -838,6 +838,8 @@ set(BASIC_TESTS
   setgroups
   setsid
   setuid
+  shared_exec
+  shared_write
   shm
   shm_unmap
   sigaction_old

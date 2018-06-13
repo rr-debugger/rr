@@ -836,7 +836,14 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
       // the entire file is copied, not just the used region, which is why we
       // don't do this for all files.
       // Don't bother trying to copy [vdso].
-      if ((km.prot() & PROT_EXEC) && copy_file(file_name, &backing_file_name)) {
+      // Don't try to copy files that use shared mappings. We do not want to
+      // create a shared mapping of a file stored in the trace. This means
+      // debuggers can't find the file, but the Linux loader doesn't create
+      // shared mappings so situations where a shared-mapped executable contains
+      // usable debug info should be very rare at best...
+      if ((km.prot() & PROT_EXEC) &&
+          copy_file(file_name, &backing_file_name) &&
+          !(km.flags() & MAP_SHARED)) {
         src.initFile().setBackingFileName(str_to_data(backing_file_name));
       } else {
         src.setTrace();

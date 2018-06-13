@@ -92,7 +92,7 @@ void EmuFile::ensure_size(uint64_t size) {
   string real_name = name.str().substr(0, 255);
 
   ScopedFd fd =
-      open(real_name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
+      open(real_name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0700);
   if (!fd.is_open()) {
     FATAL() << "Failed to create shmem segment " << real_name;
   }
