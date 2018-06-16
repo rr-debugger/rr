@@ -10,7 +10,7 @@ using namespace std;
 namespace rr {
 
 static SimpleGdbCommand elapsed_time(
-    "elapsed-time", 
+    "elapsed-time",
     "Print elapsed time (in seconds) since the start of the trace, in the"
     " 'record' timeline.",
     [](GdbServer&, Task* t, const vector<string>&) {
@@ -118,7 +118,11 @@ string invoke_checkpoint(GdbServer& gdb_server, Task*,
       gdb_server.timeline, gdb_server.last_continue_tuid, e, where);
   return string("Checkpoint ") + to_string(checkpoint_id) + " at " + where;
 }
-static SimpleGdbCommand checkpoint("checkpoint", "", invoke_checkpoint);
+static SimpleGdbCommand checkpoint(
+  "checkpoint",
+  "create a checkpoint representing a point in the execution\n"
+  "use the 'restart' command to return to the checkpoint",
+  invoke_checkpoint);
 
 string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
                                 const vector<string>& args) {
@@ -134,8 +138,10 @@ string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
     return string("No checkpoint number ") + to_string(id) + ".";
   }
 }
-static SimpleGdbCommand delete_checkpoint("delete checkpoint", "",
-                                          invoke_delete_checkpoint);
+static SimpleGdbCommand delete_checkpoint(
+  "delete checkpoint",
+  "remove a checkpoint created with the 'checkpoint' command",
+  invoke_delete_checkpoint);
 
 string invoke_info_checkpoints(GdbServer& gdb_server, Task*,
                                const vector<string>&) {
@@ -149,8 +155,10 @@ string invoke_info_checkpoints(GdbServer& gdb_server, Task*,
   }
   return out;
 }
-static SimpleGdbCommand info_checkpoints("info checkpoints", "",
-                                         invoke_info_checkpoints);
+static SimpleGdbCommand info_checkpoints(
+  "info checkpoints",
+  "list all checkpoints created with the 'checkpoint' command",
+  invoke_info_checkpoints);
 
 /*static*/ void GdbCommand::init_auto_args() {
   checkpoint.add_auto_arg("rr-where");
