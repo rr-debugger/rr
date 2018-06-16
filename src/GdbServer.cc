@@ -56,6 +56,10 @@ static const string& gdb_rr_macros() {
     ss << "define restart\n"
        << "  run c$arg0\n"
        << "end\n"
+       << "document restart\n"
+       << "restart at checkpoint N\n"
+       << "checkpoints are created with the 'checkpoint' command\n"
+       << "end\n"
        // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
        // issued before any user-generated resume-execution command
        // results in gdb hanging just after the inferior hits an internal
