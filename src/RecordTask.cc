@@ -502,7 +502,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     args.syscallbuf_size = 0;
   }
   args.scratch_buf = scratch_ptr;
-  args.scratch_size = scratch_size;
+  args.usable_scratch_size = usable_scratch_size();
 
   // Return the mapped buffers to the child.
   write_mem(child_args, args);

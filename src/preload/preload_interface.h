@@ -384,7 +384,7 @@ struct preload_thread_locals {
   int cloned_file_data_fd;
   off_t cloned_file_data_offset;
   PTR(void) scratch_buf;
-  size_t scratch_size;
+  size_t usable_scratch_size;
 
   PTR(struct msghdr) notify_control_msg;
 };
@@ -435,7 +435,7 @@ struct rrcall_init_buffers_params {
   /* Returned pointer to rr's syscall scratch buffer */
   PTR(void) scratch_buf;
   uint32_t syscallbuf_size;
-  uint32_t scratch_size;
+  uint32_t usable_scratch_size;
 };
 
 /**

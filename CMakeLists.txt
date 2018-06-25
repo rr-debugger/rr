@@ -818,6 +818,7 @@ set(BASIC_TESTS
   sched_yield
   sched_yield_to_lower_priority
   scm_rights
+  scratch_read
   seccomp
   seccomp_desched
   seccomp_kill_exit

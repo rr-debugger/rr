@@ -503,7 +503,7 @@ static void init_thread(void) {
   thread_locals->buffer = args.syscallbuf_ptr;
   thread_locals->buffer_size = args.syscallbuf_size;
   thread_locals->scratch_buf = args.scratch_buf;
-  thread_locals->scratch_size = args.scratch_size;
+  thread_locals->usable_scratch_size = args.usable_scratch_size;
 }
 
 extern char _breakpoint_table_entry_start;
@@ -1824,7 +1824,7 @@ static long sys_read(const struct syscall_info* call) {
     struct syscall_info lseek_call = { SYS_lseek,
                                        { fd, 0, SEEK_CUR, 0, 0, 0 } };
     off_t lseek_ret = sys_generic_nonblocking_fd(&lseek_call);
-    if (lseek_ret > 0 && !(lseek_ret & 4095)) {
+    if (lseek_ret >= 0 && !(lseek_ret & 4095)) {
       struct btrfs_ioctl_clone_range_args ioctl_args;
       int ioctl_ret;
       void* ioctl_ptr = prep_syscall();
@@ -1858,7 +1858,7 @@ static long sys_read(const struct syscall_info* call) {
         replay_only_syscall2(SYS_dup2, thread_locals->cloned_file_data_fd, fd);
 
         ptr = prep_syscall();
-        if (count > thread_locals->scratch_size) {
+        if (count > thread_locals->usable_scratch_size) {
           if (!start_commit_buffered_syscall(SYS_read, ptr, WONT_BLOCK)) {
             return traced_raw_syscall(&read_call);
           }
