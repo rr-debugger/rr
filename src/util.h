@@ -33,6 +33,11 @@ class TraceFrame;
 enum Completion { COMPLETE, INCOMPLETE };
 
 /**
+ * Returns a vector containing the raw data you can get from getauxval.
+ */
+std::vector<uint8_t> read_auxv(Task* t);
+
+/**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
  * that file, starting with a line containing |label|.  |start_addr|
  * is the client address at which |buf| resides, if meaningful.
@@ -432,6 +437,11 @@ void raise_resource_limits();
  * Restore the initial resource limits for this process.
  */
 void restore_initial_resource_limits();
+
+/**
+ * Return the word size for the architecture.
+ */
+size_t word_size(SupportedArch arch);
 
 } // namespace rr
 

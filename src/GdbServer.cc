@@ -314,14 +314,6 @@ static bool search_memory(Task* t, const MemoryRange& where,
   return false;
 }
 
-template <typename Arch> static size_t word_size_arch() {
-  return sizeof(typename Arch::signed_long);
-}
-
-static size_t word_size(SupportedArch arch) {
-  RR_ARCH_FUNCTION(word_size_arch, arch);
-}
-
 static bool is_in_patch_stubs(Task* t, remote_code_ptr ip) {
   auto p = ip.to_data_ptr<void>();
   return t->vm()->has_mapping(p) &&

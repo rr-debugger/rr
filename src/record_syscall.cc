@@ -4357,6 +4357,29 @@ static void check_privileged_exe(RecordTask* t) {
   }
 }
 
+static uint64_t word_at(uint8_t* buf, size_t wsize) {
+  union {
+    uint8_t buf[8];
+    uint64_t v;
+  } u;
+  memcpy(u.buf, buf, wsize);
+  memset(u.buf + wsize, 0, 8 - wsize);
+  return u.v;
+}
+
+static remote_ptr<void> get_exe_entry(Task* t) {
+  vector<uint8_t> v = read_auxv(t);
+  size_t i = 0;
+  size_t wsize = word_size(t->arch());
+  while ((i + 1)*wsize*2 <= v.size()) {
+    if (word_at(v.data() + i*2*wsize, wsize) == AT_ENTRY) {
+      return word_at(v.data() + (i*2 + 1)*wsize, wsize);
+    }
+    ++i;
+  }
+  return remote_ptr<void>();
+}
+
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
@@ -4386,6 +4409,11 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
   KernelMapping vvar;
 
+  // get the remote executable entry point
+  // with the pointer, we find out which mapping is the executable
+  auto exe_entry = get_exe_entry(t);
+  ASSERT(t, !exe_entry.is_null()) << "AT_ENTRY not found";
+
   // Write out stack mappings first since during replay we need to set up the
   // stack before any files get mapped.
   vector<KernelMapping> stacks;
@@ -4396,7 +4424,10 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     } else if (km.is_vvar()) {
       vvar = km;
     }
-    if (km.fsname() == t->vm()->exe_image() && (km.prot() & PROT_EXEC)) {
+
+    // if true, this mapping is our executable
+    if (km.start() <= exe_entry && exe_entry < km.end()) {
+      ASSERT(t, km.prot() & PROT_EXEC) << "Entry point not in executable code?";
       syscall_state.exec_saved_event->set_exe_base(km.start());
     }
   }
