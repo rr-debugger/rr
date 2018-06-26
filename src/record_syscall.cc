@@ -4357,6 +4357,41 @@ static void check_privileged_exe(RecordTask* t) {
   }
 }
 
+#define AT_ENTRY_X86_64 152
+#define AT_ENTRY_X86 84
+
+static remote_ptr<void> get_exe_entry(Task* t){
+	vector<uint8_t> v = read_auxv(t);
+	uintptr_t exe_entry = 0;
+                
+#if defined(__i386__)
+	for(int i = ((sizeof(uintptr_t)) -1); i >= 0; --i){
+		exe_entry <<= 8;
+		exe_entry |= (uintptr_t)v.at(AT_ENTRY_X86 + i);
+	}
+	return remote_ptr<void>(exe_entry);
+#endif
+                
+	switch(t->arch()) {
+		case x86:
+			for(int i = ((sizeof(uintptr_t)/2) -1); i >= 0; --i){
+				exe_entry <<= 8;
+				exe_entry |= (uintptr_t)v.at(AT_ENTRY_X86 + i);
+			}
+		return remote_ptr<void>(exe_entry);
+
+		case x86_64:
+			for(int i = (sizeof(uintptr_t)-1); i >= 0; --i ) {
+				exe_entry <<= 8;
+				exe_entry |= (uintptr_t)v.at(AT_ENTRY_X86_64 + i);
+		}
+		return remote_ptr<void>(exe_entry);
+	}
+                
+	return remote_ptr<void>();
+}
+
+
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
@@ -4386,18 +4421,30 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
   KernelMapping vvar;
 
+  // get the remote executable entry point
+  // with the pointer, we find out which mapping is the executable
+  auto exe_entry = get_exe_entry(t);
+  ASSERT(t, exe_entry != remote_ptr<void>());
+  string remoteExeName = "";
+  
   // Write out stack mappings first since during replay we need to set up the
   // stack before any files get mapped.
   vector<KernelMapping> stacks;
   for (const auto& m : t->vm()->maps()) {
-    auto& km = m.map;
+	auto& km = m.map;
     if (km.is_stack()) {
       stacks.push_back(km);
     } else if (km.is_vvar()) {
       vvar = km;
     }
-    if (km.fsname() == t->vm()->exe_image() && (km.prot() & PROT_EXEC)) {
-      syscall_state.exec_saved_event->set_exe_base(km.start());
+    
+    // if true, this mapping is our executable
+    if(exe_entry >= km.start() && exe_entry <= km.end()){
+		remoteExeName = km.fsname();
+	}
+    
+    if (km.fsname() == remoteExeName && (km.prot() & PROT_EXEC)) {
+		syscall_state.exec_saved_event->set_exe_base(km.start());
     }
   }
   ASSERT(t, !syscall_state.exec_saved_event->exe_base().is_null());
