@@ -33,6 +33,13 @@ class TraceFrame;
 enum Completion { COMPLETE, INCOMPLETE };
 
 /**
+ * returns a vector containing the data you can get from getauxval
+ * it would be cool, if we implemented a real interface to get the remote 
+ * auxiliary  vector
+ */
+std::vector<uint8_t> read_auxv(Task* t);
+
+/**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
  * that file, starting with a line containing |label|.  |start_addr|
  * is the client address at which |buf| resides, if meaningful.
