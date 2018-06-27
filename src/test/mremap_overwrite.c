@@ -4,7 +4,7 @@
 
 int main(void) {
   size_t page_size = sysconf(_SC_PAGESIZE);
-  int fd = open("file", O_RDWR | O_CREAT | O_TRUNC);
+  int fd = open("file", O_RDWR | O_CREAT | O_TRUNC, 0700);
   void* block;
   void* mapped_file;
   void* dest;
