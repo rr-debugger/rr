@@ -717,51 +717,6 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   }
 }
 
-/* Ensure that accesses to the memory region given by start/length
-   cause a SIGBUS, as for accesses beyond the end of an mmaped file. */
-static void create_sigbus_region(AutoRemoteSyscalls& remote, int prot,
-                                 remote_ptr<void> start, size_t length,
-                                 const KernelMapping& km) {
-  if (length == 0) {
-    return;
-  }
-
-  /* Open an empty file in the tracee */
-  TempFile file = create_temporary_file("rr-emptyfile-XXXXXX");
-  file.fd.close();
-
-  int child_fd;
-  {
-    AutoRestoreMem child_str(remote, file.name.c_str());
-    child_fd = remote.infallible_syscall(
-        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
-        child_str.get(), O_RDONLY);
-  }
-
-  /* Unlink it now that the child has opened it */
-  unlink(file.name.c_str());
-
-  struct stat fstat = remote.task()->stat_fd(child_fd);
-  string file_name = remote.task()->file_name_of_fd(child_fd);
-
-  /* mmap it in the tracee. We need to set the correct 'prot' flags
-     so that the correct signal is generated on a memory access
-     (SEGV if 'prot' doesn't allow the access, BUS if 'prot' does allow
-     the access). */
-  remote.infallible_mmap_syscall(start, length, prot, MAP_FIXED | MAP_PRIVATE,
-                                 child_fd, 0);
-  /* Don't leak the tmp fd.  The mmap doesn't need the fd to
-   * stay open. */
-  remote.infallible_syscall(syscall_number_for_close(remote.arch()), child_fd);
-
-  KernelMapping km_slice = km.subrange(start, start + length);
-  remote.task()->vm()->map(remote.task(), start, length, prot,
-                           MAP_FIXED | MAP_PRIVATE, 0, file_name, fstat.st_dev,
-                           fstat.st_ino, nullptr, &km_slice);
-  remote.task()->vm()->mapping_flags_of(start) |=
-      AddressSpace::Mapping::IS_SIGBUS_REGION;
-}
-
 static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                 remote_ptr<void> rec_addr, size_t length,
                                 int prot, int flags, off64_t offset_pages,
@@ -781,14 +736,7 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                KernelMapping::NO_INODE, nullptr, &km);
 
   /* Restore the map region we copied. */
-  ssize_t data_size = t->set_data_from_trace();
-
-  /* Ensure pages past the end of the file fault on access */
-  size_t data_pages = ceil_page_size(data_size);
-  size_t mapped_pages = ceil_page_size(length);
-
-  create_sigbus_region(remote, prot, rec_addr + data_pages,
-                       mapped_pages - data_pages, km);
+  t->set_data_from_trace();
 }
 
 static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,

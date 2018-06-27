@@ -375,11 +375,6 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
           // now.
           continue;
         }
-        if (m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION) {
-          // If we have artifical SIGBUS regions, those may (if the entire
-          // region was SIGBUS), but need not, have existed during recording.
-          continue;
-        }
         FATAL() << "Segment " << rec_start_addr << "-" << rec_end_addr
                 << " changed to " << m.map << "??";
       }
@@ -401,13 +396,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
         LOG(debug) << "Checksum not computed during recording";
         continue;
       } else if (rec_checksum == sigbus_checksum) {
-        // This was a SIGBUS equivalent region. During replay, this is either
-        // an explicit SIGBUS region, indicated by the IS_SIGBUS_REGION flag
-        // if the data came from the trace, or an implicit one (which we will
-        // catch below) if the data came from a cloned file.
-        if (m.flags & AddressSpace::Mapping::IS_SIGBUS_REGION) {
-          continue;
-        }
+        continue;
       }
     } else {
       if (!checksum_segment_filter(m)) {

@@ -471,8 +471,6 @@ static const char* stringify_flags(int flags) {
       return " [thread_locals]";
     case AddressSpace::Mapping::IS_PATCH_STUBS:
       return " [patch_stubs]";
-    case AddressSpace::Mapping::IS_SIGBUS_REGION:
-      return " [sigbus_region]";
     default:
       return "[unknown_flags]";
   }
