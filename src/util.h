@@ -33,6 +33,12 @@ class TraceFrame;
 enum Completion { COMPLETE, INCOMPLETE };
 
 /**
+ * Get access to the the tracee's getauxval()
+ * Returns a value from the tracee's auxiliary vector
+*/
+unsigned long tracee_getauxval(Task* t, unsigned long type);
+
+/**
  * Returns a vector containing the raw data you can get from getauxval.
  */
 std::vector<uint8_t> read_auxv(Task* t);
