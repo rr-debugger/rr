@@ -1019,7 +1019,8 @@ void ReplaySession::check_ticks_consistency(ReplayTask* t, const Event& ev) {
 }
 
 static bool treat_signal_event_as_deterministic(const SignalEvent& ev) {
-  return ev.deterministic == DETERMINISTIC_SIG;
+  return ev.deterministic == DETERMINISTIC_SIG &&
+    ev.siginfo.si_signo != SIGBUS;
 }
 
 /**
