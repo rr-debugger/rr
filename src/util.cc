@@ -85,6 +85,29 @@ vector<uint8_t> read_auxv(Task* t) {
   RR_ARCH_FUNCTION(read_auxv_arch, t->arch(), t);
 }
 
+static uint64_t word_at(uint8_t* buf, size_t wsize) {
+	union{
+		uint8_t buf[8];
+		uint64_t v;
+	} u;
+	memcpy(u.buf, buf, wsize);
+	memset(u.buf + wsize, 0, 8 - wsize);
+	return u.v;
+}
+
+unsigned long int tracee_getauxval(Task* t, unsigned long type) {
+	vector<uint8_t> v = read_auxv(t);
+	size_t i = 0;
+	size_t wsize = word_size(t->arch());
+	while ((i + 1)*wsize*2 <= v.size()) {
+		if (word_at(v.data() + i*2*wsize, wsize) == type) {
+			return word_at(v.data() + (i*2 + 1)*wsize, wsize);
+		}
+		++i;
+	}
+	return 0;
+}
+
 // FIXME this function assumes that there's only one address space.
 // Should instead only look at the address space of the task in
 // question.

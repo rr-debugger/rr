@@ -4357,29 +4357,6 @@ static void check_privileged_exe(RecordTask* t) {
   }
 }
 
-static uint64_t word_at(uint8_t* buf, size_t wsize) {
-  union {
-    uint8_t buf[8];
-    uint64_t v;
-  } u;
-  memcpy(u.buf, buf, wsize);
-  memset(u.buf + wsize, 0, 8 - wsize);
-  return u.v;
-}
-
-static remote_ptr<void> get_exe_entry(Task* t) {
-  vector<uint8_t> v = read_auxv(t);
-  size_t i = 0;
-  size_t wsize = word_size(t->arch());
-  while ((i + 1)*wsize*2 <= v.size()) {
-    if (word_at(v.data() + i*2*wsize, wsize) == AT_ENTRY) {
-      return word_at(v.data() + (i*2 + 1)*wsize, wsize);
-    }
-    ++i;
-  }
-  return remote_ptr<void>();
-}
-
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
@@ -4411,7 +4388,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
 
   // get the remote executable entry point
   // with the pointer, we find out which mapping is the executable
-  auto exe_entry = get_exe_entry(t);
+  uintptr_t at_entry = tracee_getauxval(t, AT_ENTRY);
+  remote_ptr<void> exe_entry(at_entry);
   ASSERT(t, !exe_entry.is_null()) << "AT_ENTRY not found";
 
   // Write out stack mappings first since during replay we need to set up the
