@@ -700,7 +700,7 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                    (flags & ~MAP_GROWSDOWN) | MAP_FIXED, -1, 0);
   } else {
     ASSERT(remote.task(), data.source == TraceReader::SOURCE_ZERO);
-    emu_file = t->session().emufs().get_or_create(recorded_km, length);
+    emu_file = t->session().emufs().get_or_create(recorded_km);
     struct stat real_file;
     // Emufs file, so open it read-write in case we need to write to it
     // through the task's memfd.
@@ -741,13 +741,13 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 
 static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                int prot, int flags, int fd,
-                               off64_t offset_pages, uint64_t file_size,
+                               off64_t offset_pages,
                                const KernelMapping& km) {
   auto buf = t->trace_reader().read_raw_data();
 
   // Ensure there's a virtual file for the file that was mapped
   // during recording.
-  auto emufile = t->session().emufs().get_or_create(km, file_size);
+  auto emufile = t->session().emufs().get_or_create(km);
   // Re-use the direct_map() machinery to map the virtual file.
   //
   // NB: the tracee will map the procfs link to our fd; there's
@@ -827,8 +827,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
           finish_private_mmap(t, remote, trace_frame.regs().syscall_result(),
                               length, prot, flags, offset_pages, km);
         } else {
-          finish_shared_mmap(t, remote, prot, flags, fd, offset_pages,
-                             data.file_size_bytes, km);
+          finish_shared_mmap(t, remote, prot, flags, fd, offset_pages, km);
         }
       }
     }
@@ -931,7 +930,7 @@ static void process_shmat(ReplayTask* t, const TraceFrame& trace_frame,
     KernelMapping km = t->trace_reader().read_mapped_region(&data);
     int prot = shm_flags_to_mmap_prot(shm_flags);
     int flags = MAP_SHARED;
-    finish_shared_mmap(t, remote, prot, flags, -1, 0, data.file_size_bytes, km);
+    finish_shared_mmap(t, remote, prot, flags, -1, 0, km);
     t->vm()->set_shm_size(km.start(), km.size());
 
     // Finally, we finish by emulating the return value.

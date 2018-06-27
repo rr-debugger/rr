@@ -135,17 +135,18 @@ EmuFile::shr_ptr EmuFs::clone_file(EmuFile::shr_ptr file) {
   return c;
 }
 
-EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& recorded_km,
-                                      uint64_t file_size) {
+EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& recorded_km) {
   FileId id(recorded_km);
   auto it = files.find(id);
+  uint64_t min_file_size =
+    recorded_km.file_offset_bytes() + recorded_km.size();
   if (it != files.end()) {
     it->second.lock()->update(recorded_km.device(), recorded_km.inode(),
-                              file_size);
+                              min_file_size);
     return it->second.lock();
   }
   auto vf = EmuFile::create(*this, recorded_km.fsname(), recorded_km.device(),
-                            recorded_km.inode(), file_size);
+                            recorded_km.inode(), min_file_size);
   files[id] = vf;
   return vf;
 }

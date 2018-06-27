@@ -147,8 +147,7 @@ public:
    * Return an emulated file representing the recorded shared mapping
    * |recorded_km|.
    */
-  EmuFile::shr_ptr get_or_create(const KernelMapping& recorded_km,
-                                 uint64_t file_size);
+  EmuFile::shr_ptr get_or_create(const KernelMapping& recorded_km);
 
   /**
    * Dump information about this emufs to the "error" log.
