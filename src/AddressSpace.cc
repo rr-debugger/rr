@@ -819,6 +819,8 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
     remove_range(dont_fork, MemoryRange(new_addr, new_num_bytes));
   }
 
+  unmap_internal(t, new_addr, new_num_bytes);
+
   remote_ptr<void> new_end = new_addr + new_num_bytes;
   map_and_coalesce(t, m.set_range(new_addr, new_end),
                    mr.recorded_map.set_range(new_addr, new_end), mr.emu_file,
