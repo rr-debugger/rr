@@ -812,15 +812,33 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
       KernelMapping km = t->trace_reader().read_mapped_region(&data);
 
       if (data.source == TraceReader::SOURCE_FILE) {
-        struct stat real_file;
-        string real_file_name;
-        finish_direct_mmap(t, remote, trace_frame.regs().syscall_result(),
-                           length, prot, flags, data.file_name, O_RDONLY,
-                           data.data_offset_bytes / page_size(), real_file,
-                           real_file_name);
-        t->vm()->map(t, km.start(), length, prot, flags,
-                     page_size() * offset_pages, real_file_name,
-                     real_file.st_dev, real_file.st_ino, nullptr, &km);
+        uint64_t file_data_size = data.file_size_bytes - data.data_offset_bytes;
+        uint64_t mapped_len =
+          min(ceil_page_size(length), ceil_page_size(file_data_size));
+        if (mapped_len > 0) {
+          struct stat real_file;
+          string real_file_name;
+          finish_direct_mmap(t, remote, trace_frame.regs().syscall_result(),
+                             mapped_len, prot, flags, data.file_name, O_RDONLY,
+                             data.data_offset_bytes / page_size(), real_file,
+                             real_file_name);
+          t->vm()->map(t, km.start(), mapped_len, prot, flags,
+                       page_size() * offset_pages, real_file_name,
+                       real_file.st_dev, real_file.st_ino, nullptr, &km);
+        }
+        if (ceil_page_size(length) > mapped_len) {
+          remote_ptr<void> zero_start = km.start() + mapped_len;
+          size_t zero_len = ceil_page_size(length) - mapped_len;
+          dev_t device = KernelMapping::NO_DEVICE;
+          ino_t inode = KernelMapping::NO_INODE;
+          int zero_flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED;
+          remote.infallible_mmap_syscall(zero_start, zero_len, prot,
+                                         zero_flags, -1, 0);
+          KernelMapping recorded_zero_km =
+            km.subrange(zero_start, zero_start + zero_len);
+          remote.task()->vm()->map(t, zero_start, zero_len, prot, zero_flags, 0, string(),
+                                   device, inode, nullptr, &recorded_zero_km);
+        }
       } else {
         ASSERT(t, data.source == TraceReader::SOURCE_TRACE);
         if (MAP_PRIVATE & flags) {
