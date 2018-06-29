@@ -353,7 +353,6 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     AddressSpace::Mapping m = *it;
     string raw_map_line = m.map.str();
     uint32_t rec_checksum = 0;
-    remote_ptr<void> mapping_end = m.map.end();
 
     if (VALIDATE_CHECKSUMS == mode) {
       char line[1024];
@@ -379,18 +378,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
         FATAL() << "Segment " << rec_start_addr << "-" << rec_end_addr
                 << " changed to " << m.map << "??";
       }
-      if (m.map.end() < rec_end_addr) {
-        ++it;
-        if (it != as.maps().end()) {
-          auto next_m = *it;
-          if (next_m.map.flags() & MAP_ANONYMOUS) {
-            mapping_end = next_m.map.end();
-          }
-        }
-      }
-      ASSERT(t, mapping_end == rec_end_addr)
+      ASSERT(t, m.map.end() == rec_end_addr)
           << "Segment " << rec_start_addr << "-" << rec_end_addr
-          << " changed to end " << mapping_end << ": " << m.map << "??";
+          << " changed to " << m.map << "??";
       if (is_start_of_scratch_region(t, rec_start_addr)) {
         /* Replay doesn't touch scratch regions, so
          * their contents are allowed to diverge.
@@ -415,7 +405,7 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     }
 
     vector<uint8_t> mem;
-    mem.resize(mapping_end - m.map.start());
+    mem.resize(m.map.size());
     memset(mem.data(), 0, mem.size());
     ssize_t valid_mem_len =
         t->read_bytes_fallible(m.map.start(), mem.size(), mem.data());

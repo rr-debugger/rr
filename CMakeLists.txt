@@ -736,6 +736,7 @@ set(BASIC_TESTS
   mremap_grow_shared
   mremap_non_page_size
   mremap_overwrite
+  mremap_private_grow_under_map
   mremap_shrink
   msg
   msync
