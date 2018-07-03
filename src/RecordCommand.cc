@@ -53,6 +53,10 @@ RecordCommand RecordCommand::singleton(
     "  --no-file-cloning          disable file cloning for mmapped files\n"
     "  --no-read-cloning          disable file-block cloning for syscallbuf\n"
     "                             reads\n"
+	"  -o --output-trace-dir=<DIR> set the output trace directory.\n"
+	"							  _RR_TRACE_DIR gets ignored.\n"
+	"							  Directory name is given name, not the\n"
+	"							  application name.\n"			
     "  -p --print-trace-dir=<NUM> print trace directory followed by a newline\n"
     "                             to given file descriptor\n"
     "  --syscall-buffer-size=<NUM> desired size of syscall buffer in kB.\n"
@@ -109,6 +113,8 @@ struct RecordFlags {
 
   int print_trace_dir;
 
+  std::string output_trace_dir;
+
   /* Whether to use file-cloning optimization during recording. */
   bool use_file_cloning;
 
@@ -143,6 +149,7 @@ struct RecordFlags {
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
         syscall_buffer_size(0),
         print_trace_dir(-1),
+	    output_trace_dir(""),
         use_file_cloning(true),
         use_read_cloning(true),
         bind_cpu(BIND_CPU),
@@ -210,6 +217,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 'i', "ignore-signal", HAS_PARAMETER },
     { 'n', "no-syscall-buffer", NO_PARAMETER },
     { 'p', "print-trace-dir", HAS_PARAMETER },
+	{ 'o', "output-trace-dir", HAS_PARAMETER},
     { 's', "always-switch", NO_PARAMETER },
     { 't', "continue-through-signal", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
@@ -252,6 +260,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       }
       flags.print_trace_dir = opt.int_value;
       break;
+	case 'o':
+		flags.output_trace_dir = opt.value;
+		break;
     case 0:
       flags.use_read_cloning = false;
       break;
@@ -376,23 +387,26 @@ static void install_signal_handlers(void) {
 }
 
 static void setup_session_from_flags(RecordSession& session,
-                                     const RecordFlags& flags) {
-  session.scheduler().set_max_ticks(flags.max_ticks);
-  session.scheduler().set_always_switch(flags.always_switch);
-  session.set_enable_chaos(flags.chaos);
-  session.set_use_read_cloning(flags.use_read_cloning);
-  session.set_use_file_cloning(flags.use_file_cloning);
-  session.set_ignore_sig(flags.ignore_sig);
-  session.set_continue_through_sig(flags.continue_through_sig);
-  session.set_wait_for_all(flags.wait_for_all);
-  if (flags.syscall_buffer_size > 0) {
-    session.set_syscall_buffer_size(flags.syscall_buffer_size);
-  }
+	const RecordFlags& flags) {
+	session.scheduler().set_max_ticks(flags.max_ticks);
+	session.scheduler().set_always_switch(flags.always_switch);
+	session.set_enable_chaos(flags.chaos);
+	session.set_use_read_cloning(flags.use_read_cloning);
+	session.set_use_file_cloning(flags.use_file_cloning);
+	session.set_ignore_sig(flags.ignore_sig);
+	session.set_continue_through_sig(flags.continue_through_sig);
+	session.set_wait_for_all(flags.wait_for_all);
+	if (flags.syscall_buffer_size > 0) {
+		session.set_syscall_buffer_size(flags.syscall_buffer_size);
+	}
 
-  if (flags.scarce_fds) {
-    for (int i = 0; i < 950; ++i) {
-      open("/dev/null", O_RDONLY);
-    }
+	if (flags.scarce_fds) {
+		for (int i = 0; i < 950; ++i) {
+			open("/dev/null", O_RDONLY);
+		}
+	}
+	if (flags.output_trace_dir != "") {
+	  session.set_output_trace_dir(flags.output_trace_dir);
   }
 }
 
@@ -409,10 +423,10 @@ void force_close_record_session() {
 static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
-  auto session = RecordSession::create(
-      args, flags.extra_env, flags.disable_cpuid_features,
-      flags.use_syscall_buffer, flags.bind_cpu);
-  setup_session_from_flags(*session, flags);
+	auto session = RecordSession::create(
+		  args, flags.extra_env, flags.disable_cpuid_features,
+		  flags.use_syscall_buffer, flags.bind_cpu, flags.output_trace_dir);
+	  setup_session_from_flags(*session, flags);
 
   static_session = session.get();
 
