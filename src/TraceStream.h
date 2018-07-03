@@ -199,7 +199,8 @@ public:
    */
   TraceWriter(const std::string& file_name, int bind_to_cpu,
               bool has_cpuid_faulting,
-              const DisableCPUIDFeatures& disable_cpuid_features);
+              const DisableCPUIDFeatures& disable_cpuid_features, 
+			  const std::string& m);
 
   /**
    * We got far enough into recording that we should set this as the latest

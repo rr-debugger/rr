@@ -9,6 +9,7 @@
 #include <sched.h>
 #include <sys/wait.h>
 #include <sysexits.h>
+#include <dirent.h>
 
 #include <algorithm>
 #include <fstream>
@@ -1073,26 +1074,100 @@ void TraceWriter::close() {
   }
 }
 
-static string make_trace_dir(const string& exe_path) {
-  ensure_default_rr_trace_dir();
+static int remove_directory(const char* dir) {
+	int ret = 0;
+	DIR* d = opendir(dir);
+	if (d == NULL) {
+		return -1;
+	}
+	struct dirent* next_file;
+	char filepath[256];
 
-  // Find a unique trace directory name.
-  int nonce = 0;
-  int ret;
-  string dir;
-  do {
-    stringstream ss;
-    ss << trace_save_dir() << "/" << basename(exe_path.c_str()) << "-"
-       << nonce++;
-    dir = ss.str();
-    ret = mkdir(dir.c_str(), S_IRWXU | S_IRWXG);
-  } while (ret && EEXIST == errno);
+	while ((next_file = readdir(d)) != NULL) {
+		if (0 == strcmp(next_file->d_name, ".") || 0 == strcmp(next_file->d_name, "..")) {
+			continue;
+		}
+		sprintf(filepath, "%s/%s", dir, next_file->d_name);
+		ret = remove(filepath);
+		if (ret < 0) {
+			FATAL() << "Unable to remove file`" << filepath << "'";
+		}
+	}
+	ret = closedir(d);
+	if (ret < 0) {
+		FATAL() << "Unable to close directory`" << dir << "'";
+	}
+	ret = rmdir(dir);
+	if (ret < 0) {
+		FATAL() << "Unable to remove directory`" << dir << "'";
+	}
 
-  if (ret) {
-    FATAL() << "Unable to create trace directory `" << dir << "'";
-  }
+	return ret;
+}
 
-  return dir;
+static string make_trace_dir(const string& exe_path, const string& output_trace_dir) {
+
+	// save trace dir in given trace dir with option -o
+	if (output_trace_dir != "") {
+		DIR* directory = opendir(output_trace_dir.c_str());
+		if (directory) {
+			// directory exist, remove all the files in directory and delete it
+			int res = remove_directory(output_trace_dir.c_str());
+			if (res == 0) {
+				// create the directory
+				int ret = mkdir(output_trace_dir.c_str(), S_IRWXU | S_IRWXG);
+				if (ret == 0) {
+					return output_trace_dir;
+				}
+				else {
+					FATAL() << "Unable to create trace directory `" << output_trace_dir << "'";
+				}
+			}
+			else {
+				FATAL() << "Could not remove old trace directory `" << output_trace_dir << "'";
+			}
+		}
+		else if (ENOENT == errno) {
+			// directory does not exist, create the directory
+			int ret = mkdir(output_trace_dir.c_str(), S_IRWXU | S_IRWXG);
+			if (ret == 0) {
+				return output_trace_dir;
+			}
+			else {
+				FATAL() << "Unable to create trace directory `" << output_trace_dir << "'";
+			}
+		}
+		else {
+			// opendir failed
+			FATAL() << "Unable to open trace directory `" << output_trace_dir << "'";
+		}
+	}
+
+	// save trace directory set in _RR_TRACE_DIR or in default trace dir
+	else {
+		ensure_default_rr_trace_dir();
+
+		// Find a unique trace directory name.
+		int nonce = 0;
+		int ret;
+		string dir;
+		do {
+			stringstream ss;
+			ss << trace_save_dir() << "/" << basename(exe_path.c_str()) << "-"
+				<< nonce++;
+			dir = ss.str();
+			ret = mkdir(dir.c_str(), S_IRWXU | S_IRWXG);
+		} while (ret && EEXIST == errno);
+
+		if (ret) {
+			FATAL() << "Unable to create trace directory `" << dir << "'";
+		}
+
+		return dir;
+	}
+
+	// never should reach that
+	return nullptr;
 }
 
 #define STR_HELPER(x) #x
@@ -1100,8 +1175,9 @@ static string make_trace_dir(const string& exe_path) {
 
 TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
                          bool has_cpuid_faulting,
-                         const DisableCPUIDFeatures& disable_cpuid_features)
-    : TraceStream(make_trace_dir(file_name),
+                         const DisableCPUIDFeatures& disable_cpuid_features, 
+						 const std::string& output_trace_dir)
+    : TraceStream(make_trace_dir(file_name, output_trace_dir),
                   // Somewhat arbitrarily start the
                   // global time from 1.
                   1),
@@ -1179,25 +1255,25 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
 }
 
 void TraceWriter::make_latest_trace() {
-  string link_name = latest_trace_symlink();
-  // Try to update the symlink to |this|.  We only try attempt
-  // to set the symlink once.  If the link is re-created after
-  // we |unlink()| it, then another rr process is racing with us
-  // and it "won".  The link is then valid and points at some
-  // very-recent trace, so that's good enough.
-  unlink(link_name.c_str());
-  // Link only the trace name, not the full path, so moving a directory full
-  // of traces around doesn't break the latest-trace link.
-  const char* trace_name = trace_dir.c_str();
-  const char* last = strrchr(trace_name, '/');
-  if (last) {
-    trace_name = last + 1;
-  }
-  int ret = symlink(trace_name, link_name.c_str());
-  if (ret < 0 && errno != EEXIST) {
-    FATAL() << "Failed to update symlink `" << link_name << "' to `"
-            << trace_dir << "'.";
-  }
+	string link_name = latest_trace_symlink();
+	// Try to update the symlink to |this|.  We only try attempt
+	// to set the symlink once.  If the link is re-created after
+	// we |unlink()| it, then another rr process is racing with us
+	// and it "won".  The link is then valid and points at some
+	// very-recent trace, so that's good enough.
+	unlink(link_name.c_str());
+	// Link only the trace name, not the full path, so moving a directory full
+	// of traces around doesn't break the latest-trace link.
+	const char* trace_name = trace_dir.c_str();
+	const char* last = strrchr(trace_name, '/');
+	if (last) {
+	trace_name = last + 1;
+	}
+	int ret = symlink(trace_name, link_name.c_str());
+	if (ret < 0 && errno != EEXIST) {
+	FATAL() << "Failed to update symlink `" << link_name << "' to `"
+			<< trace_dir << "'.";
+	}
 }
 
 TraceFrame TraceReader::peek_frame() {
