@@ -61,8 +61,6 @@ struct Flags {
   // under valgrind.
   std::string forced_uarch;
 
-  std::string output_trace_dir;
-
   Flags()
       : checksum(CHECKSUM_NONE),
         dump_on(DUMP_ON_NONE),
