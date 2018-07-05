@@ -60,7 +60,8 @@ public:
       const std::vector<std::string>& extra_env,
       const DisableCPUIDFeatures& features,
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
-      BindCPU bind_cpu = BIND_CPU);
+      BindCPU bind_cpu = BIND_CPU,
+      const std::string& output_trace_dir = "");
 
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
@@ -166,7 +167,8 @@ private:
                 const std::vector<std::string>& argv,
                 const std::vector<std::string>& envp,
                 const DisableCPUIDFeatures& features,
-                SyscallBuffering syscallbuf, BindCPU bind_cpu);
+                SyscallBuffering syscallbuf, BindCPU bind_cpu,
+                const std::string& output_trace_dir);
 
   virtual void on_create(Task* t) override;
 
@@ -214,6 +216,8 @@ private:
    * When true, wait for all tracees to exit before finishing recording.
    */
   bool wait_for_all_;
+
+  std::string output_trace_dir;
 };
 
 } // namespace rr

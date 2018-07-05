@@ -195,11 +195,13 @@ public:
    * Create a trace where the tracess are bound to cpu |bind_to_cpu|. This
    * data is recorded in the trace. If |bind_to_cpu| is -1 then the tracees
    * were not bound.
-   * The trace name is determined by |file_name| and _RR_TRACE_DIR (if set).
+   * The trace name is determined by |file_name| and _RR_TRACE_DIR (if set)
+   * or by setting -o=<OUTPUT_TRACE_DIR>.
    */
   TraceWriter(const std::string& file_name, int bind_to_cpu,
               bool has_cpuid_faulting,
-              const DisableCPUIDFeatures& disable_cpuid_features);
+              const DisableCPUIDFeatures& disable_cpuid_features,
+              const string& output_trace_dir);
 
   /**
    * We got far enough into recording that we should set this as the latest

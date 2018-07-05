@@ -9,6 +9,7 @@
 #include <sched.h>
 #include <sys/wait.h>
 #include <sysexits.h>
+#include <dirent.h>
 
 #include <algorithm>
 #include <fstream>
@@ -1073,26 +1074,45 @@ void TraceWriter::close() {
   }
 }
 
-static string make_trace_dir(const string& exe_path) {
-  ensure_default_rr_trace_dir();
+static string make_trace_dir(const string& exe_path, const string& output_trace_dir) {
+  if (!output_trace_dir.empty()) {
+    // save trace dir in given output trace dir with option -o
+    int ret = mkdir(output_trace_dir.c_str(), S_IRWXU | S_IRWXG);
+    if (ret == 0) {
+      return output_trace_dir;
+    } 
+    if (EEXIST == errno) {
+      // directory already exists
+      FATAL() << "Directory `" << output_trace_dir << "' already exists.";,
+    } else {
+      FATAL() << "Unable to create trace directory `" << output_trace_dir << "'";
+    }
 
-  // Find a unique trace directory name.
-  int nonce = 0;
-  int ret;
-  string dir;
-  do {
-    stringstream ss;
-    ss << trace_save_dir() << "/" << basename(exe_path.c_str()) << "-"
-       << nonce++;
-    dir = ss.str();
-    ret = mkdir(dir.c_str(), S_IRWXU | S_IRWXG);
-  } while (ret && EEXIST == errno);
+  } else {	  
+    // save trace dir set in _RR_TRACE_DIR or in the default trace dir
+    ensure_default_rr_trace_dir();
 
-  if (ret) {
-    FATAL() << "Unable to create trace directory `" << dir << "'";
+    // Find a unique trace directory name.
+    int nonce = 0;
+    int ret;
+    string dir;
+    do {
+      stringstream ss;
+      ss << trace_save_dir() << "/" << basename(exe_path.c_str()) << "-"
+         << nonce++;
+      dir = ss.str();
+      ret = mkdir(dir.c_str(), S_IRWXU | S_IRWXG);
+    } while (ret && EEXIST == errno);
+
+    if (ret) {
+      FATAL() << "Unable to create trace directory `" << dir << "'";
+    }
+
+    return dir;
   }
 
-  return dir;
+  // never should reach that
+  return nullptr;
 }
 
 #define STR_HELPER(x) #x
@@ -1100,8 +1120,9 @@ static string make_trace_dir(const string& exe_path) {
 
 TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
                          bool has_cpuid_faulting,
-                         const DisableCPUIDFeatures& disable_cpuid_features)
-    : TraceStream(make_trace_dir(file_name),
+                         const DisableCPUIDFeatures& disable_cpuid_features,
+                         const string& output_trace_dir)
+    : TraceStream(make_trace_dir(file_name, output_trace_dir),
                   // Somewhat arbitrarily start the
                   // global time from 1.
                   1),
