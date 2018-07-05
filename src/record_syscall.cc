@@ -4664,7 +4664,9 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
   if (t->trace_writer().write_mapped_region(t, km, st) ==
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = max<off64_t>(st.st_size - km.file_offset_bytes(), 0);
-    t->record_remote(km.start(), min(end, (off64_t)km.size()));
+    // Allow failure; the underlying file may have true zero size, in which
+    // case this may try to record unmapped memory.
+    t->record_remote_fallible(km.start(), min(end, (off64_t)km.size()));
   }
 
   // If the original mapping was monitored, we'll continue monitoring it
