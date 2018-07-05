@@ -3133,6 +3133,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
 
         case FUTEX_WAKE:
+        case FUTEX_WAKE_BITSET:
           break;
 
         case FUTEX_LOCK_PI:
