@@ -97,7 +97,11 @@ struct FcntlConstants {
     OFD_SETLKW = 38,
     // Other Linux-specific operations
     DUPFD_CLOEXEC = 0x400 + 6,
-    ADD_SEALS = 0x400 + 9
+    ADD_SEALS = 0x400 + 9,
+    GET_RW_HINT = 0x400 + 11,
+    SET_RW_HINT = 0x400 + 12,
+    GET_FILE_RW_HINT = 0x400 + 13,
+    SET_FILE_RW_HINT = 0x400 + 14,
   };
 };
 

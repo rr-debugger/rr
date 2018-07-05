@@ -3061,6 +3061,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case Arch::GETSIG:
         case Arch::SETSIG:
         case Arch::ADD_SEALS:
+        case Arch::SET_RW_HINT:
+        case Arch::SET_FILE_RW_HINT:
           break;
 
         case Arch::SETFD:
@@ -3100,6 +3102,11 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           // outparam data to the |struct flock|
           // argument, so no need for scratch.
           return ALLOW_SWITCH;
+
+        case Arch::GET_RW_HINT:
+        case Arch::GET_FILE_RW_HINT:
+          syscall_state.reg_parameter<int64_t>(3);
+          break;
 
         default:
           // Unknown command should trigger EINVAL.

@@ -651,6 +651,7 @@ set(BASIC_TESTS
   fault_in_code_page
   fcntl_owner_ex
   fcntl_dupfd
+  fcntl_rw_hints
   fcntl_seals
   fcntl_sig
   fd_tracking_across_threads
