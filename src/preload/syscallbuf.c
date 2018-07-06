@@ -1317,6 +1317,7 @@ static long sys_futex(const struct syscall_info* call) {
   int op = call->args[1];
   int flags = 0;
   switch (FUTEX_CMD_MASK & op) {
+    case FUTEX_WAKE_BITSET:
     case FUTEX_WAKE:
       break;
     case FUTEX_CMP_REQUEUE:
