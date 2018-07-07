@@ -3690,6 +3690,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case PR_CAP_AMBIENT:
         case PR_CAPBSET_DROP:
         case PR_CAPBSET_READ:
+        case PR_GET_SPECULATION_CTRL:
+        case PR_SET_SPECULATION_CTRL:
           break;
 
         case PR_SET_DUMPABLE:
