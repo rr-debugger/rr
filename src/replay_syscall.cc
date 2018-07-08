@@ -851,7 +851,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
       uint64_t file_bytes = data.file_size_bytes - data.data_offset_bytes;
 
       if (data.source == TraceReader::SOURCE_FILE &&
-         ceil_page_size(file_bytes) == ceil_page_size(length)) {
+         ceil_page_size(file_bytes) >= ceil_page_size(length)) {
         struct stat real_file;
         string real_file_name;
         finish_direct_mmap(t, remote, addr, length, prot, flags,
