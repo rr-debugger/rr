@@ -1854,10 +1854,16 @@ static string lookup_by_path(const string& name) {
   // it is useless when running under rr.
   env.push_back("MOZ_GDB_SLEEP=0");
 
-  // OpenSSL uses RDRAND, but we can disable it. These bitmasks are inverted
-  // and ANDed with the results of CPUID. The number below is 2^62, which is the
-  // bit for RDRAND support.
-  env.push_back("OPENSSL_ia32cap=~4611686018427387904:~0");
+  // If we have CPUID faulting, don't use these environment hacks. We don't
+  // need them and the user might want to use them themselves for other reasons.
+  if (!Session::has_cpuid_faulting()) {
+    // OpenSSL uses RDRAND, but we can disable it. These bitmasks are inverted
+    // and ANDed with the results of CPUID. The number below is 2^62, which is the
+    // bit for RDRAND support.
+    env.push_back("OPENSSL_ia32cap=~4611686018427387904:~0");
+    // Disable Qt's use of RDRAND/RDSEED/RTM
+    env.push_back("QT_NO_CPU_FEATURE=rdrand rdseed rtm");
+  }
 
   shr_ptr session(
       new RecordSession(full_path, argv, env, disable_cpuid_features,
@@ -1871,7 +1877,7 @@ RecordSession::RecordSession(const std::string& exe_path,
                              const DisableCPUIDFeatures& disable_cpuid_features,
                              SyscallBuffering syscallbuf, BindCPU bind_cpu,
                              const string& output_trace_dir)
-    : trace_out(argv[0], choose_cpu(bind_cpu), has_cpuid_faulting_,
+    : trace_out(argv[0], choose_cpu(bind_cpu), has_cpuid_faulting(),
                 disable_cpuid_features, output_trace_dir),
       scheduler_(*this),
       disable_cpuid_features_(disable_cpuid_features),

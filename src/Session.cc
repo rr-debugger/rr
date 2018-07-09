@@ -43,9 +43,7 @@ Session::Session()
       next_task_serial_(1),
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       done_initial_exec_(false),
-      visible_execution_(true),
-      has_cpuid_faulting_(!Flags::get().disable_cpuid_faulting &&
-                          cpuid_faulting_works()) {
+      visible_execution_(true) {
   LOG(debug) << "Session " << this << " created";
 }
 
@@ -63,7 +61,6 @@ Session::Session(const Session& other) {
   next_task_serial_ = other.next_task_serial_;
   done_initial_exec_ = other.done_initial_exec_;
   visible_execution_ = other.visible_execution_;
-  has_cpuid_faulting_ = other.has_cpuid_faulting_;
   tracee_socket = other.tracee_socket;
   tracee_socket_fd_number = other.tracee_socket_fd_number;
 }
@@ -736,6 +733,10 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   dest.clone_completion = move(completion);
 
   DEBUG_ASSERT(dest.vms().size() > 0);
+}
+
+bool Session::has_cpuid_faulting() {
+  return !Flags::get().disable_cpuid_faulting && cpuid_faulting_works();
 }
 
 } // namespace rr
