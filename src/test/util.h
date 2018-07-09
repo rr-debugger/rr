@@ -375,4 +375,29 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
 #define PR_CAP_AMBIENT_CLEAR_ALL 4
 #endif
 
+#ifndef PR_GET_SPECULATION_CTRL
+#define PR_GET_SPECULATION_CTRL 52
+#endif
+#ifndef PR_SET_SPECULATION_CTRL
+#define PR_SET_SPECULATION_CTRL 53
+#endif
+#ifndef PR_SPEC_STORE_BYPASS
+#define PR_SPEC_STORE_BYPASS 0
+#endif
+#ifndef PR_SPEC_NOT_AFFECTED
+#define PR_SPEC_NOT_AFFECTED 0
+#endif
+#ifndef PR_SPEC_PRCTL
+#define PR_SPEC_PRCTL 1
+#endif
+#ifndef PR_SPEC_ENABLE
+#define PR_SPEC_ENABLE 2
+#endif
+#ifndef PR_SPEC_DISABLE
+#define PR_SPEC_DISABLE 4
+#endif
+#ifndef PR_SPEC_FORCE_DISABLE
+#define PR_SPEC_FORCE_DISABLE 8
+#endif
+
 #endif /* RRUTIL_H */

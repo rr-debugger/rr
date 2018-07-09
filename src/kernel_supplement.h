@@ -81,6 +81,13 @@ namespace rr {
 #define SYS_SECCOMP 1
 #endif
 
+#ifndef PR_GET_SPECULATION_CTRL
+#define PR_GET_SPECULATION_CTRL 52
+#endif
+#ifndef PR_SET_SPECULATION_CTRL
+#define PR_SET_SPECULATION_CTRL 53
+#endif
+
 // These are defined by the include/linux/errno.h in the kernel tree.
 // Since userspace doesn't see these errnos in normal operation, that
 // header apparently isn't distributed with libc.

@@ -3,7 +3,6 @@
 #include "util.h"
 
 int main(void) {
-
   int ret = prctl(PR_GET_SPECULATION_CTRL, PR_SPEC_STORE_BYPASS, 0, 0, 0);
 
   /* which path is taken here is out of our control */
