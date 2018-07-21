@@ -427,7 +427,15 @@ public:
      */
     DONT_FLUSH_SYSCALLBUF
   };
+  enum AllowSyscallbufReset {
+    ALLOW_RESET_SYSCALLBUF,
+    /* Pass this if it's safe to replay the event before we process the
+     * syscallbuf records.
+     */
+    DONT_RESET_SYSCALLBUF
+  };
   void record_event(const Event& ev, FlushSyscallbuf flush = FLUSH_SYSCALLBUF,
+                    AllowSyscallbufReset reset = ALLOW_RESET_SYSCALLBUF,
                     const Registers* registers = nullptr);
 
   bool is_fatal_signal(int sig, SignalDeterministic deterministic) const;

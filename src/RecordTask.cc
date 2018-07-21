@@ -256,8 +256,8 @@ RecordTask::~RecordTask() {
   // is kill_all_tasks() in which case it's OK to just drop the last chunk of
   // execution. Trying to flush syscallbuf for an exiting task could be bad,
   // e.g. it could be in the middle of syscallbuf code that's supposed to be
-  // atomic.
-  record_event(Event::exit(), DONT_FLUSH_SYSCALLBUF);
+  // atomic. For the same reasons don't allow syscallbuf to be reset here.
+  record_event(Event::exit(), DONT_FLUSH_SYSCALLBUF, DONT_RESET_SYSCALLBUF);
 
   // We expect tasks to usually exit by a call to exit() or
   // exit_group(), so it's not helpful to warn about that.
@@ -1658,6 +1658,7 @@ void RecordTask::maybe_reset_syscallbuf() {
 }
 
 void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
+                              AllowSyscallbufReset reset,
                               const Registers* registers) {
   if (flush == FLUSH_SYSCALLBUF) {
     maybe_flush_syscallbuf();
@@ -1688,7 +1689,7 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
   trace_writer().write_frame(this, ev, registers, extra_registers);
   LOG(debug) << "Wrote event " << ev << " for time " << current_time;
 
-  if (!ev.has_ticks_slop() && ev.type() != EV_EXIT) {
+  if (!ev.has_ticks_slop() && reset == ALLOW_RESET_SYSCALLBUF) {
     ASSERT(this, flush == FLUSH_SYSCALLBUF);
     // After we've output an event, it's safe to reset the syscallbuf (if not
     // explicitly delayed) since we will have exited the syscallbuf code that

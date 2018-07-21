@@ -128,7 +128,6 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     LOG(debug) << "stable exit";
   } else {
     if (!t->may_be_blocked()) {
-      // Record any progress this task made before it died. A running task
       // might have been hit by a SIGKILL or a SECCOMP_RET_KILL, in which case
       // there might be some execution since its last recorded event that we
       // need to replay.
@@ -162,7 +161,12 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
           t->record_event(event);
         }
       } else {
-        t->record_event(Event::sched());
+        // Don't try to reset the syscallbuf here. The task may be exiting
+        // while in arbitrary syscallbuf code. And of course, because it's
+        // exiting, it doesn't matter if we don't reset the syscallbuf.
+        // XXX flushing the syscallbuf may be risky too...
+        t->record_event(Event::sched(), RecordTask::FLUSH_SYSCALLBUF,
+                        RecordTask::DONT_RESET_SYSCALLBUF);
       }
     }
     LOG(warn)
@@ -888,6 +892,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       last_task_switchable = t->ev().Syscall().switchable =
           rec_prepare_syscall(t);
       t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF,
+                      RecordTask::ALLOW_RESET_SYSCALLBUF,
                       &t->ev().Syscall().regs);
 
       debug_exec_state("after cont", t);
@@ -1402,7 +1407,8 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
         can_switch = ALLOW_SWITCH;
       }
 
-      t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF, &r);
+      t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF,
+                      RecordTask::ALLOW_RESET_SYSCALLBUF, &r);
       // Don't actually set_regs(r), the kernel does these modifications.
 
       // Only inject fatal signals. Non-fatal signals with signal handlers
