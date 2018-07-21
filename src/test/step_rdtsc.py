@@ -5,7 +5,7 @@ send_gdb('b rdtsc')
 expect_gdb('Breakpoint 1')
 
 send_gdb('c')
-expect_gdb('Breakpoint 1, rdtsc')
+expect_gdb('Breakpoint 1')
 
 send_gdb('disass')
 expect_gdb(re.compile(r'=> ([0-9a-fx]+) <\+[0-9]+>:\trdtsc'))
