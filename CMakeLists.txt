@@ -437,6 +437,16 @@ function(post_build_executable target)
 #                     COMMAND setfattr ARGS -n user.pax.flags -v m $<TARGET_FILE:${target}>)
 endfunction(post_build_executable)
 
+if(UNIX)
+  include(GNUInstallDirs)
+else()
+  set(CMAKE_INSTALL_LIBDIR "lib")
+  set(CMAKE_INSTALL_BINDIR "bin")
+  set(CMAKE_INSTALL_DATADIR "share")
+  set(CMAKE_INSTALL_DOCDIR "${CMAKE_INSTALL_DATADIR}/doc")
+  set(CMAKE_INSTALL_INCLUDEDIR "include")
+endif()
+
 option(RR_BUILD_SHARED "Build the rr shared library as well as the binary (experimental).")
 
 if(RR_BUILD_SHARED)
@@ -451,9 +461,9 @@ if(RR_BUILD_SHARED)
   set_target_properties(brotli PROPERTIES POSITION_INDEPENDENT_CODE ON)
   target_link_libraries(rrbin rr)
   install(TARGETS rr
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib)
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 else()
   add_executable(rr ${RR_SOURCES} src/main.cc)
   set_target_properties(rr PROPERTIES ENABLE_EXPORTS true)
@@ -513,7 +523,7 @@ foreach(file ${RR_GDB_RESOURCES})
                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/${file}"
                  COPYONLY)
   install(FILES third-party/gdb/${file}
-          DESTINATION share/rr)
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/rr)
 endforeach(file)
 
 install(PROGRAMS scripts/signal-rr-recording.sh
@@ -521,12 +531,12 @@ install(PROGRAMS scripts/signal-rr-recording.sh
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay
-  DESTINATION bin)
+  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 install(TARGETS ${RR_BIN} rrpreload rr_exec_stub
-  RUNTIME DESTINATION bin
-  LIBRARY DESTINATION lib/rr
-  ARCHIVE DESTINATION lib/rr)
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
 
 # Build 32-bit librrpreload on 64-bit builds.
 # We copy the source files into '32' subdirectories in the output
@@ -576,9 +586,9 @@ if(rr_32BIT AND rr_64BIT)
                         PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs -m32")
 
   install(TARGETS rrpreload_32 rr_exec_stub_32
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib/rr
-    ARCHIVE DESTINATION lib/rr)
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
 endif()
 
 ##--------------------------------------------------
