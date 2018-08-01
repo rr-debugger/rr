@@ -2720,6 +2720,8 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       // the syscall so that we're in the same state as the normal execution
       // path.
       t->ev().Syscall().failed_during_preparation = true;
+      // Restore register we might have changed
+      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       r.set_syscallno(Arch::gettid);
       r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
       t->set_regs(r);

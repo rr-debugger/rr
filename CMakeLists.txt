@@ -633,6 +633,7 @@ set(BASIC_TESTS
   clone
   clone_bad_stack
   clone_bad_tls
+  clone_fail
   clone_file_range
   clone_immediate_exit
   clone_newflags
