@@ -525,7 +525,7 @@ struct syscallbuf_hdr {
    */
   volatile uint8_t in_sigprocmask_critical_section;
   /* Nonzero when the syscall was aborted during preparation without doing
-   * anything */
+   * anything. This is set when a user seccomp filter forces a SIGSYS. */
   volatile uint8_t failed_during_preparation;
 
   struct syscallbuf_record recs[0];

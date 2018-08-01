@@ -231,10 +231,10 @@ struct SyscallEvent {
   Switchable switchable;
   // True when this syscall was restarted after a signal interruption.
   bool is_restart;
-  // True when this syscall failed during preparation. This includes syscalls
-  // that were interrupted by SIGSYS via seccomp, and clone system calls that
-  // failed. These system calls failed no matter what the syscall-result
-  // register says.
+  // True when this syscall failed during preparation: syscall entry events
+  // that were interrupted by a user seccomp filter forcing SIGSYS or errno,
+  // and clone system calls that failed. These system calls failed no matter
+  // what the syscall-result register says.
   bool failed_during_preparation;
   // Syscall is being emulated via PTRACE_SYSEMU.
   bool in_sysemu;

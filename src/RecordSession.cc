@@ -430,6 +430,9 @@ static void handle_seccomp_errno(RecordTask* t,
 
   if (!t->is_in_untraced_syscall()) {
     t->push_syscall_event(syscallno);
+    // Note that the syscall failed. prepare_clone() needs to know
+    // this during replay of the syscall entry.
+    t->ev().Syscall().failed_during_preparation = true;
     note_entering_syscall(t);
   }
 

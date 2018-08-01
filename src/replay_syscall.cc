@@ -193,6 +193,9 @@ static TraceTaskEvent read_task_trace_event(ReplayTask* t,
 template <typename Arch> static void prepare_clone(ReplayTask* t) {
   const TraceFrame& trace_frame = t->current_trace_frame();
 
+  // We're being called with the syscall entry event, so we can't inspect the result
+  // of the syscall exit to see whether the clone succeeded (that event can happen
+  // much later, even after the spawned task has run).
   if (trace_frame.event().Syscall().failed_during_preparation) {
     /* creation failed, nothing special to do */
     return;
