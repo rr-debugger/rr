@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <limits.h>
 #include <sched.h>
+#include <sys/file.h>
 #include <sys/wait.h>
 #include <sysexits.h>
 #include <dirent.h>
@@ -1072,6 +1073,7 @@ void TraceWriter::close() {
   if (rename(incomplete_path.c_str(), path.c_str()) < 0) {
     FATAL() << "Unable to create version file " << path;
   }
+  version_fd.close();
 }
 
 static string make_trace_dir(const string& exe_path, const string& output_trace_dir) {
@@ -1136,9 +1138,14 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
   }
 
   string ver_path = incomplete_version_path();
-  ScopedFd version_fd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
+  version_fd = ScopedFd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
   if (!version_fd.is_open()) {
     FATAL() << "Unable to create " << ver_path;
+  }
+  // Take an exclusive lock and hold it until we rename the file at
+  // the end of recording and then close our file descriptor.
+  if (flock(version_fd, LOCK_EX | LOCK_NB) != 0) {
+    FATAL() << "Unable to lock " << ver_path;
   }
   static const char buf[] = STR(TRACE_VERSION) "\n";
   if (write(version_fd, buf, sizeof(buf) - 1) != (ssize_t)sizeof(buf) - 1) {

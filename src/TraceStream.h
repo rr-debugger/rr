@@ -132,6 +132,35 @@ protected:
   FrameTime global_time;
 };
 
+/**
+ * Trace writing takes the trace directory through a defined set of states.
+ * These states can be usefully observed by external programs.
+ * 
+ * -- Initially the trace directory does not exist.
+ * -- The trace directory is created. It is empty.
+ * -- A file `incomplete` is created in the trace directory. It is empty.
+ * -- rr takes an exclusive flock() lock on `incomplete`.
+ * -- rr writes data to `incomplete` so it is no longer empty.
+ * -- At the end of trace recording, rr renames `incomplete` to `version`.
+ * At this point the trace is complete and ready to replay.
+ * -- rr releases its flock() lock on `version`.
+ * 
+ * Thus:
+ * -- If the trace directory contains the file `version` the trace is valid
+ * and ready for replay.
+ * -- If the trace directory contains the file `incomplete`, and there is an
+ * exclusive flock() lock on that file, rr is still recording (or something
+ * is messing with us).
+ * -- If the trace directory contains the file `incomplete`, that file
+ * does not have an exclusive `flock()` lock on it, and the file is non-empty,
+ * rr must have died before the recording was complete.
+ * -- If the trace directory contains the file `incomplete`, that file
+ * does not have an exclusive `flock()` lock on it, and the file is empty,
+ * rr has just started recording (or perhaps died during startup).
+ * -- If the trace directory does not contain the file `incomplete`,
+ * rr has just started recording (or perhaps died during startup) (or perhaps
+ * that isn't a trace directory at all).
+ */
 class TraceWriter : public TraceStream {
 public:
   bool supports_file_data_cloning() { return supports_file_data_cloning_; }
@@ -228,6 +257,9 @@ private:
    */
   std::map<std::pair<dev_t, ino_t>, std::string> files_assumed_immutable;
   std::vector<RawDataMetadata> raw_recs;
+  // Keep the 'incomplete' (later renamed to 'version') file open until we
+  // rename it, so our flock() lock stays held on it.
+  ScopedFd version_fd;
   uint32_t mmap_count;
   bool supports_file_data_cloning_;
 };
