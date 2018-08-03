@@ -1358,7 +1358,7 @@ static Switchable prepare_ioctl(RecordTask* t,
     return PREVENT_SWITCH;
   }
 
-  unsigned long request = t->regs().arg2();
+  unsigned int request = t->regs().arg2();
   int type = _IOC_TYPE(request);
   int nr = _IOC_NR(request);
   int dir = _IOC_DIR(request);
