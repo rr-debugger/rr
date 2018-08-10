@@ -1609,23 +1609,6 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::sigcontext, sigcontext);
 
-  struct ucontext_t {
-    uint32_t uc_flags;
-    uint32_t uc_link;
-    stack_t uc_stack;
-    sigcontext uc_mcontext;
-    kernel_sigset_t uc_sigmask;
-  };
-
-  struct rt_sigframe {
-    uint32_t pretcode;
-    int sig;
-    uint32_t pinfo;
-    uint32_t puc;
-    siginfo_t info;
-    struct ucontext_t uc;
-  };
-
   struct _fpstate_32 {
     uint32_t cw, sw, tag, ipoff, cssel, dataoff, datasel;
     uint16_t _st[40];
@@ -1805,22 +1788,6 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_fpregs_struct,
                       user_fpregs_struct);
-
-  struct ucontext_t {
-    uint64_t ucflags;
-    ptr<struct ucontext_t> uc_link;
-    stack_t uc_stack;
-    struct sigcontext uc_mcontext;
-    sigset_t uc_sigmask;
-    user_fpregs_struct uc_fpregs;
-  };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::ucontext_t, ucontext_t);
-
-  struct rt_sigframe {
-    ptr<char> pretcode;
-    struct ucontext_t uc;
-    siginfo_t info;
-  };
 
   struct user {
     struct user_regs_struct regs;
