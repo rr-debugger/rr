@@ -1609,25 +1609,6 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::sigcontext, sigcontext);
 
-  struct _fpstate_32 {
-    uint32_t cw, sw, tag, ipoff, cssel, dataoff, datasel;
-    uint16_t _st[40];
-    uint16_t status, magic;
-    uint32_t _fxsr_env[6], mxcsr, reserved;
-    uint32_t _fxsr_st[32];
-    uint32_t _xmm[32];
-    uint32_t padding[56];
-  };
-
-  struct sigframe {
-    uint32_t pretcode;
-    int sig;
-    sigcontext sc;
-    _fpstate_32 unused;
-    uint32_t extramask;
-    char retcode[8];
-  };
-
   struct user {
     user_regs_struct regs;
     int u_fpvalid;
