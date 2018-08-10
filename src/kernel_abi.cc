@@ -47,6 +47,7 @@
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 #include <termios.h>
+#include <ucontext.h>
 
 // Used to verify definitions in kernel_abi.h
 namespace rr {
