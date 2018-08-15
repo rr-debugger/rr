@@ -579,7 +579,8 @@ inline static long stored_record_size(size_t length) {
 inline static int is_blacklisted_filename(const char* filename) {
   const char* f;
   if (strprefix("/dev/dri/", filename) || streq("/dev/nvidiactl", filename) ||
-      streq("/usr/share/alsa/alsa.conf", filename)) {
+      streq("/usr/share/alsa/alsa.conf", filename) ||
+      streq("/dev/nvidia-uvm", filename)) {
     return 1;
   }
   f = extract_file_name(filename);
