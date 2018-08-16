@@ -268,6 +268,9 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
           break;
         }
       }
+      TraceReader::RawDataMetadata data;
+      while (process_raw_data && trace.read_raw_data_metadata_for_frame(data)) {
+      }
     }
   }
 }
