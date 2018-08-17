@@ -63,6 +63,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/ptrace.h>
+#include <sys/quota.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -2330,6 +2331,35 @@ static long sys_xstat64(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_quotactl(const struct syscall_info* call) {
+  const int syscallno = call->no;
+  int cmd = call->args[0];
+  const char* special = (const char*)call->args[1];
+  int id = call->args[2];
+  void* addr = (void*)call->args[3];
+
+  if ((cmd >> SUBCMDSHIFT) != Q_GETQUOTA) {
+    return traced_raw_syscall(call);
+  }
+
+  void* ptr = prep_syscall();
+  struct dqblk* buf2 = NULL;
+  long ret;
+
+  if (addr) {
+    buf2 = ptr;
+    ptr += sizeof(*buf2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall4(syscallno, cmd, special, id, addr);
+  if (buf2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    local_memcpy(addr, buf2, sizeof(*buf2));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_statfs(const struct syscall_info* call) {
   const int syscallno = call->no;
   /* NB: this arg may be a string or an fd, but for the purposes
@@ -2647,6 +2677,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(pwrite64);
 #endif
     CASE(ptrace);
+    CASE(quotactl);
     CASE(read);
     CASE(readlink);
 #if defined(SYS_recvfrom)
