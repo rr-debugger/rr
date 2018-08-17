@@ -66,6 +66,7 @@
 #include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -2329,6 +2330,34 @@ static long sys_xstat64(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_statfs(const struct syscall_info* call) {
+  const int syscallno = call->no;
+  /* NB: this arg may be a string or an fd, but for the purposes
+   * of this generic helper we don't care. */
+  long what = call->args[0];
+  struct statfs* buf = (struct statfs*)call->args[1];
+
+  /* Like open(), not arming the desched event because it's not
+   * needed for correctness, and there are no data to suggest
+   * whether it's a good idea perf-wise. */
+  void* ptr = prep_syscall();
+  struct statfs* buf2 = NULL;
+  long ret;
+
+  if (buf) {
+    buf2 = ptr;
+    ptr += sizeof(*buf2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall2(syscallno, what, buf2);
+  if (buf2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    local_memcpy(buf, buf2, sizeof(*buf));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_write(const struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Writing to a pipe or FIFO could unblock a higher priority task */
@@ -2645,7 +2674,6 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE_GENERIC_NONBLOCKING_FD(utimensat);
     CASE(write);
     CASE(writev);
-#undef CASE
 #if defined(SYS_fstat64)
     case SYS_fstat64:
 #else
@@ -2662,6 +2690,12 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     case SYS_stat:
 #endif
       return sys_xstat64(call);
+    case SYS_statfs:
+    case SYS_fstatfs:
+      return sys_statfs(call);
+#undef CASE
+#undef CASE_GENERIC_NONBLOCKING
+#undef CASE_GENERIC_NONBLOCKING_FD
     default:
       return traced_raw_syscall(call);
   }
