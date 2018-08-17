@@ -1757,7 +1757,7 @@ static long sys_poll(const struct syscall_info* call) {
     fds2 = ptr;
     ptr += nfds * sizeof(*fds2);
   }
-  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
   if (fds2) {
@@ -1766,7 +1766,12 @@ static long sys_poll(const struct syscall_info* call) {
 
   __before_poll_syscall_breakpoint();
 
-  ret = untraced_syscall3(syscallno, fds2, nfds, timeout);
+  /* Try a no-timeout version of the syscall first. If this doesn't return
+     anything, and we should have blocked, we'll try again with a traced syscall
+     which will be the one that blocks. This usually avoids the
+     need to trigger desched logic, which adds overhead, especially the
+     rrcall_notify_syscall_hook_exit that gets triggered. */
+  ret = untraced_syscall3(syscallno, fds2, nfds, 0);
 
   if (fds2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     /* NB: even when poll returns 0 indicating no pending
@@ -1779,7 +1784,14 @@ static long sys_poll(const struct syscall_info* call) {
      * incorrectly trashing 'fds'. */
     local_memcpy(fds, fds2, nfds * sizeof(*fds));
   }
-  return commit_raw_syscall(syscallno, ptr, ret);
+  commit_raw_syscall(syscallno, ptr, ret);
+
+  if (ret != 0 || timeout == 0) {
+    return ret;
+  }
+  /* The syscall didn't return anything, and we should have blocked.
+     Just perform a raw syscall now since we're almost certain to block. */
+  return traced_raw_syscall(call);
 }
 
 static long sys_epoll_wait(const struct syscall_info* call) {
