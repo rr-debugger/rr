@@ -5,13 +5,13 @@ from util import *
 
 arch = get_exe_arch()
 
-ArchInfo = collections.namedtuple('ArchInfo', ['syscall', 'ip_name'])
+ArchInfo = collections.namedtuple('ArchInfo', ['ip_name'])
 regex_info = {
-    'i386': ArchInfo('getgid32', 'eip'),
-    'i386:x86-64': ArchInfo('getgid', 'rip'),
+    'i386': ArchInfo('eip'),
+    'i386:x86-64': ArchInfo('rip'),
 }
 
-syscall_re = re.compile("`SYSCALL: %s' \\(state:EXITING_SYSCALL\\)" % regex_info[arch].syscall)
+syscall_re = re.compile("`SYSCALL: <unknown-syscall--1>' \\(state:EXITING_SYSCALL\\)")
 sched_re = re.compile("`SCHED'")
 eip_re = re.compile("%s:(0x[a-f0-9]+)" % regex_info[arch].ip_name)
 

@@ -47,7 +47,7 @@ int main(__attribute__((unused)) int argc, char* argv[]) {
   pthread_create(&thread, NULL, do_thread, NULL);
 
   /* This syscall signals the test that we're in the test body proper */
-  getgid();
+  event_syscall();
   STATEMENT4096(0)
   return a + b;
 }

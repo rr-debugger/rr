@@ -2602,14 +2602,13 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(clock_gettime);
     CASE_GENERIC_NONBLOCKING_FD(close);
     CASE(creat);
-    CASE_GENERIC_NONBLOCKING(fchmod);
     CASE_GENERIC_NONBLOCKING_FD(fadvise64);
+    CASE_GENERIC_NONBLOCKING(fchmod);
 #if defined(SYS_fcntl64)
     CASE(fcntl64);
 #else
     CASE(fcntl);
 #endif
-    CASE(rt_sigprocmask);
     CASE(fgetxattr);
     CASE(flistxattr);
     CASE_GENERIC_NONBLOCKING_FD(fsetxattr);
@@ -2617,11 +2616,15 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(futex);
     CASE(getdents);
     CASE(getdents64);
+    CASE_GENERIC_NONBLOCKING(getegid);
     CASE_GENERIC_NONBLOCKING(geteuid);
+    CASE_GENERIC_NONBLOCKING(getgid);
     CASE_GENERIC_NONBLOCKING(getpid);
+    CASE_GENERIC_NONBLOCKING(getppid);
     CASE(getrusage);
     CASE_GENERIC_NONBLOCKING(gettid);
     CASE(gettimeofday);
+    CASE_GENERIC_NONBLOCKING(getuid);
     CASE(getxattr);
     CASE(ioctl);
     CASE_GENERIC_NONBLOCKING(lchown);
@@ -2652,6 +2655,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #if defined(SYS_recvmsg)
     CASE(recvmsg);
 #endif
+    CASE(rt_sigprocmask);
 #if defined(SYS_sendmsg)
     CASE(sendmsg);
 #endif
