@@ -2706,6 +2706,8 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE_GENERIC_NONBLOCKING(symlink);
     CASE(time);
     CASE_GENERIC_NONBLOCKING(truncate);
+    CASE_GENERIC_NONBLOCKING(unlink);
+    CASE_GENERIC_NONBLOCKING(unlinkat);
     CASE_GENERIC_NONBLOCKING_FD(utimensat);
     CASE(write);
     CASE(writev);
