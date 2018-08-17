@@ -861,7 +861,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   assert(record_end >= record_start);
   rec->size = record_end - record_start;
 
-  assert(buffer_hdr()->locked);
+  assert(hdr->locked);
 
   /* NB: the ordering of this statement with the
    * |disarm_desched_event()| call below is important.
@@ -1782,6 +1782,62 @@ static long sys_poll(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_epoll_wait(const struct syscall_info* call) {
+  const int syscallno = SYS_epoll_wait;
+  int epfd = call->args[0];
+  struct epoll_event* events = (struct epoll_event*)call->args[1];
+  int max_events = call->args[2];
+  int timeout = call->args[3];
+
+  void* ptr;
+  struct epoll_event* events2 = NULL;
+  long ret;
+
+  if (timeout > 0) {
+    /* Finite timeout in use, just use a traced syscall since we don't want to
+       have to think about timeout-caused EINTRs below. */
+    return traced_raw_syscall(call);
+  }
+
+  ptr = prep_syscall();
+
+  assert(syscallno == call->no);
+
+  if (events && max_events > 0) {
+    events2 = ptr;
+    ptr += max_events * sizeof(*events2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  /* Try a no-timeout version of the syscall first. If this doesn't return
+     anything, and we should have blocked, we'll try again with a traced syscall
+     which will be the one that blocks. This usually avoids the
+     need to trigger desched logic, which adds overhead, especially the
+     rrcall_notify_syscall_hook_exit that gets triggered. */
+  ret = untraced_syscall4(syscallno, epfd, events2, max_events, 0);
+
+  ptr = copy_output_buffer(ret * sizeof(*events2), ptr, events, events2);
+  ret = commit_raw_syscall(syscallno, ptr, ret);
+  /* An EINTR result must be the "spurious EINTR in epoll_wait" kernel bug
+     or a timeout (with timeout==0). If the timeout is zero it's OK to just
+     return EINTR, callers must be prepared to handle this and retry
+     (due to the existing spurious-EINTR behavior). */
+  if (timeout == 0) {
+    return ret;
+  }
+  /* timeout < 0. We have to avoid return spurious EINTR, and we
+     also have to issue an actual blocking syscall if we don't have
+     any events to return. */
+  if (ret != EINTR && ret != 0) {
+    return ret;
+  }
+  /* We won't allow signal delivery here and timeout < 0 so
+     this must be spurious. Just retry with a traced syscall. */
+  return traced_raw_syscall(call);
+}
+
 #define CLONE_SIZE_THRESHOLD 0x10000
 
 static long sys_read(const struct syscall_info* call) {
@@ -2633,6 +2689,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE_GENERIC_NONBLOCKING_FD(close);
     CASE(creat);
     CASE_GENERIC_NONBLOCKING_FD(dup);
+    CASE(epoll_wait);
     CASE_GENERIC_NONBLOCKING_FD(fadvise64);
     CASE_GENERIC_NONBLOCKING(fchmod);
 #if defined(SYS_fcntl64)
