@@ -2584,6 +2584,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(fgetxattr);
     CASE(flistxattr);
     CASE_GENERIC_NONBLOCKING_FD(fsetxattr);
+    CASE_GENERIC_NONBLOCKING_FD(ftruncate);
     CASE(futex);
     CASE(getdents);
     CASE(getdents64);
@@ -2640,6 +2641,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #endif
     CASE_GENERIC_NONBLOCKING(symlink);
     CASE(time);
+    CASE_GENERIC_NONBLOCKING(truncate);
     CASE_GENERIC_NONBLOCKING_FD(utimensat);
     CASE(write);
     CASE(writev);
