@@ -134,6 +134,21 @@ void spurious_desched_syscall(struct syscall_info* info) {
  */
 uid_t geteuid(void) { return syscall(SYS_geteuid); }
 
+/**
+ * clang's LeakSanitizer has regular threads call sched_yield() in a loop while
+ * a helper thread ptrace-attaches to them. If we let sched_yield() enter the
+ * syscallbuf, the helper thread sees that the regular thread SP register
+ * is pointing to the syscallbuf alt-stack, outside the stack region it
+ * expects, which causes it to freak out.
+ * So, override sched_yield() to perform the syscall in a way that can't
+ * be syscall-buffered. (We have no syscall hook for `syscall` followed by
+ * `ret`).
+ */
+int sched_yield(void) {
+  asm ("syscall; ret" : : "a"(SYS_sched_yield));
+  return 0;
+}
+
 typedef void* (*fopen_ptr)(const char* filename, const char* mode);
 
 static void random_device_init_helper(void* this) {
