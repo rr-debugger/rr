@@ -480,7 +480,7 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_89_c1_31_d2)
         xor %edx,%edx
 SYSCALLHOOK_END(_syscall_hook_trampoline_89_c1_31_d2)
 
-SYSCALLHOOK_START(_syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00)
+SYSCALLHOOK_START(_syscall_hook_trampoline_c3_nop)
         .cfi_offset %rip, 16
         RSP_IS_CFA_PLUS_OFFSET(24)
         callq __morestack
@@ -497,7 +497,7 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00)
         jmp _syscallbuf_final_exit_instruction
 
         .cfi_endproc
-        .size _syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00, .-_syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00
+        .size _syscall_hook_trampoline_c3_nop, .-_syscall_hook_trampoline_c3_nop
 
 #endif /* __x86_64__ */
 

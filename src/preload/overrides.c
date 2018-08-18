@@ -130,7 +130,8 @@ void spurious_desched_syscall(struct syscall_info* info) {
 
 /**
  * glibc geteuid() can be compiled to instructions ending in "syscall; ret"
- * which can't be hooked. So override it here with something that can be hooked.
+ * which sometimes can't be hooked. So override it here with something that
+ * can be hooked.
  */
 uid_t geteuid(void) { return syscall(SYS_geteuid); }
 
@@ -142,13 +143,14 @@ uid_t geteuid(void) { return syscall(SYS_geteuid); }
  * expects, which causes it to freak out.
  * So, override sched_yield() to perform the syscall in a way that can't
  * be syscall-buffered. (We have no syscall hook for `syscall` followed by
- * `ret`).
+ * `inc %ecx`).
  */
 int sched_yield(void) {
+  int trash;
 #ifdef __i386__
-  asm ("int $0x80; ret" : : "a"(SYS_sched_yield));
+  asm ("int $0x80; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
 #elif defined(__x86_64__)
-  asm ("syscall; ret" : : "a"(SYS_sched_yield));
+  asm ("syscall; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
 #else
 #error "Unknown architecture"
 #endif

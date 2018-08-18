@@ -1016,6 +1016,7 @@ set(TESTS_WITH_PROGRAM
   getcwd
   goto_event
   hello
+  hooks
   # Disabled because issue #1806 makes tests fail on Debian 8.5 at least
   # history
   ignored_async_usr1

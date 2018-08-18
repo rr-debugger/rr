@@ -548,8 +548,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_90_90_90(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_ba_01_00_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_89_c1_31_d2(void);
-  extern RR_HIDDEN void _syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00(
-      void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_c3_nop(void);
 
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
@@ -609,7 +608,22 @@ static void __attribute__((constructor)) init_process(void) {
     { 1,
       9,
       { 0xc3, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 },
-      (uintptr_t)_syscall_hook_trampoline_c3_0f_1f_84_00_00_00_00_00 },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* liblsan internal_close has 'syscall' followed by 'retq; nopl 0x0(%rax,%rax,1) */
+    { 1,
+      6,
+      { 0xc3, 0x0f, 0x1f, 0x44, 0x00, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* liblsan internal_open has 'syscall' followed by 'retq; nopl (%rax) */
+    { 1,
+      4,
+      { 0xc3, 0x0f, 0x1f, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* liblsan internal_dup2 has 'syscall' followed by 'retq; xchg %ax,%ax */
+    { 1,
+      3,
+      { 0xc3, 0x66, 0x90 },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
   };
 #else
 #error Unknown architecture
