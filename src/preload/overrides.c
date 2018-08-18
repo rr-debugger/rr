@@ -148,9 +148,9 @@ uid_t geteuid(void) { return syscall(SYS_geteuid); }
 int sched_yield(void) {
   int trash;
 #ifdef __i386__
-  asm ("int $0x80; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
+  asm volatile ("int $0x80; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
 #elif defined(__x86_64__)
-  asm ("syscall; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
+  asm volatile ("syscall; inc %0" : "=c"(trash) : "a"(SYS_sched_yield));
 #else
 #error "Unknown architecture"
 #endif
