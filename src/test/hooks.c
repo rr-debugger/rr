@@ -21,7 +21,7 @@ int do_close(int fd) {
 int main(void) {
   int i;
   for (i = 0; i < 1000000; ++i) {
-    do_close(-1);
+    do_close(50000);
   }
 
   atomic_puts("EXIT-SUCCESS");

@@ -727,8 +727,13 @@ static void* prep_syscall(void) {
 }
 
 static int is_bufferable_fd(int fd) {
-  return fd < 0 || (fd < SYSCALLBUF_FDS_DISABLED_SIZE &&
-                    !globals.syscallbuf_fds_disabled[fd]);
+  if (fd < 0) {
+    return 1;
+  }
+  if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE) {
+    fd = SYSCALLBUF_FDS_DISABLED_SIZE - 1;
+  }
+  return !globals.syscallbuf_fds_disabled[fd];
 }
 
 /**

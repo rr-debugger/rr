@@ -45,7 +45,8 @@ public:
     return fds;
   }
 
-  bool is_monitoring(int fd) { return fds.count(fd) > 0; }
+  bool is_monitoring(int fd) const { return fds.count(fd) > 0; }
+  uint32_t count_beyond_limit() const { return fd_count_beyond_limit; }
 
   FileMonitor* get_monitor(int fd);
 
@@ -70,12 +71,15 @@ public:
   void close_after_exec(ReplayTask* t, const std::vector<int>& fds_to_close);
 
 private:
-  FdTable() {}
-  FdTable(const FdTable& other) : fds(other.fds) {}
+  FdTable() : fd_count_beyond_limit(0) {}
+  FdTable(const FdTable& other) : fds(other.fds),
+    fd_count_beyond_limit(other.fd_count_beyond_limit) {}
 
   void update_syscallbuf_fds_disabled(int fd);
 
   std::unordered_map<int, FileMonitor::shr_ptr> fds;
+  // Number of elements of `fds` that are >= SYSCALLBUF_FDS_DISABLED_SIZE
+  uint32_t fd_count_beyond_limit;
 };
 
 } // namespace rr

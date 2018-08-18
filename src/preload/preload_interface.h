@@ -272,6 +272,8 @@ struct preload_globals {
    * The rr supervisor modifies this array directly to dynamically turn
    * syscallbuf on and off for particular fds. fds outside the array range must
    * never use the syscallbuf.
+   * The last entry is set if *any* fd >= SYSCALLBUF_FDS_DISABLED_SIZE - 1
+   * has had buffering disabled.
    */
   VOLATILE char syscallbuf_fds_disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
   /* mprotect records. Set by preload. */
