@@ -88,7 +88,8 @@ RecordCommand RecordCommand::singleton(
     "                             (for testing purposes)\n"
     "  --setuid-sudo              If running under sudo, pretend to be the\n"
     "                             user that ran sudo rather than root. This\n"
-    "                             allows recording setuid/setcap binaries.\n");
+    "                             allows recording setuid/setcap binaries.\n"
+    "  --trace-id                 Sets the trace id to the specified id.\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -147,6 +148,8 @@ struct RecordFlags {
   bool scarce_fds;
 
   bool setuid_sudo;
+
+  unique_ptr<uint8_t[]> trace_id;
 
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
@@ -219,6 +222,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 8, "disable-cpuid-features-ext", HAS_PARAMETER },
     { 9, "disable-cpuid-features-xsave", HAS_PARAMETER },
     { 10, "num-cores", HAS_PARAMETER },
+    { 11, "trace-id", HAS_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -339,6 +343,67 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.num_cores = opt.int_value;
       break;
     }
+    case 11: {
+      const uint8_t SUM_GROUP_LENS[5] = { 8, 12, 16, 20, 32 };
+      /* Parse UUIDs from string form optionally with hypens */
+      uint8_t digit = 0; // This counts only hex digits (i.e. not hypens)
+      uint8_t group = 0;
+      uint8_t acc = 0;
+      unique_ptr<uint8_t[]> buf(new uint8_t[16]);
+      auto it = opt.value.begin();
+      while (it < opt.value.end()) {
+        auto c = *it;
+
+        if (digit > SUM_GROUP_LENS[4]) {
+          return false;
+        }
+
+        if (digit % 2 == 0) {
+          // First digit of the byte.
+          if ('0' <= c && c <= '9') {
+            acc = c - '0';
+          } else if ('a' <= c && c <= 'f') {
+            acc = c - 'a' + 10;
+          } else if ('A' <= c && c <= 'F') {
+            acc = c - 'A' + 10;
+          } else if (c == '-') {
+            // Group delimiter.
+            if (SUM_GROUP_LENS[group] != digit) {
+              return false;
+            }
+            ++group;
+            ++it;
+            continue;
+          } else {
+            return false;
+          }
+        } else {
+          // Second digit of the byte.
+          acc <<= 4;
+          if ('0' <= c && c <= '9') {
+            acc += c - '0';
+          } else if ('a' <= c && c <= 'f') {
+            acc += c - 'a' + 10;
+          } else if ('A' <= c && c <= 'F') {
+            acc += c - 'A' + 10;
+          } else {
+            return false;
+          }
+
+          buf[digit / 2] = acc;
+        }
+
+        ++digit;
+        ++it;
+      }
+
+      if (SUM_GROUP_LENS[4] != digit) {
+        return false;
+      }
+
+      flags.trace_id.swap(buf);
+      break;
+    }
     case 's':
       flags.always_switch = true;
       break;
@@ -442,7 +507,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
 
   auto session = RecordSession::create(
       args, flags.extra_env, flags.disable_cpuid_features,
-      flags.use_syscall_buffer, flags.bind_cpu, flags.output_trace_dir);
+      flags.use_syscall_buffer, flags.bind_cpu, flags.output_trace_dir,
+      flags.trace_id.get());
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();

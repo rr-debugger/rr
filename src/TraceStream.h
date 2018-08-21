@@ -235,7 +235,8 @@ public:
               bool has_cpuid_faulting,
               const DisableCPUIDFeatures& disable_cpuid_features,
               const string& output_trace_dir,
-              TicksSemantics ticks_semantics_);
+              TicksSemantics ticks_semantics_,
+              const uint8_t* uuid);
 
   /**
    * We got far enough into recording that we should set this as the latest

@@ -61,7 +61,8 @@ public:
       const DisableCPUIDFeatures& features,
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
       BindCPU bind_cpu = BIND_CPU,
-      const std::string& output_trace_dir = "");
+      const std::string& output_trace_dir = "",
+      const uint8_t* trace_id = nullptr);
 
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
@@ -171,7 +172,8 @@ private:
                 const std::vector<std::string>& envp,
                 const DisableCPUIDFeatures& features,
                 SyscallBuffering syscallbuf, BindCPU bind_cpu,
-                const std::string& output_trace_dir);
+                const std::string& output_trace_dir,
+                const uint8_t* trace_id);
 
   virtual void on_create(Task* t) override;
 

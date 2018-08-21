@@ -1143,7 +1143,8 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
                          bool has_cpuid_faulting,
                          const DisableCPUIDFeatures& disable_cpuid_features,
                          const string& output_trace_dir,
-                         TicksSemantics ticks_semantics_)
+                         TicksSemantics ticks_semantics_,
+                         const uint8_t* uuid)
     : TraceStream(make_trace_dir(file_name, output_trace_dir),
                   // Somewhat arbitrarily start the
                   // global time from 1.
@@ -1193,9 +1194,13 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
   header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
-  uint8_t uuid[16];
-  good_random(uuid, sizeof(uuid));
-  header.setUuid(Data::Reader(uuid, sizeof(uuid)));
+  if (!uuid) {
+    uint8_t uuid[16];
+    good_random(uuid, sizeof(uuid));
+    header.setUuid(Data::Reader(uuid, sizeof(uuid)));
+  } else {
+    header.setUuid(Data::Reader(uuid, 16));
+  }
   try {
     writePackedMessageToFd(version_fd, header_msg);
   } catch (...) {

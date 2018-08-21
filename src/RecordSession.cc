@@ -1792,7 +1792,8 @@ static string lookup_by_path(const string& name) {
     const vector<string>& argv, const vector<string>& extra_env,
     const DisableCPUIDFeatures& disable_cpuid_features,
     SyscallBuffering syscallbuf, BindCPU bind_cpu,
-    const string& output_trace_dir) {
+    const string& output_trace_dir,
+    const uint8_t* trace_id) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -1883,7 +1884,7 @@ static string lookup_by_path(const string& name) {
 
   shr_ptr session(
       new RecordSession(full_path, argv, env, disable_cpuid_features,
-                        syscallbuf, bind_cpu, output_trace_dir));
+                        syscallbuf, bind_cpu, output_trace_dir, trace_id));
   return session;
 }
 
@@ -1892,10 +1893,11 @@ RecordSession::RecordSession(const std::string& exe_path,
                              const std::vector<std::string>& envp,
                              const DisableCPUIDFeatures& disable_cpuid_features,
                              SyscallBuffering syscallbuf, BindCPU bind_cpu,
-                             const string& output_trace_dir)
+                             const string& output_trace_dir,
+                             const uint8_t* trace_id)
     : trace_out(argv[0], choose_cpu(bind_cpu), has_cpuid_faulting(),
                 disable_cpuid_features, output_trace_dir,
-                ticks_semantics_),
+                ticks_semantics_, trace_id),
       scheduler_(*this),
       disable_cpuid_features_(disable_cpuid_features),
       ignore_sig(0),
