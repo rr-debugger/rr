@@ -112,7 +112,7 @@ static string default_rr_trace_dir() {
   return cached_dir;
 }
 
-static string trace_save_dir() {
+extern string trace_save_dir() {
   const char* output_dir = getenv("_RR_TRACE_DIR");
   return output_dir ? output_dir : default_rr_trace_dir();
 }

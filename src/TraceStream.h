@@ -135,7 +135,7 @@ protected:
 /**
  * Trace writing takes the trace directory through a defined set of states.
  * These states can be usefully observed by external programs.
- * 
+ *
  * -- Initially the trace directory does not exist.
  * -- The trace directory is created. It is empty.
  * -- A file `incomplete` is created in the trace directory. It is empty.
@@ -144,7 +144,7 @@ protected:
  * -- At the end of trace recording, rr renames `incomplete` to `version`.
  * At this point the trace is complete and ready to replay.
  * -- rr releases its flock() lock on `version`.
- * 
+ *
  * Thus:
  * -- If the trace directory contains the file `version` the trace is valid
  * and ready for replay.
@@ -380,6 +380,8 @@ private:
   std::vector<RawDataMetadata> raw_recs;
   bool trace_uses_cpuid_faulting;
 };
+
+std::string trace_save_dir();
 
 } // namespace rr
 
