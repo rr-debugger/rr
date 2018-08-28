@@ -406,8 +406,11 @@ static void setup_session_from_flags(RecordSession& session,
   session.scheduler().set_max_ticks(flags.max_ticks);
   session.scheduler().set_always_switch(flags.always_switch);
   session.set_enable_chaos(flags.chaos);
-  if (flags.num_cores)
+  if (flags.num_cores) {
+    // Set the number of cores reported, possibly overriding the chaos mode
+    // setting.
     session.set_num_cores(flags.num_cores);
+  }
   session.set_use_read_cloning(flags.use_read_cloning);
   session.set_use_file_cloning(flags.use_file_cloning);
   session.set_ignore_sig(flags.ignore_sig);
