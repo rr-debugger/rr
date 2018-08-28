@@ -53,6 +53,9 @@ RecordCommand RecordCommand::singleton(
     "  --no-file-cloning          disable file cloning for mmapped files\n"
     "  --no-read-cloning          disable file-block cloning for syscallbuf\n"
     "                             reads\n"
+    "  --num-cores=N              pretend to have N cores (rr will still\n"
+    "                             only run on a single core). Overrides\n"
+    "                             random setting from --chaos.\n"
     "  -o, --output-trace-dir<DIR> set the output trace directory.\n"
     "                             _RR_TRACE_DIR gets ignored.\n"
     "                             Directory name is given name, not the\n"
@@ -131,6 +134,9 @@ struct RecordFlags {
   /* Whether to enable chaos mode in the scheduler */
   bool chaos;
 
+  /* Controls number of cores reported to recorded process. */
+  int num_cores;
+
   /* True if we should wait for all processes to exit before finishing
    * recording. */
   bool wait_for_all;
@@ -155,6 +161,7 @@ struct RecordFlags {
         bind_cpu(BIND_CPU),
         always_switch(false),
         chaos(false),
+        num_cores(0),
         wait_for_all(false),
         ignore_nested(false),
         scarce_fds(false),
@@ -211,6 +218,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 7, "disable-cpuid-features", HAS_PARAMETER },
     { 8, "disable-cpuid-features-ext", HAS_PARAMETER },
     { 9, "disable-cpuid-features-xsave", HAS_PARAMETER },
+    { 10, "num-cores", HAS_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -324,6 +332,13 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.disable_cpuid_features.xsave_features_eax = bits[0];
       break;
     }
+    case 10: {
+      if (!opt.verify_valid_int(1, 128)) {
+        return false;
+      }
+      flags.num_cores = opt.int_value;
+      break;
+    }
     case 's':
       flags.always_switch = true;
       break;
@@ -391,6 +406,8 @@ static void setup_session_from_flags(RecordSession& session,
   session.scheduler().set_max_ticks(flags.max_ticks);
   session.scheduler().set_always_switch(flags.always_switch);
   session.set_enable_chaos(flags.chaos);
+  if (flags.num_cores)
+    session.set_num_cores(flags.num_cores);
   session.set_use_read_cloning(flags.use_read_cloning);
   session.set_use_file_cloning(flags.use_file_cloning);
   session.set_ignore_sig(flags.ignore_sig);
