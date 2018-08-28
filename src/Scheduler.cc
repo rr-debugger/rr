@@ -157,7 +157,13 @@ void Scheduler::set_enable_chaos(bool enable_chaos) {
    * return 1 to maximize throughput (since effectively we really only have
    * one core).
    */
+  ASSERT(current_, pretend_num_cores_ == 1);
   pretend_num_cores_ = enable_chaos ? (random() % 8 + 1) : 1;
+  regenerate_affinity_mask();
+}
+
+void Scheduler::set_num_cores(int cores) {
+  pretend_num_cores_ = cores;
   regenerate_affinity_mask();
 }
 

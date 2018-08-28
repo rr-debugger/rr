@@ -94,6 +94,7 @@ public:
     this->always_switch = always_switch;
   }
   void set_enable_chaos(bool enable_chaos);
+  void set_num_cores(int cores);
 
   /**
    * Schedule a new runnable task (which may be the same as current()).

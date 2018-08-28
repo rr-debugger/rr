@@ -135,6 +135,9 @@ public:
   }
   bool enable_chaos() const { return enable_chaos_; }
 
+  void set_num_cores(int num_cores) {
+    scheduler().set_num_cores(num_cores);
+  }
   void set_use_read_cloning(bool enable) { use_read_cloning_ = enable; }
   void set_use_file_cloning(bool enable) { use_file_cloning_ = enable; }
   void set_syscall_buffer_size(size_t size) { syscall_buffer_size_ = size; }
