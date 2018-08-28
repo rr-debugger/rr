@@ -1,16 +1,22 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include <algorithm>
 #include <assert.h>
+#include <dirent.h>
+
+#include <algorithm>
+#include <iomanip>
+#include <numeric>
+#include <sstream>
 #include <vector>
 
 #include "Command.h"
-#include "dirent.h"
 #include "main.h"
 #include "TraceStream.h"
 #include "util.h"
 
 using namespace std;
+
+namespace rr {
 
 class LsCommand : public Command {
 public:
@@ -24,8 +30,8 @@ protected:
 
 LsCommand LsCommand::singleton(
     "ls", " rr ls [OPTION]...\n"
-          "  -l, --long-listing use a long listing format \n "
-          "     (trace name | command line | start time | duration | size)\n"
+          "  -l, --long-listing use a long listing format\n"
+          "     (trace name | start time | duration | size | command line)\n"
           "  -t, --sort-by-age, sort from newest to oldest\n"
           "  -r, --reverse, the sort order\n");
 
@@ -66,15 +72,15 @@ static bool parse_ls_arg(vector<string>& args, LsFlags& flags) {
   return true;
 }
 
-typedef pair<dirent*, TraceReader*> trace_info;
+typedef pair<dirent*, TraceReader*> TraceInfo;
 
-bool compare_by_name(trace_info at, trace_info bt) {
+static bool compare_by_name(TraceInfo at, TraceInfo bt) {
   auto a = string(at.first->d_name);
   auto b = string(bt.first->d_name);
   return lexicographical_compare(begin(a), end(a), begin(b), end(b));
 }
 
-bool compare_by_time(trace_info at, trace_info bt) {
+static bool compare_by_time(TraceInfo at, TraceInfo bt) {
   auto a_version = at.second->dir() + "/version";
   auto b_version = bt.second->dir() + "/version";
   struct stat a_stat;
@@ -84,77 +90,136 @@ bool compare_by_time(trace_info at, trace_info bt) {
   return a_stat.st_ctime < b_stat.st_ctime;
 }
 
-// http://stackoverflow.com/questions/15495756/how-to-find-the-size-of-all-files-located-inside-a-folder
-// Blatantly copied from above, slightly modified
-string get_folder_size(string path) {
-  // command to be executed
-  string cmd("du -sh " + path + " | cut -f1 2>&1 | tr -d '\\n'");
-  FILE* stream = popen(cmd.c_str(), "r");
-  if (stream) {
-    const int max_size = 256;
-    char* readbuf = new char[max_size];
-    if (fgets(readbuf, max_size, stream) != NULL) {
-      return string(readbuf);
-    }
-    pclose(stream);
+static bool get_folder_size(string dir_name, string& size_str) {
+  DIR* dir = opendir(dir_name.c_str());
+  if (!dir) {
+    cerr << "Cannot open " << dir_name << endl;
+    return false;
   }
-  // return error val
-  return "ERROR";
+
+  size_t bytes = 0;
+  while (struct dirent* ent = readdir(dir)) {
+    string path = dir_name + "/" + ent->d_name;
+
+    struct stat st;
+    if (stat(path.c_str(), &st) == -1) {
+      cerr << "stat " << path << " failed\n";
+      return false;
+    }
+
+    bytes += st.st_size;
+  }
+
+  const char suffixes[] = " KMGT";
+  double size = bytes;
+  size_t suffix_idx = 0;
+  while (size >= 1000.0) {
+    size /= 1024.0;
+    suffix_idx++;
+  }
+  char suffix = suffixes[suffix_idx];
+
+  ostringstream cvt;
+
+  if (suffix == ' ') {
+    cvt << bytes;
+  } else if (size >= 10) {
+    cvt << int(size) << suffix;
+  } else {
+    cvt << fixed << setprecision(1) << size << suffix;
+  }
+
+  size_str = cvt.str();
+  return true;
 }
 
-static int ls(const string traces_dir, const LsFlags& flags) {
-  if (DIR* dir = opendir(traces_dir.c_str())) {
-    vector<trace_info> traces;
+static bool is_valid_trace(const string& entry) {
+  if (entry[0] == '.')
+    return false;
+  if (entry[0] == '#')
+    return false;
+  if (entry[entry.length() - 1] == '~')
+    return false;
+  return true;
+}
 
-    while (struct dirent* trace_dir = readdir(dir)) {
-      if (strcmp(trace_dir->d_name, ".") == 0)
-        continue;
-      if (strcmp(trace_dir->d_name, "..") == 0)
-        continue;
-      string full_trace_dir = traces_dir + "/" + trace_dir->d_name;
-      traces.emplace_back(trace_dir, new TraceReader(full_trace_dir));
+static string get_exec_path(TraceInfo& info) {
+  while (true) {
+    TraceTaskEvent r = info.second->read_task_event();
+    if (r.type() == TraceTaskEvent::NONE) {
+      break;
     }
-
-    sort(traces.begin(), traces.end(),
-         flags.sort_by_time ? compare_by_time : compare_by_name);
-
-    if (flags.reverse) {
-      reverse(begin(traces), end(traces));
-    };
-
-    if (flags.full_listing) {
-      int max_name_size =
-          accumulate(traces.begin(), traces.end(), 0, [](int m, trace_info t) {
-            return max(m, static_cast<int>(strlen(t.first->d_name)));
-          });
-
-      for_each(traces.begin(), traces.end(), [&](trace_info t) {
-        // Record date & runtime estimates
-        struct stat stat_version;
-        struct stat stat_data;
-        string version_file = traces_dir + "/" + t.first->d_name + "/version";
-        string data_file = traces_dir + "/" + t.first->d_name + "/data";
-        stat(version_file.c_str(), &stat_version);
-        stat(data_file.c_str(), &stat_data);
-        long int difference = stat_data.st_ctime - stat_version.st_ctime;
-        char outstr[200];
-        strftime(outstr, sizeof(outstr), "%b %d %k:%M",
-                 localtime(&stat_version.st_ctime));
-        const char* cmdl = t.second->initial_exe().c_str();
-        string folder_size = get_folder_size(t.second->dir());
-        fprintf(stdout, "%-*s %s %li %s %s\n", max_name_size, t.first->d_name,
-                outstr, difference, folder_size.c_str(), cmdl);
-      });
-    } else {
-      for_each(traces.begin(), traces.end(),
-               [](trace_info t) { cout << t.first->d_name << " "; });
-      fprintf(stdout, "\n");
+    if (r.type() == TraceTaskEvent::EXEC) {
+      return r.cmd_line()[0];
     }
-    return 0;
-  } else {
+  }
+  return string();
+}
+
+static int ls(const string& traces_dir, const LsFlags& flags) {
+  DIR* dir = opendir(traces_dir.c_str());
+  if (!dir) {
     fprintf(stdout, "Cannot open %s", traces_dir.c_str());
     return 1;
   }
+
+  vector<TraceInfo> traces;
+
+  while (struct dirent* trace_dir = readdir(dir)) {
+    if (!is_valid_trace(trace_dir->d_name)) {
+      continue;
+    }
+    string full_trace_dir = traces_dir + "/" + trace_dir->d_name;
+    traces.emplace_back(trace_dir, new TraceReader(full_trace_dir));
+  }
+
+  sort(traces.begin(), traces.end(),
+       flags.sort_by_time ? compare_by_time : compare_by_name);
+
+  if (flags.reverse) {
+    reverse(begin(traces), end(traces));
+  };
+
+  if (!flags.full_listing) {
+    for (TraceInfo t : traces) {
+      cout << t.first->d_name << "\n";
+    }
+    return 0;
+  }
+
+  int max_name_size =
+    accumulate(traces.begin(), traces.end(), 0, [](int m, TraceInfo t) {
+        return max(m, static_cast<int>(strlen(t.first->d_name)));
+    });
+
+  fprintf(stdout, "%-*s %19s %6s %5s %s\n", max_name_size,
+          "NAME", "WHEN", "DUR", "SIZE", "CMD");
+
+  for (TraceInfo t : traces) {
+    string exe = get_exec_path(t);
+
+    // Record date & runtime estimates
+    struct stat stat_version;
+    struct stat stat_data;
+    string version_file = traces_dir + "/" + t.first->d_name + "/version";
+    string data_file = traces_dir + "/" + t.first->d_name + "/data";
+    stat(version_file.c_str(), &stat_version);
+    stat(data_file.c_str(), &stat_data);
+    long int duration = stat_data.st_mtime - stat_version.st_mtime;
+    char outstr[200];
+    strftime(outstr, sizeof(outstr), "%F %T",
+             localtime(&stat_version.st_ctime));
+
+    string folder_size;
+    if (!get_folder_size(t.second->dir(), folder_size)) {
+      folder_size = "????";
+    }
+
+    fprintf(stdout, "%-*s %s % 6ld %5s %s\n", max_name_size, t.first->d_name,
+            outstr, duration, folder_size.c_str(), exe.c_str());
+  }
+
+  return 0;
 }
 
 int LsCommand::run(vector<string>& args) {
@@ -184,3 +249,5 @@ int LsCommand::run(vector<string>& args) {
   }
   return ls(trace_dir, flags);
 };
+
+} // namespace rr
