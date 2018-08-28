@@ -386,6 +386,7 @@ set(RR_SOURCES
   src/kernel_abi.cc
   src/kernel_metadata.cc
   src/log.cc
+  src/LsCommand.cc
   src/MagicSaveDataMonitor.cc
   src/MmappedFileMonitor.cc
   src/MonitoredSharedMemory.cc
