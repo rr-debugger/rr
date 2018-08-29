@@ -1095,6 +1095,7 @@ set(TESTS_WITH_PROGRAM
   watchpoint_at_sched
   watchpoint_before_signal
   watchpoint_no_progress
+  watchpoint_size_change
   watchpoint_syscall
   watchpoint_unaligned
 )

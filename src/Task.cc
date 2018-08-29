@@ -820,7 +820,7 @@ uintptr_t Task::debug_status() {
 }
 
 void Task::set_debug_status(uintptr_t status) {
-  fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(6), (void*)status);
+  set_debug_reg(6, status);
 }
 
 static bool is_singlestep_resume(ResumeRequest request) {
@@ -1136,74 +1136,92 @@ static WatchBytesX86 num_bytes_to_dr_len(size_t num_bytes) {
   }
 }
 
+struct DebugControl {
+  uintptr_t dr0_local : 1;
+  uintptr_t dr0_global : 1;
+  uintptr_t dr1_local : 1;
+  uintptr_t dr1_global : 1;
+  uintptr_t dr2_local : 1;
+  uintptr_t dr2_global : 1;
+  uintptr_t dr3_local : 1;
+  uintptr_t dr3_global : 1;
+
+  uintptr_t ignored : 8;
+
+  WatchType dr0_type : 2;
+  WatchBytesX86 dr0_len : 2;
+  WatchType dr1_type : 2;
+  WatchBytesX86 dr1_len : 2;
+  WatchType dr2_type : 2;
+  WatchBytesX86 dr2_len : 2;
+  WatchType dr3_type : 2;
+  WatchBytesX86 dr3_len : 2;
+
+  void enable(size_t index, WatchBytesX86 size, WatchType type) {
+    switch (index) {
+#define CASE(_i)                                                  \
+      case _i:                                                    \
+        dr##_i##_local = 1;                                       \
+        dr##_i##_global = 0;                                      \
+        dr##_i##_type = type;                                     \
+        dr##_i##_len = size;                                      \
+        break
+      CASE(0);
+      CASE(1);
+      CASE(2);
+      CASE(3);
+#undef CASE
+      default:
+        FATAL() << "Invalid index";
+    }
+  }
+};
+
+static_assert(sizeof(DebugControl) == sizeof(uintptr_t),
+              "Can't pack DebugControl");
+
+union PackedDebugControl {
+  uintptr_t packed;
+  DebugControl ctl;
+};
+
 bool Task::set_debug_regs(const DebugRegs& regs) {
-  struct DebugControl {
-    uintptr_t packed() { return *(uintptr_t*)this; }
-
-    uintptr_t dr0_local : 1;
-    uintptr_t dr0_global : 1;
-    uintptr_t dr1_local : 1;
-    uintptr_t dr1_global : 1;
-    uintptr_t dr2_local : 1;
-    uintptr_t dr2_global : 1;
-    uintptr_t dr3_local : 1;
-    uintptr_t dr3_global : 1;
-
-    uintptr_t ignored : 8;
-
-    WatchType dr0_type : 2;
-    WatchBytesX86 dr0_len : 2;
-    WatchType dr1_type : 2;
-    WatchBytesX86 dr1_len : 2;
-    WatchType dr2_type : 2;
-    WatchBytesX86 dr2_len : 2;
-    WatchType dr3_type : 2;
-    WatchBytesX86 dr3_len : 2;
-  } dr7;
-  memset(&dr7, 0, sizeof(dr7));
-  static_assert(sizeof(DebugControl) == sizeof(uintptr_t),
-                "Can't pack DebugControl");
-
   // Reset the debug status since we're about to change the set
   // of programmed watchpoints.
-  ptrace_if_alive(PTRACE_POKEUSER, dr_user_word_offset(6), 0);
-  // Ensure that we clear the programmed watchpoints in case
-  // enabling one of them fails.  We guarantee atomicity to the
-  // caller.
-  ptrace_if_alive(PTRACE_POKEUSER, dr_user_word_offset(7), 0);
+  set_debug_reg(6, 0);
+
   if (regs.size() > NUM_X86_WATCHPOINTS) {
+    set_debug_reg(7, 0);
     return false;
   }
 
-  size_t dr = 0;
+  // Work around kernel bug https://bugzilla.kernel.org/show_bug.cgi?id=200965.
+  // For every watchpoint we're going to use, enable it with size 1.
+  // This will let us set the address freely without potentially triggering
+  // the kernel bug which will reject an unaligned address if the watchpoint
+  // is disabled but was non-size-1.
+  PackedDebugControl dr7;
+  dr7.packed = 0;
+  for (size_t i = 0; i < regs.size(); ++i) {
+    dr7.ctl.enable(i, BYTES_1, WATCH_EXEC);
+  }
+  set_debug_reg(7, dr7.packed);
+
+  size_t index = 0;
   for (auto reg : regs) {
-    if (fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(dr),
-                        (void*)reg.addr.as_int())) {
+    if (!set_debug_reg(index, reg.addr.as_int())) {
+      set_debug_reg(7, 0);
       return false;
     }
-    switch (dr++) {
-#define CASE_ENABLE_DR(_dr7, _i, _reg)                                         \
-  case _i:                                                                     \
-    _dr7.dr##_i##_local = 1;                                                   \
-    _dr7.dr##_i##_type = _reg.type;                                            \
-    _dr7.dr##_i##_len = num_bytes_to_dr_len(_reg.num_bytes);                   \
-    break
-      CASE_ENABLE_DR(dr7, 0, reg);
-      CASE_ENABLE_DR(dr7, 1, reg);
-      CASE_ENABLE_DR(dr7, 2, reg);
-      CASE_ENABLE_DR(dr7, 3, reg);
-#undef CASE_ENABLE_DR
-      default:
-        FATAL() << "There's no debug register " << dr;
-    }
+    dr7.ctl.enable(index, num_bytes_to_dr_len(reg.num_bytes), reg.type);
+    ++index;
   }
-  return 0 == fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(7),
-                              (void*)dr7.packed());
+  return set_debug_reg(7, dr7.packed);
 }
 
 uintptr_t Task::get_debug_reg(size_t regno) {
   errno = 0;
-  auto result =
+  long result =
       fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(regno), nullptr);
   if (errno == ESRCH) {
     return 0;
@@ -1211,8 +1229,10 @@ uintptr_t Task::get_debug_reg(size_t regno) {
   return result;
 }
 
-void Task::set_debug_reg(size_t regno, uintptr_t value) {
+bool Task::set_debug_reg(size_t regno, uintptr_t value) {
+  errno = 0;
   fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(regno), (void*)value);
+  return errno == ESRCH || errno == 0;
 }
 
 static void set_thread_area(std::vector<struct user_desc>& thread_areas_,
