@@ -284,13 +284,22 @@ include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 # Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
 # breakpoint_table.S must be before overrides.c, which must be last.
-add_library(rrpreload
-  src/preload/syscall_hook.S
-  src/preload/syscallbuf.c
-  src/preload/raw_syscall.S
-  src/preload/breakpoint_table.S
-  src/preload/overrides.c
+set(PRELOAD_FILES
+  syscall_hook.S
+  syscallbuf.c
+  raw_syscall.S
+  breakpoint_table.S
+  overrides.c
 )
+set(PRELOAD_SOURCE_FILES
+  ${PRELOAD_FILES}
+  preload_interface.h
+  syscallbuf.h
+)
+add_library(rrpreload)
+foreach(file ${PRELOAD_FILES})
+  target_sources(rrpreload PUBLIC "src/preload/${file}")
+endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles")
 
 # Ensure that CMake knows about our generated files.
@@ -530,6 +539,14 @@ foreach(file ${RR_GDB_RESOURCES})
           DESTINATION ${CMAKE_INSTALL_DATADIR}/rr)
 endforeach(file)
 
+foreach(file ${PRELOAD_SOURCE_FILES})
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
+                 "${CMAKE_CURRENT_BINARY_DIR}/share/rr/src/preload/${file}"
+                 COPYONLY)
+  install(FILES src/preload/${file}
+          DESTINATION ${CMAKE_INSTALL_DATADIR}/rr/src/preload)
+endforeach(file)
+
 install(PROGRAMS scripts/signal-rr-recording.sh
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay
@@ -550,29 +567,20 @@ install(TARGETS ${RR_BIN} rrpreload rr_exec_stub
 # This sucks but I can't find a better way to get CMake to build
 # the same source file in two different ways.
 if(rr_32BIT AND rr_64BIT)
-  foreach(file preload_interface.h syscallbuf.h)
+  add_library(rrpreload_32)
+
+  foreach(file ${PRELOAD_SOURCE_FILES})
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
                    "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                    COPYONLY)
   endforeach(file)
 
-  foreach(file syscallbuf.c overrides.c raw_syscall.S syscall_hook.S breakpoint_table.S)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
-                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-                   COPYONLY)
+  foreach(file ${PRELOAD_FILES})
+    target_sources(rrpreload_32 PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/32/${file}")
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                                 PROPERTIES COMPILE_FLAGS "-m32 ${RR_FLAGS_RELEASE}")
   endforeach(file)
 
-  # Order matters here! syscall_hook.S must be immediately before syscallbuf.c.
-  # breakpoint_table.S must be before overrides.c, which must be last.
-  add_library(rrpreload_32
-    32/syscall_hook.S
-    32/syscallbuf.c
-    32/raw_syscall.S
-    32/breakpoint_table.S
-    32/overrides.c
-  )
   set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles")
   target_link_libraries(rrpreload_32
     ${CMAKE_DL_LIBS}

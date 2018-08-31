@@ -3,7 +3,9 @@
 #include "RecordCommand.h"
 
 #include <linux/capability.h>
+#include <spawn.h>
 #include <sys/prctl.h>
+#include <sys/wait.h>
 #include <sysexits.h>
 
 #include "preload/preload_interface.h"
@@ -89,7 +91,8 @@ RecordCommand RecordCommand::singleton(
     "  --setuid-sudo              If running under sudo, pretend to be the\n"
     "                             user that ran sudo rather than root. This\n"
     "                             allows recording setuid/setcap binaries.\n"
-    "  --trace-id                 Sets the trace id to the specified id.\n");
+    "  --trace-id                 Sets the trace id to the specified id.\n"
+    "  --copy-preload-src         Copy preload sources to trace dir\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -151,6 +154,9 @@ struct RecordFlags {
 
   unique_ptr<uint8_t[]> trace_id;
 
+  /* Copy preload sources to trace dir */
+  bool copy_preload_src;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -168,7 +174,8 @@ struct RecordFlags {
         wait_for_all(false),
         ignore_nested(false),
         scarce_fds(false),
-        setuid_sudo(false) {}
+        setuid_sudo(false),
+        copy_preload_src(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -223,6 +230,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 9, "disable-cpuid-features-xsave", HAS_PARAMETER },
     { 10, "num-cores", HAS_PARAMETER },
     { 11, "trace-id", HAS_PARAMETER },
+    { 12, "copy-preload-src", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -404,6 +412,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.trace_id.swap(buf);
       break;
     }
+    case 12:
+      flags.copy_preload_src = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -502,6 +513,35 @@ void force_close_record_session() {
   }
 }
 
+static void copy_preload_sources_to_trace(const string& trace_dir) {
+  string debug_dir = trace_dir + "/debug";
+  mkdir(debug_dir.c_str(), 0700);
+  pid_t pid;
+  string dest_path = trace_dir + "/debug/rrpreload.zip";
+  string src_path = exe_directory() + "../share/rr/src";
+  char zip[] = "zip";
+  char r[] = "-r";
+  char j[] = "-j";
+  char* argv[] = {
+    zip, r, j,
+    const_cast<char*>(dest_path.c_str()),
+    const_cast<char*>(src_path.c_str()),
+    NULL
+  };
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, "/dev/null", O_RDONLY, 0);
+  posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_RDONLY, 0);
+  int ret = posix_spawnp(&pid, argv[0], &actions, NULL, argv, environ);
+  if (ret) {
+    FATAL() << "Can't spawn 'zip'";
+  }
+  posix_spawn_file_actions_destroy(&actions);
+  int status;
+  waitpid(pid, &status, 0);
+  LOG(info) << "Got zip status " << WaitStatus(status);
+}
+
 static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
@@ -517,6 +557,10 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
     const string& dir = session->trace_writer().dir();
     write_all(flags.print_trace_dir, dir.c_str(), dir.size());
     write_all(flags.print_trace_dir, "\n", 1);
+  }
+
+  if (flags.copy_preload_src) {
+    copy_preload_sources_to_trace(session->trace_writer().dir());
   }
 
   // Install signal handlers after creating the session, to ensure they're not
