@@ -514,10 +514,10 @@ void force_close_record_session() {
 }
 
 static void copy_preload_sources_to_trace(const string& trace_dir) {
-  string debug_dir = trace_dir + "/debug";
-  mkdir(debug_dir.c_str(), 0700);
+  string files_dir = trace_dir + "/files.rr";
+  mkdir(files_dir.c_str(), 0700);
   pid_t pid;
-  string dest_path = trace_dir + "/debug/rrpreload.zip";
+  string dest_path = files_dir + "/librrpreload.zip";
   string src_path = exe_directory() + "../share/rr/src";
   char zip[] = "zip";
   char r[] = "-r";
