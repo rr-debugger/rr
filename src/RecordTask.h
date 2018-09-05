@@ -272,6 +272,14 @@ public:
   void stashed_signal_processed();
 
   /**
+   * If a group-stop occurs at an inconvenient time, stash it and
+   * process it later.
+   */
+  void stash_group_stop() { stashed_group_stop = true; }
+  void clear_stashed_group_stop() { stashed_group_stop = false; }
+  bool has_stashed_group_stop() const { return stashed_group_stop; }
+
+  /**
    * Return true if the current state of this looks like the
    * interrupted syscall at the top of our event stack, if there
    * is one.
@@ -675,6 +683,7 @@ public:
   // next opportunity.
   std::deque<StashedSignal> stashed_signals;
   bool stashed_signals_blocking_more_signals;
+  bool stashed_group_stop;
   bool break_at_syscallbuf_traced_syscalls;
   bool break_at_syscallbuf_untraced_syscalls;
   bool break_at_syscallbuf_final_instruction;

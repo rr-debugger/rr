@@ -107,11 +107,10 @@ void AutoRemoteSyscalls::setup_path(bool enable_singlestep_path) {
 
   remote_code_ptr syscall_ip;
   use_singlestep_path = enable_singlestep_path;
-  if (enable_singlestep_path) {
+  if (use_singlestep_path) {
     syscall_ip = AddressSpace::rr_page_syscall_entry_point(
         AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
         AddressSpace::RECORDING_AND_REPLAY, t->arch());
-    use_singlestep_path = true;
   } else {
     syscall_ip = t->vm()->traced_syscall_ip();
   }

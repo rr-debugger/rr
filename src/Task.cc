@@ -582,6 +582,10 @@ void Task::enter_syscall() {
       continue;
     }
     ASSERT(this, !ptrace_event());
+    if (session().is_recording() && wait_status.group_stop()) {
+      static_cast<RecordTask*>(this)->stash_group_stop();
+      continue;
+    }
     if (!stop_sig()) {
       ASSERT(this, need_ptrace_syscall_event);
       need_ptrace_syscall_event = false;

@@ -451,7 +451,8 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
   *did_enter_syscall = false;
 
   RecordTask* t = *t_ptr;
-  if (t->status().group_stop()) {
+  if (t->status().group_stop() || t->has_stashed_group_stop()) {
+    t->clear_stashed_group_stop();
     last_task_switchable = ALLOW_SWITCH;
     step_state->continue_type = DONT_CONTINUE;
     return true;
