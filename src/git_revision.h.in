@@ -1,0 +1,6 @@
+#ifndef RR_GIT_REVISION_H_
+#define RR_GIT_REVISION_H_
+
+#define GIT_REVISION "@GIT_REVISION@"
+
+#endif

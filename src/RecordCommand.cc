@@ -15,6 +15,7 @@
 #include "StringVectorToCharArray.h"
 #include "WaitStatus.h"
 #include "core.h"
+#include "git_revision.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "main.h"
@@ -542,6 +543,14 @@ static void copy_preload_sources_to_trace(const string& trace_dir) {
   LOG(info) << "Got zip status " << WaitStatus(status);
 }
 
+static void save_rr_git_revision(const string& trace_dir) {
+  string files_dir = trace_dir + "/files.rr";
+  mkdir(files_dir.c_str(), 0700);
+  string dest_path = files_dir + "/rr_git_revision";
+  ScopedFd fd(dest_path.c_str(), O_CREAT | O_WRONLY, 0600);
+  write(fd, GIT_REVISION, sizeof(GIT_REVISION) - 1);
+}
+
 static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   LOG(info) << "Start recording...";
 
@@ -560,7 +569,9 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   }
 
   if (flags.copy_preload_src) {
-    copy_preload_sources_to_trace(session->trace_writer().dir());
+    const string& dir = session->trace_writer().dir();
+    copy_preload_sources_to_trace(dir);
+    save_rr_git_revision(dir);
   }
 
   // Install signal handlers after creating the session, to ensure they're not
