@@ -1,10 +1,12 @@
+from __future__ import print_function
+
 import sys
 import re
 
 if len(sys.argv) < 4:
-    print '''Usage: %s <syscall-name> <perf-counter-name> <expected-perf-events-between-syscalls>
+    print('''Usage: %s <syscall-name> <perf-counter-name> <expected-perf-events-between-syscalls>
 Exits with status 0 if exactly the expected number of perf events occur between
-every pair of consecutive system calls of the given type.''' % sys.argv[0]
+every pair of consecutive system calls of the given type.''' % sys.argv[0])
     sys.exit(2)
 
 syscall = sys.argv[1]
@@ -27,8 +29,8 @@ while True:
             if m:
                 v = int(m.group(1))
                 if last_perfctr_value >= 0 and v - last_perfctr_value != expected_count:
-                    print "Mismatch: saw %d %ss between %ss (from %d to %d), expected %d" % \
-                      (v - last_perfctr_value, counter, syscall, last_perfctr_value, v, expected_count)
+                    print("Mismatch: saw %d %ss between %ss (from %d to %d), expected %d" % \
+                      (v - last_perfctr_value, counter, syscall, last_perfctr_value, v, expected_count))
                     sys.exit(1)
                 last_perfctr_value = v
         else:

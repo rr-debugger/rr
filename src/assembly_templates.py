@@ -238,14 +238,14 @@ def generate_size_member(byte_array):
 
 def generate(f):
     # Raw bytes.
-    for name, template in templates.iteritems():
+    for name, template in templates.items():
         bytes = template.bytes()
         f.write('static const uint8_t %s[] = { %s };\n'
                 % (byte_array_name(name), ', '.join(['0x%x' % b for b in bytes])))
     f.write('\n')
 
     # Objects representing assembly templates.
-    for name, template in templates.iteritems():
+    for name, template in templates.items():
         byte_array = byte_array_name(name)
         f.write("""class %(class_name)s {
 public:

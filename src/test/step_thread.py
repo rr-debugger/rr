@@ -48,7 +48,7 @@ while 1:
     hit_bps[bp] = 1
     expect_gdb(r'\(rr\)')
 
-for bp in hit_bps.iterkeys():
+for bp in hit_bps.keys():
     assert hit_bps[bp]
 
 arch = get_exe_arch()
