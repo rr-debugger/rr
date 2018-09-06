@@ -34,10 +34,10 @@ gdb_signals = [
   '#SIGPWR',
   'SIGSYS']
 
-for sig in xrange(32,65):
+for sig in range(32,65):
     gdb_signals.append('SIG%d'%sig)
 
-for sig in xrange(1,65):
+for sig in range(1,65):
     gdb_sig = gdb_signals[sig]
     if not gdb_sig.startswith('#'):
         send_gdb('handle %s stop'%gdb_sig)

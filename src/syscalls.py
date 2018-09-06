@@ -1703,7 +1703,7 @@ epoll_ctl_old = UnsupportedSyscall(x64=214)
 epoll_wait_old = UnsupportedSyscall(x64=215)
 
 def _syscalls():
-    for name, obj in globals().iteritems():
+    for name, obj in globals().items():
         if isinstance(obj, BaseSyscall):
             yield name, obj
 

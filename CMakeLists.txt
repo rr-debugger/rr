@@ -222,10 +222,8 @@ if(NOT SECCOMP)
 endif()
 
 # Check for Python >=2.7 but not Python 3.
+find_package(PythonInterp 3.0 QUIET)
 find_package(PythonInterp 2.7 REQUIRED)
-if(PYTHON_VERSION_MAJOR GREATER 2)
-  message(FATAL_ERROR "Python 3 is not supported, please use Python 2.7.")
-endif()
 
 execute_process(COMMAND "${PYTHON_EXECUTABLE}" "-c" "# nothing"
                 RESULT_VARIABLE python_status)
