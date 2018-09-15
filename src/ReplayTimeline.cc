@@ -429,18 +429,20 @@ ReplayResult ReplayTimeline::replay_step_to_mark(
     ReplaySession::StepConstraints constraints =
         strategy.setup_step_constraints();
     constraints.ticks_target = mark.ptr->proto.key.ticks - 1;
-    result = current->replay_step(constraints);
-    bool approaching_ticks_target =
+    if (constraints.ticks_target > 0) {
+      result = current->replay_step(constraints);
+      bool approaching_ticks_target =
         result.break_status.approaching_ticks_target;
-    result.break_status.approaching_ticks_target = false;
-    // We can't be at the mark yet.
-    ASSERT(t, t->tick_count() < mark.ptr->proto.key.ticks);
-    // If there's a break indicated, we should return that to the
-    // caller without doing any more work
-    if (!approaching_ticks_target || result.break_status.any_break()) {
-      update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
-                                               before);
-      return result;
+      result.break_status.approaching_ticks_target = false;
+      // We can't be at the mark yet.
+      ASSERT(t, t->tick_count() < mark.ptr->proto.key.ticks);
+      // If there's a break indicated, we should return that to the
+      // caller without doing any more work
+      if (!approaching_ticks_target || result.break_status.any_break()) {
+        update_strategy_and_fix_watchpoint_quirk(strategy, constraints, result,
+                                                 before);
+        return result;
+      }
     }
     // We may not have made any progress so we'll need to try another strategy
   }
