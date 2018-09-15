@@ -7,7 +7,8 @@ int do_close(int fd);
 const int sys_close = SYS_close;
 
 #ifdef __x86_64__
-asm ("do_close:\n\t"
+asm (".text\n"
+     "do_close:\n\t"
      "mov sys_close(%rip),%eax\n\t"
      "syscall\n\t"
      "ret\n\t"
