@@ -851,9 +851,10 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     } else {
       TraceReader::MappedData data;
       KernelMapping km = t->trace_reader().read_mapped_region(&data);
+      uint64_t file_bytes = data.file_size_bytes - data.data_offset_bytes;
 
-      if (data.source == TraceReader::SOURCE_FILE) {
-        uint64_t file_bytes = data.file_size_bytes - data.data_offset_bytes;
+      if (data.source == TraceReader::SOURCE_FILE &&
+         ceil_page_size(file_bytes) >= ceil_page_size(length)) {
         struct stat real_file;
         string real_file_name;
         finish_direct_mmap(t, remote, addr, length, prot, flags,
@@ -863,20 +864,6 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         t->vm()->map(t, km.start(), length, prot, flags,
                      page_size() * offset_pages, real_file_name,
                      real_file.st_dev, real_file.st_ino, nullptr, &km);
-        if (length > ceil_page_size(file_bytes)) {
-          length -= ceil_page_size(file_bytes);
-          addr += ceil_page_size(file_bytes);
-          offset_pages -= ceil_page_size(file_bytes) / page_size();
-          km = km.subrange(km.start() + ceil_page_size(file_bytes), km.end());
-          if (MAP_PRIVATE & flags) {
-            finish_private_mmap(t, remote, addr, length, prot, flags,
-                                offset_pages, km, data);
-          } else {
-            finish_shared_mmap(t, remote, addr, length, prot, flags, fd,
-                               offset_pages, km, data);
-          }
-          addr -= ceil_page_size(file_bytes);
-        }
       } else {
         if (MAP_PRIVATE & flags) {
           finish_private_mmap(t, remote, addr, length, prot, flags,
