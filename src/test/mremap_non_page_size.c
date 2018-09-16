@@ -48,7 +48,7 @@ int main(void) {
   /* Test a remapping that changes the number of pages */
   wpage = mremap(old_wpage, num_bytes - 8, num_bytes + 8, MREMAP_MAYMOVE);
   atomic_printf("remapped wpage:%p\n", wpage);
-  test_assert(wpage != (void*)-1 && wpage != old_wpage);
+  test_assert(wpage != (void*)-1);
 
   check_mapping(rpage, wpage, (num_bytes - 4) / sizeof(*wpage));
 

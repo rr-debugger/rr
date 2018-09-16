@@ -57,7 +57,7 @@ int main(void) {
   /* Test remapping a non-page-sized range */
   wpage = mremap(old_wpage, num_bytes, 2 * num_bytes - 1, MREMAP_MAYMOVE);
   atomic_printf("remapped wpage:%p\n", wpage);
-  test_assert(wpage != (void*)-1 && wpage != old_wpage);
+  test_assert(wpage != (void*)-1);
 
   check_mapping(rpage, wpage, num_bytes / sizeof(*wpage));
 
