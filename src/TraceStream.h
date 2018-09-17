@@ -388,6 +388,7 @@ private:
 };
 
 extern std::string trace_save_dir();
+extern std::string resolve_trace_name(const std::string& trace_name);
 
 } // namespace rr
 
