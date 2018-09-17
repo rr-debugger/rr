@@ -121,6 +121,29 @@ static string latest_trace_symlink() {
   return trace_save_dir() + "/latest-trace";
 }
 
+string resolve_trace_name(const string& trace_name)
+{
+  if (trace_name.empty()) {
+    return latest_trace_symlink();
+  }
+
+  // Single-component paths are looked up first in the current directory, next
+  // in the default trace dir.
+
+  if (trace_name.find('/') == string::npos) {
+    if (dir_exists(trace_name)) {
+      return trace_name;
+    }
+
+    string resolved_trace_name = trace_save_dir() + "/" + trace_name;
+    if (dir_exists(resolved_trace_name)) {
+      return resolved_trace_name;
+    }
+  }
+
+  return trace_name;
+}
+
 class CompressedWriterOutputStream : public kj::OutputStream {
 public:
   CompressedWriterOutputStream(CompressedWriter& writer) : writer(writer) {}
@@ -1242,7 +1265,7 @@ void TraceReader::rewind() {
 }
 
 TraceReader::TraceReader(const string& dir)
-    : TraceStream(dir.empty() ? latest_trace_symlink() : dir, 1) {
+    : TraceStream(resolve_trace_name(dir), 1) {
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
     readers[s] = unique_ptr<CompressedReader>(new CompressedReader(path(s)));
   }
