@@ -838,8 +838,8 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                          off64_t offset_pages, ReplayTraceStep* step) {
   step->action = TSTEP_RETIRE;
 
-  remote_ptr<void> addr = trace_frame.regs().syscall_result();
   {
+    remote_ptr<void> addr = trace_frame.regs().syscall_result();
     // Hand off actual execution of the mapping to the appropriate helper.
     AutoRemoteSyscalls remote(t,
                               (flags & MAP_PRIVATE) && (flags & MAP_ANONYMOUS)
@@ -851,26 +851,33 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     } else {
       TraceReader::MappedData data;
       KernelMapping km = t->trace_reader().read_mapped_region(&data);
-      uint64_t file_bytes = data.file_size_bytes - data.data_offset_bytes;
 
       if (data.source == TraceReader::SOURCE_FILE &&
-         ceil_page_size(file_bytes) >= ceil_page_size(length)) {
+          data.file_size_bytes > data.data_offset_bytes) {
         struct stat real_file;
         string real_file_name;
-        finish_direct_mmap(t, remote, addr, length, prot, flags,
+        uint64_t map_bytes = min(ceil_page_size(data.file_size_bytes) - data.data_offset_bytes, length);
+        finish_direct_mmap(t, remote, addr, map_bytes, prot, flags,
                            data.file_name, O_RDONLY,
                            data.data_offset_bytes / page_size(), real_file,
                            real_file_name);
-        t->vm()->map(t, km.start(), length, prot, flags,
+        KernelMapping km_sub = km.subrange(km.start(), km.start() + ceil_page_size(map_bytes));
+        t->vm()->map(t, km.start(), map_bytes, prot, flags,
                      page_size() * offset_pages, real_file_name,
-                     real_file.st_dev, real_file.st_ino, nullptr, &km);
-      } else {
+                     real_file.st_dev, real_file.st_ino, nullptr, &km_sub);
+        addr += map_bytes;
+        length -= map_bytes;
+        offset_pages += ceil_page_size(map_bytes) / page_size();
+        data.source = TraceReader::SOURCE_ZERO;
+        km = km.subrange(km_sub.end(), km.end());
+      }
+      if (length > 0) {
         if (MAP_PRIVATE & flags) {
           finish_private_mmap(t, remote, addr, length, prot, flags,
                               offset_pages, km, data);
         } else {
           finish_shared_mmap(t, remote, addr, length, prot, flags, fd,
-                             offset_pages, km, data);
+                              offset_pages, km, data);
         }
       }
     }
@@ -885,7 +892,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     }
 
     // Finally, we finish by emulating the return value.
-    remote.regs().set_syscall_result(addr.as_int());
+    remote.regs().set_syscall_result(trace_frame.regs().syscall_result());
   }
   // Monkeypatcher can emit data records that need to be applied now
   t->apply_all_data_records_from_trace();
@@ -901,6 +908,10 @@ static void process_mremap(ReplayTask* t, const TraceFrame& trace_frame,
   size_t old_size = ceil_page_size(trace_regs.arg2());
   remote_ptr<void> new_addr = trace_frame.regs().syscall_result();
   size_t new_size = ceil_page_size(trace_regs.arg3());
+
+  // The recorded mremap call succeeded, so we know the original mapping can be
+  // treated as a single mapping.
+  t->vm()->ensure_replay_matches_single_recorded_mapping(t, MemoryRange(old_addr, old_size));
 
   TraceReader::MappedData data;
   t->trace_reader().read_mapped_region(&data);

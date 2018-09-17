@@ -233,7 +233,7 @@ public:
   class Mapping {
   public:
     Mapping(const KernelMapping& map, const KernelMapping& recorded_map,
-            EmuFile::shr_ptr emu_file,
+            EmuFile::shr_ptr emu_file = nullptr,
             std::unique_ptr<struct stat> mapped_file_stat = nullptr,
             void* local_addr = nullptr,
             std::shared_ptr<MonitoredSharedMemory>&& monitored = nullptr);
@@ -749,6 +749,16 @@ public:
    * range (resetting them and storing the new value).
    */
   void maybe_update_breakpoints(Task* t, remote_ptr<uint8_t> addr, size_t len);
+
+  /**
+   * Call this to ensure that the mappings in `range` during replay has the same length
+   * is collapsed to a single mapping. The caller guarantees that all the
+   * mappings in the range can be coalesced (because they corresponded to a single
+   * mapping during recording).
+   * The end of the range might be in the middle of a mapping.
+   * The start of the range might also be in the middle of a mapping.
+   */
+  void ensure_replay_matches_single_recorded_mapping(Task* t, MemoryRange range);
 
 private:
   struct Breakpoint;

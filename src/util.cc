@@ -319,6 +319,12 @@ static bool is_task_buffer(const AddressSpace& as,
   return false;
 }
 
+struct ParsedChecksumLine {
+  remote_ptr<void> start;
+  remote_ptr<void> end;
+  unsigned int checksum;
+};
+
 /**
  * Either create and store checksums for each segment mapped in |t|'s
  * address space, or validate an existing computed checksum.  Behavior
@@ -348,53 +354,66 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
     t->write_mem(in_replay_flag, (unsigned char)0);
   }
 
-  const AddressSpace& as = *t->vm();
+  AddressSpace& as = *t->vm();
+  vector<ParsedChecksumLine> checksums;
+  if (VALIDATE_CHECKSUMS == mode) {
+    while (true) {
+      char line[1024];
+      if (!fgets(line, sizeof(line), c.checksums_file)) {
+        break;
+      }
+      ParsedChecksumLine parsed;
+      unsigned long rec_start;
+      unsigned long rec_end;
+      int nparsed =
+          sscanf(line, "(%x) %lx-%lx", &parsed.checksum, &rec_start, &rec_end);
+      parsed.start = rec_start;
+      parsed.end = rec_end;
+      ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
+      checksums.push_back(parsed);
+
+      as.ensure_replay_matches_single_recorded_mapping(t, MemoryRange(parsed.start, parsed.end));
+    }
+  }
+
+  auto checksum_iter = checksums.begin();
   for (auto it = as.maps().begin(); it != as.maps().end(); ++it) {
     AddressSpace::Mapping m = *it;
     string raw_map_line = m.map.str();
     uint32_t rec_checksum = 0;
 
     if (VALIDATE_CHECKSUMS == mode) {
-      char line[1024];
-      if (!fgets(line, sizeof(line), c.checksums_file)) {
-        FATAL() << "Can't read checksum file";
-      }
-      unsigned long rec_start;
-      unsigned long rec_end;
-      unsigned tmp_checksum;
-      int nparsed =
-          sscanf(line, "(%x) %lx-%lx", &tmp_checksum, &rec_start, &rec_end);
-      rec_checksum = tmp_checksum;
-      remote_ptr<void> rec_start_addr = rec_start;
-      remote_ptr<void> rec_end_addr = rec_end;
-      ASSERT(t, 3 == nparsed) << "Parsed " << nparsed << " items";
-      for (; m.map.start() != rec_start_addr; m = *(++it)) {
+      ParsedChecksumLine parsed = *checksum_iter;
+      ++checksum_iter;
+      for (; m.map.start() != parsed.start; m = *(++it)) {
         if (is_task_buffer(as, m)) {
           // This region corresponds to a task scratch or syscall buffer. We
           // tear these down a little later during replay so just skip it for
           // now.
           continue;
         }
-        FATAL() << "Segment " << rec_start_addr << "-" << rec_end_addr
+        FATAL() << "Segment " << parsed.start << "-" << parsed.end
                 << " changed to " << m.map << "??";
       }
-      ASSERT(t, m.map.end() == rec_end_addr)
-          << "Segment " << rec_start_addr << "-" << rec_end_addr
+      ASSERT(t, m.map.end() == parsed.end)
+          << "Segment " << parsed.start << "-" << parsed.end
           << " changed to " << m.map << "??";
-      if (is_start_of_scratch_region(t, rec_start_addr)) {
+      if (is_start_of_scratch_region(t, parsed.start)) {
         /* Replay doesn't touch scratch regions, so
          * their contents are allowed to diverge.
          * Tracees can't observe those segments unless
          * they do something sneaky (or disastrously
          * buggy). */
-        LOG(debug) << "Not validating scratch starting at " << rec_start_addr;
+        LOG(debug) << "Not validating scratch starting at " << parsed.start;
         continue;
       }
-      if (rec_checksum == ignored_checksum) {
+      if (parsed.checksum == ignored_checksum) {
         LOG(debug) << "Checksum not computed during recording";
         continue;
-      } else if (rec_checksum == sigbus_checksum) {
+      } else if (parsed.checksum == sigbus_checksum) {
         continue;
+      } else {
+        rec_checksum = parsed.checksum;
       }
     } else {
       if (!checksum_segment_filter(m)) {

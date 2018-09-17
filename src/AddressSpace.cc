@@ -794,12 +794,12 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
                          size_t new_num_bytes) {
   LOG(debug) << "mremap(" << old_addr << ", " << old_num_bytes << ", "
              << new_addr << ", " << new_num_bytes << ")";
+  old_num_bytes = ceil_page_size(old_num_bytes);
 
   Mapping mr = mapping_of(old_addr);
   DEBUG_ASSERT(!mr.monitored_shared_memory);
-  const KernelMapping& m = mr.map;
+  KernelMapping km = mr.map.subrange(old_addr, min(mr.map.end(), old_addr + old_num_bytes));
 
-  old_num_bytes = ceil_page_size(old_num_bytes);
   unmap_internal(t, old_addr, old_num_bytes);
   if (0 == new_num_bytes) {
     return;
@@ -820,7 +820,7 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
   unmap_internal(t, new_addr, new_num_bytes);
 
   remote_ptr<void> new_end = new_addr + new_num_bytes;
-  map_and_coalesce(t, m.set_range(new_addr, new_end),
+  map_and_coalesce(t, km.set_range(new_addr, new_end),
                    mr.recorded_map.set_range(new_addr, new_end), mr.emu_file,
                    clone_stat(mr.mapped_file_stat), nullptr, nullptr);
 }
@@ -1267,6 +1267,60 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
     ASSERT(t, false) << "\nCached mapping " << m << " should be " << km << "; "
                      << err;
   }
+}
+
+void AddressSpace::ensure_replay_matches_single_recorded_mapping(Task* t, MemoryRange range) {
+  // The only case where we eagerly coalesced during recording but not replay should
+  // be where we mapped private memory beyond-end-of-file.
+  // Don't do an actual coalescing check here; we rely on the caller to tell us
+  // the range to coalesce.
+  ASSERT(t, range.start() == floor_page_size(range.start()));
+  ASSERT(t, range.end() == ceil_page_size(range.end()));
+
+  auto fixer = [this, t, range](const Mapping& mm, const MemoryRange&) {
+    if (mm.map == range) {
+      // Existing single mapping covers entire range; nothing to do.
+      return;
+    }
+    Mapping mapping = move(mm);
+
+    // These should be null during replay
+    ASSERT(t, !mapping.mapped_file_stat);
+    // These should not be in use for a beyond-end-of-file mapping
+    ASSERT(t, !mapping.local_addr);
+    // The mapping should be private
+    ASSERT(t, mapping.map.flags() & MAP_PRIVATE);
+    ASSERT(t, !mapping.emu_file);
+    ASSERT(t, !mapping.monitored_shared_memory);
+    // Flagged mappings shouldn't be coalescable ever
+    ASSERT(t, !mapping.flags);
+
+    if (!(mapping.map.flags() & MAP_ANONYMOUS)) {
+      // Direct-mapped piece. Turn it into an anonymous mapping.
+      vector<uint8_t> buffer;
+      buffer.resize(mapping.map.size());
+      t->read_bytes_helper(mapping.map.start(), buffer.size(), buffer.data());
+      {
+        AutoRemoteSyscalls remote(t);
+        remote.infallible_mmap_syscall(mapping.map.start(), buffer.size(),
+            mapping.map.prot(), mapping.map.flags() | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+      }
+      t->write_bytes_helper(mapping.map.start(), buffer.size(), buffer.data());
+
+      // We replace the entire mapping even if part of it falls outside the desired range.
+      // That's OK, this replacement preserves behaviour, it's simpler, even if a bit
+      // less efficient in weird cases.
+      mem.erase(mapping.map);
+      KernelMapping anonymous_km(mapping.map.start(), mapping.map.end(),
+                                 string(), KernelMapping::NO_DEVICE, KernelMapping::NO_INODE,
+                                 mapping.map.prot(), mapping.map.flags() | MAP_ANONYMOUS);
+      Mapping new_mapping(anonymous_km, mapping.recorded_map);
+      mem[new_mapping.map] = new_mapping;
+    }
+  };
+  for_each_in_range(range.start(), range.size(), fixer);
+
+  coalesce_around(t, mem.find(range));
 }
 
 KernelMapping AddressSpace::vdso() const {
