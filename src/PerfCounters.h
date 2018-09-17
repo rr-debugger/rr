@@ -68,9 +68,8 @@ public:
 
   /**
    * Return the number of ticks we need for an emulated branch.
-   * `t` is used for debugging purposes.
    */
-  static Ticks ticks_for_unconditional_indirect_branch(Task* t);
+  static Ticks ticks_for_unconditional_indirect_branch(Task*);
 
   /**
    * Read the current value of the ticks counter.
@@ -87,8 +86,7 @@ public:
    * hope that tracees don't either. */
   enum { TIME_SLICE_SIGNAL = SIGSTKFLT };
 
-  static bool is_ticks_attr(const perf_event_attr& attr);
-  static bool is_minus_ticks_attr(const perf_event_attr& attr);
+  static bool is_rr_ticks_attr(const perf_event_attr& attr);
 
   /**
    * When an interrupt is requested, at most this many ticks may elapse before

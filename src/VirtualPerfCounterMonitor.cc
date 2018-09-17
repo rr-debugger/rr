@@ -20,7 +20,7 @@ std::map<TaskUid, VirtualPerfCounterMonitor*>
 
 bool VirtualPerfCounterMonitor::should_virtualize(
     const struct perf_event_attr& attr) {
-  return PerfCounters::is_ticks_attr(attr);
+  return PerfCounters::is_rr_ticks_attr(attr);
 }
 
 VirtualPerfCounterMonitor::VirtualPerfCounterMonitor(
@@ -120,7 +120,8 @@ bool VirtualPerfCounterMonitor::emulate_read(RecordTask* t,
                                              LazyOffset&, uint64_t* result) {
   RecordTask* target = t->session().find_task(target_tuid());
   if (target) {
-    int64_t val = target->tick_count() - initial_ticks;
+    int64_t val;
+    val = target->tick_count() - initial_ticks;
     *result = write_ranges(t, ranges, &val, sizeof(val));
   } else {
     *result = 0;

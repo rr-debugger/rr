@@ -29,6 +29,8 @@ using namespace std;
 
 namespace rr {
 
+#define PERF_COUNT_RR 0x72727272L
+
 static bool attributes_initialized;
 static struct perf_event_attr ticks_attr;
 static struct perf_event_attr minus_ticks_attr;
@@ -116,6 +118,8 @@ static const PmuConfig pmu_configs[] = {
     PMU_SKIP_INTEL_BUG_CHECK },
   { AMDRyzen, "AMD Ryzen", 0x5100d1, 0, 0, 1000, 0 },
 };
+
+#define RR_SKID_MAX 1000
 
 static string lowercase(const string& s) {
   string c = s;
@@ -552,66 +556,63 @@ static void init_attributes() {
   }
   attributes_initialized = true;
 
-  CpuMicroarch uarch = get_cpu_microarch();
-  const PmuConfig* pmu = nullptr;
-  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
-    if (uarch == pmu_configs[i].uarch) {
-      pmu = &pmu_configs[i];
-      break;
+  if (running_under_rr()) {
+    init_perf_event_attr(&ticks_attr, PERF_TYPE_HARDWARE, PERF_COUNT_RR);
+    rr::skid_size = RR_SKID_MAX;
+  } else {
+    CpuMicroarch uarch = get_cpu_microarch();
+    const PmuConfig* pmu = nullptr;
+    for (size_t i = 0; i < array_length(pmu_configs); ++i) {
+      if (uarch == pmu_configs[i].uarch) {
+        pmu = &pmu_configs[i];
+        break;
+      }
     }
-  }
-  DEBUG_ASSERT(pmu);
+    DEBUG_ASSERT(pmu);
 
-  if (pmu->flags & PMU_UNSUPPORTED) {
-    FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
-  }
+    if (pmu->flags & PMU_UNSUPPORTED) {
+      FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
+    }
 
-  skid_size = pmu->skid_size;
-  pmu_flags = pmu->flags;
-  init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
-  if (pmu->minus_ticks_cntr_event != 0) {
-    init_perf_event_attr(&minus_ticks_attr, PERF_TYPE_RAW,
-                         pmu->minus_ticks_cntr_event);
-  }
-  init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
-                       PERF_COUNT_HW_CPU_CYCLES);
-  init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
-                       pmu->hw_intr_cntr_event);
-  // libpfm encodes the event with this bit set, so we'll do the
-  // same thing.  Unclear if necessary.
-  hw_interrupts_attr.exclude_hv = 1;
+    skid_size = pmu->skid_size;
+    pmu_flags = pmu->flags;
+    init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
+    if (pmu->minus_ticks_cntr_event != 0) {
+      init_perf_event_attr(&minus_ticks_attr, PERF_TYPE_RAW,
+                           pmu->minus_ticks_cntr_event);
+    }
+    init_perf_event_attr(&cycles_attr, PERF_TYPE_HARDWARE,
+                         PERF_COUNT_HW_CPU_CYCLES);
+    init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
+                         pmu->hw_intr_cntr_event);
+    // libpfm encodes the event with this bit set, so we'll do the
+    // same thing.  Unclear if necessary.
+    hw_interrupts_attr.exclude_hv = 1;
 
-  if (!(pmu_flags & PMU_SKIP_INTEL_BUG_CHECK)) {
-    check_for_bugs();
+    if (!(pmu_flags & PMU_SKIP_INTEL_BUG_CHECK)) {
+      check_for_bugs();
+    }
+    /*
+     * For maintainability, and since it doesn't impact performance when not
+     * needed, we always activate this. If it ever turns out to be a problem,
+     * this can be set to pmu->flags & PMU_BENEFITS_FROM_USELESS_COUNTER,
+     * instead.
+     *
+     * We also disable this counter when running under rr. Even though it's the
+     * same event for the same task as the outer rr, the linux kernel does not
+     * coalesce them and tries to schedule the new one on a general purpose PMC.
+     * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
+     */
+    activate_useless_counter = has_ioc_period_bug && !running_under_rr();
   }
-  /*
-   * For maintainability, and since it doesn't impact performance when not
-   * needed, we always activate this. If it ever turns out to be a problem,
-   * this can be set to pmu->flags & PMU_BENEFITS_FROM_USELESS_COUNTER,
-   * instead.
-   *
-   * We also disable this counter when running under rr. Even though it's the
-   * same event for the same task as the outer rr, the linux kernel does not
-   * coalesce them and tries to schedule the new one on a general purpose PMC.
-   * On CPUs with only 2 general PMCs (e.g. KNL), we'd run out.
-   */
-  activate_useless_counter = has_ioc_period_bug && !running_under_rr();
 }
 
-bool PerfCounters::is_ticks_attr(const perf_event_attr& attr) {
+bool PerfCounters::is_rr_ticks_attr(const perf_event_attr& attr) {
   init_attributes();
-  perf_event_attr tmp_attr = attr;
-  tmp_attr.sample_period = 0;
-  tmp_attr.config &= ~IN_TXCP;
-  return memcmp(&ticks_attr, &tmp_attr, sizeof(attr)) == 0;
-}
-
-bool PerfCounters::is_minus_ticks_attr(const perf_event_attr& attr) {
-  init_attributes();
-  perf_event_attr tmp_attr = attr;
-  tmp_attr.sample_period = 0;
-  tmp_attr.config &= ~IN_TXCP;
-  return memcmp(&minus_ticks_attr, &tmp_attr, sizeof(attr)) == 0;
+  if (attr.type == PERF_TYPE_HARDWARE && attr.config == PERF_COUNT_RR) {
+    return true;
+  }
+  return false;
 }
 
 uint32_t PerfCounters::skid_size() {
