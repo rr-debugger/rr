@@ -531,6 +531,8 @@ install(PROGRAMS scripts/signal-rr-recording.sh
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32
                   ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay
   DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS scripts/rr_completion
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/share/bash-completion/completions)
 
 install(TARGETS ${RR_BIN} rrpreload rr_exec_stub
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
