@@ -81,16 +81,6 @@ static bool compare_by_name(TraceInfo& at, TraceInfo& bt) {
   return lexicographical_compare(begin(a), end(a), begin(b), end(b));
 }
 
-static bool compare_by_time(TraceInfo& at, TraceInfo& bt) {
-  auto a_version = at.second->dir() + "/version";
-  auto b_version = bt.second->dir() + "/version";
-  struct stat a_stat;
-  struct stat b_stat;
-  stat(a_version.c_str(), &a_stat);
-  stat(b_version.c_str(), &b_stat);
-  return a_stat.st_ctime < b_stat.st_ctime;
-}
-
 static bool get_folder_size(string dir_name, string& size_str) {
   DIR* dir = opendir(dir_name.c_str());
   if (!dir) {
@@ -170,12 +160,23 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
     if (!is_valid_trace(trace_dir->d_name)) {
       continue;
     }
-    string full_trace_dir = traces_dir + "/" + trace_dir->d_name;
-    traces.emplace_back(string(trace_dir->d_name), unique_ptr<TraceReader>(new TraceReader(full_trace_dir)));
+    traces.emplace_back(string(trace_dir->d_name), unique_ptr<TraceReader>());
   }
 
-  sort(traces.begin(), traces.end(),
-       flags.sort_by_time ? compare_by_time : compare_by_name);
+  if (flags.sort_by_time) {
+    auto compare_by_time = [&](TraceInfo& at, TraceInfo& bt) -> bool {
+      auto a_version = traces_dir + at.first + "/data";
+      auto b_version = traces_dir + bt.first + "/data";
+      struct stat a_stat;
+      struct stat b_stat;
+      stat(a_version.c_str(), &a_stat);
+      stat(b_version.c_str(), &b_stat);
+      return a_stat.st_ctime < b_stat.st_ctime;
+    };
+    sort(traces.begin(), traces.end(), compare_by_time);
+  } else {
+    sort(traces.begin(), traces.end(), compare_by_name);
+  }
 
   if (flags.reverse) {
     reverse(begin(traces), end(traces));
@@ -197,20 +198,20 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
           "NAME", "WHEN", "SIZE", "CMD");
 
   for (TraceInfo& t : traces) {
-    string exe = get_exec_path(t);
-
     // Record date & runtime estimates
-    struct stat stat_version;
-    string version_file = traces_dir + "/" + t.first + "/version";
+    struct stat st;
     string data_file = traces_dir + "/" + t.first + "/data";
-    stat(version_file.c_str(), &stat_version);
+    stat(data_file.c_str(), &st);
     char outstr[200];
-    strftime(outstr, sizeof(outstr), "%F %T",
-             localtime(&stat_version.st_ctime));
+    strftime(outstr, sizeof(outstr), "%F %T", localtime(&st.st_ctime));
 
-    string folder_size;
-    if (!get_folder_size(t.second->dir(), folder_size)) {
-      folder_size = "????";
+    string folder_size = "????";
+    string exe = "(incomplete)";
+    string version_file = traces_dir + "/" + t.first + "/version";
+    if (stat(version_file.c_str(), &st) != -1) {
+      t.second.reset(new TraceReader(traces_dir + "/" + t.first));
+      get_folder_size(t.second->dir(), folder_size);
+      exe = get_exec_path(t);
     }
 
     fprintf(out, "%-*s %s %5s %s\n", max_name_size, t.first.c_str(),
