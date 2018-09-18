@@ -194,7 +194,7 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
         return max(m, static_cast<int>(t.first.length()));
     });
 
-  fprintf(out, "%-*s %19s %5s %s\n", max_name_size,
+  fprintf(out, "%-*s %-19s %5s %s\n", max_name_size,
           "NAME", "WHEN", "SIZE", "CMD");
 
   for (TraceInfo& t : traces) {
