@@ -1,0 +1,29 @@
+# vi:syntax=sh
+#
+# completion script for rr commands (to be sourced)
+
+_rr_subcmd_completion() {
+    local cmd=$1
+    local short_opts=$(rr help $cmd | sed -n 's/\s*-\([a-zA-Z]\),.*/-\1/p')
+    local long_opts=$(rr help $cmd | sed -n 's/.*--\([^= ]*\).*/--\1/p')
+    echo "$short_opts" "$long_opts"
+}
+
+_rr_completion() {
+    COMPREPLY=()
+    local rr_commands="$(rr --list-commands | cut -s -d ' ' -f 3)"
+
+    # completion for rr
+    if [ $COMP_CWORD -eq 1 ]; then
+        COMPREPLY=( $( compgen -W "$rr_commands" -- "${COMP_WORDS[1]}" ) )
+        return
+    fi
+
+    # completion for rr <command>'s options
+    local cmd="$(echo "${COMP_WORDS[1]}" | tr -d '[:space:]')"
+
+    if [ "$(echo $rr_commands | grep -w "$cmd")" ] ; then
+        COMPREPLY=( $( compgen -W "$(_rr_subcmd_completion "$cmd")" -- "${COMP_WORDS[COMP_CWORD]}" ) )
+    fi
+}
+complete -F _rr_completion rr
