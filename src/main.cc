@@ -25,6 +25,7 @@ namespace rr {
 
 // Show version and quit.
 static bool show_version = false;
+static bool show_cmd_list = false;
 
 void assert_prerequisites(bool use_syscall_buffer) {
   struct utsname uname_buf;
@@ -100,10 +101,14 @@ void print_global_options(FILE* out) {
       out);
 }
 
+void list_commands(FILE* out) {
+  Command::print_help_all(out);
+}
+
 void print_usage(FILE* out) {
   print_version(out);
   fputs("\nUsage:\n", out);
-  Command::print_help_all(out);
+  list_commands(out);
   fputs("\nIf no subcommand is provided, we check if the first non-option\n"
         "argument is a directory. If it is, we assume the 'replay' subcommand\n"
         "otherwise we assume the 'record' subcommand.\n\n",
@@ -128,6 +133,7 @@ bool parse_global_option(std::vector<std::string>& args) {
     { 'E', "fatal-errors", NO_PARAMETER },
     { 'F', "force-things", NO_PARAMETER },
     { 'K', "check-cached-mmaps", NO_PARAMETER },
+    { 'L', "list-commands", NO_PARAMETER },
     { 'M', "mark-stdio", NO_PARAMETER },
     { 'N', "version", NO_PARAMETER },
     { 'S', "suppress-environment-warnings", NO_PARAMETER },
@@ -188,6 +194,9 @@ bool parse_global_option(std::vector<std::string>& args) {
     case 'N':
       show_version = true;
       break;
+    case 'L':
+      show_cmd_list = true;
+      break;
     default:
       DEBUG_ASSERT(0 && "Invalid flag");
   }
@@ -212,6 +221,10 @@ int main(int argc, char* argv[]) {
 
   if (show_version) {
     print_version(stdout);
+    return 0;
+  }
+  if (show_cmd_list) {
+    list_commands(stdout);
     return 0;
   }
 
