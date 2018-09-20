@@ -45,7 +45,7 @@ static bool rcb_counts_ok(uint64_t prev, uint64_t current) {
 void CPUIDBugDetector::notify_reached_syscall_during_replay(ReplayTask* t) {
   // We only care about events that happen before the first exec,
   // when our detection code runs.
-  if (t->session().done_initial_exec()) {
+  if (t->session().done_initial_exec() || PerfCounters::skip_cpuid_bug_check()) {
     return;
   }
   const Event& ev = t->current_trace_frame().event();

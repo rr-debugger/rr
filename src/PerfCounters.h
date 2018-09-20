@@ -86,6 +86,8 @@ public:
    * hope that tracees don't either. */
   enum { TIME_SLICE_SIGNAL = SIGSTKFLT };
 
+  static bool skip_cpuid_bug_check();
+
   static bool is_rr_ticks_attr(const perf_event_attr& attr);
 
   /**
