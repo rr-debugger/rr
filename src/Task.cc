@@ -251,6 +251,13 @@ void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
   }
 }
 
+void Task::emulate_jump(remote_code_ptr ip) {
+  Registers r = regs();
+  r.set_ip(ip);
+  set_regs(r);
+  ticks += PerfCounters::ticks_for_unconditional_indirect_branch(this);
+}
+
 bool Task::is_desched_event_syscall() {
   return is_ioctl_syscall(regs().original_syscallno(), arch()) &&
          desched_fd_child != -1 &&

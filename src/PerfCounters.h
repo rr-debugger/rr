@@ -67,6 +67,11 @@ public:
   void stop_counting();
 
   /**
+   * Return the number of ticks we need for an emulated branch.
+   */
+  static Ticks ticks_for_unconditional_indirect_branch(Task*);
+
+  /**
    * Read the current value of the ticks counter.
    * `t` is used for debugging purposes.
    */
@@ -81,7 +86,7 @@ public:
    * hope that tracees don't either. */
   enum { TIME_SLICE_SIGNAL = SIGSTKFLT };
 
-  static bool is_ticks_attr(const perf_event_attr& attr);
+  static bool is_rr_ticks_attr(const perf_event_attr& attr);
 
   /**
    * When an interrupt is requested, at most this many ticks may elapse before
@@ -105,6 +110,7 @@ private:
   // sample_period; the latter does not ignore ticks in aborted transactions,
   // but does support sample_period.
   ScopedFd fd_ticks_measure;
+  ScopedFd fd_minus_ticks_measure;
   ScopedFd fd_ticks_interrupt;
   ScopedFd fd_ticks_in_transaction;
   ScopedFd fd_useless_counter;

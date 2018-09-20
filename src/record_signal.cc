@@ -253,9 +253,7 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
                   "enable signal dispatch";
     // This is a single instruction that jumps to the location stored in
     // preload_thread_locals::stub_scratch_1. Emulate it.
-    Registers r = t->regs();
-    r.set_ip(get_stub_scratch_1(t));
-    t->set_regs(r);
+    t->emulate_jump(get_stub_scratch_1(t));
 
     restore_sighandler_if_not_default(t, SIGTRAP);
     // Now we're back in application code so any pending stashed signals
