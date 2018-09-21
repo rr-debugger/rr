@@ -7,21 +7,31 @@ static int pipe_fds[2];
 
 static void* run_thread(__attribute__((unused)) void* p) {
   char ch;
-  read(pipe_fds[0], &ch, 1);
+  int ret = read(pipe_fds[0], &ch, 1);
+  if (ret != 1) {
+    abort();
+  }
   flag = 1;
   return NULL;
 }
 
 int main(__attribute__((unused)) int argc) {
   int i;
+  int ret;
   pthread_t thread;
   struct timespec ts = { 0, 10000000 };
 
-  pipe(pipe_fds);
+  ret = pipe(pipe_fds);
+  if (ret != 0) {
+    abort();
+  }
 
   pthread_create(&thread, NULL, run_thread, NULL);
   nanosleep(&ts, NULL);
-  write(pipe_fds[1], "x", 1);
+  ret = write(pipe_fds[1], "x", 1);
+  if (ret != 1) {
+    abort();
+  }
   if (flag > 0) {
     caught_test_failure("flag set");
   }
