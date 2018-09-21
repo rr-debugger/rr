@@ -550,6 +550,10 @@ static void check_for_bugs() {
   check_working_counters();
 }
 
+bool PerfCounters::skip_cpuid_bug_check() {
+  return pmu_flags & PMU_SKIP_INTEL_BUG_CHECK;
+}
+
 static void init_attributes() {
   if (attributes_initialized) {
     return;
