@@ -50,6 +50,7 @@
 #include <limits.h>
 #include <link.h>
 #include <linux/futex.h>
+#include <linux/if_packet.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
 #include <poll.h>
@@ -2347,6 +2348,36 @@ static long sys_sendto(const struct syscall_info* call) {
 }
 #endif
 
+#ifdef SYS_setsockopt
+static long sys_setsockopt(const struct syscall_info* call) {
+  const int syscallno = SYS_setsockopt;
+  int sockfd = call->args[0];
+  int level = call->args[1];
+  int optname = call->args[2];
+  void* optval = (void*)call->args[3];
+  socklen_t* optlen = (socklen_t*)call->args[4];
+
+  if (level == SOL_PACKET &&
+      (optname == PACKET_RX_RING || optname == PACKET_TX_RING)) {
+    // Let rr intercept this (and probably disable it)
+    return traced_raw_syscall(call);
+  }
+
+  void* ptr = prep_syscall_for_fd(sockfd);
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall5(syscallno, sockfd, level, optname, optval, optlen);
+
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 #ifdef SYS_socketpair
 typedef int two_ints[2];
 static long sys_socketpair(const struct syscall_info* call) {
@@ -2788,7 +2819,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(sendto);
 #endif
 #if defined(SYS_setsockopt)
-    CASE_GENERIC_NONBLOCKING(setsockopt);
+    CASE(setsockopt);
 #endif
     CASE_GENERIC_NONBLOCKING(setxattr);
 #if defined(SYS_socketcall)
