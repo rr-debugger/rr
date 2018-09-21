@@ -1973,7 +1973,7 @@ void Task::open_mem_fd() {
   static const char path[] = "/proc/self/mem";
 
   AutoRemoteSyscalls remote(this);
-  long remote_fd;
+  int remote_fd;
   {
     AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
     // skip leading '/' since we want the path to be relative to the root fd
