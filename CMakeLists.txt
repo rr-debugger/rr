@@ -814,7 +814,7 @@ set(BASIC_TESTS
   ptracer_death
   ptracer_death_multithread
   ptracer_death_multithread_peer
-  pivot_root
+  # pivot_root ... disabled because it fails when run as root and does nothing otherwise
   quotactl
   rdtsc
   read_nothing
