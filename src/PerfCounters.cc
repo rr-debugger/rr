@@ -79,16 +79,20 @@ enum CpuMicroarch {
  * don't otherwise use, but keeps the PMU active, greatly increasing
  * performance.
  */
-
 #define PMU_BENEFITS_FROM_USELESS_COUNTER (1<<1)
 
 /*
  * Whether we need to increment ticks when emulating an unconditional
  * indirect branch.
  */
-
 #define PMU_UNCONDITIONAL_INDIRECT_BRANCH_ADDS_TICK (1<<2)
-#define PMU_SKIP_INTEL_BUG_CHECK (1<<3)
+
+/*
+ * Whether we add a tick for a direct call instruction.
+ */
+#define PMU_DIRECT_CALL_ADDS_TICK (1<<3)
+
+#define PMU_SKIP_INTEL_BUG_CHECK (1<<4)
 
 struct PmuConfig {
   CpuMicroarch uarch;
@@ -115,6 +119,7 @@ static const PmuConfig pmu_configs[] = {
   { IntelMerom, "Intel Merom", 0, 0, 0, 100, PMU_UNSUPPORTED },
   { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 250,
     PMU_UNCONDITIONAL_INDIRECT_BRANCH_ADDS_TICK |
+    PMU_DIRECT_CALL_ADDS_TICK |
     PMU_SKIP_INTEL_BUG_CHECK },
   { AMDRyzen, "AMD Ryzen", 0x5100d1, 0, 0, 1000, 0 },
 };
@@ -784,6 +789,10 @@ void PerfCounters::stop_counting() {
 
 Ticks PerfCounters::ticks_for_unconditional_indirect_branch(Task*) {
   return (pmu_flags & PMU_UNCONDITIONAL_INDIRECT_BRANCH_ADDS_TICK) ? 1 : 0;
+}
+
+Ticks PerfCounters::ticks_for_direct_call(Task*) {
+  return (pmu_flags & PMU_DIRECT_CALL_ADDS_TICK) ? 1 : 0;
 }
 
 Ticks PerfCounters::read_ticks(Task* t) {
