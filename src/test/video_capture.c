@@ -62,7 +62,14 @@ static void init_device(int fd) {
   enum v4l2_buf_type type;
 
   fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-  test_assert(0 == ioctl(fd, VIDIOC_G_FMT, &fmt));
+  ret = ioctl(fd, VIDIOC_G_FMT, &fmt);
+  if (ret < 0 && errno == EINVAL) {
+    // v4l2_loopback doesn't support G_FMT
+    atomic_printf("%s does not support G_FMT; aborting test\n",
+                  device_name);
+    no_v4l2();
+  }
+  test_assert(0 == ret);
   atomic_printf("%s returning %dx%d frames\n", device_name, fmt.fmt.pix.width,
                 fmt.fmt.pix.height);
 
