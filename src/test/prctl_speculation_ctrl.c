@@ -10,7 +10,7 @@ int main(void) {
     test_assert(errno == EINVAL || errno == ENODEV);
     test_assert(-1 == prctl(PR_SET_SPECULATION_CTRL, PR_SPEC_STORE_BYPASS,
                             PR_SPEC_ENABLE, 0, 0) &&
-                errno == ENXIO);
+                (errno == ENXIO || errno == EINVAL));
   } else if (ret != PR_SPEC_NOT_AFFECTED) {
     if (ret & PR_SPEC_PRCTL) {
       if (ret & PR_SPEC_ENABLE) {
