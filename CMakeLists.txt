@@ -708,6 +708,7 @@ set(BASIC_TESTS
   ioctl_fs
   ioctl_pty
   ioctl_tty
+  join_threads
   kcmp
   keyctl
   kill_newborn
