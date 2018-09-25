@@ -5,6 +5,13 @@
 
 typedef uint32_t key_serial_t;
 
+/* There was a breaking UAPI change so use this */
+struct rr_keyctl_dh_params {
+        __s32 dh_private;
+        __s32 prime;
+        __s32 base;
+};
+
 int main(void) {
   char buffer[192];
 
@@ -41,9 +48,9 @@ int main(void) {
   key_serial_t private_key = syscall(SYS_add_key, "user", "private", &private,
                                      sizeof(private), KEY_SPEC_PROCESS_KEYRING);
 
-  struct keyctl_dh_params params = {.private = private_key,
-                                    .prime = prime_key,
-                                    .base = base_key };
+  struct rr_keyctl_dh_params params = {.dh_private = private_key,
+                                       .prime = prime_key,
+                                       .base = base_key };
 
   result = syscall(SYS_keyctl, KEYCTL_DH_COMPUTE, &params, buffer,
                    sizeof(buffer), NULL);
