@@ -67,6 +67,8 @@ public:
   int bound_to_cpu() const { return bind_to_cpu; }
   void set_bound_cpu(int bound) { bind_to_cpu = bound; }
 
+  TicksSemantics ticks_semantics() const { return ticks_semantics_; }
+
   /**
    * Return the current "global time" (event count) for this
    * trace.
@@ -126,6 +128,8 @@ protected:
   string trace_dir;
   // CPU core# that the tracees are bound to
   int32_t bind_to_cpu;
+
+  TicksSemantics ticks_semantics_;
 
   // Arbitrary notion of trace time, ticked on the recording of
   // each event (trace frame).

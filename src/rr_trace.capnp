@@ -33,6 +33,13 @@ using Ticks = Int64;
 # Must be >= 0
 using Fd = Int32;
 
+# Describes what "ticks" mean in this trace
+enum TicksSemantics {
+  retiredConditionalBranches @0;
+  # Excludes interrupts, far branches, and rets
+  takenBranches @1;
+}
+
 # The 'version' file contains an ASCII version number followed by a newline.
 # The version number is currently 85 and increments only when there's a
 # backwards-incompatible change. See TRACE_VERSION.
@@ -52,8 +59,10 @@ struct Header {
   # A series of 24-byte records. See CPUIDRecord in util.h.
   cpuidRecords @3 :Data;
   # Captured XCR0 value defining XSAVE features enabled by OS.
-  # 0 means "unknown"; default to everything supporteed by CPUID EAX=0xd ECX=0
+  # 0 means "unknown"; default to everything supported by CPUID EAX=0xd ECX=0
   xcr0 @5 :UInt64;
+  # Semantics of "ticks" in this trace
+  ticksSemantics @6 :TicksSemantics;
   # The syscallbuf protocol version. See SYSCALLBUF_PROTOCOL_VERSION.
   syscallbufProtocolVersion @4 :UInt16;
 }

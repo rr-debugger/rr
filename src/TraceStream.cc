@@ -166,7 +166,10 @@ private:
 };
 
 TraceStream::TraceStream(const string& trace_dir, FrameTime initial_time)
-    : trace_dir(real_path(trace_dir)), global_time(initial_time) {}
+    : trace_dir(real_path(trace_dir))
+    , ticks_semantics_(PerfCounters::default_ticks_semantics())
+    , global_time(initial_time)
+   {}
 
 string TraceStream::file_data_clone_file_name(const TaskUid& tuid) {
   stringstream ss;
@@ -318,6 +321,30 @@ static Event from_trace_signal(EventType type, trace::Signal::Reader signal) {
                            signal.getDeterministic() ? DETERMINISTIC_SIG
                                                      : NONDETERMINISTIC_SIG,
                            from_trace_disposition(signal.getDisposition())));
+}
+
+static trace::TicksSemantics to_trace_ticks_semantics(TicksSemantics semantics) {
+  switch (semantics) {
+    case TICKS_RETIRED_CONDITIONAL_BRANCHES:
+      return trace::TicksSemantics::RETIRED_CONDITIONAL_BRANCHES;
+    case TICKS_TAKEN_BRANCHES:
+      return trace::TicksSemantics::TAKEN_BRANCHES;
+    default:
+      FATAL() << "Unknown ticks semantics";
+      return trace::TicksSemantics::RETIRED_CONDITIONAL_BRANCHES;
+  }
+}
+
+static TicksSemantics from_trace_ticks_semantics(trace::TicksSemantics semantics) {
+  switch (semantics) {
+    case trace::TicksSemantics::RETIRED_CONDITIONAL_BRANCHES:
+      return TICKS_RETIRED_CONDITIONAL_BRANCHES;
+    case trace::TicksSemantics::TAKEN_BRANCHES:
+      return TICKS_TAKEN_BRANCHES;
+    default:
+      FATAL() << "Unknown ticks semantics";
+      return TICKS_RETIRED_CONDITIONAL_BRANCHES;
+  }
 }
 
 static pid_t i32_to_tid(int tid) {
@@ -1159,6 +1186,8 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
       Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
                    cpuid_records.size() * sizeof(CPUIDRecord)));
   header.setXcr0(xcr0());
+  header.setTicksSemantics(
+    to_trace_ticks_semantics(PerfCounters::default_ticks_semantics()));
   header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
@@ -1318,6 +1347,7 @@ TraceReader::TraceReader(const string& dir)
   memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
          len * sizeof(CPUIDRecord));
   xcr0_ = header.getXcr0();
+  ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
 
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.

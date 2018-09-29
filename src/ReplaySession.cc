@@ -179,6 +179,11 @@ ReplaySession::ReplaySession(const std::string& dir)
         << "Trace was recorded on a machine with different CPUID values\n"
            "and CPUID faulting is not enabled; replay will not work.";
   }
+  if (!PerfCounters::supports_ticks_semantics(trace_in.ticks_semantics())) {
+    CLEAN_FATAL()
+        << "Trace was recorded on a machine that defines ticks differently\n"
+           "to this machine; replay will not work.";
+  }
 
   check_xsave_compatibility(trace_in);
 }

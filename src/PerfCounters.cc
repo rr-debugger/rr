@@ -32,6 +32,8 @@ namespace rr {
 #define PERF_COUNT_RR 0x72727272L
 
 static bool attributes_initialized;
+// At some point we might support multiple kinds of ticks for the same CPU arch.
+// At that point this will need to become more complicated.
 static struct perf_event_attr ticks_attr;
 static struct perf_event_attr minus_ticks_attr;
 static struct perf_event_attr cycles_attr;
@@ -68,7 +70,10 @@ enum CpuMicroarch {
   AMDRyzen,
 };
 
-#define PMU_UNSUPPORTED (1<<0)
+/*
+ * Set if this CPU supports ticks counting retired conditional branches.
+ */
+#define PMU_TICKS_RCB (1<<0)
 
 /*
  * Some CPUs turn off the whole PMU when there are no remaining events
@@ -82,17 +87,15 @@ enum CpuMicroarch {
 #define PMU_BENEFITS_FROM_USELESS_COUNTER (1<<1)
 
 /*
- * Whether we need to increment ticks when emulating an unconditional
- * indirect branch.
+ * Whether to skip the check for Intel CPU bugs
  */
-#define PMU_UNCONDITIONAL_INDIRECT_BRANCH_ADDS_TICK (1<<2)
+#define PMU_SKIP_INTEL_BUG_CHECK (1<<2)
 
 /*
- * Whether we add a tick for a direct call instruction.
+ * Set if this CPU supports ticks counting all taken branches
+ * (excluding interrupts, far branches, and rets).
  */
-#define PMU_DIRECT_CALL_ADDS_TICK (1<<3)
-
-#define PMU_SKIP_INTEL_BUG_CHECK (1<<4)
+#define PMU_TICKS_TAKEN_BRANCHES (1<<3)
 
 struct PmuConfig {
   CpuMicroarch uarch;
@@ -106,22 +109,20 @@ struct PmuConfig {
 
 // XXX please only edit this if you really know what you're doing.
 static const PmuConfig pmu_configs[] = {
-  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 100, 0 },
-  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 100, 0 },
-  { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0x5301cb, 100, 0 },
-  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0x5301cb, 100, 0 },
-  { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0x5301cb, 100, 0 },
-  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0, 0x5301cb, 100, 0 },
-  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0, 0x5301cb, 100, 0 },
-  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0x50011d, 100, 0 },
-  { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0x50011d, 100, 0 },
-  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, PMU_UNSUPPORTED },
-  { IntelMerom, "Intel Merom", 0, 0, 0, 100, PMU_UNSUPPORTED },
+  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
+  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
+  { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
+  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
+  { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
+  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
+  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
+  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0x50011d, 100, PMU_TICKS_RCB },
+  { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0x50011d, 100, PMU_TICKS_RCB },
+  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, 0 },
+  { IntelMerom, "Intel Merom", 0, 0, 0, 100, 0 },
   { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 250,
-    PMU_UNCONDITIONAL_INDIRECT_BRANCH_ADDS_TICK |
-    PMU_DIRECT_CALL_ADDS_TICK |
-    PMU_SKIP_INTEL_BUG_CHECK },
-  { AMDRyzen, "AMD Ryzen", 0x5100d1, 0, 0, 1000, 0 },
+    PMU_TICKS_TAKEN_BRANCHES | PMU_SKIP_INTEL_BUG_CHECK },
+  { AMDRyzen, "AMD Ryzen", 0x5100d1, 0, 0, 1000, PMU_TICKS_RCB },
 };
 
 #define RR_SKID_MAX 1000
@@ -575,7 +576,7 @@ static void init_attributes() {
     }
     DEBUG_ASSERT(pmu);
 
-    if (pmu->flags & PMU_UNSUPPORTED) {
+    if (!(pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
       FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
     }
 
@@ -613,11 +614,32 @@ static void init_attributes() {
 }
 
 bool PerfCounters::is_rr_ticks_attr(const perf_event_attr& attr) {
+  return attr.type == PERF_TYPE_HARDWARE && attr.config == PERF_COUNT_RR;
+}
+
+bool PerfCounters::supports_ticks_semantics(TicksSemantics ticks_semantics) {
   init_attributes();
-  if (attr.type == PERF_TYPE_HARDWARE && attr.config == PERF_COUNT_RR) {
-    return true;
+  switch (ticks_semantics) {
+  case TICKS_RETIRED_CONDITIONAL_BRANCHES:
+    return (pmu_flags & PMU_TICKS_RCB) != 0;
+  case TICKS_TAKEN_BRANCHES:
+    return (pmu_flags & PMU_TICKS_TAKEN_BRANCHES) != 0;
+  default:
+    FATAL() << "Unknown ticks_semantics " << ticks_semantics;
+    return false;
   }
-  return false;
+}
+
+TicksSemantics PerfCounters::default_ticks_semantics() {
+  init_attributes();
+  if (pmu_flags & PMU_TICKS_TAKEN_BRANCHES) {
+    return TICKS_TAKEN_BRANCHES;
+  }
+  if (pmu_flags & PMU_TICKS_RCB) {
+    return TICKS_RETIRED_CONDITIONAL_BRANCHES;
+  }
+  FATAL() << "Unsupported architecture";
+  return TICKS_TAKEN_BRANCHES;
 }
 
 uint32_t PerfCounters::skid_size() {
@@ -625,9 +647,11 @@ uint32_t PerfCounters::skid_size() {
   return rr::skid_size;
 }
 
-PerfCounters::PerfCounters(pid_t tid)
-    : tid(tid), started(false), counting(false) {
-  init_attributes();
+PerfCounters::PerfCounters(pid_t tid, TicksSemantics ticks_semantics)
+    : tid(tid), ticks_semantics_(ticks_semantics), started(false), counting(false) {
+  if (!supports_ticks_semantics(ticks_semantics)) {
+    FATAL() << "Ticks semantics " << ticks_semantics << " not supported";
+  }
 }
 
 static void make_counter_async(ScopedFd& fd, int signal) {
@@ -788,11 +812,11 @@ void PerfCounters::stop_counting() {
 }
 
 Ticks PerfCounters::ticks_for_unconditional_indirect_branch(Task*) {
-  return (pmu_flags & PMU_UNCONDITIONAL_INDIRECT_BRANCH_ADDS_TICK) ? 1 : 0;
+  return (pmu_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
 }
 
 Ticks PerfCounters::ticks_for_direct_call(Task*) {
-  return (pmu_flags & PMU_DIRECT_CALL_ADDS_TICK) ? 1 : 0;
+  return (pmu_flags & PMU_TICKS_TAKEN_BRANCHES) ? 1 : 0;
 }
 
 Ticks PerfCounters::read_ticks(Task* t) {

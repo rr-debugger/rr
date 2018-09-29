@@ -20,6 +20,11 @@ namespace rr {
 
 class Task;
 
+enum TicksSemantics {
+  TICKS_RETIRED_CONDITIONAL_BRANCHES,
+  TICKS_TAKEN_BRANCHES,
+};
+
 /**
  * A class encapsulating the performance counters we use to monitor
  * each task during recording and replay.
@@ -37,7 +42,7 @@ public:
   /**
    * Create performance counters monitoring the given task.
    */
-  PerfCounters(pid_t tid);
+  PerfCounters(pid_t tid, TicksSemantics ticks_semantics);
   ~PerfCounters() { stop(); }
 
   void set_tid(pid_t tid);
@@ -82,6 +87,11 @@ public:
   Ticks read_ticks(Task* t);
 
   /**
+   * Returns what ticks mean for these counters.
+   */
+  TicksSemantics ticks_semantics() const { return ticks_semantics_; }
+
+  /**
    * Return the fd we last used to generate the ticks-counter signal.
    */
   int ticks_interrupt_fd() const { return fd_ticks_interrupt.get(); }
@@ -91,6 +101,10 @@ public:
   enum { TIME_SLICE_SIGNAL = SIGSTKFLT };
 
   static bool is_rr_ticks_attr(const perf_event_attr& attr);
+
+  static bool supports_ticks_semantics(TicksSemantics ticks_semantics);
+
+  static TicksSemantics default_ticks_semantics();
 
   /**
    * When an interrupt is requested, at most this many ticks may elapse before
@@ -118,6 +132,7 @@ private:
   ScopedFd fd_ticks_interrupt;
   ScopedFd fd_ticks_in_transaction;
   ScopedFd fd_useless_counter;
+  TicksSemantics ticks_semantics_;
   bool started;
   bool counting;
 };
