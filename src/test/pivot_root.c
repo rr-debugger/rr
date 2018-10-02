@@ -11,10 +11,10 @@ int main(void) {
 
   /* Set up a directory structure for testing */
   test_assert(0 == mkdir("old_root", 0700));
-  test_assert(0 == mount("", "old_root", "tmpfs", 0, NULL));
+  test_assert(0 == mount("none", "old_root", "tmpfs", 0, NULL));
 
   test_assert(0 == mkdir("old_root/new_root", 0700));
-  test_assert(0 == mount("", "old_root/new_root", "tmpfs", 0, NULL));
+  test_assert(0 == mount("none", "old_root/new_root", "tmpfs", 0, NULL));
 
   test_assert(0 == mkdir("old_root/new_root/new_old_root", 0700));
 

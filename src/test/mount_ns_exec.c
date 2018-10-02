@@ -11,7 +11,7 @@ int main(int argc, char* argv[]) {
   }
 
   test_assert(0 == mkdir("mountpoint", 0700));
-  test_assert(0 == mount("", "mountpoint", "tmpfs", 0, NULL));
+  test_assert(0 == mount("none", "mountpoint", "tmpfs", 0, NULL));
 
   struct stat buf;
   stat("/proc/self/exe", &buf);
