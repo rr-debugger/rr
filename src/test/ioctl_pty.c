@@ -3,7 +3,7 @@
 #include "util.h"
 
 int main(void) {
-  int fd = open("/dev/ptmx", O_RDONLY);
+  int fd = open("/dev/ptmx", O_RDWR);
   pid_t child;
   int ret;
   int status;
@@ -29,11 +29,16 @@ int main(void) {
   VERIFY_GUARD(arg);
   test_assert(*arg == 1);
 
+  *arg = 0;
   test_assert(0 == ioctl(fd, TIOCSPTLCK, arg));
+
+  ret = ioctl(fd, TIOCGPTPEER, 0);
+  if (ret < 0) {
+    test_assert(errno == ENOSYS);
+  }
 
   test_assert(0 == ioctl(fd, TCXONC, TCOOFF));
   test_assert(0 == ioctl(fd, TCFLSH, TCIFLUSH));
-
   child = fork();
   if (!child) {
     test_assert(getpid() == setsid());

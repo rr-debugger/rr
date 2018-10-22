@@ -171,6 +171,9 @@ struct usbdevfs_streams {
 #ifndef TIOCGEXCL
 #define TIOCGEXCL _IOR('T', 0x40, int)
 #endif
+#ifndef TIOCGPTPEER
+#define TIOCGPTPEER _IO('T', 0x41)
+#endif
 
 struct rr_input_mask {
   uint32_t type;

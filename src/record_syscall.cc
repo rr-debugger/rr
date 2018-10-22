@@ -1548,6 +1548,7 @@ static Switchable prepare_ioctl(RecordTask* t,
       case FIOASYNC:
       case TIOCSETD:
       case IOCTL_MASK_SIZE(TIOCSPTLCK):
+      case IOCTL_MASK_SIZE(TIOCGPTPEER):
       case FIOCLEX:
       case FIONCLEX:
       case IOCTL_MASK_SIZE(BTRFS_IOC_CLONE):

@@ -347,6 +347,9 @@ inline static SyscallWrapper get_spurious_desched_syscall(void) {
 #ifndef TIOCGEXCL
 #define TIOCGEXCL _IOR('T', 0x40, int)
 #endif
+#ifndef TIOCGPTPEER
+#define TIOCGPTPEER _IO('T', 0x41)
+#endif
 
 #ifndef MADV_FREE
 #define MADV_FREE 8
