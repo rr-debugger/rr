@@ -16,6 +16,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "EmuFs.h"
 #include "Flags.h"
+#include "PerfCounters.h"
 #include "Task.h"
 #include "ThreadGroup.h"
 #include "core.h"
@@ -42,6 +43,7 @@ Session::Session()
       tracee_socket_fd_number(0),
       next_task_serial_(1),
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
+      ticks_semantics_(PerfCounters::default_ticks_semantics()),
       done_initial_exec_(false),
       visible_execution_(true) {
   LOG(debug) << "Session " << this << " created";
@@ -63,6 +65,7 @@ Session::Session(const Session& other) {
   visible_execution_ = other.visible_execution_;
   tracee_socket = other.tracee_socket;
   tracee_socket_fd_number = other.tracee_socket_fd_number;
+  ticks_semantics_ = other.ticks_semantics_;
 }
 
 void Session::on_create(ThreadGroup* tg) { thread_group_map[tg->tguid()] = tg; }

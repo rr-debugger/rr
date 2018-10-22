@@ -1142,13 +1142,15 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
 TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
                          bool has_cpuid_faulting,
                          const DisableCPUIDFeatures& disable_cpuid_features,
-                         const string& output_trace_dir)
+                         const string& output_trace_dir,
+                         TicksSemantics ticks_semantics_)
     : TraceStream(make_trace_dir(file_name, output_trace_dir),
                   // Somewhat arbitrarily start the
                   // global time from 1.
                   1),
       mmap_count(0),
       supports_file_data_cloning_(false) {
+  this->ticks_semantics_ = ticks_semantics_;
   this->bind_to_cpu = bind_to_cpu;
 
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {

@@ -327,6 +327,7 @@ public:
   int tracee_fd_number() const { return tracee_socket_fd_number; }
 
   virtual TraceStream* trace_stream() { return nullptr; }
+  TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
 protected:
   Session();
@@ -367,6 +368,8 @@ protected:
   ScopedFd spawned_task_error_fd_;
 
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering_;
+
+  TicksSemantics ticks_semantics_;
 
   /**
    * True if we've done an exec so tracees are now in a state that will be

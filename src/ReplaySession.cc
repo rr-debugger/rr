@@ -164,6 +164,8 @@ ReplaySession::ReplaySession(const std::string& dir)
       current_step(),
       ticks_at_start_of_event(0),
       trace_start_time(0) {
+  ticks_semantics_ = trace_in.ticks_semantics();
+
   memset(&last_siginfo_, 0, sizeof(last_siginfo_));
   advance_to_next_trace_frame();
 
@@ -179,7 +181,7 @@ ReplaySession::ReplaySession(const std::string& dir)
         << "Trace was recorded on a machine with different CPUID values\n"
            "and CPUID faulting is not enabled; replay will not work.";
   }
-  if (!PerfCounters::supports_ticks_semantics(trace_in.ticks_semantics())) {
+  if (!PerfCounters::supports_ticks_semantics(ticks_semantics_)) {
     CLEAN_FATAL()
         << "Trace was recorded on a machine that defines ticks differently\n"
            "to this machine; replay will not work.";
@@ -265,6 +267,7 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
              << " to DiversionSession...";
 
   DiversionSession::shr_ptr session(new DiversionSession());
+  session->ticks_semantics_ = ticks_semantics_;
   session->tracee_socket = tracee_socket;
   session->tracee_socket_fd_number = tracee_socket_fd_number;
   LOG(debug) << "  deepfork session is " << session.get();

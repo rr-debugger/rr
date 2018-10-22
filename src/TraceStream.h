@@ -234,7 +234,8 @@ public:
   TraceWriter(const std::string& file_name, int bind_to_cpu,
               bool has_cpuid_faulting,
               const DisableCPUIDFeatures& disable_cpuid_features,
-              const string& output_trace_dir);
+              const string& output_trace_dir,
+              TicksSemantics ticks_semantics_);
 
   /**
    * We got far enough into recording that we should set this as the latest
