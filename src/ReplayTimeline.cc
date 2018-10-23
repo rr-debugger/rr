@@ -3,6 +3,7 @@
 #include "ReplayTimeline.h"
 
 #include <math.h>
+#include <sstream>
 
 #include "core.h"
 #include "fast_forward.h"
@@ -16,6 +17,21 @@ ReplayTimeline::InternalMark::~InternalMark() {
   if (owner && checkpoint) {
     owner->remove_mark_with_checkpoint(proto.key);
   }
+}
+
+void ReplayTimeline::InternalMark::full_print(FILE* out) const {
+  ostringstream buf;
+  buf << proto.key;
+  fprintf(out, "{%s,regs:", buf.str().c_str());
+  proto.regs.print_register_file(out);
+  fputs(",return_addresses=[", out);
+  for (int i = 0; i < ReturnAddressList::COUNT; ++i) {
+    fprintf(out, "%p", (void*)proto.return_addresses.addresses[i].as_int());
+    if (i + 1 < ReturnAddressList::COUNT) {
+      fputc(',', out);
+    }
+  }
+  fputs("]}", out);
 }
 
 ostream& operator<<(ostream& s, const ReplayTimeline::MarkKey& o) {
@@ -215,11 +231,23 @@ void ReplayTimeline::mark_after_singlestep(const Mark& from,
     for (size_t i = 0; i < mark_vector.size(); ++i) {
       if (mark_vector[i] == from.ptr) {
         if (i + 1 >= mark_vector.size() || mark_vector[i + 1] != m.ptr) {
+          ssize_t m_prev = -1;
           for (size_t j = 0; j < mark_vector.size(); ++j) {
             LOG(debug) << "  mark_vector[" << j << "] " << *mark_vector[j];
+            if (mark_vector[j] == m.ptr && j > 0) {
+              m_prev = j - 1;
+            }
+          }
+          if (m_prev >= 0) {
+            fprintf(stderr, "Probable previous-to-duplicated-state at %d:", (int)m_prev);
+            mark_vector[m_prev]->full_print(stderr);
+            fprintf(stderr, "Probable previous-to-duplicated-state at %d:", (int)i);
+            from.ptr->full_print(stderr);
+            fprintf(stderr, "Probable duplicated state at %d:", (int)m_prev + 1);
+            m.ptr->full_print(stderr);
           }
           ASSERT(result.break_status.task, false)
-              << " expected to find " << m << " at index " << i + 1;
+              << " Probable duplicated states leading to " << m << " at index " << i + 1;
         }
         break;
       }

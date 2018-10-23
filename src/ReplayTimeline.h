@@ -340,6 +340,7 @@ private:
     bool operator<(const std::shared_ptr<InternalMark> other);
 
     bool equal_states(ReplaySession& session) const;
+    void full_print(FILE* out) const;
 
     ReplayTimeline* owner;
     // Reuse ProtoMark to contain the MarkKey + Registers + ReturnAddressList.
