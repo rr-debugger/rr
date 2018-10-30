@@ -335,7 +335,7 @@ getgid = EmulatedSyscall(x86=47, x64=104)
 signal = UnsupportedSyscall(x86=48)
 geteuid = EmulatedSyscall(x86=49, x64=107)
 getegid = EmulatedSyscall(x86=50, x64=108)
-acct = UnsupportedSyscall(x86=51, x64=163)
+acct = EmulatedSyscall(x86=51, x64=163)
 umount2 = EmulatedSyscall(x86=52, x64=166)
 lock = InvalidSyscall(x86=53)
 
