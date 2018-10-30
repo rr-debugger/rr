@@ -3234,9 +3234,17 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
     }
 
+    // Various syscalls that can block but don't otherwise have behavior we need
+    // to record.
+    case Arch::fdatasync:
+    case Arch::fsync:
     case Arch::msgsnd:
+    case Arch::msync:
     case Arch::semop:
     case Arch::semtimedop:
+    case Arch::sync:
+    case Arch::sync_file_range:
+    case Arch::syncfs:
       return ALLOW_SWITCH;
 
     case Arch::socketcall:

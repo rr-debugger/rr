@@ -252,7 +252,7 @@ access = EmulatedSyscall(x86=33, x64=21)
 
 nice = UnsupportedSyscall(x86=34)
 ftime = InvalidSyscall(x86=35)
-sync = EmulatedSyscall(x86=36, x64=162)
+sync = IrregularEmulatedSyscall(x86=36, x64=162)
 
 #  int kill(pid_t pid, int sig)
 #
@@ -605,7 +605,7 @@ ipc = IrregularEmulatedSyscall(x86=117)
 # device) where that file resides.  The call blocks until the device
 # reports that the transfer has completed.  It also flushes metadata
 # information associated with the file (see stat(2))
-fsync = EmulatedSyscall(x86=118, x64=74)
+fsync = IrregularEmulatedSyscall(x86=118, x64=74)
 
 #  int sigreturn(unsigned long __unused)
 #
@@ -741,7 +741,7 @@ flock = EmulatedSyscall(x86=143, x64=73)
 # munmap(2) is called.  To be more precise, the part of the file that
 # corresponds to the memory area starting at addr and having length
 # length is updated.
-msync = EmulatedSyscall(x86=144, x64=26)
+msync = IrregularEmulatedSyscall(x86=144, x64=26)
 
 #  ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
 #
@@ -775,7 +775,7 @@ getsid = EmulatedSyscall(x86=147, x64=124)
 # handled correctly.  On the other hand, a change to the file size
 # (st_size, as made by say ftruncate(2)), would require a metadata
 # flush
-fdatasync = EmulatedSyscall(x86=148, x64=75)
+fdatasync = IrregularEmulatedSyscall(x86=148, x64=75)
 
 #  int _sysctl(struct __syscall_args* args);
 #
@@ -1473,7 +1473,7 @@ get_robust_list = EmulatedSyscall(x86=312, x64=274, arg2="typename Arch::unsigne
 # redirected during replay.  But, *crickets*.
 splice = IrregularEmulatedSyscall(x86=313, x64=275)
 
-sync_file_range = UnsupportedSyscall(x86=314, x64=277)
+sync_file_range = IrregularEmulatedSyscall(x86=314, x64=277)
 tee = UnsupportedSyscall(x86=315, x64=276)
 vmsplice = UnsupportedSyscall(x86=316, x64=278)
 move_pages = UnsupportedSyscall(x86=317, x64=279)
@@ -1617,7 +1617,7 @@ prlimit64 = EmulatedSyscall(x86=340, x64=302, arg4="typename Arch::rlimit64")
 name_to_handle_at = IrregularEmulatedSyscall(x86=341, x64=303)
 open_by_handle_at = EmulatedSyscall(x86=342, x64=304)
 clock_adjtime = UnsupportedSyscall(x86=343, x64=305)
-syncfs = EmulatedSyscall(x86=344, x64=306)
+syncfs = IrregularEmulatedSyscall(x86=344, x64=306)
 
 #  int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
 #               unsigned int flags);

@@ -918,6 +918,7 @@ set(BASIC_TESTS
   switch_read
   symlink
   sync
+  sync_file_range
   syscall_bp
   syscall_in_writable_mem
   syscallbuf_signal_reset
