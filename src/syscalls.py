@@ -694,7 +694,7 @@ getpgid = EmulatedSyscall(x86=132, x64=121)
 fchdir = EmulatedSyscall(x86=133, x64=81)
 
 bdflush = UnsupportedSyscall(x86=134)
-sysfs = UnsupportedSyscall(x86=135, x64=139)
+sysfs = IrregularEmulatedSyscall(x86=135, x64=139)
 personality = IrregularEmulatedSyscall(x86=136, x64=135)
 afs_syscall = InvalidSyscall(x86=137, x64=183)
 setfsuid = EmulatedSyscall(x86=138, x64=122)

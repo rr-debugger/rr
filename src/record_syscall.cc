@@ -3247,6 +3247,29 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::syncfs:
       return ALLOW_SWITCH;
 
+    case Arch::sysfs: {
+      int option = regs.arg1();
+      switch (option) {
+        case 1:
+        case 3:
+          break;
+        case 2: {
+          remote_ptr<char> buf(regs.arg3());
+          // Assume no filesystem type name is more than 1K
+          char tmp[1024];
+          ssize_t bytes = t->read_bytes_fallible(buf, sizeof(tmp), tmp);
+          if (bytes > 0) {
+            syscall_state.reg_parameter(3, bytes);
+          }
+          break;
+        }
+        default:
+          syscall_state.expect_errno = EINVAL;
+          break;
+      }
+      return PREVENT_SWITCH;
+    }
+
     case Arch::socketcall:
       return prepare_socketcall<Arch>(t, syscall_state);
 

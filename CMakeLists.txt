@@ -930,6 +930,7 @@ set(BASIC_TESTS
   sysconf
   sysctl
   sysemu_singlestep
+  sysfs
   sysinfo
   tgkill
   thread_yield
