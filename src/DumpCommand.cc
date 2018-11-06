@@ -295,15 +295,15 @@ void dump(const string& trace_dir, const DumpFlags& flags,
 
   if (specs.size() > 0) {
     for (size_t i = 0; i < specs.size(); ++i) {
-      dump_events_matching(trace, flags, stdout, &specs[i]);
+      dump_events_matching(trace, flags, out, &specs[i]);
     }
   } else {
     // No specs => dump all events.
-    dump_events_matching(trace, flags, stdout, nullptr /*all events*/);
+    dump_events_matching(trace, flags, out, nullptr /*all events*/);
   }
 
   if (flags.dump_statistics) {
-    dump_statistics(trace, stdout);
+    dump_statistics(trace, out);
   }
 }
 
