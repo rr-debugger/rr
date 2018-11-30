@@ -1653,6 +1653,8 @@ pkey_mprotect = UnsupportedSyscall(x86=380, x64=329)
 pkey_alloc = UnsupportedSyscall(x86=381, x64=330)
 pkey_free = UnsupportedSyscall(x86=382, x64=331)
 statx = EmulatedSyscall(x86=383, x64=332, arg5="typename Arch::statx_struct")
+io_pgetevents = UnsupportedSyscall(x86=385, x64=333)
+rseq = UnsupportedSyscall(x86=386, x64=334)
 
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219)
