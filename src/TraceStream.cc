@@ -473,7 +473,7 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
     CompressedWriterOutputStream stream(events);
     writePackedMessage(stream, frame_msg);
   } catch (...) {
-    FATAL() << "Unable to write tasks";
+    FATAL() << "Unable to write events";
   }
 
   tick_time();
