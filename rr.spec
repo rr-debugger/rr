@@ -24,7 +24,7 @@ http://rr-project.org
  
 %files
 %defattr(-,root,root,-)
-@CPACK_PACKAGING_INSTALL_PREFIX@/lib/*
+@CPACK_PACKAGING_INSTALL_PREFIX@/lib64/*
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/rr
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/rr_exec_stub*
 @CPACK_PACKAGING_INSTALL_PREFIX@/bin/rr_page*
