@@ -858,7 +858,8 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
       si.si_fd = thread_locals->desched_counter_fd;
       si.si_pid = pid;
       si.si_uid = uid;
-      privileged_untraced_syscall4(SYS_rt_tgsigqueueinfo, pid, tid, SIGPWR,
+      privileged_untraced_syscall4(SYS_rt_tgsigqueueinfo, pid, tid,
+                                   SYSCALLBUF_DESCHED_SIGNAL,
                                    &si);
     }
   }
@@ -2695,7 +2696,8 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
     // SIGSTKFLT (PerfCounters::TIME_SLICE_SIGNAL) and
     // SIGPWR(SYSCALLBUF_DESCHED_SIGNAL) are used by rr
     modified_set &=
-        ~(((uint64_t)1) << (SIGSTKFLT - 1)) & ~(((uint64_t)1) << (SIGPWR - 1));
+        ~(((uint64_t)1) << (SIGSTKFLT - 1)) &
+        ~(((uint64_t)1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
     set = &modified_set;
   }
 
