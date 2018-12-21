@@ -490,6 +490,8 @@ if(staticlibs)
   # Urgh ... this might not work for everyone, but there doesn't seem to be
   # a way to persuade pkg-confing/pkg_check_modules to produce the right flags
   target_link_libraries(rr -L/home/roc/lib -l:libcapnp.a -l:libkj.a)
+  # Note that this works for both clang++ and g++
+  set(CMAKE_CXX_FLAGS "-static-libstdc++ ${CMAKE_CXX_FLAGS}")
 else()
   target_link_libraries(rr ${CAPNP_LDFLAGS})
 endif()
