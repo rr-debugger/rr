@@ -1314,14 +1314,6 @@ if(BUILD_TESTS)
                                   PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(test)
 
-    foreach(test ${BASIC_CPP_TESTS})
-      configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.cc"
-                     "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
-                     COPYONLY)
-      set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc"
-                                  PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
-    endforeach(test)
-
     foreach(file cpuid_loop.S)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
@@ -1336,14 +1328,6 @@ if(BUILD_TESTS)
       add_dependencies(${test}_32 Generated)
       set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS}")
       target_link_libraries(${test}_32 -lrt -ldl)
-    endforeach(test)
-
-    foreach(test ${BASIC_CPP_TESTS})
-      add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.cc")
-      post_build_executable(${test}_32)
-      add_dependencies(${test}_32 Generated)
-      set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS}")
-      target_link_libraries(${test}_32 -lrt)
     endforeach(test)
 
     add_library(test_lib_32
@@ -1361,7 +1345,7 @@ if(BUILD_TESTS)
     set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
     target_link_libraries(cpuid_32 -lrt)
 
-    foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
+    foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
       add_test(${test}-32
         bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test}_32 -b ${PROJECT_BINARY_DIR})
       configure_test(${test}-32)
