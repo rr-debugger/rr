@@ -21,6 +21,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <iomanip>
 #include <sstream>
 #include <vector>
 
@@ -1035,10 +1036,10 @@ static string to_string(const vector<uint8_t>& bytes, size_t max_len) {
 }
 
 bool GdbConnection::process_packet() {
-  parser_assert(INTERRUPT_CHAR == inbuf[0] ||
-                ('$' == inbuf[0] &&
-                 (uint8_t*)memchr(inbuf.data(), '#', inbuf.size()) ==
-                     inbuf.data() + packetend));
+  parser_assert(
+      INTERRUPT_CHAR == inbuf[0] ||
+      ('$' == inbuf[0] && (uint8_t*)memchr(inbuf.data(), '#', inbuf.size()) ==
+                              inbuf.data() + packetend));
 
   if (INTERRUPT_CHAR == inbuf[0]) {
     LOG(debug) << "gdb requests interrupt";
@@ -1646,31 +1647,24 @@ void GdbConnection::reply_get_stop_reason(GdbThreadId which, int sig) {
 
 void GdbConnection::reply_get_thread_list(const vector<GdbThreadId>& threads) {
   DEBUG_ASSERT(DREQ_GET_THREAD_LIST == req.type);
-
   if (threads.empty()) {
     write_packet("l");
   } else {
-    ssize_t maxlen =
-        1 /*m char*/ +
-        threads.size() * (1 /*p*/ + 2 * sizeof(threads[0]) + 1 /*,*/) +
-        1 /*\0*/;
-    char* str = (char*)xmalloc(maxlen);
-    int offset = 0;
-
-    str[offset++] = 'm';
+    stringstream sstr;
+    sstr << 'm';
     for (size_t i = 0; i < threads.size(); ++i) {
       const GdbThreadId& t = threads[i];
       if (tgid != t.pid) {
         continue;
       }
-      offset +=
-          snprintf(&str[offset], maxlen - offset, "p%02x.%02x,", t.pid, t.tid);
+      sstr << 'p' << setw(2) << setfill('0') << hex << t.pid << dec << '.'
+           << setw(2) << setfill('0') << hex << t.tid << ',';
     }
-    /* Overwrite the trailing ',' */
-    str[offset - 1] = '\0';
 
-    write_packet(str);
-    free(str);
+    string str = sstr.str();
+    /* Overwrite the trailing ',' */
+    str.back() = 0;
+    write_packet(str.c_str());
   }
 
   consume_request();
