@@ -19,7 +19,7 @@ Vagrant.configure("2") do |config|
 		cd rr
 		mkdir obj
 		cd obj
-		cmake ..
+		cmake .. -DPYTHON_EXECUTABLE=/usr/bin/python
 		make -j8
 		make test
 	SHELL
