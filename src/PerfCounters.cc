@@ -562,24 +562,25 @@ static void init_attributes() {
   }
   attributes_initialized = true;
 
+  CpuMicroarch uarch = get_cpu_microarch();
+  const PmuConfig* pmu = nullptr;
+  for (size_t i = 0; i < array_length(pmu_configs); ++i) {
+    if (uarch == pmu_configs[i].uarch) {
+      pmu = &pmu_configs[i];
+      break;
+    }
+  }
+  DEBUG_ASSERT(pmu);
+
+  if (!(pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
+    FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
+  }
+
   if (running_under_rr()) {
     init_perf_event_attr(&ticks_attr, PERF_TYPE_HARDWARE, PERF_COUNT_RR);
-    rr::skid_size = RR_SKID_MAX;
+    skid_size = RR_SKID_MAX;
+    pmu_flags = pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES);
   } else {
-    CpuMicroarch uarch = get_cpu_microarch();
-    const PmuConfig* pmu = nullptr;
-    for (size_t i = 0; i < array_length(pmu_configs); ++i) {
-      if (uarch == pmu_configs[i].uarch) {
-        pmu = &pmu_configs[i];
-        break;
-      }
-    }
-    DEBUG_ASSERT(pmu);
-
-    if (!(pmu->flags & (PMU_TICKS_RCB | PMU_TICKS_TAKEN_BRANCHES))) {
-      FATAL() << "Microarchitecture `" << pmu->name << "' currently unsupported.";
-    }
-
     skid_size = pmu->skid_size;
     pmu_flags = pmu->flags;
     init_perf_event_attr(&ticks_attr, PERF_TYPE_RAW, pmu->rcb_cntr_event);
