@@ -83,7 +83,7 @@ static LogLevel default_level = LOG_error;
 // turn this into a compile error rather than a runtime crash for compilers
 // that support the attribute.
 _CONSTANT_STATIC unique_ptr<unordered_map<string, LogLevel>> level_map;
-_CONSTANT_STATIC unique_ptr<unordered_map<const char*, LogModule>> log_modules;
+_CONSTANT_STATIC unique_ptr<unordered_map<string, LogModule>> log_modules;
 _CONSTANT_STATIC std::unique_ptr<stringstream> logging_stream;
 _CONSTANT_STATIC deque<char>* log_buffer;
 _CONSTANT_STATIC std::ostream* log_file;
@@ -98,8 +98,8 @@ static void init_log_globals() {
   log_globals_initialized = true;
   level_map = unique_ptr<unordered_map<string, LogLevel>>(
       new unordered_map<string, LogLevel>());
-  log_modules = unique_ptr<unordered_map<const char*, LogModule>>(
-      new unordered_map<const char*, LogModule>());
+  log_modules = unique_ptr<unordered_map<string, LogModule>>(
+      new unordered_map<string, LogModule>());
   logging_stream = unique_ptr<stringstream>(new stringstream());
 
   const char* buffer = getenv("RR_LOG_BUFFER");
