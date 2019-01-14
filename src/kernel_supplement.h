@@ -8,6 +8,7 @@
 #include <linux/seccomp.h>
 #include <linux/usbdevice_fs.h>
 #include <signal.h>
+#include <stdint.h>
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
 
