@@ -138,7 +138,6 @@ bool parse_global_option(std::vector<std::string>& args) {
     { 'N', "version", NO_PARAMETER },
     { 'S', "suppress-environment-warnings", NO_PARAMETER },
     { 'T', "dump-at", HAS_PARAMETER },
-    { 'U', "cpu-unbound", NO_PARAMETER },
   };
 
   ParsedOption opt;
