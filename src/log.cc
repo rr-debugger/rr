@@ -92,11 +92,11 @@ _CONSTANT_STATIC unique_ptr<unordered_map<string, LogLevel>> level_map;
 // with different pointers.
 _CONSTANT_STATIC unique_ptr<unordered_map<const char*, LogModule>> log_modules;
 // This collects a single log message.
-_CONSTANT_STATIC std::unique_ptr<stringstream> logging_stream;
+_CONSTANT_STATIC unique_ptr<stringstream> logging_stream;
 // When non-null, log messages are accumulated into this buffer.
-_CONSTANT_STATIC deque<char>* log_buffer;
+_CONSTANT_STATIC unique_ptr<deque<char>> log_buffer;
 // When non-null, log messages are flushed to this file.
-_CONSTANT_STATIC std::ostream* log_file;
+_CONSTANT_STATIC ostream* log_file;
 // Maximum size of `log_buffer`.
 size_t log_buffer_size;
 
@@ -117,7 +117,7 @@ static void init_log_globals() {
   if (buffer) {
     log_buffer_size = atoi(buffer);
     if (log_buffer_size) {
-      log_buffer = new deque<char>();
+      log_buffer = unique_ptr<deque<char>>(new deque<char>());
       atexit(flush_log_buffer);
     }
   }
@@ -325,7 +325,7 @@ NewlineTerminatingOstream::NewlineTerminatingOstream(LogLevel level,
 
 NewlineTerminatingOstream::~NewlineTerminatingOstream() {
   if (enabled) {
-    log_stream() << std::endl;
+    log_stream() << endl;
     flush_log_stream();
     if (Flags::get().fatal_errors_and_warnings && level <= LOG_warn) {
       notifying_abort();
@@ -340,7 +340,7 @@ CleanFatalOstream::CleanFatalOstream(const char* file, int line,
 }
 
 CleanFatalOstream::~CleanFatalOstream() {
-  cerr << std::endl;
+  cerr << endl;
   flush_log_stream();
   exit(1);
 }
@@ -350,7 +350,7 @@ FatalOstream::FatalOstream(const char* file, int line, const char* function) {
 }
 
 FatalOstream::~FatalOstream() {
-  log_stream() << std::endl;
+  log_stream() << endl;
   flush_log_stream();
   notifying_abort();
 }
@@ -419,7 +419,7 @@ EmergencyDebugOstream::EmergencyDebugOstream(bool cond, const Task* t,
 
 EmergencyDebugOstream::~EmergencyDebugOstream() {
   if (!cond) {
-    log_stream() << std::endl;
+    log_stream() << endl;
     flush_log_stream();
     t->log_pending_events();
     emergency_debug(t);

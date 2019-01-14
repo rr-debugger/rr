@@ -49,6 +49,8 @@ std::ostream& operator<<(std::ostream& stream,
 
 /**
  * Check whether logging is enabled for the given source file.
+ * `file` must be a pointer that is valid forever, preferably
+ * some value of `__FILE__`.
  */
 bool is_logging_enabled(LogLevel level, const char* file);
 
@@ -59,6 +61,10 @@ bool is_logging_enabled(LogLevel level, const char* file);
 void flush_log_buffer();
 
 struct NewlineTerminatingOstream {
+  /**
+   * `file` must be a pointer that is valid forever, preferably
+   * some value of `__FILE__`.
+   */
   NewlineTerminatingOstream(LogLevel level, const char* file, int line,
                             const char* function);
   ~NewlineTerminatingOstream();
@@ -81,6 +87,10 @@ const NewlineTerminatingOstream& operator<<(
  * but not errno or a stack trace. They go to stderr instead of the log file.
  */
 struct CleanFatalOstream {
+  /**
+   * `file` must be a pointer that is valid forever, preferably
+   * some value of `__FILE__`.
+   */
   CleanFatalOstream(const char* file, int line, const char* function);
   ~CleanFatalOstream();
 };
@@ -107,6 +117,10 @@ const FatalOstream& operator<<(const FatalOstream& stream, const T& v) {
 }
 
 struct EmergencyDebugOstream {
+  /**
+   * `file` must be a pointer that is valid forever, preferably
+   * some value of `__FILE__`.
+   */
   EmergencyDebugOstream(bool cond, const Task* t, const char* file, int line,
                         const char* function, const char* cond_str);
   ~EmergencyDebugOstream();
