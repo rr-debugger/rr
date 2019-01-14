@@ -82,11 +82,22 @@ static LogLevel default_level = LOG_error;
 // C++ libraries have a bug that causes them not to be. _CONSTANT_STATIC should
 // turn this into a compile error rather than a runtime crash for compilers
 // that support the attribute.
+
+// This is the assignment of log levels to module names.
+// Any module name not mentioned here gets the default_log_level.
 _CONSTANT_STATIC unique_ptr<unordered_map<string, LogLevel>> level_map;
+// This is a cache mapping unlimited-lifetime file name pointers (usually
+// derived from __FILE__) to the associated module name and log level.
+// It's OK for this to contain multiple entries for the same string but
+// with different pointers.
 _CONSTANT_STATIC unique_ptr<unordered_map<const char*, LogModule>> log_modules;
+// This collects a single log message.
 _CONSTANT_STATIC std::unique_ptr<stringstream> logging_stream;
+// When non-null, log messages are accumulated into this buffer.
 _CONSTANT_STATIC deque<char>* log_buffer;
+// When non-null, log messages are flushed to this file.
 _CONSTANT_STATIC std::ostream* log_file;
+// Maximum size of `log_buffer`.
 size_t log_buffer_size;
 
 static void flush_log_file() { log_file->flush(); }

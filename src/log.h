@@ -13,6 +13,19 @@ class Task;
 
 enum LogLevel { LOG_fatal, LOG_error, LOG_warn, LOG_info, LOG_debug };
 
+/* A log module is just a string where any uppercase ASCII characters have
+ * been lowercased. We assign a LogLevel for each log module; this assignment
+ * can be configured via the `RR_LOG` environment variable and also modified
+ * dynamically.
+ *
+ * We derive a log module name from a source file name (typically given in
+ * __FILE__) by chopping off any directory parts and chopping off the trailing
+ * file extension (if any), and lowercasing any uppercase ASCII characters.
+ * e.g. <rr-dir>/src/Task.cc becomes the log module "task".
+ *
+ * This logging infrastructure is not thread safe. Use only on the main thread.
+ */
+
 /**
  * Return the ostream to which log data will be written.
  */
@@ -34,8 +47,15 @@ std::ostream& operator<<(std::ostream& stream,
 std::ostream& operator<<(std::ostream& stream,
                          const std::vector<uint8_t>& bytes);
 
+/**
+ * Check whether logging is enabled for the given source file.
+ */
 bool is_logging_enabled(LogLevel level, const char* file);
 
+/**
+ * Flush the current log message in log_stream() to the log
+ * output file or circular buffer.
+ */
 void flush_log_buffer();
 
 struct NewlineTerminatingOstream {
