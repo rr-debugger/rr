@@ -1177,14 +1177,6 @@ bool copy_file(int dest_fd, int src_fd) {
   return true;
 }
 
-void* xmalloc(size_t size) {
-  void* mem_ptr = malloc(size);
-  if (!mem_ptr) {
-    notifying_abort();
-  }
-  return mem_ptr;
-}
-
 bool has_effective_caps(uint64_t caps) {
   struct NativeArch::cap_header header = {.version =
                                               _LINUX_CAPABILITY_VERSION_3,
