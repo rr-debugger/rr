@@ -40,11 +40,11 @@ function delay_kill { sig=$1; delay_secs=$2; proc=$3
     done
 
     if [[ "$num" -gt 1 ]]; then
-        leave_data=y
+        test_passed=n
         echo FAILED: "$num" of "'$proc'" >&2
         exit 1
     elif [[ -z "$pid" ]]; then
-        leave_data=y
+        test_passed=n
         echo FAILED: process "'$proc'" not located >&2
         exit 1
     fi
@@ -73,12 +73,13 @@ function fatal { #...
 
 function onexit {
     cd
-    if [[ "$leave_data" != "y" ]]; then
+    if [[ "$test_passed" == "y" ]]; then
         rm -rf $workdir
     else
         echo Test $TESTNAME failed, leaving behind $workdir
         echo To replay the failed test, run
         echo " " _RR_TRACE_DIR="$workdir" rr replay
+        exit 1
     fi
 }
 
@@ -139,8 +140,9 @@ fi
 # The temporary directory we create for this test run.
 workdir=
 # Did the test pass?  If not, then we'll leave the recording and
-# output around for developers to debug.
-leave_data=n
+# output around for developers to debug, and exit with a nonzero
+# exit code.
+test_passed=y
 # The unique ID allocated to this test directory.
 nonce=
 
@@ -265,7 +267,7 @@ function debug { expectscript=$1; replayargs=$2
 }
 
 function failed { msg=$1;
-    leave_data=y
+    test_passed=n
     echo "Test '$TESTNAME' FAILED: $msg"
 }
 
@@ -385,7 +387,7 @@ function checkpoint_test { exe=$1; min=$2; max=$3;
     for i in $(seq 1 $stride $num_events); do
         echo Checkpointing at event $i ...
         debug restart_finish "-g $i"
-        if [[ "$leave_data" == "y" ]]; then
+        if [[ "$test_passed" != "y" ]]; then
             break
         fi
     done
