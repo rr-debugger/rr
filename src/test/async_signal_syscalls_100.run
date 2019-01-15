@@ -1,9 +1,5 @@
 source `dirname $0`/util.sh
 
-# It's relatively easy to reproduce a CPUID divergence caused by lack
-# of CPU binding.
-GLOBAL_OPTIONS="$GLOBAL_OPTIONS_BIND_CPU"
-
 # Ensure that the test records some SCHED interrupt events.
 timeslice=100
 RECORD_ARGS="-c$timeslice"

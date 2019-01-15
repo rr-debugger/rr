@@ -1,9 +1,5 @@
 source `dirname $0`/util.sh
 
-# It's relatively easy to reproduce a CPUID divergence caused by lack
-# of CPU binding.
-GLOBAL_OPTIONS="$GLOBAL_OPTIONS_BIND_CPU"
-
 RECORD_ARGS="-c100"
 record breakpoint_overlap$bitness 3 4
 # Don't use pipes here since we need 'debug' to run in the same bash process
