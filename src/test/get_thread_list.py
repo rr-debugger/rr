@@ -33,7 +33,7 @@ for i in range(NUM_THREADS + 1, 1, -1):
     # did not number them in order of creation). This does not seem to be a bug
     # so tolerate it.
     send_gdb('info threads')
-    expect_gdb(r'%d\s+Thread[^(]+\(BP-THREAD-[0-9]+\) (?:%s)'%
+    expect_gdb(r'%d\s+Thread[^(]+\(BP-THREAD-[0-9]+\)\s+(?:%s)'%
                (i, '|'.join(stopped_locations[arch])))
     expect_gdb(r'\(rr\)')
 
