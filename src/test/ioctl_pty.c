@@ -34,7 +34,7 @@ int main(void) {
 
   ret = ioctl(fd, TIOCGPTPEER, 0);
   if (ret < 0) {
-    test_assert(errno == ENOSYS);
+    test_assert(errno == ENOSYS || errno == ENOTTY);
   }
 
   test_assert(0 == ioctl(fd, TCXONC, TCOOFF));
