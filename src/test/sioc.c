@@ -104,6 +104,12 @@ static void generic_request_by_name(int sockfd, struct ifreq* req, int nr,
   ret = ioctl(sockfd, nr, req);
   VERIFY_GUARD(req);
   atomic_printf("%s(ret:%d): %s ", nr_str, ret, req->ifr_name);
+  if (ret < 0 && errno == EFAULT && nr == SIOCGIFADDR) {
+    /* Work around https://bugzilla.kernel.org/show_bug.cgi?id=202273 */
+    atomic_puts("Buggy kernel detected; aborting test");
+    atomic_puts("EXIT-SUCCESS");
+    exit(0);
+  }
   test_assert(0 == ret);
 }
 
@@ -204,6 +210,12 @@ int main(void) {
 
   GENERIC_REQUEST_BY_NAME(SIOCGIFNETMASK);
   atomic_printf("netmask is %s\n", sockaddr_name(&req->ifr_addr));
+  if (ret < 0 && errno == EFAULT) {
+    /* Work around https://bugzilla.kernel.org/show_bug.cgi?id=202273 */
+    atomic_puts("Buggy kernel detected; aborting test");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
 
   GENERIC_REQUEST_BY_NAME(SIOCGIFMETRIC);
   atomic_printf("metric is %d\n", req->ifr_metric);
