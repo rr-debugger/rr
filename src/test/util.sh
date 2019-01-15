@@ -127,11 +127,12 @@ OBJDIR=$3
 if [[ "$OBJDIR" == "" ]]; then
     # Default to assuming that the user's working directory is the
     # src/test/ directory within the rr clone.
-    OBJDIR=`realpath $SRCDIR/../obj`
+    OBJDIR="$SRCDIR/../obj"
 fi
 if [[ ! -d "$OBJDIR" ]]; then
     fatal "FAILED: objdir missing"
 fi
+OBJDIR=`realpath $OBJDIR`
 TIMEOUT=$4
 if [[ "$TIMEOUT" == "" ]]; then
     TIMEOUT=120
