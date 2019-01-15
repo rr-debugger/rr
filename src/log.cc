@@ -90,7 +90,7 @@ _CONSTANT_STATIC unique_ptr<unordered_map<string, LogLevel>> level_map;
 // derived from __FILE__) to the associated module name and log level.
 // It's OK for this to contain multiple entries for the same string but
 // with different pointers.
-_CONSTANT_STATIC unique_ptr<unordered_map<const char*, LogModule>> log_modules;
+_CONSTANT_STATIC unique_ptr<unordered_map<const void*, LogModule>> log_modules;
 // This collects a single log message.
 _CONSTANT_STATIC unique_ptr<stringstream> logging_stream;
 // When non-null, log messages are accumulated into this buffer.
@@ -109,8 +109,8 @@ static void init_log_globals() {
   log_globals_initialized = true;
   level_map = unique_ptr<unordered_map<string, LogLevel>>(
       new unordered_map<string, LogLevel>());
-  log_modules = unique_ptr<unordered_map<const char*, LogModule>>(
-      new unordered_map<const char*, LogModule>());
+  log_modules = unique_ptr<unordered_map<const void*, LogModule>>(
+      new unordered_map<const void*, LogModule>());
   logging_stream = unique_ptr<stringstream>(new stringstream());
 
   const char* buffer = getenv("RR_LOG_BUFFER");
