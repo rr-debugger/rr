@@ -314,6 +314,11 @@ struct rr_input_mask {
 #define ARCH_SET_CPUID 0x1012
 #endif
 
+// New in the 4.15 kernel
+#ifndef MAP_SYNC
+#define MAP_SYNC  0x80000
+#endif
+
 } // namespace rr
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */
