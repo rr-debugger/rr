@@ -44,6 +44,7 @@
 #include "core.h"
 #include "kernel_abi.h"
 #include "kernel_metadata.h"
+#include "kernel_supplement.h"
 #include "log.h"
 #include "util.h"
 
@@ -373,7 +374,12 @@ static void finish_direct_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                   * mappings go through while
                                   * they're not handled properly,
                                   * but we shouldn't do that.) */
-                                 prot, flags | MAP_FIXED, fd,
+                                 prot, (flags & ~MAP_SYNC) | MAP_FIXED, fd,
+                                /* MAP_SYNC is used to request direct mapping
+                                  * (DAX) from the filesystem for persistent
+                                  * memory devices (requires
+                                  * MAP_SHARED_VALIDATE). Drop it for the
+                                  * backing file. */
                                  backing_offset_pages);
 
   // While it's open, grab the link reference.
