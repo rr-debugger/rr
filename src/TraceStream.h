@@ -93,9 +93,9 @@ public:
     /** Name of file to map the data from. */
     string file_name;
     /** Data offset within |file_name|. */
-    uint64_t data_offset_bytes;
+    size_t data_offset_bytes;
     /** Original size of mapped file. */
-    uint64_t file_size_bytes;
+    size_t file_size_bytes;
   };
 
 protected:
