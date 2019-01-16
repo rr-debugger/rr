@@ -1058,7 +1058,7 @@ void RecordTask::signal_delivered(int sig) {
         if (h.disposition() == SIGNAL_HANDLER) {
           break;
         }
-      // Fall through...
+        RR_FALLTHROUGH;
       case SIGSTOP:
         // All threads in the process are stopped.
         for (Task* t : thread_group()->task_set()) {
