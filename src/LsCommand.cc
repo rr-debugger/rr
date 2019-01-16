@@ -75,7 +75,7 @@ static bool parse_ls_arg(vector<string>& args, LsFlags& flags) {
 
 typedef pair<string, unique_ptr<TraceReader>> TraceInfo;
 
-static bool compare_by_name(TraceInfo& at, TraceInfo& bt) {
+static bool compare_by_name(const TraceInfo& at, const TraceInfo& bt) {
   auto a = at.first;
   auto b = bt.first;
   return lexicographical_compare(begin(a), end(a), begin(b), end(b));
@@ -164,7 +164,8 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
   }
 
   if (flags.sort_by_time) {
-    auto compare_by_time = [&](TraceInfo& at, TraceInfo& bt) -> bool {
+    auto compare_by_time = [&](const TraceInfo& at,
+                               const TraceInfo& bt) -> bool {
       auto a_version = traces_dir + at.first + "/data";
       auto b_version = traces_dir + bt.first + "/data";
       struct stat a_stat;
