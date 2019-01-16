@@ -388,7 +388,7 @@ static void finish_direct_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
                                   const KernelMapping& km,
                                   const TraceReader::MappedData& data) {
-  ASSERT(t, km.flags() & MAP_PRIVATE)
+  ASSERT(t, !(km.flags() & MAP_SHARED))
       << "Shared mappings after exec not supported";
 
   string real_file_name;
@@ -696,7 +696,7 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   TraceReader::MappedData data;
   KernelMapping recorded_km = t->trace_reader().read_mapped_region(&data);
   EmuFile::shr_ptr emu_file;
-  if (flags & MAP_PRIVATE) {
+  if (!(flags & MAP_SHARED)) {
     remote.infallible_mmap_syscall(rec_addr, length, prot,
                                    // Tell the kernel to take |rec_addr|
                                    // seriously.
@@ -842,7 +842,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     remote_ptr<void> addr = trace_frame.regs().syscall_result();
     // Hand off actual execution of the mapping to the appropriate helper.
     AutoRemoteSyscalls remote(t,
-                              (flags & MAP_PRIVATE) && (flags & MAP_ANONYMOUS)
+                              !(flags & MAP_SHARED) && (flags & MAP_ANONYMOUS)
                                   ? AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS
                                   : AutoRemoteSyscalls::ENABLE_MEMORY_PARAMS);
     if (flags & MAP_ANONYMOUS) {
@@ -872,7 +872,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         km = km.subrange(km_sub.end(), km.end());
       }
       if (length > 0) {
-        if (MAP_PRIVATE & flags) {
+        if (!(MAP_SHARED & flags)) {
           finish_private_mmap(t, remote, addr, length, prot, flags,
                               offset_pages, km, data);
         } else {
@@ -887,7 +887,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     // tracer and the tracee. Instead, only mappings that have
     // sufficiently many memory access from the tracer to require
     // acceleration should be shared.
-    if ((MAP_PRIVATE & flags) && t->session().share_private_mappings()) {
+    if (!(MAP_SHARED & flags) && t->session().share_private_mappings()) {
       Session::make_private_shared(remote, t->vm()->mapping_of(addr));
     }
 

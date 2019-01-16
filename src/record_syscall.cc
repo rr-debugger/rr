@@ -4588,7 +4588,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   remote_ptr<void> addr = t->regs().syscall_result();
   if (flags & MAP_ANONYMOUS) {
     KernelMapping km;
-    if (flags & MAP_PRIVATE) {
+    if (!(flags & MAP_SHARED)) {
       // Anonymous mappings are by definition not backed by any file-like
       // object, and are initialized to zero, so there's no nondeterminism to
       // record.
