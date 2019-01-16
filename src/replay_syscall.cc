@@ -1282,7 +1282,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
         default:
           return;
       }
-    /* fall through */
+      RR_FALLTHROUGH;
     case Arch::arch_prctl: {
       auto arg1 = t->regs().arg1();
       if (sys == Arch::arch_prctl &&
@@ -1290,7 +1290,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
         return;
       }
     }
-    /* fall through */
+      RR_FALLTHROUGH;
     case Arch::munmap:
     case Arch::mprotect:
     case Arch::modify_ldt:

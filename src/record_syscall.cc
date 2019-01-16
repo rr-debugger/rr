@@ -879,10 +879,7 @@ static bool block_sock_opt(int level, int optname,
         case PACKET_TX_RING:
           syscall_state.emulate_result(-ENOPROTOOPT);
           return true;
-        default:
-          break;
       }
-    default:
       break;
   }
   return false;
@@ -3631,7 +3628,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(
           4, IN, protect_rr_sigs);
       t->invalidate_sigmask();
-    /* fall through */
+      RR_FALLTHROUGH;
     case Arch::poll: {
       auto nfds = (nfds_t)regs.arg2();
       syscall_state.reg_parameter(1, sizeof(typename Arch::pollfd) * nfds,
@@ -3905,7 +3902,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case Q_SETQUOTA:
           FATAL() << "Trying to set disk quota usage, this may interfere with "
                      "rr recording";
-        // not reached
+          // not reached; the break is just to silence fallthrough warnings
+          break;
         case Q_QUOTAON:
         case Q_QUOTAOFF:
         case Q_SETINFO:
