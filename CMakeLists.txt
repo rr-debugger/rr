@@ -667,6 +667,7 @@ set(BASIC_TESTS
   clone_untraced
   cloned_sigmask
   constructor
+  copy_file_range
   creat_address_not_truncated
   cross_arch
   cwd_inaccessible

@@ -3493,6 +3493,17 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return t->fd_table()->will_write(t, fd);
     }
 
+    case Arch::copy_file_range: {
+      syscall_state.reg_parameter<typename Arch::loff_t>(2, IN_OUT);
+      syscall_state.reg_parameter<typename Arch::loff_t>(4, IN_OUT);
+      int in_fd = (int)regs.arg1_signed();
+      int out_fd = (int)regs.arg3_signed();
+      ASSERT(t, !t->fd_table()->is_monitoring(in_fd) &&
+             !t->fd_table()->is_monitoring(out_fd))
+             << "copy_file_range for monitored fds not supported yet";
+      return ALLOW_SWITCH;
+    }
+
     /* ssize_t readv(int fd, const struct iovec *iov, int iovcnt); */
     case Arch::readv:
     /* ssize_t preadv(int fd, const struct iovec *iov, int iovcnt,

@@ -296,6 +296,7 @@ struct BaseArch : public wordsize,
   typedef syscall_ulong_t nlink_t;
 
   typedef int64_t off64_t;
+  typedef int64_t loff_t;
   typedef uint64_t rlim64_t;
   typedef uint64_t ino64_t;
   typedef int64_t blkcnt64_t;
