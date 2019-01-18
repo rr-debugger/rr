@@ -141,7 +141,10 @@ TESTDIR="${SRCDIR}/src/test"
 # Make rr treat temp files as durable. This saves copying all test
 # binaries into the trace.
 export RR_TRUST_TEMP_FILES=1
+
+# Set options to find rr and resource files in the expected places.
 export PATH="${OBJDIR}/bin:${PATH}"
+GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --resource-path=${OBJDIR}"
 
 which rr >/dev/null 2>&1
 if [[ "$?" != "0" ]]; then

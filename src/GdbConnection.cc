@@ -399,7 +399,7 @@ void GdbConnection::write_xfer_response(const void* data, size_t size,
 }
 
 static string read_target_desc(const char* file_name) {
-  string path = exe_directory() + "../share/rr/" + string(file_name);
+  string path = resource_path() + "share/rr/" + string(file_name);
   stringstream ss;
   FILE* f = fopen(path.c_str(), "r");
   DEBUG_ASSERT(f);
