@@ -2,6 +2,17 @@
 
 #include "util.h"
 
+
+/* copy_file_range must be invoked using syscall() on versions of glibc
+ * before 2.27.  */
+static loff_t
+copy_file_range_syscall(int fd_in, loff_t *off_in, int fd_out,
+                        loff_t *off_out, size_t len, unsigned int flags)
+{
+    return syscall(__NR_copy_file_range, fd_in, off_in, fd_out,
+                   off_out, len, flags);
+}
+
 int main(void) {
   int in_fd = open("dummy.txt", O_RDWR | O_CREAT | O_TRUNC);
   int out_fd = open("dummy2.txt", O_RDWR | O_CREAT | O_TRUNC);
@@ -12,7 +23,7 @@ int main(void) {
   unlink("dummy2.txt");
 
   test_assert(ret == 6);
-  ret = copy_file_range(in_fd, &in_off, out_fd, &out_off, 3, 0);
+  ret = copy_file_range_syscall(in_fd, &in_off, out_fd, &out_off, 3, 0);
   if (ret < 0) {
     test_assert(errno == ENOSYS);
     atomic_puts("copy_file_range not supported, aborting test");
@@ -22,7 +33,7 @@ int main(void) {
   test_assert(ret == 3);
   test_assert(in_off == 3);
   test_assert(out_off == 3);
-  ret = copy_file_range(in_fd, &in_off, out_fd, NULL, 10, 0);
+  ret = copy_file_range_syscall(in_fd, &in_off, out_fd, NULL, 10, 0);
   test_assert(ret == 3);
   test_assert(in_off == 6);
   test_assert(out_off == 3);
