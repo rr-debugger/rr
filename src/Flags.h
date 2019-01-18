@@ -61,6 +61,9 @@ struct Flags {
   // under valgrind.
   std::string forced_uarch;
 
+  // User override for the path to page files and other resources.
+  std::string resource_path;
+
   Flags()
       : checksum(CHECKSUM_NONE),
         dump_on(DUMP_ON_NONE),

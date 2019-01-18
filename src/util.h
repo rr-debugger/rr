@@ -244,7 +244,7 @@ void dump_task_map(const std::map<pid_t, Task*>& tasks);
 
 std::string real_path(const std::string& path);
 
-std::string exe_directory();
+std::string resource_path();
 
 /**
  * Get the current time from the preferred monotonic clock in units of

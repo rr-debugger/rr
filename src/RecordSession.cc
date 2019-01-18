@@ -1718,12 +1718,12 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
 }
 
 static string find_syscall_buffer_library() {
-  string lib_path = exe_directory() + "../lib64/rr/";
+  string lib_path = resource_path() + "lib64/rr/";
   string file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
   if (access(file_name.c_str(), F_OK) == 0) {
     return lib_path;
   }
-  lib_path = exe_directory() + "../lib/rr/";
+  lib_path = resource_path() + "lib/rr/";
   file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
   if (access(file_name.c_str(), F_OK) == 0) {
     return lib_path;

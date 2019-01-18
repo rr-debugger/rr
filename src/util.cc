@@ -1090,9 +1090,13 @@ static string read_exe_dir() {
   return exe_path;
 }
 
-string exe_directory() {
-  static string exe_path = read_exe_dir();
-  return exe_path;
+string resource_path() {
+  string resource_path = Flags::get().resource_path;
+  if (resource_path.empty()) {
+    static string exe_path = read_exe_dir() + "../";
+    return exe_path;
+  }
+  return resource_path;
 }
 
 /**
