@@ -34,11 +34,11 @@ typedef struct BrotliDecoderStateStruct BrotliDecoderState;
 typedef enum {
   /** Decoding error, e.g. corrupted input or memory allocation problem. */
   BROTLI_DECODER_RESULT_ERROR = 0,
-  /** Decoding successfully completed */
+  /** Decoding successfully completed. */
   BROTLI_DECODER_RESULT_SUCCESS = 1,
-  /** Partially done; should be called again with more input */
+  /** Partially done; should be called again with more input. */
   BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT = 2,
-  /** Partially done; should be called again with more output */
+  /** Partially done; should be called again with more output. */
   BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT = 3
 } BrotliDecoderResult;
 
@@ -83,9 +83,11 @@ typedef enum {
   BROTLI_ERROR_CODE(_ERROR_FORMAT_, WINDOW_BITS, -13) SEPARATOR            \
   BROTLI_ERROR_CODE(_ERROR_FORMAT_, PADDING_1, -14) SEPARATOR              \
   BROTLI_ERROR_CODE(_ERROR_FORMAT_, PADDING_2, -15) SEPARATOR              \
+  BROTLI_ERROR_CODE(_ERROR_FORMAT_, DISTANCE, -16) SEPARATOR               \
                                                                            \
-  /* -16..-19 codes are reserved */                                        \
+  /* -17..-18 codes are reserved */                                        \
                                                                            \
+  BROTLI_ERROR_CODE(_ERROR_, DICTIONARY_NOT_SET, -19) SEPARATOR            \
   BROTLI_ERROR_CODE(_ERROR_, INVALID_ARGUMENTS, -20) SEPARATOR             \
                                                                            \
   /* Memory allocation problems */                                         \
@@ -125,6 +127,33 @@ typedef enum {
  */
 #define BROTLI_LAST_ERROR_CODE BROTLI_DECODER_ERROR_UNREACHABLE
 
+/** Options to be used with ::BrotliDecoderSetParameter. */
+typedef enum BrotliDecoderParameter {
+  /**
+   * Disable "canny" ring buffer allocation strategy.
+   *
+   * Ring buffer is allocated according to window size, despite the real size of
+   * the content.
+   */
+  BROTLI_DECODER_PARAM_DISABLE_RING_BUFFER_REALLOCATION = 0,
+  /**
+   * Flag that determines if "Large Window Brotli" is used.
+   */
+  BROTLI_DECODER_PARAM_LARGE_WINDOW = 1
+} BrotliDecoderParameter;
+
+/**
+ * Sets the specified parameter to the given decoder instance.
+ *
+ * @param state decoder instance
+ * @param param parameter to set
+ * @param value new parameter value
+ * @returns ::BROTLI_FALSE if parameter is unrecognized, or value is invalid
+ * @returns ::BROTLI_TRUE if value is accepted
+ */
+BROTLI_DEC_API BROTLI_BOOL BrotliDecoderSetParameter(
+    BrotliDecoderState* state, BrotliDecoderParameter param, uint32_t value);
+
 /**
  * Creates an instance of ::BrotliDecoderState and initializes it.
  *
@@ -134,10 +163,11 @@ typedef enum {
  *
  * @p alloc_func and @p free_func @b MUST be both zero or both non-zero. In the
  * case they are both zero, default memory allocators are used. @p opaque is
- * passed to @p alloc_func and @p free_func when they are called.
+ * passed to @p alloc_func and @p free_func when they are called. @p free_func
+ * has to return without doing anything when asked to free a NULL pointer.
  *
  * @param alloc_func custom memory allocation function
- * @param free_func custom memory fee function
+ * @param free_func custom memory free function
  * @param opaque custom memory manager handle
  * @returns @c 0 if instance can not be allocated or initialized
  * @returns pointer to initialized ::BrotliDecoderState otherwise
@@ -207,40 +237,15 @@ BROTLI_DEC_API BrotliDecoderResult BrotliDecoderDecompress(
  *          allocation failed, arguments were invalid, etc.;
  *          use ::BrotliDecoderGetErrorCode to get detailed error code
  * @returns ::BROTLI_DECODER_RESULT_NEEDS_MORE_INPUT decoding is blocked until
- *          more output space is provided
- * @returns ::BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT decoding is blocked until
  *          more input data is provided
+ * @returns ::BROTLI_DECODER_RESULT_NEEDS_MORE_OUTPUT decoding is blocked until
+ *          more output space is provided
  * @returns ::BROTLI_DECODER_RESULT_SUCCESS decoding is finished, no more
  *          input might be consumed and no more output will be produced
  */
 BROTLI_DEC_API BrotliDecoderResult BrotliDecoderDecompressStream(
   BrotliDecoderState* state, size_t* available_in, const uint8_t** next_in,
   size_t* available_out, uint8_t** next_out, size_t* total_out);
-
-/**
- * Prepends LZ77 dictionary.
- *
- * Fills the fresh ::BrotliDecoderState with additional data corpus for LZ77
- * backward references.
- *
- * @note Not to be confused with the static dictionary (see RFC7932 section 8).
- * @warning The dictionary must exist in memory until decoding is done and
- *          is owned by the caller.
- *
- * Workflow:
- *  -# Allocate and initialize state with ::BrotliDecoderCreateInstance
- *  -# Invoke ::BrotliDecoderSetCustomDictionary
- *  -# Use ::BrotliDecoderDecompressStream
- *  -# Clean up and free state with ::BrotliDecoderDestroyInstance
- *
- * @param state decoder instance
- * @param size length of @p dict; should be less or equal to 2^24 (16MiB),
- *        otherwise the dictionary will be ignored
- * @param dict "dictionary"; @b MUST be the same as used during compression
- */
-BROTLI_DEC_API void BrotliDecoderSetCustomDictionary(
-    BrotliDecoderState* state, size_t size,
-    const uint8_t dict[BROTLI_ARRAY_PARAM(size)]);
 
 /**
  * Checks if decoder has more output.
@@ -303,7 +308,8 @@ BROTLI_DEC_API BROTLI_BOOL BrotliDecoderIsUsed(const BrotliDecoderState* state);
  *          the input and produced all of the output
  * @returns ::BROTLI_FALSE otherwise
  */
-BROTLI_BOOL BrotliDecoderIsFinished(const BrotliDecoderState* state);
+BROTLI_DEC_API BROTLI_BOOL BrotliDecoderIsFinished(
+    const BrotliDecoderState* state);
 
 /**
  * Acquires a detailed error code.
@@ -316,7 +322,7 @@ BROTLI_BOOL BrotliDecoderIsFinished(const BrotliDecoderState* state);
  * @param state decoder instance
  * @returns last saved error code
  */
-BrotliDecoderErrorCode BrotliDecoderGetErrorCode(
+BROTLI_DEC_API BrotliDecoderErrorCode BrotliDecoderGetErrorCode(
     const BrotliDecoderState* state);
 
 /**

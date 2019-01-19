@@ -28,8 +28,8 @@ static BROTLI_INLINE size_t FN(HashTypeLength)(void) { return 4; }
 static BROTLI_INLINE size_t FN(StoreLookahead)(void) { return 4; }
 
 /* HashBytes is the function that chooses the bucket to place the address in.*/
-static BROTLI_INLINE size_t FN(HashBytes)(const uint8_t *data) {
-  const uint32_t h = BROTLI_UNALIGNED_LOAD32(data) * kHashMul32;
+static BROTLI_INLINE size_t FN(HashBytes)(const uint8_t* data) {
+  const uint32_t h = BROTLI_UNALIGNED_LOAD32LE(data) * kHashMul32;
   /* The higher bits contain more mixture from the multiplication,
      so we take our results from there. */
   return h >> (32 - BUCKET_BITS);
@@ -115,7 +115,7 @@ static BROTLI_INLINE void FN(Store)(HasherHandle BROTLI_RESTRICT handle,
 }
 
 static BROTLI_INLINE void FN(StoreRange)(HasherHandle handle,
-    const uint8_t *data, const size_t mask, const size_t ix_start,
+    const uint8_t* data, const size_t mask, const size_t ix_start,
     const size_t ix_end) {
   size_t i;
   for (i = ix_start; i < ix_end; ++i) {
@@ -152,24 +152,25 @@ static BROTLI_INLINE void FN(PrepareDistanceCache)(
    Does not look for matches longer than max_length.
    Does not look for matches further away than max_backward.
    Writes the best match into |out|.
-   Returns 1 when match is found, otherwise 0. */
-static BROTLI_INLINE BROTLI_BOOL FN(FindLongestMatch)(HasherHandle handle,
-    const BrotliDictionary* dictionary, const uint16_t* dictionary_hash,
+   |out|->score is updated only if a better match is found. */
+static BROTLI_INLINE void FN(FindLongestMatch)(HasherHandle handle,
+    const BrotliEncoderDictionary* dictionary,
     const uint8_t* BROTLI_RESTRICT data, const size_t ring_buffer_mask,
     const int* BROTLI_RESTRICT distance_cache,
     const size_t cur_ix, const size_t max_length, const size_t max_backward,
+    const size_t gap, const size_t max_distance,
     HasherSearchResult* BROTLI_RESTRICT out) {
   HashForgetfulChain* self = FN(Self)(handle);
   const size_t cur_ix_masked = cur_ix & ring_buffer_mask;
-  BROTLI_BOOL is_match_found = BROTLI_FALSE;
   /* Don't accept a short copy from far away. */
+  score_t min_score = out->score;
   score_t best_score = out->score;
   size_t best_len = out->len;
   size_t i;
   const size_t key = FN(HashBytes)(&data[cur_ix_masked]);
   const uint8_t tiny_hash = (uint8_t)(key);
   out->len = 0;
-  out->len_x_code = 0;
+  out->len_code_delta = 0;
   /* Try last distance first. */
   for (i = 0; i < NUM_LAST_DISTANCES_TO_CHECK; ++i) {
     const size_t backward = (size_t)distance_cache[i];
@@ -194,7 +195,6 @@ static BROTLI_INLINE BROTLI_BOOL FN(FindLongestMatch)(HasherHandle handle,
             out->len = best_len;
             out->distance = backward;
             out->score = best_score;
-            is_match_found = BROTLI_TRUE;
           }
         }
       }
@@ -234,19 +234,17 @@ static BROTLI_INLINE BROTLI_BOOL FN(FindLongestMatch)(HasherHandle handle,
             out->len = best_len;
             out->distance = backward;
             out->score = best_score;
-            is_match_found = BROTLI_TRUE;
           }
         }
       }
     }
     FN(Store)(handle, data, ring_buffer_mask, cur_ix);
   }
-  if (!is_match_found) {
-    is_match_found = SearchInStaticDictionary(dictionary, dictionary_hash,
-        handle, &data[cur_ix_masked], max_length, max_backward, out,
-        BROTLI_FALSE);
+  if (out->score == min_score) {
+    SearchInStaticDictionary(dictionary,
+        handle, &data[cur_ix_masked], max_length, max_backward + gap,
+        max_distance, out, BROTLI_FALSE);
   }
-  return is_match_found;
 }
 
 #undef BANK_SIZE
