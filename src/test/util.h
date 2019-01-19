@@ -6,6 +6,11 @@
 #define _GNU_SOURCE 1
 #define _POSIX_C_SOURCE 2
 
+/* we assume code in assert() is executed.  */
+#ifdef NDEBUG
+#error The rr testsuite requires NDEBUG to be undefined.
+#endif
+
 /* btrfs needs NULL but doesn't #include it */
 #include <stdlib.h>
 /* need to include sys/mount.h before linux/fs.h */
