@@ -27,6 +27,11 @@ extern "C" {
  * @note equal to @c BROTLI_MAX_DISTANCE_BITS constant.
  */
 #define BROTLI_MAX_WINDOW_BITS 24
+/**
+ * Maximal value for ::BROTLI_PARAM_LGWIN parameter
+ * in "Large Window Brotli" (32-bit).
+ */
+#define BROTLI_LARGE_MAX_WINDOW_BITS 30
 /** Minimal value for ::BROTLI_PARAM_LGBLOCK parameter. */
 #define BROTLI_MIN_INPUT_BLOCK_BITS 16
 /** Maximal value for ::BROTLI_PARAM_LGBLOCK parameter. */
@@ -35,11 +40,6 @@ extern "C" {
 #define BROTLI_MIN_QUALITY 0
 /** Maximal value for ::BROTLI_PARAM_QUALITY parameter. */
 #define BROTLI_MAX_QUALITY 11
-
-BROTLI_DEPRECATED static const int kBrotliMinWindowBits =
-    BROTLI_MIN_WINDOW_BITS;
-BROTLI_DEPRECATED static const int kBrotliMaxWindowBits =
-    BROTLI_MAX_WINDOW_BITS;
 
 /** Options for ::BROTLI_PARAM_MODE parameter. */
 typedef enum BrotliEncoderMode {
@@ -77,7 +77,9 @@ typedef enum BrotliEncoderOperation {
    * Actual flush is performed when input stream is depleted and there is enough
    * space in output stream. This means that client should repeat
    * ::BROTLI_OPERATION_FLUSH operation until @p available_in becomes @c 0, and
-   * ::BrotliEncoderHasMoreOutput returns ::BROTLI_FALSE.
+   * ::BrotliEncoderHasMoreOutput returns ::BROTLI_FALSE. If output is acquired
+   * via ::BrotliEncoderTakeOutput, then operation should be repeated after
+   * output buffer is drained.
    *
    * @warning Until flush is complete, client @b SHOULD @b NOT swap,
    *          reduce or extend input stream.
@@ -91,8 +93,10 @@ typedef enum BrotliEncoderOperation {
    *
    * Actual finalization is performed when input stream is depleted and there is
    * enough space in output stream. This means that client should repeat
-   * ::BROTLI_OPERATION_FLUSH operation until @p available_in becomes @c 0, and
-   * ::BrotliEncoderHasMoreOutput returns ::BROTLI_FALSE.
+   * ::BROTLI_OPERATION_FINISH operation until @p available_in becomes @c 0, and
+   * ::BrotliEncoderHasMoreOutput returns ::BROTLI_FALSE. If output is acquired
+   * via ::BrotliEncoderTakeOutput, then operation should be repeated after
+   * output buffer is drained.
    *
    * @warning Until finalization is complete, client @b SHOULD @b NOT swap,
    *          reduce or extend input stream.
@@ -177,7 +181,27 @@ typedef enum BrotliEncoderParameter {
    *
    * The default value is 0, which means that the total input size is unknown.
    */
-  BROTLI_PARAM_SIZE_HINT = 5
+  BROTLI_PARAM_SIZE_HINT = 5,
+  /**
+   * Flag that determines if "Large Window Brotli" is used.
+   */
+  BROTLI_PARAM_LARGE_WINDOW = 6,
+  /**
+   * Recommended number of postfix bits (NPOSTFIX).
+   *
+   * Encoder may change this value.
+   *
+   * Range is from 0 to ::BROTLI_MAX_NPOSTFIX.
+   */
+  BROTLI_PARAM_NPOSTFIX = 7,
+  /**
+   * Recommended number of direct distance codes (NDIRECT).
+   *
+   * Encoder may change this value.
+   *
+   * Range is from 0 to (15 << NPOSTFIX) in steps of (1 << NPOSTFIX).
+   */
+  BROTLI_PARAM_NDIRECT = 8
 } BrotliEncoderParameter;
 
 /**
@@ -210,10 +234,11 @@ BROTLI_ENC_API BROTLI_BOOL BrotliEncoderSetParameter(
  *
  * @p alloc_func and @p free_func @b MUST be both zero or both non-zero. In the
  * case they are both zero, default memory allocators are used. @p opaque is
- * passed to @p alloc_func and @p free_func when they are called.
+ * passed to @p alloc_func and @p free_func when they are called. @p free_func
+ * has to return without doing anything when asked to free a NULL pointer.
  *
  * @param alloc_func custom memory allocation function
- * @param free_func custom memory fee function
+ * @param free_func custom memory free function
  * @param opaque custom memory manager handle
  * @returns @c 0 if instance can not be allocated or initialized
  * @returns pointer to initialized ::BrotliEncoderState otherwise
@@ -228,50 +253,12 @@ BROTLI_ENC_API BrotliEncoderState* BrotliEncoderCreateInstance(
  */
 BROTLI_ENC_API void BrotliEncoderDestroyInstance(BrotliEncoderState* state);
 
-/* Calculates maximum input size that can be processed at once. */
-BROTLI_DEPRECATED BROTLI_ENC_API size_t BrotliEncoderInputBlockSize(
-    BrotliEncoderState* state);
-
-/* Copies the given input data to the internal ring buffer. */
-BROTLI_DEPRECATED BROTLI_ENC_API void BrotliEncoderCopyInputToRingBuffer(
-    BrotliEncoderState* state, const size_t input_size,
-    const uint8_t* input_buffer);
-
-/* Processes the accumulated input. */
-BROTLI_DEPRECATED BROTLI_ENC_API BROTLI_BOOL BrotliEncoderWriteData(
-    BrotliEncoderState* state, const BROTLI_BOOL is_last,
-    const BROTLI_BOOL force_flush, size_t* out_size, uint8_t** output);
-
-/**
- * Prepends imaginary LZ77 dictionary.
- *
- * Fills the fresh ::BrotliEncoderState with additional data corpus for LZ77
- * backward references.
- *
- * @note Not to be confused with the static dictionary (see RFC7932 section 8).
- *
- * Workflow:
- *  -# Allocate and initialize state with ::BrotliEncoderCreateInstance
- *  -# Set ::BROTLI_PARAM_LGWIN parameter
- *  -# Invoke ::BrotliEncoderSetCustomDictionary
- *  -# Use ::BrotliEncoderCompressStream
- *  -# Clean up and free state with ::BrotliEncoderDestroyInstance
- *
- * @param state encoder instance
- * @param size length of @p dict; at most "window size" bytes are used
- * @param dict "dictionary"; @b MUST use same dictionary during decompression
- */
-BROTLI_ENC_API void BrotliEncoderSetCustomDictionary(
-    BrotliEncoderState* state, size_t size,
-    const uint8_t dict[BROTLI_ARRAY_PARAM(size)]);
-
 /**
  * Calculates the output size bound for the given @p input_size.
  *
- * @warning Result is not applicable to ::BrotliEncoderCompressStream output,
- *          because every "flush" adds extra overhead bytes, and some encoder
- *          settings (e.g. quality @c 0 and @c 1) might imply a "soft flush"
- *          after every chunk of input.
+ * @warning Result is only valid if quality is at least @c 2 and, in
+ *          case ::BrotliEncoderCompressStream was used, no flushes
+ *          (::BROTLI_OPERATION_FLUSH) were performed.
  *
  * @param input_size size of projected input
  * @returns @c 0 if result does not fit @c size_t
@@ -321,7 +308,7 @@ BROTLI_ENC_API BROTLI_BOOL BrotliEncoderCompress(
  * that amount.
  *
  * @p total_out, if it is not a null-pointer, will be set to the number
- * of bytes decompressed since the last @p state initialization.
+ * of bytes compressed since the last @p state initialization.
  *
  *
  *

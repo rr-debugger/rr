@@ -163,6 +163,7 @@ endforeach(required_lib)
 # ==== brotli ====
 set(BROTLI_FILES
   third-party/brotli/common/dictionary.c
+  third-party/brotli/common/transform.c
   third-party/brotli/dec/bit_reader.c
   third-party/brotli/dec/decode.c
   third-party/brotli/dec/huffman.c
@@ -193,6 +194,7 @@ set(BROTLI_FILES
   third-party/brotli/enc/dictionary_hash.c
   third-party/brotli/enc/dictionary_hash.h
   third-party/brotli/enc/encode.c
+  third-party/brotli/enc/encoder_dict.c
   third-party/brotli/enc/entropy_encode.c
   third-party/brotli/enc/entropy_encode.h
   third-party/brotli/enc/entropy_encode_static.h

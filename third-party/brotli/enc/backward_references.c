@@ -10,11 +10,11 @@
 
 #include "../common/constants.h"
 #include "../common/dictionary.h"
+#include "../common/platform.h"
 #include <brotli/types.h>
 #include "./command.h"
 #include "./dictionary_hash.h"
 #include "./memory.h"
-#include "./port.h"
 #include "./quality.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
@@ -48,6 +48,9 @@ static BROTLI_INLINE size_t ComputeDistanceCode(size_t distance,
 #define EXPAND_CAT(a, b) CAT(a, b)
 #define CAT(a, b) a ## b
 #define FN(X) EXPAND_CAT(X, HASHER())
+#define EXPORT_FN(X) EXPAND_CAT(X, EXPAND_CAT(PREFIX(), HASHER()))
+
+#define PREFIX() N
 
 #define HASHER() H2
 /* NOLINTNEXTLINE(build/include) */
@@ -94,30 +97,41 @@ static BROTLI_INLINE size_t ComputeDistanceCode(size_t distance,
 #include "./backward_references_inc.h"
 #undef HASHER
 
+#define HASHER() H35
+/* NOLINTNEXTLINE(build/include) */
+#include "./backward_references_inc.h"
+#undef HASHER
+
+#define HASHER() H55
+/* NOLINTNEXTLINE(build/include) */
+#include "./backward_references_inc.h"
+#undef HASHER
+
+#define HASHER() H65
+/* NOLINTNEXTLINE(build/include) */
+#include "./backward_references_inc.h"
+#undef HASHER
+
+#undef PREFIX
+
+#undef EXPORT_FN
 #undef FN
 #undef CAT
 #undef EXPAND_CAT
 
-void BrotliCreateBackwardReferences(const BrotliDictionary* dictionary,
-                                    size_t num_bytes,
-                                    size_t position,
-                                    const uint8_t* ringbuffer,
-                                    size_t ringbuffer_mask,
-                                    const BrotliEncoderParams* params,
-                                    HasherHandle hasher,
-                                    int* dist_cache,
-                                    size_t* last_insert_len,
-                                    Command* commands,
-                                    size_t* num_commands,
-                                    size_t* num_literals) {
+void BrotliCreateBackwardReferences(
+    size_t num_bytes, size_t position, const uint8_t* ringbuffer,
+    size_t ringbuffer_mask, const BrotliEncoderParams* params,
+    HasherHandle hasher, int* dist_cache, size_t* last_insert_len,
+    Command* commands, size_t* num_commands, size_t* num_literals) {
   switch (params->hasher.type) {
 #define CASE_(N)                                                  \
     case N:                                                       \
-      CreateBackwardReferencesH ## N(dictionary,                  \
-          kStaticDictionaryHash, num_bytes, position, ringbuffer, \
+      CreateBackwardReferencesNH ## N(                            \
+          num_bytes, position, ringbuffer,                        \
           ringbuffer_mask, params, hasher, dist_cache,            \
           last_insert_len, commands, num_commands, num_literals); \
-      break;
+      return;
     FOR_GENERIC_HASHERS(CASE_)
 #undef CASE_
     default:
