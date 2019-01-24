@@ -75,6 +75,8 @@ public:
   int get_ignore_sig() const { return ignore_sig; }
   void set_continue_through_sig(int sig) { continue_through_sig = sig; }
   int get_continue_through_sig() const { return continue_through_sig; }
+  void set_asan_active(bool active) { asan_active_ = active; }
+  bool asan_active() const { return asan_active_; }
 
   enum RecordStatus {
     // Some execution was recorded. record_step() can be called again.
@@ -217,6 +219,7 @@ private:
    * When true, try to increase the probability of finding bugs.
    */
   bool enable_chaos_;
+  bool asan_active_;
   /**
    * When true, wait for all tracees to exit before finishing recording.
    */

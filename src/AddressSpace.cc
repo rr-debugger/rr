@@ -1887,7 +1887,7 @@ static MemoryRange choose_global_exclusion_range() {
   return MemoryRange(addr, range_size);
 }
 
-remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
+remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
                                                            size_t len) {
   static MemoryRange global_exclusion_range = choose_global_exclusion_range();
 
@@ -1942,11 +1942,22 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(Task* t,
       // We fell off one end of the address space. Try everything again.
       continue;
     }
-
     MemoryRange r(addr, ceil_page_size(len));
-    if (!r.intersects(global_exclusion_range)) {
-      return addr;
+    if (r.intersects(global_exclusion_range)) {
+      continue;
     }
+    if (t->session().asan_active()) {
+      LOG(debug) << "Checking ASAN shadow";
+      MemoryRange asan_shadow(remote_ptr<void>(0x00007fff7000),
+                              remote_ptr<void>(0x10007fff8000));
+      MemoryRange asan_allocator_reserved(remote_ptr<void>(0x600000000000),
+                                          remote_ptr<void>(0x640000000000));
+      if (r.intersects(asan_shadow) || r.intersects(asan_allocator_reserved)) {
+        continue;
+      }
+    }
+
+    return addr;
   }
 }
 

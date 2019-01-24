@@ -1733,28 +1733,39 @@ static string find_syscall_buffer_library() {
   return lib_path;
 }
 
-/**
- * Returns the name of the first dynamic library that |exe_file| depends on
- * that starts with |prefix|, or an empty string if there isn't one or
- * anything fails.
- */
-static string find_needed_library_starting_with(const string& exe_file,
-                                                const string& prefix) {
+struct ExeInfo {
+  ExeInfo() : has_asan_symbols(false) {}
+  // Empty if anything fails
+  string libasan_path;
+  bool has_asan_symbols;
+};
+
+static ExeInfo read_exe_info(const string& exe_file) {
+  ExeInfo ret;
   ScopedFd fd(exe_file.c_str(), O_RDONLY);
   if (!fd.is_open()) {
-    return string();
+    return ret;
   }
   ElfFileReader reader(fd);
+
   DynamicSection dynamic = reader.read_dynamic();
   for (auto& entry : dynamic.entries) {
     if (entry.tag == DT_NEEDED && entry.val < dynamic.strtab.size()) {
       const char* name = &dynamic.strtab[entry.val];
-      if (!strncmp(name, prefix.c_str(), prefix.size())) {
-        return string(name);
+      if (!strncmp(name, "libasan", 7)) {
+        ret.libasan_path = string(name);
       }
     }
   }
-  return string();
+
+  auto syms = reader.read_symbols(".dynsym", ".dynstr");
+  for (size_t i = 0; i < syms.size(); ++i) {
+    if (syms.is_name(i, "__asan_init")) {
+      ret.has_asan_symbols = true;
+    }
+  }
+
+  return ret;
 }
 
 static string lookup_by_path(const string& name) {
@@ -1825,17 +1836,17 @@ static string lookup_by_path(const string& name) {
   env.insert(env.end(), extra_env.begin(), extra_env.end());
 
   string full_path = lookup_by_path(argv[0]);
+  ExeInfo exe_info = read_exe_info(full_path);
 
   // LD_PRELOAD the syscall interception lib
   string syscall_buffer_lib_path = find_syscall_buffer_library();
   if (!syscall_buffer_lib_path.empty()) {
     string ld_preload = "LD_PRELOAD=";
-    string libasan = find_needed_library_starting_with(full_path, "libasan");
-    if (!libasan.empty()) {
-      LOG(debug) << "Prepending " << libasan << " to LD_PRELOAD";
+    if (!exe_info.libasan_path.empty()) {
+      LOG(debug) << "Prepending " << exe_info.libasan_path << " to LD_PRELOAD";
       // Put an LD_PRELOAD entry for it before our preload library, because
       // it checks that it's loaded first
-      ld_preload += libasan + ":";
+      ld_preload += exe_info.libasan_path + ":";
     }
     // Our preload lib should come first if possible, because that will
     // speed up the loading of the other libraries. We supply a placeholder
@@ -1885,6 +1896,8 @@ static string lookup_by_path(const string& name) {
   shr_ptr session(
       new RecordSession(full_path, argv, env, disable_cpuid_features,
                         syscallbuf, bind_cpu, output_trace_dir, trace_id));
+  session->set_asan_active(!exe_info.libasan_path.empty() ||
+                           exe_info.has_asan_symbols);
   return session;
 }
 
@@ -1908,6 +1921,7 @@ RecordSession::RecordSession(const std::string& exe_path,
       use_file_cloning_(true),
       use_read_cloning_(true),
       enable_chaos_(false),
+      asan_active_(false),
       wait_for_all_(false) {
   if (!has_cpuid_faulting() &&
       disable_cpuid_features.any_features_disabled()) {
