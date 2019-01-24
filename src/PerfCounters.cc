@@ -321,12 +321,12 @@ static void check_for_ioc_period_bug() {
 
 static const int NUM_BRANCHES = 500;
 
-volatile int accumulator_sink = 0;
+volatile uint32_t accumulator_sink = 0;
 
 static void do_branches() {
   // Do NUM_BRANCHES conditional branches that can't be optimized out.
   // 'accumulator' is always odd and can't be zero
-  int accumulator = rand() * 2 + 1;
+  uint32_t accumulator = uint32_t(rand()) * 2 + 1;
   for (int i = 0; i < NUM_BRANCHES && accumulator; ++i) {
     accumulator = ((accumulator * 7) + 2) & 0xffffff;
   }
@@ -363,7 +363,7 @@ static void check_for_xen_pmi_bug() {
   if (fd.is_open()) {
     // Do NUM_BRANCHES conditional branches that can't be optimized out.
     // 'accumulator' is always odd and can't be zero
-    uint32_t accumulator = rand() * 2 + 1;
+    uint32_t accumulator = uint32_t(rand()) * 2 + 1;
     int raw_fd = fd;
     asm volatile(
 #if defined(__x86_64__)
