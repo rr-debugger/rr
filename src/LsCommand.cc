@@ -235,11 +235,6 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
 }
 
 int LsCommand::run(vector<string>& args) {
-  if (getenv("RUNNING_UNDER_RR")) {
-    fprintf(stderr, "rr: cannot run rr replay under rr. Exiting.\n");
-    return 1;
-  }
-
   bool found_dir = false;
   string trace_dir;
   LsFlags flags;
