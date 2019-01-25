@@ -157,12 +157,13 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
   }
 }
 
-ReplaySession::ReplaySession(const std::string& dir)
+ReplaySession::ReplaySession(const std::string& dir, const Flags& in_flags)
     : emu_fs(EmuFs::create()),
       trace_in(dir),
       trace_frame(),
       current_step(),
       ticks_at_start_of_event(0),
+      flags(in_flags),
       trace_start_time(0) {
   ticks_semantics_ = trace_in.ticks_semantics();
 
@@ -283,8 +284,9 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
   return new ReplayTask(*this, tid, rec_tid, serial, a);
 }
 
-/*static*/ ReplaySession::shr_ptr ReplaySession::create(const string& dir) {
-  shr_ptr session(new ReplaySession(dir));
+/*static*/ ReplaySession::shr_ptr ReplaySession::create(const string& dir,
+                                                        const ReplaySession::Flags& flags) {
+  shr_ptr session(new ReplaySession(dir, flags));
 
   // It doesn't really matter what we use for argv/env here, since
   // replay_syscall's process_execve is going to follow the recording and
@@ -302,6 +304,13 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
   session->on_create(t);
 
   return session;
+}
+
+int ReplaySession::get_cpu_binding(TraceStream& trace) const {
+  if (flags.cpu_unbound) {
+    return -1;
+  }
+  return Session::get_cpu_binding(trace);
 }
 
 void ReplaySession::advance_to_next_trace_frame() {

@@ -220,11 +220,19 @@ public:
     return ticks_at_start_of_event;
   }
 
+  struct Flags {
+    Flags() : redirect_stdio(false), share_private_mappings(false) {}
+    Flags(const Flags& other) = default;
+    bool redirect_stdio;
+    bool share_private_mappings;
+    bool cpu_unbound;
+  };
+
   /**
    * Create a replay session that will use the trace directory specified
    * by 'dir', or the latest trace if 'dir' is not supplied.
    */
-  static shr_ptr create(const std::string& dir);
+  static shr_ptr create(const std::string& dir, const Flags& flags);
 
   struct StepConstraints {
     explicit StepConstraints(RunCommand command)
@@ -275,12 +283,6 @@ public:
    */
   static bool is_ignored_signal(int sig);
 
-  struct Flags {
-    Flags() : redirect_stdio(false), share_private_mappings(false) {}
-    Flags(const Flags& other) = default;
-    bool redirect_stdio;
-    bool share_private_mappings;
-  };
   bool redirect_stdio() { return flags.redirect_stdio; }
   bool share_private_mappings() { return flags.share_private_mappings; }
 
@@ -297,8 +299,10 @@ public:
 
   virtual TraceStream* trace_stream() override { return &trace_in; }
 
+  virtual int get_cpu_binding(TraceStream& trace) const override;
+
 private:
-  ReplaySession(const std::string& dir);
+  ReplaySession(const std::string& dir, const Flags& flags);
   ReplaySession(const ReplaySession& other);
 
   ReplayTask* revive_task_for_exec();
@@ -348,7 +352,7 @@ private:
   bool did_fast_forward;
 
   // The clock_gettime(CLOCK_MONOTONIC) timestamp of the first trace event, used
-  // during 'replay' to calculate the elapsed time between the first event and 
+  // during 'replay' to calculate the elapsed time between the first event and
   // all other recorded events in the timeline during the 'record' phase.
   double trace_start_time;
 
