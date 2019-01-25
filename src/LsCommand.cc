@@ -75,7 +75,6 @@ static bool parse_ls_arg(vector<string>& args, LsFlags& flags) {
 
 struct TraceInfo {
   string name;
-  unique_ptr<TraceReader> reader;
   struct timespec ctime;
 
   TraceInfo(string in_name) : name(in_name) {}
@@ -140,9 +139,9 @@ static bool is_valid_trace(const string& entry) {
   return true;
 }
 
-static string get_exec_path(TraceInfo& info) {
+static string get_exec_path(TraceReader& reader) {
   while (true) {
-    TraceTaskEvent r = info.reader->read_task_event();
+    TraceTaskEvent r = reader.read_task_event();
     if (r.type() == TraceTaskEvent::NONE) {
       break;
     }
@@ -222,9 +221,9 @@ static int ls(const string& traces_dir, const LsFlags& flags, FILE* out) {
     string version_file = traces_dir + "/" + t.name + "/version";
     struct stat st;
     if (stat(version_file.c_str(), &st) != -1) {
-      t.reader.reset(new TraceReader(traces_dir + "/" + t.name));
-      get_folder_size(t.reader->dir(), folder_size);
-      exe = get_exec_path(t);
+      TraceReader reader(traces_dir + "/" + t.name);
+      get_folder_size(reader.dir(), folder_size);
+      exe = get_exec_path(reader);
     }
 
     fprintf(out, "%-*s %s %5s %s\n", max_name_size, t.name.c_str(),
