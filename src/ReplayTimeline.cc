@@ -333,10 +333,9 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
       // We can use the current session, so do nothing.
     } else {
       // nowhere earlier to go, so restart from beginning.
-      current = ReplaySession::create(current->trace_reader().dir());
+      current = ReplaySession::create(current->trace_reader().dir(), session_flags);
       breakpoints_applied = false;
       current_at_or_after_mark = nullptr;
-      current->set_flags(session_flags);
     }
   } else {
     --it;

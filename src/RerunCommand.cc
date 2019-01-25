@@ -45,6 +45,10 @@ RerunCommand RerunCommand::singleton(
     "  --singlestep=<REGS>        dump <REGS> after each singlestep\n"
     "  -r, --raw                  dump registers in raw format\n"
     "  -s, --trace-start=<EVENT>  start tracing at <EVENT>\n"
+    "  -u, --cpu-unbound          allow replay to run on any CPU. Default is\n"
+    "                             to run on the CPU stored in the trace.\n"
+    "                             Note that this may diverge from the recording\n"
+    "                             in some cases.\n"
     "\n"
     "<REGS> is a comma-separated sequence of 'event','icount','ip','flags',\n"
     "'gp_x16','xmm_x16','ymm_x16'. For the 'x16' cases, we always output 16,\n"
@@ -81,11 +85,13 @@ struct RerunFlags {
   remote_code_ptr function;
   vector<TraceField> singlestep_trace;
   bool raw;
+  bool cpu_unbound;
 
   RerunFlags()
       : trace_start(0),
         trace_end(numeric_limits<decltype(trace_end)>::max()),
-        raw(false) {}
+        raw(false),
+        cpu_unbound(false) {}
 };
 
 #ifdef __x86_64__
@@ -387,9 +393,12 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
   }
 
   static const OptionSpec options[] = {
-    { 1, "singlestep", HAS_PARAMETER },    { 'e', "trace-end", HAS_PARAMETER },
-    { 'f', "function", HAS_PARAMETER },    { 'r', "raw", NO_PARAMETER },
+    { 1, "singlestep", HAS_PARAMETER },
+    { 'e', "trace-end", HAS_PARAMETER },
+    { 'f', "function", HAS_PARAMETER },
+    { 'r', "raw", NO_PARAMETER },
     { 's', "trace-start", HAS_PARAMETER },
+    { 'u', "cpu-unbound", NO_PARAMETER }
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -425,6 +434,9 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
         return false;
       }
       flags.trace_start = opt.int_value;
+      break;
+    case 'u':
+      flags.cpu_unbound = true;
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
@@ -514,8 +526,16 @@ static void run_diversion_function(ReplaySession& replay, Task* task,
   }
 }
 
+static ReplaySession::Flags session_flags(const RerunFlags& flags) {
+  ReplaySession::Flags result;
+  result.redirect_stdio = false;
+  result.share_private_mappings = false;
+  result.cpu_unbound = flags.cpu_unbound;
+  return result;
+}
+
 static int rerun(const string& trace_dir, const RerunFlags& flags) {
-  ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir);
+  ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir, session_flags(flags));
   uint64_t instruction_count_within_event = 0;
   bool done_first_step = false;
 
