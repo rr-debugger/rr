@@ -15,7 +15,8 @@ static void* run_thread(__attribute__((unused)) void* p) {
   return NULL;
 }
 
-int main(__attribute__((unused)) int argc) {
+int main(__attribute__((unused)) int argc,
+         __attribute__((unused)) const char** argv) {
   int i;
   int ret;
   pthread_t thread;
