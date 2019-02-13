@@ -560,12 +560,12 @@ foreach(file ${PRELOAD_SOURCE_FILES})
           DESTINATION ${CMAKE_INSTALL_DATADIR}/rr/src/preload)
 endforeach(file)
 
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/scripts/collect-symbols.py"
-               "${CMAKE_CURRENT_BINARY_DIR}/bin/collect-symbols.py"
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/scripts/rr-collect-symbols.py"
+               "${CMAKE_CURRENT_BINARY_DIR}/bin/rr-collect-symbols.py"
                COPYONLY)
 
 install(PROGRAMS scripts/signal-rr-recording.sh
-                 scripts/collect-symbols.py
+                 scripts/rr-collect-symbols.py
                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64
                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay
                  ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32
