@@ -592,8 +592,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
 
   switch (step_result.status) {
     case RecordSession::STEP_CONTINUE:
-      // SIGINT or something like that interrupted us.
-      return WaitStatus::for_fatal_sig(SIGINT);
+      // SIGTERM interrupted us.
+      return WaitStatus::for_fatal_sig(SIGTERM);
 
     case RecordSession::STEP_EXITED:
       return step_result.exit_status;
