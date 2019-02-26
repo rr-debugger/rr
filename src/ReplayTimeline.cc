@@ -77,14 +77,11 @@ bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
   return false;
 }
 
-ReplayTimeline::ReplayTimeline(std::shared_ptr<ReplaySession> session,
-                               const ReplaySession::Flags& session_flags)
-    : session_flags(session_flags),
-      current(std::move(session)),
+ReplayTimeline::ReplayTimeline(std::shared_ptr<ReplaySession> session)
+    : current(std::move(session)),
       breakpoints_applied(false),
       reverse_execution_barrier_event(0) {
   current->set_visible_execution(false);
-  current->set_flags(session_flags);
 }
 
 ReplayTimeline::~ReplayTimeline() {
@@ -333,7 +330,7 @@ void ReplayTimeline::seek_to_before_key(const MarkKey& key) {
       // We can use the current session, so do nothing.
     } else {
       // nowhere earlier to go, so restart from beginning.
-      current = ReplaySession::create(current->trace_reader().dir(), session_flags);
+      current = ReplaySession::create(current->trace_reader().dir(), current->flags());
       breakpoints_applied = false;
       current_at_or_after_mark = nullptr;
     }

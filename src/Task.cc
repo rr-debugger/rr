@@ -2662,7 +2662,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   }
   *tracee_socket_fd_number_out = fd_number;
 
-  int cpu_index = session.get_cpu_binding(trace);
+  int cpu_index = session.cpu_binding(trace);
   if (cpu_index >= 0) {
     // Set CPU affinity now, after we've created any helper threads
     // (so they aren't affected), but before we create any

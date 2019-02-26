@@ -329,7 +329,7 @@ public:
   virtual TraceStream* trace_stream() { return nullptr; }
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
-  virtual int get_cpu_binding(TraceStream& trace) const;
+  virtual int cpu_binding(TraceStream& trace) const;
 
 protected:
   Session();

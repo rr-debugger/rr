@@ -742,7 +742,7 @@ bool Session::has_cpuid_faulting() {
   return !Flags::get().disable_cpuid_faulting && cpuid_faulting_works();
 }
 
-int Session::get_cpu_binding(TraceStream& trace) const {
+int Session::cpu_binding(TraceStream& trace) const {
   return trace.bound_to_cpu();
 }
 

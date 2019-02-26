@@ -425,7 +425,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.dbg_host = flags.dbg_host;
       conn_flags.debugger_name = flags.gdb_binary_file_path;
       conn_flags.keep_listening = flags.keep_listening;
-      GdbServer(session, session_flags(flags), target).serve_replay(conn_flags);
+      GdbServer(session, target).serve_replay(conn_flags);
     }
 
     // Everything should have been cleaned up by now.
@@ -451,7 +451,7 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;
       conn_flags.debugger_params_write_pipe = &debugger_params_write_pipe;
-      GdbServer server(session, session_flags(flags), target);
+      GdbServer server(session, target);
 
       server_ptr = &server;
       struct sigaction sa;

@@ -893,7 +893,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     // tracer and the tracee. Instead, only mappings that have
     // sufficiently many memory access from the tracer to require
     // acceleration should be shared.
-    if (!(MAP_SHARED & flags) && t->session().share_private_mappings()) {
+    if (!(MAP_SHARED & flags) && t->session().flags().share_private_mappings) {
       Session::make_private_shared(remote, t->vm()->mapping_of(addr));
     }
 

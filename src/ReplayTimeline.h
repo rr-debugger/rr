@@ -30,8 +30,7 @@ private:
   struct InternalMark;
 
 public:
-  ReplayTimeline(std::shared_ptr<ReplaySession> session,
-                 const ReplaySession::Flags& session_flags);
+  ReplayTimeline(std::shared_ptr<ReplaySession> session);
   ReplayTimeline() : breakpoints_applied(false) {}
   ~ReplayTimeline();
 
@@ -450,8 +449,6 @@ private:
    * conditions and clear the break_status flags if the conditions don't hold.
    */
   void evaluate_conditions(ReplayResult& result);
-
-  ReplaySession::Flags session_flags;
 
   ReplaySession::shr_ptr current;
   // current is known to be at or after this mark

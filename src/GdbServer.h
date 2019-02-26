@@ -64,14 +64,13 @@ public:
   /**
    * Create a gdbserver serving the replay of 'session'.
    */
-  GdbServer(std::shared_ptr<ReplaySession> session,
-            const ReplaySession::Flags& flags, const Target& target)
+  GdbServer(std::shared_ptr<ReplaySession> session, const Target& target)
       : target(target),
         final_event(UINT32_MAX),
         in_debuggee_end_state(false),
         stop_replaying_to_target(false),
         interrupt_pending(false),
-        timeline(std::move(session), flags),
+        timeline(std::move(session)),
         emergency_debug_session(nullptr) {
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
   }

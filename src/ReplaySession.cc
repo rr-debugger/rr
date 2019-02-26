@@ -157,13 +157,13 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
   }
 }
 
-ReplaySession::ReplaySession(const std::string& dir, const Flags& in_flags)
+ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
     : emu_fs(EmuFs::create()),
       trace_in(dir),
       trace_frame(),
       current_step(),
       ticks_at_start_of_event(0),
-      flags(in_flags),
+      flags_(flags),
       trace_start_time(0) {
   ticks_semantics_ = trace_in.ticks_semantics();
 
@@ -200,7 +200,7 @@ ReplaySession::ReplaySession(const ReplaySession& other)
       ticks_at_start_of_event(other.ticks_at_start_of_event),
       cpuid_bug_detector(other.cpuid_bug_detector),
       last_siginfo_(other.last_siginfo_),
-      flags(other.flags),
+      flags_(other.flags_),
       trace_start_time(other.trace_start_time) {}
 
 ReplaySession::~ReplaySession() {
@@ -306,11 +306,11 @@ Task* ReplaySession::new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
   return session;
 }
 
-int ReplaySession::get_cpu_binding(TraceStream& trace) const {
-  if (flags.cpu_unbound) {
+int ReplaySession::cpu_binding(TraceStream& trace) const {
+  if (flags_.cpu_unbound) {
     return -1;
   }
-  return Session::get_cpu_binding(trace);
+  return Session::cpu_binding(trace);
 }
 
 void ReplaySession::advance_to_next_trace_frame() {

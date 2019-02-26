@@ -29,7 +29,7 @@ void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges,
     return;
   }
   auto rt = static_cast<ReplayTask*>(t);
-  if (rt->session().redirect_stdio() && rt->session().visible_execution()) {
+  if (rt->session().flags().redirect_stdio && rt->session().visible_execution()) {
     for (auto& r : ranges) {
       auto bytes = t->read_mem(r.data.cast<uint8_t>(), r.length);
       if (bytes.size() !=
