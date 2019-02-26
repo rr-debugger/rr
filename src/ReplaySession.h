@@ -221,7 +221,10 @@ public:
   }
 
   struct Flags {
-    Flags() : redirect_stdio(false), share_private_mappings(false) {}
+    Flags()
+      : redirect_stdio(false)
+      , share_private_mappings(false)
+      , cpu_unbound(false) {}
     Flags(const Flags& other) = default;
     bool redirect_stdio;
     bool share_private_mappings;
