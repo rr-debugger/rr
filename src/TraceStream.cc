@@ -1202,8 +1202,13 @@ void TraceWriter::write_header(bool has_cpuid_faulting,
   // We are now bound to the selected CPU (if any), so collect CPUID records
   // (which depend on the bound CPU number).
   vector<CPUIDRecord> cpuid_records = all_cpuid_records();
-  for (auto& r : cpuid_records) {
-    disable_cpuid_features.amend_cpuid_data(r.eax_in, r.ecx_in, &r.out);
+  // Modify the recorded cpuid data only if cpuid faulting is available. If it
+  // is not available, the tracee will see unmodified data and should also see
+  // that in handle_unrecorded_cpuid_fault (which is sourced from this data).
+  if (has_cpuid_faulting) {
+    for (auto& r : cpuid_records) {
+      disable_cpuid_features.amend_cpuid_data(r.eax_in, r.ecx_in, &r.out);
+    }
   }
 
   MallocMessageBuilder header_msg;
