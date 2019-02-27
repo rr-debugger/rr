@@ -1908,9 +1908,7 @@ RecordSession::RecordSession(const std::string& exe_path,
                              SyscallBuffering syscallbuf, BindCPU bind_cpu,
                              const string& output_trace_dir,
                              const uint8_t* trace_id)
-    : trace_out(argv[0], choose_cpu(bind_cpu), has_cpuid_faulting(),
-                disable_cpuid_features, output_trace_dir,
-                ticks_semantics_, trace_id),
+    : trace_out(argv[0], choose_cpu(bind_cpu), output_trace_dir, ticks_semantics_),
       scheduler_(*this),
       disable_cpuid_features_(disable_cpuid_features),
       ignore_sig(0),
@@ -1933,6 +1931,8 @@ RecordSession::RecordSession(const std::string& exe_path,
       Task::spawn(*this, error_fd, &tracee_socket_fd(), 
                   &tracee_socket_fd_number, trace_out,
                   exe_path, argv, envp));
+
+  trace_writer().write_header(has_cpuid_faulting(), disable_cpuid_features, trace_id);
 
   initial_thread_group = t->thread_group();
   on_create(t);

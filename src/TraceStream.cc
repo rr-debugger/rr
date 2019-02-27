@@ -1162,12 +1162,10 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 
-TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
-                         bool has_cpuid_faulting,
-                         const DisableCPUIDFeatures& disable_cpuid_features,
+TraceWriter::TraceWriter(const std::string& file_name,
+                         int bind_to_cpu,
                          const string& output_trace_dir,
-                         TicksSemantics ticks_semantics_,
-                         const uint8_t* uuid)
+                         TicksSemantics ticks_semantics_)
     : TraceStream(make_trace_dir(file_name, output_trace_dir),
                   // Somewhat arbitrarily start the
                   // global time from 1.
@@ -1181,7 +1179,11 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
     writers[s] = unique_ptr<CompressedWriter>(new CompressedWriter(
         path(s), substream(s).block_size, substream(s).threads));
   }
+}
 
+void TraceWriter::write_header(bool has_cpuid_faulting,
+                               const DisableCPUIDFeatures& disable_cpuid_features,
+                               const uint8_t* uuid) {
   string ver_path = incomplete_version_path();
   version_fd = ScopedFd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
   if (!version_fd.is_open()) {
@@ -1206,7 +1208,7 @@ TraceWriter::TraceWriter(const std::string& file_name, int bind_to_cpu,
 
   MallocMessageBuilder header_msg;
   trace::Header::Builder header = header_msg.initRoot<trace::Header>();
-  header.setBindToCpu(bind_to_cpu);
+  header.setBindToCpu(this->bind_to_cpu);
   header.setHasCpuidFaulting(has_cpuid_faulting);
   header.setCpuidRecords(
       Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),

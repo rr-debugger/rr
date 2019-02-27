@@ -232,11 +232,15 @@ public:
    * or by setting -o=<OUTPUT_TRACE_DIR>.
    */
   TraceWriter(const std::string& file_name, int bind_to_cpu,
-              bool has_cpuid_faulting,
-              const DisableCPUIDFeatures& disable_cpuid_features,
-              const string& output_trace_dir,
-              TicksSemantics ticks_semantics_,
-              const uint8_t* uuid);
+              const string& output_trace_dir, TicksSemantics ticks_semantics_);
+
+  /*
+   * Called after the calling thread is actually bound to |bind_to_cpu| to
+   * finalize the header.
+   */
+  void write_header(bool has_cpuid_faulting,
+                    const DisableCPUIDFeatures& disable_cpuid_features,
+                    const uint8_t* uuid);
 
   /**
    * We got far enough into recording that we should set this as the latest
