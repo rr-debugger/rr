@@ -626,7 +626,8 @@ void ReplaySession::check_pending_sig(ReplayTask* t) {
  * encountered.
  *
  * If we return INCOMPLETE, callers need to recalculate the constraints and
- * tick_request and try again.
+ * tick_request and try again. We may return INCOMPLETE because we successfully
+ * processed a CPUID trap.
  */
 Completion ReplaySession::continue_or_step(ReplayTask* t,
                                            const StepConstraints& constraints,
@@ -707,7 +708,7 @@ static void guard_unexpected_signal(ReplayTask* t) {
   if (t->stop_sig()) {
     ASSERT(t, false) << "Replay got unrecorded signal "
                      << signal_name(t->stop_sig()) << " while awaiting signal";
-  } else {
+  } else if (t->status().is_syscall()) {
     ASSERT(t, false) << "Replay got unrecorded syscall "
                      << syscall_name(t->regs().original_syscallno(), t->arch())
                      << " while awaiting signal";
