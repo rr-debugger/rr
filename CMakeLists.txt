@@ -695,9 +695,10 @@ set(BASIC_TESTS
   exit_with_syscallbuf_signal
   fadvise
   fanotify
-  fault_in_code_page
-  fcntl_owner_ex
   fcntl_dupfd
+  fault_in_code_page
+  fcntl_misc
+  fcntl_owner_ex
   fcntl_rw_hints
   fcntl_seals
   fcntl_sig
