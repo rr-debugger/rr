@@ -1379,6 +1379,7 @@ void Task::wait(double interrupt_after_elapsed) {
       // some cases it doesn't return normally at all!
 
       // Fake a PTRACE_EVENT_EXIT for this task.
+      LOG(warn) << "Synthesizing PTRACE_EVENT_EXIT for zombie process " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
       ret = tid;
       // XXX could this leave unreaped zombies lying around?
@@ -1406,6 +1407,8 @@ void Task::wait(double interrupt_after_elapsed) {
                                              "forgotten";
 
     // Turn this into a PTRACE_EXIT_EVENT.
+    LOG(warn) << "Synthesizing PTRACE_EVENT_EXIT for process " << tid
+        << " exited with " << status.exit_code();
     status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
   }
 
