@@ -36,6 +36,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "CPUIDBugDetector.h"
+#include "Flags.h"
 #include "MagicSaveDataMonitor.h"
 #include "PreserveFileMonitor.h"
 #include "RecordSession.h"
@@ -98,10 +99,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
 
 void Task::destroy() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
-
-  // child_mem_fd needs to be valid since we won't be able to open
-  // it for futex_wait after we've detached.
-  ASSERT(this, as->mem_fd().is_open());
 
   fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
 
@@ -1965,7 +1962,7 @@ long Task::fallible_ptrace(int request, remote_ptr<void> addr, void* data) {
   return ptrace(__ptrace_request(request), tid, addr, data);
 }
 
-void Task::open_mem_fd() {
+bool Task::open_mem_fd() {
   // Use ptrace to read/write during open_mem_fd
   as->set_mem_fd(ScopedFd());
 
@@ -1979,25 +1976,36 @@ void Task::open_mem_fd() {
   int remote_fd;
   {
     AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
-    // skip leading '/' since we want the path to be relative to the root fd
-    remote_fd =
-        remote.syscall(syscall_number_for_openat(arch()),
-                       RR_RESERVED_ROOT_DIR_FD, remote_path.get() + 1, O_RDWR);
+    if (remote_path.get()) {
+      // skip leading '/' since we want the path to be relative to the root fd
+      remote_fd =
+          remote.syscall(syscall_number_for_openat(arch()),
+                        RR_RESERVED_ROOT_DIR_FD, remote_path.get() + 1, O_RDWR);
+    } else {
+      remote_fd = -ESRCH;
+    }
   }
-  if (remote_fd < 0) {
-    // This can happen when a process fork()s after setuid; it can no longer
-    // open its own /proc/self/mem. Hopefully we can read the child's
-    // mem file in this case (because rr is probably running as root).
-    char buf[PATH_MAX];
-    sprintf(buf, "/proc/%d/mem", tid);
-    ScopedFd fd(buf, O_RDWR);
-    ASSERT(this, fd.is_open());
-    as->set_mem_fd(move(fd));
-  } else {
-    as->set_mem_fd(remote.retrieve_fd(remote_fd));
-    ASSERT(this, as->mem_fd().is_open());
-    remote.infallible_syscall(syscall_number_for_close(arch()), remote_fd);
+  ScopedFd fd;
+  if (remote_fd != -ESRCH) {
+    if (remote_fd < 0) {
+      // This can happen when a process fork()s after setuid; it can no longer
+      // open its own /proc/self/mem. Hopefully we can read the child's
+      // mem file in this case (because rr is probably running as root).
+      char buf[PATH_MAX];
+      sprintf(buf, "/proc/%d/mem", tid);
+      fd = ScopedFd(buf, O_RDWR);
+    } else {
+      fd = remote.retrieve_fd(remote_fd);
+      // Leak fd if the syscall fails due to the task being SIGKILLed unexpectedly
+      remote.syscall(syscall_number_for_close(arch()), remote_fd);
+    }
   }
+  if (!fd.is_open()) {
+    LOG(info) << "Can't retrieve mem fd for " << tid << "; process no longer exists?";
+    return false;
+  }
+  as->set_mem_fd(move(fd));
+  return true;
 }
 
 void Task::open_mem_fd_if_needed() {
@@ -2154,7 +2162,9 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
     // that's different than the one we see after reopening the
     // fd, after exec.
     if (0 == nread && 0 == all_read && 0 == errno) {
-      open_mem_fd();
+      if (!open_mem_fd()) {
+        return 0;
+      }
       continue;
     }
     if (nread <= 0) {
@@ -2714,7 +2724,10 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   // parented by the init process, i.e. effectively leaked. After PTRACE_SEIZE
   // with PTRACE_O_EXITKILL, the tracee will die if rr dies.
   intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-                     PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXIT;
+                     PTRACE_O_TRACECLONE;
+  if (!Flags::get().disable_ptrace_exit_events) {
+    options |= PTRACE_O_TRACEEXIT;
+  }
   if (session.is_recording()) {
     options |= PTRACE_O_TRACEVFORK | PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
   }

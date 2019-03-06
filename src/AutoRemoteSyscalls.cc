@@ -44,18 +44,24 @@ void AutoRestoreMem::init(const void* mem, ssize_t num_bytes) {
   addr = remote.regs().sp();
 
   data.resize(len);
-  remote.task()->read_bytes_helper(addr, len, data.data());
-
+  bool ok = true;
+  remote.task()->read_bytes_helper(addr, len, data.data(), &ok);
   if (mem) {
-    remote.task()->write_bytes_helper(addr, len, mem);
+    remote.task()->write_bytes_helper(addr, len, mem, &ok);
+  }
+  if (!ok) {
+    addr = nullptr;
   }
 }
 
 AutoRestoreMem::~AutoRestoreMem() {
   DEBUG_ASSERT(saved_sp == remote.regs().sp() + len);
 
-  remote.task()->write_bytes_helper(addr, len, data.data());
-
+  if (addr) {
+    // XXX what should we do if this task was sigkilled but the address
+    // space is used by other live tasks?
+    remote.task()->write_bytes_helper(addr, len, data.data());
+  }
   remote.regs().set_sp(remote.regs().sp() + len);
   remote.task()->set_regs(remote.regs());
 }
@@ -101,6 +107,7 @@ AutoRemoteSyscalls::AutoRemoteSyscalls(Task* t,
 
 void AutoRemoteSyscalls::setup_path(bool enable_singlestep_path) {
   if (!replaced_bytes.empty()) {
+    // XXX what to do here to clean up if the task died unexpectedly?
     t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
                  replaced_bytes.data(), replaced_bytes.size());
   }
@@ -121,13 +128,18 @@ void AutoRemoteSyscalls::setup_path(bool enable_singlestep_path) {
   // own breakpoints or otherwise modified the instruction, so suspending our
   // own breakpoint is insufficient.
   std::vector<uint8_t> syscall = rr::syscall_instruction(t->arch());
+  bool ok = true;
   replaced_bytes =
-      t->read_mem(initial_regs.ip().to_data_ptr<uint8_t>(), syscall.size());
+      t->read_mem(initial_regs.ip().to_data_ptr<uint8_t>(), syscall.size(), &ok);
+  if (!ok) {
+    // The task died
+    return;
+  }
   if (replaced_bytes == syscall) {
     replaced_bytes.clear();
   } else {
     t->write_mem(initial_regs.ip().to_data_ptr<uint8_t>(), syscall.data(),
-                 syscall.size());
+                 syscall.size(), &ok);
   }
 }
 
@@ -184,6 +196,7 @@ void AutoRemoteSyscalls::restore_state_to(Task* t) {
                               fixed_sp - 4096, 4096);
   }
   if (!replaced_bytes.empty()) {
+    // XXX how to clean up if the task died and the address space is shared with live task?
     t->write_mem(remote_ptr<uint8_t>(initial_regs.ip().to_data_ptr<uint8_t>()),
                  replaced_bytes.data(), replaced_bytes.size());
   }
@@ -290,8 +303,13 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     break;
   }
 
-  LOG(debug) << "done, result=" << t->regs().syscall_result();
-  return t->regs().syscall_result();
+  if (t->is_dying()) {
+    LOG(debug) << "Task is dying, no status result";
+    return -ESRCH;
+  } else {
+    LOG(debug) << "done, result=" << t->regs().syscall_result();
+    return t->regs().syscall_result();
+  }
 }
 
 SupportedArch AutoRemoteSyscalls::arch() const { return t->arch(); }
@@ -300,9 +318,10 @@ template <typename Arch>
 static void write_socketcall_args(Task* t, remote_ptr<void> remote_mem,
                                   typename Arch::signed_long arg1,
                                   typename Arch::signed_long arg2,
-                                  typename Arch::signed_long arg3) {
+                                  typename Arch::signed_long arg3,
+                                  bool* ok) {
   socketcall_args<Arch> sc_args = { { arg1, arg2, arg3 } };
-  t->write_mem(remote_mem.cast<socketcall_args<Arch>>(), sc_args);
+  t->write_mem(remote_mem.cast<socketcall_args<Arch>>(), sc_args, ok);
 }
 
 static size_t align_size(size_t size) {
@@ -350,7 +369,8 @@ static long child_sendmsg(AutoRemoteSyscalls& remote,
   typename Arch::iovec msgdata;
   msgdata.iov_base = remote_msg; // doesn't matter much, we ignore the data
   msgdata.iov_len = 1;
-  remote.task()->write_mem(remote_msgdata, msgdata);
+  bool ok = true;
+  remote.task()->write_mem(remote_msgdata, msgdata, &ok);
 
   typename Arch::msghdr msg;
   memset(&msg, 0, sizeof(msg));
@@ -358,22 +378,27 @@ static long child_sendmsg(AutoRemoteSyscalls& remote,
   msg.msg_controllen = sizeof(cmsgbuf);
   msg.msg_iov = remote_msgdata;
   msg.msg_iovlen = 1;
-  remote.task()->write_mem(remote_msg, msg);
+  remote.task()->write_mem(remote_msg, msg, &ok);
 
   auto cmsg = reinterpret_cast<typename Arch::cmsghdr*>(cmsgbuf);
   cmsg->cmsg_len = Arch::cmsg_len(sizeof(fd));
   cmsg->cmsg_level = SOL_SOCKET;
   cmsg->cmsg_type = SCM_RIGHTS;
   *static_cast<int*>(Arch::cmsg_data(cmsg)) = fd;
-  remote.task()->write_bytes_helper(remote_cmsgbuf, sizeof(cmsgbuf), &cmsgbuf);
+  remote.task()->write_bytes_helper(remote_cmsgbuf, sizeof(cmsgbuf), &cmsgbuf, &ok);
 
+  if (!ok) {
+    return -ESRCH;
+  }
   if (sc_args.is_null()) {
     return remote.syscall(Arch::sendmsg, child_sock, remote_msg, 0);
-  } else {
-    write_socketcall_args<Arch>(remote.task(), sc_args, child_sock,
-                                remote_msg.as_int(), 0);
-    return remote.syscall(Arch::socketcall, SYS_SENDMSG, sc_args);
   }
+  write_socketcall_args<Arch>(remote.task(), sc_args, child_sock,
+                              remote_msg.as_int(), 0, &ok);
+  if (!ok) {
+    return -ESRCH;
+  }
+  return remote.syscall(Arch::socketcall, SYS_SENDMSG, sc_args);
 }
 
 static int recvmsg_socket(ScopedFd& sock) {
@@ -413,6 +438,10 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
     data_length += reserve<socketcall_args<Arch>>();
   }
   AutoRestoreMem remote_buf(*this, nullptr, data_length);
+  if (!remote_buf.get()) {
+    // Task must be dead
+    return ScopedFd();
+  }
 
   remote_ptr<void> sc_args_end = remote_buf.get();
   remote_ptr<socketcall_args<Arch>> sc_args;
@@ -423,6 +452,9 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   long child_syscall_result =
       child_sendmsg(*this, remote_buf, sc_args, sc_args_end,
                     task()->session().tracee_fd_number(), fd);
+  if (child_syscall_result == -ESRCH) {
+    return ScopedFd();
+  }
   ASSERT(t, child_syscall_result > 0) << "Failed to sendmsg() in tracee; err="
                                       << errno_name(-child_syscall_result);
   int our_fd = recvmsg_socket(task()->session().tracee_socket_fd());

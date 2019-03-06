@@ -57,6 +57,7 @@ public:
 
   /**
    * Get a pointer to the reserved memory.
+   * Returns null if we failed.
    */
   remote_ptr<void> get() const { return addr; }
 
@@ -139,6 +140,7 @@ public:
   /**
    * Make |syscallno| with variadic |args| (limited to 6 on
    * x86).  Return the raw kernel return value.
+   * Returns -ESRCH if the process dies or has died.
    */
   template <typename... Rest> long syscall(int syscallno, Rest... args) {
     Registers callregs = regs();
@@ -189,6 +191,7 @@ public:
   /**
    * Arranges for 'fd' to be transmitted to this process and returns
    * our opened version of it.
+   * Returns a closed fd if the process dies or has died.
    */
   ScopedFd retrieve_fd(int fd);
 

@@ -618,10 +618,11 @@ public:
   void write_mem(remote_ptr<T> child_addr, const T* val) = delete;
 
   template <typename T>
-  void write_mem(remote_ptr<T> child_addr, const T* val, int count) {
+  void write_mem(remote_ptr<T> child_addr, const T* val, int count,
+                 bool* ok = nullptr) {
     DEBUG_ASSERT(type_has_no_holes<T>());
     write_bytes_helper(child_addr, sizeof(*val) * count,
-                       static_cast<const void*>(val));
+                       static_cast<const void*>(val), ok);
   }
 
   /**
@@ -663,11 +664,11 @@ public:
 
   /**
    * Open /proc/[tid]/mem fd for our AddressSpace, closing the old one
-   * first.
-   * This never fails. If necessary we force the tracee to open the file
+   * first. If necessary we force the tracee to open the file
    * itself and smuggle the fd back to us.
+   * Returns false if the process no longer exists.
    */
-  void open_mem_fd();
+  bool open_mem_fd();
 
   /**
    * Calls open_mem_fd if this task's AddressSpace doesn't already have one.

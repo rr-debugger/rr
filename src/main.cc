@@ -54,6 +54,7 @@ void print_global_options(FILE* out) {
   fputs(
       "Global options:\n"
       "  --disable-cpuid-faulting   disable use of CPUID faulting\n"
+      "  --disable-ptrace-exit_events disable use of PTRACE_EVENT_EXIT\n"
       "  --resource-path=PATH       specify the paths that rr should use to "
       "find\n"
       "                             files such as rr_page_*.  These files "
@@ -133,7 +134,8 @@ static void init_random() {
 bool parse_global_option(std::vector<std::string>& args) {
   static const OptionSpec options[] = {
     { 0, "disable-cpuid-faulting", NO_PARAMETER },
-    { 1, "resource-path", HAS_PARAMETER },
+    { 1, "disable-ptrace-exit-events", NO_PARAMETER },
+    { 2, "resource-path", HAS_PARAMETER },
     { 'A', "microarch", HAS_PARAMETER },
     { 'C', "checksum", HAS_PARAMETER },
     { 'D', "dump-on", HAS_PARAMETER },
@@ -158,6 +160,9 @@ bool parse_global_option(std::vector<std::string>& args) {
       flags.disable_cpuid_faulting = true;
       break;
     case 1:
+      flags.disable_ptrace_exit_events = true;
+      break;
+    case 2:
       flags.resource_path = opt.value;
       if (flags.resource_path.back() != '/') {
         flags.resource_path.append("/");
