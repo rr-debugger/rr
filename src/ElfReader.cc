@@ -18,6 +18,7 @@ public:
   virtual SymbolTable read_symbols(const char* symtab, const char* strtab) = 0;
   virtual DynamicSection read_dynamic() = 0;
   virtual Debuglink read_debuglink() = 0;
+  virtual string read_buildid() = 0;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) = 0;
   virtual SectionOffsets find_section_file_offsets(const char* name) = 0;
   bool ok() { return ok_; }
@@ -34,6 +35,7 @@ public:
                                    const char* strtab) override;
   virtual DynamicSection read_dynamic() override;
   virtual Debuglink read_debuglink() override;
+  virtual string read_buildid() override;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) override;
   virtual SectionOffsets find_section_file_offsets(const char* name) override;
 
@@ -90,7 +92,7 @@ template <typename Arch>
 const typename Arch::ElfShdr* ElfReaderImpl<Arch>::find_section(const char* n) {
   typename Arch::ElfShdr* section = nullptr;
 
-  for (size_t i = 0; i < elfheader.e_shnum; ++i) {
+  for (size_t i = 0; i < sections.size(); ++i) {
     auto& s = sections[i];
     if (s.sh_name >= section_names.size()) {
       LOG(debug) << "Invalid ELF file: invalid name offset for section " << i;
@@ -171,6 +173,11 @@ SymbolTable ElfReaderImpl<Arch>::read_symbols(const char* symtab,
   result.symbols.resize(symbol_list.size());
   for (size_t i = 0; i < symbol_list.size(); ++i) {
     auto& s = symbol_list[i];
+    if (s.st_shndx >= sections.size()) {
+      // Don't leave this entry uninitialized
+      result.symbols[i] = SymbolTable::Symbol(0, 0);
+      continue;
+    }
     result.symbols[i] = SymbolTable::Symbol(s.st_value, s.st_name);
   }
   return result;
@@ -261,6 +268,59 @@ template <typename Arch> Debuglink ElfReaderImpl<Arch>::read_debuglink() {
 }
 
 template <typename Arch>
+string ElfReaderImpl<Arch>::read_buildid() {
+  string result;
+  if (!ok()) {
+    return result;
+  }
+
+  for (auto& s : sections) {
+    if (s.sh_type != SHT_NOTE) {
+      continue;
+    }
+
+    auto offset = s.sh_offset;
+    typename Arch::ElfNhdr nhdr;
+    if (!r.read(offset, nhdr)) {
+      LOG(error) << "Failed to read ELF note";
+      return result;
+    }
+    offset += sizeof(nhdr);
+
+    char name[4] = { 0 };
+    if (!(nhdr.n_namesz == sizeof "GNU" &&
+          r.read(offset, nhdr.n_namesz, &name) &&
+          strncmp("GNU", name, nhdr.n_namesz) == 0 &&
+          nhdr.n_descsz > 0)) {
+      continue;
+    }
+    // Note members are 4 byte aligned, twiddle bits to round up if necessary.
+    offset += (nhdr.n_namesz + 3) & ~0x3;
+
+    if (nhdr.n_type != NT_GNU_BUILD_ID) {
+      continue;
+    }
+
+    uint8_t* id = (uint8_t*)alloca(nhdr.n_descsz);
+    if (!r.read(offset, nhdr.n_descsz, id)) {
+      LOG(error) << "Failed to read ELF note contents";
+      result.clear();
+    }
+
+    result.reserve(nhdr.n_descsz);
+    for (unsigned i = 0; i < nhdr.n_descsz; ++i) {
+      char byte[3] = { 0 };
+      snprintf(&byte[0], 3, "%02x", id[i]);
+      result.append(byte);
+    }
+
+    break;
+  }
+
+  return result;
+}
+
+template <typename Arch>
 bool ElfReaderImpl<Arch>::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
   for (size_t i = 0; i < sections.size(); ++i) {
     const auto& section = sections[i];
@@ -300,6 +360,8 @@ Debuglink ElfReader::read_debuglink() { return impl().read_debuglink(); }
 SectionOffsets ElfReader::find_section_file_offsets(const char* name) {
   return impl().find_section_file_offsets(name);
 }
+
+string ElfReader::read_buildid() { return impl().read_buildid(); }
 
 bool ElfReader::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
   return impl().addr_to_offset(addr, offset);

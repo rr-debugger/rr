@@ -382,6 +382,7 @@ set(RR_SOURCES
   src/test/cpuid_loop.S
   src/AddressSpace.cc
   src/AutoRemoteSyscalls.cc
+  src/BuildidCommand.cc
   src/Command.cc
   src/CompressedReader.cc
   src/CompressedWriter.cc

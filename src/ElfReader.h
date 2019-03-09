@@ -17,6 +17,10 @@ class ElfReaderImplBase;
 
 class SymbolTable {
 public:
+  const char* name(size_t i) const {
+    size_t offset = symbols[i].name_index;
+    return offset < strtab.size() ? &strtab[offset] : nullptr;
+  }
   bool is_name(size_t i, const char* name) const {
     size_t offset = symbols[i].name_index;
     return offset < strtab.size() && strcmp(&strtab[offset], name) == 0;
@@ -82,13 +86,13 @@ public:
   SymbolTable read_symbols(const char* symtab, const char* strtab);
   DynamicSection read_dynamic();
   Debuglink read_debuglink();
+  std::string read_buildid();
   // Returns true and sets file |offset| if ELF address |addr| is mapped from
   // a section in the ELF file.  Returns false if no section maps to
   // |addr|.  |addr| is an address indicated by the ELF file, not its
   // relocated address in memory.
   bool addr_to_offset(uintptr_t addr, uintptr_t& offset);
   SectionOffsets find_section_file_offsets(const char* name);
-
 private:
   ElfReaderImplBase& impl();
   std::unique_ptr<ElfReaderImplBase> impl_;
