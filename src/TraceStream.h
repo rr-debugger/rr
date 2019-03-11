@@ -67,8 +67,6 @@ public:
   int bound_to_cpu() const { return bind_to_cpu; }
   void set_bound_cpu(int bound) { bind_to_cpu = bound; }
 
-  TicksSemantics ticks_semantics() const { return ticks_semantics_; }
-
   /**
    * Return the current "global time" (event count) for this
    * trace.
@@ -128,8 +126,6 @@ protected:
   string trace_dir;
   // CPU core# that the tracees are bound to
   int32_t bind_to_cpu;
-
-  TicksSemantics ticks_semantics_;
 
   // Arbitrary notion of trace time, ticked on the recording of
   // each event (trace frame).
@@ -248,6 +244,8 @@ public:
    */
   void make_latest_trace();
 
+  TicksSemantics ticks_semantics() const { return ticks_semantics_; }
+
 private:
   bool try_hardlink_file(const std::string& file_name, std::string* new_name);
   bool try_clone_file(RecordTask* t, const std::string& file_name,
@@ -267,6 +265,7 @@ private:
    */
   std::map<std::pair<dev_t, ino_t>, std::string> files_assumed_immutable;
   std::vector<RawDataMetadata> raw_recs;
+  TicksSemantics ticks_semantics_;
   // Keep the 'incomplete' (later renamed to 'version') file open until we
   // rename it, so our flock() lock stays held on it.
   ScopedFd version_fd;
@@ -380,6 +379,8 @@ public:
   bool uses_cpuid_faulting() const { return trace_uses_cpuid_faulting; }
   uint64_t xcr0() const;
 
+  TicksSemantics ticks_semantics() const { return ticks_semantics_; }
+
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
   const CompressedReader& reader(Substream s) const { return *readers[s]; }
@@ -388,6 +389,7 @@ private:
   std::unique_ptr<CompressedReader> readers[SUBSTREAM_COUNT];
   std::vector<CPUIDRecord> cpuid_records_;
   std::vector<RawDataMetadata> raw_recs;
+  TicksSemantics ticks_semantics_;
   bool trace_uses_cpuid_faulting;
 };
 

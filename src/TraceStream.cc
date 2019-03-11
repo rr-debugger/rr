@@ -190,7 +190,6 @@ private:
 
 TraceStream::TraceStream(const string& trace_dir, FrameTime initial_time)
     : trace_dir(real_path(trace_dir))
-    , ticks_semantics_(PerfCounters::default_ticks_semantics())
     , global_time(initial_time)
    {}
 
@@ -1170,6 +1169,7 @@ TraceWriter::TraceWriter(const std::string& file_name,
                   // Somewhat arbitrarily start the
                   // global time from 1.
                   1),
+      ticks_semantics_(ticks_semantics_),
       mmap_count(0),
       supports_file_data_cloning_(false) {
   this->ticks_semantics_ = ticks_semantics_;
