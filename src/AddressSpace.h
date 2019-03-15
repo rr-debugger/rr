@@ -760,6 +760,11 @@ public:
    */
   void ensure_replay_matches_single_recorded_mapping(Task* t, MemoryRange range);
 
+  /**
+   * Print process maps.
+   */
+  static void print_process_maps(Task* t);
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;

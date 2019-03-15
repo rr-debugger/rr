@@ -4642,13 +4642,17 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
     off64_t nbytes = min(end, (off64_t)km.size());
-    if (adjusted_size) {
+    ssize_t nread = t->record_remote_fallible(addr, nbytes);
+    if (!adjusted_size && nread != nbytes) {
       // If we adjusted the size, we're not guaranteed that the bytes we're
       // reading are actually valid (it could actually have been a zero-sized
-      // file), so use the fallible variant.
-      t->record_remote_fallible(addr, nbytes);
-    } else {
-      t->record_remote(addr, nbytes);
+      // file).
+      auto st2 = t->stat_fd(fd);
+      AddressSpace::print_process_maps(t);
+      ASSERT(t, false) << "Failed to read expected mapped data at " << km
+          << "; expected " << nbytes << " bytes, got " << nread << " bytes,"
+          << " got file size " << st.st_size << " before and " << st2.st_size
+          << " after";
     }
 
     if ((flags & MAP_SHARED)) {

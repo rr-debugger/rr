@@ -1527,21 +1527,23 @@ void RecordTask::record_remote_writeable(remote_ptr<void> addr,
   record_remote(addr, num_bytes);
 }
 
-void RecordTask::record_remote_fallible(remote_ptr<void> addr,
-                                        ssize_t num_bytes) {
+ssize_t RecordTask::record_remote_fallible(remote_ptr<void> addr,
+                                          ssize_t num_bytes) {
   ASSERT(this, num_bytes >= 0);
 
-  if (record_remote_by_local_map(addr, num_bytes) != 0) {
-    return;
+  if (record_remote_by_local_map(addr, num_bytes)) {
+    return num_bytes;
   }
 
   vector<uint8_t> buf;
+  ssize_t nread = 0;
   if (!addr.is_null()) {
     buf.resize(num_bytes);
-    ssize_t nread = read_bytes_fallible(addr, num_bytes, buf.data());
+    nread = read_bytes_fallible(addr, num_bytes, buf.data());
     buf.resize(max<ssize_t>(0, nread));
   }
   trace_writer().write_raw(rec_tid, buf.data(), buf.size(), addr);
+  return nread;
 }
 
 void RecordTask::record_remote_even_if_null(remote_ptr<void> addr,

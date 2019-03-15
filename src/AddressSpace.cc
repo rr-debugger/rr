@@ -177,7 +177,7 @@ KernelMapping AddressSpace::read_local_kernel_mapping(uint8_t* addr) {
 /**
  * Cat the /proc/[t->tid]/maps file to stdout, line by line.
  */
-static void print_process_mmap(Task* t) {
+void AddressSpace::print_process_maps(Task* t) {
   for (KernelMapIterator it(t); !it.at_end(); ++it) {
     string line;
     it.current(&line);
@@ -1265,7 +1265,7 @@ static void assert_segments_match(Task* t, const KernelMapping& input_m,
     LOG(error) << "cached mmap:";
     t->vm()->dump();
     LOG(error) << "/proc/" << t->tid << "/mmaps:";
-    print_process_mmap(t);
+    AddressSpace::print_process_maps(t);
     ASSERT(t, false) << "\nCached mapping " << m << " should be " << km << "; "
                      << err;
   }
