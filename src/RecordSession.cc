@@ -1804,7 +1804,7 @@ static string lookup_by_path(const string& name) {
     const DisableCPUIDFeatures& disable_cpuid_features,
     SyscallBuffering syscallbuf, BindCPU bind_cpu,
     const string& output_trace_dir,
-    const uint8_t* trace_id) {
+    const TraceUuid* trace_id) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -1907,9 +1907,10 @@ RecordSession::RecordSession(const std::string& exe_path,
                              const DisableCPUIDFeatures& disable_cpuid_features,
                              SyscallBuffering syscallbuf, BindCPU bind_cpu,
                              const string& output_trace_dir,
-                             const uint8_t* trace_id)
+                             const TraceUuid* trace_id)
     : trace_out(argv[0], choose_cpu(bind_cpu), output_trace_dir, ticks_semantics_),
       scheduler_(*this),
+      trace_id(trace_id),
       disable_cpuid_features_(disable_cpuid_features),
       ignore_sig(0),
       continue_through_sig(0),
@@ -1931,8 +1932,8 @@ RecordSession::RecordSession(const std::string& exe_path,
       Task::spawn(*this, error_fd, &tracee_socket_fd(), 
                   &tracee_socket_fd_number, trace_out,
                   exe_path, argv, envp));
-
-  trace_writer().write_header(has_cpuid_faulting(), disable_cpuid_features, trace_id);
+  // CPU affinity has been set.
+  trace_out.setup_cpuid_records(has_cpuid_faulting(), disable_cpuid_features_);
 
   initial_thread_group = t->thread_group();
   on_create(t);
@@ -2074,8 +2075,11 @@ void RecordSession::terminate_recording() {
   // This will write unstable exit events for all tasks.
   kill_all_tasks();
   t = nullptr; // t is now deallocated
+  close_trace_writer(TraceWriter::CLOSE_OK);
+}
 
-  trace_out.close();
+void RecordSession::close_trace_writer(TraceWriter::CloseStatus status) {
+  trace_out.close(status, trace_id.get());
 }
 
 Task* RecordSession::new_task(pid_t tid, pid_t, uint32_t serial,

@@ -1105,19 +1105,6 @@ bool TraceReader::read_raw_data_metadata_for_frame(RawDataMetadata& d) {
   return true;
 }
 
-void TraceWriter::close() {
-  for (auto& w : writers) {
-    w->close();
-  }
-
-  string incomplete_path = incomplete_version_path();
-  string path = version_path();
-  if (rename(incomplete_path.c_str(), path.c_str()) < 0) {
-    FATAL() << "Unable to create version file " << path;
-  }
-  version_fd.close();
-}
-
 static string make_trace_dir(const string& exe_path, const string& output_trace_dir) {
   if (!output_trace_dir.empty()) {
     // save trace dir in given output trace dir with option -o
@@ -1171,7 +1158,7 @@ TraceWriter::TraceWriter(const std::string& file_name,
                   1),
       ticks_semantics_(ticks_semantics_),
       mmap_count(0),
-      supports_file_data_cloning_(false) {
+      has_cpuid_faulting_(false) {
   this->ticks_semantics_ = ticks_semantics_;
   this->bind_to_cpu = bind_to_cpu;
 
@@ -1179,11 +1166,7 @@ TraceWriter::TraceWriter(const std::string& file_name,
     writers[s] = unique_ptr<CompressedWriter>(new CompressedWriter(
         path(s), substream(s).block_size, substream(s).threads));
   }
-}
 
-void TraceWriter::write_header(bool has_cpuid_faulting,
-                               const DisableCPUIDFeatures& disable_cpuid_features,
-                               const uint8_t* uuid) {
   string ver_path = incomplete_version_path();
   version_fd = ScopedFd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
   if (!version_fd.is_open()) {
@@ -1195,45 +1178,8 @@ void TraceWriter::write_header(bool has_cpuid_faulting,
     FATAL() << "Unable to lock " << ver_path;
   }
   static const char buf[] = STR(TRACE_VERSION) "\n";
-  if (write(version_fd, buf, sizeof(buf) - 1) != (ssize_t)sizeof(buf) - 1) {
-    FATAL() << "Unable to write " << ver_path;
-  }
-
-  // We are now bound to the selected CPU (if any), so collect CPUID records
-  // (which depend on the bound CPU number).
-  vector<CPUIDRecord> cpuid_records = all_cpuid_records();
-  // Modify the recorded cpuid data only if cpuid faulting is available. If it
-  // is not available, the tracee will see unmodified data and should also see
-  // that in handle_unrecorded_cpuid_fault (which is sourced from this data).
-  if (has_cpuid_faulting) {
-    for (auto& r : cpuid_records) {
-      disable_cpuid_features.amend_cpuid_data(r.eax_in, r.ecx_in, &r.out);
-    }
-  }
-
-  MallocMessageBuilder header_msg;
-  trace::Header::Builder header = header_msg.initRoot<trace::Header>();
-  header.setBindToCpu(this->bind_to_cpu);
-  header.setHasCpuidFaulting(has_cpuid_faulting);
-  header.setCpuidRecords(
-      Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
-                   cpuid_records.size() * sizeof(CPUIDRecord)));
-  header.setXcr0(xcr0());
-  header.setTicksSemantics(
-    to_trace_ticks_semantics(PerfCounters::default_ticks_semantics()));
-  header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
-  // Add a random UUID to the trace metadata. This lets tools identify a trace
-  // easily.
-  if (!uuid) {
-    uint8_t uuid[16];
-    good_random(uuid, sizeof(uuid));
-    header.setUuid(Data::Reader(uuid, sizeof(uuid)));
-  } else {
-    header.setUuid(Data::Reader(uuid, 16));
-  }
-  try {
-    writePackedMessageToFd(version_fd, header_msg);
-  } catch (...) {
+  size_t buf_len = sizeof(buf) - 1;
+  if (write(version_fd, buf, buf_len) != (ssize_t)buf_len) {
     FATAL() << "Unable to write " << ver_path;
   }
 
@@ -1247,11 +1193,7 @@ void TraceWriter::write_header(bool has_cpuid_faulting,
   btrfs_ioctl_clone_range_args clone_args;
   clone_args.src_fd = version_fd;
   clone_args.src_offset = 0;
-  off_t offset = lseek(version_fd, 0, SEEK_END);
-  if (offset <= 0) {
-    FATAL() << "Unable to lseek " << ver_path;
-  }
-  clone_args.src_length = offset;
+  clone_args.src_length = buf_len;
   clone_args.dest_offset = 0;
   if (ioctl(version_clone_fd, BTRFS_IOC_CLONE_RANGE, &clone_args) == 0) {
     supports_file_data_cloning_ = true;
@@ -1262,6 +1204,62 @@ void TraceWriter::write_header(bool has_cpuid_faulting,
     printf("rr: Saving execution to trace directory `%s'.\n",
            trace_dir.c_str());
   }
+}
+
+void TraceWriter::setup_cpuid_records(bool has_cpuid_faulting,
+                                      const DisableCPUIDFeatures& disable_cpuid_features) {
+  has_cpuid_faulting_ = has_cpuid_faulting;
+  // We are now bound to the selected CPU (if any), so collect CPUID records
+  // (which depend on the bound CPU number).
+  cpuid_records = all_cpuid_records();
+  // Modify the recorded cpuid data only if cpuid faulting is available. If it
+  // is not available, the tracee will see unmodified data and should also see
+  // that in handle_unrecorded_cpuid_fault (which is sourced from this data).
+  if (has_cpuid_faulting) {
+    for (auto& r : cpuid_records) {
+      disable_cpuid_features.amend_cpuid_data(r.eax_in, r.ecx_in, &r.out);
+    }
+  }
+}
+
+void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
+  for (auto& w : writers) {
+    w->close();
+  }
+
+  MallocMessageBuilder header_msg;
+  trace::Header::Builder header = header_msg.initRoot<trace::Header>();
+  header.setBindToCpu(this->bind_to_cpu);
+  header.setHasCpuidFaulting(has_cpuid_faulting_);
+  header.setCpuidRecords(
+      Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
+                   cpuid_records.size() * sizeof(CPUIDRecord)));
+  header.setXcr0(xcr0());
+  header.setTicksSemantics(
+    to_trace_ticks_semantics(PerfCounters::default_ticks_semantics()));
+  header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
+  // Add a random UUID to the trace metadata. This lets tools identify a trace
+  // easily.
+  if (!uuid) {
+    uint8_t uuid[sizeof(TraceUuid::bytes)];
+    good_random(uuid, sizeof(uuid));
+    header.setUuid(Data::Reader(uuid, sizeof(uuid)));
+  } else {
+    header.setUuid(Data::Reader(uuid->bytes, sizeof(TraceUuid::bytes)));
+  }
+  header.setOk(status == CLOSE_OK);
+  try {
+    writePackedMessageToFd(version_fd, header_msg);
+  } catch (...) {
+    FATAL() << "Unable to write " << incomplete_version_path();
+  }
+
+  string incomplete_path = incomplete_version_path();
+  string path = version_path();
+  if (rename(incomplete_path.c_str(), path.c_str()) < 0) {
+    FATAL() << "Unable to create version file " << path;
+  }
+  version_fd.close();
 }
 
 void TraceWriter::make_latest_trace() {

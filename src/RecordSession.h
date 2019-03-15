@@ -46,6 +46,10 @@ struct DisableCPUIDFeatures {
   uint32_t xsave_features_eax;
 };
 
+struct TraceUuid {
+  uint8_t bytes[16];
+};
+
 /** Encapsulates additional session state related to recording. */
 class RecordSession : public Session {
 public:
@@ -62,7 +66,7 @@ public:
       SyscallBuffering syscallbuf = ENABLE_SYSCALL_BUF,
       BindCPU bind_cpu = BIND_CPU,
       const std::string& output_trace_dir = "",
-      const uint8_t* trace_id = nullptr);
+      const TraceUuid* trace_id = nullptr);
 
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
@@ -111,6 +115,12 @@ public:
    * record_step() after this.
    */
   void terminate_recording();
+
+  /**
+   * Close trace output without flushing syscall buffers or writing
+   * task exit/termination records to the trace.
+   */
+  void close_trace_writer(TraceWriter::CloseStatus status);
 
   virtual RecordSession* as_record() override { return this; }
 
@@ -175,7 +185,7 @@ private:
                 const DisableCPUIDFeatures& features,
                 SyscallBuffering syscallbuf, BindCPU bind_cpu,
                 const std::string& output_trace_dir,
-                const uint8_t* trace_id);
+                const TraceUuid* trace_id);
 
   virtual void on_create(Task* t) override;
 
@@ -205,6 +215,7 @@ private:
   Scheduler scheduler_;
   ThreadGroup::shr_ptr initial_thread_group;
   SeccompFilterRewriter seccomp_filter_rewriter_;
+  std::unique_ptr<const TraceUuid> trace_id;
 
   DisableCPUIDFeatures disable_cpuid_features_;
   int ignore_sig;

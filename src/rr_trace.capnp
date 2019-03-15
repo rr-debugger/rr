@@ -65,6 +65,8 @@ struct Header {
   ticksSemantics @6 :TicksSemantics;
   # The syscallbuf protocol version. See SYSCALLBUF_PROTOCOL_VERSION.
   syscallbufProtocolVersion @4 :UInt16;
+  # Trace recorded OK. False if rr crashed out due to an fatal assertion etc.
+  ok @7 :Bool = true;
 }
 
 # The 'mmaps', 'tasks' and 'events' files consist of a series of chunks.

@@ -153,7 +153,7 @@ struct RecordFlags {
 
   bool setuid_sudo;
 
-  unique_ptr<uint8_t[]> trace_id;
+  unique_ptr<TraceUuid> trace_id;
 
   /* Copy preload sources to trace dir */
   bool copy_preload_src;
@@ -358,7 +358,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       uint8_t digit = 0; // This counts only hex digits (i.e. not hypens)
       uint8_t group = 0;
       uint8_t acc = 0;
-      unique_ptr<uint8_t[]> buf(new uint8_t[16]);
+      unique_ptr<TraceUuid> buf(new TraceUuid);
       auto it = opt.value.begin();
       while (it < opt.value.end()) {
         auto c = *it;
@@ -399,7 +399,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
             return false;
           }
 
-          buf[digit / 2] = acc;
+          buf->bytes[digit / 2] = acc;
         }
 
         ++digit;

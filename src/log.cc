@@ -384,7 +384,7 @@ static void emergency_debug(Task* t) {
 
   RecordSession* record_session = t->session().as_record();
   if (record_session) {
-    record_session->trace_writer().close();
+    record_session->close_trace_writer(TraceWriter::CLOSE_ERROR);
   }
   TraceStream* trace_stream = t->session().trace_stream();
   if (trace_stream) {
