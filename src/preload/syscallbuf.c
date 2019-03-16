@@ -54,7 +54,6 @@
 #include <linux/net.h>
 #include <linux/perf_event.h>
 #include <poll.h>
-#include <pthread.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -118,6 +117,10 @@ static int process_inited;
 RR_HIDDEN struct preload_globals globals;
 RR_HIDDEN char impose_syscall_delay;
 RR_HIDDEN char impose_spurious_desched;
+RR_HIDDEN int (*real_pthread_mutex_lock)(pthread_mutex_t* mutex);
+RR_HIDDEN int (*real_pthread_mutex_trylock)(pthread_mutex_t* mutex);
+RR_HIDDEN int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
+                                              const struct timespec* abstime);
 
 static struct preload_thread_locals* const thread_locals =
     (struct preload_thread_locals*)PRELOAD_THREAD_LOCALS_ADDR;
@@ -661,6 +664,10 @@ static void __attribute__((constructor)) init_process(void) {
       &_breakpoint_table_entry_end - &_breakpoint_table_entry_start;
 
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
+
+  real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
+  real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
+  real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
 
   process_inited = 1;
 }

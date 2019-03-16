@@ -16,14 +16,6 @@
 #include "preload_interface.h"
 #include "syscallbuf.h"
 
-/* Points at the libc/pthread real_pthread_mutex_timedlock().  We wrap
- * real_pthread_mutex_timedlock(), so need to retain this pointer to call
- * out to the libc version. There is no __pthread_mutex_timedlock stub to call.
- * There are some explicitly-versioned stubs but let's not use those. */
-static int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
-                                           const struct timespec* abstime);
-
-#define PTHREAD_MUTEX_TYPE_MASK 3
 #define PTHREAD_MUTEX_PRIO_INHERIT_NP 32
 
 static void fix_mutex_kind(pthread_mutex_t* mutex) {
@@ -32,11 +24,12 @@ static void fix_mutex_kind(pthread_mutex_t* mutex) {
 }
 
 /*
- * We bind directly to __pthread_mutex_lock and __pthread_mutex_trylock
- * because setting up indirect function pointers in init_process requires
- * calls to dlsym which itself can call pthread_mutex_lock (e.g. via
- * application code overriding malloc/calloc to use a pthreads-based
- * implementation).
+ * We need to able to call directly to __pthread_mutex_lock and
+ * __pthread_mutex_trylock because setting up indirect function pointers
+ * in init_process requires calls to dlsym which itself can call
+ * pthread_mutex_lock (e.g. via application code overriding malloc/calloc
+ * to use a pthreads-based implementation). So before our pointers are set
+ * up, call these.
  */
 extern int __pthread_mutex_lock(pthread_mutex_t* mutex);
 extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
@@ -46,6 +39,9 @@ extern int __pthread_mutex_trylock(pthread_mutex_t* mutex);
    are later rolled back if the transaction fails. */
 int pthread_mutex_lock(pthread_mutex_t* mutex) {
   fix_mutex_kind(mutex);
+  if (real_pthread_mutex_lock) {
+    return real_pthread_mutex_lock(mutex);
+  }
   return __pthread_mutex_lock(mutex);
 }
 
@@ -53,16 +49,16 @@ int pthread_mutex_timedlock(pthread_mutex_t* mutex,
                             const struct timespec* abstime) {
   fix_mutex_kind(mutex);
   /* No __pthread_mutex_timedlock stub exists, so we have to use the
-   * indirect call.
+   * indirect call no matter what.
    */
-  if (!real_pthread_mutex_timedlock) {
-    real_pthread_mutex_timedlock = dlsym(RTLD_NEXT, "pthread_mutex_timedlock");
-  }
   return real_pthread_mutex_timedlock(mutex, abstime);
 }
 
 int pthread_mutex_trylock(pthread_mutex_t* mutex) {
   fix_mutex_kind(mutex);
+  if (real_pthread_mutex_trylock) {
+    return real_pthread_mutex_trylock(mutex);
+  }
   return __pthread_mutex_trylock(mutex);
 }
 
