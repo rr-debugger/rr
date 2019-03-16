@@ -25,7 +25,7 @@ struct CPUIDRecord;
 struct DisableCPUIDFeatures;
 class KernelMapping;
 class RecordTask;
-class TraceUuid;
+struct TraceUuid;
 
 /**
  * TraceStream stores all the data common to both recording and
