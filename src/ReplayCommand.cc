@@ -362,12 +362,12 @@ static void serve_replay_no_debugger(const string& trace_dir,
       Session::Statistics stats = replay_session->statistics();
       fprintf(stderr,
           "[ReplayStatistics] ticks %lld syscalls %lld bytes_written %lld "
-          "microseconds %lld %%realtime %.1f%%\n",
+          "microseconds %lld %%realtime %.0f%%\n",
           (long long)(stats.ticks_processed - last_stats.ticks_processed),
           (long long)(stats.syscalls_performed - last_stats.syscalls_performed),
           (long long)(stats.bytes_written - last_stats.bytes_written),
           (long long)elapsed_usec,
-          100.0 * (double)elapsed_usec / ((rectime - last_dump_rectime) * 1.0e6)
+          100.0 * ((rectime - last_dump_rectime) * 1.0e6) / (double)elapsed_usec
         );
       last_dump_time = now;
       last_stats = stats;
