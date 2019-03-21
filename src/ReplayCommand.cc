@@ -23,8 +23,6 @@ using namespace std;
 
 namespace rr {
 
-static int DUMP_STATS_PERIOD = 0;
-
 ReplayCommand ReplayCommand::singleton(
     "replay",
     " rr replay [OPTION]... [<trace-dir>] [-- <debugger-options>]\n"
@@ -67,7 +65,8 @@ ReplayCommand ReplayCommand::singleton(
     "                             to run on the CPU stored in the trace.\n"
     "                             Note that this may diverge from the recording\n"
     "                             in some cases.\n"
-    "  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n");
+    "  -x, --gdb-x=<FILE>         execute gdb commands from <FILE>\n"
+    "  --stats=<N>                display brief stats every N steps (eg 10000).\n");
 
 struct ReplayFlags {
   // Start a debug server for the task scheduled at the first
@@ -119,6 +118,9 @@ struct ReplayFlags {
   // to test the corresponding code.
   bool share_private_mappings;
 
+  // When nonzero, display statistics every N steps.
+  uint32_t dump_interval;
+
   ReplayFlags()
       : goto_event(0),
         singlestep_to_event(0),
@@ -131,7 +133,8 @@ struct ReplayFlags {
         gdb_binary_file_path("gdb"),
         redirect(true),
         cpu_unbound(false),
-        share_private_mappings(false) {}
+        share_private_mappings(false),
+        dump_interval(0) {}
 };
 
 static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
@@ -154,6 +157,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 'x', "gdb-x", HAS_PARAMETER },
     { 0, "share-private-mappings", NO_PARAMETER },
     { 1, "fullname", NO_PARAMETER },
+    { 2, "stats", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'i', "interpreter", HAS_PARAMETER }
   };
@@ -229,6 +233,12 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
       break;
     case 1:
       flags.gdb_options.push_back("--fullname");
+      break;
+    case 2:
+      if (!opt.verify_valid_int(1, INT32_MAX)) {
+        return false;
+      }
+      flags.dump_interval = opt.int_value;
       break;
     case 'u':
       flags.cpu_unbound = true;
@@ -319,6 +329,7 @@ static void serve_replay_no_debugger(const string& trace_dir,
     ReplaySession::create(trace_dir, session_flags(flags));
   uint32_t step_count = 0;
   struct timeval last_dump_time;
+  double last_dump_rectime = 0;
   Session::Statistics last_stats;
   gettimeofday(&last_dump_time, NULL);
 
@@ -339,21 +350,28 @@ static void serve_replay_no_debugger(const string& trace_dir,
     auto result = replay_session->replay_step(cmd);
     FrameTime after_time = replay_session->trace_reader().time();
     DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
+    if (!last_dump_rectime)
+      last_dump_rectime = replay_session->trace_reader().recording_time();
 
     ++step_count;
-    if (DUMP_STATS_PERIOD > 0 && step_count % DUMP_STATS_PERIOD == 0) {
+    if (flags.dump_interval > 0 && step_count % flags.dump_interval == 0) {
       struct timeval now;
       gettimeofday(&now, NULL);
+      double rectime = replay_session->trace_reader().recording_time();
+      uint64_t elapsed_usec = to_microseconds(now) - to_microseconds(last_dump_time);
       Session::Statistics stats = replay_session->statistics();
-      printf(
+      fprintf(stderr,
           "[ReplayStatistics] ticks %lld syscalls %lld bytes_written %lld "
-          "microseconds %lld\n",
+          "microseconds %lld %%realtime %.1f%%\n",
           (long long)(stats.ticks_processed - last_stats.ticks_processed),
           (long long)(stats.syscalls_performed - last_stats.syscalls_performed),
           (long long)(stats.bytes_written - last_stats.bytes_written),
-          (long long)(to_microseconds(now) - to_microseconds(last_dump_time)));
+          (long long)elapsed_usec,
+          100.0 * (double)elapsed_usec / ((rectime - last_dump_rectime) * 1.0e6)
+        );
       last_dump_time = now;
       last_stats = stats;
+      last_dump_rectime = rectime;
     }
 
     if (result.status == REPLAY_EXITED) {
@@ -554,6 +572,11 @@ int ReplayCommand::run(vector<string>& args) {
               flags.target_process);
       return 2;
     }
+  }
+  if (flags.dump_interval > 0 && !flags.dont_launch_debugger) {
+    fprintf(stderr, "--stats requires -a\n");
+    print_help(stderr);
+    return 2;
   }
 
   assert_prerequisites();

@@ -394,6 +394,8 @@ public:
 
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
+  double recording_time() const { return monotonic_time_; }
+
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
   const CompressedReader& reader(Substream s) const { return *readers[s]; }
@@ -404,6 +406,7 @@ private:
   std::vector<RawDataMetadata> raw_recs;
   TicksSemantics ticks_semantics_;
   bool trace_uses_cpuid_faulting;
+  double monotonic_time_;
 };
 
 extern std::string trace_save_dir();
