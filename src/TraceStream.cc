@@ -525,7 +525,7 @@ TraceFrame TraceReader::read_frame() {
   if (ret.ticks_ < 0) {
     FATAL() << "Invalid ticks value";
   }
-  ret.monotonic_time_ = frame.getMonotonicSec();
+  monotonic_time_ = ret.monotonic_time_ = frame.getMonotonicSec();
 
   SupportedArch arch = from_trace_arch(frame.getArch());
   ret.recorded_regs.set_arch(arch);
