@@ -4649,10 +4649,11 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       // file).
       auto st2 = t->stat_fd(fd);
       AddressSpace::print_process_maps(t);
+      system("df -h");
       ASSERT(t, false) << "Failed to read expected mapped data at " << km
           << "; expected " << nbytes << " bytes, got " << nread << " bytes,"
           << " got file size " << st.st_size << " before and " << st2.st_size
-          << " after";
+          << " after; is filesystem full?";
     }
 
     if ((flags & MAP_SHARED)) {
