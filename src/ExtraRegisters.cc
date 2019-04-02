@@ -62,7 +62,7 @@ static bool reg_in_range(GdbRegister regno, GdbRegister low, GdbRegister high,
   return true;
 }
 
-static const int AVX_FEATURE = 2;
+static const int AVX_FEATURE_BIT = 2;
 
 static const size_t xsave_header_offset = 512;
 static const size_t xsave_header_size = 64;
@@ -117,7 +117,7 @@ static RegData xsave_register_data(SupportedArch arch, GdbRegister regno) {
 
   if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
                    16, &result)) {
-    result.xsave_feature_bit = AVX_FEATURE;
+    result.xsave_feature_bit = AVX_FEATURE_BIT;
     return result;
   }
 
@@ -197,7 +197,7 @@ void ExtraRegisters::validate(Task* t) {
     ASSERT(t, data_.size() >= offset + 64);
     offset += 64;
     uint64_t features = xsave_features(data_);
-    if (features & AVX_FEATURE) {
+    if (features & (1 << AVX_FEATURE_BIT)) {
       ASSERT(t, data_.size() >= offset + 256);
     }
   }
