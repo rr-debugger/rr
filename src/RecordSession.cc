@@ -1549,7 +1549,7 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
 bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
                                           RecordResult* step_result,
                                           SupportedArch syscall_arch) {
-  if (t->has_stashed_sig_not_synthetic_SIGCHLD()) {
+  if (const siginfo_t* si = t->stashed_sig_not_synthetic_SIGCHLD()) {
     // The only four cases where we allow a stashed signal to be pending on
     // syscall entry are:
     // -- the signal is a ptrace-related signal, in which case if it's generated
@@ -1570,7 +1570,9 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
                t->ip() ==
                    t->vm()
                        ->privileged_traced_syscall_ip()
-                       .increment_by_syscall_insn_length(t->arch()));
+                       .increment_by_syscall_insn_length(t->arch()))
+      << "Stashed signal pending on syscall entry when it shouldn't be: "
+      << *si;
   }
 
   // We just entered a syscall.

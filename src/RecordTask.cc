@@ -1285,13 +1285,13 @@ bool RecordTask::has_stashed_sig(int sig) const {
   return false;
 }
 
-bool RecordTask::has_stashed_sig_not_synthetic_SIGCHLD() const {
+const siginfo_t* RecordTask::stashed_sig_not_synthetic_SIGCHLD() const {
   for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
     if (!is_synthetic_SIGCHLD(it->siginfo)) {
-      return true;
+      return &it->siginfo;
     }
   }
-  return false;
+  return nullptr;
 }
 
 void RecordTask::pop_stash_sig(const StashedSignal* stashed) {
