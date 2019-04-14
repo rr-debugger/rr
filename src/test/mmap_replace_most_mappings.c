@@ -7,15 +7,17 @@
 #define RR_PAGE_ADDR 0x70000000
 #define RR_THREAD_LOCALS_PAGE_ADDR 0x70001000
 
-uintptr_t unmappings[1000];
-ssize_t nunmappings;
+struct Unmaps {
+  uintptr_t unmappings[1000];
+  ssize_t nunmappings;
+};
 
 int main(void);
 static int contains_symbol(map_properties_t* props, void* symbol) {
   return (props->start <= (uintptr_t)symbol && (uintptr_t)symbol < props->end);
 }
 void callback(uint64_t env, char* name, map_properties_t* props) {
-  if (contains_symbol(props, &main) || contains_symbol(props, unmappings) ||
+  if (contains_symbol(props, &main) ||
       /* env is on the stack - this prevents it from being unmapped if
          the kernel gets confused by syscallbuf's stack switching */
       contains_symbol(props, &env) || props->start == RR_PAGE_ADDR ||
@@ -23,9 +25,10 @@ void callback(uint64_t env, char* name, map_properties_t* props) {
     return;
   }
 
-  unmappings[2 * nunmappings] = (uintptr_t)props->start;
-  unmappings[2 * nunmappings + 1] = (uintptr_t)(props->end - props->start);
-  ++nunmappings;
+  struct Unmaps* u = (struct Unmaps*)(size_t)env;
+  u->unmappings[2 * u->nunmappings] = (uintptr_t)props->start;
+  u->unmappings[2 * u->nunmappings + 1] = (uintptr_t)(props->end - props->start);
+  ++u->nunmappings;
 }
 
 static __attribute__((noinline)) void breakpoint(void) {
@@ -73,10 +76,12 @@ __asm__("my_syscall:\n\t"
 int main(void) {
   FILE* maps_file = fopen("/proc/self/maps", "r");
   int i = 0;
+  struct Unmaps u;
+  u.nunmappings = 0;
   // Scan and record mappings - we can't mmap over them yet because libc will
   // be gone at some point. After iterate_maps, no C library calls are allowed
-  iterate_maps(0, callback, maps_file);
-  for (i = 0; i < nunmappings; ++i) {
+  iterate_maps((size_t)&u, callback, maps_file);
+  for (i = 0; i < u.nunmappings; ++i) {
     const int mmap_syscall =
 #ifdef __i386__
         RR_mmap2
@@ -87,7 +92,7 @@ int main(void) {
 #endif
         ;
     int ret =
-        my_syscall(mmap_syscall, unmappings[2 * i], unmappings[2 * i + 1],
+        my_syscall(mmap_syscall, u.unmappings[2 * i], u.unmappings[2 * i + 1],
                    PROT_NONE, MAP_PRIVATE | MAP_FIXED | MAP_ANONYMOUS, -1, 0);
     // We can't even use test_assert here, because it'll call strerror to printf
     // the failure
