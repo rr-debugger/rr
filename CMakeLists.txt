@@ -311,7 +311,7 @@ set(PRELOAD_SOURCE_FILES
 )
 add_library(rrpreload)
 foreach(file ${PRELOAD_FILES})
-  target_sources(rrpreload PUBLIC "src/preload/${file}")
+  target_sources(rrpreload PUBLIC "${CMAKE_SOURCE_DIR}/src/preload/${file}")
 endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles")
 
