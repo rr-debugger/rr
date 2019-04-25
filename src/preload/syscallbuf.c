@@ -1709,6 +1709,12 @@ static long sys_open(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
+  if (flags & (O_RDWR | O_WRONLY)) {
+    /* Trace writable opens because they might write to open shared mappings.
+       We can do something more complicated if this turn out to be a perf issue. */
+    return traced_raw_syscall(call);
+  }
+
   /* The strcmp()s done here are OK because we're not in the
    * critical section yet. */
   if (!allow_buffered_open(pathname)) {
@@ -1739,6 +1745,12 @@ static long sys_openat(const struct syscall_info* call) {
   long ret;
 
   assert(syscallno == call->no);
+
+  if (flags & (O_RDWR | O_WRONLY)) {
+    /* Trace writable opens because they might write to open shared mappings.
+       We can do something more complicated if this turn out to be a perf issue. */
+    return traced_raw_syscall(call);
+  }
 
   /* The strcmp()s done here are OK because we're not in the
    * critical section yet.
