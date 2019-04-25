@@ -13,7 +13,6 @@ namespace rr {
 
 MmappedFileMonitor::MmappedFileMonitor(Task* t, int fd) {
   ASSERT(t, !t->session().is_replaying());
-  extant_ = true;
   dead_ = false;
   auto stat = t->stat_fd(fd);
   device_ = stat.st_dev;
@@ -23,13 +22,7 @@ MmappedFileMonitor::MmappedFileMonitor(Task* t, int fd) {
 MmappedFileMonitor::MmappedFileMonitor(Task* t, EmuFile::shr_ptr f) {
   ASSERT(t, t->session().is_replaying());
 
-  extant_ = !!f;
   dead_ = false;
-  if (!extant_) {
-    // Our only role is to disable syscall buffering for this fd.
-    return;
-  }
-
   device_ = f->device();
   inode_ = f->inode();
 }
@@ -43,7 +36,7 @@ void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
     return;
   }
 
-  if (!extant_ || ranges.empty()) {
+  if (ranges.empty()) {
     return;
   }
 
