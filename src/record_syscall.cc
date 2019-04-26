@@ -4712,7 +4712,9 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   if (flags & MAP_SHARED) {
     monitor_this_fd = monitor_fd_for_mapping(t, fd, st, extra_fds);
   }
-  if (t->trace_writer().write_mapped_region(t, km, st, extra_fds) ==
+  if (t->trace_writer().write_mapped_region(t, km, st, extra_fds,
+                                            TraceWriter::SYSCALL_MAPPING,
+                                            !monitor_this_fd) ==
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
     off64_t nbytes = min(end, (off64_t)km.size());

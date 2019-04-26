@@ -199,7 +199,8 @@ public:
   RecordInTrace write_mapped_region(RecordTask* t, const KernelMapping& map,
                                     const struct stat& stat,
                                     const std::vector<TraceRemoteFd>& extra_fds,
-                                    MappingOrigin origin = SYSCALL_MAPPING);
+                                    MappingOrigin origin = SYSCALL_MAPPING,
+                                    bool skip_monitoring_mapped_fd = false);
 
   static void write_mapped_region_to_alternative_stream(
       CompressedWriter& mmaps, const MappedData& data, const KernelMapping& km);
@@ -325,7 +326,8 @@ public:
       MappedData* data = nullptr, bool* found = nullptr,
       ValidateSourceFile validate = VALIDATE,
       TimeConstraint time_constraint = CURRENT_TIME_ONLY,
-      std::vector<TraceRemoteFd>* extra_fds = nullptr);
+      std::vector<TraceRemoteFd>* extra_fds = nullptr,
+      bool* skip_monitoring_mapped_fd = nullptr);
 
   /**
    * Read a task event (clone or exec record) from the trace.

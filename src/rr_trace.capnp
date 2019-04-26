@@ -115,6 +115,8 @@ struct MMap {
   # File descriptors pointing to this mapping, other than the one
   # that was mapped (for non-anonymous mappings).
   extraFds @17 :List(RemoteFd);
+  # True if the mapped fd was read-only and should not be monitored
+  skipMonitoringMappedFd @18 :Bool;
 }
 
 # The 'tasks' file is a sequence of these.

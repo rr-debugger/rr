@@ -859,8 +859,10 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
     } else {
       TraceReader::MappedData data;
       vector<TraceRemoteFd> extra_fds;
+      bool skip_monitoring_mapped_fd;
       KernelMapping km = t->trace_reader().read_mapped_region(&data, nullptr,
-        TraceReader::VALIDATE, TraceReader::CURRENT_TIME_ONLY, &extra_fds);
+        TraceReader::VALIDATE, TraceReader::CURRENT_TIME_ONLY, &extra_fds,
+        &skip_monitoring_mapped_fd);
 
       if (data.source == TraceReader::SOURCE_FILE &&
           data.file_size_bytes > data.data_offset_bytes) {
@@ -883,7 +885,9 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
       }
       if (length > 0) {
         if (MAP_SHARED & flags) {
-          extra_fds.push_back({ t->rec_tid, fd });
+          if (!skip_monitoring_mapped_fd) {
+            extra_fds.push_back({ t->rec_tid, fd });
+          }
           finish_shared_mmap(t, remote, addr, length, prot, flags, extra_fds,
                               offset_pages, km, data);
         } else {

@@ -840,7 +840,8 @@ static bool starts_with(const string& s, const string& with) {
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     RecordTask* t, const KernelMapping& km, const struct stat& stat,
-    const vector<TraceRemoteFd>& extra_fds, MappingOrigin origin) {
+    const vector<TraceRemoteFd>& extra_fds, MappingOrigin origin,
+    bool skip_monitoring_mapped_fd) {
   MallocMessageBuilder map_msg;
   trace::MMap::Builder map = map_msg.initRoot<trace::MMap>();
   map.setFrameTime(global_time);
@@ -864,6 +865,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     e.setTid(r.tid);
     e.setFd(r.fd);
   }
+  map.setSkipMonitoringMappedFd(skip_monitoring_mapped_fd);
   auto src = map.getSource();
   string backing_file_name;
 
@@ -981,7 +983,8 @@ void TraceWriter::write_mapped_region_to_alternative_stream(
 KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
                                               ValidateSourceFile validate,
                                               TimeConstraint time_constraint,
-                                              vector<TraceRemoteFd>* extra_fds) {
+                                              vector<TraceRemoteFd>* extra_fds,
+                                              bool* skip_monitoring_mapped_fd) {
   if (found) {
     *found = false;
   }
@@ -1018,6 +1021,9 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
         const auto& f = fds[i];
         extra_fds->push_back({ f.getTid(), f.getFd() });
       }
+    }
+    if (skip_monitoring_mapped_fd) {
+      *skip_monitoring_mapped_fd = map.getSkipMonitoringMappedFd();
     }
     auto src = map.getSource();
     switch (src.which()) {
