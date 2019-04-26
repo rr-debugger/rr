@@ -19,10 +19,11 @@ using namespace std;
 
 namespace rr {
 
-void FdTable::add_monitor(int fd, FileMonitor* monitor) {
+void FdTable::add_monitor(Task* t, int fd, FileMonitor* monitor) {
   // In the future we could support multiple monitors on an fd, but we don't
   // need to yet.
-  DEBUG_ASSERT(!is_monitoring(fd));
+  ASSERT(t, !is_monitoring(fd)) << "Task " << t->rec_tid << " already monitoring fd " << fd
+    << " with monitor type " << get_monitor(fd)->type();
   if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE && fds.count(fd) == 0) {
     fd_count_beyond_limit++;
   }
@@ -116,7 +117,7 @@ void FdTable::did_close(int fd) {
 FileMonitor* FdTable::get_monitor(int fd) {
   auto it = fds.find(fd);
   if (it == fds.end()) {
-    return NULL;
+    return nullptr;
   }
   return it->second.get();
 }

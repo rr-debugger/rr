@@ -2429,12 +2429,12 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
   return child;
 }
 
-static void setup_fd_table(FdTable& fds, int tracee_socket_fd_number) {
-  fds.add_monitor(STDOUT_FILENO, new StdioMonitor(STDOUT_FILENO));
-  fds.add_monitor(STDERR_FILENO, new StdioMonitor(STDERR_FILENO));
-  fds.add_monitor(RR_MAGIC_SAVE_DATA_FD, new MagicSaveDataMonitor());
-  fds.add_monitor(RR_RESERVED_ROOT_DIR_FD, new PreserveFileMonitor());
-  fds.add_monitor(tracee_socket_fd_number, new PreserveFileMonitor());
+static void setup_fd_table(Task* t, FdTable& fds, int tracee_socket_fd_number) {
+  fds.add_monitor(t, STDOUT_FILENO, new StdioMonitor(STDOUT_FILENO));
+  fds.add_monitor(t, STDERR_FILENO, new StdioMonitor(STDERR_FILENO));
+  fds.add_monitor(t, RR_MAGIC_SAVE_DATA_FD, new MagicSaveDataMonitor());
+  fds.add_monitor(t, RR_RESERVED_ROOT_DIR_FD, new PreserveFileMonitor());
+  fds.add_monitor(t, tracee_socket_fd_number, new PreserveFileMonitor());
 }
 
 // Returns true if we succeeded, false if we failed because the
@@ -2772,7 +2772,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   auto as = session.create_vm(t);
   t->as.swap(as);
   t->fds = FdTable::create(t);
-  setup_fd_table(*t->fds, fd_number);
+  setup_fd_table(t, *t->fds, fd_number);
 
   // Install signal handler here, so that when creating the first RecordTask
   // it sees the exact same signal state in the parent as will be in the child.

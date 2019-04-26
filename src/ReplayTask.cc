@@ -38,7 +38,7 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
     init_syscall_buffer(remote, map_hint);
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
-    fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
+    fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
 
     // Skip mmap record. It exists mainly to inform non-replay code
     // (e.g. RemixModule) that this memory will be mapped.
@@ -58,7 +58,7 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
         ASSERT(this, ret == cloned_file_data_fd_child);
         remote.infallible_syscall(syscall_number_for_close(arch()), fd);
       }
-      fds->add_monitor(cloned_file_data_fd_child, new PreserveFileMonitor());
+      fds->add_monitor(this, cloned_file_data_fd_child, new PreserveFileMonitor());
     }
   }
 

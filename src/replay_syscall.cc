@@ -836,7 +836,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                  FileMonitor::Type::Mmapped);
       ((MmappedFileMonitor*)rt->fd_table()->get_monitor(fd.fd))->revive();
     } else {
-      rt->fd_table()->add_monitor(fd.fd, new MmappedFileMonitor(rt, emufile));
+      rt->fd_table()->add_monitor(rt, fd.fd, new MmappedFileMonitor(rt, emufile));
     }
   }
 }
@@ -1190,7 +1190,7 @@ static void handle_opened_files(ReplayTask* t) {
     } else {
       ASSERT(t, false) << "Why did we write filename " << o.path;
     }
-    t->fd_table()->add_monitor(o.fd, file_monitor);
+    t->fd_table()->add_monitor(t, o.fd, file_monitor);
   }
 }
 
@@ -1362,7 +1362,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
         auto attr =
             t->read_mem(remote_ptr<struct perf_event_attr>(trace_regs.arg1()));
         if (VirtualPerfCounterMonitor::should_virtualize(attr)) {
-          t->fd_table()->add_monitor(
+          t->fd_table()->add_monitor(t,
               fd, new VirtualPerfCounterMonitor(t, target, attr));
         }
       }

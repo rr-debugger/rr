@@ -462,7 +462,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     args.syscallbuf_ptr = syscallbuf_child;
     desched_fd_child = args.desched_counter_fd;
     // Prevent the child from closing this fd
-    fds->add_monitor(desched_fd_child, new PreserveFileMonitor());
+    fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
     desched_fd = remote.retrieve_fd(desched_fd_child);
 
     auto record_in_trace = trace_writer().write_mapped_region(
@@ -491,7 +491,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
           // Prevent the child from closing this fd. We're going to close it
           // ourselves and we don't want the child closing it and then reopening
           // its own file with this fd.
-          fds->add_monitor(cloned_file_data_fd_child,
+          fds->add_monitor(this, cloned_file_data_fd_child,
                            new PreserveFileMonitor());
           remote.infallible_syscall(syscall_number_for_close(arch()),
                                     cloned_file_data);

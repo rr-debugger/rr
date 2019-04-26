@@ -4745,7 +4745,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                     FileMonitor::Type::Mmapped);
         ((MmappedFileMonitor*)rt->fd_table()->get_monitor(f.fd))->revive();
       } else {
-        rt->fd_table()->add_monitor(f.fd, new MmappedFileMonitor(rt, f.fd));
+        rt->fd_table()->add_monitor(rt, f.fd, new MmappedFileMonitor(rt, f.fd));
       }
     }
   }
@@ -5002,7 +5002,7 @@ static void handle_opened_file(RecordTask* t, int fd) {
     // Write absolute file name
     auto& syscall = t->ev().Syscall();
     syscall.opened.push_back({ pathname, fd, st.st_dev, st.st_ino });
-    t->fd_table()->add_monitor(fd, file_monitor);
+    t->fd_table()->add_monitor(t, fd, file_monitor);
   }
 }
 
@@ -5236,7 +5236,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         t->set_regs(r);
         auto attr =
             t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().arg1()));
-        t->fd_table()->add_monitor(
+        t->fd_table()->add_monitor(t,
             fd, new VirtualPerfCounterMonitor(
                     t, t->session().find_task((pid_t)t->regs().arg2_signed()),
                     attr));
