@@ -22,8 +22,8 @@ namespace rr {
 void FdTable::add_monitor(Task* t, int fd, FileMonitor* monitor) {
   // In the future we could support multiple monitors on an fd, but we don't
   // need to yet.
-  ASSERT(t, !is_monitoring(fd)) << "Task " << t->rec_tid << " already monitoring fd " << fd
-    << " with monitor type " << get_monitor(fd)->type();
+  ASSERT(t, !is_monitoring(fd)) << "Task " << t->rec_tid
+    << " already monitoring fd " << fd;
   if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE && fds.count(fd) == 0) {
     fd_count_beyond_limit++;
   }
