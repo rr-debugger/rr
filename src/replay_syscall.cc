@@ -789,7 +789,7 @@ static void finish_private_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
 
 static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                remote_ptr<void> rec_addr, size_t length,
-                               int prot, int flags, int fd,
+                               int prot, int flags, const vector<TraceRemoteFd>& fds,
                                off64_t offset_pages,
                                const KernelMapping& km,
                                TraceReader::MappedData& data) {
@@ -823,18 +823,20 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                emufile);
 
   write_mapped_data(t, rec_addr, km.size(), data);
+
   LOG(debug) << "  restored " << length << " bytes at "
              << HEX(offset_bytes) << " to " << emufile->real_path() << " for "
              << emufile->emu_path();
-
-  if (fd >= 0) {
-    if (t->fd_table()->is_monitoring(fd)) {
-      ASSERT(t,
-             t->fd_table()->get_monitor(fd)->type() ==
+  for (auto fd : fds) {
+    auto rt = t->session().find_task(fd.tid);
+    ASSERT(t, rt) << "Can't find task " << fd.tid;
+    if (rt->fd_table()->is_monitoring(fd.fd)) {
+      ASSERT(rt,
+             rt->fd_table()->get_monitor(fd.fd)->type() ==
                  FileMonitor::Type::Mmapped);
-      ((MmappedFileMonitor*)t->fd_table()->get_monitor(fd))->revive();
+      ((MmappedFileMonitor*)rt->fd_table()->get_monitor(fd.fd))->revive();
     } else {
-      t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, emufile));
+      rt->fd_table()->add_monitor(fd.fd, new MmappedFileMonitor(rt, emufile));
     }
   }
 }
@@ -856,7 +858,9 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                             length, prot, flags, NOTE_TASK_MAP);
     } else {
       TraceReader::MappedData data;
-      KernelMapping km = t->trace_reader().read_mapped_region(&data);
+      vector<TraceRemoteFd> extra_fds;
+      KernelMapping km = t->trace_reader().read_mapped_region(&data, nullptr,
+        TraceReader::VALIDATE, TraceReader::CURRENT_TIME_ONLY, &extra_fds);
 
       if (data.source == TraceReader::SOURCE_FILE &&
           data.file_size_bytes > data.data_offset_bytes) {
@@ -878,11 +882,13 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         km = km.subrange(km_sub.end(), km.end());
       }
       if (length > 0) {
-        if (!(MAP_SHARED & flags)) {
-          finish_private_mmap(t, remote, addr, length, prot, flags,
+        if (MAP_SHARED & flags) {
+          extra_fds.push_back({ t->rec_tid, fd });
+          finish_shared_mmap(t, remote, addr, length, prot, flags, extra_fds,
                               offset_pages, km, data);
         } else {
-          finish_shared_mmap(t, remote, addr, length, prot, flags, fd,
+          ASSERT(t, extra_fds.empty());
+          finish_private_mmap(t, remote, addr, length, prot, flags,
                               offset_pages, km, data);
         }
       }
@@ -1018,8 +1024,8 @@ static void process_shmat(ReplayTask* t, const TraceFrame& trace_frame,
     KernelMapping km = t->trace_reader().read_mapped_region(&data);
     int prot = shm_flags_to_mmap_prot(shm_flags);
     int flags = MAP_SHARED;
-    finish_shared_mmap(t, remote, km.start(), km.size(), prot, flags, -1, 0,
-                       km, data);
+    finish_shared_mmap(t, remote, km.start(), km.size(), prot, flags,
+                       vector<TraceRemoteFd>(), 0, km, data);
     t->vm()->set_shm_size(km.start(), km.size());
 
     // Finally, we finish by emulating the return value.
@@ -1170,16 +1176,21 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
 static void handle_opened_files(ReplayTask* t) {
   const auto& opened = t->current_trace_frame().event().Syscall().opened;
   for (const auto& o : opened) {
-    // This must be kept in sync with replay_syscall's handle_opened_file.
-    if (o.path == "terminal") {
-      t->fd_table()->add_monitor(o.fd, new StdioMonitor(STDERR_FILENO));
+    // This must be kept in sync with record_syscall's handle_opened_file.
+    EmuFile::shr_ptr emu_file = t->session().emufs().find(o.device, o.inode);
+    FileMonitor* file_monitor = nullptr;
+    if (emu_file) {
+      file_monitor = new MmappedFileMonitor(t, emu_file);
+    } else if (o.path == "terminal") {
+      file_monitor = new StdioMonitor(STDERR_FILENO);
     } else if (is_proc_mem_file(o.path.c_str())) {
-      t->fd_table()->add_monitor(o.fd, new ProcMemMonitor(t, o.path));
+      file_monitor = new ProcMemMonitor(t, o.path);
     } else if (is_proc_fd_dir(o.path.c_str())) {
-      t->fd_table()->add_monitor(o.fd, new ProcFdDirMonitor(t, o.path));
+      file_monitor = new ProcFdDirMonitor(t, o.path);
     } else {
       ASSERT(t, false) << "Why did we write filename " << o.path;
     }
+    t->fd_table()->add_monitor(o.fd, file_monitor);
   }
 }
 

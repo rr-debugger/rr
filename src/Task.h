@@ -178,6 +178,10 @@ public:
    */
   struct stat stat_fd(int fd);
   /**
+   * Lstat |fd| in the context of this task's fd table.
+   */
+  struct stat lstat_fd(int fd);
+  /**
    * Open |fd| in the context of this task's fd table.
    */
   ScopedFd open_fd(int fd, int flags);

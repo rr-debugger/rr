@@ -69,6 +69,12 @@ struct Header {
   ok @7 :Bool = true;
 }
 
+# A file descriptor belonging to a task
+struct RemoteFd {
+  tid @0 :Tid;
+  fd @1 :Int32;
+}
+
 # The 'mmaps', 'tasks' and 'events' files consist of a series of chunks.
 # Each chunk starts with a header of two 32-bit words: the size of the
 # uncompressed data, and the size of the Brotli-compressed data. The
@@ -106,6 +112,9 @@ struct MMap {
       backingFileName @16 :Path;
     }
   }
+  # File descriptors pointing to this mapping, other than the one
+  # that was mapped (for non-anonymous mappings).
+  extraFds @17 :List(RemoteFd);
 }
 
 # The 'tasks' file is a sequence of these.
@@ -186,6 +195,10 @@ struct OpenedFd {
   # Absolute pathname, or "terminal" if we opened the terminal in some way
   # Not a Path since it is only meaningful during recording
   path @1 :CString;
+  # These are used to associate an opened fd with the right mapped file.
+  # May be zero for legacy recordings!
+  device @2 :Device;
+  inode @3 :Inode;
 }
 
 # The 'events' file is a sequence of these.

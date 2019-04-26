@@ -160,6 +160,13 @@ private:
   // The kernel's name for the mapping, as per /proc/<pid>/maps. This must
   // be exactly correct.
   const std::string fsname_;
+  // Note that btrfs has weird behavior and /proc/.../maps can show a different
+  // device number to the device from stat()ing the file that was mapped.
+  // https://www.mail-archive.com/linux-btrfs@vger.kernel.org/msg57667.html
+  // We store here the device number obtained from fstat()ing the file.
+  // This also seems to be consistent with what we read from populate_address_space
+  // for the initial post-exec mappings. It is NOT consistent with what we get
+  // from reading /proc/.../maps for non-initial mappings.
   dev_t device_;
   ino_t inode_;
   const int prot_;

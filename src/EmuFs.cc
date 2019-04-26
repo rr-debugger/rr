@@ -151,6 +151,15 @@ EmuFile::shr_ptr EmuFs::get_or_create(const KernelMapping& recorded_km) {
   return vf;
 }
 
+EmuFile::shr_ptr EmuFs::find(dev_t device, ino_t inode) {
+  FileId id(device, inode);
+  auto it = files.find(id);
+  if (it == files.end()) {
+    return EmuFile::shr_ptr();
+  }
+  return it->second.lock();
+}
+
 void EmuFs::log() const {
   LOG(error) << "EmuFs " << this << " with " << files.size() << " files:";
   for (auto& kv : files) {

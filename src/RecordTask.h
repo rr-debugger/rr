@@ -362,7 +362,7 @@ public:
   ssize_t record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes);
   // Record as much as we can of the bytes in this range. Will record only
   // contiguous mapped-writable data starting at `addr`.
-  void record_remote_writeable(remote_ptr<void> addr, ssize_t num_bytes);
+  void record_remote_writable(remote_ptr<void> addr, ssize_t num_bytes);
 
   // Simple helper that attempts to use the local mapping to record if one
   // exists

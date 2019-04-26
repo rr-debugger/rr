@@ -481,6 +481,8 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
           auto opened = e.opened[i];
           o.setFd(opened.fd);
           o.setPath(str_to_data(opened.path));
+          o.setDevice(opened.device);
+          o.setInode(opened.inode);
         }
       }
       break;
@@ -617,8 +619,12 @@ TraceFrame TraceReader::read_frame() {
           auto open = data.getOpenedFds();
           syscall_ev.opened.resize(open.size());
           for (size_t i = 0; i < open.size(); ++i) {
-            syscall_ev.opened[i].fd = check_fd(open[i].getFd());
-            syscall_ev.opened[i].path = data_to_str(open[i].getPath());
+            auto& opened = syscall_ev.opened[i];
+            const auto& o = open[i];
+            opened.fd = check_fd(o.getFd());
+            opened.path = data_to_str(o.getPath());
+            opened.device = o.getDevice();
+            opened.inode = o.getInode();
           }
           break;
         }
@@ -834,7 +840,7 @@ static bool starts_with(const string& s, const string& with) {
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     RecordTask* t, const KernelMapping& km, const struct stat& stat,
-    MappingOrigin origin) {
+    const vector<TraceRemoteFd>& extra_fds, MappingOrigin origin) {
   MallocMessageBuilder map_msg;
   trace::MMap::Builder map = map_msg.initRoot<trace::MMap>();
   map.setFrameTime(global_time);
@@ -851,6 +857,13 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   map.setStatGid(stat.st_gid);
   map.setStatSize(stat.st_size);
   map.setStatMTime(stat.st_mtime);
+  auto fds = map.initExtraFds(extra_fds.size());
+  for (size_t i = 0; i < extra_fds.size(); ++i) {
+    auto e = fds[i];
+    auto& r = extra_fds[i];
+    e.setTid(r.tid);
+    e.setFd(r.fd);
+  }
   auto src = map.getSource();
   string backing_file_name;
 
@@ -967,7 +980,8 @@ void TraceWriter::write_mapped_region_to_alternative_stream(
 
 KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
                                               ValidateSourceFile validate,
-                                              TimeConstraint time_constraint) {
+                                              TimeConstraint time_constraint,
+                                              vector<TraceRemoteFd>* extra_fds) {
   if (found) {
     *found = false;
   }
@@ -998,6 +1012,13 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
     }
     data->data_offset_bytes = 0;
     data->file_size_bytes = map.getStatSize();
+    if (extra_fds) {
+      const auto& fds = map.getExtraFds();
+      for (size_t i = 0; i < fds.size(); ++i) {
+        const auto& f = fds[i];
+        extra_fds->push_back({ f.getTid(), f.getFd() });
+      }
+    }
     auto src = map.getSource();
     switch (src.which()) {
       case trace::MMap::Source::Which::ZERO:

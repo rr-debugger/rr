@@ -133,6 +133,11 @@ protected:
   FrameTime global_time;
 };
 
+struct TraceRemoteFd {
+  pid_t tid;
+  int fd;
+};
+
 /**
  * Trace writing takes the trace directory through a defined set of states.
  * These states can be usefully observed by external programs.
@@ -193,6 +198,7 @@ public:
    */
   RecordInTrace write_mapped_region(RecordTask* t, const KernelMapping& map,
                                     const struct stat& stat,
+                                    const std::vector<TraceRemoteFd>& extra_fds,
                                     MappingOrigin origin = SYSCALL_MAPPING);
 
   static void write_mapped_region_to_alternative_stream(
@@ -318,7 +324,8 @@ public:
   KernelMapping read_mapped_region(
       MappedData* data = nullptr, bool* found = nullptr,
       ValidateSourceFile validate = VALIDATE,
-      TimeConstraint time_constraint = CURRENT_TIME_ONLY);
+      TimeConstraint time_constraint = CURRENT_TIME_ONLY,
+      std::vector<TraceRemoteFd>* extra_fds = nullptr);
 
   /**
    * Read a task event (clone or exec record) from the trace.

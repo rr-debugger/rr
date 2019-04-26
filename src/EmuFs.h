@@ -150,6 +150,12 @@ public:
   EmuFile::shr_ptr get_or_create(const KernelMapping& recorded_km);
 
   /**
+   * Return an already-existing emulated file for the given device/inode.
+   * Returns null if not found.
+   */
+  EmuFile::shr_ptr find(dev_t device, ino_t inode);
+
+  /**
    * Dump information about this emufs to the "error" log.
    */
   void log() const;
@@ -168,6 +174,8 @@ private:
     FileId(const KernelMapping& recorded_map);
     FileId(const EmuFile& emu_file)
         : device(emu_file.device()), inode(emu_file.inode()) {}
+    FileId(dev_t device, ino_t inode)
+        : device(device), inode(inode) {}
     bool operator<(const FileId& other) const {
       return device < other.device ||
              (device == other.device && inode < other.inode);

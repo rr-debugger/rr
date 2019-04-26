@@ -467,6 +467,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
 
     auto record_in_trace = trace_writer().write_mapped_region(
         this, syscallbuf_km, syscallbuf_km.fake_stat(),
+        vector<TraceRemoteFd>(),
         TraceWriter::RR_BUFFER_MAPPING);
     ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
 
@@ -1507,8 +1508,8 @@ void RecordTask::record_remote(remote_ptr<void> addr, ssize_t num_bytes) {
   trace_writer().write_raw(rec_tid, buf.data(), num_bytes, addr);
 }
 
-void RecordTask::record_remote_writeable(remote_ptr<void> addr,
-                                         ssize_t num_bytes) {
+void RecordTask::record_remote_writable(remote_ptr<void> addr,
+                                        ssize_t num_bytes) {
   ASSERT(this, num_bytes >= 0);
 
   remote_ptr<void> p = addr;

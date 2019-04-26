@@ -187,6 +187,8 @@ enum SyscallState {
 struct OpenedFd {
   std::string path;
   int fd;
+  dev_t device;
+  ino_t inode;
 };
 
 struct SyscallEvent {

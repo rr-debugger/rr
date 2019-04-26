@@ -175,6 +175,15 @@ struct stat Task::stat_fd(int fd) {
   return result;
 }
 
+struct stat Task::lstat_fd(int fd) {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
+  struct stat result;
+  auto ret = ::lstat(path, &result);
+  ASSERT(this, ret == 0);
+  return result;
+}
+
 ScopedFd Task::open_fd(int fd, int flags) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);

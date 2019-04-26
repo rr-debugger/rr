@@ -5,11 +5,11 @@
 #include <arpa/inet.h>
 #include <asm/ldt.h>
 #include <asm/prctl.h>
+#include <dirent.h>
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <limits>
 #include <linux/capability.h>
 #include <linux/ethtool.h>
 #include <linux/fs.h>
@@ -34,7 +34,6 @@
 #include <poll.h>
 #include <sched.h>
 #include <sound/asound.h>
-#include <sstream>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
@@ -52,7 +51,11 @@
 #include <sys/wait.h>
 #include <sys/xattr.h>
 #include <termios.h>
+
+#include <limits>
+#include <sstream>
 #include <utility>
+#include <unordered_set>
 
 #include <rr/rr.h>
 
@@ -2651,7 +2654,7 @@ static void init_scratch_memory(RecordTask* t,
       t->vm()->map(t, t->scratch_ptr, sz, prot, flags, 0, string());
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
-  auto record_in_trace = t->trace_writer().write_mapped_region(t, km, stat);
+  auto record_in_trace = t->trace_writer().write_mapped_region(t, km, stat, vector<TraceRemoteFd>());
   ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
 
   r.set_syscall_result(saved_result);
@@ -4454,6 +4457,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       t->vm()->mapping_of(AddressSpace::rr_page_start()).map;
   auto mode = t->trace_writer().write_mapped_region(
       t, rr_page_mapping, rr_page_mapping.fake_stat(),
+      vector<TraceRemoteFd>(),
       TraceWriter::RR_BUFFER_MAPPING);
   ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
 
@@ -4462,6 +4466,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   mode = t->trace_writer().write_mapped_region(
       t, preload_thread_locals_mapping,
       preload_thread_locals_mapping.fake_stat(),
+      vector<TraceRemoteFd>(),
       TraceWriter::RR_BUFFER_MAPPING);
   ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
 
@@ -4509,7 +4514,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     }
 
     for (auto& km : stacks) {
-      mode = t->trace_writer().write_mapped_region(t, km, km.fake_stat(),
+      mode = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>(),
                                                    TraceWriter::EXEC_MAPPING);
       ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
       auto buf = t->read_mem(km.start().cast<uint8_t>(), km.size());
@@ -4558,7 +4563,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       // Size is not real. Don't confuse the logic below
       st.st_size = 0;
     }
-    if (t->trace_writer().write_mapped_region(t, km, st,
+    if (t->trace_writer().write_mapped_region(t, km, st, vector<TraceRemoteFd>(),
                                               TraceWriter::EXEC_MAPPING) ==
         TraceWriter::RECORD_IN_TRACE) {
       if (st.st_size > 0) {
@@ -4589,6 +4594,70 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   init_scratch_memory(t, FIXED_ADDRESS);
 }
 
+static bool is_writable(RecordTask* t, int fd) {
+  struct stat lst = t->lstat_fd(fd);
+  return (lst.st_mode & S_IWUSR) != 0;
+}
+
+// Returns true if the fd used to map the file is writable and thus needs
+// monitoring.
+static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const struct stat& file,
+                                   vector<TraceRemoteFd>& extra_fds) {
+  unordered_set<FdTable*> tables;
+  bool found_our_mapping = false;
+  bool our_mapping_writable = false;
+  auto mapped_table = mapped_t->fd_table();
+  for (auto& ts : mapped_t->session().tasks()) {
+    auto rt = static_cast<RecordTask*>(ts.second);
+    auto table = rt->fd_table();
+    if (tables.find(table.get()) != tables.end()) {
+      continue;
+    }
+    tables.insert(table.get());
+
+    char buf[100];
+    sprintf(buf, "/proc/%d/fd", rt->tid);
+    DIR* dir = opendir(buf);
+    if (!dir) {
+      FATAL() << "Can't open fd directory " << buf;
+    }
+    struct dirent* d;
+    errno = 0;
+    vector<string> names;
+    while ((d = readdir(dir)) != nullptr) {
+      char* end;
+      int fd = strtol(d->d_name, &end, 10);
+      if (*end) {
+        // Some kind of parse error
+        continue;
+      }
+      struct stat fd_stat = rt->stat_fd(fd);
+      if (fd_stat.st_dev != file.st_dev || fd_stat.st_ino != file.st_ino) {
+        // Not our file
+        continue;
+      }
+      bool writable = is_writable(rt, fd);
+      if (table == mapped_table && fd == mapped_fd) {
+        // This is what we're using to do the mmap. Don't put it in extra_fds.
+        found_our_mapping = true;
+        our_mapping_writable = writable;
+        continue;
+      }
+      if (!writable) {
+        // Ignore non-writable fds since they can't modify memory
+        continue;
+      }
+      extra_fds.push_back({ rt->tid, fd });
+    }
+    if (errno) {
+      FATAL() << "Can't read fd directory " << buf;
+    }
+    closedir(dir);
+  }
+  ASSERT(mapped_t, found_our_mapping) << "Can't find fd for mapped file";
+  return our_mapping_writable;
+}
+
 static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
                          int fd, off_t offset_pages) {
   if (t->regs().syscall_failed()) {
@@ -4615,7 +4684,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       km = t->vm()->map(t, addr, size, prot, flags, 0, kernel_info.fsname(),
                         kernel_info.device(), kernel_info.inode());
     }
-    auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat());
+    auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>());
     ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
     return;
   }
@@ -4638,7 +4707,12 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
     adjusted_size = true;
   }
 
-  if (t->trace_writer().write_mapped_region(t, km, st) ==
+  vector<TraceRemoteFd> extra_fds;
+  bool monitor_this_fd = false;
+  if (flags & MAP_SHARED) {
+    monitor_this_fd = monitor_fd_for_mapping(t, fd, st, extra_fds);
+  }
+  if (t->trace_writer().write_mapped_region(t, km, st, extra_fds) ==
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = (off64_t)st.st_size - km.file_offset_bytes();
     off64_t nbytes = min(end, (off64_t)km.size());
@@ -4655,21 +4729,29 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
           << " got file size " << st.st_size << " before and " << st2.st_size
           << " after; is filesystem full?";
     }
-
-    if ((flags & MAP_SHARED)) {
-      if (t->fd_table()->is_monitoring(fd)) {
-        ASSERT(t,
-               t->fd_table()->get_monitor(fd)->type() ==
-                   FileMonitor::Type::Mmapped);
-        ((MmappedFileMonitor*)t->fd_table()->get_monitor(fd))->revive();
+  }
+  if (flags & MAP_SHARED) {
+    // Setting up MmappedFileMonitor may trigger updates to syscallbuf_fds_disabled
+    // in the tracee, recording memory records. Those should be recorded now, after the
+    // memory region data itself. Needs to be consistent with replay_syscall.
+    if (monitor_this_fd) {
+      extra_fds.push_back({ t->tid, fd});
+    }
+    for (auto& f : extra_fds) {
+      auto rt = t->session().find_task(f.tid);
+      if (rt->fd_table()->is_monitoring(f.fd)) {
+        ASSERT(rt,
+                rt->fd_table()->get_monitor(f.fd)->type() ==
+                    FileMonitor::Type::Mmapped);
+        ((MmappedFileMonitor*)rt->fd_table()->get_monitor(f.fd))->revive();
       } else {
-        t->fd_table()->add_monitor(fd, new MmappedFileMonitor(t, fd));
+        rt->fd_table()->add_monitor(f.fd, new MmappedFileMonitor(rt, f.fd));
       }
     }
   }
 
   if ((prot & PROT_WRITE) && (flags & MAP_SHARED)) {
-    LOG(debug) << file_name << " is SHARED|WRITEABLE; that's not handled "
+    LOG(debug) << file_name << " is SHARED|writable; that's not handled "
                                "correctly yet. Optimistically hoping it's not "
                                "written by programs outside the rr tracee "
                                "tree.";
@@ -4709,7 +4791,7 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
 
   // Make sure that the trace records the mapping at the new location, even
   // if the mapping didn't grow.
-  auto r = t->trace_writer().write_mapped_region(t, km, st,
+  auto r = t->trace_writer().write_mapped_region(t, km, st, vector<TraceRemoteFd>(),
                                                  TraceWriter::REMAP_MAPPING);
   ASSERT(t, r == TraceWriter::DONT_RECORD_IN_TRACE);
   if (old_size >= new_size) {
@@ -4724,7 +4806,7 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
     st.st_size = m.map.file_offset_bytes() + new_size;
   }
 
-  if (t->trace_writer().write_mapped_region(t, km, st) ==
+  if (t->trace_writer().write_mapped_region(t, km, st,  vector<TraceRemoteFd>()) ==
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = max<off64_t>(st.st_size - km.file_offset_bytes(), 0);
     // Allow failure; the underlying file may have true zero size, in which
@@ -4763,7 +4845,7 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
                    kernel_info.device(), kernel_info.inode());
   t->vm()->set_shm_size(km.start(), km.size());
   auto disposition =
-      t->trace_writer().write_mapped_region(t, km, km.fake_stat());
+      t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>());
   ASSERT(t, disposition == TraceWriter::RECORD_IN_TRACE);
   t->record_remote(addr, size);
 
@@ -4880,34 +4962,47 @@ static void record_iovec_output(RecordTask* t, RecordTask* dest,
   // See https://bugzilla.kernel.org/show_bug.cgi?id=113541
   auto iovs = t->read_mem(piov, iov_cnt);
   for (auto& iov : iovs) {
-    dest->record_remote_writeable(iov.iov_base, iov.iov_len);
+    dest->record_remote_writable(iov.iov_base, iov.iov_len);
   }
+}
+
+static bool is_mapped_shared(RecordTask* t, const struct stat& st) {
+  for (AddressSpace* vm : t->session().vms()) {
+    for (auto& m : vm->maps()) {
+      if (m.mapped_file_stat && m.mapped_file_stat->st_dev == st.st_dev &&
+          m.mapped_file_stat->st_ino == st.st_ino) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 static void handle_opened_file(RecordTask* t, int fd) {
   string pathname = t->file_name_of_fd(fd);
+  struct stat st = t->stat_fd(fd);
 
-  bool do_write = false;
   // This must be kept in sync with replay_syscall's handle_opened_files.
-  if (is_rr_terminal(pathname)) {
+  FileMonitor* file_monitor = nullptr;
+  if (is_mapped_shared(t, st) && is_writable(t, fd)) {
+    file_monitor = new MmappedFileMonitor(t, fd);
+  } else if (is_rr_terminal(pathname)) {
     // This will let rr event annotations echo to the terminal. It will also
     // ensure writes to this fd are not syscall-buffered.
-    t->fd_table()->add_monitor(fd, new StdioMonitor(dev_tty_fd()));
+    file_monitor = new StdioMonitor(dev_tty_fd());
     pathname = "terminal";
-    do_write = true;
   } else if (is_proc_mem_file(pathname.c_str())) {
-    t->fd_table()->add_monitor(fd, new ProcMemMonitor(t, pathname));
-    do_write = true;
+    file_monitor = new ProcMemMonitor(t, pathname);
   } else if (is_proc_fd_dir(pathname.c_str())) {
     LOG(info) << "Installing proc_fd monitor";
-    t->fd_table()->add_monitor(fd, new ProcFdDirMonitor(t, pathname));
-    do_write = true;
+    file_monitor = new ProcFdDirMonitor(t, pathname);
   }
 
-  if (do_write) {
+  if (file_monitor) {
     // Write absolute file name
     auto& syscall = t->ev().Syscall();
-    syscall.opened.push_back({ pathname, fd });
+    syscall.opened.push_back({ pathname, fd, st.st_dev, st.st_ino });
+    t->fd_table()->add_monitor(fd, file_monitor);
   }
 }
 
@@ -4937,6 +5032,40 @@ static void check_scm_rights_fd(RecordTask* t, typename Arch::msghdr& msg) {
       break;
     }
   }
+}
+
+static void fake_gcrypt_file(RecordTask* t, Registers* r, int syscallno) {
+  // We hijacked this call to deal with /etc/gcrypt/hwf.deny.
+  TempFile file = create_temporary_file("rr-gcrypt-hwf-deny-XXXXXX");
+
+  struct stat dummy;
+  if (!stat("/etc/gcrypt/hwf.deny", &dummy)) {
+    // Copy the contents into our temporary file
+    ScopedFd existing("/etc/gcrypt/hwf.deny", O_RDONLY);
+    if (!copy_file(file.fd, existing)) {
+      FATAL() << "Can't copy file";
+    }
+  }
+
+  static const char disable_rdrand[] = "\nintel-rdrand\n";
+  write_all(file.fd, disable_rdrand, sizeof(disable_rdrand) - 1);
+
+  // Now open the file in the child.
+  int child_fd;
+  {
+    AutoRemoteSyscalls remote(t);
+    AutoRestoreMem child_str(remote, file.name.c_str());
+    child_fd = remote.infallible_syscall(
+        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
+        child_str.get(), O_RDONLY);
+  }
+
+  // Unlink it now that the child has opened it.
+  unlink(file.name.c_str());
+
+  // And hand out our fake file.
+  r->set_original_syscallno(syscallno);
+  r->set_syscall_result(child_fd);
 }
 
 template <typename Arch>
@@ -5024,7 +5153,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         km = KernelMapping(new_brk, old_brk, string(), KernelMapping::NO_DEVICE,
                            KernelMapping::NO_INODE, 0, 0, 0);
       }
-      auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat());
+      auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>());
       ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
       t->vm()->brk(t, t->regs().syscall_result(), km.prot());
       break;
@@ -5133,37 +5262,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       r.set_arg1(syscall_state.syscall_entry_registers.arg1());
       r.set_arg2(syscall_state.syscall_entry_registers.arg2());
       if (r.original_syscallno() == Arch::gettid) {
-        // We hijacked this call to deal with /etc/gcrypt/hwf.deny.
-        TempFile file = create_temporary_file("rr-gcrypt-hwf-deny-XXXXXX");
-
-        struct stat dummy;
-        if (!stat("/etc/gcrypt/hwf.deny", &dummy)) {
-          // Copy the contents into our temporary file
-          ScopedFd existing("/etc/gcrypt/hwf.deny", O_RDONLY);
-          if (!copy_file(file.fd, existing)) {
-            FATAL() << "Can't copy file";
-          }
-        }
-
-        static const char disable_rdrand[] = "\nintel-rdrand\n";
-        write_all(file.fd, disable_rdrand, sizeof(disable_rdrand) - 1);
-
-        // Now open the file in the child.
-        int child_fd;
-        {
-          AutoRemoteSyscalls remote(t);
-          AutoRestoreMem child_str(remote, file.name.c_str());
-          child_fd = remote.infallible_syscall(
-              syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
-              child_str.get(), O_RDONLY);
-        }
-
-        // Unlink it now that the child has opened it.
-        unlink(file.name.c_str());
-
-        // And hand out our fake file.
-        r.set_original_syscallno(syscallno);
-        r.set_syscall_result(child_fd);
+        fake_gcrypt_file(t, &r, syscallno);
       }
       t->set_regs(r);
       if (!t->regs().syscall_failed()) {
