@@ -1694,6 +1694,15 @@ static long sys_mprotect(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static int supported_open_flags(int flags) {
+  /* Writeable opens need to go to rr to be checked in case
+     they could write to a mapped file.
+     But if they're O_EXCL | O_CREAT, a new file must be created
+     so that will be fine. */
+  return !(flags & (O_RDWR | O_WRONLY)) ||
+    (flags & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT);
+}
+
 static long sys_open(const struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Opening a FIFO could unblock a higher priority task */
@@ -1709,7 +1718,7 @@ static long sys_open(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  if (flags & (O_RDWR | O_WRONLY)) {
+  if (!supported_open_flags(flags)) {
     /* Trace writable opens because they might write to open shared mappings.
        We can do something more complicated if this turn out to be a perf issue. */
     return traced_raw_syscall(call);
@@ -1746,7 +1755,7 @@ static long sys_openat(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  if (flags & (O_RDWR | O_WRONLY)) {
+  if (!supported_open_flags(flags)) {
     /* Trace writable opens because they might write to open shared mappings.
        We can do something more complicated if this turn out to be a perf issue. */
     return traced_raw_syscall(call);
