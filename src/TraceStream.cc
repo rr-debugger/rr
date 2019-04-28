@@ -942,7 +942,8 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
 }
 
 void TraceWriter::write_mapped_region_to_alternative_stream(
-    CompressedWriter& mmaps, const MappedData& data, const KernelMapping& km) {
+    CompressedWriter& mmaps, const MappedData& data, const KernelMapping& km,
+    const vector<TraceRemoteFd>& extra_fds, bool skip_monitoring_mapped_fd) {
   MallocMessageBuilder map_msg;
   trace::MMap::Builder map = map_msg.initRoot<trace::MMap>();
 
@@ -956,6 +957,14 @@ void TraceWriter::write_mapped_region_to_alternative_stream(
   map.setFlags(km.flags());
   map.setFileOffsetBytes(km.file_offset_bytes());
   map.setStatSize(data.file_size_bytes);
+  auto fds = map.initExtraFds(extra_fds.size());
+  for (size_t i = 0; i < extra_fds.size(); ++i) {
+    auto e = fds[i];
+    auto& r = extra_fds[i];
+    e.setTid(r.tid);
+    e.setFd(r.fd);
+  }
+  map.setSkipMonitoringMappedFd(skip_monitoring_mapped_fd);
   auto src = map.getSource();
   switch (data.source) {
     case TraceReader::SOURCE_ZERO:

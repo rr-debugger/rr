@@ -203,7 +203,8 @@ public:
                                     bool skip_monitoring_mapped_fd = false);
 
   static void write_mapped_region_to_alternative_stream(
-      CompressedWriter& mmaps, const MappedData& data, const KernelMapping& km);
+      CompressedWriter& mmaps, const MappedData& data, const KernelMapping& km,
+      const std::vector<TraceRemoteFd>& extra_fds, bool skip_monitoring_mapped_fd);
 
   /**
    * Write a raw-data record to the trace.

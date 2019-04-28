@@ -328,8 +328,11 @@ static void rewrite_mmaps(const map<string, string>& file_map,
   while (true) {
     TraceReader::MappedData data;
     bool found;
+    vector<TraceRemoteFd> extra_fds;
+    bool skip_monitoring_mapped_fd;
     KernelMapping km = trace.read_mapped_region(
-        &data, &found, TraceReader::VALIDATE, TraceReader::ANY_TIME);
+        &data, &found, TraceReader::VALIDATE, TraceReader::ANY_TIME,
+        &extra_fds, &skip_monitoring_mapped_fd);
     if (!found) {
       break;
     }
@@ -340,7 +343,8 @@ static void rewrite_mmaps(const map<string, string>& file_map,
       }
       data.file_name = m->second;
     }
-    TraceWriter::write_mapped_region_to_alternative_stream(writer, data, km);
+    TraceWriter::write_mapped_region_to_alternative_stream(
+        writer, data, km, extra_fds, skip_monitoring_mapped_fd);
   }
 
   // Try not to lose data!
