@@ -775,6 +775,7 @@ set(BASIC_TESTS
   mmap_short_file
   mmap_tmpfs
   mmap_write_complex
+  mmap_write_private
   mmap_zero_size_fd
   modify_ldt
   mount_ns_exec
