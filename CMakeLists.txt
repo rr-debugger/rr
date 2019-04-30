@@ -775,7 +775,6 @@ set(BASIC_TESTS
   mmap_short_file
   mmap_tmpfs
   mmap_write_complex
-  mmap_write_private
   mmap_zero_size_fd
   modify_ldt
   mount_ns_exec
@@ -1077,6 +1076,7 @@ set(TESTS_WITH_PROGRAM
   mmap_replace_most_mappings
   mmap_shared_prot
   mmap_write
+  mmap_write_private
   mprotect_growsdown
   mprotect_syscallbuf_overflow
   mutex_pi_stress
