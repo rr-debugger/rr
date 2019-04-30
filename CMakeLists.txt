@@ -237,9 +237,7 @@ if(NOT SECCOMP)
   message(FATAL_ERROR "Couldn't find linux/seccomp.h. You may need to upgrade your kernel.")
 endif()
 
-# Check for Python >=2.7 but not Python 3.
-find_package(PythonInterp 3.0 QUIET)
-find_package(PythonInterp 2.7 REQUIRED)
+find_package(PythonInterp 3.0 REQUIRED)
 
 execute_process(COMMAND "${PYTHON_EXECUTABLE}" "-c" "# nothing"
                 RESULT_VARIABLE python_status)
