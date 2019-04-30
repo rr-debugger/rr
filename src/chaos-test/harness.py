@@ -1,6 +1,4 @@
-#!/usr/bin/env python2
-
-from __future__ import print_function
+#!/usr/bin/env python3
 
 import sys
 import multiprocessing
@@ -42,7 +40,7 @@ def run(rr_params):
 
 # Use only half the cores. Otherwise tests will induce starvation
 # themselves; we want to measure starvation induced by rr.
-pool = multiprocessing.Pool(max(1, multiprocessing.cpu_count()/2))
+pool = multiprocessing.Pool(max(1, round(multiprocessing.cpu_count()/2)))
 
 def safe_exit(code):
     pool.terminate()

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import io
 import os
@@ -74,7 +74,7 @@ def main(argv):
     base = os.path.basename(filename)
 
     if os.access(filename, os.F_OK):
-        with open(filename, 'r') as f:
+        with open(filename, 'rb') as f:
             before = f.read()
     else:
         before = ""
@@ -85,7 +85,7 @@ def main(argv):
     stream.close()
 
     if before != after:
-        with open(filename, 'w') as f:
+        with open(filename, 'wb') as f:
             f.write(after)
 
 if __name__ == '__main__':

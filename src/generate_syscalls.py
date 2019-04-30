@@ -1,16 +1,22 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import assembly_templates
-import StringIO
+from io import StringIO
 import os
 import string
 import sys
 import syscalls
 
+def arch_syscall_number(arch, syscall):
+    s = getattr(syscall[1], arch)
+    if s == None:
+        s = -1
+    return s
+
 def write_syscall_enum(f, arch):
     f.write("enum Syscalls {\n")
     undefined_syscall = -1
-    for name, obj in sorted(syscalls.all(), key=lambda x: getattr(x[1], arch)):
+    for name, obj in sorted(syscalls.all(), key=lambda x: arch_syscall_number(arch, x)):
         syscall_number = getattr(obj, arch)
         if syscall_number is not None:
             enum_number = syscall_number
@@ -25,7 +31,7 @@ def write_syscall_enum(f, arch):
 def write_syscall_enum_for_tests(f, arch):
     f.write("enum Syscalls {\n")
     undefined_syscall = -1
-    for name, obj in sorted(syscalls.all(), key=lambda x: getattr(x[1], arch)):
+    for name, obj in sorted(syscalls.all(), key=lambda x: arch_syscall_number(arch, x)):
         syscall_number = getattr(obj, arch)
         if syscall_number is not None:
             enum_number = syscall_number
@@ -154,7 +160,7 @@ def main(argv):
     else:
         before = ""
 
-    stream = StringIO.StringIO()
+    stream = StringIO()
     generators_for[base](stream)
     after = stream.getvalue()
     stream.close()

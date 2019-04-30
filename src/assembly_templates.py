@@ -1,4 +1,4 @@
-import StringIO
+from io import StringIO
 import sys
 
 class RawBytes(object):
@@ -178,7 +178,7 @@ def byte_array_name(name):
     return '%s_bytes' % name
 
 def generate_match_method(byte_array, template):
-    s = StringIO.StringIO()
+    s = StringIO()
     fields = template.fields()
     field_types = [f.c_type() for f in fields]
     field_names = [f.name for f in fields]
@@ -201,7 +201,7 @@ def generate_match_method(byte_array, template):
     return s.getvalue()
 
 def generate_substitute_method(byte_array, template):
-    s = StringIO.StringIO()
+    s = StringIO()
     fields = template.fields()
     field_types = [f.c_type() for f in fields]
     field_names = [f.name for f in fields]
@@ -223,7 +223,7 @@ def generate_substitute_method(byte_array, template):
     return s.getvalue()
 
 def generate_field_end_methods(byte_array, template):
-    s = StringIO.StringIO()
+    s = StringIO()
     offset = 0
     for chunk in template.chunks:
         offset += len(chunk)
@@ -232,7 +232,7 @@ def generate_field_end_methods(byte_array, template):
     return s.getvalue()
 
 def generate_size_member(byte_array):
-    s = StringIO.StringIO()
+    s = StringIO()
     s.write('  static const size_t size = sizeof(%s);' % byte_array)
     return s.getvalue()
 
