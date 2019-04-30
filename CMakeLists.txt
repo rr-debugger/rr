@@ -49,22 +49,43 @@ configure_file(
   ${CMAKE_BINARY_DIR}/git_revision.h
 )
 
-set(FLAGS_COMMON "-msse2 -D__MMX__ -D__SSE__ -D__SSE2__ -D__USE_LARGEFILE64 -pthread -g3")
+set(FLAGS_COMMON "-msse2 -D__MMX__ -D__SSE__ -D__SSE2__ -D__USE_LARGEFILE64 -pthread")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${FLAGS_COMMON} -D__STDC_LIMIT_MACROS -D__STDC_FORMAT_MACROS -std=c++14")
-set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -g3")
 
-set(RR_FLAGS_DEBUG "-Wall -Wextra -Werror -O0 -DDEBUG -UNDEBUG")
-set(RR_FLAGS_RELEASE "-Wall -Wextra -O2 -UDEBUG -DNDEBUG")
-set(RR_TEST_FLAGS "${RR_FLAGS_DEBUG}")
+# We support three build types:
+# DEBUG: suitable for debugging rr
+# RELEASE: suitable for using rr in production (but keeps rr debuginfo)
+# OTHER: suitable for using rr in production, but honouring distro/user opt/debug settings
+# (which we assume are suitable for production use)
 
+# Base settings for debug and release/unspecified builds.
+# Use -Werror for debug builds because we assume a developer is building, not a user.
+set(RR_FLAGS_DEBUG "-Wall -Wextra -DDEBUG -UNDEBUG")
+set(RR_FLAGS_RELEASE "-Wall -Wextra -UDEBUG -DNDEBUG")
+
+# The folowing settings are the defaults for the OTHER build type.
+# Flags used to build the preload library. MUST have debuginfo enabled. SHOULD be optimized.
+set(PRELOAD_COMPILE_FLAGS "${RR_FLAGS_RELEASE} -fno-stack-protector -g3")
+# Flags used to build Brotli. SHOULD be optimized. MUST NOT error on warnings.
+set(BROTLI_COMPILE_FLAGS ${RR_FLAGS_RELEASE})
+# Flags used to build tests. MUST have -DDEBUG and debuginfo enabled, MUST NOT be optimized.
+set(RR_TEST_FLAGS "${RR_FLAGS_DEBUG} -g3 -O0")
+# Flags used to build other files. Entirely build-type-dependent.
+set(RR_FLAGS ${RR_FLAGS_RELEASE})
+
+# Now override for build type.
 string(TOLOWER ${CMAKE_BUILD_TYPE} LOWERCASE_CMAKE_BUILD_TYPE)
 if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "debug")
-  set(RR_FLAGS ${RR_FLAGS_DEBUG})
-else()
-  set(RR_FLAGS ${RR_FLAGS_RELEASE})
+  set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} -O2 -Werror")
+  set(BROTLI_COMPILE_FLAGS "${RR_FLAGS_RELEASE} -O2")
+  set(RR_TEST_FLAGS "${RR_TEST_FLAGS} -Werror")
+  set(RR_FLAGS "${RR_FLAGS_DEBUG} -g3 -Werror")
+elseif(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
+  # CMake itself will add optimization flags
+  set(RR_FLAGS "${RR_FLAGS_RELEASE} -g3")
 endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
@@ -229,7 +250,7 @@ set(BROTLI_FILES
 )
 add_library(brotli STATIC ${BROTLI_FILES})
 set_source_files_properties(${BROTLI_FILES}
-                            PROPERTIES COMPILE_FLAGS ${RR_FLAGS_RELEASE})
+                            PROPERTIES COMPILE_FLAGS ${BROTLI_COMPILE_FLAGS})
 # ==== brotli ====
 
 find_path(SECCOMP NAMES "linux/seccomp.h")
@@ -275,18 +296,6 @@ if(WILL_RUN_TESTS)
   endif()
 endif()
 
-set(PRELOAD_COMPILE_FLAGS "-fno-stack-protector")
-
-if (DEBUG_PRELOAD_LIB)
-  set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} ${RR_FLAGS_DEBUG}")
-else()
-  set(PRELOAD_COMPILE_FLAGS "${PRELOAD_COMPILE_FLAGS} ${RR_FLAGS_RELEASE}")
-endif()
-
-set_source_files_properties(src/preload/syscallbuf.c
-                            src/preload/overrides.c
-                            PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
-
 include_directories("${PROJECT_SOURCE_DIR}/include")
 include_directories("${PROJECT_SOURCE_DIR}/third-party/proc-service")
 include_directories("${PROJECT_SOURCE_DIR}/third-party/brotli/include")
@@ -310,6 +319,8 @@ set(PRELOAD_SOURCE_FILES
 add_library(rrpreload)
 foreach(file ${PRELOAD_FILES})
   target_sources(rrpreload PUBLIC "${CMAKE_SOURCE_DIR}/src/preload/${file}")
+  set_source_files_properties("${CMAKE_SOURCE_DIR}/src/preload/${file}"
+                              PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles")
 
@@ -595,7 +606,7 @@ if(rr_32BIT AND rr_64BIT)
   foreach(file ${PRELOAD_FILES})
     target_sources(rrpreload_32 PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/32/${file}")
     set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
-                                PROPERTIES COMPILE_FLAGS "-m32 ${RR_FLAGS_RELEASE}")
+                                PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
   endforeach(file)
 
   set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles")
