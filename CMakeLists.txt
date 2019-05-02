@@ -755,6 +755,7 @@ set(BASIC_TESTS
   ioctl
   ioctl_fs
   ioctl_pty
+  ioctl_sg
   ioctl_tty
   join_threads
   kcmp
