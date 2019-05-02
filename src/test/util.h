@@ -53,6 +53,7 @@
 #include <pty.h>
 #include <pwd.h>
 #include <sched.h>
+#include <scsi/sg.h>
 #include <signal.h>
 #include <sound/asound.h>
 #include <stdarg.h>

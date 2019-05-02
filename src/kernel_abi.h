@@ -1519,6 +1519,32 @@ struct BaseArch : public wordsize,
   } statx;
   // statx not yet widely available in system headers
   // RR_VERIFY_TYPE(statx);
+
+  struct sg_io_hdr {
+    int interface_id;
+    int dxfer_direction;
+    unsigned char cmd_len;
+    unsigned char mx_sb_len;
+    unsigned short int iovec_count;
+    unsigned int dxfer_len;
+    ptr<void> dxferp;
+    ptr<unsigned char> cmdp;
+    ptr<unsigned char> sbp;
+    unsigned int timeout;
+    unsigned int flags;
+    int pack_id;
+    ptr<void> usr_ptr;
+    unsigned char status;
+    unsigned char masked_status;
+    unsigned char msg_status;
+    unsigned char sb_len_wr;
+    unsigned short int host_status;
+    unsigned short int driver_status;
+    int resid;
+    unsigned int duration;
+    unsigned int info;
+  };
+  RR_VERIFY_TYPE(sg_io_hdr);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {

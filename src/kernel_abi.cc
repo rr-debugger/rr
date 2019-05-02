@@ -28,6 +28,7 @@
 #include <linux/videodev2.h>
 #include <linux/wireless.h>
 #include <poll.h>
+#include <scsi/sg.h>
 #include <signal.h>
 #include <sound/asound.h>
 #include <stddef.h>
