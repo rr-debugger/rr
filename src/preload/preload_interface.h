@@ -639,7 +639,8 @@ inline static int is_proc_fd_dir(const char* filename) {
  * common cases) is a problem. Maybe we could afford fstat after every open...
  */
 inline static int allow_buffered_open(const char* filename) {
-  return !is_blacklisted_filename(filename) && !is_gcrypt_deny_file(filename) &&
+  return filename &&
+         !is_blacklisted_filename(filename) && !is_gcrypt_deny_file(filename) &&
          !is_terminal(filename) && !is_proc_mem_file(filename) &&
          !is_proc_fd_dir(filename);
 }
