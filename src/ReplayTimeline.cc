@@ -671,7 +671,7 @@ bool ReplayTimeline::add_watchpoint(ReplayTask* t, remote_ptr<void> addr,
   }
   watchpoints.insert(
       make_tuple(t->vm()->uid(), addr, num_bytes, type, move(condition)));
-  no_watchpoints_hit_interval_start = no_watchpoints_hit_interval_start =
+  no_watchpoints_hit_interval_start = no_watchpoints_hit_interval_end =
       Mark();
   return true;
 }
