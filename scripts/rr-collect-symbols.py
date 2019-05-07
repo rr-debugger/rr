@@ -11,7 +11,7 @@ import tempfile
 from urllib.request import urlretrieve
 from urllib.error import HTTPError, ContentTooShortError
 
-# Usage: collect-symbols.py <trace-dir> [<url> | <path>]
+# Usage: rr-collect-symbols.py <trace-dir> [<url> | <path>]
 #
 # Given a <url>, downloads the ZIP file at <url>, unzips it, runs "gunzip"
 # on any .gz files, and for any ELF files found whose build-ids match the
@@ -36,7 +36,7 @@ from urllib.error import HTTPError, ContentTooShortError
 # same file name as the .debug file, but with a .sup suffix.
 
 if len(sys.argv) < 2:
-    print("Usage: collect-symbols.py <trace-dir> [<url> | <path>]", file=sys.stderr)
+    print("Usage: rr-collect-symbols.py <trace-dir> [<url> | <path>]", file=sys.stderr)
     sys.exit(1)
 trace_dir = sys.argv[1]
 
