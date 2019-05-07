@@ -401,6 +401,7 @@ public:
   }
   bool uses_cpuid_faulting() const { return trace_uses_cpuid_faulting; }
   uint64_t xcr0() const;
+  const TraceUuid& uuid() const { return *uuid_; }
 
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
@@ -415,8 +416,9 @@ private:
   std::vector<CPUIDRecord> cpuid_records_;
   std::vector<RawDataMetadata> raw_recs;
   TicksSemantics ticks_semantics_;
-  bool trace_uses_cpuid_faulting;
   double monotonic_time_;
+  std::unique_ptr<TraceUuid> uuid_;
+  bool trace_uses_cpuid_faulting;
 };
 
 extern std::string trace_save_dir();

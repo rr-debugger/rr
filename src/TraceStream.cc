@@ -1413,12 +1413,20 @@ TraceReader::TraceReader(const string& dir)
   trace_uses_cpuid_faulting = header.getHasCpuidFaulting();
   Data::Reader cpuid_records_bytes = header.getCpuidRecords();
   size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
-  DEBUG_ASSERT(cpuid_records_bytes.size() == len * sizeof(CPUIDRecord));
+  if (cpuid_records_bytes.size() != len * sizeof(CPUIDRecord)) {
+    FATAL() << "Invalid CPUID records length";
+  }
   cpuid_records_.resize(len);
   memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
          len * sizeof(CPUIDRecord));
   xcr0_ = header.getXcr0();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
+  Data::Reader uuid = header.getUuid();
+  uuid_ = unique_ptr<TraceUuid>(new TraceUuid());
+  if (uuid.size() != sizeof(uuid_->bytes)) {
+    FATAL() << "Invalid UUID length";
+  }
+  memcpy(uuid_->bytes, uuid.begin(), sizeof(uuid_->bytes));
 
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.

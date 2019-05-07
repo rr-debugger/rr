@@ -451,6 +451,7 @@ set(RR_SOURCES
   src/ThreadGroup.cc
   src/ThreadDb.cc
   src/TraceFrame.cc
+  src/TraceIdCommand.cc
   src/TraceStream.cc
   src/VirtualPerfCounterMonitor.cc
   src/util.cc
