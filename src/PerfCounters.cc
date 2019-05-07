@@ -65,7 +65,7 @@ enum CpuMicroarch {
   IntelBroadwell,
   IntelSkylake,
   IntelSilvermont,
-  IntelDenvertron,
+  IntelGoldmont,
   IntelKabylake,
   AMDF15R30,
   AMDRyzen,
@@ -112,7 +112,7 @@ struct PmuConfig {
 static const PmuConfig pmu_configs[] = {
   { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
   { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelDenvertron, "Intel Denvertron", 0x517ec4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
+  { IntelGoldmont, "Intel Denvertron", 0x517ec4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
   { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
   { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
   { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
@@ -207,7 +207,7 @@ static CpuMicroarch get_cpu_microarch() {
     case 0x50670:
       return IntelSilvermont;
     case 0x506f0:
-      return IntelDenvertron;
+      return IntelGoldmont;
     case 0x806e0:
     case 0x906e0:
       return IntelKabylake;
