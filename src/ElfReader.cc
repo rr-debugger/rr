@@ -3,6 +3,8 @@
 #include "ElfReader.h"
 
 #include <elf.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include "log.h"
 #include "util.h"
@@ -42,8 +44,9 @@ public:
 private:
   const typename Arch::ElfShdr* find_section(const char* n);
 
-  typename Arch::ElfEhdr elfheader;
-  vector<typename Arch::ElfShdr> sections;
+  const typename Arch::ElfEhdr* elfheader;
+  const typename Arch::ElfShdr* sections;
+  size_t sections_size;
   vector<char> section_names;
 };
 
@@ -59,30 +62,35 @@ unique_ptr<ElfReaderImplBase> elf_reader_impl(ElfReader& r,
 
 template <typename Arch>
 ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {
-  if (!r.read(0, elfheader) || memcmp(&elfheader, ELFMAG, SELFMAG) != 0 ||
-      elfheader.e_ident[EI_CLASS] != Arch::elfclass ||
-      elfheader.e_ident[EI_DATA] != Arch::elfendian ||
-      elfheader.e_machine != Arch::elfmachine ||
-      elfheader.e_shentsize != sizeof(typename Arch::ElfShdr) ||
-      elfheader.e_shstrndx >= elfheader.e_shnum) {
+  elfheader = r.read<typename Arch::ElfEhdr>(0);
+  if (!elfheader || memcmp(elfheader, ELFMAG, SELFMAG) != 0 ||
+      elfheader->e_ident[EI_CLASS] != Arch::elfclass ||
+      elfheader->e_ident[EI_DATA] != Arch::elfendian ||
+      elfheader->e_machine != Arch::elfmachine ||
+      elfheader->e_shentsize != sizeof(typename Arch::ElfShdr) ||
+      elfheader->e_shstrndx >= elfheader->e_shnum) {
     LOG(debug) << "Invalid ELF file: invalid header";
     return;
   }
 
   sections =
-      r.read<typename Arch::ElfShdr>(elfheader.e_shoff, elfheader.e_shnum);
-  if (sections.empty()) {
+      r.read<typename Arch::ElfShdr>(elfheader->e_shoff, elfheader->e_shnum);
+  if (!sections || !elfheader->e_shnum) {
     LOG(debug) << "Invalid ELF file: no sections";
     return;
   }
+  sections_size = elfheader->e_shnum;
 
-  auto& section_names_section = sections[elfheader.e_shstrndx];
-  section_names = r.read<char>(section_names_section.sh_offset,
-                               section_names_section.sh_size);
-  if (section_names.empty()) {
+  auto& section_names_section = sections[elfheader->e_shstrndx];
+  const char* section_names_ptr = r.read<char>(section_names_section.sh_offset,
+                                               section_names_section.sh_size);
+  if (!section_names_ptr || !section_names_section.sh_size) {
     LOG(debug) << "Invalid ELF file: can't read section names";
     return;
   }
+  // Ensure final 0
+  section_names.resize(section_names_section.sh_size);
+  memcpy(section_names.data(), section_names_ptr, section_names.size());
   section_names[section_names.size() - 1] = 0;
 
   ok_ = true;
@@ -90,9 +98,9 @@ ElfReaderImpl<Arch>::ElfReaderImpl(ElfReader& r) : ElfReaderImplBase(r) {
 
 template <typename Arch>
 const typename Arch::ElfShdr* ElfReaderImpl<Arch>::find_section(const char* n) {
-  typename Arch::ElfShdr* section = nullptr;
+  const typename Arch::ElfShdr* section = nullptr;
 
-  for (size_t i = 0; i < sections.size(); ++i) {
+  for (size_t i = 0; i < sections_size; ++i) {
     auto& s = sections[i];
     if (s.sh_name >= section_names.size()) {
       LOG(debug) << "Invalid ELF file: invalid name offset for section " << i;
@@ -159,21 +167,24 @@ SymbolTable ElfReaderImpl<Arch>::read_symbols(const char* symtab,
     return result;
   }
 
+  size_t symbol_list_size = symbols->sh_size / symbols->sh_entsize;
   auto symbol_list = r.read<typename Arch::ElfSym>(
-      symbols->sh_offset, symbols->sh_size / symbols->sh_entsize);
-  if (symbol_list.empty()) {
+      symbols->sh_offset, symbol_list_size);
+  if (!symbol_list) {
     LOG(debug) << "Invalid ELF file: can't read symbols " << symtab;
     return result;
   }
-  result.strtab = r.read<char>(strings->sh_offset, strings->sh_size);
-  if (result.strtab.empty()) {
+  auto strtab_ptr = r.read<char>(strings->sh_offset, strings->sh_size);
+  if (!strtab_ptr) {
     LOG(debug) << "Invalid ELF file: can't read strings " << strtab;
   }
+  result.strtab.resize(strings->sh_size);
+  memcpy(result.strtab.data(), strtab_ptr, result.strtab.size());
   result.strtab[result.strtab.size() - 1] = 0;
-  result.symbols.resize(symbol_list.size());
-  for (size_t i = 0; i < symbol_list.size(); ++i) {
+  result.symbols.resize(symbol_list_size);
+  for (size_t i = 0; i < symbol_list_size; ++i) {
     auto& s = symbol_list[i];
-    if (s.st_shndx >= sections.size()) {
+    if (s.st_shndx >= sections_size) {
       // Don't leave this entry uninitialized
       result.symbols[i] = SymbolTable::Symbol(0, 0);
       continue;
@@ -216,19 +227,22 @@ template <typename Arch> DynamicSection ElfReaderImpl<Arch>::read_dynamic() {
     return result;
   }
 
+  size_t dyn_list_size = dynamic->sh_size / dynamic->sh_entsize;
   auto dyn_list = r.read<typename Arch::ElfDyn>(
-      dynamic->sh_offset, dynamic->sh_size / dynamic->sh_entsize);
-  if (dyn_list.empty()) {
+      dynamic->sh_offset, dyn_list_size);
+  if (!dyn_list) {
     LOG(debug) << "Invalid ELF file: can't read .dynamic";
     return result;
   }
-  result.strtab = r.read<char>(dynstr->sh_offset, dynstr->sh_size);
-  if (result.strtab.empty()) {
+  auto strtab = r.read<char>(dynstr->sh_offset, dynstr->sh_size);
+  if (!strtab) {
     LOG(debug) << "Invalid ELF file: can't read .dynstr";
   }
+  result.strtab.resize(dynstr->sh_size);
+  memcpy(result.strtab.data(), strtab, result.strtab.size());
   result.strtab[result.strtab.size() - 1] = 0;
-  result.entries.resize(dyn_list.size());
-  for (size_t i = 0; i < dyn_list.size(); ++i) {
+  result.entries.resize(dyn_list_size);
+  for (size_t i = 0; i < dyn_list_size; ++i) {
     auto& s = dyn_list[i];
     result.entries[i] = DynamicSection::Entry(s.d_tag, s.d_val);
   }
@@ -251,19 +265,18 @@ template <typename Arch> Debuglink ElfReaderImpl<Arch>::read_debuglink() {
   }
 
   size_t crc_offset = debuglink->sh_size - 4;
-  if (!r.read(debuglink->sh_offset + crc_offset, result.crc)) {
+  if (!r.read_into(debuglink->sh_offset + crc_offset, &result.crc)) {
     LOG(debug) << "Invalid ELF file: can't read .gnu_debuglink crc checksum";
     return result;
   }
 
-  std::vector<char> filename = r.read<char>(debuglink->sh_offset, crc_offset);
-  if (result.filename.empty()) {
+  const char* filename = r.read<char>(debuglink->sh_offset, crc_offset);
+  if (!filename) {
     LOG(debug) << "Invalid ELF file: can't read .gnu_debuglink filename";
     return result;
   }
 
-  filename[result.filename.size() - 1] = 0;
-  result.filename = std::string(filename.data());
+  result.filename = std::string(filename, crc_offset - 1);
   return result;
 }
 
@@ -274,41 +287,42 @@ string ElfReaderImpl<Arch>::read_buildid() {
     return result;
   }
 
-  for (auto& s : sections) {
+  for (size_t i = 0; i < sections_size; ++i) {
+    auto& s = sections[i];
     if (s.sh_type != SHT_NOTE) {
       continue;
     }
 
     auto offset = s.sh_offset;
-    typename Arch::ElfNhdr nhdr;
-    if (!r.read(offset, nhdr)) {
+    auto nhdr = r.read<typename Arch::ElfNhdr>(offset);
+    if (!nhdr) {
       LOG(error) << "Failed to read ELF note";
       return result;
     }
-    offset += sizeof(nhdr);
+    offset += sizeof(*nhdr);
 
     char name[4] = { 0 };
-    if (!(nhdr.n_namesz == sizeof "GNU" &&
-          r.read(offset, nhdr.n_namesz, &name) &&
-          strncmp("GNU", name, nhdr.n_namesz) == 0 &&
-          nhdr.n_descsz > 0)) {
+    if (!(nhdr->n_namesz == 4 &&
+          r.read_into(offset, &name) &&
+          memcmp("GNU", name, 4) == 0 &&
+          nhdr->n_descsz > 0)) {
       continue;
     }
     // Note members are 4 byte aligned, twiddle bits to round up if necessary.
-    offset += (nhdr.n_namesz + 3) & ~0x3;
+    offset += (nhdr->n_namesz + 3) & ~0x3;
 
-    if (nhdr.n_type != NT_GNU_BUILD_ID) {
+    if (nhdr->n_type != NT_GNU_BUILD_ID) {
       continue;
     }
 
-    uint8_t* id = (uint8_t*)alloca(nhdr.n_descsz);
-    if (!r.read(offset, nhdr.n_descsz, id)) {
+    const uint8_t* id = r.read<uint8_t>(offset, nhdr->n_descsz);
+    if (!id) {
       LOG(error) << "Failed to read ELF note contents";
-      result.clear();
+      return result;
     }
 
-    result.reserve(nhdr.n_descsz);
-    for (unsigned i = 0; i < nhdr.n_descsz; ++i) {
+    result.reserve(nhdr->n_descsz);
+    for (unsigned i = 0; i < nhdr->n_descsz; ++i) {
       char byte[3] = { 0 };
       snprintf(&byte[0], 3, "%02x", id[i]);
       result.append(byte);
@@ -322,7 +336,7 @@ string ElfReaderImpl<Arch>::read_buildid() {
 
 template <typename Arch>
 bool ElfReaderImpl<Arch>::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
-  for (size_t i = 0; i < sections.size(); ++i) {
+  for (size_t i = 0; i < sections_size; ++i) {
     const auto& section = sections[i];
     // Skip the section if it either "occupies no space in the file" or
     // doesn't have a valid address because it does not "occupy memory
@@ -338,7 +352,7 @@ bool ElfReaderImpl<Arch>::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
   return false;
 }
 
-ElfReader::ElfReader(SupportedArch arch) : arch(arch) {}
+ElfReader::ElfReader(SupportedArch arch) : arch(arch), map(nullptr), size(0) {}
 
 ElfReader::~ElfReader() {}
 
@@ -369,9 +383,22 @@ bool ElfReader::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
 
 bool ElfReader::ok() { return impl().ok(); }
 
-bool ElfFileReader::read(size_t offset, size_t size, void* buf) {
-  ssize_t ret = read_to_end(fd, offset, buf, size);
-  return ret == (ssize_t)size;
+ElfFileReader::ElfFileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch) {
+  struct stat st;
+  if (fstat(fd, &st) < 0) {
+    FATAL() << "Can't stat fd";
+  }
+  map = static_cast<uint8_t*>(mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
+  if (map == MAP_FAILED) {
+    FATAL() << "Can't map fd";
+  }
+  size = st.st_size;
+}
+
+ElfFileReader::~ElfFileReader() {
+  if (map) {
+    munmap(map, size);
+  }
 }
 
 ScopedFd ElfFileReader::open_debug_file(const std::string& elf_file_name) {

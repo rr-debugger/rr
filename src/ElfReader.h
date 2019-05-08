@@ -36,7 +36,8 @@ public:
     size_t name_index;
   };
   std::vector<Symbol> symbols;
-  // Last character is always null
+  // Last character is always null  map = static_cast<uint8_t*>(fd);
+
   std::vector<char> strtab;
 };
 
@@ -70,17 +71,22 @@ class ElfReader {
 public:
   ElfReader(SupportedArch arch);
   virtual ~ElfReader();
-  virtual bool read(size_t offset, size_t size, void* buf) = 0;
-  template <typename T> bool read(size_t offset, T& result) {
-    return read(offset, sizeof(result), &result);
-  }
-  template <typename T> std::vector<T> read(size_t offset, size_t count) {
-    std::vector<T> result;
-    result.resize(count);
-    if (!read(offset, sizeof(T) * count, result.data())) {
-      result.clear();
+  const void* read_bytes(size_t offset, size_t size) {
+    if (offset + size > this->size) {
+      return nullptr;
     }
-    return result;
+    return map + offset;
+  }
+  template <typename T> const T* read(size_t offset, size_t count = 1) {
+    return static_cast<const T*>(read_bytes(offset, sizeof(T)*count));
+  }
+  template <typename T> bool read_into(size_t offset, T* out) {
+    auto r = read<T>(offset);
+    if (!r) {
+      return false;
+    }
+    memcpy(out, r, sizeof(*out));
+    return true;
   }
   bool ok();
   SymbolTable read_symbols(const char* symtab, const char* strtab);
@@ -97,17 +103,19 @@ private:
   ElfReaderImplBase& impl();
   std::unique_ptr<ElfReaderImplBase> impl_;
   SupportedArch arch;
+protected:
+  uint8_t* map;
+  size_t size;
 };
 
 class ElfFileReader : public ElfReader {
 public:
-  ElfFileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch), fd(fd) {}
-  ElfFileReader(ScopedFd& fd) : ElfReader(identify_arch(fd)), fd(fd) {}
-  virtual bool read(size_t offset, size_t size, void* buf);
+  ElfFileReader(ScopedFd& fd, SupportedArch arch);
+  ElfFileReader(ScopedFd& fd) : ElfFileReader(fd, identify_arch(fd)) {}
+  ~ElfFileReader();
   // Finds and opens the debug file corresponding to this reader.
   // |elf_file_name| is the name of the file already opened by this reader.
   ScopedFd open_debug_file(const std::string& elf_file_name);
-  ScopedFd& fd;
 
   static SupportedArch identify_arch(ScopedFd& fd);
 };

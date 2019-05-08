@@ -487,13 +487,14 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
 
 class VdsoReader : public ElfReader {
 public:
-  VdsoReader(RecordTask* t) : ElfReader(t->arch()), t(t) {}
-  virtual bool read(size_t offset, size_t size, void* buf) override {
-    bool ok = true;
-    t->read_bytes_helper(t->vm()->vdso().start() + offset, size, buf, &ok);
-    return ok;
+  VdsoReader(RecordTask* t) : ElfReader(t->arch()) {
+    size = t->vm()->vdso().size();
+    map = new uint8_t[size];
+    t->read_bytes_helper(t->vm()->vdso().start(), size, map);
   }
-  RecordTask* t;
+  virtual ~VdsoReader() {
+    delete[] map;
+  }
 };
 
 /**
@@ -574,22 +575,22 @@ struct named_syscall {
   int syscall_number;
 };
 
-static void erase_section(VdsoReader& reader, const char* name) {
+static void erase_section(RecordTask* t, VdsoReader& reader, const char* name) {
   SectionOffsets offsets = reader.find_section_file_offsets(name);
   if (offsets.end > offsets.start) {
     vector<uint8_t> zeroes;
     zeroes.resize(offsets.end - offsets.start);
     memset(zeroes.data(), 0, zeroes.size());
-    write_and_record_bytes(reader.t,
-        reader.t->vm()->vdso().start() + offsets.start,
+    write_and_record_bytes(t,
+        t->vm()->vdso().start() + offsets.start,
         offsets.end - offsets.start, zeroes.data());
   }
 }
 
-static void obliterate_debug_info(VdsoReader& reader) {
-  erase_section(reader, ".eh_frame");
-  erase_section(reader, ".eh_frame_hdr");
-  erase_section(reader, ".note");
+static void obliterate_debug_info(RecordTask* t, VdsoReader& reader) {
+  erase_section(t, reader, ".eh_frame");
+  erase_section(t, reader, ".eh_frame_hdr");
+  erase_section(t, reader, ".note");
 }
 
 // Monkeypatch x86-32 vdso syscalls immediately after exec. The vdso syscalls
@@ -663,7 +664,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
       }
     }
   }
-  obliterate_debug_info(reader);
+  obliterate_debug_info(t, reader);
 }
 
 // Monkeypatch x86 vsyscall hook only after the preload library
@@ -784,7 +785,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
     }
   }
 
-  obliterate_debug_info(reader);
+  obliterate_debug_info(t, reader);
 
   for (const auto& m : t->vm()->maps()) {
     auto& km = m.map;
