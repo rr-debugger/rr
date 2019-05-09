@@ -399,6 +399,7 @@ set(RR_SOURCES
   src/CPUIDBugDetector.cc
   src/DiversionSession.cc
   src/DumpCommand.cc
+  src/Dwarf.cc
   src/ElfReader.cc
   src/EmuFs.cc
   src/Event.cc
@@ -446,6 +447,7 @@ set(RR_SOURCES
   src/Scheduler.cc
   src/SeccompFilterRewriter.cc
   src/Session.cc
+  src/SourcesCommand.cc
   src/StdioMonitor.cc
   src/Task.cc
   src/ThreadGroup.cc

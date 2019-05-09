@@ -375,6 +375,11 @@ SectionOffsets ElfReader::find_section_file_offsets(const char* name) {
   return impl().find_section_file_offsets(name);
 }
 
+DwarfSpan ElfReader::dwarf_section(const char* name) {
+  SectionOffsets offsets = impl().find_section_file_offsets(name);
+  return DwarfSpan(map + offsets.start, map + offsets.end);
+}
+
 string ElfReader::read_buildid() { return impl().read_buildid(); }
 
 bool ElfReader::addr_to_offset(uintptr_t addr, uintptr_t& offset) {
