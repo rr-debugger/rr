@@ -236,8 +236,8 @@ static string resolve_symlinks(const string& path,
     bool base_is_file = false;
     size_t end;
     if (next == string::npos) {
-      base.append(rest, p);
-      resolved_base.append(rest, p);
+      base.append(rest, p, rest.size() - p);
+      resolved_base.append(rest, p, rest.size() - p);
       base_is_file = is_file;
       end = rest.size();
     } else {
