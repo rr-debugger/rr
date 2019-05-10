@@ -1608,7 +1608,8 @@ void GdbConnection::reply_get_reg(const GdbRegisterValue& reg) {
 }
 
 void GdbConnection::reply_get_regs(const vector<GdbRegisterValue>& file) {
-  char buf[file.size() * 2 * GdbRegisterValue::MAX_SIZE + 1];
+  std::unique_ptr<char[]> buf(
+      new char[file.size() * 2 * GdbRegisterValue::MAX_SIZE + 1]);
 
   DEBUG_ASSERT(DREQ_GET_REGS == req.type);
 
@@ -1616,7 +1617,7 @@ void GdbConnection::reply_get_regs(const vector<GdbRegisterValue>& file) {
   for (auto& reg : file) {
     offset += print_reg_value(reg, &buf[offset]);
   }
-  write_packet(buf);
+  write_packet(buf.get());
 
   consume_request();
 }
