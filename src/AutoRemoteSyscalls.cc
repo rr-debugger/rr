@@ -351,8 +351,9 @@ static long child_sendmsg(AutoRemoteSyscalls& remote,
                           AutoRestoreMem& remote_buf,
                           remote_ptr<socketcall_args<Arch>> sc_args,
                           remote_ptr<void> buf_end, int child_sock, int fd) {
-  char cmsgbuf[Arch::cmsg_space(sizeof(fd))];
-  memset(cmsgbuf, 0, sizeof(cmsgbuf));
+  size_t cmsgbuf_size = Arch::cmsg_space(sizeof(fd));
+  std::unique_ptr<char[]> cmsgbuf(new char[cmsgbuf_size]);
+  memset(cmsgbuf.get(), 0, cmsgbuf_size);
   // Pull the puppet strings to have the child send its fd
   // to us.  Similarly to above, we DONT_WAIT on the
   // call to finish, since it's likely not defined whether the
@@ -362,7 +363,7 @@ static long child_sendmsg(AutoRemoteSyscalls& remote,
   // data.
   auto remote_msg = allocate<typename Arch::msghdr>(&buf_end, remote_buf);
   auto remote_msgdata = allocate<typename Arch::iovec>(&buf_end, remote_buf);
-  auto remote_cmsgbuf = allocate(&buf_end, remote_buf, sizeof(cmsgbuf));
+  auto remote_cmsgbuf = allocate(&buf_end, remote_buf, cmsgbuf_size);
 
   // Unfortunately we need to send at least one byte of data in our
   // message for it to work
@@ -375,17 +376,17 @@ static long child_sendmsg(AutoRemoteSyscalls& remote,
   typename Arch::msghdr msg;
   memset(&msg, 0, sizeof(msg));
   msg.msg_control = remote_cmsgbuf;
-  msg.msg_controllen = sizeof(cmsgbuf);
+  msg.msg_controllen = cmsgbuf_size;
   msg.msg_iov = remote_msgdata;
   msg.msg_iovlen = 1;
   remote.task()->write_mem(remote_msg, msg, &ok);
 
-  auto cmsg = reinterpret_cast<typename Arch::cmsghdr*>(cmsgbuf);
+  auto cmsg = reinterpret_cast<typename Arch::cmsghdr*>(cmsgbuf.get());
   cmsg->cmsg_len = Arch::cmsg_len(sizeof(fd));
   cmsg->cmsg_level = SOL_SOCKET;
   cmsg->cmsg_type = SCM_RIGHTS;
   *static_cast<int*>(Arch::cmsg_data(cmsg)) = fd;
-  remote.task()->write_bytes_helper(remote_cmsgbuf, sizeof(cmsgbuf), &cmsgbuf, &ok);
+  remote.task()->write_bytes_helper(remote_cmsgbuf, cmsgbuf_size, &cmsgbuf, &ok);
 
   if (!ok) {
     return -ESRCH;

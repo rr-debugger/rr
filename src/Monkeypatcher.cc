@@ -289,11 +289,12 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   static const uint8_t NOP = 0x90;
   DEBUG_ASSERT(syscall_instruction_length(x86_64) ==
                syscall_instruction_length(x86));
-  uint8_t nops[syscall_instruction_length(x86_64) +
-               hook.next_instruction_length - sizeof(jump_patch)];
-  memset(nops, NOP, sizeof(nops));
-  write_and_record_mem(t, jump_patch_start + sizeof(jump_patch), nops,
-                       sizeof(nops));
+  size_t nops_bufsize = syscall_instruction_length(x86_64) +
+                        hook.next_instruction_length - sizeof(jump_patch);
+  std::unique_ptr<uint8_t[]> nops(new uint8_t[nops_bufsize]);
+  memset(nops.get(), NOP, nops_bufsize);
+  write_and_record_mem(t, jump_patch_start + sizeof(jump_patch), nops.get(),
+                       nops_bufsize);
 
   return true;
 }

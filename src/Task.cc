@@ -771,9 +771,9 @@ string Task::read_c_str(remote_ptr<char> child_addr) {
     // end_of_page) is mapped.
     remote_ptr<void> end_of_page = ceil_page_size(p + 1);
     ssize_t nbytes = end_of_page - p;
-    char buf[nbytes];
+    std::unique_ptr<char[]> buf(new char[nbytes]);
 
-    read_bytes_helper(p, nbytes, buf);
+    read_bytes_helper(p, nbytes, buf.get());
     for (int i = 0; i < nbytes; ++i) {
       if ('\0' == buf[i]) {
         return str;
