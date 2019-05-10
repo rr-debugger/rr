@@ -386,7 +386,7 @@ static long child_sendmsg(AutoRemoteSyscalls& remote,
   cmsg->cmsg_level = SOL_SOCKET;
   cmsg->cmsg_type = SCM_RIGHTS;
   *static_cast<int*>(Arch::cmsg_data(cmsg)) = fd;
-  remote.task()->write_bytes_helper(remote_cmsgbuf, cmsgbuf_size, &cmsgbuf, &ok);
+  remote.task()->write_bytes_helper(remote_cmsgbuf, cmsgbuf_size, cmsgbuf.get(), &ok);
 
   if (!ok) {
     return -ESRCH;
