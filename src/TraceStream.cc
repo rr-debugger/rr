@@ -1177,8 +1177,7 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
     return dir;
   }
 
-  // never should reach that
-  return nullptr;
+  return ""; // not reached
 }
 
 #define STR_HELPER(x) #x

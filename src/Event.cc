@@ -208,7 +208,7 @@ std::string Event::type_name() const {
 #undef CASE
     default:
       FATAL() << "Unknown event type " << event_type;
-      return nullptr; // not reached
+      return ""; // not reached
   }
 }
 
