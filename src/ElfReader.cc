@@ -393,9 +393,11 @@ ElfFileReader::ElfFileReader(ScopedFd& fd, SupportedArch arch) : ElfReader(arch)
   if (fstat(fd, &st) < 0) {
     FATAL() << "Can't stat fd";
   }
-  map = static_cast<uint8_t*>(mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
-  if (map == MAP_FAILED) {
-    FATAL() << "Can't map fd";
+  if (st.st_size > 0) {
+    map = static_cast<uint8_t*>(mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
+    if (map == MAP_FAILED) {
+      FATAL() << "Can't map fd";
+    }
   }
   size = st.st_size;
 }
