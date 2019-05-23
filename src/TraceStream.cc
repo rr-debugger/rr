@@ -175,13 +175,13 @@ public:
       throw IOException();
     }
   }
-  virtual kj::ArrayPtr<const byte> tryGetReadBuffer() {
+  virtual kj::ArrayPtr<const capnp::byte> tryGetReadBuffer() {
     const uint8_t* p;
     size_t size;
     if (!reader.get_buffer(&p, &size)) {
       throw IOException();
     }
-    return kj::ArrayPtr<const byte>(p, size);
+    return kj::ArrayPtr<const capnp::byte>(p, size);
   }
 
 private:
@@ -223,12 +223,12 @@ bool TraceReader::good() const {
   return true;
 }
 
-static kj::ArrayPtr<const byte> str_to_data(const string& str) {
-  return kj::ArrayPtr<const byte>(reinterpret_cast<const byte*>(str.data()),
-                                  str.size());
+static kj::ArrayPtr<const capnp::byte> str_to_data(const string& str) {
+  return kj::ArrayPtr<const capnp::byte>(
+      reinterpret_cast<const capnp::byte*>(str.data()), str.size());
 }
 
-static string data_to_str(const kj::ArrayPtr<const byte>& data) {
+static string data_to_str(const kj::ArrayPtr<const capnp::byte>& data) {
   if (memchr(data.begin(), 0, data.size())) {
     FATAL() << "Invalid string: contains null character";
   }
