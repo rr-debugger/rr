@@ -274,7 +274,7 @@ static void open_control_fd(const char* path) {
   }
   strcpy(addr.sun_path, path);
   unlink(path);
-  check(0 == bind(listen_fd, &addr, sizeof(addr)));
+  check(0 == bind(listen_fd, (struct sockaddr*)&addr, sizeof(addr)));
   check(0 == chmod(path, 0666));
   check(0 == listen(listen_fd, 1));
   control_fd = accept(listen_fd, NULL, NULL);
