@@ -3,6 +3,8 @@
 #ifndef RR_LOG_H
 #define RR_LOG_H
 
+#include <features.h>
+
 #include <iostream>
 #include <type_traits>
 #include <vector>
