@@ -32,7 +32,7 @@ if t2 <= t:
 send_gdb('when-ticks')
 expect_gdb(re.compile(r'Current tick: (\d+)'))
 ticks2 = eval(last_match().group(1));
-if ticks2 < 0 or ticks2 > 100000:
+if ticks2 < 0 or ticks2 > 1000000:
     failed('ERROR in second "when-ticks"')
 if ticks2 <= ticks:
     failed('ERROR ... "when-ticks" failed to advance')
