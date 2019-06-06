@@ -227,13 +227,14 @@ void Task::destroy_buffers() {
 void Task::unmap_buffers_for(
     AutoRemoteSyscalls& remote, Task* other,
     remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child) {
+  auto arch = remote.task()->arch();
   if (other->scratch_ptr) {
-    remote.infallible_syscall(syscall_number_for_munmap(arch()),
+    remote.infallible_syscall(syscall_number_for_munmap(arch),
                               other->scratch_ptr, other->scratch_size);
     vm()->unmap(this, other->scratch_ptr, other->scratch_size);
   }
   if (!saved_syscallbuf_child.is_null()) {
-    remote.infallible_syscall(syscall_number_for_munmap(arch()),
+    remote.infallible_syscall(syscall_number_for_munmap(arch),
                               saved_syscallbuf_child, other->syscallbuf_size);
     vm()->unmap(this, saved_syscallbuf_child, other->syscallbuf_size);
   }
@@ -243,15 +244,16 @@ void Task::unmap_buffers_for(
  * Must be idempotent.
  */
 void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
+  auto arch = remote.task()->arch();
   if (other->desched_fd_child >= 0) {
     if (session().is_recording()) {
-      remote.infallible_syscall(syscall_number_for_close(arch()),
+      remote.infallible_syscall(syscall_number_for_close(arch),
                                 other->desched_fd_child);
     }
     fds->did_close(other->desched_fd_child);
   }
   if (other->cloned_file_data_fd_child >= 0) {
-    remote.infallible_syscall(syscall_number_for_close(arch()),
+    remote.infallible_syscall(syscall_number_for_close(arch),
                               other->cloned_file_data_fd_child);
     fds->did_close(other->cloned_file_data_fd_child);
   }
