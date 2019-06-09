@@ -1161,11 +1161,13 @@ void RecordTask::update_sigaction(const Registers& regs) {
 }
 
 sig_set_t RecordTask::read_sigmask_from_process() {
-  // It's tempting to call PTRACE_GETSIGMASK here, but we can't because
-  // that will return incorrect results in some cases, e.g. while ppoll
-  // is running (including while it has been interrupted by a signal
-  // handler). See
-  // https://github.com/torvalds/linux/commit/fcfc2aa0185f4a731d05a21e9f359968fdfd02e7
+  sig_set_t mask;
+  long ret = fallible_ptrace(PTRACE_GETSIGMASK,
+                             remote_ptr<void>(sizeof(sig_set_t)), &mask);
+  if (ret >= 0) {
+    return mask;
+  }
+
   auto results = read_proc_status_fields(tid, "SigBlk");
   ASSERT(this, results.size() == 1);
   return strtoull(results[0].c_str(), NULL, 16);
