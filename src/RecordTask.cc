@@ -1161,11 +1161,17 @@ void RecordTask::update_sigaction(const Registers& regs) {
 }
 
 sig_set_t RecordTask::read_sigmask_from_process() {
-  sig_set_t mask;
-  long ret = fallible_ptrace(PTRACE_GETSIGMASK,
-                             remote_ptr<void>(sizeof(sig_set_t)), &mask);
-  if (ret >= 0) {
-    return mask;
+  // During syscall interruptions, PTRACE_GETSIGMASK may return the sigmask that is going
+  // to be restored, not the kernel's current (internal) sigmask, which is what
+  // /proc/.../status reports. Always go with what /proc/.../status reports. See
+  // https://github.com/torvalds/linux/commit/fcfc2aa0185f4a731d05a21e9f359968fdfd02e7
+  if (!at_may_restart_syscall()) {
+    sig_set_t mask;
+    long ret = fallible_ptrace(PTRACE_GETSIGMASK,
+                               remote_ptr<void>(sizeof(sig_set_t)), &mask);
+    if (ret >= 0) {
+      return mask;
+    }
   }
 
   auto results = read_proc_status_fields(tid, "SigBlk");
