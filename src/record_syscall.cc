@@ -4991,16 +4991,19 @@ static void handle_opened_file(RecordTask* t, int fd) {
   // This must be kept in sync with replay_syscall's handle_opened_files.
   FileMonitor* file_monitor = nullptr;
   if (is_mapped_shared(t, st) && is_writable(t, fd)) {
+    LOG(info) << "Installing MmappedFileMonitor for " << fd;
     file_monitor = new MmappedFileMonitor(t, fd);
   } else if (is_rr_terminal(pathname)) {
     // This will let rr event annotations echo to the terminal. It will also
     // ensure writes to this fd are not syscall-buffered.
+    LOG(info) << "Installing StdioMonitor for " << fd;
     file_monitor = new StdioMonitor(dev_tty_fd());
     pathname = "terminal";
   } else if (is_proc_mem_file(pathname.c_str())) {
+    LOG(info) << "Installing ProcMemMonitor for " << fd;
     file_monitor = new ProcMemMonitor(t, pathname);
   } else if (is_proc_fd_dir(pathname.c_str())) {
-    LOG(info) << "Installing proc_fd monitor";
+    LOG(info) << "Installing ProcFdDirMonitor for " << fd;
     file_monitor = new ProcFdDirMonitor(t, pathname);
   }
 
