@@ -1946,12 +1946,12 @@ remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
     if (r.intersects(global_exclusion_range)) {
       continue;
     }
-    if (t->session().asan_active()) {
+    if (t->session().asan_active() && sizeof(size_t) == 8) {
       LOG(debug) << "Checking ASAN shadow";
-      MemoryRange asan_shadow(remote_ptr<void>(0x00007fff7000),
-                              remote_ptr<void>(0x10007fff8000));
-      MemoryRange asan_allocator_reserved(remote_ptr<void>(0x600000000000),
-                                          remote_ptr<void>(0x640000000000));
+      MemoryRange asan_shadow(remote_ptr<void>((uintptr_t)0x00007fff7000LL),
+                              remote_ptr<void>((uintptr_t)0x10007fff8000LL));
+      MemoryRange asan_allocator_reserved(remote_ptr<void>((uintptr_t)0x600000000000LL),
+                                          remote_ptr<void>((uintptr_t)0x640000000000LL));
       if (r.intersects(asan_shadow) || r.intersects(asan_allocator_reserved)) {
         continue;
       }
