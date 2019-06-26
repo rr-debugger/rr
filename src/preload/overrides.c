@@ -86,6 +86,17 @@ long sysconf(int name) {
   return __sysconf(name);
 }
 
+typedef void* Dlopen(const char* filename, int flags);
+
+void* dlopen(const char* filename, int flags) {
+  // Give up our timeslice now. This gives us a full timeslice to
+  // execute the dlopen(), reducing the chance we'll hit
+  // https://sourceware.org/bugzilla/show_bug.cgi?id=19329.
+  Dlopen* f_ptr = (Dlopen*)dlsym(RTLD_NEXT, "dlopen");
+  sched_yield();
+  return f_ptr(filename, flags);
+}
+
 /** Disable XShm since rr doesn't work with it */
 int XShmQueryExtension(__attribute__((unused)) void* dpy) { return 0; }
 
