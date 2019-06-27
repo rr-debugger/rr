@@ -1884,7 +1884,7 @@ static MemoryRange choose_global_exclusion_range() {
   uint64_t r_addr = r & ((uint64_t(1) << bits) - 1);
   r_addr = min(r_addr, (uint64_t(1) << bits) - range_size);
   remote_ptr<void> addr = floor_page_size(remote_ptr<void>(r_addr));
-  return MemoryRange(addr, range_size);
+  return MemoryRange(addr, (uintptr_t)range_size);
 }
 
 remote_ptr<void> AddressSpace::chaos_mode_find_free_memory(RecordTask* t,
