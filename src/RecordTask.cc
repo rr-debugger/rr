@@ -407,6 +407,11 @@ template <typename Arch> static void do_preload_init_arch(RecordTask* t) {
   t->write_mem(cores_ptr, cores);
   t->record_local(cores_ptr, &cores);
 
+  auto desched_sig = t->session().syscallbuf_desched_sig();
+  auto desched_sig_ptr = REMOTE_PTR_FIELD(params.globals.rptr(), desched_sig);
+  t->write_mem(desched_sig_ptr, desched_sig);
+  t->record_local(desched_sig_ptr, &desched_sig);
+
   uint64_t random_seed;
   do {
     random_seed = rand() | (uint64_t(rand()) << 32);
@@ -600,8 +605,7 @@ void RecordTask::will_resume_execution(ResumeRequest, WaitRequest,
     // because blocking it seems to cause problems for some hardware/kernel
     // configurations (see https://github.com/mozilla/rr/issues/1979),
     // causing them to stop counting events.
-    sig_set_t sigset = ~(signal_bit(SYSCALLBUF_DESCHED_SIGNAL) |
-                         signal_bit(PerfCounters::TIME_SLICE_SIGNAL));
+    sig_set_t sigset = ~session().rr_signal_mask();
     if (sig) {
       // We're injecting a signal, so make sure that signal is unblocked.
       sigset &= ~signal_bit(sig);
@@ -1236,7 +1240,7 @@ void RecordTask::stash_sig() {
   int sig = stop_sig();
   ASSERT(this, sig);
   // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
-  ASSERT(this, sig != SYSCALLBUF_DESCHED_SIGNAL);
+  ASSERT(this, sig != session().syscallbuf_desched_sig());
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
@@ -1263,7 +1267,7 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si,
   int sig = si.si_signo;
   DEBUG_ASSERT(sig);
   // Callers should avoid passing SYSCALLBUF_DESCHED_SIGNAL in here.
-  DEBUG_ASSERT(sig != SYSCALLBUF_DESCHED_SIGNAL);
+  DEBUG_ASSERT(sig != session().syscallbuf_desched_sig());
   // multiple non-RT signals coalesce
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {

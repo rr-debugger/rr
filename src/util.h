@@ -15,6 +15,12 @@
 #include "TraceFrame.h"
 #include "remote_ptr.h"
 
+/* This is pretty arbitrary. On Linux SIGPWR is sent to PID 1 (init) on
+ * power failure, and it's unlikely rr will be recording that.
+ * Note that SIGUNUSED means SIGSYS which actually *is* used (by seccomp),
+ * so we can't use it. */
+#define SYSCALLBUF_DEFAULT_DESCHED_SIGNAL SIGPWR
+
 namespace rr {
 
 /*
@@ -318,8 +324,6 @@ XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records);
 inline size_t xsave_area_size() { return xsave_native_layout().full_size; }
 
 inline sig_set_t signal_bit(int sig) { return sig_set_t(1) << (sig - 1); }
-
-uint64_t rr_signal_mask();
 
 inline bool is_kernel_trap(int si_code) {
   /* XXX unable to find docs on which of these "should" be

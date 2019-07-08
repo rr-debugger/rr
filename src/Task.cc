@@ -612,7 +612,7 @@ void Task::enter_syscall() {
     }
     ASSERT(this, session().is_recording())
         << " got unexpected signal " << signal_name(stop_sig());
-    if (stop_sig() == SYSCALLBUF_DESCHED_SIGNAL) {
+    if (stop_sig() == session().as_record()->syscallbuf_desched_sig()) {
       continue;
     }
     static_cast<RecordTask*>(this)->stash_sig();

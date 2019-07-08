@@ -1247,11 +1247,6 @@ XSaveLayout xsave_layout_from_trace(const std::vector<CPUIDRecord> records) {
   return layout;
 }
 
-uint64_t rr_signal_mask() {
-  return signal_bit(PerfCounters::TIME_SLICE_SIGNAL) |
-         signal_bit(SYSCALLBUF_DESCHED_SIGNAL);
-}
-
 ScopedFd open_socket(const char* address, unsigned short* port,
                      ProbePort probe) {
   ScopedFd listen_fd(socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));

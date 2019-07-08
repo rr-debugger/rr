@@ -1116,6 +1116,7 @@ set(TESTS_WITH_PROGRAM
   shared_persistent_file
   signal_numbers
   sigprocmask_race
+  sigprocmask_rr_sigs_nondefault
   stack_growth
   step_thread
   string_instructions

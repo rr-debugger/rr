@@ -466,7 +466,7 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   if (privileged_untraced_fcntl(fd, F_SETOWN_EX, &own)) {
     fatal("Failed to fcntl(SETOWN_EX) the desched counter to this");
   }
-  if (privileged_untraced_fcntl(fd, F_SETSIG, SYSCALLBUF_DESCHED_SIGNAL)) {
+  if (privileged_untraced_fcntl(fd, F_SETSIG, globals.desched_sig)) {
     fatal("Failed to fcntl(SETSIG) the desched counter");
   }
 
@@ -867,7 +867,7 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
       si.si_pid = pid;
       si.si_uid = uid;
       privileged_untraced_syscall4(SYS_rt_tgsigqueueinfo, pid, tid,
-                                   SYSCALLBUF_DESCHED_SIGNAL,
+                                   globals.desched_sig,
                                    &si);
     }
   }
@@ -2726,7 +2726,7 @@ static long sys_rt_sigprocmask(const struct syscall_info* call) {
     // SIGPWR(SYSCALLBUF_DESCHED_SIGNAL) are used by rr
     modified_set &=
         ~(((uint64_t)1) << (SIGSTKFLT - 1)) &
-        ~(((uint64_t)1) << (SYSCALLBUF_DESCHED_SIGNAL - 1));
+        ~(((uint64_t)1) << (globals.desched_sig - 1));
     set = &modified_set;
   }
 

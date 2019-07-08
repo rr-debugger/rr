@@ -67,6 +67,9 @@ RecordCommand RecordCommand::singleton(
     "                             to given file descriptor\n"
     "  --syscall-buffer-size=<NUM> desired size of syscall buffer in kB.\n"
     "                             Mainly for tests\n"
+    "  --syscall-buffer-sig=<NUM> the signal used for communication with the\n"
+    "                             syscall buffer. SIGPWR by default, unused\n"
+    "                             if --no-syscall-buffer is passed\n"
     "  -s, --always-switch        try to context switch at every rr event\n"
     "  -t, --continue-through-signal=<SIG>\n"
     "                             Unhandled <SIG> signals will be ignored\n"
@@ -158,6 +161,9 @@ struct RecordFlags {
   /* Copy preload sources to trace dir */
   bool copy_preload_src;
 
+  /* The signal to use for syscallbuf desched events */
+  int syscallbuf_desched_sig;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -176,7 +182,8 @@ struct RecordFlags {
         ignore_nested(false),
         scarce_fds(false),
         setuid_sudo(false),
-        copy_preload_src(false) {}
+        copy_preload_src(false),
+        syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -232,6 +239,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 10, "num-cores", HAS_PARAMETER },
     { 11, "trace-id", HAS_PARAMETER },
     { 12, "copy-preload-src", NO_PARAMETER },
+    { 13, "syscall-buffer-sig", HAS_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -416,6 +424,13 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 12:
       flags.copy_preload_src = true;
       break;
+    case 13:
+      parse_signal_name(opt);
+      if (!opt.verify_valid_int(1, _NSIG - 1)) {
+        return false;
+      }
+      flags.syscallbuf_desched_sig = opt.int_value;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -556,7 +571,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
 
   auto session = RecordSession::create(
       args, flags.extra_env, flags.disable_cpuid_features,
-      flags.use_syscall_buffer, flags.bind_cpu, flags.output_trace_dir,
+      flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
+      flags.bind_cpu, flags.output_trace_dir,
       flags.trace_id.get());
   setup_session_from_flags(*session, flags);
 

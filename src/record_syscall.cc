@@ -2829,7 +2829,7 @@ static bool protect_rr_sigs(RecordTask* t, remote_ptr<void> p, void* save) {
 
   auto sig_set = t->read_mem(setp);
   auto new_sig_set = sig_set;
-  new_sig_set &= ~rr_signal_mask();
+  new_sig_set &= ~t->session().rr_signal_mask();
   if (sig_set == new_sig_set) {
     return false;
   }
@@ -2855,7 +2855,7 @@ static bool protect_rr_sigs_sa_mask_arch(RecordTask* t, remote_ptr<void> p,
   auto new_sig_set = sa.sa_mask;
   // Don't let the tracee block TIME_SLICE_SIGNAL or
   // SYSCALLBUF_DESCHED_SIGNAL.
-  new_sig_set.__val[0] &= ~rr_signal_mask();
+  new_sig_set.__val[0] &= ~t->session().rr_signal_mask();
 
   if (!memcmp(&sa.sa_mask, &new_sig_set, sizeof(new_sig_set))) {
     return false;

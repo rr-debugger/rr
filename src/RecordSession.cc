@@ -708,7 +708,7 @@ static void advance_to_disarm_desched_syscall(RecordTask* t) {
     // we arm the desched signal before we restart a blocking syscall, which
     // completes successfully, then we disarm, then we see a desched signal
     // here.
-    if (SYSCALLBUF_DESCHED_SIGNAL == sig) {
+    if (t->session().syscallbuf_desched_sig() == sig) {
       continue;
     }
     if (sig && sig == old_sig) {
@@ -1184,7 +1184,7 @@ static bool preinject_signal(RecordTask* t) {
     // Always send SYSCALLBUF_DESCHED_SIGNAL because other signals (except
     // TIME_SLICE_SIGNAL) will be blocked by
     // RecordTask::will_resume_execution().
-    t->tgkill(SYSCALLBUF_DESCHED_SIGNAL);
+    t->tgkill(t->session().syscallbuf_desched_sig());
 
     /* Now singlestep the task until we're in a signal-stop for the signal
      * we've just sent. We must absorb and forget that signal here since we
@@ -1206,7 +1206,7 @@ static bool preinject_signal(RecordTask* t) {
       return false;
     }
 
-    ASSERT(t, t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL)
+    ASSERT(t, t->stop_sig() == t->session().syscallbuf_desched_sig())
         << "Expected SYSCALLBUF_DESCHED_SIGNAL, got " << t->status();
     /* We're now in a signal-stop */
   }
@@ -1247,7 +1247,7 @@ static bool inject_handled_signal(RecordTask* t) {
     t->invalidate_sigmask();
     // Repeat injection if we got a desched signal. We observe in Linux 4.14.12
     // that we get SYSCALLBUF_DESCHED_SIGNAL here once in a while.
-  } while (t->stop_sig() == SYSCALLBUF_DESCHED_SIGNAL);
+  } while (t->stop_sig() == t->session().syscallbuf_desched_sig());
 
   if (t->stop_sig() == SIGSEGV) {
     // Constructing the signal handler frame must have failed. The kernel will
@@ -1474,7 +1474,7 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
   // was blocked now, before we update our cached sigmask.
   SignalBlocked signal_was_blocked =
       t->is_sig_blocked(sig) ? SIG_BLOCKED : SIG_UNBLOCKED;
-  if (deterministic || sig == SYSCALLBUF_DESCHED_SIGNAL) {
+  if (deterministic || sig == t->session().syscallbuf_desched_sig()) {
     // Don't stash these signals; deliver them immediately.
     // We don't want them to be reordered around other signals.
     // invalidate_sigmask() must not be called before we reach handle_signal!
@@ -1804,7 +1804,9 @@ static string lookup_by_path(const string& name) {
 /*static*/ RecordSession::shr_ptr RecordSession::create(
     const vector<string>& argv, const vector<string>& extra_env,
     const DisableCPUIDFeatures& disable_cpuid_features,
-    SyscallBuffering syscallbuf, BindCPU bind_cpu,
+    SyscallBuffering syscallbuf,
+    unsigned char syscallbuf_desched_sig,
+    BindCPU bind_cpu,
     const string& output_trace_dir,
     const TraceUuid* trace_id) {
   // The syscallbuf library interposes some critical
@@ -1897,7 +1899,8 @@ static string lookup_by_path(const string& name) {
 
   shr_ptr session(
       new RecordSession(full_path, argv, env, disable_cpuid_features,
-                        syscallbuf, bind_cpu, output_trace_dir, trace_id));
+                        syscallbuf, syscallbuf_desched_sig, bind_cpu,
+                        output_trace_dir, trace_id));
   session->set_asan_active(!exe_info.libasan_path.empty() ||
                            exe_info.has_asan_symbols);
   return session;
@@ -1907,7 +1910,9 @@ RecordSession::RecordSession(const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
                              const DisableCPUIDFeatures& disable_cpuid_features,
-                             SyscallBuffering syscallbuf, BindCPU bind_cpu,
+                             SyscallBuffering syscallbuf,
+                             int syscallbuf_desched_sig,
+                             BindCPU bind_cpu,
                              const string& output_trace_dir,
                              const TraceUuid* trace_id)
     : trace_out(argv[0], choose_cpu(bind_cpu), output_trace_dir, ticks_semantics_),
@@ -1918,6 +1923,7 @@ RecordSession::RecordSession(const std::string& exe_path,
       continue_through_sig(0),
       last_task_switchable(PREVENT_SWITCH),
       syscall_buffer_size_(1024 * 1024),
+      syscallbuf_desched_sig_(syscallbuf_desched_sig),
       use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
       use_file_cloning_(true),
       use_read_cloning_(true),
@@ -2105,6 +2111,11 @@ RecordTask* RecordSession::find_task(pid_t rec_tid) const {
 
 RecordTask* RecordSession::find_task(const TaskUid& tuid) const {
   return static_cast<RecordTask*>(Session::find_task(tuid));
+}
+
+uint64_t RecordSession::rr_signal_mask() const {
+  return signal_bit(PerfCounters::TIME_SLICE_SIGNAL) |
+         signal_bit(syscallbuf_desched_sig_);
 }
 
 static const uint32_t CPUID_RDRAND_FLAG = 1 << 30;

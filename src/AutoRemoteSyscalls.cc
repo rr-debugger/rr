@@ -9,6 +9,7 @@
 
 #include "rr/rr.h"
 
+#include "RecordSession.h"
 #include "RecordTask.h"
 #include "ReplaySession.h"
 #include "Session.h"
@@ -218,8 +219,9 @@ static bool ignore_signal(Task* t) {
       return true;
     }
   } else if (t->session().is_recording()) {
-    if (sig != SYSCALLBUF_DESCHED_SIGNAL) {
-      static_cast<RecordTask*>(t)->stash_sig();
+    auto rt = static_cast<RecordTask*>(t);
+    if (sig != rt->session().syscallbuf_desched_sig()) {
+      rt->stash_sig();
     }
     return true;
   }

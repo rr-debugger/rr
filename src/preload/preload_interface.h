@@ -95,12 +95,6 @@ static inline const char* extract_file_name(const char* s) {
 #define SYSCALLBUF_LIB_FILENAME_PADDED SYSCALLBUF_LIB_FILENAME_BASE ".so:::"
 #define SYSCALLBUF_LIB_FILENAME_32 SYSCALLBUF_LIB_FILENAME_BASE "_32.so"
 
-/* This is pretty arbitrary. On Linux SIGPWR is sent to PID 1 (init) on
- * power failure, and it's unlikely rr will be recording that.
- * Note that SIGUNUSED means SIGSYS which actually *is* used (by seccomp),
- * so we can't use it. */
-#define SYSCALLBUF_DESCHED_SIGNAL SIGPWR
-
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
 
@@ -260,8 +254,8 @@ struct preload_globals {
   /* 1 if chaos mode is enabled. DO NOT READ from rr during replay, because
      this field is not initialized in old traces. */
   unsigned char in_chaos;
-  /* Padding, currently unused; can be used later. */
-  unsigned char padding;
+  /* The signal to use for desched events */
+  unsigned char desched_sig;
   /* Number of cores to pretend we have. 0 means 1. rr sets this when
    * the preload library is initialized. */
   int pretend_num_cores;

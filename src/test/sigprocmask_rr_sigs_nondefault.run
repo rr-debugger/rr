@@ -1,0 +1,1 @@
+RECORD_ARGS=--syscall-buffer-sig=SIGPROF
