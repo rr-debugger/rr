@@ -183,7 +183,7 @@ struct RecordFlags {
         scarce_fds(false),
         setuid_sudo(false),
         copy_preload_src(false),
-        syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL) {}
+        syscallbuf_desched_sig(0) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -697,6 +697,17 @@ int RecordCommand::run(vector<string>& args) {
   }
 
   assert_prerequisites(flags.use_syscall_buffer);
+
+  if (flags.syscallbuf_desched_sig) {
+    if (flags.use_syscall_buffer == RecordSession::DISABLE_SYSCALL_BUF) {
+      fprintf(stderr, "rr: --syscallbuf-buffer-sig requires syscall buffering to be enabled\n");
+      return 1;
+    }
+  } else {
+    if (flags.use_syscall_buffer == RecordSession::ENABLE_SYSCALL_BUF) {
+      flags.syscallbuf_desched_sig = SYSCALLBUF_DEFAULT_DESCHED_SIGNAL;
+    }
+  }
 
   if (flags.setuid_sudo) {
     if (geteuid() != 0 || getenv("SUDO_UID") == NULL) {

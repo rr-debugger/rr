@@ -2114,8 +2114,11 @@ RecordTask* RecordSession::find_task(const TaskUid& tuid) const {
 }
 
 uint64_t RecordSession::rr_signal_mask() const {
-  return signal_bit(PerfCounters::TIME_SLICE_SIGNAL) |
-         signal_bit(syscallbuf_desched_sig_);
+  uint64_t mask = signal_bit(PerfCounters::TIME_SLICE_SIGNAL);
+  if (syscallbuf_desched_sig_) {
+    mask |= signal_bit(syscallbuf_desched_sig_);
+  }
+  return mask;
 }
 
 static const uint32_t CPUID_RDRAND_FLAG = 1 << 30;
