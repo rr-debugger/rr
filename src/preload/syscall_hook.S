@@ -50,10 +50,10 @@ __morestack:
 _switch_stack_vsyscall:
         .cfi_startproc
         movl %esp,(stub_scratch_1)
-        incl (alt_stack_nesting_level)
-        cmpl $1,(alt_stack_nesting_level)
-        jne 1f
-        movl (syscallbuf_stub_alt_stack),%esp
+        //incl (alt_stack_nesting_level)
+        //cmpl $1,(alt_stack_nesting_level)
+        //jne 1f
+        //movl (syscallbuf_stub_alt_stack),%esp
 1:
         /* Set up stack frame so CFI stack walking works.
            Push before-call ESP.
@@ -175,9 +175,9 @@ _syscall_hook_trampoline:
         popl %edi
         .cfi_adjust_cfa_offset -4
         .cfi_restore %edi
-        mov (alt_stack_nesting_level),%ebp
-        lea -1(%ebp),%ebp
-        mov %ebp,(alt_stack_nesting_level)
+        //mov (alt_stack_nesting_level),%ebp
+        //lea -1(%ebp),%ebp
+        //mov %ebp,(alt_stack_nesting_level)
         popl %ebp
         .cfi_adjust_cfa_offset -4
         .cfi_restore %ebp
@@ -348,9 +348,9 @@ _syscall_hook_trampoline:
         pop %r8
         .cfi_adjust_cfa_offset -8
         .cfi_restore %r8
-        mov (alt_stack_nesting_level),%r9d
-        lea -1(%r9),%r9
-        mov %r9d,(alt_stack_nesting_level)
+        //mov (alt_stack_nesting_level),%r9d
+        //lea -1(%r9),%r9
+        //mov %r9d,(alt_stack_nesting_level)
         pop %r9
         .cfi_adjust_cfa_offset -8
         .cfi_restore %r9
