@@ -740,7 +740,11 @@ public:
 
   PropertyTable& properties() { return properties_; }
 
-  void post_vm_clone(Task* t);
+  /**
+   * The return value indicates whether we (re)created the preload_thread_locals
+   * area.
+   */
+  bool post_vm_clone(Task* t);
   /**
    * TaskUid for the task whose locals are stored in the preload_thread_locals
    * area.

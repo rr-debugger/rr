@@ -70,6 +70,8 @@ public:
 private:
   template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
 
+  virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin);
+
   ~ReplayTask() {}
 };
 

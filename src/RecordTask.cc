@@ -1859,4 +1859,20 @@ void RecordTask::maybe_restore_original_syscall_registers() {
                    preload_thread_locals());
 }
 
+bool RecordTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
+  if (Task::post_vm_clone(reason, flags, origin)) {
+    KernelMapping preload_thread_locals_mapping =
+      vm()->mapping_of(AddressSpace::preload_thread_locals_start()).map;
+    auto mode = trace_writer().write_mapped_region(
+      this, preload_thread_locals_mapping,
+      preload_thread_locals_mapping.fake_stat(),
+      vector<TraceRemoteFd>(),
+      TraceWriter::RR_BUFFER_MAPPING);
+    ASSERT(this, mode == TraceWriter::DONT_RECORD_IN_TRACE);
+    return true;
+  }
+
+  return false;
+};
+
 } // namespace rr

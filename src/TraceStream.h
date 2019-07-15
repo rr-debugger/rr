@@ -401,6 +401,10 @@ public:
   }
   bool uses_cpuid_faulting() const { return trace_uses_cpuid_faulting; }
   uint64_t xcr0() const;
+  // Prior to issue 2370, we did not emit mapping into the trace for the
+  // preload_thread_locals mapping if it was created by a clone(2) without
+  // CLONE_VM. This is true if that has been fixed.
+  bool preload_thread_locals_recorded() const { return preload_thread_locals_recorded_; }
   const TraceUuid& uuid() const { return *uuid_; }
 
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
@@ -419,6 +423,7 @@ private:
   double monotonic_time_;
   std::unique_ptr<TraceUuid> uuid_;
   bool trace_uses_cpuid_faulting;
+  bool preload_thread_locals_recorded_;
 };
 
 extern std::string trace_save_dir();

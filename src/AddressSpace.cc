@@ -1453,13 +1453,13 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
   // cloned address-space memory, so we don't need to do any more work here.
 }
 
-void AddressSpace::post_vm_clone(Task* t) {
+bool AddressSpace::post_vm_clone(Task* t) {
   if (has_mapping(preload_thread_locals_start()) &&
       (mapping_flags_of(preload_thread_locals_start()) &
        AddressSpace::Mapping::IS_THREAD_LOCALS) == 0) {
     // The tracee already has a mapping at this address that doesn't belong to
     // us. Don't touch it.
-    return;
+    return false;
   }
 
   // Otherwise, the preload_thread_locals mapping is non-existent or ours.
@@ -1470,6 +1470,7 @@ void AddressSpace::post_vm_clone(Task* t) {
                                   "preload_thread_locals");
   mapping_flags_of(preload_thread_locals_start()) |=
       AddressSpace::Mapping::IS_THREAD_LOCALS;
+  return true;
 }
 
 static bool try_split_unaligned_range(MemoryRange& range, size_t bytes,

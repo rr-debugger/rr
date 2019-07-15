@@ -67,6 +67,8 @@ struct Header {
   syscallbufProtocolVersion @4 :UInt16;
   # Trace recorded OK. False if rr crashed out due to an fatal assertion etc.
   ok @7 :Bool = true;
+  # Do the mappings of preload_thread_locals always appear in the trace?
+  preloadThreadLocalsRecorded @8 :Bool = false;
 }
 
 # A file descriptor belonging to a task

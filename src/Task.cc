@@ -1664,7 +1664,7 @@ static void set_thread_area_from_clone(Task* t, remote_ptr<void> tls) {
 }
 
 template <typename Arch>
-static void setup_thread_locals_from_clone_arch(Task* t, Task* origin) {
+static void setup_preload_thread_locals_from_clone_arch(Task* t, Task* origin) {
   void* local_addr = preload_thread_locals_local_addr(*t->vm());
   if (local_addr) {
     t->activate_preload_thread_locals();
@@ -1677,8 +1677,8 @@ static void setup_thread_locals_from_clone_arch(Task* t, Task* origin) {
   }
 }
 
-static void setup_thread_locals_from_clone(Task* t, Task* origin) {
-  RR_ARCH_FUNCTION(setup_thread_locals_from_clone_arch, t->arch(), t, origin);
+void Task::setup_preload_thread_locals_from_clone(Task* origin) {
+  RR_ARCH_FUNCTION(setup_preload_thread_locals_from_clone_arch, this->arch(), this, origin);
 }
 
 Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
@@ -1784,15 +1784,22 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
     }
   }
 
+  t->post_vm_clone(reason, flags, this);
+
+  return t;
+}
+
+bool Task::post_vm_clone(CloneReason reason, int flags, Task* origin) {
+  bool created_preload_thread_locals_mapping = false;
   if (!(CLONE_SHARE_VM & flags)) {
-    t->as->post_vm_clone(t);
+    created_preload_thread_locals_mapping = this->as->post_vm_clone(this);
   }
 
   if (reason == TRACEE_CLONE) {
-    setup_thread_locals_from_clone(t, this);
+    setup_preload_thread_locals_from_clone(origin);
   }
 
-  return t;
+  return created_preload_thread_locals_mapping;
 }
 
 Task* Task::os_fork_into(Session* session) {

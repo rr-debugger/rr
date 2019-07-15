@@ -1273,6 +1273,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setTicksSemantics(
     to_trace_ticks_semantics(PerfCounters::default_ticks_semantics()));
   header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
+  header.setPreloadThreadLocalsRecorded(true);
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
   if (!uuid) {
@@ -1419,6 +1420,7 @@ TraceReader::TraceReader(const string& dir)
   memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
          len * sizeof(CPUIDRecord));
   xcr0_ = header.getXcr0();
+  preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
   Data::Reader uuid = header.getUuid();
   uuid_ = unique_ptr<TraceUuid>(new TraceUuid());
@@ -1449,6 +1451,7 @@ TraceReader::TraceReader(const TraceReader& other)
   cpuid_records_ = other.cpuid_records_;
   raw_recs = other.raw_recs;
   xcr0_ = other.xcr0_;
+  preload_thread_locals_recorded_ = other.preload_thread_locals_recorded_;
 }
 
 TraceReader::~TraceReader() {}

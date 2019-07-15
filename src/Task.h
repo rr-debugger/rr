@@ -770,6 +770,7 @@ public:
                                  : scratch_ptr + scratch_size;
   }
   void setup_preload_thread_locals();
+  void setup_preload_thread_locals_from_clone(Task* origin);
   const ThreadLocals& fetch_preload_thread_locals();
   void activate_preload_thread_locals();
 
@@ -848,6 +849,11 @@ protected:
    * Internal method called after the first wait() during a clone().
    */
   virtual void post_wait_clone(Task*, int) {}
+
+  /**
+   * Internal method called after the clone to fix up the new address space.
+   */
+  virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin);
 
   template <typename Arch>
   void on_syscall_exit_arch(int syscallno, const Registers& regs);

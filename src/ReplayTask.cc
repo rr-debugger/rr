@@ -159,4 +159,19 @@ void ReplayTask::set_real_tid_and_update_serial(pid_t tid) {
   serial = session().next_task_serial();
 }
 
+bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
+  if (Task::post_vm_clone(reason, flags, origin) &&
+      reason == TRACEE_CLONE &&
+      trace_reader().preload_thread_locals_recorded()) {
+    // Consume the mapping.
+    TraceReader::MappedData data;
+    KernelMapping km = trace_reader().read_mapped_region(&data);
+    ASSERT(this, km.start() == AddressSpace::preload_thread_locals_start() &&
+           km.size() == PAGE_SIZE);
+    return true;
+  }
+
+  return false;
+}
+
 } // namespace rr
