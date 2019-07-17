@@ -560,7 +560,7 @@ private:
   /** Update the clear-tid futex to |tid_addr|. */
   void set_tid_addr(remote_ptr<int> tid_addr);
 
-  virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin);
+  virtual bool post_vm_clone(CloneReason reason, int flags, Task* origin) override;
 
 public:
   Ticks ticks_at_last_recorded_syscall_exit;
