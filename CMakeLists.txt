@@ -758,6 +758,7 @@ set(BASIC_TESTS
   ioctl_sg
   ioctl_tty
   join_threads
+  joystick
   kcmp
   keyctl
   kill_newborn
