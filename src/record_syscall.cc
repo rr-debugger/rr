@@ -19,6 +19,7 @@
 #include <linux/if_tun.h>
 #include <linux/input.h>
 #include <linux/ipc.h>
+#include <linux/joystick.h>
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
 #include <linux/net.h>
@@ -1690,6 +1691,13 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(EVIOCGSW(0)):
     case IOCTL_MASK_SIZE(EVIOCGEFFECTS):
     case IOCTL_MASK_SIZE(EVIOCGMASK):
+    case IOCTL_MASK_SIZE(JSIOCGVERSION):
+    case IOCTL_MASK_SIZE(JSIOCGAXES):
+    case IOCTL_MASK_SIZE(JSIOCGBUTTONS):
+    case IOCTL_MASK_SIZE(JSIOCGCORR):
+    case IOCTL_MASK_SIZE(JSIOCGAXMAP):
+    case IOCTL_MASK_SIZE(JSIOCGBTNMAP):
+    case IOCTL_MASK_SIZE(JSIOCGNAME(0)):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
