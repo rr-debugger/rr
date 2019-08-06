@@ -309,6 +309,8 @@ int main(int argc, char* argv[]) {
     if (child > 0) {
       break;
     }
+    /* Put the child in its own process group */
+    setpgid(0, 0);
     char buf[1024];
     sprintf(buf, "%d", getppid());
     setenv("RUNNING_UNDER_TEST_MONITOR", buf, 1);
