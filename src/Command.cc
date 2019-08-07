@@ -162,6 +162,10 @@ bool Command::parse_option(std::vector<std::string>& args,
 
 bool Command::verify_not_option(std::vector<std::string>& args) {
   if (args.size() > 0 && args[0][0] == '-') {
+    if (args[0].length() == 2 && args[0][1] == '-') {
+      args.erase(args.begin());
+      return true;
+    }
     fprintf(stderr, "Invalid option %s\n", args[0].c_str());
     return false;
   }
