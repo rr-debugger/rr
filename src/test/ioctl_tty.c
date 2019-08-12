@@ -13,6 +13,8 @@ int main(void) {
   struct winsize* w;
   pid_t* sid;
 
+  signal(SIGTTOU, SIG_IGN);
+
   fd = open("/dev/tty", O_RDWR);
   if (fd < 0) {
     atomic_puts("Can't open tty, aborting test");
