@@ -410,9 +410,11 @@ static int sources(const string& trace_dir) {
   file_names.clear();
 
   map<string, vector<const string*>> vcs_files;
+  const string empty_string;
   vector<const string*> vcs_stack;
   vector<const string*> vcs_dirs_vector;
   auto vcs_dir_iterator = vcs_dirs.begin();
+  bool pushed_empty_string = false;
   for (auto& f : resolved_file_names) {
     while (!vcs_stack.empty() && !starts_with(f, *vcs_stack.back())) {
       vcs_stack.pop_back();
@@ -423,7 +425,11 @@ static int sources(const string& trace_dir) {
       ++vcs_dir_iterator;
     }
     if (vcs_stack.empty()) {
-      vcs_files[string()].push_back(&f);
+      if (!pushed_empty_string) {
+        pushed_empty_string = true;
+        vcs_dirs_vector.push_back(&empty_string);
+      }
+      vcs_files[empty_string].push_back(&f);
     } else {
       vcs_files[*vcs_stack.back()].push_back(&f);
     }
