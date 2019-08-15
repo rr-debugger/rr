@@ -4634,6 +4634,13 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
   auto mapped_table = mapped_t->fd_table();
   for (auto& ts : mapped_t->session().tasks()) {
     auto rt = static_cast<RecordTask*>(ts.second);
+    if (rt->unstable) {
+      // This task isn't a problem because it's exiting and won't write to its
+      // fds. (Well in theory there could be a write in progress I suppose, but
+      // let's ignore that for now :-().) Anyway, reading its /proc/.../fd will
+      // probably fail.
+      continue;
+    }
     auto table = rt->fd_table();
     if (tables.find(table.get()) != tables.end()) {
       continue;
