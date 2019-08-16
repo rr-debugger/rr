@@ -2106,6 +2106,32 @@ static long sys_readlink(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_readlinkat(const struct syscall_info* call) {
+  const int syscallno = SYS_readlinkat;
+  int dirfd = call->args[0];
+  const char* path = (const char*)call->args[1];
+  char* buf = (char*)call->args[2];
+  int bufsiz = call->args[3];
+
+  void* ptr = prep_syscall();
+  char* buf2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (buf && bufsiz > 0) {
+    buf2 = ptr;
+    ptr += bufsiz;
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+
+  ret = untraced_syscall4(syscallno, dirfd, path, buf2, bufsiz);
+  ptr = copy_output_buffer(ret, ptr, buf, buf2);
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 #if defined(SYS_socketcall)
 static long sys_socketcall_recv(const struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
@@ -2859,6 +2885,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE(quotactl);
     CASE(read);
     CASE(readlink);
+    CASE(readlinkat);
 #if defined(SYS_recvfrom)
     CASE(recvfrom);
 #endif
