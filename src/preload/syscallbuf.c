@@ -619,6 +619,11 @@ static void __attribute__((constructor)) init_process(void) {
       6,
       { 0xc3, 0x0f, 0x1f, 0x44, 0x00, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* glibc-2.29-15.fc30.x86_64 getpid has 'syscall' followed by 'retq; nopl 0x0(%rax) */
+    { 1,
+      5,
+      { 0xc3, 0x0f, 0x1f, 0x40, 0x00 },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
     /* liblsan internal_open has 'syscall' followed by 'retq; nopl (%rax) */
     { 1,
       4,
