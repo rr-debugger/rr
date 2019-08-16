@@ -627,10 +627,9 @@ inline static int is_proc_fd_dir(const char* filename) {
 /**
  * Returns nonzero if an attempted open() of |filename| can be syscall-buffered.
  * When this returns zero, the open must be forwarded to the rr process.
- * This is imperfect because it doesn't handle symbolic links, hard links,
- * files accessed with non-absolute paths, /proc mounted in differnet places,
- * etc etc etc. Handling those efficiently (no additional syscalls in
- * common cases) is a problem. Maybe we could afford fstat after every open...
+ * |filename| must be absolute.
+ * This is imperfect because it doesn't handle hard links and files (re)mounted
+ * in different places.
  */
 inline static int allow_buffered_open(const char* filename) {
   return filename &&

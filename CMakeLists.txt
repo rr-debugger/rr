@@ -728,6 +728,7 @@ set(BASIC_TESTS
   futex_priorities
   fxregs
   gdb_bogus_breakpoint
+  gcrypt_rdrand
   getcpu
   getgroups
   getpwnam
@@ -1206,7 +1207,6 @@ set(TESTS_WITHOUT_PROGRAM
   final_sigkill
   first_instruction
   fork_exec_info_thr
-  gcrypt_rdrand
   get_thread_list
   hardlink_mmapped_files
   hbreak
