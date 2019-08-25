@@ -3,7 +3,8 @@
 #ifndef RR_UTIL_H_
 #define RR_UTIL_H_
 
-#include "signal.h"
+#include <signal.h>
+#include <stdio.h>
 
 #include <array>
 #include <map>
@@ -42,6 +43,11 @@ enum Completion { COMPLETE, INCOMPLETE };
  * Returns a vector containing the raw data you can get from getauxval.
  */
 std::vector<uint8_t> read_auxv(Task* t);
+
+/**
+ * Returns a vector containing the environment strings.
+ */
+std::vector<std::string> read_env(Task* t);
 
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
@@ -440,6 +446,11 @@ void restore_initial_resource_limits();
  * Return the word size for the architecture.
  */
 size_t word_size(SupportedArch arch);
+
+/**
+ * Print JSON-escaped version of the string, including double-quotes.
+ */
+std::string json_escape(const std::string& str, size_t pos = 0);
 
 } // namespace rr
 

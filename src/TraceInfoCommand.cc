@@ -12,6 +12,8 @@
 #include "AddressSpace.h"
 #include "Command.h"
 #include "RecordSession.h"
+#include "ReplaySession.h"
+#include "ReplayTask.h"
 #include "TraceStream.h"
 #include "core.h"
 #include "kernel_metadata.h"
@@ -38,7 +40,7 @@ TraceInfoCommand TraceInfoCommand::singleton(
     " rr traceinfo [<trace_dir>]\n"
     "  Dump trace header in JSON format.\n");
 
-static void dump_trace_info(const string& trace_dir, FILE* out) {
+static int dump_trace_info(const string& trace_dir, FILE* out) {
   TraceReader trace(trace_dir);
 
   fputs("{\n", out);
@@ -65,7 +67,7 @@ static void dump_trace_info(const string& trace_dir, FILE* out) {
   }
   fprintf(out, "  \"ticksSemantics\":\"%s\",\n", semantics);
 
-  fputs("  \"cpuidRecords\": [", out);
+  fputs("  \"cpuidRecords\":[", out);
   auto& records = trace.cpuid_records();
   for (size_t i = 0; i < records.size(); ++i) {
     if (i > 0) {
@@ -75,10 +77,36 @@ static void dump_trace_info(const string& trace_dir, FILE* out) {
     fprintf(out, "\n    [%u,%u,%u,%u,%u,%u]", r.eax_in, r.ecx_in,
            r.out.eax, r.out.ebx, r.out.ecx, r.out.edx);
   }
+  fputs("\n  ],\n", out);
+
+  ReplaySession::Flags flags;
+  flags.redirect_stdio = false;
+  flags.share_private_mappings = false;
+  flags.cpu_unbound = true;
+  ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir, flags);
+
+  fputs("  \"environ\":[", out);
+  while (true) {
+    auto result = replay_session->replay_step(RUN_CONTINUE);
+    if (replay_session->done_initial_exec()) {
+      auto environ = read_env(replay_session->current_task());
+      for (size_t i = 0; i < environ.size(); ++i) {
+        if (i > 0) {
+          fputc(',', out);
+        }
+        fprintf(out, "\n    \"%s\"", json_escape(environ[i]).c_str());
+      }
+      break;
+    }
+    if (result.status == REPLAY_EXITED) {
+      fputs("Replay finished before initial exec!\n", stderr);
+      return 1;
+    }
+  }
   fputs("\n  ]\n", out);
 
   fputs("}\n", out);
-  return;
+  return 0;
 }
 
 int TraceInfoCommand::run(vector<string>& args) {
@@ -91,8 +119,7 @@ int TraceInfoCommand::run(vector<string>& args) {
     return 1;
   }
 
-  dump_trace_info(trace_dir, stdout);
-  return 0;
+  return dump_trace_info(trace_dir, stdout);
 }
 
 } // namespace rr

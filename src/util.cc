@@ -49,7 +49,7 @@ using namespace std;
 
 namespace rr {
 
-template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
+template <typename Arch> static remote_ptr<typename Arch::unsigned_word> env_ptr(Task* t) {
   auto stack_ptr = t->regs().sp().cast<typename Arch::unsigned_word>();
 
   auto argc = t->read_mem(stack_ptr);
@@ -59,6 +59,11 @@ template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
   auto null_ptr = t->read_mem(stack_ptr);
   ASSERT(t, null_ptr == 0);
   stack_ptr++;
+  return stack_ptr;
+}
+
+template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
+  auto stack_ptr = env_ptr<Arch>(t);
 
   // Should now point to envp
   while (0 != t->read_mem(stack_ptr)) {
@@ -83,6 +88,26 @@ template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
 
 vector<uint8_t> read_auxv(Task* t) {
   RR_ARCH_FUNCTION(read_auxv_arch, t->arch(), t);
+}
+
+template <typename Arch> static vector<string> read_env_arch(Task* t) {
+  auto stack_ptr = env_ptr<Arch>(t);
+
+  // Should now point to envp
+  vector<string> result;
+  while (true) {
+    auto p = t->read_mem(stack_ptr);
+    stack_ptr++;
+    if (!p) {
+      break;
+    }
+    result.push_back(t->read_c_str(remote_ptr<char>(p)));
+  }
+  return result;
+}
+
+vector<string> read_env(Task* t) {
+  RR_ARCH_FUNCTION(read_env_arch, t->arch(), t);
 }
 
 // FIXME this function assumes that there's only one address space.
@@ -1665,6 +1690,25 @@ template <typename Arch> static size_t word_size_arch() {
 
 size_t word_size(SupportedArch arch) {
   RR_ARCH_FUNCTION(word_size_arch, arch);
+}
+
+string json_escape(const string& str, size_t pos) {
+  string out;
+  for (size_t i = pos; i < str.size(); ++i) {
+    char c = str[i];
+    if (c < 32) {
+      char buf[8];
+      sprintf(buf, "\\u%04x", c);
+      out += buf;
+    } else if (c == '\\') {
+      out += "\\\\";
+    } else if (c == '\"') {
+      out += "\\\"";
+    } else {
+      out += c;
+    }
+  }
+  return out;
 }
 
 } // namespace rr

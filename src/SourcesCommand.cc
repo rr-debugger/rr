@@ -16,6 +16,7 @@
 #include "core.h"
 #include "log.h"
 #include "main.h"
+#include "util.h"
 
 using namespace std;
 
@@ -335,25 +336,6 @@ static void build_symlink_map(const set<string>& file_names,
       resolved_file_names->insert(resolved);
     }
   }
-}
-
-static string json_escape(const string& str, size_t pos = 0) {
-  string out;
-  for (size_t i = pos; i < str.size(); ++i) {
-    char c = str[i];
-    if (c < 32) {
-      char buf[8];
-      sprintf(buf, "\\u%04x", c);
-      out += c;
-    } else if (c == '\\') {
-      out += "\\\\";
-    } else if (c == '\"') {
-      out += "\\\"";
-    } else {
-      out += c;
-    }
-  }
-  return out;
 }
 
 static bool starts_with(const string& s, const string& prefix) {
