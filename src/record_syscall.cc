@@ -1774,6 +1774,32 @@ static Switchable prepare_ioctl(RecordTask* t,
   return PREVENT_SWITCH;
 }
 
+template <typename Arch>
+static Switchable prepare_bpf(RecordTask* t,
+                              TaskSyscallState& syscall_state) {
+  int cmd = t->regs().arg1();
+  switch (cmd) {
+    case BPF_MAP_CREATE:
+    case BPF_MAP_UPDATE_ELEM:
+    case BPF_MAP_DELETE_ELEM:
+      return PREVENT_SWITCH;
+    case BPF_PROG_LOAD: {
+      auto argsp =
+          syscall_state.reg_parameter<typename Arch::bpf_attr>(2, IN);
+      auto args = t->read_mem(argsp);
+      syscall_state.mem_ptr_parameter(REMOTE_PTR_FIELD(argsp, log_buf),
+                                      args.log_size);
+      return PREVENT_SWITCH;
+    }
+    // These are hard to support because we have to track the key_size/value_size :-(
+    // case BPF_MAP_LOOKUP_ELEM:
+    // case BPF_MAP_GET_NEXT_KEY:
+    default:
+      syscall_state.expect_errno = EINVAL;
+      return PREVENT_SWITCH;
+  }
+}
+
 static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
                                int options) {
   for (RecordTask* child : t->emulated_ptrace_tracees) {
@@ -3917,6 +3943,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::ioctl:
       return prepare_ioctl<Arch>(t, syscall_state);
+
+    case Arch::bpf:
+      return prepare_bpf<Arch>(t, syscall_state);
 
     case Arch::_sysctl: {
       auto argsp =

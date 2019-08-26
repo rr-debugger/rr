@@ -319,6 +319,15 @@ struct rr_input_mask {
 #define MAP_SYNC  0x80000
 #endif
 
+enum {
+  BPF_MAP_CREATE,
+  BPF_MAP_LOOKUP_ELEM,
+  BPF_MAP_UPDATE_ELEM,
+  BPF_MAP_DELETE_ELEM,
+  BPF_MAP_GET_NEXT_KEY,
+  BPF_PROG_LOAD,
+};
+
 } // namespace rr
 
 #endif /* RR_KERNEL_SUPPLEMENT_H_ */

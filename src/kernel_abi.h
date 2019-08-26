@@ -327,7 +327,9 @@ struct BaseArch : public wordsize,
   typedef signed_int __kernel_pid_t;
   typedef int64_t __kernel_loff_t;
 
-  typedef unsigned_int __u32;
+  typedef uint32_t __u32;
+  typedef uint64_t __u64;
+  typedef __u64 aligned_u64 __attribute((aligned(8)));
 
   template <typename T> struct ptr {
     typedef T Referent;
@@ -339,6 +341,25 @@ struct BaseArch : public wordsize,
      */
     remote_ptr<T> rptr() const { return remote_ptr<T>(val); }
     template <typename U> ptr<T>& operator=(remote_ptr<U> p) {
+      remote_ptr<T> pt = p;
+      val = pt.as_int();
+      DEBUG_ASSERT(val == pt.as_int());
+      return *this;
+    }
+    operator bool() const { return val; }
+    static size_t referent_size() { return sizeof(T); }
+  };
+
+  template <typename T> struct ptr64 {
+    typedef T Referent;
+    aligned_u64 val;
+    template <typename U> operator remote_ptr<U>() const { return rptr(); }
+    /**
+     * Sometimes you need to call rptr() directly to resolve ambiguous
+     * overloading.
+     */
+    remote_ptr<T> rptr() const { return remote_ptr<T>(val); }
+    template <typename U> ptr64<T>& operator=(remote_ptr<U> p) {
       remote_ptr<T> pt = p;
       val = pt.as_int();
       DEBUG_ASSERT(val == pt.as_int());
@@ -1545,6 +1566,53 @@ struct BaseArch : public wordsize,
     unsigned int info;
   };
   RR_VERIFY_TYPE(sg_io_hdr);
+
+  union bpf_attr {
+    struct {
+      __u32 map_type;
+      __u32 key_size;
+      __u32 value_size;
+      __u32 max_entries;
+      __u32 map_flags;
+      __u32 inner_map_fd;
+      __u32 numa_node;
+      char map_name[16];
+      __u32 map_ifindex;
+      __u32 btf_fd;
+      __u32 btf_key_type_id;
+      __u32 btf_value_type_id;
+    };
+    struct {
+      __u32 map_fd;
+      ptr64<void> key;
+      union {
+        ptr64<void> value;
+        ptr64<void> next_key;
+      };
+      __u64 flags;
+    };
+    struct {
+      __u32 prog_type;
+      __u32 insn_cnt;
+      ptr64<void> insns;
+      ptr64<const char> license;
+      __u32 log_level;
+      __u32 log_size;
+      ptr64<char> log_buf;
+      __u32 kern_version;
+      __u32 prog_flags;
+      char prog_name[16];
+      __u32 prog_ifindex;
+      __u32 expected_attach_type;
+      __u32 prog_btf_fd;
+      __u32 func_info_rec_size;
+      aligned_u64 func_info;
+      __u32 func_info_cnt;
+      __u32 line_info_rec_size;
+      aligned_u64 line_info;
+      __u32 line_info_cnt;
+    };
+  };
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
