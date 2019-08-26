@@ -566,7 +566,10 @@ static void save_rr_git_revision(const string& trace_dir) {
   mkdir(files_dir.c_str(), 0700);
   string dest_path = files_dir + "/rr_git_revision";
   ScopedFd fd(dest_path.c_str(), O_CREAT | O_WRONLY, 0600);
-  write(fd, GIT_REVISION, sizeof(GIT_REVISION) - 1);
+  ssize_t written = write(fd, GIT_REVISION, sizeof(GIT_REVISION) - 1);
+  if (written != sizeof(GIT_REVISION) - 1) {
+    FATAL() << "Can't write GIT_REVISION";
+  }
 }
 
 static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
