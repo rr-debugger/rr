@@ -123,16 +123,14 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
   }
 
   if (tracee_xcr0 != our_xcr0) {
-    if (tracee_xsavec) {
-      LOG(warn) << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 "
-          << "value " << HEX(our_xcr0) << "; Replay will fail if the tracee "
-          << "used plain XSAVE";
-    } else if (!Flags::get().suppress_environment_warnings) {
-      // Tracee may have used XSAVE instructions which write different components
-      // to XSAVE instructions executed on our CPU. This will cause divergence.
+    if (!Flags::get().suppress_environment_warnings) {
+      // If the tracee used XSAVE instructions which write different components
+      // to XSAVE instructions executed on our CPU, or examines XCR0 directly,
+      // This will cause divergence. The dynamic linker examines XCR0 so this
+      // is nearly guaranteed.
       cerr << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 "
           << "value " << HEX(our_xcr0) << "; Replay will probably fail "
-          << "because glibc dynamic loader uses XSAVE\n\n";
+          << "because glibc dynamic loader examines XCR0\n\n";
     }
   }
 
