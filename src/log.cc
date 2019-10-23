@@ -45,7 +45,7 @@ static LogLevel to_log_level(const string& str) {
   if (str == "fatal") {
     return LOG_fatal;
   }
-  fprintf(stderr, "Log level %s in RR_LOG is not valid, assuing 'fatal'\n",
+  fprintf(stderr, "Log level %s in RR_LOG is not valid, assuming 'fatal'\n",
           str.c_str());
   return LOG_fatal;
 }
