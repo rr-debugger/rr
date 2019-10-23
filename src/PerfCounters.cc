@@ -67,6 +67,7 @@ enum CpuMicroarch {
   IntelSilvermont,
   IntelGoldmont,
   IntelKabylake,
+  IntelCometlake,
   AMDF15R30,
   AMDRyzen,
 };
@@ -110,6 +111,7 @@ struct PmuConfig {
 
 // XXX please only edit this if you really know what you're doing.
 static const PmuConfig pmu_configs[] = {
+  { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
   { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
   { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
   { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
@@ -211,6 +213,8 @@ static CpuMicroarch get_cpu_microarch() {
     case 0x806e0:
     case 0x906e0:
       return IntelKabylake;
+    case 0xa0660:
+	return IntelCometlake;
     case 0x30f00:
       return AMDF15R30;
     case 0x00f10:
