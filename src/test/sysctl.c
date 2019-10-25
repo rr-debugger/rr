@@ -1,7 +1,13 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "util.h"
-#include <sys/sysctl.h>
+
+#ifndef CTL_KERN
+#define CTL_KERN 1
+#endif
+#ifndef KERN_RTSIGMAX
+#define KERN_RTSIGMAX 33
+#endif
 
 int main(void) {
   int name[2] = { CTL_KERN, KERN_RTSIGMAX };
@@ -10,7 +16,7 @@ int main(void) {
 
   name[0] = CTL_KERN;
   name[1] = KERN_RTSIGMAX;
-  if (sysctl(name, 2, &sig_max, &len, NULL, 0) == -1) {
+  if (syscall(RR__sysctl, name, 2, &sig_max, &len, NULL, 0) == -1) {
     /* many kernels don't support this */
     atomic_printf("sysctl KERN_RTSIGMAX returned errno %d\n", errno);
     atomic_puts("EXIT-SUCCESS");
