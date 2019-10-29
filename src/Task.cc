@@ -2240,7 +2240,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
   };
 
   if (mappings_to_fix.empty()) {
-    return pwrite64(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
+    return pwrite_all_fallible(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
   }
 
   AutoRemoteSyscalls remote(t);
@@ -2249,7 +2249,7 @@ static ssize_t safe_pwrite64(Task* t, const void* buf, ssize_t buf_size,
     remote.infallible_syscall(mprotect_syscallno, m.start(), m.size(),
                               m.prot() | PROT_WRITE);
   }
-  ssize_t nwritten = pwrite64(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
+  ssize_t nwritten = pwrite_all_fallible(t->vm()->mem_fd(), buf, buf_size, addr.as_int());
   for (auto& m : mappings_to_fix) {
     remote.infallible_syscall(mprotect_syscallno, m.start(), m.size(),
                               m.prot());
