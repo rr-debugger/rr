@@ -216,7 +216,7 @@ static string resolve_symlinks(const string& path,
   string rest;
   while (true) {
     size_t p = base.rfind('/');
-    if (p == 0) {
+    if (p == 0 || p == string::npos) {
       base = "";
       rest = path;
       break;
