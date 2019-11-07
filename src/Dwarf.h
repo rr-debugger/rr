@@ -13,7 +13,8 @@ namespace rr {
 
 enum DWTag {
   DW_TAG_null = 0,
-  DW_TAG_compile_unit = 0x11
+  DW_TAG_compile_unit = 0x11,
+  DW_TAG_partial_unit = 0x3c,
 };
 
 enum DWAttr {

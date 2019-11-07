@@ -319,7 +319,7 @@ template <typename D> void DwarfCompilationUnit::init_size(DwarfSpan* debug_info
   } else if (h->version == 5) {
     init<Dwarf5CompilationUnitHeader<D>>(debug_info, abbrevs, ok);
   } else {
-    LOG(warn) << "Uknown compilation unit version " << h->version;
+    LOG(warn) << "Unknown compilation unit version " << h->version;
     *ok = false;
   }
 }
@@ -339,8 +339,8 @@ template <typename H> void DwarfCompilationUnit::init(DwarfSpan* debug_info, Dwa
   debug_info->consume(length + sizeof(h->preamble));
   DwarfAbbrevSet& abbrev_set = abbrevs.lookup(h->debug_abbrev_offset);
   die_ = make_unique<DwarfDIE>(span, abbrev_set, sizeof(typename H::Size::Offset), h->address_size, ok);
-  if (die_->tag() != DW_TAG_compile_unit) {
-    LOG(warn) << "CU DIE is not DW_TAG_compilation_unit!";
+  if (die_->tag() != DW_TAG_compile_unit && die_->tag() != DW_TAG_partial_unit) {
+    LOG(warn) << "CU DIE is not DW_TAG_compilation_unit/DW_TAG_partial_unit!";
     *ok = false;
     return;
   }

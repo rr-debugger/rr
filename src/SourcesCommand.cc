@@ -23,10 +23,18 @@ using namespace std;
 namespace rr {
 
 /// Prints JSON containing
-/// "relevant_binaries": an array of strings, trace-relative binary file names
-/// "symlinks": an array of objects, {"from":<path>, "to":<path>}
-/// "files": a map from VCS directory name to array of files relative to that directory
-/// An empty VCS directory name means files not under any VCS.
+/// "relevant_binaries": an array of strings, trace-relative binary file names.
+///   These are ELF files in the trace that our collected data is relevant to.
+/// "external_debug_info": an array of objects, {"path":<path>, "build_id":<build-id>, "type":<type>}
+///   These are ELF files in the filesystem that contain separate debuginfo. "build-id" is the
+///   build-id of the file from whence it originated, as a string. "type" is the type of
+///   external file, one of "debuglink", "debugaltlink". Note that for "debugaltlink", it is possible
+///   to have the same file appearing multiple times with different build-ids, when it's shared by
+///   multiple ELF binaries.
+/// "symlinks": an array of objects, {"from":<path>, "to":<path>}.
+///   These symlinks that exist in the filesystem that are relevant to the source file paths.
+/// "files": a map from VCS directory name to array of source files relative to that directory
+///   An empty VCS directory name means files not under any VCS.
 class SourcesCommand : public Command {
 public:
   virtual int run(vector<string>& args) override;
@@ -170,6 +178,68 @@ static bool list_source_files(ElfFileReader& reader, const string& original_file
     }
   } while (!debug_info.empty());
 
+  return true;
+}
+
+struct ExternalDebugInfo {
+  string path;
+  string build_id;
+  string type;
+  bool operator<(const ExternalDebugInfo& other) const {
+    if (path < other.path) {
+      return true;
+    }
+    if (path == other.path) {
+      return false;
+    }
+    if (build_id < other.build_id) {
+      return true;
+    }
+    if (build_id == other.build_id) {
+      return false;
+    }
+    return type < other.type;
+  }
+};
+
+static bool try_auxiliary_file(ElfFileReader& trace_file_reader, const string& original_file_name,
+                               set<string>* file_names, const string& aux_file_name,
+                               const char* file_type,
+                               set<ExternalDebugInfo>* external_debug_info) {
+  if (aux_file_name.empty()) {
+    return false;
+  }
+  string full_file_name;
+  if (aux_file_name.c_str()[0] == '/') {
+    full_file_name = aux_file_name;
+  } else {
+    string original_file_dir = original_file_name;
+    parent_dir(original_file_dir);
+    full_file_name = original_file_dir + "/" + aux_file_name;
+    normalize_file_name(full_file_name);
+  }
+
+  ScopedFd fd(full_file_name.c_str(), O_RDONLY);
+  if (!fd.is_open()) {
+    LOG(warn) << "Can't find external debuginfo file " << full_file_name;
+    return false;
+  }
+  LOG(info) << "Examining external " << full_file_name;
+  ElfFileReader reader(fd);
+  if (!reader.ok()) {
+    LOG(warn) << "Not an ELF file!";
+    return false;
+  }
+  string build_id = trace_file_reader.read_buildid();
+  if (build_id.empty()) {
+    LOG(warn) << "Main ELF binary has no build ID!";
+    return false;
+  }
+  if (!list_source_files(reader, original_file_name, file_names)) {
+    LOG(warn) << "No debuginfo!";
+    return false;
+  }
+  external_debug_info->insert({ full_file_name, build_id, string(file_type) });
   return true;
 }
 
@@ -349,6 +419,7 @@ static int sources(const string& trace_dir) {
     FATAL() << "Can't open trace dir";
   }
 
+  // (Trace file name, original file name) pairs
   map<string, string> binary_file_names;
   while (true) {
     TraceReader::MappedData data;
@@ -365,6 +436,7 @@ static int sources(const string& trace_dir) {
 
   vector<string> relevant_binary_names;
   set<string> file_names;
+  set<ExternalDebugInfo> external_debug_info;
   for (auto& pair : binary_file_names) {
     ScopedFd fd(pair.first.c_str(), O_RDONLY);
     if (!fd.is_open()) {
@@ -376,7 +448,17 @@ static int sources(const string& trace_dir) {
       LOG(info) << "Probably not an ELF file, skipping";
       continue;
     }
-    if (list_source_files(reader, pair.second, &file_names)) {
+    bool has_source_files = list_source_files(reader, pair.second, &file_names);
+
+    Debuglink debuglink = reader.read_debuglink();
+    has_source_files |= try_auxiliary_file(reader, pair.second,
+      &file_names, debuglink.file_name, "debuglink", &external_debug_info);
+
+    Debugaltlink debugaltlink = reader.read_debugaltlink();
+    has_source_files |= try_auxiliary_file(reader, pair.second,
+      &file_names, debugaltlink.file_name, "debugaltlink", &external_debug_info);
+
+    if (has_source_files) {
       string name = pair.first;
       base_name(name);
       relevant_binary_names.push_back(move(name));
@@ -422,6 +504,17 @@ static int sources(const string& trace_dir) {
   for (size_t i = 0; i < relevant_binary_names.size(); ++i) {
     printf("    \"%s\"%s\n", json_escape(relevant_binary_names[i]).c_str(),
            i == relevant_binary_names.size() - 1 ? "" : ",");
+  }
+  printf("  ],\n");
+  printf("  \"external_debug_info\":[\n");
+  size_t index = 0;
+  for (auto& ext : external_debug_info) {
+    printf("    { \"path\":\"%s\", \"build_id\":\"%s\", \"type\":\"%s\" }%s\n",
+           json_escape(ext.path).c_str(),
+           json_escape(ext.build_id).c_str(),
+           json_escape(ext.type).c_str(),
+           index == external_debug_info.size() - 1 ? "" : ",");
+    ++index;
   }
   printf("  ],\n");
   printf("  \"symlinks\":[\n");

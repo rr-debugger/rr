@@ -20,6 +20,7 @@ public:
   virtual SymbolTable read_symbols(const char* symtab, const char* strtab) = 0;
   virtual DynamicSection read_dynamic() = 0;
   virtual Debuglink read_debuglink() = 0;
+  virtual Debugaltlink read_debugaltlink() = 0;
   virtual string read_buildid() = 0;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) = 0;
   virtual SectionOffsets find_section_file_offsets(const char* name) = 0;
@@ -37,6 +38,7 @@ public:
                                    const char* strtab) override;
   virtual DynamicSection read_dynamic() override;
   virtual Debuglink read_debuglink() override;
+  virtual Debugaltlink read_debugaltlink() override;
   virtual string read_buildid() override;
   virtual bool addr_to_offset(uintptr_t addr, uintptr_t& offset) override;
   virtual SectionOffsets find_section_file_offsets(const char* name) override;
@@ -249,6 +251,16 @@ template <typename Arch> DynamicSection ElfReaderImpl<Arch>::read_dynamic() {
   return result;
 }
 
+static bool null_terminated(const char* p, size_t size, string& out) {
+  size_t len = strnlen(p, size);
+  if (len == size) {
+    LOG(warn) << "Invalid file name";
+    return false;
+  }
+  out = string(p, len);
+  return true;
+}
+
 template <typename Arch> Debuglink ElfReaderImpl<Arch>::read_debuglink() {
   Debuglink result;
   if (!ok()) {
@@ -260,23 +272,50 @@ template <typename Arch> Debuglink ElfReaderImpl<Arch>::read_debuglink() {
     return result;
   }
   if (debuglink->sh_size < 8) {
-    LOG(debug) << "Invalid ELF file: unexpected .gnu_debuglink length";
+    LOG(warn) << "Invalid ELF file: unexpected .gnu_debuglink length";
     return result;
   }
 
   size_t crc_offset = debuglink->sh_size - 4;
   if (!r.read_into(debuglink->sh_offset + crc_offset, &result.crc)) {
-    LOG(debug) << "Invalid ELF file: can't read .gnu_debuglink crc checksum";
+    LOG(warn) << "Invalid ELF file: can't read .gnu_debuglink crc checksum";
     return result;
   }
 
-  const char* filename = r.read<char>(debuglink->sh_offset, crc_offset);
-  if (!filename) {
-    LOG(debug) << "Invalid ELF file: can't read .gnu_debuglink filename";
+  const char* file_name = r.read<char>(debuglink->sh_offset, crc_offset);
+  if (!file_name) {
+    LOG(warn) << "Invalid ELF file: can't read .gnu_debuglink file_name";
     return result;
   }
 
-  result.filename = std::string(filename, crc_offset - 1);
+  null_terminated(file_name, crc_offset, result.file_name);
+  return result;
+}
+
+template <typename Arch> Debugaltlink ElfReaderImpl<Arch>::read_debugaltlink() {
+  Debugaltlink result;
+  if (!ok()) {
+    return result;
+  }
+
+  const typename Arch::ElfShdr* debuglink = find_section(".gnu_debugaltlink");
+  if (!debuglink) {
+    return result;
+  }
+  // Last 20 bytes are the build ID of the target file. Ignore for now.
+  if (debuglink->sh_size < 21) {
+    LOG(warn) << "Invalid ELF file: unexpected .gnu_debugaltlink length";
+    return result;
+  }
+
+  size_t build_id_offset = debuglink->sh_size - 20;
+  const char* file_name = r.read<char>(debuglink->sh_offset, build_id_offset);
+  if (!file_name) {
+    LOG(warn) << "Invalid ELF file: can't read .gnu_debugaltlink file_name";
+    return result;
+  }
+
+  null_terminated(file_name, build_id_offset, result.file_name);
   return result;
 }
 
@@ -371,6 +410,8 @@ DynamicSection ElfReader::read_dynamic() { return impl().read_dynamic(); }
 
 Debuglink ElfReader::read_debuglink() { return impl().read_debuglink(); }
 
+Debugaltlink ElfReader::read_debugaltlink() { return impl().read_debugaltlink(); }
+
 SectionOffsets ElfReader::find_section_file_offsets(const char* name) {
   return impl().find_section_file_offsets(name);
 }
@@ -414,13 +455,13 @@ ScopedFd ElfFileReader::open_debug_file(const std::string& elf_file_name) {
   }
 
   Debuglink debuglink = read_debuglink();
-  if (debuglink.filename.empty()) {
+  if (debuglink.file_name.empty()) {
     return ScopedFd();
   }
 
   size_t last_slash = elf_file_name.find_last_of('/');
   string debug_path = "/usr/lib/debug/";
-  debug_path += elf_file_name.substr(0, last_slash) + '/' + debuglink.filename;
+  debug_path += elf_file_name.substr(0, last_slash) + '/' + debuglink.file_name;
   ScopedFd debug_fd(debug_path.c_str(), O_RDONLY);
   if (!debug_fd.is_open()) {
     return ScopedFd();
