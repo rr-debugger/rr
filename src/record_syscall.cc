@@ -2936,35 +2936,6 @@ static void record_ranges(RecordTask* t,
 }
 
 template <typename Arch>
-static Switchable rec_prepare_open(const std::string& pathname, RecordTask* t,
-                                   const Registers& regs) {
-  if (is_blacklisted_filename(pathname.c_str())) {
-    LOG(warn) << "Cowardly refusing to open " << pathname;
-    Registers r = regs;
-    // Set path to terminating null byte. This forces ENOENT.
-    switch (t->ev().Syscall().number) {
-      case Arch::open:
-        r.set_arg1(remote_ptr<char>(r.arg1()) + pathname.size());
-        break;
-      case Arch::openat:
-        r.set_arg2(remote_ptr<char>(r.arg2()) + pathname.size());
-        break;
-      default:
-        FATAL() << "Unsupported open syscall";
-        break;
-    }
-    t->set_regs(r);
-  } else if (is_gcrypt_deny_file(pathname.c_str())) {
-    // Hijack the syscall.
-    Registers r = regs;
-    r.set_original_syscallno(Arch::gettid);
-    t->set_regs(r);
-    return PREVENT_SWITCH;
-  }
-  return ALLOW_SWITCH;
-}
-
-template <typename Arch>
 static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state,
                                            const Registers& regs) {
@@ -3292,6 +3263,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::fsync:
     case Arch::msgsnd:
     case Arch::msync:
+    case Arch::open:
+    case Arch::openat:
     case Arch::semop:
     case Arch::semtimedop:
     case Arch::sync:
@@ -3723,25 +3696,6 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::connect:
       return maybe_blacklist_connect<Arch>(t, regs.arg2(), regs.arg3());
-
-    case Arch::open: {
-      string pathname = t->read_c_str(remote_ptr<char>(regs.arg1()));
-      return rec_prepare_open<Arch>(pathname, t, regs);
-    }
-
-    case Arch::openat: {
-      int dirfd = regs.arg1_signed();
-      // With AT_FDCWD, or an absolute path, openat is just open.
-      string pathname = t->read_c_str(remote_ptr<char>(regs.arg2()));
-      if (dirfd != AT_FDCWD && pathname.c_str()[0] != '/') {
-        // Not sure what we should do here. If we need to do something, we
-        // will need to somehow figure out what dirfd refers to, or else let
-        // the tracee do an openat and then look at what it opened and undo
-        // the open if we don't like it.
-        return ALLOW_SWITCH;
-      }
-      return rec_prepare_open<Arch>(pathname, t, regs);
-    }
 
     case Arch::close:
       if (t->fd_table()->is_rr_fd((int)regs.arg1())) {
@@ -5043,7 +4997,9 @@ static bool is_mapped_shared(RecordTask* t, const struct stat& st) {
   return false;
 }
 
-static void handle_opened_file(RecordTask* t, int fd) {
+// Returns the file path. This could be a blacklisted file so don't
+// do anything for blacklisted files.
+static string handle_opened_file(RecordTask* t, int fd) {
   string pathname = t->file_name_of_fd(fd);
   struct stat st = t->stat_fd(fd);
 
@@ -5072,6 +5028,7 @@ static void handle_opened_file(RecordTask* t, int fd) {
     syscall.opened.push_back({ pathname, fd, st.st_dev, st.st_ino });
     t->fd_table()->add_monitor(t, fd, file_monitor);
   }
+  return pathname;
 }
 
 template <typename Arch>
@@ -5102,7 +5059,7 @@ static void check_scm_rights_fd(RecordTask* t, typename Arch::msghdr& msg) {
   }
 }
 
-static void fake_gcrypt_file(RecordTask* t, Registers* r, int syscallno) {
+static void fake_gcrypt_file(RecordTask* t, Registers* r) {
   // We hijacked this call to deal with /etc/gcrypt/hwf.deny.
   TempFile file = create_temporary_file("rr-gcrypt-hwf-deny-XXXXXX");
 
@@ -5132,7 +5089,6 @@ static void fake_gcrypt_file(RecordTask* t, Registers* r, int syscallno) {
   unlink(file.name.c_str());
 
   // And hand out our fake file.
-  r->set_original_syscallno(syscallno);
   r->set_syscall_result(child_fd);
 }
 
@@ -5325,16 +5281,31 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case Arch::open:
     case Arch::openat: {
-      // Restore the registers that we may have altered.
       Registers r = t->regs();
-      r.set_arg1(syscall_state.syscall_entry_registers.arg1());
-      r.set_arg2(syscall_state.syscall_entry_registers.arg2());
-      if (r.original_syscallno() == Arch::gettid) {
-        fake_gcrypt_file(t, &r, syscallno);
-      }
-      t->set_regs(r);
-      if (!t->regs().syscall_failed()) {
-        handle_opened_file(t, (int)t->regs().syscall_result_signed());
+      if (r.syscall_failed()) {
+        uintptr_t path = syscallno == Arch::openat ? r.arg2() : r.arg1();
+        string pathname = t->read_c_str(remote_ptr<char>(path));
+        if (is_gcrypt_deny_file(pathname.c_str())) {
+          fake_gcrypt_file(t, &r);
+          t->set_regs(r);
+        }
+      } else {
+        int fd = r.syscall_result_signed();
+        string pathname = handle_opened_file(t, fd);
+        bool gcrypt = is_gcrypt_deny_file(pathname.c_str());
+        if (gcrypt || is_blacklisted_filename(pathname.c_str())) {
+          {
+            AutoRemoteSyscalls remote(t);
+            remote.infallible_syscall(syscall_number_for_close(remote.arch()), fd);
+          }
+          if (gcrypt) {
+            fake_gcrypt_file(t, &r);
+          } else {
+            LOG(warn) << "Cowardly refusing to open " << pathname;
+            r.set_syscall_result(-ENOENT);
+          }
+          t->set_regs(r);
+        }
       }
       break;
     }
