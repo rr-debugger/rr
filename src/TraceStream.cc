@@ -1203,7 +1203,7 @@ TraceWriter::TraceWriter(const std::string& file_name,
   }
 
   string ver_path = incomplete_version_path();
-  version_fd = ScopedFd(ver_path.c_str(), O_RDWR | O_CREAT, 0600);
+  version_fd = ScopedFd(ver_path.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600);
   if (!version_fd.is_open()) {
     FATAL() << "Unable to create " << ver_path;
   }
