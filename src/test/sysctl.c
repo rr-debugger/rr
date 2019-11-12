@@ -9,6 +9,15 @@
 #define KERN_RTSIGMAX 33
 #endif
 
+struct sysctl_args {
+  int *name;
+  int nlen;
+  void *oldval;
+  size_t *oldlenp;
+  void *newval;
+  size_t newlen;
+};
+
 int main(void) {
   int name[2] = { CTL_KERN, KERN_RTSIGMAX };
   int sig_max = -1;
@@ -16,7 +25,8 @@ int main(void) {
 
   name[0] = CTL_KERN;
   name[1] = KERN_RTSIGMAX;
-  if (syscall(RR__sysctl, name, 2, &sig_max, &len, NULL, 0) == -1) {
+  struct sysctl_args args = { name, 2, &sig_max, &len, NULL, 0 };
+  if (syscall(RR__sysctl, &args) < 0) {
     /* many kernels don't support this */
     atomic_printf("sysctl KERN_RTSIGMAX returned errno %d\n", errno);
     atomic_puts("EXIT-SUCCESS");
