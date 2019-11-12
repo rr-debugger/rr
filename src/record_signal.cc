@@ -544,7 +544,17 @@ static bool is_safe_to_deliver_signal(RecordTask* t, siginfo_t* si) {
                << " because in traced syscall";
     return true;
   }
-  if (t->is_at_traced_syscall_entry()) {
+
+  // Don't deliver signals just before entering rrcall_notify_syscall_hook_exit.
+  // At that point, notify_on_syscall_hook_exit will be set, but we have
+  // passed the point at which syscallbuf code has checked that flag.
+  // Replay will set notify_on_syscall_hook_exit when we replay towards the
+  // rrcall_notify_syscall_hook_exit *after* handling this signal, but
+  // that will be too late for syscallbuf to notice.
+  // It's OK to delay signal delivery until after rrcall_notify_syscall_hook_exit
+  // anyway.
+  if (t->is_at_traced_syscall_entry() &&
+      !is_rrcall_notify_syscall_hook_exit_syscall(t->regs().syscallno(), t->arch())) {
     LOG(debug) << "Safe to deliver signal at " << t->ip()
                << " because at entry to traced syscall";
     return true;
