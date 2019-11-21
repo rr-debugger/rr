@@ -850,27 +850,33 @@ TrapReasons Task::compute_trap_reasons() {
   ASSERT(this, stop_sig() == SIGTRAP);
   TrapReasons reasons;
   uintptr_t status = debug_status();
+  reasons.singlestep = (status & DS_SINGLESTEP) != 0;
 
-  if (is_singlestep_resume(how_last_execution_resumed) &&
-      is_at_syscall_instruction(this, address_of_last_execution_resume) &&
-      ip() ==
-          address_of_last_execution_resume +
-              syscall_instruction_length(arch())) {
-    // During replay we execute syscall instructions in certain cases, e.g.
-    // mprotect with syscallbuf. The kernel does not set DS_SINGLESTEP when we
-    // step over those instructions so we need to detect that here.
-    reasons.singlestep = true;
-  } else if (is_singlestep_resume(how_last_execution_resumed) &&
-             trapped_instruction_at(this, address_of_last_execution_resume) ==
-                 TrappedInstruction::CPUID &&
-             ip() ==
-                 address_of_last_execution_resume +
-                     trapped_instruction_len(TrappedInstruction::CPUID)) {
-    // Likewise we emulate CPUID instructions and must forcibly detect that
-    // here.
-    reasons.singlestep = true;
-  } else {
-    reasons.singlestep = (status & DS_SINGLESTEP) != 0;
+  if (is_singlestep_resume(how_last_execution_resumed)) {
+    if (is_at_syscall_instruction(this, address_of_last_execution_resume) &&
+        ip() ==
+            address_of_last_execution_resume +
+                syscall_instruction_length(arch())) {
+      // During replay we execute syscall instructions in certain cases, e.g.
+      // mprotect with syscallbuf. The kernel does not set DS_SINGLESTEP when we
+      // step over those instructions so we need to detect that here.
+      reasons.singlestep = true;
+    } else {
+      TrappedInstruction ti =
+        trapped_instruction_at(this, address_of_last_execution_resume);
+      if (ti == TrappedInstruction::CPUID &&
+          ip() == address_of_last_execution_resume +
+                       trapped_instruction_len(TrappedInstruction::CPUID)) {
+        // Likewise we emulate CPUID instructions and must forcibly detect that
+        // here.
+        reasons.singlestep = true;
+      } else if (ti == TrappedInstruction::INT3 &&
+          ip() == address_of_last_execution_resume +
+                       trapped_instruction_len(TrappedInstruction::INT3)) {
+        // INT3 instructions should also be turned into a singlestep here.
+        reasons.singlestep = true;
+      }
+    }
   }
 
   // In VMWare Player 6.0.4 build-2249910, 32-bit Ubuntu x86 guest,

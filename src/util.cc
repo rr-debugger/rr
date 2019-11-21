@@ -1,8 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-//#define FIRST_INTERESTING_EVENT 10700
-//#define LAST_INTERESTING_EVENT 10900
-
 #include "util.h"
 
 #include <arpa/inet.h>
@@ -1450,6 +1447,7 @@ int get_num_cpus() {
 static const uint8_t rdtsc_insn[] = { 0x0f, 0x31 };
 static const uint8_t rdtscp_insn[] = { 0x0f, 0x01, 0xf9 };
 static const uint8_t cpuid_insn[] = { 0x0f, 0xa2 };
+static const uint8_t int3_insn[] = { 0xcc };
 
 TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip) {
   uint8_t insn[sizeof(rdtscp_insn)];
@@ -1467,6 +1465,10 @@ TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip) {
       !memcmp(insn, cpuid_insn, sizeof(cpuid_insn))) {
     return TrappedInstruction::CPUID;
   }
+  if ((size_t)len >= sizeof(int3_insn) &&
+      !memcmp(insn, int3_insn, sizeof(int3_insn))) {
+    return TrappedInstruction::INT3;
+  }
   return TrappedInstruction::NONE;
 }
 
@@ -1477,6 +1479,8 @@ size_t trapped_instruction_len(TrappedInstruction insn) {
     return sizeof(rdtscp_insn);
   } else if (insn == TrappedInstruction::CPUID) {
     return sizeof(cpuid_insn);
+  } else if (insn == TrappedInstruction::INT3) {
+    return sizeof(int3_insn);
   } else {
     return 0;
   }

@@ -394,6 +394,7 @@ enum class TrappedInstruction {
   RDTSC = 1,
   RDTSCP = 2,
   CPUID = 3,
+  INT3 = 4,
 };
 
 /* If |t->ip()| points at a disabled instruction, return the instruction */
