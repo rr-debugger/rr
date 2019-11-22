@@ -258,7 +258,10 @@ if(NOT SECCOMP)
   message(FATAL_ERROR "Couldn't find linux/seccomp.h. You may need to upgrade your kernel.")
 endif()
 
-find_package(PythonInterp 3.0 REQUIRED)
+# On Debian python 2 and python 3 coexist, and this can make this check fail.
+# Let's look for Python 3 only.
+set(Python_ADDITIONAL_VERSIONS 3)
+find_package(PythonInterp 3 REQUIRED)
 
 execute_process(COMMAND "${PYTHON_EXECUTABLE}" "-c" "# nothing"
                 RESULT_VARIABLE python_status)
