@@ -634,6 +634,11 @@ static void __attribute__((constructor)) init_process(void) {
       3,
       { 0xc3, 0x66, 0x90 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* Go runtime has 'syscall' followed by 'retq; int3; int3 */
+    { 1,
+      3,
+      { 0xc3, 0xcc, 0xcc },
+      (uintptr_t)_syscall_hook_trampoline_c3_nop },
   };
 #else
 #error Unknown architecture
