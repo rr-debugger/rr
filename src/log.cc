@@ -123,8 +123,13 @@ static void init_log_globals() {
   }
 
   const char* filename = getenv("RR_LOG_FILE");
+  ios_base::openmode log_file_open_mode = std::ofstream::out;
+  if (!filename) {
+    filename = getenv("RR_APPEND_LOG_FILE");
+    log_file_open_mode |= std::ofstream::app;
+  }
   if (filename) {
-    auto file = new ofstream(filename);
+    auto file = new ofstream(filename, log_file_open_mode);
     if (!file->good()) {
       delete file;
     } else {
