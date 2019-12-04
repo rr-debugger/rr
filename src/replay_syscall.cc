@@ -1177,7 +1177,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   }
 }
 
-static void handle_opened_files(ReplayTask* t) {
+static void handle_opened_files(ReplayTask* t, int flags) {
   const auto& opened = t->current_trace_frame().event().Syscall().opened;
   for (const auto& o : opened) {
     // This must be kept in sync with record_syscall's handle_opened_file.
@@ -1191,6 +1191,8 @@ static void handle_opened_files(ReplayTask* t) {
       file_monitor = new ProcMemMonitor(t, o.path);
     } else if (is_proc_fd_dir(o.path.c_str())) {
       file_monitor = new ProcFdDirMonitor(t, o.path);
+    } else if (flags & O_DIRECT) {
+      file_monitor = new FileMonitor();
     } else {
       ASSERT(t, false) << "Why did we write filename " << o.path;
     }
@@ -1375,11 +1377,16 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
 
     case Arch::recvmsg:
     case Arch::recvmmsg:
-    case Arch::openat:
-    case Arch::open:
     case Arch::socketcall:
     case Arch::rrcall_notify_control_msg:
-      handle_opened_files(t);
+      handle_opened_files(t, 0);
+      break;
+
+    case Arch::openat:
+      handle_opened_files(t, t->regs().arg3());
+      break;
+    case Arch::open:
+      handle_opened_files(t, t->regs().arg2());
       break;
 
     case Arch::write:

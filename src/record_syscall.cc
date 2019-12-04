@@ -4999,7 +4999,7 @@ static bool is_mapped_shared(RecordTask* t, const struct stat& st) {
 
 // Returns the file path. This could be a blacklisted file so don't
 // do anything for blacklisted files.
-static string handle_opened_file(RecordTask* t, int fd) {
+static string handle_opened_file(RecordTask* t, int fd, int flags) {
   string pathname = t->file_name_of_fd(fd);
   struct stat st = t->stat_fd(fd);
 
@@ -5020,6 +5020,12 @@ static string handle_opened_file(RecordTask* t, int fd) {
   } else if (is_proc_fd_dir(pathname.c_str())) {
     LOG(info) << "Installing ProcFdDirMonitor for " << fd;
     file_monitor = new ProcFdDirMonitor(t, pathname);
+  } else if (flags & O_DIRECT) {
+    // O_DIRECT can impose unknown alignment requirements, in which case
+    // syscallbuf records will not be properly aligned and will cause I/O
+    // to fail. Disable syscall buffering for O_DIRECT files.
+    LOG(info) << "Installing FileMonitor for O_DIRECT " << fd;
+    file_monitor = new FileMonitor();
   }
 
   if (file_monitor) {
@@ -5049,7 +5055,7 @@ static void check_scm_rights_fd(RecordTask* t, typename Arch::msghdr& msg) {
       int* fds = static_cast<int*>(Arch::cmsg_data(cmsg));
       int fd_count = (cmsg->cmsg_len - sizeof(*cmsg)) / sizeof(int);
       for (int i = 0; i < fd_count; ++i) {
-        handle_opened_file(t, fds[i]);
+        handle_opened_file(t, fds[i], 0);
       }
     }
     index += Arch::cmsg_align(cmsg->cmsg_len);
@@ -5291,7 +5297,8 @@ static void rec_process_syscall_arch(RecordTask* t,
         }
       } else {
         int fd = r.syscall_result_signed();
-        string pathname = handle_opened_file(t, fd);
+        int flags = syscallno == Arch::openat ? r.arg3() : r.arg2();
+        string pathname = handle_opened_file(t, fd, flags);
         bool gcrypt = is_gcrypt_deny_file(pathname.c_str());
         if (gcrypt || is_blacklisted_filename(pathname.c_str())) {
           {

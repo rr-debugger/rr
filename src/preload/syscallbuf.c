@@ -1712,6 +1712,11 @@ static int supported_open(const char* file_name, int flags) {
        returns ENOENT. */
     return 0;
   }
+  if (flags & O_DIRECT) {
+    /* O_DIRECT needs to go to rr so we can blacklist the file for
+       syscall buffering. */
+    return 0;
+  }
   /* Writeable opens need to go to rr to be checked in case
      they could write to a mapped file.
      But if they're O_EXCL | O_CREAT, a new file must be created
