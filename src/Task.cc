@@ -2593,11 +2593,7 @@ static SeccompFilter<struct sock_filter> create_seccomp_filter() {
  * things go wrong because we have no ptracer and the seccomp filter demands
  * one.
  */
-static void set_up_seccomp_filter(SeccompFilter<struct sock_filter>& f,
-                                  int err_fd) {
-  struct sock_fprog prog = { (unsigned short)f.filters.size(),
-                             f.filters.data() };
-
+static void set_up_seccomp_filter(const struct sock_fprog& prog, int err_fd) {
   /* Note: the filter is installed only for record. This call
    * will be emulated (not passed to the kernel) in the replay. */
   if (0 > prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&prog, 0, 0)) {
@@ -2609,18 +2605,11 @@ static void set_up_seccomp_filter(SeccompFilter<struct sock_filter>& f,
 }
 
 static void run_initial_child(Session& session, const ScopedFd& error_fd,
-                              const ScopedFd& sock_fd,
-                              int sock_fd_number,
-                              const string& exe_path,
-                              const vector<string>& argv,
-                              const vector<string>& envp) {
-  // Move all allocations here, before we signal the ptracer and start
-  // checking system calls. We don't want stray system calls performed by
-  // the allocator to show up in the trace.
-  const char* exe_path_cstr = exe_path.c_str();
-  StringVectorToCharArray argv_array(argv);
-  StringVectorToCharArray envp_array(envp);
-  SeccompFilter<struct sock_filter> filter = create_seccomp_filter();
+                              const ScopedFd& sock_fd, int sock_fd_number,
+                              const char* exe_path_cstr,
+                              char* const argv_array[],
+                              char* const envp_array[],
+                              const struct sock_fprog& seccomp_prog) {
   pid_t pid = getpid();
 
   set_up_process(session, error_fd, sock_fd, sock_fd_number);
@@ -2632,7 +2621,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   ::kill(pid, SIGSTOP);
 
   // This code must run after rr has taken ptrace control.
-  set_up_seccomp_filter(filter, error_fd);
+  set_up_seccomp_filter(seccomp_prog, error_fd);
 
   // We do a small amount of dummy work here to retire
   // some branches in order to ensure that the ticks value is
@@ -2649,7 +2638,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
   CPUIDBugDetector::run_detection_code();
 
-  execve(exe_path_cstr, argv_array.get(), envp_array.get());
+  execve(exe_path_cstr, argv_array, envp_array);
 
   switch (errno) {
     case ENOENT:
@@ -2726,6 +2715,16 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   }
 
   pid_t tid;
+  // After fork() in a multithreaded program, the child can safely call only
+  // async-signal-safe functions, and malloc is not one of them (breaks e.g.
+  // with tcmalloc).
+  // Doing the allocations before the fork duplicates the allocations, but
+  // prevents errors.
+  StringVectorToCharArray argv_array(argv);
+  StringVectorToCharArray envp_array(envp);
+  SeccompFilter<struct sock_filter> filter = create_seccomp_filter();
+  struct sock_fprog prog = {(unsigned short)filter.filters.size(),
+                            filter.filters.data()};
   do {
     tid = fork();
     // fork() can fail with EAGAIN due to temporary load issues. In such
@@ -2733,8 +2732,8 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   } while (0 > tid && errno == EAGAIN);
 
   if (0 == tid) {
-    run_initial_child(session, error_fd, sock, fd_number, exe_path, argv,
-                      envp);
+    run_initial_child(session, error_fd, sock, fd_number, exe_path.c_str(),
+                      argv_array.get(), envp_array.get(), prog);
     // run_initial_child never returns
   }
 
