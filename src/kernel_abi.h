@@ -1983,6 +1983,8 @@ ssize_t syscall_instruction_length(SupportedArch arch);
 void set_arch_siginfo(const siginfo_t& siginfo, SupportedArch a, void* dest,
                       size_t dest_size);
 
+size_t sigaction_sigset_size(SupportedArch arch);
+
 #if defined(__i386__)
 typedef X86Arch NativeArch;
 #elif defined(__x86_64__)

@@ -697,6 +697,7 @@ set(BASIC_TESTS
   cwd_inaccessible
   daemon
   desched_blocking_poll
+  deterministic_sigsys
   direct
   dup
   doublesegv

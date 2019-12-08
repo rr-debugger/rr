@@ -34,7 +34,6 @@ namespace rr {
 
 class AutoRemoteSyscalls;
 class RecordSession;
-class RecordTask;
 class ReplaySession;
 class ScopedFd;
 class Session;

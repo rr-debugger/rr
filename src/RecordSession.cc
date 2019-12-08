@@ -1254,7 +1254,7 @@ static bool inject_handled_signal(RecordTask* t) {
     // kill the process after this. Stash the signal and make sure
     // we know to treat it as fatal when we inject it. Also disable the
     // signal handler to match what the kernel does.
-    t->set_sig_handler_default(SIGSEGV);
+    t->did_set_sig_handler_default(SIGSEGV);
     t->stash_sig();
     t->thread_group()->received_sigframe_SIGSEGV = true;
     return false;
@@ -1684,6 +1684,15 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
     }
   }
 
+  if (sig->deterministic == DETERMINISTIC_SIG &&
+      sig->siginfo.si_signo == SIGSYS &&
+      t->is_sig_blocked(sig->siginfo.si_signo) == SIG_BLOCKED) {
+    // Our synthesized deterministic SIGSYS (seccomp trap) needs to match the
+    // kernel behavior of unblocking the signal and resetting disposition to
+    // default.
+    t->unblock_signal(SIGSYS);
+    t->set_sig_handler_default(SIGSYS);
+  }
   switch (handle_signal(t, &si.linux_api, sig->deterministic, SIG_UNBLOCKED)) {
     case SIGNAL_PTRACE_STOP:
       // Emulated ptrace-stop. Don't run the task again yet.

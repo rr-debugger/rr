@@ -34,14 +34,6 @@ namespace rr {
 
 static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
 
-template <typename Arch> static size_t sigaction_sigset_size_arch() {
-  return sizeof(typename Arch::kernel_sigset_t);
-}
-
-static size_t sigaction_sigset_size(SupportedArch arch) {
-  RR_ARCH_FUNCTION(sigaction_sigset_size_arch, arch);
-}
-
 static void restore_sighandler_if_not_default(RecordTask* t, int sig) {
   if (t->sig_disposition(sig) != SIGNAL_DEFAULT) {
     LOG(debug) << "Restoring signal handler for " << signal_name(sig);
@@ -216,13 +208,15 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
 }
 
 void disarm_desched_event(RecordTask* t) {
-  if (ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
+  if (t->desched_fd.is_open() &&
+      ioctl(t->desched_fd, PERF_EVENT_IOC_DISABLE, 0)) {
     FATAL() << "Failed to disarm desched event";
   }
 }
 
 void arm_desched_event(RecordTask* t) {
-  if (ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
+  if (t->desched_fd.is_open() &&
+      ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
     FATAL() << "Failed to disarm desched event";
   }
 }
@@ -632,7 +626,7 @@ SignalHandled handle_signal(RecordTask* t, siginfo_t* si,
     // Since we're not undoing the kernel's changes, update our signal handler
     // state to match the kernel's.
     if (signal_was_blocked || t->is_sig_ignored(sig)) {
-      t->set_sig_handler_default(sig);
+      t->did_set_sig_handler_default(sig);
     }
   }
 

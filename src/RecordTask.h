@@ -228,7 +228,7 @@ public:
   /**
    * Reset the signal handler for this signal to the default.
    */
-  void set_sig_handler_default(int sig);
+  void did_set_sig_handler_default(int sig);
 
   /**
    * Check that our status for |sig| matches what's in /proc/<pid>/status.
@@ -510,6 +510,14 @@ public:
    * Just get the signal mask of the process.
    */
   sig_set_t read_sigmask_from_process();
+  /**
+   * Unblock the signal for the process.
+   */
+  void unblock_signal(int sig);
+  /**
+   * Set the signal handler to default for the process.
+   */
+  void set_sig_handler_default(int sig);
 
   ~RecordTask();
 

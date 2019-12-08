@@ -685,8 +685,8 @@ void RecordTask::did_wait() {
 
   if (stashed_signals_blocking_more_signals) {
     // Saved 'blocked_sigs' must still be correct regardless of syscallbuf
-    // state, because we do not allow stashed_signals_blocking_more_signals to
-    // hold across syscalls (traced or untraced) that change the signal mask.
+    // state, because we do not allow stashed_signals_blocking_more_signals
+    // to hold across syscalls (traced or untraced) that change the signal mask.
     ASSERT(this, !blocked_sigs_dirty);
     xptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &blocked_sigs);
   } else if (syscallbuf_child) {
@@ -1192,7 +1192,38 @@ sig_set_t RecordTask::get_sigmask() {
   return blocked_sigs;
 }
 
+void RecordTask::unblock_signal(int sig) {
+  sig_set_t mask = get_sigmask();
+  mask &= ~signal_bit(sig);
+  int ret = fallible_ptrace(PTRACE_SETSIGMASK, remote_ptr<void>(8), &mask);
+  if (ret < 0) {
+    if (errno == EIO) {
+      FATAL() << "PTRACE_SETSIGMASK not supported; rr requires Linux kernel >= 3.11";
+    }
+    ASSERT(this, errno == EINVAL);
+  } else {
+    LOG(debug) << "Set signal mask to block all signals (bar "
+               << "SYSCALLBUF_DESCHED_SIGNAL/TIME_SLICE_SIGNAL) while we "
+               << " have a stashed signal";
+  }
+  invalidate_sigmask();
+}
+
 void RecordTask::set_sig_handler_default(int sig) {
+  did_set_sig_handler_default(sig);
+  // This could happen during a syscallbuf untraced syscall. In that case
+  // our remote syscall here could trigger a desched signal if that event
+  // is armed, making progress impossible. Disarm the event now.
+  disarm_desched_event(this);
+  AutoRemoteSyscalls remote(this);
+  Sighandler& h = sighandlers->get(sig);
+  AutoRestoreMem mem(remote, h.sa.data(), h.sa.size());
+  remote.infallible_syscall(syscall_number_for_rt_sigaction(arch()),
+      sig, mem.get().as_int(), nullptr,
+      sigaction_sigset_size(arch()));
+}
+
+void RecordTask::did_set_sig_handler_default(int sig) {
   Sighandler& h = sighandlers->get(sig);
   reset_handler(&h, arch());
 }
@@ -1272,9 +1303,15 @@ void RecordTask::stash_synthetic_sig(const siginfo_t& si,
   if (sig < SIGRTMIN) {
     for (auto it = stashed_signals.begin(); it != stashed_signals.end(); ++it) {
       if (it->siginfo.si_signo == sig) {
-        LOG(debug) << "discarding stashed signal " << sig
-                   << " since we already have one pending";
-        return;
+        if (deterministic == DETERMINISTIC_SIG &&
+            it->deterministic == NONDETERMINISTIC_SIG) {
+          stashed_signals.erase(it);
+          break;
+        } else {
+          LOG(debug) << "discarding stashed signal " << sig
+                     << " since we already have one pending";
+          return;
+        }
       }
     }
   }

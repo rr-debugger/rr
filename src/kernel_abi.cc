@@ -255,4 +255,12 @@ void set_arch_siginfo(const siginfo_t& siginfo, SupportedArch a, void* dest,
                       size_t dest_size) {
   RR_ARCH_FUNCTION(set_arch_siginfo_arch, a, siginfo, dest, dest_size);
 }
+
+template <typename Arch> static size_t sigaction_sigset_size_arch() {
+  return sizeof(typename Arch::kernel_sigset_t);
+}
+
+size_t sigaction_sigset_size(SupportedArch arch) {
+  RR_ARCH_FUNCTION(sigaction_sigset_size_arch, arch);
+}
 }
