@@ -110,6 +110,16 @@ struct PmuConfig {
 };
 
 // XXX please only edit this if you really know what you're doing.
+// event = 0x5101c4:
+// - 51 = generic PMU
+// - 01 = umask for event BR_INST_RETIRED.CONDITIONAL
+// - c4 = eventsel for event BR_INST_RETIRED.CONDITIONAL
+// event = 0x5301cb:
+// - 51 = generic PMU
+// - 01 = umask for event HW_INTERRUPTS.RECEIVED
+// - cb = eventsel for event HW_INTERRUPTS.RECEIVED
+// See Intel 64 and IA32 Architectures Performance Monitoring Events.
+// See check_events from libpfm4.
 static const PmuConfig pmu_configs[] = {
   { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
   { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
