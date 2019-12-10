@@ -260,10 +260,25 @@ static const uint64_t IN_TX = 1ULL << 32;
 static const uint64_t IN_TXCP = 1ULL << 33;
 
 static int64_t read_counter(ScopedFd& fd) {
-  int64_t val;
-  ssize_t nread = read(fd, &val, sizeof(val));
-  DEBUG_ASSERT(nread == sizeof(val));
-  return val;
+  struct read_format {
+    int64_t value;
+    int64_t time_enabled;
+    int64_t time_running;
+  } data;
+  errno = 0;
+  ssize_t nread = read(fd, &data, sizeof(data));
+  if (nread < 0) {
+    FATAL() << "Failed to read counter";
+  }
+  DEBUG_ASSERT(nread == sizeof(data));
+  if (data.time_enabled != data.time_running) {
+    FATAL()
+        << "\nCounter was multiplexed to a ratio of "
+        << (data.time_running * 1.0 / data.time_enabled)
+        << ".\nCheck that other software is not using performance counters on\n"
+           "this CPU.";
+  }
+  return data.value;
 }
 
 static ScopedFd start_counter(pid_t tid, int group_fd,
@@ -272,11 +287,14 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   if (disabled_txcp) {
     *disabled_txcp = false;
   }
+  struct perf_event_attr tmp_attr = *attr;
+  // Needed to detect when the kernel is multiplexing counters.
+  tmp_attr.read_format =
+      PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING;
   int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, 0);
   if (0 > fd && errno == EINVAL && attr->type == PERF_TYPE_RAW &&
       (attr->config & IN_TXCP)) {
     // The kernel might not support IN_TXCP, so try again without it.
-    struct perf_event_attr tmp_attr = *attr;
     tmp_attr.config &= ~IN_TXCP;
     fd = syscall(__NR_perf_event_open, &tmp_attr, tid, -1, group_fd, 0);
     if (fd >= 0) {
