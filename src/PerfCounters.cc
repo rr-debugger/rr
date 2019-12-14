@@ -282,8 +282,9 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
   if (disabled_txcp) {
     *disabled_txcp = false;
   }
+  attr->pinned = group_fd == -1;
   int fd = syscall(__NR_perf_event_open, attr, tid, -1, group_fd, 0);
-  if (0 > fd && errno == EINVAL && attr->type == PERF_TYPE_RAW &&
+  if (0 >= fd && errno == EINVAL && attr->type == PERF_TYPE_RAW &&
       (attr->config & IN_TXCP)) {
     // The kernel might not support IN_TXCP, so try again without it.
     struct perf_event_attr tmp_attr = *attr;
@@ -304,7 +305,7 @@ static ScopedFd start_counter(pid_t tid, int group_fd,
       }
     }
   }
-  if (0 > fd) {
+  if (0 >= fd) {
     if (errno == EACCES) {
       FATAL() << "Permission denied to use 'perf_event_open'; are perf events "
                  "enabled? Try 'perf record'.";
