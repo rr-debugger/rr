@@ -1728,20 +1728,51 @@ bool RecordSession::prepare_to_inject_signal(RecordTask* t,
   return true;
 }
 
-static string find_syscall_buffer_library() {
+static string find_helper_library(const char* basepath) {
   string lib_path = resource_path() + "lib64/rr/";
-  string file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
+  string file_name = lib_path + basepath;
   if (access(file_name.c_str(), F_OK) == 0) {
     return lib_path;
   }
   lib_path = resource_path() + "lib/rr/";
-  file_name = lib_path + SYSCALLBUF_LIB_FILENAME;
+  file_name = lib_path + basepath;
   if (access(file_name.c_str(), F_OK) == 0) {
     return lib_path;
   }
   // File does not exist. Assume install put it in LD_LIBRARY_PATH.
   lib_path = "";
   return lib_path;
+}
+
+static void inject_ld_helper_library(vector<string> env,
+                                     string env_var,
+                                     string value) {
+  // Our preload lib should come first if possible, because that will speed up
+  // the loading of the other libraries; it's also a good idea to put our audit
+  // library at the head of the list, since there's only sixteen possible link
+  // namespaces on glibc and each audit library uses up one.
+  //
+  // We supply a placeholder which is then mutated to the correct filename in
+  // Monkeypatcher::patch_after_exec.
+  auto env_assignment = env_var + "=";
+  auto it = env.begin();
+  for (; it != env.end(); ++it) {
+    if (it->find(env_assignment) != 0) {
+      continue;
+    }
+    // Honor old preloads too.  This may cause
+    // problems, but only in those libs, and
+    // that's the user's problem.
+    value += ":";
+    value += it->substr(it->find("=") + 1);
+    break;
+  }
+  value = env_assignment + value;
+  if (it == env.end()) {
+    env.push_back(env_assignment + value);
+  } else {
+    *it = value;
+  }
 }
 
 struct ExeInfo {
@@ -1817,7 +1848,8 @@ static string lookup_by_path(const string& name) {
     unsigned char syscallbuf_desched_sig,
     BindCPU bind_cpu,
     const string& output_trace_dir,
-    const TraceUuid* trace_id) {
+    const TraceUuid* trace_id,
+    bool use_audit) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -1853,36 +1885,24 @@ static string lookup_by_path(const string& name) {
   ExeInfo exe_info = read_exe_info(full_path);
 
   // LD_PRELOAD the syscall interception lib
-  string syscall_buffer_lib_path = find_syscall_buffer_library();
+  string syscall_buffer_lib_path = find_helper_library(SYSCALLBUF_LIB_FILENAME);
   if (!syscall_buffer_lib_path.empty()) {
-    string ld_preload = "LD_PRELOAD=";
+    string ld_preload = "";
     if (!exe_info.libasan_path.empty()) {
       LOG(debug) << "Prepending " << exe_info.libasan_path << " to LD_PRELOAD";
       // Put an LD_PRELOAD entry for it before our preload library, because
       // it checks that it's loaded first
       ld_preload += exe_info.libasan_path + ":";
     }
-    // Our preload lib should come first if possible, because that will
-    // speed up the loading of the other libraries. We supply a placeholder
-    // which is then mutated to the correct filename in
-    // Monkeypatcher::patch_after_exec.
     ld_preload += syscall_buffer_lib_path + SYSCALLBUF_LIB_FILENAME_PADDED;
-    auto it = env.begin();
-    for (; it != env.end(); ++it) {
-      if (it->find("LD_PRELOAD=") != 0) {
-        continue;
-      }
-      // Honor old preloads too.  This may cause
-      // problems, but only in those libs, and
-      // that's the user's problem.
-      ld_preload += ":";
-      ld_preload += it->substr(it->find("=") + 1);
-      break;
-    }
-    if (it == env.end()) {
-      env.push_back(ld_preload);
-    } else {
-      *it = ld_preload;
+    inject_ld_helper_library(env, "LD_PRELOAD", ld_preload);
+  }
+
+  if (use_audit) {
+    string rtld_audit_lib_path = find_helper_library(RTLDAUDIT_LIB_FILENAME);
+    if (!rtld_audit_lib_path.empty()) {
+      string ld_audit = rtld_audit_lib_path + RTLDAUDIT_LIB_FILENAME_PADDED;
+      inject_ld_helper_library(env, "LD_AUDIT", ld_audit);
     }
   }
 
@@ -1910,7 +1930,7 @@ static string lookup_by_path(const string& name) {
   shr_ptr session(
       new RecordSession(full_path, argv, env, disable_cpuid_features,
                         syscallbuf, syscallbuf_desched_sig, bind_cpu,
-                        output_trace_dir, trace_id));
+                        output_trace_dir, trace_id, use_audit));
   session->set_asan_active(!exe_info.libasan_path.empty() ||
                            exe_info.has_asan_symbols);
   return session;
@@ -1924,7 +1944,8 @@ RecordSession::RecordSession(const std::string& exe_path,
                              int syscallbuf_desched_sig,
                              BindCPU bind_cpu,
                              const string& output_trace_dir,
-                             const TraceUuid* trace_id)
+                             const TraceUuid* trace_id,
+                             bool use_audit)
     : trace_out(argv[0], choose_cpu(bind_cpu), output_trace_dir, ticks_semantics_),
       scheduler_(*this),
       trace_id(trace_id),
@@ -1939,7 +1960,8 @@ RecordSession::RecordSession(const std::string& exe_path,
       use_read_cloning_(true),
       enable_chaos_(false),
       asan_active_(false),
-      wait_for_all_(false) {
+      wait_for_all_(false),
+      use_audit_(use_audit) {
   if (!has_cpuid_faulting() &&
       disable_cpuid_features.any_features_disabled()) {
     FATAL() << "CPUID faulting required to disable CPUID features";

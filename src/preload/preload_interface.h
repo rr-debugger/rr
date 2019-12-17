@@ -18,7 +18,7 @@
  */
 #define SYSCALLBUF_PROTOCOL_VERSION 0
 
-#ifdef RR_IMPLEMENT_PRELOAD
+#if defined(RR_IMPLEMENT_PRELOAD) || defined(RR_IMPLEMENT_AUDIT)
 /* Avoid using <string.h> library functions */
 static inline int streq(const char* s1, const char* s2) {
   while (1) {
@@ -94,6 +94,11 @@ static inline const char* extract_file_name(const char* s) {
 #define SYSCALLBUF_LIB_FILENAME SYSCALLBUF_LIB_FILENAME_BASE ".so"
 #define SYSCALLBUF_LIB_FILENAME_PADDED SYSCALLBUF_LIB_FILENAME_BASE ".so:::"
 #define SYSCALLBUF_LIB_FILENAME_32 SYSCALLBUF_LIB_FILENAME_BASE "_32.so"
+
+#define RTLDAUDIT_LIB_FILENAME_BASE "librraudit"
+#define RTLDAUDIT_LIB_FILENAME RTLDAUDIT_LIB_FILENAME_BASE ".so"
+#define RTLDAUDIT_LIB_FILENAME_PADDED RTLDAUDIT_LIB_FILENAME_BASE ".so:::"
+#define RTLDAUDIT_LIB_FILENAME_32 RTLDAUDIT_LIB_FILENAME_BASE "_32.so"
 
 /* Set this env var to enable syscall buffering. */
 #define SYSCALLBUF_ENABLED_ENV_VAR "_RR_USE_SYSCALLBUF"
@@ -175,7 +180,7 @@ static inline const char* extract_file_name(const char* s) {
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.
  */
-#ifdef RR_IMPLEMENT_PRELOAD
+#if defined(RR_IMPLEMENT_PRELOAD) || defined(RR_IMPLEMENT_AUDIT)
 #define TEMPLATE_ARCH
 #define PTR(T) T*
 #define PTR_ARCH(T) T*

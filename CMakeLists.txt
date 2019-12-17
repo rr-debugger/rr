@@ -325,6 +325,23 @@ foreach(file ${PRELOAD_FILES})
 endforeach(file)
 set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles")
 
+set(AUDIT_FILES
+  rtld-audit.c
+  ../preload/raw_syscall.S
+)
+set(AUDIT_SOURCE_FILES
+  ${AUDIT_FILES}
+  rtld-audit.h
+  ../preload/preload_interface.h
+)
+add_library(rraudit)
+foreach(file ${AUDIT_FILES})
+  target_sources(rraudit PUBLIC "${CMAKE_SOURCE_DIR}/src/audit/${file}")
+  set_source_files_properties("${CMAKE_SOURCE_DIR}/src/audit/${file}"
+                              PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
+endforeach(file)
+set_target_properties(rraudit PROPERTIES LINK_FLAGS "-nostartfiles -ldl")
+
 # Ensure that CMake knows about our generated files.
 #
 # Alphabetical, please.
@@ -594,7 +611,7 @@ install(TARGETS ${RR_BIN} rrpreload rr_exec_stub
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
 
-# Build 32-bit librrpreload on 64-bit builds.
+# Build 32-bit librrpreload and librraudit on 64-bit builds.
 # We copy the source files into '32' subdirectories in the output
 # directory, so we can set different compile options on them.
 # This sucks but I can't find a better way to get CMake to build
@@ -604,18 +621,37 @@ if(rr_32BIT AND rr_64BIT)
 
   foreach(file ${PRELOAD_SOURCE_FILES})
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/preload/${file}"
-                   "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/preload/${file}"
                    COPYONLY)
   endforeach(file)
 
   foreach(file ${PRELOAD_FILES})
-    target_sources(rrpreload_32 PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/32/${file}")
-    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
+    target_sources(rrpreload_32 PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/32/preload/${file}")
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/preload/${file}"
                                 PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
   endforeach(file)
 
   set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles")
   target_link_libraries(rrpreload_32
+    ${CMAKE_DL_LIBS}
+  )
+
+  add_library(rraudit_32)
+
+  foreach(file ${AUDIT_SOURCE_FILES})
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/audit/${file}"
+                   "${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}"
+                   COPYONLY)
+  endforeach(file)
+
+  foreach(file ${AUDIT_FILES})
+    target_sources(rraudit_32 PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}")
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/32/audit/${file}"
+                                PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
+  endforeach(file)
+
+  set_target_properties(rraudit_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles")
+  target_link_libraries(rraudit_32
     ${CMAKE_DL_LIBS}
   )
 
@@ -632,7 +668,7 @@ if(rr_32BIT AND rr_64BIT)
   set_target_properties(rr_exec_stub_32
                         PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs -m32")
 
-  install(TARGETS rrpreload_32 rr_exec_stub_32
+  install(TARGETS rrpreload_32 rraudit_32 rr_exec_stub_32
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
