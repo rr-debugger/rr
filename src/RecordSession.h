@@ -67,7 +67,8 @@ public:
       unsigned char syscallbuf_desched_sig = SIGPWR,
       BindCPU bind_cpu = BIND_CPU,
       const std::string& output_trace_dir = "",
-      const TraceUuid* trace_id = nullptr);
+      const TraceUuid* trace_id = nullptr,
+      bool use_audit = false);
 
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
@@ -83,6 +84,7 @@ public:
   int get_continue_through_sig() const { return continue_through_sig; }
   void set_asan_active(bool active) { asan_active_ = active; }
   bool asan_active() const { return asan_active_; }
+  bool use_audit() const { return use_audit_; }
   uint64_t rr_signal_mask() const;
 
   enum RecordStatus {
@@ -190,7 +192,8 @@ private:
                 int syscallbuf_desched_sig,
                 BindCPU bind_cpu,
                 const std::string& output_trace_dir,
-                const TraceUuid* trace_id);
+                const TraceUuid* trace_id,
+                bool use_audit);
 
   virtual void on_create(Task* t) override;
 
@@ -243,6 +246,8 @@ private:
   bool wait_for_all_;
 
   std::string output_trace_dir;
+
+  bool use_audit_;
 };
 
 } // namespace rr
