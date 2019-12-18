@@ -18,6 +18,12 @@ int main(void) {
                                  MAP_PRIVATE | MAP_FIXED, fd, 0));
   map_addr = mremap(map_addr, ceil_page_size(end) + page_size,
                     ceil_page_size(end) + page_size*2, MREMAP_MAYMOVE);
+  if (map_addr == MAP_FAILED && errno == EFAULT) {
+    // This happens in a Debian 9 kernel (4.9.0-11-amd64)
+    atomic_puts("Kernel didn't coalesce the mapping; skipping test");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(MAP_FAILED != map_addr);
 
   /* Try again, shrinking this time */
