@@ -369,7 +369,7 @@ template <typename D> void DwarfLineNumberTable::init_size(DwarfSpan span, bool*
   } else if (h->version == 4) {
     init<Dwarf4LineNumberTableHeader<D>>(span, ok);
   } else {
-    LOG(warn) << "Uknown compilation unit version " << h->version;
+    LOG(warn) << "Unknown compilation unit version " << h->version;
     *ok = false;
   }
 }
