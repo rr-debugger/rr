@@ -25,6 +25,7 @@ http://rr-project.org
 %install
 mkdir -p %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib64
 cp -a %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib/* %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib64
+ln -s @CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM/RPMS/@CPACK_PACKAGE_FILE_NAME@.rpm @CPACK_BINARY_DIR@/_CPack_Packages/@CPACK_SYSTEM_NAME@/RPM/@CPACK_PACKAGE_FILE_NAME@.rpm
 
 %files
 %defattr(-,root,root,-)
