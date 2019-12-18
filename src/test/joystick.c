@@ -31,12 +31,17 @@ int main(void) {
     test_assert(0 == ioctl(fd, JSIOCGBUTTONS, number_of_buttons));
     VERIFY_GUARD(number_of_buttons);
 
+    // This is not supported for now, since the size of the data returned
+    // depends on the number of axes, which can only be determined by querying
+    // the device.
+#if 0
     // JSIOCGCORR
     struct js_corr **corr;
     size_t corr_size = *number_of_axes * sizeof(struct js_corr);
     corr = allocate_guard(corr_size, 'd');
     test_assert(0 == ioctl(fd, JSIOCGCORR, corr));
     verify_guard(corr_size, corr);
+#endif
 
     // JSIOCGAXMAP
     uint8_t (*axis_mapping)[ABS_CNT];

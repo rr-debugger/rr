@@ -1693,7 +1693,9 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(JSIOCGVERSION):
     case IOCTL_MASK_SIZE(JSIOCGAXES):
     case IOCTL_MASK_SIZE(JSIOCGBUTTONS):
-    case IOCTL_MASK_SIZE(JSIOCGCORR):
+    // This gets a list of js_corr structures whose length we don't know without
+    // querying the device ourselves.
+    // case IOCTL_MASK_SIZE(JSIOCGCORR):
     case IOCTL_MASK_SIZE(JSIOCGAXMAP):
     case IOCTL_MASK_SIZE(JSIOCGBTNMAP):
     case IOCTL_MASK_SIZE(JSIOCGNAME(0)):
