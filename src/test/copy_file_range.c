@@ -25,7 +25,8 @@ int main(void) {
   test_assert(ret == 6);
   ret = copy_file_range_syscall(in_fd, &in_off, out_fd, &out_off, 3, 0);
   if (ret < 0) {
-    test_assert(errno == ENOSYS);
+    // Debian 9 4.9.0-11-amd64 returns EINVAL here for unknown reasons
+    test_assert(errno == ENOSYS || errno == EINVAL);
     atomic_puts("copy_file_range not supported, aborting test");
     atomic_puts("EXIT-SUCCESS");
     return 0;
