@@ -21,7 +21,11 @@ http://rr-project.org
 # we skip _install step because CPack does that for us.
 # We do only save CPack installed tree in _prepr
 # and then restore it in build.
- 
+
+%install
+mkdir -p %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib64
+cp -a %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib/* %{buildroot}@CPACK_PACKAGING_INSTALL_PREFIX@/lib64
+
 %files
 %defattr(-,root,root,-)
 @CPACK_PACKAGING_INSTALL_PREFIX@/lib64/*
