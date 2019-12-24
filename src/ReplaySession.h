@@ -12,6 +12,7 @@
 #include "EmuFs.h"
 #include "Session.h"
 #include "Task.h"
+#include "fast_forward.h"
 
 struct syscallbuf_hdr;
 
@@ -106,6 +107,10 @@ struct ReplayResult {
   // break_status.singlestep_complete might indicate the completion of more
   // than one instruction.
   bool did_fast_forward;
+  // True if we fast-forward-singlestepped a string instruction but it has at least
+  // one iteration to go. did_fast_forward may be false in this case if the
+  // instruction executes exactly twice.
+  bool incomplete_fast_forward;
 };
 
 /**
@@ -349,7 +354,7 @@ private:
   CPUIDBugDetector cpuid_bug_detector;
   siginfo_t last_siginfo_;
   Flags flags_;
-  bool did_fast_forward;
+  FastForwardStatus fast_forward_status;
 
   // The clock_gettime(CLOCK_MONOTONIC) timestamp of the first trace event, used
   // during 'replay' to calculate the elapsed time between the first event and

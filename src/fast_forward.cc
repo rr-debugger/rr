@@ -155,43 +155,44 @@ static bool is_x86ish(Task* t) {
   return t->arch() == x86 || t->arch() == x86_64;
 }
 
-bool fast_forward_through_instruction(Task* t, ResumeRequest how,
-                                      const vector<const Registers*>& states) {
+FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
+                                                   const vector<const Registers*>& states) {
   DEBUG_ASSERT(how == RESUME_SINGLESTEP || how == RESUME_SYSEMU_SINGLESTEP);
+  FastForwardStatus result;
 
   remote_code_ptr ip = t->ip();
 
   t->resume_execution(how, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
   if (t->stop_sig() != SIGTRAP) {
     // we might have stepped into a system call...
-    return false;
+    return result;
   }
 
   if (t->ip() != ip) {
-    return false;
+    return result;
   }
   if (t->vm()->get_breakpoint_type_at_addr(ip) != BKPT_NONE) {
     // breakpoint must have fired
-    return false;
+    return result;
   }
   if (t->vm()->notify_watchpoint_fired(t->debug_status(),
           t->last_execution_resume())) {
     // watchpoint fired
-    return false;
+    return result;
   }
   for (auto& state : states) {
     if (state->matches(t->regs())) {
-      return false;
+      return result;
     }
   }
   if (!is_x86ish(t)) {
-    return false;
+    return result;
   }
 
   InstructionBuf instruction_buf = read_instruction(t, ip);
   DecodedInstruction decoded;
   if (!decode_x86_string_instruction(instruction_buf, &decoded)) {
-    return false;
+    return result;
   }
 
   remote_code_ptr limit_ip = ip + decoded.length;
@@ -203,7 +204,6 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
   vector<const Registers*> states_copy;
   auto using_states = &states;
 
-  bool did_execute = false;
   while (true) {
     // This string instruction should execute until CX reaches 0 and
     // we move to the next instruction, or we hit one of the states in
@@ -225,8 +225,10 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       // Fake singlestep status for trap diagnosis
       t->set_debug_status(DS_SINGLESTEP);
       // This instruction will be skipped entirely.
-      return did_execute;
+      return result;
     }
+    // There is at least one more iteration to go.
+    result.incomplete_fast_forward = true;
 
     // Don't execute the last iteration of the string instruction. That
     // simplifies code below that tries to emulate the register effects
@@ -283,7 +285,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
     if (iterations == 0) {
       // Fake singlestep status for trap diagnosis
       t->set_debug_status(DS_SINGLESTEP);
-      return did_execute;
+      return result;
     }
 
     LOG(debug) << "x86-string fast-forward: " << iterations
@@ -311,7 +313,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       ASSERT(t, ok) << "Failed to add breakpoint";
 
       t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_UNLIMITED_TICKS);
-      did_execute = true;
+      result.did_fast_forward = true;
       ASSERT(t, t->stop_sig() == SIGTRAP);
       // Grab debug_status before restoring watchpoints, since the latter
       // clears the debug status
@@ -359,7 +361,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
           // singlestepping all the rest of the way.
           LOG(debug) << "x86-string fast-forward: " << iterations
                      << " iterations to go, but watchpoint hit early; aborted";
-          return did_execute;
+          return result;
         }
       }
     }
@@ -373,7 +375,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       // expensive and since we know we're just executing the string instruction
       // we shouldn't miss any ticks here.
       t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-      did_execute = true;
+      result.did_fast_forward = true;
       ASSERT(t, t->stop_sig() == SIGTRAP);
       // Watchpoints can fire spuriously because configure_watch_registers
       // can increase the size of the watched area to conserve watch registers.
@@ -397,7 +399,7 @@ bool fast_forward_through_instruction(Task* t, ResumeRequest how,
       LOG(debug) << "x86-string fast-forward done; ip()==" << t->ip();
       // Fake singlestep status for trap diagnosis
       t->set_debug_status(DS_SINGLESTEP);
-      return did_execute;
+      return result;
     }
   }
 }

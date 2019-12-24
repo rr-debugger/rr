@@ -604,7 +604,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
           // event
           (!ignore_singlestep_for_event(replayed_event) ||
            before_time == after_time) &&
-          (!result.did_fast_forward || old_ip != after_ip ||
+          (!result.incomplete_fast_forward || old_ip != after_ip ||
            before_time < after_time);
       if (!flags.singlestep_trace.empty() &&
           cmd == RUN_SINGLESTEP_FAST_FORWARD &&
