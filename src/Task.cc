@@ -1020,24 +1020,6 @@ void Task::work_around_KNL_string_singlestep_bug() {
   }
 }
 
-/**
- * In KVM virtual machines (and maybe others), singlestepping over CPUID
- * executes the following instruction as well. Work around that.
- */
-static bool maybe_set_breakpoint_after_cpuid(Task* t) {
-  if (!t) {
-    return false;
-  }
-  uint8_t bytes[2];
-  if (t->read_bytes_fallible(t->ip().to_data_ptr<void>(), 2, bytes) != 2) {
-    return false;
-  }
-  if (bytes[0] != 0x0f || bytes[1] != 0xa2) {
-    return false;
-  }
-  return t->vm()->add_breakpoint(t->ip() + 2, BKPT_INTERNAL);
-}
-
 static void clear_breakpoint_after_cpuid(Task* t) {
   t->vm()->remove_breakpoint(t->ip(), BKPT_INTERNAL);
 }
@@ -1066,7 +1048,12 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 
   if (is_singlestep_resume(how)) {
     work_around_KNL_string_singlestep_bug();
-    did_set_breakpoint_after_cpuid = maybe_set_breakpoint_after_cpuid(this);
+    singlestepping_instruction = trapped_instruction_at(this, ip());
+    if (singlestepping_instruction == TrappedInstruction::CPUID) {
+      // In KVM virtual machines (and maybe others), singlestepping over CPUID
+      // executes the following instruction as well. Work around that.
+      did_set_breakpoint_after_cpuid = vm()->add_breakpoint(ip() + 2, BKPT_INTERNAL);
+    }
   }
 
   flush_regs();
@@ -1632,13 +1619,24 @@ void Task::did_waitpid(WaitStatus status) {
       clear_breakpoint_after_cpuid(this);
       did_set_breakpoint_after_cpuid = false;
     }
+    if ((singlestepping_instruction == TrappedInstruction::PUSHF ||
+         singlestepping_instruction == TrappedInstruction::PUSHF16) &&
+        ip() == address_of_last_execution_resume +
+          trapped_instruction_len(singlestepping_instruction)) {
+      // We singlestepped through a pushf. Clear TF bit on stack.
+      auto sp = regs().sp().cast<uint16_t>();
+      // If this address is invalid then we should have segfaulted instead of
+      // retiring the instruction!
+      uint16_t val = read_mem(sp);
+      write_mem(sp, (uint16_t)(val & ~X86_TF_FLAG));
+    }
+    singlestepping_instruction = TrappedInstruction::NONE;
 
     // We might have singlestepped at the resumption address and just exited
     // the kernel without executing the breakpoint at that address.
     // The kernel usually (always?) singlesteps an extra instruction when
     // we do this with PTRACE_SYSEMU_SINGLESTEP, but rr's ptrace emulation
-    // doesn't
-    // and it's kind of a kernel bug.
+    // doesn't and it's kind of a kernel bug.
     if (as->get_breakpoint_type_at_addr(address_of_last_execution_resume) !=
             BKPT_NONE &&
         stop_sig() == SIGTRAP && !ptrace_event() &&

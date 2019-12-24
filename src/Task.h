@@ -997,8 +997,11 @@ protected:
   // cx register. If so, we record the orginal value here. See comments in
   // Task.cc
   uint64_t last_resume_orig_cx;
-  // Set when we put a breakpoint after a CPUID instruction to avoid singlestepping
-  // past it.
+  // The instruction type we're singlestepping through.
+  TrappedInstruction singlestepping_instruction;
+  // True if we set a breakpoint after a singlestepped CPUID instruction.
+  // We need this in addition to `singlestepping_instruction` because that
+  // might be CPUID but we failed to set the breakpoint.
   bool did_set_breakpoint_after_cpuid;
   // True when we know via waitpid() that the task is stopped and we haven't
   // resumed it.

@@ -1125,6 +1125,7 @@ set(TESTS_WITH_PROGRAM
   signal_numbers
   sigprocmask_race
   sigprocmask_rr_sigs_nondefault
+  singlestep_pushf
   stack_growth
   step_thread
   string_instructions

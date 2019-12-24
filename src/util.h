@@ -395,9 +395,11 @@ enum class TrappedInstruction {
   RDTSCP = 2,
   CPUID = 3,
   INT3 = 4,
+  PUSHF = 5,
+  PUSHF16 = 6,
 };
 
-/* If |t->ip()| points at a disabled instruction, return the instruction */
+/* If |t->ip()| points at a decoded instruction, return the instruction */
 TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip);
 
 /* Return the length of the TrappedInstruction */
