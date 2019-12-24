@@ -982,7 +982,7 @@ void Task::activate_preload_thread_locals() {
   }
 }
 
-static bool cpu_has_singlestep_quirk() {
+static bool cpu_has_KNL_string_singlestep_bug() {
   static bool has_quirk =
       ((cpuid(CPUID_GETFEATURES, 0).eax & 0xF0FF0) == 0x50670);
   return has_quirk;
@@ -995,12 +995,12 @@ static bool cpu_has_singlestep_quirk() {
  */
 static int single_step_coalesce_cutoff() { return 16; }
 
-void Task::maybe_workaround_singlestep_bug() {
+void Task::work_around_KNL_string_singlestep_bug() {
   uintptr_t cx = regs().cx();
   uintptr_t cutoff = single_step_coalesce_cutoff();
   /* The extra cx >= cutoff check is just an optimization, to avoid the
      moderately expensive load from ip() if we can */
-  if (cpu_has_singlestep_quirk() && cx > cutoff &&
+  if (cpu_has_KNL_string_singlestep_bug() && cx > cutoff &&
       at_x86_string_instruction(this)) {
     /* KNL has a quirk where single-stepping a string instruction can step up
        to 64 iterations. Work around this by fudging registers to force the
@@ -1041,7 +1041,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   set_debug_status(0);
 
   if (RESUME_SINGLESTEP == how || RESUME_SYSEMU_SINGLESTEP == how) {
-    maybe_workaround_singlestep_bug();
+    work_around_KNL_string_singlestep_bug();
   }
 
   flush_regs();

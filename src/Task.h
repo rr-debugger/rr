@@ -974,7 +974,7 @@ protected:
                      const std::vector<std::string>& argv,
                      const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
-  void maybe_workaround_singlestep_bug();
+  void work_around_KNL_string_singlestep_bug();
 
   void* preload_thread_locals();
 
