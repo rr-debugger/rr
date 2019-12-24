@@ -471,28 +471,6 @@ static bool ignore_singlestep_for_event(const Event& ev) {
   }
 }
 
-/**
- * In KVM virtual machines (and maybe others), singlestepping over CPUID
- * executes the following instruction as well. Work around that.
- */
-static bool maybe_set_breakpoint_after_cpuid(Task* t) {
-  if (!t) {
-    return false;
-  }
-  uint8_t bytes[2];
-  if (t->read_bytes_fallible(t->ip().to_data_ptr<void>(), 2, bytes) != 2) {
-    return false;
-  }
-  if (bytes[0] != 0x0f || bytes[1] != 0xa2) {
-    return false;
-  }
-  return t->vm()->add_breakpoint(t->ip() + 2, BKPT_USER);
-}
-
-static void clear_breakpoint_after_cpuid(Task* t) {
-  t->vm()->remove_breakpoint(t->ip(), BKPT_USER);
-}
-
 static const uint64_t sentinel_ret_address = 9;
 
 static void run_diversion_function(ReplaySession& replay, Task* task,
@@ -569,18 +547,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
 
     Event replayed_event = replay_session->current_trace_frame().event();
 
-    bool set_breakpoint = maybe_set_breakpoint_after_cpuid(old_task);
     auto result = replay_session->replay_step(cmd);
-    if (set_breakpoint) {
-      clear_breakpoint_after_cpuid(old_task);
-      if (result.break_status.breakpoint_hit ||
-          result.break_status.singlestep_complete) {
-        ASSERT(old_task, old_task->ip() == old_ip + 2);
-        result.break_status.breakpoint_hit = false;
-        result.break_status.singlestep_complete = true;
-      }
-    }
-
     if (result.status == REPLAY_EXITED) {
       break;
     }

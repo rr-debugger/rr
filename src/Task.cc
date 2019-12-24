@@ -84,6 +84,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       registers(a),
       how_last_execution_resumed(RESUME_CONT),
       last_resume_orig_cx(0),
+      did_set_breakpoint_after_cpuid(false),
       is_stopped(false),
       seccomp_bpf_enabled(false),
       detected_unexpected_exit(false),
@@ -870,6 +871,7 @@ TrapReasons Task::compute_trap_reasons() {
         // Likewise we emulate CPUID instructions and must forcibly detect that
         // here.
         reasons.singlestep = true;
+        // This also takes care of the did_set_breakpoint_after_cpuid workaround case
       } else if (ti == TrappedInstruction::INT3 &&
           ip() == address_of_last_execution_resume +
                        trapped_instruction_len(TrappedInstruction::INT3)) {
@@ -1018,6 +1020,28 @@ void Task::work_around_KNL_string_singlestep_bug() {
   }
 }
 
+/**
+ * In KVM virtual machines (and maybe others), singlestepping over CPUID
+ * executes the following instruction as well. Work around that.
+ */
+static bool maybe_set_breakpoint_after_cpuid(Task* t) {
+  if (!t) {
+    return false;
+  }
+  uint8_t bytes[2];
+  if (t->read_bytes_fallible(t->ip().to_data_ptr<void>(), 2, bytes) != 2) {
+    return false;
+  }
+  if (bytes[0] != 0x0f || bytes[1] != 0xa2) {
+    return false;
+  }
+  return t->vm()->add_breakpoint(t->ip() + 2, BKPT_INTERNAL);
+}
+
+static void clear_breakpoint_after_cpuid(Task* t) {
+  t->vm()->remove_breakpoint(t->ip(), BKPT_INTERNAL);
+}
+
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
   will_resume_execution(how, wait_how, tick_period, sig);
@@ -1040,8 +1064,9 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   how_last_execution_resumed = how;
   set_debug_status(0);
 
-  if (RESUME_SINGLESTEP == how || RESUME_SYSEMU_SINGLESTEP == how) {
+  if (is_singlestep_resume(how)) {
     work_around_KNL_string_singlestep_bug();
+    did_set_breakpoint_after_cpuid = maybe_set_breakpoint_after_cpuid(this);
   }
 
   flush_regs();
@@ -1602,6 +1627,11 @@ void Task::did_waitpid(WaitStatus status) {
       registers_dirty = true;
     }
     last_resume_orig_cx = 0;
+
+    if (did_set_breakpoint_after_cpuid) {
+      clear_breakpoint_after_cpuid(this);
+      did_set_breakpoint_after_cpuid = false;
+    }
 
     // We might have singlestepped at the resumption address and just exited
     // the kernel without executing the breakpoint at that address.
