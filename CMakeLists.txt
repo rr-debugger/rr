@@ -786,6 +786,7 @@ set(BASIC_TESTS
   mmap_ro
   mmap_self_maps_shared
   mmap_shared
+  mmap_shared_dev_zero
   mmap_shared_grow
   mmap_shared_grow_under_map
   mmap_shared_multiple

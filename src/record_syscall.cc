@@ -4708,8 +4708,18 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   ASSERT(t, fd >= 0) << "Valid fd required for file mapping";
   ASSERT(t, !(flags & MAP_GROWSDOWN));
 
+  bool effectively_anonymous = false;
   auto st = t->stat_fd(fd);
   string file_name = t->file_name_of_fd(fd);
+  if (file_name == "/dev/zero") {
+    // mmapping /dev/zero is equivalent to MAP_ANONYMOUS, just more annoying.
+    // grab the device/inode from the kernel mapping so that it will be unique.
+    KernelMapping kernel_synthetic_info = t->vm()->read_kernel_mapping(t, addr);
+    st.st_dev = kernel_synthetic_info.device();
+    st.st_ino = kernel_synthetic_info.inode();
+    file_name = kernel_synthetic_info.fsname();
+    effectively_anonymous = true;
+  }
 
   KernelMapping km =
       t->vm()->map(t, addr, size, prot, flags, offset, file_name, st.st_dev,
@@ -4725,7 +4735,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
 
   vector<TraceRemoteFd> extra_fds;
   bool monitor_this_fd = false;
-  if (flags & MAP_SHARED) {
+  if ((flags & MAP_SHARED) && !effectively_anonymous) {
     monitor_this_fd = monitor_fd_for_mapping(t, fd, st, extra_fds);
   }
   if (t->trace_writer().write_mapped_region(t, km, st, extra_fds,
@@ -4750,7 +4760,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
           << " after; is filesystem full?";
     }
   }
-  if (flags & MAP_SHARED) {
+  if ((flags & MAP_SHARED) && !effectively_anonymous) {
     // Setting up MmappedFileMonitor may trigger updates to syscallbuf_fds_disabled
     // in the tracee, recording memory records. Those should be recorded now, after the
     // memory region data itself. Needs to be consistent with replay_syscall.
@@ -4768,13 +4778,13 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
         rt->fd_table()->add_monitor(rt, f.fd, new MmappedFileMonitor(rt, f.fd));
       }
     }
-  }
 
-  if ((prot & PROT_WRITE) && (flags & MAP_SHARED)) {
-    LOG(debug) << file_name << " is SHARED|writable; that's not handled "
-                               "correctly yet. Optimistically hoping it's not "
-                               "written by programs outside the rr tracee "
-                               "tree.";
+    if ((prot & PROT_WRITE)) {
+      LOG(debug) << file_name << " is SHARED|writable; that's not handled "
+                                 "correctly yet. Optimistically hoping it's not "
+                                 "written by programs outside the rr tracee "
+                                 "tree.";
+    }
   }
 
   // We don't want to patch MAP_SHARED files. In the best case we'd end crashing
@@ -4786,7 +4796,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   }
 
   if ((prot & (PROT_WRITE | PROT_READ)) == PROT_READ && (flags & MAP_SHARED) &&
-      !(flags & MAP_ANONYMOUS)) {
+      !(flags & MAP_ANONYMOUS) && !effectively_anonymous) {
     MonitoredSharedMemory::maybe_monitor(t, file_name,
                                          t->vm()->mapping_of(addr), fd, offset);
   }
