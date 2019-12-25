@@ -1020,10 +1020,6 @@ void Task::work_around_KNL_string_singlestep_bug() {
   }
 }
 
-static void clear_breakpoint_after_cpuid(Task* t) {
-  t->vm()->remove_breakpoint(t->ip(), BKPT_INTERNAL);
-}
-
 void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
                             TicksRequest tick_period, int sig) {
   will_resume_execution(how, wait_how, tick_period, sig);
@@ -1052,7 +1048,8 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     if (singlestepping_instruction == TrappedInstruction::CPUID) {
       // In KVM virtual machines (and maybe others), singlestepping over CPUID
       // executes the following instruction as well. Work around that.
-      did_set_breakpoint_after_cpuid = vm()->add_breakpoint(ip() + 2, BKPT_INTERNAL);
+      did_set_breakpoint_after_cpuid =
+        vm()->add_breakpoint(ip() + trapped_instruction_len(singlestepping_instruction), BKPT_INTERNAL);
     }
   }
 
@@ -1616,7 +1613,14 @@ void Task::did_waitpid(WaitStatus status) {
     last_resume_orig_cx = 0;
 
     if (did_set_breakpoint_after_cpuid) {
-      clear_breakpoint_after_cpuid(this);
+      remote_code_ptr bkpt_addr =
+        address_of_last_execution_resume + trapped_instruction_len(singlestepping_instruction);
+      if (ip() == bkpt_addr.increment_by_bkpt_insn_length(arch())) {
+        Registers r = regs();
+        r.set_ip(bkpt_addr);
+        set_regs(r);
+      }
+      vm()->remove_breakpoint(bkpt_addr, BKPT_INTERNAL);
       did_set_breakpoint_after_cpuid = false;
     }
     if ((singlestepping_instruction == TrappedInstruction::PUSHF ||
