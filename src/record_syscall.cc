@@ -4796,7 +4796,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   }
 
   if ((prot & (PROT_WRITE | PROT_READ)) == PROT_READ && (flags & MAP_SHARED) &&
-      !(flags & MAP_ANONYMOUS) && !effectively_anonymous) {
+      !effectively_anonymous) {
     MonitoredSharedMemory::maybe_monitor(t, file_name,
                                          t->vm()->mapping_of(addr), fd, offset);
   }
