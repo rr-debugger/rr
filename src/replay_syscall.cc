@@ -685,17 +685,9 @@ static void process_brk(ReplayTask* t) {
   }
 }
 
-/**
- * Pass NOTE_TASK_MAP to update cached mmap data.  If the data
- * need to be manually updated, pass |DONT_NOTE_TASK_MAP| and update
- * it manually.
- */
-enum NoteTaskMap { DONT_NOTE_TASK_MAP = 0, NOTE_TASK_MAP };
-
 static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
                                   remote_ptr<void> rec_addr, size_t length,
-                                  int prot, int flags,
-                                  NoteTaskMap note_task_map) {
+                                  int prot, int flags) {
   string file_name;
   dev_t device = KernelMapping::NO_DEVICE;
   ino_t inode = KernelMapping::NO_INODE;
@@ -720,10 +712,8 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
     inode = real_file.st_ino;
   }
 
-  if (note_task_map) {
-    remote.task()->vm()->map(t, rec_addr, length, prot, flags, 0, file_name,
-                             device, inode, nullptr, &recorded_km, emu_file);
-  }
+  remote.task()->vm()->map(t, rec_addr, length, prot, flags, 0, file_name,
+                           device, inode, nullptr, &recorded_km, emu_file);
 }
 
 static void write_mapped_data(ReplayTask* t,
@@ -855,7 +845,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
                                   : AutoRemoteSyscalls::ENABLE_MEMORY_PARAMS);
     if (flags & MAP_ANONYMOUS) {
       finish_anonymous_mmap(t, remote, trace_frame.regs().syscall_result(),
-                            length, prot, flags, NOTE_TASK_MAP);
+                            length, prot, flags);
     } else {
       TraceReader::MappedData data;
       vector<TraceRemoteFd> extra_fds;
