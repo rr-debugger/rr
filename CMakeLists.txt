@@ -777,6 +777,7 @@ set(BASIC_TESTS
   map_shared_syscall
   membarrier
   memfd_create
+  memfd_create_shared
   mincore
   mknod
   mlock
