@@ -3,6 +3,7 @@
 #include "EmuFs.h"
 
 #include <syscall.h>
+#include <sys/mman.h>
 
 #include <fstream>
 #include <sstream>
@@ -77,10 +78,20 @@ void EmuFile::ensure_size(uint64_t size) {
   }
 }
 
-/*static*/ EmuFile::shr_ptr EmuFile::create(EmuFs& owner,
-                                            const string& orig_path,
-                                            dev_t orig_device, ino_t orig_inode,
-                                            uint64_t orig_file_size) {
+static ScopedFd create_memfd_file(const string& orig_path, dev_t orig_device,
+                                  ino_t orig_inode, string& real_name) {
+  stringstream name;
+  name << "rr-emufs-" << getpid() << "-dev-" << orig_device
+       << "-inode-" << orig_inode << "-" << orig_path;
+  real_name = name.str().substr(0, 255);
+
+  ScopedFd fd = memfd_create(real_name.c_str(), 0);
+  return fd;
+}
+
+// Used only when memfd_create is not available, i.e. Linux < 3.17
+static ScopedFd create_tmpfs_file(const string& orig_path, dev_t orig_device,
+                                  ino_t orig_inode, string& real_name) {
   // Sanitize the mapped file path so that we can use it in a
   // leaf name.
   string path_tag(orig_path);
@@ -89,23 +100,35 @@ void EmuFile::ensure_size(uint64_t size) {
   stringstream name;
   name << tmp_dir() << "/rr-emufs-" << getpid() << "-dev-" << orig_device
        << "-inode-" << orig_inode << "-" << path_tag;
-  string real_name = name.str().substr(0, 255);
+  real_name = name.str().substr(0, 255);
 
   ScopedFd fd =
       open(real_name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0700);
-  if (!fd.is_open()) {
-    FATAL() << "Failed to create shmem segment " << real_name;
-  }
   /* Remove the fs name so that we don't have to worry about
    * cleaning up this segment in error conditions. */
   unlink(real_name.c_str());
+  return fd;
+}
+
+/*static*/ EmuFile::shr_ptr EmuFile::create(EmuFs& owner,
+                                            const string& orig_path,
+                                            dev_t orig_device, ino_t orig_inode,
+                                            uint64_t orig_file_size) {
+  string real_name;
+  ScopedFd fd = create_memfd_file(orig_path, orig_device, orig_inode, real_name);
+  if (!fd.is_open()) {
+    fd = create_tmpfs_file(orig_path, orig_device, orig_inode, real_name);
+    if (!fd.is_open()) {
+      FATAL() << "Failed to create shmem segment for " << real_name;
+    }
+  }
   resize_shmem_segment(fd, orig_file_size);
 
   shr_ptr f(new EmuFile(owner, std::move(fd), orig_path, real_name, orig_device,
                         orig_inode, orig_file_size));
 
   LOG(debug) << "created emulated file for " << orig_path << " as "
-             << name.str();
+             << real_name;
   return f;
 }
 
