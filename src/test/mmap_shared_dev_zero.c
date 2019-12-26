@@ -7,7 +7,7 @@
 #include <sys/stat.h>
 
 int main(void) {
-  int fd = open("/dev/null", O_RDWR);
+  int fd = open("/dev/zero", O_RDWR);
   void* p1 = mmap(0, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
   assert((intptr_t)p1 > 0);
   void* p2 = mmap(0, PAGE_SIZE, PROT_READ, MAP_SHARED, fd, 0);
