@@ -1432,6 +1432,22 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       return;
     }
 
+    case SYS_rrcall_notify_stap_semaphore_added: {
+      remote_ptr<uint16_t> range_start(t->regs().arg1()),
+                           range_end(t->regs().arg2());
+      MemoryRange semaphore_range(range_start, range_end);
+      t->vm()->add_stap_semaphore_range(t, semaphore_range);
+      return;
+    }
+
+    case SYS_rrcall_notify_stap_semaphore_removed: {
+      remote_ptr<uint16_t> range_start(t->regs().arg1()),
+                           range_end(t->regs().arg2());
+      MemoryRange semaphore_range(range_start, range_end);
+      t->vm()->remove_stap_semaphore_range(t, semaphore_range);
+      return;
+    }
+
     default:
       return;
   }

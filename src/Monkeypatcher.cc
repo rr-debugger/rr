@@ -61,14 +61,14 @@ static void write_and_record_mem(RecordTask* t, remote_ptr<T> child_addr,
  * because we're recording an rr replay).
  */
 #define setup_library_path(arch, env_var, soname, task) \
-  _setup_library_path<arch>(task, env_var, soname ## _BASE, \
-                            soname ## _PADDED, soname ## _32)
+  setup_library_path_arch<arch>(task, env_var, soname ## _BASE, \
+                                soname ## _PADDED, soname ## _32)
 
 template <typename Arch>
-static void _setup_library_path(RecordTask* t, const char* env_var,
-                                const char* soname_base,
-                                const char* soname_padded,
-                                const char* soname_32) {
+static void setup_library_path_arch(RecordTask* t, const char* env_var,
+                                    const char* soname_base,
+                                    const char* soname_padded,
+                                    const char* soname_32) {
   const char* lib_name =
       sizeof(typename Arch::unsigned_word) < sizeof(uintptr_t)
           ? soname_32

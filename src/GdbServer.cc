@@ -504,6 +504,14 @@ void GdbServer::dispatch_debugger_request(Session& session,
         dbg->reply_set_mem(true);
         return;
       }
+      // If an address is recognised as belonging to a SystemTap semaphore it's
+      // because it was detected by the audit library during recording and
+      // pre-incremented.
+      if (target->vm()->is_stap_semaphore(req.mem().addr)) {
+        LOG(info) << "Suppressing write to SystemTap semaphore";
+        dbg->reply_set_mem(true);
+        return;
+      }
       // We only allow the debugger to write memory if the
       // memory will be written to an diversion session.
       // Arbitrary writes to replay sessions cause
