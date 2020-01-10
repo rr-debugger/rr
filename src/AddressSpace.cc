@@ -1983,4 +1983,38 @@ remote_ptr<void> AddressSpace::find_free_memory(size_t required_space,
   return current->map.end();
 }
 
+void AddressSpace::add_stap_semaphore_range(Task* task, MemoryRange range) {
+  ASSERT(task, range.start() != range.end())
+    << "Unexpected zero-length SystemTap semaphore range: " << range;
+  ASSERT(task, (range.size() & 1) == 0)
+    << "Invalid SystemTap semaphore range at "
+    << range
+    << ": size is not a multiple of the size of a STap semaphore!";
+
+  auto ptr = range.start().cast<uint16_t>(),
+       end = range.end().cast<uint16_t>();
+  for (; ptr < end; ++ptr) {
+    stap_semaphores.insert(ptr);
+  }
+}
+
+void AddressSpace::remove_stap_semaphore_range(Task* task, MemoryRange range) {
+  ASSERT(task, range.start() != range.end())
+    << "Unexpected zero-length SystemTap semaphore range: " << range;
+  ASSERT(task, (range.size() & 1) == 0)
+    << "Invalid SystemTap semaphore range at "
+    << range
+    << ": size is not a multiple of the size of a STap semaphore!";
+
+  auto ptr = range.start().cast<uint16_t>(),
+       end = range.end().cast<uint16_t>();
+  for (; ptr < end; ++ptr) {
+    stap_semaphores.erase(ptr);
+  }
+}
+
+bool AddressSpace::is_stap_semaphore(remote_ptr<uint16_t> addr) {
+  return stap_semaphores.find(addr) != stap_semaphores.end();
+}
+
 } // namespace rr

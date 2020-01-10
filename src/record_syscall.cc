@@ -4201,6 +4201,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case SYS_rrcall_notify_control_msg:
     case SYS_rrcall_init_preload:
+    case SYS_rrcall_notify_stap_semaphore_added:
+    case SYS_rrcall_notify_stap_semaphore_removed:
       syscall_state.emulate_result(0);
       return PREVENT_SWITCH;
 

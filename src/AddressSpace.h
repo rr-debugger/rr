@@ -776,6 +776,10 @@ public:
    */
   static void print_process_maps(Task* t);
 
+  void add_stap_semaphore_range(Task* t, MemoryRange range);
+  void remove_stap_semaphore_range(Task* t, MemoryRange range);
+  bool is_stap_semaphore(remote_ptr<uint16_t> addr);
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
@@ -1065,6 +1069,8 @@ private:
    * 0 if no such event has occurred.
    */
   FrameTime first_run_event_;
+
+  std::set<remote_ptr<uint16_t>> stap_semaphores;
 
   /**
    * For each architecture, the offset of a syscall instruction with that

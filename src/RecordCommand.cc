@@ -96,7 +96,9 @@ RecordCommand RecordCommand::singleton(
     "                             user that ran sudo rather than root. This\n"
     "                             allows recording setuid/setcap binaries.\n"
     "  --trace-id                 Sets the trace id to the specified id.\n"
-    "  --copy-preload-src         Copy preload sources to trace dir\n");
+    "  --copy-preload-src         Copy preload sources to trace dir\n"
+    "  --stap-sdt                 Enables the use of SystemTap statically-\n"
+    "                             defined tracepoints\n");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -164,6 +166,9 @@ struct RecordFlags {
   /* The signal to use for syscallbuf desched events */
   int syscallbuf_desched_sig;
 
+  /* True if we should load the audit library for SystemTap SDT support. */
+  bool stap_sdt;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -183,7 +188,8 @@ struct RecordFlags {
         scarce_fds(false),
         setuid_sudo(false),
         copy_preload_src(false),
-        syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL) {}
+        syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL),
+        stap_sdt(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -240,6 +246,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 11, "trace-id", HAS_PARAMETER },
     { 12, "copy-preload-src", NO_PARAMETER },
     { 13, "syscall-buffer-sig", HAS_PARAMETER },
+    { 14, "stap-sdt", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -431,6 +438,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       }
       flags.syscallbuf_desched_sig = opt.int_value;
       break;
+    case 14:
+      flags.stap_sdt = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -579,7 +589,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       args, flags.extra_env, flags.disable_cpuid_features,
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
       flags.bind_cpu, flags.output_trace_dir,
-      flags.trace_id.get());
+      flags.trace_id.get(),
+      flags.stap_sdt);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();

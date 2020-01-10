@@ -327,11 +327,13 @@ set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles")
 
 set(AUDIT_FILES
   rtld-audit.c
+  stap-note-iter.c
   ../preload/raw_syscall.S
 )
 set(AUDIT_SOURCE_FILES
   ${AUDIT_FILES}
   rtld-audit.h
+  stap-note-iter.h
   ../preload/preload_interface.h
 )
 add_library(rraudit)

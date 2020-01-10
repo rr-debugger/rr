@@ -1744,7 +1744,7 @@ static string find_helper_library(const char* basepath) {
   return lib_path;
 }
 
-static void inject_ld_helper_library(vector<string> env,
+static void inject_ld_helper_library(vector<string>& env,
                                      string env_var,
                                      string value) {
   // Our preload lib should come first if possible, because that will speed up
@@ -1769,7 +1769,7 @@ static void inject_ld_helper_library(vector<string> env,
   }
   value = env_assignment + value;
   if (it == env.end()) {
-    env.push_back(env_assignment + value);
+    env.push_back(value);
   } else {
     *it = value;
   }

@@ -176,6 +176,27 @@ static inline const char* extract_file_name(const char* s) {
  * fourth parameter is the prot.
  */
 #define SYS_rrcall_mprotect_record 447
+/**
+ * The audit library calls SYS_rrcall_notify_stap_semaphore_added once a batch
+ * of SystemTap semaphores have been incremented. The first parameter is the
+ * beginning of an address interval containing semaphores (inclusive) and the
+ * second parameter is the end of the address interval (exclusive).
+ *
+ * In practice a particular probe may be listed in an object's notes more than
+ * once, so be prepared to handle overlapping or redundant intervals.
+ */
+#define SYS_rrcall_notify_stap_semaphore_added 448
+/**
+ * The audit library calls SYS_rrcall_notify_stap_semaphore_removed once a
+ * batch of previously-incremented SystemTap semaphores have been decremented.
+ * The first parameter is the beginning of an address interval containing
+ * semaphores (inclusive) and the second parameter is the end of the address
+ * interval (exclusive).
+ *
+ * In practice a particular probe may be listed in an object's notes more than
+ * once, so be prepared to handle overlapping or redundant intervals.
+ */
+#define SYS_rrcall_notify_stap_semaphore_removed 449
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.
