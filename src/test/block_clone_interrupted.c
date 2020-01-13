@@ -8,7 +8,7 @@
 
 int main(void) {
   int i, j, count;
-  int fd = open("tmp.txt", O_RDWR | O_CREAT | O_EXCL);
+  int fd = open("tmp.txt", O_RDWR | O_CREAT | O_EXCL, 0600);
   int buf[BUF_COUNT];
   test_assert(fd >= 0);
   test_assert(0 == unlink("tmp.txt"));
