@@ -127,7 +127,7 @@ static void write_user_namespace_mappings(void) {
   char buf[100];
   int fd;
 
-  fd = open("/proc/self/uid_map", O_WRONLY | O_CREAT);
+  fd = open("/proc/self/uid_map", O_WRONLY | O_CREAT, 0600);
   test_assert(fd >= 0);
   sprintf(buf, "7 %d 1\n", uid);
   test_assert((ssize_t)strlen(buf) == write(fd, buf, strlen(buf)));
@@ -136,7 +136,7 @@ static void write_user_namespace_mappings(void) {
   /* Per user_namespaces(7), we need to write 'deny' to /proc/self/setgroups
    * before we set up gid_map. This means we can't test setgroups here. Oh well.
    */
-  fd = open("/proc/self/setgroups", O_WRONLY | O_CREAT);
+  fd = open("/proc/self/setgroups", O_WRONLY | O_CREAT, 0600);
   /* This file does not exist in some old kernel */
   if (fd >= 0) {
     sprintf(buf, "deny");
@@ -144,7 +144,7 @@ static void write_user_namespace_mappings(void) {
     test_assert(0 == close(fd));
   }
 
-  fd = open("/proc/self/gid_map", O_WRONLY | O_CREAT);
+  fd = open("/proc/self/gid_map", O_WRONLY | O_CREAT, 0600);
   test_assert(fd >= 0);
   sprintf(buf, "8 %d 1\n", gid);
   test_assert((ssize_t)strlen(buf) == write(fd, buf, strlen(buf)));

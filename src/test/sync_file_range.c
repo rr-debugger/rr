@@ -3,7 +3,7 @@
 #include "util.h"
 
 int main(void) {
-  int fd = open("dummy.txt", O_RDWR | O_CREAT | O_TRUNC);
+  int fd = open("dummy.txt", O_RDWR | O_CREAT | O_TRUNC, 0600);
   int ret;
   test_assert(fd >= 0);
   ret = write(fd, "x", 1);

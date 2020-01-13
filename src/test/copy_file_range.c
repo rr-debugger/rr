@@ -14,8 +14,8 @@ copy_file_range_syscall(int fd_in, loff_t *off_in, int fd_out,
 }
 
 int main(void) {
-  int in_fd = open("dummy.txt", O_RDWR | O_CREAT | O_TRUNC);
-  int out_fd = open("dummy2.txt", O_RDWR | O_CREAT | O_TRUNC);
+  int in_fd = open("dummy.txt", O_RDWR | O_CREAT | O_TRUNC, 0600);
+  int out_fd = open("dummy2.txt", O_RDWR | O_CREAT | O_TRUNC, 0600);
   int ret = write(in_fd, "Hello\n", 6);
   loff_t in_off = 0;
   loff_t out_off = 0;

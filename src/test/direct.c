@@ -5,7 +5,7 @@
 #define SIZE 128*1024
 
 int main(void) {
-  int fd = open("test.out", O_RDWR | O_DIRECT | O_CREAT | O_TRUNC);
+  int fd = open("test.out", O_RDWR | O_DIRECT | O_CREAT | O_TRUNC, 0600);
   void* p;
   int ret = posix_memalign(&p, SIZE, SIZE);
   if (fd < 0 && errno == EINVAL) {
