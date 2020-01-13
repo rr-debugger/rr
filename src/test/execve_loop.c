@@ -10,7 +10,7 @@ int main(__attribute__((unused)) int argc, char* argv[], char* envp[]) {
   int count = atoi(argv[1]);
 
   if (count > 0) {
-    char buf[10];
+    char buf[16];
     sprintf(buf, "%d", count - 1);
     argv[1] = buf;
     execve(argv[0], argv, envp);
