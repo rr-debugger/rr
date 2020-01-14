@@ -652,7 +652,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
 
   static const named_syscall syscalls_to_monkeypatch[] = {
 #define S(n) { "__vdso_" #n, X86Arch::n }
-    S(clock_gettime), S(gettimeofday), S(time),
+    S(clock_gettime), S(gettimeofday), S(time), S(clock_getres), S(clock_gettime64)
 #undef S
   };
 
