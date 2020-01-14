@@ -755,7 +755,7 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
 
   static const named_syscall syscalls_to_monkeypatch[] = {
 #define S(n) { "__vdso_" #n, X64Arch::n }
-    S(clock_gettime), S(gettimeofday), S(time), S(getcpu),
+    S(clock_gettime), S(clock_getres), S(gettimeofday), S(time), S(getcpu),
 #undef S
   };
 
