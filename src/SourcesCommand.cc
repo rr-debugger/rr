@@ -31,6 +31,11 @@ namespace rr {
 ///   external file, one of "debuglink", "debugaltlink". Note that for "debugaltlink", it is possible
 ///   to have the same file appearing multiple times with different build-ids, when it's shared by
 ///   multiple ELF binaries.
+/// "dwo": an array of objects, {"name":<name>, "trace_file":<name>, "comp_dir":<path>, "id":<value>}
+///   These are the references to DWO files found in the trace binaries. "name" is the value of
+/// DW_AT_GNU_dwo_name. "trace_file" is the trace-relative binary file name. "comp_dir" is the
+/// value of DW_AT_comp_dir for the compilation unit containing the DWO reference. "id"
+/// is the value of DW_AT_GNU_dwo_id (64 bit number).
 /// "symlinks": an array of objects, {"from":<path>, "to":<path>}.
 ///   These symlinks that exist in the filesystem that are relevant to the source file paths.
 /// "files": a map from VCS directory name to array of source files relative to that directory
@@ -128,8 +133,18 @@ static void resolve_file_name(const char* original_file_dir,
   file_names->insert(move(s));
 }
 
-static bool list_source_files(ElfFileReader& reader, const string& original_file_name,
-                              set<string>* file_names) {
+struct DwoInfo {
+  string name;
+  string trace_file;
+  // Could be an empty string
+  string comp_dir;
+  uint64_t id;
+};
+
+static bool process_compilation_units(ElfFileReader& reader,
+                                      const string& trace_relative_name,
+                                      const string& original_file_name,
+                                      set<string>* file_names, vector<DwoInfo>* dwos) {
   DwarfSpan debug_info = reader.dwarf_section(".debug_info");
   DwarfSpan debug_abbrev = reader.dwarf_section(".debug_abbrev");
   DwarfSpan debug_str = reader.dwarf_section(".debug_str");
@@ -152,6 +167,26 @@ static bool list_source_files(ElfFileReader& reader, const string& original_file
     const char* comp_dir = cu.die().string_attr(DW_AT_comp_dir, debug_str, &ok);
     if (!ok) {
       continue;
+    }
+    const char* dwo_name = cu.die().string_attr(DW_AT_GNU_dwo_name, debug_str, &ok);
+    if (!ok) {
+      continue;
+    }
+    if (dwo_name) {
+      bool has_dwo_id;
+      uint64_t dwo_id = cu.die().unsigned_attr(DW_AT_GNU_dwo_id, &has_dwo_id, &ok);
+      if (!ok) {
+        continue;
+      }
+      if (has_dwo_id) {
+        string c;
+        if (comp_dir) {
+          c = comp_dir;
+        }
+        dwos->push_back({ dwo_name, trace_relative_name, move(c), dwo_id });
+      } else {
+        LOG(warn) << "DW_AT_GNU_dwo_name but not DW_AT_GNU_dwo_id";
+      }
     }
     const char* source_file_name = cu.die().string_attr(DW_AT_name, debug_str, &ok);
     if (!ok) {
@@ -202,9 +237,12 @@ struct ExternalDebugInfo {
   }
 };
 
-static bool try_auxiliary_file(ElfFileReader& trace_file_reader, const string& original_file_name,
+static bool try_auxiliary_file(ElfFileReader& trace_file_reader,
+                               const string& trace_relative_name,
+                               const string& original_file_name,
                                set<string>* file_names, const string& aux_file_name,
                                const char* file_type,
+                               vector<DwoInfo>* dwos,
                                set<ExternalDebugInfo>* external_debug_info) {
   if (aux_file_name.empty()) {
     return false;
@@ -235,7 +273,7 @@ static bool try_auxiliary_file(ElfFileReader& trace_file_reader, const string& o
     LOG(warn) << "Main ELF binary has no build ID!";
     return false;
   }
-  if (!list_source_files(reader, original_file_name, file_names)) {
+  if (!process_compilation_units(reader, trace_relative_name, original_file_name, file_names, dwos)) {
     LOG(warn) << "No debuginfo!";
     return false;
   }
@@ -437,6 +475,7 @@ static int sources(const string& trace_dir) {
   vector<string> relevant_binary_names;
   set<string> file_names;
   set<ExternalDebugInfo> external_debug_info;
+  vector<DwoInfo> dwos;
   for (auto& pair : binary_file_names) {
     ScopedFd fd(pair.first.c_str(), O_RDONLY);
     if (!fd.is_open()) {
@@ -448,20 +487,20 @@ static int sources(const string& trace_dir) {
       LOG(info) << "Probably not an ELF file, skipping";
       continue;
     }
-    bool has_source_files = list_source_files(reader, pair.second, &file_names);
+    string trace_relative_name = pair.first;
+    base_name(trace_relative_name);
+    bool has_source_files = process_compilation_units(reader, trace_relative_name, pair.second, &file_names, &dwos);
 
     Debuglink debuglink = reader.read_debuglink();
-    has_source_files |= try_auxiliary_file(reader, pair.second,
-      &file_names, debuglink.file_name, "debuglink", &external_debug_info);
+    has_source_files |= try_auxiliary_file(reader, trace_relative_name, pair.second,
+      &file_names, debuglink.file_name, "debuglink", &dwos, &external_debug_info);
 
     Debugaltlink debugaltlink = reader.read_debugaltlink();
-    has_source_files |= try_auxiliary_file(reader, pair.second,
-      &file_names, debugaltlink.file_name, "debugaltlink", &external_debug_info);
+    has_source_files |= try_auxiliary_file(reader, trace_relative_name, pair.second,
+      &file_names, debugaltlink.file_name, "debugaltlink", &dwos, &external_debug_info);
 
     if (has_source_files) {
-      string name = pair.first;
-      base_name(name);
-      relevant_binary_names.push_back(move(name));
+      relevant_binary_names.push_back(move(trace_relative_name));
     } else {
       LOG(info) << "No debuginfo found";
     }
@@ -514,6 +553,21 @@ static int sources(const string& trace_dir) {
            json_escape(ext.build_id).c_str(),
            json_escape(ext.type).c_str(),
            index == external_debug_info.size() - 1 ? "" : ",");
+    ++index;
+  }
+  printf("  ],\n");
+  printf("  \"dwos\":[\n");
+  index = 0;
+  for (auto& d : dwos) {
+    printf("    { \"name\":\"%s\", \"trace_file\":\"%s\", ",
+           json_escape(d.name).c_str(),
+           json_escape(d.trace_file).c_str());
+    if (!d.comp_dir.empty()) {
+      printf("\"comp_dir\":\"%s\", ", json_escape(d.comp_dir).c_str());
+    }
+    printf("\"id\":\"%llu\" }%s\n",
+           (unsigned long long)d.id,
+           index == dwos.size() - 1 ? "" : ",");
     ++index;
   }
   printf("  ],\n");

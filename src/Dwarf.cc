@@ -261,6 +261,21 @@ static int64_t decode_lineptr(DwarfSpan span, DWForm form, bool* ok) {
   }
 }
 
+static uint64_t decode_unsigned(DwarfSpan span, DWForm form, bool* ok) {
+  switch (form) {
+    case DW_FORM_data1:
+    case DW_FORM_data2:
+    case DW_FORM_data4:
+    case DW_FORM_data8: {
+      return decode_unsigned_literal(span, ok);
+    }
+    default:
+      LOG(warn) << "Unknown unsigned form " << form;
+      *ok = false;
+      return 0;
+  }
+}
+
 static const char* decode_string(DwarfSpan span, DWForm form, const DwarfSpan& debug_str, bool* ok) {
   switch (form) {
     case DW_FORM_strp: {
@@ -284,6 +299,17 @@ int64_t DwarfDIE::lineptr_attr(DWAttr attr, bool* ok) const {
     return -1;
   }
   return decode_lineptr(span, form, ok);
+}
+
+uint64_t DwarfDIE::unsigned_attr(DWAttr attr, bool* found, bool* ok) const {
+  DWForm form;
+  auto span = find_attribute(attr, &form, ok);
+  if (span.empty() || !ok) {
+    *found = false;
+    return 0;
+  }
+  *found = true;
+  return decode_unsigned(span, form, ok);
 }
 
 const char* DwarfDIE::string_attr(DWAttr attr, const DwarfSpan& debug_str, bool* ok) const {

@@ -21,6 +21,8 @@ enum DWAttr {
   DW_AT_name = 0x03,
   DW_AT_stmt_list = 0x10,
   DW_AT_comp_dir = 0x1b,
+  DW_AT_GNU_dwo_name = 0x2130,
+  DW_AT_GNU_dwo_id = 0x2131,
 };
 
 enum DWChildren {
@@ -135,7 +137,9 @@ public:
   // Returns empty span if not found
   DwarfSpan find_attribute(DWAttr attr, DWForm* form, bool* ok) const;
   // Returns -1 if no attr
-  int64_t lineptr_attr(DWAttr attr, bool *ok) const;
+  int64_t lineptr_attr(DWAttr attr, bool* ok) const;
+  // Sets *found to false if not found.
+  uint64_t unsigned_attr(DWAttr attr, bool* found, bool* ok) const;
   // Returns nullptr if no attr
   const char* string_attr(DWAttr attr, const DwarfSpan& debug_str, bool* ok) const;
 private:
