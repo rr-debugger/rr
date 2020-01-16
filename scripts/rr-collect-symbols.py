@@ -103,7 +103,8 @@ def collect_trace_build_ids():
             if altref:
                 altref_file = find_altref_for_trace_file(file, altref)
                 if not altref_file:
-                    raise "Can't find alt file %s for %s"%(altref, file)
+                    print("WARNING: Can't find alt file %s for %s"%(altref, file))
+                    continue
                 dir = "%s/debug/.build-id/%s"%(trace_dir, build_id[:2])
                 mkdir_p(dir)
                 dst = "%s/%s.sup"%(dir, build_id[2:])
