@@ -565,7 +565,7 @@ static int sources(const string& trace_dir) {
     if (!d.comp_dir.empty()) {
       printf("\"comp_dir\":\"%s\", ", json_escape(d.comp_dir).c_str());
     }
-    printf("\"id\":\"%llu\" }%s\n",
+    printf("\"id\":%llu }%s\n",
            (unsigned long long)d.id,
            index == dwos.size() - 1 ? "" : ",");
     ++index;
