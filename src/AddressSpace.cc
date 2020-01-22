@@ -258,7 +258,7 @@ remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
 }
 
 static string find_rr_page_file(Task* t) {
-  string path = resource_path() + "bin/rr_page_";
+  string path = resource_path() + "share/rr/rr_page_";
   switch (t->arch()) {
     case x86:
       path += "32";
