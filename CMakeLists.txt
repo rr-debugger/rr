@@ -372,28 +372,28 @@ endforeach(generated_file)
 
 add_custom_target(Generated DEPENDS ${GENERATED_FILES})
 
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64"
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64"
+                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32"
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32"
+                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay"
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay"
+                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
-add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay"
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
-                   "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay"
+                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
 
 add_custom_target(Pages DEPENDS
-                  "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32"
-                  "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64"
-                  "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay"
-                  "${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay")
+                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
+                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64"
+                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay"
+                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay")
 
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++"
                           "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.h"
@@ -600,11 +600,14 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/scripts/rr-collect-symbols.py"
 
 install(PROGRAMS scripts/signal-rr-recording.sh
                  scripts/rr-collect-symbols.py
-                 ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64
-                 ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_64_replay
-                 ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32
-                 ${CMAKE_CURRENT_BINARY_DIR}/bin/rr_page_32_replay
   DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64
+              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay
+              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32
+              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/rr)
+
 install(PROGRAMS scripts/rr_completion
   DESTINATION ${CMAKE_INSTALL_DATADIR}/bash-completion/completions RENAME rr)
 
