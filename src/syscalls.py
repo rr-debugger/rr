@@ -1188,6 +1188,26 @@ futex = IrregularEmulatedSyscall(x86=240, x64=202)
 # would be specified as sizeof(cpu_set_t).
 sched_setaffinity = IrregularEmulatedSyscall(x86=241, x64=203)
 
+#  int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
+#
+# sched_getaffinity() writes the affinity mask of the process whose
+# ID is pid into the cpu_set_t structure pointed to by mask.  The
+# cpusetsize argument specifies the size (in bytes) of mask.  If pid
+# is zero, then the mask of the calling process is returned.
+sched_getaffinity = IrregularEmulatedSyscall(x86=242, x64=204)
+
+# int sched_setattr(pid_t pid, struct sched_attr *attr,
+#                   unsigned int flags);
+#
+# The sched_setattr() system call sets the scheduling policy and
+# associated attributes for the thread whose ID is specified in pid.
+# If pid equals zero, the scheduling policy and attributes of the
+# calling thread will be set.
+#
+# XXX Do we want to restrict somehow how this plays with rr's
+# scheduling?
+sched_setattr = EmulatedSyscall(x86=351, x64=314)
+
 # int sched_getattr(pid_t pid, struct sched_attr *attr,
 #                   unsigned int size, unsigned int flags);
 #
@@ -1196,14 +1216,6 @@ sched_setaffinity = IrregularEmulatedSyscall(x86=241, x64=203)
 # If pid equals zero, the scheduling policy and attributes of the call‐
 # ing thread will be retrieved.
 sched_getattr = IrregularEmulatedSyscall(x86=352, x64=315)
-
-#  int sched_getaffinity(pid_t pid, size_t cpusetsize, cpu_set_t *mask);
-#
-# sched_getaffinity() writes the affinity mask of the process whose
-# ID is pid into the cpu_set_t structure pointed to by mask.  The
-# cpusetsize argument specifies the size (in bytes) of mask.  If pid
-# is zero, then the mask of the calling process is returned.
-sched_getaffinity = IrregularEmulatedSyscall(x86=242, x64=204)
 
 #  int set_thread_area(struct user_desc *u_info)
 #
@@ -1642,7 +1654,6 @@ process_vm_readv = IrregularEmulatedSyscall(x86=347, x64=310)
 process_vm_writev = IrregularEmulatedSyscall(x86=348, x64=311)
 kcmp = EmulatedSyscall(x86=349, x64=312)
 finit_module = UnsupportedSyscall(x86=350, x64=313)
-sched_setattr = UnsupportedSyscall(x86=351, x64=314)
 renameat2 = EmulatedSyscall(x86=353, x64=316)
 seccomp = IrregularEmulatedSyscall(x86=354, x64=317)
 getrandom = IrregularEmulatedSyscall(x86=355, x64=318)
