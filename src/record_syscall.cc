@@ -4067,8 +4067,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     }
 
     case Arch::sched_getaffinity:
-      syscall_state.reg_parameter(
-          3, ParamSize::from_syscall_result<int>((unsigned int)regs.arg2()));
+      syscall_state.reg_parameter(3, ParamSize(regs.arg2()));
       return PREVENT_SWITCH;
 
     case Arch::ptrace:
