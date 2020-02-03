@@ -23,8 +23,7 @@ int main(void) {
   test_assert(attr->sched_flags == 0);
   VERIFY_GUARD(attr);
 
-  // TODO
-  // test_assert(0 == sched_setattr(0, &attr, 0));
+  test_assert(0 == syscall(__NR_sched_setattr, 0, attr, 0));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
