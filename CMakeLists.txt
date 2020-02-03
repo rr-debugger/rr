@@ -933,7 +933,7 @@ set(BASIC_TESTS
   rusage
   samask
   save_data_fd
-  # sched_attr ... disabled since suitable headers are not widely available yet
+  sched_attr
   sched_setaffinity
   sched_setparam
   sched_yield

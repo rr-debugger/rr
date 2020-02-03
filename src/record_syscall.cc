@@ -4050,6 +4050,12 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           2, ParamSize::from_syscall_result<ssize_t>(regs.arg3()));
       return PREVENT_SWITCH;
 
+    case Arch::sched_getattr: {
+      syscall_state.reg_parameter(
+          2, ParamSize::from_syscall_result<unsigned>((unsigned) regs.arg3()));
+      return PREVENT_SWITCH;
+    }
+
     case Arch::sched_setaffinity: {
       // Ignore all sched_setaffinity syscalls. They might interfere
       // with our own affinity settings.
