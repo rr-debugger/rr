@@ -4051,8 +4051,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
 
     case Arch::sched_getattr: {
-      syscall_state.reg_parameter(
-          2, ParamSize::from_syscall_result<unsigned>((unsigned) regs.arg3()));
+      syscall_state.reg_parameter(2, ParamSize(regs.arg3()));
       return PREVENT_SWITCH;
     }
 
