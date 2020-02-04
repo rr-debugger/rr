@@ -9,9 +9,9 @@
 int main(void) {
   int fd = open("/dev/zero", O_RDWR);
   void* p1 = mmap(0, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-  assert((intptr_t)p1 > 0);
+  assert(p1 != MAP_FAILED);
   void* p2 = mmap(0, PAGE_SIZE, PROT_READ, MAP_SHARED, fd, 0);
-  assert((intptr_t)p2 > 0);
+  assert(p2 != MAP_FAILED);
   assert(p1 != p2);
 
   memset(p1, 0xdd, PAGE_SIZE);
