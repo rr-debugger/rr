@@ -57,6 +57,8 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
 
   fprintf(out, "  \"xcr0\":%llu,\n", (unsigned long long)trace.xcr0());
 
+  fprintf(out, "  \"bindToCpu\":%d,\n", trace.bound_to_cpu());
+
   fprintf(out, "  \"cpuidFaulting\":%s,\n", trace.uses_cpuid_faulting() ? "true" : "false");
 
   const char* semantics;
