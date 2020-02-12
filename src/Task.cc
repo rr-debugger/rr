@@ -2022,6 +2022,12 @@ bool Task::open_mem_fd() {
   // Use ptrace to read/write during open_mem_fd
   as->set_mem_fd(ScopedFd());
 
+  if (!is_stopped) {
+    LOG(warn) << "Can't retrieve mem fd for " << tid <<
+      "; process not stopped, racing with exec?";
+    return false;
+  }
+
   // We could try opening /proc/<pid>/mem directly first and
   // only do this dance if that fails. But it's simpler to
   // always take this path, and gives better test coverage. On Ubuntu
@@ -2214,9 +2220,9 @@ ssize_t Task::read_bytes_fallible(remote_ptr<void> addr, ssize_t buf_size,
     // exec(), when the Task is created.  Trying to read from that
     // fd seems to return 0 with errno 0.  Reopening the mem fd
     // allows the pwrite to succeed.  It seems that the first mem
-    // fd we open, very early in exec, refers to some resource
-    // that's different than the one we see after reopening the
-    // fd, after exec.
+    // fd we open, very early in exec, refers to the address space
+    // before the exec and the second mem fd refers to the address
+    // space after exec.
     if (0 == nread && 0 == all_read && 0 == errno) {
       if (!open_mem_fd()) {
         return 0;

@@ -357,6 +357,9 @@ public:
   void record_remote(const MemoryRange& range) {
     record_remote(range.start(), range.size());
   }
+  ssize_t record_remote_fallible(const MemoryRange& range) {
+    return record_remote_fallible(range.start(), range.size());
+  }
   // Record as much as we can of the bytes in this range. Will record only
   // contiguous mapped data starting at `addr`.
   ssize_t record_remote_fallible(remote_ptr<void> addr, ssize_t num_bytes);

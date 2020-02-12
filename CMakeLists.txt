@@ -1138,6 +1138,7 @@ set(TESTS_WITH_PROGRAM
   main_thread_exit
   mmap_replace_most_mappings
   mmap_shared_prot
+  mmap_shared_write_exec_race
   mmap_write
   mmap_write_private
   mprotect_growsdown
