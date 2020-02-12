@@ -85,7 +85,7 @@ static ScopedFd create_memfd_file(const string& orig_path, dev_t orig_device,
        << "-inode-" << orig_inode << "-" << orig_path;
   real_name = name.str().substr(0, 255);
 
-  ScopedFd fd = memfd_create(real_name.c_str(), 0);
+  ScopedFd fd = syscall(SYS_memfd_create, real_name.c_str(), 0);
   return fd;
 }
 
