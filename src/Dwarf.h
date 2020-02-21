@@ -181,6 +181,19 @@ private:
   std::vector<DwarfSourceFile> file_names_;
 };
 
+#if __cplusplus == 201103L
+
+/**
+ * Implementation of make_unique for C++11 (from https://herbsutter.com/gotw/_102/).
+ */
+template<typename T, typename ...Args>
+std::unique_ptr<T> make_unique( Args&& ...args )
+{
+    return std::unique_ptr<T>( new T( std::forward<Args>(args)... ) );
+}
+
+#endif /* __cplusplus == 201103L */
+
 } // namespace rr
 
 #endif /* RR_DWARF_H_ */
