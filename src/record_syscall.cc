@@ -5024,8 +5024,22 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
   // This must be kept in sync with replay_syscall's handle_opened_files.
   FileMonitor* file_monitor = nullptr;
   if (is_mapped_shared(t, st) && is_writable(t, fd)) {
-    LOG(info) << "Installing MmappedFileMonitor for " << fd;
-    file_monitor = new MmappedFileMonitor(t, fd);
+    // This is quite subtle. Because open(2) is ALLOW_SWITCH, we could have been
+    // descheduled after entering the syscall we're now exiting. If that happened,
+    // and another task did a shared mapping of this file while we were suspended,
+    // it would have trawled the proc filesystem looking for other open fds for
+    // the same file. If this syscall had been completed in the kernel by then,
+    // it will have already installed this monitor for us. So we must allow this
+    // benign race.
+    if (t->fd_table()->is_monitoring(fd)) {
+        ASSERT(t,
+               t->fd_table()->get_monitor(fd)->type() ==
+               FileMonitor::Type::Mmapped);
+    } else {
+      // The normal case, we are unmonitored because we are a new file.
+      LOG(info) << "Installing MmappedFileMonitor for " << fd;
+      file_monitor = new MmappedFileMonitor(t, fd);
+    }
   } else if (is_rr_terminal(pathname)) {
     // This will let rr event annotations echo to the terminal. It will also
     // ensure writes to this fd are not syscall-buffered.
