@@ -144,7 +144,19 @@ export RR_TRUST_TEMP_FILES=1
 
 # Set options to find rr and resource files in the expected places.
 export PATH="${OBJDIR}/bin:${PATH}"
-GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --resource-path=${OBJDIR}"
+
+# Resource path is normally the same as the build directory, however, it is
+# slightly different when using the installable testsuite. The installable
+# testsuite will look for resources under /usr or /usr/local. We can detect
+# if it's the installable testsuite being run by checking if the rr binary 
+# exists in the build directory.
+if [[ -f "$OBJDIR/bin/rr" ]]; then
+    RESOURCE_PATH=$OBJDIR
+else
+    RESOURCE_PATH=`realpath $OBJDIR/../../../..`
+fi
+
+GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --resource-path=${RESOURCE_PATH}"
 
 which rr >/dev/null 2>&1
 if [[ "$?" != "0" ]]; then
@@ -207,7 +219,14 @@ function just_record { exe="$1"; exeargs=$2;
 }
 
 function save_exe { exe=$1;
-    cp "${OBJDIR}/bin/$exe" "$exe-$nonce"
+    # If the installable testsuite is being run, most of the exes will
+    # be located under OBJDIR and the remaining under RESOURCE_PATH.
+    if [[ -f "${OBJDIR}/bin/$exe" ]]; then
+        EXE_PATH=$OBJDIR/bin/$exe
+    else
+        EXE_PATH=$RESOURCE_PATH/bin/$exe
+    fi
+    cp "${EXE_PATH}" "$exe-$nonce"
 }
 
 # Record $exe with $exeargs.
