@@ -1957,7 +1957,7 @@ static bool verify_ptrace_options(RecordTask* t,
   // We "support" PTRACE_O_SYSGOOD because we don't support PTRACE_SYSCALL yet
   static const int supported_ptrace_options =
       PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT | PTRACE_O_TRACEFORK |
-      PTRACE_O_TRACECLONE | PTRACE_O_TRACEEXEC;
+      PTRACE_O_TRACECLONE | PTRACE_O_TRACEVFORK | PTRACE_O_TRACEEXEC;
 
   if ((int)t->regs().arg4() & ~supported_ptrace_options) {
     LOG(debug) << "Unsupported ptrace options " << HEX(t->regs().arg4());
