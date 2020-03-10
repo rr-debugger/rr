@@ -111,6 +111,15 @@ public:
    */
   void force_emulate_ptrace_stop(WaitStatus status);
   /**
+   * If necessary, signal the ptracer that this task has exited.
+   * Returns true if we're waiting to be reaped by the ptracer.
+   */
+  bool do_ptrace_exit_stop(WaitStatus exit_status);
+  /**
+   * Return the exit event.
+   */
+  void record_exit_event();
+  /**
    * Called when we're about to deliver a signal to this task. If it's a
    * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
    * update the siginfo to reflect the status and note that that
@@ -589,6 +598,9 @@ public:
    * in_round_robin_queue instead of its task_priority_set.
    */
   bool in_round_robin_queue;
+  /* exit(), or exit_group() with one task, has been called, so
+   * the exit can be treated as stable. */
+  bool stable_exit;
 
   // ptrace emulation state
 
@@ -616,7 +628,6 @@ public:
   bool emulated_SIGCHLD_pending;
   // tracer attached via PTRACE_SEIZE
   bool emulated_ptrace_seized;
-  bool emulated_ptrace_queued_exit_stop;
   WaitType in_wait_type;
   pid_t in_wait_pid;
 
@@ -679,7 +690,6 @@ public:
   remote_ptr<int> tid_futex;
   /* This is the recorded tid of the tracee *in its own pid namespace*. */
   pid_t own_namespace_rec_tid;
-  int exit_code;
   // Signal delivered by the kernel when this task terminates, or zero
   int termination_signal;
 
@@ -706,6 +716,9 @@ public:
   bool next_pmc_interrupt_is_for_user;
 
   bool did_record_robust_futex_changes;
+
+  // This task is just waiting to be reaped.
+  bool waiting_for_reap;
 };
 
 } // namespace rr

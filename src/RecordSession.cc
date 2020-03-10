@@ -107,7 +107,7 @@ static void record_robust_futex_changes(RecordTask* t) {
   RR_ARCH_FUNCTION(record_robust_futex_changes_arch, t->arch(), t);
 }
 
-static void record_exit(RecordTask* t, WaitStatus exit_status) {
+static void record_exit_trace_event(RecordTask* t, WaitStatus exit_status) {
   t->session().trace_writer().write_task_event(
       TraceTaskEvent::for_exit(t->tid, exit_status));
   if (t->thread_group()->tgid == t->tid) {
@@ -186,9 +186,15 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     exit_status = WaitStatus::for_fatal_sig(SIGKILL);
   }
 
-  record_exit(t, exit_status);
-  // Delete t. t's destructor writes the final EV_EXIT.
-  t->destroy();
+  record_exit_trace_event(t, exit_status);
+  t->detach();
+  t->record_exit_event();
+  if (t->do_ptrace_exit_stop(exit_status)) {
+    // Keep the RecordTask alive until the ptracer reaps it
+    t->waiting_for_reap = true;
+  } else {
+    delete t;
+  }
   return true;
 }
 
@@ -548,7 +554,8 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
         // Mark task as unstable so we don't wait on its futex. This matches
         // what the kernel would do.
         t->unstable = true;
-        record_exit(t, WaitStatus(0));
+        t->record_exit_event();
+        record_exit_trace_event(t, WaitStatus(0));
         // Don't call RecordTask::destroy() because we don't want to
         // PTRACE_DETACH.
         delete t;
@@ -2030,7 +2037,8 @@ RecordSession::RecordResult RecordSession::record_step() {
     t->log_pending_events();
   }
   if (handle_ptrace_exit_event(t)) {
-    // t is dead and has been deleted.
+    // t may have been deleted.
+    last_task_switchable = ALLOW_SWITCH;
     return result;
   }
 

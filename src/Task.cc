@@ -66,7 +66,6 @@ static const unsigned int NUM_X86_WATCHPOINTS = 4;
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            SupportedArch a)
     : unstable(false),
-      stable_exit(false),
       scratch_ptr(),
       scratch_size(),
       // This will be initialized when the syscall buffer is.
@@ -98,13 +97,10 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
   memset(&thread_locals, 0, sizeof(thread_locals));
 }
 
-void Task::destroy() {
+void Task::detach() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
 
   fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-
-  // Subclasses can do something in their destructors after we've detached
-  delete this;
 }
 
 Task::~Task() {

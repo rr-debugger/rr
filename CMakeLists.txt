@@ -905,6 +905,7 @@ set(BASIC_TESTS
   ptrace_debug_regs
   ptrace_exec
   ptrace_exec32
+  ptrace_kill_grandtracee
   ptrace_tls
   ptrace_seize
   ptrace_sigchld_blocked

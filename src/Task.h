@@ -132,11 +132,9 @@ public:
   typedef std::vector<WatchConfig> DebugRegs;
 
   /**
-   * We hide the destructor and require clients to call this instead. This
-   * lets us make virtual calls from within the destruction code. This
-   * does the actual PTRACE_DETACH and then calls the real destructor.
+   * Ptrace-detach the task.
    */
-  void destroy();
+  void detach();
 
   /**
    * This must be in an emulated syscall, entered through
@@ -683,9 +681,6 @@ public:
    * with a waitpid() call. Only applies to tasks which are dying, usually
    * due to a signal sent to the entire thread group. */
   bool unstable;
-  /* exit(), or exit_group() with one task, has been called, so
-   * the exit can be treated as stable. */
-  bool stable_exit;
 
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
@@ -817,10 +812,11 @@ public:
     return address_of_last_execution_resume;
   }
 
+  virtual ~Task();
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);
-  virtual ~Task();
 
   enum CloneReason {
     // Cloning a task in the same session due to tracee fork()/vfork()/clone()

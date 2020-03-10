@@ -458,6 +458,8 @@ size_t word_size(SupportedArch arch);
  */
 std::string json_escape(const std::string& str, size_t pos = 0);
 
+void sleep_time(double t);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

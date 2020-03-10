@@ -11,6 +11,7 @@
 #include <linux/capability.h>
 #include <linux/magic.h>
 #include <linux/prctl.h>
+#include <math.h>
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1749,6 +1750,13 @@ string json_escape(const string& str, size_t pos) {
     }
   }
   return out;
+}
+
+void sleep_time(double t) {
+  struct timespec ts;
+  ts.tv_sec = (time_t)floor(t);
+  ts.tv_nsec = (long)((t - ts.tv_sec) * 1e9);
+  nanosleep(&ts, NULL);
 }
 
 } // namespace rr

@@ -1348,7 +1348,7 @@ Completion ReplaySession::try_one_trace_step(
  * Task death during replay always goes through here (except for
  * Session::kill_all_tasks when we forcibly kill all tasks in the session at
  * once). |exit| and |exit_group| syscalls are both emulated so the real
- * task doesn't die until we reach the EXIT/UNSTABLE_EXIT events in the trace.
+ * task doesn't die until we reach the EXIT events in the trace.
  * This ensures the real tasks are alive and available as long as our Task
  * object exists, which simplifies code like Session cloning.
  *
@@ -1368,9 +1368,8 @@ static void end_task(ReplayTask* t) {
   // Enter the syscall.
   t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
-
-  t->stable_exit = true;
-  t->destroy();
+  t->detach();
+  delete t;
 }
 
 Completion ReplaySession::exit_task(ReplayTask* t) {

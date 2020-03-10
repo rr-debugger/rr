@@ -1857,19 +1857,6 @@ static RecordTask* verify_ptrace_target(RecordTask* tracer,
   return tracee;
 }
 
-static void do_ptrace_exit_stop(RecordTask* t) {
-  // Notify ptracer of the exit if it's not going to receive it from the
-  // kernel because it's not the parent. (The kernel has similar logic to
-  // deliver two stops in this case.)
-  t->emulated_ptrace_queued_exit_stop = false;
-  if (t->emulated_ptracer &&
-      (t->is_clone_child() ||
-       t->get_parent_pid() != t->emulated_ptracer->real_tgid())) {
-    // This is a bit wrong; this is an exit stop, not a signal/ptrace stop.
-    t->emulate_ptrace_stop(WaitStatus::for_exit_code(t->exit_code));
-  }
-}
-
 static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
   if (sig) {
     siginfo_t si = tracee->take_ptrace_signal_siginfo(sig);
@@ -1892,10 +1879,6 @@ static void prepare_ptrace_cont(RecordTask* tracee, int sig, int command) {
     // Continue the task since we didn't in enter_syscall
     tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
                              RESUME_NO_TICKS);
-  }
-
-  if (tracee->emulated_ptrace_queued_exit_stop) {
-    do_ptrace_exit_stop(tracee);
   }
 }
 
@@ -2437,7 +2420,6 @@ static Switchable prepare_ptrace(RecordTask* t,
         tracee->emulated_ptrace_options = 0;
         tracee->emulated_ptrace_cont_command = 0;
         tracee->emulated_stop_pending = false;
-        tracee->emulated_ptrace_queued_exit_stop = false;
         prepare_ptrace_cont(tracee, t->regs().arg4(), 0);
         tracee->set_emulated_ptracer(nullptr);
         syscall_state.emulate_result(0);
@@ -2571,13 +2553,12 @@ static bool send_signal_during_init_buffers() {
  * tracee will be returned at a state in which it has entered (or
  * re-entered) SYS_exit/SYS_exit_group.
  */
-static void prepare_exit(RecordTask* t, int exit_code) {
+static void prepare_exit(RecordTask* t) {
   // RecordSession is responsible for ensuring we don't get here with
   // pending signals.
   ASSERT(t, !t->has_stashed_sig());
 
   t->stable_exit = true;
-  t->exit_code = exit_code;
   t->session().scheduler().in_stable_exit(t);
 
   Registers r = t->regs();
@@ -2631,13 +2612,7 @@ static void prepare_exit(RecordTask* t, int exit_code) {
   check_signals_while_exiting(t);
 
   if (t->emulated_ptrace_options & PTRACE_O_TRACEEXIT) {
-    // Ensure that do_ptrace_exit_stop can run later.
-    t->emulated_ptrace_queued_exit_stop = true;
     t->emulate_ptrace_stop(WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT));
-  } else {
-    // Only allow one stop at a time. After the PTRACE_EVENT_EXIT has been
-    // processed, PTRACE_CONT will call do_ptrace_exit_stop for us.
-    do_ptrace_exit_stop(t);
   }
 }
 
@@ -3031,12 +3006,12 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return ALLOW_SWITCH;
 
     case Arch::exit:
-      prepare_exit(t, (int)regs.arg1());
+      prepare_exit(t);
       return ALLOW_SWITCH;
 
     case Arch::exit_group:
       if (t->thread_group()->task_set().size() == 1) {
-        prepare_exit(t, (int)regs.arg1());
+        prepare_exit(t);
         return ALLOW_SWITCH;
       }
       return PREVENT_SWITCH;
@@ -5002,6 +4977,19 @@ static void record_iovec_output(RecordTask* t, RecordTask* dest,
   }
 }
 
+// Waiting for this task properly is difficult without pidfds. We are
+// the ptracer of `t`, but if we ptrace-detach, then we aren't and we
+// probably aren't its parent either, so we won't be notified of it
+// exiting. If we try to let it exit without ptrace-detach we seem to
+// often deadlock waiting for it :-(. So just poll it until it's a zombie.
+static void wait_for_real_exit(RecordTask* t) {
+  int iterations = 0;
+  while (!is_zombie_process(t->tid) && iterations < 100) {
+    ++iterations;
+    sleep_time(0.05);
+  }
+}
+
 static bool is_mapped_shared(RecordTask* t, const struct stat& st) {
   for (AddressSpace* vm : t->session().vms()) {
     for (auto& m : vm->maps()) {
@@ -5516,18 +5504,6 @@ static void rec_process_syscall_arch(RecordTask* t,
         if (syscallno == Arch::waitid && (r.arg4() & WNOWAIT)) {
           // Leave the child in a waitable state
         } else {
-          if (tracee->emulated_stop_code.exit_code() >= 0) {
-            // If we stopped the tracee to deliver this notification,
-            // now allow it to continue to exit properly and notify its
-            // real parent.
-            ASSERT(t,
-                   tracee->ev().is_syscall_event() &&
-                       PROCESSING_SYSCALL == tracee->ev().Syscall().state &&
-                       tracee->stable_exit);
-            // Continue the task since we didn't in enter_syscall
-            tracee->resume_execution(RESUME_SYSCALL, RESUME_NONBLOCKING,
-                                     RESUME_NO_TICKS);
-          }
           if (tracee->emulated_ptracer == t) {
             tracee->emulated_stop_pending = false;
           } else {
@@ -5536,6 +5512,12 @@ static void rec_process_syscall_arch(RecordTask* t,
               rt->emulated_stop_pending = false;
             }
           }
+        }
+        if (tracee->waiting_for_reap) {
+          // We don't want to report that the tracee has exited before it
+          // actually has, so give it a chance to exit.
+          wait_for_real_exit(tracee);
+          delete tracee;
         }
       }
       break;

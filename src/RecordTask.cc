@@ -161,6 +161,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       time_at_start_of_last_timeslice(0),
       priority(0),
       in_round_robin_queue(false),
+      stable_exit(false),
       emulated_ptracer(nullptr),
       emulated_ptrace_event_msg(0),
       emulated_ptrace_options(0),
@@ -169,7 +170,6 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       emulated_ptrace_SIGCHLD_pending(false),
       emulated_SIGCHLD_pending(false),
       emulated_ptrace_seized(false),
-      emulated_ptrace_queued_exit_stop(false),
       in_wait_type(WAIT_TYPE_NONE),
       in_wait_pid(0),
       emulated_stop_type(NOT_STOPPED),
@@ -182,7 +182,6 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       prctl_seccomp_status(0),
       robust_futex_list_len(0),
       own_namespace_rec_tid(0),
-      exit_code(0),
       termination_signal(0),
       tsc_mode(PR_TSC_ENABLE),
       cpuid_mode(1),
@@ -192,7 +191,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       break_at_syscallbuf_untraced_syscalls(false),
       break_at_syscallbuf_final_instruction(false),
       next_pmc_interrupt_is_for_user(false),
-      did_record_robust_futex_changes(false) {
+      did_record_robust_futex_changes(false),
+      waiting_for_reap(false) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
@@ -224,6 +224,20 @@ RecordTask::~RecordTask() {
     t->emulated_stop_type = NOT_STOPPED;
   }
 
+  // We expect tasks to usually exit by a call to exit() or
+  // exit_group(), so it's not helpful to warn about that.
+  if (EV_SENTINEL != ev().type() &&
+      (pending_events.size() > 2 ||
+       !(ev().type() == EV_SYSCALL &&
+         (is_exit_syscall(ev().Syscall().number, ev().Syscall().regs.arch()) ||
+          is_exit_group_syscall(ev().Syscall().number,
+                                ev().Syscall().regs.arch()))))) {
+    LOG(warn) << tid << " still has pending events.  From top down:";
+    log_pending_events();
+  }
+}
+
+void RecordTask::record_exit_event() {
   // Task::destroy has already done PTRACE_DETACH so the task can complete
   // exiting.
   // The kernel explicitly only clears the futex if the address space is shared.
@@ -259,18 +273,6 @@ RecordTask::~RecordTask() {
   // e.g. it could be in the middle of syscallbuf code that's supposed to be
   // atomic. For the same reasons don't allow syscallbuf to be reset here.
   record_event(Event::exit(), DONT_FLUSH_SYSCALLBUF, DONT_RESET_SYSCALLBUF);
-
-  // We expect tasks to usually exit by a call to exit() or
-  // exit_group(), so it's not helpful to warn about that.
-  if (EV_SENTINEL != ev().type() &&
-      (pending_events.size() > 2 ||
-       !(ev().type() == EV_SYSCALL &&
-         (is_exit_syscall(ev().Syscall().number, ev().Syscall().regs.arch()) ||
-          is_exit_group_syscall(ev().Syscall().number,
-                                ev().Syscall().regs.arch()))))) {
-    LOG(warn) << tid << " still has pending events.  From top down:";
-    log_pending_events();
-  }
 }
 
 void RecordTask::futex_wait(remote_ptr<int> futex, int val, bool* ok) {
@@ -763,6 +765,22 @@ void RecordTask::force_emulate_ptrace_stop(WaitStatus status) {
   // wait will be resumed, at which point rec_prepare_syscall_arch will
   // discover the pending ptrace result and emulate the wait syscall to
   // return that result immediately.
+}
+
+bool RecordTask::do_ptrace_exit_stop(WaitStatus exit_status) {
+  // Notify ptracer of the exit if it's not going to receive it from the
+  // kernel because it's not the parent. (The kernel has similar logic to
+  // deliver two stops in this case.)
+  if (emulated_ptracer &&
+      (is_clone_child() ||
+       get_parent_pid() != emulated_ptracer->real_tgid())) {
+    // The task is dead so treat it as not stopped so we can deliver a new stop
+    emulated_stop_type = NOT_STOPPED;
+    // This is a bit wrong; this is an exit stop, not a signal/ptrace stop.
+    emulate_ptrace_stop(exit_status);
+    return true;
+  }
+  return false;
 }
 
 void RecordTask::send_synthetic_SIGCHLD_if_necessary() {

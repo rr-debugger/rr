@@ -204,6 +204,11 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   ASSERT(t, !must_run_task) << "is_task_runnable called again after it "
                                "returned a task that must run!";
 
+  if (t->waiting_for_reap) {
+    LOG(debug) << "  " << t->tid << " is waiting to be reaped";
+    return false;
+  }
+
   if (t->unstable) {
     LOG(debug) << "  " << t->tid << " is unstable";
     return true;
@@ -345,13 +350,6 @@ void Scheduler::setup_new_timeslice() {
   }
   current_timeslice_end_ = current_->tick_count() +
                            (random() % min(max_ticks_, max_timeslice_duration));
-}
-
-static void sleep_time(double t) {
-  struct timespec ts;
-  ts.tv_sec = (time_t)floor(t);
-  ts.tv_nsec = (long)((t - ts.tv_sec) * 1e9);
-  nanosleep(&ts, NULL);
 }
 
 void Scheduler::maybe_reset_priorities(double now) {

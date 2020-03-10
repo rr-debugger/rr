@@ -17,6 +17,7 @@
 #include "EmuFs.h"
 #include "Flags.h"
 #include "PerfCounters.h"
+#include "RecordTask.h"
 #include "Task.h"
 #include "ThreadGroup.h"
 #include "core.h"
@@ -280,8 +281,11 @@ void Session::kill_all_tasks() {
       syscall(SYS_tgkill, t->real_tgid(), t->tid, SIGKILL);
       t->thread_group()->destabilize();
     }
-
-    t->destroy();
+    t->detach();
+    if (is_recording()) {
+      static_cast<RecordTask*>(t)->record_exit_event();
+    }
+    delete t;
   }
 }
 
