@@ -94,7 +94,10 @@ static void find_exe_mapping_start(uint64_t which, char* name,
   }
 }
 
+static void handler(__attribute__((unused)) int sig) {}
+
 int main(void) {
+  sigset_t mask;
   pid_t child;
   if (0 == (child = fork())) {
     raise(SIGSTOP);
@@ -116,9 +119,18 @@ int main(void) {
   wret = waitpid(child, &status, __WALL | WSTOPPED);
   test_assert(wret == child);
 
+  // Set procmask to block signals for now
+  test_assert(0 == sigemptyset(&mask));
+  test_assert(0 == sigaddset(&mask, SIGCHLD));
+  test_assert(0 == sigprocmask(SIG_BLOCK, &mask, NULL));
+
   // Continue until the exec
   checked_ptrace(PTRACE_CONT, child, 0, 0);
-  // This should be the exec stop
+  // This should be the exec stop.
+  // Test waiting for a ptrace signal with sigsuspend.
+  test_assert(0 == signal(SIGCHLD, handler));
+  test_assert(0 == sigemptyset(&mask));
+  test_assert(-1 == sigsuspend(&mask) && errno == EINTR);
   wret = waitpid(child, &status, __WALL | WSTOPPED);
   test_assert(wret == child);
   test_assert(status >> 8 == (SIGTRAP | (PTRACE_EVENT_EXEC << 8)));

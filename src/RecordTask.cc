@@ -834,6 +834,7 @@ void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
                   SIGCHLD, &si);
     ASSERT(this, ret == 0);
     if (wake_task->is_sig_blocked(SIGCHLD)) {
+      LOG(debug) << "SIGCHLD is blocked, kicking it out of the syscall";
       // Just sending SIGCHLD won't wake it up. Send it a TIME_SLICE_SIGNAL
       // as well to make sure it exits a blocking syscall. We ensure those
       // can never be blocked.
@@ -863,11 +864,24 @@ bool RecordTask::set_siginfo_for_synthetic_SIGCHLD(siginfo_t* si) {
     return true;
   }
 
-  if (is_syscall_restart()) {
-    // ptrace generated signals don't interrupt syscalls such as wait.
-    // Return false to tell the caller to defer the signal and resume
-    // the syscall.
-    return false;
+  if (is_syscall_restart() && EV_SYSCALL_INTERRUPTION == ev().type()) {
+    int syscallno = regs().original_syscallno();
+    SupportedArch syscall_arch = ev().Syscall().arch();
+    if (is_waitpid_syscall(syscallno, syscall_arch) ||
+        is_waitid_syscall(syscallno, syscall_arch) ||
+        is_wait4_syscall(syscallno, syscall_arch)) {
+      // Wait-like syscalls always check for notifications from waited-for processes
+      // before they check for pending signals. So, if the tracee has a pending
+      // notification that also generated a signal, the wait syscall will return
+      // normally rather than returning with ERESTARTSYS etc. (The signal will
+      // be dequeued and any handler run on the return to userspace, however.)
+      // We need to emulate this by deferring our synthetic ptrace signal
+      // until after the wait syscall has returned.
+      LOG(debug) << "Deferring signal because we're in a wait";
+      // Return false to tell the caller to defer the signal and resume
+      // the syscall.
+      return false;
+    }
   }
 
   for (RecordTask* tracee : emulated_ptrace_tracees) {
