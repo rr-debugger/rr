@@ -4206,6 +4206,20 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.reg_parameter<rrcall_init_buffers_params<Arch>>(1, IN_OUT);
       return PREVENT_SWITCH;
 
+    case SYS_rrcall_check_presence: {
+      // Since this is "user" facing, we follow best practices for regular
+      // syscalls and make sure that unused arguments (in this case all of them)
+      // are zero.
+      bool arguments_are_zero = true;
+      Registers r = t->regs();
+      for (int i = 1; i <= 6; ++i) {
+        arguments_are_zero &= r.arg(i) == 0;
+      }
+      syscall_state.emulate_result(arguments_are_zero ? 0 : (uintptr_t)-EINVAL);
+      syscall_state.expect_errno = ENOSYS;
+      return PREVENT_SWITCH;
+    }
+
     case Arch::brk:
     case Arch::munmap:
     case Arch::process_vm_readv:

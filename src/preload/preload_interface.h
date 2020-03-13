@@ -197,6 +197,14 @@ static inline const char* extract_file_name(const char* s) {
  * once, so be prepared to handle overlapping or redundant intervals.
  */
 #define SYS_rrcall_notify_stap_semaphore_removed 449
+/**
+ * This syscall can be used be the application being recorded to check for the
+ * presence of the rr recorder. It is used e.g. to enable nested recording of
+ * rr itself. Use of this syscall should be limited to situations where it is
+ * absolutely necessary to avoid deviation of behavior depending on the
+ * presence of absence of rr.
+ */
+#define SYS_rrcall_check_presence 450
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.

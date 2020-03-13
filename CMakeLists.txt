@@ -1135,6 +1135,7 @@ set(TESTS_WITH_PROGRAM
   # history
   ignored_async_usr1
   ignored_sigsegv
+  ignore_nested
   immediate_restart
   int3_ok
   interrupt
