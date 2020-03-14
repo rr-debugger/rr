@@ -373,6 +373,11 @@ public:
   bool execed() const;
 
   /**
+   * Return true if this task is dead and just waiting to be reaped.
+   */
+  virtual bool is_waiting_for_reap() const { return false; }
+
+  /**
    * Read |N| bytes from |child_addr| into |buf|, or don't
    * return.
    */

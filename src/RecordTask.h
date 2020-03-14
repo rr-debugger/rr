@@ -168,6 +168,10 @@ public:
    */
   bool is_waiting_for(RecordTask* t);
 
+  virtual bool is_waiting_for_reap() const override {
+    return waiting_for_reap;
+  }
+
   /**
    * Call this to force a group stop for this task with signal 'sig',
    * notifying ptracer if necessary.

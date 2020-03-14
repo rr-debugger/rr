@@ -206,12 +206,15 @@ void Session::kill_all_tasks() {
   for (auto& v : task_map) {
     Task* t = v.second;
 
-    if (!t->is_stopped) {
+    if (!t->is_stopped || t->is_waiting_for_reap()) {
       // During recording we might be aborting the recording, in which case
       // one or more tasks might not be stopped. We haven't got any really
       // good options here so we'll just skip detaching and try killing
       // it with SIGKILL below. rr will usually exit immediately after this
       // so the likelihood that we'll leak a zombie task isn't too bad.
+      // Also, during recording we might have a task lying around that
+      // is already dead and waiting to be reaped. Don't try to kill it
+      // again and especially don't try to record its exit event again!
       continue;
     }
 
@@ -262,6 +265,10 @@ void Session::kill_all_tasks() {
 
   while (!task_map.empty()) {
     Task* t = task_map.rbegin()->second;
+    if (t->is_waiting_for_reap()) {
+      delete t;
+      continue;
+    }
     if (!t->unstable) {
       /**
        * Destroy the OS task backing this by sending it SIGKILL and
