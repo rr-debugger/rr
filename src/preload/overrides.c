@@ -140,7 +140,13 @@ void spurious_desched_syscall(struct syscall_info* info) {
  * which sometimes can't be hooked. So override it here with something that
  * can be hooked.
  */
-uid_t geteuid(void) { return syscall(SYS_geteuid); }
+uid_t geteuid(void) {
+#ifdef __i386__
+  return syscall(SYS_geteuid32);
+#else
+  return syscall(SYS_geteuid);
+#endif
+}
 
 /**
  * clang's LeakSanitizer has regular threads call sched_yield() in a loop while
