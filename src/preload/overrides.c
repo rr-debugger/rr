@@ -170,21 +170,22 @@ int sched_yield(void) {
   return 0;
 }
 
-typedef void* (*fopen_ptr)(const char* filename, const char* mode);
-
-static void random_device_init_helper(void* this) {
-  void** file_ptr = (void**)this;
-  void* f_ptr = dlsym(RTLD_DEFAULT, "fopen");
-  fopen_ptr fopen = (fopen_ptr)f_ptr;
-  *file_ptr = fopen("/dev/urandom", "rb");
-}
-
 /**
  * libstdc++3 uses RDRAND. Bypass that with this incredible hack.
  */
 void _ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE(
     void* this, __attribute__((unused)) void* token) {
-  random_device_init_helper(this);
+  static void (*assign_string)(void *, char*) = NULL;
+  static void (*random_init)(void *, void*) = NULL;
+  if (!assign_string) {
+    assign_string = (void (*)(void *, char*))dlsym(RTLD_NEXT,
+      "_ZNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEE6assignEPKc");
+  }
+  assign_string(token, "/dev/urandom");
+  if (!random_init) {
+    random_init = (void (*)(void *, void*))dlsym(RTLD_NEXT, __func__);
+  }
+  random_init(this, token);
 }
 
 /**
@@ -192,5 +193,15 @@ void _ZNSt13random_device7_M_initERKNSt7__cxx1112basic_stringIcSt11char_traitsIc
  */
 void _ZNSt13random_device7_M_initERKSs(void* this,
                                        __attribute__((unused)) void* token) {
-  random_device_init_helper(this);
+  static void (*assign_string)(void *, char*) = NULL;
+  static void (*random_init)(void *, void*) = NULL;
+  if (!assign_string) {
+    assign_string = (void (*)(void *, char*))dlsym(RTLD_NEXT,
+      "_ZNSs6assignEPKc");
+  }
+  assign_string(token, "/dev/urandom");
+  if (!random_init) {
+    random_init = (void (*)(void *, void*))dlsym(RTLD_NEXT, __func__);
+  }
+  random_init(this, token);
 }
