@@ -3019,17 +3019,30 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::execve: {
       vector<string> cmd_line;
       remote_ptr<typename Arch::unsigned_word> argv = regs.arg2();
+      bool ok = true;
       while (true) {
-        auto p = t->read_mem(argv);
+        auto p = t->read_mem(argv, &ok);
+        if (!ok) {
+          syscall_state.expect_errno = EFAULT;
+          return ALLOW_SWITCH;
+        }
         if (!p) {
           break;
         }
-        cmd_line.push_back(t->read_c_str(p));
+        cmd_line.push_back(t->read_c_str(p, &ok));
+        if (!ok) {
+          syscall_state.expect_errno = EFAULT;
+          return ALLOW_SWITCH;
+        }
         argv++;
       }
 
       // Save the event. We can't record it here because the exec might fail.
-      string raw_filename = t->read_c_str(regs.arg1());
+      string raw_filename = t->read_c_str(regs.arg1(), &ok);
+      if (!ok) {
+        syscall_state.expect_errno = EFAULT;
+        return ALLOW_SWITCH;
+      }
       syscall_state.exec_saved_event =
           unique_ptr<TraceTaskEvent>(new TraceTaskEvent(
               TraceTaskEvent::for_exec(t->tid, raw_filename, cmd_line)));

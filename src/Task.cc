@@ -761,8 +761,7 @@ bool Task::execed() const { return tg->execed; }
 
 void Task::flush_inconsistent_state() { ticks = 0; }
 
-string Task::read_c_str(remote_ptr<char> child_addr) {
-  // XXX handle invalid C strings
+string Task::read_c_str(remote_ptr<char> child_addr, bool *ok) {
   remote_ptr<void> p = child_addr;
   string str;
   while (true) {
@@ -772,7 +771,10 @@ string Task::read_c_str(remote_ptr<char> child_addr) {
     ssize_t nbytes = end_of_page - p;
     std::unique_ptr<char[]> buf(new char[nbytes]);
 
-    read_bytes_helper(p, nbytes, buf.get());
+    read_bytes_helper(p, nbytes, buf.get(), ok);
+    if (ok && !*ok) {
+      return "";
+    }
     for (int i = 0; i < nbytes; ++i) {
       if ('\0' == buf[i]) {
         return str;

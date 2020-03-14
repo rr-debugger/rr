@@ -437,9 +437,11 @@ public:
 
   /**
    * Read and return the C string located at |child_addr| in
-   * this address space.
+   * this address space. If the data can't all be read (because the c string to
+   * be read is invalid), then if |ok| is non-null, sets *ok to
+   * false, otherwise asserts.
    */
-  std::string read_c_str(remote_ptr<char> child_addr);
+  std::string read_c_str(remote_ptr<char> child_addr, bool *ok = nullptr);
 
   /**
    * Resume execution |how|, deliverying |sig| if nonzero.
