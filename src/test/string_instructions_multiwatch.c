@@ -20,6 +20,7 @@ int main(void) {
     buf[i] = i;
   }
 
+  atomic_printf("Buf is at %p\n", buf);
   my_memmove(buf, buf + 4000, 90000);
 
   atomic_puts("EXIT-SUCCESS");
