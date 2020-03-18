@@ -226,6 +226,8 @@ public:
    */
   void destroy_buffers();
 
+  void did_kill();
+
   void unmap_buffers_for(
       AutoRemoteSyscalls& remote, Task* t,
       remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child);

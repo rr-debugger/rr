@@ -237,6 +237,21 @@ void Task::unmap_buffers_for(
   }
 }
 
+void Task::did_kill()
+{
+  /* We may or may not have seen this event (see the note on race conditions
+   * in Session.cc), but let's pretend that we did to make this task look like
+   * other that we didn't kill ourselves
+   */
+  seen_ptrace_exit_event = true;
+  syscallbuf_child = nullptr;
+  /* No need to unmap/close things in the child here - the kernel did that for
+   * us when the child died. */
+  scratch_ptr = nullptr;
+  desched_fd_child = -1;
+  cloned_file_data_fd_child = -1;
+}
+
 /**
  * Must be idempotent.
  */
