@@ -7,6 +7,7 @@
 #include <linux/unistd.h>
 #include <sys/prctl.h>
 #include <syscall.h>
+#include <sys/wait.h>
 
 #include <algorithm>
 #include <limits>
@@ -203,97 +204,81 @@ AddressSpace* Session::find_address_space(const AddressSpaceUid& vmuid) const {
 }
 
 void Session::kill_all_tasks() {
-  for (auto& v : task_map) {
-    Task* t = v.second;
-
-    if (!t->is_stopped || t->is_waiting_for_reap()) {
-      // During recording we might be aborting the recording, in which case
-      // one or more tasks might not be stopped. We haven't got any really
-      // good options here so we'll just skip detaching and try killing
-      // it with SIGKILL below. rr will usually exit immediately after this
-      // so the likelihood that we'll leak a zombie task isn't too bad.
-      // Also, during recording we might have a task lying around that
-      // is already dead and waiting to be reaped. Don't try to kill it
-      // again and especially don't try to record its exit event again!
-      continue;
-    }
-
-    /*
-     * Prepare to forcibly kill this task by detaching it first. To ensure
-     * the task doesn't continue executing, we first set its ip() to an
-     * invalid value. We need to do this for all tasks in the Session before
-     * kill() is guaranteed to work properly. SIGKILL on ptrace-attached tasks
-     * seems to not work very well, and after sending SIGKILL we can't seem to
-     * reliably detach.
+  LOG(debug) << "Killing all tasks ...";
+  for (int pass = 0; pass <= 1; ++pass) {
+    /* We delete tasks in two passes. First, we kill
+     * every non-thread-group-leader, then we kill every group leader.
+     * Linux expects threads group leaders to survive until the last
+     * member of the thread group has exited, so we accomodate that.
      */
-    LOG(debug) << "safely detaching from " << t->tid << " ...";
-    // Detaching from the process lets it continue. We don't want a replaying
-    // process to perform syscalls or do anything else observable before we
-    // get around to SIGKILLing it. So we move its ip() to an address
-    // which will cause it to do an exit() syscall if it runs at all.
-    // We used to set this to an invalid address, but that causes a SIGSEGV
-    // to be raised which can cause core dumps after we detach from ptrace.
-    // Making the process undumpable with PR_SET_DUMPABLE turned out not to
-    // be practical because that has a side effect of triggering various
-    // security measures blocking inspection of the process (PTRACE_ATTACH,
-    // access to /proc/<pid>/fd).
-    // Disabling dumps via setrlimit(RLIMIT_CORE, 0) doesn't stop dumps
-    // if /proc/sys/kernel/core_pattern is set to pipe the core to a process
-    // (e.g. to systemd-coredump).
-    // We also tried setting ip() to an address that does an infinite loop,
-    // but that leaves a runaway process if something happens to kill rr
-    // after detaching but before we get a chance to SIGKILL the tracee.
-    Registers r = t->regs();
-    r.set_ip(t->vm()->privileged_traced_syscall_ip());
-    r.set_syscallno(syscall_number_for_exit(r.arch()));
-    r.set_arg1(0);
-    t->set_regs(r);
-    t->flush_regs();
-    long result;
-    do {
-      // We have observed this failing with an ESRCH when the thread clearly
-      // still exists and is ptraced. Retrying the PTRACE_DETACH seems to
-      // work around it.
-      result = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-      ASSERT(t, result >= 0 || errno == ESRCH);
-      // But we it might get ESRCH because it really doesn't exist.
-      if (errno == ESRCH && is_zombie_process(t->tid)) {
-        break;
+    for (auto &v : task_map) {
+      Task* t = v.second;
+      if (t->is_waiting_for_reap()) {
+        /* We've already seeing the PTRACE_EXIT_EVENT for this task.
+         * We were just waiting for one of the other traced tasks, to
+         * reap it, but that ain't gonna happen, now. It'll get deleted
+         * below
+         */
+        continue;
       }
-    } while (result < 0);
+      bool is_group_leader = t->tid == t->tgid();
+      if (pass == 0 ? is_group_leader : !is_group_leader)
+          continue;
+      /* This call is racy. There is basically two situations:
+       * 1. By the time the kernel gets arround to delivering this signal,
+       *    we were already in a PTRACE_EVENT_EXIT stop (e.g. due to an early
+       *    fatal signal), that we didn't observe yet (if we had, we would have
+       *    removed the task from the task map already). In this case, this
+       *    signal will advance from the PTRACE_EVENT_EXIT and put the child
+       *    into hidden-zombie state, which the waitpid below will reap.
+       * 2. Anything else basically. The signal will take priority and put us
+       *    into the PTRACE_EVENT_EXIT stop, which the subsequent waitpid will
+       *    then observe.
+       */
+      LOG(debug) << "Sending SIGKILL to " << t->tid;
+      int ret = syscall(SYS_tgkill, t->real_tgid(), t->tid, SIGKILL);
+      DEBUG_ASSERT(ret == 0);
+      int raw_status = 0;
+      int wait_ret = ::waitpid(t->tid, &raw_status, __WALL | WUNTRACED);
+      WaitStatus status(raw_status);
+      LOG(debug) << " -> " << status;
+      bool is_exit_event = status.ptrace_event() == PTRACE_EVENT_EXIT;
+      DEBUG_ASSERT(wait_ret == t->tid &&
+        (is_exit_event || status.fatal_sig() == SIGKILL));
+      t->did_kill();
+      if (is_exit_event) {
+        /* If this is the exit event, we can detach here and the task will
+         * continue to zombie state for its parent to reap. If we're not in
+         * the exit event, we already reaped it from the ptrace perspective,
+         * which implicitly detached.
+         */
+        int ret = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+        DEBUG_ASSERT(ret == 0 || ret == -ESRCH);
+        if (ret == -ESRCH) {
+          /* It's possible for the above ptrace to fail with -ESRCH. How?
+          * It's the other side of the race described above. If an external
+          * process issues an additional SIGKILL, we will advance from the
+          * ptrace exit event and we might still be processing the exit, just
+          * as the detach request comes in. To address this, we waitpid again,
+          * which will reap/detach us from ptrace and frees the real parent to
+          * do its reaping. */
+          raw_status = 0;
+          wait_ret = ::waitpid(t->tid, &raw_status, __WALL | WUNTRACED);
+          status = WaitStatus(raw_status);
+          LOG(debug) << " --> " << status;
+          DEBUG_ASSERT(wait_ret == t->tid && status.fatal_sig() == SIGKILL);
+        }
+      }
+      if (is_recording()) {
+        static_cast<RecordTask*>(t)->record_exit_event();
+      }
+    }
   }
-
   while (!task_map.empty()) {
     Task* t = task_map.rbegin()->second;
-    if (t->is_waiting_for_reap()) {
-      delete t;
-      continue;
-    }
-    if (!t->unstable) {
-      /**
-       * Destroy the OS task backing this by sending it SIGKILL and
-       * ensuring it was delivered.  After |kill()|, the only
-       * meaningful thing that can be done with this task is to
-       * delete it.
-       */
-      LOG(debug) << "sending SIGKILL to " << t->tid << " ...";
-      // If we haven't already done a stable exit via syscall,
-      // kill the task and note that the entire thread group is unstable.
-      // The task may already have exited due to the preparation above,
-      // so we might accidentally shoot down the wrong task :-(, but we
-      // have to do this because the task might be in a state where it's not
-      // going to run and exit by itself.
-      // Linux doesn't seem to give us a reliable way to detach and kill
-      // the tracee without races.
-      syscall(SYS_tgkill, t->real_tgid(), t->tid, SIGKILL);
-      t->thread_group()->destabilize();
-    }
-    t->detach();
-    if (is_recording()) {
-      static_cast<RecordTask*>(t)->record_exit_event();
-    }
     delete t;
   }
+  assert(task_map.empty());
 }
 
 void Session::on_destroy(AddressSpace* vm) {
