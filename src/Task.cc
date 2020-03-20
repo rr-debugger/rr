@@ -65,8 +65,7 @@ static const unsigned int NUM_X86_WATCHPOINTS = 4;
 
 Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
            SupportedArch a)
-    : unstable(false),
-      scratch_ptr(),
+    : scratch_ptr(),
       scratch_size(),
       // This will be initialized when the syscall buffer is.
       desched_fd_child(-1),
@@ -93,7 +92,8 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       session_(&session),
       top_of_stack(),
       seen_ptrace_exit_event(false),
-      expecting_ptrace_interrupt_stop(0) {
+      expecting_ptrace_interrupt_stop(0),
+      was_reaped(false) {
   memset(&thread_locals, 0, sizeof(thread_locals));
 }
 
@@ -103,28 +103,78 @@ void Task::detach() {
   fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
 }
 
-Task::~Task() {
-  if (unstable) {
-    LOG(warn) << tid << " is unstable; not blocking on its termination";
-    // This will probably leak a zombie process for rr's lifetime.
+bool Task::may_reap() {
+  // Non thread-group-leaders may always be reaped
+  if (tid != real_tgid()) {
+    return true;
+  }
+  if (thread_group()->task_set().size() > 1) {
+    return false;
+  }
+  return true;
+}
 
-    // Destroying a Session may result in unstable exits during which
-    // Task::destroy_buffers() will not have been called.
-    if (!syscallbuf_child.is_null()) {
-      vm()->unmap(this, syscallbuf_child, syscallbuf_size);
-    }
+void Task::reap() {
+  ASSERT(this, !was_reaped);
+  LOG(debug) << "Reaping " << tid;
+  siginfo_t info;
+  memset(&info, 0, sizeof(info));
+  int ret = waitid(P_PID, tid, &info, WEXITED | WNOHANG);
+  if (ret != 0) {
+    FATAL() << "Unexpected wait status for tid " << tid;
+  }
+  /* The sid_pid == 0 case here is the same as the case below where we're the
+   * group leader whose pid gets stolen.
+   */
+  DEBUG_ASSERT(info.si_pid == tid ||
+               info.si_pid == 0);
+  was_reaped = true;
+}
+
+void Task::wait_exit() {
+  siginfo_t info;
+  LOG(debug) << "Waiting for exit of " << tid;
+  /* We want to wait for the child to exit, but we don't actually
+   * want to reap the task when it's dead. We could use WEXITED | WNOWAIT,
+   * but that would hang if `t` is a thread-group-leader of a thread group
+   * that has other still-running threads. Instead, we wait for WSTOPPED, but
+   * we know that there is no possibility for the task to stop between not and
+   * its exit, at which point the system call will return with -ECHILD.
+   * There is one exception: If there was a simultaneous exec from another
+   * thread, and this is the group leader, then this task may lose its pid
+   * as soon as it enters the zombie state, causing `tid` to refer to the
+   * newly-execed thread and us getting a PTRACE_EVENT_EXEC instead. To account
+   * for this we add `| WNOWAIT` to prevent dequeing the event and simply take
+   * it as an indication that the task has execed.
+   */
+  int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOWAIT);
+  if (ret == 0) {
+    DEBUG_ASSERT(info.si_pid == tid && WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXEC);
+    // The kernel will do the reaping for us in this case
+    was_reaped = true;
   } else {
-    ASSERT(this, seen_ptrace_exit_event);
-    ASSERT(this, syscallbuf_child.is_null());
+    DEBUG_ASSERT(ret == -1 && errno == ECHILD);
+  }
+}
 
-    if (tg->task_set().empty() && !session().is_recording()) {
-      // Reap the zombie.
-      int ret = waitpid(tg->real_tgid, NULL, __WALL);
-      if (ret == -1) {
-        ASSERT(this, errno == ECHILD || errno == ESRCH);
-      } else {
-        ASSERT(this, ret == tg->real_tgid);
-      }
+void Task::proceed_to_exit() {
+  LOG(debug) << "Advancing tid " << tid << " to exit";
+  int ret = fallible_ptrace(PTRACE_CONT, nullptr, nullptr);
+  DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == ESRCH));
+  wait_exit();
+}
+
+Task::~Task() {
+  ASSERT(this, seen_ptrace_exit_event);
+  ASSERT(this, syscallbuf_child.is_null());
+
+  if (tg->task_set().empty() && !session().is_recording()) {
+    // Reap the zombie.
+    int ret = waitpid(tg->real_tgid, NULL, __WALL);
+    if (ret == -1) {
+      ASSERT(this, errno == ECHILD || errno == ESRCH);
+    } else {
+      ASSERT(this, ret == tg->real_tgid);
     }
   }
 
@@ -153,8 +203,8 @@ void Task::dump(FILE* out) const {
   out = out ? out : stderr;
   stringstream ss;
   ss << wait_status;
-  fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%s%s)<%p>\n", prname.c_str(),
-          tid, rec_tid, ss.str().c_str(), unstable ? " UNSTABLE" : "", this);
+  fprintf(out, "  %s(tid:%d rec_tid:%d status:0x%s)<%p>\n", prname.c_str(),
+          tid, rec_tid, ss.str().c_str(), this);
   if (session().is_recording()) {
     // TODO pending events are currently only meaningful
     // during recording.  We should change that
@@ -208,15 +258,25 @@ const siginfo_t& Task::get_siginfo() {
 /**
  * Must be idempotent.
  */
-void Task::destroy_buffers() {
-  AutoRemoteSyscalls remote(this);
+void Task::destroy_buffers(Task *as_task, Task *fd_task) {
   auto saved_syscallbuf_child = syscallbuf_child;
   // Clear syscallbuf_child now so nothing tries to use it while tearing
   // down buffers.
   syscallbuf_child = nullptr;
-  unmap_buffers_for(remote, this, saved_syscallbuf_child);
+  if (as_task != nullptr) {
+    AutoRemoteSyscalls remote(as_task);
+    as_task->unmap_buffers_for(remote, this, saved_syscallbuf_child);
+    if (as_task == fd_task) {
+      as_task->close_buffers_for(remote, this);
+    }
+    goto done;
+  }
+  if (fd_task != nullptr) {
+    AutoRemoteSyscalls remote(fd_task);
+    fd_task->close_buffers_for(remote, this);
+  }
+done:
   scratch_ptr = nullptr;
-  close_buffers_for(remote, this);
   desched_fd_child = -1;
   cloned_file_data_fd_child = -1;
 }
@@ -1050,7 +1110,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   LOG(debug) << "resuming execution of " << tid << " with "
              << ptrace_req_name(how)
              << (sig ? string(", signal ") + signal_name(sig) : string())
-             << " tick_period " << tick_period;
+             << " tick_period " << tick_period << " wait " << wait_how;
   address_of_last_execution_resume = ip();
   how_last_execution_resumed = how;
   set_debug_status(0);
@@ -1120,9 +1180,14 @@ void Task::set_regs(const Registers& regs) {
 
 void Task::flush_regs() {
   if (registers_dirty) {
+    LOG(debug) << "Flushing registers for tid " << tid << " " << registers;
     auto ptrace_regs = registers.get_ptrace();
-    ptrace_if_alive(PTRACE_SETREGS, nullptr, &ptrace_regs);
-    registers_dirty = false;
+    if (ptrace_if_alive(PTRACE_SETREGS, nullptr, &ptrace_regs)) {
+      /* It's ok for flush regs to fail, e.g. if the task got killed underneath
+       * us - we just need to remember not to trust any value we would load
+       * from ptrace otherwise */
+      registers_dirty = false;
+    }
   }
 }
 
@@ -1378,8 +1443,7 @@ bool Task::wait_unexpected_exit() {
 }
 
 void Task::wait(double interrupt_after_elapsed) {
-  LOG(debug) << "going into blocking waitpid(" << tid << ") ...";
-  ASSERT(this, !unstable) << "Don't wait for unstable tasks";
+  LOG(debug) << "going into blocking waitid(" << tid << ") ...";
   ASSERT(this, session().is_recording() || interrupt_after_elapsed == 0);
 
   if (wait_unexpected_exit()) {
@@ -1388,38 +1452,42 @@ void Task::wait(double interrupt_after_elapsed) {
 
   WaitStatus status;
   bool sent_wait_interrupt = false;
-  pid_t ret;
+  int ret;
   while (true) {
     if (interrupt_after_elapsed) {
       struct itimerval timer = { { 0, 0 },
                                  to_timeval(interrupt_after_elapsed) };
       setitimer(ITIMER_REAL, &timer, nullptr);
     }
-    int raw_status = 0;
-    ret = waitpid(tid, &raw_status, __WALL);
-    status = WaitStatus(raw_status);
+    siginfo_t info;
+    ret = waitid(P_PID, tid, &info, WSTOPPED);
+    DEBUG_ASSERT(ret == 0 || ret == -1);
+    if (ret == -1) {
+      ret = -errno;
+    }
     if (interrupt_after_elapsed) {
       struct itimerval timer = { { 0, 0 }, { 0, 0 } };
       setitimer(ITIMER_REAL, &timer, nullptr);
     }
-    if (ret >= 0 || errno != EINTR) {
+
+    if (ret == 0) {
+      status = WaitStatus(info);
       // waitpid was not interrupted by the alarm.
       break;
-    }
-
-    if (is_zombie_process(tg->real_tgid)) {
-      // The process is dead. We must stop waiting on it now
-      // or we might never make progress.
-      // XXX it's not clear why the waitpid() syscall
-      // doesn't return immediately in this case, but in
-      // some cases it doesn't return normally at all!
-
-      // Fake a PTRACE_EVENT_EXIT for this task.
-      LOG(warn) << "Synthesizing PTRACE_EVENT_EXIT for zombie process " << tid;
-      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-      ret = tid;
-      // XXX could this leave unreaped zombies lying around?
-      break;
+    } else {
+      if (ret == -ECHILD) {
+        /* The process died without us getting a PTRACE_EXIT_EVENT notification.
+        * This is possible if the process receives a SIGKILL while in the exit
+        * event stop, but before we were able to read the event notification.
+        * We handle this situation by synthesizing an exit event, but otherwise
+        * going about our regular business.
+        */
+        LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process " << tid;
+        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+        break;
+      } else if (ret != -EINTR) {
+        FATAL() << "Unexpected wait error " << -ret;
+      }
     }
 
     if (!sent_wait_interrupt && interrupt_after_elapsed) {
@@ -1429,28 +1497,8 @@ void Task::wait(double interrupt_after_elapsed) {
     }
   }
 
-  if (ret >= 0 && status.exit_code() >= 0) {
-    // Unexpected non-stopping exit code returned in wait_status.
-    // This shouldn't happen; a PTRACE_EXIT_EVENT for this task
-    // should be observed first, and then we would kill the task
-    // before wait()ing again, so we'd only see the exit
-    // code in detach_and_reap. But somehow we see it here in
-    // grandchild_threads and async_kill_with_threads tests (and
-    // maybe others), when a PTRACE_EXIT_EVENT has not been sent.
-    // Verify that we have not actually seen a PTRACE_EXIT_EVENT.
-    ASSERT(this, !seen_ptrace_exit_event) << "A PTRACE_EXIT_EVENT was observed "
-                                             "for this task, but somehow "
-                                             "forgotten";
-
-    // Turn this into a PTRACE_EXIT_EVENT.
-    LOG(warn) << "Synthesizing PTRACE_EVENT_EXIT for process " << tid
-        << " exited with " << status.exit_code();
-    status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-  }
-
-  LOG(debug) << "  waitpid(" << tid << ") returns " << ret << "; status "
+  LOG(debug) << "  waitid(" << tid << ") returns " << ret << "; status "
              << status;
-  ASSERT(this, tid == ret) << "waitpid(" << tid << ") failed with " << ret;
 
   if (sent_wait_interrupt) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
@@ -1564,36 +1612,55 @@ void Task::did_waitpid(WaitStatus status) {
 
   intptr_t original_syscallno = registers.original_syscallno();
   LOG(debug) << "  (refreshing register cache)";
-  // An unstable exit can cause a task to exit without us having run it, in
-  // which case we might have pending register changes for it that are now
-  // irrelevant. In that case we just throw away our register changes and use
-  // whatever the kernel now has.
-  if (status.ptrace_event() != PTRACE_EVENT_EXIT) {
-    ASSERT(this, !registers_dirty) << "Registers shouldn't already be dirty";
-  }
-  // If the task was not stopped, we don't need to read the registers.
-  // In fact if we didn't start the thread, we may not have flushed dirty
-  // registers but still received a PTRACE_EVENT_EXIT, in which case the
-  // task's register values are not what they should be.
-  if (!is_stopped) {
-    struct user_regs_struct ptrace_regs;
-    if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
-      registers.set_from_ptrace(ptrace_regs);
-#if defined(__i386__) || defined(__x86_64__)
-      // Check the architecture of the task by looking at the
-      // cs segment register and checking if that segment is a long mode segment
-      // (Linux always uses GDT entries for this, which are globally the same).
-      SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
-      if (a != registers.arch()) {
-        registers.set_arch(a);
-        registers.set_from_ptrace(ptrace_regs);
-      }
-#else
-#error detect architecture here
-#endif
-    } else {
+
+  if (status.exit_code() != -1 || status.fatal_sig() != 0) {
+    was_reaped = true;
+    if (!seen_ptrace_exit_event) {
       LOG(debug) << "Unexpected process death for " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+    } else {
+      // We did not reap this task when it exited, likely because it was a
+      // thread group leader blocked on the exit of the other members of
+      // its thread group. This has now reaped the task, so all we need to do
+      // here is get out quickly and the higher-level function should go ahead
+      // and delete us.
+      is_stopped = true;
+      wait_status = status;
+      return;
+    }
+  } else {
+    // An unstable exit can cause a task to exit without us having run it, in
+    // which case we might have pending register changes for it that are now
+    // irrelevant. In that case we just throw away our register changes and use
+    // whatever the kernel now has.
+    if (status.ptrace_event() != PTRACE_EVENT_EXIT) {
+      ASSERT(this, !registers_dirty) << "Registers shouldn't already be dirty (status is " << status << ")";
+    }
+    // If the task was not stopped, we don't need to read the registers.
+    // In fact if we didn't start the thread, we may not have flushed dirty
+    // registers but still received a PTRACE_EVENT_EXIT, in which case the
+    // task's register values are not what they should be.
+    if (!is_stopped && !registers_dirty) {
+      LOG(debug) << "Requesting registers from tracee " << tid;
+      struct user_regs_struct ptrace_regs;
+      if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
+        registers.set_from_ptrace(ptrace_regs);
+  #if defined(__i386__) || defined(__x86_64__)
+        // Check the architecture of the task by looking at the
+        // cs segment register and checking if that segment is a long mode segment
+        // (Linux always uses GDT entries for this, which are globally the same).
+        SupportedArch a = is_long_mode_segment(registers.cs()) ? x86_64 : x86;
+        if (a != registers.arch()) {
+          registers.set_arch(a);
+          registers.set_from_ptrace(ptrace_regs);
+        }
+  #else
+  #error detect architecture here
+  #endif
+      } else {
+        LOG(debug) << "Unexpected process death for " << tid;
+        status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+      }
     }
   }
 
@@ -1690,17 +1757,38 @@ bool Task::try_wait() {
     return true;
   }
 
-  int raw_status = 0;
-  pid_t ret = waitpid(tid, &raw_status, WNOHANG | __WALL);
-  ASSERT(this, 0 <= ret) << "waitpid(" << tid << ", NOHANG) failed with "
+  // Check if there is a status change for us
+  WaitStatus status;
+  siginfo_t info;
+  memset(&info, 0, sizeof(siginfo_t));
+  int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOHANG);
+  ASSERT(this, 0 == ret || (-1 == ret && errno == ECHILD)) <<
+    "waitid(" << tid << ", NOHANG) failed with "
                          << ret;
-  LOG(debug) << "waitpid(" << tid << ", NOHANG) returns " << ret << ", status "
-             << WaitStatus(raw_status);
-  if (ret == tid) {
-    did_waitpid(WaitStatus(raw_status));
-    return true;
+  LOG(debug) << "waitpid(" << tid << ", NOHANG) returns " << ret;
+  if (ret == 0 && info.si_pid == 0) {
+    return false;
   }
-  return false;
+  if (ret == 0) {
+    status = WaitStatus(info);
+  } else if (ret == -1) {
+    DEBUG_ASSERT(errno == ECHILD);
+    // Either we died unexpectedly or we were in exec and changed the tid.
+    // Try to differentiate the two situations by seeing if there is an exit
+    // notification ready for us to de-queue, in which case we synthesize an
+    // exit event (but don't actually reap the task, instead leaving that
+    // for the generic cleanup code).
+    int ret = waitid(P_PID, tid, &info, WEXITED | WNOWAIT | WNOHANG);
+    if (ret == 0 && info.si_pid == tid) {
+      LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process " << tid;
+      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
+    } else {
+      DEBUG_ASSERT(ret == -1 && errno == ECHILD);
+      return false;
+    }
+  }
+  did_waitpid(status);
+  return true;
 }
 
 template <typename Arch>

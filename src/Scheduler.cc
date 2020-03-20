@@ -209,11 +209,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
     return false;
   }
 
-  if (t->unstable) {
-    LOG(debug) << "  " << t->tid << " is unstable";
-    return true;
-  }
-
+  LOG(debug) << "Task event is " << t->ev();
   if (!t->may_be_blocked()) {
     LOG(debug) << "  " << t->tid << " isn't blocked";
     return true;
@@ -419,7 +415,8 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
   result.by_waitpid = false;
   result.started_new_timeslice = false;
 
-  LOG(debug) << "Scheduling next task";
+  LOG(debug) << "Scheduling next task (" <<
+    ((switchable == PREVENT_SWITCH) ? "PREVENT_SWITCH)" : "ALLOW_SWITCH)");
 
   must_run_task = nullptr;
   enable_poll = false;
@@ -474,7 +471,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       // (this might not hold if it was at the head of the queue but we
       // rejected current_ and popped it in a previous iteration of this loop)
       // -- it must be runnable, and not in an unstable exit.
-      if (!current_->unstable && !always_switch &&
+      if (!always_switch &&
           (!round_robin_task || round_robin_task == current_) &&
           (treat_as_high_priority(current_) ||
            !last_reschedule_in_high_priority_only_interval) &&
@@ -529,10 +526,10 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
     break;
   }
 
-  if (next && !next->unstable) {
+  if (next) {
     LOG(debug) << "  selecting task " << next->tid;
   } else {
-    // All the tasks are blocked (or we found an unstable-exit task).
+    // All the tasks are blocked.
     // Wait for the next one to change state.
 
     // Clear the round-robin queue since we will no longer be able to service
@@ -541,7 +538,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       maybe_pop_round_robin_task(t);
     }
 
-    LOG(debug) << "  all tasks blocked or some unstable, waiting for runnable ("
+    LOG(debug) << "  all tasks blocked, waiting for runnable ("
                << task_priority_set.size() << " total)";
 
     WaitStatus status;
@@ -577,13 +574,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
 
       next = session.find_task(tid);
       if (status.ptrace_event() == PTRACE_EVENT_EXEC) {
-        if (next) {
-          // Other threads may have unexpectedly died, in which case this
-          // will be marked as unstable even though it's actually not. There's
-          // no way to know until we see the EXEC event that we weren't really
-          // in an unstable exit.
-          next->unstable = false;
-        } else {
+        if (!next) {
           // The thread-group-leader died and now the exec'ing thread has
           // changed its thread ID to be thread-group leader.
           next = session.revive_task_for_exec(tid);
@@ -594,9 +585,9 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       }
     } while (!next);
     ASSERT(next,
-           next->unstable || next->may_be_blocked() ||
+           next->may_be_blocked() ||
                status.ptrace_event() == PTRACE_EVENT_EXIT)
-        << "Scheduled task should have been blocked or unstable";
+        << "Scheduled task should have been blocked";
     next->did_waitpid(status);
     result.by_waitpid = true;
     must_run_task = next;

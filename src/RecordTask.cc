@@ -237,31 +237,20 @@ RecordTask::~RecordTask() {
   }
 }
 
-void RecordTask::record_exit_event() {
+void RecordTask::record_exit_event(int fatal_signo) {
   // Task::destroy has already done PTRACE_DETACH so the task can complete
   // exiting.
   // The kernel explicitly only clears the futex if the address space is shared.
   // If the address space has no other users then the futex will not be cleared
   // even if it lives in shared memory which other tasks can read.
-  // Unstable exits may result in the kernel *not* clearing the
-  // futex, for example for fatal signals.  So we would
-  // deadlock waiting on the futex.
-  if (!unstable && !tid_futex.is_null() && as->task_set().size() > 1) {
-    // clone()'d tasks can have a pid_t* |ctid| argument
-    // that's written with the new task's pid.  That
-    // pointer can also be used as a futex: when the task
-    // dies, the original ctid value is cleared and a
-    // FUTEX_WAKE is done on the address. So
-    // pthread_join() is basically a standard futex wait
-    // loop.
-    LOG(debug) << "  waiting for tid futex " << tid_futex
-               << " to be cleared ...";
-    bool ok = true;
-    futex_wait(tid_futex, 0, &ok);
-    if (ok) {
-      int val = 0;
-      record_local(tid_futex, &val);
-    }
+  // If however, the exit was the result of a fatal, core-dump signal, the futex
+  // is not cleared (both to preserve the coredump and because any other users
+  // of the same address space were also shot down).
+  if (!is_coredumping_signal(fatal_signo) &&
+     !tid_futex.is_null() && as->task_set().size() > 1 &&
+     as->has_mapping(tid_futex)) {
+    int val = 0;
+    record_local(tid_futex, &val);
   }
 
   // Write the exit event here so that the value recorded above is captured.
@@ -273,24 +262,6 @@ void RecordTask::record_exit_event() {
   // e.g. it could be in the middle of syscallbuf code that's supposed to be
   // atomic. For the same reasons don't allow syscallbuf to be reset here.
   record_event(Event::exit(), DONT_FLUSH_SYSCALLBUF, DONT_RESET_SYSCALLBUF);
-}
-
-void RecordTask::futex_wait(remote_ptr<int> futex, int val, bool* ok) {
-  // Wait for *sync_addr == sync_val.  This implementation isn't
-  // pretty, but it's pretty much the best we can do with
-  // available kernel tools.
-  //
-  // TODO: find clever way to avoid busy-waiting.
-  while (true) {
-    int mem = read_mem(futex, ok);
-    if (!*ok || val == mem) {
-      // Invalid addresses are just ignored by the kernel
-      break;
-    }
-    // Try to give our scheduling slot to the kernel
-    // thread that's going to write sync_addr.
-    sched_yield();
-  }
 }
 
 RecordSession& RecordTask::session() const {
@@ -1515,7 +1486,9 @@ bool RecordTask::is_disarm_desched_event_syscall() {
 bool RecordTask::may_be_blocked() const {
   return (EV_SYSCALL == ev().type() &&
           PROCESSING_SYSCALL == ev().Syscall().state) ||
-         emulated_stop_type != NOT_STOPPED;
+         emulated_stop_type != NOT_STOPPED ||
+         (EV_SIGNAL_DELIVERY == ev().type() &&
+          DISPOSITION_FATAL == ev().Signal().disposition);
 }
 
 bool RecordTask::maybe_in_spinlock() {

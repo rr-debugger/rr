@@ -63,6 +63,11 @@ int shm_flags_to_mmap_prot(int flags);
  */
 std::string xsave_feature_string(uint64_t xsave_features);
 
+/**
+ * Return whether this is a core dumping signal or not.
+ */
+bool is_coredumping_signal(int signo);
+
 } // namespace rr
 
 #endif

@@ -270,8 +270,6 @@ std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
                                                  const char* name2 = nullptr,
                                                  const char* name3 = nullptr);
 
-bool is_zombie_process(pid_t pid);
-
 /**
  * Mainline Linux kernels use an invisible (to /proc/<pid>/maps) guard page
  * for stacks. grsecurity kernels don't.

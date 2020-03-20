@@ -244,7 +244,7 @@ void Session::kill_all_tasks() {
       LOG(debug) << " -> " << status;
       bool is_exit_event = status.ptrace_event() == PTRACE_EVENT_EXIT;
       DEBUG_ASSERT(wait_ret == t->tid &&
-        (is_exit_event || status.fatal_sig() == SIGKILL));
+        (is_exit_event || status.fatal_sig()));
       t->did_kill();
       if (is_exit_event) {
         /* If this is the exit event, we can detach here and the task will
@@ -253,8 +253,8 @@ void Session::kill_all_tasks() {
          * which implicitly detached.
          */
         int ret = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-        DEBUG_ASSERT(ret == 0 || ret == -ESRCH);
-        if (ret == -ESRCH) {
+        DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == -ESRCH));
+        if (ret == -1) {
           /* It's possible for the above ptrace to fail with -ESRCH. How?
           * It's the other side of the race described above. If an external
           * process issues an additional SIGKILL, we will advance from the
@@ -270,7 +270,7 @@ void Session::kill_all_tasks() {
         }
       }
       if (is_recording()) {
-        static_cast<RecordTask*>(t)->record_exit_event();
+        static_cast<RecordTask*>(t)->record_exit_event(SIGKILL);
       }
     }
   }
