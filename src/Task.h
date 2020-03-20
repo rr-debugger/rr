@@ -137,6 +137,30 @@ public:
   void detach();
 
   /**
+   * Linux requires the invariant that that all members of a thread group
+   * are reaped before the thread group leader. This determines whether or
+   * not we're allowed to attempt reaping this thread or whether doing so
+   * risks deadlock.
+   */
+  bool may_reap();
+
+  /**
+   * Reaps a task-exit notification, thus detaching us from the tracee.
+   * N.B.: If may_reap is false, this risks a deadlock.
+   */
+  void reap();
+
+  /**
+   * Wait for the task to exit, but do not reap/detach yet.
+   */
+  void wait_exit();
+
+  /**
+   * Advance the task to its exit state if it's not already there.
+   */
+  void proceed_to_exit();
+
+  /**
    * This must be in an emulated syscall, entered through
    * |cont_sysemu()| or |cont_sysemu_singlestep()|, but that's
    * not checked.  If so, step over the system call instruction
@@ -221,10 +245,14 @@ public:
   /**
    * Destroy in the tracee task the scratch buffer and syscallbuf (if
    * syscallbuf_child is non-null).
-   * This task must already be at a state in which remote syscalls can be
-   * executed; if it's not, results are undefined.
+   * Both the as_task and the fd_task must be able to execute remote syscalls
+   * and share the address space, resp. the file descriptor table with the
+   * current task. If either of these is null, the corresponding resource is
+   * not destroyed remote (e.g. if there are no other tasks left in the same
+   * address space or file descriptor table).
    */
-  void destroy_buffers();
+  void destroy_buffers(Task *as_task, Task *fd_task);
+  void destroy_buffers() { destroy_buffers(this, this); }
 
   void did_kill();
 
@@ -685,12 +713,6 @@ public:
    */
   void open_mem_fd_if_needed();
 
-  /* True when any assumptions made about the status of this
-   * process have been invalidated, and must be re-established
-   * with a waitpid() call. Only applies to tasks which are dying, usually
-   * due to a signal sent to the entire thread group. */
-  bool unstable;
-
   /* Imagine that task A passes buffer |b| to the read()
    * syscall.  Imagine that, after A is switched out for task B,
    * task B then writes to |b|.  Then B is switched out for A.
@@ -819,6 +841,10 @@ public:
 
   remote_code_ptr last_execution_resume() const {
     return address_of_last_execution_resume;
+  }
+
+  bool already_reaped() const {
+    return was_reaped;
   }
 
   virtual ~Task();
@@ -1049,6 +1075,8 @@ protected:
   // A counter for the number of stops for which the stop may have been caused
   // by PTRACE_INTERRUPT. See description in do_waitpid
   int expecting_ptrace_interrupt_stop;
+
+  bool was_reaped;
 
   Task(Task&) = delete;
   Task operator=(Task&) = delete;

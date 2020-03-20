@@ -230,7 +230,7 @@ static bool ignore_signal(Task* t) {
 }
 
 long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
-  LOG(debug) << "syscall " << syscall_name(syscallno, t->arch());
+  LOG(debug) << "syscall " << syscall_name(syscallno, t->arch()) << " " << callregs;
 
   if ((int)callregs.arg1() == SIGTRAP && use_singlestep_path &&
       (is_sigaction_syscall(syscallno, t->arch()) ||

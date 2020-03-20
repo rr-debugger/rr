@@ -446,4 +446,22 @@ string xsave_feature_string(uint64_t xsave_features) {
   return ret;
 }
 
+bool is_coredumping_signal(int signo) {
+  switch (signo) {
+    case SIGQUIT:
+    case SIGILL:
+    case SIGTRAP:
+    case SIGABRT:
+    case SIGFPE:
+    case SIGSEGV:
+    case SIGBUS:
+    case SIGSYS:
+    case SIGXCPU:
+    case SIGXFSZ:
+        return true;
+    default:
+        return false;
+  }
+}
+
 } // namespace rr

@@ -120,6 +120,13 @@ static void record_exit_trace_event(RecordTask* t, WaitStatus exit_status) {
  * true, t has been deleted and cannot be referenced again.
  */
 static bool handle_ptrace_exit_event(RecordTask* t) {
+  if (t->already_reaped()) {
+    if (!t->waiting_for_reap) {
+      delete t;
+    }
+    return true;
+  }
+
   if (t->ptrace_event() != PTRACE_EVENT_EXIT) {
     return false;
   }
@@ -127,6 +134,10 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   if (t->stable_exit) {
     LOG(debug) << "stable exit";
   } else {
+    /* XXX: We could try to find some tasks here to unmap our buffers, but it
+     *      seems hardly worth it.
+     */
+    t->destroy_buffers(nullptr, nullptr);
     if (!t->may_be_blocked()) {
       // might have been hit by a SIGKILL or a SECCOMP_RET_KILL, in which case
       // there might be some execution since its last recorded event that we
@@ -169,9 +180,6 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
                         RecordTask::DONT_RESET_SYSCALLBUF);
       }
     }
-    LOG(warn)
-        << "unstable exit; may misrecord CLONE_CHILD_CLEARTID memory race";
-    t->thread_group()->destabilize();
   }
 
   record_robust_futex_changes(t);
@@ -186,9 +194,15 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     exit_status = WaitStatus::for_fatal_sig(SIGKILL);
   }
 
-  record_exit_trace_event(t, exit_status);
-  t->detach();
+  if (!t->already_reaped()) {
+    t->proceed_to_exit();
+  }
+  // Record any work done during the exit now
   t->record_exit_event();
+  record_exit_trace_event(t, exit_status);
+  if (!t->already_reaped() && t->may_reap()) {
+    t->reap();
+  }
   if (t->do_ptrace_exit_stop(exit_status)) {
     // Keep the RecordTask alive until the ptracer reaps it
     t->waiting_for_reap = true;
@@ -551,9 +565,6 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
         // address space.
         pid_t tid = t->rec_tid;
         WaitStatus status = t->status();
-        // Mark task as unstable so we don't wait on its futex. This matches
-        // what the kernel would do.
-        t->unstable = true;
         t->record_exit_event();
         record_exit_trace_event(t, WaitStatus(0));
         // Don't call RecordTask::destroy() because we don't want to
@@ -1126,9 +1137,6 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
   // Account for tid change
   task_map.erase(t->tid);
   task_map.insert(make_pair(rec_tid, t));
-  // t probably would have been marked for unstable-exit when the old
-  // thread-group leader died.
-  t->unstable = false;
   // Update the serial as if this task was really created by cloning the old
   // task.
   t->set_tid_and_update_serial(rec_tid, own_namespace_tid);
@@ -1379,11 +1387,12 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
     }
 
     case EV_SIGNAL_DELIVERY: {
-      // A fatal signal or SIGSTOP requires us to allow switching to another
-      // task.
-      bool is_fatal = t->is_fatal_signal(sig, t->ev().Signal().deterministic);
-      Switchable can_switch =
-          (is_fatal || sig == SIGSTOP) ? ALLOW_SWITCH : PREVENT_SWITCH;
+      // A SIGSTOP requires us to allow switching to another task.
+      // So does a fatal, core-dumping signal, since we need to allow other
+      // tasks to proceed to their exit events.
+      bool is_fatal = t->ev().Signal().disposition == DISPOSITION_FATAL;
+      Switchable can_switch = ((is_fatal && is_coredumping_signal(sig)) || sig == SIGSTOP) ?
+        ALLOW_SWITCH : PREVENT_SWITCH;
 
       // We didn't record this event above, so do that now.
       // NB: If there is no handler, and we interrupted a syscall, and there are
@@ -1395,27 +1404,29 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // This is essentially copied from do_signal in arch/x86/kernel/signal.c
       bool has_other_signals = t->has_any_actionable_signal();
       auto r = t->regs();
-      if (can_switch == PREVENT_SWITCH && !has_other_signals &&
-          r.original_syscallno() >= 0 && r.syscall_may_restart()) {
-        switch (r.syscall_result_signed()) {
-          case -ERESTARTNOHAND:
-          case -ERESTARTSYS:
-          case -ERESTARTNOINTR:
-            r.set_syscallno(r.original_syscallno());
-            r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
-            break;
-          case -ERESTART_RESTARTBLOCK:
-            r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
-            r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
-            break;
-        }
+      if (!is_fatal) {
+        if (can_switch == PREVENT_SWITCH && !has_other_signals &&
+            r.original_syscallno() >= 0 && r.syscall_may_restart()) {
+          switch (r.syscall_result_signed()) {
+            case -ERESTARTNOHAND:
+            case -ERESTARTSYS:
+            case -ERESTARTNOINTR:
+              r.set_syscallno(r.original_syscallno());
+              r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+              break;
+            case -ERESTART_RESTARTBLOCK:
+              r.set_syscallno(syscall_number_for_restart_syscall(t->arch()));
+              r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+              break;
+          }
 
-        // Now that we've mucked with the registers, we can't switch tasks. That
-        // could allow more signals to be generated, breaking our assumption
-        // that we are the last signal.
-      } else {
-        // But if we didn't touch the registers switching here is ok.
-        can_switch = ALLOW_SWITCH;
+          // Now that we've mucked with the registers, we can't switch tasks. That
+          // could allow more signals to be generated, breaking our assumption
+          // that we are the last signal.
+        } else {
+          // But if we didn't touch the registers switching here is ok.
+          can_switch = ALLOW_SWITCH;
+        }
       }
 
       t->record_event(t->ev(), RecordTask::FLUSH_SYSCALLBUF,
@@ -1428,17 +1439,20 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // there is really no way to inject a non-fatal, non-handled signal
       // without letting the task execute at least one instruction, which
       // we don't want to do here.
-      if (is_fatal && sig != get_continue_through_sig()) {
+      bool inject_signal = is_fatal && sig != get_continue_through_sig();
+      if (inject_signal) {
         preinject_signal(t);
         t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, RESUME_NO_TICKS,
                             sig);
-        LOG(warn) << "Delivered core-dumping signal; may misrecord "
-                     "CLONE_CHILD_CLEARTID memory race";
-        t->thread_group()->destabilize();
       }
 
       t->signal_delivered(sig);
-      t->pop_signal_delivery();
+      if (!inject_signal || !is_coredumping_signal(sig)) {
+        /* Fatal signals may core-dump, so we don't consider the signal
+         * delivery complete until we've actually managed to advance past that
+         */
+        t->pop_signal_delivery();
+      }
       last_task_switchable = can_switch;
       step_state->continue_type = DONT_CONTINUE;
       break;
@@ -1976,7 +1990,7 @@ RecordSession::RecordSession(const std::string& exe_path,
 
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
-      Task::spawn(*this, error_fd, &tracee_socket_fd(), 
+      Task::spawn(*this, error_fd, &tracee_socket_fd(),
                   &tracee_socket_fd_number, trace_out,
                   exe_path, argv, envp));
   // CPU affinity has been set.
@@ -2042,17 +2056,6 @@ RecordSession::RecordResult RecordSession::record_step() {
     return result;
   }
 
-  if (t->unstable) {
-    // Do not record non-ptrace-exit events for tasks in
-    // an unstable exit. We can't replay them. This happens in the
-    // signal_deferred test; the signal gets re-reported to us.
-    LOG(debug) << "Task in unstable exit; "
-                  "refusing to record non-ptrace events";
-    // Resume the task so hopefully we'll get to its exit.
-    last_task_switchable = ALLOW_SWITCH;
-    return result;
-  }
-
   StepState step_state(CONTINUE);
 
   bool did_enter_syscall;
@@ -2101,7 +2104,7 @@ RecordSession::RecordResult RecordSession::record_step() {
     // Only tasks blocked in a syscall can be switched away from, otherwise
     // we have races.
     ASSERT(t,
-           last_task_switchable == PREVENT_SWITCH || t->unstable ||
+           last_task_switchable == PREVENT_SWITCH ||
                t->may_be_blocked());
 
     debug_exec_state("EXEC_START", t);
@@ -2120,7 +2123,6 @@ void RecordSession::terminate_recording() {
 
   LOG(info) << "Processing termination request ...";
 
-  // This will write unstable exit events for all tasks.
   kill_all_tasks();
   t = nullptr; // t is now deallocated
   close_trace_writer(TraceWriter::CLOSE_OK);

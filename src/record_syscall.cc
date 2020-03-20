@@ -4626,13 +4626,6 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
   auto mapped_table = mapped_t->fd_table();
   for (auto& ts : mapped_t->session().tasks()) {
     auto rt = static_cast<RecordTask*>(ts.second);
-    if (rt->unstable) {
-      // This task isn't a problem because it's exiting and won't write to its
-      // fds. (Well in theory there could be a write in progress I suppose, but
-      // let's ignore that for now :-().) Anyway, reading its /proc/.../fd will
-      // probably fail.
-      continue;
-    }
     auto table = rt->fd_table();
     if (tables.find(table.get()) != tables.end()) {
       continue;
@@ -5001,19 +4994,6 @@ static void record_iovec_output(RecordTask* t, RecordTask* dest,
   auto iovs = t->read_mem(piov, iov_cnt);
   for (auto& iov : iovs) {
     dest->record_remote_writable(iov.iov_base, iov.iov_len);
-  }
-}
-
-// Waiting for this task properly is difficult without pidfds. We are
-// the ptracer of `t`, but if we ptrace-detach, then we aren't and we
-// probably aren't its parent either, so we won't be notified of it
-// exiting. If we try to let it exit without ptrace-detach we seem to
-// often deadlock waiting for it :-(. So just poll it until it's a zombie.
-static void wait_for_real_exit(RecordTask* t) {
-  int iterations = 0;
-  while (!is_zombie_process(t->tid) && iterations < 100) {
-    ++iterations;
-    sleep_time(0.05);
   }
 }
 
@@ -5511,7 +5491,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       if (tracee) {
         // Finish emulation of ptrace result or stop-signal
         Registers r = t->regs();
-        r.set_syscall_result(tracee->tid);
+        r.set_syscall_result(syscallno == Arch::waitid ? 0 : tracee->tid);
         t->set_regs(r);
         if (syscallno == Arch::waitid) {
           remote_ptr<typename Arch::siginfo_t> sip = r.arg3();
@@ -5541,9 +5521,6 @@ static void rec_process_syscall_arch(RecordTask* t,
           }
         }
         if (tracee->waiting_for_reap) {
-          // We don't want to report that the tracee has exited before it
-          // actually has, so give it a chance to exit.
-          wait_for_real_exit(tracee);
           delete tracee;
         }
       }

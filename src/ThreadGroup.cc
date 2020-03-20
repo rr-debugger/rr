@@ -41,13 +41,4 @@ ThreadGroup::~ThreadGroup() {
   }
 }
 
-void ThreadGroup::destabilize() {
-  LOG(debug) << "destabilizing thread group " << tgid;
-  for (auto it = task_set().begin(); it != task_set().end(); ++it) {
-    Task* t = *it;
-    t->unstable = true;
-    LOG(debug) << "  destabilized task " << t->tid;
-  }
-}
-
 } // namespace rr

@@ -8,6 +8,8 @@
 #include <memory>
 #include <vector>
 
+#include "core.h"
+
 namespace rr {
 
 class RecordTask;
@@ -15,6 +17,7 @@ class RecordTask;
 class WaitStatus {
 public:
   explicit WaitStatus(int status = 0) : status(status) {}
+  explicit WaitStatus(const siginfo_t &info);
 
   enum Type {
     // Task exited normally.
@@ -64,7 +67,16 @@ public:
   static WaitStatus for_syscall(RecordTask* t);
   static WaitStatus for_ptrace_event(int ptrace_event);
 
+  // Fill in the si_status/si_code field of the siginfo_t struct to correspond
+  // this wait status.
+  template <typename Arch>
+  void fill_siginfo(typename Arch::siginfo_t *info, bool ptracer = true,
+                    unsigned ptrace_options = 0);
+
 private:
+  bool stopped() const;
+  int ptrace_event_code() const;
+  int stop_sig_code() const;
   int status;
 };
 

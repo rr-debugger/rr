@@ -118,7 +118,7 @@ public:
   /**
    * Return the exit event.
    */
-  void record_exit_event();
+  void record_exit_event(int exitsig = 0);
   /**
    * Called when we're about to deliver a signal to this task. If it's a
    * synthetic SIGCHLD and there's a ptraced task that needs to SIGCHLD,
@@ -134,14 +134,9 @@ public:
    */
   template <typename Arch>
   void set_siginfo_for_waited_task(typename Arch::siginfo_t* si) {
-    // XXX handle CLD_EXITED here
-    if (emulated_stop_type == GROUP_STOP) {
-      si->si_code = CLD_STOPPED;
-      si->_sifields._sigchld.si_status_ = emulated_stop_code.stop_sig();
-    } else {
-      si->si_code = CLD_TRAPPED;
-      si->_sifields._sigchld.si_status_ = emulated_stop_code.ptrace_signal();
-    }
+    // XXX: The `ptrace` argument is likely incorrect here.
+    emulated_stop_code.fill_siginfo<Arch>(si,
+      emulated_stop_type != GROUP_STOP, emulated_ptrace_options);
     si->_sifields._sigchld.si_pid_ = tgid();
     si->_sifields._sigchld.si_uid_ = getuid();
   }
