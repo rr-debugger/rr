@@ -161,6 +161,12 @@ public:
   void proceed_to_exit();
 
   /**
+   * Kill this task and wait for it to exit.
+   * N.B.: If may_reap() is false, this may hang.
+   */
+  void kill();
+
+  /**
    * This must be in an emulated syscall, entered through
    * |cont_sysemu()| or |cont_sysemu_singlestep()|, but that's
    * not checked.  If so, step over the system call instruction
@@ -999,7 +1005,7 @@ protected:
    * (i.e. an exec does not occur before an exit), an error may be
    * readable from the other end of the pipe whose write end is error_fd.
    */
-  static Task* spawn(Session& session, const ScopedFd& error_fd,
+  static Task* spawn(Session& session, ScopedFd& error_fd,
                      ScopedFd* sock_fd_out, int* tracee_socket_fd_number_out,
                      TraceStream& trace, const std::string& exe_path,
                      const std::vector<std::string>& argv,
