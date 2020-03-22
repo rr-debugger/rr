@@ -164,6 +164,54 @@ void Task::proceed_to_exit() {
   wait_exit();
 }
 
+void Task::kill() {
+  /* This call is racy. There is basically two situations:
+  * 1. By the time the kernel gets arround to delivering this signal,
+  *    we were already in a PTRACE_EVENT_EXIT stop (e.g. due to an early
+  *    fatal signal), that we didn't observe yet (if we had, we would have
+  *    removed the task from the task map already). In this case, this
+  *    signal will advance from the PTRACE_EVENT_EXIT and put the child
+  *    into hidden-zombie state, which the waitpid below will reap.
+  * 2. Anything else basically. The signal will take priority and put us
+  *    into the PTRACE_EVENT_EXIT stop, which the subsequent waitpid will
+  *    then observe.
+  */
+  LOG(debug) << "Sending SIGKILL to " << tid;
+  int ret = syscall(SYS_tgkill, real_tgid(), tid, SIGKILL);
+  DEBUG_ASSERT(ret == 0);
+  int raw_status = 0;
+  int wait_ret = ::waitpid(tid, &raw_status, __WALL | WUNTRACED);
+  WaitStatus status(raw_status);
+  LOG(debug) << " -> " << status;
+  bool is_exit_event = status.ptrace_event() == PTRACE_EVENT_EXIT;
+  DEBUG_ASSERT(wait_ret == tid &&
+    (is_exit_event || status.fatal_sig()));
+  did_kill();
+  if (is_exit_event) {
+    /* If this is the exit event, we can detach here and the task will
+      * continue to zombie state for its parent to reap. If we're not in
+      * the exit event, we already reaped it from the ptrace perspective,
+      * which implicitly detached.
+      */
+    int ret = fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+    DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == -ESRCH));
+    if (ret == -1) {
+      /* It's possible for the above ptrace to fail with -ESRCH. How?
+      * It's the other side of the race described above. If an external
+      * process issues an additional SIGKILL, we will advance from the
+      * ptrace exit event and we might still be processing the exit, just
+      * as the detach request comes in. To address this, we waitpid again,
+      * which will reap/detach us from ptrace and frees the real parent to
+      * do its reaping. */
+      raw_status = 0;
+      wait_ret = ::waitpid(tid, &raw_status, __WALL | WUNTRACED);
+      status = WaitStatus(raw_status);
+      LOG(debug) << " --> " << status;
+      DEBUG_ASSERT(wait_ret == tid && status.fatal_sig() == SIGKILL);
+    }
+  }
+}
+
 Task::~Task() {
   ASSERT(this, seen_ptrace_exit_event);
   ASSERT(this, syscallbuf_child.is_null());
@@ -2793,7 +2841,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   // Never returns!
 }
 
-/*static*/ Task* Task::spawn(Session& session, const ScopedFd& error_fd,
+/*static*/ Task* Task::spawn(Session& session, ScopedFd& error_fd,
                              ScopedFd* sock_fd_out,
                              int* tracee_socket_fd_number_out,
                              TraceStream& trace,
@@ -2880,6 +2928,9 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
     FATAL() << "Failed to fork";
   }
 
+  // Make sure the child has the only reference to this side of the pipe.
+  error_fd.close();
+
   // Sync with the child process.
   // We minimize the code we run between fork()ing and PTRACE_SEIZE, because
   // any abnormal exit of the rr process will leave the child paused and
@@ -2906,7 +2957,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
     // we haven't reaped its exit code so there's no danger of killing
     // (or PTRACE_SEIZEing) the wrong process.
     int tmp_errno = errno;
-    kill(tid, SIGKILL);
+    ::kill(tid, SIGKILL);
     errno = tmp_errno;
 
     string hint;
@@ -2937,6 +2988,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
   t->wait();
   if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+    t->proceed_to_exit();
     FATAL() << "Tracee died before reaching SIGSTOP\n"
                "Child's message: "
             << session.read_spawned_task_error();
@@ -2945,8 +2997,10 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   // whether PTRACE_SEIZE happened before or after it was delivered.
   if (SIGSTOP != t->status().stop_sig() &&
       SIGSTOP != t->status().group_stop()) {
-    FATAL() << "Unexpected stop " << t->status() << "\n"
-                                                    "Child's message: "
+    WaitStatus failed_status = t->status();
+    t->kill();
+    FATAL() << "Unexpected stop " << failed_status
+            << "\nChild's message: "
             << session.read_spawned_task_error();
   }
 

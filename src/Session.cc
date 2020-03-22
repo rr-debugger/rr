@@ -224,51 +224,7 @@ void Session::kill_all_tasks() {
       bool is_group_leader = t->tid == t->tgid();
       if (pass == 0 ? is_group_leader : !is_group_leader)
           continue;
-      /* This call is racy. There is basically two situations:
-       * 1. By the time the kernel gets arround to delivering this signal,
-       *    we were already in a PTRACE_EVENT_EXIT stop (e.g. due to an early
-       *    fatal signal), that we didn't observe yet (if we had, we would have
-       *    removed the task from the task map already). In this case, this
-       *    signal will advance from the PTRACE_EVENT_EXIT and put the child
-       *    into hidden-zombie state, which the waitpid below will reap.
-       * 2. Anything else basically. The signal will take priority and put us
-       *    into the PTRACE_EVENT_EXIT stop, which the subsequent waitpid will
-       *    then observe.
-       */
-      LOG(debug) << "Sending SIGKILL to " << t->tid;
-      int ret = syscall(SYS_tgkill, t->real_tgid(), t->tid, SIGKILL);
-      DEBUG_ASSERT(ret == 0);
-      int raw_status = 0;
-      int wait_ret = ::waitpid(t->tid, &raw_status, __WALL | WUNTRACED);
-      WaitStatus status(raw_status);
-      LOG(debug) << " -> " << status;
-      bool is_exit_event = status.ptrace_event() == PTRACE_EVENT_EXIT;
-      DEBUG_ASSERT(wait_ret == t->tid &&
-        (is_exit_event || status.fatal_sig()));
-      t->did_kill();
-      if (is_exit_event) {
-        /* If this is the exit event, we can detach here and the task will
-         * continue to zombie state for its parent to reap. If we're not in
-         * the exit event, we already reaped it from the ptrace perspective,
-         * which implicitly detached.
-         */
-        int ret = t->fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-        DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == -ESRCH));
-        if (ret == -1) {
-          /* It's possible for the above ptrace to fail with -ESRCH. How?
-          * It's the other side of the race described above. If an external
-          * process issues an additional SIGKILL, we will advance from the
-          * ptrace exit event and we might still be processing the exit, just
-          * as the detach request comes in. To address this, we waitpid again,
-          * which will reap/detach us from ptrace and frees the real parent to
-          * do its reaping. */
-          raw_status = 0;
-          wait_ret = ::waitpid(t->tid, &raw_status, __WALL | WUNTRACED);
-          status = WaitStatus(raw_status);
-          LOG(debug) << " --> " << status;
-          DEBUG_ASSERT(wait_ret == t->tid && status.fatal_sig() == SIGKILL);
-        }
-      }
+      t->kill();
       if (is_recording()) {
         static_cast<RecordTask*>(t)->record_exit_event(SIGKILL);
       }

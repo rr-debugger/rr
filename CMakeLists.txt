@@ -1116,6 +1116,7 @@ set(TESTS_WITH_PROGRAM
   dev_tty
   diversion_syscall
   dlopen
+  early_error
   elapsed_time
   exec_failed
   exec_many
