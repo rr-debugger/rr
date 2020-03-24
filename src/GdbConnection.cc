@@ -1258,8 +1258,8 @@ bool GdbConnection::process_packet() {
 }
 
 void GdbConnection::notify_no_such_thread(const GdbRequest& req) {
-  DEBUG_ASSERT(!memcmp(&req, &this->req, sizeof(this->req)));
-
+  DEBUG_ASSERT(req.target == this->req.target && req.type == this->req.type);
+  
   /* '10' is the errno ECHILD.  We use it as a magic code to
    * notify the user that the thread that was the target of this
    * request has died, and either gdb didn't notice that, or rr
