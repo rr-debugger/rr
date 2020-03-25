@@ -458,6 +458,12 @@ std::string json_escape(const std::string& str, size_t pos = 0);
 
 void sleep_time(double t);
 
+enum NestedBehavior {
+  NESTED_ERROR,
+  NESTED_IGNORE,
+  NESTED_SEPARATE
+}
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
