@@ -469,6 +469,11 @@ void sleep_time(double t);
  */
 void normalize_file_name(std::string& s);
 
+enum NestedBehavior {
+  NESTED_ERROR,
+  NESTED_IGNORE
+};
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */
