@@ -87,7 +87,7 @@ RecordCommand RecordCommand::singleton(
     "                             tracee. There can be any number of these.\n"
     "  -w, --wait                 Wait for all child processes to exit, not\n"
     "                             just the initial process.\n"
-    "  --ignore-nested            Directly start child process when running\n"
+    "  --nested=ignore            Directly start child process when running\n"
     "                             under nested rr recording, instead of\n"
     "                             raising an error.\n"
     "  --scarce-fds               Consume 950 fds before recording\n"
@@ -152,7 +152,7 @@ struct RecordFlags {
   bool wait_for_all;
 
   /* Start child process directly if run under nested rr recording */
-  bool ignore_nested;
+  NestedBehavior nested;
 
   bool scarce_fds;
 
@@ -184,7 +184,7 @@ struct RecordFlags {
         chaos(false),
         num_cores(0),
         wait_for_all(false),
-        ignore_nested(false),
+        nested(NESTED_ERROR),
         scarce_fds(false),
         setuid_sudo(false),
         copy_preload_src(false),
@@ -235,7 +235,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 0, "no-read-cloning", NO_PARAMETER },
     { 1, "no-file-cloning", NO_PARAMETER },
     { 2, "syscall-buffer-size", HAS_PARAMETER },
-    { 3, "ignore-nested", NO_PARAMETER },
+    { 3, "nested", HAS_PARAMETER },
     { 4, "scarce-fds", NO_PARAMETER },
     { 5, "setuid-sudo", NO_PARAMETER },
     { 6, "bind-to-cpu", HAS_PARAMETER },
@@ -312,7 +312,14 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.syscall_buffer_size = opt.int_value * 1024;
       break;
     case 3:
-      flags.ignore_nested = true;
+      if (opt.value == "default" || opt.value == "error") {
+        flags.nested = NESTED_ERROR;
+      } else if (opt.value == "ignore") {
+        flags.nested = NESTED_IGNORE;
+      } else {
+        LOG(warn) << "Unknown nesting behavior `" << opt.value << "`";
+        flags.nested = NESTED_ERROR;
+      }
       break;
     case 4:
       flags.scarce_fds = true;
@@ -698,11 +705,11 @@ int RecordCommand::run(vector<string>& args) {
   }
 
   if (running_under_rr()) {
-    if (flags.ignore_nested) {
+    if (flags.nested == NESTED_IGNORE) {
       exec_child(args);
     }
     fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
-                    "Use `rr record --ignore-nested` to start the child "
+                    "Use `rr record --nested=ignore` to start the child "
                     "process directly.\n");
     return 1;
   }
