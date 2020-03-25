@@ -1869,7 +1869,6 @@ static string lookup_by_path(const string& name) {
     unsigned char syscallbuf_desched_sig,
     BindCPU bind_cpu,
     const string& output_trace_dir,
-    const TraceUuid* trace_id,
     bool use_audit) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
@@ -1951,7 +1950,7 @@ static string lookup_by_path(const string& name) {
   shr_ptr session(
       new RecordSession(full_path, argv, env, disable_cpuid_features,
                         syscallbuf, syscallbuf_desched_sig, bind_cpu,
-                        output_trace_dir, trace_id, use_audit));
+                        output_trace_dir, use_audit));
   session->set_asan_active(!exe_info.libasan_path.empty() ||
                            exe_info.has_asan_symbols);
   return session;
@@ -1965,11 +1964,9 @@ RecordSession::RecordSession(const std::string& exe_path,
                              int syscallbuf_desched_sig,
                              BindCPU bind_cpu,
                              const string& output_trace_dir,
-                             const TraceUuid* trace_id,
                              bool use_audit)
     : trace_out(argv[0], choose_cpu(bind_cpu), output_trace_dir, ticks_semantics_),
       scheduler_(*this),
-      trace_id(trace_id),
       disable_cpuid_features_(disable_cpuid_features),
       ignore_sig(0),
       continue_through_sig(0),
@@ -1983,6 +1980,7 @@ RecordSession::RecordSession(const std::string& exe_path,
       asan_active_(false),
       wait_for_all_(false),
       use_audit_(use_audit) {
+  memset(&trace_id, 0, sizeof(trace_id));
   if (!has_cpuid_faulting() &&
       disable_cpuid_features.any_features_disabled()) {
     FATAL() << "CPUID faulting required to disable CPUID features";
@@ -2129,7 +2127,7 @@ void RecordSession::terminate_recording() {
 }
 
 void RecordSession::close_trace_writer(TraceWriter::CloseStatus status) {
-  trace_out.close(status, trace_id.get());
+  trace_out.close(status, trace_id);
 }
 
 Task* RecordSession::new_task(pid_t tid, pid_t, uint32_t serial,

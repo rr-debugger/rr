@@ -101,8 +101,6 @@ RecordCommand RecordCommand::singleton(
     "                             defined tracepoints\n");
 
 struct RecordFlags {
-  vector<string> extra_env;
-
   /* Max counter value before the scheduler interrupts a tracee. */
   Ticks max_ticks;
 
@@ -125,8 +123,6 @@ struct RecordFlags {
   DisableCPUIDFeatures disable_cpuid_features;
 
   int print_trace_dir;
-
-  string output_trace_dir;
 
   /* Whether to use file-cloning optimization during recording. */
   bool use_file_cloning;
@@ -158,7 +154,7 @@ struct RecordFlags {
 
   bool setuid_sudo;
 
-  unique_ptr<TraceUuid> trace_id;
+  TraceUuid trace_id;
 
   /* Copy preload sources to trace dir */
   bool copy_preload_src;
@@ -176,7 +172,6 @@ struct RecordFlags {
         use_syscall_buffer(RecordSession::ENABLE_SYSCALL_BUF),
         syscall_buffer_size(0),
         print_trace_dir(-1),
-        output_trace_dir(""),
         use_file_cloning(true),
         use_read_cloning(true),
         bind_cpu(BIND_CPU),
@@ -189,7 +184,15 @@ struct RecordFlags {
         setuid_sudo(false),
         copy_preload_src(false),
         syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL),
-        stap_sdt(false) {}
+        stap_sdt(false) {
+          memset(trace_id.bytes, 0, sizeof(trace_id));
+        }
+};
+
+struct RecordSettings {
+  RecordFlags flags;
+  vector<string> extra_env;
+  string output_trace_dir;
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -226,10 +229,12 @@ static vector<uint32_t> parse_feature_bits(ParsedOption& opt) {
   return ret;
 }
 
-static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
+static bool parse_record_arg(vector<string>& args, RecordSettings& settings) {
   if (parse_global_option(args)) {
     return true;
   }
+
+  RecordFlags &flags = settings.flags;
 
   static const OptionSpec options[] = {
     { 0, "no-read-cloning", NO_PARAMETER },
@@ -260,6 +265,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 'v', "env", HAS_PARAMETER },
     { 'w', "wait", NO_PARAMETER }
   };
+  bool explicit_uuid = false;
   ParsedOption opt;
   auto args_copy = args;
   if (!Command::parse_option(args_copy, options, &opt)) {
@@ -297,7 +303,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.print_trace_dir = opt.int_value;
       break;
     case 'o':
-      flags.output_trace_dir = opt.value;
+      settings.output_trace_dir = opt.value;
       break;
     case 0:
       flags.use_read_cloning = false;
@@ -373,7 +379,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       uint8_t digit = 0; // This counts only hex digits (i.e. not hypens)
       uint8_t group = 0;
       uint8_t acc = 0;
-      unique_ptr<TraceUuid> buf(new TraceUuid);
+      TraceUuid trace_id;
       auto it = opt.value.begin();
       while (it < opt.value.end()) {
         auto c = *it;
@@ -414,7 +420,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
             return false;
           }
 
-          buf->bytes[digit / 2] = acc;
+          trace_id.bytes[digit / 2] = acc;
         }
 
         ++digit;
@@ -424,8 +430,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       if (SUM_GROUP_LENS[4] != digit) {
         return false;
       }
+      memcpy(&flags.trace_id, &trace_id, sizeof(TraceUuid));
+      explicit_uuid = true;
 
-      flags.trace_id.swap(buf);
       break;
     }
     case 12:
@@ -455,13 +462,18 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.bind_cpu = UNBOUND_CPU;
       break;
     case 'v':
-      flags.extra_env.push_back(opt.value);
+      settings.extra_env.push_back(opt.value);
       break;
     case 'w':
       flags.wait_for_all = true;
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
+  }
+
+  if (!explicit_uuid) {
+    // If the UUID was not provided explicitly, generate one randomly
+    good_random(&flags.trace_id, sizeof(flags.trace_id));
   }
 
   args = args_copy;
@@ -530,6 +542,8 @@ static void setup_session_from_flags(RecordSession& session,
       open("/dev/null", O_RDONLY);
     }
   }
+
+  session.set_trace_id(flags.trace_id);
 }
 
 static RecordSession* static_session;
@@ -582,14 +596,14 @@ static void save_rr_git_revision(const string& trace_dir) {
   }
 }
 
-static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
+static WaitStatus record(const vector<string>& args, const RecordSettings& settings) {
   LOG(info) << "Start recording...";
+  const RecordFlags &flags = settings.flags;
 
   auto session = RecordSession::create(
-      args, flags.extra_env, flags.disable_cpuid_features,
+      args, settings.extra_env, flags.disable_cpuid_features,
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
-      flags.bind_cpu, flags.output_trace_dir,
-      flags.trace_id.get(),
+      flags.bind_cpu, settings.output_trace_dir,
       flags.stap_sdt);
   setup_session_from_flags(*session, flags);
 
@@ -694,8 +708,9 @@ static void reset_uid_sudo() {
 }
 
 int RecordCommand::run(vector<string>& args) {
-  RecordFlags flags;
-  while (parse_record_arg(args, flags)) {
+  RecordSettings settings;
+  RecordFlags &flags = settings.flags;
+  while (parse_record_arg(args, settings)) {
   }
 
   if (running_under_rr()) {
@@ -734,10 +749,10 @@ int RecordCommand::run(vector<string>& args) {
     memset(chars.data(), '0', chars.size());
     chars.push_back(0);
     string padding = string("RR_CHAOS_PADDING=") + chars.data();
-    flags.extra_env.push_back(padding);
+    settings.extra_env.push_back(padding);
   }
 
-  WaitStatus status = record(args, flags);
+  WaitStatus status = record(args, settings);
 
   // Everything should have been cleaned up by now.
   check_for_leaks();

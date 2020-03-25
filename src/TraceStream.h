@@ -25,7 +25,10 @@ struct CPUIDRecord;
 struct DisableCPUIDFeatures;
 class KernelMapping;
 class RecordTask;
-struct TraceUuid;
+
+struct TraceUuid {
+  uint8_t bytes[16];
+};
 
 /**
  * TraceStream stores all the data common to both recording and
@@ -255,7 +258,7 @@ public:
    *  call this before a crash that won't call the destructor, to ensure
    *  buffered data is flushed.
    */
-  void close(CloseStatus status, const TraceUuid* uuid);
+  void close(CloseStatus status, TraceUuid uuid);
 
   /**
    * We got far enough into recording that we should set this as the latest
@@ -405,7 +408,7 @@ public:
   // preload_thread_locals mapping if it was created by a clone(2) without
   // CLONE_VM. This is true if that has been fixed.
   bool preload_thread_locals_recorded() const { return preload_thread_locals_recorded_; }
-  const TraceUuid& uuid() const { return *uuid_; }
+  const TraceUuid& uuid() const { return uuid_; }
 
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
@@ -421,7 +424,7 @@ private:
   std::vector<RawDataMetadata> raw_recs;
   TicksSemantics ticks_semantics_;
   double monotonic_time_;
-  std::unique_ptr<TraceUuid> uuid_;
+  TraceUuid uuid_;
   bool trace_uses_cpuid_faulting;
   bool preload_thread_locals_recorded_;
 };

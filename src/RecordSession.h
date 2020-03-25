@@ -11,6 +11,7 @@
 #include "Session.h"
 #include "ThreadGroup.h"
 #include "TraceFrame.h"
+#include "TraceStream.h"
 #include "WaitStatus.h"
 
 namespace rr {
@@ -46,10 +47,6 @@ struct DisableCPUIDFeatures {
   uint32_t xsave_features_eax;
 };
 
-struct TraceUuid {
-  uint8_t bytes[16];
-};
-
 /** Encapsulates additional session state related to recording. */
 class RecordSession : public Session {
 public:
@@ -67,7 +64,6 @@ public:
       unsigned char syscallbuf_desched_sig = SIGPWR,
       BindCPU bind_cpu = BIND_CPU,
       const std::string& output_trace_dir = "",
-      const TraceUuid* trace_id = nullptr,
       bool use_audit = false);
 
   const DisableCPUIDFeatures& disable_cpuid_features() const {
@@ -164,6 +160,15 @@ public:
     this->wait_for_all_ = wait_for_all;
   }
 
+  void set_trace_id(TraceUuid uuid) {
+    // We only allow setting the UUID once
+    uint8_t zeros[sizeof(uuid)];
+    memset(&zeros, 0, sizeof(zeros));
+    DEBUG_ASSERT(!memcmp(&zeros, &trace_id, sizeof(trace_id)));
+
+    trace_id = uuid;
+  }
+
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
                          SupportedArch a) override;
 
@@ -192,7 +197,6 @@ private:
                 int syscallbuf_desched_sig,
                 BindCPU bind_cpu,
                 const std::string& output_trace_dir,
-                const TraceUuid* trace_id,
                 bool use_audit);
 
   virtual void on_create(Task* t) override;
@@ -223,7 +227,7 @@ private:
   Scheduler scheduler_;
   ThreadGroup::shr_ptr initial_thread_group;
   SeccompFilterRewriter seccomp_filter_rewriter_;
-  std::unique_ptr<const TraceUuid> trace_id;
+  TraceUuid trace_id;
 
   DisableCPUIDFeatures disable_cpuid_features_;
   int ignore_sig;

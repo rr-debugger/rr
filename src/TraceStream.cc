@@ -1257,7 +1257,7 @@ void TraceWriter::setup_cpuid_records(bool has_cpuid_faulting,
   }
 }
 
-void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
+void TraceWriter::close(CloseStatus status, TraceUuid uuid) {
   for (auto& w : writers) {
     w->close();
   }
@@ -1276,13 +1276,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setPreloadThreadLocalsRecorded(true);
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
-  if (!uuid) {
-    uint8_t uuid[sizeof(TraceUuid::bytes)];
-    good_random(uuid, sizeof(uuid));
-    header.setUuid(Data::Reader(uuid, sizeof(uuid)));
-  } else {
-    header.setUuid(Data::Reader(uuid->bytes, sizeof(TraceUuid::bytes)));
-  }
+  header.setUuid(Data::Reader(uuid.bytes, sizeof(TraceUuid::bytes)));
   header.setOk(status == CLOSE_OK);
   try {
     writePackedMessageToFd(version_fd, header_msg);
@@ -1423,11 +1417,10 @@ TraceReader::TraceReader(const string& dir)
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
   Data::Reader uuid = header.getUuid();
-  uuid_ = unique_ptr<TraceUuid>(new TraceUuid());
-  if (uuid.size() != sizeof(uuid_->bytes)) {
+  if (uuid.size() != sizeof(uuid_.bytes)) {
     FATAL() << "Invalid UUID length";
   }
-  memcpy(uuid_->bytes, uuid.begin(), sizeof(uuid_->bytes));
+  memcpy(&uuid_, uuid.begin(), sizeof(uuid_));
 
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.
