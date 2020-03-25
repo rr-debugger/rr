@@ -1324,12 +1324,14 @@ TraceFrame TraceReader::peek_frame() {
   auto& events = reader(EVENTS);
   events.save_state();
   auto saved_time = global_time;
+  auto saved_raw_recs = raw_recs;
   TraceFrame frame;
   if (!at_end()) {
     frame = read_frame();
   }
   events.restore_state();
   global_time = saved_time;
+  raw_recs = saved_raw_recs;
   return frame;
 }
 
