@@ -103,6 +103,34 @@ void Task::detach() {
   fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
 }
 
+void Task::stop_and_detach() {
+  xptrace(PTRACE_DETACH, nullptr, (void*)SIGSTOP);
+
+  // If this is our child, consume the stop notification now,
+  // to avoid confusing the scheduler later
+  int raw_status;
+  int ret = waitpid(tid, &raw_status, __WALL | WUNTRACED);
+  DEBUG_ASSERT(ret == tid || (ret == -1 && errno == ECHILD));
+}
+
+int Task::fallible_seize() {
+  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
+                     PTRACE_O_TRACECLONE;
+  if (!Flags::get().disable_ptrace_exit_events) {
+    options |= PTRACE_O_TRACEEXIT;
+  }
+  if (session().is_recording()) {
+    options |= PTRACE_O_TRACEVFORK | PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
+  }
+  int ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
+  if (ret < 0 && errno == EINVAL) {
+    // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
+    // it for more robust cleanup, so tolerate not having it.
+    ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
+  }
+  return ret;
+}
+
 bool Task::may_reap() {
   // Non thread-group-leaders may always be reaped
   if (tid != real_tgid()) {
@@ -2949,26 +2977,9 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   error_fd.close();
 
   // Sync with the child process.
-  // We minimize the code we run between fork()ing and PTRACE_SEIZE, because
-  // any abnormal exit of the rr process will leave the child paused and
-  // parented by the init process, i.e. effectively leaked. After PTRACE_SEIZE
-  // with PTRACE_O_EXITKILL, the tracee will die if rr dies.
-  intptr_t options = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEFORK |
-                     PTRACE_O_TRACECLONE;
-  if (!Flags::get().disable_ptrace_exit_events) {
-    options |= PTRACE_O_TRACEEXIT;
-  }
-  if (session.is_recording()) {
-    options |= PTRACE_O_TRACEVFORK | PTRACE_O_TRACESECCOMP | PTRACE_O_TRACEEXEC;
-  }
-
-  ret =
-      ptrace(PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
-  if (ret < 0 && errno == EINVAL) {
-    // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
-    // it for more robust cleanup, so tolerate not having it.
-    ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
-  }
+  Task* t = session.new_task(tid, rec_tid, session.next_task_serial(),
+                             NativeArch::arch());
+  ret = t->fallible_seize();
   if (ret) {
     // Note that although the tracee may have died due to some fatal error,
     // we haven't reaped its exit code so there's no danger of killing
@@ -2986,8 +2997,6 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
     FATAL() << "PTRACE_SEIZE failed for tid " << tid << hint;
   }
 
-  Task* t = session.new_task(tid, rec_tid, session.next_task_serial(),
-                             NativeArch::arch());
   auto tg = session.create_initial_tg(t);
   t->tg.swap(tg);
   auto as = session.create_vm(t);

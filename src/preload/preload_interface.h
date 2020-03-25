@@ -205,6 +205,11 @@ static inline const char* extract_file_name(const char* s) {
  * presence of absence of rr.
  */
 #define SYS_rrcall_check_presence 450
+/**
+ * Request that after the next exec, the result process will be separated from
+ * the current recording session and instead be recorded by a new one.
+ */
+#define SYS_rrcall_separate_on_exec 451
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.

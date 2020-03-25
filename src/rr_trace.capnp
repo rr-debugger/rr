@@ -146,6 +146,9 @@ struct TaskEvent {
     exit :group {
       exitStatus @7 :Int32;
     }
+    detach :group {
+      newUuid @9 :Data;
+    }
   }
 }
 
@@ -231,6 +234,7 @@ struct Frame {
     signalDelivery @14 :Signal;
     signalHandler @15 :Signal;
     exit @16 :Void;
+    detach @26 :Void;
     syscallbufFlush :group {
       # Not used during replay, but affects virtual memory layout so
       # useful for some tools

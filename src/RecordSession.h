@@ -17,6 +17,7 @@
 namespace rr {
 
 class RecordTask;
+struct RecordFlags;
 
 struct DisableCPUIDFeatures {
   DisableCPUIDFeatures()
@@ -66,6 +67,10 @@ public:
       const std::string& output_trace_dir = "",
       bool use_audit = false);
 
+  static RecordSession *separate(RecordTask *t,
+                          const std::string& task_name = "",
+                          const std::string& output_trace_dir = "");
+
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
   }
@@ -88,6 +93,10 @@ public:
     STEP_CONTINUE,
     // All tracees are dead. record_step() should not be called again.
     STEP_EXITED,
+    // All tracees are dead. record_step() should not be called again.
+    // However, we may have detached a separate record session that we
+    // will want to wait for if it is the initial tracee.
+    STEP_EXITED_WITH_DETACHED,
     // Spawning the initial tracee failed. An error message will be in
     // failure_message.
     STEP_SPAWN_FAILED
@@ -162,10 +171,7 @@ public:
 
   void set_trace_id(TraceUuid uuid) {
     // We only allow setting the UUID once
-    uint8_t zeros[sizeof(uuid)];
-    memset(&zeros, 0, sizeof(zeros));
-    DEBUG_ASSERT(!memcmp(&zeros, &trace_id, sizeof(trace_id)));
-
+    DEBUG_ASSERT(uuid);
     trace_id = uuid;
   }
 
@@ -188,16 +194,11 @@ public:
 
   virtual TraceStream* trace_stream() override { return &trace_out; }
 
+  void setup_from_flags(const RecordFlags *flags);
+
 private:
-  RecordSession(const std::string& exe_path,
-                const std::vector<std::string>& argv,
-                const std::vector<std::string>& envp,
-                const DisableCPUIDFeatures& features,
-                SyscallBuffering syscallbuf,
-                int syscallbuf_desched_sig,
-                BindCPU bind_cpu,
-                const std::string& output_trace_dir,
-                bool use_audit);
+  RecordSession(const std::string &argv0,
+                const std::string& output_trace_dir);
 
   virtual void on_create(Task* t) override;
 

@@ -33,7 +33,8 @@ public:
     NONE,
     CLONE, // created by clone(2), fork(2), vfork(2) syscalls
     EXEC,
-    EXIT
+    EXIT,
+    DETACH
   };
 
   TraceTaskEvent(Type type = NONE, pid_t tid = 0) : type_(type), tid_(tid) {}
@@ -57,6 +58,11 @@ public:
   static TraceTaskEvent for_exit(pid_t tid, WaitStatus exit_status) {
     TraceTaskEvent result(EXIT, tid);
     result.exit_status_ = exit_status;
+    return result;
+  }
+  static TraceTaskEvent for_detach(pid_t tid, TraceUuid new_uuid) {
+    TraceTaskEvent result(DETACH, tid);
+    result.new_uuid_ = new_uuid;
     return result;
   }
 
@@ -95,6 +101,10 @@ public:
     DEBUG_ASSERT(type() == EXIT);
     return exit_status_;
   }
+  TraceUuid new_uuid() const {
+    DEBUG_ASSERT(type() == DETACH);
+    return new_uuid_;
+  }
 
 private:
   friend class TraceReader;
@@ -109,6 +119,7 @@ private:
   std::vector<std::string> cmd_line_; // EXEC only
   remote_ptr<void> exe_base_;         // EXEC only
   WaitStatus exit_status_;            // EXIT only
+  TraceUuid new_uuid_;                // DETACH only
 };
 
 } // namespace rr

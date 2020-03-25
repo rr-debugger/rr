@@ -670,6 +670,9 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
     case TraceTaskEvent::EXIT:
       task.initExit().setExitStatus(event.exit_status().get());
       break;
+    case TraceTaskEvent::DETACH:
+      task.initDetach().setNewUuid(Data::Reader(event.new_uuid().bytes, sizeof(TraceUuid)));
+      break;
     case TraceTaskEvent::NONE:
       DEBUG_ASSERT(0 && "Writing NONE TraceTaskEvent");
       break;

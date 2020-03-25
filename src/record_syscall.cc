@@ -4206,6 +4206,38 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case SYS_rrcall_separate_on_exec: {
+      Registers r = t->regs();
+      syscall_state.expect_errno = ENOSYS;
+
+      if (r.arg5() || r.arg6() || r.arg1() != sizeof(RecordFlags)) {
+        syscall_state.emulate_result(-EINVAL);
+        return PREVENT_SWITCH;
+      }
+
+      // We'll be reading a RecordSettings struct from the remote.
+      bool ok = true;
+      std::unique_ptr<RecordSettings> settings(new RecordSettings);
+      remote_ptr<remote_ptr<char>> flags_ptr = r.arg2();
+      t->read_bytes_helper(flags_ptr, sizeof(RecordFlags), &settings->flags, &ok);
+
+      // Read the trace dir
+      if (ok) {
+        settings->output_trace_dir = t->read_c_str(r.arg3(), &ok);
+      }
+      if (ok) {
+        settings->extra_env = t->read_c_str_arr(r.arg4(), &ok);
+      }
+
+      if (ok) {
+        t->separation_settings = std::move(settings);
+        syscall_state.emulate_result(0);
+      } else {
+        syscall_state.emulate_result(-EFAULT);
+      }
+      return PREVENT_SWITCH;
+    }
+
     case Arch::brk:
     case Arch::munmap:
     case Arch::process_vm_readv:
@@ -4453,6 +4485,17 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   t->post_exec_syscall();
   t->ev().Syscall().exec_fds_to_close =
       t->fd_table()->fds_to_close_after_exec(t);
+
+  if (t->separation_settings) {
+    DEBUG_ASSERT(t->thread_group()->task_set().size() == 1);
+
+    RecordSession *session = RecordSession::separate(t,
+      syscall_state.exec_saved_event->cmd_line()[0],
+      t->separation_settings->output_trace_dir);
+    session->setup_from_flags(&t->separation_settings->flags);
+
+    t->flush_inconsistent_state();
+  }
 
   check_privileged_exe(t);
 

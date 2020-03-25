@@ -146,7 +146,7 @@ static bool parse_record_arg(vector<string>& args, RecordSettings& settings) {
     { 0, "no-read-cloning", NO_PARAMETER },
     { 1, "no-file-cloning", NO_PARAMETER },
     { 2, "syscall-buffer-size", HAS_PARAMETER },
-    { 3, "nested", NO_PARAMETER },
+    { 3, "nested", HAS_PARAMETER },
     { 4, "scarce-fds", NO_PARAMETER },
     { 5, "setuid-sudo", NO_PARAMETER },
     { 6, "bind-to-cpu", HAS_PARAMETER },
@@ -426,34 +426,6 @@ static void install_signal_handlers(void) {
   sigaction(SIGQUIT, &sa, nullptr);
 }
 
-static void setup_session_from_flags(RecordSession& session,
-                                     const RecordFlags& flags) {
-  session.scheduler().set_max_ticks(flags.max_ticks);
-  session.scheduler().set_always_switch(flags.always_switch);
-  session.set_enable_chaos(flags.chaos);
-  if (flags.num_cores) {
-    // Set the number of cores reported, possibly overriding the chaos mode
-    // setting.
-    session.set_num_cores(flags.num_cores);
-  }
-  session.set_use_read_cloning(flags.use_read_cloning);
-  session.set_use_file_cloning(flags.use_file_cloning);
-  session.set_ignore_sig(flags.ignore_sig);
-  session.set_continue_through_sig(flags.continue_through_sig);
-  session.set_wait_for_all(flags.wait_for_all);
-  if (flags.syscall_buffer_size > 0) {
-    session.set_syscall_buffer_size(flags.syscall_buffer_size);
-  }
-
-  if (flags.scarce_fds) {
-    for (int i = 0; i < 950; ++i) {
-      open("/dev/null", O_RDONLY);
-    }
-  }
-
-  session.set_trace_id(flags.trace_id);
-}
-
 static RecordSession* static_session;
 
 // This can be called during debugging to close the trace so it can be used
@@ -513,7 +485,14 @@ static WaitStatus record(const vector<string>& args, const RecordSettings& setti
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
       flags.bind_cpu, settings.output_trace_dir,
       flags.stap_sdt);
-  setup_session_from_flags(*session, flags);
+  session->setup_from_flags(&flags);
+
+  if (flags.scarce_fds) {
+    for (int i = 0; i < 950; ++i) {
+      open("/dev/null", O_RDONLY);
+    }
+  }
+
 
   static_session = session.get();
 
@@ -556,6 +535,22 @@ static WaitStatus record(const vector<string>& args, const RecordSettings& setti
     case RecordSession::STEP_SPAWN_FAILED:
       cerr << "\n" << step_result.failure_message << "\n";
       return WaitStatus::for_exit_code(EX_UNAVAILABLE);
+
+    case RecordSession::STEP_EXITED_WITH_DETACHED: {
+      WaitStatus last_exit_status;
+      while (true) {
+        int raw_status;
+        // Wait for all our direct children to complete (if we had
+        // remaining non-detached ptracees, they got killed above already).
+        int ret = waitpid(-1, &raw_status, __WALL);
+        if (ret == -1) {
+          DEBUG_ASSERT(errno == ECHILD);
+          break;
+        }
+        last_exit_status = WaitStatus(raw_status);
+      }
+      return last_exit_status;
+    }
 
     default:
       DEBUG_ASSERT(0 && "Unknown exit status");
@@ -628,6 +623,13 @@ int RecordCommand::run(vector<string>& args) {
 
   if (running_under_rr()) {
     if (flags.nested == NESTED_IGNORE) {
+      exec_child(args);
+    } else if (flags.nested == NESTED_SEPARATE) {
+      if (syscall(SYS_rrcall_separate_on_exec, sizeof(RecordFlags), &settings.flags,
+          settings.output_trace_dir.c_str(),
+          StringVectorToCharArray(settings.extra_env).get(), 0, 0) != 0) {
+        FATAL() << "Failed to request session separation";
+      }
       exec_child(args);
     }
     fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"

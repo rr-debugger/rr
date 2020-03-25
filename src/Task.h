@@ -137,6 +137,18 @@ public:
   void detach();
 
   /**
+   * Stop the task and detach from it in such a way that another ptracer can
+   * re-attach without the task running in between.
+   * N.B.: The task must be in a signal stop.
+   */
+  void stop_and_detach();
+
+  /**
+   * Attempt to ptrace-seize this task.
+   */
+  int fallible_seize();
+
+  /**
    * Linux requires the invariant that that all members of a thread group
    * are reaped before the thread group leader. This determines whether or
    * not we're allowed to attempt reaping this thread or whether doing so
@@ -506,6 +518,7 @@ public:
 
   /** Return the session this is part of. */
   Session& session() const { return *session_; }
+  void on_reparented(Session *session) { session_ = session; }
 
   /** Set the tracee's registers to |regs|. Lazy. */
   void set_regs(const Registers& regs);

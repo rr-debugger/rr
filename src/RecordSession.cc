@@ -15,6 +15,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "ElfReader.h"
 #include "Flags.h"
+#include "RecordSettings.h"
 #include "RecordTask.h"
 #include "VirtualPerfCounterMonitor.h"
 #include "core.h"
@@ -1178,8 +1179,6 @@ static void setup_sigframe_siginfo(RecordTask* t, const siginfo_t& siginfo) {
  * Get t into a state where resume_execution with a signal will actually work.
  */
 static bool preinject_signal(RecordTask* t) {
-  int sig = t->ev().Signal().siginfo.si_signo;
-
   /* Signal injection is tricky. Per the ptrace(2) man page, injecting
    * a signal while the task is not in a signal-stop is not guaranteed to work
    * (and indeed, we see that the kernel sometimes ignores such signals).
@@ -1225,12 +1224,6 @@ static bool preinject_signal(RecordTask* t) {
         << "Expected SYSCALLBUF_DESCHED_SIGNAL, got " << t->status();
     /* We're now in a signal-stop */
   }
-
-  /* Now that we're in a signal-stop, we can inject our signal and advance
-   * to the signal handler with one single-step.
-   */
-  LOG(debug) << "    injecting signal " << signal_name(sig);
-  t->set_siginfo(t->ev().Signal().siginfo);
   return true;
 }
 
@@ -1245,11 +1238,18 @@ static bool inject_handled_signal(RecordTask* t) {
     // Task prematurely exited.
     return false;
   }
+
+  int sig = t->ev().Signal().siginfo.si_signo;
+
+  /* Now that we're in a signal-stop, we can inject our signal and advance
+   * to the signal handler with one single-step.
+   */
+  LOG(debug) << "    injecting signal " << signal_name(sig);
+  t->set_siginfo(t->ev().Signal().siginfo);
+
   // If there aren't any more stashed signals, it's OK to stop blocking all
   // signals.
   t->stashed_signal_processed();
-
-  int sig = t->ev().Signal().siginfo.si_signo;
   do {
     // We are ready to inject our signal.
     // XXX we assume the kernel won't respond by notifying us of a different
@@ -1442,6 +1442,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       bool inject_signal = is_fatal && sig != get_continue_through_sig();
       if (inject_signal) {
         preinject_signal(t);
+        t->set_siginfo(t->ev().Signal().siginfo);
         t->resume_execution(RESUME_CONT, RESUME_NONBLOCKING, RESUME_NO_TICKS,
                             sig);
       }
@@ -1948,67 +1949,138 @@ static string lookup_by_path(const string& name) {
   }
 
   shr_ptr session(
-      new RecordSession(full_path, argv, env, disable_cpuid_features,
-                        syscallbuf, syscallbuf_desched_sig, bind_cpu,
-                        output_trace_dir, use_audit));
+      new RecordSession(argv[0], output_trace_dir));
+
+  session->trace_out.set_bound_cpu(choose_cpu(bind_cpu));
+  session->use_audit_ = use_audit;
+  session->use_syscall_buffer_ = syscallbuf == ENABLE_SYSCALL_BUF;
+  session->syscallbuf_desched_sig_ = syscallbuf_desched_sig;
+  session->disable_cpuid_features_ = disable_cpuid_features;
+
+  if (!session->has_cpuid_faulting() &&
+      disable_cpuid_features.any_features_disabled()) {
+    FATAL() << "CPUID faulting required to disable CPUID features";
+  }
+
+  ScopedFd error_fd = session->create_spawn_task_error_pipe();
+  RecordTask* t = static_cast<RecordTask*>(
+      Task::spawn(*session, error_fd, &session->tracee_socket_fd(),
+                  &session->tracee_socket_fd_number, session->trace_out,
+                  full_path, argv, env));
+  // CPU affinity has been set.
+  session->trace_out.setup_cpuid_records(has_cpuid_faulting(), session->disable_cpuid_features_);
+
+  session->initial_thread_group = t->thread_group();
+  session->on_create(t);
+
   session->set_asan_active(!exe_info.libasan_path.empty() ||
                            exe_info.has_asan_symbols);
   return session;
 }
 
-RecordSession::RecordSession(const std::string& exe_path,
-                             const std::vector<std::string>& argv,
-                             const std::vector<std::string>& envp,
-                             const DisableCPUIDFeatures& disable_cpuid_features,
-                             SyscallBuffering syscallbuf,
-                             int syscallbuf_desched_sig,
-                             BindCPU bind_cpu,
-                             const string& output_trace_dir,
-                             bool use_audit)
-    : trace_out(argv[0], choose_cpu(bind_cpu), output_trace_dir, ticks_semantics_),
+static ScopedFd reopen_tracee_socket(RecordTask *t)
+{
+  ScopedFd our_end;
+  AutoRemoteSyscalls remote(t);
+  AutoRestoreMem remote_mem(remote, nullptr, sizeof(int[2]));
+  remote_ptr<void> remote_fd_ptr = remote_mem.get();
+  remote.infallible_syscall(syscall_number_for_socketpair(t->arch()), AF_UNIX, SOCK_STREAM, 0, remote_fd_ptr);
+  int remote_fds[2];
+  t->read_bytes_helper(remote_fd_ptr, sizeof(int[2]), &remote_fds);
+  our_end = remote.retrieve_fd(remote_fds[0]);
+  remote.infallible_syscall(syscall_number_for_close(t->arch()), remote_fds[0]);
+  remote.infallible_syscall(syscall_number_for_dup2(t->arch()), remote_fds[1], t->session().tracee_fd_number());
+  remote.infallible_syscall(syscall_number_for_close(t->arch()), remote_fds[1]);
+  return our_end;
+}
+
+/*static*/ RecordSession *RecordSession::separate(RecordTask *t, const string &task_name,
+  const string& output_trace_dir)
+{
+  // We're gonna need a new tracee fd for the new session. Set that up now.
+  ScopedFd new_tracee_fd = reopen_tracee_socket(t);
+
+  RecordSession *new_session = new RecordSession(task_name, output_trace_dir);
+
+  // All right, now de-register this task from its old session
+  RecordSession &old_session = t->session();
+  old_session.Session::on_destroy(t->thread_group().get());
+  if (t->thread_group() == old_session.initial_thread_group)
+    old_session.initial_thread_group = nullptr;
+  old_session.on_destroy(t);
+
+  // Re-parent the address space
+  old_session.vm_map.erase(t->vm()->uid());
+  t->vm()->on_reparented(new_session);
+  new_session->vm_map[t->vm()->uid()] = t->vm().get();
+
+  // Re-parent the task itself
+  t->on_reparented(new_session);
+
+  new_session->tracee_socket_fd_number = old_session.tracee_fd_number();
+  new_session->tracee_socket.reset(new ScopedFd(std::move(new_tracee_fd)));
+  new_session->syscallbuf_desched_sig_ = old_session.syscallbuf_desched_sig_;
+  new_session->done_initial_exec_ = true;
+
+  new_session->initial_thread_group = t->thread_group();
+  new_session->on_create(t);
+
+  new_session->trace_out.setup_cpuid_records(new_session->has_cpuid_faulting(), new_session->disable_cpuid_features_);
+
+  return new_session;
+}
+
+RecordSession::RecordSession(const std::string &argv0,
+                             const string& output_trace_dir)
+    : trace_out(argv0, 0, output_trace_dir, ticks_semantics_),
       scheduler_(*this),
-      disable_cpuid_features_(disable_cpuid_features),
+      disable_cpuid_features_(),
       ignore_sig(0),
       continue_through_sig(0),
       last_task_switchable(PREVENT_SWITCH),
       syscall_buffer_size_(1024 * 1024),
-      syscallbuf_desched_sig_(syscallbuf_desched_sig),
-      use_syscall_buffer_(syscallbuf == ENABLE_SYSCALL_BUF),
+      syscallbuf_desched_sig_(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL),
+      use_syscall_buffer_(true),
       use_file_cloning_(true),
       use_read_cloning_(true),
       enable_chaos_(false),
       asan_active_(false),
       wait_for_all_(false),
-      use_audit_(use_audit) {
+      use_audit_(false) {
   memset(&trace_id, 0, sizeof(trace_id));
-  if (!has_cpuid_faulting() &&
-      disable_cpuid_features.any_features_disabled()) {
-    FATAL() << "CPUID faulting required to disable CPUID features";
-  }
-
-  ScopedFd error_fd = create_spawn_task_error_pipe();
-  RecordTask* t = static_cast<RecordTask*>(
-      Task::spawn(*this, error_fd, &tracee_socket_fd(),
-                  &tracee_socket_fd_number, trace_out,
-                  exe_path, argv, envp));
-  // CPU affinity has been set.
-  trace_out.setup_cpuid_records(has_cpuid_faulting(), disable_cpuid_features_);
-
-  initial_thread_group = t->thread_group();
-  on_create(t);
 }
 
 bool RecordSession::can_end() {
   if (wait_for_all_) {
     return task_map.empty();
   }
-  return initial_thread_group->task_set().empty();
+  return !initial_thread_group || initial_thread_group->task_set().empty();
+}
+
+static int separate_recorder_thread(RecordTask *t)
+{
+  // This scope owns the session now.
+  RecordSession::shr_ptr session(&t->session());
+  int ret = t->fallible_seize();
+  ASSERT(t, ret == 0);
+  t->wait();
+  RecordSession::RecordResult step_result;
+  do {
+    step_result = session->record_step();
+  } while (step_result.status == RecordSession::STEP_CONTINUE);
+
+  session->terminate_recording();
+  return 0;
 }
 
 RecordSession::RecordResult RecordSession::record_step() {
   RecordResult result;
 
   if (can_end()) {
+    if (!initial_thread_group) {
+      result.status = STEP_EXITED_WITH_DETACHED;
+      return result;
+    }
     result.status = STEP_EXITED;
     result.exit_status = initial_thread_group->exit_status;
     return result;
@@ -2093,6 +2165,27 @@ RecordSession::RecordResult RecordSession::record_step() {
   }
 
   t->verify_signal_states();
+
+  // The session may be have been split. If so, start the child recorder
+  // process here, now that we've processed the syscall exit in the new session.
+  if (&t->session() != this) {
+    LOG(debug) << "detaching new record session";
+
+    trace_writer().write_task_event(
+      TraceTaskEvent::for_detach(t->tid, t->session().trace_id));
+
+    ASSERT(t, t->separation_settings != nullptr);
+    t->separation_settings.reset(nullptr);
+    preinject_signal(t);
+    t->stop_and_detach();
+
+    const size_t stack_size = 1 << 20;
+    char* stack = (char*)mmap(NULL, stack_size, PROT_READ | PROT_WRITE,
+                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    DEBUG_ASSERT(stack != NULL);
+    ::clone((int (*)(void*))separate_recorder_thread, stack + stack_size, CLONE_VM | CLONE_FS, (void*)t);
+    return result;
+  }
 
   // We try to inject a signal if there's one pending; otherwise we continue
   // task execution.
@@ -2190,5 +2283,27 @@ void DisableCPUIDFeatures::amend_cpuid_data(uint32_t eax_in, uint32_t ecx_in,
       break;
   }
 }
+
+void RecordSession::setup_from_flags(const RecordFlags *flags) {
+  scheduler().set_max_ticks(flags->max_ticks);
+  scheduler().set_always_switch(flags->always_switch);
+  set_enable_chaos(flags->chaos);
+  if (flags->num_cores) {
+    // Set the number of cores reported, possibly overriding the chaos mode
+    // setting.
+    set_num_cores(flags->num_cores);
+  }
+  set_use_read_cloning(flags->use_read_cloning);
+  set_use_file_cloning(flags->use_file_cloning);
+  set_ignore_sig(flags->ignore_sig);
+  set_continue_through_sig(flags->continue_through_sig);
+  set_wait_for_all(flags->wait_for_all);
+  if (flags->syscall_buffer_size > 0) {
+    set_syscall_buffer_size(flags->syscall_buffer_size);
+  }
+
+  set_trace_id(flags->trace_id);
+}
+
 
 } // namespace rr

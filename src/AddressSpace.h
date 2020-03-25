@@ -780,6 +780,10 @@ public:
   void remove_stap_semaphore_range(Task* t, MemoryRange range);
   bool is_stap_semaphore(remote_ptr<uint16_t> addr);
 
+  void on_reparented(Session *session) {
+    session_ = session;
+  }
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;

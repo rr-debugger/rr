@@ -85,6 +85,8 @@ enum EventType {
   // Use .syscall.
   EV_SYSCALL,
 
+  EV_DETACH,
+
   EV_LAST
 };
 

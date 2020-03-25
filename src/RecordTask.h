@@ -719,6 +719,8 @@ public:
 
   // This task is just waiting to be reaped.
   bool waiting_for_reap;
+
+  std::unique_ptr<RecordSettings> separation_settings;
 };
 
 } // namespace rr
