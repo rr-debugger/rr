@@ -485,6 +485,13 @@ public:
   std::string read_c_str(remote_ptr<char> child_addr, bool *ok = nullptr);
 
   /**
+   * Read and return the (null-terminated) array of C string located at
+   * `child_addr`. `ok` is as in `read_c_str`.
+   */
+  std::vector<std::string> read_c_str_arr(remote_ptr<remote_ptr<char>> child_addr,
+                                          bool *ok = nullptr);
+
+  /**
    * Resume execution |how|, deliverying |sig| if nonzero.
    * After resuming, |wait_how|. In replay, reset hpcs and
    * request a tick period of tick_period. The default value

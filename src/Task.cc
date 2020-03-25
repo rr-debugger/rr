@@ -908,6 +908,23 @@ string Task::read_c_str(remote_ptr<char> child_addr, bool *ok) {
   }
 }
 
+vector<string> Task::read_c_str_arr(remote_ptr<remote_ptr<char>> child_addr, bool *ok) {
+  bool our_ok = true;
+  if (!ok)
+    ok = &our_ok;
+  vector<string> str_arr;
+  while (true) {
+    auto p = read_mem(child_addr, ok);
+    if (!*ok || !p)
+      break;
+    str_arr.push_back(read_c_str(p, ok));
+    if (!*ok)
+      break;
+    child_addr++;
+  }
+  return str_arr;
+}
+
 const Registers& Task::regs() const {
   ASSERT(this, is_stopped);
   return registers;
