@@ -11,6 +11,7 @@
 
 #include "AutoRemoteSyscalls.h"
 #include "PreserveFileMonitor.h"
+#include "RecordSettings.h"
 #include "RecordSession.h"
 #include "core.h"
 #include "kernel_abi.h"

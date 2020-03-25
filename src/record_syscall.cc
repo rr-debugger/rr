@@ -67,6 +67,7 @@
 #include "MmappedFileMonitor.h"
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
+#include "RecordSettings.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "Scheduler.h"

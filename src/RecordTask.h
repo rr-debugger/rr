@@ -10,6 +10,7 @@
 namespace rr {
 
 struct Sighandlers;
+class RecordSettings;
 
 /** Different kinds of waits a task can do.
  */

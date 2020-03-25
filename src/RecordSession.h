@@ -11,7 +11,7 @@
 #include "Session.h"
 #include "ThreadGroup.h"
 #include "TraceFrame.h"
-#include "TraceStream.h"
+#include "TraceTaskEvent.h"
 #include "WaitStatus.h"
 
 namespace rr {

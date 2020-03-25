@@ -18,6 +18,15 @@ namespace rr {
 class TraceReader;
 class TraceWriter;
 
+struct TraceUuid {
+  uint8_t bytes[16];
+  operator bool() {
+    uint8_t zeros[sizeof(*this)];
+    memset(&zeros, 0, sizeof(zeros));
+    return !memcmp(&zeros, this, sizeof(*this));
+  }
+};
+
 class TraceTaskEvent {
 public:
   enum Type {

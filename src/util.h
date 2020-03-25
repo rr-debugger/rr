@@ -462,7 +462,7 @@ enum NestedBehavior {
   NESTED_ERROR,
   NESTED_IGNORE,
   NESTED_SEPARATE
-}
+};
 
 } // namespace rr
 

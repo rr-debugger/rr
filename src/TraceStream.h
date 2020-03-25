@@ -26,9 +26,6 @@ struct DisableCPUIDFeatures;
 class KernelMapping;
 class RecordTask;
 
-struct TraceUuid {
-  uint8_t bytes[16];
-};
 
 /**
  * TraceStream stores all the data common to both recording and
