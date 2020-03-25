@@ -726,6 +726,7 @@ set(BASIC_TESTS
   chmod
   chown
   clock
+  clock_adjtime
   clock_nanosleep
   clone
   clone_bad_stack

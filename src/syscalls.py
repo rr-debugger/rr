@@ -1637,7 +1637,7 @@ prlimit64 = EmulatedSyscall(x86=340, x64=302, arg4="typename Arch::rlimit64")
 
 name_to_handle_at = IrregularEmulatedSyscall(x86=341, x64=303)
 open_by_handle_at = EmulatedSyscall(x86=342, x64=304)
-clock_adjtime = UnsupportedSyscall(x86=343, x64=305)
+clock_adjtime = EmulatedSyscall(x86=343, x64=305, arg2="typename Arch::timex")
 syncfs = IrregularEmulatedSyscall(x86=344, x64=306)
 
 #  int sendmmsg(int sockfd, struct mmsghdr *msgvec, unsigned int vlen,
