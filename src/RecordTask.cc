@@ -520,7 +520,9 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::sigprocmask:
     case Arch::rt_sigprocmask:
     case Arch::pselect6:
+    case Arch::pselect6_time64:
     case Arch::ppoll:
+    case Arch::ppoll_time64:
       invalidate_sigmask();
       return;
   }

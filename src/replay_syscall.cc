@@ -1367,6 +1367,7 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
 
     case Arch::recvmsg:
     case Arch::recvmmsg:
+    case Arch::recvmmsg_time64:
     case Arch::socketcall:
     case Arch::rrcall_notify_control_msg:
       handle_opened_files(t, 0);

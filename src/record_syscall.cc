@@ -3135,10 +3135,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
-    /* int futex(int *uaddr, int op, int val, const struct timespec *timeout,
-     *           int *uaddr2, int val3);
-     * futex parameters are in-out but they can't be moved to scratch
+    /* futex parameters are in-out but they can't be moved to scratch
      * addresses. */
+    case Arch::futex_time64:
     case Arch::futex: {
       int op = regs.arg2_signed();
       switch (op & FUTEX_CMD_MASK) {
@@ -3256,6 +3255,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::open:
     case Arch::openat:
     case Arch::semop:
+    case Arch::semtimedop_time64:
     case Arch::semtimedop:
     case Arch::sync:
     case Arch::sync_file_range:
@@ -3310,14 +3310,16 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       return ALLOW_SWITCH;
 
-    /* int pselect6(int nfds, fd_set *readfds, fd_set *writefds,
-     *              fd_set *exceptfds, const struct timespec *timeout,
-     *              const pselect6_arg6 *sigmask); */
+    case Arch::pselect6_time64:
     case Arch::pselect6: {
       syscall_state.reg_parameter<typename Arch::fd_set>(2, IN_OUT);
       syscall_state.reg_parameter<typename Arch::fd_set>(3, IN_OUT);
       syscall_state.reg_parameter<typename Arch::fd_set>(4, IN_OUT);
-      syscall_state.reg_parameter<typename Arch::timespec>(5, IN_OUT);
+      if (syscallno == Arch::pselect6) {
+        syscall_state.reg_parameter<typename Arch::timespec>(5, IN_OUT);
+      } else {
+        syscall_state.reg_parameter<typename Arch::Arch64::timespec>(5, IN_OUT);
+      }
       auto arg6p =
           syscall_state.reg_parameter<typename Arch::pselect6_arg6>(6, IN);
       syscall_state.mem_ptr_parameter_inferred(REMOTE_PTR_FIELD(arg6p, ss), IN,
@@ -3348,6 +3350,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
     }
 
+    case Arch::recvmmsg_time64:
     case Arch::recvmmsg: {
       auto vlen = (unsigned int)regs.arg3();
       auto mmsgp =
@@ -3646,14 +3649,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     case Arch::pause:
       return ALLOW_SWITCH;
 
-    /* int poll(struct pollfd *fds, nfds_t nfds, int timeout) */
-    /* int ppoll(struct pollfd *fds, nfds_t nfds,
-     *           const struct timespec *timeout_ts,
-     *           const sigset_t *sigmask); */
+    case Arch::ppoll_time64:
     case Arch::ppoll:
       /* The raw syscall modifies this with the time remaining. The libc
          does not expose this functionality however */
-      syscall_state.reg_parameter<typename Arch::timespec>(3, IN_OUT);
+      if (syscallno == Arch::ppoll) {
+        syscall_state.reg_parameter<typename Arch::timespec>(3, IN_OUT);
+      } else {
+        syscall_state.reg_parameter<typename Arch::Arch64::timespec>(3, IN_OUT);
+      }
       syscall_state.reg_parameter<typename Arch::kernel_sigset_t>(
           4, IN, protect_rr_sigs);
       t->invalidate_sigmask();
@@ -4008,6 +4012,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.reg_parameter(1, (size_t)regs.arg2());
       return PREVENT_SWITCH;
 
+    case Arch::rt_sigtimedwait_time64:
     case Arch::rt_sigtimedwait:
       syscall_state.reg_parameter<typename Arch::siginfo_t>(2);
       return ALLOW_SWITCH;
@@ -4244,6 +4249,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       t->invalidate_sigmask();
       return PREVENT_SWITCH;
 
+    case Arch::mq_timedreceive_time64:
     case Arch::mq_timedreceive: {
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
@@ -4336,7 +4342,9 @@ static void rec_prepare_restart_syscall_arch(RecordTask* t,
       syscall_state.process_syscall_results();
       break;
     case Arch::ppoll:
+    case Arch::ppoll_time64:
     case Arch::pselect6:
+    case Arch::pselect6_time64:
     case Arch::sigsuspend:
     case Arch::rt_sigsuspend:
       t->invalidate_sigmask();
@@ -4931,6 +4939,7 @@ static string extra_expected_errno_info(RecordTask* t,
         case Arch::ipc:
           ss << "; unknown ipc(" << HEX((int)t->regs().arg1_signed()) << ")";
           break;
+        case Arch::futex_time64:
         case Arch::futex:
           ss << "; unknown futex("
              << HEX((int)t->regs().arg2_signed() & FUTEX_CMD_MASK) << ")";
@@ -5364,6 +5373,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       }
       break;
 
+    case Arch::recvmmsg_time64:
     case Arch::recvmmsg:
       if (!t->regs().syscall_failed()) {
         int msg_count = (int)t->regs().syscall_result_signed();
@@ -5449,6 +5459,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::dup3:
     case Arch::fcntl:
     case Arch::fcntl64:
+    case Arch::futex_time64:
     case Arch::futex:
     case Arch::ioctl:
     case Arch::io_setup:
