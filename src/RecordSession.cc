@@ -197,9 +197,8 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   if (!t->already_reaped()) {
     t->proceed_to_exit();
   }
-  // Record any work done during the exit now
-  t->record_exit_event();
   record_exit_trace_event(t, exit_status);
+  t->record_exit_event();
   if (!t->already_reaped() && t->may_reap()) {
     t->reap();
   }
@@ -565,8 +564,8 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
         // address space.
         pid_t tid = t->rec_tid;
         WaitStatus status = t->status();
-        t->record_exit_event();
         record_exit_trace_event(t, WaitStatus(0));
+        t->record_exit_event();
         // Don't call RecordTask::destroy() because we don't want to
         // PTRACE_DETACH.
         delete t;
