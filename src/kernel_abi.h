@@ -1615,171 +1615,9 @@ struct BaseArch : public wordsize,
   };
 };
 
-struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
-  static const size_t elfmachine = EM::I386;
-  static const size_t elfendian = ELFENDIAN::DATA2LSB;
-
-  static const MmapCallingSemantics mmap_semantics = StructArguments;
-  static const CloneTLSType clone_tls_type = UserDescPointer;
-  static const CloneParameterOrdering clone_parameter_ordering =
-      FlagsStackParentTLSChild;
-  static const SelectCallingSemantics select_semantics = SelectStructArguments;
-
-  // The getgroups syscall (as well as several others) differs between
-  // architectures depending on whether they ever supported 16-bit
-  // {U,G}IDs or not.  Architectures such as x86, which did support
-  // 16-bit {U,G}IDs, have a getgroups syscall for the 16-bit GID case
-  // and a getgroups32 syscall for the 32-bit GID case.  Architectures
-  // such as as x86-64, which support 32-bit GIDs exclusively, have only
-  // a getgroups syscall.  We need to know which one we're dealing with
-  // when recording and replaying getgroups and related syscalls.
-  typedef uint16_t legacy_uid_t;
-  typedef uint16_t legacy_gid_t;
-
-#include "SyscallEnumsX86.generated"
-
-  struct user_regs_struct {
-    int32_t ebx;
-    int32_t ecx;
-    int32_t edx;
-    int32_t esi;
-    int32_t edi;
-    int32_t ebp;
-    int32_t eax;
-    int32_t xds;
-    int32_t xes;
-    int32_t xfs;
-    int32_t xgs;
-    int32_t orig_eax;
-    int32_t eip;
-    int32_t xcs;
-    int32_t eflags;
-    int32_t esp;
-    int32_t xss;
-  };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_regs_struct, user_regs_struct);
-
-  struct user_fpregs_struct {
-    int32_t cwd;
-    int32_t swd;
-    int32_t twd;
-    int32_t fip;
-    int32_t fcs;
-    int32_t foo;
-    int32_t fos;
-    int32_t st_space[20];
-  };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpregs_struct,
-                      user_fpregs_struct);
-
-  struct user_fpxregs_struct {
-    uint16_t cwd;
-    uint16_t swd;
-    uint16_t twd;
-    uint16_t fop;
-    int32_t fip;
-    int32_t fcs;
-    int32_t foo;
-    int32_t fos;
-    int32_t mxcsr;
-    int32_t reserved;
-    int32_t st_space[32];
-    int32_t xmm_space[32];
-    int32_t padding[56];
-  };
-#if defined(__i386__)
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpxregs_struct,
-                      user_fpxregs_struct);
-#endif
-
-  struct sigcontext {
-    uint16_t gs, __gsh;
-    uint16_t fs, __fsh;
-    uint16_t es, __esh;
-    uint16_t ds, __dsh;
-    uint32_t di;
-    uint32_t si;
-    uint32_t bp;
-    uint32_t sp;
-    uint32_t bx;
-    uint32_t dx;
-    uint32_t cx;
-    uint32_t ax;
-    uint32_t trapno;
-    uint32_t err;
-    uint32_t ip;
-    uint16_t cs, __csh;
-    uint32_t flags;
-    uint32_t sp_at_signal;
-    uint16_t ss, __ssh;
-    uint32_t fpstate;
-    uint32_t oldmask;
-    uint32_t cr2;
-  };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::sigcontext, sigcontext);
-
-  struct user {
-    user_regs_struct regs;
-    int u_fpvalid;
-    user_fpregs_struct i387;
-    uint32_t u_tsize;
-    uint32_t u_dsize;
-    uint32_t u_ssize;
-    uint32_t start_code;
-    uint32_t start_stack;
-    int32_t signal;
-    int reserved;
-    ptr<user_regs_struct> u_ar0;
-    ptr<user_fpregs_struct> u_fpstate;
-    uint32_t magic;
-    char u_comm[32];
-    int u_debugreg[8];
-  };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user, user);
-
-  struct stat {
-    dev_t st_dev;
-    unsigned_short __pad1;
-    ino_t st_ino;
-    mode_t st_mode;
-    nlink_t st_nlink;
-    uid_t st_uid;
-    gid_t st_gid;
-    dev_t st_rdev;
-    unsigned_short __pad2;
-    off_t st_size;
-    blksize_t st_blksize;
-    blkcnt_t st_blocks;
-    timespec st_atim;
-    timespec st_mtim;
-    timespec st_ctim;
-    unsigned_long __unused4;
-    unsigned_long __unused5;
-  };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat, struct stat);
-
-  struct __attribute__((packed)) stat64 {
-    dev_t st_dev;
-    unsigned_int __pad1;
-    ino_t __st_ino;
-    mode_t st_mode;
-    nlink_t st_nlink;
-    uid_t st_uid;
-    gid_t st_gid;
-    dev_t st_rdev;
-    unsigned_int __pad2;
-    off64_t st_size;
-    blksize_t st_blksize;
-    blkcnt64_t st_blocks;
-    timespec st_atim;
-    timespec st_mtim;
-    timespec st_ctim;
-    ino64_t st_ino;
-  };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat64, struct stat64);
-};
-
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
+  typedef X64Arch Arch64;
+
   static const size_t elfmachine = EM::X86_64;
   static const size_t elfendian = ELFENDIAN::DATA2LSB;
 
@@ -1941,6 +1779,172 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     syscall_slong_t __rr_unused[3];
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat64, struct stat64);
+};
+
+struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
+  typedef X64Arch Arch64;
+
+  static const size_t elfmachine = EM::I386;
+  static const size_t elfendian = ELFENDIAN::DATA2LSB;
+
+  static const MmapCallingSemantics mmap_semantics = StructArguments;
+  static const CloneTLSType clone_tls_type = UserDescPointer;
+  static const CloneParameterOrdering clone_parameter_ordering =
+      FlagsStackParentTLSChild;
+  static const SelectCallingSemantics select_semantics = SelectStructArguments;
+
+  // The getgroups syscall (as well as several others) differs between
+  // architectures depending on whether they ever supported 16-bit
+  // {U,G}IDs or not.  Architectures such as x86, which did support
+  // 16-bit {U,G}IDs, have a getgroups syscall for the 16-bit GID case
+  // and a getgroups32 syscall for the 32-bit GID case.  Architectures
+  // such as as x86-64, which support 32-bit GIDs exclusively, have only
+  // a getgroups syscall.  We need to know which one we're dealing with
+  // when recording and replaying getgroups and related syscalls.
+  typedef uint16_t legacy_uid_t;
+  typedef uint16_t legacy_gid_t;
+
+#include "SyscallEnumsX86.generated"
+
+  struct user_regs_struct {
+    int32_t ebx;
+    int32_t ecx;
+    int32_t edx;
+    int32_t esi;
+    int32_t edi;
+    int32_t ebp;
+    int32_t eax;
+    int32_t xds;
+    int32_t xes;
+    int32_t xfs;
+    int32_t xgs;
+    int32_t orig_eax;
+    int32_t eip;
+    int32_t xcs;
+    int32_t eflags;
+    int32_t esp;
+    int32_t xss;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_regs_struct, user_regs_struct);
+
+  struct user_fpregs_struct {
+    int32_t cwd;
+    int32_t swd;
+    int32_t twd;
+    int32_t fip;
+    int32_t fcs;
+    int32_t foo;
+    int32_t fos;
+    int32_t st_space[20];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpregs_struct,
+                      user_fpregs_struct);
+
+  struct user_fpxregs_struct {
+    uint16_t cwd;
+    uint16_t swd;
+    uint16_t twd;
+    uint16_t fop;
+    int32_t fip;
+    int32_t fcs;
+    int32_t foo;
+    int32_t fos;
+    int32_t mxcsr;
+    int32_t reserved;
+    int32_t st_space[32];
+    int32_t xmm_space[32];
+    int32_t padding[56];
+  };
+#if defined(__i386__)
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpxregs_struct,
+                      user_fpxregs_struct);
+#endif
+
+  struct sigcontext {
+    uint16_t gs, __gsh;
+    uint16_t fs, __fsh;
+    uint16_t es, __esh;
+    uint16_t ds, __dsh;
+    uint32_t di;
+    uint32_t si;
+    uint32_t bp;
+    uint32_t sp;
+    uint32_t bx;
+    uint32_t dx;
+    uint32_t cx;
+    uint32_t ax;
+    uint32_t trapno;
+    uint32_t err;
+    uint32_t ip;
+    uint16_t cs, __csh;
+    uint32_t flags;
+    uint32_t sp_at_signal;
+    uint16_t ss, __ssh;
+    uint32_t fpstate;
+    uint32_t oldmask;
+    uint32_t cr2;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::sigcontext, sigcontext);
+
+  struct user {
+    user_regs_struct regs;
+    int u_fpvalid;
+    user_fpregs_struct i387;
+    uint32_t u_tsize;
+    uint32_t u_dsize;
+    uint32_t u_ssize;
+    uint32_t start_code;
+    uint32_t start_stack;
+    int32_t signal;
+    int reserved;
+    ptr<user_regs_struct> u_ar0;
+    ptr<user_fpregs_struct> u_fpstate;
+    uint32_t magic;
+    char u_comm[32];
+    int u_debugreg[8];
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user, user);
+
+  struct stat {
+    dev_t st_dev;
+    unsigned_short __pad1;
+    ino_t st_ino;
+    mode_t st_mode;
+    nlink_t st_nlink;
+    uid_t st_uid;
+    gid_t st_gid;
+    dev_t st_rdev;
+    unsigned_short __pad2;
+    off_t st_size;
+    blksize_t st_blksize;
+    blkcnt_t st_blocks;
+    timespec st_atim;
+    timespec st_mtim;
+    timespec st_ctim;
+    unsigned_long __unused4;
+    unsigned_long __unused5;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat, struct stat);
+
+  struct __attribute__((packed)) stat64 {
+    dev_t st_dev;
+    unsigned_int __pad1;
+    ino_t __st_ino;
+    mode_t st_mode;
+    nlink_t st_nlink;
+    uid_t st_uid;
+    gid_t st_gid;
+    dev_t st_rdev;
+    unsigned_int __pad2;
+    off64_t st_size;
+    blksize_t st_blksize;
+    blkcnt64_t st_blocks;
+    timespec st_atim;
+    timespec st_mtim;
+    timespec st_ctim;
+    ino64_t st_ino;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat64, struct stat64);
 };
 
 #define RR_ARCH_FUNCTION(f, arch, args...)                                     \
