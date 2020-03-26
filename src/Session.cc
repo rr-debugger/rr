@@ -25,6 +25,7 @@
 #include "kernel_metadata.h"
 #include "log.h"
 #include "util.h"
+#include "preload/preload_interface.h"
 
 using namespace std;
 
@@ -44,6 +45,7 @@ Session::Session()
     : tracee_socket(shared_ptr<ScopedFd>(new ScopedFd())),
       tracee_socket_fd_number(0),
       next_task_serial_(1),
+      rrcall_base_(RR_CALL_BASE),
       syscall_seccomp_ordering_(PTRACE_SYSCALL_BEFORE_SECCOMP_UNKNOWN),
       ticks_semantics_(PerfCounters::default_ticks_semantics()),
       done_initial_exec_(false),
@@ -64,6 +66,7 @@ Session::Session(const Session& other) {
   statistics_ = other.statistics_;
   next_task_serial_ = other.next_task_serial_;
   done_initial_exec_ = other.done_initial_exec_;
+  rrcall_base_ = other.rrcall_base_;
   visible_execution_ = other.visible_execution_;
   tracee_socket = other.tracee_socket;
   tracee_socket_fd_number = other.tracee_socket_fd_number;

@@ -2,8 +2,6 @@
 
 #include "util.h"
 
-#define SYS_rrcall_init_buffers 443
-
 static int count_SIGSYS = 0;
 
 static int pipe_fds[2];
@@ -81,8 +79,8 @@ static void install_filter(void) {
     /* Trigger SIGSYS */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     /* Jump forward 1 instruction if system call number
-       is not SYS_rrcall_init_buffers */
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_rrcall_init_buffers, 0, 1),
+       is not RR_rrcall_init_buffers */
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, RR_rrcall_init_buffers, 0, 1),
     /* Trigger SIGSYS */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     /* Jump forward 1 instruction if system call number

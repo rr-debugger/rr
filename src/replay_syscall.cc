@@ -659,7 +659,10 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   // Now it's safe to save the auxv data
   t->vm()->save_auxv(t);
 
-  // Notify outer rr if there is one
+  // Notify outer rr if there is one. We're assuming here that our
+  // rr is the same version as the outer rr, or at least is using
+  // the same syscall numbers. The inner rr could be replaying
+  // a trace with different rr syscall numbers.
   syscall(SYS_rrcall_reload_auxv, t->tid);
 }
 
@@ -1155,11 +1158,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {
   step->syscall.number = sys;
   step->action = TSTEP_ENTER_SYSCALL;
 
-  /* Don't let a negative incoming syscall number be treated as a real
-   * system call that we assigned a negative number because it doesn't
-   * exist in this architecture.
-   */
-  if (is_rrcall_notify_syscall_hook_exit_syscall(sys, sys_ev.arch())) {
+  if (sys == t->session().syscall_number_for_rrcall_notify_syscall_hook_exit()) {
     ASSERT(t, t->syscallbuf_child != nullptr);
     t->write_mem(
         REMOTE_PTR_FIELD(t->syscallbuf_child, notify_on_syscall_hook_exit),
@@ -1249,6 +1248,10 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
    * system call that we assigned a negative number because it doesn't
    * exist in this architecture.
    * All invalid/unsupported syscalls get the default emulation treatment.
+   */
+  /* Don't let a negative incoming syscall number be treated as a real
+   * system call that we assigned a negative number because it doesn't
+   * exist in this architecture.
    */
   switch (non_negative_syscall(sys)) {
     case Arch::execve:
@@ -1369,7 +1372,6 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     case Arch::recvmmsg:
     case Arch::recvmmsg_time64:
     case Arch::socketcall:
-    case Arch::rrcall_notify_control_msg:
       handle_opened_files(t, 0);
       break;
 
@@ -1415,42 +1417,31 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       }
       return;
     }
+  }
 
-    case SYS_rrcall_init_buffers:
-      return process_init_buffers(t, step);
-
-    case SYS_rrcall_init_preload:
-      t->at_preload_init();
-      return;
-
-    case SYS_rrcall_reload_auxv: {
-      // Inner rr has finished emulating execve for a tracee. Reload auxv
-      // vectors now so that if gdb gets attached to the inner tracee, it will
-      // get useful symbols.
-      Task* target = t->session().find_task((pid_t)t->regs().arg1());
-      ASSERT(t, target) << "SYS_rrcall_reload_auxv misused";
-      target->vm()->save_auxv(target);
-      return;
-    }
-
-    case SYS_rrcall_notify_stap_semaphore_added: {
-      remote_ptr<uint16_t> range_start(t->regs().arg1()),
-                           range_end(t->regs().arg2());
-      MemoryRange semaphore_range(range_start, range_end);
-      t->vm()->add_stap_semaphore_range(t, semaphore_range);
-      return;
-    }
-
-    case SYS_rrcall_notify_stap_semaphore_removed: {
-      remote_ptr<uint16_t> range_start(t->regs().arg1()),
-                           range_end(t->regs().arg2());
-      MemoryRange semaphore_range(range_start, range_end);
-      t->vm()->remove_stap_semaphore_range(t, semaphore_range);
-      return;
-    }
-
-    default:
-      return;
+  if (sys == t->session().syscall_number_for_rrcall_notify_control_msg()) {
+    handle_opened_files(t, 0);
+  } else if (sys == t->session().syscall_number_for_rrcall_init_buffers()) {
+    process_init_buffers(t, step);
+  } else if (sys == t->session().syscall_number_for_rrcall_init_preload()) {
+    t->at_preload_init();
+  } else if (sys == t->session().syscall_number_for_rrcall_reload_auxv()) {
+    // Inner rr has finished emulating execve for a tracee. Reload auxv
+    // vectors now so that if gdb gets attached to the inner tracee, it will
+    // get useful symbols.
+    Task* target = t->session().find_task((pid_t)t->regs().arg1());
+    ASSERT(t, target) << "SYS_rrcall_reload_auxv misused";
+    target->vm()->save_auxv(target);
+  } else if (sys == t->session().syscall_number_for_rrcall_notify_stap_semaphore_added()) {
+    remote_ptr<uint16_t> range_start(t->regs().arg1()),
+                         range_end(t->regs().arg2());
+    MemoryRange semaphore_range(range_start, range_end);
+    t->vm()->add_stap_semaphore_range(t, semaphore_range);
+  } else if (sys == t->session().syscall_number_for_rrcall_notify_stap_semaphore_removed()) {
+    remote_ptr<uint16_t> range_start(t->regs().arg1()),
+                         range_end(t->regs().arg2());
+    MemoryRange semaphore_range(range_start, range_end);
+    t->vm()->remove_stap_semaphore_range(t, semaphore_range);
   }
 }
 

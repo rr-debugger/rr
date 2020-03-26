@@ -1988,6 +1988,10 @@ RecordSession::RecordSession(const std::string& exe_path,
     FATAL() << "CPUID faulting required to disable CPUID features";
   }
 
+  if (rr::syscall_number_for_rrcall_init_preload(x86_64) != RR_CALL_BASE) {
+    FATAL() << "RR_CALL_BASE is incorrect";
+  }
+
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
       Task::spawn(*this, error_fd, &tracee_socket_fd(),

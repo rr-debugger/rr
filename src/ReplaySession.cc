@@ -164,6 +164,7 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
       flags_(flags),
       trace_start_time(0) {
   ticks_semantics_ = trace_in.ticks_semantics();
+  rrcall_base_ = trace_in.rrcall_base();
 
   memset(&last_siginfo_, 0, sizeof(last_siginfo_));
   advance_to_next_trace_frame();
@@ -270,6 +271,7 @@ DiversionSession::shr_ptr ReplaySession::clone_diversion() {
   session->ticks_semantics_ = ticks_semantics_;
   session->tracee_socket = tracee_socket;
   session->tracee_socket_fd_number = tracee_socket_fd_number;
+  session->rrcall_base_ = rrcall_base_;
   LOG(debug) << "  deepfork session is " << session.get();
 
   copy_state_to(*session, emufs(), session->emufs());

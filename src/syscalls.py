@@ -1711,14 +1711,16 @@ fspick = UnsupportedSyscall(x86=433, x64=433)
 # restart_syscall is a little special.
 restart_syscall = RestartSyscall(x86=0, x64=219)
 
-rrcall_init_preload = IrregularEmulatedSyscall(x86=442, x64=442)
-rrcall_init_buffers = IrregularEmulatedSyscall(x86=443, x64=443)
-rrcall_notify_syscall_hook_exit = IrregularEmulatedSyscall(x86=444, x64=444)
-rrcall_notify_control_msg = IrregularEmulatedSyscall(x86=445, x64=445)
-rrcall_reload_auxv = IrregularEmulatedSyscall(x86=446, x64=446)
-rrcall_mprotect_record = IrregularEmulatedSyscall(x86=447, x64=447)
-rrcall_notify_stap_semaphore_added = IrregularEmulatedSyscall(x86=448, x64=448)
-rrcall_notify_stap_semaphore_removed = IrregularEmulatedSyscall(x86=449, x64=449)
+# Internal rr syscall numbers.
+# These syscall numbers must be the same across all architectures.
+rrcall_init_preload = IrregularEmulatedSyscall(x86=1000, x64=1000)
+rrcall_init_buffers = IrregularEmulatedSyscall(x86=1001, x64=1001)
+rrcall_notify_syscall_hook_exit = IrregularEmulatedSyscall(x86=1002, x64=1002)
+rrcall_notify_control_msg = IrregularEmulatedSyscall(x86=1003, x64=1003)
+rrcall_reload_auxv = IrregularEmulatedSyscall(x86=1004, x64=1004)
+rrcall_mprotect_record = IrregularEmulatedSyscall(x86=1005, x64=1005)
+rrcall_notify_stap_semaphore_added = IrregularEmulatedSyscall(x86=1006, x64=1006)
+rrcall_notify_stap_semaphore_removed = IrregularEmulatedSyscall(x86=1007, x64=1007)
 
 # These syscalls are also subsumed under socketcall on x86.
 socket = EmulatedSyscall(x86=359, x64=41)

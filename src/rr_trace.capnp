@@ -69,6 +69,9 @@ struct Header {
   ok @7 :Bool = true;
   # Do the mappings of preload_thread_locals always appear in the trace?
   preloadThreadLocalsRecorded @8 :Bool = false;
+  # Base rr syscall number (rrcall_init_preload). Before this was variable,
+  # it was 442.
+  rrcallBase @9 :Int32 = 442;
 }
 
 # A file descriptor belonging to a task

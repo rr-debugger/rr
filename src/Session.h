@@ -14,6 +14,7 @@
 #include "MonitoredSharedMemory.h"
 #include "TaskishUid.h"
 #include "TraceStream.h"
+#include "preload/preload_interface.h"
 
 namespace rr {
 
@@ -331,6 +332,31 @@ public:
 
   virtual int cpu_binding(TraceStream& trace) const;
 
+  int syscall_number_for_rrcall_init_preload() const {
+    return SYS_rrcall_init_preload - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_init_buffers() const {
+    return SYS_rrcall_init_buffers - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_notify_syscall_hook_exit() const {
+    return SYS_rrcall_notify_syscall_hook_exit - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_notify_control_msg() const {
+    return SYS_rrcall_notify_control_msg - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_reload_auxv() const {
+    return SYS_rrcall_reload_auxv - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_mprotect_record() const {
+    return SYS_rrcall_mprotect_record - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_notify_stap_semaphore_added() const {
+    return SYS_rrcall_notify_stap_semaphore_added - RR_CALL_BASE + rrcall_base_;
+  }
+  int syscall_number_for_rrcall_notify_stap_semaphore_removed() const {
+    return SYS_rrcall_notify_stap_semaphore_removed - RR_CALL_BASE + rrcall_base_;
+  }
+
 protected:
   Session();
   virtual ~Session();
@@ -369,6 +395,7 @@ protected:
   uint32_t next_task_serial_;
   ScopedFd spawned_task_error_fd_;
 
+  int rrcall_base_;
   PtraceSyscallBeforeSeccomp syscall_seccomp_ordering_;
 
   TicksSemantics ticks_semantics_;

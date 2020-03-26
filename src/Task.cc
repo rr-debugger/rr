@@ -421,12 +421,27 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     return;
   }
 
+  if (syscallno == session_->syscall_number_for_rrcall_mprotect_record()) {
+    // When we record an rr replay of a tracee which does a syscallbuf'ed
+    // `mprotect`, neither the replay nor its recording see the mprotect
+    // syscall, since it's untraced during both recording and replay. rr
+    // replay is notified of the syscall via the `mprotect_records`
+    // mechanism; if it's being recorded, it forwards that notification to
+    // the recorder by calling this syscall.
+    pid_t tid = regs.arg1();
+    remote_ptr<void> addr = regs.arg2();
+    size_t num_bytes = regs.arg3();
+    int prot = regs.arg4_signed();
+    Task* t = session().find_task(tid);
+    ASSERT(this, t);
+    return t->vm()->protect(t, addr, num_bytes, prot);
+  }
+
   // mprotect can change the protection status of some mapped regions before
   // failing.
   // SYS_rrcall_mprotect_record always fails with ENOSYS, though we want to
   // note its usage here.
-  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch()) &&
-      syscallno != SYS_rrcall_mprotect_record) {
+  if (regs.syscall_failed() && !is_mprotect_syscall(syscallno, regs.arch())) {
     return;
   }
 
@@ -438,22 +453,6 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       LOG(debug) << "(brk/mmap/mmap2/mremap will receive / has received direct "
                     "processing)";
       return;
-    }
-
-    case SYS_rrcall_mprotect_record: {
-      // When we record an rr replay of a tracee which does a syscallbuf'ed
-      // `mprotect`, neither the replay nor its recording see the mprotect
-      // syscall, since it's untraced during both recording and replay. rr
-      // replay is notified of the syscall via the `mprotect_records`
-      // mechanism; if it's being recorded, it forwards that notification to
-      // the recorder by calling this syscall.
-      pid_t tid = regs.arg1();
-      remote_ptr<void> addr = regs.arg2();
-      size_t num_bytes = regs.arg3();
-      int prot = regs.arg4_signed();
-      Task* t = session().find_task(tid);
-      ASSERT(this, t);
-      return t->vm()->protect(t, addr, num_bytes, prot);
     }
 
     case Arch::mprotect: {

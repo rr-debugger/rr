@@ -24,6 +24,7 @@
 #include "RecordTask.h"
 #include "TaskishUid.h"
 #include "core.h"
+#include "kernel_abi.h"
 #include "kernel_supplement.h"
 #include "log.h"
 #include "rr_trace.capnp.h"
@@ -1274,6 +1275,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
     to_trace_ticks_semantics(PerfCounters::default_ticks_semantics()));
   header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
   header.setPreloadThreadLocalsRecorded(true);
+  header.setRrcallBase(syscall_number_for_rrcall_init_preload(x86_64));
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
   if (!uuid) {
@@ -1424,6 +1426,7 @@ TraceReader::TraceReader(const string& dir)
   xcr0_ = header.getXcr0();
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
+  rrcall_base_ = header.getRrcallBase();
   Data::Reader uuid = header.getUuid();
   uuid_ = unique_ptr<TraceUuid>(new TraceUuid());
   if (uuid.size() != sizeof(uuid_->bytes)) {
@@ -1454,6 +1457,7 @@ TraceReader::TraceReader(const TraceReader& other)
   raw_recs = other.raw_recs;
   xcr0_ = other.xcr0_;
   preload_thread_locals_recorded_ = other.preload_thread_locals_recorded_;
+  rrcall_base_ = other.rrcall_base_;
 }
 
 TraceReader::~TraceReader() {}

@@ -411,6 +411,9 @@ public:
 
   double recording_time() const { return monotonic_time_; }
 
+  // The base syscall number for rr syscalls in this trace
+  int rrcall_base() const { return rrcall_base_; }
+
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
   const CompressedReader& reader(Substream s) const { return *readers[s]; }
@@ -424,6 +427,7 @@ private:
   std::unique_ptr<TraceUuid> uuid_;
   bool trace_uses_cpuid_faulting;
   bool preload_thread_locals_recorded_;
+  int rrcall_base_;
 };
 
 extern std::string trace_save_dir();
