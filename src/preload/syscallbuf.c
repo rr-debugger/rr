@@ -2543,6 +2543,33 @@ static long sys_xstat64(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+#ifdef SYS_statx
+/* Like sys_xstat64, but with different arguments */
+static long sys_statx(const struct syscall_info* call) {
+  const int syscallno = call->no;
+  struct statx* buf = (struct statx*)call->args[4];
+
+  void* ptr = prep_syscall();
+  struct statx* buf2 = NULL;
+  long ret;
+
+  if (buf) {
+    buf2 = ptr;
+    ptr += sizeof(*buf2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall5(syscallno,
+    call->args[0], call->args[1], call->args[2], call->args[3],
+    buf2);
+  if (buf2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    local_memcpy(buf, buf2, sizeof(*buf));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 static long sys_quotactl(const struct syscall_info* call) {
   const int syscallno = call->no;
   int cmd = call->args[0];
@@ -2902,6 +2929,7 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #if defined(SYS_recvmsg)
     CASE(recvmsg);
 #endif
+    CASE_GENERIC_NONBLOCKING(rmdir);
     CASE(rt_sigprocmask);
 #if defined(SYS_sendmsg)
     CASE(sendmsg);
@@ -2943,6 +2971,10 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     case SYS_stat:
 #endif
       return sys_xstat64(call);
+#if defined(SYS_statx)
+    case SYS_statx:
+      return sys_statx(call);
+#endif
     case SYS_statfs:
     case SYS_fstatfs:
       return sys_statfs(call);
