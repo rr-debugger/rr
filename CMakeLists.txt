@@ -310,12 +310,11 @@ include_directories("${PROJECT_SOURCE_DIR}/third-party/brotli/include")
 include_directories("${CMAKE_CURRENT_BINARY_DIR}")
 
 # Order matters here! syscall_hook.S must be immediately before syscallbuf.c,
-# breakpoint_table.S must be before overrides.c, which must be last.
+# raw_syscall.S must be before overrides.c, which must be last.
 set(PRELOAD_FILES
   syscall_hook.S
   syscallbuf.c
   raw_syscall.S
-  breakpoint_table.S
   overrides.c
 )
 set(PRELOAD_SOURCE_FILES

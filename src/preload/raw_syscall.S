@@ -139,5 +139,9 @@ _raw_syscall:
 #else
 #error unknown CPU architecture
 #endif /* __i386__/__x86_64__ */
+        .global _syscallbuf_code_end
+        .hidden _syscallbuf_code_end
+_syscallbuf_code_end:
+
         .section .note.GNU-stack,"",@progbits
         .previous

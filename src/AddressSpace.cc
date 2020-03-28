@@ -433,6 +433,11 @@ void AddressSpace::post_exec_syscall(Task* t) {
   // First locate a syscall instruction we can use for remote syscalls.
   traced_syscall_ip_ = find_syscall_instruction(t);
   privileged_traced_syscall_ip_ = nullptr;
+
+  do_breakpoint_fault_addr_ = nullptr;
+  stopping_breakpoint_table_ = nullptr;
+  stopping_breakpoint_table_entry_size_ = 0;
+
   // Now remote syscalls work, we can open_mem_fd.
   t->open_mem_fd();
 
@@ -618,6 +623,14 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
         << "abled, but tracer thinks "
         << (t->session().as_record()->use_syscall_buffer() ? "en" : "dis")
         << "abled";
+  } else {
+    if (params.breakpoint_table_entry_size == -1) {
+      do_breakpoint_fault_addr_ = params.breakpoint_instr_addr.rptr().as_int();
+    } else {
+      stopping_breakpoint_table_ = params.breakpoint_table.rptr().as_int();
+      stopping_breakpoint_table_entry_size_ =
+          params.breakpoint_table_entry_size;
+    }
   }
 
   if (!params.syscallbuf_enabled) {
@@ -1397,6 +1410,9 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
       monkeypatch_state(t->session().is_recording() ? new Monkeypatcher()
                                                     : nullptr),
       syscallbuf_enabled_(false),
+      do_breakpoint_fault_addr_(nullptr),
+      stopping_breakpoint_table_(nullptr),
+      stopping_breakpoint_table_entry_size_(0),
       first_run_event_(0) {
   // TODO: this is a workaround of
   // https://github.com/mozilla/rr/issues/1113 .
@@ -1431,6 +1447,9 @@ AddressSpace::AddressSpace(Session* session, const AddressSpace& o,
       traced_syscall_ip_(o.traced_syscall_ip_),
       privileged_traced_syscall_ip_(o.privileged_traced_syscall_ip_),
       syscallbuf_enabled_(o.syscallbuf_enabled_),
+      do_breakpoint_fault_addr_(o.do_breakpoint_fault_addr_),
+      stopping_breakpoint_table_(o.stopping_breakpoint_table_),
+      stopping_breakpoint_table_entry_size_(o.stopping_breakpoint_table_entry_size_),
       saved_auxv_(o.saved_auxv_),
       first_run_event_(0) {
   for (auto& m : mem) {

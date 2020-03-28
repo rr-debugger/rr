@@ -1984,6 +1984,12 @@ std::vector<uint8_t> syscall_instruction(SupportedArch arch);
  */
 ssize_t syscall_instruction_length(SupportedArch arch);
 
+/**
+ * Return the length of the mov (m),r instruction we use to cause intentional,
+ * conditional, memory traps.
+ */
+ssize_t movrm_instruction_length(SupportedArch arch);
+
 void set_arch_siginfo(const siginfo_t& siginfo, SupportedArch a, void* dest,
                       size_t dest_size);
 

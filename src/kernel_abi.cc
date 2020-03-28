@@ -165,6 +165,18 @@ ssize_t syscall_instruction_length(SupportedArch arch) {
   }
 }
 
+ssize_t movrm_instruction_length(SupportedArch arch) {
+  switch (arch) {
+    case x86:
+      return 2;
+    case x86_64:
+      return 3;
+    default:
+      DEBUG_ASSERT(0 && "Need to define syscall instruction length");
+      return 0;
+  }
+}
+
 template <typename Arch>
 static void assign_sigval(typename Arch::sigval_t& to,
                           const NativeArch::sigval_t& from) {

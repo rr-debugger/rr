@@ -311,6 +311,10 @@ struct preload_globals {
   /* Random seed that can be used for various purposes. DO NOT READ from rr
      during replay, because this field does not exist in old traces. */
   uint64_t random_seed;
+  /* Indicates the value (in 8-byte increments) at which to raise a SIGSEGV
+     trap once reached. NOTE: This remains constant during record, and is
+     used only during replay. The same restrictions as in_replay above apply */
+  uint64_t breakpoint_value;
 };
 
 /**
@@ -441,13 +445,24 @@ struct rrcall_init_preload_params {
   PTR(void) get_pc_thunks_end;
   PTR(void) syscallbuf_final_exit_instruction;
   PTR(struct preload_globals) globals;
-  /* Address of the first entry of the breakpoint table.
-   * After processing a sycallbuf record (and unlocking the syscallbuf),
-   * we call a function in this table corresponding to the record processed.
-   * rr can set a breakpoint in this table to break on the completion of a
-   * particular syscallbuf record. */
-  PTR(void) breakpoint_table;
-  int breakpoint_table_entry_size;
+  union {
+    struct {
+    /* Address of the first entry of the breakpoint table.
+     * After processing a sycallbuf record (and unlocking the syscallbuf),
+     * we call a function in this table corresponding to the record processed.
+     * rr can set a breakpoint in this table to break on the completion of a
+     * particular syscallbuf record.
+     * This method of setting the breakpoint is deprecated. Instead, use the
+     * interface below. It is retained for compatibility */
+      PTR(void) breakpoint_table;
+      int breakpoint_table_entry_size;
+    };
+    struct {
+      PTR(void) breakpoint_instr_addr;
+      // Set of -1 to indicate non-legacy mode
+      int breakpoint_mode_sentinel;
+    };
+  };
 };
 
 /**
