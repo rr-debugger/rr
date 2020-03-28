@@ -1,0 +1,7 @@
+source `dirname $0`/util.sh
+
+save_exe simple$bitness
+saved_exe="simple$bitness-$nonce"
+
+record vfork$bitness "$saved_exe"
+debug vfork_break_parent

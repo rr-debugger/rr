@@ -191,6 +191,23 @@ static TraceTaskEvent read_task_trace_event(ReplayTask* t,
   return tte;
 }
 
+
+template <typename Arch>
+static bool syscall_shares_vm(Registers r)
+{
+  switch (r.original_syscallno()) {
+    case Arch::clone:
+      return (CLONE_VM & r.arg1());
+    case Arch::vfork:
+      return true;
+    case Arch::fork:
+      return false;
+    default:
+      FATAL() << "Unknown clone syscall";
+      __builtin_unreachable();
+  }
+}
+
 template <typename Arch> static void prepare_clone(ReplayTask* t) {
   const TraceFrame& trace_frame = t->current_trace_frame();
 
@@ -309,7 +326,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_task->set_regs(new_r);
   new_task->canonicalize_regs(new_task->arch());
 
-  if (Arch::clone != t->regs().original_syscallno() || !(CLONE_VM & r.arg1())) {
+  if (!syscall_shares_vm<Arch>(r)) {
     // It's hard to imagine a scenario in which it would
     // be useful to inherit breakpoints (along with their
     // refcounts) across a non-VM-sharing clone, but for

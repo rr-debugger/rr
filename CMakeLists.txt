@@ -1318,6 +1318,7 @@ set(TESTS_WITHOUT_PROGRAM
   term_trace_cpu
   unwind_on_signal
   vfork_exec
+  vfork_break_parent
   watch_code
   watchpoint_cond
   when
