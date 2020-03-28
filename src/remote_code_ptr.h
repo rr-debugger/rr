@@ -53,6 +53,9 @@ public:
   remote_code_ptr increment_by_bkpt_insn_length(SupportedArch) const {
     return remote_code_ptr(ptr + 1);
   }
+  remote_code_ptr increment_by_movrm_insn_length(SupportedArch arch) const {
+    return remote_code_ptr(ptr + movrm_instruction_length(arch));
+  }
 
   template <typename T> remote_ptr<T> to_data_ptr() const {
     return remote_ptr<T>(to_data_ptr_value());

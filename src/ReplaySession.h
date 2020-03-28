@@ -26,8 +26,8 @@ class ReplayTask;
  * per-Session data.
  */
 struct ReplayFlushBufferedSyscallState {
-  /* An internal breakpoint is set at this address */
-  uintptr_t stop_breakpoint_addr;
+  /* The offset in the syscallbuf (in 8-byte units) at which we want to stop */
+  uintptr_t stop_breakpoint_offset;
 };
 
 /**

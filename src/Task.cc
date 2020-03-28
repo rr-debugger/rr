@@ -75,7 +75,6 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       tid(_tid),
       rec_tid(_rec_tid > 0 ? _rec_tid : _tid),
       syscallbuf_size(0),
-      stopping_breakpoint_table_entry_size(0),
       serial(serial),
       prname("???"),
       ticks(0),
@@ -854,8 +853,6 @@ void Task::post_exec(const string& exe_file) {
   scratch_ptr = nullptr;
   cloned_file_data_fd_child = -1;
   desched_fd_child = -1;
-  stopping_breakpoint_table = nullptr;
-  stopping_breakpoint_table_entry_size = 0;
   preload_globals = nullptr;
   thread_group()->execed = true;
 
@@ -1900,9 +1897,6 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   }
 
   t->syscallbuf_size = syscallbuf_size;
-  t->stopping_breakpoint_table = stopping_breakpoint_table;
-  t->stopping_breakpoint_table_entry_size =
-      stopping_breakpoint_table_entry_size;
   t->preload_globals = preload_globals;
   t->seccomp_bpf_enabled = seccomp_bpf_enabled;
 
@@ -2569,10 +2563,6 @@ template <typename Arch> static void do_preload_init_arch(Task* t) {
 
   for (Task* tt : t->vm()->task_set()) {
     tt->preload_globals = params.globals.rptr();
-
-    tt->stopping_breakpoint_table = params.breakpoint_table.rptr().as_int();
-    tt->stopping_breakpoint_table_entry_size =
-        params.breakpoint_table_entry_size;
   }
 
   t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, in_replay),

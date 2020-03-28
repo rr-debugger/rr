@@ -513,8 +513,6 @@ static void init_thread(void) {
   thread_locals->usable_scratch_size = args.usable_scratch_size;
 }
 
-extern char _breakpoint_table_entry_start;
-extern char _breakpoint_table_entry_end;
 
 /**
  * Initialize process-global buffering state, if enabled.
@@ -527,6 +525,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern char _syscallbuf_final_exit_instruction;
   extern char _syscallbuf_code_start;
   extern char _syscallbuf_code_end;
+  extern char do_breakpoint_fault_addr;
 
 #if defined(__i386__)
   extern RR_HIDDEN void __morestack(void);
@@ -670,9 +669,10 @@ static void __attribute__((constructor)) init_process(void) {
       sizeof(syscall_patch_hooks) / sizeof(syscall_patch_hooks[0]);
   params.syscall_patch_hooks = syscall_patch_hooks;
   params.globals = &globals;
-  params.breakpoint_table = &_breakpoint_table_entry_start;
-  params.breakpoint_table_entry_size =
-      &_breakpoint_table_entry_end - &_breakpoint_table_entry_start;
+
+  globals.breakpoint_value = (uint64_t)-1;
+  params.breakpoint_instr_addr = &do_breakpoint_fault_addr;
+  params.breakpoint_mode_sentinel = -1;
 
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
 
@@ -884,6 +884,31 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
   return 1;
 }
 
+static void do_breakpoint(size_t value)
+{
+  char *unsafe_value = ((char*)-1)-0xf;
+  char **safe_value = &unsafe_value;
+  uint64_t *breakpoint_value_addr = &globals.breakpoint_value;
+  __asm__ __volatile__(
+                      "mov (%1),%1\n\t"
+                      "cmp %0,%1\n\t"
+                      "cmove %3,%2\n\t"
+                      // This will segfault if `value` matches
+                      // the `breakpoint_value` set by rr. We
+                      // detect this segfault and treat it
+                      // specially.
+                      "do_breakpoint_fault_addr:\n\t"
+                      ".global do_breakpoint_fault_addr\n\t"
+                      "mov (%2),%2\n\t"
+                      "xor %1,%1\n\t"
+                      "xor %2,%2\n\t"
+                      "xor %3,%3\n\t"
+                      : "+a"(value), "+D"(breakpoint_value_addr),
+                        "+S"(safe_value), "+c"(unsafe_value)
+                      :
+                      : "cc", "memory");
+}
+
 /**
  * Commit the record for a buffered system call.  record_end can be
  * adjusted downward from what was passed to
@@ -895,7 +920,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
   void* record_start = buffer_last();
   struct syscallbuf_record* rec = record_start;
   struct syscallbuf_hdr* hdr = buffer_hdr();
-  void (*breakpoint_function)(void) = 0;
+  int call_breakpoint = 0;
 
   assert(record_end >= record_start);
   rec->size = record_end - record_start;
@@ -936,17 +961,11 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
     /* Clear the return value that rr puts there during replay */
     rec->ret = 0;
   } else {
-    int breakpoint_entry_size =
-        &_breakpoint_table_entry_end - &_breakpoint_table_entry_start;
-
     rec->ret = ret;
     // Finish 'rec' first before updating num_rec_bytes, since
     // rr might read the record anytime after this update.
     hdr->num_rec_bytes += stored_record_size(rec->size);
-
-    breakpoint_function =
-        (void*)(&_breakpoint_table_entry_start +
-                (hdr->num_rec_bytes / 8) * breakpoint_entry_size);
+    call_breakpoint = 1;
   }
 
   if (rec->desched) {
@@ -960,13 +979,13 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
 
   buffer_hdr()->locked &= ~SYSCALLBUF_LOCKED_TRACEE;
 
-  if (breakpoint_function) {
+  if (call_breakpoint) {
     /* Call the breakpoint function corresponding to the record we just
      * committed. This function just returns, but during replay it gives rr
      * a chance to set a breakpoint for when a specific syscallbuf record
      * has been processed.
      */
-    breakpoint_function();
+    do_breakpoint(hdr->num_rec_bytes/8);
   }
 
   return ret;

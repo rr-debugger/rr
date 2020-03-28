@@ -1117,10 +1117,7 @@ void ReplaySession::prepare_syscallbuf_records(ReplayTask* t) {
          recorded_hdr.num_rec_bytes + sizeof(struct syscallbuf_hdr) <=
              t->syscallbuf_size);
 
-  current_step.flush.stop_breakpoint_addr =
-      t->stopping_breakpoint_table.to_data_ptr<void>().as_int() +
-      (recorded_hdr.num_rec_bytes / 8) *
-          t->stopping_breakpoint_table_entry_size;
+  current_step.flush.stop_breakpoint_offset = recorded_hdr.num_rec_bytes / 8;
 
   LOG(debug) << "Prepared " << (uint32_t)recorded_hdr.num_rec_bytes
              << " bytes of syscall records";
@@ -1167,8 +1164,9 @@ static uint32_t apply_mprotect_records(ReplayTask* t,
  */
 Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
                                            const StepConstraints& constraints) {
+  bool legacy_breakpoint_mode = t->vm()->legacy_breakpoint_mode();
   bool user_breakpoint_at_addr = false;
-
+  remote_code_ptr remote_brkpt_addr;
   while (true) {
     auto next_rec = t->next_syscallbuf_record();
     uint32_t skip_mprotect_records = t->read_mem(
@@ -1179,16 +1177,32 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
       return INCOMPLETE;
     }
 
-    bool added = t->vm()->add_breakpoint(
-        current_step.flush.stop_breakpoint_addr, BKPT_INTERNAL);
-    ASSERT(t, added);
+    // We don't use this in new traces, but we retain this for replayability
+    if (legacy_breakpoint_mode) {
+      remote_brkpt_addr =
+        t->vm()->stopping_breakpoint_table().to_data_ptr<void>().as_int() +
+          current_step.flush.stop_breakpoint_offset *
+            t->vm()->stopping_breakpoint_table_entry_size();
+      bool added = t->vm()->add_breakpoint(remote_brkpt_addr, BKPT_INTERNAL);
+      ASSERT(t, added);
+    } else {
+      LOG(debug) << "Adding breakpoint";
+      t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, breakpoint_value),
+        (uint64_t)current_step.flush.stop_breakpoint_offset);
+    }
+
     auto complete =
         continue_or_step(t, constraints, ticks_request, RESUME_CONT);
-    user_breakpoint_at_addr =
-        t->vm()->get_breakpoint_type_at_addr(
-            current_step.flush.stop_breakpoint_addr) != BKPT_INTERNAL;
-    t->vm()->remove_breakpoint(current_step.flush.stop_breakpoint_addr,
-                               BKPT_INTERNAL);
+
+    if (legacy_breakpoint_mode) {
+      user_breakpoint_at_addr =
+          t->vm()->get_breakpoint_type_at_addr(remote_brkpt_addr) != BKPT_INTERNAL;
+      t->vm()->remove_breakpoint(remote_brkpt_addr,
+                                 BKPT_INTERNAL);
+    } else {
+      LOG(debug) << "Removing breakpoint " << t->status();
+      t->write_mem(REMOTE_PTR_FIELD(t->preload_globals, breakpoint_value), (uint64_t)-1);
+    }
 
     // Account for buffered syscalls just completed
     auto end_rec = t->next_syscallbuf_record();
@@ -1211,19 +1225,33 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
     }
   }
 
-  ASSERT(t, t->stop_sig() == SIGTRAP)
-      << "Replay got unexpected signal (or none) " << t->stop_sig();
-  if (t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
-          remote_code_ptr(current_step.flush.stop_breakpoint_addr) &&
-      !user_breakpoint_at_addr) {
-    Registers r = t->regs();
-    r.set_ip(current_step.flush.stop_breakpoint_addr);
-    t->set_regs(r);
+  if (legacy_breakpoint_mode) {
+    ASSERT(t, t->stop_sig() == SIGTRAP)
+        << "Replay got unexpected signal (or none) " << t->stop_sig();
+    if (t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
+            remote_code_ptr(remote_brkpt_addr) &&
+        !user_breakpoint_at_addr) {
+      Registers r = t->regs();
+      r.set_ip(remote_brkpt_addr);
+      t->set_regs(r);
 
-    return COMPLETE;
+      return COMPLETE;
+    }
+
+    return INCOMPLETE;
   }
 
-  return INCOMPLETE;
+  if (t->stop_sig() == SIGTRAP) {
+    return INCOMPLETE;
+  }
+
+  Registers r = t->regs();
+  ASSERT(t, t->stop_sig() == SIGSEGV && r.ip() == t->vm()->do_breakpoint_fault_addr())
+      << "Replay got unexpected signal (or none) " << t->stop_sig();
+  r.set_ip(r.ip().increment_by_movrm_insn_length(t->arch()));
+  t->set_regs(r);
+
+  return COMPLETE;
 }
 
 Completion ReplaySession::patch_next_syscall(

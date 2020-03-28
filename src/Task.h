@@ -783,9 +783,6 @@ public:
   size_t syscallbuf_size;
   /* Points at the tracee's mapping of the buffer. */
   remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
-  // XXX Move these fields to ReplayTask
-  remote_code_ptr stopping_breakpoint_table;
-  int stopping_breakpoint_table_entry_size;
 
   remote_ptr<struct preload_globals> preload_globals;
   typedef uint8_t ThreadLocals[PRELOAD_THREAD_LOCALS_SIZE];
