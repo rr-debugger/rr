@@ -3538,6 +3538,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       auto iovecs = t->read_mem(iovecsp, iovcnt);
       uint64_t result;
       vector<FileMonitor::Range> ranges;
+      ranges.reserve(iovcnt);
       for (int i = 0; i < iovcnt; ++i) {
         ranges.push_back(
             FileMonitor::Range(iovecs[i].iov_base, iovecs[i].iov_len));
