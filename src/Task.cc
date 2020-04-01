@@ -728,7 +728,7 @@ void Task::enter_syscall() {
         session().is_replaying()) {
       continue;
     }
-    ASSERT(this, session().is_recording())
+    ASSERT(this, session().is_recording() && !is_deterministic_signal(this))
         << " got unexpected signal " << signal_name(stop_sig());
     if (stop_sig() == session().as_record()->syscallbuf_desched_sig()) {
       continue;
