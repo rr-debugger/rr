@@ -5112,32 +5112,29 @@ static void check_scm_rights_fd(RecordTask* t, typename Arch::msghdr& msg) {
 
 static void fake_gcrypt_file(RecordTask* t, Registers* r) {
   // We hijacked this call to deal with /etc/gcrypt/hwf.deny.
-  TempFile file = create_temporary_file("rr-gcrypt-hwf-deny-XXXXXX");
+  char fname[255];
+  snprintf(fname, sizeof(fname), "rr-gcrypt-hwf-deny-%d", getpid());
+  ScopedFd fd(open_memory_file(fname));
 
   struct stat dummy;
   if (!stat("/etc/gcrypt/hwf.deny", &dummy)) {
     // Copy the contents into our temporary file
     ScopedFd existing("/etc/gcrypt/hwf.deny", O_RDONLY);
-    if (!copy_file(file.fd, existing)) {
+    if (!copy_file(fd, existing)) {
       FATAL() << "Can't copy file";
     }
   }
 
   static const char disable_rdrand[] = "\nintel-rdrand\n";
-  write_all(file.fd, disable_rdrand, sizeof(disable_rdrand) - 1);
+  write_all(fd, disable_rdrand, sizeof(disable_rdrand) - 1);
 
   // Now open the file in the child.
   int child_fd;
   {
     AutoRemoteSyscalls remote(t);
-    AutoRestoreMem child_str(remote, file.name.c_str());
-    child_fd = remote.infallible_syscall(
-        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
-        child_str.get(), O_RDONLY);
+    lseek(fd, 0, SEEK_SET);
+    child_fd = remote.send_fd(fd);
   }
-
-  // Unlink it now that the child has opened it.
-  unlink(file.name.c_str());
 
   // And hand out our fake file.
   r->set_syscall_result(child_fd);

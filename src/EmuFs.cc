@@ -20,13 +20,6 @@ using namespace std;
 
 namespace rr {
 
-static void replace_char(string& s, char c, char replacement) {
-  size_t i;
-  while (string::npos != (i = s.find(c))) {
-    s[i] = replacement;
-  }
-}
-
 EmuFile::~EmuFile() {
   LOG(debug) << "    EmuFs::~File(einode:" << inode_ << ")";
   owner.destroyed_file(*this);
@@ -78,49 +71,23 @@ void EmuFile::ensure_size(uint64_t size) {
   }
 }
 
-static ScopedFd create_memfd_file(const string& orig_path, dev_t orig_device,
-                                  ino_t orig_inode, string& real_name) {
+std::string make_temp_name(const string& orig_path, dev_t orig_device,
+                           ino_t orig_inode)
+{
   stringstream name;
   name << "rr-emufs-" << getpid() << "-dev-" << orig_device
        << "-inode-" << orig_inode << "-" << orig_path;
-  real_name = name.str().substr(0, 255);
-
-  ScopedFd fd = syscall(SYS_memfd_create, real_name.c_str(), 0);
-  return fd;
-}
-
-// Used only when memfd_create is not available, i.e. Linux < 3.17
-static ScopedFd create_tmpfs_file(const string& orig_path, dev_t orig_device,
-                                  ino_t orig_inode, string& real_name) {
-  // Sanitize the mapped file path so that we can use it in a
-  // leaf name.
-  string path_tag(orig_path);
-  replace_char(path_tag, '/', '\\');
-
-  stringstream name;
-  name << tmp_dir() << "/rr-emufs-" << getpid() << "-dev-" << orig_device
-       << "-inode-" << orig_inode << "-" << path_tag;
-  real_name = name.str().substr(0, 255);
-
-  ScopedFd fd =
-      open(real_name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0700);
-  /* Remove the fs name so that we don't have to worry about
-   * cleaning up this segment in error conditions. */
-  unlink(real_name.c_str());
-  return fd;
+  return name.str().substr(0, 255);
 }
 
 /*static*/ EmuFile::shr_ptr EmuFile::create(EmuFs& owner,
                                             const string& orig_path,
                                             dev_t orig_device, ino_t orig_inode,
                                             uint64_t orig_file_size) {
-  string real_name;
-  ScopedFd fd = create_memfd_file(orig_path, orig_device, orig_inode, real_name);
+  string real_name = make_temp_name(orig_path, orig_device, orig_inode);
+  ScopedFd fd(open_memory_file(real_name));
   if (!fd.is_open()) {
-    fd = create_tmpfs_file(orig_path, orig_device, orig_inode, real_name);
-    if (!fd.is_open()) {
-      FATAL() << "Failed to create shmem segment for " << real_name;
-    }
+    FATAL() << "Failed to create shmem segment for " << real_name;
   }
   resize_shmem_segment(fd, orig_file_size);
 

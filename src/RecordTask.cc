@@ -452,30 +452,27 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     if (trace_writer().supports_file_data_cloning() &&
         session().use_read_cloning()) {
       string clone_file_name = trace_writer().file_data_clone_file_name(tuid());
-      AutoRestoreMem name(remote, clone_file_name.c_str());
-      int cloned_file_data = remote.syscall(syscall_number_for_openat(arch()),
-                                            RR_RESERVED_ROOT_DIR_FD, name.get(),
-                                            O_RDWR | O_CREAT | O_CLOEXEC, 0600);
-      if (cloned_file_data >= 0) {
-        int free_fd = find_free_file_descriptor(tid);
-        cloned_file_data_fd_child =
-            remote.syscall(syscall_number_for_dup3(arch()), cloned_file_data,
-                           free_fd, O_CLOEXEC);
-        if (cloned_file_data_fd_child != free_fd) {
-          ASSERT(this, cloned_file_data_fd_child < 0);
-          LOG(warn) << "Couldn't dup clone-data file to free fd";
-          cloned_file_data_fd_child = cloned_file_data;
-        } else {
-          // Prevent the child from closing this fd. We're going to close it
-          // ourselves and we don't want the child closing it and then reopening
-          // its own file with this fd.
-          fds->add_monitor(this, cloned_file_data_fd_child,
-                           new PreserveFileMonitor());
-          remote.infallible_syscall(syscall_number_for_close(arch()),
-                                    cloned_file_data);
-        }
-        args.cloned_file_data_fd = cloned_file_data_fd_child;
+      ScopedFd clone_file(clone_file_name.c_str(), O_RDWR | O_CREAT, 0600);
+      int cloned_file_data = remote.send_fd(clone_file.get());
+      ASSERT(this, cloned_file_data >= 0);
+      int free_fd = find_free_file_descriptor(tid);
+      cloned_file_data_fd_child =
+          remote.syscall(syscall_number_for_dup3(arch()), cloned_file_data,
+                          free_fd, O_CLOEXEC);
+      if (cloned_file_data_fd_child != free_fd) {
+        ASSERT(this, cloned_file_data_fd_child < 0);
+        LOG(warn) << "Couldn't dup clone-data file to free fd";
+        cloned_file_data_fd_child = cloned_file_data;
+      } else {
+        // Prevent the child from closing this fd. We're going to close it
+        // ourselves and we don't want the child closing it and then reopening
+        // its own file with this fd.
+        fds->add_monitor(this, cloned_file_data_fd_child,
+                          new PreserveFileMonitor());
+        remote.infallible_syscall(syscall_number_for_close(arch()),
+                                  cloned_file_data);
       }
+      args.cloned_file_data_fd = cloned_file_data_fd_child;
     }
   } else {
     args.syscallbuf_ptr = remote_ptr<void>(nullptr);

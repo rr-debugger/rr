@@ -46,6 +46,11 @@ public:
     fd = -1;
   }
 
+  static ScopedFd openat(const ScopedFd &dir, const char* pathname,
+                         int flags, mode_t mode = 0) {
+    return ScopedFd(::openat(dir.get(), pathname, flags, mode));
+  }
+
 private:
   int fd;
 };

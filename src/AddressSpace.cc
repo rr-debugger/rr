@@ -276,19 +276,6 @@ static string find_rr_page_file(Task* t) {
   return path;
 }
 
-static vector<uint8_t> read_all(Task* t, ScopedFd& fd) {
-  char buf[4096];
-  vector<uint8_t> result;
-  while (true) {
-    int ret = read(fd, buf, sizeof(buf));
-    ASSERT(t, ret >= 0);
-    if (ret == 0) {
-      return result;
-    }
-    result.insert(result.end(), buf, buf + ret);
-  }
-}
-
 void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   int prot = PROT_EXEC | PROT_READ;
   int flags = MAP_PRIVATE | MAP_FIXED;
@@ -298,12 +285,11 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
   SupportedArch arch = t->arch();
 
   string path = find_rr_page_file(t);
-  AutoRestoreMem child_path(remote, path.c_str());
-  // skip leading '/' since we want the path to be relative to the root fd
-  long child_fd =
-      remote.syscall(syscall_number_for_openat(arch), RR_RESERVED_ROOT_DIR_FD,
-                     child_path.get() + 1, O_RDONLY);
-  if (child_fd >= 0) {
+
+  {
+    ScopedFd page(path.c_str(), O_RDONLY);
+    long child_fd = remote.send_fd(page.get());
+    ASSERT(t, child_fd >= 0);
     remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
                                    child_fd, 0);
 
@@ -314,19 +300,6 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
 
     map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name,
         fstat.st_dev, fstat.st_ino);
-  } else {
-    ASSERT(t, child_fd != -ENOENT) << "rr_page file not found: "
-        << path.c_str();
-    ASSERT(t, child_fd == -EACCES) << "Unexpected error mapping rr_page";
-    flags |= MAP_ANONYMOUS;
-    remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
-                                   -1, 0);
-    ScopedFd page(path.c_str(), O_RDONLY);
-    ASSERT(t, page.is_open()) << "Error opening rr_page ourselves";
-    vector<uint8_t> page_data = read_all(t, page);
-    t->write_bytes_helper(rr_page_start(), page_data.size(), page_data.data());
-
-    map(t, rr_page_start(), rr_page_size(), prot, flags, 0, file_name, 0, 0);
   }
   mapping_flags_of(rr_page_start()) = Mapping::IS_RR_PAGE;
 
