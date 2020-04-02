@@ -1324,9 +1324,13 @@ set(TESTS_WITHOUT_PROGRAM
 )
 
 if(BUILD_TESTS)
+  # Extracting the basename of the source directory. This is necessary because
+  # the tests depend on a relative path to the source directory which can have
+  # different names.
+  get_filename_component(SOURCE_DIR_BASENAME ${CMAKE_SOURCE_DIR} NAME)
   # Part of the installable testsuite (test files).
   install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/test/
-          DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/rr/src/test
+          DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/${SOURCE_DIR_BASENAME}/src/test
           USE_SOURCE_PERMISSIONS)
 
   add_test(check_environment
@@ -1410,19 +1414,19 @@ if(BUILD_TESTS)
 
   foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
     add_test(${test}
-      bash "../rr/src/test/basic_test.run" ${test} -b ${TESTSUITE_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash "../${SOURCE_DIR_BASENAME}/src/test/basic_test.run" ${test} -b ${TESTSUITE_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test})
     add_test(${test}-no-syscallbuf
-      bash "../rr/src/test/basic_test.run" ${test} -n ${TESTSUITE_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash "../${SOURCE_DIR_BASENAME}/src/test/basic_test.run" ${test} -n ${TESTSUITE_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
     add_test(${test}
-      bash "../rr/src/test/${test}.run" ${test} -b ${TESTSUITE_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash "../${SOURCE_DIR_BASENAME}/src/test/${test}.run" ${test} -b ${TESTSUITE_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test})
     add_test(${test}-no-syscallbuf
-      bash "../rr/src/test/${test}.run" ${test} -n ${TESTSUITE_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash "../${SOURCE_DIR_BASENAME}/src/test/${test}.run" ${test} -n ${TESTSUITE_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
@@ -1488,19 +1492,19 @@ if(BUILD_TESTS)
 
     foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
       add_test(${test}-32
-        bash "../rr/src/test/basic_test.run" ${test}_32 -b ${TESTSUITE_BINARY_DIR})
+        bash "../${SOURCE_DIR_BASENAME}/src/test/basic_test.run" ${test}_32 -b ${TESTSUITE_BINARY_DIR})
       configure_test(${test}-32)
       add_test(${test}-32-no-syscallbuf
-        bash "../rr/src/test/basic_test.run" ${test}_32 -n ${TESTSUITE_BINARY_DIR})
+        bash "../${SOURCE_DIR_BASENAME}/src/test/basic_test.run" ${test}_32 -n ${TESTSUITE_BINARY_DIR})
       configure_test(${test}-32-no-syscallbuf)
     endforeach(test)
 
     foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
       add_test(${test}-32
-        bash "../rr/src/test/${test}.run" ${test}_32 -b ${TESTSUITE_BINARY_DIR})
+        bash "../${SOURCE_DIR_BASENAME}/src/test/${test}.run" ${test}_32 -b ${TESTSUITE_BINARY_DIR})
       configure_test(${test}-32)
       add_test(${test}-32-no-syscallbuf
-        bash "../rr/src/test/${test}.run" ${test}_32 -n ${TESTSUITE_BINARY_DIR})
+        bash "../${SOURCE_DIR_BASENAME}/src/test/${test}.run" ${test}_32 -n ${TESTSUITE_BINARY_DIR})
       configure_test(${test}-32-no-syscallbuf)
     endforeach(test)
   endif()
