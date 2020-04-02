@@ -1424,8 +1424,8 @@ static ScopedFd create_memfd_file(const string &real_name) {
 }
 
 static void replace_char(string& s, char c, char replacement) {
-  size_t i;
-  while (string::npos != (i = s.find(c))) {
+  size_t i = 0;
+  while (string::npos != (i = s.find(c, i))) {
     s[i] = replacement;
   }
 }
