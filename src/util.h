@@ -381,6 +381,11 @@ struct TempFile {
  */
 TempFile create_temporary_file(const char* pattern);
 
+/**
+ * Opens a temporary file backed by RAM.
+ */
+ScopedFd open_memory_file(const std::string &name);
+
 void good_random(void* out, size_t out_len);
 
 std::vector<std::string> current_env();

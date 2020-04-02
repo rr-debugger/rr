@@ -2170,40 +2170,31 @@ bool Task::open_mem_fd() {
     return false;
   }
 
-  // We could try opening /proc/<pid>/mem directly first and
-  // only do this dance if that fails. But it's simpler to
-  // always take this path, and gives better test coverage. On Ubuntu
-  // the child has to open its own mem file (unless rr is root).
-  static const char path[] = "/proc/self/mem";
+  /**
+   * We're expecting that either we or the child can read the mem fd.
+   * It's possible for both to not be the case (us on certain kernel
+   * configurations, the child after it did a setuid).
+   */
+  char pid_path[PATH_MAX];
+  sprintf(pid_path, "/proc/%d", tid);
+  ScopedFd dir_fd(pid_path, O_PATH);
+  ScopedFd fd = ScopedFd::openat(dir_fd, "mem", O_RDWR);
 
-  AutoRemoteSyscalls remote(this);
-  int remote_fd;
-  {
-    AutoRestoreMem remote_path(remote, (const uint8_t*)path, sizeof(path));
-    if (remote_path.get()) {
-      // skip leading '/' since we want the path to be relative to the root fd
-      remote_fd =
-          remote.syscall(syscall_number_for_openat(arch()),
-                        RR_RESERVED_ROOT_DIR_FD, remote_path.get() + 1, O_RDWR);
-    } else {
-      remote_fd = -ESRCH;
-    }
+  if (!fd.is_open()) {
+    LOG(debug) << "Falling back to the remote fd dance";
+    AutoRemoteSyscalls remote(this);
+    int remote_mem_dir_fd = remote.send_fd(dir_fd);
+    char mem[] = "mem";
+    // If the remote dies, any of these can fail. That's ok, we'll just
+    // find that the fd wasn't successfully opened.
+    AutoRestoreMem remote_path(remote, mem, sizeof(mem));
+    int remote_mem_fd = remote.syscall(syscall_number_for_openat(arch()),
+                        remote_mem_dir_fd, remote_path.get() + 1, O_RDWR);
+    fd = remote.retrieve_fd(remote_mem_fd);
+    remote.syscall(syscall_number_for_close(arch()), remote_mem_fd);
+    remote.syscall(syscall_number_for_close(arch()), remote_mem_dir_fd);
   }
-  ScopedFd fd;
-  if (remote_fd != -ESRCH) {
-    if (remote_fd < 0) {
-      // This can happen when a process fork()s after setuid; it can no longer
-      // open its own /proc/self/mem. Hopefully we can read the child's
-      // mem file in this case (because rr is probably running as root).
-      char buf[PATH_MAX];
-      sprintf(buf, "/proc/%d/mem", tid);
-      fd = ScopedFd(buf, O_RDWR);
-    } else {
-      fd = remote.retrieve_fd(remote_fd);
-      // Leak fd if the syscall fails due to the task being SIGKILLed unexpectedly
-      remote.syscall(syscall_number_for_close(arch()), remote_fd);
-    }
-  }
+
   if (!fd.is_open()) {
     LOG(info) << "Can't retrieve mem fd for " << tid << "; process no longer exists?";
     return false;
@@ -2624,7 +2615,6 @@ static void setup_fd_table(Task* t, FdTable& fds, int tracee_socket_fd_number) {
   fds.add_monitor(t, STDOUT_FILENO, new StdioMonitor(STDOUT_FILENO));
   fds.add_monitor(t, STDERR_FILENO, new StdioMonitor(STDERR_FILENO));
   fds.add_monitor(t, RR_MAGIC_SAVE_DATA_FD, new MagicSaveDataMonitor());
-  fds.add_monitor(t, RR_RESERVED_ROOT_DIR_FD, new PreserveFileMonitor());
   fds.add_monitor(t, tracee_socket_fd_number, new PreserveFileMonitor());
 }
 
@@ -2683,24 +2673,6 @@ static void set_up_process(Session& session, const ScopedFd& err_fd,
   }
   if (RR_MAGIC_SAVE_DATA_FD != dup2(fd, RR_MAGIC_SAVE_DATA_FD)) {
     spawned_child_fatal_error(err_fd, "error duping to RR_MAGIC_SAVE_DATA_FD");
-  }
-
-  // If we're running under rr then don't try to set up RR_RESERVED_ROOT_DIR_FD;
-  // it should already be correct (unless someone chrooted in between,
-  // which would be crazy ... though we could fix it by dynamically
-  // assigning RR_RESERVED_ROOT_DIR_FD.)
-  if (!running_under_rr()) {
-    /* CLOEXEC so that the original fd here will be closed by the exec that's
-     * about to happen.
-     */
-    fd = open("/", O_PATH | O_DIRECTORY | O_CLOEXEC);
-    if (0 > fd) {
-      spawned_child_fatal_error(err_fd, "error opening root directory");
-    }
-    if (RR_RESERVED_ROOT_DIR_FD != dup2(fd, RR_RESERVED_ROOT_DIR_FD)) {
-      spawned_child_fatal_error(err_fd,
-                                "error duping to RR_RESERVED_ROOT_DIR_FD");
-    }
   }
 
   if (sock_fd_number != dup2(sock_fd, sock_fd_number)) {

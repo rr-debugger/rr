@@ -20,8 +20,8 @@ int main(int argc, char* argv[]) {
 
   /* Various spawning APIs try to close all open file descriptors before
      exec --- via direct close(), or by setting CLOEXEC. Check that
-     those don't interfere with rr by closing RR_RESERVED_ROOT_DIR_FD
-     or some other essential file descriptor. */
+     those don't interfere with rr by closing one of our essential
+     file descriptors. */
   test_assert(0 == getrlimit(RLIMIT_NOFILE, &nofile));
   if (nofile.rlim_cur == RLIM_INFINITY || nofile.rlim_cur > MAX_FDS) {
     fd_limit = MAX_FDS;

@@ -1418,6 +1418,42 @@ TempFile create_temporary_file(const char* pattern) {
   return result;
 }
 
+static ScopedFd create_memfd_file(const string &real_name) {
+  ScopedFd fd(syscall(SYS_memfd_create, real_name.c_str(), 0));
+  return fd;
+}
+
+static void replace_char(string& s, char c, char replacement) {
+  size_t i;
+  while (string::npos != (i = s.find(c))) {
+    s[i] = replacement;
+  }
+}
+
+// Used only when memfd_create is not available, i.e. Linux < 3.17
+static ScopedFd create_tmpfs_file(const string &real_name) {
+  std::string name = real_name;
+  replace_char(name, '/', '\\');
+  name = tmp_dir() + real_name;
+  name = name.substr(0, 255);
+
+  ScopedFd fd =
+      open(name.c_str(), O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0700);
+  /* Remove the fs name so that we don't have to worry about
+   * cleaning up this segment in error conditions. */
+  unlink(real_name.c_str());
+  return fd;
+}
+
+ScopedFd open_memory_file(const std::string &name)
+{
+  ScopedFd fd(create_memfd_file(name));
+  if (!fd.is_open()) {
+    fd = create_tmpfs_file(name);
+  }
+  return fd;
+}
+
 void good_random(void* out, size_t out_len) {
   ScopedFd fd("/dev/urandom", O_RDONLY);
   uint8_t* o = static_cast<uint8_t*>(out);

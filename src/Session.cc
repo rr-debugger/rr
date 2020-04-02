@@ -400,20 +400,8 @@ static void remap_shared_mmap(AutoRemoteSyscalls& remote, EmuFs& emu_fs,
 
   // TODO: this duplicates some code in replay_syscall.cc, but
   // it's somewhat nontrivial to factor that code out.
-  int remote_fd;
-  {
-    string path = emu_file->proc_path();
-    AutoRestoreMem child_path(remote, path.c_str());
-    // Always open the emufs file O_RDWR, even if the current mapping prot
-    // is read-only. We might mprotect it to read-write later.
-    // skip leading '/' since we want the path to be relative to the root fd
-    remote_fd = remote.infallible_syscall(
-        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
-        child_path.get() + 1, O_RDWR);
-    if (0 > remote_fd) {
-      FATAL() << "Couldn't open " << path << " in tracee";
-    }
-  }
+  int remote_fd = remote.send_fd(emu_file->fd());
+  ASSERT(remote.task(), remote_fd >= 0);
   struct stat real_file = remote.task()->stat_fd(remote_fd);
   string real_file_name = remote.task()->file_name_of_fd(remote_fd);
   // XXX this condition is x86/x64-specific, I imagine.
@@ -448,24 +436,12 @@ KernelMapping Session::create_shared_mmap(
   snprintf(path, sizeof(path) - 1, "%s%s%s-%d-%d", tmp_dir(),
            rr_mapping_prefix(), name, remote.task()->real_tgid(), nonce++);
 
-  // Let the child create the shmem block and then send the fd back to us.
-  // This lets us avoid having to make the file world-writeable so that
-  // the child can read it when it's in a different user namespace (which
-  // would be a security hole, letting other users abuse rr users).
-  int child_shmem_fd;
-  {
-    AutoRestoreMem child_path(remote, path);
-    // skip leading '/' since we want the path to be relative to the root fd
-    child_shmem_fd = remote.infallible_syscall(
-        syscall_number_for_openat(remote.arch()), RR_RESERVED_ROOT_DIR_FD,
-        child_path.get() + 1, O_CREAT | O_EXCL | O_RDWR | O_CLOEXEC, 0600);
-  }
-
+  ScopedFd shmem_fd(path, O_CREAT | O_EXCL | O_RDWR);
   /* Remove the fs name so that we don't have to worry about
    * cleaning up this segment in error conditions. */
   unlink(path);
 
-  ScopedFd shmem_fd = remote.retrieve_fd(child_shmem_fd);
+  int child_shmem_fd = remote.send_fd(shmem_fd);
   resize_shmem_segment(shmem_fd, size);
   LOG(debug) << "created shmem segment " << path;
 
