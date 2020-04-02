@@ -196,6 +196,14 @@ public:
   ScopedFd retrieve_fd(int fd);
 
   /**
+   * Arranges for 'fd' to be transmitted to the tracee and returns
+   * a file descriptor in the tracee that corresponds to the same file
+   * description.
+   * Returns a negative value if the process dies or has died.
+   */
+  int send_fd(const ScopedFd &fd);
+
+  /**
    * Remotely invoke in |t| the specified syscall with the given
    * arguments.  The arguments must of course be valid in |t|,
    * and no checking of that is done by this function.
@@ -236,6 +244,7 @@ private:
   }
 
   template <typename Arch> ScopedFd retrieve_fd_arch(int fd);
+  template <typename Arch> int send_fd_arch(const ScopedFd &fd);
 
   Task* t;
   Registers initial_regs;
