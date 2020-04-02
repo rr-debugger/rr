@@ -5018,6 +5018,8 @@ static bool is_mapped_shared(RecordTask* t, const struct stat& st) {
       if ((m.map.flags() & MAP_SHARED) &&
           m.mapped_file_stat && m.mapped_file_stat->st_dev == st.st_dev &&
           m.mapped_file_stat->st_ino == st.st_ino) {
+        LOG(debug) << "is_mapped_shared is shared: "
+          << st.st_dev << " " << st.st_ino;
         return true;
       }
     }
@@ -5042,6 +5044,7 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
     // it will have already installed this monitor for us. So we must allow this
     // benign race.
     if (t->fd_table()->is_monitoring(fd)) {
+      LOG(debug) << "Already monitoring " << fd;
         ASSERT(t,
                t->fd_table()->get_monitor(fd)->type() ==
                FileMonitor::Type::Mmapped);
