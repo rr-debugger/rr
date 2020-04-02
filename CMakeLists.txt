@@ -28,6 +28,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(BUILD_TESTS ON CACHE BOOL "Build tests")
 set(WILL_RUN_TESTS ${BUILD_TESTS} CACHE BOOL "Run tests")
+option(INSTALL_TESTSUITE "Install the testsuite")
 
 # CAREFUL!  "-" is an invalid character in RPM package names, while
 # debian is happy with it.  However, "_" is illegal in debs, while RPM
@@ -1333,6 +1334,13 @@ set(TESTS_WITHOUT_PROGRAM
 )
 
 if(BUILD_TESTS)
+  # Part of the installable testsuite (test files).
+  if(INSTALL_TESTSUITE)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/src/test/
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/rr/src/test
+            USE_SOURCE_PERMISSIONS)
+  endif(INSTALL_TESTSUITE)
+
   add_test(check_environment
       bash ${CMAKE_SOURCE_DIR}/src/test/check_environment_test.run)
   set_tests_properties(check_environment
@@ -1345,6 +1353,11 @@ if(BUILD_TESTS)
                                 PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
     add_dependencies(${test} Generated)
     target_link_libraries(${test} -lrt -ldl)
+    # Part of the installable testsuite (test programs).
+    if(INSTALL_TESTSUITE)
+      install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${test}
+              DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
+    endif(INSTALL_TESTSUITE)
   endforeach(test)
 
   # Test disabled because it requires libuvc to be built and installed, and a
@@ -1361,6 +1374,11 @@ if(BUILD_TESTS)
                                 PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
     add_dependencies(${test} Generated)
     target_link_libraries(${test} -lrt)
+    # Part of the installable testsuite (test programs).
+    if(INSTALL_TESTSUITE)
+      install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${test}
+              DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
+    endif(INSTALL_TESTSUITE)
   endforeach(test)
 
   add_library(test_lib
@@ -1395,21 +1413,48 @@ if(BUILD_TESTS)
       PROPERTIES FAIL_REGULAR_EXPRESSION "FAILED" TIMEOUT 1000)
   endfunction(configure_test)
 
+  if(INSTALL_TESTSUITE)
+    install(TARGETS test_lib
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
+    install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/test-monitor
+                     ${CMAKE_CURRENT_BINARY_DIR}/bin/cpuid
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/CTestTestfile.cmake
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj)
+  endif(INSTALL_TESTSUITE)
+
+  # We use symlinks in the tests to access the build and source directories.
+  # This is needed because we cannot change the paths used by the tests when
+  # the testsuite is installed. We work around this by using symlinks during
+  # the normal build, and then installing symlinks with the testsuite that
+  # have the same name but, the new link targets.
+  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_SOURCE_DIR} source_dir)
+  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${PROJECT_BINARY_DIR} bin_dir)
+
+  if(INSTALL_TESTSUITE)
+    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+                  \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/rr
+                  \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/source_dir)
+                  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+                  \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj
+                  \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin_dir)")
+  endif(INSTALL_TESTSUITE)
+
   foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
     add_test(${test}
-      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test} -b ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash source_dir/src/test/basic_test.run ${test} -b bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test})
     add_test(${test}-no-syscallbuf
-      bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test} -n ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash source_dir/src/test/basic_test.run ${test} -n bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
     add_test(${test}
-      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test} -b ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash source_dir/src/test/${test}.run ${test} -b bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test})
     add_test(${test}-no-syscallbuf
-      bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test} -n ${PROJECT_BINARY_DIR} ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash source_dir/src/test/${test}.run ${test} -n bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
@@ -1447,6 +1492,11 @@ if(BUILD_TESTS)
       add_dependencies(${test}_32 Generated)
       set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS}")
       target_link_libraries(${test}_32 -lrt -ldl)
+      # Part of the installable testsuite (test programs).
+      if (INSTALL_TESTSUITE)
+        install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${test}_32
+                DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
+      endif (INSTALL_TESTSUITE)
     endforeach(test)
 
     add_library(test_lib_32
@@ -1464,21 +1514,28 @@ if(BUILD_TESTS)
     set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
     target_link_libraries(cpuid_32 -lrt)
 
+    if(INSTALL_TESTSUITE)
+      install(TARGETS test_lib_32
+              LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr)
+      install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/cpuid_32
+              DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
+    endif(INSTALL_TESTSUITE)
+
     foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
       add_test(${test}-32
-        bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test}_32 -b ${PROJECT_BINARY_DIR})
+        bash source_dir/src/test/basic_test.run ${test}_32 -b bin_dir)
       configure_test(${test}-32)
       add_test(${test}-32-no-syscallbuf
-        bash ${CMAKE_SOURCE_DIR}/src/test/basic_test.run ${test}_32 -n ${PROJECT_BINARY_DIR})
+        bash source_dir/src/test/basic_test.run ${test}_32 -n bin_dir)
       configure_test(${test}-32-no-syscallbuf)
     endforeach(test)
 
     foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
       add_test(${test}-32
-        bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test}_32 -b ${PROJECT_BINARY_DIR})
+        bash source_dir/src/test/${test}.run ${test}_32 -b bin_dir)
       configure_test(${test}-32)
       add_test(${test}-32-no-syscallbuf
-	    bash ${CMAKE_SOURCE_DIR}/src/test/${test}.run ${test}_32 -n ${PROJECT_BINARY_DIR})
+        bash source_dir/src/test/${test}.run ${test}_32 -n bin_dir)
       configure_test(${test}-32-no-syscallbuf)
     endforeach(test)
   endif()

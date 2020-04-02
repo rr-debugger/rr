@@ -147,7 +147,23 @@ export _RR_CPU_LOCK_FILE="/tmp/rr-test-cpu-lock"
 
 # Set options to find rr and resource files in the expected places.
 export PATH="${OBJDIR}/bin:${PATH}"
-GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --resource-path=${OBJDIR}"
+
+# Resource path is normally the same as the build directory, however, it is
+# slightly different when using the installable testsuite. The installable
+# testsuite will look for resources under DESTDIR/CMAKE_INSATALL_PREFIX. We
+# can detect if it's the installable testsuite being run by checking if the
+# rr binary exists in the build directory.
+if [[ -f "$OBJDIR/bin/rr" ]]; then
+    RESOURCE_PATH=$OBJDIR
+else
+    # The resources are located at DESTDIR/CMAKE_INSTALL_PREFIX. We don't have
+    # access to these variables while running the testsuite. However, OBJDIR is
+    # set as DESTDIR/CMAKE_INSTALL_PREFIX/CMAKE_INSTALL_LIBDIR/rr/testsuite/obj.
+    # We can use this to locate the resources by going up exactly 4 directories.
+    RESOURCE_PATH=`realpath $OBJDIR/../../../..`
+fi
+
+GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --resource-path=${RESOURCE_PATH}"
 
 which rr >/dev/null 2>&1
 if [[ "$?" != "0" ]]; then
@@ -210,7 +226,14 @@ function just_record { exe="$1"; exeargs=$2;
 }
 
 function save_exe { exe=$1;
-    cp "${OBJDIR}/bin/$exe" "$exe-$nonce"
+    # If the installable testsuite is being run, most of the exes will
+    # be located under OBJDIR and the remaining under RESOURCE_PATH.
+    if [[ -f "${OBJDIR}/bin/$exe" ]]; then
+        EXE_PATH=$OBJDIR/bin/$exe
+    else
+        EXE_PATH=$RESOURCE_PATH/bin/$exe
+    fi
+    cp "${EXE_PATH}" "$exe-$nonce"
 }
 
 # Record $exe with $exeargs.
