@@ -54,6 +54,7 @@
 #include <linux/if_packet.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
+#include <linux/stat.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdarg.h>
