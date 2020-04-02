@@ -1228,10 +1228,10 @@ struct BaseArch : public wordsize,
   RR_VERIFY_TYPE(sched_param);
 
   static void* cmsg_data(cmsghdr* cmsg) { return cmsg + 1; }
-  static size_t cmsg_align(size_t len) {
+  static constexpr size_t cmsg_align(size_t len) {
     return (len + sizeof(size_t) - 1) & ~(sizeof(size_t) - 1);
   }
-  static size_t cmsg_space(size_t len) {
+  static constexpr size_t cmsg_space(size_t len) {
     return cmsg_align(sizeof(cmsghdr)) + cmsg_align(len);
   }
   static size_t cmsg_len(size_t len) {
