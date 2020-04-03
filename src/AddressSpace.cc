@@ -317,6 +317,23 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
       TRACED, PRIVILEGED, RECORDING_AND_REPLAY, t->arch());
 }
 
+void AddressSpace::unmap_all_but_rr_page(AutoRemoteSyscalls& remote) {
+  vector<MemoryRange> unmaps;
+  for (const auto& m : maps()) {
+    // Do not attempt to unmap [vsyscall] --- it doesn't work.
+    if (m.map.start() != AddressSpace::rr_page_start() &&
+        m.map.start() != AddressSpace::preload_thread_locals_start() &&
+        !m.map.is_vsyscall()) {
+      unmaps.push_back(m.map);
+    }
+  }
+  for (auto& m : unmaps) {
+    remote.infallible_syscall(syscall_number_for_munmap(remote.task()->arch()),
+                              m.start(), m.size());
+    unmap(remote.task(), m.start(), m.size());
+  }
+}
+
 /**
  * Must match generate_rr_page.py
  */

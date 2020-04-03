@@ -2991,4 +2991,5 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 void* Task::preload_thread_locals() {
   return preload_thread_locals_local_addr(*as);
 }
+
 }
