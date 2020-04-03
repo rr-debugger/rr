@@ -2036,10 +2036,11 @@ RecordSession::RecordSession(const std::string& exe_path,
     FATAL() << "RR_CALL_BASE is incorrect";
   }
 
+  do_bind_cpu(trace_out);
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
       Task::spawn(*this, error_fd, &tracee_socket_fd(),
-                  &tracee_socket_fd_number, trace_out,
+                  &tracee_socket_fd_number,
                   exe_path, argv, envp));
   // CPU affinity has been set.
   trace_out.setup_cpuid_records(has_cpuid_faulting(), disable_cpuid_features_);

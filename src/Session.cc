@@ -669,4 +669,49 @@ int Session::cpu_binding(TraceStream& trace) const {
   return trace.bound_to_cpu();
 }
 
+// Returns true if we succeeded, false if we failed because the
+// requested CPU does not exist/is not available.
+static bool set_cpu_affinity(int cpu) {
+  DEBUG_ASSERT(cpu >= 0);
+
+  cpu_set_t mask;
+  CPU_ZERO(&mask);
+  CPU_SET(cpu, &mask);
+  if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
+    if (errno == EINVAL) {
+      return false;
+    }
+    FATAL() << "Couldn't bind to CPU " << cpu;
+  }
+  return true;
+}
+
+void Session::do_bind_cpu(TraceStream &trace) {
+  int cpu_index = this->cpu_binding(trace);
+  if (cpu_index >= 0) {
+    // Set CPU affinity now, after we've created any helper threads
+    // (so they aren't affected), but before we create any
+    // tracees (so they are all affected).
+    // Note that we're binding rr itself to the same CPU as the
+    // tracees, since this seems to help performance.
+    if (!set_cpu_affinity(cpu_index)) {
+      if (has_cpuid_faulting() && !is_recording()) {
+        cpu_index = choose_cpu(BIND_CPU);
+        if (!set_cpu_affinity(cpu_index)) {
+          FATAL() << "Can't bind to requested CPU " << cpu_index
+                  << " even after we re-selected it";
+        }
+        LOG(warn) << "Bound to CPU " << cpu_index
+                  << "instead of selected " << trace.bound_to_cpu()
+                  << "because the latter is not available;\n"
+                  << "Hoping tracee doesn't use LSL instruction!";
+        trace.set_bound_cpu(cpu_index);
+      } else {
+        FATAL() << "Can't bind to requested CPU " << cpu_index
+                << ", and CPUID faulting not available";
+      }
+    }
+  }
+}
+
 } // namespace rr
