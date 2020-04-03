@@ -357,6 +357,10 @@ public:
     return SYS_rrcall_notify_stap_semaphore_removed - RR_CALL_BASE + rrcall_base_;
   }
 
+  /* Bind the current process to the a CPU as specified in the session options
+     or trace */
+  void do_bind_cpu(TraceStream &trace);
+
 protected:
   Session();
   virtual ~Session();

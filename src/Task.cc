@@ -2636,23 +2636,6 @@ static void setup_fd_table(Task* t, FdTable& fds, int tracee_socket_fd_number) {
   fds.add_monitor(t, tracee_socket_fd_number, new PreserveFileMonitor());
 }
 
-// Returns true if we succeeded, false if we failed because the
-// requested CPU does not exist/is not available.
-static bool set_cpu_affinity(int cpu) {
-  DEBUG_ASSERT(cpu >= 0);
-
-  cpu_set_t mask;
-  CPU_ZERO(&mask);
-  CPU_SET(cpu, &mask);
-  if (0 > sched_setaffinity(0, sizeof(mask), &mask)) {
-    if (errno == EINVAL) {
-      return false;
-    }
-    FATAL() << "Couldn't bind to CPU " << cpu;
-  }
-  return true;
-}
-
 static void spawned_child_fatal_error(const ScopedFd& err_fd,
                                       const char* format, ...) {
   va_list args;
@@ -2823,7 +2806,6 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 /*static*/ Task* Task::spawn(Session& session, ScopedFd& error_fd,
                              ScopedFd* sock_fd_out,
                              int* tracee_socket_fd_number_out,
-                             TraceStream& trace,
                              const std::string& exe_path,
                              const std::vector<std::string>& argv,
                              const std::vector<std::string>& envp,
@@ -2853,32 +2835,6 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
     ++fd_number;
   }
   *tracee_socket_fd_number_out = fd_number;
-
-  int cpu_index = session.cpu_binding(trace);
-  if (cpu_index >= 0) {
-    // Set CPU affinity now, after we've created any helper threads
-    // (so they aren't affected), but before we create any
-    // tracees (so they are all affected).
-    // Note that we're binding rr itself to the same CPU as the
-    // tracees, since this seems to help performance.
-    if (!set_cpu_affinity(cpu_index)) {
-      if (session.has_cpuid_faulting() && !session.is_recording()) {
-        cpu_index = choose_cpu(BIND_CPU);
-        if (!set_cpu_affinity(cpu_index)) {
-          FATAL() << "Can't bind to requested CPU " << cpu_index
-                  << " even after we re-selected it";
-        }
-        LOG(warn) << "Bound to CPU " << cpu_index
-                  << "instead of selected " << trace.bound_to_cpu()
-                  << "because the latter is not available;\n"
-                  << "Hoping tracee doesn't use LSL instruction!";
-        trace.set_bound_cpu(cpu_index);
-      } else {
-        FATAL() << "Can't bind to requested CPU " << cpu_index
-                << ", and CPUID faulting not available";
-      }
-    }
-  }
 
   pid_t tid;
   // After fork() in a multithreaded program, the child can safely call only
