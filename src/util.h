@@ -265,7 +265,7 @@ std::string resource_path();
  */
 double monotonic_now_sec();
 
-bool running_under_rr();
+bool running_under_rr(bool cache = true);
 
 std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
                                                  const char* name2 = nullptr,
