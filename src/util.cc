@@ -1127,10 +1127,10 @@ double monotonic_now_sec() {
   return (double)tp.tv_sec + (double)tp.tv_nsec / 1e9;
 }
 
-bool running_under_rr() {
+bool running_under_rr(bool cache) {
   static bool rr_under_rr = false;
   static bool rr_check_done = false;
-  if (!rr_check_done) {
+  if (!rr_check_done || !cache) {
     rr_check_done = true;
     int ret = syscall(SYS_rrcall_check_presence, 0, 0, 0, 0, 0, 0);
     DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == ENOSYS));
