@@ -1860,7 +1860,6 @@ void sleep_time(double t) {
   nanosleep(&ts, NULL);
 }
 
-
 static bool is_component(const char* p, const char* component) {
   while (*component) {
     if (*p != *component) {
@@ -1901,6 +1900,16 @@ void normalize_file_name(string& s)
     ++out;
   }
   s.resize(out);
+}
+
+std::string find_exec_stub(SupportedArch arch) {
+  string exe_path = resource_path() + "bin/";
+  if (arch == x86 && NativeArch::arch() == x86_64) {
+    exe_path += "rr_exec_stub_32";
+  } else {
+    exe_path += "rr_exec_stub";
+  }
+  return exe_path;
 }
 
 } // namespace rr

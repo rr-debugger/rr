@@ -67,68 +67,6 @@ namespace rr {
 
 #endif // CHECK_SYSCALL_NUMBERS
 
-static string maybe_dump_written_string(ReplayTask* t) {
-  if (!is_write_syscall(t->regs().original_syscallno(), t->arch())) {
-    return "";
-  }
-  size_t len = min<size_t>(1000, t->regs().arg3());
-  vector<char> buf;
-  buf.resize(len + 1);
-  buf.resize(t->read_bytes_fallible(t->regs().arg2(), len, buf.data()) + 1);
-  buf[buf.size() - 1] = 0;
-  return " \"" + string(buf.data()) + "\"";
-}
-
-/**
- * Proceeds until the next system call, which is being executed.
- */
-static void __ptrace_cont(ReplayTask* t, ResumeRequest resume_how,
-                          SupportedArch syscall_arch, int expect_syscallno,
-                          int expect_syscallno2 = -1, pid_t new_tid = -1) {
-  t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
-  while (true) {
-    if (t->wait_unexpected_exit()) {
-      break;
-    }
-    int raw_status;
-    // Do our own waitpid instead of calling Task::wait() so we can detect and
-    // handle tid changes due to off-main-thread execve.
-    // When we're expecting a tid change, we can't pass a tid here because we
-    // don't know which tid to wait for.
-    // Passing the original tid seems to cause a hang in some kernels
-    // (e.g. 4.10.0-19-generic) if the tid change races with our waitpid
-    int ret = waitpid(new_tid >= 0 ? -1 : t->tid, &raw_status, __WALL);
-    ASSERT(t, ret >= 0);
-    if (ret == new_tid) {
-      // Check that we only do this once
-      ASSERT(t, t->tid != new_tid);
-      // Update the serial as if this task was really created by cloning the old
-      // task.
-      t->set_real_tid_and_update_serial(new_tid);
-    }
-    ASSERT(t, ret == t->tid);
-    t->did_waitpid(WaitStatus(raw_status));
-
-    if (ReplaySession::is_ignored_signal(t->status().stop_sig())) {
-      t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
-    } else {
-      break;
-    }
-  }
-
-  ASSERT(t, !t->stop_sig())
-      << "Expected no pending signal, but got " << t->stop_sig();
-
-  /* check if we are synchronized with the trace -- should never fail */
-  int current_syscall = t->regs().original_syscallno();
-  ASSERT(t,
-         current_syscall == expect_syscallno ||
-             current_syscall == expect_syscallno2)
-      << "Should be at " << syscall_name(expect_syscallno, syscall_arch)
-      << ", but instead at " << syscall_name(current_syscall, syscall_arch)
-      << maybe_dump_written_string(t);
-}
-
 static void init_scratch_memory(ReplayTask* t, const KernelMapping& km,
                                 const TraceReader::MappedData& data) {
   ASSERT(t, data.source == TraceReader::SOURCE_ZERO);
@@ -256,7 +194,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   Registers entry_regs = r;
 
   // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK/VFORK.
-  __ptrace_cont(t, RESUME_CONT, Arch::arch(), sys);
+   t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
 
   pid_t new_tid;
   while (!t->clone_syscall_is_complete(&new_tid, Arch::arch())) {
@@ -265,11 +203,11 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // state to try the syscall again.
     ASSERT(t, t->regs().syscall_result_signed() == -EAGAIN);
     t->set_regs(entry_regs);
-    __ptrace_cont(t, RESUME_CONT, Arch::arch(), sys);
+    t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
   }
 
   // Get out of the syscall
-  __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
+  t->exit_syscall();
 
   ASSERT(t, !t->ptrace_event())
       << "Unexpected ptrace event while waiting for syscall exit; got "
@@ -350,16 +288,6 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   init_scratch_memory(new_task, km, data);
 
   new_task->vm()->after_clone();
-}
-
-static string find_exec_stub(SupportedArch arch) {
-  string exe_path = resource_path() + "bin/";
-  if (arch == x86 && NativeArch::arch() == x86_64) {
-    exe_path += "rr_exec_stub_32";
-  } else {
-    exe_path += "rr_exec_stub";
-  }
-  return exe_path;
 }
 
 static void finish_direct_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
@@ -455,82 +383,11 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
   step->action = TSTEP_RETIRE;
 
   /* First, exec a stub program */
-  string stub_filename = find_exec_stub(trace_frame.regs().arch());
-
-  // Setup memory and registers for the execve call. We may not have to save
-  // the old values since they're going to be wiped out by execve. We can
-  // determine this by checking if this address space has any tasks with a
-  // different tgid.
-  Task* memory_task = t;
-  for (auto task : t->vm()->task_set()) {
-    if (task->tgid() != t->tgid()) {
-      memory_task = task;
-      break;
-    }
-  }
-
-  // Old data if required
-  std::vector<uint8_t> saved_data;
-
-  // Set up everything
-  Registers regs = t->regs();
-  regs.set_ip(t->vm()->traced_syscall_ip());
-  remote_ptr<void> remote_mem = floor_page_size(regs.sp());
-
-  // Determine how much memory we'll need
-  size_t filename_size = stub_filename.size() + 1;
-  size_t total_size = filename_size + sizeof(size_t);
-  if (memory_task != t) {
-    saved_data = t->read_mem(remote_mem.cast<uint8_t>(), total_size);
-  }
-
-  // We write a zero word in the host size, not t's size, but that's OK,
-  // since the host size must be bigger than t's size.
-  // We pass no argv or envp, so exec params 2 and 3 just point to the NULL
-  // word.
-  t->write_mem(remote_mem.cast<size_t>(), size_t(0));
-  regs.set_arg2(remote_mem);
-  regs.set_arg3(remote_mem);
-  remote_ptr<void> filename_addr = remote_mem + sizeof(size_t);
-  t->write_bytes_helper(filename_addr, filename_size, stub_filename.c_str());
-  regs.set_arg1(filename_addr);
-  /* The original_syscallno is execve in the old architecture. The kernel does
-   * not update the original_syscallno when the architecture changes across
-   * an exec.
-   * We're using the dedicated traced-syscall IP so its arch is t's arch.
-   */
-  int expect_syscallno = syscall_number_for_execve(t->arch());
-  regs.set_syscallno(expect_syscallno);
-  t->set_regs(regs);
-
-  LOG(debug) << "Beginning execve";
-  /* Enter our execve syscall. */
-  __ptrace_cont(t, RESUME_SYSCALL, t->arch(), expect_syscallno);
-  ASSERT(t, !t->stop_sig()) << "Stub exec failed on entry";
-  /* Complete the syscall. The tid of the task will be the thread-group-leader
-   * tid, no matter what tid it was before.
-   */
-  pid_t tgid = t->thread_group()->real_tgid;
-  __ptrace_cont(t, RESUME_SYSCALL, t->arch(), expect_syscallno,
-                syscall_number_for_execve(trace_frame.regs().arch()),
-                tgid == t->tid ? -1 : tgid);
-  if (t->regs().syscall_result()) {
-    errno = -t->regs().syscall_result();
-    if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
-        trace_frame.regs().arch() == x86) {
-      FATAL() << "Cannot find exec stub " << stub_filename
-              << " to replay this 32-bit process; you probably built rr with "
-                 "disable32bit";
-    }
-    ASSERT(t, false) << "Exec of stub " << stub_filename << " failed";
-  }
-
-  // Restore any memory if required. We need to do this through memory_task,
-  // since the new task is now on the new address space. Do it now because
-  // later we may try to unmap this task's syscallbuf.
-  if (memory_task != t) {
-    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
-                           saved_data.size());
+  pid_t new_tid = t->real_tgid();
+  pid_t old_tid = t->tid;
+  t->os_exec_stub(trace_frame.regs().arch());
+  if (new_tid != old_tid) {
+    t->set_real_tid_and_update_serial(new_tid);
   }
 
   vector<KernelMapping> kms;
@@ -1323,8 +1180,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       if (sys == Arch::mprotect) {
         t->vm()->fixup_mprotect_growsdown_parameters(t);
       }
-      __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
-      __ptrace_cont(t, RESUME_SYSCALL, Arch::arch(), sys);
+      t->exit_syscall();
+      t->enter_syscall();
       ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
       if (sys == Arch::mprotect) {
         Registers r2 = t->regs();

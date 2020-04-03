@@ -479,6 +479,8 @@ enum NestedBehavior {
   NESTED_IGNORE
 };
 
+std::string find_exec_stub(SupportedArch arch);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

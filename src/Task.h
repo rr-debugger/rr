@@ -855,6 +855,8 @@ public:
     return was_reaped;
   }
 
+  void os_exec_stub(SupportedArch arch);
+
   virtual ~Task();
 
 protected:
