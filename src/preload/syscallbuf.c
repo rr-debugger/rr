@@ -1149,6 +1149,40 @@ static long sys_clock_gettime(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+#ifdef SYS_clock_gettime64
+struct kernel_timespec64 {
+  int64_t tv_sec;
+  int64_t tv_nsec;
+};
+
+static long sys_clock_gettime64(const struct syscall_info* call) {
+  const int syscallno = SYS_clock_gettime64;
+  clockid_t clk_id = (clockid_t)call->args[0];
+  struct kernel_timespec64* tp = (struct kernel_timespec64*)call->args[1];
+
+  void* ptr = prep_syscall();
+  struct kernel_timespec64* tp2 = NULL;
+  long ret;
+
+  assert(syscallno == call->no);
+
+  if (tp) {
+    tp2 = ptr;
+    ptr += sizeof(*tp2);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall2(syscallno, clk_id, tp2);
+  if (tp && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    /* This is small and won't get optimized to a memcpy call outside
+       our library. */
+    *tp = *tp2;
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+#endif
+
 static long sys_open(const struct syscall_info* call);
 static long sys_creat(const struct syscall_info* call) {
   const char* pathname = (const char*)call->args[0];
@@ -2890,6 +2924,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     return sys_generic_nonblocking_fd(call)
     CASE_GENERIC_NONBLOCKING(access);
     CASE(clock_gettime);
+#if defined(SYS_clock_gettime64)
+    CASE(clock_gettime64);
+#endif
     CASE_GENERIC_NONBLOCKING_FD(close);
     CASE(creat);
     CASE_GENERIC_NONBLOCKING_FD(dup);
