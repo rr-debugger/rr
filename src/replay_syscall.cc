@@ -624,20 +624,7 @@ static void process_execve(ReplayTask* t, const TraceFrame& trace_frame,
 
     // Now fix up the address space. First unmap all the mappings other than
     // our rr page.
-    vector<MemoryRange> unmaps;
-    for (const auto& m : t->vm()->maps()) {
-      // Do not attempt to unmap [vsyscall] --- it doesn't work.
-      if (m.map.start() != AddressSpace::rr_page_start() &&
-          m.map.start() != AddressSpace::preload_thread_locals_start() &&
-          !m.map.is_vsyscall()) {
-        unmaps.push_back(m.map);
-      }
-    }
-    for (auto& m : unmaps) {
-      remote.infallible_syscall(syscall_number_for_munmap(t->arch()), m.start(),
-                                m.size());
-      t->vm()->unmap(t, m.start(), m.size());
-    }
+    t->vm()->unmap_all_but_rr_page(remote);
     // We will have unmapped the stack memory that |remote| would have used for
     // memory parameters. Fortunately process_mapped_region below doesn't
     // need any memory parameters for its remote syscalls.

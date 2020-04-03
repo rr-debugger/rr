@@ -785,6 +785,8 @@ public:
   remote_code_ptr stopping_breakpoint_table() { return stopping_breakpoint_table_; }
   int stopping_breakpoint_table_entry_size() { return stopping_breakpoint_table_entry_size_; }
 
+  void unmap_all_but_rr_page(AutoRemoteSyscalls& remote);
+
 private:
   struct Breakpoint;
   typedef std::map<remote_code_ptr, Breakpoint> BreakpointMap;
