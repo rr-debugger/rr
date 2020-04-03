@@ -2948,4 +2948,132 @@ void* Task::preload_thread_locals() {
   return preload_thread_locals_local_addr(*as);
 }
 
+/**
+ * Proceeds until the next system call, which is being executed.
+ */
+static void __ptrace_cont(Task* t, ResumeRequest resume_how,
+                          SupportedArch syscall_arch, int expect_syscallno,
+                          int expect_syscallno2 = -1, pid_t new_tid = -1) {
+  t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
+  while (true) {
+    if (t->wait_unexpected_exit()) {
+      break;
+    }
+    int raw_status;
+    // Do our own waitpid instead of calling Task::wait() so we can detect and
+    // handle tid changes due to off-main-thread execve.
+    // When we're expecting a tid change, we can't pass a tid here because we
+    // don't know which tid to wait for.
+    // Passing the original tid seems to cause a hang in some kernels
+    // (e.g. 4.10.0-19-generic) if the tid change races with our waitpid
+    int ret = waitpid(new_tid >= 0 ? -1 : t->tid, &raw_status, __WALL);
+    ASSERT(t, ret >= 0);
+    ASSERT(t, ret == (new_tid >= 0 ? new_tid : t->tid));
+    if (new_tid >= 0) {
+      t->hpc.set_tid(new_tid);
+      t->tid = new_tid;
+    }
+    t->did_waitpid(WaitStatus(raw_status));
+
+    if (ReplaySession::is_ignored_signal(t->status().stop_sig())) {
+      t->resume_execution(resume_how, RESUME_NONBLOCKING, RESUME_NO_TICKS);
+    } else {
+      break;
+    }
+  }
+
+  ASSERT(t, !t->stop_sig())
+      << "Expected no pending signal, but got " << t->stop_sig();
+
+  /* check if we are synchronized with the trace -- should never fail */
+  int current_syscall = t->regs().original_syscallno();
+  ASSERT(t,
+         current_syscall == expect_syscallno ||
+             current_syscall == expect_syscallno2)
+      << "Should be at " << syscall_name(expect_syscallno, syscall_arch)
+      << ", but instead at " << syscall_name(current_syscall, syscall_arch);
+}
+
+void Task::os_exec_stub(SupportedArch exec_arch)
+{
+  std::string stub_filename = find_exec_stub(exec_arch);
+  // Setup memory and registers for the execve call. We may not have to save
+  // the old values since they're going to be wiped out by execve. We can
+  // determine this by checking if this address space has any tasks with a
+  // different tgid.
+  Task* memory_task = this;
+  for (auto task : vm()->task_set()) {
+    if (task->tgid() != tgid()) {
+      memory_task = task;
+      break;
+    }
+  }
+
+  // Old data if required
+  std::vector<uint8_t> saved_data;
+
+  // Set up everything
+  Registers regs = this->regs();
+  regs.set_ip(vm()->traced_syscall_ip());
+  remote_ptr<void> remote_mem = floor_page_size(regs.sp());
+
+  // Determine how much memory we'll need
+  size_t filename_size = stub_filename.size() + 1;
+  size_t total_size = filename_size + sizeof(size_t);
+  if (memory_task != this) {
+    saved_data = read_mem(remote_mem.cast<uint8_t>(), total_size);
+  }
+
+  // We write a zero word in the host size, not t's size, but that's OK,
+  // since the host size must be bigger than t's size.
+  // We pass no argv or envp, so exec params 2 and 3 just point to the NULL
+  // word.
+  write_mem(remote_mem.cast<size_t>(), size_t(0));
+  regs.set_arg2(remote_mem);
+  regs.set_arg3(remote_mem);
+  remote_ptr<void> filename_addr = remote_mem + sizeof(size_t);
+  write_bytes_helper(filename_addr, filename_size, stub_filename.c_str());
+  regs.set_arg1(filename_addr);
+  /* The original_syscallno is execve in the old architecture. The kernel does
+   * not update the original_syscallno when the architecture changes across
+   * an exec.
+   * We're using the dedicated traced-syscall IP so its arch is t's arch.
+   */
+  int expect_syscallno = syscall_number_for_execve(arch());
+  regs.set_syscallno(expect_syscallno);
+  regs.set_original_syscallno(expect_syscallno);
+  set_regs(regs);
+
+  LOG(debug) << "Beginning execve" << this->regs();
+  enter_syscall();
+  ASSERT(this, !stop_sig()) << "Stub exec failed on entry";
+  /* Complete the syscall. The tid of the task will be the thread-group-leader
+   * tid, no matter what tid it was before.
+   */
+  pid_t tgid = thread_group()->real_tgid;
+  __ptrace_cont(this, RESUME_SYSCALL, arch(), expect_syscallno,
+                syscall_number_for_execve(exec_arch),
+                tgid == tid ? -1 : tgid);
+  LOG(debug) << this->status() << " " << this->regs();
+  if (this->regs().syscall_result()) {
+    errno = -this->regs().syscall_result();
+    if (access(stub_filename.c_str(), 0) == -1 && errno == ENOENT &&
+        exec_arch == x86) {
+      FATAL() << "Cannot find exec stub " << stub_filename
+              << " to replay this 32-bit process; you probably built rr with "
+                 "disable32bit";
+    }
+    errno = -this->regs().syscall_result();
+    ASSERT(this, false) << "Exec of stub " << stub_filename << " failed";
+  }
+
+  // Restore any memory if required. We need to do this through memory_task,
+  // since the new task is now on the new address space. Do it now because
+  // later we may try to unmap this task's syscallbuf.
+  if (memory_task != this) {
+    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
+                           saved_data.size());
+  }
+}
+
 }
