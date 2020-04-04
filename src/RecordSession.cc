@@ -1944,6 +1944,19 @@ static string lookup_by_path(const string& name) {
   }
 
   vector<string> env = current_env();
+
+  // Have extra_env override anything already in the environment
+  for (string extra : extra_env) {
+    string extra_var = extra.substr(0, extra.find('='));
+    auto it = env.begin();
+    for (; it != env.end(); ++it) {
+      if (it->find(extra_var) != 0) {
+        continue;
+      }
+      it = env.erase(it);
+      break;
+    }
+  }
   env.insert(env.end(), extra_env.begin(), extra_env.end());
 
   string full_path = lookup_by_path(argv[0]);
