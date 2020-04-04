@@ -172,6 +172,12 @@ templates = {
         RawBytes(0xe9),                   # jmp $relative_addr
         Field('relative_addr', 4),
     ),
+    'X64EndBr': AssemblyTemplate(
+        RawBytes(0xf3, 0x0f, 0x1e, 0xfa)
+    ),
+    'X86EndBr': AssemblyTemplate(
+        RawBytes(0xf3, 0x0f, 0x1e, 0xfb)
+    )
 }
 
 def byte_array_name(name):
