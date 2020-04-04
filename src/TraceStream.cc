@@ -679,6 +679,9 @@ void TraceWriter::write_task_event(const TraceTaskEvent& event) {
     case TraceTaskEvent::EXIT:
       task.initExit().setExitStatus(event.exit_status().get());
       break;
+    case TraceTaskEvent::DETACH:
+      task.initDetach();
+      break;
     case TraceTaskEvent::NONE:
       DEBUG_ASSERT(0 && "Writing NONE TraceTaskEvent");
       break;
@@ -733,6 +736,9 @@ TraceTaskEvent TraceReader::read_task_event(FrameTime* time) {
     case trace::TaskEvent::Which::EXIT:
       r.type_ = TraceTaskEvent::EXIT;
       r.exit_status_ = WaitStatus(task.getExit().getExitStatus());
+      break;
+    case trace::TaskEvent::Which::DETACH:
+      r.type_ = TraceTaskEvent::DETACH;
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown TraceEvent type");

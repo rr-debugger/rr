@@ -944,6 +944,15 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         arm_desched_event(t);
       }
 
+      if (t->detached_proxy) {
+        // We detached. Record that.
+        t->record_event(Event::exit(), RecordTask::DONT_FLUSH_SYSCALLBUF,
+          RecordTask::DONT_RESET_SYSCALLBUF);
+        t->session().trace_writer().write_task_event(
+            TraceTaskEvent::for_detach(t->tid));
+        step_state->continue_type = DONT_CONTINUE;
+      }
+
       return;
     }
 
@@ -1840,6 +1849,28 @@ static void inject_ld_helper_library(vector<string>& env,
   }
 }
 
+void strip_outer_ld_preload(vector<string>& env) {
+  auto env_assignment = "LD_PRELOAD=";
+  auto it = env.begin();
+  for (; it != env.end(); ++it) {
+    if (it->find(env_assignment) != 0) {
+      continue;
+    }
+    size_t colon_pos = it->find(":");
+    if (colon_pos != string::npos) {
+      // If the preload library is loaded at all, it must be first
+      size_t preload_pos = it->find("librrpreload");
+      if (preload_pos < colon_pos) {
+        string new_ld_preload = it->substr(++colon_pos);
+        *it = env_assignment + new_ld_preload;
+        return;
+      } else {
+        DEBUG_ASSERT(preload_pos == string::npos);
+      }
+    }
+  }
+}
+
 struct ExeInfo {
   ExeInfo() : has_asan_symbols(false) {}
   // Empty if anything fails
@@ -1961,6 +1992,9 @@ static string lookup_by_path(const string& name) {
 
   string full_path = lookup_by_path(argv[0]);
   ExeInfo exe_info = read_exe_info(full_path);
+
+  // Strip any LD_PRELOAD that an outer rr may have inserted
+  strip_outer_ld_preload(env);
 
   // LD_PRELOAD the syscall interception lib
   string syscall_buffer_lib_path = find_helper_library(SYSCALLBUF_LIB_FILENAME);
@@ -2219,6 +2253,11 @@ RecordTask* RecordSession::find_task(pid_t rec_tid) const {
 
 RecordTask* RecordSession::find_task(const TaskUid& tuid) const {
   return static_cast<RecordTask*>(Session::find_task(tuid));
+}
+
+void RecordSession::on_proxy_detach(RecordTask *t, pid_t new_tid) {
+  Session::on_destroy(t);
+  task_map[new_tid] = t;
 }
 
 uint64_t RecordSession::rr_signal_mask() const {

@@ -63,6 +63,7 @@
 #include "preload/preload_interface.h"
 
 #include "AutoRemoteSyscalls.h"
+#include "DiversionSession.h"
 #include "Flags.h"
 #include "MmappedFileMonitor.h"
 #include "ProcFdDirMonitor.h"
@@ -1809,16 +1810,20 @@ static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
       return true;
     }
   }
-  if (options & WUNTRACED) {
-    for (ThreadGroup* child_process : t->thread_group()->children()) {
-      for (Task* child : child_process->task_set()) {
-        auto rchild = static_cast<RecordTask*>(child);
-        if (rchild->emulated_stop_type == GROUP_STOP &&
-            rchild->emulated_stop_pending && t->is_waiting_for(rchild)) {
-          syscall_state.emulate_wait_for_child = rchild;
-          return true;
-        }
+  for (ThreadGroup* child_process : t->thread_group()->children()) {
+    for (Task* child : child_process->task_set()) {
+      auto rchild = static_cast<RecordTask*>(child);
+      if (rchild->emulated_stop_type == NOT_STOPPED) {
+        continue;
       }
+      if (!(options & WUNTRACED) && rchild->emulated_stop_type != CHILD_STOP) {
+        continue;
+      }
+      if (!rchild->emulated_stop_pending || !t->is_waiting_for(rchild)) {
+        continue;
+      }
+      syscall_state.emulate_wait_for_child = rchild;
+      return true;
     }
   }
   return false;
@@ -2911,6 +2916,45 @@ static void record_ranges(RecordTask* t,
       s -= bytes;
     }
   }
+}
+
+static pid_t do_detach_teleport(RecordTask *t)
+{
+  DiversionSession session;
+  std::string exe_path(find_exec_stub(t->arch()));
+  std::vector<std::string> argv, env;
+  ScopedFd error_fd;
+  int tracee_fd_number = t->session().tracee_fd_number();
+  Task *new_t = Task::spawn(session, error_fd, &session.tracee_socket_fd(),
+                  &tracee_fd_number,
+                  exe_path, argv, env,
+                  -1);
+  pid_t new_tid = new_t->tid;
+  LOG(debug) << "Detached task with tid " << new_tid;
+  session.on_create(new_t);
+  session.set_tracee_fd_number(tracee_fd_number);
+  new_t->os_exec_stub(t->arch());
+  session.post_exec();
+  new_t->post_exec(exe_path);
+  new_t->post_exec_syscall();
+  new_t->dup_from(t);
+  // Emulate the success of the syscall in the new task
+  Registers regs = new_t->regs();
+  regs.set_arg1(0);
+  new_t->set_regs(regs);
+  // Disable syscall buffering. XXX: We could also try to unpatch syscalls here
+  new_t->hpc.stop();
+  new_t->set_in_diversion(true);
+  // Just clean up some additional state
+  new_t->reenable_cpuid_tsc();
+  {
+    AutoRemoteSyscalls remote(new_t, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
+    remote.syscall(syscall_number_for_close(new_t->arch()), tracee_fd_number);
+  }
+  new_t->detach();
+  new_t->did_kill();
+  delete new_t;
+  return new_tid;
 }
 
 template <typename Arch>
@@ -4229,6 +4273,45 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       syscall_state.emulate_result(arguments_are_zero ? 0 : (uintptr_t)-EINVAL);
       syscall_state.expect_errno = ENOSYS;
       return PREVENT_SWITCH;
+    }
+
+    case SYS_rrcall_detach_teleport: {
+      bool arguments_are_zero = true;
+      Registers r = t->regs();
+      for (int i = 1; i <= 6; ++i) {
+        arguments_are_zero &= r.arg(i) == 0;
+      }
+      if (!arguments_are_zero) {
+        syscall_state.emulate_result((uintptr_t)-EINVAL);
+        syscall_state.expect_errno = ENOSYS;
+        return PREVENT_SWITCH;
+      }
+
+      t->exit_syscall();
+      Registers regs = t->regs();
+      pid_t new_tid = do_detach_teleport(t);
+
+      // Cause the actual task to exit
+      regs.set_syscallno(SYS_exit_group);
+      regs.set_arg1(0);
+      regs.set_original_syscallno(-1);
+      regs.set_ip(regs.ip() - syscall_instruction_length(t->arch()));
+      ASSERT(t, is_at_syscall_instruction(t, regs.ip()));;
+      // Restart the SYS_exit call.
+      t->set_regs(regs);
+      t->enter_syscall();
+      t->exit_syscall();
+
+      // Don't reap the zombie to prevent the pid from being re-used, which
+      // the child might see.
+      t->detached_proxy = true;
+      // Just have the same task object represent both the zombie task
+      // and be able to receive death notices for the detached tracee
+      // to forward.
+      t->session().on_proxy_detach(t, new_tid);
+      t->rec_tid = new_tid;
+
+      return ALLOW_SWITCH;
     }
 
     case Arch::brk:

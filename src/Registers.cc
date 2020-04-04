@@ -624,7 +624,8 @@ bool Registers::syscall_may_restart() const {
 ostream& operator<<(ostream& stream, const Registers& r) {
   stream << "{ args:(" << HEX(r.arg1()) << "," << HEX(r.arg2()) << ","
          << HEX(r.arg3()) << "," << HEX(r.arg4()) << "," << HEX(r.arg5()) << ","
-         << r.arg6() << ") orig_syscall:" << r.original_syscallno() << " }";
+         << r.arg6() << ") orig_syscall:" << r.original_syscallno() <<
+         "syscallno: " << r.syscallno() << " }";
   return stream;
 }
 

@@ -485,6 +485,11 @@ ScopedFd AutoRemoteSyscalls::retrieve_fd(int fd) {
 }
 
 template <typename Arch> int AutoRemoteSyscalls::send_fd_arch(const ScopedFd &our_fd) {
+  if (!our_fd.is_open()) {
+    return -EBADF;
+  }
+
+  LOG(debug) << "Sending fd " << our_fd.get() << " via socket fd " << task()->session().tracee_socket_fd().get();
   sendmsg_socket(task()->session().tracee_socket_fd(), our_fd.get());
 
   long child_syscall_result =

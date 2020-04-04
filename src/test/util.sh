@@ -267,11 +267,23 @@ function passed {
     echo "Test '$TESTNAME' PASSED"
 }
 
-# Check that (i) no error during replay; (ii) recorded and replayed
-# output match; (iii) the supplied token was found in the output.
-# Otherwise the test fails.
-function check { token=$1;
-    if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out -o ! -f record.err ]; then
+function just_check_replay_err {
+    if [[ $(cat replay.err) != "" ]]; then
+        failed ": error during replay:"
+        echo "--------------------------------------------------"
+        cat replay.err
+        echo "--------------------------------------------------"
+        echo "replay.out:"
+        echo "--------------------------------------------------"
+        cat replay.out
+        echo "--------------------------------------------------"
+        return 1
+    fi
+    return 0
+}
+
+function just_check_record { token=$1;
+     if [ ! -f record.out -o ! -f replay.err -o ! -f replay.out -o ! -f record.err ]; then
         failed "output files not found."
     elif [[ $(cat record.err) != "" ]]; then
         failed ": error during recording:"
@@ -287,23 +299,57 @@ function check { token=$1;
         echo "--------------------------------------------------"
         cat record.out
         echo "--------------------------------------------------"
-    elif [[ $(cat replay.err) != "" ]]; then
-        failed ": error during replay:"
-        echo "--------------------------------------------------"
-        cat replay.err
-        echo "--------------------------------------------------"
-        echo "replay.out:"
-        echo "--------------------------------------------------"
-        cat replay.out
-        echo "--------------------------------------------------"
-    elif [[ $(diff record.out replay.out) != "" ]]; then
+    else
+        return 0;
+    fi
+    return 1
+}
+
+function just_check_record_replay_match {
+    if [[ $(diff record.out replay.out) != "" ]]; then
         failed ": output from recording different than replay"
         echo "diff -U8 $workdir/record.out $workdir/replay.out"
         diff -U8 record.out replay.out
+        return 1
+    fi
+    return 0
+}
+
+# Check that (i) no error during replay; (ii) recorded and replayed
+# output match; (iii) the supplied token was found in the output.
+# Otherwise the test fails.
+function check { token=$1;
+    if ! just_check_record $1; then return;
+    elif ! just_check_replay_err; then return;
+    elif ! just_check_record_replay_match; then return;
     else
         passed
     fi
 }
+
+# Like `check`, but omit the check that the output matches between record and
+# replay
+function check_record { token=$1;
+    if ! just_check_record $token; then return;
+    elif ! just_check_replay_err; then return;
+    else
+        passed
+    fi
+}
+
+# Like `check`, but don't look at the record output at all
+function check_replay_token { token=$1;
+    if [[ "$token" != "" && "replay.out" != $(grep -l "$token" replay.out) ]]; then
+        failed ": token '$token' not in replay.out:"
+        echo "--------------------------------------------------"
+        cat replay.out
+        echo "--------------------------------------------------"
+    elif ! just_check_replay_err; then return;
+    else
+        passed
+    fi
+}
+
 
 #  compare_test <token> [<replay-flags>] [executable]
 #

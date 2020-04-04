@@ -162,6 +162,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       priority(0),
       in_round_robin_queue(false),
       stable_exit(false),
+      detached_proxy(false),
       emulated_ptracer(nullptr),
       emulated_ptrace_event_msg(0),
       emulated_ptrace_options(0),
@@ -236,6 +237,16 @@ RecordTask::~RecordTask() {
                                 ev().Syscall().regs.arch()))))) {
     LOG(warn) << tid << " still has pending events.  From top down:";
     log_pending_events();
+  }
+
+  if (detached_proxy) {
+    // We kept the zombie of the orginal task around to prevent its pid from
+    // being re-used. Reap that now.
+    proceed_to_exit();
+    if (!already_reaped() && may_reap()) {
+      reap();
+    }
+    did_kill();
   }
 }
 
@@ -1250,6 +1261,10 @@ void RecordTask::verify_signal_states() {
     // If the syscall event is on the event stack with PROCESSING or EXITING
     // states, we won't have applied the signal-state updates yet while the
     // kernel may have.
+    return;
+  }
+  if (detached_proxy) {
+    // This task isn't real
     return;
   }
   auto results = read_proc_status_fields(tid, "SigBlk", "SigIgn", "SigCgt");

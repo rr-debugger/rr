@@ -31,7 +31,8 @@ enum WaitType {
 enum EmulatedStopType {
   NOT_STOPPED,
   GROUP_STOP,          // stopped by a signal. This applies to non-ptracees too.
-  SIGNAL_DELIVERY_STOP // Stopped before delivering a signal. ptracees only.
+  SIGNAL_DELIVERY_STOP,// Stopped before delivering a signal. ptracees only.
+  CHILD_STOP           // All other kinds of non-ptrace stops
 };
 
 /**
@@ -543,6 +544,15 @@ public:
   // Is this task a container init? (which has special signal behavior)
   bool is_container_init() { return own_namespace_rec_tid == 1; }
 
+  /**
+   * Called when this task is able to receive a SIGCHLD (e.g. because
+   * we completed delivery of a signal). Sends a new synthetic
+   * SIGCHLD to the task if there are still tasks that need a SIGCHLD
+   * sent for them.
+   * May queue signals for specific tasks.
+   */
+  void send_synthetic_SIGCHLD_if_necessary();
+
 private:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();
@@ -556,15 +566,6 @@ private:
    * will change "soon".
    */
   void futex_wait(remote_ptr<int> futex, int val, bool* ok);
-
-  /**
-   * Called when this task is able to receive a SIGCHLD (e.g. because
-   * we completed delivery of a signal). Sends a new synthetic
-   * SIGCHLD to the task if there are still tasks that need a SIGCHLD
-   * sent for them.
-   * May queue signals for specific tasks.
-   */
-  void send_synthetic_SIGCHLD_if_necessary();
 
   /**
    * Call this when SYS_sigaction is finishing with |regs|.
@@ -609,6 +610,8 @@ public:
   /* exit(), or exit_group() with one task, has been called, so
    * the exit can be treated as stable. */
   bool stable_exit;
+
+  bool detached_proxy;
 
   // ptrace emulation state
 

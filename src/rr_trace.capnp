@@ -149,6 +149,9 @@ struct TaskEvent {
     exit :group {
       exitStatus @7 :Int32;
     }
+    detach :group {
+      none @9 :Void;
+    }
   }
 }
 
