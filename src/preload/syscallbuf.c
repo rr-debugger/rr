@@ -1932,7 +1932,6 @@ static long sys_poll(const struct syscall_info* call) {
 }
 
 static long sys_epoll_wait(const struct syscall_info* call) {
-  const int syscallno = SYS_epoll_wait;
   int epfd = call->args[0];
   struct epoll_event* events = (struct epoll_event*)call->args[1];
   int max_events = call->args[2];
@@ -1944,13 +1943,13 @@ static long sys_epoll_wait(const struct syscall_info* call) {
 
   ptr = prep_syscall();
 
-  assert(syscallno == call->no);
+  assert(SYS_epoll_wait == call->no || SYS_epoll_pwait == call->no);
 
   if (events && max_events > 0) {
     events2 = ptr;
     ptr += max_events * sizeof(*events2);
   }
-  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+  if (!start_commit_buffered_syscall(call->no, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
 
@@ -1958,11 +1957,14 @@ static long sys_epoll_wait(const struct syscall_info* call) {
      anything, and we should have blocked, we'll try again with a traced syscall
      which will be the one that blocks. This usually avoids the
      need to trigger desched logic, which adds overhead, especially the
-     rrcall_notify_syscall_hook_exit that gets triggered. */
-  ret = untraced_syscall4(syscallno, epfd, events2, max_events, 0);
+     rrcall_notify_syscall_hook_exit that gets triggered.
+     N.B.: SYS_epoll_wait only has four arguments, but we don't care
+     if the last two arguments are garbage */
+  ret = untraced_syscall6(call->no, epfd, events2, max_events, 0,
+    call->args[4], call->args[5]);
 
   ptr = copy_output_buffer(ret * sizeof(*events2), ptr, events, events2);
-  ret = commit_raw_syscall(syscallno, ptr, ret);
+  ret = commit_raw_syscall(call->no, ptr, ret);
   if (timeout == 0 || (ret != EINTR && ret != 0)) {
     /* If we got some real results, or a non-EINTR error, we can just
        return it directly.
@@ -2930,7 +2932,9 @@ static long syscall_hook_internal(const struct syscall_info* call) {
     CASE_GENERIC_NONBLOCKING_FD(close);
     CASE(creat);
     CASE_GENERIC_NONBLOCKING_FD(dup);
-    CASE(epoll_wait);
+case SYS_epoll_wait:
+case SYS_epoll_pwait:
+    return sys_epoll_wait(call);
     CASE_GENERIC_NONBLOCKING_FD(fadvise64);
     CASE_GENERIC_NONBLOCKING(fchmod);
 #if defined(SYS_fcntl64)
