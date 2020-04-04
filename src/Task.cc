@@ -97,13 +97,21 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
 }
 
 void Task::detach() {
-  LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
+  LOG(debug) << "detaching from Task " << tid << " (rec:" << rec_tid << ")";
 
   fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
 
   // Not really, but there's also no reason to actually try to reap it,
   // since we detached.
   was_reaped = true;
+}
+
+void Task::reenable_cpuid_tsc() {
+  AutoRemoteSyscalls remote(this);
+  remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
+                        ARCH_SET_CPUID, 1);
+  remote.infallible_syscall(syscall_number_for_prctl(arch()),
+                        PR_SET_TSC, PR_TSC_ENABLE);
 }
 
 bool Task::may_reap() {
@@ -2946,6 +2954,101 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
 void* Task::preload_thread_locals() {
   return preload_thread_locals_local_addr(*as);
+}
+
+static bool file_was_deleted(string s) {
+  static const char deleted[] = " (deleted)";
+  ssize_t find_deleted = s.size() - (sizeof(deleted) - 1);
+  return s.find(deleted) == size_t(find_deleted);
+}
+
+static void create_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapping &km) {
+  string real_file_name;
+  dev_t device = KernelMapping::NO_DEVICE;
+  ino_t inode = KernelMapping::NO_INODE;
+  if (km.is_real_device() && !file_was_deleted(km.fsname())) {
+    struct stat real_file; string real_file_name;
+    remote.finish_direct_mmap(km.start(), km.size(), km.prot(), km.flags(),
+      km.fsname(), O_RDONLY, km.file_offset_bytes()/page_size(),
+      real_file, real_file_name);
+  } else {
+    remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
+                                  km.flags() | MAP_FIXED | MAP_ANONYMOUS, -1,
+                                  0);
+    t->vm()->map(t, km.start(), km.size(), km.prot(), km.flags(), km.file_offset_bytes(),
+                real_file_name, device, inode, nullptr, &km);
+  }
+}
+
+void Task::dup_from(Task *other) {
+  std::vector<KernelMapping> mappings;
+  KernelMapping stack_mapping;
+  bool found_stack = false;
+  for (KernelMapIterator it(other); !it.at_end(); ++it) {
+    auto km = it.current();
+    if (km.is_stack()) {
+      stack_mapping = km;
+      found_stack = true;
+    } else {
+      mappings.push_back(km);
+    }
+  }
+  ASSERT(this, found_stack);
+  // Copy address space
+  {
+    AutoRemoteSyscalls remote(this);
+    this->vm()->map_rr_page(remote);
+  }
+  {
+    AutoRemoteSyscalls remote(this, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
+    // TODO: Only do this if the rr page isn't already mapped
+    this->vm()->unmap_all_but_rr_page(remote);
+    create_mapping(this, remote, stack_mapping);
+    off_t addr = stack_mapping.start().as_int();
+    copy_file_range_all(other->vm()->mem_fd(),
+      addr, this->vm()->mem_fd(),
+      addr, stack_mapping.size());
+  }
+  {
+    AutoRemoteSyscalls remote_this(this);
+    for (auto &km : mappings) {
+      if (km.start() == vm()->rr_page_start() || km.is_vsyscall())
+        continue;
+      create_mapping(this, remote_this, km);
+      // XXX: If this maps a file, recreate it as such
+      off_t addr = km.start().as_int();
+      copy_file_range_all(other->vm()->mem_fd(),
+        addr, this->vm()->mem_fd(),
+        addr, km.size());
+    }
+    AutoRemoteSyscalls remote_other(other);
+    std::vector<int> all_fds = read_all_proc_fds(other->tid);
+    for (int fd : all_fds) {
+      if (fd == session().tracee_fd_number())
+        continue;
+      ScopedFd here = remote_other.retrieve_fd(fd);
+      int remote_fd = remote_this.send_fd(here);
+      if (remote_fd != fd) {
+        remote_this.infallible_syscall(syscall_number_for_dup2(this->arch()), remote_fd, fd);
+        remote_this.infallible_syscall(syscall_number_for_close(this->arch()), remote_fd);
+      }
+    }
+    string path = ".";
+    AutoRestoreMem child_path(remote_other, path.c_str());
+    // skip leading '/' since we want the path to be relative to the root fd
+    long child_fd =
+      remote_other.syscall(syscall_number_for_openat(other->arch()), AT_FDCWD,
+                     child_path.get(), O_RDONLY);
+    ASSERT(other, child_fd != -1);
+    {
+      ScopedFd fd = remote_other.retrieve_fd(child_fd);
+      remote_other.syscall(syscall_number_for_close(other->arch()), child_fd);
+      child_fd = remote_this.send_fd(fd);
+      remote_this.syscall(syscall_number_for_fchdir(this->arch()), child_fd);
+      remote_this.syscall(syscall_number_for_close(this->arch()), child_fd);
+    }
+  }
+  copy_state(other->capture_state());
 }
 
 /**

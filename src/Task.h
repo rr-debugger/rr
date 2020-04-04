@@ -136,6 +136,12 @@ public:
    */
   void detach();
 
+  /*
+   * Re-enable the CPUID instruction in this task (if it was previously
+   * disabled to support CPUID emulation) as well as the use of rdtsc.
+   */
+  void reenable_cpuid_tsc();
+
   /**
    * Linux requires the invariant that that all members of a thread group
    * are reaped before the thread group leader. This determines whether or
@@ -864,9 +870,31 @@ public:
     return was_reaped;
   }
 
+  void did_reap() {
+    was_reaped = true;
+  }
+
   void os_exec_stub(SupportedArch arch);
 
+  /**
+   * Try to make the current task look exactly like some `other` task
+   * by copying that task's address space and other relevant properties,
+   * but without using the os's clone system call.
+   */
+  void dup_from(Task *task);
+
   virtual ~Task();
+
+  /**
+   * Fork and exec the initial task. If something goes wrong later
+   * (i.e. an exec does not occur before an exit), an error may be
+   * readable from the other end of the pipe whose write end is error_fd.
+   */
+  static Task* spawn(Session& session, ScopedFd& error_fd,
+                     ScopedFd* sock_fd_out, int* tracee_socket_fd_number_out,
+                     const std::string& exe_path,
+                     const std::vector<std::string>& argv,
+                     const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
@@ -1012,17 +1040,6 @@ protected:
                         remote_ptr<int> ptid = nullptr,
                         remote_ptr<void> tls = nullptr,
                         remote_ptr<int> ctid = nullptr);
-
-  /**
-   * Fork and exec the initial task. If something goes wrong later
-   * (i.e. an exec does not occur before an exit), an error may be
-   * readable from the other end of the pipe whose write end is error_fd.
-   */
-  static Task* spawn(Session& session, ScopedFd& error_fd,
-                     ScopedFd* sock_fd_out, int* tracee_socket_fd_number_out,
-                     const std::string& exe_path,
-                     const std::vector<std::string>& argv,
-                     const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
   void work_around_KNL_string_singlestep_bug();
 

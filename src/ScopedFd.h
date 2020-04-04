@@ -38,7 +38,7 @@ public:
     return result;
   }
 
-  bool is_open() { return fd >= 0; }
+  bool is_open() const { return fd >= 0; }
   void close() {
     if (fd >= 0) {
       ::close(fd);

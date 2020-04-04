@@ -785,6 +785,8 @@ public:
   remote_code_ptr stopping_breakpoint_table() { return stopping_breakpoint_table_; }
   int stopping_breakpoint_table_entry_size() { return stopping_breakpoint_table_entry_size_; }
 
+  // Also sets brk_ptr.
+  void map_rr_page(AutoRemoteSyscalls& remote);
   void unmap_all_but_rr_page(AutoRemoteSyscalls& remote);
 
 private:
@@ -812,9 +814,6 @@ private:
   void populate_address_space(Task* t);
 
   void unmap_internal(Task* t, remote_ptr<void> addr, ssize_t num_bytes);
-
-  // Also sets brk_ptr.
-  void map_rr_page(AutoRemoteSyscalls& remote);
 
   bool update_watchpoint_value(const MemoryRange& range,
                                Watchpoint& watchpoint);

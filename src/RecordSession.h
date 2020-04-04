@@ -170,6 +170,8 @@ public:
   RecordTask* find_task(pid_t rec_tid) const;
   RecordTask* find_task(const TaskUid& tuid) const;
 
+  void on_proxy_detach(RecordTask *t, pid_t new_tid);
+
   /**
    * This gets called when we detect that a task has been revived from the
    * dead with a PTRACE_EVENT_EXEC. See ptrace man page under "execve(2) under

@@ -91,6 +91,9 @@ static string find_exit_code(pid_t pid, const vector<TraceTaskEvent>& events,
       }
       DEBUG_ASSERT(status.type() == WaitStatus::FATAL_SIGNAL);
       return to_string(-status.fatal_sig());
+    } else if (e.type() == TraceTaskEvent::DETACH && tid_to_pid[e.tid()] == pid &&
+        count_tids_for_pid(tid_to_pid, pid) == 1) {
+      return string("detach");
     }
     update_tid_to_pid_map(tid_to_pid, e);
   }

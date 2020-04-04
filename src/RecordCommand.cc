@@ -90,6 +90,8 @@ RecordCommand RecordCommand::singleton(
     "  --nested=ignore            Directly start child process when running\n"
     "                             under nested rr recording, instead of\n"
     "                             raising an error.\n"
+    "  --nested=detach            When nested, start a separate recording\n"
+    "                             session, instead of raising an error\n"
     "  --scarce-fds               Consume 950 fds before recording\n"
     "                             (for testing purposes)\n"
     "  --setuid-sudo              If running under sudo, pretend to be the\n"
@@ -316,6 +318,8 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
         flags.nested = NESTED_ERROR;
       } else if (opt.value == "ignore") {
         flags.nested = NESTED_IGNORE;
+      } else if (opt.value == "detach") {
+        flags.nested = NESTED_DETACH;
       } else {
         LOG(warn) << "Unknown nesting behavior `" << opt.value << "`";
         flags.nested = NESTED_ERROR;
@@ -707,11 +711,21 @@ int RecordCommand::run(vector<string>& args) {
   if (running_under_rr()) {
     if (flags.nested == NESTED_IGNORE) {
       exec_child(args);
+    } else if (flags.nested == NESTED_DETACH) {
+      int ret = syscall(SYS_rrcall_detach_teleport, 0, 0, 0, 0, 0, 0);
+      if (ret < 0) {
+        FATAL() << "Failed to detach from parent rr";
+      }
+      if (running_under_rr(false)) {
+        FATAL() << "Detaching from parent rr did not work";
+      }
+      // Fall through
+    } else {
+      fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
+                      "Use `rr record --nested=ignore` to start the child "
+                      "process directly.\n");
+      return 1;
     }
-    fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
-                    "Use `rr record --nested=ignore` to start the child "
-                    "process directly.\n");
-    return 1;
   }
 
   if (!verify_not_option(args) || args.size() == 0) {

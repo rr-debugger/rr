@@ -1159,6 +1159,7 @@ set(TESTS_WITH_PROGRAM
   mprotect_growsdown
   mprotect_syscallbuf_overflow
   mutex_pi_stress
+  nested_detach_wait
   overflow_branch_counter
   patch_page_end
   patch_40_80_f6_81
@@ -1276,6 +1277,7 @@ set(TESTS_WITHOUT_PROGRAM
   hardlink_mmapped_files
   hbreak
   mprotect_step
+  nested_detach
   parent_no_break_child_bkpt
   parent_no_stop_child_crash
   post_exec_fpu_regs

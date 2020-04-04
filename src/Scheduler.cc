@@ -204,7 +204,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
   ASSERT(t, !must_run_task) << "is_task_runnable called again after it "
                                "returned a task that must run!";
 
-  if (t->waiting_for_reap) {
+  if (t->waiting_for_reap || t->detached_proxy) {
     LOG(debug) << "  " << t->tid << " is waiting to be reaped";
     return false;
   }
@@ -573,6 +573,14 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
           result.interrupted_by_signal = true;
           return result;
         }
+        if (ECHILD == errno) {
+          // It's possible that the original thread group was detached,
+          // and the only thing left we were waiting for, in which case we
+          // get ECHILD here. Just abort this record step, so the caller
+          // can end the record session.
+          result.interrupted_by_signal = true;
+          return result;
+        }
         FATAL() << "Failed to waitpid()";
       }
       LOG(debug) << "  " << tid << " changed status to " << status;
@@ -587,6 +595,38 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       }
       if (!next) {
         LOG(debug) << "    ... but it's dead";
+        continue;
+      }
+      if (next->detached_proxy) {
+        pid_t parent_rec_tid = next->get_parent_pid();
+        LOG(debug) << "    ... but it's a detached proxy.";
+        RecordTask *parent = session.find_task(parent_rec_tid);
+        if (parent) {
+          LOG(debug) << "    ... forwarding to parent.";
+          next->emulated_stop_type = CHILD_STOP;
+          next->emulated_stop_pending = true;
+          next->emulated_SIGCHLD_pending = true;
+          next->emulated_stop_code = status;
+          parent->send_synthetic_SIGCHLD_if_necessary();
+          // Continue on with the parent - we just woke it up, so now is
+          // a good time to run it.
+        }
+
+        // The status we got was an exit. There won't be any further events
+        // from this proxy. Delete it now, unless we need to keep it around for
+        // reaping.
+        if (status.type() == WaitStatus::EXIT || status.type() == WaitStatus::FATAL_SIGNAL) {
+          if (parent) {
+            next->waiting_for_reap = true;
+          } else {
+            // The task is now dead, but so is our parent, so none of our
+            // tasks care about this. We can now delete the proxy task.
+            delete next;
+          }
+        }
+
+        next = nullptr;
+        continue;
       }
     } while (!next);
     ASSERT(next,

@@ -204,6 +204,12 @@ static inline const char* extract_file_name(const char* s) {
  * presence of absence of rr.
  */
 #define SYS_rrcall_check_presence (RR_CALL_BASE + 8)
+/**
+ * Requests that rr detach from this process and re-create outside of its
+ * process tree, such that it may run without seccomp.
+ */
+#define SYS_rrcall_detach_teleport (RR_CALL_BASE + 9)
+
 
 /* Define macros that let us compile a struct definition either "natively"
  * (when included by preload.c) or as a template over Arch for use by rr.
