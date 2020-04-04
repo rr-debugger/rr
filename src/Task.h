@@ -835,6 +835,15 @@ public:
    */
   void set_syscallbuf_locked(bool locked);
 
+  // Disable syscall buffering during diversions
+  void set_in_diversion(bool in_diversion) {
+    if (preload_globals) {
+      write_mem(REMOTE_PTR_FIELD(preload_globals, in_diversion),
+                (unsigned char)in_diversion);
+    }
+    set_syscallbuf_locked(in_diversion);
+  }
+
   /**
    * Like |fallible_ptrace()| but infallible for most purposes.
    * Errors other than ESRCH are treated as fatal. Returns false if
