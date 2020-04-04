@@ -3,6 +3,7 @@
 #include "util.h"
 
 #include <arpa/inet.h>
+#include <dirent.h>
 #include <elf.h>
 #include <execinfo.h>
 #include <fcntl.h>
@@ -1900,6 +1901,19 @@ void normalize_file_name(string& s)
     ++out;
   }
   s.resize(out);
+}
+
+std::vector<int> read_all_proc_fds(pid_t tid)
+{
+  std::vector<int> ret;
+  char buf[1000];
+  sprintf(buf, "/proc/%d/fd", tid);
+  DIR *fddir = opendir(buf);
+  DEBUG_ASSERT(fddir != nullptr);
+  while (struct dirent *dir = readdir(fddir)) {
+    ret.push_back(atoi(dir->d_name));
+  }
+  return ret;
 }
 
 std::string find_exec_stub(SupportedArch arch) {

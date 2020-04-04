@@ -267,6 +267,8 @@ double monotonic_now_sec();
 
 bool running_under_rr(bool cache = true);
 
+std::vector<int> read_all_proc_fds(pid_t tid);
+
 std::vector<std::string> read_proc_status_fields(pid_t tid, const char* name,
                                                  const char* name2 = nullptr,
                                                  const char* name3 = nullptr);
