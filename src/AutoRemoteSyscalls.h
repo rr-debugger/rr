@@ -220,6 +220,14 @@ public:
    */
   pid_t new_tid() { return new_tid_; }
 
+  /* Do the open/mmap/close dance for a particular file */
+  void finish_direct_mmap(remote_ptr<void> rec_addr, size_t length,
+                          int prot, int flags,
+                          const std::string& backing_file_name,
+                          int backing_file_open_flags,
+                          off64_t backing_offset_pages,
+                          struct stat& real_file, std::string& real_file_name);
+
 private:
   void setup_path(bool enable_singlestep_path);
 
