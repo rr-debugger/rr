@@ -290,52 +290,6 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   new_task->vm()->after_clone();
 }
 
-static void finish_direct_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
-                               remote_ptr<void> rec_addr, size_t length,
-                               int prot, int flags,
-                               const string& backing_file_name,
-                               int backing_file_open_flags,
-                               off64_t backing_offset_pages,
-                               struct stat& real_file, string& real_file_name) {
-  int fd;
-
-  LOG(debug) << "directly mmap'ing " << length << " bytes of "
-             << backing_file_name << " at page offset "
-             << HEX(backing_offset_pages);
-
-  ASSERT(t, !(flags & MAP_GROWSDOWN));
-
-  /* Open in the tracee the file that was mapped during
-   * recording. */
-  {
-    AutoRestoreMem child_str(remote, backing_file_name.c_str());
-    fd = remote.infallible_syscall(syscall_number_for_open(remote.arch()),
-                                   child_str.get().as_int(),
-                                   backing_file_open_flags);
-  }
-  /* And mmap that file. */
-  remote.infallible_mmap_syscall(rec_addr, length,
-                                 /* (We let SHARED|WRITEABLE
-                                  * mappings go through while
-                                  * they're not handled properly,
-                                  * but we shouldn't do that.) */
-                                 prot, (flags & ~MAP_SYNC) | MAP_FIXED, fd,
-                                /* MAP_SYNC is used to request direct mapping
-                                  * (DAX) from the filesystem for persistent
-                                  * memory devices (requires
-                                  * MAP_SHARED_VALIDATE). Drop it for the
-                                  * backing file. */
-                                 backing_offset_pages);
-
-  // While it's open, grab the link reference.
-  real_file = t->stat_fd(fd);
-  real_file_name = t->file_name_of_fd(fd);
-
-  /* Don't leak the tmp fd.  The mmap doesn't need the fd to
-   * stay open. */
-  remote.infallible_syscall(syscall_number_for_close(remote.arch()), fd);
-}
-
 static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
                                   const KernelMapping& km,
                                   const TraceReader::MappedData& data) {
@@ -352,7 +306,7 @@ static void restore_mapped_region(ReplayTask* t, AutoRemoteSyscalls& remote,
       struct stat real_file;
       offset_bytes = km.file_offset_bytes();
       // Private mapping, so O_RDONLY is always OK.
-      finish_direct_mmap(t, remote, km.start(), km.size(), km.prot(),
+      remote.finish_direct_mmap(km.start(), km.size(), km.prot(),
                          km.flags(), data.file_name, O_RDONLY,
                          data.data_offset_bytes / page_size(), real_file,
                          real_file_name);
@@ -569,7 +523,7 @@ static void finish_anonymous_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
     struct stat real_file;
     // Emufs file, so open it read-write in case we need to write to it
     // through the task's memfd.
-    finish_direct_mmap(t, remote, rec_addr, length, prot,
+    remote.finish_direct_mmap(rec_addr, length, prot,
                        flags & ~MAP_ANONYMOUS, emu_file->proc_path(), O_RDWR, 0,
                        real_file, file_name);
     device = real_file.st_dev;
@@ -659,7 +613,7 @@ static void finish_shared_mmap(ReplayTask* t, AutoRemoteSyscalls& remote,
   string real_file_name;
   // Emufs file, so open it read-write in case we want to write to it through
   // the task's mem fd.
-  finish_direct_mmap(t, remote, rec_addr, km.size(), prot, flags,
+  remote.finish_direct_mmap(rec_addr, km.size(), prot, flags,
                      emufile->proc_path(), O_RDWR, offset_pages, real_file,
                      real_file_name);
   // Write back the snapshot of the segment that we recorded.
@@ -723,7 +677,7 @@ static void process_mmap(ReplayTask* t, const TraceFrame& trace_frame,
         struct stat real_file;
         string real_file_name;
         uint64_t map_bytes = min(ceil_page_size(data.file_size_bytes) - data.data_offset_bytes, length);
-        finish_direct_mmap(t, remote, addr, map_bytes, prot, flags,
+        remote.finish_direct_mmap(addr, map_bytes, prot, flags,
                            data.file_name, O_RDONLY,
                            data.data_offset_bytes / page_size(), real_file,
                            real_file_name);

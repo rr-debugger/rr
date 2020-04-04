@@ -552,4 +552,51 @@ void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno) {
   }
 }
 
+void AutoRemoteSyscalls::finish_direct_mmap(
+                               remote_ptr<void> rec_addr, size_t length,
+                               int prot, int flags,
+                               const string& backing_file_name,
+                               int backing_file_open_flags,
+                               off64_t backing_offset_pages,
+                               struct stat& real_file, string& real_file_name) {
+  int fd;
+
+  LOG(debug) << "directly mmap'ing " << length << " bytes of "
+             << backing_file_name << " at page offset "
+             << HEX(backing_offset_pages);
+
+  ASSERT(task(), !(flags & MAP_GROWSDOWN));
+
+  /* Open in the tracee the file that was mapped during
+   * recording. */
+  {
+    AutoRestoreMem child_str(*this, backing_file_name.c_str());
+    fd = infallible_syscall(syscall_number_for_open(arch()),
+                            child_str.get().as_int(),
+                            backing_file_open_flags);
+  }
+  /* And mmap that file. */
+  infallible_mmap_syscall(rec_addr, length,
+                          /* (We let SHARED|WRITEABLE
+                          * mappings go through while
+                          * they're not handled properly,
+                          * but we shouldn't do that.) */
+                          prot, (flags & ~MAP_SYNC) | MAP_FIXED, fd,
+                          /* MAP_SYNC is used to request direct mapping
+                          * (DAX) from the filesystem for persistent
+                          * memory devices (requires
+                          * MAP_SHARED_VALIDATE). Drop it for the
+                          * backing file. */
+                          backing_offset_pages);
+
+  // While it's open, grab the link reference.
+  real_file = task()->stat_fd(fd);
+  real_file_name = task()->file_name_of_fd(fd);
+
+  /* Don't leak the tmp fd.  The mmap doesn't need the fd to
+   * stay open. */
+  infallible_syscall(syscall_number_for_close(arch()), fd);
+}
+
+
 } // namespace rr
