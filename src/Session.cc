@@ -224,7 +224,7 @@ void Session::kill_all_tasks() {
          */
         continue;
       }
-      bool is_group_leader = t->tid == t->tgid();
+      bool is_group_leader = t->tid == t->real_tgid();
       if (pass == 0 ? is_group_leader : !is_group_leader)
           continue;
       t->kill();
