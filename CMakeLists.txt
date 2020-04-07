@@ -1044,7 +1044,7 @@ set(BASIC_TESTS
   timer
   timerfd
   times
-  truncate
+  truncate_temp
   tun
   two_signals_with_mask
   uname
