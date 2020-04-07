@@ -463,6 +463,12 @@ std::string json_escape(const std::string& str, size_t pos = 0);
 
 void sleep_time(double t);
 
+/**
+ * Normalize a file name by lexically resolving `.`,`..`,`//`
+ */
+void normalize_file_name(std::string& s);
+
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

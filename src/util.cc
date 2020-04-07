@@ -1800,4 +1800,47 @@ void sleep_time(double t) {
   nanosleep(&ts, NULL);
 }
 
+
+static bool is_component(const char* p, const char* component) {
+  while (*component) {
+    if (*p != *component) {
+      return false;
+    }
+    ++p;
+    ++component;
+  }
+  return *p == '/' || !*p;
+}
+
+void normalize_file_name(string& s)
+{
+  size_t s_len = s.size();
+  size_t out = 0;
+  for (size_t i = 0; i < s_len; ++i) {
+    if (s[i] == '/') {
+      if (s.c_str()[i + 1] == '/') {
+        // Skip redundant '/'
+        continue;
+      }
+      if (is_component(s.c_str() + i + 1, ".")) {
+        // Skip redundant '/.'
+        ++i;
+        continue;
+      }
+      if (is_component(s.c_str() + i + 1, "..")) {
+        // Peel off '/..'
+        size_t p = s.rfind('/', out - 1);
+        if (p != string::npos) {
+          out = p;
+          i += 2;
+          continue;
+        }
+      }
+    }
+    s[out] = s[i];
+    ++out;
+  }
+  s.resize(out);
+}
+
 } // namespace rr

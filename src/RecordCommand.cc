@@ -258,8 +258,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 't', "continue-through-signal", HAS_PARAMETER },
     { 'u', "cpu-unbound", NO_PARAMETER },
     { 'v', "env", HAS_PARAMETER },
-    { 'w', "wait", NO_PARAMETER }
-  };
+    { 'w', "wait", NO_PARAMETER }};
   ParsedOption opt;
   auto args_copy = args;
   if (!Command::parse_option(args_copy, options, &opt)) {

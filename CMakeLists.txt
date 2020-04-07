@@ -1282,6 +1282,7 @@ set(TESTS_WITHOUT_PROGRAM
   record_replay
   remove_watchpoint
   replay_overlarge_event_number
+  replay_serve_files
   restart_invalid_checkpoint
   restart_unstable
   restart_diversion
