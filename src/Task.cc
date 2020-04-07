@@ -156,22 +156,28 @@ void Task::wait_exit() {
   }
 }
 
-void Task::proceed_to_exit() {
+void Task::proceed_to_exit(bool wait) {
   LOG(debug) << "Advancing tid " << tid << " to exit";
   int ret = fallible_ptrace(PTRACE_CONT, nullptr, nullptr);
   DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == ESRCH));
-  wait_exit();
+  if (wait) {
+    wait_exit();
+  }
 }
 
 void Task::kill() {
-  /* This call is racy. There is basically two situations:
+  if (already_reaped())
+    return;
+  /* This call is racy. There is basically three situations:
   * 1. By the time the kernel gets arround to delivering this signal,
   *    we were already in a PTRACE_EVENT_EXIT stop (e.g. due to an early
   *    fatal signal), that we didn't observe yet (if we had, we would have
   *    removed the task from the task map already). In this case, this
   *    signal will advance from the PTRACE_EVENT_EXIT and put the child
   *    into hidden-zombie state, which the waitpid below will reap.
-  * 2. Anything else basically. The signal will take priority and put us
+  * 2. The task was in a coredump wait. This situation essentially works the
+  *    same as 1, but the final exit status will be some other fatal signal.
+  * 3. Anything else basically. The signal will take priority and put us
   *    into the PTRACE_EVENT_EXIT stop, which the subsequent waitpid will
   *    then observe.
   */
@@ -208,6 +214,8 @@ void Task::kill() {
       LOG(debug) << " --> " << status;
       DEBUG_ASSERT(wait_ret == tid && status.fatal_sig() == SIGKILL);
     }
+  } else {
+    was_reaped = true;
   }
 }
 

@@ -192,7 +192,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       break_at_syscallbuf_final_instruction(false),
       next_pmc_interrupt_is_for_user(false),
       did_record_robust_futex_changes(false),
-      waiting_for_reap(false) {
+      waiting_for_reap(false),
+      waiting_for_zombie(false) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.
@@ -751,6 +752,16 @@ bool RecordTask::do_ptrace_exit_stop(WaitStatus exit_status) {
     return true;
   }
   return false;
+}
+
+void RecordTask::did_reach_zombie() {
+  if (!already_reaped() && may_reap()) {
+    reap();
+  }
+  waiting_for_zombie = false;
+  if (!waiting_for_reap) {
+    delete this;
+  }
 }
 
 void RecordTask::send_synthetic_SIGCHLD_if_necessary() {
@@ -1487,7 +1498,8 @@ bool RecordTask::may_be_blocked() const {
           PROCESSING_SYSCALL == ev().Syscall().state) ||
          emulated_stop_type != NOT_STOPPED ||
          (EV_SIGNAL_DELIVERY == ev().type() &&
-          DISPOSITION_FATAL == ev().Signal().disposition);
+          DISPOSITION_FATAL == ev().Signal().disposition) ||
+         waiting_for_zombie;
 }
 
 bool RecordTask::maybe_in_spinlock() {

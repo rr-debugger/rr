@@ -158,7 +158,7 @@ public:
   /**
    * Advance the task to its exit state if it's not already there.
    */
-  void proceed_to_exit();
+  void proceed_to_exit(bool wait = true);
 
   /**
    * Kill this task and wait for it to exit.
@@ -411,7 +411,7 @@ public:
   /**
    * Return true if this task is dead and just waiting to be reaped.
    */
-  virtual bool is_waiting_for_reap() const { return false; }
+  virtual bool already_exited() const { return false; }
 
   /**
    * Read |N| bytes from |child_addr| into |buf|, or don't
