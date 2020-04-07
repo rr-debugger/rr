@@ -5538,7 +5538,11 @@ static void rec_process_syscall_arch(RecordTask* t,
           }
         }
         if (tracee->waiting_for_reap) {
-          delete tracee;
+          if (tracee->waiting_for_zombie) {
+            tracee->waiting_for_reap = false;
+          } else {
+            delete tracee;
+          }
         }
       }
       break;

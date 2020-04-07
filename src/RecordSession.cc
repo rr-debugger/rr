@@ -121,9 +121,7 @@ static void record_exit_trace_event(RecordTask* t, WaitStatus exit_status) {
  */
 static bool handle_ptrace_exit_event(RecordTask* t) {
   if (t->already_reaped()) {
-    if (!t->waiting_for_reap) {
-      delete t;
-    }
+    t->did_reach_zombie();
     return true;
   }
 
@@ -194,20 +192,25 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     exit_status = WaitStatus::for_fatal_sig(SIGKILL);
   }
 
+  // If we died because of a coredumping signal, that is a barrier event, and
+  // every task in the address space needs to pass its PTRACE_EXIT_EVENT before
+  // they proceed to (potentially hidden) zombie state, so we can't wait for
+  // that to happen
+  bool may_wait_exit = !is_coredumping_signal(exit_status.fatal_sig());
   if (!t->already_reaped()) {
-    t->proceed_to_exit();
+    t->proceed_to_exit(may_wait_exit);
   }
   record_exit_trace_event(t, exit_status);
   t->record_exit_event();
-  if (!t->already_reaped() && t->may_reap()) {
-    t->reap();
-  }
   if (t->do_ptrace_exit_stop(exit_status)) {
     // Keep the RecordTask alive until the ptracer reaps it
     t->waiting_for_reap = true;
-  } else {
-    delete t;
   }
+  if (!may_wait_exit) {
+    t->waiting_for_zombie = true;
+    return true;
+  }
+  t->did_reach_zombie();
   return true;
 }
 
@@ -2053,6 +2056,7 @@ RecordSession::RecordResult RecordSession::record_step() {
   if (IS_LOGGING(debug)) {
     t->log_pending_events();
   }
+
   if (handle_ptrace_exit_event(t)) {
     // t may have been deleted.
     last_task_switchable = ALLOW_SWITCH;

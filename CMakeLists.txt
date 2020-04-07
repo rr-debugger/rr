@@ -762,6 +762,7 @@ set(BASIC_TESTS
   exit_with_syscallbuf_signal
   fadvise
   fanotify
+  fatal_sigsegv_thread
   fcntl_dupfd
   fault_in_code_page
   fcntl_misc

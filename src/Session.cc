@@ -216,19 +216,11 @@ void Session::kill_all_tasks() {
      */
     for (auto &v : task_map) {
       Task* t = v.second;
-      if (t->is_waiting_for_reap()) {
-        /* We've already seeing the PTRACE_EXIT_EVENT for this task.
-         * We were just waiting for one of the other traced tasks, to
-         * reap it, but that ain't gonna happen, now. It'll get deleted
-         * below
-         */
-        continue;
-      }
       bool is_group_leader = t->tid == t->real_tgid();
       if (pass == 0 ? is_group_leader : !is_group_leader)
           continue;
       t->kill();
-      if (is_recording()) {
+      if (is_recording() && !t->already_exited()) {
         static_cast<RecordTask*>(t)->record_exit_event(SIGKILL);
       }
     }

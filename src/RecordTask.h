@@ -163,8 +163,8 @@ public:
    */
   bool is_waiting_for(RecordTask* t);
 
-  virtual bool is_waiting_for_reap() const override {
-    return waiting_for_reap;
+  virtual bool already_exited() const override {
+    return waiting_for_reap || waiting_for_zombie;
   }
 
   /**
@@ -534,6 +534,12 @@ public:
 
   void maybe_restore_original_syscall_registers();
 
+  /**
+   * The task reached zombie state. Do whatever processing is necessary (reaping
+   * it, emulating ptrace stops, etc.)
+   */
+  void did_reach_zombie();
+
 private:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();
@@ -718,6 +724,9 @@ public:
 
   // This task is just waiting to be reaped.
   bool waiting_for_reap;
+
+  // This task is waiting to reach zombie state
+  bool waiting_for_zombie;
 };
 
 } // namespace rr
