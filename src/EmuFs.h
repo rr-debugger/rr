@@ -54,6 +54,24 @@ class Task;
  * assumption mentioned above.
  */
 
+
+class EmuFile;
+struct FileId {
+  FileId(const KernelMapping& recorded_map);
+  FileId(const EmuFile& emu_file);
+  FileId(dev_t device, ino_t inode)
+      : device(device), inode(inode) {}
+  bool operator==(const FileId& other) const {
+    return (device == other.device && inode == other.inode);
+  }
+  bool operator<(const FileId& other) const {
+    return device < other.device ||
+            (device == other.device && inode < other.inode);
+  }
+  dev_t device;
+  ino_t inode;
+};
+
 /**
  * A file within an EmuFs.  The file is real, but it's mapped to file
  * ID that was recorded during replay.
@@ -169,20 +187,6 @@ public:
 
 private:
   EmuFs();
-
-  struct FileId {
-    FileId(const KernelMapping& recorded_map);
-    FileId(const EmuFile& emu_file)
-        : device(emu_file.device()), inode(emu_file.inode()) {}
-    FileId(dev_t device, ino_t inode)
-        : device(device), inode(inode) {}
-    bool operator<(const FileId& other) const {
-      return device < other.device ||
-             (device == other.device && inode < other.inode);
-    }
-    dev_t device;
-    ino_t inode;
-  };
 
   typedef std::map<FileId, std::weak_ptr<EmuFile>> FileMap;
 

@@ -405,35 +405,85 @@ void GdbServer::dispatch_debugger_request(Session& session,
     case DREQ_FILE_OPEN:
       // We only support reading files
       if (req.file_open().flags == O_RDONLY) {
-        int fd = open_file(session, req.file_open().file_name);
+        Task* t = session.find_task(last_continue_tuid);
+        int fd = open_file(session, t, req.file_open().file_name);
         dbg->reply_open(fd, fd >= 0 ? 0 : ENOENT);
       } else {
         dbg->reply_open(-1, EACCES);
       }
       return;
     case DREQ_FILE_PREAD: {
-      auto it = files.find(req.file_pread().fd);
-      if (it != files.end()) {
-        size_t size = min<uint64_t>(req.file_pread().size, 1024 * 1024);
-        vector<uint8_t> data;
-        data.resize(size);
-        ssize_t bytes =
-            read_to_end(it->second, req.file_pread().offset, data.data(), size);
-        dbg->reply_pread(data.data(), bytes, bytes >= 0 ? 0 : errno);
-      } else {
-        dbg->reply_pread(nullptr, 0, EBADF);
+      GdbRequest::FilePread read_req = req.file_pread();
+      {
+        auto it = files.find(read_req.fd);
+        if (it != files.end()) {
+          size_t size = min<uint64_t>(read_req.size, 1024 * 1024);
+          vector<uint8_t> data;
+          data.resize(size);
+          ssize_t bytes =
+              read_to_end(it->second, read_req.offset, data.data(), size);
+          dbg->reply_pread(data.data(), bytes, bytes >= 0 ? 0 : -errno);
+          return;
+        }
       }
+      {
+        auto it = memory_files.find(read_req.fd);
+        if (it != memory_files.end()) {
+          // Search our mmap stream for a record that can satisfy this request
+          TraceReader tmp_reader(timeline.current_session().trace_reader());
+          tmp_reader.rewind();
+          while (true) {
+            TraceReader::MappedData data;
+            bool found;
+            KernelMapping km = tmp_reader.read_mapped_region(
+                &data, &found, TraceReader::DONT_VALIDATE, TraceReader::ANY_TIME);
+            if (!found)
+              break;
+            if (it->second == FileId(km)) {
+              if (data.source != TraceReader::SOURCE_FILE) {
+                LOG(warn) << "Not serving file because it is not a file source";
+                break;
+              }
+              ScopedFd fd(data.file_name.c_str(), O_RDONLY);
+              vector<uint8_t> data;
+              data.resize(read_req.size);
+              LOG(debug) << "Reading " << read_req.size << " bytes at offset " <<
+                read_req.offset;
+              ssize_t bytes =
+                  read_to_end(fd, read_req.offset, data.data(), read_req.size);
+              if (bytes < (ssize_t)read_req.size) {
+                LOG(warn) << "Requested " << read_req.size << " bytes but only got " << bytes;
+              }
+              dbg->reply_pread(data.data(), bytes, bytes >= 0 ? 0 : -errno);
+              return;
+            }
+          }
+          LOG(warn) << "No mapping found";
+          dbg->reply_pread(nullptr, 0, EIO);
+        }
+      }
+      LOG(warn) << "Unknown file descriptor requested";
+      dbg->reply_pread(nullptr, 0, EIO);
       return;
     }
     case DREQ_FILE_CLOSE: {
-      auto it = files.find(req.file_close().fd);
-      if (it != files.end()) {
-        files.erase(it);
-        dbg->reply_close(0);
-      } else {
-        dbg->reply_close(EBADF);
+      {
+        auto it = files.find(req.file_close().fd);
+        if (it != files.end()) {
+          files.erase(it);
+          dbg->reply_close(0);
+          return;
+        }
+      } {
+        auto it = memory_files.find(req.file_close().fd);
+        if (it != memory_files.end()) {
+          memory_files.erase(it);
+          dbg->reply_close(0);
+          return;
+        }
       }
-      return;
+      LOG(warn) << "Unable to find file descriptor for close";
+      dbg->reply_close(EBADF);
     }
     default:
       /* fall through to next switch stmt */
@@ -1423,7 +1473,7 @@ struct DebuggerParams {
   short port;
 };
 
-static void push_default_gdb_options(vector<string>& vec) {
+static void push_default_gdb_options(vector<string>& vec, bool serve_files = false) {
   // The gdb protocol uses the "vRun" packet to reload
   // remote targets.  The packet is specified to be like
   // "vCont", in which gdb waits infinitely long for a
@@ -1442,13 +1492,15 @@ static void push_default_gdb_options(vector<string>& vec) {
   // remote-reply timeout.
   vec.push_back("-l");
   vec.push_back("10000");
-  // For now, avoid requesting binary files through vFile. That is slow and
-  // hard to make work correctly, because gdb requests files based on the
-  // names it sees in memory and in ELF, and those names may be symlinks to
-  // the filenames in the trace, so it's hard to match those names to files in
-  // the trace.
-  vec.push_back("-ex");
-  vec.push_back("set sysroot /");
+  if (!serve_files) {
+    // For now, avoid requesting binary files through vFile. That is slow and
+    // hard to make work correctly, because gdb requests files based on the
+    // names it sees in memory and in ELF, and those names may be symlinks to
+    // the filenames in the trace, so it's hard to match those names to files in
+    // the trace.
+    vec.push_back("-ex");
+    vec.push_back("set sysroot /");
+  }
 }
 
 static void push_target_remote_cmd(vector<string>& vec, const string& host,
@@ -1601,7 +1653,8 @@ static bool needs_target(const string& option) {
  */
 void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
                            const string& gdb_binary_file_path,
-                           const vector<string>& gdb_options) {
+                           const vector<string>& gdb_options,
+                           bool serve_files) {
   auto macros = gdb_rr_macros();
   string gdb_command_file = create_gdb_command_file(macros);
 
@@ -1621,7 +1674,7 @@ void GdbServer::launch_gdb(ScopedFd& params_pipe_fd,
 
   vector<string> args;
   args.push_back(gdb_binary_file_path);
-  push_default_gdb_options(args);
+  push_default_gdb_options(args, serve_files);
   args.push_back("-x");
   args.push_back(gdb_command_file);
   bool did_set_remote = false;
@@ -1741,7 +1794,19 @@ static ScopedFd generate_fake_proc_maps(Task* t) {
   return move(file.fd);
 }
 
-int GdbServer::open_file(Session& session, const std::string& file_name) {
+static bool is_ld_mapping(string map_name) {
+  char ld_start[] = "ld-";
+  size_t matchpos = map_name.find_last_of('/');
+  string fname = map_name.substr(matchpos == string::npos ? 0 : matchpos + 1);
+  return memcmp(fname.c_str(), ld_start,
+                sizeof(ld_start)-1) == 0;
+}
+
+static bool is_likely_interp(string fsname) {
+  return fsname == "/lib64/ld-linux-x86-64.so.2" || fsname == "/lib/ld-linux.so.2";
+}
+
+int GdbServer::open_file(Session& session, Task* continue_task, const std::string& file_name) {
   // XXX should we require file_scope_pid == 0 here?
   ScopedFd contents;
 
@@ -1771,7 +1836,37 @@ int GdbServer::open_file(Session& session, const std::string& file_name) {
     } else {
       return -1;
     }
-  }
+  } else {
+    // See if we can find the file by serving one of our mappings
+    std::string normalized_file_name = file_name;
+    normalize_file_name(normalized_file_name);
+    for (const auto& m : continue_task->vm()->maps()) {
+      // The dynamic linker is generally a symlink that is resolved by the
+      // kernel when the process image gets loaded. We add a special case to
+      // substitute the correct mapping, so gdb can find the dynamic linker
+      // rendezvous structures.
+      // XXX: These don't tend to vary across systems, so hardcoding them here works
+      //      ok, but it'd be better, to just read INTERP from the main executable
+      //      and record which is the corresponding file.
+      if (m.recorded_map.fsname().compare(0,
+            normalized_file_name.length(),
+            normalized_file_name) == 0
+          || (is_ld_mapping(m.recorded_map.fsname()) &&
+              is_likely_interp(normalized_file_name)))
+      {
+        int ret_fd = 0;
+        while (files.find(ret_fd) != files.end() ||
+               memory_files.find(ret_fd) != memory_files.end()) {
+          ++ret_fd;
+        }
+        LOG(debug) << "Found as memory mapping " << m.recorded_map;
+        memory_files.insert(make_pair(ret_fd, FileId(m.recorded_map)));
+        return ret_fd;
+      }
+    }
+    LOG(debug) << "... not found";
+    return -1;
+   }
 
   int ret_fd = 0;
   while (files.find(ret_fd) != files.end()) {
