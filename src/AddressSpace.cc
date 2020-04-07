@@ -288,6 +288,7 @@ void AddressSpace::map_rr_page(AutoRemoteSyscalls& remote) {
 
   {
     ScopedFd page(path.c_str(), O_RDONLY);
+    ASSERT(t, page.is_open());
     long child_fd = remote.send_fd(page.get());
     ASSERT(t, child_fd >= 0);
     remote.infallible_mmap_syscall(rr_page_start(), rr_page_size(), prot, flags,
