@@ -17,7 +17,14 @@ int main(void) {
     return 0;
   }
 
-  test_assert(0 == syscall(RR_clock_getres_time64, CLOCK_MONOTONIC, &ts));
+  int ret = syscall(RR_clock_getres_time64, CLOCK_MONOTONIC, &ts);
+  if (ret == -1 && errno == ENOSYS) {
+    atomic_puts("Skipping tests, because 64 bit time syscalls are unavailable");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
+
+  test_assert(0 == ret);
   atomic_printf("Clock resolution %lld %lld\n", (long long)ts.tv_sec, (long long)ts.tv_nsec);
 
   test_assert(0 == syscall(RR_clock_gettime64, CLOCK_MONOTONIC, &ts));
