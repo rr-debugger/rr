@@ -106,6 +106,14 @@ struct DeschedEvent {
   remote_ptr<const struct syscallbuf_record> rec;
 };
 
+struct PatchSyscallEvent {
+  PatchSyscallEvent() : patch_after_syscall(false) {}
+  // If true, this patch event comes after a syscall (whereas usually they
+  // come before). We assume the trace has put us in the correct place
+  // and don't try to execute any code to reach this event.
+  bool patch_after_syscall;
+};
+
 struct SyscallbufFlushEvent {
   SyscallbufFlushEvent() {}
   std::vector<mprotect_record> mprotect_records;
@@ -274,6 +282,15 @@ struct Event {
     return desched;
   }
 
+  PatchSyscallEvent& PatchSyscall() {
+    DEBUG_ASSERT(EV_PATCH_SYSCALL == event_type);
+    return patch;
+  }
+  const PatchSyscallEvent& PatchSyscall() const {
+    DEBUG_ASSERT(EV_PATCH_SYSCALL == event_type);
+    return patch;
+  }
+
   SyscallbufFlushEvent& SyscallbufFlush() {
     DEBUG_ASSERT(EV_SYSCALLBUF_FLUSH == event_type);
     return syscallbuf_flush;
@@ -338,7 +355,11 @@ struct Event {
   static Event noop() { return Event(EV_NOOP); }
   static Event trace_termination() { return Event(EV_TRACE_TERMINATION); }
   static Event instruction_trap() { return Event(EV_INSTRUCTION_TRAP); }
-  static Event patch_syscall() { return Event(EV_PATCH_SYSCALL); }
+  static Event patch_syscall() {
+    auto ev = Event(EV_PATCH_SYSCALL);
+    ev.PatchSyscall().patch_after_syscall = false;
+    return ev;
+  }
   static Event sched() { return Event(EV_SCHED); }
   static Event seccomp_trap() { return Event(EV_SECCOMP_TRAP); }
   static Event syscallbuf_abort_commit() {
@@ -355,6 +376,7 @@ private:
   EventType event_type;
   union {
     DeschedEvent desched;
+    PatchSyscallEvent patch;
     SignalEvent signal;
     SyscallEvent syscall;
     SyscallbufFlushEvent syscallbuf_flush;

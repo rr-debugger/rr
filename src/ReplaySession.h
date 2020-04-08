@@ -59,6 +59,9 @@ enum ReplayTraceStepType {
   /* Replay until we enter the next syscall, then patch it. */
   TSTEP_PATCH_SYSCALL,
 
+  /* Replay until we exit the next syscall, then patch it. */
+  TSTEP_PATCH_AFTER_SYSCALL,
+
   /* Exit the task */
   TSTEP_EXIT_TASK,
 
@@ -339,7 +342,8 @@ private:
   Completion flush_syscallbuf(ReplayTask* t,
                               const StepConstraints& constraints);
   Completion patch_next_syscall(ReplayTask* t,
-                                const StepConstraints& constraints);
+                                const StepConstraints& constraints,
+                                bool after_syscall);
   void check_approaching_ticks_target(ReplayTask* t,
                                       const StepConstraints& constraints,
                                       BreakStatus& break_status);

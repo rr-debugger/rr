@@ -1255,13 +1255,18 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
 }
 
 Completion ReplaySession::patch_next_syscall(
-    ReplayTask* t, const StepConstraints& constraints) {
-  if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
-    return INCOMPLETE;
-  }
+    ReplayTask* t, const StepConstraints& constraints, bool after_syscall) {
+  if (!after_syscall) {
+    if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
+      return INCOMPLETE;
+    }
 
-  t->canonicalize_regs(t->arch());
-  t->exit_syscall_and_prepare_restart();
+    t->canonicalize_regs(t->arch());
+    t->exit_syscall_and_prepare_restart();
+  } else {
+    // We must already be in the right place.
+    // XXXkhuey verify that.
+  }
 
   // All patching effects have been recorded to the trace.
   // First, replay any memory mapping done by Monkeypatcher. There should be
@@ -1365,7 +1370,9 @@ Completion ReplaySession::try_one_trace_step(
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, constraints);
     case TSTEP_PATCH_SYSCALL:
-      return patch_next_syscall(t, constraints);
+      return patch_next_syscall(t, constraints, false);
+    case TSTEP_PATCH_AFTER_SYSCALL:
+      return patch_next_syscall(t, constraints, true);
     case TSTEP_EXIT_TASK:
       return exit_task(t);
     default:
@@ -1502,7 +1509,11 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_PATCH_SYSCALL:
-      current_step.action = TSTEP_PATCH_SYSCALL;
+      if (ev.PatchSyscall().patch_after_syscall) {
+        current_step.action = TSTEP_PATCH_AFTER_SYSCALL;
+      } else {
+        current_step.action = TSTEP_PATCH_SYSCALL;
+      }
       break;
     case EV_SCHED:
       current_step.action = TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT;

@@ -193,7 +193,8 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       next_pmc_interrupt_is_for_user(false),
       did_record_robust_futex_changes(false),
       waiting_for_reap(false),
-      waiting_for_zombie(false) {
+      waiting_for_zombie(false),
+      retry_syscall_patching(false) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
     // Initial tracee. It inherited its state from this process, so set it up.

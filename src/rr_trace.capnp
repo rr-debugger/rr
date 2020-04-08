@@ -256,5 +256,6 @@ struct Frame {
         openedFds @25 :List(OpenedFd);
       }
     }
+    patchAfterSyscall @26: Void;
   }
 }

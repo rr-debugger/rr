@@ -1159,6 +1159,7 @@ set(TESTS_WITH_PROGRAM
   mutex_pi_stress
   overflow_branch_counter
   patch_page_end
+  patch_40_80_f6_81
   priority
   ptrace_remote_unmap
   remove_latest_trace

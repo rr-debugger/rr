@@ -62,7 +62,7 @@ public:
    * Zero or more mapping operations are also recorded to the trace and must
    * be replayed.
    */
-  bool try_patch_syscall(RecordTask* t);
+  bool try_patch_syscall(RecordTask* t, bool entering_syscall = true);
 
   void init_dynamic_syscall_patching(
       RecordTask* t, int syscall_patch_hook_count,
