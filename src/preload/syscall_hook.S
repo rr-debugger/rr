@@ -499,6 +499,11 @@ SYSCALLHOOK_START(_syscall_hook_trampoline_c3_nop)
         .cfi_endproc
         .size _syscall_hook_trampoline_c3_nop, .-_syscall_hook_trampoline_c3_nop
 
+SYSCALLHOOK_START(_syscall_hook_trampoline_40_80_f6_81)
+	xor $0x81, %sil
+	call __morestack
+SYSCALLHOOK_END(_syscall_hook_trampoline_40_80_f6_81)
+
 #endif /* __x86_64__ */
 
         .section .note.GNU-stack,"",@progbits

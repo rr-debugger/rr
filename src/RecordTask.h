@@ -727,6 +727,9 @@ public:
 
   // This task is waiting to reach zombie state
   bool waiting_for_zombie;
+
+  // When exiting a syscall, we should call MonkeyPatcher::try_patch_syscall again.
+  bool retry_syscall_patching;
 };
 
 } // namespace rr

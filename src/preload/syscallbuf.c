@@ -554,6 +554,7 @@ static void __attribute__((constructor)) init_process(void) {
   extern RR_HIDDEN void _syscall_hook_trampoline_ba_01_00_00_00(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_89_c1_31_d2(void);
   extern RR_HIDDEN void _syscall_hook_trampoline_c3_nop(void);
+  extern RR_HIDDEN void _syscall_hook_trampoline_40_80_f6_81(void);
 
   struct syscall_patch_hook syscall_patch_hooks[] = {
     /* Many glibc syscall wrappers (e.g. read) have 'syscall' followed
@@ -579,19 +580,19 @@ static void __attribute__((constructor)) init_process(void) {
       (uintptr_t)_syscall_hook_trampoline_48_8b_3c_24 },
     /* __lll_unlock_wake has 'syscall' followed by
      * pop %rdx; pop %rsi; ret */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       3,
       { 0x5a, 0x5e, 0xc3 },
       (uintptr_t)_syscall_hook_trampoline_5a_5e_c3 },
     /* posix_fadvise64 has 'syscall' followed by
      * mov %eax,%edx; neg %edx (in glibc-2.22-11.fc23.x86_64) */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       4,
       { 0x89, 0xc2, 0xf7, 0xda },
       (uintptr_t)_syscall_hook_trampoline_89_c2_f7_da },
     /* Our VDSO vsyscall patches have 'syscall' followed by "nop; nop;
        nop" */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       3,
       { 0x90, 0x90, 0x90 },
       (uintptr_t)_syscall_hook_trampoline_90_90_90 },
@@ -605,40 +606,45 @@ static void __attribute__((constructor)) init_process(void) {
       (uintptr_t)_syscall_hook_trampoline_ba_01_00_00_00 },
     /* pthread_sigmask has 'syscall' followed by 'mov %eax,%ecx; xor
        %edx,%edx' */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       4,
       { 0x89, 0xc1, 0x31, 0xd2 },
       (uintptr_t)_syscall_hook_trampoline_89_c1_31_d2 },
     /* getpid has 'syscall' followed by 'retq; nopl 0x0(%rax,%rax,1) */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       9,
       { 0xc3, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
     /* liblsan internal_close has 'syscall' followed by 'retq; nopl 0x0(%rax,%rax,1) */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       6,
       { 0xc3, 0x0f, 0x1f, 0x44, 0x00, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
     /* glibc-2.29-15.fc30.x86_64 getpid has 'syscall' followed by 'retq; nopl 0x0(%rax) */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       5,
       { 0xc3, 0x0f, 0x1f, 0x40, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
     /* liblsan internal_open has 'syscall' followed by 'retq; nopl (%rax) */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       4,
       { 0xc3, 0x0f, 0x1f, 0x00 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
     /* liblsan internal_dup2 has 'syscall' followed by 'retq; xchg %ax,%ax */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       3,
       { 0xc3, 0x66, 0x90 },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
     /* Go runtime has 'syscall' followed by 'retq; int3; int3 */
-    { 1,
+    { PATCH_IS_MULTIPLE_INSTRUCTIONS,
       3,
       { 0xc3, 0xcc, 0xcc },
       (uintptr_t)_syscall_hook_trampoline_c3_nop },
+    /* glibc-2.31 on Ubuntu 20.04 has 'xor $0x81, %sil' followed by 'syscall' */
+    { PATCH_SYSCALL_INSTRUCTION_IS_LAST,
+      4,
+      { 0x40, 0x80, 0xf6, 0x81 },
+      (uintptr_t)_syscall_hook_trampoline_40_80_f6_81 },
   };
 #else
 #error Unknown architecture

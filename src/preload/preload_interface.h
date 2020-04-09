@@ -225,6 +225,12 @@ static inline const char* extract_file_name(const char* s) {
 #define SIGNED_LONG typename Arch::signed_long
 #endif
 
+#define PATCH_IS_MULTIPLE_INSTRUCTIONS (1 << 0)
+/* The syscall instruction is the last instruction in the patched area
+ * (rather than the first), which requires special handling.
+ */
+#define PATCH_SYSCALL_INSTRUCTION_IS_LAST (1 << 1)
+
 /**
  * To support syscall buffering, we replace syscall instructions with a "call"
  * instruction that calls a hook in the preload library to handle the syscall.
@@ -240,10 +246,10 @@ static inline const char* extract_file_name(const char* s) {
  * without bumping SYSCALLBUF_PROTOCOL_VERSION.
  */
 struct syscall_patch_hook {
-  uint8_t is_multi_instruction;
-  uint8_t next_instruction_length;
+  uint8_t flags;
+  uint8_t patch_region_length;
   /* Avoid any padding or anything that would make the layout arch-specific. */
-  uint8_t next_instruction_bytes[14];
+  uint8_t patch_region_bytes[14];
   uint64_t hook_address;
 };
 

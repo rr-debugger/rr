@@ -278,6 +278,15 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   // the end of the jump to our actual destination.
   auto jump_patch_start = t->regs().ip().to_data_ptr<uint8_t>();
   auto jump_patch_end = jump_patch_start + sizeof(jump_patch);
+  auto return_addr = t->regs().ip().to_data_ptr<uint8_t>().as_int() +
+                     syscall_instruction_length(x86_64) +
+                     hook.patch_region_length;
+  if ((hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST)) {
+    auto adjust = hook.patch_region_length + syscall_instruction_length(x86_64);
+    jump_patch_start -= adjust;
+    jump_patch_end -= adjust;
+    return_addr -= adjust;
+  }
 
   remote_ptr<uint8_t> extended_jump_start =
       allocate_extended_jump<ExtendedJumpPatch>(
@@ -287,9 +296,6 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   }
 
   uint8_t stub_patch[ExtendedJumpPatch::size];
-  auto return_addr =
-    jump_patch_start.as_int() + syscall_instruction_length(x86_64) +
-    hook.next_instruction_length;
   substitute_extended_jump<ExtendedJumpPatch>(stub_patch,
                                               extended_jump_start.as_int(),
                                               return_addr,
@@ -311,7 +317,7 @@ static bool patch_syscall_with_hook_x86ish(Monkeypatcher& patcher,
   DEBUG_ASSERT(syscall_instruction_length(x86_64) ==
                syscall_instruction_length(x86));
   size_t nops_bufsize = syscall_instruction_length(x86_64) +
-                        hook.next_instruction_length - sizeof(jump_patch);
+                        hook.patch_region_length - sizeof(jump_patch);
   std::unique_ptr<uint8_t[]> nops(new uint8_t[nops_bufsize]);
   memset(nops.get(), NOP, nops_bufsize);
   write_and_record_mem(t, jump_patch_start + sizeof(jump_patch), nops.get(),
@@ -385,7 +391,14 @@ static bool safe_for_syscall_patching(remote_code_ptr start,
   return true;
 }
 
-bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
+// Syscalls can be patched either on entry or exit. For most syscall
+// instruction code patterns we can steal bytes after the syscall instruction
+// and thus we patch on entry, but some patterns require using bytes from
+// before the syscall instruction itself and thus can only be patched on exit.
+// The `entering_syscall` flag tells us whether or not we're at syscall entry.
+// If we are, and we find a pattern that can only be patched at exit, we'll
+// set a flag on the RecordTask telling it to try again after syscall exit.
+bool Monkeypatcher::try_patch_syscall(RecordTask* t, bool entering_syscall) {
   if (syscall_hooks.empty()) {
     // Syscall hooks not set up yet. Don't spew warnings, and don't
     // fill tried_to_patch_syscall_addresses with addresses that we might be
@@ -428,72 +441,123 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
     return false;
   }
 
-  uint8_t following_bytes[256];
+  static const intptr_t MAXIMUM_LOOKBACK = 6;
+  uint8_t bytes[256 + MAXIMUM_LOOKBACK];
   size_t bytes_count = t->read_bytes_fallible(
-      ip.to_data_ptr<uint8_t>(), sizeof(following_bytes), following_bytes);
+      ip.to_data_ptr<uint8_t>() - MAXIMUM_LOOKBACK, sizeof(bytes), bytes);
+  if (bytes_count < MAXIMUM_LOOKBACK) {
+    LOG(debug) << "Declining to patch syscall at " << ip << " for lack of lookback";
+    tried_to_patch_syscall_addresses.insert(ip);
+    return false;
+  }
+  size_t following_bytes_count = bytes_count - MAXIMUM_LOOKBACK;
+  uint8_t* following_bytes = &bytes[MAXIMUM_LOOKBACK];
 
   intptr_t syscallno = r.original_syscallno();
   for (auto& hook : syscall_hooks) {
-    if (bytes_count >= hook.next_instruction_length &&
-        memcmp(following_bytes, hook.next_instruction_bytes,
-               hook.next_instruction_length) == 0) {
-      // Search for a following short-jump instruction that targets an
-      // instruction
-      // after the syscall. False positives are OK.
-      // glibc-2.23.1-8.fc24.x86_64's __clock_nanosleep needs this.
-      bool found_potential_interfering_branch = false;
-      // If this was a VDSO syscall we patched, we don't have to worry about
-      // this check since the function doesn't do anything except execute our
-      // syscall and return.
-      // Otherwise the Linux 4.12 VDSO triggers the interfering-branch check.
-      if (!patched_vdso_syscalls.count(
-              ip.decrement_by_syscall_insn_length(arch))) {
-        for (size_t i = 0; i + 2 <= bytes_count; ++i) {
-          uint8_t b = following_bytes[i];
-          // Check for short conditional or unconditional jump
-          if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
-            int offset = i + 2 + (int8_t)following_bytes[i + 1];
-            if (hook.is_multi_instruction
-                    ? (offset >= 0 && offset < hook.next_instruction_length)
-                    : offset == 0) {
-              LOG(debug) << "Found potential interfering branch at "
-                         << ip.to_data_ptr<uint8_t>() + i;
-              // We can't patch this because it would jump straight back into
-              // the middle of our patch code.
-              found_potential_interfering_branch = true;
-            }
+    bool matches_hook = false;
+    if ((!(hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) &&
+         following_bytes_count >= hook.patch_region_length &&
+         memcmp(following_bytes, hook.patch_region_bytes,
+                hook.patch_region_length) == 0)) {
+      matches_hook = true;
+    } else if ((hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) &&
+               bytes_count >=
+                   hook.patch_region_length +
+                       (size_t)rr::syscall_instruction_length(arch) &&
+               memcmp(bytes, hook.patch_region_bytes,
+                      hook.patch_region_length) == 0) {
+      if (entering_syscall) {
+        // A patch that uses bytes before the syscall can't be done when
+        // entering the syscall, it must be done when exiting. So set a flag on
+        // the Task that tells us to come back later.
+        t->retry_syscall_patching = true;
+        LOG(debug) << "Deferring syscall patching at " << ip << " in " << t
+                   << " until syscall exit.";
+        return false;
+      }
+      matches_hook = true;
+    }
+
+    if (!matches_hook) {
+      continue;
+    }
+
+    // Search for a following short-jump instruction that targets an
+    // instruction
+    // after the syscall. False positives are OK.
+    // glibc-2.23.1-8.fc24.x86_64's __clock_nanosleep needs this.
+    bool found_potential_interfering_branch = false;
+    // If this was a VDSO syscall we patched, we don't have to worry about
+    // this check since the function doesn't do anything except execute our
+    // syscall and return.
+    // Otherwise the Linux 4.12 VDSO triggers the interfering-branch check.
+    if (!patched_vdso_syscalls.count(
+            ip.decrement_by_syscall_insn_length(arch))) {
+      size_t max_bytes, warn_offset;
+      uint8_t* search_bytes;
+      if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
+        max_bytes = bytes_count;
+        search_bytes = bytes;
+        warn_offset = MAXIMUM_LOOKBACK;
+      } else {
+        max_bytes = following_bytes_count;
+        search_bytes = following_bytes;
+        warn_offset = 0;
+      }
+
+      for (size_t i = 0; i + 2 <= max_bytes; ++i) {
+        uint8_t b = search_bytes[i];
+        // Check for short conditional or unconditional jump
+        if (b == 0xeb || (b >= 0x70 && b < 0x80)) {
+          int offset = i + 2 + (int8_t)search_bytes[i + 1];
+          if ((hook.flags & PATCH_IS_MULTIPLE_INSTRUCTIONS)
+                  ? (offset >= 0 && offset < hook.patch_region_length)
+                  : offset == 0) {
+            LOG(debug) << "Found potential interfering branch at "
+                       << ip.to_data_ptr<uint8_t>() + i - warn_offset;
+            // We can't patch this because it would jump straight back into
+            // the middle of our patch code.
+            found_potential_interfering_branch = true;
           }
         }
       }
+    }
 
-      if (!found_potential_interfering_branch) {
-        if (!safe_for_syscall_patching(ip, ip + hook.next_instruction_length,
-                                       t)) {
-          LOG(debug)
-              << "Temporarily declining to patch syscall at " << ip
-              << " because a different task has its ip in the patched range";
-          return false;
-        }
-
-        LOG(debug) << "Patched syscall at " << ip << " syscall "
-                   << syscall_name(syscallno, t->arch()) << " tid " << t->tid
-                   << " bytes "
-                   << bytes_to_string(
-                          following_bytes,
-                          min(bytes_count,
-                              sizeof(
-                                  syscall_patch_hook::next_instruction_bytes)));
-
-        // Get out of executing the current syscall before we patch it.
-        if (!t->exit_syscall_and_prepare_restart()) {
-          return false;
-        }
-
-        patch_syscall_with_hook(*this, t, hook);
-
-        // Return to caller, which resume normal execution.
-        return true;
+    if (!found_potential_interfering_branch) {
+      remote_code_ptr start_range, end_range;
+      if (hook.flags & PATCH_SYSCALL_INSTRUCTION_IS_LAST) {
+        start_range = ip.decrement_by_syscall_insn_length(arch) -
+                      hook.patch_region_length;
+        end_range = ip;
+      } else {
+        start_range = ip.decrement_by_syscall_insn_length(arch);
+        end_range = ip + hook.patch_region_length;
       }
+      if (!safe_for_syscall_patching(start_range, end_range, t)) {
+        LOG(debug)
+            << "Temporarily declining to patch syscall at " << ip
+            << " because a different task has its ip in the patched range";
+        return false;
+      }
+
+      LOG(debug) << "Patched syscall at " << ip << " syscall "
+                 << syscall_name(syscallno, t->arch()) << " tid " << t->tid
+                 << " bytes "
+                 << bytes_to_string(
+                        following_bytes,
+                        min(bytes_count,
+                            sizeof(syscall_patch_hook::patch_region_bytes)));
+
+      // Get out of executing the current syscall before we patch it.
+      if (entering_syscall && !t->exit_syscall_and_prepare_restart()) {
+        return false;
+      }
+
+      patch_syscall_with_hook(*this, t, hook);
+
+      // Return to caller, which resume normal execution.
+      return true;
     }
   }
   LOG(debug) << "Failed to patch syscall at " << ip << " syscall "
@@ -502,7 +566,7 @@ bool Monkeypatcher::try_patch_syscall(RecordTask* t) {
              << bytes_to_string(
                     following_bytes,
                     min(bytes_count,
-                        sizeof(syscall_patch_hook::next_instruction_bytes)));
+                        sizeof(syscall_patch_hook::patch_region_bytes)));
   tried_to_patch_syscall_addresses.insert(ip);
   return false;
 }
