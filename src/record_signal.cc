@@ -156,9 +156,9 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
     LOG(debug) << "try_grow_map " << addr << ": address would be in guard page";
     return false;
   }
-  struct rlimit stack_limit;
+  struct rlimit64 stack_limit;
   remote_ptr<void> limit_bottom;
-  int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
+  int ret = syscall(__NR_prlimit64, t->tid, RLIMIT_STACK, NULL, &stack_limit);
   if (ret >= 0 && stack_limit.rlim_cur != RLIM_INFINITY) {
     limit_bottom = ceil_page_size(it->map.end() - stack_limit.rlim_cur);
     if (limit_bottom > addr) {

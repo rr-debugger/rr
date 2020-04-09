@@ -2915,11 +2915,11 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   }
 
   ret =
-      ptrace(PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
+      ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)(options | PTRACE_O_EXITKILL));
   if (ret < 0 && errno == EINVAL) {
     // PTRACE_O_EXITKILL was added in kernel 3.8, and we only need
     // it for more robust cleanup, so tolerate not having it.
-    ret = ptrace(PTRACE_SEIZE, tid, nullptr, (void*)options);
+    ret = ptrace((__ptrace_request)PTRACE_SEIZE, tid, nullptr, (void*)options);
   }
   if (ret) {
     // Note that although the tracee may have died due to some fatal error,

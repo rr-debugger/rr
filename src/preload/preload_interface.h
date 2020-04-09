@@ -50,10 +50,7 @@ static inline size_t rrstrlen(const char* s) { return strlen(s); }
 #include "../remote_ptr.h"
 #endif
 
-#include <signal.h>
 #include <stdint.h>
-#include <sys/types.h>
-#include <sys/user.h>
 
 static inline int strprefix(const char* s1, const char* s2) {
   while (1) {

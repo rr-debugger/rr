@@ -45,38 +45,38 @@
  * wrapper.
  */
 
+#define PAGE_SIZE 4096
 #include <dlfcn.h>
-#include <errno.h>
-#include <fcntl.h>
 #include <limits.h>
-#include <link.h>
+#include <asm/errno.h>
+#include <asm/ioctls.h>
+#include <asm/poll.h>
+#include <asm/signal.h>
+#include <asm/siginfo.h>
+#include <asm/stat.h>
+#include <asm/statfs.h>
+#include <linux/eventpoll.h>
 #include <linux/futex.h>
+#include <linux/fcntl.h>
 #include <linux/if_packet.h>
+#include <linux/ioctl.h>
+#include <linux/mman.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
+#include <linux/ptrace.h>
+#include <linux/quota.h>
+#include <linux/resource.h>
 #include <linux/stat.h>
-#include <poll.h>
-#include <signal.h>
+#include <linux/socket.h>
+#include <linux/stat.h>
+#include <linux/time.h>
+#include <linux/types.h>
+#include <linux/uio.h>
+#include <linux/un.h>
 #include <stdarg.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <sys/epoll.h>
-#include <sys/file.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <sys/ptrace.h>
-#include <sys/quota.h>
-#include <sys/resource.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/statfs.h>
-#include <sys/time.h>
-#include <sys/types.h>
-#include <sys/uio.h>
-#include <sys/un.h>
 #include <syscall.h>
 #include <sysexits.h>
-#include <time.h>
 #include <unistd.h>
 
 #include "preload_interface.h"
@@ -119,9 +119,9 @@ static int process_inited;
 RR_HIDDEN struct preload_globals globals;
 RR_HIDDEN char impose_syscall_delay;
 RR_HIDDEN char impose_spurious_desched;
-RR_HIDDEN int (*real_pthread_mutex_lock)(pthread_mutex_t* mutex);
-RR_HIDDEN int (*real_pthread_mutex_trylock)(pthread_mutex_t* mutex);
-RR_HIDDEN int (*real_pthread_mutex_timedlock)(pthread_mutex_t* mutex,
+RR_HIDDEN int (*real_pthread_mutex_lock)(void* mutex);
+RR_HIDDEN int (*real_pthread_mutex_trylock)(void* mutex);
+RR_HIDDEN int (*real_pthread_mutex_timedlock)(void* mutex,
                                               const struct timespec* abstime);
 
 static struct preload_thread_locals* const thread_locals =
@@ -169,6 +169,24 @@ static void local_memcpy(void* dest, const void* source, int n) {
    */
   __asm__ __volatile__("rep movsb\n\t"
                        : "+S"(source), "+D"(dest), "+c"(n)
+                       :
+                       : "cc", "memory");
+#else
+#error Unknown architecture
+#endif
+}
+
+/**
+ * Same as libc memset(), but usable within syscallbuf transaction
+ * critical sections.
+ */
+static void local_memset(void* dest, uint8_t c, int n) {
+#if defined(__i386__) || defined(__x86_64__)
+  /* On modern x86-ish CPUs rep stosb is fast, usually able to move
+   * 64 bytes at a time.
+   */
+  __asm__ __volatile__("rep stosb\n\t"
+                       : "+a"(c), "+D"(dest), "+c"(n)
                        :
                        : "cc", "memory");
 #else
@@ -439,7 +457,7 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   int tmp_fd, fd;
   struct f_owner_ex own;
 
-  memset(&attr, 0, sizeof(attr));
+  local_memset(&attr, 0, sizeof(attr));
   attr.size = sizeof(attr);
   attr.type = PERF_TYPE_SOFTWARE;
   attr.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
@@ -459,8 +477,8 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   if (privileged_untraced_close(tmp_fd)) {
     fatal("Failed to close tmp_fd");
   }
-  if (privileged_untraced_fcntl(fd, F_SETFL, O_ASYNC)) {
-    fatal("Failed to fcntl(O_ASYNC) the desched counter");
+  if (privileged_untraced_fcntl(fd, F_SETFL, FASYNC)) {
+    fatal("Failed to fcntl(FASYNC) the desched counter");
   }
   own.type = F_OWNER_TID;
   own.pid = tid;
@@ -514,6 +532,9 @@ static void init_thread(void) {
   thread_locals->usable_scratch_size = args.usable_scratch_size;
 }
 
+// We don't include libc headers, since they include with Linux headers,
+// so declared this prototype manually
+extern const char* getenv(const char*);
 
 /**
  * Initialize process-global buffering state, if enabled.
@@ -1130,7 +1151,7 @@ static long sys_generic_nonblocking_fd(const struct syscall_info* call) {
 
 static long sys_clock_gettime(const struct syscall_info* call) {
   const int syscallno = SYS_clock_gettime;
-  clockid_t clk_id = (clockid_t)call->args[0];
+  __kernel_clockid_t clk_id = (__kernel_clockid_t)call->args[0];
   struct timespec* tp = (struct timespec*)call->args[1];
 
   void* ptr = prep_syscall();
@@ -1156,18 +1177,14 @@ static long sys_clock_gettime(const struct syscall_info* call) {
 }
 
 #ifdef SYS_clock_gettime64
-struct kernel_timespec64 {
-  int64_t tv_sec;
-  int64_t tv_nsec;
-};
 
 static long sys_clock_gettime64(const struct syscall_info* call) {
   const int syscallno = SYS_clock_gettime64;
-  clockid_t clk_id = (clockid_t)call->args[0];
-  struct kernel_timespec64* tp = (struct kernel_timespec64*)call->args[1];
+  __kernel_clockid_t clk_id = (__kernel_clockid_t)call->args[0];
+  struct __kernel_timespec* tp = (struct __kernel_timespec*)call->args[1];
 
   void* ptr = prep_syscall();
-  struct kernel_timespec64* tp2 = NULL;
+  struct __kernel_timespec* tp2 = NULL;
   long ret;
 
   assert(syscallno == call->no);
@@ -1192,7 +1209,7 @@ static long sys_clock_gettime64(const struct syscall_info* call) {
 static long sys_open(const struct syscall_info* call);
 static long sys_creat(const struct syscall_info* call) {
   const char* pathname = (const char*)call->args[0];
-  mode_t mode = call->args[1];
+  __kernel_mode_t mode = call->args[1];
   /* Thus sayeth the man page:
    *
    *   creat() is equivalent to open() with flags equal to
@@ -1651,11 +1668,11 @@ static long sys__llseek(const struct syscall_info* call) {
   int fd = call->args[0];
   unsigned long offset_high = call->args[1];
   unsigned long offset_low = call->args[2];
-  loff_t* result = (loff_t*)call->args[3];
+  __kernel_loff_t* result = (__kernel_loff_t*)call->args[3];
   unsigned int whence = call->args[4];
 
   void* ptr = prep_syscall_for_fd(fd);
-  loff_t* result2 = NULL;
+  __kernel_loff_t* result2 = NULL;
   long ret;
 
   assert(syscallno == call->no);
@@ -1823,7 +1840,7 @@ static long sys_open(const struct syscall_info* call) {
   const int syscallno = SYS_open;
   const char* pathname = (const char*)call->args[0];
   int flags = call->args[1];
-  mode_t mode = call->args[2];
+  __kernel_mode_t mode = call->args[2];
   void* ptr;
   long ret;
 
@@ -1854,7 +1871,7 @@ static long sys_openat(const struct syscall_info* call) {
   int dirfd = call->args[0];
   const char* pathname = (const char*)call->args[1];
   int flags = call->args[2];
-  mode_t mode = call->args[3];
+  __kernel_mode_t mode = call->args[3];
   void* ptr;
   long ret;
 
@@ -2320,6 +2337,37 @@ static long sys_recvfrom(const struct syscall_info* call) {
 #endif
 
 #ifdef SYS_recvmsg
+
+/* These macros are from musl Copyright © 2005-2020 Rich Felker, et al. (MIT LICENSE) */
+#define __CMSG_LEN(cmsg) (((cmsg)->cmsg_len + sizeof(long) - 1) & ~(long)(sizeof(long) - 1))
+#define __CMSG_NEXT(cmsg) ((unsigned char *)(cmsg) + __CMSG_LEN(cmsg))
+#define __MHDR_END(mhdr) ((unsigned char *)(mhdr)->msg_control + (mhdr)->msg_controllen)
+
+#define CMSG_DATA(cmsg) ((unsigned char *) (((struct cmsghdr *)(cmsg)) + 1))
+#define CMSG_NXTHDR(mhdr, cmsg) ((cmsg)->cmsg_len < sizeof (struct cmsghdr) || \
+	(__CMSG_LEN(cmsg) + sizeof(struct cmsghdr) >= (unsigned long)(__MHDR_END(mhdr) - (unsigned char *)(cmsg))) \
+	? 0 : (struct cmsghdr *)__CMSG_NEXT(cmsg))
+#define CMSG_FIRSTHDR(mhdr) ((size_t) (mhdr)->msg_controllen >= sizeof (struct cmsghdr) ? (struct cmsghdr *) (mhdr)->msg_control : (struct cmsghdr *) 0)
+
+struct cmsghdr {
+  __kernel_size_t	cmsg_len;
+  int cmsg_level;
+  int cmsg_type;
+};
+
+struct msghdr /* struct user_msghdr in the kernel */ {
+  void* msg_name;
+  int msg_namelen;
+  struct iovec* msg_iov;
+  __kernel_size_t msg_iovlen;
+  void* msg_control;
+  __kernel_size_t msg_controllen;
+  unsigned int msg_flags;
+};
+
+#define SCM_RIGHTS 0x01
+#define SOL_PACKET 263
+
 static int msg_received_file_descriptors(struct msghdr* msg) {
   struct cmsghdr* cmh;
   for (cmh = CMSG_FIRSTHDR(msg); cmh; cmh = CMSG_NXTHDR(msg, cmh)) {
@@ -2559,7 +2607,7 @@ static long sys_socketpair(const struct syscall_info* call) {
 
 static long sys_time(const struct syscall_info* call) {
   const int syscallno = SYS_time;
-  time_t* tp = (time_t*)call->args[0];
+  __kernel_time_t* tp = (__kernel_time_t*)call->args[0];
 
   void* ptr = prep_syscall();
   long ret;
@@ -2577,18 +2625,23 @@ static long sys_time(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+#if defined(__x86_64__)
+typedef struct stat stat64_t;
+#else
+typedef struct stat64 stat64_t;
+#endif
 static long sys_xstat64(const struct syscall_info* call) {
   const int syscallno = call->no;
   /* NB: this arg may be a string or an fd, but for the purposes
    * of this generic helper we don't care. */
   long what = call->args[0];
-  struct stat64* buf = (struct stat64*)call->args[1];
+  stat64_t* buf = (stat64_t*)call->args[1];
 
   /* Like open(), not arming the desched event because it's not
    * needed for correctness, and there are no data to suggest
    * whether it's a good idea perf-wise. */
   void* ptr = prep_syscall();
-  struct stat64* buf2 = NULL;
+  stat64_t* buf2 = NULL;
   long ret;
 
   if (buf) {
@@ -2644,7 +2697,7 @@ static long sys_quotactl(const struct syscall_info* call) {
   }
 
   void* ptr = prep_syscall();
-  struct dqblk* buf2 = NULL;
+  struct if_dqblk* buf2 = NULL;
   long ret;
 
   if (addr) {
@@ -2767,7 +2820,7 @@ static long sys_writev(const struct syscall_info* call) {
 
 static long sys_ptrace(const struct syscall_info* call) {
   int syscallno = SYS_ptrace;
-  enum __ptrace_request request = call->args[0];
+  long request = call->args[0];
   pid_t pid = call->args[1];
   void* addr = (void*)call->args[2];
   void* data = (void*)call->args[3];

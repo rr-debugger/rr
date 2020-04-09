@@ -1613,6 +1613,12 @@ struct BaseArch : public wordsize,
       __u32 line_info_cnt;
     };
   };
+
+  struct file_handle {
+    unsigned int handle_bytes;
+    int handle_type;
+    uint8_t f_handle[0];
+  };
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
