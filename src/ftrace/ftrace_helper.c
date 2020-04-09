@@ -20,6 +20,10 @@
 #include <sys/user.h>
 #include <unistd.h>
 
+#ifndef F_GETPIPE_SZ
+#define F_GETPIPE_SZ 1032
+#endif
+
 #ifdef NDEBUG
 #undef NDEBUG
 #endif

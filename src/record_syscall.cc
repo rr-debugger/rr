@@ -4272,7 +4272,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::name_to_handle_at: {
       syscall_state.reg_parameter(3,
-                                  sizeof(struct file_handle) + MAX_HANDLE_SZ);
+                                  sizeof(typename Arch::file_handle) + MAX_HANDLE_SZ);
       syscall_state.reg_parameter(4, sizeof(int));
       return ALLOW_SWITCH;
     }
