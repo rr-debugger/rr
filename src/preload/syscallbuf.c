@@ -2654,7 +2654,7 @@ static long sys_quotactl(const struct syscall_info* call) {
   if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
     return traced_raw_syscall(call);
   }
-  ret = untraced_syscall4(syscallno, cmd, special, id, addr);
+  ret = untraced_syscall4(syscallno, cmd, special, id, buf2);
   if (buf2 && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
     local_memcpy(addr, buf2, sizeof(*buf2));
   }
