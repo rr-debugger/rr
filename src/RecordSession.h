@@ -212,7 +212,7 @@ private:
   void runnable_state_changed(RecordTask* t, StepState* step_state,
                               RecordResult* step_result,
                               bool can_consume_wait_status);
-  void signal_state_changed(RecordTask* t, StepState* step_state);
+  bool signal_state_changed(RecordTask* t, StepState* step_state);
   void syscall_state_changed(RecordTask* t, StepState* step_state);
   void desched_state_changed(RecordTask* t);
   bool prepare_to_inject_signal(RecordTask* t, StepState* step_state);

@@ -100,6 +100,10 @@ void Task::detach() {
   LOG(debug) << "task " << tid << " (rec:" << rec_tid << ") is dying ...";
 
   fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
+
+  // Not really, but there's also no reason to actually try to reap it,
+  // since we detached.
+  was_reaped = true;
 }
 
 bool Task::may_reap() {

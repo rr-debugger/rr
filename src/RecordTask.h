@@ -540,6 +540,9 @@ public:
    */
   void did_reach_zombie();
 
+  // Is this task a container init? (which has special signal behavior)
+  bool is_container_init() { return own_namespace_rec_tid == 1; }
+
 private:
   /* Retrieve the tid of this task from the tracee and store it */
   void update_own_namespace_tid();
