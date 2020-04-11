@@ -1323,7 +1323,7 @@ static bool inject_handled_signal(RecordTask* t) {
  * |t| is being delivered a signal, and its state changed.
  * Must call t->stashed_signal_processed() once we're ready to unmask signals.
  */
-void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
+bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
   int sig = t->ev().Signal().siginfo.si_signo;
 
   switch (t->ev().type()) {
@@ -1406,6 +1406,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       // So does a fatal, core-dumping signal, since we need to allow other
       // tasks to proceed to their exit events.
       bool is_fatal = t->ev().Signal().disposition == DISPOSITION_FATAL;
+      bool is_deterministic = t->ev().Signal().deterministic == DETERMINISTIC_SIG;
       Switchable can_switch = ((is_fatal && is_coredumping_signal(sig)) || sig == SIGSTOP) ?
         ALLOW_SWITCH : PREVENT_SWITCH;
 
@@ -1448,6 +1449,33 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
                       RecordTask::ALLOW_RESET_SYSCALLBUF, &r);
       // Don't actually set_regs(r), the kernel does these modifications.
 
+      // If the task is a container init, the kernel will ignore injection
+      // of fatal signals. Usually, the kernel removes the killable-protection
+      // when a determinisic fatal signal gets executed, but (due to what is
+      // arguably a bug) when a ptracer is attached, this does not happen.
+      // If we try to inject it here, the kernel will just ignore it,
+      // and we'll go around again. As a hack, we detach here, in the
+      // expectation that the deterministic instruction will run again and
+      // actually kill the task now that it isn't under ptrace control anymore.
+      if (t->is_container_init() && is_fatal && is_deterministic) {
+        t->destroy_buffers(nullptr, nullptr);
+        WaitStatus exit_status = WaitStatus::for_fatal_sig(sig);
+        record_exit_trace_event(t, exit_status);
+        t->record_exit_event(sig);
+        // On a real affected kernel, we probably would have never gotten here,
+        // since the signal we would be seeing was not deterministic, but let's
+        // be conservative and still try to emulate the ptrace stop.
+        if (t->do_ptrace_exit_stop(exit_status)) {
+          t->waiting_for_reap = true;
+        }
+        t->did_kill();
+        t->detach();
+        // Not really, but we detached, so we're never gonna see that event
+        // anyway, so just pretend we're there already
+        t->did_reach_zombie();
+        return true;
+      }
+
       // Only inject fatal signals. Non-fatal signals with signal handlers
       // were taken care of above; for non-fatal signals without signal
       // handlers, there is no need to deliver the signal at all. In fact,
@@ -1477,6 +1505,7 @@ void RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
       FATAL() << "Unhandled signal state " << t->ev().type();
       break;
   }
+  return false;
 }
 
 bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
@@ -2107,7 +2136,10 @@ RecordSession::RecordResult RecordSession::record_step() {
         break;
       case EV_SIGNAL:
       case EV_SIGNAL_DELIVERY:
-        signal_state_changed(t, &step_state);
+        if (signal_state_changed(t, &step_state)) {
+          // t may have been deleted
+          return result;
+        }
         break;
       default:
         break;

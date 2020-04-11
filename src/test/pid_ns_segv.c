@@ -6,8 +6,8 @@
 int main(void) {
   pid_t pid;
   if (-1 == try_setup_ns(CLONE_NEWPID)) {
+    // We may not have permission to set up namespaces, so bail.
     atomic_puts("EXIT-SUCCESS");
-    // 77 will indicate to driver script that this test was skipped
     return 77;
   }
 
@@ -15,11 +15,15 @@ int main(void) {
   pid = fork();
   test_assert(pid >= 0);
   if (pid == 0) {
-    // We will check that rr ps includes `(1)` here
-    return 78;
+    test_assert(getpid() == 1);
+    crash_null_deref();
+    test_assert(0 && "Shouldn't have gotten here");
   }
 
-  test_assert(pid == waitpid(pid, NULL, 0));
+  int status;
+  waitpid(pid, &status, __WALL);
+  test_assert(WIFSIGNALED(status) && WTERMSIG(status) == SIGSEGV);
+
   atomic_puts("EXIT-SUCCESS");
-  return 79;
+  return 0;
 }

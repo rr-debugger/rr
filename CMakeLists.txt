@@ -882,6 +882,7 @@ set(BASIC_TESTS
   pause
   perf_event
   personality
+  pid_ns_segv
   pthread_rwlocks
   poll_sig_race
   ppoll
