@@ -819,36 +819,13 @@ bool TraceWriter::copy_file(const std::string& file_name,
   return rr::copy_file(dest, src);
 }
 
-/**
- * Given `file_name`, where `file_name` is relative to our root directory
- * but is in the mount namespace of `t`, try to make it a file we can read.
- */
-static string try_make_process_file_name(RecordTask* t,
-                                         const std::string& file_name) {
-  char proc_root[32];
-  // /proc/<pid>/root has magical properties; not only is it a link, but
-  // it links to a view of the filesystem as the process sees it, taking into
-  // account the process mount namespace etc.
-  snprintf(proc_root, sizeof(proc_root), "/proc/%d/root", t->tid);
-  char root[PATH_MAX];
-  ssize_t ret = readlink(proc_root, root, sizeof(root) - 1);
-  ASSERT(t, ret >= 0);
-  root[ret] = 0;
-
-  if (strncmp(root, file_name.c_str(), ret)) {
-    LOG(debug) << "File " << file_name << " is outside known root "
-               << proc_root;
-    return file_name;
-  }
-  return string(proc_root) + (ret == 1 ? file_name : file_name.substr(ret));
-}
-
 static bool starts_with(const string& s, const string& with) {
   return s.find(with) == 0;
 }
 
 TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
-    RecordTask* t, const KernelMapping& km, const struct stat& stat,
+    RecordTask* t, const KernelMapping& km,
+    const struct stat& stat, const std::string &file_name,
     const vector<TraceRemoteFd>& extra_fds, MappingOrigin origin,
     bool skip_monitoring_mapped_fd) {
   MallocMessageBuilder map_msg;
@@ -878,6 +855,27 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   auto src = map.getSource();
   string backing_file_name;
 
+  auto copy_file_or_trace = [&](string file_name) {
+    // Make executable files accessible to debuggers by copying the whole
+    // thing into the trace directory. We don't get to compress the data and
+    // the entire file is copied, not just the used region, which is why we
+    // don't do this for all files.
+    // Don't bother trying to copy [vdso].
+    // Don't try to copy files that use shared mappings. We do not want to
+    // create a shared mapping of a file stored in the trace. This means
+    // debuggers can't find the file, but the Linux loader doesn't create
+    // shared mappings so situations where a shared-mapped executable contains
+    // usable debug info should be very rare at best...
+    string backing_file_name;
+    if ((km.prot() & PROT_EXEC) &&
+        copy_file(file_name, &backing_file_name) &&
+        !(km.flags() & MAP_SHARED)) {
+      src.initFile().setBackingFileName(str_to_data(backing_file_name));
+    } else {
+      src.setTrace();
+    }
+  };
+
   if (origin == REMAP_MAPPING || origin == PATCH_MAPPING ||
       origin == RR_BUFFER_MAPPING) {
     src.setZero();
@@ -889,7 +887,6 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
   } else if (!starts_with(km.fsname(), "/")) {
     src.setTrace();
   } else {
-    string file_name = try_make_process_file_name(t, km.fsname());
     auto assumed_immutable =
         files_assumed_immutable.find(make_pair(stat.st_dev, stat.st_ino));
 
@@ -898,29 +895,15 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     } else if ((km.flags() & MAP_PRIVATE) &&
                try_clone_file(t, file_name, &backing_file_name)) {
       src.initFile().setBackingFileName(str_to_data(backing_file_name));
-    } else if (should_copy_mmap_region(km, stat)) {
-      // Make executable files accessible to debuggers by copying the whole
-      // thing into the trace directory. We don't get to compress the data and
-      // the entire file is copied, not just the used region, which is why we
-      // don't do this for all files.
-      // Don't bother trying to copy [vdso].
-      // Don't try to copy files that use shared mappings. We do not want to
-      // create a shared mapping of a file stored in the trace. This means
-      // debuggers can't find the file, but the Linux loader doesn't create
-      // shared mappings so situations where a shared-mapped executable contains
-      // usable debug info should be very rare at best...
-      if ((km.prot() & PROT_EXEC) &&
-          copy_file(file_name, &backing_file_name) &&
-          !(km.flags() & MAP_SHARED)) {
-        src.initFile().setBackingFileName(str_to_data(backing_file_name));
-      } else {
-        src.setTrace();
-      }
+    } else if (should_copy_mmap_region(km, file_name, stat)) {
+      copy_file_or_trace(file_name);
     } else {
       // should_copy_mmap_region's heuristics determined it was OK to just map
       // the file here even if it's MAP_SHARED. So try cloning again to avoid
       // the possibility of the file changing between recording and replay.
-      if (!try_clone_file(t, file_name, &backing_file_name)) {
+      if (try_clone_file(t, file_name, &backing_file_name)) {
+        src.initFile().setBackingFileName(str_to_data(backing_file_name));
+      } else {
         // Try hardlinking file into the trace directory. This will avoid
         // replay failures if the original file is deleted or replaced (but not
         // if it is overwritten in-place). If try_hardlink_file fails it
@@ -930,11 +913,28 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
           // Don't ever use `file_name` for the `backing_file_name` because it
           // contains the pid of a recorded process and will not work!
           backing_file_name = km.fsname();
-        }
-        files_assumed_immutable.insert(
+          // If the backing_file_name refers to a different file (e.g.
+          // because we have a file in our mount namespace that matches the
+          // fsname in the Task's mount namespace), then copy the file even
+          // if the heuristics above thought we could get away with leaving it
+          // in place. Otherwise, we're essentially guaranteed to have a broken
+          // recording.
+          struct stat backing_stat;
+          int err = ::stat(backing_file_name.c_str(), &backing_stat);
+          if (err != 0 || backing_stat.st_dev != km.device() ||
+              backing_stat.st_ino != km.inode()) {
+            copy_file_or_trace(file_name);
+          } else {
+            files_assumed_immutable.insert(
+                make_pair(make_pair(stat.st_dev, stat.st_ino), backing_file_name));
+            src.initFile().setBackingFileName(str_to_data(backing_file_name));
+          }
+        } else {
+          files_assumed_immutable.insert(
             make_pair(make_pair(stat.st_dev, stat.st_ino), backing_file_name));
+          src.initFile().setBackingFileName(str_to_data(backing_file_name));
+        }
       }
-      src.initFile().setBackingFileName(str_to_data(backing_file_name));
     }
   }
 

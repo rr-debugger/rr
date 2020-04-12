@@ -197,7 +197,7 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
       t->vm()->map(t, new_start, it->map.start() - new_start, it->map.prot(),
                    it->map.flags() | MAP_ANONYMOUS, 0, string(),
                    KernelMapping::NO_DEVICE, KernelMapping::NO_INODE);
-  t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>());
+  t->trace_writer().write_mapped_region(t, km, km.fake_stat(), km.fsname(), vector<TraceRemoteFd>());
   // No need to flush syscallbuf here. It's safe to map these pages "early"
   // before they're really needed.
   t->record_event(Event::grow_map(), RecordTask::DONT_FLUSH_SYSCALLBUF);

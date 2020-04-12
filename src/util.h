@@ -143,6 +143,7 @@ SignalDeterministic is_deterministic_signal(Task* t);
  * necessarily safe to skip copying!
  */
 bool should_copy_mmap_region(const KernelMapping& mapping,
+                             const std::string &file_name,
                              const struct stat& stat);
 
 /**
@@ -467,7 +468,6 @@ void sleep_time(double t);
  * Normalize a file name by lexically resolving `.`,`..`,`//`
  */
 void normalize_file_name(std::string& s);
-
 
 } // namespace rr
 

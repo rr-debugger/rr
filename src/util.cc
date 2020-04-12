@@ -308,7 +308,7 @@ static bool checksum_segment_filter(const AddressSpace::Mapping& m) {
   static const char mmap_clone[] = "mmap_clone_";
   may_diverge =
       m.map.fsname().substr(0, array_length(mmap_clone) - 1) != mmap_clone &&
-      (should_copy_mmap_region(m.map, st) || (PROT_WRITE & m.map.prot()));
+      (should_copy_mmap_region(m.map, m.map.fsname(), st) || (PROT_WRITE & m.map.prot()));
   LOG(debug) << (may_diverge ? "CHECKSUMMING" : "  skipping") << " '"
              << m.map.fsname() << "'";
   return may_diverge;
@@ -624,24 +624,20 @@ SignalDeterministic is_deterministic_signal(Task* t) {
   }
 }
 
-static bool has_fs_name(const string& path) {
-  struct stat dummy;
-  return 0 == stat(path.c_str(), &dummy);
-}
-
-static bool is_tmp_file(const string& path) {
+static bool is_tmp_file(const ScopedFd &fd, const string &tracee_path) {
   if (getenv("RR_TRUST_TEMP_FILES")) {
     return false;
   }
   struct statfs sfs;
-  statfs(path.c_str(), &sfs);
-  return (TMPFS_MAGIC == sfs.f_type
+  int ret = fstatfs(fd.get(), &sfs);
+  return ((ret == 0 && TMPFS_MAGIC == sfs.f_type)
           // In observed configurations of Ubuntu 13.10, /tmp is
           // a folder in the / fs, not a separate tmpfs.
-          || path.c_str() == strstr(path.c_str(), "/tmp/"));
+          || tracee_path.c_str() == strstr(tracee_path.c_str(), "/tmp/"));
 }
 
 bool should_copy_mmap_region(const KernelMapping& mapping,
+                             const string &file_name,
                              const struct stat& stat) {
   if (getenv("RR_COPY_ALL_FILES")) {
     return true;
@@ -649,14 +645,21 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
 
   int flags = mapping.flags();
   int prot = mapping.prot();
-  const string& file_name = mapping.fsname();
   bool private_mapping = (flags & MAP_PRIVATE);
+
+  // file_name may point into proc, since we may not have direct access to
+  // the file. Open it, so we can perform the various queries we'd like to ask.
+  ScopedFd fd(file_name.c_str(), O_RDONLY);
 
   // TODO: handle mmap'd files that are unlinked during
   // recording or otherwise not available.
-  if (!has_fs_name(file_name)) {
+  if (!fd.is_open()) {
     // This includes files inaccessible because the tracee is using a different
     // mount namespace with its own mounts
+    // It's also possible for a tracee to mmap a file it doesn't have permission
+    // to read, e.g. if a daemon opened the file and passed the fd over a
+    // socket. We should copy the data now because we won't be able to read
+    // it later. nscd does this.
     LOG(debug) << "  copying unlinked/inaccessible file";
     return true;
   }
@@ -664,18 +667,18 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
     LOG(debug) << "  copying non-regular-file";
     return true;
   }
-  if (is_tmp_file(file_name)) {
+  if (is_tmp_file(fd, mapping.fsname())) {
     LOG(debug) << "  copying file on tmpfs";
     return true;
   }
-  if (file_name == "/etc/ld.so.cache") {
+  if (mapping.fsname() == "/etc/ld.so.cache") {
     // This file changes on almost every system update so we should copy it.
-    LOG(debug) << "  copying " << file_name;
+    LOG(debug) << "  copying " << mapping.fsname();
     return true;
   }
   if (private_mapping && (prot & PROT_EXEC)) {
     /* Be optimistic about private executable mappings */
-    LOG(debug) << "  (no copy for +x private mapping " << file_name << ")";
+    LOG(debug) << "  (no copy for +x private mapping " << mapping.fsname() << ")";
     return false;
   }
   if (private_mapping && (0111 & stat.st_mode)) {
@@ -684,16 +687,8 @@ bool should_copy_mmap_region(const KernelMapping& mapping,
      * Since we're already assuming those change very
      * infrequently, we can avoid copying the data
      * sections too. */
-    LOG(debug) << "  (no copy for private mapping of +x " << file_name << ")";
+    LOG(debug) << "  (no copy for private mapping of +x " << mapping.fsname() << ")";
     return false;
-  }
-  bool can_read_file = (0 == access(file_name.c_str(), R_OK));
-  if (!can_read_file) {
-    // It's possible for a tracee to mmap a file it doesn't have permission
-    // to read, e.g. if a daemon opened the file and passed the fd over a
-    // socket. We should copy the data now because we won't be able to read
-    // it later. nscd does this.
-    return true;
   }
 
   // TODO: using "can the euid of the rr process write this

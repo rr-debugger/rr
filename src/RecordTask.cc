@@ -446,7 +446,7 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
     desched_fd = remote.retrieve_fd(desched_fd_child);
 
     auto record_in_trace = trace_writer().write_mapped_region(
-        this, syscallbuf_km, syscallbuf_km.fake_stat(),
+        this, syscallbuf_km, syscallbuf_km.fake_stat(), syscallbuf_km.fsname(),
         vector<TraceRemoteFd>(),
         TraceWriter::RR_BUFFER_MAPPING);
     ASSERT(this, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
@@ -1920,6 +1920,7 @@ bool RecordTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
     auto mode = trace_writer().write_mapped_region(
       this, preload_thread_locals_mapping,
       preload_thread_locals_mapping.fake_stat(),
+      preload_thread_locals_mapping.fsname(),
       vector<TraceRemoteFd>(),
       TraceWriter::RR_BUFFER_MAPPING);
     ASSERT(this, mode == TraceWriter::DONT_RECORD_IN_TRACE);

@@ -272,6 +272,12 @@ void Task::dump(FILE* out) const {
   }
 }
 
+std::string Task::proc_fd_path(int fd) {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
+  return path;
+}
+
 struct stat Task::stat_fd(int fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);

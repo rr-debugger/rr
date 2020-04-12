@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+unset RR_TRUST_TEMP_FILES
+compare_test EXIT-SUCCESS

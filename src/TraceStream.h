@@ -198,6 +198,7 @@ public:
    */
   RecordInTrace write_mapped_region(RecordTask* t, const KernelMapping& map,
                                     const struct stat& stat,
+                                    const std::string &file_name,
                                     const std::vector<TraceRemoteFd>& extra_fds,
                                     MappingOrigin origin = SYSCALL_MAPPING,
                                     bool skip_monitoring_mapped_fd = false);
