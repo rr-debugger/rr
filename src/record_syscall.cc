@@ -2681,7 +2681,8 @@ static void init_scratch_memory(RecordTask* t,
       t->vm()->map(t, t->scratch_ptr, sz, prot, flags, 0, string());
   struct stat stat;
   memset(&stat, 0, sizeof(stat));
-  auto record_in_trace = t->trace_writer().write_mapped_region(t, km, stat, vector<TraceRemoteFd>());
+  auto record_in_trace = t->trace_writer().write_mapped_region(t,
+    km, stat, km.fsname(), vector<TraceRemoteFd>());
   ASSERT(t, record_in_trace == TraceWriter::DONT_RECORD_IN_TRACE);
 
   r.set_syscall_result(saved_result);
@@ -4472,6 +4473,31 @@ static remote_ptr<void> get_exe_entry(Task* t) {
   return remote_ptr<void>();
 }
 
+/**
+ * Given `file_name`, where `file_name` is relative to our root directory
+ * but is in the mount namespace of `t`, try to make it a file we can read.
+ */
+static string try_make_process_file_name(RecordTask* t,
+                                         const std::string& file_name) {
+  char proc_root[32];
+  // /proc/<pid>/root has magical properties; not only is it a link, but
+  // it links to a view of the filesystem as the process sees it, taking into
+  // account the process mount namespace etc.
+  snprintf(proc_root, sizeof(proc_root), "/proc/%d/root", t->tid);
+  char root[PATH_MAX];
+  ssize_t ret = readlink(proc_root, root, sizeof(root) - 1);
+  ASSERT(t, ret >= 0);
+  root[ret] = 0;
+
+  if (strncmp(root, file_name.c_str(), ret)) {
+    LOG(debug) << "File " << file_name << " is outside known root "
+               << proc_root;
+    return file_name;
+  }
+  return string(proc_root) + (ret == 1 ? file_name : file_name.substr(ret));
+}
+
+
 static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   Registers r = t->regs();
   if (r.syscall_failed()) {
@@ -4488,6 +4514,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       t->vm()->mapping_of(AddressSpace::rr_page_start()).map;
   auto mode = t->trace_writer().write_mapped_region(
       t, rr_page_mapping, rr_page_mapping.fake_stat(),
+      rr_page_mapping.fsname(),
       vector<TraceRemoteFd>(),
       TraceWriter::RR_BUFFER_MAPPING);
   ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
@@ -4497,6 +4524,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   mode = t->trace_writer().write_mapped_region(
       t, preload_thread_locals_mapping,
       preload_thread_locals_mapping.fake_stat(),
+      preload_thread_locals_mapping.fsname(),
       vector<TraceRemoteFd>(),
       TraceWriter::RR_BUFFER_MAPPING);
   ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
@@ -4545,7 +4573,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
     }
 
     for (auto& km : stacks) {
-      mode = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>(),
+      mode = t->trace_writer().write_mapped_region(t, km, km.fake_stat(),
+                                                   km.fsname(), vector<TraceRemoteFd>(),
                                                    TraceWriter::EXEC_MAPPING);
       ASSERT(t, mode == TraceWriter::RECORD_IN_TRACE);
       auto buf = t->read_mem(km.start().cast<uint8_t>(), km.size());
@@ -4589,12 +4618,13 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       continue;
     }
     struct stat st;
-    if (stat(km.fsname().c_str(), &st) != 0) {
+    string file_name = try_make_process_file_name(t, km.fsname());
+    if (stat(file_name.c_str(), &st) != 0) {
       st = km.fake_stat();
       // Size is not real. Don't confuse the logic below
       st.st_size = 0;
     }
-    if (t->trace_writer().write_mapped_region(t, km, st, vector<TraceRemoteFd>(),
+    if (t->trace_writer().write_mapped_region(t, km, st, file_name, vector<TraceRemoteFd>(),
                                               TraceWriter::EXEC_MAPPING) ==
         TraceWriter::RECORD_IN_TRACE) {
       if (st.st_size > 0) {
@@ -4715,7 +4745,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
       km = t->vm()->map(t, addr, size, prot, flags, 0, kernel_info.fsname(),
                         kernel_info.device(), kernel_info.inode());
     }
-    auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>());
+    auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), km.fsname(), vector<TraceRemoteFd>());
     ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
     return;
   }
@@ -4725,19 +4755,21 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
 
   bool effectively_anonymous = false;
   auto st = t->stat_fd(fd);
-  string file_name = t->file_name_of_fd(fd);
-  if (file_name == "/dev/zero") {
+  string our_file_name =t->proc_fd_path(fd);
+  string tracee_file_name = t->file_name_of_fd(fd);
+  if (MAJOR(st.st_rdev) == 1 &&
+      MINOR(st.st_rdev) == 5) {
     // mmapping /dev/zero is equivalent to MAP_ANONYMOUS, just more annoying.
     // grab the device/inode from the kernel mapping so that it will be unique.
     KernelMapping kernel_synthetic_info = t->vm()->read_kernel_mapping(t, addr);
     st.st_dev = kernel_synthetic_info.device();
     st.st_ino = kernel_synthetic_info.inode();
-    file_name = kernel_synthetic_info.fsname();
+    our_file_name = tracee_file_name = kernel_synthetic_info.fsname();
     effectively_anonymous = true;
   }
 
   KernelMapping km =
-      t->vm()->map(t, addr, size, prot, flags, offset, file_name, st.st_dev,
+      t->vm()->map(t, addr, size, prot, flags, offset, tracee_file_name, st.st_dev,
                    st.st_ino, unique_ptr<struct stat>(new struct stat(st)));
 
   bool adjusted_size = false;
@@ -4753,7 +4785,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
   if ((flags & MAP_SHARED) && !effectively_anonymous) {
     monitor_this_fd = monitor_fd_for_mapping(t, fd, st, extra_fds);
   }
-  if (t->trace_writer().write_mapped_region(t, km, st, extra_fds,
+  if (t->trace_writer().write_mapped_region(t, km, st, our_file_name, extra_fds,
                                             TraceWriter::SYSCALL_MAPPING,
                                             !monitor_this_fd) ==
       TraceWriter::RECORD_IN_TRACE) {
@@ -4795,10 +4827,11 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
     }
 
     if ((prot & PROT_WRITE)) {
-      LOG(debug) << file_name << " is SHARED|writable; that's not handled "
-                                 "correctly yet. Optimistically hoping it's not "
-                                 "written by programs outside the rr tracee "
-                                 "tree.";
+      LOG(debug) << tracee_file_name <<
+        " is SHARED|writable; that's not handled "
+        "correctly yet. Optimistically hoping it's not "
+        "written by programs outside the rr tracee "
+        "tree.";
     }
   }
 
@@ -4812,7 +4845,7 @@ static void process_mmap(RecordTask* t, size_t length, int prot, int flags,
 
   if ((prot & (PROT_WRITE | PROT_READ)) == PROT_READ && (flags & MAP_SHARED) &&
       !effectively_anonymous) {
-    MonitoredSharedMemory::maybe_monitor(t, file_name,
+    MonitoredSharedMemory::maybe_monitor(t, tracee_file_name,
                                          t->vm()->mapping_of(addr), fd, offset);
   }
 }
@@ -4836,7 +4869,8 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
 
   // Make sure that the trace records the mapping at the new location, even
   // if the mapping didn't grow.
-  auto r = t->trace_writer().write_mapped_region(t, km, st, vector<TraceRemoteFd>(),
+  auto r = t->trace_writer().write_mapped_region(t, km, st, km.fsname(),
+                                                 vector<TraceRemoteFd>(),
                                                  TraceWriter::REMAP_MAPPING);
   ASSERT(t, r == TraceWriter::DONT_RECORD_IN_TRACE);
   if (old_size >= new_size) {
@@ -4851,7 +4885,8 @@ static void process_mremap(RecordTask* t, remote_ptr<void> old_addr,
     st.st_size = m.map.file_offset_bytes() + new_size;
   }
 
-  if (t->trace_writer().write_mapped_region(t, km, st,  vector<TraceRemoteFd>()) ==
+  if (t->trace_writer().write_mapped_region(t, km, st, km.fsname(),
+                                            vector<TraceRemoteFd>()) ==
       TraceWriter::RECORD_IN_TRACE) {
     off64_t end = max<off64_t>(st.st_size - km.file_offset_bytes(), 0);
     // Allow failure; the underlying file may have true zero size, in which
@@ -4890,7 +4925,7 @@ static void process_shmat(RecordTask* t, int shmid, int shm_flags,
                    kernel_info.device(), kernel_info.inode());
   t->vm()->set_shm_size(km.start(), km.size());
   auto disposition =
-      t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>());
+      t->trace_writer().write_mapped_region(t, km, km.fake_stat(), km.fsname(), vector<TraceRemoteFd>());
   ASSERT(t, disposition == TraceWriter::RECORD_IN_TRACE);
   t->record_remote(addr, size);
 
@@ -5225,7 +5260,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         km = KernelMapping(new_brk, old_brk, string(), KernelMapping::NO_DEVICE,
                            KernelMapping::NO_INODE, 0, 0, 0);
       }
-      auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), vector<TraceRemoteFd>());
+      auto d = t->trace_writer().write_mapped_region(t, km, km.fake_stat(), km.fsname(), vector<TraceRemoteFd>());
       ASSERT(t, d == TraceWriter::DONT_RECORD_IN_TRACE);
       t->vm()->brk(t, t->regs().syscall_result(), km.prot());
       break;

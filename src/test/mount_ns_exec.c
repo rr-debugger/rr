@@ -14,7 +14,8 @@ int main(int argc, char* argv[]) {
   test_assert(0 == mount("none", "mountpoint", "tmpfs", 0, NULL));
 
   struct stat buf;
-  stat("/proc/self/exe", &buf);
+  int ret = stat("/proc/self/exe", &buf);
+  test_assert(ret != -1);
   int src_fd = open("/proc/self/exe", O_RDONLY);
   test_assert(src_fd != -1);
   int dst_fd = open("mountpoint/the_copy", O_WRONLY | O_CREAT, 0700);

@@ -225,6 +225,7 @@ static remote_ptr<uint8_t> allocate_extended_jump(
                    &recorded);
       t->vm()->mapping_flags_of(addr) |= AddressSpace::Mapping::IS_PATCH_STUBS;
       t->trace_writer().write_mapped_region(t, recorded, recorded.fake_stat(),
+                                            recorded.fsname(),
                                             vector<TraceRemoteFd>(),
                                             TraceWriter::PATCH_MAPPING);
     }

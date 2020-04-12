@@ -846,11 +846,11 @@ set(BASIC_TESTS
   mmap_shared_write
   mmap_shared_write_fork
   mmap_short_file
-  mmap_tmpfs
   mmap_write_complex
   mmap_zero_size_fd
   modify_ldt
   mount_ns_exec
+  mount_ns_exec2
   mprotect
   mprotect_heterogenous
   mprotect_none
@@ -1153,6 +1153,7 @@ set(TESTS_WITH_PROGRAM
   mmap_replace_most_mappings
   mmap_shared_prot
   mmap_shared_write_exec_race
+  mmap_tmpfs
   mmap_write
   mmap_write_private
   mprotect_growsdown

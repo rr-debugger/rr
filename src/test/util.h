@@ -179,8 +179,13 @@ inline static pid_t sys_gettid(void) { return syscall(SYS_gettid); }
  * replay.
  */
 inline static void check_data(void* buf, size_t len) {
-  syscall(SYS_write, RR_MAGIC_SAVE_DATA_FD, buf, len);
-  atomic_printf("Wrote %zu bytes to magic fd\n", len);
+  ssize_t ret = syscall(SYS_write, RR_MAGIC_SAVE_DATA_FD, buf, len);
+  if (ret == -1 && errno == EBADF) {
+    atomic_printf("Failed to write to RR_MAGIC_SAVE_DATA_FD. Not running under rr?\n");
+  } else {
+    test_assert(ret == (ssize_t)len);
+    atomic_printf("Wrote %zu bytes to magic fd\n", len);
+  }
 }
 
 /**
