@@ -4381,7 +4381,7 @@ static const char* dropped_privs_warning =
     "          Capabilities did not take effect. Errors may follow.\n"
     "          To record this execution faithfully, re-run rr as:\n"
     "\n"
-    "             sudo -EP rr record --setuid-sudo\n"
+    "             sudo -EP --preserve-env=HOME rr record --setuid-sudo\n"
     "\n";
 
 static bool is_privileged_executable(RecordTask* t, const string& path) {
