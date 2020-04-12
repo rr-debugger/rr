@@ -1194,8 +1194,41 @@ bool uses_invisible_guard_page() {
   return !is_pax_kernel;
 }
 
+static bool try_copy_file_by_copy_all(int dest_fd, int src_fd)
+{
+  static bool should_try_copy_all = true;
+  if (!should_try_copy_all) {
+    return false;
+  }
+  struct stat src_stat;
+  if (0 != fstat(src_fd, &src_stat)) {
+    return false;
+  }
+  size_t remaining_size = src_stat.st_size;
+  while (remaining_size > 0) {
+    ssize_t ncopied = syscall(SYS_copy_file_range, src_fd, NULL, dest_fd, NULL,
+                              remaining_size, 0);
+    if (ncopied == -1) {
+      if (errno == ENOSYS) {
+        should_try_copy_all = false;
+      }
+      return false;
+    }
+    if (ncopied == 0) {
+      // This doesn't necessarily mean EOF - some file systems don't like this
+      // system call.
+      return false;
+    }
+    remaining_size -= ncopied;
+  }
+  return true;
+}
+
 bool copy_file(int dest_fd, int src_fd) {
   char buf[32 * 1024];
+  if (try_copy_file_by_copy_all(dest_fd, src_fd)) {
+    return true;
+  }
   while (1) {
     ssize_t bytes_read = read(src_fd, buf, sizeof(buf));
     if (bytes_read < 0) {
