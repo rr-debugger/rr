@@ -717,7 +717,7 @@ int RecordCommand::run(vector<string>& args) {
   if (flags.setuid_sudo) {
     if (geteuid() != 0 || getenv("SUDO_UID") == NULL) {
       fprintf(stderr, "rr: --setuid-sudo option may only be used under sudo.\n"
-                      "Re-run as `sudo -EP rr record --setuid-sudo` to"
+                      "Re-run as `sudo -EP --preserve-env=HOME rr record --setuid-sudo` to"
                       "record privileged executables.\n");
       return 1;
     }
