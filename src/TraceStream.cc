@@ -760,7 +760,7 @@ bool TraceWriter::try_hardlink_file(const string& file_name,
 
   string path =
       string("mmap_hardlink_") + count_str + "_" + base_file_name(file_name);
-  int ret = link(file_name.c_str(), (dir() + "/" + path).c_str());
+  int ret = linkat(AT_FDCWD, file_name.c_str(), AT_FDCWD, (dir() + "/" + path).c_str(), AT_SYMLINK_FOLLOW);
   if (ret < 0) {
     return false;
   }
