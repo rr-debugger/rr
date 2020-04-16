@@ -201,7 +201,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
     t->proceed_to_exit(may_wait_exit);
   }
   record_exit_trace_event(t, exit_status);
-  t->record_exit_event();
+  t->record_exit_event(exit_status.fatal_sig());
   if (t->do_ptrace_exit_stop(exit_status)) {
     // Keep the RecordTask alive until the ptracer reaps it
     t->waiting_for_reap = true;
