@@ -267,8 +267,10 @@ public:
   TicksSemantics ticks_semantics() const { return ticks_semantics_; }
 
 private:
-  bool try_hardlink_file(const std::string& file_name, std::string* new_name);
-  bool try_clone_file(RecordTask* t, const std::string& file_name,
+  bool try_hardlink_file(const std::string& real_file_name,
+                         const std::string& access_file_name, std::string* new_name);
+  bool try_clone_file(RecordTask* t, const std::string& real_file_name,
+                      const std::string& access_file_name,
                       std::string* new_name);
   bool copy_file(const std::string& file_name, std::string* new_name);
 

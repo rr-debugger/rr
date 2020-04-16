@@ -753,14 +753,15 @@ static string base_file_name(const string& file_name) {
                                         : file_name;
 }
 
-bool TraceWriter::try_hardlink_file(const string& file_name,
+bool TraceWriter::try_hardlink_file(const string& real_file_name,
+                                    const string& access_file_name,
                                     std::string* new_name) {
   char count_str[20];
   sprintf(count_str, "%d", mmap_count);
 
   string path =
-      string("mmap_hardlink_") + count_str + "_" + base_file_name(file_name);
-  int ret = linkat(AT_FDCWD, file_name.c_str(), AT_FDCWD, (dir() + "/" + path).c_str(), AT_SYMLINK_FOLLOW);
+      string("mmap_hardlink_") + count_str + "_" + base_file_name(real_file_name);
+  int ret = linkat(AT_FDCWD, access_file_name.c_str(), AT_FDCWD, (dir() + "/" + path).c_str(), AT_SYMLINK_FOLLOW);
   if (ret < 0) {
     return false;
   }
@@ -768,8 +769,9 @@ bool TraceWriter::try_hardlink_file(const string& file_name,
   return true;
 }
 
-bool TraceWriter::try_clone_file(RecordTask* t, const string& file_name,
-                                 string* new_name) {
+bool TraceWriter::try_clone_file(RecordTask* t,
+    const string& real_file_name, const string& access_file_name,
+    string* new_name) {
   if (!t->session().use_file_cloning()) {
     return false;
   }
@@ -778,9 +780,9 @@ bool TraceWriter::try_clone_file(RecordTask* t, const string& file_name,
   sprintf(count_str, "%d", mmap_count);
 
   string path =
-      string("mmap_clone_") + count_str + "_" + base_file_name(file_name);
+      string("mmap_clone_") + count_str + "_" + base_file_name(real_file_name);
 
-  ScopedFd src(file_name.c_str(), O_RDONLY);
+  ScopedFd src(access_file_name.c_str(), O_RDONLY);
   if (!src.is_open()) {
     return false;
   }
@@ -899,7 +901,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     if (assumed_immutable != files_assumed_immutable.end()) {
       src.initFile().setBackingFileName(str_to_data(assumed_immutable->second));
     } else if ((km.flags() & MAP_PRIVATE) &&
-               try_clone_file(t, file_name, &backing_file_name)) {
+               try_clone_file(t, km.fsname(), file_name, &backing_file_name)) {
       src.initFile().setBackingFileName(str_to_data(backing_file_name));
     } else if (should_copy_mmap_region(km, file_name, stat)) {
       copy_file_or_trace(file_name);
@@ -907,7 +909,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
       // should_copy_mmap_region's heuristics determined it was OK to just map
       // the file here even if it's MAP_SHARED. So try cloning again to avoid
       // the possibility of the file changing between recording and replay.
-      if (try_clone_file(t, file_name, &backing_file_name)) {
+      if (try_clone_file(t, km.fsname(), file_name, &backing_file_name)) {
         src.initFile().setBackingFileName(str_to_data(backing_file_name));
       } else {
         // Try hardlinking file into the trace directory. This will avoid
@@ -915,7 +917,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
         // if it is overwritten in-place). If try_hardlink_file fails it
         // just returns the original file name.
         // A relative backing_file_name is relative to the trace directory.
-        if (!try_hardlink_file(file_name, &backing_file_name)) {
+        if (!try_hardlink_file(km.fsname(), file_name, &backing_file_name)) {
           // Don't ever use `file_name` for the `backing_file_name` because it
           // contains the pid of a recorded process and will not work!
           backing_file_name = km.fsname();
