@@ -803,17 +803,18 @@ bool TraceWriter::try_clone_file(RecordTask* t,
   return true;
 }
 
-bool TraceWriter::copy_file(const std::string& file_name,
+bool TraceWriter::copy_file(const std::string& real_file_name,
+                            const std::string& access_file_name,
                             std::string* new_name) {
   char count_str[20];
   sprintf(count_str, "%d", mmap_count);
 
   string path =
-      string("mmap_copy_") + count_str + "_" + base_file_name(file_name);
+      string("mmap_copy_") + count_str + "_" + base_file_name(real_file_name);
 
-  ScopedFd src(file_name.c_str(), O_RDONLY);
+  ScopedFd src(access_file_name.c_str(), O_RDONLY);
   if (!src.is_open()) {
-    LOG(debug) << "Can't open " << file_name;
+    LOG(debug) << "Can't open " << access_file_name;
     return false;
   }
   string dest_path = dir() + "/" + path;
@@ -876,7 +877,7 @@ TraceWriter::RecordInTrace TraceWriter::write_mapped_region(
     // usable debug info should be very rare at best...
     string backing_file_name;
     if ((km.prot() & PROT_EXEC) &&
-        copy_file(file_name, &backing_file_name) &&
+        copy_file(km.fsname(), file_name, &backing_file_name) &&
         !(km.flags() & MAP_SHARED)) {
       src.initFile().setBackingFileName(str_to_data(backing_file_name));
     } else {

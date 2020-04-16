@@ -1004,7 +1004,6 @@ set(BASIC_TESTS
   sigstop2
   sigsuspend
   sigtrap
-  simple
   simple_threads_stress
   sioc
   sock_names_opts
@@ -1186,6 +1185,7 @@ set(TESTS_WITH_PROGRAM
   signal_numbers
   sigprocmask_race
   sigprocmask_rr_sigs_nondefault
+  simple
   singlestep_pushf
   stack_growth
   step_thread

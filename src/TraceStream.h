@@ -272,7 +272,8 @@ private:
   bool try_clone_file(RecordTask* t, const std::string& real_file_name,
                       const std::string& access_file_name,
                       std::string* new_name);
-  bool copy_file(const std::string& file_name, std::string* new_name);
+  bool copy_file(const std::string& real_file_name,
+                 const std::string& access_file_name, std::string* new_name);
 
   CompressedWriter& writer(Substream s) { return *writers[s]; }
   const CompressedWriter& writer(Substream s) const { return *writers[s]; }
