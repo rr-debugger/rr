@@ -440,9 +440,11 @@ bool ReplaySession::handle_unrecorded_cpuid_fault(
  */
 Completion ReplaySession::cont_syscall_boundary(
     ReplayTask* t, const StepConstraints& constraints) {
-  TicksRequest ticks_request;
-  if (!compute_ticks_request(t, constraints, &ticks_request)) {
-    return INCOMPLETE;
+  TicksRequest ticks_request = RESUME_UNLIMITED_TICKS;
+  if (constraints.ticks_target <= trace_frame.ticks()) {
+    if (!compute_ticks_request(t, constraints, &ticks_request)) {
+      return INCOMPLETE;
+    }
   }
 
   if (constraints.command == RUN_SINGLESTEP_FAST_FORWARD) {
