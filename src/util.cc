@@ -26,6 +26,8 @@
 #include <algorithm>
 #include <fstream>
 #include <string>
+#include <numeric>
+#include <random>
 
 #include "preload/preload_interface.h"
 
@@ -1579,27 +1581,27 @@ size_t trapped_instruction_len(TrappedInstruction insn) {
 /**
  * Read and parse the available CPU list then select a random CPU from the list.
  */
-static int get_random_cpu_cgroup() {
+static vector<int> get_cgroup_cpus() {
+  vector<int> cpus;
   ifstream self_cpuset("/proc/self/cpuset");
   if (!self_cpuset.is_open()) {
-    return -1;
+    return cpus;
   }
   string cpuset_path;
   getline(self_cpuset, cpuset_path);
   self_cpuset.close();
   if (cpuset_path.empty()) {
-    return -1;
+    return cpus;
   }
   ifstream cpuset("/sys/fs/cgroup/cpuset" + cpuset_path + "/cpuset.cpus");
   if (!cpuset.good()) {
-    return -1;
+    return cpus;
   }
-  vector<int> cpus;
   while (true) {
     int cpu1;
     cpuset >> cpu1;
     if (cpuset.fail()) {
-      return -1;
+      return std::vector<int>{};
     }
     cpus.push_back(cpu1);
     char c = cpuset.get();
@@ -1608,12 +1610,12 @@ static int get_random_cpu_cgroup() {
     } else if (c == ',') {
       continue;
     } else if (c != '-') {
-      return -1;
+      return std::vector<int>{};;
     }
     int cpu2;
     cpuset >> cpu2;
     if (cpuset.fail()) {
-      return -1;
+      return std::vector<int>{};
     }
     for (int cpu = cpu1 + 1; cpu <= cpu2; cpu++) {
       cpus.push_back(cpu);
@@ -1622,19 +1624,49 @@ static int get_random_cpu_cgroup() {
     if (cpuset.eof() || c == '\n') {
       break;
     } else if (c != ',') {
-      return -1;
+      return std::vector<int>{};
     }
   }
-  return cpus[random() % cpus.size()];
+  return cpus;
+}
+
+static string get_cpu_lock_file() {
+  const char* lock_file = getenv("_RR_CPU_LOCK_FILE");
+  return lock_file ? lock_file : trace_save_dir() + "/cpu_lock";
 }
 
 /**
  * Pick a CPU at random to bind to, unless --cpu-unbound has been given,
  * in which case we return -1.
  */
-int choose_cpu(BindCPU bind_cpu) {
+int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
   if (bind_cpu == UNBOUND_CPU) {
     return -1;
+  }
+
+  // Find out which CPUs we're allowed to run on at all
+  std::vector<int> cpus = get_cgroup_cpus();
+  if (cpus.empty()) {
+    cpus.resize(get_num_cpus());
+    std::iota(cpus.begin(), cpus.end(), 0);
+  }
+
+  // When many copies of rr are running on the same machine, it's easy for them
+  // to oversubscribe a CPU. To avoid this situation, we have a lock file, where
+  // each running rr process will lock the n-th byte if it is running on that
+  // particular CPU. That way subsequent rr processes can avoid in-use cores
+  // if possible.
+  string cpu_lock_file = get_cpu_lock_file();
+  cpu_lock_fd_out = ScopedFd(cpu_lock_file.c_str(), O_CREAT | O_WRONLY | O_CLOEXEC, 0600);
+
+  // Make sure the locks file is big enough
+  if (cpu_lock_fd_out.is_open()) {
+    struct stat stat;
+    int err = fstat(cpu_lock_fd_out, &stat);
+    DEBUG_ASSERT(err == 0);
+    if (stat.st_size < get_num_cpus()) {
+      ftruncate(cpu_lock_fd_out, get_num_cpus());
+    }
   }
 
   // Pin tracee tasks to a random logical CPU, both in
@@ -1652,14 +1684,50 @@ int choose_cpu(BindCPU bind_cpu) {
   // presumably due to cheaper context switching and/or
   // better interaction with CPU frequency scaling.
   if (bind_cpu >= 0) {
+    if (cpu_lock_fd_out.is_open()) {
+      struct flock lock {
+        .l_type = F_WRLCK,
+        .l_whence = SEEK_SET,
+        .l_start = bind_cpu,
+        .l_len = 1,
+        .l_pid = 0
+      };
+      // Try to acquire the lock for this CPU
+      (void)fcntl(cpu_lock_fd_out, F_SETLK, &lock);
+      // Ignore fcntl errors - nothing we can do
+    }
     return bind_cpu;
   }
 
-  int cpu = get_random_cpu_cgroup();
-  if (cpu >= 0) {
-    return cpu;
+  if (cpu_lock_fd_out.is_open()) {
+    // Try twice to allocate a CPU. If we fail twice, pick a random one
+    for (int i = 0; i < 2; ++i) {
+      std::shuffle (cpus.begin(), cpus.end(), std::default_random_engine(random()));
+      for (int cpu : cpus) {
+        struct flock lock {
+          .l_type = F_WRLCK,
+          .l_whence = SEEK_SET,
+          .l_start = cpu,
+          .l_len = 1,
+          .l_pid = 0
+        };
+        // Try to acquire the lock for this CPU
+        int err = fcntl(cpu_lock_fd_out, F_SETLK, &lock);
+        if (err == 0) {
+          return cpu;
+        }
+        else if (err == -1) {
+          if (errno != EACCES && errno != EAGAIN) {
+            FATAL() << "Unexpected error trying to acquire CPU lock";
+          }
+        }
+      }
+    }
   }
-  return random() % get_num_cpus();
+
+  // Didn't work - just use a random CPU
+  cpu_lock_fd_out.close();
+  return cpus[random() % cpus.size()];
 }
 
 uint32_t crc32(uint32_t crc, unsigned char* buf, size_t len) {

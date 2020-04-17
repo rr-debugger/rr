@@ -418,8 +418,10 @@ size_t trapped_instruction_len(TrappedInstruction insn);
  */
 enum BindCPU { BIND_CPU = -2, UNBOUND_CPU = -1 };
 
-/* Convert a BindCPU to a specific CPU number */
-int choose_cpu(BindCPU bind_cpu);
+/* Convert a BindCPU to a specific CPU number. If possible, the cpu_lock_fd_out
+   will be set to an fd that holds an advisory fcntl lock for the chosen CPU
+   for coordination with other rr processes */
+int choose_cpu(BindCPU bind_cpu, ScopedFd& cpu_lock_fd_out);
 
 /* Updates an IEEE 802.3 CRC-32 least significant bit first from each byte in
  * |buf|.  Pre- and post-conditioning is not performed in this function and so

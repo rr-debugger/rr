@@ -142,6 +142,9 @@ TESTDIR="${SRCDIR}/src/test"
 # binaries into the trace.
 export RR_TRUST_TEMP_FILES=1
 
+# Have rr processes coordinate to not oversubscribe CPUs
+export _RR_CPU_LOCK_FILE="/tmp/rr-test-cpu-lock"
+
 # Set options to find rr and resource files in the expected places.
 export PATH="${OBJDIR}/bin:${PATH}"
 GLOBAL_OPTIONS="${GLOBAL_OPTIONS} --resource-path=${OBJDIR}"

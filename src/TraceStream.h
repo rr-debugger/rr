@@ -232,7 +232,7 @@ public:
    * The trace name is determined by |file_name| and _RR_TRACE_DIR (if set)
    * or by setting -o=<OUTPUT_TRACE_DIR>.
    */
-  TraceWriter(const std::string& file_name, int bind_to_cpu,
+  TraceWriter(const std::string& file_name,
               const string& output_trace_dir, TicksSemantics ticks_semantics_);
 
   /**

@@ -190,8 +190,9 @@ private:
 };
 
 TraceStream::TraceStream(const string& trace_dir, FrameTime initial_time)
-    : trace_dir(real_path(trace_dir))
-    , global_time(initial_time)
+    : trace_dir(real_path(trace_dir)),
+      bind_to_cpu(-1),
+      global_time(initial_time)
    {}
 
 string TraceStream::file_data_clone_file_name(const TaskUid& tuid) {
@@ -1202,7 +1203,6 @@ static string make_trace_dir(const string& exe_path, const string& output_trace_
 #define STR(x) STR_HELPER(x)
 
 TraceWriter::TraceWriter(const std::string& file_name,
-                         int bind_to_cpu,
                          const string& output_trace_dir,
                          TicksSemantics ticks_semantics_)
     : TraceStream(make_trace_dir(file_name, output_trace_dir),
@@ -1213,7 +1213,6 @@ TraceWriter::TraceWriter(const std::string& file_name,
       mmap_count(0),
       has_cpuid_faulting_(false) {
   this->ticks_semantics_ = ticks_semantics_;
-  this->bind_to_cpu = bind_to_cpu;
 
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
     writers[s] = unique_ptr<CompressedWriter>(new CompressedWriter(

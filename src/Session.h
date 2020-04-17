@@ -388,6 +388,8 @@ protected:
   TaskMap task_map;
   ThreadGroupMap thread_group_map;
 
+  ScopedFd cpu_lock;
+
   // If non-null, data required to finish initializing the tasks of this
   // session.
   std::unique_ptr<CloneCompletion> clone_completion;

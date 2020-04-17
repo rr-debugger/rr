@@ -712,7 +712,7 @@ void Session::do_bind_cpu(TraceStream &trace) {
     // tracees, since this seems to help performance.
     if (!set_cpu_affinity(cpu_index)) {
       if (has_cpuid_faulting() && !is_recording()) {
-        cpu_index = choose_cpu(BIND_CPU);
+        cpu_index = choose_cpu(BIND_CPU, cpu_lock);
         if (!set_cpu_affinity(cpu_index)) {
           FATAL() << "Can't bind to requested CPU " << cpu_index
                   << " even after we re-selected it";
