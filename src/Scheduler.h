@@ -75,9 +75,9 @@ public:
    * around 10. Somewhat arbitrarily guessing ~4cycles/insn on average
    * (fair amount of pointer chasing), that implies for a nominal 2GHz CPU
    * 50,000 ticks per millisecond. We choose the default max ticks to give us
-   * 10ms timeslices, i.e. 500,000 ticks.
+   * 50ms timeslices, i.e. 2,500,000 ticks.
    */
-  enum { DEFAULT_MAX_TICKS = 500000 };
+  enum { DEFAULT_MAX_TICKS = 2500000 };
   /**
    * Don't allow max_ticks to get above this value.
    */
