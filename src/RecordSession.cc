@@ -2058,7 +2058,7 @@ RecordSession::RecordSession(const std::string& exe_path,
                              const string& output_trace_dir,
                              const TraceUuid* trace_id,
                              bool use_audit)
-    : trace_out(argv[0], choose_cpu(bind_cpu), output_trace_dir, ticks_semantics_),
+    : trace_out(argv[0], output_trace_dir, ticks_semantics_),
       scheduler_(*this),
       trace_id(trace_id),
       disable_cpuid_features_(disable_cpuid_features),
@@ -2083,6 +2083,7 @@ RecordSession::RecordSession(const std::string& exe_path,
     FATAL() << "RR_CALL_BASE is incorrect";
   }
 
+  trace_out.set_bound_cpu(choose_cpu(bind_cpu, cpu_lock));
   do_bind_cpu(trace_out);
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
