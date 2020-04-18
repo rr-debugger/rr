@@ -153,6 +153,22 @@ public:
 
   void in_stable_exit(RecordTask* t);
 
+  /**
+   * In unlimited ticks mode, only one task is runnable while every other task
+   * is blocked in the kernel. Check whether we're in that situation.
+   */
+  bool may_use_unlimited_ticks();
+
+  /**
+   * Let the scheduler know that the passed task has started running
+   */
+  void started(RecordTask*) {
+    if (may_use_unlimited_ticks()) {
+      unlimited_ticks_mode = true;
+    }
+    ntasks_running++;
+  }
+
 private:
   // Tasks sorted by priority.
   typedef std::set<std::pair<int, RecordTask*>> TaskPrioritySet;
@@ -242,6 +258,9 @@ private:
 
   bool enable_poll;
   bool last_reschedule_in_high_priority_only_interval;
+
+  bool unlimited_ticks_mode;
+  size_t ntasks_running;
 };
 
 } // namespace rr

@@ -5,6 +5,7 @@
 
 #include <signal.h>
 #include <stdio.h>
+#include <math.h>
 
 #include <array>
 #include <map>
@@ -485,6 +486,13 @@ enum NestedBehavior {
 };
 
 std::string find_exec_stub(SupportedArch arch);
+
+static inline struct timeval to_timeval(double t) {
+  struct timeval v;
+  v.tv_sec = (time_t)floor(t);
+  v.tv_usec = (int)floor((t - v.tv_sec) * 1000000);
+  return v;
+}
 
 } // namespace rr
 
