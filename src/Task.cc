@@ -1222,6 +1222,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
              status.ptrace_event() == PTRACE_EVENT_EXIT ||
                  status.fatal_sig() == SIGKILL)
           << "got " << status;
+      did_waitpid(status);
     } else {
       ASSERT(this, 0 == wait_ret)
           << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
@@ -1233,12 +1234,11 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     detected_unexpected_exit = true;
   } else {
     ptrace_if_alive(how, nullptr, (void*)(uintptr_t)sig);
-  }
-
-  is_stopped = false;
-  extra_registers_known = false;
-  if (RESUME_WAIT == wait_how) {
-    wait();
+    is_stopped = false;
+    extra_registers_known = false;
+    if (RESUME_WAIT == wait_how) {
+      wait();
+    }
   }
 }
 
@@ -1495,13 +1495,6 @@ static bool is_signal_triggered_by_ptrace_interrupt(int group_stop_sig) {
 // waitpid to return EINTR and that's all we need.
 static void handle_alarm_signal(__attribute__((unused)) int sig) {}
 
-static struct timeval to_timeval(double t) {
-  struct timeval v;
-  v.tv_sec = (time_t)floor(t);
-  v.tv_usec = (int)floor((t - v.tv_sec) * 1000000);
-  return v;
-}
-
 bool Task::wait_unexpected_exit() {
   if (detected_unexpected_exit) {
     LOG(debug) << "Unexpected (SIGKILL) exit was detected; reporting it now";
@@ -1514,7 +1507,7 @@ bool Task::wait_unexpected_exit() {
 
 void Task::wait(double interrupt_after_elapsed) {
   LOG(debug) << "going into blocking waitid(" << tid << ") ...";
-  ASSERT(this, session().is_recording() || interrupt_after_elapsed == 0);
+  ASSERT(this, session().is_recording() || interrupt_after_elapsed == -1);
 
   if (wait_unexpected_exit()) {
     return;
@@ -1524,7 +1517,13 @@ void Task::wait(double interrupt_after_elapsed) {
   bool sent_wait_interrupt = false;
   int ret;
   while (true) {
-    if (interrupt_after_elapsed) {
+    if (interrupt_after_elapsed == 0 && !sent_wait_interrupt) {
+      ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
+      sent_wait_interrupt = true;
+      expecting_ptrace_interrupt_stop = 2;
+    }
+
+    if (interrupt_after_elapsed > 0) {
       struct itimerval timer = { { 0, 0 },
                                  to_timeval(interrupt_after_elapsed) };
       setitimer(ITIMER_REAL, &timer, nullptr);
@@ -1535,9 +1534,10 @@ void Task::wait(double interrupt_after_elapsed) {
     if (ret == -1) {
       ret = -errno;
     }
-    if (interrupt_after_elapsed) {
+    if (interrupt_after_elapsed > 0) {
       struct itimerval timer = { { 0, 0 }, { 0, 0 } };
       setitimer(ITIMER_REAL, &timer, nullptr);
+      interrupt_after_elapsed = 0;
     }
 
     if (ret == 0) {
@@ -1558,17 +1558,9 @@ void Task::wait(double interrupt_after_elapsed) {
       } else if (ret != -EINTR) {
         FATAL() << "Unexpected wait error " << -ret;
       }
-    }
-
-    if (!sent_wait_interrupt && interrupt_after_elapsed) {
-      ptrace_if_alive(PTRACE_INTERRUPT, nullptr, nullptr);
-      sent_wait_interrupt = true;
-      expecting_ptrace_interrupt_stop = 2;
+      continue;
     }
   }
-
-  LOG(debug) << "  waitid(" << tid << ") returns " << ret << "; status "
-             << status;
 
   if (sent_wait_interrupt) {
     LOG(warn) << "Forced to PTRACE_INTERRUPT tracee";
@@ -1644,6 +1636,8 @@ void Task::canonicalize_regs(SupportedArch syscall_arch) {
 }
 
 void Task::did_waitpid(WaitStatus status) {
+  LOG(debug) << "  Task " << tid << " changed status to " << status;
+
   // After PTRACE_INTERRUPT, any next two stops may be a group stop caused by
   // that PTRACE_INTERRUPT (or neither may be). This is because PTRACE_INTERRUPT
   // generally lets other stops win (and thus doesn't inject it's own stop), but

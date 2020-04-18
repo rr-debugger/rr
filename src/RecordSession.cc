@@ -628,6 +628,8 @@ void RecordSession::task_continue(const StepState& step_state) {
       // timeslice signal already stashed, no point in generating another one
       // (and potentially slow)
       ticks_request = RESUME_UNLIMITED_TICKS;
+    } else if (scheduler().may_use_unlimited_ticks()) {
+      ticks_request = RESUME_UNLIMITED_TICKS;
     } else {
       ticks_request = (TicksRequest)max<Ticks>(
           0, scheduler().current_timeslice_end() - t->tick_count());
@@ -692,6 +694,9 @@ void RecordSession::task_continue(const StepState& step_state) {
     }
   }
   t->resume_execution(resume, RESUME_NONBLOCKING, ticks_request);
+  if (t->is_running()) {
+    scheduler().started(t);
+  }
 }
 
 /**

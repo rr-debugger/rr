@@ -622,10 +622,11 @@ public:
 
   /**
    * Block until the status of this changes. wait() expects the wait to end
-   * with the process in a stopped() state. If interrupt_after_elapsed > 0,
-   * interrupt the task after that many seconds have elapsed.
+   * with the process in a stopped() state. If interrupt_after_elapsed >= 0,
+   * interrupt the task after that many seconds have elapsed. If
+   * interrupt_after_elapsed == 0.0, the interrupt will happen immediately.
    */
-  void wait(double interrupt_after_elapsed = 0);
+  void wait(double interrupt_after_elapsed = -1);
   /**
    * Return true if the status of this has changed, but don't
    * block.
