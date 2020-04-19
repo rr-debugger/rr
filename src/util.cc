@@ -1204,8 +1204,8 @@ static bool try_copy_file_by_copy_all(int dest_fd, int src_fd)
   }
   size_t remaining_size = src_stat.st_size;
   while (remaining_size > 0) {
-    ssize_t ncopied = syscall(SYS_copy_file_range, src_fd, NULL, dest_fd, NULL,
-                              remaining_size, 0);
+    ssize_t ncopied = syscall(NativeArch::copy_file_range, src_fd, NULL,
+                              dest_fd, NULL, remaining_size, 0);
     if (ncopied == -1) {
       if (errno == ENOSYS) {
         should_try_copy_all = false;
