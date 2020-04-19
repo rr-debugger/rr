@@ -63,7 +63,6 @@ struct Header {
   # Base rr syscall number (rrcall_init_preload). Before this was variable,
   # it was 442.
   rrcallBase @9 :Int32 = 442;
-
   nativeArch @10 :Arch = x8664;
   # Architecture specific data, determined by nativeArch
   x86 :group {
@@ -77,6 +76,9 @@ struct Header {
     # 0 means "unknown"; default to everything supported by CPUID EAX=0xd ECX=0
     xcr0 @5 :UInt64;
   }
+  # Whether the version of rr that recorded this, explicitly recorded
+  # modifications made through /proc/<pid>/<mem>
+  explicitProcMem @11 :Bool = true;
 }
 
 # A file descriptor belonging to a task

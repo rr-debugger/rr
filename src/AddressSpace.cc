@@ -377,6 +377,8 @@ static const AddressSpace::SyscallType entry_points[] = {
     AddressSpace::REPLAY_ONLY },
   { AddressSpace::UNTRACED, AddressSpace::PRIVILEGED,
     AddressSpace::RECORDING_ONLY },
+  { AddressSpace::UNTRACED, AddressSpace::UNPRIVILEGED,
+    AddressSpace::REPLAY_ASSIST },
 };
 
 static int rr_page_syscall_stub_size(SupportedArch arch) {
@@ -2250,6 +2252,43 @@ void AddressSpace::remove_stap_semaphore_range(Task* task, MemoryRange range) {
 
 bool AddressSpace::is_stap_semaphore(remote_ptr<uint16_t> addr) {
   return stap_semaphores.find(addr) != stap_semaphores.end();
+}
+
+void AddressSpace::fd_tables_changed() {
+  if (!session()->is_recording()) {
+    // All modifications are recorded during record
+    return;
+  }
+  if (!syscallbuf_enabled()) {
+    return;
+  }
+  DEBUG_ASSERT(task_set().size() != 0);
+  uint8_t fdt_uniform = true;
+  RecordTask* rt = nullptr;
+  // Find a suitable task
+  for (auto* t : task_set()) {
+    if (!t->is_dying()) {
+      rt = static_cast<RecordTask*>(t);
+    }
+  }
+  if (!rt) {
+    return;
+  }
+  auto fdt = rt->fd_table();
+  for (auto* t : task_set()) {
+    if (t->fd_table() != fdt) {
+      fdt_uniform = false;
+    }
+  }
+  auto addr = REMOTE_PTR_FIELD(rt->preload_globals, fdt_uniform);
+  bool ok = true;
+  if (rt->read_mem(addr, &ok) != fdt_uniform) {
+    if (!ok) {
+      return;
+    }
+    rt->write_mem(addr, fdt_uniform);
+    rt->record_local(addr, sizeof(fdt_uniform), &fdt_uniform);
+  }
 }
 
 } // namespace rr

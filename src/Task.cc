@@ -635,6 +635,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
         fds->erase_task(this);
         fds = fds->clone();
         fds->insert_task(this);
+        vm()->fd_tables_changed();
       }
       return;
 
@@ -2360,6 +2361,7 @@ bool Task::post_vm_clone(CloneReason reason, int flags, Task* origin) {
   if (!(CLONE_SHARE_VM & flags)) {
     created_preload_thread_locals_mapping = this->as->post_vm_clone(this);
   }
+  this->as->fd_tables_changed();
 
   if (reason == TRACEE_CLONE) {
     setup_preload_thread_locals_from_clone(origin);

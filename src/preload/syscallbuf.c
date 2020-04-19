@@ -306,8 +306,9 @@ static int privileged_traced_perf_event_open(struct perf_event_attr* attr,
                                     group_fd, flags);
 }
 
-static int privileged_traced_raise(int sig) {
-  return privileged_traced_syscall2(SYS_kill, privileged_traced_getpid(), sig);
+static __attribute__((noreturn)) void privileged_traced_raise(int sig) {
+  privileged_traced_syscall2(SYS_kill, privileged_traced_getpid(), sig);
+  __builtin_unreachable();
 }
 
 static ssize_t privileged_traced_write(int fd, const void* buf, size_t count) {
@@ -407,6 +408,33 @@ static long untraced_syscall_base(int syscallno, long a0, long a1, long a2,
   untraced_replayed_syscall3(no, a0, a1, 0)
 #define untraced_replayed_syscall1(no, a0) untraced_replayed_syscall2(no, a0, 0)
 #define untraced_replayed_syscall0(no) untraced_replayed_syscall1(no, 0)
+
+static long __attribute__((unused))
+untraced_replay_assist_syscall_base(int syscallno, long a0, long a1, long a2,
+                                    long a3, long a4, long a5,
+                                    void* syscall_instruction)  {
+  struct syscallbuf_record* rec = (struct syscallbuf_record*)buffer_last();
+  rec->replay_assist = 1;
+  return untraced_syscall_base(syscallno, a0, a1, a2, a3, a4, a5, syscall_instruction);
+}
+
+#define untraced_replay_assist_syscall6(no, a0, a1, a2, a3, a4, a5)            \
+  untraced_replay_assist_syscall_base(                                         \
+                        no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2,       \
+                        (uintptr_t)a3, (uintptr_t)a4, (uintptr_t)a5,           \
+                        RR_PAGE_SYSCALL_UNTRACED_REPLAY_ASSIST)
+#define untraced_replay_assist_syscall5(no, a0, a1, a2, a3, a4)                \
+  untraced_replay_assist_syscall6(no, a0, a1, a2, a3, a4, 0)
+#define untraced_replay_assist_syscall4(no, a0, a1, a2, a3)                    \
+  untraced_replay_assist_syscall5(no, a0, a1, a2, a3, 0)
+#define untraced_replay_assist_syscall3(no, a0, a1, a2)                        \
+  untraced_replay_assist_syscall4(no, a0, a1, a2, 0)
+#define untraced_replay_assist_syscall2(no, a0, a1)                            \
+  untraced_replay_assist_syscall3(no, a0, a1, 0)
+#define untraced_replay_assist_syscall1(no, a0)                                \
+  untraced_replay_assist_syscall2(no, a0, 0)
+#define untraced_replay_assist_syscall0(no)                                    \
+  untraced_replay_assist_syscall1(no, 0)
 
 #define privileged_untraced_syscall6(no, a0, a1, a2, a3, a4, a5)               \
   _raw_syscall(no, (uintptr_t)a0, (uintptr_t)a1, (uintptr_t)a2, (uintptr_t)a3, \
@@ -734,6 +762,7 @@ static void __attribute__((constructor)) init_process(void) {
   params.globals = &globals;
 
   globals.breakpoint_value = (uint64_t)-1;
+  globals.fdt_uniform = 1;
   params.breakpoint_instr_addr = &do_breakpoint_fault_addr;
   params.breakpoint_mode_sentinel = -1;
 
@@ -815,14 +844,24 @@ static void* prep_syscall(void) {
   return buffer_last() + sizeof(struct syscallbuf_record);
 }
 
-static int is_bufferable_fd(int fd) {
+static enum syscallbuf_fd_classes fd_class(int fd) {
   if (fd < 0) {
-    return 1;
+    return FD_CLASS_INVALID;
   }
-  if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE) {
+  if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE - 1) {
     fd = SYSCALLBUF_FDS_DISABLED_SIZE - 1;
   }
-  return !globals.syscallbuf_fds_disabled[fd];
+  return globals.syscallbuf_fd_class[fd];
+}
+
+static int is_bufferable_fd(int fd) {
+  switch (fd_class(fd)) {
+    case FD_CLASS_INVALID:
+    case FD_CLASS_UNTRACED:
+      return 1;
+    default:
+      return 0;
+  }
 }
 
 /**
@@ -869,6 +908,24 @@ static void disarm_desched_event(void) {
 /* (Negative numbers so as to not be valid syscall numbers, in case
  * the |int| arguments below are passed in the wrong order.) */
 enum { MAY_BLOCK = -1, WONT_BLOCK = -2 };
+
+static int fd_write_blocks(int fd) {
+  if (!globals.fdt_uniform) {
+    // If we're not uniform, it is possible for this fd to be untraced in one
+    // of the other tasks that share this fd table. Always assume it could block.
+    return MAY_BLOCK;
+  }
+  switch (fd_class(fd)) {
+    case FD_CLASS_UNTRACED:
+    case FD_CLASS_TRACED:
+      return MAY_BLOCK;
+    case FD_CLASS_INVALID:
+    case FD_CLASS_PROC_MEM:
+      return WONT_BLOCK;
+  }
+  fatal("Unknown or corrupted fd class");
+}
+
 static int start_commit_buffered_syscall(int syscallno, void* record_end,
                                          int blockness) {
   void* record_start;
@@ -2856,7 +2913,7 @@ static long sys_write(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+  if (!start_commit_buffered_syscall(syscallno, ptr, fd_write_blocks(fd))) {
     return traced_raw_syscall(call);
   }
 
@@ -2876,16 +2933,23 @@ static long sys_pwrite64(const struct syscall_info* call) {
   size_t count = call->args[2];
   off_t offset = call->args[3];
 
-  void* ptr = prep_syscall_for_fd(fd);
-  long ret;
-
+  enum syscallbuf_fd_classes cls = fd_class(fd);
+  if (cls == FD_CLASS_TRACED) {
+    return traced_raw_syscall(call);
+  }
+  void* ptr = prep_syscall();
   assert(syscallno == call->no);
 
-  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+  if (!start_commit_buffered_syscall(syscallno, ptr, fd_write_blocks(fd))) {
     return traced_raw_syscall(call);
   }
 
-  ret = untraced_syscall4(syscallno, fd, buf, count, offset);
+  long ret;
+  if (cls == FD_CLASS_PROC_MEM) {
+    ret = untraced_replay_assist_syscall4(syscallno, fd, buf, count, offset);
+  } else {
+    ret = untraced_syscall4(syscallno, fd, buf, count, offset);
+  }
 
   return commit_raw_syscall(syscallno, ptr, ret);
 }
@@ -2907,7 +2971,7 @@ static long sys_writev(const struct syscall_info* call) {
 
   assert(syscallno == call->no);
 
-  if (!start_commit_buffered_syscall(syscallno, ptr, MAY_BLOCK)) {
+  if (!start_commit_buffered_syscall(syscallno, ptr, fd_write_blocks(fd))) {
     return traced_raw_syscall(call);
   }
 

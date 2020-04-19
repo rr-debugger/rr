@@ -116,9 +116,11 @@ static void dump_syscallbuf_data(TraceReader& trace, FILE* out,
   while (record_ptr < end_ptr) {
     auto record = reinterpret_cast<const struct syscallbuf_record*>(record_ptr);
     // Buffered syscalls always use the task arch
-    fprintf(out, "  { syscall:'%s', ret:0x%lx, size:0x%lx }\n",
+    fprintf(out, "  { syscall:'%s', ret:0x%lx, size:0x%lx%s%s }\n",
             syscall_name(record->syscallno, frame.regs().arch()).c_str(),
-            (long)record->ret, (long)record->size);
+            (long)record->ret, (long)record->size,
+            record->desched ? ", desched:1" : "",
+            record->replay_assist ? ", replay_assist:1" : "");
     if (record->size < sizeof(*record)) {
       fprintf(stderr, "Malformed trace file (bad record size)\n");
       notifying_abort();

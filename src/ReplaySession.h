@@ -314,6 +314,8 @@ public:
 
   virtual int cpu_binding(TraceStream& trace) const override;
 
+  bool explicit_proc_mem() { return trace_in.explicit_proc_mem(); }
+
 private:
   ReplaySession(const std::string& dir, const Flags& flags);
   ReplaySession(const ReplaySession& other);

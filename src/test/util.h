@@ -178,7 +178,15 @@ inline static int check_cond(int cond) {
   return cond;
 }
 
-#define test_assert(cond) assert("FAILED: !" && check_cond(cond))
+inline static int atomic_assert(int cond, const char *str) {
+  if (!check_cond(cond)) {
+    atomic_printf("FAILED: !%s\n", str);
+    raise(SIGABRT);
+  }
+  return 1;
+}
+
+#define test_assert(cond) atomic_assert(cond, #cond)
 
 /**
  * Return the calling task's id.

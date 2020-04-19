@@ -691,6 +691,17 @@ Completion ReplaySession::continue_or_step(ReplayTask* t,
         perform_interrupted_syscall(t);
         return INCOMPLETE;
       }
+    } else if (t->stop_sig() == SIGTRAP) {
+      auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
+      if (type && type->enabled == AddressSpace::REPLAY_ASSIST) {
+        auto next_rec_ptr = t->next_syscallbuf_record();
+        auto next_rec = t->read_mem(next_rec_ptr);
+        ASSERT(t, next_rec.replay_assist);
+        Registers regs = t->regs();
+        regs.set_syscall_result(next_rec.ret);
+        t->on_syscall_exit(next_rec.syscallno, t->arch(), regs);
+        return INCOMPLETE;
+      }
     } else if (handle_unrecorded_cpuid_fault(t, constraints)) {
       return INCOMPLETE;
     }

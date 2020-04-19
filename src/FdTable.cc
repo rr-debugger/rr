@@ -122,16 +122,21 @@ FileMonitor* FdTable::get_monitor(int fd) {
   return it->second.get();
 }
 
-static bool is_fd_monitored_in_any_task(AddressSpace* vm, int fd) {
+static syscallbuf_fd_classes join_fd_classes_over_tasks(AddressSpace* vm, int fd) {
+  syscallbuf_fd_classes cls = FD_CLASS_UNTRACED;
   for (Task* t : vm->task_set()) {
     auto table = t->fd_table();
-    if (table->is_monitoring(fd) ||
-        (fd >= SYSCALLBUF_FDS_DISABLED_SIZE - 1 &&
-         table->count_beyond_limit() > 0)) {
-      return true;
+    if (table->is_monitoring(fd)) {
+      if (cls != FD_CLASS_UNTRACED) {
+        return FD_CLASS_TRACED;
+      }
+      cls = table->get_monitor(fd)->get_syscallbuf_class();
+    } else if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE - 1 &&
+        table->count_beyond_limit() > 0) {
+      return FD_CLASS_TRACED;
     }
   }
-  return false;
+  return cls;
 }
 
 void FdTable::update_syscallbuf_fds_disabled(int fd) {
@@ -157,9 +162,9 @@ void FdTable::update_syscallbuf_fds_disabled(int fd) {
       if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE) {
         fd = SYSCALLBUF_FDS_DISABLED_SIZE - 1;
       }
-      char disable = (char)is_fd_monitored_in_any_task(vm, fd);
+      char disable = (char)join_fd_classes_over_tasks(vm, fd);
       auto addr =
-          REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fds_disabled[0]) + fd;
+          REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fd_class[0]) + fd;
       rt->write_mem(addr, disable);
       rt->record_local(addr, &disable);
     }
@@ -191,11 +196,15 @@ void FdTable::init_syscallbuf_fds_disabled(Task* t) {
       if (fd >= SYSCALLBUF_FDS_DISABLED_SIZE) {
         fd = SYSCALLBUF_FDS_DISABLED_SIZE - 1;
       }
-      disabled[fd] = 1;
+      if (disabled[fd] == FD_CLASS_UNTRACED) {
+        disabled[fd] = it.second->get_syscallbuf_class();
+      } else {
+        disabled[fd] = FD_CLASS_TRACED;
+      }
     }
   }
 
-  auto addr = REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fds_disabled[0]);
+  auto addr = REMOTE_PTR_FIELD(t->preload_globals, syscallbuf_fd_class[0]);
   rt->write_mem(addr, disabled, SYSCALLBUF_FDS_DISABLED_SIZE);
   rt->record_local(addr, disabled, SYSCALLBUF_FDS_DISABLED_SIZE);
 }
