@@ -688,7 +688,25 @@ public:
 
   enum Traced { TRACED, UNTRACED };
   enum Privileged { PRIVILEGED, UNPRIVILEGED };
-  enum Enabled { RECORDING_ONLY, REPLAY_ONLY, RECORDING_AND_REPLAY };
+  /**
+   * Depending on which entry point this is and whether or not we're recording
+   * or replaying, the instruction in the rr page, may be something other than
+   * a syscall. This enum encodes the combination of instructions for each entry
+   * point:
+   *
+   *      Enabled         | Record  | Replay
+   * ---------------------|---------|-------
+   * RECORDING_ONLY       | syscall | nop
+   * REPLAY_ONLY          | nop     | syscall
+   * RECORDING_AND_REPLAY | syscall | syscall
+   * REPLAY_ASSIST        | syscall | int3
+   *
+   * The REPLAY_ASSIST is used for a syscall that is untraced during record (so
+   * we can save the context switch penalty), but requires us to apply side
+   * effects during replay. The int3 lets the replayer stop and apply these
+   * at the appropriate point.
+   */
+  enum Enabled { RECORDING_ONLY, REPLAY_ONLY, RECORDING_AND_REPLAY, REPLAY_ASSIST };
   static remote_code_ptr rr_page_syscall_exit_point(Traced traced,
                                                     Privileged privileged,
                                                     Enabled enabled,
@@ -805,6 +823,20 @@ public:
   // Also sets brk_ptr.
   void map_rr_page(AutoRemoteSyscalls& remote);
   void unmap_all_but_rr_page(AutoRemoteSyscalls& remote);
+
+  void erase_task(Task* t) {
+    this->HasTaskSet::erase_task(t);
+    if (task_set().size() != 0) {
+      fd_tables_changed();
+    }
+  }
+
+  /**
+   * Called when the set of different fd tables associated with tasks
+   * in this address space may have changed (e.g. a task changed its fd table,
+   * or a task got added or removed, etc).
+   */
+  void fd_tables_changed();
 
 private:
   struct Breakpoint;

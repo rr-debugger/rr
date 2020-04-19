@@ -25,6 +25,10 @@ public:
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
                          LazyOffset& lazy_offset) override;
 
+  virtual enum syscallbuf_fd_classes get_syscallbuf_class() override {
+    return FD_CLASS_PROC_MEM;
+  }
+
 private:
   // 0 if this doesn't object doesn't refer to a tracee's proc-mem.
   TaskUid tuid;

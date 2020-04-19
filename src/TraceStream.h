@@ -420,6 +420,9 @@ public:
 
   SupportedArch arch() const { return arch_; }
 
+  // Whether the /proc/<pid>/mem calls were explicitly recorded in this trace
+  bool explicit_proc_mem() const { return explicit_proc_mem_; }
+
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
   const CompressedReader& reader(Substream s) const { return *readers[s]; }
@@ -435,6 +438,7 @@ private:
   bool preload_thread_locals_recorded_;
   int rrcall_base_;
   SupportedArch arch_;
+  bool explicit_proc_mem_;
 };
 
 extern std::string trace_save_dir();

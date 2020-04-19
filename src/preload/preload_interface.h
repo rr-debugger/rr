@@ -131,7 +131,8 @@ static inline const char* extract_file_name(const char* s) {
 #define RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_REPLAY_ONLY RR_PAGE_SYSCALL_ADDR(6)
 #define RR_PAGE_SYSCALL_PRIVILEGED_UNTRACED_RECORDING_ONLY                     \
   RR_PAGE_SYSCALL_ADDR(7)
-#define RR_PAGE_FF_BYTES (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 8)
+#define RR_PAGE_SYSCALL_UNTRACED_REPLAY_ASSIST RR_PAGE_SYSCALL_ADDR(8)
+#define RR_PAGE_FF_BYTES (RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * 9)
 
 /* PRELOAD_THREAD_LOCALS_ADDR should not change.
  * Tools depend on this address. */
@@ -315,15 +316,12 @@ struct preload_globals {
   int pretend_num_cores;
   /**
    * Set by rr.
-   * If syscallbuf_fds_disabled[fd] is nonzero, then operations on that fd
-   * must be performed through traced syscalls, not the syscallbuf.
-   * The rr supervisor modifies this array directly to dynamically turn
-   * syscallbuf on and off for particular fds. fds outside the array range must
-   * never use the syscallbuf.
-   * The last entry is set if *any* fd >= SYSCALLBUF_FDS_DISABLED_SIZE - 1
-   * has had buffering disabled.
+   * For each fd, indicate a class that is valid for all fds with the given
+   * number in all tasks that share this address space. For fds >=
+   * SYSCALLBUF_FDS_DISABLED_SIZE - 1, the class is given by by
+   * syscallbuf_fd_class[SYSCALLBUF_FDS_DISABLED_SIZE - 1]. See the
    */
-  VOLATILE char syscallbuf_fds_disabled[SYSCALLBUF_FDS_DISABLED_SIZE];
+  VOLATILE char syscallbuf_fd_class[SYSCALLBUF_FDS_DISABLED_SIZE];
   /* mprotect records. Set by preload. */
   struct mprotect_record mprotect_records[MPROTECT_RECORD_COUNT];
   /* Random seed that can be used for various purposes. DO NOT READ from rr
@@ -333,6 +331,10 @@ struct preload_globals {
      trap once reached. NOTE: This remains constant during record, and is
      used only during replay. The same restrictions as in_replay above apply */
   uint64_t breakpoint_value;
+  /* Indicates whether or not all tasks in this address space have the same
+     fd table. Set by rr during record (modifications are recorded).
+     Read by the syscallbuf */
+  unsigned char fdt_uniform;
 };
 
 /**
@@ -443,6 +445,24 @@ struct preload_thread_locals {
   PTR(struct msghdr) notify_control_msg;
 };
 
+// The set of flags that can be set for each fd in syscallbuf_fds_disabled.
+enum syscallbuf_fd_classes {
+  // fd is invalid, all syscalls will error (syscallbuf internal use only)
+  FD_CLASS_INVALID = -1,
+  // The fd is allowed to be completely untraced. No notification to the
+  // syscall buf is required.
+  FD_CLASS_UNTRACED = 0x0,
+  // This is the most conservative option. All operations on this fd are
+  // always traced. If there is a conflict between other options, this one
+  // should be chosen.
+  FD_CLASS_TRACED   = 0x1,
+  // This fd either refers to a /proc/<pid>/mem or is untrace (if this as
+  // is shared with another fd table)
+  FD_CLASS_PROC_MEM = 0x2,
+};
+
+#define CURRENT_INIT_PRELOAD_PARAMS_VERSION 2
+
 /**
  * Packs up the parameters passed to |SYS_rrcall_init_preload|.
  * We use this struct because it's a little cleaner.
@@ -526,7 +546,10 @@ struct syscallbuf_record {
   uint16_t syscallno;
   /* Did the tracee arm/disarm the desched notification for this
    * syscall? */
-  uint8_t desched;
+  uint8_t desched : 1;
+  /* Does this record require an assist during replay ? */
+  uint8_t replay_assist : 1;
+  uint8_t _flags_padding : 6;
   uint8_t _padding;
   /* Size of entire record in bytes: this struct plus extra
    * recorded data stored inline after the last field, not

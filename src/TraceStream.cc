@@ -1325,6 +1325,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
     x86data.setXcr0(xcr0());
   }
 
+  header.setExplicitProcMem(false);
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
   if (!uuid) {
@@ -1466,6 +1467,7 @@ TraceReader::TraceReader(const string& dir)
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
   rrcall_base_ = header.getRrcallBase();
+  explicit_proc_mem_ = header.getExplicitProcMem();
   Data::Reader uuid = header.getUuid();
   uuid_ = unique_ptr<TraceUuid>(new TraceUuid());
   if (uuid.size() != sizeof(uuid_->bytes)) {
@@ -1513,6 +1515,7 @@ TraceReader::TraceReader(const TraceReader& other)
   preload_thread_locals_recorded_ = other.preload_thread_locals_recorded_;
   rrcall_base_ = other.rrcall_base_;
   arch_ = other.arch_;
+  explicit_proc_mem_ = other.explicit_proc_mem_;
 }
 
 TraceReader::~TraceReader() {}

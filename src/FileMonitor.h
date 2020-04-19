@@ -11,6 +11,7 @@ class Task;
 #include <memory>
 #include <vector>
 
+#include "preload/preload_interface.h"
 #include "util.h"
 
 namespace rr {
@@ -119,6 +120,10 @@ public:
    * if desired.
    */
   virtual void filter_getdents(RecordTask*) {}
+
+  virtual enum syscallbuf_fd_classes get_syscallbuf_class() {
+    return FD_CLASS_TRACED;
+  }
 };
 
 } // namespace rr
