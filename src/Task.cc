@@ -2504,6 +2504,23 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   }
 }
 
+size_t Task::write_ranges(const vector<FileMonitor::Range>& ranges,
+                          void* data, size_t size) {
+  uint8_t* p = static_cast<uint8_t*>(data);
+  size_t s = size;
+  size_t result = 0;
+  for (auto& r : ranges) {
+    size_t bytes = min(s, r.length);
+    write_bytes_helper(r.data, bytes, p);
+    s -= bytes;
+    result += bytes;
+    if (s == 0) {
+      break;
+    }
+  }
+  return result;
+}
+
 const TraceStream* Task::trace_stream() const {
   if (session().as_record()) {
     return &session().as_record()->trace_writer();

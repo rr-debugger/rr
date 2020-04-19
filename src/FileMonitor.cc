@@ -18,7 +18,14 @@ using namespace std;
 
 template <typename Arch>
 static bool is_implicit_offset_syscall_arch(int syscallno) {
-  return syscallno == Arch::writev || syscallno == Arch::write;
+  return syscallno == Arch::writev || syscallno == Arch::write ||
+         syscallno == Arch::readv || syscallno == Arch::read;
+}
+
+template <typename Arch>
+static bool is_write_syscall_arch(int syscallno) {
+  return syscallno == Arch::writev || syscallno == Arch::write ||
+         syscallno == Arch::pwrite64 || syscallno == Arch::pwritev;
 }
 
 static bool is_implict_offset_syscall(SupportedArch arch, int syscallno) {
@@ -38,6 +45,8 @@ static int64_t retrieve_offset_arch(Task* t, int syscallno,
       }
       return regs.arg4_signed();
     }
+    case Arch::readv:
+    case Arch::read:
     case Arch::writev:
     case Arch::write: {
       ASSERT(t, t->session().is_recording())
@@ -55,9 +64,11 @@ static int64_t retrieve_offset_arch(Task* t, int syscallno,
         FATAL() << "Failed to read position";
       }
       fclose(fdinfo_file);
-      // The pos we just read, was after the write completed. Luckily, we do
-      // know how many bytes were written.
-      return offset - regs.syscall_result();
+      return is_write_syscall_arch<Arch>(syscallno) ?
+        // The pos we just read, was after the write completed. Luckily, we do
+        // know how many bytes were written.
+        offset - regs.syscall_result() :
+        offset;
     }
     default: {
       ASSERT(t, false) << "Can not retrieve offset for this system call.";

@@ -475,6 +475,7 @@ set(RR_SOURCES
   src/Session.cc
   src/SourcesCommand.cc
   src/StdioMonitor.cc
+  src/SysCpuMonitor.cc
   src/Task.cc
   src/ThreadGroup.cc
   src/ThreadDb.cc
@@ -1039,6 +1040,7 @@ set(BASIC_TESTS
   sysemu_singlestep
   sysfs
   sysinfo
+  sys_cpu_online
   tgkill
   thread_yield
   timer
