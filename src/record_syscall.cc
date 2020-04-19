@@ -72,6 +72,7 @@
 #include "RecordTask.h"
 #include "Scheduler.h"
 #include "StdioMonitor.h"
+#include "SysCpuMonitor.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
 #include "ftrace.h"
@@ -2958,6 +2959,30 @@ static pid_t do_detach_teleport(RecordTask *t)
 }
 
 template <typename Arch>
+static Switchable did_emulate_read(int syscallno, RecordTask* t,
+                                   const std::vector<FileMonitor::Range>& ranges,
+                                   uint64_t result,
+                                   TaskSyscallState& syscall_state)
+{
+  syscall_state.emulate_result(result);
+  record_ranges(t, ranges, result);
+  if (syscallno == Arch::pread64 || syscallno == Arch::preadv || result <= 0) {
+    // Don't perform this syscall.
+    Registers r = t->regs();
+    r.set_arg1(-1);
+    t->set_regs(r);
+  } else {
+    // Turn this into an lseek to emulate the advance of the fd ptr
+    Registers r = t->regs();
+    r.set_original_syscallno(Arch::lseek);
+    r.set_arg2(result);
+    r.set_arg3(SEEK_CUR);
+    t->set_regs(r);
+  }
+  return PREVENT_SWITCH;
+}
+
+template <typename Arch>
 static Switchable rec_prepare_syscall_arch(RecordTask* t,
                                            TaskSyscallState& syscall_state,
                                            const Registers& regs) {
@@ -3467,13 +3492,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       ranges.push_back(FileMonitor::Range(regs.arg2(), regs.arg3()));
       FileMonitor::LazyOffset offset(t, regs, syscallno);
       if (t->fd_table()->emulate_read(fd, t, ranges, offset, &result)) {
-        // Don't perform this syscall.
-        Registers r = regs;
-        r.set_arg1(-1);
-        t->set_regs(r);
-        record_ranges(t, ranges, result);
-        syscall_state.emulate_result(result);
-        return PREVENT_SWITCH;
+        return did_emulate_read<Arch>(syscallno, t, ranges, result, syscall_state);
       }
       syscall_state.reg_parameter(
           2, ParamSize::from_syscall_result<typename Arch::ssize_t>(
@@ -3590,13 +3609,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       }
       FileMonitor::LazyOffset offset(t, regs, syscallno);
       if (t->fd_table()->emulate_read(fd, t, ranges, offset, &result)) {
-        // Don't perform this syscall.
-        Registers r = regs;
-        r.set_arg1(-1);
-        t->set_regs(r);
-        record_ranges(t, ranges, result);
-        syscall_state.emulate_result(result);
-        return PREVENT_SWITCH;
+        return did_emulate_read<Arch>(syscallno, t, ranges, result, syscall_state);
       }
       ParamSize io_size =
           ParamSize::from_syscall_result<typename Arch::ssize_t>();
@@ -5183,6 +5196,9 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
   } else if (is_proc_fd_dir(pathname.c_str())) {
     LOG(info) << "Installing ProcFdDirMonitor for " << fd;
     file_monitor = new ProcFdDirMonitor(t, pathname);
+  } else if (is_sys_cpu_online_file(pathname.c_str())) {
+    LOG(info) << "Installing SysCpuMonitor for " << fd;
+    file_monitor = new SysCpuMonitor(t, pathname);
   } else if (flags & O_DIRECT) {
     // O_DIRECT can impose unknown alignment requirements, in which case
     // syscallbuf records will not be properly aligned and will cause I/O

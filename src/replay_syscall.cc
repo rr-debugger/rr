@@ -38,6 +38,7 @@
 #include "ReplayTask.h"
 #include "SeccompFilterRewriter.h"
 #include "StdioMonitor.h"
+#include "SysCpuMonitor.h"
 #include "ThreadGroup.h"
 #include "TraceStream.h"
 #include "VirtualPerfCounterMonitor.h"
@@ -995,6 +996,8 @@ static void handle_opened_files(ReplayTask* t, int flags) {
       file_monitor = new ProcMemMonitor(t, o.path);
     } else if (is_proc_fd_dir(o.path.c_str())) {
       file_monitor = new ProcFdDirMonitor(t, o.path);
+    } else if (is_sys_cpu_online_file(o.path.c_str())) {
+      file_monitor = new SysCpuMonitor(t, o.path);
     } else if (flags & O_DIRECT) {
       file_monitor = new FileMonitor();
     } else {

@@ -33,6 +33,7 @@ public:
     ProcMem,
     Stdio,
     VirtualPerfCounter,
+    SysCpu
   };
 
   virtual Type type() { return Base; }

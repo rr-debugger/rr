@@ -681,6 +681,9 @@ public:
                        static_cast<const void*>(val), ok);
   }
 
+  uint64_t write_ranges(const std::vector<FileMonitor::Range>& ranges,
+                        void* data, size_t size);
+
   /**
    * Don't use these helpers directly; use the safer and more
    * convenient variants above.
