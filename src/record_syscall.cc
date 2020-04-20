@@ -4766,6 +4766,9 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
   auto mapped_table = mapped_t->fd_table();
   for (auto& ts : mapped_t->session().tasks()) {
     auto rt = static_cast<RecordTask*>(ts.second);
+    if (rt->already_exited()) {
+      continue;
+    }
     auto table = rt->fd_table();
     if (tables.find(table.get()) != tables.end()) {
       continue;
