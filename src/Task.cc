@@ -2198,7 +2198,7 @@ bool Task::open_mem_fd() {
   char pid_path[PATH_MAX];
   sprintf(pid_path, "/proc/%d", tid);
   ScopedFd dir_fd(pid_path, O_PATH);
-  ScopedFd fd = ScopedFd::openat(dir_fd, "mem", O_RDWR);
+  ScopedFd fd = ScopedFd::openat(dir_fd, "mem", O_RDWR | O_CLOEXEC);
 
   if (!fd.is_open()) {
     LOG(debug) << "Falling back to the remote fd dance";
@@ -3038,15 +3038,19 @@ void Task::dup_from(Task *other) {
       if (fd == session().tracee_fd_number())
         continue;
       ScopedFd here = remote_other.retrieve_fd(fd);
+      int remote_fd_flags = remote_other.infallible_syscall(
+        syscall_number_for_fcntl(this->arch()), fd, F_GETFD);
       int remote_fd = remote_this.send_fd(here);
       if (remote_fd != fd) {
         remote_this.infallible_syscall(syscall_number_for_dup2(this->arch()), remote_fd, fd);
         remote_this.infallible_syscall(syscall_number_for_close(this->arch()), remote_fd);
       }
+      remote_other.infallible_syscall(
+        syscall_number_for_fcntl(this->arch()),
+        fd, F_SETFD, remote_fd_flags);
     }
     string path = ".";
     AutoRestoreMem child_path(remote_other, path.c_str());
-    // skip leading '/' since we want the path to be relative to the root fd
     long child_fd =
       remote_other.syscall(syscall_number_for_openat(other->arch()), AT_FDCWD,
                      child_path.get(), O_RDONLY);

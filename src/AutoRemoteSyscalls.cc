@@ -440,7 +440,7 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
 static int recvmsg_socket(ScopedFd& sock) {
   fd_message<NativeArch> msg;
   struct msghdr *msgp = (struct msghdr*)&msg.msg;
-  if (0 > recvmsg(sock, msgp, 0)) {
+  if (0 > recvmsg(sock, msgp, MSG_CMSG_CLOEXEC)) {
     FATAL() << "Failed to receive fd";
   }
 
