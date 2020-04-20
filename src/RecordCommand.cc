@@ -669,6 +669,14 @@ static void exec_child(vector<string>& args) {
   // Never returns!
 }
 
+static void reset_cpu_affinity() {
+  cpu_set_t mask;
+  memset(&mask, 0xFF, sizeof(mask));
+  sched_setaffinity(0, sizeof(mask), &mask);
+  // Best effort - if we fail, that's not yet fatal (though
+  // we might be running a bit slower)
+}
+
 static void reset_uid_sudo() {
   // Let's change our uids now. We do keep capabilities though, since that's
   // the point of the exercise. The first exec will reset both the keepcaps,
@@ -719,6 +727,7 @@ int RecordCommand::run(vector<string>& args) {
       if (running_under_rr(false)) {
         FATAL() << "Detaching from parent rr did not work";
       }
+      reset_cpu_affinity();
       // Fall through
     } else {
       fprintf(stderr, "rr: cannot run rr recording under rr. Exiting.\n"
