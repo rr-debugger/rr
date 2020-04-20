@@ -4775,9 +4775,7 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
     char buf[100];
     sprintf(buf, "/proc/%d/fd", rt->tid);
     DIR* dir = opendir(buf);
-    if (!dir) {
-      FATAL() << "Can't open fd directory " << buf;
-    }
+    ASSERT(rt, dir) << "Can't open fd directory " << buf;
     struct dirent* d;
     errno = 0;
     vector<string> names;
@@ -4806,9 +4804,7 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
       }
       extra_fds.push_back({ rt->tid, fd });
     }
-    if (errno) {
-      FATAL() << "Can't read fd directory " << buf;
-    }
+    ASSERT(rt, !errno) << "Can't read fd directory " << buf;
     closedir(dir);
   }
   ASSERT(mapped_t, found_our_mapping) << "Can't find fd for mapped file";
