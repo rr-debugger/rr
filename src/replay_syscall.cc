@@ -1175,7 +1175,8 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
       int cpu = trace_regs.arg3_signed();
       unsigned long flags = trace_regs.arg5();
       int fd = trace_regs.syscall_result_signed();
-      if (target && cpu == -1 && !flags) {
+      int allowed_perf_flags = PERF_FLAG_FD_CLOEXEC;
+      if (target && cpu == -1 && !(flags & ~allowed_perf_flags)) {
         auto attr =
             t->read_mem(remote_ptr<struct perf_event_attr>(trace_regs.arg1()));
         if (VirtualPerfCounterMonitor::should_virtualize(attr)) {

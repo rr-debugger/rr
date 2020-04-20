@@ -3732,7 +3732,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       RecordTask* target = t->session().find_task((pid_t)regs.arg2_signed());
       int cpu = regs.arg3_signed();
       unsigned long flags = regs.arg5();
-      if (target && cpu == -1 && !flags) {
+      int allowed_perf_flags = PERF_FLAG_FD_CLOEXEC;
+      if (target && cpu == -1 && !(flags & ~allowed_perf_flags)) {
         auto attr =
             t->read_mem(remote_ptr<struct perf_event_attr>(regs.arg1()));
         if (VirtualPerfCounterMonitor::should_virtualize(attr)) {
@@ -3740,7 +3741,9 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           // Turn this into an inotify_init() syscall. This just gives us an
           // allocated fd. Syscalls using this fd will be emulated (except for
           // close()).
-          r.set_original_syscallno(Arch::inotify_init);
+          r.set_original_syscallno(Arch::inotify_init1);
+          int in_flags = (flags & PERF_FLAG_FD_CLOEXEC) ? O_CLOEXEC : 0;
+          r.set_arg1(in_flags);
           t->set_regs(r);
         }
       }
@@ -5432,12 +5435,13 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::perf_event_open:
-      if (t->regs().original_syscallno() == Arch::inotify_init) {
+      if (t->regs().original_syscallno() == Arch::inotify_init1) {
         ASSERT(t, !t->regs().syscall_failed());
         int fd = t->regs().syscall_result_signed();
         Registers r = t->regs();
         r.set_original_syscallno(
             syscall_state.syscall_entry_registers.original_syscallno());
+        r.set_arg1(syscall_state.syscall_entry_registers.arg1());
         t->set_regs(r);
         auto attr =
             t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().arg1()));
