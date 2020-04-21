@@ -471,11 +471,15 @@ static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   }
   fd = privileged_traced_fcntl(tmp_fd, F_DUPFD_CLOEXEC,
                                RR_DESCHED_EVENT_FLOOR_FD);
-  if (0 > fd) {
-    fatal("Failed to dup desched fd");
-  }
-  if (privileged_untraced_close(tmp_fd)) {
-    fatal("Failed to close tmp_fd");
+  if (fd > 0) {
+    if (privileged_untraced_close(tmp_fd)) {
+      fatal("Failed to close tmp_fd");
+    }
+  } else {
+    // We may be unable to find an fd above the RR_DESCHED_EVENT_FLOOR_FD (e.g
+    // because of a low ulimit). In that case, just use the tmp_fd we already
+    // have.
+    fd = tmp_fd;
   }
   if (privileged_untraced_fcntl(fd, F_SETFL, FASYNC)) {
     fatal("Failed to fcntl(FASYNC) the desched counter");
