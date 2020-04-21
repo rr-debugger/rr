@@ -688,6 +688,10 @@ inline static int is_sys_cpu_online_file(const char* filename) {
   return streq("/sys/devices/system/cpu/online", filename);
 }
 
+inline static int is_proc_stat_file(const char* filename) {
+  return streq("/proc/stat", filename);
+}
+
 /**
  * Returns nonzero if an attempted open() of |filename| can be syscall-buffered.
  * When this returns zero, the open must be forwarded to the rr process.
@@ -699,7 +703,8 @@ inline static int allow_buffered_open(const char* filename) {
   return filename &&
          !is_blacklisted_filename(filename) && !is_gcrypt_deny_file(filename) &&
          !is_terminal(filename) && !is_proc_mem_file(filename) &&
-         !is_proc_fd_dir(filename) && !is_sys_cpu_online_file(filename);
+         !is_proc_fd_dir(filename) && !is_sys_cpu_online_file(filename) &&
+         !is_proc_stat_file(filename);
 }
 
 #endif /* RR_PRELOAD_INTERFACE_H_ */

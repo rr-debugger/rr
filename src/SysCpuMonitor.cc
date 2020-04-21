@@ -46,7 +46,7 @@ static string make_cpu_online_data(RecordTask* t) {
 
 bool SysCpuMonitor::emulate_read(
   RecordTask* t, const vector<Range>& ranges,
-  LazyOffset &lazy_offset, uint64_t* result) {
+  LazyOffset& lazy_offset, uint64_t* result) {
   string data = make_cpu_online_data(t);
   int64_t offset = lazy_offset.retrieve(false);
   *result = t->write_ranges(ranges, (uint8_t*)data.data() + offset,
