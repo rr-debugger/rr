@@ -455,6 +455,7 @@ set(RR_SOURCES
   src/PerfCounters.cc
   src/ProcFdDirMonitor.cc
   src/ProcMemMonitor.cc
+  src/ProcStatMonitor.cc
   src/PsCommand.cc
   src/RecordCommand.cc
   src/RecordSession.cc
@@ -1040,7 +1041,6 @@ set(BASIC_TESTS
   sysemu_singlestep
   sysfs
   sysinfo
-  sys_cpu_online
   tgkill
   thread_yield
   timer
@@ -1199,6 +1199,7 @@ set(TESTS_WITH_PROGRAM
   string_instructions_watch
   syscallbuf_fd_disabling
   syscallbuf_signal_blocking_read
+  sysconf_onln
   target_fork
   target_process
   term_nonmain

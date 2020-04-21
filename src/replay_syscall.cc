@@ -34,6 +34,7 @@
 #include "MmappedFileMonitor.h"
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
+#include "ProcStatMonitor.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "SeccompFilterRewriter.h"
@@ -998,6 +999,8 @@ static void handle_opened_files(ReplayTask* t, int flags) {
       file_monitor = new ProcFdDirMonitor(t, o.path);
     } else if (is_sys_cpu_online_file(o.path.c_str())) {
       file_monitor = new SysCpuMonitor(t, o.path);
+    } else if (is_proc_stat_file(o.path.c_str())) {
+      file_monitor = new ProcStatMonitor(t, o.path);
     } else if (flags & O_DIRECT) {
       file_monitor = new FileMonitor();
     } else {

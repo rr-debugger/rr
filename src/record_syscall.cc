@@ -68,6 +68,7 @@
 #include "MmappedFileMonitor.h"
 #include "ProcFdDirMonitor.h"
 #include "ProcMemMonitor.h"
+#include "ProcStatMonitor.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "Scheduler.h"
@@ -5199,6 +5200,9 @@ static string handle_opened_file(RecordTask* t, int fd, int flags) {
   } else if (is_sys_cpu_online_file(pathname.c_str())) {
     LOG(info) << "Installing SysCpuMonitor for " << fd;
     file_monitor = new SysCpuMonitor(t, pathname);
+  } else if (is_proc_stat_file(pathname.c_str())) {
+    LOG(info) << "Installing ProcStatMonitor for " << fd;
+    file_monitor = new ProcStatMonitor(t, pathname);
   } else if (flags & O_DIRECT) {
     // O_DIRECT can impose unknown alignment requirements, in which case
     // syscallbuf records will not be properly aligned and will cause I/O

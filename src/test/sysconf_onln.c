@@ -2,13 +2,20 @@
 
 #include "util.h"
 
-int main(int argc, char* argv[] __attribute__((unused))) {
+int main(int argc, char* argv[]) {
   long ncpus = sysconf(_SC_NPROCESSORS_ONLN);
 
-  // We test this both with and without the preload library
-  test_assert(ncpus == 1);
+  char arg[] = "--expected-cpus=";
+  if (argc <= 1 || 0 != strncmp(argv[1], arg, sizeof(arg)-1)) {
+    atomic_puts("Usage: sys_cpu_online --expected-cpus=[n] [--inner]");
+    return 1;
+  }
 
-  if (argc > 1) {
+  // We test this both with and without the preload library
+  // We also always allow 1 in case that's all the machine has
+  test_assert(ncpus == atoi(argv[1]+sizeof(arg)-1) || ncpus == 1);
+
+  if (argc > 2) {
     atomic_puts("EXIT-SUCCESS");
     return 0;
   }
@@ -25,7 +32,7 @@ int main(int argc, char* argv[] __attribute__((unused))) {
   test_assert(nread == 0);
   close(fd);
 
-  char* execv_argv[] = {"/proc/self/exe", "--inner", NULL};
+  char* execv_argv[] = {"/proc/self/exe", argv[1], "--inner", NULL};
   // NULL here drops LD_PRELOAD
   execve("/proc/self/exe", execv_argv, NULL);
   test_assert(0 && "Should not have returned");
