@@ -185,6 +185,12 @@ public:
 
   virtual TraceStream* trace_stream() override { return &trace_out; }
 
+  /**
+   * Like kill_all_tasks, but makes sure to record the exits of the task we
+   * killed.
+   */
+  void kill_all_record_tasks();
+
 private:
   RecordSession(const std::string& exe_path,
                 const std::vector<std::string>& argv,

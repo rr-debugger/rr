@@ -2229,9 +2229,46 @@ void RecordSession::terminate_recording() {
 
   LOG(info) << "Processing termination request ...";
 
-  kill_all_tasks();
+  kill_all_record_tasks();
   t = nullptr; // t is now deallocated
   close_trace_writer(TraceWriter::CLOSE_OK);
+}
+
+void RecordSession::kill_all_record_tasks() {
+  LOG(debug) << "Killing all tasks ...";
+  for (int pass = 0; pass <= 1; ++pass) {
+    /* We delete tasks in two passes. First, we kill
+     * every non-thread-group-leader, then we kill every group leader.
+     * Linux expects threads group leaders to survive until the last
+     * member of the thread group has exited, so we accomodate that.
+     */
+    for (auto& v : task_map) {
+      RecordTask* t = static_cast<RecordTask*>(v.second);
+      // If the task was detached and none of our tasks explicitly waited for
+      // it, we let the detached task just run freely (the zombie proxy we
+      // keep around kill get reaped when we destroy the RecordTask itself)
+      if (t->detached_proxy) {
+        continue;
+      }
+      if (t->already_reaped()) {
+        continue;
+      }
+      bool is_group_leader = t->tid == t->real_tgid();
+      if (pass == 0 ? is_group_leader : !is_group_leader) {
+        continue;
+      }
+      WaitStatus status = t->kill();
+      if (!t->already_exited()) {
+        record_exit_trace_event(t, status);
+        t->record_exit_event(status.fatal_sig());
+      }
+    }
+  }
+  while (!task_map.empty()) {
+    Task* t = task_map.rbegin()->second;
+    delete t;
+  }
+  assert(task_map.empty());
 }
 
 void RecordSession::close_trace_writer(TraceWriter::CloseStatus status) {
