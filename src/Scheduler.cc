@@ -549,6 +549,7 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       LOG(debug) << "  and running; waiting for state change";
       while (true) {
         if (unlimited_ticks_mode) {
+          LOG(debug) << "Using unlimited ticks mode";
           // Unlimited ticks mode means that there is only one non-blocked task.
           // We run it without a timeslice to avoid unnecessary switches to the
           // tracer. However, this does mean we need to be on the look out for

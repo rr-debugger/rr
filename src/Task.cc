@@ -177,15 +177,17 @@ void Task::proceed_to_exit(bool wait) {
   }
 }
 
-void Task::kill() {
-  if (already_reaped())
-    return;
+WaitStatus Task::kill() {
+  if (already_reaped()) {
+    return this->status();
+  }
   /* This call is racy. There is basically three situations:
   * 1. By the time the kernel gets arround to delivering this signal,
-  *    we were already in a PTRACE_EVENT_EXIT stop (e.g. due to an early
-  *    fatal signal), that we didn't observe yet (if we had, we would have
-  *    removed the task from the task map already). In this case, this
-  *    signal will advance from the PTRACE_EVENT_EXIT and put the child
+  *    we were already in a PTRACE_EVENT_EXIT stop (e.g. due to an earlier
+  *    fatal signal or group exit from a sibling task that the kernel
+  *    didn't report to us yet), that we didn't observe yet (if we had, we
+  *    would have removed the task from the task map already). In this case,
+  *    this signal will advance from the PTRACE_EVENT_EXIT and put the child
   *    into hidden-zombie state, which the waitpid below will reap.
   * 2. The task was in a coredump wait. This situation essentially works the
   *    same as 1, but the final exit status will be some other fatal signal.
@@ -196,13 +198,14 @@ void Task::kill() {
   LOG(debug) << "Sending SIGKILL to " << tid;
   int ret = syscall(SYS_tgkill, real_tgid(), tid, SIGKILL);
   DEBUG_ASSERT(ret == 0);
-  int raw_status = 0;
+  int raw_status = -1;
   int wait_ret = ::waitpid(tid, &raw_status, __WALL | WUNTRACED);
-  WaitStatus status(raw_status);
+  WaitStatus status = WaitStatus(raw_status);
   LOG(debug) << " -> " << status;
   bool is_exit_event = status.ptrace_event() == PTRACE_EVENT_EXIT;
   DEBUG_ASSERT(wait_ret == tid &&
-    (is_exit_event || status.fatal_sig()));
+    (is_exit_event || status.type() == WaitStatus::FATAL_SIGNAL ||
+      status.type() == WaitStatus::EXIT));
   did_kill();
   if (is_exit_event) {
     /* If this is the exit event, we can detach here and the task will
@@ -210,10 +213,15 @@ void Task::kill() {
       * the exit event, we already reaped it from the ptrace perspective,
       * which implicitly detached.
       */
+    if (ptrace_if_alive(PTRACE_GETEVENTMSG, nullptr, &raw_status)) {
+      status = WaitStatus(raw_status);
+    } else {
+      status = WaitStatus::for_fatal_sig(SIGKILL);
+    }
     int ret = fallible_ptrace(PTRACE_DETACH, nullptr, nullptr);
-    DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == -ESRCH));
+    DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == ESRCH));
     if (ret == -1) {
-      /* It's possible for the above ptrace to fail with -ESRCH. How?
+      /* It's possible for the above ptrace to fail with ESRCH. How?
       * It's the other side of the race described above. If an external
       * process issues an additional SIGKILL, we will advance from the
       * ptrace exit event and we might still be processing the exit, just
@@ -229,6 +237,7 @@ void Task::kill() {
   } else {
     was_reaped = true;
   }
+  return status;
 }
 
 Task::~Task() {

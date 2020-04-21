@@ -214,31 +214,13 @@ void Session::kill_all_tasks() {
      * Linux expects threads group leaders to survive until the last
      * member of the thread group has exited, so we accomodate that.
      */
-    for (auto &v : task_map) {
+    for (auto& v : task_map) {
       Task* t = v.second;
-      if (is_recording()) {
-        // If the task was detached and none of our tasks explicitly waited for
-        // it, we let the detached task just run freely (the zombie proxy we
-        // keep around kill get reaped when we destroy the RecordTask itself)
-        if (static_cast<RecordTask*>(t)->detached_proxy) {
-          continue;
-        }
-      }
-      if (t->already_exited()) {
-        /* We've already seeing the PTRACE_EXIT_EVENT for this task.
-         * We were just waiting for one of the other traced tasks, to
-         * reap it, but that ain't gonna happen, now. It'll get deleted
-         * below
-         */
+      bool is_group_leader = t->tid == t->real_tgid();
+      if (pass == 0 ? is_group_leader : !is_group_leader) {
         continue;
       }
-      bool is_group_leader = t->tid == t->real_tgid();
-      if (pass == 0 ? is_group_leader : !is_group_leader)
-          continue;
       t->kill();
-      if (is_recording() && !t->already_exited()) {
-        static_cast<RecordTask*>(t)->record_exit_event(SIGKILL);
-      }
     }
   }
   while (!task_map.empty()) {
