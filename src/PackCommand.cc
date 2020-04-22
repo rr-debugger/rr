@@ -13,6 +13,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <filesystem>
 
 #include "Command.h"
 #include "Flags.h"
@@ -29,6 +30,8 @@
 using namespace std;
 
 namespace rr {
+
+namespace fs = std::filesystem;
 
 /**
  * Pack the trace directory to eliminate duplicate files and to include all
@@ -86,7 +89,52 @@ static bool size_comparator(const TraceReader::MappedData& d1,
   return d1.data_offset_bytes > d2.data_offset_bytes;
 }
 
-static void* process_files_thread(void* p) {
+static void process_file(const char *name, size_t size, FileInfo &info)
+{
+  ScopedFd fd(name, O_RDONLY);
+  if (!fd.is_open()) {
+    fprintf(stderr, "Failed to open %s\n", name);
+    exit(1);
+  }
+  struct stat stat_buf;
+  if (fstat(fd, &stat_buf) < 0) {
+    fprintf(stderr, "Failed to stat %s\n", name);
+    exit(1);
+  }
+  if (uint64_t(stat_buf.st_size) != size) {
+    fprintf(stderr, "File size mismatch for %s\n", name);
+    exit(1);
+  }
+  info.size = stat_buf.st_size;
+
+  blake2b_state b2_state;
+  if (blake2b_init(&b2_state, sizeof(info.hash.bytes))) {
+    fprintf(stderr, "blake2b_init failed");
+    exit(1);
+  }
+  while (true) {
+    char buf[1024 * 1024];
+    ssize_t r = read(fd, buf, sizeof(buf));
+    if (r < 0) {
+      fprintf(stderr, "Failed reading from %s\n", name);
+      exit(1);
+    }
+    if (r == 0) {
+      break;
+    }
+    if (blake2b_update(&b2_state, buf, r)) {
+      fprintf(stderr, "blake2b_update failed");
+      exit(1);
+    }
+  }
+  if (blake2b_final(&b2_state, info.hash.bytes,
+                    sizeof(info.hash.bytes))) {
+    fprintf(stderr, "blake2b_final failed");
+    exit(1);
+  }
+}
+
+static void* process_map_files_thread(void* p) {
   // Don't use log.h macros here since they're not necessarily thread-safe
   auto data = static_cast<vector<pair<TraceReader::MappedData, FileInfo>>*>(p);
   for (auto& pair : *data) {
@@ -94,48 +142,16 @@ static void* process_files_thread(void* p) {
     const char* right_slash = strrchr(name, '/');
     pair.second.is_hardlink =
         right_slash && strncmp(right_slash + 1, "mmap_hardlink_", 14) == 0;
+    process_file(name, pair.first.file_size_bytes, pair.second);
+  }
+  return nullptr;
+}
 
-    ScopedFd fd(name, O_RDONLY);
-    if (!fd.is_open()) {
-      fprintf(stderr, "Failed to open %s\n", name);
-      exit(1);
-    }
-    struct stat stat_buf;
-    if (fstat(fd, &stat_buf) < 0) {
-      fprintf(stderr, "Failed to stat %s\n", name);
-      exit(1);
-    }
-    if (uint64_t(stat_buf.st_size) != pair.first.file_size_bytes) {
-      fprintf(stderr, "File size mismatch for %s\n", name);
-      exit(1);
-    }
-    pair.second.size = stat_buf.st_size;
-
-    blake2b_state b2_state;
-    if (blake2b_init(&b2_state, sizeof(pair.second.hash.bytes))) {
-      fprintf(stderr, "blake2b_init failed");
-      exit(1);
-    }
-    while (true) {
-      char buf[1024 * 1024];
-      ssize_t r = read(fd, buf, sizeof(buf));
-      if (r < 0) {
-        fprintf(stderr, "Failed reading from %s\n", name);
-        exit(1);
-      }
-      if (r == 0) {
-        break;
-      }
-      if (blake2b_update(&b2_state, buf, r)) {
-        fprintf(stderr, "blake2b_update failed");
-        exit(1);
-      }
-    }
-    if (blake2b_final(&b2_state, pair.second.hash.bytes,
-                      sizeof(pair.second.hash.bytes))) {
-      fprintf(stderr, "blake2b_final failed");
-      exit(1);
-    }
+static void* process_name_files_thread(void* p) {
+  // Don't use log.h macros here since they're not necessarily thread-safe
+  auto data = static_cast<vector<tuple<string, size_t, FileInfo>>*>(p);
+  for (auto& datum : *data) {
+    process_file(std::get<0>(datum).c_str(), std::get<1>(datum), std::get<2>(datum));
   }
   return nullptr;
 }
@@ -180,7 +196,7 @@ static map<string, FileInfo> gather_file_info(const string& trace_dir) {
   vector<pthread_t> threads;
   for (size_t i = 0; i < thread_files.size(); ++i) {
     pthread_t thread;
-    pthread_create(&thread, nullptr, process_files_thread, &thread_files[i]);
+    pthread_create(&thread, nullptr, process_map_files_thread, &thread_files[i]);
     threads.push_back(thread);
   }
   for (pthread_t t : threads) {
@@ -195,6 +211,50 @@ static map<string, FileInfo> gather_file_info(const string& trace_dir) {
   }
 
   return file_info;
+}
+
+static map<FileHash, string> index_dir(string dir) {
+  std::vector<std::pair<size_t, string>> all_files;
+  for(auto& p: fs::recursive_directory_iterator(dir)) {
+    if (!p.is_regular_file())
+      continue;
+    all_files.push_back(std::make_pair(p.file_size(), p.path()));
+  }
+
+  stable_sort(all_files.begin(), all_files.end(), [](std::pair<size_t, string> a, std::pair<size_t, string> b) -> bool {
+    return a.first > b.first;
+  });
+
+  int use_cpus = min(20, get_num_cpus());
+  use_cpus = min((int)all_files.size(), use_cpus);
+
+  // Assign files round-robin to threads
+  vector<vector<tuple<string, size_t, FileInfo>>> thread_files;
+  thread_files.resize(use_cpus);
+  for (size_t i = 0; i < all_files.size(); ++i) {
+    FileInfo info;
+    thread_files[i % use_cpus].push_back(
+      make_tuple(all_files[i].second, all_files[i].first, info));
+  }
+
+  vector<pthread_t> threads;
+  for (size_t i = 0; i < thread_files.size(); ++i) {
+    pthread_t thread;
+    pthread_create(&thread, nullptr, process_name_files_thread, &thread_files[i]);
+    threads.push_back(thread);
+  }
+  for (pthread_t t : threads) {
+    pthread_join(t, nullptr);
+  }
+
+  map<FileHash, string> hash_to_name;
+  fs::path base_path(dir);
+  for (auto& f : thread_files) {
+    for (auto& ff : f) {
+      hash_to_name[std::get<2>(ff).hash] = fs::path{std::get<0>(ff)}.lexically_relative(base_path).string();
+    }
+  }
+  return hash_to_name;
 }
 
 static bool is_in_trace_dir(const string& file_name, const string& trace_dir) {
@@ -277,7 +337,8 @@ static string copy_into_trace(const string& file_name, const string& trace_dir,
  * for all files with that hash.
  */
 static map<string, string> compute_canonical_mmapped_files(
-    const string& trace_dir) {
+    const string& trace_dir,
+    const vector<pair<string, map<FileHash, string>>> indexed_dirs) {
   map<string, FileInfo> file_info = gather_file_info(trace_dir);
 
   map<FileHash, string> hash_to_name;
@@ -295,6 +356,20 @@ static map<string, string> compute_canonical_mmapped_files(
 
   int name_index = 0;
   for (auto& p : hash_to_name) {
+    bool found = false;
+    // First see if this file is anywhere in our index. If so, prefer the index
+    for (auto& indexed_dir : indexed_dirs) {
+      auto it = indexed_dir.second.find(p.first);
+      if (it != indexed_dir.second.end()) {
+        LOG(debug) << "Using " << it->second << " from index at " << indexed_dir.first << " for " << p.second;
+        p.second = indexed_dir.first + "/" + it->second;
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      continue;
+    }
     // Copy hardlinked files into the trace to avoid the possibility of someone
     // overwriting the original file.
     auto& info = file_info[p.second];
@@ -306,11 +381,11 @@ static map<string, string> compute_canonical_mmapped_files(
   map<string, string> file_map;
   for (auto& p : file_info) {
     string name = hash_to_name[p.second.hash];
-    if (!is_in_trace_dir(name, trace_dir)) {
+    if (!is_in_trace_dir(name, trace_dir) && name[0] == '/') {
       FATAL() << "Internal error; file is not in trace dir";
     }
     // Replace absolute paths with trace-relative file names
-    file_map[p.first] = string(strrchr(name.c_str(), '/') + 1);
+    file_map[p.first] = name[0] == '/' ? string(strrchr(name.c_str(), '/') + 1) : name;
   }
 
   return file_map;
@@ -399,46 +474,113 @@ static void delete_unnecessary_files(const map<string, string>& file_map,
   }
 }
 
-static int pack(const string& trace_dir) {
-  string dir;
-  {
-    // validate trace and produce default trace directory if trace_dir is empty
-    TraceReader reader(trace_dir);
-    dir = reader.dir();
+struct PackFlags {
+  std::vector<string> index_dirs;
+};
+
+static int pack(const vector<string>& trace_dirs, const PackFlags &flags) {
+  vector<pair<string, map<FileHash, string>>> indexed_dirs;
+  for (auto dir : flags.index_dirs) {
+    fs::path p(dir);
+    indexed_dirs.push_back(std::make_pair(p.filename(), index_dir(dir)));
   }
+
 
   char buf[PATH_MAX];
-  char* ret = realpath(dir.c_str(), buf);
-  if (!ret) {
-    FATAL() << "realpath failed on " << dir;
-  }
-  string abspath(buf);
-  map<string, string> canonical_mmapped_files =
-      compute_canonical_mmapped_files(abspath);
-  rewrite_mmaps(canonical_mmapped_files, abspath);
-  delete_unnecessary_files(canonical_mmapped_files, abspath);
+  for (const string &trace_dir : trace_dirs) {
+    string dir;
+    {
+      // validate trace and produce default trace directory if trace_dir is empty
+      TraceReader reader(trace_dir);
+      dir = reader.dir();
+    }
 
-  if (!probably_not_interactive(STDOUT_FILENO)) {
-    printf("rr: Packed trace directory `%s'.\n", dir.c_str());
+
+    for (auto index_dir : flags.index_dirs) {
+      // Link the index dirs into the trace
+      std::string local_name = fs::path{index_dir}.filename();
+      int err = symlink(index_dir.c_str(), local_name.c_str());
+      if (err) {
+        if (errno != EEXIST) {
+          FATAL() << "Failed to link index directory";
+        }
+        if (realpath(local_name.c_str(), buf) == NULL) {
+          FATAL() << "Can't resolve realpath for " << local_name;
+        }
+        std::string existing_path = buf;
+        if (realpath(index_dir.c_str(), buf) == NULL) {
+          FATAL() << "Can't resolve realpath for " << index_dir;
+        }
+        std::string index_dir_realpath = buf;
+        if (existing_path != index_dir_realpath) {
+          FATAL() << "Symlink for index directory " << index_dir <<
+            " already exists, but points to " << existing_path;
+        }
+      }
+    }
+
+    char* ret = realpath(dir.c_str(), buf);
+    if (!ret) {
+      FATAL() << "realpath failed on " << dir;
+    }
+    string abspath(buf);
+    map<string, string> canonical_mmapped_files =
+        compute_canonical_mmapped_files(abspath, indexed_dirs);
+    rewrite_mmaps(canonical_mmapped_files, abspath);
+    delete_unnecessary_files(canonical_mmapped_files, abspath);
+
+    if (!probably_not_interactive(STDOUT_FILENO)) {
+      printf("rr: Packed trace directory `%s'.\n", dir.c_str());
+    }
   }
 
   return 0;
 }
 
+static bool parse_pack_arg(vector<string>& args, PackFlags& flags) {
+  static const OptionSpec options[] = {
+    { 0, "index-dir", HAS_PARAMETER },
+  };
+  ParsedOption opt;
+  auto args_copy = args;
+  if (!Command::parse_option(args_copy, options, &opt)) {
+    return false;
+  }
+
+  switch (opt.short_name) {
+    case 0:
+      flags.index_dirs.push_back(opt.value);
+      break;
+    default:
+      DEBUG_ASSERT(0 && "Unknown pack option");
+  }
+
+  args = args_copy;
+  return true;
+}
+
 int PackCommand::run(vector<string>& args) {
-  bool found_dir = false;
-  string trace_dir;
+  vector<string> trace_dirs;
+  PackFlags flags;
+
+  while (parse_pack_arg(args, flags)) {
+  }
 
   while (!args.empty()) {
-    if (!found_dir && parse_optional_trace_dir(args, &trace_dir)) {
-      found_dir = true;
+    string trace_dir;
+    if (parse_optional_trace_dir(args, &trace_dir)) {
+      trace_dirs.push_back(trace_dir);
       continue;
     }
     print_help(stderr);
     return 1;
   }
 
-  return pack(trace_dir);
+  if (trace_dirs.empty()) {
+    trace_dirs.push_back(string{});
+  }
+
+  return pack(trace_dirs, flags);
 }
 
 } // namespace rr

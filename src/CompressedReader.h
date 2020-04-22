@@ -63,7 +63,7 @@ public:
   }
 
   CompressedReader& operator>>(std::string& value) {
-    value.empty();
+    value.clear();
     while (true) {
       char ch;
       read(&ch, 1);
