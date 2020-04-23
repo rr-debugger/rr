@@ -683,7 +683,7 @@ public:
                        static_cast<const void*>(val), ok);
   }
 
-  size_t write_ranges(const std::vector<FileMonitor::Range>& ranges,
+  uint64_t write_ranges(const std::vector<FileMonitor::Range>& ranges,
                         void* data, size_t size);
 
   /**

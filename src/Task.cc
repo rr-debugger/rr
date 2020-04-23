@@ -2513,8 +2513,8 @@ void Task::write_bytes_helper(remote_ptr<void> addr, ssize_t buf_size,
   }
 }
 
-size_t Task::write_ranges(const vector<FileMonitor::Range>& ranges,
-                          void* data, size_t size) {
+uint64_t Task::write_ranges(const vector<FileMonitor::Range>& ranges,
+                            void* data, size_t size) {
   uint8_t* p = static_cast<uint8_t*>(data);
   size_t s = size;
   size_t result = 0;
