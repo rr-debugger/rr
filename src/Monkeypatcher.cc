@@ -392,6 +392,39 @@ static bool safe_for_syscall_patching(remote_code_ptr start,
   return true;
 }
 
+bool Monkeypatcher::try_patch_vsyscall_caller(RecordTask* t, remote_code_ptr ret_addr)
+{
+  uint8_t bytes[X64VSyscallEntry::size];
+  remote_ptr<uint8_t> patch_start = ret_addr.to_data_ptr<uint8_t>() - sizeof(bytes);
+  size_t bytes_count = t->read_bytes_fallible(patch_start, sizeof(bytes), bytes);
+  if (bytes_count < sizeof(bytes)) {
+    return false;
+  }
+  uint32_t target_addr = 0;
+  if (!X64VSyscallEntry::match(bytes, &target_addr)) {
+    return false;
+  }
+  int64_t target_addr_sext = (int32_t)target_addr;
+  int syscallno = 0;
+  switch (target_addr_sext) {
+    case 0xffffffffff600000:
+      syscallno = X64Arch::gettimeofday;
+      break;
+    case 0xffffffffff600400:
+      syscallno = X64Arch::time;
+      break;
+    case 0xffffffffff600800:
+      syscallno = X64Arch::getcpu;
+      break;
+    default:
+      return false;
+  }
+  X64VSyscallReplacement::substitute(bytes, syscallno);
+  write_and_record_bytes(t, patch_start, bytes);
+  LOG(debug) << "monkeypatched vsyscall caller at " << patch_start;
+  return true;
+}
+
 // Syscalls can be patched either on entry or exit. For most syscall
 // instruction code patterns we can steal bytes after the syscall instruction
 // and thus we patch on entry, but some patterns require using bytes from

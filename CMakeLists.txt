@@ -1061,6 +1061,7 @@ set(BASIC_TESTS
   vfork_shared
   video_capture
   vm_readv_writev
+  vsyscall
   wait
   wait_sigstop
   write_race

@@ -177,6 +177,16 @@ templates = {
     ),
     'X86EndBr': AssemblyTemplate(
         RawBytes(0xf3, 0x0f, 0x1e, 0xfb)
+    ),
+    'X64VSyscallEntry': AssemblyTemplate(
+        RawBytes(0x48, 0xc7, 0xc0), # movq $[addr], %rax
+        Field('addr', 4),
+        RawBytes(0xff, 0xd0) # callq *%rax
+    ),
+    'X64VSyscallReplacement': AssemblyTemplate(
+        RawBytes(0x48, 0xc7, 0xc0), # movq $[syscallno], %rax
+        Field('syscallno', 4),
+        RawBytes(0x0f, 0x05) # syscall
     )
 }
 
@@ -190,7 +200,7 @@ def generate_match_method(byte_array, template):
     field_names = [f.name for f in fields]
     args = ', ' + ', '.join("%s* %s" % (t, n) for t, n in zip(field_types, field_names)) \
            if fields else ''
-    
+
     s.write('  static bool match(const uint8_t* buffer %s) {\n' % (args,))
     offset = 0
     for chunk in template.chunks:
@@ -213,7 +223,7 @@ def generate_substitute_method(byte_array, template):
     field_names = [f.name for f in fields]
     args = ', ' + ', '.join("%s %s" % (t, n) for t, n in zip(field_types, field_names)) \
            if fields else ''
-    
+
     s.write('  static void substitute(uint8_t* buffer %s) {\n' % (args,))
     offset = 0
     for chunk in template.chunks:

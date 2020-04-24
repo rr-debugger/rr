@@ -428,7 +428,9 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
       event.setInstructionTrap(Void());
       break;
     case EV_PATCH_SYSCALL:
-      if (ev.PatchSyscall().patch_after_syscall) {
+      if (ev.PatchSyscall().patch_vsyscall) {
+        event.setPatchVsyscall(Void());
+      } else if (ev.PatchSyscall().patch_after_syscall) {
         event.setPatchAfterSyscall(Void());
       } else {
         event.setPatchSyscall(Void());
@@ -561,6 +563,10 @@ TraceFrame TraceReader::read_frame() {
       break;
     case trace::Frame::Event::PATCH_SYSCALL:
       ret.ev = Event::patch_syscall();
+      break;
+    case trace::Frame::Event::PATCH_VSYSCALL:
+      ret.ev = Event::patch_syscall();
+      ret.ev.PatchSyscall().patch_vsyscall = true;
       break;
     case trace::Frame::Event::PATCH_AFTER_SYSCALL:
       ret.ev = Event::patch_syscall();
