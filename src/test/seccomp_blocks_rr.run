@@ -1,0 +1,22 @@
+source `dirname $0`/util.sh
+RR_EXE="$TESTNAME $(which $RR_EXE)"
+RECORD_ARGS="--nested=ignore"
+save_exe "$TESTNAME"
+record $TESTNAME --inner
+
+function expect_record_fail {
+    if [[ $(cat record.err) == "" ]]; then
+        echo "Test '$TESTNAME' FAILED: record should have failed, but it succeeded."
+        exit 1
+    fi
+    echo "  (record failed as expected)"
+}
+
+echo We have $LIB_ARG
+if [[ "" == "$LIB_ARG" || "-b" == "$LIB_ARG" ]]; then
+    expect_record_fail
+    exit 0
+fi
+
+replay
+check EXIT-SUCCESS

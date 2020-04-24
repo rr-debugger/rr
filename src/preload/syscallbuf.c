@@ -314,7 +314,7 @@ static void logmsg(const char* msg) {
 
 #define fatal(msg)                                                             \
   do {                                                                         \
-    logmsg(__FILE__ ":" STR(__LINE__) ": Fatal error: " #msg "\n");            \
+    logmsg(__FILE__ ":" STR(__LINE__) ": Fatal error: " msg "\n");            \
     privileged_traced_raise(SIGABRT);                                          \
   } while (0)
 
@@ -683,7 +683,14 @@ static void __attribute__((constructor)) init_process(void) {
 
   buffer_enabled = !!getenv(SYSCALLBUF_ENABLED_ENV_VAR);
 
+  if (!buffer_enabled) {
+    // Don't risk executing the syscall before. If there is an external seccomp
+    // filter that doesn't like unknown syscalls, we risk breaking the recording.
+    return;
+  }
+
   params.syscallbuf_enabled = buffer_enabled;
+
 #ifdef __i386__
   params.syscallhook_vsyscall_entry = (void*)__morestack;
   params.get_pc_thunks_start = &_get_pc_thunks_start;
@@ -707,6 +714,13 @@ static void __attribute__((constructor)) init_process(void) {
   params.breakpoint_mode_sentinel = -1;
 
   privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
+  int err = privileged_traced_syscall1(SYS_rrcall_init_preload, &params);
+  if (err != 0) {
+    fatal("Failed to communicated with rr tracer.\n"
+          "Perhaps a restrictive seccomp filter is in effect (e.g. docker?)?\n"
+          "Adjust the seccomp filter to allow syscalls above 1000, disable it,\n"
+          "or try using `rr record -n` (slow).");
+  }
 
   real_pthread_mutex_lock = dlsym(RTLD_NEXT, "pthread_mutex_lock");
   real_pthread_mutex_trylock = dlsym(RTLD_NEXT, "pthread_mutex_trylock");
