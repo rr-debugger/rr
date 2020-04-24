@@ -62,6 +62,9 @@ enum ReplayTraceStepType {
   /* Replay until we exit the next syscall, then patch it. */
   TSTEP_PATCH_AFTER_SYSCALL,
 
+  /* Replay until we hit the ip recorded in the event, then patch the vsyscall caller. */
+  TSTEP_PATCH_VSYSCALL,
+
   /* Exit the task */
   TSTEP_EXIT_TASK,
 
@@ -344,6 +347,7 @@ private:
   Completion patch_next_syscall(ReplayTask* t,
                                 const StepConstraints& constraints,
                                 bool before_syscall);
+  Completion patch_vsyscall(ReplayTask* t, const StepConstraints& constraints);
   void check_approaching_ticks_target(ReplayTask* t,
                                       const StepConstraints& constraints,
                                       BreakStatus& break_status);

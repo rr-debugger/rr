@@ -172,7 +172,17 @@ ssize_t movrm_instruction_length(SupportedArch arch) {
     case x86_64:
       return 3;
     default:
-      DEBUG_ASSERT(0 && "Need to define syscall instruction length");
+      DEBUG_ASSERT(0 && "Need to define movrm instruction length");
+      return 0;
+  }
+}
+
+ssize_t vsyscall_entry_length(SupportedArch arch) {
+  switch (arch) {
+    case x86_64:
+      return 9;
+    default:
+      DEBUG_ASSERT(0 && "Vsyscall is only used on x86_64");
       return 0;
   }
 }

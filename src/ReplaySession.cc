@@ -1257,6 +1257,40 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
   return COMPLETE;
 }
 
+Completion ReplaySession::patch_vsyscall(ReplayTask* t, const StepConstraints& constraints)
+{
+  TicksRequest ticks_request;
+  if (!compute_ticks_request(t, constraints, &ticks_request)) {
+    return INCOMPLETE;
+  }
+
+  remote_code_ptr vsyscall_entry = current_trace_frame().regs().ip();
+  bool added = t->vm()->add_breakpoint(vsyscall_entry, BKPT_INTERNAL);
+  ASSERT(t, added);
+  auto complete = continue_or_step(t, constraints, ticks_request, RESUME_CONT);
+  t->vm()->remove_breakpoint(vsyscall_entry, BKPT_INTERNAL);
+
+  if (complete == INCOMPLETE) {
+    return complete;
+  }
+
+  if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
+    // This would normally be triggered by constraints.ticks_target but it's
+    // also possible to get stray signals here.
+    return INCOMPLETE;
+  }
+
+  ASSERT(t, t->stop_sig() == SIGTRAP)
+      << "Replay got unexpected signal (or none) " << t->stop_sig();
+  ASSERT(t, t->regs().ip().decrement_by_bkpt_insn_length(t->arch()) == vsyscall_entry);
+
+  t->apply_all_data_records_from_trace();
+  Registers r = t->regs();
+  r.set_ip(vsyscall_entry);
+  t->set_regs(r);
+  return COMPLETE;
+}
+
 Completion ReplaySession::patch_next_syscall(
     ReplayTask* t, const StepConstraints& constraints, bool before_syscall) {
   if (before_syscall) {
@@ -1369,6 +1403,8 @@ Completion ReplaySession::try_one_trace_step(
       return emulate_signal_delivery(t, current_step.target.signo);
     case TSTEP_FLUSH_SYSCALLBUF:
       return flush_syscallbuf(t, constraints);
+    case TSTEP_PATCH_VSYSCALL:
+      return patch_vsyscall(t, constraints);
     case TSTEP_PATCH_SYSCALL:
       return patch_next_syscall(t, constraints, true);
     case TSTEP_PATCH_AFTER_SYSCALL:
@@ -1509,7 +1545,9 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
       current_step.action = TSTEP_RETIRE;
       break;
     case EV_PATCH_SYSCALL:
-      if (ev.PatchSyscall().patch_after_syscall) {
+      if (ev.PatchSyscall().patch_vsyscall) {
+        current_step.action = TSTEP_PATCH_VSYSCALL;
+      } else if (ev.PatchSyscall().patch_after_syscall) {
         current_step.action = TSTEP_PATCH_AFTER_SYSCALL;
       } else {
         current_step.action = TSTEP_PATCH_SYSCALL;

@@ -230,11 +230,65 @@ static void note_entering_syscall(RecordTask* t) {
   }
 }
 
+static bool is_in_vsyscall(remote_code_ptr ip)
+{
+  // This is hardcoded by the Linux ABI
+  remote_code_ptr vsyscall_start = 0xffffffffff600000;
+  remote_code_ptr vsyscall_end = 0xffffffffff601000;
+  return vsyscall_start <= ip && ip < vsyscall_end;
+}
+
 void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
                                                   StepState* step_state,
                                                   RecordResult* result,
                                                   bool* did_enter_syscall) {
   *did_enter_syscall = false;
+
+  // Special case: If the tracee issues a vsyscall, we will get a seccomp trap,
+  // but no syscall traps whatsover. In particular, we wouldn't see it during
+  // replay either. We try to moneypatch the caller on the assumption that known
+  // callers of this (deprecated) interface all follow a common pattern. If we
+  // can't patch the caller, this is a fatal error, since the recording will
+  // otherwise be broken.
+  if (is_in_vsyscall(t->regs().ip())) {
+    // The kernel assumes the return address is on the stack - we do the same
+    remote_ptr<remote_code_ptr> ret_addr_addr = t->regs().sp().as_int();
+    remote_code_ptr ret_addr = t->read_mem(ret_addr_addr);
+
+    // Skip this syscall. We will attempt to patch it to the vdso entry and
+    // let the tracee retry there.
+    Registers regs = t->regs();
+    regs.set_original_syscallno(-1);
+    // We can't modify the ip here, the kernel will kill the tracee with
+    // SIGSYS. Instead, we set a breakpoint at the return instruction.
+    t->set_regs(regs);
+    t->vm()->add_breakpoint(ret_addr, BKPT_INTERNAL);
+    t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
+    t->vm()->remove_breakpoint(ret_addr, BKPT_INTERNAL);
+
+    ASSERT(t, t->regs().ip() == ret_addr.increment_by_bkpt_insn_length(t->arch()));
+
+    // Now that we're in a sane state, ask the Moneypatcher to try and patch
+    // that.
+    if (!t->vm()->monkeypatcher().try_patch_vsyscall_caller(t, ret_addr)) {
+      FATAL() << "The tracee issues a vsyscall, but we failed to moneypatch the\n"
+              << "caller. Recording will not succeed. Exiting.";
+    }
+
+    // Reset to the start of the region and continue
+    regs = t->regs();
+    regs.set_ip(ret_addr.decrement_by_vsyscall_entry_length(t->arch()));
+    t->set_regs(regs);
+
+    // We patched this syscall, record that
+    auto ev = Event::patch_syscall();
+    ev.PatchSyscall().patch_vsyscall = true;
+    t->record_event(ev);
+
+    step_state->continue_type = RecordSession::CONTINUE;
+    return;
+  }
+
   int syscallno = t->regs().original_syscallno();
   if (syscallno < 0) {
     // negative syscall numbers after a SECCOMP event

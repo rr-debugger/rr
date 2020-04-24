@@ -112,6 +112,8 @@ struct PatchSyscallEvent {
   // come before). We assume the trace has put us in the correct place
   // and don't try to execute any code to reach this event.
   bool patch_after_syscall;
+  // It true, this patch is for the caller of a vsyscall entry point
+  bool patch_vsyscall;
 };
 
 struct SyscallbufFlushEvent {
@@ -358,6 +360,7 @@ struct Event {
   static Event patch_syscall() {
     auto ev = Event(EV_PATCH_SYSCALL);
     ev.PatchSyscall().patch_after_syscall = false;
+    ev.PatchSyscall().patch_vsyscall = false;
     return ev;
   }
   static Event sched() { return Event(EV_SCHED); }
