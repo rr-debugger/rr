@@ -404,7 +404,7 @@ bool Monkeypatcher::try_patch_vsyscall_caller(RecordTask* t, remote_code_ptr ret
   if (!X64VSyscallEntry::match(bytes, &target_addr)) {
     return false;
   }
-  int64_t target_addr_sext = (int32_t)target_addr;
+  uint64_t target_addr_sext = (uint64_t)(int32_t)target_addr;
   int syscallno = 0;
   switch (target_addr_sext) {
     case 0xffffffffff600000:
