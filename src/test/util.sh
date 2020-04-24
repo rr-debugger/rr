@@ -178,6 +178,8 @@ if [[ ! -d $TESTDIR ]]; then
     fatal FAILED: TESTDIR "($TESTDIR)" not found.
 fi
 
+RR_EXE=rr
+
 # Our test programs intentionally crash a lot. Don't generate coredumps for them.
 ulimit -c 0
 
@@ -222,7 +224,7 @@ function skip_if_syscall_buf {
 
 function just_record { exe="$1"; exeargs=$2;
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT record.err \
-        rr $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS "$exe" $exeargs 1> record.out 2> record.err
+        $RR_EXE $GLOBAL_OPTIONS record $LIB_ARG $RECORD_ARGS "$exe" $exeargs 1> record.out 2> record.err
 }
 
 function save_exe { exe=$1;
@@ -255,12 +257,12 @@ function record_async_signal { sig=$1; delay_secs=$2; exe=$3; exeargs=$4;
 
 function replay { replayflags=$1
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT replay.err \
-        rr $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
+        $RR_EXE $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
 }
 
 function do_ps { psflags=$1
     _RR_TRACE_DIR="$workdir" \
-        rr $GLOBAL_OPTIONS ps $psflags
+        $RR_EXE $GLOBAL_OPTIONS ps $psflags
 }
 
 #  debug <expect-script-name> [replay-args]
@@ -269,7 +271,7 @@ function do_ps { psflags=$1
 function debug { expectscript=$1; replayargs=$2
     _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT debug.err \
         python3 $TESTDIR/$expectscript.py \
-        rr $GLOBAL_OPTIONS replay -o-n -x $TESTDIR/test_setup.gdb $replayargs
+        $RR_EXE $GLOBAL_OPTIONS replay -o-n -x $TESTDIR/test_setup.gdb $replayargs
     if [[ $? == 0 ]]; then
         passed
     else
@@ -408,7 +410,7 @@ function debug_test {
 
 # Return the number of events in the most recent local recording.
 function count_events {
-    local events=$(rr $GLOBAL_OPTIONS dump -r latest-trace | wc -l)
+    local events=$($RR_EXE $GLOBAL_OPTIONS dump -r latest-trace | wc -l)
     # The |simple| test is just about the simplest possible C program,
     # and has around 180 events (when recorded on a particular
     # developer's machine).  If we count a number of events
