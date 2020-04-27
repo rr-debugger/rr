@@ -29,6 +29,8 @@
 #include "remote_code_ptr.h"
 #include "util.h"
 
+struct prctl_mm_map;
+
 namespace rr {
 
 class AutoRemoteSyscalls;
@@ -718,6 +720,8 @@ public:
 
   const std::vector<uint8_t>& saved_auxv() { return saved_auxv_; }
   void save_auxv(Task* t);
+
+  void read_mm_map(Task* t, struct prctl_mm_map* map);
 
   /**
    * Reads the /proc/<pid>/maps entry for a specific address. Does no caching.
