@@ -209,9 +209,14 @@ public:
   Ticks tick_count() { return ticks; }
 
   /**
-   * Return the path of this fd as /proc/<pid>/<fd>
+   * Return the path of this fd as /proc/<pid>/fd/<fd>
    */
   std::string proc_fd_path(int fd);
+
+  /**
+   * Return the path of /proc/<pid>/stat
+   */
+  std::string proc_stat_path();
 
   /**
    * Stat |fd| in the context of this task's fd table.

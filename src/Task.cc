@@ -11,6 +11,7 @@
 #include <linux/ipc.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
+#include <linux/prctl.h>
 #include <linux/unistd.h>
 #include <math.h>
 #include <stdarg.h>
@@ -292,6 +293,12 @@ void Task::dump(FILE* out) const {
 std::string Task::proc_fd_path(int fd) {
   char path[PATH_MAX];
   snprintf(path, sizeof(path) - 1, "/proc/%d/fd/%d", tid, fd);
+  return path;
+}
+
+std::string Task::proc_stat_path() {
+  char path[PATH_MAX];
+  snprintf(path, sizeof(path) - 1, "/proc/%d/stat", tid);
   return path;
 }
 
@@ -3000,6 +3007,14 @@ static void create_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapp
   }
 }
 
+static void apply_mm_map(AutoRemoteSyscalls& remote, const struct prctl_mm_map& map)
+{
+  AutoRestoreMem remote_mm_map(remote, (const uint8_t*)&map, sizeof(map));
+  remote.infallible_syscall(syscall_number_for_prctl(remote.task()->arch()), PR_SET_MM,
+                            PR_SET_MM_MAP, remote_mm_map.get().as_int(),
+                            sizeof(map));
+}
+
 void Task::dup_from(Task *other) {
   std::vector<KernelMapping> mappings;
   KernelMapping stack_mapping;
@@ -3071,6 +3086,9 @@ void Task::dup_from(Task *other) {
       remote_this.syscall(syscall_number_for_fchdir(this->arch()), child_fd);
       remote_this.syscall(syscall_number_for_close(this->arch()), child_fd);
     }
+    struct prctl_mm_map map;
+    other->vm()->read_mm_map(other, &map);
+    apply_mm_map(remote_this, map);
   }
   copy_state(other->capture_state());
 }

@@ -4,6 +4,7 @@
 
 #include <limits.h>
 #include <linux/kdev_t.h>
+#include <linux/prctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -419,6 +420,79 @@ vector<AddressSpace::SyscallType> AddressSpace::rr_page_syscalls() {
 }
 
 void AddressSpace::save_auxv(Task* t) { saved_auxv_ = read_auxv(t); }
+
+void AddressSpace::read_mm_map(Task* t, struct prctl_mm_map* map) {
+  char buf[PATH_MAX+1024];
+  {
+    string proc_stat = t->proc_stat_path();
+    ScopedFd fd(proc_stat.c_str(), O_RDONLY);
+    memset(buf, 0, sizeof(buf));
+    int err = read_to_end(fd, 0, buf, sizeof(buf)-1);
+    if (err < 0) {
+      FATAL() << "Failed to read /proc/<pid>/stat";
+    }
+  }
+  // The last close-paren indicates the end of the comm and the
+  // start of the fixed-width area
+  char* fixed = strrchr(buf, ')');
+  // We don't change /proc/pid/exe, since we're unlikely to have CAP_SYS_ADMIN
+  map->exe_fd = -1;
+  // auxv is restored separately
+  map->auxv = NULL;
+  map->auxv_size = 0;
+  // All of these fields of /proc/pid/stat, we don't use (currently)
+  char state;
+  pid_t ppid;
+  pid_t pgrp;
+  int session;
+  int tty_nr;
+  int tpgid;
+  unsigned int flags;
+  unsigned long minflt, cminflt, majflt, cmajflt, utime, stime;
+  long cutime, cstime, priority, nice, num_threads, itrealvalue;
+  unsigned long long starttime;
+  unsigned long vsize;
+  long rss;
+  unsigned long rsslim, startstack, kstkesp, kstskip, signal;
+  unsigned long blocked, sigignore, sigcatch, wchan, nswap, cnswap;
+  int exit_signal, processor;
+  unsigned int rt_priority, policy;
+  unsigned long long delayacct_blkio_ticks;
+  unsigned long guest_time;
+  long cguest_time;
+  int exit_code;
+  // See the proc(5) man page for the correct scan codes for these
+  size_t n = sscanf(fixed + 1,
+    // state ppid pgrp session tty_nr tpgid
+    " %c %d %d %d %d %d"
+    // flags minflt cminflt majflt cmajflt utime stime cutime cstime
+    " %u %lu %lu %lu %lu %lu %lu %ld %ld"
+    // priority nice num_threads itrealvalue starttime vsize rss
+    " %ld %ld %ld %ld %llu %lu %ld"
+    // rsslim startcode endcode startstack kstkesp kstskip signal
+    " %lu %lu %lu %lu %lu %lu %lu"
+    // blocked sigignore sigcatch wchan nswap cnswap exit_signal
+    " %lu %lu %lu %lu %lu %lu %d"
+    // processor rt_priority policy delayacct_blkio_ticks guest_time cguest_time
+    " %d %u %u %llu %lu %ld "
+    // start_data end_data start_brk arg_start arg_end env_start env_end exit_code
+    " %lu %lu %lu %lu %lu %lu %lu %d",
+    &state, &ppid, &pgrp, &session, &tty_nr, &tpgid,
+    &flags, &minflt, &cminflt, &majflt, &cmajflt, &utime, &stime, &cutime, &cstime,
+    &priority, &nice, &num_threads, &itrealvalue, &starttime, &vsize, &rss,
+    &rsslim, (unsigned long *)&map->start_code, (unsigned long *)&map->end_code,
+    (unsigned long *)&map->start_stack, &kstkesp, &kstskip, &signal,
+    &blocked, &sigignore, &sigcatch, &wchan, &nswap, &cnswap, &exit_signal,
+    &processor, &rt_priority, &policy, &delayacct_blkio_ticks, &guest_time,
+    &cguest_time, (unsigned long *)&map->start_data, (unsigned long *)&map->end_data,
+    (unsigned long *)&map->start_brk, (unsigned long *)&map->arg_start,
+    (unsigned long *)&map->arg_end, (unsigned long *)&map->env_start,
+    (unsigned long *)&map->env_end, &exit_code);
+  ASSERT(t, n == 50);
+  // Fill in brk end
+  ASSERT(t, map->start_brk == this->brk_start.as_int());
+  map->brk = this->brk_end.as_int();
+}
 
 void AddressSpace::post_exec_syscall(Task* t) {
   // First locate a syscall instruction we can use for remote syscalls.
