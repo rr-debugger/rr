@@ -453,7 +453,7 @@ void AddressSpace::read_mm_map(Task* t, struct prctl_mm_map* map) {
   unsigned long long starttime;
   unsigned long vsize;
   long rss;
-  unsigned long rsslim, startstack, kstkesp, kstskip, signal;
+  unsigned long rsslim, kstkesp, kstskip, signal;
   unsigned long blocked, sigignore, sigcatch, wchan, nswap, cnswap;
   int exit_signal, processor;
   unsigned int rt_priority, policy;
