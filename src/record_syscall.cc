@@ -786,21 +786,46 @@ void TaskSyscallState::process_syscall_results() {
     }
     t->set_regs(r);
   } else {
-    // Step 1: restore all mutated memory
+    // Step 1: Determine the size of all output memory areas
+    for (size_t i = 0; i < param_list.size(); ++i) {
+      eval_param_size(i, actual_sizes);
+    }
+    // Step 2: restore all mutated memory
     for (auto& param : param_list) {
       if (param.mutator) {
         size_t size = param.num_bytes.incoming_size;
         ASSERT(t, saved_data.size() >= size);
+        // If this intersects an output region, we need to be careful not to
+        // clobber what the kernel gave us.
+        for (size_t i = 0; i < param_list.size(); ++i) {
+          auto& param2 = param_list[i];
+          size_t param2_size = actual_sizes[i];
+          if (param2.mode == IN) {
+            continue;
+          }
+          MemoryRange intersection = MemoryRange(param2.dest, param2_size).
+            intersect(MemoryRange(param.dest, size));
+          if (intersection.size() != 0) {
+            // Just update the saved data we already have. We could try
+            // splitting the range and only writing what needs to still change,
+            // but we'd probably just end up doing the exact same number of
+            // syscalls and this is simpler.
+            t->read_bytes_helper(intersection.start(), intersection.size(),
+              saved_data.data() + (intersection.start() - param.dest));
+          }
+        }
         t->write_bytes_helper(param.dest, size, saved_data.data());
         saved_data.erase(saved_data.begin(), saved_data.begin() + size);
       }
     }
     ASSERT(t, saved_data.empty());
-    // Step 2: record all output memory areas
+    // Step 3: record all output memory areas
     for (size_t i = 0; i < param_list.size(); ++i) {
       auto& param = param_list[i];
-      size_t size = eval_param_size(i, actual_sizes);
-      t->record_remote(param.dest, size);
+      size_t size = actual_sizes[i];
+      if (param.mode != IN) {
+        t->record_remote(param.dest, size);
+      }
     }
   }
 

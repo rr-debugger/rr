@@ -997,6 +997,7 @@ set(BASIC_TESTS
   sigprocmask
   sigprocmask_ensure_delivery
   sigprocmask_exec
+  sigprocmask_evil
   sigprocmask_in_syscallbuf_sighandler
   sigprocmask_rr_sigs
   sigprocmask_syscallbuf
