@@ -2,6 +2,7 @@
 
 #include "GdbServer.h"
 
+#include <elf.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,7 @@
 #include <vector>
 
 #include "BreakpointCondition.h"
+#include "ElfReader.h"
 #include "GdbCommandHandler.h"
 #include "GdbExpression.h"
 #include "ReplaySession.h"
@@ -1806,6 +1808,58 @@ static bool is_likely_interp(string fsname) {
   return fsname == "/lib64/ld-linux-x86-64.so.2" || fsname == "/lib/ld-linux.so.2";
 }
 
+static remote_ptr<void> base_addr_from_rendezvous(Task* t, string fname)
+{
+  std::vector<uint8_t> auxv = t->vm()->saved_auxv();
+  if (auxv.size() == 0 || (auxv.size() % sizeof(uint64_t) != 0)) {
+    // Corrupted or missing auxv
+    return nullptr;
+  }
+  remote_ptr<void> interpreter_base = nullptr;
+  bool found = false;
+  for (size_t i = 0; i < (auxv.size() / sizeof(uint64_t)) - 1; i += 2) {
+    uint64_t* entry = ((uint64_t*)auxv.data())+i;
+    uint64_t kind = entry[0];
+    uint64_t value = entry[1];
+    if (kind == AT_BASE) {
+      interpreter_base = value;
+      found = true;
+      break;
+    }
+  }
+  if (!found || !t->vm()->has_mapping(interpreter_base)) {
+    return nullptr;
+  }
+  string ld_path = t->vm()->mapping_of(interpreter_base).map.fsname();
+  ScopedFd ld(ld_path.c_str(), O_RDONLY);
+  ElfFileReader reader(ld);
+  auto syms = reader.read_symbols(".dynsym", ".dynstr");
+  static const char r_debug[] = "_r_debug";
+  found = false;
+  uintptr_t r_debug_offset = 0;
+  for (size_t i = 0; i < syms.size(); ++i) {
+    if (!syms.is_name(i, r_debug)) {
+      continue;
+    }
+    r_debug_offset = syms.addr(i);
+    found = true;
+  }
+  if (!found) {
+    return nullptr;
+  }
+  bool ok = true;
+  remote_ptr<NativeArch::r_debug> r_debug_remote = interpreter_base.as_int()+r_debug_offset;
+  remote_ptr<NativeArch::link_map> link_map = t->read_mem(REMOTE_PTR_FIELD(r_debug_remote, r_map), &ok);
+  while (ok && link_map != nullptr) {
+    if (fname == t->read_c_str(t->read_mem(REMOTE_PTR_FIELD(link_map, l_name), &ok), &ok)) {
+      remote_ptr<void> result = t->read_mem(REMOTE_PTR_FIELD(link_map, l_addr), &ok);
+      return ok ? result : nullptr;
+    }
+    link_map = t->read_mem(REMOTE_PTR_FIELD(link_map, l_next), &ok);
+  }
+  return nullptr;
+}
+
 int GdbServer::open_file(Session& session, Task* continue_task, const std::string& file_name) {
   // XXX should we require file_scope_pid == 0 here?
   ScopedFd contents;
@@ -1863,6 +1917,19 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
         memory_files.insert(make_pair(ret_fd, FileId(m.recorded_map)));
         return ret_fd;
       }
+    }
+    // Last ditch attempt: Dig through the tracee's libc rendezvous struct to
+    // see if we can find this file by a different name (e.g. if it was opened
+    // via symlink)
+    remote_ptr<void> base = base_addr_from_rendezvous(continue_task, file_name);
+    if (base != nullptr && continue_task->vm()->has_mapping(base)) {
+      int ret_fd = 0;
+      while (files.find(ret_fd) != files.end() ||
+              memory_files.find(ret_fd) != memory_files.end()) {
+        ++ret_fd;
+      }
+      memory_files.insert(make_pair(ret_fd, FileId(continue_task->vm()->mapping_of(base).recorded_map)));
+      return ret_fd;
     }
     LOG(debug) << "... not found";
     return -1;
