@@ -1619,6 +1619,22 @@ struct BaseArch : public wordsize,
     int handle_type;
     uint8_t f_handle[0];
   };
+
+  // This is technically a libc ABI, but we'll just put it here for convenience
+  struct link_map {
+    ptr<void> l_addr;
+    ptr<char> l_name;
+    ptr<void> l_ld;
+    ptr<link_map> l_next;
+    ptr<link_map> l_prev;
+    // More fields that are libc ...
+  };
+
+  struct r_debug {
+    int r_version;
+    ptr<link_map> r_map;
+    // More fields we don't need (and are potentially libc specific)
+  };
 };
 
 struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
