@@ -63,7 +63,13 @@ int main(int argc, char* argv[]) {
 
   test_assert(1 == prctl(PR_CAPBSET_READ, CAP_SYS_ADMIN));
 
-  int err = prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0);
+  int ret = prctl(PR_GET_SECUREBITS);
+  test_assert(ret >= 0);
+  int err = prctl(PR_SET_SECUREBITS, ret | SECBIT_KEEP_CAPS);
+  test_assert(prctl(PR_GET_SECUREBITS) == (ret | SECBIT_KEEP_CAPS));
+  test_assert(err == 0);
+
+  err = prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0);
   if (err == -1) {
     // This is a rather new option, may not be available in all kernels
     // we want to run on
