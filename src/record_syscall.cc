@@ -3830,6 +3830,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case PR_SET_SPECULATION_CTRL:
         case PR_GET_THP_DISABLE:
         case PR_SET_THP_DISABLE:
+        case PR_SET_SECUREBITS:
+        case PR_GET_SECUREBITS:
           break;
 
         case PR_SET_DUMPABLE:
