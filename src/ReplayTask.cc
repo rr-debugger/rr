@@ -46,16 +46,9 @@ void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
 
     if (args.cloned_file_data_fd >= 0) {
       cloned_file_data_fd_child = args.cloned_file_data_fd;
-      string clone_file_name = trace_reader().file_data_clone_file_name(tuid());
-      ScopedFd clone_file(clone_file_name.c_str(), O_RDONLY);
-      int fd = remote.send_fd(clone_file);
-      if (fd != cloned_file_data_fd_child) {
-        long ret =
-            remote.infallible_syscall(syscall_number_for_dup3(arch()), fd,
-                                      cloned_file_data_fd_child, O_CLOEXEC);
-        ASSERT(this, ret == cloned_file_data_fd_child);
-        remote.infallible_syscall(syscall_number_for_close(arch()), fd);
-      }
+      cloned_file_data_fname = trace_reader().file_data_clone_file_name(tuid());
+      ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDONLY);
+      remote.infallible_send_fd_dup(clone_file, cloned_file_data_fd_child);
       fds->add_monitor(this, cloned_file_data_fd_child, new PreserveFileMonitor());
     }
   }
