@@ -20,6 +20,7 @@ ThreadGroup::ThreadGroup(Session* session, ThreadGroup* parent, pid_t tgid,
       received_sigframe_SIGSEGV(false),
       session_(session),
       parent_(parent),
+      first_run_event_(0),
       serial(serial) {
   LOG(debug) << "creating new thread group " << tgid
              << " (real tgid:" << real_tgid << ")";

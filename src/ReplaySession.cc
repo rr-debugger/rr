@@ -1737,8 +1737,13 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   current_step.action = TSTEP_NONE;
 
   ReplayTask* next_task = current_task();
-  if (next_task && !next_task->vm()->first_run_event() && done_initial_exec()) {
-    next_task->vm()->set_first_run_event(trace_frame.time());
+  if (next_task && done_initial_exec()) {
+    if (!next_task->vm()->first_run_event()) {
+      next_task->vm()->set_first_run_event(trace_frame.time());
+    }
+    if (!next_task->thread_group()->first_run_event()) {
+      next_task->thread_group()->set_first_run_event(trace_frame.time());
+    }
   }
   if (next_task) {
     ticks_at_start_of_event = next_task->tick_count();

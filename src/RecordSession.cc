@@ -672,6 +672,10 @@ void RecordSession::task_continue(const StepState& step_state) {
     t->vm()->set_first_run_event(trace_writer().time());
   }
 
+  if (!t->thread_group()->first_run_event()) {
+    t->thread_group()->set_first_run_event(trace_writer().time());
+  }
+
   TicksRequest ticks_request;
   ResumeRequest resume;
   if (step_state.continue_type == CONTINUE_SYSCALL) {

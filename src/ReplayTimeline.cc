@@ -80,7 +80,7 @@ bool ReplayTimeline::less_than(const Mark& m1, const Mark& m2) {
 ReplayTimeline::ReplayTimeline(std::shared_ptr<ReplaySession> session)
     : current(std::move(session)),
       breakpoints_applied(false),
-      reverse_execution_barrier_event(0) {
+      reverse_execution_barrier_event_(0) {
   current->set_visible_execution(false);
 }
 
@@ -778,7 +778,7 @@ ReplayResult ReplayTimeline::singlestep_with_breakpoints_disabled() {
 }
 
 bool ReplayTimeline::is_start_of_reverse_execution_barrier_event() {
-  if (current->trace_reader().time() != reverse_execution_barrier_event ||
+  if (current->trace_reader().time() != reverse_execution_barrier_event_ ||
       current->current_step_key().in_execution()) {
     return false;
   }
