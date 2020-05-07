@@ -1226,6 +1226,7 @@ set(TESTS_WITH_PROGRAM
   vdso_clock_gettime_stack
   vdso_time_stack
   vfork
+  vfork_read_clone_stress
   vsyscall_reverse_next
   wait_for_all
   watchpoint

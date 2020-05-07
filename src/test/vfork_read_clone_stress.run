@@ -1,0 +1,6 @@
+source `dirname $0`/util.sh
+
+record $TESTNAME
+TARGET_PID=$(grep 'child ' record.out | awk '{print $2}' | tail -n 5 | head -n 1)
+echo Targeting recorded pid $TARGET_PID ...
+debug vfork_read_clone_stress "-f $TARGET_PID"
