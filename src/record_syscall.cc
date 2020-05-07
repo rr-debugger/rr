@@ -1881,8 +1881,18 @@ static RecordTask* verify_ptrace_target(RecordTask* tracer,
                                         TaskSyscallState& syscall_state,
                                         pid_t pid) {
   RecordTask* tracee = tracer->session().find_task(pid);
-  if (!tracee || tracee->emulated_ptracer != tracer ||
-      tracee->emulated_stop_type == NOT_STOPPED) {
+  if (!tracee) {
+    LOG(debug) << "tracee pid " << pid << " is unknown to rr";
+    syscall_state.emulate_result(-ESRCH);
+    return nullptr;
+  }
+  if (tracee->emulated_ptracer != tracer) {
+    LOG(debug) << pid << " is not traced by " << tracer->tid;
+    syscall_state.emulate_result(-ESRCH);
+    return nullptr;
+  }
+  if (tracee->emulated_stop_type == NOT_STOPPED) {
+    LOG(debug) << pid << " is not in a ptrace stop";
     syscall_state.emulate_result(-ESRCH);
     return nullptr;
   }
