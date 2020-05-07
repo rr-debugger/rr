@@ -122,8 +122,8 @@ AddressSpace::shr_ptr Session::clone(Task* t, AddressSpace::shr_ptr vm) {
 
 ThreadGroup::shr_ptr Session::create_initial_tg(Task* t) {
   ThreadGroup::shr_ptr tg(
-      new ThreadGroup(this, nullptr, t->rec_tid, t->tid,
-                      t->tid, t->tuid().serial()));
+      new ThreadGroup(this, nullptr, t->rec_tid, t->rec_tid,
+                      t->tuid().serial()));
   tg->insert_task(t);
   return tg;
 }
@@ -135,12 +135,12 @@ ThreadGroup::shr_ptr Session::clone(Task* t, ThreadGroup::shr_ptr tg) {
   if (this == tg->session()) {
     return ThreadGroup::shr_ptr(
        new ThreadGroup(this, tg.get(), t->rec_tid,
-                       t->tid, t->own_namespace_tid(), t->tuid().serial()));
+                       t->own_namespace_tid(), t->tuid().serial()));
   }
   ThreadGroup* parent =
       tg->parent() ? find_thread_group(tg->parent()->tguid()) : nullptr;
   return ThreadGroup::shr_ptr(
-      new ThreadGroup(this, parent, tg->tgid, t->tid,
+      new ThreadGroup(this, parent, tg->tgid,
                       t->own_namespace_tid(), tg->tguid().serial()));
 }
 
@@ -346,26 +346,34 @@ void Session::finish_initializing() const {
   }
 
   Session* self = const_cast<Session*>(this);
-  for (auto& tgleader : clone_completion->address_spaces) {
+  for (auto& asleader : clone_completion->address_spaces) {
     {
-      AutoRemoteSyscalls remote(tgleader.clone_leader);
-      for (const auto& m : tgleader.clone_leader->vm()->maps()) {
+      AutoRemoteSyscalls remote(asleader.clone_leader);
+      for (const auto& m : asleader.clone_leader->vm()->maps()) {
         // Creating this mapping was delayed in capture_state for performance
         if (m.flags & AddressSpace::Mapping::IS_SYSCALLBUF) {
           self->recreate_shared_mmap(remote, m);
         }
       }
-      for (auto& mem : tgleader.captured_memory) {
-        tgleader.clone_leader->write_bytes_helper(mem.first, mem.second.size(),
+      for (auto& mem : asleader.captured_memory) {
+        asleader.clone_leader->write_bytes_helper(mem.first, mem.second.size(),
                                                   mem.second.data());
       }
-      for (auto& tgmember : tgleader.member_states) {
-        Task* t_clone = Task::os_clone_into(tgmember, remote);
+      for (auto& asmember : asleader.member_states) {
+        auto it = thread_group_map.find(asmember.tguid);
+        ThreadGroup::shr_ptr tg(it == thread_group_map.end() ? nullptr :
+          it->second->shared_from_this());
+        if (!tg) {
+          tg = std::make_shared<ThreadGroup>
+            (self, nullptr, asmember.tguid.tid(), asmember.tguid.tid(), asmember.tguid.serial());
+          self->on_create(tg.get());
+        }
+        Task* t_clone = Task::os_clone_into(asmember, remote, tg);
         self->on_create(t_clone);
-        t_clone->copy_state(tgmember);
+        t_clone->copy_state(asmember);
       }
     }
-    tgleader.clone_leader->copy_state(tgleader.clone_leader_state);
+    asleader.clone_leader->copy_state(asleader.clone_leader_state);
   }
 
   self->clone_completion = nullptr;

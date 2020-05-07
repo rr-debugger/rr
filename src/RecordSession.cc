@@ -1209,7 +1209,7 @@ RecordTask* RecordSession::revive_task_for_exec(pid_t rec_tid) {
     FATAL() << "Can't find old task for execve";
   }
   ASSERT(t, rec_tid == t->tgid());
-  pid_t own_namespace_tid = t->thread_group()->real_tgid_own_namespace;
+  pid_t own_namespace_tid = t->thread_group()->tgid_own_namespace;
 
   LOG(debug) << "Changing task tid from " << t->tid << " to " << rec_tid;
 

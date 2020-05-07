@@ -63,7 +63,8 @@ public:
   Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
               remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
               pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
-              Session* other_session = nullptr) override;
+              Session* other_session = nullptr,
+              ThreadGroup::shr_ptr new_tg = nullptr) override;
   virtual void post_wait_clone(Task* cloned_from, int flags) override;
   virtual void on_syscall_exit(int syscallno, SupportedArch arch,
                                const Registers& regs) override;

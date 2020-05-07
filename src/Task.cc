@@ -245,13 +245,13 @@ Task::~Task() {
   ASSERT(this, seen_ptrace_exit_event);
   ASSERT(this, syscallbuf_child.is_null());
 
-  if (tg->task_set().empty() && !session().is_recording()) {
+  if (!session().is_recording() && !already_reaped()) {
     // Reap the zombie.
-    int ret = waitpid(tg->real_tgid, NULL, __WALL);
+    int ret = waitpid(tid, NULL, __WALL);
     if (ret == -1) {
       ASSERT(this, errno == ECHILD || errno == ESRCH);
     } else {
-      ASSERT(this, ret == tg->real_tgid);
+      ASSERT(this, ret == tid);
     }
   }
 
@@ -1470,7 +1470,10 @@ int Task::emulate_get_thread_area(int idx, struct ::user_desc& desc) {
 
 pid_t Task::tgid() const { return tg->tgid; }
 
-pid_t Task::real_tgid() const { return tg->real_tgid; }
+pid_t Task::real_tgid() const {
+  // Unless we're recording, each task is in its own thread group
+  return session().is_recording() ? tgid() : tid;
+}
 
 const string& Task::trace_dir() const {
   const TraceStream* trace = trace_stream();
@@ -1903,7 +1906,7 @@ void Task::setup_preload_thread_locals_from_clone(Task* origin) {
 Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
                   remote_ptr<void> tls, remote_ptr<int>, pid_t new_tid,
                   pid_t new_rec_tid, uint32_t new_serial,
-                  Session* other_session) {
+                  Session* other_session, ThreadGroup::shr_ptr new_tg) {
   Session* new_task_session = &session();
   if (other_session) {
     ASSERT(this, reason != TRACEE_CLONE);
@@ -1956,9 +1959,14 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
 
   t->post_wait_clone(this, flags);
   if (CLONE_SHARE_THREAD_GROUP & flags) {
+    ASSERT(this, !new_tg);
     t->tg = tg;
   } else {
-    t->tg = new_task_session->clone(t, tg);
+    if (new_tg) {
+      t->tg = new_tg;
+    } else {
+      t->tg = new_task_session->clone(t, tg);
+    }
   }
   t->tg->insert_task(t);
 
@@ -2041,7 +2049,8 @@ Task* Task::os_fork_into(Session* session) {
 }
 
 Task* Task::os_clone_into(const CapturedState& state,
-                          AutoRemoteSyscalls& remote) {
+                          AutoRemoteSyscalls& remote,
+                          ThreadGroup::shr_ptr new_tg) {
   return os_clone(Task::SESSION_CLONE_NONLEADER, &remote.task()->session(),
                   remote, state.rec_tid, state.serial,
                   // We don't actually /need/ to specify the
@@ -2056,8 +2065,9 @@ Task* Task::os_clone_into(const CapturedState& state,
                   //
                   // See |os_fork_into()| above for discussion
                   // of the CTID flags.
-                  (CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND |
-                   CLONE_THREAD | CLONE_SYSVSEM),
+                  (CLONE_VM | CLONE_FS | CLONE_SIGHAND |
+                   CLONE_SYSVSEM),
+                  new_tg,
                   state.top_of_stack);
 }
 
@@ -2108,6 +2118,7 @@ Task::CapturedState Task::capture_state() {
   CapturedState state;
   state.rec_tid = rec_tid;
   state.serial = serial;
+  state.tguid = thread_group()->tguid();
   state.regs = regs();
   state.extra_regs = extra_regs();
   state.prname = prname;
@@ -2654,6 +2665,7 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
 /*static*/ Task* Task::os_clone(CloneReason reason, Session* session,
                                 AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                                 uint32_t new_serial, unsigned base_flags,
+                                ThreadGroup::shr_ptr new_tg,
                                 remote_ptr<void> stack, remote_ptr<int> ptid,
                                 remote_ptr<void> tls, remote_ptr<int> ctid) {
   long ret;
@@ -2665,7 +2677,7 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
 
   Task* child = remote.task()->clone(
       reason, clone_flags_to_task_flags(base_flags), stack, tls, ctid,
-      remote.new_tid(), rec_child_tid, new_serial, session);
+      remote.new_tid(), rec_child_tid, new_serial, session, new_tg);
   return child;
 }
 
@@ -3200,7 +3212,7 @@ void Task::os_exec_stub(SupportedArch exec_arch)
   /* Complete the syscall. The tid of the task will be the thread-group-leader
    * tid, no matter what tid it was before.
    */
-  pid_t tgid = thread_group()->real_tgid;
+  pid_t tgid = real_tgid();
   __ptrace_cont(this, RESUME_SYSCALL, arch(), expect_syscallno,
                 syscall_number_for_execve(exec_arch),
                 tgid == tid ? -1 : tgid);

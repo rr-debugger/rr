@@ -18,6 +18,7 @@
 #include "PropertyTable.h"
 #include "Registers.h"
 #include "TaskishUid.h"
+#include "ThreadGroup.h"
 #include "TraceStream.h"
 #include "WaitStatus.h"
 #include "core.h"
@@ -843,6 +844,7 @@ public:
     ThreadLocals thread_locals;
     pid_t rec_tid;
     uint32_t serial;
+    ThreadGroupUid tguid;
     int desched_fd_child;
     int cloned_file_data_fd_child;
     std::string cloned_file_data_fname;
@@ -935,7 +937,8 @@ protected:
   virtual Task* clone(CloneReason reason, int flags, remote_ptr<void> stack,
                       remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                       pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
-                      Session* other_session = nullptr);
+                      Session* other_session = nullptr,
+                      ThreadGroup::shr_ptr new_tg = nullptr);
 
   /**
    * Internal method called after the first wait() during a clone().
@@ -1031,7 +1034,8 @@ protected:
    */
   Task* os_fork_into(Session* session);
   static Task* os_clone_into(const CapturedState& state,
-                             AutoRemoteSyscalls& remote);
+                             AutoRemoteSyscalls& remote,
+                             ThreadGroup::shr_ptr new_tg);
 
   /**
    * Return the TraceStream that we're using, if in recording or replay.
@@ -1051,6 +1055,7 @@ protected:
   static Task* os_clone(CloneReason reason, Session* session,
                         AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                         uint32_t new_serial, unsigned base_flags,
+                        ThreadGroup::shr_ptr new_tg = nullptr,
                         remote_ptr<void> stack = nullptr,
                         remote_ptr<int> ptid = nullptr,
                         remote_ptr<void> tls = nullptr,
