@@ -792,6 +792,8 @@ public:
   int desched_fd_child;
   /* The child's cloned_file_data_fd */
   int cloned_file_data_fd_child;
+  /* The filename opened by the child's cloned_file_data_fd */
+  std::string cloned_file_data_fname;
 
   PerfCounters hpc;
 
@@ -843,6 +845,7 @@ public:
     uint32_t serial;
     int desched_fd_child;
     int cloned_file_data_fd_child;
+    std::string cloned_file_data_fname;
     WaitStatus wait_status;
   };
 

@@ -464,8 +464,8 @@ template <typename Arch> void RecordTask::init_buffers_arch() {
 
     if (trace_writer().supports_file_data_cloning() &&
         session().use_read_cloning()) {
-      string clone_file_name = trace_writer().file_data_clone_file_name(tuid());
-      ScopedFd clone_file(clone_file_name.c_str(), O_RDWR | O_CREAT, 0600);
+      cloned_file_data_fname = trace_writer().file_data_clone_file_name(tuid());
+      ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDWR | O_CREAT, 0600);
       int cloned_file_data = remote.send_fd(clone_file.get());
       ASSERT(this, cloned_file_data >= 0);
       int free_fd = find_free_file_descriptor(tid);

@@ -204,6 +204,12 @@ public:
   int send_fd(const ScopedFd &fd);
 
   /**
+   * `send_fd` the given file descriptor, making sure that it ends up as fd
+   * `dup_to`, (dup'ing it there and closing the original if necessary)
+   */
+  void infallible_send_fd_dup(const ScopedFd& our_fd, int dup_to);
+
+  /**
    * Remotely invoke in |t| the specified syscall with the given
    * arguments.  The arguments must of course be valid in |t|,
    * and no checking of that is done by this function.

@@ -2114,6 +2114,7 @@ Task::CapturedState Task::capture_state() {
   state.thread_areas = thread_areas_;
   state.desched_fd_child = desched_fd_child;
   state.cloned_file_data_fd_child = cloned_file_data_fd_child;
+  state.cloned_file_data_fname = cloned_file_data_fname;
   state.cloned_file_data_offset =
       cloned_file_data_fd_child >= 0
           ? get_fd_offset(this, cloned_file_data_fd_child)
@@ -2157,7 +2158,11 @@ void Task::copy_state(const CapturedState& state) {
       // All these fields are preserved by the fork.
       desched_fd_child = state.desched_fd_child;
       cloned_file_data_fd_child = state.cloned_file_data_fd_child;
+      cloned_file_data_fname = state.cloned_file_data_fname;
       if (cloned_file_data_fd_child >= 0) {
+        ScopedFd fd(cloned_file_data_fname.c_str(), session().as_record() ?
+          O_RDWR : O_RDONLY);
+        remote.infallible_send_fd_dup(fd, cloned_file_data_fd_child);
         remote.infallible_lseek_syscall(
             cloned_file_data_fd_child, state.cloned_file_data_offset, SEEK_SET);
       }
