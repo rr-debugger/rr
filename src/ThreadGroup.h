@@ -12,6 +12,7 @@
 #include "HasTaskSet.h"
 #include "TaskishUid.h"
 #include "WaitStatus.h"
+#include "TraceFrame.h"
 
 namespace rr {
 
@@ -47,6 +48,9 @@ public:
 
   ThreadGroupUid tguid() const { return ThreadGroupUid(tgid, serial); }
 
+  FrameTime first_run_event() { return first_run_event_; }
+  void set_first_run_event(FrameTime time) { first_run_event_ = time; }
+
   // We don't allow tasks to make themselves undumpable. If they try,
   // record that here and lie about it if necessary.
   bool dumpable;
@@ -67,6 +71,8 @@ private:
   ThreadGroup* parent_;
 
   std::set<ThreadGroup*> children_;
+
+  FrameTime first_run_event_;
 
   uint32_t serial;
 };

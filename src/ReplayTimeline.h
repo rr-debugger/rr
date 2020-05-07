@@ -159,7 +159,10 @@ public:
    * at the beginning of this event.
    */
   void set_reverse_execution_barrier_event(FrameTime event) {
-    reverse_execution_barrier_event = event;
+    reverse_execution_barrier_event_ = event;
+  }
+  FrameTime reverse_execution_barrier_event() {
+    return reverse_execution_barrier_event_;
   }
 
   // State-changing APIs. These may alter state associated with
@@ -498,7 +501,7 @@ private:
       watchpoints;
   bool breakpoints_applied;
 
-  FrameTime reverse_execution_barrier_event;
+  FrameTime reverse_execution_barrier_event_;
 
   /**
    * Checkpoints used to accelerate reverse execution.

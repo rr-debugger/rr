@@ -1598,7 +1598,8 @@ void GdbServer::serve_replay(const ConnectionFlags& flags) {
   }
   debuggee_tguid = t->thread_group()->tguid();
 
-  FrameTime first_run_event = t->vm()->first_run_event();
+  FrameTime first_run_event = std::max(t->vm()->first_run_event(),
+    t->thread_group()->first_run_event());
   if (first_run_event) {
     timeline.set_reverse_execution_barrier_event(first_run_event);
   }
