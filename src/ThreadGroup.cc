@@ -9,12 +9,11 @@
 
 namespace rr {
 
-ThreadGroup::ThreadGroup(Session* session, ThreadGroup* parent, pid_t tgid,
-                         pid_t real_tgid, pid_t real_tgid_own_namespace,
+ThreadGroup::ThreadGroup(Session* session, ThreadGroup* parent,
+                         pid_t tgid, pid_t tgid_own_namespace,
                          uint32_t serial)
     : tgid(tgid),
-      real_tgid(real_tgid),
-      real_tgid_own_namespace(real_tgid_own_namespace),
+      tgid_own_namespace(tgid_own_namespace),
       dumpable(true),
       execed(false),
       received_sigframe_SIGSEGV(false),
@@ -22,12 +21,15 @@ ThreadGroup::ThreadGroup(Session* session, ThreadGroup* parent, pid_t tgid,
       parent_(parent),
       first_run_event_(0),
       serial(serial) {
-  LOG(debug) << "creating new thread group " << tgid
-             << " (real tgid:" << real_tgid << ")";
+  LOG(debug) << "creating new thread group " << tgid;
   if (parent) {
     parent->children_.insert(this);
   }
   session->on_create(this);
+}
+
+ThreadGroup::shr_ptr ThreadGroup::shared_from_this() {
+  return (*tasks.begin())->thread_group();
 }
 
 ThreadGroup::~ThreadGroup() {

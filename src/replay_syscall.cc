@@ -169,12 +169,17 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // Block CLONE_VFORK for the reasons below.
     // Block CLONE_NEW* from replay, any effects it had were dealt with during
     // recording.
+    // Block CLONE_THREAD/CLONE_FILES - during replay each task is its own
+    // thread group/has its own fd table.
+    // We track what the membership was during record, but it's hard
+    // (and unnecessary) to replicate this kernel state during
+    // replay.
     uintptr_t disallowed_clone_flags =
         CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK | CLONE_NEWIPC |
         CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUSER |
-        CLONE_NEWUTS | CLONE_NEWCGROUP;
-    flags = r.arg1() & ~disallowed_clone_flags;
-    r.set_arg1(flags);
+        CLONE_NEWUTS | CLONE_NEWCGROUP | CLONE_THREAD | CLONE_FILES;
+    flags = r.arg1();
+    r.set_arg1(flags & ~disallowed_clone_flags);
   } else if (Arch::vfork == sys) {
     // We can't perform a real vfork, because the kernel won't let the vfork
     // parent return from the syscall until the vfork child has execed or
@@ -196,7 +201,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   Registers entry_regs = r;
 
   // Run; we will be interrupted by PTRACE_EVENT_CLONE/FORK/VFORK.
-   t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
+  t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
 
   pid_t new_tid;
   while (!t->clone_syscall_is_complete(&new_tid, Arch::arch())) {
