@@ -21,7 +21,7 @@ public:
   virtual Type type() override { return ProcStat; }
 
   bool emulate_read(RecordTask* t, const std::vector<Range>& ranges,
-                    LazyOffset&, uint64_t* result);
+                    LazyOffset&, uint64_t* result) override;
 private:
   std::string data;
 };

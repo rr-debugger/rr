@@ -56,7 +56,7 @@ public:
   virtual DiversionSession* as_diversion() override { return this; }
 
   void set_tracee_fd_number(int fd_number) { tracee_socket_fd_number = fd_number; }
-  void on_create(Task *t) { this->Session::on_create(t); }
+  void on_create(Task *t) override { this->Session::on_create(t); }
 
 private:
   friend class ReplaySession;
