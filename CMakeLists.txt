@@ -829,6 +829,7 @@ set(BASIC_TESTS
   lsl
   madvise
   madvise_free
+  madvise_wipeonfork
   map_fixed
   map_shared_syscall
   membarrier

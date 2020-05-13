@@ -607,7 +607,18 @@ bool AddressSpace::is_breakpoint_instruction(Task* t, remote_code_ptr ip) {
 }
 
 static void remove_range(set<MemoryRange>& ranges, const MemoryRange& range) {
+  if (ranges.empty()) {
+    return;
+  }
+
   auto start = ranges.lower_bound(range);
+  // An earlier range might extend into range, so check for that.
+  if (start != ranges.begin()) {
+    --start;
+    if (start->end() <= range.start()) {
+      ++start;
+    }
+  }
   auto end = start;
   auto prev_end = start;
   while (end != ranges.end() && end->start() < range.end()) {
@@ -653,6 +664,7 @@ KernelMapping AddressSpace::map(Task* t, remote_ptr<void> addr,
   }
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
+  remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
 
   // The mmap() man page doesn't specifically describe
   // what should happen if an existing map is
@@ -897,6 +909,17 @@ void AddressSpace::remap(Task* t, remote_ptr<void> old_addr,
     remove_range(dont_fork, MemoryRange(new_addr, new_num_bytes));
   }
 
+  it = wipe_on_fork.lower_bound(MemoryRange(old_addr, old_num_bytes));
+  if (it != wipe_on_fork.end() && it->start() < old_addr + old_num_bytes) {
+    // hopefully mremap fails if some but not all pages are marked DONTFORK
+    DEBUG_ASSERT(*it == MemoryRange(old_addr, old_num_bytes));
+    remove_range(wipe_on_fork, MemoryRange(old_addr, old_num_bytes));
+    add_range(wipe_on_fork, MemoryRange(new_addr, new_num_bytes));
+  } else {
+    remove_range(wipe_on_fork, MemoryRange(old_addr, old_num_bytes));
+    remove_range(wipe_on_fork, MemoryRange(new_addr, new_num_bytes));
+  }
+
   unmap_internal(t, new_addr, new_num_bytes);
 
   remote_ptr<void> new_end = new_addr + new_num_bytes;
@@ -1132,6 +1155,7 @@ void AddressSpace::unmap(Task* t, remote_ptr<void> addr, ssize_t num_bytes) {
   }
 
   remove_range(dont_fork, MemoryRange(addr, num_bytes));
+  remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
 
   return unmap_internal(t, addr, num_bytes);
 }
@@ -1200,12 +1224,23 @@ void AddressSpace::advise(Task*, remote_ptr<void> addr, ssize_t num_bytes,
     case MADV_DOFORK:
       remove_range(dont_fork, MemoryRange(addr, num_bytes));
       break;
+    case MADV_WIPEONFORK:
+      add_range(wipe_on_fork, MemoryRange(addr, num_bytes));
+      break;
+    case MADV_KEEPONFORK:
+      remove_range(wipe_on_fork, MemoryRange(addr, num_bytes));
+      break;
     default:
       break;
   }
 }
 
 void AddressSpace::did_fork_into(Task* t) {
+  // MADV_WIPEONFORK is inherited across fork and cleared on exec.
+  // We'll copy it here, then do the `dont_fork` unmappings, and then
+  // whatever survives in the new AddressSpace's wipe_on_fork gets wiped.
+  t->vm()->wipe_on_fork = wipe_on_fork;
+
   for (auto& range : dont_fork) {
     // During recording we execute MADV_DONTFORK so the forked child will
     // have had its dontfork areas unmapped by the kernel already
@@ -1215,6 +1250,16 @@ void AddressSpace::did_fork_into(Task* t) {
                                 range.start(), range.size());
     }
     t->vm()->unmap(t, range.start(), range.size());
+  }
+
+  // Any ranges that were dropped were unmapped (and thus removed from
+  // wipe_on_fork), so now we can record anything that's left.
+  for (auto& range : t->vm()->wipe_on_fork) {
+    if (t->session().is_recording()) {
+      // Record that these mappings were wiped.
+      RecordTask* rt = static_cast<RecordTask*>(t);
+      rt->record_remote(range);
+    }
   }
 }
 

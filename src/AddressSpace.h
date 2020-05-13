@@ -711,7 +711,8 @@ public:
   remote_code_ptr find_syscall_instruction(Task* t);
 
   /**
-   * Task |t| just forked from this address space. Apply dont_fork settings.
+   * Task |t| just forked from this address space. Apply dont_fork and
+   * wipe_on_fork settings.
    */
   void did_fork_into(Task* t);
 
@@ -1044,6 +1045,8 @@ private:
   std::set<remote_ptr<void>> monitored_mem;
   /* madvise DONTFORK regions */
   std::set<MemoryRange> dont_fork;
+  /* madvise WIPEONFORK regions */
+  std::set<MemoryRange> wipe_on_fork;
   // The session that created this.  We save a ref to it so that
   // we can notify it when we die.
   Session* session_;
