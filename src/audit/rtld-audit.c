@@ -1,6 +1,7 @@
 #include "stap-note-iter.h"
 #include "rtld-audit.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <string.h>
 #define RR_IMPLEMENT_AUDIT
@@ -45,8 +46,6 @@ long _raw_syscall(int syscallno, long a0, long a1, long a2,
                   long stack_param_1, long stack_param_2);
 
 bool rr_audit_debug;
-
-char *getenv(const char *name);
 
 unsigned la_version(unsigned version) {
   rr_audit_debug = !!getenv("RR_AUDIT_DEBUG");
