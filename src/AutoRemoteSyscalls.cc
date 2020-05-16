@@ -556,7 +556,10 @@ int64_t AutoRemoteSyscalls::infallible_lseek_syscall(int fd, int64_t offset,
   }
 }
 
-void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno) {
+void AutoRemoteSyscalls::check_syscall_result(long ret, int syscallno, bool allow_death) {
+  if (allow_death && ret == -ESRCH) {
+    return;
+  }
   if (-4096 < ret && ret < 0) {
     string extra_msg;
     if (is_open_syscall(syscallno, arch())) {

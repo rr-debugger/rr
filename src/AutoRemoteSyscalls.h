@@ -162,6 +162,17 @@ public:
   }
 
   template <typename... Rest>
+  long infallible_syscall_if_alive(int syscallno, Rest... args) {
+    Registers callregs = regs();
+    // The first syscall argument is called "arg 1", so
+    // our syscall-arg-index template parameter starts
+    // with "1".
+    long ret = syscall_helper<1>(syscallno, callregs, args...);
+    check_syscall_result(ret, syscallno, true);
+    return ret;
+  }
+
+  template <typename... Rest>
   remote_ptr<void> infallible_syscall_ptr(int syscallno, Rest... args) {
     Registers callregs = regs();
     long ret = syscall_helper<1>(syscallno, callregs, args...);
@@ -237,7 +248,7 @@ public:
 private:
   void setup_path(bool enable_singlestep_path);
 
-  void check_syscall_result(long ret, int syscallno);
+  void check_syscall_result(long ret, int syscallno, bool allow_death=false);
 
   /**
    * "Recursively" build the set of syscall registers in

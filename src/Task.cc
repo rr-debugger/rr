@@ -161,7 +161,15 @@ void Task::wait_exit() {
    */
   int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOWAIT);
   if (ret == 0) {
-    DEBUG_ASSERT(info.si_pid == tid && WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXEC);
+    DEBUG_ASSERT(info.si_pid == tid);
+    if (WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXIT) {
+      // It's possible that the earlier exit event was synthetic, in which
+      // case we're only now catching up to the real process exit. In that
+      // case, just ask the process to actually exit. (TODO: We may want to
+      // catch this earlier).
+      return proceed_to_exit(true);
+    }
+    DEBUG_ASSERT(WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXEC);
     // The kernel will do the reaping for us in this case
     was_reaped = true;
   } else {
@@ -1244,7 +1252,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
           << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
     }
   }
-  if (wait_ret > 0) {
+  if (wait_ret > 0 || seen_ptrace_exit_event) {
     LOG(debug) << "Task " << tid << " exited unexpectedly";
     // wait() will see this and report the ptrace-exit event.
     detected_unexpected_exit = true;
