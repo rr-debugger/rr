@@ -1872,7 +1872,10 @@ void RecordTask::set_tid_addr(remote_ptr<int> tid_addr) {
 void RecordTask::update_own_namespace_tid() {
   AutoRemoteSyscalls remote(this);
   own_namespace_rec_tid =
-      remote.infallible_syscall(syscall_number_for_gettid(arch()));
+      remote.infallible_syscall_if_alive(syscall_number_for_gettid(arch()));
+  if (own_namespace_rec_tid == -ESRCH) {
+    own_namespace_rec_tid = -1;
+  }
 }
 
 void RecordTask::tgkill(int sig) {
