@@ -165,6 +165,20 @@ ssize_t syscall_instruction_length(SupportedArch arch) {
   }
 }
 
+ssize_t bkpt_instruction_length(SupportedArch arch) {
+  ssize_t val = 0;
+  switch (arch) {
+    case x86_64:
+    case x86:
+      val = 1;
+      break;
+    default:
+      DEBUG_ASSERT(0 && "Need to define bkpt instruction length");
+  }
+  DEBUG_ASSERT(val <= MAX_BKPT_INSTRUCTION_LENGTH);
+  return val;
+}
+
 ssize_t movrm_instruction_length(SupportedArch arch) {
   switch (arch) {
     case x86:

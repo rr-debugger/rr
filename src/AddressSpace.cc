@@ -27,7 +27,19 @@ using namespace std;
 
 namespace rr {
 
-/*static*/ const uint8_t AddressSpace::breakpoint_insn;
+static const uint8_t x86_breakpoint_insn[] = { 0xcc }; // int $3
+
+static const uint8_t *breakpoint_insn(SupportedArch arch) {
+  switch (arch) {
+    case x86:
+    case x86_64:
+      return x86_breakpoint_insn;
+    default:
+      DEBUG_ASSERT(0 && "Must define breakpoint insn for this architecture");
+      return nullptr;
+  }
+}
+
 
 /**
  * Advance *str to skip leading blank characters.
@@ -593,7 +605,7 @@ void AddressSpace::replace_breakpoints_with_original_values(
     remote_ptr<uint8_t> bkpt_location = it.first.to_data_ptr<uint8_t>();
     remote_ptr<uint8_t> start = max(addr, bkpt_location);
     remote_ptr<uint8_t> end =
-        min(addr + length, bkpt_location + it.second.data_length());
+        min(addr + length, bkpt_location + bkpt_instruction_length(arch()));
     if (start < end) {
       memcpy(dest + (start - addr),
              it.second.original_data() + (start - bkpt_location), end - start);
@@ -603,7 +615,11 @@ void AddressSpace::replace_breakpoints_with_original_values(
 
 bool AddressSpace::is_breakpoint_instruction(Task* t, remote_code_ptr ip) {
   bool ok = true;
-  return t->read_mem(ip.to_data_ptr<uint8_t>(), &ok) == breakpoint_insn && ok;
+  uint8_t data[MAX_BKPT_INSTRUCTION_LENGTH];
+  t->read_bytes_helper(ip.to_data_ptr<uint8_t>(),
+    bkpt_instruction_length(t->arch()), data, &ok);
+  return memcmp(data, breakpoint_insn(t->arch()),
+    bkpt_instruction_length(t->arch())) == 0 && ok;
 }
 
 static void remove_range(set<MemoryRange>& ranges, const MemoryRange& range) {
@@ -940,21 +956,24 @@ void AddressSpace::remove_breakpoint(remote_code_ptr addr,
 bool AddressSpace::add_breakpoint(remote_code_ptr addr, BreakpointType type) {
   auto it = breakpoints.find(addr);
   if (it == breakpoints.end()) {
-    uint8_t overwritten_data;
+    uint8_t overwritten_data[MAX_BKPT_INSTRUCTION_LENGTH];
+    ssize_t bkpt_size = bkpt_instruction_length(arch());
     // Grab a random task from the VM so we can use its
     // read/write_mem() helpers.
     Task* t = *task_set().begin();
-    if (sizeof(overwritten_data) !=
+    if (bkpt_size !=
         t->read_bytes_fallible(addr.to_data_ptr<uint8_t>(),
-                               sizeof(overwritten_data), &overwritten_data)) {
+                               bkpt_size, overwritten_data)) {
       return false;
     }
-    t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn, nullptr,
+    t->write_bytes_helper(addr.to_data_ptr<uint8_t>(), bkpt_size,
+                 breakpoint_insn(arch()), nullptr,
                  Task::IS_BREAKPOINT_RELATED);
 
     auto it_and_is_new = breakpoints.insert(make_pair(addr, Breakpoint()));
     DEBUG_ASSERT(it_and_is_new.second);
-    it_and_is_new.first->second.overwritten_data = overwritten_data;
+    memcpy(it_and_is_new.first->second.overwritten_data,
+      overwritten_data, sizeof(overwritten_data));
     it = it_and_is_new.first;
   }
   it->second.ref(type);
@@ -971,7 +990,8 @@ void AddressSpace::suspend_breakpoint_at(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
   if (it != breakpoints.end()) {
     Task* t = *task_set().begin();
-    t->write_mem(addr.to_data_ptr<uint8_t>(), it->second.overwritten_data);
+    t->write_bytes_helper(addr.to_data_ptr<uint8_t>(),
+      bkpt_instruction_length(arch()), it->second.overwritten_data);
   }
 }
 
@@ -979,7 +999,9 @@ void AddressSpace::restore_breakpoint_at(remote_code_ptr addr) {
   auto it = breakpoints.find(addr);
   if (it != breakpoints.end()) {
     Task* t = *task_set().begin();
-    t->write_mem(addr.to_data_ptr<uint8_t>(), breakpoint_insn);
+    t->write_bytes_helper(addr.to_data_ptr<uint8_t>(),
+      bkpt_instruction_length(arch()),
+      breakpoint_insn(arch()));
   }
 }
 
@@ -1835,8 +1857,13 @@ void AddressSpace::destroy_breakpoint(BreakpointMap::const_iterator it) {
   Task* t = *task_set().begin();
   auto ptr = it->first.to_data_ptr<uint8_t>();
   auto data = it->second.overwritten_data;
-  LOG(debug) << "Writing back " << HEX(data) << " at " << ptr;
-  t->write_mem(ptr, data, nullptr, Task::IS_BREAKPOINT_RELATED);
+  if (bkpt_instruction_length(arch()) == 1) {
+    LOG(debug) << "Writing back " << HEX(data[0]) << " at " << ptr;
+  } else {
+    LOG(debug) << "Writing back " << bkpt_instruction_length(arch()) << " bytes at " << ptr;
+  }
+  t->write_bytes_helper(ptr, bkpt_instruction_length(arch()),
+    data, nullptr, Task::IS_BREAKPOINT_RELATED);
   breakpoints.erase(it);
 }
 
@@ -1848,9 +1875,11 @@ void AddressSpace::maybe_update_breakpoints(Task* t, remote_ptr<uint8_t> addr,
       // This breakpoint was overwritten. Note the new data and reset the
       // breakpoint.
       bool ok = true;
-      it.second.overwritten_data = t->read_mem(bp_addr, &ok);
+      t->read_bytes_helper(bp_addr, bkpt_instruction_length(arch()),
+        &it.second.overwritten_data, &ok);
       ASSERT(t, ok);
-      t->write_mem(bp_addr, breakpoint_insn);
+      t->write_bytes_helper(bp_addr, bkpt_instruction_length(arch()),
+        breakpoint_insn(arch()));
     }
   }
 }

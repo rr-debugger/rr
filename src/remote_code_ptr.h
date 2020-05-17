@@ -47,14 +47,14 @@ public:
   remote_code_ptr increment_by_syscall_insn_length(SupportedArch arch) const {
     return remote_code_ptr(ptr + rr::syscall_instruction_length(arch));
   }
-  remote_code_ptr decrement_by_bkpt_insn_length(SupportedArch) const {
-    return remote_code_ptr(ptr - 1);
+  remote_code_ptr decrement_by_bkpt_insn_length(SupportedArch arch) const {
+    return remote_code_ptr(ptr - rr::bkpt_instruction_length(arch));
   }
-  remote_code_ptr increment_by_bkpt_insn_length(SupportedArch) const {
-    return remote_code_ptr(ptr + 1);
+  remote_code_ptr increment_by_bkpt_insn_length(SupportedArch arch) const {
+    return remote_code_ptr(ptr + rr::bkpt_instruction_length(arch));
   }
   remote_code_ptr increment_by_movrm_insn_length(SupportedArch arch) const {
-    return remote_code_ptr(ptr + movrm_instruction_length(arch));
+    return remote_code_ptr(ptr + rr::movrm_instruction_length(arch));
   }
   remote_code_ptr decrement_by_vsyscall_entry_length(SupportedArch arch) const {
     return remote_code_ptr(ptr - rr::vsyscall_entry_length(arch));
