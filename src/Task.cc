@@ -2705,6 +2705,23 @@ static void spawned_child_fatal_error(const ScopedFd& err_fd,
   _exit(1);
 }
 
+static void disable_tsc(int err_fd) {
+  /* Trap to the rr process if a 'rdtsc' instruction is issued.
+   * That allows rr to record the tsc and replay it
+   * deterministically. */
+  if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
+    spawned_child_fatal_error(err_fd, "error setting up prctl");
+  }
+}
+
+template <typename Arch> void set_up_process_arch(int err_fd);
+template <> void set_up_process_arch<X86Arch>(int err_fd) { disable_tsc(err_fd); }
+template <> void set_up_process_arch<X64Arch>(int err_fd) { disable_tsc(err_fd); }
+
+void set_up_process_arch(SupportedArch arch, int err_fd) {
+  RR_ARCH_FUNCTION(set_up_process_arch, arch, err_fd);
+}
+
 /**
  * Prepare this process and its ancestors for recording/replay by
  * preventing direct access to sources of nondeterminism, and ensuring
@@ -2754,12 +2771,9 @@ static void set_up_process(Session& session, const ScopedFd& err_fd,
     setsid();
   }
 
-  /* Trap to the rr process if a 'rdtsc' instruction is issued.
-   * That allows rr to record the tsc and replay it
-   * deterministically. */
-  if (0 > prctl(PR_SET_TSC, PR_TSC_SIGSEGV, 0, 0, 0)) {
-    spawned_child_fatal_error(err_fd, "error setting up prctl");
-  }
+  /* Do any architecture specific setup, such as disabling non-deterministic
+     instructions */
+  set_up_process_arch(NativeArch::arch(), err_fd);
 
   /* If we're in setuid_sudo mode, we have CAP_SYS_ADMIN, so we don't need to
      set NO_NEW_PRIVS here in order to install the seccomp filter later. In,
