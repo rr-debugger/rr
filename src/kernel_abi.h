@@ -2007,6 +2007,14 @@ std::vector<uint8_t> syscall_instruction(SupportedArch arch);
 ssize_t syscall_instruction_length(SupportedArch arch);
 
 /**
+ * Return the length of the breakpoint instruction.
+ */
+ssize_t bkpt_instruction_length(SupportedArch arch);
+
+// The maximum breakpoint instruction length for any architecture
+static const int MAX_BKPT_INSTRUCTION_LENGTH = 4;
+
+/**
  * Return the length of the vsyscall invocation pattern. Currently,
  * we only support patterns of the form movq %addr, %rax; callq *%rax.
  */
