@@ -2078,256 +2078,19 @@ static void ptrace_attach_to_already_stopped_task(RecordTask* t) {
   t->save_ptrace_signal_siginfo(si);
 }
 
+/**
+ * The PTRACE_GETREGS/PTRACE_SETREGS commands, as well various PEEK_* and POKE_*
+ * ptrace commands are legacy and not implemented on newer architectures.
+ * We split them out here, since these newer platforms
+ * will not define the requisite data structure to serve them.
+ */
 template <typename Arch>
-static Switchable prepare_ptrace(RecordTask* t,
-                                 TaskSyscallState& syscall_state) {
+static void prepare_ptrace_legacy(RecordTask* t,
+                                  TaskSyscallState& syscall_state)
+{
   pid_t pid = (pid_t)t->regs().arg2_signed();
-  bool emulate = true;
   int command = (int)t->regs().arg1_signed();
   switch (command) {
-    case PTRACE_ATTACH: {
-      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
-      if (!tracee) {
-        break;
-      }
-      tracee->set_emulated_ptracer(t);
-      tracee->emulated_ptrace_seized = false;
-      tracee->emulated_ptrace_options = 0;
-      syscall_state.emulate_result(0);
-      if (tracee->emulated_stop_type == NOT_STOPPED) {
-        // Send SIGSTOP to this specific thread. Otherwise the kernel might
-        // deliver SIGSTOP to some other thread of the process, and we won't
-        // generate any ptrace event if that thread isn't being ptraced.
-        tracee->tgkill(SIGSTOP);
-      } else {
-        ptrace_attach_to_already_stopped_task(tracee);
-      }
-      break;
-    }
-    case PTRACE_TRACEME: {
-      RecordTask* tracer = prepare_ptrace_traceme(t, syscall_state);
-      if (!tracer) {
-        break;
-      }
-      t->set_emulated_ptracer(tracer);
-      t->emulated_ptrace_seized = false;
-      t->emulated_ptrace_options = 0;
-      syscall_state.emulate_result(0);
-      break;
-    }
-    case PTRACE_SEIZE: {
-      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
-      if (!tracee) {
-        break;
-      }
-      if (t->regs().arg3()) {
-        syscall_state.emulate_result(-EIO);
-        break;
-      }
-      if (!verify_ptrace_options(t, syscall_state)) {
-        break;
-      }
-      tracee->set_emulated_ptracer(t);
-      tracee->emulated_ptrace_seized = true;
-      tracee->emulated_ptrace_options = (int)t->regs().arg4();
-      if (tracee->emulated_stop_type == GROUP_STOP) {
-        ptrace_attach_to_already_stopped_task(tracee);
-      }
-      syscall_state.emulate_result(0);
-      break;
-    }
-    case PTRACE_OLDSETOPTIONS:
-    case PTRACE_SETOPTIONS: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        if (!verify_ptrace_options(t, syscall_state)) {
-          break;
-        }
-        tracee->emulated_ptrace_options = (int)t->regs().arg4();
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_GETEVENTMSG: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        auto datap =
-            syscall_state.reg_parameter<typename Arch::unsigned_long>(4);
-        t->write_mem(
-            datap,
-            (typename Arch::unsigned_long)tracee->emulated_ptrace_event_msg);
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_GETSIGINFO: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        auto datap = syscall_state.reg_parameter<typename Arch::siginfo_t>(4);
-        typename Arch::siginfo_t dest;
-        memset(&dest, 0, sizeof(dest));
-        set_arch_siginfo(tracee->get_saved_ptrace_siginfo(), Arch::arch(),
-                         &dest, sizeof(dest));
-        t->write_mem(datap, dest);
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_GETREGS: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        auto data =
-            syscall_state.reg_parameter<typename Arch::user_regs_struct>(4);
-        auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
-        ASSERT(t, regs.size() == data.referent_size());
-        t->write_bytes_helper(data, regs.size(), regs.data());
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_GETFPREGS: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        auto data =
-            syscall_state.reg_parameter<typename Arch::user_fpregs_struct>(4);
-        auto regs = tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
-        ASSERT(t, regs.size() == data.referent_size());
-        t->write_bytes_helper(data, regs.size(), regs.data());
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_GETFPXREGS: {
-      if (Arch::arch() != x86) {
-        // GETFPXREGS is x86-32 only
-        syscall_state.expect_errno = EIO;
-        break;
-      }
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        auto data =
-            syscall_state.reg_parameter<X86Arch::user_fpxregs_struct>(4);
-        auto regs = tracee->extra_regs().get_user_fpxregs_struct();
-        t->write_mem(data, regs);
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_GETREGSET: {
-      switch ((int)t->regs().arg3()) {
-        case NT_PRSTATUS: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-          if (tracee) {
-            auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
-            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
-          }
-          break;
-        }
-        case NT_FPREGSET: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-          if (tracee) {
-            auto regs =
-                tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
-            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
-          }
-          break;
-        }
-        case NT_X86_XSTATE: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-          if (tracee) {
-            switch (tracee->extra_regs().format()) {
-              case ExtraRegisters::XSAVE:
-                ptrace_get_reg_set<Arch>(t, syscall_state,
-                                         tracee->extra_regs().data());
-                break;
-              default:
-                syscall_state.emulate_result(EINVAL);
-                break;
-            }
-          }
-          break;
-        }
-        default:
-          syscall_state.expect_errno = EINVAL;
-          emulate = false;
-          break;
-      }
-      break;
-    }
-    case PTRACE_SETREGS: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        // The actual register effects are performed by
-        // Task::on_syscall_exit_arch
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_SETFPREGS: {
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        // The actual register effects are performed by
-        // Task::on_syscall_exit_arch
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_SETFPXREGS: {
-      if (Arch::arch() != x86) {
-        // SETFPXREGS is x86-32 only
-        syscall_state.expect_errno = EIO;
-        break;
-      }
-      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-      if (tracee) {
-        // The actual register effects are performed by
-        // Task::on_syscall_exit_arch
-        syscall_state.emulate_result(0);
-      }
-      break;
-    }
-    case PTRACE_SETREGSET: {
-      // The actual register effects are performed by
-      // Task::on_syscall_exit_arch
-      switch ((int)t->regs().arg3()) {
-        case NT_PRSTATUS: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-          if (tracee) {
-            ptrace_verify_set_reg_set<Arch>(
-                t, sizeof(typename Arch::user_regs_struct), syscall_state);
-          }
-          break;
-        }
-        case NT_FPREGSET: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-          if (tracee) {
-            ptrace_verify_set_reg_set<Arch>(
-                t, sizeof(typename Arch::user_fpregs_struct), syscall_state);
-          }
-          break;
-        }
-        case NT_X86_XSTATE: {
-          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
-          if (tracee) {
-            switch (tracee->extra_regs().format()) {
-              case ExtraRegisters::XSAVE:
-                ptrace_verify_set_reg_set<Arch>(
-                    t, tracee->extra_regs().data_size(), syscall_state);
-                break;
-              default:
-                syscall_state.emulate_result(EINVAL);
-                break;
-            }
-          }
-          break;
-        }
-        default:
-          syscall_state.expect_errno = EINVAL;
-          emulate = false;
-          break;
-      }
-      break;
-    }
     case PTRACE_PEEKTEXT:
     case PTRACE_PEEKDATA: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
@@ -2427,6 +2190,259 @@ static Switchable prepare_ptrace(RecordTask* t,
           break;
         }
         syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETREGS: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto data =
+            syscall_state.reg_parameter<typename Arch::user_regs_struct>(4);
+        auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
+        ASSERT(t, regs.size() == data.referent_size());
+        t->write_bytes_helper(data, regs.size(), regs.data());
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETFPREGS: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto data =
+            syscall_state.reg_parameter<typename Arch::user_fpregs_struct>(4);
+        auto regs = tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
+        ASSERT(t, regs.size() == data.referent_size());
+        t->write_bytes_helper(data, regs.size(), regs.data());
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETFPXREGS: {
+      if (Arch::arch() != x86) {
+        // GETFPXREGS is x86-32 only
+        syscall_state.expect_errno = EIO;
+        break;
+      }
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto data =
+            syscall_state.reg_parameter<X86Arch::user_fpxregs_struct>(4);
+        auto regs = tracee->extra_regs().get_user_fpxregs_struct();
+        t->write_mem(data, regs);
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_SETREGS: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual register effects are performed by
+        // Task::on_syscall_exit_arch
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_SETFPREGS: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual register effects are performed by
+        // Task::on_syscall_exit_arch
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_SETFPXREGS: {
+      if (Arch::arch() != x86) {
+        // SETFPXREGS is x86-32 only
+        syscall_state.expect_errno = EIO;
+        break;
+      }
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        // The actual register effects are performed by
+        // Task::on_syscall_exit_arch
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+  }
+}
+
+template <typename Arch>
+static Switchable prepare_ptrace(RecordTask* t,
+                                 TaskSyscallState& syscall_state) {
+  pid_t pid = (pid_t)t->regs().arg2_signed();
+  bool emulate = true;
+  int command = (int)t->regs().arg1_signed();
+  switch (command) {
+    case PTRACE_ATTACH: {
+      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
+      if (!tracee) {
+        break;
+      }
+      tracee->set_emulated_ptracer(t);
+      tracee->emulated_ptrace_seized = false;
+      tracee->emulated_ptrace_options = 0;
+      syscall_state.emulate_result(0);
+      if (tracee->emulated_stop_type == NOT_STOPPED) {
+        // Send SIGSTOP to this specific thread. Otherwise the kernel might
+        // deliver SIGSTOP to some other thread of the process, and we won't
+        // generate any ptrace event if that thread isn't being ptraced.
+        tracee->tgkill(SIGSTOP);
+      } else {
+        ptrace_attach_to_already_stopped_task(tracee);
+      }
+      break;
+    }
+    case PTRACE_TRACEME: {
+      RecordTask* tracer = prepare_ptrace_traceme(t, syscall_state);
+      if (!tracer) {
+        break;
+      }
+      t->set_emulated_ptracer(tracer);
+      t->emulated_ptrace_seized = false;
+      t->emulated_ptrace_options = 0;
+      syscall_state.emulate_result(0);
+      break;
+    }
+    case PTRACE_SEIZE: {
+      RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
+      if (!tracee) {
+        break;
+      }
+      if (t->regs().arg3()) {
+        syscall_state.emulate_result(-EIO);
+        break;
+      }
+      if (!verify_ptrace_options(t, syscall_state)) {
+        break;
+      }
+      tracee->set_emulated_ptracer(t);
+      tracee->emulated_ptrace_seized = true;
+      tracee->emulated_ptrace_options = (int)t->regs().arg4();
+      if (tracee->emulated_stop_type == GROUP_STOP) {
+        ptrace_attach_to_already_stopped_task(tracee);
+      }
+      syscall_state.emulate_result(0);
+      break;
+    }
+    case PTRACE_OLDSETOPTIONS:
+    case PTRACE_SETOPTIONS: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        if (!verify_ptrace_options(t, syscall_state)) {
+          break;
+        }
+        tracee->emulated_ptrace_options = (int)t->regs().arg4();
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETEVENTMSG: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto datap =
+            syscall_state.reg_parameter<typename Arch::unsigned_long>(4);
+        t->write_mem(
+            datap,
+            (typename Arch::unsigned_long)tracee->emulated_ptrace_event_msg);
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETSIGINFO: {
+      RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+      if (tracee) {
+        auto datap = syscall_state.reg_parameter<typename Arch::siginfo_t>(4);
+        typename Arch::siginfo_t dest;
+        memset(&dest, 0, sizeof(dest));
+        set_arch_siginfo(tracee->get_saved_ptrace_siginfo(), Arch::arch(),
+                         &dest, sizeof(dest));
+        t->write_mem(datap, dest);
+        syscall_state.emulate_result(0);
+      }
+      break;
+    }
+    case PTRACE_GETREGSET: {
+      switch ((int)t->regs().arg3()) {
+        case NT_PRSTATUS: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
+            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
+          }
+          break;
+        }
+        case NT_FPREGSET: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            auto regs =
+                tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
+            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
+          }
+          break;
+        }
+        case NT_X86_XSTATE: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            switch (tracee->extra_regs().format()) {
+              case ExtraRegisters::XSAVE:
+                ptrace_get_reg_set<Arch>(t, syscall_state,
+                                         tracee->extra_regs().data());
+                break;
+              default:
+                syscall_state.emulate_result(EINVAL);
+                break;
+            }
+          }
+          break;
+        }
+        default:
+          syscall_state.expect_errno = EINVAL;
+          emulate = false;
+          break;
+      }
+      break;
+    }
+    case PTRACE_SETREGSET: {
+      // The actual register effects are performed by
+      // Task::on_syscall_exit_arch
+      switch ((int)t->regs().arg3()) {
+        case NT_PRSTATUS: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            ptrace_verify_set_reg_set<Arch>(
+                t, sizeof(typename Arch::user_regs_struct), syscall_state);
+          }
+          break;
+        }
+        case NT_FPREGSET: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            ptrace_verify_set_reg_set<Arch>(
+                t, sizeof(typename Arch::user_fpregs_struct), syscall_state);
+          }
+          break;
+        }
+        case NT_X86_XSTATE: {
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            switch (tracee->extra_regs().format()) {
+              case ExtraRegisters::XSAVE:
+                ptrace_verify_set_reg_set<Arch>(
+                    t, tracee->extra_regs().data_size(), syscall_state);
+                break;
+              default:
+                syscall_state.emulate_result(EINVAL);
+                break;
+            }
+          }
+          break;
+        }
+        default:
+          syscall_state.expect_errno = EINVAL;
+          emulate = false;
+          break;
       }
       break;
     }
@@ -2556,6 +2572,20 @@ static Switchable prepare_ptrace(RecordTask* t,
       }
       break;
     }
+    case PTRACE_PEEKTEXT:
+    case PTRACE_PEEKDATA:
+    case PTRACE_POKETEXT:
+    case PTRACE_POKEDATA:
+    case PTRACE_PEEKUSER:
+    case PTRACE_POKEUSER:
+    case PTRACE_GETREGS:
+    case PTRACE_GETFPREGS:
+    case PTRACE_GETFPXREGS:
+    case PTRACE_SETREGS:
+    case PTRACE_SETFPREGS:
+    case PTRACE_SETFPXREGS:
+      prepare_ptrace_legacy<Arch>(t, syscall_state);
+      break;
     default:
       syscall_state.expect_errno = EIO;
       emulate = false;
