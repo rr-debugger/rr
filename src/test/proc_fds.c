@@ -56,7 +56,7 @@ int main(void) {
   pthread_barrier_wait(&bar);
 
   const char proc_fd_path[] = "/proc/self/fd";
-  int fd = syscall(SYS_open, proc_fd_path, O_DIRECTORY);
+  int fd = syscall(SYS_openat, -1, proc_fd_path, O_DIRECTORY);
   test_assert(fd >= 0);
 
   char buf[128];

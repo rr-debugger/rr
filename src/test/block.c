@@ -232,8 +232,10 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     arg.except = NULL;
     arg.timeout = &tv;
     ret = syscall(SYS_select, &arg);
-#else
+#elif defined(SYS_select)
     ret = syscall(SYS_select, sock + 1, &fds, NULL, NULL, &tv);
+#else
+    ret = syscall(SYS_pselect6, sock + 1, &fds, NULL, NULL, &tv, NULL);
 #endif
     atomic_printf("r:   ... returned %d; tv { %ld, %ld }\n", ret, tv.tv_sec,
                   tv.tv_usec);
