@@ -488,7 +488,7 @@ set(RR_SOURCES
   src/util.cc
   src/WaitStatus.cc
   ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
-  third-party/blake2/blake2b.c
+  third-party/blake2/sse/blake2b.c
 )
 
 set_source_files_properties(${RR_SOURCES}
