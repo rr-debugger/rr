@@ -109,6 +109,7 @@ static inline const char* extract_file_name(const char* s) {
 
 /* Must match generate_rr_page.py */
 #define RR_PAGE_ADDR 0x70000000
+#define RR_PAGE_SIZE 4096
 #define RR_PAGE_SYSCALL_STUB_SIZE 3
 #define RR_PAGE_SYSCALL_INSTRUCTION_END 2
 #define RR_PAGE_SYSCALL_ADDR(index)                                            \
@@ -126,7 +127,7 @@ static inline const char* extract_file_name(const char* s) {
 
 /* PRELOAD_THREAD_LOCALS_ADDR should not change.
  * Tools depend on this address. */
-#define PRELOAD_THREAD_LOCALS_ADDR (RR_PAGE_ADDR + PAGE_SIZE)
+#define PRELOAD_THREAD_LOCALS_ADDR (RR_PAGE_ADDR + RR_PAGE_SIZE)
 #define PRELOAD_THREAD_LOCALS_SIZE 104
 
 /* "Magic" (rr-implemented) syscalls that we use to initialize the

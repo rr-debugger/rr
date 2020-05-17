@@ -68,7 +68,7 @@ ReplaySession::MemoryRanges ReplaySession::always_free_address_space(
   // Assume 64-bit address spaces with the 47-bit user-space limitation,
   // for now.
   remote_ptr<void> addressable_max = uintptr_t(
-      sizeof(void*) == 8 ? uint64_t(1) << 47 : (uint64_t(1) << 32) - PAGE_SIZE);
+      sizeof(void*) == 8 ? uint64_t(1) << 47 : (uint64_t(1) << 32) - page_size());
   result.insert(MemoryRange(addressable_min, addressable_max));
   TraceReader tmp_reader(reader);
   bool found;

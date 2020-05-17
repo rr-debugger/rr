@@ -45,7 +45,6 @@
  * wrapper.
  */
 
-#define PAGE_SIZE 4096
 #include <dlfcn.h>
 #include <limits.h>
 #include <asm/errno.h>

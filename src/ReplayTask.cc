@@ -158,7 +158,7 @@ bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
     TraceReader::MappedData data;
     KernelMapping km = trace_reader().read_mapped_region(&data);
     ASSERT(this, km.start() == AddressSpace::preload_thread_locals_start() &&
-           km.size() == PAGE_SIZE);
+           km.size() == page_size());
     return true;
   }
 

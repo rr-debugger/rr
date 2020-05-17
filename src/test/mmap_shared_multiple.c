@@ -6,10 +6,11 @@ int main(void) {
   char* p;
   char* q;
 
-  p = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  p = mmap(NULL, page_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
            -1, 0);
   test_assert(p != MAP_FAILED);
-  q = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
+  q = mmap(NULL, page_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
            -1, 0);
   test_assert(q != MAP_FAILED);
 

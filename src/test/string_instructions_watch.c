@@ -55,7 +55,8 @@ static void string_store(char* dest, uintptr_t a, uintptr_t size, int unit,
 }
 
 int main(void) {
-  buf = (char*)mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
+  size_t page_size = sysconf(_SC_PAGESIZE);
+  buf = (char*)mmap(NULL, page_size, PROT_READ | PROT_WRITE,
                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
 
   string_store(buf, to_uintptr("aaaaaaaa"), 16, 1, 1);
