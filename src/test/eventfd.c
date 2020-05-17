@@ -13,7 +13,9 @@ static void do_test(int fd) {
 }
 
 int main(void) {
+#ifdef SYS_eventfd
   do_test(syscall(SYS_eventfd, 0));
+#endif
   do_test(eventfd(0, 0));
 
   atomic_puts("EXIT-SUCCESS");

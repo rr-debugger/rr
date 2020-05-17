@@ -588,7 +588,7 @@ void AutoRemoteSyscalls::finish_direct_mmap(
    * recording. */
   {
     AutoRestoreMem child_str(*this, backing_file_name.c_str());
-    fd = infallible_syscall(syscall_number_for_open(arch()),
+    fd = infallible_syscall(syscall_number_for_openat(arch()), -1,
                             child_str.get().as_int(),
                             backing_file_open_flags);
   }
