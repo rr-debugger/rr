@@ -30,9 +30,11 @@
 #define STATEMENT2048(i) STATEMENT1024(i) STATEMENT1024(i + 1024)
 #define STATEMENT4096(i) STATEMENT2048(i) STATEMENT2048(i + 2048)
 
+static volatile int blah = 0;
+
 static void* do_thread(__attribute__((unused)) void* p) {
-  while (1) {
-    sched_yield();
+  while (blah < 1000000) {
+    ++blah;
   }
   return NULL;
 }
