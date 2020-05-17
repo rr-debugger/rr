@@ -12,12 +12,12 @@ class BaseSyscall(object):
         self.x86 = x86
         self.x64 = x64
         self.generic = generic
-        assert len(kwargs) is 0
+        assert len(kwargs) == 0
 
 class RestartSyscall(BaseSyscall):
     """A special class for the restart_syscall syscall."""
-    def __init__(self, x86=None, x64=None, generic=None):
-        BaseSyscall.__init__(self, x86=x86, x64=x64, generic=None)
+    def __init__(self, **kwargs):
+        BaseSyscall.__init__(self, **kwargs)
 
 class UnsupportedSyscall(BaseSyscall):
     """A syscall that is unsupported by rr.
@@ -26,8 +26,8 @@ class UnsupportedSyscall(BaseSyscall):
     can be displayed in error messages, if nothing else.  They also serve as
     useful documentation.
     """
-    def __init__(self, x86=None, x64=None, generic=None):
-        BaseSyscall.__init__(self, x86=x86, x64=x64, generic=None)
+    def __init__(self, **kwargs):
+        BaseSyscall.__init__(self, **kwargs)
 
 class InvalidSyscall(UnsupportedSyscall):
     """A syscall that is unsupported by rr and unimplemented by Linux.
@@ -36,8 +36,8 @@ class InvalidSyscall(UnsupportedSyscall):
     by rr from other UnsupportedSyscalls, to help us track the completeness
     of rr's syscall support.
     """
-    def __init__(self, x86=None, x64=None):
-        UnsupportedSyscall.__init__(self, x86=x86, x64=x64, generic=None)
+    def __init__(self, **kwargs):
+        UnsupportedSyscall.__init__(self, **kwargs)
 
 class RegularSyscall(BaseSyscall):
     """A syscall for which replay information may be recorded automatically.
