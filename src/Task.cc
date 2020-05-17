@@ -463,6 +463,55 @@ static void process_shmdt(Task* t, remote_ptr<void> addr) {
 }
 
 template <typename Arch>
+static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registers& regs)
+{
+  switch ((int)regs.arg1_signed()) {
+    case PTRACE_SETREGS: {
+      auto data = t->read_mem(
+          remote_ptr<typename Arch::user_regs_struct>(regs.arg4()));
+      Registers r = tracee->regs();
+      r.set_from_ptrace_for_arch(Arch::arch(), &data, sizeof(data));
+      tracee->set_regs(r);
+      break;
+    }
+    case PTRACE_SETFPREGS: {
+      auto data = t->read_mem(
+          remote_ptr<typename Arch::user_fpregs_struct>(regs.arg4()));
+      auto r = tracee->extra_regs();
+      r.set_user_fpregs_struct(t, Arch::arch(), &data, sizeof(data));
+      tracee->set_extra_regs(r);
+      break;
+    }
+    case PTRACE_SETFPXREGS: {
+      auto data =
+          t->read_mem(remote_ptr<X86Arch::user_fpxregs_struct>(regs.arg4()));
+      auto r = tracee->extra_regs();
+      r.set_user_fpxregs_struct(t, data);
+      tracee->set_extra_regs(r);
+      break;
+    }
+    case PTRACE_POKEUSER: {
+      size_t addr = regs.arg3();
+      typename Arch::unsigned_word data = regs.arg4();
+      if (addr < sizeof(typename Arch::user_regs_struct)) {
+        Registers r = tracee->regs();
+        r.write_register_by_user_offset(addr, data);
+        tracee->set_regs(r);
+      } else if (addr >= offsetof(typename Arch::user, u_debugreg[0]) &&
+                  addr < offsetof(typename Arch::user, u_debugreg[8])) {
+        size_t regno =
+            (addr - offsetof(typename Arch::user, u_debugreg[0])) /
+            sizeof(data);
+        tracee->set_debug_reg(regno, data);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+template <typename Arch>
 void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   session().accumulate_syscall_performed();
 
@@ -610,30 +659,6 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       pid_t pid = (pid_t)regs.arg2_signed();
       Task* tracee = session().find_task(pid);
       switch ((int)regs.arg1_signed()) {
-        case PTRACE_SETREGS: {
-          auto data = read_mem(
-              remote_ptr<typename Arch::user_regs_struct>(regs.arg4()));
-          Registers r = tracee->regs();
-          r.set_from_ptrace_for_arch(Arch::arch(), &data, sizeof(data));
-          tracee->set_regs(r);
-          break;
-        }
-        case PTRACE_SETFPREGS: {
-          auto data = read_mem(
-              remote_ptr<typename Arch::user_fpregs_struct>(regs.arg4()));
-          auto r = tracee->extra_regs();
-          r.set_user_fpregs_struct(this, Arch::arch(), &data, sizeof(data));
-          tracee->set_extra_regs(r);
-          break;
-        }
-        case PTRACE_SETFPXREGS: {
-          auto data =
-              read_mem(remote_ptr<X86Arch::user_fpxregs_struct>(regs.arg4()));
-          auto r = tracee->extra_regs();
-          r.set_user_fpxregs_struct(this, data);
-          tracee->set_extra_regs(r);
-          break;
-        }
         case PTRACE_SETREGSET: {
           switch ((int)regs.arg3()) {
             case NT_PRSTATUS: {
@@ -688,22 +713,6 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           }
           break;
         }
-        case PTRACE_POKEUSER: {
-          size_t addr = regs.arg3();
-          typename Arch::unsigned_word data = regs.arg4();
-          if (addr < sizeof(typename Arch::user_regs_struct)) {
-            Registers r = tracee->regs();
-            r.write_register_by_user_offset(addr, data);
-            tracee->set_regs(r);
-          } else if (addr >= offsetof(typename Arch::user, u_debugreg[0]) &&
-                     addr < offsetof(typename Arch::user, u_debugreg[8])) {
-            size_t regno =
-                (addr - offsetof(typename Arch::user, u_debugreg[0])) /
-                sizeof(data);
-            tracee->set_debug_reg(regno, data);
-          }
-          break;
-        }
         case PTRACE_ARCH_PRCTL: {
           int code = (int)regs.arg4();
           switch (code) {
@@ -730,6 +739,13 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
             default:
               ASSERT(tracee, 0) << "Should have detected this earlier";
           }
+          break;
+        }
+        case PTRACE_SETREGS:
+        case PTRACE_SETFPREGS:
+        case PTRACE_SETFPXREGS:
+        case PTRACE_POKEUSER: {
+          ptrace_syscall_exit_legacy_arch<Arch>(this, tracee, regs);
         }
       }
       return;
