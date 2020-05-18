@@ -2156,8 +2156,11 @@ RecordSession::RecordSession(const std::string& exe_path,
       Task::spawn(*this, error_fd, &tracee_socket_fd(),
                   &tracee_socket_fd_number,
                   exe_path, argv, envp));
-  // CPU affinity has been set.
-  trace_out.setup_cpuid_records(has_cpuid_faulting(), disable_cpuid_features_);
+
+  if (NativeArch::arch() == x86 || NativeArch::arch() == x86_64) {
+    // CPU affinity has been set.
+    trace_out.setup_cpuid_records(has_cpuid_faulting(), disable_cpuid_features_);
+  }
 
   initial_thread_group = t->thread_group();
   on_create(t);

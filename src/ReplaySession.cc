@@ -171,23 +171,26 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
 
   trace_start_time = trace_frame.monotonic_time();
 
-  if (trace_in.uses_cpuid_faulting() && !has_cpuid_faulting()) {
-    CLEAN_FATAL()
-        << "Trace was recorded with CPUID faulting enabled, but this\n"
-           "system does not support CPUID faulting.";
-  }
-  if (!has_cpuid_faulting() && !cpuid_compatible(trace_in.cpuid_records())) {
-    CLEAN_FATAL()
-        << "Trace was recorded on a machine with different CPUID values\n"
-           "and CPUID faulting is not enabled; replay will not work.";
-  }
   if (!PerfCounters::supports_ticks_semantics(ticks_semantics_)) {
     CLEAN_FATAL()
         << "Trace was recorded on a machine that defines ticks differently\n"
            "to this machine; replay will not work.";
   }
 
-  check_xsave_compatibility(trace_in);
+  if (trace_in.arch() == x86 || trace_in.arch() == x86_64) {
+    if (trace_in.uses_cpuid_faulting() && !has_cpuid_faulting()) {
+      CLEAN_FATAL()
+          << "Trace was recorded with CPUID faulting enabled, but this\n"
+            "system does not support CPUID faulting.";
+    }
+    if (!has_cpuid_faulting() && !cpuid_compatible(trace_in.cpuid_records())) {
+      CLEAN_FATAL()
+          << "Trace was recorded on a machine with different CPUID values\n"
+            "and CPUID faulting is not enabled; replay will not work.";
+    }
+
+    check_xsave_compatibility(trace_in);
+  }
 }
 
 ReplaySession::ReplaySession(const ReplaySession& other)

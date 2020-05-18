@@ -52,15 +52,6 @@ struct Header {
   # The CPU number the trace was bound to during recording, or -1 if it
   # wasn't bound.
   bindToCpu @1 :Int32;
-  # True if the trace used CPUID faulting during recording (so CPUIDs
-  # were recorded as InstructionTraps).
-  hasCpuidFaulting @2 :Bool;
-  # A list of captured CPUID values.
-  # A series of 24-byte records. See CPUIDRecord in util.h.
-  cpuidRecords @3 :Data;
-  # Captured XCR0 value defining XSAVE features enabled by OS.
-  # 0 means "unknown"; default to everything supported by CPUID EAX=0xd ECX=0
-  xcr0 @5 :UInt64;
   # Semantics of "ticks" in this trace
   ticksSemantics @6 :TicksSemantics;
   # The syscallbuf protocol version. See SYSCALLBUF_PROTOCOL_VERSION.
@@ -72,6 +63,20 @@ struct Header {
   # Base rr syscall number (rrcall_init_preload). Before this was variable,
   # it was 442.
   rrcallBase @9 :Int32 = 442;
+
+  nativeArch @10 :Arch = x8664;
+  # Architecture specific data, determined by nativeArch
+  x86 :group {
+    # True if the trace used CPUID faulting during recording (so CPUIDs
+    # were recorded as InstructionTraps).
+    hasCpuidFaulting @2 :Bool;
+    # A list of captured CPUID values.
+    # A series of 24-byte records. See CPUIDRecord in util.h.
+    cpuidRecords @3 :Data;
+    # Captured XCR0 value defining XSAVE features enabled by OS.
+    # 0 means "unknown"; default to everything supported by CPUID EAX=0xd ECX=0
+    xcr0 @5 :UInt64;
+  }
 }
 
 # A file descriptor belonging to a task
@@ -164,6 +169,7 @@ struct MemWrite {
 enum Arch {
   x86 @0;
   x8664 @1;
+  aarch64 @2;
 }
 
 struct Registers {
