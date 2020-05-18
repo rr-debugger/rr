@@ -168,7 +168,7 @@ static uint64_t seg_reg(const Registers& regs, uint8_t index) {
 static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
                        const RerunFlags& flags, FILE* out) {
   union {
-    struct user_regs_struct gp_regs;
+    NativeArch::user_regs_struct gp_regs;
     uintptr_t regs_values[sizeof(struct user_regs_struct) / sizeof(uintptr_t)];
   };
   bool got_gp_regs = false;
