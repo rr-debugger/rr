@@ -511,6 +511,13 @@ static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registe
   }
 }
 
+template <>
+void ptrace_syscall_exit_legacy_arch<ARM64Arch>(Task*, Task*, const Registers&)
+{
+  // Nothing to do - unimplemented on this architecture
+  return;
+}
+
 template <typename Arch>
 void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
   session().accumulate_syscall_performed();
@@ -2741,6 +2748,7 @@ static void disable_tsc(int err_fd) {
 template <typename Arch> void set_up_process_arch(int err_fd);
 template <> void set_up_process_arch<X86Arch>(int err_fd) { disable_tsc(err_fd); }
 template <> void set_up_process_arch<X64Arch>(int err_fd) { disable_tsc(err_fd); }
+template <> void set_up_process_arch<ARM64Arch>(int) {}
 
 void set_up_process_arch(SupportedArch arch, int err_fd) {
   RR_ARCH_FUNCTION(set_up_process_arch, arch, err_fd);

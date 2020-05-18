@@ -195,6 +195,7 @@ void WaitStatus::fill_siginfo(typename Arch::siginfo_t *si, bool ptracer, unsign
 
 template void WaitStatus::fill_siginfo<X86Arch>(X86Arch::siginfo_t*, bool, unsigned);
 template void WaitStatus::fill_siginfo<X64Arch>(X64Arch::siginfo_t*, bool, unsigned);
+template void WaitStatus::fill_siginfo<ARM64Arch>(ARM64Arch::siginfo_t*, bool, unsigned);
 
 ostream& operator<<(ostream& stream, WaitStatus status) {
   stream << HEX(status.get());

@@ -358,8 +358,10 @@ set(GENERATED_FILES
   CheckSyscallNumbers.generated
   SyscallEnumsX64.generated
   SyscallEnumsX86.generated
+  SyscallEnumsGeneric.generated
   SyscallEnumsForTestsX64.generated
   SyscallEnumsForTestsX86.generated
+  SyscallEnumsForTestsGeneric.generated
   SyscallHelperFunctions.generated
   SyscallnameArch.generated
   SyscallRecordCase.generated

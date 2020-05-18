@@ -2268,6 +2268,11 @@ static void prepare_ptrace_legacy(RecordTask* t,
   }
 }
 
+template <>
+void prepare_ptrace_legacy<ARM64Arch>(RecordTask*, TaskSyscallState&) {
+  // Nothing to do - unimplemented on this architecture
+}
+
 template <typename Arch>
 static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
