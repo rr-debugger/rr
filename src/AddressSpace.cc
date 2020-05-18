@@ -283,6 +283,9 @@ static string find_rr_page_file(Task* t) {
     case x86_64:
       path += "64";
       break;
+    case aarch64:
+      path += "arm64";
+      break;
     default:
       ASSERT(t, false) << "Unknown architecture";
       return path;
@@ -373,22 +376,61 @@ static const AddressSpace::SyscallType entry_points[] = {
     AddressSpace::RECORDING_ONLY },
 };
 
-static remote_code_ptr entry_ip_from_index(size_t i) {
-  return remote_code_ptr(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * i);
+static int rr_page_syscall_stub_size(SupportedArch arch) {
+  int val = 0;
+  switch (arch) {
+    case x86:
+    case x86_64:
+      val = 3;
+      break;
+    case aarch64:
+      val = 8;
+      break;
+    default:
+      FATAL() << "Syscall stub size not defined for this architecture";
+  }
+  if (arch == NativeArch::arch()) {
+    DEBUG_ASSERT(val == RR_PAGE_SYSCALL_STUB_SIZE);
+  }
+  return val;
 }
 
-static remote_code_ptr exit_ip_from_index(size_t i) {
-  return remote_code_ptr(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * i +
-                         RR_PAGE_SYSCALL_INSTRUCTION_END);
+static int rr_page_syscall_instruction_end(SupportedArch arch) {
+  int val = 0;
+  switch (arch) {
+    case x86:
+    case x86_64:
+      val = 2;
+      break;
+    case aarch64:
+      val = 4;
+      break;
+    default:
+      FATAL() << "Syscall stub size not defined for this architecture";
+  }
+  if (arch == NativeArch::arch()) {
+    DEBUG_ASSERT(val == RR_PAGE_SYSCALL_INSTRUCTION_END);
+  }
+  return val;
+}
+
+static remote_code_ptr entry_ip_from_index(SupportedArch arch, size_t i) {
+  return remote_code_ptr(RR_PAGE_ADDR + rr_page_syscall_stub_size(arch) * i);
+}
+
+static remote_code_ptr exit_ip_from_index(SupportedArch arch, size_t i) {
+  return remote_code_ptr(RR_PAGE_ADDR + rr_page_syscall_stub_size(arch) * i +
+                         rr_page_syscall_instruction_end(arch));
 }
 
 remote_code_ptr AddressSpace::rr_page_syscall_exit_point(Traced traced,
                                                          Privileged privileged,
-                                                         Enabled enabled) {
+                                                         Enabled enabled,
+                                                         SupportedArch arch) {
   for (auto& e : entry_points) {
     if (e.traced == traced && e.privileged == privileged &&
         e.enabled == enabled) {
-      return exit_ip_from_index(&e - entry_points);
+      return exit_ip_from_index(arch, &e - entry_points);
     }
   }
   return nullptr;
@@ -397,20 +439,20 @@ remote_code_ptr AddressSpace::rr_page_syscall_exit_point(Traced traced,
 remote_code_ptr AddressSpace::rr_page_syscall_entry_point(Traced traced,
                                                           Privileged privileged,
                                                           Enabled enabled,
-                                                          SupportedArch) {
+                                                          SupportedArch arch) {
   for (auto& e : entry_points) {
     if (e.traced == traced && e.privileged == privileged &&
         e.enabled == enabled) {
-      return entry_ip_from_index(&e - entry_points);
+      return entry_ip_from_index(arch, &e - entry_points);
     }
   }
   return nullptr;
 }
 
 const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_exit_point(
-    remote_code_ptr ip) {
+    SupportedArch arch, remote_code_ptr ip) {
   for (size_t i = 0; i < array_length(entry_points); ++i) {
-    if (exit_ip_from_index(i) == ip) {
+    if (exit_ip_from_index(arch, i) == ip) {
       return &entry_points[i];
     }
   }
@@ -418,9 +460,9 @@ const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_exit_point(
 }
 
 const AddressSpace::SyscallType* AddressSpace::rr_page_syscall_from_entry_point(
-    remote_code_ptr ip) {
+    SupportedArch arch, remote_code_ptr ip) {
   for (size_t i = 0; i < array_length(entry_points); ++i) {
-    if (entry_ip_from_index(i) == ip) {
+    if (entry_ip_from_index(arch, i) == ip) {
       return &entry_points[i];
     }
   }

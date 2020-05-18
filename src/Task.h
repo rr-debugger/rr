@@ -327,7 +327,7 @@ public:
    * instruction.
    */
   bool is_in_untraced_syscall() {
-    auto t = AddressSpace::rr_page_syscall_from_exit_point(ip());
+    auto t = AddressSpace::rr_page_syscall_from_exit_point(arch(), ip());
     return t && t->traced == AddressSpace::UNTRACED;
   }
 

@@ -107,11 +107,19 @@ static inline const char* extract_file_name(const char* s) {
 
 #define MPROTECT_RECORD_COUNT 1000
 
+#if defined(__x86_64__) || defined(__i386__)
+#define RR_PAGE_SYSCALL_STUB_SIZE 3
+#define RR_PAGE_SYSCALL_INSTRUCTION_END 2
+#elif defined(__aarch64__)
+#define RR_PAGE_SYSCALL_STUB_SIZE 8
+#define RR_PAGE_SYSCALL_INSTRUCTION_END 4
+#else
+#error "Must be defined for this architecture"
+#endif
+
 /* Must match generate_rr_page.py */
 #define RR_PAGE_ADDR 0x70000000
 #define RR_PAGE_SIZE 4096
-#define RR_PAGE_SYSCALL_STUB_SIZE 3
-#define RR_PAGE_SYSCALL_INSTRUCTION_END 2
 #define RR_PAGE_SYSCALL_ADDR(index)                                            \
   ((void*)(RR_PAGE_ADDR + RR_PAGE_SYSCALL_STUB_SIZE * (index)))
 #define RR_PAGE_SYSCALL_TRACED RR_PAGE_SYSCALL_ADDR(0)

@@ -388,6 +388,10 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
                    "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64"
+                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
+                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64"
+                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay"
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
                    "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay"
@@ -396,12 +400,18 @@ add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_repla
                    COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
                    "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay"
                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
+add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64_replay"
+                   COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py"
+                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64_replay"
+                   DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/generate_rr_page.py")
 
 add_custom_target(Pages DEPENDS
                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32"
                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64"
+                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64"
                   "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay"
-                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay")
+                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay"
+                  "${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64_replay")
 
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++"
                           "${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.h"
@@ -617,6 +627,8 @@ install(PROGRAMS scripts/signal-rr-recording.sh
 
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64
               ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_64_replay
+              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64
+              ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_arm64_replay
               ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32
               ${CMAKE_CURRENT_BINARY_DIR}/share/rr/rr_page_32_replay
   DESTINATION ${CMAKE_INSTALL_DATADIR}/rr)

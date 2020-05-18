@@ -95,13 +95,18 @@ static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
 
 bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
                                   SupportedArch* arch) {
+  if (t->arch() == aarch64) {
+    *arch = aarch64;
+    return true;
+  }
+
   // Lots of syscalls occur in the rr page and we know what it contains without
   // looking at it.
   // (Without this optimization we spend a few % of all CPU time in this
   // function in a syscall-dominated trace.)
   if (t->vm()->has_rr_page()) {
     const AddressSpace::SyscallType* type =
-        AddressSpace::rr_page_syscall_from_entry_point(ptr);
+        AddressSpace::rr_page_syscall_from_entry_point(t->arch(), ptr);
     if (type && (type->enabled == AddressSpace::RECORDING_AND_REPLAY ||
                  type->enabled == (t->session().is_recording()
                                        ? AddressSpace::RECORDING_ONLY

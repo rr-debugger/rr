@@ -9,24 +9,34 @@ import sys
 # One option would be to save the (replay) rr page into the trace and have
 # replay default to the old rr page if the saved page is not present.
 
-def write_rr_page(f, is_64, is_replay):
+def write_rr_page(f, is_64, is_arm, is_replay):
     # The length of each code sequence must be RR_PAGE_SYSCALL_STUB_SIZE.
     # The end of each syscall instruction must be at offset
     # RR_PAGE_SYSCALL_INSTRUCTION_END.
-    if is_64:
+    if is_arm:
         bytes = bytearray([
-            0x0f, 0x05, # syscall
-            0xc3, # ret
+            0x1, 0x0, 0x0, 0xd4, # svc #0
+            0xc0, 0x03, 0x5f, 0xd6, # ret
+        ])
+        nocall_bytes = bytearray([
+            0x0, 0x0, 0x80, 0xd2, # movz x0, #0
+            0xc0, 0x03, 0x5f, 0xd6, # ret
         ])
     else:
-        bytes = bytearray([
-            0xcd, 0x80, # int 0x80
+        if is_64:
+            bytes = bytearray([
+                0x0f, 0x05, # syscall
+                0xc3, # ret
+            ])
+        else:
+            bytes = bytearray([
+                0xcd, 0x80, # int 0x80
+                0xc3, # ret
+            ])
+        nocall_bytes = bytearray([
+            0x31, 0xc0, # xor %eax,%eax
             0xc3, # ret
         ])
-    nocall_bytes = bytearray([
-        0x31, 0xc0, # xor %eax,%eax
-        0xc3, # ret
-    ])
 
     # traced
     f.write(bytes)
@@ -63,10 +73,12 @@ def write_rr_page(f, is_64, is_replay):
     f.write(ff_bytes)
 
 generators_for = {
-    'rr_page_32': lambda stream: write_rr_page(stream, False, False),
-    'rr_page_64': lambda stream: write_rr_page(stream, True, False),
-    'rr_page_32_replay': lambda stream: write_rr_page(stream, False, True),
-    'rr_page_64_replay': lambda stream: write_rr_page(stream, True, True),
+    'rr_page_32': lambda stream: write_rr_page(stream, False, False, False),
+    'rr_page_64': lambda stream: write_rr_page(stream, True, False, False),
+    'rr_page_arm64': lambda stream: write_rr_page(stream, True, True, False),
+    'rr_page_32_replay': lambda stream: write_rr_page(stream, False, False, True),
+    'rr_page_64_replay': lambda stream: write_rr_page(stream, True, False, True),
+    'rr_page_arm64_replay': lambda stream: write_rr_page(stream, True, False, True),
 }
 
 def main(argv):

@@ -679,7 +679,8 @@ public:
   enum Enabled { RECORDING_ONLY, REPLAY_ONLY, RECORDING_AND_REPLAY };
   static remote_code_ptr rr_page_syscall_exit_point(Traced traced,
                                                     Privileged privileged,
-                                                    Enabled enabled);
+                                                    Enabled enabled,
+                                                    SupportedArch arch);
   static remote_code_ptr rr_page_syscall_entry_point(Traced traced,
                                                      Privileged privileged,
                                                      Enabled enabled,
@@ -691,9 +692,10 @@ public:
     Enabled enabled;
   };
   static std::vector<SyscallType> rr_page_syscalls();
-  static const SyscallType* rr_page_syscall_from_exit_point(remote_code_ptr ip);
+  static const SyscallType* rr_page_syscall_from_exit_point(
+    SupportedArch arch, remote_code_ptr ip);
   static const SyscallType* rr_page_syscall_from_entry_point(
-      remote_code_ptr ip);
+    SupportedArch arch, remote_code_ptr ip);
 
   /**
    * Return a pointer to 8 bytes of 0xFF
