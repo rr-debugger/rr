@@ -73,7 +73,7 @@ public:
    * rr build is 32-bit, or when the Registers' arch is completely different
    * to the rr build (e.g. ARM vs x86).
    */
-  void set_from_ptrace(const struct ::user_regs_struct& ptrace_regs);
+  void set_from_ptrace(const struct NativeArch::user_regs_struct& ptrace_regs);
   /**
    * Get a user_regs_struct from these Registers. If the tracee architecture
    * is not rr's native architecture, then it must be a 32-bit tracee with a
@@ -83,7 +83,7 @@ public:
    * rr build is 32-bit, or when the Registers' arch is completely different
    * to the rr build (e.g. ARM vs x86).
    */
-  struct ::user_regs_struct get_ptrace() const;
+  struct NativeArch::user_regs_struct get_ptrace() const;
   /**
    * Get a user_regs_struct for a particular Arch from these Registers.
    * It's invalid to call this when 'arch' is 64-bit and the

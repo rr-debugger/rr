@@ -67,7 +67,7 @@ ps_err_e ps_lgetregs(struct ps_prochandle* h, lwpid_t rec_tid,
   rr::Task* task = h->thread_group->session()->find_task(rec_tid);
   DEBUG_ASSERT(task != nullptr);
 
-  struct ::user_regs_struct regs = task->regs().get_ptrace();
+  struct NativeArch::user_regs_struct regs = task->regs().get_ptrace();
   memcpy(result, static_cast<void*>(&regs), sizeof(regs));
   LOG(debug) << "ps_lgetregs OK";
   return PS_OK;

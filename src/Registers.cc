@@ -515,7 +515,7 @@ void to_x86_narrow(int32_t& r32, uint64_t& r64) { r32 = r64; }
 void from_x86_narrow(int32_t& r32, uint64_t& r64) { r64 = (uint32_t)r32; }
 void from_x86_narrow_signed(int32_t& r32, uint64_t& r64) { r64 = (int64_t)r32; }
 
-void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
+void Registers::set_from_ptrace(const NativeArch::user_regs_struct& ptrace_regs) {
   if (arch() == NativeArch::arch()) {
     memcpy(&u, &ptrace_regs, sizeof(ptrace_regs));
     return;
@@ -524,8 +524,7 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
   convert_x86<to_x86_narrow, to_x86_narrow>(
       u.x86regs,
-      *reinterpret_cast<X64Arch::user_regs_struct*>(
-          const_cast<struct user_regs_struct*>(&ptrace_regs)));
+      *const_cast<struct X64Arch::user_regs_struct*>(&ptrace_regs));
 }
 
 /**
@@ -534,9 +533,9 @@ void Registers::set_from_ptrace(const struct user_regs_struct& ptrace_regs) {
  * 64-bit rr. In that case the user_regs_struct is 64-bit and we copy
  * the 32-bit register values from u.x86regs into it.
  */
-struct user_regs_struct Registers::get_ptrace() const {
+NativeArch::user_regs_struct Registers::get_ptrace() const {
   union {
-    struct user_regs_struct linux_api;
+    struct NativeArch::user_regs_struct linux_api;
     struct X64Arch::user_regs_struct x64arch_api;
   } result;
   if (arch() == NativeArch::arch()) {
@@ -579,8 +578,8 @@ vector<uint8_t> Registers::get_ptrace_for_arch(SupportedArch arch) const {
 void Registers::set_from_ptrace_for_arch(SupportedArch a, const void* data,
                                          size_t size) {
   if (a == NativeArch::arch()) {
-    DEBUG_ASSERT(size == sizeof(struct user_regs_struct));
-    set_from_ptrace(*static_cast<const struct user_regs_struct*>(data));
+    DEBUG_ASSERT(size == sizeof(NativeArch::user_regs_struct));
+    set_from_ptrace(*static_cast<const NativeArch::user_regs_struct*>(data));
     return;
   }
 

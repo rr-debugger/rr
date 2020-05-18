@@ -1756,7 +1756,7 @@ void Task::did_waitpid(WaitStatus status) {
     // task's register values are not what they should be.
     if (!is_stopped && !registers_dirty) {
       LOG(debug) << "Requesting registers from tracee " << tid;
-      struct user_regs_struct ptrace_regs;
+      NativeArch::user_regs_struct ptrace_regs;
       if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
         registers.set_from_ptrace(ptrace_regs);
   #if defined(__i386__) || defined(__x86_64__)
