@@ -3,7 +3,6 @@
 #include "record_syscall.h"
 
 #include <arpa/inet.h>
-#include <asm/ldt.h>
 #include <asm/prctl.h>
 #include <dirent.h>
 #include <elf.h>
@@ -2511,10 +2510,10 @@ static Switchable prepare_ptrace(RecordTask* t,
           emulate = false;
           break;
         }
-        remote_ptr<struct ::user_desc> remote_addr(t->regs().arg4());
+        remote_ptr<X86Arch::user_desc> remote_addr(t->regs().arg4());
         bool ok = true;
-        struct ::user_desc desc;
-        memset(&desc, 0, sizeof(struct ::user_desc));
+        struct X86Arch::user_desc desc;
+        memset(&desc, 0, sizeof(struct X86Arch::user_desc));
         // Do the ptrace request ourselves
         if (command == PTRACE_GET_THREAD_AREA) {
           int ret = -tracee->emulate_get_thread_area(t->regs().arg3(), desc);

@@ -3,8 +3,6 @@
 #ifndef RR_TASK_H_
 #define RR_TASK_H_
 
-#include <asm/ldt.h>
-
 #include <memory>
 #include <vector>
 
@@ -29,7 +27,6 @@
 
 struct syscallbuf_hdr;
 struct syscallbuf_record;
-struct user_desc;
 
 namespace rr {
 
@@ -543,19 +540,20 @@ public:
   bool set_debug_reg(size_t regno, uintptr_t value);
 
   /** Update the thread area to |addr|. */
-  void set_thread_area(remote_ptr<struct ::user_desc> tls);
+  void set_thread_area(remote_ptr<X86Arch::user_desc> tls);
 
   /** Set the thread area at index `idx` to desc and reflect this
     * into the OS task. Returns 0 on success, errno otherwise.
     */
-  int emulate_set_thread_area(int idx, struct ::user_desc desc);
+  int emulate_set_thread_area(int idx, X86Arch::user_desc desc);
 
   /** Get the thread area from the remote process.
     * Returns 0 on success, errno otherwise.
     */
-  int emulate_get_thread_area(int idx, struct ::user_desc& desc);
+  int emulate_get_thread_area(int idx, X86Arch::user_desc& desc);
 
-  const std::vector<struct ::user_desc>& thread_areas() {
+  const std::vector<X86Arch::user_desc>& thread_areas() {
+    DEBUG_ASSERT(arch() == x86 || arch() == x86_64);
     return thread_areas_;
   }
 
@@ -832,7 +830,7 @@ public:
     Registers regs;
     ExtraRegisters extra_regs;
     std::string prname;
-    std::vector<struct user_desc> thread_areas;
+    std::vector<X86Arch::user_desc> thread_areas;
     remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
     size_t syscallbuf_size;
     size_t num_syscallbuf_bytes;
@@ -1113,7 +1111,8 @@ protected:
   // Entries set by |set_thread_area()| or the |tls| argument to |clone()|
   // (when that's a user_desc). May be more than one due to different
   // entry_numbers.
-  std::vector<struct user_desc> thread_areas_;
+  // x86(_64) only.
+  std::vector<X86Arch::user_desc> thread_areas_;
   // The |stack| argument passed to |clone()|, which for
   // "threads" is the top of the user-allocated stack.
   remote_ptr<void> top_of_stack;

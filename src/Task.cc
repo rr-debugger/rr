@@ -1464,8 +1464,8 @@ bool Task::set_debug_reg(size_t regno, uintptr_t value) {
   return errno == ESRCH || errno == 0;
 }
 
-static void set_thread_area(std::vector<struct user_desc>& thread_areas_,
-                            user_desc desc) {
+static void set_thread_area(std::vector<X86Arch::user_desc>& thread_areas_,
+                            X86Arch::user_desc desc) {
   for (auto& t : thread_areas_) {
     if (t.entry_number == desc.entry_number) {
       t = desc;
@@ -1475,13 +1475,15 @@ static void set_thread_area(std::vector<struct user_desc>& thread_areas_,
   thread_areas_.push_back(desc);
 }
 
-void Task::set_thread_area(remote_ptr<struct user_desc> tls) {
+void Task::set_thread_area(remote_ptr<X86Arch::user_desc> tls) {
   // We rely on the fact that user_desc is word-size-independent.
+  DEBUG_ASSERT(arch() == x86 || arch() == x86_64);
   auto desc = read_mem(tls);
   rr::set_thread_area(thread_areas_, desc);
 }
 
-int Task::emulate_set_thread_area(int idx, struct ::user_desc desc) {
+int Task::emulate_set_thread_area(int idx, X86Arch::user_desc desc) {
+  DEBUG_ASSERT(arch() == x86 || arch() == x86_64);
   errno = 0;
   fallible_ptrace(PTRACE_SET_THREAD_AREA, idx, &desc);
   if (errno != 0) {
@@ -1492,7 +1494,8 @@ int Task::emulate_set_thread_area(int idx, struct ::user_desc desc) {
   return 0;
 }
 
-int Task::emulate_get_thread_area(int idx, struct ::user_desc& desc) {
+int Task::emulate_get_thread_area(int idx, X86Arch::user_desc& desc) {
+  DEBUG_ASSERT(arch() == x86 || arch() == x86_64);
   LOG(debug) << "Emulating PTRACE_GET_THREAD_AREA";
   errno = 0;
   fallible_ptrace(PTRACE_GET_THREAD_AREA, idx, &desc);
@@ -1908,7 +1911,7 @@ bool Task::try_wait() {
 template <typename Arch>
 static void set_thread_area_from_clone_arch(Task* t, remote_ptr<void> tls) {
   if (Arch::clone_tls_type == Arch::UserDescPointer) {
-    t->set_thread_area(tls.cast<struct user_desc>());
+    t->set_thread_area(tls.cast<X86Arch::user_desc>());
   }
 }
 
