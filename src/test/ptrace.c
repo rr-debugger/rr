@@ -116,6 +116,12 @@ int main(void) {
     asm("movdqu %0,%%xmm15" ::"m"(dummy));
 #endif
 
+    // Also initialize at least one ymm register. Otherwise the initial state
+    // optimization might prevent the kernel from writing this state component.
+    if (xsave_size > 576) {
+      asm("vinsertf128 $128,%0,%%ymm2,%%ymm1" ::"m"(dummy));
+    }
+
     kill(getpid(), SIGSTOP);
     test_assert(static_data == NEW_VALUE);
     return 77;
