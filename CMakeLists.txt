@@ -587,6 +587,9 @@ set(RR_GDB_RESOURCES
   amd64-linux.xml
   i386-avx-linux.xml
   i386-linux.xml
+  aarch64-core.xml
+  aarch64-fpu.xml
+  aarch64-pauth.xml
 )
 foreach(file ${RR_GDB_RESOURCES})
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/third-party/gdb/${file}"
