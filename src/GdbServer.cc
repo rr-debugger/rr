@@ -1450,7 +1450,7 @@ static uint32_t get_cpu_features(SupportedArch arch) {
       cpu_features = 0;
       break;
     case x86_64:
-      cpu_features = GdbConnection::CPU_64BIT;
+      cpu_features = GdbConnection::CPU_X86_64;
       break;
     default:
       FATAL() << "Unknown architecture";
