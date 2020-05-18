@@ -345,6 +345,15 @@ bool patch_syscall_with_hook_arch<X64Arch>(Monkeypatcher& patcher,
                                                                     hook);
 }
 
+template <>
+bool patch_syscall_with_hook_arch<ARM64Arch>(Monkeypatcher&,
+                                             RecordTask*,
+                                             const syscall_patch_hook&) {
+  FATAL() << "Unimplemented";
+  return false;
+}
+
+
 static bool patch_syscall_with_hook(Monkeypatcher& patcher, RecordTask* t,
                                     const syscall_patch_hook& hook) {
   RR_ARCH_FUNCTION(patch_syscall_with_hook_arch, t->arch(), patcher, t, hook);
@@ -918,6 +927,11 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
 }
 
 template <>
+void patch_after_exec_arch<ARM64Arch>(RecordTask*, Monkeypatcher&) {
+  FATAL() << "Unimplemented";
+}
+
+template <>
 void patch_at_preload_init_arch<X64Arch>(RecordTask* t,
                                          Monkeypatcher& patcher) {
   auto params = t->read_mem(
@@ -928,6 +942,17 @@ void patch_at_preload_init_arch<X64Arch>(RecordTask* t,
 
   patcher.init_dynamic_syscall_patching(t, params.syscall_patch_hook_count,
                                         params.syscall_patch_hooks);
+}
+
+template <>
+void patch_at_preload_init_arch<ARM64Arch>(RecordTask* t,
+                                           Monkeypatcher&) {
+  auto params = t->read_mem(
+      remote_ptr<rrcall_init_preload_params<ARM64Arch>>(t->regs().arg1()));
+  if (!params.syscallbuf_enabled) {
+    return;
+  }
+  FATAL() << "Unimplemented";
 }
 
 void Monkeypatcher::patch_after_exec(RecordTask* t) {

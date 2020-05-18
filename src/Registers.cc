@@ -95,6 +95,16 @@ template <> struct RegisterInfo<rr::X64Arch> {
   static Table registers;
 };
 
+template <> struct RegisterInfo<rr::ARM64Arch> {
+  static bool ignore_undefined_register(GdbRegister) {
+    FATAL() << "Unimplemented";
+    return false;
+  }
+  static const size_t num_registers = DREG_NUM_LINUX_AARCH64;
+  typedef RegisterTable<num_registers> Table;
+  static Table registers;
+};
+
 #define RV_ARCH(gdb_suffix, name, arch, extra_ctor_args)                       \
   RegisterInit(DREG_##gdb_suffix,                                              \
                RegisterValue(#name, offsetof(arch::user_regs_struct, name),    \
@@ -141,6 +151,9 @@ RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
   // elsewhere.
   RV_X64_WITH_MASK(ORIG_RAX, orig_rax, 0, 8), RV_X64(FS_BASE, fs_base),
   RV_X64(GS_BASE, gs_base),
+};
+
+RegisterInfo<rr::ARM64Arch>::Table RegisterInfo<rr::ARM64Arch>::registers = {
 };
 
 #undef RV_X64

@@ -269,6 +269,8 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
               memset(value, 0, sizeof(value));
             }
             break;
+          default:
+            FATAL() << "Unexpected architecture";
         }
         char buf[8];
         sprintf(buf, "xmm%d", field.reg_num);
@@ -301,6 +303,8 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
               memset(value, 0, sizeof(value));
             }
             break;
+          default:
+            FATAL() << "Unexpected architecture";
         }
         char buf[8];
         sprintf(buf, "ymm%d", field.reg_num);
