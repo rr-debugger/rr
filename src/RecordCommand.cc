@@ -100,7 +100,9 @@ RecordCommand RecordCommand::singleton(
     "  --trace-id                 Sets the trace id to the specified id.\n"
     "  --copy-preload-src         Copy preload sources to trace dir\n"
     "  --stap-sdt                 Enables the use of SystemTap statically-\n"
-    "                             defined tracepoints\n");
+    "                             defined tracepoints\n"
+    "  --unmap-vdso               Forcibly unmaps the vdso. This is mostly\n"
+    "                             useful for debugging rr itself.");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -171,6 +173,9 @@ struct RecordFlags {
   /* True if we should load the audit library for SystemTap SDT support. */
   bool stap_sdt;
 
+  /* True if we should unmap the vdso */
+  bool unmap_vdso;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -191,7 +196,8 @@ struct RecordFlags {
         setuid_sudo(false),
         copy_preload_src(false),
         syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL),
-        stap_sdt(false) {}
+        stap_sdt(false),
+        unmap_vdso(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -249,6 +255,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 12, "copy-preload-src", NO_PARAMETER },
     { 13, "syscall-buffer-sig", HAS_PARAMETER },
     { 14, "stap-sdt", NO_PARAMETER },
+    { 15, "unmap-vdso", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -451,6 +458,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     case 14:
       flags.stap_sdt = true;
       break;
+    case 15:
+      flags.unmap_vdso = true;
+      break;
     case 's':
       flags.always_switch = true;
       break;
@@ -600,7 +610,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
       flags.use_syscall_buffer, flags.syscallbuf_desched_sig,
       flags.bind_cpu, flags.output_trace_dir,
       flags.trace_id.get(),
-      flags.stap_sdt);
+      flags.stap_sdt, flags.unmap_vdso);
   setup_session_from_flags(*session, flags);
 
   static_session = session.get();

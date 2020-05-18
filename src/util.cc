@@ -36,6 +36,7 @@
 #include "Flags.h"
 #include "PerfCounters.h"
 #include "ReplaySession.h"
+#include "RecordTask.h"
 #include "ReplayTask.h"
 #include "TraceStream.h"
 #include "core.h"
@@ -63,7 +64,7 @@ template <typename Arch> static remote_ptr<typename Arch::unsigned_word> env_ptr
   return stack_ptr;
 }
 
-template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
+template <typename Arch> remote_ptr<typename Arch::unsigned_word> auxv_ptr(Task* t) {
   auto stack_ptr = env_ptr<Arch>(t);
 
   // Should now point to envp
@@ -72,7 +73,11 @@ template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
   }
   stack_ptr++;
   // should now point to ELF Auxiliary Table
+  return stack_ptr;
+}
 
+template <typename Arch>
+static vector<uint8_t> read_auxv_arch(Task* t, remote_ptr<typename Arch::unsigned_word> stack_ptr) {
   vector<uint8_t> result;
   while (true) {
     auto pair_vec = t->read_mem(stack_ptr, 2);
@@ -87,8 +92,33 @@ template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
   return result;
 }
 
+template <typename Arch> static vector<uint8_t> read_auxv_arch(Task* t) {
+  auto stack_ptr = auxv_ptr<Arch>(t);
+  return read_auxv_arch<Arch>(t, stack_ptr);
+}
+
 vector<uint8_t> read_auxv(Task* t) {
   RR_ARCH_FUNCTION(read_auxv_arch, t->arch(), t);
+}
+
+template <typename Arch> void patch_auxv_vdso_arch(RecordTask* t) {
+  auto stack_ptr = auxv_ptr<Arch>(t);
+  std::vector<uint8_t> v = read_auxv_arch<Arch>(t, stack_ptr);
+  size_t wsize = sizeof(typename Arch::unsigned_word);
+  for (int i = 0; (i + 1)*wsize*2 <= v.size(); ++i) {
+    if (*((typename Arch::unsigned_word*)(v.data() + i*2*wsize)) == AT_SYSINFO_EHDR) {
+      auto entry_ptr = stack_ptr + i*2;
+      typename Arch::unsigned_word new_entry = AT_IGNORE;
+      t->write_mem(entry_ptr, new_entry);
+      t->record_local(entry_ptr, &new_entry);
+      return;
+    }
+  }
+  return;
+}
+
+void patch_auxv_vdso(RecordTask* t) {
+  RR_ARCH_FUNCTION(patch_auxv_vdso_arch, t->arch(), t);
 }
 
 template <typename Arch> static vector<string> read_env_arch(Task* t) {

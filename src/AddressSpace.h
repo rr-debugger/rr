@@ -621,6 +621,7 @@ public:
 
   /** Return the vdso mapping of this. */
   KernelMapping vdso() const;
+  bool has_vdso() const { return has_mapping(vdso_start_addr); }
 
   /**
    * Verify that this cached address space matches what the

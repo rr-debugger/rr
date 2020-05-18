@@ -4671,6 +4671,7 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
   ASSERT(t, mode == TraceWriter::DONT_RECORD_IN_TRACE);
 
   KernelMapping vvar;
+  KernelMapping vdso;
 
   // get the remote executable entry point
   // with the pointer, we find out which mapping is the executable
@@ -4686,6 +4687,8 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       stacks.push_back(km);
     } else if (km.is_vvar()) {
       vvar = km;
+    } else if (km.is_vdso()) {
+      vdso = km;
     }
 
     // if true, this mapping is our executable
@@ -4711,6 +4714,12 @@ static void process_execve(RecordTask* t, TaskSyscallState& syscall_state) {
       remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
                                 vvar.start(), vvar.size());
       t->vm()->unmap(t, vvar.start(), vvar.size());
+    }
+
+    if (t->session().unmap_vdso() && vdso.size()) {
+      remote.infallible_syscall(syscall_number_for_munmap(remote.arch()),
+                                vdso.start(), vdso.size());
+      t->vm()->unmap(t, vdso.start(), vdso.size());
     }
 
     for (auto& km : stacks) {
