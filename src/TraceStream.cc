@@ -243,6 +243,8 @@ static trace::Arch to_trace_arch(SupportedArch arch) {
       return trace::Arch::X86;
     case x86_64:
       return trace::Arch::X8664;
+    case aarch64:
+      return trace::Arch::AARCH64;
     default:
       FATAL() << "Unknown arch";
       return trace::Arch::X86;
@@ -255,6 +257,8 @@ static SupportedArch from_trace_arch(trace::Arch arch) {
       return x86;
     case trace::Arch::X8664:
       return x86_64;
+    case trace::Arch::AARCH64:
+      return aarch64;
     default:
       FATAL() << "Unknown arch";
       return x86;
@@ -1291,16 +1295,23 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   MallocMessageBuilder header_msg;
   trace::Header::Builder header = header_msg.initRoot<trace::Header>();
   header.setBindToCpu(this->bind_to_cpu);
-  header.setHasCpuidFaulting(has_cpuid_faulting_);
-  header.setCpuidRecords(
-      Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
-                   cpuid_records.size() * sizeof(CPUIDRecord)));
-  header.setXcr0(xcr0());
   header.setTicksSemantics(
     to_trace_ticks_semantics(PerfCounters::default_ticks_semantics()));
   header.setSyscallbufProtocolVersion(SYSCALLBUF_PROTOCOL_VERSION);
   header.setPreloadThreadLocalsRecorded(true);
   header.setRrcallBase(syscall_number_for_rrcall_init_preload(x86_64));
+
+  header.setNativeArch(to_trace_arch(NativeArch::arch()));
+  if (NativeArch::arch() == x86 || NativeArch::arch() == x86_64)
+  {
+    auto x86data = header.initX86();
+    x86data.setHasCpuidFaulting(has_cpuid_faulting_);
+    x86data.setCpuidRecords(
+        Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
+                    cpuid_records.size() * sizeof(CPUIDRecord)));
+    x86data.setXcr0(xcr0());
+  }
+
   // Add a random UUID to the trace metadata. This lets tools identify a trace
   // easily.
   if (!uuid) {
@@ -1439,16 +1450,6 @@ TraceReader::TraceReader(const string& dir)
 
   trace::Header::Reader header = header_msg.getRoot<trace::Header>();
   bind_to_cpu = header.getBindToCpu();
-  trace_uses_cpuid_faulting = header.getHasCpuidFaulting();
-  Data::Reader cpuid_records_bytes = header.getCpuidRecords();
-  size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
-  if (cpuid_records_bytes.size() != len * sizeof(CPUIDRecord)) {
-    FATAL() << "Invalid CPUID records length";
-  }
-  cpuid_records_.resize(len);
-  memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
-         len * sizeof(CPUIDRecord));
-  xcr0_ = header.getXcr0();
   preload_thread_locals_recorded_ = header.getPreloadThreadLocalsRecorded();
   ticks_semantics_ = from_trace_ticks_semantics(header.getTicksSemantics());
   rrcall_base_ = header.getRrcallBase();
@@ -1458,6 +1459,21 @@ TraceReader::TraceReader(const string& dir)
     FATAL() << "Invalid UUID length";
   }
   memcpy(uuid_->bytes, uuid.begin(), sizeof(uuid_->bytes));
+
+  arch_ = from_trace_arch(header.getNativeArch());
+  if (arch_ == x86 || arch_ == x86_64) {
+    auto x86data = header.getX86();
+    trace_uses_cpuid_faulting = x86data.getHasCpuidFaulting();
+    Data::Reader cpuid_records_bytes = x86data.getCpuidRecords();
+    size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
+    if (cpuid_records_bytes.size() != len * sizeof(CPUIDRecord)) {
+      FATAL() << "Invalid CPUID records length";
+    }
+    cpuid_records_.resize(len);
+    memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
+          len * sizeof(CPUIDRecord));
+    xcr0_ = x86data.getXcr0();
+  }
 
   // Set the global time at 0, so that when we tick it for the first
   // event, it matches the initial global time at recording, 1.
@@ -1483,6 +1499,7 @@ TraceReader::TraceReader(const TraceReader& other)
   xcr0_ = other.xcr0_;
   preload_thread_locals_recorded_ = other.preload_thread_locals_recorded_;
   rrcall_base_ = other.rrcall_base_;
+  arch_ = other.arch_;
 }
 
 TraceReader::~TraceReader() {}
