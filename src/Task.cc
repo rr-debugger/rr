@@ -2829,7 +2829,8 @@ static SeccompFilter<struct sock_filter> create_seccomp_filter() {
   for (auto& e : AddressSpace::rr_page_syscalls()) {
     if (e.traced == AddressSpace::UNTRACED) {
       auto ip = AddressSpace::rr_page_syscall_exit_point(e.traced, e.privileged,
-                                                         e.enabled);
+                                                         e.enabled,
+                                                         NativeArch::arch());
       f.allow_syscalls_from_callsite(ip);
     }
   }

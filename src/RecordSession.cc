@@ -935,7 +935,7 @@ static void save_interrupted_syscall_ret_in_syscallbuf(RecordTask* t,
 }
 
 static bool is_in_privileged_syscall(RecordTask* t) {
-  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
+  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
   return type && type->privileged == AddressSpace::PRIVILEGED;
 }
 

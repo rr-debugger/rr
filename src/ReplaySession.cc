@@ -494,7 +494,7 @@ Completion ReplaySession::cont_syscall_boundary(
     t->resume_execution(RESUME_SYSEMU, RESUME_WAIT, ticks_request);
   }
 
-  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
+  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
   if (type && type->traced == AddressSpace::UNTRACED &&
       type->enabled == AddressSpace::REPLAY_ONLY) {
     // Actually perform it. We can hit these when replaying through syscallbuf
@@ -653,7 +653,7 @@ Completion ReplaySession::continue_or_step(ReplayTask* t,
   } else {
     t->resume_execution(resume_how, RESUME_WAIT, tick_request);
     if (t->stop_sig() == 0) {
-      auto type = AddressSpace::rr_page_syscall_from_exit_point(t->ip());
+      auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
       if (type && type->traced == AddressSpace::UNTRACED) {
         // If we recorded an rr replay of an application doing a
         // syscall-buffered 'mprotect', the replay's `flush_syscallbuf`

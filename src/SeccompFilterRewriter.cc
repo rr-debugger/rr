@@ -85,7 +85,8 @@ static void install_patched_seccomp_filter_arch(
   for (auto& e : AddressSpace::rr_page_syscalls()) {
     if (e.privileged == AddressSpace::PRIVILEGED) {
       auto ip = AddressSpace::rr_page_syscall_exit_point(e.traced, e.privileged,
-                                                         e.enabled);
+                                                         e.enabled,
+                                                         Arch::arch());
       f.allow_syscalls_from_callsite(ip);
     }
   }
