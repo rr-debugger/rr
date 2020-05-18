@@ -68,7 +68,8 @@ public:
       BindCPU bind_cpu = BIND_CPU,
       const std::string& output_trace_dir = "",
       const TraceUuid* trace_id = nullptr,
-      bool use_audit = false);
+      bool use_audit = false,
+      bool unmap_vdso = false);
 
   const DisableCPUIDFeatures& disable_cpuid_features() const {
     return disable_cpuid_features_;
@@ -85,6 +86,7 @@ public:
   void set_asan_active(bool active) { asan_active_ = active; }
   bool asan_active() const { return asan_active_; }
   bool use_audit() const { return use_audit_; }
+  bool unmap_vdso() { return unmap_vdso_; }
   uint64_t rr_signal_mask() const;
 
   enum RecordStatus {
@@ -201,7 +203,8 @@ private:
                 BindCPU bind_cpu,
                 const std::string& output_trace_dir,
                 const TraceUuid* trace_id,
-                bool use_audit);
+                bool use_audit,
+                bool unmap_vdso);
 
   virtual void on_create(Task* t) override;
 
@@ -256,6 +259,7 @@ private:
   std::string output_trace_dir;
 
   bool use_audit_;
+  bool unmap_vdso_;
 };
 
 } // namespace rr

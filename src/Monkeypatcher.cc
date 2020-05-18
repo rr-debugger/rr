@@ -732,6 +732,11 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X86Arch>(t);
   setup_audit_library_path<X86Arch>(t);
 
+  if (!t->vm()->has_vdso()) {
+    patch_auxv_vdso(t);
+    return;
+  }
+
   VdsoReader reader(t);
   auto syms = reader.read_symbols(".dynsym", ".dynstr");
   patcher.x86_vsyscall = locate_and_verify_kernel_vsyscall(t, reader, syms);
@@ -854,6 +859,18 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   setup_preload_library_path<X64Arch>(t);
   setup_audit_library_path<X64Arch>(t);
 
+  for (const auto& m : t->vm()->maps()) {
+    auto& km = m.map;
+    patcher.patch_after_mmap(t, km.start(), km.size(),
+                             km.file_offset_bytes()/page_size(), -1,
+                             Monkeypatcher::MMAP_EXEC);
+  }
+
+  if (!t->vm()->has_vdso()) {
+    patch_auxv_vdso(t);
+    return;
+  }
+
   auto vdso_start = t->vm()->vdso().start();
   size_t vdso_size = t->vm()->vdso().size();
 
@@ -917,13 +934,6 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
   }
 
   obliterate_debug_info(t, reader);
-
-  for (const auto& m : t->vm()->maps()) {
-    auto& km = m.map;
-    patcher.patch_after_mmap(t, km.start(), km.size(),
-                             km.file_offset_bytes()/page_size(), -1,
-                             Monkeypatcher::MMAP_EXEC);
-  }
 }
 
 template <>

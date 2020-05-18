@@ -258,6 +258,10 @@ uint32_t AddressSpace::offset_to_syscall_in_vdso[SupportedArch_MAX + 1];
 
 remote_code_ptr AddressSpace::find_syscall_instruction(Task* t) {
   SupportedArch arch = t->arch();
+  // This assert passes even if --unmap-vdso is passed because this only ever
+  // gets called at the start of process_execve before we unmap the vdso. After
+  // the rr page is mapped in, we use the syscall instructions contained therein
+  ASSERT(t, has_vdso()) << "Kernel with vDSO disabled?";
   if (!offset_to_syscall_in_vdso[arch]) {
     auto vdso_data = t->read_mem(vdso().start().cast<uint8_t>(), vdso().size());
     offset_to_syscall_in_vdso[arch] = find_offset_of_syscall_instruction_in(

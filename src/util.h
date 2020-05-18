@@ -37,6 +37,7 @@ struct Event;
 class KernelMapping;
 class Task;
 class TraceFrame;
+class RecordTask;
 
 enum Completion { COMPLETE, INCOMPLETE };
 
@@ -49,6 +50,8 @@ std::vector<uint8_t> read_auxv(Task* t);
  * Returns a vector containing the environment strings.
  */
 std::vector<std::string> read_env(Task* t);
+
+void patch_auxv_vdso(RecordTask* t);
 
 /**
  * Create a file named |filename| and dump |buf_len| words in |buf| to
