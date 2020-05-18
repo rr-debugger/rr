@@ -1783,23 +1783,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat, struct stat);
 
-  struct stat64 {
-    dev_t st_dev;
-    ino_t st_ino;
-    nlink_t st_nlink;
-    mode_t st_mode;
-    uid_t st_uid;
-    gid_t st_gid;
-    int __pad0;
-    dev_t st_rdev;
-    off_t st_size;
-    blksize_t st_blksize;
-    blkcnt_t st_blocks;
-    struct timespec st_atim;
-    struct timespec st_mtim;
-    struct timespec st_ctim;
-    syscall_slong_t __rr_unused[3];
-  };
+  struct stat64 : public stat {};
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat64, struct stat64);
 };
 
