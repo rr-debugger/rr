@@ -97,7 +97,6 @@ template <> struct RegisterInfo<rr::X64Arch> {
 
 template <> struct RegisterInfo<rr::ARM64Arch> {
   static bool ignore_undefined_register(GdbRegister) {
-    FATAL() << "Unimplemented";
     return false;
   }
   static const size_t num_registers = DREG_NUM_LINUX_AARCH64;
@@ -119,6 +118,9 @@ template <> struct RegisterInfo<rr::ARM64Arch> {
   RV_ARCH(gdb_suffix, name, rr::X86Arch, COMMA comparison_mask)
 #define RV_X64_WITH_MASK(gdb_suffix, name, comparison_mask, size)              \
   RV_ARCH(gdb_suffix, name, rr::X64Arch, COMMA comparison_mask COMMA size)
+#define RV_AARCH64(gdb_suffix, name) RV_ARCH(gdb_suffix, name, rr::ARM64Arch, /* empty */)
+#define RV_AARCH64_WITH_MASK(gdb_suffix, name, comparison_mask, size)          \
+  RV_ARCH(gdb_suffix, name, rr::ARM64Arch, COMMA comparison_mask COMMA size)
 
 RegisterInfo<rr::X86Arch>::Table RegisterInfo<rr::X86Arch>::registers = {
   RV_X86(EAX, eax), RV_X86(ECX, ecx), RV_X86(EDX, edx), RV_X86(EBX, ebx),
@@ -154,10 +156,28 @@ RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
 };
 
 RegisterInfo<rr::ARM64Arch>::Table RegisterInfo<rr::ARM64Arch>::registers = {
+  RV_AARCH64(X0, x[0]), RV_AARCH64(X1, x[1]), RV_AARCH64(X2, x[2]),
+  RV_AARCH64(X3, x[3]), RV_AARCH64(X4, x[4]), RV_AARCH64(X5, x[5]),
+  RV_AARCH64(X6, x[6]), RV_AARCH64(X7, x[7]), RV_AARCH64(X8, x[8]),
+  RV_AARCH64(X9, x[9]),
+  RV_AARCH64(X10, x[10]), RV_AARCH64(X11, x[11]), RV_AARCH64(X12, x[12]),
+  RV_AARCH64(X13, x[13]), RV_AARCH64(X14, x[14]), RV_AARCH64(X15, x[15]),
+  RV_AARCH64(X16, x[16]), RV_AARCH64(X17, x[17]), RV_AARCH64(X18, x[18]),
+  RV_AARCH64(X19, x[19]),
+  RV_AARCH64(X20, x[20]), RV_AARCH64(X21, x[21]), RV_AARCH64(X22, x[22]),
+  RV_AARCH64(X23, x[23]), RV_AARCH64(X24, x[24]), RV_AARCH64(X25, x[25]),
+  RV_AARCH64(X26, x[26]), RV_AARCH64(X27, x[27]), RV_AARCH64(X28, x[28]),
+  RV_AARCH64(X29, x[29]), RV_AARCH64(X30, x[30]),
+  RV_AARCH64(SP, sp), RV_AARCH64(PC, pc),
+  RV_AARCH64_WITH_MASK(CPSR, pstate, 0xffffffffLL, 4),
 };
 
 #undef RV_X64
 #undef RV_X86
+#undef RV_AARCH64
+#undef RV_X64_WITH_MASK
+#undef RV_X86_WITH_MASK
+#undef RV_AARCH64_WITH_MASK
 #undef RV_ARCH
 
 // 32-bit format, 64-bit format for all of these.
