@@ -174,7 +174,13 @@ int main(void) {
   test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, fpregs));
   test_assert(NULL == memchr(fpregs, 0xBB, sizeof(*fpregs)));
   VERIFY_GUARD(fpregs);
+  fpregs->cwd = 0xFFFF;
   test_assert(0 == ptrace(PTRACE_SETFPREGS, child, NULL, fpregs));
+  {
+    struct user_fpregs_struct fpregs3;
+    test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, &fpregs3));
+    test_assert(0 == memcmp(fpregs, &fpregs3, sizeof(fpregs3)));
+  }
 
 #ifdef __i386__
   ALLOCATE_GUARD(fpxregs, 0xCC);
@@ -182,7 +188,14 @@ int main(void) {
   clear_reserved_area((uint8_t*)fpxregs);
   test_assert(NULL == memchr(fpxregs, 0xCC, sizeof(*fpxregs)));
   VERIFY_GUARD(fpxregs);
+  fpxregs->xmm_space[0] = 0xFFFFF;
   test_assert(0 == ptrace(PTRACE_SETFPXREGS, child, NULL, fpxregs));
+
+  {
+    struct user_fpxregs_struct fpxregs3;
+    test_assert(0 == ptrace(PTRACE_GETFPXREGS, child, NULL, &fpxregs3));
+    test_assert(0 == memcmp(fpxregs, &fpxregs3, sizeof(fpxregs3)));
+  }
 #endif
 
   ALLOCATE_GUARD(regs2, 0xCD);

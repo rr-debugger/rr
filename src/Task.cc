@@ -621,17 +621,17 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
         case PTRACE_SETFPREGS: {
           auto data = read_mem(
               remote_ptr<typename Arch::user_fpregs_struct>(regs.arg4()));
-          auto r = extra_regs();
+          auto r = tracee->extra_regs();
           r.set_user_fpregs_struct(this, Arch::arch(), &data, sizeof(data));
-          set_extra_regs(r);
+          tracee->set_extra_regs(r);
           break;
         }
         case PTRACE_SETFPXREGS: {
           auto data =
               read_mem(remote_ptr<X86Arch::user_fpxregs_struct>(regs.arg4()));
-          auto r = extra_regs();
+          auto r = tracee->extra_regs();
           r.set_user_fpxregs_struct(this, data);
-          set_extra_regs(r);
+          tracee->set_extra_regs(r);
           break;
         }
         case PTRACE_SETREGSET: {
