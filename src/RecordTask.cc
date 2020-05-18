@@ -516,7 +516,7 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
   switch (syscallno) {
     case Arch::set_robust_list:
-      set_robust_list(regs.arg1(), (size_t)regs.arg2());
+      set_robust_list(regs.orig_arg1(), (size_t)regs.arg2());
       return;
     case Arch::sigaction:
     case Arch::rt_sigaction:
@@ -524,7 +524,7 @@ void RecordTask::on_syscall_exit_arch(int syscallno, const Registers& regs) {
       update_sigaction(regs);
       return;
     case Arch::set_tid_address:
-      set_tid_addr(regs.arg1());
+      set_tid_addr(regs.orig_arg1());
       return;
     case Arch::sigsuspend:
     case Arch::rt_sigsuspend:
@@ -1172,7 +1172,7 @@ void RecordTask::set_siginfo(const siginfo_t& si) {
 
 template <typename Arch>
 void RecordTask::update_sigaction_arch(const Registers& regs) {
-  int sig = regs.arg1_signed();
+  int sig = regs.orig_arg1_signed();
   remote_ptr<typename Arch::kernel_sigaction> new_sigaction = regs.arg2();
   if (0 == regs.syscall_result() && !new_sigaction.is_null()) {
     // A new sighandler was installed.  Update our

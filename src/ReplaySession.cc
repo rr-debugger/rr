@@ -565,7 +565,10 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
         r.set_ip(
             syscall_instruction.increment_by_syscall_insn_length(t->arch()));
         r.set_original_syscallno(r.syscallno());
-        r.set_syscall_result(-ENOSYS);
+        r.set_orig_arg1(r.arg1());
+        if (t->arch() == x86 || t->arch() == x86_64) {
+          r.set_syscall_result(-ENOSYS);
+        }
         t->set_regs(r);
         t->canonicalize_regs(current_trace_frame().event().Syscall().arch());
         t->validate_regs();
