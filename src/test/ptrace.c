@@ -174,7 +174,7 @@ int main(void) {
   test_assert(0 == ptrace(PTRACE_GETFPREGS, child, NULL, fpregs));
   test_assert(NULL == memchr(fpregs, 0xBB, sizeof(*fpregs)));
   VERIFY_GUARD(fpregs);
-  fpregs->cwd = 0xFFFF;
+  fpregs->cwd = -1;
   test_assert(0 == ptrace(PTRACE_SETFPREGS, child, NULL, fpregs));
   {
     struct user_fpregs_struct fpregs3;
