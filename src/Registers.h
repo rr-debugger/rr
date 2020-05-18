@@ -198,6 +198,7 @@ public:
   }
 
   SYSCALL_REGISTER(syscall_result, eax, rax, x[0]);
+  SYSCALL_REGISTER(orig_arg1, ebx, rdi, orig_x0)
   SYSCALL_REGISTER(arg1, ebx, rdi, x[0])
   SYSCALL_REGISTER(arg2, ecx, rsi, x[1])
   SYSCALL_REGISTER(arg3, edx, rdx, x[2])

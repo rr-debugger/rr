@@ -465,7 +465,7 @@ static void process_shmdt(Task* t, remote_ptr<void> addr) {
 template <typename Arch>
 static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registers& regs)
 {
-  switch ((int)regs.arg1_signed()) {
+  switch ((int)regs.orig_arg1_signed()) {
     case PTRACE_SETREGS: {
       auto data = t->read_mem(
           remote_ptr<typename Arch::user_regs_struct>(regs.arg4()));
@@ -533,7 +533,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     // replay is notified of the syscall via the `mprotect_records`
     // mechanism; if it's being recorded, it forwards that notification to
     // the recorder by calling this syscall.
-    pid_t tid = regs.arg1();
+    pid_t tid = regs.orig_arg1();
     remote_ptr<void> addr = regs.arg2();
     size_t num_bytes = regs.arg3();
     int prot = regs.arg4_signed();
@@ -561,26 +561,26 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     }
 
     case Arch::mprotect: {
-      remote_ptr<void> addr = regs.arg1();
+      remote_ptr<void> addr = regs.orig_arg1();
       size_t num_bytes = regs.arg2();
       int prot = regs.arg3_signed();
       return vm()->protect(this, addr, num_bytes, prot);
     }
     case Arch::munmap: {
-      remote_ptr<void> addr = regs.arg1();
+      remote_ptr<void> addr = regs.orig_arg1();
       size_t num_bytes = regs.arg2();
       return vm()->unmap(this, addr, num_bytes);
     }
     case Arch::shmdt:
-      return process_shmdt(this, regs.arg1());
+      return process_shmdt(this, regs.orig_arg1());
     case Arch::madvise: {
-      remote_ptr<void> addr = regs.arg1();
+      remote_ptr<void> addr = regs.orig_arg1();
       size_t num_bytes = regs.arg2();
       int advice = regs.arg3();
       return vm()->advise(this, addr, num_bytes, advice);
     }
     case Arch::ipc: {
-      switch ((int)regs.arg1_signed()) {
+      switch ((int)regs.orig_arg1_signed()) {
         case SHMDT:
           return process_shmdt(this, regs.arg5());
         default:
@@ -590,11 +590,11 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     }
 
     case Arch::set_thread_area:
-      set_thread_area(regs.arg1());
+      set_thread_area(regs.orig_arg1());
       return;
 
     case Arch::prctl:
-      switch ((int)regs.arg1_signed()) {
+      switch ((int)regs.orig_arg1_signed()) {
         case PR_SET_SECCOMP:
           if (regs.arg2() == SECCOMP_MODE_FILTER && session().is_recording()) {
             seccomp_bpf_enabled = true;
@@ -610,20 +610,20 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::dup:
     case Arch::dup2:
     case Arch::dup3:
-      fd_table()->did_dup(regs.arg1(), regs.syscall_result());
+      fd_table()->did_dup(regs.orig_arg1(), regs.syscall_result());
       return;
     case Arch::fcntl64:
     case Arch::fcntl:
       if (regs.arg2() == Arch::DUPFD || regs.arg2() == Arch::DUPFD_CLOEXEC) {
-        fd_table()->did_dup(regs.arg1(), regs.syscall_result());
+        fd_table()->did_dup(regs.orig_arg1(), regs.syscall_result());
       }
       return;
     case Arch::close:
-      fd_table()->did_close(regs.arg1());
+      fd_table()->did_close(regs.orig_arg1());
       return;
 
     case Arch::unshare:
-      if (regs.arg1() & CLONE_FILES) {
+      if (regs.orig_arg1() & CLONE_FILES) {
         fds->erase_task(this);
         fds = fds->clone(this);
       }
@@ -631,7 +631,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
     case Arch::pwrite64:
     case Arch::write: {
-      int fd = (int)regs.arg1_signed();
+      int fd = (int)regs.orig_arg1_signed();
       vector<FileMonitor::Range> ranges;
       ssize_t amount = regs.syscall_result_signed();
       if (amount > 0) {
@@ -644,7 +644,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
 
     case Arch::pwritev:
     case Arch::writev: {
-      int fd = (int)regs.arg1_signed();
+      int fd = (int)regs.orig_arg1_signed();
       vector<FileMonitor::Range> ranges;
       auto iovecs =
           read_mem(remote_ptr<typename Arch::iovec>(regs.arg2()), regs.arg3());
@@ -665,7 +665,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::ptrace: {
       pid_t pid = (pid_t)regs.arg2_signed();
       Task* tracee = session().find_task(pid);
-      switch ((int)regs.arg1_signed()) {
+      switch ((int)regs.orig_arg1_signed()) {
         case PTRACE_SETREGSET: {
           switch ((int)regs.arg3()) {
             case NT_PRSTATUS: {
