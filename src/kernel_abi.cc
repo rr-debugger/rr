@@ -92,6 +92,7 @@ CHECK_ELF(ELFDATA2LSB == ELFENDIAN::DATA2LSB);
 static const uint8_t int80_insn[] = { 0xcd, 0x80 };
 static const uint8_t sysenter_insn[] = { 0x0f, 0x34 };
 static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
+static const uint8_t svc0_insn[] = { 0x1, 0x0, 0x0, 0xd4 };
 
 bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
                                   SupportedArch* arch) {
@@ -153,9 +154,24 @@ vector<uint8_t> syscall_instruction(SupportedArch arch) {
       return vector<uint8_t>(int80_insn, int80_insn + sizeof(int80_insn));
     case x86_64:
       return vector<uint8_t>(syscall_insn, syscall_insn + sizeof(syscall_insn));
+    case aarch64:
+      return vector<uint8_t>(svc0_insn, svc0_insn + sizeof(svc0_insn));
     default:
       DEBUG_ASSERT(0 && "Need to define syscall instruction");
       return vector<uint8_t>();
+  }
+}
+
+static ssize_t instruction_length(SupportedArch arch) {
+  switch (arch) {
+    case aarch64:
+      return 4;
+    default:
+      // x86 and x86_64 must be handled in the caller.
+      // Add new architectures here if all instructions have the same length,
+      // otherwise add them in the appropriate caller.
+      DEBUG_ASSERT(0 && "Need to define instruction length");
+      return 0;
   }
 }
 
@@ -165,8 +181,7 @@ ssize_t syscall_instruction_length(SupportedArch arch) {
     case x86_64:
       return 2;
     default:
-      DEBUG_ASSERT(0 && "Need to define syscall instruction length");
-      return 0;
+      return instruction_length(arch);
   }
 }
 
@@ -178,7 +193,7 @@ ssize_t bkpt_instruction_length(SupportedArch arch) {
       val = 1;
       break;
     default:
-      DEBUG_ASSERT(0 && "Need to define bkpt instruction length");
+      val = instruction_length(arch);
   }
   DEBUG_ASSERT(val <= MAX_BKPT_INSTRUCTION_LENGTH);
   return val;
@@ -191,8 +206,7 @@ ssize_t movrm_instruction_length(SupportedArch arch) {
     case x86_64:
       return 3;
     default:
-      DEBUG_ASSERT(0 && "Need to define movrm instruction length");
-      return 0;
+      return instruction_length(arch);
   }
 }
 
