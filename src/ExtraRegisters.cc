@@ -146,6 +146,33 @@ static uint64_t xsave_features(const vector<uint8_t>& data) {
 
 size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
                                      bool* defined) const {
+  if (format_ == NT_FPR) {
+    if (arch() != aarch64) {
+      *defined = false;
+      return 0;
+    }
+
+    RegData reg_data;
+    if (DREG_V0 <= regno && regno <= DREG_V31) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, vregs[0]) +
+        ((regno - DREG_V0) * sizeof(__uint128_t)), sizeof(__uint128_t));
+    } else if (regno == DREG_FPSR) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpsr),
+                         sizeof(uint32_t));
+    } else if (regno == DREG_FPCR) {
+      reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpcr),
+                         sizeof(uint32_t));
+    } else {
+      *defined = false;
+      return 0;
+    }
+
+    DEBUG_ASSERT(size_t(reg_data.offset + reg_data.size) <= data_.size());
+    *defined = true;
+    memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
+    return reg_data.size;
+  }
+
   if (format_ != XSAVE) {
     *defined = false;
     return 0;
@@ -254,6 +281,14 @@ void ExtraRegisters::print_register_file_compact(FILE* f) const {
       fputc(' ', f);
       print_regs(*this, DREG_64_XMM0, DREG_64_YMM0H, 16, "ymm", f);
       break;
+    case aarch64:
+      DEBUG_ASSERT(format_ == NT_FPR);
+      print_regs(*this, DREG_V0, GdbRegister(0), 32, "v", f);
+      fputc(' ', f);
+      print_reg(*this, DREG_FPSR, GdbRegister(0), "fpsr", f);
+      fputc(' ', f);
+      print_reg(*this, DREG_FPCR, GdbRegister(0), "fpcr", f);
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
       break;
@@ -332,6 +367,24 @@ static uint32_t features_used(const uint8_t* data,
   return features;
 }
 
+template <typename Arch>
+bool memcpy_fpr_regs_arch(std::vector<uint8_t>& dest, const uint8_t* src,
+                          size_t data_size) {
+  if (data_size != sizeof(typename Arch::user_fpregs_struct)) {
+    LOG(error) << "Invalid FPR data length: " << data_size << " for architecture " <<
+      arch_name(Arch::arch()) << ", expected " << sizeof(typename Arch::user_fpregs_struct);
+    return false;
+  }
+  dest.resize(sizeof(typename Arch::user_fpregs_struct));
+  memcpy(dest.data(), src, sizeof(typename Arch::user_fpregs_struct));
+  return true;
+}
+
+bool memcpy_fpr_regs_arch(SupportedArch arch, std::vector<uint8_t>& dest,
+                          const uint8_t* src, size_t data_size) {
+  RR_ARCH_FUNCTION(memcpy_fpr_regs_arch, arch, dest, src, data_size)
+}
+
 bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
                                      const uint8_t* data, size_t data_size,
                                      const XSaveLayout& layout) {
@@ -340,7 +393,14 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
   if (format == NONE) {
     return true;
+  } else if (format == NT_FPR) {
+    if (!memcpy_fpr_regs_arch(a, data_, data, data_size)) {
+      return false;
+    }
+    format_ = NT_FPR;
+    return true;
   }
+
   if (format != XSAVE) {
     LOG(error) << "Unknown ExtraRegisters format: " << format;
     return false;
@@ -441,14 +501,21 @@ vector<uint8_t> ExtraRegisters::get_user_fpregs_struct(
   DEBUG_ASSERT(format_ == XSAVE);
   switch (arch) {
     case x86:
+      DEBUG_ASSERT(format_ == XSAVE);
       DEBUG_ASSERT(data_.size() >= sizeof(X86Arch::user_fpxregs_struct));
       return to_vector(convert_fxsave_to_x86_fpregs(
           *reinterpret_cast<const X86Arch::user_fpxregs_struct*>(
               data_.data())));
     case x86_64:
+      DEBUG_ASSERT(format_ == XSAVE);
       DEBUG_ASSERT(data_.size() >= sizeof(X64Arch::user_fpregs_struct));
       return to_vector(
           *reinterpret_cast<const X64Arch::user_fpregs_struct*>(data_.data()));
+    case aarch64:
+      DEBUG_ASSERT(format_ == NT_FPR);
+      DEBUG_ASSERT(data_.size() == sizeof(ARM64Arch::user_fpregs_struct));
+      return to_vector(
+          *reinterpret_cast<const ARM64Arch::user_fpregs_struct*>(data_.data()));
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
       return vector<uint8_t>();
@@ -501,32 +568,30 @@ static void set_word(SupportedArch arch, vector<uint8_t>& v, GdbRegister r,
 }
 
 void ExtraRegisters::reset() {
-  DEBUG_ASSERT(format_ == XSAVE);
   memset(data_.data(), 0, data_.size());
-  switch (arch()) {
-    case x86_64: {
+  if (arch() == x86_64 || arch() == x86) {
+    DEBUG_ASSERT(format_ == XSAVE);
+    if (arch() == x86_64) {
       set_word(arch(), data_, DREG_64_MXCSR, 0x1f80);
       set_word(arch(), data_, DREG_64_FCTRL, 0x37f);
-      break;
-    }
-    case x86: {
+    } else {
       set_word(arch(), data_, DREG_MXCSR, 0x1f80);
       set_word(arch(), data_, DREG_FCTRL, 0x37f);
-      break;
     }
-    default:
-      DEBUG_ASSERT(0 && "Unknown arch");
-      break;
-  }
-  uint64_t xinuse;
-  if (data_.size() >= xinuse_offset + sizeof(xinuse)) {
-    /* We have observed (Skylake, Linux 4.10) the system setting XINUSE's 0 bit
-     * to indicate x87-in-use, at times unrelated to x87 actually being used.
-     * Work around this by setting the bit unconditionally after exec.
-     */
-    memcpy(&xinuse, data_.data() + xinuse_offset, sizeof(xinuse));
-    xinuse |= 1;
-    memcpy(data_.data() + xinuse_offset, &xinuse, sizeof(xinuse));
+    uint64_t xinuse;
+    if (data_.size() >= xinuse_offset + sizeof(xinuse)) {
+      /* We have observed (Skylake, Linux 4.10) the system setting XINUSE's 0 bit
+      * to indicate x87-in-use, at times unrelated to x87 actually being used.
+      * Work around this by setting the bit unconditionally after exec.
+      */
+      memcpy(&xinuse, data_.data() + xinuse_offset, sizeof(xinuse));
+      xinuse |= 1;
+      memcpy(data_.data() + xinuse_offset, &xinuse, sizeof(xinuse));
+    }
+  } else {
+    DEBUG_ASSERT(format_ == NT_FPR);
+    DEBUG_ASSERT(arch() == aarch64 &&
+      "Ensure that nothing is required here for your architecture.");
   }
 }
 

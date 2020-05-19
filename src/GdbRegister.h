@@ -156,6 +156,7 @@ enum GdbRegister {
   // Last register we can find in user_regs_struct (except for orig_rax).
   DREG_64_NUM_USER_REGS = DREG_64_GS + 1,
 
+  // aarch64-core.xml
   DREG_X0 = 0,
   DREG_X1,
   DREG_X2,
@@ -190,7 +191,44 @@ enum GdbRegister {
   DREG_SP,
   DREG_PC,
   DREG_CPSR,
-  DREG_NUM_LINUX_AARCH64 = DREG_CPSR + 1,
+
+  // aarch64-fpu.xml
+  DREG_V0 = 34,
+  DREG_V1,
+  DREG_V2,
+  DREG_V3,
+  DREG_V4,
+  DREG_V5,
+  DREG_V6,
+  DREG_V7,
+  DREG_V8,
+  DREG_V9,
+  DREG_V10,
+  DREG_V11,
+  DREG_V12,
+  DREG_V13,
+  DREG_V14,
+  DREG_V15,
+  DREG_V16,
+  DREG_V17,
+  DREG_V18,
+  DREG_V19,
+  DREG_V20,
+  DREG_V21,
+  DREG_V22,
+  DREG_V23,
+  DREG_V24,
+  DREG_V25,
+  DREG_V26,
+  DREG_V27,
+  DREG_V28,
+  DREG_V29,
+  DREG_V30,
+  DREG_V31,
+  DREG_FPSR,
+  DREG_FPCR,
+
+  DREG_NUM_LINUX_AARCH64 = DREG_FPCR + 1,
 };
 
 } // namespace rr
