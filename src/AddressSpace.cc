@@ -28,12 +28,15 @@ using namespace std;
 namespace rr {
 
 static const uint8_t x86_breakpoint_insn[] = { 0xcc }; // int $3
+static const uint8_t arm64_breakpoint_insn[4] = {0x0, 0x0, 0x20, 0xd4}; // brk #0
 
 static const uint8_t *breakpoint_insn(SupportedArch arch) {
   switch (arch) {
     case x86:
     case x86_64:
       return x86_breakpoint_insn;
+    case aarch64:
+      return arm64_breakpoint_insn;
     default:
       DEBUG_ASSERT(0 && "Must define breakpoint insn for this architecture");
       return nullptr;
@@ -1573,6 +1576,11 @@ static void __attribute__((noinline, used)) fake_syscall() {
                        "nop\n\t");
 #elif defined(__x86_64__)
   __asm__ __volatile__("rr_syscall_addr: syscall\n\t"
+                       "nop\n\t"
+                       "nop\n\t"
+                       "nop\n\t");
+#elif defined(__aarch64__)
+  __asm__ __volatile__("rr_syscall_addr: svc #0\n\t"
                        "nop\n\t"
                        "nop\n\t"
                        "nop\n\t");
