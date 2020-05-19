@@ -1,9 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "Task.h"
-
 #include <asm/prctl.h>
-#include <asm/ptrace.h>
 #include <elf.h>
 #include <errno.h>
 #include <limits.h>
@@ -32,6 +29,8 @@
 #include <sstream>
 
 #include <rr/rr.h>
+
+#include "Task.h"
 
 #include "preload/preload_interface.h"
 
@@ -466,7 +465,7 @@ template <typename Arch>
 static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registers& regs)
 {
   switch ((int)regs.orig_arg1_signed()) {
-    case PTRACE_SETREGS: {
+    case Arch::PTRACE_SETREGS: {
       auto data = t->read_mem(
           remote_ptr<typename Arch::user_regs_struct>(regs.arg4()));
       Registers r = tracee->regs();
@@ -474,7 +473,7 @@ static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registe
       tracee->set_regs(r);
       break;
     }
-    case PTRACE_SETFPREGS: {
+    case Arch::PTRACE_SETFPREGS: {
       auto data = t->read_mem(
           remote_ptr<typename Arch::user_fpregs_struct>(regs.arg4()));
       auto r = tracee->extra_regs();
@@ -482,7 +481,7 @@ static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registe
       tracee->set_extra_regs(r);
       break;
     }
-    case PTRACE_SETFPXREGS: {
+    case Arch::PTRACE_SETFPXREGS: {
       auto data =
           t->read_mem(remote_ptr<X86Arch::user_fpxregs_struct>(regs.arg4()));
       auto r = tracee->extra_regs();
@@ -490,7 +489,7 @@ static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registe
       tracee->set_extra_regs(r);
       break;
     }
-    case PTRACE_POKEUSER: {
+    case Arch::PTRACE_POKEUSR: {
       size_t addr = regs.arg3();
       typename Arch::unsigned_word data = regs.arg4();
       if (addr < sizeof(typename Arch::user_regs_struct)) {
@@ -720,7 +719,10 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           }
           break;
         }
-        case PTRACE_ARCH_PRCTL: {
+        case Arch::PTRACE_ARCH_PRCTL: {
+          if (tracee->arch() != x86_64) {
+            break;
+          }
           int code = (int)regs.arg4();
           switch (code) {
             case ARCH_GET_FS:
@@ -748,10 +750,10 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           }
           break;
         }
-        case PTRACE_SETREGS:
-        case PTRACE_SETFPREGS:
-        case PTRACE_SETFPXREGS:
-        case PTRACE_POKEUSER: {
+        case Arch::PTRACE_SETREGS:
+        case Arch::PTRACE_SETFPREGS:
+        case Arch::PTRACE_SETFPXREGS:
+        case Arch::PTRACE_POKEUSR: {
           ptrace_syscall_exit_legacy_arch<Arch>(this, tracee, regs);
         }
       }
@@ -1236,7 +1238,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
   }
 
   LOG(debug) << "resuming execution of " << tid << " with "
-             << ptrace_req_name(how)
+             << ptrace_req_name<NativeArch>(how)
              << (sig ? string(", signal ") + signal_name(sig) : string())
              << " tick_period " << tick_period << " wait " << wait_how;
   address_of_last_execution_resume = ip();
@@ -2615,7 +2617,7 @@ const TraceStream* Task::trace_stream() const {
 void Task::xptrace(int request, remote_ptr<void> addr, void* data) {
   errno = 0;
   fallible_ptrace(request, addr, data);
-  ASSERT(this, !errno) << "ptrace(" << ptrace_req_name(request) << ", " << tid
+  ASSERT(this, !errno) << "ptrace(" << ptrace_req_name<NativeArch>(request) << ", " << tid
                        << ", addr=" << addr << ", data=" << data
                        << ") failed with errno " << errno;
 }
@@ -2627,7 +2629,7 @@ bool Task::ptrace_if_alive(int request, remote_ptr<void> addr, void* data) {
     LOG(debug) << "ptrace_if_alive tid " << tid << " was not alive";
     return false;
   }
-  ASSERT(this, !errno) << "ptrace(" << ptrace_req_name(request) << ", " << tid
+  ASSERT(this, !errno) << "ptrace(" << ptrace_req_name<NativeArch>(request) << ", " << tid
                        << ", addr=" << addr << ", data=" << data
                        << ") failed with errno " << errno;
   return true;

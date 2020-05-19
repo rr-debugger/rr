@@ -16,6 +16,7 @@
 #include "ScopedFd.h"
 #include "TraceFrame.h"
 #include "remote_ptr.h"
+#include "kernel_supplement.h"
 
 /* This is pretty arbitrary. On Linux SIGPWR is sent to PID 1 (init) on
  * power failure, and it's unlikely rr will be recording that.

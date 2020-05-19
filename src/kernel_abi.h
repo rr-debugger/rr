@@ -334,6 +334,54 @@ struct BaseArch : public wordsize,
   typedef uint64_t __u64;
   typedef __u64 aligned_u64 __attribute((aligned(8)));
 
+  // These are the same across all architectures. The kernel defines them for
+  // all architectures in the uapi headers, but the libc's headers may not.
+  // Further, the libc headers may conflict with the kernel headers, so for
+  // simplicitly, we just define everything here:
+  static const int PTRACE_TRACEME = 0;
+  static const int PTRACE_PEEKTEXT = 1;
+  static const int PTRACE_PEEKDATA = 2;
+  static const int PTRACE_PEEKUSR = 3;
+  static const int PTRACE_POKETEXT = 4;
+  static const int PTRACE_POKEDATA = 5;
+  static const int PTRACE_POKEUSR = 6;
+  static const int PTRACE_CONT = 7;
+  static const int PTRACE_KILL = 8;
+  static const int PTRACE_SINGLESTEP = 9;
+
+  // If they are defined in the header, undef them now.
+  // In rr, we always refer to them as these constants.
+#undef PTRACE_GETREGS
+#undef PTRACE_SETREGS
+#undef PTRACE_GETFPREGS
+#undef PTRACE_SETFPREGS
+#undef PTRACE_GETFPXREGS
+#undef PTRACE_SETFPXREGS
+#undef PTRACE_OLDSETOPTIONS
+#undef PTRACE_GET_THREAD_AREA
+#undef PTRACE_SET_THREAD_AREA
+#undef PTRACE_ARCH_PRCTL
+#undef PTRACE_SYSEMU
+#undef PTRACE_SYSEMU_SINGLESTEP
+
+  // These are architecture specific and may not exist on any given
+  // architecture or the number assigned on the architecture may vary.
+  // Here we give each of these a unique negative number that makes writing
+  // architecture generic code easier (the same approach is used for
+  // architecture specific syscalls).
+  static const int PTRACE_GETREGS = -1;
+  static const int PTRACE_SETREGS = -2;
+  static const int PTRACE_GETFPREGS = -3;
+  static const int PTRACE_SETFPREGS = -4;
+  static const int PTRACE_GETFPXREGS = -5;
+  static const int PTRACE_SETFPXREGS = -6;
+  static const int PTRACE_OLDSETOPTIONS = -7;
+  static const int PTRACE_GET_THREAD_AREA = -8;
+  static const int PTRACE_SET_THREAD_AREA = -9;
+  static const int PTRACE_ARCH_PRCTL = -10;
+  static const int PTRACE_SYSEMU = -11;
+  static const int PTRACE_SYSEMU_SINGLESTEP = -12;
+
   template <typename T> struct ptr {
     typedef T Referent;
     unsigned_word val;
@@ -1658,6 +1706,21 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 
 #include "SyscallEnumsX64.generated"
 
+  // Architecture specific ptrace commands
+
+  static const int PTRACE_GETREGS = 12;
+  static const int PTRACE_SETREGS = 13;
+  static const int PTRACE_GETFPREGS = 14;
+  static const int PTRACE_SETFPREGS = 15;
+  static const int PTRACE_GETFPXREGS = 18;
+  static const int PTRACE_SETFPXREGS = 19;
+  static const int PTRACE_OLDSETOPTIONS = 21;
+  static const int PTRACE_GET_THREAD_AREA = 25;
+  static const int PTRACE_SET_THREAD_AREA = 26;
+  static const int PTRACE_ARCH_PRCTL = 30;
+  static const int PTRACE_SYSEMU = 31;
+  static const int PTRACE_SYSEMU_SINGLESTEP = 32;
+
   struct user_regs_struct {
     uint64_t r15;
     uint64_t r14;
@@ -1814,6 +1877,20 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
   typedef uint16_t legacy_gid_t;
 
 #include "SyscallEnumsX86.generated"
+
+  // The same as x86_64
+  static const int PTRACE_GETREGS = Arch64::PTRACE_GETREGS;
+  static const int PTRACE_SETREGS = Arch64::PTRACE_SETREGS;
+  static const int PTRACE_GETFPREGS = Arch64::PTRACE_GETFPREGS;
+  static const int PTRACE_SETFPREGS = Arch64::PTRACE_SETFPREGS;
+  static const int PTRACE_GETFPXREGS = Arch64::PTRACE_GETFPXREGS;
+  static const int PTRACE_SETFPXREGS = Arch64::PTRACE_SETFPXREGS;
+  static const int PTRACE_OLDSETOPTIONS = Arch64::PTRACE_OLDSETOPTIONS;
+  static const int PTRACE_GET_THREAD_AREA = Arch64::PTRACE_GET_THREAD_AREA;
+  static const int PTRACE_SET_THREAD_AREA = Arch64::PTRACE_SET_THREAD_AREA;
+  // PTRACE_ARCH_PRCTL does not exist on x86
+  static const int PTRACE_SYSEMU = Arch64::PTRACE_SYSEMU;
+  static const int PTRACE_SYSEMU_SINGLESTEP = Arch64::PTRACE_SYSEMU_SINGLESTEP;
 
   struct user_regs_struct {
     int32_t ebx;
@@ -2000,6 +2077,10 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
       SelectRegisterArguments;
 
 #include "SyscallEnumsGeneric.generated"
+
+  // Architecture specific ptrace commands
+  static const int PTRACE_SYSEMU = 31;
+  static const int PTRACE_SYSEMU_SINGLESTEP = 32;
 
   struct user_pt_regs {
     uint64_t x[31];

@@ -27,29 +27,6 @@ namespace rr {
 #define PTRACE_EVENT_STOP 128
 #endif
 
-#ifndef PTRACE_OLDSETOPTIONS
-#define PTRACE_OLDSETOPTIONS 21
-#endif
-
-#ifndef PTRACE_GET_THREAD_AREA
-#define PTRACE_GET_THREAD_AREA 25
-#endif
-
-#ifndef PTRACE_SET_THREAD_AREA
-#define PTRACE_SET_THREAD_AREA 26
-#endif
-
-#ifndef PTRACE_ARCH_PRCTL
-#define PTRACE_ARCH_PRCTL 30
-#endif
-
-#ifndef PTRACE_SYSEMU
-#define PTRACE_SYSEMU 31
-#endif
-#ifndef PTRACE_SYSEMU_SINGLESTEP
-#define PTRACE_SYSEMU_SINGLESTEP 32
-#endif
-
 #ifndef PTRACE_GETREGSET
 #define PTRACE_GETREGSET 0x4204
 #endif
@@ -323,6 +300,22 @@ struct rr_input_mask {
 #ifndef CLONE_NEWCGROUP
 #define CLONE_NEWCGROUP 0x02000000
 #endif
+
+// These are only defined on x86. For simplicity, we defined
+// them here for all architectures.
+#ifndef ARCH_SET_GS
+#define ARCH_SET_GS 0x1001
+#endif
+#ifndef ARCH_SET_FS
+#define ARCH_SET_FS 0x1002
+#endif
+#ifndef ARCH_GET_FS
+#define ARCH_GET_FS 0x1003
+#endif
+#ifndef ARCH_GET_GS
+#define ARCH_GET_GS 0x1004
+#endif
+
 // New in the 4.12 kernel
 #ifndef ARCH_GET_CPUID
 #define ARCH_GET_CPUID 0x1011
