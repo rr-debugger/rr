@@ -66,6 +66,11 @@ namespace rr {
 
 // For instances where the system type and the rr type are named identically.
 #define RR_VERIFY_TYPE(type_) RR_VERIFY_TYPE_EXPLICIT(::type_, type_)
+
+#if defined(__i386__) || defined(__x86_64__)
+#define RR_VERIFY_TYPE_X86(type_) RR_VERIFY_TYPE(type_)
+#define RR_VERIFY_TYPE_X86_ARCH(arch_, system_type_, rr_type_) RR_VERIFY_TYPE_ARCH(arch_, system_type_, rr_type_)
+#endif
 }
 
 #include "kernel_abi.h"
