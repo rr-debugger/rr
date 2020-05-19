@@ -12,7 +12,10 @@
 #include <sys/resource.h>
 #include <sys/user.h>
 #include <syscall.h>
+
+#if defined(__i386__) || defined(__x86_64__)
 #include <x86intrin.h>
+#endif
 
 #include "preload/preload_interface.h"
 
@@ -32,7 +35,14 @@ using namespace std;
 
 namespace rr {
 
-static __inline__ unsigned long long rdtsc(void) { return __rdtsc(); }
+static __inline__ unsigned long long rdtsc(void) {
+#if defined(__i386__) || defined(__x86_64__)
+  return __rdtsc();
+#else
+  FATAL() << "Reached x86-only code path on non-x86 architecture";
+  return 0;
+#endif
+}
 
 static void restore_sighandler_if_not_default(RecordTask* t, int sig) {
   if (t->sig_disposition(sig) != SIGNAL_DEFAULT) {

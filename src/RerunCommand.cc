@@ -112,6 +112,30 @@ static uint8_t user_regs_fields[16] = {
   offsetof(user_regs_struct, esp), offsetof(user_regs_struct, ebp),
   offsetof(user_regs_struct, esi), offsetof(user_regs_struct, edi),
 };
+#elif defined(__aarch64__)
+#define user_regs_struct NativeArch::user_regs_struct
+static uint16_t user_regs_fields[34] = {
+  offsetof(user_regs_struct, x[0]), offsetof(user_regs_struct, x[1]),
+  offsetof(user_regs_struct, x[2]), offsetof(user_regs_struct, x[3]),
+  offsetof(user_regs_struct, x[4]), offsetof(user_regs_struct, x[5]),
+  offsetof(user_regs_struct, x[6]), offsetof(user_regs_struct, x[7]),
+  offsetof(user_regs_struct, x[8]), offsetof(user_regs_struct, x[9]),
+  offsetof(user_regs_struct, x[10]), offsetof(user_regs_struct, x[11]),
+  offsetof(user_regs_struct, x[12]), offsetof(user_regs_struct, x[13]),
+  offsetof(user_regs_struct, x[14]), offsetof(user_regs_struct, x[15]),
+  offsetof(user_regs_struct, x[16]), offsetof(user_regs_struct, x[17]),
+  offsetof(user_regs_struct, x[18]), offsetof(user_regs_struct, x[19]),
+  offsetof(user_regs_struct, x[20]), offsetof(user_regs_struct, x[21]),
+  offsetof(user_regs_struct, x[22]), offsetof(user_regs_struct, x[23]),
+  offsetof(user_regs_struct, x[24]), offsetof(user_regs_struct, x[25]),
+  offsetof(user_regs_struct, x[26]), offsetof(user_regs_struct, x[27]),
+  offsetof(user_regs_struct, x[28]), offsetof(user_regs_struct, x[29]),
+  offsetof(user_regs_struct, x[30]),
+  offsetof(user_regs_struct, sp),
+  offsetof(user_regs_struct, pc),
+  offsetof(user_regs_struct, pstate)
+};
+#undef user_regs_struct
 #else
 #error Unsupported architecture
 #endif

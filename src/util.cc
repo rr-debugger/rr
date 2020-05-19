@@ -791,7 +791,11 @@ bool xsave_enabled() {
   return (features.ecx & OSXSAVE_FEATURE_FLAG) != 0;
 }
 
+
+#define FATAL_X86_ONLY() FATAL() << "Reached x86-only code on non-x86 arch"
+
 uint64_t xcr0() {
+#if defined(__i386__) || defined(__x86_64__)
   if (!xsave_enabled()) {
     // Assume x87/SSE enabled.
     return 3;
@@ -801,8 +805,13 @@ uint64_t xcr0() {
                : "=a"(eax), "=d"(edx)
                : "c"(0));
   return (uint64_t(edx) << 32) | eax;
+#else
+  FATAL_X86_ONLY();
+  return 0;
+#endif
 }
 
+#if defined(__i386__) || defined(__x86_64__)
 CPUIDData cpuid(uint32_t code, uint32_t subrequest) {
   CPUIDData result;
   asm volatile("cpuid"
@@ -811,21 +820,30 @@ CPUIDData cpuid(uint32_t code, uint32_t subrequest) {
                : "a"(code), "c"(subrequest));
   return result;
 }
+#else
+CPUIDData cpuid(uint32_t, uint32_t) {
+  FATAL_X86_ONLY();
+  __builtin_unreachable();
+}
+#endif
+
 
 #define SEGV_HANDLER_MAGIC 0x98765432
 
 static void cpuid_segv_handler(__attribute__((unused)) int sig,
                                __attribute__((unused)) siginfo_t* si,
                                void* user) {
-  ucontext_t* ctx = (ucontext_t*)user;
 #if defined(__i386__)
+  ucontext_t* ctx = (ucontext_t*)user;
   ctx->uc_mcontext.gregs[REG_EIP] += 2;
   ctx->uc_mcontext.gregs[REG_EAX] = SEGV_HANDLER_MAGIC;
 #elif defined(__x86_64__)
+  ucontext_t* ctx = (ucontext_t*)user;
   ctx->uc_mcontext.gregs[REG_RIP] += 2;
   ctx->uc_mcontext.gregs[REG_RAX] = SEGV_HANDLER_MAGIC;
 #else
-#error unknown architecture
+  (void)user;
+  FATAL_X86_ONLY();
 #endif
 }
 

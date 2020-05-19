@@ -2696,8 +2696,12 @@ static void prepare_exit(RecordTask* t) {
 
 static void prepare_mmap_register_params(RecordTask* t) {
   Registers r = t->regs();
+  intptr_t mask_flag = MAP_FIXED;
+#ifdef MAP_32BIT
+  mask_flag |= MAP_32BIT;
+#endif
   if (t->session().enable_chaos() &&
-      !(r.arg4_signed() & (MAP_FIXED | MAP_32BIT)) && r.arg1() == 0) {
+      !(r.arg4_signed() & mask_flag) && r.arg1() == 0) {
     // No address hint was provided. Randomize the allocation address.
     size_t len = r.arg2();
     if (r.arg4_signed() & MAP_GROWSDOWN) {

@@ -544,7 +544,8 @@ void Registers::set_from_ptrace(const NativeArch::user_regs_struct& ptrace_regs)
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
   convert_x86<to_x86_narrow, to_x86_narrow>(
       u.x86regs,
-      *const_cast<struct X64Arch::user_regs_struct*>(&ptrace_regs));
+      *const_cast<X64Arch::user_regs_struct*>(
+        reinterpret_cast<const X64Arch::user_regs_struct*>(&ptrace_regs)));
 }
 
 /**
@@ -555,7 +556,7 @@ void Registers::set_from_ptrace(const NativeArch::user_regs_struct& ptrace_regs)
  */
 NativeArch::user_regs_struct Registers::get_ptrace() const {
   union {
-    struct NativeArch::user_regs_struct linux_api;
+    NativeArch::user_regs_struct linux_api;
     struct X64Arch::user_regs_struct x64arch_api;
   } result;
   if (arch() == NativeArch::arch()) {
