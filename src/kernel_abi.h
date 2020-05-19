@@ -709,18 +709,6 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(shm_info);
 
-  struct semid64_ds {
-    ipc64_perm sem_perm;
-    __kernel_time_t sem_otime;
-    __kernel_ulong_t __unused1;
-    __kernel_time_t sem_ctime;
-    __kernel_ulong_t __unused2;
-    __kernel_ulong_t sem_nsems;
-    __kernel_ulong_t __unused3;
-    __kernel_ulong_t __unused4;
-  };
-  RR_VERIFY_TYPE(semid64_ds);
-
   struct seminfo {
     int semmap;
     int semmni;
@@ -1857,6 +1845,18 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
 
   struct stat64 : public stat {};
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::stat64, struct stat64);
+
+  struct semid64_ds {
+    ipc64_perm sem_perm;
+    __kernel_time_t sem_otime;
+    __kernel_ulong_t __unused1;
+    __kernel_time_t sem_ctime;
+    __kernel_ulong_t __unused2;
+    __kernel_ulong_t sem_nsems;
+    __kernel_ulong_t __unused3;
+    __kernel_ulong_t __unused4;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, struct ::semid64_ds, struct semid64_ds);
 };
 
 struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
@@ -2037,6 +2037,18 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     ino64_t st_ino;
   };
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::stat64, struct stat64);
+
+  struct semid64_ds {
+    ipc64_perm sem_perm;
+    __kernel_time_t sem_otime;
+    __kernel_ulong_t sem_otime_high;
+    __kernel_time_t sem_ctime;
+    __kernel_ulong_t sem_ctime_high;
+    __kernel_ulong_t sem_nsems;
+    __kernel_ulong_t __unused3;
+    __kernel_ulong_t __unused4;
+  };
+  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, struct ::semid64_ds, struct semid64_ds);
 };
 
 // Archs that inherit Linux's "generic" data structures
@@ -2064,6 +2076,15 @@ struct GenericArch : public BaseArch<arch_, wordsize> {
     struct timespec st_mtim;
     struct timespec st_ctim;
     int __rr_unused[2];
+  };
+
+  struct semid64_ds {
+    typename BaseArch<arch_, wordsize>::ipc64_perm sem_perm;
+    uint64_t sem_otime;
+    uint64_t sem_ctime;
+    typename BaseArch<arch_, wordsize>::unsigned_long sem_nsems;
+    typename BaseArch<arch_, wordsize>::unsigned_long __unused3;
+    typename BaseArch<arch_, wordsize>::unsigned_long __unused4;
   };
 
   struct stat64 : public stat {};
@@ -2103,6 +2124,8 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
     uint32_t rr_reserved[2];
   };
   typedef struct user_fpsimd_state user_fpregs_struct;
+
+  RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::semid64_ds, struct semid64_ds);
 };
 
 #define RR_ARCH_FUNCTION(f, arch, args...)                                     \
