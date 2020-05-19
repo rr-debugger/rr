@@ -53,6 +53,12 @@ template <typename T> struct Verifier<RR_NATIVE_ARCH, T, T> {
 #define RR_VERIFY_TYPE(x)                                  // no-op
 #endif
 
+// For structs whose native definitions only exist on x86
+#ifndef RR_VERIFY_TYPE_X86
+#define RR_VERIFY_TYPE_X86_ARCH(arch_, system_type_, rr_type_) // no-op
+#define RR_VERIFY_TYPE_X86(x)                                  // no-op
+#endif
+
 struct KernelConstants {
   static const ::size_t SIGINFO_MAX_SIZE = 128;
 
@@ -762,7 +768,7 @@ struct BaseArch : public wordsize,
     unsigned_int useable : 1;
     unsigned_int lm : 1;
   };
-  RR_VERIFY_TYPE(user_desc);
+  RR_VERIFY_TYPE_X86(user_desc);
 
   struct __user_cap_header_struct {
     __u32 version;
@@ -1802,8 +1808,8 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     uint32_t xmm_space[64];
     uint32_t padding[24];
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_fpregs_struct,
-                      user_fpregs_struct);
+  RR_VERIFY_TYPE_X86_ARCH(SupportedArch::x86_64, ::user_fpregs_struct,
+                          user_fpregs_struct);
 
   struct user {
     struct user_regs_struct regs;
@@ -1828,7 +1834,7 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
     char u_comm[32];
     uint64_t u_debugreg[8];
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user, user);
+  RR_VERIFY_TYPE_X86_ARCH(SupportedArch::x86_64, ::user, user);
 
   struct stat {
     dev_t st_dev;
@@ -1911,7 +1917,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     int32_t esp;
     int32_t xss;
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_regs_struct, user_regs_struct);
+  RR_VERIFY_TYPE_X86_ARCH(SupportedArch::x86, ::user_regs_struct, user_regs_struct);
 
   struct user_fpregs_struct {
     int32_t cwd;
@@ -1923,8 +1929,8 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     int32_t fos;
     int32_t st_space[20];
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user_fpregs_struct,
-                      user_fpregs_struct);
+  RR_VERIFY_TYPE_X86_ARCH(SupportedArch::x86, ::user_fpregs_struct,
+                          user_fpregs_struct);
 
   struct user_fpxregs_struct {
     uint16_t cwd;
@@ -1989,7 +1995,7 @@ struct X86Arch : public BaseArch<SupportedArch::x86, WordSize32Defs> {
     char u_comm[32];
     int u_debugreg[8];
   };
-  RR_VERIFY_TYPE_ARCH(SupportedArch::x86, ::user, user);
+  RR_VERIFY_TYPE_X86_ARCH(SupportedArch::x86, ::user, user);
 
   struct stat {
     dev_t st_dev;
