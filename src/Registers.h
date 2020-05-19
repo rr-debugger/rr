@@ -13,7 +13,6 @@
 #include "GdbRegister.h"
 #include "core.h"
 #include "kernel_abi.h"
-#include "kernel_supplement.h"
 #include "remote_code_ptr.h"
 #include "remote_ptr.h"
 

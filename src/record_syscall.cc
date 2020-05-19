@@ -1,9 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "record_syscall.h"
-
 #include <arpa/inet.h>
-#include <asm/prctl.h>
 #include <dirent.h>
 #include <elf.h>
 #include <errno.h>
@@ -58,6 +55,8 @@
 #include <unordered_set>
 
 #include <rr/rr.h>
+
+#include "record_syscall.h"
 
 #include "preload/preload_interface.h"
 
@@ -2130,7 +2129,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
       }
       break;
     }
-    case PTRACE_PEEKUSER: {
+    case Arch::PTRACE_PEEKUSR: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         // The actual syscall returns the data via the 'data' out-parameter.
@@ -2176,7 +2175,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
       }
       break;
     }
-    case PTRACE_POKEUSER: {
+    case Arch::PTRACE_POKEUSR: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         // The actual syscall returns the data via the 'data' out-parameter.
@@ -2192,7 +2191,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
       }
       break;
     }
-    case PTRACE_GETREGS: {
+    case Arch::PTRACE_GETREGS: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         auto data =
@@ -2204,7 +2203,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
       }
       break;
     }
-    case PTRACE_GETFPREGS: {
+    case Arch::PTRACE_GETFPREGS: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         auto data =
@@ -2216,7 +2215,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
       }
       break;
     }
-    case PTRACE_GETFPXREGS: {
+    case Arch::PTRACE_GETFPXREGS: {
       if (Arch::arch() != x86) {
         // GETFPXREGS is x86-32 only
         syscall_state.expect_errno = EIO;
@@ -2232,7 +2231,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
       }
       break;
     }
-    case PTRACE_SETREGS: {
+    case Arch::PTRACE_SETREGS: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         // The actual register effects are performed by
@@ -2241,7 +2240,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
       }
       break;
     }
-    case PTRACE_SETFPREGS: {
+    case Arch::PTRACE_SETFPREGS: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         // The actual register effects are performed by
@@ -2250,7 +2249,7 @@ static void prepare_ptrace_legacy(RecordTask* t,
       }
       break;
     }
-    case PTRACE_SETFPXREGS: {
+    case Arch::PTRACE_SETFPXREGS: {
       if (Arch::arch() != x86) {
         // SETFPXREGS is x86-32 only
         syscall_state.expect_errno = EIO;
@@ -2272,13 +2271,15 @@ void prepare_ptrace_legacy<ARM64Arch>(RecordTask*, TaskSyscallState&) {
   // Nothing to do - unimplemented on this architecture
 }
 
+static int non_negative_command(int command) { return command < 0 ? INT32_MAX : command; }
+
 template <typename Arch>
 static Switchable prepare_ptrace(RecordTask* t,
                                  TaskSyscallState& syscall_state) {
   pid_t pid = (pid_t)t->regs().arg2_signed();
   bool emulate = true;
   int command = (int)t->regs().arg1_signed();
-  switch (command) {
+  switch (non_negative_command(command)) {
     case PTRACE_ATTACH: {
       RecordTask* tracee = prepare_ptrace_attach(t, pid, syscall_state);
       if (!tracee) {
@@ -2330,7 +2331,8 @@ static Switchable prepare_ptrace(RecordTask* t,
       syscall_state.emulate_result(0);
       break;
     }
-    case PTRACE_OLDSETOPTIONS:
+    case Arch::PTRACE_OLDSETOPTIONS:
+      RR_FALLTHROUGH;
     case PTRACE_SETOPTIONS: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
@@ -2538,7 +2540,7 @@ static Switchable prepare_ptrace(RecordTask* t,
       }
       break;
     }
-    case PTRACE_ARCH_PRCTL: {
+    case Arch::PTRACE_ARCH_PRCTL: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         if (tracee->arch() != SupportedArch::x86_64) {
@@ -2554,8 +2556,8 @@ static Switchable prepare_ptrace(RecordTask* t,
           case ARCH_GET_GS: {
             bool ok = true;
             remote_ptr<uint64_t> addr(t->regs().arg3());
-            uint64_t data = code == ARCH_GET_FS ? tracee->regs().fs_base()
-                                                : tracee->regs().gs_base();
+            uint64_t data = code == ARCH_GET_FS ?
+                            tracee->regs().fs_base() : tracee->regs().gs_base();
             t->write_mem(addr, data, &ok);
             if (ok) {
               t->record_local(addr, &data);
@@ -2576,18 +2578,18 @@ static Switchable prepare_ptrace(RecordTask* t,
       }
       break;
     }
-    case PTRACE_PEEKTEXT:
-    case PTRACE_PEEKDATA:
-    case PTRACE_POKETEXT:
-    case PTRACE_POKEDATA:
-    case PTRACE_PEEKUSER:
-    case PTRACE_POKEUSER:
-    case PTRACE_GETREGS:
-    case PTRACE_GETFPREGS:
-    case PTRACE_GETFPXREGS:
-    case PTRACE_SETREGS:
-    case PTRACE_SETFPREGS:
-    case PTRACE_SETFPXREGS:
+    case Arch::PTRACE_PEEKTEXT:
+    case Arch::PTRACE_PEEKDATA:
+    case Arch::PTRACE_POKETEXT:
+    case Arch::PTRACE_POKEDATA:
+    case Arch::PTRACE_PEEKUSR:
+    case Arch::PTRACE_POKEUSR:
+    case Arch::PTRACE_GETREGS:
+    case Arch::PTRACE_GETFPREGS:
+    case Arch::PTRACE_GETFPXREGS:
+    case Arch::PTRACE_SETREGS:
+    case Arch::PTRACE_SETFPREGS:
+    case Arch::PTRACE_SETFPXREGS:
       prepare_ptrace_legacy<Arch>(t, syscall_state);
       break;
     default:
@@ -5179,7 +5181,7 @@ static string extra_expected_errno_info(RecordTask* t,
       switch (t->regs().original_syscallno()) {
         case Arch::ptrace:
           ss << "; unsupported ptrace(" << HEX((int)t->regs().arg1()) << " ["
-             << ptrace_req_name((int)t->regs().arg1_signed()) << "])";
+             << ptrace_req_name<Arch>((int)t->regs().arg1_signed()) << "])";
           break;
       }
       break;

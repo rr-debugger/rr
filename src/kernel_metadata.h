@@ -33,6 +33,7 @@ std::string ptrace_event_name(int event);
  * Return the symbolic name of the PTRACE_ |request|, or "PTRACE_REQUEST(%d)" if
  * unknown.
  */
+template <typename Arch>
 std::string ptrace_req_name(int request);
 
 /**

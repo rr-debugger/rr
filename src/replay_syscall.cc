@@ -1,7 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include "replay_syscall.h"
-
 #include <asm/prctl.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -24,6 +22,8 @@
 #include <memory>
 #include <sstream>
 #include <string>
+
+#include "replay_syscall.h"
 
 #include "preload/preload_interface.h"
 

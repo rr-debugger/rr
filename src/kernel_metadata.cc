@@ -66,26 +66,31 @@ string ptrace_event_name(int event) {
   }
 }
 
+#define PTRACE_ARCH_CASE(_id)                                                  \
+  case Arch::_id:                                                              \
+    return #_id;
+
+template <typename Arch>
 string ptrace_req_name(int request) {
-  switch (request) {
-    CASE(PTRACE_TRACEME);
-    CASE(PTRACE_PEEKTEXT);
-    CASE(PTRACE_PEEKDATA);
-    CASE(PTRACE_PEEKUSER);
-    CASE(PTRACE_POKETEXT);
-    CASE(PTRACE_POKEDATA);
-    CASE(PTRACE_POKEUSER);
-    CASE(PTRACE_CONT);
-    CASE(PTRACE_KILL);
-    CASE(PTRACE_SINGLESTEP);
-    CASE(PTRACE_GETREGS);
-    CASE(PTRACE_SETREGS);
-    CASE(PTRACE_GETFPREGS);
-    CASE(PTRACE_SETFPREGS);
+  switch (request >= 0 ? request : INT32_MAX) {
+    PTRACE_ARCH_CASE(PTRACE_TRACEME);
+    PTRACE_ARCH_CASE(PTRACE_PEEKTEXT);
+    PTRACE_ARCH_CASE(PTRACE_PEEKDATA);
+    PTRACE_ARCH_CASE(PTRACE_PEEKUSR);
+    PTRACE_ARCH_CASE(PTRACE_POKETEXT);
+    PTRACE_ARCH_CASE(PTRACE_POKEDATA);
+    PTRACE_ARCH_CASE(PTRACE_POKEUSR);
+    PTRACE_ARCH_CASE(PTRACE_CONT);
+    PTRACE_ARCH_CASE(PTRACE_KILL);
+    PTRACE_ARCH_CASE(PTRACE_SINGLESTEP);
+    PTRACE_ARCH_CASE(PTRACE_GETREGS);
+    PTRACE_ARCH_CASE(PTRACE_SETREGS);
+    PTRACE_ARCH_CASE(PTRACE_GETFPREGS);
+    PTRACE_ARCH_CASE(PTRACE_SETFPREGS);
+    PTRACE_ARCH_CASE(PTRACE_GETFPXREGS);
+    PTRACE_ARCH_CASE(PTRACE_SETFPXREGS);
     CASE(PTRACE_ATTACH);
     CASE(PTRACE_DETACH);
-    CASE(PTRACE_GETFPXREGS);
-    CASE(PTRACE_SETFPXREGS);
     CASE(PTRACE_SYSCALL);
     CASE(PTRACE_SETOPTIONS);
     CASE(PTRACE_GETEVENTMSG);
@@ -97,8 +102,8 @@ string ptrace_req_name(int request) {
     CASE(PTRACE_INTERRUPT);
     CASE(PTRACE_LISTEN);
     // These aren't part of the official ptrace-request enum.
-    CASE(PTRACE_SYSEMU);
-    CASE(PTRACE_SYSEMU_SINGLESTEP);
+    PTRACE_ARCH_CASE(PTRACE_SYSEMU);
+    PTRACE_ARCH_CASE(PTRACE_SYSEMU_SINGLESTEP);
     default: {
       char buf[100];
       snprintf(buf, sizeof(buf), "PTRACE_REQUEST(%d)", request);
@@ -106,6 +111,10 @@ string ptrace_req_name(int request) {
     }
   }
 }
+
+template string ptrace_req_name<X86Arch>(int request);
+template string ptrace_req_name<X64Arch>(int request);
+template string ptrace_req_name<ARM64Arch>(int request);
 
 string signal_name(int sig) {
   /* strsignal() would be nice to use here, but it provides TMI. */
