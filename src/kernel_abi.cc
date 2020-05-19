@@ -6,7 +6,6 @@
 
 // Get all the kernel definitions so we can verify our alternative versions.
 #include <arpa/inet.h>
-#include <asm/ldt.h>
 #include <dirent.h>
 #include <elf.h>
 #include <fcntl.h>
@@ -48,6 +47,12 @@
 #include <sys/utsname.h>
 #include <sys/vfs.h>
 #include <termios.h>
+
+// x86_only
+#if defined(__i386__) || defined(__x86_64__)
+#include <asm/prctl.h>
+#include <asm/ldt.h>
+#endif
 
 // Used to verify definitions in kernel_abi.h
 namespace rr {

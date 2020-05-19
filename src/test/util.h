@@ -17,7 +17,6 @@
 #include <sys/mount.h>
 
 #include <arpa/inet.h>
-#include <asm/prctl.h>
 #include <assert.h>
 #include <ctype.h>
 #include <dirent.h>
@@ -102,12 +101,19 @@
 #include <ucontext.h>
 #include <unistd.h>
 #include <utime.h>
+
+// X86 specific headers
+#if defined(__i386__) || defined(__x86_64__)
+#include <asm/prctl.h>
 #include <x86intrin.h>
+#endif
 
 #if defined(__i386__)
 #include "SyscallEnumsForTestsX86.generated"
 #elif defined(__x86_64__)
 #include "SyscallEnumsForTestsX64.generated"
+#elif defined(__aarch64__)
+#include "SyscallEnumsForTestsGeneric.generated"
 #else
 #error Unknown architecture
 #endif
@@ -188,10 +194,12 @@ inline static void check_data(void* buf, size_t len) {
   }
 }
 
+#if defined(__i386__) || defined(__x86_64)
 /**
  * Return the current value of the time-stamp counter.
  */
 inline static uint64_t rdtsc(void) { return __rdtsc(); }
+#endif
 
 /**
  * Perform some syscall that writes an event, i.e. is not syscall-buffered.

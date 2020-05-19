@@ -1,6 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include <asm/prctl.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/futex.h>

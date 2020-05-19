@@ -153,7 +153,7 @@ generators_for = {
     'SyscallEnumsGeneric': lambda f: write_syscall_enum(f, 'generic'),
     'SyscallEnumsForTestsX86': lambda f: write_syscall_enum_for_tests(f, 'x86'),
     'SyscallEnumsForTestsX64': lambda f: write_syscall_enum_for_tests(f, 'x64'),
-    'SyscallEnumsForTestsGeneric': lambda f: write_syscall_enum(f, 'generic'),
+    'SyscallEnumsForTestsGeneric': lambda f: write_syscall_enum_for_tests(f, 'generic'),
     'SyscallnameArch': write_syscallname_arch,
     'SyscallRecordCase': write_syscall_record_cases,
     'SyscallHelperFunctions': write_syscall_helper_functions,

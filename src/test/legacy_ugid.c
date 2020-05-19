@@ -28,7 +28,7 @@ static void verify_results(size_t n, union legacy_id* ids) {
 #if defined(__i386__)
     // For UID16 syscall-supporting archs, the cookie should be intact.
     test_assert(ids[i].u16[1] == UID_COOKIE);
-#elif defined(__x86_64__)
+#elif defined(__x86_64__) || defined(__aarch64__)
     // For UID32 archs, assume that the user doesn't have a UID with the
     // upper bits equivalent to our cookie.  This is not a great assumption,
     // but we don't really have anything better.

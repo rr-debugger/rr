@@ -1,6 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include <asm/prctl.h>
 #include <elf.h>
 #include <errno.h>
 #include <limits.h>
@@ -1019,7 +1018,7 @@ const ExtraRegisters& Task::extra_regs() {
     LOG(debug) << "  (refreshing extra-register cache using FPR)";
 
     extra_registers.format_ = ExtraRegisters::NT_FPR;
-    extra_registers.data_.resize(sizeof(AA64Arch::user_fpregs_state));
+    extra_registers.data_.resize(sizeof(ARM64Arch::user_fpregs_struct));
     struct iovec vec = { extra_registers.data_.data(),
                           extra_registers.data_.size() };
     xptrace(PTRACE_GETREGSET, NT_PRFPREG, &vec);
@@ -1033,14 +1032,48 @@ const ExtraRegisters& Task::extra_regs() {
   return extra_registers;
 }
 
+#if defined(__i386__) || defined(__x86_64__)
 static ssize_t dr_user_word_offset(size_t i) {
   DEBUG_ASSERT(i < NUM_X86_DEBUG_REGS);
   return offsetof(struct user, u_debugreg[0]) + sizeof(void*) * i;
 }
 
+uintptr_t Task::get_debug_reg(size_t regno) {
+  errno = 0;
+  long result =
+      fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(regno), nullptr);
+  if (errno == ESRCH) {
+    return 0;
+  }
+  return result;
+}
+
+bool Task::set_debug_reg(size_t regno, uintptr_t value) {
+  errno = 0;
+  fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(regno), (void*)value);
+  return errno == ESRCH || errno == 0;
+}
+
 uintptr_t Task::debug_status() {
   return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(6), nullptr);
 }
+#else
+#define FATAL_X86_ONLY() FATAL() << "Reached x86-only code path on non-x86 architecture";
+uintptr_t Task::get_debug_reg(size_t) {
+  FATAL_X86_ONLY();
+  return 0;
+}
+
+bool Task::set_debug_reg(size_t, uintptr_t) {
+  FATAL_X86_ONLY();
+  return false;
+}
+
+uintptr_t Task::debug_status() {
+  FATAL_X86_ONLY();
+  return 0;
+}
+#endif
 
 void Task::set_debug_status(uintptr_t status) {
   set_debug_reg(6, status);
@@ -1463,22 +1496,6 @@ bool Task::set_debug_regs(const DebugRegs& regs) {
     ++index;
   }
   return set_debug_reg(7, dr7.packed);
-}
-
-uintptr_t Task::get_debug_reg(size_t regno) {
-  errno = 0;
-  long result =
-      fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(regno), nullptr);
-  if (errno == ESRCH) {
-    return 0;
-  }
-  return result;
-}
-
-bool Task::set_debug_reg(size_t regno, uintptr_t value) {
-  errno = 0;
-  fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(regno), (void*)value);
-  return errno == ESRCH || errno == 0;
 }
 
 static void set_thread_area(std::vector<X86Arch::user_desc>& thread_areas_,

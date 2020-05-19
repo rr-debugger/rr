@@ -72,7 +72,7 @@ public:
    * rr build is 32-bit, or when the Registers' arch is completely different
    * to the rr build (e.g. ARM vs x86).
    */
-  void set_from_ptrace(const struct NativeArch::user_regs_struct& ptrace_regs);
+  void set_from_ptrace(const NativeArch::user_regs_struct& ptrace_regs);
 
   /**
    * Get a user_regs_struct from these Registers. If the tracee architecture
@@ -83,7 +83,7 @@ public:
    * rr build is 32-bit, or when the Registers' arch is completely different
    * to the rr build (e.g. ARM vs x86).
    */
-  struct NativeArch::user_regs_struct get_ptrace() const;
+  NativeArch::user_regs_struct get_ptrace() const;
 
   /**
    * Get a user_regs_struct for a particular Arch from these Registers.
