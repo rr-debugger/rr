@@ -550,11 +550,23 @@ TraceFrame TraceReader::read_frame() {
   }
   auto extra_reg_data = frame.getExtraRegisters().getRaw();
   if (extra_reg_data.size()) {
+    ExtraRegisters::Format fmt;
+    switch (arch) {
+      case x86:
+      case x86_64:
+        fmt = ExtraRegisters::XSAVE;
+        break;
+      case aarch64:
+        fmt = ExtraRegisters::NT_FPR;
+        break;
+      default:
+        FATAL() << "Unknown architecture";
+    }
     bool ok = ret.recorded_extra_regs.set_to_raw_data(
-        arch, ExtraRegisters::XSAVE, extra_reg_data.begin(),
+        arch, fmt, extra_reg_data.begin(),
         extra_reg_data.size(), xsave_layout_from_trace(cpuid_records()));
     if (!ok) {
-      FATAL() << "Invalid XSAVE data in trace";
+      FATAL() << "Invalid extended register data in trace";
     }
   } else {
     ret.recorded_extra_regs = ExtraRegisters(arch);

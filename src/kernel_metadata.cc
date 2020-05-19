@@ -26,6 +26,18 @@ string syscall_name(int syscall, SupportedArch arch) {
   case _id:                                                                    \
     return #_id;
 
+string arch_name(SupportedArch arch) {
+  switch (arch) {
+    CASE(x86_64);
+    CASE(x86);
+    CASE(aarch64);
+  default:
+    char buf[100];
+    snprintf(buf, sizeof(buf), "Unknown architecture %d", arch);
+    return string(buf);
+  }
+}
+
 string ptrace_event_name(int event) {
   switch (event) {
     CASE(PTRACE_EVENT_FORK);
@@ -48,7 +60,7 @@ string ptrace_event_name(int event) {
       return "PTRACE_EVENT(0)";
     default: {
       char buf[100];
-      sprintf(buf, "PTRACE_EVENT(%d)", event);
+      snprintf(buf, sizeof(buf), "PTRACE_EVENT(%d)", event);
       return string(buf);
     }
   }
@@ -89,7 +101,7 @@ string ptrace_req_name(int request) {
     CASE(PTRACE_SYSEMU_SINGLESTEP);
     default: {
       char buf[100];
-      sprintf(buf, "PTRACE_REQUEST(%d)", request);
+      snprintf(buf, sizeof(buf), "PTRACE_REQUEST(%d)", request);
       return string(buf);
     }
   }
@@ -143,7 +155,7 @@ string signal_name(int sig) {
       return "signal(0)";
     default: {
       char buf[100];
-      sprintf(buf, "signal(%d)", sig);
+      snprintf(buf, sizeof(buf), "signal(%d)", sig);
       return string(buf);
     }
   }
@@ -291,7 +303,7 @@ string errno_name(int err) {
       CASE(EHWPOISON);
     default: {
       char buf[100];
-      sprintf(buf, "errno(%d)", err);
+      snprintf(buf, sizeof(buf), "errno(%d)", err);
       return string(buf);
     }
   }
@@ -379,7 +391,7 @@ string sicode_name(int code, int sig) {
   }
 
   char buf[100];
-  sprintf(buf, "sicode(%d)", code);
+  snprintf(buf, sizeof(buf), "sicode(%d)", code);
   return string(buf);
 }
 

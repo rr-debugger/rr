@@ -29,8 +29,9 @@ public:
   // Create empty (uninitialized/unknown registers) value
   ExtraRegisters(SupportedArch arch = SupportedArch(-1))
       : format_(NONE), arch_(arch) {}
-
+  enum Format { NONE,
   /**
+   * The XSAVE format is x86(_64) only.
    * On a x86 64-bit kernel, these structures are initialized by an XSAVE64 or
    * FXSAVE64.
    * On a x86 32-bit kernel, they are initialized by an XSAVE or FXSAVE.
@@ -53,7 +54,13 @@ public:
    * The data always uses our CPU's native XSAVE layout. When reading a trace,
    * we need to convert from the trace's CPU's XSAVE layout to our layout.
    */
-  enum Format { NONE, XSAVE };
+  XSAVE,
+  /**
+   * Stores the content of the NT_FPREGS regset. The format depends on the
+   * architecture. It is given by Arch::user_fpregs_struct for the appropriate
+   * architecture.
+   */
+  NT_FPR };
 
   // Set values from raw data, with the given XSAVE layout. Returns false
   // if this could not be done.

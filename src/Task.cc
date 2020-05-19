@@ -984,6 +984,7 @@ const Registers& Task::regs() const {
 
 const ExtraRegisters& Task::extra_regs() {
   if (!extra_registers_known) {
+#if defined(__i386__) || defined(__x86_64__)
     if (xsave_area_size() > 512) {
       LOG(debug) << "  (refreshing extra-register cache using XSAVE)";
 
@@ -1010,10 +1011,20 @@ const ExtraRegisters& Task::extra_regs() {
       extra_registers.format_ = ExtraRegisters::XSAVE;
       extra_registers.data_.resize(sizeof(user_fpregs_struct));
       xptrace(PTRACE_GETFPREGS, nullptr, extra_registers.data_.data());
+#endif
+    }
+#elif defined(__aarch64__)
+    LOG(debug) << "  (refreshing extra-register cache using FPR)";
+
+    extra_registers.format_ = ExtraRegisters::NT_FPR;
+    extra_registers.data_.resize(sizeof(AA64Arch::user_fpregs_state));
+    struct iovec vec = { extra_registers.data_.data(),
+                          extra_registers.data_.size() };
+    xptrace(PTRACE_GETREGSET, NT_PRFPREG, &vec);
+    extra_registers.data_.resize(vec.iov_len);
 #else
 #error need to define new extra_regs support
 #endif
-    }
 
     extra_registers_known = true;
   }
@@ -1332,10 +1343,14 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
                extra_registers.data_.size() == sizeof(user_fpregs_struct));
         ptrace_if_alive(PTRACE_SETFPREGS, nullptr,
                         extra_registers.data_.data());
-#else
-#error Unsupported architecture
 #endif
       }
+      break;
+    }
+    case ExtraRegisters::NT_FPR: {
+      struct iovec vec = { extra_registers.data_.data(),
+                            extra_registers.data_.size() };
+      ptrace_if_alive(PTRACE_SETREGSET, NT_PRFPREG, &vec);
       break;
     }
     default:

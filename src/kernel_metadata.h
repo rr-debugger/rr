@@ -13,6 +13,11 @@
 namespace rr {
 
 /**
+ * Return the symbolic name of the architecture `arch`.
+ */
+std::string arch_name(SupportedArch arch);
+
+/**
  * Return the symbolic name of |syscall|, f.e. "read", or "syscall(%d)"
  * if unknown.
  */
