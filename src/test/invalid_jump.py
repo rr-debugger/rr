@@ -6,6 +6,6 @@ expect_gdb('Program received signal SIGSEGV')
 send_gdb('rsi')
 send_gdb('rsi')
 
-expect_gdb('in main')
+expect_gdb('main ()')
 
 ok()
