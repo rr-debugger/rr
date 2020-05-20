@@ -733,7 +733,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
               if (regs.arg3() == 0) {
                 // Work around a kernel bug in pre-4.7 kernels, where setting
                 // the gs/fs base to 0 via PTRACE_REGSET did not work correctly.
-                tracee->ptrace_if_alive(PTRACE_ARCH_PRCTL, regs.arg3(),
+                tracee->ptrace_if_alive(Arch::PTRACE_ARCH_PRCTL, regs.arg3(),
                                         (void*)(uintptr_t)regs.arg4());
               }
               if (code == ARCH_SET_FS) {
@@ -1519,7 +1519,7 @@ void Task::set_thread_area(remote_ptr<X86Arch::user_desc> tls) {
 int Task::emulate_set_thread_area(int idx, X86Arch::user_desc desc) {
   DEBUG_ASSERT(arch() == x86 || arch() == x86_64);
   errno = 0;
-  fallible_ptrace(PTRACE_SET_THREAD_AREA, idx, &desc);
+  fallible_ptrace(NativeArch::PTRACE_SET_THREAD_AREA, idx, &desc);
   if (errno != 0) {
     return errno;
   }
@@ -1532,7 +1532,7 @@ int Task::emulate_get_thread_area(int idx, X86Arch::user_desc& desc) {
   DEBUG_ASSERT(arch() == x86 || arch() == x86_64);
   LOG(debug) << "Emulating PTRACE_GET_THREAD_AREA";
   errno = 0;
-  fallible_ptrace(PTRACE_GET_THREAD_AREA, idx, &desc);
+  fallible_ptrace(NativeArch::PTRACE_GET_THREAD_AREA, idx, &desc);
   return errno;
 }
 

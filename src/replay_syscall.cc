@@ -913,14 +913,14 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
         break;
       }
       switch ((int)t->regs().arg1_signed()) {
-        case PTRACE_POKETEXT:
-        case PTRACE_POKEDATA:
+        case Arch::PTRACE_POKETEXT:
+        case Arch::PTRACE_POKEDATA:
           target->apply_all_data_records_from_trace();
           break;
         case PTRACE_SYSCALL:
         case PTRACE_SINGLESTEP:
-        case PTRACE_SYSEMU:
-        case PTRACE_SYSEMU_SINGLESTEP:
+        case Arch::PTRACE_SYSEMU:
+        case Arch::PTRACE_SYSEMU_SINGLESTEP:
         case PTRACE_CONT:
         case PTRACE_DETACH: {
           int command = (int)t->regs().arg1_signed();
@@ -928,7 +928,7 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
                                         command != PTRACE_DETACH);
           break;
         }
-        case PTRACE_SET_THREAD_AREA: {
+        case Arch::PTRACE_SET_THREAD_AREA: {
           bool ok = true;
           X86Arch::user_desc desc = t->read_mem(
               remote_ptr<X86Arch::user_desc>(t->regs().arg4()), &ok);
