@@ -2454,8 +2454,8 @@ static Switchable prepare_ptrace(RecordTask* t,
     }
     case PTRACE_SYSCALL:
     case PTRACE_SINGLESTEP:
-    case PTRACE_SYSEMU:
-    case PTRACE_SYSEMU_SINGLESTEP:
+    case Arch::PTRACE_SYSEMU:
+    case Arch::PTRACE_SYSEMU_SINGLESTEP:
     case PTRACE_CONT: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       // If the tracer wants to observe syscall entries, we can't use the
@@ -2502,8 +2502,8 @@ static Switchable prepare_ptrace(RecordTask* t,
       }
       break;
     }
-    case PTRACE_GET_THREAD_AREA:
-    case PTRACE_SET_THREAD_AREA: {
+    case Arch::PTRACE_GET_THREAD_AREA:
+    case Arch::PTRACE_SET_THREAD_AREA: {
       RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
       if (tracee) {
         if (tracee->arch() != SupportedArch::x86) {
@@ -2517,7 +2517,7 @@ static Switchable prepare_ptrace(RecordTask* t,
         struct X86Arch::user_desc desc;
         memset(&desc, 0, sizeof(struct X86Arch::user_desc));
         // Do the ptrace request ourselves
-        if (command == PTRACE_GET_THREAD_AREA) {
+        if (command == Arch::PTRACE_GET_THREAD_AREA) {
           int ret = -tracee->emulate_get_thread_area(t->regs().arg3(), desc);
           if (ret == 0) {
             t->write_mem(remote_addr, desc, &ok);

@@ -655,6 +655,17 @@ static void debug_exec_state(const char* msg, RecordTask* t) {
   LOG(debug) << msg << ": status=" << t->status();
 }
 
+template <typename Arch>
+static bool is_ptrace_singlestep_arch(int command) {
+  return command >= 0 &&
+    (command == PTRACE_SINGLESTEP || command == Arch::PTRACE_SYSEMU_SINGLESTEP);
+}
+
+static bool is_ptrace_singlestep(SupportedArch arch, int command)
+{
+  RR_ARCH_FUNCTION(is_ptrace_singlestep_arch, arch, command);
+}
+
 void RecordSession::task_continue(const StepState& step_state) {
   RecordTask* t = scheduler().current();
 
@@ -709,9 +720,8 @@ void RecordSession::task_continue(const StepState& step_state) {
       }
     }
 
-    bool singlestep =
-        t->emulated_ptrace_cont_command == PTRACE_SINGLESTEP ||
-        t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP;
+    bool singlestep = is_ptrace_singlestep(t->arch(),
+      t->emulated_ptrace_cont_command);
     if (singlestep && is_at_syscall_instruction(t, t->ip())) {
       // We're about to singlestep into a syscall instruction.
       // Act like we're NOT singlestepping since doing a PTRACE_SINGLESTEP would
@@ -916,8 +926,7 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
 static void maybe_trigger_emulated_ptrace_syscall_exit_stop(RecordTask* t) {
   if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL) {
     t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
-  } else if (t->emulated_ptrace_cont_command == PTRACE_SINGLESTEP ||
-             t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) {
+  } else if (is_ptrace_singlestep(t->arch(), t->emulated_ptrace_cont_command)) {
     // Deliver the singlestep trap now that we've finished executing the
     // syscall.
     t->emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGTRAP), nullptr,
@@ -1683,6 +1692,18 @@ bool RecordSession::handle_signal_event(RecordTask* t, StepState* step_state) {
   return true;
 }
 
+template <typename Arch>
+static bool is_ptrace_any_sysemu_arch(int command) {
+  return command >= 0 &&
+    (command == Arch::PTRACE_SYSEMU ||
+     command == Arch::PTRACE_SYSEMU_SINGLESTEP);
+}
+
+static bool is_ptrace_any_sysemu(SupportedArch arch, int command)
+{
+  RR_ARCH_FUNCTION(is_ptrace_any_sysemu_arch, arch, command);
+}
+
 bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
                                           RecordResult* step_result,
                                           SupportedArch syscall_arch) {
@@ -1745,16 +1766,15 @@ bool RecordSession::process_syscall_entry(RecordTask* t, StepState* step_state,
   check_initial_task_syscalls(t, step_result);
   note_entering_syscall(t);
   if ((t->emulated_ptrace_cont_command == PTRACE_SYSCALL ||
-       t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
-       t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP) &&
+       is_ptrace_any_sysemu(t->arch(),
+        t->emulated_ptrace_cont_command)) &&
       !is_in_privileged_syscall(t)) {
     t->ev().Syscall().state = ENTERING_SYSCALL_PTRACE;
     t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
     t->record_current_event();
 
-    t->ev().Syscall().in_sysemu =
-        t->emulated_ptrace_cont_command == PTRACE_SYSEMU ||
-        t->emulated_ptrace_cont_command == PTRACE_SYSEMU_SINGLESTEP;
+    t->ev().Syscall().in_sysemu = is_ptrace_any_sysemu(t->arch(),
+      t->emulated_ptrace_cont_command);
   }
   return true;
 }

@@ -2,7 +2,6 @@
 
 #include "Session.h"
 
-#include <asm/ptrace.h>
 #include <linux/limits.h>
 #include <linux/unistd.h>
 #include <sys/prctl.h>
