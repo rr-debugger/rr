@@ -38,12 +38,10 @@ static struct perf_event_attr ticks_attr;
 static struct perf_event_attr minus_ticks_attr;
 static struct perf_event_attr cycles_attr;
 static struct perf_event_attr hw_interrupts_attr;
+static struct perf_event_attr llsc_fail_attr;
 static uint32_t pmu_flags;
 static uint32_t skid_size;
 static bool has_ioc_period_bug;
-static bool has_kvm_in_txcp_bug;
-static bool has_xen_pmi_bug;
-static bool supports_txcp;
 static bool only_one_counter;
 static bool activate_useless_counter;
 
@@ -70,6 +68,7 @@ enum CpuMicroarch {
   IntelCometlake,
   AMDF15R30,
   AMDRyzen,
+  ARMNeoverseN1
 };
 
 /*
@@ -105,6 +104,7 @@ struct PmuConfig {
   unsigned rcb_cntr_event;
   unsigned minus_ticks_cntr_event;
   unsigned hw_intr_cntr_event;
+  unsigned llsc_cntr_event;
   uint32_t skid_size;
   uint32_t flags;
 };
@@ -121,22 +121,25 @@ struct PmuConfig {
 // See Intel 64 and IA32 Architectures Performance Monitoring Events.
 // See check_events from libpfm4.
 static const PmuConfig pmu_configs[] = {
-  { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0, 0x5301cb, 100, PMU_TICKS_RCB },
-  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0x50011d, 100, PMU_TICKS_RCB },
-  { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0x50011d, 100, PMU_TICKS_RCB },
-  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, 0 },
-  { IntelMerom, "Intel Merom", 0, 0, 0, 100, 0 },
-  { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 250,
+  { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelSkylake, "Intel Skylake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelBroadwell, "Intel Broadwell", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelHaswell, "Intel Haswell", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelIvyBridge, "Intel Ivy Bridge", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelSandyBridge, "Intel Sandy Bridge", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
+  { IntelNehalem, "Intel Nehalem", 0x5101c4, 0, 0x50011d, 0, 100, PMU_TICKS_RCB },
+  { IntelWestmere, "Intel Westmere", 0x5101c4, 0, 0x50011d, 0, 100, PMU_TICKS_RCB },
+  { IntelPenryn, "Intel Penryn", 0, 0, 0, 100, 0, 0 },
+  { IntelMerom, "Intel Merom", 0, 0, 0, 100, 0, 0 },
+  { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 0, 250,
     PMU_TICKS_TAKEN_BRANCHES | PMU_SKIP_INTEL_BUG_CHECK },
-  { AMDRyzen, "AMD Ryzen", 0x5100d1, 0, 0, 1000, PMU_TICKS_RCB },
+  { AMDRyzen, "AMD Ryzen", 0x5100d1, 0, 0, 0, 1000, PMU_TICKS_RCB },
+  // 0x21 == BR_RETIRED - Architecturally retired taken branches
+  // 0x6F == STREX_SPEC - Speculatively executed strex instructions
+  { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES }
 };
 
 #define RR_SKID_MAX 1000
@@ -145,113 +148,6 @@ static string lowercase(const string& s) {
   string c = s;
   transform(c.begin(), c.end(), c.begin(), ::tolower);
   return c;
-}
-
-/**
- * Return the detected, known microarchitecture of this CPU, or don't
- * return; i.e. never return UnknownCpu.
- */
-static CpuMicroarch get_cpu_microarch() {
-  string forced_uarch = lowercase(Flags::get().forced_uarch);
-  if (!forced_uarch.empty()) {
-    for (size_t i = 0; i < array_length(pmu_configs); ++i) {
-      const PmuConfig& pmu = pmu_configs[i];
-      string name = lowercase(pmu.name);
-      if (name.npos != name.find(forced_uarch)) {
-        LOG(info) << "Using forced uarch " << pmu.name;
-        return pmu.uarch;
-      }
-    }
-    CLEAN_FATAL() << "Forced uarch " << Flags::get().forced_uarch
-                  << " isn't known.";
-  }
-
-  auto cpuid_vendor = cpuid(CPUID_GETVENDORSTRING, 0);
-  char vendor[13];
-  memcpy(&vendor[0], &cpuid_vendor.ebx, 4);
-  memcpy(&vendor[4], &cpuid_vendor.edx, 4);
-  memcpy(&vendor[8], &cpuid_vendor.ecx, 4);
-  vendor[12] = 0;
-  if (strcmp(vendor, "GenuineIntel") && strcmp(vendor, "AuthenticAMD")) {
-    CLEAN_FATAL() << "Unknown CPU vendor '" << vendor << "'";
-  }
-
-  auto cpuid_data = cpuid(CPUID_GETFEATURES, 0);
-  unsigned int cpu_type = cpuid_data.eax & 0xF0FF0;
-  unsigned int ext_family = (cpuid_data.eax >> 20) & 0xff;
-  switch (cpu_type) {
-    case 0x006F0:
-    case 0x10660:
-      return IntelMerom;
-    case 0x10670:
-    case 0x106D0:
-      return IntelPenryn;
-    case 0x106A0:
-    case 0x106E0:
-    case 0x206E0:
-      return IntelNehalem;
-    case 0x20650:
-    case 0x206C0:
-    case 0x206F0:
-      return IntelWestmere;
-    case 0x206A0:
-    case 0x206D0:
-    case 0x306e0:
-      return IntelSandyBridge;
-    case 0x306A0:
-      return IntelIvyBridge;
-    case 0x306C0:
-    case 0x306F0:
-    case 0x40650:
-    case 0x40660:
-      return IntelHaswell;
-    case 0x306D0:
-    case 0x40670:
-    case 0x406F0:
-    case 0x50660:
-      return IntelBroadwell;
-    case 0x406e0:
-    case 0x50650:
-    case 0x506e0:
-      return IntelSkylake;
-    case 0x30670:
-    case 0x406c0:
-    case 0x50670:
-      return IntelSilvermont;
-    case 0x506f0:
-      return IntelGoldmont;
-    case 0x806e0:
-    case 0x906e0:
-      return IntelKabylake;
-    case 0xa0660:
-	return IntelCometlake;
-    case 0x30f00:
-      return AMDF15R30;
-    case 0x00f10:
-      if (ext_family == 8) {
-        if (!Flags::get().suppress_environment_warnings) {
-          fprintf(stderr, "You have a Ryzen CPU. The Ryzen "
-                          "retired-conditional-branches hardware\n"
-                          "performance counter is not accurate enough; rr will "
-                          "be unreliable.\n"
-                          "See https://github.com/mozilla/rr/issues/2034.\n");
-        }
-        return AMDRyzen;
-      }
-      break;
-    default:
-      break;
-  }
-
-  if (!strcmp(vendor, "AuthenticAMD")) {
-    CLEAN_FATAL()
-        << "AMD CPUs not supported.\n"
-        << "For Ryzen, see https://github.com/mozilla/rr/issues/2034.\n"
-        << "For post-Ryzen CPUs, please file a Github issue.";
-  } else {
-    CLEAN_FATAL() << "Intel CPU type " << HEX(cpu_type) << " unknown";
-  }
-  return UnknownCpu; // not reached
 }
 
 static void init_perf_event_attr(struct perf_event_attr* attr,
@@ -353,169 +249,14 @@ static void do_branches() {
   accumulator_sink = accumulator;
 }
 
-static void check_for_kvm_in_txcp_bug() {
-  int64_t count = 0;
-  struct perf_event_attr attr = rr::ticks_attr;
-  attr.config |= IN_TXCP;
-  attr.sample_period = 0;
-  bool disabled_txcp;
-  ScopedFd fd = start_counter(0, -1, &attr, &disabled_txcp);
-  if (fd.is_open() && !disabled_txcp) {
-    ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-    ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
-    do_branches();
-    count = read_counter(fd);
-  }
-
-  supports_txcp = count > 0;
-  has_kvm_in_txcp_bug = supports_txcp && count < NUM_BRANCHES;
-  LOG(debug) << "supports txcp=" << supports_txcp;
-  LOG(debug) << "has_kvm_in_txcp_bug=" << has_kvm_in_txcp_bug
-             << " count=" << count;
-}
-
-static void check_for_xen_pmi_bug() {
-  int32_t count = -1;
-  struct perf_event_attr attr = rr::ticks_attr;
-  attr.sample_period = NUM_BRANCHES - 1;
-  ScopedFd fd = start_counter(0, -1, &attr);
-  if (fd.is_open()) {
-    // Do NUM_BRANCHES conditional branches that can't be optimized out.
-    // 'accumulator' is always odd and can't be zero
-    uint32_t accumulator = uint32_t(rand()) * 2 + 1;
-    int raw_fd = fd;
-    asm volatile(
-#if defined(__x86_64__)
-        "mov %[_SYS_ioctl], %%rax;"
-        "mov %[raw_fd], %%edi;"
-        "xor %%rdx, %%rdx;"
-        "mov %[_PERF_EVENT_IOC_ENABLE], %%rsi;"
-        "syscall;"
-        "cmp $-4095, %%rax;"
-        "jae 2f;"
-        "mov %[_SYS_ioctl], %%rax;"
-        "mov %[_PERF_EVENT_IOC_RESET], %%rsi;"
-        "syscall;"
-        // From this point on all conditional branches count!
-        "cmp $-4095, %%rax;"
-        "jae 2f;"
-        // Reset the counter period to the desired value.
-        "mov %[_SYS_ioctl], %%rax;"
-        "mov %[_PERF_EVENT_IOC_PERIOD], %%rsi;"
-        "mov %[period], %%rdx;"
-        "syscall;"
-        "cmp $-4095, %%rax;"
-        "jae 2f;"
-        "mov %[_iterations], %%rax;"
-        "1: dec %%rax;"
-        // Multiply by 7.
-        "mov %[accumulator], %%edx;"
-        "shl $3, %[accumulator];"
-        "sub %%edx, %[accumulator];"
-        // Add 2.
-        "add $2, %[accumulator];"
-        // Mask off bits.
-        "and $0xffffff, %[accumulator];"
-        // And loop.
-        "test %%rax, %%rax;"
-        "jnz 1b;"
-        "mov %[_PERF_EVENT_IOC_DISABLE], %%rsi;"
-        "mov %[_SYS_ioctl], %%rax;"
-        "xor %%rdx, %%rdx;"
-        // We didn't touch rdi.
-        "syscall;"
-        "cmp $-4095, %%rax;"
-        "jae 2f;"
-        "movl $0, %[count];"
-        "2: nop;"
-#elif defined(__i386__)
-        "mov %[_SYS_ioctl], %%eax;"
-        "mov %[raw_fd], %%ebx;"
-        "xor %%edx, %%edx;"
-        "mov %[_PERF_EVENT_IOC_ENABLE], %%ecx;"
-        "int $0x80;"
-        "cmp $-4095, %%eax;"
-        "jae 2f;"
-        "mov %[_SYS_ioctl], %%eax;"
-        "mov %[_PERF_EVENT_IOC_RESET], %%ecx;"
-        "int $0x80;"
-        // From this point on all conditional branches count!
-        "cmp $-4095, %%eax;"
-        "jae 2f;"
-        // Reset the counter period to the desired value.
-        "mov %[_SYS_ioctl], %%eax;"
-        "mov %[_PERF_EVENT_IOC_PERIOD], %%ecx;"
-        "mov %[period], %%edx;"
-        "int $0x80;"
-        "cmp $-4095, %%eax;"
-        "jae 2f;"
-        "mov %[_iterations], %%eax;"
-        "1: dec %%eax;"
-        // Multiply by 7.
-        "mov %[accumulator], %%edx;"
-        "shll $3, %[accumulator];"
-        "sub %%edx, %[accumulator];"
-        // Add 2.
-        "add $2, %[accumulator];"
-        // Mask off bits.
-        "andl $0xffffff, %[accumulator];"
-        // And loop.
-        "test %%eax, %%eax;"
-        "jnz 1b;"
-        "mov %[_PERF_EVENT_IOC_DISABLE], %%ecx;"
-        "mov %[_SYS_ioctl], %%eax;"
-        "xor %%edx, %%edx;"
-        // We didn't touch rdi.
-        "int $0x80;"
-        "cmp $-4095, %%eax;"
-        "jae 2f;"
-        "movl $0, %[count];"
-        "2: nop;"
+// Architecture specific detection code
+#if defined(__i386__) || defined(__x86_64__)
+#include "PerfCounters_x86.h"
+#elif defined(__aarch64__)
+#include "PerfCounters_aarch64.h"
 #else
-#error unknown CPU architecture
+#error Must define microarchitecture detection code for this architecture
 #endif
-        : [accumulator] "+rm"(accumulator), [count] "=rm"(count)
-        : [_SYS_ioctl] "i"(SYS_ioctl),
-          [_PERF_EVENT_IOC_DISABLE] "i"(PERF_EVENT_IOC_DISABLE),
-          [_PERF_EVENT_IOC_ENABLE] "i"(PERF_EVENT_IOC_ENABLE),
-          [_PERF_EVENT_IOC_PERIOD] "i"(PERF_EVENT_IOC_PERIOD),
-          [_PERF_EVENT_IOC_RESET] "i"(PERF_EVENT_IOC_RESET),
-          // The check for the failure of some of our ioctls is in
-          // the measured region, so account for that when looping.
-          [_iterations] "i"(NUM_BRANCHES - 2),
-          [period] "rm"(&attr.sample_period), [raw_fd] "rm"(raw_fd)
-        :
-#if defined(__x86_64__)
-        "rax", "rdx", "rdi", "rsi"
-        // `syscall` clobbers rcx and r11.
-        ,
-        "rcx", "r11"
-#elif defined(__i386__)
-        "eax", "ebx", "ecx", "edx"
-#else
-#error unknown CPU architecture
-#endif
-        );
-    // If things worked above, `count` should have been set to 0.
-    if (count == 0) {
-      count = read_counter(fd);
-    }
-    // Use 'accumulator' so it can't be optimized out.
-    accumulator_sink = accumulator;
-  }
-
-  has_xen_pmi_bug = count > NUM_BRANCHES || count == -1;
-  if (has_xen_pmi_bug) {
-    LOG(debug) << "has_xen_pmi_bug=" << has_xen_pmi_bug << " count=" << count;
-    if (!Flags::get().force_things) {
-      FATAL()
-          << "Overcount triggered by PMU interrupts detected due to Xen PMU "
-             "virtualization bug.\n"
-             "Aborting. Retry with -F to override, but it will probably\n"
-             "fail.";
-    }
-  }
-}
 
 static void check_working_counters() {
   struct perf_event_attr attr = rr::ticks_attr;
@@ -550,15 +291,8 @@ static void check_working_counters() {
   only_one_counter = events2 == 0;
   LOG(debug) << "only_one_counter=" << only_one_counter;
 
-  if (only_one_counter &&
-      (cpuid(CPUID_GETEXTENDEDFEATURES, 0).ebx & HLE_FEATURE_FLAG) &&
-      !Flags::get().suppress_environment_warnings) {
-    fprintf(stderr,
-            "Your CPU supports Hardware Lock Elision but you only have one\n"
-            "hardware performance counter available. Record and replay\n"
-            "of code that uses HLE will fail unless you alter your\n"
-            "configuration to make more than one hardware performance counter\n"
-            "available.\n");
+  if (only_one_counter) {
+    arch_check_restricted_counter();
   }
 }
 
@@ -570,9 +304,25 @@ static void check_for_bugs() {
   }
 
   check_for_ioc_period_bug();
-  check_for_kvm_in_txcp_bug();
-  check_for_xen_pmi_bug();
+  check_for_arch_bugs();
   check_working_counters();
+}
+
+static CpuMicroarch get_cpu_microarch() {
+  string forced_uarch = lowercase(Flags::get().forced_uarch);
+  if (!forced_uarch.empty()) {
+    for (size_t i = 0; i < array_length(pmu_configs); ++i) {
+      const PmuConfig& pmu = pmu_configs[i];
+      string name = lowercase(pmu.name);
+      if (name.npos != name.find(forced_uarch)) {
+        LOG(info) << "Using forced uarch " << pmu.name;
+        return pmu.uarch;
+      }
+    }
+    CLEAN_FATAL() << "Forced uarch " << Flags::get().forced_uarch
+                  << " isn't known.";
+  }
+  return compute_cpu_microarch();
 }
 
 static void init_attributes() {
@@ -611,6 +361,8 @@ static void init_attributes() {
                          PERF_COUNT_HW_CPU_CYCLES);
     init_perf_event_attr(&hw_interrupts_attr, PERF_TYPE_RAW,
                          pmu->hw_intr_cntr_event);
+    init_perf_event_attr(&llsc_fail_attr, PERF_TYPE_RAW,
+                         pmu->llsc_cntr_event);
     // libpfm encodes the event with this bit set, so we'll do the
     // same thing.  Unclear if necessary.
     hw_interrupts_attr.exclude_hv = 1;
@@ -681,12 +433,6 @@ static void make_counter_async(ScopedFd& fd, int signal) {
   }
 }
 
-static bool always_recreate_counters() {
-  // When we have the KVM IN_TXCP bug, reenabling the TXCP counter after
-  // disabling it does not work.
-  return has_ioc_period_bug || has_kvm_in_txcp_bug;
-}
-
 void PerfCounters::reset(Ticks ticks_period) {
   DEBUG_ASSERT(ticks_period >= 0);
 
@@ -707,32 +453,8 @@ void PerfCounters::reset(Ticks ticks_period) {
       fd_minus_ticks_measure = start_counter(tid, fd_ticks_interrupt, &minus_attr);
     }
 
-    if (!only_one_counter && supports_txcp) {
-      if (has_kvm_in_txcp_bug) {
-        // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not
-        // used,
-        // and check that.
-        attr.sample_period = 0;
-        attr.config |= IN_TX;
-        fd_ticks_in_transaction = start_counter(tid, fd_ticks_interrupt, &attr);
-      } else {
-        // Set up a separate counter for measuring ticks, which does not have
-        // a sample period and does not count events during aborted
-        // transactions.
-        // We have to use two separate counters here because the kernel does
-        // not support setting a sample_period with IN_TXCP, apparently for
-        // reasons related to this Intel note on IA32_PERFEVTSEL2:
-        // ``When IN_TXCP=1 & IN_TX=1 and in sampling, spurious PMI may
-        // occur and transactions may continuously abort near overflow
-        // conditions. Software should favor using IN_TXCP for counting over
-        // sampling. If sampling, software should use large “sample-after“
-        // value after clearing the counter configured to use IN_TXCP and
-        // also always reset the counter even when no overflow condition
-        // was reported.''
-        attr.sample_period = 0;
-        attr.config |= IN_TXCP;
-        fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
-      }
+    if (!only_one_counter && !running_under_rr()) {
+      reset_arch_extras<NativeArch>();
     }
 
     if (activate_useless_counter && !fd_useless_counter.is_open()) {
@@ -856,6 +578,22 @@ Ticks PerfCounters::read_ticks(Task* t) {
                "http://marc.info/?l=linux-kernel&m=148582794808419&w=2\n"
                "Aborting. Retry with -F to override, but it will probably\n"
                "fail.";
+      }
+    }
+  }
+
+  if (fd_strex_counter.is_open()) {
+    uint64_t strex_count = read_counter(fd_strex_counter);
+    if (strex_count > 0) {
+      LOG(debug) << strex_count << " strex detected";
+      if (!Flags::get().force_things) {
+        ASSERT(t, false)
+            << strex_count
+            << " (speculatively) executed strex instructions detected. \n"
+               "On aarch64, rr only supports applications making use of LSE\n"
+               "atomics rather than legacy LL/SC-based atomics.\n"
+               "Aborting. Retry with -F to override, but replaying such\n"
+               "a recording will probably fail.";
       }
     }
   }

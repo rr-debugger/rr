@@ -656,14 +656,14 @@ static void debug_exec_state(const char* msg, RecordTask* t) {
 }
 
 template <typename Arch>
-static bool is_ptrace_singlestep_arch(int command) {
+static bool is_ptrace_any_singlestep_arch(int command) {
   return command >= 0 &&
     (command == PTRACE_SINGLESTEP || command == Arch::PTRACE_SYSEMU_SINGLESTEP);
 }
 
-static bool is_ptrace_singlestep(SupportedArch arch, int command)
+static bool is_ptrace_any_singlestep(SupportedArch arch, int command)
 {
-  RR_ARCH_FUNCTION(is_ptrace_singlestep_arch, arch, command);
+  RR_ARCH_FUNCTION(is_ptrace_any_singlestep_arch, arch, command);
 }
 
 void RecordSession::task_continue(const StepState& step_state) {
@@ -720,7 +720,7 @@ void RecordSession::task_continue(const StepState& step_state) {
       }
     }
 
-    bool singlestep = is_ptrace_singlestep(t->arch(),
+    bool singlestep = is_ptrace_any_singlestep(t->arch(),
       t->emulated_ptrace_cont_command);
     if (singlestep && is_at_syscall_instruction(t, t->ip())) {
       // We're about to singlestep into a syscall instruction.
@@ -926,7 +926,7 @@ static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
 static void maybe_trigger_emulated_ptrace_syscall_exit_stop(RecordTask* t) {
   if (t->emulated_ptrace_cont_command == PTRACE_SYSCALL) {
     t->emulate_ptrace_stop(WaitStatus::for_syscall(t));
-  } else if (is_ptrace_singlestep(t->arch(), t->emulated_ptrace_cont_command)) {
+  } else if (is_ptrace_any_singlestep(t->arch(), t->emulated_ptrace_cont_command)) {
     // Deliver the singlestep trap now that we've finished executing the
     // syscall.
     t->emulate_ptrace_stop(WaitStatus::for_stop_sig(SIGTRAP), nullptr,
