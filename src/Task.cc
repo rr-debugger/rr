@@ -1021,7 +1021,7 @@ const ExtraRegisters& Task::extra_regs() {
     extra_registers.data_.resize(sizeof(ARM64Arch::user_fpregs_struct));
     struct iovec vec = { extra_registers.data_.data(),
                           extra_registers.data_.size() };
-    xptrace(PTRACE_GETREGSET, NT_PRFPREG, &vec);
+    xptrace(PTRACE_GETREGSET, NT_FPREGSET, &vec);
     extra_registers.data_.resize(vec.iov_len);
 #else
 #error need to define new extra_regs support
@@ -1385,7 +1385,7 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
     case ExtraRegisters::NT_FPR: {
       struct iovec vec = { extra_registers.data_.data(),
                             extra_registers.data_.size() };
-      ptrace_if_alive(PTRACE_SETREGSET, NT_PRFPREG, &vec);
+      ptrace_if_alive(PTRACE_SETREGSET, NT_FPREGSET, &vec);
       break;
     }
     default:
