@@ -133,8 +133,9 @@ static int generic_wireless_request_by_name_internal(int sockfd,
   atomic_printf("%s(ret:%d): %s: ", nr_str, ret, (*wreq)->ifr_name);
   if (-1 == ret) {
     atomic_printf("WARNING: %s doesn't support ioctl %s\n", name, nr_str);
-    /* "bond" network devices can return ENODEV. */
-    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err || ENODEV == err);
+    /* "bond" network devices can return ENODEV.
+       Some virtual ethernet devices can return ENOTTY. */
+    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err || ENODEV == err || ENOTTY == err);
   }
   return ret;
 }
@@ -292,8 +293,9 @@ int main(void) {
   atomic_printf("SIOCGIWESSID(ret:%d): %s: ", ret, wreq->ifr_name);
   if (-1 == ret) {
     atomic_printf("WARNING: %s doesn't appear to be a wireless iface\n", name);
-    /* "bond" network devices can return ENODEV. */
-    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err || ENODEV == err);
+    /* "bond" network devices can return ENODEV.
+       Some virtual ethernet devices return ENOTTY. */
+    test_assert(EOPNOTSUPP == err || EPERM == err || EINVAL == err || ENODEV == err || ENOTTY == err);
   } else {
     atomic_printf("wireless ESSID:%s\n", buf);
   }
