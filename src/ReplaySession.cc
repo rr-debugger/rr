@@ -1487,6 +1487,7 @@ ReplayTask* ReplaySession::revive_task_for_exec() {
              << trace_frame.tid();
   task_map.erase(t->rec_tid);
   t->rec_tid = trace_frame.tid();
+  t->serial = next_task_serial();
   task_map.insert(make_pair(t->rec_tid, t));
   // The real tid is not changing yet. It will, in process_execve.
   return t;
