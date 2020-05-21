@@ -56,7 +56,7 @@ static const char* trim_leading_blanks(const char* str) {
 }
 
 /**
- * Returns true if a task in t's task-group other than t is doing an exec.
+ * Returns true if a task in t's thread-group other than t is doing an exec.
  */
 static bool thread_group_in_exec(Task* t) {
   if (!t->session().is_recording()) {
