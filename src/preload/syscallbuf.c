@@ -61,6 +61,7 @@
 #include <linux/ioctl.h>
 #include <linux/mman.h>
 #include <linux/net.h>
+#include <linux/netlink.h>
 #include <linux/perf_event.h>
 #include <linux/ptrace.h>
 #include <linux/quota.h>
@@ -80,6 +81,10 @@
 
 #include "preload_interface.h"
 #include "rr/rr.h"
+
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
 
 #ifndef BTRFS_IOCTL_MAGIC
 #define BTRFS_IOCTL_MAGIC 0x94
@@ -2575,6 +2580,11 @@ static long sys_setsockopt(const struct syscall_info* call) {
 
   if (level == SOL_PACKET &&
       (optname == PACKET_RX_RING || optname == PACKET_TX_RING)) {
+    // Let rr intercept this (and probably disable it)
+    return traced_raw_syscall(call);
+  }
+  if (level == SOL_NETLINK &&
+      (optname == NETLINK_RX_RING || optname == NETLINK_TX_RING)) {
     // Let rr intercept this (and probably disable it)
     return traced_raw_syscall(call);
   }
