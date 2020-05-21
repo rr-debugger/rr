@@ -78,7 +78,7 @@ generators_for = {
     'rr_page_arm64': lambda stream: write_rr_page(stream, True, True, False),
     'rr_page_32_replay': lambda stream: write_rr_page(stream, False, False, True),
     'rr_page_64_replay': lambda stream: write_rr_page(stream, True, False, True),
-    'rr_page_arm64_replay': lambda stream: write_rr_page(stream, True, False, True),
+    'rr_page_arm64_replay': lambda stream: write_rr_page(stream, True, True, True),
 }
 
 def main(argv):

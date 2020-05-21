@@ -181,7 +181,7 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
     // breakpoint must have fired
     return result;
   }
-  if (t->vm()->notify_watchpoint_fired(t->debug_status(),
+  if (t->vm()->notify_watchpoint_fired(t->x86_debug_status(),
           t->last_execution_resume())) {
     // watchpoint fired
     return result;
@@ -231,7 +231,7 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
     uintptr_t cur_cx = t->regs().cx();
     if (cur_cx == 0) {
       // Fake singlestep status for trap diagnosis
-      t->set_debug_status(DS_SINGLESTEP);
+      t->set_x86_debug_status(DS_SINGLESTEP);
       // This instruction will be skipped entirely.
       return result;
     }
@@ -292,7 +292,7 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
 
     if (iterations == 0) {
       // Fake singlestep status for trap diagnosis
-      t->set_debug_status(DS_SINGLESTEP);
+      t->set_x86_debug_status(DS_SINGLESTEP);
       return result;
     }
 
@@ -346,7 +346,7 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
 
     LOG(debug) << "x86-string fast-forward done; ip()==" << t->ip();
     // Fake singlestep status for trap diagnosis
-    t->set_debug_status(DS_SINGLESTEP);
+    t->set_x86_debug_status(DS_SINGLESTEP);
     return result;
   }
 }

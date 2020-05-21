@@ -548,7 +548,7 @@ void RecordTask::on_syscall_exit(int syscallno, SupportedArch arch,
 }
 
 bool RecordTask::is_at_syscallbuf_syscall_entry_breakpoint() {
-  auto i = ip().decrement_by_bkpt_insn_length(arch());
+  auto i = ip().undo_executed_bkpt(arch());
   for (auto p : syscallbuf_syscall_entry_breakpoints()) {
     if (i == p) {
       return true;
@@ -561,7 +561,7 @@ bool RecordTask::is_at_syscallbuf_final_instruction_breakpoint() {
   if (!break_at_syscallbuf_final_instruction) {
     return false;
   }
-  auto i = ip().decrement_by_bkpt_insn_length(arch());
+  auto i = ip().undo_executed_bkpt(arch());
   return i == syscallbuf_code_layout.syscallbuf_final_exit_instruction;
 }
 

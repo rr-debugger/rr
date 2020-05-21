@@ -160,6 +160,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
           // highly improbable.
           // Record the syscall-entry event that we otherwise failed to record.
           t->canonicalize_regs(t->arch());
+          t->apply_syscall_entry_regs();
           // Assume it's a native-arch syscall. If it isn't, it doesn't matter
           // all that much since we aren't actually going to do anything with it
           // in this task.
@@ -389,6 +390,7 @@ static void handle_seccomp_trap(RecordTask* t,
   // entry did happen, so the registers are already updated according to the
   // architecture of the system call.
   t->canonicalize_regs(t->detect_syscall_arch());
+  t->apply_syscall_entry_regs();
 
   Registers r = t->regs();
   int syscallno = r.original_syscallno();
@@ -550,6 +552,7 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
       }
 
       uint16_t seccomp_data = t->get_ptrace_eventmsg_seccomp_data();
+      t->apply_syscall_entry_regs();
       int syscallno = t->regs().original_syscallno();
       if (seccomp_data == SECCOMP_RET_DATA) {
         LOG(debug) << "  traced syscall entered: "
@@ -975,6 +978,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         return;
       }
       last_task_switchable = PREVENT_SWITCH;
+      t->apply_syscall_entry_regs();
       t->ev().Syscall().regs = t->regs();
       t->ev().Syscall().state = ENTERING_SYSCALL;
       // The syscallno may have been changed by the ptracer
@@ -1804,6 +1808,7 @@ void RecordSession::runnable_state_changed(RecordTask* t, StepState* step_state,
 
       SupportedArch syscall_arch = t->detect_syscall_arch();
       t->canonicalize_regs(syscall_arch);
+      t->apply_syscall_entry_regs();
       process_syscall_entry(t, step_state, step_result, syscall_arch);
       return;
     }

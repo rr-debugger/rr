@@ -33,6 +33,8 @@ const uintptr_t X86_DF_FLAG = 1 << 10;
 const uintptr_t X86_RF_FLAG = 1 << 16;
 const uintptr_t X86_ID_FLAG = 1 << 21;
 
+const uintptr_t AARCH64_DBG_SPSR_SS = 1 << 21;
+
 /**
  * A Registers object contains values for all general-purpose registers.
  * These must include all registers used to pass syscall parameters and return
@@ -98,6 +100,11 @@ public:
   };
 
   /**
+   * Get the register content to save in the trace.
+   */
+  InternalData get_regs_for_trace() const;
+
+  /**
    * Equivalent to get_ptrace_for_arch(arch()) but doesn't copy.
    */
   InternalData get_ptrace_for_self_arch() const;
@@ -110,6 +117,13 @@ public:
    */
   void set_from_ptrace_for_arch(SupportedArch arch, const void* data,
                                 size_t size);
+
+  /**
+   * Copy from the arch-specific structure returned in get_regs_for_trace()
+   * back into *this
+   */
+  void set_from_trace(SupportedArch arch, const void* data,
+                      size_t size);
 
 #define ARCH_SWITCH_CASE(rettype, x86case, x64case, arm64case)                 \
 (([=](void) -> rettype {                                                       \
@@ -318,8 +332,6 @@ public:
 
   uintptr_t flags() const;
   void set_flags(uintptr_t value);
-  bool singlestep_flag() { return flags() & X86_TF_FLAG; }
-  void clear_singlestep_flag() { set_flags(flags() & ~X86_TF_FLAG); }
   bool df_flag() const { return flags() & X86_DF_FLAG; }
 
   uintptr_t fs_base() const {
@@ -354,11 +366,24 @@ public:
     return u.arm64regs.pstate;
   }
 
+  void set_pstate(uintptr_t pstate) {
+    DEBUG_ASSERT(arch() == aarch64);
+    u.arm64regs.pstate = pstate;
+  }
+
   void set_x7(uintptr_t x7) {
     DEBUG_ASSERT(arch() == aarch64);
     u.arm64regs.x[7] = x7;
   }
   // End of aarch64 specific accessors
+
+  /**
+   * Modify the processor's single step flag. On x86 this is the TF flag in the
+   * eflags register. On aarch64 this is the DBG_SPSR_SS flag in the pstate
+   * register.
+   */
+  bool singlestep_flag();
+  void clear_singlestep_flag();
 
   void print_register_file(FILE* f) const;
   void print_register_file_compact(FILE* f) const;
@@ -477,10 +502,10 @@ private:
           uint64_t pstate;
         };
       };
-      // This is the NT_ARM_SYSTEM_CALL regset
-      int orig_syscall;
       // This is not exposed through GETREGSET. We track it manually
       uint64_t orig_x0;
+      // This is the NT_ARM_SYSTEM_CALL regset
+      int orig_syscall;
     } arm64regs;
   } u;
 };

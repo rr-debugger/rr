@@ -85,6 +85,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       seccomp_bpf_enabled(false),
       detected_unexpected_exit(false),
       registers_dirty(false),
+      orig_syscallno_dirty(false),
       extra_registers(a),
       extra_registers_known(false),
       session_(&session),
@@ -771,7 +772,7 @@ void Task::on_syscall_exit(int syscallno, SupportedArch arch,
 void Task::move_ip_before_breakpoint() {
   // TODO: assert that this is at a breakpoint trap.
   Registers r = regs();
-  r.set_ip(r.ip().decrement_by_bkpt_insn_length(arch()));
+  r.set_ip(r.ip().undo_executed_bkpt(arch()));
   set_regs(r);
 }
 
@@ -809,6 +810,7 @@ void Task::enter_syscall() {
     }
     static_cast<RecordTask*>(this)->stash_sig();
   }
+  apply_syscall_entry_regs();
 }
 
 bool Task::exit_syscall() {
@@ -1054,7 +1056,7 @@ bool Task::set_debug_reg(size_t regno, uintptr_t value) {
   return errno == ESRCH || errno == 0;
 }
 
-uintptr_t Task::debug_status() {
+uintptr_t Task::x86_debug_status() {
   return fallible_ptrace(PTRACE_PEEKUSER, dr_user_word_offset(6), nullptr);
 }
 #else
@@ -1069,14 +1071,16 @@ bool Task::set_debug_reg(size_t, uintptr_t) {
   return false;
 }
 
-uintptr_t Task::debug_status() {
+uintptr_t Task::x86_debug_status() {
   FATAL_X86_ONLY();
   return 0;
 }
 #endif
 
-void Task::set_debug_status(uintptr_t status) {
-  set_debug_reg(6, status);
+void Task::set_x86_debug_status(uintptr_t status) {
+  if (arch() == x86 || arch() == x86_64) {
+    set_debug_reg(6, status);
+  }
 }
 
 static bool is_singlestep_resume(ResumeRequest request) {
@@ -1085,54 +1089,62 @@ static bool is_singlestep_resume(ResumeRequest request) {
 
 TrapReasons Task::compute_trap_reasons() {
   ASSERT(this, stop_sig() == SIGTRAP);
-  TrapReasons reasons;
-  uintptr_t status = debug_status();
-  reasons.singlestep = (status & DS_SINGLESTEP) != 0;
 
-  if (is_singlestep_resume(how_last_execution_resumed)) {
-    if (is_at_syscall_instruction(this, address_of_last_execution_resume) &&
-        ip() ==
-            address_of_last_execution_resume +
-                syscall_instruction_length(arch())) {
-      // During replay we execute syscall instructions in certain cases, e.g.
-      // mprotect with syscallbuf. The kernel does not set DS_SINGLESTEP when we
-      // step over those instructions so we need to detect that here.
-      reasons.singlestep = true;
-    } else {
-      TrappedInstruction ti =
-        trapped_instruction_at(this, address_of_last_execution_resume);
-      if (ti == TrappedInstruction::CPUID &&
-          ip() == address_of_last_execution_resume +
-                       trapped_instruction_len(TrappedInstruction::CPUID)) {
-        // Likewise we emulate CPUID instructions and must forcibly detect that
-        // here.
+  TrapReasons reasons;
+
+  const siginfo_t& si = get_siginfo();
+  if (arch() == x86 || arch() == x86_64) {
+    uintptr_t status = x86_debug_status();
+    reasons.singlestep = (status & DS_SINGLESTEP) != 0;
+    if (!reasons.singlestep && is_singlestep_resume(how_last_execution_resumed)) {
+      if (is_at_syscall_instruction(this, address_of_last_execution_resume) &&
+          ip() ==
+              address_of_last_execution_resume +
+                  syscall_instruction_length(arch())) {
+        // During replay we execute syscall instructions in certain cases, e.g.
+        // mprotect with syscallbuf. The kernel does not set DS_SINGLESTEP when we
+        // step over those instructions so we need to detect that here.
         reasons.singlestep = true;
-        // This also takes care of the did_set_breakpoint_after_cpuid workaround case
-      } else if (ti == TrappedInstruction::INT3 &&
-          ip() == address_of_last_execution_resume +
-                       trapped_instruction_len(TrappedInstruction::INT3)) {
-        // INT3 instructions should also be turned into a singlestep here.
-        reasons.singlestep = true;
+      } else {
+        TrappedInstruction ti =
+          trapped_instruction_at(this, address_of_last_execution_resume);
+        if (ti == TrappedInstruction::CPUID &&
+            ip() == address_of_last_execution_resume +
+                        trapped_instruction_len(TrappedInstruction::CPUID)) {
+          // Likewise we emulate CPUID instructions and must forcibly detect that
+          // here.
+          reasons.singlestep = true;
+          // This also takes care of the did_set_breakpoint_after_cpuid workaround case
+        } else if (ti == TrappedInstruction::INT3 &&
+            ip() == address_of_last_execution_resume +
+                        trapped_instruction_len(TrappedInstruction::INT3)) {
+          // INT3 instructions should also be turned into a singlestep here.
+          reasons.singlestep = true;
+        }
       }
     }
-  }
 
-  // In VMWare Player 6.0.4 build-2249910, 32-bit Ubuntu x86 guest,
-  // single-stepping does not trigger watchpoints :-(. So we have to
-  // check watchpoints here. fast_forward also hides watchpoint changes.
-  // Write-watchpoints will detect that their value has changed and trigger.
-  // XXX Read/exec watchpoints can't be detected this way so they're still
-  // broken in the above configuration :-(.
-  if ((DS_WATCHPOINT_ANY | DS_SINGLESTEP) & status) {
-    as->notify_watchpoint_fired(status,
-        is_singlestep_resume(how_last_execution_resumed)
-            ? address_of_last_execution_resume : nullptr);
+    // In VMWare Player 6.0.4 build-2249910, 32-bit Ubuntu x86 guest,
+    // single-stepping does not trigger watchpoints :-(. So we have to
+    // check watchpoints here. fast_forward also hides watchpoint changes.
+    // Write-watchpoints will detect that their value has changed and trigger.
+    // XXX Read/exec watchpoints can't be detected this way so they're still
+    // broken in the above configuration :-(.
+    if ((DS_WATCHPOINT_ANY | DS_SINGLESTEP) & status) {
+      as->notify_watchpoint_fired(status,
+          is_singlestep_resume(how_last_execution_resumed)
+              ? address_of_last_execution_resume : nullptr);
+    }
+    reasons.watchpoint =
+        as->has_any_watchpoint_changes() || (DS_WATCHPOINT_ANY & status);
+  } else if (arch() == aarch64) {
+    // TODO: watchpoint support.
+
+    reasons.singlestep = si.si_code == TRAP_TRACE;
   }
-  reasons.watchpoint =
-      as->has_any_watchpoint_changes() || (DS_WATCHPOINT_ANY & status);
 
   // If we triggered a breakpoint, this would be the address of the breakpoint
-  remote_code_ptr ip_at_breakpoint = ip().decrement_by_bkpt_insn_length(arch());
+  remote_code_ptr ip_at_breakpoint = ip().undo_executed_bkpt(arch());
   // Don't trust siginfo to report execution of a breakpoint if singlestep or
   // watchpoint triggered.
   if (reasons.singlestep) {
@@ -1149,7 +1161,6 @@ TrapReasons Task::compute_trap_reasons() {
     reasons.breakpoint = as->has_exec_watchpoint_fired(ip_at_breakpoint) &&
                          as->is_breakpoint_instruction(this, ip_at_breakpoint);
   } else {
-    const siginfo_t& si = get_siginfo();
     ASSERT(this, SIGTRAP == si.si_signo) << " expected SIGTRAP, got " << si;
     reasons.breakpoint = is_kernel_trap(si.si_code);
     if (reasons.breakpoint) {
@@ -1220,11 +1231,17 @@ void Task::activate_preload_thread_locals() {
   }
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 static bool cpu_has_KNL_string_singlestep_bug() {
   static bool has_quirk =
       ((cpuid(CPUID_GETFEATURES, 0).eax & 0xF0FF0) == 0x50670);
   return has_quirk;
 }
+#else
+static bool cpu_has_KNL_string_singlestep_bug() {
+  return false;
+}
+#endif
 
 /*
  * The value of rcx above which the CPU doesn't properly handle singlestep for
@@ -1234,22 +1251,24 @@ static bool cpu_has_KNL_string_singlestep_bug() {
 static int single_step_coalesce_cutoff() { return 16; }
 
 void Task::work_around_KNL_string_singlestep_bug() {
-  uintptr_t cx = regs().cx();
-  uintptr_t cutoff = single_step_coalesce_cutoff();
   /* The extra cx >= cutoff check is just an optimization, to avoid the
      moderately expensive load from ip() if we can */
-  if (cpu_has_KNL_string_singlestep_bug() && cx > cutoff &&
-      at_x86_string_instruction(this)) {
+  if (!cpu_has_KNL_string_singlestep_bug()) {
+    return;
+  }
+  uintptr_t cx = regs().cx();
+  uintptr_t cutoff = single_step_coalesce_cutoff();
+  if (cx > cutoff && at_x86_string_instruction(this)) {
     /* KNL has a quirk where single-stepping a string instruction can step up
-       to 64 iterations. Work around this by fudging registers to force the
-       processor to execute one iteration and one interation only. */
+      to 64 iterations. Work around this by fudging registers to force the
+      processor to execute one iteration and one interation only. */
     LOG(debug) << "Working around KNL single-step hardware bug (cx=" << cx
-               << ")";
+              << ")";
     if (cx > cutoff) {
       last_resume_orig_cx = cx;
       Registers r = regs();
       /* An arbitrary value < cutoff would work fine here, except 1, since
-         the last iteration of the loop behaves differently */
+        the last iteration of the loop behaves differently */
       r.set_cx(cutoff);
       set_regs(r);
     }
@@ -1276,7 +1295,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
              << " tick_period " << tick_period << " wait " << wait_how;
   address_of_last_execution_resume = ip();
   how_last_execution_resumed = how;
-  set_debug_status(0);
+  set_x86_debug_status(0);
 
   if (is_singlestep_resume(how)) {
     work_around_KNL_string_singlestep_bug();
@@ -1337,6 +1356,9 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
 
 void Task::set_regs(const Registers& regs) {
   ASSERT(this, is_stopped);
+  if (registers.original_syscallno() != regs.original_syscallno()) {
+    orig_syscallno_dirty = true;
+  }
   registers = regs;
   registers_dirty = true;
 }
@@ -1345,13 +1367,39 @@ void Task::flush_regs() {
   if (registers_dirty) {
     LOG(debug) << "Flushing registers for tid " << tid << " " << registers;
     auto ptrace_regs = registers.get_ptrace();
+#if defined(__i386__) || defined(__x86_64__)
     if (ptrace_if_alive(PTRACE_SETREGS, nullptr, &ptrace_regs)) {
       /* It's ok for flush regs to fail, e.g. if the task got killed underneath
        * us - we just need to remember not to trust any value we would load
        * from ptrace otherwise */
       registers_dirty = false;
+      orig_syscallno_dirty = false;
+    }
+#elif defined(__aarch64__)
+    struct iovec vec = { &ptrace_regs,
+                          sizeof(ptrace_regs) };
+    if (ptrace_if_alive(PTRACE_SETREGSET, NT_PRSTATUS, &vec)) {
+      registers_dirty = false;
+    }
+#else
+    #error "Unknown archietcture"
+#endif
+  }
+#if defined(__i386__) || defined(__x86_64__)
+  else {
+    ASSERT(this, !orig_syscallno_dirty);
+  }
+#elif defined(__aarch64__)
+  if (orig_syscallno_dirty) {
+    uintptr_t syscall = registers.original_syscallno();
+    struct iovec vec = { &syscall,
+                          sizeof(syscall) };
+    LOG(debug) << "Chaning syscall to " << syscall;
+    if (ptrace_if_alive(PTRACE_SETREGSET, NT_ARM_SYSTEM_CALL, &vec)) {
+      orig_syscallno_dirty = false;
     }
   }
+#endif
 }
 
 void Task::set_extra_regs(const ExtraRegisters& regs) {
@@ -1794,9 +1842,10 @@ void Task::did_waitpid(WaitStatus status) {
     if (!is_stopped && !registers_dirty) {
       LOG(debug) << "Requesting registers from tracee " << tid;
       NativeArch::user_regs_struct ptrace_regs;
+
+#if defined(__i386__) || defined(__x86_64__)
       if (ptrace_if_alive(PTRACE_GETREGS, nullptr, &ptrace_regs)) {
         registers.set_from_ptrace(ptrace_regs);
-  #if defined(__i386__) || defined(__x86_64__)
         // Check the architecture of the task by looking at the
         // cs segment register and checking if that segment is a long mode segment
         // (Linux always uses GDT entries for this, which are globally the same).
@@ -1805,10 +1854,17 @@ void Task::did_waitpid(WaitStatus status) {
           registers.set_arch(a);
           registers.set_from_ptrace(ptrace_regs);
         }
-  #else
-  #error detect architecture here
-  #endif
-      } else {
+      }
+#elif defined(__aarch64__)
+      struct iovec vec = { &ptrace_regs,
+                          sizeof(ptrace_regs) };
+      if (ptrace_if_alive(PTRACE_GETREGSET, NT_PRSTATUS, &vec)) {
+        registers.set_from_ptrace(ptrace_regs);
+      }
+#else
+#error detect architecture here
+#endif
+      else {
         LOG(debug) << "Unexpected process death for " << tid;
         status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
       }
@@ -1827,21 +1883,27 @@ void Task::did_waitpid(WaitStatus status) {
   if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
     seen_ptrace_exit_event = true;
   } else {
-    if (registers.singlestep_flag()) {
-      registers.clear_singlestep_flag();
-      registers_dirty = true;
-    }
+    if (arch() == x86 || arch() == x86_64) {
+      // Clear the single step flag in case we got here by taking a signal
+      // after asking for a single step. We want to avoid taking that single
+      // step after the signal resumes, so the singlestep flag needs to be
+      // cleared. On aarch64, the kernel does this for us.
+      if (registers.singlestep_flag()) {
+        registers.clear_singlestep_flag();
+        registers_dirty = true;
+      }
 
-    if (last_resume_orig_cx != 0) {
-      uintptr_t new_cx = registers.cx();
-      /* Un-fudge registers, if we fudged them to work around the KNL hardware
-         quirk */
-      unsigned cutoff = single_step_coalesce_cutoff();
-      ASSERT(this, new_cx == cutoff - 1 || new_cx == cutoff);
-      registers.set_cx(last_resume_orig_cx - cutoff + new_cx);
-      registers_dirty = true;
+      if (last_resume_orig_cx != 0) {
+        uintptr_t new_cx = registers.cx();
+        /* Un-fudge registers, if we fudged them to work around the KNL hardware
+          quirk */
+        unsigned cutoff = single_step_coalesce_cutoff();
+        ASSERT(this, new_cx == cutoff - 1 || new_cx == cutoff);
+        registers.set_cx(last_resume_orig_cx - cutoff + new_cx);
+        registers_dirty = true;
+      }
+      last_resume_orig_cx = 0;
     }
-    last_resume_orig_cx = 0;
 
     if (did_set_breakpoint_after_cpuid) {
       remote_code_ptr bkpt_addr =
@@ -3324,6 +3386,16 @@ void Task::os_exec_stub(SupportedArch exec_arch)
   if (memory_task != this) {
     memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
                            saved_data.size());
+  }
+}
+
+void Task::apply_syscall_entry_regs()
+{
+  if (arch() == aarch64) {
+    registers.set_original_syscallno(registers.syscallno());
+    registers.set_orig_arg1(registers.arg1());
+    // Don't update registers_dirty here, because these registers are not part
+    // of the ptrace state tracked by that flag.
   }
 }
 
