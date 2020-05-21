@@ -19,6 +19,7 @@
 #include <linux/msdos_fs.h>
 #include <linux/msg.h>
 #include <linux/net.h>
+#include <linux/netlink.h>
 #include <linux/perf_event.h>
 #include <linux/personality.h>
 #include <linux/prctl.h>
@@ -910,6 +911,14 @@ static bool block_sock_opt(int level, int optname,
       switch (optname) {
         case PACKET_RX_RING:
         case PACKET_TX_RING:
+          syscall_state.emulate_result(-ENOPROTOOPT);
+          return true;
+      }
+      break;
+    case SOL_NETLINK:
+      switch (optname) {
+        case NETLINK_RX_RING:
+        case NETLINK_TX_RING:
           syscall_state.emulate_result(-ENOPROTOOPT);
           return true;
       }

@@ -38,6 +38,7 @@
 #include <linux/if_tun.h>
 #include <linux/limits.h>
 #include <linux/mtio.h>
+#include <linux/netlink.h>
 #include <linux/perf_event.h>
 #include <linux/personality.h>
 #include <linux/random.h>

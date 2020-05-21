@@ -897,6 +897,7 @@ set(BASIC_TESTS
   munmap_discontinuous
   nanosleep
   netfilter
+  netlink_mmap_disable
   no_mask_timeslice
   nscd
   numa
