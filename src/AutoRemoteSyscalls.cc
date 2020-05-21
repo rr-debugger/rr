@@ -243,6 +243,7 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
     callregs.set_ip(initial_regs.ip());
   }
 
+  callregs.set_original_syscallno(syscallno);
   callregs.set_syscallno(syscallno);
   t->set_regs(callregs);
 
@@ -254,6 +255,16 @@ long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
       if (t->ip() != callregs.ip()) {
         // We entered the syscall, so stop now
         break;
+      }
+      if (t->ptrace_event() == PTRACE_EVENT_EXIT) {
+        // We died, just let it be
+        break;
+      }
+      if (t->stop_sig() == SIGTRAP && t->get_siginfo().si_code == TRAP_TRACE) {
+        // On aarch64, if we were previously in a syscall-exit stop, continuing
+        // with PTRACE_SINGLESTEP will result in incurring a trap upon execution
+        // of the first instruction in userspace. Ignore such a trap.
+        continue;
       }
       if (ignore_signal(t)) {
         // We were interrupted by a signal before we even entered the syscall

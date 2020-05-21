@@ -418,7 +418,7 @@ void TraceWriter::write_frame(RecordTask* t, const Event& ev,
   frame.setArch(to_trace_arch(t->arch()));
   if (registers) {
     // Avoid dynamic allocation and copy
-    auto raw_regs = registers->get_ptrace_for_self_arch();
+    auto raw_regs = registers->get_regs_for_trace();
     frame.initRegisters().setRaw(Data::Reader(raw_regs.data, raw_regs.size));
   }
   if (extra_registers) {
@@ -545,8 +545,8 @@ TraceFrame TraceReader::read_frame() {
   ret.recorded_regs.set_arch(arch);
   auto reg_data = frame.getRegisters().getRaw();
   if (reg_data.size()) {
-    ret.recorded_regs.set_from_ptrace_for_arch(arch, reg_data.begin(),
-                                               reg_data.size());
+    ret.recorded_regs.set_from_trace(arch, reg_data.begin(),
+                                     reg_data.size());
   }
   auto extra_reg_data = frame.getExtraRegisters().getRaw();
   if (extra_reg_data.size()) {

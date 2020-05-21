@@ -454,19 +454,26 @@ public:
   /**
    * Return the debug status (DR6 on x86). The debug status is always cleared
    * in resume_execution() before we resume, so it always only reflects the
-   * events since the last resume.
+   * events since the last resume. Must not be called on non-x86 architectures.
    */
-  uintptr_t debug_status();
-  /**
-   * Set the debug status (DR6 on x86).
-   */
-  void set_debug_status(uintptr_t status);
+  uintptr_t x86_debug_status();
 
   /**
-   * Determine why a SIGTRAP occurred. Uses debug_status() but doesn't
+   * Set the debug status (DR6 on x86). Noop on non-x86 architectures.
+   */
+  void set_x86_debug_status(uintptr_t status);
+
+  /**
+   * Determine why a SIGTRAP occurred. On x86, uses x86_debug_status() but doesn't
    * consume it.
    */
   TrapReasons compute_trap_reasons();
+
+  /**
+   * Called on syscall entry to save any registers that we need to keep, but
+   * cannot get from the kernel (r.g. orig_x0 on aarch64).
+   */
+  void apply_syscall_entry_regs();
 
   /**
    * Read |val| from |child_addr|.
@@ -1101,6 +1108,10 @@ protected:
   // True when 'registers' has changes that haven't been flushed back to the
   // task yet.
   bool registers_dirty;
+  // True when changes to the original syscallno in 'registers' have not been
+  // flushed back to the task yet. Some architectures (e.g. AArch64) require a
+  // separate ptrace call for this.
+  bool orig_syscallno_dirty;
   // When |extra_registers_known|, we have saved our extra registers.
   ExtraRegisters extra_registers;
   bool extra_registers_known;

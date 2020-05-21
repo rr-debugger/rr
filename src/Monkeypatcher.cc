@@ -937,7 +937,22 @@ void patch_after_exec_arch<X64Arch>(RecordTask* t, Monkeypatcher& patcher) {
 }
 
 template <>
-void patch_after_exec_arch<ARM64Arch>(RecordTask*, Monkeypatcher&) {
+void patch_after_exec_arch<ARM64Arch>(RecordTask* t, Monkeypatcher& patcher) {
+  setup_preload_library_path<ARM64Arch>(t);
+  setup_audit_library_path<ARM64Arch>(t);
+
+  for (const auto& m : t->vm()->maps()) {
+    auto& km = m.map;
+    patcher.patch_after_mmap(t, km.start(), km.size(),
+                             km.file_offset_bytes()/page_size(), -1,
+                             Monkeypatcher::MMAP_EXEC);
+  }
+
+  if (!t->vm()->has_vdso()) {
+    patch_auxv_vdso(t);
+    return;
+  }
+
   FATAL() << "Unimplemented";
 }
 

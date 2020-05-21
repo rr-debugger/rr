@@ -158,8 +158,11 @@ RegisterInfo<rr::X64Arch>::Table RegisterInfo<rr::X64Arch>::registers = {
 RegisterInfo<rr::ARM64Arch>::Table RegisterInfo<rr::ARM64Arch>::registers = {
   RV_AARCH64(X0, x[0]), RV_AARCH64(X1, x[1]), RV_AARCH64(X2, x[2]),
   RV_AARCH64(X3, x[3]), RV_AARCH64(X4, x[4]), RV_AARCH64(X5, x[5]),
-  RV_AARCH64(X6, x[6]), RV_AARCH64(X7, x[7]), RV_AARCH64(X8, x[8]),
-  RV_AARCH64(X9, x[9]),
+  RV_AARCH64(X6, x[6]),
+  // Don't compare these - the kernel sometimes lies [1] about this value
+  // [1] https://github.com/torvalds/linux/blob/d2f8825ab78e4c18686f3e1a756a30255bb00bf3/arch/arm64/kernel/ptrace.c#L1814-L1820
+  RV_AARCH64_WITH_MASK(X7, x[7], 0, 8),
+  RV_AARCH64(X8, x[8]), RV_AARCH64(X9, x[9]),
   RV_AARCH64(X10, x[10]), RV_AARCH64(X11, x[11]), RV_AARCH64(X12, x[12]),
   RV_AARCH64(X13, x[13]), RV_AARCH64(X14, x[14]), RV_AARCH64(X15, x[15]),
   RV_AARCH64(X16, x[16]), RV_AARCH64(X17, x[17]), RV_AARCH64(X18, x[18]),
@@ -579,6 +582,26 @@ Registers::InternalData Registers::get_ptrace_for_self_arch() const {
     case x86_64:
       return { reinterpret_cast<const uint8_t*>(&u.x64regs),
                sizeof(u.x64regs) };
+    case aarch64:
+      return { reinterpret_cast<const uint8_t*>(&u.arm64regs._ptrace),
+               sizeof(u.arm64regs._ptrace) };
+    default:
+      DEBUG_ASSERT(0 && "Unknown arch");
+      return { nullptr, 0 };
+  }
+}
+
+Registers::InternalData Registers::get_regs_for_trace() const {
+  switch (arch_) {
+    case x86:
+      return { reinterpret_cast<const uint8_t*>(&u.x86regs),
+               sizeof(u.x86regs) };
+    case x86_64:
+      return { reinterpret_cast<const uint8_t*>(&u.x64regs),
+               sizeof(u.x64regs) };
+    case aarch64:
+      return { reinterpret_cast<const uint8_t*>(&u.arm64regs),
+               sizeof(u.arm64regs) };
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
       return { nullptr, 0 };
@@ -611,6 +634,17 @@ void Registers::set_from_ptrace_for_arch(SupportedArch a, const void* data,
   memcpy(&u.x86regs, data, sizeof(u.x86regs));
 }
 
+void Registers::set_from_trace(SupportedArch a, const void* data,
+                               size_t size) {
+  if (a == x86 || a == x86_64) {
+    return set_from_ptrace_for_arch(a, data, size);
+  }
+
+  DEBUG_ASSERT(a == aarch64);
+  DEBUG_ASSERT(size == sizeof(u.arm64regs));
+  memcpy(&u.arm64regs, data, sizeof(u.arm64regs));
+}
+
 uintptr_t Registers::flags() const {
   switch (arch()) {
     case x86:
@@ -631,6 +665,32 @@ void Registers::set_flags(uintptr_t value) {
     case x86_64:
       u.x64regs.eflags = value;
       break;
+    default:
+      DEBUG_ASSERT(0 && "Unknown arch");
+      break;
+  }
+}
+
+bool Registers::singlestep_flag() {
+  switch (arch()) {
+    case x86:
+    case x86_64:
+      return flags() & X86_TF_FLAG;
+    case aarch64:
+      return pstate() & AARCH64_DBG_SPSR_SS;
+    default:
+      DEBUG_ASSERT(0 && "Unknown arch");
+      break;
+  }
+}
+
+void Registers::clear_singlestep_flag() {
+  switch (arch()) {
+    case x86:
+    case x86_64:
+      return set_flags(flags() & ~X86_TF_FLAG);
+    case aarch64:
+      return set_pstate(pstate() & ~AARCH64_DBG_SPSR_SS);
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
       break;

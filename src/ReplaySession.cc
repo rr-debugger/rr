@@ -555,7 +555,7 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
 
     if (cont_syscall_boundary(t, constraints) == INCOMPLETE) {
       bool reached_target = syscall_bp_vm && SIGTRAP == t->stop_sig() &&
-                            t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
+                            t->ip().undo_executed_bkpt(t->arch()) ==
                                 syscall_instruction &&
                             t->vm()->get_breakpoint_type_at_addr(
                                 syscall_instruction) == BKPT_INTERNAL;
@@ -1237,7 +1237,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
   if (legacy_breakpoint_mode) {
     ASSERT(t, t->stop_sig() == SIGTRAP)
         << "Replay got unexpected signal (or none) " << t->stop_sig();
-    if (t->ip().decrement_by_bkpt_insn_length(t->arch()) ==
+    if (t->ip().undo_executed_bkpt(t->arch()) ==
             remote_code_ptr(remote_brkpt_addr) &&
         !user_breakpoint_at_addr) {
       Registers r = t->regs();
@@ -1288,7 +1288,7 @@ Completion ReplaySession::patch_vsyscall(ReplayTask* t, const StepConstraints& c
 
   ASSERT(t, t->stop_sig() == SIGTRAP)
       << "Replay got unexpected signal (or none) " << t->stop_sig();
-  ASSERT(t, t->regs().ip().decrement_by_bkpt_insn_length(t->arch()) == vsyscall_entry);
+  ASSERT(t, t->regs().ip().undo_executed_bkpt(t->arch()) == vsyscall_entry);
 
   t->apply_all_data_records_from_trace();
   Registers r = t->regs();

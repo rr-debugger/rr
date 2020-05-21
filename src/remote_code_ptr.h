@@ -47,8 +47,17 @@ public:
   remote_code_ptr increment_by_syscall_insn_length(SupportedArch arch) const {
     return remote_code_ptr(ptr + rr::syscall_instruction_length(arch));
   }
-  remote_code_ptr decrement_by_bkpt_insn_length(SupportedArch arch) const {
-    return remote_code_ptr(ptr - rr::bkpt_instruction_length(arch));
+  remote_code_ptr undo_executed_bkpt(SupportedArch arch) {
+    switch (arch) {
+      case x86:
+      case x86_64:
+        return decrement_by_bkpt_insn_length_private(arch);
+      case aarch64:
+        // On aarch64 executed breakpoint instructions do not increment the pc
+        return *this;
+      default:
+        DEBUG_ASSERT(0 && "Unknown architecture");
+    }
   }
   remote_code_ptr increment_by_bkpt_insn_length(SupportedArch arch) const {
     return remote_code_ptr(ptr + rr::bkpt_instruction_length(arch));
@@ -72,6 +81,12 @@ public:
   explicit operator bool() const { return ptr != 0; }
 
 private:
+  // Private to avoid accidentally using this instead of undo_executed_bkpt.
+  // You probably want that one.
+  remote_code_ptr decrement_by_bkpt_insn_length_private(SupportedArch arch) const {
+    return remote_code_ptr(ptr - rr::bkpt_instruction_length(arch));
+  }
+
   // Return the integer value for this pointer viewed as a data pointer.
   // A no-op on Intel architectures, will mask off the thumb bit on ARM.
   uintptr_t to_data_ptr_value() const { return ptr; }

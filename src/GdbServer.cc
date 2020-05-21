@@ -241,6 +241,9 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
     case x86_64:
       end = have_AVX ? DREG_64_YMM15H : DREG_ORIG_RAX;
       break;
+    case aarch64:
+      end = DREG_FPCR;
+      break;
     default:
       FATAL() << "Unknown architecture";
       return;

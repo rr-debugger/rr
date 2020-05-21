@@ -270,7 +270,7 @@ bool handle_syscallbuf_breakpoint(RecordTask* t) {
   }
 
   Registers r = t->regs();
-  r.set_ip(r.ip().decrement_by_bkpt_insn_length(t->arch()));
+  r.set_ip(r.ip().undo_executed_bkpt(t->arch()));
   t->set_regs(r);
 
   if (t->is_at_traced_syscall_entry()) {
