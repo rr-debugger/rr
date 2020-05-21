@@ -2062,13 +2062,18 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
       as->did_fork_into(t);
     }
 
-    if (CLONE_SHARE_FILES & flags) {
-      // Clear our desched_fd_child so that we don't try to close it.
-      // It should only be closed in |this|.
-      t->desched_fd_child = -1;
-      t->cloned_file_data_fd_child = -1;
+    // `t` doesn't have a syscallbuf and `t->desched_fd_child`/
+    // `t->cloned_file_data_fd_child` are both -1.
+    if (session().is_replaying()) {
+      // `t` is not really sharing our fd table, in fact our real fd table
+      // is only used by this task, so it only contains our syscallbuf fds (if any),
+      // not the fds for any other task. Close those in `t`.
+      AutoRemoteSyscalls remote(t);
+      t->close_buffers_for(remote, this);
+    } else if (CLONE_SHARE_FILES & flags) {
+      // `t` is sharing our fd table, so it should not close anything.
     } else {
-      // Close syscallbuf fds for tasks using the original fd table.
+      // Close syscallbuf fds for all tasks using the original fd table.
       AutoRemoteSyscalls remote(t);
       for (Task* tt : fds->task_set()) {
         t->close_buffers_for(remote, tt);
