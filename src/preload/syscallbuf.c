@@ -675,8 +675,8 @@ static void __attribute__((constructor)) init_process(void) {
       { 0x40, 0x80, 0xf6, 0x81 },
       (uintptr_t)_syscall_hook_trampoline_40_80_f6_81 },
   };
-#else
-#error Unknown architecture
+#elif defined(__aarch64__)
+  struct syscall_patch_hook syscall_patch_hooks[] = {};
 #endif
 
   assert(sizeof(struct preload_thread_locals) <= PRELOAD_THREAD_LOCALS_SIZE);
@@ -1228,6 +1228,7 @@ static long sys_clock_gettime64(const struct syscall_info* call) {
 }
 #endif
 
+#if defined(SYS_creat)
 static long sys_open(const struct syscall_info* call);
 static long sys_creat(const struct syscall_info* call) {
   const char* pathname = (const char*)call->args[0];
@@ -1243,6 +1244,7 @@ static long sys_creat(const struct syscall_info* call) {
   open_call.args[2] = mode;
   return sys_open(&open_call);
 }
+#endif
 
 static int sys_fcntl64_no_outparams(const struct syscall_info* call) {
   const int syscallno = RR_FCNTL_SYSCALL;
@@ -1548,9 +1550,11 @@ static long sys_generic_getdents(const struct syscall_info* call) {
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
+#if defined(SYS_getdents)
 static long sys_getdents(const struct syscall_info* call) {
   return sys_generic_getdents(call);
 }
+#endif
 
 static long sys_getdents64(const struct syscall_info* call) {
   return sys_generic_getdents(call);
@@ -1824,7 +1828,7 @@ static int supported_open(const char* file_name, int flags) {
     (flags & (O_EXCL | O_CREAT)) == (O_EXCL | O_CREAT);
 }
 
-static long sys_readlink(const struct syscall_info* call);
+static long sys_readlinkat(const struct syscall_info* call);
 
 static int check_file_open_ok(const struct syscall_info* call, int ret, int did_abort) {
   if (did_abort || ret < 0) {
@@ -1834,8 +1838,8 @@ static int check_file_open_ok(const struct syscall_info* call, int ret, int did_
   sprintf(buf, "/proc/self/fd/%d", ret);
   char link[PATH_MAX];
   struct syscall_info readlink_call =
-    { SYS_readlink, { (long)buf, (long)link, sizeof(link), 0, 0, 0 } };
-  long link_ret = sys_readlink(&readlink_call);
+    { SYS_readlinkat, { -1, (long)buf, (long)link, sizeof(link), 0, 0 } };
+  long link_ret = sys_readlinkat(&readlink_call);
   if (link_ret >= 0 && link_ret < (ssize_t)sizeof(link)) {
     link[link_ret] = 0;
     if (allow_buffered_open(link)) {
@@ -1853,6 +1857,7 @@ static int check_file_open_ok(const struct syscall_info* call, int ret, int did_
   return traced_raw_syscall(call);
 }
 
+#if defined(SYS_open)
 static long sys_open(const struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
     /* Opening a FIFO could unblock a higher priority task */
@@ -1882,6 +1887,7 @@ static long sys_open(const struct syscall_info* call) {
   ret = commit_raw_syscall(syscallno, ptr, ret);
   return check_file_open_ok(call, ret, did_abort);
 }
+#endif
 
 static long sys_openat(const struct syscall_info* call) {
   if (force_traced_syscall_for_chaos_mode()) {
@@ -1914,6 +1920,7 @@ static long sys_openat(const struct syscall_info* call) {
   return check_file_open_ok(call, ret, did_abort);
 }
 
+#if defined(SYS_poll)
 /**
  * Make this function external so desched_ticks.py can set a breakpoint on it.
  * Make it visiblity-"protected" so that our local definition binds to it
@@ -1975,6 +1982,7 @@ static long sys_poll(const struct syscall_info* call) {
      Just perform a raw syscall now since we're almost certain to block. */
   return traced_raw_syscall(call);
 }
+#endif
 
 static long sys_epoll_wait(const struct syscall_info* call) {
   int epfd = call->args[0];
@@ -1988,7 +1996,11 @@ static long sys_epoll_wait(const struct syscall_info* call) {
 
   ptr = prep_syscall();
 
-  assert(SYS_epoll_wait == call->no || SYS_epoll_pwait == call->no);
+  assert(SYS_epoll_pwait == call->no
+#if defined(SYS_epoll_wait)
+        || SYS_epoll_wait == call->no
+#endif
+  );
 
   if (events && max_events > 0) {
     events2 = ptr;
@@ -2115,7 +2127,7 @@ static long sys_read(const struct syscall_info* call) {
                                           { fd, (long)buf, count, 0, 0, 0 } };
         thread_locals->cloned_file_data_offset += count;
 
-        replay_only_syscall2(SYS_dup2, thread_locals->cloned_file_data_fd, fd);
+        replay_only_syscall3(SYS_dup3, thread_locals->cloned_file_data_fd, fd, 0);
 
         ptr = prep_syscall();
         if (count > thread_locals->usable_scratch_size) {
@@ -2162,7 +2174,7 @@ static long sys_read(const struct syscall_info* call) {
 /* On x86-32, pread/pwrite take the offset in two registers. We don't bother
  * handling that.
  */
-#if defined(__x86_64__)
+#if !defined(__i386__)
 static long sys_pread64(const struct syscall_info* call) {
   const int syscallno = SYS_pread64;
   int fd = call->args[0];
@@ -2192,6 +2204,7 @@ static long sys_pread64(const struct syscall_info* call) {
 }
 #endif
 
+#if defined(SYS_readlink)
 static long sys_readlink(const struct syscall_info* call) {
   const int syscallno = SYS_readlink;
   const char* path = (const char*)call->args[0];
@@ -2216,6 +2229,7 @@ static long sys_readlink(const struct syscall_info* call) {
   ptr = copy_output_buffer(ret, ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
+#endif
 
 static long sys_readlinkat(const struct syscall_info* call) {
   const int syscallno = SYS_readlinkat;
@@ -2632,6 +2646,7 @@ static long sys_socketpair(const struct syscall_info* call) {
 }
 #endif
 
+#if defined(SYS_time)
 static long sys_time(const struct syscall_info* call) {
   const int syscallno = SYS_time;
   __kernel_time_t* tp = (__kernel_time_t*)call->args[0];
@@ -2651,11 +2666,12 @@ static long sys_time(const struct syscall_info* call) {
   }
   return commit_raw_syscall(syscallno, ptr, ret);
 }
+#endif
 
-#if defined(__x86_64__)
-typedef struct stat stat64_t;
-#else
+#if defined(__i386__)
 typedef struct stat64 stat64_t;
+#else
+typedef struct stat stat64_t;
 #endif
 static long sys_xstat64(const struct syscall_info* call) {
   const int syscallno = call->no;
@@ -2797,7 +2813,7 @@ static long sys_write(const struct syscall_info* call) {
 /* On x86-32, pread/pwrite take the offset in two registers. We don't bother
  * handling that.
  */
-#if defined(__x86_64__)
+#if !defined(__i386__)
 static long sys_pwrite64(const struct syscall_info* call) {
   const int syscallno = SYS_pwrite64;
   int fd = call->args[0];
@@ -3010,15 +3026,21 @@ static long syscall_hook_internal(const struct syscall_info* call) {
 #define CASE_GENERIC_NONBLOCKING_FD(syscallname)                               \
   case SYS_##syscallname:                                                      \
     return sys_generic_nonblocking_fd(call)
+#if defined(SYS_access)
     CASE_GENERIC_NONBLOCKING(access);
+#endif
     CASE(clock_gettime);
 #if defined(SYS_clock_gettime64)
     CASE(clock_gettime64);
 #endif
     CASE_GENERIC_NONBLOCKING_FD(close);
+#if defined(SYS_creat)
     CASE(creat);
+#endif
     CASE_GENERIC_NONBLOCKING_FD(dup);
+#if defined(SYS_epoll_wait)
 case SYS_epoll_wait:
+#endif
 case SYS_epoll_pwait:
     return sys_epoll_wait(call);
     CASE_GENERIC_NONBLOCKING_FD(fadvise64);
@@ -3033,7 +3055,9 @@ case SYS_epoll_pwait:
     CASE_GENERIC_NONBLOCKING_FD(fsetxattr);
     CASE_GENERIC_NONBLOCKING_FD(ftruncate);
     CASE(futex);
+#if defined(SYS_getdents)
     CASE(getdents);
+#endif
     CASE(getdents64);
     CASE_GENERIC_NONBLOCKING(getegid);
     CASE_GENERIC_NONBLOCKING(geteuid);
@@ -3046,7 +3070,9 @@ case SYS_epoll_pwait:
     CASE_GENERIC_NONBLOCKING(getuid);
     CASE(getxattr);
     CASE(ioctl);
+#if defined(lchown)
     CASE_GENERIC_NONBLOCKING(lchown);
+#endif
     CASE(lgetxattr);
     CASE(listxattr);
     CASE(llistxattr);
@@ -3055,20 +3081,30 @@ case SYS_epoll_pwait:
 #endif
     CASE_GENERIC_NONBLOCKING_FD(lseek);
     CASE(madvise);
+#if defined(SYS_mkdir)
     CASE_GENERIC_NONBLOCKING(mkdir);
+#endif
+#if defined(SYS_mkdor)
     CASE_GENERIC_NONBLOCKING(mknod);
+#endif
     CASE(mprotect);
+#if defined(SYS_open)
     CASE(open);
+#endif
     CASE(openat);
+#if defined(SYS_poll)
     CASE(poll);
-#if defined(__x86_64__)
+#endif
+#if !defined(__i386__)
     CASE(pread64);
     CASE(pwrite64);
 #endif
     CASE(ptrace);
     CASE(quotactl);
     CASE(read);
+#if defined(SYS_readlink)
     CASE(readlink);
+#endif
     CASE(readlinkat);
 #if defined(SYS_recvfrom)
     CASE(recvfrom);
@@ -3076,7 +3112,9 @@ case SYS_epoll_pwait:
 #if defined(SYS_recvmsg)
     CASE(recvmsg);
 #endif
+#if defined(SYS_rmdir)
     CASE_GENERIC_NONBLOCKING(rmdir);
+#endif
     CASE(rt_sigprocmask);
 #if defined(SYS_sendmsg)
     CASE(sendmsg);
@@ -3094,27 +3132,33 @@ case SYS_epoll_pwait:
 #if defined(SYS_socketpair)
     CASE(socketpair);
 #endif
+#if defined(SYS_symlink)
     CASE_GENERIC_NONBLOCKING(symlink);
+#endif
+#if defined(SYS_time)
     CASE(time);
+#endif
     CASE_GENERIC_NONBLOCKING(truncate);
+#if defined(SYS_unlink)
     CASE_GENERIC_NONBLOCKING(unlink);
+#endif
     CASE_GENERIC_NONBLOCKING(unlinkat);
     CASE_GENERIC_NONBLOCKING_FD(utimensat);
     CASE(write);
     CASE(writev);
 #if defined(SYS_fstat64)
     case SYS_fstat64:
-#else
+#elif defined(SYS_fstat)
     case SYS_fstat:
 #endif
 #if defined(SYS_lstat64)
     case SYS_lstat64:
-#else
+#elif defined(SYS_lstat)
     case SYS_lstat:
 #endif
 #if defined(SYS_stat64)
     case SYS_stat64:
-#else
+#elif defined(SYS_stat)
     case SYS_stat:
 #endif
       return sys_xstat64(call);
