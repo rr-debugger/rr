@@ -24,7 +24,7 @@ static void handle_signal(__attribute__((unused)) int sig) { ++caught_signal; }
 int main(void) {
 #ifdef __x86_64__
   signal(SIGALRM, handle_signal);
- 
+
   size_t page_size = sysconf(_SC_PAGESIZE);
   uint8_t* p = mmap(NULL, page_size * 2, PROT_READ | PROT_WRITE,
                     MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);

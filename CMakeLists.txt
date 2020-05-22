@@ -50,7 +50,17 @@ configure_file(
   ${CMAKE_BINARY_DIR}/git_revision.h
 )
 
-set(FLAGS_COMMON "-msse2 -D__MMX__ -D__SSE__ -D__SSE2__ -D__USE_LARGEFILE64 -pthread")
+set(FLAGS_COMMON "-D__USE_LARGEFILE64 -pthread")
+set(supports32bit true)
+set(x86ish false)
+if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+  set(supports32bit false)
+  set(FLAGS_COMMON "${FLAGS_COMMON} -march=armv8.3-a")
+else()
+  set(x86ish true)
+  set(FLAGS_COMMON "${FLAGS_COMMON} -msse2 -D__MMX__ -D__SSE__ -D__SSE2__")
+endif()
+
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${FLAGS_COMMON} -Wstrict-prototypes -std=gnu11")
 # Define __STDC_LIMIT_MACROS so |#include <stdint.h>| works as expected.
 # Define __STDC_FORMAT_MACROS so |#include <inttypes.h>| works as expected.
@@ -114,7 +124,7 @@ if(force32bit)
   set(rr_MBITNESS_OPTION -m32)
 else()
   if(CMAKE_SIZEOF_VOID_P EQUAL 8)
-    if(disable32bit)
+    if(disable32bit OR NOT supports32bit)
       set(rr_32BIT false)
     else()
       set(rr_32BIT true)
@@ -425,8 +435,13 @@ set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++"
 set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.h"
                             PROPERTIES GENERATED true HEADER_FILE_ONLY true)
 
+if (${CMAKE_SYSTEM_PROCESSOR} STREQUAL "aarch64")
+  set(BLAKE_ARCH_DIR third-party/blake2/neon)
+else()
+  set(BLAKE_ARCH_DIR third-party/blake2/sse)
+endif()
+
 set(RR_SOURCES
-  src/test/cpuid_loop.S
   src/AddressSpace.cc
   src/AutoRemoteSyscalls.cc
   src/BuildidCommand.cc
@@ -500,8 +515,12 @@ set(RR_SOURCES
   src/util.cc
   src/WaitStatus.cc
   ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
-  third-party/blake2/sse/blake2b.c
+  ${BLAKE_ARCH_DIR}/blake2b.c
 )
+
+if (x86ish)
+  set(RR_SOURCES ${RR_SOURCES} src/test/x86/cpuid_loop.S)
+endif()
 
 set_source_files_properties(${RR_SOURCES}
                             PROPERTIES COMPILE_FLAGS ${RR_FLAGS})
@@ -741,7 +760,7 @@ set(BASIC_TESTS
   brk2
   capget
   chew_cpu
-  chew_cpu_cpuid
+  x86/chew_cpu_cpuid
   chmod
   chown
   clock
@@ -762,7 +781,7 @@ set(BASIC_TESTS
   constructor
   copy_file_range
   creat_address_not_truncated
-  cross_arch
+  x86/cross_arch
   cwd_inaccessible
   daemon
   desched_blocking_poll
@@ -784,7 +803,7 @@ set(BASIC_TESTS
   fanotify
   fatal_sigsegv_thread
   fcntl_dupfd
-  fault_in_code_page
+  x86/fault_in_code_page
   fcntl_misc
   fcntl_owner_ex
   fcntl_rw_hints
@@ -816,7 +835,7 @@ set(BASIC_TESTS
   grandchild_threads_main_running
   grandchild_threads_thread_running
   grandchild_threads_parent_alive
-  hle
+  x86/hle
   inotify
   int3
   intr_futex_wait_restart
@@ -843,7 +862,7 @@ set(BASIC_TESTS
   kill_newborn
   kill_ptracee
   legacy_ugid
-  lsl
+  x86/lsl
   madvise
   madvise_free
   madvise_wipeonfork
@@ -871,7 +890,7 @@ set(BASIC_TESTS
   mmap_short_file
   mmap_write_complex
   mmap_zero_size_fd
-  modify_ldt
+  x86/modify_ldt
   mount_ns_exec
   mount_ns_exec2
   mprotect
@@ -900,7 +919,7 @@ set(BASIC_TESTS
   no_mask_timeslice
   nscd
   numa
-  old_fork
+  x86/old_fork
   orphan_process
   packet_mmap_disable
   pause
@@ -916,7 +935,7 @@ set(BASIC_TESTS
   prctl_name
   prctl_short_name
   prctl_speculation_ctrl
-  prctl_tsc
+  x86/prctl_tsc
   privileged_net_ioctl
   proc_fds
   proc_mem
@@ -952,7 +971,7 @@ set(BASIC_TESTS
   ptracer_death_multithread_peer
   # pivot_root ... disabled because it fails when run as root and does nothing otherwise
   quotactl
-  rdtsc
+  x86/rdtsc
   read_nothing
   readdir
   read_large
@@ -1062,7 +1081,7 @@ set(BASIC_TESTS
   sysconf
   sysctl
   sysemu_singlestep
-  sysfs
+  x86/sysfs
   sysinfo
   tgkill
   thread_yield
@@ -1119,7 +1138,7 @@ set(TESTS_WITH_PROGRAM
   block_intr_sigchld
   blocked_bad_ip
   blocked_sigill
-  blocked_sigsegv
+  x86/blocked_sigsegv
   breakpoint
   breakpoint_conditions
   breakpoint_overlap
@@ -1137,7 +1156,7 @@ set(TESTS_WITH_PROGRAM
   conditional_breakpoint_calls
   conditional_breakpoint_offload
   condvar_stress
-  cpuid_singlestep
+  x86/cpuid_singlestep
   crash
   crash_in_function
   daemon_read
@@ -1158,7 +1177,7 @@ set(TESTS_WITH_PROGRAM
   fork_stress
   fork_syscalls
   function_calls
-  fxregs
+  x86/fxregs
   getcwd
   goto_event
   hello
@@ -1189,7 +1208,7 @@ set(TESTS_WITH_PROGRAM
   nested_detach_wait
   overflow_branch_counter
   patch_page_end
-  patch_40_80_f6_81
+  x86/patch_40_80_f6_81
   priority
   ptrace_remote_unmap
   remove_latest_trace
@@ -1215,15 +1234,15 @@ set(TESTS_WITH_PROGRAM
   sigprocmask_race
   sigprocmask_rr_sigs_nondefault
   simple
-  singlestep_pushf
+  x86/singlestep_pushf
   stack_growth
   step_thread
-  string_instructions
-  string_instructions_async_signals
-  string_instructions_async_signals_shared
-  string_instructions_multiwatch
-  string_instructions_replay
-  string_instructions_watch
+  x86/string_instructions
+  x86/string_instructions_async_signals
+  x86/string_instructions_async_signals_shared
+  x86/string_instructions_multiwatch
+  x86/string_instructions_replay
+  x86/string_instructions_watch
   syscallbuf_fd_disabling
   syscallbuf_signal_blocking_read
   sysconf_onln
@@ -1291,7 +1310,7 @@ set(TESTS_WITHOUT_PROGRAM
   checkpoint_simple
   checksum_sanity_noclone
   cont_signal
-  cpuid
+  x86/cpuid
   dead_thread_target
   desched_ticks
   deliver_async_signal_during_syscalls
@@ -1346,8 +1365,8 @@ set(TESTS_WITHOUT_PROGRAM
   step1
   step_rdtsc
   step_signal
-  string_instructions_break
-  string_instructions_replay_quirk
+  x86/string_instructions_break
+  x86/string_instructions_replay_quirk
   subprocess_exit_ends_session
   switch_processes
   syscallbuf_timeslice_250
@@ -1376,15 +1395,20 @@ if(BUILD_TESTS)
       PROPERTIES FAIL_REGULAR_EXPRESSION "rr needs /proc/sys/kernel/perf_event_paranoid <= 1")
 
   foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
-    add_executable(${test} src/test/${test}.c)
-    post_build_executable(${test})
+    if (NOT x86ish AND ${test} MATCHES "^x86/.*")
+      continue()
+    endif()
+    get_filename_component(testname ${test} NAME)
+
+    add_executable(${testname} src/test/${test}.c)
+    post_build_executable(${testname})
     set_source_files_properties(src/test/${test}.c
                                 PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
-    add_dependencies(${test} Generated)
-    target_link_libraries(${test} -lrt -ldl)
+    add_dependencies(${testname} Generated)
+    target_link_libraries(${testname} -lrt -ldl)
     # Part of the installable testsuite (test programs).
     if(INSTALL_TESTSUITE)
-      install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${test}
+      install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${testname}
               DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
     endif(INSTALL_TESTSUITE)
   endforeach(test)
@@ -1419,12 +1443,14 @@ if(BUILD_TESTS)
   target_link_libraries(constructor -lrt test_lib)
 
   # cpuid test needs to link with cpuid_loop.S
-  add_executable(cpuid src/test/cpuid.c src/test/cpuid_loop.S)
-  post_build_executable(cpuid)
-  set_source_files_properties(src/test/cpuid.c
-                              PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
-  add_dependencies(cpuid Generated)
-  target_link_libraries(cpuid -lrt)
+  if (x86ish)
+    add_executable(cpuid src/test/x86/cpuid.c src/test/x86/cpuid_loop.S)
+    post_build_executable(cpuid)
+    set_source_files_properties(src/test/x86/cpuid.c
+                                PROPERTIES COMPILE_FLAGS ${RR_TEST_FLAGS})
+    add_dependencies(cpuid Generated)
+    target_link_libraries(cpuid -lrt)
+  endif()
 
   # Check if we're running on KNL. If so, we allot more time to tests, due to
   # reduced single-core performance.
@@ -1470,20 +1496,22 @@ if(BUILD_TESTS)
   endif(INSTALL_TESTSUITE)
 
   foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
+    get_filename_component(testname ${test} NAME)
     add_test(${test}
-      bash source_dir/src/test/basic_test.run ${test} -b bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash source_dir/src/test/basic_test.run ${testname} -b bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test})
     add_test(${test}-no-syscallbuf
-      bash source_dir/src/test/basic_test.run ${test} -n bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash source_dir/src/test/basic_test.run ${testname} -n bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
   foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
+    get_filename_component(testname ${test} NAME)
     add_test(${test}
-      bash source_dir/src/test/${test}.run ${test} -b bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash source_dir/src/test/${test}.run ${testname} -b bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test})
     add_test(${test}-no-syscallbuf
-      bash source_dir/src/test/${test}.run ${test} -n bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
+      bash source_dir/src/test/${test}.run ${testname} -n bin_dir ${TEST_MONITOR_DEFAULT_TIMEOUT})
     configure_test(${test}-no-syscallbuf)
   endforeach(test)
 
@@ -1499,7 +1527,7 @@ if(BUILD_TESTS)
                     COPYONLY)
     endforeach(header)
 
-    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} cpuid test_lib)
+    foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM} x86/cpuid test_lib)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${test}.c"
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c"
                      COPYONLY)
@@ -1507,7 +1535,7 @@ if(BUILD_TESTS)
                                   PROPERTIES COMPILE_FLAGS "-m32 ${RR_TEST_FLAGS}")
     endforeach(test)
 
-    foreach(file cpuid_loop.S)
+    foreach(file x86/cpuid_loop.S x86/util.h)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${file}"
                      "${CMAKE_CURRENT_BINARY_DIR}/32/${file}"
                      COPYONLY)
@@ -1516,14 +1544,15 @@ if(BUILD_TESTS)
     endforeach(file)
 
     foreach(test ${BASIC_TESTS} ${TESTS_WITH_PROGRAM})
-      add_executable(${test}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
-      post_build_executable(${test}_32)
-      add_dependencies(${test}_32 Generated)
-      set_target_properties(${test}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS}")
-      target_link_libraries(${test}_32 -lrt -ldl)
+      get_filename_component(testname ${test} NAME)
+      add_executable(${testname}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
+      post_build_executable(${testname}_32)
+      add_dependencies(${testname}_32 Generated)
+      set_target_properties(${testname}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS}")
+      target_link_libraries(${testname}_32 -lrt -ldl)
       # Part of the installable testsuite (test programs).
       if (INSTALL_TESTSUITE)
-        install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${test}_32
+        install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/bin/${testname}_32
                 DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
       endif (INSTALL_TESTSUITE)
     endforeach(test)
@@ -1537,7 +1566,7 @@ if(BUILD_TESTS)
     target_link_libraries(constructor_32 -lrt test_lib_32)
 
     # cpuid test needs to link with cpuid_loop.S
-    add_executable(cpuid_32 32/cpuid.c 32/cpuid_loop.S)
+    add_executable(cpuid_32 32/x86/cpuid.c 32/x86/cpuid_loop.S)
     post_build_executable(cpuid_32)
     add_dependencies(cpuid_32 Generated)
     set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
@@ -1551,20 +1580,22 @@ if(BUILD_TESTS)
     endif(INSTALL_TESTSUITE)
 
     foreach(test ${BASIC_TESTS} ${OTHER_TESTS})
+      get_filename_component(testname ${test} NAME)
       add_test(${test}-32
-        bash source_dir/src/test/basic_test.run ${test}_32 -b bin_dir)
+        bash source_dir/src/test/basic_test.run ${testname}_32 -b bin_dir)
       configure_test(${test}-32)
       add_test(${test}-32-no-syscallbuf
-        bash source_dir/src/test/basic_test.run ${test}_32 -n bin_dir)
+        bash source_dir/src/test/basic_test.run ${testname}_32 -n bin_dir)
       configure_test(${test}-32-no-syscallbuf)
     endforeach(test)
 
     foreach(test ${TESTS_WITH_PROGRAM} ${TESTS_WITHOUT_PROGRAM})
+      get_filename_component(testname ${test} NAME)
       add_test(${test}-32
-        bash source_dir/src/test/${test}.run ${test}_32 -b bin_dir)
+        bash source_dir/src/test/${test}.run ${testname}_32 -b bin_dir)
       configure_test(${test}-32)
       add_test(${test}-32-no-syscallbuf
-        bash source_dir/src/test/${test}.run ${test}_32 -n bin_dir)
+        bash source_dir/src/test/${test}.run ${testname}_32 -n bin_dir)
       configure_test(${test}-32-no-syscallbuf)
     endforeach(test)
   endif()
