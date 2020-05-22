@@ -265,7 +265,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   // Fix registers in new task
   Registers new_r = new_task->regs();
   new_r.set_original_syscallno(trace_frame.regs().original_syscallno());
-  new_r.set_arg1(trace_frame.regs().arg1());
+  new_r.set_orig_arg1(trace_frame.regs().arg1());
   new_r.set_arg2(trace_frame.regs().arg2());
   new_task->set_regs(new_r);
   new_task->canonicalize_regs(new_task->arch());
