@@ -1139,7 +1139,7 @@ TrapReasons Task::compute_trap_reasons() {
         as->has_any_watchpoint_changes() || (DS_WATCHPOINT_ANY & status);
   } else if (arch() == aarch64) {
     // TODO: watchpoint support.
-
+    reasons.watchpoint = false;
     reasons.singlestep = si.si_code == TRAP_TRACE;
   }
 
