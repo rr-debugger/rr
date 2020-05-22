@@ -25,9 +25,9 @@ void ReplayTimeline::InternalMark::full_print(FILE* out) const {
   fprintf(out, "{%s,regs:", buf.str().c_str());
   proto.regs.print_register_file(out);
   fputs(",return_addresses=[", out);
-  for (int i = 0; i < ReturnAddressList::COUNT; ++i) {
+  for (int i = 0; i < ReturnAddressList::MAX_COUNT; ++i) {
     fprintf(out, "%p", (void*)proto.return_addresses.addresses[i].as_int());
-    if (i + 1 < ReturnAddressList::COUNT) {
+    if (i + 1 < ReturnAddressList::MAX_COUNT) {
       fputc(',', out);
     }
   }
