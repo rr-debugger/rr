@@ -803,7 +803,6 @@ set(BASIC_TESTS
   futex_exit_race_sigsegv
   futex_pi
   futex_priorities
-  fxregs
   gdb_bogus_breakpoint
   gcrypt_rdrand
   getcpu
@@ -1159,6 +1158,7 @@ set(TESTS_WITH_PROGRAM
   fork_stress
   fork_syscalls
   function_calls
+  fxregs
   getcwd
   goto_event
   hello
