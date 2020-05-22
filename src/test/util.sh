@@ -93,7 +93,7 @@ function usage {
 
 GLOBAL_OPTIONS="--suppress-environment-warnings --check-cached-mmaps --fatal-errors"
 
-SRCDIR=`dirname $0`/../..
+SRCDIR=`dirname ${BASH_SOURCE[0]}`/../..
 SRCDIR=`realpath $SRCDIR`
 
 TESTNAME=$1
@@ -405,7 +405,7 @@ function compare_test { token=$1; replayflags=$2;
 # computing test pass/fail.
 function debug_test {
     record $TESTNAME
-    debug $TESTNAME_NO_BITNESS
+    debug $TEST_PREFIX$TESTNAME_NO_BITNESS
 }
 
 # Return the number of events in the most recent local recording.
