@@ -293,6 +293,7 @@ struct BaseArch : public wordsize,
                   public FcntlConstants,
                   public KernelConstants {
   static SupportedArch arch() { return arch_; }
+  static bool is_x86ish() { return arch_ == x86 || arch_ == x86_64; }
 
   typedef typename wordsize::syscall_slong_t syscall_slong_t;
   typedef typename wordsize::syscall_ulong_t syscall_ulong_t;
