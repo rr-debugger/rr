@@ -3104,6 +3104,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
   if (syscallno < 0) {
     // Invalid syscall. Don't let it accidentally match a
     // syscall number below that's for an undefined syscall.
+    if (!Arch::is_x86ish()) {
+      // On architectures where arg1 is shared with the return value, the kernel
+      // may not set -ENOSYS for us. There, it instead copies the arg1 to the return
+      // value (frankly this is probably a bug, but likely nothing we can do
+      // about it).
+      Registers new_regs = regs;
+      new_regs.set_syscall_result(-ENOSYS);
+      t->set_regs(new_regs);
+    }
     syscall_state.expect_errno = ENOSYS;
     return PREVENT_SWITCH;
   }
