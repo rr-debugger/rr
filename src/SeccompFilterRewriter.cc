@@ -106,7 +106,7 @@ static void install_patched_seccomp_filter_arch(
                         .cast<typename Arch::sock_fprog>();
     t->write_mem(prog_ptr, prog);
 
-    ret = remote.syscall(t->regs().original_syscallno(), t->regs().arg1(),
+    ret = remote.syscall(t->regs().original_syscallno(), t->regs().orig_arg1(),
                          t->regs().arg2(), prog_ptr);
   }
   set_syscall_result(t, ret);

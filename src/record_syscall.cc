@@ -5804,7 +5804,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       Registers r = t->regs();
       r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
       t->set_regs(r);
-      switch ((int)t->regs().arg1()) {
+      switch ((int)t->regs().orig_arg1()) {
         case PR_SET_SECCOMP:
           if (t->session().done_initial_exec()) {
             t->session()
