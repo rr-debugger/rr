@@ -248,7 +248,9 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
     }
   }
 
-  if (!t->is_running()) {
+  if (t->waiting_for_ptrace_exit) {
+    LOG(debug) << "  " << t->tid << " is waiting to exit; checking status ...";
+  } else if (!t->is_running()) {
     LOG(debug) << "  was already stopped with status " << t->status();
     // If we have may_be_blocked, but we aren't running, then somebody noticed
     // this event earlier and already called did_waitpid for us. Just pretend
@@ -256,9 +258,7 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
     *by_waitpid = true;
     must_run_task = t;
     return true;
-  }
-
-  if (EV_SYSCALL == t->ev().type() &&
+  } else if (EV_SYSCALL == t->ev().type() &&
       PROCESSING_SYSCALL == t->ev().Syscall().state &&
       treat_syscall_as_nonblocking(t->ev().Syscall().number, t->arch())) {
     // These syscalls never really block but the kernel may report that
@@ -270,10 +270,11 @@ bool Scheduler::is_task_runnable(RecordTask* t, bool* by_waitpid) {
     must_run_task = t;
     LOG(debug) << "  sched_yield ready with status " << t->status();
     return true;
+  } else {
+    LOG(debug) << "  " << t->tid << " is blocked on " << t->ev()
+              << "; checking status ...";
   }
 
-  LOG(debug) << "  " << t->tid << " is blocked on " << t->ev()
-             << "; checking status ...";
   bool did_wait_for_t;
   did_wait_for_t = t->try_wait();
   if (did_wait_for_t) {

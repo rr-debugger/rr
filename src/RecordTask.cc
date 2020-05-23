@@ -195,6 +195,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
       did_record_robust_futex_changes(false),
       waiting_for_reap(false),
       waiting_for_zombie(false),
+      waiting_for_ptrace_exit(false),
       retry_syscall_patching(false) {
   push_event(Event::sentinel());
   if (session.tasks().empty()) {
@@ -1516,7 +1517,8 @@ bool RecordTask::may_be_blocked() const {
          emulated_stop_type != NOT_STOPPED ||
          (EV_SIGNAL_DELIVERY == ev().type() &&
           DISPOSITION_FATAL == ev().Signal().disposition) ||
-         waiting_for_zombie;
+         waiting_for_zombie ||
+         waiting_for_ptrace_exit;
 }
 
 bool RecordTask::maybe_in_spinlock() {
