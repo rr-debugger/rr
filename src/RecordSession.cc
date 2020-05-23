@@ -1070,7 +1070,9 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       // take this opportunity to possibly pop an
       // interrupted-syscall event.
       if (is_sigreturn(syscallno, syscall_arch)) {
-        ASSERT(t, t->regs().original_syscallno() == -1);
+        if (t->arch() == x86 || t->arch() == x86_64) {
+          ASSERT(t, t->regs().original_syscallno() == -1);
+        }
         t->record_current_event();
         t->pop_syscall();
 
@@ -1261,6 +1263,9 @@ static void setup_sigframe_siginfo_arch(RecordTask* t,
     case x86_64:
       dest = t->regs().si();
       break;
+    case aarch64:
+      dest = t->regs().x1();
+      break;
     default:
       DEBUG_ASSERT(0 && "Unknown architecture");
       break;
@@ -1434,20 +1439,27 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
           break;
         }
 
-        // It's somewhat difficult engineering-wise to
-        // compute the sigframe size at compile time,
-        // and it can vary across kernel versions and CPU
-        // microarchitectures. So this size is an overestimate
-        // of the real size(s).
-        //
-        // If this size becomes too small in the
-        // future, and unit tests that use sighandlers
-        // are run with checksumming enabled, then
-        // they can catch errors here.
-        sigframe_size = 1152 /* Overestimate of kernel sigframe */ +
-                        128 /* Redzone */ +
-                        /* this returns 512 when XSAVE unsupported */
-                        xsave_area_size();
+        if (t->arch() == x86 || t->arch() == x86_64) {
+          // It's somewhat difficult engineering-wise to
+          // compute the sigframe size at compile time,
+          // and it can vary across kernel versions and CPU
+          // microarchitectures. So this size is an overestimate
+          // of the real size(s).
+          //
+          // If this size becomes too small in the
+          // future, and unit tests that use sighandlers
+          // are run with checksumming enabled, then
+          // they can catch errors here.
+          sigframe_size = 1152 /* Overestimate of kernel sigframe */ +
+                          128 /* Redzone */ +
+                          /* this returns 512 when XSAVE unsupported */
+                          xsave_area_size();
+        } else if (t->arch() == aarch64) {
+          sigframe_size = sizeof(ARM64Arch::rt_sigframe) +
+                          sizeof(ARM64Arch::user_fpsimd_state);
+        } else {
+          DEBUG_ASSERT(0 && "Add sigframe size for your architecture here");
+        }
 
         t->ev().transform(EV_SIGNAL_HANDLER);
         t->signal_delivered(sig);

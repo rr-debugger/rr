@@ -2125,6 +2125,26 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
   };
   typedef struct user_fpsimd_state user_fpregs_struct;
 
+  struct sigcontext {
+    __u64 fault_addr;
+    user_pt_regs regs;
+    // ISA extension state follows here
+  };
+
+  struct ucontext {
+    unsigned long	uc_flags;
+    ptr<ucontext> uc_link;
+    stack_t		  uc_stack;
+    sigset_t	  uc_sigmask;
+    uint8_t __unused[1024 / 8 - sizeof(sigset_t)];
+    struct sigcontext uc_mcontext;
+  };
+
+  struct rt_sigframe {
+    siginfo_t info;
+    struct ucontext uc;
+  };
+
   RR_VERIFY_TYPE_ARCH(SupportedArch::aarch64, struct ::semid64_ds, struct semid64_ds);
 };
 
