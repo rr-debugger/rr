@@ -755,7 +755,7 @@ void TaskSyscallState::process_syscall_results() {
     for (size_t i = 0; i < param_list.size(); ++i) {
       auto& param = param_list[i];
       if (param.ptr_in_reg) {
-        r.set_arg(param.ptr_in_reg, param.dest.as_int());
+        r.set_orig_arg(param.ptr_in_reg, param.dest.as_int());
       }
       if (!param.ptr_in_memory.is_null()) {
         memory_cleaned_up = true;

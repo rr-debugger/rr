@@ -271,6 +271,25 @@ public:
     }
   }
 
+  void set_orig_arg(int index, uintptr_t value) {
+    switch (index) {
+      case 1:
+        return set_orig_arg1(value);
+      case 2:
+        return set_arg2(value);
+      case 3:
+        return set_arg3(value);
+      case 4:
+        return set_arg4(value);
+      case 5:
+        return set_arg5(value);
+      case 6:
+        return set_arg6(value);
+      default:
+        DEBUG_ASSERT(0 && "Argument index out of range");
+    }
+  }
+
   /**
    * Returns true if syscall_result() indicates failure.
    */
