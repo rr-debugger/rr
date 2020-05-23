@@ -186,7 +186,7 @@ oldstat = UnsupportedSyscall(x86=18)
 # The lseek() function repositions the offset of the open file
 # associated with the file descriptor fd to the argument offset
 # according to the directive whence as follows:
-lseek = EmulatedSyscall(x86=19, x64=8)
+lseek = EmulatedSyscall(x86=19, x64=8, generic=62)
 
 #  pid_t getpid(void);
 #
