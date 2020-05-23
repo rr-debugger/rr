@@ -873,10 +873,6 @@ Completion ReplaySession::emulate_async_signal(
          * check again if we're at the
          * target. */
         LOG(debug) << "    trap was for target $ip";
-        /* (The breakpoint would have trapped
-         * at the $ip one byte beyond the
-         * target.) */
-        DEBUG_ASSERT(!at_target);
 
         pending_SIGTRAP = false;
         t->move_ip_before_breakpoint();
