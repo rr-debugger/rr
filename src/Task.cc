@@ -3397,4 +3397,40 @@ void Task::apply_syscall_entry_regs()
   }
 }
 
+void Task::tgkill(int sig) {
+  LOG(debug) << "Sending " << sig << " to tid " << tid;
+  ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
+}
+
+void Task::move_to_signal_stop()
+{
+  LOG(debug) << "    maybe not in signal-stop (status " << status()
+             << "); doing tgkill(SYSCALLBUF_DESCHED_SIGNAL)";
+  // Always send SYSCALLBUF_DESCHED_SIGNAL because other signals (except
+  // TIME_SLICE_SIGNAL) will be blocked by
+  // RecordTask::will_resume_execution().
+  // During record make sure to use the syscallbuf desched sig.
+  // During replay, it doesn't really matter, since we don't apply
+  // the signal mask to the replay task.
+  int sig = SIGPWR;
+  if (session().is_recording()) {
+    sig = session().as_record()->syscallbuf_desched_sig();
+  }
+  this->tgkill(sig);
+  /* Now singlestep the task until we're in a signal-stop for the signal
+   * we've just sent. We must absorb and forget that signal here since we
+   * don't want it delivered to the task for real.
+   */
+  auto old_ip = ip();
+  do {
+    resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
+    ASSERT(this, old_ip == ip())
+        << "Singlestep actually advanced when we "
+        << "just expected a signal; was at " << old_ip << " now at "
+        << ip() << " with status " << status();
+    // Ignore any pending TIME_SLICE_SIGNALs and continue until we get our
+    // SYSCALLBUF_DESCHED_SIGNAL.
+  } while (stop_sig() == PerfCounters::TIME_SLICE_SIGNAL);
+}
+
 }

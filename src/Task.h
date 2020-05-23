@@ -918,6 +918,17 @@ public:
                      const std::vector<std::string>& argv,
                      const std::vector<std::string>& envp, pid_t rec_tid = -1);
 
+  /**
+   * Do a tgkill to send a specific signal to this task.
+   */
+  void tgkill(int sig);
+
+  /**
+   * Try to move this task to a signal stop by signaling it with the
+   * syscallbuf desched signal (which is guaranteed not to be blocked).
+   */
+  void move_to_signal_stop();
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);

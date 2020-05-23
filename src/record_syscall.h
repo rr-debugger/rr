@@ -33,6 +33,11 @@ void rec_prepare_restart_syscall(RecordTask* t);
  */
 void rec_process_syscall(RecordTask* t);
 
+/**
+ * Apply any necessary processing for an executed sigreturn.
+ */
+void rec_did_sigreturn(RecordTask* t);
+
 } // namespace rr
 
 #endif /* RR_PROCESS_SYSCALL_H_ */

@@ -2803,9 +2803,6 @@ static int ptrace_option_for_event(int ptrace_event) {
   }
 }
 
-template <typename Arch> static Switchable process_sigreturn(RecordTask* t);
-template <typename Arch> static Switchable process_rt_sigreturn(RecordTask* t);
-
 template <typename Arch>
 static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
   uintptr_t flags;
@@ -4469,6 +4466,19 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
+      if (t->arch() == aarch64) {
+        // This is a bit of a hack, but we don't really have a
+        // good way to do this otherwise. We need to record the
+        // restored x7 register, but the kernel will lie to us
+        // about it.
+        remote_ptr<ARM64Arch::rt_sigframe> frame = t->regs().sp().cast<ARM64Arch::rt_sigframe>();
+        auto x_regs_arr = REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(
+          REMOTE_PTR_FIELD(REMOTE_PTR_FIELD(frame, uc), uc_mcontext),
+          regs),x);
+        auto x7 = t->read_mem(x_regs_arr.field((uintptr_t*)nullptr,
+          7 * sizeof(uintptr_t)));
+        syscall_state.syscall_entry_registers.set_x7(x7);
+      }
       t->invalidate_sigmask();
       return PREVENT_SWITCH;
 
@@ -4525,13 +4535,6 @@ Switchable rec_prepare_syscall(RecordTask* t) {
   syscall_state.init(t);
 
   Switchable s = rec_prepare_syscall_internal(t, syscall_state);
-  int syscallno = t->ev().Syscall().number;
-  if (is_sigreturn(syscallno, t->ev().Syscall().arch())) {
-    // There isn't going to be an exit event for this syscall, so remove
-    // syscall_state now.
-    syscall_state_property.remove(*t);
-    return s;
-  }
   return syscall_state.done_preparing(s);
 }
 
@@ -4543,10 +4546,26 @@ void rec_abort_prepared_syscall(RecordTask* t) {
   }
 }
 
+static void aarch64_kernel_bug_workaround(RecordTask *t,
+                                          const TaskSyscallState &syscall_state)
+{
+  if (syscall_state.syscall_entry_registers.arch() == aarch64) {
+    // The kernel lies about the real register state during syscall exits.
+    // Try to fix that up to retain some measure of sanity (otherwise we
+    // might leak an incorrect register into userspace, causing an
+    // un-recorded divergence). I'm really hoping to get this fixed
+    // in the kernel.
+    Registers r = t->regs();
+    r.set_x7(syscall_state.syscall_entry_registers.x7());
+    t->set_regs(r);
+  }
+}
+
 template <typename Arch>
 static void rec_prepare_restart_syscall_arch(RecordTask* t,
                                              TaskSyscallState& syscall_state) {
   int syscallno = t->ev().Syscall().number;
+  aarch64_kernel_bug_workaround(t, syscall_state);
   switch (syscallno) {
     case Arch::nanosleep:
     case Arch::clock_nanosleep:
@@ -5924,6 +5943,12 @@ static void rec_process_syscall_internal(RecordTask* t, SupportedArch arch,
   RR_ARCH_FUNCTION(rec_process_syscall_arch, arch, t, syscall_state)
 }
 
+void rec_did_sigreturn(RecordTask *t) {
+  auto& syscall_state = *syscall_state_property.get(*t);
+  aarch64_kernel_bug_workaround(t, syscall_state);
+  syscall_state_property.remove(*t);
+}
+
 void rec_process_syscall(RecordTask* t) {
   auto& syscall_state = *syscall_state_property.get(*t);
   const SyscallEvent& sys_ev = t->ev().Syscall();
@@ -5937,6 +5962,9 @@ void rec_process_syscall(RecordTask* t) {
   }
   rec_process_syscall_internal(t, sys_ev.arch(), syscall_state);
   syscall_state.process_syscall_results();
+
+  aarch64_kernel_bug_workaround(t, syscall_state);
+
   t->on_syscall_exit(sys_ev.number, sys_ev.arch(), t->regs());
   syscall_state_property.remove(*t);
 

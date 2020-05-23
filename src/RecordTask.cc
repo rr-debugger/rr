@@ -1882,11 +1882,6 @@ void RecordTask::update_own_namespace_tid() {
   }
 }
 
-void RecordTask::tgkill(int sig) {
-  LOG(debug) << "Sending " << sig << " to tid " << tid;
-  ASSERT(this, 0 == syscall(SYS_tgkill, real_tgid(), tid, sig));
-}
-
 void RecordTask::kill_if_alive() {
   if (!is_dying()) {
     tgkill(SIGKILL);
