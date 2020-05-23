@@ -1596,6 +1596,27 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
         if (current_step.action == TSTEP_RETIRE) {
           t->on_syscall_exit(current_step.syscall.number,
                              current_step.syscall.arch, trace_frame.regs());
+          if (t->arch() == aarch64 && t->regs().syscall_may_restart()) {
+            // If we're restarting a system call, we may have to apply register
+            // modifications to match what the kernel does. Whether or not we need
+            // to do this depends on the ordering of the kernel's register
+            // modification and the signal stop that interrupted the system
+            // call. On x86, the ptrace stop happens first, and then all
+            // register modifications happen. On aarch64, some register
+            // modifications happen [1], then the ptrace stop and then
+            // potentially more register modifications. Any register
+            // modifications that happen after the ptrace signal stop will
+            // get recorded in the signal frame and thus don't need any
+            // special handling. However, for register modifications that
+            // happen before the signal stop, we need to apply them here.
+            // On x86, there are none, but on aarch64, we need to restore arg1
+            // and pc.
+            // [1] https://github.com/torvalds/linux/blob/caffb99b6929f41a69edbb5aef3a359bf45f3315/arch/arm64/kernel/signal.c#L855-L862
+            Registers r = t->regs();
+            r.set_arg1(r.orig_arg1());
+            r.set_ip(r.ip().decrement_by_syscall_insn_length(t->arch()));
+            t->set_regs(r);
+          }
         }
       }
       break;
