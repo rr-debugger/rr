@@ -905,7 +905,10 @@ static void maybe_discard_syscall_interruption(RecordTask* t, intptr_t ret) {
   syscallno = t->ev().Syscall().number;
   if (0 > ret) {
     syscall_not_restarted(t);
-  } else {
+  } else if (t->arch() == x86 || t->arch() == x86_64) {
+    // On x86, we would have expected this to get restored to the syscallno.
+    // Since the syscallno is in a different register on other platforms, this
+    // assert does not apply.
     ASSERT(t, syscallno == ret)
         << "Interrupted call was " << t->ev().Syscall().syscall_name()
         << " and sigreturn claims to be restarting "
@@ -918,7 +921,7 @@ static void maybe_discard_syscall_interruption(RecordTask* t, intptr_t ret) {
  * syscall number) from |from| to |to|.
  */
 static void copy_syscall_arg_regs(Registers* to, const Registers& from) {
-  to->set_arg1(from.arg1());
+  to->set_orig_arg1(from.arg1());
   to->set_arg2(from.arg2());
   to->set_arg3(from.arg3());
   to->set_arg4(from.arg4());
