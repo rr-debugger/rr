@@ -735,6 +735,10 @@ public:
   // This task is waiting to reach zombie state
   bool waiting_for_zombie;
 
+  // This task is waiting for a ptrace exit event. It should not
+  // be manuall run.
+  bool waiting_for_ptrace_exit;
+
   // When exiting a syscall, we should call MonkeyPatcher::try_patch_syscall again.
   bool retry_syscall_patching;
 };

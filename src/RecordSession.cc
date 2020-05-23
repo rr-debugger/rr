@@ -1593,6 +1593,17 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
          */
         t->pop_signal_delivery();
       }
+
+      // Mark each task in this address space as expecting a ptrace exit
+      // to avoid causing any ptrace_exit reaces.
+      if (is_fatal && is_coredumping_signal(sig)) {
+        for (Task *ot : t->vm()->task_set()) {
+          if (t != ot) {
+            ((RecordTask *)ot)->waiting_for_ptrace_exit = true;
+          }
+        }
+      }
+
       last_task_switchable = can_switch;
       step_state->continue_type = DONT_CONTINUE;
       break;
@@ -2337,9 +2348,10 @@ void RecordSession::terminate_recording() {
 
 void RecordSession::kill_all_record_tasks() {
   LOG(debug) << "Killing all tasks ...";
-  for (int pass = 0; pass <= 1; ++pass) {
-    /* We delete tasks in two passes. First, we kill
-     * every non-thread-group-leader, then we kill every group leader.
+  for (int pass = 0; pass <= 2; ++pass) {
+    /* We delete tasks in three passes. First we complete any coredumps in
+     * progress. Then, we kill every non-thread-group-leader,
+     * lastly we kill every group leader.
      * Linux expects threads group leaders to survive until the last
      * member of the thread group has exited, so we accomodate that.
      */
@@ -2348,6 +2360,18 @@ void RecordSession::kill_all_record_tasks() {
       // If the task was detached and none of our tasks explicitly waited for
       // it, we let the detached task just run freely (the zombie proxy we
       // keep around kill get reaped when we destroy the RecordTask itself)
+      if (pass == 0) {
+        if (t->waiting_for_ptrace_exit && !t->seen_ptrace_exit_event) {
+          t->wait();
+          if (!t->already_exited()) {
+            record_exit_trace_event(t, t->status());
+            t->record_exit_event(t->status().fatal_sig());
+          }
+          t->did_kill();
+          t->fallible_ptrace(PTRACE_CONT, nullptr, nullptr);
+        }
+        continue;
+      }
       if (t->detached_proxy) {
         continue;
       }
@@ -2355,13 +2379,17 @@ void RecordSession::kill_all_record_tasks() {
         continue;
       }
       bool is_group_leader = t->tid == t->real_tgid();
-      if (pass == 0 ? is_group_leader : !is_group_leader) {
+      if (pass == 1 ? is_group_leader : !is_group_leader) {
         continue;
       }
-      WaitStatus status = t->kill();
-      if (!t->already_exited()) {
-        record_exit_trace_event(t, status);
-        t->record_exit_event(status.fatal_sig());
+      if (t->waiting_for_ptrace_exit) {
+        t->reap();
+      } else {
+        WaitStatus status = t->kill();
+        if (!t->already_exited()) {
+          record_exit_trace_event(t, status);
+          t->record_exit_event(status.fatal_sig());
+        }
       }
     }
   }
