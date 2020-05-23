@@ -51,7 +51,7 @@ static bool rcb_counts_ok(ReplayTask* t, uint64_t prev, uint64_t current) {
 void CPUIDBugDetector::notify_reached_syscall_during_replay(ReplayTask* t) {
   // We only care about events that happen before the first exec,
   // when our detection code runs.
-  if (t->arch() != x86 && t->arch() != x86_64) {
+  if (!is_x86ish(t->arch())) {
     return;
   }
   if (t->session().done_initial_exec()) {

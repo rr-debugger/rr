@@ -177,7 +177,7 @@ ReplaySession::ReplaySession(const std::string& dir, const Flags& flags)
            "to this machine; replay will not work.";
   }
 
-  if (trace_in.arch() == x86 || trace_in.arch() == x86_64) {
+  if (is_x86ish(trace_in.arch())) {
     if (trace_in.uses_cpuid_faulting() && !has_cpuid_faulting()) {
       CLEAN_FATAL()
           << "Trace was recorded with CPUID faulting enabled, but this\n"
@@ -566,7 +566,7 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
             syscall_instruction.increment_by_syscall_insn_length(t->arch()));
         r.set_original_syscallno(r.syscallno());
         r.set_orig_arg1(r.arg1());
-        if (t->arch() == x86 || t->arch() == x86_64) {
+        if (is_x86ish(t->arch())) {
           r.set_syscall_result(-ENOSYS);
         }
         t->set_regs(r);

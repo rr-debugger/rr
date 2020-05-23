@@ -5435,7 +5435,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::fork:
     case Arch::vfork:
     case Arch::clone: {
-      if (t->arch() == x86 || t->arch() == x86_64) {
+      if (Arch::is_x86ish()) {
         // On a 3.19.0-39-generic #44-Ubuntu kernel we have observed clone()
         // clearing the parity flag internally.
         Registers r = t->regs();

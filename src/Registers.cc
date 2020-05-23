@@ -636,7 +636,7 @@ void Registers::set_from_ptrace_for_arch(SupportedArch a, const void* data,
 
 void Registers::set_from_trace(SupportedArch a, const void* data,
                                size_t size) {
-  if (a == x86 || a == x86_64) {
+  if (is_x86ish(a)) {
     return set_from_ptrace_for_arch(a, data, size);
   }
 

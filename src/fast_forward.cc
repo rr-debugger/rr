@@ -157,10 +157,6 @@ static void bound_iterations_for_watchpoint(Task* t, remote_ptr<void> reg,
   *iterations = min(*iterations, steps);
 }
 
-static bool is_x86ish(Task* t) {
-  return t->arch() == x86 || t->arch() == x86_64;
-}
-
 FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
                                                    const vector<const Registers*>& states) {
   DEBUG_ASSERT(how == RESUME_SINGLESTEP || how == RESUME_SYSEMU_SINGLESTEP);
@@ -191,7 +187,7 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
       return result;
     }
   }
-  if (!is_x86ish(t)) {
+  if (!is_x86ish(t->arch())) {
     return result;
   }
 
@@ -439,7 +435,7 @@ static bool is_string_instruction_before(Task* t, remote_code_ptr ip) {
 }
 
 bool maybe_at_or_after_x86_string_instruction(Task* t) {
-  if (!is_x86ish(t)) {
+  if (!is_x86ish(t->arch())) {
     return false;
   }
 
@@ -448,7 +444,7 @@ bool maybe_at_or_after_x86_string_instruction(Task* t) {
 }
 
 bool at_x86_string_instruction(Task* t) {
-  if (!is_x86ish(t)) {
+  if (!is_x86ish(t->arch())) {
     return false;
   }
 

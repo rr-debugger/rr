@@ -569,7 +569,7 @@ static void set_word(SupportedArch arch, vector<uint8_t>& v, GdbRegister r,
 
 void ExtraRegisters::reset() {
   memset(data_.data(), 0, data_.size());
-  if (arch() == x86_64 || arch() == x86) {
+  if (is_x86ish(arch())) {
     DEBUG_ASSERT(format_ == XSAVE);
     if (arch() == x86_64) {
       set_word(arch(), data_, DREG_64_MXCSR, 0x1f80);

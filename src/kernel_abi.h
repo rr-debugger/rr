@@ -27,6 +27,10 @@ const SupportedArch RR_NATIVE_ARCH = SupportedArch::aarch64;
 #error need to define new SupportedArch enum
 #endif
 
+inline bool is_x86ish(SupportedArch arch_) {
+  return arch_ == x86 || arch_ == x86_64;
+}
+
 template <SupportedArch a, typename system_type, typename rr_type>
 struct Verifier {
   // Optimistically say we are the same size.
@@ -293,7 +297,9 @@ struct BaseArch : public wordsize,
                   public FcntlConstants,
                   public KernelConstants {
   static SupportedArch arch() { return arch_; }
-  static bool is_x86ish() { return arch_ == x86 || arch_ == x86_64; }
+  static bool is_x86ish() {
+    return rr::is_x86ish(arch_);
+  }
 
   typedef typename wordsize::syscall_slong_t syscall_slong_t;
   typedef typename wordsize::syscall_ulong_t syscall_ulong_t;

@@ -1314,7 +1314,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
   header.setRrcallBase(syscall_number_for_rrcall_init_preload(x86_64));
 
   header.setNativeArch(to_trace_arch(NativeArch::arch()));
-  if (NativeArch::arch() == x86 || NativeArch::arch() == x86_64)
+  if (NativeArch::is_x86ish())
   {
     auto x86data = header.initX86();
     x86data.setHasCpuidFaulting(has_cpuid_faulting_);
@@ -1473,7 +1473,7 @@ TraceReader::TraceReader(const string& dir)
   memcpy(uuid_->bytes, uuid.begin(), sizeof(uuid_->bytes));
 
   arch_ = from_trace_arch(header.getNativeArch());
-  if (arch_ == x86 || arch_ == x86_64) {
+  if (is_x86ish(arch_)) {
     auto x86data = header.getX86();
     trace_uses_cpuid_faulting = x86data.getHasCpuidFaulting();
     Data::Reader cpuid_records_bytes = x86data.getCpuidRecords();

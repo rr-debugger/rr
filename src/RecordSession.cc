@@ -1070,7 +1070,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
       // take this opportunity to possibly pop an
       // interrupted-syscall event.
       if (is_sigreturn(syscallno, syscall_arch)) {
-        if (t->arch() == x86 || t->arch() == x86_64) {
+        if (is_x86ish(t->arch())) {
           ASSERT(t, t->regs().original_syscallno() == -1);
         }
         t->record_current_event();
@@ -1439,7 +1439,7 @@ bool RecordSession::signal_state_changed(RecordTask* t, StepState* step_state) {
           break;
         }
 
-        if (t->arch() == x86 || t->arch() == x86_64) {
+        if (is_x86ish(t->arch())) {
           // It's somewhat difficult engineering-wise to
           // compute the sigframe size at compile time,
           // and it can vary across kernel versions and CPU
@@ -2205,7 +2205,7 @@ RecordSession::RecordSession(const std::string& exe_path,
                   &tracee_socket_fd_number,
                   exe_path, argv, envp));
 
-  if (NativeArch::arch() == x86 || NativeArch::arch() == x86_64) {
+  if (NativeArch::is_x86ish()) {
     // CPU affinity has been set.
     trace_out.setup_cpuid_records(has_cpuid_faulting(), disable_cpuid_features_);
   }
