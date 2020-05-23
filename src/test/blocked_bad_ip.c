@@ -19,7 +19,7 @@ static void* start_thread(__attribute__((unused)) void* p) {
 
   syscall(SYS_write, STDOUT_FILENO, "SUCCESS\n", 8, 9, 10, 11);
 
-  __asm__ __volatile__("jmp 0x42");
+  ((void (*)(void))(0x44))();
 
   return NULL;
 }
