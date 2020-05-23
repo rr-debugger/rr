@@ -2850,6 +2850,7 @@ static void prepare_clone(RecordTask* t, TaskSyscallState& syscall_state) {
       t->set_regs(r);
       t->enter_syscall();
       r.set_ip(t->regs().ip());
+      r.set_syscallno(original_syscall);
       r.set_original_syscallno(original_syscall);
       t->set_regs(r);
       t->canonicalize_regs(t->arch());
