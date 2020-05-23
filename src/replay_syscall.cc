@@ -1183,6 +1183,12 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
+      if (Arch::arch() == aarch64) {
+        // The aarch64 kernel has a bug where it refuses to apply updates
+        // to x7 during any syscall stops. Make sure to move to a signal
+        // stop if we reached here using sysemu.
+        t->move_to_signal_stop();
+      }
       t->set_regs(trace_regs);
       t->set_extra_regs(trace_frame.extra_regs());
       step->action = TSTEP_RETIRE;

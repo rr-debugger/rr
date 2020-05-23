@@ -483,11 +483,6 @@ public:
   pid_t find_newborn_process(pid_t child_parent);
 
   /**
-   * Do a tgkill to send a specific signal to this task.
-   */
-  void tgkill(int sig);
-
-  /**
    * If the process looks alive, kill it. It is recommended to call try_wait(),
    * on this task before, to make sure liveness is correctly reflected when
    * making this decision

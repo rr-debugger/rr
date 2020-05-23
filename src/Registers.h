@@ -400,6 +400,11 @@ public:
     DEBUG_ASSERT(arch() == aarch64);
     return u.arm64regs.x[1];
   }
+
+  uintptr_t x7() const {
+    DEBUG_ASSERT(arch() == aarch64);
+    return u.arm64regs.x[7];
+  }
   // End of aarch64 specific accessors
 
   /**

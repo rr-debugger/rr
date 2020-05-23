@@ -235,6 +235,14 @@ static void note_entering_syscall(RecordTask* t) {
     // registers look like they did at the original syscall entry
     // again.
     t->ev().Syscall().regs.set_arg1(t->ev().Syscall().regs.orig_arg1());
+    if (t->arch() == aarch64) {
+      // We probably got here with a PTRACE_SYSCALL. The x7
+      // value will be wrong due to the aarch64 kernel bug.
+      // Get it from the syscall event.
+      Registers r = t->regs();
+      r.set_x7(t->ev().Syscall().regs.x7());
+      t->set_regs(r);
+    }
   }
 }
 
@@ -1086,6 +1094,7 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         if (is_x86ish(t->arch())) {
           ASSERT(t, t->regs().original_syscallno() == -1);
         }
+        rec_did_sigreturn(t);
         t->record_current_event();
         t->pop_syscall();
 
@@ -1323,20 +1332,7 @@ static bool preinject_signal(RecordTask* t) {
     // RecordTask::will_resume_execution().
     t->tgkill(t->session().syscallbuf_desched_sig());
 
-    /* Now singlestep the task until we're in a signal-stop for the signal
-     * we've just sent. We must absorb and forget that signal here since we
-     * don't want it delivered to the task for real.
-     */
-    auto old_ip = t->ip();
-    do {
-      t->resume_execution(RESUME_SINGLESTEP, RESUME_WAIT, RESUME_NO_TICKS);
-      ASSERT(t, old_ip == t->ip())
-          << "Singlestep actually advanced when we "
-          << "just expected a signal; was at " << old_ip << " now at "
-          << t->ip() << " with status " << t->status();
-      // Ignore any pending TIME_SLICE_SIGNALs and continue until we get our
-      // SYSCALLBUF_DESCHED_SIGNAL.
-    } while (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL);
+    t->move_to_signal_stop();
 
     if (t->status().ptrace_event() == PTRACE_EVENT_EXIT) {
       /* We raced with an exit (e.g. due to a pending SIGKILL). */
