@@ -1908,7 +1908,7 @@ void Task::did_waitpid(WaitStatus status) {
     if (did_set_breakpoint_after_cpuid) {
       remote_code_ptr bkpt_addr =
         address_of_last_execution_resume + trapped_instruction_len(singlestepping_instruction);
-      if (ip() == bkpt_addr.increment_by_bkpt_insn_length(arch())) {
+      if (ip().undo_executed_bkpt(arch()) == bkpt_addr) {
         Registers r = regs();
         r.set_ip(bkpt_addr);
         set_regs(r);
@@ -1937,9 +1937,7 @@ void Task::did_waitpid(WaitStatus status) {
     if (as->get_breakpoint_type_at_addr(address_of_last_execution_resume) !=
             BKPT_NONE &&
         stop_sig() == SIGTRAP && !ptrace_event() &&
-        ip() ==
-            address_of_last_execution_resume.increment_by_bkpt_insn_length(
-                arch())) {
+        ip().undo_executed_bkpt(arch()) == address_of_last_execution_resume) {
       ASSERT(this, more_ticks == 0);
       // When we resume execution and immediately hit a breakpoint, the original
       // syscall number can be reset to -1. Undo that, so that the register

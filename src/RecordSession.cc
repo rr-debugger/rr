@@ -267,7 +267,7 @@ void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
     t->resume_execution(RESUME_SYSCALL, RESUME_WAIT, RESUME_NO_TICKS);
     t->vm()->remove_breakpoint(ret_addr, BKPT_INTERNAL);
 
-    ASSERT(t, t->regs().ip() == ret_addr.increment_by_bkpt_insn_length(t->arch()));
+    ASSERT(t, t->regs().ip().undo_executed_bkpt(t->arch()) == ret_addr);
 
     // Now that we're in a sane state, ask the Moneypatcher to try and patch
     // that.

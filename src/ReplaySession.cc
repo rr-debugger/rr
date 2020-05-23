@@ -691,7 +691,7 @@ static void guard_overshoot(ReplayTask* t, const Registers& target_regs,
      * have been had it not hit the breakpoint (if it did
      * hit the breakpoint).*/
     t->vm()->remove_breakpoint(target_ip, BKPT_INTERNAL);
-    if (t->regs().ip() == target_ip.increment_by_bkpt_insn_length(t->arch())) {
+    if (t->regs().ip().undo_executed_bkpt(t->arch()) == target_ip) {
       t->move_ip_before_breakpoint();
     }
     if (closest_matching_regs) {
@@ -864,8 +864,7 @@ Completion ReplaySession::emulate_async_signal(
         // deterministic signal instead of an async one.
         // So we must have hit our internal breakpoint.
         ASSERT(t, did_set_internal_breakpoint);
-        ASSERT(t,
-               regs.ip().increment_by_bkpt_insn_length(t->arch()) == t->ip());
+        ASSERT(t, regs.ip() == t->ip().undo_executed_bkpt(t->arch()));
         // We didn't do an internal singlestep, and if we'd done a
         // user-requested singlestep we would have hit the above case.
         ASSERT(t, !trap_reasons.singlestep);
