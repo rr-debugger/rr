@@ -552,6 +552,9 @@ TraceFrame TraceReader::read_frame() {
   if (extra_reg_data.size()) {
     ExtraRegisters::Format fmt;
     switch (arch) {
+      default:
+        FATAL() << "Unknown architecture";
+        RR_FALLTHROUGH;
       case x86:
       case x86_64:
         fmt = ExtraRegisters::XSAVE;
@@ -559,8 +562,6 @@ TraceFrame TraceReader::read_frame() {
       case aarch64:
         fmt = ExtraRegisters::NT_FPR;
         break;
-      default:
-        FATAL() << "Unknown architecture";
     }
     bool ok = ret.recorded_extra_regs.set_to_raw_data(
         arch, fmt, extra_reg_data.begin(),
