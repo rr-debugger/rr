@@ -680,7 +680,7 @@ bool Registers::singlestep_flag() {
       return pstate() & AARCH64_DBG_SPSR_SS;
     default:
       DEBUG_ASSERT(0 && "Unknown arch");
-      break;
+      return false;
   }
 }
 
