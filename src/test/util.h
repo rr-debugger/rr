@@ -214,6 +214,31 @@ inline static size_t ceil_page_size(size_t size) {
   return (size + page_size - 1) & ~(page_size - 1);
 }
 
+#if defined(__i386__) || defined(__x86_64)
+#define debug_trap() __asm__("int $3")
+#define undefined_instr() __asm__("ud2")
+#elif defined(__aarch64__)
+#define debug_trap() __asm__("brk #0")
+/**
+ * GCC emits `brk #1000` for __builtin_trap,
+ * Clang emits `brk #1` for the same.
+ * It appears there was some plans early on to generate
+ * SIGILL for breakpoint instructions with a high immediate,
+ * but that never materialized. Instead, to get SIGILL, we use
+ * an mrs instruction, which will cause SIGILL if the system
+ * register used isn't accessible in EL0. Which register we
+ * use doesn't matter here, but we should one that is neither
+ * unsused and might do something else in the future, nor one
+ * that the kernel or a hypervisor might emulate in the future.
+ * Here we use `S3_6_C15_C8_0` which is a microcode patching
+ * register and only available in EL3. Accessing it here
+ * should always cause SIGILL
+ */
+#define undefined_instr() __asm__("mrs x0, S3_6_C15_C8_0")
+#else
+#error "Unknown architecture"
+#endif
+
 /**
  * Allocate 'size' bytes, fill with 'value', place canary value before
  * the allocated block, and put guard pages before and after. Ensure
