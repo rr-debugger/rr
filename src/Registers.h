@@ -128,6 +128,9 @@ public:
 #define ARCH_SWITCH_CASE(rettype, x86case, x64case, arm64case)                 \
 (([=](void) -> rettype {                                                       \
   switch (arch()) {                                                            \
+    default:                                                                   \
+      DEBUG_ASSERT(0 && "unknown architecture");                               \
+      RR_FALLTHROUGH; /* Fall through to avoid warnings */                     \
     case x86:                                                                  \
       x86case;                                                                 \
       break;                                                                   \
@@ -137,8 +140,6 @@ public:
     case aarch64:                                                              \
       arm64case;                                                               \
       break;                                                                   \
-    default:                                                                   \
-      DEBUG_ASSERT(0 && "unknown architecture");                               \
   }                                                                            \
 })())
 
