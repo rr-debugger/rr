@@ -17,7 +17,7 @@ static void* start_thread(__attribute__((unused)) void* p) {
 
   atomic_puts("EXIT-SUCCESS");
 
-  asm("ud2");
+  undefined_instr();
 
   return NULL;
 }

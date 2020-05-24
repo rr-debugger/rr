@@ -12,7 +12,7 @@ int main(void) {
   signal(SIGILL, sighandler);
 
   atomic_puts("running undefined instruction ...");
-  __asm__("ud2");
+  undefined_instr();
   test_assert("should have terminated!" && 0);
   return 0;
 }
