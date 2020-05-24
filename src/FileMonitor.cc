@@ -51,7 +51,7 @@ static int64_t retrieve_offset_arch(Task* t, int syscallno,
     case Arch::write: {
       ASSERT(t, t->session().is_recording())
           << "Can only read a file descriptor's offset while recording";
-      int fd = regs.arg1_signed();
+      int fd = regs.orig_arg1_signed();
       // Get the offset from /proc/*/fdinfo/*
       char fdinfo_path[PATH_MAX];
       sprintf(fdinfo_path, "/proc/%d/fdinfo/%d", t->tid, fd);
