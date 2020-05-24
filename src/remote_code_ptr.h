@@ -52,11 +52,12 @@ public:
       case x86:
       case x86_64:
         return decrement_by_bkpt_insn_length_private(arch);
+      default:
+        DEBUG_ASSERT(0 && "Unknown architecture");
+        RR_FALLTHROUGH;
       case aarch64:
         // On aarch64 executed breakpoint instructions do not increment the pc
         return *this;
-      default:
-        DEBUG_ASSERT(0 && "Unknown architecture");
     }
   }
   remote_code_ptr increment_by_bkpt_insn_length(SupportedArch arch) const {

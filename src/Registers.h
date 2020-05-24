@@ -159,7 +159,7 @@ public:
   ARCH_SWITCH_CASE(uint64_t,                                                   \
     return (uint32_t)u.x86regs.x86case,                                        \
     return u.x64regs.x64case,                                                  \
-    DEBUG_ASSERT(0 && "Hit an x86-only case, but this is not x86"))
+    DEBUG_ASSERT(0 && "Hit an x86-only case, but this is not x86"); return 0)
 
 #define RR_SET_REG(x86case, x64case, arm64case, value)                         \
   ARCH_SWITCH_CASE(void,                                                       \
