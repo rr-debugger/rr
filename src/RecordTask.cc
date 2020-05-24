@@ -1071,6 +1071,7 @@ void RecordTask::emulate_SIGCONT() {
   for (Task* t : thread_group()->task_set()) {
     auto rt = static_cast<RecordTask*>(t);
     LOG(debug) << "setting " << tid << " to NOT_STOPPED due to SIGCONT";
+    rt->clear_stashed_group_stop();
     rt->emulated_stop_pending = false;
     rt->emulated_stop_type = NOT_STOPPED;
   }
