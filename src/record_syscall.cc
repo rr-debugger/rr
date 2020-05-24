@@ -5506,7 +5506,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       switch (Arch::mmap_semantics) {
         case Arch::StructArguments: {
           auto args = t->read_mem(
-              remote_ptr<typename Arch::mmap_args>(t->regs().arg1()));
+              remote_ptr<typename Arch::mmap_args>(t->regs().orig_arg1()));
           process_mmap(t, args.len, args.prot, args.flags, args.fd,
                        args.offset / 4096);
           break;
@@ -5536,16 +5536,16 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::mremap:
-      process_mremap(t, t->regs().arg1(), t->regs().arg2(), t->regs().arg3());
+      process_mremap(t, t->regs().orig_arg1(), t->regs().arg2(), t->regs().arg3());
       break;
 
     case Arch::shmat:
-      process_shmat(t, (int)t->regs().arg1_signed(),
+      process_shmat(t, (int)t->regs().orig_arg1_signed(),
                     (int)t->regs().arg3_signed(), t->regs().syscall_result());
       break;
 
     case Arch::ipc:
-      switch ((int)t->regs().arg1_signed()) {
+      switch ((int)t->regs().orig_arg1_signed()) {
         case SHMAT: {
           auto out_ptr = t->read_mem(
               remote_ptr<typename Arch::unsigned_long>(t->regs().arg4()));
@@ -5579,7 +5579,7 @@ static void rec_process_syscall_arch(RecordTask* t,
         r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
         t->set_regs(r);
         auto attr =
-            t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().arg1()));
+            t->read_mem(remote_ptr<struct perf_event_attr>(t->regs().orig_arg1()));
         t->fd_table()->add_monitor(t,
             fd, new VirtualPerfCounterMonitor(
                     t, t->session().find_task((pid_t)t->regs().arg2_signed()),
@@ -5603,7 +5603,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::openat: {
       Registers r = t->regs();
       if (r.syscall_failed()) {
-        uintptr_t path = syscallno == Arch::openat ? r.arg2() : r.arg1();
+        uintptr_t path = syscallno == Arch::openat ? r.arg2() : r.orig_arg1();
         string pathname = t->read_c_str(remote_ptr<char>(path));
         if (is_gcrypt_deny_file(pathname.c_str())) {
           fake_gcrypt_file(t, &r);
@@ -5633,7 +5633,7 @@ static void rec_process_syscall_arch(RecordTask* t,
 
     case SYS_rrcall_notify_control_msg: {
       auto msg =
-          t->read_mem(remote_ptr<typename Arch::msghdr>(t->regs().arg1()));
+          t->read_mem(remote_ptr<typename Arch::msghdr>(t->regs().orig_arg1()));
       check_scm_rights_fd<Arch>(t, msg);
       break;
     }
@@ -5659,7 +5659,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
 
     case Arch::sched_getaffinity: {
-      pid_t pid = (pid_t)t->regs().arg1();
+      pid_t pid = (pid_t)t->regs().orig_arg1();
       if (!t->regs().syscall_failed() && (pid == 0 || pid == t->rec_tid)) {
         if (t->regs().syscall_result() > sizeof(cpu_set_t)) {
           LOG(warn) << "Don't understand kernel's sched_getaffinity result";
@@ -5692,7 +5692,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       t->set_regs(r);
 
       if (!t->regs().syscall_failed()) {
-        switch ((int)t->regs().arg1_signed()) {
+        switch ((int)t->regs().orig_arg1_signed()) {
           case SYS_RECVMSG: {
             auto args = t->read_mem(
                 remote_ptr<typename Arch::recvmsg_args>(t->regs().arg2()));
@@ -5720,7 +5720,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       break;
 
     case Arch::process_vm_writev: {
-      RecordTask* dest = t->session().find_task(t->regs().arg1());
+      RecordTask* dest = t->session().find_task(t->regs().orig_arg1());
       if (dest) {
         record_iovec_output<Arch>(t, dest, t->regs().arg4(), t->regs().arg5());
       }
@@ -5757,7 +5757,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     case Arch::getdents:
     case Arch::getdents64: {
       Registers r = t->regs();
-      int fd = r.arg1();
+      int fd = r.orig_arg1();
       t->fd_table()->filter_getdents(fd, t);
       break;
     }
@@ -5847,7 +5847,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::quotactl:
-      switch (t->regs().arg1() >> SUBCMDSHIFT) {
+      switch (t->regs().orig_arg1() >> SUBCMDSHIFT) {
         case Q_GETQUOTA:
         case Q_GETINFO:
         case Q_GETFMT:
@@ -5874,7 +5874,7 @@ static void rec_process_syscall_arch(RecordTask* t,
       Registers r = t->regs();
       r.set_orig_arg1(syscall_state.syscall_entry_registers.arg1());
       t->set_regs(r);
-      if (t->regs().arg1() == SECCOMP_SET_MODE_FILTER) {
+      if (t->regs().orig_arg1() == SECCOMP_SET_MODE_FILTER) {
         ASSERT(t, t->session().done_initial_exec())
             << "no seccomp calls during spawn";
         t->session()
