@@ -9,6 +9,7 @@ int main(void) {
 
   if (0 == (child = fork())) {
     while (1) {
+      asm("" : : : "memory");
     }
     return 77;
   }

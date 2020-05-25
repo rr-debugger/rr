@@ -30,6 +30,7 @@ int main(void) {
 
   pthread_create(&thread, NULL, start_thread, NULL);
   while (1) {
+    asm("" : : : "memory");
   }
   return 0;
 }

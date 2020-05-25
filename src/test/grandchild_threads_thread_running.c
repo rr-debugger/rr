@@ -4,6 +4,7 @@
 
 static void* start_thread(__attribute__((unused)) void* p) {
   while (1) {
+    asm("" : : : "memory");
   }
   return NULL;
 }
