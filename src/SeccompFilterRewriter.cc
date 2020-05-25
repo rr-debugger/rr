@@ -30,7 +30,7 @@ static void pass_through_seccomp_filter(RecordTask* t) {
   long ret;
   {
     AutoRemoteSyscalls remote(t);
-    ret = remote.syscall(t->regs().original_syscallno(), t->regs().arg1(),
+    ret = remote.syscall(t->regs().original_syscallno(), t->regs().orig_arg1(),
                          t->regs().arg2(), t->regs().arg3());
   }
   set_syscall_result(t, ret);

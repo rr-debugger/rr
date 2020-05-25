@@ -115,6 +115,14 @@ static void record_exit_trace_event(RecordTask* t, WaitStatus exit_status) {
   }
 }
 
+static bool looks_like_syscall_entry(RecordTask* t) {
+  if (is_x86ish(t->arch())) {
+    // On x86 rax gets set to ENOSYS on entry. Elsewhere this does not happen.
+    return t->regs().syscall_result_signed() == -ENOSYS;
+  }
+  return true;
+}
+
 /**
  * Return true if we handle a ptrace exit event for task t. When this returns
  * true, t has been deleted and cannot be referenced again.
@@ -148,7 +156,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
       // that state replay of the SCHED will fail. So detect that state and fix
       // it up.
       if (t->regs().original_syscallno() >= 0 &&
-          t->regs().syscall_result_signed() == -ENOSYS) {
+          looks_like_syscall_entry(t)) {
         // Either we're in a syscall, or we're immediately after a syscall
         // and it exited with ENOSYS.
         if (t->ticks_at_last_recorded_syscall_exit == t->tick_count()) {
