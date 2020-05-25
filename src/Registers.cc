@@ -172,7 +172,10 @@ RegisterInfo<rr::ARM64Arch>::Table RegisterInfo<rr::ARM64Arch>::registers = {
   RV_AARCH64(X26, x[26]), RV_AARCH64(X27, x[27]), RV_AARCH64(X28, x[28]),
   RV_AARCH64(X29, x[29]), RV_AARCH64(X30, x[30]),
   RV_AARCH64(SP, sp), RV_AARCH64(PC, pc),
-  RV_AARCH64_WITH_MASK(CPSR, pstate, 0xffffffffLL, 4),
+  // Mask out the single-step flag from the pstate. During replay, we may
+  // single-step to an execution point, which could set the single-step bit
+  // when it wasn't set during record.
+  RV_AARCH64_WITH_MASK(CPSR, pstate, 0xffffffffLL & ~AARCH64_DBG_SPSR_SS, 4),
 };
 
 #undef RV_X64
