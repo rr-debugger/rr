@@ -1863,13 +1863,13 @@ static bool maybe_emulate_wait(RecordTask* t, TaskSyscallState& syscall_state,
   return false;
 }
 
-static void maybe_pause_instead_of_waiting(RecordTask* t, int options) {
+static bool maybe_pause_instead_of_waiting(RecordTask* t, int options) {
   if (t->in_wait_type != WAIT_TYPE_PID || (options & WNOHANG)) {
-    return;
+    return false;
   }
   RecordTask* child = t->session().find_task(t->in_wait_pid);
   if (!child || !t->is_waiting_for_ptrace(child) || t->is_waiting_for(child)) {
-    return;
+    return false;
   }
   // OK, t is waiting for a ptrace child by tid, but since t is not really
   // ptracing child, entering a real wait syscall will not actually wait for
@@ -1880,8 +1880,17 @@ static void maybe_pause_instead_of_waiting(RecordTask* t, int options) {
   // It would be nice if we didn't have to do this, but I can't see a better
   // way.
   Registers r = t->regs();
-  r.set_original_syscallno(syscall_number_for_pause(t->arch()));
+  // pause() would be sufficient here, but we don't have that on all
+  // architectures, so use ppoll(NULL, 0, NULL, NULL), which is what
+  // glibc uses to implement pause() on architectures where the former
+  // doesn't exist
+  r.set_original_syscallno(syscall_number_for_ppoll(t->arch()));
+  r.set_arg1(0);
+  r.set_arg2(0);
+  r.set_arg3(0);
+  r.set_arg4(0);
   t->set_regs(r);
+  return true;
 }
 
 static RecordTask* verify_ptrace_target(RecordTask* tracer,
@@ -3720,10 +3729,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
      */
     case Arch::waitpid:
     case Arch::wait4: {
-      syscall_state.reg_parameter<int>(2, IN_OUT);
-      if (syscallno == Arch::wait4) {
-        syscall_state.reg_parameter<typename Arch::rusage>(4);
-      }
+      Switchable should_switch = ALLOW_SWITCH;
       pid_t pid = (pid_t)regs.arg1_signed();
       if (pid < -1) {
         t->in_wait_type = WAIT_TYPE_PGID;
@@ -3737,19 +3743,30 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         t->in_wait_pid = pid;
       }
       int options = (int)regs.arg3();
+      bool pausing = false;
       if (maybe_emulate_wait(t, syscall_state, options)) {
         Registers r = regs;
         // Set options to an invalid value to force syscall to fail
         r.set_arg3(0xffffffff);
         t->set_regs(r);
-        return PREVENT_SWITCH;
+        should_switch = PREVENT_SWITCH;
+      } else if (maybe_pause_instead_of_waiting(t, options)) {
+        pausing = true;
       }
-      maybe_pause_instead_of_waiting(t, options);
-      return ALLOW_SWITCH;
+      // When pausing, we've modified the registers and will emulate the
+      // memory changes on syscall exit. We avoid modifying these registers
+      // with pointers to scratch memory, so mark them _NO_SCRATCH if we're
+      // pausing.
+      syscall_state.reg_parameter<int>(2, pausing ? IN_OUT_NO_SCRATCH : IN_OUT);
+      if (syscallno == Arch::wait4) {
+        syscall_state.reg_parameter<typename Arch::rusage>(4,
+          pausing ? IN_OUT_NO_SCRATCH : OUT);
+      }
+      return should_switch;
     }
 
     case Arch::waitid: {
-      syscall_state.reg_parameter<typename Arch::siginfo_t>(3, IN_OUT);
+      Switchable should_switch = ALLOW_SWITCH;
       t->in_wait_pid = (id_t)regs.arg2();
       switch ((idtype_t)regs.arg1()) {
         case P_ALL:
@@ -3766,15 +3783,19 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
           break;
       }
       int options = (int)regs.arg4();
+      bool pausing = false;
       if (maybe_emulate_wait(t, syscall_state, options)) {
         Registers r = regs;
         // Set options to an invalid value to force syscall to fail
         r.set_arg4(0xffffffff);
         t->set_regs(r);
-        return PREVENT_SWITCH;
+        should_switch = PREVENT_SWITCH;
+      } else {
+        pausing = maybe_pause_instead_of_waiting(t, options);
       }
-      maybe_pause_instead_of_waiting(t, options);
-      return ALLOW_SWITCH;
+      syscall_state.reg_parameter<typename Arch::siginfo_t>(3,
+        pausing ? IN_OUT_NO_SCRATCH : IN_OUT);
+      return should_switch;
     }
 
     case Arch::setpriority:
