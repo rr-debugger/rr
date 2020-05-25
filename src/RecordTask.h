@@ -413,6 +413,14 @@ public:
   const Event& ev() const { return pending_events.back(); }
 
   /**
+   * Obtain the previous event on the stack (if any) or nullptr (if not)
+   */
+  Event *prev_ev() {
+    ssize_t depth = pending_events.size();
+    return depth > 2 ? &pending_events[depth - 2] : nullptr;
+  }
+
+  /**
    * Call this before recording events or data.  Records
    * syscallbuf data and flushes the buffer, if there's buffered
    * data.
