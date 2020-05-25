@@ -1,6 +1,7 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "util.h"
+#include "ptrace_util.h"
 
 /* Test that PTRACE_ATTACH produces a raw SIGTRAP after exiting exec, when
    PTRACE_O_TRACEEXEC is not used. */
@@ -41,26 +42,6 @@ static int proc_num_args(pid_t pid) {
   return count;
 }
 
-static int original_syscallno(const struct user_regs_struct* regs) {
-#if defined(__i386__)
-  return regs->orig_eax;
-#elif defined(__x86_64__)
-  return regs->orig_rax;
-#else
-#error unknown architecture
-#endif
-}
-
-static int syscall_result(const struct user_regs_struct* regs) {
-#if defined(__i386__)
-  return regs->eax;
-#elif defined(__x86_64__)
-  return regs->rax;
-#else
-#error unknown architecture
-#endif
-}
-
 int main(int argc, __attribute__((unused)) char** argv) {
   pid_t child;
   int status;
@@ -95,9 +76,12 @@ int main(int argc, __attribute__((unused)) char** argv) {
     test_assert(WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP);
   }
 
-  test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
-  test_assert(SYS_execve == original_syscallno(&regs));
-  test_assert(0 == syscall_result(&regs));
+  ptrace_getregs(child, &regs);
+#if !defined(__aarch64__)
+  // On aarch64, we may only ask this in a syscall-entry stop, which this is not
+  test_assert(SYS_execve == regs.ORIG_SYSCALLNO);
+#endif
+  test_assert(0 == regs.SYSCALL_RESULT);
   /* Check that we have actually transitioned */
   test_assert(proc_num_args(child) == 2);
 

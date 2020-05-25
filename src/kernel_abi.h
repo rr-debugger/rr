@@ -2154,12 +2154,12 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
  * and if so, return the architecture for which this is a syscall in *arch.
  */
 bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
-                                  SupportedArch* arch);
+                                  SupportedArch* arch, bool* ok=nullptr);
 
 /**
  * Return true if |ptr| in task |t| points to an invoke-syscall instruction.
  */
-bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr);
+bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr, bool* ok=nullptr);
 
 /**
  * Return the code bytes of an invoke-syscall instruction. The vector must

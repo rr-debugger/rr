@@ -1,14 +1,8 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "util.h"
+#include "ptrace_util.h"
 
-#if defined(__i386__)
-#define ORIG_SYSCALLNO orig_eax
-#elif defined(__x86_64__)
-#define ORIG_SYSCALLNO orig_rax
-#else
-#error unknown architecture
-#endif
 static int parent_to_child_fds[2];
 static int child_to_parent_fds[2];
 
@@ -52,10 +46,9 @@ int main(void) {
 
     /* Change the system call number once we get to the right one */
     struct user_regs_struct regs;
-    test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
+    ptrace_getregs(child, &regs);
     if (regs.ORIG_SYSCALLNO == SYS_read) {
-      regs.ORIG_SYSCALLNO = SYS_write;
-      test_assert(0 == ptrace(PTRACE_SETREGS, child, NULL, &regs));
+      ptrace_change_syscall(child, &regs, SYS_write);
       break;
     }
 

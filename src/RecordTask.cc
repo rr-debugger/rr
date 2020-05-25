@@ -158,6 +158,7 @@ RecordTask::RecordTask(RecordSession& session, pid_t _tid, uint32_t serial,
                        SupportedArch a)
     : Task(session, _tid, _tid, serial, a),
       ticks_at_last_recorded_syscall_exit(0),
+      ip_at_last_recorded_syscall_exit(nullptr),
       time_at_start_of_last_timeslice(0),
       priority(0),
       in_round_robin_queue(false),
@@ -1771,6 +1772,7 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
 
   if (ev.is_syscall_event() && ev.Syscall().state == EXITING_SYSCALL) {
     ticks_at_last_recorded_syscall_exit = tick_count();
+    ip_at_last_recorded_syscall_exit = registers->ip();
   }
 
   trace_writer().write_frame(this, ev, registers, extra_registers);

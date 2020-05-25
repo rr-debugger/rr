@@ -19,6 +19,8 @@ static __attribute__((noinline, used)) void my_syscall(void) {
   __asm__ __volatile__("syscall_addr: int $0x80\n\t");
 #elif defined(__x86_64__)
   __asm__ __volatile__("syscall_addr: syscall\n\t");
+#elif defined(__aarch64__)
+  __asm__ __volatile__("syscall_addr: svc #0\n\t");
 #endif
 }
 

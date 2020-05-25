@@ -1,41 +1,11 @@
 /* -*- Mode: C; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "util.h"
+#include "ptrace_util.h"
 
 /* This tests PTRACE_SYSEMU, PTRACE_SINGLESTEP and PTRACE_SYSEMU_SINGLESTEP */
 
-#ifndef PTRACE_SYSEMU
-#define PTRACE_SYSEMU 31
-#endif
-#ifndef PTRACE_SYSEMU_SINGLESTEP
-#define PTRACE_SYSEMU_SINGLESTEP 32
-#endif
-
 #define DS_SINGLESTEP (1 << 14)
-
-#if defined(__i386__)
-#define ORIG_SYSCALLNO orig_eax
-#elif defined(__x86_64__)
-#define ORIG_SYSCALLNO orig_rax
-#else
-#error unknown architecture
-#endif
-
-#if defined(__i386__)
-#define SYSCALL_RESULT eax
-#elif defined(__x86_64__)
-#define SYSCALL_RESULT rax
-#else
-#error unknown architecture
-#endif
-
-#if defined(__i386__)
-#define IP eip
-#elif defined(__x86_64__)
-#define IP rip
-#else
-#error unknown architecture
-#endif
 
 #ifdef SYS_geteuid32
 #define SYSCALLNO SYS_geteuid32
@@ -44,29 +14,6 @@
 #endif
 
 extern char syscall_addr;
-
-/* Make a syscallbuf-patchable syscall to check that syscallbuf patching
-   doesn't happen when we are emulating a ptracer --- which can be
-   potentially confused by it. */
-static uid_t __attribute__((noinline)) my_geteuid(void) {
-  int r;
-#ifdef __i386__
-  __asm__ __volatile__("syscall_addr: int $0x80\n\t"
-                       "nop\n\t"
-                       "nop\n\t"
-                       "nop\n\t"
-                       : "=a"(r)
-                       : "a"(SYS_geteuid32));
-#elif defined(__x86_64__)
-  __asm__ __volatile__("syscall_addr: syscall\n\t"
-                       "nop\n\t"
-                       "nop\n\t"
-                       "nop\n\t"
-                       : "=a"(r)
-                       : "a"(SYS_geteuid));
-#endif
-  return r;
-}
 
 static void wait_for_syscall_enter(pid_t child) {
   int status;
@@ -87,6 +34,7 @@ static void wait_for_singlestep(pid_t child) {
 }
 
 static void check_dr6(pid_t child) {
+#if defined(__i386__) || defined(__x86_64__)
   uintptr_t dr6;
   errno = 0;
   dr6 = ptrace(PTRACE_PEEKUSER, child,
@@ -96,6 +44,7 @@ static void check_dr6(pid_t child) {
   test_assert(0 == ptrace(PTRACE_POKEUSER, child,
                           (void*)offsetof(struct user, u_debugreg[6]),
                           (void*)0));
+#endif
 }
 
 int main(int argc, char** argv) {
@@ -157,7 +106,7 @@ int main(int argc, char** argv) {
   wait_for_syscall_enter(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   /* This assert will fail if we patched the syscall for syscallbuf. */
-  test_assert(&syscall_addr + 2 == (char*)regs.IP);
+  test_assert(&syscall_addr + SYSCALL_SIZE == (char*)regs.IP);
   test_assert(SYSCALLNO == regs.ORIG_SYSCALLNO);
   test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
 
@@ -166,7 +115,7 @@ int main(int argc, char** argv) {
   wait_for_singlestep(child);
   test_assert(0 == ptrace(PTRACE_GETREGS, child, NULL, &regs));
   test_assert(-ENOSYS == (int)regs.SYSCALL_RESULT);
-  test_assert(&syscall_addr + 2 == (char*)regs.IP);
+  test_assert(&syscall_addr + SYSCALL_SIZE == (char*)regs.IP);
   regs.SYSCALL_RESULT = uid;
   test_assert(0 == ptrace(PTRACE_SETREGS, child, NULL, &regs));
 
