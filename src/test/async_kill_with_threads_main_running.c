@@ -15,6 +15,7 @@ int main(void) {
   pthread_create(&thread, NULL, start_thread, NULL);
   atomic_puts("EXIT-SUCCESS");
   while (1) {
+    asm("" : : : "memory");
   }
   return 0;
 }
