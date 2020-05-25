@@ -942,7 +942,7 @@ set(BASIC_TESTS
   protect_rr_fds
   prw
   pthread_condvar_locking
-  ptrace
+  x86/ptrace
   ptrace_attach_null_status
   ptrace_attach_running
   ptrace_attach_sleeping
@@ -952,9 +952,9 @@ set(BASIC_TESTS
   ptrace_change_patched_syscall
   ptrace_debug_regs
   ptrace_exec
-  ptrace_exec32
+  x86/ptrace_exec32
   ptrace_kill_grandtracee
-  ptrace_tls
+  x86/ptrace_tls
   ptrace_seize
   ptrace_sigchld_blocked
   ptrace_signals
@@ -1527,7 +1527,7 @@ if(BUILD_TESTS)
   # This sucks but I can't find a better way to get CMake to build
   # the same source file in two different ways.
   if(rr_32BIT AND rr_64BIT)
-    foreach(header util.h nsutils.h)
+    foreach(header util.h nsutils.h ptrace_util.h)
       configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/test/${header}"
                     "${CMAKE_CURRENT_BINARY_DIR}/32/${header}"
                     COPYONLY)

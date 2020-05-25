@@ -597,6 +597,7 @@ private:
 
 public:
   Ticks ticks_at_last_recorded_syscall_exit;
+  remote_code_ptr ip_at_last_recorded_syscall_exit;
 
   // Scheduler state
 

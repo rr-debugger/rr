@@ -116,11 +116,29 @@ static void record_exit_trace_event(RecordTask* t, WaitStatus exit_status) {
 }
 
 static bool looks_like_syscall_entry(RecordTask* t) {
+  bool ok;
+  bool at_syscall = is_at_syscall_instruction(t,
+      t->regs().ip().decrement_by_syscall_insn_length(t->arch()), &ok);
+  // It's possible for the task to have died (e.g. if it got signaled twice
+  // in rapid succession). In that case, try to just go by register contents.
+  if (ok && !at_syscall) {
+    return false;
+  }
   if (is_x86ish(t->arch())) {
     // On x86 rax gets set to ENOSYS on entry. Elsewhere this does not happen.
-    return t->regs().syscall_result_signed() == -ENOSYS;
+    // Further, even if we did ask about the syscallno, it might have been
+    // reset by the signal handler. However, on non-x86 platforms we currently
+    // count taken braches, rather than only conditional ones, so it should
+    // be impossible to see the same syscall ip twice without intervening
+    // ticks, so the check that follows these conditions, should be sufficient
+    // there.
+    return t->regs().original_syscallno() >= 0 &&
+           t->regs().syscall_result_signed() == -ENOSYS;
   }
-  return true;
+  // Getting a sched event here is better than a spurious syscall event.
+  // Syscall entry does not cause visible register modification, so upon
+  // hitting the sched event the register state would indeed match.
+  return ok;
 }
 
 /**
@@ -155,11 +173,11 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
       // has been updated to reflect syscall entry. If we record a SCHED in
       // that state replay of the SCHED will fail. So detect that state and fix
       // it up.
-      if (t->regs().original_syscallno() >= 0 &&
-          looks_like_syscall_entry(t)) {
+      if (looks_like_syscall_entry(t)) {
         // Either we're in a syscall, or we're immediately after a syscall
-        // and it exited with ENOSYS.
-        if (t->ticks_at_last_recorded_syscall_exit == t->tick_count()) {
+        // and it exited.
+        if (t->ticks_at_last_recorded_syscall_exit == t->tick_count() &&
+            t->regs().ip() == t->ip_at_last_recorded_syscall_exit) {
           LOG(debug) << "Nothing to record after PTRACE_EVENT_EXIT";
           // It's the latter case; do nothing.
         } else {

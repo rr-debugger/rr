@@ -105,10 +105,10 @@ static const uint8_t syscall_insn[] = { 0x0f, 0x05 };
 static const uint8_t svc0_insn[] = { 0x1, 0x0, 0x0, 0xd4 };
 
 bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
-                                  SupportedArch* arch) {
-  if (t->arch() == aarch64) {
-    *arch = aarch64;
-    return true;
+                                  SupportedArch* arch,
+                                  bool* ok) {
+  if (ok) {
+    *ok = true;
   }
 
   // Lots of syscalls occur in the rr page and we know what it contains without
@@ -128,9 +128,13 @@ bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
     }
   }
 
-  bool ok = true;
-  vector<uint8_t> code = t->read_mem(ptr.to_data_ptr<uint8_t>(), 2, &ok);
-  if (!ok) {
+  bool read_ok = true;
+  vector<uint8_t> code = t->read_mem(ptr.to_data_ptr<uint8_t>(),
+    syscall_instruction_length(t->arch()), &read_ok);
+  if (!read_ok) {
+    if (ok) {
+      *ok = false;
+    }
     return false;
   }
   switch (t->arch()) {
@@ -148,14 +152,17 @@ bool get_syscall_instruction_arch(Task* t, remote_code_ptr ptr,
         return false;
       }
       return true;
+    case aarch64:
+      *arch = aarch64;
+      return memcmp(code.data(), svc0_insn, sizeof(svc0_insn)) == 0;
     default:
       return false;
   }
 }
 
-bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr) {
+bool is_at_syscall_instruction(Task* t, remote_code_ptr ptr, bool* ok) {
   SupportedArch arch;
-  return get_syscall_instruction_arch(t, ptr, &arch);
+  return get_syscall_instruction_arch(t, ptr, &arch, ok);
 }
 
 vector<uint8_t> syscall_instruction(SupportedArch arch) {
