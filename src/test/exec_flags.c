@@ -23,6 +23,15 @@ static void my_exec(const char* filename, const char** argv,
                        "xchg %%rdx,%%rdx\n\t"
                        : "=b"(out_bx)
                        : "a"(SYS_execve), "D"(filename), "S"(argv), "d"(envp));
+#elif defined(__aarch64__)
+  register long x8 __asm__("x8") = SYS_execve;
+  register long x0 __asm__("x0") = (long)filename;
+  register long x1 __asm__("x1") = (long)argv;
+  register long x2 __asm__("x2") = (long)envp;
+  // TODO: Prevent this from patching once we have syscallbuf support
+  __asm__ __volatile__("svc #0"
+                       : "+r"(x0)
+                       : "r"(x8), "r"(x1), "r"(x2));
 #else
 #error Unknown architecture
 #endif
