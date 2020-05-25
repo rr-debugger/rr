@@ -11,6 +11,11 @@ static uintptr_t my_syscall(uintptr_t syscall, uintptr_t arg1) {
   __asm__ volatile("syscall\n\t" : "=a"(ret) : "a"(syscall), "D"(arg1));
 #elif defined(__i386__)
   __asm__ volatile("int $0x80\n\t" : "=a"(ret) : "a"(syscall), "b"(arg1));
+#elif defined(__aarch64__)
+  register long x8 __asm__("x8") = syscall;
+  register long x0 __asm__("x0") = (long)arg1;
+  __asm__ volatile("svc #0\n\t" : "+r"(x0) : "r"(x8));
+  ret = x0;
 #else
 #error define syscall here
 #endif
