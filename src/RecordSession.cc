@@ -999,7 +999,6 @@ void RecordSession::syscall_state_changed(RecordTask* t,
         return;
       }
       last_task_switchable = PREVENT_SWITCH;
-      t->apply_syscall_entry_regs();
       t->ev().Syscall().regs = t->regs();
       t->ev().Syscall().state = ENTERING_SYSCALL;
       // The syscallno may have been changed by the ptracer

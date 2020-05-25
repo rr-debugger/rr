@@ -686,6 +686,16 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
               tracee->set_extra_regs(r);
               break;
             }
+            case NT_ARM_SYSTEM_CALL: {
+              auto set = ptrace_get_regs_set<Arch>(
+                  this, regs, sizeof(int));
+              ASSERT(this, set.size() >= sizeof(int));
+              int new_syscallno = *(int*)set.data();
+              Registers r = tracee->regs();
+              r.set_original_syscallno(new_syscallno);
+              tracee->set_regs(r);
+              break;
+            }
             case NT_X86_XSTATE: {
               switch (tracee->extra_regs().format()) {
                 case ExtraRegisters::XSAVE: {

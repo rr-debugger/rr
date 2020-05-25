@@ -2186,6 +2186,7 @@ static void ptrace_verify_set_reg_set(RecordTask* t, size_t min_size,
   auto iov = t->read_mem(remote_ptr<typename Arch::iovec>(t->regs().arg4()));
   if (iov.iov_len < min_size) {
     syscall_state.emulate_result(-EIO);
+    return;
   }
   syscall_state.emulate_result(0);
 }
@@ -2586,7 +2587,27 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           break;
         }
+        case NT_ARM_SYSTEM_CALL: {
+          if (Arch::arch() != aarch64) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            int syscallno = tracee->regs().original_syscallno();
+            uint8_t *data = (uint8_t*)&syscallno;
+            vector<uint8_t> regs(data, data+sizeof(syscallno));
+            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
+          }
+          break;
+        }
         case NT_X86_XSTATE: {
+          if (!Arch::is_x86ish()) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             switch (tracee->extra_regs().format()) {
@@ -2628,7 +2649,25 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           break;
         }
+        case NT_ARM_SYSTEM_CALL: {
+          if (Arch::arch() != aarch64) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            ptrace_verify_set_reg_set<Arch>(
+                t, sizeof(int), syscall_state);
+          }
+          break;
+        }
         case NT_X86_XSTATE: {
+          if (!Arch::is_x86ish()) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             switch (tracee->extra_regs().format()) {
