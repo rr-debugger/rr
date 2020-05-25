@@ -15,6 +15,8 @@ static void handler(int sig, siginfo_t* si, void* p) {
   int syscallno = ctx->uc_mcontext.gregs[REG_EAX];
 #elif defined(__x86_64__)
   int syscallno = ctx->uc_mcontext.gregs[REG_RAX];
+#elif defined(__aarch64__)
+  int syscallno = ctx->uc_mcontext.regs[8];
 #else
 #error define architecture here
 #endif
@@ -24,9 +26,11 @@ static void handler(int sig, siginfo_t* si, void* p) {
   test_assert(si->si_arch == AUDIT_ARCH_I386);
 #elif defined(__x86_64__)
   test_assert(si->si_arch == AUDIT_ARCH_X86_64);
+#elif defined(__x86_64__)
+  test_assert(si->si_arch == AUDIT_ARCH_AARCH64);
 #endif
 #endif
-  test_assert(syscallno == SYS_geteuid || syscallno == SYS_open);
+  test_assert(syscallno == SYS_geteuid || syscallno == SYS_openat);
 
   test_assert(sig == SIGSYS);
   test_assert(si->si_signo == SIGSYS);
@@ -37,6 +41,8 @@ static void handler(int sig, siginfo_t* si, void* p) {
   test_assert((intptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_EIP]);
 #elif defined(__x86_64__)
   test_assert((intptr_t)si->si_call_addr == ctx->uc_mcontext.gregs[REG_RIP]);
+#elif defined(__aarch64__)
+  test_assert((uintptr_t)si->si_call_addr == ctx->uc_mcontext.pc);
 #else
 #error define architecture here
 #endif
@@ -47,6 +53,8 @@ static void handler(int sig, siginfo_t* si, void* p) {
     ctx->uc_mcontext.gregs[REG_EAX] = 42;
 #elif defined(__x86_64__)
     ctx->uc_mcontext.gregs[REG_RAX] = 42;
+#elif defined(__aarch64__)
+    ctx->uc_mcontext.regs[0] = 42;
 #else
 #error define architecture here
 #endif
@@ -64,8 +72,8 @@ static void install_filter(void) {
        accumulator */
     BPF_STMT(BPF_LD | BPF_W | BPF_ABS, offsetof(struct seccomp_data, nr)),
     /* Jump forward 1 instruction if system call number
-       is not SYS_pipe */
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_pipe, 0, 1),
+       is not SYS_pipe2 */
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_pipe2, 0, 1),
     /* Error out with ESRCH */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_ERRNO | (ESRCH & SECCOMP_RET_DATA)),
     /* Jump forward 1 instruction if system call number
@@ -74,8 +82,8 @@ static void install_filter(void) {
     /* Trigger SIGSYS */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     /* Jump forward 1 instruction if system call number
-       is not SYS_open */
-    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_open, 0, 1),
+       is not SYS_openat */
+    BPF_JUMP(BPF_JMP | BPF_JEQ | BPF_K, SYS_openat, 0, 1),
     /* Trigger SIGSYS */
     BPF_STMT(BPF_RET | BPF_K, SECCOMP_RET_TRAP),
     /* Jump forward 1 instruction if system call number
@@ -151,7 +159,7 @@ int main(void) {
   test_assert(1 == write(pipe_fds[1], "c", 1));
   pthread_join(w_thread, NULL);
 
-  test_assert(-1 == syscall(SYS_pipe, pipe_fds));
+  test_assert(-1 == syscall(SYS_pipe2, pipe_fds, 0));
   test_assert(ESRCH == errno);
 
   /* Spawning a thread will execute an rrcall_init_buffers syscall,
@@ -166,8 +174,7 @@ int main(void) {
   test_assert(1 == read(pipe_fds[0], &ch, 1));
 
   test_assert(syscall(SYS_geteuid) == 42);
-  /* Use syscall directly since glibc 2.26 uses SYS_openat to implement open. */
-  syscall(SYS_open, "/dev/null", O_RDONLY);
+  syscall(SYS_openat, -1, "/dev/null", O_RDONLY);
   test_assert(count_SIGSYS == 2);
 
   atomic_puts("SUCCESS");
