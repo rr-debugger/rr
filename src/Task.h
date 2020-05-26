@@ -281,7 +281,10 @@ public:
   void unmap_buffers_for(
       AutoRemoteSyscalls& remote, Task* t,
       remote_ptr<struct syscallbuf_hdr> saved_syscallbuf_child);
-  void close_buffers_for(AutoRemoteSyscalls& remote, Task* t);
+  /* Close fds related to `t`'s syscallbuf, in this task's fd table.
+     If `really_close` is true, actually close the kernel fds through `remote`,
+     otherwise only update our FdTable. */
+  void close_buffers_for(AutoRemoteSyscalls& remote, Task* t, bool really_close);
 
   remote_ptr<const struct syscallbuf_record> next_syscallbuf_record();
   long stored_record_size(remote_ptr<const struct syscallbuf_record> record);

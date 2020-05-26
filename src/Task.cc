@@ -363,13 +363,13 @@ void Task::destroy_buffers(Task *as_task, Task *fd_task) {
     AutoRemoteSyscalls remote(as_task);
     as_task->unmap_buffers_for(remote, this, saved_syscallbuf_child);
     if (as_task == fd_task) {
-      as_task->close_buffers_for(remote, this);
+      as_task->close_buffers_for(remote, this, true);
     }
     goto done;
   }
   if (fd_task != nullptr) {
     AutoRemoteSyscalls remote(fd_task);
-    fd_task->close_buffers_for(remote, this);
+    fd_task->close_buffers_for(remote, this, true);
   }
 done:
   scratch_ptr = nullptr;
@@ -411,18 +411,20 @@ void Task::did_kill()
 /**
  * Must be idempotent.
  */
-void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other) {
+void Task::close_buffers_for(AutoRemoteSyscalls& remote, Task* other, bool really_close) {
   auto arch = remote.task()->arch();
   if (other->desched_fd_child >= 0) {
-    if (session().is_recording()) {
+    if (session().is_recording() && really_close) {
       remote.infallible_syscall(syscall_number_for_close(arch),
                                 other->desched_fd_child);
     }
     fds->did_close(other->desched_fd_child);
   }
   if (other->cloned_file_data_fd_child >= 0) {
-    remote.infallible_syscall(syscall_number_for_close(arch),
-                              other->cloned_file_data_fd_child);
+    if (really_close) {
+      remote.infallible_syscall(syscall_number_for_close(arch),
+                                other->cloned_file_data_fd_child);
+    }
     fds->did_close(other->cloned_file_data_fd_child);
   }
 }
@@ -2127,16 +2129,21 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
     if (session().is_replaying()) {
       // `t` is not really sharing our fd table, in fact our real fd table
       // is only used by this task, so it only contains our syscallbuf fds (if any),
-      // not the fds for any other task. Close those in `t`.
+      // not the fds for any other task. So, only really-close the fds for 'this'.
+      // We still need to update t's `fds` table to indicate that those fds were
+      // closed during recording, though, otherwise we may get FileMonitor
+      // collisions.
       AutoRemoteSyscalls remote(t);
-      t->close_buffers_for(remote, this);
+      for (Task* tt : fds->task_set()) {
+        t->close_buffers_for(remote, tt, tt == this);
+      }
     } else if (CLONE_SHARE_FILES & flags) {
       // `t` is sharing our fd table, so it should not close anything.
     } else {
       // Close syscallbuf fds for all tasks using the original fd table.
       AutoRemoteSyscalls remote(t);
       for (Task* tt : fds->task_set()) {
-        t->close_buffers_for(remote, tt);
+        t->close_buffers_for(remote, tt, true);
       }
     }
   }
