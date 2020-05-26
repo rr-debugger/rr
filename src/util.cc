@@ -2042,4 +2042,15 @@ std::string find_exec_stub(SupportedArch arch) {
   return exe_path;
 }
 
+int pop_count(uint64_t v) {
+  int ret = 0;
+  while (v > 0) {
+    if (v & 1) {
+      ++ret;
+    }
+    v >>= 1;
+  }
+  return ret;
+}
+
 } // namespace rr

@@ -920,27 +920,6 @@ struct BaseArch : public wordsize,
   };
   RR_VERIFY_TYPE(iwreq);
 
-  struct ethtool_cmd {
-    uint32_t cmd;
-    uint32_t supported;
-    uint32_t advertising;
-    uint16_t speed;
-    uint8_t duplex;
-    uint8_t port;
-    uint8_t phy_address;
-    uint8_t transceiver;
-    uint8_t autoneg;
-    uint8_t mdio_support;
-    uint32_t maxtxpkt;
-    uint32_t maxrxpkt;
-    uint16_t speed_hi;
-    uint8_t eth_tp_mdix;
-    uint8_t eth_tp_mdix_ctrl;
-    uint32_t lp_advertising;
-    uint32_t reserved[2];
-  };
-  RR_VERIFY_TYPE(ethtool_cmd);
-
   struct _flock {
     signed_short l_type;
     signed_short l_whence;

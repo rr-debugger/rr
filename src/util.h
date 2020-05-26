@@ -498,6 +498,9 @@ static inline struct timeval to_timeval(double t) {
   return v;
 }
 
+/* Slow but simple pop-count implementation. */
+int pop_count(uint64_t v);
+
 } // namespace rr
 
 #endif /* RR_UTIL_H_ */

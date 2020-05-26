@@ -386,6 +386,8 @@ struct TaskSyscallState {
                                      ArgMutator mutator = nullptr);
 
   typedef void (*AfterSyscallAction)(RecordTask* t);
+  // Register a callback to run when the syscall has completed.
+  // This runs after parameters have been restored.
   void after_syscall_action(AfterSyscallAction action) {
     after_syscall_actions.push_back(action);
   }
@@ -1383,6 +1385,176 @@ static void record_page_below_stack_ptr(RecordTask* t) {
 
 #define IOCTL_MASK_SIZE(v) ((v) & ~(_IOC_SIZEMASK << _IOC_SIZESHIFT))
 
+typedef ethtool_gstrings GStrings;
+
+template <typename Arch> void get_ethtool_gstrings_arch(RecordTask* t) {
+  auto& syscall_state = *syscall_state_property.get(*t);
+  Registers& regs = syscall_state.syscall_entry_registers;
+  bool ok = true;
+  auto ifreq = t->read_mem(remote_ptr<typename Arch::ifreq>(regs.arg3()), &ok);
+  Registers new_regs = t->regs();
+  if (!ok) {
+    new_regs.set_syscall_result(-EFAULT);
+    t->set_regs(new_regs);
+    return;
+  }
+  remote_ptr<void> p = ifreq.ifr_ifru.ifru_data.rptr();
+  auto orig_gstrings = p.cast<ethtool_gstrings>();
+  auto et_gstrings = t->read_mem(orig_gstrings, &ok);
+  if (!ok) {
+    new_regs.set_syscall_result(-EFAULT);
+    t->set_regs(new_regs);
+    return;
+  }
+  if (et_gstrings.string_set >= 64) {
+    new_regs.set_syscall_result(-EOPNOTSUPP);
+    t->set_regs(new_regs);
+    return;
+  }
+
+  AutoRemoteSyscalls remote(t);
+
+  // Do a ETHTOOL_GSSET_INFO to get the number of strings
+  struct SingleStringSet {
+    ethtool_sset_info et;
+    uint32_t data;
+  };
+  SingleStringSet sss;
+  sss.et.cmd = ETHTOOL_GSSET_INFO;
+  sss.et.reserved = 0;
+  sss.et.sset_mask = 1 << et_gstrings.string_set;
+  AutoRestoreMem sss_mem(remote, &sss, sizeof(sss));
+
+  ifreq.ifr_ifru.ifru_data = sss_mem.get();
+  AutoRestoreMem ifr_mem(remote, &ifreq, sizeof(ifreq));
+
+  long ret = remote.syscall(regs.original_syscallno(), regs.arg1(),
+      SIOCETHTOOL, ifr_mem.get());
+  if (ret < 0) {
+    remote.regs().set_syscall_result(ret);
+    return;
+  }
+
+  sss = t->read_mem(sss_mem.get().cast<SingleStringSet>());
+
+  // Now do the ETHTOOL_GSTRINGS call
+  ret = remote.syscall(regs.original_syscallno(), regs.arg1(), SIOCETHTOOL,
+      regs.arg3());
+  remote.regs().set_syscall_result(ret);
+  if (ret < 0) {
+    return;
+  }
+  t->record_remote(orig_gstrings, sizeof(ethtool_gstrings) + ETH_GSTRING_LEN*sss.data);
+}
+
+static void get_ethtool_gstrings(RecordTask* t) {
+  RR_ARCH_FUNCTION(get_ethtool_gstrings_arch, t->arch(), t);
+}
+
+template <typename Arch> void prepare_ethtool_ioctl(RecordTask* t, TaskSyscallState& syscall_state) {
+  auto ifrp = syscall_state.reg_parameter<typename Arch::ifreq>(3, IN);
+  bool ok = true;
+  auto ifreq = t->read_mem(ifrp, &ok);
+  if (!ok) {
+    syscall_state.expect_errno = EFAULT;
+    return;
+  }
+  remote_ptr<void> payload = REMOTE_PTR_FIELD(ifrp, ifr_ifru.ifru_data);
+  remote_ptr<void> buf_ptr = ifreq.ifr_ifru.ifru_data.rptr();
+  uint32_t cmd = t->read_mem(buf_ptr.cast<uint32_t>(), &ok);
+  if (!ok) {
+    syscall_state.expect_errno = EFAULT;
+    return;
+  }
+
+  switch (cmd) {
+    case ETHTOOL_GSET:
+      syscall_state.mem_ptr_parameter<ethtool_cmd>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GDRVINFO:
+      syscall_state.mem_ptr_parameter<ethtool_drvinfo>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GWOL:
+      syscall_state.mem_ptr_parameter<ethtool_wolinfo>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GREGS: {
+      auto buf = t->read_mem(buf_ptr.cast<ethtool_regs>(), &ok);
+      if (ok) {
+        syscall_state.mem_ptr_parameter(payload, ParamSize(sizeof(buf) + buf.len), IN_OUT);
+      } else {
+        syscall_state.expect_errno = EFAULT;
+        return;
+      }
+      break;
+    }
+    case ETHTOOL_GMODULEEEPROM:
+    case ETHTOOL_GEEPROM: {
+      auto buf = t->read_mem(buf_ptr.cast<ethtool_eeprom>(), &ok);
+      if (ok) {
+        syscall_state.mem_ptr_parameter(payload, ParamSize(sizeof(buf) + buf.len), IN_OUT);
+      } else {
+        syscall_state.expect_errno = EFAULT;
+        return;
+      }
+      break;
+    }
+    case ETHTOOL_GEEE:
+      syscall_state.mem_ptr_parameter<ethtool_eee>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GMODULEINFO:
+      syscall_state.mem_ptr_parameter<ethtool_modinfo>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GCOALESCE:
+      syscall_state.mem_ptr_parameter<ethtool_coalesce>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GRINGPARAM:
+      syscall_state.mem_ptr_parameter<ethtool_ringparam>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GCHANNELS:
+      syscall_state.mem_ptr_parameter<ethtool_channels>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GPAUSEPARAM:
+      syscall_state.mem_ptr_parameter<ethtool_pauseparam>(payload, IN_OUT);
+      break;
+    case ETHTOOL_GSSET_INFO: {
+      auto buf = t->read_mem(buf_ptr.cast<ethtool_sset_info>(), &ok);
+      if (ok) {
+        int bits = pop_count(buf.sset_mask);
+        syscall_state.mem_ptr_parameter(payload, ParamSize(sizeof(buf) + bits*sizeof(uint32_t)), IN_OUT);
+      } else {
+        syscall_state.expect_errno = EFAULT;
+        return;
+      }
+      break;
+    }
+    case ETHTOOL_GSTRINGS: {
+      // These are an enormous pain because to know how much data will be written
+      // back by the kernel, we have to perform a ETHTOOL_GSSET_INFO first.
+      // We can't do that right here because we've already entered the kernel.
+      // So, we emulate this.
+      Registers r = t->regs();
+      r.set_arg1(-1);
+      t->set_regs(r);
+      syscall_state.after_syscall_action(get_ethtool_gstrings);
+      break;
+    }
+    case ETHTOOL_SSET:
+    case ETHTOOL_SWOL:
+    case ETHTOOL_SEEPROM:
+    case ETHTOOL_SEEE:
+    case ETHTOOL_SCOALESCE:
+    case ETHTOOL_SRINGPARAM:
+    case ETHTOOL_SCHANNELS:
+    case ETHTOOL_SPAUSEPARAM:
+      break;
+    default:
+      LOG(debug) << "Unknown ETHTOOL cmd " << cmd;
+      syscall_state.expect_errno = EINVAL;
+      return;
+  }
+  syscall_state.after_syscall_action(record_page_below_stack_ptr);
+}
+
 template <typename Arch>
 static Switchable prepare_ioctl(RecordTask* t,
                                 TaskSyscallState& syscall_state) {
@@ -1413,10 +1585,7 @@ static Switchable prepare_ioctl(RecordTask* t,
    * conventions.  Special case them here. */
   switch (request) {
     case SIOCETHTOOL: {
-      auto ifrp = syscall_state.reg_parameter<typename Arch::ifreq>(3, IN);
-      syscall_state.mem_ptr_parameter<typename Arch::ethtool_cmd>(
-          REMOTE_PTR_FIELD(ifrp, ifr_ifru.ifru_data));
-      syscall_state.after_syscall_action(record_page_below_stack_ptr);
+      prepare_ethtool_ioctl<Arch>(t, syscall_state);
       return PREVENT_SWITCH;
     }
 
