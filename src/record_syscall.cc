@@ -1538,6 +1538,16 @@ template <typename Arch> void prepare_ethtool_ioctl(RecordTask* t, TaskSyscallSt
       syscall_state.after_syscall_action(get_ethtool_gstrings);
       break;
     }
+    case ETHTOOL_GFEATURES: {
+      auto buf = t->read_mem(buf_ptr.cast<ethtool_gfeatures>(), &ok);
+      if (ok) {
+        syscall_state.mem_ptr_parameter(payload, ParamSize(sizeof(buf) + buf.size*sizeof(ethtool_get_features_block)), IN_OUT);
+      } else {
+        syscall_state.expect_errno = EFAULT;
+        return;
+      }
+      break;
+    }
     case ETHTOOL_SSET:
     case ETHTOOL_SWOL:
     case ETHTOOL_SEEPROM:
@@ -1546,6 +1556,7 @@ template <typename Arch> void prepare_ethtool_ioctl(RecordTask* t, TaskSyscallSt
     case ETHTOOL_SRINGPARAM:
     case ETHTOOL_SCHANNELS:
     case ETHTOOL_SPAUSEPARAM:
+    case ETHTOOL_SFEATURES:
       break;
     default:
       LOG(debug) << "Unknown ETHTOOL cmd " << cmd;

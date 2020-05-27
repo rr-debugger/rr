@@ -192,6 +192,10 @@ static void ethtool(int sockfd, struct ifreq* req) {
     struct ethtool_sset_info et;
     uint32_t data[8];
   }* et_sset_info;
+  struct {
+    struct ethtool_gfeatures et;
+    struct ethtool_get_features_block features[20];
+  }* et_gfeatures;
   int i;
   int err;
   int ret;
@@ -321,6 +325,20 @@ static void ethtool(int sockfd, struct ifreq* req) {
           }
         }
       }
+    }
+  }
+
+  ALLOCATE_GUARD(et_gfeatures, 'p');
+  et_gfeatures->et.size = 20;
+  GENERIC_ETHTOOL_REQUEST_BY_NAME(&et_gfeatures->et, ETHTOOL_GFEATURES);
+  if (-1 != ret) {
+    int n = et_gfeatures->et.size;
+    if (n > 20) {
+      n = 20;
+    }
+    for (i = 0; i < n; ++i) {
+      atomic_printf("Feature %d available:%x requested:%x\n",
+        i, et_gfeatures->features[i].available, et_gfeatures->features[i].requested);
     }
   }
 }
