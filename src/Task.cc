@@ -503,7 +503,7 @@ static void ptrace_syscall_exit_legacy_arch(Task* t, Task* tracee, const Registe
         size_t regno =
             (addr - offsetof(typename Arch::user, u_debugreg[0])) /
             sizeof(data);
-        tracee->set_debug_reg(regno, data);
+        tracee->set_x86_debug_reg(regno, data);
       }
       break;
     }
@@ -1062,7 +1062,7 @@ uintptr_t Task::get_debug_reg(size_t regno) {
   return result;
 }
 
-bool Task::set_debug_reg(size_t regno, uintptr_t value) {
+bool Task::set_x86_debug_reg(size_t regno, uintptr_t value) {
   errno = 0;
   fallible_ptrace(PTRACE_POKEUSER, dr_user_word_offset(regno), (void*)value);
   return errno == ESRCH || errno == 0;
@@ -1078,7 +1078,7 @@ uintptr_t Task::get_debug_reg(size_t) {
   return 0;
 }
 
-bool Task::set_debug_reg(size_t, uintptr_t) {
+bool Task::set_x86_debug_reg(size_t, uintptr_t) {
   FATAL_X86_ONLY();
   return false;
 }
@@ -1089,9 +1089,35 @@ uintptr_t Task::x86_debug_status() {
 }
 #endif
 
+#if defined(__aarch64__)
+bool Task::set_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs, size_t nregs) {
+  errno = 0;
+  struct iovec iov { .iov_base = regs, .iov_len = sizeof(*regs) - (16-nregs)*sizeof(ARM64Arch::hw_bp) };
+  ASSERT(this, which == NT_ARM_HW_BREAK || which == NT_ARM_HW_WATCH);
+  fallible_ptrace(PTRACE_SETREGSET, which, (void*)&iov);
+  return errno == 0;
+}
+bool Task::get_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs) {
+  errno = 0;
+  struct iovec iov { .iov_base = regs, .iov_len = sizeof(*regs) };
+  ASSERT(this, which == NT_ARM_HW_BREAK || which == NT_ARM_HW_WATCH);
+  fallible_ptrace(PTRACE_GETREGSET, which, (void*)&iov);
+  return errno == 0;
+}
+#else
+bool Task::set_aarch64_debug_regs(int, ARM64Arch::user_hwdebug_state *, size_t) {
+  FATAL() << "Reached aarch64 code path on non-aarch64 system";
+  return false;
+}
+bool Task::get_aarch64_debug_regs(int, ARM64Arch::user_hwdebug_state *) {
+  FATAL() << "Reached aarch64 code path on non-aarch64 system";
+  return false;
+}
+#endif
+
 void Task::set_x86_debug_status(uintptr_t status) {
   if (arch() == x86 || arch() == x86_64) {
-    set_debug_reg(6, status);
+    set_x86_debug_reg(6, status);
   }
 }
 
@@ -1143,16 +1169,21 @@ TrapReasons Task::compute_trap_reasons() {
     // XXX Read/exec watchpoints can't be detected this way so they're still
     // broken in the above configuration :-(.
     if ((DS_WATCHPOINT_ANY | DS_SINGLESTEP) & status) {
-      as->notify_watchpoint_fired(status,
+      as->notify_watchpoint_fired(status, nullptr,
           is_singlestep_resume(how_last_execution_resumed)
               ? address_of_last_execution_resume : nullptr);
     }
     reasons.watchpoint =
         as->has_any_watchpoint_changes() || (DS_WATCHPOINT_ANY & status);
   } else if (arch() == aarch64) {
-    // TODO: watchpoint support.
     reasons.watchpoint = false;
     reasons.singlestep = si.si_code == TRAP_TRACE;
+    reasons.watchpoint = si.si_code == TRAP_HWBKPT;
+    if (reasons.watchpoint) {
+      as->notify_watchpoint_fired(0, remote_ptr<void>((uintptr_t)si.si_addr),
+          is_singlestep_resume(how_last_execution_resumed)
+              ? address_of_last_execution_resume : nullptr);
+    }
   }
 
   // If we triggered a breakpoint, this would be the address of the breakpoint
@@ -1524,13 +1555,13 @@ union PackedDebugControl {
   DebugControl ctl;
 };
 
-bool Task::set_debug_regs(const DebugRegs& regs) {
+static bool set_x86_debug_regs(Task *t, const Task::DebugRegs& regs) {
   // Reset the debug status since we're about to change the set
   // of programmed watchpoints.
-  set_debug_reg(6, 0);
+  t->set_x86_debug_reg(6, 0);
 
   if (regs.size() > NUM_X86_WATCHPOINTS) {
-    set_debug_reg(7, 0);
+    t->set_x86_debug_reg(7, 0);
     return false;
   }
 
@@ -1544,18 +1575,100 @@ bool Task::set_debug_regs(const DebugRegs& regs) {
   for (size_t i = 0; i < regs.size(); ++i) {
     dr7.ctl.enable(i, BYTES_1, WATCH_EXEC);
   }
-  set_debug_reg(7, dr7.packed);
+  t->set_x86_debug_reg(7, dr7.packed);
 
   size_t index = 0;
   for (auto reg : regs) {
-    if (!set_debug_reg(index, reg.addr.as_int())) {
-      set_debug_reg(7, 0);
+    if (!t->set_x86_debug_reg(index, reg.addr.as_int())) {
+      t->set_x86_debug_reg(7, 0);
       return false;
     }
     dr7.ctl.enable(index, num_bytes_to_dr_len(reg.num_bytes), reg.type);
     ++index;
   }
-  return set_debug_reg(7, dr7.packed);
+  return t->set_x86_debug_reg(7, dr7.packed);
+}
+
+template <typename Arch>
+static bool set_debug_regs_arch(Task* t, const Task::DebugRegs& regs);
+template <> bool set_debug_regs_arch<X86Arch>(Task* t, const Task::DebugRegs& regs) {
+  return set_x86_debug_regs(t, regs);
+}
+template <> bool set_debug_regs_arch<X64Arch>(Task* t, const Task::DebugRegs& regs) {
+  return set_x86_debug_regs(t, regs);
+}
+
+static void query_max_bp_wp(Task* t, ssize_t* max_bp, ssize_t* max_wp) {
+  ARM64Arch::user_hwdebug_state bps;
+  ARM64Arch::user_hwdebug_state wps;
+  bool ok = t->get_aarch64_debug_regs(NT_ARM_HW_BREAK, &bps) &&
+            t->get_aarch64_debug_regs(NT_ARM_HW_WATCH, &wps);
+  ASSERT(t, ok);
+  *max_bp = bps.dbg_info & 0xff;
+  *max_wp = wps.dbg_info & 0xff;
+}
+
+template <> bool set_debug_regs_arch<ARM64Arch>(Task* t, const Task::DebugRegs& regs) {
+  ARM64Arch::user_hwdebug_state bps;
+  ARM64Arch::user_hwdebug_state wps;
+  memset(&bps, 0, sizeof(bps));
+  memset(&wps, 0, sizeof(wps));
+
+  static ssize_t max_bp = -1;
+  static ssize_t max_wp = -1;
+  if (max_bp == -1) {
+    query_max_bp_wp(t, &max_bp, &max_wp);
+  }
+
+  // Having at least one of each is architecturally guaranteed
+  ASSERT(t, max_bp >= 1 && max_wp >= 1);
+
+  ssize_t cur_bp = 0;
+  ssize_t cur_wp = 0;
+  for (auto reg : regs) {
+    ARM64Arch::hw_bp* bp = nullptr;
+    if (reg.type == WATCH_EXEC) {
+      if (cur_bp == max_bp) {
+        return false;
+      }
+      bp = &bps.dbg_regs[cur_bp++];
+    } else {
+      if (cur_wp == max_wp) {
+        return false;
+      }
+      bp = &wps.dbg_regs[cur_wp++];
+    }
+    ARM64Arch::hw_breakpoint_ctrl ctrl;
+    memset(&ctrl, 0, sizeof(ctrl));
+    switch (reg.type) {
+      case WATCH_EXEC:
+        ctrl.type = ARM_WATCH_EXEC;
+        break;
+      case WATCH_WRITE:
+        ctrl.type = ARM_WATCH_WRITE;
+        break;
+      case WATCH_READWRITE:
+        ctrl.type = ARM_WATCH_READWRITE;
+        break;
+    }
+    ctrl.enabled = 1;
+    ctrl.priv = ARM_PRIV_EL0;
+	  uintptr_t off = (uintptr_t)reg.addr.as_int() % 8;
+    // This is a byte mask of which particular byte in the 8byte word at `addr`
+    // to watch.
+	  uintptr_t mask = ((1 << reg.num_bytes) - 1) << off;
+    ctrl.length = mask;
+    bp->addr = reg.addr.as_int() - off;
+    bp->ctrl = ctrl;
+  }
+
+  // max_bp rather than cur_bp to make sure to clear out any unused slots
+  return t->set_aarch64_debug_regs(NT_ARM_HW_BREAK, &bps, max_bp) &&
+         t->set_aarch64_debug_regs(NT_ARM_HW_WATCH, &wps, max_wp);
+}
+
+bool Task::set_debug_regs(const DebugRegs& regs) {
+  RR_ARCH_FUNCTION(set_debug_regs_arch, arch(), this, regs);
 }
 
 static void set_thread_area(std::vector<X86Arch::user_desc>& thread_areas_,

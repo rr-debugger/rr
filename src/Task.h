@@ -546,8 +546,11 @@ public:
    */
   bool set_debug_regs(const DebugRegs& regs);
 
+  bool set_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs, size_t nregs);
+  bool get_aarch64_debug_regs(int which, ARM64Arch::user_hwdebug_state *regs);
+
   uintptr_t get_debug_reg(size_t regno);
-  bool set_debug_reg(size_t regno, uintptr_t value);
+  bool set_x86_debug_reg(size_t regno, uintptr_t value);
 
   /** Update the thread area to |addr|. */
   void set_thread_area(remote_ptr<X86Arch::user_desc> tls);

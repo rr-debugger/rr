@@ -1177,6 +1177,7 @@ static bool watchpoint_triggered(uintptr_t debug_status,
 }
 
 bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status,
+    remote_ptr<void> hit_addr,
     remote_code_ptr address_of_singlestep_start) {
   bool triggered = false;
   for (auto& it : watchpoints) {
@@ -1189,15 +1190,25 @@ bool AddressSpace::notify_watchpoint_fired(uintptr_t debug_status,
     // execute.
     bool write_triggered = (it.second.watched_bits() & WRITE_BIT) &&
         update_watchpoint_value(it.first, it.second);
-    bool read_triggered = (it.second.watched_bits() & READ_BIT) &&
+    // Depending on the architecture the hardware may indicate hit watchpoints
+    // either by number, or by the address that triggered the watchpoint hit
+    // - support either.
+    bool read_triggered = false;
+    bool exec_triggered = false;
+    bool watchpoint_in_range = false;
+    if (is_x86ish(arch())) {
+      read_triggered = (it.second.watched_bits() & READ_BIT) &&
         watchpoint_triggered(debug_status,
                              it.second.debug_regs_for_exec_read);
-    bool exec_triggered = (it.second.watched_bits() & EXEC_BIT) &&
+      exec_triggered = (it.second.watched_bits() & EXEC_BIT) &&
         (address_of_singlestep_start.is_null() ||
          it.first.start() == address_of_singlestep_start.to_data_ptr<void>()) &&
          watchpoint_triggered(debug_status,
                               it.second.debug_regs_for_exec_read);
-    if (write_triggered || read_triggered || exec_triggered) {
+    } else {
+      watchpoint_in_range = it.first.contains(hit_addr);
+    }
+    if (write_triggered || read_triggered || exec_triggered || watchpoint_in_range) {
       it.second.changed = true;
       triggered = true;
     }

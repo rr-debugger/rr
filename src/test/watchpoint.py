@@ -8,7 +8,7 @@ expect_gdb('Breakpoint 1')
 # Test write watchpoint
 
 send_gdb('p &var')
-expect_gdb(r'\$1 = \(int \*\) ')
+expect_gdb(r'\$1 = \(volatile int \*\) ')
 
 send_gdb('watch *$1')
 expect_gdb('Hardware[()/a-z ]+watchpoint 2')

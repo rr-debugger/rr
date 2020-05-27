@@ -177,8 +177,7 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
     // breakpoint must have fired
     return result;
   }
-  if (t->vm()->notify_watchpoint_fired(t->x86_debug_status(),
-          t->last_execution_resume())) {
+  if (t->compute_trap_reasons().watchpoint) { 
     // watchpoint fired
     return result;
   }
