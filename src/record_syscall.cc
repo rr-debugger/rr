@@ -3368,6 +3368,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
       return PREVENT_SWITCH;
 
     case Arch::execve: {
+      t->session().scheduler().did_enter_execve(t);
       vector<string> cmd_line;
       remote_ptr<typename Arch::unsigned_word> argv = regs.arg2();
       bool ok = true;
@@ -5654,6 +5655,9 @@ static void rec_process_syscall_arch(RecordTask* t,
         << t->regs().syscall_result_signed() << " (errno "
         << errno_name(-t->regs().syscall_result_signed()) << ")"
         << extra_expected_errno_info<Arch>(t, syscall_state);
+    if (syscallno == Arch::execve) {
+      t->session().scheduler().did_exit_execve(t);
+    }
     return;
   }
 
@@ -5675,6 +5679,7 @@ static void rec_process_syscall_arch(RecordTask* t,
     }
 
     case Arch::execve:
+      t->session().scheduler().did_exit_execve(t);
       process_execve(t, syscall_state);
       if (t->emulated_ptracer) {
         if (t->emulated_ptrace_options & PTRACE_O_TRACEEXEC) {
