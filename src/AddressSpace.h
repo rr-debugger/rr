@@ -213,6 +213,17 @@ enum WatchType {
   WATCH_READWRITE = 0x03
 };
 
+enum ArmWatchType {
+  ARM_WATCH_EXEC = 0x0,
+  ARM_WATCH_READ = 0x1,
+  ARM_WATCH_WRITE = 0x2,
+  ARM_WATCH_READWRITE = ARM_WATCH_READ | ARM_WATCH_WRITE
+};
+
+enum ArmPrivLevel {
+  ARM_PRIV_EL0 = 0x2
+};
+
 enum DebugStatus {
   DS_WATCHPOINT_ANY = 0xf,
   DS_SINGLESTEP = 1 << 14,
@@ -582,6 +593,7 @@ public:
    * are known to not be set on singlestep).
    */
   bool notify_watchpoint_fired(uintptr_t debug_status,
+      remote_ptr<void> hit_addr,
       remote_code_ptr address_of_singlestep_start);
   /**
    * Return true if any watchpoint has fired. Will keep returning true until

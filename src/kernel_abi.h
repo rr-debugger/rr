@@ -2111,6 +2111,27 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
   };
   typedef struct user_fpsimd_state user_fpregs_struct;
 
+  struct hw_breakpoint_ctrl {
+    uint32_t enabled:1;
+    uint32_t priv:2;
+    uint32_t type:2;
+    uint32_t length:8;
+    uint32_t _pad:19;
+  };
+  static_assert(sizeof(hw_breakpoint_ctrl) == sizeof(uint32_t), "Size mismatch");
+
+  struct hw_bp {
+    uint64_t addr;
+    hw_breakpoint_ctrl ctrl;
+    uint32_t _pad;
+  };
+
+  struct user_hwdebug_state {
+    uint32_t dbg_info;
+    uint32_t pad;
+    struct hw_bp dbg_regs[16];
+  };
+
   struct sigcontext {
     __u64 fault_addr;
     user_pt_regs regs;
