@@ -5362,13 +5362,21 @@ static string extra_expected_errno_info(RecordTask* t,
       switch (t->regs().original_syscallno()) {
         case Arch::ioctl: {
           int request = (int)t->regs().arg2_signed();
-          int type = _IOC_TYPE(request);
-          int nr = _IOC_NR(request);
-          int dir = _IOC_DIR(request);
-          int size = _IOC_SIZE(request);
-          ss << "; Unknown ioctl(" << HEX(request) << "): type:" << HEX(type)
-             << " nr:" << HEX(nr) << " dir:" << HEX(dir) << " size:" << size
-             << " addr:" << HEX(t->regs().arg3());
+          if (request == SIOCETHTOOL) {
+            auto ifreq_ptr = remote_ptr<typename Arch::ifreq>(t->regs().arg3());
+            auto ifreq = t->read_mem(ifreq_ptr);
+            remote_ptr<void> cmd_ptr = ifreq.ifr_ifru.ifru_data.rptr();
+            auto cmd = t->read_mem(cmd_ptr.cast<uint32_t>());
+            ss << "; unknown ETHTOOL command " << cmd;
+          } else {
+            int type = _IOC_TYPE(request);
+            int nr = _IOC_NR(request);
+            int dir = _IOC_DIR(request);
+            int size = _IOC_SIZE(request);
+            ss << "; Unknown ioctl(" << HEX(request) << "): type:" << HEX(type)
+               << " nr:" << HEX(nr) << " dir:" << HEX(dir) << " size:" << size
+               << " addr:" << HEX(t->regs().arg3());
+          }
           break;
         }
         case Arch::fcntl:
