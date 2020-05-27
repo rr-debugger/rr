@@ -674,28 +674,44 @@ void Registers::set_flags(uintptr_t value) {
   }
 }
 
-bool Registers::singlestep_flag() {
+bool Registers::aarch64_singlestep_flag() {
   switch (arch()) {
-    case x86:
-    case x86_64:
-      return flags() & X86_TF_FLAG;
     case aarch64:
       return pstate() & AARCH64_DBG_SPSR_SS;
     default:
-      DEBUG_ASSERT(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "X86 only code path");
       return false;
   }
 }
 
-void Registers::clear_singlestep_flag() {
+void Registers::set_aarch64_singlestep_flag() {
+  switch (arch()) {
+    case aarch64:
+      return set_pstate(pstate() & AARCH64_DBG_SPSR_SS);
+    default:
+      DEBUG_ASSERT(0 && "AArch64 only code path");
+      return;
+  }
+}
+
+bool Registers::x86_singlestep_flag() {
+  switch (arch()) {
+    case x86:
+    case x86_64:
+      return flags() & X86_TF_FLAG;
+    default:
+      DEBUG_ASSERT(0 && "X86 only code path");
+      return false;
+  }
+}
+
+void Registers::clear_x86_singlestep_flag() {
   switch (arch()) {
     case x86:
     case x86_64:
       return set_flags(flags() & ~X86_TF_FLAG);
-    case aarch64:
-      return set_pstate(pstate() & ~AARCH64_DBG_SPSR_SS);
     default:
-      DEBUG_ASSERT(0 && "Unknown arch");
+      DEBUG_ASSERT(0 && "X86 only code path");
       break;
   }
 }

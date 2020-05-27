@@ -409,11 +409,27 @@ public:
 
   /**
    * Modify the processor's single step flag. On x86 this is the TF flag in the
-   * eflags register. On aarch64 this is the DBG_SPSR_SS flag in the pstate
-   * register.
+   * eflags register.
    */
-  bool singlestep_flag();
-  void clear_singlestep_flag();
+  bool x86_singlestep_flag();
+  void clear_x86_singlestep_flag();
+
+  /**
+   * Aarch64 has two flags that control single stepping. An EL1 one that
+   * enables singlestep execeptions and an EL0 one in pstate (SPSR_SS). The EL1 bit
+   * is controlled by PTRACE_SINGLESTEP (it gets turned on upon the first
+   * PTRACE_(SYSEMU_)SINGLESTEP and turned off on any other ptrace resume).
+   * The EL0 bit controls whether an exception is taken *before* execution
+   * of the next instruction (an exception is taken when the bit is *clear*).
+   * The hardware clears this bit whenever an instruction completes. Thus, to
+   * ensure that a single step actually happens, regardless of how we got to
+   * this step, we must both using PTRACE_SINGLESTEP and *set* the SPSR_SS bit.
+   * Otherwise, if we got to this stop via single step, the SPSR_SS bit will
+   * likely already be clear, and we'd take a single step exception without
+   * ever having executed any userspace instructions whatsoever.
+   */
+  bool aarch64_singlestep_flag();
+  void set_aarch64_singlestep_flag();
 
   void print_register_file(FILE* f) const;
   void print_register_file_compact(FILE* f) const;
