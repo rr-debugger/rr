@@ -900,6 +900,19 @@ static ReplayTask* to_replay_task(const BreakStatus& status) {
   return static_cast<ReplayTask*>(status.task);
 }
 
+static bool arch_watch_fires_before_instr(SupportedArch arch) {
+  switch (arch) {
+    case x86:
+    case x86_64:
+      return false;
+    case aarch64:
+      return true;
+    default:
+      FATAL() << "Unknown architecture";
+      return false;
+  }
+}
+
 ReplayResult ReplayTimeline::reverse_continue(
     const std::function<bool(ReplayTask* t)>& stop_filter,
     const std::function<bool()>& interrupt_check) {
@@ -946,17 +959,23 @@ ReplayResult ReplayTimeline::reverse_continue(
                << " up to " << end;
 
     bool at_breakpoint = false;
+    bool before_watchpoint = false;
     ReplayStepToMarkStrategy strategy;
     int stop_count = 0;
     bool made_progress_between_stops = false;
     remote_code_ptr avoidable_stop_ip;
     Ticks avoidable_stop_ticks = 0;
     while (true) {
-      apply_breakpoints_and_watchpoints();
       ReplayResult result;
       if (at_breakpoint) {
         result = singlestep_with_breakpoints_disabled();
+      } else if (before_watchpoint) {
+        // N.B.: This state is only reached on architectures where watchpoints
+        // fire *before* applying instruction effects (e.g. aarch64)
+        unapply_breakpoints_and_watchpoints();
+        result = current->replay_step(RUN_SINGLESTEP);
       } else {
+        apply_breakpoints_and_watchpoints();
         result = replay_step_to_mark(end, strategy);
         // This will remove all reverse-exec checkpoints ahead of the
         // current time, and add new ones if necessary. This should be
@@ -997,6 +1016,9 @@ ReplayResult ReplayTimeline::reverse_continue(
         } else {
           LOG(debug) << "Found watch break at " << dest << ", addr="
                      << result.break_status.data_watchpoints_hit()[0].addr;
+          if (arch_watch_fires_before_instr(current->arch())) {
+            before_watchpoint = true;
+          }
         }
         final_result = result;
         final_tuid = result.break_status.task ? result.break_status.task->tuid()

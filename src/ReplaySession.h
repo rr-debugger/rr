@@ -286,6 +286,8 @@ public:
 
   virtual ReplaySession* as_replay() override { return this; }
 
+  SupportedArch arch() { return trace_in.arch(); }
+
   /**
    * Return true if |sig| is a signal that may be generated during
    * replay but should be ignored.  For example, SIGCHLD can be
