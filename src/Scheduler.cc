@@ -92,6 +92,7 @@ Scheduler::Scheduler(RecordSession& session)
       max_ticks_(DEFAULT_MAX_TICKS),
       must_run_task(nullptr),
       pretend_num_cores_(1),
+      in_exec_tgid(0),
       always_switch(false),
       enable_chaos(false),
       enable_poll(false),
