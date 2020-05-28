@@ -540,6 +540,7 @@ public:
    * on failure. On success `result` is set to the tracee's TLS register.
    */
   bool read_aarch64_tls_register(uintptr_t *result);
+  void set_aarch64_tls_register(uintptr_t val);
 
   /**
    * Program the debug registers to the vector of watchpoint
@@ -849,7 +850,6 @@ public:
     Registers regs;
     ExtraRegisters extra_regs;
     std::string prname;
-    std::vector<X86Arch::user_desc> thread_areas;
     remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
     size_t syscallbuf_size;
     size_t num_syscallbuf_bytes;
@@ -866,6 +866,12 @@ public:
     int cloned_file_data_fd_child;
     std::string cloned_file_data_fname;
     WaitStatus wait_status;
+    // TLS state (architecture specific)
+    // On x86_64 the tls register is part of the general register state (%fs)
+    // On x86 thread_areas is used
+    // on aarch64, tls_register is used
+    uintptr_t tls_register;
+    std::vector<X86Arch::user_desc> thread_areas;
   };
 
   /**
