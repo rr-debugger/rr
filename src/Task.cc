@@ -1641,40 +1641,50 @@ template <> bool set_debug_regs_arch<ARM64Arch>(Task* t, const Task::DebugRegs& 
   ssize_t cur_bp = 0;
   ssize_t cur_wp = 0;
   for (auto reg : regs) {
-    ARM64Arch::hw_bp* bp = nullptr;
-    if (reg.type == WATCH_EXEC) {
-      if (cur_bp == max_bp) {
-        return false;
+    // GDB always splits these into nicely aligned platform chunks for us,
+    // but let's be general and support unaligned registers also.
+    size_t len = reg.num_bytes;
+    remote_ptr<uint8_t> addr = reg.addr.cast<uint8_t>();
+    while (len > 0) {
+      ARM64Arch::hw_bp* bp = nullptr;
+      if (reg.type == WATCH_EXEC) {
+        if (cur_bp == max_bp) {
+          return false;
+        }
+        bp = &bps.dbg_regs[cur_bp++];
+      } else {
+        if (cur_wp == max_wp) {
+          return false;
+        }
+        bp = &wps.dbg_regs[cur_wp++];
       }
-      bp = &bps.dbg_regs[cur_bp++];
-    } else {
-      if (cur_wp == max_wp) {
-        return false;
+      ARM64Arch::hw_breakpoint_ctrl ctrl;
+      memset(&ctrl, 0, sizeof(ctrl));
+      switch (reg.type) {
+        case WATCH_EXEC:
+          ctrl.type = ARM_WATCH_EXEC;
+          break;
+        case WATCH_WRITE:
+          ctrl.type = ARM_WATCH_WRITE;
+          break;
+        case WATCH_READWRITE:
+          ctrl.type = ARM_WATCH_READWRITE;
+          break;
       }
-      bp = &wps.dbg_regs[cur_wp++];
+      ctrl.enabled = 1;
+      ctrl.priv = ARM_PRIV_EL0;
+      uintptr_t off = (uintptr_t)addr.as_int() % 8;
+      size_t cur_bp_len = std::min(8-off, len);
+      // This is a byte mask of which particular byte in the 8byte word at `addr`
+      // to watch.
+      uintptr_t mask = ((((uintptr_t)1) << cur_bp_len) - 1) << off;
+      ASSERT(t, (mask & ~0xff) == 0);
+      ctrl.length = mask;
+      bp->addr = addr.as_int() - off;
+      bp->ctrl = ctrl;
+      len -= cur_bp_len;
+      addr += cur_bp_len;
     }
-    ARM64Arch::hw_breakpoint_ctrl ctrl;
-    memset(&ctrl, 0, sizeof(ctrl));
-    switch (reg.type) {
-      case WATCH_EXEC:
-        ctrl.type = ARM_WATCH_EXEC;
-        break;
-      case WATCH_WRITE:
-        ctrl.type = ARM_WATCH_WRITE;
-        break;
-      case WATCH_READWRITE:
-        ctrl.type = ARM_WATCH_READWRITE;
-        break;
-    }
-    ctrl.enabled = 1;
-    ctrl.priv = ARM_PRIV_EL0;
-	  uintptr_t off = (uintptr_t)reg.addr.as_int() % 8;
-    // This is a byte mask of which particular byte in the 8byte word at `addr`
-    // to watch.
-	  uintptr_t mask = ((1 << reg.num_bytes) - 1) << off;
-    ctrl.length = mask;
-    bp->addr = reg.addr.as_int() - off;
-    bp->ctrl = ctrl;
   }
 
   // max_bp rather than cur_bp to make sure to clear out any unused slots
