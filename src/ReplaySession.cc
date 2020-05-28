@@ -523,7 +523,14 @@ static void emulate_syscall_entry(ReplayTask* t, const TraceFrame& frame,
   r.set_ip(syscall_instruction.increment_by_syscall_insn_length(t->arch()));
   r.set_original_syscallno(r.syscallno());
   r.set_orig_arg1(r.arg1());
-  if (is_x86ish(t->arch())) {
+  /**
+   * The aarch64 kernel has a quirk where if the syscallno is -1 (and only -1),
+   * it will apply the -ENOSYS result before any ptrace entry stop.
+   * On x86, this happens unconditionally for every syscall, but there the
+   * result isn't shared with arg1, and we usually don't care because we have
+   * access to original_syscallno.
+   */
+  if (is_x86ish(t->arch()) || (t->arch() == aarch64 && r.syscallno() == -1)) {
     r.set_syscall_result(-ENOSYS);
   }
   t->set_regs(r);

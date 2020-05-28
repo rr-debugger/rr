@@ -183,7 +183,7 @@ public:
   // Access the registers holding system-call numbers, results, and
   // parameters.
 
-  intptr_t syscallno() const { return RR_GET_REG(eax, rax, x[8]); }
+  intptr_t syscallno() const { return (int)RR_GET_REG(eax, rax, x[8]); }
   void set_syscallno(intptr_t syscallno) { RR_SET_REG(eax, rax, x[8], syscallno); }
 
   /**
