@@ -85,10 +85,14 @@ static void process_syscall_arch(Task* t, int syscallno) {
     case Arch::rt_sigqueueinfo:
     case Arch::rt_tgsigqueueinfo:
     case Arch::tgkill:
-    case Arch::tkill:
+    case Arch::tkill: {
       LOG(debug) << "Suppressing syscall "
                  << syscall_name(syscallno, t->arch());
+      Registers r = t->regs();
+      r.set_syscall_result(-ENOSYS);
+      t->set_regs(r);
       return;
+    }
   }
 
   LOG(debug) << "Executing syscall " << syscall_name(syscallno, t->arch());
@@ -158,6 +162,10 @@ DiversionSession::DiversionResult DiversionSession::diversion_step(
            !result.break_status.singlestep_complete ||
                command == RUN_SINGLESTEP);
     return result;
+  }
+
+  if (t->status().is_syscall()) {
+    t->apply_syscall_entry_regs();
   }
 
   process_syscall(t, t->regs().original_syscallno());
