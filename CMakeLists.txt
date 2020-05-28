@@ -1188,7 +1188,7 @@ set(TESTS_WITH_PROGRAM
   ignored_sigsegv
   ignore_nested
   immediate_restart
-  int3_ok
+  x86/int3_ok
   interrupt
   intr_ptrace_decline
   invalid_jump
