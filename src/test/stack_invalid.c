@@ -55,6 +55,6 @@ static ssize_t my_write(int fd, void* buf, size_t size) {
 
 int main(void) {
   test_assert(1 == my_write(STDOUT_FILENO, &ch, 1));
-  atomic_puts("XIT-SUCCESS");
+  atomic_puts("EXIT-SUCCESS");
   return 0;
 }
