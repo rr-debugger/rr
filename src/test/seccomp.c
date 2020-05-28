@@ -26,7 +26,7 @@ static void handler(int sig, siginfo_t* si, void* p) {
   test_assert(si->si_arch == AUDIT_ARCH_I386);
 #elif defined(__x86_64__)
   test_assert(si->si_arch == AUDIT_ARCH_X86_64);
-#elif defined(__x86_64__)
+#elif defined(__aarch64__)
   test_assert(si->si_arch == AUDIT_ARCH_AARCH64);
 #endif
 #endif
