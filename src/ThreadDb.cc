@@ -130,6 +130,14 @@ ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
 
     *base = reinterpret_cast<psaddr_t>(result);
     return PS_OK;
+  } else if (task->arch() == aarch64) {
+    uintptr_t result;
+    if (!task->read_aarch64_tls_register(&result)) {
+      LOG(error) << "Task was dead";
+      return PS_ERR;
+    }
+    *base = reinterpret_cast<psaddr_t>(result - val);
+    return PS_OK;
   } else {
     LOG(error) << "Unknown architecture in ThreadDb";
     return PS_ERR;

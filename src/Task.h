@@ -536,6 +536,12 @@ public:
   void set_extra_regs(const ExtraRegisters& regs);
 
   /**
+   * Read the aarch64 TLS register via ptrace. Returns true on success, false
+   * on failure. On success `result` is set to the tracee's TLS register.
+   */
+  bool read_aarch64_tls_register(uintptr_t *result);
+
+  /**
    * Program the debug registers to the vector of watchpoint
    * configurations in |reg| (also updating the debug control
    * register appropriately).  Return true if all registers were

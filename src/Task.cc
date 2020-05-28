@@ -1920,6 +1920,11 @@ void Task::canonicalize_regs(SupportedArch syscall_arch) {
   registers_dirty = true;
 }
 
+bool Task::read_aarch64_tls_register(uintptr_t *result) {
+  struct iovec vec = { result, sizeof(*result) };
+  return ptrace_if_alive(PTRACE_GETREGSET, NT_ARM_TLS, &vec);
+}
+
 void Task::did_waitpid(WaitStatus status) {
   LOG(debug) << "  Task " << tid << " changed status to " << status;
 
