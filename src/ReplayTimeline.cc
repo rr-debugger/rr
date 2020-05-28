@@ -1134,7 +1134,7 @@ ReplayResult ReplayTimeline::reverse_singlestep(
   while (true) {
     Mark end = outer;
     Mark start;
-    bool seen_barrier;
+    bool seen_barrier = false;
 
     while (true) {
       MarkKey current_key = end.ptr->proto.key;
