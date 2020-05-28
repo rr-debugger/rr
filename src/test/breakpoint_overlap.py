@@ -9,6 +9,7 @@ ArchInfo = collections.namedtuple('ArchInfo', ['ip_name'])
 regex_info = {
     'i386': ArchInfo('eip'),
     'i386:x86-64': ArchInfo('rip'),
+    'aarch64': ArchInfo('pc'),
 }
 
 syscall_re = re.compile("`SYSCALL: <unknown-syscall--1>' \\(state:EXITING_SYSCALL\\)")
@@ -49,10 +50,17 @@ send_gdb('c')
 expect_gdb('Breakpoint 2')
 expect_gdb('(rr)')
 
-send_gdb('p/x *(char*)$pc')
-expect_gdb('0x([a-f0-9]+)')
-
-if last_match().group(1) is 'cc':
-    failed('saw breakpoint at current instruction')
+if arch == 'aarch64':
+    send_gdb('p/x *(uint32_t*)$pc')
+    expect_gdb('0x([a-f0-9]+)')
+    if last_match().group(1) == 'd4200000':
+        failed('saw breakpoint at current instruction')
+elif arch == 'i386' or arch == 'i386:x86-64':
+    send_gdb('p/x *(char*)$pc')
+    expect_gdb('0x([a-f0-9]+)')
+    if last_match().group(1) == 'cc':
+        failed('saw breakpoint at current instruction')
+else:
+    failed('Add check for this architecture')
 
 ok()
