@@ -1925,6 +1925,12 @@ bool Task::read_aarch64_tls_register(uintptr_t *result) {
   return ptrace_if_alive(PTRACE_GETREGSET, NT_ARM_TLS, &vec);
 }
 
+void Task::set_aarch64_tls_register(uintptr_t val) {
+  struct iovec vec = { &val, sizeof(val) };
+  bool ok = ptrace_if_alive(PTRACE_SETREGSET, NT_ARM_TLS, &vec);
+  ASSERT(this, ok);
+}
+
 void Task::did_waitpid(WaitStatus status) {
   LOG(debug) << "  Task " << tid << " changed status to " << status;
 
@@ -2158,14 +2164,14 @@ bool Task::try_wait() {
 }
 
 template <typename Arch>
-static void set_thread_area_from_clone_arch(Task* t, remote_ptr<void> tls) {
+static void set_tls_from_clone_arch(Task* t, remote_ptr<void> tls) {
   if (Arch::clone_tls_type == Arch::UserDescPointer) {
     t->set_thread_area(tls.cast<X86Arch::user_desc>());
   }
 }
 
-static void set_thread_area_from_clone(Task* t, remote_ptr<void> tls) {
-  RR_ARCH_FUNCTION(set_thread_area_from_clone_arch, t->arch(), t, tls);
+static void set_tls_from_clone(Task* t, remote_ptr<void> tls) {
+  RR_ARCH_FUNCTION(set_tls_from_clone_arch, t->arch(), t, tls);
 }
 
 template <typename Arch>
@@ -2256,7 +2262,7 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   t->open_mem_fd_if_needed();
   t->thread_areas_ = thread_areas_;
   if (CLONE_SET_TLS & flags) {
-    set_thread_area_from_clone(t, tls);
+    set_tls_from_clone(t, tls);
   }
 
   t->as->insert_task(t);
@@ -2375,6 +2381,8 @@ static void copy_tls_arch(const Task::CapturedState& state,
           syscall_number_for_set_thread_area(remote.arch()),
           remote_tls.get().as_int());
     }
+  } else if (Arch::arch() == aarch64) {
+    remote.task()->set_aarch64_tls_register(state.tls_register);
   }
 }
 
@@ -2415,6 +2423,10 @@ Task::CapturedState Task::capture_state() {
   state.regs = regs();
   state.extra_regs = extra_regs();
   state.prname = prname;
+  if (arch() == aarch64) {
+    bool ok = read_aarch64_tls_register(&state.tls_register);
+    ASSERT(this, ok);
+  }
   state.thread_areas = thread_areas_;
   state.desched_fd_child = desched_fd_child;
   state.cloned_file_data_fd_child = cloned_file_data_fd_child;
