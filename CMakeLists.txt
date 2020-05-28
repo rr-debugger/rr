@@ -822,7 +822,6 @@ set(BASIC_TESTS
   futex_exit_race_sigsegv
   futex_pi
   futex_priorities
-  gdb_bogus_breakpoint
   gcrypt_rdrand
   getcpu
   getgroups
@@ -1179,6 +1178,7 @@ set(TESTS_WITH_PROGRAM
   function_calls
   x86/fxregs
   getcwd
+  gdb_bogus_breakpoint
   goto_event
   hello
   hooks
