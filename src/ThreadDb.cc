@@ -91,8 +91,8 @@ pid_t ps_getpid(struct ps_prochandle* h) {
   return h->tgid;
 }
 
-static const int REG_FS = 25;
-static const int REG_GS = 26;
+static const int _REG_FS = 25;
+static const int _REG_GS = 26;
 
 ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
                             int val, psaddr_t* base) {
@@ -117,10 +117,10 @@ ps_err_e ps_get_thread_area(const struct ps_prochandle* h, lwpid_t rec_tid,
   } else if (task->arch() == rr::x86_64) {
     uintptr_t result;
     switch (val) {
-      case REG_FS:
+      case _REG_FS:
         result = task->regs().fs_base();
         break;
-      case REG_GS:
+      case _REG_GS:
         result = task->regs().gs_base();
         break;
       default:
