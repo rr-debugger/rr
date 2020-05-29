@@ -6,11 +6,12 @@ int main(int argc, char *argv[]) {
   test_assert(argc >= 2);
 
   struct sock_filter filter[] = {
+#if defined(__i386__) || defined(__x86_64__)
     { BPF_LD | BPF_W | BPF_ABS,  0, 0, offsetof(struct seccomp_data, arch) },
     { BPF_JMP | BPF_JEQ | BPF_K, 0, 4, AUDIT_ARCH_I386 },
     // i386
     { BPF_LD | BPF_W | BPF_ABS,  0, 0, offsetof(struct seccomp_data, nr) },
-    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 172 /* __NR_prctl */ },
+    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 172 /* __NR32_prctl */ },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_TRAP },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_ALLOW },
     // x86_64
@@ -18,8 +19,14 @@ int main(int argc, char *argv[]) {
     { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, 157 /* __NR_prctl */ },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_TRAP },
     { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_ALLOW }
+#else
+    { BPF_LD | BPF_W | BPF_ABS,  0, 0, offsetof(struct seccomp_data, nr) },
+    { BPF_JMP | BPF_JEQ | BPF_K, 0, 1, SYS_prctl },
+    { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_TRAP },
+    { BPF_RET | BPF_K,           0, 0, SECCOMP_RET_ALLOW }
+#endif
   };
-  struct sock_fprog fprog = { 10, filter };
+  struct sock_fprog fprog = { sizeof(filter)/sizeof(struct sock_filter), filter };
   int ret;
   int status;
 
@@ -39,7 +46,11 @@ int main(int argc, char *argv[]) {
     ret = dup2(fd_pair[1], 2);
     test_assert(ret >= 0);
 
-    execve(argv[1], &argv[1], NULL); // Should not return
+    // We want to probe the regular rr error path, not the test monitor path,
+    // but we should still pass through things like LD_LIBRARY_PATH in case
+    // they're required for rr running properly.
+    unsetenv("RUNNING_UNDER_TEST_MONITOR");
+    execve(argv[1], &argv[1], environ); // Should not return
     test_assert(0);
   }
   ret = close(fd_pair[1]);
