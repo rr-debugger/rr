@@ -2085,6 +2085,11 @@ static int random_addr_bits(SupportedArch arch) {
     // and only the bottom half is usable by user space
     case x86_64:
       return 47;
+    // Aarch64 has 48 bit address space, with user and kernel each getting
+    // their own 48 bits worth of address space at opposite end of the full
+    // 64-bit address space.
+    case aarch64:
+      return 48;
   }
 }
 
