@@ -687,7 +687,7 @@ bool Registers::aarch64_singlestep_flag() {
 void Registers::set_aarch64_singlestep_flag() {
   switch (arch()) {
     case aarch64:
-      return set_pstate(pstate() & AARCH64_DBG_SPSR_SS);
+      return set_pstate(pstate() | AARCH64_DBG_SPSR_SS);
     default:
       DEBUG_ASSERT(0 && "AArch64 only code path");
       return;
