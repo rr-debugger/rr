@@ -272,6 +272,7 @@ static void note_entering_syscall(RecordTask* t) {
   }
 }
 
+#if defined (__x86_64__)
 static bool is_in_vsyscall(remote_code_ptr ip)
 {
   // This is hardcoded by the Linux ABI
@@ -279,6 +280,12 @@ static bool is_in_vsyscall(remote_code_ptr ip)
   remote_code_ptr vsyscall_end = 0xffffffffff601000;
   return vsyscall_start <= ip && ip < vsyscall_end;
 }
+#else
+static bool is_in_vsyscall(remote_code_ptr)
+{
+  return false;
+}
+#endif
 
 void RecordSession::handle_seccomp_traced_syscall(RecordTask* t,
                                                   StepState* step_state,
