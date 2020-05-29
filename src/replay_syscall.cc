@@ -1149,14 +1149,14 @@ static void rep_process_syscall_arch(ReplayTask* t, ReplayTraceStep* step,
     case Arch::set_thread_area: {
       // Using AutoRemoteSyscalls here fails for arch_prctl, not sure why.
       Registers r = t->regs();
-      r.set_syscallno(t->regs().original_syscallno());
+      r.set_syscallno(sys);
       r.set_ip(r.ip().decrement_by_syscall_insn_length(r.arch()));
       t->set_regs(r);
       if (sys == Arch::mprotect) {
         t->vm()->fixup_mprotect_growsdown_parameters(t);
       }
-      t->exit_syscall();
       t->enter_syscall();
+      t->exit_syscall();
       ASSERT(t, t->regs().syscall_result() == trace_regs.syscall_result());
       if (sys == Arch::mprotect) {
         Registers r2 = t->regs();
