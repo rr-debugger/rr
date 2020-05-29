@@ -155,7 +155,7 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbRegister regno,
     RegData reg_data;
     if (DREG_V0 <= regno && regno <= DREG_V31) {
       reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, vregs[0]) +
-        ((regno - DREG_V0) * sizeof(__uint128_t)), sizeof(__uint128_t));
+        ((regno - DREG_V0) * 16), 16);
     } else if (regno == DREG_FPSR) {
       reg_data = RegData(offsetof(ARM64Arch::user_fpsimd_state, fpsr),
                          sizeof(uint32_t));

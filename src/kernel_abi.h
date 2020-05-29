@@ -2103,6 +2103,11 @@ struct ARM64Arch : public GenericArch<SupportedArch::aarch64, WordSize64Defs> {
   };
   typedef struct user_pt_regs user_regs_struct;
 
+#if defined (__i386__)
+  typedef struct {
+    uint64_t parts[2];
+  } __uint128_t;
+#endif
   struct user_fpsimd_state {
     __uint128_t vregs[32];
     uint32_t fpsr;
