@@ -66,6 +66,7 @@ stopped_locations = {
                     '(0x[0-9a-f]+ in )?pthread_barrier_wait',
                     '(0x[0-9a-f]+ in )?futex_wait',
                     '0x0*70000002 in \?\?'],
+    'aarch64': ['(0x[0-9a-f]+ in )?futex_wait'],
 }
 
 location_regex = '|'.join(stopped_locations[arch])
