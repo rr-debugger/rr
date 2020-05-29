@@ -34,6 +34,8 @@ RecordCommand RecordCommand::singleton(
     "  -c, --num-cpu-ticks=<NUM>  maximum number of 'CPU ticks' (currently \n"
     "                             retired conditional branches) to allow a \n"
     "                             task to run before interrupting it\n"
+    "  --disable-avx-512          Masks out the CPUID bits for AVX512\n"
+    "                             This can improve trace portability\n"
     "  --disable-cpuid-features <CCC>[,<DDD>]\n"
     "                             Mask out CPUID EAX=1 feature bits\n"
     "                             <CCC>: Bitmask of bits to clear from ECX\n"
@@ -256,6 +258,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 13, "syscall-buffer-sig", HAS_PARAMETER },
     { 14, "stap-sdt", NO_PARAMETER },
     { 15, "unmap-vdso", NO_PARAMETER },
+    { 16, "disable-avx-512", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -460,6 +463,11 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       break;
     case 15:
       flags.unmap_vdso = true;
+      break;
+    case 16:
+      flags.disable_cpuid_features.extended_features_ebx |= 0xdc230000;
+      flags.disable_cpuid_features.extended_features_ecx |= 0x00002c42;
+      flags.disable_cpuid_features.extended_features_edx |= 0x0000000c;
       break;
     case 's':
       flags.always_switch = true;
