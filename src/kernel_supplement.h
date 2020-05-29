@@ -83,6 +83,13 @@ namespace rr {
 #define PR_SET_SPECULATION_CTRL 53
 #endif
 
+// This is used on AArch64 and available in linux/signal.h, but
+// including that header will conflict with a number of our
+// struct definitions.
+#ifndef TRAP_HWBKPT
+#define TRAP_HWBKPT 4
+#endif
+
 // These are defined by the include/linux/errno.h in the kernel tree.
 // Since userspace doesn't see these errnos in normal operation, that
 // header apparently isn't distributed with libc.

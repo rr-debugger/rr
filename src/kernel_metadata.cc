@@ -342,6 +342,7 @@ string sicode_name(int code, int sig) {
       switch (code) {
         CASE(TRAP_BRKPT);
         CASE(TRAP_TRACE);
+        CASE(TRAP_HWBKPT);
       }
       break;
     case SIGILL:
