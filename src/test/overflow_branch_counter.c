@@ -40,6 +40,12 @@ int main(void) {
       "je 1b\n\t"
       : "+r"(counter), "+r"(counter2)
       : "m"(caught_sig));
+#elif defined(__aarch64__)
+  register long tmp = 0;
+  asm("1: add %0, %0, #1\n\t"
+      "ldr %1, %2\n\t"
+      "cmp %w1, %w0\n\t"
+      "bne 1b" : "+r"(counter) : "r"(tmp), "m"(caught_sig));
 #else
 #error Unknown architecture
 #endif
