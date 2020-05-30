@@ -12,7 +12,7 @@ long checked_ptrace(enum __ptrace_request request, pid_t pid, void* addr,
   return ret;
 }
 
-extern char syscall_addr;
+extern char syscall_addr __attribute__ ((visibility ("hidden")));
 uintptr_t child_syscall_addr;
 static __attribute__((noinline, used)) void my_syscall(void) {
 #if defined(__i386)
@@ -20,7 +20,7 @@ static __attribute__((noinline, used)) void my_syscall(void) {
 #elif defined(__x86_64__)
   __asm__ __volatile__("syscall_addr: syscall\n\t");
 #elif defined(__aarch64__)
-  __asm__ __volatile__("syscall_addr: svc #0\n\t");
+  __asm__ __volatile__("syscall_addr: svc #0\n\tbrk #0\n\t");
 #endif
 }
 
@@ -32,12 +32,12 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
   iov.iov_base = &regs;
   iov.iov_len = sizeof(regs);
   checked_ptrace(PTRACE_GETREGSET, child, (void*)NT_PRSTATUS, &iov);
-#ifdef __i386
+#ifdef __i386__
   regs.eip = child_syscall_addr;
   regs.eax = __NR_munmap;
   regs.ebx = start;
   regs.ecx = size;
-#else
+#elif defined(__x86_64__)
   regs.rip = child_syscall_addr;
   regs.rax = __NR_munmap;
   regs.rdi = start;
@@ -46,6 +46,13 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
   regs.r10 = 0;
   regs.r8 = 0;
   regs.r9 = 0;
+#elif defined(__aarch64__)
+  regs.pc = child_syscall_addr;
+  regs.regs[8] = SYS_munmap;
+  regs.regs[0] = start;
+  regs.regs[1] = size;
+#else
+#error unsupported architecture
 #endif
   checked_ptrace(PTRACE_SETREGSET, child, (void*)NT_PRSTATUS, &iov);
   // Execute the syscall
@@ -62,10 +69,14 @@ void munmap_remote(pid_t child, uintptr_t start, size_t size) {
   test_assert(WSTOPSIG(status) == (SIGTRAP | 0x80));
   // Verify that the syscall didn't fail
   checked_ptrace(PTRACE_GETREGSET, child, (void*)NT_PRSTATUS, &iov);
-#ifdef __i386
-  test_assert(regs.eax != -1);
+#ifdef __i386__
+  test_assert(regs.eax == 0);
+#elif defined(__x86_64__)
+  test_assert(regs.rax == 0);
+#elif defined(__aarch64__)
+  test_assert(regs.regs[0] == 0);
 #else
-  test_assert(regs.rax != (uintptr_t)-1);
+#error unuspported architecture
 #endif
 }
 
