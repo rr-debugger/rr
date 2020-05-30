@@ -1355,7 +1355,7 @@ set(TESTS_WITHOUT_PROGRAM
   sanity
   shm_checkpoint
   siginfo
-  sigreturn_checksum
+  x86/sigreturn_checksum
   signal_stop
   signal_checkpoint
   simple_script
