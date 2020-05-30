@@ -27,8 +27,10 @@ int main(void) {
 
   x = v;
 
+#if defined(__i386__) || defined(__x86_64__)
   /* Trigger synchronous signal */
   rdtsc();
+#endif
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
