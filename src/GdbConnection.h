@@ -397,7 +397,7 @@ public:
    * target has stopped executing for some reason.  |sig| is the signal
    * that stopped execution, or 0 if execution stopped otherwise.
    */
-  void notify_stop(GdbThreadId which, int sig, uintptr_t watch_addr = 0);
+  void notify_stop(GdbThreadId which, int sig, const char *reason=nullptr);
 
   /** Notify the debugger that a restart request failed. */
   void notify_restart_failed();
@@ -599,6 +599,9 @@ public:
   */
   bool is_connection_alive();
 
+  bool hwbreak_supported() { return hwbreak_supported_; }
+  bool swbreak_supported() { return swbreak_supported_; }
+
 private:
   /**
    * read() incoming data exactly one time, successfully.  May block.
@@ -666,7 +669,7 @@ private:
   bool process_packet();
   void consume_request();
   void send_stop_reply_packet(GdbThreadId thread, int sig,
-                              uintptr_t watch_addr = 0);
+                              const char *reason);
   void send_file_error_reply(int system_errno);
 
   // Current request to be processed.
@@ -690,6 +693,8 @@ private:
   Features features_;
   bool connection_alive_;
   bool multiprocess_supported_; // client supports multiprocess extension
+  bool hwbreak_supported_; // client supports hwbreak extension
+  bool swbreak_supported_; // client supports swbreak extension
 };
 
 } // namespace rr

@@ -860,11 +860,24 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
                                   const BreakStatus& break_status) {
   bool do_stop = false;
   remote_ptr<void> watch_addr;
+  char watch[1024];
+  watch[0] = '\0';
   if (!break_status.watchpoints_hit.empty()) {
     do_stop = true;
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     stop_siginfo.si_signo = SIGTRAP;
     watch_addr = break_status.watchpoints_hit[0].addr;
+    bool any_hw_break = false;
+    for (const auto& w : break_status.watchpoints_hit) {
+      if (w.type == WATCH_EXEC) {
+        any_hw_break = true;
+      }
+    }
+    if (dbg->hwbreak_supported() && any_hw_break) {
+      snprintf(watch, sizeof(watch) - 1, "hwbreak:;");
+    } else if (watch_addr) {
+      snprintf(watch, sizeof(watch) - 1, "watch:%" PRIxPTR ";", watch_addr.as_int());
+    }
     LOG(debug) << "Stopping for watchpoint at " << watch_addr;
   }
   if (break_status.breakpoint_hit || break_status.singlestep_complete) {
@@ -872,6 +885,9 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     memset(&stop_siginfo, 0, sizeof(stop_siginfo));
     stop_siginfo.si_signo = SIGTRAP;
     if (break_status.breakpoint_hit) {
+      if (dbg->swbreak_supported()) {
+        snprintf(watch, sizeof(watch) - 1, "swbreak:;");
+      }
       LOG(debug) << "Stopping for breakpoint";
     } else {
       LOG(debug) << "Stopping for singlestep";
@@ -909,7 +925,7 @@ void GdbServer::maybe_notify_stop(const GdbRequest& req,
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
     dbg->notify_stop(get_threadid(t), stop_siginfo.si_signo,
-                     watch_addr.as_int());
+                     watch);
     last_query_tuid = last_continue_tuid = t->tuid();
   }
 }
