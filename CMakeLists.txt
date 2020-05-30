@@ -1296,7 +1296,7 @@ set(TESTS_WITHOUT_PROGRAM
   break_int3
   break_mmap_private
   break_msg
-  break_rdtsc
+  x86/break_rdtsc
   break_sigreturn
   break_sync_signal
   break_thread
@@ -1363,7 +1363,7 @@ set(TESTS_WITHOUT_PROGRAM
   simple_winch
   stack_overflow_debug
   step1
-  step_rdtsc
+  x86/step_rdtsc
   step_signal
   x86/string_instructions_break
   x86/string_instructions_replay_quirk
