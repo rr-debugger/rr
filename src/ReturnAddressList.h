@@ -28,7 +28,11 @@ struct ReturnAddressList {
    * will probably not be), but they will be a function of the task's current
    * state, so may be useful for distinguishing this state from other states.
    */
-  ReturnAddressList() { memset(addresses, 0, sizeof(addresses)); }
+  ReturnAddressList() {
+    for (size_t i = 0; i < MAX_COUNT; ++i) {
+      addresses[i] = nullptr;
+    }
+  }
   explicit ReturnAddressList(Task* t);
 
   bool operator==(const ReturnAddressList& other) const {
