@@ -2,6 +2,14 @@
 
 #include "util.h"
 
+#ifndef MADV_WIPEONFORK
+#define MADV_WIPEONFORK 18
+#endif
+
+#ifndef MADV_KEEPONFORK
+#define MADV_KEEPONFORK 19
+#endif
+
 int main(void) {
   char* page;
   pid_t pid;
