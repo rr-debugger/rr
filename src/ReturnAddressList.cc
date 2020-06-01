@@ -63,7 +63,9 @@ template <> void return_addresses_arch<ARM64Arch>(ReturnAddressList* result, Tas
   // On aarch64, we track all taken branches, so tracking return addresses should
   // not be necessary.
   DEBUG_ASSERT(ReturnAddressList::AARCH64_COUNT == 0);
-  memset(result->addresses, 0, sizeof(result->addresses));
+  for (size_t i = 0; i < array_length(result->addresses); ++i) {
+    result->addresses[i] = nullptr;
+  }
 }
 
 static void compute_return_addresses(ReturnAddressList* result, Task* t) {
