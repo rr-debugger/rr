@@ -949,7 +949,7 @@ set(BASIC_TESTS
   ptrace_attach_thread_running
   ptrace_breakpoint
   ptrace_change_patched_syscall
-  ptrace_debug_regs
+  x86/ptrace_debug_regs
   ptrace_exec
   x86/ptrace_exec32
   ptrace_kill_grandtracee
