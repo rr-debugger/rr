@@ -2602,6 +2602,24 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           break;
         }
+        case NT_ARM_HW_BREAK:
+        case NT_ARM_HW_WATCH: {
+          if (Arch::arch() != aarch64) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            ARM64Arch::user_hwdebug_state bps;
+            bool ok = tracee->get_aarch64_debug_regs((int)t->regs().arg3(), &bps);
+            ASSERT(tracee, ok);
+            uint8_t *data = (uint8_t*)&bps;
+            vector<uint8_t> regs(data, data+sizeof(bps));
+            ptrace_get_reg_set<Arch>(t, syscall_state, regs);
+          }
+          break;
+        }
         case NT_X86_XSTATE: {
           if (!Arch::is_x86ish()) {
             syscall_state.expect_errno = EINVAL;
@@ -2659,6 +2677,21 @@ static Switchable prepare_ptrace(RecordTask* t,
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
                 t, sizeof(int), syscall_state);
+          }
+          break;
+        }
+        case NT_ARM_HW_WATCH:
+        case NT_ARM_HW_BREAK: {
+          if (Arch::arch() != aarch64) {
+            syscall_state.expect_errno = EINVAL;
+            emulate = false;
+            break;
+          }
+          RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
+          if (tracee) {
+            ptrace_verify_set_reg_set<Arch>(
+                t, offsetof(ARM64Arch::user_hwdebug_state, dbg_regs[0]),
+                syscall_state);
           }
           break;
         }
