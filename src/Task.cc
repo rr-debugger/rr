@@ -696,6 +696,17 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
               tracee->set_regs(r);
               break;
             }
+            case NT_ARM_HW_WATCH:
+            case NT_ARM_HW_BREAK: {
+              auto set = ptrace_get_regs_set<Arch>(
+                  this, regs, offsetof(ARM64Arch::user_hwdebug_state, dbg_regs[0]));
+              ASSERT(this, set.size() >= sizeof(int));
+              tracee->set_aarch64_debug_regs((int)regs.arg3(),
+                (ARM64Arch::user_hwdebug_state*)set.data(),
+                (set.size() - offsetof(ARM64Arch::user_hwdebug_state, dbg_regs[0]))/
+                  2*sizeof(ARM64Arch::hw_bp));
+              break;
+            }
             case NT_X86_XSTATE: {
               switch (tracee->extra_regs().format()) {
                 case ExtraRegisters::XSAVE: {
