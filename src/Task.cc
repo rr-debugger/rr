@@ -3388,10 +3388,11 @@ void Task::dup_from(Task *other) {
     // TODO: Only do this if the rr page isn't already mapped
     this->vm()->unmap_all_but_rr_page(remote);
     create_mapping(this, remote, stack_mapping);
-    off_t addr = stack_mapping.start().as_int();
-    copy_file_range_all(other->vm()->mem_fd(),
+    off64_t addr = stack_mapping.start().as_int();
+    ssize_t copied = copy_file_range_all(other->vm()->mem_fd(),
       addr, this->vm()->mem_fd(),
       addr, stack_mapping.size());
+    ASSERT(this, copied > 0) << "copy_file_range_all failed. copied=" << copied;
   }
   {
     AutoRemoteSyscalls remote_this(this);
@@ -3400,10 +3401,11 @@ void Task::dup_from(Task *other) {
         continue;
       create_mapping(this, remote_this, km);
       // XXX: If this maps a file, recreate it as such
-      off_t addr = km.start().as_int();
-      copy_file_range_all(other->vm()->mem_fd(),
+      off64_t addr = km.start().as_int();
+      ssize_t copied = copy_file_range_all(other->vm()->mem_fd(),
         addr, this->vm()->mem_fd(),
         addr, km.size());
+      ASSERT(this, copied > 0) << "copy_file_range_all failed. copied=" << copied;
     }
     AutoRemoteSyscalls remote_other(other);
     std::vector<int> all_fds = read_all_proc_fds(other->tid);
