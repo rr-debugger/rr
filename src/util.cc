@@ -1859,8 +1859,8 @@ ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off64_t offset
   return written;
 }
 
-ssize_t copy_file_range_all(int from_fd, off_t from_offset, int to_fd,
-                            off_t to_offset, size_t len)
+ssize_t copy_file_range_all(int from_fd, off64_t from_offset, int to_fd,
+                            off64_t to_offset, size_t len)
 {
   char buf[4096];
   size_t nwritten = 0;
