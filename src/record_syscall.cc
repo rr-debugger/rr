@@ -97,23 +97,35 @@ union _semun {
  * linux/shm.h.
  */
 static int _shmctl(int shmid, int cmd, shmid64_ds* buf) {
+#ifdef SYS_shmctl
+  int ret = syscall(SYS_shmctl, shmid, cmd, buf);
+  if (ret >= 0 || errno != ENOSYS) {
+    return ret;
+  }
+#endif
+#ifdef SYS_ipc
   if (sizeof(void*) == 4) {
     cmd |= IPC_64;
   }
-#ifdef SYS_shmctl
-  return syscall(SYS_shmctl, shmid, cmd, buf);
-#else
   return syscall(SYS_ipc, SHMCTL, shmid, cmd, 0, buf);
+#else
+  return ret;
 #endif
 }
 static int _semctl(int semid, int semnum, int cmd, _semun un_arg) {
+#ifdef SYS_semctl
+  int ret = syscall(SYS_semctl, semid, semnum, cmd, un_arg);
+  if (ret >= 0 || errno != ENOSYS) {
+    return ret;
+  }
+#endif
+#ifdef SYS_ipc
   if (sizeof(void*) == 4) {
     cmd |= IPC_64;
   }
-#ifdef SYS_semctl
-  return syscall(SYS_semctl, semid, semnum, cmd, un_arg);
-#else
   return syscall(SYS_ipc, SEMCTL, semid, semnum, cmd, &un_arg);
+#else
+  return ret;
 #endif
 }
 
