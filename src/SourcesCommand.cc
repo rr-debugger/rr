@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <map>
 
 #include "Command.h"
 #include "ElfReader.h"
@@ -50,7 +51,12 @@ protected:
   static SourcesCommand singleton;
 };
 
-SourcesCommand SourcesCommand::singleton("sources", " rr sources [<trace_dir>]\n");
+SourcesCommand SourcesCommand::singleton(
+    "sources",
+    " rr sources [<trace_dir>]\n"
+    "  --substitute=LIBRARY=PATH  When searching for the source to LIBRARY,\n"
+    "                             substitute PATH in place of the path stored\n"
+    "                             in the library's DWARF debug information.\n");
 
 static void parent_dir(string& s) {
   size_t p = s.rfind('/');
@@ -103,6 +109,7 @@ struct DwoInfo {
 static bool process_compilation_units(ElfFileReader& reader,
                                       const string& trace_relative_name,
                                       const string& original_file_name,
+                                      const string& comp_dir_substitution,
                                       set<string>* file_names, vector<DwoInfo>* dwos) {
   DwarfSpan debug_info = reader.dwarf_section(".debug_info");
   DwarfSpan debug_abbrev = reader.dwarf_section(".debug_abbrev");
@@ -123,9 +130,14 @@ static bool process_compilation_units(ElfFileReader& reader,
     if (!ok) {
       break;
     }
-    const char* comp_dir = cu.die().string_attr(DW_AT_comp_dir, debug_str, &ok);
-    if (!ok) {
-      continue;
+    const char* comp_dir;
+    if (!comp_dir_substitution.empty()) {
+      comp_dir = comp_dir_substitution.c_str();
+    } else {
+      comp_dir = cu.die().string_attr(DW_AT_comp_dir, debug_str, &ok);
+      if (!ok) {
+        continue;
+      }
     }
     const char* dwo_name = cu.die().string_attr(DW_AT_GNU_dwo_name, debug_str, &ok);
     if (!ok) {
@@ -232,7 +244,7 @@ static bool try_auxiliary_file(ElfFileReader& trace_file_reader,
     LOG(warn) << "Main ELF binary has no build ID!";
     return false;
   }
-  if (!process_compilation_units(reader, trace_relative_name, original_file_name, file_names, dwos)) {
+  if (!process_compilation_units(reader, trace_relative_name, original_file_name, {}, file_names, dwos)) {
     LOG(warn) << "No debuginfo!";
     return false;
   }
@@ -409,7 +421,7 @@ static bool starts_with(const string& s, const string& prefix) {
   return strncmp(s.c_str(), prefix.c_str(), prefix.size()) == 0;
 }
 
-static int sources(const string& trace_dir) {
+static int sources(const string& trace_dir, const map<string, string>& comp_dir_substitutions) {
   TraceReader trace(trace_dir);
   DIR* files = opendir(trace.dir().c_str());
   if (!files) {
@@ -448,7 +460,15 @@ static int sources(const string& trace_dir) {
     }
     string trace_relative_name = pair.first;
     base_name(trace_relative_name);
-    bool has_source_files = process_compilation_units(reader, trace_relative_name, pair.second, &file_names, &dwos);
+    string original_name = pair.second;
+    base_name(original_name);
+    bool has_source_files;
+    auto it = comp_dir_substitutions.find(original_name);
+    if (it != comp_dir_substitutions.end()) {
+      has_source_files = process_compilation_units(reader, trace_relative_name, pair.second, it->second, &file_names, &dwos);
+    } else {
+      has_source_files = process_compilation_units(reader, trace_relative_name, pair.second, {}, &file_names, &dwos);
+    }
 
     Debuglink debuglink = reader.read_debuglink();
     has_source_files |= try_auxiliary_file(reader, trace_relative_name, pair.second,
@@ -561,8 +581,37 @@ static int sources(const string& trace_dir) {
   return 0;
 }
 
+bool parse_sources_option(vector<string>& args, map<string, string>& comp_dir_substitutions) {
+  if (parse_global_option(args)) {
+    return true;
+  }
+
+  static const OptionSpec options[] = {
+    { 0, "substitute", HAS_PARAMETER }
+  };
+
+  ParsedOption opt;
+  if (!Command::parse_option(args, options, &opt)) {
+    return false;
+  }
+
+  switch (opt.short_name) {
+    case 0:
+      auto pos = opt.value.find_first_of('=');
+      if (pos != string::npos) {
+        auto k = opt.value.substr(0, pos);
+        auto v = opt.value.substr(pos+1);
+        comp_dir_substitutions.insert(std::pair<string, string>(k, v));
+      }
+      break;
+  }
+
+  return true;
+}
+
 int SourcesCommand::run(vector<string>& args) {
-  while (parse_global_option(args)) {
+  map<string, string> comp_dir_substitutions;
+  while (parse_sources_option(args, comp_dir_substitutions)) {
   }
 
   string trace_dir;
@@ -571,7 +620,7 @@ int SourcesCommand::run(vector<string>& args) {
     return 1;
   }
 
-  return sources(trace_dir);
+  return sources(trace_dir, comp_dir_substitutions);
 }
 
 } // namespace rr
