@@ -1728,7 +1728,7 @@ rrcall_mprotect_record = IrregularEmulatedSyscall(x86=1005, x64=1005, generic=10
 rrcall_notify_stap_semaphore_added = IrregularEmulatedSyscall(x86=1006, x64=1006, generic=1006)
 rrcall_notify_stap_semaphore_removed = IrregularEmulatedSyscall(x86=1007, x64=1007, generic=1007)
 
-# These syscalls are also subsumed under socketcall on x86.
+# These syscalls also appear under `socketcall` on x86.
 socket = EmulatedSyscall(x86=359, x64=41, generic=198)
 connect = IrregularEmulatedSyscall(x86=362, x64=42, generic=203)
 accept = IrregularEmulatedSyscall(x64=43, generic=202)
@@ -1746,18 +1746,18 @@ setsockopt = IrregularEmulatedSyscall(x86=366, x64=54, generic=208)
 getsockopt = IrregularEmulatedSyscall(x86=365, x64=55, generic=209)
 accept4 = IrregularEmulatedSyscall(x86=364, x64=288, generic=242)
 
-# These syscalls are subsumed under ipc on x86.
-shmget = EmulatedSyscall(x64=29, generic=194)
-shmat = IrregularEmulatedSyscall(x64=30, generic=196)
-shmctl = IrregularEmulatedSyscall(x64=31, generic=195)
-semget = EmulatedSyscall(x64=64, generic=190)
+# These syscalls also appear under `ipc` on x86.
+shmget = EmulatedSyscall(x64=29, x86=395, generic=194)
+shmat = IrregularEmulatedSyscall(x64=30, x86=397, generic=196)
+shmctl = IrregularEmulatedSyscall(x64=31, x86=396, generic=195)
+semget = EmulatedSyscall(x64=64, x86=393, generic=190)
 semop = IrregularEmulatedSyscall(x64=65, generic=193)
-semctl = IrregularEmulatedSyscall(x64=66, generic=191)
-shmdt = IrregularEmulatedSyscall(x64=67, generic=197)
-msgget = EmulatedSyscall(x64=68, generic=186)
-msgsnd = IrregularEmulatedSyscall(x64=69, generic=189)
-msgrcv = IrregularEmulatedSyscall(x64=70, generic=188)
-msgctl = IrregularEmulatedSyscall(x64=71, generic=187)
+semctl = IrregularEmulatedSyscall(x64=66, x86=394, generic=191)
+shmdt = IrregularEmulatedSyscall(x64=67, x86=398, generic=197)
+msgget = EmulatedSyscall(x64=68, x86=399, generic=186)
+msgsnd = IrregularEmulatedSyscall(x64=69, x86=400, generic=189)
+msgrcv = IrregularEmulatedSyscall(x64=70, x86=401, generic=188)
+msgctl = IrregularEmulatedSyscall(x64=71, x86=402, generic=187)
 semtimedop = IrregularEmulatedSyscall(x64=220, generic=192)
 
 # These syscalls simply don't exist on x86.
