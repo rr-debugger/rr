@@ -56,7 +56,8 @@ SourcesCommand SourcesCommand::singleton(
     " rr sources [<trace_dir>]\n"
     "  --substitute=LIBRARY=PATH  When searching for the source to LIBRARY,\n"
     "                             substitute PATH in place of the path stored\n"
-    "                             in the library's DWARF debug information.\n");
+    "                             in the library's DW_AT_comp_dir property\n"
+    "                             for all compilation units.\n");
 
 static void parent_dir(string& s) {
   size_t p = s.rfind('/');
