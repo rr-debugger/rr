@@ -1282,8 +1282,9 @@ void AddressSpace::unmap_internal(Task*, remote_ptr<void> addr,
     }
 
     if (m.local_addr) {
-      int ret =
-          munmap(m.local_addr + (rem.start() - m.map.start()), rem.size());
+      auto addr = m.local_addr + (rem.start() - m.map.start());
+      auto size = std::min(rem.size(), m.map.size() - (rem.start() - m.map.start()));
+      int ret = munmap(addr, size);
       if (ret < 0) {
         FATAL() << "Can't munmap";
       }
