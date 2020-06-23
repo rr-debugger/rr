@@ -66,6 +66,7 @@ enum CpuMicroarch {
   IntelGoldmont,
   IntelKabylake,
   IntelCometlake,
+  IntelIcelake,
   AMDF15R30,
   AMDRyzen,
   ARMNeoverseN1
@@ -121,6 +122,7 @@ struct PmuConfig {
 // See Intel 64 and IA32 Architectures Performance Monitoring Events.
 // See check_events from libpfm4.
 static const PmuConfig pmu_configs[] = {
+  { IntelIcelake, "Intel Icelake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
   { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
   { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
   { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },

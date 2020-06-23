@@ -64,6 +64,8 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelSilvermont;
     case 0x506f0:
       return IntelGoldmont;
+    case 0x706e0:
+      return IntelIcelake;
     case 0x806e0:
     case 0x906e0:
       return IntelKabylake;
