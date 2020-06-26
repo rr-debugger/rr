@@ -41,7 +41,7 @@ struct Session::CloneCompletion {
 };
 
 Session::Session()
-    : tracee_socket(shared_ptr<ScopedFd>(new ScopedFd())),
+    : tracee_socket(make_shared<ScopedFd>()),
       tracee_socket_fd_number(0),
       next_task_serial_(1),
       rrcall_base_(RR_CALL_BASE),
