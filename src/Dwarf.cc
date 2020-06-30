@@ -233,7 +233,7 @@ static uint64_t decode_unsigned_literal(DwarfSpan span, bool* ok) {
       *ok = false;
       return 0;
     }
-    ret |= span.read_value<uint8_t>(ok) << shift;
+    ret |= (uint64_t)span.read_value<uint8_t>(ok) << shift;
     shift += 8;
   }
   return ret;
