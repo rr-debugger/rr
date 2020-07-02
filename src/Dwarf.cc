@@ -39,6 +39,7 @@ template <typename D> struct  __attribute__((packed)) Dwarf5CompilationUnitHeade
   uint8_t unit_type;
   uint8_t address_size;
   typename D::Offset debug_abbrev_offset;
+  uint64_t dwo_id;
 };
 
 template <typename D> struct  __attribute__((packed)) Dwarf2LineNumberTableHeader {
