@@ -141,14 +141,23 @@ static bool process_compilation_units(ElfFileReader& reader,
       }
     }
     const char* dwo_name = cu.die().string_attr(DW_AT_GNU_dwo_name, debug_str, &ok);
-    if (!ok) {
-      continue;
-    }
-    if (dwo_name) {
-      bool has_dwo_id;
-      uint64_t dwo_id = cu.die().unsigned_attr(DW_AT_GNU_dwo_id, &has_dwo_id, &ok);
+    if (!ok || !dwo_name) {
+      dwo_name = cu.die().string_attr(DW_AT_dwo_name, debug_str, &ok);
       if (!ok) {
         continue;
+      }
+    }
+    if (dwo_name) {
+      bool has_dwo_id = false;
+      uint64_t dwo_id = cu.dwo_id();
+      if (dwo_id != 0) {
+        has_dwo_id = true;
+      }
+      if (!has_dwo_id) {
+        dwo_id = cu.die().unsigned_attr(DW_AT_GNU_dwo_id, &has_dwo_id, &ok);
+        if (!ok) {
+          continue;
+        }
       }
       if (has_dwo_id) {
         string c;

@@ -15,12 +15,14 @@ enum DWTag {
   DW_TAG_null = 0,
   DW_TAG_compile_unit = 0x11,
   DW_TAG_partial_unit = 0x3c,
+  DW_TAG_skeleton_unit = 0x4a,
 };
 
 enum DWAttr {
   DW_AT_name = 0x03,
   DW_AT_stmt_list = 0x10,
   DW_AT_comp_dir = 0x1b,
+  DW_AT_dwo_name = 0x76,
   DW_AT_GNU_dwo_name = 0x2130,
   DW_AT_GNU_dwo_id = 0x2131,
 };
@@ -44,6 +46,12 @@ enum DWForm {
   DW_FORM_sec_offset = 0x17,
   DW_FORM_flag_present = 0x19,
   DW_FORM_implicit_const = 0x21,
+};
+
+enum DWUt {
+  DW_UT_compile = 0x01,
+  DW_UT_skeleton = 0x04,
+  DW_UT_split_compile = 0x05,
 };
 
 class DwarfSpan {
@@ -155,11 +163,14 @@ public:
   // Consumes debug_info span and leaves rest behind
   static DwarfCompilationUnit next(DwarfSpan* debug_info, DwarfAbbrevs& abbrevs, bool* ok);
   const DwarfDIE& die() const { return *die_; }
+  uint64_t dwo_id() const { return dwo_id_; }
+  void set_dwo_id(uint64_t dwo_id) { dwo_id_ = dwo_id; }
 private:
   DwarfCompilationUnit() {}
   template <typename D> void init_size(DwarfSpan* debug_info, DwarfAbbrevs& abbrevs, bool* ok);
   template <typename H> void init(DwarfSpan* debug_info, DwarfAbbrevs& abbrevs, bool* ok);
   std::unique_ptr<DwarfDIE> die_;
+  uint64_t dwo_id_;
 };
 
 struct DwarfSourceFile {

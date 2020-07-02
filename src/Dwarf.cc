@@ -30,6 +30,10 @@ template <typename D> struct  __attribute__((packed)) Dwarf4CompilationUnitHeade
   uint16_t version;
   typename D::Offset debug_abbrev_offset;
   uint8_t address_size;
+
+  void install_dwo_id(DwarfCompilationUnit* unit) const {
+    unit->set_dwo_id(0);
+  }
 };
 
 template <typename D> struct  __attribute__((packed)) Dwarf5CompilationUnitHeader {
@@ -40,6 +44,14 @@ template <typename D> struct  __attribute__((packed)) Dwarf5CompilationUnitHeade
   uint8_t address_size;
   typename D::Offset debug_abbrev_offset;
   uint64_t dwo_id;
+
+  void install_dwo_id(DwarfCompilationUnit* unit) const {
+    if (version == 5 && (unit_type == DW_UT_skeleton || unit_type == DW_UT_split_compile)) {
+      unit->set_dwo_id(dwo_id);
+    } else {
+      unit->set_dwo_id(0);
+    }
+  }
 };
 
 template <typename D> struct  __attribute__((packed)) Dwarf2LineNumberTableHeader {
@@ -366,11 +378,14 @@ template <typename H> void DwarfCompilationUnit::init(DwarfSpan* debug_info, Dwa
   debug_info->consume(length + sizeof(h->preamble));
   DwarfAbbrevSet& abbrev_set = abbrevs.lookup(h->debug_abbrev_offset);
   die_ = make_unique<DwarfDIE>(span, abbrev_set, sizeof(typename H::Size::Offset), h->address_size, ok);
-  if (die_->tag() != DW_TAG_compile_unit && die_->tag() != DW_TAG_partial_unit) {
-    LOG(warn) << "CU DIE is not DW_TAG_compilation_unit/DW_TAG_partial_unit!";
+  if (die_->tag() != DW_TAG_compile_unit &&
+      die_->tag() != DW_TAG_partial_unit &&
+      die_->tag() != DW_TAG_skeleton_unit) {
+    LOG(warn) << "CU DIE is not DW_TAG_compilation_unit/DW_TAG_partial_unit/DW_TAG_skeleton_unit!";
     *ok = false;
     return;
   }
+  h->install_dwo_id(this);
 }
 
 DwarfLineNumberTable::DwarfLineNumberTable(DwarfSpan span, bool* ok) {
