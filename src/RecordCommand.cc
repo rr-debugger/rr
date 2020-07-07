@@ -7,6 +7,7 @@
 #include <sys/prctl.h>
 #include <sys/wait.h>
 #include <sysexits.h>
+#include <time.h>
 
 #include "preload/preload_interface.h"
 
@@ -496,14 +497,13 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
   return true;
 }
 
-static volatile bool term_request;
+static volatile double term_requested;
 
 /**
- * A terminating signal was received.  Set the |term_request| bit to
- * terminate the trace at the next convenient point.
+ * A terminating signal was received.
  *
- * If there's already a term request pending, then assume rr is wedged
- * and abort().
+ * If a term request has been pending for more than one second,
+ * then assume rr is wedged and abort().
  *
  * Note that this is not only called in a signal handler but it could
  * be called off the main thread.
@@ -511,14 +511,18 @@ static volatile bool term_request;
 static void handle_SIGTERM(__attribute__((unused)) int sig) {
   // Don't use LOG() here because we're in a signal handler. If we do anything
   // that could allocate, we could deadlock.
-  if (term_request) {
-    static const char msg[] =
+  if (term_requested > 0) {
+    double now = monotonic_now_sec();
+    if (now - term_requested > 1) {
+      static const char msg[] =
         "Received SIGTERM while an earlier one was pending.  We're "
         "probably wedged.\n";
-    write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
-    notifying_abort();
+      write_all(STDERR_FILENO, msg, sizeof(msg) - 1);
+      notifying_abort();
+    }
+  } else {
+    term_requested = monotonic_now_sec();
   }
-  term_request = true;
 }
 
 static void install_signal_handlers(void) {
@@ -646,7 +650,7 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
     if (!done_initial_exec && session->done_initial_exec()) {
       session->trace_writer().make_latest_trace();
     }
-  } while (step_result.status == RecordSession::STEP_CONTINUE && !term_request);
+  } while (step_result.status == RecordSession::STEP_CONTINUE && !term_requested);
 
   session->terminate_recording();
   static_session = nullptr;
