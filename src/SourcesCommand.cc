@@ -115,11 +115,19 @@ static bool process_compilation_units(ElfFileReader& reader,
   DwarfSpan debug_info = reader.dwarf_section(".debug_info");
   DwarfSpan debug_abbrev = reader.dwarf_section(".debug_abbrev");
   DwarfSpan debug_str = reader.dwarf_section(".debug_str");
+  DwarfSpan debug_str_offsets = reader.dwarf_section(".debug_str_offsets");
   DwarfSpan debug_line = reader.dwarf_section(".debug_line");
+  DwarfSpan debug_line_str = reader.dwarf_section(".debug_line_str");
   if (debug_info.empty() || debug_abbrev.empty() ||
       debug_str.empty() || debug_line.empty())  {
     return false;
   }
+
+  DebugStrSpans debug_strs = {
+    debug_str,
+    debug_str_offsets,
+    debug_line_str,
+  };
 
   string original_file_dir = original_file_name;
   parent_dir(original_file_dir);
@@ -131,18 +139,27 @@ static bool process_compilation_units(ElfFileReader& reader,
     if (!ok) {
       break;
     }
+    int64_t str_offsets_base = cu.die().section_ptr_attr(DW_AT_str_offsets_base, &ok);
+    if (!ok) {
+      continue;
+    }
+    if (str_offsets_base > 0) {
+      cu.set_str_offsets_base(str_offsets_base);
+    } else {
+      cu.set_str_offsets_base(0);
+    }
     const char* comp_dir;
     if (!comp_dir_substitution.empty()) {
       comp_dir = comp_dir_substitution.c_str();
     } else {
-      comp_dir = cu.die().string_attr(DW_AT_comp_dir, debug_str, &ok);
+      comp_dir = cu.die().string_attr(cu, DW_AT_comp_dir, debug_strs, &ok);
       if (!ok) {
         continue;
       }
     }
-    const char* dwo_name = cu.die().string_attr(DW_AT_GNU_dwo_name, debug_str, &ok);
+    const char* dwo_name = cu.die().string_attr(cu, DW_AT_GNU_dwo_name, debug_strs, &ok);
     if (!ok || !dwo_name) {
-      dwo_name = cu.die().string_attr(DW_AT_dwo_name, debug_str, &ok);
+      dwo_name = cu.die().string_attr(cu, DW_AT_dwo_name, debug_strs, &ok);
       if (!ok) {
         continue;
       }
@@ -169,18 +186,18 @@ static bool process_compilation_units(ElfFileReader& reader,
         LOG(warn) << "DW_AT_GNU_dwo_name but not DW_AT_GNU_dwo_id";
       }
     }
-    const char* source_file_name = cu.die().string_attr(DW_AT_name, debug_str, &ok);
+    const char* source_file_name = cu.die().string_attr(cu, DW_AT_name, debug_strs, &ok);
     if (!ok) {
       continue;
     }
     if (source_file_name) {
       resolve_file_name(original_file_dir.c_str(), comp_dir, nullptr, source_file_name, file_names);
     }
-    intptr_t stmt_list = cu.die().lineptr_attr(DW_AT_stmt_list, &ok);
+    intptr_t stmt_list = cu.die().section_ptr_attr(DW_AT_stmt_list, &ok);
     if (stmt_list < 0 || !ok) {
       continue;
     }
-    DwarfLineNumberTable lines(debug_line.subspan(stmt_list), &ok);
+    DwarfLineNumberTable lines(cu, debug_line.subspan(stmt_list), debug_strs, &ok);
     if (!ok) {
       continue;
     }
