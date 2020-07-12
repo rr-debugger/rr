@@ -69,6 +69,7 @@ static CpuMicroarch compute_cpu_microarch() {
     case 0x806e0:
     case 0x906e0:
       return IntelKabylake;
+    case 0xa0650:
     case 0xa0660:
 	return IntelCometlake;
     case 0x30f00:
