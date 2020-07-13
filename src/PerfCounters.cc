@@ -67,7 +67,6 @@ enum CpuMicroarch {
   IntelKabylake,
   IntelCometlake,
   IntelIcelake, 
-  IntelXeon,
   AMDF15R30,
   AMDRyzen,
   ARMNeoverseN1
@@ -125,7 +124,6 @@ struct PmuConfig {
 static const PmuConfig pmu_configs[] = {
   { IntelIcelake, "Intel Icelake", 0x5111c4, 0, 0, 0, 100, PMU_TICKS_RCB },
   { IntelCometlake, "Intel Cometlake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
-  { IntelXeon, "Intel Xeon", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
   { IntelKabylake, "Intel Kabylake", 0x5101c4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
   { IntelSilvermont, "Intel Silvermont", 0x517ec4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
   { IntelGoldmont, "Intel Goldmont", 0x517ec4, 0, 0x5301cb, 0, 100, PMU_TICKS_RCB },
