@@ -66,7 +66,7 @@ enum CpuMicroarch {
   IntelGoldmont,
   IntelKabylake,
   IntelCometlake,
-  IntelIcelake, 
+  IntelIcelake,
   AMDF15R30,
   AMDRyzen,
   ARMNeoverseN1
