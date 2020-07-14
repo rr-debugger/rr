@@ -647,7 +647,8 @@ static WaitStatus record(const vector<string>& args, const RecordFlags& flags) {
   do {
     bool done_initial_exec = session->done_initial_exec();
     step_result = session->record_step();
-    if (!done_initial_exec && session->done_initial_exec()) {
+    // Only create latest-trace symlink if --output-trace-dir is not being used
+    if (!done_initial_exec && session->done_initial_exec() && flags.output_trace_dir.empty()) {
       session->trace_writer().make_latest_trace();
     }
   } while (step_result.status == RecordSession::STEP_CONTINUE && !term_requested);
