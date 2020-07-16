@@ -1415,13 +1415,16 @@ static bool inject_handled_signal(RecordTask* t) {
   } while (t->stop_sig() == t->session().syscallbuf_desched_sig());
 
   if (t->stop_sig() == SIGSEGV) {
-    // Constructing the signal handler frame must have failed. The kernel will
-    // kill the process after this. Stash the signal and make sure
-    // we know to treat it as fatal when we inject it. Also disable the
-    // signal handler to match what the kernel does.
-    t->did_set_sig_handler_default(SIGSEGV);
+    // Constructing the signal handler frame must have failed. Stash the signal
+    // to deliver it later.
     t->stash_sig();
-    t->thread_group()->received_sigframe_SIGSEGV = true;
+    if (sig == SIGSEGV) {
+      // The kernel will kill the process after this. Make sure we know to treat
+      // it as fatal when we inject it. Also disable the signal handler to match
+      // what the kernel does.
+      t->did_set_sig_handler_default(SIGSEGV);
+      t->thread_group()->received_sigframe_SIGSEGV = true;
+    }
     return false;
   }
 

@@ -1024,6 +1024,7 @@ set(BASIC_TESTS
   sigaltstack
   sigchld_interrupt_signal
   sigcont
+  sighandler_bad_rsp_sigsegv
   sighandler_fork
   sighandler_mask
   sigill
