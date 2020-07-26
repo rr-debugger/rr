@@ -149,7 +149,7 @@ void Task::wait_exit() {
    * want to reap the task when it's dead. We could use WEXITED | WNOWAIT,
    * but that would hang if `t` is a thread-group-leader of a thread group
    * that has other still-running threads. Instead, we wait for WSTOPPED, but
-   * we know that there is no possibility for the task to stop between not and
+   * we know that there is no possibility for the task to stop between now and
    * its exit, at which point the system call will return with -ECHILD.
    * There is one exception: If there was a simultaneous exec from another
    * thread, and this is the group leader, then this task may lose its pid
