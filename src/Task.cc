@@ -1398,10 +1398,14 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
     WaitStatus status(raw_status);
     if (wait_ret == tid) {
       // In some (but not all) cases where the child was killed with SIGKILL,
-      // we don't get PTRACE_EVENT_EXIT before it just exits.
+      // we don't get PTRACE_EVENT_EXIT before it just exits, because a SIGKILL
+      // arrived when the child was already in the PTRACE_EVENT_EXIT stop.
+      // The status could be any exit or fatal-signal status, since this status
+      // can reflect what caused the thread to exit before the SIGKILL arrived
+      // and forced it out of the PTRACE_EVENT_EXIT stop.
       ASSERT(this,
              status.ptrace_event() == PTRACE_EVENT_EXIT ||
-                 status.fatal_sig() == SIGKILL)
+                 status.reaped())
           << "got " << status;
       did_waitpid(status);
     } else {
@@ -1984,7 +1988,7 @@ void Task::did_waitpid(WaitStatus status) {
   intptr_t original_syscallno = registers.original_syscallno();
   LOG(debug) << "  (refreshing register cache)";
 
-  if (status.exit_code() != -1 || status.fatal_sig() != 0) {
+  if (status.reaped()) {
     was_reaped = true;
     if (!seen_ptrace_exit_event) {
       LOG(debug) << "Unexpected process death for " << tid;

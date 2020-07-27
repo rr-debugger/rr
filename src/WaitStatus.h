@@ -57,6 +57,8 @@ public:
   // For exit_code() and fatal_sig(), returns 0. For all other types
   // returns the signal involved.
   int ptrace_signal() const;
+  // True if this status means we reaped the exit status.
+  bool reaped() const { return exit_code() != -1 || fatal_sig() != 0; }
 
   int get() const { return status; }
 

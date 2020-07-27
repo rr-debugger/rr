@@ -232,6 +232,11 @@ static bool ignore_signal(Task* t) {
 long AutoRemoteSyscalls::syscall_base(int syscallno, Registers& callregs) {
   LOG(debug) << "syscall " << syscall_name(syscallno, t->arch()) << " " << callregs;
 
+  if (t->is_dying()) {
+    LOG(debug) << "Task is dying, don't try anything.";
+    return -ESRCH;
+  }
+
   if ((int)callregs.arg1() == SIGTRAP && use_singlestep_path &&
       (is_sigaction_syscall(syscallno, t->arch()) ||
        is_rt_sigaction_syscall(syscallno, t->arch()) ||

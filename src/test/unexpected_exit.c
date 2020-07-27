@@ -40,6 +40,7 @@ int main(__attribute__((unused)) int argc, char** argv) {
   int fd = open(argv[0], O_RDONLY);
   pid_t child;
   char cc;
+  struct timespec ts = { 0, 1000000 };
 
   pipe(child_to_parent);
   child = fork();
@@ -70,6 +71,10 @@ int main(__attribute__((unused)) int argc, char** argv) {
   /* Trigger the logic that scans tracee tasks to see if they have the file open
      for writing. */
   mmap(NULL, 4091, PROT_READ, MAP_SHARED, fd, 0);
+
+  /* Try scheduling the now-dead task to make sure we survive that */
+  nanosleep(&ts, NULL);
+
   atomic_puts("EXIT-SUCCESS");
   return 0;
 }
