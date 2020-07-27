@@ -5192,12 +5192,17 @@ static bool monitor_fd_for_mapping(RecordTask* mapped_t, int mapped_fd, const st
     if (tables.find(table.get()) != tables.end()) {
       continue;
     }
-    tables.insert(table.get());
 
     char buf[100];
     sprintf(buf, "/proc/%d/fd", rt->tid);
     DIR* dir = opendir(buf);
+    if (!dir && errno == EACCES) {
+      LOG(warn) << "Task must have exited out from underneath us. Skipping it";
+      continue;
+    }
     ASSERT(rt, dir) << "Can't open fd directory " << buf;
+    tables.insert(table.get());
+
     struct dirent* d;
     errno = 0;
     vector<string> names;

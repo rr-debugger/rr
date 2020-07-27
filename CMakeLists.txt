@@ -1094,6 +1094,7 @@ set(BASIC_TESTS
   two_signals_with_mask
   ulimit_low
   uname
+  unexpected_exit
   unjoined_thread
   unshare
   utimes
