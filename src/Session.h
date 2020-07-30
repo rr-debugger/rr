@@ -325,6 +325,7 @@ public:
   static const char* rr_mapping_prefix();
 
   ScopedFd& tracee_socket_fd() { return *tracee_socket; }
+  ScopedFd& tracee_socket_receiver_fd() { return *tracee_socket_receiver; }
   int tracee_fd_number() const { return tracee_socket_fd_number; }
 
   virtual TraceStream* trace_stream() { return nullptr; }
@@ -397,6 +398,7 @@ protected:
   Statistics statistics_;
 
   std::shared_ptr<ScopedFd> tracee_socket;
+  std::shared_ptr<ScopedFd> tracee_socket_receiver;
   int tracee_socket_fd_number;
   uint32_t next_task_serial_;
   ScopedFd spawned_task_error_fd_;

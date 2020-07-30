@@ -2550,12 +2550,21 @@ bool Task::open_mem_fd() {
   char pid_path[PATH_MAX];
   sprintf(pid_path, "/proc/%d", tid);
   ScopedFd dir_fd(pid_path, O_PATH);
-  ScopedFd fd = ScopedFd::openat(dir_fd, "mem", O_RDWR | O_CLOEXEC);
+  if (dir_fd < 0) {
+    LOG(info) << "Can't retrieve mem fd for " << tid << "; process no longer exists??";
+    return false;
+  }
 
+  ScopedFd fd = ScopedFd::openat(dir_fd, "mem", O_RDWR | O_CLOEXEC);
   if (!fd.is_open()) {
     LOG(debug) << "Falling back to the remote fd dance";
     AutoRemoteSyscalls remote(this);
     int remote_mem_dir_fd = remote.send_fd(dir_fd);
+    if (remote_mem_dir_fd < 0) {
+      LOG(info) << "Can't retrieve mem fd for " << tid << "; process is exiting?";
+      return false;
+    }
+
     char mem[] = "mem";
     // If the remote dies, any of these can fail. That's ok, we'll just
     // find that the fd wasn't successfully opened.
@@ -3193,6 +3202,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
 
 /*static*/ Task* Task::spawn(Session& session, ScopedFd& error_fd,
                              ScopedFd* sock_fd_out,
+                             ScopedFd* sock_fd_receiver_out,
                              int* tracee_socket_fd_number_out,
                              const std::string& exe_path,
                              const std::vector<std::string>& argv,
@@ -3206,7 +3216,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
     FATAL() << "socketpair failed";
   }
   *sock_fd_out = ScopedFd(sockets[0]);
-  ScopedFd sock(sockets[1]);
+  *sock_fd_receiver_out = ScopedFd(sockets[1]);
 
   // Find a usable FD number to dup to in the child. RR_RESERVED_SOCKET_FD
   // might already be used by an outer rr.
@@ -3242,7 +3252,7 @@ static void run_initial_child(Session& session, const ScopedFd& error_fd,
   } while (0 > tid && errno == EAGAIN);
 
   if (0 == tid) {
-    run_initial_child(session, error_fd, sock, fd_number, exe_path.c_str(),
+    run_initial_child(session, error_fd, *sock_fd_receiver_out, fd_number, exe_path.c_str(),
                       argv_array.get(), envp_array.get(), prog);
     // run_initial_child never returns
   }

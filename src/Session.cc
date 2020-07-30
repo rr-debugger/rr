@@ -42,6 +42,7 @@ struct Session::CloneCompletion {
 
 Session::Session()
     : tracee_socket(make_shared<ScopedFd>()),
+      tracee_socket_receiver(make_shared<ScopedFd>()),
       tracee_socket_fd_number(0),
       next_task_serial_(1),
       rrcall_base_(RR_CALL_BASE),
@@ -68,6 +69,7 @@ Session::Session(const Session& other) {
   rrcall_base_ = other.rrcall_base_;
   visible_execution_ = other.visible_execution_;
   tracee_socket = other.tracee_socket;
+  tracee_socket_receiver = other.tracee_socket_receiver;
   tracee_socket_fd_number = other.tracee_socket_fd_number;
   ticks_semantics_ = other.ticks_semantics_;
 }

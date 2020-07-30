@@ -39,6 +39,7 @@ static void delay(void) {
 int main(__attribute__((unused)) int argc, char** argv) {
   int fd = open(argv[0], O_RDONLY);
   pid_t child;
+  int status;
   char cc;
   struct timespec ts = { 0, 1000000 };
 
@@ -74,6 +75,15 @@ int main(__attribute__((unused)) int argc, char** argv) {
 
   /* Try scheduling the now-dead task to make sure we survive that */
   nanosleep(&ts, NULL);
+
+  /* Make sure we can fork after that, i.e. we didn't mess up the state of our
+     tracee communication socket. */
+  child = fork();
+  if (!child) {
+    return 77;
+  }
+  test_assert(child == waitpid(child, &status, 0));
+  test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;

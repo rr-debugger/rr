@@ -2251,6 +2251,7 @@ RecordSession::RecordSession(const std::string& exe_path,
   ScopedFd error_fd = create_spawn_task_error_pipe();
   RecordTask* t = static_cast<RecordTask*>(
       Task::spawn(*this, error_fd, &tracee_socket_fd(),
+                  &tracee_socket_receiver_fd(),
                   &tracee_socket_fd_number,
                   exe_path, argv, envp));
 

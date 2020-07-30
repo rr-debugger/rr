@@ -3283,6 +3283,7 @@ static pid_t do_detach_teleport(RecordTask *t)
   ScopedFd error_fd;
   int tracee_fd_number = t->session().tracee_fd_number();
   Task *new_t = Task::spawn(session, error_fd, &session.tracee_socket_fd(),
+                  &session.tracee_socket_receiver_fd(),
                   &tracee_fd_number,
                   exe_path, argv, env,
                   -1);

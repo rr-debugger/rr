@@ -931,6 +931,7 @@ public:
    */
   static Task* spawn(Session& session, ScopedFd& error_fd,
                      ScopedFd* sock_fd_out,
+                     ScopedFd* sock_fd_receiver_out,
                      int* tracee_socket_fd_number_out,
                      const std::string& exe_path,
                      const std::vector<std::string>& argv,

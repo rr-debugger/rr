@@ -433,15 +433,14 @@ static long child_recvmsg(AutoRemoteSyscalls& remote, int child_sock) {
   remote.task()->write_bytes_helper(remote_buf.get().cast<char>(),
     sizeof(msg), &msg, &ok);
 
-
   if (!ok) {
     return -ESRCH;
   }
   int ret = 0;
-  if (!has_socketcall_syscall(Arch::arch())) {
-    ret = remote.syscall(Arch::recvmsg, child_sock, msg.remote_msg(), 0);
-  } else {
+  if (has_socketcall_syscall(Arch::arch())) {
     ret = remote.syscall(Arch::socketcall, SYS_RECVMSG, msg.remote_sc_args());
+  } else {
+    ret = remote.syscall(Arch::recvmsg, child_sock, msg.remote_msg(), 0);
   }
   if (ret < 0) {
     return ret;
@@ -457,7 +456,7 @@ static int recvmsg_socket(ScopedFd& sock) {
   fd_message<NativeArch> msg;
   struct msghdr *msgp = (struct msghdr*)&msg.msg;
   if (0 > recvmsg(sock, msgp, MSG_CMSG_CLOEXEC)) {
-    FATAL() << "Failed to receive fd";
+    return -1;
   }
 
   struct cmsghdr* cmsg = CMSG_FIRSTHDR(msgp);
@@ -493,6 +492,7 @@ template <typename Arch> ScopedFd AutoRemoteSyscalls::retrieve_fd_arch(int fd) {
   ASSERT(t, child_syscall_result > 0) << "Failed to sendmsg() in tracee; err="
                                       << errno_name(-child_syscall_result);
   int our_fd = recvmsg_socket(task()->session().tracee_socket_fd());
+  ASSERT(t, our_fd >= 0) << "Failed to receive fd";
   return ScopedFd(our_fd);
 }
 
@@ -511,7 +511,13 @@ template <typename Arch> int AutoRemoteSyscalls::send_fd_arch(const ScopedFd &ou
   long child_syscall_result =
       child_recvmsg<Arch>(*this, task()->session().tracee_fd_number());
   if (child_syscall_result == -ESRCH) {
-    return ScopedFd();
+    /* The child did not receive the message. Read it out of the socket
+       buffer so it doesn't get read by another child later! */
+    int fd = recvmsg_socket(task()->session().tracee_socket_receiver_fd());
+    if (fd >= 0) {
+      close(fd);
+    }
+    return -ESRCH;
   }
   ASSERT(t, child_syscall_result >= 0) << "Failed to recvmsg() in tracee; err="
                                        << errno_name(-child_syscall_result);
