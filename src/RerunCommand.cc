@@ -553,6 +553,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     RunCommand cmd = RUN_CONTINUE;
 
     Task* old_task = replay_session->current_task();
+    auto old_task_tuid = old_task ? old_task->tuid() : TaskUid();
     remote_code_ptr old_ip = old_task ? old_task->ip() : remote_code_ptr();
     FrameTime before_time = replay_session->trace_reader().time();
     if (replay_session->done_initial_exec() &&
@@ -582,6 +583,9 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
 
     FrameTime after_time = replay_session->trace_reader().time();
     if (cmd != RUN_CONTINUE) {
+      // The old_task may have exited (and been deallocated) in the `replay_session->replay_step(cmd)` above.
+      // So we need to try and obtain it from the session again to make sure it still exists.
+      Task* old_task = old_task_tuid.tid() ? replay_session->find_task(old_task_tuid) : nullptr;
       remote_code_ptr after_ip = old_task ? old_task->ip() : remote_code_ptr();
       DEBUG_ASSERT(after_time >= before_time && after_time <= before_time + 1);
 
