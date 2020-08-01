@@ -176,13 +176,14 @@ static void dump_events_matching(TraceReader& trace, const DumpFlags& flags,
   while (true) {
     FrameTime time;
     TraceTaskEvent r = trace.read_task_event(&time);
-    if (time <= last_time) {
-      FATAL() << "TraceTaskEvent times non-increasing";
+    if (time < last_time) {
+      FATAL() << "TraceTaskEvent times non-monotonic";
     }
     if (r.type() == TraceTaskEvent::NONE) {
       break;
     }
     task_events.insert(make_pair(time, r));
+    last_time = time;
   }
 
   bool process_raw_data =
