@@ -917,10 +917,11 @@ void Task::post_exec(const string& exe_file) {
   bool other_task_in_address_space = false;
   for (Task* t : as->task_set()) {
     if (t != this) {
+      other_task_in_address_space = true;
       if (t->is_stopped) {
         stopped_task_in_address_space = t;
+        break;
       }
-      other_task_in_address_space = true;
     }
   }
   if (stopped_task_in_address_space) {
