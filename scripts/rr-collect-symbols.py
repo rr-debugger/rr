@@ -13,9 +13,9 @@ from urllib.error import HTTPError, ContentTooShortError
 
 # Usage: rr-collect-symbols.py <trace-dir> [<url> | <path>]
 #
-# Given a <url>, downloads the ZIP file at <url>, unzips it, runs "gunzip"
-# on any .gz files, and for any ELF files found whose build-ids match the
-# build-id of an ELF file in the trace, moves it into the trace.
+# Given a <url>, downloads the zip/.tar.zst file at <url>, uncompresses it,
+# runs "gunzip" on any .gz files, and for any ELF files found whose build-ids
+# match the build-id of an ELF file in the trace, moves it into the trace.
 #
 # Given a <path>, which must contain a .build-id directory with the usual
 # structure (e.g. as Ubuntu and Fedora create under /usr/lib/debug), searches
@@ -113,13 +113,22 @@ def collect_trace_build_ids():
 trace_build_ids = collect_trace_build_ids()
 
 def collect_archive(url):
+    is_tar_zst = url.endswith(".tar.zst")
     tmp_dir = tempfile.mkdtemp(dir=trace_dir)
+    if is_tar_zst:
+        tmp_file_name = "%s/archive.tar.zst"%tmp_dir
+    else:
+        # Assume its a ZIP
+        tmp_file_name = "%s/archive.zip"%tmp_dir
     try:
-        (file, headers) = urlretrieve(url, "%s/archive.zip"%tmp_dir)
+        (file, headers) = urlretrieve(url, tmp_file_name)
     except (HTTPError, ContentTooShortError) as exc:
         print("Failed to load archive %s: %s"%(url, exc), file=sys.stderr)
         sys.exit(2)
-    subprocess.check_call(["unzip", "-d", tmp_dir, file])
+    if is_tar_zst:
+        subprocess.check_call(["tar", "-C", tmp_dir, "-I", "zstd", "-xvf", file])
+    else:
+        subprocess.check_call(["unzip", "-d", tmp_dir, file])
     os.remove(file)
 
     for root, dirs, files in os.walk(tmp_dir):
