@@ -223,7 +223,9 @@ struct Frame {
   # Per-task total tick count.
   ticks @1 :Ticks;
   # The baseline is unspecified, so only the differences between frames'
-  # values are meaningful
+  # values are meaningful.
+  # The time is the time this record was written, i.e. after the execution
+  # of this frame completed.
   monotonicSec @2 :Float64;
   # Userspace writes performed by this event
   memWrites @3 :List(MemWrite);
