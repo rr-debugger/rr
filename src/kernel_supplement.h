@@ -90,6 +90,11 @@ namespace rr {
 #define TRAP_HWBKPT 4
 #endif
 
+// This is used on AArch64 and not available on CentOS 7.8
+#ifndef NT_ARM_SYSTEM_CALL
+#define NT_ARM_SYSTEM_CALL 0x404
+#endif
+
 // These are defined by the include/linux/errno.h in the kernel tree.
 // Since userspace doesn't see these errnos in normal operation, that
 // header apparently isn't distributed with libc.
