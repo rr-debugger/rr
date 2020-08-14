@@ -1552,6 +1552,10 @@ void AddressSpace::verify(Task* t) const {
 
   MemoryMap::const_iterator mem_it = mem.begin();
   KernelMapIterator kernel_it(t);
+  if (kernel_it.at_end()) {
+    LOG(debug) << "Task " << t->tid << " exited unexpectedly, ignoring";
+    return;
+  }
   while (!kernel_it.at_end() && mem_it != mem.end()) {
     KernelMapping km = kernel_it.current();
     ++kernel_it;
