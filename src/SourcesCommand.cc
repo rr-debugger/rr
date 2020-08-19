@@ -57,6 +57,29 @@ SourcesCommand SourcesCommand::singleton(
     "  --substitute=LIBRARY=PATH  When searching for the source to LIBRARY,\n"
     "                             substitute PATH in place of the path stored\n"
     "                             in the library's DW_AT_comp_dir property\n"
+    "                             for all compilation units.\n"
+    "  --explicit                 Instead of taking a <trace_dir>, takes a list\n"
+    "                             of files to scan instead. In this mode, the\n"
+    "                             'trace file names' are just the build-IDs.\n");
+
+class ExplicitSourcesCommand : public Command {
+public:
+  virtual int run(vector<string>& args) override;
+
+protected:
+  ExplicitSourcesCommand(const char* name, const char* help) : Command(name, help) {}
+
+  static ExplicitSourcesCommand singleton;
+};
+
+ExplicitSourcesCommand ExplicitSourcesCommand::singleton(
+    "explicit-sources",
+    " rr explicit-sources [<file>...]\n"
+    "  Like `rr sources` but instead of scanning the binary files used in a\n"
+    "  trace, scans an explicit list of files.\n"
+    "  --substitute=LIBRARY=PATH  When searching for the source to LIBRARY,\n"
+    "                             substitute PATH in place of the path stored\n"
+    "                             in the library's DW_AT_comp_dir property\n"
     "                             for all compilation units.\n");
 
 static void parent_dir(string& s) {
@@ -448,46 +471,28 @@ static bool starts_with(const string& s, const string& prefix) {
   return strncmp(s.c_str(), prefix.c_str(), prefix.size()) == 0;
 }
 
-static int sources(const string& trace_dir, const map<string, string>& comp_dir_substitutions) {
-  TraceReader trace(trace_dir);
-  DIR* files = opendir(trace.dir().c_str());
-  if (!files) {
-    FATAL() << "Can't open trace dir";
-  }
-
-  // (Trace file name, original file name) pairs
-  map<string, string> binary_file_names;
-  while (true) {
-    TraceReader::MappedData data;
-    bool found;
-    KernelMapping km = trace.read_mapped_region(
-        &data, &found, TraceReader::VALIDATE, TraceReader::ANY_TIME);
-    if (!found) {
-      break;
-    }
-    if (data.source == TraceReader::SOURCE_FILE) {
-      binary_file_names.insert(make_pair(move(data.file_name), km.fsname()));
-    }
-  }
-
+static int sources(const map<string, string>& binary_file_names, const map<string, string>& comp_dir_substitutions, bool is_explicit) {
   vector<string> relevant_binary_names;
   set<string> file_names;
   set<ExternalDebugInfo> external_debug_info;
   vector<DwoInfo> dwos;
   for (auto& pair : binary_file_names) {
-    ScopedFd fd(pair.first.c_str(), O_RDONLY);
+    string trace_relative_name = pair.first;
+    string original_name = pair.second;
+    const char* file_name = is_explicit ? original_name.c_str() : trace_relative_name.c_str();
+    ScopedFd fd(file_name, O_RDONLY);
     if (!fd.is_open()) {
-      FATAL() << "Can't open " << pair.first;
+      FATAL() << "Can't open " << file_name;
     }
-    LOG(info) << "Examining " << pair.first;
+    LOG(info) << "Examining " << file_name;
     ElfFileReader reader(fd);
     if (!reader.ok()) {
       LOG(info) << "Probably not an ELF file, skipping";
       continue;
     }
-    string trace_relative_name = pair.first;
-    base_name(trace_relative_name);
-    string original_name = pair.second;
+    if (!is_explicit) {
+      base_name(trace_relative_name);
+    }
     base_name(original_name);
     bool has_source_files;
     auto it = comp_dir_substitutions.find(original_name);
@@ -608,7 +613,7 @@ static int sources(const string& trace_dir, const map<string, string>& comp_dir_
   return 0;
 }
 
-bool parse_sources_option(vector<string>& args, map<string, string>& comp_dir_substitutions) {
+static bool parse_sources_option(vector<string>& args, map<string, string>& comp_dir_substitutions) {
   if (parse_global_option(args)) {
     return true;
   }
@@ -623,7 +628,7 @@ bool parse_sources_option(vector<string>& args, map<string, string>& comp_dir_su
   }
 
   switch (opt.short_name) {
-    case 0:
+    case 0: {
       auto pos = opt.value.find_first_of('=');
       if (pos != string::npos) {
         auto k = opt.value.substr(0, pos);
@@ -631,6 +636,7 @@ bool parse_sources_option(vector<string>& args, map<string, string>& comp_dir_su
         comp_dir_substitutions.insert(std::pair<string, string>(k, v));
       }
       break;
+    }
   }
 
   return true;
@@ -641,13 +647,69 @@ int SourcesCommand::run(vector<string>& args) {
   while (parse_sources_option(args, comp_dir_substitutions)) {
   }
 
+  // (Trace file name, original file name) pairs
   string trace_dir;
   if (!parse_optional_trace_dir(args, &trace_dir)) {
     print_help(stderr);
     return 1;
   }
 
-  return sources(trace_dir, comp_dir_substitutions);
+  TraceReader trace(trace_dir);
+  DIR* files = opendir(trace.dir().c_str());
+  if (!files) {
+    FATAL() << "Can't open trace dir";
+  }
+
+  map<string, string> binary_file_names;
+  while (true) {
+    TraceReader::MappedData data;
+    bool found;
+    KernelMapping km = trace.read_mapped_region(
+        &data, &found, TraceReader::VALIDATE, TraceReader::ANY_TIME);
+    if (!found) {
+      break;
+    }
+    if (data.source == TraceReader::SOURCE_FILE) {
+      binary_file_names.insert(make_pair(move(data.file_name), km.fsname()));
+    }
+  }
+
+  return sources(binary_file_names, comp_dir_substitutions, false);
+}
+
+int ExplicitSourcesCommand::run(vector<string>& args) {
+  map<string, string> comp_dir_substitutions;
+  while (parse_sources_option(args, comp_dir_substitutions)) {
+  }
+
+  // (Trace file name, original file name) pairs
+  map<string, string> binary_file_names;
+  for (auto arg : args) {
+    struct stat statbuf;
+    int ret = stat(arg.c_str(), &statbuf);
+    if (ret < 0) {
+      FATAL() << "Failed to stat `" << arg << "`";
+    }
+    if (!S_ISREG(statbuf.st_mode)) {
+      continue;
+    }
+
+    ScopedFd fd = ScopedFd(arg.c_str(), O_RDONLY, 0);
+    if (!fd.is_open()) {
+      LOG(error) << "Failed to open `" << arg << "`";
+      return 1;
+    }
+
+    ElfFileReader reader(fd);
+    auto buildid = reader.read_buildid();
+    if (buildid.empty()) {
+      LOG(warn) << "No build-id for `" << arg << "`";
+      continue;
+    }
+    binary_file_names.insert(make_pair(move(buildid), arg));
+  }
+
+  return sources(binary_file_names, comp_dir_substitutions, true);
 }
 
 } // namespace rr
