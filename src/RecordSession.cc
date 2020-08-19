@@ -2125,7 +2125,8 @@ static string lookup_by_path(const string& name) {
           fprintf(stderr,
                   "rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is %d.\n"
                   "Change it to 1, or use 'rr record -n' (slow).\n"
-                  "Consider putting 'kernel.perf_event_paranoid = 1' in /etc/sysctl.conf\n",
+                  "Consider putting 'kernel.perf_event_paranoid = 1' in /etc/sysctl.conf.\n"
+                  "See 'man 8 sysctl', 'man 5 sysctl.d' and 'man 5 sysctl.conf' for more details.\n",
                   val);
           exit(1);
         }
