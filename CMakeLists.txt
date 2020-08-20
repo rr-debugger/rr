@@ -1392,8 +1392,25 @@ if(BUILD_TESTS)
             USE_SOURCE_PERMISSIONS)
   endif(INSTALL_TESTSUITE)
 
+  # We use symlinks in the tests to access the build and source directories.
+  # This is needed because we cannot change the paths used by the tests when
+  # the testsuite is installed. We work around this by using symlinks during
+  # the normal build, and then installing symlinks with the testsuite that
+  # have the same name but, the new link targets.
+  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_SOURCE_DIR} source_dir)
+  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${PROJECT_BINARY_DIR} bin_dir)
+
+  if(INSTALL_TESTSUITE)
+    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+                  \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/rr
+                  \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/source_dir)
+                  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+                  \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj
+                  \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin_dir)")
+  endif(INSTALL_TESTSUITE)
+
   add_test(check_environment
-      bash ${CMAKE_SOURCE_DIR}/src/test/check_environment_test.run)
+      bash source_dir/src/test/check_environment_test.run)
   set_tests_properties(check_environment
       PROPERTIES FAIL_REGULAR_EXPRESSION "rr needs /proc/sys/kernel/perf_event_paranoid <= 1")
 
@@ -1479,23 +1496,6 @@ if(BUILD_TESTS)
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin)
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/CTestTestfile.cmake
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj)
-  endif(INSTALL_TESTSUITE)
-
-  # We use symlinks in the tests to access the build and source directories.
-  # This is needed because we cannot change the paths used by the tests when
-  # the testsuite is installed. We work around this by using symlinks during
-  # the normal build, and then installing symlinks with the testsuite that
-  # have the same name but, the new link targets.
-  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${CMAKE_SOURCE_DIR} source_dir)
-  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${PROJECT_BINARY_DIR} bin_dir)
-
-  if(INSTALL_TESTSUITE)
-    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-                  \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/rr
-                  \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/source_dir)
-                  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-                  \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj
-                  \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/bin_dir)")
   endif(INSTALL_TESTSUITE)
 
   foreach(test ${BASIC_TESTS} ${BASIC_CPP_TESTS} ${OTHER_TESTS})
