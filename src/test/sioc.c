@@ -213,9 +213,15 @@ static void ethtool(int sockfd, struct ifreq* req) {
   ALLOCATE_GUARD(et_drvinfo, 'c');
   GENERIC_ETHTOOL_REQUEST_BY_NAME(et_drvinfo, ETHTOOL_GDRVINFO);
   if (-1 != ret) {
+    #ifdef ETHTOOL_EROMVERS_LEN
     atomic_printf("driver:%s version:%s fw_version:%s bus_info:%s erom_version:%s\n",
                   et_drvinfo->driver, et_drvinfo->version, et_drvinfo->fw_version,
                   et_drvinfo->bus_info, et_drvinfo->erom_version);
+    #else
+    atomic_printf("driver:%s version:%s fw_version:%s bus_info:%s\n",
+                  et_drvinfo->driver, et_drvinfo->version, et_drvinfo->fw_version,
+                  et_drvinfo->bus_info);
+    #endif
   }
 
   ALLOCATE_GUARD(et_wolinfo, 'd');

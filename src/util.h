@@ -24,6 +24,10 @@
  * so we can't use it. */
 #define SYSCALLBUF_DEFAULT_DESCHED_SIGNAL SIGPWR
 
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
+
 namespace rr {
 
 /*
