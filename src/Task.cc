@@ -3452,7 +3452,9 @@ void Task::dup_from(Task *other) {
       remote_this.syscall(syscall_number_for_fchdir(this->arch()), child_fd);
       remote_this.syscall(syscall_number_for_close(this->arch()), child_fd);
     }
-    struct prctl_mm_map map = {};
+    struct prctl_mm_map map;
+    memset(&map, 0, sizeof(prctl_mm_map));
+
     other->vm()->read_mm_map(other, &map);
     apply_mm_map(remote_this, map);
   }

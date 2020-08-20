@@ -125,6 +125,10 @@ typedef unsigned char uint8_t;
 
 #define ALEN(_a) (sizeof(_a) / sizeof(_a[0]))
 
+#ifndef SOL_NETLINK
+#define SOL_NETLINK 270
+#endif
+
 /**
  * Allocate new memory of |size| in bytes. The pointer returned is never NULL.
  * This calls aborts the program if the host runs out of memory.

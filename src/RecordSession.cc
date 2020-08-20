@@ -506,9 +506,11 @@ static void handle_seccomp_trap(RecordTask* t,
     case x86_64:
       si.native_api._sifields._sigsys._arch = AUDIT_ARCH_X86_64;
       break;
+    #ifdef AUDIT_ARCH_AARCH64
     case aarch64:
       si.native_api._sifields._sigsys._arch = AUDIT_ARCH_AARCH64;
       break;
+    #endif
     default:
       DEBUG_ASSERT(0 && "Unknown architecture");
       break;
