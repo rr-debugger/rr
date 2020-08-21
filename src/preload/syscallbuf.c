@@ -1432,12 +1432,37 @@ static long sys_safe_nonblocking_ioctl(const struct syscall_info* call) {
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
+static long sys_ioctl_fionread(const struct syscall_info* call) {
+  const int syscallno = SYS_ioctl;
+  int fd = call->args[0];
+  int* value = (int*)call->args[2];
+  void* buf = NULL;
+
+  void* ptr = prep_syscall_for_fd(fd);
+  long ret;
+
+  if (value) {
+    buf = ptr;
+    ptr += sizeof(*value);
+  }
+  if (!start_commit_buffered_syscall(syscallno, ptr, WONT_BLOCK)) {
+    return traced_raw_syscall(call);
+  }
+  ret = untraced_syscall3(syscallno, fd, FIONREAD, buf);
+  if (buf && ret >= 0 && !buffer_hdr()->failed_during_preparation) {
+    local_memcpy(value, buf, sizeof(*value));
+  }
+  return commit_raw_syscall(syscallno, ptr, ret);
+}
+
 static long sys_ioctl(const struct syscall_info* call) {
   switch (call->args[1]) {
     case BTRFS_IOC_CLONE_RANGE:
     case FIOCLEX:
     case FIONCLEX:
       return sys_safe_nonblocking_ioctl(call);
+    case FIONREAD:
+      return sys_ioctl_fionread(call);
     default:
       return traced_raw_syscall(call);
   }
