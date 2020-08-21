@@ -1995,6 +1995,7 @@ void Task::did_waitpid(WaitStatus status) {
       LOG(debug) << "Unexpected process death for " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     } else {
+      LOG(debug) << "Reaped task late " << tid;
       // We did not reap this task when it exited, likely because it was a
       // thread group leader blocked on the exit of the other members of
       // its thread group. This has now reaped the task, so all we need to do
