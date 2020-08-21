@@ -4733,6 +4733,15 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
 
     case Arch::sigreturn:
     case Arch::rt_sigreturn:
+      // If a sigreturn/rt_sigreturn ever comes through the syscallbuf, we
+      // have switched to the syscallbuf stack (which does not contain any of the
+      // kernel's sigframe data) and we are about to explode (when the kernel restores
+      // the program's registers to random garbage from the syscallbuf stack). Die now
+      // with a useful error message.
+      ASSERT(t, !t->is_in_rr_page()) <<
+        "sigreturn/rt_sigreturn syscalls cannot be processed through the syscallbuf "
+        "because the stack pointer will be wrong. Is this program invoking them "
+        "through the glibc `syscall` wrapper?\nrerecord with -n to fix this";
       if (t->arch() == aarch64) {
         // This is a bit of a hack, but we don't really have a
         // good way to do this otherwise. We need to record the
