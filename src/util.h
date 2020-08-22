@@ -207,6 +207,10 @@ bool xsave_enabled();
  * Fetch current XCR0 value using XGETBV instruction.
  */
 uint64_t xcr0();
+/**
+ * Does the rdgsbase instruction work?
+ */
+bool rdgsbase_works();
 
 /**
  * Return all CPUID values supported by this CPU.

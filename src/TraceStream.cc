@@ -20,6 +20,7 @@
 #include "AddressSpace.h"
 #include "AutoRemoteSyscalls.h"
 #include "Event.h"
+#include "Flags.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
 #include "TaskishUid.h"
@@ -1323,6 +1324,7 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
         Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
                     cpuid_records.size() * sizeof(CPUIDRecord)));
     x86data.setXcr0(xcr0());
+    x86data.setHasFsGsBaseValuesFor32Bit(rdgsbase_works());
   }
 
   // Add a random UUID to the trace metadata. This lets tools identify a trace
@@ -1476,6 +1478,13 @@ TraceReader::TraceReader(const string& dir)
   arch_ = from_trace_arch(header.getNativeArch());
   if (is_x86ish(arch_)) {
     auto x86data = header.getX86();
+    if (arch_ == x86_64 && !x86data.getHasFsGsBaseValuesFor32Bit() && rdgsbase_works()) {
+      if (!Flags::get().suppress_environment_warnings) {
+        cerr << "rr: Traces with 32 bit processes made on 64 bit kernels before 5.9 cannot be "
+          "replayed on kernel 5.9 or later. For forward compatibility, boot your 64 bit "
+          "5.9+ kernel with the 'nofsgsbase' parameter.\n\n";
+      }
+    }
     trace_uses_cpuid_faulting = x86data.getHasCpuidFaulting();
     Data::Reader cpuid_records_bytes = x86data.getCpuidRecords();
     size_t len = cpuid_records_bytes.size() / sizeof(CPUIDRecord);
@@ -1486,6 +1495,7 @@ TraceReader::TraceReader(const string& dir)
     memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
           len * sizeof(CPUIDRecord));
     xcr0_ = x86data.getXcr0();
+    has_fsgsbase_values_for_32_bit_ = x86data.getHasFsGsBaseValuesFor32Bit();;
   }
 
   // Set the global time at 0, so that when we tick it for the first
@@ -1513,6 +1523,7 @@ TraceReader::TraceReader(const TraceReader& other)
   preload_thread_locals_recorded_ = other.preload_thread_locals_recorded_;
   rrcall_base_ = other.rrcall_base_;
   arch_ = other.arch_;
+  has_fsgsbase_values_for_32_bit_ = other.has_fsgsbase_values_for_32_bit_;
 }
 
 TraceReader::~TraceReader() {}

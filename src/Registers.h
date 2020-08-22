@@ -534,6 +534,7 @@ private:
   SupportedArch arch_;
   union {
     rr::X86Arch::user_regs_struct x86regs;
+    rr::X64Arch::x86_user_regs_struct x86on64regs;
     rr::X64Arch::user_regs_struct x64regs;
     struct {
       // This is the NT_PRSTATUS regset
