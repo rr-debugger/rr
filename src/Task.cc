@@ -160,7 +160,7 @@ void Task::wait_exit() {
    */
   int ret = waitid(P_PID, tid, &info, WSTOPPED | WNOWAIT);
   if (ret == 0) {
-    DEBUG_ASSERT(info.si_pid == tid);
+    ASSERT(this, info.si_pid == tid) << "Expected " << tid << " got " << info.si_pid;
     if (WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXIT) {
       // It's possible that the earlier exit event was synthetic, in which
       // case we're only now catching up to the real process exit. In that
@@ -168,18 +168,20 @@ void Task::wait_exit() {
       // catch this earlier).
       return proceed_to_exit(true);
     }
-    DEBUG_ASSERT(WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXEC);
+    ASSERT(this, WaitStatus(info).ptrace_event() == PTRACE_EVENT_EXEC)
+      << "Expected PTRACE_EVENT_EXEC, got " << WaitStatus(info);
     // The kernel will do the reaping for us in this case
     was_reaped = true;
   } else {
-    DEBUG_ASSERT(ret == -1 && errno == ECHILD);
+    ASSERT(this, ret == -1 && errno == ECHILD) << "Got ret=" << ret << " errno=" << errno;
   }
 }
 
 void Task::proceed_to_exit(bool wait) {
   LOG(debug) << "Advancing tid " << tid << " to exit";
   int ret = fallible_ptrace(PTRACE_CONT, nullptr, nullptr);
-  DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == ESRCH));
+  ASSERT(this, ret == 0 || (ret == -1 && errno == ESRCH))
+    << "Got ret=" << ret << " errno=" << errno;
   if (wait) {
     wait_exit();
   }
