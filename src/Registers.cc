@@ -515,7 +515,6 @@ void Registers::write_register_by_user_offset(uintptr_t offset,
 // well sign-extend %eax in all cases.
 
 typedef void (*NarrowConversion)(int32_t& r32, uint64_t& r64);
-typedef void (*CopyConversion)(uint64_t& r32_base, uint64_t& r64_base);
 template <NarrowConversion narrow, NarrowConversion narrow_signed>
 void convert_x86(X86Arch::user_regs_struct& x86,
                  X64Arch::user_regs_struct& x64) {
@@ -537,35 +536,10 @@ void convert_x86(X86Arch::user_regs_struct& x86,
   narrow(x86.xgs, x64.gs);
   narrow(x86.xss, x64.ss);
 }
-template <NarrowConversion narrow, NarrowConversion narrow_signed, CopyConversion copy>
-void convert_x86_with_fsgsbase(X64Arch::x86_user_regs_struct& x86,
-                               X64Arch::user_regs_struct& x64) {
-  narrow_signed(x86.eax, x64.rax);
-  narrow(x86.ebx, x64.rbx);
-  narrow(x86.ecx, x64.rcx);
-  narrow(x86.edx, x64.rdx);
-  narrow(x86.esi, x64.rsi);
-  narrow(x86.edi, x64.rdi);
-  narrow(x86.esp, x64.rsp);
-  narrow(x86.ebp, x64.rbp);
-  narrow(x86.eip, x64.rip);
-  narrow(x86.orig_eax, x64.orig_rax);
-  narrow(x86.eflags, x64.eflags);
-  narrow(x86.xcs, x64.cs);
-  narrow(x86.xds, x64.ds);
-  narrow(x86.xes, x64.es);
-  narrow(x86.xfs, x64.fs);
-  narrow(x86.xgs, x64.gs);
-  narrow(x86.xss, x64.ss);
-  copy(x86.fs_base, x64.fs_base);
-  copy(x86.gs_base, x64.gs_base);
-}
 
 void to_x86_narrow(int32_t& r32, uint64_t& r64) { r32 = r64; }
-void to_x86_copy(uint64_t& r32_base, uint64_t& r64_base) { r32_base = r64_base; }
 void from_x86_narrow(int32_t& r32, uint64_t& r64) { r64 = (uint32_t)r32; }
 void from_x86_narrow_signed(int32_t& r32, uint64_t& r64) { r64 = (int64_t)r32; }
-void from_x86_copy(uint64_t& r32_base, uint64_t& r64_base) { r64_base = r32_base; }
 
 void Registers::set_from_ptrace(const NativeArch::user_regs_struct& ptrace_regs) {
   if (arch() == NativeArch::arch()) {
@@ -574,17 +548,10 @@ void Registers::set_from_ptrace(const NativeArch::user_regs_struct& ptrace_regs)
   }
 
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
-  if (rdgsbase_works()) {
-    convert_x86_with_fsgsbase<to_x86_narrow, to_x86_narrow, to_x86_copy>(
-        u.x86on64regs,
-        *const_cast<X64Arch::user_regs_struct*>(
-            reinterpret_cast<const X64Arch::user_regs_struct*>(&ptrace_regs)));
-  } else {
-    convert_x86<to_x86_narrow, to_x86_narrow>(
-        u.x86regs,
-        *const_cast<X64Arch::user_regs_struct*>(
-            reinterpret_cast<const X64Arch::user_regs_struct*>(&ptrace_regs)));
-  }
+  convert_x86<to_x86_narrow, to_x86_narrow>(
+      u.x86regs,
+      *const_cast<X64Arch::user_regs_struct*>(
+        reinterpret_cast<const X64Arch::user_regs_struct*>(&ptrace_regs)));
 }
 
 /**
@@ -605,13 +572,8 @@ NativeArch::user_regs_struct Registers::get_ptrace() const {
 
   DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
   memset(&result, 0, sizeof(result));
-  if (rdgsbase_works()) {
-    convert_x86_with_fsgsbase<from_x86_narrow, from_x86_narrow_signed, from_x86_copy>(
-        const_cast<Registers*>(this)->u.x86on64regs, result.x64arch_api);
-  } else {
-    convert_x86<from_x86_narrow, from_x86_narrow_signed>(
-        const_cast<Registers*>(this)->u.x86regs, result.x64arch_api);
-  }
+  convert_x86<from_x86_narrow, from_x86_narrow_signed>(
+      const_cast<Registers*>(this)->u.x86regs, result.x64arch_api);
   return result.linux_api;
 }
 
@@ -635,13 +597,8 @@ Registers::InternalData Registers::get_ptrace_for_self_arch() const {
 Registers::InternalData Registers::get_regs_for_trace() const {
   switch (arch_) {
     case x86:
-      if (x86 == NativeArch::arch() || !rdgsbase_works()) {
-        return { reinterpret_cast<const uint8_t*>(&u.x86regs),
-                 sizeof(u.x86regs) };
-      } else {
-        return { reinterpret_cast<const uint8_t*>(&u.x86on64regs),
-                 sizeof(u.x86on64regs) };
-      }
+      return { reinterpret_cast<const uint8_t*>(&u.x86regs),
+               sizeof(u.x86regs) };
     case x86_64:
       return { reinterpret_cast<const uint8_t*>(&u.x64regs),
                sizeof(u.x64regs) };
@@ -682,23 +639,13 @@ void Registers::set_from_ptrace_for_arch(SupportedArch a, const void* data,
 
 void Registers::set_from_trace(SupportedArch a, const void* data,
                                size_t size) {
-  if (a == NativeArch::arch()) {
-    DEBUG_ASSERT(size == sizeof(NativeArch::user_regs_struct));
-    set_from_ptrace(*static_cast<const NativeArch::user_regs_struct*>(data));
-    return;
+  if (is_x86ish(a)) {
+    return set_from_ptrace_for_arch(a, data, size);
   }
 
-  DEBUG_ASSERT(a == x86 && NativeArch::arch() == x86_64);
-  // We don't support a 32-bit tracee trying to set registers of a 64-bit tracee
-  DEBUG_ASSERT(arch() == x86);
-  // It was asserted that rdgsbase_works matches the registers size earlier.
-  if (rdgsbase_works()) {
-    DEBUG_ASSERT(size == sizeof(u.x86on64regs));
-    memcpy(&u.x86on64regs, data, sizeof(u.x86on64regs));
-  } else {
-    DEBUG_ASSERT(size == sizeof(u.x86regs) || size == sizeof(u.x86on64regs));
-    memcpy(&u.x86regs, data, sizeof(u.x86regs));
-  }
+  DEBUG_ASSERT(a == aarch64);
+  DEBUG_ASSERT(size == sizeof(u.arm64regs));
+  memcpy(&u.arm64regs, data, sizeof(u.arm64regs));
 }
 
 uintptr_t Registers::flags() const {

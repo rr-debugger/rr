@@ -420,8 +420,6 @@ public:
 
   SupportedArch arch() const { return arch_; }
 
-  bool has_fsgsbase_values_for_32_bit() const { return has_fsgsbase_values_for_32_bit_; }
-
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }
   const CompressedReader& reader(Substream s) const { return *readers[s]; }
@@ -436,7 +434,6 @@ private:
   bool trace_uses_cpuid_faulting;
   bool preload_thread_locals_recorded_;
   int rrcall_base_;
-  bool has_fsgsbase_values_for_32_bit_;
   SupportedArch arch_;
 };
 

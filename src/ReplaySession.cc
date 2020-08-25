@@ -128,7 +128,7 @@ static void check_xsave_compatibility(const TraceReader& trace_in) {
       // to XSAVE instructions executed on our CPU, or examines XCR0 directly,
       // This will cause divergence. The dynamic linker examines XCR0 so this
       // is nearly guaranteed.
-      cerr << "rr: Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 "
+      cerr << "Trace XCR0 value " << HEX(tracee_xcr0) << " != our XCR0 "
           << "value " << HEX(our_xcr0) << "; Replay will probably fail "
           << "because glibc dynamic loader examines XCR0\n\n";
     }

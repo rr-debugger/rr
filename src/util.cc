@@ -811,63 +811,6 @@ uint64_t xcr0() {
 #endif
 }
 
-#define SEGV_HANDLER_MAGIC 0x98765432
-
-static void rdgsbase_segv_handler(__attribute__((unused)) int sig,
-                                  __attribute__((unused)) siginfo_t* si,
-                                  void* user) {
-#if defined(__x86_64__)
-  ucontext_t* ctx = (ucontext_t*)user;
-  ctx->uc_mcontext.gregs[REG_RIP] += 5;
-  ctx->uc_mcontext.gregs[REG_RAX] = SEGV_HANDLER_MAGIC;
-#else
-  (void)user;
-  FATAL_X86_ONLY();
-#endif
-}
-
-
-bool rdgsbase_works() {
-#if defined(__x86_64__)
-  static bool did_check_rdgsbase = false;
-  static bool rdgsbase_ok = false;
-
-  if (did_check_rdgsbase) {
-    return rdgsbase_ok;
-  }
-  did_check_rdgsbase = true;
-
-  struct sigaction sa;
-  struct sigaction old_sa;
-  sa.sa_sigaction = rdgsbase_segv_handler;
-  sigemptyset(&sa.sa_mask);
-  sa.sa_flags = SA_SIGINFO;
-  if (sigaction(SIGILL, &sa, &old_sa) < 0) {
-    FATAL() << "Can't set sighandler";
-  }
-
-  uint64_t rax;
-  asm volatile("rdgsbase %%rax"
-               : "=a"(rax) :);
-  if (rax == SEGV_HANDLER_MAGIC) {
-    LOG(debug) << "rdgsbase not available";
-  } else {
-    LOG(debug) << "rdgsbase works";
-    rdgsbase_ok = true;
-  }
-
-  if (sigaction(SIGILL, &old_sa, NULL) < 0) {
-    FATAL() << "Can't restore sighandler";
-  }
-  return rdgsbase_ok;
-#elif defined(__i386__)
-  return false;
-#else
-  FATAL_X86_ONLY();
-  return false;
-#endif
-}
-
 #if defined(__i386__) || defined(__x86_64__)
 CPUIDData cpuid(uint32_t code, uint32_t subrequest) {
   CPUIDData result;

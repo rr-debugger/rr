@@ -1737,30 +1737,6 @@ struct X64Arch : public BaseArch<SupportedArch::x86_64, WordSize64Defs> {
   RR_VERIFY_TYPE_ARCH(SupportedArch::x86_64, ::user_regs_struct,
                       user_regs_struct);
 
-  // When running on a 64 bit kernel we must track fs_base/gs_base for
-  // a 32 bit program.
-  struct x86_user_regs_struct {
-    int32_t ebx;
-    int32_t ecx;
-    int32_t edx;
-    int32_t esi;
-    int32_t edi;
-    int32_t ebp;
-    int32_t eax;
-    int32_t xds;
-    int32_t xes;
-    int32_t xfs;
-    int32_t xgs;
-    int32_t orig_eax;
-    int32_t eip;
-    int32_t xcs;
-    int32_t eflags;
-    int32_t esp;
-    int32_t xss;
-    uint64_t fs_base;
-    uint64_t gs_base;
-  };
-
   struct sigcontext {
     uint64_t r8;
     uint64_t r9;

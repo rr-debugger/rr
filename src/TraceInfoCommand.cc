@@ -81,9 +81,6 @@ static int dump_trace_info(const string& trace_dir, FILE* out) {
   }
   fputs("\n  ],\n", out);
 
-  fprintf(out, "  \"hasFsGsBaseValuesFor32Bit\":\"%s\",\n",
-          trace.has_fsgsbase_values_for_32_bit() ? "true" : "false");
-
   ReplaySession::Flags flags;
   flags.redirect_stdio = false;
   flags.share_private_mappings = false;

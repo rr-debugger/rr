@@ -76,8 +76,6 @@ struct Header {
     # Captured XCR0 value defining XSAVE features enabled by OS.
     # 0 means "unknown"; default to everything supported by CPUID EAX=0xd ECX=0
     xcr0 @5 :UInt64;
-    # 32 bit frames have fs/gsbase values.
-    hasFsGsBaseValuesFor32Bit @11 :Bool;
   }
 }
 
