@@ -577,6 +577,17 @@ NativeArch::user_regs_struct Registers::get_ptrace() const {
   return result.linux_api;
 }
 
+iovec Registers::get_ptrace_iovec() {
+  if (arch() == NativeArch::arch()) {
+    iovec iov = { &u, sizeof(NativeArch::user_regs_struct) };
+    return iov;
+  }
+
+  DEBUG_ASSERT(arch() == x86 && NativeArch::arch() == x86_64);
+  iovec iov = { &u.x86regs, sizeof(u.x86regs) };
+  return iov;
+}
+
 Registers::InternalData Registers::get_ptrace_for_self_arch() const {
   switch (arch_) {
     case x86:

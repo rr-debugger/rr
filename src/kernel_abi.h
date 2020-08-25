@@ -2224,6 +2224,9 @@ void set_arch_siginfo(const siginfo_t& siginfo, SupportedArch a, void* dest,
 
 size_t sigaction_sigset_size(SupportedArch arch);
 
+size_t user_regs_struct_size(SupportedArch arch);
+size_t user_fpregs_struct_size(SupportedArch arch);
+
 #if defined(__i386__)
 typedef X86Arch NativeArch;
 #elif defined(__x86_64__)

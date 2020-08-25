@@ -673,17 +673,17 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
           switch ((int)regs.arg3()) {
             case NT_PRSTATUS: {
               auto set = ptrace_get_regs_set<Arch>(
-                  this, regs, sizeof(typename Arch::user_regs_struct));
+                  this, regs, user_regs_struct_size(tracee->arch()));
               Registers r = tracee->regs();
-              r.set_from_ptrace_for_arch(Arch::arch(), set.data(), set.size());
+              r.set_from_ptrace_for_arch(tracee->arch(), set.data(), set.size());
               tracee->set_regs(r);
               break;
             }
             case NT_FPREGSET: {
               auto set = ptrace_get_regs_set<Arch>(
-                  this, regs, sizeof(typename Arch::user_fpregs_struct));
+                  this, regs, user_fpregs_struct_size(tracee->arch()));
               ExtraRegisters r = tracee->extra_regs();
-              r.set_user_fpregs_struct(this, Arch::arch(), set.data(),
+              r.set_user_fpregs_struct(this, tracee->arch(), set.data(),
                                        set.size());
               tracee->set_extra_regs(r);
               break;
@@ -1442,9 +1442,9 @@ void Task::set_regs(const Registers& regs) {
 void Task::flush_regs() {
   if (registers_dirty) {
     LOG(debug) << "Flushing registers for tid " << tid << " " << registers;
-    auto ptrace_regs = registers.get_ptrace();
+    auto ptrace_regs = registers.get_ptrace_iovec();
 #if defined(__i386__) || defined(__x86_64__)
-    if (ptrace_if_alive(PTRACE_SETREGS, nullptr, &ptrace_regs)) {
+    if (ptrace_if_alive(PTRACE_SETREGSET, NT_PRSTATUS, &ptrace_regs)) {
       /* It's ok for flush regs to fail, e.g. if the task got killed underneath
        * us - we just need to remember not to trust any value we would load
        * from ptrace otherwise */

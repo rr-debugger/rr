@@ -2585,7 +2585,7 @@ static Switchable prepare_ptrace(RecordTask* t,
         case NT_PRSTATUS: {
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
-            auto regs = tracee->regs().get_ptrace_for_arch(Arch::arch());
+            auto regs = tracee->regs().get_ptrace_for_arch(tracee->arch());
             ptrace_get_reg_set<Arch>(t, syscall_state, regs);
           }
           break;
@@ -2594,7 +2594,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             auto regs =
-                tracee->extra_regs().get_user_fpregs_struct(Arch::arch());
+                tracee->extra_regs().get_user_fpregs_struct(tracee->arch());
             ptrace_get_reg_set<Arch>(t, syscall_state, regs);
           }
           break;
@@ -2667,7 +2667,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
-                t, sizeof(typename Arch::user_regs_struct), syscall_state);
+                t, user_regs_struct_size(tracee->arch()), syscall_state);
           }
           break;
         }
@@ -2675,7 +2675,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(
-                t, sizeof(typename Arch::user_fpregs_struct), syscall_state);
+                t, user_fpregs_struct_size(tracee->arch()), syscall_state);
           }
           break;
         }

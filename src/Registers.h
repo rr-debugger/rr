@@ -16,6 +16,8 @@
 #include "remote_code_ptr.h"
 #include "remote_ptr.h"
 
+struct iovec;
+
 namespace rr {
 
 class ReplayTask;
@@ -86,6 +88,7 @@ public:
    * to the rr build (e.g. ARM vs x86).
    */
   NativeArch::user_regs_struct get_ptrace() const;
+  iovec get_ptrace_iovec();
 
   /**
    * Get a user_regs_struct for a particular Arch from these Registers.

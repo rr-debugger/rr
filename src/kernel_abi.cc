@@ -335,4 +335,20 @@ template <typename Arch> static size_t sigaction_sigset_size_arch() {
 size_t sigaction_sigset_size(SupportedArch arch) {
   RR_ARCH_FUNCTION(sigaction_sigset_size_arch, arch);
 }
+
+template <typename Arch> static size_t user_regs_struct_size_arch() {
+  return sizeof(typename Arch::user_regs_struct);
+}
+
+size_t user_regs_struct_size(SupportedArch arch) {
+  RR_ARCH_FUNCTION(user_regs_struct_size_arch, arch)
+}
+
+template <typename Arch> static size_t user_fpregs_struct_size_arch() {
+  return sizeof(typename Arch::user_fpregs_struct);
+}
+
+size_t user_fpregs_struct_size(SupportedArch arch) {
+  RR_ARCH_FUNCTION(user_fpregs_struct_size_arch, arch)
+}
 }
