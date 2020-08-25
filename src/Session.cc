@@ -57,7 +57,7 @@ Session::~Session() {
   kill_all_tasks();
   LOG(debug) << "Session " << this << " destroyed";
 
-  for (auto tg : thread_group_map) {
+  for (auto tg : thread_group_map_) {
     tg.second->forget_session();
   }
 }
@@ -74,9 +74,9 @@ Session::Session(const Session& other) {
   ticks_semantics_ = other.ticks_semantics_;
 }
 
-void Session::on_create(ThreadGroup* tg) { thread_group_map[tg->tguid()] = tg; }
+void Session::on_create(ThreadGroup* tg) { thread_group_map_[tg->tguid()] = tg; }
 void Session::on_destroy(ThreadGroup* tg) {
-  thread_group_map.erase(tg->tguid());
+  thread_group_map_.erase(tg->tguid());
 }
 
 void Session::post_exec() {
@@ -181,8 +181,8 @@ Task* Session::find_task(const TaskUid& tuid) const {
 
 ThreadGroup* Session::find_thread_group(const ThreadGroupUid& tguid) const {
   finish_initializing();
-  auto it = thread_group_map.find(tguid);
-  if (thread_group_map.end() == it) {
+  auto it = thread_group_map_.find(tguid);
+  if (thread_group_map_.end() == it) {
     return nullptr;
   }
   return it->second;
@@ -190,7 +190,7 @@ ThreadGroup* Session::find_thread_group(const ThreadGroupUid& tguid) const {
 
 ThreadGroup* Session::find_thread_group(pid_t pid) const {
   finish_initializing();
-  for (auto& tg : thread_group_map) {
+  for (auto& tg : thread_group_map_) {
     if (tg.first.tid() == pid) {
       return tg.second;
     }
@@ -361,8 +361,8 @@ void Session::finish_initializing() const {
                                                   mem.second.data());
       }
       for (auto& asmember : asleader.member_states) {
-        auto it = thread_group_map.find(asmember.tguid);
-        ThreadGroup::shr_ptr tg(it == thread_group_map.end() ? nullptr :
+        auto it = thread_group_map_.find(asmember.tguid);
+        ThreadGroup::shr_ptr tg(it == thread_group_map_.end() ? nullptr :
           it->second->shared_from_this());
         if (!tg) {
           tg = std::make_shared<ThreadGroup>

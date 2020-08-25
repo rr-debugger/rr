@@ -2,6 +2,7 @@
 
 #include "ThreadGroup.h"
 
+#include "RecordTask.h"
 #include "Session.h"
 #include "Task.h"
 #include "ThreadDb.h"
@@ -36,11 +37,24 @@ ThreadGroup::~ThreadGroup() {
   if (session_) {
     session_->on_destroy(this);
   }
-  for (ThreadGroup* tg : children()) {
-    tg->parent_ = nullptr;
-  }
   if (parent_) {
     parent_->children_.erase(this);
+  }
+  for (ThreadGroup* tg : children()) {
+    tg->parent_ = nullptr;
+    // We don't fix the parenting during replay. Currently
+    // nothing depends on parenting during replay.
+    if (session_ && session_->is_recording()) {
+      auto it = tg->task_set().begin();
+      if (it != tg->task_set().end()) {
+        const RecordTask* rt = static_cast<const RecordTask*>(*it);
+        pid_t ppid = rt->get_parent_pid();
+        tg->parent_ = session_->find_thread_group(ppid);
+        if (tg->parent_) {
+          tg->parent_->children_.insert(tg);
+        }
+      }
+    }
   }
 }
 

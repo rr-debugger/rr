@@ -1890,7 +1890,7 @@ void RecordTask::kill_if_alive() {
   }
 }
 
-pid_t RecordTask::get_parent_pid() { return get_ppid(tid); }
+pid_t RecordTask::get_parent_pid() const { return get_ppid(tid); }
 
 void RecordTask::set_tid_and_update_serial(pid_t tid,
                                            pid_t own_namespace_tid) {
@@ -1898,6 +1898,21 @@ void RecordTask::set_tid_and_update_serial(pid_t tid,
   this->tid = rec_tid = tid;
   serial = session().next_task_serial();
   own_namespace_rec_tid = own_namespace_tid;
+}
+
+bool RecordTask::waiting_for_pid_namespace_tasks_to_exit() const {
+  if (tg->tgid_own_namespace != 1 || thread_group()->task_set().size() > 1) {
+    return false;
+  }
+  // This is the last thread of pid-1 for its namespace. See if there
+  // are any other tasks in the pid namespace. We can just check if there
+  // are any threadgroup children of our threadgroup.
+  for (auto p : session().thread_group_map()) {
+    if (p.second->parent() == tg.get()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 template <typename Arch>

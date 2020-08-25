@@ -362,6 +362,8 @@ public:
      or trace */
   void do_bind_cpu(TraceStream &trace);
 
+  const ThreadGroupMap& thread_group_map() const { return thread_group_map_; }
+
 protected:
   Session();
   virtual ~Session();
@@ -387,7 +389,7 @@ protected:
 
   AddressSpaceMap vm_map;
   TaskMap task_map;
-  ThreadGroupMap thread_group_map;
+  ThreadGroupMap thread_group_map_;
 
   ScopedFd cpu_lock;
 

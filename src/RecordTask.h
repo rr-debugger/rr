@@ -493,7 +493,7 @@ public:
   size_t robust_list_len() const { return robust_futex_list_len; }
 
   /** Uses /proc so not trivially cheap. */
-  pid_t get_parent_pid();
+  pid_t get_parent_pid() const;
 
   /**
    * Return true if this is a "clone child" per the wait(2) man page.
@@ -546,7 +546,9 @@ public:
   void did_reach_zombie();
 
   // Is this task a container init? (which has special signal behavior)
-  bool is_container_init() { return own_namespace_rec_tid == 1; }
+  bool is_container_init() const { return tg->tgid_own_namespace == 1; }
+
+  bool waiting_for_pid_namespace_tasks_to_exit() const;
 
   /**
    * Called when this task is able to receive a SIGCHLD (e.g. because
