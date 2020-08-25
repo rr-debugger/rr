@@ -6,7 +6,7 @@ static int child_to_parent[2];
 
 static void* run_child_thread(__attribute__((unused)) void* p) {
   setpriority(PRIO_PROCESS, 0, 10);
-  atomic_printf("off-main-thread id = %d\n", gettid());
+  atomic_printf("off-main-thread id = %d\n", sys_gettid());
   write(child_to_parent[1], "x", 1);
   pause();
   return NULL;
