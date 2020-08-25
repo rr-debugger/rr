@@ -1096,6 +1096,7 @@ set(BASIC_TESTS
   ulimit_low
   uname
   unexpected_exit
+  unexpected_exit_execve
   unjoined_thread
   unshare
   utimes

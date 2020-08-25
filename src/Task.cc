@@ -1983,7 +1983,7 @@ void Task::did_waitpid(WaitStatus status) {
 
   if (!siginfo_overriden && status.stop_sig()) {
     if (!ptrace_if_alive(PTRACE_GETSIGINFO, nullptr, &pending_siginfo)) {
-      LOG(debug) << "Unexpected process death for " << tid;
+      LOG(debug) << "Unexpected process death getting siginfo for " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     }
   }
@@ -1994,7 +1994,13 @@ void Task::did_waitpid(WaitStatus status) {
   if (status.reaped()) {
     was_reaped = true;
     if (!seen_ptrace_exit_event) {
-      LOG(debug) << "Unexpected process death for " << tid;
+      LOG(debug) << "Unexpected process reap for " << tid;
+      /* Mark buffers as having been destroyed. We missed our chance
+       * to destroy them normally in handle_ptrace_exit_event.
+       * XXX: We could try to find some tasks here to unmap our buffers, but it
+       *      seems hardly worth it.
+       */
+      destroy_buffers(nullptr, nullptr);
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     } else {
       LOG(debug) << "Reaped task late " << tid;

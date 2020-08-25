@@ -37,12 +37,16 @@ static void delay(void) {
 #endif
 }
 
-int main(__attribute__((unused)) int argc, char** argv) {
-  int fd = open(argv[0], O_RDONLY);
+int main(int argc, __attribute__((unused)) char** argv) {
   pid_t child;
+  pid_t exec_child;
   int status;
   char cc;
-  struct timespec ts = { 0, 1000000 };
+  char* execv_argv[] = {"/proc/self/exe", "dummy", NULL};
+
+  if (argc > 1) {
+    return 99;
+  }
 
   pipe(child_to_parent);
   child = fork();
@@ -70,22 +74,14 @@ int main(__attribute__((unused)) int argc, char** argv) {
      about it exiting. */
   delay();
 
-  /* Trigger the logic that scans tracee tasks to see if they have the file open
-     for writing. */
-  mmap(NULL, 4091, PROT_READ, MAP_SHARED, fd, 0);
-
   atomic_printf("Sleeping...\n");
-  /* Try scheduling the now-dead task to make sure we survive that */
-  nanosleep(&ts, NULL);
-
-  /* Make sure we can fork after that, i.e. we didn't mess up the state of our
-     tracee communication socket. */
-  child = fork();
-  if (!child) {
-    return 77;
+  /* Do an execve and let the other task run during that */
+  exec_child = fork();
+  if (exec_child == 0) {
+    execve("/proc/self/exe", execv_argv, NULL);
   }
-  test_assert(child == waitpid(child, &status, 0));
-  test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
+  test_assert(exec_child == waitpid(exec_child, &status, 0));
+  test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 99);
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
