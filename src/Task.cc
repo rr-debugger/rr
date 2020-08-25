@@ -1993,16 +1993,7 @@ void Task::did_waitpid(WaitStatus status) {
 
   if (status.reaped()) {
     was_reaped = true;
-    if (!seen_ptrace_exit_event) {
-      LOG(debug) << "Unexpected process reap for " << tid;
-      /* Mark buffers as having been destroyed. We missed our chance
-       * to destroy them normally in handle_ptrace_exit_event.
-       * XXX: We could try to find some tasks here to unmap our buffers, but it
-       *      seems hardly worth it.
-       */
-      destroy_buffers(nullptr, nullptr);
-      status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
-    } else {
+    if (seen_ptrace_exit_event) {
       LOG(debug) << "Reaped task late " << tid;
       // We did not reap this task when it exited, likely because it was a
       // thread group leader blocked on the exit of the other members of
@@ -2013,6 +2004,14 @@ void Task::did_waitpid(WaitStatus status) {
       wait_status = status;
       return;
     }
+    LOG(debug) << "Unexpected process reap for " << tid;
+    /* Mark buffers as having been destroyed. We missed our chance
+     * to destroy them normally in handle_ptrace_exit_event.
+     * XXX: We could try to find some tasks here to unmap our buffers, but it
+     *      seems hardly worth it.
+     */
+    destroy_buffers(nullptr, nullptr);
+    status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
   } else {
     // An unstable exit can cause a task to exit without us having run it, in
     // which case we might have pending register changes for it that are now
