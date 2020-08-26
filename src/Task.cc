@@ -2176,7 +2176,7 @@ bool Task::try_wait() {
     // for the generic cleanup code).
     int ret = waitid(P_PID, tid, &info, WEXITED | WNOWAIT | WNOHANG);
     if (ret == 0 && info.si_pid == tid) {
-      LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process " << tid;
+      LOG(debug) << "Synthesizing PTRACE_EVENT_EXIT for zombie process in try_wait " << tid;
       status = WaitStatus::for_ptrace_event(PTRACE_EVENT_EXIT);
     } else {
       DEBUG_ASSERT(ret == -1 && errno == ECHILD);

@@ -39,6 +39,7 @@ int main(void) {
 
     /* Make time to allow grandchild to reparent to us */
     nanosleep(&ts, NULL);
+
     /* Test exiting from a non-main thread */
     pthread_create(&thread, NULL, do_thread, NULL);
     pthread_exit(NULL);

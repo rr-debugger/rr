@@ -1097,6 +1097,7 @@ set(BASIC_TESTS
   uname
   unexpected_exit
   unexpected_exit_execve
+  unexpected_exit_pid_ns
   unjoined_thread
   unshare
   utimes

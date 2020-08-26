@@ -1271,6 +1271,7 @@ void RecordTask::verify_signal_states() {
     // This task isn't real
     return;
   }
+
   auto results = read_proc_status_fields(tid, "SigBlk", "SigIgn", "SigCgt");
   ASSERT(this, results.size() == 3);
   sig_set_t blocked = strtoull(results[0].c_str(), NULL, 16);
@@ -1289,6 +1290,16 @@ void RecordTask::verify_signal_states() {
       ASSERT(this, !!(blocked & mask) == is_sig_blocked(sig))
           << signal_name(sig)
           << ((blocked & mask) ? " is blocked" : " is not blocked");
+      if (sig == SIGCHLD && is_container_init() && (ignored & mask)) {
+        // pid-1-in-its-own-pid-namespace tasks can have their SIGCHLD set
+        // to "ignore" when they die (in zap_pid_ns_processes). We may
+        // not have observed anything relating to this death yet. We could
+        // probe to ensure it's already marked as a zombie but why bother.
+        // XXX arguably we should actually change our disposition here but
+        // it would only matter in certain very weird cases: a vfork() where
+        // the child process is pid-1 in its namespace.
+        continue;
+      }
       auto disposition = sighandlers->get(sig).disposition();
       ASSERT(this, !!(ignored & mask) == (disposition == SIGNAL_IGNORE))
           << signal_name(sig)
