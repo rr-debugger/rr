@@ -426,22 +426,6 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
   memset(data_.data() + xsave_header_offset, 0,
          data_.size() - xsave_header_offset);
 
-  // Check for unsupported features being used
-  if (layout.full_size >= xsave_header_end) {
-    uint64_t features = features_used(data, layout);
-    if (features & ~native_layout.supported_feature_bits) {
-      LOG(error) << "Unsupported CPU features found: got " << HEX(features)
-                 << " (" << xsave_feature_string(features)
-                 << "), supported: "
-                 << HEX(native_layout.supported_feature_bits)
-                 << " ("
-                 << xsave_feature_string(native_layout.supported_feature_bits)
-                 << "); Consider using `rr cpufeatures` and "
-                 << "`rr record --disable-cpuid-features-(ext)`";
-      return false;
-    }
-  }
-
   if (native_layout.full_size < xsave_header_end) {
     // No XSAVE supported here, we're done!
     return true;
@@ -456,7 +440,25 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
   }
 
   uint64_t features = features_used(data, layout);
-  // OK, now both our native layout and the input layout are using the full
+
+   // Check for unsupported features being used
+  if (layout.full_size >= xsave_header_end) {
+    if (features & ~native_layout.supported_feature_bits) {
+      LOG(warn) << "Unsupported CPU features found: got " << HEX(features)
+                 << " (" << xsave_feature_string(features)
+                 << "), supported: "
+                 << HEX(native_layout.supported_feature_bits)
+                 << " ("
+                 << xsave_feature_string(native_layout.supported_feature_bits)
+                 << "); Consider using `rr cpufeatures` and "
+                 << "`rr record --disable-cpuid-features-(ext)`";
+      // Clear any unsupported features so the associated XSAVE data is ignored
+      features &= native_layout.supported_feature_bits;
+      LOG(warn) << "Masking CPU features to: " << HEX(features);
+    }
+  }
+
+ // OK, now both our native layout and the input layout are using the full
   // XSAVE header. Copy the header. Make sure to use our updated `features`.
   memcpy(data_.data() + xsave_header_offset, &features, sizeof(features));
   memcpy(data_.data() + xsave_header_offset + sizeof(features),
