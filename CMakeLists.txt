@@ -1403,7 +1403,10 @@ if(BUILD_TESTS)
   execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink ${PROJECT_BINARY_DIR} bin_dir)
 
   if(INSTALL_TESTSUITE)
-    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
+    # Create the directory for the symlinks first and then create symlinks.
+    install(CODE "execute_process(COMMAND ${CMAKE_COMMAND} -E make_directory
+                  \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj)
+                  execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
                   \${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/rr
                   \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/rr/testsuite/obj/source_dir)
                   execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
