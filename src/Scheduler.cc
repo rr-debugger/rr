@@ -719,7 +719,8 @@ Scheduler::Rescheduled Scheduler::reschedule(Switchable switchable) {
       if (next) {
         ASSERT(next,
                next->may_be_blocked() ||
-                   status.ptrace_event() == PTRACE_EVENT_EXIT)
+                   status.ptrace_event() == PTRACE_EVENT_EXIT ||
+                   status.reaped())
             << "Scheduled task should have been blocked";
         ntasks_running--;
         next->did_waitpid(status);

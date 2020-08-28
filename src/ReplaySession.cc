@@ -1456,6 +1456,7 @@ static void end_task(ReplayTask* t) {
   // Enter the syscall.
   t->resume_execution(RESUME_CONT, RESUME_WAIT, RESUME_NO_TICKS);
   ASSERT(t, t->ptrace_event() == PTRACE_EVENT_EXIT);
+  t->did_handle_ptrace_exit_event();
   t->detach();
   delete t;
 }

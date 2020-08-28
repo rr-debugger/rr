@@ -901,16 +901,14 @@ public:
     return seen_ptrace_exit_event || detected_unexpected_exit;
   }
 
+  void did_handle_ptrace_exit_event();
+
   remote_code_ptr last_execution_resume() const {
     return address_of_last_execution_resume;
   }
 
   bool already_reaped() const {
     return was_reaped;
-  }
-
-  void did_reap() {
-    was_reaped = true;
   }
 
   void os_exec_stub(SupportedArch arch);
@@ -1165,6 +1163,14 @@ protected:
   // True when a PTRACE_EXIT_EVENT has been observed in the wait_status
   // for this task.
   bool seen_ptrace_exit_event;
+  // True when a PTRACE_EXIT_EVENT has been handled for this task.
+  // By handled we mean either RecordSession's handle_ptrace_exit_event was
+  // run (or the replay equivalent) or we recognized that the task is already
+  // dead and we cleaned up our books so we don't try to destroy our buffers
+  // or anything like that in an already deceased task.
+  // We might defer handling the exit (e.g. if there's an ongoing execve).
+  // If this is true, `seen_ptrace_exit_event` must be true.
+  bool handled_ptrace_exit_event;
 
   PropertyTable properties_;
 

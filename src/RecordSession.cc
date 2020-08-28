@@ -168,7 +168,7 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
       // need to replay.
       // There's a weird case (in 4.13.5-200.fc26.x86_64 at least) where the
       // task can enter the kernel but instead of receiving a syscall ptrace
-      // event, we receive a PTRACE_EXIT_EVENT due to a concurrent execve
+      // event, we receive a PTRACE_EVENT_EXIT due to a concurrent execve
       // (and probably a concurrent SIGKILL could do the same). The task state
       // has been updated to reflect syscall entry. If we record a SCHED in
       // that state replay of the SCHED will fail. So detect that state and fix
@@ -218,6 +218,8 @@ static bool handle_ptrace_exit_event(RecordTask* t) {
   } else {
     exit_status = WaitStatus::for_fatal_sig(SIGKILL);
   }
+
+  t->did_handle_ptrace_exit_event();
 
   // If we died because of a coredumping signal, that is a barrier event, and
   // every task in the address space needs to pass its PTRACE_EXIT_EVENT before

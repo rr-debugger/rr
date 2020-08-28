@@ -91,6 +91,7 @@ Task::Task(Session& session, pid_t _tid, pid_t _rec_tid, uint32_t serial,
       session_(&session),
       top_of_stack(),
       seen_ptrace_exit_event(false),
+      handled_ptrace_exit_event(false),
       expecting_ptrace_interrupt_stop(0),
       was_reaped(false) {
   memset(&thread_locals, 0, sizeof(thread_locals));
@@ -252,6 +253,7 @@ WaitStatus Task::kill() {
 
 Task::~Task() {
   ASSERT(this, seen_ptrace_exit_event);
+  ASSERT(this, handled_ptrace_exit_event);
   ASSERT(this, syscallbuf_child.is_null());
 
   if (!session().is_recording() && !already_reaped()) {
@@ -402,6 +404,7 @@ void Task::did_kill()
    * other that we didn't kill ourselves
    */
   seen_ptrace_exit_event = true;
+  handled_ptrace_exit_event = true;
   syscallbuf_child = nullptr;
   /* No need to unmap/close things in the child here - the kernel did that for
    * us when the child died. */
@@ -1416,7 +1419,7 @@ void Task::resume_execution(ResumeRequest how, WaitRequest wait_how,
           << "waitpid(" << tid << ", NOHANG) failed with " << wait_ret;
     }
   }
-  if (wait_ret > 0 || seen_ptrace_exit_event) {
+  if (wait_ret > 0 || handled_ptrace_exit_event) {
     LOG(debug) << "Task " << tid << " exited unexpectedly";
     // wait() will see this and report the ptrace-exit event.
     detected_unexpected_exit = true;
@@ -1993,7 +1996,7 @@ void Task::did_waitpid(WaitStatus status) {
 
   if (status.reaped()) {
     was_reaped = true;
-    if (seen_ptrace_exit_event) {
+    if (handled_ptrace_exit_event) {
       LOG(debug) << "Reaped task late " << tid;
       // We did not reap this task when it exited, likely because it was a
       // thread group leader blocked on the exit of the other members of
@@ -2066,7 +2069,14 @@ void Task::did_waitpid(WaitStatus status) {
   ticks += more_ticks;
 
   if (status.ptrace_event() == PTRACE_EVENT_EXIT) {
+    ASSERT(this, !handled_ptrace_exit_event);
     seen_ptrace_exit_event = true;
+    if (already_reaped()) {
+      // NB: It's possible for us to have already reaped in the
+      // "Unexpected process reap" case above. If that's happened, there's
+      // nothing more to do here.
+      handled_ptrace_exit_event = true;
+    }
   } else {
     if (arch() == x86 || arch() == x86_64) {
       // Clear the single step flag in case we got here by taking a signal
@@ -3513,6 +3523,12 @@ static void __ptrace_cont(Task* t, ResumeRequest resume_how,
              current_syscall == expect_syscallno2)
       << "Should be at " << syscall_name(expect_syscallno, syscall_arch)
       << ", but instead at " << syscall_name(current_syscall, syscall_arch);
+}
+
+void Task::did_handle_ptrace_exit_event() {
+  ASSERT(this, seen_ptrace_exit_event);
+  ASSERT(this, !handled_ptrace_exit_event);
+  handled_ptrace_exit_event = true;
 }
 
 void Task::os_exec_stub(SupportedArch exec_arch)
