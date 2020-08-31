@@ -57,10 +57,7 @@ SourcesCommand SourcesCommand::singleton(
     "  --substitute=LIBRARY=PATH  When searching for the source to LIBRARY,\n"
     "                             substitute PATH in place of the path stored\n"
     "                             in the library's DW_AT_comp_dir property\n"
-    "                             for all compilation units.\n"
-    "  --explicit                 Instead of taking a <trace_dir>, takes a list\n"
-    "                             of files to scan instead. In this mode, the\n"
-    "                             'trace file names' are just the build-IDs.\n");
+    "                             for all compilation units.\n");
 
 class ExplicitSourcesCommand : public Command {
 public:
