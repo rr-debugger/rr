@@ -34,11 +34,10 @@ public:
   void did_dup(int from, int to);
   void did_close(int fd);
 
-  shr_ptr clone(Task* t) {
-    shr_ptr fds(new FdTable(*this));
-    fds->insert_task(t);
-    return fds;
+  shr_ptr clone() const {
+    return shr_ptr(new FdTable(*this));
   }
+
   static shr_ptr create(Task* t) {
     shr_ptr fds(new FdTable());
     fds->insert_task(t);

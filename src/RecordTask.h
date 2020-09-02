@@ -64,6 +64,7 @@ public:
               remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
               pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
               Session* other_session = nullptr,
+              FdTable::shr_ptr new_fds = nullptr,
               ThreadGroup::shr_ptr new_tg = nullptr) override;
   virtual void post_wait_clone(Task* cloned_from, int flags) override;
   virtual void on_syscall_exit(int syscallno, SupportedArch arch,
