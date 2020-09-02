@@ -1203,6 +1203,7 @@ set(TESTS_WITH_PROGRAM
   link
   madvise_dontfork
   main_thread_exit
+  mmap_fd_reuse_checkpoint
   mmap_replace_most_mappings
   mmap_shared_prot
   mmap_shared_write_exec_race

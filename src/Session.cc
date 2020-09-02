@@ -38,6 +38,7 @@ struct Session::CloneCompletion {
     vector<pair<remote_ptr<void>, vector<uint8_t>>> captured_memory;
   };
   vector<AddressSpaceClone> address_spaces;
+  Task::ClonedFdTables cloned_fd_tables;
 };
 
 Session::Session()
@@ -368,7 +369,8 @@ void Session::finish_initializing() const {
           tg = std::make_shared<ThreadGroup>
             (self, nullptr, asmember.tguid.tid(), asmember.tguid.tid(), asmember.tguid.serial());
         }
-        Task* t_clone = Task::os_clone_into(asmember, remote, tg);
+        Task* t_clone = Task::os_clone_into(
+            asmember, remote, clone_completion->cloned_fd_tables, tg);
         self->on_create(t_clone);
         t_clone->copy_state(asmember);
       }
@@ -606,11 +608,23 @@ static vector<uint8_t> capture_syscallbuf(const AddressSpace::Mapping& m,
   return clone_leader->read_mem(start, data_size);
 }
 
+static FdTable::shr_ptr& get_or_clone_fd_table(
+    Task::ClonedFdTables& existing_clones, Task* task_to_clone) {
+  auto original_fd_table = task_to_clone->fd_table();
+  FdTable::shr_ptr& existing_clone =
+      existing_clones[uintptr_t(original_fd_table.get())];
+  if (!existing_clone) {
+    existing_clone = original_fd_table->clone();
+  }
+  return existing_clone;
+}
+
 void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
   assert_fully_initialized();
   DEBUG_ASSERT(!dest.clone_completion);
 
   auto completion = unique_ptr<CloneCompletion>(new CloneCompletion());
+  auto& cloned_fd_tables = completion->cloned_fd_tables;
 
   for (auto vm : vm_map) {
     // Pick an arbitrary task to be group leader. The actual group leader
@@ -622,7 +636,8 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
     completion->address_spaces.push_back(CloneCompletion::AddressSpaceClone());
     auto& group = completion->address_spaces.back();
 
-    group.clone_leader = group_leader->os_fork_into(&dest);
+    group.clone_leader = group_leader->os_fork_into(
+        &dest, get_or_clone_fd_table(cloned_fd_tables, group_leader));
     dest.on_create(group.clone_leader);
     LOG(debug) << "  forked new group leader " << group.clone_leader->tid;
 
@@ -656,6 +671,7 @@ void Session::copy_state_to(Session& dest, EmuFs& emu_fs, EmuFs& dest_emu_fs) {
         }
         LOG(debug) << "    cloning " << t->rec_tid;
 
+        get_or_clone_fd_table(cloned_fd_tables, t);
         group.member_states.push_back(t->capture_state());
       }
     }

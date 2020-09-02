@@ -631,7 +631,8 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
     case Arch::unshare:
       if (regs.orig_arg1() & CLONE_FILES) {
         fds->erase_task(this);
-        fds = fds->clone(this);
+        fds = fds->clone();
+        fds->insert_task(this);
       }
       return;
 
@@ -966,7 +967,8 @@ void Task::post_exec(const string& exe_file) {
 
   as = session().create_vm(this, exe_file, as->uid().exec_count() + 1);
   // It's barely-documented, but Linux unshares the fd table on exec
-  fds = fds->clone(this);
+  fds = fds->clone();
+  fds->insert_task(this);
   prname = prname_from_exe_image(as->exe_image());
 }
 
@@ -2229,7 +2231,9 @@ void Task::setup_preload_thread_locals_from_clone(Task* origin) {
 Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
                   remote_ptr<void> tls, remote_ptr<int>, pid_t new_tid,
                   pid_t new_rec_tid, uint32_t new_serial,
-                  Session* other_session, ThreadGroup::shr_ptr new_tg) {
+                  Session* other_session,
+                  FdTable::shr_ptr new_fds,
+                  ThreadGroup::shr_ptr new_tg) {
   Session* new_task_session = &session();
   if (other_session) {
     ASSERT(this, reason != TRACEE_CLONE);
@@ -2265,11 +2269,14 @@ Task* Task::clone(CloneReason reason, int flags, remote_ptr<void> stack,
   // FdTable is either shared or copied, so the contents of
   // syscallbuf_fds_disabled_child are still valid.
   if (CLONE_SHARE_FILES & flags) {
+    ASSERT(this, !new_fds);
     t->fds = fds;
-    t->fds->insert_task(t);
+  } else if (new_fds) {
+    t->fds = new_fds;
   } else {
-    t->fds = fds->clone(t);
+    t->fds = fds->clone();
   }
+  t->fds->insert_task(t);
 
   t->top_of_stack = stack;
   // Clone children, both thread and fork, inherit the parent
@@ -2359,7 +2366,7 @@ bool Task::post_vm_clone(CloneReason reason, int flags, Task* origin) {
   return created_preload_thread_locals_mapping;
 }
 
-Task* Task::os_fork_into(Session* session) {
+Task* Task::os_fork_into(Session* session, FdTable::shr_ptr new_fds) {
   AutoRemoteSyscalls remote(this, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
   Task* child =
       os_clone(Task::SESSION_CLONE_LEADER, session, remote, rec_tid, serial,
@@ -2372,7 +2379,8 @@ Task* Task::os_fork_into(Session* session) {
                // flags because that earlier work will
                // be copied by fork()ing the address
                // space.
-               SIGCHLD);
+               SIGCHLD,
+               move(new_fds));
   // When we forked ourselves, the child inherited the setup we
   // did to make the clone() call.  So we have to "finish" the
   // remote calls (i.e. undo fudged state) in the child too,
@@ -2383,7 +2391,11 @@ Task* Task::os_fork_into(Session* session) {
 
 Task* Task::os_clone_into(const CapturedState& state,
                           AutoRemoteSyscalls& remote,
+                          const ClonedFdTables& cloned_fd_tables,
                           ThreadGroup::shr_ptr new_tg) {
+  auto fdtable_entry = cloned_fd_tables.find(state.fdtable_identity);
+  DEBUG_ASSERT(fdtable_entry != cloned_fd_tables.end() &&
+               "All captured fd tables should be in cloned_fd_tables");
   return os_clone(Task::SESSION_CLONE_NONLEADER, &remote.task()->session(),
                   remote, state.rec_tid, state.serial,
                   // We don't actually /need/ to specify the
@@ -2400,6 +2412,7 @@ Task* Task::os_clone_into(const CapturedState& state,
                   // of the CTID flags.
                   (CLONE_VM | CLONE_FS | CLONE_SIGHAND |
                    CLONE_SYSVSEM),
+                  fdtable_entry->second,
                   new_tg,
                   state.top_of_stack);
 }
@@ -2452,6 +2465,7 @@ static int64_t get_fd_offset(Task* t, int fd) {
 Task::CapturedState Task::capture_state() {
   CapturedState state;
   state.rec_tid = rec_tid;
+  state.fdtable_identity = uintptr_t(fds.get());
   state.serial = serial;
   state.tguid = thread_group()->tguid();
   state.regs = regs();
@@ -3013,6 +3027,7 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
 /*static*/ Task* Task::os_clone(CloneReason reason, Session* session,
                                 AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                                 uint32_t new_serial, unsigned base_flags,
+                                FdTable::shr_ptr new_fds,
                                 ThreadGroup::shr_ptr new_tg,
                                 remote_ptr<void> stack, remote_ptr<int> ptid,
                                 remote_ptr<void> tls, remote_ptr<int> ctid) {
@@ -3025,7 +3040,7 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
 
   Task* child = remote.task()->clone(
       reason, clone_flags_to_task_flags(base_flags), stack, tls, ctid,
-      remote.new_tid(), rec_child_tid, new_serial, session, new_tg);
+      remote.new_tid(), rec_child_tid, new_serial, session, new_fds, new_tg);
   return child;
 }
 

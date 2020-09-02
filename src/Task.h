@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <vector>
+#include <unordered_map>
 
 #include "preload/preload_interface.h"
 
@@ -850,6 +851,7 @@ public:
     Registers regs;
     ExtraRegisters extra_regs;
     std::string prname;
+    uintptr_t fdtable_identity;
     remote_ptr<struct syscallbuf_hdr> syscallbuf_child;
     size_t syscallbuf_size;
     size_t num_syscallbuf_bytes;
@@ -946,6 +948,10 @@ public:
    */
   void move_to_signal_stop();
 
+  // A map from original table to (potentially detached) clone, to preserve
+  // FdTable sharing relationships during a session fork.
+  using ClonedFdTables = std::unordered_map<uintptr_t, FdTable::shr_ptr>;
+
 protected:
   Task(Session& session, pid_t tid, pid_t rec_tid, uint32_t serial,
        SupportedArch a);
@@ -971,6 +977,7 @@ protected:
                       remote_ptr<void> tls, remote_ptr<int> cleartid_addr,
                       pid_t new_tid, pid_t new_rec_tid, uint32_t new_serial,
                       Session* other_session = nullptr,
+                      FdTable::shr_ptr new_fds = nullptr,
                       ThreadGroup::shr_ptr new_tg = nullptr);
 
   /**
@@ -1065,9 +1072,10 @@ protected:
    * created.  |task_leader| will perform the actual OS calls to
    * create the new child.
    */
-  Task* os_fork_into(Session* session);
+  Task* os_fork_into(Session* session, FdTable::shr_ptr new_fds);
   static Task* os_clone_into(const CapturedState& state,
                              AutoRemoteSyscalls& remote,
+                             const ClonedFdTables& cloned_fd_tables,
                              ThreadGroup::shr_ptr new_tg);
 
   /**
@@ -1088,6 +1096,7 @@ protected:
   static Task* os_clone(CloneReason reason, Session* session,
                         AutoRemoteSyscalls& remote, pid_t rec_child_tid,
                         uint32_t new_serial, unsigned base_flags,
+                        FdTable::shr_ptr new_fds = nullptr,
                         ThreadGroup::shr_ptr new_tg = nullptr,
                         remote_ptr<void> stack = nullptr,
                         remote_ptr<int> ptid = nullptr,
