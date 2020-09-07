@@ -68,6 +68,10 @@ struct Flags {
   // User override for the path to page files and other resources.
   std::string resource_path;
 
+  // When set, ignore any XSAVE data which is incompatible with the available CPU
+  // features. This can improve trace portability, but is dangerous because it may lead to unexpected behavior and crashes.
+  bool dangerous_ignore_xsave_mismatch;
+
   Flags()
       : checksum(CHECKSUM_NONE),
         dump_on(DUMP_ON_NONE),
@@ -78,7 +82,8 @@ struct Flags {
         suppress_environment_warnings(false),
         fatal_errors_and_warnings(false),
         disable_cpuid_faulting(false),
-        disable_ptrace_exit_events(false) {}
+        disable_ptrace_exit_events(false),
+        dangerous_ignore_xsave_mismatch(false) {}
 
   static const Flags& get() { return singleton; }
 

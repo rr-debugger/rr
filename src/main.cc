@@ -61,6 +61,13 @@ void print_global_options(FILE* out) {
       "should\n"
       "                             be located in PATH/bin, PATH/lib[64], and\n"
       "                             PATH/share as appropriate.\n"
+      "  --dangerous-ignore-xsave-mismatch\n"
+      "                             ignore any XSAVE data which is "
+      "incompatible\n"
+      "                             with the available CPU features. This is\n"
+      "                             dangerous and can lead to unexpected "
+      "behavior\n"
+      "                             and crashes.\n"
       "  -A, --microarch=<NAME>     force rr to assume it's running on a CPU\n"
       "                             with microarch NAME even if runtime "
       "detection\n"
@@ -136,6 +143,7 @@ bool parse_global_option(std::vector<std::string>& args) {
     { 0, "disable-cpuid-faulting", NO_PARAMETER },
     { 1, "disable-ptrace-exit-events", NO_PARAMETER },
     { 2, "resource-path", HAS_PARAMETER },
+    { 3, "dangerous-ignore-xsave-mismatch", NO_PARAMETER },
     { 'A', "microarch", HAS_PARAMETER },
     { 'C', "checksum", HAS_PARAMETER },
     { 'D', "dump-on", HAS_PARAMETER },
@@ -167,6 +175,9 @@ bool parse_global_option(std::vector<std::string>& args) {
       if (flags.resource_path.back() != '/') {
         flags.resource_path.append("/");
       }
+      break;
+    case 3:
+      flags.dangerous_ignore_xsave_mismatch = true;
       break;
     case 'A':
       flags.forced_uarch = opt.value;

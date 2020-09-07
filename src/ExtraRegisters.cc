@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "core.h"
+#include "Flags.h"
 #include "log.h"
 #include "util.h"
 
@@ -441,24 +442,32 @@ bool ExtraRegisters::set_to_raw_data(SupportedArch a, Format format,
 
   uint64_t features = features_used(data, layout);
 
-   // Check for unsupported features being used
+  // Check for unsupported features being used
   if (layout.full_size >= xsave_header_end) {
     if (features & ~native_layout.supported_feature_bits) {
-      LOG(warn) << "Unsupported CPU features found: got " << HEX(features)
-                 << " (" << xsave_feature_string(features)
-                 << "), supported: "
-                 << HEX(native_layout.supported_feature_bits)
-                 << " ("
-                 << xsave_feature_string(native_layout.supported_feature_bits)
-                 << "); Consider using `rr cpufeatures` and "
-                 << "`rr record --disable-cpuid-features-(ext)`";
-      // Clear any unsupported features so the associated XSAVE data is ignored
-      features &= native_layout.supported_feature_bits;
-      LOG(warn) << "Masking CPU features to: " << HEX(features);
+      if (Flags::get().dangerous_ignore_xsave_mismatch) {
+        // Clear unsupported features to ignore the associated XSAVE data
+        uint64_t original_features = features;
+        features &= native_layout.supported_feature_bits;
+        LOG(debug) << "Ignoring unsupported CPU features; "
+                   << "Original features: " << HEX(original_features) << "; "
+                   << "Supported features: "
+                   << HEX(native_layout.supported_feature_bits) << "; "
+                   << "Modified features: " << HEX(features) << "; ";
+      } else {
+        LOG(error) << "Unsupported CPU features found: got " << HEX(features)
+                   << " (" << xsave_feature_string(features)
+                   << "), supported: "
+                   << HEX(native_layout.supported_feature_bits)
+                   << " ("
+                   << xsave_feature_string(native_layout.supported_feature_bits)
+                   << "); Consider using `rr cpufeatures` and "
+                   << "`rr record --disable-cpuid-features-(ext)`";
+      }
     }
   }
 
- // OK, now both our native layout and the input layout are using the full
+  // OK, now both our native layout and the input layout are using the full
   // XSAVE header. Copy the header. Make sure to use our updated `features`.
   memcpy(data_.data() + xsave_header_offset, &features, sizeof(features));
   memcpy(data_.data() + xsave_header_offset + sizeof(features),
