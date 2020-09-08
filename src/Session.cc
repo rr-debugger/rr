@@ -367,7 +367,6 @@ void Session::finish_initializing() const {
         if (!tg) {
           tg = std::make_shared<ThreadGroup>
             (self, nullptr, asmember.tguid.tid(), asmember.tguid.tid(), asmember.tguid.serial());
-          self->on_create(tg.get());
         }
         Task* t_clone = Task::os_clone_into(asmember, remote, tg);
         self->on_create(t_clone);
