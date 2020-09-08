@@ -580,12 +580,28 @@ void ExtraRegisters::reset() {
     }
     uint64_t xinuse;
     if (data_.size() >= xinuse_offset + sizeof(xinuse)) {
+      memcpy(&xinuse, data_.data() + xinuse_offset, sizeof(xinuse));
+
       /* We have observed (Skylake, Linux 4.10) the system setting XINUSE's 0 bit
       * to indicate x87-in-use, at times unrelated to x87 actually being used.
       * Work around this by setting the bit unconditionally after exec.
       */
-      memcpy(&xinuse, data_.data() + xinuse_offset, sizeof(xinuse));
       xinuse |= 1;
+
+      /* If the system supports the PKRU feature, the PKRU feature bit must be
+      * set in order to get the kernel to properly update the PKRU register
+      * value. If this is not set, it has been observed that the PKRU register
+      * may occasionally contain "stale" values, particularly after involuntary
+      * context swtiches.
+      * Avoid this issue by setting the bit if the feature is supported by the
+      * CPU.
+      */
+      const XSaveLayout& native_layout = xsave_native_layout();
+      uint64_t pkru_bit = uint64_t(1) << xsave_feature_pkru;
+      if (native_layout.supported_feature_bits & pkru_bit) {
+        xinuse |= pkru_bit;
+      }
+
       memcpy(data_.data() + xinuse_offset, &xinuse, sizeof(xinuse));
     }
   } else {
