@@ -177,6 +177,11 @@ public:
   }
 
   /**
+   * Seek the timeline to just before tick count `ticks` during event `time`.
+   */
+  void seek_to_ticks(FrameTime time, Ticks ticks);
+
+  /**
    * Reset the current session to the last checkpointed session before (or at)
    * the mark. Will return at the mark if this mark was explicitly checkpointed
    * previously (and not deleted).

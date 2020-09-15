@@ -1361,6 +1361,7 @@ set(TESTS_WITHOUT_PROGRAM
   run_end
   run_in_function
   sanity
+  seekticks
   shm_checkpoint
   siginfo
   x86/sigreturn_checksum
