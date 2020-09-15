@@ -961,6 +961,13 @@ bool GdbConnection::process_vpacket(char* payload) {
       req.restart().param = param;
       LOG(debug) << "next replayer restarting from checkpoint "
                  << req.restart().param;
+    } else if (event_str[0] == 't') {
+      int param = strtol(event_str.c_str() + 1, &endp, 0);
+      req.restart().type = RESTART_FROM_TICKS;
+      req.restart().param_str = event_str.substr(1);
+      req.restart().param = param;
+      LOG(debug) << "next replayer restarting from tick count "
+                 << req.restart().param;
     } else {
       req.restart().type = RESTART_FROM_EVENT;
       req.restart().param = strtol(event_str.c_str(), &endp, 0);

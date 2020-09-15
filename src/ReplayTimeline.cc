@@ -420,6 +420,38 @@ void ReplayTimeline::update_strategy_and_fix_watchpoint_quirk(
   }
 }
 
+void ReplayTimeline::seek_to_ticks(FrameTime time, Ticks ticks) {
+  seek_to_before_key(MarkKey(time, ticks, ReplayStepKey()));
+  unapply_breakpoints_and_watchpoints();
+
+  while (current->trace_reader().time() < time) {
+    ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+    constraints.stop_at_time = time;
+    ReplayResult result = current->replay_step(constraints);
+    if (result.status != REPLAY_CONTINUE) {
+      FATAL() << "Trace finished before target was reached";
+    }
+  }
+
+  ReplayTask* t = current->current_task();
+  if (t->tick_count() < ticks) {
+    // First step using the ticks counter until we enter the skid region
+    ReplaySession::StepConstraints constraints(RUN_CONTINUE);
+    while (true) {
+      constraints.ticks_target = ticks;
+      ReplayResult result = current->replay_step(constraints);
+      if (result.break_status.approaching_ticks_target) {
+        break;
+      }
+    }
+
+    // Then singlestep until we hit our ticks target
+    while (t->tick_count() < ticks) {
+      current->replay_step(RUN_SINGLESTEP_FAST_FORWARD);
+    }
+  }
+}
+
 ReplayResult ReplayTimeline::replay_step_to_mark(
     const Mark& mark, ReplayStepToMarkStrategy& strategy) {
   ReplayTask* t = current->current_task();

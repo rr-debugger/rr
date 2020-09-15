@@ -63,6 +63,12 @@ static const string& gdb_rr_macros() {
        << "restart at checkpoint N\n"
        << "checkpoints are created with the 'checkpoint' command\n"
        << "end\n"
+       << "define seek-ticks\n"
+       << "  run t$arg0\n"
+       << "end\n"
+       << "document seek-ticks\n"
+       << "restart at given ticks value\n"
+       << "end\n"
        // In gdb version "Fedora 7.8.1-30.fc21", a raw "run" command
        // issued before any user-generated resume-execution command
        // results in gdb hanging just after the inferior hits an internal
@@ -1420,6 +1426,52 @@ void GdbServer::restart_session(const GdbRequest& req) {
     checkpoint_to_restore = it->second;
   } else if (req.restart().type == RESTART_FROM_PREVIOUS) {
     checkpoint_to_restore = debugger_restart_checkpoint;
+  } else if (req.restart().type == RESTART_FROM_TICKS) {
+    Ticks target = req.restart().param;
+    ReplaySession &session = timeline.current_session();
+    Task* task = session.current_task();
+    FrameTime current_time = session.current_frame_time();
+    TraceReader tmp_reader(session.trace_reader());
+    FrameTime last_time = current_time;
+    if (session.ticks_at_start_of_current_event() > target) {
+      tmp_reader.rewind();
+      FrameTime task_time;
+      // EXEC and CLONE reset the ticks counter. Find the first event
+      // where the tuid matches our current task.
+      FrameTime ticks_start_time;
+      while (true) {
+        TraceTaskEvent r = tmp_reader.read_task_event(&task_time);
+        if (task_time >= current_time) {
+          break;
+        }
+        if (r.type() == TraceTaskEvent::CLONE || r.type() == TraceTaskEvent::EXEC) {
+          if (r.tid() == task->tuid().tid()) {
+            ticks_start_time = task_time;
+          }
+        }
+      }
+      // Forward the frame reader to the current event
+      last_time = ticks_start_time;
+      while (true) {
+        TraceFrame frame = tmp_reader.read_frame();
+        if (frame.time() >= ticks_start_time) {
+          break;
+        }
+      }
+    }
+    while (true) {
+      if (tmp_reader.at_end()) {
+        cout << "No event found matching specified ticks target.";
+        dbg->notify_restart_failed();
+        return;
+      }
+      TraceFrame frame = tmp_reader.read_frame();
+      if (frame.tid() == task->tuid().tid() && frame.ticks() > target) {
+        break;
+      }
+      last_time = frame.time();
+    }
+    timeline.seek_to_ticks(last_time, target);
   }
 
   interrupt_pending = true;
@@ -1440,25 +1492,26 @@ void GdbServer::restart_session(const GdbRequest& req) {
 
   stop_replaying_to_target = false;
 
-  DEBUG_ASSERT(req.restart().type == RESTART_FROM_EVENT);
-  // Note that we don't reset the target pid; we intentionally keep targeting
-  // the same process no matter what is running when we hit the event.
-  target.event = req.restart().param;
-  target.event = min(final_event - 1, target.event);
-  timeline.seek_to_before_event(target.event);
-  do {
-    ReplayResult result =
-        timeline.replay_step_forward(RUN_CONTINUE, target.event);
-    // We should never reach the end of the trace without hitting the stop
-    // condition below.
-    DEBUG_ASSERT(result.status != REPLAY_EXITED);
-    if (is_last_thread_exit(result.break_status) &&
-        result.break_status.task->thread_group()->tgid == target.pid) {
-      // Debuggee task is about to exit. Stop here.
-      in_debuggee_end_state = true;
-      break;
-    }
-  } while (!at_target());
+  if (req.restart().type == RESTART_FROM_EVENT) {
+    // Note that we don't reset the target pid; we intentionally keep targeting
+    // the same process no matter what is running when we hit the event.
+    target.event = req.restart().param;
+    target.event = min(final_event - 1, target.event);
+    timeline.seek_to_before_event(target.event);
+    do {
+      ReplayResult result =
+          timeline.replay_step_forward(RUN_CONTINUE, target.event);
+      // We should never reach the end of the trace without hitting the stop
+      // condition below.
+      DEBUG_ASSERT(result.status != REPLAY_EXITED);
+      if (is_last_thread_exit(result.break_status) &&
+          result.break_status.task->thread_group()->tgid == target.pid) {
+        // Debuggee task is about to exit. Stop here.
+        in_debuggee_end_state = true;
+        break;
+      }
+    } while (!at_target());
+  }
   activate_debugger();
 }
 
