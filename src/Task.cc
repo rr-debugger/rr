@@ -2440,11 +2440,15 @@ static void copy_tls(const Task::CapturedState& state,
   RR_ARCH_FUNCTION(copy_tls_arch, remote.arch(), state, remote);
 }
 
-static int64_t fdinfo_field(Task* t, int fd, const char* field) {
+static int64_t fdinfo_field(Task* t, int fd, const char* field, bool must_exist) {
   char buf[1024];
   sprintf(buf, "/proc/%d/fdinfo/%d", t->tid, fd);
   ScopedFd info(buf, O_RDONLY);
-  ASSERT(t, info.is_open()) << "Can't open " << buf;
+  if (must_exist) {
+    ASSERT(t, info.is_open()) << "Can't open " << buf;
+  } else if (!info.is_open()) {
+    return -1;
+  }
   ssize_t bytes = read(info, buf, sizeof(buf) - 1);
   ASSERT(t, bytes > 0);
   buf[bytes] = 0;
@@ -2470,11 +2474,11 @@ static int64_t fdinfo_field(Task* t, int fd, const char* field) {
 }
 
 int64_t Task::fd_offset(int fd) {
-  return fdinfo_field(this, fd, "pos:");
+  return fdinfo_field(this, fd, "pos:", true);
 }
 
 pid_t Task::pid_of_pidfd(int fd) {
-  return fdinfo_field(this, fd, "Pid:");
+  return fdinfo_field(this, fd, "Pid:", false);
 }
 
 Task::CapturedState Task::capture_state() {

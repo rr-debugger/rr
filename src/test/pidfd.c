@@ -38,6 +38,14 @@ int main(void) {
       test_assert(info.si_pid == child);
       test_assert(info.si_code == CLD_EXITED);
       test_assert(info.si_status == 77);
+
+      ret = waitid(RR_P_PIDFD, 0, &info, WEXITED);
+      test_assert(ret < 0);
+      test_assert(errno == EBADF);
+
+      ret = waitid(RR_P_PIDFD, INT_MAX, &info, WEXITED);
+      test_assert(ret < 0);
+      test_assert(errno == EBADF);
     }
   }
 
