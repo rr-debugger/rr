@@ -1047,7 +1047,7 @@ static long commit_raw_syscall(int syscallno, void* record_end, long ret) {
  * a pointer to the end of it. If there is no scratch buffer (|buf2| is NULL)
  * just returns |ptr|.
  */
-static void* copy_output_buffer(int ret_size, void* ptr, void* buf,
+static void* copy_output_buffer(long ret_size, void* ptr, void* buf,
                                 void* buf2) {
   if (!buf2) {
     return ptr;
@@ -1393,6 +1393,16 @@ static long sys_fcntl(const struct syscall_info* call)
   }
 }
 
+static long ret_buf_len(long ret, size_t len) {
+  if (ret < 0) {
+    return 0;
+  }
+  if (len > LONG_MAX) {
+    return ret;
+  }
+  return ret < (long)len ? ret : (long)len;
+}
+
 static long sys_flistxattr(const struct syscall_info* call) {
   const int syscallno = SYS_flistxattr;
   int fd = (int)call->args[0];
@@ -1414,7 +1424,7 @@ static long sys_flistxattr(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall3(syscallno, fd, buf2, size);
-  ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, buf, buf2);
+  ptr = copy_output_buffer(ret_buf_len(ret, size), ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -1647,8 +1657,7 @@ static long sys_generic_getxattr(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall4(call->no, path, name, value2, size);
-  ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, value,
-                           value2);
+  ptr = copy_output_buffer(ret_buf_len(ret, size), ptr, value, value2);
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
@@ -1679,8 +1688,7 @@ static long sys_fgetxattr(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall4(call->no, fd, name, value2, size);
-  ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, value,
-                           value2);
+  ptr = copy_output_buffer(ret_buf_len(ret, size), ptr, value, value2);
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
@@ -1702,7 +1710,7 @@ static long sys_generic_listxattr(const struct syscall_info* call) {
   }
 
   ret = untraced_syscall3(call->no, path, buf2, size);
-  ptr = copy_output_buffer(ret > (long)size ? (long)size : ret, ptr, buf, buf2);
+  ptr = copy_output_buffer(ret_buf_len(ret, size), ptr, buf, buf2);
   return commit_raw_syscall(call->no, ptr, ret);
 }
 
@@ -2317,7 +2325,8 @@ static long sys_socketcall_recv(const struct syscall_info* call) {
   new_args[2] = len;
   new_args[3] = flags;
   ret = untraced_syscall2(SYS_socketcall, SYS_RECV, new_args);
-  ptr = copy_output_buffer(ret, ptr, buf, buf2);
+  /* Account for MSG_TRUNC */
+  ptr = copy_output_buffer(ret_buf_len(ret, len), ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 
@@ -2393,7 +2402,7 @@ static long sys_recvfrom(const struct syscall_info* call) {
       *addrlen = *addrlen2;
     }
   }
-  ptr = copy_output_buffer(ret, ptr, buf, buf2);
+  ptr = copy_output_buffer(ret_buf_len(ret, len), ptr, buf, buf2);
   return commit_raw_syscall(syscallno, ptr, ret);
 }
 #endif

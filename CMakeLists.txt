@@ -907,6 +907,7 @@ set(BASIC_TESTS
   mremap_private_grow_under_map
   mremap_shrink
   msg
+  msg_trunc
   msync
   mtio
   multiple_pending_signals
