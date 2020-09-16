@@ -1,2 +1,3 @@
 source `dirname $0`/util.sh
+TIMEOUT=300
 debug_test
