@@ -109,8 +109,10 @@ void Task::detach() {
 
 void Task::reenable_cpuid_tsc() {
   AutoRemoteSyscalls remote(this);
-  remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
-                        ARCH_SET_CPUID, 1);
+  if (session().has_cpuid_faulting()) {
+    remote.infallible_syscall(syscall_number_for_arch_prctl(arch()),
+                          ARCH_SET_CPUID, 1);
+  }
   remote.infallible_syscall(syscall_number_for_prctl(arch()),
                         PR_SET_TSC, PR_TSC_ENABLE);
 }
