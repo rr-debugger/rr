@@ -2440,8 +2440,8 @@ static void copy_tls(const Task::CapturedState& state,
   RR_ARCH_FUNCTION(copy_tls_arch, remote.arch(), state, remote);
 }
 
-static int64_t get_fd_offset(Task* t, int fd) {
-  char buf[PATH_MAX];
+static int64_t fdinfo_field(Task* t, int fd, const char* field) {
+  char buf[1024];
   sprintf(buf, "/proc/%d/fdinfo/%d", t->tid, fd);
   ScopedFd info(buf, O_RDONLY);
   ASSERT(t, info.is_open()) << "Can't open " << buf;
@@ -2450,18 +2450,31 @@ static int64_t get_fd_offset(Task* t, int fd) {
   buf[bytes] = 0;
 
   char* p = buf;
+  size_t field_len = strlen(field);
   while (*p) {
-    if (strncmp(p, "pos:", 4) == 0) {
+    if (strncmp(p, field, field_len) == 0) {
       char* end;
-      long long int r = strtoll(p + 4, &end, 10);
+      long long int r = strtoll(p + field_len, &end, 10);
       ASSERT(t, *end == 0 || *end == '\n');
       return r;
     }
-    while (*p && *p != '\n') {
+    while (*p) {
+      if (*p == '\n') {
+        ++p;
+        break;
+      }
       ++p;
     }
   }
   return -1;
+}
+
+int64_t Task::fd_offset(int fd) {
+  return fdinfo_field(this, fd, "pos:");
+}
+
+pid_t Task::pid_of_pidfd(int fd) {
+  return fdinfo_field(this, fd, "Pid:");
 }
 
 Task::CapturedState Task::capture_state() {
@@ -2483,7 +2496,7 @@ Task::CapturedState Task::capture_state() {
   state.cloned_file_data_fname = cloned_file_data_fname;
   state.cloned_file_data_offset =
       cloned_file_data_fd_child >= 0
-          ? get_fd_offset(this, cloned_file_data_fd_child)
+          ? fd_offset(cloned_file_data_fd_child)
           : 0;
   memcpy(&state.thread_locals, fetch_preload_thread_locals(),
          PRELOAD_THREAD_LOCALS_SIZE);

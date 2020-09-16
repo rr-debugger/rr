@@ -4031,9 +4031,8 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
     }
 
     case Arch::waitid: {
-      Switchable should_switch = ALLOW_SWITCH;
-      t->in_wait_pid = (id_t)regs.arg2();
-      switch ((idtype_t)regs.arg1()) {
+      id_t wait_pid = (id_t)regs.arg2();
+      switch ((uint32_t)regs.arg1()) {
         case P_ALL:
           t->in_wait_type = WAIT_TYPE_ANY;
           break;
@@ -4043,10 +4042,22 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
         case P_PGID:
           t->in_wait_type = WAIT_TYPE_PGID;
           break;
+        case P_PIDFD:
+          wait_pid = t->pid_of_pidfd(regs.arg2());
+          if (!t->session().find_task(wait_pid)) {
+            // Waiting on a non-tracee; just let it happen as normal
+            // We also take this path if pid_of_pidfd returns -1
+            // because the fd is not a pidfd.
+            return ALLOW_SWITCH;
+          }
+          t->in_wait_type = WAIT_TYPE_PID;
+          break;
         default:
           syscall_state.expect_errno = EINVAL;
           break;
       }
+      Switchable should_switch = ALLOW_SWITCH;
+      t->in_wait_pid = wait_pid;
       int options = (int)regs.arg4();
       bool pausing = false;
       if (maybe_emulate_wait(t, syscall_state, options)) {

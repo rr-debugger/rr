@@ -928,7 +928,7 @@ set(BASIC_TESTS
   personality
   pid_ns_reap
   pid_ns_segv
-  # pidfd ... disabled because we don't know how to get the pid for a pidfd yet :-(
+  pidfd
   pthread_rwlocks
   poll_sig_race
   ppoll

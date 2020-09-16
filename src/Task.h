@@ -234,6 +234,14 @@ public:
    * task's fd table.
    */
   std::string file_name_of_fd(int fd);
+  /**
+   * Get current offset of |fd|
+   */
+  int64_t fd_offset(int fd);
+  /**
+   * Get pid of pidfd |fd|
+   */
+  pid_t pid_of_pidfd(int fd);
 
   /**
    * Force the wait status of this to |status|, as if

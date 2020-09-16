@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <sys/ioctl.h>
 #include <sys/ptrace.h>
+#include <sys/wait.h>
 
 namespace rr {
 
@@ -356,6 +357,10 @@ enum {
 
 #ifndef MAX_HANDLE_SZ
 #define MAX_HANDLE_SZ 128
+#endif
+
+#ifndef P_PIDFD
+#define P_PIDFD 3
 #endif
 
 } // namespace rr
