@@ -162,6 +162,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
   int sys = r.original_syscallno();
   int flags = 0;
   if (Arch::clone == sys) {
+    // BLOCKED clone flags:
     // If we allow CLONE_UNTRACED then the child would escape from rr control
     // and we can't allow that.
     // Block CLONE_CHILD_CLEARTID because we'll emulate that ourselves.
@@ -169,16 +170,28 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // Block CLONE_NEW* from replay, any effects it had were dealt with during
     // recording.
     // Block CLONE_THREAD/CLONE_FILES - during replay each task is its own
-    // thread group/has its own fd table.
-    // We track what the membership was during record, but it's hard
-    // (and unnecessary) to replicate this kernel state during
+    // thread group/has its own fd table. We track what the membership was during
+    // record, but it's hard (and unnecessary) to replicate this kernel state during
     // replay.
-    // Block CLONE_PIDFD because we'll record this.
+    // Block CLONE_PIDFD/CLONE_CHILD_SETTID/CLONE_PARENT_SETTID because we record these.
+    //
+    // ALLOWED clone flags:
+    // We allow CLONE_VM because address space sharing must not be broken.
+    // We allow CLONE_SETTLS because we must set %fs correctly if requested.
+    //
+    // IRRELEVANT clone flags:
+    // CLONE_SIGHAND/CLONE_SYSVSEM/CLONE_FS/CLONE_IO are irrelevant because we don't set signal handlers
+    // or use SYSV-semaphore objects during replay, or let it use the filesystem, or do I/O.
+    //
+    // CLONE_PARENT/CLONE_PTRACE ... they probably need work to work under rr.
     uintptr_t disallowed_clone_flags =
-        CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK | CLONE_NEWIPC |
-        CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUSER |
-        CLONE_NEWUTS | CLONE_NEWCGROUP | CLONE_THREAD | CLONE_FILES |
-        CLONE_PIDFD;
+        CLONE_UNTRACED |
+        CLONE_CHILD_CLEARTID |
+        CLONE_VFORK |
+        CLONE_NEWIPC | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUSER |
+        CLONE_NEWUTS | CLONE_NEWCGROUP |
+        CLONE_THREAD | CLONE_FILES |
+        CLONE_PIDFD | CLONE_CHILD_SETTID | CLONE_PARENT_SETTID;
     flags = r.arg1();
     r.set_arg1(flags & ~disallowed_clone_flags);
   } else if (Arch::vfork == sys) {
