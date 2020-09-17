@@ -26,7 +26,7 @@ int main(void) {
     return 0;
   }
   test_assert(child >= 0);
-  test_assert(pidfd == 5);
+  test_assert(pidfd == dummy_fds[1] + 1);
 
   test_assert(child == waitpid(child, &status, 0));
   test_assert(WIFEXITED(status) && 77 == WEXITSTATUS(status));
