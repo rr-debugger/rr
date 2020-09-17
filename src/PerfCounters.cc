@@ -71,8 +71,8 @@ enum CpuMicroarch {
   LastIntel = IntelIcelake,
   FirstAMD,
   AMDF15R30 = FirstAMD,
-  AMDRyzen,
-  LastAMD = AMDRyzen,
+  AMDZen,
+  LastAMD = AMDZen,
   FirstARM,
   ARMNeoverseN1 = FirstARM,
   LastARM = ARMNeoverseN1,
@@ -138,13 +138,16 @@ static const PmuConfig pmu_configs[] = {
   { IntelPenryn, "Intel Penryn", 0, 0, 0, 0, 100, 0 },
   { IntelMerom, "Intel Merom", 0, 0, 0, 0, 100, 0 },
   { AMDF15R30, "AMD Family 15h Revision 30h", 0xc4, 0xc6, 0, 0, 250, PMU_TICKS_TAKEN_BRANCHES },
-  { AMDRyzen, "AMD Ryzen", 0x5100d1, 0, 0, 0, 1000, PMU_TICKS_RCB },
+  // 0xd1 == RETIRED_CONDITIONAL_BRANCH_INSTRUCTIONS - Number of retired conditional branch instructions
+  // 0x2c == INTERRUPT_TAKEN - Counts the number of interrupts taken
+  // Both counters are available on Zen, Zen+ and Zen2.
+  { AMDZen, "AMD Zen", 0x5100d1, 0, 0x51002c, 0, 10000, PMU_TICKS_RCB },
   // 0x21 == BR_RETIRED - Architecturally retired taken branches
   // 0x6F == STREX_SPEC - Speculatively executed strex instructions
   { ARMNeoverseN1, "ARM Neoverse N1", 0x21, 0, 0, 0x6F, 1000, PMU_TICKS_TAKEN_BRANCHES }
 };
 
-#define RR_SKID_MAX 1000
+#define RR_SKID_MAX 10000
 
 static string lowercase(const string& s) {
   string c = s;
