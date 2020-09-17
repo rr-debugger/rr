@@ -290,30 +290,32 @@ static void arch_check_restricted_counter() {
 
 template <typename Arch>
 void PerfCounters::reset_arch_extras() {
-  struct perf_event_attr attr = rr::ticks_attr;
-  if (has_kvm_in_txcp_bug) {
-    // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not
-    // used,
-    // and check that.
-    attr.sample_period = 0;
-    attr.config |= IN_TX;
-    fd_ticks_in_transaction = start_counter(tid, fd_ticks_interrupt, &attr);
-  } else {
-    // Set up a separate counter for measuring ticks, which does not have
-    // a sample period and does not count events during aborted
-    // transactions.
-    // We have to use two separate counters here because the kernel does
-    // not support setting a sample_period with IN_TXCP, apparently for
-    // reasons related to this Intel note on IA32_PERFEVTSEL2:
-    // ``When IN_TXCP=1 & IN_TX=1 and in sampling, spurious PMI may
-    // occur and transactions may continuously abort near overflow
-    // conditions. Software should favor using IN_TXCP for counting over
-    // sampling. If sampling, software should use large “sample-after“
-    // value after clearing the counter configured to use IN_TXCP and
-    // also always reset the counter even when no overflow condition
-    // was reported.''
-    attr.sample_period = 0;
-    attr.config |= IN_TXCP;
-    fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
+  if (supports_txcp) {
+    struct perf_event_attr attr = rr::ticks_attr;
+    if (has_kvm_in_txcp_bug) {
+      // IN_TXCP isn't going to work reliably. Assume that HLE/RTM are not
+      // used,
+      // and check that.
+      attr.sample_period = 0;
+      attr.config |= IN_TX;
+      fd_ticks_in_transaction = start_counter(tid, fd_ticks_interrupt, &attr);
+    } else {
+      // Set up a separate counter for measuring ticks, which does not have
+      // a sample period and does not count events during aborted
+      // transactions.
+      // We have to use two separate counters here because the kernel does
+      // not support setting a sample_period with IN_TXCP, apparently for
+      // reasons related to this Intel note on IA32_PERFEVTSEL2:
+      // ``When IN_TXCP=1 & IN_TX=1 and in sampling, spurious PMI may
+      // occur and transactions may continuously abort near overflow
+      // conditions. Software should favor using IN_TXCP for counting over
+      // sampling. If sampling, software should use large “sample-after“
+      // value after clearing the counter configured to use IN_TXCP and
+      // also always reset the counter even when no overflow condition
+      // was reported.''
+      attr.sample_period = 0;
+      attr.config |= IN_TXCP;
+      fd_ticks_measure = start_counter(tid, fd_ticks_interrupt, &attr);
+    }
   }
 }
