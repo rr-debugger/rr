@@ -43,7 +43,7 @@ static bool always_recreate_counters() {
   return false;
 }
 
-static void check_for_arch_bugs() {}
+static void check_for_arch_bugs(__attribute__((unused)) CpuMicroarch uarch) {}
 
 template <>
 void PerfCounters::reset_arch_extras<ARM64Arch>() {
