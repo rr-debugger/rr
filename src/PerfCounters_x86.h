@@ -265,9 +265,11 @@ static void check_for_xen_pmi_bug() {
   }
 }
 
-static void check_for_arch_bugs() {
-  check_for_kvm_in_txcp_bug();
-  check_for_xen_pmi_bug();
+static void check_for_arch_bugs(CpuMicroarch uarch) {
+  if (uarch >= FirstIntel && uarch <= LastIntel) {
+    check_for_kvm_in_txcp_bug();
+    check_for_xen_pmi_bug();
+  }
 }
 
 static bool always_recreate_counters() {
