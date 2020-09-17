@@ -777,6 +777,7 @@ set(BASIC_TESTS
   clone_newflags
   clone_parent
   clone_untraced
+  clone_vfork_pidfd
   cloned_sigmask
   constructor
   copy_file_range
@@ -1161,7 +1162,6 @@ set(TESTS_WITH_PROGRAM
   # Disabled because it fails
   # clone_share_vm
   clone_vfork
-  clone_vfork_pidfd
   conditional_breakpoint_calls
   conditional_breakpoint_offload
   condvar_stress
