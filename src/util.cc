@@ -1081,7 +1081,7 @@ static CloneParameters extract_clone_parameters_arch(const Registers& regs) {
   int flags = (int)regs.arg1();
   // If these flags aren't set, the corresponding clone parameters may be
   // invalid pointers, so make sure they're ignored.
-  if (!(flags & CLONE_PARENT_SETTID)) {
+  if (!(flags & (CLONE_PARENT_SETTID | CLONE_PIDFD))) {
     result.ptid = nullptr;
   }
   if (!(flags & (CLONE_CHILD_SETTID | CLONE_CHILD_CLEARTID))) {

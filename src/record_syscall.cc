@@ -4048,6 +4048,7 @@ static Switchable rec_prepare_syscall_arch(RecordTask* t,
             // Waiting on a non-tracee; just let it happen as normal
             // We also take this path if pid_of_pidfd returns -1
             // because the fd is not a pidfd.
+            syscall_state.reg_parameter<typename Arch::siginfo_t>(3);
             return ALLOW_SWITCH;
           }
           t->in_wait_type = WAIT_TYPE_PID;

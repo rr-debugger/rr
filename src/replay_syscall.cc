@@ -173,10 +173,12 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
     // We track what the membership was during record, but it's hard
     // (and unnecessary) to replicate this kernel state during
     // replay.
+    // Block CLONE_PIDFD because we'll record this.
     uintptr_t disallowed_clone_flags =
         CLONE_UNTRACED | CLONE_CHILD_CLEARTID | CLONE_VFORK | CLONE_NEWIPC |
         CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID | CLONE_NEWUSER |
-        CLONE_NEWUTS | CLONE_NEWCGROUP | CLONE_THREAD | CLONE_FILES;
+        CLONE_NEWUTS | CLONE_NEWCGROUP | CLONE_THREAD | CLONE_FILES |
+        CLONE_PIDFD;
     flags = r.arg1();
     r.set_arg1(flags & ~disallowed_clone_flags);
   } else if (Arch::vfork == sys) {

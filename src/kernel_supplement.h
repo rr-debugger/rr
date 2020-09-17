@@ -3,10 +3,13 @@
 #ifndef RR_KERNEL_SUPPLEMENT_H_
 #define RR_KERNEL_SUPPLEMENT_H_
 
+#define _GNU_SOURCE 1
+
 #include <linux/if_tun.h>
 #include <linux/mman.h>
 #include <linux/seccomp.h>
 #include <linux/usbdevice_fs.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdint.h>
 #include <sys/ioctl.h>
@@ -361,6 +364,10 @@ enum {
 
 #ifndef P_PIDFD
 #define P_PIDFD 3
+#endif
+
+#ifndef CLONE_PIDFD
+#define CLONE_PIDFD 0x1000
 #endif
 
 } // namespace rr

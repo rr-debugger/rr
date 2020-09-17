@@ -25,25 +25,29 @@ int main(void) {
     test_assert(wait(&status) == child);
     test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
   } else {
-    siginfo_t info;
+    siginfo_t* info;
     int ret;
     test_assert(pidfd >= 0);
-    ret = waitid(RR_P_PIDFD, pidfd, &info, WEXITED);
+    ALLOCATE_GUARD(info, 'a');
+    ret = waitid(RR_P_PIDFD, pidfd, info, WEXITED);
+    VERIFY_GUARD(info);
     if (ret < 0 && errno == EINVAL) {
       atomic_puts("P_PIDFD not supported, skipping that part of the test");
       test_assert(wait(&status) == child);
       test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 77);
     } else {
       test_assert(ret == 0);
-      test_assert(info.si_pid == child);
-      test_assert(info.si_code == CLD_EXITED);
-      test_assert(info.si_status == 77);
+      test_assert(info->si_pid == child);
+      test_assert(info->si_code == CLD_EXITED);
+      test_assert(info->si_status == 77);
 
-      ret = waitid(RR_P_PIDFD, 0, &info, WEXITED);
+      ret = waitid(RR_P_PIDFD, 0, info, WEXITED);
+      VERIFY_GUARD(info);
       test_assert(ret < 0);
       test_assert(errno == EBADF);
 
-      ret = waitid(RR_P_PIDFD, INT_MAX, &info, WEXITED);
+      ret = waitid(RR_P_PIDFD, INT_MAX, info, WEXITED);
+      VERIFY_GUARD(info);
       test_assert(ret < 0);
       test_assert(errno == EBADF);
     }
