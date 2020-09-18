@@ -20,7 +20,10 @@ int main(void) {
   child = clone(clonefunc, (void*)(((uintptr_t)child_stack + sizeof(child_stack)) &
                                    ~((uintptr_t)0x8-1)),
                 RR_CLONE_PIDFD | CLONE_VFORK | SIGCHLD, NULL, &pidfd);
-  if (child < 0 && errno == EINVAL) {
+  /* CLONE_PIDFD has the same value as CLONE_PID which is silently ignored
+     by older kernels. So they only way to detect that it was ignored is to
+     check that `pidfd` has not been modified. */
+  if (pidfd == 99) {
     atomic_puts("CLONE_PIDFD not supported, skipping test");
     atomic_puts("EXIT-SUCCESS");
     return 0;
