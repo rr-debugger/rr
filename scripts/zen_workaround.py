@@ -18,6 +18,8 @@ if not os.path.exists('/dev/cpu'):
         sys.exit(ret)
 
 for cpu in os.listdir('/dev/cpu'):
+    if not cpu.isdigit():
+        continue
     msr = os.open('/dev/cpu/{}/msr'.format(cpu), os.O_RDONLY)
     os.lseek(msr, MSR, os.SEEK_SET)
     (val,) = struct.unpack('<q', os.read(msr, 8))
