@@ -12,7 +12,7 @@ MSR = 0xc0011020
 # Disable SpecLockMap
 BIT = 1 << 54
 
-if not os.path.exists('/dev/cpu'):
+if not os.path.exists('/dev/cpu/0/msr'):
     ret = os.system('modprobe msr')
     if ret:
         sys.exit(ret)
