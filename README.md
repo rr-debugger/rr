@@ -12,5 +12,7 @@ If you find rr useful, please [add a testimonial](https://github.com/mozilla/rr/
 # System requirements
 
 * Linux kernel ≥ 3.11 is required (for `PTRACE_SETSIGMASK`).
-* rr currently requires an Intel CPU with [Nehalem](https://en.wikipedia.org/wiki/Nehalem_%28microarchitecture%29) (2010) or later microarchitecture.
+* rr currently requires either:
+ * An Intel CPU with [Nehalem](https://en.wikipedia.org/wiki/Nehalem_%28microarchitecture%29) (2010) or later microarchitecture.
+ * Certain AMD Zen or later processors (see https://github.com/mozilla/rr/wiki/Zen)
 * Running in a VM guest is supported, as long as the VM supports virtualization of hardware performance counters. (VMware and KVM are known to work; Xen does not.)
