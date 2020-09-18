@@ -596,9 +596,8 @@ void ExtraRegisters::reset() {
       * Avoid this issue by setting the bit if the feature is supported by the
       * CPU.
       */
-      const XSaveLayout& native_layout = xsave_native_layout();
       uint64_t pkru_bit = uint64_t(1) << xsave_feature_pkru;
-      if (native_layout.supported_feature_bits & pkru_bit) {
+      if (xcr0() & pkru_bit) {
         xinuse |= pkru_bit;
       }
 
