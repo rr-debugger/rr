@@ -29,51 +29,51 @@ static void test_mount(void) {
 }
 
 static void test_uids(void) {
-  test_assert(0 == syscall(SYS_setreuid, 7, 7));
+  test_assert(0 == syscall(SYS_setreuid, 7, 7) || errno == ENOSYS);
 #ifdef SYS_setreuid32
   test_assert(0 == syscall(SYS_setreuid32, 7, 7));
 #endif
-  test_assert(0 == syscall(SYS_setregid, 8, 8));
+  test_assert(0 == syscall(SYS_setregid, 8, 8) || errno == ENOSYS);
 #ifdef SYS_setreuid32
   test_assert(0 == syscall(SYS_setregid32, 8, 8));
 #endif
-  test_assert(0 == syscall(SYS_setresuid, 7, 7, 7));
+  test_assert(0 == syscall(SYS_setresuid, 7, 7, 7) || errno == ENOSYS);
 #ifdef SYS_setresuid32
   test_assert(0 == syscall(SYS_setresuid32, 7, 7, 7));
 #endif
-  test_assert(0 == syscall(SYS_setresgid, 8, 8, 8));
+  test_assert(0 == syscall(SYS_setresgid, 8, 8, 8) || errno == ENOSYS);
 #ifdef SYS_setresuid32
   test_assert(0 == syscall(SYS_setresgid32, 8, 8, 8));
 #endif
-  test_assert(0 == syscall(SYS_setuid, 7));
+  test_assert(0 == syscall(SYS_setuid, 7) || errno == ENOSYS);
 #ifdef SYS_setuid32
   test_assert(0 == syscall(SYS_setuid32, 7));
 #endif
-  test_assert(0 == syscall(SYS_setgid, 8));
+  test_assert(0 == syscall(SYS_setgid, 8) || errno == ENOSYS);
 #ifdef SYS_setgid32
   test_assert(0 == syscall(SYS_setgid32, 8));
 #endif
-  test_assert(7 == syscall(SYS_setfsuid, 7));
+  test_assert(7 == syscall(SYS_setfsuid, 7) || errno == ENOSYS);
 #ifdef SYS_setfsuid32
   test_assert(7 == syscall(SYS_setfsuid32, 7));
 #endif
-  test_assert(8 == syscall(SYS_setfsgid, 8));
+  test_assert(8 == syscall(SYS_setfsgid, 8) || errno == ENOSYS);
 #ifdef SYS_setfsgid32
   test_assert(8 == syscall(SYS_setfsgid32, 8));
 #endif
-  test_assert(7 == syscall(SYS_getuid));
+  test_assert(7 == syscall(SYS_getuid) || errno == ENOSYS);
 #ifdef SYS_getuid32
   test_assert(7 == syscall(SYS_getuid32));
 #endif
-  test_assert(8 == syscall(SYS_getgid));
+  test_assert(8 == syscall(SYS_getgid) || errno == ENOSYS);
 #ifdef SYS_getgid32
   test_assert(8 == syscall(SYS_getgid32));
 #endif
-  test_assert(7 == syscall(SYS_geteuid));
+  test_assert(7 == syscall(SYS_geteuid) || errno == ENOSYS);
 #ifdef SYS_geteuid32
   test_assert(7 == syscall(SYS_geteuid32));
 #endif
-  test_assert(8 == syscall(SYS_getegid));
+  test_assert(8 == syscall(SYS_getegid) || errno == ENOSYS);
 #ifdef SYS_getegid32
   test_assert(8 == syscall(SYS_getegid32));
 #endif
