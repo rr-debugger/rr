@@ -444,11 +444,6 @@ void write_all(int fd, const void* buf, size_t size);
 /* Like pwrite64(2) but we try to write all bytes by looping on short writes. */
 ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off64_t offset);
 
-/* Like copy_file_range(2), but slower, because it buffers through this process
-  and without being completely broken on memfds. Also doesn't do short reads/writes.
-  XXX: It would be nice to fix this in the kernel. */
-ssize_t copy_file_range_all(int from_fd, off64_t from_offset, int to_fd, off64_t to_offset, size_t len);
-
 /* Returns true if |path| is an accessible directory. Returns false if there
  * was an error.
  */

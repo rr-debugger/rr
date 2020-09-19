@@ -3431,6 +3431,18 @@ static void apply_mm_map(AutoRemoteSyscalls& remote, const struct prctl_mm_map& 
                             sizeof(map));
 }
 
+static void copy_mem_mapping(Task* from, Task* to, const KernelMapping& km) {
+  vector<char> buf;
+  buf.resize(km.size());
+  ssize_t bytes = from->read_bytes_fallible(km.start(), km.size(), buf.data());
+  ASSERT(from, bytes > 0) << "Expected to read some bytes in the mapping";
+  // We may have a short read here if there are beyond-end-of-mapped-file pages
+  // in the mapping.
+  bool ok = true;
+  to->write_bytes_helper(km.start(), bytes, buf.data(), &ok);
+  ASSERT(to, ok);
+}
+
 void Task::dup_from(Task *other) {
   std::vector<KernelMapping> mappings;
   KernelMapping stack_mapping;
@@ -3455,30 +3467,24 @@ void Task::dup_from(Task *other) {
     // TODO: Only do this if the rr page isn't already mapped
     this->vm()->unmap_all_but_rr_page(remote);
     create_mapping(this, remote, stack_mapping);
-    off64_t addr = stack_mapping.start().as_int();
-    ssize_t copied = copy_file_range_all(other->vm()->mem_fd(),
-      addr, this->vm()->mem_fd(),
-      addr, stack_mapping.size());
-    ASSERT(this, copied > 0) << "copy_file_range_all failed. copied=" << copied;
+    copy_mem_mapping(other, this, stack_mapping);
   }
   {
     AutoRemoteSyscalls remote_this(this);
     for (auto &km : mappings) {
-      if (km.start() == vm()->rr_page_start() || km.is_vsyscall())
+      if (km.start() == vm()->rr_page_start() || km.is_vsyscall()) {
         continue;
+      }
       create_mapping(this, remote_this, km);
       // XXX: If this maps a file, recreate it as such
-      off64_t addr = km.start().as_int();
-      ssize_t copied = copy_file_range_all(other->vm()->mem_fd(),
-        addr, this->vm()->mem_fd(),
-        addr, km.size());
-      ASSERT(this, copied > 0) << "copy_file_range_all failed. copied=" << copied;
+      copy_mem_mapping(other, this, km);
     }
     AutoRemoteSyscalls remote_other(other);
     std::vector<int> all_fds = read_all_proc_fds(other->tid);
     for (int fd : all_fds) {
-      if (fd == session().tracee_fd_number())
+      if (fd == session().tracee_fd_number()) {
         continue;
+      }
       ScopedFd here = remote_other.retrieve_fd(fd);
       int remote_fd_flags = remote_other.infallible_syscall(
         syscall_number_for_fcntl(this->arch()), fd, F_GETFD);

@@ -1859,38 +1859,6 @@ ssize_t pwrite_all_fallible(int fd, const void* buf, size_t size, off64_t offset
   return written;
 }
 
-ssize_t copy_file_range_all(int from_fd, off64_t from_offset, int to_fd,
-                            off64_t to_offset, size_t len)
-{
-  char buf[4096];
-  size_t nwritten = 0;
-  while (true) {
-    ssize_t to_read = std::min(len - nwritten, sizeof(buf));
-    if (to_read == 0) {
-      break;
-    }
-    ssize_t read_ret = ::pread64(from_fd, buf, to_read, from_offset);
-    if (read_ret < 0) {
-      return read_ret;
-    }
-    else if (read_ret == 0) {
-      // We expected to read everything, but came up short, probably because
-      // what we tried to read wasn't mapped - let's call this EIO.
-      return -EIO;
-    }
-    from_offset += read_ret;
-    ssize_t write_ret = pwrite_all_fallible(to_fd, buf, read_ret, to_offset);
-    if (write_ret < 0) {
-      return write_ret;
-    } else if (write_ret < read_ret) {
-      return -EIO;
-    }
-    to_offset += write_ret;
-    nwritten += write_ret;
-  }
-  return nwritten;
-}
-
 bool is_directory(const char* path) {
   struct stat buf;
   if (stat(path, &buf) < 0) {
