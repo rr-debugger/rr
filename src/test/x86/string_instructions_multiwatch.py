@@ -4,7 +4,7 @@ import re
 send_gdb('b my_memmove')
 expect_gdb('Breakpoint 1')
 send_gdb('c')
-expect_gdb(re.compile(r'Buf is at ([^ ]+)'))
+expect_gdb(re.compile(r'Buf is at ([^ \n]+)'))
 buf = eval(last_match().group(1));
 expect_gdb('Breakpoint 1')
 
