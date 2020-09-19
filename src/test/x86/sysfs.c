@@ -6,6 +6,11 @@ int main(void) {
   int i;
   int ret;
   int num_types = syscall(SYS_sysfs, 3);
+  if (num_types < 0 && errno == ENOSYS) {
+    atomic_puts("sysfs not supported, skipping test");
+    atomic_puts("EXIT-SUCCESS");
+    return 0;
+  }
   test_assert(num_types > 0);
 
   for (i = 0; i < num_types; ++i) {
