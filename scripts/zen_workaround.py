@@ -46,25 +46,40 @@ if not args.check:
         os.write(msr, struct.pack('<q', val))
         os.close(msr)
 
+ssb_status = 'unknown'
 if not args.reset:
     import ctypes
     lib = ctypes.CDLL(None)
     prctl = lib.prctl
     prctl.restype = ctypes.c_int
     prctl.argtypes = (ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong, ctypes.c_ulong)
-    # Try to enable SSB mitigation. On Zen and Zen+, this is known to make the kernel overwrite
-    # the MSR and reset the bit we just set.
+    PR_GET_SPECULATION_CTRL = 52
     PR_SET_SPECULATION_CTRL = 53
     PR_SPEC_STORE_BYPASS = 0
+    PR_SPEC_PRCTL = 1 << 0
     PR_SPEC_DISABLE = 1 << 2
-    mitigated = (prctl(PR_SET_SPECULATION_CTRL, PR_SPEC_STORE_BYPASS, PR_SPEC_DISABLE, 0, 0) == 0)
-    if not mitigated:
-        print('Failed to enable SSB mitigation')
+    # When the kernel does per-process SSB mitigation via prctl or seccomp, it touches the same
+    # MSR that we changed, but does so based on a value of the MSR it got at boot time, so it
+    # effectively will reset the bit we just set if it wasn't already set at boot time.
+    # This doesn't happen when the SSB mitigation is either entirely on or off.
+    # This is specific to Zen and Zen+, because Zen 2 doesn't require the kernel to change the MSR.
+    # Check whether the kernel does per-process SSB mitigation, and if it does, enable it for this
+    # process.
+    ssb_mode = prctl(PR_GET_SPECULATION_CTRL, PR_SPEC_STORE_BYPASS, 0, 0, 0)
+    if ssb_mode >= 0 and ssb_mode & PR_SPEC_PRCTL:
+        mitigated = (prctl(PR_SET_SPECULATION_CTRL, PR_SPEC_STORE_BYPASS, PR_SPEC_DISABLE, 0, 0) == 0)
+        if not mitigated:
+            print('Failed to enable SSB mitigation')
+        else:
+            ssb_status = 'mitigated'
+    else:
+        ssb_status = 'immutable'
+
 
 msrs = [read_msr(cpu) & BIT for cpu in cpus]
 
 if all(msr for msr in msrs):
-    if mitigated or args.check:
+    if ssb_status in ('mitigated', 'immutable') or args.check:
         print('Zen workaround in place')
     else:
         print('Zen workaround maybe in place.')
