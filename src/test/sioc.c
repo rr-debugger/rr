@@ -196,6 +196,10 @@ static void ethtool(int sockfd, struct ifreq* req) {
     struct ethtool_gfeatures et;
     struct ethtool_get_features_block features[20];
   }* et_gfeatures;
+  struct {
+    struct ethtool_perm_addr et;
+    uint8_t data[32];
+  }* et_perm_addr;
   int i;
   int err;
   int ret;
@@ -346,6 +350,17 @@ static void ethtool(int sockfd, struct ifreq* req) {
       atomic_printf("Feature %d available:%x requested:%x\n",
         i, et_gfeatures->features[i].available, et_gfeatures->features[i].requested);
     }
+  }
+
+  ALLOCATE_GUARD(et_perm_addr, 'q');
+  et_perm_addr->et.size = sizeof(et_perm_addr->data);
+  GENERIC_ETHTOOL_REQUEST_BY_NAME(&et_perm_addr->et, ETHTOOL_GPERMADDR);
+  if (-1 != ret) {
+    uint32_t i;
+    for (i = 0; i < et_perm_addr->et.size; ++i) {
+      atomic_printf("%02x ", et_perm_addr->data[i]);
+    }
+    atomic_printf("\n");
   }
 }
 
