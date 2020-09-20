@@ -115,6 +115,14 @@ struct btrfs_ioctl_clone_range_args {
 #endif
 #define syscall you_must_use_traced_syscall
 
+/**
+ * Declaring this to avoid issues with the declaration of f_owner_ex
+ * across distros. See https://github.com/mozilla/rr/issues/2693 */
+struct rr_f_owner_ex {
+  int type;
+  int pid;
+};
+
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
 /* Nonzero after process-global state has been initialized. */
@@ -459,7 +467,7 @@ static void rrcall_init_buffers(struct rrcall_init_buffers_params* args) {
 static int open_desched_event_counter(size_t nr_descheds, pid_t tid) {
   struct perf_event_attr attr;
   int tmp_fd, fd;
-  struct f_owner_ex own;
+  struct rr_f_owner_ex own;
 
   local_memset(&attr, 0, sizeof(attr));
   attr.size = sizeof(attr);
@@ -1270,11 +1278,11 @@ static int sys_fcntl64_own_ex(const struct syscall_info* call) {
   const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
-  struct f_owner_ex* owner = (struct f_owner_ex*)call->args[2];
+  struct rr_f_owner_ex* owner = (struct rr_f_owner_ex*)call->args[2];
 
   /* The OWN_EX fcntl's aren't may-block. */
   void* ptr = prep_syscall_for_fd(fd);
-  struct f_owner_ex* owner2 = NULL;
+  struct rr_f_owner_ex* owner2 = NULL;
   long ret;
 
   assert(syscallno == call->no);
