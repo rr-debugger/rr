@@ -1560,6 +1560,16 @@ template <typename Arch> void prepare_ethtool_ioctl(RecordTask* t, TaskSyscallSt
       }
       break;
     }
+    case ETHTOOL_GPERMADDR: {
+      auto buf = t->read_mem(buf_ptr.cast<ethtool_perm_addr>(), &ok);
+      if (ok) {
+        syscall_state.mem_ptr_parameter(payload, ParamSize(sizeof(buf) + buf.size), IN_OUT);
+      } else {
+        syscall_state.expect_errno = EFAULT;
+        return;
+      }
+      break;
+    }
     case ETHTOOL_SSET:
     case ETHTOOL_SWOL:
     case ETHTOOL_SEEPROM:
