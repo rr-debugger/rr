@@ -2415,7 +2415,7 @@ Task* Task::os_clone_into(const CapturedState& state,
                   (CLONE_VM | CLONE_FS | CLONE_SIGHAND |
                    CLONE_SYSVSEM),
                   fdtable_entry->second,
-                  new_tg,
+                  move(new_tg),
                   state.top_of_stack);
 }
 
@@ -3059,7 +3059,8 @@ static long perform_remote_clone(AutoRemoteSyscalls& remote,
 
   Task* child = remote.task()->clone(
       reason, clone_flags_to_task_flags(base_flags), stack, tls, ctid,
-      remote.new_tid(), rec_child_tid, new_serial, session, new_fds, new_tg);
+      remote.new_tid(), rec_child_tid, new_serial, session, move(new_fds),
+      move(new_tg));
   return child;
 }
 
