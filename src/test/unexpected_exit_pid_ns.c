@@ -85,7 +85,10 @@ int main(void) {
   nanosleep(&ts, NULL);
 
   test_assert(child == waitpid(child, &status, 0));
-  test_assert(WIFEXITED(status) && WEXITSTATUS(status) == 66);
+  /* We should exit normally with status 66 but if scheduling is particularly messed
+     up we could see SIGKILL. */
+  test_assert((WIFEXITED(status) && WEXITSTATUS(status) == 66) ||
+              (WIFSIGNALED(status) && WTERMSIG(status) == 9));
 
   atomic_puts("EXIT-SUCCESS");
   return 0;
