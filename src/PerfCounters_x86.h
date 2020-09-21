@@ -44,12 +44,12 @@ static CpuMicroarch compute_cpu_microarch() {
       return IntelSandyBridge;
     case 0x306A0:
       return IntelIvyBridge;
-    case 0x306C0:
+    case 0x306C0: /* Devil's Canyon */
     case 0x306F0:
     case 0x40650:
     case 0x40660:
       return IntelHaswell;
-    case 0x306D0: /* Devil's Canyon */
+    case 0x306D0:
     case 0x40670:
     case 0x406F0:
     case 0x50660:
