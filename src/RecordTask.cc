@@ -293,7 +293,8 @@ Task* RecordTask::clone(CloneReason reason, int flags, remote_ptr<void> stack,
                         Session* other_session, FdTable::shr_ptr new_fds,
                         ThreadGroup::shr_ptr new_tg) {
   ASSERT(this, reason == Task::TRACEE_CLONE);
-  ASSERT(this, new_tg == nullptr);
+  ASSERT(this, !new_fds);
+  ASSERT(this, !new_tg);
   Task* t = Task::clone(reason, flags, stack, tls, cleartid_addr, new_tid,
                         new_rec_tid, new_serial, other_session, new_fds,
                         new_tg);
