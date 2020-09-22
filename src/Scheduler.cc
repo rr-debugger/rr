@@ -841,7 +841,17 @@ void Scheduler::update_task_priority_internal(RecordTask* t, int value) {
   task_priority_set.insert(make_pair(t->priority, t));
 }
 
+static bool round_robin_scheduling_enabled() {
+  static bool disabled = getenv("RR_DISABLE_ROUND_ROBIN") != nullptr;
+  return !disabled;
+}
+
 void Scheduler::schedule_one_round_robin(RecordTask* t) {
+  if (!round_robin_scheduling_enabled()) {
+    LOG(debug) << "Would schedule round-robin because of task " << t->tid << ", but disabled";
+    return;
+  }
+
   LOG(debug) << "Scheduling round-robin because of task " << t->tid;
 
   ASSERT(t, t == current_);

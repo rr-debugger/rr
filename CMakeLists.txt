@@ -1071,7 +1071,6 @@ set(BASIC_TESTS
   stdout_cloexec
   stdout_dup
   stdout_redirect
-  strict_priorities
   switch_read
   symlink
   sync
@@ -1248,6 +1247,7 @@ set(TESTS_WITH_PROGRAM
   x86/singlestep_pushf
   stack_growth
   step_thread
+  strict_priorities
   x86/string_instructions
   x86/string_instructions_async_signals
   x86/string_instructions_async_signals_shared
