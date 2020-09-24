@@ -596,7 +596,8 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
       if (syscall_bp_vm) {
         FATAL()
             << "Expected syscall_bp_vm to be clear but it's " << syscall_bp_vm->leader_tid()
-            << "'s address space with a breakpoint at " << syscall_bp_addr;
+            << "'s address space with a breakpoint at " << syscall_bp_addr
+            << " while we're at " << t->ip();
       }
       t->canonicalize_regs(current_trace_frame().event().Syscall().arch());
       t->validate_regs();
