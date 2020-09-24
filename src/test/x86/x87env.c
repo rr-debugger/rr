@@ -8,8 +8,10 @@ int main(void) {
 #ifdef __x86_64__
   long double x;
   uint32_t buf[256];
-  __asm__ volatile("_x87_instruction: fld1\n"
-                   "fstenv %1\n"
+  __asm__ volatile("_x87_instruction: fld1\n");
+  /* Trigger PLT code and syscall */
+  sched_yield();
+  __asm__ volatile("fstenv %1\n"
                    "fldz\n"
                    "fldenv %1\n"
                    : "=t"(x), "=m"(buf)
