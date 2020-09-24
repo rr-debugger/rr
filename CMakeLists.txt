@@ -1109,6 +1109,7 @@ set(BASIC_TESTS
   video_capture
   vm_readv_writev
   vsyscall
+  x86/x87env
   wait
   wait_sigstop
   write_race
