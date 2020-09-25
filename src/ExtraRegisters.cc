@@ -42,6 +42,8 @@ static const uint8_t fxsave_387_ctrl_offsets[] = {
   6,  // DREG_64_FOP
 };
 
+static const int fip_offset = 8;
+
 struct RegData {
   int offset;
   int size;
@@ -210,6 +212,17 @@ uint64_t ExtraRegisters::read_xinuse(bool* defined) const {
   }
 
   memcpy(&ret, data_.data() + xinuse_offset, sizeof(ret));
+  return ret;
+}
+
+uint64_t ExtraRegisters::read_fip(bool* defined) const {
+  if (format_ != XSAVE) {
+    *defined = false;
+    return 0;
+  }
+
+  uint64_t ret;
+  memcpy(&ret, data_.data() + fip_offset, sizeof(ret));
   return ret;
 }
 

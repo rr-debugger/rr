@@ -73,6 +73,7 @@ enum TraceFieldKind {
   TRACE_GP_REG,            // outputs 64-bit value
   TRACE_XMM_REG,           // outputs 128-bit value
   TRACE_YMM_REG,           // outputs 256-bit value
+  TRACE_FIP,               // outputs 64-bit value
 };
 struct TraceField {
   TraceFieldKind kind;
@@ -335,6 +336,12 @@ static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
         print_value(buf, value, sizeof(value), flags, out);
         break;
       }
+      case TRACE_FIP: {
+        bool defined;
+        uint64_t value = t->extra_regs().read_fip(&defined);
+        print_value("fip", &value, sizeof(value), flags, out);
+        break;
+      }
     }
   }
 
@@ -407,6 +414,8 @@ static bool parse_regs(const string& value, vector<TraceField>* out) {
       out->push_back({ TRACE_SEG_REG, (uint8_t)find_seg_reg(reg) });
     } else if (reg == "xinuse") {
       out->push_back({ TRACE_XINUSE, 0 });
+    } else if (reg == "fip") {
+      out->push_back({ TRACE_FIP, 0 });
     } else {
       fprintf(stderr, "Unknown register '%s'\n", reg.c_str());
       return false;

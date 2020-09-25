@@ -79,6 +79,11 @@ public:
   uint64_t read_xinuse(bool* defined) const;
 
   /**
+   * Read FIP field
+   */
+  uint64_t read_fip(bool* defined) const;
+
+  /**
    * Like |Registers::read_register()|, except attempts to read
    * the value of an "extra register" (floating point / vector).
    */
