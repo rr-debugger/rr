@@ -194,6 +194,9 @@ static uint64_t seg_reg(const Registers& regs, uint8_t index) {
 
 static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
                        const RerunFlags& flags, const vector<TraceField>& fields, FILE* out) {
+  if (fields.empty()) {
+    return;
+  }
   union {
     NativeArch::user_regs_struct gp_regs;
     uintptr_t regs_values[sizeof(struct user_regs_struct) / sizeof(uintptr_t)];
@@ -560,6 +563,12 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
   ReplaySession::shr_ptr replay_session = ReplaySession::create(trace_dir, session_flags(flags));
   uint64_t instruction_count_within_event = 0;
   bool done_first_step = false;
+  bool need_to_singlestep = !flags.singlestep_trace.empty();
+  for (auto& v : flags.event_trace) {
+    if (v.kind == TRACE_INSTRUCTION_COUNT) {
+      need_to_singlestep = true;
+    }
+  }
 
   // Now that we've spawned the replay, raise our resource limits if
   // possible.
@@ -580,14 +589,14 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
           return 0;
         }
 
-        if (!flags.singlestep_trace.empty()) {
-          done_first_step = true;
-          print_regs(old_task, before_time - 1, instruction_count_within_event,
-                     flags, flags.singlestep_trace, stdout);
-        }
+        done_first_step = true;
+        print_regs(old_task, before_time - 1, instruction_count_within_event,
+                   flags, flags.singlestep_trace, stdout);
       }
 
-      cmd = RUN_SINGLESTEP_FAST_FORWARD;
+      if (need_to_singlestep) {
+        cmd = RUN_SINGLESTEP_FAST_FORWARD;
+      }
     }
 
     Event replayed_event = replay_session->current_trace_frame().event();
@@ -621,8 +630,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
            before_time == after_time) &&
           (!result.incomplete_fast_forward || old_ip != after_ip ||
            before_time < after_time);
-      if (!flags.singlestep_trace.empty() &&
-          cmd == RUN_SINGLESTEP_FAST_FORWARD &&
+      if (cmd == RUN_SINGLESTEP_FAST_FORWARD &&
           (singlestep_really_complete ||
            (before_time < after_time &&
             treat_event_completion_as_singlestep_complete(replayed_event)))) {
@@ -637,10 +645,8 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     if (before_time < after_time) {
       LOG(debug) << "Completed event " << before_time
                  << " instruction_count=" << instruction_count_within_event;
-      if (!flags.event_trace.empty()) {
-        print_regs(old_task, before_time, instruction_count_within_event, flags,
-                   flags.event_trace, stdout);
-      }
+      print_regs(old_task, before_time, instruction_count_within_event, flags,
+                 flags.event_trace, stdout);
       instruction_count_within_event = 1;
     }
   }
