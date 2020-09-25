@@ -43,6 +43,7 @@ RerunCommand RerunCommand::singleton(
     "  -f, --function=<ADDR>      when starting tracing, push sentinel return\n"
     "                             address and jump to <ADDR> to fake call\n"
     "  --singlestep=<REGS>        dump <REGS> after each singlestep\n"
+    "  --event-regs=<REGS>        dump <REGS> after each event\n"
     "  -r, --raw                  dump registers in raw format\n"
     "  -s, --trace-start=<EVENT>  start tracing at <EVENT>\n"
     "  -u, --cpu-unbound          allow replay to run on any CPU. Default is\n"
@@ -85,6 +86,7 @@ struct RerunFlags {
   FrameTime trace_end;
   remote_code_ptr function;
   vector<TraceField> singlestep_trace;
+  vector<TraceField> event_trace;
   bool raw;
   bool cpu_unbound;
 
@@ -191,13 +193,12 @@ static uint64_t seg_reg(const Registers& regs, uint8_t index) {
 }
 
 static void print_regs(Task* t, FrameTime event, uint64_t instruction_count,
-                       const RerunFlags& flags, FILE* out) {
+                       const RerunFlags& flags, const vector<TraceField>& fields, FILE* out) {
   union {
     NativeArch::user_regs_struct gp_regs;
     uintptr_t regs_values[sizeof(struct user_regs_struct) / sizeof(uintptr_t)];
   };
   bool got_gp_regs = false;
-  const vector<TraceField>& fields = flags.singlestep_trace;
   bool first = true;
 
   for (auto& field : fields) {
@@ -431,6 +432,7 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
 
   static const OptionSpec options[] = {
     { 1, "singlestep", HAS_PARAMETER },
+    { 2, "event-regs", HAS_PARAMETER },
     { 'e', "trace-end", HAS_PARAMETER },
     { 'f', "function", HAS_PARAMETER },
     { 'r', "raw", NO_PARAMETER },
@@ -445,6 +447,11 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
   switch (opt.short_name) {
     case 1:
       if (!parse_regs(opt.value, &flags.singlestep_trace)) {
+        return false;
+      }
+      break;
+    case 2:
+      if (!parse_regs(opt.value, &flags.event_trace)) {
         return false;
       }
       break;
@@ -529,7 +536,7 @@ static void run_diversion_function(ReplaySession& replay, Task* task,
   while (true) {
     DiversionSession::DiversionResult result =
         diversion_session->diversion_step(t, cmd);
-    print_regs(t, 0, 0, flags, stdout);
+    print_regs(t, 0, 0, flags, flags.singlestep_trace, stdout);
     if (result.break_status.signal) {
       if (result.break_status.signal->si_signo == SIGSEGV &&
           result.break_status.signal->si_addr == (void*)sentinel_ret_address) {
@@ -576,7 +583,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
         if (!flags.singlestep_trace.empty()) {
           done_first_step = true;
           print_regs(old_task, before_time - 1, instruction_count_within_event,
-                     flags, stdout);
+                     flags, flags.singlestep_trace, stdout);
         }
       }
 
@@ -620,7 +627,7 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
            (before_time < after_time &&
             treat_event_completion_as_singlestep_complete(replayed_event)))) {
         print_regs(old_task, before_time, instruction_count_within_event, flags,
-                   stdout);
+                   flags.singlestep_trace, stdout);
       }
 
       if (singlestep_really_complete) {
@@ -630,6 +637,10 @@ static int rerun(const string& trace_dir, const RerunFlags& flags) {
     if (before_time < after_time) {
       LOG(debug) << "Completed event " << before_time
                  << " instruction_count=" << instruction_count_within_event;
+      if (!flags.event_trace.empty()) {
+        print_regs(old_task, before_time, instruction_count_within_event, flags,
+                   flags.event_trace, stdout);
+      }
       instruction_count_within_event = 1;
     }
   }
