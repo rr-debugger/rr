@@ -123,6 +123,18 @@ struct rr_f_owner_ex {
   int pid;
 };
 
+#ifndef __ARCH_FLOCK64_PAD
+#define __ARCH_FLOCK64_PAD
+#endif
+struct rr_flock64 {
+    short  l_type;
+    short  l_whence;
+    __kernel_loff_t l_start;
+    __kernel_loff_t l_len;
+    __kernel_pid_t  l_pid;
+    __ARCH_FLOCK64_PAD
+};
+
 /* Nonzero when syscall buffering is enabled. */
 static int buffer_enabled;
 /* Nonzero after process-global state has been initialized. */
@@ -1313,10 +1325,10 @@ static int sys_fcntl64_setlk64(const struct syscall_info* call) {
   const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
-  struct flock64* lock = (struct flock64*)call->args[2];
+  struct rr_flock64* lock = (struct rr_flock64*)call->args[2];
 
   void* ptr = prep_syscall_for_fd(fd);
-  struct flock64* lock2 = NULL;
+  struct rr_flock64* lock2 = NULL;
   long ret;
 
   assert(syscallno == call->no);
@@ -1347,7 +1359,7 @@ static int sys_fcntl64_setlkw64(const struct syscall_info* call) {
   const int syscallno = RR_FCNTL_SYSCALL;
   int fd = call->args[0];
   int cmd = call->args[1];
-  struct flock64* lock = (struct flock64*)call->args[2];
+  struct rr_flock64* lock = (struct rr_flock64*)call->args[2];
 
   void* ptr = prep_syscall_for_fd(fd);
   long ret;
