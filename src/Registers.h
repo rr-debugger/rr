@@ -29,6 +29,7 @@ enum MismatchBehavior {
 };
 
 const uintptr_t X86_RESERVED_FLAG = 1 << 1;
+const uintptr_t X86_ZF_FLAG = 1 << 6;
 const uintptr_t X86_TF_FLAG = 1 << 8;
 const uintptr_t X86_IF_FLAG = 1 << 9;
 const uintptr_t X86_DF_FLAG = 1 << 10;
@@ -355,6 +356,7 @@ public:
 
   uintptr_t flags() const;
   void set_flags(uintptr_t value);
+  bool zf_flag() const { return flags() & X86_ZF_FLAG; }
   bool df_flag() const { return flags() & X86_DF_FLAG; }
 
   uintptr_t fs_base() const {

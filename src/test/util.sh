@@ -260,6 +260,11 @@ function replay { replayflags=$1
         $RR_EXE $GLOBAL_OPTIONS replay -a $replayflags 1> replay.out 2> replay.err
 }
 
+function rerun { rerunflags=$1
+    _RR_TRACE_DIR="$workdir" test-monitor $TIMEOUT rerun.err \
+        $RR_EXE $GLOBAL_OPTIONS rerun $rerunflags 1> rerun.out 2> rerun.err
+}
+
 function do_ps { psflags=$1
     _RR_TRACE_DIR="$workdir" \
         $RR_EXE $GLOBAL_OPTIONS ps $psflags
@@ -406,6 +411,15 @@ function compare_test { token=$1; replayflags=$2;
 function debug_test {
     record $TESTNAME
     debug $TEST_PREFIX$TESTNAME_NO_BITNESS
+}
+
+#  rerun_singlestep_test
+#
+# Record the test name passed to |util.sh|, then rerun --singlestep
+# the recording.
+function rerun_singlestep_test {
+    record $TESTNAME
+    rerun "--singlestep=rip,gp_x16,flags"
 }
 
 # Return the number of events in the most recent local recording.

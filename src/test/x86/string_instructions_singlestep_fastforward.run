@@ -1,0 +1,3 @@
+source `dirname $0`/util.sh
+
+rerun_singlestep_test

@@ -29,6 +29,7 @@ struct DecodedInstruction {
   int length;
   bool modifies_flags;
   bool uses_si;
+  bool is_repne;
 };
 
 /**
@@ -44,6 +45,7 @@ static bool decode_x86_string_instruction(const InstructionBuf& code,
 
   decoded->modifies_flags = false;
   decoded->uses_si = false;
+  decoded->is_repne = false;
 
   int i;
   bool done = false;
@@ -62,6 +64,8 @@ static bool decode_x86_string_instruction(const InstructionBuf& code,
         }
         return false;
       case 0xF2:
+        decoded->is_repne = true;
+        RR_FALLTHROUGH;
       case 0xF3:
         found_REP_prefix = true;
         break;
@@ -317,7 +321,10 @@ FastForwardStatus fast_forward_through_instruction(Task* t, ResumeRequest how,
     tmp = t->regs();
     // Undo our change to CX value
     tmp.set_cx(tmp.cx() + cur_cx - iterations);
-    if (decoded.modifies_flags && t->regs().cx() > 0) {
+    if (decoded.modifies_flags &&
+        (t->regs().cx() > 0 ||
+         (decoded.is_repne && t->regs().zf_flag()) ||
+         (!decoded.is_repne && !t->regs().zf_flag()))) {
       // String instructions that modify flags don't have non-register side
       // effects, so we can reset registers to effectively unwind the loop.
       // Then we try rerunning the loop again, adding this state as one to

@@ -1254,6 +1254,7 @@ set(TESTS_WITH_PROGRAM
   x86/string_instructions_async_signals_shared
   x86/string_instructions_multiwatch
   x86/string_instructions_replay
+  x86/string_instructions_singlestep_fastforward
   x86/string_instructions_watch
   syscallbuf_fd_disabling
   syscallbuf_signal_blocking_read
