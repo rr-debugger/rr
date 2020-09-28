@@ -1019,7 +1019,7 @@ const Registers& Task::regs() const {
   return registers;
 }
 
-const ExtraRegisters& Task::extra_regs() {
+const ExtraRegisters* Task::extra_regs_fallible() {
   if (!extra_registers_known) {
 #if defined(__i386__) || defined(__x86_64__)
     if (xsave_area_size() > 512) {
@@ -1029,7 +1029,9 @@ const ExtraRegisters& Task::extra_regs() {
       extra_registers.data_.resize(xsave_area_size());
       struct iovec vec = { extra_registers.data_.data(),
                            extra_registers.data_.size() };
-      xptrace(PTRACE_GETREGSET, NT_X86_XSTATE, &vec);
+      if (fallible_ptrace(PTRACE_GETREGSET, NT_X86_XSTATE, &vec)) {
+        return nullptr;
+      }
       extra_registers.data_.resize(vec.iov_len);
       // The kernel may return less than the full XSTATE
       extra_registers.validate(this);
@@ -1039,7 +1041,9 @@ const ExtraRegisters& Task::extra_regs() {
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
       extra_registers.data_.resize(sizeof(user_fpxregs_struct));
-      xptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data_.data());
+      if (fallible_ptrace(PTRACE_GETFPXREGS, nullptr, extra_registers.data_.data())) {
+        return nullptr;
+      }
 #elif defined(__x86_64__)
       // x86-64 that doesn't support XSAVE; apparently Xeon E5620 (Westmere)
       // is in this class.
@@ -1047,7 +1051,9 @@ const ExtraRegisters& Task::extra_regs() {
 
       extra_registers.format_ = ExtraRegisters::XSAVE;
       extra_registers.data_.resize(sizeof(user_fpregs_struct));
-      xptrace(PTRACE_GETFPREGS, nullptr, extra_registers.data_.data());
+      if (fallible_ptrace(PTRACE_GETFPREGS, nullptr, extra_registers.data_.data())) {
+        return nullptr;
+      }
 #endif
     }
 #elif defined(__aarch64__)
@@ -1057,13 +1063,21 @@ const ExtraRegisters& Task::extra_regs() {
     extra_registers.data_.resize(sizeof(ARM64Arch::user_fpregs_struct));
     struct iovec vec = { extra_registers.data_.data(),
                           extra_registers.data_.size() };
-    xptrace(PTRACE_GETREGSET, NT_FPREGSET, &vec);
+    if (fallible_ptrace(PTRACE_GETREGSET, NT_FPREGSET, &vec)) {
+      return nullptr;
+    }
     extra_registers.data_.resize(vec.iov_len);
 #else
 #error need to define new extra_regs support
 #endif
-
     extra_registers_known = true;
+  }
+  return &extra_registers;
+}
+
+const ExtraRegisters& Task::extra_regs() {
+  if (!extra_regs_fallible()) {
+    ASSERT(this, false) << "Can't find task for infallible extra_regs";
   }
   return extra_registers;
 }

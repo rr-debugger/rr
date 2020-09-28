@@ -251,6 +251,15 @@ static trace::Arch to_trace_arch(SupportedArch arch) {
   }
 }
 
+static trace::CpuTriState to_tristate(bool value) {
+  switch (value) {
+    case true:
+      return trace::CpuTriState::KNOWN_TRUE;
+    case false:
+      return trace::CpuTriState::KNOWN_FALSE;
+  }
+}
+
 static SupportedArch from_trace_arch(trace::Arch arch) {
   switch (arch) {
     case trace::Arch::X86:
@@ -1237,7 +1246,10 @@ TraceWriter::TraceWriter(const std::string& file_name,
                   1),
       ticks_semantics_(ticks_semantics_),
       mmap_count(0),
-      has_cpuid_faulting_(false) {
+      has_cpuid_faulting_(false),
+      xsave_fip_fdp_quirk_(false),
+      fdp_exception_only_quirk_(false),
+      clear_fip_fdp_(false) {
   this->ticks_semantics_ = ticks_semantics_;
 
   for (Substream s = SUBSTREAM_FIRST; s < SUBSTREAM_COUNT; ++s) {
@@ -1323,6 +1335,9 @@ void TraceWriter::close(CloseStatus status, const TraceUuid* uuid) {
         Data::Reader(reinterpret_cast<const uint8_t*>(cpuid_records.data()),
                     cpuid_records.size() * sizeof(CPUIDRecord)));
     x86data.setXcr0(xcr0());
+    x86data.setXsaveFipFdpQuirk(to_tristate(xsave_fip_fdp_quirk_));
+    x86data.setFdpExceptionOnlyQuirk(to_tristate(fdp_exception_only_quirk_));
+    x86data.setClearFipFdp(clear_fip_fdp_);
   }
 
   header.setExplicitProcMem(false);
@@ -1488,6 +1503,7 @@ TraceReader::TraceReader(const string& dir)
     memcpy(cpuid_records_.data(), cpuid_records_bytes.begin(),
           len * sizeof(CPUIDRecord));
     xcr0_ = x86data.getXcr0();
+    clear_fip_fdp_ = x86data.getClearFipFdp();
   }
 
   // Set the global time at 0, so that when we tick it for the first
@@ -1516,6 +1532,7 @@ TraceReader::TraceReader(const TraceReader& other)
   rrcall_base_ = other.rrcall_base_;
   arch_ = other.arch_;
   explicit_proc_mem_ = other.explicit_proc_mem_;
+  clear_fip_fdp_ = other.clear_fip_fdp_;
 }
 
 TraceReader::~TraceReader() {}

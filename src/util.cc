@@ -1063,6 +1063,40 @@ bool cpuid_compatible(const vector<CPUIDRecord>& trace_records) {
   return cpu_type == trace_cpu_type;
 }
 
+bool cpu_has_xsave_fip_fdp_quirk() {
+#if defined(__i386__) || defined(__x86_64__)
+  uint64_t xsave_buf[576/sizeof(uint64_t)] __attribute__((aligned(64)));
+  xsave_buf[1] = 0;
+  asm volatile("finit\n"
+               "fld1\n"
+               "xsave64 %0\n"
+               : "=m"(xsave_buf)
+               : "a"(1), "d"(0)
+               : "memory");
+  return !xsave_buf[1];
+#else
+  FATAL_X86_ONLY();
+  return false;
+#endif
+}
+
+bool cpu_has_fdp_exception_only_quirk() {
+#if defined(__i386__) || defined(__x86_64__)
+  uint32_t fenv_buf[7];
+  fenv_buf[5] = 0;
+  asm volatile("finit\n"
+               "fld1\n"
+               "fstenv %0\n"
+               : "=m"(fenv_buf)
+               :
+               : "memory");
+  return !fenv_buf[5];
+#else
+  FATAL_X86_ONLY();
+  return false;
+#endif
+}
+
 template <typename Arch>
 static CloneParameters extract_clone_parameters_arch(const Registers& regs) {
   CloneParameters result;

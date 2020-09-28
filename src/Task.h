@@ -453,8 +453,11 @@ public:
   /** Return the current regs of this. */
   const Registers& regs() const;
 
-  /** Return the extra registers of this. */
+  /** Return the extra registers of this. Asserts if the task died. */
   const ExtraRegisters& extra_regs();
+
+  /** Return the extra registers of this, or null if the task died. */
+  const ExtraRegisters* extra_regs_fallible();
 
   /** Return the current arch of this. This can change due to exec(). */
   SupportedArch arch() const {

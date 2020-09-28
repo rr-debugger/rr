@@ -238,6 +238,17 @@ const CPUIDRecord* find_cpuid_record(const std::vector<CPUIDRecord>& records,
  */
 bool cpuid_compatible(const std::vector<CPUIDRecord>& trace_records);
 
+/**
+ * Return true if the CPU stores 0 for FIP/FDP in an XSAVE when no x87 exception
+ * is pending.
+ */
+bool cpu_has_xsave_fip_fdp_quirk();
+
+/**
+ * CPU only sets FDP when an unmasked x87 exception is generated.
+ */
+bool cpu_has_fdp_exception_only_quirk();
+
 struct CloneParameters {
   remote_ptr<void> stack;
   remote_ptr<int> ptid;

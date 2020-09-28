@@ -1729,6 +1729,17 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   result.did_fast_forward = fast_forward_status.did_fast_forward;
   result.incomplete_fast_forward = fast_forward_status.incomplete_fast_forward;
 
+  // If try_one_trace_step set extra-registers already, the values it used from the frame
+  // will already have FIP/FDP cleared if necessary. Clearing them again here is fine.
+  if (trace_reader().clear_fip_fdp()) {
+    const ExtraRegisters* maybe_extra = t->extra_regs_fallible();
+    if (maybe_extra) {
+      ExtraRegisters extra_registers = *maybe_extra;
+      extra_registers.clear_fip_fdp();
+      t->set_extra_regs(extra_registers);
+    }
+  }
+
   switch (current_step.action) {
     case TSTEP_DETERMINISTIC_SIGNAL:
     case TSTEP_PROGRAM_ASYNC_SIGNAL_INTERRUPT:

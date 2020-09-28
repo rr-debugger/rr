@@ -1774,6 +1774,15 @@ void RecordTask::record_event(const Event& ev, FlushSyscallbuf flush,
     checksum_process_memory(this, current_time);
   }
 
+  if (trace_writer().clear_fip_fdp()) {
+    const ExtraRegisters* maybe_extra = extra_regs_fallible();
+    if (maybe_extra) {
+      ExtraRegisters extra_registers = *maybe_extra;
+      extra_registers.clear_fip_fdp();
+      set_extra_regs(extra_registers);
+    }
+  }
+
   const ExtraRegisters* extra_registers = nullptr;
   if (ev.record_regs()) {
     if (!registers) {

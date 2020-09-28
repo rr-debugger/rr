@@ -233,13 +233,18 @@ public:
    * or by setting -o=<OUTPUT_TRACE_DIR>.
    */
   TraceWriter(const std::string& file_name,
-              const string& output_trace_dir, TicksSemantics ticks_semantics_);
+              const string& output_trace_dir, TicksSemantics ticks_semantics);
 
   /**
    * Called after the calling thread is actually bound to |bind_to_cpu|.
    */
   void setup_cpuid_records(bool has_cpuid_faulting,
                            const DisableCPUIDFeatures& disable_cpuid_features);
+
+  void set_xsave_fip_fdp_quirk(bool value) { xsave_fip_fdp_quirk_ = value; }
+  void set_fdp_exception_only_quirk(bool value) { fdp_exception_only_quirk_ = value; }
+  void set_clear_fip_fdp(bool value) { clear_fip_fdp_ = value; }
+  bool clear_fip_fdp() const { return clear_fip_fdp_; }
 
   enum CloseStatus {
     /**
@@ -295,6 +300,9 @@ private:
   ScopedFd version_fd;
   uint32_t mmap_count;
   bool has_cpuid_faulting_;
+  bool xsave_fip_fdp_quirk_;
+  bool fdp_exception_only_quirk_;
+  bool clear_fip_fdp_;
   bool supports_file_data_cloning_;
 };
 
@@ -405,6 +413,7 @@ public:
   }
   bool uses_cpuid_faulting() const { return trace_uses_cpuid_faulting; }
   uint64_t xcr0() const;
+  bool clear_fip_fdp() const { return clear_fip_fdp_; }
   // Prior to issue 2370, we did not emit mapping into the trace for the
   // preload_thread_locals mapping if it was created by a clone(2) without
   // CLONE_VM. This is true if that has been fixed.
@@ -436,6 +445,7 @@ private:
   std::unique_ptr<TraceUuid> uuid_;
   bool trace_uses_cpuid_faulting;
   bool preload_thread_locals_recorded_;
+  bool clear_fip_fdp_;
   int rrcall_base_;
   SupportedArch arch_;
   bool explicit_proc_mem_;

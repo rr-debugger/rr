@@ -2272,6 +2272,15 @@ RecordSession::RecordSession(const std::string& exe_path,
   if (NativeArch::is_x86ish()) {
     // CPU affinity has been set.
     trace_out.setup_cpuid_records(has_cpuid_faulting(), disable_cpuid_features_);
+    if (cpu_has_xsave_fip_fdp_quirk()) {
+      trace_out.set_xsave_fip_fdp_quirk(true);
+      // Clear FIP/FDP on every event to reduce the probability of this quirk
+      // causing divergence, especially when porting traces to Intel machines
+      trace_out.set_clear_fip_fdp(true);
+    }
+    if (cpu_has_fdp_exception_only_quirk()) {
+      trace_out.set_fdp_exception_only_quirk(true);
+    }
   }
 
   initial_thread_group = t->thread_group();
