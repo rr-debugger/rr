@@ -659,32 +659,6 @@ void Registers::set_from_trace(SupportedArch a, const void* data,
   memcpy(&u.arm64regs, data, sizeof(u.arm64regs));
 }
 
-uintptr_t Registers::flags() const {
-  switch (arch()) {
-    case x86:
-      return u.x86regs.eflags;
-    case x86_64:
-      return u.x64regs.eflags;
-    default:
-      DEBUG_ASSERT(0 && "Unknown arch");
-      return false;
-  }
-}
-
-void Registers::set_flags(uintptr_t value) {
-  switch (arch()) {
-    case x86:
-      u.x86regs.eflags = value;
-      break;
-    case x86_64:
-      u.x64regs.eflags = value;
-      break;
-    default:
-      DEBUG_ASSERT(0 && "Unknown arch");
-      break;
-  }
-}
-
 bool Registers::aarch64_singlestep_flag() {
   switch (arch()) {
     case aarch64:
@@ -720,7 +694,8 @@ void Registers::clear_x86_singlestep_flag() {
   switch (arch()) {
     case x86:
     case x86_64:
-      return set_flags(flags() & ~X86_TF_FLAG);
+      set_flags(flags() & ~X86_TF_FLAG);
+      return;
     default:
       DEBUG_ASSERT(0 && "X86 only code path");
       break;
