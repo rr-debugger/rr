@@ -1011,7 +1011,7 @@ static int start_commit_buffered_syscall(int syscallno, void* record_end,
   return 1;
 }
 
-static void do_breakpoint(size_t value)
+static void __attribute__((noinline)) do_breakpoint(size_t value)
 {
   char *unsafe_value = ((char*)-1)-0xf;
   char **safe_value = &unsafe_value;
