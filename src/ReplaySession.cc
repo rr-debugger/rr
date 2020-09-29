@@ -643,6 +643,20 @@ void ReplaySession::check_pending_sig(ReplayTask* t) {
   }
 }
 
+static bool do_replay_assist(Task* t) {
+  auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
+  if (!type || type->enabled != AddressSpace::REPLAY_ASSIST) {
+    return false;
+  }
+  auto next_rec_ptr = t->next_syscallbuf_record();
+  auto next_rec = t->read_mem(next_rec_ptr);
+  ASSERT(t, next_rec.replay_assist);
+  Registers regs = t->regs();
+  regs.set_syscall_result(next_rec.ret);
+  t->on_syscall_exit(next_rec.syscallno, t->arch(), regs);
+  return true;
+}
+
 /**
  * Advance |t| to the next signal or trap according to |constraints.command|.
  *
@@ -692,14 +706,9 @@ Completion ReplaySession::continue_or_step(ReplayTask* t,
         return INCOMPLETE;
       }
     } else if (t->stop_sig() == SIGTRAP) {
+      // Detect replay assist but handle it later in flush_syscallbuf
       auto type = AddressSpace::rr_page_syscall_from_exit_point(t->arch(), t->ip());
       if (type && type->enabled == AddressSpace::REPLAY_ASSIST) {
-        auto next_rec_ptr = t->next_syscallbuf_record();
-        auto next_rec = t->read_mem(next_rec_ptr);
-        ASSERT(t, next_rec.replay_assist);
-        Registers regs = t->regs();
-        regs.set_syscall_result(next_rec.ret);
-        t->on_syscall_exit(next_rec.syscallno, t->arch(), regs);
         return INCOMPLETE;
       }
     } else if (handle_unrecorded_cpuid_fault(t, constraints)) {
@@ -1247,6 +1256,10 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
 
     // Apply the mprotect records we just completed.
     apply_mprotect_records(t, skip_mprotect_records);
+
+    if (complete == INCOMPLETE && t->stop_sig() == SIGTRAP) {
+      do_replay_assist(t);
+    }
 
     if (t->stop_sig() == PerfCounters::TIME_SLICE_SIGNAL) {
       // This would normally be triggered by constraints.ticks_target but it's
