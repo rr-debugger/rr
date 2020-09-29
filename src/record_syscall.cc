@@ -2,11 +2,12 @@
 
 #include <arpa/inet.h>
 #include <dirent.h>
-#include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/auxvec.h>
 #include <linux/capability.h>
+#include <linux/elf.h>
 #include <linux/ethtool.h>
 #include <linux/fs.h>
 #include <linux/futex.h>
@@ -2600,7 +2601,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           break;
         }
-        case NT_FPREGSET: {
+        case NT_PRFPREG: {
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             auto regs =
@@ -2681,7 +2682,7 @@ static Switchable prepare_ptrace(RecordTask* t,
           }
           break;
         }
-        case NT_FPREGSET: {
+        case NT_PRFPREG: {
           RecordTask* tracee = verify_ptrace_target(t, syscall_state, pid);
           if (tracee) {
             ptrace_verify_set_reg_set<Arch>(

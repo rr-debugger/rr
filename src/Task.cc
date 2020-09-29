@@ -1,9 +1,9 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
-#include <elf.h>
 #include <errno.h>
 #include <limits.h>
 #include <linux/capability.h>
+#include <linux/elf.h>
 #include <linux/ipc.h>
 #include <linux/net.h>
 #include <linux/perf_event.h>
@@ -686,7 +686,7 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
               tracee->set_regs(r);
               break;
             }
-            case NT_FPREGSET: {
+            case NT_PRFPREG: {
               auto set = ptrace_get_regs_set<Arch>(
                   this, regs, user_fpregs_struct_size(tracee->arch()));
               ExtraRegisters r = tracee->extra_regs();
@@ -1063,7 +1063,7 @@ const ExtraRegisters* Task::extra_regs_fallible() {
     extra_registers.data_.resize(sizeof(ARM64Arch::user_fpregs_struct));
     struct iovec vec = { extra_registers.data_.data(),
                           extra_registers.data_.size() };
-    if (fallible_ptrace(PTRACE_GETREGSET, NT_FPREGSET, &vec)) {
+    if (fallible_ptrace(PTRACE_GETREGSET, NT_PRFPREG, &vec)) {
       return nullptr;
     }
     extra_registers.data_.resize(vec.iov_len);
@@ -1534,7 +1534,7 @@ void Task::set_extra_regs(const ExtraRegisters& regs) {
     case ExtraRegisters::NT_FPR: {
       struct iovec vec = { extra_registers.data_.data(),
                             extra_registers.data_.size() };
-      ptrace_if_alive(PTRACE_SETREGSET, NT_FPREGSET, &vec);
+      ptrace_if_alive(PTRACE_SETREGSET, NT_PRFPREG, &vec);
       break;
     }
     default:
