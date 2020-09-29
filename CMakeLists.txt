@@ -102,7 +102,7 @@ if(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "debug")
   set(RR_FLAGS "${RR_FLAGS_DEBUG} -g3 -Werror")
 elseif(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
   # CMake itself will add optimization flags
-  set(RR_FLAGS "${RR_FLAGS_RELEASE} -g3")
+  set(RR_FLAGS "${RR_FLAGS_RELEASE} -g3 -flto")
 endif()
 
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
