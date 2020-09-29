@@ -37,7 +37,12 @@ int main(void) {
   test_assert(x == 1.0);
   /* Check saved FIPs */
   atomic_printf("FIP=0x%x\n", fstenv_buf[3]);
-  test_assert(fstenv_buf[3] == (uint32_t)(uintptr_t)&_x87_instruction);
+  if (cpu_has_xsave_fip_fdp_quirk()) {
+    /* rr or the kernel should have cleared this during the sched_yield syscall */
+    test_assert(fstenv_buf[3] == 0);
+  } else {
+    test_assert(fstenv_buf[3] == (uint32_t)(uintptr_t)&_x87_instruction);
+  }
   atomic_printf("XSAVE FIP=0x%llx\n", (long long)xsave_buf[1]);
   if (cpu_has_xsave_fip_fdp_quirk()) {
     test_assert(xsave_buf[1] == 0);
