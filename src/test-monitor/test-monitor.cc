@@ -246,6 +246,12 @@ static void dump_state_and_kill(pid_t child, const char* out_file_name) {
   pid_t rr_pid = 0;
   dump_subtree(child_processes, visited, child, out, &rr_pid);
 
+  // If something goes wrong while dumping the gdb stacktrace below, we want
+  // to make sure rr doesn't overwrite what we just printed. Seek the stderr
+  // fd (which we share with rr) to the end, to make sure rr prints in the
+  // right place.
+  lseek(STDERR_FILENO, 0, SEEK_END);
+
   // We get a stacktrace for rr first. We don't try to get stacktraces for
   // all processes because sometimes attaching and then detaching gdb can
   // cause a process to wake up from a wait, and we don't want that. Attaching
@@ -259,6 +265,7 @@ static void dump_state_and_kill(pid_t child, const char* out_file_name) {
               sig_pid, rr_pid);
     }
     dump_gdb_stacktrace(sig_pid ? sig_pid : rr_pid, out);
+    lseek(STDERR_FILENO, 0, SEEK_END);
 
     if (sig_pid) {
       // Try to connect to the emergency debugger and get stack/regs.
@@ -277,6 +284,7 @@ static void dump_state_and_kill(pid_t child, const char* out_file_name) {
   }
 
   fclose(out);
+  lseek(STDERR_FILENO, 0, SEEK_END);
 
   for (pid_t p : visited) {
     kill(p, SIGKILL);
