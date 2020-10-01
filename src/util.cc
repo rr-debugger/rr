@@ -1069,7 +1069,11 @@ bool cpu_has_xsave_fip_fdp_quirk() {
   xsave_buf[1] = 0;
   asm volatile("finit\n"
                "fld1\n"
+#if defined(__x86_64__)
                "xsave64 %0\n"
+#else
+               "xsave %0\n"
+#endif
                : "=m"(xsave_buf)
                : "a"(1), "d"(0)
                : "memory");
