@@ -743,6 +743,14 @@ int RecordCommand::run(vector<string>& args) {
     if (flags.nested == NESTED_IGNORE) {
       exec_child(args);
     } else if (flags.nested == NESTED_DETACH) {
+
+#if defined (__i386__)
+      /* There is an issue at i386 when returning from the signal handler from the
+         cpuid instruction, when the nested rr process is already detached.
+         This works around it by doing this before detaching. */
+      cpuid_faulting_works();
+#endif
+
       int ret = syscall(SYS_rrcall_detach_teleport, 0, 0, 0, 0, 0, 0);
       if (ret < 0) {
         FATAL() << "Failed to detach from parent rr";
