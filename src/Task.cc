@@ -3461,10 +3461,28 @@ static void copy_mem_mapping(Task* from, Task* to, const KernelMapping& km) {
   ASSERT(to, ok);
 }
 
+static void move_vdso_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapping &km) {
+  for (const auto& m : t->vm()->maps()) {
+    if  (m.map.is_vdso() && m.map.start() != km.start()) {
+      /* Remap VDSO to the address that is used in the target process,
+         before it gets unmapped.
+         Otherwise the kernel seems to put the address of the original
+         VDSO __kernel_rt_sigreturn function as return address on the stack.
+         This might not affect x86_64 because there __restore_rt
+         located in libpthread.so.0 is used. */
+      remote.infallible_syscall(syscall_number_for_mremap(remote.arch()), m.map.start(), m.map.size(),
+                                m.map.size(), MREMAP_MAYMOVE | MREMAP_FIXED, km.start());
+      remote.task()->vm()->remap(remote.task(), m.map.start(), m.map.size(), km.start(), m.map.size());
+    }
+  }
+}
+
 void Task::dup_from(Task *other) {
   std::vector<KernelMapping> mappings;
   KernelMapping stack_mapping;
   bool found_stack = false;
+  KernelMapping vdso_mapping;
+  bool found_vdso = false;
   for (KernelMapIterator it(other); !it.at_end(); ++it) {
     auto km = it.current();
     if (km.is_stack()) {
@@ -3472,6 +3490,10 @@ void Task::dup_from(Task *other) {
       found_stack = true;
     } else {
       mappings.push_back(km);
+    }
+    if (km.is_vdso()) {
+      found_vdso = true;
+      vdso_mapping = km;
     }
   }
   ASSERT(this, found_stack);
@@ -3482,6 +3504,9 @@ void Task::dup_from(Task *other) {
   }
   {
     AutoRemoteSyscalls remote(this, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
+    if (found_vdso) {
+      move_vdso_mapping(this, remote, vdso_mapping);
+    }
     // TODO: Only do this if the rr page isn't already mapped
     this->vm()->unmap_all_but_rr_page(remote);
     create_mapping(this, remote, stack_mapping);
