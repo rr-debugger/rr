@@ -48,7 +48,9 @@ protected:
 
 PackCommand PackCommand::singleton(
     "pack",
-    " rr pack [<trace-dir>]\n"
+    " rr pack [OPTION]... [<trace-dir>]\n"
+    "  --symlink                  Create symlinks to all mmapped files\n"
+    "                             instead of copying them.\n"
     "\n"
     "Eliminates duplicate files in the trace directory, and copies files into\n"
     "the trace directory as necessary to ensure that all needed files are in\n"
@@ -56,6 +58,15 @@ PackCommand PackCommand::singleton(
     "trace directory. This makes the trace directory independent of changes\n"
     "to other files and ready to be transported elsewhere (e.g. by packaging\n"
     "it into a ZIP or tar archive).\n");
+
+struct PackFlags {
+  /* If true, insert symlinks into the trace dir which point to the original
+   * files, rather than copying the files themselves */
+  bool symlink;
+
+  PackFlags()
+      : symlink(false) {}
+};
 
 struct FileHash {
   uint8_t bytes[32];
@@ -140,10 +151,8 @@ static void* process_files_thread(void* p) {
   return nullptr;
 }
 
-// Collect list of all mapped files and compute their BLAKE2b hashes.
-// BLAKE2b was chosen because it's fast and cryptographically strong (we don't
-// compare the actual file contents, we're relying on hash collision avoidance).
-static map<string, FileInfo> gather_file_info(const string& trace_dir) {
+// Return a size-sorted list of all mmapped files found in the trace
+static vector<TraceReader::MappedData> gather_files(const string& trace_dir) {
   TraceReader trace(trace_dir);
   vector<TraceReader::MappedData> files;
   while (true) {
@@ -166,6 +175,15 @@ static map<string, FileInfo> gather_file_info(const string& trace_dir) {
 
   // Then sort by decreasing size
   stable_sort(files.begin(), files.end(), size_comparator);
+
+  return files;
+}
+
+// Take a list of all mmapped files and compute their BLAKE2b hashes.
+// BLAKE2b was chosen because it's fast and cryptographically strong (we don't
+// compare the actual file contents, we're relying on hash collision avoidance).
+static map<string, FileInfo> gather_file_info(const string& trace_dir) {
+  vector<TraceReader::MappedData> files = gather_files(trace_dir);
   int use_cpus = min(20, get_num_cpus());
   use_cpus = min((int)files.size(), use_cpus);
 
@@ -201,12 +219,7 @@ static bool is_in_trace_dir(const string& file_name, const string& trace_dir) {
   return file_name.find(trace_dir) == 0;
 }
 
-static string copy_into_trace(const string& file_name, const string& trace_dir,
-                              int* name_index) {
-  // We don't bother trying to do a reflink-copy here because if that was going
-  // to succeed, rr would probably already have used it during recording.
-  string new_name;
-  ScopedFd out_fd;
+static const char* last_filename_component(const string& file_name) {
   const char* last_slash = strrchr(file_name.c_str(), '/');
   const char* last_component = last_slash ? last_slash + 1 : file_name.c_str();
   if (strncmp(last_component, "mmap_hardlink_", 14) == 0) {
@@ -218,6 +231,16 @@ static string copy_into_trace(const string& file_name, const string& trace_dir,
       ++last_component;
     }
   }
+  return last_component;
+}
+
+static string copy_into_trace(const string& file_name, const string& trace_dir,
+                              int* name_index) {
+  // We don't bother trying to do a reflink-copy here because if that was going
+  // to succeed, rr would probably already have used it during recording.
+  string new_name;
+  ScopedFd out_fd;
+  const char* last_component = last_filename_component(file_name);
   while (true) {
     char new_name_buf[PATH_MAX];
     snprintf(new_name_buf, sizeof(new_name_buf) - 1, "mmap_pack_%d_%s",
@@ -265,6 +288,59 @@ static string copy_into_trace(const string& file_name, const string& trace_dir,
   }
 
   return new_name;
+}
+
+// Generates a symlink inside the trace directory, pointing to the provided
+// file name.
+static string symlink_into_trace(const string& file_name,
+                                 const string& trace_dir, int* name_index) {
+  string new_name;
+  ScopedFd out_fd;
+  const char* last_component = last_filename_component(file_name);
+  while (true) {
+    char new_name_buf[PATH_MAX];
+    snprintf(new_name_buf, sizeof(new_name_buf) - 1, "mmap_symlink_%d_%s",
+             *name_index, last_component);
+    new_name_buf[sizeof(new_name_buf) - 1] = 0;
+    new_name = trace_dir + "/" + new_name_buf;
+    ++*name_index;
+    int ret = symlink(file_name.c_str(), new_name.c_str());
+    if (ret < 0) {
+      if (errno == EEXIST) {
+        continue;
+      }
+      FATAL() << "Couldn't create symlink `" << new_name << "' to `"
+              << file_name << "'.";
+    }
+    break;
+  }
+  return new_name;
+}
+
+// Insert symlinks into the trace directory, one for each mmapped file found in
+// the trace. Returns a mapping of absolute original file paths and the new
+// relative paths to the symlinks which are to be used in their place. Files
+// that already exist in the trace directory (including hardlinks) are left
+// in place and not symlinked.
+static map<string, string> compute_canonical_symlink_map(
+    const string& trace_dir) {
+  map<string, string> symlink_map;
+  int name_index = 0;
+
+  // Get all mmapped files from trace
+  vector<TraceReader::MappedData> files = gather_files(trace_dir);
+
+  for (auto& p : files) {
+    string name = p.file_name;
+    // If file is not in trace dir, create a symlink to it
+    if (!is_in_trace_dir(p.file_name, trace_dir)) {
+      name = symlink_into_trace(p.file_name, trace_dir, &name_index);
+    }
+    // Update the file map with the relative path of the target file
+    symlink_map[p.file_name] = string(strrchr(name.c_str(), '/') + 1);
+  }
+
+  return symlink_map;
 }
 
 /**
@@ -399,7 +475,7 @@ static void delete_unnecessary_files(const map<string, string>& file_map,
   }
 }
 
-static int pack(const string& trace_dir) {
+static int pack(const string& trace_dir, const PackFlags& flags) {
   string dir;
   {
     // validate trace and produce default trace directory if trace_dir is empty
@@ -413,10 +489,18 @@ static int pack(const string& trace_dir) {
     FATAL() << "realpath failed on " << dir;
   }
   string abspath(buf);
-  map<string, string> canonical_mmapped_files =
-      compute_canonical_mmapped_files(abspath);
-  rewrite_mmaps(canonical_mmapped_files, abspath);
-  delete_unnecessary_files(canonical_mmapped_files, abspath);
+
+  if (flags.symlink) {
+    map<string, string> canonical_symlink_map =
+        compute_canonical_symlink_map(abspath);
+    rewrite_mmaps(canonical_symlink_map, abspath);
+    delete_unnecessary_files(canonical_symlink_map, abspath);
+  } else {
+    map<string, string> canonical_mmapped_files =
+        compute_canonical_mmapped_files(abspath);
+    rewrite_mmaps(canonical_mmapped_files, abspath);
+    delete_unnecessary_files(canonical_mmapped_files, abspath);
+  }
 
   if (!probably_not_interactive(STDOUT_FILENO)) {
     printf("rr: Packed trace directory `%s'.\n", dir.c_str());
@@ -425,9 +509,35 @@ static int pack(const string& trace_dir) {
   return 0;
 }
 
+static bool parse_pack_arg(vector<string>& args, PackFlags& flags) {
+  static const OptionSpec options[] = {
+    { 0, "symlink", NO_PARAMETER },
+  };
+  ParsedOption opt;
+  auto args_copy = args;
+  if (!Command::parse_option(args_copy, options, &opt)) {
+    return false;
+  }
+
+  switch (opt.short_name) {
+    case 0:
+      flags.symlink = true;
+      break;
+    default:
+      DEBUG_ASSERT(0 && "Unknown pack option");
+  }
+
+  args = args_copy;
+  return true;
+}
+
 int PackCommand::run(vector<string>& args) {
   bool found_dir = false;
   string trace_dir;
+  PackFlags flags;
+
+  while (parse_pack_arg(args, flags)) {
+  }
 
   while (!args.empty()) {
     if (!found_dir && parse_optional_trace_dir(args, &trace_dir)) {
@@ -438,7 +548,7 @@ int PackCommand::run(vector<string>& args) {
     return 1;
   }
 
-  return pack(trace_dir);
+  return pack(trace_dir, flags);
 }
 
 } // namespace rr
