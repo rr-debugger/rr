@@ -1088,15 +1088,22 @@ static bool treat_signal_event_as_deterministic(const SignalEvent& ev) {
 /**
  * Advance to the delivery of the deterministic signal |sig| and
  * update registers to what was recorded.  Return COMPLETE if successful or
- * INCOMPLETE  if an unhandled interrupt occurred.
+ * INCOMPLETE if an unhandled interrupt occurred.
  */
 Completion ReplaySession::emulate_deterministic_signal(
     ReplayTask* t, int sig, const StepConstraints& constraints) {
+  const Event& ev = trace_frame.event();
+
   while (true) {
     if (t->regs().matches(trace_frame.regs()) &&
-        t->tick_count() == trace_frame.ticks()) {
+        t->tick_count() == trace_frame.ticks() &&
+        EV_INSTRUCTION_TRAP != ev.type()) {
       // We're already at the target. This can happen when multiple signals
-      // are delivered with no intervening execution.
+      // are delivered with no intervening execution. It *can't* happen
+      // when we're supposed to be emulating an instruction trap.
+      // XXX I guess in theory we could have multiple signals arriving
+      // at the same state but with intervening execution that we're supposed
+      // to replay, but won't :-(.
       return COMPLETE;
     }
 
@@ -1126,7 +1133,6 @@ Completion ReplaySession::emulate_deterministic_signal(
   ASSERT(t, t->stop_sig() == sig)
       << "Replay got unrecorded signal " << signal_name(t->stop_sig())
       << " (expecting " << signal_name(sig) << ")";
-  const Event& ev = trace_frame.event();
   check_ticks_consistency(t, ev);
 
   if (EV_INSTRUCTION_TRAP == ev.type()) {

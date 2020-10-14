@@ -781,6 +781,7 @@ set(BASIC_TESTS
   cloned_sigmask
   constructor
   copy_file_range
+  x86/cpuid_same_state
   creat_address_not_truncated
   x86/cross_arch
   cwd_inaccessible
