@@ -11,6 +11,7 @@
 #include <linux/ethtool.h>
 #include <linux/fs.h>
 #include <linux/futex.h>
+#include <linux/hidraw.h>
 #include <linux/if.h>
 #include <linux/if_packet.h>
 #include <linux/if_tun.h>
@@ -1937,6 +1938,8 @@ static Switchable prepare_ioctl(RecordTask* t,
     case IOCTL_MASK_SIZE(JSIOCGAXMAP):
     case IOCTL_MASK_SIZE(JSIOCGBTNMAP):
     case IOCTL_MASK_SIZE(JSIOCGNAME(0)):
+    case IOCTL_MASK_SIZE(HIDIOCGRAWINFO):
+    case IOCTL_MASK_SIZE(HIDIOCGRAWNAME(0)):
       syscall_state.reg_parameter(3, size);
       return PREVENT_SWITCH;
 
