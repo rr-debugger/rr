@@ -537,6 +537,11 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
 }
 
 bool should_checksum(const Event& event, FrameTime time) {
+  FrameTime checksum = Flags::get().checksum;
+  if (Flags::CHECKSUM_NONE == checksum) {
+    return false;
+  }
+
   if (event.type() == EV_EXIT) {
     // Task is dead, or at least detached, and we can't read its memory safely.
     return false;
@@ -547,18 +552,13 @@ bool should_checksum(const Event& event, FrameTime time) {
     return false;
   }
 
-  FrameTime checksum = Flags::get().checksum;
-  bool is_syscall_exit =
-      EV_SYSCALL == event.type() && EXITING_SYSCALL == event.Syscall().state;
-
-  if (Flags::CHECKSUM_NONE == checksum) {
-    return false;
-  }
   if (Flags::CHECKSUM_ALL == checksum) {
-    return true;
+    // Don't checksum at syscall entry because we sometimes mutate syscall parameters there
+    // and that will cause false divergence
+    return EV_SYSCALL != event.type() || ENTERING_SYSCALL != event.Syscall().state;
   }
   if (Flags::CHECKSUM_SYSCALL == checksum) {
-    return is_syscall_exit;
+    return EV_SYSCALL == event.type() && EXITING_SYSCALL == event.Syscall().state;
   }
   /* |checksum| is a global time point. */
   return checksum <= time;
