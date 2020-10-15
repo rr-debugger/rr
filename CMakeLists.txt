@@ -105,6 +105,13 @@ elseif(LOWERCASE_CMAKE_BUILD_TYPE STREQUAL "release")
   set(RR_FLAGS "${RR_FLAGS_RELEASE} -g3 -flto")
 endif()
 
+set(LINKER_FLAGS "")
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  # Gcc generates bogus R_386_GOTOFF relocations in .debug_info which
+  # lld 9 rejects
+  set(LINKER_FLAGS "-fuse-ld=bfd")
+endif()
+
 if(CMAKE_C_COMPILER_ID STREQUAL "Clang")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-command-line-argument")
 endif()
@@ -339,7 +346,7 @@ foreach(file ${PRELOAD_FILES})
   set_source_files_properties("${CMAKE_SOURCE_DIR}/src/preload/${file}"
                               PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
-set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles")
+set_target_properties(rrpreload PROPERTIES LINK_FLAGS "-nostartfiles ${LINKER_FLAGS}")
 
 set(AUDIT_FILES
   rtld-audit.c
@@ -358,7 +365,7 @@ foreach(file ${AUDIT_FILES})
   set_source_files_properties("${CMAKE_SOURCE_DIR}/src/audit/${file}"
                               PROPERTIES COMPILE_FLAGS ${PRELOAD_COMPILE_FLAGS})
 endforeach(file)
-set_target_properties(rraudit PROPERTIES LINK_FLAGS "-nostartfiles -ldl")
+set_target_properties(rraudit PROPERTIES LINK_FLAGS "-nostartfiles -ldl ${LINKER_FLAGS}")
 
 # Ensure that CMake knows about our generated files.
 #
@@ -572,7 +579,7 @@ add_dependencies(rr Generated Pages)
 option(strip "Strip debug info from rr binary")
 
 if(strip)
-  set_target_properties(rr PROPERTIES LINK_FLAGS "-s")
+  set_target_properties(rr PROPERTIES LINK_FLAGS "-s ${LINKER_FLAGS}")
 endif()
 
 target_link_libraries(rr
@@ -598,7 +605,7 @@ target_link_libraries(rrpreload
 add_executable(rr_exec_stub src/exec_stub.c)
 post_build_executable(rr_exec_stub)
 set_target_properties(rr_exec_stub
-                      PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs")
+                      PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs ${LINKER_FLAGS}")
 set_source_files_properties(src/exec_stub.c
                             COMPILE_FLAGS "-fno-stack-protector")
 
@@ -680,7 +687,7 @@ if(rr_32BIT AND rr_64BIT)
                                 PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
   endforeach(file)
 
-  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles")
+  set_target_properties(rrpreload_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles ${LINKER_FLAGS}")
   target_link_libraries(rrpreload_32
     ${CMAKE_DL_LIBS}
   )
@@ -699,7 +706,7 @@ if(rr_32BIT AND rr_64BIT)
                                 PROPERTIES COMPILE_FLAGS "-m32 ${PRELOAD_COMPILE_FLAGS}")
   endforeach(file)
 
-  set_target_properties(rraudit_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles")
+  set_target_properties(rraudit_32 PROPERTIES LINK_FLAGS "-m32 -nostartfiles ${LINKER_FLAGS}")
   target_link_libraries(rraudit_32
     ${CMAKE_DL_LIBS}
   )
@@ -715,7 +722,7 @@ if(rr_32BIT AND rr_64BIT)
   add_executable(rr_exec_stub_32 32/exec_stub.c)
   post_build_executable(rr_exec_stub_32)
   set_target_properties(rr_exec_stub_32
-                        PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs -m32")
+                        PROPERTIES LINK_FLAGS "-static -nostartfiles -nodefaultlibs -m32 ${LINKER_FLAGS}")
 
   install(TARGETS rrpreload_32 rraudit_32 rr_exec_stub_32
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
@@ -1572,7 +1579,7 @@ if(BUILD_TESTS)
       add_executable(${testname}_32 "${CMAKE_CURRENT_BINARY_DIR}/32/${test}.c")
       post_build_executable(${testname}_32)
       add_dependencies(${testname}_32 Generated)
-      set_target_properties(${testname}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS}")
+      set_target_properties(${testname}_32 PROPERTIES LINK_FLAGS "-m32 ${RR_TEST_FLAGS} ${LINKER_FLAGS}")
       target_link_libraries(${testname}_32 -lrt -ldl)
       # Part of the installable testsuite (test programs).
       if (INSTALL_TESTSUITE)
@@ -1585,7 +1592,7 @@ if(BUILD_TESTS)
       "${CMAKE_CURRENT_BINARY_DIR}/32/test_lib.c"
     )
     add_dependencies(test_lib_32 Generated)
-    set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS -m32)
+    set_target_properties(test_lib_32 PROPERTIES LINK_FLAGS "-m32 ${LINKER_FLAGS}")
 
     target_link_libraries(constructor_32 -lrt test_lib_32)
 
@@ -1593,7 +1600,7 @@ if(BUILD_TESTS)
     add_executable(cpuid_32 32/x86/cpuid.c 32/x86/cpuid_loop.S)
     post_build_executable(cpuid_32)
     add_dependencies(cpuid_32 Generated)
-    set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS -m32)
+    set_target_properties(cpuid_32 PROPERTIES LINK_FLAGS "-m32 ${LINKER_FLAGS}")
     target_link_libraries(cpuid_32 -lrt)
 
     if(INSTALL_TESTSUITE)
