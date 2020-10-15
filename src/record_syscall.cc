@@ -3262,11 +3262,11 @@ static bool protect_rr_sigs_sa_mask_arch(RecordTask* t, remote_ptr<void> p,
     return false;
   }
 
-  sa.sa_mask = new_sig_set;
-  t->write_mem(sap, sa);
   if (save) {
     memcpy(save, &sa, sizeof(sa));
   }
+  sa.sa_mask = new_sig_set;
+  t->write_mem(sap, sa);
 
   return true;
 }
