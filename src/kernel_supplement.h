@@ -205,6 +205,12 @@ struct rr_input_mask {
 #ifndef MADV_DODUMP
 #define MADV_DODUMP 17
 #endif
+#ifndef MADV_WIPEONFORK
+#define MADV_WIPEONFORK 18
+#endif
+#ifndef MADV_KEEPONFORK
+#define MADV_KEEPONFORK 19
+#endif
 #ifndef MADV_SOFT_OFFLINE
 #define MADV_SOFT_OFFLINE 101
 #endif
