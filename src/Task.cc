@@ -2639,7 +2639,7 @@ bool Task::open_mem_fd() {
     // find that the fd wasn't successfully opened.
     AutoRestoreMem remote_path(remote, mem, sizeof(mem));
     int remote_mem_fd = remote.syscall(syscall_number_for_openat(arch()),
-                        remote_mem_dir_fd, remote_path.get() + 1, O_RDWR);
+                        remote_mem_dir_fd, remote_path.get(), O_RDWR);
     fd = remote.retrieve_fd(remote_mem_fd);
     remote.syscall(syscall_number_for_close(arch()), remote_mem_fd);
     remote.syscall(syscall_number_for_close(arch()), remote_mem_dir_fd);
