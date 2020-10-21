@@ -3436,9 +3436,9 @@ static void create_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapp
     remote.infallible_mmap_syscall(km.start(), km.size(), km.prot(),
                                   km.flags() | MAP_FIXED | MAP_ANONYMOUS, -1,
                                   0);
-    t->vm()->map(t, km.start(), km.size(), km.prot(), km.flags(), km.file_offset_bytes(),
-                real_file_name, device, inode, nullptr, &km);
   }
+  t->vm()->map(t, km.start(), km.size(), km.prot(), km.flags(), km.file_offset_bytes(),
+               real_file_name, device, inode, nullptr, &km);
 }
 
 static void apply_mm_map(AutoRemoteSyscalls& remote, const struct prctl_mm_map& map)
