@@ -3453,12 +3453,15 @@ static void copy_mem_mapping(Task* from, Task* to, const KernelMapping& km) {
   vector<char> buf;
   buf.resize(km.size());
   ssize_t bytes = from->read_bytes_fallible(km.start(), km.size(), buf.data());
-  ASSERT(from, bytes > 0) << "Expected to read some bytes in the mapping";
-  // We may have a short read here if there are beyond-end-of-mapped-file pages
-  // in the mapping.
-  bool ok = true;
-  to->write_bytes_helper(km.start(), bytes, buf.data(), &ok);
-  ASSERT(to, ok);
+  // There can be mappings of files where the mapping starts beyond the end-of-file
+  // so no bytes will be read.
+  if (bytes > 0) {
+    // We may have a short read here if there are beyond-end-of-mapped-file pages
+    // in the mapping.
+    bool ok = true;
+    to->write_bytes_helper(km.start(), bytes, buf.data(), &ok);
+    ASSERT(to, ok);
+  }
 }
 
 static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &km) {
