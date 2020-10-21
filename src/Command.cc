@@ -90,7 +90,7 @@ static void assign_param(ParsedOption* opt, const char* s) {
   opt->int_value = INT64_MIN;
   if (!opt->value.empty()) {
     char* end;
-    int64_t v = strtoll(s, &end, 10);
+    int64_t v = strtoll(s, &end, 0);
     if (*end == 0) {
       opt->int_value = v;
     }
