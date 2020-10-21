@@ -252,12 +252,7 @@ static trace::Arch to_trace_arch(SupportedArch arch) {
 }
 
 static trace::CpuTriState to_tristate(bool value) {
-  switch (value) {
-    case true:
-      return trace::CpuTriState::KNOWN_TRUE;
-    case false:
-      return trace::CpuTriState::KNOWN_FALSE;
-  }
+  return value ? trace::CpuTriState::KNOWN_TRUE : trace::CpuTriState::KNOWN_FALSE;
 }
 
 static SupportedArch from_trace_arch(trace::Arch arch) {
