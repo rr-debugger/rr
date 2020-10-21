@@ -514,7 +514,8 @@ public:
       case aarch64:
         return memcmp(&u.arm64regs, &other.u.arm64regs, sizeof(u.arm64regs)) == 0;
       default:
-        DEBUG_ASSERT(0 && "Unknown architecture");
+        FATAL() << "Unknown architecture");
+        return false;
     }
   }
 
