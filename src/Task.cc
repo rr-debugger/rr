@@ -3461,9 +3461,10 @@ static void copy_mem_mapping(Task* from, Task* to, const KernelMapping& km) {
   ASSERT(to, ok);
 }
 
-static void move_vdso_mapping(Task *t, AutoRemoteSyscalls &remote, const KernelMapping &km) {
-  for (const auto& m : t->vm()->maps()) {
+static void move_vdso_mapping(AutoRemoteSyscalls &remote, const KernelMapping &km) {
+  for (const auto& m : remote.task()->vm()->maps()) {
     if  (m.map.is_vdso() && m.map.start() != km.start()) {
+      LOG(debug) << "Moving VDSO for " << remote.task()->tid;
       /* Remap VDSO to the address that is used in the target process,
          before it gets unmapped.
          Otherwise the kernel seems to put the address of the original
@@ -3498,6 +3499,7 @@ void Task::dup_from(Task *other) {
   }
   ASSERT(this, found_stack);
   // Copy address space
+  LOG(debug) << "Mapping rr page for " << tid;
   {
     AutoRemoteSyscalls remote(this);
     this->vm()->map_rr_page(remote);
@@ -3505,11 +3507,14 @@ void Task::dup_from(Task *other) {
   {
     AutoRemoteSyscalls remote(this, AutoRemoteSyscalls::DISABLE_MEMORY_PARAMS);
     if (found_vdso) {
-      move_vdso_mapping(this, remote, vdso_mapping);
+      move_vdso_mapping(remote, vdso_mapping);
     }
+    LOG(debug) << "Unmapping memory for " << tid;
     // TODO: Only do this if the rr page isn't already mapped
     this->vm()->unmap_all_but_rr_page(remote);
+    LOG(debug) << "Creating stack mapping " << stack_mapping << " for " << tid;
     create_mapping(this, remote, stack_mapping);
+    LOG(debug) << "Copying stack into " << tid;
     copy_mem_mapping(other, this, stack_mapping);
   }
   {
@@ -3518,7 +3523,9 @@ void Task::dup_from(Task *other) {
       if (km.start() == vm()->rr_page_start() || km.is_vsyscall()) {
         continue;
       }
+      LOG(debug) << "Creating mapping " << km << " for " << tid;
       create_mapping(this, remote_this, km);
+      LOG(debug) << "Copying mapping into " << tid;
       // XXX: If this maps a file, recreate it as such
       copy_mem_mapping(other, this, km);
     }
