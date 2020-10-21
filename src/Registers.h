@@ -13,7 +13,6 @@
 #include "GdbRegister.h"
 #include "core.h"
 #include "kernel_abi.h"
-#include "log.h"
 #include "remote_code_ptr.h"
 #include "remote_ptr.h"
 
@@ -167,7 +166,7 @@ public:
   ARCH_SWITCH_CASE(uint64_t,                                                   \
     return (uint32_t)u.x86regs.x86case,                                        \
     return u.x64regs.x64case,                                                  \
-    FATAL() << "Hit an x86-only case, but this is not x86"; return 0)
+    DEBUG_ASSERT(0 && "Hit an x86-only case, but this is not x86"); return 0)
 
 #define RR_UPDATE_CHECK(loc, value) bool changed = (uintptr_t)loc != (uintptr_t)(value); \
   loc = (value); \
@@ -182,7 +181,7 @@ public:
   ARCH_SWITCH_CASE(bool,                                                       \
     RR_UPDATE_CHECK(u.x86regs.x86case, value),                                 \
     RR_UPDATE_CHECK(u.x64regs.x64case, value),                                 \
-    FATAL() << "Hit an x86-only case, but this is not x86"; return false)
+    DEBUG_ASSERT(0 && "Hit an x86-only case, but this is not x86"); return false)
 
   remote_code_ptr ip() const { return RR_GET_REG(eip, rip, pc); }
   bool set_ip(remote_code_ptr addr) {
@@ -246,7 +245,7 @@ public:
       case 6:
         return arg6();
       default:
-        FATAL() << "Argument index out of range";
+        DEBUG_ASSERT(0 && "Argument index out of range");
         return 0;
     }
   }
@@ -278,7 +277,7 @@ public:
       case 6:
         return set_arg6(value);
       default:
-        FATAL() << "Argument index out of range";
+        DEBUG_ASSERT(0 && "Argument index out of range");
         return false;
     }
   }
@@ -298,7 +297,7 @@ public:
       case 6:
         return set_arg6(value);
       default:
-        FATAL() << "Argument index out of range";
+        DEBUG_ASSERT(0 && "Argument index out of range");
         return false;
     }
   }
@@ -514,7 +513,7 @@ public:
       case aarch64:
         return memcmp(&u.arm64regs, &other.u.arm64regs, sizeof(u.arm64regs)) == 0;
       default:
-        FATAL() << "Unknown architecture");
+        DEBUG_ASSERT(0 && "Unknown architecture");
         return false;
     }
   }
