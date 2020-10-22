@@ -646,15 +646,14 @@ bool RecordSession::handle_ptrace_event(RecordTask** t_ptr,
           case SECCOMP_RET_KILL:
             LOG(debug) << "  seccomp kill for syscall: "
                        << syscall_name(syscallno, t->arch());
-            for (Task* tt : t->thread_group()->task_set()) {
-              // Record robust futex changes now in case the taskgroup dies
-              // synchronously without a regular PTRACE_EVENT_EXIT (as seems
-              // to happen on Ubuntu 4.2.0-42-generic)
-              RecordTask* rt = static_cast<RecordTask*>(tt);
-              record_robust_futex_changes(rt);
-            }
             t->tgkill(SIGKILL);
-            step_state->continue_type = RecordSession::CONTINUE;
+            // Rely on the SIGKILL to bump us out of the ptrace stop.
+            step_state->continue_type = RecordSession::DONT_CONTINUE;
+            // Now wait for us to actually exit our ptrace-stop and proceed
+            // to the PTRACE_EVENT_EXIT. This avoids the race where our
+            // PTRACE_CONT might kick us out of the PTRACE_EVENT_EXIT before
+            // we can process it.
+            t->wait();
             break;
           default:
             ASSERT(t, false) << "Seccomp result not handled";
