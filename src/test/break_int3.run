@@ -1,6 +1,4 @@
 source `dirname $0`/util.sh
 
-fails "gdb and rr don't yet agree what should happen when a breakpoint is set on a breakpoint instruction"
-
 record int3$bitness
 debug break_int3
