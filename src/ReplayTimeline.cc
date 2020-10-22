@@ -1296,6 +1296,14 @@ ReplayResult ReplayTimeline::reverse_singlestep(
               // This last step is not usable.
               LOG(debug) << "   not usable, stopping now";
               break;
+            } else if (now == end &&
+                       result.break_status.signal &&
+                       result.break_status.signal->si_signo == SIGTRAP &&
+                       is_advanced_pc_and_signaled_instruction(result.break_status.task,
+                                                               result.break_status.task->ip())) {
+              LOG(debug) << "   singlestepped exactly to instruction that advances pc and signals (e.g. int3),"
+                         << " pretending we stopped earlier.";
+              break;
             }
             destination_candidate = step_start;
             LOG(debug) << "Setting candidate after step: "

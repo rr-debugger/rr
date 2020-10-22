@@ -432,6 +432,12 @@ TrappedInstruction trapped_instruction_at(Task* t, remote_code_ptr ip);
 size_t trapped_instruction_len(TrappedInstruction insn);
 
 /**
+ * Certain instructions generate deterministic signals but also advance pc.
+ * Look *backwards* and see if this was one of them.
+ */
+bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip);
+
+/**
  * BIND_CPU means binding to a randomly chosen CPU.
  * UNBOUND_CPU means not binding to a particular CPU.
  * A non-negative value means binding to the specific CPU number.

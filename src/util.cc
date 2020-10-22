@@ -1665,6 +1665,27 @@ size_t trapped_instruction_len(TrappedInstruction insn) {
 }
 
 /**
+ * Certain instructions generate deterministic signals but also advance pc.
+ * Look *backwards* and see if this was one of them.
+ */
+bool is_advanced_pc_and_signaled_instruction(Task* t, remote_code_ptr ip) {
+#if defined(__i386__) || defined(__x86_64__)
+  uint8_t insn[sizeof(int3_insn)];
+  ssize_t ret =
+      t->read_bytes_fallible(ip.to_data_ptr<uint8_t>() - sizeof(insn), sizeof(insn), insn);
+  if (ret < 0) {
+    return false;
+  }
+  size_t len = ret;
+  if (len >= sizeof(int3_insn) &&
+      !memcmp(insn, int3_insn, sizeof(int3_insn))) {
+    return true;
+  }
+#endif
+  return false;
+}
+
+/**
  * Read and parse the available CPU list then select a random CPU from the list.
  */
 static vector<int> get_cgroup_cpus() {
