@@ -1364,6 +1364,7 @@ set(TESTS_WITHOUT_PROGRAM
   reverse_alarm
   reverse_continue_exec_subprocess
   reverse_continue_fork_subprocess
+  reverse_continue_int3
   reverse_continue_start
   reverse_finish
   reverse_step_breakpoint
