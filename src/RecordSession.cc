@@ -2115,7 +2115,8 @@ static string lookup_by_path(const string& name) {
     const string& output_trace_dir,
     const TraceUuid* trace_id,
     bool use_audit,
-    bool unmap_vdso) {
+    bool unmap_vdso,
+    bool force_asan_active) {
   // The syscallbuf library interposes some critical
   // external symbols like XShmQueryExtension(), so we
   // preload it whether or not syscallbuf is enabled. Indicate here whether
@@ -2217,7 +2218,8 @@ static string lookup_by_path(const string& name) {
       new RecordSession(full_path, argv, env, disable_cpuid_features,
                         syscallbuf, syscallbuf_desched_sig, bind_cpu,
                         output_trace_dir, trace_id, use_audit, unmap_vdso));
-  session->set_asan_active(!exe_info.libasan_path.empty() ||
+  session->set_asan_active(force_asan_active ||
+                           !exe_info.libasan_path.empty() ||
                            exe_info.has_asan_symbols);
   return session;
 }

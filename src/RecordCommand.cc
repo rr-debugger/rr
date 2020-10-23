@@ -105,7 +105,9 @@ RecordCommand RecordCommand::singleton(
     "  --stap-sdt                 Enables the use of SystemTap statically-\n"
     "                             defined tracepoints\n"
     "  --unmap-vdso               Forcibly unmaps the vdso. This is mostly\n"
-    "                             useful for debugging rr itself.");
+    "                             useful for debugging rr itself.\n"
+    "  --asan                     Override heuristics and always enable ASAN\n"
+    "                             compatibility.");
 
 struct RecordFlags {
   vector<string> extra_env;
@@ -179,6 +181,9 @@ struct RecordFlags {
   /* True if we should unmap the vdso */
   bool unmap_vdso;
 
+  /* True if we should always enable ASAN compatibility. */
+  bool asan;
+
   RecordFlags()
       : max_ticks(Scheduler::DEFAULT_MAX_TICKS),
         ignore_sig(0),
@@ -200,7 +205,8 @@ struct RecordFlags {
         copy_preload_src(false),
         syscallbuf_desched_sig(SYSCALLBUF_DEFAULT_DESCHED_SIGNAL),
         stap_sdt(false),
-        unmap_vdso(false) {}
+        unmap_vdso(false),
+        asan(false) {}
 };
 
 static void parse_signal_name(ParsedOption& opt) {
@@ -260,6 +266,7 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 14, "stap-sdt", NO_PARAMETER },
     { 15, "unmap-vdso", NO_PARAMETER },
     { 16, "disable-avx-512", NO_PARAMETER },
+    { 17, "asan", NO_PARAMETER },
     { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
@@ -469,6 +476,9 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
       flags.disable_cpuid_features.extended_features_ebx |= 0xdc230000;
       flags.disable_cpuid_features.extended_features_ecx |= 0x00002c42;
       flags.disable_cpuid_features.extended_features_edx |= 0x0000000c;
+      break;
+    case 17:
+      flags.asan = true;
       break;
     case 's':
       flags.always_switch = true;
