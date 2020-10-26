@@ -11,6 +11,9 @@ static int wait_forever_fds[2];
 static char ch = 'X';
 
 static void* run_thread(__attribute__((unused)) void* p) {
+  /* Lower our priority so we won't get scheduled until everything
+     else is blocked */
+  setpriority(PRIO_PROCESS, 0, 4);
   test_assert(1 == write(thread_to_main_fds[1], &ch, 1));
   read(wait_forever_fds[0], &ch, 1);
   test_assert(0);
