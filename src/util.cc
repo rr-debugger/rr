@@ -1772,7 +1772,9 @@ int choose_cpu(BindCPU bind_cpu, ScopedFd &cpu_lock_fd_out) {
     int err = fstat(cpu_lock_fd_out, &stat);
     DEBUG_ASSERT(err == 0);
     if (stat.st_size < get_num_cpus()) {
-      ftruncate(cpu_lock_fd_out, get_num_cpus());
+      if (ftruncate(cpu_lock_fd_out, get_num_cpus())) {
+        FATAL() << "Failed to resize locks file";
+      }
     }
   }
 
