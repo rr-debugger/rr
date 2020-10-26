@@ -1648,11 +1648,11 @@ if(BUILD_TESTS)
     post_build_executable(${test})
     target_link_libraries(${test} -lrt)
   endforeach(test)
+
+  add_executable(test-monitor src/test-monitor/test-monitor.cc)
 endif()
 
 add_executable(ftrace_helper src/ftrace/ftrace_helper.c)
-
-add_executable(test-monitor src/test-monitor/test-monitor.cc)
 
 include(ProcessorCount)
 ProcessorCount(N)
