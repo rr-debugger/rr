@@ -29,9 +29,6 @@ namespace rr {
 RecordCommand RecordCommand::singleton(
     "record",
     " rr record [OPTION]... <exe> [exe-args]...\n"
-    "  -b, --force-syscall-buffer force the syscall buffer preload library\n"
-    "                             to be used, even if that's probably a bad\n"
-    "                             idea\n"
     "  -c, --num-cpu-ticks=<NUM>  maximum number of 'CPU ticks' (currently \n"
     "                             retired conditional branches) to allow a \n"
     "                             task to run before interrupting it\n"
@@ -267,7 +264,6 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
     { 15, "unmap-vdso", NO_PARAMETER },
     { 16, "disable-avx-512", NO_PARAMETER },
     { 17, "asan", NO_PARAMETER },
-    { 'b', "force-syscall-buffer", NO_PARAMETER },
     { 'c', "num-cpu-ticks", HAS_PARAMETER },
     { 'h', "chaos", NO_PARAMETER },
     { 'i', "ignore-signal", HAS_PARAMETER },
@@ -286,9 +282,6 @@ static bool parse_record_arg(vector<string>& args, RecordFlags& flags) {
   }
 
   switch (opt.short_name) {
-    case 'b':
-      flags.use_syscall_buffer = RecordSession::ENABLE_SYSCALL_BUF;
-      break;
     case 'c':
       if (!opt.verify_valid_int(1, Scheduler::MAX_MAX_TICKS)) {
         return false;
