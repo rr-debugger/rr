@@ -578,8 +578,9 @@ add_dependencies(rr Generated Pages)
 
 option(strip "Strip debug info from rr binary")
 
+set(RR_MAIN_LINKER_FLAGS ${LINKER_FLAGS})
 if(strip)
-  set_target_properties(rr PROPERTIES LINK_FLAGS "-s ${LINKER_FLAGS}")
+  set(RR_MAIN_LINKER_FLAGS "-s ${RR_MAIN_LINKER_FLAGS}")
 endif()
 
 target_link_libraries(rr
@@ -593,9 +594,14 @@ if(staticlibs)
   # a way to persuade pkg-confing/pkg_check_modules to produce the right flags
   target_link_libraries(rr -L/home/roc/lib -l:libcapnp.a -l:libkj.a)
   # Note that this works for both clang++ and g++
-  set(CMAKE_CXX_FLAGS "-static-libstdc++ ${CMAKE_CXX_FLAGS}")
+  set(RR_MAIN_LINKER_FLAGS "-static-libstdc++ ${RR_MAIN_LINKER_FLAGS}")
 else()
   target_link_libraries(rr ${CAPNP_LDFLAGS})
+endif()
+
+set_target_properties(rr PROPERTIES LINK_FLAGS ${RR_MAIN_LINKER_FLAGS})
+if(RR_BUILD_SHARED)
+  set_target_properties(rrbin PROPERTIES LINK_FLAGS ${RR_MAIN_LINKER_FLAGS})
 endif()
 
 target_link_libraries(rrpreload
