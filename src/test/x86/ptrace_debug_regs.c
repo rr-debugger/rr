@@ -2,6 +2,8 @@
 
 #include "util.h"
 
+// The 4 lowest bits of DR6.
+#define DR_TRAP_BITS 0xf
 #define NEW_VALUE 0xabcdef
 
 static void breakpoint(void) {}
@@ -39,8 +41,8 @@ int main(void) {
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, NULL));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((SIGTRAP << 8) | 0x7f));
-  test_assert(0x1 == ptrace(PTRACE_PEEKUSER, child,
-                            (void*)offsetof(struct user, u_debugreg[6])));
+  test_assert(0x1 == (ptrace(PTRACE_PEEKUSER, child,
+                             (void*)offsetof(struct user, u_debugreg[6])) & DR_TRAP_BITS));
 
   test_assert(0 == ptrace(PTRACE_POKEUSER, child,
                           (void*)offsetof(struct user, u_debugreg[0]),
@@ -53,8 +55,8 @@ int main(void) {
   test_assert(0 == ptrace(PTRACE_CONT, child, NULL, NULL));
   test_assert(child == waitpid(child, &status, 0));
   test_assert(status == ((SIGTRAP << 8) | 0x7f));
-  test_assert(0x1 == ptrace(PTRACE_PEEKUSER, child,
-                            (void*)offsetof(struct user, u_debugreg[6])));
+  test_assert(0x1 == (ptrace(PTRACE_PEEKUSER, child,
+                             (void*)offsetof(struct user, u_debugreg[6])) & DR_TRAP_BITS));
 
   test_assert(0 == ptrace(PTRACE_DETACH, child, NULL, NULL));
 
