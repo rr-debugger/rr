@@ -108,9 +108,6 @@ else
     TESTNAME_NO_BITNESS=$TESTNAME
 fi
 LIB_ARG=$2
-if [[ "$LIB_ARG" == "" ]]; then
-    LIB_ARG=-b
-fi
 OBJDIR=$3
 if [[ "$OBJDIR" == "" ]]; then
     # Default to assuming that the user's working directory is the
@@ -216,7 +213,7 @@ function skip_if_no_syscall_buf {
 # If the test is causing an unrealistic failure when the syscallbuf is
 # enabled, skip it.  This better be a temporary situation!
 function skip_if_syscall_buf {
-    if [[ "-b" == "$LIB_ARG" || "" == "$LIB_ARG" ]]; then
+    if [[ "" == "$LIB_ARG" ]]; then
         echo NOTE: Skipping "'$TESTNAME'" because syscallbuf is enabled
         exit 0
     fi
