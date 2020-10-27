@@ -421,9 +421,13 @@ bool ReplaySession::handle_unrecorded_cpuid_fault(
   const vector<CPUIDRecord>& records = trace_in.cpuid_records();
   Registers r = t->regs();
   const CPUIDRecord* rec = find_cpuid_record(records, r.ax(), r.cx());
-  ASSERT(t, rec) << "Can't find CPUID record for request AX=" << HEX(r.ax())
-                 << " CX=" << HEX(r.cx());
-  r.set_cpuid_output(rec->out.eax, rec->out.ebx, rec->out.ecx, rec->out.edx);
+  if (rec) {
+    r.set_cpuid_output(rec->out.eax, rec->out.ebx, rec->out.ecx, rec->out.edx);
+  } else {
+    LOG(warn) << "Can't find CPUID record for request AX=" << HEX(r.ax())
+              << " CX=" << HEX(r.cx()) << "; defaulting to 0/0/0/0";
+    r.set_cpuid_output(0, 0, 0, 0);
+  }
   r.set_ip(r.ip() + trapped_instruction_len(TrappedInstruction::CPUID));
   t->set_regs(r);
   // Clear SIGSEGV status since we're handling it
