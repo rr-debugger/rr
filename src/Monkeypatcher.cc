@@ -768,6 +768,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
 #undef S
   };
 
+  uintptr_t max_file_offset = 0;
   for (size_t i = 0; i < syms.size(); ++i) {
     for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
       if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
@@ -781,24 +782,50 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
           // duplicate of another symbol. Bizzarro. Ignore it.
           continue;
         }
+        if (file_offset > max_file_offset) {
+          max_file_offset = file_offset;
+        }
+      }
+    }
+  }
+
+  uintptr_t shared_address = vdso_start.as_int() + max_file_offset + X86VsyscallMonkeypatch::size;
+
+  for (size_t i = 0; i < syms.size(); ++i) {
+    for (size_t j = 0; j < array_length(syscalls_to_monkeypatch); ++j) {
+      if (syms.is_name(i, syscalls_to_monkeypatch[j].name)) {
+        uintptr_t file_offset;
+        if (!reader.addr_to_offset(syms.addr(i), file_offset)) {
+          continue;
+        }
+        if (file_offset > MAX_VDSO_SIZE) {
+          continue;
+        }
 
         uintptr_t absolute_address = vdso_start.as_int() + file_offset;
 
         uint8_t patch[X86VsyscallMonkeypatch::size];
         uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
-        X86VsyscallMonkeypatch::substitute(patch, syscall_number);
+        X86VsyscallMonkeypatch::substitute(patch, syscall_number,
+          shared_address - (absolute_address + X86VsyscallMonkeypatch::size));
 
         write_and_record_bytes(t, absolute_address, patch);
-        // Record the location of the syscall instruction, skipping the
-        // "push %ebx; mov $syscall_number,%eax".
-        patcher.patched_vdso_syscalls.insert(
-            remote_code_ptr(absolute_address + 6));
         LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name
                    << " to syscall "
                    << syscalls_to_monkeypatch[j].syscall_number;
       }
     }
   }
+
+  if (max_file_offset > 0) {
+    uint8_t patch[X86VsyscallMonkeypatchShared::size];
+    X86VsyscallMonkeypatchShared::substitute(patch);
+    write_and_record_bytes(t, shared_address, patch);
+    LOG(debug) << "monkeypatched shared stub";
+    // Record the location of the syscall instruction
+    patcher.patched_vdso_syscalls.insert(remote_code_ptr(shared_address + 8));
+  }
+
   obliterate_debug_info(t, reader);
 }
 

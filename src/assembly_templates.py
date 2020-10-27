@@ -107,6 +107,10 @@ templates = {
         RawBytes(0x53),         # push %ebx
         RawBytes(0xb8),         # mov $syscall_number,%eax
         Field('syscall_number', 4),
+        RawBytes(0xe9),         # jmp $X86VsyscallMonkeypatchShared
+        Field('vsyscall_monkeypatch_shared', 4),
+    ),
+    'X86VsyscallMonkeypatchShared': AssemblyTemplate(
         # __vdso functions use the C calling convention, so
         # we have to set up the syscall parameters here.
         # No x86-32 __vdso functions take more than two parameters.
