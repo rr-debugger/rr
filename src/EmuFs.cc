@@ -77,7 +77,10 @@ std::string make_temp_name(const string& orig_path, dev_t orig_device,
   stringstream name;
   name << "rr-emufs-" << getpid() << "-dev-" << orig_device
        << "-inode-" << orig_inode << "-" << orig_path;
-  return name.str().substr(0, 255);
+  // The linux man page for memfd_create says the length limit for the name
+  // argument is 249 bytes, evidently because it prepends "memfd:" to the
+  // parameter before using it.
+  return name.str().substr(0, 249);
 }
 
 /*static*/ EmuFile::shr_ptr EmuFile::create(EmuFs& owner,
