@@ -46,9 +46,9 @@ int main(int argc, char *argv[]) {
     ret = dup2(fd_pair[1], 2);
     test_assert(ret >= 0);
 
-    // We want to probe the regular rr error path, not the test monitor path,
-    // but we should still pass through things like LD_LIBRARY_PATH in case
-    // they're required for rr running properly.
+    /* We want to probe the regular rr error path, not the test monitor path,
+       but we should still pass through things like LD_LIBRARY_PATH in case
+       they're required for rr running properly. */
     unsetenv("RUNNING_UNDER_TEST_MONITOR");
     execve(argv[1], &argv[1], environ); // Should not return
     test_assert(0);
@@ -63,7 +63,15 @@ int main(int argc, char *argv[]) {
   memset(buf, 0, sizeof(buf));
   ssize_t nread = read(fd_pair[0], buf, sizeof(buf)-1);
   test_assert(nread >= 0);
-  if (NULL == strstr(buf, "Unexpected stop")) {
+  /* Three possibilities:
+     1) The child gets SIGSYS and exits before we PTRACE_SEIZE it
+     2) The child gets SIGSYS before we PTRACE_SEIZE it, but we still
+     see the PTRACE_EVENT_EXIT
+     3) We PTRACE_SEIZE it in time to see the SIGSYS
+  */
+  if (!strstr(buf, "child probably died before reaching SIGSTOP") &&
+      !strstr(buf, "Tracee died before reaching SIGSTOP") &&
+      !strstr(buf, "Unexpected stop")) {
     write(2, buf, nread);
     test_assert(0);
   }
