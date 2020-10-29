@@ -94,7 +94,7 @@ RecordCommand RecordCommand::singleton(
     "  --stap-sdt                 Enables the use of SystemTap statically-\n"
     "                             defined tracepoints\n"
     "  --asan                     Override heuristics and always enable ASAN\n"
-    "                             compatibility.");
+    "                             compatibility.\n");
 
 struct RecordFlags {
   vector<string> extra_env;
