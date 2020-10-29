@@ -211,7 +211,7 @@ size_t page_size(void) {
 static uint64_t pad_output_to_page_size(int fd) {
   char *buf = alloca(page_size());
   uint64_t offset = file_offset(fd);
-  memset(buf, 0, sizeof(buf));
+  memset(buf, 0, page_size());
   ssize_t pad = ((offset + page_size() - 1) & ~(page_size() - 1)) - offset;
   check(pad == write(fd, buf, pad));
   return offset + pad;
