@@ -22,10 +22,19 @@ static uintptr_t my_syscall(uintptr_t syscall, uintptr_t arg1) {
   return ret;
 }
 
-extern char __executable_start;
 void my_brk(uintptr_t brk) { my_syscall(SYS_brk, brk); }
 
+static uint64_t my_brk_file_offset;
+
+static void callback(__attribute__((unused)) uint64_t env, __attribute__((unused)) char* name, map_properties_t* props) {
+  uint64_t addr = (uintptr_t)my_brk;
+  if (props->start <= addr && addr < props->end) {
+    my_brk_file_offset = addr - props->start + props->offset;
+  }
+}
+
 int main(void) {
+  FILE* maps_file;
   /* map another copy of this executable (but MAP_SHARED this time) */
   int fd = open("/proc/self/exe", O_RDONLY);
   test_assert(fd != -1);
@@ -39,10 +48,12 @@ int main(void) {
       mmap(NULL, stat_buf.st_size, PROT_READ | PROT_EXEC, MAP_SHARED, fd, 0);
   test_assert(map_addr != MAP_FAILED);
 
+  maps_file = fopen("/proc/self/maps", "r");
+  iterate_maps(0, callback, maps_file);
+
   /* Call my_sbrk in the new copy */
   void (*fptr)(uintptr_t) = (void (*)(uintptr_t))(
-      (uintptr_t)map_addr +
-      ((uintptr_t)&my_brk - (uintptr_t)&__executable_start));
+      (uintptr_t)map_addr + (uintptr_t)my_brk_file_offset);
   fptr((uintptr_t)sbrk(0) + sysconf(_SC_PAGESIZE));
 
   atomic_puts("EXIT-SUCCESS");

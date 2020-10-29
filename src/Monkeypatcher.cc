@@ -807,7 +807,7 @@ void patch_after_exec_arch<X86Arch>(RecordTask* t, Monkeypatcher& patcher) {
         uint8_t patch[X86VsyscallMonkeypatch::size];
         uint32_t syscall_number = syscalls_to_monkeypatch[j].syscall_number;
         X86VsyscallMonkeypatch::substitute(patch, syscall_number,
-          shared_address - (absolute_address + X86VsyscallMonkeypatch::size));
+          shared_address - (absolute_address + X86VsyscallMonkeypatch::size - 1));
 
         write_and_record_bytes(t, absolute_address, patch);
         LOG(debug) << "monkeypatched " << syscalls_to_monkeypatch[j].name

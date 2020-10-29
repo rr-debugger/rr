@@ -104,18 +104,19 @@ templates = {
         Field('syscall_hook_trampoline', 4),
     ),
     'X86VsyscallMonkeypatch': AssemblyTemplate(
-        RawBytes(0x53),         # push %ebx
         RawBytes(0xb8),         # mov $syscall_number,%eax
         Field('syscall_number', 4),
-        RawBytes(0xe9),         # jmp $X86VsyscallMonkeypatchShared
+        RawBytes(0xe8),         # call $X86VsyscallMonkeypatchShared
         Field('vsyscall_monkeypatch_shared', 4),
+        RawBytes(0xc3),
     ),
     'X86VsyscallMonkeypatchShared': AssemblyTemplate(
         # __vdso functions use the C calling convention, so
         # we have to set up the syscall parameters here.
         # No x86-32 __vdso functions take more than two parameters.
-        RawBytes(0x8b, 0x5c, 0x24, 0x08), # mov 0x8(%esp),%ebx
-        RawBytes(0x8b, 0x4c, 0x24, 0x0c), # mov 0xc(%esp),%ecx
+        RawBytes(0x53),         # push %ebx
+        RawBytes(0x8b, 0x5c, 0x24, 0x0c), # mov 12(%esp),%ebx
+        RawBytes(0x8b, 0x4c, 0x24, 0x10), # mov 16(%esp),%ecx
         RawBytes(0xcd, 0x80),   # int $0x80
         # pad with NOPs to make room to dynamically patch the syscall
         # with a call to the preload library, once syscall buffering

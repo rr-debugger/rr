@@ -4,6 +4,11 @@ source `dirname $0`/util.sh
 # inside syscallbuf.
 skip_if_no_syscall_buf
 
+# Ubuntu 5.8.0-25-generic, at least, doesn't produce usable stacks inside certain VDSO syscalls
+# with gdb and we can't under rr either due to the VDSO functions being too short for a single
+# patch without call-outs.
+skip_if_32_bit
+
 # Use 4K syscallbuf size to force frequent overflows
 RECORD_ARGS=--syscall-buffer-size=4
 record $TESTNAME

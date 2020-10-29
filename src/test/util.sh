@@ -210,6 +210,13 @@ function skip_if_no_syscall_buf {
     fi
 }
 
+function skip_if_32_bit {
+    if [[ "_32" == $bitness ]]; then
+        echo NOTE: Skipping 32-bit "'$TESTNAME'"
+        exit 0
+    fi
+}
+
 # If the test is causing an unrealistic failure when the syscallbuf is
 # enabled, skip it.  This better be a temporary situation!
 function skip_if_syscall_buf {
