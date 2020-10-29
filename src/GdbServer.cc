@@ -1438,7 +1438,10 @@ void GdbServer::restart_session(const GdbRequest& req) {
       FrameTime task_time;
       // EXEC and CLONE reset the ticks counter. Find the first event
       // where the tuid matches our current task.
-      FrameTime ticks_start_time;
+      // We'll always hit at least one CLONE/EXEC event for a task
+      // (we can't debug the time before the initial exec)
+      // but set this to 0 anyway to silence compiler warnings.
+      FrameTime ticks_start_time = 0;
       while (true) {
         TraceTaskEvent r = tmp_reader.read_task_event(&task_time);
         if (task_time >= current_time) {
