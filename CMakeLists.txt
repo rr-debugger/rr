@@ -599,9 +599,9 @@ else()
   target_link_libraries(rr ${CAPNP_LDFLAGS})
 endif()
 
-set_target_properties(rr PROPERTIES LINK_FLAGS ${RR_MAIN_LINKER_FLAGS})
+set_target_properties(rr PROPERTIES LINK_FLAGS "${RR_MAIN_LINKER_FLAGS}")
 if(RR_BUILD_SHARED)
-  set_target_properties(rrbin PROPERTIES LINK_FLAGS ${RR_MAIN_LINKER_FLAGS})
+  set_target_properties(rrbin PROPERTIES LINK_FLAGS "${RR_MAIN_LINKER_FLAGS}")
 endif()
 
 target_link_libraries(rrpreload
