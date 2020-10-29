@@ -211,7 +211,7 @@ function skip_if_no_syscall_buf {
 }
 
 function skip_if_32_bit {
-    if [[ "_32" == $bitness ]]; then
+    if [[ "_32" == $bitness ]] || [[ "$(uname -m)" =~ i[3-6]86 ]]; then
         echo NOTE: Skipping 32-bit "'$TESTNAME'"
         exit 0
     fi
