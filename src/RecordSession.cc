@@ -2194,6 +2194,7 @@ static string lookup_by_path(const string& name) {
   // Stop Mesa using the GPU
   env.push_back("LIBGL_ALWAYS_SOFTWARE=1");
   env.push_back("GBM_ALWAYS_SOFTWARE=1");
+  env.push_back("SDL_RENDER_DRIVER=software");
   // Stop sssd from using shared-memory with its daemon
   env.push_back("SSS_NSS_USE_MEMCACHE=NO");
 
