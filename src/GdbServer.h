@@ -259,7 +259,7 @@ private:
   Checkpoint debugger_restart_checkpoint;
 
   // gdb checkpoints, indexed by ID
-  std::map<int, Checkpoint> checkpoints;
+  std::map<int64_t, Checkpoint> checkpoints;
 
   // Set of symbols to look up, for qSymbol.
   std::set<std::string> symbols;

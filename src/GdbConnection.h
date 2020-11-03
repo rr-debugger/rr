@@ -210,7 +210,7 @@ struct GdbRequest {
   } watch_;
   GdbRegisterValue reg_;
   struct Restart {
-    int param;
+    int64_t param;
     std::string param_str;
     GdbRestartType type;
   } restart_;
