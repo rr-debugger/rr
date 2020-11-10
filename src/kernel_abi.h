@@ -112,6 +112,7 @@ struct FcntlConstants {
     SETPIPE_SZ = 0x400 + 7,
     GETPIPE_SZ = 0x400 + 8,
     ADD_SEALS = 0x400 + 9,
+    GET_SEALS = 0x400 + 10,
     GET_RW_HINT = 0x400 + 11,
     SET_RW_HINT = 0x400 + 12,
     GET_FILE_RW_HINT = 0x400 + 13,
