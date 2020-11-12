@@ -44,6 +44,7 @@ static const uint8_t fxsave_387_ctrl_offsets[] = {
 
 static const int fip_offset = 8;
 static const int fdp_offset = 16;
+static const int mxcsr_offset = 24;
 
 struct RegData {
   int offset;
@@ -224,6 +225,17 @@ uint64_t ExtraRegisters::read_fip(bool* defined) const {
 
   uint64_t ret;
   memcpy(&ret, data_.data() + fip_offset, sizeof(ret));
+  return ret;
+}
+
+uint32_t ExtraRegisters::read_mxcsr(bool* defined) const {
+  if (format_ != XSAVE) {
+    *defined = false;
+    return 0;
+  }
+
+  uint32_t ret;
+  memcpy(&ret, data_.data() + mxcsr_offset, sizeof(ret));
   return ret;
 }
 

@@ -84,6 +84,11 @@ public:
   uint64_t read_fip(bool* defined) const;
 
   /**
+   * Read MXCSR field
+   */
+  uint32_t read_mxcsr(bool* defined) const;
+
+  /**
    * Clear FIP and FDP registers if they're present.
    * Returns true if the registers changed.
    */
