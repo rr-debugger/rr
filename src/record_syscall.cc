@@ -2660,7 +2660,7 @@ static Switchable prepare_ptrace(RecordTask* t,
                                          tracee->extra_regs().data());
                 break;
               default:
-                syscall_state.emulate_result(EINVAL);
+                syscall_state.emulate_result(-EINVAL);
                 break;
             }
           }
@@ -2735,7 +2735,7 @@ static Switchable prepare_ptrace(RecordTask* t,
                     t, tracee->extra_regs().data_size(), syscall_state);
                 break;
               default:
-                syscall_state.emulate_result(EINVAL);
+                syscall_state.emulate_result(-EINVAL);
                 break;
             }
           }
@@ -2827,7 +2827,7 @@ static Switchable prepare_ptrace(RecordTask* t,
         } else {
           desc = t->read_mem(remote_addr, &ok);
           if (!ok) {
-            syscall_state.emulate_result(EFAULT);
+            syscall_state.emulate_result(-EFAULT);
             break;
           }
           syscall_state.emulate_result(
