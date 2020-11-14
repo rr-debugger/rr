@@ -320,12 +320,12 @@ BreakStatus Session::diagnose_debugger_trap(Task* t, RunCommand run_command) {
       BreakpointType retired_bp =
           t->vm()->get_breakpoint_type_for_retired_insn(t->ip());
       if (BKPT_USER == retired_bp) {
-        LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
         // SW breakpoint: $ip is just past the
         // breakpoint instruction.  Move $ip back
         // right before it.
         t->move_ip_before_breakpoint();
         break_status.breakpoint_hit = true;
+        LOG(debug) << "hit debugger breakpoint at ip " << t->ip();
       }
     }
   }
