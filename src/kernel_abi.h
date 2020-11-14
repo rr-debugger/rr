@@ -1393,7 +1393,7 @@ struct BaseArch : public wordsize,
     ino_t d_ino;
     off_t d_off;
     uint16_t d_reclen;
-    //    uint8_t d_type;
+    uint8_t d_type;
     uint8_t d_name[256];
   };
   RR_VERIFY_TYPE(dirent);
