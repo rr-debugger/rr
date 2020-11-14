@@ -91,4 +91,4 @@ elif args.reset or args.check:
     else:
         print('Zen workaround not entirely enabled?')
 else:
-    print('Zen workaround does not stick. Please see https://github.com/mozilla/rr/wiki/Zen')
+    print('Zen workaround does not stick. Please see https://github.com/rr-debugger/rr/wiki/Zen')

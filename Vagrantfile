@@ -15,7 +15,7 @@ Vagrant.configure("2") do |config|
 	SHELL
 
 	config.vm.provision "shell", privileged: false, inline: <<-SHELL
-		git clone https://github.com/mozilla/rr.git
+		git clone https://github.com/rr-debugger/rr.git
 		cd rr
 		mkdir obj
 		cd obj

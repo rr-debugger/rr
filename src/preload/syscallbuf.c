@@ -117,7 +117,7 @@ struct btrfs_ioctl_clone_range_args {
 
 /**
  * Declaring this to avoid issues with the declaration of f_owner_ex
- * across distros. See https://github.com/mozilla/rr/issues/2693 */
+ * across distros. See https://github.com/rr-debugger/rr/issues/2693 */
 struct rr_f_owner_ex {
   int type;
   int pid;

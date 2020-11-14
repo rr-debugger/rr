@@ -184,7 +184,7 @@ endif()
 
 find_program(CAPNP capnp)
 if(${CAPNP} STREQUAL "CAPNP-NOTFOUND")
-  message(FATAL_ERROR "Can't find 'capnp' command; install Capnproto packages? https://github.com/mozilla/rr/wiki/Building-And-Installing#tldr")
+  message(FATAL_ERROR "Can't find 'capnp' command; install Capnproto packages? https://github.com/rr-debugger/rr/wiki/Building-And-Installing#tldr")
 endif()
 
 set(REQUIRED_LIBS
@@ -1694,9 +1694,9 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
   "Lightweight tool for recording and replaying execution of applications (trees of processes and threads)")
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
-set(CPACK_PACKAGE_VENDOR "Mozilla Foundation")
+set(CPACK_PACKAGE_VENDOR "rr-debugger")
 
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Mozilla Foundation")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "rr-debugger")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
   set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")

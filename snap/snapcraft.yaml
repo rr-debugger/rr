@@ -17,7 +17,7 @@ description: |
     Firefox, Chrome, QEMU, LibreOffice, Go programs, ...
   * Record, replay and debug multiple-process workloads, including entire containers
   * Works with gdb scripting and
-    [IDE integration](https://github.com/mozilla/rr/wiki/Using-rr-in-an-IDE)
+    [IDE integration](https://github.com/rr-debugger/rr/wiki/Using-rr-in-an-IDE)
   * [Durable](http://robert.ocallahan.org/2017/06/new-rr-pack-command.html),
     [compact](http://robert.ocallahan.org/2017/07/selecting-compression-algorithm-for-rr.html)
     traces that can be 

@@ -268,7 +268,7 @@ static void check_for_zen_speclockmap() {
   // thread, but not more). When the optimization is disabled, the
   // perf counter for retired lock instructions of type SpecLockMapCommit
   // (on PMC 0x25) stays at 0.
-  // See more details at https://github.com/mozilla/rr/issues/2034.
+  // See more details at https://github.com/rr-debugger/rr/issues/2034.
   struct perf_event_attr attr;
   // 0x25 == RETIRED_LOCK_INSTRUCTIONS - Counts the number of retired locked instructions
   // + 0x08 == SPECLOCKMAPCOMMIT
@@ -287,7 +287,7 @@ static void check_for_zen_speclockmap() {
       fprintf(stderr,
               "On Zen CPUs, rr will not work reliably unless you disable the "
               "hardware SpecLockMap optimization.\nFor instructions on how to "
-              "do this, see https://github.com/mozilla/rr/wiki/Zen\n");
+              "do this, see https://github.com/rr-debugger/rr/wiki/Zen\n");
     }
   }
 }

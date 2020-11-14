@@ -1621,7 +1621,7 @@ AddressSpace::AddressSpace(Task* t, const string& exe, uint32_t exec_count)
       stopping_breakpoint_table_entry_size_(0),
       first_run_event_(0) {
   // TODO: this is a workaround of
-  // https://github.com/mozilla/rr/issues/1113 .
+  // https://github.com/rr-debugger/rr/issues/1113 .
   if (session_->done_initial_exec()) {
     populate_address_space(t);
     DEBUG_ASSERT(!vdso_start_addr.is_null());
