@@ -119,7 +119,7 @@
 </head>
 
 <body>
-  <a href="https://github.com/mozilla/rr"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/a6677b08c955af8400f44c6298f40e7d19cc5b2d/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f677261795f3664366436642e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_gray_6d6d6d.png"></a>
+  <a href="https://github.com/rr-debugger/rr"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://camo.githubusercontent.com/a6677b08c955af8400f44c6298f40e7d19cc5b2d/68747470733a2f2f73332e616d617a6f6e6177732e636f6d2f6769746875622f726962626f6e732f666f726b6d655f72696768745f677261795f3664366436642e706e67" alt="Fork me on GitHub" data-canonical-src="https://s3.amazonaws.com/github/ribbons/forkme_right_gray_6d6d6d.png"></a>
 
   <div id="old">
     <marquee scrollamount="40">
@@ -155,11 +155,11 @@
     <h1>rr</h1>
 
     <ul id="topmenu">
-      <li><a href="https://github.com/mozilla/rr">github</a></li>
+      <li><a href="https://github.com/rr-debugger/rr">github</a></li>
       <li><a href="https://ci.rr-project.org">ci</a></li>
       <li><a href="https://mail.mozilla.org/listinfo/rr-dev">mailing
           list</a></li>
-      <li><a href="https://github.com/mozilla/rr/wiki/News">news</a></li>
+      <li><a href="https://github.com/rr-debugger/rr/wiki/News">news</a></li>
       <li><a href="https://chat.mozilla.org/#/room/#rr:mozilla.org">#rr on chat.mozilla.org</a></li>
     </ul>
   </div>
@@ -173,7 +173,7 @@
     under gdb. Set breakpoints and data watchpoints and quickly
     reverse-execute to where they were hit.</h3>
   <h3>rr works on real applications and is used
-  <a href="https://github.com/mozilla/rr/wiki/Testimonials">by many</a>
+  <a href="https://github.com/rr-debugger/rr/wiki/Testimonials">by many</a>
   <a href="https://twitter.com/chandlerc1024/status/879962014860193792">developers</a>
   to fix real bugs. It makes debugging hard bugs much easier, but also speeds up
   debugging of easy bugs.</h3>
@@ -183,7 +183,7 @@
   <li>Supports recording and replay of all kinds of applications: Firefox, Chrome, QEMU, LibreOffice,
   Go programs, ...
   <li>Record, replay and debug multiple-process workloads, including entire containers
-  <li>Works with gdb scripting and <a href="https://github.com/mozilla/rr/wiki/Using-rr-in-an-IDE">IDE integration</a>
+  <li>Works with gdb scripting and <a href="https://github.com/rr-debugger/rr/wiki/Using-rr-in-an-IDE">IDE integration</a>
   <li><a href="http://robert.ocallahan.org/2017/06/new-rr-pack-command.html">Durable</a>,
   <a href="http://robert.ocallahan.org/2017/07/selecting-compression-algorithm-for-rr.html">compact</a> traces that
   can be <a href="http://robert.ocallahan.org/2017/09/rr-trace-portability.html">ported</a> between machines
@@ -284,7 +284,7 @@ New value = 11220
   <section>
     <div>
       <h3>Build from source</h3>
-      <a href="https://github.com/mozilla/rr/wiki/Building-And-Installing">Follow
+      <a href="https://github.com/rr-debugger/rr/wiki/Building-And-Installing">Follow
             these instructions.</a> Recommended if the packages don't work for you --- kernel changes and OS updates sometimes require rr changes.
       </h3>
     </div>
@@ -292,7 +292,7 @@ New value = 11220
     <div>
       <h3>Or in Fedora:</h3>
       <pre>cd /tmp
-wget https://github.com/mozilla/rr/releases/download/<span class=ver>5.4.0</span>/rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).rpm
+wget https://github.com/rr-debugger/rr/releases/download/<span class=ver>5.4.0</span>/rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).rpm
 sudo dnf install rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).rpm</pre>
 <!--      <p>You can also install rr directly from the package manager.</p>
       <pre>sudo dnf install rr</pre> -->
@@ -301,18 +301,18 @@ sudo dnf install rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).rpm</pre>
     <div>
       <h3>Or in Ubuntu:</h3>
       <pre>cd /tmp
-wget https://github.com/mozilla/rr/releases/download/<span class=ver>5.4.0</span>/rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).deb
+wget https://github.com/rr-debugger/rr/releases/download/<span class=ver>5.4.0</span>/rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).deb
 sudo dpkg -i rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).deb</pre>
     </div>
 
     <div>
       <h3>Running rr</h3>
       <p>
-        <a href="https://github.com/mozilla/rr/wiki/Usage">Follow the
+        <a href="https://github.com/rr-debugger/rr/wiki/Usage">Follow the
         usage instructions</a> to learn how to use rr.
       <p>
         If you're using rr to debug Firefox, you may find
-        <a href="https://github.com/mozilla/rr/wiki/Recording-Firefox">
+        <a href="https://github.com/rr-debugger/rr/wiki/Recording-Firefox">
         these setup instructions</a> helpful. They cover how to use rr to
         record Firefox test suites.
     </div>
@@ -346,8 +346,7 @@ sudo dpkg -i rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).deb</pre>
       gdb's reverse execution commands.
     <p>
       <strong>These goals have all been met.</strong> rr is not only a working
-      tool, but it's being used regularly by developers inside and outside
-      Mozilla.
+      tool, but it's being used regularly by developers on many large and small projects.
     <p>
       rr records a group of Linux user-space processes and captures all
       inputs to those processes from the kernel, plus any nondeterministic CPU
@@ -427,12 +426,12 @@ sudo dpkg -i rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).deb</pre>
         have tackled with rr &mdash; but support
         isn't complete, so running rr on your application may
         uncover a syscall that needs to be implemented. Please
-        <a href="https://github.com/mozilla/rr/issues/">file github issues</a>
+        <a href="https://github.com/rr-debugger/rr/issues/">file github issues</a>
         for unsupported system calls.
       <li>sometimes needs to be updated in response to kernel changes,
         updates to system libraries, or new CPU families. If rr isn't working
         for you (and the above caveats do not apply), please
-        <a href="https://github.com/mozilla/rr/issues/">file an issue</a>.
+        <a href="https://github.com/rr-debugger/rr/issues/">file an issue</a>.
     </ul>
   </section>
 
@@ -442,19 +441,12 @@ sudo dpkg -i rr-<span class=ver>5.4.0</span>-Linux-$(uname -m).deb</pre>
       The <a href="https://arxiv.org/pdf/1705.05937.pdf">Extended Technical Report</a>
       is our best overview of how rr works and performs.
     <p>
-      The <a href="https://github.com/mozilla/rr/wiki">rr wiki</a>
+      The <a href="https://github.com/rr-debugger/rr/wiki">rr wiki</a>
       contains pages that cover technical topics related to rr.
     <p>
       Ask on <a href="https://mail.mozilla.org/listinfo/rr-dev">the mailing
       list</a> or on <a href="https://chat.mozilla.org/#/room/#rr:mozilla.org">#rr on chat.mozilla.org</a> if you have questions about rr.
   </section>
-
-  <footer>
-    <p><a href="https://www.mozilla.org/en-US/research/">
-        <img alt="mozilla"
-             src="https://mozorg.cdn.mozilla.net/media/img/sandstone/footer-mozilla.png"></img></a>
-             &copy; 2015-2017
-  </footer>
 </body>
 
 <script type="text/javascript">
