@@ -232,7 +232,7 @@ void disarm_desched_event(RecordTask* t) {
 void arm_desched_event(RecordTask* t) {
   if (t->desched_fd.is_open() &&
       ioctl(t->desched_fd, PERF_EVENT_IOC_ENABLE, 0)) {
-    FATAL() << "Failed to disarm desched event";
+    FATAL() << "Failed to arm desched event";
   }
 }
 
