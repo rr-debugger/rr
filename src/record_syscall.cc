@@ -5834,8 +5834,8 @@ static void rec_process_syscall_arch(RecordTask* t,
         // get the correct prot bits for heaps. Usually it's READ|WRITE but
         // there seem to be exceptions depending on system settings.
         KernelMapping kernel_info = t->vm()->read_kernel_mapping(t, old_brk);
-        ASSERT(t, km.device() == KernelMapping::NO_DEVICE);
-        ASSERT(t, km.inode() == KernelMapping::NO_INODE);
+        ASSERT(t, kernel_info.device() == KernelMapping::NO_DEVICE);
+        ASSERT(t, kernel_info.inode() == KernelMapping::NO_INODE);
         km = kernel_info.subrange(old_brk, new_brk);
       } else {
         // Write a dummy KernelMapping that indicates an unmap
