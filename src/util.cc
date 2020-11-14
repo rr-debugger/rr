@@ -451,6 +451,9 @@ static void iterate_checksums(Task* t, ChecksumMode mode,
         FATAL() << "Segment " << parsed.start << "-" << parsed.end
                 << " changed to " << m.map << "??";
       }
+      // As |m| may have changed in the above for loop we need to update the
+      // |raw_map_line| too.
+      raw_map_line = m.map.str();
       ASSERT(t, m.map.end() == parsed.end)
           << "Segment " << parsed.start << "-" << parsed.end
           << " changed to " << m.map << "??";
