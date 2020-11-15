@@ -719,8 +719,20 @@ void Task::on_syscall_exit_arch(int syscallno, const Registers& regs) {
             case NT_X86_XSTATE: {
               switch (tracee->extra_regs().format()) {
                 case ExtraRegisters::XSAVE: {
-                  auto set = ptrace_get_regs_set<Arch>(
-                      this, regs, tracee->extra_regs().data_size());
+                  auto set = ptrace_get_regs_set<Arch>(this, regs, 0);
+                  if (set.size() < (unsigned int)tracee->extra_regs().data_size()) {
+                    // We should only see a discrepancy here on replay.
+                    ASSERT(this, session().is_replaying());
+                    if (!Flags::get().suppress_environment_warnings) {
+                      fprintf(stderr,
+                              "The native XSAVE region size on this machine is %lu bytes,"
+                              " smaller than the recorded trace XSAVE region size of %d "
+                              "bytes.\nWe will only restore the state available on this "
+                              "machine. This may cause divergence in the replay.\n",
+                              set.size(),
+                              tracee->extra_regs().data_size());
+                    }
+                  }
                   ExtraRegisters r;
                   XSaveLayout layout;
                   ReplaySession* replay = session().as_replay();
