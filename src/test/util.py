@@ -89,9 +89,9 @@ def expect(prog, what):
 
 def get_exe_arch():
     send_gdb('show architecture')
-    expect_gdb('The target architecture is set automatically \\(currently ([0-9a-z:-]+)\\)')
+    expect_gdb(r'The target architecture is set (automatically|to "auto") \(currently "?([0-9a-z:-]+)"?\)\.?')
     global gdb_rr
-    return gdb_rr.match.group(1)
+    return gdb_rr.match.group(2)
 
 def get_rr_cmd():
     '''Return the command that should be used to invoke rr, as the tuple

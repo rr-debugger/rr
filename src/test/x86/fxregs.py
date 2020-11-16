@@ -18,7 +18,7 @@ for i in range(8):
     expect_gdb(' = %d'%(i + 10))
 
 send_gdb('show architecture')
-have_64 = 0 == expect_list([re.compile('i386:x86-64\)'), re.compile('i386\)')])
+have_64 = 0 == expect_list([re.compile('i386:x86-64"?\)'), re.compile('i386"?\)')])
 
 if have_64:
     for i in range(8,16):
