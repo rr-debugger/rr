@@ -1225,7 +1225,9 @@ bool running_under_rr(bool cache) {
   if (!rr_check_done || !cache) {
     rr_check_done = true;
     int ret = syscall(SYS_rrcall_check_presence, 0, 0, 0, 0, 0, 0);
-    DEBUG_ASSERT(ret == 0 || (ret == -1 && errno == ENOSYS));
+    if (ret > 0 || (ret < 0 && errno != ENOSYS)) {
+      FATAL() << "Unexpected result for rrcall_check_presence: " << ret;
+    }
     rr_under_rr = ret == 0;
   }
   return rr_under_rr;
