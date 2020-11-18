@@ -22,7 +22,7 @@ static void test(int use_pwritev) {
   iovs[1].iov_len = sizeof(data) - iovs[0].iov_len;
   if (use_pwritev) {
     /* Work around busted pwritev prototype in older libcs */
-    nwritten = syscall(SYS_pwritev, fd, iovs, 2, 0, 0);
+    nwritten = syscall(SYS_pwritev, fd, iovs, 2, (off_t)0, 0);
   } else {
     nwritten = writev(fd, iovs, 2);
   }

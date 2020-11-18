@@ -11,13 +11,13 @@ static void fault_handler(__attribute__((unused)) int sig,
 static void* start_thread(__attribute__((unused)) void* p) {
   sigset_t s;
 
-  syscall(SYS_write, STDOUT_FILENO, "EXIT-", 5);
+  syscall(SYS_write, STDOUT_FILENO, "EXIT-", (size_t)5);
 
   sigemptyset(&s);
   sigaddset(&s, SIGSEGV);
   sigprocmask(SIG_BLOCK, &s, NULL);
 
-  syscall(SYS_write, STDOUT_FILENO, "SUCCESS\n", 8, 9, 10, 11);
+  syscall(SYS_write, STDOUT_FILENO, "SUCCESS\n", (size_t)8, 9, 10, 11);
 
   ((void (*)(void))(0x44))();
 

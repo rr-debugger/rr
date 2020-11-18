@@ -151,7 +151,7 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     arg.vlen = 1;
     test_assert(1 == syscall(SYS_socketcall, SYS_RECVMMSG, (void*)&arg));
 #elif defined(SYS_recvmmsg)
-    test_assert(1 == syscall(SYS_recvmmsg, sock, &mmsg, 1, 0, NULL));
+    test_assert(1 == syscall(SYS_recvmmsg, sock, &mmsg, 1, 0, (void*)0));
 #else
 #error unable to call recvmmsg
 #endif
@@ -233,9 +233,9 @@ static void* reader_thread(__attribute__((unused)) void* dontcare) {
     arg.timeout = &tv;
     ret = syscall(SYS_select, &arg);
 #elif defined(SYS_select)
-    ret = syscall(SYS_select, sock + 1, &fds, NULL, NULL, &tv);
+    ret = syscall(SYS_select, sock + 1, &fds, (void*)0, (void*)0, &tv);
 #else
-    ret = syscall(SYS_pselect6, sock + 1, &fds, NULL, NULL, &tv, NULL);
+    ret = syscall(SYS_pselect6, sock + 1, &fds, (void*)0, (void*)0, &tv, (void*)0);
 #endif
     atomic_printf("r:   ... returned %d; tv { %ld, %ld }\n", ret, tv.tv_sec,
                   tv.tv_usec);

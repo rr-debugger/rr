@@ -53,7 +53,7 @@ int main(void) {
                                        .base = base_key };
 
   result = syscall(SYS_keyctl, KEYCTL_DH_COMPUTE, &params, buffer,
-                   sizeof(buffer), NULL);
+                   sizeof(buffer), (void*)0);
   if (-1 == result) {
     // This one's rather new. May not be supported.
     test_assert(errno == EOPNOTSUPP);

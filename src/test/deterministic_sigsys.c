@@ -29,7 +29,7 @@ int main(void) {
     test_assert(ret == 0);
     ret = prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (uintptr_t)&fprog, 0, 0);
     test_assert(ret == 0);
-    syscall(__NR_read, 0, 0, 0);
+    syscall(__NR_read, 0, (void*)0, (size_t)0);
   }
   wait(&status);
   test_assert(WIFSIGNALED(status));

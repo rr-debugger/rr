@@ -38,7 +38,7 @@ static int child(__attribute__((unused)) void* arg) {
    * sigprocmask is per-task, because we're not a real
    * pthread. */
   test_assert(0 ==
-              syscall(SYS_rt_sigprocmask, SIG_UNBLOCK, &set, NULL, _NSIG / 8));
+              syscall(SYS_rt_sigprocmask, SIG_UNBLOCK, &set, (void*)0, _NSIG / 8));
 
   /* clone() should have set child_tid to our tid */
   child_tid_copy = child_tid;

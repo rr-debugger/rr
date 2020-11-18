@@ -9,7 +9,7 @@ static volatile int saw_v2_equals_1;
 static volatile int saw_v2_equals_2;
 
 static void* run_thread(__attribute__((unused)) void* p) {
-  test_assert(0 == syscall(SYS_futex, &v, FUTEX_WAIT, 0, NULL, NULL, 0));
+  test_assert(0 == syscall(SYS_futex, &v, FUTEX_WAIT, 0, (void*)0, (void*)0, 0));
   if (v2 == 1) {
     ++saw_v2_equals_1;
   } else if (v2 == 2) {

@@ -736,7 +736,8 @@ int RecordCommand::run(vector<string>& args) {
     if (flags.nested == NESTED_IGNORE) {
       exec_child(args);
     } else if (flags.nested == NESTED_DETACH) {
-      int ret = syscall(SYS_rrcall_detach_teleport, 0, 0, 0, 0, 0, 0);
+      int ret = syscall(SYS_rrcall_detach_teleport, (uintptr_t)0, (uintptr_t)0,
+        (uintptr_t)0, (uintptr_t)0, (uintptr_t)0, (uintptr_t)0);
       if (ret < 0) {
         FATAL() << "Failed to detach from parent rr";
       }

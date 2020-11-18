@@ -28,7 +28,7 @@ static void test(int use_preadv) {
   iovs[1].iov_len = sizeof(*part2);
   if (use_preadv) {
     /* Work around busted preadv prototype in older libcs */
-    nread = syscall(SYS_preadv, fd, iovs, 2, 0, 0);
+    nread = syscall(SYS_preadv, fd, iovs, 2, (off_t)0, 0);
   } else {
     test_assert(0 == lseek(fd, 0, SEEK_SET));
     nread = readv(fd, iovs, 2);

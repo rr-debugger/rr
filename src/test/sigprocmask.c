@@ -30,7 +30,7 @@ int main(void) {
   signals_unblocked = 1;
 /* Some systems only have rt_sigprocmask. */
 #if defined(SYS_sigprocmask)
-  syscall(SYS_sigprocmask, SIG_SETMASK, &oldmask, NULL);
+  syscall(SYS_sigprocmask, SIG_SETMASK, &oldmask, (void*)0);
 #else
   sigprocmask(SIG_SETMASK, &oldmask, NULL);
 #endif
@@ -43,7 +43,7 @@ int main(void) {
   memset(&set1[1], 0xab, 9 * sizeof(uint64_t));
   memset(&set2[1], 0xcd, 9 * sizeof(uint64_t));
   set1[0] = ((uint64_t)1) << (SIGPWR - 1);
-  test_assert(0 == syscall(SYS_rt_sigprocmask, SIG_SETMASK, set1, NULL,
+  test_assert(0 == syscall(SYS_rt_sigprocmask, SIG_SETMASK, set1, (void*)0,
                            sizeof(uint64_t)));
   for (size_t i = 0; i < 9 * sizeof(uint64_t); ++i) {
     test_assert(((uint8_t*)(&set1[1]))[i] == 0xab);

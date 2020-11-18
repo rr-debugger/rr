@@ -1008,7 +1008,7 @@ bool cpuid_faulting_works() {
   did_check_cpuid_faulting = true;
 
   // Test to see if CPUID faulting works.
-  if (RR_ARCH_PRCTL(ARCH_SET_CPUID, 0) != 0) {
+  if (RR_ARCH_PRCTL(ARCH_SET_CPUID, 0L) != 0) {
     LOG(debug) << "CPUID faulting not supported by kernel/hardware";
     return false;
   }
@@ -1035,7 +1035,7 @@ bool cpuid_faulting_works() {
   if (sigaction(SIGSEGV, &old_sa, NULL) < 0) {
     FATAL() << "Can't restore sighandler";
   }
-  if (RR_ARCH_PRCTL(ARCH_SET_CPUID, 1) < 0) {
+  if (RR_ARCH_PRCTL(ARCH_SET_CPUID, 1L) < 0) {
     FATAL() << "Can't restore ARCH_SET_CPUID";
   }
   return cpuid_faulting_ok;
@@ -1224,7 +1224,8 @@ bool running_under_rr(bool cache) {
   static bool rr_check_done = false;
   if (!rr_check_done || !cache) {
     rr_check_done = true;
-    int ret = syscall(SYS_rrcall_check_presence, 0, 0, 0, 0, 0, 0);
+    int ret = syscall(SYS_rrcall_check_presence, (uintptr_t)0, (uintptr_t)0,
+      (uintptr_t)0, (uintptr_t)0, (uintptr_t)0, (uintptr_t)0);
     if (ret > 0 || (ret < 0 && errno != ENOSYS)) {
       FATAL() << "Unexpected result for rrcall_check_presence: " << ret;
     }

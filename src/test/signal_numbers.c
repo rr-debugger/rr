@@ -20,7 +20,7 @@ int main(void) {
     sigemptyset(&sa.sa_mask);
     /* Avoid libc wrappers since glibc won't let us send certain signals that
        it reserves for itself */
-    test_assert(0 == syscall(SYS_rt_sigaction, sig, &sa, NULL, 8));
+    test_assert(0 == syscall(SYS_rt_sigaction, sig, &sa, (void*)0, 8));
     test_assert(0 == kill(getpid(), sig));
   }
 

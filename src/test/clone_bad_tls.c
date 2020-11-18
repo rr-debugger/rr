@@ -7,7 +7,7 @@ int main(void) {
   int ret;
   int status;
 
-  child = syscall(SYS_clone, CLONE_SETTLS | SIGCHLD, 0, 0, 0, 0);
+  child = syscall(SYS_clone, CLONE_SETTLS | SIGCHLD, (void*)0, (void*)0, (void*)0, 0L);
   if (child < 0) {
     /* On x86-32 null TLS produces EFAULT */
     test_assert(EFAULT == errno);

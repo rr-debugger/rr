@@ -172,7 +172,7 @@ static bool try_grow_map(RecordTask* t, siginfo_t* si) {
   int ret = prlimit(t->tid, RLIMIT_STACK, NULL, &stack_limit);
 #else
   struct rlimit64 stack_limit;
-  int ret = syscall(__NR_prlimit64, t->tid, RLIMIT_STACK, NULL, &stack_limit);
+  int ret = syscall(__NR_prlimit64, t->tid, RLIMIT_STACK, (void*)0, &stack_limit);
 #endif
   if (ret >= 0 && stack_limit.rlim_cur != RLIM_INFINITY) {
     limit_bottom = ceil_page_size(it->map.end() - stack_limit.rlim_cur);
